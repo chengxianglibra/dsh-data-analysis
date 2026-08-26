@@ -36,12 +36,14 @@ flowchart LR
   Plugin --> Skills[共享 Marivo Skills]
   Plugin --> Help[marivo_help]
   Plugin --> Test[marivo_test]
+  Plugin --> Cite[marivo_evidence_cite]
   Plugin --> Creds[DSH Credentials]
   Plugin --> Env[Workspace Environment Binding]
   Env --> Runtime[共享 Python + Marivo Runtime]
   Runtime --> Project[Workspace: marivo.toml / models / .marivo]
   Help --> Marivo[Marivo 公共 API]
   Test --> Marivo
+  Cite --> Marivo
   Marivo --> Project
 ```
 
@@ -67,7 +69,8 @@ DSH Web profile
 └── Agent scopes
     ├── MarivoDisclosureController
     ├── marivo_help
-    └── marivo_test
+    ├── marivo_test
+    └── marivo_evidence_cite + Citation registry
 ```
 
 共享 Runtime 只解决安装复用问题，不合并 Workspace 状态。Environment fingerprint 包含项目根、
@@ -81,6 +84,7 @@ DSH Web profile
 | Environment 执行边界 | doctor 准入、身份固定、安全子进程、诊断输出 | [Environment 执行边界](modules/environment-execution.md) |
 | Help 披露 | 提供 focused `marivo_help`，并在 Skill 激活后注入实时根 Help | [Help 披露](modules/help-disclosure.md) |
 | Datasource 与凭证 | 解析 Datasource 凭证引用，调用 `md.test()`，提供 Web 凭证表单 | [Datasource 与凭证](modules/datasource-credentials.md) |
+| Evidence 轻量引用 | 读取精确 Finding、签发 Markdown handle、从标准历史回放 Web 来源卡片 | [Evidence 轻量引用](modules/evidence-citations.md) |
 | Plugin 集成与交付 | 组合 Cordis 生命周期、Agent scopes、客户端构建和 npm 包契约 | [Plugin 集成与交付](modules/plugin-integration-delivery.md) |
 
 依赖方向保持单向：Plugin 组合层依赖其余模块；Help 与 Datasource 依赖 Environment；Environment
@@ -97,7 +101,7 @@ Environment source 类型，不共享业务状态。
 4. 插件为现有 Agent 安装控制器，并监听后续 `agent/created`、`agent/disposed`。
 5. Agent 首次需要 Marivo Environment 时，根据配置或 `session.header.cwd` 解析 Workspace，幂等创建
    最小项目结构，运行 doctor admission 并缓存 binding Promise。
-6. Agent scope 注册 `marivo_help` 与 `marivo_test`；原 profile 的普通工具可见性不被改写。
+6. Agent scope 注册 `marivo_help`、`marivo_test` 与 `marivo_evidence_cite`；原 profile 的普通工具可见性不被改写。
 
 ## 分析交互流程
 
@@ -117,6 +121,14 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 缺少凭证时 Tool 返回引用名，Web Tool View 收集并保存凭证，用户随后显式重试。引用全部可用时，
 插件仅在该次 `md.test(name)` 子进程的环境 overlay 中传递值。
 
+### Evidence 引用
+
+`marivo-analysis` 激活后，动态 system prompt 告诉 Agent 可在需要精确 Finding 来源时选择调用
+`marivo_evidence_cite`。工具通过当前 binding 读取已持久化 Finding，签发标准 Markdown footnote，并
+把签发 DSH Session ID 和完整 handle registry 写入 `tool/result.meta`，服务端恢复时据此隔离 fork 后的
+新 handle 命名空间。Web client 用 Conversation Definition 从标准历史关联
+最终 `assistant/message`，在 Turn tail 渲染来源卡片；它不改写消息，也不创建自定义 Session event。
+
 ## 状态与数据所有权
 
 | 数据 | 位置 | 生命周期与所有者 |
@@ -127,6 +139,7 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 | Environment Binding | 进程内 manager cache | Workspace 级，插件拥有；dispose 后丢弃 |
 | Help 可见性与激活状态 | DSH Session events/surface + Agent controller | Agent/Session 级，Harness 保存 surface，插件投影状态 |
 | Datasource 凭证 | DSH Credentials | Harness 拥有；插件只按操作解析和传递 |
+| Evidence citation registry | `tool/result.meta` + Agent 内存投影 | DSH Session 级；插件签发，Harness 持久化标准事件 |
 
 ## 信任与失败边界
 
@@ -170,6 +183,7 @@ npm run test:runtime-workspace
 npm run test:environment-execution
 npm run test:help-disclosure
 npm run test:datasource-credentials
+npm run test:evidence-citations
 npm run test:plugin-integration-delivery
 
 npm run validate:runtime-workspace:real

@@ -18,14 +18,14 @@
 
 ## Cordis 生命周期组合
 
-插件声明依赖 `agents`、`credentials`、`skills` 和 `tools` 服务。`apply(ctx, config)` 的组合顺序是：
+插件声明依赖 `agents`、`credentials`、`skills`、`systemPrompt` 和 `tools` 服务。`apply(ctx, config)` 的组合顺序是：
 
 1. 解析显式配置与 `DSH_DATA_ANALYSIS_*` 环境变量；
 2. `ensureSharedMarivoRuntime()` 创建或验证 profile 级 Runtime；
 3. 通过 `dsh-skill-filesystem` 挂载隔离 provider
    `dsh-data-analysis-marivo`，只包含 Runtime Skill root，不引入默认 roots；
 4. 创建一个 `MarivoWorkspaceEnvironmentManager`；
-5. 为现有 Agent 安装 disclosure 与 datasource 控制器；
+5. 为现有 Agent 安装 disclosure、datasource 与 Evidence citation 控制器；
 6. 监听 `agent/created` 安装新 scope，监听 `agent/disposed` 清理 scope；
 7. plugin dispose 时先清理 Agent controllers，再释放 manager cache。
 
@@ -41,7 +41,9 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 | Workspace manager | Cordis plugin | 按 canonical root 缓存 binding Promise，dispose 时清空 |
 | Disclosure controller | Agent | 观察 Session surface/Tool result，注册 `marivo_help` 和 pre-step hook |
 | `marivo_test` | Agent scope | 使用同一 Agent Environment source，随 controller 清理 |
+| `marivo_evidence_cite` + 动态 prompt | Agent scope | registry 按 Session 隔离；prompt 仅在 `marivo-analysis` 激活后出现 |
 | Web Tool View | Web client context | 按 `marivo_test` Tool name 注入 slot |
+| Web 来源卡片 | Web client context | 从标准 Tool meta 与 assistant message 重放，selector 无引用时不挂载 |
 
 插件不改变 inherited Tool registry 的可见性，也不为 native/code/both 模式维护分支逻辑。Tool 展示和
 模型调用方式继续由 Harness profile 决定。
@@ -62,13 +64,14 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 
 ## 公共包接口
 
-包根导出 Cordis entrypoint 和三个服务端模块：
+包根导出 Cordis entrypoint 和四个服务端模块：
 
 ```text
 @deepseek-ai/dsh-data-analysis
 @deepseek-ai/dsh-data-analysis/environment
 @deepseek-ai/dsh-data-analysis/disclosure
 @deepseek-ai/dsh-data-analysis/datasource
+@deepseek-ai/dsh-data-analysis/evidence
 @deepseek-ai/dsh-data-analysis/client
 ```
 

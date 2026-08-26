@@ -18,12 +18,20 @@ import {
   MarivoEnvironment,
 } from './environment/index.ts'
 import { registerMarivoTestTool } from './datasource/index.ts'
+import { registerMarivoEvidenceCiteTool } from './evidence/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
 
 /** Services that must exist before the plugin binds and watches Agent scopes. */
-export const inject = ['agents', 'credentials', 'skills', 'tools']
+export const inject = ['agents', 'credentials', 'skills', 'systemPrompt', 'tools']
+
+export const MARIVO_EVIDENCE_CITATION_PROMPT = [
+  'When marivo-analysis is active, you may cite an exact persisted Finding with marivo_evidence_cite only when that precision is useful.',
+  'Copy the returned marker (for example [^mv-f1]) immediately after the supported statement, and copy its returned footnote definition verbatim at the end of the answer.',
+  'Never invent, rename, or edit a Marivo Evidence handle or definition.',
+  'A citation proves the identity of its Marivo Evidence source; it does not prove that the whole sentence or business judgment is correct.',
+].join(' ')
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -88,6 +96,14 @@ export function installMarivoPlugin(
       throw new Error('dsh-data-analysis requires the DSH credentials service')
     }
     controller.addDisposer(registerMarivoTestTool(agent.ctx, source, credentials))
+    controller.addDisposer(registerMarivoEvidenceCiteTool(agent.ctx, source, agent.session))
+    controller.addDisposer(agent.ctx.systemPrompt.section({
+      name: 'marivo:evidence-citations',
+      order: 180,
+      text: () => controller.activeSkills.includes('marivo-analysis')
+        ? MARIVO_EVIDENCE_CITATION_PROMPT
+        : '',
+    }))
     installed.set(agent, controller)
   }
 

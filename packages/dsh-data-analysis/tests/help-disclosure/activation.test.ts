@@ -24,7 +24,7 @@ import {
   marivoHelpBodyDigest,
   MarivoDisclosureError,
 } from '../../src/disclosure/index.ts'
-import { installMarivoPlugin } from '../../src/plugin.ts'
+import { installMarivoPlugin, MARIVO_EVIDENCE_CITATION_PROMPT } from '../../src/plugin.ts'
 import {
   FixedSubprocessPolicy,
   MarivoEnvironment,
@@ -252,6 +252,49 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), ['authoring'])
   assert.deepEqual(controller.activeSkills, ['marivo-semantic'])
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
+})
+
+test('Evidence citation guidance appears only after marivo-analysis activation', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallsResponse([{ id: 'analysis-citations', name: 'skill', args: { name: 'marivo-analysis' } }]),
+    textResponse('analysis ready'),
+  ])
+  const ctx = await harness(adapter)
+  const agent = createAgent(ctx, 'citation-prompt-analysis')
+  installMarivoPlugin(ctx, fixture.environment, {
+    credentials: { resolve: () => Promise.resolve(undefined) },
+  })
+
+  send(agent, 'analyze with exact evidence')
+  await agent.whenIdle()
+
+  assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /marivo_evidence_cite/)
+  const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
+  assert.match(activatedPrompt, /marivo_evidence_cite/)
+  assert.match(activatedPrompt, /Copy the returned marker/)
+  assert.match(activatedPrompt, /does not prove/)
+  assert.match(MARIVO_EVIDENCE_CITATION_PROMPT, /Never invent, rename, or edit/)
+})
+
+test('marivo-semantic activation alone does not add Evidence citation guidance', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallsResponse([{ id: 'semantic-no-citations', name: 'skill', args: { name: 'marivo-semantic' } }]),
+    textResponse('semantic ready'),
+  ])
+  const ctx = await harness(adapter)
+  const agent = createAgent(ctx, 'citation-prompt-semantic')
+  installMarivoPlugin(ctx, fixture.environment, {
+    credentials: { resolve: () => Promise.resolve(undefined) },
+  })
+
+  send(agent, 'author semantics')
+  await agent.whenIdle()
+
+  assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_cite/)
 })
 
 test('an explicit user skill invocation activates the matching root help without a skill Tool call', async (t) => {
@@ -663,6 +706,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   await agent.whenIdle()
 
   assert.deepEqual(requestToolNames(adapter.requests[0]), [
+    'marivo_evidence_cite',
     'marivo_help',
     'marivo_test',
     'ordinary',

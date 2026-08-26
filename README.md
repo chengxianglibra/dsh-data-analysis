@@ -14,6 +14,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - 全局提供 `marivo-analysis` 和 `marivo-semantic` skills；
 - 在 Agent 加载 `marivo-semantic` 或 `marivo-analysis` 后注入对应的实时根 Help；
 - 通过 `marivo_test` 和 DSH 凭证服务完成 datasource 连接测试；
+- 通过 `marivo_evidence_cite` 为精确 Finding 签发标准 Markdown 角标，并在 Web 展示来源卡片；
 - 支持 DSH 的 `native`、`code` 和 `both` 工具模式。
 
 插件不在每个 Workspace 重复安装 Python、Marivo 或 skills，也不替代 Marivo 对项目、
@@ -26,6 +27,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - [Environment 执行边界模块](docs/modules/environment-execution.md)
 - [Help 披露模块](docs/modules/help-disclosure.md)
 - [Datasource 与凭证模块](docs/modules/datasource-credentials.md)
+- [Evidence 轻量引用模块](docs/modules/evidence-citations.md)
 - [Plugin 集成与交付模块](docs/modules/plugin-integration-delivery.md)
 
 ## 安装
@@ -129,6 +131,22 @@ Result 或 telemetry。插件启动的 doctor、help、describe 和 test 等 Mar
 `~/.marivo/secrets.toml`。这个保证只覆盖插件自有子进程；Agent 通过 bash 或 Python 直接调用
 Marivo 不在此边界内。所有 datasource 的
 `*_env` 引用（包括 `user_env`）都由 DSH 凭证服务管理。
+
+### 引用 Marivo Evidence
+
+加载 `marivo-analysis` 后，Agent 可以在精确 Finding 来源确有价值时调用
+`marivo_evidence_cite({ session_id, finding_ids })`。工具每次接受 1–20 个唯一 Finding ID，在当前
+binding 中通过 `mv.session.resume(..., use_datasources=False)` 和 `session.evidence.finding()` 整批读取，
+并签发 `F1` 等稳定 handle。相同 Environment、Marivo Session 和 Finding 在同一 DSH Session 内复用
+handle；每个 DSH Session 最多 100 个，跨 Session 隔离。
+
+Agent 把工具返回的 `[^mv-f1]` 放在结论后，并在答案末尾原样放置对应 definition。CLI/Headless 可直接
+阅读标准 Markdown footnote；Web 会从标准 `tool/result.meta` 和最终 `assistant/message` 回放出“Marivo
+来源”卡片。插件不截获或重写原回答，也不新增自定义 Session event。
+
+这个角标只确认 Finding 来源身份，不验证整句话、数字推理或业务判断。轻量版本不做自然语言
+entailment、`to_pandas` 用途判断、可信等级、强制 analysis state 复盘，也不会要求所有简单分析都调用
+引用工具。完整边界见 [Evidence 轻量引用模块](docs/modules/evidence-citations.md)。
 
 ### 检查环境
 

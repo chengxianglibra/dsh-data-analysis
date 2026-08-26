@@ -22,6 +22,8 @@ const required = [
   'lib/client.js',
   'lib/types/client.d.ts',
   'lib/types/index.d.ts',
+  'lib/evidence/index.js',
+  'lib/types/evidence/index.d.ts',
   'lib/bin/environment.js',
 ]
 for (const path of required) {

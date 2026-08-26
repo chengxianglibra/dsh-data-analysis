@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-data-analysis",
-  "description": "Skill-activated Marivo live-help disclosure for DeepSeek Harness",
+  "description": "Marivo runtime, live-help, datasource, and Evidence citation integration for DeepSeek Harness",
   "version": "0.1.0-rc.2",
   "type": "module",
   "engines": {
@@ -32,6 +32,10 @@
       "types": "./lib/types/datasource/index.d.ts",
       "default": "./lib/datasource/index.js"
     },
+    "./evidence": {
+      "types": "./lib/types/evidence/index.d.ts",
+      "default": "./lib/evidence/index.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -54,7 +58,9 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-tool"
       ],
       "platform": "web"
@@ -69,26 +75,32 @@
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "*",
     "@deepseek-ai/dsh-client-connection": "*",
+    "@deepseek-ai/dsh-client-locale": "*",
     "@deepseek-ai/dsh-client-runtime": "*",
+    "@deepseek-ai/dsh-client-ui-conversation": "*",
     "@deepseek-ai/dsh-client-ui-tool": "*",
     "@deepseek-ai/dsh-credentials": "*",
     "@deepseek-ai/dsh-home-paths": "*",
     "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-session": "*",
     "@deepseek-ai/dsh-skill-filesystem": "*",
+    "@deepseek-ai/dsh-system-prompt": "*",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-tools": "*"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-agent": { "optional": true },
     "@deepseek-ai/dsh-client-connection": { "optional": true },
+    "@deepseek-ai/dsh-client-locale": { "optional": true },
     "@deepseek-ai/dsh-client-runtime": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-conversation": { "optional": true },
     "@deepseek-ai/dsh-client-ui-tool": { "optional": true },
     "@deepseek-ai/dsh-credentials": { "optional": true },
     "@deepseek-ai/dsh-home-paths": { "optional": true },
     "@deepseek-ai/dsh-llm": { "optional": true },
     "@deepseek-ai/dsh-session": { "optional": true },
     "@deepseek-ai/dsh-skill-filesystem": { "optional": true },
+    "@deepseek-ai/dsh-system-prompt": { "optional": true },
     "@deepseek-ai/dsh-tools": { "optional": true }
   }
 }

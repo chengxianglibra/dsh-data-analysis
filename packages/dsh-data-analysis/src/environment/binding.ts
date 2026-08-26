@@ -162,6 +162,56 @@ print(json.dumps(redact({
 }), sort_keys=True))
 `.trim()
 
+const CHECKED_EVIDENCE_FINDINGS_SCRIPT = String.raw`
+import json
+import os
+import sys
+import marivo
+import marivo.analysis as mv
+
+actual = {
+    "python_executable": os.path.abspath(sys.executable),
+    "marivo_version": marivo.__version__,
+    "package_path": os.path.abspath(marivo.__file__ or ""),
+}
+expected = {
+    "python_executable": os.path.abspath(sys.argv[1]),
+    "marivo_version": sys.argv[2],
+    "package_path": os.path.abspath(sys.argv[3]),
+}
+if actual != expected:
+    print(json.dumps({"kind": "identity-mismatch", "actual": actual}), file=sys.stderr)
+    raise SystemExit(78)
+
+session_id = sys.argv[4]
+finding_ids = json.loads(sys.argv[5])
+try:
+    session = mv.session.resume(session_id, use_datasources=False)
+    findings = [session.evidence.finding(finding_id) for finding_id in finding_ids]
+except Exception as exc:
+    print(json.dumps({
+        "kind": "evidence-read-failed",
+        "exception_type": type(exc).__name__,
+    }, sort_keys=True), file=sys.stderr)
+    raise SystemExit(70)
+
+print(json.dumps({
+    "session_id": session.id,
+    "findings": [{
+        "finding_id": finding.finding_id,
+        "finding_type": finding.finding_type,
+        "epistemic_kind": finding.epistemic_kind,
+        "artifact_id": finding.artifact_id,
+        "session_id": finding.session_id,
+        "canonical_item_key": finding.canonical_item_key,
+        "quality_status": finding.quality_status,
+        "committed_at": finding.committed_at.isoformat(),
+        "extractor_version": finding.extractor_version,
+        "artifact_schema_version": finding.artifact_schema_version,
+    } for finding in findings],
+}, sort_keys=True))
+`.trim()
+
 function redactSubprocessOutput(
   result: Awaited<ReturnType<FixedSubprocessPolicy['run']>>,
   environmentOverlay: Readonly<NodeJS.ProcessEnv> | undefined,
@@ -473,6 +523,49 @@ export class MarivoEnvironment {
       environmentOverlay,
       signal,
     )
+  }
+
+  /** Read exact persisted Findings without loading datasource definitions. */
+  async runCheckedEvidenceFindings(
+    sessionId: string,
+    findingIds: readonly string[],
+    limits: Partial<SubprocessLimits>,
+    signal?: AbortSignal,
+  ) {
+    if (this.#failed) {
+      throw new MarivoEnvironmentError(
+        'binding-failed',
+        'Marivo Environment Binding has failed; explicit rebind is required',
+        { fingerprint: this.binding.fingerprint },
+      )
+    }
+    const result = await this.subprocessPolicy.run({
+      executable: this.binding.pythonExecutable,
+      args: [
+        '-c',
+        CHECKED_EVIDENCE_FINDINGS_SCRIPT,
+        this.binding.pythonExecutable,
+        this.binding.marivoVersion,
+        this.binding.packagePath,
+        sessionId,
+        JSON.stringify(findingIds),
+      ],
+      limits,
+      signal,
+    })
+    if (result.exitCode === 78) {
+      this.#failed = true
+      throw new MarivoEnvironmentError(
+        'binding-identity-mismatch',
+        'Marivo import identity changed; explicit rebind is required',
+        {
+          fingerprint: this.binding.fingerprint,
+          exitCode: result.exitCode,
+          stderr: result.stderr.toString('utf8').slice(0, 2_000),
+        },
+      )
+    }
+    return result
   }
 }
 
