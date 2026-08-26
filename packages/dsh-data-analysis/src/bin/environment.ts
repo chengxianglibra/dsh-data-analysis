@@ -8,6 +8,7 @@ import {
   MarivoWorkspaceEnvironmentManager,
 } from '../environment/index.ts'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
+import { environmentPayload } from '../environment/summary.ts'
 
 interface Arguments {
   projectRoot: string
@@ -92,20 +93,7 @@ async function main(argv: readonly string[]): Promise<number> {
     })
     const manager = new MarivoWorkspaceEnvironmentManager(runtime)
     const environment = await manager.resolve(args.projectRoot)
-    process.stdout.write(`${JSON.stringify({
-      status: environment.status,
-      runtimeRoot: runtime.runtimeRoot,
-      skillsRoot: runtime.skillsRoot,
-      projectRoot: environment.binding.projectRoot,
-      pythonExecutable: environment.binding.pythonExecutable,
-      marivo: {
-        version: environment.binding.marivoVersion,
-        packagePath: environment.binding.packagePath,
-      },
-      doctorOverallStatus: environment.binding.doctorOverallStatus,
-      fingerprint: environment.binding.fingerprint,
-      diagnostics: environment.diagnostics,
-    }, undefined, 2)}\n`)
+    process.stdout.write(`${JSON.stringify(environmentPayload(runtime, environment), undefined, 2)}\n`)
     return 0
   } catch (error: unknown) {
     const code = error instanceof MarivoEnvironmentError ? error.code : 'unexpected-error'

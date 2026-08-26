@@ -14,7 +14,9 @@
 
 - 单 Agent、native Tool presentation profile；
 - 稳定 system prompt 和每个直接用户 turn 的最新 raw inventory context；
-- checkpoint 期间只暴露、只允许执行 scope-local `marivo_help`；
+- checkpoint 只显示稳定 binding identity 与当前 inventory，不携带 Doctor report；
+- checkpoint 期间暴露并允许 scope-local `marivo_help`，同时保留已有 inherited `skill`
+  控制面；普通分析工具保持隐藏和拒绝；
 - `needs-help-declaration` / `analysis-step` 两状态转换；
 - 最多 2 次 missing-declaration steering repair；
 - 每 turn 最多 8 次 help 调用，schema error、invalid target 和失败调用都计数；
@@ -30,8 +32,9 @@ Slice 1 Environment Binding：
 
 - 明确声明 agent-scoped `native` presentation；已有其他声明则拒绝 profile；
 - 启动前拒绝已有 scope-local Tool 或全局同名 `marivo_help`；
-- `marivo_help` 是唯一 scope-local Tool；
-- checkpoint 使用 `tools.restrict({ allow: [] })` 隐藏所有 inherited Tools；
+- `marivo_help` 是唯一新增的 scope-local Tool；
+- checkpoint 使用 `tools.restrict({ allow: ["skill"] })` 保留已有 `skill` 控制面并隐藏其他
+  inherited Tools；未挂载 `skill` 时 allowlist 为空；
 - 合法 Tool Result 的同步 `tools/result` 边界立即解除 restriction；
 - Tool 保持 scope-local，因此 analysis step 仍可主动请求更多 help；
 - 第 9 次调用先由 guard 拒绝，下一 pre-step 以明确 Plugin error 终止，不会无限循环。
@@ -73,13 +76,14 @@ Plugin 拥有的 context name。取消 signal 在等待 inventory 前即绑定�
 
 ```text
 npm run typecheck   -> pass
-npm run test:slice3 -> 7 passed, 0 failed
+npm run test:slice3 -> 12 passed, 0 failed
 ```
 
 测试使用真实 `AgentLoop`、`AgentRegistry`、`ToolRuntime`、`SystemPrompt`、`SessionStore` 和
 scripted Headless LLM adapter，覆盖：
 
-- 首请求只见 `marivo_help`，成功结果后 ordinary Tool 恢复；
+- 未挂载 `skill` 时首请求只见 `marivo_help`，成功结果后 ordinary Tool 恢复；
+- 已有 `skill` 在连续 user turns 的 checkpoint 前后保持可见、可调用，不发布空目录；
 - 每个直接用户 turn 重新运行 inventory；
 - 幻觉调用 hidden ordinary Tool 不能绕过 checkpoint；
 - missing declaration repair 上限；

@@ -22,6 +22,8 @@ import type {
 } from '../disclosure/help.ts'
 import type { MarivoEnvironment } from '../environment/binding.ts'
 
+const SKILL_TOOL_NAME = 'skill'
+
 export const HELP_PROTOCOL_SYSTEM_PROMPT = `Before the next analysis action, declare which installed Marivo live-help
 targets you need by calling marivo_help.
 
@@ -136,20 +138,12 @@ function helpTextSize(result: Readonly<ToolExecutionResult>): { bytes: number; c
 }
 
 function checkpointContext(environment: MarivoEnvironment, inventory: string): string {
-  const diagnostics = environment.diagnostics.length === 0
-    ? 'none'
-    : environment.diagnostics
-        .map(item => `${item.id}=${item.status}: ${item.summary}`)
-        .join('\n')
   return `Marivo live-help checkpoint
 Project root: ${environment.binding.projectRoot}
 Python executable: ${environment.binding.pythonExecutable}
 Marivo version: ${environment.binding.marivoVersion}
 Package path: ${environment.binding.packagePath}
 Environment fingerprint: ${environment.binding.fingerprint}
-Doctor overall status: ${environment.binding.doctorOverallStatus}
-Bounded doctor diagnostics:
-${diagnostics}
 
 Canonical target inventory (raw marivo.help("targets") stdout):
 ${inventory}`
@@ -179,16 +173,19 @@ export class MarivoCheckpointController {
   #environmentPromise: Promise<MarivoEnvironment> | undefined
   #inventoryAbort: AbortController | undefined
   #inventoryStartedAt = 0
+  #checkpointControlTools: ReadonlySet<string>
 
   constructor(
     agent: Agent,
     environmentSource: MarivoEnvironmentSource,
     limits: Readonly<HelpCheckpointLimits>,
+    checkpointControlTools: readonly string[] = [],
   ) {
     this.agent = agent
     this.environmentSource = environmentSource
     if (typeof environmentSource !== 'function') this.#environment = environmentSource
     this.limits = limits
+    this.#checkpointControlTools = new Set(checkpointControlTools)
   }
 
   get environment(): MarivoEnvironment | undefined {
@@ -215,6 +212,10 @@ export class MarivoCheckpointController {
     return this.#declarationPending
   }
 
+  isCheckpointControlTool(name: string): boolean {
+    return this.#checkpointControlTools.has(name)
+  }
+
   telemetry(): DisclosureTurnTelemetry[] {
     return this.#telemetry.map(turn => ({
       ...turn,
@@ -239,7 +240,9 @@ export class MarivoCheckpointController {
     this.#missingRepairs = 0
     this.#budgetExceeded = false
     this.#declarationPending = false
-    this.#restrictionDisposer = this.agent.ctx.tools.restrict({ allow: [] })
+    this.#restrictionDisposer = this.agent.ctx.tools.restrict({
+      allow: [...this.#checkpointControlTools],
+    })
     this.#inventoryStartedAt = performance.now()
     this.#environmentPromise ??= resolveMarivoEnvironmentSource(this.environmentSource)
       .then((environment) => {
@@ -407,7 +410,17 @@ export function installMarivoCheckpoint(
   options: InstallCheckpointOptions = {},
 ): MarivoCheckpointController {
   const limits = resolveCheckpointLimits(options.checkpointLimits)
-  const controller = new MarivoCheckpointController(agent, environmentSource, limits)
+  const globalSkillTool = ctx.tools.get(SKILL_TOOL_NAME)
+  const checkpointControlTools = globalSkillTool !== undefined
+    && ctx.tools.get(SKILL_TOOL_NAME, agent) === globalSkillTool
+    ? [SKILL_TOOL_NAME]
+    : []
+  const controller = new MarivoCheckpointController(
+    agent,
+    environmentSource,
+    limits,
+    checkpointControlTools,
+  )
   try {
     controller.addDisposer(registerMarivoHelpTool(agent.ctx, environmentSource, options.helpLimits))
     controller.addDisposer(agent.ctx.systemPrompt.section({
@@ -432,7 +445,7 @@ export function installMarivoCheckpoint(
         if (controller.state !== 'needs-help-declaration' || controller.declarationPending) {
           return { ...downstream, contexts }
         }
-        return gateAssembly(ctx, agent, { ...downstream, contexts })
+        return gateAssembly(ctx, agent, controller, { ...downstream, contexts })
       },
     ))
     controller.addDisposer(agent.ctx.tools.guard((exec) => {
@@ -442,6 +455,7 @@ export function installMarivoCheckpoint(
           ? `marivo_help per-turn call budget exhausted at ${limits.maxHelpCallsPerTurn}`
           : undefined
       }
+      if (exec.name === SKILL_TOOL_NAME && skillControlVisible(ctx, agent, controller)) return undefined
       if (exec.name === RUN_CODE_NAME && exec.parent === undefined) return undefined
       return `Marivo checkpoint requires ${MARIVO_HELP_TOOL_NAME} before ${exec.name}`
     }))
@@ -478,21 +492,34 @@ export function installMarivoCheckpoint(
   }
 }
 
-function gateAssembly(ctx: Context, agent: Agent, assembly: PromptAssembly): PromptAssembly {
+function gateAssembly(
+  ctx: Context,
+  agent: Agent,
+  controller: MarivoCheckpointController,
+  assembly: PromptAssembly,
+): PromptAssembly {
   const codePresented = assembly.tools.some(tool => tool.name === RUN_CODE_NAME)
   const allowed = codePresented
     ? new Set([RUN_CODE_NAME, MARIVO_HELP_TOOL_NAME])
     : new Set([MARIVO_HELP_TOOL_NAME])
+  const allowSkillControl = skillControlVisible(ctx, agent, controller)
+  if (allowSkillControl) allowed.add(SKILL_TOOL_NAME)
   const tools = assembly.tools.filter(tool => allowed.has(tool.name))
   if (!codePresented) return { ...assembly, tools }
 
-  const helpSchema = ctx.tools.schemas(agent).find(tool => tool.name === MARIVO_HELP_TOOL_NAME)
-  const helpDefinition = ctx.tools.get(MARIVO_HELP_TOOL_NAME, agent)
-  if (helpSchema === undefined || helpDefinition === undefined) {
-    throw new Error('Marivo checkpoint help Tool is unavailable during SDK assembly')
-  }
+  const schemas = ctx.tools.schemas(agent)
+  const sdkToolNames = allowSkillControl
+    ? [MARIVO_HELP_TOOL_NAME, SKILL_TOOL_NAME]
+    : [MARIVO_HELP_TOOL_NAME]
+  const sdkSchema = sdkToolNames.map((name) => {
+    const schema = schemas.find(tool => tool.name === name)
+    const definition = ctx.tools.get(name, agent)
+    if (schema === undefined || definition === undefined) {
+      throw new Error(`Marivo checkpoint control Tool ${JSON.stringify(name)} is unavailable during SDK assembly`)
+    }
+    return { ...schema, output: definition.output.schema }
+  })
   const runtime = ctx.get('codeRuntime') as { language?: unknown } | undefined
-  const sdkSchema = [{ ...helpSchema, output: helpDefinition.output.schema }]
   const sdk = runtime?.language === 'typescript'
     ? renderToolsSdk(sdkSchema)
     : runtime?.language === 'python'
@@ -505,4 +532,15 @@ function gateAssembly(ctx: Context, agent: Agent, assembly: PromptAssembly): Pro
     section.name === 'tools:sdk' ? { ...section, text: sdk } : section
   ))
   return { ...assembly, sections, tools }
+}
+
+function skillControlVisible(
+  ctx: Context,
+  agent: Agent,
+  controller: MarivoCheckpointController,
+): boolean {
+  const globalSkillTool = ctx.tools.get(SKILL_TOOL_NAME)
+  return controller.isCheckpointControlTool(SKILL_TOOL_NAME)
+    && globalSkillTool !== undefined
+    && ctx.tools.get(SKILL_TOOL_NAME, agent) === globalSkillTool
 }

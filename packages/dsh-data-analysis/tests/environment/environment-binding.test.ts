@@ -9,6 +9,7 @@ import {
   FixedSubprocessPolicy,
   MarivoEnvironmentError,
 } from '../../src/environment/index.ts'
+import { environmentPayload } from '../../src/environment/summary.ts'
 
 const FIXTURE_EXECUTABLE = String.raw`#!/usr/bin/env node
 import { appendFileSync } from 'node:fs'
@@ -150,15 +151,46 @@ test('default .venv binding admits non-gating doctor failures and parses non-zer
   assert.equal(environment.status, 'ready')
   assert.equal(environment.binding.projectRoot, fixture.root)
   assert.equal(environment.binding.pythonExecutable, fixture.executable)
-  assert.equal(environment.binding.doctorOverallStatus, 'fail')
   assert.equal(environment.binding.marivoVersion, '0.0.test')
   assert.match(environment.binding.fingerprint, /^[a-f0-9]{64}$/)
-  assert.deepEqual(environment.diagnostics.map(item => item.id), ['datasource.credentials'])
-  assert.equal(environment.diagnostics[0]?.summary.length, 240)
-  assert.doesNotMatch(JSON.stringify(environment.diagnostics), /must-not-leak/)
+  assert.deepEqual(Object.keys(environment.binding).sort(), [
+    'fingerprint',
+    'marivoVersion',
+    'packagePath',
+    'projectRoot',
+    'pythonExecutable',
+    'subprocessPolicyId',
+  ])
+  assert.equal('diagnostics' in environment, false)
 
   const identity = await environment.assertImportIdentity()
   assert.equal(identity.pythonExecutable, fixture.executable)
+})
+
+test('environment CLI payload exposes stable admission identity without a doctor snapshot', async (t) => {
+  const fixture = await fixtureProject()
+  t.after(fixture.cleanup)
+  const environment = await bindMarivoEnvironment({ projectRoot: fixture.root }, {
+    environment: {
+      PATH: process.env.PATH,
+      DOCTOR_EXIT: '7',
+      DOCTOR_OVERALL_STATUS: 'fail',
+      NON_GATING_STATUS: 'fail',
+    },
+  })
+  const payload = environmentPayload({
+    runtimeRoot: path.join(fixture.root, 'runtime'),
+    pythonExecutable: environment.binding.pythonExecutable,
+    marivoVersion: environment.binding.marivoVersion,
+    packagePath: environment.binding.packagePath,
+    skillsRoot: path.join(fixture.root, 'runtime', 'skills'),
+    installationPath: path.join(fixture.root, 'runtime', 'installation.json'),
+  }, environment)
+
+  assert.equal(payload.status, 'ready')
+  assert.equal(payload.projectRoot, fixture.root)
+  assert.equal('doctorOverallStatus' in payload, false)
+  assert.equal('diagnostics' in payload, false)
 })
 
 test('explicit interpreter must be absolute', async (t) => {
@@ -221,7 +253,7 @@ test('invalid doctor JSON is rejected even when stderr and exit code are bounded
   assert.equal(typeof error.details.stderr, 'string')
 })
 
-test('fingerprint excludes top-level doctor status', async (t) => {
+test('fingerprint is stable across non-admission doctor status changes', async (t) => {
   const fixture = await fixtureProject(false)
   t.after(fixture.cleanup)
   const config = { projectRoot: fixture.root, pythonExecutable: fixture.executable }

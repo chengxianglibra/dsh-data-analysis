@@ -16,6 +16,7 @@ import { installMarivoCheckpoint, type DisclosureTurnTelemetry } from '../src/ch
 import {
   bindMarivoEnvironment,
   FixedSubprocessPolicy,
+  parseDoctorReport,
   type MarivoEnvironment,
 } from '../src/environment/index.ts'
 
@@ -221,10 +222,7 @@ function targetList(call: ToolCallSummary | undefined): string[] {
   return Array.isArray(targets) ? targets.filter((value): value is string => typeof value === 'string') : []
 }
 
-function assertProtocolJourneys(
-  results: Map<string, JourneyResult>,
-  credentialFailureEnvironment: MarivoEnvironment,
-): void {
+function assertProtocolJourneys(results: Map<string, JourneyResult>): void {
   const known = results.get('known-analysis')
   assert.ok(known?.completed)
   assert.deepEqual(targetList(helpCalls(known)[0]), ['analysis.observe'])
@@ -262,15 +260,23 @@ function assertProtocolJourneys(
 
   const datasource = results.get('missing-datasource-credential')
   assert.ok(datasource?.completed)
-  assert.equal(credentialFailureEnvironment.binding.doctorOverallStatus, 'fail')
-  for (const name of missingDatasourceCredentials) {
-    assert.equal(process.env[name], undefined)
-    assert.ok(credentialFailureEnvironment.diagnostics.some(diagnostic => (
-      diagnostic.status === 'fail' && diagnostic.id.includes(name)
-    )))
-  }
   assert.equal(helpCalls(datasource)[0]?.isError, false)
   assert.ok(targetList(helpCalls(datasource)[0]).includes('datasource'))
+}
+
+async function assertMissingCredentialDoctorFixture(pythonExecutable: string): Promise<void> {
+  const policy = new FixedSubprocessPolicy(marivoRoot)
+  const result = await policy.run({
+    executable: pythonExecutable,
+    args: ['-m', 'marivo', 'doctor', '--project-root', marivoRoot, '--format', 'json'],
+  })
+  const report = parseDoctorReport(result.stdout)
+  assert.equal(report.status, 'fail')
+  const checks = report.sections.flatMap(section => section.checks)
+  for (const name of missingDatasourceCredentials) {
+    assert.equal(process.env[name], undefined)
+    assert.ok(checks.some(check => check.status === 'fail' && check.id.includes(name)))
+  }
 }
 
 function counterfactual(protocol: JourneyResult[], baseline: JourneyResult[]): object {
@@ -303,6 +309,7 @@ function counterfactual(protocol: JourneyResult[], baseline: JourneyResult[]): o
 }
 
 const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot })
+await assertMissingCredentialDoctorFixture(environment.binding.pythonExecutable)
 const credentialFailureEnvironment = await bindMarivoEnvironment({
   projectRoot: marivoRoot,
   pythonExecutable: environment.binding.pythonExecutable,
@@ -391,7 +398,7 @@ for (const spec of protocolSpecs) {
   protocolResults.push(await runJourney(ctx, journeyEnvironment, { ...spec, mode: 'protocol' }))
 }
 const byId = new Map(protocolResults.map(result => [result.id, result]))
-assertProtocolJourneys(byId, credentialFailureEnvironment)
+assertProtocolJourneys(byId)
 
 const baselineSpecs = [
   {
@@ -423,7 +430,6 @@ const report = {
     credentialValuesRecorded: false,
     credentialFailureJourney: {
       binding: credentialFailureEnvironment.binding,
-      diagnostics: credentialFailureEnvironment.diagnostics,
       missingCredentialRefs: [...missingDatasourceCredentials],
       missingCredentialValuesPresent: false,
     },

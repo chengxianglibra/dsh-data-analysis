@@ -197,7 +197,7 @@ MVP 不扫描父目录、pyenv、conda、全局 site-packages 或其他项目 `.
 - `project_root` 与请求的绝对 project root 一致；
 - 项目 identity 可识别，至少 `project.marivo_toml` 成功。
 
-以下检查只作为 bounded 诊断，不阻止 API disclosure：
+以下检查不参与 API disclosure admission：
 
 - Agent skill 是否安装；
 - datasource 配置或连接；
@@ -206,7 +206,9 @@ MVP 不扫描父目录、pyenv、conda、全局 site-packages 或其他项目 `.
 - analysis state/store readiness。
 
 因此 top-level `doctor.status=fail` 不自动拒绝 binding；Plugin 根据上述准入检查的具体结果决定。
-MVP 不默认运行 `--semantic` 或 `--connect`。
+完成 admission 后立即丢弃 Doctor report，不将 top-level status、非准入 checks 或 details 保存到
+Binding、Environment、checkpoint context、telemetry 或 Session。MVP 不默认运行 `--semantic`
+或 `--connect`。
 
 ### Binding identity
 
@@ -218,12 +220,11 @@ python_executable
 marivo_version
 package_path
 subprocess_policy_id
-doctor_overall_status  # 仅诊断
 fingerprint
 ```
 
 `fingerprint` 只由 project root、解释器、Marivo version、package path 和 subprocess policy
-identity 计算，不包含凭据、环境变量值或整体 doctor status。
+identity 计算。Doctor report、凭据和环境变量值都不进入 fingerprint 或长期 Binding。
 
 ### 每次 help 的 identity assertion
 
@@ -261,7 +262,7 @@ System prompt 不包含 API 列表副本、推荐分析流程、objective-to-tar
 
 - 最新 target inventory 原始文本；
 - 绑定的绝对 `project_root` 和 `python_executable`；
-- Marivo version、package path 和 bounded doctor 诊断摘要。
+- Marivo version、package path 和 Environment fingerprint。
 
 ## `marivo_help` Tool
 
@@ -322,9 +323,11 @@ MVP profile 必须使用 `native` Tool presentation mode。`run_code` 是 Code M
 
 Profile 还必须保证：
 
-- `marivo_help` 是 checkpoint scope 唯一的 scope-local Tool；
+- `marivo_help` 是 checkpoint scope 唯一新增的 scope-local Tool；已有 inherited `skill` 作为
+  控制面在 checkpoint 期间保持可见；
 - 普通 Agent Tools 从 global/ancestor layer 继承；
-- checkpoint 通过 scoped `ctx.tools.restrict({allow: []})` 隐藏继承工具；
+- checkpoint 通过 scoped `ctx.tools.restrict({allow: ["skill"]})` 隐藏其他继承工具；未挂载
+  `skill` 时 allowlist 为空；
 - restriction disposer 在合法 Tool Result 后立即恢复普通 Tool 集合。
 
 如果 Agent preset 已注册其他 scope-local Tools，Plugin 拒绝启动该 MVP profile，而不是声称
@@ -343,7 +346,7 @@ analysis-step
 
 - 重新运行 `marivo.help("targets")`，取得当前 inventory；
 - inventory 和环境摘要进入 context；
-- 当前 model-facing Tool 集合只有 `marivo_help`；
+- 当前 model-facing Tool 集合包含 `marivo_help` 和已有 `skill` 控制面，普通分析工具不可见；
 - `targets=[]` 或全部 target 成功完成 checkpoint。
 
 `analysis-step`：
@@ -376,7 +379,7 @@ MVP 使用固定、非模型可控的预算：
 | 解释器不存在或不可执行 | 拒绝，不回退系统 Python。 |
 | doctor JSON 无效 | 拒绝 binding，返回 bounded stderr。 |
 | disclosure admission check 失败 | 拒绝并报告具体 check，不使用整体 status 代替。 |
-| 非准入 doctor check 失败 | 建立 binding，context 中只给 bounded 诊断摘要。 |
+| 非准入 doctor check 失败 | 建立 binding；Doctor report 在 admission 后丢弃，不进入 context。 |
 | inventory 超过独立上限 | checkpoint 失败，不截断或猜测 target。 |
 | target 不存在 | 返回 Marivo 自己产生的 bounded target failure。 |
 | target help 渲染失败 | 返回 target-specific failure，不把空文本当成功。 |
@@ -401,7 +404,7 @@ MVP 不缓存 target inventory 或 focused help：
 subprocess 成本不可接受后，才设计带可信 build identity 的缓存。
 
 Context 和 telemetry 不保存 credentials、完整 environment、datasource connection strings、
-doctor 原始敏感字段或业务数据。
+Doctor report 或业务数据。
 
 ## 架构与仓库所有权
 
@@ -583,7 +586,7 @@ MVP 完成必须同时满足：
 1. Plugin 验证并原样提供当前 Marivo 的 target inventory；
 2. doctor admission 不受非准入 datasource/secret failure 错误阻断；
 3. doctor、inventory 和 focused help 的实际 import identity 一致；
-4. native-mode checkpoint 只暴露 `marivo_help`；
+4. native-mode checkpoint 暴露 `marivo_help` 并保留已有 `skill` 控制面，普通分析工具不可见；
 5. `targets=[]` 被正确接受；
 6. 非空 target 的原始 help stdout body 完整进入下一 step；
 7. invalid target 由 Marivo 自己判定，Plugin 没有 membership registry；

@@ -1,4 +1,4 @@
-export { admitDoctorReport, boundedDoctorDiagnostics, parseDoctorReport } from './doctor.ts'
+export { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 export { MarivoEnvironmentError } from './errors.ts'
 export { bindMarivoEnvironment, MarivoEnvironment } from './binding.ts'
 export { DEFAULT_SUBPROCESS_LIMITS, FixedSubprocessPolicy, SUBPROCESS_POLICY_ID } from './subprocess.ts'
@@ -11,7 +11,6 @@ export {
 export { initializeMarivoWorkspace, MarivoWorkspaceEnvironmentManager } from './workspace.ts'
 export type {
   DoctorCheck,
-  DoctorDiagnostic,
   DoctorOverallStatus,
   DoctorReport,
   DoctorSection,

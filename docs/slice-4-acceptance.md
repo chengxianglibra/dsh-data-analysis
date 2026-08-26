@@ -9,7 +9,8 @@
 前置验收：[Slice 1](slice-1-acceptance.md)、[Slice 2](slice-2-acceptance.md)、
 [Slice 3](slice-3-acceptance.md)
 
-原始结果：[Slice 4 real-model report](../artifacts/slice-4-real-model.json)
+Runner 按需将详细结果写入本地 `artifacts/slice-4-real-model.json`；该文件包含易变的真实模型
+输出和本机环境信息，不作为仓库长期证据，也不纳入 Git。
 
 ## 独立范围
 
@@ -54,8 +55,8 @@ missing-declaration fault injection 是测试条件，不代表模型在普通 p
 - “已知分析 task”从纯 API 问答改为具体的季度 revenue-by-country 分析规划，要求 current
   `observe` call skeleton 和 live constraint，同时明确不虚构业务数据；
 - missing-credential 由一个仅声明不存在的测试变量，改为真实 `../marivo` doctor failure。
-  doctor 报告两个 secret check 为 `fail`，同一 binding 仍成功渲染 raw inventory 和 focused
-  help。
+  验收脚本一次性确认 doctor 的两个 secret check 为 `fail`；Doctor report 不进入 Environment
+  或 artifact，同一 binding 仍成功渲染 raw inventory 和 focused help。
 
 审查还确认：
 

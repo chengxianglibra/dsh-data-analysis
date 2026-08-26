@@ -2,7 +2,6 @@ import path from 'node:path'
 import { MarivoEnvironmentError } from './errors.ts'
 import type {
   DoctorCheck,
-  DoctorDiagnostic,
   DoctorOverallStatus,
   DoctorReport,
   DoctorSection,
@@ -11,8 +10,6 @@ import type {
 
 const DOCTOR_STATUSES = new Set<DoctorStatus>(['ok', 'info', 'warning', 'fail', 'skipped'])
 const OVERALL_STATUSES = new Set<DoctorOverallStatus>(['ok', 'warning', 'fail'])
-const DIAGNOSTIC_SUMMARY_MAX_CHARS = 240
-const DIAGNOSTIC_MAX_ITEMS = 12
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -138,21 +135,4 @@ export function admitDoctorReport(
     if (check === undefined) admissionFailure(id, 'check is missing')
     if (check.status !== 'ok') admissionFailure(id, `status is ${check.status}`)
   }
-}
-
-/** Extract only bounded, non-admission diagnostics; skip details and fix commands entirely. */
-export function boundedDoctorDiagnostics(report: DoctorReport): DoctorDiagnostic[] {
-  const diagnostics: DoctorDiagnostic[] = []
-  for (const section of report.sections) {
-    for (const check of section.checks) {
-      if (check.status === 'ok' || check.status === 'skipped') continue
-      diagnostics.push({
-        id: check.id,
-        status: check.status,
-        summary: check.summary.slice(0, DIAGNOSTIC_SUMMARY_MAX_CHARS),
-      })
-      if (diagnostics.length === DIAGNOSTIC_MAX_ITEMS) return diagnostics
-    }
-  }
-  return diagnostics
 }

@@ -2,7 +2,7 @@
 
 `dsh-data-analysis` 是运行在 DeepSeek Harness（DSH）中的 Marivo 数据分析插件。它让
 Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo Runtime，同时
-保留每个 Workspace 独立的项目配置、doctor 状态和分析上下文。
+保留每个 Workspace 独立的项目配置、Environment Binding 和分析上下文。
 
 ## 项目目标
 
@@ -94,12 +94,13 @@ Workspace，同时共享同一个 Marivo Python。
 正常向 DSH Web 中的 Agent 提交分析任务即可，不需要手动初始化 Marivo。每个直接用户
 轮次开始时，插件会先向 Agent 暴露 `marivo_help` checkpoint：
 
-- `native` 模式只显示 `marivo_help`；
-- `code` 模式只显示 `run_code`，其 SDK 只声明 `marivo_help`；
-- `both` 模式只显示 `run_code` 和 `marivo_help`。
+- `native` 模式显示 `marivo_help`，并保留已有 `skill` 控制面；
+- `code` 模式显示 `run_code`，其 SDK 只声明 `marivo_help` 和已有 `skill`；
+- `both` 模式显示 `run_code`、`marivo_help` 和已有 `skill`。
 
+保留 `skill` 可避免临时 Tool restriction 被误报成空 skill catalog；它不开放普通分析工具。
 合法 help 结果会在下一个 Agent step 开放其他分析工具。同一步中的其他直接工具调用及
-`run_code` 内的非 help 子调用会被拒绝。
+`run_code` 内的非控制面子调用会被拒绝。
 
 ### 检查环境
 
@@ -110,7 +111,8 @@ npx @deepseek-ai/dsh plugin --profile web exec \
   dsh-data-analysis-env --project-root /absolute/path/to/workspace
 ```
 
-命令输出不包含凭证或原始 doctor 详情。
+命令输出稳定的 Runtime/Binding identity 和 admission 状态，不保留或输出 doctor status 与
+diagnostics。需要检查当前项目状态时，使用绑定解释器直接运行实时 `marivo doctor`。
 
 ### 可选配置
 

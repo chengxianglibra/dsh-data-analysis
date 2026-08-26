@@ -65,15 +65,7 @@ export interface MarivoEnvironmentBinding {
   marivoVersion: string
   packagePath: string
   subprocessPolicyId: string
-  doctorOverallStatus: DoctorOverallStatus
   fingerprint: string
-}
-
-/** A bounded non-admission diagnostic safe to add to model context. */
-export interface DoctorDiagnostic {
-  id: string
-  status: Exclude<DoctorStatus, 'ok' | 'skipped'>
-  summary: string
 }
 
 export interface SubprocessLimits {

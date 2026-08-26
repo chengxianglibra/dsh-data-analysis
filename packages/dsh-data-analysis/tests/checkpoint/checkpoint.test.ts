@@ -73,9 +73,8 @@ async function environmentFixture(): Promise<EnvironmentFixture> {
     marivoVersion: '0.0.test',
     packagePath: path.join(root, 'fake-marivo', '__init__.py'),
     subprocessPolicyId: policy.id,
-    doctorOverallStatus: 'warning',
     fingerprint: 'c'.repeat(64),
-  }, [], policy)
+  }, policy)
   return { environment, recordPath, cleanup: () => rm(root, { recursive: true, force: true }) }
 }
 
@@ -186,7 +185,16 @@ function send(agent: Agent, text: string): void {
   }))
 }
 
-test('checkpoint exposes only marivo_help, restores ordinary tools, and refreshes each user turn', async (t) => {
+function registerSkillTool(ctx: Context): void {
+  ctx.tools.register(defineContentToolFixture({
+    name: 'skill',
+    description: 'load one available skill',
+    parameters: { name: { type: 'string', required: true } },
+    async execute() { return [{ type: 'text', text: 'skill loaded' }] },
+  }))
+}
+
+test('checkpoint without a skill control tool exposes only marivo_help and refreshes each user turn', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -214,6 +222,10 @@ test('checkpoint exposes only marivo_help, restores ordinary tools, and refreshe
   const firstMessages = JSON.stringify(adapter.requests[0]?.messages)
   assert.match(firstMessages, /Canonical target inventory/)
   assert.match(firstMessages, /analysis\.observe/)
+  assert.doesNotMatch(
+    JSON.stringify(adapter.requests.map(request => request.messages)),
+    /Doctor overall status|Bounded doctor diagnostics/,
+  )
   assert.equal(controller.state, 'analysis-step')
   assert.equal(controller.turn, 2)
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
@@ -222,12 +234,50 @@ test('checkpoint exposes only marivo_help, restores ordinary tools, and refreshe
     'targets',
   ])
   const telemetry = controller.telemetry()
+  assert.doesNotMatch(JSON.stringify(telemetry), /doctor/i)
   assert.equal(telemetry.length, 2)
   assert.equal(telemetry[0]?.checkpointCompleted, true)
   assert.equal(telemetry[0]?.additionalModelSteps, 1)
   assert.ok((telemetry[0]?.inventoryBytes ?? 0) > 0)
   assert.ok((telemetry[0]?.helpCalls[0]?.helpTextBytes ?? 0) > 0)
   assert.equal(telemetry[1]?.helpCalls[0]?.emptyDeclaration, true)
+})
+
+test('checkpoint preserves the inherited skill control plane without opening ordinary tools', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallResponse('load-skill', 'skill', { name: 'marivo-semantic' }),
+    toolCallResponse('help-after-skill', 'marivo_help', { targets: [] }),
+    textResponse('done one'),
+    toolCallResponse('help-next-turn', 'marivo_help', { targets: [] }),
+    textResponse('done two'),
+  ])
+  const ctx = await harness(adapter)
+  registerSkillTool(ctx)
+  const agent = createAgent(ctx, 'checkpoint-skill-control')
+  installMarivoCheckpoint(ctx, agent, fixture.environment)
+
+  send(agent, 'keep the skill catalog stable')
+  await agent.whenIdle()
+  send(agent, 'keep it stable on the next turn')
+  await agent.whenIdle()
+
+  assert.deepEqual(adapter.toolNamesAtCall, [
+    ['marivo_help', 'skill'],
+    ['marivo_help', 'skill'],
+    ['marivo_help', 'ordinary', 'skill'],
+    ['marivo_help', 'skill'],
+    ['marivo_help', 'ordinary', 'skill'],
+  ])
+  assert.ok(agent.session.events.some(event => (
+    event.type === 'tool/result'
+    && event.data.message.content.some(content => (
+      content.type === 'tool-result'
+      && content.toolCallId === CallId('load-skill')
+      && !content.isError
+    ))
+  )))
 })
 
 test('Cordis plugin adapter installs live Agents and releases its scoped checkpoint', async (t) => {
@@ -378,7 +428,7 @@ test('checkpoint accepts pre-existing scope-local tools and non-native declarati
   assert.equal(codeController.state, 'analysis-step')
 })
 
-test('code mode exposes run_code with a help-only SDK and blocks same-step nested analysis', async (t) => {
+test('code mode keeps skill in the control SDK and blocks same-step nested analysis', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -389,6 +439,7 @@ test('code mode exposes run_code with a help-only SDK and blocks same-step neste
     textResponse('analysis may continue'),
   ])
   const ctx = await harness(adapter, true)
+  registerSkillTool(ctx)
   const agent = createAgent(ctx, 'checkpoint-code')
   agent.ctx.tools.presentAs('code')
   agent.ctx.tools.register(defineContentToolFixture({
@@ -404,13 +455,14 @@ test('code mode exposes run_code with a help-only SDK and blocks same-step neste
 
   assert.deepEqual(adapter.toolNamesAtCall, [['run_code'], ['run_code']])
   assert.match(adapter.requests[0]?.system ?? '', /marivo_help/)
+  assert.match(adapter.requests[0]?.system ?? '', /skill/)
   assert.doesNotMatch(adapter.requests[0]?.system ?? '', /preset-local/)
   assert.match(adapter.requests[1]?.system ?? '', /ordinary/)
   assert.equal((ctx.codeRuntime as CheckpointCodeRuntime).ordinaryDenied, true)
   assert.equal(controller.state, 'analysis-step')
 })
 
-test('both mode presents only run_code and marivo_help until the declaration boundary', async (t) => {
+test('both mode preserves skill with run_code and marivo_help until the declaration boundary', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -418,6 +470,7 @@ test('both mode presents only run_code and marivo_help until the declaration bou
     textResponse('continue'),
   ])
   const ctx = await harness(adapter, true)
+  registerSkillTool(ctx)
   const agent = createAgent(ctx, 'checkpoint-both')
   agent.ctx.tools.presentAs('both')
   installMarivoCheckpoint(ctx, agent, fixture.environment)
@@ -426,10 +479,11 @@ test('both mode presents only run_code and marivo_help until the declaration bou
   await agent.whenIdle()
 
   assert.deepEqual(adapter.toolNamesAtCall, [
-    ['marivo_help', 'run_code'],
-    ['marivo_help', 'ordinary', 'run_code'],
+    ['marivo_help', 'run_code', 'skill'],
+    ['marivo_help', 'ordinary', 'run_code', 'skill'],
   ])
   assert.match(adapter.requests[0]?.system ?? '', /marivo_help/)
+  assert.match(adapter.requests[0]?.system ?? '', /skill/)
   assert.doesNotMatch(adapter.requests[0]?.system ?? '', /ordinary: \(/)
 })
 

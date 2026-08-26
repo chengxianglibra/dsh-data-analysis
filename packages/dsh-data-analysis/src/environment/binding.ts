@@ -2,11 +2,10 @@ import { access, constants, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import process from 'node:process'
-import { admitDoctorReport, boundedDoctorDiagnostics, parseDoctorReport } from './doctor.ts'
+import { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 import { MarivoEnvironmentError } from './errors.ts'
 import { FixedSubprocessPolicy } from './subprocess.ts'
 import type {
-  DoctorDiagnostic,
   ImportIdentity,
   MarivoEnvironmentBinding,
   MarivoEnvironmentConfig,
@@ -122,7 +121,7 @@ async function resolvePythonExecutable(
   return executable
 }
 
-function fingerprint(binding: Omit<MarivoEnvironmentBinding, 'fingerprint' | 'doctorOverallStatus'>): string {
+function fingerprint(binding: Omit<MarivoEnvironmentBinding, 'fingerprint'>): string {
   const payload = [
     binding.projectRoot,
     binding.pythonExecutable,
@@ -159,17 +158,14 @@ function parseImportIdentity(stdout: Buffer): ImportIdentity {
 /** A ready binding and the single frozen subprocess policy that established it. */
 export class MarivoEnvironment {
   readonly binding: Readonly<MarivoEnvironmentBinding>
-  readonly diagnostics: readonly DoctorDiagnostic[]
   readonly subprocessPolicy: FixedSubprocessPolicy
   #failed = false
 
   constructor(
     binding: MarivoEnvironmentBinding,
-    diagnostics: readonly DoctorDiagnostic[],
     subprocessPolicy: FixedSubprocessPolicy,
   ) {
     this.binding = Object.freeze({ ...binding })
-    this.diagnostics = Object.freeze([...diagnostics])
     this.subprocessPolicy = subprocessPolicy
   }
 
@@ -322,8 +318,7 @@ export async function bindMarivoEnvironment(
   }
   const binding: MarivoEnvironmentBinding = {
     ...partialBinding,
-    doctorOverallStatus: report.status,
     fingerprint: fingerprint(partialBinding),
   }
-  return new MarivoEnvironment(binding, boundedDoctorDiagnostics(report), subprocessPolicy)
+  return new MarivoEnvironment(binding, subprocessPolicy)
 }

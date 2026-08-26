@@ -1,6 +1,12 @@
 .marivo/
 .venv/
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.*.example
 node_modules/
-artifacts/npm/
+artifacts/
 packages/dsh-data-analysis/lib/
 *.tgz
+npm-debug.log*

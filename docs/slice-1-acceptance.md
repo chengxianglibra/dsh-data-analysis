@@ -12,7 +12,7 @@
 
 - `projectRoot` 和解释器解析，不扫描 PATH、父目录或系统 Python；
 - doctor subprocess policy、JSON 解析和 disclosure admission matrix；
-- binding identity、fingerprint 和 bounded doctor diagnostics；
+- 只含稳定 identity 的 binding 与 fingerprint；Doctor report 在 admission 后丢弃；
 - 后续 inventory/focused help 共用的 import identity assertion；
 - timeout、cancel、stdout/stderr 上限和跨平台子进程树终止；POSIX 使用独立进程组，Windows
   使用 direct-argv `taskkill /t /f`。
@@ -28,8 +28,9 @@ telemetry 或真实模型轨迹。这些职责分别留给 Slice 2–4。
 - admission 只依赖 `installation.python`、`installation.marivo`、
   `project.marivo_toml` 和请求 identity，不以 top-level status 代替；
 - datasource、secret、skill、semantic 和 state 诊断不会单独阻断 disclosure；
+- doctor status、非准入 checks 和 details 不进入 Binding、Environment 或模型上下文；
 - subprocess policy 在 binding 时固定 `cwd` 和环境投影，所有调用使用 direct argv；
-- fingerprint 不包含 doctor overall status、credential 或环境变量值；
+- fingerprint 只包含稳定 binding identity，不包含 Doctor report、credential 或环境变量值；
 - import identity 一旦不一致，旧 binding 永久进入 `failed`，必须显式 rebind。
 
 ## 独立审查
@@ -47,7 +48,7 @@ fallback，也未提前实现 objective-to-API 规则。
 
 ```text
 npm run typecheck   -> pass
-npm run test:slice1 -> 12 passed, 0 failed
+npm run test:slice1 -> 19 passed, 0 failed
 ```
 
 测试覆盖默认/显式解释器、缺失 root/解释器、非准入 doctor failure、三类 admission failure、
@@ -70,15 +71,13 @@ Marivo source commit: 219337844187384514dc3736430fc9fecbc50004
 Python: /Users/lichengxiang/source/oss/dsh-data-analysis/.venv/bin/python
 Marivo version: 0.4.13.dev0
 Package: /Users/lichengxiang/source/oss/marivo/marivo/__init__.py
-Doctor overall status: warning
 Target inventory stdout: 15,560 bytes
 analysis.observe stdout: 6,732 bytes
 ```
 
-doctor 的 warning 只来自本设计仓库没有 `models/`、`models/datasources/` 和
-`models/semantic/`；installation 与 `project.marivo_toml` admission checks 均成功。真实
-inventory 和 focused help 在同一 binding policy 下运行，并在渲染前核对 interpreter、version
-和 package path。
+真实 doctor 的非准入 warning 不阻断 binding，也不会保存到 Environment 或验收输出；
+installation 与 `project.marivo_toml` admission checks 均成功。真实 inventory 和 focused help
+在同一 binding policy 下运行，并在渲染前核对 interpreter、version 和 package path。
 
 ## 结论
 

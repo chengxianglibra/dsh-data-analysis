@@ -202,7 +202,6 @@ MarivoEnvironmentBinding
   marivo_version
   package_path
   subprocess_policy_id
-  doctor_overall_status  # 仅诊断
   fingerprint
 ```
 
@@ -217,6 +216,9 @@ MarivoEnvironmentBinding
 6. `doctor`、inventory 和 focused help 使用相同 `cwd=project_root` 与 subprocess policy；
 7. 每次 help 前复核 `sys.executable`、Marivo version 和 package path；
 8. 任一 import identity 不一致时拒绝输出 help，并要求显式 rebind。
+
+Doctor report 只用于第 4–5 步的一次性 admission；无论 top-level status 为何，都不进入
+Environment Binding、checkpoint context、telemetry 或 Session。
 
 Binding 是 API disclosure 的环境依据，不是 Marivo semantic 或 evidence identity。MVP 不缓存
 inventory 或 focused help；每个直接用户 turn 重新读取 inventory，每次 Tool 调用重新执行
@@ -246,9 +248,9 @@ Plugin 只检查声明是否存在、结构和资源边界是否有效，不预�
 选择质量。Target 是否存在由 Marivo 自己判定。
 
 MVP checkpoint 只支持 Harness `native` Tool presentation mode：`marivo_help` 是该 scope 唯一
-local Tool，普通 Tools 来自 inherited layer，并由 scoped restriction 临时隐藏。合法 Tool
-Result 后立即释放 restriction。缺失声明最多 steering repair 两次；超限或 user cancel 都必须
-结束当前 turn，不能形成无限 step。
+新增的 local Tool；已有 inherited `skill` 作为控制面保持可见，避免临时 restriction 被误报成
+空 skill catalog。其他普通 Tools 由 scoped restriction 临时隐藏，合法 Tool Result 后立即释放。
+缺失声明最多 steering repair 两次；超限或 user cancel 都必须结束当前 turn，不能形成无限 step。
 
 ### Help delivery step
 

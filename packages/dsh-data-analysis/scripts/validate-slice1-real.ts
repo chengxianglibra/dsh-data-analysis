@@ -59,6 +59,5 @@ for (const target of ['targets', 'analysis.observe']) {
 process.stdout.write(`${JSON.stringify({
   status: 'ok',
   binding: environment.binding,
-  diagnostics: environment.diagnostics,
   helpStdoutBytes: observed,
 }, null, 2)}\n`)

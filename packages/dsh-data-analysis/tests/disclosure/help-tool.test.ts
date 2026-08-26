@@ -89,9 +89,8 @@ async function helpFixture(extraEnvironment: NodeJS.ProcessEnv = {}): Promise<He
     marivoVersion: '0.0.test',
     packagePath: path.join(root, 'fake-marivo', '__init__.py'),
     subprocessPolicyId: policy.id,
-    doctorOverallStatus: 'warning',
     fingerprint: 'f'.repeat(64),
-  }, [], policy)
+  }, policy)
   return { root, executable, recordPath, environment, cleanup: () => rm(root, { recursive: true, force: true }) }
 }
 

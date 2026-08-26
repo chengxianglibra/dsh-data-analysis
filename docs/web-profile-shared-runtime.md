@@ -66,7 +66,8 @@ name = "<workspace basename>"
 已有文件和目录不覆盖。无效 manifest 或文件/目录冲突只使对应 Workspace 的 Agent
 失败；其他 Workspace 的初始化和 binding 不受影响。同一 Workspace 的 Agent 复用一个
 初始化/binding Promise，不同 Workspace 使用同一 Python 和 package path，但保留独立的
-project root、doctor 结果和 fingerprint。恢复 Session、fork 与进程内 subagent 都按自身
+project root 和 fingerprint。Doctor report 只参与首次 binding admission，随后立即丢弃。
+恢复 Session、fork 与进程内 subagent 都按自身
 `session.header.cwd` 重新解析 Workspace。
 
 ## Skills 与工具模式
@@ -76,11 +77,12 @@ project root、doctor 结果和 fingerprint。恢复 Session、fork 与进程内
 
 每个直接用户轮次先进入 help checkpoint：
 
-- `native` 只显示 `marivo_help`；
-- `code` 只显示 `run_code`，SDK 只声明 `marivo_help`；
-- `both` 只显示 `run_code` 和 `marivo_help`，SDK 只声明 `marivo_help`。
+- `native` 显示 `marivo_help`，并保留已有 `skill` 控制面；
+- `code` 只显示 `run_code`，SDK 只声明 `marivo_help` 和已有 `skill`；
+- `both` 显示 `run_code`、`marivo_help` 和已有 `skill`，SDK 同样只保留这两个控制面调用。
 
-Checkpoint guard 同时拒绝其他直接工具和 `run_code` 中的非 help 子调用。成功 help 结果
+Checkpoint 保留 `skill`，避免把临时 Tool restriction 投影成空 skill catalog；普通分析工具仍
+不可见且不可执行。Guard 同时拒绝其他直接工具和 `run_code` 中的非控制面子调用。成功 help 结果
 只为下一次 Prompt 开放分析工具，执行门控在紧接着的 `agent/pre-step` 才解除，因此同一步
 中的后续子调用仍会被拒绝。`run_code` 内不调用工具的纯计算无法检测，但不会完成
 checkpoint。
