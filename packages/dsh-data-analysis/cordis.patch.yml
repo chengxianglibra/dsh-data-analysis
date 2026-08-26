@@ -1,0 +1,11 @@
+# Web-profile Marivo disclosure layer. One profile-owned plugin installation
+# serves every Agent and session Workspace in native, code, or both mode.
+
+- insert:
+    - id: dsh-data-analysis
+      name: '@deepseek-ai/dsh-data-analysis'
+      config:
+        projectRoot: !!js process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT
+        pythonExecutable: !!js process.env.DSH_DATA_ANALYSIS_PYTHON
+        runtimeRoot: !!js process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
+        uvExecutable: !!js process.env.DSH_DATA_ANALYSIS_UV

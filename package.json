@@ -1,0 +1,30 @@
+{
+  "name": "dsh-data-analysis-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @deepseek-ai/dsh-data-analysis",
+    "check": "npm run typecheck && npm test",
+    "clean": "npm run clean --workspace @deepseek-ai/dsh-data-analysis",
+    "pack:plugin": "npm run check && npm run verify:plugin-package && node scripts/pack-plugin.mjs",
+    "test": "npm run test:slice1 && npm run test:slice2 && npm run test:slice3",
+    "test:slice1": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/environment/*.test.ts",
+    "test:slice2": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/disclosure/*.test.ts",
+    "test:slice3": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/checkpoint/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "verify:plugin-package": "node scripts/verify-plugin-package.mjs",
+    "validate:slice1:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-slice1-real.ts",
+    "validate:slice2:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-slice2-real.ts",
+    "validate:slice3:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-slice3-real.ts",
+    "validate:slice4:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-slice4-real-model.ts"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh": "latest",
+    "@types/node": "^22.20.0",
+    "typescript": "^6.0.3"
+  }
+}

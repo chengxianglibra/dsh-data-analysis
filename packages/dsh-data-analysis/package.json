@@ -1,0 +1,76 @@
+{
+  "name": "@deepseek-ai/dsh-data-analysis",
+  "description": "Marivo-backed governed analysis disclosure checkpoint for DeepSeek Harness",
+  "version": "0.1.0-rc.2",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "bin": {
+    "dsh-data-analysis-env": "./lib/bin/environment.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./environment": {
+      "types": "./lib/types/environment/index.d.ts",
+      "default": "./lib/environment/index.js"
+    },
+    "./disclosure": {
+      "types": "./lib/types/disclosure/index.d.ts",
+      "default": "./lib/disclosure/index.js"
+    },
+    "./checkpoint": {
+      "types": "./lib/types/checkpoint/index.d.ts",
+      "default": "./lib/checkpoint/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.js.map",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
+    "clean": "node scripts/clean.mjs",
+    "prepack": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-home-paths": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-skill-filesystem": "*",
+    "@deepseek-ai/dsh-system-prompt": "*",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-agent": { "optional": true },
+    "@deepseek-ai/dsh-home-paths": { "optional": true },
+    "@deepseek-ai/dsh-llm": { "optional": true },
+    "@deepseek-ai/dsh-session": { "optional": true },
+    "@deepseek-ai/dsh-skill-filesystem": { "optional": true },
+    "@deepseek-ai/dsh-system-prompt": { "optional": true },
+    "@deepseek-ai/dsh-tools": { "optional": true }
+  }
+}

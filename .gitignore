@@ -1,0 +1,6 @@
+.marivo/
+.venv/
+node_modules/
+artifacts/npm/
+packages/dsh-data-analysis/lib/
+*.tgz
