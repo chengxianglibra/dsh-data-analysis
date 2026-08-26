@@ -19,6 +19,15 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 插件不在每个 Workspace 重复安装 Python、Marivo 或 skills，也不替代 Marivo 对项目、
 语义模型、Evidence、质量和 lineage contract 的管理。
 
+## 架构文档
+
+- [总体架构](docs/architecture.md)
+- [Runtime 与 Workspace 模块](docs/modules/runtime-workspace.md)
+- [Environment 执行边界模块](docs/modules/environment-execution.md)
+- [Help 披露模块](docs/modules/help-disclosure.md)
+- [Datasource 与凭证模块](docs/modules/datasource-credentials.md)
+- [Plugin 集成与交付模块](docs/modules/plugin-integration-delivery.md)
+
 ## 安装
 
 ### 前置条件

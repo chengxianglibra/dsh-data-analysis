@@ -1,0 +1,168 @@
+# dsh-data-analysis 总体架构
+
+## 文档定位
+
+本文描述 `dsh-data-analysis` 当前实现的系统边界、运行时拓扑、核心流程和模块关系。模块内部设计见
+[模块架构](#模块架构)。当前 TypeScript 实现、DeepSeek Harness 与 Marivo 的已检出源码是事实源；
+本文不定义 Harness 或 Marivo 已拥有的公共契约。
+
+## 目标与职责边界
+
+`dsh-data-analysis` 是运行在 DeepSeek Harness（DSH）Web profile 中的 Cordis 插件。它把
+Harness 的 Agent、Session、Tool、Skill 和凭证生命周期接到 Marivo，同时保持两端的所有权清晰。
+
+| 系统 | 拥有的职责 | 本项目如何使用 |
+| --- | --- | --- |
+| DeepSeek Harness | Agent 编排、Session surface、Tool/Skill 生命周期、profile、凭证存储与 Web 扩展点 | 监听 Agent 生命周期，注册 scoped Tool，挂载共享 Skill，使用凭证服务和 Web Tool View |
+| Marivo | 分析语义、Datasource 定义、Artifact、Evidence、质量、Lineage 及有效性契约 | 调用真实 `marivo doctor`、`marivo.help()`、`md.describe()` 和 `md.test()` |
+| 本项目 | Runtime 与 Workspace 绑定、实时能力披露、安全子进程和凭证桥接、Cordis 打包 | 只实现集成接缝，不复制上游 registry、schema、Evidence 或 Session 模型 |
+
+相关上游入口：
+
+- [DeepSeek Harness architecture](../../deepseek-harness/docs/architecture.md)
+- [Harness Tools subsystem](../../deepseek-harness/docs/subsystems/tools.md)
+- [Harness Credentials subsystem](../../deepseek-harness/docs/subsystems/credentials.md)
+- [Marivo agent-friendly public surface](../../marivo/docs/specs/agent-friendly-public-surface.md)
+- [Marivo semantic authoring workflow](../../marivo/docs/specs/semantic/authoring-workflow.md)
+- [Marivo Evidence access surface](../../marivo/docs/specs/analysis/evidence-access-surface.md)
+
+## 系统上下文
+
+```mermaid
+flowchart LR
+  User[用户] --> Web[DSH Web]
+  Web --> Agent[Agent / Session]
+  Agent --> Plugin[dsh-data-analysis]
+  Plugin --> Skills[共享 Marivo Skills]
+  Plugin --> Help[marivo_help]
+  Plugin --> Test[marivo_test]
+  Plugin --> Creds[DSH Credentials]
+  Plugin --> Env[Workspace Environment Binding]
+  Env --> Runtime[共享 Python + Marivo Runtime]
+  Runtime --> Project[Workspace: marivo.toml / models / .marivo]
+  Help --> Marivo[Marivo 公共 API]
+  Test --> Marivo
+  Marivo --> Project
+```
+
+插件按 Web profile 加载一次。一个 profile 共享一套 Python 与 Marivo 安装；每个 Workspace
+拥有独立项目根目录、doctor admission 和 Environment Binding；每个 Agent 拥有独立 Help
+披露控制器与 scoped Tool 注册。
+
+## 运行时拓扑
+
+```text
+DSH Web profile
+├── Cordis plugin: @deepseek-ai/dsh-data-analysis
+├── SharedMarivoRuntime
+│   ├── Python / Marivo package identity
+│   ├── installation.json
+│   └── isolated global skills provider
+├── Workspace A
+│   ├── marivo.toml / models/ / .marivo/
+│   └── MarivoEnvironment A
+├── Workspace B
+│   ├── marivo.toml / models/ / .marivo/
+│   └── MarivoEnvironment B
+└── Agent scopes
+    ├── MarivoDisclosureController
+    ├── marivo_help
+    └── marivo_test
+```
+
+共享 Runtime 只解决安装复用问题，不合并 Workspace 状态。Environment fingerprint 包含项目根、
+解释器、Marivo 版本、package path 和子进程策略，因此相同 Runtime 下的不同 Workspace 仍有独立身份。
+
+## 模块架构
+
+| 模块 | 主要作用 | 文档 |
+| --- | --- | --- |
+| Runtime 与 Workspace | 创建或复用共享 Marivo 安装，挂载 Skills，幂等准备各 Workspace | [Runtime 与 Workspace](modules/runtime-workspace.md) |
+| Environment 执行边界 | doctor 准入、身份固定、安全子进程、诊断输出 | [Environment 执行边界](modules/environment-execution.md) |
+| Help 披露 | 提供 focused `marivo_help`，并在 Skill 激活后注入实时根 Help | [Help 披露](modules/help-disclosure.md) |
+| Datasource 与凭证 | 解析 Datasource 凭证引用，调用 `md.test()`，提供 Web 凭证表单 | [Datasource 与凭证](modules/datasource-credentials.md) |
+| Plugin 集成与交付 | 组合 Cordis 生命周期、Agent scopes、客户端构建和 npm 包契约 | [Plugin 集成与交付](modules/plugin-integration-delivery.md) |
+
+依赖方向保持单向：Plugin 组合层依赖其余模块；Help 与 Datasource 依赖 Environment；Environment
+依赖 Runtime 提供的解释器身份，但不依赖 Agent 或 Web UI。Datasource 复用 Help 模块定义的惰性
+Environment source 类型，不共享业务状态。
+
+## 启动流程
+
+1. Cordis 调用 `apply(ctx, config)`，插件解析 Runtime 配置。
+2. Runtime 模块验证已有 `installation.json`；无有效安装时在安装锁内通过 `uv` 创建 Runtime，或
+   验证管理员提供的 Python。
+3. 插件将 Runtime 中复制出的 `marivo-analysis`、`marivo-semantic` 作为隔离的全局 Skill provider
+   挂载，保留项目级 Skill 的更高优先级。
+4. 插件为现有 Agent 安装控制器，并监听后续 `agent/created`、`agent/disposed`。
+5. Agent 首次需要 Marivo Environment 时，根据配置或 `session.header.cwd` 解析 Workspace，幂等创建
+   最小项目结构，运行 doctor admission 并缓存 binding Promise。
+6. Agent scope 注册 `marivo_help` 与 `marivo_test`；原 profile 的普通工具可见性不被改写。
+
+## 分析交互流程
+
+### Skill 与 Help
+
+Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当前绑定环境读取对应根 Help：
+
+- `marivo-analysis` → `marivo.help("analysis")`
+- `marivo-semantic` → `marivo.help("authoring")`
+
+更具体的 API 信息由 Agent 按 Skill 指引调用 `marivo_help({ targets })`。插件不维护 target registry，
+不猜测别名，也不缓存 Help 正文；target 的合法性与输出内容完全由当前 Marivo 决定。
+
+### Datasource 测试
+
+`marivo_test({ name })` 先通过 `md.describe(name)` 获取凭证引用名，再从 DSH Credentials 逐项解析。
+缺少凭证时 Tool 返回引用名，Web Tool View 收集并保存凭证，用户随后显式重试。引用全部可用时，
+插件仅在该次 `md.test(name)` 子进程的环境 overlay 中传递值。
+
+## 状态与数据所有权
+
+| 数据 | 位置 | 生命周期与所有者 |
+| --- | --- | --- |
+| Runtime 安装身份 | `$DSH_HOME/dsh-data-analysis/runtimes/marivo/installation.json` | profile 级，由插件创建和验证 |
+| 共享 Skill 副本 | Runtime `skills/` | profile 级，从已验证 Marivo package 同步 |
+| Marivo 项目与分析状态 | Workspace 的 `marivo.toml`、`models/`、`.marivo/` | Workspace 级，语义由 Marivo 拥有 |
+| Environment Binding | 进程内 manager cache | Workspace 级，插件拥有；dispose 后丢弃 |
+| Help 可见性与激活状态 | DSH Session events/surface + Agent controller | Agent/Session 级，Harness 保存 surface，插件投影状态 |
+| Datasource 凭证 | DSH Credentials | Harness 拥有；插件只按操作解析和传递 |
+
+## 信任与失败边界
+
+- 所有插件自有 Python 调用均使用 direct argv，不经过 shell；固定 `cwd`、环境快照、超时、输出上限和
+  取消行为。
+- Runtime、Workspace、Python、Marivo 版本或 package path 的身份不一致时 fail closed。已失败 binding
+  不会自动切换解释器或项目，必须显式重新绑定。
+- doctor 顶层 `warning`/`fail` 不是单独的准入结论；插件只要求安装、项目 manifest 和身份检查满足
+  当前集成边界。Datasource 凭证缺失可以是诊断问题，不阻断 Help 披露。
+- 插件强制 `MARIVO_PERSIST_CREDENTIALS=0` 和兼容变量 `MARIVO_PERSIST_SECRETS=0`。该保证仅覆盖插件
+  创建的子进程，不覆盖 Agent 通过 bash 或 Python 发起的任意调用。
+- 多 target Help 和多 Skill 根 Help 采用批次原子交付；批次中任一读取失败时不注入部分结果。
+- Workspace 初始化失败、Tool 失败或 Help 披露失败保持在对应 Workspace/Agent 边界内，不升级为
+  plugin-owned Marivo 语义修复。
+
+## 非目标与扩展原则
+
+本项目不实现分析 planner、Marivo target 镜像、Evidence/Claim 模型、Datasource schema 副本、凭证
+存储或通用安全沙箱。新增能力应优先扩展现有接缝：
+
+- 新 Marivo 能力通过公开 Help 和 Skill 暴露，不增加私有 registry。
+- 新 Workspace 行为必须保持共享 Runtime 与项目状态分离。
+- 新凭证型操作复用 DSH Credentials，并保持 operation-scoped overlay。
+- 新 Web 交互只投影 Tool 结果，不创建第二套后端状态机。
+- 上游契约变化时更新调用边界和测试，链接上游文档而不是复制定义。
+
+## 验证入口
+
+确定性验证以仓库脚本为准：
+
+```sh
+npm run check
+npm run build
+npm run verify:plugin-package
+```
+
+`validate:slice1:real` 至 `validate:slice4:real` 是现有补充性真实环境/真实模型脚本，其命名保留历史
+开发阶段含义，不构成当前模块边界。发布内容与可执行入口由
+`packages/dsh-data-analysis/package.json`、`cordis.patch.yml` 和 package verifier 共同约束。

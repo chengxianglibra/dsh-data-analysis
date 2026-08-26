@@ -21,7 +21,7 @@ Do not duplicate or reinterpret contracts owned by either sibling project.
 
 - `packages/dsh-data-analysis/` contains implementation, tests, validation
   scripts, and package metadata.
-- `docs/` contains design decisions and focused acceptance records.
+- `docs/architecture.md` is the overall architecture; `docs/modules/` contains current module architecture.
 - `README.md` is the user entry point; the package README covers distribution.
 - Root workspace scripts define the supported build and verification workflow.
 

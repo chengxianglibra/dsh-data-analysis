@@ -4,9 +4,8 @@
 披露，并在 `0.1.0-rc.2` 增加 Web profile 共享 Marivo Runtime、逐 Workspace
 binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。`marivo_test`
 按操作从 DSH `ctx.credentials` 解析 datasource 的全部 `*_env` 引用；缺失时由浏览器 Tool
-View 收集并通过标准 `credentials.set()` 保存，成功后由用户手动重试。早期 Slice 4
-最小样本没有证明相对直接 Skill 基线的可靠性增益；详见
-`../../docs/slice-4-acceptance.md`。
+View 收集并通过标准 `credentials.set()` 保存，成功后由用户手动重试。系统边界与模块关系见
+[总体架构](../../docs/architecture.md)。
 
 ## 构建和打包
 
