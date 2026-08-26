@@ -105,17 +105,18 @@ MVP 不根据用户 objective 推断或补选 API。
 marivo.help("targets")
 ```
 
-它打印当前安装版本完整、确定性的 canonical string target inventory，并返回 `None`。Inventory
+它打印当前安装版本确定性的 canonical discovery index，并返回 `None`。Inventory
 包含：
 
 - global topics；
 - `datasource`、`semantic`、`analysis`、`ontology` surface roots；
-- fully-qualified capability targets；
-- public type targets；
-- public error targets。
+- fully-qualified direct capability targets；
+- grouped drill-down targets。
 
-它排除 object/callable/ref/result/error instance、alias、歧义 unqualified name 和 private
-descriptor identity。
+它排除 object/callable/ref/result/error instance、alias、歧义 unqualified name、private
+descriptor identity，以及 public type、public error、receiver member 和 grouped leaf target。
+这些省略项仍由 Marivo focused resolver 拥有，并可从 group page、live result、`.contract()`
+或 structured error 继续发现。
 
 ### Inventory 是文本契约
 
@@ -123,17 +124,13 @@ MVP 将 `marivo.help("targets")` 的原始 stdout 作为 context 提供给 LLM�
 自己的 target set，也不复制成静态 fixture。输入 target 是否真实存在，由后续真实
 `marivo.help(target)` 调用决定。
 
-Inventory 与 focused help 使用不同预算。当前完整 inventory 可以超过 focused-help 的行数和
-codepoint 上限；MVP 为 inventory stdout 设置独立、固定、非模型可控的安全上限。超过上限时
-checkpoint 失败并报告 upstream inventory size，不静默截断 target 名称空间。
-
-`datasource.targets`、`semantic.targets`、`analysis.targets`、`ontology.targets` 等分段入口
-当前不是 MVP 依赖。如果 counterfactual 证明完整 inventory 成本不可接受，再单独讨论 Marivo
-侧 surface index。
+Inventory 与 focused help 使用不同预算。MVP 为 inventory stdout 设置独立、固定、非模型
+可控的安全上限。超过上限时 checkpoint 失败并报告 upstream inventory size，不静默截断
+discovery index。
 
 ### Focused help 仍由 Marivo 约束
 
-每个 inventory 中的 canonical target 应能通过 public `marivo.help(target)` 路由。Focused
+每个 discovery index 中的 canonical target 应能通过 public `marivo.help(target)` 路由。Focused
 help 的内容、预算、错误和 repair 文本全部由 Marivo 拥有；Plugin 不读取 private registry，
 也不解析 help body 重建 API contract。
 
@@ -489,7 +486,7 @@ target 都不能产生无限 turn。
 
 ### E2：从 inventory 请求 focused help
 
-- checkpoint 提供完整原始 inventory；
+- checkpoint 提供当前原始 discovery index；
 - LLM 调用 `marivo_help`；
 - Plugin 不预检 target membership；
 - Marivo 成功解析 target；
@@ -600,7 +597,7 @@ MVP 完成必须同时满足：
 
 - LLM 可能选择错误、不完整或过多 target；
 - LLM 可能请求 help 后仍不使用；
-- 完整 inventory 会占用显著 context；
+- discovery index 仍会占用额外 context；
 - 强制 user-turn checkpoint 会增加模型 step 和延迟；
 - Plugin 不保证 Agent 后续使用绑定解释器；
 - Plugin 不保证 Marivo-first execution 或 raw fallback 时机；

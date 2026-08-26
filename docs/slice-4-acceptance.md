@@ -115,5 +115,5 @@ repair。协议因此证明了“强制 disclosure 会发生”，但没有证�
 Slice 4 的六条真实模型 contract 和 counterfactual 退出条件均满足，MVP 可以按设计口径验收。
 
 但本次结果不支持继续增加 checkpoint、cache 或 planner。按照 MVP 的停止规则，后续扩展应先有
-更广的真实任务样本证明增量可靠性，或先在 Marivo 侧验证更低成本的 surface inventory；不能把
+更广的真实任务样本证明增量可靠性，或继续验证 Marivo 精简 discovery index 的实际收益；不能把
 “协议执行成功”解释成“产品方向已经证明”。

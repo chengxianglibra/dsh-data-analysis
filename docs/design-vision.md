@@ -74,9 +74,9 @@ Marivo 负责：
 - public Python API；
 - Skill、live help、Artifact contract 和 structured error；
 - semantic、Artifact、Finding、Evidence、Quality、Lineage 和 Recovery 契约；
-- 当前安装版本所有 canonical string help targets；
+- 当前安装版本的 canonical help resolver 与 discovery index；
 - 对每个 focused target 渲染 bounded、可复制、版本一致的 help 文本；
-- 通过独立预算输出完整 canonical target inventory。
+- 通过独立预算输出 canonical discovery index。
 
 Marivo 不负责：
 
@@ -134,10 +134,9 @@ Harness 负责：
 - help-decision checkpoint 的 step/turn 编排；
 - Session、恢复、取消、错误和 UI 展示。
 
-## 当前版本的 canonical target 清单
+## 当前版本的 canonical discovery index
 
-LLM 不应猜 help target。当前 Marivo 已通过现有 help 入口公开安装版本中所有稳定、可用
-字符串调用的 canonical target：
+LLM 不应猜 help target。当前 Marivo 通过现有 help 入口公开安装版本的稳定发现入口：
 
 ```python
 marivo.help("targets")
@@ -147,18 +146,16 @@ marivo.help("targets")
 
 - global topics；
 - `datasource`、`semantic`、`analysis`、`ontology` surface roots；
-- 各 surface 的 fully-qualified capability targets；
-- 支持字符串调用的 public type 和 public error targets。
+- 各 surface 的 direct capability 和 grouped drill-down targets。
 
 清单只包含 canonical string form，例如：
 
 ```text
 datasource.inspect
 semantic.metric
-semantic.readiness
 analysis.observe
 analysis.compare
-analysis.session.revalidate
+analysis.recovery
 ontology.authoring
 ```
 
@@ -168,27 +165,19 @@ ontology.authoring
 - legacy alias；
 - 可能歧义的 unqualified short name；
 - private registry identity；
+- public type、public error、receiver member 和 grouped leaf target；
 - Plugin 自己推导或维护的 target。
+
+被省略的 type、error、member 和 grouped leaf 仍可由 Marivo focused help 解析；Agent 可以从
+group page、live result、`.show()`、`.contract()` 或 structured error 获得这些 target。
 
 `dsh-data-analysis` 从当前绑定环境取得这份清单，不能把某个开发版本的列表写死在 Plugin。
 Inventory 是 Marivo 拥有的文本契约；Plugin 将原始 stdout 提供给 LLM，不解析成自己的
 membership set。输入 target 是否存在，由后续真实 `marivo.help(target)` 调用判定。
 
-清单可以很长，但它只暴露名称而不暴露完整签名，因此仍然保留渐进披露。Inventory 使用
+Discovery index 只暴露有界导航名称而不暴露完整签名，因此保留渐进披露。Inventory 使用
 与 focused help 分离的安全预算。MVP 在每个直接用户 turn 的 checkpoint 重新读取一次，
 不在普通模型 step 重复注入，也不缓存旧 inventory。
-
-如果实测证明完整列表超过合理上下文预算，未来可以评估由 Marivo 提供 surface-specific
-index：
-
-```python
-marivo.help("datasource.targets")
-marivo.help("semantic.targets")
-marivo.help("analysis.targets")
-marivo.help("ontology.targets")
-```
-
-这些入口不是 MVP 前置契约；不能在 Marivo 尚未提供时由 Plugin 自己推导或模拟。
 
 ## Marivo 环境集成
 
@@ -275,14 +264,14 @@ checkpoint；是否为 structured error、Tool Result 或 Session resume 增加�
 这里的 progressive disclosure 是：
 
 ```text
-完整 target 名称空间
+canonical discovery index
 → LLM 选择少量 targets
 → 只加载这些 targets 的完整 help
 → LLM 根据新状态继续选择或停止请求
 ```
 
-Target 清单不等于完整 API 暴露。它只让 LLM 知道哪些查询键真实存在；参数、约束、示例和
-边界仍然只在请求具体 target 后进入上下文。
+Discovery index 不等于完整 resolver 名称空间或完整 API 暴露。它只提供稳定导航入口；参数、
+约束、示例、细粒度 target 和边界仍然只在请求具体 target 或读取 live object 后进入上下文。
 
 当前 Artifact 的 `.contract()` 可以作为 LLM 已获得的信息之一，但它只描述该 Artifact 的
 机械 continuation，不限制 Agent 重新选择 semantic root、数据、方法或其他 help target。
