@@ -1,60 +1,67 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Scope
 
-This is a documentation-first design project for a Marivo-powered analytical agent runtime on DeepSeek Harness.
+`dsh-data-analysis` integrates Marivo into the DeepSeek Harness agent runtime.
+The repository contains an executable TypeScript plugin and its design and
+acceptance documentation.
 
-- `README.md` is the short project entry point and links to canonical designs.
-- `docs/design-vision.md` contains the product vision, architecture boundaries, and core runtime concepts.
-- `docs/marivo-evidence-validity-design.md` is intentionally only a pointer; the canonical evidence contract lives in the sibling `../marivo` repository.
+Keep the ownership boundary explicit:
 
-Add design material under `docs/`. Keep topics focused, and link primary entry points from `README.md`. Do not duplicate Marivo-owned contracts here.
+- DeepSeek Harness owns agent orchestration, sessions, tool and skill lifecycles,
+  credentials, and profiles.
+- Marivo owns analytical semantics, artifacts, evidence, quality, lineage, and
+  their validity contracts.
+- This project owns the integration seam: runtime and workspace binding, live
+  capability disclosure, credential-safe workflows, packaging, and validation.
 
-## Documentation Development & Checks
+Do not duplicate or reinterpret contracts owned by either sibling project.
 
-Markdown-only changes still use these lightweight checks:
+## Repository Organization and Sources of Truth
 
-```sh
-rg '^#{1,6} ' README.md docs/     # review heading hierarchy
-rg '\.\./marivo' README.md docs/  # inspect cross-repository links
-git diff --check                  # detect whitespace errors in a Git checkout
-```
+- `packages/dsh-data-analysis/` contains implementation, tests, validation
+  scripts, and package metadata.
+- `docs/` contains design decisions and focused acceptance records.
+- `README.md` is the user entry point; the package README covers distribution.
+- Root workspace scripts define the supported build and verification workflow.
 
-Preview changed Markdown and verify relative links from their source file. If executable code is introduced, add its setup, run, formatting, and test commands here in the same change.
+Treat current code and checked-out sibling Marivo and Harness sources as
+authoritative. Historical Slice documents explain decisions, not current
+runtime contracts.
 
-The executable MVP package now lives under `packages/dsh-data-analysis/`. Use Node.js 24 or later;
-Node's built-in TypeScript stripping runs the tests and validation scripts without a separate build:
+## Engineering Principles
 
-```sh
-npm install                       # setup
-npm run typecheck                 # static check
-npm run test:slice1               # deterministic Slice 1 tests
-npm run validate:slice1:real      # local editable Marivo source validation
-npm run test:slice2               # deterministic Slice 2 Tool Runtime tests
-npm run validate:slice2:real      # raw-help parity and import-shadow validation
-npm run test:slice3               # deterministic native Headless checkpoint tests
-npm run validate:slice3:real      # local Marivo checkpoint integration validation
-npm run validate:slice4:real      # credential-gated real-model journeys and counterfactual
-```
+- Prefer narrow integration seams over shadow registries, copied schemas, or
+  plugin-owned upstream behavior.
+- Use Marivo's public, live contracts and preserve runtime identity across
+  related operations.
+- Separate shared-runtime concerns from per-Workspace configuration and state.
+- Preserve Harness tool, skill, session, and profile behavior unless explicitly
+  changing it.
+- Keep credentials operation-scoped; never expose or persist secret values in
+  logs, results, arguments, or telemetry.
+- Fail explicitly at trust boundaries; never silently switch interpreter,
+  installation, project, or capability source.
+- Make the smallest coherent change and avoid speculative policy expansion.
 
-There is no automatic formatter yet. Follow the neighboring Harness TypeScript style and keep
-`npm run typecheck` clean. Add a formatter command here before introducing a formatting gate.
+## Development and Verification
 
-## Writing Style & Naming Conventions
+Use Node.js 24 or later and install dependencies with `npm install`. For
+executable changes, run focused tests and keep `npm run check` clean. Run
+`npm run build` and `npm run verify:plugin-package` when exports, client code,
+package metadata, or distribution contents change.
 
-Use UTF-8 Markdown, short paragraphs, descriptive ATX headings (`## Heading`), fenced code blocks with language tags, and tables only for useful comparisons. Follow the existing Chinese prose style for user-facing design text while preserving English contract identifiers such as `Artifact`, `Finding`, and `needs-authority`. Wrap prose around 80–100 characters when practical.
+Real-environment and real-model validations supplement deterministic tests. Run
+them when their boundary changes and prerequisites are available; report skipped
+or blocked checks.
 
-Name design files with lowercase kebab-case, for example `docs/evidence-directed-loop.md`. Use one canonical term for each concept and define it on first use.
+## Documentation and Change Quality
 
-## Design and Testing Expectations
+Write user-facing documentation in clear Chinese while preserving canonical
+English identifiers. Use focused Markdown, descriptive ATX headings, relative
+links, and lowercase kebab-case filenames. Link upstream contracts instead of
+restating them.
 
-Keep the ownership boundary explicit: Harness owns orchestration and policy; Marivo owns semantic,
-artifact, evidence, quality, and lineage contracts. Review documentation terminology, diagrams,
-state values, and every changed link; executable changes must also pass the Slice tests and relevant
-real validation above. Link to canonical Marivo documentation instead of restating its contracts.
-
-## Commit & Pull Request Guidelines
-
-This directory does not currently include Git history, so no repository-specific commit convention can be inferred. Use concise, imperative subjects with a useful scope, such as `docs: clarify evidence closure`. Keep commits single-purpose.
-
-Pull requests should explain the design problem, summarize the decision, list affected documents, and call out moved or externally owned contracts. Link relevant issues or upstream Marivo changes. Include screenshots only when rendered diagrams or layout changed, and report the manual checks performed.
+Update documentation and acceptance records when behavior or ownership changes.
+Check links, review rendered Markdown, and run `git diff --check`. Keep commits
+single-purpose and exclude unrelated workspace changes.
