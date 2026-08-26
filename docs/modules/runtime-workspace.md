@@ -115,7 +115,9 @@ manager 只在进程内缓存 Promise。初始化或 binding rejection 也保留
 锁与 marker、Workspace 幂等初始化、路径 identity、共享 Runtime/多 Workspace 集成：
 
 ```text
-packages/dsh-data-analysis/tests/environment/shared-runtime.test.ts
-packages/dsh-data-analysis/tests/environment/workspace.test.ts
-packages/dsh-data-analysis/tests/activation/web-profile.test.ts
+packages/dsh-data-analysis/tests/runtime-workspace/shared-runtime.test.ts
+packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 ```
+
+`npm run test:runtime-workspace` 执行确定性测试；`npm run validate:runtime-workspace:real` 使用仓库真实
+Marivo Python 创建临时 Runtime 和两个 Workspace，验证安装 marker、Skill 同步、Runtime 复用和项目隔离。

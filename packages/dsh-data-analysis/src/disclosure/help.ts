@@ -385,7 +385,7 @@ export function createMarivoHelpTool(
   })
 }
 
-/** Register the Slice 2 Tool; skill activation orchestration belongs to Slice 3. */
+/** Register the focused Help Tool; skill-triggered root disclosure is composed separately. */
 export function registerMarivoHelpTool(
   ctx: Context,
   environmentSource: MarivoEnvironmentSource,

@@ -113,9 +113,12 @@ controller dispose 时 abort 未完成读取，注销 Tool 与 hooks，并清空
 controller 和结构化类型。关键测试位于：
 
 ```text
-packages/dsh-data-analysis/tests/disclosure/help-tool.test.ts
-packages/dsh-data-analysis/tests/activation/disclosure.test.ts
+packages/dsh-data-analysis/tests/help-disclosure/help-tool.test.ts
+packages/dsh-data-analysis/tests/help-disclosure/activation.test.ts
 ```
 
 测试重点包括空/重复/multi target、raw stdout parity、无 shadow registry、原子失败、Skill 激活、
 compaction 恢复、Environment 替换、普通工具持续可见和 controller dispose。
+
+`npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding
+上验证实时 inventory、focused Help parity、无效 target 的原子失败，以及 Skill 激活后的根 Help 注入。

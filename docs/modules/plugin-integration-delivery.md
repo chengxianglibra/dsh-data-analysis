@@ -107,14 +107,20 @@ CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsco
 
 | 层级 | 命令 | 目的 |
 | --- | --- | --- |
-| 静态与确定性测试 | `npm run check` | TypeScript typecheck + environment/disclosure/activation/web tests |
+| 静态与确定性测试 | `npm run check` | TypeScript typecheck + 五个模块的确定性测试 |
 | 构建 | `npm run build` | 生成服务端、声明、客户端和 executable CLI |
 | 包内容 | `npm run verify:plugin-package` | 验证 exports 对应文件、排除开发文件、检查 CLI mode |
 | 受控打包 | `npm run pack:plugin` | 重跑检查并生成安装 tarball |
-| 补充真实验证 | `npm run validate:slice*:real` | 在先决条件可用时验证真实 Marivo/Harness/模型边界 |
+| 模块集成测试 | `npm run test:plugin-integration-delivery` | 验证真实 composition root 的确定性 Web-profile 生命周期 |
+| 补充真实验证 | `npm run validate:plugin-integration-delivery:real` | 通过真实 Cordis `apply` 和模型验证完整插件组合 |
 
-真实验证脚本的 Slice 名称是历史文件名，不表示 Runtime 仍按 Slice 组织。架构变更应优先补充对应模块
-的确定性测试；只有真实解释器、DSH Web 或模型交互边界发生变化时，才需要相应的真实验证。
+其余四个模块分别提供同名 `test:<module>` 与 `validate:<module>:real` 入口。架构变更应优先补充对应
+模块的确定性测试；只有真实解释器、DSH Web 或模型交互边界发生变化时，才需要相应的真实验证。
+
+Plugin 确定性测试位于
+`packages/dsh-data-analysis/tests/plugin-integration-delivery/web-profile.test.ts`。真实模型 runner 使用
+`DSH_DATA_ANALYSIS_VALIDATION_MODEL` 选择模型，并将不含凭证值和 raw Help 正文的 `0600` 报告写入
+`artifacts/plugin-integration-delivery-real-model.json`。
 
 ## 变更规则
 

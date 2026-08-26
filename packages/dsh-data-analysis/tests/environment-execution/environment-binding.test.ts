@@ -116,7 +116,7 @@ interface FixtureProject {
 }
 
 async function fixtureProject(withDefaultVenv = true): Promise<FixtureProject> {
-  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-data-analysis-slice1-')))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-data-analysis-environment-')))
   const executable = withDefaultVenv
     ? path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
     : path.join(root, 'fixture-python')

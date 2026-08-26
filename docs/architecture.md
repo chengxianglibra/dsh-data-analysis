@@ -163,6 +163,22 @@ npm run build
 npm run verify:plugin-package
 ```
 
-`validate:slice1:real` 至 `validate:slice4:real` 是现有补充性真实环境/真实模型脚本，其命名保留历史
-开发阶段含义，不构成当前模块边界。发布内容与可执行入口由
+确定性测试和补充性真实验证均按[模块架构](#模块架构)组织：
+
+```sh
+npm run test:runtime-workspace
+npm run test:environment-execution
+npm run test:help-disclosure
+npm run test:datasource-credentials
+npm run test:plugin-integration-delivery
+
+npm run validate:runtime-workspace:real
+npm run validate:environment-execution:real
+npm run validate:help-disclosure:real
+npm run validate:datasource-credentials:real
+npm run validate:plugin-integration-delivery:real
+```
+
+最后一项需要真实模型凭证，其余真实验证需要仓库 `.venv` 中的 Marivo 安装；Datasource 验证还使用
+相邻 `../marivo` checkout 的真实项目定义。发布内容与可执行入口由
 `packages/dsh-data-analysis/package.json`、`cordis.patch.yml` 和 package verifier 共同约束。

@@ -109,9 +109,11 @@ stderr 输出稳定 error code 和 message，并返回非零状态。
 核心确定性测试位于：
 
 ```text
-packages/dsh-data-analysis/tests/environment/environment-binding.test.ts
-packages/dsh-data-analysis/tests/environment/shared-runtime.test.ts
+packages/dsh-data-analysis/tests/environment-execution/environment-binding.test.ts
 ```
 
 测试应覆盖路径 canonicalization、doctor 非零状态、准入字段、identity 漂移、timeout/cancel、输出
 上限、进程树终止、环境冻结和凭证持久化变量不可覆盖。
+
+`npm run test:environment-execution` 执行确定性测试；`npm run validate:environment-execution:real` 绑定
+真实 Marivo 安装，验证 doctor admission、import identity 和同进程 shadow 后的 fail-closed 状态。

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -14,24 +15,21 @@ import LlmRuntime, {
 } from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
-import {
-  installMarivoDisclosure,
-  type MarivoDisclosureTelemetry,
-} from '../src/disclosure/index.ts'
 import {
   bindMarivoEnvironment,
   FixedSubprocessPolicy,
   parseDoctorReport,
-  type MarivoEnvironment,
 } from '../src/environment/index.ts'
+import { apply, inject } from '../src/plugin.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
 const marivoRoot = path.resolve(workspaceRoot, '../marivo')
-const reportPath = path.join(workspaceRoot, 'artifacts', 'slice-4-real-model.json')
-const model = process.env.DSH_SLICE4_MODEL ?? 'deepseek-v4-flash'
+const reportPath = path.join(workspaceRoot, 'artifacts', 'plugin-integration-delivery-real-model.json')
+const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-flash'
 const missingDatasourceCredentials = [
   'MARIVO_CDN_REPLICA_USER',
   'MARIVO_CDN_REPLICA_PASSWORD',
@@ -58,7 +56,7 @@ interface JourneyResult {
   latencyMs: number
   usage: UsageTotals
   errors: Array<{ name: string; code?: string; message: string }>
-  disclosure: MarivoDisclosureTelemetry
+  rootHelpTargets: string[]
 }
 
 function parseArguments(raw: string): unknown {
@@ -139,7 +137,17 @@ function finalAssistantText(events: readonly SessionEvent[]): string {
 }
 
 function markerFor(id: string): string {
-  return `SLICE4_${id.toUpperCase().replaceAll('-', '_')}_OK`
+  return `PLUGIN_INTEGRATION_DELIVERY_${id.toUpperCase().replaceAll('-', '_')}_OK`
+}
+
+function rootHelpTargets(events: readonly SessionEvent[]): string[] {
+  return events.flatMap((event): string[] => {
+    if (event.type !== 'user/message') return []
+    const source = event.data.source as { kind?: unknown; target?: unknown }
+    return source.kind === 'marivo-disclosure' && typeof source.target === 'string'
+      ? [source.target]
+      : []
+  })
 }
 
 function toolCalls(result: JourneyResult, name: string): ToolCallSummary[] {
@@ -167,10 +175,6 @@ const credentialFailureEnvironment = await bindMarivoEnvironment({
   projectRoot: marivoRoot,
   pythonExecutable: environment.binding.pythonExecutable,
 })
-const skillBodies = new Map([
-  ['marivo-analysis', await readFile(path.join(marivoRoot, 'marivo', 'skills', 'marivo-analysis', 'SKILL.md'), 'utf8')],
-  ['marivo-semantic', await readFile(path.join(marivoRoot, 'marivo', 'skills', 'marivo-semantic', 'SKILL.md'), 'utf8')],
-])
 const pythonPolicy = new FixedSubprocessPolicy(environment.binding.projectRoot)
 const ctx = new Context()
 await ctx.plugin(LlmRuntime)
@@ -183,13 +187,14 @@ await ctx.plugin(DeepSeek, {
   models: [{ id: model, contextWindow: 128_000, maxTokens: 1_024 }],
 })
 await ctx.plugin(SessionStore)
+await ctx.plugin(SkillRuntime)
 await ctx.plugin(SystemPrompt)
 await ctx.plugin(ToolRuntime)
 await ctx.plugin(AgentRegistry)
 await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 
 ctx.systemPrompt.section({
-  name: 'slice4:skill-catalog',
+  name: 'plugin-integration-delivery:skill-catalog',
   order: 100,
   text: `Available skills:\n- marivo-analysis: trusted governed data analysis\n- marivo-semantic: datasource and reusable semantic authoring or repair\nLoad the matching skill before Marivo work. Ordinary computation needs neither skill.`,
 })
@@ -212,10 +217,14 @@ ctx.tools.register(defineTool({
       text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
     }],
   },
-  async execute({ name }) {
-    const content = skillBodies.get(name)
-    if (content === undefined) throw new Error(`unknown skill ${name}`)
-    return { name, provider: 'marivo-source', content }
+  async execute({ name }, exec) {
+    const skill = await ctx.skills.get(name, {
+      cwd: exec.agent?.session.header.cwd ?? workspaceRoot,
+      scope: exec.agent,
+      signal: exec.signal,
+    })
+    if (skill === undefined) throw new Error(`unknown skill ${name}`)
+    return { name: skill.name, provider: skill.provider, content: skill.content }
   },
 }))
 ctx.tools.register(defineContentToolFixture({
@@ -239,18 +248,29 @@ ctx.tools.register(defineContentToolFixture({
   },
 }))
 
+const validationRoot = await mkdtemp(path.join(tmpdir(), 'dsh-plugin-integration-delivery-'))
+const plugin = await ctx.plugin({
+  name: 'dsh-data-analysis-real-validation',
+  inject,
+  apply,
+}, {
+  runtimeRoot: path.join(validationRoot, 'runtime'),
+  pythonExecutable: environment.binding.pythonExecutable,
+})
+const validationAgents: Agent[] = []
+
 async function runJourney(
   id: string,
   prompt: string,
-  journeyEnvironment: MarivoEnvironment = environment,
+  projectRoot: string = workspaceRoot,
 ): Promise<JourneyResult> {
   const errors: unknown[] = []
-  const agent: Agent = ctx.agentLoop.create(SessionId(`slice4-${id}-${Date.now().toString(36)}`), {
+  const agent: Agent = ctx.agentLoop.create(SessionId(`plugin-validation-${id}-${Date.now().toString(36)}`), {
     provider: 'deepseek-official',
     model,
     maxTokens: 1_024,
-  }, { cwd: workspaceRoot })
-  const controller = installMarivoDisclosure(ctx, agent, journeyEnvironment)
+  }, { cwd: projectRoot })
+  validationAgents.push(agent)
   const stopErrors = agent.ctx.on('agent/error', payload => errors.push(payload.error))
   const startedAt = performance.now()
   agent.followup(createUserMessage({
@@ -269,45 +289,44 @@ async function runJourney(
     latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
     usage: usageTotals(events),
     errors: errors.map(errorSummary),
-    disclosure: controller.telemetry(),
+    rootHelpTargets: rootHelpTargets(events),
   }
   stopErrors()
-  controller.dispose()
   return result
 }
 
 const specs = [
   {
     id: 'analysis-activation',
-    environment,
+    projectRoot: workspaceRoot,
     prompt: `Call skill exactly once with {"name":"marivo-analysis"}. After the skill result and automatically supplied root help, call bound_python exactly once to print marivo.__version__. Explain briefly what the analysis root help establishes and end with ${markerFor('analysis-activation')}.`,
   },
   {
     id: 'semantic-activation',
-    environment,
+    projectRoot: workspaceRoot,
     prompt: `Call skill exactly once with {"name":"marivo-semantic"}. After the skill result and automatically supplied root help, explain briefly what authoring help owns. Do not call marivo_help or bound_python. End with ${markerFor('semantic-activation')}.`,
   },
   {
     id: 'ordinary-no-activation',
-    environment,
+    projectRoot: workspaceRoot,
     prompt: `This is ordinary arithmetic. Call bound_python exactly once to print 7 * 6. Do not call skill or marivo_help. Report the result and end with ${markerFor('ordinary-no-activation')}.`,
   },
   {
     id: 'focused-help-dedup',
-    environment,
+    projectRoot: workspaceRoot,
     prompt: `Call skill with {"name":"marivo-analysis"}. After the automatic analysis root help, call marivo_help twice in separate steps with exactly ["analysis.observe"] each time. Confirm that the second result is an already-visible receipt and end with ${markerFor('focused-help-dedup')}.`,
   },
   {
     id: 'missing-datasource-credential',
-    environment: credentialFailureEnvironment,
+    projectRoot: marivoRoot,
     prompt: `Call skill with {"name":"marivo-semantic"}. After automatic authoring help, call marivo_help with exactly ["datasource"]. Explain that live disclosure remains usable while datasource credentials are missing. End with ${markerFor('missing-datasource-credential')}.`,
   },
 ]
 
 const journeys: JourneyResult[] = []
 for (const spec of specs) {
-  process.stdout.write(`slice4 real-model: ${spec.id}\n`)
-  journeys.push(await runJourney(spec.id, spec.prompt, spec.environment))
+  process.stdout.write(`plugin integration real-model: ${spec.id}\n`)
+  journeys.push(await runJourney(spec.id, spec.prompt, spec.projectRoot))
 }
 const byId = new Map(journeys.map(result => [result.id, result]))
 
@@ -316,20 +335,20 @@ assert.ok(analysis?.completed)
 assert.equal(toolCalls(analysis, 'skill').length, 1)
 assert.equal(toolCalls(analysis, 'marivo_help').length, 0)
 assert.equal(toolCalls(analysis, 'bound_python').length, 1)
-assert.deepEqual(analysis.disclosure.rootHelp.map(item => item.target), ['analysis'])
+assert.deepEqual(analysis.rootHelpTargets, ['analysis'])
 
 const semantic = byId.get('semantic-activation')
 assert.ok(semantic?.completed)
 assert.equal(toolCalls(semantic, 'skill').length, 1)
 assert.equal(toolCalls(semantic, 'marivo_help').length, 0)
-assert.deepEqual(semantic.disclosure.rootHelp.map(item => item.target), ['authoring'])
+assert.deepEqual(semantic.rootHelpTargets, ['authoring'])
 
 const ordinary = byId.get('ordinary-no-activation')
 assert.ok(ordinary?.completed)
 assert.equal(toolCalls(ordinary, 'skill').length, 0)
 assert.equal(toolCalls(ordinary, 'marivo_help').length, 0)
 assert.equal(toolCalls(ordinary, 'bound_python').length, 1)
-assert.equal(ordinary.disclosure.rootHelp.length, 0)
+assert.equal(ordinary.rootHelpTargets.length, 0)
 
 const focused = byId.get('focused-help-dedup')
 assert.ok(focused?.completed)
@@ -340,11 +359,11 @@ assert.deepEqual(toolCalls(focused, 'marivo_help').flatMap(call => call.delivery
 
 const datasource = byId.get('missing-datasource-credential')
 assert.ok(datasource?.completed)
-assert.deepEqual(datasource.disclosure.rootHelp.map(item => item.target), ['authoring'])
+assert.deepEqual(datasource.rootHelpTargets, ['authoring'])
 assert.equal(toolCalls(datasource, 'marivo_help')[0]?.isError, false)
 
 const report = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   generatedAt: new Date().toISOString(),
   model: { provider: 'deepseek-official', id: model, thinking: 'disabled' },
   environment: {
@@ -361,9 +380,16 @@ const report = {
 
 await mkdir(path.dirname(reportPath), { recursive: true })
 await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 })
+await chmod(reportPath, 0o600)
+await plugin.dispose()
+for (const agent of validationAgents) {
+  assert.equal(agent.ctx.tools.get('marivo_help', agent), undefined)
+  assert.equal(agent.ctx.tools.get('marivo_test', agent), undefined)
+}
+await rm(validationRoot, { recursive: true, force: true })
 process.stdout.write(`${JSON.stringify({ status: 'ok', reportPath, journeys: journeys.map(item => ({
   id: item.id,
   completed: item.completed,
   steps: item.steps,
-  rootHelp: item.disclosure.rootHelp.map(record => record.target),
+  rootHelp: item.rootHelpTargets,
 })) }, null, 2)}\n`)

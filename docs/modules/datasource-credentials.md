@@ -117,9 +117,13 @@ DSH 的其他标准入口配置凭证。
 测试位于：
 
 ```text
-packages/dsh-data-analysis/tests/disclosure/marivo-test-tool.test.ts
-packages/dsh-data-analysis/tests/web/client-integration.test.ts
+packages/dsh-data-analysis/tests/datasource-credentials/marivo-test-tool.test.ts
+packages/dsh-data-analysis/tests/datasource-credentials/client-integration.test.ts
 ```
 
 测试应覆盖引用发现与去重、缺失时不连接、operation overlay、双层脱敏、结构化 failure/repair、Web
 只自动打开一次、空白输入、配置状态、部分失败和手动重试提示。
+
+`npm run test:datasource-credentials` 先构建 client 再执行确定性测试；
+`npm run validate:datasource-credentials:real` 使用相邻 Marivo 项目的真实 `cdn_replica` 定义验证缺凭证
+结果，并以连接调用 guard 证明该路径不会执行 `md.test()`。
