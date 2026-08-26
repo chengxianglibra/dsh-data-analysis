@@ -1,7 +1,14 @@
 export { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 export { MarivoEnvironmentError } from './errors.ts'
 export { bindMarivoEnvironment, MarivoEnvironment } from './binding.ts'
-export { DEFAULT_SUBPROCESS_LIMITS, FixedSubprocessPolicy, SUBPROCESS_POLICY_ID } from './subprocess.ts'
+export {
+  DEFAULT_SUBPROCESS_LIMITS,
+  FixedSubprocessPolicy,
+  MARIVO_PERSIST_CREDENTIALS_ENV,
+  MARIVO_PERSIST_SECRETS_DISABLED,
+  MARIVO_PERSIST_SECRETS_ENV,
+  SUBPROCESS_POLICY_ID,
+} from './subprocess.ts'
 export {
   DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
   ensureSharedMarivoRuntime,

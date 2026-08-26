@@ -12,6 +12,8 @@ export type EnvironmentFailureCode =
   | 'subprocess-timeout'
   | 'subprocess-cancelled'
   | 'subprocess-output-limit'
+  | 'subprocess-output-invalid'
+  | 'subprocess-failed'
   | 'doctor-json-invalid'
   | 'doctor-admission-failed'
   | 'binding-identity-mismatch'

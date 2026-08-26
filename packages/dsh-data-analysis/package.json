@@ -16,6 +16,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    },
     "./environment": {
       "types": "./lib/types/environment/index.d.ts",
       "default": "./lib/environment/index.js"
@@ -27,6 +31,10 @@
     "./checkpoint": {
       "types": "./lib/types/checkpoint/index.d.ts",
       "default": "./lib/checkpoint/index.js"
+    },
+    "./datasource": {
+      "types": "./lib/types/datasource/index.d.ts",
+      "default": "./lib/datasource/index.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -47,6 +55,14 @@
     "access": "public"
   },
   "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ],
+      "platform": "web"
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
@@ -56,6 +72,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-client-connection": "*",
+    "@deepseek-ai/dsh-client-runtime": "*",
+    "@deepseek-ai/dsh-client-ui-tool": "*",
+    "@deepseek-ai/dsh-credentials": "*",
     "@deepseek-ai/dsh-home-paths": "*",
     "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-session": "*",
@@ -66,6 +86,10 @@
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-agent": { "optional": true },
+    "@deepseek-ai/dsh-client-connection": { "optional": true },
+    "@deepseek-ai/dsh-client-runtime": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-tool": { "optional": true },
+    "@deepseek-ai/dsh-credentials": { "optional": true },
     "@deepseek-ai/dsh-home-paths": { "optional": true },
     "@deepseek-ai/dsh-llm": { "optional": true },
     "@deepseek-ai/dsh-session": { "optional": true },

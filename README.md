@@ -13,6 +13,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - 为新 Workspace 创建最小 Marivo 项目结构；
 - 全局提供 `marivo-analysis` 和 `marivo-semantic` skills；
 - 要求 Agent 在每个直接用户轮次开始分析前声明所需的 Marivo live help；
+- 通过 `marivo_test` 和 DSH 凭证服务完成 datasource 连接测试；
 - 支持 DSH 的 `native`、`code` 和 `both` 工具模式。
 
 插件不在每个 Workspace 重复安装 Python、Marivo 或 skills，也不替代 Marivo 对项目、
@@ -101,6 +102,23 @@ Workspace，同时共享同一个 Marivo Python。
 保留 `skill` 可避免临时 Tool restriction 被误报成空 skill catalog；它不开放普通分析工具。
 合法 help 结果会在下一个 Agent step 开放其他分析工具。同一步中的其他直接工具调用及
 `run_code` 内的非控制面子调用会被拒绝。
+
+### 测试 datasource 连接
+
+分析阶段可以调用 `marivo_test({ name })`。插件先通过绑定解释器读取
+`md.describe(name).env_refs`，再按引用名从 DSH `ctx.credentials` 逐项解析凭证；不会缓存
+凭证值。缺少引用时不执行连接，Web 工具视图会为本次 Tool call 自动打开一次输入框。
+
+输入框不回显已有值，只显示引用名和“已配置／未配置”状态。保存使用标准
+`credentials.set()`；保存成功后关闭弹窗并提示“凭证已保存，请重试 marivo_test”，不会
+自动重放原 Tool call。取消或部分写入失败不会改写原来的 `needs-credentials` Tool Result。
+
+凭证只作为单次受控子进程的环境 overlay 传给真实 `md.test()`，不进入 argv、日志、Tool
+Result 或 telemetry。插件启动的 doctor、help、describe 和 test 等 Marivo 子进程都固定注入
+`MARIVO_PERSIST_CREDENTIALS=0`，并为旧版兼容同时注入 `MARIVO_PERSIST_SECRETS=0`，因此不会写
+`~/.marivo/secrets.toml`。这个保证只覆盖插件自有子进程；Agent 通过 bash 或 Python 直接调用
+Marivo 不在此边界内。所有 datasource 的
+`*_env` 引用（包括 `user_env`）都由 DSH 凭证服务管理。
 
 ### 检查环境
 

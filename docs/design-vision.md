@@ -106,7 +106,8 @@ Plugin 负责：
 - 解析配置并选择一个精确 Marivo environment；
 - 验证 project root、解释器、package path 和版本；
 - 获取并提供 canonical target 清单；
-- 注册 data-analysis system prompt 和唯一的 `marivo_help` Tool；
+- 注册 data-analysis system prompt、`marivo_help`，以及只负责凭证接缝的窄范围
+  `marivo_test` Tool；
 - 在 help-decision checkpoint 检查 LLM 是否返回结构与资源边界合法的声明；
 - 调用真实 `marivo.help(...)` 并捕获 stdout；
 - 将原始 help 文本作为标准 Tool Result 返回；
@@ -343,7 +344,8 @@ MVP 只验证第一步，不声称已经完成 evidence-native delivery 或 sema
 6. 所有 help 调用使用同一 project root、subprocess policy、解释器、Marivo version 和 package
    path，并在执行前复核实际 import identity。
 7. MVP 不缓存 inventory 或 focused help；未来 cache 必须先具备可信 build identity。
-8. `marivo_help` 是唯一新增的 model-facing Marivo Tool；普通分析仍使用 public Python。
+8. 除连接测试与 DSH credential seam 所需的 `marivo_test` 外，不增加 one-tool-per-API 包装；
+   普通分析仍使用 public Python。
 9. `targets=[]` 是合法、明确的 LLM 判断，不由 Plugin 覆盖。
 10. Skill 继续拥有 workflow boundary；live help 继续拥有精确 API 信息。
 11. Marivo Artifact/Evidence 和 semantic source 不被 Harness 复制为第二套 authority。

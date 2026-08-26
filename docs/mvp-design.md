@@ -311,6 +311,29 @@ Target: analysis.compare
 `targets=[]` 返回一条短确认，不渲染 help。Plugin 可以记录 target、environment fingerprint、
 字节数、耗时和 outcome，但不能从 help body 提取参数、约束或 continuation。
 
+## MVP 后窄扩展：`marivo_test`
+
+当前实现额外提供一个普通分析阶段 Tool：`marivo_test({name})`。它不是对 Marivo API 的通用
+包装层，只负责 datasource 连接测试与凭证服务之间的必要接缝：
+
+1. 使用绑定解释器调用真实 `md.describe(name).env_refs`，子进程只返回环境引用名；
+2. 对去重后的每个引用逐项调用 `ctx.credentials.resolve()`，不跨操作缓存；
+3. 有缺失时不调用 backend，返回
+   `{status: "needs-credentials", name, refs}`；
+4. 齐全时只通过单次环境 overlay 传给受控子进程，执行真实 `md.test()`；
+5. 返回结构化成功或 Marivo 产生的结构化 failure/repair，并对凭证原值做精确脱敏。
+
+Web client 为该 Tool 注册专用 `tool.call.toolview`。一次实际的 `needs-credentials` 结果只自动
+打开一次弹窗；字段初始为空，只显示引用名和配置状态。保存逐项调用标准
+`credentials.set()`，成功后提示用户手动重试，不自动恢复原 Tool。取消或部分失败保留原
+Tool Result。
+
+所有插件自有 Marivo 子进程在最终环境合并后强制设置 `MARIVO_PERSIST_CREDENTIALS=0`，并为
+旧版兼容同时设置 `MARIVO_PERSIST_SECRETS=0`；credential overlay 不能覆盖这两个策略值。
+凭证不进入 argv、日志、Tool Result 或 telemetry，也不会由插件写入
+`~/.marivo/secrets.toml`。该保证不扩展到 Agent 的任意 bash/Python 直调。Datasource 的所有
+`*_env` 引用（包括 `user_env`）统一由 DSH 凭证服务管理。
+
 ## Help checkpoint
 
 ### Harness profile 前提
@@ -320,8 +343,8 @@ MVP profile 必须使用 `native` Tool presentation mode。`run_code` 是 Code M
 
 Profile 还必须保证：
 
-- `marivo_help` 是 checkpoint scope 唯一新增的 scope-local Tool；已有 inherited `skill` 作为
-  控制面在 checkpoint 期间保持可见；
+- `marivo_help` 是唯一 checkpoint 控制 Tool；普通分析 Tool（包括后加的 `marivo_test`）在
+  checkpoint 期间隐藏；已有 inherited `skill` 作为控制面保持可见；
 - 普通 Agent Tools 从 global/ancestor layer 继承；
 - checkpoint 通过 scoped `ctx.tools.restrict({allow: ["skill"]})` 隐藏其他继承工具；未挂载
   `skill` 时 allowlist 为空；
@@ -411,6 +434,8 @@ MVP 只新增一个 Plugin package：
 packages/dsh-data-analysis/
   environment     # resolver、doctor admission、identity assertion
   disclosure      # prompt、context、Tool、checkpoint、repair
+  datasource      # 窄范围连接测试与 DSH credential seam
+  client          # Web marivo_test Tool View
   telemetry       # disclosure 成本和 outcome
 ```
 

@@ -11,5 +11,5 @@
     "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "include": ["packages/dsh-data-analysis/**/*.ts"]
+  "include": ["packages/dsh-data-analysis/**/*.ts", "packages/dsh-data-analysis/**/*.tsx"]
 }

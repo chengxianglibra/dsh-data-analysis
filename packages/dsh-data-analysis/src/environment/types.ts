@@ -78,6 +78,8 @@ export interface SubprocessLimits {
 export interface SubprocessRequest {
   executable: string
   args: readonly string[]
+  /** Per-call environment values layered over the frozen binding snapshot. */
+  environmentOverlay?: Readonly<NodeJS.ProcessEnv>
   limits?: Partial<SubprocessLimits>
   signal?: AbortSignal
 }

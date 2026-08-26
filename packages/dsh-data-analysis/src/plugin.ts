@@ -3,6 +3,7 @@
 import process from 'node:process'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
 import {
@@ -16,12 +17,13 @@ import {
   MarivoWorkspaceEnvironmentManager,
   MarivoEnvironment,
 } from './environment/index.ts'
+import { registerMarivoTestTool } from './datasource/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
 
 /** Services that must exist before the plugin binds and watches Agent scopes. */
-export const inject = ['agents', 'skills', 'tools', 'systemPrompt']
+export const inject = ['agents', 'credentials', 'skills', 'tools', 'systemPrompt']
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -68,7 +70,10 @@ export type MarivoPluginEnvironmentResolver = (
 export function installMarivoPlugin(
   ctx: Context,
   environmentOrResolver: MarivoEnvironment | MarivoPluginEnvironmentResolver,
-  options: InstallCheckpointOptions = {},
+  options: InstallCheckpointOptions & {
+    /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
+    credentials?: Pick<CredentialProvider, 'resolve'>
+  } = {},
 ): () => void {
   const installed = new Map<Agent, MarivoCheckpointController>()
   const install = (agent: Agent): void => {
@@ -76,7 +81,14 @@ export function installMarivoPlugin(
     const source = environmentOrResolver instanceof MarivoEnvironment
       ? environmentOrResolver
       : () => Promise.resolve(environmentOrResolver(agent))
-    installed.set(agent, installMarivoCheckpoint(ctx, agent, source, options))
+    const controller = installMarivoCheckpoint(ctx, agent, source, options)
+    const credentials = options.credentials ?? ctx.credentials
+    if (credentials === undefined) {
+      controller.dispose()
+      throw new Error('dsh-data-analysis requires the DSH credentials service')
+    }
+    controller.addDisposer(registerMarivoTestTool(agent.ctx, source, credentials))
+    installed.set(agent, controller)
   }
 
   try {

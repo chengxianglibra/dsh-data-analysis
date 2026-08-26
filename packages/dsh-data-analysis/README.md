@@ -1,8 +1,10 @@
 # dsh-data-analysis Plugin
 
-当前实现包含 Environment Binding、`marivo_help` Tool、raw inventory loader 和
+当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、raw inventory loader 和
 help checkpoint，并在 `0.1.0-rc.2` 增加 Web profile 共享 Marivo Runtime、逐 Workspace
-binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。早期 Slice 4
+binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。`marivo_test`
+按操作从 DSH `ctx.credentials` 解析 datasource 的全部 `*_env` 引用；缺失时由浏览器 Tool
+View 收集并通过标准 `credentials.set()` 保存，成功后由用户手动重试。早期 Slice 4
 最小样本没有证明相对直接 Skill 基线的可靠性增益；详见
 `../../docs/slice-4-acceptance.md`。
 
@@ -41,4 +43,10 @@ npx @deepseek-ai/dsh web
 
 `dsh-data-analysis-env --project-root <path>` 检查共享 Runtime 和指定 Workspace。管理员
 可通过绝对路径 `DSH_DATA_ANALYSIS_PYTHON` 提供已安装可导入 Marivo 的共享解释器。
-Checkpoint 支持 `native`、`code` 和 `both` 工具模式。
+Checkpoint 支持 `native`、`code` 和 `both` 工具模式。`marivo_test` 在 checkpoint 期间保持
+隐藏，完成 help declaration 后才作为普通分析 Tool 恢复。
+
+所有插件自有 Marivo 子进程固定使用 `MARIVO_PERSIST_CREDENTIALS=0`，并为旧版兼容同时使用
+`MARIVO_PERSIST_SECRETS=0`。`md.test()` 所需凭证只经单次环境 overlay 传入，不写
+`~/.marivo/secrets.toml`，也不进入 argv、日志、Tool Result 或 telemetry。任意 bash/Python
+直调不属于该保证范围。

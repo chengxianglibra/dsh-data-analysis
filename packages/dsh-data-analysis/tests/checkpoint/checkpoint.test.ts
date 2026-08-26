@@ -290,7 +290,9 @@ test('Cordis plugin adapter installs live Agents and releases its scoped checkpo
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'plugin-adapter')
-  const dispose = installMarivoPlugin(ctx, fixture.environment)
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
+    credentials: { resolve: async () => undefined },
+  })
 
   send(agent, 'use installed checkpoint')
   await agent.whenIdle()
@@ -300,7 +302,7 @@ test('Cordis plugin adapter installs live Agents and releases its scoped checkpo
 
   assert.deepEqual(adapter.toolNamesAtCall, [
     ['marivo_help'],
-    ['marivo_help', 'ordinary'],
+    ['marivo_help', 'marivo_test', 'ordinary'],
     ['ordinary'],
   ])
 })

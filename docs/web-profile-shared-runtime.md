@@ -87,6 +87,16 @@ Checkpoint 保留 `skill`，避免把临时 Tool restriction 投影成空 skill 
 中的后续子调用仍会被拒绝。`run_code` 内不调用工具的纯计算无法检测，但不会完成
 checkpoint。
 
+## Datasource 凭证与连接测试
+
+Help declaration 完成后，`marivo_test({name})` 作为普通分析 Tool 可用。缺少 datasource
+`*_env` 引用时，Web Tool View 按本次调用弹出一次空白凭证表单，保存到 DSH 凭证服务，并要求
+用户手动重试。插件不提供设置页、自定义 Host RPC 或自动恢复调用。
+
+插件自有 doctor、help、describe 和 test 子进程固定注入 `MARIVO_PERSIST_CREDENTIALS=0`，并为
+旧版兼容同时注入 `MARIVO_PERSIST_SECRETS=0`；连接凭证只进入 `md.test()` 的单次环境
+overlay，不写 `~/.marivo/secrets.toml`。Agent 的任意 bash/Python 直调不在该保证内。
+
 ## 配置与诊断
 
 Cordis 配置支持：

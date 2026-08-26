@@ -6,6 +6,11 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import CredentialProvider, {
+  type CredentialKey,
+  type CredentialRecord,
+  type CredentialRef,
+} from '@deepseek-ai/dsh-credentials'
 import LlmRuntime, {
   CallId,
   createUserMessage,
@@ -23,6 +28,21 @@ import {
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { apply, inject } from '../../src/plugin.ts'
+
+class TestCredentials extends CredentialProvider {
+  resolve(_ref: CredentialRef) { return Promise.resolve(undefined) }
+  describe(_ref: CredentialRef) { return Promise.resolve({ configured: false, writable: true }) }
+  set(_ref: CredentialRef, _value: string) { return Promise.resolve() }
+  unset(_ref: CredentialRef) { return Promise.resolve() }
+  readRecord(_key: CredentialKey) { return Promise.resolve(undefined) }
+  describeRecord(_key: CredentialKey) { return Promise.resolve({ configured: false, writable: true }) }
+  listRecords() { return Promise.resolve([]) }
+  modifyRecord(
+    _key: CredentialKey,
+    _mutate: (current: CredentialRecord | undefined) => Promise<CredentialRecord | undefined>,
+  ) { return Promise.resolve(undefined) }
+  deleteRecord(_key: CredentialKey) { return Promise.resolve() }
+}
 
 function runtimePython(packagePath: string, recordPath: string): string {
   return `#!/usr/bin/env node
@@ -141,6 +161,7 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   await chmod(python, 0o755)
 
   const ctx = new Context()
+  await ctx.plugin(TestCredentials)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)

@@ -19,6 +19,8 @@ const required = [
   'README.md',
   'cordis.patch.yml',
   'lib/index.js',
+  'lib/client.js',
+  'lib/types/client.d.ts',
   'lib/types/index.d.ts',
   'lib/bin/environment.js',
 ]

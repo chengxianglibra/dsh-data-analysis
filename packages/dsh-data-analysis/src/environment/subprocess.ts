@@ -3,7 +3,10 @@ import process from 'node:process'
 import { MarivoEnvironmentError } from './errors.ts'
 import type { SubprocessLimits, SubprocessRequest, SubprocessResult } from './types.ts'
 
-export const SUBPROCESS_POLICY_ID = 'direct-argv-inherited-env-snapshot-v1'
+export const SUBPROCESS_POLICY_ID = 'direct-argv-inherited-env-snapshot-overlay-v2'
+export const MARIVO_PERSIST_SECRETS_ENV = 'MARIVO_PERSIST_SECRETS'
+export const MARIVO_PERSIST_CREDENTIALS_ENV = 'MARIVO_PERSIST_CREDENTIALS'
+export const MARIVO_PERSIST_SECRETS_DISABLED = '0'
 
 export const DEFAULT_SUBPROCESS_LIMITS: Readonly<SubprocessLimits> = Object.freeze({
   timeoutMs: 30_000,
@@ -13,9 +16,29 @@ export const DEFAULT_SUBPROCESS_LIMITS: Readonly<SubprocessLimits> = Object.free
 })
 
 function snapshotEnvironment(source: NodeJS.ProcessEnv): Readonly<NodeJS.ProcessEnv> {
-  return Object.freeze(Object.fromEntries(
-    Object.entries(source).filter((entry): entry is [string, string] => entry[1] !== undefined),
-  ))
+  return Object.freeze({
+    ...Object.fromEntries(
+      Object.entries(source).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
+    [MARIVO_PERSIST_SECRETS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
+    [MARIVO_PERSIST_CREDENTIALS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
+  })
+}
+
+function overlayEnvironment(
+  snapshot: Readonly<NodeJS.ProcessEnv>,
+  overlay: Readonly<NodeJS.ProcessEnv> | undefined,
+): Readonly<NodeJS.ProcessEnv> {
+  if (overlay === undefined) return snapshot
+  return Object.freeze({
+    ...snapshot,
+    ...Object.fromEntries(
+      Object.entries(overlay).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
+    // This is plugin policy, not caller-controlled configuration.
+    [MARIVO_PERSIST_SECRETS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
+    [MARIVO_PERSIST_CREDENTIALS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
+  })
 }
 
 function positiveLimit(name: keyof SubprocessLimits, value: number): number {
@@ -55,6 +78,7 @@ export class FixedSubprocessPolicy {
   run(request: SubprocessRequest): Promise<SubprocessResult> {
     const limits = resolveLimits(request.limits)
     const startedAt = performance.now()
+    const environment = overlayEnvironment(this.#environment, request.environmentOverlay)
 
     if (request.signal?.aborted) {
       return Promise.reject(new MarivoEnvironmentError(
@@ -64,14 +88,28 @@ export class FixedSubprocessPolicy {
     }
 
     return new Promise((resolve, reject) => {
-      const child = spawn(request.executable, request.args, {
+      const spawnChild = () => spawn(request.executable, request.args, {
         cwd: this.cwd,
-        env: this.#environment,
+        env: environment,
         shell: false,
         windowsHide: true,
         detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
       })
+      let child: ReturnType<typeof spawnChild>
+      try {
+        child = spawnChild()
+      } catch (cause: unknown) {
+        reject(new MarivoEnvironmentError(
+          'subprocess-start-failed',
+          'Could not start Marivo subprocess',
+          {
+            executable: request.executable,
+            errorCode: (cause as NodeJS.ErrnoException).code,
+          },
+        ))
+        return
+      }
 
       const stdout: Buffer[] = []
       const stderr: Buffer[] = []
@@ -86,7 +124,7 @@ export class FixedSubprocessPolicy {
         if (process.platform === 'win32') {
           const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
             cwd: this.cwd,
-            env: this.#environment,
+            env: environment,
             shell: false,
             windowsHide: true,
             stdio: 'ignore',
@@ -158,9 +196,8 @@ export class FixedSubprocessPolicy {
         request.signal?.removeEventListener('abort', onAbort)
         reject(new MarivoEnvironmentError(
           'subprocess-start-failed',
-          `Could not start Marivo subprocess: ${cause.message}`,
+          'Could not start Marivo subprocess',
           { executable: request.executable, errorCode: cause.code },
-          { cause },
         ))
       })
 

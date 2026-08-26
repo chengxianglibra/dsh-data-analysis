@@ -68,6 +68,136 @@ if actual != expected:
 marivo.help(sys.argv[4])
 `.trim()
 
+const CHECKED_DATASOURCE_DESCRIBE_SCRIPT = String.raw`
+import json
+import os
+import sys
+import marivo
+import marivo.datasource as md
+
+actual = {
+    "python_executable": os.path.abspath(sys.executable),
+    "marivo_version": marivo.__version__,
+    "package_path": os.path.abspath(marivo.__file__ or ""),
+}
+expected = {
+    "python_executable": os.path.abspath(sys.argv[1]),
+    "marivo_version": sys.argv[2],
+    "package_path": os.path.abspath(sys.argv[3]),
+}
+if actual != expected:
+    print(json.dumps({"kind": "identity-mismatch", "actual": actual}), file=sys.stderr)
+    raise SystemExit(78)
+description = md.describe(sys.argv[4])
+print(json.dumps({
+    "name": description.name,
+    "refs": list(description.env_refs.values()),
+}, sort_keys=True))
+`.trim()
+
+const CHECKED_DATASOURCE_TEST_SCRIPT = String.raw`
+import contextlib
+import io
+import json
+import os
+import sys
+import marivo
+import marivo.datasource as md
+
+actual = {
+    "python_executable": os.path.abspath(sys.executable),
+    "marivo_version": marivo.__version__,
+    "package_path": os.path.abspath(marivo.__file__ or ""),
+}
+expected = {
+    "python_executable": os.path.abspath(sys.argv[1]),
+    "marivo_version": sys.argv[2],
+    "package_path": os.path.abspath(sys.argv[3]),
+}
+if actual != expected:
+    print(json.dumps({"kind": "identity-mismatch", "actual": actual}), file=sys.stderr)
+    raise SystemExit(78)
+captured_stdout = io.StringIO()
+captured_stderr = io.StringIO()
+try:
+    with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
+        description = md.describe(sys.argv[4])
+        secret_values = [
+            value
+            for ref in description.env_refs.values()
+            if (value := os.environ.get(ref))
+        ]
+        result = md.test(sys.argv[4])
+except Exception as exc:
+    print(json.dumps({"kind": "datasource-test-failed", "exception_type": type(exc).__name__}), file=sys.stderr)
+    raise SystemExit(70)
+
+def redact(value):
+    if isinstance(value, str):
+        for secret in secret_values:
+            value = value.replace(secret, "[REDACTED]")
+        return value
+    if isinstance(value, list):
+        return [redact(item) for item in value]
+    if isinstance(value, tuple):
+        return [redact(item) for item in value]
+    if isinstance(value, dict):
+        return {key: redact(item) for key, item in value.items()}
+    return value
+
+failure = None if result.failure is None else {
+    "code": result.failure.code,
+    "exception_type": result.failure.exception_type,
+    "backend_code": result.failure.backend_code,
+    "backend_name": result.failure.backend_name,
+    "message": result.failure.message,
+}
+repair = None if result.repair is None else result.repair.model_dump(mode="json")
+print(json.dumps(redact({
+    "name": result.name,
+    "ok": result.ok,
+    "latency_ms": result.latency_ms,
+    "failure": failure,
+    "repair": repair,
+}), sort_keys=True))
+`.trim()
+
+function redactSubprocessOutput(
+  result: Awaited<ReturnType<FixedSubprocessPolicy['run']>>,
+  environmentOverlay: Readonly<NodeJS.ProcessEnv> | undefined,
+) {
+  if (environmentOverlay === undefined) return result
+  const secrets = Object.values(environmentOverlay).filter(
+    (value): value is string => value !== undefined && value !== '',
+  )
+  const redactText = (source: string): string => {
+    let text = source
+    for (const secret of secrets) text = text.split(secret).join('[REDACTED]')
+    return text
+  }
+  const redactJsonValue = (value: unknown): unknown => {
+    if (typeof value === 'string') return redactText(value)
+    if (Array.isArray(value)) return value.map(redactJsonValue)
+    if (typeof value !== 'object' || value === null) return value
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, redactJsonValue(item)]),
+    )
+  }
+  const redactStdout = (): Buffer => {
+    const text = result.stdout.toString('utf8')
+    try {
+      return Buffer.from(JSON.stringify(redactJsonValue(JSON.parse(text))))
+    } catch {
+      return Buffer.from(redactText(text))
+    }
+  }
+  return {
+    ...result,
+    stdout: redactStdout(),
+    stderr: Buffer.from(redactText(result.stderr.toString('utf8'))),
+  }
+}
+
 function normalizeAbsolute(value: string): string {
   return path.normalize(path.resolve(value))
 }
@@ -272,6 +402,77 @@ export class MarivoEnvironment {
       )
     }
     return result
+  }
+
+  async #runCheckedDatasourceScript(
+    script: string,
+    name: string,
+    limits: Partial<SubprocessLimits>,
+    environmentOverlay?: Readonly<NodeJS.ProcessEnv>,
+    signal?: AbortSignal,
+  ) {
+    if (this.#failed) {
+      throw new MarivoEnvironmentError(
+        'binding-failed',
+        'Marivo Environment Binding has failed; explicit rebind is required',
+        { fingerprint: this.binding.fingerprint },
+      )
+    }
+    const rawResult = await this.subprocessPolicy.run({
+      executable: this.binding.pythonExecutable,
+      args: [
+        '-c',
+        script,
+        this.binding.pythonExecutable,
+        this.binding.marivoVersion,
+        this.binding.packagePath,
+        name,
+      ],
+      ...(environmentOverlay === undefined ? {} : { environmentOverlay }),
+      limits,
+      signal,
+    })
+    const result = redactSubprocessOutput(rawResult, environmentOverlay)
+    if (result.exitCode === 78) {
+      this.#failed = true
+      throw new MarivoEnvironmentError(
+        'binding-identity-mismatch',
+        'Marivo import identity changed; explicit rebind is required',
+        { fingerprint: this.binding.fingerprint, exitCode: result.exitCode },
+      )
+    }
+    return result
+  }
+
+  /** Return only the credential reference names declared by `md.describe(name)`. */
+  runCheckedDatasourceDescribe(
+    name: string,
+    limits: Partial<SubprocessLimits>,
+    signal?: AbortSignal,
+  ) {
+    return this.#runCheckedDatasourceScript(
+      CHECKED_DATASOURCE_DESCRIBE_SCRIPT,
+      name,
+      limits,
+      undefined,
+      signal,
+    )
+  }
+
+  /** Execute one real `md.test(name)` with a per-operation credential overlay. */
+  runCheckedDatasourceTest(
+    name: string,
+    environmentOverlay: Readonly<NodeJS.ProcessEnv>,
+    limits: Partial<SubprocessLimits>,
+    signal?: AbortSignal,
+  ) {
+    return this.#runCheckedDatasourceScript(
+      CHECKED_DATASOURCE_TEST_SCRIPT,
+      name,
+      limits,
+      environmentOverlay,
+      signal,
+    )
   }
 }
 
