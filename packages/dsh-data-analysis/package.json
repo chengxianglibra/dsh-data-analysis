@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-data-analysis",
-  "description": "Marivo-backed governed analysis disclosure checkpoint for DeepSeek Harness",
+  "description": "Skill-activated Marivo live-help disclosure for DeepSeek Harness",
   "version": "0.1.0-rc.2",
   "type": "module",
   "engines": {
@@ -27,10 +27,6 @@
     "./disclosure": {
       "types": "./lib/types/disclosure/index.d.ts",
       "default": "./lib/disclosure/index.js"
-    },
-    "./checkpoint": {
-      "types": "./lib/types/checkpoint/index.d.ts",
-      "default": "./lib/checkpoint/index.js"
     },
     "./datasource": {
       "types": "./lib/types/datasource/index.d.ts",
@@ -80,7 +76,6 @@
     "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-session": "*",
     "@deepseek-ai/dsh-skill-filesystem": "*",
-    "@deepseek-ai/dsh-system-prompt": "*",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-tools": "*"
   },
@@ -94,7 +89,6 @@
     "@deepseek-ai/dsh-llm": { "optional": true },
     "@deepseek-ai/dsh-session": { "optional": true },
     "@deepseek-ai/dsh-skill-filesystem": { "optional": true },
-    "@deepseek-ai/dsh-system-prompt": { "optional": true },
     "@deepseek-ai/dsh-tools": { "optional": true }
   }
 }

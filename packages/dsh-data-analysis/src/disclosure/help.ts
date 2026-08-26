@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
@@ -64,7 +65,21 @@ export class MarivoHelpError extends Error {
 export interface MarivoHelpTargetResult {
   target: string
   body: string
+  bodyDigest: string
+  delivery: MarivoHelpDelivery
 }
+
+export type MarivoHelpDelivery = 'delivered' | 'already-visible' | 'replacement'
+
+export interface MarivoHelpDeliveryQuery {
+  environmentFingerprint: string
+  target: string
+  bodyDigest: string
+}
+
+export type MarivoHelpDeliveryResolver = (
+  query: Readonly<MarivoHelpDeliveryQuery>,
+) => MarivoHelpDelivery
 
 export interface MarivoHelpValue {
   environment: {
@@ -219,18 +234,85 @@ export async function loadTargetInventory(
   return stdout.toString('utf8')
 }
 
-function renderHelpValue(value: MarivoHelpValue): string {
-  if (value.targets.length === 0) {
-    return `Marivo help declaration accepted for ${value.environment.version}: no targets requested.`
-  }
-  const header = `Marivo environment: ${value.environment.version}; Python: ${value.environment.pythonExecutable}; Package: ${value.environment.packagePath}; Fingerprint: ${value.environment.fingerprint}`
-  return [header, ...value.targets.map(item => `Target: ${item.target}\n${item.body}`)].join('\n\n')
+export function marivoHelpBodyDigest(body: string): string {
+  return createHash('sha256').update(body).digest('hex')
 }
 
-/** Build the native Harness ToolDefinition without registering checkpoint behavior. */
+export function renderMarivoHelpValue(value: MarivoHelpValue): string {
+  if (value.targets.length === 0) {
+    return `Marivo help request completed for ${value.environment.version}: no targets requested.`
+  }
+  const header = `Marivo environment: ${value.environment.version}; Python: ${value.environment.pythonExecutable}; Package: ${value.environment.packagePath}; Fingerprint: ${value.environment.fingerprint}`
+  return [header, ...value.targets.map((item) => {
+    if (item.delivery === 'already-visible') {
+      return `Target: ${item.target}\nCurrent help is already visible in this prompt (digest: ${item.bodyDigest}).`
+    }
+    const replacement = item.delivery === 'replacement'
+      ? `Replacement digest: ${item.bodyDigest}\n`
+      : ''
+    return `Target: ${item.target}\n${replacement}${item.body}`
+  })].join('\n\n')
+}
+
+/** Read one all-or-nothing batch from the bound live Marivo help surface. */
+export async function readMarivoHelpTargets(
+  environment: MarivoEnvironment,
+  rawTargets: unknown,
+  options: {
+    limits?: Partial<MarivoHelpLimits>
+    signal?: AbortSignal
+    resolveDelivery?: MarivoHelpDeliveryResolver
+  } = {},
+): Promise<MarivoHelpValue> {
+  const limits = resolveMarivoHelpLimits(options.limits)
+  const targets = normalizeHelpTargets(rawTargets, limits)
+  const environmentIdentity = {
+    version: environment.binding.marivoVersion,
+    pythonExecutable: environment.binding.pythonExecutable,
+    packagePath: environment.binding.packagePath,
+    fingerprint: environment.binding.fingerprint,
+  }
+  if (targets.length === 0) return { environment: environmentIdentity, targets: [] }
+
+  const results: MarivoHelpTargetResult[] = []
+  let combinedBytes = 0
+  for (const target of targets) {
+    const stdout = await runHelpTarget(
+      environment,
+      target,
+      limits.focusedStdoutMaxBytes,
+      limits,
+      options.signal,
+    )
+    combinedBytes += stdout.byteLength
+    if (combinedBytes > limits.combinedStdoutMaxBytes) {
+      throw new MarivoHelpError(
+        'combined-output-limit',
+        `marivo_help combined stdout exceeds ${limits.combinedStdoutMaxBytes} bytes`,
+        { maxBytes: limits.combinedStdoutMaxBytes, observedBytes: combinedBytes, target },
+      )
+    }
+    const body = stdout.toString('utf8')
+    const bodyDigest = marivoHelpBodyDigest(body)
+    results.push({
+      target,
+      body,
+      bodyDigest,
+      delivery: options.resolveDelivery?.({
+        environmentFingerprint: environmentIdentity.fingerprint,
+        target,
+        bodyDigest,
+      }) ?? 'delivered',
+    })
+  }
+  return { environment: environmentIdentity, targets: results }
+}
+
+/** Build the native Harness ToolDefinition without registering Agent activation behavior. */
 export function createMarivoHelpTool(
   environmentSource: MarivoEnvironmentSource,
   limitOverrides: Partial<MarivoHelpLimits> = {},
+  resolveDelivery?: MarivoHelpDeliveryResolver,
 ): ToolDefinition {
   const limits = resolveMarivoHelpLimits(limitOverrides)
   return defineTool({
@@ -269,55 +351,46 @@ export function createMarivoHelpTool(
               properties: {
                 target: { type: 'string', required: true },
                 body: { type: 'string', required: true },
+                bodyDigest: { type: 'string', required: true },
+                delivery: {
+                  type: 'string',
+                  required: true,
+                  enum: ['delivered', 'already-visible', 'replacement'],
+                },
               },
             },
           },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: renderHelpValue(value) }],
+      render: (_args, value) => [{ type: 'text', text: renderMarivoHelpValue(value) }],
+      presentationMeta: (_args, value) => ({
+        kind: 'marivo-help-disclosure',
+        environmentFingerprint: value.environment.fingerprint,
+        targets: value.targets.map(item => ({
+          target: item.target,
+          bodyDigest: item.bodyDigest,
+          delivery: item.delivery,
+        })),
+      }),
     },
     timeoutMs: limits.toolTimeoutMs,
     async execute(args, exec) {
       const environment = await resolveMarivoEnvironmentSource(environmentSource)
-      const targets = normalizeHelpTargets(args.targets, limits)
-      const environmentIdentity = {
-        version: environment.binding.marivoVersion,
-        pythonExecutable: environment.binding.pythonExecutable,
-        packagePath: environment.binding.packagePath,
-        fingerprint: environment.binding.fingerprint,
-      }
-      if (targets.length === 0) return { environment: environmentIdentity, targets: [] }
-
-      const results: MarivoHelpTargetResult[] = []
-      let combinedBytes = 0
-      for (const target of targets) {
-        const stdout = await runHelpTarget(
-          environment,
-          target,
-          limits.focusedStdoutMaxBytes,
-          limits,
-          exec.signal,
-        )
-        combinedBytes += stdout.byteLength
-        if (combinedBytes > limits.combinedStdoutMaxBytes) {
-          throw new MarivoHelpError(
-            'combined-output-limit',
-            `marivo_help combined stdout exceeds ${limits.combinedStdoutMaxBytes} bytes`,
-            { maxBytes: limits.combinedStdoutMaxBytes, observedBytes: combinedBytes, target },
-          )
-        }
-        results.push({ target, body: stdout.toString('utf8') })
-      }
-      return { environment: environmentIdentity, targets: results }
+      return readMarivoHelpTargets(environment, args.targets, {
+        limits,
+        signal: exec.signal,
+        resolveDelivery,
+      })
     },
   })
 }
 
-/** Register only the Slice 2 Tool; checkpoint restriction belongs to Slice 3. */
+/** Register the Slice 2 Tool; skill activation orchestration belongs to Slice 3. */
 export function registerMarivoHelpTool(
   ctx: Context,
   environmentSource: MarivoEnvironmentSource,
   limits: Partial<MarivoHelpLimits> = {},
+  resolveDelivery?: MarivoHelpDeliveryResolver,
 ): () => void {
-  return ctx.tools.register(createMarivoHelpTool(environmentSource, limits))
+  return ctx.tools.register(createMarivoHelpTool(environmentSource, limits, resolveDelivery))
 }

@@ -154,10 +154,16 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
   const result = await executeHelp(ctx, ['analysis.observe', 'analysis.compare', 'analysis.observe'])
   assert.equal(result.isError, false)
   if (result.isError) return
-  assert.deepEqual((result.value as unknown as MarivoHelpValue).targets, [
-    { target: 'analysis.observe', body: 'help-body:analysis.observe\n' },
-    { target: 'analysis.compare', body: 'help-body:analysis.compare\n' },
+  const targets = (result.value as unknown as MarivoHelpValue).targets
+  assert.deepEqual(targets.map(item => ({
+    target: item.target,
+    body: item.body,
+    delivery: item.delivery,
+  })), [
+    { target: 'analysis.observe', body: 'help-body:analysis.observe\n', delivery: 'delivered' },
+    { target: 'analysis.compare', body: 'help-body:analysis.compare\n', delivery: 'delivered' },
   ])
+  assert.ok(targets.every(item => /^[0-9a-f]{64}$/.test(item.bodyDigest)))
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
     'analysis.observe',
     'analysis.compare',

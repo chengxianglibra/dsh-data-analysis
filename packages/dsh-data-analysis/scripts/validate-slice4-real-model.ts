@@ -7,12 +7,19 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
-import LlmRuntime, { createUserMessage, type ContentBlock, type TokenUsage } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, {
+  createUserMessage,
+  type ContentBlock,
+  type TokenUsage,
+} from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
-import { installMarivoCheckpoint, type DisclosureTurnTelemetry } from '../src/checkpoint/index.ts'
+import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
+import {
+  installMarivoDisclosure,
+  type MarivoDisclosureTelemetry,
+} from '../src/disclosure/index.ts'
 import {
   bindMarivoEnvironment,
   FixedSubprocessPolicy,
@@ -39,12 +46,11 @@ interface ToolCallSummary {
   name: string
   arguments: unknown
   isError?: boolean
+  delivery?: string[]
 }
 
 interface JourneyResult {
   id: string
-  mode: 'protocol' | 'baseline'
-  expectation: 'success' | 'bounded-failure'
   completed: boolean
   finalText: string
   toolCalls: ToolCallSummary[]
@@ -52,12 +58,7 @@ interface JourneyResult {
   latencyMs: number
   usage: UsageTotals
   errors: Array<{ name: string; code?: string; message: string }>
-  checkpoint?: DisclosureTurnTelemetry
-  helpTextTokens?: {
-    value: number
-    estimated: true
-    method: 'ceil-codepoints-divided-by-four'
-  }
+  disclosure: MarivoDisclosureTelemetry
 }
 
 function parseArguments(raw: string): unknown {
@@ -79,20 +80,29 @@ function textFromBlocks(blocks: readonly ContentBlock[]): string {
 }
 
 function summarizeCalls(events: readonly SessionEvent[]): ToolCallSummary[] {
-  const results = new Map<string, boolean>()
+  const results = new Map<string, { isError: boolean; delivery?: string[] }>()
   for (const event of events) {
-    if (event.type === 'tool/result') {
-      const block = event.data.message.content.find(content => content.type === 'tool-result')
-      if (block?.type === 'tool-result') results.set(String(block.toolCallId), Boolean(block.isError))
-    }
+    if (event.type !== 'tool/result') continue
+    const block = event.data.message.content.find(content => content.type === 'tool-result')
+    if (block?.type !== 'tool-result') continue
+    const meta = event.data.meta as { kind?: unknown; targets?: unknown } | undefined
+    const delivery = meta?.kind === 'marivo-help-disclosure' && Array.isArray(meta.targets)
+      ? meta.targets.flatMap((item): string[] => (
+          typeof item === 'object' && item !== null && typeof (item as { delivery?: unknown }).delivery === 'string'
+            ? [(item as { delivery: string }).delivery]
+            : []
+        ))
+      : undefined
+    results.set(String(block.toolCallId), {
+      isError: Boolean(block.isError),
+      ...(delivery === undefined ? {} : { delivery }),
+    })
   }
   return events.flatMap(event => event.type === 'tool/call'
     ? [{
         name: event.data.name,
         arguments: parseArguments(event.data.arguments),
-        ...results.has(String(event.data.callId))
-          ? { isError: results.get(String(event.data.callId)) }
-          : {},
+        ...(results.get(String(event.data.callId)) ?? {}),
       }]
     : [])
 }
@@ -124,144 +134,16 @@ function usageTotals(events: readonly SessionEvent[]): UsageTotals {
 }
 
 function finalAssistantText(events: readonly SessionEvent[]): string {
-  const messages = events.filter(event => event.type === 'assistant/message')
-  const last = messages.at(-1)
+  const last = events.filter(event => event.type === 'assistant/message').at(-1)
   return last?.type === 'assistant/message' ? textFromBlocks(last.data.message.content) : ''
-}
-
-function helpTextTokenEstimate(telemetry: DisclosureTurnTelemetry | undefined): JourneyResult['helpTextTokens'] {
-  if (telemetry === undefined) return undefined
-  const codepoints = telemetry.helpCalls.reduce((sum, call) => sum + call.helpTextCodepoints, 0)
-  return {
-    value: Math.ceil(codepoints / 4),
-    estimated: true,
-    method: 'ceil-codepoints-divided-by-four',
-  }
 }
 
 function markerFor(id: string): string {
   return `SLICE4_${id.toUpperCase().replaceAll('-', '_')}_OK`
 }
 
-async function runJourney(
-  ctx: Context,
-  environment: MarivoEnvironment,
-  spec: {
-    id: string
-    mode: 'protocol' | 'baseline'
-    prompt: string
-    expectation?: 'success' | 'bounded-failure'
-    faultInjectMissingDeclaration?: boolean
-  },
-): Promise<JourneyResult> {
-  const expectation = spec.expectation ?? 'success'
-  const id = SessionId(`slice4-${spec.mode}-${spec.id}-${Date.now().toString(36)}`)
-  const errors: unknown[] = []
-  const agent: Agent = ctx.agentLoop.create(id, {
-    provider: 'deepseek-official',
-    model,
-    maxTokens: 1_024,
-  }, { cwd: workspaceRoot })
-  const controller = spec.mode === 'protocol'
-    ? installMarivoCheckpoint(ctx, agent, environment)
-    : undefined
-  const disposers: Array<() => void> = []
-  disposers.push(agent.ctx.on('agent/error', payload => errors.push(payload.error)))
-  if (spec.faultInjectMissingDeclaration) {
-    disposers.push(agent.ctx.systemPrompt.section({
-      name: 'slice4:missing-declaration-fault-injection',
-      order: 10_000,
-      text: `Acceptance fault injection: do not call any tool in this turn. In every response, output only DECLARATION_OMITTED. This intentionally exercises the checkpoint's bounded missing-declaration failure.`,
-    }))
-  }
-
-  const startedAt = performance.now()
-  agent.followup(createUserMessage({
-    content: [{ type: 'text', text: spec.prompt }],
-    source: { kind: 'user' },
-  }))
-  await agent.whenIdle()
-  const latencyMs = Math.max(0, Math.round(performance.now() - startedAt))
-  const events = agent.session.events
-  const checkpoint = controller?.telemetry()[0]
-  const finalText = finalAssistantText(events)
-  const completed = expectation === 'success'
-    ? finalText.includes(markerFor(spec.id))
-    : errors.some(error => errorSummary(error).code === 'missing-declaration-limit')
-  const result: JourneyResult = {
-    id: spec.id,
-    mode: spec.mode,
-    expectation,
-    completed,
-    finalText,
-    toolCalls: summarizeCalls(events),
-    steps: events.filter(event => event.type === 'step/start').length,
-    latencyMs,
-    usage: usageTotals(events),
-    errors: errors.map(errorSummary),
-    ...checkpoint === undefined ? {} : { checkpoint },
-    ...spec.mode === 'protocol' ? { helpTextTokens: helpTextTokenEstimate(checkpoint) } : {},
-  }
-
-  for (const disposer of disposers.reverse()) disposer()
-  controller?.dispose()
-  return result
-}
-
-function helpCalls(result: JourneyResult): ToolCallSummary[] {
-  return result.toolCalls.filter(call => call.name === 'marivo_help')
-}
-
-function pythonCalls(result: JourneyResult): ToolCallSummary[] {
-  return result.toolCalls.filter(call => call.name === 'bound_python')
-}
-
-function targetList(call: ToolCallSummary | undefined): string[] {
-  if (typeof call?.arguments !== 'object' || call.arguments === null) return []
-  const targets = (call.arguments as { targets?: unknown }).targets
-  return Array.isArray(targets) ? targets.filter((value): value is string => typeof value === 'string') : []
-}
-
-function assertProtocolJourneys(results: Map<string, JourneyResult>): void {
-  const known = results.get('known-analysis')
-  assert.ok(known?.completed)
-  assert.deepEqual(targetList(helpCalls(known)[0]), ['analysis.observe'])
-  assert.equal(helpCalls(known)[0]?.isError, false)
-  assert.equal(pythonCalls(known).length, 1)
-  assert.match(known.finalText, /observe/i)
-  assert.match(known.finalText, /time_scope/)
-
-  const multiple = results.get('multiple-help')
-  assert.ok(multiple?.completed)
-  assert.ok(helpCalls(multiple).length >= 2)
-  assert.deepEqual(targetList(helpCalls(multiple)[0]), ['analysis.observe'])
-  assert.deepEqual(targetList(helpCalls(multiple)[1]), ['analysis.compare'])
-  assert.ok(helpCalls(multiple).slice(0, 2).every(call => call.isError === false))
-  assert.match(multiple.finalText, /observe/i)
-  assert.match(multiple.finalText, /compare/i)
-
-  const empty = results.get('empty-declaration')
-  assert.ok(empty?.completed)
-  assert.deepEqual(targetList(helpCalls(empty)[0]), [])
-  assert.equal(empty.checkpoint?.helpCalls[0]?.emptyDeclaration, true)
-
-  const invalid = results.get('invalid-target-repair')
-  assert.ok(invalid?.completed)
-  assert.deepEqual(targetList(helpCalls(invalid)[0]), ['analysis.not_a_real_target'])
-  assert.equal(helpCalls(invalid)[0]?.isError, true)
-  assert.deepEqual(targetList(helpCalls(invalid)[1]), ['analysis.observe'])
-  assert.equal(helpCalls(invalid)[1]?.isError, false)
-
-  const missing = results.get('missing-declaration-limit')
-  assert.ok(missing?.completed)
-  assert.equal(missing.checkpoint?.steeringRepairs, 2)
-  assert.equal(missing.checkpoint?.failure, 'missing-declaration-limit')
-  assert.equal(helpCalls(missing).length, 0)
-
-  const datasource = results.get('missing-datasource-credential')
-  assert.ok(datasource?.completed)
-  assert.equal(helpCalls(datasource)[0]?.isError, false)
-  assert.ok(targetList(helpCalls(datasource)[0]).includes('datasource'))
+function toolCalls(result: JourneyResult, name: string): ToolCallSummary[] {
+  return result.toolCalls.filter(call => call.name === name)
 }
 
 async function assertMissingCredentialDoctorFixture(pythonExecutable: string): Promise<void> {
@@ -279,42 +161,16 @@ async function assertMissingCredentialDoctorFixture(pythonExecutable: string): P
   }
 }
 
-function counterfactual(protocol: JourneyResult[], baseline: JourneyResult[]): object {
-  const contractSummaryAccepted = (item: JourneyResult): boolean => item.id === 'known-analysis'
-    ? /observe/i.test(item.finalText) && /time_scope/.test(item.finalText)
-    : /observe/i.test(item.finalText) && /compare/i.test(item.finalText)
-  const aggregate = (items: JourneyResult[]) => ({
-    journeys: items.length,
-    completed: items.filter(item => item.completed).length,
-    currentHelpObserved: items.filter(item => item.mode === 'protocol'
-      ? helpCalls(item).some(call => call.isError === false)
-      : pythonCalls(item).some(call => JSON.stringify(call.arguments).includes('marivo.help'))).length,
-    invalidHelpCalls: items.reduce((sum, item) => sum + helpCalls(item).filter(call => call.isError).length, 0),
-    staleOrUnsupportedSignatureSummaries: items.filter(item => !contractSummaryAccepted(item)).length,
-    retriesOrRepairs: items.reduce((sum, item) => (
-      sum + (item.checkpoint?.steeringRepairs ?? 0) + helpCalls(item).filter(call => call.isError).length
-    ), 0),
-    steps: items.reduce((sum, item) => sum + item.steps, 0),
-    latencyMs: items.reduce((sum, item) => sum + item.latencyMs, 0),
-    billedInputTokens: items.reduce((sum, item) => sum + item.usage.billedInputTokens, 0),
-    outputTokens: items.reduce((sum, item) => sum + item.usage.outputTokens, 0),
-    totalTokens: items.reduce((sum, item) => sum + item.usage.totalTokens, 0),
-  })
-  return {
-    scope: ['known-analysis', 'multiple-help'],
-    protocol: aggregate(protocol),
-    baseline: aggregate(baseline),
-    interpretationRule: 'Reliability is not inferred from protocol presence; completion and observed current-help use are reported separately from token, step, and latency cost.',
-  }
-}
-
 const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot })
 await assertMissingCredentialDoctorFixture(environment.binding.pythonExecutable)
 const credentialFailureEnvironment = await bindMarivoEnvironment({
   projectRoot: marivoRoot,
   pythonExecutable: environment.binding.pythonExecutable,
 })
-const skill = await readFile(path.join(marivoRoot, 'marivo', 'skills', 'marivo-analysis', 'SKILL.md'), 'utf8')
+const skillBodies = new Map([
+  ['marivo-analysis', await readFile(path.join(marivoRoot, 'marivo', 'skills', 'marivo-analysis', 'SKILL.md'), 'utf8')],
+  ['marivo-semantic', await readFile(path.join(marivoRoot, 'marivo', 'skills', 'marivo-semantic', 'SKILL.md'), 'utf8')],
+])
 const pythonPolicy = new FixedSubprocessPolicy(environment.binding.projectRoot)
 const ctx = new Context()
 await ctx.plugin(LlmRuntime)
@@ -333,13 +189,38 @@ await ctx.plugin(AgentRegistry)
 await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 
 ctx.systemPrompt.section({
-  name: 'slice4:marivo-analysis-skill',
+  name: 'slice4:skill-catalog',
   order: 100,
-  text: `${skill}\n\nValidation runtime: bound_python always runs the binding interpreter ${environment.binding.pythonExecutable} in ${environment.binding.projectRoot}. Keep code read-only and bounded.`,
+  text: `Available skills:\n- marivo-analysis: trusted governed data analysis\n- marivo-semantic: datasource and reusable semantic authoring or repair\nLoad the matching skill before Marivo work. Ordinary computation needs neither skill.`,
 })
+ctx.tools.register(defineTool({
+  name: 'skill',
+  description: 'Load the full instructions for one exact available skill.',
+  parameters: { name: { type: 'string', required: true } },
+  output: {
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', required: true },
+        provider: { type: 'string', required: true },
+        content: { type: 'string', required: true },
+      },
+    },
+    render: (_args, value) => [{
+      type: 'text',
+      text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
+    }],
+  },
+  async execute({ name }) {
+    const content = skillBodies.get(name)
+    if (content === undefined) throw new Error(`unknown skill ${name}`)
+    return { name, provider: 'marivo-source', content }
+  },
+}))
 ctx.tools.register(defineContentToolFixture({
   name: 'bound_python',
-  description: 'Run a short read-only Python snippet with the verified Marivo binding interpreter. Use this only after the required help declaration.',
+  description: 'Run a short read-only Python snippet with the verified binding interpreter.',
   parameters: {
     code: { type: 'string', required: true, description: 'Read-only Python source, at most 16000 characters.' },
   },
@@ -351,78 +232,119 @@ ctx.tools.register(defineContentToolFixture({
       limits: { timeoutMs: 30_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
       signal: exec.signal,
     })
-    const stdout = result.stdout.toString('utf8')
-    const stderr = result.stderr.toString('utf8')
     return [{
       type: 'text',
-      text: `exit_code=${String(result.exitCode)}\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+      text: `exit_code=${String(result.exitCode)}\nstdout:\n${result.stdout.toString('utf8')}\nstderr:\n${result.stderr.toString('utf8')}`,
     }]
   },
 }))
 
-const protocolSpecs = [
+async function runJourney(
+  id: string,
+  prompt: string,
+  journeyEnvironment: MarivoEnvironment = environment,
+): Promise<JourneyResult> {
+  const errors: unknown[] = []
+  const agent: Agent = ctx.agentLoop.create(SessionId(`slice4-${id}-${Date.now().toString(36)}`), {
+    provider: 'deepseek-official',
+    model,
+    maxTokens: 1_024,
+  }, { cwd: workspaceRoot })
+  const controller = installMarivoDisclosure(ctx, agent, journeyEnvironment)
+  const stopErrors = agent.ctx.on('agent/error', payload => errors.push(payload.error))
+  const startedAt = performance.now()
+  agent.followup(createUserMessage({
+    content: [{ type: 'text', text: prompt }],
+    source: { kind: 'user' },
+  }))
+  await agent.whenIdle()
+  const events = agent.session.events
+  const finalText = finalAssistantText(events)
+  const result: JourneyResult = {
+    id,
+    completed: finalText.includes(markerFor(id)),
+    finalText,
+    toolCalls: summarizeCalls(events),
+    steps: events.filter(event => event.type === 'step/start').length,
+    latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+    usage: usageTotals(events),
+    errors: errors.map(errorSummary),
+    disclosure: controller.telemetry(),
+  }
+  stopErrors()
+  controller.dispose()
+  return result
+}
+
+const specs = [
   {
-    id: 'known-analysis',
-    prompt: `Known Marivo analysis planning task: prepare the current minimal call for observing a governed revenue metric by country over a bounded quarter. First request exactly analysis.observe through marivo_help. After that result, call bound_python exactly once to print marivo.__version__. Give a concise call skeleton containing the current time_scope parameter and one live-help constraint; do not fabricate business data. End with ${markerFor('known-analysis')}.`,
+    id: 'analysis-activation',
+    environment,
+    prompt: `Call skill exactly once with {"name":"marivo-analysis"}. After the skill result and automatically supplied root help, call bound_python exactly once to print marivo.__version__. Explain briefly what the analysis root help establishes and end with ${markerFor('analysis-activation')}.`,
   },
   {
-    id: 'multiple-help',
-    prompt: `Multi-help contract task. Call marivo_help first with exactly ["analysis.observe"]. After its result, call marivo_help a second time with exactly ["analysis.compare"]. Do not combine them into one call. Summarize how their purposes differ, then end with ${markerFor('multiple-help')}.`,
+    id: 'semantic-activation',
+    environment,
+    prompt: `Call skill exactly once with {"name":"marivo-semantic"}. After the skill result and automatically supplied root help, explain briefly what authoring help owns. Do not call marivo_help or bound_python. End with ${markerFor('semantic-activation')}.`,
   },
   {
-    id: 'empty-declaration',
-    prompt: `This is arithmetic and needs no Marivo API detail: compute 7 * 6. Declare exactly targets=[] through marivo_help, then answer and end with ${markerFor('empty-declaration')}.`,
+    id: 'ordinary-no-activation',
+    environment,
+    prompt: `This is ordinary arithmetic. Call bound_python exactly once to print 7 * 6. Do not call skill or marivo_help. Report the result and end with ${markerFor('ordinary-no-activation')}.`,
   },
   {
-    id: 'invalid-target-repair',
-    prompt: `Repair journey. First call marivo_help with exactly ["analysis.not_a_real_target"]. After Marivo rejects it, repair without fuzzy substitution by choosing the canonical target analysis.observe from the inventory and call again. Summarize the successful target, then end with ${markerFor('invalid-target-repair')}.`,
-  },
-  {
-    id: 'missing-declaration-limit',
-    prompt: 'This journey intentionally omits the required declaration so the Plugin must stop it after its fixed repair limit.',
-    expectation: 'bounded-failure' as const,
-    faultInjectMissingDeclaration: true,
+    id: 'focused-help-dedup',
+    environment,
+    prompt: `Call skill with {"name":"marivo-analysis"}. After the automatic analysis root help, call marivo_help twice in separate steps with exactly ["analysis.observe"] each time. Confirm that the second result is an already-visible receipt and end with ${markerFor('focused-help-dedup')}.`,
   },
   {
     id: 'missing-datasource-credential',
-    prompt: `The bound project's doctor reports that MARIVO_CDN_REPLICA_USER and MARIVO_CDN_REPLICA_PASSWORD are missing. Request exactly ["datasource"] through marivo_help and explain briefly that live API disclosure remains usable even though datasource execution credentials are unavailable. End with ${markerFor('missing-datasource-credential')}.`,
+    environment: credentialFailureEnvironment,
+    prompt: `Call skill with {"name":"marivo-semantic"}. After automatic authoring help, call marivo_help with exactly ["datasource"]. Explain that live disclosure remains usable while datasource credentials are missing. End with ${markerFor('missing-datasource-credential')}.`,
   },
 ]
 
-const protocolResults: JourneyResult[] = []
-for (const spec of protocolSpecs) {
+const journeys: JourneyResult[] = []
+for (const spec of specs) {
   process.stdout.write(`slice4 real-model: ${spec.id}\n`)
-  const journeyEnvironment = spec.id === 'missing-datasource-credential'
-    ? credentialFailureEnvironment
-    : environment
-  protocolResults.push(await runJourney(ctx, journeyEnvironment, { ...spec, mode: 'protocol' }))
+  journeys.push(await runJourney(spec.id, spec.prompt, spec.environment))
 }
-const byId = new Map(protocolResults.map(result => [result.id, result]))
-assertProtocolJourneys(byId)
+const byId = new Map(journeys.map(result => [result.id, result]))
 
-const baselineSpecs = [
-  {
-    id: 'known-analysis',
-    prompt: `Known Marivo analysis planning task: prepare the current minimal call for observing a governed revenue metric by country over a bounded quarter. Use bound_python to inspect current live help for analysis.observe and print marivo.__version__. Give a concise call skeleton containing the current time_scope parameter and one live-help constraint; do not fabricate business data. End with ${markerFor('known-analysis')}.`,
-  },
-  {
-    id: 'multiple-help',
-    prompt: `Multi-contract task. Use bound_python to inspect current live help for analysis.observe and analysis.compare, summarize how their purposes differ, then end with ${markerFor('multiple-help')}.`,
-  },
-]
-const baselineResults: JourneyResult[] = []
-for (const spec of baselineSpecs) {
-  process.stdout.write(`slice4 baseline: ${spec.id}\n`)
-  baselineResults.push(await runJourney(ctx, environment, { ...spec, mode: 'baseline' }))
-}
-assert.ok(baselineResults.every(result => result.completed))
-assert.match(baselineResults[0]?.finalText ?? '', /observe/i)
-assert.match(baselineResults[0]?.finalText ?? '', /time_scope/)
-assert.match(baselineResults[1]?.finalText ?? '', /observe/i)
-assert.match(baselineResults[1]?.finalText ?? '', /compare/i)
+const analysis = byId.get('analysis-activation')
+assert.ok(analysis?.completed)
+assert.equal(toolCalls(analysis, 'skill').length, 1)
+assert.equal(toolCalls(analysis, 'marivo_help').length, 0)
+assert.equal(toolCalls(analysis, 'bound_python').length, 1)
+assert.deepEqual(analysis.disclosure.rootHelp.map(item => item.target), ['analysis'])
+
+const semantic = byId.get('semantic-activation')
+assert.ok(semantic?.completed)
+assert.equal(toolCalls(semantic, 'skill').length, 1)
+assert.equal(toolCalls(semantic, 'marivo_help').length, 0)
+assert.deepEqual(semantic.disclosure.rootHelp.map(item => item.target), ['authoring'])
+
+const ordinary = byId.get('ordinary-no-activation')
+assert.ok(ordinary?.completed)
+assert.equal(toolCalls(ordinary, 'skill').length, 0)
+assert.equal(toolCalls(ordinary, 'marivo_help').length, 0)
+assert.equal(toolCalls(ordinary, 'bound_python').length, 1)
+assert.equal(ordinary.disclosure.rootHelp.length, 0)
+
+const focused = byId.get('focused-help-dedup')
+assert.ok(focused?.completed)
+assert.deepEqual(toolCalls(focused, 'marivo_help').flatMap(call => call.delivery ?? []), [
+  'delivered',
+  'already-visible',
+])
+
+const datasource = byId.get('missing-datasource-credential')
+assert.ok(datasource?.completed)
+assert.deepEqual(datasource.disclosure.rootHelp.map(item => item.target), ['authoring'])
+assert.equal(toolCalls(datasource, 'marivo_help')[0]?.isError, false)
 
 const report = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   model: { provider: 'deepseek-official', id: model, thinking: 'disabled' },
   environment: {
@@ -434,14 +356,14 @@ const report = {
       missingCredentialValuesPresent: false,
     },
   },
-  protocolJourneys: protocolResults,
-  baselineJourneys: baselineResults,
-  counterfactual: counterfactual(
-    protocolResults.filter(result => result.id === 'known-analysis' || result.id === 'multiple-help'),
-    baselineResults,
-  ),
+  journeys,
 }
 
 await mkdir(path.dirname(reportPath), { recursive: true })
 await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 })
-process.stdout.write(`${JSON.stringify({ status: 'ok', reportPath, counterfactual: report.counterfactual }, null, 2)}\n`)
+process.stdout.write(`${JSON.stringify({ status: 'ok', reportPath, journeys: journeys.map(item => ({
+  id: item.id,
+  completed: item.completed,
+  steps: item.steps,
+  rootHelp: item.disclosure.rootHelp.map(record => record.target),
+})) }, null, 2)}\n`)

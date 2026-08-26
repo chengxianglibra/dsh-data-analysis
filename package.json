@@ -13,7 +13,7 @@
     "test": "npm run test:slice1 && npm run test:slice2 && npm run test:slice3 && npm run test:web",
     "test:slice1": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/environment/*.test.ts",
     "test:slice2": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/disclosure/*.test.ts",
-    "test:slice3": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/checkpoint/*.test.ts",
+    "test:slice3": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/activation/*.test.ts",
     "test:web": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/web/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "verify:plugin-package": "node scripts/verify-plugin-package.mjs",

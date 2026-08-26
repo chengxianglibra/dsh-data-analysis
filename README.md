@@ -12,7 +12,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - 按 Agent 的 `session.header.cwd` 识别 Workspace；
 - 为新 Workspace 创建最小 Marivo 项目结构；
 - 全局提供 `marivo-analysis` 和 `marivo-semantic` skills；
-- 要求 Agent 在每个直接用户轮次开始分析前声明所需的 Marivo live help；
+- 在 Agent 加载 `marivo-semantic` 或 `marivo-analysis` 后注入对应的实时根 Help；
 - 通过 `marivo_test` 和 DSH 凭证服务完成 datasource 连接测试；
 - 支持 DSH 的 `native`、`code` 和 `both` 工具模式。
 
@@ -92,16 +92,17 @@ Workspace，同时共享同一个 Marivo Python。
 
 ### 开始分析
 
-正常向 DSH Web 中的 Agent 提交分析任务即可，不需要手动初始化 Marivo。每个直接用户
-轮次开始时，插件会先向 Agent 暴露 `marivo_help` checkpoint：
+正常向 DSH Web 中的 Agent 提交任务即可，不需要手动初始化 Marivo。`skill`、`marivo_help`
+和普通工具从第一步起始终可见，插件不再按用户轮次设置工具门禁：
 
-- `native` 模式显示 `marivo_help`，并保留已有 `skill` 控制面；
-- `code` 模式显示 `run_code`，其 SDK 只声明 `marivo_help` 和已有 `skill`；
-- `both` 模式显示 `run_code`、`marivo_help` 和已有 `skill`。
+- 加载 `marivo-semantic` 后，下一次模型请求自动包含实时 `marivo.help("authoring")`；
+- 加载 `marivo-analysis` 后，下一次模型请求自动包含实时 `marivo.help("analysis")`；
+- 两个 skill 同一步加载时，两份根 Help 按稳定顺序原子注入；
+- 具体 API 的 focused Help 继续由 skill 指导 Agent 显式调用 `marivo_help`。
 
-保留 `skill` 可避免临时 Tool restriction 被误报成空 skill catalog；它不开放普通分析工具。
-合法 help 结果会在下一个 Agent step 开放其他分析工具。同一步中的其他直接工具调用及
-`run_code` 内的非控制面子调用会被拒绝。
+相同环境、target 和正文 digest 已在当前 Prompt 可见时不会重复注入；环境变化或 compaction
+隐藏原内容时会替换或恢复。插件不解析任意 bash/Python 来判断是否间接进入 Marivo，因此在
+没有结构化 Marivo 执行入口时，不承诺具体 focused Help 的执行前强制门禁。
 
 ### 测试 datasource 连接
 

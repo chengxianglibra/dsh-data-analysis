@@ -15,8 +15,8 @@ import LlmRuntime, {
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
-import { installMarivoCheckpoint } from '../src/checkpoint/index.ts'
+import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
+import { installMarivoDisclosure } from '../src/disclosure/index.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -33,15 +33,15 @@ function textResponse(text: string): StreamChunk[] {
 }
 
 function toolCallResponse(): StreamChunk[] {
-  const args = JSON.stringify({ targets: ['analysis.observe'] })
-  const id = CallId('slice3-real-help')
+  const args = JSON.stringify({ name: 'marivo-analysis' })
+  const id = CallId('slice3-real-skill')
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
-    { type: 'tool-call-delta', index: 0, id, name: 'marivo_help', argumentsDelta: args },
+    { type: 'tool-call-delta', index: 0, id, name: 'skill', argumentsDelta: args },
     {
       type: 'block-end',
       index: 0,
-      block: { type: 'tool-call', id, name: 'marivo_help', arguments: args },
+      block: { type: 'tool-call', id, name: 'skill', arguments: args },
     },
     { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } },
     { type: 'finish', reason: { kind: 'tool-calls' } },
@@ -80,12 +80,35 @@ ctx.tools.register(defineContentToolFixture({
   parameters: {},
   async execute() { return [{ type: 'text', text: 'ordinary' }] },
 }))
+ctx.tools.register(defineTool({
+  name: 'skill',
+  description: 'Load one available skill.',
+  parameters: { name: { type: 'string', required: true } },
+  output: {
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', required: true },
+        provider: { type: 'string', required: true },
+        content: { type: 'string', required: true },
+      },
+    },
+    render: (_args, value) => [{
+      type: 'text',
+      text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
+    }],
+  },
+  async execute({ name }) {
+    return { name, provider: 'slice3-real', content: 'analysis instructions' }
+  },
+}))
 
 const agent: Agent = ctx.agentLoop.create(SessionId('slice3-real'), {
   provider: 'validation',
   model: 'validation',
 })
-const controller = installMarivoCheckpoint(ctx, agent, environment)
+const controller = installMarivoDisclosure(ctx, agent, environment)
 agent.followup(createUserMessage({
   content: [{ type: 'text', text: 'Run a known Marivo analysis task.' }],
   source: { kind: 'user' },
@@ -93,26 +116,28 @@ agent.followup(createUserMessage({
 await agent.whenIdle()
 
 assert.equal(adapter.requests.length, 2)
-assert.deepEqual(adapter.requests[0]?.tools?.map(tool => tool.name), ['marivo_help'])
-assert.deepEqual(adapter.requests[1]?.tools?.map(tool => tool.name).sort(), ['marivo_help', 'ordinary'])
-assert.match(JSON.stringify(adapter.requests[0]?.messages), /Canonical target inventory/)
-assert.equal(controller.state, 'analysis-step')
-const telemetry = controller.telemetry()[0]
-assert.equal(telemetry?.checkpointCompleted, true)
-assert.equal(telemetry?.helpCalls[0]?.outcome, 'success')
-assert.ok((telemetry?.helpCalls[0]?.helpTextBytes ?? 0) > 0)
+assert.deepEqual(adapter.requests[0]?.tools?.map(tool => tool.name).sort(), ['marivo_help', 'ordinary', 'skill'])
+assert.deepEqual(adapter.requests[1]?.tools?.map(tool => tool.name).sort(), ['marivo_help', 'ordinary', 'skill'])
+assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.messages), /marivo_help_context/)
+assert.match(JSON.stringify(adapter.requests[1]?.messages), /marivo_help_context/)
+assert.match(JSON.stringify(adapter.requests[1]?.messages), /Target: analysis/)
+const telemetry = controller.telemetry()
+assert.deepEqual(controller.activeSkills, ['marivo-analysis'])
+assert.equal(telemetry.rootHelp[0]?.target, 'analysis')
+assert.ok((telemetry.rootHelp[0]?.helpTextBytes ?? 0) > 0)
 
 const helpResult = agent.session.events.find(event =>
   event.type === 'tool/result'
   && event.data.message.content.some(block => block.content.some(content =>
-    content.type === 'text' && content.text.includes('Target: analysis.observe'))))
+    content.type === 'text' && content.text.includes('marivo-analysis'))))
 assert.ok(helpResult)
 
 process.stdout.write(`${JSON.stringify({
   status: 'ok',
   binding: environment.binding,
   requestTools: adapter.requests.map(request => request.tools?.map(tool => tool.name) ?? []),
-  inventoryInFirstRequest: JSON.stringify(adapter.requests[0]?.messages).includes('Canonical target inventory'),
-  persistedHelpResult: true,
+  helpInFirstRequest: JSON.stringify(adapter.requests[0]?.messages).includes('marivo_help_context'),
+  helpInSecondRequest: JSON.stringify(adapter.requests[1]?.messages).includes('marivo_help_context'),
+  persistedSkillResult: true,
   telemetry,
 }, null, 2)}\n`)

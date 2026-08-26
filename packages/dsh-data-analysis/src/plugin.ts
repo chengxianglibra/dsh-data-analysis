@@ -7,10 +7,10 @@ import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
 import {
-  installMarivoCheckpoint,
-  type InstallCheckpointOptions,
-  type MarivoCheckpointController,
-} from './checkpoint/index.ts'
+  installMarivoDisclosure,
+  type MarivoDisclosureController,
+  type MarivoDisclosureOptions,
+} from './disclosure/index.ts'
 import {
   DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
   ensureSharedMarivoRuntime,
@@ -23,7 +23,7 @@ import { registerMarivoTestTool } from './datasource/index.ts'
 export const name = 'dsh-data-analysis'
 
 /** Services that must exist before the plugin binds and watches Agent scopes. */
-export const inject = ['agents', 'credentials', 'skills', 'tools', 'systemPrompt']
+export const inject = ['agents', 'credentials', 'skills', 'tools']
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -70,18 +70,18 @@ export type MarivoPluginEnvironmentResolver = (
 export function installMarivoPlugin(
   ctx: Context,
   environmentOrResolver: MarivoEnvironment | MarivoPluginEnvironmentResolver,
-  options: InstallCheckpointOptions & {
+  options: MarivoDisclosureOptions & {
     /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
     credentials?: Pick<CredentialProvider, 'resolve'>
   } = {},
 ): () => void {
-  const installed = new Map<Agent, MarivoCheckpointController>()
+  const installed = new Map<Agent, MarivoDisclosureController>()
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
     const source = environmentOrResolver instanceof MarivoEnvironment
       ? environmentOrResolver
       : () => Promise.resolve(environmentOrResolver(agent))
-    const controller = installMarivoCheckpoint(ctx, agent, source, options)
+    const controller = installMarivoDisclosure(ctx, agent, source, options)
     const credentials = options.credentials ?? ctx.credentials
     if (credentials === undefined) {
       controller.dispose()
