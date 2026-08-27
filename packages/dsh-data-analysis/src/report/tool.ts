@@ -1,4 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
 import {
@@ -15,6 +17,19 @@ import { publishReport } from './publish.ts'
 import { compileReportVisuals } from './visual.ts'
 
 export const MARIVO_REPORT_RENDER_TOOL_NAME = 'marivo_report_render'
+export const REPORT_PRESENTATION_META_KIND = 'marivo-html-report'
+export const REPORT_PRESENTATION_META_VERSION = 1
+export const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
+
+export interface ReportPresentationMetaV1 {
+  readonly [key: string]: JsonValue
+  readonly kind: typeof REPORT_PRESENTATION_META_KIND
+  readonly version: typeof REPORT_PRESENTATION_META_VERSION
+  readonly title: string
+  readonly path: string
+  readonly reportDigest: string
+  readonly disclosures: string[]
+}
 
 const REPORT_LIMITS = Object.freeze({
   timeoutMs: 120_000,
@@ -161,6 +176,57 @@ export function renderReportToolValue(value: ReportRenderValueV1): string {
   ].join('\n')
 }
 
+/** Project the replay-only report card summary without copying analytical payloads. */
+export function reportPresentationMeta(
+  value: ReportRenderValueV1,
+): ReportPresentationMetaV1 | null {
+  if (value.status !== 'ready') return null
+  return {
+    kind: REPORT_PRESENTATION_META_KIND,
+    version: REPORT_PRESENTATION_META_VERSION,
+    title: value.title,
+    path: value.path,
+    reportDigest: value.report_digest,
+    disclosures: [...value.disclosures],
+  }
+}
+
+/**
+ * Preserve the ready card projection on Code Mode's durable sub-dispatch event.
+ * Harness intentionally omits presentationMeta for nested calls; this custom
+ * block changes only the logged copy and never the program value or model text.
+ */
+export function installMarivoReportCodeDelivery(ctx: Context): () => void {
+  const pending = new Map<string, ReportPresentationMetaV1>()
+  const stopResult = ctx.on('tools/result', (exec, result) => {
+    if (
+      exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME
+      || exec.parent === undefined
+      || result.isError
+    ) return
+    const meta = reportPresentationMeta(result.value as unknown as ReportRenderValueV1)
+    if (meta !== null) pending.set(String(exec.callId), meta)
+  })
+  const stopDispatchLog = ctx.on('tools/code-dispatch-log', async (dispatch, next) => {
+    const content = await next()
+    if (dispatch.name !== MARIVO_REPORT_RENDER_TOOL_NAME) return content
+    const key = String(dispatch.subCallId)
+    const meta = pending.get(key)
+    pending.delete(key)
+    if (dispatch.isError || meta === undefined) return content
+    const card = { type: REPORT_DURABLE_CONTENT_KIND, meta } as unknown as ContentBlock
+    return [...content, card]
+  }, { prepend: true })
+  let active = true
+  return () => {
+    if (!active) return
+    active = false
+    stopDispatchLog()
+    stopResult()
+    pending.clear()
+  }
+}
+
 export interface MarivoReportToolOptions {
   readonly reportsRoot?: string
   readonly now?: () => Date
@@ -184,6 +250,7 @@ export function createMarivoReportRenderTool(
     output: {
       schema: outputSchema,
       render: (_args, value) => [{ type: 'text', text: renderReportToolValue(value as ReportRenderValueV1) }],
+      presentationMeta: (_args, value) => reportPresentationMeta(value as ReportRenderValueV1),
     },
     timeoutMs: 135_000,
     async execute(args, exec): Promise<ReportRenderValueV1> {

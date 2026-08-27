@@ -179,8 +179,9 @@ marivo_report_render({ session_id, document })
 
 工具只接受 revalidation 为 `admissible` 的 Artifact，并对每个带 Finding 的 block 单独执行 Marivo Evidence
 compatibility。它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
-HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Slice 1 在 Tool 文本中返回绝对 `index.html`
-路径；Web 的“打开报告”卡片尚未实现。完整边界见
+HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Tool 文本返回绝对 `index.html` 路径；Web
+卡片从顶层 meta 或 Code Mode 耐久子调用 block 恢复标题、披露和路径，用户点击“打开报告”后才调用 DSH
+`host.openPath`。打开失败只显示在当前卡片中，不改变原 Tool Result。完整边界见
 [HTML 报告渲染模块](docs/modules/html-report-rendering.md)。
 
 默认产物目录为：

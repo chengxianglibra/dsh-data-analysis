@@ -9,6 +9,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 
 const TOOL_NAME = 'marivo_test'
+const REPORT_TOOL_NAME = 'marivo_report_render'
+const REPORT_META_KIND = 'marivo-html-report'
+const REPORT_META_VERSION = 1
+const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
 const CITATION_META_KIND = 'marivo-evidence-citations'
 const CITATION_META_VERSION = 1
 const CITATION_REGISTRY_DEFINITION_KIND = 'marivo-citation-registry'
@@ -59,6 +63,21 @@ export interface MarivoCitationSource {
 export interface ParsedMarivoFootnotes {
   references: string[]
   definitions: string[]
+}
+
+export interface MarivoReportPresentationMeta {
+  readonly kind: typeof REPORT_META_KIND
+  readonly version: typeof REPORT_META_VERSION
+  readonly title: string
+  readonly path: string
+  readonly reportDigest: string
+  readonly disclosures: readonly string[]
+}
+
+export interface MarivoReportCardModel {
+  readonly state: 'running' | 'ready' | 'fallback'
+  readonly summary: string
+  readonly report: MarivoReportPresentationMeta | null
 }
 
 export interface MarivoResolvedCitation {
@@ -451,6 +470,90 @@ function settledText(block: any): string {
     .join('')
 }
 
+/** Parse the closed replay contract persisted by marivo_report_render. */
+export function parseReportPresentationMeta(value: unknown): MarivoReportPresentationMeta | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const meta = value as Record<string, unknown>
+  const allowed = new Set(['kind', 'version', 'title', 'path', 'reportDigest', 'disclosures'])
+  if (
+    Object.keys(meta).some(key => !allowed.has(key))
+    || Object.keys(meta).length !== allowed.size
+    || meta.kind !== REPORT_META_KIND
+    || meta.version !== REPORT_META_VERSION
+    || typeof meta.title !== 'string'
+    || meta.title === ''
+    || typeof meta.path !== 'string'
+    || meta.path === ''
+    || typeof meta.reportDigest !== 'string'
+    || !/^[0-9a-f]{64}$/.test(meta.reportDigest)
+    || !Array.isArray(meta.disclosures)
+    || !meta.disclosures.every(item => typeof item === 'string')
+  ) return null
+  return Object.freeze({
+    kind: REPORT_META_KIND,
+    version: REPORT_META_VERSION,
+    title: meta.title,
+    path: meta.path,
+    reportDigest: meta.reportDigest,
+    disclosures: Object.freeze([...(meta.disclosures as string[])]),
+  })
+}
+
+/** Decode the Code Mode-only card block from a persisted sub-dispatch result. */
+export function parseReportDurableContent(value: unknown): MarivoReportPresentationMeta | null {
+  if (!Array.isArray(value)) return null
+  const cards = value.filter(item => (
+    typeof item === 'object'
+    && item !== null
+    && !Array.isArray(item)
+    && (item as Record<string, unknown>).type === REPORT_DURABLE_CONTENT_KIND
+  )) as Array<Record<string, unknown>>
+  if (cards.length !== 1) return null
+  const card = cards[0]!
+  if (Object.keys(card).length !== 2 || !Object.hasOwn(card, 'meta')) return null
+  return parseReportPresentationMeta(card.meta)
+}
+
+/** Derive one live-or-replayed card solely from the frozen Tool call slice. */
+export function marivoReportCardModel(block: any): MarivoReportCardModel {
+  if (block === null || typeof block !== 'object' || !('kind' in block)) {
+    return { state: 'running', summary: '正在生成 HTML 报告…', report: null }
+  }
+  const text = settledText(block)
+  if (block.isError !== true) {
+    const report = parseReportPresentationMeta(block.meta)
+      ?? (block.meta === undefined ? parseReportDurableContent(block.content) : null)
+    if (report !== null) return { state: 'ready', summary: report.title, report }
+  }
+  const error = block.error
+  const fallback = text || (
+    typeof error?.name === 'string' && typeof error?.code === 'string'
+      ? `${error.name}: ${error.code}`
+      : '报告工具已结束，但没有可打开的报告。'
+  )
+  return { state: 'fallback', summary: fallback, report: null }
+}
+
+function reportOpenError(value: unknown): string {
+  if (value instanceof Error && value.message !== '') return value.message
+  return typeof value === 'string' && value !== '' ? value : '无法打开报告。'
+}
+
+/** Invoke the privileged Host handoff and reject every non-canonical response. */
+export async function openMarivoReport(api: any, path: string): Promise<void> {
+  const response = await api.host.openPath({ path })
+  if (response?.result?.ok !== true) {
+    throw new Error(
+      typeof response?.result?.error?.message === 'string'
+        ? response.result.error.message
+        : 'Host 拒绝打开报告。',
+    )
+  }
+  if (response.result.value?.opened !== true) {
+    throw new Error('Host 返回了无效的打开报告响应。')
+  }
+}
+
 const rowStyle = {
   display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, padding: '4px 8px',
   borderRadius: 8, color: 'var(--dsw-alias-text-primary, inherit)',
@@ -575,6 +678,91 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
   )
 }
 
+const reportCardStyle = {
+  display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 10,
+  border: '1px solid var(--dsw-alias-border-subtle, #d7d7d7)',
+  background: 'var(--dsw-alias-surface-secondary, rgba(127, 127, 127, 0.06))',
+  color: 'var(--dsw-alias-text-primary, inherit)',
+}
+const reportHeadingStyle = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+}
+const reportPathStyle = {
+  margin: 0, overflowWrap: 'anywhere', color: 'var(--dsw-alias-text-secondary, #666)',
+  fontSize: 12,
+}
+const reportDisclosureStyle = {
+  display: 'grid', gap: 4, margin: 0, paddingLeft: 18,
+  color: 'var(--dsw-alias-text-secondary, #666)', fontSize: 12,
+}
+const reportFallbackStyle = {
+  margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit',
+  color: 'var(--dsw-alias-text-secondary, #666)', fontSize: 12,
+}
+
+/** Replay-safe immutable report card with a click-time Host handoff. */
+export function MarivoReportToolView({ callId, block, connection }: any) {
+  const model = useMemo(() => marivoReportCardModel(block), [block])
+  const [busy, setBusy] = useState(false)
+  const [openError, setOpenError] = useState<string | null>(null)
+
+  if (model.state === 'running') {
+    return (
+      <div style={rowStyle} data-marivo-report-call={callId}>
+        <span aria-hidden="true">▣</span>
+        <strong>HTML 分析报告</strong>
+        <span style={summaryStyle}>{model.summary}</span>
+      </div>
+    )
+  }
+
+  if (model.report === null) {
+    return (
+      <section style={reportCardStyle} data-marivo-report-call={callId}>
+        <strong>HTML 分析报告</strong>
+        <pre style={reportFallbackStyle}>{model.summary}</pre>
+      </section>
+    )
+  }
+
+  const open = async () => {
+    setBusy(true)
+    setOpenError(null)
+    try {
+      await openMarivoReport(connection.api, model.report.path)
+    } catch (error) {
+      setOpenError(reportOpenError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section style={reportCardStyle} data-marivo-report-call={callId}>
+      <div style={reportHeadingStyle}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--dsw-alias-text-secondary, #666)' }}>
+            HTML 分析报告
+          </div>
+          <strong>{model.report.title}</strong>
+        </div>
+        <Button variant="primary" size="sm" disabled={busy} onClick={() => { void open() }}>
+          {busy ? '正在打开…' : '打开报告'}
+        </Button>
+      </div>
+      <p style={reportPathStyle}>{model.report.path}</p>
+      {model.report.disclosures.length === 0 ? null : (
+        <ul style={reportDisclosureStyle}>
+          {model.report.disclosures.map((disclosure, index) => (
+            <li key={`${index}:${disclosure}`}>{disclosure}</li>
+          ))}
+        </ul>
+      )}
+      {openError === null ? null : <p role="alert" style={errorStyle}>{openError}</p>}
+    </section>
+  )
+}
+
 const sourceCardStyle = {
   marginTop: 10,
   padding: '10px 12px',
@@ -656,9 +844,15 @@ export function apply(ctx: Context): void {
   const BoundMarivoTestToolView = (props: any) => (
     <MarivoTestToolView {...props} connection={connection} />
   )
+  const BoundMarivoReportToolView = (props: any) => (
+    <MarivoReportToolView {...props} connection={connection} />
+  )
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: TOOL_NAME,
   }, BoundMarivoTestToolView))
+  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+    name: 'tool.call.toolview', key: REPORT_TOOL_NAME,
+  }, BoundMarivoReportToolView))
   ctx.conversationEvents.register(marivoCitationRegistryDefinition)
   ctx.conversationEvents.register(marivoAnswerCitationsDefinition)
   ctx.effect(() => ctx.locale.register(CITATION_LOCALE_NAMESPACE, {

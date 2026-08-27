@@ -43,8 +43,8 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 | Disclosure controller | Agent | 观察 Session surface/Tool result，注册 `marivo_help` 和 pre-step hook |
 | `marivo_test` | Agent scope | 使用同一 Agent Environment source，随 controller 清理 |
 | `marivo_evidence_cite` + 动态 prompt | Agent scope | registry 按 Session 隔离；prompt 仅在 `marivo-analysis` 激活后出现 |
-| `marivo_report_render` + 动态 prompt | Agent scope | 完整文档编译为不可变本机 HTML；prompt 仅在 `marivo-analysis` 激活后出现 |
-| Web Tool View | Web client context | 按 `marivo_test` Tool name 注入 slot |
+| `marivo_report_render` + 动态 prompt | Agent scope | 编译不可变本机 HTML，并为 Code Mode 子调用补充耐久卡片投影；prompt 仅在 `marivo-analysis` 激活后出现 |
+| Web Tool View | Web client context | 分别按 `marivo_test` 与 `marivo_report_render` Tool name 注入 slot |
 | Web 来源卡片 | Web client context | 从标准 Tool meta 与 assistant message 重放，selector 无引用时不挂载 |
 
 插件不改变 inherited Tool registry 的可见性，也不为 native/code/both 模式维护分支逻辑。Tool 展示和

@@ -143,7 +143,9 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v1`。插件通过
 当前 Environment Binding 批量恢复和 revalidate 精确 Artifact，并按 block 校验 Finding compatibility；
 只使用原始公开投影行渲染 text、line/bar chart、table 和 evidence。报告以 canonical identity 发布到
-`$DSH_HOME` 下的不可变目录，当前 Slice 1 通过 Tool 文本返回绝对路径；Web 打开卡片留给后续 Slice。
+`$DSH_HOME` 下的不可变目录。Tool 文本返回绝对路径；顶层 ready 结果把闭合报告摘要写入标准
+`tool/result.meta`，Code Mode nested ready 结果把同一摘要写入标准子调用事件的耐久 ContentBlock。Web Tool
+View 可在 Session replay 中恢复卡片，并仅在用户点击后调用 `host.openPath`。
 
 ## 状态与数据所有权
 

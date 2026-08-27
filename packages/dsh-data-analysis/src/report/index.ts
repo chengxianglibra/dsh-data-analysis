@@ -38,11 +38,16 @@ export {
 export { renderReportHtml, REPORT_RENDERER_VERSION } from './render.ts'
 export {
   createMarivoReportRenderTool,
+  installMarivoReportCodeDelivery,
   MARIVO_REPORT_RENDER_TOOL_NAME,
+  REPORT_DURABLE_CONTENT_KIND,
+  REPORT_PRESENTATION_META_KIND,
+  REPORT_PRESENTATION_META_VERSION,
   registerMarivoReportRenderTool,
+  reportPresentationMeta,
   renderReportToolValue,
 } from './tool.ts'
-export type { MarivoReportToolOptions } from './tool.ts'
+export type { MarivoReportToolOptions, ReportPresentationMetaV1 } from './tool.ts'
 export { compileReportVisuals } from './visual.ts'
 export type {
   CompiledChartBlock,

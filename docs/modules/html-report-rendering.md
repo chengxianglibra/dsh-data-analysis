@@ -6,8 +6,9 @@
 入口是 `marivo_report_render({ session_id, document })`。Agent 拥有报告标题、章节、顺序、文字和图表选择；
 插件只校验文档及精确 Marivo 引用、生成展示投影、渲染并原子发布文件。
 
-当前交付的是设计中的 Slice 1：Tool 通过文本返回绝对 `index.html` 路径。尚未实现 Web 报告卡片、
-`host.openPath`、Session replay 卡片和真实模型验收；这些分别属于 Slice 2 和 Slice 3。
+当前已交付设计中的 Slice 1 与 Slice 2：Tool 通过文本返回绝对 `index.html` 路径，Web Tool View 从标准
+`tool/result.meta` 恢复报告卡片，并在用户点击后调用 `host.openPath`。Slice 3 的真实模型、真实报告和视觉
+验收尚未执行。
 
 ## 编译流程
 
@@ -75,6 +76,20 @@ identity，因此相同输入复用首次完整发布的目录。
 Publisher 在同一父目录创建随机 staging，使用目录 `0700`、文件 `0600`，回读并验证 manifest、内容哈希和
 权限后 rename。并发首次发布由一个完整目录胜出；其他调用只在已有目录完全一致时复用，不覆盖损坏目录。
 `index.html` 超过 10 MiB 时不发布。模块不创建 latest、registry、数据库、Session event 或 GC 状态。
+
+## Web 交付与回放
+
+顶层 ready 结果把 `{ kind, version, title, path, reportDigest, disclosures }` 投影到标准 `tool/result.meta`；
+blocked 结果使用 `null` 哨兵，不产生可打开报告卡片。Harness 不为 Code Mode nested Tool 计算
+`presentationMeta`，因此插件通过 `tools/result` 与 `tools/code-dispatch-log`，只在标准 `tool/code-dispatch`
+事件的耐久日志副本中追加一个同 shape 的 `marivo-report-card` ContentBlock；程序 value 与模型可见文本均不变。
+
+客户端严格校验闭合的 `marivo-html-report` v1 metadata，以及恰好一个闭合的 nested card block，并且只依赖
+已冻结的 Tool call/result slice。因此 native、code 与 both 模式的 Session replay 都不读取报告文件、不访问
+Marivo，也不引入自定义 Session event。旧版本、畸形、blocked 或失败结果回退到原 Tool 文本。
+
+“打开报告”按钮调用 `connection.api.host.openPath({ path })`。Host opener 不可用、trust fence 拒绝、RPC
+失败或异常都只进入卡片本地错误状态，不修改已持久化 Tool Result、metadata 或不可变报告产物。
 
 ## Agent 触发边界与验证
 

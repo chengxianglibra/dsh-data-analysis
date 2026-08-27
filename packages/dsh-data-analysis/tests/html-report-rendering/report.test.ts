@@ -4,16 +4,18 @@ import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { CodeRuntime, type CodeRunRequest, type CodeRunResult } from '@deepseek-ai/dsh-code-runtime'
 import { Context } from '@deepseek-ai/cordis'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { RUN_CODE_NAME, defineTool } from '@deepseek-ai/dsh-tools'
 import { MarivoEnvironment } from '../../src/environment/binding.ts'
 import { FixedSubprocessPolicy } from '../../src/environment/subprocess.ts'
 import {
   canonicalJson,
   compileReportVisuals,
   createMarivoReportRenderTool,
+  installMarivoReportCodeDelivery,
   MARIVO_REPORT_RENDER_TOOL_NAME,
   parseReportDocument,
   parseReportProjection,
@@ -59,6 +61,16 @@ const artifact: ReportArtifactProjection = {
 
 const projection: ReportProjectionBundle = {
   sessionId: 'session-report', artifacts: [artifact], findings: [], compatibilities: [],
+}
+
+class ReportCodeRuntime extends CodeRuntime {
+  readonly language = 'typescript'
+  readonly isolation = 'report-test'
+  behavior: (request: CodeRunRequest) => Promise<CodeRunResult> = () => Promise.resolve({ logs: [] })
+
+  run(request: CodeRunRequest): Promise<CodeRunResult> {
+    return this.behavior(request)
+  }
 }
 
 function compiled() {
@@ -325,7 +337,121 @@ test('nullable numeric projection cells remain null for table rendering', () => 
   assert.match(renderReportHtml(result.value, '2026-08-27T01:02:03.000Z'), /<td>—<\/td>/)
 })
 
-test('registered Tool completes the server-only path and persists no presentation metadata', async (t) => {
+test('Code Mode logs one durable ready card block without changing nested Tool text', async () => {
+  const ctx = new Context()
+  const dispose = installMarivoReportCodeDelivery(ctx)
+  const ready = {
+    status: 'ready', title: 'Code report', path: '/reports/code/index.html',
+    report_digest: 'a'.repeat(64), document_digest: 'b'.repeat(64),
+    artifact_refs: [], finding_ids: [], disclosures: ['bounded'],
+  }
+  const exec = {
+    callId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    parent: Symbol('outer'), arguments: {}, signal: new AbortController().signal,
+  }
+  ctx.emit('tools/result', exec as never, {
+    isError: false, value: ready, content: [{ type: 'text', text: 'original text' }],
+  } as never)
+  const original = [{ type: 'text', text: 'original text' }] as const
+  const logged = await ctx.waterfall('tools/code-dispatch-log', {
+    exec: {} as never, subCallId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    isError: false, content: [...original],
+  } as never, () => Promise.resolve([...original]))
+  assert.deepEqual(logged, [
+    ...original,
+    {
+      type: 'marivo-report-card',
+      meta: {
+        kind: 'marivo-html-report', version: 1, title: ready.title, path: ready.path,
+        reportDigest: ready.report_digest, disclosures: ready.disclosures,
+      },
+    },
+  ])
+  assert.deepEqual(original, [{ type: 'text', text: 'original text' }])
+
+  const replayed = await ctx.waterfall('tools/code-dispatch-log', {
+    exec: {} as never, subCallId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    isError: false, content: [...original],
+  } as never, () => Promise.resolve([...original]))
+  assert.deepEqual(replayed, original, 'one tools/result observation must mint only one block')
+
+  ctx.emit('tools/result', { ...exec, callId: 'outer:code:2' } as never, {
+    isError: false,
+    value: { status: 'blocked', stage: 'document', issues: [] },
+    content: [{ type: 'text', text: 'blocked' }],
+  } as never)
+  const blocked = await ctx.waterfall('tools/code-dispatch-log', {
+    exec: {} as never, subCallId: 'outer:code:2', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    isError: false, content: [{ type: 'text', text: 'blocked' }],
+  } as never, () => Promise.resolve([{ type: 'text', text: 'blocked' }]))
+  assert.deepEqual(blocked, [{ type: 'text', text: 'blocked' }])
+
+  dispose()
+  ctx.emit('tools/result', { ...exec, callId: 'outer:code:3' } as never, {
+    isError: false, value: ready, content: [{ type: 'text', text: 'after dispose' }],
+  } as never)
+  const disposed = await ctx.waterfall('tools/code-dispatch-log', {
+    exec: {} as never, subCallId: 'outer:code:3', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    isError: false, content: [{ type: 'text', text: 'after dispose' }],
+  } as never, () => Promise.resolve([{ type: 'text', text: 'after dispose' }]))
+  assert.deepEqual(disposed, [{ type: 'text', text: 'after dispose' }])
+})
+
+test('real run_code sub-dispatch replays the report card block through the standard event', async () => {
+  const ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime, { mode: 'code' })
+  await ctx.plugin(ReportCodeRuntime)
+  const ready = {
+    status: 'ready', title: 'Nested report', path: '/reports/nested/index.html',
+    report_digest: 'c'.repeat(64), document_digest: 'd'.repeat(64),
+    artifact_refs: [], finding_ids: [], disclosures: ['nested delivery'],
+  }
+  ctx.tools.register(defineTool({
+    name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    description: 'Fixture report renderer',
+    parameters: {},
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: () => [{ type: 'text', text: 'nested original text' }],
+    },
+    execute: () => Promise.resolve(ready),
+  }))
+  const dispose = installMarivoReportCodeDelivery(ctx)
+  const runtime = ctx.codeRuntime as ReportCodeRuntime
+  runtime.behavior = async (request) => {
+    const value = await request.bindings[0]!.functions[MARIVO_REPORT_RENDER_TOOL_NAME]!({})
+    return { logs: [], value: JSON.stringify(value) }
+  }
+  const events: Array<{ type: string; data: any }> = []
+  const agent = {
+    session: { append(type: string, data: unknown) { events.push({ type, data }) } },
+  }
+  const result = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('report-code-parent'),
+    name: RUN_CODE_NAME,
+    arguments: { code: 'report()', description: 'Render one report' },
+    agent: agent as never,
+  })
+  assert.equal(result.isError, false, JSON.stringify(result))
+  const dispatch = events.find(event => event.type === 'tool/code-dispatch')
+  assert.ok(dispatch)
+  assert.equal(dispatch.data.name, MARIVO_REPORT_RENDER_TOOL_NAME)
+  assert.deepEqual(dispatch.data.content, [
+    { type: 'text', text: 'nested original text' },
+    {
+      type: 'marivo-report-card',
+      meta: {
+        kind: 'marivo-html-report', version: 1, title: ready.title, path: ready.path,
+        reportDigest: ready.report_digest, disclosures: ready.disclosures,
+      },
+    },
+  ])
+  dispose()
+})
+
+test('registered Tool persists a closed ready card summary and null for blocked results', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-tool-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const executable = path.join(root, 'fixture-python')
@@ -359,7 +485,32 @@ test('registered Tool completes the server-only path and persists no presentatio
   })
   assert.equal(result.isError, false, JSON.stringify(result))
   if (result.isError) return
-  assert.equal((result.value as { status: string }).status, 'ready')
-  assert.equal(result.meta, undefined)
+  const value = result.value as {
+    status: string; title: string; path: string; report_digest: string; disclosures: string[]
+  }
+  assert.equal(value.status, 'ready')
+  assert.deepEqual(result.meta, {
+    kind: 'marivo-html-report', version: 1, title: value.title, path: value.path,
+    reportDigest: value.report_digest, disclosures: value.disclosures,
+  })
+  assert.deepEqual(Object.keys(result.meta as object).sort(), [
+    'disclosures', 'kind', 'path', 'reportDigest', 'title', 'version',
+  ])
   assert.match(result.content[0]?.type === 'text' ? result.content[0].text : '', /HTML report ready/)
+
+  const blocked = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('report-blocked'), name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    arguments: {
+      session_id: 'session-report',
+      document: { ...document, sections: [] },
+    },
+  })
+  assert.equal(blocked.isError, false, JSON.stringify(blocked))
+  assert.equal((blocked.value as { status: string }).status, 'blocked')
+  assert.equal(blocked.meta, null)
+  assert.match(
+    blocked.content[0]?.type === 'text' ? blocked.content[0].text : '',
+    /HTML report rendering is blocked at stage document/,
+  )
 })

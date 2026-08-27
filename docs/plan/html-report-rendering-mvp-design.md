@@ -3,7 +3,7 @@
 ## 文档状态
 
 本文是分 Slice 实施设计。Slice 1 的服务端编译器、checked Marivo projection、不可变发布和
-`marivo_report_render` 已实现；Slice 2 的 Web 交付卡片与 Slice 3 的真实环境验收尚未实现。目标是在不引入
+`marivo_report_render`，以及 Slice 2 的 Web 交付卡片均已实现；Slice 3 的真实环境验收尚未执行。目标是在不引入
 Report 状态机、不复制 Marivo 分析契约的前提下，让 Agent 把一次分析编排成可打开、可打印、可追溯的
 自包含 HTML 报告。
 
@@ -389,11 +389,18 @@ packages/dsh-data-analysis/src/report/
 
 ### Slice 2：Web 交付卡片
 
+状态：已实现。
+
 - `presentationMeta` 投影不可变报告摘要；
 - `client.tsx` 注册 `marivo_report_render` Tool View；
 - settled card 显示 title、disclosures、path 和“打开报告”；
 - 点击后调用 `host.openPath`，错误只留在卡片本地；
 - Session replay 从 meta 恢复同一张卡片，不访问文件或 Marivo。
+
+当前 Harness 要求 `presentationMeta` 对所有成功 Tool 值返回 lossless JSON，因此 ready 使用闭合的
+`marivo-html-report` v1 对象，blocked 使用 `null` 哨兵。Code Mode nested Tool 不计算 `presentationMeta`，
+插件通过 `tools/code-dispatch-log` 只向标准子调用事件的耐久日志副本追加同 shape card block，不改变程序 value
+或模型文本；客户端只把上述两种严格投影视为可打开报告。
 
 ### Slice 3：真实环境验收
 

@@ -22,7 +22,10 @@ import {
 import { registerMarivoTestTool } from './datasource/index.ts'
 import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import { registerMarivoEvidenceCiteTool } from './evidence/index.ts'
-import { registerMarivoReportRenderTool } from './report/index.ts'
+import {
+  installMarivoReportCodeDelivery,
+  registerMarivoReportRenderTool,
+} from './report/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -150,6 +153,7 @@ export function installMarivoPlugin(
     }))
     controller.addDisposer(registerMarivoEvidenceCiteTool(agent.ctx, source, agent.session))
     controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, source))
+    controller.addDisposer(installMarivoReportCodeDelivery(agent.ctx))
     controller.addDisposer(agent.ctx.systemPrompt.section({
       name: 'marivo:datasource-credentials',
       order: 170,

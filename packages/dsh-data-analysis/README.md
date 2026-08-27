@@ -68,6 +68,7 @@ entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详
 加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
 `marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
 bridge 恢复并 revalidate 精确 Artifact、按 block 检查 Finding compatibility，随后生成无 JavaScript、
-无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。当前 Slice 1 只在 Tool
-文本中返回绝对路径，不包含 Web 打开卡片。详见
+无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。Tool 文本返回绝对路径；
+Web Tool View 从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复报告卡片，用户点击后才通过
+DSH `host.openPath` 打开文件。Slice 3 的真实环境与视觉验收尚未执行。详见
 [HTML 报告渲染模块](../../docs/modules/html-report-rendering.md)。
