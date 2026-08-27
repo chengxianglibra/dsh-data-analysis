@@ -228,6 +228,7 @@ npm install
 npm run typecheck
 npm test
 npm run test:html-report-rendering
+npm run validate:html-report-rendering:real
 npm run build
 npm run verify:plugin-package
 npm run pack:plugin

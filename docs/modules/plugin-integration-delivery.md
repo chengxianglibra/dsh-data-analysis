@@ -121,7 +121,8 @@ CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsco
 | 补充真实验证 | `npm run validate:plugin-integration-delivery:real` | 通过真实 Cordis `apply` 和模型验证完整插件组合 |
 
 各模块按边界提供 `test:<module>`，已有真实环境 runner 继续使用 `validate:<module>:real`。HTML report
-当前只交付确定性 Slice 1；它的真实 Marivo/DSH Web/模型 runner 属于 Slice 3。架构变更应优先补充对应
+使用 `validate:html-report-rendering:real` 验证真实 Marivo 与 Agent journey；DSH Web 卡片、opener 和视觉检查
+仍是独立门禁，当前 Web toolset 与打印 Evidence 检查 blocked。架构变更应优先补充对应
 模块的确定性测试；只有真实解释器、DSH Web 或模型交互边界发生变化时，才需要相应的真实验证。
 
 Plugin 确定性测试位于

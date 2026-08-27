@@ -214,6 +214,7 @@ npm run validate:runtime-workspace:real
 npm run validate:environment-execution:real
 npm run validate:help-disclosure:real
 npm run validate:datasource-credentials:real
+npm run validate:html-report-rendering:real
 npm run validate:plugin-integration-delivery:real
 ```
 

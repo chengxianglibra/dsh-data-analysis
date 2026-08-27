@@ -3,7 +3,8 @@
 ## 文档状态
 
 本文是分 Slice 实施设计。Slice 1 的服务端编译器、checked Marivo projection、不可变发布和
-`marivo_report_render`，以及 Slice 2 的 Web 交付卡片均已实现；Slice 3 的真实环境验收尚未执行。目标是在不引入
+`marivo_report_render`，以及 Slice 2 的 Web 交付卡片均已实现。Slice 3 的真实 runner 已实现并执行，当前仍因
+DSH Web Agent 未获得 `marivo_report_render`、打印 Evidence 未展开而 blocked，尚未完成。目标是在不引入
 Report 状态机、不复制 Marivo 分析契约的前提下，让 Agent 把一次分析编排成可打开、可打印、可追溯的
 自包含 HTML 报告。
 
@@ -404,6 +405,12 @@ packages/dsh-data-analysis/src/report/
 
 ### Slice 3：真实环境验收
 
+当前状态：**blocked**。`npm run validate:html-report-rendering:real` 已通过真实 Marivo 与
+`deepseek-v4-flash` 的三条 journey，并把 `0600` 记录与不可变报告写入
+`artifacts/html-report-rendering-real/<run-id>/`。2026-08-27 的 Web/视觉门禁未通过：当前 Web Agent toolset
+没有 `marivo_report_render`，因而没有报告卡片或 `host.openPath` 证据；Chrome print media 还会折叠
+Evidence details。桌面与 390px 布局检查通过，但不能替代上述门禁，因此本 Slice 不标记完成。
+
 - 用当前绑定 Marivo 生成 MetricFrame fixture；
 - 生成 line、bar、table、evidence 四类 block；
 - 从 DSH Web 打开报告并检查桌面、窄屏和打印布局；
@@ -418,6 +425,10 @@ packages/dsh-data-analysis/src/report/
 npm run test:html-report-rendering
 npm run validate:html-report-rendering:real
 ```
+
+真实 runner 默认模型为 `deepseek-v4-flash`，可通过 `DSH_DATA_ANALYSIS_VALIDATION_MODEL` 覆盖。它记录 Tool
+调用、blocked stage/code、重试、时延、原始 token usage、最终路径和 digest，不记录凭证值或完整 Help 正文。
+真实模型结果只补充确定性测试；任何 Web、opener、打印或外部模型前置条件失败都必须保持 blocked。
 
 确定性测试至少覆盖：
 

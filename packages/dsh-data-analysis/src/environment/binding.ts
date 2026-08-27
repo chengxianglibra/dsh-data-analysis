@@ -241,6 +241,7 @@ print(json.dumps({
 `.trim()
 
 const CHECKED_REPORT_PROJECTION_SCRIPT = String.raw`
+import dataclasses
 import datetime
 import json
 import math
@@ -323,6 +324,14 @@ def normalize_cell(value, location, nullable):
         "Produce an Artifact with string, boolean, finite numeric, date/time, or null display values.",
     )
 
+def public_json(value, location):
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(mode="json")
+    if dataclasses.is_dataclass(value):
+        return dataclasses.asdict(value)
+    raise TypeError(f"{location} is not a public serializable model or dataclass")
+
 def analysis_issue(exc):
     repair = getattr(exc, "repair", None)
     action = getattr(repair, "action", None)
@@ -398,7 +407,7 @@ try:
             "created_at": frame.meta.created_at.isoformat(),
             "contract": contract.model_dump(mode="json"),
             "revalidation": result.model_dump(mode="json"),
-            "lineage": frame.meta.lineage.model_dump(mode="json"),
+            "lineage": public_json(frame.meta.lineage, f"artifacts[{artifact_index}].lineage"),
             "rows": rows,
         })
 

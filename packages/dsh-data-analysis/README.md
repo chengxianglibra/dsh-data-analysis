@@ -70,5 +70,7 @@ entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详
 bridge 恢复并 revalidate 精确 Artifact、按 block 检查 Finding compatibility，随后生成无 JavaScript、
 无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。Tool 文本返回绝对路径；
 Web Tool View 从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复报告卡片，用户点击后才通过
-DSH `host.openPath` 打开文件。Slice 3 的真实环境与视觉验收尚未执行。详见
+DSH `host.openPath` 打开文件。真实补充验证使用仓库命令 `npm run validate:html-report-rendering:real`，证据写入
+忽略目录 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍
+blocked。详见
 [HTML 报告渲染模块](../../docs/modules/html-report-rendering.md)。

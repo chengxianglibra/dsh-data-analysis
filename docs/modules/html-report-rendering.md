@@ -7,8 +7,8 @@
 插件只校验文档及精确 Marivo 引用、生成展示投影、渲染并原子发布文件。
 
 当前已交付设计中的 Slice 1 与 Slice 2：Tool 通过文本返回绝对 `index.html` 路径，Web Tool View 从标准
-`tool/result.meta` 恢复报告卡片，并在用户点击后调用 `host.openPath`。Slice 3 的真实模型、真实报告和视觉
-验收尚未执行。
+`tool/result.meta` 恢复报告卡片，并在用户点击后调用 `host.openPath`。Slice 3 的真实 runner 已实现；当前
+Web toolset 与打印 Evidence 门禁仍 blocked，因此真实 Web/视觉验收尚未完成。
 
 ## 编译流程
 
@@ -105,3 +105,14 @@ npm run check
 npm run build
 npm run verify:plugin-package
 ```
+
+补充真实验证入口：
+
+```sh
+npm run validate:html-report-rendering:real
+```
+
+runner 在独立 Workspace 创建确定性 DuckDB 与当前 Marivo fixture，执行首次生成、同会话完整修订和明确
+blocked 后重试，并把 `0600` 验收记录和不可变报告保存在忽略目录
+`artifacts/html-report-rendering-real/<run-id>/`。真实模型和浏览器结果不替代确定性测试；Web 卡片、opener 或
+任一视觉门禁失败时，真实验收必须保持 blocked。
