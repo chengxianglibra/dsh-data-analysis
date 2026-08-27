@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-data-analysis",
   "description": "Marivo runtime, live-help, datasource, and Evidence citation integration for DeepSeek Harness",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0",
   "type": "module",
   "engines": {
     "node": ">=24"

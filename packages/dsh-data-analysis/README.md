@@ -1,7 +1,7 @@
 # dsh-data-analysis Plugin
 
 当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、`marivo_evidence_cite` 和 skill 激活式根 Help
-披露，并在 `0.1.0-rc.2` 增加 Web profile 共享 Marivo Runtime、逐 Workspace
+披露，并在 `0.1.0` 提供 Web profile 共享 Marivo Runtime、逐 Workspace
 binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。`marivo_test`
 按操作从 DSH `ctx.credentials` 解析 datasource 的全部 `*_env` 引用；缺失时由浏览器 Tool
 View 收集并通过标准 `credentials.set()` 保存，成功后由用户手动重试。系统边界与模块关系见
@@ -28,7 +28,7 @@ npm run pack:plugin
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add \
-  ./artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0-rc.2.tgz
+  ./artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz
 npx @deepseek-ai/dsh web
 ```
 

@@ -56,7 +56,7 @@ npm run pack:plugin
 生成的安装包位于：
 
 ```text
-artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0-rc.2.tgz
+artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz
 ```
 
 ### 安装到 Web profile
@@ -65,7 +65,7 @@ artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0-rc.2.tgz
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add \
-  "$(pwd)/artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0-rc.2.tgz"
+  "$(pwd)/artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz"
 ```
 
 这里只需要安装一次。插件属于 Web profile，后续所有 Session、Agent 和 Workspace 都会
