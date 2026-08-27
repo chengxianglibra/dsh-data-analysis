@@ -119,18 +119,25 @@ Workspace，同时共享同一个 Marivo Python。
 
 分析阶段可以调用 `marivo_test({ name })`。插件先通过绑定解释器读取
 `md.describe(name).env_refs`，再按引用名从 DSH `ctx.credentials` 逐项解析凭证；不会缓存
-凭证值。缺少引用时不执行连接，Web 工具视图会为本次 Tool call 自动打开一次输入框。
+凭证值。所有 `*_env` 必须引用 `DSH_*` 名称，其他名称会在连接前明确报错。缺少引用时不执行
+连接，Web 工具视图会为本次 Tool call 自动打开一次输入框。加载 `marivo-semantic` 后，插件通过
+System Prompt 要求 Agent 在 `md.register()` 或手工修改 datasource 文件后立即调用
+`marivo_test`，而不是在聊天、命令或项目文件中索取或填写凭证值。
 
 输入框不回显已有值，只显示引用名和“已配置／未配置”状态。保存使用标准
 `credentials.set()`；保存成功后关闭弹窗并提示“凭证已保存，请重试 marivo_test”，不会
 自动重放原 Tool call。取消或部分写入失败不会改写原来的 `needs-credentials` Tool Result。
 
-凭证只作为单次受控子进程的环境 overlay 传给真实 `md.test()`，不进入 argv、日志、Tool
-Result 或 telemetry。插件启动的 doctor、help、describe 和 test 等 Marivo 子进程都固定注入
-`MARIVO_PERSIST_CREDENTIALS=0`，并为旧版兼容同时注入 `MARIVO_PERSIST_SECRETS=0`，因此不会写
-`~/.marivo/secrets.toml`。这个保证只覆盖插件自有子进程；Agent 通过 bash 或 Python 直接调用
-Marivo 不在此边界内。所有 datasource 的
-`*_env` 引用（包括 `user_env`）都由 DSH 凭证服务管理。
+`marivo_test` 的凭证只作为单次受控子进程的环境 overlay 传给真实 `md.test()`，不进入 argv、
+日志、Tool Result 或 telemetry。对于使用 Harness `ctx.shellEnv` 的标准一次性 `bash`/`pwsh`，插件按
+Workspace 缓存 datasource 名称和 `DSH_*` 引用名，并重新调用 `ctx.credentials.resolve()` 形成当次
+`dshEnv` 快照；Shell 启动的 Python 会继承这些变量，Marivo 再按原生流程解析并构建 backend。缺失值
+不注入，也不阻断 Agent 修复配置。Harness persistent Shell 没有 per-execution environment seam；存在
+已解析 datasource 凭证时插件会明确拒绝该调用，避免在未注入凭证的情况下继续执行，用户需切换到
+standard、code 或 cordis preset。插件活动期间及插件自有子进程都固定使用
+`MARIVO_PERSIST_CREDENTIALS=0`，因此不会由
+Marivo 自动写入 `~/.marivo/secrets.toml`。Shell 中的脚本本身可以读取已注入变量，仍须避免主动
+打印或持久化它们。
 
 ### 引用 Marivo Evidence
 

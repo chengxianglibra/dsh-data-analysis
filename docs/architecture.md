@@ -38,6 +38,7 @@ flowchart LR
   Plugin --> Test[marivo_test]
   Plugin --> Cite[marivo_evidence_cite]
   Plugin --> Creds[DSH Credentials]
+  Plugin --> ShellEnv[DSH Shell Environment]
   Plugin --> Env[Workspace Environment Binding]
   Env --> Runtime[共享 Python + Marivo Runtime]
   Runtime --> Project[Workspace: marivo.toml / models / .marivo]
@@ -70,6 +71,7 @@ DSH Web profile
     ├── MarivoDisclosureController
     ├── marivo_help
     ├── marivo_test
+    ├── bash/pwsh credential snapshot listener
     └── marivo_evidence_cite + Citation registry
 ```
 
@@ -117,9 +119,12 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 
 ### Datasource 测试
 
-`marivo_test({ name })` 先通过 `md.describe(name)` 获取凭证引用名，再从 DSH Credentials 逐项解析。
-缺少凭证时 Tool 返回引用名，Web Tool View 收集并保存凭证，用户随后显式重试。引用全部可用时，
-插件仅在该次 `md.test(name)` 子进程的环境 overlay 中传递值。
+`marivo_test({ name })` 先通过 `md.describe(name)` 获取 `DSH_*` 凭证引用名，再从 DSH Credentials
+逐项解析。缺少凭证时 Tool 返回引用名，Web Tool View 收集并保存凭证，用户随后显式重试。引用全部
+可用时，插件仅在该次 `md.test(name)` 子进程的环境 overlay 中传递值。插件还缓存每个 Workspace 的
+非敏感 datasource 引用名，并在每次标准一次性 `bash`/`pwsh` 调用前重新解析当前凭证，通过 `dshEnv`
+注入该次 Shell。Persistent Shell 不消费 `ctx.shellEnv`；存在已解析 datasource 凭证时插件明确拒绝，
+避免静默无凭证执行。
 
 ### Evidence 引用
 
@@ -139,6 +144,7 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 | Environment Binding | 进程内 manager cache | Workspace 级，插件拥有；dispose 后丢弃 |
 | Help 可见性与激活状态 | DSH Session events/surface + Agent controller | Agent/Session 级，Harness 保存 surface，插件投影状态 |
 | Datasource 凭证 | DSH Credentials | Harness 拥有；插件只按操作解析和传递 |
+| Datasource 引用 registry | 插件进程内 WeakMap | Workspace 级；只缓存 datasource 名称和 `DSH_*` 引用名，dispose 后丢弃 |
 | Evidence citation registry | `tool/result.meta` + Agent 内存投影 | DSH Session 级；插件签发，Harness 持久化标准事件 |
 
 ## 信任与失败边界
@@ -149,8 +155,10 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
   不会自动切换解释器或项目，必须显式重新绑定。
 - doctor 顶层 `warning`/`fail` 不是单独的准入结论；插件只要求安装、项目 manifest 和身份检查满足
   当前集成边界。Datasource 凭证缺失可以是诊断问题，不阻断 Help 披露。
-- 插件强制 `MARIVO_PERSIST_CREDENTIALS=0` 和兼容变量 `MARIVO_PERSIST_SECRETS=0`。该保证仅覆盖插件
-  创建的子进程，不覆盖 Agent 通过 bash 或 Python 发起的任意调用。
+- 插件活动期间强制 `MARIVO_PERSIST_CREDENTIALS=0`，dispose 时恢复原值；插件自有子进程也不可由
+  operation overlay 覆盖该值。标准一次性 `bash`/`pwsh` 每次重新解析 DSH Credentials 并注入当前
+  Workspace registry 中已配置的引用；Shell 脚本仍有读取和输出这些变量的能力。Persistent Shell
+  缺少该注入接缝，插件在已有凭证时 fail closed。
 - 多 target Help 和多 Skill 根 Help 采用批次原子交付；批次中任一读取失败时不注入部分结果。
 - Workspace 初始化失败、Tool 失败或 Help 披露失败保持在对应 Workspace/Agent 边界内，不升级为
   plugin-owned Marivo 语义修复。
@@ -162,7 +170,7 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 
 - 新 Marivo 能力通过公开 Help 和 Skill 暴露，不增加私有 registry。
 - 新 Workspace 行为必须保持共享 Runtime 与项目状态分离。
-- 新凭证型操作复用 DSH Credentials，并保持 operation-scoped overlay。
+- 新凭证型操作复用 DSH Credentials，并保持 operation-scoped overlay 或 Shell execution snapshot。
 - 新 Web 交互只投影 Tool 结果，不创建第二套后端状态机。
 - 上游契约变化时更新调用边界和测试，链接上游文档而不是复制定义。
 
@@ -193,6 +201,6 @@ npm run validate:datasource-credentials:real
 npm run validate:plugin-integration-delivery:real
 ```
 
-最后一项需要真实模型凭证，其余真实验证需要仓库 `.venv` 中的 Marivo 安装；Datasource 验证还使用
-相邻 `../marivo` checkout 的真实项目定义。发布内容与可执行入口由
+最后一项需要真实模型凭证，其余真实验证需要仓库 `.venv` 中的 Marivo 安装；Datasource 验证会创建
+使用当前绑定 Marivo 的临时 `DSH_*` datasource 项目。发布内容与可执行入口由
 `packages/dsh-data-analysis/package.json`、`cordis.patch.yml` 和 package verifier 共同约束。

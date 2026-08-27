@@ -18,7 +18,8 @@
 
 ## Cordis 生命周期组合
 
-插件声明依赖 `agents`、`credentials`、`skills`、`systemPrompt` 和 `tools` 服务。`apply(ctx, config)` 的组合顺序是：
+插件声明依赖 `agents`、`credentials`、`shellEnv`、`skills`、`systemPrompt` 和 `tools` 服务。
+`apply(ctx, config)` 的组合顺序是：
 
 1. 解析显式配置与 `DSH_DATA_ANALYSIS_*` 环境变量；
 2. `ensureSharedMarivoRuntime()` 创建或验证 profile 级 Runtime；

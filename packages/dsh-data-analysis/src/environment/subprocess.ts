@@ -4,9 +4,8 @@ import { MarivoEnvironmentError } from './errors.ts'
 import type { SubprocessLimits, SubprocessRequest, SubprocessResult } from './types.ts'
 
 export const SUBPROCESS_POLICY_ID = 'direct-argv-inherited-env-snapshot-overlay-v2'
-export const MARIVO_PERSIST_SECRETS_ENV = 'MARIVO_PERSIST_SECRETS'
 export const MARIVO_PERSIST_CREDENTIALS_ENV = 'MARIVO_PERSIST_CREDENTIALS'
-export const MARIVO_PERSIST_SECRETS_DISABLED = '0'
+export const MARIVO_PERSIST_CREDENTIALS_DISABLED = '0'
 
 export const DEFAULT_SUBPROCESS_LIMITS: Readonly<SubprocessLimits> = Object.freeze({
   timeoutMs: 30_000,
@@ -20,8 +19,7 @@ function snapshotEnvironment(source: NodeJS.ProcessEnv): Readonly<NodeJS.Process
     ...Object.fromEntries(
       Object.entries(source).filter((entry): entry is [string, string] => entry[1] !== undefined),
     ),
-    [MARIVO_PERSIST_SECRETS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
-    [MARIVO_PERSIST_CREDENTIALS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
+    [MARIVO_PERSIST_CREDENTIALS_ENV]: MARIVO_PERSIST_CREDENTIALS_DISABLED,
   })
 }
 
@@ -36,8 +34,7 @@ function overlayEnvironment(
       Object.entries(overlay).filter((entry): entry is [string, string] => entry[1] !== undefined),
     ),
     // This is plugin policy, not caller-controlled configuration.
-    [MARIVO_PERSIST_SECRETS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
-    [MARIVO_PERSIST_CREDENTIALS_ENV]: MARIVO_PERSIST_SECRETS_DISABLED,
+    [MARIVO_PERSIST_CREDENTIALS_ENV]: MARIVO_PERSIST_CREDENTIALS_DISABLED,
   })
 }
 

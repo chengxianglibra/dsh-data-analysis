@@ -24,15 +24,15 @@ import {
   parseDoctorReport,
 } from '../src/environment/index.ts'
 import { apply, inject } from '../src/plugin.ts'
+import { TestShellEnv } from '../tests/test-shell-env.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
-const marivoRoot = path.resolve(workspaceRoot, '../marivo')
 const reportPath = path.join(workspaceRoot, 'artifacts', 'plugin-integration-delivery-real-model.json')
 const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-flash'
 const missingDatasourceCredentials = [
-  'MARIVO_CDN_REPLICA_USER',
-  'MARIVO_CDN_REPLICA_PASSWORD',
+  'DSH_VALIDATION_USER',
+  'DSH_VALIDATION_PASSWORD',
 ] as const
 
 interface UsageTotals extends TokenUsage {
@@ -154,11 +154,14 @@ function toolCalls(result: JourneyResult, name: string): ToolCallSummary[] {
   return result.toolCalls.filter(call => call.name === name)
 }
 
-async function assertMissingCredentialDoctorFixture(pythonExecutable: string): Promise<void> {
-  const policy = new FixedSubprocessPolicy(marivoRoot)
+async function assertMissingCredentialDoctorFixture(
+  pythonExecutable: string,
+  projectRoot: string,
+): Promise<void> {
+  const policy = new FixedSubprocessPolicy(projectRoot)
   const result = await policy.run({
     executable: pythonExecutable,
-    args: ['-m', 'marivo', 'doctor', '--project-root', marivoRoot, '--format', 'json'],
+    args: ['-m', 'marivo', 'doctor', '--project-root', projectRoot, '--format', 'json'],
   })
   const report = parseDoctorReport(result.stdout)
   assert.equal(report.status, 'fail')
@@ -169,10 +172,34 @@ async function assertMissingCredentialDoctorFixture(pythonExecutable: string): P
   }
 }
 
+const validationRoot = await mkdtemp(path.join(tmpdir(), 'dsh-plugin-integration-delivery-'))
+const credentialProjectRoot = path.join(validationRoot, 'credential-project')
+await mkdir(path.join(credentialProjectRoot, 'models', 'datasources'), { recursive: true })
+await writeFile(
+  path.join(credentialProjectRoot, 'marivo.toml'),
+  '[project]\nname = "dsh-credential-validation"\n',
+)
+await writeFile(
+  path.join(credentialProjectRoot, 'models', 'datasources', 'credential_validation.py'),
+  [
+    'import marivo.datasource as md',
+    'md.postgres(',
+    '    name="credential_validation",',
+    '    host="127.0.0.1",',
+    '    database="validation",',
+    '    user_env="DSH_VALIDATION_USER",',
+    '    password_env="DSH_VALIDATION_PASSWORD",',
+    ')',
+    '',
+  ].join('\n'),
+)
 const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot })
-await assertMissingCredentialDoctorFixture(environment.binding.pythonExecutable)
+await assertMissingCredentialDoctorFixture(
+  environment.binding.pythonExecutable,
+  credentialProjectRoot,
+)
 const credentialFailureEnvironment = await bindMarivoEnvironment({
-  projectRoot: marivoRoot,
+  projectRoot: credentialProjectRoot,
   pythonExecutable: environment.binding.pythonExecutable,
 })
 const pythonPolicy = new FixedSubprocessPolicy(environment.binding.projectRoot)
@@ -189,6 +216,7 @@ await ctx.plugin(DeepSeek, {
 await ctx.plugin(SessionStore)
 await ctx.plugin(SkillRuntime)
 await ctx.plugin(SystemPrompt)
+await ctx.plugin(TestShellEnv)
 await ctx.plugin(ToolRuntime)
 await ctx.plugin(AgentRegistry)
 await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
@@ -248,7 +276,6 @@ ctx.tools.register(defineContentToolFixture({
   },
 }))
 
-const validationRoot = await mkdtemp(path.join(tmpdir(), 'dsh-plugin-integration-delivery-'))
 const plugin = await ctx.plugin({
   name: 'dsh-data-analysis-real-validation',
   inject,
@@ -318,7 +345,7 @@ const specs = [
   },
   {
     id: 'missing-datasource-credential',
-    projectRoot: marivoRoot,
+    projectRoot: credentialProjectRoot,
     prompt: `Call skill with {"name":"marivo-semantic"}. After automatic authoring help, call marivo_help with exactly ["datasource"]. Explain that live disclosure remains usable while datasource credentials are missing. End with ${markerFor('missing-datasource-credential')}.`,
   },
 ]

@@ -14,6 +14,8 @@ export type EnvironmentFailureCode =
   | 'subprocess-output-limit'
   | 'subprocess-output-invalid'
   | 'subprocess-failed'
+  | 'datasource-credential-ref-invalid'
+  | 'shell-credential-injection-unsupported'
   | 'doctor-json-invalid'
   | 'doctor-admission-failed'
   | 'binding-identity-mismatch'

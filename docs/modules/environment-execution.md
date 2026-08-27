@@ -51,8 +51,7 @@ doctor 即使以非零 exit code 返回，只要 stdout 是完整报告，仍按
 - `spawn(executable, args)` 使用 direct argv 和 `shell: false`；
 - `cwd` 与基础环境在创建 binding 时一次冻结；
 - 调用方只能提供 operation-scoped environment overlay；
-- 无论基础环境和 overlay 如何设置，都强制
-  `MARIVO_PERSIST_CREDENTIALS=0`、`MARIVO_PERSIST_SECRETS=0`；
+- 无论基础环境和 overlay 如何设置，都强制 `MARIVO_PERSIST_CREDENTIALS=0`；
 - 每次调用都有正整数 timeout、stdout/stderr byte 上限和终止 grace period；
 - abort、timeout 或输出越界会终止整个 POSIX process group；Windows 使用 `taskkill /t /f`；
 - stdin 关闭，stdout/stderr 只在上限内收集并返回。

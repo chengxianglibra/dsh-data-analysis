@@ -25,11 +25,16 @@ import {
   marivoHelpBodyDigest,
   MarivoDisclosureError,
 } from '../../src/disclosure/index.ts'
-import { installMarivoPlugin, MARIVO_EVIDENCE_CITATION_PROMPT } from '../../src/plugin.ts'
+import {
+  installMarivoPlugin,
+  MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
+  MARIVO_EVIDENCE_CITATION_PROMPT,
+} from '../../src/plugin.ts'
 import {
   FixedSubprocessPolicy,
   MarivoEnvironment,
 } from '../../src/environment/index.ts'
+import { TestShellEnv } from '../test-shell-env.ts'
 
 const FAKE_PYTHON = String.raw`#!/usr/bin/env node
 import { appendFileSync } from 'node:fs'
@@ -173,6 +178,7 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)
+  await ctx.plugin(TestShellEnv)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -268,9 +274,10 @@ test('Evidence citation guidance appears only after marivo-analysis activation',
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'citation-prompt-analysis')
-  installMarivoPlugin(ctx, fixture.environment, {
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
     credentials: { resolve: () => Promise.resolve(undefined) },
   })
+  t.after(dispose)
 
   send(agent, 'analyze with exact evidence')
   await agent.whenIdle()
@@ -310,9 +317,10 @@ test('an Agent-plane inherited skill Tool activates Evidence guidance and root h
     agent.ctx.tools.get('skill', agent),
     agent.ctx.tools.get('skill', parentScope),
   )
-  installMarivoPlugin(ctx, fixture.environment, {
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
     credentials: { resolve: () => Promise.resolve(undefined) },
   })
+  t.after(dispose)
 
   send(agent, 'analyze with an Agent-plane skill Tool')
   await agent.whenIdle()
@@ -322,7 +330,7 @@ test('an Agent-plane inherited skill Tool activates Evidence guidance and root h
   assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
 })
 
-test('marivo-semantic activation alone does not add Evidence citation guidance', async (t) => {
+test('marivo-semantic activation adds datasource credential guidance only after activation', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -331,14 +339,23 @@ test('marivo-semantic activation alone does not add Evidence citation guidance',
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'citation-prompt-semantic')
-  installMarivoPlugin(ctx, fixture.environment, {
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
     credentials: { resolve: () => Promise.resolve(undefined) },
   })
+  t.after(dispose)
 
   send(agent, 'author semantics')
   await agent.whenIdle()
 
+  assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /DSH_\*/)
+  const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
+  assert.match(activatedPrompt, /DSH_\*/)
+  assert.match(activatedPrompt, /Never ask the user to provide credential values in chat/)
+  assert.match(activatedPrompt, /Immediately after md\.register/)
+  assert.match(activatedPrompt, /marivo_test/)
+  assert.match(activatedPrompt, /needs-credentials/)
   assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_cite/)
+  assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /manual datasource-file change/)
 })
 
 test('an explicit user skill invocation activates the matching root help without a skill Tool call', async (t) => {
@@ -757,4 +774,25 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
     'skill',
   ])
   assert.deepEqual(requestToolNames(adapter.requests[1]), ['ordinary', 'skill'])
+})
+
+test('plugin lifetime fixes MARIVO_PERSIST_CREDENTIALS and restores the previous value', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const ctx = await harness(new MockAdapter([textResponse('unused')]))
+  createAgent(ctx, 'persistence-policy')
+  const previous = process.env.MARIVO_PERSIST_CREDENTIALS
+  process.env.MARIVO_PERSIST_CREDENTIALS = 'previous-value'
+  t.after(() => {
+    if (previous === undefined) delete process.env.MARIVO_PERSIST_CREDENTIALS
+    else process.env.MARIVO_PERSIST_CREDENTIALS = previous
+  })
+
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
+    credentials: { resolve: async () => undefined },
+  })
+  assert.equal(process.env.MARIVO_PERSIST_CREDENTIALS, '0')
+
+  dispose()
+  assert.equal(process.env.MARIVO_PERSIST_CREDENTIALS, 'previous-value')
 })

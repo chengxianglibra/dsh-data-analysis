@@ -46,10 +46,15 @@ npx @deepseek-ai/dsh web
 `marivo-analysis` 后，插件分别注入实时 `authoring` 或 `analysis` 根 Help；`marivo_test`
 不再因用户轮次切换而隐藏。
 
-所有插件自有 Marivo 子进程固定使用 `MARIVO_PERSIST_CREDENTIALS=0`，并为旧版兼容同时使用
-`MARIVO_PERSIST_SECRETS=0`。`md.test()` 所需凭证只经单次环境 overlay 传入，不写
-`~/.marivo/secrets.toml`，也不进入 argv、日志、Tool Result 或 telemetry。任意 bash/Python
-直调不属于该保证范围。
+Datasource 的所有 `*_env` 必须引用 `DSH_*` 名称。`md.test()` 所需凭证只经单次环境 overlay
+传入，不进入 argv、日志、Tool Result 或 telemetry；使用 Harness `ctx.shellEnv` 的标准一次性
+`bash`/`pwsh` 每次也会从 DSH Credentials 重新解析当前 Workspace 已登记的引用，并通过 `dshEnv`
+注入。Shell 启动的 Python 因而可由 Marivo 原生读取环境并构建 backend。Persistent Shell 不提供
+per-execution environment seam；已解析 datasource 凭证存在时插件会明确拒绝执行并要求切换到
+standard、code 或 cordis preset。插件活动期间及所有插件自有 Marivo 子进程
+固定使用 `MARIVO_PERSIST_CREDENTIALS=0`，不写 `~/.marivo/secrets.toml`。加载
+`marivo-semantic` 后，System Prompt 会要求 datasource 注册或修改后立即调用 `marivo_test`，由
+`needs-credentials` 触发 Web 表单。
 
 加载 `marivo-analysis` 后，短 system prompt 会把 `marivo_evidence_cite` 说明为可选的精确 Finding
 引用入口。工具使用固定 Python script 读取 Finding，按 DSH Session 签发 `F1` 至 `F100`，并把完整

@@ -49,8 +49,7 @@ const script = args[1] ?? ''
 const name = args[5]
 if (script.includes('result = md.test')) {
   appendFileSync(process.env.RECORD_PATH, JSON.stringify({
-    key: process.env.WEB_API_KEY,
-    persistSecrets: process.env.MARIVO_PERSIST_SECRETS,
+    key: process.env.DSH_WEB_API_KEY,
     persistCredentials: process.env.MARIVO_PERSIST_CREDENTIALS,
   }) + '\n')
   process.stdout.write(JSON.stringify({
@@ -59,7 +58,7 @@ if (script.includes('result = md.test')) {
   process.exit(0)
 }
 if (script.includes('md.describe')) {
-  process.stdout.write(JSON.stringify({ name, refs: ['WEB_API_KEY'] }))
+  process.stdout.write(JSON.stringify({ name, refs: ['DSH_WEB_API_KEY'] }))
   process.exit(0)
 }
 process.exit(2)
@@ -109,13 +108,13 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const text = first.content[0]?.type === 'text' ? first.content[0].text : ''
   const missing = client.parseNeedsCredentials(text)
   assert.deepEqual(JSON.parse(JSON.stringify(missing)), {
-    status: 'needs-credentials', name: 'warehouse', refs: ['WEB_API_KEY'],
+    status: 'needs-credentials', name: 'warehouse', refs: ['DSH_WEB_API_KEY'],
   })
   assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), true)
   assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), false)
   assert.equal(client.shouldAutoOpen('session-b', 'web-missing', missing), true)
   assert.deepEqual(JSON.parse(JSON.stringify(client.blankCredentialValues(missing?.refs ?? []))), {
-    WEB_API_KEY: '',
+    DSH_WEB_API_KEY: '',
   })
   await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
 
@@ -137,15 +136,15 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
       },
     },
   })
-  assert.deepEqual(JSON.parse(JSON.stringify(await controller.describe(['WEB_API_KEY']))), {
-    WEB_API_KEY: { configured: false },
+  assert.deepEqual(JSON.parse(JSON.stringify(await controller.describe(['DSH_WEB_API_KEY']))), {
+    DSH_WEB_API_KEY: { configured: false },
   })
-  assert.deepEqual(JSON.parse(JSON.stringify(await controller.save({ WEB_API_KEY: 'web-secret' }))), {
-    ok: true, saved: ['WEB_API_KEY'], errors: {},
+  assert.deepEqual(JSON.parse(JSON.stringify(await controller.save({ DSH_WEB_API_KEY: 'web-secret' }))), {
+    ok: true, saved: ['DSH_WEB_API_KEY'], errors: {},
   })
-  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [{ ref: 'WEB_API_KEY', value: 'web-secret' }])
+  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [{ ref: 'DSH_WEB_API_KEY', value: 'web-secret' }])
   assert.deepEqual(JSON.parse(JSON.stringify(client.parseNeedsCredentials(text))), {
-    status: 'needs-credentials', name: 'warehouse', refs: ['WEB_API_KEY'],
+    status: 'needs-credentials', name: 'warehouse', refs: ['DSH_WEB_API_KEY'],
   })
   // Saving never resumes the Tool; the fake Python has still not been called.
   await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
@@ -159,7 +158,7 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   assert.equal(retried.isError, false)
   const child = JSON.parse((await readFile(recordPath, 'utf8')).trim())
   assert.deepEqual(child, {
-    key: 'web-secret', persistSecrets: '0', persistCredentials: '0',
+    key: 'web-secret', persistCredentials: '0',
   })
   assert.doesNotMatch(JSON.stringify(retried), /web-secret/)
 })

@@ -11,6 +11,7 @@ import {
   resolveMarivoEnvironmentSource,
   type MarivoEnvironmentSource,
 } from '../disclosure/help.ts'
+import { assertDshCredentialReferences } from './shell-env.ts'
 
 export const MARIVO_TEST_TOOL_NAME = 'marivo_test'
 
@@ -63,6 +64,15 @@ interface TestPayload {
   latency_ms: number | null
   failure: MarivoDatasourceFailure | null
   repair: MarivoDatasourceRepair | null
+}
+
+export interface MarivoTestOptions {
+  /** Observe the validated non-secret datasource reference-name projection. */
+  onDescribe?: (
+    environment: Awaited<ReturnType<typeof resolveMarivoEnvironmentSource>>,
+    name: string,
+    refs: readonly string[],
+  ) => void
 }
 
 function datasourceName(value: unknown): string {
@@ -168,6 +178,7 @@ function renderValue(value: MarivoTestValue): string {
 export function createMarivoTestTool(
   environmentSource: MarivoEnvironmentSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
+  options: MarivoTestOptions = {},
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_TEST_TOOL_NAME,
@@ -200,6 +211,8 @@ export function createMarivoTestTool(
         )
       }
       const described = parseDescribe(describedResult.stdout)
+      assertDshCredentialReferences(described.refs)
+      options.onDescribe?.(environment, described.name, described.refs)
       const overlay: NodeJS.ProcessEnv = {}
       const missing: string[] = []
       const values: string[] = []
@@ -244,6 +257,7 @@ export function registerMarivoTestTool(
   ctx: Context,
   environmentSource: MarivoEnvironmentSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
+  options: MarivoTestOptions = {},
 ): () => void {
-  return ctx.tools.register(createMarivoTestTool(environmentSource, credentials))
+  return ctx.tools.register(createMarivoTestTool(environmentSource, credentials, options))
 }

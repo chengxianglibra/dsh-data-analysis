@@ -95,6 +95,34 @@ print(json.dumps({
 }, sort_keys=True))
 `.trim()
 
+const CHECKED_DATASOURCE_INVENTORY_SCRIPT = String.raw`
+import json
+import os
+import sys
+import marivo
+import marivo.datasource as md
+
+actual = {
+    "python_executable": os.path.abspath(sys.executable),
+    "marivo_version": marivo.__version__,
+    "package_path": os.path.abspath(marivo.__file__ or ""),
+}
+expected = {
+    "python_executable": os.path.abspath(sys.argv[1]),
+    "marivo_version": sys.argv[2],
+    "package_path": os.path.abspath(sys.argv[3]),
+}
+if actual != expected:
+    print(json.dumps({"kind": "identity-mismatch", "actual": actual}), file=sys.stderr)
+    raise SystemExit(78)
+print(json.dumps({
+    "datasources": [{
+        "name": description.name,
+        "refs": list(description.env_refs.values()),
+    } for description in (md.describe(item.name) for item in md.list())],
+}, sort_keys=True))
+`.trim()
+
 const CHECKED_DATASOURCE_TEST_SCRIPT = String.raw`
 import contextlib
 import io
@@ -503,6 +531,20 @@ export class MarivoEnvironment {
     return this.#runCheckedDatasourceScript(
       CHECKED_DATASOURCE_DESCRIBE_SCRIPT,
       name,
+      limits,
+      undefined,
+      signal,
+    )
+  }
+
+  /** Return datasource names and credential reference names for one Workspace. */
+  runCheckedDatasourceInventory(
+    limits: Partial<SubprocessLimits>,
+    signal?: AbortSignal,
+  ) {
+    return this.#runCheckedDatasourceScript(
+      CHECKED_DATASOURCE_INVENTORY_SCRIPT,
+      '',
       limits,
       undefined,
       signal,

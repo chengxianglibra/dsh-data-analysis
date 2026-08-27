@@ -12,19 +12,29 @@ import {
   type MarivoDisclosureOptions,
 } from './disclosure/index.ts'
 import {
+  MARIVO_PERSIST_CREDENTIALS_DISABLED,
+  MARIVO_PERSIST_CREDENTIALS_ENV,
   DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
   ensureSharedMarivoRuntime,
   MarivoWorkspaceEnvironmentManager,
   MarivoEnvironment,
 } from './environment/index.ts'
 import { registerMarivoTestTool } from './datasource/index.ts'
+import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import { registerMarivoEvidenceCiteTool } from './evidence/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
 
 /** Services that must exist before the plugin binds and watches Agent scopes. */
-export const inject = ['agents', 'credentials', 'skills', 'systemPrompt', 'tools']
+export const inject = ['agents', 'credentials', 'shellEnv', 'skills', 'systemPrompt', 'tools']
+
+export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
+  'When marivo-semantic is active, every Marivo datasource *_env field must reference a DSH_* environment name.',
+  'Never ask the user to provide credential values in chat, and never place credential values in commands or project files.',
+  'Immediately after md.register(...) or a manual datasource-file change, call marivo_test with that datasource name.',
+  'If marivo_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_test before continuing.',
+].join(' ')
 
 export const MARIVO_EVIDENCE_CITATION_PROMPT = [
   'When marivo-analysis is active, you may cite an exact persisted Finding with marivo_evidence_cite only when that precision is useful.',
@@ -32,6 +42,30 @@ export const MARIVO_EVIDENCE_CITATION_PROMPT = [
   'Never invent, rename, or edit a Marivo Evidence handle or definition.',
   'A citation proves the identity of its Marivo Evidence source; it does not prove that the whole sentence or business judgment is correct.',
 ].join(' ')
+
+let persistencePolicyUsers = 0
+let previousPersistencePolicy: string | undefined
+
+function acquirePersistencePolicy(): () => void {
+  if (persistencePolicyUsers === 0) {
+    previousPersistencePolicy = process.env[MARIVO_PERSIST_CREDENTIALS_ENV]
+  }
+  persistencePolicyUsers += 1
+  process.env[MARIVO_PERSIST_CREDENTIALS_ENV] = MARIVO_PERSIST_CREDENTIALS_DISABLED
+  let active = true
+  return () => {
+    if (!active) return
+    active = false
+    persistencePolicyUsers -= 1
+    if (persistencePolicyUsers !== 0) return
+    if (previousPersistencePolicy === undefined) {
+      delete process.env[MARIVO_PERSIST_CREDENTIALS_ENV]
+    } else {
+      process.env[MARIVO_PERSIST_CREDENTIALS_ENV] = previousPersistencePolicy
+    }
+    previousPersistencePolicy = undefined
+  }
+}
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -84,19 +118,33 @@ export function installMarivoPlugin(
   } = {},
 ): () => void {
   const installed = new Map<Agent, MarivoDisclosureController>()
+  const releasePersistencePolicy = acquirePersistencePolicy()
+  const credentials = options.credentials ?? ctx.credentials
+  if (credentials === undefined) {
+    releasePersistencePolicy()
+    throw new Error('dsh-data-analysis requires the DSH credentials service')
+  }
+  const shellCredentials = new MarivoShellCredentialBridge(ctx, credentials)
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
     const source = environmentOrResolver instanceof MarivoEnvironment
       ? environmentOrResolver
       : () => Promise.resolve(environmentOrResolver(agent))
     const controller = installMarivoDisclosure(ctx, agent, source, options)
-    const credentials = options.credentials ?? ctx.credentials
-    if (credentials === undefined) {
-      controller.dispose()
-      throw new Error('dsh-data-analysis requires the DSH credentials service')
-    }
-    controller.addDisposer(registerMarivoTestTool(agent.ctx, source, credentials))
+    controller.addDisposer(shellCredentials.installAgent(agent, source))
+    controller.addDisposer(registerMarivoTestTool(agent.ctx, source, credentials, {
+      onDescribe: (environment, datasourceName, refs) => {
+        shellCredentials.recordDatasource(environment, datasourceName, refs)
+      },
+    }))
     controller.addDisposer(registerMarivoEvidenceCiteTool(agent.ctx, source, agent.session))
+    controller.addDisposer(agent.ctx.systemPrompt.section({
+      name: 'marivo:datasource-credentials',
+      order: 170,
+      text: () => controller.activeSkills.includes('marivo-semantic')
+        ? MARIVO_DATASOURCE_CREDENTIAL_PROMPT
+        : '',
+    }))
     controller.addDisposer(agent.ctx.systemPrompt.section({
       name: 'marivo:evidence-citations',
       order: 180,
@@ -111,6 +159,8 @@ export function installMarivoPlugin(
     for (const agent of ctx.agents.list()) install(agent)
   } catch (error: unknown) {
     for (const controller of installed.values()) controller.dispose()
+    shellCredentials.dispose()
+    releasePersistencePolicy()
     throw error
   }
 
@@ -127,6 +177,8 @@ export function installMarivoPlugin(
     stopDisposed()
     for (const controller of installed.values()) controller.dispose()
     installed.clear()
+    shellCredentials.dispose()
+    releasePersistencePolicy()
   }
 }
 

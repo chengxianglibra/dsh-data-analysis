@@ -28,6 +28,7 @@ import {
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { apply, inject } from '../../src/plugin.ts'
+import { TestShellEnv } from '../test-shell-env.ts'
 
 class TestCredentials extends CredentialProvider {
   resolve(_ref: CredentialRef) { return Promise.resolve(undefined) }
@@ -165,6 +166,7 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)
+  await ctx.plugin(TestShellEnv)
   await ctx.plugin(SkillRuntime)
   await ctx.plugin({
     name: 'test-skill-filesystem',

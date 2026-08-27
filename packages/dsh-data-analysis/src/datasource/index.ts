@@ -6,5 +6,6 @@ export {
 export type {
   MarivoDatasourceFailure,
   MarivoDatasourceRepair,
+  MarivoTestOptions,
   MarivoTestValue,
 } from './test.ts'

@@ -4,9 +4,8 @@ export { bindMarivoEnvironment, MarivoEnvironment } from './binding.ts'
 export {
   DEFAULT_SUBPROCESS_LIMITS,
   FixedSubprocessPolicy,
+  MARIVO_PERSIST_CREDENTIALS_DISABLED,
   MARIVO_PERSIST_CREDENTIALS_ENV,
-  MARIVO_PERSIST_SECRETS_DISABLED,
-  MARIVO_PERSIST_SECRETS_ENV,
   SUBPROCESS_POLICY_ID,
 } from './subprocess.ts'
 export {

@@ -24,7 +24,6 @@ if (args[0] === '--record') {
   appendFileSync(args[1], JSON.stringify({
     cwd: process.cwd(), marker: process.env.FIXTURE_MARKER,
     credential: process.env.TEST_CREDENTIAL,
-    persistSecrets: process.env.MARIVO_PERSIST_SECRETS,
     persistCredentials: process.env.MARIVO_PERSIST_CREDENTIALS,
   }) + '\n')
   process.stdout.write('recorded')
@@ -288,7 +287,7 @@ test('subprocess policy freezes cwd and environment projection at binding time',
   assert.equal(result.exitCode, 0)
   const records = await import('node:fs/promises').then(fs => fs.readFile(recordPath, 'utf8'))
   assert.deepEqual(JSON.parse(records.trim()), {
-    cwd: fixture.root, marker: 'first', persistSecrets: '0', persistCredentials: '0',
+    cwd: fixture.root, marker: 'first', persistCredentials: '0',
   })
 
   const overlayPath = path.join(fixture.root, 'overlay.jsonl')
@@ -298,7 +297,6 @@ test('subprocess policy freezes cwd and environment projection at binding time',
     environmentOverlay: {
       FIXTURE_MARKER: 'per-operation',
       TEST_CREDENTIAL: 'overlay-secret',
-      MARIVO_PERSIST_SECRETS: '1',
       MARIVO_PERSIST_CREDENTIALS: '1',
     },
   })
@@ -306,7 +304,6 @@ test('subprocess policy freezes cwd and environment projection at binding time',
     cwd: fixture.root,
     marker: 'per-operation',
     credential: 'overlay-secret',
-    persistSecrets: '0',
     persistCredentials: '0',
   })
 })
