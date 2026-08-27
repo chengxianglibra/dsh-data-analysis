@@ -16,6 +16,7 @@ import LlmRuntime, {
   type LlmResolvedModelInfo,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
+import { bindScopeParent, createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
@@ -141,22 +142,8 @@ class MockAdapter extends LlmAdapter {
   }
 }
 
-async function harness(adapter: MockAdapter): Promise<Context> {
-  const ctx = new Context()
-  await ctx.plugin(LlmRuntime)
-  await ctx.plugin(SessionStore)
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
-  await ctx.plugin(AgentRegistry)
-  await ctx.plugin(AgentLoop, { agents: [] })
-  ctx.llm.registerAdapter(['mock'], adapter)
-  ctx.tools.register(defineContentToolFixture({
-    name: 'ordinary',
-    description: 'ordinary inherited tool',
-    parameters: {},
-    async execute() { return [{ type: 'text', text: 'ordinary-result' }] },
-  }))
-  ctx.tools.register(defineTool({
+function fixtureSkillTool(): ReturnType<typeof defineTool> {
+  return defineTool({
     name: 'skill',
     description: 'load one available skill',
     parameters: { name: { type: 'string', required: true } },
@@ -178,7 +165,25 @@ async function harness(adapter: MockAdapter): Promise<Context> {
     async execute({ name }) {
       return { name, provider: 'fixture', content: `instructions:${name}` }
     },
+  })
+}
+
+async function harness(adapter: MockAdapter): Promise<Context> {
+  const ctx = new Context()
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(AgentRegistry)
+  await ctx.plugin(AgentLoop, { agents: [] })
+  ctx.llm.registerAdapter(['mock'], adapter)
+  ctx.tools.register(defineContentToolFixture({
+    name: 'ordinary',
+    description: 'ordinary inherited tool',
+    parameters: {},
+    async execute() { return [{ type: 'text', text: 'ordinary-result' }] },
   }))
+  ctx.tools.register(fixtureSkillTool())
   return ctx
 }
 
@@ -276,6 +281,45 @@ test('Evidence citation guidance appears only after marivo-analysis activation',
   assert.match(activatedPrompt, /Copy the returned marker/)
   assert.match(activatedPrompt, /does not prove/)
   assert.match(MARIVO_EVIDENCE_CITATION_PROMPT, /Never invent, rename, or edit/)
+})
+
+test('an Agent-plane inherited skill Tool activates Evidence guidance and root help', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallsResponse([{ id: 'analysis-agent-plane', name: 'skill', args: { name: 'marivo-analysis' } }]),
+    textResponse('analysis ready'),
+  ])
+  const ctx = await harness(adapter)
+  const parentScope = {}
+  let agentPlaneCtx: Context | undefined
+  await ctx.plugin({
+    name: 'agent-plane-harness',
+    inject: ['tools'],
+    apply(pluginCtx) {
+      agentPlaneCtx = createScope(pluginCtx, parentScope).ctx
+    },
+  })
+  const resolvedAgentPlaneCtx = agentPlaneCtx
+  assert.ok(resolvedAgentPlaneCtx)
+  resolvedAgentPlaneCtx.tools.register(fixtureSkillTool())
+  const agent = createAgent(ctx, 'citation-prompt-agent-plane')
+  bindScopeParent(agent, parentScope)
+  assert.equal(scopeParentOf(agent), parentScope)
+  assert.equal(
+    agent.ctx.tools.get('skill', agent),
+    agent.ctx.tools.get('skill', parentScope),
+  )
+  installMarivoPlugin(ctx, fixture.environment, {
+    credentials: { resolve: () => Promise.resolve(undefined) },
+  })
+
+  send(agent, 'analyze with an Agent-plane skill Tool')
+  await agent.whenIdle()
+
+  assert.match(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_cite/)
+  assert.match(requestMessages(adapter.requests[1]), /marivo_help_context/)
+  assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
 })
 
 test('marivo-semantic activation alone does not add Evidence citation guidance', async (t) => {

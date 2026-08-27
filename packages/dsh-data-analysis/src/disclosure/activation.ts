@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {
@@ -380,9 +381,12 @@ export class MarivoDisclosureController {
   }
 
   #inheritedSkillToolVisible(): boolean {
-    const globalSkillTool = this.agent.ctx.tools.get(SKILL_TOOL_NAME)
-    return globalSkillTool !== undefined
-      && this.agent.ctx.tools.get(SKILL_TOOL_NAME, this.agent) === globalSkillTool
+    const inheritedSkillTool = this.agent.ctx.tools.get(
+      SKILL_TOOL_NAME,
+      scopeParentOf(this.agent),
+    )
+    return inheritedSkillTool !== undefined
+      && this.agent.ctx.tools.get(SKILL_TOOL_NAME, this.agent) === inheritedSkillTool
   }
 
   #observeExplicitInvocations(messages: readonly UserMessage[]): void {
