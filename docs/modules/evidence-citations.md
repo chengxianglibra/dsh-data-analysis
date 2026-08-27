@@ -3,7 +3,7 @@
 ## 作用
 
 本模块把 Marivo 已持久化的 `Finding` 身份带到 DSH 最终回答中。Agent 可调用
-`marivo_evidence_cite({ session_id, finding_ids })` 获取标准 Markdown footnote marker 和 definition；
+`marivo_evidence_cite({ session_id, finding_ids, language })` 获取标准 Markdown footnote marker 和 definition；
 DSH Web 在不改写回答的前提下，从标准 Session 历史重建“Marivo 来源”卡片。
 
 引用只回答“这个角标对应哪个 Marivo Evidence Finding”。它不判断自然语言是否被 Finding 蕴含，
@@ -28,11 +28,11 @@ sequenceDiagram
   participant E as MarivoEnvironment
   participant M as Marivo Evidence
   participant S as DSH Session
-  A->>T: session_id + 1..20 unique Finding IDs
+  A->>T: session_id + 1..20 unique Finding IDs + zh/en
   T->>E: fixed Python script + direct argv
   E->>M: mv.session.resume(use_datasources=False)
   loop 按请求顺序
-    E->>M: session.evidence.finding(finding_id)
+    E->>M: session.evidence.finding(finding_id) + Finding.render(en/zh)
   end
   M-->>T: exact Finding projections
   T->>T: validate all identities and allocate/reuse F handles
@@ -45,14 +45,17 @@ sequenceDiagram
 
 ```python
 session = mv.session.resume(session_id, use_datasources=False)
-session.evidence.finding(finding_id)
+finding = session.evidence.finding(finding_id)
+finding.render(language="en")
+finding.render(language="zh")
 ```
 
 脚本固定在插件代码中；模型只提供作为直接 argv 传入的 Session/Finding ID，不提供 Python 表达式、
 模块名或 shell 文本。返回 payload 必须保持请求 Session、Finding ID 和顺序完全一致，且 Finding 自身的
 `session_id` 也必须一致。任一读取、进程或 shape 校验失败时整个 Tool call 失败，registry 不发生部分更新。
 `finding_type`、`epistemic_kind` 和 `quality_status` 的合法词汇由已完成对象校验的 Marivo Finding 拥有；
-插件只检查这些投影的机械 JSON shape，不复制 Marivo 枚举。
+插件只检查这些投影的机械 JSON shape，不复制 Marivo 枚举。Runtime 和 bridge 都要求 `finding-render-v1`；
+旧 Marivo 明确失败，不回退到机器 ID definition。
 
 ## Handle registry
 
@@ -69,12 +72,12 @@ Environment fingerprint + Marivo Session ID + Finding ID
 成功 Tool Result 返回当前请求的每个来源，包括：
 
 - `marker`，例如 `[^mv-f1]`；
-- 固定 footnote definition；
+- 中英文 `Finding.render()` 陈述，以及按本次 `language` 选择、Markdown 安全转义后的 definition；
 - Finding/Artifact/Marivo Session ID；
 - Finding 类型、`epistemic_kind`、`quality_status` 和提交时间；
 - extractor/schema version 和 Environment fingerprint。
 
-同一次结果的 `tool/result.meta` 携带签发它的 DSH Session ID 和完整 registry，而不是只带增量。服务端
+同一次结果的 `tool/result.meta` 使用 citation v2，携带签发它的 DSH Session ID 和完整双语 registry，而不是只带增量。服务端
 恢复时只接受 DSH Session ID 与当前 Session 完全一致的最近有效 meta，因此 Harness fork 复制的父级事件
 不会把 handle 命名空间或上限带入子 Session。Web 仍可读取 fork 历史中的父级 meta，为复制过来的历史
 回答还原原来源；子 Session 新签发的 registry 从 `F1` 独立开始。没有新增自定义 Session event，registry
@@ -86,6 +89,7 @@ Environment fingerprint + Marivo Session ID + Finding ID
 
 - 所有由精确、已持久化 Finding 支撑的关键事实，默认必须在最终回答前调用工具生成引用；
 - 解释、建议、假设或没有精确 Finding 支撑的事实不强制引用；重要的无支持边界应明确披露，不得伪造引用；
+- `language` 必须与最终回答一致，中文使用 `zh`，英文使用 `en`；
 - 结论后原样复制工具返回的 marker，答案末尾原样复制 definition；
 - 不自行构造、重命名或修改 handle/definition；
 - 明示引用证明 Evidence 来源身份，不证明整句结论正确。
@@ -103,13 +107,15 @@ Environment fingerprint + Marivo Session ID + Finding ID
    location data。
 
 轻量 Markdown scanner 按 DSH renderer 的边界逐个扫描 text block，识别 `[^mv-fN]` 与同一 block 中的
-对应 definition，按首次引用顺序去重，并忽略转义 token、跨行 inline code 和 fenced code。不同 text
+对应 definition 及其正文，按首次引用顺序去重，并忽略转义 token、跨行 inline code 和 fenced code。正文必须
+精确匹配 registry 中安全转义后的一个语言版本；不同 text
 block 的 definition 不会互相满足引用。scanner 不解析或改写 DSH Markdown AST；原回答仍由 DSH 自带
 Markdown renderer 显示标准 footnote 上标。
 
 `conversation.chat.turnTail` selector 只有在当前 closing assistant 的 seq 存在引用数据时才挂载来源
-卡片；无引用时返回空，不产生 UI。卡片展示 resolved Finding/Artifact、Evidence 类型、epistemic、quality
-和提交时间。回答引用未知 handle 或缺少 definition 时，卡片明确警告，不猜测或自动修复。
+卡片；无引用时返回空，不产生 UI。卡片先展示匹配语言的 Finding 事实陈述，再把 Finding/Artifact/Session、
+Evidence 类型、epistemic、quality、提交时间和 extractor/schema version 放入折叠审计详情。回答引用未知 handle、
+缺少 definition 或修改 definition 时，卡片明确区分并警告，不猜测或自动修复。
 
 Headless/CLI 没有来源卡片，但标准 marker/definition 仍是可阅读的 Markdown footnote。
 
@@ -132,6 +138,7 @@ Headless/CLI 没有来源卡片，但标准 marker/definition 仍是可阅读的
 
 ```sh
 npm run test:evidence-citations
+npm run validate:evidence-citations:real
 npm run check
 npm run build
 npm run verify:plugin-package

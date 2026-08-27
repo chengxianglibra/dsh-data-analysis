@@ -52,6 +52,7 @@ const artifact: ReportArtifactProjection = {
   contract: { kind: 'MetricFrame', ref: 'artifact-trend' },
   revalidation: { status: 'admissible', artifact_ref: 'artifact-trend', content_hash: 'c'.repeat(64), artifact_schema_version: 'analysis-artifact/v10' },
   lineage: { steps: [] },
+  rowsProjected: true,
   rows: [
     ['2026-08-21T00:00:00+00:00', 91], ['2026-08-22T00:00:00+00:00', 92],
     ['2026-08-23T00:00:00+00:00', 89], ['2026-08-24T00:00:00+00:00', 94],
@@ -75,6 +76,29 @@ class ReportCodeRuntime extends CodeRuntime {
 
 function compiled() {
   const result = compileReportVisuals(document, projection)
+  assert.equal(result.ok, true, JSON.stringify(result))
+  if (!result.ok) throw new Error('unreachable')
+  return result.value
+}
+
+function parsedCompiledProjection(checkedAt: string, contract: unknown = artifact.contract) {
+  const raw = {
+    status: 'ready', session_id: 'session-report',
+    artifacts: [{
+      ref: artifact.ref, family: artifact.family, shape: artifact.shape, columns: artifact.columns,
+      content_hash: artifact.contentHash, artifact_schema_version: artifact.artifactSchemaVersion,
+      created_at: artifact.createdAt, contract,
+      revalidation: { ...artifact.revalidation as Record<string, unknown>, checked_at: checkedAt },
+      lineage: artifact.lineage, rows_projected: true, rows: artifact.rows,
+    }],
+    findings: [], compatibilities: [],
+  }
+  const parsed = parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+    sessionId: 'session-report', artifactRefs: [artifact.ref], findingIds: [], findingGroups: [],
+  })
+  assert.equal(parsed.ok, true, JSON.stringify(parsed))
+  if (!parsed.ok) throw new Error('unreachable')
+  const result = compileReportVisuals(document, parsed.value)
   assert.equal(result.ok, true, JSON.stringify(result))
   if (!result.ok) throw new Error('unreachable')
   return result.value
@@ -186,6 +210,10 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
       artifactId: 'artifact-platform', sessionId: 'session-report', qualityStatus: 'ready',
       committedAt: '2026-08-27T00:05:00+00:00', value: { kind: 'observation', row_count: 3 },
       subject: { kind: 'metric', metric_id: 'payments.success' }, derivation: { rule_id: 'observation/v1' },
+      rendered: {
+        en: 'payments.success: observed 3 platform rows.',
+        zh: 'payments.success：观测到 3 行平台数据。',
+      },
     }],
     compatibilities: [{ groupIndex: 0, status: 'compatible', findingIds: ['finding-platform'], value: { status: 'compatible' } }, { groupIndex: 1, status: 'compatible', findingIds: ['finding-platform'], value: { status: 'compatible' } }],
   }
@@ -198,6 +226,44 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
   assert.match(html, /value axis includes zero/)
   assert.match(html, /finding-platform/)
   assert.match(html, /payments.success/)
+  assert.match(html, /payments\.success: observed 3 platform rows\./)
+  assert.match(html, /href="#provenance-artifact-1"/)
+  assert.match(html, /Complete provenance index/)
+  assert.ok(html.indexOf('payments.success: observed 3 platform rows.') < html.indexOf('<details class="audit">'))
+  assert.match(html, /<dt>session<\/dt><dd>session-report<\/dd>/)
+})
+
+test('Finding statements cannot inject HTML, links, or new report markup', () => {
+  const unsafeDocument: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: 'Unsafe Finding', locale: 'en-US',
+    sections: [{ id: 'evidence', title: 'Evidence', blocks: [{
+      kind: 'evidence', id: 'unsafe-evidence', title: 'Observed fact', finding_ids: ['finding-unsafe'],
+    }] }],
+  }
+  const unsafeProjection: ReportProjectionBundle = {
+    sessionId: 'session-report',
+    artifacts: [{ ...artifact, rowsProjected: false, rows: [] }],
+    findings: [{
+      findingId: 'finding-unsafe', findingType: 'observation', epistemicKind: 'observed',
+      artifactId: artifact.ref, sessionId: 'session-report', qualityStatus: 'ready',
+      committedAt: '2026-08-27T00:05:00+00:00', value: { value: 12 },
+      subject: { metric_id: 'payments.success' }, derivation: { rule_id: 'observation/v1' },
+      rendered: {
+        en: 'Fact <img src=x onerror=alert(1)> [link](https://example.invalid) [^mv-f99].',
+        zh: '事实 <img src=x onerror=alert(1)>。',
+      },
+    }],
+    compatibilities: [{
+      groupIndex: 0, status: 'compatible', findingIds: ['finding-unsafe'], value: { status: 'compatible' },
+    }],
+  }
+  const result = compileReportVisuals(unsafeDocument, unsafeProjection)
+  assert.equal(result.ok, true, JSON.stringify(result))
+  if (!result.ok) return
+  const html = renderReportHtml(result.value, '2026-08-27T01:02:03.000Z')
+  assert.match(html, /Fact &lt;img src=x onerror=alert\(1\)&gt;/)
+  assert.match(html, /\[link\]\(https:\/\/example\.invalid\)/)
+  assert.doesNotMatch(html, /<img\b|href="https:\/\/example\.invalid"|id="mv-f99"/)
 })
 
 test('renderer escapes content and emits offline SVG, source tables, CSP, and print rules', () => {
@@ -212,7 +278,7 @@ test('renderer escapes content and emits offline SVG, source tables, CSP, and pr
   assert.match(html, /业务说明 · artifact-trend · 5 行/)
   assert.match(html, /范围 value: 89 – 95 · 单位: count/)
   assert.match(html, /@media print/)
-  assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\//)
+  assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
 })
 
 test('canonical digests ignore object key order while document order remains semantic', () => {
@@ -265,6 +331,96 @@ test('publisher atomically creates private immutable files and reuses the same d
   await assert.rejects(() => publishReport(compiled(), options), /does not match its expected manifest/)
 })
 
+test('publisher ignores volatile revalidation time but identities stable provenance changes', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-provenance-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const options = {
+    environmentFingerprint: '9'.repeat(64), marivoVersion: '0.4.test', reportsRoot: path.join(root, 'reports'),
+    now: () => new Date('2026-08-27T01:02:03.000Z'),
+  }
+  const firstReport = parsedCompiledProjection('2026-08-27T01:00:00.000Z')
+  const secondReport = parsedCompiledProjection('2026-08-28T01:00:00.000Z')
+  assert.equal('checked_at' in (firstReport.projection.artifacts[0]!.revalidation as Record<string, unknown>), false)
+  const first = await publishReport(firstReport, options)
+  const second = await publishReport(secondReport, options)
+  assert.equal(first.ok, true, JSON.stringify(first))
+  assert.equal(second.ok, true, JSON.stringify(second))
+  if (!first.ok || !second.ok) return
+  assert.equal(second.reused, true)
+  assert.equal(second.path, first.path)
+  assert.equal(second.reportDigest, first.reportDigest)
+
+  const changedReport = parsedCompiledProjection('2026-08-28T01:00:00.000Z', {
+    kind: 'MetricFrame', ref: artifact.ref, semantic_revision: 2,
+  })
+  const changed = await publishReport(changedReport, options)
+  assert.equal(changed.ok, true, JSON.stringify(changed))
+  if (!changed.ok) return
+  assert.notEqual(changed.reportDigest, first.reportDigest)
+  assert.notEqual(changed.path, first.path)
+})
+
+test('Finding-only reports include the backing Artifact identity in the immutable manifest without copying rows', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-finding-only-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const evidenceDocument: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: '仅 Finding 报告', locale: 'zh-CN',
+    sections: [{ id: 'evidence', title: '事实', blocks: [{
+      kind: 'evidence', id: 'finding-only', title: '关键事实', finding_ids: ['finding-only'],
+    }] }],
+  }
+  const backingArtifact: ReportArtifactProjection = {
+    ...artifact,
+    ref: 'artifact-backing',
+    shape: [5_000, 2],
+    contract: { kind: 'MetricFrame', ref: 'artifact-backing' },
+    revalidation: {
+      status: 'admissible', artifact_ref: 'artifact-backing', content_hash: artifact.contentHash,
+      artifact_schema_version: artifact.artifactSchemaVersion,
+    },
+    rowsProjected: false,
+    rows: [],
+  }
+  const evidenceProjection: ReportProjectionBundle = {
+    sessionId: 'session-report', artifacts: [backingArtifact],
+    findings: [{
+      findingId: 'finding-only', findingType: 'metric_value', epistemicKind: 'observed',
+      artifactId: 'artifact-backing', sessionId: 'session-report', qualityStatus: null,
+      committedAt: '2026-08-27T00:05:00+00:00', value: { value: 12 },
+      subject: { metric_id: 'payments.success' }, derivation: { rule_id: 'metric/v1' },
+      rendered: { en: 'payments.success: observed 12.', zh: 'payments.success：观测值为 12。' },
+    }],
+    compatibilities: [{
+      groupIndex: 0, status: 'compatible', findingIds: ['finding-only'], value: { status: 'compatible' },
+    }],
+  }
+  const compiledEvidence = compileReportVisuals(evidenceDocument, evidenceProjection)
+  assert.equal(compiledEvidence.ok, true, JSON.stringify(compiledEvidence))
+  if (!compiledEvidence.ok) return
+  const published = await publishReport(compiledEvidence.value, {
+    environmentFingerprint: 'e'.repeat(64), marivoVersion: '0.4.test',
+    reportsRoot: path.join(root, 'reports'), now: () => new Date('2026-08-27T01:02:03.000Z'),
+  })
+  assert.equal(published.ok, true, JSON.stringify(published))
+  if (!published.ok) return
+  const manifest = JSON.parse(await readFile(path.join(path.dirname(published.path), 'manifest.json'), 'utf8')) as {
+    version: string
+    renderer_version: string
+    provenance_digest: string
+    artifacts: Array<{ ref: string; content_hash: string }>
+    finding_ids: string[]
+  }
+  assert.equal(manifest.version, 'dsh-data-analysis-report-manifest/v2')
+  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v2')
+  assert.match(manifest.provenance_digest, /^[a-f0-9]{64}$/)
+  assert.deepEqual(manifest.artifacts, [{ ref: 'artifact-backing', content_hash: artifact.contentHash }])
+  assert.deepEqual(manifest.finding_ids, ['finding-only'])
+  const html = await readFile(published.path, 'utf8')
+  assert.match(html, /payments\.success：观测值为 12。/)
+  assert.match(html, /href="#provenance-artifact-1"/)
+  assert.doesNotMatch(html, /data\.parquet|\.marivo\//)
+})
+
 test('publisher stops before publication when cancellation arrives after projection', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-cancel-'))
   t.after(() => rm(root, { recursive: true, force: true }))
@@ -304,7 +460,7 @@ test('projection parser accepts one exact atomic bundle and rejects identity dri
       ref: artifact.ref, family: artifact.family, shape: artifact.shape, columns: artifact.columns,
       content_hash: artifact.contentHash, artifact_schema_version: artifact.artifactSchemaVersion,
       created_at: artifact.createdAt, contract: artifact.contract, revalidation: artifact.revalidation,
-      lineage: artifact.lineage, rows: artifact.rows,
+      lineage: artifact.lineage, rows_projected: true, rows: artifact.rows,
     }],
     findings: [], compatibilities: [],
   }
@@ -316,6 +472,44 @@ test('projection parser accepts one exact atomic bundle and rejects identity dri
   assert.throws(() => parseReportProjection(Buffer.from(JSON.stringify(raw)), {
     sessionId: 'session-report', artifactRefs: ['artifact-trend'], findingIds: [], findingGroups: [],
   }), /revalidation identity|requested identities/)
+})
+
+test('Finding-only provenance accepts an admissible backing Artifact without projecting its rows', () => {
+  const backingHash = 'b'.repeat(64)
+  const raw = {
+    status: 'ready', session_id: 'session-report',
+    artifacts: [{
+      ref: 'artifact-backing', family: 'MetricFrame', shape: [5000, 2], columns: artifact.columns,
+      content_hash: backingHash, artifact_schema_version: artifact.artifactSchemaVersion,
+      created_at: artifact.createdAt, contract: { kind: 'MetricFrame', ref: 'artifact-backing' },
+      revalidation: {
+        status: 'admissible', artifact_ref: 'artifact-backing', content_hash: backingHash,
+        artifact_schema_version: artifact.artifactSchemaVersion,
+      },
+      lineage: { steps: [] }, rows_projected: false, rows: [],
+    }],
+    findings: [{
+      finding_id: 'finding-only', finding_type: 'metric_value', epistemic_kind: 'observed',
+      artifact_id: 'artifact-backing', session_id: 'session-report', quality_status: null,
+      committed_at: '2026-08-27T00:05:00+00:00', value: { kind: 'metric_value', value: 12 },
+      subject: { kind: 'metric', metric_id: 'payments.success' }, derivation: { rule_id: 'metric/v1' },
+      rendered: { en: 'payments.success: observed 12.', zh: 'payments.success：观测值为 12。' },
+    }],
+    compatibilities: [{
+      group_index: 0, status: 'compatible', finding_ids: ['finding-only'], value: { status: 'compatible' },
+    }],
+  }
+  const accepted = parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+    sessionId: 'session-report', artifactRefs: [], findingIds: ['finding-only'], findingGroups: [['finding-only']],
+  })
+  assert.equal(accepted.ok, true, JSON.stringify(accepted))
+  if (!accepted.ok) return
+  assert.equal(accepted.value.artifacts[0]?.rowsProjected, false)
+  assert.deepEqual(accepted.value.artifacts[0]?.rows, [])
+
+  assert.throws(() => parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+    sessionId: 'session-report', artifactRefs: ['artifact-backing'], findingIds: ['finding-only'], findingGroups: [['finding-only']],
+  }), /row projection status/)
 })
 
 test('nullable numeric projection cells remain null for table rendering', () => {
@@ -461,7 +655,7 @@ test('registered Tool persists a closed ready card summary and null for blocked 
       ref: artifact.ref, family: artifact.family, shape: artifact.shape, columns: artifact.columns,
       content_hash: artifact.contentHash, artifact_schema_version: artifact.artifactSchemaVersion,
       created_at: artifact.createdAt, contract: artifact.contract, revalidation: artifact.revalidation,
-      lineage: artifact.lineage, rows: artifact.rows,
+      lineage: artifact.lineage, rows_projected: true, rows: artifact.rows,
     }], findings: [], compatibilities: [],
   }
   await writeFile(executable, `#!/usr/bin/env node\nprocess.stdout.write(process.env.REPORT_PAYLOAD ?? '')\n`)

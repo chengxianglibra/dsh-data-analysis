@@ -96,8 +96,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 ```
 
 创建 Runtime 时安装不带版本约束的 `marivo[duckdb,trino,clickhouse]`，由 PyPI 动态解析
-当时最新的兼容版本。`installation.json` 记录实际安装版本；后续启动会验证 marker、
-Python、该版本和 package identity，然后直接复用 Runtime，不会在每次 Session 启动时
+当时最新的兼容版本。`installation.json` 记录实际安装版本和所需 capability；后续启动会验证 marker、
+Python、该版本、package identity 和 `finding-render-v1`，然后直接复用 Runtime，不会在每次 Session 启动时
 联网升级。并发启动通过安装锁串行化；失败安装不会发布完成 marker。
 
 ## 使用
@@ -149,15 +149,16 @@ Marivo 自动写入 `~/.marivo/secrets.toml`。Shell 中的脚本本身可以读
 ### 引用 Marivo Evidence
 
 加载 `marivo-analysis` 后，所有由精确、已持久化 Finding 支撑的关键事实，默认必须在最终回答前调用
-`marivo_evidence_cite({ session_id, finding_ids })` 生成引用。解释、建议、假设或没有精确 Finding
+`marivo_evidence_cite({ session_id, finding_ids, language })` 生成引用，中文回答使用 `zh`，英文回答使用 `en`。解释、建议、假设或没有精确 Finding
 支撑的事实不强制引用；重要的无支持边界应明确披露，不得伪造引用。工具每次接受 1–20 个唯一 Finding ID，在当前
 binding 中通过 `mv.session.resume(..., use_datasources=False)` 和 `session.evidence.finding()` 整批读取，
-并签发 `F1` 等稳定 handle。相同 Environment、Marivo Session 和 Finding 在同一 DSH Session 内复用
+并调用公共 `Finding.render()` 读取中英文事实陈述，再签发 `F1` 等稳定 handle。相同 Environment、Marivo Session 和 Finding 在同一 DSH Session 内复用
 handle；每个 DSH Session 最多 100 个，跨 Session 隔离。
 
-Agent 把工具返回的 `[^mv-f1]` 放在结论后，并在答案末尾原样放置对应 definition。CLI/Headless 可直接
+Agent 把工具返回的 `[^mv-f1]` 放在结论后，并在答案末尾原样放置只含人读事实的 definition。CLI/Headless 可直接
 阅读标准 Markdown footnote；Web 会从标准 `tool/result.meta` 和最终 `assistant/message` 回放出“Marivo
-来源”卡片。插件不截获或重写原回答，也不新增自定义 Session event。
+来源”卡片。卡片把事实陈述作为主内容，机器身份和状态放入折叠审计详情；缺失或被修改的 definition 会明确警告。
+插件不截获或重写原回答，也不新增自定义 Session event。
 
 这个角标只确认 Finding 来源身份，不验证整句话、数字推理或业务判断。轻量版本不做自然语言
 entailment、`to_pandas` 用途判断、可信等级或强制 analysis state 复盘；没有由持久化 Finding 支撑的
@@ -177,8 +178,10 @@ marivo_report_render({ session_id, document })
 `table`、`evidence` block。chart 支持 `auto`、`line` 和 `bar`；每个数据 block 必须引用精确 Artifact，
 来源 block 可引用精确 Finding。修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
 
-工具只接受 revalidation 为 `admissible` 的 Artifact，并对每个带 Finding 的 block 单独执行 Marivo Evidence
-compatibility。它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
+工具会恢复每个 Finding 的 backing Artifact，且只接受 revalidation 为 `admissible` 的 Artifact，并对每个带 Finding 的 block 单独执行 Marivo Evidence
+compatibility。仅被图表或表格显式引用的 Artifact 才投影 rows；纯溯源 Artifact 不受 2,000 行展示上限影响。
+报告按 locale 展示 `Finding.render()` 事实，并在折叠详情和页脚索引中提供 content hash、contract、revalidation、Lineage 与派生字段。
+它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
 HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Tool 文本返回绝对 `index.html` 路径；Web
 卡片从顶层 meta 或 Code Mode 耐久子调用 block 恢复标题、披露和路径，用户点击“打开报告”后才调用 DSH
 `host.openPath`。打开失败只显示在当前卡片中，不改变原 Tool Result。完整边界见
@@ -190,7 +193,8 @@ HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Tool 
 $DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
 ```
 
-路径和 digest 不是 Marivo Evidence；报告页脚也明确说明 `admissible` 不等于 datasource fresh。
+路径和 digest 不是 Marivo Evidence；报告页脚也明确说明 `admissible` 不等于 datasource fresh，且不包含
+Parquet 链接或 Marivo 私有存储路径。
 
 ### 检查环境
 

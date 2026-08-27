@@ -4,7 +4,7 @@ import type { ReportFindingProjection } from './projection.ts'
 import type { CompiledChartBlock, CompiledReport, CompiledTableBlock } from './visual.ts'
 import { reportTimeEpoch } from './time.ts'
 
-export const REPORT_RENDERER_VERSION = 'dsh-data-analysis-html/v1' as const
+export const REPORT_RENDERER_VERSION = 'dsh-data-analysis-html/v2' as const
 
 const CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
 
@@ -15,7 +15,8 @@ const COPY = {
     dataTable: '查看同源数据表', displayed: '显示', total: '总计', omitted: '省略', rows: '行',
     freshness: 'Artifact admissible 仅表示当前语义权威和 Evidence 完整性可接受，不等于 datasource fresh。',
     noQuality: '未标注', value: '值', derivation: '派生规则', subject: '主题', chart: '图表',
-    range: '范围', unit: '单位',
+    range: '范围', unit: '单位', audit: '审计字段', contract: '公共契约', lineage: 'Lineage',
+    support: 'Finding 是相邻 Evidence 来源，不表示其蕴含整段报告文字。', inventory: '完整溯源索引',
   },
   'en-US': {
     generated: 'Generated at', source: 'Sources and validity', artifact: 'Artifact', finding: 'Finding',
@@ -23,7 +24,8 @@ const COPY = {
     dataTable: 'View source data table', displayed: 'Displayed', total: 'total', omitted: 'omitted', rows: 'rows',
     freshness: 'Artifact admissible means current semantic authority and Evidence integrity are acceptable; it does not mean datasource fresh.',
     noQuality: 'not labeled', value: 'Value', derivation: 'Derivation', subject: 'Subject', chart: 'Chart',
-    range: 'Range', unit: 'Unit',
+    range: 'Range', unit: 'Unit', audit: 'Audit fields', contract: 'Public contract', lineage: 'Lineage',
+    support: 'A Finding is an adjacent Evidence source; it does not entail the complete report text.', inventory: 'Complete provenance index',
   },
 } as const
 
@@ -69,6 +71,22 @@ function tableHtml(
   return `<div class="table-scroll"><table><caption>${escapeHtml(caption)}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
 }
 
+function artifactAnchor(report: CompiledReport, ref: string): string {
+  const index = report.projection.artifacts.findIndex(item => item.ref === ref)
+  if (index < 0) throw new Error(`provenance Artifact ${ref} is missing`)
+  return `provenance-artifact-${index + 1}`
+}
+
+function findingAnchor(report: CompiledReport, id: string): string {
+  const index = report.projection.findings.findIndex(item => item.findingId === id)
+  if (index < 0) throw new Error(`provenance Finding ${id} is missing`)
+  return `provenance-finding-${index + 1}`
+}
+
+function findingStatement(finding: ReportFindingProjection, report: CompiledReport): string {
+  return report.document.locale === 'zh-CN' ? finding.rendered.zh : finding.rendered.en
+}
+
 function sourceDetails(
   artifactRef: string | undefined,
   findingIds: readonly string[] | undefined,
@@ -82,9 +100,9 @@ function sourceDetails(
     (item): item is ReportFindingProjection => item !== undefined,
   )
   if (artifact === undefined && findings.length === 0) return ''
-  const artifactHtml = artifact === undefined ? '' : `<div class="source-card"><h4>${copy.artifact}</h4><dl><dt>ref</dt><dd>${escapeHtml(artifact.ref)}</dd><dt>content hash</dt><dd>${escapeHtml(artifact.contentHash)}</dd><dt>family</dt><dd>${escapeHtml(artifact.family)}</dd><dt>shape</dt><dd>${artifact.shape[0]} × ${artifact.shape[1]}</dd><dt>created</dt><dd>${escapeHtml(artifact.createdAt)}</dd><dt>revalidation</dt><dd>admissible</dd></dl></div>`
-  const findingHtml = findings.map(finding => `<div class="source-card"><h4>${copy.finding} ${escapeHtml(finding.findingId)}</h4><dl><dt>${copy.type}</dt><dd>${escapeHtml(finding.findingType)}</dd><dt>${copy.epistemic}</dt><dd>${escapeHtml(finding.epistemicKind)}</dd><dt>${copy.quality}</dt><dd>${escapeHtml(finding.qualityStatus ?? copy.noQuality)}</dd><dt>${copy.committed}</dt><dd>${escapeHtml(finding.committedAt)}</dd><dt>${copy.artifact}</dt><dd>${escapeHtml(finding.artifactId)}</dd></dl><h5>${copy.value}</h5><pre>${escapeHtml(pretty(finding.value))}</pre><h5>${copy.subject}</h5><pre>${escapeHtml(pretty(finding.subject))}</pre><h5>${copy.derivation}</h5><pre>${escapeHtml(pretty(finding.derivation))}</pre></div>`).join('')
-  return `<details class="sources"><summary>${copy.source}</summary>${artifactHtml}${findingHtml}</details>`
+  const artifactHtml = artifact === undefined ? '' : `<details class="source-card audit"><summary>${copy.artifact} ${copy.audit}</summary><p><a href="#${artifactAnchor(report, artifact.ref)}">${escapeHtml(artifact.ref)}</a></p><dl><dt>content hash</dt><dd>${escapeHtml(artifact.contentHash)}</dd><dt>family</dt><dd>${escapeHtml(artifact.family)}</dd><dt>shape</dt><dd>${artifact.shape[0]} × ${artifact.shape[1]}</dd><dt>revalidation</dt><dd>admissible</dd></dl></details>`
+  const findingHtml = findings.map(finding => `<div class="source-card"><p class="evidence-statement">${escapeHtml(findingStatement(finding, report))}</p><details class="audit"><summary>${copy.audit}</summary><h4><a href="#${findingAnchor(report, finding.findingId)}">${copy.finding} ${escapeHtml(finding.findingId)}</a></h4><dl><dt>session</dt><dd>${escapeHtml(finding.sessionId)}</dd><dt>${copy.type}</dt><dd>${escapeHtml(finding.findingType)}</dd><dt>${copy.epistemic}</dt><dd>${escapeHtml(finding.epistemicKind)}</dd><dt>${copy.quality}</dt><dd>${escapeHtml(finding.qualityStatus ?? copy.noQuality)}</dd><dt>${copy.committed}</dt><dd>${escapeHtml(finding.committedAt)}</dd><dt>${copy.artifact}</dt><dd><a href="#${artifactAnchor(report, finding.artifactId)}">${escapeHtml(finding.artifactId)}</a></dd></dl><h5>${copy.value}</h5><pre>${escapeHtml(pretty(finding.value))}</pre><h5>${copy.subject}</h5><pre>${escapeHtml(pretty(finding.subject))}</pre><h5>${copy.derivation}</h5><pre>${escapeHtml(pretty(finding.derivation))}</pre></details></div>`).join('')
+  return `<section class="sources"><h4>${copy.source}</h4><p class="support-boundary">${copy.support}</p>${findingHtml}${artifactHtml}</section>`
 }
 
 function chartContext(chart: CompiledChartBlock, report: CompiledReport): string {
@@ -196,14 +214,14 @@ function renderBlock(block: ReportBlockV1, report: CompiledReport): string {
 
 function footer(report: CompiledReport, generatedAt: string): string {
   const copy = COPY[report.document.locale]
-  const artifacts = report.projection.artifacts.map(artifact => `<li><span>${escapeHtml(artifact.ref)}</span><code>${escapeHtml(artifact.contentHash)}</code></li>`).join('')
-  const findings = report.projection.findings.map(finding => `<li><span>${escapeHtml(finding.findingId)}</span><time>${escapeHtml(finding.committedAt)}</time></li>`).join('')
-  return `<footer><h2>${copy.source}</h2><p><strong>${copy.generated}:</strong> <time>${escapeHtml(generatedAt)}</time></p><p class="freshness">${copy.freshness}</p><div class="footer-grid"><section><h3>Artifacts</h3><ul>${artifacts}</ul></section><section><h3>Findings</h3><ul>${findings}</ul></section></div></footer>`
+  const artifacts = report.projection.artifacts.map((artifact, index) => `<article class="provenance-record" id="provenance-artifact-${index + 1}"><h4>${copy.artifact} ${index + 1}</h4><dl><dt>ref</dt><dd>${escapeHtml(artifact.ref)}</dd><dt>content hash</dt><dd>${escapeHtml(artifact.contentHash)}</dd><dt>family</dt><dd>${escapeHtml(artifact.family)}</dd><dt>shape</dt><dd>${artifact.shape[0]} × ${artifact.shape[1]}</dd><dt>schema</dt><dd>${escapeHtml(artifact.artifactSchemaVersion)}</dd><dt>created</dt><dd>${escapeHtml(artifact.createdAt)}</dd><dt>revalidation</dt><dd>admissible</dd></dl><details class="audit"><summary>${copy.audit}</summary><h5>${copy.contract}</h5><pre>${escapeHtml(pretty(artifact.contract))}</pre><h5>revalidation</h5><pre>${escapeHtml(pretty(artifact.revalidation))}</pre><h5>${copy.lineage}</h5><pre>${escapeHtml(pretty(artifact.lineage))}</pre></details></article>`).join('')
+  const findings = report.projection.findings.map((finding, index) => `<article class="provenance-record" id="provenance-finding-${index + 1}"><h4>${copy.finding} ${index + 1}</h4><p class="evidence-statement">${escapeHtml(findingStatement(finding, report))}</p><dl><dt>id</dt><dd>${escapeHtml(finding.findingId)}</dd><dt>session</dt><dd>${escapeHtml(finding.sessionId)}</dd><dt>${copy.type}</dt><dd>${escapeHtml(finding.findingType)}</dd><dt>${copy.epistemic}</dt><dd>${escapeHtml(finding.epistemicKind)}</dd><dt>${copy.quality}</dt><dd>${escapeHtml(finding.qualityStatus ?? copy.noQuality)}</dd><dt>${copy.artifact}</dt><dd><a href="#${artifactAnchor(report, finding.artifactId)}">${escapeHtml(finding.artifactId)}</a></dd><dt>${copy.committed}</dt><dd>${escapeHtml(finding.committedAt)}</dd></dl><details class="audit"><summary>${copy.audit}</summary><h5>${copy.value}</h5><pre>${escapeHtml(pretty(finding.value))}</pre><h5>${copy.subject}</h5><pre>${escapeHtml(pretty(finding.subject))}</pre><h5>${copy.derivation}</h5><pre>${escapeHtml(pretty(finding.derivation))}</pre></details></article>`).join('')
+  return `<footer><h2>${copy.inventory}</h2><p><strong>${copy.generated}:</strong> <time>${escapeHtml(generatedAt)}</time></p><p class="freshness">${copy.freshness}</p><p class="support-boundary">${copy.support}</p><div class="footer-grid"><section><h3>Artifacts</h3>${artifacts}</section><section><h3>Findings</h3>${findings}</section></div></footer>`
 }
 
 const CSS = `
 :root{color-scheme:light;--ink:#17212b;--muted:#5c6975;--accent:#0969a8;--line:#c9d4dc;--paper:#fff;--wash:#f3f7fa;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-*{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);line-height:1.55}main{max-width:1120px;margin:0 auto;background:var(--paper);padding:52px 64px;box-shadow:0 2px 24px #14202b1a}header{border-bottom:3px solid var(--accent);padding-bottom:24px;margin-bottom:42px}h1{font-size:2.25rem;line-height:1.16;margin:0}h2{font-size:1.55rem;margin:44px 0 18px}h3{font-size:1.15rem;margin:0 0 8px}.subtitle,.context,.truncation{color:var(--muted)}.block{margin:0 0 28px;break-inside:avoid}.text-block p{margin:.4em 0;white-space:pre-wrap}.chart{display:block;width:100%;height:auto;margin:14px 0;background:#fff}.axis{stroke:#52606b;stroke-width:1.5}.grid{stroke:#dbe3e8;stroke-width:1}.tick{font-size:12px;fill:#53616d}.axis-label{font-size:14px;font-weight:600;fill:#263442}.line-series{fill:none;stroke:var(--accent);stroke-width:3}.line-series+circle,.chart circle{fill:#fff;stroke:var(--accent);stroke-width:3}.bar-series{fill:#8dc4e8;stroke:#154c70;stroke-width:1.5}.value-label{font-size:11px;font-weight:600;fill:#263442}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}caption{text-align:left;font-weight:600;padding:0 0 8px}th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}th{background:#eaf1f5}td{max-width:38rem;overflow-wrap:anywhere}details{border:1px solid var(--line);border-radius:6px;padding:10px 13px;margin-top:14px}summary{cursor:pointer;font-weight:600}.source-card{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.source-card dl{display:grid;grid-template-columns:minmax(7rem,auto) 1fr;gap:4px 14px}.source-card dt{font-weight:600}.source-card dd{margin:0;overflow-wrap:anywhere}.source-card pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--wash);padding:10px;border-radius:4px;font-size:.78rem}footer{border-top:3px solid var(--accent);margin-top:52px;padding-top:22px;font-size:.88rem}.freshness{font-weight:600}.footer-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.footer-grid ul{padding-left:20px}.footer-grid li{margin-bottom:7px}.footer-grid code,.footer-grid time{display:block;overflow-wrap:anywhere;color:var(--muted)}
+*{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);line-height:1.55}main{max-width:1120px;margin:0 auto;background:var(--paper);padding:52px 64px;box-shadow:0 2px 24px #14202b1a}header{border-bottom:3px solid var(--accent);padding-bottom:24px;margin-bottom:42px}h1{font-size:2.25rem;line-height:1.16;margin:0}h2{font-size:1.55rem;margin:44px 0 18px}h3{font-size:1.15rem;margin:0 0 8px}.subtitle,.context,.truncation,.support-boundary{color:var(--muted)}.block{margin:0 0 28px;break-inside:avoid}.text-block p{margin:.4em 0;white-space:pre-wrap}.chart{display:block;width:100%;height:auto;margin:14px 0;background:#fff}.axis{stroke:#52606b;stroke-width:1.5}.grid{stroke:#dbe3e8;stroke-width:1}.tick{font-size:12px;fill:#53616d}.axis-label{font-size:14px;font-weight:600;fill:#263442}.line-series{fill:none;stroke:var(--accent);stroke-width:3}.line-series+circle,.chart circle{fill:#fff;stroke:var(--accent);stroke-width:3}.bar-series{fill:#8dc4e8;stroke:#154c70;stroke-width:1.5}.value-label{font-size:11px;font-weight:600;fill:#263442}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}caption{text-align:left;font-weight:600;padding:0 0 8px}th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}th{background:#eaf1f5}td{max-width:38rem;overflow-wrap:anywhere}a{color:var(--accent);text-underline-offset:2px}details{border:1px solid var(--line);border-radius:6px;padding:10px 13px;margin-top:14px}summary{cursor:pointer;font-weight:600}.sources{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}.source-card{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.source-card dl,.provenance-record dl{display:grid;grid-template-columns:minmax(7rem,auto) 1fr;gap:4px 14px}.source-card dt,.provenance-record dt{font-weight:600}.source-card dd,.provenance-record dd{margin:0;overflow-wrap:anywhere}.source-card pre,.provenance-record pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--wash);padding:10px;border-radius:4px;font-size:.78rem}.evidence-statement{font-size:1rem;font-weight:600}.audit{background:var(--wash)}footer{border-top:3px solid var(--accent);margin-top:52px;padding-top:22px;font-size:.88rem}.freshness{font-weight:600}.footer-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.provenance-record{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;scroll-margin-top:18px}
 @media(max-width:720px){main{padding:28px 20px}h1{font-size:1.8rem}.footer-grid{grid-template-columns:1fr}.category-label{font-size:10px}.source-card dl{grid-template-columns:1fr}.source-card dd{margin-bottom:6px}}
 @media print{body{background:#fff}main{max-width:none;padding:0;box-shadow:none}.block,.chart,table{break-inside:avoid}details{border:0;padding:0}details>summary{font-weight:700}details:not([open])>*:not(summary){display:block}.table-scroll{overflow:visible}footer{break-before:auto}a{color:inherit}}
 `.trim()

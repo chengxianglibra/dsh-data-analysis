@@ -27,19 +27,22 @@ export const SHARED_PYTHON_SPEC = '3.10'
 export const SHARED_MARIVO_PACKAGE_SPEC = 'marivo[duckdb,trino,clickhouse]'
 export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 
-const INSTALLATION_SCHEMA = 'dsh-data-analysis-runtime/v2'
+const INSTALLATION_SCHEMA = 'dsh-data-analysis-runtime/v3'
 const INSTALLATION_FILENAME = 'installation.json'
 const SKILL_NAMES = ['marivo-analysis', 'marivo-semantic'] as const
+const REQUIRED_MARIVO_CAPABILITY = 'finding-render-v1'
 const PROBE_SCRIPT = String.raw`
 import json
 import os
 import sys
 import marivo
+from marivo.analysis import Finding
 
 print(json.dumps({
     "python_executable": os.path.abspath(sys.executable),
     "marivo_version": marivo.__version__,
     "package_path": os.path.abspath(marivo.__file__ or ""),
+    "capabilities": ["finding-render-v1"] if callable(getattr(Finding, "render", None)) else [],
 }, sort_keys=True))
 `.trim()
 const PYTHON_VERSION_SCRIPT = String.raw`
@@ -58,6 +61,7 @@ interface RuntimeProbe {
   python_executable: string
   marivo_version: string
   package_path: string
+  capabilities: string[]
 }
 
 interface InstallationRecord {
@@ -66,6 +70,7 @@ interface InstallationRecord {
   pythonExecutable: string
   packagePath: string
   skillsRoot: string
+  capabilities: string[]
 }
 
 interface RuntimeInstallOptions {
@@ -180,11 +185,25 @@ async function probeRuntime(
     || probe.marivo_version.length === 0
     || typeof probe.package_path !== 'string'
     || probe.package_path.length === 0
+    || !Array.isArray(probe.capabilities)
+    || !probe.capabilities.every(capability => typeof capability === 'string')
   ) {
     throw new MarivoEnvironmentError(
       'shared-runtime-identity-mismatch',
       'Shared Marivo runtime returned an incomplete import identity',
       { probe },
+    )
+  }
+  if (!probe.capabilities.includes(REQUIRED_MARIVO_CAPABILITY)) {
+    throw new MarivoEnvironmentError(
+      'shared-runtime-capability-missing',
+      `Shared Marivo runtime does not provide required capability ${REQUIRED_MARIVO_CAPABILITY}; upgrade Marivo and retry`,
+      {
+        requiredCapability: REQUIRED_MARIVO_CAPABILITY,
+        actualCapabilities: probe.capabilities,
+        marivoVersion: probe.marivo_version,
+        pythonExecutable: canonical,
+      },
     )
   }
   const actualPython = await realpath(path.resolve(probe.python_executable))
@@ -209,6 +228,7 @@ async function probeRuntime(
     python_executable: canonical,
     marivo_version: probe.marivo_version,
     package_path: path.resolve(probe.package_path),
+    capabilities: [...probe.capabilities],
   }
 }
 
@@ -272,6 +292,9 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       || typeof record.pythonExecutable !== 'string'
       || typeof record.packagePath !== 'string'
       || typeof record.skillsRoot !== 'string'
+      || !Array.isArray(record.capabilities)
+      || !record.capabilities.includes(REQUIRED_MARIVO_CAPABILITY)
+      || !record.capabilities.every(capability => typeof capability === 'string')
     ) return undefined
     return record as InstallationRecord
   } catch {
@@ -310,6 +333,7 @@ async function validatedExisting(
       record.marivoVersion,
     )
     if (path.normalize(probe.package_path) !== path.normalize(record.packagePath)) return undefined
+    if (JSON.stringify(probe.capabilities) !== JSON.stringify(record.capabilities)) return undefined
     await validateSkills(record.skillsRoot)
     return {
       runtimeRoot,
@@ -474,6 +498,7 @@ export async function ensureSharedMarivoRuntime(
       pythonExecutable: probe.python_executable,
       packagePath: probe.package_path,
       skillsRoot,
+      capabilities: [...probe.capabilities],
     }
     const installationPath = await writeInstallation(runtimeRoot, record)
     return {

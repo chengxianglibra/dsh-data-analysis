@@ -76,6 +76,7 @@ if (args[0] === '-c' && args.length === 2) {
     python_executable: executable,
     marivo_version: '9.8.7',
     package_path: ${JSON.stringify(packagePath)},
+    capabilities: ['finding-render-v1'],
   }))
   process.exit(0)
 }

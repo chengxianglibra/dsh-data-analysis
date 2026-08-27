@@ -14,7 +14,7 @@ const REPORT_META_KIND = 'marivo-html-report'
 const REPORT_META_VERSION = 1
 const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
 const CITATION_META_KIND = 'marivo-evidence-citations'
-const CITATION_META_VERSION = 1
+const CITATION_META_VERSION = 2
 const CITATION_REGISTRY_DEFINITION_KIND = 'marivo-citation-registry'
 const CITATION_ANSWER_DEFINITION_KIND = 'marivo-citations'
 const CITATION_TURN_DATA_KEY = CITATION_ANSWER_DEFINITION_KIND
@@ -27,7 +27,11 @@ const CITATION_ZH = {
   'source.finding': 'Finding {id}',
   'source.artifact': 'Artifact {id}',
   'source.session': 'Marivo Session {id} · 提交 {committedAt}',
+  'source.audit': '审计详情',
+  'source.item': 'canonical item: {id}',
+  'source.versions': 'extractor {extractor} · Artifact schema {schema}',
   'source.missingDefinition': '回答中缺少工具签发的 footnote definition。',
+  'source.mismatchedDefinition': '回答中的 footnote definition 与工具签发内容不一致。',
   'source.disclaimer': '来源卡片确认 Evidence 身份，不等于验证整句话或业务判断。',
 }
 const CITATION_EN = {
@@ -38,7 +42,11 @@ const CITATION_EN = {
   'source.finding': 'Finding {id}',
   'source.artifact': 'Artifact {id}',
   'source.session': 'Marivo Session {id} · committed {committedAt}',
+  'source.audit': 'Audit details',
+  'source.item': 'canonical item: {id}',
+  'source.versions': 'extractor {extractor} · Artifact schema {schema}',
   'source.missingDefinition': 'The answer is missing the footnote definition issued by the tool.',
+  'source.mismatchedDefinition': 'The footnote definition in the answer does not match the tool-issued content.',
   'source.disclaimer': 'This card confirms Evidence identity; it does not validate the whole statement or business judgment.',
 }
 const openedCalls = new Set<string>()
@@ -46,7 +54,7 @@ const openedCalls = new Set<string>()
 export interface MarivoCitationSource {
   handle: string
   marker: string
-  definition: string
+  rendered: { en: string; zh: string }
   environmentFingerprint: string
   sessionId: string
   findingId: string
@@ -62,7 +70,7 @@ export interface MarivoCitationSource {
 
 export interface ParsedMarivoFootnotes {
   references: string[]
-  definitions: string[]
+  definitions: Array<{ handle: string; body: string }>
 }
 
 export interface MarivoReportPresentationMeta {
@@ -82,7 +90,9 @@ export interface MarivoReportCardModel {
 
 export interface MarivoResolvedCitation {
   handle: string
-  definitionPresent: boolean
+  definitionStatus: 'matched' | 'missing' | 'mismatch'
+  language: 'en' | 'zh' | null
+  statement: string | null
   source: MarivoCitationSource | null
 }
 
@@ -98,6 +108,23 @@ function citationHandle(value: unknown): string | null {
   return match !== null && Number(match[1]) <= 100 ? value : null
 }
 
+function utf8ByteLength(value: string): number {
+  let bytes = 0
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1)
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4
+        index++
+      } else bytes += 3
+    } else bytes += 3
+  }
+  return bytes
+}
+
 function citationSource(value: unknown): MarivoCitationSource | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const source = value as Record<string, unknown>
@@ -106,8 +133,9 @@ function citationSource(value: unknown): MarivoCitationSource | null {
   const marker = `[^mv-${handle.toLowerCase()}]`
   if (
     source.marker !== marker
-    || typeof source.definition !== 'string'
-    || !source.definition.startsWith(`${marker}: `)
+    || typeof source.rendered !== 'object'
+    || source.rendered === null
+    || Array.isArray(source.rendered)
     || typeof source.environmentFingerprint !== 'string'
     || source.environmentFingerprint === ''
     || typeof source.sessionId !== 'string'
@@ -132,10 +160,18 @@ function citationSource(value: unknown): MarivoCitationSource | null {
     || typeof source.artifactSchemaVersion !== 'string'
     || source.artifactSchemaVersion === ''
   ) return null
-  const result = { ...source } as unknown as MarivoCitationSource
-  const quality = result.qualityStatus ?? '未标注'
-  const expected = `${result.marker}: Marivo Evidence ${result.handle}；Finding ${result.findingId}；Artifact ${result.artifactId}；类型 ${result.findingType}；epistemic ${result.epistemicKind}；quality ${quality}；提交 ${result.committedAt}。`
-  return result.definition === expected ? result : null
+  const rendered = source.rendered as Record<string, unknown>
+  if (
+    typeof rendered.en !== 'string' || rendered.en.trim() === '' || /\r|\n/.test(rendered.en)
+    || utf8ByteLength(rendered.en) > 8_192
+    || typeof rendered.zh !== 'string' || rendered.zh.trim() === '' || /\r|\n/.test(rendered.zh)
+    || utf8ByteLength(rendered.zh) > 8_192
+  ) return null
+  return { ...source, rendered: { en: rendered.en, zh: rendered.zh } } as unknown as MarivoCitationSource
+}
+
+function escapeMarkdownInline(value: string): string {
+  return value.replaceAll('\\', '\\\\').replace(/([`*_[\]<>])/g, '\\$1')
 }
 
 /** Parse and validate the complete registry persisted in a standard Tool result meta field. */
@@ -191,11 +227,10 @@ function closingBacktickRun(text: string, start: number, length: number): number
 
 function scanInlineFootnotes(
   text: string,
-  definitionCandidates: ReadonlyMap<number, string>,
+  definitionCandidates: ReadonlyMap<number, { handle: string; body: string }>,
   references: string[],
   seenReferences: Set<string>,
-  definitions: string[],
-  seenDefinitions: Set<string>,
+  definitions: Array<{ handle: string; body: string }>,
 ): void {
   for (let index = 0; index < text.length;) {
     if (text[index] === '\\') {
@@ -212,11 +247,10 @@ function scanInlineFootnotes(
       const match = /^\[\^mv-f([1-9][0-9]{0,2})\]/.exec(text.slice(index))
       if (match !== null && Number(match[1]) <= 100) {
         const handle = `F${match[1]}`
-        const definitionHandle = definitionCandidates.get(index)
-        if (definitionHandle !== undefined && !seenDefinitions.has(definitionHandle)) {
-          seenDefinitions.add(definitionHandle)
-          definitions.push(definitionHandle)
-        } else if (definitionHandle === undefined && !seenReferences.has(handle)) {
+        const definition = definitionCandidates.get(index)
+        if (definition !== undefined) {
+          definitions.push(definition)
+        } else if (definition === undefined && !seenReferences.has(handle)) {
           seenReferences.add(handle)
           references.push(handle)
         }
@@ -231,22 +265,24 @@ function scanInlineFootnotes(
 /** Lightweight Markdown scan that ignores fenced code, inline code, and escaped markers. */
 export function parseMarivoFootnotes(text: string): ParsedMarivoFootnotes {
   const references: string[] = []
-  const definitions: string[] = []
+  const definitions: Array<{ handle: string; body: string }> = []
   const seenReferences = new Set<string>()
-  const seenDefinitions = new Set<string>()
   let fence: { character: string; length: number } | null = null
   let segmentLines: string[] = []
 
   const scanSegment = () => {
     if (segmentLines.length === 0) return
     const segment = segmentLines.join('\n')
-    const definitionCandidates = new Map<number, string>()
+    const definitionCandidates = new Map<number, { handle: string; body: string }>()
     let offset = 0
     for (const line of segmentLines) {
-      const definitionMatch = /^ {0,3}\[\^mv-f([1-9][0-9]{0,2})\]:/.exec(line)
+      const definitionMatch = /^ {0,3}\[\^mv-f([1-9][0-9]{0,2})\]:[ \t]?(.*)$/.exec(line)
       if (definitionMatch !== null && Number(definitionMatch[1]) <= 100) {
         const handle = `F${definitionMatch[1]}`
-        definitionCandidates.set(offset + definitionMatch[0].indexOf('[^'), handle)
+        definitionCandidates.set(offset + definitionMatch[0].indexOf('[^'), {
+          handle,
+          body: definitionMatch[2],
+        })
       }
       offset += line.length + 1
     }
@@ -256,7 +292,6 @@ export function parseMarivoFootnotes(text: string): ParsedMarivoFootnotes {
       references,
       seenReferences,
       definitions,
-      seenDefinitions,
     )
     segmentLines = []
   }
@@ -282,24 +317,55 @@ export function parseMarivoFootnotes(text: string): ParsedMarivoFootnotes {
 
 function assistantFootnotes(event: any): {
   references: string[]
-  definitionPresence: ReadonlyMap<string, boolean>
+  definitions: ReadonlyMap<string, { present: boolean; body: string | null }>
 } {
   const references: string[] = []
-  const definitionPresence = new Map<string, boolean>()
+  const definitions = new Map<string, { present: boolean; body: string | null }>()
   if (event?.type !== 'assistant/message' || !Array.isArray(event.data?.message?.content)) {
-    return { references, definitionPresence }
+    return { references, definitions }
   }
   for (const block of event.data.message.content) {
     if (block?.type !== 'text' || typeof block.text !== 'string') continue
     const parsed = parseMarivoFootnotes(block.text)
-    const definitions = new Set(parsed.definitions)
+    const localDefinitions = new Map<string, string[]>()
+    for (const definition of parsed.definitions) {
+      const bodies = localDefinitions.get(definition.handle) ?? []
+      bodies.push(definition.body)
+      localDefinitions.set(definition.handle, bodies)
+    }
     for (const handle of parsed.references) {
-      const presentHere = definitions.has(handle)
-      if (!definitionPresence.has(handle)) references.push(handle)
-      definitionPresence.set(handle, (definitionPresence.get(handle) ?? true) && presentHere)
+      const bodies = localDefinitions.get(handle) ?? []
+      const observed = bodies.length === 0
+        ? { present: false, body: null }
+        : { present: true, body: bodies.length === 1 ? bodies[0]! : null }
+      const current = definitions.get(handle)
+      if (current === undefined) {
+        references.push(handle)
+        definitions.set(handle, observed)
+      } else if (!observed.present) {
+        definitions.set(handle, { present: false, body: null })
+      } else if (current.present && current.body !== observed.body) {
+        definitions.set(handle, { present: true, body: null })
+      }
     }
   }
-  return { references, definitionPresence }
+  return { references, definitions }
+}
+
+function resolveDefinition(
+  source: MarivoCitationSource | null,
+  observed: { present: boolean; body: string | null } | undefined,
+): Pick<MarivoResolvedCitation, 'definitionStatus' | 'language' | 'statement'> {
+  if (observed?.present !== true) {
+    return { definitionStatus: 'missing', language: null, statement: null }
+  }
+  if (source !== null && observed.body === escapeMarkdownInline(source.rendered.en)) {
+    return { definitionStatus: 'matched', language: 'en', statement: source.rendered.en }
+  }
+  if (source !== null && observed.body === escapeMarkdownInline(source.rendered.zh)) {
+    return { definitionStatus: 'matched', language: 'zh', statement: source.rendered.zh }
+  }
+  return { definitionStatus: 'mismatch', language: null, statement: null }
 }
 
 function isClosingCitationMessage(event: any): boolean {
@@ -340,11 +406,14 @@ export const marivoAnswerCitationsDefinition = {
       turn: match.event.data.turn,
       seq: match.event.seq,
       messageId: String(match.event.data.message.id),
-      citations: parsed.references.map(handle => ({
-        handle,
-        definitionPresent: parsed.definitionPresence.get(handle) === true,
-        source: sources.get(handle) ?? null,
-      })),
+      citations: parsed.references.map(handle => {
+        const source = sources.get(handle) ?? null
+        return {
+          handle,
+          source,
+          ...resolveDefinition(source, parsed.definitions.get(handle)),
+        }
+      }),
     }
   },
   update(context: any) { return context.state },
@@ -785,6 +854,9 @@ const sourceBadgeStyle = {
 }
 const sourceSecondaryStyle = { color: 'var(--dsw-alias-text-secondary, #666)', overflowWrap: 'anywhere' }
 const sourceWarningStyle = { color: 'var(--dsw-alias-text-warning, #9a6700)' }
+const sourceStatementStyle = { margin: 0, fontSize: 13, lineHeight: 1.55 }
+const sourceAuditStyle = { marginTop: 5 }
+const sourceAuditBodyStyle = { display: 'grid', gap: 3, paddingTop: 6 }
 
 export function MarivoSourceCard({ matched: citations, t }: {
   matched: MarivoResolvedCitation[]
@@ -796,37 +868,48 @@ export function MarivoSourceCard({ matched: citations, t }: {
       <ul style={sourceListStyle}>
         {citations.map(citation => (
           <li key={citation.handle} style={sourceItemStyle}>
+            {citation.statement === null ? null : (
+              <p style={sourceStatementStyle}>{citation.statement}</p>
+            )}
             <div style={sourceIdentityStyle}>
               <strong>{citation.handle}</strong>
-              {citation.source === null ? null : (
-                <>
-                  <span style={sourceBadgeStyle}>{citation.source.findingType}</span>
-                  <span style={sourceBadgeStyle}>{citation.source.epistemicKind}</span>
-                  <span style={sourceBadgeStyle}>
-                    {t('source.quality', {
-                      value: citation.source.qualityStatus ?? t('source.unlabeled'),
-                    })}
-                  </span>
-                </>
-              )}
             </div>
             {citation.source === null ? (
               <span style={sourceWarningStyle}>{t('source.unknown')}</span>
             ) : (
-              <>
-                <span style={sourceSecondaryStyle}>{t('source.finding', { id: citation.source.findingId })}</span>
-                <span style={sourceSecondaryStyle}>{t('source.artifact', { id: citation.source.artifactId })}</span>
-                <span style={sourceSecondaryStyle}>
-                  {t('source.session', {
-                    id: citation.source.sessionId,
-                    committedAt: citation.source.committedAt,
-                  })}
-                </span>
-              </>
+              <details style={sourceAuditStyle}>
+                <summary>{t('source.audit')}</summary>
+                <div style={sourceAuditBodyStyle}>
+                  <div style={sourceIdentityStyle}>
+                    <span style={sourceBadgeStyle}>{citation.source.findingType}</span>
+                    <span style={sourceBadgeStyle}>{citation.source.epistemicKind}</span>
+                    <span style={sourceBadgeStyle}>
+                      {t('source.quality', {
+                        value: citation.source.qualityStatus ?? t('source.unlabeled'),
+                      })}
+                    </span>
+                  </div>
+                  <span style={sourceSecondaryStyle}>{t('source.finding', { id: citation.source.findingId })}</span>
+                  <span style={sourceSecondaryStyle}>{t('source.artifact', { id: citation.source.artifactId })}</span>
+                  <span style={sourceSecondaryStyle}>{t('source.item', { id: citation.source.canonicalItemKey })}</span>
+                  <span style={sourceSecondaryStyle}>
+                    {t('source.session', {
+                      id: citation.source.sessionId,
+                      committedAt: citation.source.committedAt,
+                    })}
+                  </span>
+                  <span style={sourceSecondaryStyle}>{t('source.versions', {
+                    extractor: citation.source.extractorVersion,
+                    schema: citation.source.artifactSchemaVersion,
+                  })}</span>
+                </div>
+              </details>
             )}
-            {citation.definitionPresent ? null : (
+            {citation.definitionStatus === 'missing' ? (
               <span style={sourceWarningStyle}>{t('source.missingDefinition')}</span>
-            )}
+            ) : citation.definitionStatus === 'mismatch' ? (
+              <span style={sourceWarningStyle}>{t('source.mismatchedDefinition')}</span>
+            ) : null}
           </li>
         ))}
       </ul>

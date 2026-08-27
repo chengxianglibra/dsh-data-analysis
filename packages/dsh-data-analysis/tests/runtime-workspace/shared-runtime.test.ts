@@ -54,12 +54,16 @@ if (script.includes('sys.version_info')) {
     version: [3, 10, 14],
     prefix: path.dirname(path.resolve(process.argv[1])),
   }))
-} else {
+} else if (script.includes('from marivo.analysis import Finding')) {
   process.stdout.write(JSON.stringify({
     python_executable: path.resolve(process.argv[1]),
     marivo_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
     package_path: ${JSON.stringify(packagePath)},
+    capabilities: process.env.MARIVO_CAPABILITIES === 'missing' ? [] : ['finding-render-v1'],
   }))
+} else {
+  process.stderr.write('runtime probe must import Finding from the public marivo.analysis API')
+  process.exit(19)
 }
 `
 }
@@ -131,8 +135,30 @@ test('concurrent first starts install one latest-resolved shared Runtime and lat
   assert.ok(calls.some(args => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC))
   const marker = JSON.parse(await readFile(path.join(item.runtimeRoot, 'installation.json'), 'utf8')) as Record<string, unknown>
   assert.equal(marker.marivoVersion, FIXTURE_MARIVO_VERSION)
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
+  assert.deepEqual(marker.capabilities, ['finding-render-v1'])
   await stat(path.join(first.skillsRoot, 'marivo-analysis', 'SKILL.md'))
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
+})
+
+test('a managed v2 marker is rebuilt once to publish the required capability marker', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const first = await ensureSharedMarivoRuntime(config, { environment: item.environment })
+  const marker = JSON.parse(await readFile(first.installationPath, 'utf8')) as Record<string, unknown>
+  marker.schema = 'dsh-data-analysis-runtime/v2'
+  delete marker.capabilities
+  await writeFile(first.installationPath, `${JSON.stringify(marker)}\n`)
+
+  const rebuilt = await ensureSharedMarivoRuntime(config, { environment: item.environment })
+  const calls = (await readFile(item.recordPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[])
+  assert.equal(calls.filter(args => args[0] === 'pip' && args[1] === 'install').length, 2)
+  const rebuiltMarker = JSON.parse(await readFile(rebuilt.installationPath, 'utf8')) as Record<string, unknown>
+  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v3')
+  assert.deepEqual(rebuiltMarker.capabilities, ['finding-render-v1'])
+  const siblings = await import('node:fs/promises').then(fs => fs.readdir(item.root))
+  assert.ok(siblings.some(name => name.startsWith('runtime.invalid-')))
 })
 
 test('failed installation never publishes installation.json', async (t) => {
@@ -167,4 +193,21 @@ test('administrator Python accepts its installed Marivo version and records that
   assert.equal(runtime.marivoVersion, '3.2.1')
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8')) as Record<string, unknown>
   assert.equal(marker.marivoVersion, '3.2.1')
+})
+
+test('administrator Python without Finding.render fails with an actionable capability error', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  await assert.rejects(
+    ensureSharedMarivoRuntime(
+      {
+        runtimeRoot: path.join(item.root, 'missing-capability-runtime'),
+        pythonExecutable: item.environment.MANAGED_PYTHON as string,
+      },
+      { environment: { ...item.environment, MARIVO_CAPABILITIES: 'missing' } },
+    ),
+    (error: unknown) => error instanceof MarivoEnvironmentError
+      && error.code === 'shared-runtime-capability-missing'
+      && /finding-render-v1/.test(error.message),
+  )
 })

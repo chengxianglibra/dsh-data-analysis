@@ -82,6 +82,7 @@ interface ReportCallSummary {
   path?: string
   reportDigest?: string
   documentDigest?: string
+  errorText?: string
 }
 
 interface TurnResult {
@@ -180,7 +181,9 @@ function reportCalls(events: readonly SessionEvent[]): ReportCallSummary[] {
     const args = parseArguments(event.data.arguments)
     const observed = observedResults.get(callId)
     if (observed === undefined) return [{ callId, arguments: args, status: 'missing-result' }]
-    if (observed.isError) return [{ callId, arguments: args, status: 'error' }]
+    if (observed.isError) return [{
+      callId, arguments: args, status: 'error', errorText: observed.errorText,
+    }]
     const value = observed.value as ReportRenderValueV1 | undefined
     if (value?.status === 'blocked') {
       return [{
@@ -242,8 +245,11 @@ async function assertReadyArtifact(call: ReportCallSummary): Promise<void> {
   assert.match(html, /bar-series/)
   assert.match(html, /<table/)
   assert.match(html, /class="block evidence-block"/)
+  assert.match(html, /class="evidence-statement"/)
+  assert.match(html, /完整溯源索引/)
+  assert.match(html, /href="#provenance-artifact-/)
   assert.match(html, /@media print/)
-  assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\//)
+  assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
 }
 
 async function createFixture(): Promise<FixtureValue> {
@@ -407,6 +413,32 @@ const projection = await (async () => {
   throw error
 })
 
+const findingOnlyProjection = await (async () => {
+  const projectionChild = await environment.runCheckedReportProjection(
+    fixture.sessionId,
+    [],
+    [[fixture.timeSeries.findingId]],
+    { timeoutMs: 120_000, stdoutMaxBytes: 16 * 1024 * 1024 + 65_536, stderrMaxBytes: 65_536 },
+  )
+  assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
+  const parsed = parseReportProjection(projectionChild.stdout, {
+    sessionId: fixture.sessionId,
+    artifactRefs: [],
+    findingIds: [fixture.timeSeries.findingId],
+    findingGroups: [[fixture.timeSeries.findingId]],
+  })
+  assert.equal(parsed.ok, true, JSON.stringify(parsed))
+  if (!parsed.ok) throw new Error('Finding-only projection was unexpectedly blocked')
+  assert.equal(parsed.value.artifacts.length, 1)
+  assert.equal(parsed.value.artifacts[0]?.ref, fixture.timeSeries.ref)
+  assert.equal(parsed.value.artifacts[0]?.rowsProjected, false)
+  assert.deepEqual(parsed.value.artifacts[0]?.rows, [])
+  return parsed.value
+})().catch(async (error) => {
+  await writeEarlyFailure('finding-only-projection', error)
+  throw error
+})
+
 const originalDshHome = process.env.DSH_HOME
 const ctx = new Context()
 let plugin: Awaited<ReturnType<Context['plugin']>> | undefined
@@ -531,6 +563,7 @@ try {
     `Use segmented Artifact ${JSON.stringify(fixture.segmented.ref)} with columns ${JSON.stringify(fixture.segmented.columns)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
     'Submit one complete dsh-data-analysis-report/v1 document titled “支付收入分析报告”.',
     `It must include text plus: an explicit line chart x=${JSON.stringify(timeX)} y=${JSON.stringify(timeY)}, an explicit bar chart x=${JSON.stringify(segmentX)} y=${JSON.stringify(segmentY)}, a table with max_rows=5, and an evidence block.`,
+    'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to each chart, table, text, or evidence block.',
     `Every data/source block must use its exact Artifact/Finding above. End the final response with ${markerFor('initial-generation')}.`,
   ].join('\n'))
   assert.ok(initial.completed, initial.finalText)
@@ -575,7 +608,8 @@ try {
     'Call skill exactly once with {"name":"marivo-analysis"}.',
     `Use exact session ${JSON.stringify(fixture.sessionId)}, time Artifact ${JSON.stringify(fixture.timeSeries.ref)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}, segmented Artifact ${JSON.stringify(fixture.segmented.ref)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
     `The complete document must contain text, line (${JSON.stringify(timeX)}, ${JSON.stringify(timeY)}), bar (${JSON.stringify(segmentX)}, ${JSON.stringify(segmentY)}), table, and evidence blocks.`,
-    'For the first marivo_report_render call deliberately set the table max_rows to 0. After the Tool returns blocked, follow its issue and submit another complete document with max_rows=5. Do not stop after the blocked result.',
+    'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
+    'For the first marivo_report_render call deliberately set the table max_rows to 0. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, without narrating or stopping between the two calls.',
     `End the final response with ${markerFor('blocked-repair')}.`,
   ].join('\n'))
   assert.ok(repaired.completed, repaired.finalText)
@@ -631,6 +665,12 @@ try {
       artifactCount: projection.ok ? projection.value.artifacts.length : 0,
       findingCount: projection.ok ? projection.value.findings.length : 0,
       compatibilityCount: projection.ok ? projection.value.compatibilities.length : 0,
+      findingOnly: {
+        artifactCount: findingOnlyProjection.artifacts.length,
+        findingCount: findingOnlyProjection.findings.length,
+        rowsProjected: findingOnlyProjection.artifacts[0]?.rowsProjected,
+        declaredRows: findingOnlyProjection.artifacts[0]?.shape[0],
+      },
     },
     journeys,
     ...(failure === undefined ? {} : { failure }),

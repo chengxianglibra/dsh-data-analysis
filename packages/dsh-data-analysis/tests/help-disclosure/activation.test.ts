@@ -286,6 +286,7 @@ test('Evidence citation and HTML report guidance appear only after marivo-analys
   assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /marivo_evidence_cite/)
   const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
   assert.match(activatedPrompt, /marivo_evidence_cite/)
+  assert.match(activatedPrompt, /language=\\?"zh\\?"/)
   assert.match(activatedPrompt, /every material fact supported by an exact persisted Finding must be cited by default/)
   assert.match(activatedPrompt, /without an exact persisted Finding/)
   assert.match(activatedPrompt, /Copy the returned marker/)

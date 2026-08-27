@@ -33,13 +33,14 @@ flowchart LR
 复核 Python、Marivo version 和 package path，再执行：
 
 1. `mv.session.resume(session_id, use_datasources=False)`；
-2. 对每个精确 ref 调用 `get_frame()`、`contract()` 和 `revalidate()`；
-3. 只接受 `admissible`，并在 `frame.shape[0] <= 2000` 后调用 `to_pandas()`；
-4. 对每个 Finding 调用 `session.evidence.finding()`；
-5. 对每个带 Finding 的 block 单独调用 `session.evidence.compatibility()`。
+2. 先对每个 Finding 调用 `session.evidence.finding()` 和双语 `Finding.render()`；
+3. 把显式 Artifact 与每个 Finding 的 backing Artifact 按首次出现顺序合并；
+4. 对每个精确 ref 调用 `get_frame()`、`contract()` 和 `revalidate()`，只接受 `admissible`；
+5. 只有图表或表格显式引用的 Artifact 才在 `frame.shape[0] <= 2000` 后调用 `to_pandas()`；纯溯源 Artifact 不投影 rows；
+6. 对每个带 Finding 的 block 单独调用 `session.evidence.compatibility()`。
 
 任一对象失败时不返回部分 bundle。公开列、shape、content hash、artifact schema version、Lineage、Finding
-和 compatibility 与 rows 一起投影；rows 只接受 JSON 标量、ISO 日期时间和 null。投影超过 16 MiB 时
+、双语事实陈述和 compatibility 与可选 rows 一起投影；rows 只接受 JSON 标量、ISO 日期时间和 null。投影超过 16 MiB 时
 blocked。Node 再检查完整 payload、请求顺序、Session、Artifact/revalidation identity 和 compatibility 对应关系，
 但不复制 Marivo 的内部枚举或 Evidence schema。
 
@@ -54,8 +55,10 @@ Top-N 或跨 grain 混合。line 的 x 必须是时间或有序数值维度，�
 最多 30 类且数轴包含零。table 按公开列顺序或显式列选择渲染，并始终显示 displayed/total/omitted。
 
 Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS 和固定 viewBox SVG。所有标题、文字、单元格和
-Evidence JSON 先做 HTML escaping；页面不包含 JavaScript、iframe、form、远程脚本、字体或图片，并声明
-严格 CSP。图表包含 `<title>`、`<desc>`、点/轮廓和值标签以及同源 fallback table；打印 CSS 展开来源并
+Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。每个 block 的来源先展示人读事实，再折叠
+subject/value/derivation 与身份状态；Finding 的 Artifact 指向页脚 canonical provenance record。页脚对 Findings
+和 Artifacts 去重，展示 content hash、schema、contract、revalidation 与 Lineage。页面不包含 JavaScript、iframe、form、远程脚本、字体或图片，并声明
+严格 CSP，也不输出 Parquet 链接或 Marivo 私有路径。图表包含 `<title>`、`<desc>`、点/轮廓和值标签以及同源 fallback table；打印 CSS 展开来源并
 避免图表和表格被截断。
 
 ## 不可变发布
@@ -69,9 +72,11 @@ $DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
 └── manifest.json
 ```
 
-document/report digest 使用递归 key 排序的 canonical JSON 和 SHA-256。report identity 覆盖 renderer version、
-完整文档、Environment fingerprint、Marivo version、Artifact ref/content hash 和 Finding ID；生成时间不进入
-identity，因此相同输入复用首次完整发布的目录。
+document/report digest 使用递归 key 排序的 canonical JSON 和 SHA-256。renderer v2 与 manifest v2 的 report
+identity 覆盖完整文档、Environment fingerprint、Marivo version，以及包含全部显式/backing Artifact、Finding、
+compatibility 和投影 rows 的 provenance digest。Node 在边界处移除每次检查都会变化的 `revalidation.checked_at`，
+但保留其余 revalidation、contract、schema、Lineage、双语事实和状态；生成时间也不进入 identity。因此同一事实与
+来源的重复发布复用首次完整目录，而任何稳定溯源或展示数据变化都会生成新 digest。
 
 Publisher 在同一父目录创建随机 staging，使用目录 `0700`、文件 `0600`，回读并验证 manifest、内容哈希和
 权限后 rename。并发首次发布由一个完整目录胜出；其他调用只在已有目录完全一致时复用，不覆盖损坏目录。

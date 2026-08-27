@@ -9,7 +9,7 @@ import {
 
 export const MARIVO_EVIDENCE_CITE_TOOL_NAME = 'marivo_evidence_cite'
 export const MARIVO_CITATION_META_KIND = 'marivo-evidence-citations'
-export const MARIVO_CITATION_META_VERSION = 1
+export const MARIVO_CITATION_META_VERSION = 2
 export const MARIVO_CITATION_MAX_PER_CALL = 20
 export const MARIVO_CITATION_MAX_HANDLES = 100
 
@@ -23,7 +23,11 @@ export interface MarivoEvidenceSource {
   [key: string]: JsonValue
   handle: string
   marker: string
-  definition: string
+  rendered: {
+    [key: string]: JsonValue
+    en: string
+    zh: string
+  }
   environmentFingerprint: string
   sessionId: string
   findingId: string
@@ -46,8 +50,13 @@ export interface MarivoEvidenceCiteValue {
   }
   dshSessionId: string
   sessionId: string
-  requested: MarivoEvidenceSource[]
+  language: 'en' | 'zh'
+  requested: MarivoEvidenceReference[]
   registry: MarivoEvidenceSource[]
+}
+
+export interface MarivoEvidenceReference extends MarivoEvidenceSource {
+  definition: string
 }
 
 export interface MarivoCitationMeta {
@@ -69,11 +78,27 @@ interface FindingPayload {
   committedAt: string
   extractorVersion: string
   artifactSchemaVersion: string
+  rendered: { en: string; zh: string }
 }
 
 function nonEmptyString(value: unknown, field: string, maxLength = 2_048): string {
   if (typeof value !== 'string' || value.trim() === '' || value.length > maxLength) {
     throw new TypeError(`${field} must be a non-empty string of at most ${maxLength} characters`)
+  }
+  return value
+}
+
+function renderedText(value: unknown, field: string): string {
+  const result = nonEmptyString(value, field, 8_192)
+  if (/\r|\n/.test(result) || Buffer.byteLength(result, 'utf8') > 8_192) {
+    throw new TypeError(`${field} must be one UTF-8 line of at most 8192 bytes`)
+  }
+  return result
+}
+
+function citationLanguage(value: unknown): 'en' | 'zh' {
+  if (value !== 'en' && value !== 'zh') {
+    throw new TypeError("marivo_evidence_cite language must be 'en' or 'zh'")
   }
   return value
 }
@@ -120,6 +145,10 @@ function parseFinding(value: unknown): FindingPayload {
     committedAt: nonEmptyString(item.committed_at, 'committed_at'),
     extractorVersion: nonEmptyString(item.extractor_version, 'extractor_version'),
     artifactSchemaVersion: nonEmptyString(item.artifact_schema_version, 'artifact_schema_version'),
+    rendered: {
+      en: renderedText(jsonObject(item.rendered)?.en, 'rendered.en'),
+      zh: renderedText(jsonObject(item.rendered)?.zh, 'rendered.zh'),
+    },
   }
 }
 
@@ -167,8 +196,9 @@ function validSource(value: unknown): value is MarivoEvidenceSource {
   const handle = source.handle as string
   if (!(
     source.marker === `[^mv-${handle.toLowerCase()}]`
-    && typeof source.definition === 'string'
-    && source.definition.startsWith(`${source.marker}: `)
+    && jsonObject(source.rendered) !== undefined
+    && typeof jsonObject(source.rendered)?.en === 'string'
+    && typeof jsonObject(source.rendered)?.zh === 'string'
     && typeof source.environmentFingerprint === 'string'
     && source.environmentFingerprint !== ''
     && typeof source.sessionId === 'string'
@@ -193,9 +223,13 @@ function validSource(value: unknown): value is MarivoEvidenceSource {
     && typeof source.artifactSchemaVersion === 'string'
     && source.artifactSchemaVersion !== ''
   )) return false
-  const typed = source as unknown as MarivoEvidenceSource
-  const { definition: _definition, ...partial } = typed
-  return typed.definition === definitionFor(partial)
+  try {
+    renderedText(jsonObject(source.rendered)?.en, 'source.rendered.en')
+    renderedText(jsonObject(source.rendered)?.zh, 'source.rendered.zh')
+    return true
+  } catch {
+    return false
+  }
 }
 
 function parseRegistryMeta(
@@ -229,16 +263,19 @@ function parseRegistryMeta(
     handles.add(source.handle)
     identities.add(identity)
   }
-  return meta.registry.map(source => ({ ...source }))
+  return meta.registry.map(source => ({ ...source, rendered: { ...source.rendered } }))
 }
 
 function citationIdentity(environmentFingerprint: string, sessionId: string, findingId: string): string {
   return JSON.stringify([environmentFingerprint, sessionId, findingId])
 }
 
-function definitionFor(source: Omit<MarivoEvidenceSource, 'definition'>): string {
-  const quality = source.qualityStatus ?? '未标注'
-  return `${source.marker}: Marivo Evidence ${source.handle}；Finding ${source.findingId}；Artifact ${source.artifactId}；类型 ${source.findingType}；epistemic ${source.epistemicKind}；quality ${quality}；提交 ${source.committedAt}。`
+export function escapeMarkdownInline(value: string): string {
+  return value.replaceAll('\\', '\\\\').replace(/([`*_[\]<>])/g, '\\$1')
+}
+
+function definitionFor(source: MarivoEvidenceSource, language: 'en' | 'zh'): string {
+  return `${source.marker}: ${escapeMarkdownInline(source.rendered[language])}`
 }
 
 /** Per-DSH-Session stable handle registry restored solely from standard Tool result metadata. */
@@ -262,13 +299,14 @@ export class MarivoCitationRegistry {
   }
 
   snapshot(): MarivoEvidenceSource[] {
-    return this.#sources.map(source => ({ ...source }))
+    return this.#sources.map(source => ({ ...source, rendered: { ...source.rendered } }))
   }
 
   issue(
     environment: { fingerprint: string; version: string },
     sessionId: string,
     findings: readonly FindingPayload[],
+    language: 'en' | 'zh',
   ): MarivoEvidenceCiteValue {
     const byIdentity = new Map(this.#sources.map(source => [citationIdentity(
       source.environmentFingerprint,
@@ -310,11 +348,9 @@ export class MarivoCitationRegistry {
         committedAt: finding.committedAt,
         extractorVersion: finding.extractorVersion,
         artifactSchemaVersion: finding.artifactSchemaVersion,
+        rendered: { ...finding.rendered },
       }
-      const source: MarivoEvidenceSource = {
-        ...partial,
-        definition: definitionFor(partial),
-      }
+      const source: MarivoEvidenceSource = partial
       additions.push(source)
       requested.push(source)
       byIdentity.set(identity, source)
@@ -328,7 +364,12 @@ export class MarivoCitationRegistry {
       environment: { ...environment },
       dshSessionId: String(this.session.id),
       sessionId,
-      requested: requested.map(source => ({ ...source })),
+      language,
+      requested: requested.map(source => ({
+        ...source,
+        rendered: { ...source.rendered },
+        definition: definitionFor(source, language),
+      })),
       registry: this.snapshot(),
     }
   }
@@ -353,7 +394,7 @@ export function createMarivoEvidenceCiteTool(
   const registry = new MarivoCitationRegistry(session)
   return defineTool({
     name: MARIVO_EVIDENCE_CITE_TOOL_NAME,
-    description: 'Optionally issue stable Markdown footnote references for exact persisted Marivo Evidence Findings. This identifies sources; it does not validate the surrounding conclusion.',
+    description: 'Issue stable human-readable Markdown footnote references for exact persisted Marivo Evidence Findings. Use the final answer language. This identifies sources; it does not validate the surrounding conclusion.',
     parameters: {
       session_id: {
         type: 'string',
@@ -365,6 +406,12 @@ export function createMarivoEvidenceCiteTool(
         required: true,
         description: `1-${MARIVO_CITATION_MAX_PER_CALL} unique exact Finding IDs, in desired handle order.`,
         items: { type: 'string' },
+      },
+      language: {
+        type: 'string',
+        required: true,
+        enum: ['en', 'zh'],
+        description: 'Language of the final answer and issued Finding footnote definitions.',
       },
     },
     output: {
@@ -387,6 +434,7 @@ export function createMarivoEvidenceCiteTool(
     async execute(args, exec): Promise<MarivoEvidenceCiteValue> {
       const sessionId = nonEmptyString(args.session_id, 'marivo_evidence_cite session_id', 512)
       const findingIds = requestedFindingIds(args.finding_ids)
+      const language = citationLanguage(args.language)
       const environment = await resolveMarivoEnvironmentSource(environmentSource)
       const result = await environment.runCheckedEvidenceFindings(
         sessionId,
@@ -395,6 +443,13 @@ export function createMarivoEvidenceCiteTool(
         exec.signal,
       )
       if (result.exitCode !== 0) {
+        if (result.exitCode === 69 && result.stderr.toString('utf8').includes('finding-render-unavailable')) {
+          throw new MarivoEnvironmentError(
+            'shared-runtime-capability-missing',
+            'Marivo Evidence citations require Finding.render(); upgrade the bound Marivo runtime and retry',
+            { requiredCapability: 'finding-render-v1' },
+          )
+        }
         throw new MarivoEnvironmentError(
           'subprocess-failed',
           `Marivo Evidence read failed with exit code ${String(result.exitCode)}`,
@@ -408,7 +463,7 @@ export function createMarivoEvidenceCiteTool(
       return registry.issue({
         version: environment.binding.marivoVersion,
         fingerprint: environment.binding.fingerprint,
-      }, sessionId, findings)
+      }, sessionId, findings, language)
     },
   })
 }

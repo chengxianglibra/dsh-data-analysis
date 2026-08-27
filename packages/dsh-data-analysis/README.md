@@ -36,7 +36,7 @@ npx @deepseek-ai/dsh web
 首次启动通过本机 `uv` 在
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo` 安装不带版本约束的共享
 `marivo[duckdb,trino,clickhouse]`，由 PyPI 解析当时最新兼容版本。实际版本记录在
-`installation.json` 中并供后续启动校验和复用。每个 Agent 默认按自己的
+`installation.json` 中并供后续启动校验和复用；Runtime 必须公开 `finding-render-v1` capability。每个 Agent 默认按自己的
 `session.header.cwd` 初始化 `marivo.toml`、`models/` 和 `.marivo/`，不会创建 Workspace
 `.venv` 或 skill 链接。两个 Marivo skills 从共享 Runtime 全局提供，项目同名 skill 保持
 更高优先级。
@@ -58,19 +58,21 @@ standard、code 或 cordis preset。插件活动期间及所有插件自有 Mari
 `needs-credentials` 触发 Web 表单。
 
 加载 `marivo-analysis` 后，短 system prompt 会要求所有由精确、已持久化 Finding 支撑的关键事实默认
-通过 `marivo_evidence_cite` 引用；解释、建议、假设或没有精确 Finding 支撑的事实不强制引用。工具使用
-固定 Python script 读取 Finding，按 DSH Session 签发 `F1` 至 `F100`，并把完整
-registry 写入标准 `tool/result.meta`。Agent 原样输出标准 Markdown marker/definition；Web client 从
-Session 历史解析并在 turn tail 展示来源卡片。插件不截获最终回答、不新增自定义 Session event，也不做
+通过 `marivo_evidence_cite` 引用；工具显式接受 `zh`/`en` 并使用公共 `Finding.render()` 生成只含事实陈述的
+Markdown definition。固定 Python script 读取 Finding，按 DSH Session 签发 `F1` 至 `F100`，并把完整双语
+registry v2 写入标准 `tool/result.meta`。Web client 精确校验 definition，在 turn tail 以事实优先、审计详情折叠的方式展示来源。
+插件不截获最终回答、不新增自定义 Session event，也不做
 entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详见
 [Evidence 轻量引用模块](../../docs/modules/evidence-citations.md)。
 
 加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
 `marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
-bridge 恢复并 revalidate 精确 Artifact、按 block 检查 Finding compatibility，随后生成无 JavaScript、
+bridge 恢复 Finding 及其 backing Artifact、revalidate 完整来源、按 block 检查 Finding compatibility，随后生成无 JavaScript、
 无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。Tool 文本返回绝对路径；
 Web Tool View 从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复报告卡片，用户点击后才通过
-DSH `host.openPath` 打开文件。真实补充验证使用仓库命令 `npm run validate:html-report-rendering:real`，证据写入
-忽略目录 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍
+DSH `host.openPath` 打开文件。纯溯源 Artifact 不投影 rows，HTML 使用 Finding 双语 render 和完整 provenance
+索引，但不输出 Parquet 链接或私有存储路径。真实补充验证使用仓库命令
+`npm run validate:evidence-citations:real` 和 `npm run validate:html-report-rendering:real`，证据写入
+忽略目录 `artifacts/evidence-citations-real/` 和 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍
 blocked。详见
 [HTML 报告渲染模块](../../docs/modules/html-report-rendering.md)。

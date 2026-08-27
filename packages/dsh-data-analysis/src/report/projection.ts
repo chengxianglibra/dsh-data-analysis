@@ -20,6 +20,7 @@ export interface ReportArtifactProjection {
   readonly contract: JsonValue
   readonly revalidation: JsonValue
   readonly lineage: JsonValue
+  readonly rowsProjected: boolean
   readonly rows: readonly (readonly JsonValue[])[]
 }
 
@@ -34,6 +35,7 @@ export interface ReportFindingProjection {
   readonly value: JsonValue
   readonly subject: JsonValue
   readonly derivation: JsonValue
+  readonly rendered: { readonly en: string; readonly zh: string }
 }
 
 export interface ReportCompatibilityProjection {
@@ -91,6 +93,11 @@ function jsonValue(value: unknown, location: string): JsonValue {
   }
 }
 
+function stableRevalidation(value: Record<string, unknown>, location: string): JsonValue {
+  const { checked_at: _checkedAt, ...stable } = value
+  return jsonValue(stable, location)
+}
+
 function stringArray(value: unknown, location: string): string[] {
   if (!Array.isArray(value)) throw new TypeError(`${location} must be an array`)
   return value.map((item, index) => string(item, `${location}[${index}]`))
@@ -144,7 +151,7 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
   const source = object(value, location)
   exactKeys(source, [
     'ref', 'family', 'shape', 'columns', 'content_hash', 'artifact_schema_version',
-    'created_at', 'contract', 'revalidation', 'lineage', 'rows',
+    'created_at', 'contract', 'revalidation', 'lineage', 'rows_projected', 'rows',
   ], location)
   if (!Array.isArray(source.shape) || source.shape.length !== 2) throw new TypeError(`${location}.shape must contain two integers`)
   const rowCount = integer(source.shape[0], `${location}.shape[0]`)
@@ -154,7 +161,11 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
   }
   const columns = source.columns.map((item, index) => parseColumn(item, `${location}.columns[${index}]`))
   if (new Set(columns.map(column => column.name)).size !== columns.length) throw new TypeError(`${location}.columns contains duplicate names`)
-  if (!Array.isArray(source.rows) || source.rows.length !== rowCount) throw new TypeError(`${location}.rows must match the declared row count`)
+  if (typeof source.rows_projected !== 'boolean') throw new TypeError(`${location}.rows_projected must be boolean`)
+  if (!Array.isArray(source.rows)) throw new TypeError(`${location}.rows must be an array`)
+  if (source.rows_projected ? source.rows.length !== rowCount : source.rows.length !== 0) {
+    throw new TypeError(`${location}.rows must match its projection status and declared row count`)
+  }
   const rows = source.rows.map((row, rowIndex) => {
     if (!Array.isArray(row) || row.length !== columnCount) throw new TypeError(`${location}.rows[${rowIndex}] must match the declared columns`)
     return row.map((cell, columnIndex) => jsonValue(cell, `${location}.rows[${rowIndex}][${columnIndex}]`))
@@ -178,8 +189,9 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
     artifactSchemaVersion,
     createdAt: string(source.created_at, `${location}.created_at`),
     contract: jsonValue(source.contract, `${location}.contract`),
-    revalidation: jsonValue(source.revalidation, `${location}.revalidation`),
+    revalidation: stableRevalidation(revalidation, `${location}.revalidation`),
     lineage: jsonValue(source.lineage, `${location}.lineage`),
+    rowsProjected: source.rows_projected,
     rows,
   }
 }
@@ -188,11 +200,19 @@ function parseFinding(value: unknown, location: string): ReportFindingProjection
   const source = object(value, location)
   exactKeys(source, [
     'finding_id', 'finding_type', 'epistemic_kind', 'artifact_id', 'session_id',
-    'quality_status', 'committed_at', 'value', 'subject', 'derivation',
+    'quality_status', 'committed_at', 'value', 'subject', 'derivation', 'rendered',
   ], location)
   if (source.quality_status !== null && (typeof source.quality_status !== 'string' || source.quality_status.length === 0)) {
     throw new TypeError(`${location}.quality_status must be null or a non-empty string`)
   }
+  const rendered = object(source.rendered, `${location}.rendered`)
+  exactKeys(rendered, ['en', 'zh'], `${location}.rendered`)
+  const english = string(rendered.en, `${location}.rendered.en`)
+  const chinese = string(rendered.zh, `${location}.rendered.zh`)
+  if (
+    /\r|\n/.test(english) || /\r|\n/.test(chinese)
+    || Buffer.byteLength(english, 'utf8') > 8_192 || Buffer.byteLength(chinese, 'utf8') > 8_192
+  ) throw new TypeError(`${location}.rendered must contain single-line statements of at most 8192 UTF-8 bytes`)
   return {
     findingId: string(source.finding_id, `${location}.finding_id`),
     findingType: string(source.finding_type, `${location}.finding_type`),
@@ -204,6 +224,7 @@ function parseFinding(value: unknown, location: string): ReportFindingProjection
     value: jsonValue(source.value, `${location}.value`),
     subject: jsonValue(source.subject, `${location}.subject`),
     derivation: jsonValue(source.derivation, `${location}.derivation`),
+    rendered: { en: english, zh: chinese },
   }
 }
 
@@ -251,9 +272,19 @@ export function parseReportProjection(
   const artifacts = source.artifacts.map((item, index) => parseArtifact(item, `projection.artifacts[${index}]`))
   const findings = source.findings.map((item, index) => parseFinding(item, `projection.findings[${index}]`))
   const compatibilities = source.compatibilities.map((item, index) => parseCompatibility(item, `projection.compatibilities[${index}]`))
-  sameOrdered(artifacts.map(item => item.ref), expected.artifactRefs, 'projection.artifacts')
   sameOrdered(findings.map(item => item.findingId), expected.findingIds, 'projection.findings')
   if (findings.some(item => item.sessionId !== expected.sessionId)) throw new TypeError('projection Finding belongs to another Session')
+  const expectedArtifactRefs = [...expected.artifactRefs]
+  for (const finding of findings) {
+    if (!expectedArtifactRefs.includes(finding.artifactId)) expectedArtifactRefs.push(finding.artifactId)
+  }
+  sameOrdered(artifacts.map(item => item.ref), expectedArtifactRefs, 'projection.artifacts')
+  const displayRefs = new Set(expected.artifactRefs)
+  for (const artifact of artifacts) {
+    if (artifact.rowsProjected !== displayRefs.has(artifact.ref)) {
+      throw new TypeError(`projection artifact ${artifact.ref} has the wrong row projection status`)
+    }
+  }
   if (compatibilities.length !== expected.findingGroups.length) throw new TypeError('projection compatibility count does not match the request')
   for (const [index, compatibility] of compatibilities.entries()) {
     if (compatibility.groupIndex !== index) throw new TypeError(`projection.compatibilities[${index}] has the wrong group index`)

@@ -24,6 +24,7 @@
     "validate:environment-execution:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-environment-execution-real.ts",
     "validate:help-disclosure:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-help-disclosure-real.ts",
     "validate:datasource-credentials:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-credentials-real.ts",
+    "validate:evidence-citations:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-evidence-citations-real.ts",
     "validate:html-report-rendering:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-html-report-rendering-real.ts",
     "validate:plugin-integration-delivery:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-integration-delivery-real.ts"
   },

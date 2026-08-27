@@ -7,15 +7,16 @@ import type { ReportBlockedValueV1, ReportDocumentV1 } from './document.ts'
 import { renderReportHtml, REPORT_RENDERER_VERSION } from './render.ts'
 import type { CompiledReport } from './visual.ts'
 
-export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v1' as const
-export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v1' as const
+export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v2' as const
+export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v2' as const
 export const MAX_REPORT_HTML_BYTES = 10 * 1024 * 1024
 
-interface ReportManifestV1 {
+interface ReportManifestV2 {
   readonly version: typeof REPORT_MANIFEST_VERSION
   readonly renderer_version: typeof REPORT_RENDERER_VERSION
   readonly report_digest: string
   readonly document_digest: string
+  readonly provenance_digest: string
   readonly environment_fingerprint: string
   readonly marivo_version: string
   readonly generated_at: string
@@ -78,22 +79,19 @@ export function canonicalJson(value: JsonValue | unknown): string {
 function digestInputs(
   report: CompiledReport,
   options: PublishReportOptions,
-): { documentText: string; documentDigest: string; reportDigest: string } {
+): { documentText: string; documentDigest: string; provenanceDigest: string; reportDigest: string } {
   const documentText = `${canonicalJson(report.document)}\n`
   const documentDigest = hash(documentText.trimEnd())
+  const provenanceDigest = hash(canonicalJson(report.projection))
   const identity = {
     version: REPORT_DIGEST_VERSION,
     renderer_version: REPORT_RENDERER_VERSION,
     document: report.document,
     environment_fingerprint: options.environmentFingerprint,
     marivo_version: options.marivoVersion,
-    artifacts: report.projection.artifacts.map(artifact => ({
-      ref: artifact.ref,
-      content_hash: artifact.contentHash,
-    })),
-    finding_ids: report.projection.findings.map(finding => finding.findingId),
+    provenance_digest: provenanceDigest,
   }
-  return { documentText, documentDigest, reportDigest: hash(canonicalJson(identity)) }
+  return { documentText, documentDigest, provenanceDigest, reportDigest: hash(canonicalJson(identity)) }
 }
 
 export function reportDocumentDigest(document: ReportDocumentV1): string {
@@ -114,13 +112,13 @@ async function secureDirectory(directory: string, signal?: AbortSignal): Promise
   throwIfAborted(signal)
 }
 
-function parseManifest(raw: Buffer): ReportManifestV1 {
+function parseManifest(raw: Buffer): ReportManifestV2 {
   let value: unknown
   try { value = JSON.parse(raw.toString('utf8')) } catch (cause) {
     throw new Error('Existing report manifest is invalid JSON', { cause })
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Existing report manifest is not an object')
-  return value as ReportManifestV1
+  return value as ReportManifestV2
 }
 
 async function validateExisting(
@@ -129,6 +127,7 @@ async function validateExisting(
     readonly report: CompiledReport
     readonly reportDigest: string
     readonly documentDigest: string
+    readonly provenanceDigest: string
     readonly documentText: string
     readonly environmentFingerprint: string
     readonly marivoVersion: string
@@ -136,7 +135,7 @@ async function validateExisting(
     readonly findingIds: readonly string[]
   },
   signal?: AbortSignal,
-): Promise<ReportManifestV1> {
+): Promise<ReportManifestV2> {
   throwIfAborted(signal)
   const directoryInfo = await lstat(directory)
   if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) throw new Error('Existing report digest path is not a trusted directory')
@@ -149,7 +148,7 @@ async function validateExisting(
   throwIfAborted(signal)
   const manifest = parseManifest(manifestRaw)
   const expectedKeys = [
-    'version', 'renderer_version', 'report_digest', 'document_digest', 'environment_fingerprint',
+    'version', 'renderer_version', 'report_digest', 'document_digest', 'provenance_digest', 'environment_fingerprint',
     'marivo_version', 'generated_at', 'artifacts', 'finding_ids', 'files',
   ].sort().join(',')
   if (Object.keys(manifest as unknown as Record<string, unknown>).sort().join(',') !== expectedKeys) throw new Error('Existing report manifest has an unexpected shape')
@@ -164,6 +163,7 @@ async function validateExisting(
     || manifest.renderer_version !== REPORT_RENDERER_VERSION
     || manifest.report_digest !== expected.reportDigest
     || manifest.document_digest !== expected.documentDigest
+    || manifest.provenance_digest !== expected.provenanceDigest
     || manifest.environment_fingerprint !== expected.environmentFingerprint
     || manifest.marivo_version !== expected.marivoVersion
     || typeof manifest.generated_at !== 'string'
@@ -235,11 +235,12 @@ export async function publishReport(
   if (htmlBytes > MAX_REPORT_HTML_BYTES) return publishBlocked(`Generated index.html is ${htmlBytes} bytes; the maximum is ${MAX_REPORT_HTML_BYTES}.`)
   const artifacts = report.projection.artifacts.map(item => ({ ref: item.ref, content_hash: item.contentHash }))
   const findingIds = report.projection.findings.map(item => item.findingId)
-  const manifest: ReportManifestV1 = {
+  const manifest: ReportManifestV2 = {
     version: REPORT_MANIFEST_VERSION,
     renderer_version: REPORT_RENDERER_VERSION,
     report_digest: inputs.reportDigest,
     document_digest: inputs.documentDigest,
+    provenance_digest: inputs.provenanceDigest,
     environment_fingerprint: options.environmentFingerprint,
     marivo_version: options.marivoVersion,
     generated_at: generatedAt,

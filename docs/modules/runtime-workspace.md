@@ -35,14 +35,15 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 ```
 
 `installation.json` 使用插件自己的版本化 marker schema，记录实际 `marivoVersion`、
-`pythonExecutable`、`packagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
+`pythonExecutable`、`packagePath`、`skillsRoot` 和所需 capabilities。它是安装完成标记，不替代 Marivo 项目 manifest。
 
 启动时先读取 marker，再验证：
 
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. 两个内置 Skill 的 `SKILL.md` 均存在。
+4. 公共 `Finding.render()` 可用，probe 返回 `finding-render-v1`；
+5. 两个内置 Skill 的 `SKILL.md` 均存在。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。
@@ -55,7 +56,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器可导入 Marivo，随后同步 Skill 和发布 marker |
 
 插件管理模式在首次创建时不固定 Marivo 版本，由 package resolver 选择当时兼容版本；发布 marker 后
-按实际版本稳定复用。升级不是 Workspace 行为，也不会在 Session 启动时隐式发生。
+按实际版本稳定复用。插件提高 capability marker 时，旧 Runtime 会作为无效安装备份并重建；普通 Workspace
+或 Session 启动不会仅为追逐新版本联网升级。管理员解释器缺少 capability 时明确失败并要求先升级 Marivo。
 
 ### 并发与发布
 

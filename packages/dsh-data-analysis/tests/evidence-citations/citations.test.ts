@@ -30,6 +30,10 @@ const sessionId = args[5]
 const findingIds = JSON.parse(args[6] ?? 'null')
 appendFileSync(process.env.RECORD_PATH, JSON.stringify({ sessionId, findingIds, args: args.slice(5) }) + '\n')
 if (process.env.EVIDENCE_MODE === 'identity') process.exit(78)
+if (process.env.EVIDENCE_MODE === 'render-unavailable') {
+  process.stderr.write(JSON.stringify({ kind: 'finding-render-unavailable', required_capability: 'finding-render-v1' }))
+  process.exit(69)
+}
 if (process.env.EVIDENCE_MODE === 'read-failed') {
   process.stderr.write(JSON.stringify({ kind: 'evidence-read-failed', exception_type: 'FindingNotFoundError' }))
   process.exit(70)
@@ -60,6 +64,13 @@ const findings = findingIds.map((findingId, index) => ({
   committed_at: '2026-08-26T00:00:00+00:00',
   extractor_version: 'v4',
   artifact_schema_version: 'v4',
+  rendered: process.env.EVIDENCE_MODE === 'special-render'
+    ? { en: 'Metric_[unsafe] <tag> \\ exact', zh: '指标_[不安全] <标签> \\ 精确' }
+    : process.env.EVIDENCE_MODE === 'bounded-render'
+      ? { en: 'x'.repeat(8192), zh: '值'.repeat(2730) }
+      : process.env.EVIDENCE_MODE === 'oversize-render'
+        ? { en: 'x'.repeat(8193), zh: '值'.repeat(2731) }
+        : { en: 'Metric ' + findingId + ': observed 12.', zh: '指标 ' + findingId + '：观测值为 12。' },
 }))
 process.stdout.write(JSON.stringify({ session_id: sessionId, findings }))
 `
@@ -96,13 +107,13 @@ async function fixture(options: { mode?: string; fingerprint?: string; wrongSess
 }
 
 let callSequence = 0
-async function cite(ctx: Context, sessionId: string, findingIds: string[]) {
+async function cite(ctx: Context, sessionId: string, findingIds: string[], language: 'en' | 'zh' | string = 'zh') {
   callSequence++
   return ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId(`cite-${callSequence}`),
     name: MARIVO_EVIDENCE_CITE_TOOL_NAME,
-    arguments: { session_id: sessionId, finding_ids: findingIds },
+    arguments: { session_id: sessionId, finding_ids: findingIds, language },
   })
 }
 
@@ -120,13 +131,18 @@ test('exact Finding reads allocate ordered handles and reuse identities without 
   const first = valueOf(firstResult)
   assert.deepEqual(first.requested.map(item => item.handle), ['F1', 'F2'])
   assert.deepEqual(first.requested.map(item => item.marker), ['[^mv-f1]', '[^mv-f2]'])
-  assert.match(first.requested[0]?.definition ?? '', /^\[\^mv-f1\]: Marivo Evidence F1/)
+  assert.equal(first.language, 'zh')
+  assert.equal(first.requested[0]?.definition, '[^mv-f1]: 指标 finding-a：观测值为 12。')
+  assert.deepEqual(first.registry[0]?.rendered, {
+    en: 'Metric finding-a: observed 12.', zh: '指标 finding-a：观测值为 12。',
+  })
   assert.deepEqual(first.registry.map(item => item.findingId), ['finding-a', 'finding-b'])
   assert.equal((firstResult as { meta?: { kind?: string } }).meta?.kind, MARIVO_CITATION_META_KIND)
   assert.equal(
     (firstResult as { meta?: { dshSessionId?: string } }).meta?.dshSessionId,
     String(f.session.id),
   )
+  assert.equal((firstResult as { meta?: { version?: number } }).meta?.version, 2)
 
   const repeated = valueOf(await cite(f.ctx, 'mv-session-a', ['finding-b', 'finding-a']))
   assert.deepEqual(repeated.requested.map(item => item.handle), ['F2', 'F1'])
@@ -150,6 +166,29 @@ test('one and twenty Findings are accepted while duplicate, empty, and twenty-on
     const result = await cite(f.ctx, 'mv-size', ids)
     assert.equal(result.isError, true)
   }
+  assert.equal((await cite(f.ctx, 'mv-size', ['only'], 'fr')).isError, true)
+})
+
+test('selected language controls human-readable definitions and Markdown syntax is escaped', async (t) => {
+  const f = await fixture({ mode: 'special-render' })
+  t.after(f.cleanup)
+  const english = valueOf(await cite(f.ctx, 'mv-language', ['finding-a'], 'en'))
+  assert.equal(english.requested[0]?.definition, '[^mv-f1]: Metric\\_\\[unsafe\\] \\<tag\\> \\\\ exact')
+  const chinese = valueOf(await cite(f.ctx, 'mv-language', ['finding-a'], 'zh'))
+  assert.equal(chinese.requested[0]?.handle, 'F1')
+  assert.equal(chinese.requested[0]?.definition, '[^mv-f1]: 指标\\_\\[不安全\\] \\<标签\\> \\\\ 精确')
+  assert.equal(chinese.registry[0]?.rendered.en, 'Metric_[unsafe] <tag> \\ exact')
+})
+
+test('rendered statements accept the 8 KiB boundary and reject oversized bridge output', async (t) => {
+  const bounded = await fixture({ mode: 'bounded-render' })
+  t.after(bounded.cleanup)
+  const accepted = valueOf(await cite(bounded.ctx, 'mv-bounded', ['finding-a'], 'en'))
+  assert.equal(accepted.registry[0]?.rendered.en.length, 8_192)
+
+  const oversized = await fixture({ mode: 'oversize-render' })
+  t.after(oversized.cleanup)
+  assert.equal((await cite(oversized.ctx, 'mv-oversized', ['finding-a'], 'zh')).isError, true)
 })
 
 test('the 100-handle cap fails atomically and leaves the complete prior registry reusable', async (t) => {
@@ -245,8 +284,8 @@ test('Finding vocabulary stays owned by the bound Marivo runtime', async (t) => 
   assert.equal(value.requested[0]?.qualityStatus, 'future_quality_status')
 })
 
-test('read failures, invalid JSON, and identity mismatches fail without successful values', async (t) => {
-  for (const mode of ['read-failed', 'invalid-json', 'identity']) {
+test('read failures, invalid JSON, missing render capability, and identity mismatches fail without successful values', async (t) => {
+  for (const mode of ['read-failed', 'invalid-json', 'render-unavailable', 'identity']) {
     await t.test(mode, async (t) => {
       const f = await fixture({ mode })
       t.after(f.cleanup)

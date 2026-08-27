@@ -223,6 +223,26 @@ except Exception as exc:
     }, sort_keys=True), file=sys.stderr)
     raise SystemExit(70)
 
+for finding in findings:
+    if not callable(getattr(finding, "render", None)):
+        print(json.dumps({
+            "kind": "finding-render-unavailable",
+            "required_capability": "finding-render-v1",
+        }, sort_keys=True), file=sys.stderr)
+        raise SystemExit(69)
+
+try:
+    rendered = [{
+        "en": finding.render(language="en"),
+        "zh": finding.render(language="zh"),
+    } for finding in findings]
+except Exception as exc:
+    print(json.dumps({
+        "kind": "finding-render-failed",
+        "exception_type": type(exc).__name__,
+    }, sort_keys=True), file=sys.stderr)
+    raise SystemExit(70)
+
 print(json.dumps({
     "session_id": session.id,
     "findings": [{
@@ -236,7 +256,8 @@ print(json.dumps({
         "committed_at": finding.committed_at.isoformat(),
         "extractor_version": finding.extractor_version,
         "artifact_schema_version": finding.artifact_schema_version,
-    } for finding in findings],
+        "rendered": rendered[index],
+    } for index, finding in enumerate(findings)],
 }, sort_keys=True))
 `.trim()
 
@@ -344,8 +365,33 @@ def analysis_issue(exc):
 
 try:
     session = mv.session.resume(session_id, use_datasources=False)
+    findings = [session.evidence.finding(finding_id) for finding_id in finding_ids]
+    for finding in findings:
+        if not callable(getattr(finding, "render", None)):
+            raise ProjectionProblem(
+                "finding-render-unavailable", "marivo.findings",
+                "The bound Marivo runtime does not provide Finding.render().",
+                "Upgrade Marivo to a version that provides finding-render-v1 and retry the complete report.",
+            )
+    try:
+        rendered_findings = [{
+            "en": finding.render(language="en"),
+            "zh": finding.render(language="zh"),
+        } for finding in findings]
+    except Exception:
+        raise ProjectionProblem(
+            "finding-render-failed", "marivo.findings",
+            "Marivo could not render one exact Finding as bounded evidence prose.",
+            "Repair or upgrade the Marivo Finding renderer, then retry the complete report.",
+        )
+
+    all_artifact_refs = list(artifact_refs)
+    for finding in findings:
+        if finding.artifact_id not in all_artifact_refs:
+            all_artifact_refs.append(finding.artifact_id)
+    display_artifact_refs = set(artifact_refs)
     artifacts = []
-    for artifact_index, requested_ref in enumerate(artifact_refs):
+    for artifact_index, requested_ref in enumerate(all_artifact_refs):
         frame = session.get_frame(requested_ref)
         contract = frame.contract()
         if frame.ref != requested_ref or contract.ref != requested_ref:
@@ -361,7 +407,8 @@ try:
                 f"Artifact {requested_ref!r} revalidation is {result.status!r}.",
                 "Regenerate or repair the Artifact until session.revalidate(frame).status is admissible.",
             )
-        if frame.shape[0] > 2000:
+        display_rows = requested_ref in display_artifact_refs
+        if display_rows and frame.shape[0] > 2000:
             raise ProjectionProblem(
                 "artifact-row-limit", f"artifact_refs[{artifact_index}]",
                 f"Artifact {requested_ref!r} has {frame.shape[0]} rows; the report limit is 2000.",
@@ -374,10 +421,10 @@ try:
                 "Artifact content identity changed during report projection.",
                 "Recover and revalidate the exact Artifact again before retrying.",
             )
-        dataframe = frame.to_pandas()
         schema = contract.artifact_schema
         column_names = [column.name for column in schema.columns]
-        if list(dataframe.columns) != column_names or tuple(dataframe.shape) != tuple(frame.shape):
+        dataframe = frame.to_pandas() if display_rows else None
+        if dataframe is not None and (list(dataframe.columns) != column_names or tuple(dataframe.shape) != tuple(frame.shape)):
             raise ProjectionProblem(
                 "artifact-projection-drift", f"artifact_refs[{artifact_index}]",
                 "Artifact terminal projection does not match its public contract and shape.",
@@ -393,7 +440,7 @@ try:
         value_columns = [column.name for column in schema.columns if column.role in {"value", "measure"}]
         if isinstance(meta_unit, str) and meta_unit and len(value_columns) == 1:
             units.setdefault(value_columns[0], meta_unit)
-        rows = [
+        rows = None if dataframe is None else [
             [normalize_cell(value, f"artifacts[{artifact_index}].rows[{row_index}][{column_index}]", schema.columns[column_index].nullable) for column_index, value in enumerate(row)]
             for row_index, row in enumerate(dataframe.itertuples(index=False, name=None))
         ]
@@ -408,10 +455,10 @@ try:
             "contract": contract.model_dump(mode="json"),
             "revalidation": result.model_dump(mode="json"),
             "lineage": public_json(frame.meta.lineage, f"artifacts[{artifact_index}].lineage"),
-            "rows": rows,
+            "rows_projected": display_rows,
+            "rows": [] if rows is None else rows,
         })
 
-    findings = [session.evidence.finding(finding_id) for finding_id in finding_ids]
     compatibilities = []
     for group_index, group in enumerate(finding_groups):
         compatibility = session.evidence.compatibility(finding_ids=group)
@@ -442,7 +489,8 @@ try:
             "value": finding.value.model_dump(mode="json"),
             "subject": finding.subject.model_dump(mode="json"),
             "derivation": finding.derivation.model_dump(mode="json"),
-        } for finding in findings],
+            "rendered": rendered_findings[index],
+        } for index, finding in enumerate(findings)],
         "compatibilities": compatibilities,
     }
     encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
