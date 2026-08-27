@@ -285,6 +285,8 @@ test('Evidence citation guidance appears only after marivo-analysis activation',
   assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /marivo_evidence_cite/)
   const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
   assert.match(activatedPrompt, /marivo_evidence_cite/)
+  assert.match(activatedPrompt, /every material fact supported by an exact persisted Finding must be cited by default/)
+  assert.match(activatedPrompt, /without an exact persisted Finding/)
   assert.match(activatedPrompt, /Copy the returned marker/)
   assert.match(activatedPrompt, /does not prove/)
   assert.match(MARIVO_EVIDENCE_CITATION_PROMPT, /Never invent, rename, or edit/)

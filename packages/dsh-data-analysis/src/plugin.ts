@@ -37,7 +37,8 @@ export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
 ].join(' ')
 
 export const MARIVO_EVIDENCE_CITATION_PROMPT = [
-  'When marivo-analysis is active, you may cite an exact persisted Finding with marivo_evidence_cite only when that precision is useful.',
+  'When marivo-analysis is active, every material fact supported by an exact persisted Finding must be cited by default with marivo_evidence_cite before the final answer.',
+  'Do not require a citation for an interpretation, recommendation, hypothesis, or fact without an exact persisted Finding; disclose a material unsupported boundary instead of inventing one.',
   'Copy the returned marker (for example [^mv-f1]) immediately after the supported statement, and copy its returned footnote definition verbatim at the end of the answer.',
   'Never invent, rename, or edit a Marivo Evidence handle or definition.',
   'A citation proves the identity of its Marivo Evidence source; it does not prove that the whole sentence or business judgment is correct.',

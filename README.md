@@ -141,8 +141,9 @@ Marivo 自动写入 `~/.marivo/secrets.toml`。Shell 中的脚本本身可以读
 
 ### 引用 Marivo Evidence
 
-加载 `marivo-analysis` 后，Agent 可以在精确 Finding 来源确有价值时调用
-`marivo_evidence_cite({ session_id, finding_ids })`。工具每次接受 1–20 个唯一 Finding ID，在当前
+加载 `marivo-analysis` 后，所有由精确、已持久化 Finding 支撑的关键事实，默认必须在最终回答前调用
+`marivo_evidence_cite({ session_id, finding_ids })` 生成引用。解释、建议、假设或没有精确 Finding
+支撑的事实不强制引用；重要的无支持边界应明确披露，不得伪造引用。工具每次接受 1–20 个唯一 Finding ID，在当前
 binding 中通过 `mv.session.resume(..., use_datasources=False)` 和 `session.evidence.finding()` 整批读取，
 并签发 `F1` 等稳定 handle。相同 Environment、Marivo Session 和 Finding 在同一 DSH Session 内复用
 handle；每个 DSH Session 最多 100 个，跨 Session 隔离。
@@ -152,8 +153,9 @@ Agent 把工具返回的 `[^mv-f1]` 放在结论后，并在答案末尾原样�
 来源”卡片。插件不截获或重写原回答，也不新增自定义 Session event。
 
 这个角标只确认 Finding 来源身份，不验证整句话、数字推理或业务判断。轻量版本不做自然语言
-entailment、`to_pandas` 用途判断、可信等级、强制 analysis state 复盘，也不会要求所有简单分析都调用
-引用工具。完整边界见 [Evidence 轻量引用模块](docs/modules/evidence-citations.md)。
+entailment、`to_pandas` 用途判断、可信等级或强制 analysis state 复盘；没有由持久化 Finding 支撑的
+关键事实时，不要求简单分析调用引用工具。完整边界见
+[Evidence 轻量引用模块](docs/modules/evidence-citations.md)。
 
 ### 检查环境
 

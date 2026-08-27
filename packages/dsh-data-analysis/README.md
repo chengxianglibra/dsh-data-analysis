@@ -56,8 +56,9 @@ standard、code 或 cordis preset。插件活动期间及所有插件自有 Mari
 `marivo-semantic` 后，System Prompt 会要求 datasource 注册或修改后立即调用 `marivo_test`，由
 `needs-credentials` 触发 Web 表单。
 
-加载 `marivo-analysis` 后，短 system prompt 会把 `marivo_evidence_cite` 说明为可选的精确 Finding
-引用入口。工具使用固定 Python script 读取 Finding，按 DSH Session 签发 `F1` 至 `F100`，并把完整
+加载 `marivo-analysis` 后，短 system prompt 会要求所有由精确、已持久化 Finding 支撑的关键事实默认
+通过 `marivo_evidence_cite` 引用；解释、建议、假设或没有精确 Finding 支撑的事实不强制引用。工具使用
+固定 Python script 读取 Finding，按 DSH Session 签发 `F1` 至 `F100`，并把完整
 registry 写入标准 `tool/result.meta`。Agent 原样输出标准 Markdown marker/definition；Web client 从
 Session 历史解析并在 turn tail 展示来源卡片。插件不截获最终回答、不新增自定义 Session event，也不做
 entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详见

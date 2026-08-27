@@ -84,13 +84,14 @@ Environment fingerprint + Marivo Session ID + Finding ID
 
 短规则仅在 `marivo-analysis` 已激活后加入 system prompt：
 
-- 精确 Finding 来源确有价值时才选择调用，不强制每个分析都引用；
+- 所有由精确、已持久化 Finding 支撑的关键事实，默认必须在最终回答前调用工具生成引用；
+- 解释、建议、假设或没有精确 Finding 支撑的事实不强制引用；重要的无支持边界应明确披露，不得伪造引用；
 - 结论后原样复制工具返回的 marker，答案末尾原样复制 definition；
 - 不自行构造、重命名或修改 handle/definition；
 - 明示引用证明 Evidence 来源身份，不证明整句结论正确。
 
 `marivo-semantic` 单独激活不会加入这段规则。插件也不要求 Agent 在回答前完整复盘
-`session.state`；简单分析可以直接基于已观察到的结果作答。
+`session.state`；没有由持久化 Finding 支撑的关键事实时，简单分析仍可直接基于已观察到的结果作答。
 
 ## Web 重放与来源卡片
 
