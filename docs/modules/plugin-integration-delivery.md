@@ -2,8 +2,8 @@
 
 ## 作用
 
-本模块是 composition root：把共享 Runtime、Workspace Environment、Help 披露、Datasource Tool、
-全局 Skill provider 和 Web Tool View 组合为一个可由 DSH/Cordis 加载的插件，并定义构建与 npm 包
+本模块是 composition root：把共享 Runtime、Workspace Environment、Help 披露、Datasource、Evidence、
+HTML 报告 Tool、全局 Skill provider 和 Web Tool View 组合为一个可由 DSH/Cordis 加载的插件，并定义构建与 npm 包
 边界。它不承载 Marivo 分析语义，也不在组合层复制子模块状态机。
 
 总体关系见[总体架构](../architecture.md)。主要实现与元数据：
@@ -26,7 +26,7 @@
 3. 通过 `dsh-skill-filesystem` 挂载隔离 provider
    `dsh-data-analysis-marivo`，只包含 Runtime Skill root，不引入默认 roots；
 4. 创建一个 `MarivoWorkspaceEnvironmentManager`；
-5. 为现有 Agent 安装 disclosure、datasource 与 Evidence citation 控制器；
+5. 为现有 Agent 安装 disclosure、datasource、Evidence citation 与 HTML report 控制器；
 6. 监听 `agent/created` 安装新 scope，监听 `agent/disposed` 清理 scope；
 7. plugin dispose 时先清理 Agent controllers，再释放 manager cache。
 
@@ -43,6 +43,7 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 | Disclosure controller | Agent | 观察 Session surface/Tool result，注册 `marivo_help` 和 pre-step hook |
 | `marivo_test` | Agent scope | 使用同一 Agent Environment source，随 controller 清理 |
 | `marivo_evidence_cite` + 动态 prompt | Agent scope | registry 按 Session 隔离；prompt 仅在 `marivo-analysis` 激活后出现 |
+| `marivo_report_render` + 动态 prompt | Agent scope | 完整文档编译为不可变本机 HTML；prompt 仅在 `marivo-analysis` 激活后出现 |
 | Web Tool View | Web client context | 按 `marivo_test` Tool name 注入 slot |
 | Web 来源卡片 | Web client context | 从标准 Tool meta 与 assistant message 重放，selector 无引用时不挂载 |
 
@@ -65,7 +66,7 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 
 ## 公共包接口
 
-包根导出 Cordis entrypoint 和四个服务端模块：
+包根导出 Cordis entrypoint 和五个服务端模块：
 
 ```text
 @deepseek-ai/dsh-data-analysis
@@ -73,6 +74,7 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 @deepseek-ai/dsh-data-analysis/disclosure
 @deepseek-ai/dsh-data-analysis/datasource
 @deepseek-ai/dsh-data-analysis/evidence
+@deepseek-ai/dsh-data-analysis/report
 @deepseek-ai/dsh-data-analysis/client
 ```
 
@@ -111,14 +113,15 @@ CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsco
 
 | 层级 | 命令 | 目的 |
 | --- | --- | --- |
-| 静态与确定性测试 | `npm run check` | TypeScript typecheck + 五个模块的确定性测试 |
+| 静态与确定性测试 | `npm run check` | TypeScript typecheck + 各服务端模块的确定性测试 |
 | 构建 | `npm run build` | 生成服务端、声明、客户端和 executable CLI |
 | 包内容 | `npm run verify:plugin-package` | 验证 exports 对应文件、排除开发文件、检查 CLI mode |
 | 受控打包 | `npm run pack:plugin` | 重跑检查并生成安装 tarball |
 | 模块集成测试 | `npm run test:plugin-integration-delivery` | 验证真实 composition root 的确定性 Web-profile 生命周期 |
 | 补充真实验证 | `npm run validate:plugin-integration-delivery:real` | 通过真实 Cordis `apply` 和模型验证完整插件组合 |
 
-其余四个模块分别提供同名 `test:<module>` 与 `validate:<module>:real` 入口。架构变更应优先补充对应
+各模块按边界提供 `test:<module>`，已有真实环境 runner 继续使用 `validate:<module>:real`。HTML report
+当前只交付确定性 Slice 1；它的真实 Marivo/DSH Web/模型 runner 属于 Slice 3。架构变更应优先补充对应
 模块的确定性测试；只有真实解释器、DSH Web 或模型交互边界发生变化时，才需要相应的真实验证。
 
 Plugin 确定性测试位于

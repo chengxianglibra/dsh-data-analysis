@@ -29,6 +29,7 @@ import {
   installMarivoPlugin,
   MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
   MARIVO_EVIDENCE_CITATION_PROMPT,
+  MARIVO_REPORT_RENDERING_PROMPT,
 } from '../../src/plugin.ts'
 import {
   FixedSubprocessPolicy,
@@ -265,7 +266,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
 })
 
-test('Evidence citation guidance appears only after marivo-analysis activation', async (t) => {
+test('Evidence citation and HTML report guidance appear only after marivo-analysis activation', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -289,7 +290,11 @@ test('Evidence citation guidance appears only after marivo-analysis activation',
   assert.match(activatedPrompt, /without an exact persisted Finding/)
   assert.match(activatedPrompt, /Copy the returned marker/)
   assert.match(activatedPrompt, /does not prove/)
+  assert.match(activatedPrompt, /marivo_report_render/)
+  assert.match(activatedPrompt, /answer inline by default/)
+  assert.match(activatedPrompt, /complete ReportDocument/)
   assert.match(MARIVO_EVIDENCE_CITATION_PROMPT, /Never invent, rename, or edit/)
+  assert.match(MARIVO_REPORT_RENDERING_PROMPT, /does not mean datasource fresh|path and digest are not Marivo Evidence/)
 })
 
 test('an Agent-plane inherited skill Tool activates Evidence guidance and root help', async (t) => {
@@ -771,6 +776,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   assert.deepEqual(requestToolNames(adapter.requests[0]), [
     'marivo_evidence_cite',
     'marivo_help',
+    'marivo_report_render',
     'marivo_test',
     'ordinary',
     'skill',

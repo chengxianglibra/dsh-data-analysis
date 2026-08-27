@@ -37,6 +37,7 @@ flowchart LR
   Plugin --> Help[marivo_help]
   Plugin --> Test[marivo_test]
   Plugin --> Cite[marivo_evidence_cite]
+  Plugin --> Report[marivo_report_render]
   Plugin --> Creds[DSH Credentials]
   Plugin --> ShellEnv[DSH Shell Environment]
   Plugin --> Env[Workspace Environment Binding]
@@ -45,6 +46,7 @@ flowchart LR
   Help --> Marivo[Marivo 公共 API]
   Test --> Marivo
   Cite --> Marivo
+  Report --> Marivo
   Marivo --> Project
 ```
 
@@ -72,7 +74,8 @@ DSH Web profile
     ├── marivo_help
     ├── marivo_test
     ├── bash/pwsh credential snapshot listener
-    └── marivo_evidence_cite + Citation registry
+    ├── marivo_evidence_cite + Citation registry
+    └── marivo_report_render + immutable HTML publisher
 ```
 
 共享 Runtime 只解决安装复用问题，不合并 Workspace 状态。Environment fingerprint 包含项目根、
@@ -87,6 +90,7 @@ DSH Web profile
 | Help 披露 | 提供 focused `marivo_help`，并在 Skill 激活后注入实时根 Help | [Help 披露](modules/help-disclosure.md) |
 | Datasource 与凭证 | 解析 Datasource 凭证引用，调用 `md.test()`，提供 Web 凭证表单 | [Datasource 与凭证](modules/datasource-credentials.md) |
 | Evidence 轻量引用 | 读取精确 Finding、签发 Markdown handle、从标准历史回放 Web 来源卡片 | [Evidence 轻量引用](modules/evidence-citations.md) |
+| HTML 报告渲染 | 校验完整 ReportDocument、读取精确 Marivo 投影并生成不可变自包含 HTML | [HTML 报告渲染](modules/html-report-rendering.md) |
 | Plugin 集成与交付 | 组合 Cordis 生命周期、Agent scopes、客户端构建和 npm 包契约 | [Plugin 集成与交付](modules/plugin-integration-delivery.md) |
 
 依赖方向保持单向：Plugin 组合层依赖其余模块；Help 与 Datasource 依赖 Environment；Environment
@@ -103,7 +107,7 @@ Environment source 类型，不共享业务状态。
 4. 插件为现有 Agent 安装控制器，并监听后续 `agent/created`、`agent/disposed`。
 5. Agent 首次需要 Marivo Environment 时，根据配置或 `session.header.cwd` 解析 Workspace，幂等创建
    最小项目结构，运行 doctor admission 并缓存 binding Promise。
-6. Agent scope 注册 `marivo_help`、`marivo_test` 与 `marivo_evidence_cite`；原 profile 的普通工具可见性不被改写。
+6. Agent scope 注册 `marivo_help`、`marivo_test`、`marivo_evidence_cite` 与 `marivo_report_render`；原 profile 的普通工具可见性不被改写。
 
 ## 分析交互流程
 
@@ -134,6 +138,13 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 新 handle 命名空间。Web client 用 Conversation Definition 从标准历史关联
 最终 `assistant/message`，在 Turn tail 渲染来源卡片；它不改写消息，也不创建自定义 Session event。
 
+### HTML 报告
+
+用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v1`。插件通过
+当前 Environment Binding 批量恢复和 revalidate 精确 Artifact，并按 block 校验 Finding compatibility；
+只使用原始公开投影行渲染 text、line/bar chart、table 和 evidence。报告以 canonical identity 发布到
+`$DSH_HOME` 下的不可变目录，当前 Slice 1 通过 Tool 文本返回绝对路径；Web 打开卡片留给后续 Slice。
+
 ## 状态与数据所有权
 
 | 数据 | 位置 | 生命周期与所有者 |
@@ -146,6 +157,7 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 | Datasource 凭证 | DSH Credentials | Harness 拥有；插件只按操作解析和传递 |
 | Datasource 引用 registry | 插件进程内 WeakMap | Workspace 级；只缓存 datasource 名称和 `DSH_*` 引用名，dispose 后丢弃 |
 | Evidence citation registry | `tool/result.meta` + Agent 内存投影 | DSH Session 级；插件签发，Harness 持久化标准事件 |
+| HTML 报告产物 | `$DSH_HOME/dsh-data-analysis/reports/` | 内容寻址、不可变；插件原子发布，不维护 current/latest/registry |
 
 ## 信任与失败边界
 
@@ -160,6 +172,7 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
   Workspace registry 中已配置的引用；Shell 脚本仍有读取和输出这些变量的能力。Persistent Shell
   缺少该注入接缝，插件在已有凭证时 fail closed。
 - 多 target Help 和多 Skill 根 Help 采用批次原子交付；批次中任一读取失败时不注入部分结果。
+- 报告 projection、视觉编译和 staging 发布均为批次原子；任何失败都不会留下被报告为 ready 的半成品。
 - Workspace 初始化失败、Tool 失败或 Help 披露失败保持在对应 Workspace/Agent 边界内，不升级为
   plugin-owned Marivo 语义修复。
 
@@ -192,6 +205,7 @@ npm run test:environment-execution
 npm run test:help-disclosure
 npm run test:datasource-credentials
 npm run test:evidence-citations
+npm run test:html-report-rendering
 npm run test:plugin-integration-delivery
 
 npm run validate:runtime-workspace:real

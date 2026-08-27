@@ -22,6 +22,7 @@ import {
 import { registerMarivoTestTool } from './datasource/index.ts'
 import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import { registerMarivoEvidenceCiteTool } from './evidence/index.ts'
+import { registerMarivoReportRenderTool } from './report/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -42,6 +43,15 @@ export const MARIVO_EVIDENCE_CITATION_PROMPT = [
   'Copy the returned marker (for example [^mv-f1]) immediately after the supported statement, and copy its returned footnote definition verbatim at the end of the answer.',
   'Never invent, rename, or edit a Marivo Evidence handle or definition.',
   'A citation proves the identity of its Marivo Evidence source; it does not prove that the whole sentence or business judgment is correct.',
+].join(' ')
+
+export const MARIVO_REPORT_RENDERING_PROMPT = [
+  'When marivo-analysis is active, answer inline by default.',
+  'Call marivo_report_render only when the user explicitly requests a durable HTML report, accepts an offer to create one, or asks to revise a report already created in this conversation.',
+  'Do not call it solely because the analysis is complex or contains charts or Artifacts.',
+  'An explicit quick-answer, no-file, or other-output request takes precedence.',
+  'Every call must submit a complete ReportDocument; a revision creates a new report.',
+  'The returned path and digest are not Marivo Evidence.',
 ].join(' ')
 
 let persistencePolicyUsers = 0
@@ -139,6 +149,7 @@ export function installMarivoPlugin(
       },
     }))
     controller.addDisposer(registerMarivoEvidenceCiteTool(agent.ctx, source, agent.session))
+    controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, source))
     controller.addDisposer(agent.ctx.systemPrompt.section({
       name: 'marivo:datasource-credentials',
       order: 170,
@@ -151,6 +162,13 @@ export function installMarivoPlugin(
       order: 180,
       text: () => controller.activeSkills.includes('marivo-analysis')
         ? MARIVO_EVIDENCE_CITATION_PROMPT
+        : '',
+    }))
+    controller.addDisposer(agent.ctx.systemPrompt.section({
+      name: 'marivo:html-report-rendering',
+      order: 190,
+      text: () => controller.activeSkills.includes('marivo-analysis')
+        ? MARIVO_REPORT_RENDERING_PROMPT
         : '',
     }))
     installed.set(agent, controller)

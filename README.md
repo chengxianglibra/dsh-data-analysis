@@ -15,6 +15,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - 在 Agent 加载 `marivo-semantic` 或 `marivo-analysis` 后注入对应的实时根 Help；
 - 通过 `marivo_test` 和 DSH 凭证服务完成 datasource 连接测试；
 - 通过 `marivo_evidence_cite` 为精确 Finding 签发标准 Markdown 角标，并在 Web 展示来源卡片；
+- 通过 `marivo_report_render` 把完整分析文档编译为可离线打开、打印和追溯的不可变 HTML；
 - 支持 DSH 的 `native`、`code` 和 `both` 工具模式。
 
 插件不在每个 Workspace 重复安装 Python、Marivo 或 skills，也不替代 Marivo 对项目、
@@ -28,7 +29,13 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - [Help 披露模块](docs/modules/help-disclosure.md)
 - [Datasource 与凭证模块](docs/modules/datasource-credentials.md)
 - [Evidence 轻量引用模块](docs/modules/evidence-citations.md)
+- [HTML 报告渲染模块](docs/modules/html-report-rendering.md)
 - [Plugin 集成与交付模块](docs/modules/plugin-integration-delivery.md)
+
+设计与后续 Slice：
+
+- [设计计划文档索引](docs/plan/README.md)
+- [HTML 分析报告最小实现设计](docs/plan/html-report-rendering-mvp-design.md)
 
 ## 安装
 
@@ -157,6 +164,33 @@ entailment、`to_pandas` 用途判断、可信等级或强制 analysis state 复
 关键事实时，不要求简单分析调用引用工具。完整边界见
 [Evidence 轻量引用模块](docs/modules/evidence-citations.md)。
 
+### 生成 HTML 分析报告
+
+普通分析默认直接在对话中回答。只有用户明确请求耐久 HTML、接受 Agent 的报告提议，或要求修改本次对话
+中已经生成的报告时，Agent 才调用：
+
+```text
+marivo_report_render({ session_id, document })
+```
+
+`document` 必须是完整的 `dsh-data-analysis-report/v1`，由 1–20 个 section 组成，并使用 `text`、`chart`、
+`table`、`evidence` block。chart 支持 `auto`、`line` 和 `bar`；每个数据 block 必须引用精确 Artifact，
+来源 block 可引用精确 Finding。修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
+
+工具只接受 revalidation 为 `admissible` 的 Artifact，并对每个带 Finding 的 block 单独执行 Marivo Evidence
+compatibility。它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
+HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Slice 1 在 Tool 文本中返回绝对 `index.html`
+路径；Web 的“打开报告”卡片尚未实现。完整边界见
+[HTML 报告渲染模块](docs/modules/html-report-rendering.md)。
+
+默认产物目录为：
+
+```text
+$DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
+```
+
+路径和 digest 不是 Marivo Evidence；报告页脚也明确说明 `admissible` 不等于 datasource fresh。
+
 ### 检查环境
 
 使用下面的命令检查共享 Runtime、Workspace binding、Marivo identity 和 doctor admission：
@@ -192,6 +226,7 @@ diagnostics。需要检查当前项目状态时，使用绑定解释器直接运
 npm install
 npm run typecheck
 npm test
+npm run test:html-report-rendering
 npm run build
 npm run verify:plugin-package
 npm run pack:plugin

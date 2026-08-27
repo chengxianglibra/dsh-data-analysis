@@ -36,6 +36,10 @@
       "types": "./lib/types/evidence/index.d.ts",
       "default": "./lib/evidence/index.js"
     },
+    "./report": {
+      "types": "./lib/types/report/index.d.ts",
+      "default": "./lib/report/index.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },

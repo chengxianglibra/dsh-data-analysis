@@ -1,0 +1,92 @@
+# HTML 报告渲染模块架构
+
+## 作用与当前范围
+
+本模块把一份完整、不可变的 `ReportDocument v1` 编译为本机可离线打开和打印的自包含 HTML 报告。
+入口是 `marivo_report_render({ session_id, document })`。Agent 拥有报告标题、章节、顺序、文字和图表选择；
+插件只校验文档及精确 Marivo 引用、生成展示投影、渲染并原子发布文件。
+
+当前交付的是设计中的 Slice 1：Tool 通过文本返回绝对 `index.html` 路径。尚未实现 Web 报告卡片、
+`host.openPath`、Session replay 卡片和真实模型验收；这些分别属于 Slice 2 和 Slice 3。
+
+## 编译流程
+
+```mermaid
+flowchart LR
+  D[完整 ReportDocument v1] --> P[闭合 shape 与 bounds]
+  P --> B[checked Python bridge]
+  B --> M[Marivo Session / Artifact / Finding]
+  M --> V[视觉准入]
+  V --> H[HTML + inline CSS/SVG]
+  H --> A[原子发布目录]
+  A --> T[Tool ready path + digests]
+```
+
+文档仅支持 `text`、`chart`、`table`、`evidence`。`text` 是纯文本；图表仅支持单系列 `line`、`bar`
+和无歧义 `auto`。Parser 递归拒绝未知字段，并执行 section/block、文本、唯一 ID、Artifact/Finding 数量、
+表格行数和引用长度上限。修订报告时必须再次提交完整文档，插件不读取或 patch 上一份文档。
+
+## Marivo 读取边界
+
+`MarivoEnvironment.runCheckedReportProjection()` 使用固定 Python script 和 direct argv。脚本先在同一进程
+复核 Python、Marivo version 和 package path，再执行：
+
+1. `mv.session.resume(session_id, use_datasources=False)`；
+2. 对每个精确 ref 调用 `get_frame()`、`contract()` 和 `revalidate()`；
+3. 只接受 `admissible`，并在 `frame.shape[0] <= 2000` 后调用 `to_pandas()`；
+4. 对每个 Finding 调用 `session.evidence.finding()`；
+5. 对每个带 Finding 的 block 单独调用 `session.evidence.compatibility()`。
+
+任一对象失败时不返回部分 bundle。公开列、shape、content hash、artifact schema version、Lineage、Finding
+和 compatibility 与 rows 一起投影；rows 只接受 JSON 标量、ISO 日期时间和 null。投影超过 16 MiB 时
+blocked。Node 再检查完整 payload、请求顺序、Session、Artifact/revalidation identity 和 compatibility 对应关系，
+但不复制 Marivo 的内部枚举或 Evidence schema。
+
+已知的文档、引用、revalidation、compatibility、视觉或大小问题返回 `blocked` 和可修复 issue。解释器身份漂移、
+子进程异常、取消、超时和本地 I/O 是 Tool error。`admissible` 不证明 datasource freshness；每份报告和
+Tool disclosure 都明确保留这条边界。
+
+## 视觉与 HTML
+
+图表只读取 `artifact.contract().artifact_schema` 和原始投影行，不根据自然语言猜图，也不聚合、抽样、
+Top-N 或跨 grain 混合。line 的 x 必须是时间或有序数值维度，至少四个唯一点；bar 的 x 必须是类别维度，
+最多 30 类且数轴包含零。table 按公开列顺序或显式列选择渲染，并始终显示 displayed/total/omitted。
+
+Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS 和固定 viewBox SVG。所有标题、文字、单元格和
+Evidence JSON 先做 HTML escaping；页面不包含 JavaScript、iframe、form、远程脚本、字体或图片，并声明
+严格 CSP。图表包含 `<title>`、`<desc>`、点/轮廓和值标签以及同源 fallback table；打印 CSS 展开来源并
+避免图表和表格被截断。
+
+## 不可变发布
+
+产物位于：
+
+```text
+$DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
+├── index.html
+├── report-document.json
+└── manifest.json
+```
+
+document/report digest 使用递归 key 排序的 canonical JSON 和 SHA-256。report identity 覆盖 renderer version、
+完整文档、Environment fingerprint、Marivo version、Artifact ref/content hash 和 Finding ID；生成时间不进入
+identity，因此相同输入复用首次完整发布的目录。
+
+Publisher 在同一父目录创建随机 staging，使用目录 `0700`、文件 `0600`，回读并验证 manifest、内容哈希和
+权限后 rename。并发首次发布由一个完整目录胜出；其他调用只在已有目录完全一致时复用，不覆盖损坏目录。
+`index.html` 超过 10 MiB 时不发布。模块不创建 latest、registry、数据库、Session event 或 GC 状态。
+
+## Agent 触发边界与验证
+
+`marivo-analysis` 激活后，短 system prompt 要求普通分析默认 inline。只有用户明确请求耐久 HTML、接受 Agent
+提议，或要求修改当前对话中已生成的报告时才调用 Tool；quick-answer、no-file 或其他产物要求优先。Tool
+返回的路径和 digest 不是 Marivo Evidence。
+
+确定性验证入口：
+
+```sh
+npm run test:html-report-rendering
+npm run check
+npm run build
+npm run verify:plugin-package
+```

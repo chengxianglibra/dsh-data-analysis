@@ -1,6 +1,7 @@
 # dsh-data-analysis Plugin
 
-当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、`marivo_evidence_cite` 和 skill 激活式根 Help
+当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、`marivo_evidence_cite`、
+`marivo_report_render` 和 skill 激活式根 Help
 披露，并在 `0.1.0` 提供 Web profile 共享 Marivo Runtime、逐 Workspace
 binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。`marivo_test`
 按操作从 DSH `ctx.credentials` 解析 datasource 的全部 `*_env` 引用；缺失时由浏览器 Tool
@@ -63,3 +64,10 @@ registry 写入标准 `tool/result.meta`。Agent 原样输出标准 Markdown mar
 Session 历史解析并在 turn tail 展示来源卡片。插件不截获最终回答、不新增自定义 Session event，也不做
 entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详见
 [Evidence 轻量引用模块](../../docs/modules/evidence-citations.md)。
+
+加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
+`marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
+bridge 恢复并 revalidate 精确 Artifact、按 block 检查 Finding compatibility，随后生成无 JavaScript、
+无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。当前 Slice 1 只在 Tool
+文本中返回绝对路径，不包含 Web 打开卡片。详见
+[HTML 报告渲染模块](../../docs/modules/html-report-rendering.md)。
