@@ -142,8 +142,9 @@ function compileChart(
     const lineX = artifact.columns.filter(ordered)
     const barX = artifact.columns.filter(category)
     const values = artifact.columns.filter(measure)
-    const line = lineX.length === 1 && values.length === 1 && artifact.rows.length >= 4
-    const bar = barX.length === 1 && values.length === 1 && artifact.rows.length <= 30
+    const line = lineX.length === 1 && values.length === 1 && artifact.rows.length >= 8
+    const bar = barX.length === 1 && values.length === 1
+      && artifact.rows.length >= 4 && artifact.rows.length <= 30
     if (line === bar) {
       issues.push(reportIssue(
         'auto-chart-ambiguous', `${location}.view`,
@@ -187,16 +188,25 @@ function compileChart(
   }
   const points = sortedPoints(artifact, view, xColumn, xIndex, yIndex, location, issues)
   if (points === undefined) return undefined
-  if (view === 'line' && points.length < 4) {
-    issues.push(reportIssue('line-too-short', `${location}.artifact_ref`, `Line chart has ${points.length} points; at least 4 are required.`, 'Use a table/bar block or produce a longer ordered Artifact.'))
+  if (view === 'line' && points.length < 8) {
+    issues.push(reportIssue(
+      'line-too-short', `${location}.artifact_ref`,
+      `Line chart has ${points.length} points; at least 8 are required to show a meaningful trend.`,
+      'Use a table or discrete-period bar chart, or produce a longer ordered Artifact.',
+    ))
+    return undefined
+  }
+  if (view === 'bar' && points.length < 4) {
+    issues.push(reportIssue(
+      'bar-too-short', `${location}.artifact_ref`,
+      `Bar chart has ${points.length} categories; at least 4 are required for a useful comparison.`,
+      'Use a table or concise narrative, or produce an Artifact with at least 4 comparable categories.',
+    ))
     return undefined
   }
   if (view === 'bar' && points.length > 30) {
     issues.push(reportIssue('bar-too-many-categories', `${location}.artifact_ref`, `Bar chart has ${points.length} categories; the maximum is 30.`, 'Produce a bounded Artifact with at most 30 categories; the renderer will not apply Top-N.'))
     return undefined
-  }
-  if (view === 'line' && points.length < 8) {
-    disclosures.push(`Chart ${block.id} contains only ${points.length} points.`)
   }
   return { block, artifact, view, x, y, points }
 }

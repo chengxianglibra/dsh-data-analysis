@@ -252,7 +252,7 @@ async function assertReadyArtifact(call: ReportCallSummary): Promise<void> {
   assert.match(html, /<table/)
   assert.match(html, /class="block evidence-block"/)
   assert.match(html, /class="evidence-statement"/)
-  assert.match(html, /完整溯源索引/)
+  assert.match(html, /完整技术溯源/)
   assert.match(html, /href="#provenance-artifact-/)
   assert.match(html, /@media print/)
   assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
@@ -323,21 +323,35 @@ INSERT INTO orders VALUES
   (1, DATE '2026-08-20', 90.0, 'android'),
   (2, DATE '2026-08-20', 30.0, 'ios'),
   (3, DATE '2026-08-20', 20.0, 'web'),
-  (4, DATE '2026-08-21', 95.0, 'android'),
-  (5, DATE '2026-08-21', 32.0, 'ios'),
-  (6, DATE '2026-08-21', 21.0, 'web'),
-  (7, DATE '2026-08-22', 88.0, 'android'),
-  (8, DATE '2026-08-22', 35.0, 'ios'),
-  (9, DATE '2026-08-22', 22.0, 'web'),
-  (10, DATE '2026-08-23', 101.0, 'android'),
-  (11, DATE '2026-08-23', 38.0, 'ios'),
-  (12, DATE '2026-08-23', 25.0, 'web'),
-  (13, DATE '2026-08-24', 108.0, 'android'),
-  (14, DATE '2026-08-24', 40.0, 'ios'),
-  (15, DATE '2026-08-24', 26.0, 'web'),
-  (16, DATE '2026-08-25', 112.0, 'android'),
-  (17, DATE '2026-08-25', 42.0, 'ios'),
-  (18, DATE '2026-08-25', 28.0, 'web')
+  (4, DATE '2026-08-20', 10.0, 'desktop'),
+  (5, DATE '2026-08-21', 95.0, 'android'),
+  (6, DATE '2026-08-21', 32.0, 'ios'),
+  (7, DATE '2026-08-21', 21.0, 'web'),
+  (8, DATE '2026-08-21', 11.0, 'desktop'),
+  (9, DATE '2026-08-22', 88.0, 'android'),
+  (10, DATE '2026-08-22', 35.0, 'ios'),
+  (11, DATE '2026-08-22', 22.0, 'web'),
+  (12, DATE '2026-08-22', 12.0, 'desktop'),
+  (13, DATE '2026-08-23', 101.0, 'android'),
+  (14, DATE '2026-08-23', 38.0, 'ios'),
+  (15, DATE '2026-08-23', 25.0, 'web'),
+  (16, DATE '2026-08-23', 13.0, 'desktop'),
+  (17, DATE '2026-08-24', 108.0, 'android'),
+  (18, DATE '2026-08-24', 40.0, 'ios'),
+  (19, DATE '2026-08-24', 26.0, 'web'),
+  (20, DATE '2026-08-24', 14.0, 'desktop'),
+  (21, DATE '2026-08-25', 112.0, 'android'),
+  (22, DATE '2026-08-25', 42.0, 'ios'),
+  (23, DATE '2026-08-25', 28.0, 'web'),
+  (24, DATE '2026-08-25', 15.0, 'desktop'),
+  (25, DATE '2026-08-26', 116.0, 'android'),
+  (26, DATE '2026-08-26', 44.0, 'ios'),
+  (27, DATE '2026-08-26', 29.0, 'web'),
+  (28, DATE '2026-08-26', 16.0, 'desktop'),
+  (29, DATE '2026-08-27', 120.0, 'android'),
+  (30, DATE '2026-08-27', 46.0, 'ios'),
+  (31, DATE '2026-08-27', 31.0, 'web'),
+  (32, DATE '2026-08-27', 17.0, 'desktop')
 """)
 session = mv.session.get_or_create(
     name="html-report-rendering-real",
@@ -348,7 +362,7 @@ metric = session.catalog.metrics.get("sales.revenue")
 platform = session.catalog.dimensions.get("sales.orders.platform")
 time_series = session.observe(
     metrics=metric,
-    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-26"),
+    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-28"),
     grain=mv.grain("day"),
 )
 segmented = session.observe(metrics=metric, dimensions=[platform])
@@ -396,8 +410,8 @@ const fixture = await createFixture().catch(async (error) => {
   await writeEarlyFailure('fixture', error)
   throw error
 })
-assert.equal(fixture.timeSeries.rowCount, 6)
-assert.equal(fixture.segmented.rowCount, 3)
+assert.equal(fixture.timeSeries.rowCount, 8)
+assert.equal(fixture.segmented.rowCount, 4)
 assert.equal(fixture.timeSeries.columns.length, 2)
 assert.equal(fixture.segmented.columns.length, 2)
 

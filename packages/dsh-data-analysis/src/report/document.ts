@@ -416,6 +416,19 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
         })
       }
     }
+    for (const [parsedIndex, block] of parsedBlocks.entries()) {
+      if (block.kind !== 'chart') continue
+      const previous = parsedBlocks[parsedIndex - 1]
+      const next = parsedBlocks[parsedIndex + 1]
+      if (previous?.kind === 'text' || next?.kind === 'text') continue
+      const rawIndex = rawBlocks.findIndex(item => isObject(item) && item.id === block.id)
+      const location = rawIndex < 0 ? sectionLocation : `${sectionLocation}.blocks[${rawIndex}]`
+      issues.push(issue(
+        'chart-interpretation-missing', location,
+        `Chart ${JSON.stringify(block.id)} has no adjacent reader-facing text block.`,
+        'Add a text block immediately before or after the chart with the takeaway, how to read it, and why it matters.',
+      ))
+    }
     if (sectionId !== undefined && sectionTitle !== undefined) {
       sections.push({ id: sectionId, title: sectionTitle, blocks: parsedBlocks })
     }

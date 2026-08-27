@@ -45,7 +45,7 @@ const document: ReportDocumentV1 = {
 }
 
 const artifact: ReportArtifactProjection = {
-  ref: 'artifact-trend', family: 'MetricFrame', shape: [5, 2] as const,
+  ref: 'artifact-trend', family: 'MetricFrame', shape: [8, 2] as const,
   columns: [
     { name: 'bucket_start', dtype: 'datetime64[ns]', nullable: false, role: 'time', unit: null },
     { name: 'value', dtype: 'float64', nullable: false, role: 'value', unit: 'count' },
@@ -57,7 +57,9 @@ const artifact: ReportArtifactProjection = {
   lineage: { steps: [] },
   rowsProjected: true,
   rows: [
-    ['2026-08-21T00:00:00+00:00', 91], ['2026-08-22T00:00:00+00:00', 92],
+    ['2026-08-18T00:00:00+00:00', 90], ['2026-08-19T00:00:00+00:00', 93],
+    ['2026-08-20T00:00:00+00:00', 90], ['2026-08-21T00:00:00+00:00', 91],
+    ['2026-08-22T00:00:00+00:00', 92],
     ['2026-08-23T00:00:00+00:00', 89], ['2026-08-24T00:00:00+00:00', 94],
     ['2026-08-25T00:00:00+00:00', 95],
   ],
@@ -161,6 +163,22 @@ test('ReportDocument parser retains Finding groups without exposing Tool-only re
   ])
 })
 
+test('ReportDocument requires reader-facing interpretation adjacent to every chart', () => {
+  const chartOnly: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: 'Chart only', locale: 'en-US',
+    sections: [{ id: 'trend', title: 'Trend', blocks: [{
+      kind: 'chart', id: 'trend-chart', title: 'Trend', artifact_ref: 'artifact-trend',
+      view: 'line', x: 'bucket_start', y: 'value',
+    }] }],
+  }
+  const rejected = parseReportDocument(chartOnly)
+  assert.equal(rejected.ok, false)
+  if (!rejected.ok) {
+    assert.deepEqual(rejected.issues.map(item => item.code), ['chart-interpretation-missing'])
+    assert.equal(rejected.issues[0]?.location, 'document.sections[0].blocks[0]')
+  }
+})
+
 test('report Tool schema and real argument failures expose one complete retry skeleton', async () => {
   const tool = createMarivoReportRenderTool({} as never) as any
   const reportSchema = tool.parameters.properties.document
@@ -188,8 +206,8 @@ test('report Tool schema and real argument failures expose one complete retry sk
   assert.match(chartSchema.properties.artifact_ref.description, /Artifact in session_id/)
   assert.match(chartSchema.properties.view.description, /auto.*omit x\/y/)
   assert.match(chartSchema.properties.view.description, /line or bar.*both x and y/)
-  assert.match(chartSchema.properties.x.description, /at least four unique points/)
-  assert.match(chartSchema.properties.x.description, /at most 30 categories/)
+  assert.match(chartSchema.properties.x.description, /at least eight unique points/)
+  assert.match(chartSchema.properties.x.description, /4-30 categorical values/)
   assert.match(chartSchema.properties.y.description, /does not aggregate/)
   assert.match(tableSchema.properties.columns.description, /one to 100 unique/)
   assert.match(tableSchema.properties.max_rows.description, /from 1 to 100/)
@@ -328,18 +346,17 @@ test('visual compiler selects one line mapping, preserves rows, and discloses tr
   assert.equal(chart?.view, 'line')
   assert.equal(chart?.x, 'bucket_start')
   assert.equal(chart?.y, 'value')
-  assert.equal(chart?.points.length, 5)
+  assert.equal(chart?.points.length, 8)
   const table = result.tables.get('trend-table')
   assert.equal(table?.rows.length, 3)
-  assert.equal(table?.omittedRows, 2)
-  assert.ok(result.disclosures.some(item => item.includes('only 5 points')))
-  assert.ok(result.disclosures.some(item => item.includes('omits 2')))
+  assert.equal(table?.omittedRows, 5)
+  assert.ok(result.disclosures.some(item => item.includes('omits 5')))
 
   const mixedProjection: ReportProjectionBundle = {
     ...projection,
     artifacts: [{
       ...artifact,
-      shape: [5, 3],
+      shape: [8, 3],
       columns: [...artifact.columns, { name: 'platform', dtype: 'string', nullable: false, role: 'dimension', unit: null }],
       rows: artifact.rows.map((row, index) => [...row, index % 2 ? 'ios' : 'android']),
     }],
@@ -349,15 +366,49 @@ test('visual compiler selects one line mapping, preserves rows, and discloses tr
   if (!rejected.ok) assert.ok(rejected.issues.some(item => item.code === 'mixed-chart-grain' || item.code === 'auto-chart-ambiguous'))
 })
 
+test('visual compiler rejects charts that are too sparse to support the requested comparison', () => {
+  const shortLine = { ...artifact, shape: [7, 2] as const, rows: artifact.rows.slice(0, 7) }
+  const lineResult = compileReportVisuals(document, { ...projection, artifacts: [shortLine] })
+  assert.equal(lineResult.ok, false)
+  if (!lineResult.ok) assert.ok(lineResult.issues.some(item => item.code === 'auto-chart-ambiguous'))
+
+  const barDocument: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: 'Sparse bar', locale: 'en-US',
+    sections: [{ id: 'summary', title: 'Summary', blocks: [{
+      kind: 'chart', id: 'sparse-bar', title: 'Sparse categories', artifact_ref: 'artifact-sparse',
+      view: 'bar', x: 'category', y: 'value',
+    }] }],
+  }
+  const sparseBar: ReportArtifactProjection = {
+    ...artifact, ref: 'artifact-sparse', shape: [3, 2],
+    columns: [
+      { name: 'category', dtype: 'string', nullable: false, role: 'dimension', unit: null },
+      { name: 'value', dtype: 'float64', nullable: false, role: 'value', unit: 'count' },
+    ],
+    revalidation: {
+      status: 'admissible', artifact_ref: 'artifact-sparse', content_hash: artifact.contentHash,
+      artifact_schema_version: artifact.artifactSchemaVersion,
+    },
+    rows: [['a', 1], ['b', 2], ['c', 3]],
+  }
+  const barResult = compileReportVisuals(barDocument, { ...projection, artifacts: [sparseBar] })
+  assert.equal(barResult.ok, false)
+  if (!barResult.ok) assert.ok(barResult.issues.some(item => item.code === 'bar-too-short'))
+})
+
 test('time lines sort and deduplicate by one timezone-independent instant', () => {
   const dstArtifact: ReportArtifactProjection = {
     ...artifact,
-    shape: [4, 2],
+    shape: [8, 2],
     rows: [
       ['2026-11-01T01:00:00-04:00', 1],
       ['2026-11-01T01:30:00-04:00', 2],
       ['2026-11-01T01:15:00-05:00', 3],
       ['2026-11-01T02:00:00-05:00', 4],
+      ['2026-11-01T03:00:00-05:00', 5],
+      ['2026-11-01T04:00:00-05:00', 6],
+      ['2026-11-01T05:00:00-05:00', 7],
+      ['2026-11-01T06:00:00-05:00', 8],
     ],
   }
   const result = compileReportVisuals(document, { ...projection, artifacts: [dstArtifact] })
@@ -374,6 +425,10 @@ test('time lines sort and deduplicate by one timezone-independent instant', () =
       ['2026-11-01T01:30:00-04:00', 2],
       ['2026-11-01T00:30:00-05:00', 3],
       ['2026-11-01T02:00:00-05:00', 4],
+      ['2026-11-01T03:00:00-05:00', 5],
+      ['2026-11-01T04:00:00-05:00', 6],
+      ['2026-11-01T05:00:00-05:00', 7],
+      ['2026-11-01T06:00:00-05:00', 8],
     ],
   }
   const rejected = compileReportVisuals(document, { ...projection, artifacts: [duplicateInstant] })
@@ -390,25 +445,25 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
     ] }],
   }
   const barArtifact: ReportArtifactProjection = {
-    ...artifact, ref: 'artifact-platform', family: 'MetricFrame', shape: [3, 2],
+    ...artifact, ref: 'artifact-platform', family: 'MetricFrame', shape: [4, 2],
     columns: [
       { name: 'platform', dtype: 'string', nullable: false, role: 'dimension', unit: null },
       { name: 'value', dtype: 'float64', nullable: false, role: 'value', unit: 'count' },
     ],
     contract: { kind: 'MetricFrame', ref: 'artifact-platform' },
     revalidation: { status: 'admissible', artifact_ref: 'artifact-platform', content_hash: artifact.contentHash, artifact_schema_version: artifact.artifactSchemaVersion },
-    rows: [['android', -2], ['ios', 4], ['web', 3]],
+    rows: [['android', -2], ['ios', 4], ['web', 3], ['desktop', 1]],
   }
   const barProjection: ReportProjectionBundle = {
     sessionId: 'session-report', artifacts: [barArtifact],
     findings: [{
       findingId: 'finding-platform', findingType: 'observation', epistemicKind: 'observed',
       artifactId: 'artifact-platform', sessionId: 'session-report', qualityStatus: 'ready',
-      committedAt: '2026-08-27T00:05:00+00:00', value: { kind: 'observation', row_count: 3 },
+      committedAt: '2026-08-27T00:05:00+00:00', value: { kind: 'observation', row_count: 4 },
       subject: { kind: 'metric', metric_id: 'payments.success' }, derivation: { rule_id: 'observation/v1' },
       rendered: {
-        en: 'payments.success: observed 3 platform rows.',
-        zh: 'payments.success：观测到 3 行平台数据。',
+        en: 'payments.success: observed 4 platform rows.',
+        zh: 'payments.success：观测到 4 行平台数据。',
       },
     }],
     compatibilities: [{ groupIndex: 0, status: 'compatible', findingIds: ['finding-platform'], value: { status: 'compatible' } }, { groupIndex: 1, status: 'compatible', findingIds: ['finding-platform'], value: { status: 'compatible' } }],
@@ -422,11 +477,46 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
   assert.match(html, /value axis includes zero/)
   assert.match(html, /finding-platform/)
   assert.match(html, /payments.success/)
-  assert.match(html, /payments\.success: observed 3 platform rows\./)
+  assert.match(html, /payments\.success: observed 4 platform rows\./)
   assert.match(html, /href="#provenance-artifact-1"/)
-  assert.match(html, /Complete provenance index/)
-  assert.ok(html.indexOf('payments.success: observed 3 platform rows.') < html.indexOf('<details class="audit">'))
+  assert.match(html, /Complete technical provenance/)
+  assert.ok(html.indexOf('payments.success: observed 4 platform rows.') < html.indexOf('<details class="audit">'))
   assert.match(html, /<dt>session<\/dt><dd>session-report<\/dd>/)
+})
+
+test('reader-facing report content localizes labels and keeps raw Evidence identity in technical provenance', () => {
+  const finding: ReportProjectionBundle['findings'][number] = {
+    findingId: 'finding-zh', findingType: 'observation', epistemicKind: 'observed',
+    artifactId: artifact.ref, sessionId: 'session-report', qualityStatus: 'ready',
+    committedAt: '2026-08-27T00:05:00+00:00', value: { value: 95 },
+    subject: { metric_id: 'payments.success' }, derivation: { rule_id: 'observation/v1' },
+    rendered: {
+      en: 'English statement should remain out of the Chinese reading path.',
+      zh: '支付成功量在观察期末达到 95。',
+    },
+  }
+  const sourcedDocument: ReportDocumentV1 = {
+    ...document,
+    sections: [{ ...document.sections[0]!, blocks: [
+      { kind: 'text', id: 'summary-text', text: '结论\n\n1. 优先处理移动端。\n\n2. 持续观察波动。', finding_ids: ['finding-zh'] },
+      ...document.sections[0]!.blocks.slice(1),
+    ] }],
+  }
+  const sourced = compileReportVisuals(sourcedDocument, {
+    ...projection, findings: [finding],
+    compatibilities: [{ groupIndex: 0, status: 'compatible', findingIds: ['finding-zh'], value: { status: 'compatible' } }],
+  })
+  assert.equal(sourced.ok, true, JSON.stringify(sourced))
+  if (!sourced.ok) return
+  const html = renderReportHtml(sourced.value, '2026-08-27T01:02:03.000Z')
+  const readingPath = html.slice(0, html.indexOf('<footer>'))
+  assert.match(readingPath, /支付成功量在观察期末达到 95。/)
+  assert.doesNotMatch(readingPath, /English statement|finding-zh|artifact-trend/)
+  assert.match(readingPath, /<ol><li>优先处理移动端。<\/li><li>持续观察波动。<\/li><\/ol>/)
+  assert.match(readingPath, /<th scope="col">日期<\/th>/)
+  assert.match(readingPath, /8月18日/)
+  assert.doesNotMatch(readingPath, /<th scope="col">bucket_start<\/th>/)
+  assert.match(html.slice(html.indexOf('<footer>')), /finding-zh|artifact-trend/)
 })
 
 test('Finding statements cannot inject HTML, links, or new report markup', () => {
@@ -470,9 +560,12 @@ test('renderer escapes content and emits offline SVG, source tables, CSP, and pr
   assert.match(html, /script-src 'none'/)
   assert.match(html, /<svg class="chart"/)
   assert.match(html, /查看同源数据表/)
-  assert.match(html, /显示: 3 \/ 总计: 5 \/ 省略: 2/)
-  assert.match(html, /业务说明 · artifact-trend · 5 行/)
-  assert.match(html, /范围 value: 89 – 95 · 单位: count/)
+  assert.match(html, /显示: 3 \/ 总计: 8 \/ 省略: 5/)
+  assert.match(html, /业务说明 · 8 个数据点/)
+  assert.match(html, /范围: 89 – 95 count · 纵轴聚焦于数据区间/)
+  assert.match(html, /\.report-summary>\.text-block:first-of-type\{[^}]*border-left:3px solid var\(--accent\)/)
+  assert.match(html, /\.chart-block,\.table-block\{[^}]*background:transparent;border:0;border-top:1px solid var\(--line\)/)
+  assert.doesNotMatch(html, /\.report-summary\{[^}]*background:var\(--accent-soft\)/)
   assert.match(html, /@media print/)
   assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
 })
@@ -607,7 +700,7 @@ test('Finding-only reports include the backing Artifact identity in the immutabl
     finding_ids: string[]
   }
   assert.equal(manifest.version, 'dsh-data-analysis-report-manifest/v2')
-  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v2')
+  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v4')
   assert.match(manifest.provenance_digest, /^[a-f0-9]{64}$/)
   assert.deepEqual(manifest.artifacts, [{ ref: 'artifact-backing', content_hash: artifact.contentHash }])
   assert.deepEqual(manifest.finding_ids, ['finding-only'])

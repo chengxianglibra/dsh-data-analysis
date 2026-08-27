@@ -45,7 +45,8 @@ const findingIdsSchema = {
   type: 'array',
   items: { type: 'string' },
   description: [
-    'One to 20 unique exact persisted Finding IDs shown as adjacent sources for this block.',
+    'One to 20 unique exact persisted Finding IDs used as compact adjacent sources for this block.',
+    'The reader shows the locale-matched human Finding statement first and keeps IDs, raw values, derivation, and Artifact identity in the collapsed audit trail.',
     'Every Finding attached to one block must be mechanically compatible; call session.evidence.compatibility before combining multiple IDs.',
   ].join(' '),
 } as const
@@ -60,7 +61,7 @@ const textBlockSchema = {
     },
     text: {
       type: 'string', required: true,
-      description: 'Non-empty plain text of at most 20,000 Unicode characters. Markdown and HTML are escaped as literal text; newlines start paragraphs.',
+      description: 'Non-empty reader-facing plain text of at most 20,000 Unicode characters. Lead with the takeaway and explain why it matters in the report locale. Markdown and HTML are escaped as literal text; blank lines start paragraphs and consecutive lines beginning with -, *, •, or 1. form semantic lists.',
     },
     finding_ids: findingIdsSchema,
   },
@@ -74,8 +75,14 @@ const chartBlockSchema = {
       type: 'string', required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
-    title: { type: 'string', required: true },
-    subtitle: { type: 'string' },
+    title: {
+      type: 'string', required: true,
+      description: 'Neutral reader-facing label for what is plotted; put the analytical takeaway in an adjacent text block.',
+    },
+    subtitle: {
+      type: 'string',
+      description: 'Optional reader-facing unit, scope, denominator, time window, comparison basis, or short interpretation. Do not use raw Artifact refs or implementation field names.',
+    },
     artifact_ref: {
       type: 'string', required: true,
       description: 'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
@@ -86,7 +93,7 @@ const chartBlockSchema = {
     },
     x: {
       type: 'string',
-      description: 'Exact public Artifact column name. Line requires a time or ordered numeric dimension with at least four unique points; bar requires a categorical dimension with at most 30 categories.',
+      description: 'Exact public Artifact column name. Line requires a time or ordered numeric dimension with at least eight unique points; bar requires 4-30 categorical values.',
     },
     y: {
       type: 'string',
@@ -104,7 +111,10 @@ const tableBlockSchema = {
       type: 'string', required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
-    title: { type: 'string', required: true },
+    title: {
+      type: 'string', required: true,
+      description: 'Neutral reader-facing table label. Explain the takeaway and implication in an adjacent text block.',
+    },
     artifact_ref: {
       type: 'string', required: true,
       description: 'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
@@ -129,7 +139,10 @@ const evidenceBlockSchema = {
       type: 'string', required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
-    title: { type: 'string', required: true },
+    title: {
+      type: 'string', required: true,
+      description: 'Reader-facing title for an explicitly requested source inventory. Prefer attaching finding_ids to narrative or visual blocks instead of adding a duplicate Evidence appendix.',
+    },
     finding_ids: { ...findingIdsSchema, required: true },
   },
 } as const
@@ -138,6 +151,8 @@ const documentSchema = {
   type: 'object', additionalProperties: false,
   description: [
     'One complete immutable ReportDocument v1. Revisions submit another complete document.',
+    'Use the report locale throughout. For stakeholder reports, order sections as answer-first summary, findings with adjacent visual interpretation, next steps, further questions, and caveats.',
+    'Finding IDs belong in finding_ids metadata, not in narrative text; do not duplicate all Findings in an Evidence appendix unless the user asked for it.',
     `Minimal valid JSON: ${REPORT_DOCUMENT_MINIMAL_JSON}.`,
     'document.blocks is invalid; blocks must be nested under document.sections[].blocks.',
     'Provide 1-20 sections with 1-20 blocks each and at most 100 blocks total; reference at most 20 unique Artifacts and 20 unique Findings.',
@@ -155,7 +170,7 @@ const documentSchema = {
     locale: { type: 'string', enum: ['zh-CN', 'en-US'], required: true },
     sections: {
       type: 'array', required: true,
-      description: 'One to 20 ordered non-empty sections.',
+      description: 'One to 20 ordered non-empty reader-facing sections. Use concise insight-led titles; the first stakeholder section is an executive summary.',
       items: {
         type: 'object', additionalProperties: false,
         properties: {

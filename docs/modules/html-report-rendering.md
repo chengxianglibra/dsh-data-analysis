@@ -24,9 +24,10 @@ flowchart LR
   A --> T[Tool ready path + digests]
 ```
 
-文档仅支持 `text`、`chart`、`table`、`evidence`。`text` 是纯文本；图表仅支持单系列 `line`、`bar`
+文档仅支持 `text`、`chart`、`table`、`evidence`。`text` 是纯文本；renderer 会把空行分段，并把连续的
+`-`/`*`/`•` 或 `1.` 行转换为语义列表。图表仅支持单系列 `line`、`bar`
 和无歧义 `auto`。Parser 递归拒绝未知字段，并执行 section/block、文本、唯一 ID、Artifact/Finding 数量、
-表格行数和引用长度上限。Tool schema 给出最小完整文档骨架，并明确 block 位于
+表格行数和引用长度上限；每个 chart 前后至少有一个相邻 text block 解释结论、读法和影响。Tool schema 给出最小完整文档骨架，并明确 block 位于
 `document.sections[].blocks`。修订或 blocked 后重试时必须再次提交完整文档，插件不读取或 patch 上一份文档。
 
 ## Marivo 读取边界
@@ -57,15 +58,20 @@ Tool disclosure 都明确保留这条边界。
 ## 视觉与 HTML
 
 图表只读取 `artifact.contract().artifact_schema` 和原始投影行，不根据自然语言猜图，也不聚合、抽样、
-Top-N 或跨 grain 混合。line 的 x 必须是时间或有序数值维度，至少四个唯一点；bar 的 x 必须是类别维度，
-最多 30 类且数轴包含零。table 按公开列顺序或显式列选择渲染，并始终显示 displayed/total/omitted。
+Top-N 或跨 grain 混合。line 的 x 必须是时间或有序数值维度，至少八个唯一点，并明确披露聚焦的数据区间；
+bar 的 x 必须有 4–30 个类别且数轴包含零，类别多或标签长时改用横向条形。table 按公开列顺序或显式列选择
+渲染，使用本地化日期、数值和安全的通用列名，并始终显示 displayed/total/omitted。
 
 Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS 和固定 viewBox SVG。所有标题、文字、单元格和
-Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。每个 block 的来源先展示人读事实，再折叠
-subject/value/derivation 与身份状态；Finding 的 Artifact 指向页脚 canonical provenance record。页脚对 Findings
-和 Artifacts 去重，展示 content hash、schema、contract、revalidation 与 Lineage。页面不包含 JavaScript、iframe、form、远程脚本、字体或图片，并声明
-严格 CSP，也不输出 Parquet 链接或 Marivo 私有路径。图表包含 `<title>`、`<desc>`、点/轮廓和值标签以及同源 fallback table；打印 CSS 展开来源并
-避免图表和表格被截断。
+Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。普通 block 只显示折叠的“分析依据”入口；展开后
+先展示与报告 locale 一致的人读事实，Finding ID、Artifact ref、value、subject、derivation 与身份状态留在二级
+技术审计和页脚 canonical provenance。显式 `evidence` block 才直接展示事实列表，Agent 默认不得再创建重复的
+Evidence 附录。页脚对 Findings 和 Artifacts 去重，但完整技术溯源默认折叠。
+
+页面使用响应式单列阅读流、浅色/深色系统外观、克制的蓝色主色和安静网格。首章节仅对第一个摘要文本
+使用无底色的强调线；即使 Agent 把图表放在首章节，图表和表格仍回到正文流，不嵌套摘要底色或独立卡片。
+页面不包含 JavaScript、iframe、form、远程脚本、字体或图片，并声明严格 CSP，也不输出 Parquet 链接或 Marivo 私有路径。图表包含本地化日期、
+`<title>`、`<desc>`、点/轮廓/末值标签以及同源 fallback table；打印保留正文与图表，但不自动展开原始审计 JSON。
 
 ## 不可变发布
 
@@ -78,7 +84,7 @@ $DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
 └── manifest.json
 ```
 
-document/report digest 使用递归 key 排序的 canonical JSON 和 SHA-256。renderer v2 与 manifest v2 的 report
+document/report digest 使用递归 key 排序的 canonical JSON 和 SHA-256。renderer v3 与 manifest v2 的 report
 identity 覆盖完整文档、Environment fingerprint、Marivo version，以及包含全部显式/backing Artifact、Finding、
 compatibility 和投影 rows 的 provenance digest。Node 在边界处移除每次检查都会变化的 `revalidation.checked_at`，
 但保留其余 revalidation、contract、schema、Lineage、双语事实和状态；生成时间也不进入 identity。因此同一事实与
@@ -114,6 +120,9 @@ Marivo，也不引入自定义 Session event。旧版本、畸形、blocked 或�
 Agent request 中的 `marivo_report_render` Tool schema 是精确报告输入契约；该 Tool 由 DSH 插件拥有，不是
 `marivo.help` target，Agent 不得通过 `marivo_help` 查询报告契约。同一 block
 包含多个 Finding 时，Agent 在编排前先复用 `session.evidence.compatibility()`，不创建插件自有预检 API。ready
+报告优先使用用户语言；中文请求默认中文。面向业务读者时先给 2–4 条结论摘要，再按“结论—证据—解释—行动”
+组织正文；图表前后必须有解释性 text block。Finding ID 只放在 `finding_ids`，不得把原始 Finding/Artifact 审计
+字段复制到正文，也不得默认创建重复 Evidence 附录。
 后 Agent 必须在最终回答中逐字复制 Tool 返回的绝对 `Path`，不得只写 basename、虚构 `file://`/HTTP URL
 或声称报告已经发布；turn-tail 卡片仍是独立于模型文字的可靠交付面。路径和 digest 不是 Marivo Evidence。
 

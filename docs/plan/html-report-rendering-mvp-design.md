@@ -332,12 +332,15 @@ Renderer 在 Node 服务端生成一个 `index.html`：
 
 - 只使用 semantic HTML、内联 CSS 和内联 SVG；
 - 不包含 script、iframe、form、远程 URL、外部字体或运行时依赖；
-- `text` 只渲染转义后的段落；
-- `line` 和 `bar` 生成固定 viewBox SVG，同时提供可展开的同源数据表；
+- `text` 渲染转义后的段落和简单语义列表；
+- `line` 和 `bar` 生成固定 viewBox SVG，同时提供可展开的同源数据表；line 至少八个有序点并明确披露
+  聚焦纵轴，bar 使用 4–30 个类别，长标签或较多类别改用横向条形；
 - `table` 使用 `<table>`、`<caption>`、`<th scope>`，截断信息始终可见；
-- `evidence` 和 block 的 Finding 引用使用 `<details>` 展示 Finding/Artifact/quality/提交时间；
-- 每张图具有可见 title、context subtitle、SVG `<title>`/`<desc>` 和非颜色区分；
-- 提供响应式单列 CSS 与 `@media print`，打印时展开来源信息并避免图表截断。
+- 普通 block 的 Finding 引用默认折叠，只先展示报告 locale 对应的 `Finding.render()` 人读事实；ID、Artifact、
+  quality、value、subject 与 derivation 留在二级技术审计，显式 `evidence` block 才直接展示事实列表；
+- 每张图具有可见 title、用户语义 context subtitle、本地化日期/数值、SVG `<title>`/`<desc>` 和非颜色区分；
+- 提供答案优先的响应式单列 CSS、系统浅色/深色外观与 `@media print`；摘要只强调首个文本块，图表和表格
+  使用正文流加轻分隔线，不嵌套摘要底色或卡片容器；打印保留正文和图表，不自动展开原始审计 JSON。
 
 页面加入严格 CSP：
 
