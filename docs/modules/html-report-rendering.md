@@ -26,7 +26,8 @@ flowchart LR
 
 文档仅支持 `text`、`chart`、`table`、`evidence`。`text` 是纯文本；图表仅支持单系列 `line`、`bar`
 和无歧义 `auto`。Parser 递归拒绝未知字段，并执行 section/block、文本、唯一 ID、Artifact/Finding 数量、
-表格行数和引用长度上限。修订报告时必须再次提交完整文档，插件不读取或 patch 上一份文档。
+表格行数和引用长度上限。Tool schema 给出最小完整文档骨架，并明确 block 位于
+`document.sections[].blocks`。修订或 blocked 后重试时必须再次提交完整文档，插件不读取或 patch 上一份文档。
 
 ## Marivo 读取边界
 
@@ -34,18 +35,22 @@ flowchart LR
 复核 Python、Marivo version 和 package path，再执行：
 
 1. `mv.session.resume(session_id, use_datasources=False)`；
-2. 先对每个 Finding 调用 `session.evidence.finding()` 和双语 `Finding.render()`；
-3. 把显式 Artifact 与每个 Finding 的 backing Artifact 按首次出现顺序合并；
-4. 对每个精确 ref 调用 `get_frame()`、`contract()` 和 `revalidate()`，只接受 `admissible`；
-5. 只有图表或表格显式引用的 Artifact 才在 `frame.shape[0] <= 2000` 后调用 `to_pandas()`；纯溯源 Artifact 不投影 rows；
-6. 对每个带 Finding 的 block 单独调用 `session.evidence.compatibility()`。
+2. 对所有带 Finding 的 block 调用 `session.evidence.compatibility()`；任一不兼容时一次返回全部冲突 block，
+   不继续 Finding render、Artifact 恢复或行投影；
+3. 对每个 Finding 调用 `session.evidence.finding()` 和双语 `Finding.render()`；
+4. 把显式 Artifact 与每个 Finding 的 backing Artifact 按首次出现顺序合并；
+5. 对每个精确 ref 调用 `get_frame()`、`contract()` 和 `revalidate()`，只接受 `admissible`；
+6. 只有图表或表格显式引用的 Artifact 才在 `frame.shape[0] <= 2000` 后调用 `to_pandas()`；纯溯源 Artifact 不投影 rows。
 
 任一对象失败时不返回部分 bundle。公开列、shape、content hash、artifact schema version、Lineage、Finding
 、双语事实陈述和 compatibility 与可选 rows 一起投影；rows 只接受 JSON 标量、ISO 日期时间和 null。投影超过 16 MiB 时
 blocked。Node 再检查完整 payload、请求顺序、Session、Artifact/revalidation identity 和 compatibility 对应关系，
 但不复制 Marivo 的内部枚举或 Evidence schema。
 
-已知的文档、引用、revalidation、compatibility、视觉或大小问题返回 `blocked` 和可修复 issue。解释器身份漂移、
+compatibility blocked 对每个冲突 block 返回一个 issue，其 location 是原始
+`document.sections[i].blocks[j].finding_ids`，message 转译 Marivo 提供的有界 Finding/Artifact 归因、issue kind、
+不兼容字段和 omitted 信息。已知的文档、引用、revalidation、视觉或大小问题也返回 `blocked` 和可修复 issue。
+所有 blocked 文本统一要求保留未受影响内容并重新提交完整文档。解释器身份漂移、
 子进程异常、取消、超时和本地 I/O 是 Tool error。`admissible` 不证明 datasource freshness；每份报告和
 Tool disclosure 都明确保留这条边界。
 
@@ -105,7 +110,10 @@ Marivo，也不引入自定义 Session event。旧版本、畸形、blocked 或�
 ## Agent 触发边界与验证
 
 `marivo-analysis` 激活后，短 system prompt 要求普通分析默认 inline。只有用户明确请求耐久 HTML、接受 Agent
-提议，或要求修改当前对话中已生成的报告时才调用 Tool；quick-answer、no-file 或其他产物要求优先。ready
+提议，或要求修改当前对话中已生成的报告时才调用 Tool；quick-answer、no-file 或其他产物要求优先。当前
+Agent request 中的 `marivo_report_render` Tool schema 是精确报告输入契约；该 Tool 由 DSH 插件拥有，不是
+`marivo.help` target，Agent 不得通过 `marivo_help` 查询报告契约。同一 block
+包含多个 Finding 时，Agent 在编排前先复用 `session.evidence.compatibility()`，不创建插件自有预检 API。ready
 后 Agent 必须在最终回答中逐字复制 Tool 返回的绝对 `Path`，不得只写 basename、虚构 `file://`/HTTP URL
 或声称报告已经发布；turn-tail 卡片仍是独立于模型文字的可靠交付面。路径和 digest 不是 Marivo Evidence。
 

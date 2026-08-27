@@ -53,6 +53,12 @@ const validationPath = path.join(runRoot, 'validation.json')
 
 interface FixtureValue {
   sessionId: string
+  mixedCompatibility: {
+    status: string
+    issueKinds: string[]
+    omittedIssueCount: number
+    omittedIssueKinds: string[]
+  }
   timeSeries: {
     ref: string
     findingId: string
@@ -350,8 +356,18 @@ time_finding = session.evidence.findings(artifact_ref=time_series.ref, limit=20)
 segment_finding = session.evidence.findings(artifact_ref=segmented.ref, limit=20).items[0]
 assert session.revalidate(time_series).status == "admissible"
 assert session.revalidate(segmented).status == "admissible"
+mixed_compatibility = session.evidence.compatibility(
+    finding_ids=[time_finding.finding_id, segment_finding.finding_id]
+)
+assert mixed_compatibility.status != "compatible"
 print(json.dumps({
     "sessionId": session.id,
+    "mixedCompatibility": {
+        "status": mixed_compatibility.status,
+        "issueKinds": [issue.detail.kind for issue in mixed_compatibility.issues],
+        "omittedIssueCount": mixed_compatibility.omitted_issue_count,
+        "omittedIssueKinds": list(mixed_compatibility.omitted_issue_kinds),
+    },
     "timeSeries": {
         "ref": time_series.ref,
         "findingId": time_finding.finding_id,
@@ -386,6 +402,39 @@ assert.equal(fixture.timeSeries.columns.length, 2)
 assert.equal(fixture.segmented.columns.length, 2)
 
 const environment = await bindMarivoEnvironment({ projectRoot: fixtureRoot, pythonExecutable })
+const compatibilityPreflight = await (async () => {
+  const mixedGroup = [fixture.timeSeries.findingId, fixture.segmented.findingId]
+  const projectionChild = await environment.runCheckedReportProjection(
+    fixture.sessionId,
+    ['artifact-that-must-not-be-read'],
+    [mixedGroup, mixedGroup],
+    { timeoutMs: 120_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
+  )
+  assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
+  const parsed = parseReportProjection(projectionChild.stdout, {
+    sessionId: fixture.sessionId,
+    artifactRefs: ['artifact-that-must-not-be-read'],
+    findingIds: mixedGroup,
+    findingGroups: [mixedGroup, mixedGroup],
+  })
+  assert.equal(parsed.ok, false, JSON.stringify(parsed))
+  if (parsed.ok) throw new Error('Mixed Finding compatibility preflight was unexpectedly ready')
+  assert.equal(parsed.issues.length, 2, JSON.stringify(parsed.issues))
+  assert.deepEqual(parsed.issues.map(issue => issue.location), ['finding_groups[0]', 'finding_groups[1]'])
+  for (const issue of parsed.issues) {
+    assert.equal(issue.code, 'evidence-not-compatible')
+    assert.match(issue.message, new RegExp(fixture.timeSeries.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    assert.match(issue.message, new RegExp(fixture.segmented.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    for (const kind of [...fixture.mixedCompatibility.issueKinds, ...fixture.mixedCompatibility.omittedIssueKinds]) {
+      assert.match(issue.message, new RegExp(kind.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    }
+    assert.match(issue.repair, /resubmit the complete ReportDocument v1/)
+  }
+  return parsed.issues
+})().catch(async (error) => {
+  await writeEarlyFailure('compatibility-preflight', error)
+  throw error
+})
 const findingGroups = [
   [fixture.timeSeries.findingId],
   [fixture.timeSeries.findingId],
@@ -665,6 +714,11 @@ try {
       artifactCount: projection.ok ? projection.value.artifacts.length : 0,
       findingCount: projection.ok ? projection.value.findings.length : 0,
       compatibilityCount: projection.ok ? projection.value.compatibilities.length : 0,
+      compatibilityPreflight: {
+        issueCount: compatibilityPreflight.length,
+        issueCodes: compatibilityPreflight.map(issue => issue.code),
+        locations: compatibilityPreflight.map(issue => issue.location),
+      },
       findingOnly: {
         artifactCount: findingOnlyProjection.artifacts.length,
         findingCount: findingOnlyProjection.findings.length,

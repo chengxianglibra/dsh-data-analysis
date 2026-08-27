@@ -176,10 +176,13 @@ marivo_report_render({ session_id, document })
 
 `document` 必须是完整的 `dsh-data-analysis-report/v1`，由 1–20 个 section 组成，并使用 `text`、`chart`、
 `table`、`evidence` block。chart 支持 `auto`、`line` 和 `bar`；每个数据 block 必须引用精确 Artifact，
-来源 block 可引用精确 Finding。修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
+来源 block 可引用精确 Finding；block 必须位于 `document.sections[].blocks`，不能只提交 `document.blocks`。
+修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
 
-工具会恢复每个 Finding 的 backing Artifact，且只接受 revalidation 为 `admissible` 的 Artifact，并对每个带 Finding 的 block 单独执行 Marivo Evidence
-compatibility。仅被图表或表格显式引用的 Artifact 才投影 rows；纯溯源 Artifact 不受 2,000 行展示上限影响。
+Agent 在同一 block 组合多个 Finding 前先使用 `session.evidence.compatibility()` 预检。工具也会在恢复和投影
+Artifact 前检查所有带 Finding 的 block；若多处不兼容，一次返回精确 block 路径、冲突 Finding 和原因，
+Agent 修复指定位置后仍需重新提交完整文档。仅被图表或表格显式引用的 Artifact 才投影 rows；纯溯源 Artifact
+不受 2,000 行展示上限影响。
 报告按 locale 展示 `Finding.render()` 事实，并在折叠详情和页脚索引中提供 content hash、contract、revalidation、Lineage 与派生字段。
 它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
 HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Tool 文本返回绝对 `index.html` 路径；Web

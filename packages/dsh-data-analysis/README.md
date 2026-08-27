@@ -67,8 +67,10 @@ entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详
 
 加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
 `marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
-bridge 恢复 Finding 及其 backing Artifact、revalidate 完整来源、按 block 检查 Finding compatibility，随后生成无 JavaScript、
-无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。Tool 文本返回绝对路径；
+bridge 先批量检查所有 block 的 Finding compatibility；不兼容时一次返回精确 block 路径、冲突 Finding 和
+Marivo 原因，且不会继续 Artifact 行投影。Agent 修复后必须再次提交位于 `document.sections[].blocks` 的完整
+文档。检查通过后才恢复 Finding 及其 backing Artifact、revalidate 完整来源，并生成无 JavaScript、无远程依赖的
+HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。Tool 文本返回绝对路径；
 Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复
 完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建
 HTTP URL，也不支持跨机器分享。纯溯源 Artifact 不投影 rows，HTML 使用 Finding 双语 render 和完整 provenance

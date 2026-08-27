@@ -22,10 +22,13 @@ import {
   publishReport,
   registerMarivoReportRenderTool,
   renderReportHtml,
+  renderReportToolValue,
   reportDocumentDigest,
+  reportPresentationMeta,
   type ReportDocumentV1,
   type ReportArtifactProjection,
   type ReportProjectionBundle,
+  type ReportRenderValueV1,
 } from '../../src/report/index.ts'
 
 const document: ReportDocumentV1 = {
@@ -110,6 +113,9 @@ test('ReportDocument parser enforces the closed v1 shape and document-wide bound
   if (!parsed.ok) return
   assert.deepEqual(parsed.value.artifactRefs, ['artifact-trend'])
   assert.deepEqual(parsed.value.findingIds, [])
+  assert.deepEqual(Object.keys(parsed.value).sort(), [
+    'artifactRefs', 'document', 'findingGroups', 'findingIds',
+  ])
 
   const invalid = structuredClone(document) as unknown as Record<string, unknown>
   invalid.unknown = true
@@ -124,6 +130,196 @@ test('ReportDocument parser enforces the closed v1 shape and document-wide bound
     assert.ok(rejected.issues.some(item => item.code === 'duplicate-block-id'))
     assert.ok(rejected.issues.some(item => item.code === 'auto-with-fields'))
   }
+})
+
+test('ReportDocument parser retains Finding groups without exposing Tool-only repair paths', () => {
+  const source: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: 'Finding paths', locale: 'en-US',
+    sections: [
+      {
+        id: 'summary', title: 'Summary', blocks: [
+          { kind: 'text', id: 'plain', text: 'No source' },
+          { kind: 'text', id: 'sourced', text: 'Sourced', finding_ids: ['finding-a', 'finding-b'] },
+        ],
+      },
+      {
+        id: 'evidence', title: 'Evidence', blocks: [
+          { kind: 'evidence', id: 'evidence-list', title: 'Sources', finding_ids: ['finding-c'] },
+        ],
+      },
+    ],
+  }
+  const parsed = parseReportDocument(source)
+  assert.equal(parsed.ok, true, JSON.stringify(parsed))
+  if (!parsed.ok) return
+  assert.deepEqual(parsed.value.findingGroups, [
+    ['finding-a', 'finding-b'],
+    ['finding-c'],
+  ])
+  assert.deepEqual(Object.keys(parsed.value).sort(), [
+    'artifactRefs', 'document', 'findingGroups', 'findingIds',
+  ])
+})
+
+test('report Tool schema and real argument failures expose one complete retry skeleton', async () => {
+  const tool = createMarivoReportRenderTool({} as never) as any
+  const reportSchema = tool.parameters.properties.document
+  const description = reportSchema.description as string
+  assert.match(description, /"version":"dsh-data-analysis-report\/v1"/)
+  assert.match(description, /"sections":\[\{"id":"summary"/)
+  assert.match(description, /"kind":"text","id":"summary-text","text":"Report summary"/)
+  assert.match(description, /document\.blocks is invalid/)
+  assert.match(description, /document\.sections\[\]\.blocks/)
+  assert.match(description, /1-20 sections with 1-20 blocks each/)
+  assert.equal(tool.name, 'marivo_report_render')
+  assert.match(tool.description, /DSH data-analysis plugin Tool/)
+  assert.match(tool.description, /not a marivo\.help target/)
+  assert.match(tool.description, /do not call marivo_help/)
+  assert.match(tool.parameters.properties.session_id.description, /at most 512 Unicode characters/)
+
+  const sectionSchema = reportSchema.properties.sections.items
+  const [textSchema, chartSchema, tableSchema, evidenceSchema] = sectionSchema.properties.blocks.items.oneOf
+  assert.match(sectionSchema.properties.id.description, /kebab-case/)
+  assert.match(textSchema.properties.id.description, /Document-wide unique/)
+  assert.match(textSchema.properties.text.description, /plain text/)
+  assert.match(textSchema.properties.text.description, /Markdown and HTML are escaped/)
+  assert.match(textSchema.properties.finding_ids.description, /One to 20 unique/)
+  assert.match(textSchema.properties.finding_ids.description, /mechanically compatible/)
+  assert.match(chartSchema.properties.artifact_ref.description, /Artifact in session_id/)
+  assert.match(chartSchema.properties.view.description, /auto.*omit x\/y/)
+  assert.match(chartSchema.properties.view.description, /line or bar.*both x and y/)
+  assert.match(chartSchema.properties.x.description, /at least four unique points/)
+  assert.match(chartSchema.properties.x.description, /at most 30 categories/)
+  assert.match(chartSchema.properties.y.description, /does not aggregate/)
+  assert.match(tableSchema.properties.columns.description, /one to 100 unique/)
+  assert.match(tableSchema.properties.max_rows.description, /from 1 to 100/)
+  assert.match(evidenceSchema.properties.finding_ids.description, /mechanically compatible/)
+
+  const ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  ctx.tools.register(tool)
+  const malformedDocuments = [
+    {
+      document: { blocks: [] },
+      issueCode: 'unknown-field',
+    },
+    {
+      document: {
+        version: 'dsh-data-analysis-report/v1', title: 'Missing table field', locale: 'en-US',
+        sections: [{ id: 'summary', title: 'Summary', blocks: [{
+          kind: 'table', id: 'summary-table', title: 'Summary', artifact_ref: 'artifact-summary',
+        }] }],
+      },
+      issueCode: 'invalid-max-rows',
+    },
+  ]
+  for (const [index, fixture] of malformedDocuments.entries()) {
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: CallId(`invalid-document-shape-${String(index)}`),
+      name: MARIVO_REPORT_RENDER_TOOL_NAME,
+      arguments: { session_id: 'session-report', document: fixture.document },
+    })
+    assert.equal(result.isError, false, JSON.stringify(result))
+    if (result.isError) continue
+    const value = result.value as unknown as ReportRenderValueV1
+    assert.equal(value.status, 'blocked')
+    if (value.status !== 'blocked') continue
+    assert.equal(value.stage, 'document')
+    assert.ok(value.issues.some(issue => issue.code === fixture.issueCode), JSON.stringify(value.issues))
+    assert.equal(result.meta, null)
+    const content = result.content[0]?.type === 'text' ? result.content[0].text : ''
+    assert.doesNotMatch(content, /invalid arguments/)
+    assert.match(content, /Minimal valid document:/)
+    assert.match(content, /"version":"dsh-data-analysis-report\/v1"/)
+    assert.match(content, /Never submit document\.blocks alone/)
+  }
+
+  const invalidSession = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('invalid-report-session-type'),
+    name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    arguments: { session_id: 42, document: { blocks: [] } },
+  })
+  assert.equal(invalidSession.isError, true)
+  if (invalidSession.isError) assert.equal(invalidSession.error.info?.code, 'INVALID_ARGS')
+})
+
+test('report Tool attributes every compatibility problem to its exact block and requires a complete retry', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-compatibility-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const reportsRoot = path.join(root, 'reports')
+  const source: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: 'Blocked groups', locale: 'en-US',
+    sections: [
+      {
+        id: 'first', title: 'First', blocks: [{
+          kind: 'evidence', id: 'first-evidence', title: 'First evidence',
+          finding_ids: ['finding-a', 'finding-b'],
+        }],
+      },
+      {
+        id: 'second', title: 'Second', blocks: [
+          { kind: 'text', id: 'plain', text: 'No source' },
+          {
+            kind: 'text', id: 'second-evidence', text: 'Second evidence',
+            finding_ids: ['finding-c', 'finding-d'],
+          },
+        ],
+      },
+    ],
+  }
+  const environment = {
+    binding: { fingerprint: 'b'.repeat(64), marivoVersion: '0.4.test' },
+    async runCheckedReportProjection(
+      _sessionId: string,
+      _artifactRefs: readonly string[],
+      findingGroups: readonly (readonly string[])[],
+    ) {
+      assert.deepEqual(findingGroups, [
+        ['finding-a', 'finding-b'],
+        ['finding-c', 'finding-d'],
+      ])
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify({
+          status: 'blocked',
+          issues: [
+            {
+              code: 'evidence-not-compatible', location: 'finding_groups[0]',
+              message: "Finding selection ['finding-a', 'finding-b'] has compatibility status 'incompatible'. Conflicts: comparability_incompatible findings=['finding-a', 'finding-b'] artifacts=['artifact-a', 'artifact-b'] incompatible_fields=['grain'].",
+              repair: 'Split the incompatible Findings, then preserve the unaffected content and resubmit the complete ReportDocument v1.',
+            },
+            {
+              code: 'evidence-not-compatible', location: 'finding_groups[1]',
+              message: "Finding selection ['finding-c', 'finding-d'] has compatibility status 'indeterminate'. Conflicts: evidence_store_unavailable findings=['finding-c'] artifacts=['artifact-c']. Marivo omitted 1 additional issue(s) with kinds=['unknown_scope_rule'].",
+              repair: 'Remove the unavailable Finding, then preserve the unaffected content and resubmit the complete ReportDocument v1.',
+            },
+          ],
+        })),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment, { reportsRoot })
+  const value = await tool.execute(
+    { session_id: 'session-report', document: source },
+    { signal: new AbortController().signal } as Parameters<typeof tool.execute>[1],
+  ) as ReportRenderValueV1
+  assert.equal(value.status, 'blocked', JSON.stringify(value))
+  if (value.status !== 'blocked') return
+  assert.deepEqual(value.issues.map(issue => issue.location), [
+    'document.sections[0].blocks[0].finding_ids',
+    'document.sections[1].blocks[1].finding_ids',
+  ])
+  assert.match(value.issues[0]?.message ?? '', /finding-a.*finding-b.*comparability_incompatible.*grain/)
+  assert.match(value.issues[1]?.message ?? '', /finding-c.*finding-d.*omitted 1.*unknown_scope_rule/)
+  const rendered = renderReportToolValue(value)
+  assert.match(rendered, /resubmit one complete ReportDocument v1/)
+  assert.match(rendered, /Never submit document\.blocks alone/)
+  assert.equal(reportPresentationMeta(value), null)
+  await assert.rejects(() => stat(reportsRoot), { code: 'ENOENT' })
 })
 
 test('visual compiler selects one line mapping, preserves rows, and discloses truncation', () => {

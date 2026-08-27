@@ -304,8 +304,8 @@ class ProjectionProblem(Exception):
             "repair": repair,
         }
 
-def blocked(issue):
-    print(json.dumps({"status": "blocked", "issues": [issue]}, ensure_ascii=False, allow_nan=False, sort_keys=True))
+def blocked(issues):
+    print(json.dumps({"status": "blocked", "issues": issues}, ensure_ascii=False, allow_nan=False, sort_keys=True))
 
 def normalize_cell(value, location, nullable):
     if value is None or (type(value).__module__.startswith("pandas") and type(value).__name__ in {"NAType", "NaTType"}):
@@ -363,8 +363,70 @@ def analysis_issue(exc):
         "repair": str(action or "Repair the Marivo Session or exact reference, then submit the complete report again."),
     }
 
+def compatibility_problem(group_index, group, compatibility):
+    summaries = []
+    repair_actions = []
+    for issue in compatibility.issues:
+        detail = issue.detail
+        summary = (
+            f"{detail.kind} findings={list(issue.finding_ids)!r} "
+            f"artifacts={list(issue.artifact_refs)!r}"
+        )
+        incompatible_fields = getattr(detail, "incompatible_fields", ())
+        if incompatible_fields:
+            summary += f" incompatible_fields={list(incompatible_fields)!r}"
+        summaries.append(summary)
+        repair = getattr(detail, "repair", None)
+        action = getattr(repair, "action", None)
+        action_text = str(action) if action else ""
+        if action_text and action_text not in repair_actions:
+            repair_actions.append(action_text)
+    omitted = ""
+    if compatibility.omitted_issue_count:
+        omitted = (
+            f" Marivo omitted {compatibility.omitted_issue_count} additional issue(s) "
+            f"with kinds={list(compatibility.omitted_issue_kinds)!r}."
+        )
+    details = "; ".join(summaries) or "Marivo returned no retained issue detail"
+    repair_prefix = "; ".join(repair_actions)
+    if repair_prefix:
+        repair_prefix += ". "
+    return {
+        "code": "evidence-not-compatible",
+        "location": f"finding_groups[{group_index}]",
+        "message": (
+            f"Finding selection {list(group)!r} has compatibility status {compatibility.status!r}. "
+            f"Compatibility details: {details}.{omitted}"
+        ),
+        "repair": (
+            repair_prefix
+            + "Apply the listed Marivo repairs and rerun compatibility for this block; "
+            + "split or remove Finding references only when the selection itself is incompatible. "
+            + "Once compatible, preserve the unaffected content and resubmit the complete ReportDocument v1."
+        ),
+    }
+
 try:
     session = mv.session.resume(session_id, use_datasources=False)
+    compatibilities = []
+    compatibility_problems = []
+    for group_index, group in enumerate(finding_groups):
+        compatibility = session.evidence.compatibility(finding_ids=group)
+        if compatibility.status != "compatible":
+            compatibility_problems.append(
+                compatibility_problem(group_index, group, compatibility)
+            )
+        else:
+            compatibilities.append({
+                "group_index": group_index,
+                "status": compatibility.status,
+                "finding_ids": list(compatibility.finding_ids),
+                "value": compatibility.model_dump(mode="json"),
+            })
+    if compatibility_problems:
+        blocked(compatibility_problems)
+        raise SystemExit(0)
+
     findings = [session.evidence.finding(finding_id) for finding_id in finding_ids]
     for finding in findings:
         if not callable(getattr(finding, "render", None)):
@@ -459,21 +521,6 @@ try:
             "rows": [] if rows is None else rows,
         })
 
-    compatibilities = []
-    for group_index, group in enumerate(finding_groups):
-        compatibility = session.evidence.compatibility(finding_ids=group)
-        if compatibility.status != "compatible":
-            raise ProjectionProblem(
-                "evidence-not-compatible", f"finding_groups[{group_index}]",
-                f"Finding compatibility is {compatibility.status!r} for one report block.",
-                "Use a mechanically compatible Finding selection for that block, or remove the incompatible references.",
-            )
-        compatibilities.append({
-            "group_index": group_index,
-            "status": compatibility.status,
-            "finding_ids": list(compatibility.finding_ids),
-            "value": compatibility.model_dump(mode="json"),
-        })
     payload = {
         "status": "ready",
         "session_id": session.id,
@@ -501,10 +548,10 @@ try:
             "Reduce referenced rows, columns, Artifacts, or Findings before retrying.",
         )
 except ProjectionProblem as exc:
-    blocked(exc.issue)
+    blocked([exc.issue])
     raise SystemExit(0)
 except mv.errors.AnalysisError as exc:
-    blocked(analysis_issue(exc))
+    blocked([analysis_issue(exc)])
     raise SystemExit(0)
 except Exception as exc:
     print(json.dumps({
