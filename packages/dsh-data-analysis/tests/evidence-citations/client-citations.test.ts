@@ -291,7 +291,7 @@ test('tool-calling assistant steps and answers without references produce no cit
   }), null)
 })
 
-test('client registers two replay Definitions, two Tool Views, and one turn-tail entry', async () => {
+test('client registers report and citation replay Definitions, Tool Views, and turn-tail entries', async () => {
   const client = await loadClient()
   const definitions: any[] = []
   const slots: any[] = []
@@ -313,10 +313,12 @@ test('client registers two replay Definitions, two Tool Views, and one turn-tail
   }
   client.apply(ctx)
   assert.deepEqual(definitions.map(item => item.kind), [
-    'marivo-citation-registry', 'marivo-citations',
+    'marivo-report-delivery', 'marivo-citation-registry', 'marivo-citations',
   ])
-  assert.equal(slots.length, 3)
+  assert.equal(slots.length, 4)
   assert.equal(slots[1].options.key, 'marivo_report_render')
   assert.equal(slots[2].options.name, 'conversation.chat.turnTail')
   assert.equal(typeof slots[2].options.select, 'function')
+  assert.equal(slots[3].options.name, 'conversation.chat.turnTail')
+  assert.equal(typeof slots[3].options.select, 'function')
 })

@@ -191,6 +191,26 @@ export function reportPresentationMeta(
   }
 }
 
+function reportTurnForRootCall(dispatch: {
+  readonly exec: { readonly rootCallId?: unknown }
+  readonly agent?: { readonly session?: { readonly events?: readonly unknown[] } }
+}): number | null {
+  const rootCallId = String(dispatch.exec.rootCallId ?? '')
+  if (rootCallId === '' || !Array.isArray(dispatch.agent?.session?.events)) return null
+  let rootCall: { data?: { turn?: unknown } } | undefined
+  for (let index = dispatch.agent.session.events.length - 1; index >= 0; index--) {
+    const candidate = dispatch.agent.session.events[index]
+    if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) continue
+    const event = candidate as { type?: unknown; data?: { callId?: unknown; turn?: unknown } }
+    if (event.type === 'tool/call' && String(event.data?.callId ?? '') === rootCallId) {
+      rootCall = event
+      break
+    }
+  }
+  const turn = rootCall?.data?.turn
+  return Number.isSafeInteger(turn) && (turn as number) >= 0 ? turn as number : null
+}
+
 /**
  * Preserve the ready card projection on Code Mode's durable sub-dispatch event.
  * Harness intentionally omits presentationMeta for nested calls; this custom
@@ -214,7 +234,9 @@ export function installMarivoReportCodeDelivery(ctx: Context): () => void {
     const meta = pending.get(key)
     pending.delete(key)
     if (dispatch.isError || meta === undefined) return content
-    const card = { type: REPORT_DURABLE_CONTENT_KIND, meta } as unknown as ContentBlock
+    const turn = reportTurnForRootCall(dispatch)
+    if (turn === null) return content
+    const card = { type: REPORT_DURABLE_CONTENT_KIND, turn, meta } as unknown as ContentBlock
     return [...content, card]
   }, { prepend: true })
   let active = true

@@ -69,8 +69,9 @@ entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详
 `marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
 bridge 恢复 Finding 及其 backing Artifact、revalidate 完整来源、按 block 检查 Finding compatibility，随后生成无 JavaScript、
 无远程依赖的 HTML/CSS/SVG 并原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。Tool 文本返回绝对路径；
-Web Tool View 从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复报告卡片，用户点击后才通过
-DSH `host.openPath` 打开文件。纯溯源 Artifact 不投影 rows，HTML 使用 Finding 双语 render 和完整 provenance
+Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复
+完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建
+HTTP URL，也不支持跨机器分享。纯溯源 Artifact 不投影 rows，HTML 使用 Finding 双语 render 和完整 provenance
 索引，但不输出 Parquet 链接或私有存储路径。真实补充验证使用仓库命令
 `npm run validate:evidence-citations:real` 和 `npm run validate:html-report-rendering:real`，证据写入
 忽略目录 `artifacts/evidence-citations-real/` 和 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍

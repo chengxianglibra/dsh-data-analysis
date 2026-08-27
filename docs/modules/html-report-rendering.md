@@ -6,9 +6,10 @@
 入口是 `marivo_report_render({ session_id, document })`。Agent 拥有报告标题、章节、顺序、文字和图表选择；
 插件只校验文档及精确 Marivo 引用、生成展示投影、渲染并原子发布文件。
 
-当前已交付设计中的 Slice 1 与 Slice 2：Tool 通过文本返回绝对 `index.html` 路径，Web Tool View 从标准
-`tool/result.meta` 恢复报告卡片，并在用户点击后调用 `host.openPath`。Slice 3 的真实 runner 已实现；当前
-Web toolset 与打印 Evidence 门禁仍 blocked，因此真实 Web/视觉验收尚未完成。
+当前已交付设计中的 Slice 1 与 Slice 2：Tool 通过文本返回绝对 `index.html` 路径，Web Tool View 和最终回答
+下方的耐久交付卡片从标准 Session 事件恢复报告，并在用户点击后调用 `host.openPath`。交付卡片不读取最终
+回复文字，因此 Agent 把路径缩写成 basename 时仍保留完整路径和打开动作。Slice 3 的真实 runner 已实现；
+当前 Web 与打印 Evidence 门禁仍 blocked，因此真实 Web/视觉验收尚未完成。
 
 ## 编译流程
 
@@ -87,20 +88,26 @@ Publisher 在同一父目录创建随机 staging，使用目录 `0700`、文件 
 顶层 ready 结果把 `{ kind, version, title, path, reportDigest, disclosures }` 投影到标准 `tool/result.meta`；
 blocked 结果使用 `null` 哨兵，不产生可打开报告卡片。Harness 不为 Code Mode nested Tool 计算
 `presentationMeta`，因此插件通过 `tools/result` 与 `tools/code-dispatch-log`，只在标准 `tool/code-dispatch`
-事件的耐久日志副本中追加一个同 shape 的 `marivo-report-card` ContentBlock；程序 value 与模型可见文本均不变。
+事件的耐久日志副本中追加一个 `{ type, turn, meta }` 闭合 `marivo-report-card` ContentBlock。`turn` 必须由同一
+root call 的耐久 `tool/call` 解析；无法建立该关联时不签发 card。程序 value 与模型可见文本均不变。
 
 客户端严格校验闭合的 `marivo-html-report` v1 metadata，以及恰好一个闭合的 nested card block，并且只依赖
 已冻结的 Tool call/result slice。因此 native、code 与 both 模式的 Session replay 都不读取报告文件、不访问
 Marivo，也不引入自定义 Session event。旧版本、畸形、blocked 或失败结果回退到原 Tool 文本。
 
-“打开报告”按钮调用 `connection.api.host.openPath({ path })`。Host opener 不可用、trust fence 拒绝、RPC
-失败或异常都只进入卡片本地错误状态，不修改已持久化 Tool Result、metadata 或不可变报告产物。
+客户端为每个 Turn 建立一个 `marivo-report-delivery` context：顶层结果必须先通过 `tool/call.callId` 证明调用名
+确为 `marivo_report_render`，Code Mode card 则使用其已验证的 `turn`。两者聚合到同一个固定 Turn data key，
+消费者只通过 Harness 的 `data.get(key)` 公开契约读取按 seq 排序的交付数据。最终回答下方的 turn-tail 卡片按 report digest 去重，显示完整路径，并通过 Chat owner 的
+标准 `openFile(path)` 接缝调用 Host。它不解析最终回复、不会把 basename 当成交付事实，也不创建 `file://`
+或 HTTP URL。Tool View 的“打开报告”按钮仍直接调用 `connection.api.host.openPath({ path })`。Host opener
+不可用、trust fence 拒绝、RPC 失败或异常不会修改已持久化 Tool Result、metadata 或不可变报告产物。
 
 ## Agent 触发边界与验证
 
 `marivo-analysis` 激活后，短 system prompt 要求普通分析默认 inline。只有用户明确请求耐久 HTML、接受 Agent
-提议，或要求修改当前对话中已生成的报告时才调用 Tool；quick-answer、no-file 或其他产物要求优先。Tool
-返回的路径和 digest 不是 Marivo Evidence。
+提议，或要求修改当前对话中已生成的报告时才调用 Tool；quick-answer、no-file 或其他产物要求优先。ready
+后 Agent 必须在最终回答中逐字复制 Tool 返回的绝对 `Path`，不得只写 basename、虚构 `file://`/HTTP URL
+或声称报告已经发布；turn-tail 卡片仍是独立于模型文字的可靠交付面。路径和 digest 不是 Marivo Evidence。
 
 确定性验证入口：
 

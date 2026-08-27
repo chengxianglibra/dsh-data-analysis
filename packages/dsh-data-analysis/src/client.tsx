@@ -13,6 +13,8 @@ const REPORT_TOOL_NAME = 'marivo_report_render'
 const REPORT_META_KIND = 'marivo-html-report'
 const REPORT_META_VERSION = 1
 const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
+const REPORT_DELIVERY_DEFINITION_KIND = 'marivo-report-delivery'
+const REPORT_TURN_DATA_KEY = REPORT_DELIVERY_DEFINITION_KIND
 const CITATION_META_KIND = 'marivo-evidence-citations'
 const CITATION_META_VERSION = 2
 const CITATION_REGISTRY_DEFINITION_KIND = 'marivo-citation-registry'
@@ -86,6 +88,28 @@ export interface MarivoReportCardModel {
   readonly state: 'running' | 'ready' | 'fallback'
   readonly summary: string
   readonly report: MarivoReportPresentationMeta | null
+}
+
+export interface MarivoReportTurnDelivery {
+  readonly seq: number
+  readonly report: MarivoReportPresentationMeta
+}
+
+export interface MarivoReportTurnData {
+  readonly deliveries: readonly MarivoReportTurnDelivery[]
+}
+
+interface MarivoReportTurnState {
+  readonly turn: number
+  readonly calls: ReadonlyMap<string, string>
+  readonly deliveries: readonly MarivoReportTurnDelivery[]
+}
+
+declare module '@deepseek-ai/dsh-client-runtime/client' {
+  interface ConversationTurnDataMap {
+    /** Ready Marivo reports collected from this exact Turn. */
+    'marivo-report-delivery': MarivoReportTurnData
+  }
 }
 
 export interface MarivoResolvedCitation {
@@ -579,8 +603,113 @@ export function parseReportDurableContent(value: unknown): MarivoReportPresentat
   )) as Array<Record<string, unknown>>
   if (cards.length !== 1) return null
   const card = cards[0]!
-  if (Object.keys(card).length !== 2 || !Object.hasOwn(card, 'meta')) return null
+  if (
+    Object.keys(card).length !== 3
+    || !Object.hasOwn(card, 'meta')
+    || !Number.isSafeInteger(card.turn)
+    || (card.turn as number) < 0
+  ) return null
   return parseReportPresentationMeta(card.meta)
+}
+
+function codeReportDelivery(event: any): (MarivoReportTurnDelivery & { readonly turn: number }) | null {
+  if (
+    event?.type !== 'tool/code-dispatch'
+    || event.data?.name !== REPORT_TOOL_NAME
+    || event.data?.isError === true
+  ) return null
+  const report = parseReportDurableContent(event.data.content)
+  if (report === null) return null
+  const card = event.data.content.find((item: any) => item?.type === REPORT_DURABLE_CONTENT_KIND)
+  return { turn: card.turn, seq: event.seq, report }
+}
+
+/** Recover one ready report from its native Tool result or durable Code Mode dispatch. */
+export function reportDeliveryFromEvent(
+  event: any,
+  calls: ReadonlyMap<string, string> = new Map(),
+): MarivoReportTurnDelivery | null {
+  if (event?.type === 'tool/result') {
+    if (event.surfaceOp !== 'append' || !Array.isArray(event.data?.message?.content)) return null
+    const blocks = event.data.message.content.filter((item: any) => item?.type === 'tool-result')
+    if (blocks.length !== 1 || blocks[0].isError === true) return null
+    const callId = String(event.data.message.source?.callId ?? '')
+    if (calls.get(callId) !== REPORT_TOOL_NAME) return null
+    const report = parseReportPresentationMeta(event.data.meta)
+    return report === null ? null : { seq: event.seq, report }
+  }
+  const delivery = codeReportDelivery(event)
+  return delivery === null ? null : { seq: delivery.seq, report: delivery.report }
+}
+
+/** Aggregate immutable native and Code Mode reports under one Harness-owned Turn key. */
+export const marivoReportDeliveryDefinition = {
+  kind: REPORT_DELIVERY_DEFINITION_KIND,
+  match(event: any) {
+    if (event?.type === 'turn/start') return { id: String(event.data.turn), role: 'start' }
+    if (event?.type === 'tool/call') return { id: String(event.data.turn), role: 'update' }
+    if (event?.type === 'tool/result' && event.surfaceOp === 'append') {
+      return { id: String(event.data.turn), role: 'update' }
+    }
+    const delivery = codeReportDelivery(event)
+    return delivery === null ? null : { id: String(delivery.turn), role: 'update' }
+  },
+  start(_context: any, match: any): MarivoReportTurnState {
+    if (match.event.type !== 'turn/start') {
+      throw new Error('Marivo report delivery start requires turn/start')
+    }
+    return { turn: match.event.data.turn, calls: new Map(), deliveries: [] }
+  },
+  update(context: any, match: any): MarivoReportTurnState {
+    if (match.event.type === 'tool/call') {
+      const calls = new Map(context.state.calls)
+      calls.set(String(match.event.data.callId), String(match.event.data.name))
+      return { ...context.state, calls }
+    }
+    const delivery = reportDeliveryFromEvent(match.event, context.state.calls)
+    return delivery === null
+      ? context.state
+      : { ...context.state, deliveries: [...context.state.deliveries, delivery] }
+  },
+  buildLocationData(context: any, scope: string) {
+    if (scope !== 'turn' || context.state === undefined) return null
+    return {
+      kind: 'turn',
+      turn: context.state.turn,
+      key: REPORT_TURN_DATA_KEY,
+      value: { deliveries: context.state.deliveries },
+    }
+  },
+}
+
+/** Ready reports completed before this exact closing Assistant message. */
+export function reportsForClosing(owner: any): readonly MarivoReportPresentationMeta[] {
+  const data = owner?.turn?.data?.get?.(REPORT_TURN_DATA_KEY)
+  if (typeof data !== 'object' || data === null || !Array.isArray(data.deliveries)) return []
+  const deliveries: MarivoReportTurnDelivery[] = []
+  for (const value of data.deliveries) {
+    if (
+      typeof value !== 'object'
+      || value === null
+      || typeof value.seq !== 'number'
+      || value.seq > owner.seq
+    ) continue
+    const report = parseReportPresentationMeta(value.report)
+    if (report !== null) deliveries.push({ seq: value.seq, report })
+  }
+  deliveries.sort((left, right) => left.seq - right.seq)
+  const seen = new Set<string>()
+  return deliveries.flatMap(({ report }) => {
+    if (seen.has(report.reportDigest)) return []
+    seen.add(report.reportDigest)
+    return [report]
+  })
+}
+
+/** Claim the turn tail only when its closing branch produced a ready report. */
+export function selectMarivoReports(owner: any): readonly MarivoReportPresentationMeta[] | null {
+  const reports = reportsForClosing(owner)
+  return reports.length === 0 ? null : reports
 }
 
 /** Derive one live-or-replayed card solely from the frozen Tool call slice. */
@@ -769,6 +898,26 @@ const reportFallbackStyle = {
   color: 'var(--dsw-alias-text-secondary, #666)', fontSize: 12,
 }
 
+/** Durable report handoff under the closing answer, independent of its prose. */
+export function MarivoReportTurnDelivery({ matched: reports, openFile }: any) {
+  return (
+    <section style={reportCardStyle} data-marivo-report-deliveries>
+      <strong>HTML 分析报告</strong>
+      {reports.map((report: MarivoReportPresentationMeta) => (
+        <div key={report.reportDigest} style={{ display: 'grid', gap: 6 }}>
+          <div style={reportHeadingStyle}>
+            <span>{report.title}</span>
+            <Button variant="primary" size="sm" onClick={() => { openFile(report.path) }}>
+              打开报告
+            </Button>
+          </div>
+          <p style={reportPathStyle}>{report.path}</p>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 /** Replay-safe immutable report card with a click-time Host handoff. */
 export function MarivoReportToolView({ callId, block, connection }: any) {
   const model = useMemo(() => marivoReportCardModel(block), [block])
@@ -936,12 +1085,17 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: REPORT_TOOL_NAME,
   }, BoundMarivoReportToolView))
+  ctx.conversationEvents.register(marivoReportDeliveryDefinition)
   ctx.conversationEvents.register(marivoCitationRegistryDefinition)
   ctx.conversationEvents.register(marivoAnswerCitationsDefinition)
   ctx.effect(() => ctx.locale.register(CITATION_LOCALE_NAMESPACE, {
     zh: CITATION_ZH,
     en: CITATION_EN,
   }), 'dsh-data-analysis: Evidence citation dictionaries')
+  ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
+    name: 'conversation.chat.turnTail',
+    select: selectMarivoReports,
+  }, MarivoReportTurnDelivery))
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
     name: 'conversation.chat.turnTail',
     select: selectMarivoCitations,

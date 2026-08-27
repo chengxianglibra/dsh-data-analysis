@@ -55,6 +55,7 @@ export const MARIVO_REPORT_RENDERING_PROMPT = [
   'Do not call it solely because the analysis is complex or contains charts or Artifacts.',
   'An explicit quick-answer, no-file, or other-output request takes precedence.',
   'Every call must submit a complete ReportDocument; a revision creates a new report.',
+  'After a ready result, copy the returned absolute Path verbatim in the final answer; never shorten it to a basename, invent a file or HTTP URL, or claim it was published.',
   'The returned path and digest are not Marivo Evidence.',
 ].join(' ')
 

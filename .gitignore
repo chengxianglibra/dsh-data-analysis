@@ -1,4 +1,5 @@
 .marivo/
+.agents/
 .venv/
 .DS_Store
 .env

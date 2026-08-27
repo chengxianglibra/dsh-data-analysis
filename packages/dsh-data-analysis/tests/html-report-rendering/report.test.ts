@@ -539,22 +539,29 @@ test('Code Mode logs one durable ready card block without changing nested Tool t
     report_digest: 'a'.repeat(64), document_digest: 'b'.repeat(64),
     artifact_refs: [], finding_ids: [], disclosures: ['bounded'],
   }
+  const sessionEvents = [{
+    type: 'tool/call', data: { turn: 7, callId: 'outer', name: RUN_CODE_NAME },
+  }]
+  const agent = { session: { events: sessionEvents } }
   const exec = {
     callId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
-    parent: Symbol('outer'), arguments: {}, signal: new AbortController().signal,
+    rootCallId: 'outer', parent: Symbol('outer'), agent,
+    arguments: {}, signal: new AbortController().signal,
   }
   ctx.emit('tools/result', exec as never, {
     isError: false, value: ready, content: [{ type: 'text', text: 'original text' }],
   } as never)
   const original = [{ type: 'text', text: 'original text' }] as const
   const logged = await ctx.waterfall('tools/code-dispatch-log', {
-    exec: {} as never, subCallId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    exec: { rootCallId: 'outer' } as never, agent: agent as never,
+    subCallId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
     isError: false, content: [...original],
   } as never, () => Promise.resolve([...original]))
   assert.deepEqual(logged, [
     ...original,
     {
       type: 'marivo-report-card',
+      turn: 7,
       meta: {
         kind: 'marivo-html-report', version: 1, title: ready.title, path: ready.path,
         reportDigest: ready.report_digest, disclosures: ready.disclosures,
@@ -564,10 +571,21 @@ test('Code Mode logs one durable ready card block without changing nested Tool t
   assert.deepEqual(original, [{ type: 'text', text: 'original text' }])
 
   const replayed = await ctx.waterfall('tools/code-dispatch-log', {
-    exec: {} as never, subCallId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    exec: { rootCallId: 'outer' } as never, agent: agent as never,
+    subCallId: 'outer:code:1', name: MARIVO_REPORT_RENDER_TOOL_NAME,
     isError: false, content: [...original],
   } as never, () => Promise.resolve([...original]))
   assert.deepEqual(replayed, original, 'one tools/result observation must mint only one block')
+
+  ctx.emit('tools/result', { ...exec, callId: 'outer:code:unowned' } as never, {
+    isError: false, value: ready, content: [{ type: 'text', text: 'unowned' }],
+  } as never)
+  const unowned = await ctx.waterfall('tools/code-dispatch-log', {
+    exec: { rootCallId: 'unrelated-root' } as never, agent: agent as never,
+    subCallId: 'outer:code:unowned', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    isError: false, content: [{ type: 'text', text: 'unowned' }],
+  } as never, () => Promise.resolve([{ type: 'text', text: 'unowned' }]))
+  assert.deepEqual(unowned, [{ type: 'text', text: 'unowned' }])
 
   ctx.emit('tools/result', { ...exec, callId: 'outer:code:2' } as never, {
     isError: false,
@@ -575,7 +593,8 @@ test('Code Mode logs one durable ready card block without changing nested Tool t
     content: [{ type: 'text', text: 'blocked' }],
   } as never)
   const blocked = await ctx.waterfall('tools/code-dispatch-log', {
-    exec: {} as never, subCallId: 'outer:code:2', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    exec: { rootCallId: 'outer' } as never, agent: agent as never,
+    subCallId: 'outer:code:2', name: MARIVO_REPORT_RENDER_TOOL_NAME,
     isError: false, content: [{ type: 'text', text: 'blocked' }],
   } as never, () => Promise.resolve([{ type: 'text', text: 'blocked' }]))
   assert.deepEqual(blocked, [{ type: 'text', text: 'blocked' }])
@@ -585,7 +604,8 @@ test('Code Mode logs one durable ready card block without changing nested Tool t
     isError: false, value: ready, content: [{ type: 'text', text: 'after dispose' }],
   } as never)
   const disposed = await ctx.waterfall('tools/code-dispatch-log', {
-    exec: {} as never, subCallId: 'outer:code:3', name: MARIVO_REPORT_RENDER_TOOL_NAME,
+    exec: { rootCallId: 'outer' } as never, agent: agent as never,
+    subCallId: 'outer:code:3', name: MARIVO_REPORT_RENDER_TOOL_NAME,
     isError: false, content: [{ type: 'text', text: 'after dispose' }],
   } as never, () => Promise.resolve([{ type: 'text', text: 'after dispose' }]))
   assert.deepEqual(disposed, [{ type: 'text', text: 'after dispose' }])
@@ -617,9 +637,15 @@ test('real run_code sub-dispatch replays the report card block through the stand
     const value = await request.bindings[0]!.functions[MARIVO_REPORT_RENDER_TOOL_NAME]!({})
     return { logs: [], value: JSON.stringify(value) }
   }
-  const events: Array<{ type: string; data: any }> = []
+  const events: Array<{ type: string; data: any }> = [{
+    type: 'tool/call',
+    data: { turn: 5, callId: 'report-code-parent', name: RUN_CODE_NAME },
+  }]
   const agent = {
-    session: { append(type: string, data: unknown) { events.push({ type, data }) } },
+    session: {
+      events,
+      append(type: string, data: unknown) { events.push({ type, data }) },
+    },
   }
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
@@ -636,6 +662,7 @@ test('real run_code sub-dispatch replays the report card block through the stand
     { type: 'text', text: 'nested original text' },
     {
       type: 'marivo-report-card',
+      turn: 5,
       meta: {
         kind: 'marivo-html-report', version: 1, title: ready.title, path: ready.path,
         reportDigest: ready.report_digest, disclosures: ready.disclosures,
