@@ -141,7 +141,9 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 ### HTML 报告
 
 用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v1`。插件通过
-当前 Environment Binding 批量恢复和 revalidate 精确 Artifact，并按 block 校验 Finding compatibility；
+当前 Environment Binding 对安全提取的 Finding group、Finding 和 Artifact 逐项校验并保留有效 partial projection；
+Node 将 document、Marivo 与 visual preflight 结果分组聚合，只有阻断性正确性检查全部通过才发布；
+相邻解读文字、点数与类别数只作为 Agent 写作/选图指导，不作为发布硬门槛；
 只使用原始公开投影行渲染 text、line/bar chart、table 和 evidence。报告以 canonical identity 发布到
 `$DSH_HOME` 下的不可变目录。Tool 文本返回绝对路径；顶层 ready 结果把闭合报告摘要写入标准
 `tool/result.meta`，Code Mode nested ready 结果把同一摘要写入标准子调用事件的耐久 ContentBlock。Web Tool

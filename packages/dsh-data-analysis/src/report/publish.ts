@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } f
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { ReportBlockedValueV1, ReportDocumentV1 } from './document.ts'
+import type { ReportDocumentV1, ReportIssueV1 } from './document.ts'
 import { renderReportHtml, REPORT_RENDERER_VERSION } from './render.ts'
 import type { CompiledReport } from './visual.ts'
 
@@ -45,7 +45,7 @@ export type PublishReportResult =
       readonly generatedAt: string
       readonly reused: boolean
     }
-  | { readonly ok: false; readonly value: ReportBlockedValueV1 }
+  | { readonly ok: false; readonly issues: readonly ReportIssueV1[] }
 
 function hash(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex')
@@ -190,12 +190,10 @@ async function validateExisting(
 function publishBlocked(message: string): PublishReportResult {
   return {
     ok: false,
-    value: {
-      status: 'blocked', stage: 'publish', issues: [{
-        code: 'html-too-large', location: 'index.html', message,
-        repair: 'Reduce report text, rows, or blocks and submit the complete document again.',
-      }],
-    },
+    issues: [{
+      code: 'html-too-large', location: 'index.html', message,
+      repair: 'Reduce report text, rows, or blocks and submit the complete document again.',
+    }],
   }
 }
 

@@ -6,14 +6,18 @@ export type {
   ChartBlockV1,
   EvidenceBlockV1,
   ParsedReportDocument,
+  ReportCheckStatus,
+  ReportCheckV1,
   ReportBlockedStage,
   ReportBlockedValueV1,
   ReportBlockV1,
   ReportDocumentV1,
+  ReportDocumentInspection,
   ReportIssueV1,
   ReportReadyValueV1,
   ReportRenderValueV1,
   ReportSectionV1,
+  ReportVisualCandidate,
   TableBlockV1,
   TextBlockV1,
 } from './document.ts'
@@ -26,6 +30,7 @@ export type {
   ReportCompatibilityProjection,
   ReportFindingProjection,
   ReportProjectionBundle,
+  ReportProjectionInspection,
 } from './projection.ts'
 export {
   canonicalJson,
@@ -48,9 +53,10 @@ export {
   renderReportToolValue,
 } from './tool.ts'
 export type { MarivoReportToolOptions, ReportPresentationMetaV1 } from './tool.ts'
-export { compileReportVisuals } from './visual.ts'
+export { compileReportVisuals, preflightReportVisuals } from './visual.ts'
 export type {
   CompiledChartBlock,
   CompiledReport,
   CompiledTableBlock,
+  ReportVisualPreflight,
 } from './visual.ts'

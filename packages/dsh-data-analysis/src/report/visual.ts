@@ -3,6 +3,7 @@ import type {
   ChartBlockV1,
   ReportDocumentV1,
   ReportIssueV1,
+  ReportVisualCandidate,
   TableBlockV1,
 } from './document.ts'
 import type { ReportArtifactColumn, ReportArtifactProjection, ReportProjectionBundle } from './projection.ts'
@@ -37,6 +38,12 @@ export interface CompiledReport {
 export type CompileVisualResult =
   | { readonly ok: true; readonly value: CompiledReport }
   | { readonly ok: false; readonly issues: readonly ReportIssueV1[] }
+
+export interface ReportVisualPreflight {
+  readonly issues: readonly ReportIssueV1[]
+  readonly checkedCount: number
+  readonly skippedCount: number
+}
 
 function reportIssue(code: string, location: string, message: string, repair: string): ReportIssueV1 {
   return { code, location, message, repair }
@@ -142,9 +149,8 @@ function compileChart(
     const lineX = artifact.columns.filter(ordered)
     const barX = artifact.columns.filter(category)
     const values = artifact.columns.filter(measure)
-    const line = lineX.length === 1 && values.length === 1 && artifact.rows.length >= 8
+    const line = lineX.length === 1 && values.length === 1
     const bar = barX.length === 1 && values.length === 1
-      && artifact.rows.length >= 4 && artifact.rows.length <= 30
     if (line === bar) {
       issues.push(reportIssue(
         'auto-chart-ambiguous', `${location}.view`,
@@ -188,24 +194,12 @@ function compileChart(
   }
   const points = sortedPoints(artifact, view, xColumn, xIndex, yIndex, location, issues)
   if (points === undefined) return undefined
-  if (view === 'line' && points.length < 8) {
+  if (points.length === 0) {
     issues.push(reportIssue(
-      'line-too-short', `${location}.artifact_ref`,
-      `Line chart has ${points.length} points; at least 8 are required to show a meaningful trend.`,
-      'Use a table or discrete-period bar chart, or produce a longer ordered Artifact.',
+      'chart-empty', `${location}.artifact_ref`,
+      'Chart Artifact has no rows to render.',
+      'Use a non-empty Artifact or replace the chart with narrative text.',
     ))
-    return undefined
-  }
-  if (view === 'bar' && points.length < 4) {
-    issues.push(reportIssue(
-      'bar-too-short', `${location}.artifact_ref`,
-      `Bar chart has ${points.length} categories; at least 4 are required for a useful comparison.`,
-      'Use a table or concise narrative, or produce an Artifact with at least 4 comparable categories.',
-    ))
-    return undefined
-  }
-  if (view === 'bar' && points.length > 30) {
-    issues.push(reportIssue('bar-too-many-categories', `${location}.artifact_ref`, `Bar chart has ${points.length} categories; the maximum is 30.`, 'Produce a bounded Artifact with at most 30 categories; the renderer will not apply Top-N.'))
     return undefined
   }
   return { block, artifact, view, x, y, points }
@@ -230,6 +224,32 @@ function compileTable(
   const omittedRows = totalRows - rows.length
   if (omittedRows > 0) disclosures.push(`Table ${block.id} displays ${rows.length} of ${totalRows} rows and omits ${omittedRows}.`)
   return { block, artifact, columns: selected, rows, totalRows, omittedRows }
+}
+
+/** Check every visual candidate whose exact Artifact projection is available. */
+export function preflightReportVisuals(
+  candidates: readonly ReportVisualCandidate[],
+  projection: ReportProjectionBundle,
+): ReportVisualPreflight {
+  const artifacts = new Map(projection.artifacts.map(artifact => [artifact.ref, artifact]))
+  const issues: ReportIssueV1[] = []
+  const disclosures: string[] = []
+  let checkedCount = 0
+  let skippedCount = 0
+  for (const candidate of candidates) {
+    const artifact = artifacts.get(candidate.block.artifact_ref)
+    if (artifact === undefined) {
+      skippedCount += 1
+      continue
+    }
+    checkedCount += 1
+    if (candidate.block.kind === 'chart') {
+      compileChart(candidate.block, artifact, candidate.location, issues, disclosures)
+    } else {
+      compileTable(candidate.block, artifact, candidate.location, issues, disclosures)
+    }
+  }
+  return { issues, checkedCount, skippedCount }
 }
 
 /** Admit every data block without aggregating, sampling, or changing the Artifact rows. */

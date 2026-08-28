@@ -56,11 +56,21 @@ export interface ReportDocumentV1 {
 
 export type ReportBlockedStage = 'document' | 'marivo' | 'visual' | 'publish'
 
+export type ReportCheckStatus = 'passed' | 'failed' | 'partial' | 'skipped'
+
 export interface ReportIssueV1 {
   readonly code: string
   readonly location: string
   readonly message: string
   readonly repair: string
+}
+
+export interface ReportCheckV1 {
+  readonly stage: ReportBlockedStage
+  readonly status: ReportCheckStatus
+  readonly issues: ReportIssueV1[]
+  readonly omitted_issue_count: number
+  readonly reason?: string
 }
 
 export interface ReportReadyValueV1 {
@@ -76,8 +86,7 @@ export interface ReportReadyValueV1 {
 
 export interface ReportBlockedValueV1 {
   readonly status: 'blocked'
-  readonly stage: ReportBlockedStage
-  readonly issues: ReportIssueV1[]
+  readonly checks: [ReportCheckV1, ReportCheckV1, ReportCheckV1, ReportCheckV1]
 }
 
 export type ReportRenderValueV1 = ReportReadyValueV1 | ReportBlockedValueV1
@@ -90,9 +99,36 @@ export interface ParsedReportDocument {
   readonly findingGroups: readonly (readonly string[])[]
 }
 
+export interface ReportVisualCandidate {
+  readonly block: ChartBlockV1 | TableBlockV1
+  readonly location: string
+}
+
+export interface ReportDocumentInspection {
+  readonly artifactRefs: readonly string[]
+  /** All original document paths for each de-duplicated Artifact ref. */
+  readonly artifactRefLocations: readonly (readonly string[])[]
+  readonly findingIds: readonly string[]
+  /** All original document paths for each de-duplicated Finding ID. */
+  readonly findingIdLocations: readonly (readonly string[])[]
+  readonly findingGroups: readonly (readonly string[])[]
+  readonly findingGroupLocations: readonly string[]
+  readonly visualCandidates: readonly ReportVisualCandidate[]
+  readonly skippedMarivoTargets: number
+  readonly skippedVisualTargets: number
+}
+
 export type ParseReportDocumentResult =
-  | { readonly ok: true; readonly value: ParsedReportDocument }
-  | { readonly ok: false; readonly issues: readonly ReportIssueV1[] }
+  | {
+      readonly ok: true
+      readonly value: ParsedReportDocument
+      readonly inspection: ReportDocumentInspection
+    }
+  | {
+      readonly ok: false
+      readonly issues: readonly ReportIssueV1[]
+      readonly inspection: ReportDocumentInspection
+    }
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_IDENTIFIER_CHARS = 512
@@ -266,10 +302,18 @@ function columns(
 export function parseReportDocument(input: JsonValue | unknown): ParseReportDocumentResult {
   const issues: ReportIssueV1[] = []
   if (!isObject(input)) {
-    return { ok: false, issues: [issue(
-      'invalid-document', 'document', 'document must be an object.',
-      'Submit one complete ReportDocument v1 object.',
-    )] }
+    return {
+      ok: false,
+      issues: [issue(
+        'invalid-document', 'document', 'document must be an object.',
+        'Submit one complete ReportDocument v1 object.',
+      )],
+      inspection: {
+        artifactRefs: [], artifactRefLocations: [], findingIds: [], findingIdLocations: [],
+        findingGroups: [], findingGroupLocations: [],
+        visualCandidates: [], skippedMarivoTargets: 0, skippedVisualTargets: 0,
+      },
+    }
   }
   rejectUnknown(input, ALLOWED_ROOT, 'document', issues)
   if (input.version !== REPORT_DOCUMENT_VERSION) {
@@ -298,12 +342,18 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
   const blockIds = new Set<string>()
   const artifacts: string[] = []
   const artifactSet = new Set<string>()
+  const artifactLocations = new Map<string, string[]>()
   const findings: string[] = []
   const findingSet = new Set<string>()
+  const findingLocations = new Map<string, string[]>()
   const groups: string[][] = []
+  const groupLocations: string[] = []
   const sections: ReportSectionV1[] = []
+  const visualCandidates: ReportVisualCandidate[] = []
   let blockCount = 0
   let textChars = 0
+  let skippedMarivoTargets = 0
+  let skippedVisualTargets = 0
 
   const rawSections = Array.isArray(input.sections) ? input.sections : []
   for (const [sectionIndex, rawSection] of rawSections.entries()) {
@@ -350,15 +400,23 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
         }
         blockIds.add(id)
       }
+      const findingIssueCount = issues.length
       const ids = findingIds(rawBlock.finding_ids, `${blockLocation}.finding_ids`, rawBlock.kind === 'evidence', issues)
       if (ids !== undefined) {
         groups.push([...ids])
+        const groupLocation = `${blockLocation}.finding_ids`
+        groupLocations.push(groupLocation)
         for (const finding of ids) {
           if (!findingSet.has(finding)) {
             findingSet.add(finding)
             findings.push(finding)
           }
+          const locations = findingLocations.get(finding) ?? []
+          if (!locations.includes(groupLocation)) locations.push(groupLocation)
+          findingLocations.set(finding, locations)
         }
+      } else if (issues.length > findingIssueCount) {
+        skippedMarivoTargets += 1
       }
 
       if (rawBlock.kind === 'text') {
@@ -379,10 +437,17 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
       }
 
       const artifactRef = identifier(rawBlock.artifact_ref, `${blockLocation}.artifact_ref`, issues)
-      if (artifactRef !== undefined && !artifactSet.has(artifactRef)) {
-        artifactSet.add(artifactRef)
-        artifacts.push(artifactRef)
+      if (artifactRef !== undefined) {
+        if (!artifactSet.has(artifactRef)) {
+          artifactSet.add(artifactRef)
+          artifacts.push(artifactRef)
+        }
+        const location = `${blockLocation}.artifact_ref`
+        const locations = artifactLocations.get(artifactRef) ?? []
+        if (!locations.includes(location)) locations.push(location)
+        artifactLocations.set(artifactRef, locations)
       }
+      if (artifactRef === undefined) skippedMarivoTargets += 1
       if (rawBlock.kind === 'table') {
         const selectedColumns = columns(rawBlock.columns, `${blockLocation}.columns`, issues)
         const maximum = rawBlock.max_rows
@@ -390,12 +455,16 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
           issues.push(issue('invalid-max-rows', `${blockLocation}.max_rows`, 'table.max_rows must be an integer from 1 to 100.', 'Choose a max_rows value from 1 to 100.'))
         }
         if (id !== undefined && blockTitle !== undefined && artifactRef !== undefined && Number.isSafeInteger(maximum) && (maximum as number) >= 1 && (maximum as number) <= 100) {
-          parsedBlocks.push({
+          const block: TableBlockV1 = {
             kind: 'table', id, title: blockTitle, artifact_ref: artifactRef,
             max_rows: maximum as number,
             ...(selectedColumns === undefined ? {} : { columns: selectedColumns }),
             ...(ids === undefined ? {} : { finding_ids: ids }),
-          })
+          }
+          parsedBlocks.push(block)
+          visualCandidates.push({ block, location: blockLocation })
+        } else {
+          skippedVisualTargets += 1
         }
         continue
       }
@@ -415,27 +484,23 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
       if ((view === 'line' || view === 'bar') && (x === undefined || y === undefined)) {
         issues.push(issue('explicit-chart-fields-required', blockLocation, 'Explicit line/bar charts require both x and y.', 'Provide both public Artifact column names.'))
       }
-      if (id !== undefined && blockTitle !== undefined && artifactRef !== undefined && view !== undefined) {
-        parsedBlocks.push({
+      const chartFieldsValid = view === 'auto'
+        ? x === undefined && y === undefined
+        : view === 'line' || view === 'bar'
+          ? x !== undefined && y !== undefined
+          : false
+      if (id !== undefined && blockTitle !== undefined && artifactRef !== undefined && view !== undefined && chartFieldsValid) {
+        const block: ChartBlockV1 = {
           kind: 'chart', id, title: blockTitle, artifact_ref: artifactRef, view,
           ...(subtitleValue === undefined ? {} : { subtitle: subtitleValue }),
           ...(x === undefined ? {} : { x }), ...(y === undefined ? {} : { y }),
           ...(ids === undefined ? {} : { finding_ids: ids }),
-        })
+        }
+        parsedBlocks.push(block)
+        visualCandidates.push({ block, location: blockLocation })
+      } else {
+        skippedVisualTargets += 1
       }
-    }
-    for (const [parsedIndex, block] of parsedBlocks.entries()) {
-      if (block.kind !== 'chart') continue
-      const previous = parsedBlocks[parsedIndex - 1]
-      const next = parsedBlocks[parsedIndex + 1]
-      if (previous?.kind === 'text' || next?.kind === 'text') continue
-      const rawIndex = rawBlocks.findIndex(item => isObject(item) && item.id === block.id)
-      const location = rawIndex < 0 ? sectionLocation : `${sectionLocation}.blocks[${rawIndex}]`
-      issues.push(issue(
-        'chart-interpretation-missing', location,
-        `Chart ${JSON.stringify(block.id)} has no adjacent reader-facing text block.`,
-        'Add a text block immediately before or after the chart with the takeaway, how to read it, and why it matters.',
-      ))
     }
     if (sectionId !== undefined && sectionTitle !== undefined) {
       sections.push({ id: sectionId, title: sectionTitle, blocks: parsedBlocks })
@@ -459,7 +524,20 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
       `Split the analysis into multiple reports or reduce the report scope to at most ${MAX_UNIQUE_FINDINGS_PER_REPORT} unique Findings. Do not remove Finding references from facts retained in this report.`,
     ))
   }
-  if (issues.length > 0 || title === undefined || locale === undefined) return { ok: false, issues }
+  const inspection: ReportDocumentInspection = {
+    artifactRefs: artifacts,
+    artifactRefLocations: artifacts.map(ref => artifactLocations.get(ref) ?? []),
+    findingIds: findings,
+    findingIdLocations: findings.map(id => findingLocations.get(id) ?? []),
+    findingGroups: groups,
+    findingGroupLocations: groupLocations,
+    visualCandidates,
+    skippedMarivoTargets,
+    skippedVisualTargets,
+  }
+  if (issues.length > 0 || title === undefined || locale === undefined) {
+    return { ok: false, issues, inspection }
+  }
   return {
     ok: true,
     value: {
@@ -471,5 +549,6 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
       findingIds: findings,
       findingGroups: groups,
     },
+    inspection,
   }
 }

@@ -304,8 +304,23 @@ class ProjectionProblem(Exception):
             "repair": repair,
         }
 
-def blocked(issues):
-    print(json.dumps({"status": "blocked", "issues": issues}, ensure_ascii=False, allow_nan=False, sort_keys=True))
+def blocked(issues, omitted_issue_count=0):
+    retained = issues[:100]
+    print(json.dumps({
+        "status": "blocked",
+        "issues": retained,
+        "omitted_issue_count": omitted_issue_count + max(0, len(issues) - len(retained)),
+    }, ensure_ascii=False, allow_nan=False, sort_keys=True))
+
+def blocked_outcome(identity_key, identity, issues, extra=None):
+    retained = issues[:100]
+    return {
+        "status": "blocked",
+        identity_key: identity,
+        **({} if extra is None else extra),
+        "issues": retained,
+        "omitted_issue_count": max(0, len(issues) - len(retained)),
+    }
 
 def normalize_cell(value, location, nullable):
     if value is None or (type(value).__module__.startswith("pandas") and type(value).__name__ in {"NAType", "NaTType"}):
@@ -363,6 +378,9 @@ def analysis_issue(exc):
         "repair": str(action or "Repair the Marivo Session or exact reference, then submit the complete report again."),
     }
 
+def at_location(value, location):
+    return {**value, "location": location}
+
 def compatibility_problem(group_index, group, compatibility):
     summaries = []
     repair_actions = []
@@ -408,52 +426,103 @@ def compatibility_problem(group_index, group, compatibility):
 
 try:
     session = mv.session.resume(session_id, use_datasources=False)
-    compatibilities = []
-    compatibility_problems = []
-    for group_index, group in enumerate(finding_groups):
-        compatibility = session.evidence.compatibility(finding_ids=group)
-        if compatibility.status != "compatible":
-            compatibility_problems.append(
-                compatibility_problem(group_index, group, compatibility)
-            )
-        else:
-            compatibilities.append({
-                "group_index": group_index,
-                "status": compatibility.status,
-                "finding_ids": list(compatibility.finding_ids),
-                "value": compatibility.model_dump(mode="json"),
-            })
-    if compatibility_problems:
-        blocked(compatibility_problems)
-        raise SystemExit(0)
+except mv.errors.AnalysisError as exc:
+    blocked([analysis_issue(exc)])
+    raise SystemExit(0)
+except Exception as exc:
+    print(json.dumps({
+        "kind": "report-projection-failed",
+        "exception_type": type(exc).__name__,
+    }, sort_keys=True), file=sys.stderr)
+    raise SystemExit(70)
 
-    findings = [session.evidence.finding(finding_id) for finding_id in finding_ids]
-    for finding in findings:
-        if not callable(getattr(finding, "render", None)):
-            raise ProjectionProblem(
-                "finding-render-unavailable", "marivo.findings",
-                "The bound Marivo runtime does not provide Finding.render().",
-                "Upgrade Marivo to a version that provides finding-render-v1 and retry the complete report.",
-            )
-    try:
-        rendered_findings = [{
-            "en": finding.render(language="en"),
-            "zh": finding.render(language="zh"),
-        } for finding in findings]
-    except Exception:
-        raise ProjectionProblem(
-            "finding-render-failed", "marivo.findings",
-            "Marivo could not render one exact Finding as bounded evidence prose.",
-            "Repair or upgrade the Marivo Finding renderer, then retry the complete report.",
-        )
+try:
+    finding_group_outcomes = []
+    for group_index, group in enumerate(finding_groups):
+        try:
+            compatibility = session.evidence.compatibility(finding_ids=group)
+            if compatibility.status != "compatible":
+                finding_group_outcomes.append(blocked_outcome(
+                    "group_index", group_index,
+                    [compatibility_problem(group_index, group, compatibility)],
+                ))
+            else:
+                finding_group_outcomes.append({
+                    "status": "ready",
+                    "value": {
+                        "group_index": group_index,
+                        "status": compatibility.status,
+                        "finding_ids": list(compatibility.finding_ids),
+                        "value": compatibility.model_dump(mode="json"),
+                    },
+                })
+        except mv.errors.AnalysisError as exc:
+            finding_group_outcomes.append(blocked_outcome(
+                "group_index", group_index,
+                [at_location(analysis_issue(exc), f"finding_groups[{group_index}]")],
+            ))
+
+    finding_outcomes = []
+    resolved_finding_targets = []
+    for finding_index, finding_id in enumerate(finding_ids):
+        try:
+            finding = session.evidence.finding(finding_id)
+        except mv.errors.AnalysisError as exc:
+            finding_outcomes.append(blocked_outcome(
+                "finding_id", finding_id,
+                [at_location(analysis_issue(exc), f"finding_ids[{finding_index}]")],
+            ))
+            continue
+
+        resolved_finding_targets.append((finding_index, finding.artifact_id))
+        try:
+            if not callable(getattr(finding, "render", None)):
+                raise ProjectionProblem(
+                    "finding-render-unavailable", f"finding_ids[{finding_index}]",
+                    "The bound Marivo runtime does not provide Finding.render().",
+                    "Upgrade Marivo to a version that provides finding-render-v1 and retry the complete report.",
+                )
+            try:
+                rendered = {
+                    "en": finding.render(language="en"),
+                    "zh": finding.render(language="zh"),
+                }
+            except Exception:
+                raise ProjectionProblem(
+                    "finding-render-failed", f"finding_ids[{finding_index}]",
+                    "Marivo could not render one exact Finding as bounded evidence prose.",
+                    "Repair or upgrade the Marivo Finding renderer, then retry the complete report.",
+                )
+            finding_outcomes.append({
+                "status": "ready",
+                "value": {
+                    "finding_id": finding.finding_id,
+                    "finding_type": finding.finding_type,
+                    "epistemic_kind": finding.epistemic_kind,
+                    "artifact_id": finding.artifact_id,
+                    "session_id": finding.session_id,
+                    "quality_status": finding.quality_status,
+                    "committed_at": finding.committed_at.isoformat(),
+                    "value": finding.value.model_dump(mode="json"),
+                    "subject": finding.subject.model_dump(mode="json"),
+                    "derivation": finding.derivation.model_dump(mode="json"),
+                    "rendered": rendered,
+                },
+            })
+        except ProjectionProblem as exc:
+            finding_outcomes.append(blocked_outcome(
+                "finding_id", finding_id, [exc.issue],
+                {"artifact_ref": finding.artifact_id},
+            ))
 
     all_artifact_refs = list(artifact_refs)
-    for finding in findings:
-        if finding.artifact_id not in all_artifact_refs:
-            all_artifact_refs.append(finding.artifact_id)
+    for _, artifact_ref in resolved_finding_targets:
+        if artifact_ref not in all_artifact_refs:
+            all_artifact_refs.append(artifact_ref)
     display_artifact_refs = set(artifact_refs)
-    artifacts = []
+    artifact_outcomes = []
     for artifact_index, requested_ref in enumerate(all_artifact_refs):
+      try:
         frame = session.get_frame(requested_ref)
         contract = frame.contract()
         if frame.ref != requested_ref or contract.ref != requested_ref:
@@ -506,47 +575,74 @@ try:
             [normalize_cell(value, f"artifacts[{artifact_index}].rows[{row_index}][{column_index}]", schema.columns[column_index].nullable) for column_index, value in enumerate(row)]
             for row_index, row in enumerate(dataframe.itertuples(index=False, name=None))
         ]
-        artifacts.append({
-            "ref": frame.ref,
-            "family": contract.kind,
-            "shape": list(frame.shape),
-            "columns": [{**column.model_dump(mode="json"), "unit": units.get(column.name)} for column in schema.columns],
-            "content_hash": content_hash,
-            "artifact_schema_version": result.artifact_schema_version,
-            "created_at": frame.meta.created_at.isoformat(),
-            "contract": contract.model_dump(mode="json"),
-            "revalidation": result.model_dump(mode="json"),
-            "lineage": public_json(frame.meta.lineage, f"artifacts[{artifact_index}].lineage"),
-            "rows_projected": display_rows,
-            "rows": [] if rows is None else rows,
+        artifact_outcomes.append({
+            "status": "ready",
+            "value": {
+                "ref": frame.ref,
+                "family": contract.kind,
+                "shape": list(frame.shape),
+                "columns": [{**column.model_dump(mode="json"), "unit": units.get(column.name)} for column in schema.columns],
+                "content_hash": content_hash,
+                "artifact_schema_version": result.artifact_schema_version,
+                "created_at": frame.meta.created_at.isoformat(),
+                "contract": contract.model_dump(mode="json"),
+                "revalidation": result.model_dump(mode="json"),
+                "lineage": public_json(frame.meta.lineage, f"artifacts[{artifact_index}].lineage"),
+                "rows_projected": display_rows,
+                "rows": [] if rows is None else rows,
+            },
         })
+      except ProjectionProblem as exc:
+        artifact_outcomes.append(blocked_outcome(
+            "ref", requested_ref, [exc.issue],
+        ))
+      except mv.errors.AnalysisError as exc:
+        artifact_outcomes.append(blocked_outcome(
+            "ref", requested_ref,
+            [at_location(analysis_issue(exc), f"artifact_refs[{artifact_index}]")],
+        ))
 
     payload = {
-        "status": "ready",
+        "status": "checked",
         "session_id": session.id,
-        "artifacts": artifacts,
-        "findings": [{
-            "finding_id": finding.finding_id,
-            "finding_type": finding.finding_type,
-            "epistemic_kind": finding.epistemic_kind,
-            "artifact_id": finding.artifact_id,
-            "session_id": finding.session_id,
-            "quality_status": finding.quality_status,
-            "committed_at": finding.committed_at.isoformat(),
-            "value": finding.value.model_dump(mode="json"),
-            "subject": finding.subject.model_dump(mode="json"),
-            "derivation": finding.derivation.model_dump(mode="json"),
-            "rendered": rendered_findings[index],
-        } for index, finding in enumerate(findings)],
-        "compatibilities": compatibilities,
+        "finding_group_outcomes": finding_group_outcomes,
+        "finding_outcomes": finding_outcomes,
+        "artifact_outcomes": artifact_outcomes,
     }
     encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     if len(encoded) > 16 * 1024 * 1024:
-        raise ProjectionProblem(
+        size_problem = ProjectionProblem(
             "projection-too-large", "marivo.projection",
             "The checked Marivo report projection exceeds 16 MiB.",
             "Reduce referenced rows, columns, Artifacts, or Findings before retrying.",
         )
+        compact_issues = [size_problem.issue]
+        compact_omitted = 0
+        for outcome in finding_group_outcomes + finding_outcomes:
+            if outcome["status"] != "blocked":
+                continue
+            compact_issues.extend(outcome["issues"])
+            compact_omitted += outcome["omitted_issue_count"]
+        for outcome in artifact_outcomes:
+            if outcome["status"] != "blocked":
+                continue
+            target_locations = []
+            if outcome["ref"] in artifact_refs:
+                target_locations.append(f"artifact_refs[{artifact_refs.index(outcome['ref'])}]")
+            for finding_index, artifact_ref in resolved_finding_targets:
+                if artifact_ref == outcome["ref"]:
+                    target_locations.append(f"finding_ids[{finding_index}]")
+            if not target_locations:
+                compact_issues.extend(outcome["issues"])
+            else:
+                compact_issues.extend([
+                    at_location(issue, location)
+                    for issue in outcome["issues"]
+                    for location in target_locations
+                ])
+            compact_omitted += outcome["omitted_issue_count"] * max(1, len(target_locations))
+        blocked(compact_issues, compact_omitted)
+        raise SystemExit(0)
 except ProjectionProblem as exc:
     blocked([exc.issue])
     raise SystemExit(0)
@@ -933,7 +1029,7 @@ export class MarivoEnvironment {
     return result
   }
 
-  /** Read and revalidate one all-or-nothing report projection without datasource access. */
+  /** Check every independent report target and return valid partial projections without datasource access. */
   async runCheckedReportProjection(
     sessionId: string,
     artifactRefs: readonly string[],

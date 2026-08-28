@@ -40,21 +40,32 @@ HTML 等独立资源边界不变。
 复核 Python、Marivo version 和 package path，再执行：
 
 1. `mv.session.resume(session_id, use_datasources=False)`；
-2. 对所有带 Finding 的 block 调用 `session.evidence.compatibility()`；任一不兼容时一次返回全部冲突 block，
-   不继续 Finding render、Artifact 恢复或行投影；
-3. 对每个 Finding 调用 `session.evidence.finding()` 和双语 `Finding.render()`；
-4. 把显式 Artifact 与每个 Finding 的 backing Artifact 按首次出现顺序合并；
+2. 对所有带 Finding 的 block 调用 `session.evidence.compatibility()`；单个 block 不兼容时记录其 outcome，
+   并继续检查其他独立 block；
+3. 对每个 Finding 调用 `session.evidence.finding()` 和双语 `Finding.render()`；Finding 恢复成功后即独立记录
+   backing Artifact，即使双语渲染失败也继续检查该 Artifact；
+4. 把显式 Artifact 与每个已恢复 Finding 的 backing Artifact 按首次出现顺序合并；
 5. 对每个精确 ref 调用 `get_frame()`、`contract()` 和 `revalidate()`，只接受 `admissible`；
 6. 只有图表或表格显式引用的 Artifact 才在 `frame.shape[0] <= 2000` 后调用 `to_pandas()`；纯溯源 Artifact 不投影 rows。
 
-任一对象失败时不返回部分 bundle。公开列、shape、content hash、artifact schema version、Lineage、Finding
-、双语事实陈述和 compatibility 与可选 rows 一起投影；rows 只接受 JSON 标量、ISO 日期时间和 null。投影超过 16 MiB 时
-blocked。Node 再检查完整 payload、请求顺序、Session、Artifact/revalidation identity 和 compatibility 对应关系，
-但不复制 Marivo 的内部枚举或 Evidence schema。
+bridge 为每个 Finding group、Finding 和显式或 backing Artifact 返回恰好一个 `ready`/`blocked` outcome；
+已恢复但渲染失败的 Finding outcome 携带其 `artifact_ref`，使 Node 能闭合验证后续 backing Artifact outcome；
+单项失败不阻止其他独立对象。公开列、shape、content hash、artifact schema version、Lineage、Finding、双语事实陈述、
+compatibility 与可选 rows 只出现在成功 outcome 中。Node 严格检查 outcome 数量、顺序、Session、目标 identity、
+Artifact/revalidation identity 和 compatibility 对应关系，拒绝遗漏、重复、额外或漂移 payload。文档 inspection
+按去重 identity 保留全部原始引用位置；同一坏 Finding/Artifact 出现在多个 block 时，每个受影响路径都会在一次响应中列出。
+有效的 partial projection 继续用于仍可检查的 visual block；rows 只接受 JSON 标量、ISO 日期时间和 null。
+投影超过 16 MiB 时返回 compact blocked，
+并保留已经收集的目标错误及 omitted count，而不是只返回大小错误。
 
-compatibility blocked 对每个冲突 block 返回一个 issue，其 location 是原始
+blocked 使用固定顺序的 `document`、`marivo`、`visual`、`publish` checks；每项状态为 `passed`、`failed`、
+`partial` 或 `skipped`，并包含有界、去重、稳定排序的 issues、`omitted_issue_count` 和必要的跳过原因。
+compatibility 问题的 location 是原始
 `document.sections[i].blocks[j].finding_ids`，message 转译 Marivo 提供的有界 Finding/Artifact 归因、issue kind、
-不兼容字段和 omitted 信息。已知的文档、引用、revalidation、视觉或大小问题也返回 `blocked` 和可修复 issue。
+不兼容字段和 omitted 信息。文档失败后仍从安全 inspection 检查可识别引用；Artifact 失败后仍对有效 projection
+执行 visual preflight。只有前三项阻断性 check 全部 `passed` 才进入有写入副作用的 publish；读者解读文字、
+line 点数和 bar 类别数是 Agent 质量指导，不生成阻断 issue。
+已知的文档、引用、revalidation、视觉或大小问题也返回 `blocked` 和可修复 issue。
 所有 blocked 文本统一要求保留未受影响内容并重新提交完整文档。解释器身份漂移、
 子进程异常、取消、超时和本地 I/O 是 Tool error。`admissible` 不证明 datasource freshness；每份报告和
 Tool disclosure 都明确保留这条边界。
@@ -62,8 +73,9 @@ Tool disclosure 都明确保留这条边界。
 ## 视觉与 HTML
 
 图表只读取 `artifact.contract().artifact_schema` 和原始投影行，不根据自然语言猜图，也不聚合、抽样、
-Top-N 或跨 grain 混合。line 的 x 必须是时间或有序数值维度，至少八个唯一点，并明确披露聚焦的数据区间；
-bar 的 x 必须有 4–30 个类别且数轴包含零，类别多或标签长时改用横向条形。table 按公开列顺序或显式列选择
+Top-N 或跨 grain 混合。line 的 x 必须是时间或有序数值维度且至少有一个可绘制点，并明确披露聚焦的数据区间；
+bar 的 x 必须是类别维度且至少有一个可绘制类别，数轴包含零，类别多或标签长时改用横向条形。
+点数和类别数不作为硬质量门槛。table 按公开列顺序或显式列选择
 渲染，使用本地化日期、数值和安全的通用列名，并始终显示 displayed/total/omitted。
 
 Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS 和固定 viewBox SVG。所有标题、文字、单元格和

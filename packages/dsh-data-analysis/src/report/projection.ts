@@ -52,9 +52,21 @@ export interface ReportProjectionBundle {
   readonly compatibilities: readonly ReportCompatibilityProjection[]
 }
 
-export type ParseReportProjectionResult =
-  | { readonly ok: true; readonly value: ReportProjectionBundle }
-  | { readonly ok: false; readonly issues: readonly ReportIssueV1[] }
+export interface ReportProjectionInspection {
+  readonly ok: boolean
+  readonly value: ReportProjectionBundle
+  readonly issues: readonly ReportIssueV1[]
+  readonly omittedIssueCount: number
+  readonly complete: boolean
+  readonly globalFailure: boolean
+  /** Artifact identities checked by the bridge, in artifact outcome order. */
+  readonly checkedArtifactRefs: readonly string[]
+  /** Backing Artifact identity discovered for each successfully resolved Finding. */
+  readonly findingArtifactTargets: readonly {
+    readonly findingId: string
+    readonly artifactRef: string
+  }[]
+}
 
 function object(value: unknown, location: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -101,12 +113,6 @@ function stableRevalidation(value: Record<string, unknown>, location: string): J
 function stringArray(value: unknown, location: string): string[] {
   if (!Array.isArray(value)) throw new TypeError(`${location} must be an array`)
   return value.map((item, index) => string(item, `${location}[${index}]`))
-}
-
-function sameOrdered(actual: readonly string[], expected: readonly string[], location: string): void {
-  if (actual.length !== expected.length || actual.some((item, index) => item !== expected[index])) {
-    throw new TypeError(`${location} does not match the requested identities`)
-  }
 }
 
 function sameSet(actual: readonly string[], expected: readonly string[], location: string): void {
@@ -239,7 +245,91 @@ function parseCompatibility(value: unknown, location: string): ReportCompatibili
   }
 }
 
-/** Validate the complete all-or-nothing JSON payload returned by the checked bridge. */
+function issueArray(value: unknown, location: string): ReportIssueV1[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
+    throw new TypeError(`${location} must contain between 1 and 100 issues`)
+  }
+  return value.map((item, index) => parseIssue(item, `${location}[${index}]`))
+}
+
+function omittedCount(value: unknown, location: string): number {
+  return integer(value, location)
+}
+
+interface ParsedOutcome<T> {
+  readonly ready: boolean
+  readonly value?: T
+  readonly issues: readonly ReportIssueV1[]
+  readonly omitted: number
+}
+
+interface ParsedFindingOutcome extends ParsedOutcome<ReportFindingProjection> {
+  readonly artifactRef?: string
+}
+
+function parseOutcome<T>(
+  value: unknown,
+  location: string,
+  identityKey: 'group_index' | 'finding_id' | 'ref',
+  expectedIdentity: number | string,
+  parseValue: (value: unknown, location: string) => T,
+): ParsedOutcome<T> {
+  const source = object(value, location)
+  if (source.status === 'ready') {
+    exactKeys(source, ['status', 'value'], location)
+    const parsed = parseValue(source.value, `${location}.value`)
+    return { ready: true, value: parsed, issues: [], omitted: 0 }
+  }
+  if (source.status !== 'blocked') throw new TypeError(`${location}.status must be ready or blocked`)
+  exactKeys(source, ['status', identityKey, 'issues', 'omitted_issue_count'], location)
+  if (source[identityKey] !== expectedIdentity) {
+    throw new TypeError(`${location}.${identityKey} does not match the requested identity`)
+  }
+  return {
+    ready: false,
+    issues: issueArray(source.issues, `${location}.issues`),
+    omitted: omittedCount(source.omitted_issue_count, `${location}.omitted_issue_count`),
+  }
+}
+
+function parseFindingOutcome(
+  value: unknown,
+  location: string,
+  expectedId: string,
+): ParsedFindingOutcome {
+  const source = object(value, location)
+  if (source.status === 'ready') {
+    exactKeys(source, ['status', 'value'], location)
+    const finding = parseFinding(source.value, `${location}.value`)
+    return {
+      ready: true,
+      value: finding,
+      artifactRef: finding.artifactId,
+      issues: [],
+      omitted: 0,
+    }
+  }
+  if (source.status !== 'blocked') throw new TypeError(`${location}.status must be ready or blocked`)
+  const hasArtifactRef = Object.hasOwn(source, 'artifact_ref')
+  exactKeys(
+    source,
+    hasArtifactRef
+      ? ['status', 'finding_id', 'artifact_ref', 'issues', 'omitted_issue_count']
+      : ['status', 'finding_id', 'issues', 'omitted_issue_count'],
+    location,
+  )
+  if (source.finding_id !== expectedId) {
+    throw new TypeError(`${location}.finding_id does not match the requested identity`)
+  }
+  return {
+    ready: false,
+    ...(hasArtifactRef ? { artifactRef: string(source.artifact_ref, `${location}.artifact_ref`) } : {}),
+    issues: issueArray(source.issues, `${location}.issues`),
+    omitted: omittedCount(source.omitted_issue_count, `${location}.omitted_issue_count`),
+  }
+}
+
+/** Validate the exhaustive checked/blocked outcomes returned by the report bridge. */
 export function parseReportProjection(
   stdout: Buffer,
   expected: {
@@ -248,7 +338,7 @@ export function parseReportProjection(
     readonly findingIds: readonly string[]
     readonly findingGroups: readonly (readonly string[])[]
   },
-): ParseReportProjectionResult {
+): ReportProjectionInspection {
   let raw: unknown
   try {
     raw = JSON.parse(stdout.toString('utf8'))
@@ -257,39 +347,124 @@ export function parseReportProjection(
   }
   const source = object(raw, 'projection')
   if (source.status === 'blocked') {
-    exactKeys(source, ['status', 'issues'], 'projection')
-    if (!Array.isArray(source.issues) || source.issues.length < 1 || source.issues.length > 100) {
-      throw new TypeError('projection.issues must contain between 1 and 100 issues')
+    exactKeys(source, ['status', 'issues', 'omitted_issue_count'], 'projection')
+    return {
+      ok: false,
+      value: { sessionId: expected.sessionId, artifacts: [], findings: [], compatibilities: [] },
+      issues: issueArray(source.issues, 'projection.issues'),
+      omittedIssueCount: omittedCount(source.omitted_issue_count, 'projection.omitted_issue_count'),
+      complete: false,
+      globalFailure: true,
+      checkedArtifactRefs: [],
+      findingArtifactTargets: [],
     }
-    return { ok: false, issues: source.issues.map((item, index) => parseIssue(item, `projection.issues[${index}]`)) }
   }
-  exactKeys(source, ['status', 'session_id', 'artifacts', 'findings', 'compatibilities'], 'projection')
-  if (source.status !== 'ready') throw new TypeError('projection.status must be ready or blocked')
+  exactKeys(source, [
+    'status', 'session_id', 'finding_group_outcomes', 'finding_outcomes', 'artifact_outcomes',
+  ], 'projection')
+  if (source.status !== 'checked') throw new TypeError('projection.status must be checked or blocked')
   if (source.session_id !== expected.sessionId) throw new TypeError('projection.session_id does not match the request')
-  if (!Array.isArray(source.artifacts) || !Array.isArray(source.findings) || !Array.isArray(source.compatibilities)) {
-    throw new TypeError('projection collections must be arrays')
+  if (
+    !Array.isArray(source.finding_group_outcomes)
+    || !Array.isArray(source.finding_outcomes)
+    || !Array.isArray(source.artifact_outcomes)
+  ) {
+    throw new TypeError('projection outcomes must be arrays')
   }
-  const artifacts = source.artifacts.map((item, index) => parseArtifact(item, `projection.artifacts[${index}]`))
-  const findings = source.findings.map((item, index) => parseFinding(item, `projection.findings[${index}]`))
-  const compatibilities = source.compatibilities.map((item, index) => parseCompatibility(item, `projection.compatibilities[${index}]`))
-  sameOrdered(findings.map(item => item.findingId), expected.findingIds, 'projection.findings')
+  if (source.finding_group_outcomes.length !== expected.findingGroups.length) {
+    throw new TypeError('projection finding group outcome count does not match the request')
+  }
+  if (source.finding_outcomes.length !== expected.findingIds.length) {
+    throw new TypeError('projection Finding outcome count does not match the request')
+  }
+  const compatibilities: ReportCompatibilityProjection[] = []
+  const findings: ReportFindingProjection[] = []
+  const findingArtifactTargets: { findingId: string; artifactRef: string }[] = []
+  const issues: ReportIssueV1[] = []
+  let omitted = 0
+  let complete = true
+  for (const [index, item] of source.finding_group_outcomes.entries()) {
+    const outcome = parseOutcome(
+      item, `projection.finding_group_outcomes[${index}]`, 'group_index', index,
+      parseCompatibility,
+    )
+    if (outcome.ready) {
+      const compatibility = outcome.value
+      if (compatibility === undefined || compatibility.groupIndex !== index) {
+        throw new TypeError(`projection.finding_group_outcomes[${index}] has the wrong group index`)
+      }
+      sameSet(compatibility.findingIds, expected.findingGroups[index] ?? [], `projection.finding_group_outcomes[${index}].value.finding_ids`)
+      if (compatibility.status !== 'compatible') throw new TypeError(`projection.finding_group_outcomes[${index}] ready value is not compatible`)
+      compatibilities.push(compatibility)
+    } else {
+      complete = false
+      issues.push(...outcome.issues)
+      omitted += outcome.omitted
+    }
+  }
+  for (const [index, item] of source.finding_outcomes.entries()) {
+    const expectedId = expected.findingIds[index]
+    if (expectedId === undefined) throw new TypeError('projection Finding outcome is unexpected')
+    const outcome = parseFindingOutcome(
+      item, `projection.finding_outcomes[${index}]`, expectedId,
+    )
+    if (outcome.artifactRef !== undefined) {
+      findingArtifactTargets.push({ findingId: expectedId, artifactRef: outcome.artifactRef })
+    }
+    if (outcome.ready) {
+      const finding = outcome.value
+      if (finding === undefined || finding.findingId !== expectedId) {
+        throw new TypeError(`projection.finding_outcomes[${index}] has the wrong Finding ID`)
+      }
+      findings.push(finding)
+    } else {
+      complete = false
+      issues.push(...outcome.issues)
+      omitted += outcome.omitted
+    }
+  }
   if (findings.some(item => item.sessionId !== expected.sessionId)) throw new TypeError('projection Finding belongs to another Session')
   const expectedArtifactRefs = [...expected.artifactRefs]
-  for (const finding of findings) {
-    if (!expectedArtifactRefs.includes(finding.artifactId)) expectedArtifactRefs.push(finding.artifactId)
+  for (const target of findingArtifactTargets) {
+    if (!expectedArtifactRefs.includes(target.artifactRef)) expectedArtifactRefs.push(target.artifactRef)
   }
-  sameOrdered(artifacts.map(item => item.ref), expectedArtifactRefs, 'projection.artifacts')
+  if (source.artifact_outcomes.length !== expectedArtifactRefs.length) {
+    throw new TypeError('projection Artifact outcome count does not match the requested and discovered identities')
+  }
+  const artifacts: ReportArtifactProjection[] = []
+  for (const [index, item] of source.artifact_outcomes.entries()) {
+    const expectedRef = expectedArtifactRefs[index]
+    if (expectedRef === undefined) throw new TypeError('projection Artifact outcome is unexpected')
+    const outcome = parseOutcome(
+      item, `projection.artifact_outcomes[${index}]`, 'ref', expectedRef,
+      parseArtifact,
+    )
+    if (outcome.ready) {
+      const artifact = outcome.value
+      if (artifact === undefined || artifact.ref !== expectedRef) {
+        throw new TypeError(`projection.artifact_outcomes[${index}] has the wrong Artifact ref`)
+      }
+      artifacts.push(artifact)
+    } else {
+      complete = false
+      issues.push(...outcome.issues)
+      omitted += outcome.omitted
+    }
+  }
   const displayRefs = new Set(expected.artifactRefs)
   for (const artifact of artifacts) {
     if (artifact.rowsProjected !== displayRefs.has(artifact.ref)) {
       throw new TypeError(`projection artifact ${artifact.ref} has the wrong row projection status`)
     }
   }
-  if (compatibilities.length !== expected.findingGroups.length) throw new TypeError('projection compatibility count does not match the request')
-  for (const [index, compatibility] of compatibilities.entries()) {
-    if (compatibility.groupIndex !== index) throw new TypeError(`projection.compatibilities[${index}] has the wrong group index`)
-    sameSet(compatibility.findingIds, expected.findingGroups[index] ?? [], `projection.compatibilities[${index}].finding_ids`)
-    if (compatibility.status !== 'compatible') throw new TypeError(`projection.compatibilities[${index}] is not compatible`)
+  return {
+    ok: complete,
+    value: { sessionId: expected.sessionId, artifacts, findings, compatibilities },
+    issues,
+    omittedIssueCount: omitted,
+    complete,
+    globalFailure: false,
+    checkedArtifactRefs: expectedArtifactRefs,
+    findingArtifactTargets,
   }
-  return { ok: true, value: { sessionId: expected.sessionId, artifacts, findings, compatibilities } }
 }

@@ -182,8 +182,9 @@ marivo_report_render({ session_id, document })
 1–20 个 Finding，不能使用空数组。
 修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
 
-Agent 在同一 block 组合多个 Finding 前先使用 `session.evidence.compatibility()` 预检。工具也会在恢复和投影
-Artifact 前检查所有带 Finding 的 block；若多处不兼容，一次返回精确 block 路径、冲突 Finding 和原因，
+Agent 在同一 block 组合多个 Finding 前先使用 `session.evidence.compatibility()` 预检。工具还会执行无副作用的
+best-effort preflight：文档、Marivo 与视觉问题按 check 分组聚合；单个 Finding/Artifact 失败不阻止其他独立目标，
+有效 partial projection 继续检查可检查的图表。若多处失败，一次返回精确路径、冲突身份、原因和跳过边界，
 Agent 修复指定位置后仍需重新提交完整文档。仅被图表或表格显式引用的 Artifact 才投影 rows；纯溯源 Artifact
 不受 2,000 行展示上限影响。
 报告按 locale 展示 `Finding.render()` 事实，并在折叠详情和页脚索引中提供 content hash、contract、revalidation、Lineage 与派生字段。

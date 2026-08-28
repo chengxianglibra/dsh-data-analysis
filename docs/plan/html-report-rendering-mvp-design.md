@@ -265,17 +265,23 @@ type ReportRenderValueV1 =
     }
   | {
       status: 'blocked'
-      stage: 'document' | 'marivo' | 'visual' | 'publish'
-      issues: Array<{
-        code: string
-        location: string
-        message: string
-        repair: string
+      checks: Array<{
+        stage: 'document' | 'marivo' | 'visual' | 'publish'
+        status: 'passed' | 'failed' | 'partial' | 'skipped'
+        issues: Array<{
+          code: string
+          location: string
+          message: string
+          repair: string
+        }>
+        omitted_issue_count: number
+        reason?: string
       }>
     }
 ```
 
-可修复的文档、引用、图表与大小错误返回 `blocked`，让 Agent 根据 location 和 repair 重新提交完整文档。
+可修复的文档、引用、图表与大小错误返回按固定阶段排序的 `blocked.checks`。Tool 对安全可检查的独立目标继续
+best-effort preflight，并让 Agent 根据 location 和 repair 一次修复后重新提交完整文档。
 Environment identity 改变、子进程失败、取消、超时和本地 I/O 失败仍抛出 Tool error，不伪装成文档问题。
 
 `tool/result.meta` 只在 `ready` 时投影 `kind`、schema version、title、path、report digest 和 disclosures。
@@ -296,9 +302,10 @@ bridge 执行：
 4. 读取 `frame.contract()`、公开 family/shape/columns、`frame.state.content_hash` 和 Lineage；
 5. 在行数准入后调用 `frame.to_pandas()`，只生成绑定于原 Artifact ref 的展示表；
 6. 对每个 Finding 调用 `session.evidence.finding(id)`；
-7. 对每个包含 Finding 的 block 单独调用 `session.evidence.compatibility(...)`，状态不是 `compatible` 时
-   blocked；不同 block 的 Finding 不做报告级组合检查；
-8. 返回有上限的 JSON projection，任一对象失败时不返回部分 bundle。
+7. 对每个包含 Finding 的 block 单独调用 `session.evidence.compatibility(...)`；不同 block 的 Finding 不做报告级组合检查；
+8. 为每个 group、Finding 和 Artifact 返回有上限的 `ready`/`blocked` outcome，保留有效 partial projection；
+   Finding 一旦恢复就继续检查其 backing Artifact，即使双语渲染失败，并继续检查不依赖失败目标的 visual block；
+9. 超过 projection 传输预算时返回 compact blocked，同时保留已经收集的目标错误和 omitted count。
 
 `to_pandas()` 是终端展示出口，不保留 Evidence、Lineage 或 typed re-entry。插件必须把 rows 与原始 Artifact
 identity、contract 和 revalidation 放在同一临时 bundle 中；rows 本身不得被标记为 Evidence，也不得重新
@@ -314,17 +321,17 @@ Datasource freshness 不属于 `session.revalidate()` 的保证。报告页脚�
 
 `auto` 只在 contract 中存在唯一无歧义映射时工作：
 
-- 一个有序/时间字段加一个数值字段，且至少 4 个不同 x 值 → `line`；
-- 一个类别字段加一个数值字段，且类别数不超过 30 → `bar`；
+- 一个有序/时间字段加一个数值字段 → `line`；
+- 一个类别字段加一个数值字段 → `bar`；
 - 其他情况 blocked，要求 Agent 指定 x/y/view 或改用 table。
 
 显式图表仍需满足：
 
 - x/y 必须是 `artifact.contract().artifact_schema` 中的真实公开列；
-- `line` 的 x 必须唯一且可稳定排序，y 必须为数值；少于 4 个点 blocked，少于 8 个点生成 disclosure；
-- `bar` 的 x 必须是唯一类别，y 必须为数值，最多 30 个类别，绝对量比较从零开始；
+- `line` 的 x 必须唯一且可稳定排序，y 必须为数值；只有空 Artifact blocked，点数不作为硬质量门槛；
+- `bar` 的 x 必须为唯一类别且 y 为数值，绝对量比较从零开始；只有空 Artifact blocked，类别数不作为硬质量门槛；
 - 不混合不同 grain 的行，不从字符串猜单位，不构造不存在的 denominator 或 sample size；
-- 不能静默抽样、聚合或 Top-N；超限时要求 Agent 先产生更合适的 Marivo Artifact；
+- 不能静默抽样、聚合或 Top-N；Agent 可根据可读性自行选择更合适的 Marivo Artifact 或 table；
 - 图表标题必填；subtitle 可省略，但 Renderer 必须补充可用的单位、范围、行数和来源信息。
 
 这些规则只判断展示是否机械可用，不推荐业务结论。首版不支持 multi-series 或 waterfall；前者需要显式
@@ -338,8 +345,8 @@ Renderer 在 Node 服务端生成一个 `index.html`：
 - 只使用 semantic HTML、内联 CSS 和内联 SVG；
 - 不包含 script、iframe、form、远程 URL、外部字体或运行时依赖；
 - `text` 渲染转义后的段落和简单语义列表；
-- `line` 和 `bar` 生成固定 viewBox SVG，同时提供可展开的同源数据表；line 至少八个有序点并明确披露
-  聚焦纵轴，bar 使用 4–30 个类别，长标签或较多类别改用横向条形；
+- `line` 和 `bar` 生成固定 viewBox SVG，同时提供可展开的同源数据表；line 明确披露聚焦纵轴，
+  bar 类别较多或标签较长时改用横向条形，但不以点数或类别数阻断发布；
 - `table` 使用 `<table>`、`<caption>`、`<th scope>`，截断信息始终可见；
 - 普通 block 的 Finding 引用默认折叠，只先展示报告 locale 对应的 `Finding.render()` 人读事实；ID、Artifact、
   quality、value、subject 与 derivation 留在二级技术审计，显式 `evidence` block 才直接展示事实列表；
@@ -435,7 +442,7 @@ npm run validate:html-report-rendering:real
 ```
 
 真实 runner 默认模型为 `deepseek-v4-flash`，可通过 `DSH_DATA_ANALYSIS_VALIDATION_MODEL` 覆盖。它记录 Tool
-调用、blocked stage/code、重试、时延、原始 token usage、最终路径和 digest，不记录凭证值或完整 Help 正文。
+调用、blocked check/code、重试、时延、原始 token usage、最终路径和 digest，不记录凭证值或完整 Help 正文。
 真实模型结果只补充确定性测试；任何 Web、opener、打印或外部模型前置条件失败都必须保持 blocked。
 
 确定性测试至少覆盖：

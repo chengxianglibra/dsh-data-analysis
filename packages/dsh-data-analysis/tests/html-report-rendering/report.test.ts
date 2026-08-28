@@ -69,6 +69,25 @@ const projection: ReportProjectionBundle = {
   sessionId: 'session-report', artifacts: [artifact], findings: [], compatibilities: [],
 }
 
+function checkedProjectionPayload(raw: {
+  readonly session_id: string
+  readonly artifacts: readonly Record<string, unknown>[]
+  readonly findings: readonly Record<string, unknown>[]
+  readonly compatibilities: readonly Record<string, unknown>[]
+}) {
+  return {
+    status: 'checked',
+    session_id: raw.session_id,
+    finding_group_outcomes: raw.compatibilities.map(value => ({ status: 'ready', value })),
+    finding_outcomes: raw.findings.map(value => ({ status: 'ready', value })),
+    artifact_outcomes: raw.artifacts.map(value => ({ status: 'ready', value })),
+  }
+}
+
+function globalBlockedProjection(issues: readonly Record<string, unknown>[]) {
+  return { status: 'blocked', issues, omitted_issue_count: 0 }
+}
+
 class ReportCodeRuntime extends CodeRuntime {
   readonly language = 'typescript'
   readonly isolation = 'report-test'
@@ -98,7 +117,7 @@ function parsedCompiledProjection(checkedAt: string, contract: unknown = artifac
     }],
     findings: [], compatibilities: [],
   }
-  const parsed = parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+  const parsed = parseReportProjection(Buffer.from(JSON.stringify(checkedProjectionPayload(raw))), {
     sessionId: 'session-report', artifactRefs: [artifact.ref], findingIds: [], findingGroups: [],
   })
   assert.equal(parsed.ok, true, JSON.stringify(parsed))
@@ -175,6 +194,7 @@ test('optional empty Finding arrays canonicalize to omission without creating co
   assert.deepEqual(parsed.value.document, document)
   assert.deepEqual(parsed.value.findingIds, [])
   assert.deepEqual(parsed.value.findingGroups, [])
+  assert.equal(parsed.inspection.skippedMarivoTargets, 0)
   assert.equal(reportDocumentDigest(parsed.value.document), reportDocumentDigest(document))
 })
 
@@ -189,6 +209,7 @@ test('evidence blocks reject empty Finding arrays with evidence-specific repair'
   if (parsed.ok) return
   assert.deepEqual(parsed.issues.map(item => item.code), ['invalid-finding-ids'])
   assert.equal(parsed.issues[0]?.location, 'document.sections[0].blocks[0].finding_ids')
+  assert.equal(parsed.inspection.skippedMarivoTargets, 1)
   assert.match(parsed.issues[0]?.message ?? '', /is required.*between 1 and 20/)
   assert.match(parsed.issues[0]?.repair ?? '', /remove the empty evidence block/)
 })
@@ -253,7 +274,7 @@ test('Finding bounds remain 20 per block and allow 100 unique Findings per docum
   }
 })
 
-test('ReportDocument requires reader-facing interpretation adjacent to every chart', () => {
+test('ReportDocument treats adjacent chart interpretation as guidance rather than a hard gate', () => {
   const chartOnly: ReportDocumentV1 = {
     version: 'dsh-data-analysis-report/v1', title: 'Chart only', locale: 'en-US',
     sections: [{ id: 'trend', title: 'Trend', blocks: [{
@@ -261,16 +282,25 @@ test('ReportDocument requires reader-facing interpretation adjacent to every cha
       view: 'line', x: 'bucket_start', y: 'value',
     }] }],
   }
-  const rejected = parseReportDocument(chartOnly)
-  assert.equal(rejected.ok, false)
-  if (!rejected.ok) {
-    assert.deepEqual(rejected.issues.map(item => item.code), ['chart-interpretation-missing'])
-    assert.equal(rejected.issues[0]?.location, 'document.sections[0].blocks[0]')
-  }
+  const parsed = parseReportDocument(chartOnly)
+  assert.equal(parsed.ok, true, JSON.stringify(parsed))
 })
 
 test('report Tool schema and real argument failures expose one complete retry skeleton', async () => {
-  const tool = createMarivoReportRenderTool({} as never) as any
+  const environment = {
+    binding: { fingerprint: 'a'.repeat(64), marivoVersion: '0.4.test' },
+    async runCheckedReportProjection() {
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify(globalBlockedProjection([{
+          code: 'session-unavailable', location: 'marivo', message: 'Session is unavailable.',
+          repair: 'Use a valid Session.',
+        }]))),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment) as any
   const reportSchema = tool.parameters.properties.document
   const description = reportSchema.description as string
   assert.match(description, /"version":"dsh-data-analysis-report\/v1"/)
@@ -298,8 +328,7 @@ test('report Tool schema and real argument failures expose one complete retry sk
   assert.match(chartSchema.properties.artifact_ref.description, /Artifact in session_id/)
   assert.match(chartSchema.properties.view.description, /auto.*omit x\/y/)
   assert.match(chartSchema.properties.view.description, /line or bar.*both x and y/)
-  assert.match(chartSchema.properties.x.description, /at least eight unique points/)
-  assert.match(chartSchema.properties.x.description, /4-30 categorical values/)
+  assert.match(chartSchema.properties.x.description, /not hard quality gates/)
   assert.match(chartSchema.properties.y.description, /does not aggregate/)
   assert.match(tableSchema.properties.columns.description, /one to 100 unique/)
   assert.match(tableSchema.properties.max_rows.description, /from 1 to 100/)
@@ -340,8 +369,9 @@ test('report Tool schema and real argument failures expose one complete retry sk
     const value = result.value as unknown as ReportRenderValueV1
     assert.equal(value.status, 'blocked')
     if (value.status !== 'blocked') continue
-    assert.equal(value.stage, 'document')
-    assert.ok(value.issues.some(issue => issue.code === fixture.issueCode), JSON.stringify(value.issues))
+    const documentCheck = value.checks[0]
+    assert.equal(documentCheck.stage, 'document')
+    assert.ok(documentCheck.issues.some(issue => issue.code === fixture.issueCode), JSON.stringify(documentCheck.issues))
     assert.equal(result.meta, null)
     const content = result.content[0]?.type === 'text' ? result.content[0].text : ''
     assert.doesNotMatch(content, /invalid arguments/)
@@ -356,8 +386,16 @@ test('report Tool schema and real argument failures expose one complete retry sk
     name: MARIVO_REPORT_RENDER_TOOL_NAME,
     arguments: { session_id: 42, document: { blocks: [] } },
   })
-  assert.equal(invalidSession.isError, true)
-  if (invalidSession.isError) assert.equal(invalidSession.error.info?.code, 'INVALID_ARGS')
+  assert.equal(invalidSession.isError, false, JSON.stringify(invalidSession))
+  if (!invalidSession.isError) {
+    const value = invalidSession.value as unknown as ReportRenderValueV1
+    assert.equal(value.status, 'blocked')
+    if (value.status === 'blocked') {
+      assert.ok(value.checks[0].issues.some(issue => issue.code === 'invalid-session-id'))
+      assert.ok(value.checks[0].issues.some(issue => issue.code === 'unknown-field'))
+      assert.equal(value.checks[1].status, 'skipped')
+    }
+  }
 })
 
 test('report Tool attributes every compatibility problem to its exact block and requires a complete retry', async (t) => {
@@ -397,9 +435,7 @@ test('report Tool attributes every compatibility problem to its exact block and 
       ])
       return {
         exitCode: 0,
-        stdout: Buffer.from(JSON.stringify({
-          status: 'blocked',
-          issues: [
+        stdout: Buffer.from(JSON.stringify(globalBlockedProjection([
             {
               code: 'evidence-not-compatible', location: 'finding_groups[0]',
               message: "Finding selection ['finding-a', 'finding-b'] has compatibility status 'incompatible'. Conflicts: comparability_incompatible findings=['finding-a', 'finding-b'] artifacts=['artifact-a', 'artifact-b'] incompatible_fields=['grain'].",
@@ -410,6 +446,110 @@ test('report Tool attributes every compatibility problem to its exact block and 
               message: "Finding selection ['finding-c', 'finding-d'] has compatibility status 'indeterminate'. Conflicts: evidence_store_unavailable findings=['finding-c'] artifacts=['artifact-c']. Marivo omitted 1 additional issue(s) with kinds=['unknown_scope_rule'].",
               repair: 'Remove the unavailable Finding, then preserve the unaffected content and resubmit the complete ReportDocument v1.',
             },
+          ]))),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment, { reportsRoot })
+  const value = await tool.execute(
+    { session_id: 'session-report', document: source },
+    { signal: new AbortController().signal } as Parameters<typeof tool.execute>[1],
+  ) as ReportRenderValueV1
+  assert.equal(value.status, 'blocked', JSON.stringify(value))
+  if (value.status !== 'blocked') return
+  const marivoCheck = value.checks[1]
+  assert.equal(marivoCheck.stage, 'marivo')
+  assert.deepEqual(marivoCheck.issues.map(issue => issue.location), [
+    'document.sections[0].blocks[0].finding_ids',
+    'document.sections[1].blocks[1].finding_ids',
+  ])
+  assert.match(marivoCheck.issues[0]?.message ?? '', /finding-a.*finding-b.*comparability_incompatible.*grain/)
+  assert.match(marivoCheck.issues[1]?.message ?? '', /finding-c.*finding-d.*omitted 1.*unknown_scope_rule/)
+  const rendered = renderReportToolValue(value)
+  assert.match(rendered, /resubmit one complete ReportDocument v1/)
+  assert.match(rendered, /Never submit document\.blocks alone/)
+  assert.equal(reportPresentationMeta(value), null)
+  await assert.rejects(() => stat(reportsRoot), { code: 'ENOENT' })
+})
+
+test('one best-effort preflight exposes document, Marivo, and visual problems together', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-multistage-preflight-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const reportsRoot = path.join(root, 'reports')
+  const source = {
+    version: 'dsh-data-analysis-report/v1', locale: 'en-US',
+    sections: [{
+      id: 'summary', title: 'Summary', blocks: [
+        {
+          kind: 'text', id: 'summary-text', text: 'Summary',
+          finding_ids: ['finding-a', 'finding-b'],
+        },
+        {
+          kind: 'chart', id: 'bad-chart', title: 'Bad chart',
+          artifact_ref: 'artifact-good', view: 'line', x: 'bucket_start', y: 'missing-value',
+        },
+        {
+          kind: 'table', id: 'bad-table-one', title: 'Bad table one',
+          artifact_ref: 'artifact-bad-one', max_rows: 5,
+        },
+        {
+          kind: 'table', id: 'bad-table-two', title: 'Bad table two',
+          artifact_ref: 'artifact-bad-two', max_rows: 5,
+        },
+      ],
+    }],
+  }
+  const artifactValue = {
+    ref: 'artifact-good', family: artifact.family, shape: artifact.shape,
+    columns: artifact.columns, content_hash: artifact.contentHash,
+    artifact_schema_version: artifact.artifactSchemaVersion,
+    created_at: artifact.createdAt, contract: { kind: artifact.family, ref: 'artifact-good' },
+    revalidation: {
+      status: 'admissible', artifact_ref: 'artifact-good', content_hash: artifact.contentHash,
+      artifact_schema_version: artifact.artifactSchemaVersion,
+    },
+    lineage: artifact.lineage,
+    rows_projected: true, rows: artifact.rows,
+  }
+  const findingValue = (findingId: string) => ({
+    finding_id: findingId, finding_type: 'observation', epistemic_kind: 'observed',
+    artifact_id: 'artifact-good', session_id: 'session-report', quality_status: 'ready',
+    committed_at: '2026-08-27T00:05:00+00:00', value: { kind: 'observation' },
+    subject: { kind: 'metric', metric_id: 'payments.success' },
+    derivation: { rule_id: 'observation/v1' },
+    rendered: { en: `${findingId}: observed.`, zh: `${findingId}：已观测。` },
+  })
+  const artifactFailure = (ref: string, index: number) => ({
+    status: 'blocked', ref, omitted_issue_count: 0,
+    issues: [{
+      code: 'artifact-not-admissible',
+      location: index === 0 ? 'artifacts[0].rows[0][0]' : `artifact_refs[${String(index)}]`,
+      message: `Artifact ${ref} is stale.`, repair: 'Regenerate the Artifact.',
+    }],
+  })
+  const environment = {
+    binding: { fingerprint: '7'.repeat(64), marivoVersion: '0.4.test' },
+    async runCheckedReportProjection() {
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify({
+          status: 'checked', session_id: 'session-report',
+          finding_group_outcomes: [{
+            status: 'blocked', group_index: 0, omitted_issue_count: 0,
+            issues: [{
+              code: 'evidence-not-compatible', location: 'finding_groups[0]',
+              message: 'The two Findings are incompatible.', repair: 'Split the Findings.',
+            }],
+          }],
+          finding_outcomes: [
+            { status: 'ready', value: findingValue('finding-a') },
+            { status: 'ready', value: findingValue('finding-b') },
+          ],
+          artifact_outcomes: [
+            { status: 'ready', value: artifactValue },
+            artifactFailure('artifact-bad-one', 1),
+            artifactFailure('artifact-bad-two', 2),
           ],
         })),
         stderr: Buffer.alloc(0),
@@ -423,17 +563,142 @@ test('report Tool attributes every compatibility problem to its exact block and 
   ) as ReportRenderValueV1
   assert.equal(value.status, 'blocked', JSON.stringify(value))
   if (value.status !== 'blocked') return
-  assert.deepEqual(value.issues.map(issue => issue.location), [
-    'document.sections[0].blocks[0].finding_ids',
-    'document.sections[1].blocks[1].finding_ids',
+  assert.deepEqual(value.checks.map(check => [check.stage, check.status]), [
+    ['document', 'failed'],
+    ['marivo', 'failed'],
+    ['visual', 'partial'],
+    ['publish', 'skipped'],
   ])
-  assert.match(value.issues[0]?.message ?? '', /finding-a.*finding-b.*comparability_incompatible.*grain/)
-  assert.match(value.issues[1]?.message ?? '', /finding-c.*finding-d.*omitted 1.*unknown_scope_rule/)
-  const rendered = renderReportToolValue(value)
-  assert.match(rendered, /resubmit one complete ReportDocument v1/)
-  assert.match(rendered, /Never submit document\.blocks alone/)
-  assert.equal(reportPresentationMeta(value), null)
+  assert.deepEqual(value.checks[0].issues.map(issue => issue.code), ['invalid-string'])
+  assert.deepEqual(value.checks[1].issues.map(issue => issue.code), [
+    'evidence-not-compatible', 'artifact-not-admissible', 'artifact-not-admissible',
+  ])
+  assert.deepEqual(value.checks[2].issues.map(issue => issue.code), ['chart-column-not-found'])
+  assert.match(value.checks[2].reason ?? '', /2 visual target/)
+  assert.match(renderReportToolValue(value), /document: failed[\s\S]*marivo: failed[\s\S]*visual: partial/)
   await assert.rejects(() => stat(reportsRoot), { code: 'ENOENT' })
+})
+
+test('preflight attributes de-duplicated Finding and Artifact failures to every document occurrence', async () => {
+  const source = {
+    version: 'dsh-data-analysis-report/v1', title: 'Repeated sources', locale: 'en-US',
+    sections: [{ id: 'sources', title: 'Sources', blocks: [
+      { kind: 'text', id: 'finding-one', text: 'One', finding_ids: ['finding-shared'] },
+      { kind: 'text', id: 'finding-two', text: 'Two', finding_ids: ['finding-shared'] },
+      { kind: 'table', id: 'table-one', title: 'One', artifact_ref: 'artifact-shared', max_rows: 5 },
+      { kind: 'table', id: 'table-two', title: 'Two', artifact_ref: 'artifact-shared', max_rows: 0 },
+    ] }],
+  }
+  const compatibility = (groupIndex: number) => ({
+    status: 'ready',
+    value: {
+      group_index: groupIndex, status: 'compatible', finding_ids: ['finding-shared'],
+      value: { status: 'compatible' },
+    },
+  })
+  const artifactFailure = (ref: string, index: number) => ({
+    status: 'blocked', ref, omitted_issue_count: 0,
+    issues: [{
+      code: 'artifact-not-admissible',
+      location: index === 0 ? 'artifacts[0].rows[0][0]' : `artifact_refs[${String(index)}]`,
+      message: `${ref} is not admissible.`, repair: 'Regenerate the Artifact.',
+    }],
+  })
+  const environment = {
+    binding: { fingerprint: '9'.repeat(64), marivoVersion: '0.4.test' },
+    async runCheckedReportProjection() {
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify({
+          status: 'checked', session_id: 'session-report',
+          finding_group_outcomes: [compatibility(0), compatibility(1)],
+          finding_outcomes: [{
+            status: 'blocked', finding_id: 'finding-shared', artifact_ref: 'artifact-backing',
+            omitted_issue_count: 0,
+            issues: [{
+              code: 'finding-render-failed', location: 'finding_ids[0]',
+              message: 'Finding rendering failed.', repair: 'Repair the renderer.',
+            }],
+          }],
+          artifact_outcomes: [
+            artifactFailure('artifact-shared', 0),
+            artifactFailure('artifact-backing', 1),
+          ],
+        })),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment)
+  const value = await tool.execute(
+    { session_id: 'session-report', document: source },
+    { signal: new AbortController().signal } as Parameters<typeof tool.execute>[1],
+  ) as ReportRenderValueV1
+  assert.equal(value.status, 'blocked', JSON.stringify(value))
+  if (value.status !== 'blocked') return
+  const marivoIssues = value.checks[1].issues
+  assert.deepEqual(
+    marivoIssues.filter(item => item.code === 'finding-render-failed').map(item => item.location),
+    [
+      'document.sections[0].blocks[0].finding_ids',
+      'document.sections[0].blocks[1].finding_ids',
+    ],
+  )
+  assert.deepEqual(
+    marivoIssues.filter(item => item.message === 'artifact-shared is not admissible.').map(item => item.location),
+    [
+      'document.sections[0].blocks[2].artifact_ref',
+      'document.sections[0].blocks[3].artifact_ref',
+    ],
+  )
+  assert.deepEqual(
+    marivoIssues.filter(item => item.message === 'artifact-backing is not admissible.').map(item => item.location),
+    [
+      'document.sections[0].blocks[0].finding_ids',
+      'document.sections[0].blocks[1].finding_ids',
+    ],
+  )
+})
+
+test('preflight de-duplicates and bounds each stage while preserving omitted counts', async () => {
+  const retained = Array.from({ length: 100 }, (_, index) => ({
+    code: `problem-${String(index).padStart(3, '0')}`,
+    location: `marivo.targets[${String(index).padStart(3, '0')}]`,
+    message: `Problem ${String(index)}`,
+    repair: 'Repair the target.',
+  }))
+  retained[99] = { ...retained[0]! }
+  const environment = {
+    binding: { fingerprint: '8'.repeat(64), marivoVersion: '0.4.test' },
+    async runCheckedReportProjection() {
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify({
+          status: 'blocked', issues: retained, omitted_issue_count: 3,
+        })),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment)
+  const value = await tool.execute(
+    {
+      session_id: 'session-report',
+      document: {
+        version: 'dsh-data-analysis-report/v1', title: 'Bounded', locale: 'en-US',
+        sections: [{ id: 'summary', title: 'Summary', blocks: [{
+          kind: 'text', id: 'summary-text', text: 'Summary',
+        }] }],
+      },
+    },
+    { signal: new AbortController().signal } as Parameters<typeof tool.execute>[1],
+  ) as ReportRenderValueV1
+  assert.equal(value.status, 'blocked')
+  if (value.status !== 'blocked') return
+  assert.equal(value.checks[1].issues.length, 99)
+  assert.equal(value.checks[1].omitted_issue_count, 3)
+  assert.equal(value.checks[2].status, 'skipped')
+  assert.equal(value.checks[3].status, 'skipped')
 })
 
 test('report Tool preserves 46 unique Findings across projection, manifest, and ready result', async (t) => {
@@ -466,8 +731,8 @@ test('report Tool preserves 46 unique Findings across projection, manifest, and 
       assert.deepEqual(groups, findingGroups)
       return {
         exitCode: 0,
-        stdout: Buffer.from(JSON.stringify({
-          status: 'ready', session_id: 'session-report',
+        stdout: Buffer.from(JSON.stringify(checkedProjectionPayload({
+          session_id: 'session-report',
           artifacts: [{
             ref: 'artifact-backing', family: artifact.family, shape: artifact.shape,
             columns: artifact.columns, content_hash: artifact.contentHash,
@@ -496,7 +761,7 @@ test('report Tool preserves 46 unique Findings across projection, manifest, and 
             group_index: index, status: 'compatible', finding_ids: group,
             value: { status: 'compatible' },
           })),
-        })),
+        }))),
         stderr: Buffer.alloc(0),
       }
     },
@@ -547,11 +812,10 @@ test('visual compiler selects one line mapping, preserves rows, and discloses tr
   if (!rejected.ok) assert.ok(rejected.issues.some(item => item.code === 'mixed-chart-grain' || item.code === 'auto-chart-ambiguous'))
 })
 
-test('visual compiler rejects charts that are too sparse to support the requested comparison', () => {
+test('visual compiler does not impose advisory point-count gates', () => {
   const shortLine = { ...artifact, shape: [7, 2] as const, rows: artifact.rows.slice(0, 7) }
   const lineResult = compileReportVisuals(document, { ...projection, artifacts: [shortLine] })
-  assert.equal(lineResult.ok, false)
-  if (!lineResult.ok) assert.ok(lineResult.issues.some(item => item.code === 'auto-chart-ambiguous'))
+  assert.equal(lineResult.ok, true, JSON.stringify(lineResult))
 
   const barDocument: ReportDocumentV1 = {
     version: 'dsh-data-analysis-report/v1', title: 'Sparse bar', locale: 'en-US',
@@ -573,8 +837,20 @@ test('visual compiler rejects charts that are too sparse to support the requeste
     rows: [['a', 1], ['b', 2], ['c', 3]],
   }
   const barResult = compileReportVisuals(barDocument, { ...projection, artifacts: [sparseBar] })
-  assert.equal(barResult.ok, false)
-  if (!barResult.ok) assert.ok(barResult.issues.some(item => item.code === 'bar-too-short'))
+  assert.equal(barResult.ok, true, JSON.stringify(barResult))
+
+  const denseBar = {
+    ...sparseBar,
+    shape: [31, 2] as const,
+    rows: Array.from({ length: 31 }, (_, index) => [`category-${String(index)}`, index]),
+  }
+  const denseResult = compileReportVisuals(barDocument, { ...projection, artifacts: [denseBar] })
+  assert.equal(denseResult.ok, true, JSON.stringify(denseResult))
+
+  const emptyBar = { ...sparseBar, shape: [0, 2] as const, rows: [] }
+  const emptyResult = compileReportVisuals(barDocument, { ...projection, artifacts: [emptyBar] })
+  assert.equal(emptyResult.ok, false)
+  if (!emptyResult.ok) assert.ok(emptyResult.issues.some(item => item.code === 'chart-empty'))
 })
 
 test('time lines sort and deduplicate by one timezone-independent instant', () => {
@@ -901,9 +1177,9 @@ test('publisher stops before publication when cancellation arrives after project
       controller.abort(new Error('cancel report'))
       return {
         exitCode: 0,
-        stdout: Buffer.from(JSON.stringify({
-          status: 'ready', session_id: 'session-report', artifacts: [], findings: [], compatibilities: [],
-        })),
+        stdout: Buffer.from(JSON.stringify(checkedProjectionPayload({
+          session_id: 'session-report', artifacts: [], findings: [], compatibilities: [],
+        }))),
         stderr: Buffer.alloc(0),
       }
     },
@@ -934,14 +1210,129 @@ test('projection parser accepts one exact atomic bundle and rejects identity dri
     }],
     findings: [], compatibilities: [],
   }
-  const accepted = parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+  const accepted = parseReportProjection(Buffer.from(JSON.stringify(checkedProjectionPayload(raw))), {
     sessionId: 'session-report', artifactRefs: ['artifact-trend'], findingIds: [], findingGroups: [],
   })
   assert.equal(accepted.ok, true)
   raw.artifacts[0]!.ref = 'drifted'
-  assert.throws(() => parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+  assert.throws(() => parseReportProjection(Buffer.from(JSON.stringify(checkedProjectionPayload(raw))), {
     sessionId: 'session-report', artifactRefs: ['artifact-trend'], findingIds: [], findingGroups: [],
   }), /revalidation identity|requested identities/)
+})
+
+test('partial projection parser requires one ordered outcome for every target', () => {
+  const artifactWire = (ref: string) => ({
+    ref, family: artifact.family, shape: artifact.shape, columns: artifact.columns,
+    content_hash: artifact.contentHash, artifact_schema_version: artifact.artifactSchemaVersion,
+    created_at: artifact.createdAt, contract: { kind: artifact.family, ref },
+    revalidation: {
+      status: 'admissible', artifact_ref: ref, content_hash: artifact.contentHash,
+      artifact_schema_version: artifact.artifactSchemaVersion,
+    },
+    lineage: artifact.lineage, rows_projected: true, rows: artifact.rows,
+  })
+  const blockedArtifact = {
+    status: 'blocked', ref: 'artifact-two', omitted_issue_count: 0,
+    issues: [{
+      code: 'artifact-not-admissible', location: 'artifact_refs[1]',
+      message: 'Artifact is stale.', repair: 'Regenerate it.',
+    }],
+  }
+  const raw: any = {
+    status: 'checked', session_id: 'session-report',
+    finding_group_outcomes: [], finding_outcomes: [],
+    artifact_outcomes: [
+      { status: 'ready', value: artifactWire('artifact-one') },
+      blockedArtifact,
+    ],
+  }
+  const expected = {
+    sessionId: 'session-report', artifactRefs: ['artifact-one', 'artifact-two'],
+    findingIds: [], findingGroups: [],
+  }
+  const accepted = parseReportProjection(Buffer.from(JSON.stringify(raw)), expected)
+  assert.equal(accepted.ok, false)
+  assert.equal(accepted.complete, false)
+  assert.deepEqual(accepted.value.artifacts.map(item => item.ref), ['artifact-one'])
+  assert.deepEqual(accepted.issues.map(item => item.code), ['artifact-not-admissible'])
+
+  const missing = structuredClone(raw)
+  missing.artifact_outcomes.pop()
+  assert.throws(
+    () => parseReportProjection(Buffer.from(JSON.stringify(missing)), expected),
+    /outcome count/,
+  )
+  const duplicated = structuredClone(raw)
+  duplicated.artifact_outcomes[1] = duplicated.artifact_outcomes[0]
+  assert.throws(
+    () => parseReportProjection(Buffer.from(JSON.stringify(duplicated)), expected),
+    /wrong Artifact ref/,
+  )
+  const extra = structuredClone(raw)
+  extra.artifact_outcomes.push(blockedArtifact)
+  assert.throws(
+    () => parseReportProjection(Buffer.from(JSON.stringify(extra)), expected),
+    /outcome count/,
+  )
+  const wrongSession = structuredClone(raw)
+  wrongSession.session_id = 'other-session'
+  assert.throws(
+    () => parseReportProjection(Buffer.from(JSON.stringify(wrongSession)), expected),
+    /session_id does not match/,
+  )
+})
+
+test('blocked Finding outcomes may close over a discovered backing Artifact without becoming ready', () => {
+  const raw: any = {
+    status: 'checked', session_id: 'session-report',
+    finding_group_outcomes: [{
+      status: 'ready', value: {
+        group_index: 0, status: 'compatible', finding_ids: ['finding-render-broken'],
+        value: { status: 'compatible' },
+      },
+    }],
+    finding_outcomes: [{
+      status: 'blocked', finding_id: 'finding-render-broken', artifact_ref: 'artifact-backing',
+      omitted_issue_count: 0,
+      issues: [{
+        code: 'finding-render-failed', location: 'finding_ids[0]',
+        message: 'Rendering failed.', repair: 'Repair the renderer.',
+      }],
+    }],
+    artifact_outcomes: [{
+      status: 'blocked', ref: 'artifact-backing', omitted_issue_count: 0,
+      issues: [{
+        code: 'artifact-not-admissible', location: 'artifact_refs[0]',
+        message: 'Backing Artifact is stale.', repair: 'Regenerate it.',
+      }],
+    }],
+  }
+  const expected = {
+    sessionId: 'session-report', artifactRefs: [], findingIds: ['finding-render-broken'],
+    findingGroups: [['finding-render-broken']],
+  }
+  const accepted = parseReportProjection(Buffer.from(JSON.stringify(raw)), expected)
+  assert.equal(accepted.ok, false)
+  assert.deepEqual(accepted.checkedArtifactRefs, ['artifact-backing'])
+  assert.deepEqual(accepted.findingArtifactTargets, [{
+    findingId: 'finding-render-broken', artifactRef: 'artifact-backing',
+  }])
+  assert.deepEqual(accepted.issues.map(item => item.code), [
+    'finding-render-failed', 'artifact-not-admissible',
+  ])
+
+  const missingDiscovery = structuredClone(raw)
+  delete missingDiscovery.finding_outcomes[0].artifact_ref
+  assert.throws(
+    () => parseReportProjection(Buffer.from(JSON.stringify(missingDiscovery)), expected),
+    /Artifact outcome count/,
+  )
+  const driftedBacking = structuredClone(raw)
+  driftedBacking.artifact_outcomes[0].ref = 'artifact-other'
+  assert.throws(
+    () => parseReportProjection(Buffer.from(JSON.stringify(driftedBacking)), expected),
+    /ref does not match the requested identity/,
+  )
 })
 
 test('Finding-only provenance accepts an admissible backing Artifact without projecting its rows', () => {
@@ -969,7 +1360,7 @@ test('Finding-only provenance accepts an admissible backing Artifact without pro
       group_index: 0, status: 'compatible', finding_ids: ['finding-only'], value: { status: 'compatible' },
     }],
   }
-  const accepted = parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+  const accepted = parseReportProjection(Buffer.from(JSON.stringify(checkedProjectionPayload(raw))), {
     sessionId: 'session-report', artifactRefs: [], findingIds: ['finding-only'], findingGroups: [['finding-only']],
   })
   assert.equal(accepted.ok, true, JSON.stringify(accepted))
@@ -977,7 +1368,7 @@ test('Finding-only provenance accepts an admissible backing Artifact without pro
   assert.equal(accepted.value.artifacts[0]?.rowsProjected, false)
   assert.deepEqual(accepted.value.artifacts[0]?.rows, [])
 
-  assert.throws(() => parseReportProjection(Buffer.from(JSON.stringify(raw)), {
+  assert.throws(() => parseReportProjection(Buffer.from(JSON.stringify(checkedProjectionPayload(raw))), {
     sessionId: 'session-report', artifactRefs: ['artifact-backing'], findingIds: ['finding-only'], findingGroups: [['finding-only']],
   }), /row projection status/)
 })
@@ -1059,7 +1450,15 @@ test('Code Mode logs one durable ready card block without changing nested Tool t
 
   ctx.emit('tools/result', { ...exec, callId: 'outer:code:2' } as never, {
     isError: false,
-    value: { status: 'blocked', stage: 'document', issues: [] },
+    value: {
+      status: 'blocked',
+      checks: [
+        { stage: 'document', status: 'failed', issues: [], omitted_issue_count: 1 },
+        { stage: 'marivo', status: 'skipped', issues: [], omitted_issue_count: 0, reason: 'blocked' },
+        { stage: 'visual', status: 'skipped', issues: [], omitted_issue_count: 0, reason: 'blocked' },
+        { stage: 'publish', status: 'skipped', issues: [], omitted_issue_count: 0, reason: 'blocked' },
+      ],
+    },
     content: [{ type: 'text', text: 'blocked' }],
   } as never)
   const blocked = await ctx.waterfall('tools/code-dispatch-log', {
@@ -1146,15 +1545,15 @@ test('registered Tool persists a closed ready card summary and null for blocked 
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-tool-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const executable = path.join(root, 'fixture-python')
-  const payload = {
-    status: 'ready', session_id: 'session-report',
+  const payload = checkedProjectionPayload({
+    session_id: 'session-report',
     artifacts: [{
       ref: artifact.ref, family: artifact.family, shape: artifact.shape, columns: artifact.columns,
       content_hash: artifact.contentHash, artifact_schema_version: artifact.artifactSchemaVersion,
       created_at: artifact.createdAt, contract: artifact.contract, revalidation: artifact.revalidation,
       lineage: artifact.lineage, rows_projected: true, rows: artifact.rows,
     }], findings: [], compatibilities: [],
-  }
+  })
   await writeFile(executable, `#!/usr/bin/env node\nprocess.stdout.write(process.env.REPORT_PAYLOAD ?? '')\n`)
   await chmod(executable, 0o755)
   const policy = new FixedSubprocessPolicy(root, { PATH: process.env.PATH, REPORT_PAYLOAD: JSON.stringify(payload) })
@@ -1193,7 +1592,7 @@ test('registered Tool persists a closed ready card summary and null for blocked 
     signal: new AbortController().signal,
     callId: CallId('report-blocked'), name: MARIVO_REPORT_RENDER_TOOL_NAME,
     arguments: {
-      session_id: 'session-report',
+      session_id: 42,
       document: { ...document, sections: [] },
     },
   })
@@ -1202,6 +1601,6 @@ test('registered Tool persists a closed ready card summary and null for blocked 
   assert.equal(blocked.meta, null)
   assert.match(
     blocked.content[0]?.type === 'text' ? blocked.content[0].text : '',
-    /HTML report rendering is blocked at stage document/,
+    /HTML report rendering is blocked after best-effort preflight/,
   )
 })

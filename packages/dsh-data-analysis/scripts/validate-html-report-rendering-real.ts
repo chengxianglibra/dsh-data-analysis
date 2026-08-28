@@ -82,7 +82,7 @@ interface ReportCallSummary {
   callId: string
   arguments: unknown
   status: 'ready' | 'blocked' | 'error' | 'missing-result'
-  stage?: string
+  failedStages?: string[]
   issueCodes?: string[]
   title?: string
   path?: string
@@ -196,8 +196,10 @@ function reportCalls(events: readonly SessionEvent[]): ReportCallSummary[] {
         callId,
         arguments: args,
         status: 'blocked',
-        stage: value.stage,
-        issueCodes: value.issues.map(issue => issue.code),
+        failedStages: value.checks
+          .filter(check => check.status !== 'passed')
+          .map(check => check.stage),
+        issueCodes: value.checks.flatMap(check => check.issues.map(issue => issue.code)),
       }]
     }
     if (value?.status === 'ready') {
@@ -256,6 +258,13 @@ async function assertReadyArtifact(call: ReportCallSummary): Promise<void> {
   assert.match(html, /href="#provenance-artifact-/)
   assert.match(html, /@media print/)
   assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
+}
+
+async function publishedDocument(call: ReportCallSummary): Promise<ReportDocumentV1> {
+  assert.ok(call.path)
+  return JSON.parse(
+    await readFile(path.join(path.dirname(call.path), 'report-document.json'), 'utf8'),
+  ) as ReportDocumentV1
 }
 
 async function createFixture(): Promise<FixtureValue> {
@@ -420,22 +429,24 @@ const compatibilityPreflight = await (async () => {
   const mixedGroup = [fixture.timeSeries.findingId, fixture.segmented.findingId]
   const projectionChild = await environment.runCheckedReportProjection(
     fixture.sessionId,
-    ['artifact-that-must-not-be-read'],
+    ['artifact-missing-for-preflight'],
     [mixedGroup, mixedGroup],
     { timeoutMs: 120_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
   )
   assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
   const parsed = parseReportProjection(projectionChild.stdout, {
     sessionId: fixture.sessionId,
-    artifactRefs: ['artifact-that-must-not-be-read'],
+    artifactRefs: ['artifact-missing-for-preflight'],
     findingIds: mixedGroup,
     findingGroups: [mixedGroup, mixedGroup],
   })
   assert.equal(parsed.ok, false, JSON.stringify(parsed))
   if (parsed.ok) throw new Error('Mixed Finding compatibility preflight was unexpectedly ready')
-  assert.equal(parsed.issues.length, 2, JSON.stringify(parsed.issues))
-  assert.deepEqual(parsed.issues.map(issue => issue.location), ['finding_groups[0]', 'finding_groups[1]'])
-  for (const issue of parsed.issues) {
+  assert.equal(parsed.issues.length, 3, JSON.stringify(parsed.issues))
+  assert.deepEqual(parsed.issues.map(issue => issue.location), [
+    'finding_groups[0]', 'finding_groups[1]', 'artifact_refs[0]',
+  ])
+  for (const issue of parsed.issues.slice(0, 2)) {
     assert.equal(issue.code, 'evidence-not-compatible')
     assert.match(issue.message, new RegExp(fixture.timeSeries.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     assert.match(issue.message, new RegExp(fixture.segmented.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -444,6 +455,8 @@ const compatibilityPreflight = await (async () => {
     }
     assert.match(issue.repair, /resubmit the complete ReportDocument v1/)
   }
+  assert.equal(parsed.issues[2]?.code, 'marivo-framerefnotfound')
+  assert.match(parsed.issues[2]?.message ?? '', /artifact-missing-for-preflight/)
   return parsed.issues
 })().catch(async (error) => {
   await writeEarlyFailure('compatibility-preflight', error)
@@ -636,12 +649,12 @@ try {
   const initialReady = readyCall(initial)
   const initialDocument = exactDocument(initialReady)
   assert.deepEqual(new Set(blockKinds(initialDocument)), new Set(['text', 'chart', 'table', 'evidence']))
-  assert.equal(initialReady.documentDigest, reportDocumentDigest(initialDocument))
+  assert.equal(initialReady.documentDigest, reportDocumentDigest(await publishedDocument(initialReady)))
   await assertReadyArtifact(initialReady)
 
   const revision = await runTurn(reportAgent, 'complete-revision', [
     'Revise the durable report already created in this conversation.',
-    'Submit another complete ReportDocument, never a patch and never read the old document from disk.',
+    'Call marivo_report_render exactly once in this turn. Submit another complete ReportDocument in that single call, never a patch and never read the old document from disk.',
     'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining that this is the revised layout.',
     'Retain text, explicit line, explicit bar, table, and evidence blocks with the same exact session, Artifacts, columns, and Findings from the previous turn.',
     `End the final response with ${markerFor('complete-revision')}.`,
@@ -653,7 +666,7 @@ try {
   const revisionReady = readyCall(revision)
   const revisionDocument = exactDocument(revisionReady)
   assert.deepEqual(new Set(blockKinds(revisionDocument)), new Set(['text', 'chart', 'table', 'evidence']))
-  assert.equal(revisionReady.documentDigest, reportDocumentDigest(revisionDocument))
+  assert.equal(revisionReady.documentDigest, reportDocumentDigest(await publishedDocument(revisionReady)))
   assert.notEqual(revisionReady.reportDigest, initialReady.reportDigest)
   assert.notEqual(revisionReady.documentDigest, initialReady.documentDigest)
   assert.notEqual(revisionReady.path, initialReady.path)
@@ -671,8 +684,8 @@ try {
     'Call skill exactly once with {"name":"marivo-analysis"}.',
     `Use exact session ${JSON.stringify(fixture.sessionId)}, time Artifact ${JSON.stringify(fixture.timeSeries.ref)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}, segmented Artifact ${JSON.stringify(fixture.segmented.ref)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
     `The complete document must contain text, line (${JSON.stringify(timeX)}, ${JSON.stringify(timeY)}), bar (${JSON.stringify(segmentX)}, ${JSON.stringify(segmentY)}), table, and evidence blocks.`,
-    'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
-    'For the first marivo_report_render call deliberately set the table max_rows to 0. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, without narrating or stopping between the two calls.',
+    'Use only lowercase kebab-case block IDs. In the final repaired document, never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
+    'For the first marivo_report_render call deliberately set the table max_rows to 0, set the line y field to missing_revenue, and attach both Findings to the summary text block. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, the exact line y column, and only compatible per-block Finding selections, without narrating or stopping between the two calls.',
     `End the final response with ${markerFor('blocked-repair')}.`,
   ].join('\n'))
   assert.ok(repaired.completed, repaired.finalText)
@@ -680,10 +693,15 @@ try {
   assert.ok(repaired.reportCalls.length >= 2, JSON.stringify(repaired.reportCalls))
   assert.equal(repaired.reportCalls.at(-1)?.status, 'ready', JSON.stringify(repaired.reportCalls))
   const documentBlocked = repaired.reportCalls.find(call => (
-    call.status === 'blocked' && call.stage === 'document'
+    call.status === 'blocked' && call.failedStages?.includes('document')
   ))
   assert.ok(documentBlocked, JSON.stringify(repaired.reportCalls))
   assert.ok((documentBlocked.issueCodes?.length ?? 0) > 0)
+  assert.ok(documentBlocked.failedStages?.includes('marivo'), JSON.stringify(documentBlocked))
+  assert.ok(documentBlocked.failedStages?.includes('visual'), JSON.stringify(documentBlocked))
+  assert.ok(documentBlocked.issueCodes?.includes('invalid-max-rows'), JSON.stringify(documentBlocked))
+  assert.ok(documentBlocked.issueCodes?.includes('evidence-not-compatible'), JSON.stringify(documentBlocked))
+  assert.ok(documentBlocked.issueCodes?.includes('chart-column-not-found'), JSON.stringify(documentBlocked))
   const repairedReady = readyCall(repaired)
   const repairedDocument = exactDocument(repairedReady)
   assert.deepEqual(new Set(blockKinds(repairedDocument)), new Set(['text', 'chart', 'table', 'evidence']))
