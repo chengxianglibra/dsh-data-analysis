@@ -94,11 +94,34 @@ const artifact: ReportArtifactProjection = {
   ],
 }
 
+function dagArtifact(value: ReportArtifactProjection) {
+  const previewRows = value.rows.slice(0, 10)
+  return {
+    ref: value.ref,
+    status: 'ready' as const,
+    family: value.family,
+    shape: value.shape,
+    columns: value.columns,
+    contentHash: value.contentHash,
+    artifactSchemaVersion: value.artifactSchemaVersion,
+    createdAt: value.createdAt,
+    evidenceStatus: 'complete',
+    contract: value.contract,
+    revalidation: value.revalidation,
+    lineage: value.lineage,
+    previewRows,
+    totalRows: value.shape[0],
+    omittedRows: value.shape[0] - previewRows.length,
+    issues: [],
+  }
+}
+
 const projection: ReportProjectionBundle = {
   sessionId: 'session-report',
   artifacts: [artifact],
   findings: [],
   compatibilities: [],
+  sessionDag: { jobs: [], artifacts: [dagArtifact(artifact)] },
 }
 
 function checkedProjectionPayload(raw: {
@@ -106,6 +129,7 @@ function checkedProjectionPayload(raw: {
   readonly artifacts: readonly Record<string, unknown>[]
   readonly findings: readonly Record<string, unknown>[]
   readonly compatibilities: readonly Record<string, unknown>[]
+  readonly session_dag?: Record<string, unknown>
 }) {
   return {
     status: 'checked',
@@ -113,6 +137,7 @@ function checkedProjectionPayload(raw: {
     finding_group_outcomes: raw.compatibilities.map((value) => ({ status: 'ready', value })),
     finding_outcomes: raw.findings.map((value) => ({ status: 'ready', value })),
     artifact_outcomes: raw.artifacts.map((value) => ({ status: 'ready', value })),
+    session_dag: raw.session_dag ?? { jobs: [], artifacts: [] },
   }
 }
 
@@ -765,6 +790,7 @@ test('one best-effort preflight exposes document, Marivo, and visual problems to
               artifactFailure('artifact-bad-one', 1),
               artifactFailure('artifact-bad-two', 2),
             ],
+            session_dag: { jobs: [], artifacts: [] },
           }),
         ),
         stderr: Buffer.alloc(0),
@@ -888,6 +914,7 @@ test('preflight attributes de-duplicated Finding and Artifact failures to every 
               artifactFailure('artifact-shared', 0),
               artifactFailure('artifact-backing', 1),
             ],
+            session_dag: { jobs: [], artifacts: [] },
           }),
         ),
         stderr: Buffer.alloc(0),
@@ -1316,6 +1343,7 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
         value: { status: 'compatible' },
       },
     ],
+    sessionDag: { jobs: [], artifacts: [dagArtifact(barArtifact)] },
   }
   const result = compileReportVisuals(barDocument, barProjection)
   assert.equal(result.ok, true, JSON.stringify(result))
@@ -1327,7 +1355,7 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
   assert.match(html, /finding-platform/)
   assert.match(html, /payments.success/)
   assert.match(html, /payments\.success: observed 4 platform rows\./)
-  assert.match(html, /href="#provenance-artifact-1"/)
+  assert.match(html, /href="#dag-1-detail-1"/)
   assert.match(html, /Complete technical provenance/)
   assert.ok(
     html.indexOf('payments.success: observed 4 platform rows.') <
@@ -1393,7 +1421,7 @@ test('reader-facing report content localizes labels and keeps raw Evidence ident
     /<ol><li>优先处理移动端。<\/li><li>持续观察波动。<details class="sources source-popover">/,
   )
   assert.match(readingPath, /依据<sup>1<\/sup>/)
-  assert.match(readingPath, /href="#report-provenance">完整技术溯源<\/a>/)
+  assert.match(readingPath, /href="#dag-\d+-detail-\d+">完整技术溯源<\/a>/)
   assert.doesNotMatch(readingPath, /技术详情|source-audit/)
   assert.match(readingPath, /<th scope="col">日期<\/th>/)
   assert.match(readingPath, /8月18日/)
@@ -1450,6 +1478,7 @@ test('Finding statements cannot inject HTML, links, or new report markup', () =>
         value: { status: 'compatible' },
       },
     ],
+    sessionDag: { jobs: [], artifacts: [dagArtifact(artifact)] },
   }
   const result = compileReportVisuals(unsafeDocument, unsafeProjection)
   assert.equal(result.ok, true, JSON.stringify(result))
@@ -1530,7 +1559,17 @@ test('renderer escapes content and emits offline SVG, source tables, CSP, and pr
   assert.match(html, /支付趋势 &lt;unsafe&gt;/)
   assert.match(html, /结论 &amp; 建议/)
   assert.match(html, /Content-Security-Policy/)
-  assert.match(html, /script-src 'none'/)
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1]
+  const style = html.match(/<style>([\s\S]*?)<\/style>/)?.[1]
+  assert.ok(script)
+  assert.ok(style)
+  assert.ok(
+    html.includes(`script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'`),
+  )
+  assert.ok(
+    html.includes(`style-src 'sha256-${createHash('sha256').update(style).digest('base64')}'`),
+  )
+  assert.doesNotMatch(html, /unsafe-inline|unsafe-eval/)
   assert.match(html, /<svg class="chart"/)
   assert.match(html, /查看同源数据表/)
   assert.match(html, /显示: 3 \/ 总计: 8 \/ 省略: 5/)
@@ -1557,7 +1596,8 @@ test('renderer escapes content and emits offline SVG, source tables, CSP, and pr
   )
   assert.match(html, /@media\(max-width:720px\)[^{]*\{[\s\S]*?\.source-popover\[open\]/)
   assert.match(html, /@media print[\s\S]*?\.source-popover-panel\{display:none!important\}/)
-  assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
+  assert.equal(html.match(/<script\b/g)?.length, 1)
+  assert.doesNotMatch(html, /<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
 })
 
 test('canonical digests ignore object key order while document order remains semantic', () => {
@@ -1617,7 +1657,9 @@ test('publisher atomically creates private immutable files and reuses the same d
     (await readdir(path.dirname(directory))).some((name) => name.startsWith('.staging-')),
     false,
   )
-  assert.doesNotMatch(await readFile(first.path, 'utf8'), /<script\b/)
+  const publishedHtml = await readFile(first.path, 'utf8')
+  assert.equal(publishedHtml.match(/<script\b/g)?.length, 1)
+  assert.doesNotMatch(publishedHtml, /unsafe-inline|unsafe-eval/)
   const forged = '<script>globalThis.compromised=true</script>\n'
   await writeFile(first.path, forged, { mode: 0o600 })
   const manifestPath = path.join(directory, 'manifest.json')
@@ -1733,6 +1775,7 @@ test('Finding-only reports include the backing Artifact identity in the immutabl
         value: { status: 'compatible' },
       },
     ],
+    sessionDag: { jobs: [], artifacts: [dagArtifact(backingArtifact)] },
   }
   const compiledEvidence = compileReportVisuals(evidenceDocument, evidenceProjection)
   assert.equal(compiledEvidence.ok, true, JSON.stringify(compiledEvidence))
@@ -1754,8 +1797,8 @@ test('Finding-only reports include the backing Artifact identity in the immutabl
     artifacts: Array<{ ref: string; content_hash: string }>
     finding_ids: string[]
   }
-  assert.equal(manifest.version, 'dsh-data-analysis-report-manifest/v2')
-  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v5')
+  assert.equal(manifest.version, 'dsh-data-analysis-report-manifest/v3')
+  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v7')
   assert.match(manifest.provenance_digest, /^[a-f0-9]{64}$/)
   assert.deepEqual(manifest.artifacts, [
     { ref: 'artifact-backing', content_hash: artifact.contentHash },
@@ -1763,7 +1806,7 @@ test('Finding-only reports include the backing Artifact identity in the immutabl
   assert.deepEqual(manifest.finding_ids, ['finding-only'])
   const html = await readFile(published.path, 'utf8')
   assert.match(html, /payments\.success：观测值为 12。/)
-  assert.match(html, /href="#provenance-artifact-1"/)
+  assert.match(html, /href="#dag-1-detail-1"/)
   assert.doesNotMatch(html, /data\.parquet|\.marivo\//)
 })
 
@@ -1897,6 +1940,7 @@ test('partial projection parser requires one ordered outcome for every target', 
     finding_group_outcomes: [],
     finding_outcomes: [],
     artifact_outcomes: [{ status: 'ready', value: artifactWire('artifact-one') }, blockedArtifact],
+    session_dag: { jobs: [], artifacts: [] },
   }
   const expected = {
     sessionId: 'session-report',
@@ -1988,6 +2032,7 @@ test('blocked Finding outcomes may close over a discovered backing Artifact with
         ],
       },
     ],
+    session_dag: { jobs: [], artifacts: [] },
   }
   const expected = {
     sessionId: 'session-report',

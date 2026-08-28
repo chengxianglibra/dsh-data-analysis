@@ -278,9 +278,18 @@ async function assertReadyArtifact(call: ReportCallSummary): Promise<void> {
   assert.match(html, /class="block evidence-block"/)
   assert.match(html, /class="evidence-statement"/)
   assert.match(html, /完整技术溯源/)
-  assert.match(html, /href="#provenance-artifact-/)
+  assert.match(html, /href="#dag-\d+-detail-/)
+  assert.match(html, /data-dag-component/)
+  assert.match(html, /data-dag-node/)
+  assert.match(html, /data-dag-action="zoom-in"/)
+  assert.match(html, /class="raw-sql"/)
+  assert.match(html, /显示: \d+ \/ 总计: \d+ \/ 省略: \d+ 行/)
   assert.match(html, /@media print/)
-  assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
+  assert.equal(html.match(/<script\b/g)?.length, 1)
+  assert.doesNotMatch(
+    html,
+    /unsafe-inline|unsafe-eval|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//,
+  )
 }
 
 async function publishedDocument(call: ReportCallSummary): Promise<ReportDocumentV1> {
@@ -397,6 +406,39 @@ segmented = session.observe(metrics=metric, dimensions=[platform])
 redundant_scalar = session.observe(
     metrics=metric,
     time_scope=mv.time_scope(start="2026-08-20", end="2026-08-28"),
+)
+baseline_segmented = session.observe(
+    metrics=metric,
+    dimensions=[platform],
+    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-24"),
+    analysis_purpose="DAG baseline",
+)
+current_segmented = session.observe(
+    metrics=metric,
+    dimensions=[platform],
+    time_scope=mv.time_scope(start="2026-08-24", end="2026-08-28"),
+    analysis_purpose="DAG current",
+)
+delta = session.compare(
+    current_segmented,
+    baseline_segmented,
+    analysis_purpose="DAG compare",
+)
+attribution = session.attribute(
+    delta,
+    axes=[platform],
+    analysis_purpose="DAG attribute",
+)
+reused_attribution = session.attribute(
+    delta,
+    axes=[platform],
+    analysis_purpose="DAG attribute reuse",
+)
+assert reused_attribution.ref == attribution.ref
+assert any(
+    session.job(summary.id).get("reused_artifact") is True
+    for summary in session.jobs()
+    if summary.intent == "attribute"
 )
 time_finding = session.evidence.findings(artifact_ref=time_series.ref, limit=20).items[0]
 segment_finding = session.evidence.findings(artifact_ref=segmented.ref, limit=20).items[0]
@@ -537,6 +579,13 @@ const projection = await (async () => {
     findingGroups,
   })
   assert.equal(parsed.ok, true, JSON.stringify(parsed))
+  if (!parsed.ok) throw new Error('Session DAG projection was unexpectedly blocked')
+  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.intent === 'observe'))
+  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.intent === 'compare'))
+  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.intent === 'attribute'))
+  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.reusedArtifact === true))
+  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.queries.length > 0))
+  assert.ok(parsed.value.sessionDag.artifacts.every((item) => item.previewRows.length <= 10))
   return parsed
 })().catch(async (error) => {
   await writeEarlyFailure('projection', error)

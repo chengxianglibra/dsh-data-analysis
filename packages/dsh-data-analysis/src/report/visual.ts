@@ -1,4 +1,5 @@
 import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { type CompiledSessionDag, compileSessionDag } from './dag.ts'
 import type {
   ChartBlockV1,
   ReportDocumentV1,
@@ -36,6 +37,7 @@ export interface CompiledReport {
   readonly projection: ReportProjectionBundle
   readonly charts: ReadonlyMap<string, CompiledChartBlock>
   readonly tables: ReadonlyMap<string, CompiledTableBlock>
+  readonly sessionDag: CompiledSessionDag
   readonly disclosures: readonly string[]
 }
 
@@ -383,5 +385,10 @@ export function compileReportVisuals(
     }
   }
   if (issues.length > 0) return { ok: false, issues }
-  return { ok: true, value: { document, projection, charts, tables, disclosures } }
+  const dag = compileSessionDag(projection.sessionDag)
+  if (!dag.ok) return { ok: false, issues: dag.issues }
+  return {
+    ok: true,
+    value: { document, projection, charts, tables, sessionDag: dag.value, disclosures },
+  }
 }

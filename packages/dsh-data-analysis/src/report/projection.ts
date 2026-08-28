@@ -45,11 +45,68 @@ export interface ReportCompatibilityProjection {
   readonly value: JsonValue
 }
 
+export interface ReportDagQueryProjection {
+  readonly queryId: string
+  readonly datasource: string
+  readonly dialect: string
+  readonly sql: string
+  readonly sqlDigest: string
+  readonly rowCount: number
+  readonly durationMs: number
+  readonly startedAt: string
+  readonly finishedAt: string
+  readonly status: string
+  readonly outputRef: string | null
+}
+
+export interface ReportDagJobProjection {
+  readonly id: string
+  readonly intent: string
+  readonly status: 'succeeded'
+  readonly startedAt: string
+  readonly finishedAt: string | null
+  readonly durationMs: number
+  readonly analysisPurpose: string | null
+  readonly params: JsonValue
+  readonly inputArtifactRefs: readonly string[]
+  readonly outputArtifactRef: string
+  readonly reusedArtifact: boolean
+  readonly queries: readonly ReportDagQueryProjection[]
+  readonly queryIssues: readonly ReportIssueV1[]
+}
+
+export type ReportDagArtifactStatus = 'ready' | 'unavailable' | 'boundary'
+
+export interface ReportDagArtifactProjection {
+  readonly ref: string
+  readonly status: ReportDagArtifactStatus
+  readonly family: string | null
+  readonly shape: readonly [number, number] | null
+  readonly columns: readonly ReportArtifactColumn[]
+  readonly contentHash: string | null
+  readonly artifactSchemaVersion: string | null
+  readonly createdAt: string | null
+  readonly evidenceStatus: string | null
+  readonly contract: JsonValue | null
+  readonly revalidation: JsonValue | null
+  readonly lineage: JsonValue | null
+  readonly previewRows: readonly (readonly JsonValue[])[]
+  readonly totalRows: number | null
+  readonly omittedRows: number | null
+  readonly issues: readonly ReportIssueV1[]
+}
+
+export interface ReportSessionDagProjection {
+  readonly jobs: readonly ReportDagJobProjection[]
+  readonly artifacts: readonly ReportDagArtifactProjection[]
+}
+
 export interface ReportProjectionBundle {
   readonly sessionId: string
   readonly artifacts: readonly ReportArtifactProjection[]
   readonly findings: readonly ReportFindingProjection[]
   readonly compatibilities: readonly ReportCompatibilityProjection[]
+  readonly sessionDag: ReportSessionDagProjection
 }
 
 export interface ReportProjectionInspection {
@@ -93,6 +150,13 @@ function string(value: unknown, location: string): string {
   if (typeof value !== 'string' || value.length === 0)
     throw new TypeError(`${location} must be a non-empty string`)
   return value
+}
+
+function timestamp(value: unknown, location: string): string {
+  const result = string(value, location)
+  if (!Number.isFinite(Date.parse(result)))
+    throw new TypeError(`${location} must be an ISO timestamp`)
+  return result
 }
 
 function integer(value: unknown, location: string): number {
@@ -299,6 +363,214 @@ function parseCompatibility(value: unknown, location: string): ReportCompatibili
   }
 }
 
+function nullableString(value: unknown, location: string): string | null {
+  if (value === null) return null
+  return string(value, location)
+}
+
+function parseDagQuery(value: unknown, location: string): ReportDagQueryProjection {
+  const source = object(value, location)
+  exactKeys(
+    source,
+    [
+      'query_id',
+      'datasource',
+      'dialect',
+      'sql',
+      'sql_digest',
+      'row_count',
+      'duration_ms',
+      'started_at',
+      'finished_at',
+      'status',
+      'output_ref',
+    ],
+    location,
+  )
+  return {
+    queryId: string(source.query_id, `${location}.query_id`),
+    datasource: string(source.datasource, `${location}.datasource`),
+    dialect: string(source.dialect, `${location}.dialect`),
+    sql: string(source.sql, `${location}.sql`),
+    sqlDigest: string(source.sql_digest, `${location}.sql_digest`),
+    rowCount: integer(source.row_count, `${location}.row_count`),
+    durationMs: integer(source.duration_ms, `${location}.duration_ms`),
+    startedAt: timestamp(source.started_at, `${location}.started_at`),
+    finishedAt: timestamp(source.finished_at, `${location}.finished_at`),
+    status: string(source.status, `${location}.status`),
+    outputRef: nullableString(source.output_ref, `${location}.output_ref`),
+  }
+}
+
+function parseDagJob(value: unknown, location: string): ReportDagJobProjection {
+  const source = object(value, location)
+  exactKeys(
+    source,
+    [
+      'id',
+      'intent',
+      'status',
+      'started_at',
+      'finished_at',
+      'duration_ms',
+      'analysis_purpose',
+      'params',
+      'input_artifact_refs',
+      'output_artifact_ref',
+      'reused_artifact',
+      'queries',
+      'query_issues',
+    ],
+    location,
+  )
+  if (source.status !== 'succeeded') throw new TypeError(`${location}.status must be succeeded`)
+  if (typeof source.reused_artifact !== 'boolean') {
+    throw new TypeError(`${location}.reused_artifact must be boolean`)
+  }
+  if (!Array.isArray(source.queries)) throw new TypeError(`${location}.queries must be an array`)
+  if (!Array.isArray(source.query_issues))
+    throw new TypeError(`${location}.query_issues must be an array`)
+  const inputArtifactRefs = stringArray(
+    source.input_artifact_refs,
+    `${location}.input_artifact_refs`,
+  )
+  if (new Set(inputArtifactRefs).size !== inputArtifactRefs.length)
+    throw new TypeError(`${location}.input_artifact_refs contains duplicates`)
+  return {
+    id: string(source.id, `${location}.id`),
+    intent: string(source.intent, `${location}.intent`),
+    status: 'succeeded',
+    startedAt: timestamp(source.started_at, `${location}.started_at`),
+    finishedAt:
+      source.finished_at === null ? null : timestamp(source.finished_at, `${location}.finished_at`),
+    durationMs: integer(source.duration_ms, `${location}.duration_ms`),
+    analysisPurpose: nullableString(source.analysis_purpose, `${location}.analysis_purpose`),
+    params: jsonValue(source.params, `${location}.params`),
+    inputArtifactRefs,
+    outputArtifactRef: string(source.output_artifact_ref, `${location}.output_artifact_ref`),
+    reusedArtifact: source.reused_artifact,
+    queries: source.queries.map((item, index) =>
+      parseDagQuery(item, `${location}.queries[${index}]`),
+    ),
+    queryIssues: source.query_issues.map((item, index) =>
+      parseIssue(item, `${location}.query_issues[${index}]`),
+    ),
+  }
+}
+
+function parseNullableShape(value: unknown, location: string): readonly [number, number] | null {
+  if (value === null) return null
+  if (!Array.isArray(value) || value.length !== 2)
+    throw new TypeError(`${location} must be null or contain two integers`)
+  return [integer(value[0], `${location}[0]`), integer(value[1], `${location}[1]`)]
+}
+
+function parseDagArtifact(value: unknown, location: string): ReportDagArtifactProjection {
+  const source = object(value, location)
+  exactKeys(
+    source,
+    [
+      'ref',
+      'status',
+      'family',
+      'shape',
+      'columns',
+      'content_hash',
+      'artifact_schema_version',
+      'created_at',
+      'evidence_status',
+      'contract',
+      'revalidation',
+      'lineage',
+      'preview_rows',
+      'total_rows',
+      'omitted_rows',
+      'issues',
+    ],
+    location,
+  )
+  if (source.status !== 'ready' && source.status !== 'unavailable' && source.status !== 'boundary')
+    throw new TypeError(`${location}.status is invalid`)
+  if (!Array.isArray(source.columns)) throw new TypeError(`${location}.columns must be an array`)
+  if (!Array.isArray(source.preview_rows))
+    throw new TypeError(`${location}.preview_rows must be an array`)
+  if (!Array.isArray(source.issues)) throw new TypeError(`${location}.issues must be an array`)
+  const shape = parseNullableShape(source.shape, `${location}.shape`)
+  const columns = source.columns.map((item, index) =>
+    parseColumn(item, `${location}.columns[${index}]`),
+  )
+  if (shape !== null && columns.length !== shape[1])
+    throw new TypeError(`${location}.columns must match shape`)
+  const previewRows = source.preview_rows.map((row, rowIndex) => {
+    if (!Array.isArray(row) || row.length !== columns.length)
+      throw new TypeError(`${location}.preview_rows[${rowIndex}] must match columns`)
+    return row.map((cell, columnIndex) =>
+      jsonValue(cell, `${location}.preview_rows[${rowIndex}][${columnIndex}]`),
+    )
+  })
+  const totalRows =
+    source.total_rows === null ? null : integer(source.total_rows, `${location}.total_rows`)
+  const omittedRows =
+    source.omitted_rows === null ? null : integer(source.omitted_rows, `${location}.omitted_rows`)
+  if (
+    source.status === 'ready' &&
+    (shape === null ||
+      totalRows === null ||
+      omittedRows === null ||
+      totalRows !== shape[0] ||
+      omittedRows !== totalRows - previewRows.length)
+  )
+    throw new TypeError(`${location} ready preview identity is inconsistent`)
+  if (source.status !== 'ready' && previewRows.length > 0)
+    throw new TypeError(`${location} unavailable preview must be empty`)
+  const nullableJson = (item: unknown, itemLocation: string): JsonValue | null =>
+    item === null ? null : jsonValue(item, itemLocation)
+  return {
+    ref: string(source.ref, `${location}.ref`),
+    status: source.status,
+    family: nullableString(source.family, `${location}.family`),
+    shape,
+    columns,
+    contentHash: nullableString(source.content_hash, `${location}.content_hash`),
+    artifactSchemaVersion: nullableString(
+      source.artifact_schema_version,
+      `${location}.artifact_schema_version`,
+    ),
+    createdAt: nullableString(source.created_at, `${location}.created_at`),
+    evidenceStatus: nullableString(source.evidence_status, `${location}.evidence_status`),
+    contract: nullableJson(source.contract, `${location}.contract`),
+    revalidation:
+      source.revalidation === null
+        ? null
+        : stableRevalidation(
+            object(source.revalidation, `${location}.revalidation`),
+            `${location}.revalidation`,
+          ),
+    lineage: nullableJson(source.lineage, `${location}.lineage`),
+    previewRows,
+    totalRows,
+    omittedRows,
+    issues: source.issues.map((item, index) => parseIssue(item, `${location}.issues[${index}]`)),
+  }
+}
+
+function parseSessionDag(value: unknown, location: string): ReportSessionDagProjection {
+  const source = object(value, location)
+  exactKeys(source, ['jobs', 'artifacts'], location)
+  if (!Array.isArray(source.jobs)) throw new TypeError(`${location}.jobs must be an array`)
+  if (!Array.isArray(source.artifacts))
+    throw new TypeError(`${location}.artifacts must be an array`)
+  const jobs = source.jobs.map((item, index) => parseDagJob(item, `${location}.jobs[${index}]`))
+  const artifacts = source.artifacts.map((item, index) =>
+    parseDagArtifact(item, `${location}.artifacts[${index}]`),
+  )
+  if (new Set(jobs.map((item) => item.id)).size !== jobs.length)
+    throw new TypeError(`${location}.jobs contains duplicate IDs`)
+  if (new Set(artifacts.map((item) => item.ref)).size !== artifacts.length)
+    throw new TypeError(`${location}.artifacts contains duplicate refs`)
+  return { jobs, artifacts }
+}
+
 function issueArray(value: unknown, location: string): ReportIssueV1[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
     throw new TypeError(`${location} must contain between 1 and 100 issues`)
@@ -408,7 +680,13 @@ export function parseReportProjection(
     exactKeys(source, ['status', 'issues', 'omitted_issue_count'], 'projection')
     return {
       ok: false,
-      value: { sessionId: expected.sessionId, artifacts: [], findings: [], compatibilities: [] },
+      value: {
+        sessionId: expected.sessionId,
+        artifacts: [],
+        findings: [],
+        compatibilities: [],
+        sessionDag: { jobs: [], artifacts: [] },
+      },
       issues: issueArray(source.issues, 'projection.issues'),
       omittedIssueCount: omittedCount(source.omitted_issue_count, 'projection.omitted_issue_count'),
       complete: false,
@@ -419,7 +697,14 @@ export function parseReportProjection(
   }
   exactKeys(
     source,
-    ['status', 'session_id', 'finding_group_outcomes', 'finding_outcomes', 'artifact_outcomes'],
+    [
+      'status',
+      'session_id',
+      'finding_group_outcomes',
+      'finding_outcomes',
+      'artifact_outcomes',
+      'session_dag',
+    ],
     'projection',
   )
   if (source.status !== 'checked')
@@ -534,9 +819,17 @@ export function parseReportProjection(
       throw new TypeError(`projection artifact ${artifact.ref} has the wrong row projection status`)
     }
   }
+  const sessionDag = parseSessionDag(source.session_dag, 'projection.session_dag')
+  const graphRefs = new Set(sessionDag.artifacts.map((item) => item.ref))
+  for (const job of sessionDag.jobs) {
+    for (const ref of [...job.inputArtifactRefs, job.outputArtifactRef]) {
+      if (!graphRefs.has(ref))
+        throw new TypeError(`projection.session_dag is missing Artifact ${JSON.stringify(ref)}`)
+    }
+  }
   return {
     ok: complete,
-    value: { sessionId: expected.sessionId, artifacts, findings, compatibilities },
+    value: { sessionId: expected.sessionId, artifacts, findings, compatibilities, sessionDag },
     issues,
     omittedIssueCount: omitted,
     complete,

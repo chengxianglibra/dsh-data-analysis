@@ -73,16 +73,19 @@ bridge 对可安全识别的 Finding group、Finding 和 Artifact 逐项返回 o
 文档。每个 block 最多引用 20 个 Finding，全文最多引用 100 个唯一 Finding；普通 `text`、`chart`、`table`
 block 可用省略字段或 `finding_ids: []` 表示没有精确 Finding 支撑，空数组会规范化为省略，`evidence` block
 则必须提供 1–20 个 Finding。bridge 会继续恢复可识别的 Finding 及其 backing Artifact 并 revalidate 完整来源；
-只有阻断性检查全部通过后才生成无 JavaScript、无远程依赖的
-HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。报告以用户语言和答案优先的单列阅读流呈现；
+只有阻断性检查全部通过后才生成无远程依赖的
+HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。页脚自动展示成功主 Artifact 分析过程的
+Session DAG：Job 节点包含 intent、params 与 raw SQL，Artifact 节点包含最多 10 行持久化原序 preview，
+Finding 审计合并到 backing Artifact。固定交互脚本与样式使用精确 CSP hash；节点支持键盘、触摸、缩放和平移。
+报告以用户语言和答案优先的单列阅读流呈现；
 普通 block 在内容末尾显示“依据ⁿ”角标，桌面端 hover/focus 预览、点击固定，移动端点击展开。浮层只展示本地化事实和完整溯源链接，
-Finding/Artifact 原始身份与 JSON 留在页脚 canonical provenance。Agent 为每个 block 选择最小充分、不重复的 Finding 集；
+Finding/Artifact 原始身份与 JSON 留在页脚 Session DAG。Agent 为每个 block 选择最小充分、不重复的 Finding 集；
 renderer 忠实展示传入的 Finding，不自行推断证据等价性。
 line 至少需要八个点，bar 至少四个类别；日期、数值、通用列名和长标签图表使用读者友好的本地化展示。Tool 文本返回绝对路径；
 Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复
 完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建
-HTTP URL，也不支持跨机器分享。纯溯源 Artifact 不投影 rows，HTML 使用 Finding 双语 render 和完整 provenance
-索引，但不输出 Parquet 链接或私有存储路径。真实补充验证使用仓库命令
+HTTP URL，也不支持跨机器分享。HTML 使用 Finding 双语 render 和完整 Session DAG，但不输出 Parquet
+链接、`bind_params`、credential 或私有存储路径，也不会为 preview 重新查询 datasource。真实补充验证使用仓库命令
 `npm run validate:evidence-sources:real` 和 `npm run validate:html-report-rendering:real`，证据写入
 忽略目录 `artifacts/evidence-sources-real/` 和 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍
 blocked。详见

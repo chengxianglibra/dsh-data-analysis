@@ -17,11 +17,11 @@ import type { ReportDocumentV1, ReportIssueV1 } from './document.ts'
 import { REPORT_RENDERER_VERSION, renderReportHtml } from './render.ts'
 import type { CompiledReport } from './visual.ts'
 
-export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v2' as const
-export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v2' as const
+export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v3' as const
+export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v3' as const
 export const MAX_REPORT_HTML_BYTES = 10 * 1024 * 1024
 
-interface ReportManifestV2 {
+interface ReportManifestV3 {
   readonly version: typeof REPORT_MANIFEST_VERSION
   readonly renderer_version: typeof REPORT_RENDERER_VERSION
   readonly report_digest: string
@@ -136,7 +136,7 @@ async function secureDirectory(directory: string, signal?: AbortSignal): Promise
   throwIfAborted(signal)
 }
 
-function parseManifest(raw: Buffer): ReportManifestV2 {
+function parseManifest(raw: Buffer): ReportManifestV3 {
   let value: unknown
   try {
     value = JSON.parse(raw.toString('utf8'))
@@ -145,7 +145,7 @@ function parseManifest(raw: Buffer): ReportManifestV2 {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new Error('Existing report manifest is not an object')
-  return value as ReportManifestV2
+  return value as ReportManifestV3
 }
 
 async function validateExisting(
@@ -162,7 +162,7 @@ async function validateExisting(
     readonly findingIds: readonly string[]
   },
   signal?: AbortSignal,
-): Promise<ReportManifestV2> {
+): Promise<ReportManifestV3> {
   throwIfAborted(signal)
   const directoryInfo = await lstat(directory)
   if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink())
@@ -313,7 +313,7 @@ export async function publishReport(
     content_hash: item.contentHash,
   }))
   const findingIds = report.projection.findings.map((item) => item.findingId)
-  const manifest: ReportManifestV2 = {
+  const manifest: ReportManifestV3 = {
     version: REPORT_MANIFEST_VERSION,
     renderer_version: REPORT_RENDERER_VERSION,
     report_digest: inputs.reportDigest,

@@ -1,4 +1,14 @@
 export type {
+  CompiledDagComponent,
+  CompiledDagEdge,
+  CompiledDagNode,
+  CompiledSessionDag,
+  CompileSessionDagResult,
+  ReportDagEdgeKind,
+  ReportDagNodeKind,
+} from './dag.ts'
+export { compileSessionDag } from './dag.ts'
+export type {
   ChartBlockV1,
   EvidenceBlockV1,
   ParsedReportDocument,
@@ -25,9 +35,14 @@ export type {
   ReportArtifactColumn,
   ReportArtifactProjection,
   ReportCompatibilityProjection,
+  ReportDagArtifactProjection,
+  ReportDagArtifactStatus,
+  ReportDagJobProjection,
+  ReportDagQueryProjection,
   ReportFindingProjection,
   ReportProjectionBundle,
   ReportProjectionInspection,
+  ReportSessionDagProjection,
 } from './projection.ts'
 export { parseReportProjection } from './projection.ts'
 export {
