@@ -184,7 +184,7 @@ const evidenceBlockSchema = {
       type: 'string',
       required: true,
       description:
-        'Reader-facing title for an explicitly requested source inventory. Prefer attaching finding_ids to narrative or visual blocks instead of adding a duplicate Evidence appendix.',
+        'Reader-facing title for an explicitly requested source inventory. Use an evidence block when Finding statements should be shown in the report body; otherwise use finding_ids only as source metadata.',
     },
     finding_ids: requiredFindingIdsSchema,
   },

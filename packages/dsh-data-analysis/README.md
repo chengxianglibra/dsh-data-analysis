@@ -77,10 +77,9 @@ block 可用省略字段或 `finding_ids: []` 表示没有精确 Finding 支撑�
 HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。页脚自动展示成功主 Artifact 分析过程的
 Session DAG：Job 节点包含 intent、params 与 raw SQL，Artifact 节点包含最多 10 行持久化原序 preview，
 Finding 审计合并到 backing Artifact。固定交互脚本与样式使用精确 CSP hash；节点支持键盘、触摸、缩放和平移。
-报告以用户语言和答案优先的单列阅读流呈现；
-普通 block 在内容末尾显示“依据ⁿ”角标，桌面端 hover/focus 预览、点击固定，移动端点击展开。浮层只展示本地化事实和完整溯源链接，
-Finding/Artifact 原始身份与 JSON 留在页脚 Session DAG。Agent 为每个 block 选择最小充分、不重复的 Finding 集；
-renderer 忠实展示传入的 Finding，不自行推断证据等价性。
+报告以用户语言和答案优先的单列阅读流呈现；普通 block 不显示来源角标或浮层，`finding_ids` 仍作为来源元数据参与投影，
+Finding/Artifact 原始身份与 JSON 留在页脚 Session DAG；需要在正文直接展示事实时使用显式 `evidence` block。需要来源时，Agent 为对应 block 选择
+最小充分、不重复的 Finding 集；renderer 忠实展示传入的 Finding，不自行推断证据等价性。
 line 至少需要八个点，bar 至少四个类别；日期、数值、通用列名和长标签图表使用读者友好的本地化展示。Tool 文本返回绝对路径；
 Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复
 完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建

@@ -189,8 +189,8 @@ best-effort preflight：文档、Marivo 与视觉问题按 check 分组聚合；
 有效 partial projection 继续检查可检查的图表。若多处失败，一次返回精确路径、冲突身份、原因和跳过边界，
 Agent 修复指定位置后仍需重新提交完整文档。仅被图表或表格显式引用的 Artifact 才投影 rows；纯溯源 Artifact
 不受 2,000 行展示上限影响。
-报告按 locale 展示 `Finding.render()` 事实；普通 block 在“依据ⁿ”角标浮层展示人读事实和溯源链接，页脚索引提供
-content hash、contract、revalidation、Lineage 与派生字段。
+报告按 locale 展示 `Finding.render()` 事实；普通 block 不显示来源角标或浮层，`finding_ids` 仍作为来源元数据参与投影，
+显式 `evidence` block 可在正文展示人读事实；页脚索引提供 content hash、contract、revalidation、Lineage 与派生字段。
 它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
 HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Tool 文本返回绝对 `index.html` 路径；Web
 Tool View 与最终回答下方的耐久交付卡片都从顶层 meta 或 Code Mode 耐久子调用 block 恢复标题、披露和

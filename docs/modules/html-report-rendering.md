@@ -90,11 +90,9 @@ bar 的 x 必须是类别维度且至少有一个可绘制类别，数轴包含�
 渲染，使用本地化日期、数值和安全的通用列名，并始终显示 displayed/total/omitted。
 
 Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS、固定 viewBox SVG 和一段固定交互脚本。所有标题、文字、单元格、
-Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。普通 text、chart 和 table block 在内容末尾显示
-轻量“依据ⁿ”角标；桌面端 hover/focus 预览，点击可固定，移动端点击后在正文流展开。浮层只展示与报告
-locale 一致的人读事实、支撑边界和完整溯源链接；Finding ID、Artifact ref、value、subject、derivation
-与身份状态只留在页脚 Session DAG。显式 `evidence` block 继续直接展示事实列表和二级审计，
-Agent 默认不得再创建重复的 Evidence 附录。
+Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。普通 text、chart 和 table block 不显示来源角标或浮层；其中的
+`finding_ids` 仍作为来源元数据参与投影，Finding ID、Artifact ref、value、subject、derivation 与身份状态只留在页脚 Session DAG。
+显式 `evidence` block 继续直接展示事实列表和二级审计，Agent 默认不得再创建重复的 Evidence 附录。
 
 完整技术溯源按弱连通分量展示一张或多张二部 DAG：`Artifact → Job` 表示 input，`Job → Artifact` 实线表示
 produces，虚线表示 reuses。独立注册主 Artifact 作为根节点；Finding 不成为图节点，而是合并到 backing
@@ -107,7 +105,7 @@ Artifact 详情。布局使用稳定拓扑分层与稳定节点顺序；cycle、
 审计。脚本与样式都使用 CSP 精确 SHA-256 hash，不允许 `unsafe-inline`、`eval` 或远程依赖。打印保留 DAG
 和紧凑节点索引，不自动展开 SQL、preview 或原始审计字段。
 
-Agent 为每个 block 选择最小充分、不重复的 Finding 集：标量事实优先最直接的精确 Finding，不再附加仅复述同一
+需要附加来源时，Agent 为对应 block 选择最小充分、不重复的 Finding 集：标量事实优先最直接的精确 Finding，不再附加仅复述同一
 用户事实的摘要 Finding。Renderer 忠实展示传入的所有 Finding，不按类型、文本相似度或顺序推断证据等价性。
 
 页面使用响应式单列阅读流、浅色/深色系统外观、克制的蓝色主色和安静网格。首章节仅对第一个摘要文本

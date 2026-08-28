@@ -1355,6 +1355,7 @@ test('bar and Evidence blocks retain category zero-baseline and exact Finding so
   assert.match(html, /finding-platform/)
   assert.match(html, /payments.success/)
   assert.match(html, /payments\.success: observed 4 platform rows\./)
+  assert.match(html, /class="evidence-details"[\s\S]*?class="audit evidence-audit"/)
   assert.match(html, /href="#dag-1-detail-1"/)
   assert.match(html, /Complete technical provenance/)
   assert.ok(
@@ -1414,19 +1415,22 @@ test('reader-facing report content localizes labels and keeps raw Evidence ident
   if (!sourced.ok) return
   const html = renderReportHtml(sourced.value, '2026-08-27T01:02:03.000Z')
   const readingPath = html.slice(html.indexOf('<body>'), html.indexOf('<footer>'))
-  assert.match(readingPath, /支付成功量在观察期末达到 95。/)
-  assert.doesNotMatch(readingPath, /English statement|finding-zh|artifact-trend/)
-  assert.match(
+  assert.doesNotMatch(
     readingPath,
-    /<ol><li>优先处理移动端。<\/li><li>持续观察波动。<details class="sources source-popover">/,
+    /支付成功量在观察期末达到 95。|English statement|finding-zh|artifact-trend/,
   )
-  assert.match(readingPath, /依据<sup>1<\/sup>/)
-  assert.match(readingPath, /href="#dag-\d+-detail-\d+">完整技术溯源<\/a>/)
-  assert.doesNotMatch(readingPath, /技术详情|source-audit/)
+  assert.match(readingPath, /<ol><li>优先处理移动端。<\/li><li>持续观察波动。<\/li><\/ol>/)
+  assert.doesNotMatch(
+    readingPath,
+    /依据|source-popover|source-marker|evidence-list|技术详情|source-audit/,
+  )
   assert.match(readingPath, /<th scope="col">日期<\/th>/)
   assert.match(readingPath, /8月18日/)
   assert.doesNotMatch(readingPath, /<th scope="col">bucket_start<\/th>/)
-  assert.match(html.slice(html.indexOf('<footer>')), /finding-zh|artifact-trend/)
+  assert.match(
+    html.slice(html.indexOf('<footer>')),
+    /支付成功量在观察期末达到 95。|finding-zh|artifact-trend/,
+  )
 })
 
 test('Finding statements cannot inject HTML, links, or new report markup', () => {
@@ -1489,7 +1493,7 @@ test('Finding statements cannot inject HTML, links, or new report markup', () =>
   assert.doesNotMatch(html, /<img\b|href="https:\/\/example\.invalid"|id="mv-f99"/)
 })
 
-test('ordinary blocks use compact source popovers and preserve every supplied Finding', () => {
+test('ordinary blocks omit source markers while preserving Findings in technical provenance', () => {
   const findings: ReportProjectionBundle['findings'] = [
     {
       findingId: 'finding-value',
@@ -1544,14 +1548,20 @@ test('ordinary blocks use compact source popovers and preserve every supplied Fi
   if (!sourced.ok) return
   const html = renderReportHtml(sourced.value, '2026-08-27T01:02:03.000Z')
   const readingPath = html.slice(html.indexOf('<body>'), html.indexOf('<footer>'))
-  assert.equal(readingPath.match(/class="sources source-popover"/g)?.length, 3)
-  assert.equal(readingPath.match(/依据<sup>2<\/sup>/g)?.length, 3)
-  assert.equal(readingPath.match(/精确值为 95。/g)?.length, 3)
-  assert.equal(readingPath.match(/单个时间桶同样为 95。/g)?.length, 3)
-  assert.doesNotMatch(readingPath, /finding-value|finding-observation|source-audit/)
-  assert.match(readingPath, /<div class="text-source-tail"><p>结论 &amp; 建议<\/p><details/)
+  assert.doesNotMatch(
+    readingPath,
+    /依据|source-popover|source-marker|evidence-list|finding-value|finding-observation|精确值为 95。|单个时间桶同样为 95。|source-audit/,
+  )
+  assert.match(
+    readingPath,
+    /<article class="block text-block"[^>]*><p>结论 &amp; 建议<\/p><\/article>/,
+  )
   assert.match(readingPath, /class="block chart-block"[\s\S]*?<\/svg><details class="fallback"/)
-  assert.match(readingPath, /class="block table-block"[\s\S]*?<\/table><\/div><details/)
+  assert.match(readingPath, /class="block table-block"[\s\S]*?<\/table><\/div><\/article>/)
+  assert.match(
+    html.slice(html.indexOf('<footer>')),
+    /finding-value|finding-observation|精确值为 95。|单个时间桶同样为 95。/,
+  )
 })
 
 test('renderer escapes content and emits offline SVG, source tables, CSP, and print rules', () => {
@@ -1585,17 +1595,8 @@ test('renderer escapes content and emits offline SVG, source tables, CSP, and pr
   )
   assert.doesNotMatch(html, /\.report-summary\{[^}]*background:var\(--accent-soft\)/)
   assert.match(html, /@media print/)
-  assert.match(html, /\.source-popover:hover>\.source-popover-panel/)
-  assert.match(html, /\.source-popover:focus-within>\.source-popover-panel/)
-  assert.match(html, /\.source-popover\[open\]>\.source-popover-panel/)
-  assert.match(html, /\.text-block\{position:relative\}/)
-  assert.match(html, /\.text-block \.source-popover\{position:static\}/)
-  assert.match(
-    html,
-    /\.text-block \.source-popover-panel\{inset-inline-start:0;inset-inline-end:auto;width:min\(36rem,100%\)\}/,
-  )
-  assert.match(html, /@media\(max-width:720px\)[^{]*\{[\s\S]*?\.source-popover\[open\]/)
-  assert.match(html, /@media print[\s\S]*?\.source-popover-panel\{display:none!important\}/)
+  assert.doesNotMatch(html, /source-popover|source-marker|source-audit|text-source-tail|依据/)
+  assert.match(html, /\.evidence-details\{[^}]*border-top:1px solid var\(--line\)/)
   assert.equal(html.match(/<script\b/g)?.length, 1)
   assert.doesNotMatch(html, /<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
 })
@@ -1798,7 +1799,7 @@ test('Finding-only reports include the backing Artifact identity in the immutabl
     finding_ids: string[]
   }
   assert.equal(manifest.version, 'dsh-data-analysis-report-manifest/v3')
-  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v7')
+  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v8')
   assert.match(manifest.provenance_digest, /^[a-f0-9]{64}$/)
   assert.deepEqual(manifest.artifacts, [
     { ref: 'artifact-backing', content_hash: artifact.contentHash },
