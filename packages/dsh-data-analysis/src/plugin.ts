@@ -21,7 +21,10 @@ import {
   MarivoEnvironment,
   MarivoWorkspaceEnvironmentManager,
 } from './environment/index.ts'
-import { registerMarivoEvidenceCiteTool } from './evidence/index.ts'
+import {
+  installMarivoEvidenceSourcesCodeDelivery,
+  registerMarivoEvidenceSourcesTool,
+} from './evidence/index.ts'
 import { installMarivoReportCodeDelivery, registerMarivoReportRenderTool } from './report/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
@@ -37,13 +40,16 @@ export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'If marivo_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_test before continuing.',
 ].join(' ')
 
-export const MARIVO_EVIDENCE_CITATION_PROMPT = [
-  'When marivo-analysis is active, every material fact supported by an exact persisted Finding must be cited by default with marivo_evidence_cite before the final answer.',
-  'Do not require a citation for an interpretation, recommendation, hypothesis, or fact without an exact persisted Finding; disclose a material unsupported boundary instead of inventing one.',
-  'Pass language="zh" for a Chinese final answer or language="en" for an English final answer.',
-  'Copy the returned marker (for example [^mv-f1]) immediately after the supported statement, and copy its returned footnote definition verbatim at the end of the answer.',
-  'Never invent, rename, or edit a Marivo Evidence handle or definition.',
-  'A citation proves the identity of its Marivo Evidence source; it does not prove that the whole sentence or business judgment is correct.',
+export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
+  'When marivo-analysis is active, do not call marivo_evidence_sources by default merely because the answer contains Findings, facts, numbers, or tables.',
+  'Call marivo_evidence_sources only when the user explicitly requests sources, provenance, citations, or audit details for facts supported by exact persisted Findings.',
+  'After a successful call, never copy or restate the supported fact, any numeric or textual value from it, Finding statements, machine identifiers, markers, footnotes, or a source appendix into the final answer; this includes every Session, Finding, Artifact, canonical item, schema, extractor, and Environment identifier seen in Skill context, Tool arguments, or Tool results.',
+  'Even when the user requests audit details, those machine identities and technical fields belong only in the Web source panel, which displays them on demand.',
+  'Do not announce the Tool call, describe the source panel, say where the details can be viewed, or repeat standard Evidence mechanics in the final answer.',
+  'If the user request is solely for sources, the final answer must be only one brief acknowledgement that the source details are attached; it must not mention the Web, a panel, or any display location.',
+  'If an explicitly requested fact has no exact persisted Finding, disclose that unsupported boundary instead of inventing a source.',
+  'Keep only decision-relevant scope, quality, freshness, and limitation disclosures in ordinary prose; do not emit a boilerplate quality or evidence section when nothing material needs disclosure.',
+  'A source attachment proves the identity of its Marivo Evidence source; it does not prove that the whole sentence, calculation, or business judgment is correct.',
 ].join(' ')
 
 export const MARIVO_REPORT_RENDERING_PROMPT = [
@@ -163,7 +169,8 @@ export function installMarivoPlugin(
         },
       }),
     )
-    controller.addDisposer(registerMarivoEvidenceCiteTool(agent.ctx, source, agent.session))
+    controller.addDisposer(registerMarivoEvidenceSourcesTool(agent.ctx, source, agent.session))
+    controller.addDisposer(installMarivoEvidenceSourcesCodeDelivery(agent.ctx))
     controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, source))
     controller.addDisposer(installMarivoReportCodeDelivery(agent.ctx))
     controller.addDisposer(
@@ -178,12 +185,10 @@ export function installMarivoPlugin(
     )
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
-        name: 'marivo:evidence-citations',
+        name: 'marivo:evidence-sources',
         order: 180,
         text: () =>
-          controller.activeSkills.includes('marivo-analysis')
-            ? MARIVO_EVIDENCE_CITATION_PROMPT
-            : '',
+          controller.activeSkills.includes('marivo-analysis') ? MARIVO_EVIDENCE_SOURCES_PROMPT : '',
       }),
     )
     controller.addDisposer(

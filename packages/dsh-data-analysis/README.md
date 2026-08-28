@@ -1,6 +1,6 @@
 # dsh-data-analysis Plugin
 
-当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、`marivo_evidence_cite`、
+当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、`marivo_evidence_sources`、
 `marivo_report_render` 和 skill 激活式根 Help
 披露，并在 `0.1.0` 提供 Web profile 共享 Marivo Runtime、逐 Workspace
 binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。`marivo_test`
@@ -57,13 +57,13 @@ standard、code 或 cordis preset。插件活动期间及所有插件自有 Mari
 `marivo-semantic` 后，System Prompt 会要求 datasource 注册或修改后立即调用 `marivo_test`，由
 `needs-credentials` 触发 Web 表单。
 
-加载 `marivo-analysis` 后，短 system prompt 会要求所有由精确、已持久化 Finding 支撑的关键事实默认
-通过 `marivo_evidence_cite` 引用；工具显式接受 `zh`/`en` 并使用公共 `Finding.render()` 生成只含事实陈述的
-Markdown definition。固定 Python script 读取 Finding，按 DSH Session 签发 `F1` 至 `F100`，并把完整双语
-registry v2 写入标准 `tool/result.meta`。Web client 精确校验 definition，在 turn tail 以事实优先、审计详情折叠的方式展示来源。
-插件不截获最终回答、不新增自定义 Session event，也不做
-entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详见
-[Evidence 轻量引用模块](../../docs/modules/evidence-citations.md)。
+加载 `marivo-analysis` 后，普通分析不默认附加来源。只有用户明确要求来源、出处、审计或 provenance 时，
+Agent 才调用 `marivo_evidence_sources({ session_id, finding_ids })`。固定 Python script 原子读取 1–20 个
+精确 Finding 并通过公共 `Finding.render()` 获取双语陈述；工具不接受语言参数，不生成 handle、marker、
+definition 或历史 registry。Native Tool result 与 Code Mode durable dispatch 只携带本次来源，Web 按 Turn
+和 closing answer seq 恢复后显示默认折叠、按 Artifact 分组的来源面板。插件不截获最终回答，也不做
+entailment、数字验证、`to_pandas` 用途判断或可信等级推断。详见
+[Evidence 按需来源模块](../../docs/modules/evidence-sources.md)。
 
 加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
 `marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
@@ -83,7 +83,7 @@ Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mo
 完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建
 HTTP URL，也不支持跨机器分享。纯溯源 Artifact 不投影 rows，HTML 使用 Finding 双语 render 和完整 provenance
 索引，但不输出 Parquet 链接或私有存储路径。真实补充验证使用仓库命令
-`npm run validate:evidence-citations:real` 和 `npm run validate:html-report-rendering:real`，证据写入
-忽略目录 `artifacts/evidence-citations-real/` 和 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍
+`npm run validate:evidence-sources:real` 和 `npm run validate:html-report-rendering:real`，证据写入
+忽略目录 `artifacts/evidence-sources-real/` 和 `artifacts/html-report-rendering-real/`；真实模型结果不替代确定性测试，当前 Web/打印门禁仍
 blocked。详见
 [HTML 报告渲染模块](../../docs/modules/html-report-rendering.md)。

@@ -1,15 +1,16 @@
 export type {
-  MarivoCitationMeta,
-  MarivoEvidenceCiteValue,
   MarivoEvidenceSource,
-} from './citations.ts'
+  MarivoEvidenceSourcesMeta,
+  MarivoEvidenceSourcesValue,
+} from './sources.ts'
 export {
-  createMarivoEvidenceCiteTool,
-  MARIVO_CITATION_MAX_HANDLES,
-  MARIVO_CITATION_MAX_PER_CALL,
-  MARIVO_CITATION_META_KIND,
-  MARIVO_CITATION_META_VERSION,
-  MARIVO_EVIDENCE_CITE_TOOL_NAME,
-  MarivoCitationRegistry,
-  registerMarivoEvidenceCiteTool,
-} from './citations.ts'
+  createMarivoEvidenceSourcesTool,
+  evidenceSourcesMeta,
+  installMarivoEvidenceSourcesCodeDelivery,
+  MARIVO_EVIDENCE_SOURCES_DURABLE_CONTENT_KIND,
+  MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL,
+  MARIVO_EVIDENCE_SOURCES_META_KIND,
+  MARIVO_EVIDENCE_SOURCES_META_VERSION,
+  MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
+  registerMarivoEvidenceSourcesTool,
+} from './sources.ts'

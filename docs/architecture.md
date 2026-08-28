@@ -36,7 +36,7 @@ flowchart LR
   Plugin --> Skills[共享 Marivo Skills]
   Plugin --> Help[marivo_help]
   Plugin --> Test[marivo_test]
-  Plugin --> Cite[marivo_evidence_cite]
+  Plugin --> Sources[marivo_evidence_sources]
   Plugin --> Report[marivo_report_render]
   Plugin --> Creds[DSH Credentials]
   Plugin --> ShellEnv[DSH Shell Environment]
@@ -45,7 +45,7 @@ flowchart LR
   Runtime --> Project[Workspace: marivo.toml / models / .marivo]
   Help --> Marivo[Marivo 公共 API]
   Test --> Marivo
-  Cite --> Marivo
+  Sources --> Marivo
   Report --> Marivo
   Marivo --> Project
 ```
@@ -74,7 +74,7 @@ DSH Web profile
     ├── marivo_help
     ├── marivo_test
     ├── bash/pwsh credential snapshot listener
-    ├── marivo_evidence_cite + Citation registry
+    ├── marivo_evidence_sources + Turn source delivery
     └── marivo_report_render + immutable HTML publisher
 ```
 
@@ -89,7 +89,7 @@ DSH Web profile
 | Environment 执行边界 | doctor 准入、身份固定、安全子进程、诊断输出 | [Environment 执行边界](modules/environment-execution.md) |
 | Help 披露 | 提供 focused `marivo_help`，并在 Skill 激活后注入实时根 Help | [Help 披露](modules/help-disclosure.md) |
 | Datasource 与凭证 | 解析 Datasource 凭证引用，调用 `md.test()`，提供 Web 凭证表单 | [Datasource 与凭证](modules/datasource-credentials.md) |
-| Evidence 轻量引用 | 读取精确 Finding、签发 Markdown handle、从标准历史回放 Web 来源卡片 | [Evidence 轻量引用](modules/evidence-citations.md) |
+| Evidence 按需来源 | 按用户请求读取精确 Finding、从标准历史回放折叠 Web 来源面板 | [Evidence 按需来源](modules/evidence-sources.md) |
 | HTML 报告渲染 | 校验完整 ReportDocument、读取精确 Marivo 投影并生成不可变自包含 HTML | [HTML 报告渲染](modules/html-report-rendering.md) |
 | Plugin 集成与交付 | 组合 Cordis 生命周期、Agent scopes、客户端构建和 npm 包契约 | [Plugin 集成与交付](modules/plugin-integration-delivery.md) |
 
@@ -107,7 +107,7 @@ Environment source 类型，不共享业务状态。
 4. 插件为现有 Agent 安装控制器，并监听后续 `agent/created`、`agent/disposed`。
 5. Agent 首次需要 Marivo Environment 时，根据配置或 `session.header.cwd` 解析 Workspace，幂等创建
    最小项目结构，运行 doctor admission 并缓存 binding Promise。
-6. Agent scope 注册 `marivo_help`、`marivo_test`、`marivo_evidence_cite` 与 `marivo_report_render`；原 profile 的普通工具可见性不被改写。
+6. Agent scope 注册 `marivo_help`、`marivo_test`、`marivo_evidence_sources` 与 `marivo_report_render`；原 profile 的普通工具可见性不被改写。
 
 ## 分析交互流程
 
@@ -130,13 +130,14 @@ Agent 或用户加载 Marivo Skill 后，插件在下一次模型请求前从当
 注入该次 Shell。Persistent Shell 不消费 `ctx.shellEnv`；存在已解析 datasource 凭证时插件明确拒绝，
 避免静默无凭证执行。
 
-### Evidence 引用
+### Evidence 按需来源
 
-`marivo-analysis` 激活后，动态 system prompt 告诉 Agent 可在需要精确 Finding 来源时选择调用
-`marivo_evidence_cite`。工具通过当前 binding 读取已持久化 Finding，签发标准 Markdown footnote，并
-把签发 DSH Session ID 和完整 handle registry 写入 `tool/result.meta`，服务端恢复时据此隔离 fork 后的
-新 handle 命名空间。Web client 用 Conversation Definition 从标准历史关联
-最终 `assistant/message`，在 Turn tail 渲染来源卡片；它不改写消息，也不创建自定义 Session event。
+`marivo-analysis` 激活后，普通分析不调用来源工具。只有用户明确要求来源、出处、审计或 provenance 时，
+Agent 才调用 `marivo_evidence_sources`。工具通过当前 binding 原子读取本次请求的已持久化 Finding，并把
+双语陈述与精确身份写入闭合的 `tool/result.meta`；Code Mode nested call 把同一投影写入耐久
+`tool/code-dispatch` ContentBlock。Web client 用 Conversation Definition 按 Turn 和 closing answer seq
+恢复成功来源，在 Turn tail 渲染默认折叠、按 Artifact 分组的来源面板。它不解析或改写最终回答，也不创建
+自定义 Session event。
 
 ### HTML 报告
 
@@ -160,7 +161,7 @@ View 可在 Session replay 中恢复卡片，并仅在用户点击后调用 `hos
 | Help 可见性与激活状态 | DSH Session events/surface + Agent controller | Agent/Session 级，Harness 保存 surface，插件投影状态 |
 | Datasource 凭证 | DSH Credentials | Harness 拥有；插件只按操作解析和传递 |
 | Datasource 引用 registry | 插件进程内 WeakMap | Workspace 级；只缓存 datasource 名称和 `DSH_*` 引用名，dispose 后丢弃 |
-| Evidence citation registry | `tool/result.meta` + Agent 内存投影 | DSH Session 级；插件签发，Harness 持久化标准事件 |
+| Evidence source delivery | `tool/result.meta` / Code Mode durable ContentBlock | Tool call 与 Turn 级；插件投影，Harness 持久化标准事件 |
 | HTML 报告产物 | `$DSH_HOME/dsh-data-analysis/reports/` | 内容寻址、不可变；插件原子发布，不维护 current/latest/registry |
 
 ## 信任与失败边界
@@ -208,7 +209,7 @@ npm run test:runtime-workspace
 npm run test:environment-execution
 npm run test:help-disclosure
 npm run test:datasource-credentials
-npm run test:evidence-citations
+npm run test:evidence-sources
 npm run test:html-report-rendering
 npm run test:plugin-integration-delivery
 

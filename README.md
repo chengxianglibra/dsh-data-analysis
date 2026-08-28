@@ -14,7 +14,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - 全局提供 `marivo-analysis` 和 `marivo-semantic` skills；
 - 在 Agent 加载 `marivo-semantic` 或 `marivo-analysis` 后注入对应的实时根 Help；
 - 通过 `marivo_test` 和 DSH 凭证服务完成 datasource 连接测试；
-- 通过 `marivo_evidence_cite` 为精确 Finding 签发标准 Markdown 角标，并在 Web 展示来源卡片；
+- 仅在用户明确要求来源时通过 `marivo_evidence_sources` 附加精确 Finding，并在 Web 展示折叠来源面板；
 - 通过 `marivo_report_render` 把完整分析文档编译为可离线打开、打印和追溯的不可变 HTML；
 - 支持 DSH 的 `native`、`code` 和 `both` 工具模式。
 
@@ -28,7 +28,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - [Environment 执行边界模块](docs/modules/environment-execution.md)
 - [Help 披露模块](docs/modules/help-disclosure.md)
 - [Datasource 与凭证模块](docs/modules/datasource-credentials.md)
-- [Evidence 轻量引用模块](docs/modules/evidence-citations.md)
+- [Evidence 按需来源模块](docs/modules/evidence-sources.md)
 - [HTML 报告渲染模块](docs/modules/html-report-rendering.md)
 - [Plugin 集成与交付模块](docs/modules/plugin-integration-delivery.md)
 
@@ -146,24 +146,26 @@ standard、code 或 cordis preset。插件活动期间及插件自有子进程�
 Marivo 自动写入 `~/.marivo/secrets.toml`。Shell 中的脚本本身可以读取已注入变量，仍须避免主动
 打印或持久化它们。
 
-### 引用 Marivo Evidence
+### 按需查看 Marivo Evidence 来源
 
-加载 `marivo-analysis` 后，所有由精确、已持久化 Finding 支撑的关键事实，默认必须在最终回答前调用
-`marivo_evidence_cite({ session_id, finding_ids, language })` 生成引用，中文回答使用 `zh`，英文回答使用 `en`。解释、建议、假设或没有精确 Finding
-支撑的事实不强制引用；重要的无支持边界应明确披露，不得伪造引用。工具每次接受 1–20 个唯一 Finding ID，在当前
-binding 中通过 `mv.session.resume(..., use_datasources=False)` 和 `session.evidence.finding()` 整批读取，
-并调用公共 `Finding.render()` 读取中英文事实陈述，再签发 `F1` 等稳定 handle。相同 Environment、Marivo Session 和 Finding 在同一 DSH Session 内复用
-handle；每个 DSH Session 最多 100 个，跨 Session 隔离。
+普通分析不默认调用来源工具，也不显示角标、Footnotes、来源卡片或固定证据附录。正文只保留会影响解释的
+口径、质量、时效和限制；没有实质边界时不生成模板化说明。
 
-Agent 把工具返回的 `[^mv-f1]` 放在结论后，并在答案末尾原样放置只含人读事实的 definition。CLI/Headless 可直接
-阅读标准 Markdown footnote；Web 会从标准 `tool/result.meta` 和最终 `assistant/message` 回放出“Marivo
-来源”卡片。卡片把事实陈述作为主内容，机器身份和状态放入折叠审计详情；缺失或被修改的 definition 会明确警告。
-插件不截获或重写原回答，也不新增自定义 Session event。
+只有用户明确要求来源、出处、审计或 provenance 时，Agent 才调用：
 
-这个角标只确认 Finding 来源身份，不验证整句话、数字推理或业务判断。轻量版本不做自然语言
-entailment、`to_pandas` 用途判断、可信等级或强制 analysis state 复盘；没有由持久化 Finding 支撑的
-关键事实时，不要求简单分析调用引用工具。完整边界见
-[Evidence 轻量引用模块](docs/modules/evidence-citations.md)。
+```text
+marivo_evidence_sources({ session_id, finding_ids })
+```
+
+工具每次接受 1–20 个唯一 Finding ID，在当前 binding 中通过
+`mv.session.resume(..., use_datasources=False)` 和 `session.evidence.finding()` 原子读取，并调用公共
+`Finding.render()` 获取双语事实陈述。成功结果只把本次来源写入标准 `tool/result.meta`；Code Mode nested
+call 写入等价的耐久 ContentBlock。Web 按当前 Turn 和 closing answer seq 恢复来源，默认只显示折叠的
+“数据来源”摘要，展开后按 Artifact 分组，机器身份位于二级审计详情。
+
+工具不再接受语言参数或生成 handle、marker、definition 和历史 registry。来源只确认 Finding 身份，不验证
+整句话、数字推理或业务判断。完整边界见
+[Evidence 按需来源模块](docs/modules/evidence-sources.md)。
 
 ### 生成 HTML 分析报告
 

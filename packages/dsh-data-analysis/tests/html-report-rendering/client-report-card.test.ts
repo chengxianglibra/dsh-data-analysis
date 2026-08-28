@@ -620,7 +620,7 @@ test('turn-tail report delivery shows the full path and opens that exact Host ta
   assert.equal(path.props.children, reportMeta.path)
 })
 
-test('client registers report and credential Tool Views beside citation replay UI', async () => {
+test('client registers report and credential Tool Views beside on-demand source UI', async () => {
   const client = await loadClient()
   const definitions: unknown[] = []
   const slots: Array<{ options: any; component: unknown }> = []
@@ -662,5 +662,5 @@ test('client registers report and credential Tool Views beside citation replay U
       'conversation.chat.turnTail',
     ],
   )
-  assert.equal(definitions.length, 3)
+  assert.equal(definitions.length, 2)
 })
