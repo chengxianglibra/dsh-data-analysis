@@ -8,7 +8,7 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 
 插件负责把 DSH 的 Agent 编排与 Marivo 的分析能力连接起来：
 
-- 在 `$DSH_HOME` 下按 PyPI 最新可用版本安装并复用一个 Marivo Runtime；
+- 在 `$DSH_HOME` 下固定安装并复用 Marivo 0.5.0 Runtime；
 - 按 Agent 的 `session.header.cwd` 识别 Workspace；
 - 为新 Workspace 创建最小 Marivo 项目结构；
 - 全局提供 `marivo-analysis` 和 `marivo-semantic` skills；
@@ -95,8 +95,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-创建 Runtime 时安装不带版本约束的 `marivo[duckdb,trino,clickhouse]`，由 PyPI 动态解析
-当时最新的兼容版本。`installation.json` 记录实际安装版本和所需 capability；后续启动会验证 marker、
+创建 Runtime 时固定安装 `marivo[duckdb,trino,clickhouse]==0.5.0`。`installation.json` 记录实际安装版本和所需 capability；后续启动会验证 marker、
 Python、该版本、package identity 和 `finding-render-v1`，然后直接复用 Runtime，不会在每次 Session 启动时
 联网升级。并发启动通过安装锁串行化；失败安装不会发布完成 marker。
 

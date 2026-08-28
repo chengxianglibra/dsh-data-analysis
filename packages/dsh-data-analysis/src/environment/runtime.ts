@@ -20,7 +20,8 @@ import { FixedSubprocessPolicy } from './subprocess.ts'
 import type { SharedMarivoRuntime, SharedMarivoRuntimeConfig, SubprocessResult } from './types.ts'
 
 export const SHARED_PYTHON_SPEC = '3.10'
-export const SHARED_MARIVO_PACKAGE_SPEC = 'marivo[duckdb,trino,clickhouse]'
+const PINNED_MARIVO_VERSION = '0.5.0'
+export const SHARED_MARIVO_PACKAGE_SPEC = `marivo[duckdb,trino,clickhouse]==${PINNED_MARIVO_VERSION}`
 export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 
 const INSTALLATION_SCHEMA = 'dsh-data-analysis-runtime/v3'
@@ -325,6 +326,8 @@ async function validatedExisting(
 ): Promise<SharedMarivoRuntime | undefined> {
   const record = await readInstallation(runtimeRoot)
   if (record === undefined) return undefined
+  if (configuredPython === undefined && record.marivoVersion !== PINNED_MARIVO_VERSION)
+    return undefined
   const expectedPython = configuredPython ?? venvPython(runtimeRoot)
   const expectedSkillsRoot = path.join(runtimeRoot, 'skills')
   if (path.normalize(record.skillsRoot) !== path.normalize(expectedSkillsRoot)) return undefined
@@ -489,14 +492,14 @@ async function installManagedRuntime(
   )
   const executable = venvPython(runtimeRoot)
   requireSuccess(
-    'install latest Marivo',
+    `install Marivo ${PINNED_MARIVO_VERSION}`,
     await policy.run({
       executable: uvExecutable,
       args: ['pip', 'install', '--python', executable, '--upgrade', SHARED_MARIVO_PACKAGE_SPEC],
       limits,
     }),
   )
-  return probeRuntime(runtimeRoot, executable, environment, timeoutMs)
+  return probeRuntime(runtimeRoot, executable, environment, timeoutMs, PINNED_MARIVO_VERSION)
 }
 
 /** Ensure and validate the one DSH-home-owned Marivo installation. */

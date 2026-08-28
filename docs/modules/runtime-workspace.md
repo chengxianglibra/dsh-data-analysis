@@ -52,11 +52,11 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
-| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装 `marivo[duckdb,trino,clickhouse]` |
+| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装 `marivo[duckdb,trino,clickhouse]==0.5.0` |
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器可导入 Marivo，随后同步 Skill 和发布 marker |
 
-插件管理模式在首次创建时不固定 Marivo 版本，由 package resolver 选择当时兼容版本；发布 marker 后
-按实际版本稳定复用。插件提高 capability marker 时，旧 Runtime 会作为无效安装备份并重建；普通 Workspace
+插件管理模式固定安装 Marivo 0.5.0；发布 marker 后按该版本稳定复用。发现旧版本 Runtime 时，
+它会作为无效安装备份并重建；普通 Workspace
 或 Session 启动不会仅为追逐新版本联网升级。管理员解释器缺少 capability 时明确失败并要求先升级 Marivo。
 
 ### 并发与发布

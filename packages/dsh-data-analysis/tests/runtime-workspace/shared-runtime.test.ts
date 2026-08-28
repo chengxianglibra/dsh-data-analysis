@@ -10,7 +10,7 @@ import {
   SHARED_MARIVO_PACKAGE_SPEC,
 } from '../../src/environment/index.ts'
 
-const FIXTURE_MARIVO_VERSION = '9.8.7'
+const FIXTURE_MARIVO_VERSION = '0.5.0'
 
 const FAKE_UV = String.raw`#!/usr/bin/env node
 import { appendFileSync, chmodSync, copyFileSync, mkdirSync } from 'node:fs'
@@ -119,7 +119,7 @@ async function fixture(): Promise<RuntimeFixture> {
   }
 }
 
-test('concurrent first starts install one latest-resolved shared Runtime and later reuse its marker', async (t) => {
+test('concurrent first starts install one pinned shared Runtime and later reuse its marker', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
   const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
@@ -137,7 +137,7 @@ test('concurrent first starts install one latest-resolved shared Runtime and lat
     .split('\n')
     .map((line) => JSON.parse(line) as string[])
   assert.equal(calls.filter((args) => args[0] === 'pip' && args[1] === 'install').length, 1)
-  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]')
+  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.0')
   assert.ok(calls.some((args) => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC))
   const marker = JSON.parse(
     await readFile(path.join(item.runtimeRoot, 'installation.json'), 'utf8'),
@@ -147,6 +147,31 @@ test('concurrent first starts install one latest-resolved shared Runtime and lat
   assert.deepEqual(marker.capabilities, ['finding-render-v1'])
   await stat(path.join(first.skillsRoot, 'marivo-analysis', 'SKILL.md'))
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
+})
+
+test('a managed Runtime on another Marivo version is rebuilt to the pinned version', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const initial = await ensureSharedMarivoRuntime(config, { environment: item.environment })
+  const marker = JSON.parse(await readFile(initial.installationPath, 'utf8')) as Record<
+    string,
+    unknown
+  >
+  marker.marivoVersion = '0.4.16'
+  await writeFile(initial.installationPath, `${JSON.stringify(marker)}\n`)
+
+  const current = await ensureSharedMarivoRuntime(config, { environment: item.environment })
+  assert.equal(current.marivoVersion, '0.5.0')
+  const calls = (await readFile(item.recordPath, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as string[])
+  const installCalls = calls.filter((args) => args[0] === 'pip' && args[1] === 'install')
+  assert.equal(installCalls.length, 2)
+  assert.ok(installCalls.every((args) => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC))
+  const siblings = await import('node:fs/promises').then((fs) => fs.readdir(item.root))
+  assert.ok(siblings.some((name) => name.startsWith('runtime.invalid-')))
 })
 
 test('a managed v2 marker is rebuilt once to publish the required capability marker', async (t) => {

@@ -34,8 +34,8 @@ npx @deepseek-ai/dsh web
 ```
 
 首次启动通过本机 `uv` 在
-`$DSH_HOME/dsh-data-analysis/runtimes/marivo` 安装不带版本约束的共享
-`marivo[duckdb,trino,clickhouse]`，由 PyPI 解析当时最新兼容版本。实际版本记录在
+`$DSH_HOME/dsh-data-analysis/runtimes/marivo` 固定安装共享
+`marivo[duckdb,trino,clickhouse]==0.5.0`。实际版本记录在
 `installation.json` 中并供后续启动校验和复用；Runtime 必须公开 `finding-render-v1` capability。每个 Agent 默认按自己的
 `session.header.cwd` 初始化 `marivo.toml`、`models/` 和 `.marivo/`，不会创建 Workspace
 `.venv` 或 skill 链接。两个 Marivo skills 从共享 Runtime 全局提供，项目同名 skill 保持
