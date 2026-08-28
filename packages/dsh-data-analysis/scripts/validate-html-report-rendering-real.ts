@@ -8,28 +8,25 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import LlmRuntime, {
-  createUserMessage,
   type ContentBlock,
+  createUserMessage,
   type TokenUsage,
 } from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
-import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import {
-  bindMarivoEnvironment,
-  FixedSubprocessPolicy,
-} from '../src/environment/index.ts'
+import { bindMarivoEnvironment, FixedSubprocessPolicy } from '../src/environment/index.ts'
 import { apply, inject } from '../src/plugin.ts'
 import {
   MARIVO_REPORT_RENDER_TOOL_NAME,
   parseReportProjection,
-  reportDocumentDigest,
   type ReportDocumentV1,
   type ReportRenderValueV1,
+  reportDocumentDigest,
 } from '../src/report/index.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
 
@@ -112,31 +109,41 @@ const observedResults = new Map<string, ObservedToolResult>()
 
 async function writeEarlyFailure(stage: string, error: unknown): Promise<void> {
   await mkdir(path.dirname(validationPath), { recursive: true })
-  await writeFile(validationPath, `${JSON.stringify({
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    status: 'failed',
-    runId,
-    model: { provider: 'deepseek-official', id: model, thinking: 'disabled' },
-    environment: {
-      pythonExecutable,
-      credentialValuesRecorded: false,
-      validationHome,
-      fixtureRoot,
-    },
-    stage,
-    failure: errorSummary(error),
-  }, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(
+    validationPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        status: 'failed',
+        runId,
+        model: { provider: 'deepseek-official', id: model, thinking: 'disabled' },
+        environment: {
+          pythonExecutable,
+          credentialValuesRecorded: false,
+          validationHome,
+          fixtureRoot,
+        },
+        stage,
+        failure: errorSummary(error),
+      },
+      null,
+      2,
+    )}\n`,
+    { mode: 0o600 },
+  )
   await chmod(validationPath, 0o600)
-  process.stderr.write(`${JSON.stringify({ status: 'failed', stage, runRoot, validationPath }, null, 2)}\n`)
+  process.stderr.write(
+    `${JSON.stringify({ status: 'failed', stage, runRoot, validationPath }, null, 2)}\n`,
+  )
 }
 
 function textFromBlocks(blocks: readonly ContentBlock[]): string {
-  return blocks.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+  return blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
 function finalAssistantText(events: readonly SessionEvent[]): string {
-  const last = events.filter(event => event.type === 'assistant/message').at(-1)
+  const last = events.filter((event) => event.type === 'assistant/message').at(-1)
   return last?.type === 'assistant/message' ? textFromBlocks(last.data.message.content) : ''
 }
 
@@ -151,7 +158,7 @@ function parseArguments(raw: string): unknown {
 function errorSummary(error: unknown): { name: string; code?: string; message: string } {
   if (!(error instanceof Error)) return { name: 'UnknownError', message: String(error) }
   const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined
-  return { name: error.name, ...code === undefined ? {} : { code }, message: error.message }
+  return { name: error.name, ...(code === undefined ? {} : { code }), message: error.message }
 }
 
 function usageTotals(events: readonly SessionEvent[]): UsageTotals {
@@ -173,9 +180,8 @@ function usageTotals(events: readonly SessionEvent[]): UsageTotals {
     totals.cacheWriteTokens! += usage.cacheWriteTokens ?? 0
     totals.reasoningTokens! += usage.reasoningTokens ?? 0
   }
-  totals.billedInputTokens = totals.inputTokens
-    + (totals.cacheReadTokens ?? 0)
-    + (totals.cacheWriteTokens ?? 0)
+  totals.billedInputTokens =
+    totals.inputTokens + (totals.cacheReadTokens ?? 0) + (totals.cacheWriteTokens ?? 0)
   totals.totalTokens = totals.billedInputTokens + totals.outputTokens
   return totals
 }
@@ -187,31 +193,41 @@ function reportCalls(events: readonly SessionEvent[]): ReportCallSummary[] {
     const args = parseArguments(event.data.arguments)
     const observed = observedResults.get(callId)
     if (observed === undefined) return [{ callId, arguments: args, status: 'missing-result' }]
-    if (observed.isError) return [{
-      callId, arguments: args, status: 'error', errorText: observed.errorText,
-    }]
+    if (observed.isError)
+      return [
+        {
+          callId,
+          arguments: args,
+          status: 'error',
+          errorText: observed.errorText,
+        },
+      ]
     const value = observed.value as ReportRenderValueV1 | undefined
     if (value?.status === 'blocked') {
-      return [{
-        callId,
-        arguments: args,
-        status: 'blocked',
-        failedStages: value.checks
-          .filter(check => check.status !== 'passed')
-          .map(check => check.stage),
-        issueCodes: value.checks.flatMap(check => check.issues.map(issue => issue.code)),
-      }]
+      return [
+        {
+          callId,
+          arguments: args,
+          status: 'blocked',
+          failedStages: value.checks
+            .filter((check) => check.status !== 'passed')
+            .map((check) => check.stage),
+          issueCodes: value.checks.flatMap((check) => check.issues.map((issue) => issue.code)),
+        },
+      ]
     }
     if (value?.status === 'ready') {
-      return [{
-        callId,
-        arguments: args,
-        status: 'ready',
-        title: value.title,
-        path: value.path,
-        reportDigest: value.report_digest,
-        documentDigest: value.document_digest,
-      }]
+      return [
+        {
+          callId,
+          arguments: args,
+          status: 'ready',
+          title: value.title,
+          path: value.path,
+          reportDigest: value.report_digest,
+          documentDigest: value.document_digest,
+        },
+      ]
     }
     return [{ callId, arguments: args, status: 'missing-result' }]
   })
@@ -231,11 +247,11 @@ function exactDocument(call: ReportCallSummary): ReportDocumentV1 {
 }
 
 function blockKinds(document: ReportDocumentV1): string[] {
-  return document.sections.flatMap(section => section.blocks.map(block => block.kind))
+  return document.sections.flatMap((section) => section.blocks.map((block) => block.kind))
 }
 
 function readyCall(result: TurnResult): ReportCallSummary {
-  const ready = result.reportCalls.filter(call => call.status === 'ready')
+  const ready = result.reportCalls.filter((call) => call.status === 'ready')
   assert.equal(ready.length, 1, JSON.stringify(result.reportCalls))
   return ready[0]!
 }
@@ -276,20 +292,16 @@ async function createFixture(): Promise<FixtureValue> {
   )
   await writeFile(
     path.join(fixtureRoot, 'models', 'datasources', 'warehouse.py'),
-    [
-      'import marivo.datasource as md',
-      "md.duckdb(name='warehouse', path=':memory:')",
-      '',
-    ].join('\n'),
+    ['import marivo.datasource as md', "md.duckdb(name='warehouse', path=':memory:')", ''].join(
+      '\n',
+    ),
   )
   await writeFile(path.join(fixtureRoot, 'models', 'semantic', 'sales', '__init__.py'), '')
   await writeFile(
     path.join(fixtureRoot, 'models', 'semantic', 'sales', '_domain.py'),
-    [
-      'import marivo.semantic as ms',
-      "ms.domain(name='sales', owner='DSH validation')",
-      '',
-    ].join('\n'),
+    ['import marivo.semantic as ms', "ms.domain(name='sales', owner='DSH validation')", ''].join(
+      '\n',
+    ),
   )
   await writeFile(
     path.join(fixtureRoot, 'models', 'semantic', 'sales', 'datasets.py'),
@@ -443,14 +455,24 @@ const compatibilityPreflight = await (async () => {
   assert.equal(parsed.ok, false, JSON.stringify(parsed))
   if (parsed.ok) throw new Error('Mixed Finding compatibility preflight was unexpectedly ready')
   assert.equal(parsed.issues.length, 3, JSON.stringify(parsed.issues))
-  assert.deepEqual(parsed.issues.map(issue => issue.location), [
-    'finding_groups[0]', 'finding_groups[1]', 'artifact_refs[0]',
-  ])
+  assert.deepEqual(
+    parsed.issues.map((issue) => issue.location),
+    ['finding_groups[0]', 'finding_groups[1]', 'artifact_refs[0]'],
+  )
   for (const issue of parsed.issues.slice(0, 2)) {
     assert.equal(issue.code, 'evidence-not-compatible')
-    assert.match(issue.message, new RegExp(fixture.timeSeries.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-    assert.match(issue.message, new RegExp(fixture.segmented.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-    for (const kind of [...fixture.mixedCompatibility.issueKinds, ...fixture.mixedCompatibility.omittedIssueKinds]) {
+    assert.match(
+      issue.message,
+      new RegExp(fixture.timeSeries.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    )
+    assert.match(
+      issue.message,
+      new RegExp(fixture.segmented.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    )
+    for (const kind of [
+      ...fixture.mixedCompatibility.issueKinds,
+      ...fixture.mixedCompatibility.omittedIssueKinds,
+    ]) {
       assert.match(issue.message, new RegExp(kind.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     }
     assert.match(issue.repair, /resubmit the complete ReportDocument v1/)
@@ -547,62 +569,77 @@ try {
     order: 100,
     text: 'Available skill: marivo-analysis. Load it before governed Marivo analysis or report work.',
   })
-  ctx.tools.register(defineTool({
-    name: 'skill',
-    description: 'Load the full instructions for one exact available skill.',
-    parameters: { name: { type: 'string', required: true } },
-    output: {
-      schema: {
-        type: 'object', additionalProperties: false,
-        properties: {
-          name: { type: 'string', required: true },
-          provider: { type: 'string', required: true },
-          content: { type: 'string', required: true },
+  ctx.tools.register(
+    defineTool({
+      name: 'skill',
+      description: 'Load the full instructions for one exact available skill.',
+      parameters: { name: { type: 'string', required: true } },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            name: { type: 'string', required: true },
+            provider: { type: 'string', required: true },
+            content: { type: 'string', required: true },
+          },
         },
+        render: (_args, value) => [
+          {
+            type: 'text',
+            text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
+          },
+        ],
       },
-      render: (_args, value) => [{
-        type: 'text',
-        text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
-      }],
-    },
-    async execute({ name }, exec) {
-      const skill = await ctx.skills.get(name, {
-        cwd: exec.agent?.session.header.cwd ?? fixtureRoot,
-        scope: exec.agent,
-        signal: exec.signal,
-      })
-      if (skill === undefined) throw new Error(`unknown skill ${name}`)
-      return { name: skill.name, provider: skill.provider, content: skill.content }
-    },
-  }))
+      async execute({ name }, exec) {
+        const skill = await ctx.skills.get(name, {
+          cwd: exec.agent?.session.header.cwd ?? fixtureRoot,
+          scope: exec.agent,
+          signal: exec.signal,
+        })
+        if (skill === undefined) throw new Error(`unknown skill ${name}`)
+        return { name: skill.name, provider: skill.provider, content: skill.content }
+      },
+    }),
+  )
   const stopResults = ctx.on('tools/result', (exec, result) => {
     if (exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME) return
-    observedResults.set(String(exec.callId), result.isError
-      ? {
-          isError: true,
-          errorText: result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'),
-        }
-      : { isError: false, value: structuredClone(result.value) })
+    observedResults.set(
+      String(exec.callId),
+      result.isError
+        ? {
+            isError: true,
+            errorText: result.content
+              .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+              .join('\n'),
+          }
+        : { isError: false, value: structuredClone(result.value) },
+    )
   })
 
-  plugin = await ctx.plugin({
-    name: 'dsh-data-analysis-html-report-real-validation',
-    inject,
-    apply,
-  }, {
-    runtimeRoot,
-    pythonExecutable,
-  })
+  plugin = await ctx.plugin(
+    {
+      name: 'dsh-data-analysis-html-report-real-validation',
+      inject,
+      apply,
+    },
+    {
+      runtimeRoot,
+      pythonExecutable,
+    },
+  )
 
   async function runTurn(agent: Agent, id: string, prompt: string): Promise<TurnResult> {
     const errors: unknown[] = []
     const startIndex = agent.session.events.length
-    const stopErrors = agent.ctx.on('agent/error', payload => errors.push(payload.error))
+    const stopErrors = agent.ctx.on('agent/error', (payload) => errors.push(payload.error))
     const startedAt = performance.now()
-    agent.followup(createUserMessage({
-      content: [{ type: 'text', text: prompt }],
-      source: { kind: 'user' },
-    }))
+    agent.followup(
+      createUserMessage({
+        content: [{ type: 'text', text: prompt }],
+        source: { kind: 'user' },
+      }),
+    )
     await agent.whenIdle()
     const events = agent.session.events.slice(startIndex)
     const finalText = finalAssistantText(events)
@@ -611,7 +648,7 @@ try {
       completed: finalText.includes(markerFor(id)),
       finalText,
       reportCalls: reportCalls(events),
-      steps: events.filter(event => event.type === 'step/start').length,
+      steps: events.filter((event) => event.type === 'step/start').length,
       latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
       usage: usageTotals(events),
       errors: errors.map(errorSummary),
@@ -621,102 +658,153 @@ try {
     return result
   }
 
-  const reportAgent = ctx.agentLoop.create(SessionId(`html-report-real-main-${runId}`), {
-    provider: 'deepseek-official',
-    model,
-    maxTokens: 8_192,
-  }, { cwd: fixtureRoot })
+  const reportAgent = ctx.agentLoop.create(
+    SessionId(`html-report-real-main-${runId}`),
+    {
+      provider: 'deepseek-official',
+      model,
+      maxTokens: 8_192,
+    },
+    { cwd: fixtureRoot },
+  )
   validationAgents.push(reportAgent)
   const timeX = fixture.timeSeries.columns[0]!
   const timeY = fixture.timeSeries.columns[1]!
   const segmentX = fixture.segmented.columns[0]!
   const segmentY = fixture.segmented.columns[1]!
-  const initial = await runTurn(reportAgent, 'initial-generation', [
-    'I explicitly request a durable Chinese HTML analysis report.',
-    'Call skill exactly once with {"name":"marivo-analysis"}, then call marivo_report_render.',
-    `Use exact Marivo session_id ${JSON.stringify(fixture.sessionId)}.`,
-    `Use time-series Artifact ${JSON.stringify(fixture.timeSeries.ref)} with columns ${JSON.stringify(fixture.timeSeries.columns)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}.`,
-    `Use segmented Artifact ${JSON.stringify(fixture.segmented.ref)} with columns ${JSON.stringify(fixture.segmented.columns)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
-    'Submit one complete dsh-data-analysis-report/v1 document titled “支付收入分析报告”.',
-    `It must include text plus: an explicit line chart x=${JSON.stringify(timeX)} y=${JSON.stringify(timeY)}, an explicit bar chart x=${JSON.stringify(segmentX)} y=${JSON.stringify(segmentY)}, a table with max_rows=5, and an evidence block.`,
-    'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to each chart, table, text, or evidence block.',
-    `Every data/source block must use its exact Artifact/Finding above. End the final response with ${markerFor('initial-generation')}.`,
-  ].join('\n'))
+  const initial = await runTurn(
+    reportAgent,
+    'initial-generation',
+    [
+      'I explicitly request a durable Chinese HTML analysis report.',
+      'Call skill exactly once with {"name":"marivo-analysis"}, then call marivo_report_render.',
+      `Use exact Marivo session_id ${JSON.stringify(fixture.sessionId)}.`,
+      `Use time-series Artifact ${JSON.stringify(fixture.timeSeries.ref)} with columns ${JSON.stringify(fixture.timeSeries.columns)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}.`,
+      `Use segmented Artifact ${JSON.stringify(fixture.segmented.ref)} with columns ${JSON.stringify(fixture.segmented.columns)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
+      'Submit one complete dsh-data-analysis-report/v1 document titled “支付收入分析报告”.',
+      `It must include text plus: an explicit line chart x=${JSON.stringify(timeX)} y=${JSON.stringify(timeY)}, an explicit bar chart x=${JSON.stringify(segmentX)} y=${JSON.stringify(segmentY)}, a table with max_rows=5, and an evidence block.`,
+      'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to each chart, table, text, or evidence block.',
+      `Every data/source block must use its exact Artifact/Finding above. End the final response with ${markerFor('initial-generation')}.`,
+    ].join('\n'),
+  )
   assert.ok(initial.completed, initial.finalText)
   assert.equal(initial.errors.length, 0, JSON.stringify(initial.errors))
   assert.ok(initial.reportCalls.length >= 1, JSON.stringify(initial.reportCalls))
   assert.equal(initial.reportCalls.at(-1)?.status, 'ready', JSON.stringify(initial.reportCalls))
   const initialReady = readyCall(initial)
   const initialDocument = exactDocument(initialReady)
-  assert.deepEqual(new Set(blockKinds(initialDocument)), new Set(['text', 'chart', 'table', 'evidence']))
-  assert.equal(initialReady.documentDigest, reportDocumentDigest(await publishedDocument(initialReady)))
+  assert.deepEqual(
+    new Set(blockKinds(initialDocument)),
+    new Set(['text', 'chart', 'table', 'evidence']),
+  )
+  assert.equal(
+    initialReady.documentDigest,
+    reportDocumentDigest(await publishedDocument(initialReady)),
+  )
   await assertReadyArtifact(initialReady)
 
-  const revision = await runTurn(reportAgent, 'complete-revision', [
-    'Revise the durable report already created in this conversation.',
-    'Call marivo_report_render exactly once in this turn. Submit another complete ReportDocument in that single call, never a patch and never read the old document from disk.',
-    'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining that this is the revised layout.',
-    'Retain text, explicit line, explicit bar, table, and evidence blocks with the same exact session, Artifacts, columns, and Findings from the previous turn.',
-    `End the final response with ${markerFor('complete-revision')}.`,
-  ].join('\n'))
+  const revision = await runTurn(
+    reportAgent,
+    'complete-revision',
+    [
+      'Revise the durable report already created in this conversation.',
+      'Call marivo_report_render exactly once in this turn. Submit another complete ReportDocument in that single call, never a patch and never read the old document from disk.',
+      'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining that this is the revised layout.',
+      'Retain text, explicit line, explicit bar, table, and evidence blocks with the same exact session, Artifacts, columns, and Findings from the previous turn.',
+      `End the final response with ${markerFor('complete-revision')}.`,
+    ].join('\n'),
+  )
   assert.ok(revision.completed, revision.finalText)
   assert.equal(revision.errors.length, 0, JSON.stringify(revision.errors))
   assert.ok(revision.reportCalls.length >= 1, JSON.stringify(revision.reportCalls))
   assert.equal(revision.reportCalls.at(-1)?.status, 'ready', JSON.stringify(revision.reportCalls))
   const revisionReady = readyCall(revision)
   const revisionDocument = exactDocument(revisionReady)
-  assert.deepEqual(new Set(blockKinds(revisionDocument)), new Set(['text', 'chart', 'table', 'evidence']))
-  assert.equal(revisionReady.documentDigest, reportDocumentDigest(await publishedDocument(revisionReady)))
+  assert.deepEqual(
+    new Set(blockKinds(revisionDocument)),
+    new Set(['text', 'chart', 'table', 'evidence']),
+  )
+  assert.equal(
+    revisionReady.documentDigest,
+    reportDocumentDigest(await publishedDocument(revisionReady)),
+  )
   assert.notEqual(revisionReady.reportDigest, initialReady.reportDigest)
   assert.notEqual(revisionReady.documentDigest, initialReady.documentDigest)
   assert.notEqual(revisionReady.path, initialReady.path)
   await assertReadyArtifact(initialReady)
   await assertReadyArtifact(revisionReady)
 
-  const repairAgent = ctx.agentLoop.create(SessionId(`html-report-real-repair-${runId}`), {
-    provider: 'deepseek-official',
-    model,
-    maxTokens: 8_192,
-  }, { cwd: fixtureRoot })
+  const repairAgent = ctx.agentLoop.create(
+    SessionId(`html-report-real-repair-${runId}`),
+    {
+      provider: 'deepseek-official',
+      model,
+      maxTokens: 8_192,
+    },
+    { cwd: fixtureRoot },
+  )
   validationAgents.push(repairAgent)
-  const repaired = await runTurn(repairAgent, 'blocked-repair', [
-    'I explicitly request a durable Chinese HTML report and a repair demonstration.',
-    'Call skill exactly once with {"name":"marivo-analysis"}.',
-    `Use exact session ${JSON.stringify(fixture.sessionId)}, time Artifact ${JSON.stringify(fixture.timeSeries.ref)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}, segmented Artifact ${JSON.stringify(fixture.segmented.ref)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
-    `The complete document must contain text, line (${JSON.stringify(timeX)}, ${JSON.stringify(timeY)}), bar (${JSON.stringify(segmentX)}, ${JSON.stringify(segmentY)}), table, and evidence blocks.`,
-    'Use only lowercase kebab-case block IDs. In the final repaired document, never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
-    'For the first marivo_report_render call deliberately set the table max_rows to 0, set the line y field to missing_revenue, and attach both Findings to the summary text block. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, the exact line y column, and only compatible per-block Finding selections, without narrating or stopping between the two calls.',
-    `End the final response with ${markerFor('blocked-repair')}.`,
-  ].join('\n'))
+  const repaired = await runTurn(
+    repairAgent,
+    'blocked-repair',
+    [
+      'I explicitly request a durable Chinese HTML report and a repair demonstration.',
+      'Call skill exactly once with {"name":"marivo-analysis"}.',
+      `Use exact session ${JSON.stringify(fixture.sessionId)}, time Artifact ${JSON.stringify(fixture.timeSeries.ref)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}, segmented Artifact ${JSON.stringify(fixture.segmented.ref)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
+      `The complete document must contain text, line (${JSON.stringify(timeX)}, ${JSON.stringify(timeY)}), bar (${JSON.stringify(segmentX)}, ${JSON.stringify(segmentY)}), table, and evidence blocks.`,
+      'Use only lowercase kebab-case block IDs. In the final repaired document, never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
+      'For the first marivo_report_render call deliberately set the table max_rows to 0, set the line y field to missing_revenue, and attach both Findings to the summary text block. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, the exact line y column, and only compatible per-block Finding selections, without narrating or stopping between the two calls.',
+      `End the final response with ${markerFor('blocked-repair')}.`,
+    ].join('\n'),
+  )
   assert.ok(repaired.completed, repaired.finalText)
   assert.equal(repaired.errors.length, 0, JSON.stringify(repaired.errors))
   assert.ok(repaired.reportCalls.length >= 2, JSON.stringify(repaired.reportCalls))
   assert.equal(repaired.reportCalls.at(-1)?.status, 'ready', JSON.stringify(repaired.reportCalls))
-  const documentBlocked = repaired.reportCalls.find(call => (
-    call.status === 'blocked' && call.failedStages?.includes('document')
-  ))
+  const documentBlocked = repaired.reportCalls.find(
+    (call) => call.status === 'blocked' && call.failedStages?.includes('document'),
+  )
   assert.ok(documentBlocked, JSON.stringify(repaired.reportCalls))
   assert.ok((documentBlocked.issueCodes?.length ?? 0) > 0)
   assert.ok(documentBlocked.failedStages?.includes('marivo'), JSON.stringify(documentBlocked))
   assert.ok(documentBlocked.failedStages?.includes('visual'), JSON.stringify(documentBlocked))
-  assert.ok(documentBlocked.issueCodes?.includes('invalid-max-rows'), JSON.stringify(documentBlocked))
-  assert.ok(documentBlocked.issueCodes?.includes('evidence-not-compatible'), JSON.stringify(documentBlocked))
-  assert.ok(documentBlocked.issueCodes?.includes('chart-column-not-found'), JSON.stringify(documentBlocked))
+  assert.ok(
+    documentBlocked.issueCodes?.includes('invalid-max-rows'),
+    JSON.stringify(documentBlocked),
+  )
+  assert.ok(
+    documentBlocked.issueCodes?.includes('evidence-not-compatible'),
+    JSON.stringify(documentBlocked),
+  )
+  assert.ok(
+    documentBlocked.issueCodes?.includes('chart-column-not-found'),
+    JSON.stringify(documentBlocked),
+  )
   const repairedReady = readyCall(repaired)
   const repairedDocument = exactDocument(repairedReady)
-  assert.deepEqual(new Set(blockKinds(repairedDocument)), new Set(['text', 'chart', 'table', 'evidence']))
+  assert.deepEqual(
+    new Set(blockKinds(repairedDocument)),
+    new Set(['text', 'chart', 'table', 'evidence']),
+  )
   await assertReadyArtifact(repairedReady)
 
   for (const call of [initialReady, revisionReady, repairedReady]) {
     const reportDirectory = path.dirname(call.path!)
-    assert.deepEqual((await Promise.all([
-      stat(path.join(reportDirectory, 'index.html')),
-      stat(path.join(reportDirectory, 'manifest.json')),
-      stat(path.join(reportDirectory, 'report-document.json')),
-    ])).map(item => item.isFile()), [true, true, true])
+    assert.deepEqual(
+      (
+        await Promise.all([
+          stat(path.join(reportDirectory, 'index.html')),
+          stat(path.join(reportDirectory, 'manifest.json')),
+          stat(path.join(reportDirectory, 'report-document.json')),
+        ])
+      ).map((item) => item.isFile()),
+      [true, true, true],
+    )
   }
   const reportsRoot = path.join(validationHome, 'dsh-data-analysis', 'reports')
-  const reportTree = JSON.stringify(await readFile(path.join(path.dirname(initialReady.path!), 'manifest.json'), 'utf8'))
+  const reportTree = JSON.stringify(
+    await readFile(path.join(path.dirname(initialReady.path!), 'manifest.json'), 'utf8'),
+  )
   assert.doesNotMatch(reportTree, /credential|api[_-]?key/i)
   await assert.rejects(() => stat(path.join(reportsRoot, 'latest')), { code: 'ENOENT' })
   await assert.rejects(() => stat(path.join(reportsRoot, 'registry.json')), { code: 'ENOENT' })
@@ -748,8 +836,8 @@ try {
       compatibilityCount: projection.ok ? projection.value.compatibilities.length : 0,
       compatibilityPreflight: {
         issueCount: compatibilityPreflight.length,
-        issueCodes: compatibilityPreflight.map(issue => issue.code),
-        locations: compatibilityPreflight.map(issue => issue.location),
+        issueCodes: compatibilityPreflight.map((issue) => issue.code),
+        locations: compatibilityPreflight.map((issue) => issue.location),
       },
       findingOnly: {
         artifactCount: findingOnlyProjection.artifacts.length,
@@ -770,10 +858,16 @@ try {
   }
   if (originalDshHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = originalDshHome
-  process.stdout.write(`${JSON.stringify({
-    status: finalStatus,
-    runRoot,
-    validationPath,
-    journeyCount: journeys.length,
-  }, null, 2)}\n`)
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        status: finalStatus,
+        runRoot,
+        validationPath,
+        journeyCount: journeys.length,
+      },
+      null,
+      2,
+    )}\n`,
+  )
 }

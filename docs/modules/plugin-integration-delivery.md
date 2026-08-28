@@ -113,7 +113,8 @@ CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsco
 
 | 层级 | 命令 | 目的 |
 | --- | --- | --- |
-| 静态与确定性测试 | `npm run check` | TypeScript typecheck + 各服务端模块的确定性测试 |
+| 静态与确定性测试 | `npm run check` | Biome format/lint/import + 完整依赖树 + TypeScript/JavaScript typecheck + 各模块确定性测试 |
+| CI 完整门禁 | `npm run ci` | 静态检查、依赖树、确定性测试、构建和 package verification |
 | 构建 | `npm run build` | 生成服务端、声明、客户端和 executable CLI |
 | 包内容 | `npm run verify:plugin-package` | 验证 exports 对应文件、排除开发文件、检查 CLI mode |
 | 受控打包 | `npm run pack:plugin` | 重跑检查并生成安装 tarball |

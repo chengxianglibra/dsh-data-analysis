@@ -143,14 +143,17 @@ test('default .venv binding admits non-gating doctor failures and parses non-zer
   const fixture = await fixtureProject()
   t.after(fixture.cleanup)
 
-  const environment = await bindMarivoEnvironment({ projectRoot: fixture.root }, {
-    environment: {
-      PATH: process.env.PATH,
-      DOCTOR_EXIT: '7',
-      DOCTOR_OVERALL_STATUS: 'fail',
-      NON_GATING_STATUS: 'fail',
+  const environment = await bindMarivoEnvironment(
+    { projectRoot: fixture.root },
+    {
+      environment: {
+        PATH: process.env.PATH,
+        DOCTOR_EXIT: '7',
+        DOCTOR_OVERALL_STATUS: 'fail',
+        NON_GATING_STATUS: 'fail',
+      },
     },
-  })
+  )
 
   assert.equal(environment.status, 'ready')
   assert.equal(environment.binding.projectRoot, fixture.root)
@@ -174,22 +177,28 @@ test('default .venv binding admits non-gating doctor failures and parses non-zer
 test('environment CLI payload exposes stable admission identity without a doctor snapshot', async (t) => {
   const fixture = await fixtureProject()
   t.after(fixture.cleanup)
-  const environment = await bindMarivoEnvironment({ projectRoot: fixture.root }, {
-    environment: {
-      PATH: process.env.PATH,
-      DOCTOR_EXIT: '7',
-      DOCTOR_OVERALL_STATUS: 'fail',
-      NON_GATING_STATUS: 'fail',
+  const environment = await bindMarivoEnvironment(
+    { projectRoot: fixture.root },
+    {
+      environment: {
+        PATH: process.env.PATH,
+        DOCTOR_EXIT: '7',
+        DOCTOR_OVERALL_STATUS: 'fail',
+        NON_GATING_STATUS: 'fail',
+      },
     },
-  })
-  const payload = environmentPayload({
-    runtimeRoot: path.join(fixture.root, 'runtime'),
-    pythonExecutable: environment.binding.pythonExecutable,
-    marivoVersion: environment.binding.marivoVersion,
-    packagePath: environment.binding.packagePath,
-    skillsRoot: path.join(fixture.root, 'runtime', 'skills'),
-    installationPath: path.join(fixture.root, 'runtime', 'installation.json'),
-  }, environment)
+  )
+  const payload = environmentPayload(
+    {
+      runtimeRoot: path.join(fixture.root, 'runtime'),
+      pythonExecutable: environment.binding.pythonExecutable,
+      marivoVersion: environment.binding.marivoVersion,
+      packagePath: environment.binding.packagePath,
+      skillsRoot: path.join(fixture.root, 'runtime', 'skills'),
+      installationPath: path.join(fixture.root, 'runtime', 'installation.json'),
+    },
+    environment,
+  )
 
   assert.equal(payload.status, 'ready')
   assert.equal(payload.projectRoot, fixture.root)
@@ -233,10 +242,11 @@ for (const [name, environment, expectedCheck] of [
     const fixture = await fixtureProject(false)
     t.after(fixture.cleanup)
     const error = await assertEnvironmentError(
-      () => bindMarivoEnvironment(
-        { projectRoot: fixture.root, pythonExecutable: fixture.executable },
-        { environment: { PATH: process.env.PATH, ...environment } },
-      ),
+      () =>
+        bindMarivoEnvironment(
+          { projectRoot: fixture.root, pythonExecutable: fixture.executable },
+          { environment: { PATH: process.env.PATH, ...environment } },
+        ),
       'doctor-admission-failed',
     )
     assert.equal(error.details.check, expectedCheck)
@@ -247,10 +257,11 @@ test('invalid doctor JSON is rejected even when stderr and exit code are bounded
   const fixture = await fixtureProject(false)
   t.after(fixture.cleanup)
   const error = await assertEnvironmentError(
-    () => bindMarivoEnvironment(
-      { projectRoot: fixture.root, pythonExecutable: fixture.executable },
-      { environment: { PATH: process.env.PATH, DOCTOR_INVALID_JSON: '1' } },
-    ),
+    () =>
+      bindMarivoEnvironment(
+        { projectRoot: fixture.root, pythonExecutable: fixture.executable },
+        { environment: { PATH: process.env.PATH, DOCTOR_INVALID_JSON: '1' } },
+      ),
     'doctor-json-invalid',
   )
   assert.equal(error.details.exitCode, 1)
@@ -265,7 +276,11 @@ test('fingerprint is stable across non-admission doctor status changes', async (
     environment: { PATH: process.env.PATH, DOCTOR_OVERALL_STATUS: 'ok', NON_GATING_STATUS: 'ok' },
   })
   const second = await bindMarivoEnvironment(config, {
-    environment: { PATH: process.env.PATH, DOCTOR_OVERALL_STATUS: 'fail', NON_GATING_STATUS: 'fail' },
+    environment: {
+      PATH: process.env.PATH,
+      DOCTOR_OVERALL_STATUS: 'fail',
+      NON_GATING_STATUS: 'fail',
+    },
   })
   assert.equal(first.binding.fingerprint, second.binding.fingerprint)
 })
@@ -285,9 +300,11 @@ test('subprocess policy freezes cwd and environment projection at binding time',
     args: ['--record', recordPath],
   })
   assert.equal(result.exitCode, 0)
-  const records = await import('node:fs/promises').then(fs => fs.readFile(recordPath, 'utf8'))
+  const records = await import('node:fs/promises').then((fs) => fs.readFile(recordPath, 'utf8'))
   assert.deepEqual(JSON.parse(records.trim()), {
-    cwd: fixture.root, marker: 'first', persistCredentials: '0',
+    cwd: fixture.root,
+    marker: 'first',
+    persistCredentials: '0',
   })
 
   const overlayPath = path.join(fixture.root, 'overlay.jsonl')
@@ -300,12 +317,15 @@ test('subprocess policy freezes cwd and environment projection at binding time',
       MARIVO_PERSIST_CREDENTIALS: '1',
     },
   })
-  assert.deepEqual(JSON.parse(await import('node:fs/promises').then(fs => fs.readFile(overlayPath, 'utf8'))), {
-    cwd: fixture.root,
-    marker: 'per-operation',
-    credential: 'overlay-secret',
-    persistCredentials: '0',
-  })
+  assert.deepEqual(
+    JSON.parse(await import('node:fs/promises').then((fs) => fs.readFile(overlayPath, 'utf8'))),
+    {
+      cwd: fixture.root,
+      marker: 'per-operation',
+      credential: 'overlay-secret',
+      persistCredentials: '0',
+    },
+  )
 })
 
 test('identity mismatch permanently fails the binding until explicit rebind', async (t) => {
@@ -315,7 +335,10 @@ test('identity mismatch permanently fails the binding until explicit rebind', as
     { projectRoot: fixture.root, pythonExecutable: fixture.executable },
     { environment: { PATH: process.env.PATH, IDENTITY_MODE: 'mismatch' } },
   )
-  await assertEnvironmentError(() => environment.assertImportIdentity(), 'binding-identity-mismatch')
+  await assertEnvironmentError(
+    () => environment.assertImportIdentity(),
+    'binding-identity-mismatch',
+  )
   assert.equal(environment.status, 'failed')
   await assertEnvironmentError(() => environment.assertImportIdentity(), 'binding-failed')
 })
@@ -326,39 +349,46 @@ test('subprocess timeout, cancellation, and output limits are explicit', async (
   const policy = new FixedSubprocessPolicy(fixture.root, { PATH: process.env.PATH })
 
   await assertEnvironmentError(
-    () => policy.run({
-      executable: fixture.executable,
-      args: ['--sleep'],
-      limits: { timeoutMs: 20, terminateGraceMs: 20 },
-    }),
+    () =>
+      policy.run({
+        executable: fixture.executable,
+        args: ['--sleep'],
+        limits: { timeoutMs: 20, terminateGraceMs: 20 },
+      }),
     'subprocess-timeout',
   )
 
   if (process.platform !== 'win32') {
     const descendantMarker = path.join(fixture.root, 'descendant-survived')
     await assertEnvironmentError(
-      () => policy.run({
-        executable: fixture.executable,
-        args: ['--spawn-child', descendantMarker],
-        limits: { timeoutMs: 50, terminateGraceMs: 20 },
-      }),
+      () =>
+        policy.run({
+          executable: fixture.executable,
+          args: ['--spawn-child', descendantMarker],
+          limits: { timeoutMs: 50, terminateGraceMs: 20 },
+        }),
       'subprocess-timeout',
     )
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await new Promise((resolve) => setTimeout(resolve, 300))
     await assert.rejects(() => stat(descendantMarker), { code: 'ENOENT' })
   }
 
   const controller = new AbortController()
-  const pending = policy.run({ executable: fixture.executable, args: ['--sleep'], signal: controller.signal })
+  const pending = policy.run({
+    executable: fixture.executable,
+    args: ['--sleep'],
+    signal: controller.signal,
+  })
   setTimeout(() => controller.abort(), 20)
   await assertEnvironmentError(() => pending, 'subprocess-cancelled')
 
   await assertEnvironmentError(
-    () => policy.run({
-      executable: fixture.executable,
-      args: ['--output', '1000'],
-      limits: { stdoutMaxBytes: 100 },
-    }),
+    () =>
+      policy.run({
+        executable: fixture.executable,
+        args: ['--output', '1000'],
+        limits: { stdoutMaxBytes: 100 },
+      }),
     'subprocess-output-limit',
   )
 })

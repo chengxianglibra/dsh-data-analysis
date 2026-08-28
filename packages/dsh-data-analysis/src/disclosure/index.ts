@@ -1,9 +1,3 @@
-export {
-  installMarivoDisclosure,
-  MARIVO_ROOT_HELP_TARGETS,
-  MarivoDisclosureController,
-  MarivoDisclosureError,
-} from './activation.ts'
 export type {
   MarivoDisclosureFailureRecord,
   MarivoDisclosureOptions,
@@ -14,6 +8,22 @@ export type {
   MarivoSkillActivationRecord,
   MarivoSkillName,
 } from './activation.ts'
+export {
+  installMarivoDisclosure,
+  MARIVO_ROOT_HELP_TARGETS,
+  MarivoDisclosureController,
+  MarivoDisclosureError,
+} from './activation.ts'
+export type {
+  MarivoEnvironmentSource,
+  MarivoHelpDelivery,
+  MarivoHelpDeliveryQuery,
+  MarivoHelpDeliveryResolver,
+  MarivoHelpFailureCode,
+  MarivoHelpLimits,
+  MarivoHelpTargetResult,
+  MarivoHelpValue,
+} from './help.ts'
 export {
   createMarivoHelpTool,
   DEFAULT_MARIVO_HELP_LIMITS,
@@ -27,14 +37,4 @@ export {
   renderMarivoHelpValue,
   resolveMarivoEnvironmentSource,
   resolveMarivoHelpLimits,
-} from './help.ts'
-export type {
-  MarivoEnvironmentSource,
-  MarivoHelpDelivery,
-  MarivoHelpDeliveryQuery,
-  MarivoHelpDeliveryResolver,
-  MarivoHelpFailureCode,
-  MarivoHelpLimits,
-  MarivoHelpTargetResult,
-  MarivoHelpValue,
 } from './help.ts'

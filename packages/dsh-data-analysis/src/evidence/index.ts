@@ -1,3 +1,8 @@
+export type {
+  MarivoCitationMeta,
+  MarivoEvidenceCiteValue,
+  MarivoEvidenceSource,
+} from './citations.ts'
 export {
   createMarivoEvidenceCiteTool,
   MARIVO_CITATION_MAX_HANDLES,
@@ -7,9 +12,4 @@ export {
   MARIVO_EVIDENCE_CITE_TOOL_NAME,
   MarivoCitationRegistry,
   registerMarivoEvidenceCiteTool,
-} from './citations.ts'
-export type {
-  MarivoCitationMeta,
-  MarivoEvidenceCiteValue,
-  MarivoEvidenceSource,
 } from './citations.ts'

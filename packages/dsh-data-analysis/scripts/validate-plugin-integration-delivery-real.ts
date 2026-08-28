@@ -9,12 +9,12 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import LlmRuntime, {
-  createUserMessage,
   type ContentBlock,
+  createUserMessage,
   type TokenUsage,
 } from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
-import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
@@ -28,12 +28,13 @@ import { TestShellEnv } from '../tests/test-shell-env.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
-const reportPath = path.join(workspaceRoot, 'artifacts', 'plugin-integration-delivery-real-model.json')
+const reportPath = path.join(
+  workspaceRoot,
+  'artifacts',
+  'plugin-integration-delivery-real-model.json',
+)
 const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-flash'
-const missingDatasourceCredentials = [
-  'DSH_VALIDATION_USER',
-  'DSH_VALIDATION_PASSWORD',
-] as const
+const missingDatasourceCredentials = ['DSH_VALIDATION_USER', 'DSH_VALIDATION_PASSWORD'] as const
 
 interface UsageTotals extends TokenUsage {
   billedInputTokens: number
@@ -70,39 +71,46 @@ function parseArguments(raw: string): unknown {
 function errorSummary(error: unknown): { name: string; code?: string; message: string } {
   if (!(error instanceof Error)) return { name: 'UnknownError', message: String(error) }
   const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined
-  return { name: error.name, ...code === undefined ? {} : { code }, message: error.message }
+  return { name: error.name, ...(code === undefined ? {} : { code }), message: error.message }
 }
 
 function textFromBlocks(blocks: readonly ContentBlock[]): string {
-  return blocks.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+  return blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
 function summarizeCalls(events: readonly SessionEvent[]): ToolCallSummary[] {
   const results = new Map<string, { isError: boolean; delivery?: string[] }>()
   for (const event of events) {
     if (event.type !== 'tool/result') continue
-    const block = event.data.message.content.find(content => content.type === 'tool-result')
+    const block = event.data.message.content.find((content) => content.type === 'tool-result')
     if (block?.type !== 'tool-result') continue
     const meta = event.data.meta as { kind?: unknown; targets?: unknown } | undefined
-    const delivery = meta?.kind === 'marivo-help-disclosure' && Array.isArray(meta.targets)
-      ? meta.targets.flatMap((item): string[] => (
-          typeof item === 'object' && item !== null && typeof (item as { delivery?: unknown }).delivery === 'string'
-            ? [(item as { delivery: string }).delivery]
-            : []
-        ))
-      : undefined
+    const delivery =
+      meta?.kind === 'marivo-help-disclosure' && Array.isArray(meta.targets)
+        ? meta.targets.flatMap((item): string[] =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as { delivery?: unknown }).delivery === 'string'
+              ? [(item as { delivery: string }).delivery]
+              : [],
+          )
+        : undefined
     results.set(String(block.toolCallId), {
       isError: Boolean(block.isError),
       ...(delivery === undefined ? {} : { delivery }),
     })
   }
-  return events.flatMap(event => event.type === 'tool/call'
-    ? [{
-        name: event.data.name,
-        arguments: parseArguments(event.data.arguments),
-        ...(results.get(String(event.data.callId)) ?? {}),
-      }]
-    : [])
+  return events.flatMap((event) =>
+    event.type === 'tool/call'
+      ? [
+          {
+            name: event.data.name,
+            arguments: parseArguments(event.data.arguments),
+            ...(results.get(String(event.data.callId)) ?? {}),
+          },
+        ]
+      : [],
+  )
 }
 
 function usageTotals(events: readonly SessionEvent[]): UsageTotals {
@@ -124,15 +132,14 @@ function usageTotals(events: readonly SessionEvent[]): UsageTotals {
     totals.cacheWriteTokens! += usage.cacheWriteTokens ?? 0
     totals.reasoningTokens! += usage.reasoningTokens ?? 0
   }
-  totals.billedInputTokens = totals.inputTokens
-    + (totals.cacheReadTokens ?? 0)
-    + (totals.cacheWriteTokens ?? 0)
+  totals.billedInputTokens =
+    totals.inputTokens + (totals.cacheReadTokens ?? 0) + (totals.cacheWriteTokens ?? 0)
   totals.totalTokens = totals.billedInputTokens + totals.outputTokens
   return totals
 }
 
 function finalAssistantText(events: readonly SessionEvent[]): string {
-  const last = events.filter(event => event.type === 'assistant/message').at(-1)
+  const last = events.filter((event) => event.type === 'assistant/message').at(-1)
   return last?.type === 'assistant/message' ? textFromBlocks(last.data.message.content) : ''
 }
 
@@ -151,7 +158,7 @@ function rootHelpTargets(events: readonly SessionEvent[]): string[] {
 }
 
 function toolCalls(result: JourneyResult, name: string): ToolCallSummary[] {
-  return result.toolCalls.filter(call => call.name === name)
+  return result.toolCalls.filter((call) => call.name === name)
 }
 
 async function assertMissingCredentialDoctorFixture(
@@ -165,10 +172,10 @@ async function assertMissingCredentialDoctorFixture(
   })
   const report = parseDoctorReport(result.stdout)
   assert.equal(report.status, 'fail')
-  const checks = report.sections.flatMap(section => section.checks)
+  const checks = report.sections.flatMap((section) => section.checks)
   for (const name of missingDatasourceCredentials) {
     assert.equal(process.env[name], undefined)
-    assert.ok(checks.some(check => check.status === 'fail' && check.id.includes(name)))
+    assert.ok(checks.some((check) => check.status === 'fail' && check.id.includes(name)))
   }
 }
 
@@ -226,64 +233,79 @@ ctx.systemPrompt.section({
   order: 100,
   text: `Available skills:\n- marivo-analysis: trusted governed data analysis\n- marivo-semantic: datasource and reusable semantic authoring or repair\nLoad the matching skill before Marivo work. Ordinary computation needs neither skill.`,
 })
-ctx.tools.register(defineTool({
-  name: 'skill',
-  description: 'Load the full instructions for one exact available skill.',
-  parameters: { name: { type: 'string', required: true } },
-  output: {
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        name: { type: 'string', required: true },
-        provider: { type: 'string', required: true },
-        content: { type: 'string', required: true },
+ctx.tools.register(
+  defineTool({
+    name: 'skill',
+    description: 'Load the full instructions for one exact available skill.',
+    parameters: { name: { type: 'string', required: true } },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string', required: true },
+          provider: { type: 'string', required: true },
+          content: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [
+        {
+          type: 'text',
+          text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
+        },
+      ],
+    },
+    async execute({ name }, exec) {
+      const skill = await ctx.skills.get(name, {
+        cwd: exec.agent?.session.header.cwd ?? workspaceRoot,
+        scope: exec.agent,
+        signal: exec.signal,
+      })
+      if (skill === undefined) throw new Error(`unknown skill ${name}`)
+      return { name: skill.name, provider: skill.provider, content: skill.content }
+    },
+  }),
+)
+ctx.tools.register(
+  defineContentToolFixture({
+    name: 'bound_python',
+    description: 'Run a short read-only Python snippet with the verified binding interpreter.',
+    parameters: {
+      code: {
+        type: 'string',
+        required: true,
+        description: 'Read-only Python source, at most 16000 characters.',
       },
     },
-    render: (_args, value) => [{
-      type: 'text',
-      text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
-    }],
-  },
-  async execute({ name }, exec) {
-    const skill = await ctx.skills.get(name, {
-      cwd: exec.agent?.session.header.cwd ?? workspaceRoot,
-      scope: exec.agent,
-      signal: exec.signal,
-    })
-    if (skill === undefined) throw new Error(`unknown skill ${name}`)
-    return { name: skill.name, provider: skill.provider, content: skill.content }
-  },
-}))
-ctx.tools.register(defineContentToolFixture({
-  name: 'bound_python',
-  description: 'Run a short read-only Python snippet with the verified binding interpreter.',
-  parameters: {
-    code: { type: 'string', required: true, description: 'Read-only Python source, at most 16000 characters.' },
-  },
-  async execute({ code }, exec) {
-    if (code.length > 16_000) throw new Error('bound_python code exceeds 16000 characters')
-    const result = await pythonPolicy.run({
-      executable: environment.binding.pythonExecutable,
-      args: ['-I', '-c', code],
-      limits: { timeoutMs: 30_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
-      signal: exec.signal,
-    })
-    return [{
-      type: 'text',
-      text: `exit_code=${String(result.exitCode)}\nstdout:\n${result.stdout.toString('utf8')}\nstderr:\n${result.stderr.toString('utf8')}`,
-    }]
-  },
-}))
+    async execute({ code }, exec) {
+      if (code.length > 16_000) throw new Error('bound_python code exceeds 16000 characters')
+      const result = await pythonPolicy.run({
+        executable: environment.binding.pythonExecutable,
+        args: ['-I', '-c', code],
+        limits: { timeoutMs: 30_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
+        signal: exec.signal,
+      })
+      return [
+        {
+          type: 'text',
+          text: `exit_code=${String(result.exitCode)}\nstdout:\n${result.stdout.toString('utf8')}\nstderr:\n${result.stderr.toString('utf8')}`,
+        },
+      ]
+    },
+  }),
+)
 
-const plugin = await ctx.plugin({
-  name: 'dsh-data-analysis-real-validation',
-  inject,
-  apply,
-}, {
-  runtimeRoot: path.join(validationRoot, 'runtime'),
-  pythonExecutable: environment.binding.pythonExecutable,
-})
+const plugin = await ctx.plugin(
+  {
+    name: 'dsh-data-analysis-real-validation',
+    inject,
+    apply,
+  },
+  {
+    runtimeRoot: path.join(validationRoot, 'runtime'),
+    pythonExecutable: environment.binding.pythonExecutable,
+  },
+)
 const validationAgents: Agent[] = []
 
 async function runJourney(
@@ -292,18 +314,24 @@ async function runJourney(
   projectRoot: string = workspaceRoot,
 ): Promise<JourneyResult> {
   const errors: unknown[] = []
-  const agent: Agent = ctx.agentLoop.create(SessionId(`plugin-validation-${id}-${Date.now().toString(36)}`), {
-    provider: 'deepseek-official',
-    model,
-    maxTokens: 1_024,
-  }, { cwd: projectRoot })
+  const agent: Agent = ctx.agentLoop.create(
+    SessionId(`plugin-validation-${id}-${Date.now().toString(36)}`),
+    {
+      provider: 'deepseek-official',
+      model,
+      maxTokens: 1_024,
+    },
+    { cwd: projectRoot },
+  )
   validationAgents.push(agent)
-  const stopErrors = agent.ctx.on('agent/error', payload => errors.push(payload.error))
+  const stopErrors = agent.ctx.on('agent/error', (payload) => errors.push(payload.error))
   const startedAt = performance.now()
-  agent.followup(createUserMessage({
-    content: [{ type: 'text', text: prompt }],
-    source: { kind: 'user' },
-  }))
+  agent.followup(
+    createUserMessage({
+      content: [{ type: 'text', text: prompt }],
+      source: { kind: 'user' },
+    }),
+  )
   await agent.whenIdle()
   const events = agent.session.events
   const finalText = finalAssistantText(events)
@@ -312,7 +340,7 @@ async function runJourney(
     completed: finalText.includes(markerFor(id)),
     finalText,
     toolCalls: summarizeCalls(events),
-    steps: events.filter(event => event.type === 'step/start').length,
+    steps: events.filter((event) => event.type === 'step/start').length,
     latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
     usage: usageTotals(events),
     errors: errors.map(errorSummary),
@@ -355,7 +383,7 @@ for (const spec of specs) {
   process.stdout.write(`plugin integration real-model: ${spec.id}\n`)
   journeys.push(await runJourney(spec.id, spec.prompt, spec.projectRoot))
 }
-const byId = new Map(journeys.map(result => [result.id, result]))
+const byId = new Map(journeys.map((result) => [result.id, result]))
 
 const analysis = byId.get('analysis-activation')
 assert.ok(analysis?.completed)
@@ -379,10 +407,10 @@ assert.equal(ordinary.rootHelpTargets.length, 0)
 
 const focused = byId.get('focused-help-dedup')
 assert.ok(focused?.completed)
-assert.deepEqual(toolCalls(focused, 'marivo_help').flatMap(call => call.delivery ?? []), [
-  'delivered',
-  'already-visible',
-])
+assert.deepEqual(
+  toolCalls(focused, 'marivo_help').flatMap((call) => call.delivery ?? []),
+  ['delivered', 'already-visible'],
+)
 
 const datasource = byId.get('missing-datasource-credential')
 assert.ok(datasource?.completed)
@@ -414,9 +442,19 @@ for (const agent of validationAgents) {
   assert.equal(agent.ctx.tools.get('marivo_test', agent), undefined)
 }
 await rm(validationRoot, { recursive: true, force: true })
-process.stdout.write(`${JSON.stringify({ status: 'ok', reportPath, journeys: journeys.map(item => ({
-  id: item.id,
-  completed: item.completed,
-  steps: item.steps,
-  rootHelp: item.rootHelpTargets,
-})) }, null, 2)}\n`)
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      status: 'ok',
+      reportPath,
+      journeys: journeys.map((item) => ({
+        id: item.id,
+        completed: item.completed,
+        steps: item.steps,
+        rootHelp: item.rootHelpTargets,
+      })),
+    },
+    null,
+    2,
+  )}\n`,
+)

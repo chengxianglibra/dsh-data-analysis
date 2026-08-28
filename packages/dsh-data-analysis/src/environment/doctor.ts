@@ -26,9 +26,11 @@ function requireString(record: Record<string, unknown>, key: string): string {
 function parseCheck(value: unknown): DoctorCheck {
   if (!isRecord(value)) throw new TypeError('doctor check must be an object')
   const status = requireString(value, 'status') as DoctorStatus
-  if (!DOCTOR_STATUSES.has(status)) throw new TypeError(`unsupported doctor check status: ${status}`)
+  if (!DOCTOR_STATUSES.has(status))
+    throw new TypeError(`unsupported doctor check status: ${status}`)
   const details = value.details
-  if (details !== undefined && !isRecord(details)) throw new TypeError('doctor check details must be an object')
+  if (details !== undefined && !isRecord(details))
+    throw new TypeError('doctor check details must be an object')
   return {
     id: requireString(value, 'id'),
     status,
@@ -40,7 +42,8 @@ function parseCheck(value: unknown): DoctorCheck {
 function parseSection(value: unknown): DoctorSection {
   if (!isRecord(value)) throw new TypeError('doctor section must be an object')
   const status = requireString(value, 'status') as DoctorStatus
-  if (!DOCTOR_STATUSES.has(status)) throw new TypeError(`unsupported doctor section status: ${status}`)
+  if (!DOCTOR_STATUSES.has(status))
+    throw new TypeError(`unsupported doctor section status: ${status}`)
   if (!Array.isArray(value.checks)) throw new TypeError('doctor section checks must be an array')
   return {
     id: requireString(value, 'id'),
@@ -96,7 +99,7 @@ function normalizeAbsolute(value: string): string {
 
 function findCheck(report: DoctorReport, id: string): DoctorCheck | undefined {
   for (const section of report.sections) {
-    const match = section.checks.find(check => check.id === id)
+    const match = section.checks.find((check) => check.id === id)
     if (match !== undefined) return match
   }
   return undefined

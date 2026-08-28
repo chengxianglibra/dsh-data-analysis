@@ -1,12 +1,13 @@
 // @ts-nocheck -- browser contracts are supplied by the DSH module table at runtime.
-import { useEffect, useMemo, useState } from 'react'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 const TOOL_NAME = 'marivo_test'
 const REPORT_TOOL_NAME = 'marivo_report_render'
@@ -48,8 +49,10 @@ const CITATION_EN = {
   'source.item': 'canonical item: {id}',
   'source.versions': 'extractor {extractor} · Artifact schema {schema}',
   'source.missingDefinition': 'The answer is missing the footnote definition issued by the tool.',
-  'source.mismatchedDefinition': 'The footnote definition in the answer does not match the tool-issued content.',
-  'source.disclaimer': 'This card confirms Evidence identity; it does not validate the whole statement or business judgment.',
+  'source.mismatchedDefinition':
+    'The footnote definition in the answer does not match the tool-issued content.',
+  'source.disclaimer':
+    'This card confirms Evidence identity; it does not validate the whole statement or business judgment.',
 }
 const openedCalls = new Set<string>()
 
@@ -156,42 +159,50 @@ function citationSource(value: unknown): MarivoCitationSource | null {
   if (handle === null) return null
   const marker = `[^mv-${handle.toLowerCase()}]`
   if (
-    source.marker !== marker
-    || typeof source.rendered !== 'object'
-    || source.rendered === null
-    || Array.isArray(source.rendered)
-    || typeof source.environmentFingerprint !== 'string'
-    || source.environmentFingerprint === ''
-    || typeof source.sessionId !== 'string'
-    || source.sessionId === ''
-    || typeof source.findingId !== 'string'
-    || source.findingId === ''
-    || typeof source.findingType !== 'string'
-    || source.findingType === ''
-    || typeof source.epistemicKind !== 'string'
-    || source.epistemicKind === ''
-    || typeof source.artifactId !== 'string'
-    || source.artifactId === ''
-    || typeof source.canonicalItemKey !== 'string'
-    || source.canonicalItemKey === ''
-    || (source.qualityStatus !== null && (
-      typeof source.qualityStatus !== 'string' || source.qualityStatus === ''
-    ))
-    || typeof source.committedAt !== 'string'
-    || source.committedAt === ''
-    || typeof source.extractorVersion !== 'string'
-    || source.extractorVersion === ''
-    || typeof source.artifactSchemaVersion !== 'string'
-    || source.artifactSchemaVersion === ''
-  ) return null
+    source.marker !== marker ||
+    typeof source.rendered !== 'object' ||
+    source.rendered === null ||
+    Array.isArray(source.rendered) ||
+    typeof source.environmentFingerprint !== 'string' ||
+    source.environmentFingerprint === '' ||
+    typeof source.sessionId !== 'string' ||
+    source.sessionId === '' ||
+    typeof source.findingId !== 'string' ||
+    source.findingId === '' ||
+    typeof source.findingType !== 'string' ||
+    source.findingType === '' ||
+    typeof source.epistemicKind !== 'string' ||
+    source.epistemicKind === '' ||
+    typeof source.artifactId !== 'string' ||
+    source.artifactId === '' ||
+    typeof source.canonicalItemKey !== 'string' ||
+    source.canonicalItemKey === '' ||
+    (source.qualityStatus !== null &&
+      (typeof source.qualityStatus !== 'string' || source.qualityStatus === '')) ||
+    typeof source.committedAt !== 'string' ||
+    source.committedAt === '' ||
+    typeof source.extractorVersion !== 'string' ||
+    source.extractorVersion === '' ||
+    typeof source.artifactSchemaVersion !== 'string' ||
+    source.artifactSchemaVersion === ''
+  )
+    return null
   const rendered = source.rendered as Record<string, unknown>
   if (
-    typeof rendered.en !== 'string' || rendered.en.trim() === '' || /\r|\n/.test(rendered.en)
-    || utf8ByteLength(rendered.en) > 8_192
-    || typeof rendered.zh !== 'string' || rendered.zh.trim() === '' || /\r|\n/.test(rendered.zh)
-    || utf8ByteLength(rendered.zh) > 8_192
-  ) return null
-  return { ...source, rendered: { en: rendered.en, zh: rendered.zh } } as unknown as MarivoCitationSource
+    typeof rendered.en !== 'string' ||
+    rendered.en.trim() === '' ||
+    /\r|\n/.test(rendered.en) ||
+    utf8ByteLength(rendered.en) > 8_192 ||
+    typeof rendered.zh !== 'string' ||
+    rendered.zh.trim() === '' ||
+    /\r|\n/.test(rendered.zh) ||
+    utf8ByteLength(rendered.zh) > 8_192
+  )
+    return null
+  return {
+    ...source,
+    rendered: { en: rendered.en, zh: rendered.zh },
+  } as unknown as MarivoCitationSource
 }
 
 function escapeMarkdownInline(value: string): string {
@@ -203,14 +214,15 @@ export function parseCitationRegistryMeta(value: unknown): MarivoCitationSource[
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const meta = value as Record<string, unknown>
   if (
-    meta.kind !== CITATION_META_KIND
-    || meta.version !== CITATION_META_VERSION
-    || typeof meta.dshSessionId !== 'string'
-    || meta.dshSessionId === ''
-    || !Array.isArray(meta.registry)
-    || meta.registry.length < 1
-    || meta.registry.length > 100
-  ) return null
+    meta.kind !== CITATION_META_KIND ||
+    meta.version !== CITATION_META_VERSION ||
+    typeof meta.dshSessionId !== 'string' ||
+    meta.dshSessionId === '' ||
+    !Array.isArray(meta.registry) ||
+    meta.registry.length < 1 ||
+    meta.registry.length > 100
+  )
+    return null
   const result: MarivoCitationSource[] = []
   const handles = new Set<string>()
   const identities = new Set<string>()
@@ -218,13 +230,16 @@ export function parseCitationRegistryMeta(value: unknown): MarivoCitationSource[
     const source = citationSource(value)
     if (source === null) return null
     const identity = JSON.stringify([
-      source.environmentFingerprint, source.sessionId, source.findingId,
+      source.environmentFingerprint,
+      source.sessionId,
+      source.findingId,
     ])
     if (
-      citationHandle(source.handle) !== `F${index + 1}`
-      || handles.has(source.handle)
-      || identities.has(identity)
-    ) return null
+      citationHandle(source.handle) !== `F${index + 1}` ||
+      handles.has(source.handle) ||
+      identities.has(identity)
+    )
+      return null
     handles.add(source.handle)
     identities.add(identity)
     result.push(source)
@@ -239,7 +254,7 @@ function countRun(text: string, at: number, character: string): number {
 }
 
 function closingBacktickRun(text: string, start: number, length: number): number {
-  for (let index = start; index < text.length;) {
+  for (let index = start; index < text.length; ) {
     const next = text.indexOf('`', index)
     if (next === -1) return -1
     const run = countRun(text, next, '`')
@@ -256,7 +271,7 @@ function scanInlineFootnotes(
   seenReferences: Set<string>,
   definitions: Array<{ handle: string; body: string }>,
 ): void {
-  for (let index = 0; index < text.length;) {
+  for (let index = 0; index < text.length; ) {
     if (text[index] === '\\') {
       index += 2
       continue
@@ -310,13 +325,7 @@ export function parseMarivoFootnotes(text: string): ParsedMarivoFootnotes {
       }
       offset += line.length + 1
     }
-    scanInlineFootnotes(
-      segment,
-      definitionCandidates,
-      references,
-      seenReferences,
-      definitions,
-    )
+    scanInlineFootnotes(segment, definitionCandidates, references, seenReferences, definitions)
     segmentLines = []
   }
 
@@ -359,9 +368,10 @@ function assistantFootnotes(event: any): {
     }
     for (const handle of parsed.references) {
       const bodies = localDefinitions.get(handle) ?? []
-      const observed = bodies.length === 0
-        ? { present: false, body: null }
-        : { present: true, body: bodies.length === 1 ? bodies[0]! : null }
+      const observed =
+        bodies.length === 0
+          ? { present: false, body: null }
+          : { present: true, body: bodies.length === 1 ? bodies[0]! : null }
       const current = definitions.get(handle)
       if (current === undefined) {
         references.push(handle)
@@ -393,7 +403,8 @@ function resolveDefinition(
 }
 
 function isClosingCitationMessage(event: any): boolean {
-  if (event?.type !== 'assistant/message' || !Array.isArray(event.data?.message?.content)) return false
+  if (event?.type !== 'assistant/message' || !Array.isArray(event.data?.message?.content))
+    return false
   if (event.data.message.content.some((block: any) => block?.type === 'tool-call')) return false
   return assistantFootnotes(event).references.length > 0
 }
@@ -411,7 +422,9 @@ export const marivoCitationRegistryDefinition = {
     if (registry === null) throw new Error('Marivo citation registry start requires valid meta')
     return { registry }
   },
-  update(context: any) { return context.state },
+  update(context: any) {
+    return context.state
+  },
 }
 
 export const marivoAnswerCitationsDefinition = {
@@ -425,12 +438,12 @@ export const marivoAnswerCitationsDefinition = {
     const parsed = assistantFootnotes(match.event)
     const previous = reader.previous(CITATION_REGISTRY_DEFINITION_KIND)
     const registry: MarivoCitationSource[] = previous?.state?.registry ?? []
-    const sources = new Map(registry.map(source => [source.handle, source]))
+    const sources = new Map(registry.map((source) => [source.handle, source]))
     return {
       turn: match.event.data.turn,
       seq: match.event.seq,
       messageId: String(match.event.data.message.id),
-      citations: parsed.references.map(handle => {
+      citations: parsed.references.map((handle) => {
         const source = sources.get(handle) ?? null
         return {
           handle,
@@ -440,7 +453,9 @@ export const marivoAnswerCitationsDefinition = {
       }),
     }
   },
-  update(context: any) { return context.state },
+  update(context: any) {
+    return context.state
+  },
   buildLocationData(context: any, scope: string) {
     if (scope !== 'turn' || context.state === undefined) return null
     const { turn, seq, messageId, citations } = context.state
@@ -455,7 +470,9 @@ export const marivoAnswerCitationsDefinition = {
 
 /** Claim the turn-tail slot only for citations attached to this exact closing message. */
 export function selectMarivoCitations(owner: any): MarivoResolvedCitation[] | null {
-  const data = owner?.turn?.data?.get?.(CITATION_TURN_DATA_KEY) as MarivoCitationTurnData | undefined
+  const data = owner?.turn?.data?.get?.(CITATION_TURN_DATA_KEY) as
+    | MarivoCitationTurnData
+    | undefined
   return data === undefined || data.seq !== owner.seq || data.citations.length === 0
     ? null
     : data.citations
@@ -473,11 +490,12 @@ export function parseNeedsCredentials(text: string): NeedsCredentialsResult | nu
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
     const candidate = value as Record<string, unknown>
     if (
-      candidate.status !== 'needs-credentials'
-      || typeof candidate.name !== 'string'
-      || !Array.isArray(candidate.refs)
-      || !candidate.refs.every(ref => typeof ref === 'string' && ref !== '')
-    ) return null
+      candidate.status !== 'needs-credentials' ||
+      typeof candidate.name !== 'string' ||
+      !Array.isArray(candidate.refs) ||
+      !candidate.refs.every((ref) => typeof ref === 'string' && ref !== '')
+    )
+      return null
     return {
       status: 'needs-credentials',
       name: candidate.name,
@@ -500,7 +518,7 @@ export function shouldAutoOpen(
 }
 
 export function blankCredentialValues(refs: readonly string[]): Record<string, string> {
-  return Object.fromEntries(refs.map(ref => [ref, '']))
+  return Object.fromEntries(refs.map((ref) => [ref, '']))
 }
 
 function messageOf(value: unknown): string {
@@ -569,19 +587,20 @@ export function parseReportPresentationMeta(value: unknown): MarivoReportPresent
   const meta = value as Record<string, unknown>
   const allowed = new Set(['kind', 'version', 'title', 'path', 'reportDigest', 'disclosures'])
   if (
-    Object.keys(meta).some(key => !allowed.has(key))
-    || Object.keys(meta).length !== allowed.size
-    || meta.kind !== REPORT_META_KIND
-    || meta.version !== REPORT_META_VERSION
-    || typeof meta.title !== 'string'
-    || meta.title === ''
-    || typeof meta.path !== 'string'
-    || meta.path === ''
-    || typeof meta.reportDigest !== 'string'
-    || !/^[0-9a-f]{64}$/.test(meta.reportDigest)
-    || !Array.isArray(meta.disclosures)
-    || !meta.disclosures.every(item => typeof item === 'string')
-  ) return null
+    Object.keys(meta).some((key) => !allowed.has(key)) ||
+    Object.keys(meta).length !== allowed.size ||
+    meta.kind !== REPORT_META_KIND ||
+    meta.version !== REPORT_META_VERSION ||
+    typeof meta.title !== 'string' ||
+    meta.title === '' ||
+    typeof meta.path !== 'string' ||
+    meta.path === '' ||
+    typeof meta.reportDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(meta.reportDigest) ||
+    !Array.isArray(meta.disclosures) ||
+    !meta.disclosures.every((item) => typeof item === 'string')
+  )
+    return null
   return Object.freeze({
     kind: REPORT_META_KIND,
     version: REPORT_META_VERSION,
@@ -595,29 +614,34 @@ export function parseReportPresentationMeta(value: unknown): MarivoReportPresent
 /** Decode the Code Mode-only card block from a persisted sub-dispatch result. */
 export function parseReportDurableContent(value: unknown): MarivoReportPresentationMeta | null {
   if (!Array.isArray(value)) return null
-  const cards = value.filter(item => (
-    typeof item === 'object'
-    && item !== null
-    && !Array.isArray(item)
-    && (item as Record<string, unknown>).type === REPORT_DURABLE_CONTENT_KIND
-  )) as Array<Record<string, unknown>>
+  const cards = value.filter(
+    (item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      !Array.isArray(item) &&
+      (item as Record<string, unknown>).type === REPORT_DURABLE_CONTENT_KIND,
+  ) as Array<Record<string, unknown>>
   if (cards.length !== 1) return null
   const card = cards[0]!
   if (
-    Object.keys(card).length !== 3
-    || !Object.hasOwn(card, 'meta')
-    || !Number.isSafeInteger(card.turn)
-    || (card.turn as number) < 0
-  ) return null
+    Object.keys(card).length !== 3 ||
+    !Object.hasOwn(card, 'meta') ||
+    !Number.isSafeInteger(card.turn) ||
+    (card.turn as number) < 0
+  )
+    return null
   return parseReportPresentationMeta(card.meta)
 }
 
-function codeReportDelivery(event: any): (MarivoReportTurnDelivery & { readonly turn: number }) | null {
+function codeReportDelivery(
+  event: any,
+): (MarivoReportTurnDelivery & { readonly turn: number }) | null {
   if (
-    event?.type !== 'tool/code-dispatch'
-    || event.data?.name !== REPORT_TOOL_NAME
-    || event.data?.isError === true
-  ) return null
+    event?.type !== 'tool/code-dispatch' ||
+    event.data?.name !== REPORT_TOOL_NAME ||
+    event.data?.isError === true
+  )
+    return null
   const report = parseReportDurableContent(event.data.content)
   if (report === null) return null
   const card = event.data.content.find((item: any) => item?.type === REPORT_DURABLE_CONTENT_KIND)
@@ -689,11 +713,12 @@ export function reportsForClosing(owner: any): readonly MarivoReportPresentation
   const deliveries: MarivoReportTurnDelivery[] = []
   for (const value of data.deliveries) {
     if (
-      typeof value !== 'object'
-      || value === null
-      || typeof value.seq !== 'number'
-      || value.seq > owner.seq
-    ) continue
+      typeof value !== 'object' ||
+      value === null ||
+      typeof value.seq !== 'number' ||
+      value.seq > owner.seq
+    )
+      continue
     const report = parseReportPresentationMeta(value.report)
     if (report !== null) deliveries.push({ seq: value.seq, report })
   }
@@ -719,16 +744,17 @@ export function marivoReportCardModel(block: any): MarivoReportCardModel {
   }
   const text = settledText(block)
   if (block.isError !== true) {
-    const report = parseReportPresentationMeta(block.meta)
-      ?? (block.meta === undefined ? parseReportDurableContent(block.content) : null)
+    const report =
+      parseReportPresentationMeta(block.meta) ??
+      (block.meta === undefined ? parseReportDurableContent(block.content) : null)
     if (report !== null) return { state: 'ready', summary: report.title, report }
   }
   const error = block.error
-  const fallback = text || (
-    typeof error?.name === 'string' && typeof error?.code === 'string'
+  const fallback =
+    text ||
+    (typeof error?.name === 'string' && typeof error?.code === 'string'
       ? `${error.name}: ${error.code}`
-      : '报告工具已结束，但没有可打开的报告。'
-  )
+      : '报告工具已结束，但没有可打开的报告。')
   return { state: 'fallback', summary: fallback, report: null }
 }
 
@@ -753,23 +779,31 @@ export async function openMarivoReport(api: any, path: string): Promise<void> {
 }
 
 const rowStyle = {
-  display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, padding: '4px 8px',
-  borderRadius: 8, color: 'var(--dsw-alias-text-primary, inherit)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  minHeight: 32,
+  padding: '4px 8px',
+  borderRadius: 8,
+  color: 'var(--dsw-alias-text-primary, inherit)',
 }
 const summaryStyle = { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }
 const fieldStyle = { display: 'grid', gap: 6, marginBottom: 14 }
 const labelStyle = { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }
 const inputStyle = {
-  width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6,
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '8px 10px',
+  borderRadius: 6,
   border: '1px solid var(--dsw-alias-border-subtle, #d0d0d0)',
-  color: 'inherit', background: 'var(--dsw-alias-surface-primary, transparent)',
+  color: 'inherit',
+  background: 'var(--dsw-alias-surface-primary, transparent)',
 }
 const errorStyle = { color: 'var(--dsw-alias-text-error, #c22)', fontSize: 12, margin: 0 }
 
 export function MarivoTestToolView({ sessionId, callId, block, connection }: any) {
   const text = settledText(block)
   const missing = useMemo(() => parseNeedsCredentials(text), [text])
-  const refsKey = missing?.refs.join('\u0000') ?? ''
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [savedNotice, setSavedNotice] = useState(false)
@@ -778,43 +812,50 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
   const [errors, setErrors] = useState<Record<string, string>>({})
   const controller = useMemo(() => new CredentialDialogController(connection.api), [connection.api])
 
-  const openDialog = () => {
+  const openDialog = useCallback(() => {
     if (missing === null) return
     setValues(blankCredentialValues(missing.refs))
-    setConfigured(Object.fromEntries(missing.refs.map(ref => [ref, false])))
+    setConfigured(Object.fromEntries(missing.refs.map((ref) => [ref, false])))
     setErrors({})
     setSavedNotice(false)
     setOpen(true)
-  }
+  }, [missing])
 
   useEffect(() => {
     if (shouldAutoOpen(sessionId, callId, missing)) openDialog()
-  }, [sessionId, callId, refsKey])
+  }, [sessionId, callId, missing, openDialog])
 
   useEffect(() => {
     if (!open || missing === null) return
     let current = true
-    controller.describe(missing.refs).then((info) => {
-      if (!current) return
-      setConfigured(Object.fromEntries(missing.refs.map(ref => [ref, info[ref]?.configured === true])))
-    }).catch(() => {
-      if (current) setConfigured(Object.fromEntries(missing.refs.map(ref => [ref, false])))
-    })
-    return () => { current = false }
-  }, [open, refsKey, controller])
+    controller
+      .describe(missing.refs)
+      .then((info) => {
+        if (!current) return
+        setConfigured(
+          Object.fromEntries(missing.refs.map((ref) => [ref, info[ref]?.configured === true])),
+        )
+      })
+      .catch(() => {
+        if (current) setConfigured(Object.fromEntries(missing.refs.map((ref) => [ref, false])))
+      })
+    return () => {
+      current = false
+    }
+  }, [open, missing, controller])
 
   const save = async () => {
     if (missing === null) return
     setBusy(true)
     setErrors({})
     const pendingValues = Object.fromEntries(
-      missing.refs.filter(ref => configured[ref] !== true).map(ref => [ref, values[ref] ?? '']),
+      missing.refs.filter((ref) => configured[ref] !== true).map((ref) => [ref, values[ref] ?? '']),
     )
     const outcome = await controller.save(pendingValues)
     setValues(blankCredentialValues(missing.refs))
-    setConfigured(current => ({
+    setConfigured((current) => ({
       ...current,
-      ...Object.fromEntries(outcome.saved.map(ref => [ref, true])),
+      ...Object.fromEntries(outcome.saved.map((ref) => [ref, true])),
     }))
     setErrors(outcome.errors)
     setBusy(false)
@@ -824,9 +865,10 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
     }
   }
 
-  const summary = missing === null
-    ? (text || ('kind' in block ? '连接测试已完成' : '正在测试连接…'))
-    : `缺少凭证：${missing.refs.join(', ')}`
+  const summary =
+    missing === null
+      ? text || ('kind' in block ? '连接测试已完成' : '正在测试连接…')
+      : `缺少凭证：${missing.refs.join(', ')}`
 
   return (
     <>
@@ -834,26 +876,38 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
         <span aria-hidden="true">●</span>
         <strong>Marivo 连接测试</strong>
         <span style={summaryStyle}>{savedNotice ? '凭证已保存，请重试 marivo_test' : summary}</span>
-        {missing !== null && !savedNotice
-          ? <Button size="sm" variant="outline" onClick={openDialog}>配置凭证</Button>
-          : null}
+        {missing !== null && !savedNotice ? (
+          <Button size="sm" variant="outline" onClick={openDialog}>
+            配置凭证
+          </Button>
+        ) : null}
       </div>
       <Modal
         open={open}
-        onClose={() => { if (!busy) setOpen(false) }}
+        onClose={() => {
+          if (!busy) setOpen(false)
+        }}
         title={`配置 ${missing?.name ?? ''} 凭证`}
         description="凭证由 DSH 凭证服务保存；Marivo 插件不会写入 ~/.marivo/secrets.toml。"
         closeLabel="取消"
-        footer={(
+        footer={
           <>
-            <Button disabled={busy} onClick={() => setOpen(false)}>取消</Button>
-            <Button variant="primary" disabled={busy} onClick={() => { void save() }}>
+            <Button disabled={busy} onClick={() => setOpen(false)}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => {
+                void save()
+              }}
+            >
               {busy ? '保存中…' : '保存'}
             </Button>
           </>
-        )}
+        }
       >
-        {missing?.refs.map(ref => (
+        {missing?.refs.map((ref) => (
           <label key={ref} style={fieldStyle}>
             <span style={labelStyle}>
               <code>{ref}</code>
@@ -866,7 +920,9 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
               value={values[ref] ?? ''}
               aria-label={ref}
               disabled={busy || configured[ref] === true}
-              onChange={event => setValues(current => ({ ...current, [ref]: event.target.value }))}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, [ref]: event.target.value }))
+              }
             />
             {errors[ref] === undefined ? null : <p style={errorStyle}>{errors[ref]}</p>}
           </label>
@@ -877,25 +933,41 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
 }
 
 const reportCardStyle = {
-  display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 10,
+  display: 'grid',
+  gap: 10,
+  padding: '12px 14px',
+  borderRadius: 10,
   border: '1px solid var(--dsw-alias-border-subtle, #d7d7d7)',
   background: 'var(--dsw-alias-surface-secondary, rgba(127, 127, 127, 0.06))',
   color: 'var(--dsw-alias-text-primary, inherit)',
 }
 const reportHeadingStyle = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
 }
 const reportPathStyle = {
-  margin: 0, overflowWrap: 'anywhere', color: 'var(--dsw-alias-text-secondary, #666)',
+  margin: 0,
+  overflowWrap: 'anywhere',
+  color: 'var(--dsw-alias-text-secondary, #666)',
   fontSize: 12,
 }
 const reportDisclosureStyle = {
-  display: 'grid', gap: 4, margin: 0, paddingLeft: 18,
-  color: 'var(--dsw-alias-text-secondary, #666)', fontSize: 12,
+  display: 'grid',
+  gap: 4,
+  margin: 0,
+  paddingLeft: 18,
+  color: 'var(--dsw-alias-text-secondary, #666)',
+  fontSize: 12,
 }
 const reportFallbackStyle = {
-  margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit',
-  color: 'var(--dsw-alias-text-secondary, #666)', fontSize: 12,
+  margin: 0,
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  fontFamily: 'inherit',
+  color: 'var(--dsw-alias-text-secondary, #666)',
+  fontSize: 12,
 }
 
 /** Durable report handoff under the closing answer, independent of its prose. */
@@ -907,7 +979,13 @@ export function MarivoReportTurnDelivery({ matched: reports, openFile }: any) {
         <div key={report.reportDigest} style={{ display: 'grid', gap: 6 }}>
           <div style={reportHeadingStyle}>
             <span>{report.title}</span>
-            <Button variant="primary" size="sm" onClick={() => { openFile(report.path) }}>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                openFile(report.path)
+              }}
+            >
               打开报告
             </Button>
           </div>
@@ -964,19 +1042,30 @@ export function MarivoReportToolView({ callId, block, connection }: any) {
           </div>
           <strong>{model.report.title}</strong>
         </div>
-        <Button variant="primary" size="sm" disabled={busy} onClick={() => { void open() }}>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            void open()
+          }}
+        >
           {busy ? '正在打开…' : '打开报告'}
         </Button>
       </div>
       <p style={reportPathStyle}>{model.report.path}</p>
       {model.report.disclosures.length === 0 ? null : (
         <ul style={reportDisclosureStyle}>
-          {model.report.disclosures.map((disclosure, index) => (
-            <li key={`${index}:${disclosure}`}>{disclosure}</li>
+          {[...new Set(model.report.disclosures)].map((disclosure) => (
+            <li key={disclosure}>{disclosure}</li>
           ))}
         </ul>
       )}
-      {openError === null ? null : <p role="alert" style={errorStyle}>{openError}</p>}
+      {openError === null ? null : (
+        <p role="alert" style={errorStyle}>
+          {openError}
+        </p>
+      )}
     </section>
   )
 }
@@ -993,21 +1082,30 @@ const sourceCardStyle = {
 const sourceHeadingStyle = { fontWeight: 600, marginBottom: 8 }
 const sourceListStyle = { display: 'grid', gap: 8, margin: 0, padding: 0, listStyle: 'none' }
 const sourceItemStyle = {
-  display: 'grid', gap: 3, paddingTop: 8,
+  display: 'grid',
+  gap: 3,
+  paddingTop: 8,
   borderTop: '1px solid var(--dsw-alias-border-subtle, #e2e2e2)',
 }
 const sourceIdentityStyle = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }
 const sourceBadgeStyle = {
-  padding: '1px 5px', borderRadius: 999,
+  padding: '1px 5px',
+  borderRadius: 999,
   background: 'var(--dsw-alias-surface-tertiary, rgba(127, 127, 127, 0.12))',
 }
-const sourceSecondaryStyle = { color: 'var(--dsw-alias-text-secondary, #666)', overflowWrap: 'anywhere' }
+const sourceSecondaryStyle = {
+  color: 'var(--dsw-alias-text-secondary, #666)',
+  overflowWrap: 'anywhere',
+}
 const sourceWarningStyle = { color: 'var(--dsw-alias-text-warning, #9a6700)' }
 const sourceStatementStyle = { margin: 0, fontSize: 13, lineHeight: 1.55 }
 const sourceAuditStyle = { marginTop: 5 }
 const sourceAuditBodyStyle = { display: 'grid', gap: 3, paddingTop: 6 }
 
-export function MarivoSourceCard({ matched: citations, t }: {
+export function MarivoSourceCard({
+  matched: citations,
+  t,
+}: {
   matched: MarivoResolvedCitation[]
   t: (key: string, values?: Record<string, string>) => string
 }) {
@@ -1015,7 +1113,7 @@ export function MarivoSourceCard({ matched: citations, t }: {
     <aside style={sourceCardStyle} aria-label={t('source.title')} data-marivo-source-card>
       <div style={sourceHeadingStyle}>{t('source.title')}</div>
       <ul style={sourceListStyle}>
-        {citations.map(citation => (
+        {citations.map((citation) => (
           <li key={citation.handle} style={sourceItemStyle}>
             {citation.statement === null ? null : (
               <p style={sourceStatementStyle}>{citation.statement}</p>
@@ -1038,19 +1136,27 @@ export function MarivoSourceCard({ matched: citations, t }: {
                       })}
                     </span>
                   </div>
-                  <span style={sourceSecondaryStyle}>{t('source.finding', { id: citation.source.findingId })}</span>
-                  <span style={sourceSecondaryStyle}>{t('source.artifact', { id: citation.source.artifactId })}</span>
-                  <span style={sourceSecondaryStyle}>{t('source.item', { id: citation.source.canonicalItemKey })}</span>
+                  <span style={sourceSecondaryStyle}>
+                    {t('source.finding', { id: citation.source.findingId })}
+                  </span>
+                  <span style={sourceSecondaryStyle}>
+                    {t('source.artifact', { id: citation.source.artifactId })}
+                  </span>
+                  <span style={sourceSecondaryStyle}>
+                    {t('source.item', { id: citation.source.canonicalItemKey })}
+                  </span>
                   <span style={sourceSecondaryStyle}>
                     {t('source.session', {
                       id: citation.source.sessionId,
                       committedAt: citation.source.committedAt,
                     })}
                   </span>
-                  <span style={sourceSecondaryStyle}>{t('source.versions', {
-                    extractor: citation.source.extractorVersion,
-                    schema: citation.source.artifactSchemaVersion,
-                  })}</span>
+                  <span style={sourceSecondaryStyle}>
+                    {t('source.versions', {
+                      extractor: citation.source.extractorVersion,
+                      schema: citation.source.artifactSchemaVersion,
+                    })}
+                  </span>
                 </div>
               </details>
             )}
@@ -1062,9 +1168,7 @@ export function MarivoSourceCard({ matched: citations, t }: {
           </li>
         ))}
       </ul>
-      <div style={{ ...sourceSecondaryStyle, marginTop: 8 }}>
-        {t('source.disclaimer')}
-      </div>
+      <div style={{ ...sourceSecondaryStyle, marginTop: 8 }}>{t('source.disclaimer')}</div>
     </aside>
   )
 }
@@ -1079,26 +1183,52 @@ export function apply(ctx: Context): void {
   const BoundMarivoReportToolView = (props: any) => (
     <MarivoReportToolView {...props} connection={connection} />
   )
-  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
-    name: 'tool.call.toolview', key: TOOL_NAME,
-  }, BoundMarivoTestToolView))
-  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
-    name: 'tool.call.toolview', key: REPORT_TOOL_NAME,
-  }, BoundMarivoReportToolView))
+  ctx.slots.inject('tool.call.toolview', () =>
+    ctx.slots.register(
+      {
+        name: 'tool.call.toolview',
+        key: TOOL_NAME,
+      },
+      BoundMarivoTestToolView,
+    ),
+  )
+  ctx.slots.inject('tool.call.toolview', () =>
+    ctx.slots.register(
+      {
+        name: 'tool.call.toolview',
+        key: REPORT_TOOL_NAME,
+      },
+      BoundMarivoReportToolView,
+    ),
+  )
   ctx.conversationEvents.register(marivoReportDeliveryDefinition)
   ctx.conversationEvents.register(marivoCitationRegistryDefinition)
   ctx.conversationEvents.register(marivoAnswerCitationsDefinition)
-  ctx.effect(() => ctx.locale.register(CITATION_LOCALE_NAMESPACE, {
-    zh: CITATION_ZH,
-    en: CITATION_EN,
-  }), 'dsh-data-analysis: Evidence citation dictionaries')
-  ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
-    name: 'conversation.chat.turnTail',
-    select: selectMarivoReports,
-  }, MarivoReportTurnDelivery))
-  ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
-    name: 'conversation.chat.turnTail',
-    select: selectMarivoCitations,
-    locale: CITATION_LOCALE_NAMESPACE,
-  }, MarivoSourceCard))
+  ctx.effect(
+    () =>
+      ctx.locale.register(CITATION_LOCALE_NAMESPACE, {
+        zh: CITATION_ZH,
+        en: CITATION_EN,
+      }),
+    'dsh-data-analysis: Evidence citation dictionaries',
+  )
+  ctx.slots.inject('conversation.chat.turnTail', () =>
+    ctx.slots.register(
+      {
+        name: 'conversation.chat.turnTail',
+        select: selectMarivoReports,
+      },
+      MarivoReportTurnDelivery,
+    ),
+  )
+  ctx.slots.inject('conversation.chat.turnTail', () =>
+    ctx.slots.register(
+      {
+        name: 'conversation.chat.turnTail',
+        select: selectMarivoCitations,
+        locale: CITATION_LOCALE_NAMESPACE,
+      },
+      MarivoSourceCard,
+    ),
+  )
 }

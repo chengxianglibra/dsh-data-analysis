@@ -75,7 +75,11 @@ function object(value: unknown, location: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
-function exactKeys(value: Record<string, unknown>, keys: readonly string[], location: string): void {
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  location: string,
+): void {
   const expected = new Set(keys)
   for (const key of Object.keys(value)) {
     if (!expected.has(key)) throw new TypeError(`${location}.${key} is unknown`)
@@ -86,12 +90,14 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[], loca
 }
 
 function string(value: unknown, location: string): string {
-  if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${location} must be a non-empty string`)
+  if (typeof value !== 'string' || value.length === 0)
+    throw new TypeError(`${location} must be a non-empty string`)
   return value
 }
 
 function integer(value: unknown, location: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) throw new TypeError(`${location} must be a non-negative safe integer`)
+  if (!Number.isSafeInteger(value) || (value as number) < 0)
+    throw new TypeError(`${location} must be a non-negative safe integer`)
   return value as number
 }
 
@@ -117,10 +123,10 @@ function stringArray(value: unknown, location: string): string[] {
 
 function sameSet(actual: readonly string[], expected: readonly string[], location: string): void {
   if (
-    actual.length !== expected.length
-    || new Set(actual).size !== actual.length
-    || new Set(expected).size !== expected.length
-    || actual.some(item => !expected.includes(item))
+    actual.length !== expected.length ||
+    new Set(actual).size !== actual.length ||
+    new Set(expected).size !== expected.length ||
+    actual.some((item) => !expected.includes(item))
   ) {
     throw new TypeError(`${location} does not match the requested identity set`)
   }
@@ -140,7 +146,8 @@ function parseIssue(value: unknown, location: string): ReportIssueV1 {
 function parseColumn(value: unknown, location: string): ReportArtifactColumn {
   const source = object(value, location)
   exactKeys(source, ['name', 'dtype', 'nullable', 'role', 'unit'], location)
-  if (typeof source.nullable !== 'boolean') throw new TypeError(`${location}.nullable must be boolean`)
+  if (typeof source.nullable !== 'boolean')
+    throw new TypeError(`${location}.nullable must be boolean`)
   if (source.unit !== null && (typeof source.unit !== 'string' || source.unit.length === 0)) {
     throw new TypeError(`${location}.unit must be null or a non-empty string`)
   }
@@ -155,37 +162,63 @@ function parseColumn(value: unknown, location: string): ReportArtifactColumn {
 
 function parseArtifact(value: unknown, location: string): ReportArtifactProjection {
   const source = object(value, location)
-  exactKeys(source, [
-    'ref', 'family', 'shape', 'columns', 'content_hash', 'artifact_schema_version',
-    'created_at', 'contract', 'revalidation', 'lineage', 'rows_projected', 'rows',
-  ], location)
-  if (!Array.isArray(source.shape) || source.shape.length !== 2) throw new TypeError(`${location}.shape must contain two integers`)
+  exactKeys(
+    source,
+    [
+      'ref',
+      'family',
+      'shape',
+      'columns',
+      'content_hash',
+      'artifact_schema_version',
+      'created_at',
+      'contract',
+      'revalidation',
+      'lineage',
+      'rows_projected',
+      'rows',
+    ],
+    location,
+  )
+  if (!Array.isArray(source.shape) || source.shape.length !== 2)
+    throw new TypeError(`${location}.shape must contain two integers`)
   const rowCount = integer(source.shape[0], `${location}.shape[0]`)
   const columnCount = integer(source.shape[1], `${location}.shape[1]`)
   if (!Array.isArray(source.columns) || source.columns.length !== columnCount) {
     throw new TypeError(`${location}.columns must match the declared column count`)
   }
-  const columns = source.columns.map((item, index) => parseColumn(item, `${location}.columns[${index}]`))
-  if (new Set(columns.map(column => column.name)).size !== columns.length) throw new TypeError(`${location}.columns contains duplicate names`)
-  if (typeof source.rows_projected !== 'boolean') throw new TypeError(`${location}.rows_projected must be boolean`)
+  const columns = source.columns.map((item, index) =>
+    parseColumn(item, `${location}.columns[${index}]`),
+  )
+  if (new Set(columns.map((column) => column.name)).size !== columns.length)
+    throw new TypeError(`${location}.columns contains duplicate names`)
+  if (typeof source.rows_projected !== 'boolean')
+    throw new TypeError(`${location}.rows_projected must be boolean`)
   if (!Array.isArray(source.rows)) throw new TypeError(`${location}.rows must be an array`)
   if (source.rows_projected ? source.rows.length !== rowCount : source.rows.length !== 0) {
     throw new TypeError(`${location}.rows must match its projection status and declared row count`)
   }
   const rows = source.rows.map((row, rowIndex) => {
-    if (!Array.isArray(row) || row.length !== columnCount) throw new TypeError(`${location}.rows[${rowIndex}] must match the declared columns`)
-    return row.map((cell, columnIndex) => jsonValue(cell, `${location}.rows[${rowIndex}][${columnIndex}]`))
+    if (!Array.isArray(row) || row.length !== columnCount)
+      throw new TypeError(`${location}.rows[${rowIndex}] must match the declared columns`)
+    return row.map((cell, columnIndex) =>
+      jsonValue(cell, `${location}.rows[${rowIndex}][${columnIndex}]`),
+    )
   })
   const revalidation = object(source.revalidation, `${location}.revalidation`)
   const ref = string(source.ref, `${location}.ref`)
   const contentHash = string(source.content_hash, `${location}.content_hash`)
-  const artifactSchemaVersion = string(source.artifact_schema_version, `${location}.artifact_schema_version`)
+  const artifactSchemaVersion = string(
+    source.artifact_schema_version,
+    `${location}.artifact_schema_version`,
+  )
   if (
-    revalidation.status !== 'admissible'
-    || revalidation.artifact_ref !== ref
-    || revalidation.content_hash !== contentHash
-    || revalidation.artifact_schema_version !== artifactSchemaVersion
-  ) throw new TypeError(`${location}.revalidation identity is inconsistent`)
+    revalidation.status !== 'admissible' ||
+    revalidation.artifact_ref !== ref ||
+    revalidation.content_hash !== contentHash ||
+    revalidation.artifact_schema_version !== artifactSchemaVersion
+  )
+    throw new TypeError(`${location}.revalidation identity is inconsistent`)
   return {
     ref,
     family: string(source.family, `${location}.family`),
@@ -204,11 +237,27 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
 
 function parseFinding(value: unknown, location: string): ReportFindingProjection {
   const source = object(value, location)
-  exactKeys(source, [
-    'finding_id', 'finding_type', 'epistemic_kind', 'artifact_id', 'session_id',
-    'quality_status', 'committed_at', 'value', 'subject', 'derivation', 'rendered',
-  ], location)
-  if (source.quality_status !== null && (typeof source.quality_status !== 'string' || source.quality_status.length === 0)) {
+  exactKeys(
+    source,
+    [
+      'finding_id',
+      'finding_type',
+      'epistemic_kind',
+      'artifact_id',
+      'session_id',
+      'quality_status',
+      'committed_at',
+      'value',
+      'subject',
+      'derivation',
+      'rendered',
+    ],
+    location,
+  )
+  if (
+    source.quality_status !== null &&
+    (typeof source.quality_status !== 'string' || source.quality_status.length === 0)
+  ) {
     throw new TypeError(`${location}.quality_status must be null or a non-empty string`)
   }
   const rendered = object(source.rendered, `${location}.rendered`)
@@ -216,9 +265,14 @@ function parseFinding(value: unknown, location: string): ReportFindingProjection
   const english = string(rendered.en, `${location}.rendered.en`)
   const chinese = string(rendered.zh, `${location}.rendered.zh`)
   if (
-    /\r|\n/.test(english) || /\r|\n/.test(chinese)
-    || Buffer.byteLength(english, 'utf8') > 8_192 || Buffer.byteLength(chinese, 'utf8') > 8_192
-  ) throw new TypeError(`${location}.rendered must contain single-line statements of at most 8192 UTF-8 bytes`)
+    /\r|\n/.test(english) ||
+    /\r|\n/.test(chinese) ||
+    Buffer.byteLength(english, 'utf8') > 8_192 ||
+    Buffer.byteLength(chinese, 'utf8') > 8_192
+  )
+    throw new TypeError(
+      `${location}.rendered must contain single-line statements of at most 8192 UTF-8 bytes`,
+    )
   return {
     findingId: string(source.finding_id, `${location}.finding_id`),
     findingType: string(source.finding_type, `${location}.finding_type`),
@@ -280,7 +334,8 @@ function parseOutcome<T>(
     const parsed = parseValue(source.value, `${location}.value`)
     return { ready: true, value: parsed, issues: [], omitted: 0 }
   }
-  if (source.status !== 'blocked') throw new TypeError(`${location}.status must be ready or blocked`)
+  if (source.status !== 'blocked')
+    throw new TypeError(`${location}.status must be ready or blocked`)
   exactKeys(source, ['status', identityKey, 'issues', 'omitted_issue_count'], location)
   if (source[identityKey] !== expectedIdentity) {
     throw new TypeError(`${location}.${identityKey} does not match the requested identity`)
@@ -309,7 +364,8 @@ function parseFindingOutcome(
       omitted: 0,
     }
   }
-  if (source.status !== 'blocked') throw new TypeError(`${location}.status must be ready or blocked`)
+  if (source.status !== 'blocked')
+    throw new TypeError(`${location}.status must be ready or blocked`)
   const hasArtifactRef = Object.hasOwn(source, 'artifact_ref')
   exactKeys(
     source,
@@ -323,7 +379,9 @@ function parseFindingOutcome(
   }
   return {
     ready: false,
-    ...(hasArtifactRef ? { artifactRef: string(source.artifact_ref, `${location}.artifact_ref`) } : {}),
+    ...(hasArtifactRef
+      ? { artifactRef: string(source.artifact_ref, `${location}.artifact_ref`) }
+      : {}),
     issues: issueArray(source.issues, `${location}.issues`),
     omitted: omittedCount(source.omitted_issue_count, `${location}.omitted_issue_count`),
   }
@@ -359,15 +417,19 @@ export function parseReportProjection(
       findingArtifactTargets: [],
     }
   }
-  exactKeys(source, [
-    'status', 'session_id', 'finding_group_outcomes', 'finding_outcomes', 'artifact_outcomes',
-  ], 'projection')
-  if (source.status !== 'checked') throw new TypeError('projection.status must be checked or blocked')
-  if (source.session_id !== expected.sessionId) throw new TypeError('projection.session_id does not match the request')
+  exactKeys(
+    source,
+    ['status', 'session_id', 'finding_group_outcomes', 'finding_outcomes', 'artifact_outcomes'],
+    'projection',
+  )
+  if (source.status !== 'checked')
+    throw new TypeError('projection.status must be checked or blocked')
+  if (source.session_id !== expected.sessionId)
+    throw new TypeError('projection.session_id does not match the request')
   if (
-    !Array.isArray(source.finding_group_outcomes)
-    || !Array.isArray(source.finding_outcomes)
-    || !Array.isArray(source.artifact_outcomes)
+    !Array.isArray(source.finding_group_outcomes) ||
+    !Array.isArray(source.finding_outcomes) ||
+    !Array.isArray(source.artifact_outcomes)
   ) {
     throw new TypeError('projection outcomes must be arrays')
   }
@@ -385,7 +447,10 @@ export function parseReportProjection(
   let complete = true
   for (const [index, item] of source.finding_group_outcomes.entries()) {
     const outcome = parseOutcome(
-      item, `projection.finding_group_outcomes[${index}]`, 'group_index', index,
+      item,
+      `projection.finding_group_outcomes[${index}]`,
+      'group_index',
+      index,
       parseCompatibility,
     )
     if (outcome.ready) {
@@ -393,8 +458,15 @@ export function parseReportProjection(
       if (compatibility === undefined || compatibility.groupIndex !== index) {
         throw new TypeError(`projection.finding_group_outcomes[${index}] has the wrong group index`)
       }
-      sameSet(compatibility.findingIds, expected.findingGroups[index] ?? [], `projection.finding_group_outcomes[${index}].value.finding_ids`)
-      if (compatibility.status !== 'compatible') throw new TypeError(`projection.finding_group_outcomes[${index}] ready value is not compatible`)
+      sameSet(
+        compatibility.findingIds,
+        expected.findingGroups[index] ?? [],
+        `projection.finding_group_outcomes[${index}].value.finding_ids`,
+      )
+      if (compatibility.status !== 'compatible')
+        throw new TypeError(
+          `projection.finding_group_outcomes[${index}] ready value is not compatible`,
+        )
       compatibilities.push(compatibility)
     } else {
       complete = false
@@ -405,9 +477,7 @@ export function parseReportProjection(
   for (const [index, item] of source.finding_outcomes.entries()) {
     const expectedId = expected.findingIds[index]
     if (expectedId === undefined) throw new TypeError('projection Finding outcome is unexpected')
-    const outcome = parseFindingOutcome(
-      item, `projection.finding_outcomes[${index}]`, expectedId,
-    )
+    const outcome = parseFindingOutcome(item, `projection.finding_outcomes[${index}]`, expectedId)
     if (outcome.artifactRef !== undefined) {
       findingArtifactTargets.push({ findingId: expectedId, artifactRef: outcome.artifactRef })
     }
@@ -423,20 +493,27 @@ export function parseReportProjection(
       omitted += outcome.omitted
     }
   }
-  if (findings.some(item => item.sessionId !== expected.sessionId)) throw new TypeError('projection Finding belongs to another Session')
+  if (findings.some((item) => item.sessionId !== expected.sessionId))
+    throw new TypeError('projection Finding belongs to another Session')
   const expectedArtifactRefs = [...expected.artifactRefs]
   for (const target of findingArtifactTargets) {
-    if (!expectedArtifactRefs.includes(target.artifactRef)) expectedArtifactRefs.push(target.artifactRef)
+    if (!expectedArtifactRefs.includes(target.artifactRef))
+      expectedArtifactRefs.push(target.artifactRef)
   }
   if (source.artifact_outcomes.length !== expectedArtifactRefs.length) {
-    throw new TypeError('projection Artifact outcome count does not match the requested and discovered identities')
+    throw new TypeError(
+      'projection Artifact outcome count does not match the requested and discovered identities',
+    )
   }
   const artifacts: ReportArtifactProjection[] = []
   for (const [index, item] of source.artifact_outcomes.entries()) {
     const expectedRef = expectedArtifactRefs[index]
     if (expectedRef === undefined) throw new TypeError('projection Artifact outcome is unexpected')
     const outcome = parseOutcome(
-      item, `projection.artifact_outcomes[${index}]`, 'ref', expectedRef,
+      item,
+      `projection.artifact_outcomes[${index}]`,
+      'ref',
+      expectedRef,
       parseArtifact,
     )
     if (outcome.ready) {

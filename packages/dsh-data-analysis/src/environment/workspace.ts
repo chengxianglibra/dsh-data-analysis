@@ -44,10 +44,18 @@ function manifestText(projectRoot: string): string {
   return `[project]\nname = ${JSON.stringify(projectName)}\n`
 }
 
-async function ensureManifest(target: string, projectRoot: string, created: string[]): Promise<void> {
+async function ensureManifest(
+  target: string,
+  projectRoot: string,
+  created: string[],
+): Promise<void> {
   const temporary = path.join(projectRoot, `.marivo-${randomUUID()}.toml`)
   try {
-    await writeFile(temporary, manifestText(projectRoot), { encoding: 'utf8', flag: 'wx', mode: 0o644 })
+    await writeFile(temporary, manifestText(projectRoot), {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o644,
+    })
     await link(temporary, target)
     created.push(MANIFEST)
   } catch (error) {
@@ -76,7 +84,9 @@ async function ensureManifest(target: string, projectRoot: string, created: stri
 }
 
 /** Create only the minimal Marivo project layout; never install Python or Workspace skills. */
-export async function initializeMarivoWorkspace(projectRoot: string): Promise<MarivoWorkspaceLayout> {
+export async function initializeMarivoWorkspace(
+  projectRoot: string,
+): Promise<MarivoWorkspaceLayout> {
   let canonicalRoot: string
   try {
     canonicalRoot = await realpath(path.resolve(projectRoot))

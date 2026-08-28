@@ -6,26 +6,23 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
+import { registerMarivoTestTool } from './datasource/index.ts'
+import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import {
   installMarivoDisclosure,
   type MarivoDisclosureController,
   type MarivoDisclosureOptions,
 } from './disclosure/index.ts'
 import {
-  MARIVO_PERSIST_CREDENTIALS_DISABLED,
-  MARIVO_PERSIST_CREDENTIALS_ENV,
   DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
   ensureSharedMarivoRuntime,
-  MarivoWorkspaceEnvironmentManager,
+  MARIVO_PERSIST_CREDENTIALS_DISABLED,
+  MARIVO_PERSIST_CREDENTIALS_ENV,
   MarivoEnvironment,
+  MarivoWorkspaceEnvironmentManager,
 } from './environment/index.ts'
-import { registerMarivoTestTool } from './datasource/index.ts'
-import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import { registerMarivoEvidenceCiteTool } from './evidence/index.ts'
-import {
-  installMarivoReportCodeDelivery,
-  registerMarivoReportRenderTool,
-} from './report/index.ts'
+import { installMarivoReportCodeDelivery, registerMarivoReportRenderTool } from './report/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -117,11 +114,13 @@ export const Config: z<Config> = z.object({
 })
 
 function configuredProjectRoot(config: Config, agent: Agent): string {
-  return config.projectRoot
-    ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT
-    ?? agent.session.header.cwd
-    ?? process.env.DSH_CWD
-    ?? process.cwd()
+  return (
+    config.projectRoot ??
+    process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ??
+    agent.session.header.cwd ??
+    process.env.DSH_CWD ??
+    process.cwd()
+  )
 }
 
 export type MarivoPluginEnvironmentResolver = (
@@ -150,40 +149,50 @@ export function installMarivoPlugin(
   const shellCredentials = new MarivoShellCredentialBridge(ctx, credentials)
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
-    const source = environmentOrResolver instanceof MarivoEnvironment
-      ? environmentOrResolver
-      : () => Promise.resolve(environmentOrResolver(agent))
+    const source =
+      environmentOrResolver instanceof MarivoEnvironment
+        ? environmentOrResolver
+        : () => Promise.resolve(environmentOrResolver(agent))
     const controller = installMarivoDisclosure(ctx, agent, source, options)
     controller.addDisposer(shellCredentials.installAgent(agent, source))
-    controller.addDisposer(registerMarivoTestTool(agent.ctx, source, credentials, {
-      onDescribe: (environment, datasourceName, refs) => {
-        shellCredentials.recordDatasource(environment, datasourceName, refs)
-      },
-    }))
+    controller.addDisposer(
+      registerMarivoTestTool(agent.ctx, source, credentials, {
+        onDescribe: (environment, datasourceName, refs) => {
+          shellCredentials.recordDatasource(environment, datasourceName, refs)
+        },
+      }),
+    )
     controller.addDisposer(registerMarivoEvidenceCiteTool(agent.ctx, source, agent.session))
     controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, source))
     controller.addDisposer(installMarivoReportCodeDelivery(agent.ctx))
-    controller.addDisposer(agent.ctx.systemPrompt.section({
-      name: 'marivo:datasource-credentials',
-      order: 170,
-      text: () => controller.activeSkills.includes('marivo-semantic')
-        ? MARIVO_DATASOURCE_CREDENTIAL_PROMPT
-        : '',
-    }))
-    controller.addDisposer(agent.ctx.systemPrompt.section({
-      name: 'marivo:evidence-citations',
-      order: 180,
-      text: () => controller.activeSkills.includes('marivo-analysis')
-        ? MARIVO_EVIDENCE_CITATION_PROMPT
-        : '',
-    }))
-    controller.addDisposer(agent.ctx.systemPrompt.section({
-      name: 'marivo:html-report-rendering',
-      order: 190,
-      text: () => controller.activeSkills.includes('marivo-analysis')
-        ? MARIVO_REPORT_RENDERING_PROMPT
-        : '',
-    }))
+    controller.addDisposer(
+      agent.ctx.systemPrompt.section({
+        name: 'marivo:datasource-credentials',
+        order: 170,
+        text: () =>
+          controller.activeSkills.includes('marivo-semantic')
+            ? MARIVO_DATASOURCE_CREDENTIAL_PROMPT
+            : '',
+      }),
+    )
+    controller.addDisposer(
+      agent.ctx.systemPrompt.section({
+        name: 'marivo:evidence-citations',
+        order: 180,
+        text: () =>
+          controller.activeSkills.includes('marivo-analysis')
+            ? MARIVO_EVIDENCE_CITATION_PROMPT
+            : '',
+      }),
+    )
+    controller.addDisposer(
+      agent.ctx.systemPrompt.section({
+        name: 'marivo:html-report-rendering',
+        order: 190,
+        text: () =>
+          controller.activeSkills.includes('marivo-analysis') ? MARIVO_REPORT_RENDERING_PROMPT : '',
+      }),
+    )
     installed.set(agent, controller)
   }
 
@@ -196,7 +205,9 @@ export function installMarivoPlugin(
     throw error
   }
 
-  const stopCreated = ctx.on('agent/created', ({ agent }) => { install(agent) })
+  const stopCreated = ctx.on('agent/created', ({ agent }) => {
+    install(agent)
+  })
   const stopDisposed = ctx.on('agent/disposed', ({ agent }) => {
     installed.get(agent)?.dispose()
     installed.delete(agent)
@@ -231,13 +242,9 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => vo
     customSkillDirs: [runtime.skillsRoot],
     watch: false,
   })
-  const manager = new MarivoWorkspaceEnvironmentManager(
-    runtime,
-    config.initializeWorkspace ?? true,
-  )
-  const disposePlugin = installMarivoPlugin(
-    ctx,
-    agent => manager.resolve(configuredProjectRoot(config, agent)),
+  const manager = new MarivoWorkspaceEnvironmentManager(runtime, config.initializeWorkspace ?? true)
+  const disposePlugin = installMarivoPlugin(ctx, (agent) =>
+    manager.resolve(configuredProjectRoot(config, agent)),
   )
   return () => {
     disposePlugin()

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { constants } from 'node:fs'
 import {
   access,
   chmod,
@@ -11,17 +12,12 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { constants } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { MarivoEnvironmentError } from './errors.ts'
 import { FixedSubprocessPolicy } from './subprocess.ts'
-import type {
-  SharedMarivoRuntime,
-  SharedMarivoRuntimeConfig,
-  SubprocessResult,
-} from './types.ts'
+import type { SharedMarivoRuntime, SharedMarivoRuntimeConfig, SubprocessResult } from './types.ts'
 
 export const SHARED_PYTHON_SPEC = '3.10'
 export const SHARED_MARIVO_PACKAGE_SPEC = 'marivo[duckdb,trino,clickhouse]'
@@ -153,7 +149,8 @@ function parseJsonObject<T>(stage: string, result: SubprocessResult): T {
   requireSuccess(stage, result)
   try {
     const value: unknown = JSON.parse(result.stdout.toString('utf8'))
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('not an object')
+    if (typeof value !== 'object' || value === null || Array.isArray(value))
+      throw new Error('not an object')
     return value as T
   } catch (cause) {
     throw new MarivoEnvironmentError(
@@ -174,19 +171,22 @@ async function probeRuntime(
 ): Promise<RuntimeProbe> {
   const canonical = await assertExecutable(executable)
   const policy = new FixedSubprocessPolicy(runtimeRoot, environment)
-  const probe = parseJsonObject<RuntimeProbe>('probe Marivo identity', await policy.run({
-    executable: canonical,
-    args: ['-c', PROBE_SCRIPT],
-    limits: { timeoutMs, stdoutMaxBytes: 16_384, stderrMaxBytes: 16_384 },
-  }))
+  const probe = parseJsonObject<RuntimeProbe>(
+    'probe Marivo identity',
+    await policy.run({
+      executable: canonical,
+      args: ['-c', PROBE_SCRIPT],
+      limits: { timeoutMs, stdoutMaxBytes: 16_384, stderrMaxBytes: 16_384 },
+    }),
+  )
   if (
-    typeof probe.python_executable !== 'string'
-    || typeof probe.marivo_version !== 'string'
-    || probe.marivo_version.length === 0
-    || typeof probe.package_path !== 'string'
-    || probe.package_path.length === 0
-    || !Array.isArray(probe.capabilities)
-    || !probe.capabilities.every(capability => typeof capability === 'string')
+    typeof probe.python_executable !== 'string' ||
+    typeof probe.marivo_version !== 'string' ||
+    probe.marivo_version.length === 0 ||
+    typeof probe.package_path !== 'string' ||
+    probe.package_path.length === 0 ||
+    !Array.isArray(probe.capabilities) ||
+    !probe.capabilities.every((capability) => typeof capability === 'string')
   ) {
     throw new MarivoEnvironmentError(
       'shared-runtime-identity-mismatch',
@@ -209,8 +209,8 @@ async function probeRuntime(
   const actualPython = await realpath(path.resolve(probe.python_executable))
   const selectedPython = await realpath(canonical)
   if (
-    actualPython !== selectedPython
-    || (expectedMarivoVersion !== undefined && probe.marivo_version !== expectedMarivoVersion)
+    actualPython !== selectedPython ||
+    (expectedMarivoVersion !== undefined && probe.marivo_version !== expectedMarivoVersion)
   ) {
     throw new MarivoEnvironmentError(
       'shared-runtime-identity-mismatch',
@@ -282,20 +282,23 @@ async function syncSkills(runtimeRoot: string, packagePath: string): Promise<str
 
 async function readInstallation(runtimeRoot: string): Promise<InstallationRecord | undefined> {
   try {
-    const value: unknown = JSON.parse(await readFile(path.join(runtimeRoot, INSTALLATION_FILENAME), 'utf8'))
+    const value: unknown = JSON.parse(
+      await readFile(path.join(runtimeRoot, INSTALLATION_FILENAME), 'utf8'),
+    )
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
     const record = value as Partial<InstallationRecord>
     if (
-      record.schema !== INSTALLATION_SCHEMA
-      || typeof record.marivoVersion !== 'string'
-      || record.marivoVersion.length === 0
-      || typeof record.pythonExecutable !== 'string'
-      || typeof record.packagePath !== 'string'
-      || typeof record.skillsRoot !== 'string'
-      || !Array.isArray(record.capabilities)
-      || !record.capabilities.includes(REQUIRED_MARIVO_CAPABILITY)
-      || !record.capabilities.every(capability => typeof capability === 'string')
-    ) return undefined
+      record.schema !== INSTALLATION_SCHEMA ||
+      typeof record.marivoVersion !== 'string' ||
+      record.marivoVersion.length === 0 ||
+      typeof record.pythonExecutable !== 'string' ||
+      typeof record.packagePath !== 'string' ||
+      typeof record.skillsRoot !== 'string' ||
+      !Array.isArray(record.capabilities) ||
+      !record.capabilities.includes(REQUIRED_MARIVO_CAPABILITY) ||
+      !record.capabilities.every((capability) => typeof capability === 'string')
+    )
+      return undefined
     return record as InstallationRecord
   } catch {
     return undefined
@@ -305,7 +308,10 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
 async function writeInstallation(runtimeRoot: string, record: InstallationRecord): Promise<string> {
   const installationPath = path.join(runtimeRoot, INSTALLATION_FILENAME)
   const temporary = path.join(runtimeRoot, `.installation-${randomUUID()}.json`)
-  await writeFile(temporary, `${JSON.stringify(record, undefined, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+  await writeFile(temporary, `${JSON.stringify(record, undefined, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
   if (process.platform !== 'win32') await chmod(temporary, 0o600)
   await rename(temporary, installationPath)
   return installationPath
@@ -348,17 +354,30 @@ async function validatedExisting(
   }
 }
 
-async function acquireLock(lockPath: string, timeoutMs: number, waitIntervalMs: number): Promise<() => Promise<void>> {
+async function acquireLock(
+  lockPath: string,
+  timeoutMs: number,
+  waitIntervalMs: number,
+): Promise<() => Promise<void>> {
   const started = Date.now()
   while (true) {
     try {
       await mkdir(lockPath)
-      await writeFile(path.join(lockPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`)
-      return async () => { await rm(lockPath, { recursive: true, force: true }) }
+      await writeFile(
+        path.join(lockPath, 'owner.json'),
+        `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`,
+      )
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true })
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
       let age = 0
-      try { age = Date.now() - (await stat(lockPath)).mtimeMs } catch { continue }
+      try {
+        age = Date.now() - (await stat(lockPath)).mtimeMs
+      } catch {
+        continue
+      }
       if (age >= timeoutMs && !(await lockOwnerAlive(lockPath))) {
         try {
           await rename(lockPath, `${lockPath}.stale-${Date.now()}-${randomUUID()}`)
@@ -374,14 +393,16 @@ async function acquireLock(lockPath: string, timeoutMs: number, waitIntervalMs: 
           { lockPath, timeoutMs },
         )
       }
-      await new Promise(resolve => setTimeout(resolve, waitIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, waitIntervalMs))
     }
   }
 }
 
 async function lockOwnerAlive(lockPath: string): Promise<boolean> {
   try {
-    const owner = JSON.parse(await readFile(path.join(lockPath, 'owner.json'), 'utf8')) as { pid?: unknown }
+    const owner = JSON.parse(await readFile(path.join(lockPath, 'owner.json'), 'utf8')) as {
+      pid?: unknown
+    }
     if (!Number.isSafeInteger(owner.pid) || (owner.pid as number) < 1) return false
     try {
       process.kill(owner.pid as number, 0)
@@ -412,16 +433,22 @@ async function installManagedRuntime(
 ): Promise<RuntimeProbe> {
   const policy = new FixedSubprocessPolicy(runtimeRoot, environment)
   const limits = { timeoutMs, stdoutMaxBytes: 1_048_576, stderrMaxBytes: 1_048_576 }
-  requireSuccess('install managed Python', await policy.run({
-    executable: uvExecutable,
-    args: ['python', 'install', SHARED_PYTHON_SPEC],
-    limits,
-  }))
-  const found = requireSuccess('resolve managed Python', await policy.run({
-    executable: uvExecutable,
-    args: ['python', 'find', '--managed-python', SHARED_PYTHON_SPEC],
-    limits,
-  }))
+  requireSuccess(
+    'install managed Python',
+    await policy.run({
+      executable: uvExecutable,
+      args: ['python', 'install', SHARED_PYTHON_SPEC],
+      limits,
+    }),
+  )
+  const found = requireSuccess(
+    'resolve managed Python',
+    await policy.run({
+      executable: uvExecutable,
+      args: ['python', 'find', '--managed-python', SHARED_PYTHON_SPEC],
+      limits,
+    }),
+  )
   const managedPython = found.stdout.toString('utf8').trim()
   if (!path.isAbsolute(managedPython)) {
     throw new MarivoEnvironmentError(
@@ -433,14 +460,18 @@ async function installManagedRuntime(
   const canonicalManagedPython = await assertExecutable(managedPython)
   const version = parseJsonObject<{ version?: unknown; python_executable?: unknown }>(
     'validate managed Python',
-    await policy.run({ executable: canonicalManagedPython, args: ['-c', PYTHON_VERSION_SCRIPT], limits }),
+    await policy.run({
+      executable: canonicalManagedPython,
+      args: ['-c', PYTHON_VERSION_SCRIPT],
+      limits,
+    }),
   )
   if (
-    !Array.isArray(version.version)
-    || typeof version.version[0] !== 'number'
-    || typeof version.version[1] !== 'number'
-    || version.version[0] < 3
-    || (version.version[0] === 3 && version.version[1] < 10)
+    !Array.isArray(version.version) ||
+    typeof version.version[0] !== 'number' ||
+    typeof version.version[1] !== 'number' ||
+    version.version[0] < 3 ||
+    (version.version[0] === 3 && version.version[1] < 10)
   ) {
     throw new MarivoEnvironmentError(
       'shared-runtime-install-failed',
@@ -448,17 +479,23 @@ async function installManagedRuntime(
       { version: version.version, pythonExecutable: canonicalManagedPython },
     )
   }
-  requireSuccess('create shared virtual environment', await policy.run({
-    executable: uvExecutable,
-    args: ['venv', '--python', canonicalManagedPython, '--seed', path.join(runtimeRoot, '.venv')],
-    limits,
-  }))
+  requireSuccess(
+    'create shared virtual environment',
+    await policy.run({
+      executable: uvExecutable,
+      args: ['venv', '--python', canonicalManagedPython, '--seed', path.join(runtimeRoot, '.venv')],
+      limits,
+    }),
+  )
   const executable = venvPython(runtimeRoot)
-  requireSuccess('install latest Marivo', await policy.run({
-    executable: uvExecutable,
-    args: ['pip', 'install', '--python', executable, '--upgrade', SHARED_MARIVO_PACKAGE_SPEC],
-    limits,
-  }))
+  requireSuccess(
+    'install latest Marivo',
+    await policy.run({
+      executable: uvExecutable,
+      args: ['pip', 'install', '--python', executable, '--upgrade', SHARED_MARIVO_PACKAGE_SPEC],
+      limits,
+    }),
+  )
   return probeRuntime(runtimeRoot, executable, environment, timeoutMs)
 }
 
@@ -467,30 +504,44 @@ export async function ensureSharedMarivoRuntime(
   config: SharedMarivoRuntimeConfig = {},
   options: RuntimeInstallOptions = {},
 ): Promise<SharedMarivoRuntime> {
-  const runtimeRoot = config.runtimeRoot === undefined
-    ? defaultRuntimeRoot()
-    : normalizeAbsolute('runtimeRoot', config.runtimeRoot)
-  const configuredPython = config.pythonExecutable === undefined
-    ? undefined
-    : normalizeAbsolute('pythonExecutable', config.pythonExecutable)
-  const uvExecutable = config.uvExecutable === undefined
-    ? 'uv'
-    : normalizeAbsolute('uvExecutable', config.uvExecutable)
+  const runtimeRoot =
+    config.runtimeRoot === undefined
+      ? defaultRuntimeRoot()
+      : normalizeAbsolute('runtimeRoot', config.runtimeRoot)
+  const configuredPython =
+    config.pythonExecutable === undefined
+      ? undefined
+      : normalizeAbsolute('pythonExecutable', config.pythonExecutable)
+  const uvExecutable =
+    config.uvExecutable === undefined
+      ? 'uv'
+      : normalizeAbsolute('uvExecutable', config.uvExecutable)
   const timeoutMs = positiveTimeout(config.installTimeoutMs)
-  const existing = await validatedExisting(runtimeRoot, configuredPython, options.environment, timeoutMs)
+  const existing = await validatedExisting(
+    runtimeRoot,
+    configuredPython,
+    options.environment,
+    timeoutMs,
+  )
   if (existing !== undefined) return existing
 
   await mkdir(path.dirname(runtimeRoot), { recursive: true })
   const lockPath = `${runtimeRoot}.install-lock`
   const release = await acquireLock(lockPath, timeoutMs, options.waitIntervalMs ?? 100)
   try {
-    const afterLock = await validatedExisting(runtimeRoot, configuredPython, options.environment, timeoutMs)
+    const afterLock = await validatedExisting(
+      runtimeRoot,
+      configuredPython,
+      options.environment,
+      timeoutMs,
+    )
     if (afterLock !== undefined) return afterLock
     await backupInvalidRuntime(runtimeRoot)
     await mkdir(runtimeRoot, { recursive: true })
-    const probe = configuredPython === undefined
-      ? await installManagedRuntime(runtimeRoot, uvExecutable, options.environment, timeoutMs)
-      : await probeRuntime(runtimeRoot, configuredPython, options.environment, timeoutMs)
+    const probe =
+      configuredPython === undefined
+        ? await installManagedRuntime(runtimeRoot, uvExecutable, options.environment, timeoutMs)
+        : await probeRuntime(runtimeRoot, configuredPython, options.environment, timeoutMs)
     const skillsRoot = await syncSkills(runtimeRoot, probe.package_path)
     const record: InstallationRecord = {
       schema: INSTALLATION_SCHEMA,

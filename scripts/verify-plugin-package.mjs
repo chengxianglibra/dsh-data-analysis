@@ -12,9 +12,12 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 
-const [manifest] = JSON.parse(result.stdout)
-const paths = new Set(manifest.files.map(file => file.path))
-const files = new Map(manifest.files.map(file => [file.path, file]))
+/** @type {Array<{ id: string, entryCount: number, unpackedSize: number, files: Array<{ path: string, mode: number }> }>} */
+const manifests = JSON.parse(result.stdout)
+const manifest = manifests[0]
+if (manifest === undefined) throw new Error('npm pack returned no manifest')
+const paths = new Set(manifest.files.map((file) => file.path))
+const files = new Map(manifest.files.map((file) => [file.path, file]))
 const required = [
   'README.md',
   'cordis.patch.yml',

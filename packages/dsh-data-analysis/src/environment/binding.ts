@@ -1,11 +1,12 @@
-import { access, constants, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { access, constants, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 import { MarivoEnvironmentError } from './errors.ts'
 import { FixedSubprocessPolicy } from './subprocess.ts'
 import type {
+  DoctorReport,
   ImportIdentity,
   MarivoEnvironmentBinding,
   MarivoEnvironmentConfig,
@@ -741,9 +742,13 @@ async function resolvePythonExecutable(
       { pythonExecutable: configured },
     )
   }
-  const executable = configured === undefined
-    ? path.join(projectRoot, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python')
-    : path.normalize(configured)
+  const executable =
+    configured === undefined
+      ? path.join(
+          projectRoot,
+          process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
+        )
+      : path.normalize(configured)
   await assertExecutable(executable)
   return executable
 }
@@ -763,10 +768,11 @@ function parseImportIdentity(stdout: Buffer): ImportIdentity {
   try {
     const value = JSON.parse(stdout.toString('utf8')) as Record<string, unknown>
     if (
-      typeof value.python_executable !== 'string'
-      || typeof value.marivo_version !== 'string'
-      || typeof value.package_path !== 'string'
-    ) throw new TypeError('identity fields must be strings')
+      typeof value.python_executable !== 'string' ||
+      typeof value.marivo_version !== 'string' ||
+      typeof value.package_path !== 'string'
+    )
+      throw new TypeError('identity fields must be strings')
     return {
       pythonExecutable: value.python_executable,
       marivoVersion: value.marivo_version,
@@ -788,10 +794,7 @@ export class MarivoEnvironment {
   readonly subprocessPolicy: FixedSubprocessPolicy
   #failed = false
 
-  constructor(
-    binding: MarivoEnvironmentBinding,
-    subprocessPolicy: FixedSubprocessPolicy,
-  ) {
+  constructor(binding: MarivoEnvironmentBinding, subprocessPolicy: FixedSubprocessPolicy) {
     this.binding = Object.freeze({ ...binding })
     this.subprocessPolicy = subprocessPolicy
   }
@@ -839,10 +842,12 @@ export class MarivoEnvironment {
     try {
       const identity = parseImportIdentity(result.stdout)
       if (
-        normalizeAbsolute(identity.pythonExecutable) !== normalizeAbsolute(this.binding.pythonExecutable)
-        || identity.marivoVersion !== this.binding.marivoVersion
-        || normalizeAbsolute(identity.packagePath) !== normalizeAbsolute(this.binding.packagePath)
-      ) throw new Error('identity values differ from binding')
+        normalizeAbsolute(identity.pythonExecutable) !==
+          normalizeAbsolute(this.binding.pythonExecutable) ||
+        identity.marivoVersion !== this.binding.marivoVersion ||
+        normalizeAbsolute(identity.packagePath) !== normalizeAbsolute(this.binding.packagePath)
+      )
+        throw new Error('identity values differ from binding')
       return identity
     } catch (cause) {
       this.#failed = true
@@ -957,10 +962,7 @@ export class MarivoEnvironment {
   }
 
   /** Return datasource names and credential reference names for one Workspace. */
-  runCheckedDatasourceInventory(
-    limits: Partial<SubprocessLimits>,
-    signal?: AbortSignal,
-  ) {
+  runCheckedDatasourceInventory(limits: Partial<SubprocessLimits>, signal?: AbortSignal) {
     return this.#runCheckedDatasourceScript(
       CHECKED_DATASOURCE_INVENTORY_SCRIPT,
       '',
@@ -1089,7 +1091,7 @@ export async function bindMarivoEnvironment(
     limits: DOCTOR_LIMITS,
     signal: options.signal,
   })
-  let report
+  let report: DoctorReport
   try {
     report = parseDoctorReport(result.stdout)
   } catch (cause) {

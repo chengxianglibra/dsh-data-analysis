@@ -1,6 +1,12 @@
+export { bindMarivoEnvironment, MarivoEnvironment } from './binding.ts'
 export { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 export { MarivoEnvironmentError } from './errors.ts'
-export { bindMarivoEnvironment, MarivoEnvironment } from './binding.ts'
+export {
+  DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
+  ensureSharedMarivoRuntime,
+  SHARED_MARIVO_PACKAGE_SPEC,
+  SHARED_PYTHON_SPEC,
+} from './runtime.ts'
 export {
   DEFAULT_SUBPROCESS_LIMITS,
   FixedSubprocessPolicy,
@@ -8,13 +14,6 @@ export {
   MARIVO_PERSIST_CREDENTIALS_ENV,
   SUBPROCESS_POLICY_ID,
 } from './subprocess.ts'
-export {
-  DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
-  ensureSharedMarivoRuntime,
-  SHARED_MARIVO_PACKAGE_SPEC,
-  SHARED_PYTHON_SPEC,
-} from './runtime.ts'
-export { initializeMarivoWorkspace, MarivoWorkspaceEnvironmentManager } from './workspace.ts'
 export type {
   DoctorCheck,
   DoctorOverallStatus,
@@ -31,3 +30,4 @@ export type {
   SubprocessRequest,
   SubprocessResult,
 } from './types.ts'
+export { initializeMarivoWorkspace, MarivoWorkspaceEnvironmentManager } from './workspace.ts'

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import process from 'node:process'
 import test from 'node:test'
 import {
   initializeMarivoWorkspace,
@@ -52,7 +51,10 @@ test('Workspace initialization is minimal, atomic, and idempotent', async (t) =>
 
   assert.deepEqual(new Set(first.created), new Set(['models', '.marivo', 'marivo.toml']))
   assert.deepEqual(second.created, [])
-  assert.equal(await readFile(path.join(root, 'marivo.toml'), 'utf8'), `[project]\nname = ${JSON.stringify(path.basename(root))}\n`)
+  assert.equal(
+    await readFile(path.join(root, 'marivo.toml'), 'utf8'),
+    `[project]\nname = ${JSON.stringify(path.basename(root))}\n`,
+  )
   await absent(path.join(root, '.venv'))
   await absent(path.join(root, '.agents'))
   await absent(path.join(root, '.claude'))
@@ -105,8 +107,8 @@ test('one invalid Workspace fails closed without poisoning another Workspace', a
 
   await assert.rejects(
     initializeMarivoWorkspace(broken),
-    (error: unknown) => error instanceof MarivoEnvironmentError
-      && error.code === 'workspace-initialization-failed',
+    (error: unknown) =>
+      error instanceof MarivoEnvironmentError && error.code === 'workspace-initialization-failed',
   )
   const layout = await initializeMarivoWorkspace(healthy)
   assert.equal(layout.projectRoot, await realpath(healthy))

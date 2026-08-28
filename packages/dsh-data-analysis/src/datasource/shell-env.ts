@@ -2,21 +2,18 @@ import process from 'node:process'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
+  type CredentialProvider,
   credentialRef,
   isCredentialRefName,
-  type CredentialProvider,
 } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
 import {
   MARIVO_PERSIST_CREDENTIALS_DISABLED,
   MARIVO_PERSIST_CREDENTIALS_ENV,
-  MarivoEnvironment,
+  type MarivoEnvironment,
   MarivoEnvironmentError,
 } from '../environment/index.ts'
-import {
-  resolveMarivoEnvironmentSource,
-  type MarivoEnvironmentSource,
-} from '../disclosure/help.ts'
 
 export const DSH_CREDENTIAL_REF_PATTERN = /^DSH_[A-Z][A-Z0-9_]*$/
 
@@ -99,7 +96,11 @@ function parseInventory(stdout: Buffer): DatasourceReferences[] {
       { cause },
     )
   }
-  if (typeof value !== 'object' || value === null || !Array.isArray((value as { datasources?: unknown }).datasources)) {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !Array.isArray((value as { datasources?: unknown }).datasources)
+  ) {
     throw new MarivoEnvironmentError(
       'subprocess-output-invalid',
       'Marivo datasource inventory returned invalid fields',
@@ -109,11 +110,13 @@ function parseInventory(stdout: Buffer): DatasourceReferences[] {
   const parsed: DatasourceReferences[] = []
   for (const item of (value as { datasources: unknown[] }).datasources) {
     if (
-      typeof item !== 'object'
-      || item === null
-      || typeof (item as { name?: unknown }).name !== 'string'
-      || !Array.isArray((item as { refs?: unknown }).refs)
-      || !(item as { refs: unknown[] }).refs.every(ref => typeof ref === 'string' && isCredentialRefName(ref))
+      typeof item !== 'object' ||
+      item === null ||
+      typeof (item as { name?: unknown }).name !== 'string' ||
+      !Array.isArray((item as { refs?: unknown }).refs) ||
+      !(item as { refs: unknown[] }).refs.every(
+        (ref) => typeof ref === 'string' && isCredentialRefName(ref),
+      )
     ) {
       throw new MarivoEnvironmentError(
         'subprocess-output-invalid',
@@ -137,7 +140,10 @@ export class MarivoShellCredentialBridge {
   readonly #ctx: Context
   readonly #credentials: Pick<CredentialProvider, 'resolve'>
   readonly #workspaces = new WeakMap<MarivoEnvironment, WorkspaceReferences>()
-  readonly #executionValues = new WeakMap<ToolExecution, ReadonlyMap<DshCredentialRefName, string>>()
+  readonly #executionValues = new WeakMap<
+    ToolExecution,
+    ReadonlyMap<DshCredentialRefName, string>
+  >()
   readonly #contributors = new Map<DshCredentialRefName, () => void>()
   #disposed = false
 
@@ -161,9 +167,11 @@ export class MarivoShellCredentialBridge {
     const dispose = shellEnvironmentRegistry(this.#ctx).register({
       name: `dsh-data-analysis:credential:${ref}`,
       variables: {
-        [ref]: { description: 'Marivo datasource credential resolved by DSH for this Shell execution.' },
+        [ref]: {
+          description: 'Marivo datasource credential resolved by DSH for this Shell execution.',
+        },
       },
-      resolve: execution => {
+      resolve: (execution) => {
         const value = this.#executionValues.get(execution)?.get(ref)
         return value === undefined ? {} : { [ref]: value }
       },
@@ -173,11 +181,7 @@ export class MarivoShellCredentialBridge {
   }
 
   /** Replace one datasource's non-secret reference-name projection. */
-  recordDatasource(
-    environment: MarivoEnvironment,
-    name: string,
-    refs: readonly string[],
-  ): void {
+  recordDatasource(environment: MarivoEnvironment, name: string, refs: readonly string[]): void {
     if (this.#disposed) return
     assertDshCredentialReferences(refs)
     const deduplicated = [...new Set(refs)]
@@ -195,8 +199,8 @@ export class MarivoShellCredentialBridge {
         if (this.#disposed) return
         if (result.exitCode !== 0) return
         for (const datasource of parseInventory(result.stdout)) {
-          const accepted = datasource.refs.filter(
-            (ref): ref is DshCredentialRefName => DSH_CREDENTIAL_REF_PATTERN.test(ref),
+          const accepted = datasource.refs.filter((ref): ref is DshCredentialRefName =>
+            DSH_CREDENTIAL_REF_PATTERN.test(ref),
           )
           const deduplicated = [...new Set(accepted)]
           const registered: DshCredentialRefName[] = []
@@ -255,9 +259,9 @@ export class MarivoShellCredentialBridge {
           // Inventory/binding failures remain fail-open so the Shell can repair the Workspace.
         }
         if (
-          snapshot !== undefined
-          && snapshot.resolvedCount > 0
-          && isHarnessPersistentShell(agent, execution.name)
+          snapshot !== undefined &&
+          snapshot.resolvedCount > 0 &&
+          isHarnessPersistentShell(agent, execution.name)
         ) {
           throw persistentShellUnsupported(execution.name)
         }

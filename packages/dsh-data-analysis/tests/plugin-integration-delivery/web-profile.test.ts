@@ -14,8 +14,8 @@ import CredentialProvider, {
 import LlmRuntime, {
   CallId,
   createUserMessage,
-  LlmAdapter,
   type GenerateOptions,
+  LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
@@ -31,18 +31,36 @@ import { apply, inject } from '../../src/plugin.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 class TestCredentials extends CredentialProvider {
-  resolve(_ref: CredentialRef) { return Promise.resolve(undefined) }
-  describe(_ref: CredentialRef) { return Promise.resolve({ configured: false, writable: true }) }
-  set(_ref: CredentialRef, _value: string) { return Promise.resolve() }
-  unset(_ref: CredentialRef) { return Promise.resolve() }
-  readRecord(_key: CredentialKey) { return Promise.resolve(undefined) }
-  describeRecord(_key: CredentialKey) { return Promise.resolve({ configured: false, writable: true }) }
-  listRecords() { return Promise.resolve([]) }
+  resolve(_ref: CredentialRef) {
+    return Promise.resolve(undefined)
+  }
+  describe(_ref: CredentialRef) {
+    return Promise.resolve({ configured: false, writable: true })
+  }
+  set(_ref: CredentialRef, _value: string) {
+    return Promise.resolve()
+  }
+  unset(_ref: CredentialRef) {
+    return Promise.resolve()
+  }
+  readRecord(_key: CredentialKey) {
+    return Promise.resolve(undefined)
+  }
+  describeRecord(_key: CredentialKey) {
+    return Promise.resolve({ configured: false, writable: true })
+  }
+  listRecords() {
+    return Promise.resolve([])
+  }
   modifyRecord(
     _key: CredentialKey,
     _mutate: (current: CredentialRecord | undefined) => Promise<CredentialRecord | undefined>,
-  ) { return Promise.resolve(undefined) }
-  deleteRecord(_key: CredentialKey) { return Promise.resolve() }
+  ) {
+    return Promise.resolve(undefined)
+  }
+  deleteRecord(_key: CredentialKey) {
+    return Promise.resolve()
+  }
 }
 
 function runtimePython(packagePath: string, recordPath: string): string {
@@ -101,8 +119,18 @@ function toolCall(id: string): StreamChunk[] {
   const argumentsJson = JSON.stringify({ targets: ['analysis'] })
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
-    { type: 'tool-call-delta', index: 0, id: callId, name: 'marivo_help', argumentsDelta: argumentsJson },
-    { type: 'block-end', index: 0, block: { type: 'tool-call', id: callId, name: 'marivo_help', arguments: argumentsJson } },
+    {
+      type: 'tool-call-delta',
+      index: 0,
+      id: callId,
+      name: 'marivo_help',
+      argumentsDelta: argumentsJson,
+    },
+    {
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: callId, name: 'marivo_help', arguments: argumentsJson },
+    },
     { type: 'usage', usage: { inputTokens: 1, outputTokens: 1 } },
     { type: 'finish', reason: { kind: 'tool-calls' } },
   ]
@@ -119,11 +147,16 @@ function textResponse(text: string): StreamChunk[] {
 }
 
 class SequentialAdapter extends LlmAdapter {
-  readonly #script = [toolCall('a-help'), textResponse('a-done'), toolCall('b-help'), textResponse('b-done')]
+  readonly #script = [
+    toolCall('a-help'),
+    textResponse('a-done'),
+    toolCall('b-help'),
+    textResponse('b-done'),
+  ]
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model })
   }
-  async * stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
+  async *stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
     const response = this.#script.shift()
     if (response === undefined) throw new Error('adapter exhausted')
     for (const chunk of response) yield chunk
@@ -154,11 +187,17 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
-    await writeFile(path.join(directory, 'SKILL.md'), `---\nname: ${skill}\ndescription: shared ${skill}\n---\nshared body\n`)
+    await writeFile(
+      path.join(directory, 'SKILL.md'),
+      `---\nname: ${skill}\ndescription: shared ${skill}\n---\nshared body\n`,
+    )
   }
   const projectSkill = path.join(firstRoot, '.dsh', 'skills', 'marivo-analysis')
   await mkdir(projectSkill, { recursive: true })
-  await writeFile(path.join(projectSkill, 'SKILL.md'), '---\nname: marivo-analysis\ndescription: project override\n---\nproject body\n')
+  await writeFile(
+    path.join(projectSkill, 'SKILL.md'),
+    '---\nname: marivo-analysis\ndescription: project override\n---\nproject body\n',
+  )
   await writeFile(python, runtimePython(packagePath, doctorRecord))
   await chmod(python, 0o755)
 
@@ -169,27 +208,47 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(TestShellEnv)
   await ctx.plugin(SkillRuntime)
-  await ctx.plugin({
-    name: 'test-skill-filesystem',
-    inject: skillFilesystemInject,
-    apply: applySkillFilesystem,
-  }, { includeDefaultRoots: true, watch: false })
+  await ctx.plugin(
+    {
+      name: 'test-skill-filesystem',
+      inject: skillFilesystemInject,
+      apply: applySkillFilesystem,
+    },
+    { includeDefaultRoots: true, watch: false },
+  )
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   const adapter = new SequentialAdapter()
   ctx.llm.registerAdapter(['mock'], adapter)
 
-  const first = ctx.agentLoop.create(SessionId('web-a'), { provider: 'mock', model: 'mock' }, { cwd: firstRoot })
-  const plugin = await ctx.plugin({ name: 'dsh-data-analysis-test', inject, apply }, {
-    runtimeRoot,
-    pythonExecutable: python,
-  })
-  const second = ctx.agentLoop.create(SessionId('web-b'), { provider: 'mock', model: 'mock' }, { cwd: secondRoot })
+  const first = ctx.agentLoop.create(
+    SessionId('web-a'),
+    { provider: 'mock', model: 'mock' },
+    { cwd: firstRoot },
+  )
+  const plugin = await ctx.plugin(
+    { name: 'dsh-data-analysis-test', inject, apply },
+    {
+      runtimeRoot,
+      pythonExecutable: python,
+    },
+  )
+  const second = ctx.agentLoop.create(
+    SessionId('web-b'),
+    { provider: 'mock', model: 'mock' },
+    { cwd: secondRoot },
+  )
 
   const catalog = await ctx.skills.snapshot({ cwd: firstRoot, scope: first })
-  assert.equal(catalog.skills.find(skill => skill.name === 'marivo-analysis')?.description, 'project override')
-  assert.equal(catalog.skills.find(skill => skill.name === 'marivo-semantic')?.provider, 'dsh-data-analysis-marivo')
+  assert.equal(
+    catalog.skills.find((skill) => skill.name === 'marivo-analysis')?.description,
+    'project override',
+  )
+  assert.equal(
+    catalog.skills.find((skill) => skill.name === 'marivo-semantic')?.provider,
+    'dsh-data-analysis-marivo',
+  )
 
   send(first, 'analyze workspace a')
   await first.whenIdle()

@@ -1,18 +1,14 @@
-export {
-  parseReportDocument,
-  REPORT_DOCUMENT_VERSION,
-} from './document.ts'
 export type {
   ChartBlockV1,
   EvidenceBlockV1,
   ParsedReportDocument,
-  ReportCheckStatus,
-  ReportCheckV1,
   ReportBlockedStage,
   ReportBlockedValueV1,
   ReportBlockV1,
-  ReportDocumentV1,
+  ReportCheckStatus,
+  ReportCheckV1,
   ReportDocumentInspection,
+  ReportDocumentV1,
   ReportIssueV1,
   ReportReadyValueV1,
   ReportRenderValueV1,
@@ -22,8 +18,9 @@ export type {
   TextBlockV1,
 } from './document.ts'
 export {
-  parseReportProjection,
-} from './projection.ts'
+  parseReportDocument,
+  REPORT_DOCUMENT_VERSION,
+} from './document.ts'
 export type {
   ReportArtifactColumn,
   ReportArtifactProjection,
@@ -32,6 +29,7 @@ export type {
   ReportProjectionBundle,
   ReportProjectionInspection,
 } from './projection.ts'
+export { parseReportProjection } from './projection.ts'
 export {
   canonicalJson,
   MAX_REPORT_HTML_BYTES,
@@ -40,7 +38,8 @@ export {
   REPORT_MANIFEST_VERSION,
   reportDocumentDigest,
 } from './publish.ts'
-export { renderReportHtml, REPORT_RENDERER_VERSION } from './render.ts'
+export { REPORT_RENDERER_VERSION, renderReportHtml } from './render.ts'
+export type { MarivoReportToolOptions, ReportPresentationMetaV1 } from './tool.ts'
 export {
   createMarivoReportRenderTool,
   installMarivoReportCodeDelivery,
@@ -49,14 +48,13 @@ export {
   REPORT_PRESENTATION_META_KIND,
   REPORT_PRESENTATION_META_VERSION,
   registerMarivoReportRenderTool,
-  reportPresentationMeta,
   renderReportToolValue,
+  reportPresentationMeta,
 } from './tool.ts'
-export type { MarivoReportToolOptions, ReportPresentationMetaV1 } from './tool.ts'
-export { compileReportVisuals, preflightReportVisuals } from './visual.ts'
 export type {
   CompiledChartBlock,
   CompiledReport,
   CompiledTableBlock,
   ReportVisualPreflight,
 } from './visual.ts'
+export { compileReportVisuals, preflightReportVisuals } from './visual.ts'

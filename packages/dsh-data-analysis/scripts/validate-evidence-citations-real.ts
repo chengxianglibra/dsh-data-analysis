@@ -5,18 +5,24 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { registerMarivoEvidenceCiteTool, type MarivoEvidenceCiteValue } from '../src/evidence/index.ts'
 import { bindMarivoEnvironment, FixedSubprocessPolicy } from '../src/environment/index.ts'
+import {
+  type MarivoEvidenceCiteValue,
+  registerMarivoEvidenceCiteTool,
+} from '../src/evidence/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
 const defaultSharedPython = path.join(
-  resolveDshHome(), 'dsh-data-analysis', 'runtimes', 'marivo',
+  resolveDshHome(),
+  'dsh-data-analysis',
+  'runtimes',
+  'marivo',
   process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
 )
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON ?? defaultSharedPython
@@ -27,7 +33,10 @@ const validationPath = path.join(runRoot, 'validation.json')
 
 await mkdir(path.join(fixtureRoot, 'models', 'datasources'), { recursive: true })
 await mkdir(path.join(fixtureRoot, 'models', 'semantic', 'sales'), { recursive: true })
-await writeFile(path.join(fixtureRoot, 'marivo.toml'), '[project]\nname = "evidence-citations-real"\n')
+await writeFile(
+  path.join(fixtureRoot, 'marivo.toml'),
+  '[project]\nname = "evidence-citations-real"\n',
+)
 await writeFile(
   path.join(fixtureRoot, 'models', 'datasources', 'warehouse.py'),
   "import marivo.datasource as md\nmd.duckdb(name='warehouse', path=':memory:')\n",
@@ -124,23 +133,30 @@ assert.deepEqual(chinese.registry[0]?.rendered, fixture.rendered)
 assert.doesNotMatch(chinese.requested[0]?.definition ?? '', new RegExp(fixture.findingId))
 assert.doesNotMatch(chinese.requested[0]?.definition ?? '', new RegExp(fixture.artifactId))
 
-await writeFile(validationPath, `${JSON.stringify({
-  schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
-  status: 'ok',
-  environment: {
-    pythonExecutable,
-    marivoVersion: environment.binding.marivoVersion,
-    packagePath: environment.binding.packagePath,
-    credentialValuesRecorded: false,
-  },
-  result: {
-    sessionId: fixture.sessionId,
-    findingId: fixture.findingId,
-    artifactId: fixture.artifactId,
-    handle: chinese.requested[0]?.handle,
-    languages: ['zh', 'en'],
-  },
-}, undefined, 2)}\n`)
+await writeFile(
+  validationPath,
+  `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      status: 'ok',
+      environment: {
+        pythonExecutable,
+        marivoVersion: environment.binding.marivoVersion,
+        packagePath: environment.binding.packagePath,
+        credentialValuesRecorded: false,
+      },
+      result: {
+        sessionId: fixture.sessionId,
+        findingId: fixture.findingId,
+        artifactId: fixture.artifactId,
+        handle: chinese.requested[0]?.handle,
+        languages: ['zh', 'en'],
+      },
+    },
+    undefined,
+    2,
+  )}\n`,
+)
 
 process.stdout.write(`${validationPath}\n`)

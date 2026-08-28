@@ -233,15 +233,27 @@ diagnostics。需要检查当前项目状态时，使用绑定解释器直接运
 ## 开发
 
 项目实现位于 `packages/dsh-data-analysis/`，使用 Node.js 内置 TypeScript stripping 运行
-测试，并通过 `tsc` 生成发布用 ESM 和类型声明。
+测试，并通过 Biome 检查格式、lint 和 import，通过 `tsc` 检查 TypeScript、TSX 与构建脚本。
+依赖解析固定在 `package-lock.json`；CI 使用 Node.js 24 和 `npm ci --ignore-scripts` 复现同一依赖图。
 
 ```sh
 npm install
+npm run quality
+npm run quality:fix
+npm run deps:check
 npm run typecheck
 npm test
+npm run check
 npm run test:html-report-rendering
 npm run validate:html-report-rendering:real
 npm run build
 npm run verify:plugin-package
 npm run pack:plugin
 ```
+
+`quality` 是只读门禁，同时执行 Biome formatter、linter 和 import organizing 检查；
+`quality:fix` 只写入安全修复，不启用 `--unsafe`。`deps:check` 通过 `npm ls --all` 验证锁定后的
+完整依赖树与 peer dependencies。`typecheck` 同时检查 `src/`、测试、真实验证 runner 和 `.mjs`
+构建脚本。由于 DSH Web client 的声明由运行时 module table 组合，源码类型检查跳过上游依赖包内部
+`.d.ts` 校验，但仍执行本项目模块解析；直接 import 的依赖另外由 Biome
+`noUndeclaredDependencies` 强制声明。

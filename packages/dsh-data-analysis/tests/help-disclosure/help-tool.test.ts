@@ -17,10 +17,7 @@ import {
   registerMarivoHelpTool,
   resolveMarivoHelpLimits,
 } from '../../src/disclosure/index.ts'
-import {
-  FixedSubprocessPolicy,
-  MarivoEnvironment,
-} from '../../src/environment/index.ts'
+import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 
 const FAKE_PYTHON = String.raw`#!/usr/bin/env node
 import { appendFileSync } from 'node:fs'
@@ -83,15 +80,24 @@ async function helpFixture(extraEnvironment: NodeJS.ProcessEnv = {}): Promise<He
     RECORD_PATH: recordPath,
     ...extraEnvironment,
   })
-  const environment = new MarivoEnvironment({
-    projectRoot: root,
-    pythonExecutable: executable,
-    marivoVersion: '0.0.test',
-    packagePath: path.join(root, 'fake-marivo', '__init__.py'),
-    subprocessPolicyId: policy.id,
-    fingerprint: 'f'.repeat(64),
-  }, policy)
-  return { root, executable, recordPath, environment, cleanup: () => rm(root, { recursive: true, force: true }) }
+  const environment = new MarivoEnvironment(
+    {
+      projectRoot: root,
+      pythonExecutable: executable,
+      marivoVersion: '0.0.test',
+      packagePath: path.join(root, 'fake-marivo', '__init__.py'),
+      subprocessPolicyId: policy.id,
+      fingerprint: 'f'.repeat(64),
+    },
+    policy,
+  )
+  return {
+    root,
+    executable,
+    recordPath,
+    environment,
+    cleanup: () => rm(root, { recursive: true, force: true }),
+  }
 }
 
 async function setupRuntime(environment: MarivoEnvironment, limits = {}) {
@@ -118,16 +124,18 @@ test('registered tool exposes only the native targets schema and keeps timeout h
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.environment)
-  const schema = ctx.tools.schemas().find(item => item.name === MARIVO_HELP_TOOL_NAME)
+  const schema = ctx.tools.schemas().find((item) => item.name === MARIVO_HELP_TOOL_NAME)
   assert.deepEqual(schema, {
     name: MARIVO_HELP_TOOL_NAME,
-    description: 'Request current live Marivo API help for zero, one, or multiple canonical string targets from the bound project environment.',
+    description:
+      'Request current live Marivo API help for zero, one, or multiple canonical string targets from the bound project environment.',
     parameters: {
       type: 'object',
       properties: {
         targets: {
           type: 'array',
-          description: 'Canonical Marivo help targets. Use an empty array when no additional API information is needed.',
+          description:
+            'Canonical Marivo help targets. Use an empty array when no additional API information is needed.',
           items: { type: 'string' },
         },
       },
@@ -143,7 +151,10 @@ test('targets=[] succeeds without starting a help subprocess', async (t) => {
   const ctx = await setupRuntime(fixture.environment)
   const result = await executeHelp(ctx, [])
   assert.equal(result.isError, false)
-  assert.match(result.content[0]?.type === 'text' ? result.content[0].text : '', /no targets requested/)
+  assert.match(
+    result.content[0]?.type === 'text' ? result.content[0].text : '',
+    /no targets requested/,
+  )
   await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
 })
 
@@ -151,19 +162,26 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.environment)
-  const result = await executeHelp(ctx, ['analysis.observe', 'analysis.compare', 'analysis.observe'])
+  const result = await executeHelp(ctx, [
+    'analysis.observe',
+    'analysis.compare',
+    'analysis.observe',
+  ])
   assert.equal(result.isError, false)
   if (result.isError) return
   const targets = (result.value as unknown as MarivoHelpValue).targets
-  assert.deepEqual(targets.map(item => ({
-    target: item.target,
-    body: item.body,
-    delivery: item.delivery,
-  })), [
-    { target: 'analysis.observe', body: 'help-body:analysis.observe\n', delivery: 'delivered' },
-    { target: 'analysis.compare', body: 'help-body:analysis.compare\n', delivery: 'delivered' },
-  ])
-  assert.ok(targets.every(item => /^[0-9a-f]{64}$/.test(item.bodyDigest)))
+  assert.deepEqual(
+    targets.map((item) => ({
+      target: item.target,
+      body: item.body,
+      delivery: item.delivery,
+    })),
+    [
+      { target: 'analysis.observe', body: 'help-body:analysis.observe\n', delivery: 'delivered' },
+      { target: 'analysis.compare', body: 'help-body:analysis.compare\n', delivery: 'delivered' },
+    ],
+  )
+  assert.ok(targets.every((item) => /^[0-9a-f]{64}$/.test(item.bodyDigest)))
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
     'analysis.observe',
     'analysis.compare',
@@ -198,7 +216,9 @@ test('mechanical request bounds fail without target membership validation', asyn
   assert.equal(missing.isError, true)
   const tooLong = await executeHelp(ctx, ['abcdef'])
   assert.equal(tooLong.isError, true)
-  assert.deepEqual(normalizeHelpTargets(['unknown', 'unknown'], resolveMarivoHelpLimits()), ['unknown'])
+  assert.deepEqual(normalizeHelpTargets(['unknown', 'unknown'], resolveMarivoHelpLimits()), [
+    'unknown',
+  ])
 })
 
 test('empty, per-target size, and combined size failures never return partial help', async (t) => {
@@ -235,7 +255,10 @@ test('inventory is raw passthrough and is executed again on every call', async (
   t.after(fixture.cleanup)
   assert.equal(await loadTargetInventory(fixture.environment), 'help-body:targets\n')
   assert.equal(await loadTargetInventory(fixture.environment), 'help-body:targets\n')
-  assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), ['targets', 'targets'])
+  assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
+    'targets',
+    'targets',
+  ])
 })
 
 test('same-process identity mismatch fails the binding and prevents later help', async (t) => {

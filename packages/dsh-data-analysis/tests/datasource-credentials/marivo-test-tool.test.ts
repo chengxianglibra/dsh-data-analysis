@@ -11,9 +11,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
   MARIVO_TEST_TOOL_NAME,
-  registerMarivoTestTool,
   type MarivoTestOptions,
   type MarivoTestValue,
+  registerMarivoTestTool,
 } from '../../src/datasource/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 
@@ -94,21 +94,29 @@ async function fixture(
     TEST_STDERR_SECRET: options.stderrSecret ? '1' : '0',
     MARIVO_PERSIST_CREDENTIALS: '1',
   })
-  const environment = new MarivoEnvironment({
-    projectRoot: root,
-    pythonExecutable: executable,
-    marivoVersion: '0.0.test',
-    packagePath: path.join(root, 'fake-marivo', '__init__.py'),
-    subprocessPolicyId: policy.id,
-    fingerprint: 'd'.repeat(64),
-  }, policy)
+  const environment = new MarivoEnvironment(
+    {
+      projectRoot: root,
+      pythonExecutable: executable,
+      marivoVersion: '0.0.test',
+      packagePath: path.join(root, 'fake-marivo', '__init__.py'),
+      subprocessPolicyId: policy.id,
+      fingerprint: 'd'.repeat(64),
+    },
+    policy,
+  )
   const credentials = new FakeCredentials()
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   registerMarivoTestTool(ctx, environment, credentials, toolOptions)
   return {
-    root, home, recordPath, credentials, ctx, environment,
+    root,
+    home,
+    recordPath,
+    credentials,
+    ctx,
+    environment,
     cleanup: () => rm(root, { recursive: true, force: true }),
   }
 }
@@ -137,11 +145,15 @@ test('missing and partial credentials return only deduplicated missing refs with
   assert.equal(result.isError, false)
   if (result.isError) return
   assert.deepEqual(result.value as unknown as MarivoTestValue, {
-    status: 'needs-credentials', name: 'warehouse', refs: ['DSH_DB_PASSWORD'],
+    status: 'needs-credentials',
+    name: 'warehouse',
+    refs: ['DSH_DB_PASSWORD'],
   })
   assert.deepEqual(f.credentials.resolved, ['DSH_DB_USER', 'DSH_DB_PASSWORD'])
-  assert.equal(result.content[0]?.type === 'text' ? result.content[0].text : '',
-    '{"status":"needs-credentials","name":"warehouse","refs":["DSH_DB_PASSWORD"]}')
+  assert.equal(
+    result.content[0]?.type === 'text' ? result.content[0].text : '',
+    '{"status":"needs-credentials","name":"warehouse","refs":["DSH_DB_PASSWORD"]}',
+  )
   await absent(f.recordPath)
 })
 
@@ -156,10 +168,12 @@ test('describe publishes validated reference names before returning needs-creden
   const result = await execute(f.ctx)
 
   assert.equal(result.isError, false)
-  assert.deepEqual(described, [{
-    name: 'warehouse',
-    refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'],
-  }])
+  assert.deepEqual(described, [
+    {
+      name: 'warehouse',
+      refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'],
+    },
+  ])
 })
 
 test('non-DSH datasource references fail before credential resolution or connection', async (t) => {
@@ -186,15 +200,29 @@ test('configured credentials reach one child overlay and are re-resolved on the 
   const second = await execute(f.ctx)
   assert.equal(second.isError, false)
 
-  assert.deepEqual(f.credentials.resolved, ['DSH_DB_USER', 'DSH_DB_PASSWORD', 'DSH_DB_USER', 'DSH_DB_PASSWORD'])
-  const calls = (await readFile(f.recordPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+  assert.deepEqual(f.credentials.resolved, [
+    'DSH_DB_USER',
+    'DSH_DB_PASSWORD',
+    'DSH_DB_USER',
+    'DSH_DB_PASSWORD',
+  ])
+  const calls = (await readFile(f.recordPath, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
   assert.deepEqual(calls, [
     {
-      stage: 'test', name: 'warehouse', user: 'alice', password: 'first-secret',
+      stage: 'test',
+      name: 'warehouse',
+      user: 'alice',
+      password: 'first-secret',
       persistCredentials: '0',
     },
     {
-      stage: 'test', name: 'warehouse', user: 'alice', password: 'second-secret',
+      stage: 'test',
+      name: 'warehouse',
+      user: 'alice',
+      password: 'second-secret',
       persistCredentials: '0',
     },
   ])

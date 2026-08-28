@@ -2,11 +2,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
-import {
-  resolveMarivoEnvironmentSource,
-  type MarivoEnvironmentSource,
-} from '../disclosure/help.ts'
 import {
   parseReportDocument,
   type ReportBlockedStage,
@@ -26,7 +23,8 @@ export const REPORT_PRESENTATION_META_KIND = 'marivo-html-report'
 export const REPORT_PRESENTATION_META_VERSION = 1
 export const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
 
-const REPORT_DOCUMENT_MINIMAL_JSON = '{"version":"dsh-data-analysis-report/v1","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
+const REPORT_DOCUMENT_MINIMAL_JSON =
+  '{"version":"dsh-data-analysis-report/v1","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
 
 export interface ReportPresentationMetaV1 {
   readonly [key: string]: JsonValue
@@ -67,103 +65,134 @@ const requiredFindingIdsSchema = {
 } as const
 
 const textBlockSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     kind: { type: 'string', const: 'text', required: true },
     id: {
-      type: 'string', required: true,
+      type: 'string',
+      required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
     text: {
-      type: 'string', required: true,
-      description: 'Non-empty reader-facing plain text of at most 20,000 Unicode characters. Lead with the takeaway and explain why it matters in the report locale. Markdown and HTML are escaped as literal text; blank lines start paragraphs and consecutive lines beginning with -, *, •, or 1. form semantic lists.',
+      type: 'string',
+      required: true,
+      description:
+        'Non-empty reader-facing plain text of at most 20,000 Unicode characters. Lead with the takeaway and explain why it matters in the report locale. Markdown and HTML are escaped as literal text; blank lines start paragraphs and consecutive lines beginning with -, *, •, or 1. form semantic lists.',
     },
     finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
 const chartBlockSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     kind: { type: 'string', const: 'chart', required: true },
     id: {
-      type: 'string', required: true,
+      type: 'string',
+      required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
     title: {
-      type: 'string', required: true,
-      description: 'Neutral reader-facing label for what is plotted; put the analytical takeaway in an adjacent text block.',
+      type: 'string',
+      required: true,
+      description:
+        'Neutral reader-facing label for what is plotted; put the analytical takeaway in an adjacent text block.',
     },
     subtitle: {
       type: 'string',
-      description: 'Optional reader-facing unit, scope, denominator, time window, comparison basis, or short interpretation. Do not use raw Artifact refs or implementation field names.',
+      description:
+        'Optional reader-facing unit, scope, denominator, time window, comparison basis, or short interpretation. Do not use raw Artifact refs or implementation field names.',
     },
     artifact_ref: {
-      type: 'string', required: true,
-      description: 'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
+      type: 'string',
+      required: true,
+      description:
+        'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
     },
     view: {
-      type: 'string', enum: ['auto', 'line', 'bar'], required: true,
-      description: 'Use auto only when one unambiguous mapping exists and omit x/y. For line or bar, provide both x and y explicitly.',
+      type: 'string',
+      enum: ['auto', 'line', 'bar'],
+      required: true,
+      description:
+        'Use auto only when one unambiguous mapping exists and omit x/y. For line or bar, provide both x and y explicitly.',
     },
     x: {
       type: 'string',
-      description: 'Exact public Artifact column name. Line requires a time or ordered numeric dimension; bar requires a categorical dimension. Point/category counts are not hard quality gates.',
+      description:
+        'Exact public Artifact column name. Line requires a time or ordered numeric dimension; bar requires a categorical dimension. Point/category counts are not hard quality gates.',
     },
     y: {
       type: 'string',
-      description: 'Exact public numeric Artifact column name. The renderer does not aggregate, sample, apply Top-N, or combine additional grain.',
+      description:
+        'Exact public numeric Artifact column name. The renderer does not aggregate, sample, apply Top-N, or combine additional grain.',
     },
     finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
 const tableBlockSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     kind: { type: 'string', const: 'table', required: true },
     id: {
-      type: 'string', required: true,
+      type: 'string',
+      required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
     title: {
-      type: 'string', required: true,
-      description: 'Neutral reader-facing table label. Explain the takeaway and implication in an adjacent text block.',
+      type: 'string',
+      required: true,
+      description:
+        'Neutral reader-facing table label. Explain the takeaway and implication in an adjacent text block.',
     },
     artifact_ref: {
-      type: 'string', required: true,
-      description: 'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
+      type: 'string',
+      required: true,
+      description:
+        'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
     },
     columns: {
-      type: 'array', items: { type: 'string' },
-      description: 'Optional list of one to 100 unique exact public Artifact column names. Omit it to use all public columns in contract order.',
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Optional list of one to 100 unique exact public Artifact column names. Omit it to use all public columns in contract order.',
     },
     max_rows: {
-      type: 'integer', required: true,
-      description: 'Maximum displayed rows, from 1 to 100. The report discloses total and omitted rows.',
+      type: 'integer',
+      required: true,
+      description:
+        'Maximum displayed rows, from 1 to 100. The report discloses total and omitted rows.',
     },
     finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
 const evidenceBlockSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     kind: { type: 'string', const: 'evidence', required: true },
     id: {
-      type: 'string', required: true,
+      type: 'string',
+      required: true,
       description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
     },
     title: {
-      type: 'string', required: true,
-      description: 'Reader-facing title for an explicitly requested source inventory. Prefer attaching finding_ids to narrative or visual blocks instead of adding a duplicate Evidence appendix.',
+      type: 'string',
+      required: true,
+      description:
+        'Reader-facing title for an explicitly requested source inventory. Prefer attaching finding_ids to narrative or visual blocks instead of adding a duplicate Evidence appendix.',
     },
     finding_ids: requiredFindingIdsSchema,
   },
 } as const
 
 const documentSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   description: [
     'One complete immutable ReportDocument v1. Revisions submit another complete document.',
     'Use the report locale throughout. For stakeholder reports, order sections as answer-first summary, findings with adjacent visual interpretation, next steps, further questions, and caveats.',
@@ -175,7 +204,8 @@ const documentSchema = {
   properties: {
     version: { type: 'string', const: 'dsh-data-analysis-report/v1', required: true },
     title: {
-      type: 'string', required: true,
+      type: 'string',
+      required: true,
       description: 'Non-empty report title of at most 200 Unicode characters.',
     },
     subtitle: {
@@ -184,20 +214,27 @@ const documentSchema = {
     },
     locale: { type: 'string', enum: ['zh-CN', 'en-US'], required: true },
     sections: {
-      type: 'array', required: true,
-      description: 'One to 20 ordered non-empty reader-facing sections. Use concise insight-led titles; the first stakeholder section is an executive summary.',
+      type: 'array',
+      required: true,
+      description:
+        'One to 20 ordered non-empty reader-facing sections. Use concise insight-led titles; the first stakeholder section is an executive summary.',
       items: {
-        type: 'object', additionalProperties: false,
+        type: 'object',
+        additionalProperties: false,
         properties: {
           id: {
-            type: 'string', required: true,
+            type: 'string',
+            required: true,
             description: 'Unique lowercase ASCII kebab-case section ID.',
           },
           title: { type: 'string', required: true },
           blocks: {
-            type: 'array', required: true,
+            type: 'array',
+            required: true,
             description: 'One to 20 ordered blocks nested under this section.',
-            items: { oneOf: [textBlockSchema, chartBlockSchema, tableBlockSchema, evidenceBlockSchema] },
+            items: {
+              oneOf: [textBlockSchema, chartBlockSchema, tableBlockSchema, evidenceBlockSchema],
+            },
           },
         },
       },
@@ -206,7 +243,8 @@ const documentSchema = {
 } as const
 
 const issueSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     code: { type: 'string', required: true },
     location: { type: 'string', required: true },
@@ -216,7 +254,8 @@ const issueSchema = {
 } as const
 
 const checkSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     stage: { type: 'string', enum: ['document', 'marivo', 'visual', 'publish'], required: true },
     status: { type: 'string', enum: ['passed', 'failed', 'partial', 'skipped'], required: true },
@@ -229,7 +268,8 @@ const checkSchema = {
 const outputSchema = {
   oneOf: [
     {
-      type: 'object', additionalProperties: false,
+      type: 'object',
+      additionalProperties: false,
       properties: {
         status: { type: 'string', const: 'ready', required: true },
         title: { type: 'string', required: true },
@@ -242,11 +282,14 @@ const outputSchema = {
       },
     },
     {
-      type: 'object', additionalProperties: false,
+      type: 'object',
+      additionalProperties: false,
       properties: {
         status: { type: 'string', const: 'blocked', required: true },
         checks: {
-          type: 'array', items: checkSchema, required: true,
+          type: 'array',
+          items: checkSchema,
+          required: true,
           description: 'Exactly document, marivo, visual, and publish checks in that order.',
         },
       },
@@ -255,9 +298,7 @@ const outputSchema = {
 } as const
 
 function recoverableReportArguments(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object'
-    && value !== null
-    && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function attributeMarivoIssues(
@@ -291,11 +332,13 @@ function attributeMarivoIssues(
       }
       const locations = new Set<string>()
       const explicitIndex = inspection.artifactRefs.indexOf(ref)
-      for (const location of inspection.artifactRefLocations[explicitIndex] ?? []) locations.add(location)
+      for (const location of inspection.artifactRefLocations[explicitIndex] ?? [])
+        locations.add(location)
       for (const target of projection.findingArtifactTargets) {
         if (target.artifactRef !== ref) continue
         const findingIndex = inspection.findingIds.indexOf(target.findingId)
-        for (const location of inspection.findingIdLocations[findingIndex] ?? []) locations.add(location)
+        for (const location of inspection.findingIdLocations[findingIndex] ?? [])
+          locations.add(location)
       }
       addAtLocations(item, [...locations])
       continue
@@ -317,10 +360,12 @@ function normalizedIssues(
     const key = JSON.stringify([item.location, item.code, item.message, item.repair])
     if (!unique.has(key)) unique.set(key, { ...item })
   }
-  const sorted = [...unique.values()].sort((left, right) =>
-    left.location.localeCompare(right.location)
-    || left.code.localeCompare(right.code)
-    || left.message.localeCompare(right.message))
+  const sorted = [...unique.values()].sort(
+    (left, right) =>
+      left.location.localeCompare(right.location) ||
+      left.code.localeCompare(right.code) ||
+      left.message.localeCompare(right.message),
+  )
   const retained = sorted.slice(0, MAX_STAGE_ISSUES)
   return {
     issues: retained,
@@ -356,9 +401,10 @@ function reportCheck(
 
 function blockedChecks(checks: readonly ReportCheckV1[]): ReportBlockedValueV1 {
   if (
-    checks.length !== REPORT_STAGES.length
-    || checks.some((check, index) => check.stage !== REPORT_STAGES[index])
-  ) throw new TypeError('blocked report checks must use the fixed stage order')
+    checks.length !== REPORT_STAGES.length ||
+    checks.some((check, index) => check.stage !== REPORT_STAGES[index])
+  )
+    throw new TypeError('blocked report checks must use the fixed stage order')
   return { status: 'blocked', checks: [...checks] as ReportBlockedValueV1['checks'] }
 }
 
@@ -366,10 +412,14 @@ export function renderReportToolValue(value: ReportRenderValueV1): string {
   if (value.status === 'blocked') {
     return [
       'HTML report rendering is blocked after best-effort preflight.',
-      ...value.checks.flatMap(check => [
+      ...value.checks.flatMap((check) => [
         `${check.stage}: ${check.status}${check.reason === undefined ? '' : ` (${check.reason})`}`,
-        ...check.issues.map(item => `  ${item.location} [${item.code}]: ${item.message} Repair: ${item.repair}`),
-        ...(check.omitted_issue_count === 0 ? [] : [`  Omitted ${check.omitted_issue_count} additional issue(s).`]),
+        ...check.issues.map(
+          (item) => `  ${item.location} [${item.code}]: ${item.message} Repair: ${item.repair}`,
+        ),
+        ...(check.omitted_issue_count === 0
+          ? []
+          : [`  Omitted ${check.omitted_issue_count} additional issue(s).`]),
       ]),
       'Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ReportDocument v1. Never submit document.blocks alone.',
       `Minimal valid document: ${REPORT_DOCUMENT_MINIMAL_JSON}`,
@@ -380,7 +430,7 @@ export function renderReportToolValue(value: ReportRenderValueV1): string {
     `Path: ${value.path}`,
     `Report digest: ${value.report_digest}`,
     `Document digest: ${value.document_digest}`,
-    ...value.disclosures.map(item => `Disclosure: ${item}`),
+    ...value.disclosures.map((item) => `Disclosure: ${item}`),
   ].join('\n')
 }
 
@@ -416,7 +466,7 @@ function reportTurnForRootCall(dispatch: {
     }
   }
   const turn = rootCall?.data?.turn
-  return Number.isSafeInteger(turn) && (turn as number) >= 0 ? turn as number : null
+  return Number.isSafeInteger(turn) && (turn as number) >= 0 ? (turn as number) : null
 }
 
 /**
@@ -427,26 +477,27 @@ function reportTurnForRootCall(dispatch: {
 export function installMarivoReportCodeDelivery(ctx: Context): () => void {
   const pending = new Map<string, ReportPresentationMetaV1>()
   const stopResult = ctx.on('tools/result', (exec, result) => {
-    if (
-      exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME
-      || exec.parent === undefined
-      || result.isError
-    ) return
+    if (exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME || exec.parent === undefined || result.isError)
+      return
     const meta = reportPresentationMeta(result.value as unknown as ReportRenderValueV1)
     if (meta !== null) pending.set(String(exec.callId), meta)
   })
-  const stopDispatchLog = ctx.on('tools/code-dispatch-log', async (dispatch, next) => {
-    const content = await next()
-    if (dispatch.name !== MARIVO_REPORT_RENDER_TOOL_NAME) return content
-    const key = String(dispatch.subCallId)
-    const meta = pending.get(key)
-    pending.delete(key)
-    if (dispatch.isError || meta === undefined) return content
-    const turn = reportTurnForRootCall(dispatch)
-    if (turn === null) return content
-    const card = { type: REPORT_DURABLE_CONTENT_KIND, turn, meta } as unknown as ContentBlock
-    return [...content, card]
-  }, { prepend: true })
+  const stopDispatchLog = ctx.on(
+    'tools/code-dispatch-log',
+    async (dispatch, next) => {
+      const content = await next()
+      if (dispatch.name !== MARIVO_REPORT_RENDER_TOOL_NAME) return content
+      const key = String(dispatch.subCallId)
+      const meta = pending.get(key)
+      pending.delete(key)
+      if (dispatch.isError || meta === undefined) return content
+      const turn = reportTurnForRootCall(dispatch)
+      if (turn === null) return content
+      const card = { type: REPORT_DURABLE_CONTENT_KIND, turn, meta } as unknown as ContentBlock
+      return [...content, card]
+    },
+    { prepend: true },
+  )
   let active = true
   return () => {
     if (!active) return
@@ -475,22 +526,30 @@ export function createMarivoReportRenderTool(
     const parsed = parseReportDocument(args.document)
     const documentIssues = parsed.ok ? [] : [...parsed.issues]
     const rawSessionId = args.session_id
-    const sessionId = typeof rawSessionId === 'string'
-      && rawSessionId.trim().length > 0
-      && [...rawSessionId].length <= 512
-      ? rawSessionId
-      : undefined
+    const sessionId =
+      typeof rawSessionId === 'string' &&
+      rawSessionId.trim().length > 0 &&
+      [...rawSessionId].length <= 512
+        ? rawSessionId
+        : undefined
     if (sessionId === undefined) {
       documentIssues.push({
-        code: 'invalid-session-id', location: 'session_id',
+        code: 'invalid-session-id',
+        location: 'session_id',
         message: 'session_id must be a non-empty string of at most 512 Unicode characters.',
         repair: 'Use the exact bounded Marivo Session ID and retry the complete document.',
       })
       return blockedChecks([
         reportCheck('document', 'failed', documentIssues),
-        reportCheck('marivo', 'skipped', [], { reason: 'A valid session_id is required before Marivo checks can run.' }),
-        reportCheck('visual', 'skipped', [], { reason: 'Visual checks require a checked Marivo projection.' }),
-        reportCheck('publish', 'skipped', [], { reason: 'Publishing requires every preflight check to pass.' }),
+        reportCheck('marivo', 'skipped', [], {
+          reason: 'A valid session_id is required before Marivo checks can run.',
+        }),
+        reportCheck('visual', 'skipped', [], {
+          reason: 'Visual checks require a checked Marivo projection.',
+        }),
+        reportCheck('publish', 'skipped', [], {
+          reason: 'Publishing requires every preflight check to pass.',
+        }),
       ])
     }
     const environment = await resolveMarivoEnvironmentSource(environmentSource)
@@ -510,7 +569,7 @@ export function createMarivoReportRenderTool(
         { exitCode: child.exitCode, stderr: child.stderr.toString('utf8').slice(0, 2_000) },
       )
     }
-    let projection
+    let projection: ReportProjectionInspection
     try {
       projection = parseReportProjection(child.stdout, {
         sessionId,
@@ -527,7 +586,9 @@ export function createMarivoReportRenderTool(
       )
     }
     const documentCheck = reportCheck(
-      'document', documentIssues.length === 0 ? 'passed' : 'failed', documentIssues,
+      'document',
+      documentIssues.length === 0 ? 'passed' : 'failed',
+      documentIssues,
     )
     const marivoIssues = attributeMarivoIssues(projection.issues, parsed.inspection, projection)
     const marivoStatus: ReportCheckStatus = projection.globalFailure
@@ -539,32 +600,44 @@ export function createMarivoReportRenderTool(
           : 'passed'
     const marivoCheck = reportCheck('marivo', marivoStatus, marivoIssues, {
       omitted: projection.omittedIssueCount,
-      ...(marivoStatus === 'partial' ? {
-        reason: `${parsed.inspection.skippedMarivoTargets} malformed document target(s) could not be safely sent to Marivo.`,
-      } : {}),
+      ...(marivoStatus === 'partial'
+        ? {
+            reason: `${parsed.inspection.skippedMarivoTargets} malformed document target(s) could not be safely sent to Marivo.`,
+          }
+        : {}),
     })
 
-    const visualPreflight = preflightReportVisuals(parsed.inspection.visualCandidates, projection.value)
-    const skippedVisualTargets = parsed.inspection.skippedVisualTargets + visualPreflight.skippedCount
+    const visualPreflight = preflightReportVisuals(
+      parsed.inspection.visualCandidates,
+      projection.value,
+    )
+    const skippedVisualTargets =
+      parsed.inspection.skippedVisualTargets + visualPreflight.skippedCount
     const visualStatus: ReportCheckStatus = projection.globalFailure
       ? 'skipped'
       : skippedVisualTargets > 0
-        ? visualPreflight.checkedCount === 0 ? 'skipped' : 'partial'
-        : visualPreflight.issues.length > 0 ? 'failed' : 'passed'
+        ? visualPreflight.checkedCount === 0
+          ? 'skipped'
+          : 'partial'
+        : visualPreflight.issues.length > 0
+          ? 'failed'
+          : 'passed'
     const visualCheck = reportCheck('visual', visualStatus, visualPreflight.issues, {
-      ...((visualStatus === 'partial' || visualStatus === 'skipped') ? {
-        reason: projection.globalFailure
-          ? 'Visual checks require a successfully resumed Marivo Session.'
-          : `${skippedVisualTargets} visual target(s) depended on invalid document fields or unavailable Artifact projections.`,
-      } : {}),
+      ...(visualStatus === 'partial' || visualStatus === 'skipped'
+        ? {
+            reason: projection.globalFailure
+              ? 'Visual checks require a successfully resumed Marivo Session.'
+              : `${skippedVisualTargets} visual target(s) depended on invalid document fields or unavailable Artifact projections.`,
+          }
+        : {}),
     })
-    const publishSkipped = reportCheck(
-      'publish', 'skipped', [], { reason: 'Publishing requires every preflight check to pass.' },
-    )
+    const publishSkipped = reportCheck('publish', 'skipped', [], {
+      reason: 'Publishing requires every preflight check to pass.',
+    })
     if (
-      documentCheck.status !== 'passed'
-      || marivoCheck.status !== 'passed'
-      || visualCheck.status !== 'passed'
+      documentCheck.status !== 'passed' ||
+      marivoCheck.status !== 'passed' ||
+      visualCheck.status !== 'passed'
     ) {
       return blockedChecks([documentCheck, marivoCheck, visualCheck, publishSkipped])
     }
@@ -598,13 +671,18 @@ export function createMarivoReportRenderTool(
         reportCheck('publish', 'failed', published.issues),
       ])
     }
-    const freshness = parsed.value.document.locale === 'zh-CN'
-      ? 'Artifact admissible 不等于 datasource fresh。'
-      : 'Artifact admissible does not mean datasource fresh.'
+    const freshness =
+      parsed.value.document.locale === 'zh-CN'
+        ? 'Artifact admissible 不等于 datasource fresh。'
+        : 'Artifact admissible does not mean datasource fresh.'
     return {
-      status: 'ready', title: parsed.value.document.title, path: published.path,
-      report_digest: published.reportDigest, document_digest: published.documentDigest,
-      artifact_refs: [...parsed.value.artifactRefs], finding_ids: [...parsed.value.findingIds],
+      status: 'ready',
+      title: parsed.value.document.title,
+      path: published.path,
+      report_digest: published.reportDigest,
+      document_digest: published.documentDigest,
+      artifact_refs: [...parsed.value.artifactRefs],
+      finding_ids: [...parsed.value.findingIds],
       disclosures: [...compiled.value.disclosures, freshness],
     }
   }
@@ -618,14 +696,18 @@ export function createMarivoReportRenderTool(
     ].join(' '),
     parameters: {
       session_id: {
-        type: 'string', required: true,
-        description: 'Exact non-empty Marivo analysis Session ID, at most 512 Unicode characters, containing every referenced Artifact and Finding.',
+        type: 'string',
+        required: true,
+        description:
+          'Exact non-empty Marivo analysis Session ID, at most 512 Unicode characters, containing every referenced Artifact and Finding.',
       },
       document: { ...documentSchema, required: true },
     },
     output: {
       schema: outputSchema,
-      render: (_args, value) => [{ type: 'text', text: renderReportToolValue(value as ReportRenderValueV1) }],
+      render: (_args, value) => [
+        { type: 'text', text: renderReportToolValue(value as ReportRenderValueV1) },
+      ],
       presentationMeta: (_args, value) => reportPresentationMeta(value as ReportRenderValueV1),
     },
     timeoutMs: 135_000,

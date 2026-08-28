@@ -1,16 +1,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import {
+  type CredentialProvider,
   credentialRef,
   isCredentialRefName,
-  type CredentialProvider,
 } from '@deepseek-ai/dsh-credentials'
-import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
-import {
-  resolveMarivoEnvironmentSource,
-  type MarivoEnvironmentSource,
-} from '../disclosure/help.ts'
 import { assertDshCredentialReferences } from './shell-env.ts'
 
 export const MARIVO_TEST_TOOL_NAME = 'marivo_test'
@@ -135,7 +132,7 @@ function redactString(value: string, secrets: readonly string[]): string {
 
 function redactUnknown(value: unknown, secrets: readonly string[]): unknown {
   if (typeof value === 'string') return redactString(value, secrets)
-  if (Array.isArray(value)) return value.map(item => redactUnknown(item, secrets))
+  if (Array.isArray(value)) return value.map((item) => redactUnknown(item, secrets))
   if (typeof value !== 'object' || value === null) return value
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, redactUnknown(item, secrets)]),
@@ -145,9 +142,9 @@ function redactUnknown(value: unknown, secrets: readonly string[]): unknown {
 function parseTest(stdout: Buffer, secrets: readonly string[]): TestPayload {
   const value = redactUnknown(parseJsonObject(stdout, 'test'), secrets) as Record<string, unknown>
   if (
-    typeof value.name !== 'string'
-    || typeof value.ok !== 'boolean'
-    || (value.latency_ms !== null && typeof value.latency_ms !== 'number')
+    typeof value.name !== 'string' ||
+    typeof value.ok !== 'boolean' ||
+    (value.latency_ms !== null && typeof value.latency_ms !== 'number')
   ) {
     throw new MarivoEnvironmentError(
       'subprocess-output-invalid',
@@ -155,8 +152,20 @@ function parseTest(stdout: Buffer, secrets: readonly string[]): TestPayload {
       { phase: 'test' },
     )
   }
-  if (value.ok) return { name: value.name, ok: true, latency_ms: value.latency_ms as number | null, failure: null, repair: null }
-  if (typeof value.failure !== 'object' || value.failure === null || typeof value.repair !== 'object' || value.repair === null) {
+  if (value.ok)
+    return {
+      name: value.name,
+      ok: true,
+      latency_ms: value.latency_ms as number | null,
+      failure: null,
+      repair: null,
+    }
+  if (
+    typeof value.failure !== 'object' ||
+    value.failure === null ||
+    typeof value.repair !== 'object' ||
+    value.repair === null
+  ) {
     throw new MarivoEnvironmentError(
       'subprocess-output-invalid',
       'Marivo datasource test failure omitted structured failure or repair',
@@ -182,7 +191,8 @@ export function createMarivoTestTool(
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_TEST_TOOL_NAME,
-    description: 'Test one configured Marivo datasource connection. Missing datasource environment references are requested through the DSH credential service.',
+    description:
+      'Test one configured Marivo datasource connection. Missing datasource environment references are requested through the DSH credential service.',
     parameters: {
       name: {
         type: 'string',
@@ -225,7 +235,8 @@ export function createMarivoTestTool(
         overlay[refName] = resolved.value
         values.push(resolved.value)
       }
-      if (missing.length > 0) return { status: 'needs-credentials', name: described.name, refs: missing }
+      if (missing.length > 0)
+        return { status: 'needs-credentials', name: described.name, refs: missing }
 
       const testedResult = await environment.runCheckedDatasourceTest(
         name,

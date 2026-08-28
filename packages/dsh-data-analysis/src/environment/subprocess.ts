@@ -78,33 +78,38 @@ export class FixedSubprocessPolicy {
     const environment = overlayEnvironment(this.#environment, request.environmentOverlay)
 
     if (request.signal?.aborted) {
-      return Promise.reject(new MarivoEnvironmentError(
-        'subprocess-cancelled',
-        'Marivo subprocess was cancelled before it started',
-      ))
+      return Promise.reject(
+        new MarivoEnvironmentError(
+          'subprocess-cancelled',
+          'Marivo subprocess was cancelled before it started',
+        ),
+      )
     }
 
     return new Promise((resolve, reject) => {
-      const spawnChild = () => spawn(request.executable, request.args, {
-        cwd: this.cwd,
-        env: environment,
-        shell: false,
-        windowsHide: true,
-        detached: process.platform !== 'win32',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
+      const spawnChild = () =>
+        spawn(request.executable, request.args, {
+          cwd: this.cwd,
+          env: environment,
+          shell: false,
+          windowsHide: true,
+          detached: process.platform !== 'win32',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
       let child: ReturnType<typeof spawnChild>
       try {
         child = spawnChild()
       } catch (cause: unknown) {
-        reject(new MarivoEnvironmentError(
-          'subprocess-start-failed',
-          'Could not start Marivo subprocess',
-          {
-            executable: request.executable,
-            errorCode: (cause as NodeJS.ErrnoException).code,
-          },
-        ))
+        reject(
+          new MarivoEnvironmentError(
+            'subprocess-start-failed',
+            'Could not start Marivo subprocess',
+            {
+              executable: request.executable,
+              errorCode: (cause as NodeJS.ErrnoException).code,
+            },
+          ),
+        )
         return
       }
 
@@ -146,27 +151,35 @@ export class FixedSubprocessPolicy {
         killTimer.unref()
       }
 
-      const timeout = setTimeout(() => terminate(new MarivoEnvironmentError(
-        'subprocess-timeout',
-        `Marivo subprocess exceeded ${limits.timeoutMs} ms`,
-        { timeoutMs: limits.timeoutMs },
-      )), limits.timeoutMs)
+      const timeout = setTimeout(
+        () =>
+          terminate(
+            new MarivoEnvironmentError(
+              'subprocess-timeout',
+              `Marivo subprocess exceeded ${limits.timeoutMs} ms`,
+              { timeoutMs: limits.timeoutMs },
+            ),
+          ),
+        limits.timeoutMs,
+      )
       timeout.unref()
 
-      const onAbort = (): void => terminate(new MarivoEnvironmentError(
-        'subprocess-cancelled',
-        'Marivo subprocess was cancelled',
-      ))
+      const onAbort = (): void =>
+        terminate(
+          new MarivoEnvironmentError('subprocess-cancelled', 'Marivo subprocess was cancelled'),
+        )
       request.signal?.addEventListener('abort', onAbort, { once: true })
 
       child.stdout.on('data', (chunk: Buffer) => {
         stdoutBytes += chunk.byteLength
         if (stdoutBytes > limits.stdoutMaxBytes) {
-          terminate(new MarivoEnvironmentError(
-            'subprocess-output-limit',
-            `Marivo subprocess stdout exceeded ${limits.stdoutMaxBytes} bytes`,
-            { stream: 'stdout', maxBytes: limits.stdoutMaxBytes, observedBytes: stdoutBytes },
-          ))
+          terminate(
+            new MarivoEnvironmentError(
+              'subprocess-output-limit',
+              `Marivo subprocess stdout exceeded ${limits.stdoutMaxBytes} bytes`,
+              { stream: 'stdout', maxBytes: limits.stdoutMaxBytes, observedBytes: stdoutBytes },
+            ),
+          )
           return
         }
         stdout.push(chunk)
@@ -175,11 +188,13 @@ export class FixedSubprocessPolicy {
       child.stderr.on('data', (chunk: Buffer) => {
         stderrBytes += chunk.byteLength
         if (stderrBytes > limits.stderrMaxBytes) {
-          terminate(new MarivoEnvironmentError(
-            'subprocess-output-limit',
-            `Marivo subprocess stderr exceeded ${limits.stderrMaxBytes} bytes`,
-            { stream: 'stderr', maxBytes: limits.stderrMaxBytes, observedBytes: stderrBytes },
-          ))
+          terminate(
+            new MarivoEnvironmentError(
+              'subprocess-output-limit',
+              `Marivo subprocess stderr exceeded ${limits.stderrMaxBytes} bytes`,
+              { stream: 'stderr', maxBytes: limits.stderrMaxBytes, observedBytes: stderrBytes },
+            ),
+          )
           return
         }
         stderr.push(chunk)
@@ -191,11 +206,13 @@ export class FixedSubprocessPolicy {
         clearTimeout(timeout)
         if (killTimer !== undefined) clearTimeout(killTimer)
         request.signal?.removeEventListener('abort', onAbort)
-        reject(new MarivoEnvironmentError(
-          'subprocess-start-failed',
-          'Could not start Marivo subprocess',
-          { executable: request.executable, errorCode: cause.code },
-        ))
+        reject(
+          new MarivoEnvironmentError(
+            'subprocess-start-failed',
+            'Could not start Marivo subprocess',
+            { executable: request.executable, errorCode: cause.code },
+          ),
+        )
       })
 
       child.once('close', (exitCode, signal) => {

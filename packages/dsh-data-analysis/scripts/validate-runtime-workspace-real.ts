@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -11,8 +11,12 @@ import {
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
-const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
-  ?? path.join(workspaceRoot, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python')
+const pythonExecutable =
+  process.env.DSH_DATA_ANALYSIS_PYTHON ??
+  path.join(
+    workspaceRoot,
+    process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
+  )
 
 const validationRoot = await mkdtemp(path.join(tmpdir(), 'dsh-runtime-workspace-'))
 try {
@@ -25,7 +29,10 @@ try {
   const runtime = await ensureSharedMarivoRuntime({ runtimeRoot, pythonExecutable })
   const reused = await ensureSharedMarivoRuntime({ runtimeRoot, pythonExecutable })
   assert.deepEqual(reused, runtime)
-  assert.equal(JSON.parse(await readFile(runtime.installationPath, 'utf8')).marivoVersion, runtime.marivoVersion)
+  assert.equal(
+    JSON.parse(await readFile(runtime.installationPath, 'utf8')).marivoVersion,
+    runtime.marivoVersion,
+  )
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     assert.ok((await stat(path.join(runtime.skillsRoot, skill, 'SKILL.md'))).isFile())
   }
@@ -51,12 +58,18 @@ try {
   }
   manager.dispose()
 
-  process.stdout.write(`${JSON.stringify({
-    status: 'ok',
-    runtime,
-    workspaces: [first.binding, second.binding],
-    runtimeReused: true,
-  }, null, 2)}\n`)
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        status: 'ok',
+        runtime,
+        workspaces: [first.binding, second.binding],
+        runtimeReused: true,
+      },
+      null,
+      2,
+    )}\n`,
+  )
 } finally {
   await rm(validationRoot, { recursive: true, force: true })
 }

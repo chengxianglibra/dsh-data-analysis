@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { MarivoEnvironmentError } from '../environment/errors.ts'
 import type { MarivoEnvironment } from '../environment/binding.ts'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
 
 export const MARIVO_HELP_TOOL_NAME = 'marivo_help'
 
@@ -108,9 +108,15 @@ export function resolveMarivoHelpLimits(
     maxTotalTargetChars: positiveInteger('maxTotalTargetChars', merged.maxTotalTargetChars),
     targetTimeoutMs: positiveInteger('targetTimeoutMs', merged.targetTimeoutMs),
     focusedStdoutMaxBytes: positiveInteger('focusedStdoutMaxBytes', merged.focusedStdoutMaxBytes),
-    inventoryStdoutMaxBytes: positiveInteger('inventoryStdoutMaxBytes', merged.inventoryStdoutMaxBytes),
+    inventoryStdoutMaxBytes: positiveInteger(
+      'inventoryStdoutMaxBytes',
+      merged.inventoryStdoutMaxBytes,
+    ),
     stderrMaxBytes: positiveInteger('stderrMaxBytes', merged.stderrMaxBytes),
-    combinedStdoutMaxBytes: positiveInteger('combinedStdoutMaxBytes', merged.combinedStdoutMaxBytes),
+    combinedStdoutMaxBytes: positiveInteger(
+      'combinedStdoutMaxBytes',
+      merged.combinedStdoutMaxBytes,
+    ),
     toolTimeoutMs: positiveInteger('toolTimeoutMs', merged.toolTimeoutMs),
   })
 }
@@ -175,11 +181,15 @@ async function runHelpTarget(
   signal?: AbortSignal,
 ): Promise<Buffer> {
   try {
-    const result = await environment.runCheckedHelpTarget(target, {
-      timeoutMs: limits.targetTimeoutMs,
-      stdoutMaxBytes,
-      stderrMaxBytes: limits.stderrMaxBytes,
-    }, signal)
+    const result = await environment.runCheckedHelpTarget(
+      target,
+      {
+        timeoutMs: limits.targetTimeoutMs,
+        stdoutMaxBytes,
+        stderrMaxBytes: limits.stderrMaxBytes,
+      },
+      signal,
+    )
     if (result.exitCode !== 0) {
       throw new MarivoHelpError(
         'target-failed',
@@ -198,9 +208,10 @@ async function runHelpTarget(
   } catch (cause) {
     if (cause instanceof MarivoHelpError) throw cause
     if (
-      cause instanceof MarivoEnvironmentError
-      && (cause.code === 'binding-identity-mismatch' || cause.code === 'binding-failed')
-    ) throw cause
+      cause instanceof MarivoEnvironmentError &&
+      (cause.code === 'binding-identity-mismatch' || cause.code === 'binding-failed')
+    )
+      throw cause
     if (cause instanceof MarivoEnvironmentError) {
       throw new MarivoHelpError(
         'target-failed',
@@ -243,15 +254,17 @@ export function renderMarivoHelpValue(value: MarivoHelpValue): string {
     return `Marivo help request completed for ${value.environment.version}: no targets requested.`
   }
   const header = `Marivo environment: ${value.environment.version}; Python: ${value.environment.pythonExecutable}; Package: ${value.environment.packagePath}; Fingerprint: ${value.environment.fingerprint}`
-  return [header, ...value.targets.map((item) => {
-    if (item.delivery === 'already-visible') {
-      return `Target: ${item.target}\nCurrent help is already visible in this prompt (digest: ${item.bodyDigest}).`
-    }
-    const replacement = item.delivery === 'replacement'
-      ? `Replacement digest: ${item.bodyDigest}\n`
-      : ''
-    return `Target: ${item.target}\n${replacement}${item.body}`
-  })].join('\n\n')
+  return [
+    header,
+    ...value.targets.map((item) => {
+      if (item.delivery === 'already-visible') {
+        return `Target: ${item.target}\nCurrent help is already visible in this prompt (digest: ${item.bodyDigest}).`
+      }
+      const replacement =
+        item.delivery === 'replacement' ? `Replacement digest: ${item.bodyDigest}\n` : ''
+      return `Target: ${item.target}\n${replacement}${item.body}`
+    }),
+  ].join('\n\n')
 }
 
 /** Read one all-or-nothing batch from the bound live Marivo help surface. */
@@ -298,11 +311,12 @@ export async function readMarivoHelpTargets(
       target,
       body,
       bodyDigest,
-      delivery: options.resolveDelivery?.({
-        environmentFingerprint: environmentIdentity.fingerprint,
-        target,
-        bodyDigest,
-      }) ?? 'delivered',
+      delivery:
+        options.resolveDelivery?.({
+          environmentFingerprint: environmentIdentity.fingerprint,
+          target,
+          bodyDigest,
+        }) ?? 'delivered',
     })
   }
   return { environment: environmentIdentity, targets: results }
@@ -317,12 +331,14 @@ export function createMarivoHelpTool(
   const limits = resolveMarivoHelpLimits(limitOverrides)
   return defineTool({
     name: MARIVO_HELP_TOOL_NAME,
-    description: 'Request current live Marivo API help for zero, one, or multiple canonical string targets from the bound project environment.',
+    description:
+      'Request current live Marivo API help for zero, one, or multiple canonical string targets from the bound project environment.',
     parameters: {
       targets: {
         type: 'array',
         required: true,
-        description: 'Canonical Marivo help targets. Use an empty array when no additional API information is needed.',
+        description:
+          'Canonical Marivo help targets. Use an empty array when no additional API information is needed.',
         items: { type: 'string' },
       },
     },
@@ -366,7 +382,7 @@ export function createMarivoHelpTool(
       presentationMeta: (_args, value) => ({
         kind: 'marivo-help-disclosure',
         environmentFingerprint: value.environment.fingerprint,
-        targets: value.targets.map(item => ({
+        targets: value.targets.map((item) => ({
           target: item.target,
           bodyDigest: item.bodyDigest,
           delivery: item.delivery,

@@ -27,16 +27,32 @@ async function loadClient(runtime: ClientRuntime = {}): Promise<ClientExports> {
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8')
   let registration: { factory: (require: (id: string) => unknown) => ClientExports } | undefined
   vm.runInNewContext(source, {
-    window: { __ModuleLoader__: { load(value: typeof registration) { registration = value } } },
+    window: {
+      __ModuleLoader__: {
+        load(value: typeof registration) {
+          registration = value
+        },
+      },
+    },
   })
   assert.ok(registration)
   return registration.factory((id) => {
-    if (id === 'react/jsx-runtime') return runtime.jsxRuntime ?? {
-      Fragment: Symbol('Fragment'), jsx() {}, jsxs() {},
-    }
-    if (id === 'react') return runtime.react ?? {
-      useEffect() {}, useMemo: (factory: () => unknown) => factory(), useState() {},
-    }
+    if (id === 'react/jsx-runtime')
+      return (
+        runtime.jsxRuntime ?? {
+          Fragment: Symbol('Fragment'),
+          jsx() {},
+          jsxs() {},
+        }
+      )
+    if (id === 'react')
+      return (
+        runtime.react ?? {
+          useEffect() {},
+          useMemo: (factory: () => unknown) => factory(),
+          useState() {},
+        }
+      )
     if (id === '@deepseek-ai/dsh-client-ui-primitives') {
       return runtime.primitives ?? { Button() {}, Modal() {} }
     }
@@ -60,9 +76,10 @@ class HookHarness {
       const index = this.cursor++
       if (index >= this.states.length) this.states[index] = initial
       const set = (value: unknown) => {
-        this.states[index] = typeof value === 'function'
-          ? (value as (current: unknown) => unknown)(this.states[index])
-          : value
+        this.states[index] =
+          typeof value === 'function'
+            ? (value as (current: unknown) => unknown)(this.states[index])
+            : value
       }
       return [this.states[index], set]
     },
@@ -80,7 +97,10 @@ class HookHarness {
   }
 }
 
-function findElement(root: unknown, predicate: (element: TestElement) => boolean): TestElement | null {
+function findElement(
+  root: unknown,
+  predicate: (element: TestElement) => boolean,
+): TestElement | null {
   if (typeof root !== 'object' || root === null || Array.isArray(root)) {
     if (Array.isArray(root)) {
       for (const child of root) {
@@ -131,10 +151,14 @@ function nativeReportEvent(overrides: Record<string, unknown> = {}) {
       meta: reportMeta,
       message: {
         source: { kind: 'tool', callId: 'report-call' },
-        content: [{
-          type: 'tool-result', toolCallId: 'report-call', isError: false,
-          content: [{ type: 'text', text: 'HTML report ready' }],
-        }],
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'report-call',
+            isError: false,
+            content: [{ type: 'text', text: 'HTML report ready' }],
+          },
+        ],
       },
     },
     ...overrides,
@@ -146,8 +170,12 @@ function nestedReportEvent(overrides: Record<string, unknown> = {}) {
     seq: 21,
     type: 'tool/code-dispatch',
     data: {
-      rootCallId: 'code-call', parentCallId: 'code-call', subCallId: 'code-call:report',
-      name: 'marivo_report_render', arguments: {}, isError: false,
+      rootCallId: 'code-call',
+      parentCallId: 'code-call',
+      subCallId: 'code-call:report',
+      name: 'marivo_report_render',
+      arguments: {},
+      isError: false,
       content: [
         { type: 'text', text: 'HTML report ready' },
         { type: 'marivo-report-card', turn: 3, meta: reportMeta },
@@ -167,7 +195,10 @@ test('report meta parser accepts only the closed replay contract and detaches di
 
   assert.equal(client.parseReportPresentationMeta(null), null)
   assert.equal(client.parseReportPresentationMeta({ ...reportMeta, version: 2 }), null)
-  assert.equal(client.parseReportPresentationMeta({ ...reportMeta, reportDigest: 'not-a-digest' }), null)
+  assert.equal(
+    client.parseReportPresentationMeta({ ...reportMeta, reportDigest: 'not-a-digest' }),
+    null,
+  )
   assert.equal(client.parseReportPresentationMeta({ ...reportMeta, extra: true }), null)
   assert.equal(client.parseReportPresentationMeta({ ...reportMeta, disclosures: [7] }), null)
 })
@@ -175,13 +206,17 @@ test('report meta parser accepts only the closed replay contract and detaches di
 test('card model is replay-pure and fails closed for blocked, malformed, and failed results', async () => {
   const client = await loadClient()
   assert.deepEqual(plain(client.marivoReportCardModel({ name: 'marivo_report_render' })), {
-    state: 'running', summary: '正在生成 HTML 报告…', report: null,
+    state: 'running',
+    summary: '正在生成 HTML 报告…',
+    report: null,
   })
 
   const first = plain(client.marivoReportCardModel(settled()))
   const replay = plain(client.marivoReportCardModel(structuredClone(settled())))
   assert.deepEqual(first, {
-    state: 'ready', summary: reportMeta.title, report: reportMeta,
+    state: 'ready',
+    summary: reportMeta.title,
+    report: reportMeta,
   })
   assert.deepEqual(replay, first)
 
@@ -194,98 +229,180 @@ test('card model is replay-pure and fails closed for blocked, malformed, and fai
   })
   assert.deepEqual(plain(client.marivoReportCardModel(codeMode)), first)
   assert.deepEqual(plain(client.marivoReportCardModel(structuredClone(codeMode))), first)
-  assert.equal(client.parseReportDurableContent([
-    { type: 'marivo-report-card', turn: 3, meta: reportMeta, extra: true },
-  ]), null)
-  assert.equal(client.parseReportDurableContent([
-    { type: 'marivo-report-card', turn: 3, meta: reportMeta },
-    { type: 'marivo-report-card', turn: 3, meta: reportMeta },
-  ]), null)
-  assert.equal(client.parseReportDurableContent([
-    { type: 'marivo-report-card', turn: -1, meta: reportMeta },
-  ]), null)
+  assert.equal(
+    client.parseReportDurableContent([
+      { type: 'marivo-report-card', turn: 3, meta: reportMeta, extra: true },
+    ]),
+    null,
+  )
+  assert.equal(
+    client.parseReportDurableContent([
+      { type: 'marivo-report-card', turn: 3, meta: reportMeta },
+      { type: 'marivo-report-card', turn: 3, meta: reportMeta },
+    ]),
+    null,
+  )
+  assert.equal(
+    client.parseReportDurableContent([{ type: 'marivo-report-card', turn: -1, meta: reportMeta }]),
+    null,
+  )
 
-  assert.deepEqual(plain(client.marivoReportCardModel(settled({
-    meta: null,
-    content: [{ type: 'text', text: 'HTML report rendering is blocked at stage visual.' }],
-  }))), {
-    state: 'fallback', summary: 'HTML report rendering is blocked at stage visual.', report: null,
-  })
-  assert.equal((plain(client.marivoReportCardModel(settled({
-    meta: { ...reportMeta, version: 9 },
-  }))) as { state: string }).state, 'fallback')
-  assert.equal((plain(client.marivoReportCardModel(settled({
-    isError: true,
-    content: [{ type: 'text', text: 'open failed' }],
-  }))) as { state: string }).state, 'fallback')
+  assert.deepEqual(
+    plain(
+      client.marivoReportCardModel(
+        settled({
+          meta: null,
+          content: [{ type: 'text', text: 'HTML report rendering is blocked at stage visual.' }],
+        }),
+      ),
+    ),
+    {
+      state: 'fallback',
+      summary: 'HTML report rendering is blocked at stage visual.',
+      report: null,
+    },
+  )
+  assert.equal(
+    (
+      plain(
+        client.marivoReportCardModel(
+          settled({
+            meta: { ...reportMeta, version: 9 },
+          }),
+        ),
+      ) as { state: string }
+    ).state,
+    'fallback',
+  )
+  assert.equal(
+    (
+      plain(
+        client.marivoReportCardModel(
+          settled({
+            isError: true,
+            content: [{ type: 'text', text: 'open failed' }],
+          }),
+        ),
+      ) as { state: string }
+    ).state,
+    'fallback',
+  )
 })
 
 test('turn delivery accepts native and Code Mode ready events and rejects unsafe variants', async () => {
   const client = await loadClient()
   const reportCalls = new Map([['report-call', 'marivo_report_render']])
   assert.deepEqual(plain(client.reportDeliveryFromEvent(nativeReportEvent(), reportCalls)), {
-    seq: 20, report: reportMeta,
+    seq: 20,
+    report: reportMeta,
   })
   assert.deepEqual(plain(client.reportDeliveryFromEvent(nestedReportEvent())), {
-    seq: 21, report: reportMeta,
+    seq: 21,
+    report: reportMeta,
   })
   assert.equal(client.reportDeliveryFromEvent(nativeReportEvent()), null)
-  assert.equal(client.reportDeliveryFromEvent(
-    nativeReportEvent(), new Map([['report-call', 'unrelated_tool']]),
-  ), null)
-  assert.equal(client.reportDeliveryFromEvent(nativeReportEvent({ surfaceOp: 'replace' }), reportCalls), null)
-  assert.equal(client.reportDeliveryFromEvent(nativeReportEvent({
-    data: { ...nativeReportEvent().data, meta: null },
-  }), reportCalls), null)
-  assert.equal(client.reportDeliveryFromEvent(nativeReportEvent({
-    data: {
-      ...nativeReportEvent().data,
-      message: {
-        ...nativeReportEvent().data.message,
-        content: [{
-          ...nativeReportEvent().data.message.content[0], isError: true,
-        }],
-      },
-    },
-  }), reportCalls), null)
-  assert.equal(client.reportDeliveryFromEvent(nestedReportEvent({
-    data: { ...nestedReportEvent().data, isError: true },
-  })), null)
-  assert.equal(client.reportDeliveryFromEvent(nestedReportEvent({
-    data: { ...nestedReportEvent().data, name: 'other_tool' },
-  })), null)
-  assert.equal(client.reportDeliveryFromEvent(nestedReportEvent({
-    data: {
-      ...nestedReportEvent().data,
-      content: [
-        { type: 'marivo-report-card', turn: 3, meta: reportMeta },
-        { type: 'marivo-report-card', turn: 3, meta: reportMeta },
-      ],
-    },
-  })), null)
-  assert.equal(client.reportDeliveryFromEvent(nestedReportEvent({
-    data: {
-      ...nestedReportEvent().data,
-      content: [{ type: 'marivo-report-card', turn: '3', meta: reportMeta }],
-    },
-  })), null)
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nativeReportEvent(),
+      new Map([['report-call', 'unrelated_tool']]),
+    ),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(nativeReportEvent({ surfaceOp: 'replace' }), reportCalls),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nativeReportEvent({
+        data: { ...nativeReportEvent().data, meta: null },
+      }),
+      reportCalls,
+    ),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nativeReportEvent({
+        data: {
+          ...nativeReportEvent().data,
+          message: {
+            ...nativeReportEvent().data.message,
+            content: [
+              {
+                ...nativeReportEvent().data.message.content[0],
+                isError: true,
+              },
+            ],
+          },
+        },
+      }),
+      reportCalls,
+    ),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nestedReportEvent({
+        data: { ...nestedReportEvent().data, isError: true },
+      }),
+    ),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nestedReportEvent({
+        data: { ...nestedReportEvent().data, name: 'other_tool' },
+      }),
+    ),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nestedReportEvent({
+        data: {
+          ...nestedReportEvent().data,
+          content: [
+            { type: 'marivo-report-card', turn: 3, meta: reportMeta },
+            { type: 'marivo-report-card', turn: 3, meta: reportMeta },
+          ],
+        },
+      }),
+    ),
+    null,
+  )
+  assert.equal(
+    client.reportDeliveryFromEvent(
+      nestedReportEvent({
+        data: {
+          ...nestedReportEvent().data,
+          content: [{ type: 'marivo-report-card', turn: '3', meta: reportMeta }],
+        },
+      }),
+    ),
+    null,
+  )
 })
 
 test('turn delivery uses one fixed Harness key and the public get-only store contract', async () => {
   const client = await loadClient()
   const startEvent = { seq: 1, type: 'turn/start', data: { turn: 3 } }
   const callEvent = {
-    seq: 10, type: 'tool/call',
+    seq: 10,
+    type: 'tool/call',
     data: { turn: 3, step: 4, callId: 'report-call', name: 'marivo_report_render' },
   }
   assert.deepEqual(plain(client.marivoReportDeliveryDefinition.match(startEvent)), {
-    id: '3', role: 'start',
+    id: '3',
+    role: 'start',
   })
   assert.deepEqual(plain(client.marivoReportDeliveryDefinition.match(nativeReportEvent())), {
-    id: '3', role: 'update',
+    id: '3',
+    role: 'update',
   })
   assert.deepEqual(plain(client.marivoReportDeliveryDefinition.match(nestedReportEvent())), {
-    id: '3', role: 'update',
+    id: '3',
+    role: 'update',
   })
   const startMatch = {
     event: startEvent,
@@ -293,26 +410,43 @@ test('turn delivery uses one fixed Harness key and the public get-only store con
   }
   let state = client.marivoReportDeliveryDefinition.start({}, startMatch)
   state = client.marivoReportDeliveryDefinition.update(
-    { state }, { event: callEvent, location: startMatch.location },
+    { state },
+    { event: callEvent, location: startMatch.location },
   )
   state = client.marivoReportDeliveryDefinition.update(
-    { state }, { event: nativeReportEvent(), location: startMatch.location },
+    { state },
+    { event: nativeReportEvent(), location: startMatch.location },
   )
   state = client.marivoReportDeliveryDefinition.update(
-    { state }, { event: nestedReportEvent(), location: startMatch.location },
+    { state },
+    { event: nestedReportEvent(), location: startMatch.location },
   )
-  const locationData = client.marivoReportDeliveryDefinition.buildLocationData({
-    state, start: startMatch, matches: [startMatch],
-  }, 'turn') as any
+  const locationData = client.marivoReportDeliveryDefinition.buildLocationData(
+    {
+      state,
+      start: startMatch,
+      matches: [startMatch],
+    },
+    'turn',
+  ) as any
   assert.deepEqual(plain(locationData), {
-    kind: 'turn', turn: 3, key: 'marivo-report-delivery',
-    value: { deliveries: [
-      { seq: 20, report: reportMeta },
-      { seq: 21, report: reportMeta },
-    ] },
+    kind: 'turn',
+    turn: 3,
+    key: 'marivo-report-delivery',
+    value: {
+      deliveries: [
+        { seq: 20, report: reportMeta },
+        { seq: 21, report: reportMeta },
+      ],
+    },
   })
 
-  const second = { ...reportMeta, title: '修订报告', path: '/tmp/reports/revised/index.html', reportDigest: 'b'.repeat(64) }
+  const second = {
+    ...reportMeta,
+    title: '修订报告',
+    path: '/tmp/reports/revised/index.html',
+    reportDigest: 'b'.repeat(64),
+  }
   const published = {
     deliveries: [
       ...locationData.value.deliveries,
@@ -323,48 +457,94 @@ test('turn delivery uses one fixed Harness key and the public get-only store con
   const reads: string[] = []
   const owner = {
     seq: 30,
-    turn: { data: {
-      // Harness currently has a private Map field with this name. Consumers
-      // must use public get(); calling entries?.() would throw on the real store.
-      entries: new Map([[locationData.key, published]]),
-      get(key: string) { reads.push(key); return key === locationData.key ? published : undefined },
-    } },
+    turn: {
+      data: {
+        // Harness currently has a private Map field with this name. Consumers
+        // must use public get(); calling entries?.() would throw on the real store.
+        entries: new Map([[locationData.key, published]]),
+        get(key: string) {
+          reads.push(key)
+          return key === locationData.key ? published : undefined
+        },
+      },
+    },
   }
   assert.deepEqual(plain(client.reportsForClosing(owner)), [reportMeta])
   assert.deepEqual(plain(client.selectMarivoReports(owner)), [reportMeta])
   assert.deepEqual(plain(client.reportsForClosing({ ...owner, seq: 50 })), [reportMeta, second])
   assert.equal(client.selectMarivoReports({ seq: 10, turn: owner.turn }), null)
   assert.deepEqual(reads, [
-    'marivo-report-delivery', 'marivo-report-delivery',
-    'marivo-report-delivery', 'marivo-report-delivery',
+    'marivo-report-delivery',
+    'marivo-report-delivery',
+    'marivo-report-delivery',
+    'marivo-report-delivery',
   ])
 })
 
 test('open action sends the exact path and rejects RPC, malformed, and thrown failures locally', async () => {
   const client = await loadClient()
   const calls: unknown[] = []
-  await client.openMarivoReport({
-    host: {
-      async openPath(payload: unknown) {
-        calls.push(payload)
-        return { result: { ok: true, value: { opened: true } } }
+  await client.openMarivoReport(
+    {
+      host: {
+        async openPath(payload: unknown) {
+          calls.push(payload)
+          return { result: { ok: true, value: { opened: true } } }
+        },
       },
     },
-  }, reportMeta.path)
+    reportMeta.path,
+  )
   assert.deepEqual(plain(calls), [{ path: reportMeta.path }])
 
-  await assert.rejects(() => client.openMarivoReport({
-    host: { async openPath() { return { result: { ok: false, error: { message: 'trust fence' } } } } },
-  }, reportMeta.path), /trust fence/)
-  await assert.rejects(() => client.openMarivoReport({
-    host: { async openPath() { return { result: { ok: true, value: { opened: false } } } } },
-  }, reportMeta.path), /无效/)
-  await assert.rejects(() => client.openMarivoReport({
-    host: { async openPath() { throw new Error('opener unavailable') } },
-  }, reportMeta.path), /opener unavailable/)
+  await assert.rejects(
+    () =>
+      client.openMarivoReport(
+        {
+          host: {
+            async openPath() {
+              return { result: { ok: false, error: { message: 'trust fence' } } }
+            },
+          },
+        },
+        reportMeta.path,
+      ),
+    /trust fence/,
+  )
+  await assert.rejects(
+    () =>
+      client.openMarivoReport(
+        {
+          host: {
+            async openPath() {
+              return { result: { ok: true, value: { opened: false } } }
+            },
+          },
+        },
+        reportMeta.path,
+      ),
+    /无效/,
+  )
+  await assert.rejects(
+    () =>
+      client.openMarivoReport(
+        {
+          host: {
+            async openPath() {
+              throw new Error('opener unavailable')
+            },
+          },
+        },
+        reportMeta.path,
+      ),
+    /opener unavailable/,
+  )
   assert.deepEqual(reportMeta, {
-    kind: 'marivo-html-report', version: 1, title: '支付分析报告',
-    path: '/tmp/reports/report/index.html', reportDigest: 'a'.repeat(64),
+    kind: 'marivo-html-report',
+    version: 1,
+    title: '支付分析报告',
+    path: '/tmp/reports/report/index.html',
+    reportDigest: 'a'.repeat(64),
     disclosures: ['Artifact admissible 不等于 datasource fresh。'],
   })
 })
@@ -383,20 +563,22 @@ test('report Tool View disables the clicked action and renders Host rejection on
       host: {
         openPath(payload: unknown) {
           calls.push(payload)
-          return new Promise(resolve => { settle = resolve })
+          return new Promise((resolve) => {
+            settle = resolve
+          })
         },
       },
     },
   }
   const props = { callId: 'report-call', block: settled(), connection }
   let tree = harness.render(client.MarivoReportToolView, props)
-  let button = findElement(tree, element => element.type === 'Button')
+  let button = findElement(tree, (element) => element.type === 'Button')
   assert.ok(button)
   assert.equal(button.props.disabled, false)
   button.props.onClick()
 
   tree = harness.render(client.MarivoReportToolView, props)
-  button = findElement(tree, element => element.type === 'Button')
+  button = findElement(tree, (element) => element.type === 'Button')
   assert.ok(button)
   assert.equal(button.props.disabled, true)
   assert.equal(button.props.children, '正在打开…')
@@ -404,9 +586,9 @@ test('report Tool View disables the clicked action and renders Host rejection on
 
   assert.ok(settle)
   settle({ result: { ok: false, error: { message: 'trust fence rejected' } } })
-  await new Promise(resolve => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
   tree = harness.render(client.MarivoReportToolView, props)
-  const alert = findElement(tree, element => element.props?.role === 'alert')
+  const alert = findElement(tree, (element) => element.props?.role === 'alert')
   assert.ok(alert)
   assert.equal(alert.props.children, 'trust fence rejected')
   assert.deepEqual((props.block as { meta: unknown }).meta, reportMeta)
@@ -423,14 +605,17 @@ test('turn-tail report delivery shows the full path and opens that exact Host ta
   })
   const opened: string[] = []
   const tree = client.MarivoReportTurnDelivery({
-    matched: [reportMeta], openFile: (path: string) => { opened.push(path) },
+    matched: [reportMeta],
+    openFile: (path: string) => {
+      opened.push(path)
+    },
   })
-  const button = findElement(tree, element => element.type === 'Button')
+  const button = findElement(tree, (element) => element.type === 'Button')
   assert.ok(button)
   assert.equal(button.props.children, '打开报告')
   button.props.onClick()
   assert.deepEqual(opened, [reportMeta.path])
-  const path = findElement(tree, element => element.type === 'p')
+  const path = findElement(tree, (element) => element.type === 'p')
   assert.ok(path)
   assert.equal(path.props.children, reportMeta.path)
 })
@@ -444,11 +629,23 @@ test('client registers report and credential Tool Views beside citation replay U
       assert.equal(name, 'connection')
       return { api: {} }
     },
-    conversationEvents: { register(value: unknown) { definitions.push(value) } },
-    effect(install: () => unknown) { install() },
-    locale: { register() { return () => {} } },
+    conversationEvents: {
+      register(value: unknown) {
+        definitions.push(value)
+      },
+    },
+    effect(install: () => unknown) {
+      install()
+    },
+    locale: {
+      register() {
+        return () => {}
+      },
+    },
     slots: {
-      inject(_name: string, install: () => unknown) { install() },
+      inject(_name: string, install: () => unknown) {
+        install()
+      },
       register(options: unknown, component: unknown) {
         slots.push({ options, component })
         return () => {}
@@ -456,9 +653,14 @@ test('client registers report and credential Tool Views beside citation replay U
     },
   }
   client.apply(ctx)
-  assert.deepEqual(slots.map(item => item.options.key ?? item.options.name), [
-    'marivo_test', 'marivo_report_render',
-    'conversation.chat.turnTail', 'conversation.chat.turnTail',
-  ])
+  assert.deepEqual(
+    slots.map((item) => item.options.key ?? item.options.name),
+    [
+      'marivo_test',
+      'marivo_report_render',
+      'conversation.chat.turnTail',
+      'conversation.chat.turnTail',
+    ],
+  )
   assert.equal(definitions.length, 3)
 })

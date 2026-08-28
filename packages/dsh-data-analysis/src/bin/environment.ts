@@ -3,11 +3,11 @@
 /** Fail-closed runtime environment probe for operators and deployment scripts. */
 
 import process from 'node:process'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoWorkspaceEnvironmentManager,
 } from '../environment/index.ts'
-import { MarivoEnvironmentError } from '../environment/errors.ts'
 import { environmentPayload } from '../environment/summary.ts'
 
 interface Arguments {
@@ -34,9 +34,8 @@ function requireValue(argv: readonly string[], index: number, option: string): s
 }
 
 function parseArguments(argv: readonly string[]): Arguments | 'help' {
-  let projectRoot = process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT
-    ?? process.env.DSH_CWD
-    ?? process.cwd()
+  let projectRoot =
+    process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? process.env.DSH_CWD ?? process.cwd()
   let pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
   let runtimeRoot = process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
   let uvExecutable = process.env.DSH_DATA_ANALYSIS_UV
@@ -93,7 +92,9 @@ async function main(argv: readonly string[]): Promise<number> {
     })
     const manager = new MarivoWorkspaceEnvironmentManager(runtime)
     const environment = await manager.resolve(args.projectRoot)
-    process.stdout.write(`${JSON.stringify(environmentPayload(runtime, environment), undefined, 2)}\n`)
+    process.stdout.write(
+      `${JSON.stringify(environmentPayload(runtime, environment), undefined, 2)}\n`,
+    )
     return 0
   } catch (error: unknown) {
     const code = error instanceof MarivoEnvironmentError ? error.code : 'unexpected-error'

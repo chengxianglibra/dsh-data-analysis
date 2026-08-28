@@ -4,10 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import {
-  bindMarivoEnvironment,
-  MarivoEnvironmentError,
-} from '../src/environment/index.ts'
+import { bindMarivoEnvironment, MarivoEnvironmentError } from '../src/environment/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
@@ -37,13 +34,12 @@ try {
   )
   await assert.rejects(
     () => shadowEnvironment.assertImportIdentity(),
-    (error: unknown) => error instanceof MarivoEnvironmentError
-      && error.code === 'binding-identity-mismatch',
+    (error: unknown) =>
+      error instanceof MarivoEnvironmentError && error.code === 'binding-identity-mismatch',
   )
   await assert.rejects(
     () => shadowEnvironment.assertImportIdentity(),
-    (error: unknown) => error instanceof MarivoEnvironmentError
-      && error.code === 'binding-failed',
+    (error: unknown) => error instanceof MarivoEnvironmentError && error.code === 'binding-failed',
   )
   shadowStatus = shadowEnvironment.status
 } finally {
@@ -51,9 +47,15 @@ try {
 }
 assert.equal(shadowStatus!, 'failed')
 
-process.stdout.write(`${JSON.stringify({
-  status: 'ok',
-  binding: environment.binding,
-  identity,
-  failClosedShadowBinding: shadowStatus!,
-}, null, 2)}\n`)
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      status: 'ok',
+      binding: environment.binding,
+      identity,
+      failClosedShadowBinding: shadowStatus!,
+    },
+    null,
+    2,
+  )}\n`,
+)

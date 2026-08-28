@@ -88,10 +88,13 @@ test('the first Shell call inventories once while every call resolves a fresh cr
   const { ctx, credentials, bridge } = await fixture()
   t.after(() => bridge.dispose())
   const inventory = { count: 0 }
-  const workspace = environment([
-    { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD', 'DSH_DB_PASSWORD'] },
-    { name: 'replica', refs: ['DSH_DB_USER'] },
-  ], inventory)
+  const workspace = environment(
+    [
+      { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD', 'DSH_DB_PASSWORD'] },
+      { name: 'replica', refs: ['DSH_DB_USER'] },
+    ],
+    inventory,
+  )
   credentials.values.set('DSH_DB_USER', 'alice')
   credentials.values.set('DSH_DB_PASSWORD', 'first-secret')
 
@@ -123,9 +126,10 @@ test('missing credentials and non-DSH inventory references are omitted without b
   const { ctx, credentials, bridge } = await fixture()
   t.after(() => bridge.dispose())
   const inventory = { count: 0 }
-  const workspace = environment([
-    { name: 'warehouse', refs: ['DSH_DB_USER', 'DB_PASSWORD'] },
-  ], inventory)
+  const workspace = environment(
+    [{ name: 'warehouse', refs: ['DSH_DB_USER', 'DB_PASSWORD'] }],
+    inventory,
+  )
   credentials.values.set('DSH_DB_USER', 'alice')
 
   const call = execution('shell-partial')
@@ -141,12 +145,8 @@ test('workspace and concurrent execution snapshots stay isolated', async (t) => 
   t.after(() => bridge.dispose())
   const leftInventory = { count: 0 }
   const rightInventory = { count: 0 }
-  const leftWorkspace = environment([
-    { name: 'left', refs: ['DSH_LEFT_TOKEN'] },
-  ], leftInventory)
-  const rightWorkspace = environment([
-    { name: 'right', refs: ['DSH_RIGHT_TOKEN'] },
-  ], rightInventory)
+  const leftWorkspace = environment([{ name: 'left', refs: ['DSH_LEFT_TOKEN'] }], leftInventory)
+  const rightWorkspace = environment([{ name: 'right', refs: ['DSH_RIGHT_TOKEN'] }], rightInventory)
   credentials.values.set('DSH_LEFT_TOKEN', 'left-secret')
   credentials.values.set('DSH_RIGHT_TOKEN', 'right-secret')
   const left = execution('shell-left')
@@ -167,9 +167,7 @@ test('marivo_test describe updates replace the cached datasource references', as
   const { ctx, credentials, bridge } = await fixture()
   t.after(() => bridge.dispose())
   const inventory = { count: 0 }
-  const workspace = environment([
-    { name: 'warehouse', refs: ['DSH_OLD_TOKEN'] },
-  ], inventory)
+  const workspace = environment([{ name: 'warehouse', refs: ['DSH_OLD_TOKEN'] }], inventory)
   credentials.values.set('DSH_OLD_TOKEN', 'old-secret')
   credentials.values.set('DSH_NEW_TOKEN', 'new-secret')
 
@@ -214,16 +212,18 @@ test('the pre-execute bridge covers bash and pwsh, skips other tools, and fails 
   const bridge = new MarivoShellCredentialBridge(ctx, credentials)
   t.after(() => bridge.dispose())
   for (const name of ['bash', 'pwsh', 'ordinary']) {
-    ctx.tools.register(defineTool({
-      name,
-      description: `${name} fixture`,
-      parameters: {},
-      output: {
-        schema: { type: 'json' },
-        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      },
-      execute: (_args, exec) => Promise.resolve(shellEnv(ctx).collect(exec)),
-    }))
+    ctx.tools.register(
+      defineTool({
+        name,
+        description: `${name} fixture`,
+        parameters: {},
+        output: {
+          schema: { type: 'json' },
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+        },
+        execute: (_args, exec) => Promise.resolve(shellEnv(ctx).collect(exec)),
+      }),
+    )
   }
   let inventoryCalls = 0
   const brokenWorkspace = {
@@ -263,23 +263,23 @@ test('persistent bash and pwsh fail explicitly instead of running without resolv
   t.after(() => bridge.dispose())
   let executions = 0
   for (const name of ['bash', 'pwsh']) {
-    ctx.tools.register(defineTool({
-      name,
-      description: `Run commands in a persistent ${name} shell.`,
-      parameters: {},
-      output: {
-        schema: { type: 'string' },
-        render: (_args, value) => [{ type: 'text', text: value }],
-      },
-      execute: () => {
-        executions += 1
-        return Promise.resolve('must not run')
-      },
-    }))
+    ctx.tools.register(
+      defineTool({
+        name,
+        description: `Run commands in a persistent ${name} shell.`,
+        parameters: {},
+        output: {
+          schema: { type: 'string' },
+          render: (_args, value) => [{ type: 'text', text: value }],
+        },
+        execute: () => {
+          executions += 1
+          return Promise.resolve('must not run')
+        },
+      }),
+    )
   }
-  const workspace = environment([
-    { name: 'warehouse', refs: ['DSH_DB_PASSWORD'] },
-  ], { count: 0 })
+  const workspace = environment([{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }], { count: 0 })
   const agent = {
     ctx,
     session: { header: { id: 'persistent-shell-agent' } },
@@ -292,8 +292,14 @@ test('persistent bash and pwsh fail explicitly instead of running without resolv
 
   assert.equal(bash.isError, true)
   assert.equal(pwsh.isError, true)
-  assert.match(JSON.stringify(bash), /persistent bash tool cannot receive per-execution DSH datasource credentials/)
-  assert.match(JSON.stringify(pwsh), /persistent pwsh tool cannot receive per-execution DSH datasource credentials/)
+  assert.match(
+    JSON.stringify(bash),
+    /persistent bash tool cannot receive per-execution DSH datasource credentials/,
+  )
+  assert.match(
+    JSON.stringify(pwsh),
+    /persistent pwsh tool cannot receive per-execution DSH datasource credentials/,
+  )
   assert.doesNotMatch(JSON.stringify([bash, pwsh]), /never-render-this-secret/)
   assert.equal(executions, 0)
 })
@@ -301,21 +307,25 @@ test('persistent bash and pwsh fail explicitly instead of running without resolv
 test('dispose during first inventory cannot register a late Shell contributor', async () => {
   const { ctx, bridge } = await fixture()
   let releaseInventory: (() => void) | undefined
-  const inventory = new Promise<void>((resolve) => { releaseInventory = resolve })
+  const inventory = new Promise<void>((resolve) => {
+    releaseInventory = resolve
+  })
   const workspace = {
     async runCheckedDatasourceInventory() {
       await inventory
       return {
         exitCode: 0,
-        stdout: Buffer.from(JSON.stringify({
-          datasources: [{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }],
-        })),
+        stdout: Buffer.from(
+          JSON.stringify({
+            datasources: [{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }],
+          }),
+        ),
         stderr: Buffer.alloc(0),
       }
     },
   } as unknown as MarivoEnvironment
   const pending = bridge.prepareExecution(workspace, execution('dispose-race'))
-  await new Promise(resolve => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
 
   bridge.dispose()
   releaseInventory?.()

@@ -6,15 +6,15 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {
   MARIVO_HELP_TOOL_NAME,
-  readMarivoHelpTargets,
-  registerMarivoHelpTool,
-  renderMarivoHelpValue,
-  resolveMarivoEnvironmentSource,
   type MarivoEnvironmentSource,
   type MarivoHelpDelivery,
   type MarivoHelpDeliveryQuery,
   type MarivoHelpLimits,
   type MarivoHelpValue,
+  readMarivoHelpTargets,
+  registerMarivoHelpTool,
+  renderMarivoHelpValue,
+  resolveMarivoEnvironmentSource,
 } from './help.ts'
 
 const SKILL_TOOL_NAME = 'skill'
@@ -27,10 +27,7 @@ export const MARIVO_ROOT_HELP_TARGETS = Object.freeze({
 export type MarivoSkillName = keyof typeof MARIVO_ROOT_HELP_TARGETS
 export type MarivoRootHelpTarget = (typeof MARIVO_ROOT_HELP_TARGETS)[MarivoSkillName]
 
-const MARIVO_SKILL_ORDER: readonly MarivoSkillName[] = [
-  'marivo-analysis',
-  'marivo-semantic',
-]
+const MARIVO_SKILL_ORDER: readonly MarivoSkillName[] = ['marivo-analysis', 'marivo-semantic']
 
 export interface MarivoDisclosureOptions {
   helpLimits?: Partial<MarivoHelpLimits>
@@ -113,13 +110,14 @@ function rootHelpSource(value: unknown): MarivoDisclosureSource | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const source = value as Partial<MarivoDisclosureSource>
   if (
-    source.kind !== 'marivo-disclosure'
-    || source.form !== 'root-help'
-    || !isMarivoSkillName(source.skill)
-    || source.target !== MARIVO_ROOT_HELP_TARGETS[source.skill]
-    || typeof source.environmentFingerprint !== 'string'
-    || typeof source.bodyDigest !== 'string'
-  ) return undefined
+    source.kind !== 'marivo-disclosure' ||
+    source.form !== 'root-help' ||
+    !isMarivoSkillName(source.skill) ||
+    source.target !== MARIVO_ROOT_HELP_TARGETS[source.skill] ||
+    typeof source.environmentFingerprint !== 'string' ||
+    typeof source.bodyDigest !== 'string'
+  )
+    return undefined
   return source as MarivoDisclosureSource
 }
 
@@ -131,25 +129,29 @@ function focusedHelpMeta(value: unknown): VisibleHelp[] {
     targets?: unknown
   }
   if (
-    meta.kind !== 'marivo-help-disclosure'
-    || typeof meta.environmentFingerprint !== 'string'
-    || !Array.isArray(meta.targets)
-  ) return []
+    meta.kind !== 'marivo-help-disclosure' ||
+    typeof meta.environmentFingerprint !== 'string' ||
+    !Array.isArray(meta.targets)
+  )
+    return []
   return meta.targets.flatMap((item): VisibleHelp[] => {
     if (typeof item !== 'object' || item === null) return []
     const target = (item as { target?: unknown }).target
     const bodyDigest = (item as { bodyDigest?: unknown }).bodyDigest
     const delivery = (item as { delivery?: unknown }).delivery
     if (
-      typeof target !== 'string'
-      || typeof bodyDigest !== 'string'
-      || (delivery !== 'delivered' && delivery !== 'replacement')
-    ) return []
-    return [{
-      environmentFingerprint: meta.environmentFingerprint as string,
-      target,
-      bodyDigest,
-    }]
+      typeof target !== 'string' ||
+      typeof bodyDigest !== 'string' ||
+      (delivery !== 'delivered' && delivery !== 'replacement')
+    )
+      return []
+    return [
+      {
+        environmentFingerprint: meta.environmentFingerprint as string,
+        target,
+        bodyDigest,
+      },
+    ]
   })
 }
 
@@ -163,11 +165,12 @@ function successfulHelpValue(result: Readonly<ToolExecutionResult>): MarivoHelpV
   if (result.isError || typeof result.value !== 'object' || result.value === null) return undefined
   const value = result.value as Partial<MarivoHelpValue>
   if (
-    typeof value.environment !== 'object'
-    || value.environment === null
-    || typeof value.environment.fingerprint !== 'string'
-    || !Array.isArray(value.targets)
-  ) return undefined
+    typeof value.environment !== 'object' ||
+    value.environment === null ||
+    typeof value.environment.fingerprint !== 'string' ||
+    !Array.isArray(value.targets)
+  )
+    return undefined
   return value as MarivoHelpValue
 }
 
@@ -182,18 +185,20 @@ function renderRootHelpMessage(
     throw new Error(`Marivo root help ${target} did not return its requested target`)
   }
   return createUserMessage({
-    content: [{
-      type: 'text',
-      text: [
-        `<marivo_help_context skill="${skill}" target="${target}">`,
-        update
-          ? 'This live root help replaces the earlier disclosure for this skill.'
-          : 'This live root help accompanies the loaded Marivo skill.',
-        '',
-        renderMarivoHelpValue(value),
-        '</marivo_help_context>',
-      ].join('\n'),
-    }],
+    content: [
+      {
+        type: 'text',
+        text: [
+          `<marivo_help_context skill="${skill}" target="${target}">`,
+          update
+            ? 'This live root help replaces the earlier disclosure for this skill.'
+            : 'This live root help accompanies the loaded Marivo skill.',
+          '',
+          renderMarivoHelpValue(value),
+          '</marivo_help_context>',
+        ].join('\n'),
+      },
+    ],
     source: {
       kind: 'marivo-disclosure',
       form: 'root-help',
@@ -234,14 +239,17 @@ export class MarivoDisclosureController {
   }
 
   get activeSkills(): readonly MarivoSkillName[] {
-    return MARIVO_SKILL_ORDER.filter(skill => this.#activeSkills.has(skill))
+    return MARIVO_SKILL_ORDER.filter((skill) => this.#activeSkills.has(skill))
   }
 
   telemetry(): MarivoDisclosureTelemetry {
     return {
-      activations: this.#telemetry.activations.map(record => ({ ...record })),
-      rootHelp: this.#telemetry.rootHelp.map(record => ({ ...record })),
-      failures: this.#telemetry.failures.map(record => ({ ...record, skills: [...record.skills] })),
+      activations: this.#telemetry.activations.map((record) => ({ ...record })),
+      rootHelp: this.#telemetry.rootHelp.map((record) => ({ ...record })),
+      failures: this.#telemetry.failures.map((record) => ({
+        ...record,
+        skills: [...record.skills],
+      })),
     }
   }
 
@@ -278,16 +286,14 @@ export class MarivoDisclosureController {
   resolveDelivery(query: Readonly<MarivoHelpDeliveryQuery>): MarivoHelpDelivery {
     const visible = this.#visibleHelp.get(query.target)
     if (
-      visible?.environmentFingerprint === query.environmentFingerprint
-      && visible.bodyDigest === query.bodyDigest
-    ) return 'already-visible'
+      visible?.environmentFingerprint === query.environmentFingerprint &&
+      visible.bodyDigest === query.bodyDigest
+    )
+      return 'already-visible'
     return visible === undefined ? 'delivered' : 'replacement'
   }
 
-  async prepareStep(
-    messages: readonly UserMessage[],
-    signal: AbortSignal,
-  ): Promise<UserMessage[]> {
+  async prepareStep(messages: readonly UserMessage[], signal: AbortSignal): Promise<UserMessage[]> {
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
     this.#observeExplicitInvocations(messages)
     this.#refreshVisibleHelp(messages)
@@ -299,33 +305,37 @@ export class MarivoDisclosureController {
       if (!this.#activeSkills.has(skill)) return false
       const target = MARIVO_ROOT_HELP_TARGETS[skill]
       const visible = this.#visibleHelp.get(target)
-      return this.#pendingSkills.has(skill)
-        || visible?.environmentFingerprint !== environment.binding.fingerprint
+      return (
+        this.#pendingSkills.has(skill) ||
+        visible?.environmentFingerprint !== environment.binding.fingerprint
+      )
     })
     if (requested.length === 0) return []
 
     const batchAbort = new AbortController()
     const readSignal = AbortSignal.any([signal, this.#lifecycleAbort.signal, batchAbort.signal])
     let primaryCause: unknown
-    const settled = await Promise.allSettled(requested.map(async (skill): Promise<PendingRootHelp> => {
-      try {
-        const target = MARIVO_ROOT_HELP_TARGETS[skill]
-        const reason = this.#pendingSkills.has(skill) ? 'activation' : 'recovery'
-        const startedAt = performance.now()
-        const value = await readMarivoHelpTargets(environment, [target], {
-          limits: this.options.helpLimits,
-          signal: readSignal,
-          resolveDelivery: query => this.resolveDelivery(query),
-        })
-        return { skill, target, reason, startedAt, value }
-      } catch (cause) {
-        primaryCause ??= cause
-        batchAbort.abort(cause)
-        throw cause
-      }
-    }))
+    const settled = await Promise.allSettled(
+      requested.map(async (skill): Promise<PendingRootHelp> => {
+        try {
+          const target = MARIVO_ROOT_HELP_TARGETS[skill]
+          const reason = this.#pendingSkills.has(skill) ? 'activation' : 'recovery'
+          const startedAt = performance.now()
+          const value = await readMarivoHelpTargets(environment, [target], {
+            limits: this.options.helpLimits,
+            signal: readSignal,
+            resolveDelivery: (query) => this.resolveDelivery(query),
+          })
+          return { skill, target, reason, startedAt, value }
+        } catch (cause) {
+          primaryCause ??= cause
+          batchAbort.abort(cause)
+          throw cause
+        }
+      }),
+    )
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
-    const rejected = settled.find(result => result.status === 'rejected')
+    const rejected = settled.find((result) => result.status === 'rejected')
     if (rejected !== undefined) {
       const error = new MarivoDisclosureError(requested, primaryCause ?? rejected.reason)
       this.#telemetry.failures.push({ skills: [...requested], message: error.message })
@@ -381,12 +391,11 @@ export class MarivoDisclosureController {
   }
 
   #inheritedSkillToolVisible(): boolean {
-    const inheritedSkillTool = this.agent.ctx.tools.get(
-      SKILL_TOOL_NAME,
-      scopeParentOf(this.agent),
+    const inheritedSkillTool = this.agent.ctx.tools.get(SKILL_TOOL_NAME, scopeParentOf(this.agent))
+    return (
+      inheritedSkillTool !== undefined &&
+      this.agent.ctx.tools.get(SKILL_TOOL_NAME, this.agent) === inheritedSkillTool
     )
-    return inheritedSkillTool !== undefined
-      && this.agent.ctx.tools.get(SKILL_TOOL_NAME, this.agent) === inheritedSkillTool
   }
 
   #observeExplicitInvocations(messages: readonly UserMessage[]): void {
@@ -442,42 +451,46 @@ export class MarivoDisclosureController {
   }
 
   #hasHistoricalDisclosure(skill: MarivoSkillName): boolean {
-    return this.agent.session.events.some(event => (
-      event.type === 'user/message' && rootHelpSource(event.data.source)?.skill === skill
-    ))
+    return this.agent.session.events.some(
+      (event) =>
+        event.type === 'user/message' && rootHelpSource(event.data.source)?.skill === skill,
+    )
   }
 }
 
 /** Install skill-triggered Marivo live-help disclosure for one Agent scope. */
 export function installMarivoDisclosure(
-  ctx: Context,
+  _ctx: Context,
   agent: Agent,
   environmentSource: MarivoEnvironmentSource,
   options: MarivoDisclosureOptions = {},
 ): MarivoDisclosureController {
   const controller = new MarivoDisclosureController(agent, environmentSource, options)
   try {
-    controller.addDisposer(registerMarivoHelpTool(
-      agent.ctx,
-      environmentSource,
-      options.helpLimits,
-      query => controller.resolveDelivery(query),
-    ))
-    controller.addDisposer(agent.ctx.on('tools/result', (exec, result) => {
-      controller.observeToolResult(exec, result)
-    }))
-    controller.addDisposer(agent.ctx.on(
-      'agent/pre-step',
-      async ({ signal }, next): Promise<PreStepDecision> => {
-        const decision = await next()
-        if (decision.kind === 'reject') return decision
-        const injections = await controller.prepareStep(decision.messages, signal)
-        return injections.length === 0
-          ? decision
-          : { kind: 'enter', messages: [...decision.messages, ...injections] }
-      },
-      true,
-    ))
+    controller.addDisposer(
+      registerMarivoHelpTool(agent.ctx, environmentSource, options.helpLimits, (query) =>
+        controller.resolveDelivery(query),
+      ),
+    )
+    controller.addDisposer(
+      agent.ctx.on('tools/result', (exec, result) => {
+        controller.observeToolResult(exec, result)
+      }),
+    )
+    controller.addDisposer(
+      agent.ctx.on(
+        'agent/pre-step',
+        async ({ signal }, next): Promise<PreStepDecision> => {
+          const decision = await next()
+          if (decision.kind === 'reject') return decision
+          const injections = await controller.prepareStep(decision.messages, signal)
+          return injections.length === 0
+            ? decision
+            : { kind: 'enter', messages: [...decision.messages, ...injections] }
+        },
+        true,
+      ),
+    )
     return controller
   } catch (cause) {
     controller.dispose()

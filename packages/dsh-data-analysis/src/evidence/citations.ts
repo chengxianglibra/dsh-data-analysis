@@ -1,11 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue, Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
-import {
-  resolveMarivoEnvironmentSource,
-  type MarivoEnvironmentSource,
-} from '../disclosure/help.ts'
 
 export const MARIVO_EVIDENCE_CITE_TOOL_NAME = 'marivo_evidence_cite'
 export const MARIVO_CITATION_META_KIND = 'marivo-evidence-citations'
@@ -109,11 +106,9 @@ function requestedFindingIds(value: unknown): string[] {
       `marivo_evidence_cite finding_ids must contain 1-${MARIVO_CITATION_MAX_PER_CALL} items`,
     )
   }
-  const result = value.map((item, index) => nonEmptyString(
-    item,
-    `marivo_evidence_cite finding_ids[${index}]`,
-    512,
-  ))
+  const result = value.map((item, index) =>
+    nonEmptyString(item, `marivo_evidence_cite finding_ids[${index}]`, 512),
+  )
   if (new Set(result).size !== result.length) {
     throw new TypeError('marivo_evidence_cite finding_ids must be unique within one request')
   }
@@ -122,16 +117,15 @@ function requestedFindingIds(value: unknown): string[] {
 
 function jsonObject(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined
 }
 
 function parseFinding(value: unknown): FindingPayload {
   const item = jsonObject(value)
   if (item === undefined) throw new TypeError('finding must be an object')
-  const qualityStatus = item.quality_status === null
-    ? null
-    : nonEmptyString(item.quality_status, 'quality_status', 128)
+  const qualityStatus =
+    item.quality_status === null ? null : nonEmptyString(item.quality_status, 'quality_status', 128)
   const findingType = nonEmptyString(item.finding_type, 'finding_type')
   const epistemicKind = nonEmptyString(item.epistemic_kind, 'epistemic_kind')
   return {
@@ -159,7 +153,11 @@ function parseFindingsPayload(
 ): FindingPayload[] {
   try {
     const root = jsonObject(JSON.parse(stdout.toString('utf8')))
-    if (root === undefined || root.session_id !== expectedSessionId || !Array.isArray(root.findings)) {
+    if (
+      root === undefined ||
+      root.session_id !== expectedSessionId ||
+      !Array.isArray(root.findings)
+    ) {
       throw new TypeError('root fields are invalid')
     }
     const findings = root.findings.map(parseFinding)
@@ -167,10 +165,11 @@ function parseFindingsPayload(
     for (let index = 0; index < findings.length; index++) {
       const finding = findings[index]
       if (
-        finding === undefined
-        || finding.findingId !== expectedFindingIds[index]
-        || finding.sessionId !== expectedSessionId
-      ) throw new TypeError('finding identity or order differs')
+        finding === undefined ||
+        finding.findingId !== expectedFindingIds[index] ||
+        finding.sessionId !== expectedSessionId
+      )
+        throw new TypeError('finding identity or order differs')
     }
     return findings
   } catch (cause) {
@@ -194,35 +193,37 @@ function validSource(value: unknown): value is MarivoEvidenceSource {
   const source = jsonObject(value)
   if (source === undefined || handleNumber(String(source.handle)) === undefined) return false
   const handle = source.handle as string
-  if (!(
-    source.marker === `[^mv-${handle.toLowerCase()}]`
-    && jsonObject(source.rendered) !== undefined
-    && typeof jsonObject(source.rendered)?.en === 'string'
-    && typeof jsonObject(source.rendered)?.zh === 'string'
-    && typeof source.environmentFingerprint === 'string'
-    && source.environmentFingerprint !== ''
-    && typeof source.sessionId === 'string'
-    && source.sessionId !== ''
-    && typeof source.findingId === 'string'
-    && source.findingId !== ''
-    && typeof source.findingType === 'string'
-    && source.findingType !== ''
-    && typeof source.epistemicKind === 'string'
-    && source.epistemicKind !== ''
-    && typeof source.artifactId === 'string'
-    && source.artifactId !== ''
-    && typeof source.canonicalItemKey === 'string'
-    && source.canonicalItemKey !== ''
-    && (source.qualityStatus === null || (
-      typeof source.qualityStatus === 'string' && source.qualityStatus !== ''
-    ))
-    && typeof source.committedAt === 'string'
-    && source.committedAt !== ''
-    && typeof source.extractorVersion === 'string'
-    && source.extractorVersion !== ''
-    && typeof source.artifactSchemaVersion === 'string'
-    && source.artifactSchemaVersion !== ''
-  )) return false
+  if (
+    !(
+      source.marker === `[^mv-${handle.toLowerCase()}]` &&
+      jsonObject(source.rendered) !== undefined &&
+      typeof jsonObject(source.rendered)?.en === 'string' &&
+      typeof jsonObject(source.rendered)?.zh === 'string' &&
+      typeof source.environmentFingerprint === 'string' &&
+      source.environmentFingerprint !== '' &&
+      typeof source.sessionId === 'string' &&
+      source.sessionId !== '' &&
+      typeof source.findingId === 'string' &&
+      source.findingId !== '' &&
+      typeof source.findingType === 'string' &&
+      source.findingType !== '' &&
+      typeof source.epistemicKind === 'string' &&
+      source.epistemicKind !== '' &&
+      typeof source.artifactId === 'string' &&
+      source.artifactId !== '' &&
+      typeof source.canonicalItemKey === 'string' &&
+      source.canonicalItemKey !== '' &&
+      (source.qualityStatus === null ||
+        (typeof source.qualityStatus === 'string' && source.qualityStatus !== '')) &&
+      typeof source.committedAt === 'string' &&
+      source.committedAt !== '' &&
+      typeof source.extractorVersion === 'string' &&
+      source.extractorVersion !== '' &&
+      typeof source.artifactSchemaVersion === 'string' &&
+      source.artifactSchemaVersion !== ''
+    )
+  )
+    return false
   try {
     renderedText(jsonObject(source.rendered)?.en, 'source.rendered.en')
     renderedText(jsonObject(source.rendered)?.zh, 'source.rendered.zh')
@@ -238,15 +239,16 @@ function parseRegistryMeta(
 ): MarivoEvidenceSource[] | undefined {
   const meta = jsonObject(value)
   if (
-    meta === undefined
-    || meta.kind !== MARIVO_CITATION_META_KIND
-    || meta.version !== MARIVO_CITATION_META_VERSION
-    || meta.dshSessionId !== expectedDshSessionId
-    || !Array.isArray(meta.registry)
-    || meta.registry.length < 1
-    || meta.registry.length > MARIVO_CITATION_MAX_HANDLES
-    || !meta.registry.every(validSource)
-  ) return undefined
+    meta === undefined ||
+    meta.kind !== MARIVO_CITATION_META_KIND ||
+    meta.version !== MARIVO_CITATION_META_VERSION ||
+    meta.dshSessionId !== expectedDshSessionId ||
+    !Array.isArray(meta.registry) ||
+    meta.registry.length < 1 ||
+    meta.registry.length > MARIVO_CITATION_MAX_HANDLES ||
+    !meta.registry.every(validSource)
+  )
+    return undefined
   const handles = new Set<string>()
   const identities = new Set<string>()
   for (const [index, source] of meta.registry.entries()) {
@@ -256,17 +258,22 @@ function parseRegistryMeta(
       source.findingId,
     )
     if (
-      handleNumber(source.handle) !== index + 1
-      || handles.has(source.handle)
-      || identities.has(identity)
-    ) return undefined
+      handleNumber(source.handle) !== index + 1 ||
+      handles.has(source.handle) ||
+      identities.has(identity)
+    )
+      return undefined
     handles.add(source.handle)
     identities.add(identity)
   }
-  return meta.registry.map(source => ({ ...source, rendered: { ...source.rendered } }))
+  return meta.registry.map((source) => ({ ...source, rendered: { ...source.rendered } }))
 }
 
-function citationIdentity(environmentFingerprint: string, sessionId: string, findingId: string): string {
+function citationIdentity(
+  environmentFingerprint: string,
+  sessionId: string,
+  findingId: string,
+): string {
   return JSON.stringify([environmentFingerprint, sessionId, findingId])
 }
 
@@ -299,7 +306,7 @@ export class MarivoCitationRegistry {
   }
 
   snapshot(): MarivoEvidenceSource[] {
-    return this.#sources.map(source => ({ ...source, rendered: { ...source.rendered } }))
+    return this.#sources.map((source) => ({ ...source, rendered: { ...source.rendered } }))
   }
 
   issue(
@@ -308,17 +315,19 @@ export class MarivoCitationRegistry {
     findings: readonly FindingPayload[],
     language: 'en' | 'zh',
   ): MarivoEvidenceCiteValue {
-    const byIdentity = new Map(this.#sources.map(source => [citationIdentity(
-      source.environmentFingerprint,
-      source.sessionId,
-      source.findingId,
-    ), source]))
+    const byIdentity = new Map(
+      this.#sources.map((source) => [
+        citationIdentity(source.environmentFingerprint, source.sessionId, source.findingId),
+        source,
+      ]),
+    )
     const requested: MarivoEvidenceSource[] = []
     const additions: MarivoEvidenceSource[] = []
-    let nextHandle = this.#sources.reduce(
-      (maximum, source) => Math.max(maximum, handleNumber(source.handle) ?? 0),
-      0,
-    ) + 1
+    let nextHandle =
+      this.#sources.reduce(
+        (maximum, source) => Math.max(maximum, handleNumber(source.handle) ?? 0),
+        0,
+      ) + 1
 
     for (const finding of findings) {
       const identity = citationIdentity(environment.fingerprint, sessionId, finding.findingId)
@@ -365,7 +374,7 @@ export class MarivoCitationRegistry {
       dshSessionId: String(this.session.id),
       sessionId,
       language,
-      requested: requested.map(source => ({
+      requested: requested.map((source) => ({
         ...source,
         rendered: { ...source.rendered },
         definition: definitionFor(source, language),
@@ -376,7 +385,7 @@ export class MarivoCitationRegistry {
 }
 
 function renderCitations(value: MarivoEvidenceCiteValue): string {
-  const items = value.requested.flatMap(source => [
+  const items = value.requested.flatMap((source) => [
     `${source.handle}: marker ${source.marker}`,
     source.definition,
   ])
@@ -394,7 +403,8 @@ export function createMarivoEvidenceCiteTool(
   const registry = new MarivoCitationRegistry(session)
   return defineTool({
     name: MARIVO_EVIDENCE_CITE_TOOL_NAME,
-    description: 'Issue stable human-readable Markdown footnote references for exact persisted Marivo Evidence Findings. Use the final answer language. This identifies sources; it does not validate the surrounding conclusion.',
+    description:
+      'Issue stable human-readable Markdown footnote references for exact persisted Marivo Evidence Findings. Use the final answer language. This identifies sources; it does not validate the surrounding conclusion.',
     parameters: {
       session_id: {
         type: 'string',
@@ -416,10 +426,12 @@ export function createMarivoEvidenceCiteTool(
     },
     output: {
       schema: { type: 'json' },
-      render: (_args, value) => [{
-        type: 'text',
-        text: renderCitations(value as unknown as MarivoEvidenceCiteValue),
-      }],
+      render: (_args, value) => [
+        {
+          type: 'text',
+          text: renderCitations(value as unknown as MarivoEvidenceCiteValue),
+        },
+      ],
       presentationMeta: (_args, value) => {
         const result = value as unknown as MarivoEvidenceCiteValue
         return {
@@ -443,7 +455,10 @@ export function createMarivoEvidenceCiteTool(
         exec.signal,
       )
       if (result.exitCode !== 0) {
-        if (result.exitCode === 69 && result.stderr.toString('utf8').includes('finding-render-unavailable')) {
+        if (
+          result.exitCode === 69 &&
+          result.stderr.toString('utf8').includes('finding-render-unavailable')
+        ) {
           throw new MarivoEnvironmentError(
             'shared-runtime-capability-missing',
             'Marivo Evidence citations require Finding.render(); upgrade the bound Marivo runtime and retry',
@@ -460,10 +475,15 @@ export function createMarivoEvidenceCiteTool(
         )
       }
       const findings = parseFindingsPayload(result.stdout, sessionId, findingIds)
-      return registry.issue({
-        version: environment.binding.marivoVersion,
-        fingerprint: environment.binding.fingerprint,
-      }, sessionId, findings, language)
+      return registry.issue(
+        {
+          version: environment.binding.marivoVersion,
+          fingerprint: environment.binding.fingerprint,
+        },
+        sessionId,
+        findings,
+        language,
+      )
     },
   })
 }

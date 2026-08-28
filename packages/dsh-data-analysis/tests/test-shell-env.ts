@@ -1,4 +1,4 @@
-import { Service, type Context } from '@deepseek-ai/cordis'
+import { type Context, Service } from '@deepseek-ai/cordis'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 
 interface TestShellContributor {
@@ -17,7 +17,8 @@ export class TestShellEnv extends Service {
   }
 
   register(contributor: TestShellContributor): () => void {
-    if (this.contributors.has(contributor.name)) throw new Error(`duplicate contributor ${contributor.name}`)
+    if (this.contributors.has(contributor.name))
+      throw new Error(`duplicate contributor ${contributor.name}`)
     for (const key of Object.keys(contributor.variables)) {
       if (!key.startsWith('DSH_') || ['DSH_HOME', 'DSH_SHELL', 'DSH_SESSION_ID'].includes(key)) {
         throw new Error(`invalid or reserved DSH environment key ${key}`)
@@ -34,14 +35,16 @@ export class TestShellEnv extends Service {
   }
 
   collect(execution: ToolExecution): Readonly<Record<string, string>> {
-    return Object.freeze(Object.assign(
-      {},
-      ...[...this.contributors.values()].map(contributor => contributor.resolve(execution)),
-    ))
+    return Object.freeze(
+      Object.assign(
+        {},
+        ...[...this.contributors.values()].map((contributor) => contributor.resolve(execution)),
+      ),
+    )
   }
 
   list(): Array<{ contributor: string; key: `DSH_${string}`; description: string }> {
-    return [...this.contributors.values()].flatMap(contributor =>
+    return [...this.contributors.values()].flatMap((contributor) =>
       Object.entries(contributor.variables).map(([key, value]) => ({
         contributor: contributor.name,
         key: key as `DSH_${string}`,

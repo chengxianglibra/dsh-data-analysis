@@ -17,10 +17,14 @@ interface ClientExports {
   parseNeedsCredentials(text: string): { name: string; refs: string[] } | null
   shouldAutoOpen(sessionId: string, callId: string, result: unknown): boolean
   blankCredentialValues(refs: readonly string[]): Record<string, string>
-  CredentialDialogController: new (api: unknown) => {
+  CredentialDialogController: new (
+    api: unknown,
+  ) => {
     describe(refs: readonly string[]): Promise<Record<string, { configured: boolean }>>
     save(values: Readonly<Record<string, string>>): Promise<{
-      ok: boolean; saved: string[]; errors: Record<string, string>
+      ok: boolean
+      saved: string[]
+      errors: Record<string, string>
     }>
   }
 }
@@ -29,13 +33,20 @@ async function loadClient(): Promise<ClientExports> {
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8')
   let registration: { factory: (require: (id: string) => unknown) => ClientExports } | undefined
   const context = {
-    window: { __ModuleLoader__: { load(value: typeof registration) { registration = value } } },
+    window: {
+      __ModuleLoader__: {
+        load(value: typeof registration) {
+          registration = value
+        },
+      },
+    },
   }
   vm.runInNewContext(source, context)
   assert.ok(registration)
   return registration.factory((id) => {
     if (id === 'react/jsx-runtime') return { Fragment: Symbol('Fragment'), jsx() {}, jsxs() {} }
-    if (id === 'react') return { useEffect() {}, useMemo: (factory: () => unknown) => factory(), useState() {} }
+    if (id === 'react')
+      return { useEffect() {}, useMemo: (factory: () => unknown) => factory(), useState() {} }
     if (id === '@deepseek-ai/dsh-client-ui-primitives') return { Button() {}, Modal() {} }
     throw new Error(`unexpected client module request: ${id}`)
   })
@@ -84,14 +95,17 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
     PATH: process.env.PATH,
     RECORD_PATH: recordPath,
   })
-  const environment = new MarivoEnvironment({
-    projectRoot: root,
-    pythonExecutable: executable,
-    marivoVersion: '0.0.web-test',
-    packagePath: path.join(root, 'fake-marivo', '__init__.py'),
-    subprocessPolicyId: policy.id,
-    fingerprint: 'e'.repeat(64),
-  }, policy)
+  const environment = new MarivoEnvironment(
+    {
+      projectRoot: root,
+      pythonExecutable: executable,
+      marivoVersion: '0.0.web-test',
+      packagePath: path.join(root, 'fake-marivo', '__init__.py'),
+      subprocessPolicyId: policy.id,
+      fingerprint: 'e'.repeat(64),
+    },
+    policy,
+  )
   const credentials = new MapCredentials()
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
@@ -108,7 +122,9 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const text = first.content[0]?.type === 'text' ? first.content[0].text : ''
   const missing = client.parseNeedsCredentials(text)
   assert.deepEqual(JSON.parse(JSON.stringify(missing)), {
-    status: 'needs-credentials', name: 'warehouse', refs: ['DSH_WEB_API_KEY'],
+    status: 'needs-credentials',
+    name: 'warehouse',
+    refs: ['DSH_WEB_API_KEY'],
   })
   assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), true)
   assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), false)
@@ -125,7 +141,9 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
         return {
           result: {
             ok: true,
-            value: { credentials: Object.fromEntries(refs.map(ref => [ref, { configured: false }])) },
+            value: {
+              credentials: Object.fromEntries(refs.map((ref) => [ref, { configured: false }])),
+            },
           },
         }
       },
@@ -139,12 +157,21 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   assert.deepEqual(JSON.parse(JSON.stringify(await controller.describe(['DSH_WEB_API_KEY']))), {
     DSH_WEB_API_KEY: { configured: false },
   })
-  assert.deepEqual(JSON.parse(JSON.stringify(await controller.save({ DSH_WEB_API_KEY: 'web-secret' }))), {
-    ok: true, saved: ['DSH_WEB_API_KEY'], errors: {},
-  })
-  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [{ ref: 'DSH_WEB_API_KEY', value: 'web-secret' }])
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(await controller.save({ DSH_WEB_API_KEY: 'web-secret' }))),
+    {
+      ok: true,
+      saved: ['DSH_WEB_API_KEY'],
+      errors: {},
+    },
+  )
+  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [
+    { ref: 'DSH_WEB_API_KEY', value: 'web-secret' },
+  ])
   assert.deepEqual(JSON.parse(JSON.stringify(client.parseNeedsCredentials(text))), {
-    status: 'needs-credentials', name: 'warehouse', refs: ['DSH_WEB_API_KEY'],
+    status: 'needs-credentials',
+    name: 'warehouse',
+    refs: ['DSH_WEB_API_KEY'],
   })
   // Saving never resumes the Tool; the fake Python has still not been called.
   await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
@@ -158,7 +185,8 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   assert.equal(retried.isError, false)
   const child = JSON.parse((await readFile(recordPath, 'utf8')).trim())
   assert.deepEqual(child, {
-    key: 'web-secret', persistCredentials: '0',
+    key: 'web-secret',
+    persistCredentials: '0',
   })
   assert.doesNotMatch(JSON.stringify(retried), /web-secret/)
 })

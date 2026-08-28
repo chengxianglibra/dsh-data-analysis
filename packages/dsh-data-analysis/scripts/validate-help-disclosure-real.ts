@@ -8,8 +8,8 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime, {
   CallId,
   createUserMessage,
-  LlmAdapter,
   type GenerateOptions,
+  LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
@@ -65,8 +65,12 @@ const success = await executeFocused(['analysis.observe', 'analysis.compare', 'a
 assert.equal(success.isError, false)
 if (success.isError) throw new Error('unreachable focused Help result')
 const focusedValue = success.value as unknown as MarivoHelpValue
-assert.deepEqual(focusedValue.targets.map(item => item.target), ['analysis.observe', 'analysis.compare'])
-for (const result of focusedValue.targets) assert.equal(result.body, directBodies.get(result.target))
+assert.deepEqual(
+  focusedValue.targets.map((item) => item.target),
+  ['analysis.observe', 'analysis.compare'],
+)
+for (const result of focusedValue.targets)
+  assert.equal(result.body, directBodies.get(result.target))
 
 const empty = await executeFocused([])
 assert.equal(empty.isError, false)
@@ -110,7 +114,7 @@ class ValidationAdapter extends LlmAdapter {
     return Promise.resolve({ provider, id: model, name: model })
   }
 
-  async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+  async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
     const chunks = this.#script.shift()
     if (chunks === undefined) throw new Error('validation adapter script exhausted')
@@ -127,50 +131,68 @@ await activationContext.plugin(ToolRuntime)
 await activationContext.plugin(AgentRegistry)
 await activationContext.plugin(AgentLoop, { agents: [] })
 activationContext.llm.registerAdapter(['validation'], adapter)
-activationContext.tools.register(defineContentToolFixture({
-  name: 'ordinary',
-  description: 'ordinary validation tool',
-  parameters: {},
-  async execute() { return [{ type: 'text', text: 'ordinary' }] },
-}))
-activationContext.tools.register(defineTool({
-  name: 'skill',
-  description: 'Load one available skill.',
-  parameters: { name: { type: 'string', required: true } },
-  output: {
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        name: { type: 'string', required: true },
-        provider: { type: 'string', required: true },
-        content: { type: 'string', required: true },
-      },
+activationContext.tools.register(
+  defineContentToolFixture({
+    name: 'ordinary',
+    description: 'ordinary validation tool',
+    parameters: {},
+    async execute() {
+      return [{ type: 'text', text: 'ordinary' }]
     },
-    render: (_args, value) => [{
-      type: 'text',
-      text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
-    }],
-  },
-  async execute({ name }) {
-    return { name, provider: 'help-disclosure-real', content: 'analysis instructions' }
-  },
-}))
+  }),
+)
+activationContext.tools.register(
+  defineTool({
+    name: 'skill',
+    description: 'Load one available skill.',
+    parameters: { name: { type: 'string', required: true } },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string', required: true },
+          provider: { type: 'string', required: true },
+          content: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [
+        {
+          type: 'text',
+          text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
+        },
+      ],
+    },
+    async execute({ name }) {
+      return { name, provider: 'help-disclosure-real', content: 'analysis instructions' }
+    },
+  }),
+)
 
 const agent: Agent = activationContext.agentLoop.create(SessionId('help-disclosure-real'), {
   provider: 'validation',
   model: 'validation',
 })
 const controller = installMarivoDisclosure(activationContext, agent, environment)
-agent.followup(createUserMessage({
-  content: [{ type: 'text', text: 'Run a known Marivo analysis task.' }],
-  source: { kind: 'user' },
-}))
+agent.followup(
+  createUserMessage({
+    content: [{ type: 'text', text: 'Run a known Marivo analysis task.' }],
+    source: { kind: 'user' },
+  }),
+)
 await agent.whenIdle()
 
 assert.equal(adapter.requests.length, 2)
-assert.deepEqual(adapter.requests[0]?.tools?.map(tool => tool.name).sort(), ['marivo_help', 'ordinary', 'skill'])
-assert.deepEqual(adapter.requests[1]?.tools?.map(tool => tool.name).sort(), ['marivo_help', 'ordinary', 'skill'])
+assert.deepEqual(adapter.requests[0]?.tools?.map((tool) => tool.name).sort(), [
+  'marivo_help',
+  'ordinary',
+  'skill',
+])
+assert.deepEqual(adapter.requests[1]?.tools?.map((tool) => tool.name).sort(), [
+  'marivo_help',
+  'ordinary',
+  'skill',
+])
 assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.messages), /marivo_help_context/)
 assert.match(JSON.stringify(adapter.requests[1]?.messages), /marivo_help_context/)
 assert.match(JSON.stringify(adapter.requests[1]?.messages), /Target: analysis/)
@@ -180,20 +202,28 @@ assert.equal(telemetry.rootHelp[0]?.target, 'analysis')
 assert.ok((telemetry.rootHelp[0]?.helpTextBytes ?? 0) > 0)
 controller.dispose()
 
-process.stdout.write(`${JSON.stringify({
-  status: 'ok',
-  binding: environment.binding,
-  inventoryStdoutBytes: Buffer.byteLength(firstInventory),
-  focusedStdoutBytes: Object.fromEntries(
-    [...directBodies].map(([target, body]) => [target, Buffer.byteLength(body)]),
-  ),
-  focusedResults: {
-    empty: empty.isError ? 'error' : 'success',
-    multipleDeduplicated: focusedValue.targets.length,
-    invalid: invalid.isError ? 'isError' : 'unexpected-success',
-  },
-  activation: {
-    requestTools: adapter.requests.map(request => request.tools?.map(tool => tool.name) ?? []),
-    rootHelp: telemetry.rootHelp.map(item => item.target),
-  },
-}, null, 2)}\n`)
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      status: 'ok',
+      binding: environment.binding,
+      inventoryStdoutBytes: Buffer.byteLength(firstInventory),
+      focusedStdoutBytes: Object.fromEntries(
+        [...directBodies].map(([target, body]) => [target, Buffer.byteLength(body)]),
+      ),
+      focusedResults: {
+        empty: empty.isError ? 'error' : 'success',
+        multipleDeduplicated: focusedValue.targets.length,
+        invalid: invalid.isError ? 'isError' : 'unexpected-success',
+      },
+      activation: {
+        requestTools: adapter.requests.map(
+          (request) => request.tools?.map((tool) => tool.name) ?? [],
+        ),
+        rootHelp: telemetry.rootHelp.map((item) => item.target),
+      },
+    },
+    null,
+    2,
+  )}\n`,
+)

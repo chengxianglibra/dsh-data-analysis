@@ -1,10 +1,20 @@
 import { createHash } from 'node:crypto'
-import { chmod, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { ReportDocumentV1, ReportIssueV1 } from './document.ts'
-import { renderReportHtml, REPORT_RENDERER_VERSION } from './render.ts'
+import { REPORT_RENDERER_VERSION, renderReportHtml } from './render.ts'
 import type { CompiledReport } from './visual.ts'
 
 export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v2' as const
@@ -58,14 +68,17 @@ function canonicalValue(value: unknown, location: string): string {
     if (!Number.isFinite(value)) throw new TypeError(`${location} contains a non-finite number`)
     return JSON.stringify(Object.is(value, -0) ? 0 : value)
   }
-  if (Array.isArray(value)) return `[${value.map((item, index) => canonicalValue(item, `${location}[${index}]`)).join(',')}]`
+  if (Array.isArray(value))
+    return `[${value.map((item, index) => canonicalValue(item, `${location}[${index}]`)).join(',')}]`
   if (typeof value === 'object' && value !== null) {
     const source = value as Record<string, unknown>
-    const entries = Object.keys(source).sort().map(key => {
-      const item = source[key]
-      if (item === undefined) throw new TypeError(`${location}.${key} is undefined`)
-      return `${JSON.stringify(key)}:${canonicalValue(item, `${location}.${key}`)}`
-    })
+    const entries = Object.keys(source)
+      .sort()
+      .map((key) => {
+        const item = source[key]
+        if (item === undefined) throw new TypeError(`${location}.${key} is undefined`)
+        return `${JSON.stringify(key)}:${canonicalValue(item, `${location}.${key}`)}`
+      })
     return `{${entries.join(',')}}`
   }
   throw new TypeError(`${location} is not lossless JSON`)
@@ -79,7 +92,12 @@ export function canonicalJson(value: JsonValue | unknown): string {
 function digestInputs(
   report: CompiledReport,
   options: PublishReportOptions,
-): { documentText: string; documentDigest: string; provenanceDigest: string; reportDigest: string } {
+): {
+  documentText: string
+  documentDigest: string
+  provenanceDigest: string
+  reportDigest: string
+} {
   const documentText = `${canonicalJson(report.document)}\n`
   const documentDigest = hash(documentText.trimEnd())
   const provenanceDigest = hash(canonicalJson(report.projection))
@@ -91,7 +109,12 @@ function digestInputs(
     marivo_version: options.marivoVersion,
     provenance_digest: provenanceDigest,
   }
-  return { documentText, documentDigest, provenanceDigest, reportDigest: hash(canonicalJson(identity)) }
+  return {
+    documentText,
+    documentDigest,
+    provenanceDigest,
+    reportDigest: hash(canonicalJson(identity)),
+  }
 }
 
 export function reportDocumentDigest(document: ReportDocumentV1): string {
@@ -107,17 +130,21 @@ async function secureDirectory(directory: string, signal?: AbortSignal): Promise
   await mkdir(directory, { recursive: true, mode: 0o700 })
   throwIfAborted(signal)
   const info = await lstat(directory)
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`Report path is not a trusted directory: ${directory}`)
+  if (!info.isDirectory() || info.isSymbolicLink())
+    throw new Error(`Report path is not a trusted directory: ${directory}`)
   if (process.platform !== 'win32') await chmod(directory, 0o700)
   throwIfAborted(signal)
 }
 
 function parseManifest(raw: Buffer): ReportManifestV2 {
   let value: unknown
-  try { value = JSON.parse(raw.toString('utf8')) } catch (cause) {
+  try {
+    value = JSON.parse(raw.toString('utf8'))
+  } catch (cause) {
     throw new Error('Existing report manifest is invalid JSON', { cause })
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Existing report manifest is not an object')
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new Error('Existing report manifest is not an object')
   return value as ReportManifestV2
 }
 
@@ -138,8 +165,10 @@ async function validateExisting(
 ): Promise<ReportManifestV2> {
   throwIfAborted(signal)
   const directoryInfo = await lstat(directory)
-  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) throw new Error('Existing report digest path is not a trusted directory')
-  if (process.platform !== 'win32' && (directoryInfo.mode & 0o077) !== 0) throw new Error('Existing report digest directory has unsafe permissions')
+  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink())
+    throw new Error('Existing report digest path is not a trusted directory')
+  if (process.platform !== 'win32' && (directoryInfo.mode & 0o077) !== 0)
+    throw new Error('Existing report digest directory has unsafe permissions')
   const [html, document, manifestRaw] = await Promise.all([
     readFile(path.join(directory, 'index.html'), { signal }),
     readFile(path.join(directory, 'report-document.json'), { signal }),
@@ -148,40 +177,64 @@ async function validateExisting(
   throwIfAborted(signal)
   const manifest = parseManifest(manifestRaw)
   const expectedKeys = [
-    'version', 'renderer_version', 'report_digest', 'document_digest', 'provenance_digest', 'environment_fingerprint',
-    'marivo_version', 'generated_at', 'artifacts', 'finding_ids', 'files',
-  ].sort().join(',')
-  if (Object.keys(manifest as unknown as Record<string, unknown>).sort().join(',') !== expectedKeys) throw new Error('Existing report manifest has an unexpected shape')
+    'version',
+    'renderer_version',
+    'report_digest',
+    'document_digest',
+    'provenance_digest',
+    'environment_fingerprint',
+    'marivo_version',
+    'generated_at',
+    'artifacts',
+    'finding_ids',
+    'files',
+  ]
+    .sort()
+    .join(',')
   if (
-    typeof manifest.files !== 'object' || manifest.files === null
-    || Object.keys(manifest.files).sort().join(',') !== 'index_html,report_document_json'
-    || Object.keys(manifest.files.index_html ?? {}).sort().join(',') !== 'bytes,sha256'
-    || Object.keys(manifest.files.report_document_json ?? {}).sort().join(',') !== 'bytes,sha256'
-  ) throw new Error('Existing report manifest file inventory has an unexpected shape')
+    Object.keys(manifest as unknown as Record<string, unknown>)
+      .sort()
+      .join(',') !== expectedKeys
+  )
+    throw new Error('Existing report manifest has an unexpected shape')
   if (
-    manifest.version !== REPORT_MANIFEST_VERSION
-    || manifest.renderer_version !== REPORT_RENDERER_VERSION
-    || manifest.report_digest !== expected.reportDigest
-    || manifest.document_digest !== expected.documentDigest
-    || manifest.provenance_digest !== expected.provenanceDigest
-    || manifest.environment_fingerprint !== expected.environmentFingerprint
-    || manifest.marivo_version !== expected.marivoVersion
-    || typeof manifest.generated_at !== 'string'
-    || !Number.isFinite(Date.parse(manifest.generated_at))
-    || canonicalJson(manifest.artifacts) !== canonicalJson(expected.artifacts)
-    || canonicalJson(manifest.finding_ids) !== canonicalJson(expected.findingIds)
-    || document.toString('utf8') !== expected.documentText
-    || html.toString('utf8') !== renderReportHtml(expected.report, manifest.generated_at)
-    || manifest.files?.index_html?.sha256 !== hash(html)
-    || manifest.files.index_html.bytes !== html.byteLength
-    || manifest.files?.report_document_json?.sha256 !== hash(document)
-    || manifest.files.report_document_json.bytes !== document.byteLength
-  ) throw new Error('Existing immutable report does not match its expected manifest')
+    typeof manifest.files !== 'object' ||
+    manifest.files === null ||
+    Object.keys(manifest.files).sort().join(',') !== 'index_html,report_document_json' ||
+    Object.keys(manifest.files.index_html ?? {})
+      .sort()
+      .join(',') !== 'bytes,sha256' ||
+    Object.keys(manifest.files.report_document_json ?? {})
+      .sort()
+      .join(',') !== 'bytes,sha256'
+  )
+    throw new Error('Existing report manifest file inventory has an unexpected shape')
+  if (
+    manifest.version !== REPORT_MANIFEST_VERSION ||
+    manifest.renderer_version !== REPORT_RENDERER_VERSION ||
+    manifest.report_digest !== expected.reportDigest ||
+    manifest.document_digest !== expected.documentDigest ||
+    manifest.provenance_digest !== expected.provenanceDigest ||
+    manifest.environment_fingerprint !== expected.environmentFingerprint ||
+    manifest.marivo_version !== expected.marivoVersion ||
+    typeof manifest.generated_at !== 'string' ||
+    !Number.isFinite(Date.parse(manifest.generated_at)) ||
+    canonicalJson(manifest.artifacts) !== canonicalJson(expected.artifacts) ||
+    canonicalJson(manifest.finding_ids) !== canonicalJson(expected.findingIds) ||
+    document.toString('utf8') !== expected.documentText ||
+    html.toString('utf8') !== renderReportHtml(expected.report, manifest.generated_at) ||
+    manifest.files?.index_html?.sha256 !== hash(html) ||
+    manifest.files.index_html.bytes !== html.byteLength ||
+    manifest.files?.report_document_json?.sha256 !== hash(document) ||
+    manifest.files.report_document_json.bytes !== document.byteLength
+  )
+    throw new Error('Existing immutable report does not match its expected manifest')
   for (const filename of ['index.html', 'report-document.json', 'manifest.json']) {
     throwIfAborted(signal)
     const info = await stat(path.join(directory, filename))
     if (!info.isFile()) throw new Error(`Existing report member is not a file: ${filename}`)
-    if (process.platform !== 'win32' && (info.mode & 0o077) !== 0) throw new Error(`Existing report member has unsafe permissions: ${filename}`)
+    if (process.platform !== 'win32' && (info.mode & 0o077) !== 0)
+      throw new Error(`Existing report member has unsafe permissions: ${filename}`)
   }
   throwIfAborted(signal)
   return manifest
@@ -190,10 +243,14 @@ async function validateExisting(
 function publishBlocked(message: string): PublishReportResult {
   return {
     ok: false,
-    issues: [{
-      code: 'html-too-large', location: 'index.html', message,
-      repair: 'Reduce report text, rows, or blocks and submit the complete document again.',
-    }],
+    issues: [
+      {
+        code: 'html-too-large',
+        location: 'index.html',
+        message,
+        repair: 'Reduce report text, rows, or blocks and submit the complete document again.',
+      },
+    ],
   }
 }
 
@@ -203,24 +260,41 @@ export async function publishReport(
   options: PublishReportOptions,
 ): Promise<PublishReportResult> {
   throwIfAborted(options.signal)
-  if (!/^[a-f0-9]{64}$/.test(options.environmentFingerprint)) throw new TypeError('environment fingerprint must be a SHA-256 hex digest')
+  if (!/^[a-f0-9]{64}$/.test(options.environmentFingerprint))
+    throw new TypeError('environment fingerprint must be a SHA-256 hex digest')
   if (options.marivoVersion.length === 0) throw new TypeError('Marivo version must be non-empty')
   const inputs = digestInputs(report, options)
-  const reportsRoot = path.resolve(options.reportsRoot ?? path.join(resolveDshHome(), 'dsh-data-analysis', 'reports'))
+  const reportsRoot = path.resolve(
+    options.reportsRoot ?? path.join(resolveDshHome(), 'dsh-data-analysis', 'reports'),
+  )
   const environmentDirectory = path.join(reportsRoot, options.environmentFingerprint)
   const reportDirectory = path.join(environmentDirectory, inputs.reportDigest)
   await secureDirectory(reportsRoot, options.signal)
   await secureDirectory(environmentDirectory, options.signal)
   try {
-    const manifest = await validateExisting(reportDirectory, {
-      report,
-      ...inputs,
-      environmentFingerprint: options.environmentFingerprint,
-      marivoVersion: options.marivoVersion,
-      artifacts: report.projection.artifacts.map(item => ({ ref: item.ref, content_hash: item.contentHash })),
-      findingIds: report.projection.findings.map(item => item.findingId),
-    }, options.signal)
-    return { ok: true, path: path.join(reportDirectory, 'index.html'), reportDigest: inputs.reportDigest, documentDigest: inputs.documentDigest, generatedAt: manifest.generated_at, reused: true }
+    const manifest = await validateExisting(
+      reportDirectory,
+      {
+        report,
+        ...inputs,
+        environmentFingerprint: options.environmentFingerprint,
+        marivoVersion: options.marivoVersion,
+        artifacts: report.projection.artifacts.map((item) => ({
+          ref: item.ref,
+          content_hash: item.contentHash,
+        })),
+        findingIds: report.projection.findings.map((item) => item.findingId),
+      },
+      options.signal,
+    )
+    return {
+      ok: true,
+      path: path.join(reportDirectory, 'index.html'),
+      reportDigest: inputs.reportDigest,
+      documentDigest: inputs.documentDigest,
+      generatedAt: manifest.generated_at,
+      reused: true,
+    }
   } catch (cause) {
     const code = (cause as NodeJS.ErrnoException).code
     if (code !== 'ENOENT') throw cause
@@ -230,9 +304,15 @@ export async function publishReport(
   const generatedAt = (options.now?.() ?? new Date()).toISOString()
   const html = renderReportHtml(report, generatedAt)
   const htmlBytes = Buffer.byteLength(html)
-  if (htmlBytes > MAX_REPORT_HTML_BYTES) return publishBlocked(`Generated index.html is ${htmlBytes} bytes; the maximum is ${MAX_REPORT_HTML_BYTES}.`)
-  const artifacts = report.projection.artifacts.map(item => ({ ref: item.ref, content_hash: item.contentHash }))
-  const findingIds = report.projection.findings.map(item => item.findingId)
+  if (htmlBytes > MAX_REPORT_HTML_BYTES)
+    return publishBlocked(
+      `Generated index.html is ${htmlBytes} bytes; the maximum is ${MAX_REPORT_HTML_BYTES}.`,
+    )
+  const artifacts = report.projection.artifacts.map((item) => ({
+    ref: item.ref,
+    content_hash: item.contentHash,
+  }))
+  const findingIds = report.projection.findings.map((item) => item.findingId)
   const manifest: ReportManifestV2 = {
     version: REPORT_MANIFEST_VERSION,
     renderer_version: REPORT_RENDERER_VERSION,
@@ -246,7 +326,10 @@ export async function publishReport(
     finding_ids: findingIds,
     files: {
       index_html: { sha256: hash(html), bytes: htmlBytes },
-      report_document_json: { sha256: hash(inputs.documentText), bytes: Buffer.byteLength(inputs.documentText) },
+      report_document_json: {
+        sha256: hash(inputs.documentText),
+        bytes: Buffer.byteLength(inputs.documentText),
+      },
     },
   }
   const manifestText = `${canonicalJson(manifest)}\n`
@@ -256,37 +339,74 @@ export async function publishReport(
     if (process.platform !== 'win32') await chmod(staging, 0o700)
     throwIfAborted(options.signal)
     await Promise.all([
-      writeFile(path.join(staging, 'index.html'), html, { encoding: 'utf8', flag: 'wx', mode: 0o600, signal: options.signal }),
-      writeFile(path.join(staging, 'report-document.json'), inputs.documentText, { encoding: 'utf8', flag: 'wx', mode: 0o600, signal: options.signal }),
-      writeFile(path.join(staging, 'manifest.json'), manifestText, { encoding: 'utf8', flag: 'wx', mode: 0o600, signal: options.signal }),
+      writeFile(path.join(staging, 'index.html'), html, {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: 0o600,
+        signal: options.signal,
+      }),
+      writeFile(path.join(staging, 'report-document.json'), inputs.documentText, {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: 0o600,
+        signal: options.signal,
+      }),
+      writeFile(path.join(staging, 'manifest.json'), manifestText, {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: 0o600,
+        signal: options.signal,
+      }),
     ])
     throwIfAborted(options.signal)
-    await validateExisting(staging, {
-      report,
-      ...inputs,
-      environmentFingerprint: options.environmentFingerprint,
-      marivoVersion: options.marivoVersion,
-      artifacts,
-      findingIds,
-    }, options.signal)
-    try {
-      throwIfAborted(options.signal)
-      await rename(staging, reportDirectory)
-      renamed = true
-      throwIfAborted(options.signal)
-      return { ok: true, path: path.join(reportDirectory, 'index.html'), reportDigest: inputs.reportDigest, documentDigest: inputs.documentDigest, generatedAt, reused: false }
-    } catch (cause) {
-      const code = (cause as NodeJS.ErrnoException).code
-      if (code !== 'EEXIST' && code !== 'ENOTEMPTY') throw cause
-      const existing = await validateExisting(reportDirectory, {
+    await validateExisting(
+      staging,
+      {
         report,
         ...inputs,
         environmentFingerprint: options.environmentFingerprint,
         marivoVersion: options.marivoVersion,
         artifacts,
         findingIds,
-      }, options.signal)
-      return { ok: true, path: path.join(reportDirectory, 'index.html'), reportDigest: inputs.reportDigest, documentDigest: inputs.documentDigest, generatedAt: existing.generated_at, reused: true }
+      },
+      options.signal,
+    )
+    try {
+      throwIfAborted(options.signal)
+      await rename(staging, reportDirectory)
+      renamed = true
+      throwIfAborted(options.signal)
+      return {
+        ok: true,
+        path: path.join(reportDirectory, 'index.html'),
+        reportDigest: inputs.reportDigest,
+        documentDigest: inputs.documentDigest,
+        generatedAt,
+        reused: false,
+      }
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && code !== 'ENOTEMPTY') throw cause
+      const existing = await validateExisting(
+        reportDirectory,
+        {
+          report,
+          ...inputs,
+          environmentFingerprint: options.environmentFingerprint,
+          marivoVersion: options.marivoVersion,
+          artifacts,
+          findingIds,
+        },
+        options.signal,
+      )
+      return {
+        ok: true,
+        path: path.join(reportDirectory, 'index.html'),
+        reportDigest: inputs.reportDigest,
+        documentDigest: inputs.documentDigest,
+        generatedAt: existing.generated_at,
+        reused: true,
+      }
     }
   } finally {
     if (!renamed) await rm(staging, { recursive: true, force: true })
