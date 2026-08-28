@@ -21,15 +21,27 @@ interface ClientExports {
     api: unknown,
   ) => {
     describe(refs: readonly string[]): Promise<Record<string, { configured: boolean }>>
+    inspect(refs: readonly string[]): Promise<{
+      configured: Record<string, boolean>
+      missing: string[]
+      shouldOpen: boolean
+    }>
     save(values: Readonly<Record<string, string>>): Promise<{
       ok: boolean
       saved: string[]
       errors: Record<string, string>
     }>
   }
+  MarivoTestToolView(props: unknown): unknown
 }
 
-async function loadClient(): Promise<ClientExports> {
+interface ClientRuntime {
+  react?: unknown
+  jsxRuntime?: unknown
+  primitives?: unknown
+}
+
+async function loadClient(runtime: ClientRuntime = {}): Promise<ClientExports> {
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8')
   let registration: { factory: (require: (id: string) => unknown) => ClientExports } | undefined
   const context = {
@@ -44,12 +56,127 @@ async function loadClient(): Promise<ClientExports> {
   vm.runInNewContext(source, context)
   assert.ok(registration)
   return registration.factory((id) => {
-    if (id === 'react/jsx-runtime') return { Fragment: Symbol('Fragment'), jsx() {}, jsxs() {} }
+    if (id === 'react/jsx-runtime')
+      return runtime.jsxRuntime ?? { Fragment: Symbol('Fragment'), jsx() {}, jsxs() {} }
     if (id === 'react')
-      return { useEffect() {}, useMemo: (factory: () => unknown) => factory(), useState() {} }
-    if (id === '@deepseek-ai/dsh-client-ui-primitives') return { Button() {}, Modal() {} }
+      return (
+        runtime.react ?? {
+          useCallback: (callback: unknown) => callback,
+          useEffect() {},
+          useMemo: (factory: () => unknown) => factory(),
+          useRef: (initial: unknown) => ({ current: initial }),
+          useState() {},
+        }
+      )
+    if (id === '@deepseek-ai/dsh-client-ui-primitives')
+      return runtime.primitives ?? { Button() {}, Modal() {} }
     throw new Error(`unexpected client module request: ${id}`)
   })
+}
+
+interface TestElement {
+  type: unknown
+  props: Record<string, any>
+}
+
+class HookHarness {
+  private readonly states: unknown[] = []
+  private effects: Array<() => unknown> = []
+  private cursor = 0
+
+  readonly react = {
+    useCallback: (callback: unknown) => callback,
+    useEffect: (effect: () => unknown) => {
+      this.effects.push(effect)
+    },
+    useMemo: (factory: () => unknown) => factory(),
+    useRef: (initial: unknown) => {
+      const index = this.cursor++
+      if (index >= this.states.length) this.states[index] = { current: initial }
+      return this.states[index]
+    },
+    useState: (initial: unknown) => {
+      const index = this.cursor++
+      if (index >= this.states.length) this.states[index] = initial
+      const set = (value: unknown) => {
+        this.states[index] =
+          typeof value === 'function'
+            ? (value as (current: unknown) => unknown)(this.states[index])
+            : value
+      }
+      return [this.states[index], set]
+    },
+  }
+
+  readonly jsxRuntime = {
+    Fragment: 'Fragment',
+    jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
+    jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
+  }
+
+  render(component: (props: unknown) => unknown, props: unknown): TestElement {
+    this.cursor = 0
+    this.effects = []
+    return component(props) as TestElement
+  }
+
+  flushEffects(): void {
+    const effects = this.effects
+    this.effects = []
+    for (const effect of effects) effect()
+  }
+}
+
+function findElement(
+  root: unknown,
+  predicate: (element: TestElement) => boolean,
+): TestElement | null {
+  if (Array.isArray(root)) {
+    for (const child of root) {
+      const found = findElement(child, predicate)
+      if (found !== null) return found
+    }
+    return null
+  }
+  if (typeof root !== 'object' || root === null) return null
+  const element = root as TestElement
+  if (predicate(element)) return element
+  return findElement(element.props?.children, predicate)
+}
+
+async function settleAsyncState(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve))
+}
+
+function credentialResponse(configured: boolean) {
+  return {
+    result: {
+      ok: true,
+      value: {
+        credentials: {
+          DSH_DB_PASSWORD: { configured, writable: true },
+        },
+      },
+    },
+  }
+}
+
+function needsCredentialsBlock(callId: string) {
+  return {
+    kind: 'tool-result',
+    callId,
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          status: 'needs-credentials',
+          name: 'warehouse',
+          refs: ['DSH_DB_PASSWORD'],
+        }),
+      },
+    ],
+    isError: false,
+  }
 }
 
 const FAKE_PYTHON = String.raw`#!/usr/bin/env node
@@ -211,4 +338,164 @@ test('partial credential writes retain failures and redact entered values', asyn
   assert.deepEqual([...result.saved], ['FIRST'])
   assert.equal(result.errors.SECOND, 'rejected [REDACTED]')
   assert.doesNotMatch(JSON.stringify(result), /first-secret|second-secret/)
+})
+
+test('replayed needs-credentials result stays closed when every ref is now configured', async () => {
+  const harness = new HookHarness()
+  const client = await loadClient({
+    react: harness.react,
+    jsxRuntime: harness.jsxRuntime,
+    primitives: { Button() {}, Modal() {} },
+  })
+  const props = {
+    sessionId: 'replay-session',
+    callId: 'replay-configured',
+    block: needsCredentialsBlock('replay-configured'),
+    connection: {
+      api: {
+        credentials: {
+          async describe() {
+            return credentialResponse(true)
+          },
+        },
+      },
+    },
+  }
+
+  const initial = harness.render(client.MarivoTestToolView, props)
+  assert.equal(
+    findElement(initial, (element) => element.props?.open !== undefined)?.props.open,
+    false,
+  )
+  harness.flushEffects()
+  await settleAsyncState()
+
+  const reconciled = harness.render(client.MarivoTestToolView, props)
+  assert.equal(
+    findElement(reconciled, (element) => element.props?.open !== undefined)?.props.open,
+    false,
+  )
+  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_test/)
+  assert.equal(
+    findElement(reconciled, (element) => element.props?.children === '配置凭证'),
+    null,
+  )
+})
+
+test('a stale credential inspection cannot reopen a dialog closed by a newer result', async () => {
+  const harness = new HookHarness()
+  const pending: Array<(value: unknown) => void> = []
+  const client = await loadClient({
+    react: harness.react,
+    jsxRuntime: harness.jsxRuntime,
+    primitives: { Button() {}, Modal() {} },
+  })
+  const props = {
+    sessionId: 'race-session',
+    callId: 'race-call',
+    block: needsCredentialsBlock('race-call'),
+    connection: {
+      api: {
+        credentials: {
+          describe() {
+            return new Promise((resolve) => pending.push(resolve))
+          },
+        },
+      },
+    },
+  }
+
+  const initial = harness.render(client.MarivoTestToolView, props)
+  const configure = findElement(initial, (element) => element.props?.children === '配置凭证')
+  assert.ok(configure)
+  harness.flushEffects()
+  configure.props.onClick()
+  assert.equal(pending.length, 2)
+
+  pending[1]?.(credentialResponse(true))
+  await settleAsyncState()
+  pending[0]?.(credentialResponse(false))
+  await settleAsyncState()
+
+  const reconciled = harness.render(client.MarivoTestToolView, props)
+  assert.equal(
+    findElement(reconciled, (element) => element.props?.open !== undefined)?.props.open,
+    false,
+  )
+  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_test/)
+})
+
+test('an inspection result from replaced Tool View props cannot update the current dialog', async () => {
+  const harness = new HookHarness()
+  const pending: Array<(value: unknown) => void> = []
+  const client = await loadClient({
+    react: harness.react,
+    jsxRuntime: harness.jsxRuntime,
+    primitives: { Button() {}, Modal() {} },
+  })
+  const connection = {
+    api: {
+      credentials: {
+        describe() {
+          return new Promise((resolve) => pending.push(resolve))
+        },
+      },
+    },
+  }
+  const firstProps = {
+    sessionId: 'identity-session',
+    callId: 'identity-old',
+    block: needsCredentialsBlock('identity-old'),
+    connection,
+  }
+  const currentProps = {
+    sessionId: 'identity-session',
+    callId: 'identity-current',
+    block: needsCredentialsBlock('identity-current'),
+    connection,
+  }
+
+  harness.render(client.MarivoTestToolView, firstProps)
+  harness.flushEffects()
+  assert.equal(pending.length, 1)
+
+  harness.render(client.MarivoTestToolView, currentProps)
+  pending[0]?.(credentialResponse(false))
+  await settleAsyncState()
+
+  const current = harness.render(client.MarivoTestToolView, currentProps)
+  assert.equal(
+    findElement(current, (element) => element.props?.open !== undefined)?.props.open,
+    false,
+  )
+})
+
+test('credential inspection keeps only currently unconfigured refs editable', async () => {
+  const client = await loadClient()
+  const controller = new client.CredentialDialogController({
+    credentials: {
+      async describe() {
+        return {
+          result: {
+            ok: true,
+            value: {
+              credentials: {
+                DSH_DB_USER: { configured: true, writable: true },
+                DSH_DB_PASSWORD: { configured: false, writable: true },
+              },
+            },
+          },
+        }
+      },
+    },
+  })
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(await controller.inspect(['DSH_DB_USER', 'DSH_DB_PASSWORD']))),
+    {
+      configured: { DSH_DB_USER: true, DSH_DB_PASSWORD: false },
+      missing: ['DSH_DB_PASSWORD'],
+      shouldOpen: true,
+    },
+  )
 })

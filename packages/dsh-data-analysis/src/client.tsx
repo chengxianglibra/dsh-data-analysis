@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const TOOL_NAME = 'marivo_test'
 const REPORT_TOOL_NAME = 'marivo_report_render'
@@ -547,6 +547,20 @@ export class CredentialDialogController {
     return response.result.value.credentials
   }
 
+  async inspect(refs: readonly string[]): Promise<{
+    configured: Record<string, boolean>
+    missing: string[]
+    shouldOpen: boolean
+  }> {
+    const info = await this.describe(refs)
+    const configured = Object.fromEntries(refs.map((ref) => [ref, info[ref]?.configured === true]))
+    return {
+      configured,
+      missing: refs.filter((ref) => configured[ref] !== true),
+      shouldOpen: refs.some((ref) => configured[ref] !== true),
+    }
+  }
+
   async save(values: Readonly<Record<string, string>>): Promise<{
     ok: boolean
     saved: string[]
@@ -806,43 +820,60 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
   const missing = useMemo(() => parseNeedsCredentials(text), [text])
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [savedNotice, setSavedNotice] = useState(false)
+  const [credentialsReady, setCredentialsReady] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
   const [configured, setConfigured] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const controller = useMemo(() => new CredentialDialogController(connection.api), [connection.api])
+  const inspectionGeneration = useRef(0)
+  const inspectionContext = useRef({ sessionId, callId, missing, controller })
+  const autoInspectionKey = useRef<string | null>(null)
+  inspectionContext.current = { sessionId, callId, missing, controller }
 
-  const openDialog = useCallback(() => {
+  const openDialog = useCallback(async () => {
     if (missing === null) return
-    setValues(blankCredentialValues(missing.refs))
-    setConfigured(Object.fromEntries(missing.refs.map((ref) => [ref, false])))
-    setErrors({})
-    setSavedNotice(false)
-    setOpen(true)
-  }, [missing])
-
-  useEffect(() => {
-    if (shouldAutoOpen(sessionId, callId, missing)) openDialog()
-  }, [sessionId, callId, missing, openDialog])
-
-  useEffect(() => {
-    if (!open || missing === null) return
-    let current = true
-    controller
-      .describe(missing.refs)
-      .then((info) => {
-        if (!current) return
-        setConfigured(
-          Object.fromEntries(missing.refs.map((ref) => [ref, info[ref]?.configured === true])),
-        )
-      })
-      .catch(() => {
-        if (current) setConfigured(Object.fromEntries(missing.refs.map((ref) => [ref, false])))
-      })
-    return () => {
-      current = false
+    const generation = ++inspectionGeneration.current
+    const isCurrent = () => {
+      const current = inspectionContext.current
+      return (
+        generation === inspectionGeneration.current &&
+        current.sessionId === sessionId &&
+        current.callId === callId &&
+        current.missing === missing &&
+        current.controller === controller
+      )
     }
-  }, [open, missing, controller])
+    setBusy(true)
+    setValues(blankCredentialValues(missing.refs))
+    setErrors({})
+    try {
+      const status = await controller.inspect(missing.refs)
+      if (!isCurrent()) return
+      setConfigured(status.configured)
+      if (!status.shouldOpen) {
+        setOpen(false)
+        setCredentialsReady(true)
+      } else {
+        setCredentialsReady(false)
+        setOpen(true)
+      }
+    } catch {
+      if (!isCurrent()) return
+      setConfigured(Object.fromEntries(missing.refs.map((ref) => [ref, false])))
+      setCredentialsReady(false)
+      setOpen(true)
+    } finally {
+      if (isCurrent()) setBusy(false)
+    }
+  }, [sessionId, callId, missing, controller])
+
+  useEffect(() => {
+    if (missing === null) return
+    const key = `${sessionId}\u0000${callId}`
+    if (!shouldAutoOpen(sessionId, callId, missing) && autoInspectionKey.current !== key) return
+    autoInspectionKey.current = key
+    void openDialog()
+  }, [sessionId, callId, missing, openDialog])
 
   const save = async () => {
     if (missing === null) return
@@ -861,7 +892,7 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
     setBusy(false)
     if (outcome.ok) {
       setOpen(false)
-      setSavedNotice(true)
+      setCredentialsReady(true)
     }
   }
 
@@ -875,9 +906,18 @@ export function MarivoTestToolView({ sessionId, callId, block, connection }: any
       <div style={rowStyle} data-marivo-test-call={callId}>
         <span aria-hidden="true">●</span>
         <strong>Marivo 连接测试</strong>
-        <span style={summaryStyle}>{savedNotice ? '凭证已保存，请重试 marivo_test' : summary}</span>
-        {missing !== null && !savedNotice ? (
-          <Button size="sm" variant="outline" onClick={openDialog}>
+        <span style={summaryStyle}>
+          {credentialsReady ? '凭证已配置，请重试 marivo_test' : summary}
+        </span>
+        {missing !== null && !credentialsReady ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              void openDialog()
+            }}
+          >
             配置凭证
           </Button>
         ) : null}

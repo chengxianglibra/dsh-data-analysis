@@ -121,12 +121,14 @@ DSH Credentials -> ToolExecution memory snapshot -> dshEnv -> one-shot bash/pwsh
 
 缺失凭证时：
 
-1. 以 `sessionId + callId` 为 key，每个 Tool call 最多自动打开一次表单；
-2. 调用 `credentials.describe({ refs })` 只读取“已配置/未配置”状态；
-3. 每个输入框初始为空，不回显或预填已有值；已配置引用禁用输入；
-4. 未配置值通过标准 `credentials.set({ ref, value })` 逐项保存；
-5. 错误消息再次按本轮输入值脱敏，保存后清空本地输入状态；
-6. 全部保存成功后关闭表单并提示用户重试 `marivo_test`。
+1. 以 `sessionId + callId` 为 key，每个 Tool call 最多触发一次自动状态检查；
+2. 打开表单前调用 `credentials.describe({ refs })` 读取当前“已配置/未配置”状态；
+3. Session replay 中的历史 `needs-credentials` 若已全部配置，不再打开表单，只提示重新调用
+   `marivo_test`；
+4. 仍有缺失时才打开表单；每个输入框初始为空，不回显或预填已有值，已配置引用禁用输入；
+5. 未配置值通过标准 `credentials.set({ ref, value })` 逐项保存；
+6. 错误消息再次按本轮输入值脱敏，保存后清空本地输入状态；
+7. 全部保存成功后关闭表单并提示用户重试 `marivo_test`。
 
 客户端不会自动重放原 Tool call。取消、部分保存失败或页面关闭也不会改写已经持久化的 Session Tool
 Result；DSH Credentials 是唯一持久状态源。
