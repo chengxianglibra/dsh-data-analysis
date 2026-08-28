@@ -62,6 +62,13 @@ interface FixtureValue {
     columns: string[]
     rowCount: number
   }
+  redundantScalar: {
+    ref: string
+    directFindingId: string
+    summaryFindingId: string
+    columns: string[]
+    rowCount: number
+  }
   segmented: {
     ref: string
     findingId: string
@@ -387,14 +394,30 @@ time_series = session.observe(
     grain=mv.grain("day"),
 )
 segmented = session.observe(metrics=metric, dimensions=[platform])
+redundant_scalar = session.observe(
+    metrics=metric,
+    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-28"),
+)
 time_finding = session.evidence.findings(artifact_ref=time_series.ref, limit=20).items[0]
 segment_finding = session.evidence.findings(artifact_ref=segmented.ref, limit=20).items[0]
+scalar_findings = session.evidence.findings(artifact_ref=redundant_scalar.ref, limit=20).items
+scalar_direct_finding = next(
+    finding for finding in scalar_findings if finding.finding_type == "metric_value"
+)
+scalar_summary_finding = next(
+    finding for finding in scalar_findings if finding.finding_type == "observation"
+)
 assert session.revalidate(time_series).status == "admissible"
 assert session.revalidate(segmented).status == "admissible"
+assert session.revalidate(redundant_scalar).status == "admissible"
 mixed_compatibility = session.evidence.compatibility(
     finding_ids=[time_finding.finding_id, segment_finding.finding_id]
 )
 assert mixed_compatibility.status != "compatible"
+redundant_compatibility = session.evidence.compatibility(
+    finding_ids=[scalar_direct_finding.finding_id, scalar_summary_finding.finding_id]
+)
+assert redundant_compatibility.status == "compatible"
 print(json.dumps({
     "sessionId": session.id,
     "mixedCompatibility": {
@@ -408,6 +431,13 @@ print(json.dumps({
         "findingId": time_finding.finding_id,
         "columns": list(time_series.columns),
         "rowCount": time_series.shape[0],
+    },
+    "redundantScalar": {
+        "ref": redundant_scalar.ref,
+        "directFindingId": scalar_direct_finding.finding_id,
+        "summaryFindingId": scalar_summary_finding.finding_id,
+        "columns": list(redundant_scalar.columns),
+        "rowCount": redundant_scalar.shape[0],
     },
     "segmented": {
         "ref": segmented.ref,
@@ -432,8 +462,10 @@ const fixture = await createFixture().catch(async (error) => {
   throw error
 })
 assert.equal(fixture.timeSeries.rowCount, 8)
+assert.equal(fixture.redundantScalar.rowCount, 1)
 assert.equal(fixture.segmented.rowCount, 4)
 assert.equal(fixture.timeSeries.columns.length, 2)
+assert.equal(fixture.redundantScalar.columns.length, 1)
 assert.equal(fixture.segmented.columns.length, 2)
 
 const environment = await bindMarivoEnvironment({ projectRoot: fixtureRoot, pythonExecutable })
@@ -683,6 +715,7 @@ try {
       `Use segmented Artifact ${JSON.stringify(fixture.segmented.ref)} with columns ${JSON.stringify(fixture.segmented.columns)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
       'Submit one complete dsh-data-analysis-report/v1 document titled “支付收入分析报告”.',
       `It must include text plus: an explicit line chart x=${JSON.stringify(timeX)} y=${JSON.stringify(timeY)}, an explicit bar chart x=${JSON.stringify(segmentX)} y=${JSON.stringify(segmentY)}, a table with max_rows=5, and an evidence block.`,
+      'Both charts must use kind="chart"; select line or bar only with the view field.',
       'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to each chart, table, text, or evidence block.',
       `Every data/source block must use its exact Artifact/Finding above. End the final response with ${markerFor('initial-generation')}.`,
     ].join('\n'),
@@ -734,6 +767,54 @@ try {
   await assertReadyArtifact(initialReady)
   await assertReadyArtifact(revisionReady)
 
+  const minimalEvidenceAgent = ctx.agentLoop.create(
+    SessionId(`html-report-real-minimal-evidence-${runId}`),
+    {
+      provider: 'deepseek-official',
+      model,
+      maxTokens: 8_192,
+    },
+    { cwd: fixtureRoot },
+  )
+  validationAgents.push(minimalEvidenceAgent)
+  const minimalEvidence = await runTurn(
+    minimalEvidenceAgent,
+    'minimal-evidence-selection',
+    [
+      'I explicitly request a durable Chinese HTML report for one scalar revenue observation.',
+      'Call skill exactly once with {"name":"marivo-analysis"}, then call marivo_report_render exactly once.',
+      `Use exact Marivo session_id ${JSON.stringify(fixture.sessionId)}.`,
+      `Scalar Artifact ${JSON.stringify(fixture.redundantScalar.ref)} has two mechanically compatible candidate sources for the same one-row observation: direct metric_value Finding ${JSON.stringify(fixture.redundantScalar.directFindingId)} and summary observation Finding ${JSON.stringify(fixture.redundantScalar.summaryFindingId)}.`,
+      'Submit one complete dsh-data-analysis-report/v1 document with exactly one section and exactly one text block. Do not add chart, table, or evidence blocks.',
+      'Decide which candidate Finding IDs to attach by following the active report evidence-selection guidance. Never invent another Finding ID.',
+      `End the final response with ${markerFor('minimal-evidence-selection')}.`,
+    ].join('\n'),
+  )
+  assert.ok(minimalEvidence.completed, minimalEvidence.finalText)
+  assert.equal(minimalEvidence.errors.length, 0, JSON.stringify(minimalEvidence.errors))
+  assert.equal(minimalEvidence.reportCalls.length, 1, JSON.stringify(minimalEvidence.reportCalls))
+  assert.equal(
+    minimalEvidence.reportCalls[0]?.status,
+    'ready',
+    JSON.stringify(minimalEvidence.reportCalls),
+  )
+  const minimalReady = readyCall(minimalEvidence)
+  const minimalDocument = exactDocument(minimalReady)
+  assert.equal(minimalDocument.sections.length, 1, JSON.stringify(minimalDocument))
+  assert.equal(minimalDocument.sections[0]?.blocks.length, 1, JSON.stringify(minimalDocument))
+  const minimalBlock = minimalDocument.sections[0]?.blocks[0]
+  assert.equal(minimalBlock?.kind, 'text', JSON.stringify(minimalDocument))
+  assert.deepEqual(minimalBlock?.finding_ids, [fixture.redundantScalar.directFindingId])
+  assert.equal(
+    minimalReady.documentDigest,
+    reportDocumentDigest(await publishedDocument(minimalReady)),
+  )
+  assert.ok(minimalReady.path)
+  const minimalManifest = JSON.parse(
+    await readFile(path.join(path.dirname(minimalReady.path), 'manifest.json'), 'utf8'),
+  ) as { finding_ids: string[] }
+  assert.deepEqual(minimalManifest.finding_ids, [fixture.redundantScalar.directFindingId])
+
   const repairAgent = ctx.agentLoop.create(
     SessionId(`html-report-real-repair-${runId}`),
     {
@@ -752,6 +833,7 @@ try {
       'Call skill exactly once with {"name":"marivo-analysis"}.',
       `Use exact session ${JSON.stringify(fixture.sessionId)}, time Artifact ${JSON.stringify(fixture.timeSeries.ref)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}, segmented Artifact ${JSON.stringify(fixture.segmented.ref)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
       `The complete document must contain text, line (${JSON.stringify(timeX)}, ${JSON.stringify(timeY)}), bar (${JSON.stringify(segmentX)}, ${JSON.stringify(segmentY)}), table, and evidence blocks.`,
+      'Both charts must use kind="chart"; select line or bar only with the view field.',
       'Use only lowercase kebab-case block IDs. In the final repaired document, never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
       'For the first marivo_report_render call deliberately set the table max_rows to 0, set the line y field to missing_revenue, and attach both Findings to the summary text block. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, the exact line y column, and only compatible per-block Finding selections, without narrating or stopping between the two calls.',
       `End the final response with ${markerFor('blocked-repair')}.`,
@@ -788,7 +870,7 @@ try {
   )
   await assertReadyArtifact(repairedReady)
 
-  for (const call of [initialReady, revisionReady, repairedReady]) {
+  for (const call of [initialReady, revisionReady, minimalReady, repairedReady]) {
     const reportDirectory = path.dirname(call.path!)
     assert.deepEqual(
       (

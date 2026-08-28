@@ -1385,10 +1385,16 @@ test('reader-facing report content localizes labels and keeps raw Evidence ident
   assert.equal(sourced.ok, true, JSON.stringify(sourced))
   if (!sourced.ok) return
   const html = renderReportHtml(sourced.value, '2026-08-27T01:02:03.000Z')
-  const readingPath = html.slice(0, html.indexOf('<footer>'))
+  const readingPath = html.slice(html.indexOf('<body>'), html.indexOf('<footer>'))
   assert.match(readingPath, /支付成功量在观察期末达到 95。/)
   assert.doesNotMatch(readingPath, /English statement|finding-zh|artifact-trend/)
-  assert.match(readingPath, /<ol><li>优先处理移动端。<\/li><li>持续观察波动。<\/li><\/ol>/)
+  assert.match(
+    readingPath,
+    /<ol><li>优先处理移动端。<\/li><li>持续观察波动。<details class="sources source-popover">/,
+  )
+  assert.match(readingPath, /依据<sup>1<\/sup>/)
+  assert.match(readingPath, /href="#report-provenance">完整技术溯源<\/a>/)
+  assert.doesNotMatch(readingPath, /技术详情|source-audit/)
   assert.match(readingPath, /<th scope="col">日期<\/th>/)
   assert.match(readingPath, /8月18日/)
   assert.doesNotMatch(readingPath, /<th scope="col">bucket_start<\/th>/)
@@ -1454,6 +1460,71 @@ test('Finding statements cannot inject HTML, links, or new report markup', () =>
   assert.doesNotMatch(html, /<img\b|href="https:\/\/example\.invalid"|id="mv-f99"/)
 })
 
+test('ordinary blocks use compact source popovers and preserve every supplied Finding', () => {
+  const findings: ReportProjectionBundle['findings'] = [
+    {
+      findingId: 'finding-value',
+      findingType: 'metric_value',
+      epistemicKind: 'observed',
+      artifactId: artifact.ref,
+      sessionId: 'session-report',
+      qualityStatus: 'ready',
+      committedAt: '2026-08-27T00:05:00+00:00',
+      value: { value: 95 },
+      subject: { metric_id: 'payments.success' },
+      derivation: { rule_id: 'extract.metric_value' },
+      rendered: { en: 'Exact value is 95.', zh: '精确值为 95。' },
+    },
+    {
+      findingId: 'finding-observation',
+      findingType: 'observation',
+      epistemicKind: 'observed',
+      artifactId: artifact.ref,
+      sessionId: 'session-report',
+      qualityStatus: 'ready',
+      committedAt: '2026-08-27T00:05:00+00:00',
+      value: { bucket_count: 1, mean: 95 },
+      subject: { metric_id: 'payments.success' },
+      derivation: { rule_id: 'observation/v1' },
+      rendered: { en: 'One bucket also reports 95.', zh: '单个时间桶同样为 95。' },
+    },
+  ]
+  const sourcedDocument: ReportDocumentV1 = {
+    ...document,
+    sections: [
+      {
+        ...document.sections[0]!,
+        blocks: document.sections[0]!.blocks.map((block) => ({
+          ...block,
+          finding_ids: ['finding-value', 'finding-observation'],
+        })),
+      },
+    ],
+  }
+  const sourced = compileReportVisuals(sourcedDocument, {
+    ...projection,
+    findings,
+    compatibilities: sourcedDocument.sections[0]!.blocks.map((_, groupIndex) => ({
+      groupIndex,
+      status: 'compatible' as const,
+      findingIds: ['finding-value', 'finding-observation'],
+      value: { status: 'compatible' },
+    })),
+  })
+  assert.equal(sourced.ok, true, JSON.stringify(sourced))
+  if (!sourced.ok) return
+  const html = renderReportHtml(sourced.value, '2026-08-27T01:02:03.000Z')
+  const readingPath = html.slice(html.indexOf('<body>'), html.indexOf('<footer>'))
+  assert.equal(readingPath.match(/class="sources source-popover"/g)?.length, 3)
+  assert.equal(readingPath.match(/依据<sup>2<\/sup>/g)?.length, 3)
+  assert.equal(readingPath.match(/精确值为 95。/g)?.length, 3)
+  assert.equal(readingPath.match(/单个时间桶同样为 95。/g)?.length, 3)
+  assert.doesNotMatch(readingPath, /finding-value|finding-observation|source-audit/)
+  assert.match(readingPath, /<div class="text-source-tail"><p>结论 &amp; 建议<\/p><details/)
+  assert.match(readingPath, /class="block chart-block"[\s\S]*?<\/svg><details class="fallback"/)
+  assert.match(readingPath, /class="block table-block"[\s\S]*?<\/table><\/div><details/)
+})
+
 test('renderer escapes content and emits offline SVG, source tables, CSP, and print rules', () => {
   const html = renderReportHtml(compiled(), '2026-08-27T01:02:03.000Z')
   assert.match(html, /支付趋势 &lt;unsafe&gt;/)
@@ -1475,6 +1546,17 @@ test('renderer escapes content and emits offline SVG, source tables, CSP, and pr
   )
   assert.doesNotMatch(html, /\.report-summary\{[^}]*background:var\(--accent-soft\)/)
   assert.match(html, /@media print/)
+  assert.match(html, /\.source-popover:hover>\.source-popover-panel/)
+  assert.match(html, /\.source-popover:focus-within>\.source-popover-panel/)
+  assert.match(html, /\.source-popover\[open\]>\.source-popover-panel/)
+  assert.match(html, /\.text-block\{position:relative\}/)
+  assert.match(html, /\.text-block \.source-popover\{position:static\}/)
+  assert.match(
+    html,
+    /\.text-block \.source-popover-panel\{inset-inline-start:0;inset-inline-end:auto;width:min\(36rem,100%\)\}/,
+  )
+  assert.match(html, /@media\(max-width:720px\)[^{]*\{[\s\S]*?\.source-popover\[open\]/)
+  assert.match(html, /@media print[\s\S]*?\.source-popover-panel\{display:none!important\}/)
   assert.doesNotMatch(html, /<script\b|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//)
 })
 
@@ -1673,7 +1755,7 @@ test('Finding-only reports include the backing Artifact identity in the immutabl
     finding_ids: string[]
   }
   assert.equal(manifest.version, 'dsh-data-analysis-report-manifest/v2')
-  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v4')
+  assert.equal(manifest.renderer_version, 'dsh-data-analysis-html/v5')
   assert.match(manifest.provenance_digest, /^[a-f0-9]{64}$/)
   assert.deepEqual(manifest.artifacts, [
     { ref: 'artifact-backing', content_hash: artifact.contentHash },

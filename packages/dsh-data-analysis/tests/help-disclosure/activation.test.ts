@@ -329,6 +329,8 @@ test('Evidence citation and HTML report guidance appear only after marivo-analys
   assert.match(activatedPrompt, /2-4 item answer-first executive summary/)
   assert.match(activatedPrompt, /Finding IDs only as adjacent source metadata/)
   assert.match(activatedPrompt, /Do not add a duplicate Evidence appendix/)
+  assert.match(activatedPrompt, /smallest sufficient non-redundant Finding set/)
+  assert.match(activatedPrompt, /most direct exact Finding for a scalar fact/)
   assert.match(activatedPrompt, /complete ReportDocument/)
   assert.match(activatedPrompt, /copy the returned absolute Path verbatim/)
   assert.match(activatedPrompt, /never shorten it to a basename/)

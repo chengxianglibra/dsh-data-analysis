@@ -78,11 +78,15 @@ bar 的 x 必须是类别维度且至少有一个可绘制类别，数轴包含�
 点数和类别数不作为硬质量门槛。table 按公开列顺序或显式列选择
 渲染，使用本地化日期、数值和安全的通用列名，并始终显示 displayed/total/omitted。
 
-Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS 和固定 viewBox SVG。所有标题、文字、单元格和
-Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。普通 block 只显示折叠的“分析依据”入口；展开后
-先展示与报告 locale 一致的人读事实，Finding ID、Artifact ref、value、subject、derivation 与身份状态留在二级
-技术审计和页脚 canonical provenance。显式 `evidence` block 才直接展示事实列表，Agent 默认不得再创建重复的
-Evidence 附录。页脚对 Findings 和 Artifacts 去重，但完整技术溯源默认折叠。
+Renderer 是无 I/O 纯函数，输出 semantic HTML、内联 CSS 和固定 viewBox SVG。所有标题、文字、单元格、
+Evidence JSON 和 `Finding.render()` 陈述先做 HTML escaping。普通 text、chart 和 table block 在内容末尾显示
+轻量“依据ⁿ”角标；桌面端 hover/focus 预览，点击可固定，移动端点击后在正文流展开。浮层只展示与报告
+locale 一致的人读事实、支撑边界和完整溯源链接；Finding ID、Artifact ref、value、subject、derivation
+与身份状态只留在页脚 canonical provenance。显式 `evidence` block 继续直接展示事实列表和二级审计，
+Agent 默认不得再创建重复的 Evidence 附录。页脚对 Findings 和 Artifacts 去重，但完整技术溯源默认折叠。
+
+Agent 为每个 block 选择最小充分、不重复的 Finding 集：标量事实优先最直接的精确 Finding，不再附加仅复述同一
+用户事实的摘要 Finding。Renderer 忠实展示传入的所有 Finding，不按类型、文本相似度或顺序推断证据等价性。
 
 页面使用响应式单列阅读流、浅色/深色系统外观、克制的蓝色主色和安静网格。首章节仅对第一个摘要文本
 使用无底色的强调线；即使 Agent 把图表放在首章节，图表和表格仍回到正文流，不嵌套摘要底色或独立卡片。

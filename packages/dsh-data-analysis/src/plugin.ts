@@ -57,6 +57,7 @@ export const MARIVO_REPORT_RENDERING_PROMPT = [
   'Write for the user, not for the Evidence implementation: use the user language, default to Chinese when the request is Chinese, and never copy Finding IDs, raw Finding JSON, Artifact refs, field names, or audit mechanics into narrative text unless the user explicitly asks for methodology.',
   'For stakeholder reports, put a 2-4 item answer-first executive summary first, then pair each major finding with evidence, plain-language interpretation, and a concrete implication; finish with supported next steps, decision-relevant open questions, and caveats.',
   'Use neutral chart and table titles, put units, scope, denominator, time window, and comparison basis in the subtitle when needed, and place a text block that explains the takeaway immediately before or after every chart.',
+  'Attach the smallest sufficient non-redundant Finding set to each block. Prefer the most direct exact Finding for a scalar fact, and do not also attach a summary Finding that merely restates the same user-facing fact.',
   'Attach Finding IDs only as adjacent source metadata. Do not add a duplicate Evidence appendix or evidence block unless the user explicitly asks for a source inventory.',
   'Every call must submit a complete ReportDocument; a revision creates a new report.',
   'After a ready result, copy the returned absolute Path verbatim in the final answer; never shorten it to a basename, invent a file or HTTP URL, or claim it was published.',

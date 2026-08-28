@@ -75,7 +75,9 @@ block 可用省略字段或 `finding_ids: []` 表示没有精确 Finding 支撑�
 则必须提供 1–20 个 Finding。bridge 会继续恢复可识别的 Finding 及其 backing Artifact 并 revalidate 完整来源；
 只有阻断性检查全部通过后才生成无 JavaScript、无远程依赖的
 HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。报告以用户语言和答案优先的单列阅读流呈现；
-普通 block 的分析依据默认折叠，只先展示本地化事实，Finding/Artifact 原始身份与 JSON 留在二级技术溯源。
+普通 block 在内容末尾显示“依据ⁿ”角标，桌面端 hover/focus 预览、点击固定，移动端点击展开。浮层只展示本地化事实和完整溯源链接，
+Finding/Artifact 原始身份与 JSON 留在页脚 canonical provenance。Agent 为每个 block 选择最小充分、不重复的 Finding 集；
+renderer 忠实展示传入的 Finding，不自行推断证据等价性。
 line 至少需要八个点，bar 至少四个类别；日期、数值、通用列名和长标签图表使用读者友好的本地化展示。Tool 文本返回绝对路径；
 Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复
 完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建
