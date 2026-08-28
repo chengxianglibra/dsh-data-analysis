@@ -177,6 +177,9 @@ marivo_report_render({ session_id, document })
 `document` 必须是完整的 `dsh-data-analysis-report/v1`，由 1–20 个 section 组成，并使用 `text`、`chart`、
 `table`、`evidence` block。chart 支持 `auto`、`line` 和 `bar`；每个数据 block 必须引用精确 Artifact，
 来源 block 可引用精确 Finding；block 必须位于 `document.sections[].blocks`，不能只提交 `document.blocks`。
+每个 block 最多引用 20 个 Finding，全文最多引用 100 个唯一 Finding。普通 `text`、`chart`、`table` block
+没有精确 Finding 支撑时可省略 `finding_ids` 或传 `[]`，空数组会规范化为省略；`evidence` block 必须提供
+1–20 个 Finding，不能使用空数组。
 修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
 
 Agent 在同一 block 组合多个 Finding 前先使用 `session.evidence.compatibility()` 预检。工具也会在恢复和投影

@@ -163,6 +163,96 @@ test('ReportDocument parser retains Finding groups without exposing Tool-only re
   ])
 })
 
+test('optional empty Finding arrays canonicalize to omission without creating compatibility groups', () => {
+  const withEmptyArrays = structuredClone(document) as unknown as Record<string, unknown>
+  const sections = withEmptyArrays.sections as Array<Record<string, unknown>>
+  const blocks = sections[0]?.blocks as Array<Record<string, unknown>>
+  for (const block of blocks) block.finding_ids = []
+
+  const parsed = parseReportDocument(withEmptyArrays)
+  assert.equal(parsed.ok, true, JSON.stringify(parsed))
+  if (!parsed.ok) return
+  assert.deepEqual(parsed.value.document, document)
+  assert.deepEqual(parsed.value.findingIds, [])
+  assert.deepEqual(parsed.value.findingGroups, [])
+  assert.equal(reportDocumentDigest(parsed.value.document), reportDocumentDigest(document))
+})
+
+test('evidence blocks reject empty Finding arrays with evidence-specific repair', () => {
+  const parsed = parseReportDocument({
+    version: 'dsh-data-analysis-report/v1', title: 'Empty evidence', locale: 'en-US',
+    sections: [{ id: 'evidence', title: 'Evidence', blocks: [{
+      kind: 'evidence', id: 'empty-evidence', title: 'Sources', finding_ids: [],
+    }] }],
+  })
+  assert.equal(parsed.ok, false)
+  if (parsed.ok) return
+  assert.deepEqual(parsed.issues.map(item => item.code), ['invalid-finding-ids'])
+  assert.equal(parsed.issues[0]?.location, 'document.sections[0].blocks[0].finding_ids')
+  assert.match(parsed.issues[0]?.message ?? '', /is required.*between 1 and 20/)
+  assert.match(parsed.issues[0]?.repair ?? '', /remove the empty evidence block/)
+})
+
+test('Finding bounds remain 20 per block and allow 100 unique Findings per document', () => {
+  const ids = (start: number, count: number) => Array.from(
+    { length: count },
+    (_, index) => `finding-${String(start + index).padStart(3, '0')}`,
+  )
+  const evidenceDocument = (count: number): ReportDocumentV1 => ({
+    version: 'dsh-data-analysis-report/v1', title: `${String(count)} Findings`, locale: 'en-US',
+    sections: [{
+      id: 'evidence', title: 'Evidence',
+      blocks: Array.from({ length: Math.ceil(count / 20) }, (_, index) => ({
+        kind: 'evidence' as const,
+        id: `evidence-${String(index + 1)}`,
+        title: `Evidence ${String(index + 1)}`,
+        finding_ids: ids(index * 20, Math.min(20, count - index * 20)),
+      })),
+    }],
+  })
+
+  const fortySix = parseReportDocument(evidenceDocument(46))
+  assert.equal(fortySix.ok, true, JSON.stringify(fortySix))
+  if (fortySix.ok) {
+    assert.equal(fortySix.value.findingIds.length, 46)
+    assert.deepEqual(fortySix.value.findingGroups.map(group => group.length), [20, 20, 6])
+  }
+
+  const baseOneHundred = evidenceDocument(100)
+  const oneHundredDocument: ReportDocumentV1 = {
+    ...baseOneHundred,
+    sections: [{
+      ...baseOneHundred.sections[0]!,
+      blocks: [...baseOneHundred.sections[0]!.blocks, {
+        kind: 'evidence', id: 'repeated-evidence', title: 'Repeated evidence', finding_ids: ids(0, 20),
+      }],
+    }],
+  }
+  const oneHundred = parseReportDocument(oneHundredDocument)
+  assert.equal(oneHundred.ok, true, JSON.stringify(oneHundred))
+  if (oneHundred.ok) assert.equal(oneHundred.value.findingIds.length, 100)
+
+  const oneHundredOne = parseReportDocument(evidenceDocument(101))
+  assert.equal(oneHundredOne.ok, false)
+  if (!oneHundredOne.ok) {
+    const issue = oneHundredOne.issues.find(item => item.code === 'too-many-findings')
+    assert.match(issue?.message ?? '', /101 unique Findings; the maximum is 100/)
+    assert.match(issue?.repair ?? '', /Do not remove Finding references/)
+  }
+
+  const twentyOneInOneBlock = parseReportDocument({
+    version: 'dsh-data-analysis-report/v1', title: 'Too many in one block', locale: 'en-US',
+    sections: [{ id: 'evidence', title: 'Evidence', blocks: [{
+      kind: 'evidence', id: 'too-many', title: 'Too many', finding_ids: ids(0, 21),
+    }] }],
+  })
+  assert.equal(twentyOneInOneBlock.ok, false)
+  if (!twentyOneInOneBlock.ok) {
+    assert.ok(twentyOneInOneBlock.issues.some(item => item.code === 'invalid-finding-ids'))
+    assert.ok(twentyOneInOneBlock.issues.every(item => item.code !== 'too-many-findings'))
+  }
+})
+
 test('ReportDocument requires reader-facing interpretation adjacent to every chart', () => {
   const chartOnly: ReportDocumentV1 = {
     version: 'dsh-data-analysis-report/v1', title: 'Chart only', locale: 'en-US',
@@ -201,7 +291,9 @@ test('report Tool schema and real argument failures expose one complete retry sk
   assert.match(textSchema.properties.id.description, /Document-wide unique/)
   assert.match(textSchema.properties.text.description, /plain text/)
   assert.match(textSchema.properties.text.description, /Markdown and HTML are escaped/)
-  assert.match(textSchema.properties.finding_ids.description, /One to 20 unique/)
+  assert.match(textSchema.properties.finding_ids.description, /Omit finding_ids or pass \[\]/)
+  assert.match(textSchema.properties.finding_ids.description, /one to 20 unique/)
+  assert.match(textSchema.properties.finding_ids.description, /canonicalized to omission/)
   assert.match(textSchema.properties.finding_ids.description, /mechanically compatible/)
   assert.match(chartSchema.properties.artifact_ref.description, /Artifact in session_id/)
   assert.match(chartSchema.properties.view.description, /auto.*omit x\/y/)
@@ -211,7 +303,11 @@ test('report Tool schema and real argument failures expose one complete retry sk
   assert.match(chartSchema.properties.y.description, /does not aggregate/)
   assert.match(tableSchema.properties.columns.description, /one to 100 unique/)
   assert.match(tableSchema.properties.max_rows.description, /from 1 to 100/)
+  assert.match(evidenceSchema.properties.finding_ids.description, /Required.*\[\] is invalid/)
+  assert.match(evidenceSchema.properties.finding_ids.description, /one to 20 unique/)
   assert.match(evidenceSchema.properties.finding_ids.description, /mechanically compatible/)
+  assert.match(description, /100 unique Findings across the document/)
+  assert.match(description, /at most 20 Findings in any one block/)
 
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
@@ -338,6 +434,91 @@ test('report Tool attributes every compatibility problem to its exact block and 
   assert.match(rendered, /Never submit document\.blocks alone/)
   assert.equal(reportPresentationMeta(value), null)
   await assert.rejects(() => stat(reportsRoot), { code: 'ENOENT' })
+})
+
+test('report Tool preserves 46 unique Findings across projection, manifest, and ready result', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-forty-six-findings-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const findingIds = Array.from(
+    { length: 46 },
+    (_, index) => `finding-${String(index + 1).padStart(3, '0')}`,
+  )
+  const findingGroups = [findingIds.slice(0, 20), findingIds.slice(20, 40), findingIds.slice(40)]
+  const source: ReportDocumentV1 = {
+    version: 'dsh-data-analysis-report/v1', title: '46 Finding report', locale: 'en-US',
+    sections: [{
+      id: 'evidence', title: 'Evidence', blocks: findingGroups.map((group, index) => ({
+        kind: 'evidence' as const,
+        id: `evidence-${String(index + 1)}`,
+        title: `Evidence ${String(index + 1)}`,
+        finding_ids: group,
+      })),
+    }],
+  }
+  const environment = {
+    binding: { fingerprint: '4'.repeat(64), marivoVersion: '0.4.test' },
+    async runCheckedReportProjection(
+      _sessionId: string,
+      artifactRefs: readonly string[],
+      groups: readonly (readonly string[])[],
+    ) {
+      assert.deepEqual(artifactRefs, [])
+      assert.deepEqual(groups, findingGroups)
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify({
+          status: 'ready', session_id: 'session-report',
+          artifacts: [{
+            ref: 'artifact-backing', family: artifact.family, shape: artifact.shape,
+            columns: artifact.columns, content_hash: artifact.contentHash,
+            artifact_schema_version: artifact.artifactSchemaVersion,
+            created_at: artifact.createdAt,
+            contract: { kind: artifact.family, ref: 'artifact-backing' },
+            revalidation: {
+              status: 'admissible', artifact_ref: 'artifact-backing',
+              content_hash: artifact.contentHash,
+              artifact_schema_version: artifact.artifactSchemaVersion,
+            },
+            lineage: { steps: [] }, rows_projected: false, rows: [],
+          }],
+          findings: findingIds.map((findingId, index) => ({
+            finding_id: findingId, finding_type: 'metric_value', epistemic_kind: 'observed',
+            artifact_id: 'artifact-backing', session_id: 'session-report', quality_status: null,
+            committed_at: '2026-08-27T00:05:00+00:00', value: { value: index + 1 },
+            subject: { metric_id: `metric-${String(index + 1)}` },
+            derivation: { rule_id: 'metric/v1' },
+            rendered: {
+              en: `${findingId}: observed ${String(index + 1)}.`,
+              zh: `${findingId}：观测值为 ${String(index + 1)}。`,
+            },
+          })),
+          compatibilities: findingGroups.map((group, index) => ({
+            group_index: index, status: 'compatible', finding_ids: group,
+            value: { status: 'compatible' },
+          })),
+        })),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment, {
+    reportsRoot: path.join(root, 'reports'),
+    now: () => new Date('2026-08-27T01:02:03.000Z'),
+  })
+  const value = await tool.execute(
+    { session_id: 'session-report', document: source },
+    { signal: new AbortController().signal } as Parameters<typeof tool.execute>[1],
+  ) as ReportRenderValueV1
+  assert.equal(value.status, 'ready', JSON.stringify(value))
+  if (value.status !== 'ready') return
+  assert.deepEqual(value.finding_ids, findingIds)
+  const manifest = JSON.parse(
+    await readFile(path.join(path.dirname(value.path), 'manifest.json'), 'utf8'),
+  ) as { finding_ids: string[] }
+  assert.deepEqual(manifest.finding_ids, findingIds)
+  const html = await readFile(value.path, 'utf8')
+  assert.match(html, /finding-001: observed 1\./)
+  assert.match(html, /finding-046: observed 46\./)
 })
 
 test('visual compiler selects one line mapping, preserves rows, and discloses truncation', () => {

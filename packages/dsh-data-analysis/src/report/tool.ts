@@ -41,11 +41,23 @@ const REPORT_LIMITS = Object.freeze({
   stderrMaxBytes: 65_536,
 })
 
-const findingIdsSchema = {
+const optionalFindingIdsSchema = {
   type: 'array',
   items: { type: 'string' },
   description: [
-    'One to 20 unique exact persisted Finding IDs used as compact adjacent sources for this block.',
+    'Optional adjacent sources. Omit finding_ids or pass [] when this block has no exact Finding support; [] is canonicalized to omission.',
+    'Otherwise provide one to 20 unique exact persisted Finding IDs used as compact adjacent sources for this block.',
+    'The reader shows the locale-matched human Finding statement first and keeps IDs, raw values, derivation, and Artifact identity in the collapsed audit trail.',
+    'Every Finding attached to one block must be mechanically compatible; call session.evidence.compatibility before combining multiple IDs.',
+  ].join(' '),
+} as const
+
+const requiredFindingIdsSchema = {
+  type: 'array',
+  items: { type: 'string' },
+  required: true,
+  description: [
+    'Required for an evidence block; [] is invalid. Provide one to 20 unique exact persisted Finding IDs.',
     'The reader shows the locale-matched human Finding statement first and keeps IDs, raw values, derivation, and Artifact identity in the collapsed audit trail.',
     'Every Finding attached to one block must be mechanically compatible; call session.evidence.compatibility before combining multiple IDs.',
   ].join(' '),
@@ -63,7 +75,7 @@ const textBlockSchema = {
       type: 'string', required: true,
       description: 'Non-empty reader-facing plain text of at most 20,000 Unicode characters. Lead with the takeaway and explain why it matters in the report locale. Markdown and HTML are escaped as literal text; blank lines start paragraphs and consecutive lines beginning with -, *, •, or 1. form semantic lists.',
     },
-    finding_ids: findingIdsSchema,
+    finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
@@ -99,7 +111,7 @@ const chartBlockSchema = {
       type: 'string',
       description: 'Exact public numeric Artifact column name. The renderer does not aggregate, sample, apply Top-N, or combine additional grain.',
     },
-    finding_ids: findingIdsSchema,
+    finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
@@ -127,7 +139,7 @@ const tableBlockSchema = {
       type: 'integer', required: true,
       description: 'Maximum displayed rows, from 1 to 100. The report discloses total and omitted rows.',
     },
-    finding_ids: findingIdsSchema,
+    finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
@@ -143,7 +155,7 @@ const evidenceBlockSchema = {
       type: 'string', required: true,
       description: 'Reader-facing title for an explicitly requested source inventory. Prefer attaching finding_ids to narrative or visual blocks instead of adding a duplicate Evidence appendix.',
     },
-    finding_ids: { ...findingIdsSchema, required: true },
+    finding_ids: requiredFindingIdsSchema,
   },
 } as const
 
@@ -155,7 +167,7 @@ const documentSchema = {
     'Finding IDs belong in finding_ids metadata, not in narrative text; do not duplicate all Findings in an Evidence appendix unless the user asked for it.',
     `Minimal valid JSON: ${REPORT_DOCUMENT_MINIMAL_JSON}.`,
     'document.blocks is invalid; blocks must be nested under document.sections[].blocks.',
-    'Provide 1-20 sections with 1-20 blocks each and at most 100 blocks total; reference at most 20 unique Artifacts and 20 unique Findings.',
+    'Provide 1-20 sections with 1-20 blocks each and at most 100 blocks total; reference at most 20 unique explicit Artifacts and 100 unique Findings across the document, with at most 20 Findings in any one block.',
   ].join(' '),
   properties: {
     version: { type: 'string', const: 'dsh-data-analysis-report/v1', required: true },

@@ -29,6 +29,10 @@ flowchart LR
 和无歧义 `auto`。Parser 递归拒绝未知字段，并执行 section/block、文本、唯一 ID、Artifact/Finding 数量、
 表格行数和引用长度上限；每个 chart 前后至少有一个相邻 text block 解释结论、读法和影响。Tool schema 给出最小完整文档骨架，并明确 block 位于
 `document.sections[].blocks`。修订或 blocked 后重试时必须再次提交完整文档，插件不读取或 patch 上一份文档。
+每个 block 的 `finding_ids` 仍受 Marivo compatibility 的 1–20 selection 边界约束；全文可引用最多 100 个
+唯一 Finding。普通 `text`、`chart`、`table` block 的空数组会规范化为省略且不产生 compatibility group，
+`evidence` block 的空数组非法。全文 20 个显式 Artifact、2,000 行展示准入、16 MiB projection 和 10 MiB
+HTML 等独立资源边界不变。
 
 ## Marivo 读取边界
 

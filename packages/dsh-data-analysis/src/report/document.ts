@@ -96,6 +96,8 @@ export type ParseReportDocumentResult =
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_IDENTIFIER_CHARS = 512
+const MAX_FINDING_IDS_PER_BLOCK = 20
+const MAX_UNIQUE_FINDINGS_PER_REPORT = 100
 const ALLOWED_ROOT = new Set(['version', 'title', 'subtitle', 'locale', 'sections'])
 const ALLOWED_SECTION = new Set(['id', 'title', 'blocks'])
 const ALLOWED_BY_KIND: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
@@ -198,10 +200,16 @@ function findingIds(
   issues: ReportIssueV1[],
 ): readonly string[] | undefined {
   if (value === undefined && !required) return undefined
-  if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
+  if (Array.isArray(value) && value.length === 0 && !required) return undefined
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_FINDING_IDS_PER_BLOCK) {
     issues.push(issue(
-      'invalid-finding-ids', location, `${location} must contain between 1 and 20 Finding IDs.`,
-      'Provide a non-empty list of at most 20 unique Finding IDs.',
+      'invalid-finding-ids', location,
+      required
+        ? `${location} is required and must contain between 1 and ${MAX_FINDING_IDS_PER_BLOCK} Finding IDs.`
+        : `${location} must be empty or contain between 1 and ${MAX_FINDING_IDS_PER_BLOCK} Finding IDs.`,
+      required
+        ? `Add between 1 and ${MAX_FINDING_IDS_PER_BLOCK} unique exact Finding IDs, or remove the empty evidence block.`
+        : `Omit finding_ids or use an empty array when there is no exact Finding support; otherwise provide at most ${MAX_FINDING_IDS_PER_BLOCK} unique Finding IDs.`,
     ))
     return undefined
   }
@@ -443,8 +451,13 @@ export function parseReportDocument(input: JsonValue | unknown): ParseReportDocu
   if (artifacts.length > 20) {
     issues.push(issue('too-many-artifacts', 'document.sections', `ReportDocument references ${artifacts.length} unique Artifacts; the maximum is 20.`, 'Reduce unique Artifact references to at most 20.'))
   }
-  if (findings.length > 20) {
-    issues.push(issue('too-many-findings', 'document.sections', `ReportDocument references ${findings.length} unique Findings; the maximum is 20.`, 'Reduce unique Finding references to at most 20.'))
+  if (findings.length > MAX_UNIQUE_FINDINGS_PER_REPORT) {
+    issues.push(issue(
+      'too-many-findings',
+      'document.sections',
+      `ReportDocument references ${findings.length} unique Findings; the maximum is ${MAX_UNIQUE_FINDINGS_PER_REPORT}.`,
+      `Split the analysis into multiple reports or reduce the report scope to at most ${MAX_UNIQUE_FINDINGS_PER_REPORT} unique Findings. Do not remove Finding references from facts retained in this report.`,
+    ))
   }
   if (issues.length > 0 || title === undefined || locale === undefined) return { ok: false, issues }
   return {

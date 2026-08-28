@@ -69,7 +69,9 @@ entailment、`to_pandas` 用途判断、可信等级或强制 state 复盘。详
 `marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v1`，通过固定 checked
 bridge 先批量检查所有 block 的 Finding compatibility；不兼容时一次返回精确 block 路径、冲突 Finding 和
 Marivo 原因，且不会继续 Artifact 行投影。Agent 修复后必须再次提交位于 `document.sections[].blocks` 的完整
-文档。检查通过后才恢复 Finding 及其 backing Artifact、revalidate 完整来源，并生成无 JavaScript、无远程依赖的
+文档。每个 block 最多引用 20 个 Finding，全文最多引用 100 个唯一 Finding；普通 `text`、`chart`、`table`
+block 可用省略字段或 `finding_ids: []` 表示没有精确 Finding 支撑，空数组会规范化为省略，`evidence` block
+则必须提供 1–20 个 Finding。检查通过后才恢复 Finding 及其 backing Artifact、revalidate 完整来源，并生成无 JavaScript、无远程依赖的
 HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。报告以用户语言和答案优先的单列阅读流呈现；
 普通 block 的分析依据默认折叠，只先展示本地化事实，Finding/Artifact 原始身份与 JSON 留在二级技术溯源。
 line 至少需要八个点，bar 至少四个类别；日期、数值、通用列名和长标签图表使用读者友好的本地化展示。Tool 文本返回绝对路径；

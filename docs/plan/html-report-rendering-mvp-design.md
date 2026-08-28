@@ -189,12 +189,17 @@ interface EvidenceBlockV1 {
 - 1–20 个 section，每个 section 1–20 个 block，全文最多 100 个 block；
 - section/block `id` 在文档内唯一，使用非空 ASCII kebab-case；
 - 标题最多 200 字符，单个 text 最多 20,000 字符，全文文本最多 100,000 字符；
-- 最多引用 20 个唯一 Artifact 和 20 个唯一 Finding；
+- 首版预算最多引用 20 个唯一 Artifact 和 20 个唯一 Finding；
 - `table.max_rows` 为 1–100；表格截断时必须显示 `displayed / total / omitted`；
 - 一个 Artifact 在导出前由公开 `frame.shape[0]` 准入，超过 2,000 行时整次调用 blocked；
 - 生成的 `index.html` 最大 10 MiB，超过时不发布半成品。
 
 这些是插件资源和展示边界，不是 Marivo 业务语义。后续若需放宽，应以性能与真实报告验收数据为依据。
+
+2026-08-28 的验收后调整保留每个 block 的 1–20 Finding compatibility 边界，但把全文唯一 Finding
+预算提升到 100；普通 `text`、`chart`、`table` block 的 `finding_ids: []` 规范化为字段省略，
+`evidence` block 仍要求非空。该调整来自 46-Finding 报告的实际需求，不改变首版 20 个显式 Artifact、
+projection、HTML 或超时资源边界。
 
 ### 最小示例
 
