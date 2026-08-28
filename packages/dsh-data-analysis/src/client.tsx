@@ -947,13 +947,20 @@ const reportDisclosureStyle = {
   color: 'var(--dsw-alias-text-secondary, #666)',
   fontSize: 12,
 }
+const reportDiagnosticStyle = {
+  color: 'var(--dsw-alias-text-secondary, #666)',
+  fontSize: 12,
+}
+const reportDiagnosticSummaryStyle = {
+  cursor: 'pointer',
+  color: 'var(--dsw-alias-text-error, #c22)',
+  fontWeight: 600,
+}
 const reportFallbackStyle = {
-  margin: 0,
+  margin: '8px 0 0',
   whiteSpace: 'pre-wrap',
   overflowWrap: 'anywhere',
   fontFamily: 'inherit',
-  color: 'var(--dsw-alias-text-secondary, #666)',
-  fontSize: 12,
 }
 
 /** Durable report handoff under the closing answer, independent of its prose. */
@@ -1000,10 +1007,10 @@ export function MarivoReportToolView({ callId, block, connection }: any) {
 
   if (model.report === null) {
     return (
-      <section style={reportCardStyle} data-marivo-report-call={callId}>
-        <strong>HTML 分析报告</strong>
+      <details style={reportDiagnosticStyle} data-marivo-report-diagnostic={callId}>
+        <summary style={reportDiagnosticSummaryStyle}>报告未生成</summary>
         <pre style={reportFallbackStyle}>{model.summary}</pre>
-      </section>
+      </details>
     )
   }
 

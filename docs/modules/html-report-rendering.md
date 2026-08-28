@@ -146,7 +146,8 @@ root call 的耐久 `tool/call` 解析；无法建立该关联时不签发 card�
 
 客户端严格校验闭合的 `marivo-html-report` v1 metadata，以及恰好一个闭合的 nested card block，并且只依赖
 已冻结的 Tool call/result slice。因此 native、code 与 both 模式的 Session replay 都不读取报告文件、不访问
-Marivo，也不引入自定义 Session event。旧版本、畸形、blocked 或失败结果回退到原 Tool 文本。
+Marivo，也不引入自定义 Session event。只有 ready 结果显示“HTML 分析报告”卡片与打开按钮；旧版本、畸形、
+blocked 或失败结果显示为默认折叠的“报告未生成”诊断，不占用可交付报告的视觉语义。
 
 客户端为每个 Turn 建立一个 `marivo-report-delivery` context：顶层结果必须先通过 `tool/call.callId` 证明调用名
 确为 `marivo_report_render`，Code Mode card 则使用其已验证的 `turn`。两者聚合到同一个固定 Turn data key，

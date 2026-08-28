@@ -594,6 +594,42 @@ test('report Tool View disables the clicked action and renders Host rejection on
   assert.deepEqual((props.block as { meta: unknown }).meta, reportMeta)
 })
 
+test('blocked report result is a collapsed diagnostic rather than an available report card', async () => {
+  const harness = new HookHarness()
+  const client = await loadClient({
+    react: harness.react,
+    jsxRuntime: harness.jsxRuntime,
+    primitives: { Button: 'Button', Modal: 'Modal' },
+  })
+  const message = 'HTML report rendering is blocked after best-effort preflight.'
+  const tree = harness.render(client.MarivoReportToolView, {
+    callId: 'blocked-report-call',
+    block: settled({
+      meta: null,
+      content: [{ type: 'text', text: message }],
+    }),
+    connection: { api: {} },
+  })
+
+  assert.equal(tree.type, 'details')
+  assert.equal(tree.props['data-marivo-report-diagnostic'], 'blocked-report-call')
+  assert.equal(tree.props.open, undefined)
+  const summary = findElement(tree, (element) => element.type === 'summary')
+  assert.ok(summary)
+  assert.equal(summary.props.children, '报告未生成')
+  const diagnostic = findElement(tree, (element) => element.type === 'pre')
+  assert.ok(diagnostic)
+  assert.equal(diagnostic.props.children, message)
+  assert.equal(
+    findElement(tree, (element) => element.type === 'Button'),
+    null,
+  )
+  assert.equal(
+    findElement(tree, (element) => element.props?.['data-marivo-report-call'] !== undefined),
+    null,
+  )
+})
+
 test('turn-tail report delivery shows the full path and opens that exact Host target', async () => {
   const client = await loadClient({
     primitives: { Button: 'Button', Modal: 'Modal' },
