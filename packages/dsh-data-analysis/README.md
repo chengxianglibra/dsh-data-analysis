@@ -66,22 +66,25 @@ entailment、数字验证、`to_pandas` 用途判断或可信等级推断。详�
 [Evidence 按需来源模块](../../docs/modules/evidence-sources.md)。
 
 加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
-`marivo_report_render({ session_id, document })`。Tool 校验完整 `ReportDocument v2`，通过固定 checked
-bridge 对每个显式 Artifact 独立 revalidate 并返回 outcome；不调用 Finding compatibility、Finding 读取或
-backing Artifact 发现。单项失败不阻止其他独立 Artifact，partial projection 继续检查可检查的图表。blocked 按
-`document`、`marivo`、`visual`、`publish` 分组返回 `passed`、`failed`、`partial` 或 `skipped` check，以及
-精确路径、修复和 omitted 数量。Agent 修复后必须再次提交位于 `document.sections[].blocks` 的完整文档。v2
-只接受 `text`、`chart`、`table`，不接受 `finding_ids` 或 `evidence` block；需要来源时使用独立的
+`marivo_report_render({ session_id?, document })`。Tool 校验完整 `ReportDocument v3`：先在 `document.data` 注册
+Artifact 或 computed 数据源，再由 chart/table 使用 `data_ref`。computed 使用 `dsh-computed-data/v1` 的
+`columns + rows` 标量 JSON 快照，直接随报告持久化；它不是 Marivo Artifact，也不声明 Python 执行证明或 lineage。
+只有含 Artifact 数据源时才要求 `session_id`，并通过固定 checked bridge 对每个显式 Artifact 独立 revalidate；
+computed-only 会跳过 bridge，mixed 请求只把 Artifact refs 传给 bridge。不调用 Finding compatibility、Finding
+读取或 backing Artifact 发现。单项失败不阻止其他独立 Artifact，partial projection 继续检查可检查的图表。blocked 按
+`document`、`source`、`visual`、`publish` 分组返回 `passed`、`failed`、`partial` 或 `skipped` check，以及
+精确路径、修复和 omitted 数量。Agent 修复后必须再次提交位于 `document.sections[].blocks` 的完整文档。v3
+只接受 `text`、`chart`、`table`，不接受 `finding_ids` 或 `evidence` block，也不兼容旧 v2/v1 输入；需要来源时使用独立的
 `marivo_evidence_sources`。只有阻断性检查全部通过后才生成无远程依赖的
 HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。页脚自动展示成功主 Artifact 分析过程的
 Session DAG：Job 节点包含 intent、params 与 raw SQL，Artifact 节点包含最多 10 行持久化原序 preview。
 固定交互脚本与样式使用精确 CSP hash；节点支持键盘、触摸、缩放和平移。报告以用户语言和答案优先的单列
 阅读流呈现；不绑定 Finding，也不在 HTML 中生成 Evidence block 或 Finding 审计。它不会聚合、抽样、Top-N，
 也不会为 preview 重新查询 datasource。
-line 至少需要八个点，bar 至少四个类别；日期、数值、通用列名和长标签图表使用读者友好的本地化展示。Tool 文本返回绝对路径；
+line/bar 不以点数或类别数作为硬门槛；日期、数值、通用列名和长标签图表使用读者友好的本地化展示。Tool 文本返回绝对路径；
 Web Tool View 与 turn-tail 交付卡片从顶层 `tool/result.meta` 或 Code Mode 的耐久子调用 card block 恢复
 完整路径；后者不依赖 Agent 的最终文字，用户点击后才通过 DSH `host.openPath` 在本机打开文件。插件不创建
-HTTP URL，也不支持跨机器分享。HTML 保留 Artifact/Job Session DAG 和 Artifact revalidation，但不输出
+HTTP URL，也不支持跨机器分享。含 Artifact 的 HTML 保留 Artifact/Job Session DAG 和 Artifact revalidation；computed-only 报告不生成 Session DAG，但不输出
 Parquet 链接、`bind_params`、credential 或私有存储路径。真实补充验证使用仓库命令
 `npm run validate:evidence-sources:real` 和 `npm run validate:html-report-rendering:real`，证据写入
 忽略目录 `artifacts/evidence-sources-real/` 和 `artifacts/html-report-rendering-real/`；本次真实 runner 的模型 journey 已通过，外部 Web/Host opener/打印门禁

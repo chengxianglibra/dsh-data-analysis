@@ -10,13 +10,13 @@ import {
   publishReport,
   type ReportDagArtifactProjection,
   type ReportDagJobProjection,
-  type ReportDocumentV2,
+  type ReportDocument,
   type ReportProjectionBundle,
   renderReportHtml,
 } from '../../src/report/index.ts'
 
-const document: ReportDocumentV2 = {
-  version: 'dsh-data-analysis-report/v2',
+const document: ReportDocument = {
+  version: 'dsh-data-analysis-report/v3',
   title: 'Session DAG',
   locale: 'en-US',
   sections: [
@@ -136,6 +136,7 @@ function projection(): ReportProjectionBundle {
   return {
     sessionId: 'session-dag',
     artifacts: [],
+    computed: [],
     sessionDag: {
       jobs: [
         job('job-observe', 'observe', ['artifact-boundary'], 'artifact-a', '2026-08-28T00:00:00Z'),

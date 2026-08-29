@@ -2,517 +2,172 @@
 
 ## 文档状态
 
-本文是分 Slice 实施设计。Slice 1 的服务端编译器、checked Marivo projection、不可变发布和
-`marivo_report_render`，以及 Slice 2 的 Web 交付卡片均已实现。Slice 3 的真实 runner 已实现并执行；2026-08-28
-真实 Marivo 与模型 journey 已通过，但外部 Web Agent、Host opener 和打印门禁未运行，因此 Slice 3 仍保持外部门禁未完成。
-目标是在不引入
-Report 状态机、不复制 Marivo 分析契约的前提下，让 Agent 把一次分析编排成可打开、可打印、可追溯的
-自包含 HTML 报告。
+`ReportDocument v3`、统一数据源目录、computed snapshot、checked Artifact projection、不可变发布和 Web/Code Mode
+轻量交付已经实现。当前确定性入口为 `npm run test:html-report-rendering`；真实 runner 为
+`npm run validate:html-report-rendering:real`。
 
-当前实现事实见[总体架构](../architecture.md)和
-[HTML 报告渲染模块](../modules/html-report-rendering.md)；本文件继续保留后续 Slice 的设计与验收边界。
-
-> 当前契约（2026-08-28）：报告链路已经切换到 `dsh-data-analysis-report/v2`。报告只接受 `text`、`chart` 和
-> `table` block，来源关系只绑定显式 Artifact；`finding_ids`、`evidence` block、Finding outcomes、compatibility
-> 判断和 backing Artifact 发现均不属于报告输入或 bridge。需要来源面板时使用独立的
-> `marivo_evidence_sources` 工具。下文保留的 v1 内容是历史设计，不是当前兼容读取契约。
-
-上游事实源是 [Marivo operators and frames](../../../marivo/docs/specs/analysis/operators-and-frames.md)、
-[Marivo Evidence access surface](../../../marivo/docs/specs/analysis/evidence-access-surface.md) 与
-[Harness Tool contract](../../../deepseek-harness/docs/cookbook/adding-a-tool.md)。本设计只定义集成与展示接缝。
+这是破坏性更新：v3 是唯一当前输入契约，不保留 v2/v1 alias、迁移器或旧产物复用逻辑。整体集成仍遵循
+[总体架构](../architecture.md)、[HTML 报告渲染模块](../modules/html-report-rendering.md)、
+[Marivo operators and frames](../../../marivo/docs/specs/analysis/operators-and-frames.md) 与
+[Harness Tool contract](../../../deepseek-harness/docs/cookbook/adding-a-tool.md)。本设计只定义 DSH 集成与展示接缝，
+不复制 Marivo 分析契约。
 
 ## 决策摘要
 
-- Agent 每次提交一份完整的 `ReportDocument` v2，必须使用显式 Artifact 和文本内容，自行决定标题、章节、顺序、文字和图表。
-- 插件只提供一个原子的 `marivo_report_render` Tool；不提供 create/update/patch/current Report API。
-- 插件把 v2 `ReportDocument` 当作不可变输入，校验显式 Artifact 引用后确定性编译为新的不可变 HTML 产物。
-- 当前报告只支持 `text`、`chart`、`table` 三类 block；图表只支持 `line` 和 `bar`。Finding 不参与报告绑定。
-- HTML 使用内联 CSS 与 SVG，不执行 JavaScript，不加载远程脚本、字体或图片。
-- 产物写入插件自有的 DSH Home 目录；Tool Result 和 Web UI 只投影产物路径与校验摘要。
-- 插件不验证整段自然语言是否被 Evidence 蕴含，也不把展示用表格重新包装成 Marivo Evidence。
+- Agent 每次提交一份完整的 `dsh-data-analysis-report/v3`，不提交 patch，也不读取上一份文档。
+- `document.data` 是统一数据源目录；每个 source 只能是 `{ id, artifact_ref }` 或 `{ id, computed }`。
+- `chart`/`table` 只通过 `data_ref` 引用 source。同一个 source 可以被多个 chart/table 复用。
+- computed 是调用方提供的 `dsh-computed-data/v1` JSON 快照。Python 对象、代码、handle、registry 和额外持久化服务不在 MVP 内。
+- Artifact 仍由 Marivo 拥有并通过 checked bridge 校验；computed 不进入 Marivo Session DAG。
+- Artifact 和 computed 最终都映射为统一 `DisplayDataset`，共享 line/bar/table 的列、行、排序、校验和截断逻辑。
+- 只支持 `line`、`bar` 和 `auto`；不支持 scatter、area、heatmap、多序列聚合、sampling、Top-N 或自定义图表。
+- 报告是内容寻址的不可变目录。computed 数据直接写入 `report-document.json`，不另建 `report-data.json`。
 
 ## 所有权与非目标
 
-| 参与方 | 首版职责 |
+| 参与方 | MVP 职责 |
 | --- | --- |
-| 用户 | 指定问题、受众、重点和修改要求 |
-| Agent | 生成完整 `ReportDocument`，决定报告内容和结构 |
-| Marivo | 拥有 Artifact、Finding、Quality、Lineage、有效性和兼容性契约 |
-| 插件 | 校验文档和引用、读取展示投影、渲染与原子发布 HTML |
+| 用户 | 指定问题、受众、重点和是否需要耐久报告 |
+| Agent | 生成完整文档，决定标题、章节、数据源注册、文字和视觉映射 |
+| Marivo | 拥有 Artifact、Quality、Lineage、有效性和 Session 语义 |
+| DSH 插件 | 校验 v3 文档，读取 Artifact 展示投影，合并 computed，渲染并发布 HTML |
 | DSH | 保存 Tool call/result 历史，提供 Web Tool View 与本机打开能力 |
 
-首版明确不做：
+明确不做：Report registry/current state、create/update/patch API、分析 planner、自然语言 entailment、业务建议审查、
+实时刷新、在线筛选、下钻、任意 Vega/ECharts、自定义 JavaScript、分享权限、远程下载、PDF 导出、GC 或产物删除。
 
-- 不维护 Report registry、当前版本、草稿、patch 或发布状态；
-- 不实现分析 planner、自然语言 entailment、数字一致性检查或业务建议审查；
-- 不调用新的分析 Intent，不自动补做 QualityReport，也不修改已有 Artifact；
-- 不提供实时筛选、跨图联动、下钻、在线刷新、任意 Vega/ECharts spec 或任意 JavaScript；
-- 不注册公开 HTML Web 路由，不扩展当前仅支持图片的 DSH Attachment 边界；
-- 不实现产物删除、GC、分享权限、远程下载或 PDF 导出。
-
-## 报告触发策略
-
-HTML 报告是可选的耐久交付面，不是分析流程的默认终点。`marivo-analysis` 激活只让 Agent 获得
-`marivo_report_render` 能力，不构成调用授权；普通分析默认在对话中返回结论、表格或图表。
-
-Agent 只在以下任一条件成立时调用 `marivo_report_render`：
-
-1. 用户明确要求耐久 HTML、可分享或可打印的分析报告；
-2. Agent 提议生成报告后，用户明确接受；
-3. 用户要求修改本次对话中已经生成的报告。
-
-分析复杂、章节或图表较多、已有 Artifact/Finding，以及 `marivo-analysis` 已激活，都不能单独触发报告。
-用户明确要求快速回答、不生成文件或改用 Dashboard、Notebook、CSV 等其他产物时，该要求优先。Agent
-可以在复杂分析完成后提议生成报告，但在用户接受前不得调用 Tool。用户不需要在分析开始前决定；可以先
-获得对话内结果，再要求整理为报告。
-
-该决策只存在于当前 Agent 任务和对话上下文，不进入 `ReportDocument`，也不由插件持久化。对已有报告的
-修改意图成立后，Agent 仍提交一份新的完整 `ReportDocument`，而不是读取或 patch 旧文档。
-
-插件在 `marivo-analysis` 激活后动态加入以下短 system prompt：
-
-```text
-When marivo-analysis is active, answer inline by default.
-Call marivo_report_render only when the user explicitly requests a durable HTML report,
-accepts an offer to create one, or asks to revise a report already created in this conversation.
-Do not call it solely because the analysis is complex or contains charts or Artifacts.
-An explicit quick-answer, no-file, or other-output request takes precedence.
-Every call must submit a complete ReportDocument; a revision creates a new report.
-The returned path and digest are not Marivo Evidence.
-```
-
-Tool description 在模型选择 Tool 的位置再提供一层相同边界：
-
-```text
-Render a new immutable HTML report after the user has requested or accepted a durable
-report deliverable. Do not use for ordinary inline analysis.
-```
-
-完整示例和正反触发矩阵只保留在设计与验收测试中，不扩张常驻 prompt。
-
-## 用户流程
-
-```mermaid
-sequenceDiagram
-  participant U as 用户
-  participant A as Agent
-  participant T as marivo_report_render
-  participant M as Marivo
-  participant R as HTML Renderer
-  participant D as DSH Web
-
-  U->>A: 请求生成或调整报告
-  A->>T: session_id + 完整 ReportDocument
-  T->>T: 校验文档 shape 与边界
-  T->>M: 固定 bridge 读取显式 Artifact
-  M-->>T: contract + rows + revalidation + Session DAG
-  T->>T: 校验字段、图表与引用
-  T->>R: ReportDocument + 展示投影
-  R-->>T: 自包含 HTML
-  T->>T: 同目录 staging 后原子发布
-  T-->>A: ready + path + digest + disclosures
-  T-->>D: tool/result.meta 报告卡片数据
-  D->>D: 用户点击时调用 host.openPath(path)
-```
-
-用户要求修改时，Agent 再提交一份完整文档。第二次调用不读取第一份 ReportDocument，也不发送 patch；
-它生成另一个内容寻址产物。DSH 历史自然保留两次 Tool call 及其结果。
-
-## ReportDocument v2（当前契约）
-
-报告输入只使用以下闭合结构：
+## v3 文档契约
 
 ```ts
-interface ReportDocumentV2 {
-  version: 'dsh-data-analysis-report/v2'
+interface ReportDocument {
+  version: 'dsh-data-analysis-report/v3'
   title: string
   subtitle?: string
   locale: 'zh-CN' | 'en-US'
-  sections: ReportSectionV2[]
+  data?: ReportDataSource[]
+  sections: ReportSection[]
 }
 
-interface ReportSectionV2 {
-  id: string
-  title: string
-  blocks: ReportBlockV2[]
+type ReportDataSource =
+  | { id: string; artifact_ref: string }
+  | { id: string; computed: ComputedTable }
+
+interface ComputedTable {
+  version: 'dsh-computed-data/v1'
+  columns: ComputedColumn[]
+  rows: Array<Array<string | number | boolean | null>>
 }
 
-type ReportBlockV2 = TextBlockV2 | ChartBlockV2 | TableBlockV2
+interface ComputedColumn {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'datetime'
+  role?: 'time' | 'dimension' | 'measure' | 'value'
+  unit?: string
+  nullable?: boolean
+}
+
+type ReportBlock =
+  | { kind: 'text'; id: string; text: string }
+  | { kind: 'chart'; id: string; title: string; data_ref: string; view: 'auto' | 'line' | 'bar'; x?: string; y?: string; subtitle?: string }
+  | { kind: 'table'; id: string; title: string; data_ref: string; columns?: string[]; max_rows: number }
 ```
 
-`text` block 只包含文本；`chart` 和 `table` block 必须绑定一个显式 `artifact_ref`。旧 v1 文档、`finding_ids`、
-`evidence` block 和其他未知字段明确拒绝，不做双版本读取或 V1 alias。Finding 公共 API 与独立
-`marivo_evidence_sources` 工具仍可由其他链路使用，但不再进入报告 projection、HTML 或发布 manifest。
+`data` 中每个 ID 必须是唯一的 ASCII kebab-case；每个 Artifact ref 只能注册一次；source 必须且只能声明一种
+类型。`data_ref` 必须命中已注册 source。`session_id` 仅在至少存在一个 Artifact source 时必填；computed-only 请求可省略。
 
-## ReportDocument v1（历史版本，已废弃）
+computed 的要求是“可重放的结果快照”，而不是 Python 执行记录：
 
-> 以下 v1 schema、示例和旧版验收条目仅用于解释历史决策。实现不会读取这些输入，也不会保留其中的
-> `finding_ids`、`evidence` 或 Finding 兼容性行为。
+- Python/其他计算必须在调用 Tool 前转换为 `columns + rows`，不得把 DataFrame、对象 repr、代码或 handle 直接传入；
+- 单元格只能是 string、有限 number、boolean 或 null；日期使用 ISO 字符串并把列类型声明为 `datetime`；
+- 每行必须与 columns 等宽；列名唯一；未知字段、非法类型、非有限数值、非法日期、重复 ID/ref 和超出总 payload 均阻断；
+- `role`、`unit`、`nullable` 是可选元数据，不要求调用方构造额外复杂 schema。未提供 `nullable` 时由快照内容归一化推断；
+- 当前上限：20 个数据源、100 个 computed 列、2,000 行 computed 数据、16 MiB 单表/总 computed payload、20 个 section、
+  100 个 block、`table.max_rows` 1–100、HTML 10 MiB。
 
-### 顶层结构
+Parser 对 root、section、block、source、computed table 和 computed column 递归执行 closed-shape 校验。解析结果是
+规范化 v3 文档：computed `version` 固定为 v1，未显式给出的 nullability 会写入归一化列定义。解析失败只返回结构化
+`document` check，不尝试解释为旧版本或自动迁移。
 
-```ts
-interface ReportDocumentV1 {
-  version: 'dsh-data-analysis-report/v1'
-  title: string
-  subtitle?: string
-  locale: 'zh-CN' | 'en-US'
-  sections: ReportSectionV1[]
-}
-
-interface ReportSectionV1 {
-  id: string
-  title: string
-  blocks: ReportBlockV1[]
-}
-
-type ReportBlockV1 =
-  | TextBlockV1
-  | ChartBlockV1
-  | TableBlockV1
-  | EvidenceBlockV1
-```
-
-`sections` 的内容、名称和顺序完全由 Agent 决定。首版不提供 audience、theme、grid、tabs、嵌套 section
-或 Report preset；这些字段没有验证需求前不进入 v1。
-
-### Block
-
-```ts
-interface TextBlockV1 {
-  kind: 'text'
-  id: string
-  text: string
-  finding_ids?: string[]
-}
-
-interface ChartBlockV1 {
-  kind: 'chart'
-  id: string
-  title: string
-  subtitle?: string
-  artifact_ref: string
-  view: 'auto' | 'line' | 'bar'
-  x?: string
-  y?: string
-  finding_ids?: string[]
-}
-
-interface TableBlockV1 {
-  kind: 'table'
-  id: string
-  title: string
-  artifact_ref: string
-  columns?: string[]
-  max_rows: number
-  finding_ids?: string[]
-}
-
-interface EvidenceBlockV1 {
-  kind: 'evidence'
-  id: string
-  title: string
-  finding_ids: string[]
-}
-```
-
-`text` 是纯文本而非 Markdown 或 HTML。Renderer 对全部用户/Agent 文本做 HTML escaping，并按换行生成
-段落。`finding_ids` 只表示相邻展示来源，不宣称 Finding 蕴含整段文字。
-
-### 固定边界
-
-- 1–20 个 section，每个 section 1–20 个 block，全文最多 100 个 block；
-- section/block `id` 在文档内唯一，使用非空 ASCII kebab-case；
-- 标题最多 200 字符，单个 text 最多 20,000 字符，全文文本最多 100,000 字符；
-- 首版预算最多引用 20 个唯一 Artifact 和 20 个唯一 Finding；
-- `table.max_rows` 为 1–100；表格截断时必须显示 `displayed / total / omitted`；
-- 一个 Artifact 在导出前由公开 `frame.shape[0]` 准入，超过 2,000 行时整次调用 blocked；
-- 生成的 `index.html` 最大 10 MiB，超过时不发布半成品。
-
-这些是插件资源和展示边界，不是 Marivo 业务语义。后续若需放宽，应以性能与真实报告验收数据为依据。
-
-2026-08-28 的验收后调整保留每个 block 的 1–20 Finding compatibility 边界，但把全文唯一 Finding
-预算提升到 100；普通 `text`、`chart`、`table` block 的 `finding_ids: []` 规范化为字段省略，
-`evidence` block 仍要求非空。该调整来自 46-Finding 报告的实际需求，不改变首版 20 个显式 Artifact、
-projection、HTML 或超时资源边界。
-
-### 最小示例
-
-```json
-{
-  "version": "dsh-data-analysis-report/v1",
-  "title": "支付成功率异常分析",
-  "locale": "zh-CN",
-  "sections": [
-    {
-      "id": "summary",
-      "title": "核心判断",
-      "blocks": [
-        {
-          "kind": "text",
-          "id": "summary-text",
-          "text": "支付成功率下降主要集中在 Android 旧版本。",
-          "finding_ids": ["finding-summary"]
-        }
-      ]
-    },
-    {
-      "id": "trend",
-      "title": "变化趋势",
-      "blocks": [
-        {
-          "kind": "chart",
-          "id": "success-rate-trend",
-          "title": "支付成功率趋势",
-          "artifact_ref": "artifact-success-rate",
-          "view": "auto"
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Tool 契约
-
-唯一入口：
+## Tool 和执行流程
 
 ```text
-marivo_report_render({ session_id, document })
+marivo_report_render({ session_id?, document })
 ```
 
-Tool 注册在 Agent scope，复用现有 `MarivoEnvironmentSource`。Tool 是否调用遵循“报告触发策略”；动态
-system prompt 和 Tool description 共同约束默认 inline、显式报告意图、完整文档修订与 Evidence 边界。
+执行顺序：
 
-输出是关闭的联合类型：
+1. 解析完整 v3 文档，收集 source/data_ref、文档问题和安全 inspection；
+2. 没有 Artifact source 时，构造空 Session DAG，并把已校验 computed 直接转为 `ReportComputedProjection`；
+3. 有 Artifact source 时，要求 `session_id`，只把去重 Artifact refs 传给固定 bridge；bridge 结果与 computed projection 合并；
+4. source 阶段验证 bridge payload/identity。visual 阶段将两类 source 映射为 `DisplayDataset`，执行共享图表和表格准入；
+5. document/source/visual 全部 passed 后才生成 HTML，并由 publisher 原子写入不可变目录；任何可修复错误都返回 blocked checks。
 
-```ts
-type ReportRenderValueV1 =
-  | {
-      status: 'ready'
-      title: string
-      path: string
-      report_digest: string
-      document_digest: string
-      artifact_refs: string[]
-      finding_ids: string[]
-      disclosures: string[]
-    }
-  | {
-      status: 'blocked'
-      checks: Array<{
-        stage: 'document' | 'marivo' | 'visual' | 'publish'
-        status: 'passed' | 'failed' | 'partial' | 'skipped'
-        issues: Array<{
-          code: string
-          location: string
-          message: string
-          repair: string
-        }>
-        omitted_issue_count: number
-        reason?: string
-      }>
-    }
-```
+Artifact bridge 保持现有所有权边界：复用当前 Environment binding，在同一 Session 中 revalidate 显式 Artifact，读取公共
+列、行和受控 Session DAG；不发现 backing Artifact，不调用 Finding compatibility/finding/render，不把 rows 重新送回
+Marivo Intent，也不重新查询 datasource。bridge 只接收 Artifact refs；computed-only 完全不调用 bridge。
 
-可修复的文档、引用、图表与大小错误返回按固定阶段排序的 `blocked.checks`。Tool 对安全可检查的独立目标继续
-best-effort preflight，并让 Agent 根据 location 和 repair 一次修复后重新提交完整文档。
-Environment identity 改变、子进程失败、取消、超时和本地 I/O 失败仍抛出 Tool error，不伪装成文档问题。
+blocked 输出固定为 `document`、`source`、`visual`、`publish` 四个 check。Environment identity 漂移、子进程失败、取消、
+超时和本地 I/O 仍是 Tool error，不伪装成文档问题。ready 输出保留 `artifact_refs`，并增加 `data_refs`、
+`computed_data_refs`；presentation metadata 只携带标题、路径、digest 和 disclosures，不携带完整 computed payload。
 
-`tool/result.meta` 只在 `ready` 时投影 `kind`、schema version、title、path、report digest 和 disclosures。
-CLI/Headless 直接读取 Tool 文本中的绝对路径；Web Tool View 展示“打开报告”按钮并调用现有
-`connection.api.host.openPath({ path })`。本机 opener 不可用或被 Harness trust fence 拒绝时，卡片显示错误，
-不改变原 Tool Result。
+## 统一视觉编译
 
-## Marivo 读取边界
+`createReportComputedProjection()` 把 computed 列类型映射到共享显示列：`datetime` 映射为时间列，number 默认 measure，
+其他类型默认 dimension；显式 `role`、`unit` 和 nullability 被保留。Artifact projection 使用相同的显示列接口。
 
-新增一个固定、不可由模型修改的 checked Python bridge。Node 先解析 v2 文档并提取去重后的显式 Artifact
-ref；传给 Python 的 argv 只包含绑定身份、Session ID 和这些 refs，不包含 Python 表达式或 shell 文本。
+line/bar/table 因而不需要知道 source 的来源：
 
-bridge 执行：
+- line：x 是 time 或有序 numeric dimension，y 是 numeric；按稳定 instant/数值排序，拒绝重复 x、空值、结构化值和非有限 y；
+- bar：x 是 categorical dimension，y 是 numeric，数值轴包含零；类别较多或标签较长时使用横向布局；
+- table：按全部公开列或显式列选择展示，始终给出 displayed/total/omitted；
+- 不自动聚合、抽样、Top-N、补 denominator 或混合额外 grain；`auto` 仅接受唯一 line/bar 映射。
 
-1. `mv.session.resume(session_id, use_datasources=False)`；
-2. 对每个显式 ref 调用 `session.get_frame(ref)`；
-3. 调用 `session.revalidate(frame)`，当前只接受 `admissible`；
-4. 读取 `frame.contract()`、公开 family/shape/columns、`frame.state.content_hash` 和 Lineage；
-5. 在行数准入后调用 `frame.to_pandas()`，只生成绑定于原 Artifact ref 的展示表；
-6. 为每个显式 Artifact 返回有上限的 `ready`/`blocked` outcome，同时构建 Session DAG；互不相关的 Artifact 可独立
-   revalidate，不触发报告级 Finding 兼容性阻断；
-7. 超过 projection 传输预算时返回 compact blocked，同时保留已经收集的目标错误和 omitted count。
+Renderer 在 computed chart/table 附近显示“计算结果快照”说明，明确它不是 Marivo Artifact，不声明 Python execution、
+freshness 或 lineage。computed-only 页脚不创建伪造 Session/Job/Artifact 节点，只显示不生成 Marivo Session DAG 的说明。
 
-`to_pandas()` 是终端展示出口，不保留 Evidence 或 typed re-entry。插件必须把 rows 与原始 Artifact identity、
-contract 和 revalidation 放在同一临时 bundle 中；rows 本身不得被标记为 Evidence，也不得重新送入 Marivo Intent。
+## HTML 与发布身份
 
-Datasource freshness 不属于 `session.revalidate()` 的保证。报告页脚必须显示 Artifact ref/content hash、报告生成时间，
-以及“admissible 不等于 datasource fresh”的固定披露。
+HTML 是无 I/O 纯函数，使用 semantic HTML、内联 CSS、SVG、fallback table 和固定交互脚本。所有文档文字、computed 值、
+Artifact 值、SQL 和审计字段先 escape；页面不包含 Python 代码、内部对象、远程 URL、iframe 或外部字体，并使用精确 CSP hash。
 
-## 图表选择与验证
-
-首版由 Agent 选择 `line`、`bar` 或 `auto`。插件不根据自然语言猜图。
-
-`auto` 只在 contract 中存在唯一无歧义映射时工作：
-
-- 一个有序/时间字段加一个数值字段 → `line`；
-- 一个类别字段加一个数值字段 → `bar`；
-- 其他情况 blocked，要求 Agent 指定 x/y/view 或改用 table。
-
-显式图表仍需满足：
-
-- x/y 必须是 `artifact.contract().artifact_schema` 中的真实公开列；
-- `line` 的 x 必须唯一且可稳定排序，y 必须为数值；只有空 Artifact blocked，点数不作为硬质量门槛；
-- `bar` 的 x 必须为唯一类别且 y 为数值，绝对量比较从零开始；只有空 Artifact blocked，类别数不作为硬质量门槛；
-- 不混合不同 grain 的行，不从字符串猜单位，不构造不存在的 denominator 或 sample size；
-- 不能静默抽样、聚合或 Top-N；Agent 可根据可读性自行选择更合适的 Marivo Artifact 或 table；
-- 图表标题必填；subtitle 可省略，但 Renderer 必须补充可用的单位、范围、行数和来源信息。
-
-这些规则只判断展示是否机械可用，不推荐业务结论。首版不支持 multi-series 或 waterfall；前者需要显式
-series identity 与非颜色区分，后者的 additive/reconciliation 准入比普通柱图更强，都应在单独 Slice 中
-基于对应 Artifact 公共契约加入。
-
-## 确定性 HTML Renderer
-
-Renderer 在 Node 服务端生成一个 `index.html`：
-
-- 只使用 semantic HTML、内联 CSS 和内联 SVG；
-- 不包含 script、iframe、form、远程 URL、外部字体或运行时依赖；
-- `text` 渲染转义后的段落和简单语义列表；
-- `line` 和 `bar` 生成固定 viewBox SVG，同时提供可展开的同源数据表；line 明确披露聚焦纵轴，
-  bar 类别较多或标签较长时改用横向条形，但不以点数或类别数阻断发布；
-- `table` 使用 `<table>`、`<caption>`、`<th scope>`，截断信息始终可见；
-- 普通 block 只渲染报告文本和显式 Artifact 投影，不展示 Finding 引用、Finding 技术审计或 evidence block；需要
-  Finding 来源面板时由独立的 `marivo_evidence_sources` 工具提供；
-- 每张图具有可见 title、用户语义 context subtitle、本地化日期/数值、SVG `<title>`/`<desc>` 和非颜色区分；
-- 提供答案优先的响应式单列 CSS、系统浅色/深色外观与 `@media print`；摘要只强调首个文本块，图表和表格
-  使用正文流加轻分隔线，不嵌套摘要底色或卡片容器；打印保留正文和图表，不自动展开原始审计 JSON。
-
-页面加入严格 CSP：
+目录结构保持三文件：
 
 ```text
-default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none';
-script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'
+$DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
+├── index.html
+├── report-document.json
+└── manifest.json
 ```
 
-## 产物与无状态发布
+`report-document.json` 保存归一化后的完整 v3 文档，包括 computed `columns + rows`。report identity 包含完整文档、环境
+fingerprint、Marivo version、renderer version 和统一 projection；computed 行/列变化一定改变 digest。当前版本为：
 
-默认根目录：
+- `dsh-data-analysis-html/v10`
+- `dsh-data-analysis-report-digest/v5`
+- `dsh-data-analysis-report-manifest/v5`
 
-```text
-$DSH_HOME/dsh-data-analysis/reports/
-└── <environment-fingerprint>/
-    └── <report-digest>/
-        ├── index.html
-        ├── report-document.json
-        └── manifest.json
-```
+manifest 的 `computed_data` 保存每个 computed source 的内容 hash；不加入未解析 Python 对象、handle、registry 或独立数据文件。
+相同输入复用已完整校验的目录；v2/v1 产物不迁移、不复用。Publisher 使用 staging、目录 `0700`、文件 `0600` 和最终 rename，
+不覆盖损坏目录。
 
-`report-digest` 覆盖 canonical ReportDocument v2、Environment fingerprint、显式 Artifact ref/content hash、
-Marivo version 和 renderer v9。相同输入可以复用已存在且 manifest 一致的目录；这只是内容寻址缓存，
-不是“当前 Report”状态。
+## 触发与交付
 
-发布流程为：在同一父目录建立随机 staging 目录，写入并复核三份文件，目录 mode `0700`、文件 mode
-`0600`，最后 rename 到 digest 目录。失败时删除 staging；不得覆盖已有 digest 目录，不维护 latest symlink、
-registry、数据库或 Session event。首版不做 GC，运维可按目录时间和容量独立清理不可变产物。
+`marivo-analysis` 激活不等于报告调用授权。普通分析、对话内表格和图表默认直接回答；只有用户明确请求耐久 HTML、接受
+Agent 提议，或要求修改本对话中生成的报告时才调用 Tool。每次修订都重新提交完整 v3 文档并生成新 digest。
 
-## 代码切片
+ready 结果通过标准 `tool/result.meta` 和 Code Mode 耐久 card 投影轻量交付信息。Web replay 不读取 HTML、不访问 Marivo、
+不依赖最终回答文字；用户点击后才调用 `host.openPath(path)`。旧版本、畸形、blocked 或失败结果不显示可打开报告卡片。
 
-### Slice 1：纯编译器
+## 验收与后续扩展
 
-状态：已实现。
+确定性测试必须覆盖：
 
-新增：
-
-```text
-packages/dsh-data-analysis/src/report/
-├── document.ts       # v1 类型、解析、bounds
-├── projection.ts     # checked Marivo bridge 与 JSON 校验
-├── visual.ts         # auto/line/bar admission
-├── render.ts         # escaped HTML/CSS/SVG
-├── publish.ts        # digest、mode、staging/rename
-├── tool.ts           # marivo_report_render
-└── index.ts
-```
-
-本 Slice 只通过 Tool 文本返回路径，不改客户端。完成条件是确定性 fixture 能生成可离线打开的 HTML。
-
-### Slice 2：Web 交付卡片
-
-状态：已实现。
-
-- `presentationMeta` 投影不可变报告摘要；
-- `client.tsx` 注册 `marivo_report_render` Tool View；
-- settled card 显示 title、disclosures、path 和“打开报告”；
-- 点击后调用 `host.openPath`，错误只留在卡片本地；
-- Session replay 从 meta 恢复同一张卡片，不访问文件或 Marivo。
-
-当前 Harness 要求 `presentationMeta` 对所有成功 Tool 值返回 lossless JSON，因此 ready 使用闭合的
-`marivo-html-report` v1 对象，blocked 使用 `null` 哨兵。Code Mode nested Tool 不计算 `presentationMeta`，
-插件通过 `tools/code-dispatch-log` 只向标准子调用事件的耐久日志副本追加同 shape card block，不改变程序 value
-或模型文本；客户端只把上述两种严格投影视为可打开报告。
-
-### Slice 3：真实环境验收
-
-当前状态：**外部门禁未完成**。`npm run validate:html-report-rendering:real` 已通过真实 Marivo 与
-`deepseek-v4-flash` 的模型 journey，并把 `0600` 记录与不可变报告写入
-`artifacts/html-report-rendering-real/<run-id>/`；本次记录为 `externalGates.web: not-run`，模型为 `passed`。
-外部 Web Agent、Host opener 和打印媒体验收尚未执行，因此本 Slice 不标记完成。
-
-此前 2026-08-27 的 Web/视觉阻断记录属于 v1 历史验收：当时 Web Agent toolset 没有
-`marivo_report_render`，且旧版 Evidence details 的打印行为未通过；该记录不代表当前 v2 报告契约。
-
-- 用当前绑定 Marivo 生成 MetricFrame fixture；
-- 生成 line、bar、table 三类 v2 block；Finding 来源改由独立 `marivo_evidence_sources` 工具验收；
-- 从 DSH Web 打开报告并检查桌面、窄屏和打印布局；
-- 运行真实 Agent 的首次生成、完整文档修改、blocked 后修复三条 journey；
-- 记录文档 shape 错误、重试次数和最终产物，不预设 token 成本结论。
-
-## 测试与验收
-
-新增仓库入口：
-
-```text
-npm run test:html-report-rendering
-npm run validate:html-report-rendering:real
-```
-
-真实 runner 默认模型为 `deepseek-v4-flash`，可通过 `DSH_DATA_ANALYSIS_VALIDATION_MODEL` 覆盖。它记录 Tool
-调用、blocked check/code、重试、时延、原始 token usage、最终路径和 digest，不记录凭证值或完整 Help 正文。
-真实模型结果只补充确定性测试；任何 Web、opener、打印或外部模型前置条件失败都必须保持 blocked。
-
-确定性测试至少覆盖：
-
-- ReportDocument 闭合 shape、全部 bounds、重复 ID 和未知字段拒绝；
-- Agent 第二次提交完整文档会产生独立 digest，编译器不读取第一次输入；
-- 显式 Artifact 批次原子读取、identity drift、stale/indeterminate revalidation，以及互不相关的 Artifact 不被
-  全局 Finding compatibility 误拒绝；
-- `auto` 的唯一映射与歧义拒绝，line/bar 字段、点数、类别数和零基线规则；
-- text/标题/单元格的 HTML escaping 与 CSP，无 script/remote URL；
-- 表格截断披露、图表同源 fallback table 和打印样式；
-- staging 失败不发布目录，相同 digest 幂等复用，不创建 latest/registry/state 文件；
-- Tool ready/blocked 文本、presentation meta、Web replay 与 `host.openPath` 失败视图；
-- Agent 面对普通分析、单指标查询、对话内图表以及明确 quick-answer/no-file 请求时不调用 Tool；
-- Agent 只在用户明确请求报告、接受报告提议或修改已有报告时调用 Tool，提议但未获接受时不调用；
+- v3 closed parser、v2/v1 拒绝、source exactly-one-of、重复 ID/ref、未知字段、行列匹配、非法数值/日期和 payload bounds；
+- computed-only 不要求 session_id 且不触发 bridge；mixed 只把 Artifact refs 传给 bridge；同一 computed source 复用 chart/table；
+- computed line/bar 的 x/y 推断、显式列选择、日期排序、数值校验、截断、fallback table 和来源说明；
+- computed 行或列变化改变 document/report digest，相同输入仍幂等复用；manifest 不产生 `report-data.json`；
+- HTML escaping、CSP、无 Python 代码/内部对象、无远程依赖，以及轻量 presentation metadata；
 - `npm run check`、`npm run build`、`npm run verify:plugin-package` 全部通过。
 
-当前 v2 验收标准（2026-08-28）：Parser 通过最小 v2 文档并明确拒绝 v1、`finding_ids` 和 `evidence` block；
-bridge 只接收显式 Artifact refs，不调用 Finding compatibility、Finding 读取、`Finding.render()` 或 backing
-Artifact 发现；多个互不相关 Artifact 可独立 revalidate；HTML 不包含 Evidence block、Finding 审计、Finding
-计数或 `dag-findings`，同时保留 Artifact/Job DAG、escaping、CSP、图表和表格；renderer 为 v9，digest/manifest
-为 v4，manifest 与 ready 结果不含 `finding_ids`，旧 v3 产物不复用；独立 `marivo_evidence_sources` 测试保持通过。
-确定性入口 `npm run test:html-report-rendering`、`npm run test:help-disclosure`、`npm run test:evidence-sources`、
-`npm run check`、`npm run build` 和 `npm run verify:plugin-package` 均须通过。真实 Web/模型门禁单独记录，不以
-本地确定性结果替代外部验收。
-
-历史 v1 验收标准（已废弃）：Agent 能自由改变章节与 block 顺序；插件不保存可变 Report 状态；每个数据 block 都绑定
-精确 Artifact；每个来源展示都绑定精确 Finding；HTML 在无网络、无 JavaScript 条件下可读、可打印，且任何引用、视觉
-或发布失败都不会留下被报告为 ready 的半成品。该条目不再作为当前实现准入。
-
-## 后续扩展门槛
-
-只有首版真实报告证明需求后才加入：
-
-- KPI block：需要 Marivo 提供稳定的 value presentation，而不是插件解析任意 Finding value；
-- waterfall/forecast/funnel：每种图单独映射对应 Artifact 公共契约并新增 admission tests；
-- Markdown：需要复用或引入经过 HTML 安全验证的 parser，不接受 raw HTML；
-- 声明式 custom chart：需要关闭 schema、无脚本 renderer 和独立视觉 QA；
-- Live report：需要新的授权读取与刷新接缝，不能把静态路径变成隐式当前状态；
-- 分享、下载、PDF 与 GC：分别设计权限、生命周期和失败恢复，不扩张本 MVP Tool。
+后续若要支持超大结果、跨调用复用、Python 执行证明、完整 lineage 或更多图表，应另行设计 host-owned materialization/handle
+契约，不把这些语义偷偷塞入当前 v3 inline JSON。

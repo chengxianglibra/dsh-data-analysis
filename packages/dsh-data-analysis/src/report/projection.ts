@@ -1,5 +1,5 @@
 import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { ReportIssueV2 } from './document.ts'
+import type { ReportComputedDataSource, ReportIssue } from './document.ts'
 
 export interface ReportArtifactColumn {
   readonly name: string
@@ -20,6 +20,14 @@ export interface ReportArtifactProjection {
   readonly contract: JsonValue
   readonly revalidation: JsonValue
   readonly lineage: JsonValue
+  readonly rows: readonly (readonly JsonValue[])[]
+}
+
+export interface ReportComputedProjection {
+  readonly id: string
+  readonly formatVersion: string
+  readonly shape: readonly [number, number]
+  readonly columns: readonly ReportArtifactColumn[]
   readonly rows: readonly (readonly JsonValue[])[]
 }
 
@@ -50,7 +58,7 @@ export interface ReportDagJobProjection {
   readonly outputArtifactRef: string
   readonly reusedArtifact: boolean
   readonly queries: readonly ReportDagQueryProjection[]
-  readonly queryIssues: readonly ReportIssueV2[]
+  readonly queryIssues: readonly ReportIssue[]
 }
 
 export type ReportDagArtifactStatus = 'ready' | 'unavailable' | 'boundary'
@@ -70,7 +78,7 @@ export interface ReportDagArtifactProjection {
   readonly previewRows: readonly (readonly JsonValue[])[]
   readonly totalRows: number | null
   readonly omittedRows: number | null
-  readonly issues: readonly ReportIssueV2[]
+  readonly issues: readonly ReportIssue[]
 }
 
 export interface ReportSessionDagProjection {
@@ -79,15 +87,50 @@ export interface ReportSessionDagProjection {
 }
 
 export interface ReportProjectionBundle {
-  readonly sessionId: string
+  readonly sessionId: string | null
   readonly artifacts: readonly ReportArtifactProjection[]
+  readonly computed: readonly ReportComputedProjection[]
   readonly sessionDag: ReportSessionDagProjection
+}
+
+function computedDtype(
+  type: ReportComputedDataSource['computed']['columns'][number]['type'],
+): string {
+  if (type === 'datetime') return 'datetime64[ns]'
+  return type
+}
+
+function computedRole(column: ReportComputedDataSource['computed']['columns'][number]): string {
+  if (column.role !== undefined) return column.role
+  if (column.type === 'datetime') return 'time'
+  if (column.type === 'number') return 'measure'
+  return 'dimension'
+}
+
+/** Convert a validated inline computed table into the projection shape shared by visuals. */
+export function createReportComputedProjection(
+  source: ReportComputedDataSource,
+): ReportComputedProjection {
+  const { computed } = source
+  return {
+    id: source.id,
+    formatVersion: computed.version,
+    shape: [computed.rows.length, computed.columns.length],
+    columns: computed.columns.map((column, index) => ({
+      name: column.name,
+      dtype: computedDtype(column.type),
+      nullable: column.nullable ?? computed.rows.some((row) => row[index] === null),
+      role: computedRole(column),
+      unit: column.unit ?? null,
+    })),
+    rows: computed.rows.map((row) => [...row]),
+  }
 }
 
 export interface ReportProjectionInspection {
   readonly ok: boolean
   readonly value: ReportProjectionBundle
-  readonly issues: readonly ReportIssueV2[]
+  readonly issues: readonly ReportIssue[]
   readonly omittedIssueCount: number
   readonly complete: boolean
   readonly globalFailure: boolean
@@ -155,7 +198,7 @@ function stringArray(value: unknown, location: string): string[] {
   return value.map((item, index) => string(item, `${location}[${index}]`))
 }
 
-function parseIssue(value: unknown, location: string): ReportIssueV2 {
+function parseIssue(value: unknown, location: string): ReportIssue {
   const source = object(value, location)
   exactKeys(source, ['code', 'location', 'message', 'repair'], location)
   return {
@@ -459,7 +502,7 @@ function parseSessionDag(value: unknown, location: string): ReportSessionDagProj
   return { jobs, artifacts }
 }
 
-function issueArray(value: unknown, location: string): ReportIssueV2[] {
+function issueArray(value: unknown, location: string): ReportIssue[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
     throw new TypeError(`${location} must contain between 1 and 100 issues`)
   }
@@ -473,7 +516,7 @@ function omittedCount(value: unknown, location: string): number {
 interface ParsedOutcome<T> {
   readonly ready: boolean
   readonly value?: T
-  readonly issues: readonly ReportIssueV2[]
+  readonly issues: readonly ReportIssue[]
   readonly omitted: number
 }
 
@@ -524,6 +567,7 @@ export function parseReportProjection(
       value: {
         sessionId: expected.sessionId,
         artifacts: [],
+        computed: [],
         sessionDag: { jobs: [], artifacts: [] },
       },
       issues: issueArray(source.issues, 'projection.issues'),
@@ -540,7 +584,7 @@ export function parseReportProjection(
     throw new TypeError('projection.session_id does not match the request')
   if (!Array.isArray(source.artifact_outcomes))
     throw new TypeError('projection.artifact_outcomes must be an array')
-  const issues: ReportIssueV2[] = []
+  const issues: ReportIssue[] = []
   let omitted = 0
   let complete = true
   if (source.artifact_outcomes.length !== expected.artifactRefs.length)
@@ -577,7 +621,7 @@ export function parseReportProjection(
   }
   return {
     ok: complete,
-    value: { sessionId: expected.sessionId, artifacts, sessionDag },
+    value: { sessionId: expected.sessionId, artifacts, computed: [], sessionDag },
     issues,
     omittedIssueCount: omitted,
     complete,

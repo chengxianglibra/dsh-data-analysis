@@ -5,16 +5,23 @@ import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-
 import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
 import {
+  COMPUTED_DATA_VERSION,
   parseReportDocument,
   type ReportBlockedStage,
-  type ReportBlockedValueV2,
+  type ReportBlockedValue,
+  type ReportCheck,
   type ReportCheckStatus,
-  type ReportCheckV2,
+  type ReportComputedDataSource,
   type ReportDocumentInspection,
-  type ReportIssueV2,
-  type ReportRenderValueV2,
+  type ReportIssue,
+  type ReportRenderValue,
 } from './document.ts'
-import { parseReportProjection, type ReportProjectionInspection } from './projection.ts'
+import {
+  createReportComputedProjection,
+  parseReportProjection,
+  type ReportProjectionBundle,
+  type ReportProjectionInspection,
+} from './projection.ts'
 import { publishReport } from './publish.ts'
 import { compileReportVisuals, preflightReportVisuals } from './visual.ts'
 
@@ -24,7 +31,7 @@ export const REPORT_PRESENTATION_META_VERSION = 1
 export const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
 
 const REPORT_DOCUMENT_MINIMAL_JSON =
-  '{"version":"dsh-data-analysis-report/v2","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
+  '{"version":"dsh-data-analysis-report/v3","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
 
 export interface ReportPresentationMetaV1 {
   readonly [key: string]: JsonValue
@@ -82,11 +89,11 @@ const chartBlockSchema = {
       description:
         'Optional reader-facing unit, scope, denominator, time window, comparison basis, or short interpretation. Do not use raw Artifact refs or implementation field names.',
     },
-    artifact_ref: {
+    data_ref: {
       type: 'string',
       required: true,
       description:
-        'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
+        'Exact ID of a data source declared in document.data. The source may be an Artifact or an inline computed table.',
     },
     view: {
       type: 'string',
@@ -98,12 +105,12 @@ const chartBlockSchema = {
     x: {
       type: 'string',
       description:
-        'Exact public Artifact column name. Line requires a time or ordered numeric dimension; bar requires a categorical dimension. Point/category counts are not hard quality gates.',
+        'Exact public data source column name. Line requires a time or ordered numeric dimension; bar requires a categorical dimension. Point/category counts are not hard quality gates.',
     },
     y: {
       type: 'string',
       description:
-        'Exact public numeric Artifact column name. The renderer does not aggregate, sample, apply Top-N, or combine additional grain.',
+        'Exact public numeric data source column name. The renderer does not aggregate, sample, apply Top-N, or combine additional grain.',
     },
   },
 } as const
@@ -124,17 +131,17 @@ const tableBlockSchema = {
       description:
         'Neutral reader-facing table label. Explain the takeaway and implication in an adjacent text block.',
     },
-    artifact_ref: {
+    data_ref: {
       type: 'string',
       required: true,
       description:
-        'Exact canonical ref of an admissible Artifact in session_id; the Artifact must expose projected rows and a public artifact_schema.',
+        'Exact ID of a data source declared in document.data. The source may be an Artifact or an inline computed table.',
     },
     columns: {
       type: 'array',
       items: { type: 'string' },
       description:
-        'Optional list of one to 100 unique exact public Artifact column names. Omit it to use all public columns in contract order.',
+        'Optional list of one to 100 unique exact data source column names. Omit it to use all columns in contract order.',
     },
     max_rows: {
       type: 'integer',
@@ -145,19 +152,87 @@ const tableBlockSchema = {
   },
 } as const
 
+const artifactDataSourceSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    id: {
+      type: 'string',
+      required: true,
+      description: 'Unique lowercase ASCII kebab-case data source ID.',
+    },
+    artifact_ref: {
+      type: 'string',
+      required: true,
+      description: 'Exact canonical Artifact ref in session_id.',
+    },
+  },
+} as const
+
+const computedColumnSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    name: { type: 'string', required: true },
+    type: {
+      type: 'string',
+      enum: ['string', 'number', 'boolean', 'datetime'],
+      required: true,
+    },
+    role: { type: 'string', enum: ['time', 'dimension', 'measure', 'value'] },
+    unit: { type: 'string' },
+    nullable: { type: 'boolean' },
+  },
+} as const
+
+const computedDataSourceSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    id: {
+      type: 'string',
+      required: true,
+      description: 'Unique lowercase ASCII kebab-case data source ID.',
+    },
+    computed: {
+      type: 'object',
+      additionalProperties: false,
+      required: true,
+      properties: {
+        version: { type: 'string', const: COMPUTED_DATA_VERSION, required: true },
+        columns: {
+          type: 'array',
+          required: true,
+          items: { ...computedColumnSchema },
+          description: 'One descriptor per returned column, at most 100 columns.',
+        },
+        rows: {
+          type: 'array',
+          required: true,
+          items: { type: 'array', items: { type: 'json' } },
+          description: 'Scalar JSON rows with the same width as columns, at most 2000 rows.',
+        },
+      },
+    },
+  },
+} as const
+
+const dataSourceSchema = { oneOf: [artifactDataSourceSchema, computedDataSourceSchema] } as const
+
 const documentSchema = {
   type: 'object',
   additionalProperties: false,
   description: [
-    'One complete immutable ReportDocument v2. Revisions submit another complete document.',
+    'One complete immutable ReportDocument v3. Revisions submit another complete document.',
     'Use the report locale throughout. For stakeholder reports, order sections as answer-first summary, conclusions with adjacent visual interpretation, next steps, further questions, and caveats.',
-    'Use text for narrative conclusions and chart/table blocks for explicit Artifact-backed data; persisted source provenance belongs to the separate marivo_evidence_sources Tool.',
+    'Use text for narrative conclusions and chart/table blocks. Register each Artifact or computed result once in data, then reference it with data_ref.',
+    'Python results must be converted to dsh-computed-data/v1 with columns and scalar JSON rows. Computed data is an immutable caller-provided snapshot, not a Marivo Artifact.',
     `Minimal valid JSON: ${REPORT_DOCUMENT_MINIMAL_JSON}.`,
     'document.blocks is invalid; blocks must be nested under document.sections[].blocks.',
-    'Provide 1-20 sections with 1-20 blocks each and at most 100 blocks total; reference at most 20 unique explicit Artifacts across the document.',
+    'Provide 1-20 sections with 1-20 blocks each, at most 100 blocks total, and at most 20 data sources.',
   ].join(' '),
   properties: {
-    version: { type: 'string', const: 'dsh-data-analysis-report/v2', required: true },
+    version: { type: 'string', const: 'dsh-data-analysis-report/v3', required: true },
     title: {
       type: 'string',
       required: true,
@@ -168,6 +243,11 @@ const documentSchema = {
       description: 'Optional non-empty report subtitle of at most 200 Unicode characters.',
     },
     locale: { type: 'string', enum: ['zh-CN', 'en-US'], required: true },
+    data: {
+      type: 'array',
+      items: dataSourceSchema,
+      description: 'Optional catalog of up to 20 Artifact or computed data sources.',
+    },
     sections: {
       type: 'array',
       required: true,
@@ -212,7 +292,7 @@ const checkSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    stage: { type: 'string', enum: ['document', 'marivo', 'visual', 'publish'], required: true },
+    stage: { type: 'string', enum: ['document', 'source', 'visual', 'publish'], required: true },
     status: { type: 'string', enum: ['passed', 'failed', 'partial', 'skipped'], required: true },
     issues: { type: 'array', items: issueSchema, required: true },
     omitted_issue_count: { type: 'integer', required: true },
@@ -232,6 +312,8 @@ const outputSchema = {
         report_digest: { type: 'string', required: true },
         document_digest: { type: 'string', required: true },
         artifact_refs: { type: 'array', items: { type: 'string' }, required: true },
+        data_refs: { type: 'array', items: { type: 'string' }, required: true },
+        computed_data_refs: { type: 'array', items: { type: 'string' }, required: true },
         disclosures: { type: 'array', items: { type: 'string' }, required: true },
       },
     },
@@ -244,7 +326,7 @@ const outputSchema = {
           type: 'array',
           items: checkSchema,
           required: true,
-          description: 'Exactly document, marivo, visual, and publish checks in that order.',
+          description: 'Exactly document, source, visual, and publish checks in that order.',
         },
       },
     },
@@ -255,13 +337,13 @@ function recoverableReportArguments(value: unknown): value is Record<string, unk
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function attributeMarivoIssues(
-  issues: readonly ReportIssueV2[],
+function attributeSourceIssues(
+  issues: readonly ReportIssue[],
   inspection: ReportDocumentInspection,
   projection: ReportProjectionInspection,
-): ReportIssueV2[] {
-  const attributed: ReportIssueV2[] = []
-  const addAtLocations = (item: ReportIssueV2, locations: readonly string[]): void => {
+): ReportIssue[] {
+  const attributed: ReportIssue[] = []
+  const addAtLocations = (item: ReportIssue, locations: readonly string[]): void => {
     if (locations.length === 0) attributed.push({ ...item })
     else for (const location of locations) attributed.push({ ...item, location })
   }
@@ -285,14 +367,14 @@ function attributeMarivoIssues(
   return attributed
 }
 
-const REPORT_STAGES = ['document', 'marivo', 'visual', 'publish'] as const
+const REPORT_STAGES = ['document', 'source', 'visual', 'publish'] as const
 const MAX_STAGE_ISSUES = 100
 
 function normalizedIssues(
-  issues: readonly ReportIssueV2[],
+  issues: readonly ReportIssue[],
   alreadyOmitted = 0,
-): { issues: ReportIssueV2[]; omitted: number } {
-  const unique = new Map<string, ReportIssueV2>()
+): { issues: ReportIssue[]; omitted: number } {
+  const unique = new Map<string, ReportIssue>()
   for (const item of issues) {
     const key = JSON.stringify([item.location, item.code, item.message, item.repair])
     if (!unique.has(key)) unique.set(key, { ...item })
@@ -313,9 +395,9 @@ function normalizedIssues(
 function reportCheck(
   stage: ReportBlockedStage,
   status: ReportCheckStatus,
-  issues: readonly ReportIssueV2[] = [],
+  issues: readonly ReportIssue[] = [],
   options: { readonly omitted?: number; readonly reason?: string } = {},
-): ReportCheckV2 {
+): ReportCheck {
   const normalized = normalizedIssues(issues, options.omitted)
   const reason = options.reason?.trim()
   if ((status === 'partial' || status === 'skipped') && !reason) {
@@ -336,16 +418,16 @@ function reportCheck(
   }
 }
 
-function blockedChecks(checks: readonly ReportCheckV2[]): ReportBlockedValueV2 {
+function blockedChecks(checks: readonly ReportCheck[]): ReportBlockedValue {
   if (
     checks.length !== REPORT_STAGES.length ||
     checks.some((check, index) => check.stage !== REPORT_STAGES[index])
   )
     throw new TypeError('blocked report checks must use the fixed stage order')
-  return { status: 'blocked', checks: [...checks] as ReportBlockedValueV2['checks'] }
+  return { status: 'blocked', checks: [...checks] as ReportBlockedValue['checks'] }
 }
 
-export function renderReportToolValue(value: ReportRenderValueV2): string {
+export function renderReportToolValue(value: ReportRenderValue): string {
   if (value.status === 'blocked') {
     return [
       'HTML report rendering is blocked after best-effort preflight.',
@@ -358,7 +440,7 @@ export function renderReportToolValue(value: ReportRenderValueV2): string {
           ? []
           : [`  Omitted ${check.omitted_issue_count} additional issue(s).`]),
       ]),
-      'Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ReportDocument v2. Never submit document.blocks alone.',
+      'Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ReportDocument v3. Never submit document.blocks alone.',
       `Minimal valid document: ${REPORT_DOCUMENT_MINIMAL_JSON}`,
     ].join('\n')
   }
@@ -372,9 +454,7 @@ export function renderReportToolValue(value: ReportRenderValueV2): string {
 }
 
 /** Project the replay-only report card summary without copying analytical payloads. */
-export function reportPresentationMeta(
-  value: ReportRenderValueV2,
-): ReportPresentationMetaV1 | null {
+export function reportPresentationMeta(value: ReportRenderValue): ReportPresentationMetaV1 | null {
   if (value.status !== 'ready') return null
   return {
     kind: REPORT_PRESENTATION_META_KIND,
@@ -416,7 +496,7 @@ export function installMarivoReportCodeDelivery(ctx: Context): () => void {
   const stopResult = ctx.on('tools/result', (exec, result) => {
     if (exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME || exec.parent === undefined || result.isError)
       return
-    const meta = reportPresentationMeta(result.value as unknown as ReportRenderValueV2)
+    const meta = reportPresentationMeta(result.value as unknown as ReportRenderValue)
     if (meta !== null) pending.set(String(exec.callId), meta)
   })
   const stopDispatchLog = ctx.on(
@@ -458,7 +538,7 @@ export function createMarivoReportRenderTool(
   const executeReport = async (
     args: Record<string, unknown>,
     exec: ToolRunContext,
-  ): Promise<ReportRenderValueV2> => {
+  ): Promise<ReportRenderValue> => {
     exec.signal.throwIfAborted()
     const parsed = parseReportDocument(args.document)
     const documentIssues = parsed.ok ? [] : [...parsed.issues]
@@ -469,16 +549,26 @@ export function createMarivoReportRenderTool(
       [...rawSessionId].length <= 512
         ? rawSessionId
         : undefined
-    if (sessionId === undefined) {
+    const invalidSessionId = rawSessionId !== undefined && sessionId === undefined
+    if (invalidSessionId) {
       documentIssues.push({
         code: 'invalid-session-id',
         location: 'session_id',
         message: 'session_id must be a non-empty string of at most 512 Unicode characters.',
         repair: 'Use the exact bounded Marivo Session ID and retry the complete document.',
       })
+    }
+    if (parsed.inspection.artifactRefs.length > 0 && sessionId === undefined) {
+      if (!invalidSessionId)
+        documentIssues.push({
+          code: 'invalid-session-id',
+          location: 'session_id',
+          message: 'session_id must be a non-empty string of at most 512 Unicode characters.',
+          repair: 'Use the exact bounded Marivo Session ID and retry the complete document.',
+        })
       return blockedChecks([
         reportCheck('document', 'failed', documentIssues),
-        reportCheck('marivo', 'skipped', [], {
+        reportCheck('source', 'skipped', [], {
           reason: 'A valid session_id is required before Marivo checks can run.',
         }),
         reportCheck('visual', 'skipped', [], {
@@ -491,77 +581,108 @@ export function createMarivoReportRenderTool(
     }
     const environment = await resolveMarivoEnvironmentSource(environmentSource)
     exec.signal.throwIfAborted()
-    const child = await environment.runCheckedReportProjection(
-      sessionId,
-      parsed.inspection.artifactRefs,
-      REPORT_LIMITS,
-      exec.signal,
-    )
-    exec.signal.throwIfAborted()
-    if (child.exitCode !== 0) {
-      throw new MarivoEnvironmentError(
-        'subprocess-failed',
-        `Marivo report projection failed with exit code ${String(child.exitCode)}`,
-        { exitCode: child.exitCode, stderr: child.stderr.toString('utf8').slice(0, 2_000) },
-      )
-    }
-    let projection: ReportProjectionInspection
-    try {
-      projection = parseReportProjection(child.stdout, {
+    const computed = parsed.ok
+      ? (parsed.value.document.data ?? [])
+          .filter((source): source is ReportComputedDataSource => 'computed' in source)
+          .map(createReportComputedProjection)
+      : []
+    let projection: ReportProjectionInspection | undefined
+    let projectionBundle: ReportProjectionBundle
+    if (parsed.inspection.artifactRefs.length === 0) {
+      projectionBundle = {
+        sessionId: null,
+        artifacts: [],
+        computed,
+        sessionDag: { jobs: [], artifacts: [] },
+      }
+    } else {
+      if (sessionId === undefined) throw new Error('session_id was validated before projection')
+      const child = await environment.runCheckedReportProjection(
         sessionId,
-        artifactRefs: parsed.inspection.artifactRefs,
-      })
-    } catch (cause) {
-      throw new MarivoEnvironmentError(
-        'subprocess-failed',
-        'Marivo report projection returned an invalid payload',
-        { stdoutBytes: child.stdout.byteLength },
-        { cause },
+        parsed.inspection.artifactRefs,
+        REPORT_LIMITS,
+        exec.signal,
       )
+      exec.signal.throwIfAborted()
+      if (child.exitCode !== 0) {
+        throw new MarivoEnvironmentError(
+          'subprocess-failed',
+          `Marivo report projection failed with exit code ${String(child.exitCode)}`,
+          { exitCode: child.exitCode, stderr: child.stderr.toString('utf8').slice(0, 2_000) },
+        )
+      }
+      try {
+        const checkedProjection = parseReportProjection(child.stdout, {
+          sessionId,
+          artifactRefs: parsed.inspection.artifactRefs,
+        })
+        projection = checkedProjection
+        projectionBundle = { ...checkedProjection.value, computed }
+      } catch (cause) {
+        throw new MarivoEnvironmentError(
+          'subprocess-failed',
+          'Marivo report projection returned an invalid payload',
+          { stdoutBytes: child.stdout.byteLength },
+          { cause },
+        )
+      }
     }
     const documentCheck = reportCheck(
       'document',
       documentIssues.length === 0 ? 'passed' : 'failed',
       documentIssues,
     )
-    const marivoIssues = attributeMarivoIssues(projection.issues, parsed.inspection, projection)
-    const marivoStatus: ReportCheckStatus = projection.globalFailure
-      ? 'failed'
-      : parsed.inspection.skippedMarivoTargets > 0
-        ? 'partial'
-        : marivoIssues.length > 0 || projection.omittedIssueCount > 0
-          ? 'failed'
-          : 'passed'
-    const marivoCheck = reportCheck('marivo', marivoStatus, marivoIssues, {
-      omitted: projection.omittedIssueCount,
-      ...(marivoStatus === 'partial'
+    const sourceIssues =
+      projection === undefined
+        ? []
+        : attributeSourceIssues(projection.issues, parsed.inspection, projection)
+    const sourceStatus: ReportCheckStatus =
+      projection?.globalFailure === true
+        ? 'failed'
+        : parsed.inspection.skippedDataTargets > 0
+          ? 'partial'
+          : sourceIssues.length > 0 || (projection?.omittedIssueCount ?? 0) > 0
+            ? 'failed'
+            : parsed.ok
+              ? 'passed'
+              : 'skipped'
+    const sourceCheck = reportCheck('source', sourceStatus, sourceIssues, {
+      omitted: projection?.omittedIssueCount ?? 0,
+      ...(sourceStatus === 'partial'
         ? {
-            reason: `${parsed.inspection.skippedMarivoTargets} malformed document target(s) could not be safely sent to Marivo.`,
+            reason: `${parsed.inspection.skippedDataTargets} malformed data target(s) could not be safely rendered.`,
           }
-        : {}),
+        : sourceStatus === 'skipped'
+          ? { reason: 'Source checks require a valid ReportDocument.' }
+          : {}),
     })
 
     const visualPreflight = preflightReportVisuals(
       parsed.inspection.visualCandidates,
-      projection.value,
+      parsed.ok
+        ? parsed.value.document
+        : { version: 'dsh-data-analysis-report/v3', title: '', locale: 'en-US', sections: [] },
+      projectionBundle,
     )
     const skippedVisualTargets =
       parsed.inspection.skippedVisualTargets + visualPreflight.skippedCount
-    const visualStatus: ReportCheckStatus = projection.globalFailure
-      ? 'skipped'
-      : skippedVisualTargets > 0
-        ? visualPreflight.checkedCount === 0
-          ? 'skipped'
-          : 'partial'
-        : visualPreflight.issues.length > 0
-          ? 'failed'
-          : 'passed'
+    const visualStatus: ReportCheckStatus =
+      projection?.globalFailure === true
+        ? 'skipped'
+        : skippedVisualTargets > 0
+          ? visualPreflight.checkedCount === 0
+            ? 'skipped'
+            : 'partial'
+          : visualPreflight.issues.length > 0
+            ? 'failed'
+            : 'passed'
     const visualCheck = reportCheck('visual', visualStatus, visualPreflight.issues, {
       ...(visualStatus === 'partial' || visualStatus === 'skipped'
         ? {
-            reason: projection.globalFailure
-              ? 'Visual checks require a successfully resumed Marivo Session.'
-              : `${skippedVisualTargets} visual target(s) depended on invalid document fields or unavailable Artifact projections.`,
+            reason:
+              projection?.globalFailure === true
+                ? 'Visual checks require a successfully resumed Marivo Session.'
+                : `${skippedVisualTargets} visual target(s) depended on invalid document fields or unavailable data projections.`,
           }
         : {}),
     })
@@ -570,22 +691,22 @@ export function createMarivoReportRenderTool(
     })
     if (
       documentCheck.status !== 'passed' ||
-      marivoCheck.status !== 'passed' ||
+      sourceCheck.status !== 'passed' ||
       visualCheck.status !== 'passed'
     ) {
-      return blockedChecks([documentCheck, marivoCheck, visualCheck, publishSkipped])
+      return blockedChecks([documentCheck, sourceCheck, visualCheck, publishSkipped])
     }
-    if (!parsed.ok || !projection.complete) {
+    if (!parsed.ok || (projection !== undefined && !projection.complete)) {
       throw new MarivoEnvironmentError(
         'subprocess-failed',
         'Report preflight passed without a complete document and projection',
       )
     }
-    const compiled = compileReportVisuals(parsed.value.document, projection.value)
+    const compiled = compileReportVisuals(parsed.value.document, projectionBundle)
     if (!compiled.ok) {
       return blockedChecks([
         documentCheck,
-        marivoCheck,
+        sourceCheck,
         reportCheck('visual', 'failed', compiled.issues),
         publishSkipped,
       ])
@@ -600,7 +721,7 @@ export function createMarivoReportRenderTool(
     if (!published.ok) {
       return blockedChecks([
         documentCheck,
-        marivoCheck,
+        sourceCheck,
         visualCheck,
         reportCheck('publish', 'failed', published.issues),
       ])
@@ -609,6 +730,12 @@ export function createMarivoReportRenderTool(
       parsed.value.document.locale === 'zh-CN'
         ? 'Artifact admissible 不等于 datasource fresh。'
         : 'Artifact admissible does not mean datasource fresh.'
+    const computedDisclosure =
+      parsed.value.computedDataRefs.length > 0
+        ? parsed.value.document.locale === 'zh-CN'
+          ? 'computed 数据是调用方提供的结果快照，不声明 Python 执行证明、数据新鲜度或 Marivo lineage。'
+          : 'Computed data is a caller-provided result snapshot; it does not attest Python execution, freshness, or Marivo lineage.'
+        : undefined
     return {
       status: 'ready',
       title: parsed.value.document.title,
@@ -616,32 +743,37 @@ export function createMarivoReportRenderTool(
       report_digest: published.reportDigest,
       document_digest: published.documentDigest,
       artifact_refs: [...parsed.value.artifactRefs],
-      disclosures: [...compiled.value.disclosures, freshness],
+      data_refs: [...parsed.value.dataRefs],
+      computed_data_refs: [...parsed.value.computedDataRefs],
+      disclosures: [
+        ...compiled.value.disclosures,
+        ...(parsed.value.artifactRefs.length === 0 ? [] : [freshness]),
+        ...(computedDisclosure === undefined ? [] : [computedDisclosure]),
+      ],
     }
   }
 
   const tool = defineTool({
     name: MARIVO_REPORT_RENDER_TOOL_NAME,
     description: [
-      'DSH data-analysis plugin Tool that renders a new immutable HTML report from one Marivo analysis Session.',
+      'DSH data-analysis plugin Tool that renders a new immutable HTML report from registered Artifact or computed data sources.',
       'Use this live Tool schema as the exact report input contract; this Tool is not a marivo.help target, so do not call marivo_help for its contract.',
       'Call it only after the user requests or accepts a durable report deliverable, never for ordinary inline analysis.',
     ].join(' '),
     parameters: {
       session_id: {
         type: 'string',
-        required: true,
         description:
-          'Exact non-empty Marivo analysis Session ID, at most 512 Unicode characters, containing every referenced Artifact.',
+          'Required only when document.data contains an Artifact source: exact non-empty Marivo analysis Session ID, at most 512 Unicode characters.',
       },
       document: { ...documentSchema, required: true },
     },
     output: {
       schema: outputSchema,
       render: (_args, value) => [
-        { type: 'text', text: renderReportToolValue(value as ReportRenderValueV2) },
+        { type: 'text', text: renderReportToolValue(value as ReportRenderValue) },
       ],
-      presentationMeta: (_args, value) => reportPresentationMeta(value as ReportRenderValueV2),
+      presentationMeta: (_args, value) => reportPresentationMeta(value as ReportRenderValue),
     },
     timeoutMs: 135_000,
     execute: executeReport as never,

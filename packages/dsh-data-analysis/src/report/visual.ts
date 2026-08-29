@@ -1,22 +1,32 @@
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { type CompiledSessionDag, compileSessionDag } from './dag.ts'
 import type {
-  ChartBlockV2,
-  ReportDocumentV2,
-  ReportIssueV2,
+  ChartBlock,
+  ReportDocument,
+  ReportIssue,
   ReportVisualCandidate,
-  TableBlockV2,
+  TableBlock,
 } from './document.ts'
 import type {
   ReportArtifactColumn,
   ReportArtifactProjection,
+  ReportComputedProjection,
   ReportProjectionBundle,
 } from './projection.ts'
 import { reportTimeEpoch } from './time.ts'
 
+export interface ReportDisplayDataset {
+  readonly id: string
+  readonly kind: 'artifact' | 'computed'
+  readonly columns: readonly ReportArtifactColumn[]
+  readonly rows: readonly (readonly JsonValue[])[]
+  readonly artifact?: ReportArtifactProjection
+  readonly computed?: ReportComputedProjection
+}
+
 export interface CompiledChartBlock {
-  readonly block: ChartBlockV2
-  readonly artifact: ReportArtifactProjection
+  readonly block: ChartBlock
+  readonly dataset: ReportDisplayDataset
   readonly view: 'line' | 'bar'
   readonly x: string
   readonly y: string
@@ -24,8 +34,8 @@ export interface CompiledChartBlock {
 }
 
 export interface CompiledTableBlock {
-  readonly block: TableBlockV2
-  readonly artifact: ReportArtifactProjection
+  readonly block: TableBlock
+  readonly dataset: ReportDisplayDataset
   readonly columns: readonly string[]
   readonly rows: readonly (readonly JsonValue[])[]
   readonly totalRows: number
@@ -33,7 +43,7 @@ export interface CompiledTableBlock {
 }
 
 export interface CompiledReport {
-  readonly document: ReportDocumentV2
+  readonly document: ReportDocument
   readonly projection: ReportProjectionBundle
   readonly charts: ReadonlyMap<string, CompiledChartBlock>
   readonly tables: ReadonlyMap<string, CompiledTableBlock>
@@ -43,20 +53,15 @@ export interface CompiledReport {
 
 export type CompileVisualResult =
   | { readonly ok: true; readonly value: CompiledReport }
-  | { readonly ok: false; readonly issues: readonly ReportIssueV2[] }
+  | { readonly ok: false; readonly issues: readonly ReportIssue[] }
 
 export interface ReportVisualPreflight {
-  readonly issues: readonly ReportIssueV2[]
+  readonly issues: readonly ReportIssue[]
   readonly checkedCount: number
   readonly skippedCount: number
 }
 
-function reportIssue(
-  code: string,
-  location: string,
-  message: string,
-  repair: string,
-): ReportIssueV2 {
+function reportIssue(code: string, location: string, message: string, repair: string): ReportIssue {
   return { code, location, message, repair }
 }
 
@@ -76,8 +81,8 @@ function measure(column: ReportArtifactColumn): boolean {
   return (column.role === 'value' || column.role === 'measure') && numeric(column)
 }
 
-function columnIndex(artifact: ReportArtifactProjection, name: string): number {
-  return artifact.columns.findIndex((column) => column.name === name)
+function columnIndex(dataset: ReportDisplayDataset, name: string): number {
+  return dataset.columns.findIndex((column) => column.name === name)
 }
 
 function comparableKey(value: JsonValue): string {
@@ -85,26 +90,26 @@ function comparableKey(value: JsonValue): string {
 }
 
 function sortedPoints(
-  artifact: ReportArtifactProjection,
+  dataset: ReportDisplayDataset,
   view: 'line' | 'bar',
   xColumn: ReportArtifactColumn,
   xIndex: number,
   yIndex: number,
   location: string,
-  issues: ReportIssueV2[],
+  issues: ReportIssue[],
 ): { x: JsonValue; y: number }[] | undefined {
   const points: { x: JsonValue; y: number; order?: number }[] = []
   const seen = new Set<string>()
-  for (const [rowIndex, row] of artifact.rows.entries()) {
+  for (const [rowIndex, row] of dataset.rows.entries()) {
     const x = row[xIndex]
     const y = row[yIndex]
     if (x === undefined || x === null || typeof x === 'object') {
       issues.push(
         reportIssue(
           'invalid-chart-x',
-          `${location}.artifact_ref`,
+          `${location}.data_ref`,
           `Chart x contains an empty or structured value at row ${rowIndex}.`,
-          'Produce an Artifact with complete scalar x values.',
+          'Produce a data source with complete scalar x values.',
         ),
       )
       return undefined
@@ -113,9 +118,9 @@ function sortedPoints(
       issues.push(
         reportIssue(
           'invalid-chart-y',
-          `${location}.artifact_ref`,
+          `${location}.data_ref`,
           `Chart y contains a non-finite numeric value at row ${rowIndex}.`,
-          'Produce an Artifact with complete finite numeric y values.',
+          'Produce a data source with complete finite numeric y values.',
         ),
       )
       return undefined
@@ -128,9 +133,9 @@ function sortedPoints(
         issues.push(
           reportIssue(
             'invalid-chart-x',
-            `${location}.artifact_ref`,
+            `${location}.data_ref`,
             `Chart time x contains an invalid ISO date/time at row ${rowIndex}.`,
-            'Produce an Artifact with complete ISO date/time x values.',
+            'Produce a data source with complete ISO date/time x values.',
           ),
         )
         return undefined
@@ -141,9 +146,9 @@ function sortedPoints(
         issues.push(
           reportIssue(
             'invalid-chart-x',
-            `${location}.artifact_ref`,
+            `${location}.data_ref`,
             `Chart ordered x contains a non-finite numeric value at row ${rowIndex}.`,
-            'Produce an Artifact with complete finite numeric x values.',
+            'Produce a data source with complete finite numeric x values.',
           ),
         )
         return undefined
@@ -155,9 +160,9 @@ function sortedPoints(
       issues.push(
         reportIssue(
           'duplicate-chart-x',
-          `${location}.artifact_ref`,
+          `${location}.data_ref`,
           `Chart x value ${String(x)} is not unique.`,
-          'Produce an Artifact at one row per x value; the renderer will not aggregate rows.',
+          'Produce one row per x value; the renderer will not aggregate rows.',
         ),
       )
       return undefined
@@ -169,28 +174,28 @@ function sortedPoints(
   return points.map(({ x, y }) => ({ x, y }))
 }
 
-function mixedGrain(artifact: ReportArtifactProjection, x: string): string | undefined {
-  for (const [index, column] of artifact.columns.entries()) {
+function mixedGrain(dataset: ReportDisplayDataset, x: string): string | undefined {
+  for (const [index, column] of dataset.columns.entries()) {
     if (column.name === x || (column.role !== 'time' && column.role !== 'dimension')) continue
-    const values = new Set(artifact.rows.map((row) => comparableKey(row[index] ?? null)))
+    const values = new Set(dataset.rows.map((row) => comparableKey(row[index] ?? null)))
     if (values.size > 1) return column.name
   }
   return undefined
 }
 
 function compileChart(
-  block: ChartBlockV2,
-  artifact: ReportArtifactProjection,
+  block: ChartBlock,
+  dataset: ReportDisplayDataset,
   location: string,
-  issues: ReportIssueV2[],
+  issues: ReportIssue[],
 ): CompiledChartBlock | undefined {
   let view: 'line' | 'bar' | undefined
   let x: string | undefined = block.x
   let y: string | undefined = block.y
   if (block.view === 'auto') {
-    const lineX = artifact.columns.filter(ordered)
-    const barX = artifact.columns.filter(category)
-    const values = artifact.columns.filter(measure)
+    const lineX = dataset.columns.filter(ordered)
+    const barX = dataset.columns.filter(category)
+    const values = dataset.columns.filter(measure)
     const line = lineX.length === 1 && values.length === 1
     const bar = barX.length === 1 && values.length === 1
     if (line === bar) {
@@ -198,7 +203,7 @@ function compileChart(
         reportIssue(
           'auto-chart-ambiguous',
           `${location}.view`,
-          'auto could not select one unique line or bar mapping from the Artifact contract.',
+          'auto could not select one unique line or bar mapping from the data source contract.',
           'Specify view, x, and y explicitly, or use a table block.',
         ),
       )
@@ -211,8 +216,8 @@ function compileChart(
     view = block.view
   }
   if (x === undefined || y === undefined || view === undefined) return undefined
-  const xIndex = columnIndex(artifact, x)
-  const yIndex = columnIndex(artifact, y)
+  const xIndex = columnIndex(dataset, x)
+  const yIndex = columnIndex(dataset, y)
   if (xIndex < 0 || yIndex < 0) {
     const missing = [xIndex < 0 ? x : undefined, yIndex < 0 ? y : undefined]
       .filter(Boolean)
@@ -221,21 +226,21 @@ function compileChart(
       reportIssue(
         'chart-column-not-found',
         location,
-        `Chart columns are not public Artifact columns: ${missing}.`,
-        'Use exact names from artifact.contract().artifact_schema.columns.',
+        `Chart columns are not public data source columns: ${missing}.`,
+        'Use exact names from the data source columns.',
       ),
     )
     return undefined
   }
-  const xColumn = artifact.columns[xIndex]
-  const yColumn = artifact.columns[yIndex]
+  const xColumn = dataset.columns[xIndex]
+  const yColumn = dataset.columns[yIndex]
   if (xColumn === undefined || yColumn === undefined || !numeric(yColumn)) {
     issues.push(
       reportIssue(
         'chart-y-not-numeric',
         `${location}.y`,
         `Chart y column ${JSON.stringify(y)} is not numeric.`,
-        'Choose a numeric public Artifact column.',
+        'Choose a numeric data source column.',
       ),
     )
     return undefined
@@ -262,118 +267,150 @@ function compileChart(
     )
     return undefined
   }
-  const grain = mixedGrain(artifact, x)
+  const grain = mixedGrain(dataset, x)
   if (grain !== undefined) {
     issues.push(
       reportIssue(
         'mixed-chart-grain',
-        `${location}.artifact_ref`,
-        `Artifact varies across additional grain column ${JSON.stringify(grain)}.`,
-        'Produce an Artifact with one grain for the selected x/y chart.',
+        `${location}.data_ref`,
+        `Data source varies across additional grain column ${JSON.stringify(grain)}.`,
+        'Produce one row per selected x/y chart grain.',
       ),
     )
     return undefined
   }
-  const points = sortedPoints(artifact, view, xColumn, xIndex, yIndex, location, issues)
+  const points = sortedPoints(dataset, view, xColumn, xIndex, yIndex, location, issues)
   if (points === undefined) return undefined
   if (points.length === 0) {
     issues.push(
       reportIssue(
         'chart-empty',
-        `${location}.artifact_ref`,
-        'Chart Artifact has no rows to render.',
-        'Use a non-empty Artifact or replace the chart with narrative text.',
+        `${location}.data_ref`,
+        'Chart data source has no rows to render.',
+        'Use a non-empty data source or replace the chart with narrative text.',
       ),
     )
     return undefined
   }
-  return { block, artifact, view, x, y, points }
+  return { block, dataset, view, x, y, points }
 }
 
 function compileTable(
-  block: TableBlockV2,
-  artifact: ReportArtifactProjection,
+  block: TableBlock,
+  dataset: ReportDisplayDataset,
   location: string,
-  issues: ReportIssueV2[],
+  issues: ReportIssue[],
 ): CompiledTableBlock | undefined {
-  const selected = block.columns ?? artifact.columns.map((column) => column.name)
-  const indexes = selected.map((column) => columnIndex(artifact, column))
+  const selected = block.columns ?? dataset.columns.map((column) => column.name)
+  const indexes = selected.map((column) => columnIndex(dataset, column))
   if (indexes.some((index) => index < 0)) {
     const missing = selected.filter((_column, index) => indexes[index] === -1)
     issues.push(
       reportIssue(
         'table-column-not-found',
         `${location}.columns`,
-        `Table columns are not public Artifact columns: ${missing.join(', ')}.`,
-        'Use exact names from artifact.contract().artifact_schema.columns.',
+        `Table columns are not public data source columns: ${missing.join(', ')}.`,
+        'Use exact names from the data source columns.',
       ),
     )
     return undefined
   }
-  const totalRows = artifact.rows.length
-  const rows = artifact.rows
+  const totalRows = dataset.rows.length
+  const rows = dataset.rows
     .slice(0, block.max_rows)
     .map((row) => indexes.map((index) => row[index] ?? null))
   const omittedRows = totalRows - rows.length
-  return { block, artifact, columns: selected, rows, totalRows, omittedRows }
+  return { block, dataset, columns: selected, rows, totalRows, omittedRows }
 }
 
-/** Check every visual candidate whose exact Artifact projection is available. */
+function displayDatasets(
+  document: ReportDocument,
+  projection: ReportProjectionBundle,
+): ReadonlyMap<string, ReportDisplayDataset> {
+  const artifacts = new Map(projection.artifacts.map((artifact) => [artifact.ref, artifact]))
+  const computed = new Map(projection.computed.map((item) => [item.id, item]))
+  const result = new Map<string, ReportDisplayDataset>()
+  for (const source of document.data ?? []) {
+    if ('artifact_ref' in source) {
+      const artifact = artifacts.get(source.artifact_ref)
+      if (artifact !== undefined)
+        result.set(source.id, {
+          id: source.id,
+          kind: 'artifact',
+          columns: artifact.columns,
+          rows: artifact.rows,
+          artifact,
+        })
+      continue
+    }
+    const item = computed.get(source.id)
+    if (item !== undefined)
+      result.set(source.id, {
+        id: source.id,
+        kind: 'computed',
+        columns: item.columns,
+        rows: item.rows,
+        computed: item,
+      })
+  }
+  return result
+}
+
+/** Check every visual candidate whose exact data projection is available. */
 export function preflightReportVisuals(
   candidates: readonly ReportVisualCandidate[],
+  document: ReportDocument,
   projection: ReportProjectionBundle,
 ): ReportVisualPreflight {
-  const artifacts = new Map(projection.artifacts.map((artifact) => [artifact.ref, artifact]))
-  const issues: ReportIssueV2[] = []
+  const datasets = displayDatasets(document, projection)
+  const issues: ReportIssue[] = []
   let checkedCount = 0
   let skippedCount = 0
   for (const candidate of candidates) {
-    const artifact = artifacts.get(candidate.block.artifact_ref)
-    if (artifact === undefined) {
+    const dataset = datasets.get(candidate.block.data_ref)
+    if (dataset === undefined) {
       skippedCount += 1
       continue
     }
     checkedCount += 1
-    if (candidate.block.kind === 'chart') {
-      compileChart(candidate.block, artifact, candidate.location, issues)
-    } else {
-      compileTable(candidate.block, artifact, candidate.location, issues)
-    }
+    if (candidate.block.kind === 'chart')
+      compileChart(candidate.block, dataset, candidate.location, issues)
+    else compileTable(candidate.block, dataset, candidate.location, issues)
   }
   return { issues, checkedCount, skippedCount }
 }
 
-/** Admit every data block without aggregating, sampling, or changing the Artifact rows. */
+/** Admit every data block without aggregating, sampling, or changing its rows. */
 export function compileReportVisuals(
-  document: ReportDocumentV2,
+  document: ReportDocument,
   projection: ReportProjectionBundle,
 ): CompileVisualResult {
-  const artifacts = new Map(projection.artifacts.map((artifact) => [artifact.ref, artifact]))
+  const datasets = displayDatasets(document, projection)
   const charts = new Map<string, CompiledChartBlock>()
   const tables = new Map<string, CompiledTableBlock>()
-  const issues: ReportIssueV2[] = []
+  const issues: ReportIssue[] = []
   const disclosures: string[] = []
   for (const [sectionIndex, section] of document.sections.entries()) {
     for (const [blockIndex, block] of section.blocks.entries()) {
       const location = `document.sections[${sectionIndex}].blocks[${blockIndex}]`
       if (block.kind !== 'chart' && block.kind !== 'table') continue
-      const artifact = artifacts.get(block.artifact_ref)
-      if (artifact === undefined) {
+      const dataset = datasets.get(block.data_ref)
+      if (dataset === undefined) {
         issues.push(
           reportIssue(
-            'artifact-projection-missing',
-            `${location}.artifact_ref`,
-            `No checked projection exists for ${JSON.stringify(block.artifact_ref)}.`,
-            'Use the exact canonical Artifact ref and retry the complete report.',
+            'data-projection-missing',
+            `${location}.data_ref`,
+            `No checked projection exists for ${JSON.stringify(block.data_ref)}.`,
+            'Use a registered data source and retry the complete report.',
           ),
         )
         continue
       }
       if (block.kind === 'chart') {
-        const compiled = compileChart(block, artifact, location, issues)
+        const compiled = compileChart(block, dataset, location, issues)
         if (compiled !== undefined) charts.set(block.id, compiled)
       } else {
-        const compiled = compileTable(block, artifact, location, issues)
+        const compiled = compileTable(block, dataset, location, issues)
         if (compiled !== undefined) {
           if (compiled.omittedRows > 0)
             disclosures.push(

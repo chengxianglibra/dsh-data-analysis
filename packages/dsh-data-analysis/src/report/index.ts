@@ -9,30 +9,40 @@ export type {
 } from './dag.ts'
 export { compileSessionDag } from './dag.ts'
 export type {
-  ChartBlockV2,
+  ChartBlock,
   ParsedReportDocument,
+  ReportArtifactDataSource,
+  ReportBlock,
   ReportBlockedStage,
-  ReportBlockedValueV2,
-  ReportBlockV2,
+  ReportBlockedValue,
+  ReportCheck,
   ReportCheckStatus,
-  ReportCheckV2,
+  ReportComputedCell,
+  ReportComputedColumn,
+  ReportComputedColumnRole,
+  ReportComputedColumnType,
+  ReportComputedDataSource,
+  ReportComputedTable,
+  ReportDataSource,
+  ReportDocument,
   ReportDocumentInspection,
-  ReportDocumentV2,
-  ReportIssueV2,
-  ReportReadyValueV2,
-  ReportRenderValueV2,
-  ReportSectionV2,
+  ReportIssue,
+  ReportReadyValue,
+  ReportRenderValue,
+  ReportSection,
   ReportVisualCandidate,
-  TableBlockV2,
-  TextBlockV2,
+  TableBlock,
+  TextBlock,
 } from './document.ts'
 export {
+  COMPUTED_DATA_VERSION,
   parseReportDocument,
   REPORT_DOCUMENT_VERSION,
 } from './document.ts'
 export type {
   ReportArtifactColumn,
   ReportArtifactProjection,
+  ReportComputedProjection,
   ReportDagArtifactProjection,
   ReportDagArtifactStatus,
   ReportDagJobProjection,
@@ -41,7 +51,7 @@ export type {
   ReportProjectionInspection,
   ReportSessionDagProjection,
 } from './projection.ts'
-export { parseReportProjection } from './projection.ts'
+export { createReportComputedProjection, parseReportProjection } from './projection.ts'
 export {
   canonicalJson,
   MAX_REPORT_HTML_BYTES,
@@ -67,6 +77,7 @@ export type {
   CompiledChartBlock,
   CompiledReport,
   CompiledTableBlock,
+  ReportDisplayDataset,
   ReportVisualPreflight,
 } from './visual.ts'
 export { compileReportVisuals, preflightReportVisuals } from './visual.ts'

@@ -1,4 +1,4 @@
-import type { ReportIssueV2 } from './document.ts'
+import type { ReportIssue } from './document.ts'
 import type {
   ReportDagArtifactProjection,
   ReportDagJobProjection,
@@ -46,7 +46,7 @@ export interface CompiledSessionDag {
 
 export type CompileSessionDagResult =
   | { readonly ok: true; readonly value: CompiledSessionDag }
-  | { readonly ok: false; readonly issues: readonly ReportIssueV2[] }
+  | { readonly ok: false; readonly issues: readonly ReportIssue[] }
 
 interface RawEdge {
   readonly from: string
@@ -60,7 +60,7 @@ const COLUMN_GAP = 92
 const ROW_GAP = 34
 const PADDING = 28
 
-function issue(code: string, message: string, repair: string): ReportIssueV2 {
+function issue(code: string, message: string, repair: string): ReportIssue {
   return { code, location: 'marivo.session_dag', message, repair }
 }
 

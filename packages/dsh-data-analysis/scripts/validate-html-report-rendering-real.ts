@@ -25,8 +25,8 @@ import {
   MARIVO_REPORT_RENDER_TOOL_NAME,
   parseReportDocument,
   parseReportProjection,
-  type ReportDocumentV2,
-  type ReportRenderValueV2,
+  type ReportDocument,
+  type ReportRenderValue,
   reportDocumentDigest,
 } from '../src/report/index.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
@@ -190,7 +190,7 @@ function reportCalls(events: readonly SessionEvent[]): ReportCallSummary[] {
     if (observed === undefined) return [{ callId, arguments: args, status: 'missing-result' }]
     if (observed.isError)
       return [{ callId, arguments: args, status: 'error', errorText: observed.errorText }]
-    const value = observed.value as ReportRenderValueV2 | undefined
+    const value = observed.value as ReportRenderValue | undefined
     if (value?.status === 'blocked') {
       return [
         {
@@ -225,16 +225,16 @@ function markerFor(id: string): string {
   return 'HTML_REPORT_' + id.toUpperCase().replaceAll('-', '_') + '_OK'
 }
 
-function exactDocument(call: ReportCallSummary): ReportDocumentV2 {
+function exactDocument(call: ReportCallSummary): ReportDocument {
   assert.equal(typeof call.arguments, 'object')
   assert.notEqual(call.arguments, null)
   const document = (call.arguments as { document?: unknown }).document
   assert.equal(typeof document, 'object')
   assert.notEqual(document, null)
-  return document as ReportDocumentV2
+  return document as ReportDocument
 }
 
-function blockKinds(document: ReportDocumentV2): string[] {
+function blockKinds(document: ReportDocument): string[] {
   return document.sections.flatMap((section) => section.blocks.map((block) => block.kind))
 }
 
@@ -275,11 +275,11 @@ async function assertReadyArtifact(call: ReportCallSummary): Promise<void> {
   )
 }
 
-async function publishedDocument(call: ReportCallSummary): Promise<ReportDocumentV2> {
+async function publishedDocument(call: ReportCallSummary): Promise<ReportDocument> {
   assert.ok(call.path)
   return JSON.parse(
     await readFile(path.join(path.dirname(call.path), 'report-document.json'), 'utf8'),
-  ) as ReportDocumentV2
+  ) as ReportDocument
 }
 
 async function createFixture(): Promise<FixtureValue> {
@@ -592,7 +592,7 @@ try {
         ' with columns ' +
         JSON.stringify(fixture.segmented.columns) +
         '.',
-      'Submit one complete dsh-data-analysis-report/v2 document titled “支付收入分析报告”.',
+      'Submit one complete dsh-data-analysis-report/v3 document titled “支付收入分析报告”.',
       'It must include text, an explicit line chart x=' +
         JSON.stringify(timeX) +
         ' y=' +
@@ -603,7 +603,7 @@ try {
         JSON.stringify(segmentY) +
         ', and a table with max_rows=5.',
       'Use only lowercase kebab-case block IDs. Use only text, chart, and table blocks; never use finding_ids or an evidence block.',
-      'Every chart and table must bind directly to its exact Artifact ref. End the final response with ' +
+      'Register each Artifact once in document.data and bind every chart and table with its exact data_ref. End the final response with ' +
         markerFor('initial-generation') +
         '.',
     ].join('\n'),
@@ -628,7 +628,7 @@ try {
       'Call marivo_report_render exactly once in this turn. Submit another complete ReportDocument in that single call, never a patch and never read the old document from disk.',
       'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining the revised layout.',
       'Retain text, explicit line, explicit bar, and table blocks with the same exact session, Artifacts, and columns from the previous turn.',
-      'Use only the dsh-data-analysis-report/v2 contract and only text, chart, and table blocks. End the final response with ' +
+      'Use only the dsh-data-analysis-report/v3 contract and only text, chart, and table blocks. Keep the same document.data sources and data_ref bindings. End the final response with ' +
         markerFor('complete-revision') +
         '.',
     ].join('\n'),

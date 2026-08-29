@@ -141,12 +141,16 @@ Agent 才调用 `marivo_evidence_sources`。工具通过当前 binding 原子读
 
 ### HTML 报告
 
-用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v2`。插件通过
-当前 Environment Binding 对每个显式 Artifact 独立 revalidate 并保留有效 partial projection；报告路径不调用
-Finding compatibility、Finding 读取或 backing Artifact 发现。Node 将 document、Marivo 与 visual preflight 结果
-分组聚合，只有阻断性正确性检查全部通过才发布；相邻解读文字、点数与类别数只作为 Agent 写作/选图指导，
-不作为发布硬门槛；只使用原始公开投影行渲染 text、line/bar chart 和 table。页脚把成功主 Artifact Job 及其
-input/produce/reuse 关系编译为 Session DAG；Job 详情展示安全 params 与 raw SQL，Artifact 详情展示最多 10 行
+用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v3`。报告先在
+`document.data` 注册 `{ id, artifact_ref }` 或 `{ id, computed }`，再由 chart/table 使用 `data_ref`。computed
+结果必须是 `dsh-computed-data/v1` 的 `columns + rows` 标量 JSON 快照，随报告文档持久化；它不是 Marivo Artifact，
+也不声明 Python 执行证明或 lineage。只有含 Artifact source 时才要求 `session_id`，并通过当前 Environment
+Binding 对每个显式 Artifact 独立 revalidate；computed-only 跳过 Artifact bridge 和 Marivo Session DAG，mixed
+请求只把 Artifact refs 传给 bridge。报告路径不调用 Finding compatibility、Finding 读取或 backing Artifact 发现。
+Node 将 document、source 与 visual preflight 结果分组聚合，只有阻断性正确性检查全部通过才发布；相邻解读文字、
+点数与类别数只作为 Agent 写作/选图指导，不作为发布硬门槛；Artifact 与 computed 均通过统一 DisplayDataset 渲染
+text、line/bar chart 和 table。含 Artifact 的页脚把成功主 Artifact Job 及其 input/produce/reuse 关系编译为
+Session DAG；computed-only 只显示来源快照说明。Job 详情展示安全 params 与 raw SQL，Artifact 详情展示最多 10 行
 持久化原序 preview 和 revalidation。报告以 canonical identity 发布到
 `$DSH_HOME` 下的不可变目录。Tool 文本返回绝对路径；顶层 ready 结果把闭合报告摘要写入标准
 `tool/result.meta`，Code Mode nested ready 结果把同一摘要写入标准子调用事件的耐久 ContentBlock。Web Tool

@@ -10,10 +10,12 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { MarivoEnvironment } from '../../src/environment/binding.ts'
 import {
+  COMPUTED_DATA_VERSION,
   type CompiledReport,
   canonicalJson,
   compileReportVisuals,
   createMarivoReportRenderTool,
+  createReportComputedProjection,
   installMarivoReportCodeDelivery,
   MARIVO_REPORT_RENDER_TOOL_NAME,
   parseReportDocument,
@@ -23,11 +25,13 @@ import {
   REPORT_MANIFEST_VERSION,
   REPORT_RENDERER_VERSION,
   type ReportArtifactProjection,
+  type ReportComputedDataSource,
+  type ReportComputedProjection,
   type ReportDagArtifactProjection,
   type ReportDagJobProjection,
-  type ReportDocumentV2,
+  type ReportDocument,
   type ReportProjectionBundle,
-  type ReportRenderValueV2,
+  type ReportRenderValue,
   registerMarivoReportRenderTool,
   renderReportHtml,
   renderReportToolValue,
@@ -35,8 +39,8 @@ import {
   reportPresentationMeta,
 } from '../../src/report/index.ts'
 
-const document: ReportDocumentV2 = {
-  version: 'dsh-data-analysis-report/v2',
+const document: ReportDocument = {
+  version: 'dsh-data-analysis-report/v3',
   title: '支付趋势 <unsafe>',
   locale: 'zh-CN',
   sections: [
@@ -50,20 +54,21 @@ const document: ReportDocumentV2 = {
           id: 'trend-line',
           title: '趋势',
           subtitle: '业务说明',
-          artifact_ref: 'artifact-trend',
+          data_ref: 'trend-data',
           view: 'auto',
         },
         {
           kind: 'table',
           id: 'trend-table',
           title: '明细',
-          artifact_ref: 'artifact-trend',
+          data_ref: 'trend-data',
           columns: ['bucket_start', 'value'],
           max_rows: 3,
         },
       ],
     },
   ],
+  data: [{ id: 'trend-data', artifact_ref: 'artifact-trend' }],
 }
 
 const artifact: ReportArtifactProjection = {
@@ -121,6 +126,83 @@ const barArtifact: ReportArtifactProjection = {
   ],
 }
 
+const computedSource: ReportComputedDataSource = {
+  id: 'sales-computed',
+  computed: {
+    version: COMPUTED_DATA_VERSION,
+    columns: [
+      { name: 'month', type: 'datetime', role: 'time' },
+      { name: 'revenue', type: 'number', role: 'measure', unit: 'count' },
+      { name: 'active', type: 'boolean' },
+    ],
+    rows: [
+      ['2026-02-01', 150, true],
+      ['2026-01-01', 120, true],
+      ['2026-03-01', 190, true],
+    ],
+  },
+}
+
+const computedBarSource: ReportComputedDataSource = {
+  id: 'platform-computed',
+  computed: {
+    version: COMPUTED_DATA_VERSION,
+    columns: [
+      { name: 'platform', type: 'string', role: 'dimension' },
+      { name: 'revenue', type: 'number', role: 'measure', unit: 'count' },
+    ],
+    rows: [
+      ['android', -2],
+      ['ios', 4],
+      ['web', 3],
+    ],
+  },
+}
+
+const computedDocument: ReportDocument = {
+  version: 'dsh-data-analysis-report/v3',
+  title: '计算结果报告',
+  locale: 'zh-CN',
+  sections: [
+    {
+      id: 'summary',
+      title: '摘要',
+      blocks: [
+        { kind: 'text', id: 'computed-summary', text: '计算结果可复用为趋势图和明细表。' },
+        {
+          kind: 'chart',
+          id: 'computed-line',
+          title: '收入趋势',
+          data_ref: computedSource.id,
+          view: 'line',
+          x: 'month',
+          y: 'revenue',
+        },
+        {
+          kind: 'table',
+          id: 'computed-table',
+          title: '收入明细',
+          data_ref: computedSource.id,
+          columns: ['month', 'revenue', 'active'],
+          max_rows: 2,
+        },
+        {
+          kind: 'chart',
+          id: 'computed-bar',
+          title: '平台收入',
+          data_ref: computedBarSource.id,
+          view: 'auto',
+        },
+      ],
+    },
+  ],
+  data: [computedSource, computedBarSource],
+}
+
+const computedProjection: ReportComputedProjection = createReportComputedProjection(computedSource)
+const computedBarProjection: ReportComputedProjection =
+  createReportComputedProjection(computedBarSource)
+
 function dagArtifact(value: ReportArtifactProjection): ReportDagArtifactProjection {
   const previewRows = value.rows.slice(0, 10)
   return {
@@ -148,12 +230,24 @@ function projectionFor(
   return {
     sessionId: 'session-report',
     artifacts: values,
+    computed: [],
     sessionDag: { jobs: [], artifacts: values.map(dagArtifact) },
   }
 }
 
+function computedProjectionFor(
+  values: readonly ReportComputedProjection[] = [computedProjection, computedBarProjection],
+): ReportProjectionBundle {
+  return {
+    sessionId: null,
+    artifacts: [],
+    computed: values,
+    sessionDag: { jobs: [], artifacts: [] },
+  }
+}
+
 function compiledReport(
-  reportDocument: ReportDocumentV2 = document,
+  reportDocument: ReportDocument = document,
   values: readonly ReportArtifactProjection[] = [artifact],
 ): CompiledReport {
   const result = compileReportVisuals(reportDocument, projectionFor(values))
@@ -233,9 +327,9 @@ function blockedArtifact(ref: string, location: string) {
   }
 }
 
-function barDocument(): ReportDocumentV2 {
+function barDocument(): ReportDocument {
   return {
-    version: 'dsh-data-analysis-report/v2',
+    version: 'dsh-data-analysis-report/v3',
     title: '平台分布',
     locale: 'en-US',
     sections: [
@@ -248,25 +342,26 @@ function barDocument(): ReportDocumentV2 {
             kind: 'chart',
             id: 'platform-bar',
             title: 'Platform',
-            artifact_ref: 'artifact-platform',
+            data_ref: 'platform-data',
             view: 'auto',
           },
           {
             kind: 'table',
             id: 'platform-table',
             title: 'Rows',
-            artifact_ref: 'artifact-platform',
+            data_ref: 'platform-data',
             max_rows: 3,
           },
         ],
       },
     ],
+    data: [{ id: 'platform-data', artifact_ref: 'artifact-platform' }],
   }
 }
 
-test('ReportDocument parser accepts the v2 minimum and exposes only explicit Artifact refs', () => {
+test('ReportDocument parser accepts the v3 minimum and exposes the data catalog', () => {
   const parsed = parseReportDocument({
-    version: 'dsh-data-analysis-report/v2',
+    version: 'dsh-data-analysis-report/v3',
     title: 'Minimum',
     locale: 'en-US',
     sections: [
@@ -280,13 +375,14 @@ test('ReportDocument parser accepts the v2 minimum and exposes only explicit Art
   assert.equal(parsed.ok, true, JSON.stringify(parsed))
   if (!parsed.ok) return
   assert.deepEqual(parsed.value.artifactRefs, [])
-  assert.deepEqual(Object.keys(parsed.value).sort(), ['artifactRefs', 'document'])
+  assert.deepEqual(parsed.value.dataRefs, [])
+  assert.deepEqual(parsed.value.computedDataRefs, [])
   assert.deepEqual(parsed.inspection.visualCandidates, [])
 })
 
-test('ReportDocument parser rejects v1, finding_ids, and evidence blocks', () => {
+test('ReportDocument parser rejects v2, finding_ids, and evidence blocks', () => {
   const minimum = {
-    version: 'dsh-data-analysis-report/v2',
+    version: 'dsh-data-analysis-report/v3',
     title: 'Legacy inputs',
     locale: 'en-US',
     sections: [
@@ -297,11 +393,11 @@ test('ReportDocument parser rejects v1, finding_ids, and evidence blocks', () =>
       },
     ],
   }
-  const oldVersion = parseReportDocument({ ...minimum, version: 'dsh-data-analysis-report/v1' })
+  const oldVersion = parseReportDocument({ ...minimum, version: 'dsh-data-analysis-report/v2' })
   assert.equal(oldVersion.ok, false)
   if (!oldVersion.ok) {
     assert.ok(oldVersion.issues.some((item) => item.code === 'unsupported-version'))
-    assert.match(oldVersion.issues[0]?.repair ?? '', /dsh-data-analysis-report\/v2/)
+    assert.match(oldVersion.issues[0]?.repair ?? '', /dsh-data-analysis-report\/v3/)
   }
 
   const withFindingIds = structuredClone(minimum) as Record<string, any>
@@ -335,7 +431,109 @@ test('ReportDocument parser rejects v1, finding_ids, and evidence blocks', () =>
   }
 })
 
-test('ReportDocument parser keeps the closed v2 shape and Artifact bounds', () => {
+test('ReportDocument parser accepts and normalizes inline computed snapshots', () => {
+  const parsed = parseReportDocument(computedDocument)
+  assert.equal(parsed.ok, true, JSON.stringify(parsed))
+  if (!parsed.ok) return
+  assert.deepEqual(parsed.value.artifactRefs, [])
+  assert.deepEqual(parsed.value.dataRefs, ['sales-computed', 'platform-computed'])
+  assert.deepEqual(parsed.value.computedDataRefs, ['sales-computed', 'platform-computed'])
+  const sources = parsed.value.document.data ?? []
+  assert.equal(sources.length, 2)
+  const firstSource = sources[0]
+  assert.ok(firstSource !== undefined && 'computed' in firstSource)
+  if (firstSource === undefined || !('computed' in firstSource)) return
+  assert.deepEqual(
+    firstSource.computed.columns.map((column) => column.nullable),
+    [false, false, false],
+  )
+  assert.deepEqual(firstSource.computed.rows[0], ['2026-02-01', 150, true])
+})
+
+test('ReportDocument parser blocks malformed computed snapshots and unresolved data refs', () => {
+  const invalid = (mutate: (value: Record<string, any>) => void): readonly string[] => {
+    const value = structuredClone(computedDocument) as Record<string, any>
+    mutate(value)
+    const parsed = parseReportDocument(value)
+    assert.equal(parsed.ok, false, JSON.stringify(parsed))
+    return parsed.ok ? [] : parsed.issues.map((item) => item.code)
+  }
+
+  assert.ok(invalid((value) => (value.data[0].computed.extra = true)).includes('unknown-field'))
+  assert.ok(invalid((value) => value.data[0].computed.rows[0].pop()).includes('computed-row-shape'))
+  assert.ok(
+    invalid((value) => (value.data[0].computed.rows[0][1] = Number.NaN)).includes(
+      'invalid-computed-cell',
+    ),
+  )
+  assert.ok(
+    invalid((value) => (value.data[0].computed.columns[0].nullable = 'yes')).includes(
+      'invalid-computed-nullable',
+    ),
+  )
+  assert.ok(
+    invalid((value) => (value.data[1].id = value.data[0].id)).includes('duplicate-data-source-id'),
+  )
+  assert.ok(
+    invalid((value) => (value.sections[0].blocks[1].data_ref = 'missing-data')).includes(
+      'unknown-data-ref',
+    ),
+  )
+
+  const oversized = {
+    version: 'dsh-data-analysis-report/v3',
+    title: 'Oversized computed',
+    locale: 'en-US',
+    sections: [
+      {
+        id: 'summary',
+        title: 'Summary',
+        blocks: [{ kind: 'text', id: 'summary-text', text: 'Summary' }],
+      },
+    ],
+    data: [
+      {
+        id: 'oversized',
+        computed: {
+          version: COMPUTED_DATA_VERSION,
+          columns: [{ name: 'value', type: 'string' }],
+          rows: [['x'.repeat(16 * 1024 * 1024)]],
+        },
+      },
+    ],
+  }
+  const oversizedResult = parseReportDocument(oversized)
+  assert.equal(oversizedResult.ok, false)
+  if (!oversizedResult.ok)
+    assert.ok(oversizedResult.issues.some((item) => item.code === 'computed-data-too-large'))
+})
+
+test('ReportDocument parser keeps prototype-like block kinds as structured issues', () => {
+  const parsed = parseReportDocument({
+    version: 'dsh-data-analysis-report/v3',
+    title: 'Invalid block kind',
+    locale: 'en-US',
+    sections: [
+      {
+        id: 'summary',
+        title: 'Summary',
+        blocks: [{ kind: 'toString', id: 'invalid-block' }],
+      },
+    ],
+  })
+  assert.equal(parsed.ok, false, JSON.stringify(parsed))
+  if (!parsed.ok) assert.ok(parsed.issues.some((item) => item.code === 'invalid-block-kind'))
+})
+
+test('ReportDocument parser rejects invalid computed calendar dates', () => {
+  const invalid = structuredClone(computedDocument) as Record<string, any>
+  invalid.data[0].computed.rows[0][0] = '2026-02-31'
+  const parsed = parseReportDocument(invalid)
+  assert.equal(parsed.ok, false, JSON.stringify(parsed))
+  if (!parsed.ok) assert.ok(parsed.issues.some((item) => item.code === 'invalid-computed-cell'))
+})
+
+test('ReportDocument parser keeps the closed v3 shape and data bounds', () => {
   const source = structuredClone(document) as Record<string, any>
   source.unknown = true
   source.sections[0].blocks[1].id = 'summary-text'
@@ -349,29 +547,35 @@ test('ReportDocument parser keeps the closed v2 shape and Artifact bounds', () =
   }
 
   const manyArtifacts = {
-    version: 'dsh-data-analysis-report/v2',
+    version: 'dsh-data-analysis-report/v3',
     title: 'Many Artifacts',
     locale: 'en-US',
     sections: [
       {
         id: 'summary',
         title: 'Summary',
-        blocks: Array.from({ length: 21 }, (_, index) => ({
-          kind: 'table',
-          id: 'table-' + String(index),
-          title: 'Table',
-          artifact_ref: 'artifact-' + String(index),
-          max_rows: 1,
-        })),
+        blocks: [
+          {
+            kind: 'table',
+            id: 'table-0',
+            title: 'Table',
+            data_ref: 'data-0',
+            max_rows: 1,
+          },
+        ],
       },
     ],
+    data: Array.from({ length: 21 }, (_, index) => ({
+      id: 'data-' + String(index),
+      artifact_ref: 'artifact-' + String(index),
+    })),
   }
   const tooMany = parseReportDocument(manyArtifacts)
   assert.equal(tooMany.ok, false)
-  if (!tooMany.ok) assert.ok(tooMany.issues.some((item) => item.code === 'too-many-artifacts'))
+  if (!tooMany.ok) assert.ok(tooMany.issues.some((item) => item.code === 'invalid-data-sources'))
 })
 
-test('report Tool schema is v2 and has no Finding or evidence block contract', () => {
+test('report Tool schema is v3 and has no Finding or evidence block contract', () => {
   const environment = {
     binding: { fingerprint: 'a'.repeat(64), marivoVersion: '0.5.test' },
     async runCheckedReportProjection() {
@@ -380,10 +584,21 @@ test('report Tool schema is v2 and has no Finding or evidence block contract', (
   } as unknown as MarivoEnvironment
   const tool = createMarivoReportRenderTool(environment) as any
   const schema = tool.parameters.properties.document
-  assert.match(schema.description, /ReportDocument v2/)
+  assert.match(schema.description, /ReportDocument v3/)
   assert.doesNotMatch(schema.description, /compatibility/)
   assert.doesNotMatch(schema.description, /Finding references/)
-  assert.equal(schema.properties.version.const, 'dsh-data-analysis-report/v2')
+  assert.equal(schema.properties.version.const, 'dsh-data-analysis-report/v3')
+  assert.equal('data' in schema.properties, true)
+  assert.equal(schema.properties.data.items.oneOf.length, 2)
+  assert.equal(
+    schema.properties.data.items.oneOf[1].properties.computed.properties.version.const,
+    COMPUTED_DATA_VERSION,
+  )
+  assert.deepEqual(
+    schema.properties.data.items.oneOf[1].properties.computed.properties.rows.items.items,
+    {},
+  )
+  assert.equal('required' in tool.parameters.properties.session_id, false)
   const blockSchemas = schema.properties.sections.items.properties.blocks.items.oneOf
   assert.equal(blockSchemas.length, 3)
   assert.deepEqual(
@@ -393,6 +608,8 @@ test('report Tool schema is v2 and has no Finding or evidence block contract', (
   for (const blockSchema of blockSchemas) {
     assert.equal('finding_ids' in blockSchema.properties, false)
   }
+  assert.equal(blockSchemas[1].required.includes('data_ref'), true)
+  assert.equal(blockSchemas[2].required.includes('data_ref'), true)
   assert.equal('finding_ids' in tool.output.schema.oneOf[0].properties, false)
 })
 
@@ -403,7 +620,12 @@ test('projection parser accepts only Artifact outcomes and the Session DAG', () 
     artifactRefs: ['artifact-trend'],
   })
   assert.equal(parsed.ok, true, JSON.stringify(parsed))
-  assert.deepEqual(Object.keys(parsed.value).sort(), ['artifacts', 'sessionDag', 'sessionId'])
+  assert.deepEqual(Object.keys(parsed.value).sort(), [
+    'artifacts',
+    'computed',
+    'sessionDag',
+    'sessionId',
+  ])
   assert.deepEqual(parsed.checkedArtifactRefs, ['artifact-trend'])
 
   const legacy = structuredClone(raw) as Record<string, unknown>
@@ -485,7 +707,7 @@ test('projection parser checks each explicit Artifact independently and preserve
 })
 
 test('report Tool sends only session and explicit Artifact refs and returns no Finding fields', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v2-bridge-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-bridge-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const calls: Array<{ sessionId: string; artifactRefs: string[] }> = []
   const environment = {
@@ -505,7 +727,7 @@ test('report Tool sends only session and explicit Artifact refs and returns no F
   })
   const value = (await tool.execute({ session_id: 'session-report', document }, {
     signal: new AbortController().signal,
-  } as Parameters<typeof tool.execute>[1])) as ReportRenderValueV2
+  } as Parameters<typeof tool.execute>[1])) as ReportRenderValue
   assert.equal(value.status, 'ready', JSON.stringify(value))
   assert.deepEqual(calls, [{ sessionId: 'session-report', artifactRefs: ['artifact-trend'] }])
   assert.equal('finding_ids' in value, false)
@@ -520,11 +742,124 @@ test('report Tool sends only session and explicit Artifact refs and returns no F
   assert.match(renderReportToolValue(value), /HTML report ready/)
 })
 
+test('computed-only report skips the Artifact bridge and persists computed data in the document', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-computed-only-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  let bridgeCalls = 0
+  const environment = {
+    binding: { fingerprint: 'c'.repeat(64), marivoVersion: '0.5.test' },
+    async runCheckedReportProjection() {
+      bridgeCalls += 1
+      throw new Error('computed-only reports must not call the Artifact bridge')
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment, {
+    reportsRoot: path.join(root, 'reports'),
+    now: () => new Date('2026-08-27T01:02:03.000Z'),
+  })
+  const invalidSession = (await tool.execute({ session_id: 42, document: computedDocument }, {
+    signal: new AbortController().signal,
+  } as Parameters<typeof tool.execute>[1])) as ReportRenderValue
+  assert.equal(invalidSession.status, 'blocked', JSON.stringify(invalidSession))
+  if (invalidSession.status === 'blocked')
+    assert.ok(invalidSession.checks[0].issues.some((item) => item.code === 'invalid-session-id'))
+  assert.equal(bridgeCalls, 0)
+  const value = (await tool.execute({ document: computedDocument }, {
+    signal: new AbortController().signal,
+  } as Parameters<typeof tool.execute>[1])) as ReportRenderValue
+  assert.equal(value.status, 'ready', JSON.stringify(value))
+  assert.equal(bridgeCalls, 0)
+  if (value.status !== 'ready') return
+  assert.deepEqual(value.artifact_refs, [])
+  assert.deepEqual(value.data_refs, ['sales-computed', 'platform-computed'])
+  assert.deepEqual(value.computed_data_refs, ['sales-computed', 'platform-computed'])
+  const directory = path.dirname(value.path)
+  const savedDocument = JSON.parse(
+    await readFile(path.join(directory, 'report-document.json'), 'utf8'),
+  ) as ReportDocument
+  assert.equal(reportDocumentDigest(savedDocument), value.document_digest)
+  const normalized = parseReportDocument(computedDocument)
+  assert.equal(normalized.ok, true, JSON.stringify(normalized))
+  if (!normalized.ok) return
+  assert.deepEqual(savedDocument.data, normalized.value.document.data)
+  const html = await readFile(value.path, 'utf8')
+  assert.match(html, /计算结果快照/)
+  assert.match(html, /收入趋势/)
+  assert.match(html, /平台收入/)
+  const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')) as {
+    artifacts?: unknown
+    computed_data?: readonly { id: string; content_hash: string }[]
+  }
+  assert.deepEqual(manifest.artifacts, [])
+  assert.deepEqual(
+    manifest.computed_data?.map((item) => item.id),
+    ['sales-computed', 'platform-computed'],
+  )
+})
+
+test('mixed Artifact and computed reports bridge only Artifact refs', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-mixed-data-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const mixed: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
+    title: 'Mixed data',
+    locale: 'en-US',
+    sections: [
+      {
+        id: 'summary',
+        title: 'Summary',
+        blocks: [
+          {
+            kind: 'chart',
+            id: 'artifact-chart',
+            title: 'Artifact trend',
+            data_ref: 'artifact-data',
+            view: 'line',
+            x: 'bucket_start',
+            y: 'value',
+          },
+          {
+            kind: 'table',
+            id: 'computed-table',
+            title: 'Computed rows',
+            data_ref: computedSource.id,
+            max_rows: 3,
+          },
+        ],
+      },
+    ],
+    data: [{ id: 'artifact-data', artifact_ref: artifact.ref }, computedSource],
+  }
+  const calls: string[][] = []
+  const environment = {
+    binding: { fingerprint: 'd'.repeat(64), marivoVersion: '0.5.test' },
+    async runCheckedReportProjection(_sessionId: string, artifactRefs: readonly string[]) {
+      calls.push([...artifactRefs])
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify(checkedPayload([artifact]))),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  } as unknown as MarivoEnvironment
+  const tool = createMarivoReportRenderTool(environment, {
+    reportsRoot: path.join(root, 'reports'),
+  })
+  const value = (await tool.execute({ session_id: 'session-report', document: mixed }, {
+    signal: new AbortController().signal,
+  } as Parameters<typeof tool.execute>[1])) as ReportRenderValue
+  assert.equal(value.status, 'ready', JSON.stringify(value))
+  assert.deepEqual(calls, [['artifact-trend']])
+  if (value.status !== 'ready') return
+  assert.deepEqual(value.artifact_refs, ['artifact-trend'])
+  assert.deepEqual(value.computed_data_refs, ['sales-computed'])
+})
+
 test('multiple unrelated explicit Artifacts do not cause a global compatibility block', async (t) => {
-  const reportsRoot = await mkdtemp(path.join(tmpdir(), 'dsh-report-v2-independent-'))
+  const reportsRoot = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-independent-'))
   t.after(() => rm(reportsRoot, { recursive: true, force: true }))
-  const source: ReportDocumentV2 = {
-    version: 'dsh-data-analysis-report/v2',
+  const source: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
     title: 'Two artifacts',
     locale: 'en-US',
     sections: [
@@ -536,18 +871,22 @@ test('multiple unrelated explicit Artifacts do not cause a global compatibility 
             kind: 'table',
             id: 'trend-table',
             title: 'Trend',
-            artifact_ref: artifact.ref,
+            data_ref: 'trend-data',
             max_rows: 2,
           },
           {
             kind: 'table',
             id: 'platform-table',
             title: 'Platform',
-            artifact_ref: barArtifact.ref,
+            data_ref: 'platform-data',
             max_rows: 2,
           },
         ],
       },
+    ],
+    data: [
+      { id: 'trend-data', artifact_ref: artifact.ref },
+      { id: 'platform-data', artifact_ref: barArtifact.ref },
     ],
   }
   const calls: string[][] = []
@@ -568,7 +907,7 @@ test('multiple unrelated explicit Artifacts do not cause a global compatibility 
   })
   const value = (await tool.execute({ session_id: 'session-report', document: source }, {
     signal: new AbortController().signal,
-  } as Parameters<typeof tool.execute>[1])) as ReportRenderValueV2
+  } as Parameters<typeof tool.execute>[1])) as ReportRenderValue
   assert.equal(value.status, 'ready', JSON.stringify(value))
   assert.deepEqual(calls, [['artifact-trend', 'artifact-platform']])
   if (value.status === 'ready')
@@ -576,8 +915,8 @@ test('multiple unrelated explicit Artifacts do not cause a global compatibility 
 })
 
 test('best-effort Artifact failures are attributed to every explicit Artifact occurrence', async () => {
-  const source: ReportDocumentV2 = {
-    version: 'dsh-data-analysis-report/v2',
+  const source: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
     title: 'Repeated Artifact',
     locale: 'en-US',
     sections: [
@@ -585,11 +924,12 @@ test('best-effort Artifact failures are attributed to every explicit Artifact oc
         id: 'summary',
         title: 'Summary',
         blocks: [
-          { kind: 'table', id: 'one', title: 'One', artifact_ref: artifact.ref, max_rows: 2 },
-          { kind: 'table', id: 'two', title: 'Two', artifact_ref: artifact.ref, max_rows: 2 },
+          { kind: 'table', id: 'one', title: 'One', data_ref: 'trend-data', max_rows: 2 },
+          { kind: 'table', id: 'two', title: 'Two', data_ref: 'trend-data', max_rows: 2 },
         ],
       },
     ],
+    data: [{ id: 'trend-data', artifact_ref: artifact.ref }],
   }
   const environment = {
     binding: { fingerprint: 'f'.repeat(64), marivoVersion: '0.5.test' },
@@ -608,12 +948,16 @@ test('best-effort Artifact failures are attributed to every explicit Artifact oc
   const tool = createMarivoReportRenderTool(environment)
   const value = (await tool.execute({ session_id: 'session-report', document: source }, {
     signal: new AbortController().signal,
-  } as Parameters<typeof tool.execute>[1])) as ReportRenderValueV2
+  } as Parameters<typeof tool.execute>[1])) as ReportRenderValue
   assert.equal(value.status, 'blocked', JSON.stringify(value))
   if (value.status !== 'blocked') return
   assert.deepEqual(
     value.checks[1].issues.map((item) => item.location),
-    ['document.sections[0].blocks[0].artifact_ref', 'document.sections[0].blocks[1].artifact_ref'],
+    [
+      'document.data[0].artifact_ref',
+      'document.sections[0].blocks[0].data_ref',
+      'document.sections[0].blocks[1].data_ref',
+    ],
   )
   assert.doesNotMatch(renderReportToolValue(value), /Finding|compatib/)
 })
@@ -641,13 +985,126 @@ test('visual compiler preserves Artifact rows, table truncation, and line orderi
   }
 })
 
+test('visual compiler renders computed line/bar data and reuses one source for chart and table', () => {
+  const result = compileReportVisuals(computedDocument, computedProjectionFor())
+  assert.equal(result.ok, true, JSON.stringify(result))
+  if (!result.ok) return
+  const line = result.value.charts.get('computed-line')
+  const bar = result.value.charts.get('computed-bar')
+  const table = result.value.tables.get('computed-table')
+  assert.equal(line?.dataset.kind, 'computed')
+  assert.equal(line?.view, 'line')
+  assert.equal(bar?.dataset.kind, 'computed')
+  assert.equal(bar?.view, 'bar')
+  assert.equal(table?.dataset.id, 'sales-computed')
+  assert.equal(table?.rows.length, 2)
+  assert.equal(table?.omittedRows, 1)
+  assert.deepEqual(
+    line?.points.map((point) => point.x),
+    ['2026-01-01', '2026-02-01', '2026-03-01'],
+  )
+  const html = renderReportHtml(result.value, '2026-08-27T01:02:03.000Z')
+  assert.match(html, /计算结果快照/)
+  assert.match(html, /收入趋势/)
+  assert.match(html, /收入明细/)
+  assert.match(html, /平台收入/)
+  assert.doesNotMatch(html, /Python (?:code|object)|\bdef\s*\(/i)
+})
+
+test('renderer handles prototype-like computed column names', () => {
+  const reservedColumnSource: ReportComputedDataSource = {
+    id: 'reserved-data',
+    computed: {
+      version: COMPUTED_DATA_VERSION,
+      columns: [
+        { name: 'toString', type: 'string', role: 'dimension' },
+        { name: 'value', type: 'number', role: 'measure' },
+      ],
+      rows: [['android', 1]],
+    },
+  }
+  const reservedDocument: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
+    title: 'Reserved column',
+    locale: 'zh-CN',
+    sections: [
+      {
+        id: 'summary',
+        title: 'Summary',
+        blocks: [
+          {
+            kind: 'table',
+            id: 'reserved-table',
+            title: 'Rows',
+            data_ref: 'reserved-data',
+            max_rows: 1,
+          },
+        ],
+      },
+    ],
+    data: [reservedColumnSource],
+  }
+  const result = compileReportVisuals(reservedDocument, {
+    sessionId: null,
+    artifacts: [],
+    computed: [createReportComputedProjection(reservedColumnSource)],
+    sessionDag: { jobs: [], artifacts: [] },
+  })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  if (!result.ok) return
+  const html = renderReportHtml(result.value, '2026-08-27T01:02:03.000Z')
+  assert.match(html, /ToString/)
+})
+
+test('renderer keeps mixed reports on the Artifact DAG empty-state copy', () => {
+  const mixedDocument: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
+    title: 'Mixed report',
+    locale: 'en-US',
+    sections: [
+      {
+        id: 'summary',
+        title: 'Summary',
+        blocks: [
+          {
+            kind: 'table',
+            id: 'artifact-table',
+            title: 'Artifact',
+            data_ref: 'artifact-data',
+            max_rows: 1,
+          },
+          {
+            kind: 'table',
+            id: 'computed-table',
+            title: 'Computed',
+            data_ref: 'sales-computed',
+            max_rows: 1,
+          },
+        ],
+      },
+    ],
+    data: [{ id: 'artifact-data', artifact_ref: artifact.ref }, computedSource],
+  }
+  const result = compileReportVisuals(mixedDocument, {
+    sessionId: 'session-report',
+    artifacts: [artifact],
+    computed: [computedProjection],
+    sessionDag: { jobs: [], artifacts: [] },
+  })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  if (!result.ok) return
+  const html = renderReportHtml(result.value, '2026-08-27T01:02:03.000Z')
+  assert.doesNotMatch(html, /This report contains only computed data/)
+  assert.match(html, /This Session has no eligible successful main-Artifact actions or Artifacts/)
+})
+
 test('visual compiler does not impose advisory point-count gates', () => {
   const shortLine = { ...artifact, shape: [7, 2] as const, rows: artifact.rows.slice(0, 7) }
   const lineResult = compileReportVisuals(document, projectionFor([shortLine]))
   assert.equal(lineResult.ok, true, JSON.stringify(lineResult))
 
-  const sparseBarDocument: ReportDocumentV2 = {
-    version: 'dsh-data-analysis-report/v2',
+  const sparseBarDocument: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
     title: 'Sparse bar',
     locale: 'en-US',
     sections: [
@@ -659,7 +1116,7 @@ test('visual compiler does not impose advisory point-count gates', () => {
             kind: 'chart',
             id: 'sparse-bar',
             title: 'Sparse categories',
-            artifact_ref: 'artifact-sparse',
+            data_ref: 'sparse-data',
             view: 'bar',
             x: 'category',
             y: 'value',
@@ -667,6 +1124,7 @@ test('visual compiler does not impose advisory point-count gates', () => {
         ],
       },
     ],
+    data: [{ id: 'sparse-data', artifact_ref: 'artifact-sparse' }],
   }
   const sparseBar: ReportArtifactProjection = {
     ...artifact,
@@ -848,8 +1306,8 @@ test('renderer supports bar zero baseline and nullable table cells', () => {
     columns: [barArtifact.columns[0]!, { ...barArtifact.columns[1]!, nullable: true }],
     rows: barArtifact.rows.map((row, index) => (index === 2 ? [row[0]!, null] : row)),
   } as ReportArtifactProjection
-  const nullableDocument: ReportDocumentV2 = {
-    version: 'dsh-data-analysis-report/v2',
+  const nullableDocument: ReportDocument = {
+    version: 'dsh-data-analysis-report/v3',
     title: 'Nullable table',
     locale: 'en-US',
     sections: [
@@ -857,10 +1315,11 @@ test('renderer supports bar zero baseline and nullable table cells', () => {
         id: 'detail',
         title: 'Detail',
         blocks: [
-          { kind: 'table', id: 'rows', title: 'Rows', artifact_ref: nullable.ref, max_rows: 4 },
+          { kind: 'table', id: 'rows', title: 'Rows', data_ref: 'nullable-data', max_rows: 4 },
         ],
       },
     ],
+    data: [{ id: 'nullable-data', artifact_ref: nullable.ref }],
   }
   const compiled = compileReportVisuals(nullableDocument, projectionFor([nullable]))
   assert.equal(compiled.ok, true, JSON.stringify(compiled))
@@ -869,12 +1328,12 @@ test('renderer supports bar zero baseline and nullable table cells', () => {
   assert.match(html, /<td>—<\/td>/)
 })
 
-test('canonical digests include v2 document identity and ignore object key order', () => {
+test('canonical digests include v3 document identity and ignore object key order', () => {
   assert.equal(canonicalJson({ b: 2, a: 1 }), canonicalJson({ a: 1, b: 2 }))
-  assert.match(REPORT_DIGEST_VERSION, /\/v4$/)
-  assert.match(REPORT_MANIFEST_VERSION, /\/v4$/)
-  assert.equal(REPORT_RENDERER_VERSION, 'dsh-data-analysis-html/v9')
-  const twoSections: ReportDocumentV2 = {
+  assert.match(REPORT_DIGEST_VERSION, /\/v5$/)
+  assert.match(REPORT_MANIFEST_VERSION, /\/v5$/)
+  assert.equal(REPORT_RENDERER_VERSION, 'dsh-data-analysis-html/v10')
+  const twoSections: ReportDocument = {
     ...document,
     sections: [
       ...document.sections,
@@ -885,7 +1344,7 @@ test('canonical digests include v2 document identity and ignore object key order
       },
     ],
   }
-  const reordered: ReportDocumentV2 = {
+  const reordered: ReportDocument = {
     ...twoSections,
     sections: [...twoSections.sections].reverse(),
   }
@@ -894,7 +1353,13 @@ test('canonical digests include v2 document identity and ignore object key order
   assert.notEqual(reportDocumentDigest(document), reportDocumentDigest(changed))
   assert.equal(
     reportDocumentDigest(document),
-    reportDocumentDigest(JSON.parse(canonicalJson(document)) as ReportDocumentV2),
+    reportDocumentDigest(JSON.parse(canonicalJson(document)) as ReportDocument),
+  )
+  const changedComputed = structuredClone(computedDocument) as Record<string, any>
+  changedComputed.data[0].computed.rows[0][1] = 151
+  assert.notEqual(
+    reportDocumentDigest(computedDocument),
+    reportDocumentDigest(changedComputed as ReportDocument),
   )
 })
 
@@ -912,8 +1377,8 @@ test('projection identity ignores volatile revalidation check times', () => {
   assert.equal(canonicalJson(second.value), canonicalJson(first.value))
 })
 
-test('publisher creates private v4 artifacts and reuses an identical digest', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v4-publish-'))
+test('publisher creates private v5 artifacts and reuses an identical digest', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v5-publish-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const options = {
     environmentFingerprint: '1'.repeat(64),
@@ -968,8 +1433,8 @@ test('publisher creates private v4 artifacts and reuses an identical digest', as
   assert.equal((await stat(path.join(oldDirectory, 'manifest.json'))).isFile(), true)
 })
 
-test('publisher refuses a forged immutable v4 directory instead of reusing it', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v4-forged-'))
+test('publisher refuses a forged immutable v5 directory instead of reusing it', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v5-forged-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const report = compiledReport()
   const options = {
@@ -985,7 +1450,7 @@ test('publisher refuses a forged immutable v4 directory instead of reusing it', 
 })
 
 test('report Tool stops before publication when cancellation arrives after projection', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v2-cancel-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-cancel-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const controller = new AbortController()
   const environment = {
@@ -994,7 +1459,7 @@ test('report Tool stops before publication when cancellation arrives after proje
       controller.abort(new Error('cancel report'))
       return {
         exitCode: 0,
-        stdout: Buffer.from(JSON.stringify(checkedPayload([]))),
+        stdout: Buffer.from(JSON.stringify(checkedPayload([artifact]))),
         stderr: Buffer.alloc(0),
       }
     },
@@ -1002,21 +1467,9 @@ test('report Tool stops before publication when cancellation arrives after proje
   const tool = createMarivoReportRenderTool(environment, {
     reportsRoot: path.join(root, 'reports'),
   })
-  const textDocument: ReportDocumentV2 = {
-    version: 'dsh-data-analysis-report/v2',
-    title: 'Cancelled',
-    locale: 'en-US',
-    sections: [
-      {
-        id: 'section',
-        title: 'Section',
-        blocks: [{ kind: 'text', id: 'text', text: 'body' }],
-      },
-    ],
-  }
   await assert.rejects(
     () =>
-      tool.execute({ session_id: 'session-report', document: textDocument }, {
+      tool.execute({ session_id: 'session-report', document }, {
         signal: controller.signal,
       } as Parameters<typeof tool.execute>[1]),
     /cancel report/,
@@ -1024,16 +1477,18 @@ test('report Tool stops before publication when cancellation arrives after proje
   await assert.rejects(() => stat(path.join(root, 'reports')), { code: 'ENOENT' })
 })
 
-test('Code Mode delivery adds one v2 ready card and preserves nested Tool text', async () => {
+test('Code Mode delivery adds one v3 ready card and preserves nested Tool text', async () => {
   const ctx = new Context()
   const dispose = installMarivoReportCodeDelivery(ctx)
-  const ready: ReportRenderValueV2 = {
+  const ready: ReportRenderValue = {
     status: 'ready',
     title: 'Code report',
     path: '/reports/code/index.html',
     report_digest: 'a'.repeat(64),
     document_digest: 'b'.repeat(64),
     artifact_refs: [],
+    data_refs: [],
+    computed_data_refs: [],
     disclosures: ['bounded'],
   }
   const agent = {
@@ -1087,13 +1542,15 @@ test('Code Mode delivery adds one v2 ready card and preserves nested Tool text',
 })
 
 test('report presentation metadata remains v1 and omits analytical source fields', () => {
-  const ready: ReportRenderValueV2 = {
+  const ready: ReportRenderValue = {
     status: 'ready',
     title: 'Ready',
     path: '/tmp/report.html',
     report_digest: 'c'.repeat(64),
     document_digest: 'd'.repeat(64),
     artifact_refs: ['artifact-trend'],
+    data_refs: ['trend-data'],
+    computed_data_refs: [],
     disclosures: [],
   }
   assert.deepEqual(reportPresentationMeta(ready), {
@@ -1107,8 +1564,8 @@ test('report presentation metadata remains v1 and omits analytical source fields
   assert.equal(reportPresentationMeta({ status: 'blocked', checks: [] as any }), null)
 })
 
-test('registered v2 Tool returns a ready result with no Finding fields', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v2-registered-'))
+test('registered v3 Tool returns a ready result with no Finding fields', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-registered-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const context = new Context()
   await context.plugin(SystemPrompt)
@@ -1129,13 +1586,13 @@ test('registered v2 Tool returns a ready result with no Finding fields', async (
   })
   const result = await context.tools.execute({
     signal: new AbortController().signal,
-    callId: CallId('report-v2'),
+    callId: CallId('report-v3'),
     name: MARIVO_REPORT_RENDER_TOOL_NAME,
     arguments: { session_id: 'session-report', document },
   })
   assert.equal(result.isError, false, JSON.stringify(result))
   if (result.isError) return
-  assert.equal((result.value as unknown as ReportRenderValueV2).status, 'ready')
+  assert.equal((result.value as unknown as ReportRenderValue).status, 'ready')
   assert.equal('finding_ids' in (result.value as unknown as object), false)
   assert.match(
     result.content[0]?.type === 'text' ? result.content[0].text : '',

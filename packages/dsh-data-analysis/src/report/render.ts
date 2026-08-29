@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { CompiledDagComponent, CompiledDagNode } from './dag.ts'
-import type { ReportBlockV2 } from './document.ts'
+import type { ReportBlock } from './document.ts'
 import type { ReportArtifactColumn, ReportDagJobProjection } from './projection.ts'
 import { reportTimeEpoch } from './time.ts'
 import type { CompiledChartBlock, CompiledReport, CompiledTableBlock } from './visual.ts'
 
-export const REPORT_RENDERER_VERSION = 'dsh-data-analysis-html/v9' as const
+export const REPORT_RENDERER_VERSION = 'dsh-data-analysis-html/v10' as const
 
 const DAG_SCRIPT = `(()=>{"use strict";const roots=[...document.querySelectorAll("[data-dag-component]")];const activate=(root,id)=>{for(const item of root.querySelectorAll("[data-dag-detail]")){const active=item.id===id;item.dataset.active=String(active);item.setAttribute("aria-hidden",String(!active))}for(const item of root.querySelectorAll("[data-dag-node]")){item.dataset.selected=String(item.getAttribute("href")==="#"+id)}};for(const root of roots){root.classList.add("dag-enhanced");const svg=root.querySelector("[data-dag-canvas]");const viewport=root.querySelector("[data-dag-viewport]");if(!svg||!viewport)continue;let scale=1,tx=0,ty=0,drag=null;const apply=()=>viewport.setAttribute("transform","translate("+tx+" "+ty+") scale("+scale+")");const reset=()=>{scale=1;tx=0;ty=0;apply()};for(const link of root.querySelectorAll("[data-dag-node]")){link.addEventListener("click",event=>{event.preventDefault();const id=link.getAttribute("href").slice(1);activate(root,id);history.replaceState(null,"","#"+encodeURIComponent(id))})}for(const button of root.querySelectorAll("[data-dag-action]")){button.addEventListener("click",()=>{const action=button.dataset.dagAction;if(action==="reset")reset();else{scale=Math.min(2.5,Math.max(.45,scale*(action==="zoom-in"?1.2:.8)));apply()}})}svg.addEventListener("wheel",event=>{event.preventDefault();scale=Math.min(2.5,Math.max(.45,scale*(event.deltaY<0?1.1:.9)));apply()},{passive:false});svg.addEventListener("pointerdown",event=>{if(event.target.closest("[data-dag-node]"))return;drag={x:event.clientX,y:event.clientY,tx,ty};svg.setPointerCapture(event.pointerId)});svg.addEventListener("pointermove",event=>{if(!drag)return;tx=drag.tx+(event.clientX-drag.x)/scale;ty=drag.ty+(event.clientY-drag.y)/scale;apply()});const stop=event=>{drag=null;if(svg.hasPointerCapture(event.pointerId))svg.releasePointerCapture(event.pointerId)};svg.addEventListener("pointerup",stop);svg.addEventListener("pointercancel",stop);const hash=decodeURIComponent(location.hash.slice(1));const initial=root.querySelector(hash?"#"+CSS.escape(hash):"[data-dag-detail]");if(initial)activate(root,initial.id)}addEventListener("hashchange",()=>{const id=decodeURIComponent(location.hash.slice(1));for(const root of roots)if(root.querySelector("#"+CSS.escape(id)))activate(root,id)})})();`
 
@@ -35,6 +35,10 @@ const COPY = {
     inventory: '完整技术溯源',
     focused: '纵轴聚焦于数据区间',
     artifacts: '数据工件',
+    computedData: '计算结果快照',
+    computedDisclosure:
+      'computed 数据为调用方提供的结果快照，不声明 Python 执行证明、数据新鲜度或 Marivo lineage。',
+    computedGraphEmpty: '本报告只包含 computed 数据，不生成 Marivo Session DAG。',
     actions: '分析动作',
     artifactPreview: '数据预览',
     graphEmpty: '当前 Session 没有符合条件的成功主产物分析动作或 Artifact。',
@@ -59,6 +63,11 @@ const COPY = {
     inventory: 'Complete technical provenance',
     focused: 'Focused value scale',
     artifacts: 'Data artifacts',
+    computedData: 'Computed result snapshots',
+    computedDisclosure:
+      'Computed data is a caller-provided result snapshot; it does not attest Python execution, freshness, or Marivo lineage.',
+    computedGraphEmpty:
+      'This report contains only computed data and does not generate a Marivo Session DAG.',
     actions: 'Analysis actions',
     artifactPreview: 'Data preview',
     graphEmpty: 'This Session has no eligible successful main-Artifact actions or Artifacts.',
@@ -155,7 +164,8 @@ const ZH_COLUMN_LABELS: Readonly<Record<string, string>> = Object.freeze({
 })
 
 function columnLabel(name: string, locale: 'zh-CN' | 'en-US'): string {
-  if (locale === 'zh-CN' && ZH_COLUMN_LABELS[name] !== undefined) return ZH_COLUMN_LABELS[name]
+  if (locale === 'zh-CN' && Object.hasOwn(ZH_COLUMN_LABELS, name))
+    return ZH_COLUMN_LABELS[name] as string
   return name.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
@@ -239,7 +249,7 @@ function chartContext(chart: CompiledChartBlock, report: CompiledReport): string
     chart.view === 'line'
       ? ` · ${dateLabel(String(chart.points[0]?.x ?? ''), report.document.locale) ?? scalar(chart.points[0]?.x ?? null)} – ${dateLabel(String(chart.points.at(-1)?.x ?? ''), report.document.locale) ?? scalar(chart.points.at(-1)?.x ?? null)}`
       : ''
-  const unit = chart.artifact.columns.find((column) => column.name === chart.y)?.unit
+  const unit = chart.dataset.columns.find((column) => column.name === chart.y)?.unit
   const countLabel = chart.view === 'line' ? copy.points : copy.categories
   const scale = chart.view === 'line' ? ` · ${copy.focused}` : ''
   const mechanical = `${chart.points.length} ${countLabel}${xRange} · ${copy.range}: ${yRange}${unit === undefined || unit === null ? '' : ` ${unit}`}${scale}`
@@ -400,7 +410,7 @@ function renderChart(chart: CompiledChartBlock, report: CompiledReport): string 
   const copy = COPY[report.document.locale]
   const svg = chart.view === 'line' ? svgLine(chart, report) : svgBar(chart, report)
   const columns = [chart.x, chart.y].map(
-    (name) => chart.artifact.columns.find((column) => column.name === name)!,
+    (name) => chart.dataset.columns.find((column) => column.name === name)!,
   )
   const fallback = tableHtml(
     `${chart.block.title} — ${copy.dataTable}`,
@@ -408,19 +418,23 @@ function renderChart(chart: CompiledChartBlock, report: CompiledReport): string 
     chart.points.map((point) => [point.x, point.y]),
     report.document.locale,
   )
-  return `<article class="block chart-block" id="${escapeHtml(chart.block.id)}"><h3>${escapeHtml(chart.block.title)}</h3><p class="context">${escapeHtml(chartContext(chart, report))}</p>${svg}<details class="fallback"><summary>${copy.dataTable}</summary>${fallback}</details></article>`
+  const sourceDisclosure =
+    chart.dataset.kind === 'computed' ? `<p class="context">${copy.computedDisclosure}</p>` : ''
+  return `<article class="block chart-block" id="${escapeHtml(chart.block.id)}"><h3>${escapeHtml(chart.block.title)}</h3>${sourceDisclosure}<p class="context">${escapeHtml(chartContext(chart, report))}</p>${svg}<details class="fallback"><summary>${copy.dataTable}</summary>${fallback}</details></article>`
 }
 
 function renderTable(table: CompiledTableBlock, report: CompiledReport): string {
   const copy = COPY[report.document.locale]
   const disclosure = `<p class="truncation">${copy.displayed}: ${table.rows.length} / ${copy.total}: ${table.totalRows} / ${copy.omitted}: ${table.omittedRows} ${copy.rows}</p>`
   const columns = table.columns.map(
-    (name) => table.artifact.columns.find((column) => column.name === name)!,
+    (name) => table.dataset.columns.find((column) => column.name === name)!,
   )
-  return `<article class="block table-block" id="${escapeHtml(table.block.id)}"><h3>${escapeHtml(table.block.title)}</h3>${disclosure}${tableHtml(table.block.title, columns, table.rows, report.document.locale)}</article>`
+  const sourceDisclosure =
+    table.dataset.kind === 'computed' ? `<p class="context">${copy.computedDisclosure}</p>` : ''
+  return `<article class="block table-block" id="${escapeHtml(table.block.id)}"><h3>${escapeHtml(table.block.title)}</h3>${sourceDisclosure}${disclosure}${tableHtml(table.block.title, columns, table.rows, report.document.locale)}</article>`
 }
 
-function renderBlock(block: ReportBlockV2, report: CompiledReport): string {
+function renderBlock(block: ReportBlock, report: CompiledReport): string {
   if (block.kind === 'text') {
     return `<article class="block text-block" id="${escapeHtml(block.id)}">${textBlock(block.text)}</article>`
   }
@@ -531,14 +545,23 @@ function footer(report: CompiledReport, generatedAt: string): string {
         timeZone: 'UTC',
         timeZoneName: 'short',
       }).format(date)
-  const count = `${report.sessionDag.jobs.length} ${copy.actions} · ${report.sessionDag.artifacts.length} ${copy.artifacts}`
+  const count =
+    report.projection.artifacts.length === 0 && report.projection.computed.length > 0
+      ? `${report.projection.computed.length} ${copy.computedData}`
+      : `${report.sessionDag.jobs.length} ${copy.actions} · ${report.sessionDag.artifacts.length} ${copy.artifacts}${report.projection.computed.length === 0 ? '' : ` · ${report.projection.computed.length} ${copy.computedData}`}`
   const graph =
     report.sessionDag.components.length === 0
-      ? `<p class="dag-empty">${copy.graphEmpty}</p>`
+      ? `<p class="dag-empty">${report.projection.artifacts.length === 0 && report.projection.computed.length > 0 ? copy.computedGraphEmpty : copy.graphEmpty}</p>`
       : report.sessionDag.components
           .map((component, index) => dagComponent(component, index, report))
           .join('')
-  return `<footer><div class="footer-meta"><p><strong>${copy.generated}</strong> <time datetime="${escapeHtml(generatedAt)}">${escapeHtml(visibleTime)}</time></p><p class="freshness">${copy.freshness}</p></div><section class="session-provenance" id="report-provenance"><h2>${copy.inventory}</h2><p class="dag-count">${count}</p><div class="dag-legend"><span class="legend-job">Job</span><span class="legend-artifact">Artifact</span><span class="legend-produces">produces</span><span class="legend-reuses">reuses</span></div>${graph}</section></footer>`
+  const freshness =
+    report.projection.artifacts.length > 0
+      ? `<p class="freshness">${copy.freshness}</p>`
+      : report.projection.computed.length > 0
+        ? `<p class="freshness">${copy.computedDisclosure}</p>`
+        : ''
+  return `<footer><div class="footer-meta"><p><strong>${copy.generated}</strong> <time datetime="${escapeHtml(generatedAt)}">${escapeHtml(visibleTime)}</time></p>${freshness}</div><section class="session-provenance" id="report-provenance"><h2>${copy.inventory}</h2><p class="dag-count">${count}</p><div class="dag-legend"><span class="legend-job">Job</span><span class="legend-artifact">Artifact</span><span class="legend-produces">produces</span><span class="legend-reuses">reuses</span></div>${graph}</section></footer>`
 }
 
 const CSS = `
