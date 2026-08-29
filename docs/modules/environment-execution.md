@@ -89,7 +89,7 @@ Datasource 连接失败不会污染 binding。
 | `runCheckedDatasourceDescribe()` | `md.describe(name)` | 只投影 datasource name 与凭证引用名 |
 | `runCheckedDatasourceTest()` | `md.test(name)` | 凭证仅经环境 overlay；Python 与 TypeScript 两层脱敏 |
 | `runCheckedEvidenceFindings()` | `session.evidence.finding()` | `use_datasources=False`，精确批次读取 Finding |
-| `runCheckedReportProjection()` | Artifact revalidation、Finding compatibility 与 `to_pandas()` | 只接受 admissible、受限 JSON 标量和原子 bundle |
+| `runCheckedReportProjection()` | 显式 Artifact revalidation 与 `to_pandas()` | 只接受 admissible、受限 JSON 标量和原子 bundle；不读取 Finding |
 
 Datasource test script 捕获库 stdout/stderr，只输出受控 JSON。异常只投影类型和稳定错误边界，不把
 任意异常正文直接交付。返回值在 Python 层按 secret values 递归替换，Node 层再次对 stdout/stderr

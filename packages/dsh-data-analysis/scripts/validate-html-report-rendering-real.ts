@@ -23,9 +23,10 @@ import { bindMarivoEnvironment, FixedSubprocessPolicy } from '../src/environment
 import { apply, inject } from '../src/plugin.ts'
 import {
   MARIVO_REPORT_RENDER_TOOL_NAME,
+  parseReportDocument,
   parseReportProjection,
-  type ReportDocumentV1,
-  type ReportRenderValueV1,
+  type ReportDocumentV2,
+  type ReportRenderValueV2,
   reportDocumentDigest,
 } from '../src/report/index.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
@@ -41,40 +42,23 @@ const defaultSharedPython = path.join(
   process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
 )
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON ?? defaultSharedPython
-const runId = `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`
+const runId = new Date().toISOString().replaceAll(/[:.]/g, '-') + '-' + randomUUID().slice(0, 8)
 const runRoot = path.join(workspaceRoot, 'artifacts', 'html-report-rendering-real', runId)
 const fixtureRoot = path.join(runRoot, 'workspace')
 const validationHome = path.join(runRoot, 'dsh-home')
 const runtimeRoot = path.join(runRoot, 'runtime')
 const validationPath = path.join(runRoot, 'validation.json')
 
+interface FixtureArtifact {
+  ref: string
+  columns: string[]
+  rowCount: number
+}
+
 interface FixtureValue {
   sessionId: string
-  mixedCompatibility: {
-    status: string
-    issueKinds: string[]
-    omittedIssueCount: number
-    omittedIssueKinds: string[]
-  }
-  timeSeries: {
-    ref: string
-    findingId: string
-    columns: string[]
-    rowCount: number
-  }
-  redundantScalar: {
-    ref: string
-    directFindingId: string
-    summaryFindingId: string
-    columns: string[]
-    rowCount: number
-  }
-  segmented: {
-    ref: string
-    findingId: string
-    columns: string[]
-    rowCount: number
-  }
+  timeSeries: FixtureArtifact
+  segmented: FixtureArtifact
 }
 
 interface UsageTotals extends TokenUsage {
@@ -114,13 +98,19 @@ interface ObservedToolResult {
 
 const observedResults = new Map<string, ObservedToolResult>()
 
+function errorSummary(error: unknown): { name: string; code?: string; message: string } {
+  if (!(error instanceof Error)) return { name: 'UnknownError', message: String(error) }
+  const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined
+  return { name: error.name, ...(code === undefined ? {} : { code }), message: error.message }
+}
+
 async function writeEarlyFailure(stage: string, error: unknown): Promise<void> {
   await mkdir(path.dirname(validationPath), { recursive: true })
   await writeFile(
     validationPath,
-    `${JSON.stringify(
+    JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         generatedAt: new Date().toISOString(),
         status: 'failed',
         runId,
@@ -132,16 +122,20 @@ async function writeEarlyFailure(stage: string, error: unknown): Promise<void> {
           fixtureRoot,
         },
         stage,
+        externalGates: {
+          web: { status: 'not-run', reason: 'The report artifact is a local offline HTML file.' },
+          model: { status: 'failed', provider: 'deepseek-official', id: model },
+        },
         failure: errorSummary(error),
       },
       null,
       2,
-    )}\n`,
+    ) + '\n',
     { mode: 0o600 },
   )
   await chmod(validationPath, 0o600)
   process.stderr.write(
-    `${JSON.stringify({ status: 'failed', stage, runRoot, validationPath }, null, 2)}\n`,
+    JSON.stringify({ status: 'failed', stage, runRoot, validationPath }, null, 2) + '\n',
   )
 }
 
@@ -160,12 +154,6 @@ function parseArguments(raw: string): unknown {
   } catch {
     return { malformed: true }
   }
-}
-
-function errorSummary(error: unknown): { name: string; code?: string; message: string } {
-  if (!(error instanceof Error)) return { name: 'UnknownError', message: String(error) }
-  const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined
-  return { name: error.name, ...(code === undefined ? {} : { code }), message: error.message }
 }
 
 function usageTotals(events: readonly SessionEvent[]): UsageTotals {
@@ -201,15 +189,8 @@ function reportCalls(events: readonly SessionEvent[]): ReportCallSummary[] {
     const observed = observedResults.get(callId)
     if (observed === undefined) return [{ callId, arguments: args, status: 'missing-result' }]
     if (observed.isError)
-      return [
-        {
-          callId,
-          arguments: args,
-          status: 'error',
-          errorText: observed.errorText,
-        },
-      ]
-    const value = observed.value as ReportRenderValueV1 | undefined
+      return [{ callId, arguments: args, status: 'error', errorText: observed.errorText }]
+    const value = observed.value as ReportRenderValueV2 | undefined
     if (value?.status === 'blocked') {
       return [
         {
@@ -241,19 +222,19 @@ function reportCalls(events: readonly SessionEvent[]): ReportCallSummary[] {
 }
 
 function markerFor(id: string): string {
-  return `HTML_REPORT_${id.toUpperCase().replaceAll('-', '_')}_OK`
+  return 'HTML_REPORT_' + id.toUpperCase().replaceAll('-', '_') + '_OK'
 }
 
-function exactDocument(call: ReportCallSummary): ReportDocumentV1 {
+function exactDocument(call: ReportCallSummary): ReportDocumentV2 {
   assert.equal(typeof call.arguments, 'object')
   assert.notEqual(call.arguments, null)
   const document = (call.arguments as { document?: unknown }).document
   assert.equal(typeof document, 'object')
   assert.notEqual(document, null)
-  return document as ReportDocumentV1
+  return document as ReportDocumentV2
 }
 
-function blockKinds(document: ReportDocumentV1): string[] {
+function blockKinds(document: ReportDocumentV2): string[] {
   return document.sections.flatMap((section) => section.blocks.map((block) => block.kind))
 }
 
@@ -265,38 +246,40 @@ function readyCall(result: TurnResult): ReportCallSummary {
 
 async function assertReadyArtifact(call: ReportCallSummary): Promise<void> {
   assert.equal(call.status, 'ready')
-  assert.ok(call.path)
+  const reportPath = call.path
+  assert.ok(reportPath)
   assert.ok(call.reportDigest)
   assert.ok(call.documentDigest)
-  const info = await stat(call.path)
+  const info = await stat(reportPath)
   assert.ok(info.isFile())
   if (process.platform !== 'win32') assert.equal(info.mode & 0o077, 0)
-  const html = await readFile(call.path, 'utf8')
+  const html = await readFile(reportPath, 'utf8')
   assert.match(html, /<svg class="chart"/)
   assert.match(html, /bar-series/)
   assert.match(html, /<table/)
-  assert.match(html, /class="block evidence-block"/)
-  assert.match(html, /class="evidence-statement"/)
-  assert.match(html, /完整技术溯源/)
+  assert.match(html, /完整技术溯源|Complete technical provenance/)
   assert.match(html, /href="#dag-\d+-detail-/)
   assert.match(html, /data-dag-component/)
   assert.match(html, /data-dag-node/)
   assert.match(html, /data-dag-action="zoom-in"/)
   assert.match(html, /class="raw-sql"/)
-  assert.match(html, /显示: \d+ \/ 总计: \d+ \/ 省略: \d+ 行/)
+  assert.match(
+    html,
+    /显示: \d+ \/ 总计: \d+ \/ 省略: \d+ 行|Displayed: \d+ \/ total: \d+ \/ omitted: \d+ rows/,
+  )
   assert.match(html, /@media print/)
   assert.equal(html.match(/<script\b/g)?.length, 1)
   assert.doesNotMatch(
     html,
-    /unsafe-inline|unsafe-eval|<iframe\b|https?:\/\/|data\.parquet|\.marivo\//,
+    /unsafe-inline|unsafe-eval|<iframe\b|https?:\/\/|data\.parquet|\.marivo\/|evidence-block|dag-findings|finding_ids|Finding/,
   )
 }
 
-async function publishedDocument(call: ReportCallSummary): Promise<ReportDocumentV1> {
+async function publishedDocument(call: ReportCallSummary): Promise<ReportDocumentV2> {
   assert.ok(call.path)
   return JSON.parse(
     await readFile(path.join(path.dirname(call.path), 'report-document.json'), 'utf8'),
-  ) as ReportDocumentV1
+  ) as ReportDocumentV2
 }
 
 async function createFixture(): Promise<FixtureValue> {
@@ -342,153 +325,35 @@ async function createFixture(): Promise<FixtureValue> {
     ].join('\n'),
   )
 
-  const fixtureScript = String.raw`
-import json
-import os
-import sys
-
-import ibis
-import marivo.analysis as mv
-import marivo.semantic as ms
-
-workspace = os.path.abspath(sys.argv[1])
-os.chdir(workspace)
-connection = ibis.duckdb.connect(":memory:")
-connection.raw_sql("CREATE TABLE orders (order_id INTEGER, created_at DATE, amount DOUBLE, platform VARCHAR)")
-connection.raw_sql("""
-INSERT INTO orders VALUES
-  (1, DATE '2026-08-20', 90.0, 'android'),
-  (2, DATE '2026-08-20', 30.0, 'ios'),
-  (3, DATE '2026-08-20', 20.0, 'web'),
-  (4, DATE '2026-08-20', 10.0, 'desktop'),
-  (5, DATE '2026-08-21', 95.0, 'android'),
-  (6, DATE '2026-08-21', 32.0, 'ios'),
-  (7, DATE '2026-08-21', 21.0, 'web'),
-  (8, DATE '2026-08-21', 11.0, 'desktop'),
-  (9, DATE '2026-08-22', 88.0, 'android'),
-  (10, DATE '2026-08-22', 35.0, 'ios'),
-  (11, DATE '2026-08-22', 22.0, 'web'),
-  (12, DATE '2026-08-22', 12.0, 'desktop'),
-  (13, DATE '2026-08-23', 101.0, 'android'),
-  (14, DATE '2026-08-23', 38.0, 'ios'),
-  (15, DATE '2026-08-23', 25.0, 'web'),
-  (16, DATE '2026-08-23', 13.0, 'desktop'),
-  (17, DATE '2026-08-24', 108.0, 'android'),
-  (18, DATE '2026-08-24', 40.0, 'ios'),
-  (19, DATE '2026-08-24', 26.0, 'web'),
-  (20, DATE '2026-08-24', 14.0, 'desktop'),
-  (21, DATE '2026-08-25', 112.0, 'android'),
-  (22, DATE '2026-08-25', 42.0, 'ios'),
-  (23, DATE '2026-08-25', 28.0, 'web'),
-  (24, DATE '2026-08-25', 15.0, 'desktop'),
-  (25, DATE '2026-08-26', 116.0, 'android'),
-  (26, DATE '2026-08-26', 44.0, 'ios'),
-  (27, DATE '2026-08-26', 29.0, 'web'),
-  (28, DATE '2026-08-26', 16.0, 'desktop'),
-  (29, DATE '2026-08-27', 120.0, 'android'),
-  (30, DATE '2026-08-27', 46.0, 'ios'),
-  (31, DATE '2026-08-27', 31.0, 'web'),
-  (32, DATE '2026-08-27', 17.0, 'desktop')
-""")
-session = mv.session.get_or_create(
-    name="html-report-rendering-real",
-    backends={"warehouse": lambda: connection},
-    use_datasources=False,
-)
-metric = session.catalog.metrics.get("sales.revenue")
-platform = session.catalog.dimensions.get("sales.orders.platform")
-time_series = session.observe(
-    metrics=metric,
-    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-28"),
-    grain=mv.grain("day"),
-)
-segmented = session.observe(metrics=metric, dimensions=[platform])
-redundant_scalar = session.observe(
-    metrics=metric,
-    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-28"),
-)
-baseline_segmented = session.observe(
-    metrics=metric,
-    dimensions=[platform],
-    time_scope=mv.time_scope(start="2026-08-20", end="2026-08-24"),
-    analysis_purpose="DAG baseline",
-)
-current_segmented = session.observe(
-    metrics=metric,
-    dimensions=[platform],
-    time_scope=mv.time_scope(start="2026-08-24", end="2026-08-28"),
-    analysis_purpose="DAG current",
-)
-delta = session.compare(
-    current_segmented,
-    baseline_segmented,
-    analysis_purpose="DAG compare",
-)
-attribution = session.attribute(
-    delta,
-    axes=[platform],
-    analysis_purpose="DAG attribute",
-)
-reused_attribution = session.attribute(
-    delta,
-    axes=[platform],
-    analysis_purpose="DAG attribute reuse",
-)
-assert reused_attribution.ref == attribution.ref
-assert any(
-    session.job(summary.id).get("reused_artifact") is True
-    for summary in session.jobs()
-    if summary.intent == "attribute"
-)
-time_finding = session.evidence.findings(artifact_ref=time_series.ref, limit=20).items[0]
-segment_finding = session.evidence.findings(artifact_ref=segmented.ref, limit=20).items[0]
-scalar_findings = session.evidence.findings(artifact_ref=redundant_scalar.ref, limit=20).items
-scalar_direct_finding = next(
-    finding for finding in scalar_findings if finding.finding_type == "metric_value"
-)
-scalar_summary_finding = next(
-    finding for finding in scalar_findings if finding.finding_type == "observation"
-)
-assert session.revalidate(time_series).status == "admissible"
-assert session.revalidate(segmented).status == "admissible"
-assert session.revalidate(redundant_scalar).status == "admissible"
-mixed_compatibility = session.evidence.compatibility(
-    finding_ids=[time_finding.finding_id, segment_finding.finding_id]
-)
-assert mixed_compatibility.status != "compatible"
-redundant_compatibility = session.evidence.compatibility(
-    finding_ids=[scalar_direct_finding.finding_id, scalar_summary_finding.finding_id]
-)
-assert redundant_compatibility.status == "compatible"
-print(json.dumps({
-    "sessionId": session.id,
-    "mixedCompatibility": {
-        "status": mixed_compatibility.status,
-        "issueKinds": [issue.detail.kind for issue in mixed_compatibility.issues],
-        "omittedIssueCount": mixed_compatibility.omitted_issue_count,
-        "omittedIssueKinds": list(mixed_compatibility.omitted_issue_kinds),
-    },
-    "timeSeries": {
-        "ref": time_series.ref,
-        "findingId": time_finding.finding_id,
-        "columns": list(time_series.columns),
-        "rowCount": time_series.shape[0],
-    },
-    "redundantScalar": {
-        "ref": redundant_scalar.ref,
-        "directFindingId": scalar_direct_finding.finding_id,
-        "summaryFindingId": scalar_summary_finding.finding_id,
-        "columns": list(redundant_scalar.columns),
-        "rowCount": redundant_scalar.shape[0],
-    },
-    "segmented": {
-        "ref": segmented.ref,
-        "findingId": segment_finding.finding_id,
-        "columns": list(segmented.columns),
-        "rowCount": segmented.shape[0],
-    },
-}, ensure_ascii=False, allow_nan=False))
-`
+  const fixtureScript = [
+    'import json',
+    'import os',
+    'import sys',
+    '',
+    'import ibis',
+    'import marivo.analysis as mv',
+    '',
+    'workspace = os.path.abspath(sys.argv[1])',
+    'os.chdir(workspace)',
+    'connection = ibis.duckdb.connect(":memory:")',
+    'connection.raw_sql("CREATE TABLE orders (order_id INTEGER, created_at DATE, amount DOUBLE, platform VARCHAR)")',
+    "connection.raw_sql(\"INSERT INTO orders VALUES (1, DATE '2026-08-20', 90.0, 'android'), (2, DATE '2026-08-20', 30.0, 'ios'), (3, DATE '2026-08-20', 20.0, 'web'), (4, DATE '2026-08-20', 10.0, 'desktop'), (5, DATE '2026-08-21', 95.0, 'android'), (6, DATE '2026-08-21', 32.0, 'ios'), (7, DATE '2026-08-21', 21.0, 'web'), (8, DATE '2026-08-21', 11.0, 'desktop'), (9, DATE '2026-08-22', 88.0, 'android'), (10, DATE '2026-08-22', 35.0, 'ios'), (11, DATE '2026-08-22', 22.0, 'web'), (12, DATE '2026-08-22', 12.0, 'desktop'), (13, DATE '2026-08-23', 101.0, 'android'), (14, DATE '2026-08-23', 38.0, 'ios'), (15, DATE '2026-08-23', 25.0, 'web'), (16, DATE '2026-08-23', 13.0, 'desktop'), (17, DATE '2026-08-24', 108.0, 'android'), (18, DATE '2026-08-24', 40.0, 'ios'), (19, DATE '2026-08-24', 26.0, 'web'), (20, DATE '2026-08-24', 14.0, 'desktop'), (21, DATE '2026-08-25', 112.0, 'android'), (22, DATE '2026-08-25', 42.0, 'ios'), (23, DATE '2026-08-25', 28.0, 'web'), (24, DATE '2026-08-25', 15.0, 'desktop'), (25, DATE '2026-08-26', 116.0, 'android'), (26, DATE '2026-08-26', 44.0, 'ios'), (27, DATE '2026-08-26', 29.0, 'web'), (28, DATE '2026-08-26', 16.0, 'desktop'), (29, DATE '2026-08-27', 120.0, 'android'), (30, DATE '2026-08-27', 46.0, 'ios'), (31, DATE '2026-08-27', 31.0, 'web'), (32, DATE '2026-08-27', 17.0, 'desktop')\")",
+    'session = mv.session.get_or_create(name="html-report-rendering-real", backends={"warehouse": lambda: connection}, use_datasources=False)',
+    'metric = session.catalog.metrics.get("sales.revenue")',
+    'platform = session.catalog.dimensions.get("sales.orders.platform")',
+    'time_series = session.observe(metrics=metric, time_scope=mv.time_scope(start="2026-08-20", end="2026-08-28"), grain=mv.grain("day"))',
+    'segmented = session.observe(metrics=metric, dimensions=[platform])',
+    'baseline = session.observe(metrics=metric, dimensions=[platform], time_scope=mv.time_scope(start="2026-08-20", end="2026-08-24"), analysis_purpose="DAG baseline")',
+    'current = session.observe(metrics=metric, dimensions=[platform], time_scope=mv.time_scope(start="2026-08-24", end="2026-08-28"), analysis_purpose="DAG current")',
+    'delta = session.compare(current, baseline, analysis_purpose="DAG compare")',
+    'attribution = session.attribute(delta, axes=[platform], analysis_purpose="DAG attribute")',
+    'reused_attribution = session.attribute(delta, axes=[platform], analysis_purpose="DAG attribute reuse")',
+    'assert reused_attribution.ref == attribution.ref',
+    'assert any(session.job(summary.id).get("reused_artifact") is True for summary in session.jobs() if summary.intent == "attribute")',
+    'assert session.revalidate(time_series).status == "admissible"',
+    'assert session.revalidate(segmented).status == "admissible"',
+    'print(json.dumps({"sessionId": session.id, "timeSeries": {"ref": time_series.ref, "columns": list(time_series.columns), "rowCount": time_series.shape[0]}, "segmented": {"ref": segmented.ref, "columns": list(segmented.columns), "rowCount": segmented.shape[0]}}, ensure_ascii=False, allow_nan=False))',
+  ].join('\n')
   const policy = new FixedSubprocessPolicy(fixtureRoot)
   const result = await policy.run({
     executable: pythonExecutable,
@@ -504,123 +369,87 @@ const fixture = await createFixture().catch(async (error) => {
   throw error
 })
 assert.equal(fixture.timeSeries.rowCount, 8)
-assert.equal(fixture.redundantScalar.rowCount, 1)
 assert.equal(fixture.segmented.rowCount, 4)
 assert.equal(fixture.timeSeries.columns.length, 2)
-assert.equal(fixture.redundantScalar.columns.length, 1)
 assert.equal(fixture.segmented.columns.length, 2)
 
 const environment = await bindMarivoEnvironment({ projectRoot: fixtureRoot, pythonExecutable })
-const compatibilityPreflight = await (async () => {
-  const mixedGroup = [fixture.timeSeries.findingId, fixture.segmented.findingId]
-  const projectionChild = await environment.runCheckedReportProjection(
-    fixture.sessionId,
-    ['artifact-missing-for-preflight'],
-    [mixedGroup, mixedGroup],
-    { timeoutMs: 120_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
-  )
-  assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
-  const parsed = parseReportProjection(projectionChild.stdout, {
-    sessionId: fixture.sessionId,
-    artifactRefs: ['artifact-missing-for-preflight'],
-    findingIds: mixedGroup,
-    findingGroups: [mixedGroup, mixedGroup],
-  })
-  assert.equal(parsed.ok, false, JSON.stringify(parsed))
-  if (parsed.ok) throw new Error('Mixed Finding compatibility preflight was unexpectedly ready')
-  assert.equal(parsed.issues.length, 3, JSON.stringify(parsed.issues))
-  assert.deepEqual(
-    parsed.issues.map((issue) => issue.location),
-    ['finding_groups[0]', 'finding_groups[1]', 'artifact_refs[0]'],
-  )
-  for (const issue of parsed.issues.slice(0, 2)) {
-    assert.equal(issue.code, 'evidence-not-compatible')
-    assert.match(
-      issue.message,
-      new RegExp(fixture.timeSeries.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+const reportArtifactRefs = [fixture.timeSeries.ref, fixture.segmented.ref]
+const projectionChild = await environment.runCheckedReportProjection(
+  fixture.sessionId,
+  reportArtifactRefs,
+  { timeoutMs: 120_000, stdoutMaxBytes: 16 * 1024 * 1024 + 65_536, stderrMaxBytes: 65_536 },
+)
+assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
+const projectionPayload = JSON.parse(projectionChild.stdout.toString('utf8')) as Record<
+  string,
+  unknown
+>
+assert.deepEqual(Object.keys(projectionPayload).sort(), [
+  'artifact_outcomes',
+  'session_dag',
+  'session_id',
+  'status',
+])
+assert.equal('finding_outcomes' in projectionPayload, false)
+assert.equal('finding_group_outcomes' in projectionPayload, false)
+const rawOutcomes = projectionPayload.artifact_outcomes
+if (!Array.isArray(rawOutcomes)) throw new Error('artifact_outcomes must be an array')
+assert.ok(
+  rawOutcomes.every((outcome) => {
+    if (typeof outcome !== 'object' || outcome === null || Array.isArray(outcome)) return false
+    const value = (outcome as Record<string, unknown>).value
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      !('rows_projected' in value)
     )
-    assert.match(
-      issue.message,
-      new RegExp(fixture.segmented.findingId.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')),
-    )
-    for (const kind of [
-      ...fixture.mixedCompatibility.issueKinds,
-      ...fixture.mixedCompatibility.omittedIssueKinds,
-    ]) {
-      assert.match(issue.message, new RegExp(kind.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-    }
-    assert.match(issue.repair, /resubmit the complete ReportDocument v1/)
-  }
-  assert.equal(parsed.issues[2]?.code, 'marivo-framerefnotfound')
-  assert.match(parsed.issues[2]?.message ?? '', /artifact-missing-for-preflight/)
-  return parsed.issues
-})().catch(async (error) => {
-  await writeEarlyFailure('compatibility-preflight', error)
-  throw error
+  }),
+)
+const rawSessionDag = projectionPayload.session_dag
+if (typeof rawSessionDag !== 'object' || rawSessionDag === null || Array.isArray(rawSessionDag))
+  throw new Error('session_dag must be an object')
+const rawDagArtifacts = (rawSessionDag as Record<string, unknown>).artifacts
+if (!Array.isArray(rawDagArtifacts)) throw new Error('session_dag.artifacts must be an array')
+assert.ok(
+  rawDagArtifacts.every(
+    (artifact) =>
+      typeof artifact === 'object' &&
+      artifact !== null &&
+      !Array.isArray(artifact) &&
+      !('evidence_status' in artifact),
+  ),
+)
+const projection = parseReportProjection(projectionChild.stdout, {
+  sessionId: fixture.sessionId,
+  artifactRefs: reportArtifactRefs,
 })
-const findingGroups = [
-  [fixture.timeSeries.findingId],
-  [fixture.timeSeries.findingId],
-  [fixture.segmented.findingId],
-  [fixture.segmented.findingId],
-]
-const projection = await (async () => {
-  const projectionChild = await environment.runCheckedReportProjection(
-    fixture.sessionId,
-    [fixture.timeSeries.ref, fixture.segmented.ref],
-    findingGroups,
-    { timeoutMs: 120_000, stdoutMaxBytes: 16 * 1024 * 1024 + 65_536, stderrMaxBytes: 65_536 },
-  )
-  assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
-  const parsed = parseReportProjection(projectionChild.stdout, {
-    sessionId: fixture.sessionId,
-    artifactRefs: [fixture.timeSeries.ref, fixture.segmented.ref],
-    findingIds: [fixture.timeSeries.findingId, fixture.segmented.findingId],
-    findingGroups,
-  })
-  assert.equal(parsed.ok, true, JSON.stringify(parsed))
-  if (!parsed.ok) throw new Error('Session DAG projection was unexpectedly blocked')
-  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.intent === 'observe'))
-  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.intent === 'compare'))
-  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.intent === 'attribute'))
-  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.reusedArtifact === true))
-  assert.ok(parsed.value.sessionDag.jobs.some((job) => job.queries.length > 0))
-  assert.ok(parsed.value.sessionDag.artifacts.every((item) => item.previewRows.length <= 10))
-  return parsed
-})().catch(async (error) => {
-  await writeEarlyFailure('projection', error)
-  throw error
-})
+assert.equal(projection.ok, true, JSON.stringify(projection))
+if (!projection.ok) throw new Error('Artifact-only projection was unexpectedly blocked')
+assert.deepEqual(
+  projection.value.artifacts.map((item) => item.ref),
+  reportArtifactRefs,
+)
+assert.ok(projection.value.sessionDag.jobs.some((job) => job.intent === 'compare'))
+assert.ok(projection.value.sessionDag.jobs.some((job) => job.intent === 'attribute'))
+assert.ok(projection.value.sessionDag.jobs.some((job) => job.reusedArtifact))
+assert.ok(projection.value.sessionDag.artifacts.every((item) => item.previewRows.length <= 10))
 
-const findingOnlyProjection = await (async () => {
-  const projectionChild = await environment.runCheckedReportProjection(
-    fixture.sessionId,
-    [],
-    [[fixture.timeSeries.findingId]],
-    { timeoutMs: 120_000, stdoutMaxBytes: 16 * 1024 * 1024 + 65_536, stderrMaxBytes: 65_536 },
-  )
-  assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
-  const parsed = parseReportProjection(projectionChild.stdout, {
-    sessionId: fixture.sessionId,
-    artifactRefs: [],
-    findingIds: [fixture.timeSeries.findingId],
-    findingGroups: [[fixture.timeSeries.findingId]],
-  })
-  assert.equal(parsed.ok, true, JSON.stringify(parsed))
-  if (!parsed.ok) throw new Error('Finding-only projection was unexpectedly blocked')
-  assert.equal(parsed.value.artifacts.length, 1)
-  assert.equal(parsed.value.artifacts[0]?.ref, fixture.timeSeries.ref)
-  assert.equal(parsed.value.artifacts[0]?.rowsProjected, false)
-  assert.deepEqual(parsed.value.artifacts[0]?.rows, [])
-  return parsed.value
-})().catch(async (error) => {
-  await writeEarlyFailure('finding-only-projection', error)
-  throw error
+const legacyDocument = parseReportDocument({
+  version: 'dsh-data-analysis-report/v1',
+  title: 'Legacy',
+  locale: 'en-US',
+  sections: [
+    { id: 'summary', title: 'Summary', blocks: [{ kind: 'text', id: 'text', text: 'Legacy' }] },
+  ],
 })
+assert.equal(legacyDocument.ok, false)
 
 const originalDshHome = process.env.DSH_HOME
 const ctx = new Context()
 let plugin: Awaited<ReturnType<Context['plugin']>> | undefined
+let stopResults: (() => void) | undefined
 const validationAgents: Agent[] = []
 const journeys: TurnResult[] = []
 let finalStatus: 'ok' | 'failed' = 'failed'
@@ -668,7 +497,7 @@ try {
         render: (_args, value) => [
           {
             type: 'text',
-            text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
+            text: '<skill_content name="' + value.name + '">' + value.content + '</skill_content>',
           },
         ],
       },
@@ -678,12 +507,12 @@ try {
           scope: exec.agent,
           signal: exec.signal,
         })
-        if (skill === undefined) throw new Error(`unknown skill ${name}`)
+        if (skill === undefined) throw new Error('unknown skill ' + name)
         return { name: skill.name, provider: skill.provider, content: skill.content }
       },
     }),
   )
-  const stopResults = ctx.on('tools/result', (exec, result) => {
+  stopResults = ctx.on('tools/result', (exec, result) => {
     if (exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME) return
     observedResults.set(
       String(exec.callId),
@@ -704,10 +533,7 @@ try {
       inject,
       apply,
     },
-    {
-      runtimeRoot,
-      pythonExecutable,
-    },
+    { runtimeRoot, pythonExecutable },
   )
 
   async function runTurn(agent: Agent, id: string, prompt: string): Promise<TurnResult> {
@@ -740,12 +566,8 @@ try {
   }
 
   const reportAgent = ctx.agentLoop.create(
-    SessionId(`html-report-real-main-${runId}`),
-    {
-      provider: 'deepseek-official',
-      model,
-      maxTokens: 8_192,
-    },
+    SessionId('html-report-real-main-' + runId),
+    { provider: 'deepseek-official', model, maxTokens: 8_192 },
     { cwd: fixtureRoot },
   )
   validationAgents.push(reportAgent)
@@ -759,26 +581,39 @@ try {
     [
       'I explicitly request a durable Chinese HTML analysis report.',
       'Call skill exactly once with {"name":"marivo-analysis"}, then call marivo_report_render.',
-      `Use exact Marivo session_id ${JSON.stringify(fixture.sessionId)}.`,
-      `Use time-series Artifact ${JSON.stringify(fixture.timeSeries.ref)} with columns ${JSON.stringify(fixture.timeSeries.columns)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}.`,
-      `Use segmented Artifact ${JSON.stringify(fixture.segmented.ref)} with columns ${JSON.stringify(fixture.segmented.columns)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
-      'Submit one complete dsh-data-analysis-report/v1 document titled “支付收入分析报告”.',
-      `It must include text plus: an explicit line chart x=${JSON.stringify(timeX)} y=${JSON.stringify(timeY)}, an explicit bar chart x=${JSON.stringify(segmentX)} y=${JSON.stringify(segmentY)}, a table with max_rows=5, and an evidence block.`,
-      'Both charts must use kind="chart"; select line or bar only with the view field.',
-      'Use only lowercase kebab-case block IDs. Never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to each chart, table, text, or evidence block.',
-      `Every data/source block must use its exact Artifact/Finding above. End the final response with ${markerFor('initial-generation')}.`,
+      'Use exact Marivo session_id ' + JSON.stringify(fixture.sessionId) + '.',
+      'Use time-series Artifact ' +
+        JSON.stringify(fixture.timeSeries.ref) +
+        ' with columns ' +
+        JSON.stringify(fixture.timeSeries.columns) +
+        '.',
+      'Use segmented Artifact ' +
+        JSON.stringify(fixture.segmented.ref) +
+        ' with columns ' +
+        JSON.stringify(fixture.segmented.columns) +
+        '.',
+      'Submit one complete dsh-data-analysis-report/v2 document titled “支付收入分析报告”.',
+      'It must include text, an explicit line chart x=' +
+        JSON.stringify(timeX) +
+        ' y=' +
+        JSON.stringify(timeY) +
+        ', an explicit bar chart x=' +
+        JSON.stringify(segmentX) +
+        ' y=' +
+        JSON.stringify(segmentY) +
+        ', and a table with max_rows=5.',
+      'Use only lowercase kebab-case block IDs. Use only text, chart, and table blocks; never use finding_ids or an evidence block.',
+      'Every chart and table must bind directly to its exact Artifact ref. End the final response with ' +
+        markerFor('initial-generation') +
+        '.',
     ].join('\n'),
   )
   assert.ok(initial.completed, initial.finalText)
   assert.equal(initial.errors.length, 0, JSON.stringify(initial.errors))
-  assert.ok(initial.reportCalls.length >= 1, JSON.stringify(initial.reportCalls))
   assert.equal(initial.reportCalls.at(-1)?.status, 'ready', JSON.stringify(initial.reportCalls))
   const initialReady = readyCall(initial)
   const initialDocument = exactDocument(initialReady)
-  assert.deepEqual(
-    new Set(blockKinds(initialDocument)),
-    new Set(['text', 'chart', 'table', 'evidence']),
-  )
+  assert.deepEqual(new Set(blockKinds(initialDocument)), new Set(['text', 'chart', 'table']))
   assert.equal(
     initialReady.documentDigest,
     reportDocumentDigest(await publishedDocument(initialReady)),
@@ -791,21 +626,19 @@ try {
     [
       'Revise the durable report already created in this conversation.',
       'Call marivo_report_render exactly once in this turn. Submit another complete ReportDocument in that single call, never a patch and never read the old document from disk.',
-      'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining that this is the revised layout.',
-      'Retain text, explicit line, explicit bar, table, and evidence blocks with the same exact session, Artifacts, columns, and Findings from the previous turn.',
-      `End the final response with ${markerFor('complete-revision')}.`,
+      'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining the revised layout.',
+      'Retain text, explicit line, explicit bar, and table blocks with the same exact session, Artifacts, and columns from the previous turn.',
+      'Use only the dsh-data-analysis-report/v2 contract and only text, chart, and table blocks. End the final response with ' +
+        markerFor('complete-revision') +
+        '.',
     ].join('\n'),
   )
   assert.ok(revision.completed, revision.finalText)
   assert.equal(revision.errors.length, 0, JSON.stringify(revision.errors))
-  assert.ok(revision.reportCalls.length >= 1, JSON.stringify(revision.reportCalls))
   assert.equal(revision.reportCalls.at(-1)?.status, 'ready', JSON.stringify(revision.reportCalls))
   const revisionReady = readyCall(revision)
   const revisionDocument = exactDocument(revisionReady)
-  assert.deepEqual(
-    new Set(blockKinds(revisionDocument)),
-    new Set(['text', 'chart', 'table', 'evidence']),
-  )
+  assert.deepEqual(new Set(blockKinds(revisionDocument)), new Set(['text', 'chart', 'table']))
   assert.equal(
     revisionReady.documentDigest,
     reportDocumentDigest(await publishedDocument(revisionReady)),
@@ -813,122 +646,16 @@ try {
   assert.notEqual(revisionReady.reportDigest, initialReady.reportDigest)
   assert.notEqual(revisionReady.documentDigest, initialReady.documentDigest)
   assert.notEqual(revisionReady.path, initialReady.path)
-  await assertReadyArtifact(initialReady)
   await assertReadyArtifact(revisionReady)
 
-  const minimalEvidenceAgent = ctx.agentLoop.create(
-    SessionId(`html-report-real-minimal-evidence-${runId}`),
-    {
-      provider: 'deepseek-official',
-      model,
-      maxTokens: 8_192,
-    },
-    { cwd: fixtureRoot },
-  )
-  validationAgents.push(minimalEvidenceAgent)
-  const minimalEvidence = await runTurn(
-    minimalEvidenceAgent,
-    'minimal-evidence-selection',
-    [
-      'I explicitly request a durable Chinese HTML report for one scalar revenue observation.',
-      'Call skill exactly once with {"name":"marivo-analysis"}, then call marivo_report_render exactly once.',
-      `Use exact Marivo session_id ${JSON.stringify(fixture.sessionId)}.`,
-      `Scalar Artifact ${JSON.stringify(fixture.redundantScalar.ref)} has two mechanically compatible candidate sources for the same one-row observation: direct metric_value Finding ${JSON.stringify(fixture.redundantScalar.directFindingId)} and summary observation Finding ${JSON.stringify(fixture.redundantScalar.summaryFindingId)}.`,
-      'Submit one complete dsh-data-analysis-report/v1 document with exactly one section and exactly one text block. Do not add chart, table, or evidence blocks.',
-      'Decide which candidate Finding IDs to attach by following the active report evidence-selection guidance. Never invent another Finding ID.',
-      `End the final response with ${markerFor('minimal-evidence-selection')}.`,
-    ].join('\n'),
-  )
-  assert.ok(minimalEvidence.completed, minimalEvidence.finalText)
-  assert.equal(minimalEvidence.errors.length, 0, JSON.stringify(minimalEvidence.errors))
-  assert.equal(minimalEvidence.reportCalls.length, 1, JSON.stringify(minimalEvidence.reportCalls))
-  assert.equal(
-    minimalEvidence.reportCalls[0]?.status,
-    'ready',
-    JSON.stringify(minimalEvidence.reportCalls),
-  )
-  const minimalReady = readyCall(minimalEvidence)
-  const minimalDocument = exactDocument(minimalReady)
-  assert.equal(minimalDocument.sections.length, 1, JSON.stringify(minimalDocument))
-  assert.equal(minimalDocument.sections[0]?.blocks.length, 1, JSON.stringify(minimalDocument))
-  const minimalBlock = minimalDocument.sections[0]?.blocks[0]
-  assert.equal(minimalBlock?.kind, 'text', JSON.stringify(minimalDocument))
-  assert.deepEqual(minimalBlock?.finding_ids, [fixture.redundantScalar.directFindingId])
-  assert.equal(
-    minimalReady.documentDigest,
-    reportDocumentDigest(await publishedDocument(minimalReady)),
-  )
-  assert.ok(minimalReady.path)
-  const minimalManifest = JSON.parse(
-    await readFile(path.join(path.dirname(minimalReady.path), 'manifest.json'), 'utf8'),
-  ) as { finding_ids: string[] }
-  assert.deepEqual(minimalManifest.finding_ids, [fixture.redundantScalar.directFindingId])
-
-  const repairAgent = ctx.agentLoop.create(
-    SessionId(`html-report-real-repair-${runId}`),
-    {
-      provider: 'deepseek-official',
-      model,
-      maxTokens: 8_192,
-    },
-    { cwd: fixtureRoot },
-  )
-  validationAgents.push(repairAgent)
-  const repaired = await runTurn(
-    repairAgent,
-    'blocked-repair',
-    [
-      'I explicitly request a durable Chinese HTML report and a repair demonstration.',
-      'Call skill exactly once with {"name":"marivo-analysis"}.',
-      `Use exact session ${JSON.stringify(fixture.sessionId)}, time Artifact ${JSON.stringify(fixture.timeSeries.ref)} and Finding ${JSON.stringify(fixture.timeSeries.findingId)}, segmented Artifact ${JSON.stringify(fixture.segmented.ref)} and Finding ${JSON.stringify(fixture.segmented.findingId)}.`,
-      `The complete document must contain text, line (${JSON.stringify(timeX)}, ${JSON.stringify(timeY)}), bar (${JSON.stringify(segmentX)}, ${JSON.stringify(segmentY)}), table, and evidence blocks.`,
-      'Both charts must use kind="chart"; select line or bar only with the view field.',
-      'Use only lowercase kebab-case block IDs. In the final repaired document, never put both Findings in one block: use separate evidence blocks and attach only the matching single Finding to every other block.',
-      'For the first marivo_report_render call deliberately set the table max_rows to 0, set the line y field to missing_revenue, and attach both Findings to the summary text block. After the Tool returns blocked, your very next assistant message must be only the repaired marivo_report_render Tool call: submit another complete document with max_rows=5, the exact line y column, and only compatible per-block Finding selections, without narrating or stopping between the two calls.',
-      `End the final response with ${markerFor('blocked-repair')}.`,
-    ].join('\n'),
-  )
-  assert.ok(repaired.completed, repaired.finalText)
-  assert.equal(repaired.errors.length, 0, JSON.stringify(repaired.errors))
-  assert.ok(repaired.reportCalls.length >= 2, JSON.stringify(repaired.reportCalls))
-  assert.equal(repaired.reportCalls.at(-1)?.status, 'ready', JSON.stringify(repaired.reportCalls))
-  const documentBlocked = repaired.reportCalls.find(
-    (call) => call.status === 'blocked' && call.failedStages?.includes('document'),
-  )
-  assert.ok(documentBlocked, JSON.stringify(repaired.reportCalls))
-  assert.ok((documentBlocked.issueCodes?.length ?? 0) > 0)
-  assert.ok(documentBlocked.failedStages?.includes('marivo'), JSON.stringify(documentBlocked))
-  assert.ok(documentBlocked.failedStages?.includes('visual'), JSON.stringify(documentBlocked))
-  assert.ok(
-    documentBlocked.issueCodes?.includes('invalid-max-rows'),
-    JSON.stringify(documentBlocked),
-  )
-  assert.ok(
-    documentBlocked.issueCodes?.includes('evidence-not-compatible'),
-    JSON.stringify(documentBlocked),
-  )
-  assert.ok(
-    documentBlocked.issueCodes?.includes('chart-column-not-found'),
-    JSON.stringify(documentBlocked),
-  )
-  const repairedReady = readyCall(repaired)
-  const repairedDocument = exactDocument(repairedReady)
-  assert.deepEqual(
-    new Set(blockKinds(repairedDocument)),
-    new Set(['text', 'chart', 'table', 'evidence']),
-  )
-  await assertReadyArtifact(repairedReady)
-
-  for (const call of [initialReady, revisionReady, minimalReady, repairedReady]) {
+  for (const call of [initialReady, revisionReady]) {
     const reportDirectory = path.dirname(call.path!)
     assert.deepEqual(
-      (
-        await Promise.all([
-          stat(path.join(reportDirectory, 'index.html')),
-          stat(path.join(reportDirectory, 'manifest.json')),
-          stat(path.join(reportDirectory, 'report-document.json')),
-        ])
-      ).map((item) => item.isFile()),
+      await Promise.all(
+        ['index.html', 'manifest.json', 'report-document.json'].map(async (filename) =>
+          (await stat(path.join(reportDirectory, filename))).isFile(),
+        ),
+      ),
       [true, true, true],
     )
   }
@@ -936,23 +663,30 @@ try {
   const reportTree = JSON.stringify(
     await readFile(path.join(path.dirname(initialReady.path!), 'manifest.json'), 'utf8'),
   )
-  assert.doesNotMatch(reportTree, /credential|api[_-]?key/i)
+  assert.doesNotMatch(reportTree, /credential|api[_-]?key|finding_ids|finding_outcomes/i)
   await assert.rejects(() => stat(path.join(reportsRoot, 'latest')), { code: 'ENOENT' })
   await assert.rejects(() => stat(path.join(reportsRoot, 'registry.json')), { code: 'ENOENT' })
   await assert.rejects(() => stat(path.join(reportsRoot, 'state.json')), { code: 'ENOENT' })
 
-  stopResults()
   finalStatus = 'ok'
 } catch (error) {
   failure = errorSummary(error)
   throw error
 } finally {
   const validation = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     status: finalStatus,
     runId,
     model: { provider: 'deepseek-official', id: model, thinking: 'disabled' },
+    externalGates: {
+      web: { status: 'not-run', reason: 'The report artifact is a local offline HTML file.' },
+      model: {
+        status: finalStatus === 'ok' ? 'passed' : 'failed',
+        provider: 'deepseek-official',
+        id: model,
+      },
+    },
     environment: {
       binding: environment.binding,
       credentialValuesRecorded: false,
@@ -963,34 +697,25 @@ try {
     projection: {
       status: projection.ok ? 'ready' : 'blocked',
       artifactCount: projection.ok ? projection.value.artifacts.length : 0,
-      findingCount: projection.ok ? projection.value.findings.length : 0,
-      compatibilityCount: projection.ok ? projection.value.compatibilities.length : 0,
-      compatibilityPreflight: {
-        issueCount: compatibilityPreflight.length,
-        issueCodes: compatibilityPreflight.map((issue) => issue.code),
-        locations: compatibilityPreflight.map((issue) => issue.location),
-      },
-      findingOnly: {
-        artifactCount: findingOnlyProjection.artifacts.length,
-        findingCount: findingOnlyProjection.findings.length,
-        rowsProjected: findingOnlyProjection.artifacts[0]?.rowsProjected,
-        declaredRows: findingOnlyProjection.artifacts[0]?.shape[0],
-      },
+      checkedArtifactRefs: projection.ok ? projection.checkedArtifactRefs : [],
+      sessionDagJobCount: projection.ok ? projection.value.sessionDag.jobs.length : 0,
+      sessionDagArtifactCount: projection.ok ? projection.value.sessionDag.artifacts.length : 0,
     },
     journeys,
     ...(failure === undefined ? {} : { failure }),
   }
   await mkdir(path.dirname(validationPath), { recursive: true })
-  await writeFile(validationPath, `${JSON.stringify(validation, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(validationPath, JSON.stringify(validation, null, 2) + '\n', { mode: 0o600 })
   await chmod(validationPath, 0o600)
   await plugin?.dispose()
+  stopResults?.()
   for (const agent of validationAgents) {
     assert.equal(agent.ctx.tools.get(MARIVO_REPORT_RENDER_TOOL_NAME, agent), undefined)
   }
   if (originalDshHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = originalDshHome
   process.stdout.write(
-    `${JSON.stringify(
+    JSON.stringify(
       {
         status: finalStatus,
         runRoot,
@@ -999,6 +724,6 @@ try {
       },
       null,
       2,
-    )}\n`,
+    ) + '\n',
   )
 }

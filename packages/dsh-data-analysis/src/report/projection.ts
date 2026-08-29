@@ -1,5 +1,5 @@
 import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { ReportIssueV1 } from './document.ts'
+import type { ReportIssueV2 } from './document.ts'
 
 export interface ReportArtifactColumn {
   readonly name: string
@@ -20,29 +20,7 @@ export interface ReportArtifactProjection {
   readonly contract: JsonValue
   readonly revalidation: JsonValue
   readonly lineage: JsonValue
-  readonly rowsProjected: boolean
   readonly rows: readonly (readonly JsonValue[])[]
-}
-
-export interface ReportFindingProjection {
-  readonly findingId: string
-  readonly findingType: string
-  readonly epistemicKind: string
-  readonly artifactId: string
-  readonly sessionId: string
-  readonly qualityStatus: string | null
-  readonly committedAt: string
-  readonly value: JsonValue
-  readonly subject: JsonValue
-  readonly derivation: JsonValue
-  readonly rendered: { readonly en: string; readonly zh: string }
-}
-
-export interface ReportCompatibilityProjection {
-  readonly groupIndex: number
-  readonly status: string
-  readonly findingIds: readonly string[]
-  readonly value: JsonValue
 }
 
 export interface ReportDagQueryProjection {
@@ -72,7 +50,7 @@ export interface ReportDagJobProjection {
   readonly outputArtifactRef: string
   readonly reusedArtifact: boolean
   readonly queries: readonly ReportDagQueryProjection[]
-  readonly queryIssues: readonly ReportIssueV1[]
+  readonly queryIssues: readonly ReportIssueV2[]
 }
 
 export type ReportDagArtifactStatus = 'ready' | 'unavailable' | 'boundary'
@@ -86,14 +64,13 @@ export interface ReportDagArtifactProjection {
   readonly contentHash: string | null
   readonly artifactSchemaVersion: string | null
   readonly createdAt: string | null
-  readonly evidenceStatus: string | null
   readonly contract: JsonValue | null
   readonly revalidation: JsonValue | null
   readonly lineage: JsonValue | null
   readonly previewRows: readonly (readonly JsonValue[])[]
   readonly totalRows: number | null
   readonly omittedRows: number | null
-  readonly issues: readonly ReportIssueV1[]
+  readonly issues: readonly ReportIssueV2[]
 }
 
 export interface ReportSessionDagProjection {
@@ -104,25 +81,18 @@ export interface ReportSessionDagProjection {
 export interface ReportProjectionBundle {
   readonly sessionId: string
   readonly artifacts: readonly ReportArtifactProjection[]
-  readonly findings: readonly ReportFindingProjection[]
-  readonly compatibilities: readonly ReportCompatibilityProjection[]
   readonly sessionDag: ReportSessionDagProjection
 }
 
 export interface ReportProjectionInspection {
   readonly ok: boolean
   readonly value: ReportProjectionBundle
-  readonly issues: readonly ReportIssueV1[]
+  readonly issues: readonly ReportIssueV2[]
   readonly omittedIssueCount: number
   readonly complete: boolean
   readonly globalFailure: boolean
   /** Artifact identities checked by the bridge, in artifact outcome order. */
   readonly checkedArtifactRefs: readonly string[]
-  /** Backing Artifact identity discovered for each successfully resolved Finding. */
-  readonly findingArtifactTargets: readonly {
-    readonly findingId: string
-    readonly artifactRef: string
-  }[]
 }
 
 function object(value: unknown, location: string): Record<string, unknown> {
@@ -185,18 +155,7 @@ function stringArray(value: unknown, location: string): string[] {
   return value.map((item, index) => string(item, `${location}[${index}]`))
 }
 
-function sameSet(actual: readonly string[], expected: readonly string[], location: string): void {
-  if (
-    actual.length !== expected.length ||
-    new Set(actual).size !== actual.length ||
-    new Set(expected).size !== expected.length ||
-    actual.some((item) => !expected.includes(item))
-  ) {
-    throw new TypeError(`${location} does not match the requested identity set`)
-  }
-}
-
-function parseIssue(value: unknown, location: string): ReportIssueV1 {
+function parseIssue(value: unknown, location: string): ReportIssueV2 {
   const source = object(value, location)
   exactKeys(source, ['code', 'location', 'message', 'repair'], location)
   return {
@@ -239,7 +198,6 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
       'contract',
       'revalidation',
       'lineage',
-      'rows_projected',
       'rows',
     ],
     location,
@@ -256,12 +214,9 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
   )
   if (new Set(columns.map((column) => column.name)).size !== columns.length)
     throw new TypeError(`${location}.columns contains duplicate names`)
-  if (typeof source.rows_projected !== 'boolean')
-    throw new TypeError(`${location}.rows_projected must be boolean`)
   if (!Array.isArray(source.rows)) throw new TypeError(`${location}.rows must be an array`)
-  if (source.rows_projected ? source.rows.length !== rowCount : source.rows.length !== 0) {
-    throw new TypeError(`${location}.rows must match its projection status and declared row count`)
-  }
+  if (source.rows.length !== rowCount)
+    throw new TypeError(`${location}.rows must match the declared row count`)
   const rows = source.rows.map((row, rowIndex) => {
     if (!Array.isArray(row) || row.length !== columnCount)
       throw new TypeError(`${location}.rows[${rowIndex}] must match the declared columns`)
@@ -294,72 +249,7 @@ function parseArtifact(value: unknown, location: string): ReportArtifactProjecti
     contract: jsonValue(source.contract, `${location}.contract`),
     revalidation: stableRevalidation(revalidation, `${location}.revalidation`),
     lineage: jsonValue(source.lineage, `${location}.lineage`),
-    rowsProjected: source.rows_projected,
     rows,
-  }
-}
-
-function parseFinding(value: unknown, location: string): ReportFindingProjection {
-  const source = object(value, location)
-  exactKeys(
-    source,
-    [
-      'finding_id',
-      'finding_type',
-      'epistemic_kind',
-      'artifact_id',
-      'session_id',
-      'quality_status',
-      'committed_at',
-      'value',
-      'subject',
-      'derivation',
-      'rendered',
-    ],
-    location,
-  )
-  if (
-    source.quality_status !== null &&
-    (typeof source.quality_status !== 'string' || source.quality_status.length === 0)
-  ) {
-    throw new TypeError(`${location}.quality_status must be null or a non-empty string`)
-  }
-  const rendered = object(source.rendered, `${location}.rendered`)
-  exactKeys(rendered, ['en', 'zh'], `${location}.rendered`)
-  const english = string(rendered.en, `${location}.rendered.en`)
-  const chinese = string(rendered.zh, `${location}.rendered.zh`)
-  if (
-    /\r|\n/.test(english) ||
-    /\r|\n/.test(chinese) ||
-    Buffer.byteLength(english, 'utf8') > 8_192 ||
-    Buffer.byteLength(chinese, 'utf8') > 8_192
-  )
-    throw new TypeError(
-      `${location}.rendered must contain single-line statements of at most 8192 UTF-8 bytes`,
-    )
-  return {
-    findingId: string(source.finding_id, `${location}.finding_id`),
-    findingType: string(source.finding_type, `${location}.finding_type`),
-    epistemicKind: string(source.epistemic_kind, `${location}.epistemic_kind`),
-    artifactId: string(source.artifact_id, `${location}.artifact_id`),
-    sessionId: string(source.session_id, `${location}.session_id`),
-    qualityStatus: source.quality_status as string | null,
-    committedAt: string(source.committed_at, `${location}.committed_at`),
-    value: jsonValue(source.value, `${location}.value`),
-    subject: jsonValue(source.subject, `${location}.subject`),
-    derivation: jsonValue(source.derivation, `${location}.derivation`),
-    rendered: { en: english, zh: chinese },
-  }
-}
-
-function parseCompatibility(value: unknown, location: string): ReportCompatibilityProjection {
-  const source = object(value, location)
-  exactKeys(source, ['group_index', 'status', 'finding_ids', 'value'], location)
-  return {
-    groupIndex: integer(source.group_index, `${location}.group_index`),
-    status: string(source.status, `${location}.status`),
-    findingIds: stringArray(source.finding_ids, `${location}.finding_ids`),
-    value: jsonValue(source.value, `${location}.value`),
   }
 }
 
@@ -478,7 +368,6 @@ function parseDagArtifact(value: unknown, location: string): ReportDagArtifactPr
       'content_hash',
       'artifact_schema_version',
       'created_at',
-      'evidence_status',
       'contract',
       'revalidation',
       'lineage',
@@ -537,7 +426,6 @@ function parseDagArtifact(value: unknown, location: string): ReportDagArtifactPr
       `${location}.artifact_schema_version`,
     ),
     createdAt: nullableString(source.created_at, `${location}.created_at`),
-    evidenceStatus: nullableString(source.evidence_status, `${location}.evidence_status`),
     contract: nullableJson(source.contract, `${location}.contract`),
     revalidation:
       source.revalidation === null
@@ -571,7 +459,7 @@ function parseSessionDag(value: unknown, location: string): ReportSessionDagProj
   return { jobs, artifacts }
 }
 
-function issueArray(value: unknown, location: string): ReportIssueV1[] {
+function issueArray(value: unknown, location: string): ReportIssueV2[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
     throw new TypeError(`${location} must contain between 1 and 100 issues`)
   }
@@ -585,19 +473,14 @@ function omittedCount(value: unknown, location: string): number {
 interface ParsedOutcome<T> {
   readonly ready: boolean
   readonly value?: T
-  readonly issues: readonly ReportIssueV1[]
+  readonly issues: readonly ReportIssueV2[]
   readonly omitted: number
-}
-
-interface ParsedFindingOutcome extends ParsedOutcome<ReportFindingProjection> {
-  readonly artifactRef?: string
 }
 
 function parseOutcome<T>(
   value: unknown,
   location: string,
-  identityKey: 'group_index' | 'finding_id' | 'ref',
-  expectedIdentity: number | string,
+  expectedIdentity: string,
   parseValue: (value: unknown, location: string) => T,
 ): ParsedOutcome<T> {
   const source = object(value, location)
@@ -608,52 +491,12 @@ function parseOutcome<T>(
   }
   if (source.status !== 'blocked')
     throw new TypeError(`${location}.status must be ready or blocked`)
-  exactKeys(source, ['status', identityKey, 'issues', 'omitted_issue_count'], location)
-  if (source[identityKey] !== expectedIdentity) {
-    throw new TypeError(`${location}.${identityKey} does not match the requested identity`)
+  exactKeys(source, ['status', 'ref', 'issues', 'omitted_issue_count'], location)
+  if (source.ref !== expectedIdentity) {
+    throw new TypeError(`${location}.ref does not match the requested identity`)
   }
   return {
     ready: false,
-    issues: issueArray(source.issues, `${location}.issues`),
-    omitted: omittedCount(source.omitted_issue_count, `${location}.omitted_issue_count`),
-  }
-}
-
-function parseFindingOutcome(
-  value: unknown,
-  location: string,
-  expectedId: string,
-): ParsedFindingOutcome {
-  const source = object(value, location)
-  if (source.status === 'ready') {
-    exactKeys(source, ['status', 'value'], location)
-    const finding = parseFinding(source.value, `${location}.value`)
-    return {
-      ready: true,
-      value: finding,
-      artifactRef: finding.artifactId,
-      issues: [],
-      omitted: 0,
-    }
-  }
-  if (source.status !== 'blocked')
-    throw new TypeError(`${location}.status must be ready or blocked`)
-  const hasArtifactRef = Object.hasOwn(source, 'artifact_ref')
-  exactKeys(
-    source,
-    hasArtifactRef
-      ? ['status', 'finding_id', 'artifact_ref', 'issues', 'omitted_issue_count']
-      : ['status', 'finding_id', 'issues', 'omitted_issue_count'],
-    location,
-  )
-  if (source.finding_id !== expectedId) {
-    throw new TypeError(`${location}.finding_id does not match the requested identity`)
-  }
-  return {
-    ready: false,
-    ...(hasArtifactRef
-      ? { artifactRef: string(source.artifact_ref, `${location}.artifact_ref`) }
-      : {}),
     issues: issueArray(source.issues, `${location}.issues`),
     omitted: omittedCount(source.omitted_issue_count, `${location}.omitted_issue_count`),
   }
@@ -665,8 +508,6 @@ export function parseReportProjection(
   expected: {
     readonly sessionId: string
     readonly artifactRefs: readonly string[]
-    readonly findingIds: readonly string[]
-    readonly findingGroups: readonly (readonly string[])[]
   },
 ): ReportProjectionInspection {
   let raw: unknown
@@ -683,8 +524,6 @@ export function parseReportProjection(
       value: {
         sessionId: expected.sessionId,
         artifacts: [],
-        findings: [],
-        compatibilities: [],
         sessionDag: { jobs: [], artifacts: [] },
       },
       issues: issueArray(source.issues, 'projection.issues'),
@@ -692,112 +531,27 @@ export function parseReportProjection(
       complete: false,
       globalFailure: true,
       checkedArtifactRefs: [],
-      findingArtifactTargets: [],
     }
   }
-  exactKeys(
-    source,
-    [
-      'status',
-      'session_id',
-      'finding_group_outcomes',
-      'finding_outcomes',
-      'artifact_outcomes',
-      'session_dag',
-    ],
-    'projection',
-  )
+  exactKeys(source, ['status', 'session_id', 'artifact_outcomes', 'session_dag'], 'projection')
   if (source.status !== 'checked')
     throw new TypeError('projection.status must be checked or blocked')
   if (source.session_id !== expected.sessionId)
     throw new TypeError('projection.session_id does not match the request')
-  if (
-    !Array.isArray(source.finding_group_outcomes) ||
-    !Array.isArray(source.finding_outcomes) ||
-    !Array.isArray(source.artifact_outcomes)
-  ) {
-    throw new TypeError('projection outcomes must be arrays')
-  }
-  if (source.finding_group_outcomes.length !== expected.findingGroups.length) {
-    throw new TypeError('projection finding group outcome count does not match the request')
-  }
-  if (source.finding_outcomes.length !== expected.findingIds.length) {
-    throw new TypeError('projection Finding outcome count does not match the request')
-  }
-  const compatibilities: ReportCompatibilityProjection[] = []
-  const findings: ReportFindingProjection[] = []
-  const findingArtifactTargets: { findingId: string; artifactRef: string }[] = []
-  const issues: ReportIssueV1[] = []
+  if (!Array.isArray(source.artifact_outcomes))
+    throw new TypeError('projection.artifact_outcomes must be an array')
+  const issues: ReportIssueV2[] = []
   let omitted = 0
   let complete = true
-  for (const [index, item] of source.finding_group_outcomes.entries()) {
-    const outcome = parseOutcome(
-      item,
-      `projection.finding_group_outcomes[${index}]`,
-      'group_index',
-      index,
-      parseCompatibility,
-    )
-    if (outcome.ready) {
-      const compatibility = outcome.value
-      if (compatibility === undefined || compatibility.groupIndex !== index) {
-        throw new TypeError(`projection.finding_group_outcomes[${index}] has the wrong group index`)
-      }
-      sameSet(
-        compatibility.findingIds,
-        expected.findingGroups[index] ?? [],
-        `projection.finding_group_outcomes[${index}].value.finding_ids`,
-      )
-      if (compatibility.status !== 'compatible')
-        throw new TypeError(
-          `projection.finding_group_outcomes[${index}] ready value is not compatible`,
-        )
-      compatibilities.push(compatibility)
-    } else {
-      complete = false
-      issues.push(...outcome.issues)
-      omitted += outcome.omitted
-    }
-  }
-  for (const [index, item] of source.finding_outcomes.entries()) {
-    const expectedId = expected.findingIds[index]
-    if (expectedId === undefined) throw new TypeError('projection Finding outcome is unexpected')
-    const outcome = parseFindingOutcome(item, `projection.finding_outcomes[${index}]`, expectedId)
-    if (outcome.artifactRef !== undefined) {
-      findingArtifactTargets.push({ findingId: expectedId, artifactRef: outcome.artifactRef })
-    }
-    if (outcome.ready) {
-      const finding = outcome.value
-      if (finding === undefined || finding.findingId !== expectedId) {
-        throw new TypeError(`projection.finding_outcomes[${index}] has the wrong Finding ID`)
-      }
-      findings.push(finding)
-    } else {
-      complete = false
-      issues.push(...outcome.issues)
-      omitted += outcome.omitted
-    }
-  }
-  if (findings.some((item) => item.sessionId !== expected.sessionId))
-    throw new TypeError('projection Finding belongs to another Session')
-  const expectedArtifactRefs = [...expected.artifactRefs]
-  for (const target of findingArtifactTargets) {
-    if (!expectedArtifactRefs.includes(target.artifactRef))
-      expectedArtifactRefs.push(target.artifactRef)
-  }
-  if (source.artifact_outcomes.length !== expectedArtifactRefs.length) {
-    throw new TypeError(
-      'projection Artifact outcome count does not match the requested and discovered identities',
-    )
-  }
+  if (source.artifact_outcomes.length !== expected.artifactRefs.length)
+    throw new TypeError('projection Artifact outcome count does not match the request')
   const artifacts: ReportArtifactProjection[] = []
   for (const [index, item] of source.artifact_outcomes.entries()) {
-    const expectedRef = expectedArtifactRefs[index]
+    const expectedRef = expected.artifactRefs[index]
     if (expectedRef === undefined) throw new TypeError('projection Artifact outcome is unexpected')
     const outcome = parseOutcome(
       item,
       `projection.artifact_outcomes[${index}]`,
-      'ref',
       expectedRef,
       parseArtifact,
     )
@@ -813,12 +567,6 @@ export function parseReportProjection(
       omitted += outcome.omitted
     }
   }
-  const displayRefs = new Set(expected.artifactRefs)
-  for (const artifact of artifacts) {
-    if (artifact.rowsProjected !== displayRefs.has(artifact.ref)) {
-      throw new TypeError(`projection artifact ${artifact.ref} has the wrong row projection status`)
-    }
-  }
   const sessionDag = parseSessionDag(source.session_dag, 'projection.session_dag')
   const graphRefs = new Set(sessionDag.artifacts.map((item) => item.ref))
   for (const job of sessionDag.jobs) {
@@ -829,12 +577,11 @@ export function parseReportProjection(
   }
   return {
     ok: complete,
-    value: { sessionId: expected.sessionId, artifacts, findings, compatibilities, sessionDag },
+    value: { sessionId: expected.sessionId, artifacts, sessionDag },
     issues,
     omittedIssueCount: omitted,
     complete,
     globalFailure: false,
-    checkedArtifactRefs: expectedArtifactRefs,
-    findingArtifactTargets,
+    checkedArtifactRefs: expected.artifactRefs,
   }
 }

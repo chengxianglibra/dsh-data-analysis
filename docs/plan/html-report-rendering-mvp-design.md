@@ -3,13 +3,19 @@
 ## 文档状态
 
 本文是分 Slice 实施设计。Slice 1 的服务端编译器、checked Marivo projection、不可变发布和
-`marivo_report_render`，以及 Slice 2 的 Web 交付卡片均已实现。Slice 3 的真实 runner 已实现并执行，当前仍因
-DSH Web Agent 未获得 `marivo_report_render`、打印 Evidence 未展开而 blocked，尚未完成。目标是在不引入
+`marivo_report_render`，以及 Slice 2 的 Web 交付卡片均已实现。Slice 3 的真实 runner 已实现并执行；2026-08-28
+真实 Marivo 与模型 journey 已通过，但外部 Web Agent、Host opener 和打印门禁未运行，因此 Slice 3 仍保持外部门禁未完成。
+目标是在不引入
 Report 状态机、不复制 Marivo 分析契约的前提下，让 Agent 把一次分析编排成可打开、可打印、可追溯的
 自包含 HTML 报告。
 
 当前实现事实见[总体架构](../architecture.md)和
 [HTML 报告渲染模块](../modules/html-report-rendering.md)；本文件继续保留后续 Slice 的设计与验收边界。
+
+> 当前契约（2026-08-28）：报告链路已经切换到 `dsh-data-analysis-report/v2`。报告只接受 `text`、`chart` 和
+> `table` block，来源关系只绑定显式 Artifact；`finding_ids`、`evidence` block、Finding outcomes、compatibility
+> 判断和 backing Artifact 发现均不属于报告输入或 bridge。需要来源面板时使用独立的
+> `marivo_evidence_sources` 工具。下文保留的 v1 内容是历史设计，不是当前兼容读取契约。
 
 上游事实源是 [Marivo operators and frames](../../../marivo/docs/specs/analysis/operators-and-frames.md)、
 [Marivo Evidence access surface](../../../marivo/docs/specs/analysis/evidence-access-surface.md) 与
@@ -17,10 +23,10 @@ Report 状态机、不复制 Marivo 分析契约的前提下，让 Agent 把一�
 
 ## 决策摘要
 
-- Agent 每次提交一份完整的 `ReportDocument`，自行决定标题、章节、顺序、文字和图表。
+- Agent 每次提交一份完整的 `ReportDocument` v2，必须使用显式 Artifact 和文本内容，自行决定标题、章节、顺序、文字和图表。
 - 插件只提供一个原子的 `marivo_report_render` Tool；不提供 create/update/patch/current Report API。
-- 插件把 `ReportDocument` 当作不可变输入，校验 Marivo 引用后确定性编译为新的不可变 HTML 产物。
-- 首版只支持 `text`、`chart`、`table`、`evidence` 四类 block；图表只支持 `line` 和 `bar`。
+- 插件把 v2 `ReportDocument` 当作不可变输入，校验显式 Artifact 引用后确定性编译为新的不可变 HTML 产物。
+- 当前报告只支持 `text`、`chart`、`table` 三类 block；图表只支持 `line` 和 `bar`。Finding 不参与报告绑定。
 - HTML 使用内联 CSS 与 SVG，不执行 JavaScript，不加载远程脚本、字体或图片。
 - 产物写入插件自有的 DSH Home 目录；Tool Result 和 Web UI 只投影产物路径与校验摘要。
 - 插件不验证整段自然语言是否被 Evidence 蕴含，也不把展示用表格重新包装成 Marivo Evidence。
@@ -98,8 +104,8 @@ sequenceDiagram
   U->>A: 请求生成或调整报告
   A->>T: session_id + 完整 ReportDocument
   T->>T: 校验文档 shape 与边界
-  T->>M: 固定 bridge 读取 Artifact/Finding
-  M-->>T: contract + rows + revalidation + evidence
+  T->>M: 固定 bridge 读取显式 Artifact
+  M-->>T: contract + rows + revalidation + Session DAG
   T->>T: 校验字段、图表与引用
   T->>R: ReportDocument + 展示投影
   R-->>T: 自包含 HTML
@@ -112,7 +118,36 @@ sequenceDiagram
 用户要求修改时，Agent 再提交一份完整文档。第二次调用不读取第一份 ReportDocument，也不发送 patch；
 它生成另一个内容寻址产物。DSH 历史自然保留两次 Tool call 及其结果。
 
-## ReportDocument v1
+## ReportDocument v2（当前契约）
+
+报告输入只使用以下闭合结构：
+
+```ts
+interface ReportDocumentV2 {
+  version: 'dsh-data-analysis-report/v2'
+  title: string
+  subtitle?: string
+  locale: 'zh-CN' | 'en-US'
+  sections: ReportSectionV2[]
+}
+
+interface ReportSectionV2 {
+  id: string
+  title: string
+  blocks: ReportBlockV2[]
+}
+
+type ReportBlockV2 = TextBlockV2 | ChartBlockV2 | TableBlockV2
+```
+
+`text` block 只包含文本；`chart` 和 `table` block 必须绑定一个显式 `artifact_ref`。旧 v1 文档、`finding_ids`、
+`evidence` block 和其他未知字段明确拒绝，不做双版本读取或 V1 alias。Finding 公共 API 与独立
+`marivo_evidence_sources` 工具仍可由其他链路使用，但不再进入报告 projection、HTML 或发布 manifest。
+
+## ReportDocument v1（历史版本，已废弃）
+
+> 以下 v1 schema、示例和旧版验收条目仅用于解释历史决策。实现不会读取这些输入，也不会保留其中的
+> `finding_ids`、`evidence` 或 Finding 兼容性行为。
 
 ### 顶层结构
 
@@ -291,29 +326,25 @@ CLI/Headless 直接读取 Tool 文本中的绝对路径；Web Tool View 展示�
 
 ## Marivo 读取边界
 
-新增一个固定、不可由模型修改的 checked Python bridge。Node 先解析文档并提取去重后的 Artifact/Finding
-ID；传给 Python 的 argv 只包含绑定身份、Session ID 和这些 ID，不包含 Python 表达式或 shell 文本。
+新增一个固定、不可由模型修改的 checked Python bridge。Node 先解析 v2 文档并提取去重后的显式 Artifact
+ref；传给 Python 的 argv 只包含绑定身份、Session ID 和这些 refs，不包含 Python 表达式或 shell 文本。
 
 bridge 执行：
 
 1. `mv.session.resume(session_id, use_datasources=False)`；
-2. 对每个 ref 调用 `session.get_frame(ref)`；
-3. 调用 `session.revalidate(frame)`，首版只接受 `admissible`；
+2. 对每个显式 ref 调用 `session.get_frame(ref)`；
+3. 调用 `session.revalidate(frame)`，当前只接受 `admissible`；
 4. 读取 `frame.contract()`、公开 family/shape/columns、`frame.state.content_hash` 和 Lineage；
 5. 在行数准入后调用 `frame.to_pandas()`，只生成绑定于原 Artifact ref 的展示表；
-6. 对每个 Finding 调用 `session.evidence.finding(id)`；
-7. 对每个包含 Finding 的 block 单独调用 `session.evidence.compatibility(...)`；不同 block 的 Finding 不做报告级组合检查；
-8. 为每个 group、Finding 和 Artifact 返回有上限的 `ready`/`blocked` outcome，保留有效 partial projection；
-   Finding 一旦恢复就继续检查其 backing Artifact，即使双语渲染失败，并继续检查不依赖失败目标的 visual block；
-9. 超过 projection 传输预算时返回 compact blocked，同时保留已经收集的目标错误和 omitted count。
+6. 为每个显式 Artifact 返回有上限的 `ready`/`blocked` outcome，同时构建 Session DAG；互不相关的 Artifact 可独立
+   revalidate，不触发报告级 Finding 兼容性阻断；
+7. 超过 projection 传输预算时返回 compact blocked，同时保留已经收集的目标错误和 omitted count。
 
-`to_pandas()` 是终端展示出口，不保留 Evidence、Lineage 或 typed re-entry。插件必须把 rows 与原始 Artifact
-identity、contract 和 revalidation 放在同一临时 bundle 中；rows 本身不得被标记为 Evidence，也不得重新
-送入 Marivo Intent。block 上的 Finding 仍只是相邻来源；首版不验证它是否蕴含 Agent 文本，或是否恰好
-对应图中每个 mark。
+`to_pandas()` 是终端展示出口，不保留 Evidence 或 typed re-entry。插件必须把 rows 与原始 Artifact identity、
+contract 和 revalidation 放在同一临时 bundle 中；rows 本身不得被标记为 Evidence，也不得重新送入 Marivo Intent。
 
-Datasource freshness 不属于 `session.revalidate()` 的保证。报告页脚必须显示 Artifact ref/content hash、
-报告生成时间、可用的 Finding 提交时间，以及“admissible 不等于 datasource fresh”的固定披露。
+Datasource freshness 不属于 `session.revalidate()` 的保证。报告页脚必须显示 Artifact ref/content hash、报告生成时间，
+以及“admissible 不等于 datasource fresh”的固定披露。
 
 ## 图表选择与验证
 
@@ -348,8 +379,8 @@ Renderer 在 Node 服务端生成一个 `index.html`：
 - `line` 和 `bar` 生成固定 viewBox SVG，同时提供可展开的同源数据表；line 明确披露聚焦纵轴，
   bar 类别较多或标签较长时改用横向条形，但不以点数或类别数阻断发布；
 - `table` 使用 `<table>`、`<caption>`、`<th scope>`，截断信息始终可见；
-- 普通 block 的 Finding 引用默认折叠，只先展示报告 locale 对应的 `Finding.render()` 人读事实；ID、Artifact、
-  quality、value、subject 与 derivation 留在二级技术审计，显式 `evidence` block 才直接展示事实列表；
+- 普通 block 只渲染报告文本和显式 Artifact 投影，不展示 Finding 引用、Finding 技术审计或 evidence block；需要
+  Finding 来源面板时由独立的 `marivo_evidence_sources` 工具提供；
 - 每张图具有可见 title、用户语义 context subtitle、本地化日期/数值、SVG `<title>`/`<desc>` 和非颜色区分；
 - 提供答案优先的响应式单列 CSS、系统浅色/深色外观与 `@media print`；摘要只强调首个文本块，图表和表格
   使用正文流加轻分隔线，不嵌套摘要底色或卡片容器；打印保留正文和图表，不自动展开原始审计 JSON。
@@ -374,8 +405,8 @@ $DSH_HOME/dsh-data-analysis/reports/
         └── manifest.json
 ```
 
-`report-digest` 覆盖 canonical ReportDocument、Environment fingerprint、Artifact ref/content hash、Finding ID、
-Marivo version 和 renderer version。相同输入可以复用已存在且 manifest 一致的目录；这只是内容寻址缓存，
+`report-digest` 覆盖 canonical ReportDocument v2、Environment fingerprint、显式 Artifact ref/content hash、
+Marivo version 和 renderer v9。相同输入可以复用已存在且 manifest 一致的目录；这只是内容寻址缓存，
 不是“当前 Report”状态。
 
 发布流程为：在同一父目录建立随机 staging 目录，写入并复核三份文件，目录 mode `0700`、文件 mode
@@ -420,14 +451,16 @@ packages/dsh-data-analysis/src/report/
 
 ### Slice 3：真实环境验收
 
-当前状态：**blocked**。`npm run validate:html-report-rendering:real` 已通过真实 Marivo 与
-`deepseek-v4-flash` 的三条 journey，并把 `0600` 记录与不可变报告写入
-`artifacts/html-report-rendering-real/<run-id>/`。2026-08-27 的 Web/视觉门禁未通过：当前 Web Agent toolset
-没有 `marivo_report_render`，因而没有报告卡片或 `host.openPath` 证据；Chrome print media 还会折叠
-Evidence details。桌面与 390px 布局检查通过，但不能替代上述门禁，因此本 Slice 不标记完成。
+当前状态：**外部门禁未完成**。`npm run validate:html-report-rendering:real` 已通过真实 Marivo 与
+`deepseek-v4-flash` 的模型 journey，并把 `0600` 记录与不可变报告写入
+`artifacts/html-report-rendering-real/<run-id>/`；本次记录为 `externalGates.web: not-run`，模型为 `passed`。
+外部 Web Agent、Host opener 和打印媒体验收尚未执行，因此本 Slice 不标记完成。
+
+此前 2026-08-27 的 Web/视觉阻断记录属于 v1 历史验收：当时 Web Agent toolset 没有
+`marivo_report_render`，且旧版 Evidence details 的打印行为未通过；该记录不代表当前 v2 报告契约。
 
 - 用当前绑定 Marivo 生成 MetricFrame fixture；
-- 生成 line、bar、table、evidence 四类 block；
+- 生成 line、bar、table 三类 v2 block；Finding 来源改由独立 `marivo_evidence_sources` 工具验收；
 - 从 DSH Web 打开报告并检查桌面、窄屏和打印布局；
 - 运行真实 Agent 的首次生成、完整文档修改、blocked 后修复三条 journey；
 - 记录文档 shape 错误、重试次数和最终产物，不预设 token 成本结论。
@@ -449,20 +482,29 @@ npm run validate:html-report-rendering:real
 
 - ReportDocument 闭合 shape、全部 bounds、重复 ID 和未知字段拒绝；
 - Agent 第二次提交完整文档会产生独立 digest，编译器不读取第一次输入；
-- Artifact/Finding 批次原子读取、identity drift、stale/indeterminate revalidation、block 级 incompatible
-  Evidence，以及互不组合的跨 block Finding 不被全局误拒绝；
+- 显式 Artifact 批次原子读取、identity drift、stale/indeterminate revalidation，以及互不相关的 Artifact 不被
+  全局 Finding compatibility 误拒绝；
 - `auto` 的唯一映射与歧义拒绝，line/bar 字段、点数、类别数和零基线规则；
 - text/标题/单元格的 HTML escaping 与 CSP，无 script/remote URL；
-- 表格截断披露、图表同源 fallback table、Evidence details 和打印样式；
+- 表格截断披露、图表同源 fallback table 和打印样式；
 - staging 失败不发布目录，相同 digest 幂等复用，不创建 latest/registry/state 文件；
 - Tool ready/blocked 文本、presentation meta、Web replay 与 `host.openPath` 失败视图；
 - Agent 面对普通分析、单指标查询、对话内图表以及明确 quick-answer/no-file 请求时不调用 Tool；
 - Agent 只在用户明确请求报告、接受报告提议或修改已有报告时调用 Tool，提议但未获接受时不调用；
 - `npm run check`、`npm run build`、`npm run verify:plugin-package` 全部通过。
 
-首版验收标准：Agent 能自由改变章节与 block 顺序；插件不保存可变 Report 状态；每个数据 block 都绑定
-精确 Artifact；每个来源展示都绑定精确 Finding；HTML 在无网络、无 JavaScript 条件下可读、可打印，且
-任何引用、视觉或发布失败都不会留下被报告为 ready 的半成品。
+当前 v2 验收标准（2026-08-28）：Parser 通过最小 v2 文档并明确拒绝 v1、`finding_ids` 和 `evidence` block；
+bridge 只接收显式 Artifact refs，不调用 Finding compatibility、Finding 读取、`Finding.render()` 或 backing
+Artifact 发现；多个互不相关 Artifact 可独立 revalidate；HTML 不包含 Evidence block、Finding 审计、Finding
+计数或 `dag-findings`，同时保留 Artifact/Job DAG、escaping、CSP、图表和表格；renderer 为 v9，digest/manifest
+为 v4，manifest 与 ready 结果不含 `finding_ids`，旧 v3 产物不复用；独立 `marivo_evidence_sources` 测试保持通过。
+确定性入口 `npm run test:html-report-rendering`、`npm run test:help-disclosure`、`npm run test:evidence-sources`、
+`npm run check`、`npm run build` 和 `npm run verify:plugin-package` 均须通过。真实 Web/模型门禁单独记录，不以
+本地确定性结果替代外部验收。
+
+历史 v1 验收标准（已废弃）：Agent 能自由改变章节与 block 顺序；插件不保存可变 Report 状态；每个数据 block 都绑定
+精确 Artifact；每个来源展示都绑定精确 Finding；HTML 在无网络、无 JavaScript 条件下可读、可打印，且任何引用、视觉
+或发布失败都不会留下被报告为 ready 的半成品。该条目不再作为当前实现准入。
 
 ## 后续扩展门槛
 

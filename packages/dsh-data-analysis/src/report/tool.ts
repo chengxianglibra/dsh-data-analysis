@@ -7,12 +7,12 @@ import { MarivoEnvironmentError } from '../environment/errors.ts'
 import {
   parseReportDocument,
   type ReportBlockedStage,
-  type ReportBlockedValueV1,
+  type ReportBlockedValueV2,
   type ReportCheckStatus,
-  type ReportCheckV1,
+  type ReportCheckV2,
   type ReportDocumentInspection,
-  type ReportIssueV1,
-  type ReportRenderValueV1,
+  type ReportIssueV2,
+  type ReportRenderValueV2,
 } from './document.ts'
 import { parseReportProjection, type ReportProjectionInspection } from './projection.ts'
 import { publishReport } from './publish.ts'
@@ -24,7 +24,7 @@ export const REPORT_PRESENTATION_META_VERSION = 1
 export const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
 
 const REPORT_DOCUMENT_MINIMAL_JSON =
-  '{"version":"dsh-data-analysis-report/v1","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
+  '{"version":"dsh-data-analysis-report/v2","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
 
 export interface ReportPresentationMetaV1 {
   readonly [key: string]: JsonValue
@@ -42,28 +42,6 @@ const REPORT_LIMITS = Object.freeze({
   stderrMaxBytes: 65_536,
 })
 
-const optionalFindingIdsSchema = {
-  type: 'array',
-  items: { type: 'string' },
-  description: [
-    'Optional adjacent sources. Omit finding_ids or pass [] when this block has no exact Finding support; [] is canonicalized to omission.',
-    'Otherwise provide one to 20 unique exact persisted Finding IDs used as compact adjacent sources for this block.',
-    'The reader shows the locale-matched human Finding statement first and keeps IDs, raw values, derivation, and Artifact identity in the collapsed audit trail.',
-    'Every Finding attached to one block must be mechanically compatible; call session.evidence.compatibility before combining multiple IDs.',
-  ].join(' '),
-} as const
-
-const requiredFindingIdsSchema = {
-  type: 'array',
-  items: { type: 'string' },
-  required: true,
-  description: [
-    'Required for an evidence block; [] is invalid. Provide one to 20 unique exact persisted Finding IDs.',
-    'The reader shows the locale-matched human Finding statement first and keeps IDs, raw values, derivation, and Artifact identity in the collapsed audit trail.',
-    'Every Finding attached to one block must be mechanically compatible; call session.evidence.compatibility before combining multiple IDs.',
-  ].join(' '),
-} as const
-
 const textBlockSchema = {
   type: 'object',
   additionalProperties: false,
@@ -80,7 +58,6 @@ const textBlockSchema = {
       description:
         'Non-empty reader-facing plain text of at most 20,000 Unicode characters. Lead with the takeaway and explain why it matters in the report locale. Markdown and HTML are escaped as literal text; blank lines start paragraphs and consecutive lines beginning with -, *, •, or 1. form semantic lists.',
     },
-    finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
@@ -128,7 +105,6 @@ const chartBlockSchema = {
       description:
         'Exact public numeric Artifact column name. The renderer does not aggregate, sample, apply Top-N, or combine additional grain.',
     },
-    finding_ids: optionalFindingIdsSchema,
   },
 } as const
 
@@ -166,27 +142,6 @@ const tableBlockSchema = {
       description:
         'Maximum displayed rows, from 1 to 100. The report discloses total and omitted rows.',
     },
-    finding_ids: optionalFindingIdsSchema,
-  },
-} as const
-
-const evidenceBlockSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    kind: { type: 'string', const: 'evidence', required: true },
-    id: {
-      type: 'string',
-      required: true,
-      description: 'Document-wide unique lowercase ASCII kebab-case block ID.',
-    },
-    title: {
-      type: 'string',
-      required: true,
-      description:
-        'Reader-facing title for an explicitly requested source inventory. Use an evidence block when Finding statements should be shown in the report body; otherwise use finding_ids only as source metadata.',
-    },
-    finding_ids: requiredFindingIdsSchema,
   },
 } as const
 
@@ -194,15 +149,15 @@ const documentSchema = {
   type: 'object',
   additionalProperties: false,
   description: [
-    'One complete immutable ReportDocument v1. Revisions submit another complete document.',
-    'Use the report locale throughout. For stakeholder reports, order sections as answer-first summary, findings with adjacent visual interpretation, next steps, further questions, and caveats.',
-    'Finding IDs belong in finding_ids metadata, not in narrative text; do not duplicate all Findings in an Evidence appendix unless the user asked for it.',
+    'One complete immutable ReportDocument v2. Revisions submit another complete document.',
+    'Use the report locale throughout. For stakeholder reports, order sections as answer-first summary, conclusions with adjacent visual interpretation, next steps, further questions, and caveats.',
+    'Use text for narrative conclusions and chart/table blocks for explicit Artifact-backed data; persisted source provenance belongs to the separate marivo_evidence_sources Tool.',
     `Minimal valid JSON: ${REPORT_DOCUMENT_MINIMAL_JSON}.`,
     'document.blocks is invalid; blocks must be nested under document.sections[].blocks.',
-    'Provide 1-20 sections with 1-20 blocks each and at most 100 blocks total; reference at most 20 unique explicit Artifacts and 100 unique Findings across the document, with at most 20 Findings in any one block.',
+    'Provide 1-20 sections with 1-20 blocks each and at most 100 blocks total; reference at most 20 unique explicit Artifacts across the document.',
   ].join(' '),
   properties: {
-    version: { type: 'string', const: 'dsh-data-analysis-report/v1', required: true },
+    version: { type: 'string', const: 'dsh-data-analysis-report/v2', required: true },
     title: {
       type: 'string',
       required: true,
@@ -233,7 +188,7 @@ const documentSchema = {
             required: true,
             description: 'One to 20 ordered blocks nested under this section.',
             items: {
-              oneOf: [textBlockSchema, chartBlockSchema, tableBlockSchema, evidenceBlockSchema],
+              oneOf: [textBlockSchema, chartBlockSchema, tableBlockSchema],
             },
           },
         },
@@ -277,7 +232,6 @@ const outputSchema = {
         report_digest: { type: 'string', required: true },
         document_digest: { type: 'string', required: true },
         artifact_refs: { type: 'array', items: { type: 'string' }, required: true },
-        finding_ids: { type: 'array', items: { type: 'string' }, required: true },
         disclosures: { type: 'array', items: { type: 'string' }, required: true },
       },
     },
@@ -302,27 +256,16 @@ function recoverableReportArguments(value: unknown): value is Record<string, unk
 }
 
 function attributeMarivoIssues(
-  issues: readonly ReportIssueV1[],
+  issues: readonly ReportIssueV2[],
   inspection: ReportDocumentInspection,
   projection: ReportProjectionInspection,
-): ReportIssueV1[] {
-  const attributed: ReportIssueV1[] = []
-  const addAtLocations = (item: ReportIssueV1, locations: readonly string[]): void => {
+): ReportIssueV2[] {
+  const attributed: ReportIssueV2[] = []
+  const addAtLocations = (item: ReportIssueV2, locations: readonly string[]): void => {
     if (locations.length === 0) attributed.push({ ...item })
     else for (const location of locations) attributed.push({ ...item, location })
   }
   for (const item of issues) {
-    const group = /^finding_groups\[(\d+)\]$/.exec(item.location)
-    if (group !== null) {
-      const location = inspection.findingGroupLocations[Number(group[1])]
-      addAtLocations(item, location === undefined ? [] : [location])
-      continue
-    }
-    const finding = /^finding_ids\[(\d+)\]$/.exec(item.location)
-    if (finding !== null) {
-      addAtLocations(item, inspection.findingIdLocations[Number(finding[1])] ?? [])
-      continue
-    }
     const artifact = /^(?:artifact_refs|artifacts)\[(\d+)\](?:\..*)?$/.exec(item.location)
     if (artifact !== null) {
       const ref = projection.checkedArtifactRefs[Number(artifact[1])]
@@ -334,12 +277,6 @@ function attributeMarivoIssues(
       const explicitIndex = inspection.artifactRefs.indexOf(ref)
       for (const location of inspection.artifactRefLocations[explicitIndex] ?? [])
         locations.add(location)
-      for (const target of projection.findingArtifactTargets) {
-        if (target.artifactRef !== ref) continue
-        const findingIndex = inspection.findingIds.indexOf(target.findingId)
-        for (const location of inspection.findingIdLocations[findingIndex] ?? [])
-          locations.add(location)
-      }
       addAtLocations(item, [...locations])
       continue
     }
@@ -352,10 +289,10 @@ const REPORT_STAGES = ['document', 'marivo', 'visual', 'publish'] as const
 const MAX_STAGE_ISSUES = 100
 
 function normalizedIssues(
-  issues: readonly ReportIssueV1[],
+  issues: readonly ReportIssueV2[],
   alreadyOmitted = 0,
-): { issues: ReportIssueV1[]; omitted: number } {
-  const unique = new Map<string, ReportIssueV1>()
+): { issues: ReportIssueV2[]; omitted: number } {
+  const unique = new Map<string, ReportIssueV2>()
   for (const item of issues) {
     const key = JSON.stringify([item.location, item.code, item.message, item.repair])
     if (!unique.has(key)) unique.set(key, { ...item })
@@ -376,9 +313,9 @@ function normalizedIssues(
 function reportCheck(
   stage: ReportBlockedStage,
   status: ReportCheckStatus,
-  issues: readonly ReportIssueV1[] = [],
+  issues: readonly ReportIssueV2[] = [],
   options: { readonly omitted?: number; readonly reason?: string } = {},
-): ReportCheckV1 {
+): ReportCheckV2 {
   const normalized = normalizedIssues(issues, options.omitted)
   const reason = options.reason?.trim()
   if ((status === 'partial' || status === 'skipped') && !reason) {
@@ -399,16 +336,16 @@ function reportCheck(
   }
 }
 
-function blockedChecks(checks: readonly ReportCheckV1[]): ReportBlockedValueV1 {
+function blockedChecks(checks: readonly ReportCheckV2[]): ReportBlockedValueV2 {
   if (
     checks.length !== REPORT_STAGES.length ||
     checks.some((check, index) => check.stage !== REPORT_STAGES[index])
   )
     throw new TypeError('blocked report checks must use the fixed stage order')
-  return { status: 'blocked', checks: [...checks] as ReportBlockedValueV1['checks'] }
+  return { status: 'blocked', checks: [...checks] as ReportBlockedValueV2['checks'] }
 }
 
-export function renderReportToolValue(value: ReportRenderValueV1): string {
+export function renderReportToolValue(value: ReportRenderValueV2): string {
   if (value.status === 'blocked') {
     return [
       'HTML report rendering is blocked after best-effort preflight.',
@@ -421,7 +358,7 @@ export function renderReportToolValue(value: ReportRenderValueV1): string {
           ? []
           : [`  Omitted ${check.omitted_issue_count} additional issue(s).`]),
       ]),
-      'Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ReportDocument v1. Never submit document.blocks alone.',
+      'Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ReportDocument v2. Never submit document.blocks alone.',
       `Minimal valid document: ${REPORT_DOCUMENT_MINIMAL_JSON}`,
     ].join('\n')
   }
@@ -436,7 +373,7 @@ export function renderReportToolValue(value: ReportRenderValueV1): string {
 
 /** Project the replay-only report card summary without copying analytical payloads. */
 export function reportPresentationMeta(
-  value: ReportRenderValueV1,
+  value: ReportRenderValueV2,
 ): ReportPresentationMetaV1 | null {
   if (value.status !== 'ready') return null
   return {
@@ -479,7 +416,7 @@ export function installMarivoReportCodeDelivery(ctx: Context): () => void {
   const stopResult = ctx.on('tools/result', (exec, result) => {
     if (exec.name !== MARIVO_REPORT_RENDER_TOOL_NAME || exec.parent === undefined || result.isError)
       return
-    const meta = reportPresentationMeta(result.value as unknown as ReportRenderValueV1)
+    const meta = reportPresentationMeta(result.value as unknown as ReportRenderValueV2)
     if (meta !== null) pending.set(String(exec.callId), meta)
   })
   const stopDispatchLog = ctx.on(
@@ -521,7 +458,7 @@ export function createMarivoReportRenderTool(
   const executeReport = async (
     args: Record<string, unknown>,
     exec: ToolRunContext,
-  ): Promise<ReportRenderValueV1> => {
+  ): Promise<ReportRenderValueV2> => {
     exec.signal.throwIfAborted()
     const parsed = parseReportDocument(args.document)
     const documentIssues = parsed.ok ? [] : [...parsed.issues]
@@ -557,7 +494,6 @@ export function createMarivoReportRenderTool(
     const child = await environment.runCheckedReportProjection(
       sessionId,
       parsed.inspection.artifactRefs,
-      parsed.inspection.findingGroups,
       REPORT_LIMITS,
       exec.signal,
     )
@@ -574,8 +510,6 @@ export function createMarivoReportRenderTool(
       projection = parseReportProjection(child.stdout, {
         sessionId,
         artifactRefs: parsed.inspection.artifactRefs,
-        findingIds: parsed.inspection.findingIds,
-        findingGroups: parsed.inspection.findingGroups,
       })
     } catch (cause) {
       throw new MarivoEnvironmentError(
@@ -682,7 +616,6 @@ export function createMarivoReportRenderTool(
       report_digest: published.reportDigest,
       document_digest: published.documentDigest,
       artifact_refs: [...parsed.value.artifactRefs],
-      finding_ids: [...parsed.value.findingIds],
       disclosures: [...compiled.value.disclosures, freshness],
     }
   }
@@ -699,16 +632,16 @@ export function createMarivoReportRenderTool(
         type: 'string',
         required: true,
         description:
-          'Exact non-empty Marivo analysis Session ID, at most 512 Unicode characters, containing every referenced Artifact and Finding.',
+          'Exact non-empty Marivo analysis Session ID, at most 512 Unicode characters, containing every referenced Artifact.',
       },
       document: { ...documentSchema, required: true },
     },
     output: {
       schema: outputSchema,
       render: (_args, value) => [
-        { type: 'text', text: renderReportToolValue(value as ReportRenderValueV1) },
+        { type: 'text', text: renderReportToolValue(value as ReportRenderValueV2) },
       ],
-      presentationMeta: (_args, value) => reportPresentationMeta(value as ReportRenderValueV1),
+      presentationMeta: (_args, value) => reportPresentationMeta(value as ReportRenderValueV2),
     },
     timeoutMs: 135_000,
     execute: executeReport as never,

@@ -1,16 +1,12 @@
 import { createHash } from 'node:crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { CompiledDagComponent, CompiledDagNode } from './dag.ts'
-import type { ReportBlockV1 } from './document.ts'
-import type {
-  ReportArtifactColumn,
-  ReportDagJobProjection,
-  ReportFindingProjection,
-} from './projection.ts'
+import type { ReportBlockV2 } from './document.ts'
+import type { ReportArtifactColumn, ReportDagJobProjection } from './projection.ts'
 import { reportTimeEpoch } from './time.ts'
 import type { CompiledChartBlock, CompiledReport, CompiledTableBlock } from './visual.ts'
 
-export const REPORT_RENDERER_VERSION = 'dsh-data-analysis-html/v8' as const
+export const REPORT_RENDERER_VERSION = 'dsh-data-analysis-html/v9' as const
 
 const DAG_SCRIPT = `(()=>{"use strict";const roots=[...document.querySelectorAll("[data-dag-component]")];const activate=(root,id)=>{for(const item of root.querySelectorAll("[data-dag-detail]")){const active=item.id===id;item.dataset.active=String(active);item.setAttribute("aria-hidden",String(!active))}for(const item of root.querySelectorAll("[data-dag-node]")){item.dataset.selected=String(item.getAttribute("href")==="#"+id)}};for(const root of roots){root.classList.add("dag-enhanced");const svg=root.querySelector("[data-dag-canvas]");const viewport=root.querySelector("[data-dag-viewport]");if(!svg||!viewport)continue;let scale=1,tx=0,ty=0,drag=null;const apply=()=>viewport.setAttribute("transform","translate("+tx+" "+ty+") scale("+scale+")");const reset=()=>{scale=1;tx=0;ty=0;apply()};for(const link of root.querySelectorAll("[data-dag-node]")){link.addEventListener("click",event=>{event.preventDefault();const id=link.getAttribute("href").slice(1);activate(root,id);history.replaceState(null,"","#"+encodeURIComponent(id))})}for(const button of root.querySelectorAll("[data-dag-action]")){button.addEventListener("click",()=>{const action=button.dataset.dagAction;if(action==="reset")reset();else{scale=Math.min(2.5,Math.max(.45,scale*(action==="zoom-in"?1.2:.8)));apply()}})}svg.addEventListener("wheel",event=>{event.preventDefault();scale=Math.min(2.5,Math.max(.45,scale*(event.deltaY<0?1.1:.9)));apply()},{passive:false});svg.addEventListener("pointerdown",event=>{if(event.target.closest("[data-dag-node]"))return;drag={x:event.clientX,y:event.clientY,tx,ty};svg.setPointerCapture(event.pointerId)});svg.addEventListener("pointermove",event=>{if(!drag)return;tx=drag.tx+(event.clientX-drag.x)/scale;ty=drag.ty+(event.clientY-drag.y)/scale;apply()});const stop=event=>{drag=null;if(svg.hasPointerCapture(event.pointerId))svg.releasePointerCapture(event.pointerId)};svg.addEventListener("pointerup",stop);svg.addEventListener("pointercancel",stop);const hash=decodeURIComponent(location.hash.slice(1));const initial=root.querySelector(hash?"#"+CSS.escape(hash):"[data-dag-detail]");if(initial)activate(root,initial.id)}addEventListener("hashchange",()=>{const id=decodeURIComponent(location.hash.slice(1));for(const root of roots)if(root.querySelector("#"+CSS.escape(id)))activate(root,id)})})();`
 
@@ -24,12 +20,6 @@ const COPY = {
   'zh-CN': {
     report: '分析报告',
     generated: '生成于',
-    artifact: '数据工件',
-    finding: '证据事实',
-    quality: '质量状态',
-    committed: '提交时间',
-    type: '类型',
-    epistemic: '认识类型',
     dataTable: '查看同源数据表',
     displayed: '显示',
     total: '总计',
@@ -37,24 +27,14 @@ const COPY = {
     rows: '行',
     categories: '个类别',
     points: '个数据点',
-    freshness:
-      'Artifact admissible 仅表示当前语义权威和 Evidence 完整性可接受，不等于 datasource fresh。',
-    noQuality: '未标注',
-    value: '值',
-    derivation: '派生规则',
-    subject: '主题',
-    chart: '图表',
+    freshness: 'Artifact admissible 仅表示当前语义权威可接受，不等于 datasource fresh。',
     range: '范围',
-    unit: '单位',
     audit: '审计字段',
     contract: '公共契约',
     lineage: 'Lineage',
-    support: '这些事实是相邻内容的分析依据，不自动证明整段解释或建议。',
     inventory: '完整技术溯源',
     focused: '纵轴聚焦于数据区间',
     artifacts: '数据工件',
-    findings: '证据事实',
-    technical: '技术详情',
     actions: '分析动作',
     artifactPreview: '数据预览',
     graphEmpty: '当前 Session 没有符合条件的成功主产物分析动作或 Artifact。',
@@ -63,12 +43,6 @@ const COPY = {
   'en-US': {
     report: 'Analysis report',
     generated: 'Generated',
-    artifact: 'Data artifact',
-    finding: 'Evidence fact',
-    quality: 'Quality',
-    committed: 'Committed at',
-    type: 'Type',
-    epistemic: 'Epistemic kind',
     dataTable: 'View source data table',
     displayed: 'Displayed',
     total: 'total',
@@ -77,24 +51,14 @@ const COPY = {
     categories: 'categories',
     points: 'data points',
     freshness:
-      'Artifact admissible means current semantic authority and Evidence integrity are acceptable; it does not mean datasource fresh.',
-    noQuality: 'not labeled',
-    value: 'Value',
-    derivation: 'Derivation',
-    subject: 'Subject',
-    chart: 'Chart',
+      'Artifact admissible means the current semantic authority is acceptable; it does not mean datasource fresh.',
     range: 'Range',
-    unit: 'Unit',
     audit: 'Audit fields',
     contract: 'Public contract',
     lineage: 'Lineage',
-    support:
-      'These facts support the adjacent content; they do not automatically entail the full interpretation or recommendation.',
     inventory: 'Complete technical provenance',
     focused: 'Focused value scale',
     artifacts: 'Data artifacts',
-    findings: 'Evidence facts',
-    technical: 'Technical details',
     actions: 'Analysis actions',
     artifactPreview: 'Data preview',
     graphEmpty: 'This Session has no eligible successful main-Artifact actions or Artifacts.',
@@ -265,35 +229,6 @@ function artifactAnchor(report: CompiledReport, ref: string): string {
     if (node !== undefined) return node.detailId
   }
   return 'report-provenance'
-}
-
-function findingAnchor(report: CompiledReport, id: string): string {
-  const finding = report.projection.findings.find((item) => item.findingId === id)
-  if (finding === undefined) throw new Error(`provenance Finding ${id} is missing`)
-  return artifactAnchor(report, finding.artifactId)
-}
-
-function findingStatement(finding: ReportFindingProjection, report: CompiledReport): string {
-  return report.document.locale === 'zh-CN' ? finding.rendered.zh : finding.rendered.en
-}
-
-function evidenceDetails(findingIds: readonly string[], report: CompiledReport): string {
-  const copy = COPY[report.document.locale]
-  const findings = findingIds
-    .map((id) => report.projection.findings.find((item) => item.findingId === id))
-    .filter((item): item is ReportFindingProjection => item !== undefined)
-  if (findings.length === 0) return ''
-  const statements = `<ol class="evidence-list">${findings
-    .map((finding) => `<li>${escapeHtml(findingStatement(finding, report))}</li>`)
-    .join('')}</ol>`
-  const findingAudits = findings
-    .map(
-      (finding, index) =>
-        `<details class="audit evidence-audit"><summary>${copy.technical} ${index + 1}</summary><p><a href="#${findingAnchor(report, finding.findingId)}">${copy.finding} ${index + 1}</a></p><dl><dt>${copy.type}</dt><dd>${escapeHtml(finding.findingType)}</dd><dt>${copy.epistemic}</dt><dd>${escapeHtml(finding.epistemicKind)}</dd><dt>${copy.quality}</dt><dd>${escapeHtml(finding.qualityStatus ?? copy.noQuality)}</dd><dt>${copy.committed}</dt><dd>${escapeHtml(finding.committedAt)}</dd></dl></details>`,
-    )
-    .join('')
-  const body = `${statements}<p class="support-boundary">${copy.support}</p><div class="evidence-audits">${findingAudits}</div>`
-  return `<section class="evidence-details">${body}</section>`
 }
 
 function chartContext(chart: CompiledChartBlock, report: CompiledReport): string {
@@ -485,7 +420,7 @@ function renderTable(table: CompiledTableBlock, report: CompiledReport): string 
   return `<article class="block table-block" id="${escapeHtml(table.block.id)}"><h3>${escapeHtml(table.block.title)}</h3>${disclosure}${tableHtml(table.block.title, columns, table.rows, report.document.locale)}</article>`
 }
 
-function renderBlock(block: ReportBlockV1, report: CompiledReport): string {
+function renderBlock(block: ReportBlockV2, report: CompiledReport): string {
   if (block.kind === 'text') {
     return `<article class="block text-block" id="${escapeHtml(block.id)}">${textBlock(block.text)}</article>`
   }
@@ -499,7 +434,7 @@ function renderBlock(block: ReportBlockV1, report: CompiledReport): string {
     if (table === undefined) throw new Error(`compiled table ${block.id} is missing`)
     return renderTable(table, report)
   }
-  return `<article class="block evidence-block" id="${escapeHtml(block.id)}"><h3>${escapeHtml(block.title)}</h3>${evidenceDetails(block.finding_ids, report)}</article>`
+  throw new Error(`unsupported report block kind ${(block as { kind: string }).kind}`)
 }
 
 function issueList(issues: readonly { code: string; message: string; repair: string }[]): string {
@@ -536,18 +471,6 @@ function jobDetail(node: CompiledDagNode, report: CompiledReport): string {
   return `<article class="dag-detail" id="${node.detailId}" data-dag-detail tabindex="-1"><p class="dag-kind">Job · ${escapeHtml(job.intent)}</p><h4>${escapeHtml(job.id)}</h4><dl><dt>status</dt><dd>${escapeHtml(job.status)}</dd><dt>purpose</dt><dd>${escapeHtml(job.analysisPurpose ?? '—')}</dd><dt>started</dt><dd>${escapeHtml(job.startedAt)}</dd><dt>finished</dt><dd>${escapeHtml(job.finishedAt ?? '—')}</dd><dt>duration</dt><dd>${job.durationMs} ms</dd><dt>inputs</dt><dd>${refLinks(job.inputArtifactRefs, report)}</dd><dt>output</dt><dd><a href="#${artifactAnchor(report, job.outputArtifactRef)}">${escapeHtml(job.outputArtifactRef)}</a></dd><dt>reused</dt><dd>${reused}</dd></dl><details class="audit"><summary>params</summary><pre>${escapeHtml(pretty(job.params))}</pre></details>${queryDetails(job)}</article>`
 }
 
-function findingAudits(artifactRef: string, report: CompiledReport): string {
-  const copy = COPY[report.document.locale]
-  const findings = report.projection.findings.filter((item) => item.artifactId === artifactRef)
-  if (findings.length === 0) return ''
-  return `<section class="dag-findings"><h5>${copy.findings}</h5>${findings
-    .map(
-      (finding, index) =>
-        `<details class="audit"><summary>${copy.finding} ${index + 1} · ${escapeHtml(finding.findingId)}</summary><p class="evidence-statement">${escapeHtml(findingStatement(finding, report))}</p><dl><dt>id</dt><dd>${escapeHtml(finding.findingId)}</dd><dt>session</dt><dd>${escapeHtml(finding.sessionId)}</dd><dt>${copy.type}</dt><dd>${escapeHtml(finding.findingType)}</dd><dt>${copy.epistemic}</dt><dd>${escapeHtml(finding.epistemicKind)}</dd><dt>${copy.quality}</dt><dd>${escapeHtml(finding.qualityStatus ?? copy.noQuality)}</dd><dt>${copy.committed}</dt><dd>${escapeHtml(finding.committedAt)}</dd></dl><h6>${copy.value}</h6><pre>${escapeHtml(pretty(finding.value))}</pre><h6>${copy.subject}</h6><pre>${escapeHtml(pretty(finding.subject))}</pre><h6>${copy.derivation}</h6><pre>${escapeHtml(pretty(finding.derivation))}</pre></details>`,
-    )
-    .join('')}</section>`
-}
-
 function artifactDetail(node: CompiledDagNode, report: CompiledReport): string {
   const copy = COPY[report.document.locale]
   const artifact = node.artifact!
@@ -559,7 +482,7 @@ function artifactDetail(node: CompiledDagNode, report: CompiledReport): string {
     artifact.status !== 'ready'
       ? ''
       : `<details class="audit"><summary>${copy.audit}</summary><h5>${copy.contract}</h5><pre>${escapeHtml(pretty(artifact.contract!))}</pre><h5>revalidation</h5><pre>${escapeHtml(pretty(artifact.revalidation!))}</pre><h5>${copy.lineage}</h5><pre>${escapeHtml(pretty(artifact.lineage!))}</pre></details>`
-  return `<article class="dag-detail" id="${node.detailId}" data-dag-detail tabindex="-1"><p class="dag-kind">Artifact · ${escapeHtml(artifact.status)}</p><h4>${escapeHtml(artifact.ref)}</h4><dl><dt>family</dt><dd>${escapeHtml(artifact.family ?? '—')}</dd><dt>shape</dt><dd>${artifact.shape === null ? '—' : `${artifact.shape[0]} × ${artifact.shape[1]}`}</dd><dt>content hash</dt><dd>${escapeHtml(artifact.contentHash ?? '—')}</dd><dt>schema</dt><dd>${escapeHtml(artifact.artifactSchemaVersion ?? '—')}</dd><dt>created</dt><dd>${escapeHtml(artifact.createdAt ?? '—')}</dd><dt>Evidence</dt><dd>${escapeHtml(artifact.evidenceStatus ?? '—')}</dd></dl>${issueList(artifact.issues)}${preview}${audits}${findingAudits(artifact.ref, report)}</article>`
+  return `<article class="dag-detail" id="${node.detailId}" data-dag-detail tabindex="-1"><p class="dag-kind">Artifact · ${escapeHtml(artifact.status)}</p><h4>${escapeHtml(artifact.ref)}</h4><dl><dt>family</dt><dd>${escapeHtml(artifact.family ?? '—')}</dd><dt>shape</dt><dd>${artifact.shape === null ? '—' : `${artifact.shape[0]} × ${artifact.shape[1]}`}</dd><dt>content hash</dt><dd>${escapeHtml(artifact.contentHash ?? '—')}</dd><dt>schema</dt><dd>${escapeHtml(artifact.artifactSchemaVersion ?? '—')}</dd><dt>created</dt><dd>${escapeHtml(artifact.createdAt ?? '—')}</dd></dl>${issueList(artifact.issues)}${preview}${audits}</article>`
 }
 
 function dagNode(node: CompiledDagNode): string {
@@ -608,7 +531,7 @@ function footer(report: CompiledReport, generatedAt: string): string {
         timeZone: 'UTC',
         timeZoneName: 'short',
       }).format(date)
-  const count = `${report.sessionDag.jobs.length} ${copy.actions} · ${report.sessionDag.artifacts.length} ${copy.artifacts} · ${report.projection.findings.length} ${copy.findings}`
+  const count = `${report.sessionDag.jobs.length} ${copy.actions} · ${report.sessionDag.artifacts.length} ${copy.artifacts}`
   const graph =
     report.sessionDag.components.length === 0
       ? `<p class="dag-empty">${copy.graphEmpty}</p>`
@@ -620,11 +543,11 @@ function footer(report: CompiledReport, generatedAt: string): string {
 
 const CSS = `
 :root{color-scheme:light dark;--paper:#fff;--surface:#f7f8fa;--ink:#20252b;--muted:#68717a;--faint:#929aa1;--accent:#2563eb;--accent-deep:#1d4ed8;--accent-soft:#eef4ff;--line:#e3e6e8;--grid:#edf0f2;--bar:#86add8;--bar-edge:#315f8f;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-*{box-sizing:border-box}html,body{background:var(--paper)}body{margin:0;color:var(--ink);font-size:16px;line-height:1.7;text-rendering:optimizeLegibility}main{max-width:1020px;margin:0 auto;padding:72px 56px 60px}header{padding-bottom:40px;border-bottom:1px solid var(--line);margin-bottom:0}.eyebrow{margin:0 0 10px;color:var(--accent);font-size:.72rem;font-weight:750;letter-spacing:.14em;text-transform:uppercase}h1{max-width:22ch;font-size:clamp(2.35rem,5vw,3.5rem);line-height:1.08;letter-spacing:-.035em;margin:0}h2{font-size:1.48rem;line-height:1.25;letter-spacing:-.015em;margin:58px 0 22px}h3{font-size:1.12rem;line-height:1.35;margin:0 0 8px}.subtitle{max-width:72ch;margin:18px 0 0;color:var(--muted);font-size:1.05rem}.report-section{scroll-margin-top:24px}.report-summary{margin:0 0 58px;padding:0;background:transparent;border:0}.report-summary h2{margin:40px 0 14px;color:var(--accent-deep);font-size:1.08rem;letter-spacing:0}.report-summary>.text-block:first-of-type{max-width:none;margin-bottom:42px;padding:4px 0 4px 22px;border-left:3px solid var(--accent)}.block{margin:0 0 30px;break-inside:avoid}.text-block{max-width:78ch}.text-block p{margin:.65em 0}.text-block ol,.text-block ul{margin:.8em 0;padding-left:1.45em}.text-block li{margin:.55em 0;padding-left:.25em}.chart-block,.table-block{max-width:none;margin:0;padding:30px 0 38px;background:transparent;border:0;border-top:1px solid var(--line);border-radius:0}.chart-block+ .text-block,.table-block+ .text-block{margin:-10px 0 46px;padding-left:18px;border-left:2px solid color-mix(in srgb,var(--accent) 58%,var(--line))}.context,.truncation,.support-boundary{color:var(--muted);font-size:.82rem}.context{margin:0 0 12px}.truncation{margin:-2px 0 12px}.chart{display:block;width:100%;height:auto;margin:4px 0 2px;background:transparent}.axis{stroke:var(--faint);stroke-width:1}.grid{stroke:var(--grid);stroke-width:1}.grid-anchor{stroke:var(--faint)}.tick{font-size:12px;fill:var(--muted)}.axis-label{font-size:13px;font-weight:650;fill:var(--muted)}.line-series{fill:none;stroke:var(--accent);stroke-linecap:round;stroke-linejoin:round;stroke-width:2.5}.chart circle{fill:var(--paper);stroke:var(--accent);stroke-width:2}.bar-series{fill:var(--bar);stroke:var(--bar-edge);stroke-width:1}.value-label,.endpoint-label{font-size:11px;font-weight:700;fill:var(--ink)}.endpoint-label{font-size:12px}.table-scroll{overflow-x:auto;margin-inline:-2px}table{border-collapse:separate;border-spacing:0;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}caption{text-align:left;font-weight:650;padding:0 0 10px}th,td{padding:10px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{color:var(--muted);background:var(--surface);font-size:.78rem;font-weight:700;letter-spacing:.02em;white-space:nowrap}td{max-width:38rem;overflow-wrap:anywhere}.column-unit{display:block;color:var(--faint);font-size:.68rem;font-weight:500;letter-spacing:0;text-transform:none}tbody tr:last-child td{border-bottom:0}a{color:var(--accent);text-underline-offset:3px}details{margin-top:14px}summary{cursor:pointer}.fallback{padding-top:2px}.fallback>summary,.provenance-index>summary{color:var(--muted);font-size:.8rem;font-weight:650}.evidence-details{margin-top:6px;padding:18px 20px;background:var(--accent-soft);border-left:3px solid var(--accent);border-top:1px solid var(--line)}.evidence-list{margin:10px 0;padding-left:1.35em}.evidence-list li{margin:.55em 0;padding-left:.25em}.evidence-audits{display:flex;flex-wrap:wrap;gap:8px}.evidence-audit{margin:0;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:.78rem}.evidence-audit>summary{color:var(--muted);font-weight:650}.evidence-audit dl,.provenance-record dl{display:grid;grid-template-columns:minmax(7rem,auto) 1fr;gap:4px 14px}.evidence-audit dt,.provenance-record dt{font-weight:650}.evidence-audit dd,.provenance-record dd{margin:0;overflow-wrap:anywhere}.audit pre,.provenance-record pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);padding:10px;border-left:2px solid var(--line);font-size:.75rem}.evidence-statement{font-size:.95rem;font-weight:650}.audit{color:var(--muted)}footer{margin-top:70px;padding-top:24px;border-top:1px solid var(--line);font-size:.8rem}.footer-meta{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;color:var(--muted)}.footer-meta p{margin:0}.freshness{max-width:62ch}.provenance-index{padding:12px 0;scroll-margin-top:18px}.footer-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:18px}.footer-grid h3{color:var(--muted)}.provenance-record{padding-top:14px;margin-top:14px;border-top:1px solid var(--line);scroll-margin-top:18px}
-.session-provenance{margin-top:30px;scroll-margin-top:18px}.session-provenance>h2{margin:30px 0 4px}.dag-count{margin:0;color:var(--muted)}.dag-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:14px 0 24px;color:var(--muted);font-size:.76rem}.dag-legend span{display:inline-flex;align-items:center;gap:6px}.dag-legend span:before{content:"";display:inline-block;width:24px;height:10px;border:1.5px solid var(--line);border-radius:3px}.dag-legend .legend-job:before{background:var(--accent-soft);border-color:var(--accent)}.dag-legend .legend-artifact:before{background:var(--surface);border-color:var(--muted)}.dag-legend .legend-produces:before{height:0;border:0;border-top:2px solid var(--accent);border-radius:0}.dag-legend .legend-reuses:before{height:0;border:0;border-top:2px dashed var(--accent);border-radius:0}.dag-component{padding:24px 0 34px;border-top:1px solid var(--line);scroll-margin-top:18px}.dag-component-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.dag-component-heading h3{margin:0}.dag-controls{display:flex;gap:6px}.dag-controls button{min-width:32px;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:.75rem;cursor:pointer}.dag-controls button:focus-visible,.dag-node:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.dag-workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr);gap:20px;margin-top:12px;align-items:start}.dag-canvas-wrap{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.dag-canvas{display:block;width:100%;min-height:260px;max-height:560px;touch-action:none;cursor:grab}.dag-canvas:active{cursor:grabbing}.dag-edge{fill:none;stroke:var(--muted);stroke-width:1.5}.dag-edge-produces{stroke:var(--accent);stroke-width:2}.dag-edge-reuses{stroke:var(--accent);stroke-dasharray:7 5}.dag-canvas marker path{fill:var(--muted)}.dag-node rect{fill:var(--paper);stroke:var(--muted);stroke-width:1.5}.dag-node-job rect{fill:var(--accent-soft);stroke:var(--accent)}.dag-node-unavailable rect{stroke:#b45309;stroke-dasharray:5 4}.dag-node-boundary rect{fill:transparent;stroke-dasharray:3 3}.dag-node[data-selected="true"] rect{stroke-width:3}.dag-node-label{fill:var(--ink);font-size:13px;font-weight:750}.dag-node-subtitle{fill:var(--muted);font-size:10px}.dag-detail-panel{min-width:0;max-height:560px;overflow:auto;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}.dag-detail{scroll-margin-top:18px}.dag-detail+.dag-detail{padding-top:18px;margin-top:18px;border-top:1px solid var(--line)}.dag-enhanced .dag-detail{display:none}.dag-enhanced .dag-detail[data-active="true"]{display:block}.dag-detail:target{outline:2px solid var(--accent);outline-offset:5px}.dag-detail h4{margin:0 0 10px;font-size:.95rem;overflow-wrap:anywhere}.dag-detail h5{margin:18px 0 8px}.dag-kind{margin:0;color:var(--accent);font-size:.7rem;font-weight:750;text-transform:uppercase;letter-spacing:.08em}.dag-detail dl,.dag-query dl{display:grid;grid-template-columns:minmax(6rem,auto) minmax(0,1fr);gap:4px 12px}.dag-detail dt,.dag-query dt{font-weight:650}.dag-detail dd,.dag-query dd{margin:0;overflow-wrap:anywhere}.dag-detail pre{max-height:24rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:var(--surface);border-left:2px solid var(--line);font-size:.72rem}.dag-query{padding-top:6px}.dag-query>summary{color:var(--accent);font-weight:650}.raw-sql{color:var(--ink)}.dag-issues{padding-left:1.2rem;color:#b45309}.dag-issues span{display:block;color:var(--muted)}.dag-preview .table-scroll{max-height:22rem;overflow:auto}.dag-preview table{font-size:.72rem}.dag-preview th,.dag-preview td{padding:7px 8px}.dag-findings{padding-top:12px;border-top:1px solid var(--line)}.dag-empty{padding:24px;border:1px dashed var(--line);border-radius:8px;color:var(--muted)}.dag-index{display:none}.dag-index code{color:var(--muted)}
+*{box-sizing:border-box}html,body{background:var(--paper)}body{margin:0;color:var(--ink);font-size:16px;line-height:1.7;text-rendering:optimizeLegibility}main{max-width:1020px;margin:0 auto;padding:72px 56px 60px}header{padding-bottom:40px;border-bottom:1px solid var(--line);margin-bottom:0}.eyebrow{margin:0 0 10px;color:var(--accent);font-size:.72rem;font-weight:750;letter-spacing:.14em;text-transform:uppercase}h1{max-width:22ch;font-size:clamp(2.35rem,5vw,3.5rem);line-height:1.08;letter-spacing:-.035em;margin:0}h2{font-size:1.48rem;line-height:1.25;letter-spacing:-.015em;margin:58px 0 22px}h3{font-size:1.12rem;line-height:1.35;margin:0 0 8px}.subtitle{max-width:72ch;margin:18px 0 0;color:var(--muted);font-size:1.05rem}.report-section{scroll-margin-top:24px}.report-summary{margin:0 0 58px;padding:0;background:transparent;border:0}.report-summary h2{margin:40px 0 14px;color:var(--accent-deep);font-size:1.08rem;letter-spacing:0}.report-summary>.text-block:first-of-type{max-width:none;margin-bottom:42px;padding:4px 0 4px 22px;border-left:3px solid var(--accent)}.block{margin:0 0 30px;break-inside:avoid}.text-block{max-width:78ch}.text-block p{margin:.65em 0}.text-block ol,.text-block ul{margin:.8em 0;padding-left:1.45em}.text-block li{margin:.55em 0;padding-left:.25em}.chart-block,.table-block{max-width:none;margin:0;padding:30px 0 38px;background:transparent;border:0;border-top:1px solid var(--line);border-radius:0}.chart-block+ .text-block,.table-block+ .text-block{margin:-10px 0 46px;padding-left:18px;border-left:2px solid color-mix(in srgb,var(--accent) 58%,var(--line))}.context,.truncation{color:var(--muted);font-size:.82rem}.context{margin:0 0 12px}.truncation{margin:-2px 0 12px}.chart{display:block;width:100%;height:auto;margin:4px 0 2px;background:transparent}.axis{stroke:var(--faint);stroke-width:1}.grid{stroke:var(--grid);stroke-width:1}.grid-anchor{stroke:var(--faint)}.tick{font-size:12px;fill:var(--muted)}.axis-label{font-size:13px;font-weight:650;fill:var(--muted)}.line-series{fill:none;stroke:var(--accent);stroke-linecap:round;stroke-linejoin:round;stroke-width:2.5}.chart circle{fill:var(--paper);stroke:var(--accent);stroke-width:2}.bar-series{fill:var(--bar);stroke:var(--bar-edge);stroke-width:1}.value-label,.endpoint-label{font-size:11px;font-weight:700;fill:var(--ink)}.endpoint-label{font-size:12px}.table-scroll{overflow-x:auto;margin-inline:-2px}table{border-collapse:separate;border-spacing:0;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}caption{text-align:left;font-weight:650;padding:0 0 10px}th,td{padding:10px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{color:var(--muted);background:var(--surface);font-size:.78rem;font-weight:700;letter-spacing:.02em;white-space:nowrap}td{max-width:38rem;overflow-wrap:anywhere}.column-unit{display:block;color:var(--faint);font-size:.68rem;font-weight:500;letter-spacing:0;text-transform:none}tbody tr:last-child td{border-bottom:0}a{color:var(--accent);text-underline-offset:3px}details{margin-top:14px}summary{cursor:pointer}.fallback{padding-top:2px}.fallback>summary{color:var(--muted);font-size:.8rem;font-weight:650}.audit pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);padding:10px;border-left:2px solid var(--line);font-size:.75rem}.audit{color:var(--muted)}footer{margin-top:70px;padding-top:24px;border-top:1px solid var(--line);font-size:.8rem}.footer-meta{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;color:var(--muted)}.footer-meta p{margin:0}.freshness{max-width:62ch}
+.session-provenance{margin-top:30px;scroll-margin-top:18px}.session-provenance>h2{margin:30px 0 4px}.dag-count{margin:0;color:var(--muted)}.dag-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:14px 0 24px;color:var(--muted);font-size:.76rem}.dag-legend span{display:inline-flex;align-items:center;gap:6px}.dag-legend span:before{content:"";display:inline-block;width:24px;height:10px;border:1.5px solid var(--line);border-radius:3px}.dag-legend .legend-job:before{background:var(--accent-soft);border-color:var(--accent)}.dag-legend .legend-artifact:before{background:var(--surface);border-color:var(--muted)}.dag-legend .legend-produces:before{height:0;border:0;border-top:2px solid var(--accent);border-radius:0}.dag-legend .legend-reuses:before{height:0;border:0;border-top:2px dashed var(--accent);border-radius:0}.dag-component{padding:24px 0 34px;border-top:1px solid var(--line);scroll-margin-top:18px}.dag-component-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.dag-component-heading h3{margin:0}.dag-controls{display:flex;gap:6px}.dag-controls button{min-width:32px;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:.75rem;cursor:pointer}.dag-controls button:focus-visible,.dag-node:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.dag-workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr);gap:20px;margin-top:12px;align-items:start}.dag-canvas-wrap{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.dag-canvas{display:block;width:100%;min-height:260px;max-height:560px;touch-action:none;cursor:grab}.dag-canvas:active{cursor:grabbing}.dag-edge{fill:none;stroke:var(--muted);stroke-width:1.5}.dag-edge-produces{stroke:var(--accent);stroke-width:2}.dag-edge-reuses{stroke:var(--accent);stroke-dasharray:7 5}.dag-canvas marker path{fill:var(--muted)}.dag-node rect{fill:var(--paper);stroke:var(--muted);stroke-width:1.5}.dag-node-job rect{fill:var(--accent-soft);stroke:var(--accent)}.dag-node-unavailable rect{stroke:#b45309;stroke-dasharray:5 4}.dag-node-boundary rect{fill:transparent;stroke-dasharray:3 3}.dag-node[data-selected="true"] rect{stroke-width:3}.dag-node-label{fill:var(--ink);font-size:13px;font-weight:750}.dag-node-subtitle{fill:var(--muted);font-size:10px}.dag-detail-panel{min-width:0;max-height:560px;overflow:auto;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}.dag-detail{scroll-margin-top:18px}.dag-detail+.dag-detail{padding-top:18px;margin-top:18px;border-top:1px solid var(--line)}.dag-enhanced .dag-detail{display:none}.dag-enhanced .dag-detail[data-active="true"]{display:block}.dag-detail:target{outline:2px solid var(--accent);outline-offset:5px}.dag-detail h4{margin:0 0 10px;font-size:.95rem;overflow-wrap:anywhere}.dag-detail h5{margin:18px 0 8px}.dag-kind{margin:0;color:var(--accent);font-size:.7rem;font-weight:750;text-transform:uppercase;letter-spacing:.08em}.dag-detail dl,.dag-query dl{display:grid;grid-template-columns:minmax(6rem,auto) minmax(0,1fr);gap:4px 12px}.dag-detail dt,.dag-query dt{font-weight:650}.dag-detail dd,.dag-query dd{margin:0;overflow-wrap:anywhere}.dag-detail pre{max-height:24rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:var(--surface);border-left:2px solid var(--line);font-size:.72rem}.dag-query{padding-top:6px}.dag-query>summary{color:var(--accent);font-weight:650}.raw-sql{color:var(--ink)}.dag-issues{padding-left:1.2rem;color:#b45309}.dag-issues span{display:block;color:var(--muted)}.dag-preview .table-scroll{max-height:22rem;overflow:auto}.dag-preview table{font-size:.72rem}.dag-preview th,.dag-preview td{padding:7px 8px}.dag-empty{padding:24px;border:1px dashed var(--line);border-radius:8px;color:var(--muted)}.dag-index{display:none}.dag-index code{color:var(--muted)}
 @media(prefers-color-scheme:dark){:root{--paper:#15191c;--surface:#1c2227;--ink:#edf1f3;--muted:#a9b2b8;--faint:#7f8990;--accent:#79a7ff;--accent-deep:#a8c5ff;--accent-soft:#18243a;--line:#30363b;--grid:#2b3237;--bar:#547fae;--bar-edge:#8eb9e8}}
-@media(max-width:720px){main{padding:36px 20px 40px}header{padding-bottom:30px}h1{font-size:2.25rem}.report-summary>.text-block:first-of-type{padding-left:16px}.chart-block,.table-block{padding:24px 0 32px}.chart-block+ .text-block,.table-block+ .text-block{margin-top:-6px}.footer-meta{display:grid}.footer-grid{grid-template-columns:1fr}.horizontal-label{font-size:10px}.evidence-audit dl{grid-template-columns:1fr}.evidence-audit dd{margin-bottom:6px}.dag-workspace{grid-template-columns:1fr}.dag-detail-panel{max-height:none}.dag-canvas{min-height:220px}.dag-detail dl,.dag-query dl{grid-template-columns:1fr}.dag-detail dd,.dag-query dd{margin-bottom:5px}}
-@media print{:root{color-scheme:light;--paper:#fff;--surface:#fff;--ink:#111;--muted:#555;--faint:#777;--line:#ddd;--grid:#e5e5e5;--accent:#1d4ed8;--accent-deep:#1d4ed8;--accent-soft:#f5f8ff;--bar:#9dbde1;--bar-edge:#345f8c}main{max-width:none;margin:0;padding:0}.block,.chart,table{break-inside:avoid}.table-scroll{overflow:visible}.provenance-index:not([open])>*:not(summary),.evidence-audit:not([open])>*:not(summary),.fallback:not([open])>*:not(summary){display:none!important}footer{break-before:auto}a{color:inherit}.dag-controls,.dag-detail-panel{display:none!important}.dag-workspace{display:block}.dag-canvas{max-height:none;break-inside:avoid}.dag-index{display:block;font-size:8pt}.dag-component{break-inside:avoid}}
+@media(max-width:720px){main{padding:36px 20px 40px}header{padding-bottom:30px}h1{font-size:2.25rem}.report-summary>.text-block:first-of-type{padding-left:16px}.chart-block,.table-block{padding:24px 0 32px}.chart-block+ .text-block,.table-block+ .text-block{margin-top:-6px}.footer-meta{display:grid}.horizontal-label{font-size:10px}.dag-workspace{grid-template-columns:1fr}.dag-detail-panel{max-height:none}.dag-canvas{min-height:220px}.dag-detail dl,.dag-query dl{grid-template-columns:1fr}.dag-detail dd,.dag-query dd{margin-bottom:5px}}
+@media print{:root{color-scheme:light;--paper:#fff;--surface:#fff;--ink:#111;--muted:#555;--faint:#777;--line:#ddd;--grid:#e5e5e5;--accent:#1d4ed8;--accent-deep:#1d4ed8;--accent-soft:#f5f8ff;--bar:#9dbde1;--bar-edge:#345f8c}main{max-width:none;margin:0;padding:0}.block,.chart,table{break-inside:avoid}.table-scroll{overflow:visible}.fallback:not([open])>*:not(summary){display:none!important}footer{break-before:auto}a{color:inherit}.dag-controls,.dag-detail-panel{display:none!important}.dag-workspace{display:block}.dag-canvas{max-height:none;break-inside:avoid}.dag-index{display:block;font-size:8pt}.dag-component{break-inside:avoid}}
 `.trim()
 
 /** Generate one self-contained HTML document without I/O or runtime dependencies. */

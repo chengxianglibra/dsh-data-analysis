@@ -175,22 +175,16 @@ call 写入等价的耐久 ContentBlock。Web 按当前 Turn 和 closing answer 
 marivo_report_render({ session_id, document })
 ```
 
-`document` 必须是完整的 `dsh-data-analysis-report/v1`，由 1–20 个 section 组成，并使用 `text`、`chart`、
-`table`、`evidence` block。chart 支持 `auto`、`line` 和 `bar`；每个数据 block 必须引用精确 Artifact，
-来源 block 可引用精确 Finding；block 必须位于 `document.sections[].blocks`，不能只提交 `document.blocks`。
-每个 block 最多引用 20 个 Finding，全文最多引用 100 个唯一 Finding。普通 `text`、`chart`、`table` block
-没有精确 Finding 支撑时可省略 `finding_ids` 或传 `[]`，空数组会规范化为省略；`evidence` block 必须提供
-1–20 个 Finding，不能使用空数组。
+`document` 必须是完整的 `dsh-data-analysis-report/v2`，由 1–20 个 section 组成，并且只使用 `text`、`chart`、
+`table` 三类 block。chart 支持 `auto`、`line` 和 `bar`；每个 chart/table 必须引用精确 Artifact；block
+必须位于 `document.sections[].blocks`，不能只提交 `document.blocks`。v2 不接受 `finding_ids` 或 `evidence`
+block；需要持久化来源时，单独调用 `marivo_evidence_sources`。
 修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
 
-Agent 在同一 block 组合多个 Finding 前先使用 `session.evidence.compatibility()` 预检。工具还会执行无副作用的
-best-effort preflight：文档、Marivo 与视觉问题按 check 分组聚合；单个 Finding/Artifact 失败不阻止其他独立目标，
-有效 partial projection 继续检查可检查的图表。若多处失败，一次返回精确路径、冲突身份、原因和跳过边界，
-Agent 修复指定位置后仍需重新提交完整文档。仅被图表或表格显式引用的 Artifact 才投影 rows；纯溯源 Artifact
-不受 2,000 行展示上限影响。
-报告按 locale 展示 `Finding.render()` 事实；普通 block 不显示来源角标或浮层，`finding_ids` 仍作为来源元数据参与投影，
-显式 `evidence` block 可在正文展示人读事实；页脚索引提供 content hash、contract、revalidation、Lineage 与派生字段。
-它不会聚合、抽样、Top-N，也不会把 pandas rows 重新包装成 Evidence。HTML 只包含 semantic
+工具执行无副作用的 best-effort preflight：文档、Marivo 与视觉问题按 check 分组聚合；单个 Artifact 失败不阻止
+其他独立目标，有效 partial projection 继续检查可检查的图表。若多处失败，一次返回精确路径、原因和跳过边界，
+Agent 修复指定位置后仍需重新提交完整文档。仅被图表或表格显式引用的 Artifact 才投影 rows；Session DAG
+仍保留 Artifact/Job 的受控审计信息。HTML 只包含 semantic
 HTML、内联 CSS 和 SVG，不运行 JavaScript、不加载远程资源。Tool 文本返回绝对 `index.html` 路径；Web
 Tool View 与最终回答下方的耐久交付卡片都从顶层 meta 或 Code Mode 耐久子调用 block 恢复标题、披露和
 完整路径，不依赖 Agent 是否在收尾文字中正确复述。用户点击“打开报告”后才调用 DSH `host.openPath`；

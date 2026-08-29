@@ -1,11 +1,11 @@
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { type CompiledSessionDag, compileSessionDag } from './dag.ts'
 import type {
-  ChartBlockV1,
-  ReportDocumentV1,
-  ReportIssueV1,
+  ChartBlockV2,
+  ReportDocumentV2,
+  ReportIssueV2,
   ReportVisualCandidate,
-  TableBlockV1,
+  TableBlockV2,
 } from './document.ts'
 import type {
   ReportArtifactColumn,
@@ -15,7 +15,7 @@ import type {
 import { reportTimeEpoch } from './time.ts'
 
 export interface CompiledChartBlock {
-  readonly block: ChartBlockV1
+  readonly block: ChartBlockV2
   readonly artifact: ReportArtifactProjection
   readonly view: 'line' | 'bar'
   readonly x: string
@@ -24,7 +24,7 @@ export interface CompiledChartBlock {
 }
 
 export interface CompiledTableBlock {
-  readonly block: TableBlockV1
+  readonly block: TableBlockV2
   readonly artifact: ReportArtifactProjection
   readonly columns: readonly string[]
   readonly rows: readonly (readonly JsonValue[])[]
@@ -33,7 +33,7 @@ export interface CompiledTableBlock {
 }
 
 export interface CompiledReport {
-  readonly document: ReportDocumentV1
+  readonly document: ReportDocumentV2
   readonly projection: ReportProjectionBundle
   readonly charts: ReadonlyMap<string, CompiledChartBlock>
   readonly tables: ReadonlyMap<string, CompiledTableBlock>
@@ -43,10 +43,10 @@ export interface CompiledReport {
 
 export type CompileVisualResult =
   | { readonly ok: true; readonly value: CompiledReport }
-  | { readonly ok: false; readonly issues: readonly ReportIssueV1[] }
+  | { readonly ok: false; readonly issues: readonly ReportIssueV2[] }
 
 export interface ReportVisualPreflight {
-  readonly issues: readonly ReportIssueV1[]
+  readonly issues: readonly ReportIssueV2[]
   readonly checkedCount: number
   readonly skippedCount: number
 }
@@ -56,7 +56,7 @@ function reportIssue(
   location: string,
   message: string,
   repair: string,
-): ReportIssueV1 {
+): ReportIssueV2 {
   return { code, location, message, repair }
 }
 
@@ -91,7 +91,7 @@ function sortedPoints(
   xIndex: number,
   yIndex: number,
   location: string,
-  issues: ReportIssueV1[],
+  issues: ReportIssueV2[],
 ): { x: JsonValue; y: number }[] | undefined {
   const points: { x: JsonValue; y: number; order?: number }[] = []
   const seen = new Set<string>()
@@ -179,10 +179,10 @@ function mixedGrain(artifact: ReportArtifactProjection, x: string): string | und
 }
 
 function compileChart(
-  block: ChartBlockV1,
+  block: ChartBlockV2,
   artifact: ReportArtifactProjection,
   location: string,
-  issues: ReportIssueV1[],
+  issues: ReportIssueV2[],
 ): CompiledChartBlock | undefined {
   let view: 'line' | 'bar' | undefined
   let x: string | undefined = block.x
@@ -291,11 +291,10 @@ function compileChart(
 }
 
 function compileTable(
-  block: TableBlockV1,
+  block: TableBlockV2,
   artifact: ReportArtifactProjection,
   location: string,
-  issues: ReportIssueV1[],
-  disclosures: string[],
+  issues: ReportIssueV2[],
 ): CompiledTableBlock | undefined {
   const selected = block.columns ?? artifact.columns.map((column) => column.name)
   const indexes = selected.map((column) => columnIndex(artifact, column))
@@ -316,10 +315,6 @@ function compileTable(
     .slice(0, block.max_rows)
     .map((row) => indexes.map((index) => row[index] ?? null))
   const omittedRows = totalRows - rows.length
-  if (omittedRows > 0)
-    disclosures.push(
-      `Table ${block.id} displays ${rows.length} of ${totalRows} rows and omits ${omittedRows}.`,
-    )
   return { block, artifact, columns: selected, rows, totalRows, omittedRows }
 }
 
@@ -329,8 +324,7 @@ export function preflightReportVisuals(
   projection: ReportProjectionBundle,
 ): ReportVisualPreflight {
   const artifacts = new Map(projection.artifacts.map((artifact) => [artifact.ref, artifact]))
-  const issues: ReportIssueV1[] = []
-  const disclosures: string[] = []
+  const issues: ReportIssueV2[] = []
   let checkedCount = 0
   let skippedCount = 0
   for (const candidate of candidates) {
@@ -343,7 +337,7 @@ export function preflightReportVisuals(
     if (candidate.block.kind === 'chart') {
       compileChart(candidate.block, artifact, candidate.location, issues)
     } else {
-      compileTable(candidate.block, artifact, candidate.location, issues, disclosures)
+      compileTable(candidate.block, artifact, candidate.location, issues)
     }
   }
   return { issues, checkedCount, skippedCount }
@@ -351,13 +345,13 @@ export function preflightReportVisuals(
 
 /** Admit every data block without aggregating, sampling, or changing the Artifact rows. */
 export function compileReportVisuals(
-  document: ReportDocumentV1,
+  document: ReportDocumentV2,
   projection: ReportProjectionBundle,
 ): CompileVisualResult {
   const artifacts = new Map(projection.artifacts.map((artifact) => [artifact.ref, artifact]))
   const charts = new Map<string, CompiledChartBlock>()
   const tables = new Map<string, CompiledTableBlock>()
-  const issues: ReportIssueV1[] = []
+  const issues: ReportIssueV2[] = []
   const disclosures: string[] = []
   for (const [sectionIndex, section] of document.sections.entries()) {
     for (const [blockIndex, block] of section.blocks.entries()) {
@@ -379,8 +373,14 @@ export function compileReportVisuals(
         const compiled = compileChart(block, artifact, location, issues)
         if (compiled !== undefined) charts.set(block.id, compiled)
       } else {
-        const compiled = compileTable(block, artifact, location, issues, disclosures)
-        if (compiled !== undefined) tables.set(block.id, compiled)
+        const compiled = compileTable(block, artifact, location, issues)
+        if (compiled !== undefined) {
+          if (compiled.omittedRows > 0)
+            disclosures.push(
+              `Table ${block.id} displays ${compiled.rows.length} of ${compiled.totalRows} rows and omits ${compiled.omittedRows}.`,
+            )
+          tables.set(block.id, compiled)
+        }
       }
     }
   }

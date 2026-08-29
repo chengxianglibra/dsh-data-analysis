@@ -10,13 +10,13 @@ import {
   publishReport,
   type ReportDagArtifactProjection,
   type ReportDagJobProjection,
-  type ReportDocumentV1,
+  type ReportDocumentV2,
   type ReportProjectionBundle,
   renderReportHtml,
 } from '../../src/report/index.ts'
 
-const document: ReportDocumentV1 = {
-  version: 'dsh-data-analysis-report/v1',
+const document: ReportDocumentV2 = {
+  version: 'dsh-data-analysis-report/v2',
   title: 'Session DAG',
   locale: 'en-US',
   sections: [
@@ -47,7 +47,6 @@ function artifact(
       contentHash: null,
       artifactSchemaVersion: null,
       createdAt: null,
-      evidenceStatus: null,
       contract: null,
       revalidation: null,
       lineage: null,
@@ -77,7 +76,6 @@ function artifact(
     contentHash: ref.padEnd(64, 'a').slice(0, 64),
     artifactSchemaVersion: 'analysis-artifact/v10',
     createdAt: '2026-08-28T00:00:00+00:00',
-    evidenceStatus: 'complete',
     contract: { kind: 'MetricFrame', ref },
     revalidation: {
       status: 'admissible',
@@ -138,8 +136,6 @@ function projection(): ReportProjectionBundle {
   return {
     sessionId: 'session-dag',
     artifacts: [],
-    findings: [],
-    compatibilities: [],
     sessionDag: {
       jobs: [
         job('job-observe', 'observe', ['artifact-boundary'], 'artifact-a', '2026-08-28T00:00:00Z'),
@@ -328,8 +324,6 @@ test('projection parser rejects private query fields and accepts only the raw SQ
   const raw = {
     status: 'checked',
     session_id: 'session-dag',
-    finding_group_outcomes: [],
-    finding_outcomes: [],
     artifact_outcomes: [],
     session_dag: {
       jobs: [
@@ -373,7 +367,6 @@ test('projection parser rejects private query fields and accepts only the raw SQ
           content_hash: null,
           artifact_schema_version: null,
           created_at: null,
-          evidence_status: null,
           contract: null,
           revalidation: null,
           lineage: null,
@@ -388,8 +381,6 @@ test('projection parser rejects private query fields and accepts only the raw SQ
   const expected = {
     sessionId: 'session-dag',
     artifactRefs: [],
-    findingIds: [],
-    findingGroups: [],
   }
   const parsed = parseReportProjection(Buffer.from(JSON.stringify(raw)), expected)
   assert.equal(parsed.ok, true, JSON.stringify(parsed))

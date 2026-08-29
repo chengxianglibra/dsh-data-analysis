@@ -13,15 +13,15 @@ import {
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { ReportDocumentV1, ReportIssueV1 } from './document.ts'
+import type { ReportDocumentV2, ReportIssueV2 } from './document.ts'
 import { REPORT_RENDERER_VERSION, renderReportHtml } from './render.ts'
 import type { CompiledReport } from './visual.ts'
 
-export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v3' as const
-export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v3' as const
+export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v4' as const
+export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v4' as const
 export const MAX_REPORT_HTML_BYTES = 10 * 1024 * 1024
 
-interface ReportManifestV3 {
+interface ReportManifestV4 {
   readonly version: typeof REPORT_MANIFEST_VERSION
   readonly renderer_version: typeof REPORT_RENDERER_VERSION
   readonly report_digest: string
@@ -31,7 +31,6 @@ interface ReportManifestV3 {
   readonly marivo_version: string
   readonly generated_at: string
   readonly artifacts: readonly { readonly ref: string; readonly content_hash: string }[]
-  readonly finding_ids: readonly string[]
   readonly files: {
     readonly index_html: { readonly sha256: string; readonly bytes: number }
     readonly report_document_json: { readonly sha256: string; readonly bytes: number }
@@ -55,7 +54,7 @@ export type PublishReportResult =
       readonly generatedAt: string
       readonly reused: boolean
     }
-  | { readonly ok: false; readonly issues: readonly ReportIssueV1[] }
+  | { readonly ok: false; readonly issues: readonly ReportIssueV2[] }
 
 function hash(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex')
@@ -117,7 +116,7 @@ function digestInputs(
   }
 }
 
-export function reportDocumentDigest(document: ReportDocumentV1): string {
+export function reportDocumentDigest(document: ReportDocumentV2): string {
   return hash(canonicalJson(document))
 }
 
@@ -136,7 +135,7 @@ async function secureDirectory(directory: string, signal?: AbortSignal): Promise
   throwIfAborted(signal)
 }
 
-function parseManifest(raw: Buffer): ReportManifestV3 {
+function parseManifest(raw: Buffer): ReportManifestV4 {
   let value: unknown
   try {
     value = JSON.parse(raw.toString('utf8'))
@@ -145,7 +144,7 @@ function parseManifest(raw: Buffer): ReportManifestV3 {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new Error('Existing report manifest is not an object')
-  return value as ReportManifestV3
+  return value as ReportManifestV4
 }
 
 async function validateExisting(
@@ -159,10 +158,9 @@ async function validateExisting(
     readonly environmentFingerprint: string
     readonly marivoVersion: string
     readonly artifacts: readonly { readonly ref: string; readonly content_hash: string }[]
-    readonly findingIds: readonly string[]
   },
   signal?: AbortSignal,
-): Promise<ReportManifestV3> {
+): Promise<ReportManifestV4> {
   throwIfAborted(signal)
   const directoryInfo = await lstat(directory)
   if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink())
@@ -186,7 +184,6 @@ async function validateExisting(
     'marivo_version',
     'generated_at',
     'artifacts',
-    'finding_ids',
     'files',
   ]
     .sort()
@@ -220,7 +217,6 @@ async function validateExisting(
     typeof manifest.generated_at !== 'string' ||
     !Number.isFinite(Date.parse(manifest.generated_at)) ||
     canonicalJson(manifest.artifacts) !== canonicalJson(expected.artifacts) ||
-    canonicalJson(manifest.finding_ids) !== canonicalJson(expected.findingIds) ||
     document.toString('utf8') !== expected.documentText ||
     html.toString('utf8') !== renderReportHtml(expected.report, manifest.generated_at) ||
     manifest.files?.index_html?.sha256 !== hash(html) ||
@@ -283,7 +279,6 @@ export async function publishReport(
           ref: item.ref,
           content_hash: item.contentHash,
         })),
-        findingIds: report.projection.findings.map((item) => item.findingId),
       },
       options.signal,
     )
@@ -312,8 +307,7 @@ export async function publishReport(
     ref: item.ref,
     content_hash: item.contentHash,
   }))
-  const findingIds = report.projection.findings.map((item) => item.findingId)
-  const manifest: ReportManifestV3 = {
+  const manifest: ReportManifestV4 = {
     version: REPORT_MANIFEST_VERSION,
     renderer_version: REPORT_RENDERER_VERSION,
     report_digest: inputs.reportDigest,
@@ -323,7 +317,6 @@ export async function publishReport(
     marivo_version: options.marivoVersion,
     generated_at: generatedAt,
     artifacts,
-    finding_ids: findingIds,
     files: {
       index_html: { sha256: hash(html), bytes: htmlBytes },
       report_document_json: {
@@ -367,7 +360,6 @@ export async function publishReport(
         environmentFingerprint: options.environmentFingerprint,
         marivoVersion: options.marivoVersion,
         artifacts,
-        findingIds,
       },
       options.signal,
     )
@@ -395,7 +387,6 @@ export async function publishReport(
           environmentFingerprint: options.environmentFingerprint,
           marivoVersion: options.marivoVersion,
           artifacts,
-          findingIds,
         },
         options.signal,
       )
