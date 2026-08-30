@@ -6,7 +6,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {
   MARIVO_HELP_TOOL_NAME,
-  type MarivoEnvironmentSource,
+  type MarivoHelpBridgeSource,
   type MarivoHelpDelivery,
   type MarivoHelpDeliveryQuery,
   type MarivoHelpLimits,
@@ -14,7 +14,7 @@ import {
   readMarivoHelpTargets,
   registerMarivoHelpTool,
   renderMarivoHelpValue,
-  resolveMarivoEnvironmentSource,
+  resolveMarivoHelpBridge,
 } from './help.ts'
 
 const SKILL_TOOL_NAME = 'skill'
@@ -214,7 +214,7 @@ function renderRootHelpMessage(
 /** Per-Agent controller for skill-triggered, prompt-visible Marivo help disclosure. */
 export class MarivoDisclosureController {
   readonly agent: Agent
-  readonly environmentSource: MarivoEnvironmentSource
+  readonly bridgeSource: MarivoHelpBridgeSource
   readonly options: Readonly<MarivoDisclosureOptions>
 
   #activeSkills = new Set<MarivoSkillName>()
@@ -227,11 +227,11 @@ export class MarivoDisclosureController {
 
   constructor(
     agent: Agent,
-    environmentSource: MarivoEnvironmentSource,
+    bridgeSource: MarivoHelpBridgeSource,
     options: MarivoDisclosureOptions = {},
   ) {
     this.agent = agent
-    this.environmentSource = environmentSource
+    this.bridgeSource = bridgeSource
     this.options = Object.freeze({
       ...(options.helpLimits === undefined ? {} : { helpLimits: { ...options.helpLimits } }),
     })
@@ -299,7 +299,7 @@ export class MarivoDisclosureController {
     this.#refreshVisibleHelp(messages)
     if (this.#activeSkills.size === 0) return []
 
-    const environment = await resolveMarivoEnvironmentSource(this.environmentSource)
+    const bridge = await resolveMarivoHelpBridge(this.bridgeSource)
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
     const requested = MARIVO_SKILL_ORDER.filter((skill) => {
       if (!this.#activeSkills.has(skill)) return false
@@ -307,7 +307,7 @@ export class MarivoDisclosureController {
       const visible = this.#visibleHelp.get(target)
       return (
         this.#pendingSkills.has(skill) ||
-        visible?.environmentFingerprint !== environment.binding.fingerprint
+        visible?.environmentFingerprint !== bridge.binding.fingerprint
       )
     })
     if (requested.length === 0) return []
@@ -321,7 +321,7 @@ export class MarivoDisclosureController {
           const target = MARIVO_ROOT_HELP_TARGETS[skill]
           const reason = this.#pendingSkills.has(skill) ? 'activation' : 'recovery'
           const startedAt = performance.now()
-          const value = await readMarivoHelpTargets(environment, [target], {
+          const value = await readMarivoHelpTargets(bridge, [target], {
             limits: this.options.helpLimits,
             signal: readSignal,
             resolveDelivery: (query) => this.resolveDelivery(query),
@@ -462,13 +462,13 @@ export class MarivoDisclosureController {
 export function installMarivoDisclosure(
   _ctx: Context,
   agent: Agent,
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoHelpBridgeSource,
   options: MarivoDisclosureOptions = {},
 ): MarivoDisclosureController {
-  const controller = new MarivoDisclosureController(agent, environmentSource, options)
+  const controller = new MarivoDisclosureController(agent, bridgeSource, options)
   try {
     controller.addDisposer(
-      registerMarivoHelpTool(agent.ctx, environmentSource, options.helpLimits, (query) =>
+      registerMarivoHelpTool(agent.ctx, bridgeSource, options.helpLimits, (query) =>
         controller.resolveDelivery(query),
       ),
     )

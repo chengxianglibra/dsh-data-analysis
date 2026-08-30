@@ -65,14 +65,15 @@ Parser 递归拒绝未知字段，并校验：数据源 ID 与 computed 列名�
 `DisplayDataset`，共享列类型、角色、行数据、x/y 校验、日期排序、重复 x 检查和表格截断逻辑。
 
 - 只有 Artifact source 时，Tool 要求精确的 `session_id`，并把去重后的 `artifact_ref` 交给固定的
-  `runCheckedReportProjection()` bridge。
+  `MarivoReportBridge.project()`。
 - 只有 computed source 时，`session_id` 可省略，完全跳过 Artifact bridge 和 Marivo Session DAG；computed
   数据直接由已校验的文档映射为 `DisplayDataset`。
 - mixed 请求只把 Artifact refs 交给 bridge，再把 computed datasets 合并到同一个视觉编译输入中。computed
   数据不伪装成 Marivo Artifact，不加入 Session DAG。
 
-Artifact bridge 继续使用固定 Python script 和 direct argv，在同一 binding 中 resume Session、revalidate 显式
-Artifact、读取公共列和展示 rows，并构建受控 Job/Artifact DAG。它不发现 backing Artifact，不调用 Finding
+`MarivoReportBridge` 拥有固定 Python program、direct argv shape 和 Node strict parser；它通过 Environment
+checked runner 在同一 binding 中 resume Session、revalidate 显式 Artifact、读取公共列和展示 rows，并构建
+受控 Job/Artifact DAG。它不发现 backing Artifact，不调用 Finding
 compatibility、Finding 读取或 `Finding.render()`，不重新查询 datasource，也不排序、抽样或聚合 rows。
 `admissible` 只表示当前语义权威可接受，不表示 datasource fresh。
 

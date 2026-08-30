@@ -1,42 +1,20 @@
 import type { Context } from '@deepseek-ai/cordis'
-import {
-  type CredentialProvider,
-  credentialRef,
-  isCredentialRefName,
-} from '@deepseek-ai/dsh-credentials'
+import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
-import { MarivoEnvironmentError } from '../environment/errors.ts'
+import {
+  type MarivoDatasourceBridgePort,
+  type MarivoDatasourceBridgeSource,
+  type MarivoDatasourceFailure,
+  type MarivoDatasourceRepair,
+  resolveMarivoDatasourceBridge,
+} from './bridge.ts'
 import { assertDshCredentialReferences } from './shell-env.ts'
 
 export const MARIVO_TEST_TOOL_NAME = 'marivo_test'
 
-const DATASOURCE_LIMITS = Object.freeze({
-  timeoutMs: 30_000,
-  stdoutMaxBytes: 262_144,
-  stderrMaxBytes: 65_536,
-})
-
 interface JsonObject {
   [key: string]: JsonValue
-}
-
-export interface MarivoDatasourceFailure extends JsonObject {
-  code: string
-  exception_type: string
-  backend_code: string | null
-  backend_name: string | null
-  message: string
-}
-
-export interface MarivoDatasourceRepair extends JsonObject {
-  kind: string
-  help_target: string
-  action: string
-  snippet: string | null
-  candidates: string[]
-  preserves_evidence: boolean | null
 }
 
 export type MarivoTestValue =
@@ -50,26 +28,9 @@ export type MarivoTestValue =
       repair: MarivoDatasourceRepair
     } & JsonObject)
 
-interface DescribePayload {
-  name: string
-  refs: string[]
-}
-
-interface TestPayload {
-  name: string
-  ok: boolean
-  latency_ms: number | null
-  failure: MarivoDatasourceFailure | null
-  repair: MarivoDatasourceRepair | null
-}
-
 export interface MarivoTestOptions {
   /** Observe the validated non-secret datasource reference-name projection. */
-  onDescribe?: (
-    environment: Awaited<ReturnType<typeof resolveMarivoEnvironmentSource>>,
-    name: string,
-    refs: readonly string[],
-  ) => void
+  onDescribe?: (bridge: MarivoDatasourceBridgePort, name: string, refs: readonly string[]) => void
 }
 
 function datasourceName(value: unknown): string {
@@ -77,102 +38,6 @@ function datasourceName(value: unknown): string {
     throw new TypeError('marivo_test name must be a non-empty string of at most 256 characters')
   }
   return value
-}
-
-function parseJsonObject(stdout: Buffer, phase: 'describe' | 'test'): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(stdout.toString('utf8')) as unknown
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new TypeError('payload must be an object')
-    }
-    return parsed as Record<string, unknown>
-  } catch {
-    throw new MarivoEnvironmentError(
-      'subprocess-output-invalid',
-      `Marivo datasource ${phase} returned an invalid payload`,
-      { phase, stdoutBytes: stdout.byteLength },
-    )
-  }
-}
-
-function parseDescribe(stdout: Buffer): DescribePayload {
-  const value = parseJsonObject(stdout, 'describe')
-  if (typeof value.name !== 'string' || !Array.isArray(value.refs)) {
-    throw new MarivoEnvironmentError(
-      'subprocess-output-invalid',
-      'Marivo datasource describe returned invalid fields',
-      { phase: 'describe' },
-    )
-  }
-  const refs: string[] = []
-  const seen = new Set<string>()
-  for (const ref of value.refs) {
-    if (typeof ref !== 'string' || !isCredentialRefName(ref)) {
-      throw new MarivoEnvironmentError(
-        'subprocess-output-invalid',
-        'Marivo datasource describe returned an invalid credential reference',
-        { phase: 'describe' },
-      )
-    }
-    if (!seen.has(ref)) {
-      seen.add(ref)
-      refs.push(ref)
-    }
-  }
-  return { name: value.name, refs }
-}
-
-function redactString(value: string, secrets: readonly string[]): string {
-  let redacted = value
-  for (const secret of secrets) {
-    if (secret !== '') redacted = redacted.split(secret).join('[REDACTED]')
-  }
-  return redacted
-}
-
-function redactUnknown(value: unknown, secrets: readonly string[]): unknown {
-  if (typeof value === 'string') return redactString(value, secrets)
-  if (Array.isArray(value)) return value.map((item) => redactUnknown(item, secrets))
-  if (typeof value !== 'object' || value === null) return value
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, redactUnknown(item, secrets)]),
-  )
-}
-
-function parseTest(stdout: Buffer, secrets: readonly string[]): TestPayload {
-  const value = redactUnknown(parseJsonObject(stdout, 'test'), secrets) as Record<string, unknown>
-  if (
-    typeof value.name !== 'string' ||
-    typeof value.ok !== 'boolean' ||
-    (value.latency_ms !== null && typeof value.latency_ms !== 'number')
-  ) {
-    throw new MarivoEnvironmentError(
-      'subprocess-output-invalid',
-      `Marivo datasource test returned invalid fields (name=${typeof value.name}, ok=${typeof value.ok}, latency=${value.latency_ms === null ? 'null' : typeof value.latency_ms})`,
-      { phase: 'test' },
-    )
-  }
-  if (value.ok)
-    return {
-      name: value.name,
-      ok: true,
-      latency_ms: value.latency_ms as number | null,
-      failure: null,
-      repair: null,
-    }
-  if (
-    typeof value.failure !== 'object' ||
-    value.failure === null ||
-    typeof value.repair !== 'object' ||
-    value.repair === null
-  ) {
-    throw new MarivoEnvironmentError(
-      'subprocess-output-invalid',
-      'Marivo datasource test failure omitted structured failure or repair',
-      { phase: 'test' },
-    )
-  }
-  return value as unknown as TestPayload
 }
 
 function renderValue(value: MarivoTestValue): string {
@@ -185,7 +50,7 @@ function renderValue(value: MarivoTestValue): string {
 
 /** Build the scoped datasource connection-test Tool. */
 export function createMarivoTestTool(
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoDatasourceBridgeSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
   options: MarivoTestOptions = {},
 ): ToolDefinition {
@@ -207,25 +72,12 @@ export function createMarivoTestTool(
     timeoutMs: 65_000,
     async execute(args, exec): Promise<MarivoTestValue> {
       const name = datasourceName(args.name)
-      const environment = await resolveMarivoEnvironmentSource(environmentSource)
-      const describedResult = await environment.runCheckedDatasourceDescribe(
-        name,
-        DATASOURCE_LIMITS,
-        exec.signal,
-      )
-      if (describedResult.exitCode !== 0) {
-        throw new MarivoEnvironmentError(
-          'subprocess-failed',
-          `Marivo datasource describe failed with exit code ${String(describedResult.exitCode)}`,
-          { phase: 'describe', exitCode: describedResult.exitCode },
-        )
-      }
-      const described = parseDescribe(describedResult.stdout)
+      const bridge = await resolveMarivoDatasourceBridge(bridgeSource)
+      const described = await bridge.describe(name, exec.signal)
       assertDshCredentialReferences(described.refs)
-      options.onDescribe?.(environment, described.name, described.refs)
+      options.onDescribe?.(bridge, described.name, described.refs)
       const overlay: NodeJS.ProcessEnv = {}
       const missing: string[] = []
-      const values: string[] = []
       for (const refName of described.refs) {
         const resolved = await credentials.resolve(credentialRef(refName))
         if (resolved === undefined) {
@@ -233,25 +85,11 @@ export function createMarivoTestTool(
           continue
         }
         overlay[refName] = resolved.value
-        values.push(resolved.value)
       }
       if (missing.length > 0)
         return { status: 'needs-credentials', name: described.name, refs: missing }
 
-      const testedResult = await environment.runCheckedDatasourceTest(
-        name,
-        overlay,
-        DATASOURCE_LIMITS,
-        exec.signal,
-      )
-      if (testedResult.exitCode !== 0) {
-        throw new MarivoEnvironmentError(
-          'subprocess-failed',
-          `Marivo datasource test failed with exit code ${String(testedResult.exitCode)}`,
-          { phase: 'test', exitCode: testedResult.exitCode },
-        )
-      }
-      const tested = parseTest(testedResult.stdout, values)
+      const tested = await bridge.test(name, overlay, exec.signal)
       if (tested.ok) return { status: 'ok', name: tested.name, latency_ms: tested.latency_ms }
       return {
         status: 'failed',
@@ -266,9 +104,9 @@ export function createMarivoTestTool(
 
 export function registerMarivoTestTool(
   ctx: Context,
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoDatasourceBridgeSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
   options: MarivoTestOptions = {},
 ): () => void {
-  return ctx.tools.register(createMarivoTestTool(environmentSource, credentials, options))
+  return ctx.tools.register(createMarivoTestTool(bridgeSource, credentials, options))
 }

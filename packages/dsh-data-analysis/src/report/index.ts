@@ -1,3 +1,5 @@
+export type { MarivoReportBridgePort, MarivoReportBridgeSource } from './bridge.ts'
+export { MarivoReportBridge, resolveMarivoReportBridge } from './bridge.ts'
 export type {
   CompiledDagComponent,
   CompiledDagEdge,

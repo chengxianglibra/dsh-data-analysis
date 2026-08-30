@@ -6,6 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
+import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
 import { registerMarivoTestTool } from './datasource/index.ts'
 import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import {
@@ -19,7 +20,9 @@ import {
   MARIVO_PERSIST_CREDENTIALS_DISABLED,
   MARIVO_PERSIST_CREDENTIALS_ENV,
   MarivoEnvironment,
+  type MarivoEnvironmentSource,
   MarivoWorkspaceEnvironmentManager,
+  resolveMarivoEnvironmentSource,
 } from './environment/index.ts'
 import {
   installMarivoEvidenceSourcesCodeDelivery,
@@ -154,24 +157,40 @@ export function installMarivoPlugin(
     throw new Error('dsh-data-analysis requires the DSH credentials service')
   }
   const shellCredentials = new MarivoShellCredentialBridge(ctx, credentials)
+  const bridgeSets = new WeakMap<MarivoEnvironment, MarivoBridgeSet>()
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
-    const source =
+    const source: MarivoEnvironmentSource =
       environmentOrResolver instanceof MarivoEnvironment
         ? environmentOrResolver
         : () => Promise.resolve(environmentOrResolver(agent))
-    const controller = installMarivoDisclosure(ctx, agent, source, options)
-    controller.addDisposer(shellCredentials.installAgent(agent, source))
+    const resolveBridgeSet = async (): Promise<MarivoBridgeSet> => {
+      const environment = await resolveMarivoEnvironmentSource(source)
+      let bridges = bridgeSets.get(environment)
+      if (bridges === undefined) {
+        bridges = createMarivoBridgeSet(environment)
+        bridgeSets.set(environment, bridges)
+      }
+      return bridges
+    }
+    const helpSource = async () => (await resolveBridgeSet()).help
+    const datasourceSource = async () => (await resolveBridgeSet()).datasource
+    const evidenceSource = async () => (await resolveBridgeSet()).evidence
+    const reportSource = async () => (await resolveBridgeSet()).report
+    const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
+    controller.addDisposer(shellCredentials.installAgent(agent, datasourceSource))
     controller.addDisposer(
-      registerMarivoTestTool(agent.ctx, source, credentials, {
-        onDescribe: (environment, datasourceName, refs) => {
-          shellCredentials.recordDatasource(environment, datasourceName, refs)
+      registerMarivoTestTool(agent.ctx, datasourceSource, credentials, {
+        onDescribe: (bridge, datasourceName, refs) => {
+          shellCredentials.recordDatasource(bridge, datasourceName, refs)
         },
       }),
     )
-    controller.addDisposer(registerMarivoEvidenceSourcesTool(agent.ctx, source, agent.session))
+    controller.addDisposer(
+      registerMarivoEvidenceSourcesTool(agent.ctx, evidenceSource, agent.session),
+    )
     controller.addDisposer(installMarivoEvidenceSourcesCodeDelivery(agent.ctx))
-    controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, source))
+    controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, reportSource))
     controller.addDisposer(installMarivoReportCodeDelivery(agent.ctx))
     controller.addDisposer(
       agent.ctx.systemPrompt.section({

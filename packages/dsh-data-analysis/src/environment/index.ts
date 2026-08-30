@@ -7,6 +7,11 @@ export {
   SHARED_MARIVO_PACKAGE_SPEC,
   SHARED_PYTHON_SPEC,
 } from './runtime.ts'
+export type { MarivoBridgeSource, MarivoEnvironmentSource } from './source.ts'
+export {
+  resolveMarivoBridgeSource,
+  resolveMarivoEnvironmentSource,
+} from './source.ts'
 export {
   DEFAULT_SUBPROCESS_LIMITS,
   FixedSubprocessPolicy,
@@ -21,6 +26,8 @@ export type {
   DoctorSection,
   DoctorStatus,
   ImportIdentity,
+  MarivoCheckedRunner,
+  MarivoCheckedRunRequest,
   MarivoEnvironmentBinding,
   MarivoEnvironmentConfig,
   MarivoWorkspaceLayout,

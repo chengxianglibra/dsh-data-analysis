@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -96,6 +96,15 @@ if (args[0] === '--record') {
   if (process.env.IDENTITY_MODE === 'mismatch') {
     process.stderr.write(JSON.stringify({ kind: 'identity-mismatch' }))
     process.exit(78)
+  }
+  if (process.env.CHECKED_MODE === 'domain') {
+    process.stdout.write(JSON.stringify({
+      argument: args[5],
+      nested: { secret: process.env.TEST_CREDENTIAL },
+      program: args[1],
+    }))
+    process.stderr.write('stderr=' + process.env.TEST_CREDENTIAL)
+    process.exit(Number(process.env.CHECKED_EXIT ?? '0'))
   }
   process.stdout.write(JSON.stringify({
     python_executable: expectedPython,
@@ -341,6 +350,69 @@ test('identity mismatch permanently fails the binding until explicit rebind', as
   )
   assert.equal(environment.status, 'failed')
   await assertEnvironmentError(() => environment.assertImportIdentity(), 'binding-failed')
+})
+
+test('checked runner preserves domain argv and redacts every operation overlay value', async (t) => {
+  const fixture = await fixtureProject(false)
+  t.after(fixture.cleanup)
+  const environment = await bindMarivoEnvironment(
+    { projectRoot: fixture.root, pythonExecutable: fixture.executable },
+    { environment: { PATH: process.env.PATH, CHECKED_MODE: 'domain' } },
+  )
+  const result = await environment.runChecked({
+    program: 'print("domain program")',
+    args: ['domain-argument'],
+    environmentOverlay: { TEST_CREDENTIAL: 'operation-secret' },
+  })
+  assert.equal(result.exitCode, 0)
+  const payload = JSON.parse(result.stdout.toString('utf8')) as {
+    argument: string
+    nested: { secret: string }
+    program: string
+  }
+  assert.equal(payload.argument, 'domain-argument')
+  assert.deepEqual(payload.nested, { secret: '[REDACTED]' })
+  assert.match(payload.program, /_dsh_expected/)
+  assert.match(payload.program, /print\("domain program"\)/)
+  assert.equal(result.stderr.toString('utf8'), 'stderr=[REDACTED]')
+  assert.equal(environment.status, 'ready')
+})
+
+test('ordinary checked program failure does not poison the binding', async (t) => {
+  const fixture = await fixtureProject(false)
+  t.after(fixture.cleanup)
+  const environment = await bindMarivoEnvironment(
+    { projectRoot: fixture.root, pythonExecutable: fixture.executable },
+    {
+      environment: {
+        PATH: process.env.PATH,
+        CHECKED_MODE: 'domain',
+        CHECKED_EXIT: '70',
+      },
+    },
+  )
+  const result = await environment.runChecked({ program: 'raise RuntimeError("domain")' })
+  assert.equal(result.exitCode, 70)
+  assert.equal(environment.status, 'ready')
+})
+
+test('Environment source and public types contain no domain bridge programs or methods', async () => {
+  const [bindingSource, typesSource] = await Promise.all([
+    readFile(
+      path.resolve(process.cwd(), 'packages/dsh-data-analysis/src/environment/binding.ts'),
+      'utf8',
+    ),
+    readFile(
+      path.resolve(process.cwd(), 'packages/dsh-data-analysis/src/environment/types.ts'),
+      'utf8',
+    ),
+  ])
+  const source = `${bindingSource}\n${typesSource}`
+  assert.doesNotMatch(
+    source,
+    /runChecked(?:HelpTarget|Datasource(?:Describe|Inventory|Test)|EvidenceFindings|ReportProjection)/,
+  )
+  assert.doesNotMatch(source, /CHECKED_(?:HELP|DATASOURCE|EVIDENCE|REPORT)/)
 })
 
 test('subprocess timeout, cancellation, and output limits are explicit', async (t) => {

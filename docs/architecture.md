@@ -86,16 +86,16 @@ DSH Web profile
 | 模块 | 主要作用 | 文档 |
 | --- | --- | --- |
 | Runtime 与 Workspace | 创建或复用共享 Marivo 安装，挂载 Skills，幂等准备各 Workspace | [Runtime 与 Workspace](modules/runtime-workspace.md) |
-| Environment 执行边界 | doctor 准入、身份固定、安全子进程、诊断输出 | [Environment 执行边界](modules/environment-execution.md) |
+| Environment 执行边界 | doctor 准入、身份固定、通用 checked runner、安全子进程 | [Environment 执行边界](modules/environment-execution.md) |
 | Help 披露 | 提供 focused `marivo_help`，并在 Skill 激活后注入实时根 Help | [Help 披露](modules/help-disclosure.md) |
 | Datasource 与凭证 | 解析 Datasource 凭证引用，调用 `md.test()`，提供 Web 凭证表单 | [Datasource 与凭证](modules/datasource-credentials.md) |
 | Evidence 按需来源 | 按用户请求读取精确 Finding、从标准历史回放折叠 Web 来源面板 | [Evidence 按需来源](modules/evidence-sources.md) |
 | HTML 报告渲染 | 校验完整 ReportDocument、读取精确 Marivo 投影并生成不可变自包含 HTML | [HTML 报告渲染](modules/html-report-rendering.md) |
 | Plugin 集成与交付 | 组合 Cordis 生命周期、Agent scopes、客户端构建和 npm 包契约 | [Plugin 集成与交付](modules/plugin-integration-delivery.md) |
 
-依赖方向保持单向：Plugin 组合层依赖其余模块；Help 与 Datasource 依赖 Environment；Environment
-依赖 Runtime 提供的解释器身份，但不依赖 Agent 或 Web UI。Datasource 复用 Help 模块定义的惰性
-Environment source 类型，不共享业务状态。
+依赖方向保持单向：Plugin 组合层把每个 Environment resolver 包装成按 Environment 缓存的 Help、Datasource、
+Evidence、Report adapter source；各领域模块只依赖自己的窄 bridge 接口。四个 adapter 依赖 Environment
+通用 checked runner；Environment 依赖 Runtime 提供的解释器身份，但不依赖领域脚本、Agent 或 Web UI。
 
 ## 启动流程
 
@@ -223,10 +223,12 @@ npm run validate:runtime-workspace:real
 npm run validate:environment-execution:real
 npm run validate:help-disclosure:real
 npm run validate:datasource-credentials:real
+npm run validate:evidence-sources:real
 npm run validate:html-report-rendering:real
 npm run validate:plugin-integration-delivery:real
 ```
 
-最后一项需要真实模型凭证，其余真实验证需要仓库 `.venv` 中的 Marivo 安装；Datasource 验证会创建
-使用当前绑定 Marivo 的临时 `DSH_*` datasource 项目。发布内容与可执行入口由
+Evidence、HTML Report 和 Plugin Integration 真实验证需要真实模型凭证；这些真实验证默认使用插件管理的
+固定 Marivo 0.5.0 共享 Runtime，也可通过 `DSH_DATA_ANALYSIS_PYTHON` 显式选择管理员解释器。Datasource
+验证会创建使用当前 binding 的临时 `DSH_*` datasource 项目。发布内容与可执行入口由
 `packages/dsh-data-analysis/package.json`、`cordis.patch.yml` 和 package verifier 共同约束。

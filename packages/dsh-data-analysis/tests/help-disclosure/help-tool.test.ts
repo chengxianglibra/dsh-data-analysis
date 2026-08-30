@@ -12,6 +12,7 @@ import {
   createMarivoHelpTool,
   loadTargetInventory,
   MARIVO_HELP_TOOL_NAME,
+  MarivoHelpBridge,
   type MarivoHelpValue,
   normalizeHelpTargets,
   registerMarivoHelpTool,
@@ -29,7 +30,7 @@ if (args[0] !== '-c') {
   process.stderr.write('expected -c')
   process.exit(2)
 }
-const target = args[5]
+const target = args[5] ?? (args[1].includes('marivo.help()') ? '<inventory>' : undefined)
 if (target === undefined) {
   process.stdout.write(JSON.stringify({
     python_executable: path.resolve(args[2]),
@@ -66,6 +67,7 @@ interface HelpFixture {
   executable: string
   recordPath: string
   environment: MarivoEnvironment
+  bridge: MarivoHelpBridge
   cleanup: () => Promise<void>
 }
 
@@ -96,15 +98,16 @@ async function helpFixture(extraEnvironment: NodeJS.ProcessEnv = {}): Promise<He
     executable,
     recordPath,
     environment,
+    bridge: new MarivoHelpBridge(environment),
     cleanup: () => rm(root, { recursive: true, force: true }),
   }
 }
 
-async function setupRuntime(environment: MarivoEnvironment, limits = {}) {
+async function setupRuntime(bridge: MarivoHelpBridge, limits = {}) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoHelpTool(ctx, environment, limits)
+  registerMarivoHelpTool(ctx, bridge, limits)
   return ctx
 }
 
@@ -123,7 +126,7 @@ async function executeHelp(ctx: Context, targets: unknown, signal = new AbortCon
 test('registered tool exposes only the native targets schema and keeps timeout host-side', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const ctx = await setupRuntime(fixture.environment)
+  const ctx = await setupRuntime(fixture.bridge)
   const schema = ctx.tools.schemas().find((item) => item.name === MARIVO_HELP_TOOL_NAME)
   assert.deepEqual(schema, {
     name: MARIVO_HELP_TOOL_NAME,
@@ -148,7 +151,7 @@ test('registered tool exposes only the native targets schema and keeps timeout h
 test('targets=[] succeeds without starting a help subprocess', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const ctx = await setupRuntime(fixture.environment)
+  const ctx = await setupRuntime(fixture.bridge)
   const result = await executeHelp(ctx, [])
   assert.equal(result.isError, false)
   assert.match(
@@ -161,7 +164,7 @@ test('targets=[] succeeds without starting a help subprocess', async (t) => {
 test('multiple targets deduplicate in first-seen order and preserve each raw stdout body', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const ctx = await setupRuntime(fixture.environment)
+  const ctx = await setupRuntime(fixture.bridge)
   const result = await executeHelp(ctx, [
     'analysis.observe',
     'analysis.compare',
@@ -194,7 +197,7 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
 test('invalid target is a standard isError result and discards earlier batch stdout', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const ctx = await setupRuntime(fixture.environment)
+  const ctx = await setupRuntime(fixture.bridge)
   const result = await executeHelp(ctx, ['analysis.observe', 'invalid.target'])
   assert.equal(result.isError, true)
   const text = result.content[0]?.type === 'text' ? result.content[0].text : ''
@@ -206,7 +209,7 @@ test('invalid target is a standard isError result and discards earlier batch std
 test('mechanical request bounds fail without target membership validation', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const ctx = await setupRuntime(fixture.environment, { maxTargetChars: 5 })
+  const ctx = await setupRuntime(fixture.bridge, { maxTargetChars: 5 })
   const missing = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId('missing-targets'),
@@ -224,13 +227,13 @@ test('mechanical request bounds fail without target membership validation', asyn
 test('empty, per-target size, and combined size failures never return partial help', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const emptyCtx = await setupRuntime(fixture.environment)
+  const emptyCtx = await setupRuntime(fixture.bridge)
   assert.equal((await executeHelp(emptyCtx, ['empty.target'])).isError, true)
 
-  const targetLimitCtx = await setupRuntime(fixture.environment, { focusedStdoutMaxBytes: 100 })
+  const targetLimitCtx = await setupRuntime(fixture.bridge, { focusedStdoutMaxBytes: 100 })
   assert.equal((await executeHelp(targetLimitCtx, ['large.target'])).isError, true)
 
-  const combinedCtx = await setupRuntime(fixture.environment, { combinedStdoutMaxBytes: 35 })
+  const combinedCtx = await setupRuntime(fixture.bridge, { combinedStdoutMaxBytes: 35 })
   const combined = await executeHelp(combinedCtx, ['one.target', 'two.target'])
   assert.equal(combined.isError, true)
   const text = combined.content[0]?.type === 'text' ? combined.content[0].text : ''
@@ -240,10 +243,10 @@ test('empty, per-target size, and combined size failures never return partial he
 test('target timeout and caller cancellation settle as bounded Tool failures', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  const timeoutCtx = await setupRuntime(fixture.environment, { targetTimeoutMs: 30 })
+  const timeoutCtx = await setupRuntime(fixture.bridge, { targetTimeoutMs: 30 })
   assert.equal((await executeHelp(timeoutCtx, ['slow.target'])).isError, true)
 
-  const cancelCtx = await setupRuntime(fixture.environment)
+  const cancelCtx = await setupRuntime(fixture.bridge)
   const controller = new AbortController()
   const pending = executeHelp(cancelCtx, ['slow.target'], controller.signal)
   setTimeout(() => controller.abort(), 30)
@@ -253,19 +256,19 @@ test('target timeout and caller cancellation settle as bounded Tool failures', a
 test('inventory is raw passthrough and is executed again on every call', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
-  assert.equal(await loadTargetInventory(fixture.environment), 'help-body:targets\n')
-  assert.equal(await loadTargetInventory(fixture.environment), 'help-body:targets\n')
+  assert.equal(await loadTargetInventory(fixture.bridge), 'help-body:<inventory>\n')
+  assert.equal(await loadTargetInventory(fixture.bridge), 'help-body:<inventory>\n')
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
-    'targets',
-    'targets',
+    '<inventory>',
+    '<inventory>',
   ])
 })
 
 test('same-process identity mismatch fails the binding and prevents later help', async (t) => {
   const fixture = await helpFixture({ IDENTITY_MODE: 'mismatch' })
   t.after(fixture.cleanup)
-  const tool = createMarivoHelpTool(fixture.environment)
-  const ctx = await setupRuntime(fixture.environment)
+  const tool = createMarivoHelpTool(fixture.bridge)
+  const ctx = await setupRuntime(fixture.bridge)
   assert.equal(tool.name, MARIVO_HELP_TOOL_NAME)
   assert.equal((await executeHelp(ctx, ['analysis.observe'])).isError, true)
   assert.equal(fixture.environment.status, 'failed')

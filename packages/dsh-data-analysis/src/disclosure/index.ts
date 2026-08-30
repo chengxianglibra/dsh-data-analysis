@@ -14,8 +14,10 @@ export {
   MarivoDisclosureController,
   MarivoDisclosureError,
 } from './activation.ts'
+export { MarivoHelpBridge } from './bridge.ts'
 export type {
-  MarivoEnvironmentSource,
+  MarivoHelpBridgePort,
+  MarivoHelpBridgeSource,
   MarivoHelpDelivery,
   MarivoHelpDeliveryQuery,
   MarivoHelpDeliveryResolver,
@@ -35,6 +37,6 @@ export {
   readMarivoHelpTargets,
   registerMarivoHelpTool,
   renderMarivoHelpValue,
-  resolveMarivoEnvironmentSource,
+  resolveMarivoHelpBridge,
   resolveMarivoHelpLimits,
 } from './help.ts'

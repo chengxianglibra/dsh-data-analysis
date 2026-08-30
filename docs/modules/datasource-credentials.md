@@ -10,9 +10,9 @@ Agent Shell。它不保存凭证、不复制 Datasource schema，也不自行判
 总体关系见[总体架构](../architecture.md)。服务端与客户端实现分别位于：
 
 - `packages/dsh-data-analysis/src/datasource/test.ts`
+- `packages/dsh-data-analysis/src/datasource/bridge.ts`
 - `packages/dsh-data-analysis/src/datasource/shell-env.ts`
 - `packages/dsh-data-analysis/src/client.tsx`
-- `packages/dsh-data-analysis/src/environment/binding.ts` 中的 checked datasource scripts
 
 上游凭证契约见 [Harness Credentials subsystem](../../../deepseek-harness/docs/subsystems/credentials.md)，
 Datasource 语义见 [Marivo datasource layer](../../../marivo/docs/specs/semantic/datasource-layer.md)。
@@ -23,12 +23,12 @@ Datasource 语义见 [Marivo datasource layer](../../../marivo/docs/specs/semant
 sequenceDiagram
   participant A as Agent
   participant T as marivo_test
-  participant E as MarivoEnvironment
+  participant B as MarivoDatasourceBridge
   participant C as DSH Credentials
   participant M as Marivo
   A->>T: { name }
-  T->>E: checked md.describe(name)
-  E->>M: identity check + describe
+  T->>B: describe(name)
+  B->>M: checked runner + md.describe
   M-->>T: name + env ref names
   loop 每个 ref
     T->>C: resolve(credentialRef(ref))
@@ -36,8 +36,8 @@ sequenceDiagram
   alt 有缺失引用
     T-->>A: needs-credentials + refs
   else 引用齐全
-    T->>E: checked md.test(name) + env overlay
-    E->>M: identity check + test
+    T->>B: test(name) + env overlay
+    B->>M: checked runner + md.test
     M-->>T: structured result
     T-->>A: ok 或 failed + repair
   end
@@ -62,7 +62,7 @@ sequenceDiagram
 ## Agent Shell 自动注入
 
 首次执行标准一次性 `bash` 或 `pwsh` 时，插件通过绑定的 Python 运行一次 `md.list()`，再对每个条目调用
-`md.describe()`，只读取 datasource name 和 `env_refs`。inventory 结果按 `MarivoEnvironment`
+`md.describe()`，只读取 datasource name 和 `env_refs`。inventory 结果按稳定的 `MarivoDatasourceBridge`
 隔离并缓存，后续 Shell 不重复启动 Python；`marivo_test` 的新 describe 结果可以替换单个 datasource
 的缓存引用。
 
@@ -98,8 +98,8 @@ DSH Credentials -> ToolExecution memory snapshot -> dshEnv -> one-shot bash/pwsh
 - 插件活动期间固定 `MARIVO_PERSIST_CREDENTIALS=0`，dispose 时恢复此前进程值；
 - Help、doctor、inventory、describe、test 子进程都不可覆盖该禁用值；
 - Python wrapper 捕获被测调用的 stdout/stderr，并按所有 overlay secret values 递归脱敏；
-- Node binding 再次对 stdout、stderr 和 JSON value 脱敏；
-- Datasource parser 在构造 Tool Result 前做严格 shape 校验；
+- Environment runner 再次对 stdout、stderr 和 JSON value 脱敏；
+- Datasource adapter 在构造 typed result 前做严格 shape 校验；
 - 缺失引用只返回 ref name 和配置状态，不返回已有值。
 
 受控 `marivo_test` 会保证凭证不进入 Tool Result；Shell 自动注入则明确授予本地 Agent 脚本读取

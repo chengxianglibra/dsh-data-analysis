@@ -3,24 +3,27 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
   MARIVO_TEST_TOOL_NAME,
+  MarivoDatasourceBridge,
+  type MarivoDatasourceBridgePort,
   type MarivoTestValue,
   registerMarivoTestTool,
 } from '../src/datasource/index.ts'
-import { bindMarivoEnvironment, type MarivoEnvironment } from '../src/environment/index.ts'
+import { bindMarivoEnvironment } from '../src/environment/index.ts'
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const workspaceRoot = path.resolve(packageRoot, '../..')
 const pythonExecutable =
   process.env.DSH_DATA_ANALYSIS_PYTHON ??
   path.join(
-    workspaceRoot,
+    resolveDshHome(),
+    'dsh-data-analysis',
+    'runtimes',
+    'marivo',
     process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
   )
 const datasourceName = 'credential_validation'
@@ -57,25 +60,18 @@ try {
     projectRoot: datasourceProjectRoot,
     pythonExecutable,
   })
-  const inventoryResult = await environment.runCheckedDatasourceInventory({
-    timeoutMs: 30_000,
-    stdoutMaxBytes: 262_144,
-    stderrMaxBytes: 65_536,
-  })
-  assert.equal(inventoryResult.exitCode, 0, inventoryResult.stderr.toString('utf8'))
-  const inventory = JSON.parse(inventoryResult.stdout.toString('utf8')) as {
-    datasources: Array<{ name: string; refs: string[] }>
-  }
-  assert.deepEqual(inventory.datasources, [
+  const datasourceBridge = new MarivoDatasourceBridge(environment)
+  const inventory = await datasourceBridge.inventory()
+  assert.deepEqual(inventory, [
     {
       name: datasourceName,
       refs: ['DSH_VALIDATION_USER', 'DSH_VALIDATION_PASSWORD'],
     },
   ])
   let connectionAttempts = 0
-  const guardedEnvironment = new Proxy(environment, {
+  const guardedBridge = new Proxy(datasourceBridge, {
     get(target, property) {
-      if (property === 'runCheckedDatasourceTest') {
+      if (property === 'test') {
         return async () => {
           connectionAttempts++
           throw new Error('connection test must not run while credentials are missing')
@@ -84,12 +80,12 @@ try {
       const value = Reflect.get(target, property, target)
       return typeof value === 'function' ? value.bind(target) : value
     },
-  }) as MarivoEnvironment
+  }) as MarivoDatasourceBridgePort
 
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoTestTool(ctx, guardedEnvironment, {
+  registerMarivoTestTool(ctx, guardedBridge, {
     resolve() {
       return Promise.resolve(undefined)
     },

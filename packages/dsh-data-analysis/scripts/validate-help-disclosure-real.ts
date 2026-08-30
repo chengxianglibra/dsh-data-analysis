@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import LlmRuntime, {
   CallId,
   createUserMessage,
@@ -20,6 +21,7 @@ import {
   installMarivoDisclosure,
   loadTargetInventory,
   MARIVO_HELP_TOOL_NAME,
+  MarivoHelpBridge,
   type MarivoHelpValue,
   registerMarivoHelpTool,
 } from '../src/disclosure/index.ts'
@@ -27,28 +29,37 @@ import { bindMarivoEnvironment } from '../src/environment/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
+const pythonExecutable =
+  process.env.DSH_DATA_ANALYSIS_PYTHON ??
+  path.join(
+    resolveDshHome(),
+    'dsh-data-analysis',
+    'runtimes',
+    'marivo',
+    process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
+  )
 
-const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot })
-const firstInventory = await loadTargetInventory(environment)
-const secondInventory = await loadTargetInventory(environment)
+const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
+const helpBridge = new MarivoHelpBridge(environment)
+const firstInventory = await loadTargetInventory(helpBridge)
+const secondInventory = await loadTargetInventory(helpBridge)
 assert.notEqual(secondInventory, '')
 assert.equal(secondInventory, firstInventory)
 
 const directBodies = new Map<string, string>()
 for (const target of ['analysis.observe', 'analysis.compare']) {
-  const result = await environment.runCheckedHelpTarget(target, {
+  const body = await helpBridge.runTarget(target, {
     timeoutMs: 30_000,
     stdoutMaxBytes: 262_144,
     stderrMaxBytes: 65_536,
   })
-  assert.equal(result.exitCode, 0, result.stderr.toString('utf8'))
-  directBodies.set(target, result.stdout.toString('utf8'))
+  directBodies.set(target, body.toString('utf8'))
 }
 
 const focusedContext = new Context()
 await focusedContext.plugin(SystemPrompt)
 await focusedContext.plugin(ToolRuntime)
-registerMarivoHelpTool(focusedContext, environment)
+registerMarivoHelpTool(focusedContext, helpBridge)
 
 let focusedSequence = 0
 async function executeFocused(targets: string[]) {
@@ -173,7 +184,7 @@ const agent: Agent = activationContext.agentLoop.create(SessionId('help-disclosu
   provider: 'validation',
   model: 'validation',
 })
-const controller = installMarivoDisclosure(activationContext, agent, environment)
+const controller = installMarivoDisclosure(activationContext, agent, helpBridge)
 agent.followup(
   createUserMessage({
     content: [{ type: 'text', text: 'Run a known Marivo analysis task.' }],

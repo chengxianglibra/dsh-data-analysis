@@ -1,4 +1,13 @@
 export type {
+  MarivoEvidenceBridgePort,
+  MarivoEvidenceBridgeSource,
+  MarivoFindingProjection,
+} from './bridge.ts'
+export {
+  MarivoEvidenceBridge,
+  resolveMarivoEvidenceBridge,
+} from './bridge.ts'
+export type {
   MarivoEvidenceSource,
   MarivoEvidenceSourcesMeta,
   MarivoEvidenceSourcesValue,

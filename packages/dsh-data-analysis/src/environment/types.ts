@@ -84,6 +84,16 @@ export interface SubprocessRequest {
   signal?: AbortSignal
 }
 
+/** One identity-checked Python operation executed by a bound Environment. */
+export interface MarivoCheckedRunRequest {
+  program: string
+  args?: readonly string[]
+  /** Per-operation values; every non-empty value is redacted from captured output. */
+  environmentOverlay?: Readonly<NodeJS.ProcessEnv>
+  limits?: Partial<SubprocessLimits>
+  signal?: AbortSignal
+}
+
 export interface SubprocessResult {
   exitCode: number | null
   signal: NodeJS.Signals | null
@@ -96,4 +106,11 @@ export interface ImportIdentity {
   pythonExecutable: string
   marivoVersion: string
   packagePath: string
+}
+
+/** Narrow execution contract consumed by domain bridge adapters. */
+export interface MarivoCheckedRunner {
+  readonly binding: Readonly<MarivoEnvironmentBinding>
+  readonly status: 'ready' | 'failed'
+  runChecked(request: MarivoCheckedRunRequest): Promise<SubprocessResult>
 }

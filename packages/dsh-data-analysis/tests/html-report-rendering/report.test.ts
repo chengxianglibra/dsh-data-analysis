@@ -8,7 +8,6 @@ import { Context } from '@deepseek-ai/cordis'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import type { MarivoEnvironment } from '../../src/environment/binding.ts'
 import {
   COMPUTED_DATA_VERSION,
   type CompiledReport,
@@ -18,6 +17,7 @@ import {
   createReportComputedProjection,
   installMarivoReportCodeDelivery,
   MARIVO_REPORT_RENDER_TOOL_NAME,
+  type MarivoReportBridgePort,
   parseReportDocument,
   parseReportProjection,
   publishReport,
@@ -38,6 +38,25 @@ import {
   reportDocumentDigest,
   reportPresentationMeta,
 } from '../../src/report/index.ts'
+
+interface ReportBridgeFixture {
+  readonly binding: { readonly fingerprint: string; readonly marivoVersion: string }
+  runProjection(
+    sessionId: string,
+    artifactRefs: readonly string[],
+  ): Promise<{ exitCode: number | null; stdout: Buffer; stderr: Buffer }>
+}
+
+function reportBridge(fixture: ReportBridgeFixture): MarivoReportBridgePort {
+  return {
+    binding: fixture.binding,
+    async project(sessionId, artifactRefs) {
+      const result = await fixture.runProjection(sessionId, artifactRefs)
+      if (result.exitCode !== 0) throw new Error(result.stderr.toString('utf8'))
+      return parseReportProjection(result.stdout, { sessionId, artifactRefs })
+    },
+  }
+}
 
 const document: ReportDocument = {
   version: 'dsh-data-analysis-report/v3',
@@ -576,12 +595,12 @@ test('ReportDocument parser keeps the closed v3 shape and data bounds', () => {
 })
 
 test('report Tool schema is v3 and has no Finding or evidence block contract', () => {
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'a'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection() {
+    async runProjection() {
       throw new Error('not called')
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment) as any
   const schema = tool.parameters.properties.document
   assert.match(schema.description, /ReportDocument v3/)
@@ -710,9 +729,9 @@ test('report Tool sends only session and explicit Artifact refs and returns no F
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-bridge-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const calls: Array<{ sessionId: string; artifactRefs: string[] }> = []
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'd'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection(sessionId: string, artifactRefs: readonly string[]) {
+    async runProjection(sessionId: string, artifactRefs: readonly string[]) {
       calls.push({ sessionId, artifactRefs: [...artifactRefs] })
       return {
         exitCode: 0,
@@ -720,7 +739,7 @@ test('report Tool sends only session and explicit Artifact refs and returns no F
         stderr: Buffer.alloc(0),
       }
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment, {
     reportsRoot: path.join(root, 'reports'),
     now: () => new Date('2026-08-27T01:02:03.000Z'),
@@ -746,13 +765,13 @@ test('computed-only report skips the Artifact bridge and persists computed data 
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-computed-only-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   let bridgeCalls = 0
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'c'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection() {
+    async runProjection() {
       bridgeCalls += 1
       throw new Error('computed-only reports must not call the Artifact bridge')
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment, {
     reportsRoot: path.join(root, 'reports'),
     now: () => new Date('2026-08-27T01:02:03.000Z'),
@@ -831,9 +850,9 @@ test('mixed Artifact and computed reports bridge only Artifact refs', async (t) 
     data: [{ id: 'artifact-data', artifact_ref: artifact.ref }, computedSource],
   }
   const calls: string[][] = []
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'd'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection(_sessionId: string, artifactRefs: readonly string[]) {
+    async runProjection(_sessionId: string, artifactRefs: readonly string[]) {
       calls.push([...artifactRefs])
       return {
         exitCode: 0,
@@ -841,7 +860,7 @@ test('mixed Artifact and computed reports bridge only Artifact refs', async (t) 
         stderr: Buffer.alloc(0),
       }
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment, {
     reportsRoot: path.join(root, 'reports'),
   })
@@ -890,9 +909,9 @@ test('multiple unrelated explicit Artifacts do not cause a global compatibility 
     ],
   }
   const calls: string[][] = []
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'e'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection(sessionId: string, artifactRefs: readonly string[]) {
+    async runProjection(sessionId: string, artifactRefs: readonly string[]) {
       assert.equal(sessionId, 'session-report')
       calls.push([...artifactRefs])
       return {
@@ -901,7 +920,7 @@ test('multiple unrelated explicit Artifacts do not cause a global compatibility 
         stderr: Buffer.alloc(0),
       }
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment, {
     reportsRoot,
   })
@@ -931,9 +950,9 @@ test('best-effort Artifact failures are attributed to every explicit Artifact oc
     ],
     data: [{ id: 'trend-data', artifact_ref: artifact.ref }],
   }
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'f'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection() {
+    async runProjection() {
       return {
         exitCode: 0,
         stdout: Buffer.from(
@@ -944,7 +963,7 @@ test('best-effort Artifact failures are attributed to every explicit Artifact oc
         stderr: Buffer.alloc(0),
       }
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment)
   const value = (await tool.execute({ session_id: 'session-report', document: source }, {
     signal: new AbortController().signal,
@@ -1453,9 +1472,9 @@ test('report Tool stops before publication when cancellation arrives after proje
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-cancel-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const controller = new AbortController()
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: 'a'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection() {
+    async runProjection() {
       controller.abort(new Error('cancel report'))
       return {
         exitCode: 0,
@@ -1463,7 +1482,7 @@ test('report Tool stops before publication when cancellation arrives after proje
         stderr: Buffer.alloc(0),
       }
     },
-  } as unknown as MarivoEnvironment
+  })
   const tool = createMarivoReportRenderTool(environment, {
     reportsRoot: path.join(root, 'reports'),
   })
@@ -1570,16 +1589,16 @@ test('registered v3 Tool returns a ready result with no Finding fields', async (
   const context = new Context()
   await context.plugin(SystemPrompt)
   await context.plugin(ToolRuntime)
-  const environment = {
+  const environment = reportBridge({
     binding: { fingerprint: '3'.repeat(64), marivoVersion: '0.5.test' },
-    async runCheckedReportProjection() {
+    async runProjection() {
       return {
         exitCode: 0,
         stdout: Buffer.from(JSON.stringify(checkedPayload([artifact]))),
         stderr: Buffer.alloc(0),
       }
     },
-  } as unknown as MarivoEnvironment
+  })
   registerMarivoReportRenderTool(context, environment, {
     reportsRoot: path.join(root, 'reports'),
     now: () => new Date('2026-08-27T01:02:03.000Z'),

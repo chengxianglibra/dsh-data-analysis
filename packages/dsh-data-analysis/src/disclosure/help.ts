@@ -1,19 +1,21 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import type { MarivoEnvironment } from '../environment/binding.ts'
-import { MarivoEnvironmentError } from '../environment/errors.ts'
+import {
+  type MarivoHelpBridgePort,
+  type MarivoHelpBridgeSource,
+  MarivoHelpError,
+  resolveMarivoHelpBridge,
+} from './bridge.ts'
+
+export type {
+  MarivoHelpBridgePort,
+  MarivoHelpBridgeSource,
+  MarivoHelpFailureCode,
+} from './bridge.ts'
+export { MarivoHelpError, resolveMarivoHelpBridge } from './bridge.ts'
 
 export const MARIVO_HELP_TOOL_NAME = 'marivo_help'
-
-/** A fixed binding or a lazy per-Agent/per-Workspace binding. */
-export type MarivoEnvironmentSource = MarivoEnvironment | (() => Promise<MarivoEnvironment>)
-
-export function resolveMarivoEnvironmentSource(
-  source: MarivoEnvironmentSource,
-): Promise<MarivoEnvironment> {
-  return typeof source === 'function' ? source() : Promise.resolve(source)
-}
 
 export interface MarivoHelpLimits {
   maxTargets: number
@@ -38,29 +40,6 @@ export const DEFAULT_MARIVO_HELP_LIMITS: Readonly<MarivoHelpLimits> = Object.fre
   combinedStdoutMaxBytes: 1_048_576,
   toolTimeoutMs: 245_000,
 })
-
-export type MarivoHelpFailureCode =
-  | 'invalid-request'
-  | 'target-failed'
-  | 'empty-help'
-  | 'combined-output-limit'
-
-export class MarivoHelpError extends Error {
-  readonly code: MarivoHelpFailureCode
-  readonly details: Readonly<Record<string, unknown>>
-
-  constructor(
-    code: MarivoHelpFailureCode,
-    message: string,
-    details: Readonly<Record<string, unknown>> = {},
-    options?: ErrorOptions,
-  ) {
-    super(message, options)
-    this.name = 'MarivoHelpError'
-    this.code = code
-    this.details = details
-  }
-}
 
 export interface MarivoHelpTargetResult {
   target: string
@@ -168,78 +147,18 @@ export function normalizeHelpTargets(input: unknown, limits: Readonly<MarivoHelp
   return targets
 }
 
-function boundedStderr(stderr: Buffer): string {
-  const text = stderr.toString('utf8').trim()
-  return text.length === 0 ? 'no stderr was returned' : text.slice(0, 4_000)
-}
-
-async function runHelpTarget(
-  environment: MarivoEnvironment,
-  target: string,
-  stdoutMaxBytes: number,
-  limits: Readonly<MarivoHelpLimits>,
-  signal?: AbortSignal,
-): Promise<Buffer> {
-  try {
-    const result = await environment.runCheckedHelpTarget(
-      target,
-      {
-        timeoutMs: limits.targetTimeoutMs,
-        stdoutMaxBytes,
-        stderrMaxBytes: limits.stderrMaxBytes,
-      },
-      signal,
-    )
-    if (result.exitCode !== 0) {
-      throw new MarivoHelpError(
-        'target-failed',
-        `marivo_help target ${JSON.stringify(target)} failed with exit code ${String(result.exitCode)}: ${boundedStderr(result.stderr)}`,
-        { target, exitCode: result.exitCode },
-      )
-    }
-    if (result.stdout.byteLength === 0) {
-      throw new MarivoHelpError(
-        'empty-help',
-        `marivo_help target ${JSON.stringify(target)} returned empty stdout`,
-        { target },
-      )
-    }
-    return result.stdout
-  } catch (cause) {
-    if (cause instanceof MarivoHelpError) throw cause
-    if (
-      cause instanceof MarivoEnvironmentError &&
-      (cause.code === 'binding-identity-mismatch' || cause.code === 'binding-failed')
-    )
-      throw cause
-    if (cause instanceof MarivoEnvironmentError) {
-      throw new MarivoHelpError(
-        'target-failed',
-        `marivo_help target ${JSON.stringify(target)} failed: ${cause.message}`,
-        { target, environmentFailureCode: cause.code },
-        { cause },
-      )
-    }
-    throw new MarivoHelpError(
-      'target-failed',
-      `marivo_help target ${JSON.stringify(target)} failed`,
-      { target },
-      { cause },
-    )
-  }
-}
-
 /** Read the current raw canonical inventory without parsing or caching it. */
 export async function loadTargetInventory(
-  environment: MarivoEnvironment,
+  bridge: MarivoHelpBridgePort,
   options: { limits?: Partial<MarivoHelpLimits>; signal?: AbortSignal } = {},
 ): Promise<string> {
   const limits = resolveMarivoHelpLimits(options.limits)
-  const stdout = await runHelpTarget(
-    environment,
-    'targets',
-    limits.inventoryStdoutMaxBytes,
-    limits,
+  const stdout = await bridge.inventory(
+    {
+      timeoutMs: limits.targetTimeoutMs,
+      stdoutMaxBytes: limits.inventoryStdoutMaxBytes,
+      stderrMaxBytes: limits.stderrMaxBytes,
+    },
     options.signal,
   )
   return stdout.toString('utf8')
@@ -269,7 +188,7 @@ export function renderMarivoHelpValue(value: MarivoHelpValue): string {
 
 /** Read one all-or-nothing batch from the bound live Marivo help surface. */
 export async function readMarivoHelpTargets(
-  environment: MarivoEnvironment,
+  bridge: MarivoHelpBridgePort,
   rawTargets: unknown,
   options: {
     limits?: Partial<MarivoHelpLimits>
@@ -280,21 +199,23 @@ export async function readMarivoHelpTargets(
   const limits = resolveMarivoHelpLimits(options.limits)
   const targets = normalizeHelpTargets(rawTargets, limits)
   const environmentIdentity = {
-    version: environment.binding.marivoVersion,
-    pythonExecutable: environment.binding.pythonExecutable,
-    packagePath: environment.binding.packagePath,
-    fingerprint: environment.binding.fingerprint,
+    version: bridge.binding.marivoVersion,
+    pythonExecutable: bridge.binding.pythonExecutable,
+    packagePath: bridge.binding.packagePath,
+    fingerprint: bridge.binding.fingerprint,
   }
   if (targets.length === 0) return { environment: environmentIdentity, targets: [] }
 
   const results: MarivoHelpTargetResult[] = []
   let combinedBytes = 0
   for (const target of targets) {
-    const stdout = await runHelpTarget(
-      environment,
+    const stdout = await bridge.runTarget(
       target,
-      limits.focusedStdoutMaxBytes,
-      limits,
+      {
+        timeoutMs: limits.targetTimeoutMs,
+        stdoutMaxBytes: limits.focusedStdoutMaxBytes,
+        stderrMaxBytes: limits.stderrMaxBytes,
+      },
       options.signal,
     )
     combinedBytes += stdout.byteLength
@@ -324,7 +245,7 @@ export async function readMarivoHelpTargets(
 
 /** Build the native Harness ToolDefinition without registering Agent activation behavior. */
 export function createMarivoHelpTool(
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoHelpBridgeSource,
   limitOverrides: Partial<MarivoHelpLimits> = {},
   resolveDelivery?: MarivoHelpDeliveryResolver,
 ): ToolDefinition {
@@ -391,8 +312,8 @@ export function createMarivoHelpTool(
     },
     timeoutMs: limits.toolTimeoutMs,
     async execute(args, exec) {
-      const environment = await resolveMarivoEnvironmentSource(environmentSource)
-      return readMarivoHelpTargets(environment, args.targets, {
+      const bridge = await resolveMarivoHelpBridge(bridgeSource)
+      return readMarivoHelpTargets(bridge, args.targets, {
         limits,
         signal: exec.signal,
         resolveDelivery,
@@ -404,9 +325,9 @@ export function createMarivoHelpTool(
 /** Register the focused Help Tool; skill-triggered root disclosure is composed separately. */
 export function registerMarivoHelpTool(
   ctx: Context,
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoHelpBridgeSource,
   limits: Partial<MarivoHelpLimits> = {},
   resolveDelivery?: MarivoHelpDeliveryResolver,
 ): () => void {
-  return ctx.tools.register(createMarivoHelpTool(environmentSource, limits, resolveDelivery))
+  return ctx.tools.register(createMarivoHelpTool(bridgeSource, limits, resolveDelivery))
 }

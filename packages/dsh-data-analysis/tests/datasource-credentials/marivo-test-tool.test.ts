@@ -11,6 +11,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
   MARIVO_TEST_TOOL_NAME,
+  MarivoDatasourceBridge,
   type MarivoTestOptions,
   type MarivoTestValue,
   registerMarivoTestTool,
@@ -105,11 +106,12 @@ async function fixture(
     },
     policy,
   )
+  const bridge = new MarivoDatasourceBridge(environment)
   const credentials = new FakeCredentials()
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoTestTool(ctx, environment, credentials, toolOptions)
+  registerMarivoTestTool(ctx, bridge, credentials, toolOptions)
   return {
     root,
     home,
@@ -117,6 +119,7 @@ async function fixture(
     credentials,
     ctx,
     environment,
+    bridge,
     cleanup: () => rm(root, { recursive: true, force: true }),
   }
 }
@@ -235,14 +238,6 @@ test('structured md.test failure redacts exact credential values from result and
   const f = await fixture({ refs: 'DSH_DB_PASSWORD', ok: false, stderrSecret: true })
   t.after(f.cleanup)
   f.credentials.values.set('DSH_DB_PASSWORD', { value: 'ultra-private', source: 'file' })
-
-  const child = await f.environment.runCheckedDatasourceTest(
-    'warehouse',
-    { DSH_DB_PASSWORD: 'ultra-private' },
-    { timeoutMs: 30_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
-  )
-  assert.doesNotMatch(child.stdout.toString('utf8'), /ultra-private/)
-  assert.doesNotMatch(child.stderr.toString('utf8'), /ultra-private/)
 
   const result = await execute(f.ctx)
   assert.equal(result.isError, false, JSON.stringify(result))

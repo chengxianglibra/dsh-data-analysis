@@ -23,6 +23,7 @@ import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/
 import {
   installMarivoDisclosure,
   MarivoDisclosureError,
+  MarivoHelpBridge,
   marivoHelpBodyDigest,
 } from '../../src/disclosure/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
@@ -61,6 +62,7 @@ else respond()
 
 interface EnvironmentFixture {
   environment: MarivoEnvironment
+  bridge: MarivoHelpBridge
   recordPath: string
   cleanup: () => Promise<void>
 }
@@ -96,7 +98,12 @@ async function environmentFixture(
     },
     policy,
   )
-  return { environment, recordPath, cleanup: () => rm(root, { recursive: true, force: true }) }
+  return {
+    environment,
+    bridge: new MarivoHelpBridge(environment),
+    recordPath,
+    cleanup: () => rm(root, { recursive: true, force: true }),
+  }
 }
 
 function textResponse(text: string): StreamChunk[] {
@@ -248,7 +255,7 @@ test('bash and ordinary tools stay visible across user turns without starting He
     }),
   )
   const agent = createAgent(ctx, 'ordinary-turns')
-  installMarivoDisclosure(ctx, agent, fixture.environment)
+  installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'ordinary one')
   await agent.whenIdle()
@@ -275,7 +282,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'semantic-activation')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'build semantics')
   await agent.whenIdle()
@@ -416,7 +423,7 @@ test('an explicit user skill invocation activates the matching root help without
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
   const agent = createAgent(ctx, 'explicit-invocation')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [
       { type: 'text', text: '<skill_content name="marivo-analysis">instructions</skill_content>' },
@@ -452,7 +459,7 @@ test('the disclosure listener sees a DSH skill invocation appended by an outer w
     return { kind: 'enter' as const, messages: [...decision.messages, invocation] }
   })
   const agent = createAgent(ctx, 'outer-skill-invocation')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, '/marivo-analysis')
   await agent.whenIdle()
@@ -472,7 +479,7 @@ test('a scope-local Tool shadow named skill cannot activate Marivo disclosure', 
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'skill-shadow')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   agent.ctx.tools.register(
     defineTool({
       name: 'skill',
@@ -512,7 +519,7 @@ test('loading both Marivo skills injects analysis then authoring help atomically
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'both-activation')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'author then analyze')
   await agent.whenIdle()
@@ -538,7 +545,7 @@ test('reloading the same skill refreshes live help without duplicating unchanged
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'repeat-activation')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'load twice')
   await agent.whenIdle()
@@ -569,7 +576,7 @@ test('repeated focused help stays live and renders a receipt instead of duplicat
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'focused-repeat')
-  installMarivoDisclosure(ctx, agent, fixture.environment)
+  installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'read focused help twice')
   await agent.whenIdle()
@@ -591,7 +598,7 @@ test('an environment change replaces active root help without a new skill load',
   const second = await environmentFixture({ fingerprint: '2'.repeat(64), bodyPrefix: 'new:' })
   t.after(first.cleanup)
   t.after(second.cleanup)
-  let current = first.environment
+  let current = first.bridge
   const adapter = new MockAdapter([
     toolCallsResponse([{ id: 'analysis', name: 'skill', args: { name: 'marivo-analysis' } }]),
     textResponse('first done'),
@@ -603,7 +610,7 @@ test('an environment change replaces active root help without a new skill load',
 
   send(agent, 'activate')
   await agent.whenIdle()
-  current = second.environment
+  current = second.bridge
   send(agent, 'continue after rebind')
   await agent.whenIdle()
 
@@ -618,7 +625,7 @@ test('a changed root body with the same environment identity replaces visible he
   const second = await environmentFixture({ fingerprint, bodyPrefix: 'new:' })
   t.after(first.cleanup)
   t.after(second.cleanup)
-  let current = first.environment
+  let current = first.bridge
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
   const agent = createAgent(ctx, 'body-replacement')
   const controller = installMarivoDisclosure(ctx, agent, () => Promise.resolve(current))
@@ -629,7 +636,7 @@ test('a changed root body with the same environment identity replaces visible he
   const signal = new AbortController().signal
 
   const initial = await controller.prepareStep([invocation], signal)
-  current = second.environment
+  current = second.bridge
   const replacement = await controller.prepareStep([...initial, invocation], signal)
 
   assert.equal(replacement.length, 1)
@@ -646,7 +653,7 @@ test('hidden root disclosure is read live and restored after prompt compaction',
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
   const agent = createAgent(ctx, 'compaction-recovery')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [
       { type: 'text', text: '<skill_content name="marivo-analysis">instructions</skill_content>' },
@@ -729,7 +736,7 @@ test('an already-visible receipt cannot suppress recovery after compaction hides
       sourceEventSeqs: [root.seq],
     },
   )
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   const recovered = await controller.prepareStep([], new AbortController().signal)
 
@@ -747,7 +754,7 @@ test('root help failure stops the next step once without hiding ordinary tools o
   ])
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'root-help-failure')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const errors: unknown[] = []
   ctx.on('agent/error', ({ agent: subject, error }) => {
     if (subject === agent) errors.push(error)
@@ -767,7 +774,7 @@ test('two-skill root help disclosure cancels its sibling and stays atomic when o
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
   const agent = createAgent(ctx, 'atomic-root-help-failure')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocations = [
     createUserMessage({
       content: [{ type: 'text', text: 'analysis skill' }],
@@ -796,7 +803,7 @@ test('cancelling a root help read leaves disclosure pending and records no deliv
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
   const agent = createAgent(ctx, 'root-help-cancel')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [{ type: 'text', text: 'analysis skill' }],
     source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },
@@ -816,7 +823,7 @@ test('disposing during a root Help read cancels it without late injection or tel
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
   const agent = createAgent(ctx, 'root-help-dispose')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.environment)
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [{ type: 'text', text: 'analysis skill' }],
     source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },

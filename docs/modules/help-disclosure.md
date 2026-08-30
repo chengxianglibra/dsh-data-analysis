@@ -11,6 +11,7 @@
 总体关系见[总体架构](../architecture.md)。实现集中在：
 
 - `packages/dsh-data-analysis/src/disclosure/help.ts`
+- `packages/dsh-data-analysis/src/disclosure/bridge.ts`
 - `packages/dsh-data-analysis/src/disclosure/activation.ts`
 - `packages/dsh-data-analysis/src/disclosure/index.ts`
 
@@ -28,15 +29,15 @@ marivo-analysis  -> analysis
 marivo-semantic  -> authoring
 ```
 
-这只是集成触发点，不是 target inventory。完整 inventory 始终通过实时 `marivo.help("targets")` 获取。
+这只是集成触发点，不是 target inventory。完整 inventory 始终通过实时 `marivo.help()` 获取。
 
 ## `marivo_help` 读取流程
 
-1. 惰性解析当前 Agent/Workspace 的 `MarivoEnvironment`。
+1. 惰性解析当前 Agent/Workspace 的 `MarivoHelpBridge`。
 2. 对 `targets` 只做机械边界校验：必须是数组、数量/单项长度/总长度受限。
 3. 按首次出现顺序去重；空数组成功返回空结果。
-4. 对每个 target 调用 Environment 的 checked Help script，在同一 Python 进程内先核对 import identity，
-   再执行真实 `marivo.help(target)`。
+4. 对每个 target 调用 Help adapter；adapter 拥有 Python program，并通过 Environment 通用 checked runner
+   在同一进程核对 import identity 后执行真实 `marivo.help(target)`。
 5. 检查单 target timeout、stdout/stderr 上限、空 stdout 和批次总输出上限。
 6. 计算正文 SHA-256 digest，并结合当前 prompt 可见性标记 `delivered`、`already-visible` 或
    `replacement`。
@@ -109,8 +110,8 @@ controller dispose 时 abort 未完成读取，注销 Tool 与 hooks，并清空
 
 ## 公共接口与验证
 
-`packages/dsh-data-analysis/src/disclosure/index.ts` 导出 Tool builder/registration、读取函数、limits、
-controller 和结构化类型。关键测试位于：
+`packages/dsh-data-analysis/src/disclosure/index.ts` 导出 `MarivoHelpBridge`、Tool builder/registration、
+读取函数、limits、controller 和结构化类型。关键测试位于：
 
 ```text
 packages/dsh-data-analysis/tests/help-disclosure/help-tool.test.ts

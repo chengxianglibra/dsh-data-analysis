@@ -2,8 +2,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
+import { type MarivoReportBridgeSource, resolveMarivoReportBridge } from './bridge.ts'
 import {
   COMPUTED_DATA_VERSION,
   parseReportDocument,
@@ -18,7 +18,6 @@ import {
 } from './document.ts'
 import {
   createReportComputedProjection,
-  parseReportProjection,
   type ReportProjectionBundle,
   type ReportProjectionInspection,
 } from './projection.ts'
@@ -42,12 +41,6 @@ export interface ReportPresentationMetaV1 {
   readonly reportDigest: string
   readonly disclosures: string[]
 }
-
-const REPORT_LIMITS = Object.freeze({
-  timeoutMs: 120_000,
-  stdoutMaxBytes: 16 * 1024 * 1024 + 65_536,
-  stderrMaxBytes: 65_536,
-})
 
 const textBlockSchema = {
   type: 'object',
@@ -532,13 +525,14 @@ export interface MarivoReportToolOptions {
 
 /** Build the server-only immutable HTML report Tool. */
 export function createMarivoReportRenderTool(
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoReportBridgeSource,
   options: MarivoReportToolOptions = {},
 ): ToolDefinition {
   const executeReport = async (
     args: Record<string, unknown>,
     exec: ToolRunContext,
   ): Promise<ReportRenderValue> => {
+    const bridge = await resolveMarivoReportBridge(bridgeSource)
     exec.signal.throwIfAborted()
     const parsed = parseReportDocument(args.document)
     const documentIssues = parsed.ok ? [] : [...parsed.issues]
@@ -579,7 +573,6 @@ export function createMarivoReportRenderTool(
         }),
       ])
     }
-    const environment = await resolveMarivoEnvironmentSource(environmentSource)
     exec.signal.throwIfAborted()
     const computed = parsed.ok
       ? (parsed.value.document.data ?? [])
@@ -597,35 +590,14 @@ export function createMarivoReportRenderTool(
       }
     } else {
       if (sessionId === undefined) throw new Error('session_id was validated before projection')
-      const child = await environment.runCheckedReportProjection(
+      const checkedProjection = await bridge.project(
         sessionId,
         parsed.inspection.artifactRefs,
-        REPORT_LIMITS,
         exec.signal,
       )
       exec.signal.throwIfAborted()
-      if (child.exitCode !== 0) {
-        throw new MarivoEnvironmentError(
-          'subprocess-failed',
-          `Marivo report projection failed with exit code ${String(child.exitCode)}`,
-          { exitCode: child.exitCode, stderr: child.stderr.toString('utf8').slice(0, 2_000) },
-        )
-      }
-      try {
-        const checkedProjection = parseReportProjection(child.stdout, {
-          sessionId,
-          artifactRefs: parsed.inspection.artifactRefs,
-        })
-        projection = checkedProjection
-        projectionBundle = { ...checkedProjection.value, computed }
-      } catch (cause) {
-        throw new MarivoEnvironmentError(
-          'subprocess-failed',
-          'Marivo report projection returned an invalid payload',
-          { stdoutBytes: child.stdout.byteLength },
-          { cause },
-        )
-      }
+      projection = checkedProjection
+      projectionBundle = { ...checkedProjection.value, computed }
     }
     const documentCheck = reportCheck(
       'document',
@@ -712,8 +684,8 @@ export function createMarivoReportRenderTool(
       ])
     }
     const published = await publishReport(compiled.value, {
-      environmentFingerprint: environment.binding.fingerprint,
-      marivoVersion: environment.binding.marivoVersion,
+      environmentFingerprint: bridge.binding.fingerprint,
+      marivoVersion: bridge.binding.marivoVersion,
       ...(options.reportsRoot === undefined ? {} : { reportsRoot: options.reportsRoot }),
       ...(options.now === undefined ? {} : { now: options.now }),
       signal: exec.signal,
@@ -792,8 +764,8 @@ export function createMarivoReportRenderTool(
 
 export function registerMarivoReportRenderTool(
   ctx: Context,
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoReportBridgeSource,
   options: MarivoReportToolOptions = {},
 ): () => void {
-  return ctx.tools.register(createMarivoReportRenderTool(environmentSource, options))
+  return ctx.tools.register(createMarivoReportRenderTool(bridgeSource, options))
 }

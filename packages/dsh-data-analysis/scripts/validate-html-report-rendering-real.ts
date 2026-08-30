@@ -23,8 +23,8 @@ import { bindMarivoEnvironment, FixedSubprocessPolicy } from '../src/environment
 import { apply, inject } from '../src/plugin.ts'
 import {
   MARIVO_REPORT_RENDER_TOOL_NAME,
+  MarivoReportBridge,
   parseReportDocument,
-  parseReportProjection,
   type ReportDocument,
   type ReportRenderValue,
   reportDocumentDigest,
@@ -375,56 +375,8 @@ assert.equal(fixture.segmented.columns.length, 2)
 
 const environment = await bindMarivoEnvironment({ projectRoot: fixtureRoot, pythonExecutable })
 const reportArtifactRefs = [fixture.timeSeries.ref, fixture.segmented.ref]
-const projectionChild = await environment.runCheckedReportProjection(
-  fixture.sessionId,
-  reportArtifactRefs,
-  { timeoutMs: 120_000, stdoutMaxBytes: 16 * 1024 * 1024 + 65_536, stderrMaxBytes: 65_536 },
-)
-assert.equal(projectionChild.exitCode, 0, projectionChild.stderr.toString('utf8'))
-const projectionPayload = JSON.parse(projectionChild.stdout.toString('utf8')) as Record<
-  string,
-  unknown
->
-assert.deepEqual(Object.keys(projectionPayload).sort(), [
-  'artifact_outcomes',
-  'session_dag',
-  'session_id',
-  'status',
-])
-assert.equal('finding_outcomes' in projectionPayload, false)
-assert.equal('finding_group_outcomes' in projectionPayload, false)
-const rawOutcomes = projectionPayload.artifact_outcomes
-if (!Array.isArray(rawOutcomes)) throw new Error('artifact_outcomes must be an array')
-assert.ok(
-  rawOutcomes.every((outcome) => {
-    if (typeof outcome !== 'object' || outcome === null || Array.isArray(outcome)) return false
-    const value = (outcome as Record<string, unknown>).value
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      !Array.isArray(value) &&
-      !('rows_projected' in value)
-    )
-  }),
-)
-const rawSessionDag = projectionPayload.session_dag
-if (typeof rawSessionDag !== 'object' || rawSessionDag === null || Array.isArray(rawSessionDag))
-  throw new Error('session_dag must be an object')
-const rawDagArtifacts = (rawSessionDag as Record<string, unknown>).artifacts
-if (!Array.isArray(rawDagArtifacts)) throw new Error('session_dag.artifacts must be an array')
-assert.ok(
-  rawDagArtifacts.every(
-    (artifact) =>
-      typeof artifact === 'object' &&
-      artifact !== null &&
-      !Array.isArray(artifact) &&
-      !('evidence_status' in artifact),
-  ),
-)
-const projection = parseReportProjection(projectionChild.stdout, {
-  sessionId: fixture.sessionId,
-  artifactRefs: reportArtifactRefs,
-})
+const reportBridge = new MarivoReportBridge(environment)
+const projection = await reportBridge.project(fixture.sessionId, reportArtifactRefs)
 assert.equal(projection.ok, true, JSON.stringify(projection))
 if (!projection.ok) throw new Error('Artifact-only projection was unexpectedly blocked')
 assert.deepEqual(

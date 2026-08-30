@@ -16,6 +16,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { bindMarivoEnvironment, FixedSubprocessPolicy } from '../src/environment/index.ts'
 import {
+  MarivoEvidenceBridge,
   type MarivoEvidenceSourcesValue,
   registerMarivoEvidenceSourcesTool,
 } from '../src/evidence/index.ts'
@@ -112,11 +113,12 @@ const fixture = JSON.parse(fixtureResult.stdout.toString('utf8')) as {
 }
 
 const environment = await bindMarivoEnvironment({ projectRoot: fixtureRoot, pythonExecutable })
+const evidenceBridge = new MarivoEvidenceBridge(environment)
 const toolContext = new Context()
 await toolContext.plugin(SystemPrompt)
 await toolContext.plugin(ToolRuntime)
 const session = Session.create(SessionId(`evidence-sources-real-${runId}`))
-registerMarivoEvidenceSourcesTool(toolContext, environment, session)
+registerMarivoEvidenceSourcesTool(toolContext, evidenceBridge, session)
 const result = await toolContext.tools.execute({
   signal: new AbortController().signal,
   callId: CallId('sources'),

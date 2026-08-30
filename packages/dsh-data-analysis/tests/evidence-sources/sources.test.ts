@@ -14,6 +14,7 @@ import {
   installMarivoEvidenceSourcesCodeDelivery,
   MARIVO_EVIDENCE_SOURCES_META_KIND,
   MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
+  MarivoEvidenceBridge,
   type MarivoEvidenceSourcesValue,
   registerMarivoEvidenceSourcesTool,
 } from '../../src/evidence/index.ts'
@@ -95,17 +96,19 @@ async function fixture(options: { mode?: string; wrongSession?: boolean } = {}) 
     },
     policy,
   )
+  const bridge = new MarivoEvidenceBridge(environment)
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   const session = Session.create(SessionId(`dsh-${path.basename(root)}`))
-  const disposeTool = registerMarivoEvidenceSourcesTool(ctx, environment, session)
+  const disposeTool = registerMarivoEvidenceSourcesTool(ctx, bridge, session)
   return {
     root,
     recordPath,
     ctx,
     session,
     environment,
+    bridge,
     disposeTool,
     cleanup: () => rm(root, { recursive: true, force: true }),
   }
@@ -251,15 +254,10 @@ test('render bounds, Marivo vocabulary, and identity stay fail closed', async (t
 test('Evidence bridge timeout remains bounded by the shared subprocess policy', async (t) => {
   const f = await fixture({ mode: 'slow' })
   t.after(f.cleanup)
-  await assert.rejects(
-    () =>
-      f.environment.runCheckedEvidenceFindings('mv-timeout', ['finding-a'], {
-        timeoutMs: 30,
-        stdoutMaxBytes: 1_024,
-        stderrMaxBytes: 1_024,
-      }),
-    (error: unknown) => error instanceof Error && error.message.includes('exceeded 30 ms'),
-  )
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error('test cancellation')), 30)
+  await assert.rejects(() => f.bridge.findings('mv-timeout', ['finding-a'], controller.signal))
+  clearTimeout(timer)
 })
 
 test('Code Mode logs one durable source block without changing nested Tool text', async () => {

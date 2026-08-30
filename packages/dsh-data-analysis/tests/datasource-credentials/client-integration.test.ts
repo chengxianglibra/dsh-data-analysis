@@ -10,7 +10,11 @@ import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { MARIVO_TEST_TOOL_NAME, registerMarivoTestTool } from '../../src/datasource/index.ts'
+import {
+  MARIVO_TEST_TOOL_NAME,
+  MarivoDatasourceBridge,
+  registerMarivoTestTool,
+} from '../../src/datasource/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 
 interface ClientExports {
@@ -237,7 +241,7 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoTestTool(ctx, environment, credentials)
+  registerMarivoTestTool(ctx, new MarivoDatasourceBridge(environment), credentials)
 
   const first = await ctx.tools.execute({
     signal: new AbortController().signal,

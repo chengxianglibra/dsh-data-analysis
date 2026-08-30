@@ -1,0 +1,227 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { MarivoDatasourceBridge } from '../../src/datasource/index.ts'
+import { MarivoHelpBridge } from '../../src/disclosure/index.ts'
+import type {
+  MarivoCheckedRunner,
+  MarivoCheckedRunRequest,
+  MarivoEnvironmentBinding,
+  SubprocessResult,
+} from '../../src/environment/index.ts'
+import { MarivoEvidenceBridge } from '../../src/evidence/index.ts'
+import { MarivoReportBridge } from '../../src/report/index.ts'
+
+const binding: MarivoEnvironmentBinding = {
+  projectRoot: '/fixture/project',
+  pythonExecutable: '/fixture/python',
+  marivoVersion: '0.5.test',
+  packagePath: '/fixture/marivo/__init__.py',
+  subprocessPolicyId: 'fixture-policy',
+  fingerprint: 'b'.repeat(64),
+}
+
+function result(stdout: unknown, stderr = '', exitCode = 0): SubprocessResult {
+  return {
+    exitCode,
+    signal: null,
+    stdout: Buffer.from(typeof stdout === 'string' ? stdout : JSON.stringify(stdout)),
+    stderr: Buffer.from(stderr),
+    durationMs: 1,
+  }
+}
+
+class FakeCheckedRunner implements MarivoCheckedRunner {
+  readonly binding = binding
+  readonly status = 'ready' as const
+  readonly requests: MarivoCheckedRunRequest[] = []
+  readonly #results: SubprocessResult[]
+
+  constructor(...results: SubprocessResult[]) {
+    this.#results = results
+  }
+
+  runChecked(request: MarivoCheckedRunRequest): Promise<SubprocessResult> {
+    this.requests.push(request)
+    const next = this.#results.shift()
+    if (next === undefined) throw new Error('fake checked runner exhausted')
+    return Promise.resolve(next)
+  }
+}
+
+test('Help bridge owns its Python program, limits, argv, and raw body contract', async () => {
+  const runner = new FakeCheckedRunner(result('live help\n'), result('live inventory\n'))
+  const bridge = new MarivoHelpBridge(runner)
+  const body = await bridge.runTarget('analysis.observe', {
+    timeoutMs: 10,
+    stdoutMaxBytes: 20,
+    stderrMaxBytes: 30,
+  })
+  assert.equal(body.toString('utf8'), 'live help\n')
+  assert.deepEqual(runner.requests[0]?.args, ['analysis.observe'])
+  assert.deepEqual(runner.requests[0]?.limits, {
+    timeoutMs: 10,
+    stdoutMaxBytes: 20,
+    stderrMaxBytes: 30,
+  })
+  assert.match(runner.requests[0]?.program ?? '', /marivo\.help\(sys\.argv\[1\]\)/)
+  assert.equal(
+    (await bridge.inventory({ timeoutMs: 11, stdoutMaxBytes: 21, stderrMaxBytes: 31 })).toString(
+      'utf8',
+    ),
+    'live inventory\n',
+  )
+  assert.deepEqual(runner.requests[1]?.args, [])
+  assert.match(runner.requests[1]?.program ?? '', /marivo\.help\(\)/)
+})
+
+test('Help bridge maps non-zero and empty output without exposing subprocess payloads', async () => {
+  const limits = { timeoutMs: 10, stdoutMaxBytes: 20, stderrMaxBytes: 30 }
+  await assert.rejects(
+    new MarivoHelpBridge(new FakeCheckedRunner(result('', 'target failed', 70))).runTarget(
+      'analysis',
+      limits,
+    ),
+    /target .* failed with exit code 70/,
+  )
+  await assert.rejects(
+    new MarivoHelpBridge(new FakeCheckedRunner(result(''))).runTarget('analysis', limits),
+    /returned empty stdout/,
+  )
+})
+
+test('Datasource bridge owns describe, inventory, test parsing and credential overlay', async () => {
+  const runner = new FakeCheckedRunner(
+    result({ name: 'warehouse', refs: ['DSH_USER', 'DSH_USER'] }),
+    result({ datasources: [{ name: 'warehouse', refs: ['DSH_USER'] }] }),
+    result({ name: 'warehouse', ok: true, latency_ms: 12, failure: null, repair: null }),
+  )
+  const bridge = new MarivoDatasourceBridge(runner)
+  assert.deepEqual(await bridge.describe('warehouse'), {
+    name: 'warehouse',
+    refs: ['DSH_USER'],
+  })
+  assert.deepEqual(await bridge.inventory(), [{ name: 'warehouse', refs: ['DSH_USER'] }])
+  assert.deepEqual(await bridge.test('warehouse', { DSH_USER: 'secret' }), {
+    name: 'warehouse',
+    ok: true,
+    latency_ms: 12,
+    failure: null,
+    repair: null,
+  })
+  assert.deepEqual(
+    runner.requests.map((request) => request.args),
+    [['warehouse'], undefined, ['warehouse']],
+  )
+  assert.deepEqual(runner.requests[2]?.environmentOverlay, { DSH_USER: 'secret' })
+})
+
+test('Datasource bridge rejects missing and additional private projection fields', async () => {
+  await assert.rejects(
+    new MarivoDatasourceBridge(
+      new FakeCheckedRunner(result({ name: 'warehouse', refs: [], extra: true })),
+    ).describe('warehouse'),
+    /unexpected payload shape/,
+  )
+  await assert.rejects(
+    new MarivoDatasourceBridge(
+      new FakeCheckedRunner(result({ name: 'warehouse', ok: true, latency_ms: 1, failure: null })),
+    ).test('warehouse', {}),
+    /unexpected payload shape/,
+  )
+})
+
+test('Evidence bridge owns exact Finding identity and order parsing', async () => {
+  const finding = {
+    finding_id: 'finding-a',
+    finding_type: 'metric_observation',
+    epistemic_kind: 'observed',
+    artifact_id: 'artifact-a',
+    session_id: 'session-a',
+    canonical_item_key: 'metric|a',
+    quality_status: null,
+    committed_at: '2026-08-30T00:00:00+00:00',
+    extractor_version: 'v1',
+    artifact_schema_version: 'v4',
+    rendered: { en: 'Observed value.', zh: '已观测。' },
+  }
+  const runner = new FakeCheckedRunner(result({ session_id: 'session-a', findings: [finding] }))
+  const bridge = new MarivoEvidenceBridge(runner)
+  const projected = await bridge.findings('session-a', ['finding-a'])
+  assert.equal(projected[0]?.findingId, 'finding-a')
+  assert.deepEqual(runner.requests[0]?.args, ['session-a', '["finding-a"]'])
+  assert.match(runner.requests[0]?.program ?? '', /session\.evidence\.finding/)
+})
+
+test('Evidence bridge rejects additional Finding fields and exact-order drift', async () => {
+  const finding = {
+    finding_id: 'finding-b',
+    finding_type: 'metric_observation',
+    epistemic_kind: 'observed',
+    artifact_id: 'artifact-a',
+    session_id: 'session-a',
+    canonical_item_key: 'metric|a',
+    quality_status: null,
+    committed_at: '2026-08-30T00:00:00+00:00',
+    extractor_version: 'v1',
+    artifact_schema_version: 'v4',
+    rendered: { en: 'Observed value.', zh: '已观测。' },
+  }
+  await assert.rejects(
+    new MarivoEvidenceBridge(
+      new FakeCheckedRunner(
+        result({ session_id: 'session-a', findings: [{ ...finding, extra: true }] }),
+      ),
+    ).findings('session-a', ['finding-b']),
+    /invalid Finding payload/,
+  )
+  await assert.rejects(
+    new MarivoEvidenceBridge(
+      new FakeCheckedRunner(result({ session_id: 'session-a', findings: [finding] })),
+    ).findings('session-a', ['finding-a']),
+    /invalid Finding payload/,
+  )
+})
+
+test('Report bridge owns projection execution and strict parser admission', async () => {
+  const runner = new FakeCheckedRunner(
+    result({
+      status: 'blocked',
+      issues: [
+        {
+          code: 'fixture-blocked',
+          location: 'artifact_refs[0]',
+          message: 'Fixture blocked.',
+          repair: 'Repair the fixture.',
+        },
+      ],
+      omitted_issue_count: 0,
+    }),
+  )
+  const bridge = new MarivoReportBridge(runner)
+  const inspection = await bridge.project('session-a', ['artifact-a'])
+  assert.equal(inspection.globalFailure, true)
+  assert.equal(inspection.issues[0]?.code, 'fixture-blocked')
+  assert.deepEqual(runner.requests[0]?.args, ['session-a', '["artifact-a"]'])
+  assert.match(runner.requests[0]?.program ?? '', /session\.revalidate/)
+})
+
+test('Report bridge rejects additional projection fields inside the domain adapter', async () => {
+  const bridge = new MarivoReportBridge(
+    new FakeCheckedRunner(
+      result({
+        status: 'blocked',
+        issues: [
+          {
+            code: 'fixture-blocked',
+            location: 'artifact_refs[0]',
+            message: 'Fixture blocked.',
+            repair: 'Repair the fixture.',
+          },
+        ],
+        omitted_issue_count: 0,
+        extra: true,
+      }),
+    ),
+  )
+  await assert.rejects(bridge.project('session-a', ['artifact-a']), /invalid payload/)
+})

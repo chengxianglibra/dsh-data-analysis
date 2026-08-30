@@ -11,11 +11,9 @@ import ToolRuntime, {
   type ToolExecution,
   type ToolExecutionToken,
 } from '@deepseek-ai/dsh-tools'
+import type { MarivoDatasourceInventoryBridge } from '../../src/datasource/index.ts'
 import { MarivoShellCredentialBridge } from '../../src/datasource/shell-env.ts'
-import {
-  MARIVO_PERSIST_CREDENTIALS_ENV,
-  type MarivoEnvironment,
-} from '../../src/environment/index.ts'
+import { MARIVO_PERSIST_CREDENTIALS_ENV } from '../../src/environment/index.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 class RotatingCredentials {
@@ -44,17 +42,13 @@ function execution(id: string): ToolExecution {
 function environment(
   datasources: Array<{ name: string; refs: string[] }>,
   calls: { count: number },
-): MarivoEnvironment {
+): MarivoDatasourceInventoryBridge {
   return {
-    async runCheckedDatasourceInventory() {
+    async inventory() {
       calls.count += 1
-      return {
-        exitCode: 0,
-        stdout: Buffer.from(JSON.stringify({ datasources })),
-        stderr: Buffer.alloc(0),
-      }
+      return datasources
     },
-  } as unknown as MarivoEnvironment
+  }
 }
 
 async function fixture() {
@@ -186,12 +180,12 @@ test('inventory failure is attempted once and leaves a repair Shell environment 
   const { ctx, credentials, bridge } = await fixture()
   t.after(() => bridge.dispose())
   let calls = 0
-  const workspace = {
-    async runCheckedDatasourceInventory() {
+  const workspace: MarivoDatasourceInventoryBridge = {
+    async inventory() {
       calls += 1
       throw new Error('broken datasource file')
     },
-  } as unknown as MarivoEnvironment
+  }
   const first = execution('shell-inventory-failure')
 
   await assert.rejects(() => bridge.prepareExecution(workspace, first), /broken datasource file/)
@@ -226,12 +220,12 @@ test('the pre-execute bridge covers bash and pwsh, skips other tools, and fails 
     )
   }
   let inventoryCalls = 0
-  const brokenWorkspace = {
-    async runCheckedDatasourceInventory() {
+  const brokenWorkspace: MarivoDatasourceInventoryBridge = {
+    async inventory() {
       inventoryCalls += 1
       throw new Error('invalid datasource config')
     },
-  } as unknown as MarivoEnvironment
+  }
   const agent = {
     ctx,
     session: { header: { id: 'shell-agent' } },
@@ -310,20 +304,12 @@ test('dispose during first inventory cannot register a late Shell contributor', 
   const inventory = new Promise<void>((resolve) => {
     releaseInventory = resolve
   })
-  const workspace = {
-    async runCheckedDatasourceInventory() {
+  const workspace: MarivoDatasourceInventoryBridge = {
+    async inventory() {
       await inventory
-      return {
-        exitCode: 0,
-        stdout: Buffer.from(
-          JSON.stringify({
-            datasources: [{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }],
-          }),
-        ),
-        stderr: Buffer.alloc(0),
-      }
+      return [{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }]
     },
-  } as unknown as MarivoEnvironment
+  }
   const pending = bridge.prepareExecution(workspace, execution('dispose-race'))
   await new Promise((resolve) => setImmediate(resolve))
 

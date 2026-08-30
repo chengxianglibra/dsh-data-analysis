@@ -4,12 +4,22 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { bindMarivoEnvironment, MarivoEnvironmentError } from '../src/environment/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
+const pythonExecutable =
+  process.env.DSH_DATA_ANALYSIS_PYTHON ??
+  path.join(
+    resolveDshHome(),
+    'dsh-data-analysis',
+    'runtimes',
+    'marivo',
+    process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
+  )
 
-const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot })
+const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
 const identity = await environment.assertImportIdentity()
 assert.deepEqual(identity, {
   pythonExecutable: environment.binding.pythonExecutable,

@@ -18,7 +18,7 @@ marivo_evidence_sources({ session_id, finding_ids })
 总体关系见[总体架构](../architecture.md)。实现集中在：
 
 - `packages/dsh-data-analysis/src/evidence/sources.ts`
-- `packages/dsh-data-analysis/src/environment/binding.ts` 中的 checked Evidence script
+- `packages/dsh-data-analysis/src/evidence/bridge.ts`
 - `packages/dsh-data-analysis/src/client.tsx`
 
 Marivo Finding 的内容与有效性契约由
@@ -27,8 +27,9 @@ Marivo Finding 的内容与有效性契约由
 
 ## 读取与返回契约
 
-一次调用接受一个非空 Marivo Session ID 和 1–20 个非空、唯一 Finding ID。固定 Python bridge 在当前
-Environment Binding 的解释器中先复核 Python、Marivo version 和 package identity，再执行：
+一次调用接受一个非空 Marivo Session ID 和 1–20 个非空、唯一 Finding ID。`MarivoEvidenceBridge`
+拥有固定 Python program 和闭合 parser，并通过 Environment checked runner 先复核 Python、Marivo
+version 和 package identity，再执行：
 
 ```python
 session = mv.session.resume(session_id, use_datasources=False)

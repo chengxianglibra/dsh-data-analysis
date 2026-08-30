@@ -2,20 +2,17 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue, Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { type MarivoEnvironmentSource, resolveMarivoEnvironmentSource } from '../disclosure/help.ts'
-import { MarivoEnvironmentError } from '../environment/errors.ts'
+import {
+  type MarivoEvidenceBridgeSource,
+  type MarivoFindingProjection,
+  resolveMarivoEvidenceBridge,
+} from './bridge.ts'
 
 export const MARIVO_EVIDENCE_SOURCES_TOOL_NAME = 'marivo_evidence_sources'
 export const MARIVO_EVIDENCE_SOURCES_META_KIND = 'marivo-evidence-sources'
 export const MARIVO_EVIDENCE_SOURCES_META_VERSION = 1
 export const MARIVO_EVIDENCE_SOURCES_DURABLE_CONTENT_KIND = 'marivo-evidence-sources-card'
 export const MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL = 20
-
-const EVIDENCE_LIMITS = Object.freeze({
-  timeoutMs: 30_000,
-  stdoutMaxBytes: 1_048_576,
-  stderrMaxBytes: 65_536,
-})
 
 export interface MarivoEvidenceSource {
   [key: string]: JsonValue
@@ -55,20 +52,6 @@ export interface MarivoEvidenceSourcesMeta {
   version: typeof MARIVO_EVIDENCE_SOURCES_META_VERSION
   dshSessionId: string
   sources: MarivoEvidenceSource[]
-}
-
-interface FindingPayload {
-  findingId: string
-  findingType: string
-  epistemicKind: string
-  artifactId: string
-  sessionId: string
-  canonicalItemKey: string
-  qualityStatus: string | null
-  committedAt: string
-  extractorVersion: string
-  artifactSchemaVersion: string
-  rendered: { en: string; zh: string }
 }
 
 const renderedSchema = {
@@ -129,14 +112,6 @@ function nonEmptyString(value: unknown, field: string, maxLength = 2_048): strin
   return value
 }
 
-function renderedText(value: unknown, field: string): string {
-  const result = nonEmptyString(value, field, 8_192)
-  if (/\r|\n/.test(result) || Buffer.byteLength(result, 'utf8') > 8_192) {
-    throw new TypeError(`${field} must be one UTF-8 line of at most 8192 bytes`)
-  }
-  return result
-}
-
 function requestedFindingIds(value: unknown): string[] {
   if (
     !Array.isArray(value) ||
@@ -156,75 +131,9 @@ function requestedFindingIds(value: unknown): string[] {
   return result
 }
 
-function jsonObject(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
-}
-
-function parseFinding(value: unknown): FindingPayload {
-  const item = jsonObject(value)
-  if (item === undefined) throw new TypeError('finding must be an object')
-  const qualityStatus =
-    item.quality_status === null ? null : nonEmptyString(item.quality_status, 'quality_status', 128)
-  return {
-    findingId: nonEmptyString(item.finding_id, 'finding_id'),
-    findingType: nonEmptyString(item.finding_type, 'finding_type'),
-    epistemicKind: nonEmptyString(item.epistemic_kind, 'epistemic_kind'),
-    artifactId: nonEmptyString(item.artifact_id, 'artifact_id'),
-    sessionId: nonEmptyString(item.session_id, 'finding session_id'),
-    canonicalItemKey: nonEmptyString(item.canonical_item_key, 'canonical_item_key'),
-    qualityStatus,
-    committedAt: nonEmptyString(item.committed_at, 'committed_at'),
-    extractorVersion: nonEmptyString(item.extractor_version, 'extractor_version'),
-    artifactSchemaVersion: nonEmptyString(item.artifact_schema_version, 'artifact_schema_version'),
-    rendered: {
-      en: renderedText(jsonObject(item.rendered)?.en, 'rendered.en'),
-      zh: renderedText(jsonObject(item.rendered)?.zh, 'rendered.zh'),
-    },
-  }
-}
-
-function parseFindingsPayload(
-  stdout: Buffer,
-  expectedSessionId: string,
-  expectedFindingIds: readonly string[],
-): FindingPayload[] {
-  try {
-    const root = jsonObject(JSON.parse(stdout.toString('utf8')))
-    if (
-      root === undefined ||
-      root.session_id !== expectedSessionId ||
-      !Array.isArray(root.findings)
-    ) {
-      throw new TypeError('root fields are invalid')
-    }
-    const findings = root.findings.map(parseFinding)
-    if (findings.length !== expectedFindingIds.length) throw new TypeError('finding count differs')
-    for (let index = 0; index < findings.length; index++) {
-      const finding = findings[index]
-      if (
-        finding === undefined ||
-        finding.findingId !== expectedFindingIds[index] ||
-        finding.sessionId !== expectedSessionId
-      ) {
-        throw new TypeError('finding identity or order differs')
-      }
-    }
-    return findings
-  } catch (cause) {
-    throw new MarivoEnvironmentError(
-      'subprocess-output-invalid',
-      'Marivo Evidence reader returned an invalid Finding payload',
-      { stdoutBytes: stdout.byteLength },
-      { cause },
-    )
-  }
-}
-
 function evidenceSource(
   environmentFingerprint: string,
-  finding: FindingPayload,
+  finding: MarivoFindingProjection,
 ): MarivoEvidenceSource {
   return {
     environmentFingerprint,
@@ -265,7 +174,7 @@ export function evidenceSourcesMeta(value: MarivoEvidenceSourcesValue): MarivoEv
 
 /** Build the exact-Finding source attachment Tool for one Agent and DSH Session. */
 export function createMarivoEvidenceSourcesTool(
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoEvidenceBridgeSource,
   session: Session,
 ): ToolDefinition {
   return defineTool({
@@ -297,45 +206,17 @@ export function createMarivoEvidenceSourcesTool(
     async execute(args, exec): Promise<MarivoEvidenceSourcesValue> {
       const sessionId = nonEmptyString(args.session_id, 'marivo_evidence_sources session_id', 512)
       const findingIds = requestedFindingIds(args.finding_ids)
-      const environment = await resolveMarivoEnvironmentSource(environmentSource)
-      const result = await environment.runCheckedEvidenceFindings(
-        sessionId,
-        findingIds,
-        EVIDENCE_LIMITS,
-        exec.signal,
-      )
-      if (result.exitCode !== 0) {
-        if (
-          result.exitCode === 69 &&
-          result.stderr.toString('utf8').includes('finding-render-unavailable')
-        ) {
-          throw new MarivoEnvironmentError(
-            'shared-runtime-capability-missing',
-            'Marivo Evidence sources require Finding.render(); upgrade the bound Marivo runtime and retry',
-            { requiredCapability: 'finding-render-v1' },
-          )
-        }
-        throw new MarivoEnvironmentError(
-          'subprocess-failed',
-          `Marivo Evidence read failed with exit code ${String(result.exitCode)}`,
-          {
-            exitCode: result.exitCode,
-            stderr: result.stderr.toString('utf8').slice(0, 2_000),
-          },
-        )
-      }
-      const findings = parseFindingsPayload(result.stdout, sessionId, findingIds)
+      const bridge = await resolveMarivoEvidenceBridge(bridgeSource)
+      const findings = await bridge.findings(sessionId, findingIds, exec.signal)
       return {
         status: 'ok',
         environment: {
-          version: environment.binding.marivoVersion,
-          fingerprint: environment.binding.fingerprint,
+          version: bridge.binding.marivoVersion,
+          fingerprint: bridge.binding.fingerprint,
         },
         dshSessionId: String(session.id),
         sessionId,
-        sources: findings.map((finding) =>
-          evidenceSource(environment.binding.fingerprint, finding),
-        ),
+        sources: findings.map((finding) => evidenceSource(bridge.binding.fingerprint, finding)),
       }
     },
   })
@@ -343,10 +224,10 @@ export function createMarivoEvidenceSourcesTool(
 
 export function registerMarivoEvidenceSourcesTool(
   ctx: Context,
-  environmentSource: MarivoEnvironmentSource,
+  bridgeSource: MarivoEvidenceBridgeSource,
   session: Session,
 ): () => void {
-  return ctx.tools.register(createMarivoEvidenceSourcesTool(environmentSource, session))
+  return ctx.tools.register(createMarivoEvidenceSourcesTool(bridgeSource, session))
 }
 
 function sourceTurnForRootCall(dispatch: {
