@@ -114,5 +114,5 @@ npm run build
 npm run verify:plugin-package
 ```
 
-测试覆盖 Tool 边界、批次原子性、Native/Code Mode 耐久投影、Turn/seq 隔离、重复来源去重、旧 v2 忽略、
+测试覆盖 Tool 边界、批次原子性、Native/Code Mode 耐久投影、Turn/seq 隔离、重复来源去重、其他版本忽略、
 Artifact 分组、双语面板、零 UI selector 和现有报告/凭证视图并存。

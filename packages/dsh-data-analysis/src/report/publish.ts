@@ -13,15 +13,15 @@ import {
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { REPORT_DIGEST_VERSION, REPORT_MANIFEST_VERSION } from '../compatibility.ts'
 import type { ReportDocument, ReportIssue } from './document.ts'
 import { REPORT_RENDERER_VERSION, renderReportHtml } from './render.ts'
 import type { CompiledReport } from './visual.ts'
 
-export const REPORT_DIGEST_VERSION = 'dsh-data-analysis-report-digest/v5' as const
-export const REPORT_MANIFEST_VERSION = 'dsh-data-analysis-report-manifest/v5' as const
+export { REPORT_DIGEST_VERSION, REPORT_MANIFEST_VERSION } from '../compatibility.ts'
 export const MAX_REPORT_HTML_BYTES = 10 * 1024 * 1024
 
-interface ReportManifestV5 {
+interface ReportManifestV1 {
   readonly version: typeof REPORT_MANIFEST_VERSION
   readonly renderer_version: typeof REPORT_RENDERER_VERSION
   readonly report_digest: string
@@ -145,7 +145,7 @@ async function secureDirectory(directory: string, signal?: AbortSignal): Promise
   throwIfAborted(signal)
 }
 
-function parseManifest(raw: Buffer): ReportManifestV5 {
+function parseManifest(raw: Buffer): ReportManifestV1 {
   let value: unknown
   try {
     value = JSON.parse(raw.toString('utf8'))
@@ -154,7 +154,7 @@ function parseManifest(raw: Buffer): ReportManifestV5 {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new Error('Existing report manifest is not an object')
-  return value as ReportManifestV5
+  return value as ReportManifestV1
 }
 
 async function validateExisting(
@@ -171,7 +171,7 @@ async function validateExisting(
     readonly computedData: readonly { readonly id: string; readonly content_hash: string }[]
   },
   signal?: AbortSignal,
-): Promise<ReportManifestV5> {
+): Promise<ReportManifestV1> {
   throwIfAborted(signal)
   const directoryInfo = await lstat(directory)
   if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink())
@@ -319,7 +319,7 @@ export async function publishReport(
     return publishBlocked(
       `Generated index.html is ${htmlBytes} bytes; the maximum is ${MAX_REPORT_HTML_BYTES}.`,
     )
-  const manifest: ReportManifestV5 = {
+  const manifest: ReportManifestV1 = {
     version: REPORT_MANIFEST_VERSION,
     renderer_version: REPORT_RENDERER_VERSION,
     report_digest: inputs.reportDigest,

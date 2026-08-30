@@ -544,7 +544,7 @@ try {
         ' with columns ' +
         JSON.stringify(fixture.segmented.columns) +
         '.',
-      'Submit one complete dsh-data-analysis-report/v3 document titled “支付收入分析报告”.',
+      'Submit one complete dsh-data-analysis-report/v1 document titled “支付收入分析报告”.',
       'It must include text, an explicit line chart x=' +
         JSON.stringify(timeX) +
         ' y=' +
@@ -580,7 +580,7 @@ try {
       'Call marivo_report_render exactly once in this turn. Submit another complete ReportDocument in that single call, never a patch and never read the old document from disk.',
       'Change the title to “支付收入分析报告（修订版）”, put the platform breakdown section before the trend section, and add a subtitle explaining the revised layout.',
       'Retain text, explicit line, explicit bar, and table blocks with the same exact session, Artifacts, and columns from the previous turn.',
-      'Use only the dsh-data-analysis-report/v3 contract and only text, chart, and table blocks. Keep the same document.data sources and data_ref bindings. End the final response with ' +
+      'Use only the dsh-data-analysis-report/v1 contract and only text, chart, and table blocks. Keep the same document.data sources and data_ref bindings. End the final response with ' +
         markerFor('complete-revision') +
         '.',
     ].join('\n'),

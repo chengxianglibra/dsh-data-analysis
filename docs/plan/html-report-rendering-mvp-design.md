@@ -2,11 +2,11 @@
 
 ## 文档状态
 
-`ReportDocument v3`、统一数据源目录、computed snapshot、checked Artifact projection、不可变发布和 Web/Code Mode
+`ReportDocument v1`、统一数据源目录、computed snapshot、checked Artifact projection、不可变发布和 Web/Code Mode
 轻量交付已经实现。当前确定性入口为 `npm run test:html-report-rendering`；真实 runner 为
 `npm run validate:html-report-rendering:real`。
 
-这是破坏性更新：v3 是唯一当前输入契约，不保留 v2/v1 alias、迁移器或旧产物复用逻辑。整体集成仍遵循
+这是 clean-slate 实现：v1 是唯一当前输入契约，不保留其他版本 alias、迁移器或旧产物复用逻辑。整体集成仍遵循
 [总体架构](../architecture.md)、[HTML 报告渲染模块](../modules/html-report-rendering.md)、
 [Marivo operators and frames](../../../marivo/docs/specs/analysis/operators-and-frames.md) 与
 [Harness Tool contract](../../../deepseek-harness/docs/cookbook/adding-a-tool.md)。本设计只定义 DSH 集成与展示接缝，
@@ -14,7 +14,7 @@
 
 ## 决策摘要
 
-- Agent 每次提交一份完整的 `dsh-data-analysis-report/v3`，不提交 patch，也不读取上一份文档。
+- Agent 每次提交一份完整的 `dsh-data-analysis-report/v1`，不提交 patch，也不读取上一份文档。
 - `document.data` 是统一数据源目录；每个 source 只能是 `{ id, artifact_ref }` 或 `{ id, computed }`。
 - `chart`/`table` 只通过 `data_ref` 引用 source。同一个 source 可以被多个 chart/table 复用。
 - computed 是调用方提供的 `dsh-computed-data/v1` JSON 快照。Python 对象、代码、handle、registry 和额外持久化服务不在 MVP 内。
@@ -30,17 +30,17 @@
 | 用户 | 指定问题、受众、重点和是否需要耐久报告 |
 | Agent | 生成完整文档，决定标题、章节、数据源注册、文字和视觉映射 |
 | Marivo | 拥有 Artifact、Quality、Lineage、有效性和 Session 语义 |
-| DSH 插件 | 校验 v3 文档，读取 Artifact 展示投影，合并 computed，渲染并发布 HTML |
+| DSH 插件 | 校验 v1 文档，读取 Artifact 展示投影，合并 computed，渲染并发布 HTML |
 | DSH | 保存 Tool call/result 历史，提供 Web Tool View 与本机打开能力 |
 
 明确不做：Report registry/current state、create/update/patch API、分析 planner、自然语言 entailment、业务建议审查、
 实时刷新、在线筛选、下钻、任意 Vega/ECharts、自定义 JavaScript、分享权限、远程下载、PDF 导出、GC 或产物删除。
 
-## v3 文档契约
+## v1 文档契约
 
 ```ts
 interface ReportDocument {
-  version: 'dsh-data-analysis-report/v3'
+  version: 'dsh-data-analysis-report/v1'
   title: string
   subtitle?: string
   locale: 'zh-CN' | 'en-US'
@@ -85,7 +85,7 @@ computed 的要求是“可重放的结果快照”，而不是 Python 执行记
   100 个 block、`table.max_rows` 1–100、HTML 10 MiB。
 
 Parser 对 root、section、block、source、computed table 和 computed column 递归执行 closed-shape 校验。解析结果是
-规范化 v3 文档：computed `version` 固定为 v1，未显式给出的 nullability 会写入归一化列定义。解析失败只返回结构化
+规范化 v1 文档：computed `version` 固定为 v1，未显式给出的 nullability 会写入归一化列定义。解析失败只返回结构化
 `document` check，不尝试解释为旧版本或自动迁移。
 
 ## Tool 和执行流程
@@ -96,7 +96,7 @@ marivo_report_render({ session_id?, document })
 
 执行顺序：
 
-1. 解析完整 v3 文档，收集 source/data_ref、文档问题和安全 inspection；
+1. 解析完整 v1 文档，收集 source/data_ref、文档问题和安全 inspection；
 2. 没有 Artifact source 时，构造空 Session DAG，并把已校验 computed 直接转为 `ReportComputedProjection`；
 3. 有 Artifact source 时，要求 `session_id`，只把去重 Artifact refs 传给固定 bridge；bridge 结果与 computed projection 合并；
 4. source 阶段验证 bridge payload/identity。visual 阶段将两类 source 映射为 `DisplayDataset`，执行共享图表和表格准入；
@@ -139,21 +139,21 @@ $DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
 └── manifest.json
 ```
 
-`report-document.json` 保存归一化后的完整 v3 文档，包括 computed `columns + rows`。report identity 包含完整文档、环境
+`report-document.json` 保存归一化后的完整 v1 文档，包括 computed `columns + rows`。report identity 包含完整文档、环境
 fingerprint、Marivo version、renderer version 和统一 projection；computed 行/列变化一定改变 digest。当前版本为：
 
-- `dsh-data-analysis-html/v10`
-- `dsh-data-analysis-report-digest/v5`
-- `dsh-data-analysis-report-manifest/v5`
+- `dsh-data-analysis-html/v1`
+- `dsh-data-analysis-report-digest/v1`
+- `dsh-data-analysis-report-manifest/v1`
 
 manifest 的 `computed_data` 保存每个 computed source 的内容 hash；不加入未解析 Python 对象、handle、registry 或独立数据文件。
-相同输入复用已完整校验的目录；v2/v1 产物不迁移、不复用。Publisher 使用 staging、目录 `0700`、文件 `0600` 和最终 rename，
+相同输入复用已完整校验的目录；其他版本产物不迁移、不复用。Publisher 使用 staging、目录 `0700`、文件 `0600` 和最终 rename，
 不覆盖损坏目录。
 
 ## 触发与交付
 
 `marivo-analysis` 激活不等于报告调用授权。普通分析、对话内表格和图表默认直接回答；只有用户明确请求耐久 HTML、接受
-Agent 提议，或要求修改本对话中生成的报告时才调用 Tool。每次修订都重新提交完整 v3 文档并生成新 digest。
+Agent 提议，或要求修改本对话中生成的报告时才调用 Tool。每次修订都重新提交完整 v1 文档并生成新 digest。
 
 ready 结果通过标准 `tool/result.meta` 和 Code Mode 耐久 card 投影轻量交付信息。Web replay 不读取 HTML、不访问 Marivo、
 不依赖最终回答文字；用户点击后才调用 `host.openPath(path)`。旧版本、畸形、blocked 或失败结果不显示可打开报告卡片。
@@ -162,7 +162,7 @@ ready 结果通过标准 `tool/result.meta` 和 Code Mode 耐久 card 投影轻�
 
 确定性测试必须覆盖：
 
-- v3 closed parser、v2/v1 拒绝、source exactly-one-of、重复 ID/ref、未知字段、行列匹配、非法数值/日期和 payload bounds；
+- v1 closed parser、其他版本拒绝、source exactly-one-of、重复 ID/ref、未知字段、行列匹配、非法数值/日期和 payload bounds；
 - computed-only 不要求 session_id 且不触发 bridge；mixed 只把 Artifact refs 传给 bridge；同一 computed source 复用 chart/table；
 - computed line/bar 的 x/y 推断、显式列选择、日期排序、数值校验、截断、fallback table 和来源说明；
 - computed 行或列变化改变 document/report digest，相同输入仍幂等复用；manifest 不产生 `report-data.json`；
@@ -170,4 +170,4 @@ ready 结果通过标准 `tool/result.meta` 和 Code Mode 耐久 card 投影轻�
 - `npm run check`、`npm run build`、`npm run verify:plugin-package` 全部通过。
 
 后续若要支持超大结果、跨调用复用、Python 执行证明、完整 lineage 或更多图表，应另行设计 host-owned materialization/handle
-契约，不把这些语义偷偷塞入当前 v3 inline JSON。
+契约，不把这些语义偷偷塞入当前 v1 inline JSON。

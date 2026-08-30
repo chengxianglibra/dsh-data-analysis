@@ -2,18 +2,18 @@
 
 ## 作用与当前范围
 
-本模块把一份完整、不可变的 `ReportDocument v3` 编译为可离线打开和打印的自包含 HTML 报告。
+本模块把一份完整、不可变的 `dsh-data-analysis-report/v1` 编译为可离线打开和打印的自包含 HTML 报告。
 入口是 `marivo_report_render({ session_id?, document })`。Agent 决定标题、章节、文字、数据源和图表选择；
 插件负责校验闭合文档、取得 Artifact 投影、合并 computed 快照、渲染并原子发布文件。
 
-这是破坏性 v3 契约。实现只接受 `dsh-data-analysis-report/v3`，不读取 v2/v1，不做 alias、迁移或旧目录复用。
+这是项目唯一的 v1 契约。实现只接受 `dsh-data-analysis-report/v1`，不读取任何其他版本，不做 alias、迁移或旧目录复用。
 普通分析仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用该 Tool。
 
 ## 编译流程
 
 ```mermaid
 flowchart LR
-  D[完整 ReportDocument v3] --> P[闭合 shape、data catalog 与 bounds]
+  D[完整 ReportDocument v1] --> P[闭合 shape、data catalog 与 bounds]
   P --> S{是否含 Artifact source?}
   S -- 否 --> C[computed snapshot]
   S -- 是 --> B[checked Artifact bridge]
@@ -108,11 +108,11 @@ $DSH_HOME/dsh-data-analysis/reports/<environment-fingerprint>/<report-digest>/
 └── manifest.json
 ```
 
-`report-document.json` 直接保存归一化后的 v3 文档，包括 computed `columns + rows`；不另建 `report-data.json`，
+`report-document.json` 直接保存归一化后的 v1 文档，包括 computed `columns + rows`；不另建 `report-data.json`，
 不保存未解析的 Python 对象或 handle。computed 行数据、列定义和 Artifact projection 都参与 report digest。
-当前身份版本为 `dsh-data-analysis-report-digest/v5`、`dsh-data-analysis-report-manifest/v5` 和
-`dsh-data-analysis-html/v10`；manifest 另列 `computed_data` 的内容 hash。相同完整输入复用完全一致的目录，
-任何稳定文档、computed 数据、Artifact provenance 或 renderer 变化都会生成新 digest。v2/v1 目录不会被迁移或复用。
+当前身份版本为 `dsh-data-analysis-report-digest/v1`、`dsh-data-analysis-report-manifest/v1` 和
+`dsh-data-analysis-html/v1`；manifest 另列 `computed_data` 的内容 hash。相同完整输入复用完全一致的目录，
+任何稳定文档、computed 数据、Artifact provenance 或 renderer 变化都会生成新 digest。其他版本目录不会被迁移或复用。
 
 Publisher 在同一父目录创建随机 staging，使用目录 `0700`、文件 `0600`，回读并验证 manifest、内容哈希和权限后
 rename。不会覆盖损坏目录，不创建 latest、registry、数据库、Session event 或 GC 状态。
@@ -127,7 +127,7 @@ blocked 结果不产生可打开报告卡片。Code Mode nested Tool 通过耐�
 ## Agent 触发边界与验证
 
 `marivo-analysis` 激活后的短 prompt 要求普通分析默认 inline。只有用户明确请求耐久 HTML、接受提议或要求修改当前
-对话中已生成的报告时才调用 Tool；每次都提交完整 v3 文档，修订生成新文档和新 digest。Tool schema 是报告契约的
+对话中已生成的报告时才调用 Tool；每次都提交完整 v1 文档，修订生成新文档和新 digest。Tool schema 是报告契约的
 唯一实时来源，Agent 不通过 `marivo_help` 查询它。
 
 确定性验证入口：
@@ -145,6 +145,6 @@ npm run verify:plugin-package
 npm run validate:html-report-rendering:real
 ```
 
-确定性测试覆盖 v3 parser、computed payload bounds、computed-only bridge bypass、mixed merge、line/bar/table 共享
+确定性测试覆盖 v1 parser、computed payload bounds、computed-only bridge bypass、mixed merge、line/bar/table 共享
 编译器、HTML escaping/CSP、digest/manifest、幂等发布和 Code Mode 轻量交付。真实 runner 只补充真实 Marivo/model
 journey，不代表外部 Web、Host opener 或打印门禁已经完成。

@@ -18,14 +18,6 @@ except Exception as exc:
     }, sort_keys=True), file=sys.stderr)
     raise SystemExit(70)
 
-for finding in findings:
-    if not callable(getattr(finding, "render", None)):
-        print(json.dumps({
-            "kind": "finding-render-unavailable",
-            "required_capability": "finding-render-v1",
-        }, sort_keys=True), file=sys.stderr)
-        raise SystemExit(69)
-
 try:
     rendered = [{
         "en": finding.render(language="en"),

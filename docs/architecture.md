@@ -141,7 +141,7 @@ Agent 才调用 `marivo_evidence_sources`。工具通过当前 binding 原子读
 
 ### HTML 报告
 
-用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v3`。报告先在
+用户明确请求或接受耐久 HTML 报告后，Agent 向 `marivo_report_render` 提交完整 `ReportDocument v1`。报告先在
 `document.data` 注册 `{ id, artifact_ref }` 或 `{ id, computed }`，再由 chart/table 使用 `data_ref`。computed
 结果必须是 `dsh-computed-data/v1` 的 `columns + rows` 标量 JSON 快照，随报告文档持久化；它不是 Marivo Artifact，
 也不声明 Python 执行证明或 lineage。只有含 Artifact source 时才要求 `session_id`，并通过当前 Environment

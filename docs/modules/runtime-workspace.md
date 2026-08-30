@@ -34,15 +34,15 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-`installation.json` 使用插件自己的版本化 marker schema，记录实际 `marivoVersion`、
-`pythonExecutable`、`packagePath`、`skillsRoot` 和所需 capabilities。它是安装完成标记，不替代 Marivo 项目 manifest。
+`installation.json` 使用 `dsh-data-analysis-runtime/v1` marker schema，记录实际 `marivoVersion`、
+`pythonExecutable`、`packagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
 启动时先读取 marker，再验证：
 
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. 公共 `Finding.render()` 可用，probe 返回 `finding-render-v1`；
+4. Marivo 版本严格等于 `0.5.0`；
 5. 两个内置 Skill 的 `SKILL.md` 均存在。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
@@ -53,11 +53,11 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
 | 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装 `marivo[duckdb,trino,clickhouse]==0.5.0` |
-| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器可导入 Marivo，随后同步 Skill 和发布 marker |
+| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器为 Marivo 0.5.0，随后同步 Skill 和发布 marker |
 
-插件管理模式固定安装 Marivo 0.5.0；发布 marker 后按该版本稳定复用。发现旧版本 Runtime 时，
-它会作为无效安装备份并重建；普通 Workspace
-或 Session 启动不会仅为追逐新版本联网升级。管理员解释器缺少 capability 时明确失败并要求先升级 Marivo。
+两种模式都只支持 Marivo 0.5.0；发布 marker 后按该版本稳定复用。任何版本或 schema
+不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
+管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
 ### 并发与发布
 

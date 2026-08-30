@@ -138,7 +138,7 @@ function nestedEvent(sources: unknown[], seq = 21) {
   }
 }
 
-test('source metadata is closed, bounded, detached, and rejects legacy citation v2', async () => {
+test('source metadata is closed, bounded, detached, and rejects unsupported versions', async () => {
   const client = await loadClient()
   const value = meta([source('finding-a')])
   const parsed = client.parseEvidenceSourcesMeta(value)
@@ -148,7 +148,7 @@ test('source metadata is closed, bounded, detached, and rejects legacy citation 
   assert.notEqual((parsed as any).sources, value.sources)
 
   assert.equal(client.parseEvidenceSourcesMeta({ ...value, extra: true }), null)
-  assert.equal(client.parseEvidenceSourcesMeta({ ...value, version: 2 }), null)
+  assert.equal(client.parseEvidenceSourcesMeta({ ...value, version: 999 }), null)
   assert.equal(client.parseEvidenceSourcesMeta(meta([])), null)
   assert.equal(client.parseEvidenceSourcesMeta(meta([source('a'), source('a')])), null)
   assert.equal(
@@ -157,8 +157,8 @@ test('source metadata is closed, bounded, detached, and rejects legacy citation 
   )
   assert.equal(
     client.parseEvidenceSourcesMeta({
-      kind: 'marivo-evidence-citations',
-      version: 2,
+      kind: 'unsupported-source-attachment',
+      version: 999,
       dshSessionId: 'dsh-session',
       registry: [],
     }),

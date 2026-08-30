@@ -6,7 +6,7 @@ export type EnvironmentFailureCode =
   | 'shared-runtime-lock-timeout'
   | 'shared-runtime-install-failed'
   | 'shared-runtime-identity-mismatch'
-  | 'shared-runtime-capability-missing'
+  | 'shared-runtime-version-unsupported'
   | 'shared-runtime-skills-invalid'
   | 'workspace-initialization-failed'
   | 'subprocess-start-failed'

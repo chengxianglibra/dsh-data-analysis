@@ -333,7 +333,10 @@ test('on-demand Evidence source and HTML report guidance appear only after mariv
   assert.match(activatedPrompt, /never call marivo_help for its report contract/)
   assert.match(activatedPrompt, /default to Chinese when the request is Chinese/)
   assert.match(activatedPrompt, /2-4 item answer-first executive summary/)
-  assert.match(activatedPrompt, /ReportDocument v3 has no Finding IDs or evidence blocks/)
+  assert.match(
+    activatedPrompt,
+    /dsh-data-analysis-report\/v1 has no Finding IDs or evidence blocks/,
+  )
   assert.match(activatedPrompt, /use only text, chart, and table blocks/)
   assert.match(activatedPrompt, /bind every chart or table with data_ref/)
   assert.match(activatedPrompt, /marivo_evidence_sources separately/)

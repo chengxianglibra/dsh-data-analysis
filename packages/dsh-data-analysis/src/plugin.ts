@@ -7,6 +7,7 @@ import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
+import { COMPUTED_DATA_VERSION, REPORT_DOCUMENT_VERSION } from './compatibility.ts'
 import { registerMarivoTestTool } from './datasource/index.ts'
 import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import {
@@ -65,8 +66,8 @@ export const MARIVO_REPORT_RENDERING_PROMPT = [
   'Write for the user, not for the Evidence implementation: use the user language, default to Chinese when the request is Chinese, and never copy raw Evidence JSON, Artifact refs, field names, or audit mechanics into narrative text unless the user explicitly asks for methodology.',
   'For stakeholder reports, put a 2-4 item answer-first executive summary first, then pair each major conclusion with a chart or table backed by a registered data source, plain-language interpretation, and a concrete implication; finish with supported next steps, decision-relevant open questions, and caveats.',
   'Use neutral chart and table titles, put units, scope, denominator, time window, and comparison basis in the subtitle when needed, and place a text block that explains the takeaway immediately before or after every chart.',
-  'ReportDocument v3 has no Finding IDs or evidence blocks: use only text, chart, and table blocks. Register each Artifact or Python result once in document.data and bind every chart or table with data_ref.',
-  'Python computed results must be sent as dsh-computed-data/v1: columns with string/number/boolean/datetime types and scalar JSON rows. This is a persisted result snapshot, not a Marivo Artifact or lineage claim.',
+  `${REPORT_DOCUMENT_VERSION} has no Finding IDs or evidence blocks: use only text, chart, and table blocks. Register each Artifact or Python result once in document.data and bind every chart or table with data_ref.`,
+  `Python computed results must be sent as ${COMPUTED_DATA_VERSION}: columns with string/number/boolean/datetime types and scalar JSON rows. This is a persisted result snapshot, not a Marivo Artifact or lineage claim.`,
   'If the user explicitly requests persisted Finding provenance, use marivo_evidence_sources separately; do not add Finding references or a source appendix to the HTML report.',
   'Every call must submit a complete ReportDocument; a revision creates a new report.',
   'After a ready result, copy the returned absolute Path verbatim in the final answer; never shorten it to a basename, invent a file or HTTP URL, or claim it was published.',

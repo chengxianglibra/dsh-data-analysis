@@ -75,11 +75,28 @@ Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Age
 @deepseek-ai/dsh-data-analysis/datasource
 @deepseek-ai/dsh-data-analysis/evidence
 @deepseek-ai/dsh-data-analysis/report
+@deepseek-ai/dsh-data-analysis/compatibility
 @deepseek-ai/dsh-data-analysis/client
 ```
 
 命令行入口 `dsh-data-analysis-env` 复用真实 Runtime 与 binding 流程，用于 operator/deployment 检查。
 `package.json` 是版本、exports、peer dependencies、client injection 和 bundle patch 的事实源。
+
+## v1 兼容性契约
+
+`package.json.dshDataAnalysisCompatibility` 将三个独立版本边界绑定到同一个可打包事实源：
+
+| 边界 | v1 基线 |
+| --- | --- |
+| 插件 semver | `1.0.0` |
+| DSH distribution 与全部 `@deepseek-ai/dsh-*` peers | `0.1.1-rc.2` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.0` |
+
+Marivo 使用精确固定版本，不另设 capability/version matrix。管理员解释器也必须是 `0.5.0`；版本不匹配时
+直接拒绝，不探测或推断其他版本是否“碰巧兼容”。报告、renderer、digest、manifest、Runtime marker 和
+subprocess policy 的项目自有 identity 全部从同一清单读取并固定为 v1。verifier 强制 compatibility schema
+与每个项目自有契约的 `vN` 等于插件 SemVer major，因此任何破坏性输入变化都必须同时提升插件 major 和
+对应契约 identity；本基线不提供旧版本 alias、迁移或 dual-read。
 
 ## 服务端与客户端构建
 
@@ -105,8 +122,10 @@ src/*.ts, src/*.tsx
 - `cordis.patch.yml`；
 - package README。
 
-package verifier 使用 `npm pack --dry-run --json` 验证根入口、client、types、Cordis patch 和 executable
-CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsconfig.build.json` 进入 tarball。
+package verifier 生成真实 tarball，验证根入口、client、types、compatibility、Cordis patch 和 executable
+CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsconfig.build.json` 进入 tarball。它还会
+核对当前 DSH distribution 与每个必需 peer 的实际安装版本，解包 tarball，并在隔离 consumer 目录中加载
+已打包的根、compatibility、report 和 environment 入口。
 `pack:plugin` 在仓库级检查与 package verification 通过后，将 tarball 写入 `artifacts/npm/`。
 
 ## 验证分层
@@ -116,7 +135,7 @@ CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsco
 | 静态与确定性测试 | `npm run check` | Biome format/lint/import + 完整依赖树 + TypeScript/JavaScript typecheck + 各模块确定性测试 |
 | CI 完整门禁 | `npm run ci` | 静态检查、依赖树、确定性测试、构建和 package verification |
 | 构建 | `npm run build` | 生成服务端、声明、客户端和 executable CLI |
-| 包内容 | `npm run verify:plugin-package` | 验证 exports 对应文件、排除开发文件、检查 CLI mode |
+| 包内容与兼容性 | `npm run verify:plugin-package` | 验证真实 tarball、必需 DSH peers、固定 Marivo spec、exports 加载和 CLI mode |
 | 受控打包 | `npm run pack:plugin` | 重跑检查并生成安装 tarball |
 | 模块集成测试 | `npm run test:plugin-integration-delivery` | 验证真实 composition root 的确定性 Web-profile 生命周期 |
 | 补充真实验证 | `npm run validate:plugin-integration-delivery:real` | 通过真实 Cordis `apply` 和模型验证完整插件组合 |

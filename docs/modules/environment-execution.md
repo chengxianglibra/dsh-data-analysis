@@ -47,7 +47,7 @@ doctor 即使以非零 exit code 返回，只要 stdout 是完整报告，仍按
 ## 固定子进程策略
 
 `FixedSubprocessPolicy` 的当前策略标识为
-`direct-argv-inherited-env-snapshot-overlay-v2`，关键约束如下：
+`direct-argv-inherited-env-snapshot-overlay-v1`，关键约束如下：
 
 - `spawn(executable, args)` 使用 direct argv 和 `shell: false`；
 - `cwd` 与基础环境在创建 binding 时一次冻结；

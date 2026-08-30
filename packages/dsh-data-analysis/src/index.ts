@@ -1,5 +1,6 @@
 export type { MarivoBridgeSet } from './bridges.ts'
 export { createMarivoBridgeSet } from './bridges.ts'
+export * from './compatibility.ts'
 export * from './datasource/index.ts'
 export * from './disclosure/index.ts'
 export * from './environment/index.ts'

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -59,7 +59,7 @@ function reportBridge(fixture: ReportBridgeFixture): MarivoReportBridgePort {
 }
 
 const document: ReportDocument = {
-  version: 'dsh-data-analysis-report/v3',
+  version: 'dsh-data-analysis-report/v1',
   title: '支付趋势 <unsafe>',
   locale: 'zh-CN',
   sections: [
@@ -179,7 +179,7 @@ const computedBarSource: ReportComputedDataSource = {
 }
 
 const computedDocument: ReportDocument = {
-  version: 'dsh-data-analysis-report/v3',
+  version: 'dsh-data-analysis-report/v1',
   title: '计算结果报告',
   locale: 'zh-CN',
   sections: [
@@ -348,7 +348,7 @@ function blockedArtifact(ref: string, location: string) {
 
 function barDocument(): ReportDocument {
   return {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: '平台分布',
     locale: 'en-US',
     sections: [
@@ -378,9 +378,9 @@ function barDocument(): ReportDocument {
   }
 }
 
-test('ReportDocument parser accepts the v3 minimum and exposes the data catalog', () => {
+test('ReportDocument parser accepts the v1 minimum and exposes the data catalog', () => {
   const parsed = parseReportDocument({
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Minimum',
     locale: 'en-US',
     sections: [
@@ -399,9 +399,9 @@ test('ReportDocument parser accepts the v3 minimum and exposes the data catalog'
   assert.deepEqual(parsed.inspection.visualCandidates, [])
 })
 
-test('ReportDocument parser rejects v2, finding_ids, and evidence blocks', () => {
+test('ReportDocument parser rejects unsupported versions, finding_ids, and evidence blocks', () => {
   const minimum = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Legacy inputs',
     locale: 'en-US',
     sections: [
@@ -412,11 +412,14 @@ test('ReportDocument parser rejects v2, finding_ids, and evidence blocks', () =>
       },
     ],
   }
-  const oldVersion = parseReportDocument({ ...minimum, version: 'dsh-data-analysis-report/v2' })
-  assert.equal(oldVersion.ok, false)
-  if (!oldVersion.ok) {
-    assert.ok(oldVersion.issues.some((item) => item.code === 'unsupported-version'))
-    assert.match(oldVersion.issues[0]?.repair ?? '', /dsh-data-analysis-report\/v3/)
+  const unsupported = parseReportDocument({
+    ...minimum,
+    version: 'dsh-data-analysis-report/unsupported',
+  })
+  assert.equal(unsupported.ok, false)
+  if (!unsupported.ok) {
+    assert.ok(unsupported.issues.some((item) => item.code === 'unsupported-version'))
+    assert.match(unsupported.issues[0]?.repair ?? '', /dsh-data-analysis-report\/v1/)
   }
 
   const withFindingIds = structuredClone(minimum) as Record<string, any>
@@ -500,7 +503,7 @@ test('ReportDocument parser blocks malformed computed snapshots and unresolved d
   )
 
   const oversized = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Oversized computed',
     locale: 'en-US',
     sections: [
@@ -529,7 +532,7 @@ test('ReportDocument parser blocks malformed computed snapshots and unresolved d
 
 test('ReportDocument parser keeps prototype-like block kinds as structured issues', () => {
   const parsed = parseReportDocument({
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Invalid block kind',
     locale: 'en-US',
     sections: [
@@ -552,7 +555,7 @@ test('ReportDocument parser rejects invalid computed calendar dates', () => {
   if (!parsed.ok) assert.ok(parsed.issues.some((item) => item.code === 'invalid-computed-cell'))
 })
 
-test('ReportDocument parser keeps the closed v3 shape and data bounds', () => {
+test('ReportDocument parser keeps the closed v1 shape and data bounds', () => {
   const source = structuredClone(document) as Record<string, any>
   source.unknown = true
   source.sections[0].blocks[1].id = 'summary-text'
@@ -566,7 +569,7 @@ test('ReportDocument parser keeps the closed v3 shape and data bounds', () => {
   }
 
   const manyArtifacts = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Many Artifacts',
     locale: 'en-US',
     sections: [
@@ -594,7 +597,7 @@ test('ReportDocument parser keeps the closed v3 shape and data bounds', () => {
   if (!tooMany.ok) assert.ok(tooMany.issues.some((item) => item.code === 'invalid-data-sources'))
 })
 
-test('report Tool schema is v3 and has no Finding or evidence block contract', () => {
+test('report Tool schema is v1 and has no Finding or evidence block contract', () => {
   const environment = reportBridge({
     binding: { fingerprint: 'a'.repeat(64), marivoVersion: '0.5.test' },
     async runProjection() {
@@ -603,10 +606,10 @@ test('report Tool schema is v3 and has no Finding or evidence block contract', (
   })
   const tool = createMarivoReportRenderTool(environment) as any
   const schema = tool.parameters.properties.document
-  assert.match(schema.description, /ReportDocument v3/)
+  assert.match(schema.description, /dsh-data-analysis-report\/v1/)
   assert.doesNotMatch(schema.description, /compatibility/)
   assert.doesNotMatch(schema.description, /Finding references/)
-  assert.equal(schema.properties.version.const, 'dsh-data-analysis-report/v3')
+  assert.equal(schema.properties.version.const, 'dsh-data-analysis-report/v1')
   assert.equal('data' in schema.properties, true)
   assert.equal(schema.properties.data.items.oneOf.length, 2)
   assert.equal(
@@ -647,11 +650,11 @@ test('projection parser accepts only Artifact outcomes and the Session DAG', () 
   ])
   assert.deepEqual(parsed.checkedArtifactRefs, ['artifact-trend'])
 
-  const legacy = structuredClone(raw) as Record<string, unknown>
-  legacy.finding_outcomes = []
+  const unsupported = structuredClone(raw) as Record<string, unknown>
+  unsupported.finding_outcomes = []
   assert.throws(
     () =>
-      parseReportProjection(Buffer.from(JSON.stringify(legacy)), {
+      parseReportProjection(Buffer.from(JSON.stringify(unsupported)), {
         sessionId: 'session-report',
         artifactRefs: ['artifact-trend'],
       }),
@@ -726,7 +729,7 @@ test('projection parser checks each explicit Artifact independently and preserve
 })
 
 test('report Tool sends only session and explicit Artifact refs and returns no Finding fields', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-bridge-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v1-bridge-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const calls: Array<{ sessionId: string; artifactRefs: string[] }> = []
   const environment = reportBridge({
@@ -820,7 +823,7 @@ test('mixed Artifact and computed reports bridge only Artifact refs', async (t) 
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-mixed-data-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const mixed: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Mixed data',
     locale: 'en-US',
     sections: [
@@ -875,10 +878,10 @@ test('mixed Artifact and computed reports bridge only Artifact refs', async (t) 
 })
 
 test('multiple unrelated explicit Artifacts do not cause a global compatibility block', async (t) => {
-  const reportsRoot = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-independent-'))
+  const reportsRoot = await mkdtemp(path.join(tmpdir(), 'dsh-report-v1-independent-'))
   t.after(() => rm(reportsRoot, { recursive: true, force: true }))
   const source: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Two artifacts',
     locale: 'en-US',
     sections: [
@@ -935,7 +938,7 @@ test('multiple unrelated explicit Artifacts do not cause a global compatibility 
 
 test('best-effort Artifact failures are attributed to every explicit Artifact occurrence', async () => {
   const source: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Repeated Artifact',
     locale: 'en-US',
     sections: [
@@ -1043,7 +1046,7 @@ test('renderer handles prototype-like computed column names', () => {
     },
   }
   const reservedDocument: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Reserved column',
     locale: 'zh-CN',
     sections: [
@@ -1077,7 +1080,7 @@ test('renderer handles prototype-like computed column names', () => {
 
 test('renderer keeps mixed reports on the Artifact DAG empty-state copy', () => {
   const mixedDocument: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Mixed report',
     locale: 'en-US',
     sections: [
@@ -1123,7 +1126,7 @@ test('visual compiler does not impose advisory point-count gates', () => {
   assert.equal(lineResult.ok, true, JSON.stringify(lineResult))
 
   const sparseBarDocument: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Sparse bar',
     locale: 'en-US',
     sections: [
@@ -1326,7 +1329,7 @@ test('renderer supports bar zero baseline and nullable table cells', () => {
     rows: barArtifact.rows.map((row, index) => (index === 2 ? [row[0]!, null] : row)),
   } as ReportArtifactProjection
   const nullableDocument: ReportDocument = {
-    version: 'dsh-data-analysis-report/v3',
+    version: 'dsh-data-analysis-report/v1',
     title: 'Nullable table',
     locale: 'en-US',
     sections: [
@@ -1347,11 +1350,11 @@ test('renderer supports bar zero baseline and nullable table cells', () => {
   assert.match(html, /<td>—<\/td>/)
 })
 
-test('canonical digests include v3 document identity and ignore object key order', () => {
+test('canonical digests include v1 document identity and ignore object key order', () => {
   assert.equal(canonicalJson({ b: 2, a: 1 }), canonicalJson({ a: 1, b: 2 }))
-  assert.match(REPORT_DIGEST_VERSION, /\/v5$/)
-  assert.match(REPORT_MANIFEST_VERSION, /\/v5$/)
-  assert.equal(REPORT_RENDERER_VERSION, 'dsh-data-analysis-html/v10')
+  assert.equal(REPORT_DIGEST_VERSION, 'dsh-data-analysis-report-digest/v1')
+  assert.equal(REPORT_MANIFEST_VERSION, 'dsh-data-analysis-report-manifest/v1')
+  assert.equal(REPORT_RENDERER_VERSION, 'dsh-data-analysis-html/v1')
   const twoSections: ReportDocument = {
     ...document,
     sections: [
@@ -1396,8 +1399,8 @@ test('projection identity ignores volatile revalidation check times', () => {
   assert.equal(canonicalJson(second.value), canonicalJson(first.value))
 })
 
-test('publisher creates private v5 artifacts and reuses an identical digest', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v5-publish-'))
+test('publisher creates private v1 artifacts and reuses an identical digest', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v1-publish-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const options = {
     environmentFingerprint: '1'.repeat(64),
@@ -1443,17 +1446,10 @@ test('publisher creates private v5 artifacts and reuses an identical digest', as
     const mode = (await stat(path.join(directory, filename))).mode & 0o777
     if (process.platform !== 'win32') assert.equal(mode, 0o600)
   }
-  const oldDirectory = path.join(path.dirname(directory), 'legacy-v3')
-  await mkdir(oldDirectory, { recursive: true, mode: 0o700 })
-  await writeFile(
-    path.join(oldDirectory, 'manifest.json'),
-    '{"version":"dsh-data-analysis-report-manifest/v3"}\n',
-  )
-  assert.equal((await stat(path.join(oldDirectory, 'manifest.json'))).isFile(), true)
 })
 
-test('publisher refuses a forged immutable v5 directory instead of reusing it', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v5-forged-'))
+test('publisher refuses a forged immutable v1 directory instead of reusing it', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v1-forged-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const report = compiledReport()
   const options = {
@@ -1469,7 +1465,7 @@ test('publisher refuses a forged immutable v5 directory instead of reusing it', 
 })
 
 test('report Tool stops before publication when cancellation arrives after projection', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-cancel-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v1-cancel-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const controller = new AbortController()
   const environment = reportBridge({
@@ -1496,7 +1492,7 @@ test('report Tool stops before publication when cancellation arrives after proje
   await assert.rejects(() => stat(path.join(root, 'reports')), { code: 'ENOENT' })
 })
 
-test('Code Mode delivery adds one v3 ready card and preserves nested Tool text', async () => {
+test('Code Mode delivery adds one v1 ready card and preserves nested Tool text', async () => {
   const ctx = new Context()
   const dispose = installMarivoReportCodeDelivery(ctx)
   const ready: ReportRenderValue = {
@@ -1583,8 +1579,8 @@ test('report presentation metadata remains v1 and omits analytical source fields
   assert.equal(reportPresentationMeta({ status: 'blocked', checks: [] as any }), null)
 })
 
-test('registered v3 Tool returns a ready result with no Finding fields', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v3-registered-'))
+test('registered v1 Tool returns a ready result with no Finding fields', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dsh-report-v1-registered-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const context = new Context()
   await context.plugin(SystemPrompt)
@@ -1605,7 +1601,7 @@ test('registered v3 Tool returns a ready result with no Finding fields', async (
   })
   const result = await context.tools.execute({
     signal: new AbortController().signal,
-    callId: CallId('report-v3'),
+    callId: CallId('report-v1'),
     name: MARIVO_REPORT_RENDER_TOOL_NAME,
     arguments: { session_id: 'session-report', document },
   })

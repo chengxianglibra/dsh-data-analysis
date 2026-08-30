@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
+import { SUBPROCESS_POLICY_VERSION } from '../compatibility.ts'
 import { MarivoEnvironmentError } from './errors.ts'
 import type { SubprocessLimits, SubprocessRequest, SubprocessResult } from './types.ts'
 
-export const SUBPROCESS_POLICY_ID = 'direct-argv-inherited-env-snapshot-overlay-v2'
+export const SUBPROCESS_POLICY_ID = SUBPROCESS_POLICY_VERSION
 export const MARIVO_PERSIST_CREDENTIALS_ENV = 'MARIVO_PERSIST_CREDENTIALS'
 export const MARIVO_PERSIST_CREDENTIALS_DISABLED = '0'
 

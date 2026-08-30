@@ -30,10 +30,6 @@ const sessionId = args[5]
 const findingIds = JSON.parse(args[6] ?? 'null')
 appendFileSync(process.env.RECORD_PATH, JSON.stringify({ sessionId, findingIds, args: args.slice(5) }) + '\n')
 if (process.env.EVIDENCE_MODE === 'identity') process.exit(78)
-if (process.env.EVIDENCE_MODE === 'render-unavailable') {
-  process.stderr.write(JSON.stringify({ kind: 'finding-render-unavailable', required_capability: 'finding-render-v1' }))
-  process.exit(69)
-}
 if (process.env.EVIDENCE_MODE === 'read-failed') {
   process.stderr.write(JSON.stringify({ kind: 'evidence-read-failed', exception_type: 'FindingNotFoundError' }))
   process.exit(70)
@@ -235,13 +231,7 @@ test('render bounds, Marivo vocabulary, and identity stay fail closed', async (t
   assert.equal(future?.epistemicKind, 'future_epistemic_kind')
   assert.equal(future?.qualityStatus, 'future_quality_status')
 
-  for (const mode of [
-    'oversize-render',
-    'read-failed',
-    'invalid-json',
-    'render-unavailable',
-    'identity',
-  ]) {
+  for (const mode of ['oversize-render', 'read-failed', 'invalid-json', 'identity']) {
     const f = await fixture({ mode })
     t.after(f.cleanup)
     assert.equal((await sources(f.ctx, 'mv-error', ['finding-a'])).isError, true)

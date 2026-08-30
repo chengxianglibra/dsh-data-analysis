@@ -7,6 +7,7 @@ import { type MarivoReportBridgeSource, resolveMarivoReportBridge } from './brid
 import {
   COMPUTED_DATA_VERSION,
   parseReportDocument,
+  REPORT_DOCUMENT_VERSION,
   type ReportBlockedStage,
   type ReportBlockedValue,
   type ReportCheck,
@@ -29,8 +30,18 @@ export const REPORT_PRESENTATION_META_KIND = 'marivo-html-report'
 export const REPORT_PRESENTATION_META_VERSION = 1
 export const REPORT_DURABLE_CONTENT_KIND = 'marivo-report-card'
 
-const REPORT_DOCUMENT_MINIMAL_JSON =
-  '{"version":"dsh-data-analysis-report/v3","title":"Report title","locale":"zh-CN","sections":[{"id":"summary","title":"Summary","blocks":[{"kind":"text","id":"summary-text","text":"Report summary"}]}]}'
+const REPORT_DOCUMENT_MINIMAL_JSON = JSON.stringify({
+  version: REPORT_DOCUMENT_VERSION,
+  title: 'Report title',
+  locale: 'zh-CN',
+  sections: [
+    {
+      id: 'summary',
+      title: 'Summary',
+      blocks: [{ kind: 'text', id: 'summary-text', text: 'Report summary' }],
+    },
+  ],
+})
 
 export interface ReportPresentationMetaV1 {
   readonly [key: string]: JsonValue
@@ -216,7 +227,7 @@ const documentSchema = {
   type: 'object',
   additionalProperties: false,
   description: [
-    'One complete immutable ReportDocument v3. Revisions submit another complete document.',
+    `One complete immutable ${REPORT_DOCUMENT_VERSION}. Revisions submit another complete document.`,
     'Use the report locale throughout. For stakeholder reports, order sections as answer-first summary, conclusions with adjacent visual interpretation, next steps, further questions, and caveats.',
     'Use text for narrative conclusions and chart/table blocks. Register each Artifact or computed result once in data, then reference it with data_ref.',
     'Python results must be converted to dsh-computed-data/v1 with columns and scalar JSON rows. Computed data is an immutable caller-provided snapshot, not a Marivo Artifact.',
@@ -225,7 +236,7 @@ const documentSchema = {
     'Provide 1-20 sections with 1-20 blocks each, at most 100 blocks total, and at most 20 data sources.',
   ].join(' '),
   properties: {
-    version: { type: 'string', const: 'dsh-data-analysis-report/v3', required: true },
+    version: { type: 'string', const: REPORT_DOCUMENT_VERSION, required: true },
     title: {
       type: 'string',
       required: true,
@@ -433,7 +444,7 @@ export function renderReportToolValue(value: ReportRenderValue): string {
           ? []
           : [`  Omitted ${check.omitted_issue_count} additional issue(s).`]),
       ]),
-      'Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ReportDocument v3. Never submit document.blocks alone.',
+      `Retry: repair the specified paths, preserve unaffected content, and resubmit one complete ${REPORT_DOCUMENT_VERSION}. Never submit document.blocks alone.`,
       `Minimal valid document: ${REPORT_DOCUMENT_MINIMAL_JSON}`,
     ].join('\n')
   }
@@ -633,7 +644,7 @@ export function createMarivoReportRenderTool(
       parsed.inspection.visualCandidates,
       parsed.ok
         ? parsed.value.document
-        : { version: 'dsh-data-analysis-report/v3', title: '', locale: 'en-US', sections: [] },
+        : { version: REPORT_DOCUMENT_VERSION, title: '', locale: 'en-US', sections: [] },
       projectionBundle,
     )
     const skippedVisualTargets =

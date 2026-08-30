@@ -2,11 +2,19 @@
 
 当前实现包含 Environment Binding、`marivo_help`、`marivo_test`、`marivo_evidence_sources`、
 `marivo_report_render` 和 skill 激活式根 Help
-披露，并在 `0.1.0` 提供 Web profile 共享 Marivo Runtime、逐 Workspace
+披露，并在 `1.0.0` 提供 Web profile 共享 Marivo Runtime、逐 Workspace
 binding、全局隔离 skills，以及 `native`、`code`、`both` 三种工具模式支持。`marivo_test`
 按操作从 DSH `ctx.credentials` 解析 datasource 的全部 `*_env` 引用；缺失时由浏览器 Tool
 View 收集并通过标准 `credentials.set()` 保存，成功后由用户手动重试。系统边界与模块关系见
 [总体架构](../../docs/architecture.md)。
+
+## 兼容性
+
+这是未发布项目的唯一 v1 基线：插件 `1.0.0` 只支持 DSH `0.1.1-rc.2` peers 和 Marivo
+`0.5.0`。所有 DSH peers 都是必需依赖，不使用 `*`；管理员提供的 Python 也必须安装同一 Marivo
+版本。机器可读清单位于 `package.json` 的
+`dshDataAnalysisCompatibility`，也可从 `@deepseek-ai/dsh-data-analysis/compatibility` 读取。
+本版本不提供旧契约 alias、迁移或双读写。
 
 ## 构建和打包
 
@@ -29,14 +37,14 @@ npm run pack:plugin
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add \
-  ./artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz
+  ./artifacts/npm/deepseek-ai-dsh-data-analysis-1.0.0.tgz
 npx @deepseek-ai/dsh web
 ```
 
 首次启动通过本机 `uv` 在
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo` 固定安装共享
 `marivo[duckdb,trino,clickhouse]==0.5.0`。实际版本记录在
-`installation.json` 中并供后续启动校验和复用；Runtime 必须公开 `finding-render-v1` capability。每个 Agent 默认按自己的
+`installation.json` 中并供后续启动校验和复用。每个 Agent 默认按自己的
 `session.header.cwd` 初始化 `marivo.toml`、`models/` 和 `.marivo/`，不会创建 Workspace
 `.venv` 或 skill 链接。两个 Marivo skills 从共享 Runtime 全局提供，项目同名 skill 保持
 更高优先级。
@@ -66,15 +74,15 @@ entailment、数字验证、`to_pandas` 用途判断或可信等级推断。详�
 [Evidence 按需来源模块](../../docs/modules/evidence-sources.md)。
 
 加载 `marivo-analysis` 后，Agent 仍默认在对话内回答；只有用户明确请求或接受耐久 HTML 报告时才调用
-`marivo_report_render({ session_id?, document })`。Tool 校验完整 `ReportDocument v3`：先在 `document.data` 注册
+`marivo_report_render({ session_id?, document })`。Tool 校验完整 `dsh-data-analysis-report/v1`：先在 `document.data` 注册
 Artifact 或 computed 数据源，再由 chart/table 使用 `data_ref`。computed 使用 `dsh-computed-data/v1` 的
 `columns + rows` 标量 JSON 快照，直接随报告持久化；它不是 Marivo Artifact，也不声明 Python 执行证明或 lineage。
 只有含 Artifact 数据源时才要求 `session_id`，并通过固定 checked bridge 对每个显式 Artifact 独立 revalidate；
 computed-only 会跳过 bridge，mixed 请求只把 Artifact refs 传给 bridge。不调用 Finding compatibility、Finding
 读取或 backing Artifact 发现。单项失败不阻止其他独立 Artifact，partial projection 继续检查可检查的图表。blocked 按
 `document`、`source`、`visual`、`publish` 分组返回 `passed`、`failed`、`partial` 或 `skipped` check，以及
-精确路径、修复和 omitted 数量。Agent 修复后必须再次提交位于 `document.sections[].blocks` 的完整文档。v3
-只接受 `text`、`chart`、`table`，不接受 `finding_ids` 或 `evidence` block，也不兼容旧 v2/v1 输入；需要来源时使用独立的
+精确路径、修复和 omitted 数量。Agent 修复后必须再次提交位于 `document.sections[].blocks` 的完整文档。v1
+只接受 `text`、`chart`、`table`，不接受 `finding_ids` 或 `evidence` block，也不读取任何其他版本输入；需要来源时使用独立的
 `marivo_evidence_sources`。只有阻断性检查全部通过后才生成无远程依赖的
 HTML/CSS/SVG，原子发布到 `$DSH_HOME/dsh-data-analysis/reports/`。页脚自动展示成功主 Artifact 分析过程的
 Session DAG：Job 节点包含 intent、params 与 raw SQL，Artifact 节点包含最多 10 行持久化原序 preview。

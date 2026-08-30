@@ -32,6 +32,19 @@ Web profile 内的所有 Session、Agent 和 Workspace 共享一套受管 Marivo
 - [HTML 报告渲染模块](docs/modules/html-report-rendering.md)
 - [Plugin 集成与交付模块](docs/modules/plugin-integration-delivery.md)
 
+## v1 兼容性基线
+
+项目尚未正式发布，当前采用单一 clean-slate v1，不提供旧输入读取、alias、双写或迁移器：
+
+- 插件 semver：`1.0.0`；
+- DSH distribution 与所有 `@deepseek-ai/dsh-*` peers：`0.1.1-rc.2`；
+- Marivo：精确固定为 `0.5.0`；
+- 报告文档、renderer、digest、manifest、Runtime marker 和子进程策略均使用各自的 v1 identity。
+
+机器可读事实源位于 package 的 `dshDataAnalysisCompatibility`，公开入口为
+`@deepseek-ai/dsh-data-analysis/compatibility`。package verifier 会对实际 tarball、当前 DSH
+安装版本、必需 peer、固定 Marivo package spec 和已打包入口做一致性与加载验证。
+
 设计与后续 Slice：
 
 - [设计计划文档索引](docs/plan/README.md)
@@ -63,7 +76,7 @@ npm run pack:plugin
 生成的安装包位于：
 
 ```text
-artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz
+artifacts/npm/deepseek-ai-dsh-data-analysis-1.0.0.tgz
 ```
 
 ### 安装到 Web profile
@@ -72,7 +85,7 @@ artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add \
-  "$(pwd)/artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.0.tgz"
+  "$(pwd)/artifacts/npm/deepseek-ai-dsh-data-analysis-1.0.0.tgz"
 ```
 
 这里只需要安装一次。插件属于 Web profile，后续所有 Session、Agent 和 Workspace 都会
@@ -95,8 +108,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-创建 Runtime 时固定安装 `marivo[duckdb,trino,clickhouse]==0.5.0`。`installation.json` 记录实际安装版本和所需 capability；后续启动会验证 marker、
-Python、该版本、package identity 和 `finding-render-v1`，然后直接复用 Runtime，不会在每次 Session 启动时
+创建 Runtime 时固定安装 `marivo[duckdb,trino,clickhouse]==0.5.0`。`installation.json` 记录实际安装身份；后续启动会验证 marker、
+Python、该版本和 package identity，然后直接复用 Runtime，不会在每次 Session 启动时
 联网升级。并发启动通过安装锁串行化；失败安装不会发布完成 marker。
 
 ## 使用
@@ -175,12 +188,12 @@ call 写入等价的耐久 ContentBlock。Web 按当前 Turn 和 closing answer 
 marivo_report_render({ session_id?, document })
 ```
 
-`document` 必须是完整的 `dsh-data-analysis-report/v3`，由 1–20 个 section 组成，并且只使用 `text`、`chart`、
+`document` 必须是完整的 `dsh-data-analysis-report/v1`，由 1–20 个 section 组成，并且只使用 `text`、`chart`、
 `table` 三类 block。先在 `document.data` 中注册 `{ id, artifact_ref }` 或 `{ id, computed }` 数据源，再让
 chart/table 用 `data_ref` 引用；computed 使用 `dsh-computed-data/v1` 的 `columns + rows` 标量 JSON 快照。
 只有含 Artifact 数据源时才需要 `session_id`。chart 支持 `auto`、`line` 和 `bar`；block 必须位于
-`document.sections[].blocks`，不能只提交 `document.blocks`。v3 不接受 `finding_ids` 或 `evidence` block，也不兼容
-旧 v2/v1 输入；需要持久化来源时，单独调用 `marivo_evidence_sources`。
+`document.sections[].blocks`，不能只提交 `document.blocks`。v1 不接受 `finding_ids` 或 `evidence` block，也不读取
+任何其他版本输入；需要持久化来源时，单独调用 `marivo_evidence_sources`。
 修订会生成另一份完整、不可变的报告，不读取或 patch 上一份文档。
 
 工具执行无副作用的 best-effort preflight：文档、source 与视觉问题按 check 分组聚合；单个 Artifact 失败不阻止

@@ -1,7 +1,7 @@
+import { COMPUTED_DATA_VERSION, REPORT_DOCUMENT_VERSION } from '../compatibility.ts'
 import { reportTimeEpoch } from './time.ts'
 
-export const REPORT_DOCUMENT_VERSION = 'dsh-data-analysis-report/v3' as const
-export const COMPUTED_DATA_VERSION = 'dsh-computed-data/v1' as const
+export { COMPUTED_DATA_VERSION, REPORT_DOCUMENT_VERSION } from '../compatibility.ts'
 
 export type ReportComputedColumnType = 'string' | 'number' | 'boolean' | 'datetime'
 export type ReportComputedColumnRole = 'time' | 'dimension' | 'measure' | 'value'
@@ -572,7 +572,7 @@ function emptyInspection(): ReportDocumentInspection {
   }
 }
 
-/** Parse an untrusted JSON value into the complete closed v3 document contract. */
+/** Parse an untrusted JSON value into the complete closed v1 document contract. */
 export function parseReportDocument(input: unknown): ParseReportDocumentResult {
   const issues: ReportIssue[] = []
   if (!isObject(input)) {
@@ -583,7 +583,7 @@ export function parseReportDocument(input: unknown): ParseReportDocumentResult {
           'invalid-document',
           'document',
           'document must be an object.',
-          'Submit one complete ReportDocument v3 object.',
+          `Submit one complete ${REPORT_DOCUMENT_VERSION} object.`,
         ),
       ],
       inspection: emptyInspection(),

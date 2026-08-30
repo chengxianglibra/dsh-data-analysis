@@ -166,16 +166,6 @@ export class MarivoEvidenceBridge {
       signal,
     })
     if (result.exitCode !== 0) {
-      if (
-        result.exitCode === 69 &&
-        result.stderr.toString('utf8').includes('finding-render-unavailable')
-      ) {
-        throw new MarivoEnvironmentError(
-          'shared-runtime-capability-missing',
-          'Marivo Evidence sources require Finding.render(); upgrade the bound Marivo runtime and retry',
-          { requiredCapability: 'finding-render-v1' },
-        )
-      }
       throw new MarivoEnvironmentError(
         'subprocess-failed',
         `Marivo Evidence read failed with exit code ${String(result.exitCode)}`,

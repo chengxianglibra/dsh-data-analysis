@@ -16,7 +16,7 @@ import {
 } from '../../src/report/index.ts'
 
 const document: ReportDocument = {
-  version: 'dsh-data-analysis-report/v3',
+  version: 'dsh-data-analysis-report/v1',
   title: 'Session DAG',
   locale: 'en-US',
   sections: [

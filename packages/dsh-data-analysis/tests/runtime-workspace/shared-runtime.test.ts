@@ -54,15 +54,14 @@ if (script.includes('sys.version_info')) {
     version: [3, 10, 14],
     prefix: path.dirname(path.resolve(process.argv[1])),
   }))
-} else if (script.includes('from marivo.analysis import Finding')) {
+} else if (script.includes('import marivo')) {
   process.stdout.write(JSON.stringify({
     python_executable: path.resolve(process.argv[1]),
     marivo_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
     package_path: ${JSON.stringify(packagePath)},
-    capabilities: process.env.MARIVO_CAPABILITIES === 'missing' ? [] : ['finding-render-v1'],
   }))
 } else {
-  process.stderr.write('runtime probe must import Finding from the public marivo.analysis API')
+  process.stderr.write('runtime probe must import marivo')
   process.exit(19)
 }
 `
@@ -143,8 +142,8 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
     await readFile(path.join(item.runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.marivoVersion, FIXTURE_MARIVO_VERSION)
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
-  assert.deepEqual(marker.capabilities, ['finding-render-v1'])
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v1')
+  assert.equal('capabilities' in marker, false)
   await stat(path.join(first.skillsRoot, 'marivo-analysis', 'SKILL.md'))
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
 })
@@ -174,7 +173,7 @@ test('a managed Runtime on another Marivo version is rebuilt to the pinned versi
   assert.ok(siblings.some((name) => name.startsWith('runtime.invalid-')))
 })
 
-test('a managed v2 marker is rebuilt once to publish the required capability marker', async (t) => {
+test('an unsupported marker is discarded instead of migrated or reused', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
   const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
@@ -183,8 +182,7 @@ test('a managed v2 marker is rebuilt once to publish the required capability mar
     string,
     unknown
   >
-  marker.schema = 'dsh-data-analysis-runtime/v2'
-  delete marker.capabilities
+  marker.schema = 'dsh-data-analysis-runtime/unsupported'
   await writeFile(first.installationPath, `${JSON.stringify(marker)}\n`)
 
   const rebuilt = await ensureSharedMarivoRuntime(config, { environment: item.environment })
@@ -197,8 +195,8 @@ test('a managed v2 marker is rebuilt once to publish the required capability mar
     string,
     unknown
   >
-  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v3')
-  assert.deepEqual(rebuiltMarker.capabilities, ['finding-render-v1'])
+  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v1')
+  assert.equal('capabilities' in rebuiltMarker, false)
   const siblings = await import('node:fs/promises').then((fs) => fs.readdir(item.root))
   assert.ok(siblings.some((name) => name.startsWith('runtime.invalid-')))
 })
@@ -226,36 +224,18 @@ test('failed installation never publishes installation.json', async (t) => {
   assert.ok(siblings.some((name) => name.startsWith('failed-runtime.invalid-')))
 })
 
-test('administrator Python accepts its installed Marivo version and records that identity', async (t) => {
+test('administrator Python must use the exact supported Marivo version', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
   const python = item.environment.MANAGED_PYTHON as string
-  const runtime = await ensureSharedMarivoRuntime(
-    { runtimeRoot: path.join(item.root, 'admin-runtime'), pythonExecutable: python },
-    { environment: { ...item.environment, MARIVO_VERSION: '3.2.1' } },
-  )
-  assert.equal(runtime.marivoVersion, '3.2.1')
-  const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8')) as Record<
-    string,
-    unknown
-  >
-  assert.equal(marker.marivoVersion, '3.2.1')
-})
-
-test('administrator Python without Finding.render fails with an actionable capability error', async (t) => {
-  const item = await fixture()
-  t.after(item.cleanup)
   await assert.rejects(
     ensureSharedMarivoRuntime(
-      {
-        runtimeRoot: path.join(item.root, 'missing-capability-runtime'),
-        pythonExecutable: item.environment.MANAGED_PYTHON as string,
-      },
-      { environment: { ...item.environment, MARIVO_CAPABILITIES: 'missing' } },
+      { runtimeRoot: path.join(item.root, 'admin-runtime'), pythonExecutable: python },
+      { environment: { ...item.environment, MARIVO_VERSION: '3.2.1' } },
     ),
     (error: unknown) =>
       error instanceof MarivoEnvironmentError &&
-      error.code === 'shared-runtime-capability-missing' &&
-      /finding-render-v1/.test(error.message),
+      error.code === 'shared-runtime-version-unsupported' &&
+      error.details.supportedMarivoVersion === FIXTURE_MARIVO_VERSION,
   )
 })
