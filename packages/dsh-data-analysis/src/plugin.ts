@@ -1,14 +1,15 @@
 /** Cordis lifecycle adapter for the Web-profile shared Marivo Runtime. */
 
+import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
-import { COMPUTED_DATA_VERSION, REPORT_DOCUMENT_VERSION } from './compatibility.ts'
-import { registerMarivoTestTool } from './datasource/index.ts'
+import { registerMarivoDatasourceTestTool } from './datasource/index.ts'
 import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
 import {
   installMarivoDisclosure,
@@ -29,7 +30,6 @@ import {
   installMarivoEvidenceSourcesCodeDelivery,
   registerMarivoEvidenceSourcesTool,
 } from './evidence/index.ts'
-import { installMarivoReportCodeDelivery, registerMarivoReportRenderTool } from './report/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -40,8 +40,8 @@ export const inject = ['agents', 'credentials', 'shellEnv', 'skills', 'systemPro
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'When marivo-semantic is active, every Marivo datasource *_env field must reference a DSH_* environment name.',
   'Never ask the user to provide credential values in chat, and never place credential values in commands or project files.',
-  'Immediately after md.register(...) or a manual datasource-file change, call marivo_test with that datasource name.',
-  'If marivo_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_test before continuing.',
+  'Immediately after md.register(...) or a manual datasource-file change, call marivo_datasource_test with that datasource name.',
+  'If marivo_datasource_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_datasource_test before continuing.',
 ].join(' ')
 
 export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
@@ -56,23 +56,20 @@ export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
   'A source attachment proves the identity of its Marivo Evidence source; it does not prove that the whole sentence, calculation, or business judgment is correct.',
 ].join(' ')
 
-export const MARIVO_REPORT_RENDERING_PROMPT = [
+export const MARIVO_AGENT_REPORT_PROMPT = [
   'When marivo-analysis is active, answer inline by default.',
-  'Call marivo_report_render only when the user explicitly requests a durable HTML report, accepts an offer to create one, or asks to revise a report already created in this conversation.',
-  'Do not call it solely because the analysis is complex or contains charts or Artifacts.',
+  'Create a Workspace HTML report only when the user explicitly requests one, accepts an offer to create one, or asks to revise a report already created in this conversation.',
+  'Do not create one solely because the analysis is complex or contains charts or Artifacts.',
   'An explicit quick-answer, no-file, or other-output request takes precedence.',
-  'Use the live marivo_report_render Tool schema as the exact ReportDocument input contract.',
-  'marivo_report_render is a DSH plugin Tool, not a marivo.help target; never call marivo_help for its report contract.',
-  'Write for the user, not for the Evidence implementation: use the user language, default to Chinese when the request is Chinese, and never copy raw Evidence JSON, Artifact refs, field names, or audit mechanics into narrative text unless the user explicitly asks for methodology.',
-  'For stakeholder reports, put a 2-4 item answer-first executive summary first, then pair each major conclusion with a chart or table backed by a registered data source, plain-language interpretation, and a concrete implication; finish with supported next steps, decision-relevant open questions, and caveats.',
-  'Use neutral chart and table titles, put units, scope, denominator, time window, and comparison basis in the subtitle when needed, and place a text block that explains the takeaway immediately before or after every chart.',
-  `${REPORT_DOCUMENT_VERSION} has no Finding IDs or evidence blocks: use only text, chart, and table blocks. Register each Artifact or Python result once in document.data and bind every chart or table with data_ref.`,
-  `Python computed results must be sent as ${COMPUTED_DATA_VERSION}: columns with string/number/boolean/datetime types and scalar JSON rows. This is a persisted result snapshot, not a Marivo Artifact or lineage claim.`,
-  'If the user explicitly requests persisted Finding provenance, use marivo_evidence_sources separately; do not add Finding references or a source appendix to the HTML report.',
-  'Every call must submit a complete ReportDocument; a revision creates a new report.',
-  'After a ready result, copy the returned absolute Path verbatim in the final answer; never shorten it to a basename, invent a file or HTTP URL, or claim it was published.',
-  'The returned path and digest are not Marivo Evidence.',
+  'Before creating or revising one, load the dsh-data-analysis-report Skill and follow its Workspace bundle, mode-specific delivery, checking, and failure contract.',
+  'No plugin report Tool, schema, renderer, publisher, durable block, or dedicated Web delivery exists.',
 ].join(' ')
+
+const integrationSkillsRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'skills',
+)
 
 let persistencePolicyUsers = 0
 let previousPersistencePolicy: string | undefined
@@ -177,11 +174,10 @@ export function installMarivoPlugin(
     const helpSource = async () => (await resolveBridgeSet()).help
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
     const evidenceSource = async () => (await resolveBridgeSet()).evidence
-    const reportSource = async () => (await resolveBridgeSet()).report
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     controller.addDisposer(shellCredentials.installAgent(agent, datasourceSource))
     controller.addDisposer(
-      registerMarivoTestTool(agent.ctx, datasourceSource, credentials, {
+      registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentials, {
         onDescribe: (bridge, datasourceName, refs) => {
           shellCredentials.recordDatasource(bridge, datasourceName, refs)
         },
@@ -191,8 +187,6 @@ export function installMarivoPlugin(
       registerMarivoEvidenceSourcesTool(agent.ctx, evidenceSource, agent.session),
     )
     controller.addDisposer(installMarivoEvidenceSourcesCodeDelivery(agent.ctx))
-    controller.addDisposer(registerMarivoReportRenderTool(agent.ctx, reportSource))
-    controller.addDisposer(installMarivoReportCodeDelivery(agent.ctx))
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
         name: 'marivo:datasource-credentials',
@@ -213,10 +207,10 @@ export function installMarivoPlugin(
     )
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
-        name: 'marivo:html-report-rendering',
+        name: 'marivo:agent-native-report',
         order: 190,
         text: () =>
-          controller.activeSkills.includes('marivo-analysis') ? MARIVO_REPORT_RENDERING_PROMPT : '',
+          controller.activeSkills.includes('marivo-analysis') ? MARIVO_AGENT_REPORT_PROMPT : '',
       }),
     )
     installed.set(agent, controller)
@@ -265,7 +259,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => vo
   installSkillFilesystem(ctx, {
     providerName: 'dsh-data-analysis-marivo',
     includeDefaultRoots: false,
-    customSkillDirs: [runtime.skillsRoot],
+    customSkillDirs: [runtime.skillsRoot, integrationSkillsRoot],
     watch: false,
   })
   const manager = new MarivoWorkspaceEnvironmentManager(runtime, config.initializeWorkspace ?? true)

@@ -86,11 +86,11 @@ session = mv.session.get_or_create(
 )
 metric = session.catalog.metrics.get("sales.revenue")
 frame = session.observe(metrics=metric)
-finding = session.evidence.findings(artifact_ref=frame.ref, limit=20).items[0]
+finding = frame.findings(limit=20).items[0]
 print(json.dumps({
     "sessionId": session.id,
     "findingId": finding.finding_id,
-    "artifactId": finding.artifact_id,
+    "artifactRef": frame.ref,
     "rendered": {
         "en": finding.render(language="en"),
         "zh": finding.render(language="zh"),
@@ -108,7 +108,7 @@ assert.equal(fixtureResult.exitCode, 0, fixtureResult.stderr.toString('utf8'))
 const fixture = JSON.parse(fixtureResult.stdout.toString('utf8')) as {
   sessionId: string
   findingId: string
-  artifactId: string
+  artifactRef: string
   rendered: { en: string; zh: string }
 }
 
@@ -123,14 +123,18 @@ const result = await toolContext.tools.execute({
   signal: new AbortController().signal,
   callId: CallId('sources'),
   name: 'marivo_evidence_sources',
-  arguments: { session_id: fixture.sessionId, finding_ids: [fixture.findingId] },
+  arguments: {
+    session_id: fixture.sessionId,
+    sources: [{ artifact_ref: fixture.artifactRef, finding_id: fixture.findingId }],
+  },
 })
 assert.equal(result.isError, false, JSON.stringify(result))
 if (result.isError) throw new Error('unreachable')
 const value = result.value as unknown as MarivoEvidenceSourcesValue
 assert.equal(value.sources.length, 1)
 assert.equal(value.sources[0]?.findingId, fixture.findingId)
-assert.equal(value.sources[0]?.artifactId, fixture.artifactId)
+assert.equal(value.sources[0]?.artifactRef, fixture.artifactRef)
+assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'artifactId'), false)
 assert.deepEqual(value.sources[0]?.rendered, fixture.rendered)
 assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'marker'), false)
 assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'definition'), false)
@@ -236,7 +240,7 @@ modelContext.tools.register(
         content: [
           'Use exact persisted Marivo Findings and follow the active plugin source policy.',
           'The observed revenue is 20.',
-          `The exact persisted Evidence identity is Marivo Session ${fixture.sessionId} and Finding ${fixture.findingId}.`,
+          `The exact persisted Evidence identity is Marivo Session ${fixture.sessionId}, Artifact ${fixture.artifactRef}, and Finding ${fixture.findingId}.`,
         ].join(' '),
       }
     },
@@ -304,7 +308,7 @@ await writeFile(
       result: {
         sessionId: fixture.sessionId,
         findingId: fixture.findingId,
-        artifactId: fixture.artifactId,
+        artifactRef: fixture.artifactRef,
         languages: ['zh', 'en'],
         sourceNoisePresent: false,
       },

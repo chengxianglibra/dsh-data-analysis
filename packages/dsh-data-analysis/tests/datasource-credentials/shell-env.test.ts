@@ -157,7 +157,7 @@ test('workspace and concurrent execution snapshots stay isolated', async (t) => 
   assert.equal(rightInventory.count, 1)
 })
 
-test('marivo_test describe updates replace the cached datasource references', async (t) => {
+test('marivo_datasource_test describe updates replace cached datasource references', async (t) => {
   const { ctx, credentials, bridge } = await fixture()
   t.after(() => bridge.dispose())
   const inventory = { count: 0 }

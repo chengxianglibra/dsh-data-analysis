@@ -72,7 +72,7 @@ function elements(value: unknown, type: unknown): ElementNode[] {
 
 function source(
   findingId: string,
-  artifactId = 'artifact-a',
+  artifactRef = 'artifact-a',
   overrides: Record<string, unknown> = {},
 ) {
   return {
@@ -85,7 +85,7 @@ function source(
     findingId,
     findingType: 'metric_value',
     epistemicKind: 'observed',
-    artifactId,
+    artifactRef,
     canonicalItemKey: `item-${findingId}`,
     qualityStatus: 'ready',
     committedAt: '2026-08-26T00:00:00+00:00',
@@ -255,7 +255,7 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
     'source.quality': 'quality: {value}',
     'source.unlabeled': '未标注',
     'source.finding': 'Finding {id}',
-    'source.artifactId': 'Artifact {id}',
+    'source.artifactRef': 'Artifact {id}',
     'source.session': 'Marivo Session {id}',
     'source.committed': '提交 {committedAt}',
     'source.audit': '审计详情',
@@ -287,7 +287,7 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
   assert.match(text, /Finding a/)
 })
 
-test('client registers only report and source delivery projections with one source turn tail', async () => {
+test('client registers only source delivery projection with one source turn tail', async () => {
   const client = await loadClient()
   const definitions: any[] = []
   const slots: any[] = []
@@ -322,9 +322,9 @@ test('client registers only report and source delivery projections with one sour
   client.apply(ctx)
   assert.deepEqual(
     definitions.map((item) => item.kind),
-    ['marivo-report-delivery', 'marivo-evidence-sources-delivery'],
+    ['marivo-evidence-sources-delivery'],
   )
-  assert.equal(slots.length, 4)
-  assert.equal(slots[3].options.name, 'conversation.chat.turnTail')
-  assert.equal(typeof slots[3].options.select, 'function')
+  assert.equal(slots.length, 2)
+  assert.equal(slots[1].options.name, 'conversation.chat.turnTail')
+  assert.equal(typeof slots[1].options.select, 'function')
 })

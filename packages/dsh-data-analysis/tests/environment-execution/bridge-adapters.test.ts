@@ -9,7 +9,6 @@ import type {
   SubprocessResult,
 } from '../../src/environment/index.ts'
 import { MarivoEvidenceBridge } from '../../src/evidence/index.ts'
-import { MarivoReportBridge } from '../../src/report/index.ts'
 
 const binding: MarivoEnvironmentBinding = {
   projectRoot: '/fixture/project',
@@ -135,7 +134,7 @@ test('Evidence bridge owns exact Finding identity and order parsing', async () =
     finding_id: 'finding-a',
     finding_type: 'metric_observation',
     epistemic_kind: 'observed',
-    artifact_id: 'artifact-a',
+    artifact_ref: 'artifact-a',
     session_id: 'session-a',
     canonical_item_key: 'metric|a',
     quality_status: null,
@@ -146,10 +145,18 @@ test('Evidence bridge owns exact Finding identity and order parsing', async () =
   }
   const runner = new FakeCheckedRunner(result({ session_id: 'session-a', findings: [finding] }))
   const bridge = new MarivoEvidenceBridge(runner)
-  const projected = await bridge.findings('session-a', ['finding-a'])
+  const projected = await bridge.findings('session-a', [
+    { artifactRef: 'artifact-a', findingId: 'finding-a' },
+  ])
   assert.equal(projected[0]?.findingId, 'finding-a')
-  assert.deepEqual(runner.requests[0]?.args, ['session-a', '["finding-a"]'])
-  assert.match(runner.requests[0]?.program ?? '', /session\.evidence\.finding/)
+  assert.equal(projected[0]?.artifactRef, 'artifact-a')
+  assert.deepEqual(runner.requests[0]?.args, [
+    'session-a',
+    '[{"artifactRef":"artifact-a","findingId":"finding-a"}]',
+  ])
+  assert.match(runner.requests[0]?.program ?? '', /session\.artifact/)
+  assert.match(runner.requests[0]?.program ?? '', /artifact\.finding/)
+  assert.doesNotMatch(runner.requests[0]?.program ?? '', /session\.evidence/)
 })
 
 test('Evidence bridge rejects additional Finding fields and exact-order drift', async () => {
@@ -157,7 +164,7 @@ test('Evidence bridge rejects additional Finding fields and exact-order drift', 
     finding_id: 'finding-b',
     finding_type: 'metric_observation',
     epistemic_kind: 'observed',
-    artifact_id: 'artifact-a',
+    artifact_ref: 'artifact-a',
     session_id: 'session-a',
     canonical_item_key: 'metric|a',
     quality_status: null,
@@ -171,57 +178,13 @@ test('Evidence bridge rejects additional Finding fields and exact-order drift', 
       new FakeCheckedRunner(
         result({ session_id: 'session-a', findings: [{ ...finding, extra: true }] }),
       ),
-    ).findings('session-a', ['finding-b']),
+    ).findings('session-a', [{ artifactRef: 'artifact-a', findingId: 'finding-b' }]),
     /invalid Finding payload/,
   )
   await assert.rejects(
     new MarivoEvidenceBridge(
       new FakeCheckedRunner(result({ session_id: 'session-a', findings: [finding] })),
-    ).findings('session-a', ['finding-a']),
+    ).findings('session-a', [{ artifactRef: 'artifact-a', findingId: 'finding-a' }]),
     /invalid Finding payload/,
   )
-})
-
-test('Report bridge owns projection execution and strict parser admission', async () => {
-  const runner = new FakeCheckedRunner(
-    result({
-      status: 'blocked',
-      issues: [
-        {
-          code: 'fixture-blocked',
-          location: 'artifact_refs[0]',
-          message: 'Fixture blocked.',
-          repair: 'Repair the fixture.',
-        },
-      ],
-      omitted_issue_count: 0,
-    }),
-  )
-  const bridge = new MarivoReportBridge(runner)
-  const inspection = await bridge.project('session-a', ['artifact-a'])
-  assert.equal(inspection.globalFailure, true)
-  assert.equal(inspection.issues[0]?.code, 'fixture-blocked')
-  assert.deepEqual(runner.requests[0]?.args, ['session-a', '["artifact-a"]'])
-  assert.match(runner.requests[0]?.program ?? '', /session\.revalidate/)
-})
-
-test('Report bridge rejects additional projection fields inside the domain adapter', async () => {
-  const bridge = new MarivoReportBridge(
-    new FakeCheckedRunner(
-      result({
-        status: 'blocked',
-        issues: [
-          {
-            code: 'fixture-blocked',
-            location: 'artifact_refs[0]',
-            message: 'Fixture blocked.',
-            repair: 'Repair the fixture.',
-          },
-        ],
-        omitted_issue_count: 0,
-        extra: true,
-      }),
-    ),
-  )
-  await assert.rejects(bridge.project('session-a', ['artifact-a']), /invalid payload/)
 })

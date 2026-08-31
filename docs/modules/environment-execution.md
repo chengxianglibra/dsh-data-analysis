@@ -4,7 +4,7 @@
 
 本模块把一个 Workspace、一个明确 Python 解释器和一份 Marivo import identity 固定成
 `MarivoEnvironment`，并为插件自有 Python 调用提供统一的受限子进程策略和同进程 identity prelude。
-它不拥有 Help、Datasource、Evidence 或 Report 的脚本、JSON shape 与解析器。
+它不拥有 Help、Datasource 或 Evidence 的脚本、JSON shape 与解析器。
 
 总体关系见[总体架构](../architecture.md)。实现集中在：
 
@@ -98,10 +98,9 @@ Datasource 连接失败不会污染 binding。
 | --- | --- |
 | `MarivoHelpBridge` | `marivo.help()` inventory、`marivo.help(target)` program、raw Help body 与错误映射 |
 | `MarivoDatasourceBridge` | `md.describe/list/test` programs、凭证引用与测试结果解析 |
-| `MarivoEvidenceBridge` | 精确 Finding 读取、双语 render、identity/order parser |
-| `MarivoReportBridge` | Artifact/Session DAG program、strict report projection parser |
+| `MarivoEvidenceBridge` | 精确 Artifact-owned Finding 读取、双语 render、identity/order parser |
 
-adapter 分别位于自己的 `disclosure/`、`datasource/`、`evidence/`、`report/` 目录。组合层按
+adapter 分别位于自己的 `disclosure/`、`datasource/`、`evidence/` 目录。组合层按
 `MarivoEnvironment` 缓存一组 adapter，但 Environment 本身不暴露领域属性或 forwarding methods。
 当前 JSON 是插件 adapter 的私有投影协议，不声称是 Marivo 公共 schema；由 Marivo 提供版本化 projection
 contract 或生成 schema 属于后续跨仓工作。
@@ -126,7 +125,7 @@ packages/dsh-data-analysis/tests/environment-execution/bridge-adapters.test.ts
 ```
 
 测试应覆盖路径 canonicalization、doctor 非零状态、准入字段、identity 漂移、通用 runner argv、
-timeout/cancel、输出上限、进程树终止、环境冻结、overlay 脱敏，以及四个 adapter 的参数与 parser 边界。
+timeout/cancel、输出上限、进程树终止、环境冻结、overlay 脱敏，以及三个 adapter 的参数与 parser 边界。
 
 `npm run test:environment-execution` 执行确定性测试；`npm run validate:environment-execution:real` 绑定
 真实 Marivo 安装，验证 doctor admission、import identity 和同进程 shadow 后的 fail-closed 状态。

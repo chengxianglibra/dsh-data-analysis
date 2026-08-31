@@ -13,11 +13,6 @@ export interface DshDataAnalysisCompatibility {
     readonly packageSpec: string
   }
   readonly contracts: {
-    readonly reportDocument: 'dsh-data-analysis-report/v1'
-    readonly computedData: 'dsh-computed-data/v1'
-    readonly reportRenderer: 'dsh-data-analysis-html/v1'
-    readonly reportDigest: 'dsh-data-analysis-report-digest/v1'
-    readonly reportManifest: 'dsh-data-analysis-report-manifest/v1'
     readonly runtimeInstallation: 'dsh-data-analysis-runtime/v1'
     readonly subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v1'
   }
@@ -88,31 +83,6 @@ function parsePackageManifest(value: unknown): PackageManifest {
         packageSpec: requiredString(marivo.packageSpec, 'package compatibility marivo.packageSpec'),
       }),
       contracts: Object.freeze({
-        reportDocument: requiredLiteral(
-          contracts.reportDocument,
-          'dsh-data-analysis-report/v1',
-          'package compatibility contracts.reportDocument',
-        ),
-        computedData: requiredLiteral(
-          contracts.computedData,
-          'dsh-computed-data/v1',
-          'package compatibility contracts.computedData',
-        ),
-        reportRenderer: requiredLiteral(
-          contracts.reportRenderer,
-          'dsh-data-analysis-html/v1',
-          'package compatibility contracts.reportRenderer',
-        ),
-        reportDigest: requiredLiteral(
-          contracts.reportDigest,
-          'dsh-data-analysis-report-digest/v1',
-          'package compatibility contracts.reportDigest',
-        ),
-        reportManifest: requiredLiteral(
-          contracts.reportManifest,
-          'dsh-data-analysis-report-manifest/v1',
-          'package compatibility contracts.reportManifest',
-        ),
         runtimeInstallation: requiredLiteral(
           contracts.runtimeInstallation,
           'dsh-data-analysis-runtime/v1',
@@ -148,11 +118,6 @@ export const DSH_PEER_DEPENDENCIES = Object.freeze(
 export const MARIVO_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.version
 export const MARIVO_PACKAGE_SPEC = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.packageSpec
 
-export const REPORT_DOCUMENT_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.reportDocument
-export const COMPUTED_DATA_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.computedData
-export const REPORT_RENDERER_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.reportRenderer
-export const REPORT_DIGEST_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.reportDigest
-export const REPORT_MANIFEST_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.reportManifest
 export const RUNTIME_INSTALLATION_VERSION =
   DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.runtimeInstallation
 export const SUBPROCESS_POLICY_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.subprocessPolicy

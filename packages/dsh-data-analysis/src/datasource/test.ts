@@ -11,13 +11,13 @@ import {
 } from './bridge.ts'
 import { assertDshCredentialReferences } from './shell-env.ts'
 
-export const MARIVO_TEST_TOOL_NAME = 'marivo_test'
+export const MARIVO_DATASOURCE_TEST_TOOL_NAME = 'marivo_datasource_test'
 
 interface JsonObject {
   [key: string]: JsonValue
 }
 
-export type MarivoTestValue =
+export type MarivoDatasourceTestValue =
   | ({ status: 'needs-credentials'; name: string; refs: string[] } & JsonObject)
   | ({ status: 'ok'; name: string; latency_ms: number | null } & JsonObject)
   | ({
@@ -28,19 +28,21 @@ export type MarivoTestValue =
       repair: MarivoDatasourceRepair
     } & JsonObject)
 
-export interface MarivoTestOptions {
+export interface MarivoDatasourceTestOptions {
   /** Observe the validated non-secret datasource reference-name projection. */
   onDescribe?: (bridge: MarivoDatasourceBridgePort, name: string, refs: readonly string[]) => void
 }
 
 function datasourceName(value: unknown): string {
   if (typeof value !== 'string' || value.trim() === '' || value.length > 256) {
-    throw new TypeError('marivo_test name must be a non-empty string of at most 256 characters')
+    throw new TypeError(
+      'marivo_datasource_test name must be a non-empty string of at most 256 characters',
+    )
   }
   return value
 }
 
-function renderValue(value: MarivoTestValue): string {
+function renderValue(value: MarivoDatasourceTestValue): string {
   if (value.status === 'needs-credentials') return JSON.stringify(value)
   if (value.status === 'ok') {
     return `Marivo datasource ${value.name} connection test succeeded${value.latency_ms === null ? '' : ` in ${value.latency_ms} ms`}.`
@@ -49,13 +51,13 @@ function renderValue(value: MarivoTestValue): string {
 }
 
 /** Build the scoped datasource connection-test Tool. */
-export function createMarivoTestTool(
+export function createMarivoDatasourceTestTool(
   bridgeSource: MarivoDatasourceBridgeSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
-  options: MarivoTestOptions = {},
+  options: MarivoDatasourceTestOptions = {},
 ): ToolDefinition {
   return defineTool({
-    name: MARIVO_TEST_TOOL_NAME,
+    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     description:
       'Test one configured Marivo datasource connection. Missing datasource environment references are requested through the DSH credential service.',
     parameters: {
@@ -67,10 +69,12 @@ export function createMarivoTestTool(
     },
     output: {
       schema: { type: 'json' },
-      render: (_args, value) => [{ type: 'text', text: renderValue(value as MarivoTestValue) }],
+      render: (_args, value) => [
+        { type: 'text', text: renderValue(value as MarivoDatasourceTestValue) },
+      ],
     },
     timeoutMs: 65_000,
-    async execute(args, exec): Promise<MarivoTestValue> {
+    async execute(args, exec): Promise<MarivoDatasourceTestValue> {
       const name = datasourceName(args.name)
       const bridge = await resolveMarivoDatasourceBridge(bridgeSource)
       const described = await bridge.describe(name, exec.signal)
@@ -102,11 +106,11 @@ export function createMarivoTestTool(
   })
 }
 
-export function registerMarivoTestTool(
+export function registerMarivoDatasourceTestTool(
   ctx: Context,
   bridgeSource: MarivoDatasourceBridgeSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
-  options: MarivoTestOptions = {},
+  options: MarivoDatasourceTestOptions = {},
 ): () => void {
-  return ctx.tools.register(createMarivoTestTool(bridgeSource, credentials, options))
+  return ctx.tools.register(createMarivoDatasourceTestTool(bridgeSource, credentials, options))
 }

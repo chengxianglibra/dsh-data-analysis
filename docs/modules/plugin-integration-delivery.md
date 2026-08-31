@@ -1,159 +1,91 @@
-# Plugin 集成与交付模块架构
+# 插件集成与交付模块
 
 ## 作用
 
-本模块是 composition root：把共享 Runtime、Workspace Environment、Help 披露、Datasource、Evidence、
-HTML 报告 Tool、全局 Skill provider 和 Web Tool View 组合为一个可由 DSH/Cordis 加载的插件，并定义构建与 npm 包
-边界。它不承载 Marivo 分析语义，也不在组合层复制子模块状态机。
+本模块把 profile 级 Marivo Runtime、per-Workspace binding、三个跨边界 Tool、激活式 Help/工作流指导和
+Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness 的普通 Tool、Session 或 profile
+语义，也不拥有报告对象。
 
-总体关系见[总体架构](../architecture.md)。主要实现与元数据：
+实现入口：
 
 - `packages/dsh-data-analysis/src/plugin.ts`
-- `packages/dsh-data-analysis/src/index.ts`
 - `packages/dsh-data-analysis/src/client.tsx`
+- `packages/dsh-data-analysis/src/bridges.ts`
 - `packages/dsh-data-analysis/cordis.patch.yml`
-- `packages/dsh-data-analysis/package.json`
-- `scripts/verify-plugin-package.mjs`
-- `scripts/pack-plugin.mjs`
 
-## Cordis 生命周期组合
+## 生命周期
 
-插件声明依赖 `agents`、`credentials`、`shellEnv`、`skills`、`systemPrompt` 和 `tools` 服务。
-`apply(ctx, config)` 的组合顺序是：
+1. `apply()` 确保精确 Marivo 0.5.1 shared Runtime。
+2. Runtime 的 `marivo-analysis`、`marivo-semantic` 与随插件包分发的 `dsh-data-analysis-report` skills
+   挂载到 profile skill registry。
+3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性初始化并绑定 Workspace。
+4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Evidence adapter 与 prompt sections。
+5. 相同 Environment 共享 Help/Datasource/Evidence bridge set；Agent activation state 独立。
+6. plugin disposal 移除自身 Tool、prompt、事件与 credential policy，不影响原 profile Tool。
 
-1. 解析显式配置与 `DSH_DATA_ANALYSIS_*` 环境变量；
-2. `ensureSharedMarivoRuntime()` 创建或验证 profile 级 Runtime；
-3. 通过 `dsh-skill-filesystem` 挂载隔离 provider
-   `dsh-data-analysis-marivo`，只包含 Runtime Skill root，不引入默认 roots；
-4. 创建一个 `MarivoWorkspaceEnvironmentManager`；
-5. 为现有 Agent 安装 disclosure、datasource、Evidence source 与 HTML report 控制器；
-6. 监听 `agent/created` 安装新 scope，监听 `agent/disposed` 清理 scope；
-7. plugin dispose 时先清理 Agent controllers，再释放 manager cache。
+## Agent scope surface
 
-现有 Agent 的安装具有事务性：任一 scope 安装失败时，已安装 controller 全部 dispose，避免只有部分
-Agent 获得 Tool。后续 Agent 的 Environment 是惰性解析的，创建 Agent 本身不会立即运行 doctor。
-
-## Scope 与注册模型
-
-| 资源 | 注册范围 | 生命周期 |
+| Surface | 独有责任 | 删除条件 |
 | --- | --- | --- |
-| Shared Runtime | Cordis plugin/profile | `apply` 前半段建立，供整个 plugin 生命周期复用 |
-| Marivo Skill provider | Cordis context | Runtime 成功后挂载；项目级同名 Skill 保持 Harness 优先级 |
-| Workspace manager | Cordis plugin | 按 canonical root 缓存 binding Promise，dispose 时清空 |
-| Disclosure controller | Agent | 观察 Session surface/Tool result，注册 `marivo_help` 和 pre-step hook |
-| `marivo_test` | Agent scope | 使用同一 Agent Environment source，随 controller 清理 |
-| `marivo_evidence_sources` + 动态 prompt | Agent scope | 来源按 Tool call/Turn 投影；prompt 仅在 `marivo-analysis` 激活后出现 |
-| `marivo_report_render` + 动态 prompt | Agent scope | 编译不可变本机 HTML，并为 Code Mode 子调用补充耐久卡片投影；prompt 仅在 `marivo-analysis` 激活后出现 |
-| Web Tool View | Web client context | 分别按 `marivo_test` 与 `marivo_report_render` Tool name 注入 slot |
-| Web 来源卡片 | Web client context | 从标准 Tool meta 与 assistant message 重放，selector 无引用时不挂载 |
+| `marivo_help` | Native mode 的受控解释器与实时 Help transport | Harness/Marivo 提供等价原生 transport |
+| `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
+| `marivo_evidence_sources` | 精确来源的 Turn metadata 与 Web 折叠面板 | DSH 提供通用结构化来源附件 |
 
-插件不改变 inherited Tool registry 的可见性，也不为 native/code/both 模式维护分支逻辑。Tool 展示和
-模型调用方式继续由 Harness profile 决定。
+以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
+semantic readiness、datasource/table inspect、Artifact materialize/export 和报告 renderer。原生 API 已拥有
+语义时，插件不重新装箱。
 
-## 配置
+## Prompt 与 Skill 激活
 
-| Cordis 配置 | 环境变量 | 默认与含义 |
-| --- | --- | --- |
-| `projectRoot` | `DSH_DATA_ANALYSIS_PROJECT_ROOT` | 未设置时按 Agent `session.header.cwd` |
-| `pythonExecutable` | `DSH_DATA_ANALYSIS_PYTHON` | 未设置时由插件通过 `uv` 管理共享 Runtime |
-| `runtimeRoot` | `DSH_DATA_ANALYSIS_RUNTIME_ROOT` | `$DSH_HOME/dsh-data-analysis/runtimes/marivo` |
-| `uvExecutable` | `DSH_DATA_ANALYSIS_UV` | `uv`；显式值必须是绝对路径 |
-| `installTimeoutMs` | — | `600000` ms |
-| `initializeWorkspace` | — | `true` |
+`marivo-semantic` 激活后注入 credential 规则；`marivo-analysis` 激活后注入 Evidence 调用策略和报告
+Skill 路由。用户明确请求或接受 HTML 报告时，Agent 加载 `dsh-data-analysis-report`；该 Skill 只说明：
 
-`cordis.patch.yml` 只把这些配置接入 Web profile 的 plugin graph。运行时默认值仍由 TypeScript 模块
-解析，manifest 不成为第二套配置逻辑。
+- 直接使用 Marivo public objects；
+- 新目录、相对资源、固定 `index.html`；
+- 资源先写、入口最后写；
+- Native/both 顶层 mutation 与 Code-only 路径降级；
+- 交付前执行资源、离线、安全、浏览器、键盘和打印检查；
+- 不把 Workspace bundle 描述为不可变发布、replay、share 或 Evidence proof。
 
-## 公共包接口
+指导不定义章节、block、chart type、layout 或 renderer schema。
 
-包根导出 Cordis entrypoint 和五个服务端模块：
+## Web client
 
-```text
-@deepseek-ai/dsh-data-analysis
-@deepseek-ai/dsh-data-analysis/environment
-@deepseek-ai/dsh-data-analysis/disclosure
-@deepseek-ai/dsh-data-analysis/datasource
-@deepseek-ai/dsh-data-analysis/evidence
-@deepseek-ai/dsh-data-analysis/report
-@deepseek-ai/dsh-data-analysis/compatibility
-@deepseek-ai/dsh-data-analysis/client
-```
+Web client 只保留：
 
-命令行入口 `dsh-data-analysis-env` 复用真实 Runtime 与 binding 流程，用于 operator/deployment 检查。
-`package.json` 是版本、exports、peer dependencies、client injection 和 bundle patch 的事实源。
+- `marivo_datasource_test` credential form；
+- `marivo_evidence_sources` Turn delivery 与折叠来源面板。
 
-## v1 兼容性契约
+不存在报告 Tool View、durable report block、report turn-tail selector 或专用 Host opener。HTML 入口使用 DSH
+通用 Produced Files 与 `openFile` / Host capability；remote/headless 自动降级为路径。
 
-`package.json.dshDataAnalysisCompatibility` 将三个独立版本边界绑定到同一个可打包事实源：
+## Compatibility 与 package
 
-| 边界 | v1 基线 |
+`dshDataAnalysisCompatibility` 精确声明：
+
+| 边界 | 当前值 |
 | --- | --- |
-| 插件 semver | `1.0.0` |
-| DSH distribution 与全部 `@deepseek-ai/dsh-*` peers | `0.1.1-rc.2` |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.0` |
+| DSH distribution/peers | `0.1.1-rc.2` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.1` |
+| Runtime marker | `dsh-data-analysis-runtime/v1` |
+| Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v1` |
 
-Marivo 使用精确固定版本，不另设 capability/version matrix。管理员解释器也必须是 `0.5.0`；版本不匹配时
-直接拒绝，不探测或推断其他版本是否“碰巧兼容”。报告、renderer、digest、manifest、Runtime marker 和
-subprocess policy 的项目自有 identity 全部从同一清单读取并固定为 v1。verifier 强制 compatibility schema
-与每个项目自有契约的 `vN` 等于插件 SemVer major，因此任何破坏性输入变化都必须同时提升插件 major 和
-对应契约 identity；本基线不提供旧版本 alias、迁移或 dual-read。
+Package 不导出 `./report`，tarball 不包含 report implementation/types。版本、package path 或解释器不匹配
+时 fail closed；不维护 compatibility alias 或 capability matrix。
 
-## 服务端与客户端构建
+## 验证
 
-服务端源码通过 `tsc -p tsconfig.build.json` 生成 ESM JavaScript、source maps 与 `lib/types/**/*.d.ts`。
-客户端由 `scripts/build-client.mjs` 转译 TSX，并包装为 DSH 浏览器 module loader 可加载的
-`lib/client.js`。`finalize-build.mjs` 同时保证 operator CLI 具有 executable mode。
-
-构建后的职责边界为：
-
-```text
-src/*.ts, src/*.tsx
-  ├── tsc ----------------------> lib/**/*.js + lib/types/**/*.d.ts
-  ├── browser client builder ---> lib/client.js
-  └── finalize -----------------> lib/bin/environment.js mode 0755
+```bash
+npm run test:plugin-integration-delivery
+npm run test:agent-native-report-primitives
+npm run build
+npm run verify:plugin-package
+npm run validate:plugin-integration-delivery:real
+npm run validate:agent-native-report-primitives:real
 ```
 
-## npm 包契约
-
-发布包只包含运行所需内容：
-
-- `lib/**/*.js` 与 source maps；
-- `lib/types/**/*.d.ts`；
-- `cordis.patch.yml`；
-- package README。
-
-package verifier 生成真实 tarball，验证根入口、client、types、compatibility、Cordis patch 和 executable
-CLI 全部存在，并拒绝 `src/`、`tests/`、package build scripts 和 `tsconfig.build.json` 进入 tarball。它还会
-核对当前 DSH distribution 与每个必需 peer 的实际安装版本，解包 tarball，并在隔离 consumer 目录中加载
-已打包的根、compatibility、report 和 environment 入口。
-`pack:plugin` 在仓库级检查与 package verification 通过后，将 tarball 写入 `artifacts/npm/`。
-
-## 验证分层
-
-| 层级 | 命令 | 目的 |
-| --- | --- | --- |
-| 静态与确定性测试 | `npm run check` | Biome format/lint/import + 完整依赖树 + TypeScript/JavaScript typecheck + 各模块确定性测试 |
-| CI 完整门禁 | `npm run ci` | 静态检查、依赖树、确定性测试、构建和 package verification |
-| 构建 | `npm run build` | 生成服务端、声明、客户端和 executable CLI |
-| 包内容与兼容性 | `npm run verify:plugin-package` | 验证真实 tarball、必需 DSH peers、固定 Marivo spec、exports 加载和 CLI mode |
-| 受控打包 | `npm run pack:plugin` | 重跑检查并生成安装 tarball |
-| 模块集成测试 | `npm run test:plugin-integration-delivery` | 验证真实 composition root 的确定性 Web-profile 生命周期 |
-| 补充真实验证 | `npm run validate:plugin-integration-delivery:real` | 通过真实 Cordis `apply` 和模型验证完整插件组合 |
-
-各模块按边界提供 `test:<module>`，已有真实环境 runner 继续使用 `validate:<module>:real`。HTML report
-使用 `validate:html-report-rendering:real` 验证真实 Marivo 与 Agent journey；DSH Web 卡片、opener 和视觉检查
-仍是独立门禁，当前 Web toolset 与打印 Evidence 检查 blocked。架构变更应优先补充对应
-模块的确定性测试；只有真实解释器、DSH Web 或模型交互边界发生变化时，才需要相应的真实验证。
-
-Plugin 确定性测试位于
-`packages/dsh-data-analysis/tests/plugin-integration-delivery/web-profile.test.ts`。真实模型 runner 使用
-`DSH_DATA_ANALYSIS_VALIDATION_MODEL` 选择模型，并将不含凭证值和 raw Help 正文的 `0600` 报告写入
-`artifacts/plugin-integration-delivery-real-model.json`。
-
-## 变更规则
-
-- 新 profile 依赖必须进入 `inject` 并有明确 dispose 行为。
-- 新 Agent Tool 应注册在 Agent scope，复用当前 Workspace Environment source。
-- 新 browser UI 只投影结构化 Tool 结果，通过标准 DSH client service 写入状态。
-- exports、client、package metadata 或分发内容变化时，必须同时运行 build 与 package verifier。
-- 不把 upstream package 内部实现复制进 bundle patch；只声明插件装配关系。
+Real runner 需要正式 Marivo 0.5.1 与真实模型。它要求 Agent 实际加载 `marivo-analysis` 和
+`dsh-data-analysis-report`，通过生产 `dsh-tool-bash` / local subprocess seam 执行可审计的原生公共 API
+step，再使用 Harness 真实文件 Tool 跑 Native、Code、both 三种 report journey 并检查目录 bundle。
+Produced Files、Host opener、浏览器/打印、remote/headless 与隔离磁盘配额仍需在对应真实 DSH Web 环境验收；
+runner 不能伪造这些外部能力。

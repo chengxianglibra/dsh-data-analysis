@@ -7,10 +7,16 @@ import marivo.analysis as mv
 
 
 session_id = sys.argv[1]
-finding_ids = json.loads(sys.argv[2])
+selections = json.loads(sys.argv[2])
 try:
     session = mv.session.resume(session_id, use_datasources=False)
-    findings = [session.evidence.finding(finding_id) for finding_id in finding_ids]
+    findings = []
+    for selection in selections:
+        artifact = session.artifact(selection["artifactRef"])
+        finding = artifact.finding(selection["findingId"])
+        if finding.session_id != session.id or finding.artifact_id != artifact.ref:
+            raise ValueError("Artifact-owned Finding identity mismatch")
+        findings.append(finding)
 except Exception as exc:
     print(json.dumps({
         "kind": "evidence-read-failed",
@@ -36,7 +42,7 @@ print(json.dumps({
         "finding_id": finding.finding_id,
         "finding_type": finding.finding_type,
         "epistemic_kind": finding.epistemic_kind,
-        "artifact_id": finding.artifact_id,
+        "artifact_ref": finding.artifact_id,
         "session_id": finding.session_id,
         "canonical_item_key": finding.canonical_item_key,
         "quality_status": finding.quality_status,

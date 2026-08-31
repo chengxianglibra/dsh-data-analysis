@@ -151,9 +151,8 @@ try {
     'lib/types/compatibility.d.ts',
     'lib/evidence/index.js',
     'lib/types/evidence/index.d.ts',
-    'lib/report/index.js',
-    'lib/types/report/index.d.ts',
     'lib/bin/environment.js',
+    'skills/dsh-data-analysis-report/SKILL.md',
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
@@ -161,6 +160,9 @@ try {
   for (const filename of paths) {
     if (/^(?:src|tests|scripts)\//.test(filename) || filename.endsWith('tsconfig.build.json')) {
       fail(`packed plugin contains development-only file ${filename}`)
+    }
+    if (filename.startsWith('lib/report/') || filename.startsWith('lib/types/report/')) {
+      fail(`packed plugin contains removed report surface ${filename}`)
     }
   }
   const environmentBin = files.get('lib/bin/environment.js')
@@ -191,16 +193,16 @@ try {
   const smokeProgram = `
     const root = await import('@deepseek-ai/dsh-data-analysis')
     const compatibility = await import('@deepseek-ai/dsh-data-analysis/compatibility')
-    const report = await import('@deepseek-ai/dsh-data-analysis/report')
     const environment = await import('@deepseek-ai/dsh-data-analysis/environment')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.5.0') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.0') throw new Error('packed Marivo package spec mismatch')
-    if (report.REPORT_DOCUMENT_VERSION !== 'dsh-data-analysis-report/v1') throw new Error('packed report contract mismatch')
-    if (report.REPORT_RENDERER_VERSION !== 'dsh-data-analysis-html/v1') throw new Error('packed renderer contract mismatch')
+    if (compatibility.MARIVO_VERSION !== '0.5.1') throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.1') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v1') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
+    for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {
+      if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
+    }
   `
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
   process.stdout.write(

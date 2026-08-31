@@ -2,6 +2,7 @@ export type {
   MarivoEvidenceBridgePort,
   MarivoEvidenceBridgeSource,
   MarivoFindingProjection,
+  MarivoFindingSelection,
 } from './bridge.ts'
 export {
   MarivoEvidenceBridge,

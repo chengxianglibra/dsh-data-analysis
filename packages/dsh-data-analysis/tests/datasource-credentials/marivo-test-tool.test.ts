@@ -10,11 +10,11 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
-  MARIVO_TEST_TOOL_NAME,
+  MARIVO_DATASOURCE_TEST_TOOL_NAME,
   MarivoDatasourceBridge,
-  type MarivoTestOptions,
-  type MarivoTestValue,
-  registerMarivoTestTool,
+  type MarivoDatasourceTestOptions,
+  type MarivoDatasourceTestValue,
+  registerMarivoDatasourceTestTool,
 } from '../../src/datasource/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 
@@ -78,7 +78,7 @@ class FakeCredentials {
 
 async function fixture(
   options: { refs: string; ok?: boolean; stderrSecret?: boolean } = { refs: '' },
-  toolOptions: MarivoTestOptions = {},
+  toolOptions: MarivoDatasourceTestOptions = {},
 ) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-marivo-test-')))
   const executable = path.join(root, 'fixture-python')
@@ -111,7 +111,7 @@ async function fixture(
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoTestTool(ctx, bridge, credentials, toolOptions)
+  registerMarivoDatasourceTestTool(ctx, bridge, credentials, toolOptions)
   return {
     root,
     home,
@@ -130,7 +130,7 @@ async function execute(ctx: Context, name = 'warehouse') {
   return ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId(`marivo-test-${sequence}`),
-    name: MARIVO_TEST_TOOL_NAME,
+    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     arguments: { name },
   })
 }
@@ -142,12 +142,14 @@ async function absent(target: string): Promise<void> {
 test('missing and partial credentials return only deduplicated missing refs without connecting', async (t) => {
   const f = await fixture({ refs: 'DSH_DB_USER,DSH_DB_PASSWORD,DSH_DB_PASSWORD' })
   t.after(f.cleanup)
+  assert.ok(f.ctx.tools.get(MARIVO_DATASOURCE_TEST_TOOL_NAME))
+  assert.equal(f.ctx.tools.get('marivo_test'), undefined)
   f.credentials.values.set('DSH_DB_USER', { value: 'readonly-user', source: 'env' })
 
   const result = await execute(f.ctx)
   assert.equal(result.isError, false)
   if (result.isError) return
-  assert.deepEqual(result.value as unknown as MarivoTestValue, {
+  assert.deepEqual(result.value as unknown as MarivoDatasourceTestValue, {
     status: 'needs-credentials',
     name: 'warehouse',
     refs: ['DSH_DB_PASSWORD'],
@@ -244,7 +246,7 @@ test('structured md.test failure redacts exact credential values from result and
   assert.doesNotMatch(JSON.stringify(result), /ultra-private/)
   assert.match(JSON.stringify(result), /\[REDACTED\]/)
   if (!result.isError) {
-    const value = result.value as unknown as MarivoTestValue
+    const value = result.value as unknown as MarivoDatasourceTestValue
     assert.equal(value.status, 'failed')
   }
   await absent(path.join(f.home, '.marivo', 'secrets.toml'))

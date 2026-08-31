@@ -8,4 +8,5 @@ lowercase kebab-case 文件名，并在本页登记入口。
 
 ## 当前设计
 
-- [HTML 分析报告最小实现设计](html-report-rendering-mvp-design.md)
+- [Agent 原生报告增强能力设计](agent-native-report-primitives-design.md)（已实施；正式 Marivo 0.5.1 已发布，真实环境验收已通过并持续作为发布门禁）
+- [HTML 分析报告最小实现设计](html-report-rendering-mvp-design.md)（历史设计；已被破坏性替换）

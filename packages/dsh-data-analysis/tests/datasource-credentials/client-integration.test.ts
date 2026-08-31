@@ -11,9 +11,9 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
-  MARIVO_TEST_TOOL_NAME,
+  MARIVO_DATASOURCE_TEST_TOOL_NAME,
   MarivoDatasourceBridge,
-  registerMarivoTestTool,
+  registerMarivoDatasourceTestTool,
 } from '../../src/datasource/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 
@@ -36,7 +36,7 @@ interface ClientExports {
       errors: Record<string, string>
     }>
   }
-  MarivoTestToolView(props: unknown): unknown
+  MarivoDatasourceTestToolView(props: unknown): unknown
 }
 
 interface ClientRuntime {
@@ -241,12 +241,12 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoTestTool(ctx, new MarivoDatasourceBridge(environment), credentials)
+  registerMarivoDatasourceTestTool(ctx, new MarivoDatasourceBridge(environment), credentials)
 
   const first = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId('web-missing'),
-    name: MARIVO_TEST_TOOL_NAME,
+    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     arguments: { name: 'warehouse' },
   })
   assert.equal(first.isError, false)
@@ -310,7 +310,7 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const retried = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId('web-manual-retry'),
-    name: MARIVO_TEST_TOOL_NAME,
+    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     arguments: { name: 'warehouse' },
   })
   assert.equal(retried.isError, false)
@@ -366,7 +366,7 @@ test('replayed needs-credentials result stays closed when every ref is now confi
     },
   }
 
-  const initial = harness.render(client.MarivoTestToolView, props)
+  const initial = harness.render(client.MarivoDatasourceTestToolView, props)
   assert.equal(
     findElement(initial, (element) => element.props?.open !== undefined)?.props.open,
     false,
@@ -374,12 +374,12 @@ test('replayed needs-credentials result stays closed when every ref is now confi
   harness.flushEffects()
   await settleAsyncState()
 
-  const reconciled = harness.render(client.MarivoTestToolView, props)
+  const reconciled = harness.render(client.MarivoDatasourceTestToolView, props)
   assert.equal(
     findElement(reconciled, (element) => element.props?.open !== undefined)?.props.open,
     false,
   )
-  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_test/)
+  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_datasource_test/)
   assert.equal(
     findElement(reconciled, (element) => element.props?.children === '配置凭证'),
     null,
@@ -409,7 +409,7 @@ test('a stale credential inspection cannot reopen a dialog closed by a newer res
     },
   }
 
-  const initial = harness.render(client.MarivoTestToolView, props)
+  const initial = harness.render(client.MarivoDatasourceTestToolView, props)
   const configure = findElement(initial, (element) => element.props?.children === '配置凭证')
   assert.ok(configure)
   harness.flushEffects()
@@ -421,12 +421,12 @@ test('a stale credential inspection cannot reopen a dialog closed by a newer res
   pending[0]?.(credentialResponse(false))
   await settleAsyncState()
 
-  const reconciled = harness.render(client.MarivoTestToolView, props)
+  const reconciled = harness.render(client.MarivoDatasourceTestToolView, props)
   assert.equal(
     findElement(reconciled, (element) => element.props?.open !== undefined)?.props.open,
     false,
   )
-  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_test/)
+  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_datasource_test/)
 })
 
 test('an inspection result from replaced Tool View props cannot update the current dialog', async () => {
@@ -459,15 +459,15 @@ test('an inspection result from replaced Tool View props cannot update the curre
     connection,
   }
 
-  harness.render(client.MarivoTestToolView, firstProps)
+  harness.render(client.MarivoDatasourceTestToolView, firstProps)
   harness.flushEffects()
   assert.equal(pending.length, 1)
 
-  harness.render(client.MarivoTestToolView, currentProps)
+  harness.render(client.MarivoDatasourceTestToolView, currentProps)
   pending[0]?.(credentialResponse(false))
   await settleAsyncState()
 
-  const current = harness.render(client.MarivoTestToolView, currentProps)
+  const current = harness.render(client.MarivoDatasourceTestToolView, currentProps)
   assert.equal(
     findElement(current, (element) => element.props?.open !== undefined)?.props.open,
     false,

@@ -25,10 +25,10 @@ import process from 'node:process'
 
 const args = process.argv.slice(2)
 const script = args[1] ?? ''
-if (!script.includes('session.evidence.finding')) process.exit(2)
+if (!script.includes('artifact = session.artifact')) process.exit(2)
 const sessionId = args[5]
-const findingIds = JSON.parse(args[6] ?? 'null')
-appendFileSync(process.env.RECORD_PATH, JSON.stringify({ sessionId, findingIds, args: args.slice(5) }) + '\n')
+const selections = JSON.parse(args[6] ?? 'null')
+appendFileSync(process.env.RECORD_PATH, JSON.stringify({ sessionId, selections, args: args.slice(5) }) + '\n')
 if (process.env.EVIDENCE_MODE === 'identity') process.exit(78)
 if (process.env.EVIDENCE_MODE === 'read-failed') {
   process.stderr.write(JSON.stringify({ kind: 'evidence-read-failed', exception_type: 'FindingNotFoundError' }))
@@ -43,17 +43,17 @@ if (process.env.EVIDENCE_MODE === 'slow') {
   process.stdout.write('{}')
   process.exit(0)
 }
-const findings = findingIds.map((findingId, index) => ({
-  finding_id: findingId,
+const findings = selections.map((selection, index) => ({
+  finding_id: selection.findingId,
   finding_type: process.env.EVIDENCE_MODE === 'extended-vocabulary'
     ? 'future_finding_type'
     : (index % 2 === 0 ? 'metric_value' : 'delta'),
   epistemic_kind: process.env.EVIDENCE_MODE === 'extended-vocabulary'
     ? 'future_epistemic_kind'
     : (index % 2 === 0 ? 'observed' : 'algebraic'),
-  artifact_id: index < 2 ? 'artifact-shared' : 'artifact-' + findingId,
+  artifact_ref: selection.artifactRef,
   session_id: process.env.WRONG_SESSION === '1' ? 'other-session' : sessionId,
-  canonical_item_key: 'item-' + findingId,
+  canonical_item_key: 'item-' + selection.findingId,
   quality_status: process.env.EVIDENCE_MODE === 'extended-vocabulary'
     ? 'future_quality_status'
     : (index % 3 === 0 ? 'ready' : null),
@@ -64,7 +64,7 @@ const findings = findingIds.map((findingId, index) => ({
     ? { en: 'x'.repeat(8192), zh: '值'.repeat(2730) }
     : process.env.EVIDENCE_MODE === 'oversize-render'
       ? { en: 'x'.repeat(8193), zh: '值'.repeat(2731) }
-      : { en: 'Metric ' + findingId + ': observed 12.', zh: '指标 ' + findingId + '：观测值为 12。' },
+      : { en: 'Metric ' + selection.findingId + ': observed 12.', zh: '指标 ' + selection.findingId + '：观测值为 12。' },
 }))
 process.stdout.write(JSON.stringify({ session_id: sessionId, findings }))
 `
@@ -113,11 +113,15 @@ async function fixture(options: { mode?: string; wrongSession?: boolean } = {}) 
 let callSequence = 0
 async function sources(ctx: Context, sessionId: string, findingIds: string[]) {
   callSequence++
+  const requested = findingIds.map((findingId, index) => ({
+    artifact_ref: index < 2 ? 'artifact-shared' : `artifact-${findingId}`,
+    finding_id: findingId,
+  }))
   return ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId(`sources-${callSequence}`),
     name: MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
-    arguments: { session_id: sessionId, finding_ids: findingIds },
+    arguments: { session_id: sessionId, sources: requested },
   })
 }
 
@@ -132,7 +136,7 @@ test('exact Finding reads return only this call sources without presentation noi
   t.after(f.cleanup)
   const tool = f.ctx.tools.get(MARIVO_EVIDENCE_SOURCES_TOOL_NAME)
   assert.ok(tool)
-  assert.deepEqual(Object.keys((tool.parameters as any).properties), ['session_id', 'finding_ids'])
+  assert.deepEqual(Object.keys((tool.parameters as any).properties), ['session_id', 'sources'])
   assert.equal(tool.output.schema.type, 'object')
   assert.equal(tool.output.schema.additionalProperties, false)
   assert.deepEqual(Object.keys(tool.output.schema.properties ?? {}), [
@@ -151,6 +155,11 @@ test('exact Finding reads return only this call sources without presentation noi
     value.sources.map((item) => item.findingId),
     ['finding-a', 'finding-b'],
   )
+  assert.deepEqual(
+    value.sources.map((item) => item.artifactRef),
+    ['artifact-shared', 'artifact-shared'],
+  )
+  assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'artifactId'), false)
   assert.deepEqual(value.sources[0]?.rendered, {
     en: 'Metric finding-a: observed 12.',
     zh: '指标 finding-a：观测值为 12。',
@@ -202,7 +211,7 @@ test('closed output schema rejects malformed policy replacements before projecti
   assert.equal((result as { meta?: unknown }).meta, undefined)
 })
 
-test('input bounds and duplicate IDs fail before the Evidence subprocess', async (t) => {
+test('input bounds and duplicate Artifact/Finding pairs fail before the Evidence subprocess', async (t) => {
   const f = await fixture()
   t.after(f.cleanup)
   for (const findingIds of [
@@ -213,6 +222,13 @@ test('input bounds and duplicate IDs fail before the Evidence subprocess', async
     const result = await sources(f.ctx, 'mv-bounds', findingIds)
     assert.equal(result.isError, true)
   }
+  const legacy = await f.ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('legacy-finding-ids'),
+    name: MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
+    arguments: { session_id: 'mv-bounds', finding_ids: ['finding-a'] },
+  })
+  assert.equal(legacy.isError, true)
   await assert.rejects(() => readFile(f.recordPath), /ENOENT/)
 })
 
@@ -246,7 +262,13 @@ test('Evidence bridge timeout remains bounded by the shared subprocess policy', 
   t.after(f.cleanup)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(new Error('test cancellation')), 30)
-  await assert.rejects(() => f.bridge.findings('mv-timeout', ['finding-a'], controller.signal))
+  await assert.rejects(() =>
+    f.bridge.findings(
+      'mv-timeout',
+      [{ artifactRef: 'artifact-a', findingId: 'finding-a' }],
+      controller.signal,
+    ),
+  )
   clearTimeout(timer)
 })
 
@@ -265,7 +287,7 @@ test('Code Mode logs one durable source block without changing nested Tool text'
         findingId: 'finding-a',
         findingType: 'metric_value',
         epistemicKind: 'observed',
-        artifactId: 'artifact-a',
+        artifactRef: 'artifact-a',
         canonicalItemKey: 'item-a',
         qualityStatus: 'ready',
         committedAt: '2026-08-26T00:00:00+00:00',

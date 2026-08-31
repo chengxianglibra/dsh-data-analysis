@@ -14,7 +14,7 @@ export interface MarivoFindingProjection {
   findingId: string
   findingType: string
   epistemicKind: string
-  artifactId: string
+  artifactRef: string
   sessionId: string
   canonicalItemKey: string
   qualityStatus: string | null
@@ -24,11 +24,16 @@ export interface MarivoFindingProjection {
   rendered: { en: string; zh: string }
 }
 
+export interface MarivoFindingSelection {
+  artifactRef: string
+  findingId: string
+}
+
 export interface MarivoEvidenceBridgePort {
   readonly binding: Readonly<Pick<MarivoEnvironmentBinding, 'fingerprint' | 'marivoVersion'>>
   findings(
     sessionId: string,
-    findingIds: readonly string[],
+    selections: readonly MarivoFindingSelection[],
     signal?: AbortSignal,
   ): Promise<MarivoFindingProjection[]>
 }
@@ -72,7 +77,7 @@ function parseFinding(value: unknown): MarivoFindingProjection {
       'finding_id',
       'finding_type',
       'epistemic_kind',
-      'artifact_id',
+      'artifact_ref',
       'session_id',
       'canonical_item_key',
       'quality_status',
@@ -92,7 +97,7 @@ function parseFinding(value: unknown): MarivoFindingProjection {
     findingId: nonEmptyString(item.finding_id, 'finding_id'),
     findingType: nonEmptyString(item.finding_type, 'finding_type'),
     epistemicKind: nonEmptyString(item.epistemic_kind, 'epistemic_kind'),
-    artifactId: nonEmptyString(item.artifact_id, 'artifact_id'),
+    artifactRef: nonEmptyString(item.artifact_ref, 'artifact_ref'),
     sessionId: nonEmptyString(item.session_id, 'finding session_id'),
     canonicalItemKey: nonEmptyString(item.canonical_item_key, 'canonical_item_key'),
     qualityStatus,
@@ -109,7 +114,7 @@ function parseFinding(value: unknown): MarivoFindingProjection {
 function parseFindingsPayload(
   stdout: Buffer,
   expectedSessionId: string,
-  expectedFindingIds: readonly string[],
+  expectedSelections: readonly MarivoFindingSelection[],
 ): MarivoFindingProjection[] {
   try {
     const root = jsonObject(JSON.parse(stdout.toString('utf8')))
@@ -122,12 +127,15 @@ function parseFindingsPayload(
       throw new TypeError('root fields are invalid')
     }
     const findings = root.findings.map(parseFinding)
-    if (findings.length !== expectedFindingIds.length) throw new TypeError('finding count differs')
+    if (findings.length !== expectedSelections.length) throw new TypeError('finding count differs')
     for (let index = 0; index < findings.length; index++) {
       const finding = findings[index]
+      const selection = expectedSelections[index]
       if (
         finding === undefined ||
-        finding.findingId !== expectedFindingIds[index] ||
+        selection === undefined ||
+        finding.findingId !== selection.findingId ||
+        finding.artifactRef !== selection.artifactRef ||
         finding.sessionId !== expectedSessionId
       ) {
         throw new TypeError('finding identity or order differs')
@@ -156,12 +164,12 @@ export class MarivoEvidenceBridge {
 
   async findings(
     sessionId: string,
-    findingIds: readonly string[],
+    selections: readonly MarivoFindingSelection[],
     signal?: AbortSignal,
   ): Promise<MarivoFindingProjection[]> {
     const result = await this.#runner.runChecked({
       program: MARIVO_EVIDENCE_FINDINGS_PROGRAM,
-      args: [sessionId, JSON.stringify(findingIds)],
+      args: [sessionId, JSON.stringify(selections)],
       limits: EVIDENCE_LIMITS,
       signal,
     })
@@ -172,7 +180,7 @@ export class MarivoEvidenceBridge {
         { exitCode: result.exitCode, stderr: result.stderr.toString('utf8').slice(0, 2_000) },
       )
     }
-    return parseFindingsPayload(result.stdout, sessionId, findingIds)
+    return parseFindingsPayload(result.stdout, sessionId, selections)
   }
 }
 

@@ -439,7 +439,7 @@ await chmod(reportPath, 0o600)
 await plugin.dispose()
 for (const agent of validationAgents) {
   assert.equal(agent.ctx.tools.get('marivo_help', agent), undefined)
-  assert.equal(agent.ctx.tools.get('marivo_test', agent), undefined)
+  assert.equal(agent.ctx.tools.get('marivo_datasource_test', agent), undefined)
 }
 await rm(validationRoot, { recursive: true, force: true })
 process.stdout.write(

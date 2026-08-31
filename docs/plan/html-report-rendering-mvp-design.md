@@ -2,12 +2,12 @@
 
 ## 文档状态
 
-`ReportDocument v1`、统一数据源目录、computed snapshot、checked Artifact projection、不可变发布和 Web/Code Mode
-轻量交付已经实现。当前确定性入口为 `npm run test:html-report-rendering`；真实 runner 为
-`npm run validate:html-report-rendering:real`。
+> 历史状态：本设计曾经实现，现已被
+> [Agent 原生报告增强能力设计](agent-native-report-primitives-design.md) 破坏性替换。当前插件不注册旧 Tool、
+> 不解析旧 schema，也不读取或迁移旧产物。以下内容只保留为历史决策记录，不是当前运行时契约或验收入口。
 
-这是 clean-slate 实现：v1 是唯一当前输入契约，不保留其他版本 alias、迁移器或旧产物复用逻辑。整体集成仍遵循
-[总体架构](../architecture.md)、[HTML 报告渲染模块](../modules/html-report-rendering.md)、
+这是当时的 clean-slate 实现：v1 是该历史 Slice 的唯一输入契约，不保留其他版本 alias、迁移器或旧产物复用逻辑。整体集成曾遵循
+[总体架构](../architecture.md)、
 [Marivo operators and frames](../../../marivo/docs/specs/analysis/operators-and-frames.md) 与
 [Harness Tool contract](../../../deepseek-harness/docs/cookbook/adding-a-tool.md)。本设计只定义 DSH 集成与展示接缝，
 不复制 Marivo 分析契约。

@@ -9,11 +9,11 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
-  MARIVO_TEST_TOOL_NAME,
+  MARIVO_DATASOURCE_TEST_TOOL_NAME,
   MarivoDatasourceBridge,
   type MarivoDatasourceBridgePort,
-  type MarivoTestValue,
-  registerMarivoTestTool,
+  type MarivoDatasourceTestValue,
+  registerMarivoDatasourceTestTool,
 } from '../src/datasource/index.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 
@@ -85,7 +85,7 @@ try {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoTestTool(ctx, guardedBridge, {
+  registerMarivoDatasourceTestTool(ctx, guardedBridge, {
     resolve() {
       return Promise.resolve(undefined)
     },
@@ -94,12 +94,12 @@ try {
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId('datasource-credentials-real'),
-    name: MARIVO_TEST_TOOL_NAME,
+    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     arguments: { name: datasourceName },
   })
   assert.equal(result.isError, false)
   if (result.isError) throw new Error('unreachable datasource validation result')
-  const value = result.value as unknown as MarivoTestValue
+  const value = result.value as unknown as MarivoDatasourceTestValue
   assert.equal(value.status, 'needs-credentials')
   if (value.status !== 'needs-credentials') throw new Error('expected missing credentials')
   assert.equal(value.name, datasourceName)

@@ -3,17 +3,12 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   COMPATIBILITY_SCHEMA,
-  COMPUTED_DATA_VERSION,
   DSH_DATA_ANALYSIS_COMPATIBILITY,
   DSH_PEER_DEPENDENCIES,
   DSH_PEER_RANGE,
   MARIVO_PACKAGE_SPEC,
   MARIVO_VERSION,
   PLUGIN_VERSION,
-  REPORT_DIGEST_VERSION,
-  REPORT_DOCUMENT_VERSION,
-  REPORT_MANIFEST_VERSION,
-  REPORT_RENDERER_VERSION,
   RUNTIME_INSTALLATION_VERSION,
   SUBPROCESS_POLICY_VERSION,
 } from '../../src/compatibility.ts'
@@ -29,13 +24,8 @@ test('v1 compatibility manifest binds plugin, DSH, Marivo, and project contracts
   assert.equal(COMPATIBILITY_SCHEMA, 'dsh-data-analysis-compatibility/v1')
   assert.equal(DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.distribution, '@deepseek-ai/dsh')
   assert.equal(DSH_PEER_RANGE, '0.1.1-rc.2')
-  assert.equal(MARIVO_VERSION, '0.5.0')
-  assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.0')
-  assert.equal(REPORT_DOCUMENT_VERSION, 'dsh-data-analysis-report/v1')
-  assert.equal(COMPUTED_DATA_VERSION, 'dsh-computed-data/v1')
-  assert.equal(REPORT_RENDERER_VERSION, 'dsh-data-analysis-html/v1')
-  assert.equal(REPORT_DIGEST_VERSION, 'dsh-data-analysis-report-digest/v1')
-  assert.equal(REPORT_MANIFEST_VERSION, 'dsh-data-analysis-report-manifest/v1')
+  assert.equal(MARIVO_VERSION, '0.5.1')
+  assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.1')
   assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v1')
   assert.equal(SUBPROCESS_POLICY_VERSION, 'direct-argv-inherited-env-snapshot-overlay-v1')
   const pluginMajor = Number(PLUGIN_VERSION.split('.')[0])

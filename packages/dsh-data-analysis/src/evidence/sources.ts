@@ -5,6 +5,7 @@ import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import {
   type MarivoEvidenceBridgeSource,
   type MarivoFindingProjection,
+  type MarivoFindingSelection,
   resolveMarivoEvidenceBridge,
 } from './bridge.ts'
 
@@ -26,7 +27,7 @@ export interface MarivoEvidenceSource {
   findingId: string
   findingType: string
   epistemicKind: string
-  artifactId: string
+  artifactRef: string
   canonicalItemKey: string
   qualityStatus: string | null
   committedAt: string
@@ -73,7 +74,7 @@ const evidenceSourceSchema = {
     findingId: { type: 'string', required: true },
     findingType: { type: 'string', required: true },
     epistemicKind: { type: 'string', required: true },
-    artifactId: { type: 'string', required: true },
+    artifactRef: { type: 'string', required: true },
     canonicalItemKey: { type: 'string', required: true },
     qualityStatus: {
       oneOf: [{ type: 'string' }, { type: 'null' }],
@@ -112,21 +113,45 @@ function nonEmptyString(value: unknown, field: string, maxLength = 2_048): strin
   return value
 }
 
-function requestedFindingIds(value: unknown): string[] {
+function requestedSources(value: unknown): MarivoFindingSelection[] {
   if (
     !Array.isArray(value) ||
     value.length < 1 ||
     value.length > MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL
   ) {
     throw new TypeError(
-      `marivo_evidence_sources finding_ids must contain 1-${MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL} items`,
+      `marivo_evidence_sources sources must contain 1-${MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL} items`,
     )
   }
-  const result = value.map((item, index) =>
-    nonEmptyString(item, `marivo_evidence_sources finding_ids[${index}]`, 512),
-  )
-  if (new Set(result).size !== result.length) {
-    throw new TypeError('marivo_evidence_sources finding_ids must be unique within one request')
+  const result = value.map((item, index) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new TypeError(`marivo_evidence_sources sources[${index}] must be an object`)
+    }
+    const source = item as Record<string, unknown>
+    if (
+      Object.keys(source).length !== 2 ||
+      !Object.hasOwn(source, 'artifact_ref') ||
+      !Object.hasOwn(source, 'finding_id')
+    ) {
+      throw new TypeError(
+        `marivo_evidence_sources sources[${index}] must contain exactly artifact_ref and finding_id`,
+      )
+    }
+    return {
+      artifactRef: nonEmptyString(
+        source.artifact_ref,
+        `marivo_evidence_sources sources[${index}].artifact_ref`,
+        512,
+      ),
+      findingId: nonEmptyString(
+        source.finding_id,
+        `marivo_evidence_sources sources[${index}].finding_id`,
+        512,
+      ),
+    }
+  })
+  if (new Set(result.map((item) => JSON.stringify(item))).size !== result.length) {
+    throw new TypeError('marivo_evidence_sources sources must be unique within one request')
   }
   return result
 }
@@ -141,7 +166,7 @@ function evidenceSource(
     findingId: finding.findingId,
     findingType: finding.findingType,
     epistemicKind: finding.epistemicKind,
-    artifactId: finding.artifactId,
+    artifactRef: finding.artifactRef,
     canonicalItemKey: finding.canonicalItemKey,
     qualityStatus: finding.qualityStatus,
     committedAt: finding.committedAt,
@@ -187,11 +212,18 @@ export function createMarivoEvidenceSourcesTool(
         required: true,
         description: 'Exact Marivo analysis Session ID containing the Findings.',
       },
-      finding_ids: {
+      sources: {
         type: 'array',
         required: true,
-        description: `1-${MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL} unique exact Finding IDs to attach.`,
-        items: { type: 'string' },
+        description: `1-${MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL} unique exact Artifact/Finding pairs to attach.`,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            artifact_ref: { type: 'string', required: true },
+            finding_id: { type: 'string', required: true },
+          },
+        },
       },
     },
     output: {
@@ -205,9 +237,9 @@ export function createMarivoEvidenceSourcesTool(
     timeoutMs: 35_000,
     async execute(args, exec): Promise<MarivoEvidenceSourcesValue> {
       const sessionId = nonEmptyString(args.session_id, 'marivo_evidence_sources session_id', 512)
-      const findingIds = requestedFindingIds(args.finding_ids)
+      const selections = requestedSources(args.sources)
       const bridge = await resolveMarivoEvidenceBridge(bridgeSource)
-      const findings = await bridge.findings(sessionId, findingIds, exec.signal)
+      const findings = await bridge.findings(sessionId, selections, exec.signal)
       return {
         status: 'ok',
         environment: {

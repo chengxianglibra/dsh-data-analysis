@@ -29,9 +29,9 @@ import {
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 import {
   installMarivoPlugin,
+  MARIVO_AGENT_REPORT_PROMPT,
   MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
   MARIVO_EVIDENCE_SOURCES_PROMPT,
-  MARIVO_REPORT_RENDERING_PROMPT,
 } from '../../src/plugin.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
@@ -295,7 +295,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
 })
 
-test('on-demand Evidence source and HTML report guidance appear only after marivo-analysis activation', async (t) => {
+test('Evidence source and Agent-native report guidance appear only after analysis activation', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -326,30 +326,13 @@ test('on-demand Evidence source and HTML report guidance appear only after mariv
   assert.match(activatedPrompt, /no exact persisted Finding/)
   assert.match(activatedPrompt, /do not emit a boilerplate quality or evidence section/)
   assert.match(activatedPrompt, /does not prove/)
-  assert.match(activatedPrompt, /marivo_report_render/)
+  assert.doesNotMatch(activatedPrompt, /marivo_report_render/)
   assert.match(activatedPrompt, /answer inline by default/)
-  assert.match(activatedPrompt, /live marivo_report_render Tool schema/)
-  assert.match(activatedPrompt, /not a marivo\.help target/)
-  assert.match(activatedPrompt, /never call marivo_help for its report contract/)
-  assert.match(activatedPrompt, /default to Chinese when the request is Chinese/)
-  assert.match(activatedPrompt, /2-4 item answer-first executive summary/)
-  assert.match(
-    activatedPrompt,
-    /dsh-data-analysis-report\/v1 has no Finding IDs or evidence blocks/,
-  )
-  assert.match(activatedPrompt, /use only text, chart, and table blocks/)
-  assert.match(activatedPrompt, /bind every chart or table with data_ref/)
-  assert.match(activatedPrompt, /marivo_evidence_sources separately/)
+  assert.match(activatedPrompt, /load the dsh-data-analysis-report Skill/)
+  assert.match(activatedPrompt, /No plugin report Tool, schema, renderer, publisher/)
   assert.doesNotMatch(activatedPrompt, /session\.evidence\.compatibility/)
-  assert.match(activatedPrompt, /complete ReportDocument/)
-  assert.match(activatedPrompt, /copy the returned absolute Path verbatim/)
-  assert.match(activatedPrompt, /never shorten it to a basename/)
-  assert.doesNotMatch(MARIVO_REPORT_RENDERING_PROMPT, /report card/i)
+  assert.doesNotMatch(MARIVO_AGENT_REPORT_PROMPT, /report card/i)
   assert.match(MARIVO_EVIDENCE_SOURCES_PROMPT, /markers, footnotes, or a source appendix/)
-  assert.match(
-    MARIVO_REPORT_RENDERING_PROMPT,
-    /does not mean datasource fresh|path and digest are not Marivo Evidence/,
-  )
 })
 
 test('an Agent-plane inherited skill Tool activates Evidence guidance and root help', async (t) => {
@@ -415,7 +398,7 @@ test('marivo-semantic activation adds datasource credential guidance only after 
   assert.match(activatedPrompt, /DSH_\*/)
   assert.match(activatedPrompt, /Never ask the user to provide credential values in chat/)
   assert.match(activatedPrompt, /Immediately after md\.register/)
-  assert.match(activatedPrompt, /marivo_test/)
+  assert.match(activatedPrompt, /marivo_datasource_test/)
   assert.match(activatedPrompt, /needs-credentials/)
   assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_sources/)
   assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /manual datasource-file change/)
@@ -859,10 +842,9 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   await agent.whenIdle()
 
   assert.deepEqual(requestToolNames(adapter.requests[0]), [
+    'marivo_datasource_test',
     'marivo_evidence_sources',
     'marivo_help',
-    'marivo_report_render',
-    'marivo_test',
     'ordinary',
     'skill',
   ])

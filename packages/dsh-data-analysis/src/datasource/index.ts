@@ -14,11 +14,11 @@ export {
   resolveMarivoDatasourceInventoryBridge,
 } from './bridge.ts'
 export type {
-  MarivoTestOptions,
-  MarivoTestValue,
+  MarivoDatasourceTestOptions,
+  MarivoDatasourceTestValue,
 } from './test.ts'
 export {
-  createMarivoTestTool,
-  MARIVO_TEST_TOOL_NAME,
-  registerMarivoTestTool,
+  createMarivoDatasourceTestTool,
+  MARIVO_DATASOURCE_TEST_TOOL_NAME,
+  registerMarivoDatasourceTestTool,
 } from './test.ts'
