@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json",
+  "$defs": {
+    "nonEmptyBoundedString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableNumber": {
+      "type": ["number", "null"]
+    },
+    "nullableNonNegativeInteger": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "qualitySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage",
+        "null_rate",
+        "sample_size",
+        "sample_coverage_min",
+        "sample_coverage_avg",
+        "sample_coverage_partial_buckets",
+        "zero_denominator_rows",
+        "evaluated_check_count",
+        "failed_check_count",
+        "warning_check_count"
+      ],
+      "properties": {
+        "coverage": { "$ref": "#/$defs/nullableNumber" },
+        "null_rate": { "$ref": "#/$defs/nullableNumber" },
+        "sample_size": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "sample_coverage_min": { "$ref": "#/$defs/nullableNumber" },
+        "sample_coverage_avg": { "$ref": "#/$defs/nullableNumber" },
+        "sample_coverage_partial_buckets": {
+          "$ref": "#/$defs/nullableNonNegativeInteger"
+        },
+        "zero_denominator_rows": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "evaluated_check_count": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "failed_check_count": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "warning_check_count": { "$ref": "#/$defs/nullableNonNegativeInteger" }
+      }
+    },
+    "repair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "action", "help_target"],
+      "properties": {
+        "kind": {
+          "enum": ["retry", "inspect", "user_choice", "semantic_authoring", "environment"]
+        },
+        "action": { "$ref": "#/$defs/nonEmptyBoundedString" },
+        "help_target": { "$ref": "#/$defs/nonEmptyBoundedString" }
+      }
+    },
+    "nullableRepair": {
+      "oneOf": [{ "$ref": "#/$defs/repair" }, { "type": "null" }]
+    },
+    "artifactIssue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "kind", "severity", "check_id", "expectation", "repair"],
+          "properties": {
+            "category": { "const": "data_quality" },
+            "kind": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "severity": { "enum": ["warning", "blocking"] },
+            "check_id": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "expectation": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "repair": { "$ref": "#/$defs/nullableRepair" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "kind",
+            "severity",
+            "incompatible_fields",
+            "approximation_details",
+            "repair"
+          ],
+          "properties": {
+            "category": { "const": "comparability" },
+            "kind": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "severity": { "enum": ["warning", "blocking"] },
+            "incompatible_fields": {
+              "type": "array",
+              "maxItems": 100,
+              "items": { "$ref": "#/$defs/nonEmptyBoundedString" }
+            },
+            "approximation_details": {
+              "type": "array",
+              "maxItems": 100,
+              "items": { "$ref": "#/$defs/nonEmptyBoundedString" }
+            },
+            "repair": { "$ref": "#/$defs/nullableRepair" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "kind",
+            "severity",
+            "failed_stage",
+            "findings_available",
+            "stable_error_category",
+            "repair"
+          ],
+          "properties": {
+            "category": { "const": "evidence_availability" },
+            "kind": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "severity": { "enum": ["warning", "blocking"] },
+            "failed_stage": { "enum": ["extract", "digest", "store"] },
+            "findings_available": { "type": "boolean" },
+            "stable_error_category": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "repair": { "$ref": "#/$defs/nullableRepair" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "kind", "severity", "historical", "repair"],
+          "properties": {
+            "category": { "const": "candidate_resolution" },
+            "kind": { "$ref": "#/$defs/nonEmptyBoundedString" },
+            "severity": { "const": "warning" },
+            "historical": { "type": "boolean" },
+            "repair": { "$ref": "#/$defs/repair" }
+          }
+        }
+      ]
+    }
+  }
+}

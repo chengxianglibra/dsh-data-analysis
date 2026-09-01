@@ -1,0 +1,10 @@
+{
+  "status": "checked",
+  "result": "admissible",
+  "semantic_status": "current",
+  "evidence_status": "complete",
+  "dependency_status": "admissible",
+  "checked_at": "2026-08-31T11:59:00Z",
+  "issues": [],
+  "issues_omitted": 0
+}

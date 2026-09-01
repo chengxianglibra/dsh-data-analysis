@@ -1,0 +1,52 @@
+{
+  "schema": "dsh-data-analysis-session-trace/v1",
+  "trace_id": "trace-incomplete",
+  "emitted_at": "2026-08-31T12:00:00Z",
+  "session_id": "session-1",
+  "report_artifact_refs": ["artifact-input"],
+  "artifacts": [
+    {
+      "ref": "artifact-input",
+      "family": "MetricFrame",
+      "semantic_shape": null,
+      "created_at": "2026-08-31T11:55:00Z",
+      "produced_by_run": null,
+      "analysis_purpose": null,
+      "row_count": 1,
+      "materialization": "materialized",
+      "evidence": {
+        "status": "unavailable",
+        "finding_count": 0,
+        "digest_present": false,
+        "digest_item_count": 0,
+        "omitted_item_count": 0
+      },
+      "quality": null,
+      "issue_counts": { "warning": 0, "blocking": 0 }
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "run-incomplete",
+      "lifecycle": "incomplete",
+      "capability_id": "compare",
+      "analysis_purpose": null,
+      "input_artifact_refs": ["artifact-input"],
+      "started_at": "2026-08-31T11:59:00Z"
+    }
+  ],
+  "edges": [{ "kind": "consumes", "run_id": "run-incomplete", "artifact_ref": "artifact-input" }],
+  "root_run_ids": [],
+  "head_artifact_refs": ["artifact-input"],
+  "failed_run_ids": [],
+  "incomplete_run_ids": ["run-incomplete"],
+  "boundary_artifact_refs": [],
+  "boundary_run_ids": [],
+  "truncated": false,
+  "projection": { "run_arguments": "omitted", "failure_values": "omitted" },
+  "read_boundaries": [
+    "semantic_authority_not_checked",
+    "datasource_freshness_not_checked",
+    "report_entailment_not_checked"
+  ]
+}

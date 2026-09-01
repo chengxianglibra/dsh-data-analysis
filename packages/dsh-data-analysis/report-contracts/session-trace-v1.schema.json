@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/session-trace-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "trace_id",
+    "emitted_at",
+    "session_id",
+    "report_artifact_refs",
+    "artifacts",
+    "runs",
+    "edges",
+    "root_run_ids",
+    "head_artifact_refs",
+    "failed_run_ids",
+    "incomplete_run_ids",
+    "boundary_artifact_refs",
+    "boundary_run_ids",
+    "truncated",
+    "projection",
+    "read_boundaries"
+  ],
+  "properties": {
+    "schema": { "const": "dsh-data-analysis-session-trace/v1" },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "emitted_at": {
+      "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+    },
+    "session_id": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "report_artifact_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "family",
+          "semantic_shape",
+          "created_at",
+          "produced_by_run",
+          "analysis_purpose",
+          "row_count",
+          "materialization",
+          "evidence",
+          "quality",
+          "issue_counts"
+        ],
+        "properties": {
+          "ref": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "family": {
+            "enum": [
+              "MetricFrame",
+              "EventFrame",
+              "LifecycleFrame",
+              "SubjectSet",
+              "DeltaFrame",
+              "AttributionFrame",
+              "ForecastFrame",
+              "CandidateSet",
+              "AssociationResult",
+              "ComponentFrame",
+              "CoverageFrame",
+              "HypothesisTestResult"
+            ]
+          },
+          "semantic_shape": { "type": ["string", "null"], "maxLength": 2048 },
+          "created_at": {
+            "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+          },
+          "produced_by_run": { "type": ["string", "null"], "maxLength": 2048 },
+          "analysis_purpose": { "type": ["string", "null"], "maxLength": 2048 },
+          "row_count": { "type": "integer", "minimum": 0 },
+          "materialization": { "enum": ["materialized", "recomputed", "partial"] },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "finding_count",
+              "digest_present",
+              "digest_item_count",
+              "omitted_item_count"
+            ],
+            "properties": {
+              "status": { "enum": ["complete", "partial", "unavailable"] },
+              "finding_count": { "type": "integer", "minimum": 0 },
+              "digest_present": { "type": "boolean" },
+              "digest_item_count": { "type": "integer", "minimum": 0 },
+              "omitted_item_count": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "quality": {
+            "oneOf": [
+              {
+                "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/qualitySummary"
+              },
+              { "type": "null" }
+            ]
+          },
+          "issue_counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["warning", "blocking"],
+            "properties": {
+              "warning": { "type": "integer", "minimum": 0 },
+              "blocking": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/incompleteRun"
+          },
+          {
+            "$ref": "#/$defs/succeededRun"
+          },
+          {
+            "$ref": "#/$defs/failedRun"
+          }
+        ]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "run_id", "artifact_ref"],
+        "properties": {
+          "kind": { "enum": ["consumes", "produces", "reuses"] },
+          "run_id": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "artifact_ref": { "type": "string", "minLength": 1, "maxLength": 2048 }
+        }
+      }
+    },
+    "root_run_ids": { "$ref": "#/$defs/identityArray" },
+    "head_artifact_refs": { "$ref": "#/$defs/identityArray" },
+    "failed_run_ids": { "$ref": "#/$defs/identityArray" },
+    "incomplete_run_ids": { "$ref": "#/$defs/identityArray" },
+    "boundary_artifact_refs": { "$ref": "#/$defs/identityArray" },
+    "boundary_run_ids": { "$ref": "#/$defs/identityArray" },
+    "truncated": { "type": "boolean" },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_arguments", "failure_values"],
+      "properties": {
+        "run_arguments": { "const": "omitted" },
+        "failure_values": { "const": "omitted" }
+      }
+    },
+    "read_boundaries": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "semantic_authority_not_checked" },
+        { "const": "datasource_freshness_not_checked" },
+        { "const": "report_entailment_not_checked" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    }
+  },
+  "$defs": {
+    "identityArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
+    },
+    "runBaseProperties": {
+      "type": "object"
+    },
+    "incompleteRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "lifecycle",
+        "capability_id",
+        "analysis_purpose",
+        "input_artifact_refs",
+        "started_at"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/identity" },
+        "lifecycle": { "const": "incomplete" },
+        "capability_id": { "$ref": "#/$defs/identity" },
+        "analysis_purpose": { "type": ["string", "null"], "maxLength": 2048 },
+        "input_artifact_refs": { "$ref": "#/$defs/identityArray" },
+        "started_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "succeededRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "lifecycle",
+        "capability_id",
+        "analysis_purpose",
+        "input_artifact_refs",
+        "started_at",
+        "finished_at",
+        "output_artifact_ref",
+        "output_mode"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/identity" },
+        "lifecycle": { "const": "succeeded" },
+        "capability_id": { "$ref": "#/$defs/identity" },
+        "analysis_purpose": { "type": ["string", "null"], "maxLength": 2048 },
+        "input_artifact_refs": { "$ref": "#/$defs/identityArray" },
+        "started_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "finished_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "output_artifact_ref": { "$ref": "#/$defs/identity" },
+        "output_mode": { "enum": ["produced", "reused"] }
+      }
+    },
+    "failedRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "lifecycle",
+        "capability_id",
+        "analysis_purpose",
+        "input_artifact_refs",
+        "started_at",
+        "failed_at",
+        "failure"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/identity" },
+        "lifecycle": { "const": "failed" },
+        "capability_id": { "$ref": "#/$defs/identity" },
+        "analysis_purpose": { "type": ["string", "null"], "maxLength": 2048 },
+        "input_artifact_refs": { "$ref": "#/$defs/identityArray" },
+        "started_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "failed_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "failure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error_type", "location"],
+          "properties": {
+            "error_type": { "$ref": "#/$defs/identity" },
+            "location": { "type": ["string", "null"], "maxLength": 2048 }
+          }
+        }
+      }
+    },
+    "identity": { "type": "string", "minLength": 1, "maxLength": 2048 }
+  }
+}

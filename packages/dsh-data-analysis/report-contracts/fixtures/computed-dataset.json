@@ -1,0 +1,16 @@
+{
+  "schema": "dsh-data-analysis-dataset/v1",
+  "dataset_id": "computed-sales",
+  "emitted_at": "2026-08-31T12:00:00Z",
+  "source": { "kind": "computed" },
+  "table": {
+    "total_rows": 2,
+    "written_rows": 2,
+    "omitted_rows": 0,
+    "columns": [
+      { "name": "month", "dtype": "datetime64[ns]", "contains_null": false },
+      { "name": "revenue", "dtype": "float64", "contains_null": true }
+    ],
+    "rows": [["2026-01-01T00:00:00", 1024.5], ["2026-02-01T00:00:00", null]]
+  }
+}

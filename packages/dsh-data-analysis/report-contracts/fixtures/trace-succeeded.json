@@ -1,0 +1,55 @@
+{
+  "schema": "dsh-data-analysis-session-trace/v1",
+  "trace_id": "trace-succeeded",
+  "emitted_at": "2026-08-31T12:00:00Z",
+  "session_id": "session-1",
+  "report_artifact_refs": ["artifact-1"],
+  "artifacts": [
+    {
+      "ref": "artifact-1",
+      "family": "MetricFrame",
+      "semantic_shape": "time_series",
+      "created_at": "2026-08-31T11:58:00Z",
+      "produced_by_run": "run-1",
+      "analysis_purpose": "fixture",
+      "row_count": 1,
+      "materialization": "materialized",
+      "evidence": {
+        "status": "complete",
+        "finding_count": 1,
+        "digest_present": true,
+        "digest_item_count": 1,
+        "omitted_item_count": 0
+      },
+      "quality": null,
+      "issue_counts": { "warning": 0, "blocking": 0 }
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "run-1",
+      "lifecycle": "succeeded",
+      "capability_id": "observe",
+      "analysis_purpose": "fixture",
+      "input_artifact_refs": [],
+      "started_at": "2026-08-31T11:57:00Z",
+      "finished_at": "2026-08-31T11:58:00Z",
+      "output_artifact_ref": "artifact-1",
+      "output_mode": "produced"
+    }
+  ],
+  "edges": [{ "kind": "produces", "run_id": "run-1", "artifact_ref": "artifact-1" }],
+  "root_run_ids": ["run-1"],
+  "head_artifact_refs": ["artifact-1"],
+  "failed_run_ids": [],
+  "incomplete_run_ids": [],
+  "boundary_artifact_refs": [],
+  "boundary_run_ids": [],
+  "truncated": false,
+  "projection": { "run_arguments": "omitted", "failure_values": "omitted" },
+  "read_boundaries": [
+    "semantic_authority_not_checked",
+    "datasource_freshness_not_checked",
+    "report_entailment_not_checked"
+  ]
+}

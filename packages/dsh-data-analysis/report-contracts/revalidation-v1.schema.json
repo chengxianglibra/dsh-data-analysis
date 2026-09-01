@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/revalidation-v1.schema.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": { "status": { "const": "not_checked" } }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "result",
+        "semantic_status",
+        "evidence_status",
+        "dependency_status",
+        "checked_at",
+        "issues",
+        "issues_omitted"
+      ],
+      "properties": {
+        "status": { "const": "checked" },
+        "result": { "enum": ["admissible", "stale", "indeterminate"] },
+        "semantic_status": { "enum": ["current", "stale", "indeterminate"] },
+        "evidence_status": { "enum": ["complete", "partial", "unavailable"] },
+        "dependency_status": { "enum": ["admissible", "stale", "indeterminate"] },
+        "checked_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/artifactIssue"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["category", "kind", "severity", "expected", "received", "repair"],
+                "properties": {
+                  "category": { "const": "evidence_rule" },
+                  "kind": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "severity": { "enum": ["warning", "blocking"] },
+                  "expected": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "received": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "repair": {
+                    "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/repair"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "issues_omitted": { "type": "integer", "minimum": 0 }
+      }
+    }
+  ]
+}

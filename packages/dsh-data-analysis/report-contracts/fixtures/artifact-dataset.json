@@ -1,0 +1,46 @@
+{
+  "schema": "dsh-data-analysis-dataset/v1",
+  "dataset_id": "artifact-sales",
+  "emitted_at": "2026-08-31T12:00:00Z",
+  "source": {
+    "kind": "marivo_artifact",
+    "artifact": {
+      "session_id": "session-1",
+      "ref": "artifact-1",
+      "kind": "metric_frame",
+      "artifact_schema_version": "analysis-artifact/v13",
+      "content_hash": "sha256:fixture",
+      "created_at": "2026-08-31T11:00:00Z",
+      "row_count": 1,
+      "evidence_status": "complete",
+      "finding_count": 1
+    },
+    "quality_summary": null,
+    "issues": [],
+    "issues_omitted": 0,
+    "lineage": {
+      "external_inputs": [],
+      "external_inputs_omitted": 0,
+      "steps": [],
+      "steps_omitted": 0
+    },
+    "revalidation": { "status": "not_checked" }
+  },
+  "table": {
+    "total_rows": 1,
+    "written_rows": 1,
+    "omitted_rows": 0,
+    "semantic_shape": "time_series",
+    "columns": [
+      {
+        "name": "month",
+        "dtype": "datetime64[ns]",
+        "artifact_dtype": "datetime64[ns]",
+        "contains_null": false,
+        "nullable": false,
+        "role": "time"
+      }
+    ],
+    "rows": [["2026-01-01T00:00:00"]]
+  }
+}
