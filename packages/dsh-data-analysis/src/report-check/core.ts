@@ -1825,11 +1825,54 @@ function validateRegistries(state: ScanState): void {
         }
       }
     }
-    const artifactDataset = [...datasets.values()].some((value) => {
-      const root = value as Record<string, unknown>
-      const source = root.source as Record<string, unknown>
-      return source?.kind === 'marivo_artifact'
-    })
+    const artifactDatasetRefs = new Set(
+      [...datasets.values()].flatMap((value) => {
+        const root = value as Record<string, unknown>
+        const source = root.source as Record<string, unknown>
+        const artifact = source?.artifact as Record<string, unknown> | undefined
+        return source?.kind === 'marivo_artifact' && typeof artifact?.ref === 'string'
+          ? [artifact.ref]
+          : []
+      }),
+    )
+    const artifactDataset = artifactDatasetRefs.size > 0
+    for (const value of traces.values()) {
+      const trace = value as Record<string, unknown>
+      const artifacts = trace.artifacts as Record<string, unknown>[]
+      const missingPreviews = artifacts
+        .map((artifact) => artifact.ref)
+        .filter((ref): ref is string => typeof ref === 'string' && !artifactDatasetRefs.has(ref))
+      if (missingPreviews.length > 0) {
+        addIssue(
+          state,
+          'trace.artifact-preview-missing',
+          page.displayPath,
+          { line: 1, column: 1 },
+          `Session trace has ${missingPreviews.length} Frame node(s) without an identity-matched Artifact dataset`,
+          'Load each graph Artifact with session.artifact(ref), emit a bounded Artifact dataset, and register it before rendering the trace.',
+        )
+      }
+      const queries = trace.queries as Record<string, unknown>[]
+      const queryRunIds = new Set(queries.map((query) => query.run_id))
+      const runs = trace.runs as Record<string, unknown>[]
+      const missingObserveQueries = runs.filter(
+        (run) =>
+          run.capability_id === 'observe' &&
+          run.lifecycle === 'succeeded' &&
+          run.output_mode === 'produced' &&
+          !queryRunIds.has(run.run_id),
+      )
+      if (missingObserveQueries.length > 0) {
+        addIssue(
+          state,
+          'trace.observe-query-missing',
+          page.displayPath,
+          { line: 1, column: 1 },
+          `Session trace has ${missingObserveQueries.length} produced observe Run(s) without SQL execution disclosure`,
+          'Supply caller-held parameterized Query records for each produced observe Run; never recover SQL or bind values from private Marivo storage.',
+        )
+      }
+    }
     if (artifactDataset && traces.size === 0) {
       addIssue(
         state,

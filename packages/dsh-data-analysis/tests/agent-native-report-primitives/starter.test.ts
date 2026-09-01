@@ -398,7 +398,7 @@ test('ReportCharts renders accessible bounded fallbacks and details interactions
   assert.equal(preservedHost.textContent, 'existing content')
 })
 
-test('ReportTrace validates identities and renders an accessible bounded DAG with linear fallback', async () => {
+test('ReportTrace renders an accessible bounded DAG with semantic labels and previews', async () => {
   const context = await starterContext(true)
   const registry = context.ReportTrace!
   const trace = await fixture('trace-succeeded.json')
@@ -416,12 +416,22 @@ test('ReportTrace validates identities and renders an accessible bounded DAG wit
   assert.equal(host.querySelectorAll('.trace-frame-table').length, 1)
   assert.equal(host.querySelectorAll('.trace-query-panel').length, 1)
   assert.equal(host.querySelectorAll('.trace-query-code').length, 1)
-  assert.equal(host.querySelectorAll('table').length, 2)
-  assert.match(host.textContent, /Run 与 Artifact 关系/)
+  assert.equal(host.querySelectorAll('table').length, 1)
+  assert.equal(host.querySelectorAll('.trace-fallback').length, 0)
+  assert.doesNotMatch(host.textContent, /Run 与 Artifact 关系|查看线性步骤与边界/)
   assert.match(host.querySelector('svg')!.textContent, /成功状态不表示报告结论可信/)
+  assert.match(host.querySelector('svg')!.textContent, /fixture|MetricFrame/)
   assert.equal(host.querySelector('svg')!.getAttribute('role'), 'group')
   assert.equal(host.querySelector('.trace-node')!.getAttribute('role'), 'button')
   assert.equal(host.querySelector('.trace-edge')!.getAttribute('role'), 'img')
+
+  const missingQuery = await fixture('trace-succeeded.json')
+  missingQuery.trace_id = 'trace-missing-query'
+  missingQuery.queries = []
+  registry.register('trace-missing-query', missingQuery)
+  registry.renderSessionGraph(host, registry.get('trace-missing-query'))
+  assert.match(host.textContent, /SQL 未提供（1 个 observe）/)
+  assert.match(host.textContent, /该 observe 未提供 SQL 执行记录，分析链路不完整/)
 
   const bounded = await fixture('trace-succeeded.json')
   bounded.trace_id = 'trace-bounded'
@@ -430,7 +440,7 @@ test('ReportTrace validates identities and renders an accessible bounded DAG wit
   registry.register('trace-bounded', bounded)
   registry.renderSessionGraph(host, registry.get('trace-bounded'))
   assert.match(host.textContent, /有界链路/)
-  assert.match(host.textContent, /semantic_authority_not_checked/)
+  assert.match(host.textContent, /不证明当前语义权威、数据源新鲜度或报告结论正确性/)
   assert.equal(host.querySelectorAll('.trace-boundary-node').length, 1)
 
   const longIdentity = await fixture('trace-succeeded.json')
@@ -450,11 +460,10 @@ test('ReportTrace validates identities and renders an accessible bounded DAG wit
   longIdentity.head_artifact_refs = [artifactRef]
   registry.register('trace-long-identity', longIdentity)
   registry.renderSessionGraph(host, registry.get('trace-long-identity'))
-  const edgeTable = host.querySelector('.trace-fallback')!.querySelector('table')!
-  assert.doesNotMatch(edgeTable.textContent, new RegExp(runId))
-  assert.doesNotMatch(edgeTable.textContent, new RegExp(artifactRef))
-  assert.match(host.textContent, new RegExp(`完整 Run ID：${runId}`))
-  assert.match(host.textContent, new RegExp(`完整 Artifact ref：${artifactRef}`))
+  assert.doesNotMatch(host.textContent, new RegExp(runId))
+  assert.doesNotMatch(host.textContent, new RegExp(artifactRef))
+  assert.doesNotMatch(host.textContent, /produces|consumes|reuses/)
+  assert.match(host.textContent, /fixture|MetricFrame/)
 
   const dangling = await fixture('trace-succeeded.json')
   dangling.trace_id = 'trace-dangling'
@@ -509,10 +518,15 @@ test('copied components and Slice 1 fixtures form a static-checkable bundle', as
   const root = path.join(workspace, 'report')
   await mkdir(path.join(root, 'data'), { recursive: true })
   const computed = await fixture('computed-dataset.json')
+  const artifact = await fixture('artifact-dataset.json')
   const trace = await fixture('trace-succeeded.json')
   await writeFile(
     path.join(root, 'data', 'computed-sales.js'),
     `ReportData.register('computed-sales', ${JSON.stringify(computed)})\n`,
+  )
+  await writeFile(
+    path.join(root, 'data', 'artifact-sales.js'),
+    `ReportData.register('artifact-sales', ${JSON.stringify(artifact)})\n`,
   )
   await writeFile(
     path.join(root, 'data', 'trace-succeeded.js'),
@@ -535,6 +549,7 @@ ReportTrace.renderSessionGraph(document.querySelector('#trace'), ReportTrace.get
 <link rel="stylesheet" href="./assets/report-base.css"></head><body><main><h1>Revenue report</h1>
 <div id="chart"></div><section aria-labelledby="trace-title"><h2 id="trace-title">Trace</h2><div id="trace"></div></section>
 </main><script src="./assets/report-data.js"></script><script src="./data/computed-sales.js"></script>
+<script src="./data/artifact-sales.js"></script>
 <script src="./assets/report-charts.js"></script><script src="./assets/report-trace.js"></script>
 <script src="./data/trace-succeeded.js"></script><script src="./assets/app.js"></script></body></html>`,
   )

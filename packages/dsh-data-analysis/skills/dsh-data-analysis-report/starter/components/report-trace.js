@@ -525,8 +525,16 @@
     return node
   }
 
-  function shortIdentity(value) {
-    return value.length <= 20 ? value : `${value.slice(0, 9)}…${value.slice(-6)}`
+  function runLabel(run) {
+    return run.analysis_purpose || run.capability_id
+  }
+
+  function artifactLabel(artifact) {
+    return artifact.family
+  }
+
+  function compactLabel(value) {
+    return value.length <= 18 ? value : `${value.slice(0, 17)}…`
   }
 
   function graphComponents(trace) {
@@ -611,25 +619,25 @@
     return result
   }
 
-  function nodeGroup(kind, identity, title, subtitle, position, attributes, live, activate) {
+  function nodeGroup(kind, title, subtitle, position, attributes, live, activate) {
     const group = svgElement('g', {
       class:
         attributes['data-boundary'] === 'true' ? 'trace-node trace-boundary-node' : 'trace-node',
       role: 'button',
       tabindex: 0,
       transform: `translate(${position.x} ${position.y})`,
-      'aria-label': `${title}，${shortIdentity(identity)}，${subtitle}`,
+      'aria-label': `${kind === 'run' ? '分析动作' : 'Frame'}：${title}；${subtitle}`,
       ...attributes,
     })
     if (kind === 'run') group.append(svgElement('rect', { width: 170, height: 76, rx: 12 }))
     else group.append(svgElement('path', { d: 'M18 0 H152 L170 38 L152 76 H18 L0 38 Z' }))
     const heading = svgElement('text', { x: 85, y: 31, 'text-anchor': 'middle' })
-    heading.textContent = title
+    heading.textContent = compactLabel(title)
     const detail = svgElement('text', { x: 85, y: 53, 'text-anchor': 'middle' })
-    detail.textContent = shortIdentity(identity)
+    detail.textContent = compactLabel(subtitle)
     group.append(heading, detail)
     group.addEventListener('focus', () => {
-      live.textContent = `${title}：${shortIdentity(identity)}；${subtitle}`
+      live.textContent = `${kind === 'run' ? '分析动作' : 'Frame'}：${title}；${subtitle}`
     })
     group.addEventListener('click', activate)
     group.addEventListener('keydown', (event) => {
@@ -703,16 +711,23 @@
     return section
   }
 
-  function runDetail(run) {
+  function runDetail(trace, run) {
     const article = document.createElement('article')
     article.className = 'trace-detail'
     article.dataset.nodeKey = `run:${run.run_id}`
-    article.append(text('p', `Run · ${run.lifecycle}`, 'trace-detail-kind'))
-    article.append(text('h4', run.run_id))
+    article.append(text('p', `分析动作 · ${run.lifecycle}`, 'trace-detail-kind'))
+    article.append(text('h4', runLabel(run)))
+    const inputFrames = run.input_artifact_refs
+      .map((ref) => trace.artifacts.find((artifact) => artifact.ref === ref))
+      .filter(Boolean)
+      .map(artifactLabel)
+    const outputFrame =
+      run.lifecycle === 'succeeded'
+        ? trace.artifacts.find((artifact) => artifact.ref === run.output_artifact_ref)
+        : null
     const entries = [
       ['能力', run.capability_id],
       ['状态', run.lifecycle],
-      ['分析目的', run.analysis_purpose],
       ['开始', run.started_at],
       [
         run.lifecycle === 'failed' ? '失败' : '完成',
@@ -733,10 +748,10 @@
               : null,
         ),
       ],
-      ['输入', run.input_artifact_refs.map(shortIdentity).join('、') || '无'],
+      ['输入 Frame', inputFrames.join('、') || '无'],
     ]
     if (run.lifecycle === 'succeeded') {
-      entries.push(['输出', shortIdentity(run.output_artifact_ref)])
+      entries.push(['输出 Frame', outputFrame ? artifactLabel(outputFrame) : '链路边界外'])
       entries.push(['输出模式', run.output_mode])
     }
     if (run.lifecycle === 'failed') entries.push(['失败类型', run.failure.error_type])
@@ -748,8 +763,8 @@
     const article = document.createElement('article')
     article.className = 'trace-detail'
     article.dataset.nodeKey = `artifact:${artifact.ref}`
-    article.append(text('p', `Artifact · ${artifact.materialization}`, 'trace-detail-kind'))
-    article.append(text('h4', artifact.ref))
+    article.append(text('p', `Frame · ${artifact.materialization}`, 'trace-detail-kind'))
+    article.append(text('h4', artifactLabel(artifact)))
     article.append(
       definitionList([
         ['Frame', artifact.family],
@@ -786,14 +801,12 @@
     body.append(
       definitionList(
         [
-          ['Query ID', query.query_id],
           ['方言', query.dialect],
           ['Digest', query.digest],
           ['耗时', `${query.duration_ms} ms`],
           ['返回行', query.row_count],
           ['开始', query.started_at],
           ['完成', query.finished_at],
-          ['输出', query.output_artifact_ref],
         ],
         'trace-query-meta',
       ),
@@ -824,11 +837,16 @@
     return details
   }
 
-  function queryPanel(queries) {
+  function queryPanel(queries, expected) {
     const panel = document.createElement('section')
     panel.className = 'trace-query-panel'
     if (queries.length === 0) {
-      panel.hidden = true
+      panel.hidden = !expected
+      if (expected) {
+        panel.append(
+          text('p', '该 observe 未提供 SQL 执行记录，分析链路不完整。', 'trace-query-missing'),
+        )
+      }
       return panel
     }
     panel.append(text('h4', `SQL 执行记录（${queries.length}）`))
@@ -836,105 +854,45 @@
     return panel
   }
 
-  function fallback(trace) {
-    const details = document.createElement('details')
-    details.className = 'trace-fallback'
-    details.append(text('summary', '查看线性步骤与边界'))
-    const list = document.createElement('ol')
-    for (const run of trace.runs) {
-      const item = document.createElement('li')
-      const identity = document.createElement('details')
-      identity.append(
-        text('summary', `${shortIdentity(run.run_id)} · ${run.lifecycle} · ${run.capability_id}`),
-      )
-      identity.append(text('p', `完整 Run ID：${run.run_id}`))
-      identity.append(text('p', `输入：${run.input_artifact_refs.join('、') || '无'}`))
-      if (run.lifecycle === 'succeeded')
-        identity.append(text('p', `输出：${run.output_artifact_ref}`))
-      identity.append(text('p', `开始：${run.started_at}`))
-      if (run.lifecycle === 'succeeded') identity.append(text('p', `完成：${run.finished_at}`))
-      if (run.lifecycle === 'failed')
-        identity.append(text('p', `失败：${run.failed_at} · ${run.failure.error_type}`))
-      if (trace.boundary_run_ids.includes(run.run_id))
-        identity.append(text('p', '该 Run 位于有界链路边界。'))
-      item.append(identity)
-      list.append(item)
-    }
-    details.append(list)
-    const artifactList = document.createElement('ol')
-    for (const artifact of trace.artifacts) {
-      const item = document.createElement('li')
-      const identity = document.createElement('details')
-      identity.append(text('summary', `${shortIdentity(artifact.ref)} · ${artifact.family}`))
-      identity.append(text('p', `完整 Artifact ref：${artifact.ref}`))
-      identity.append(text('p', `生成于：${artifact.created_at}`))
-      if (trace.boundary_artifact_refs.includes(artifact.ref)) {
-        identity.append(text('p', '该 Artifact 位于有界链路边界。'))
-      }
-      item.append(identity)
-      artifactList.append(item)
-    }
-    details.append(artifactList)
-    const table = document.createElement('table')
-    table.className = 'data-table'
-    table.append(text('caption', 'Run 与 Artifact 关系'))
-    const header = document.createElement('tr')
-    for (const label of ['关系', 'Run', 'Artifact']) {
-      const cell = text('th', label)
-      cell.scope = 'col'
-      header.append(cell)
-    }
-    const head = document.createElement('thead')
-    head.append(header)
-    table.append(head)
-    const body = document.createElement('tbody')
-    for (const edge of trace.edges) {
-      const row = document.createElement('tr')
-      row.append(
-        text('td', edge.kind),
-        text('td', shortIdentity(edge.run_id)),
-        text('td', shortIdentity(edge.artifact_ref)),
-      )
-      body.append(row)
-    }
-    table.append(body)
-    details.append(table)
-    if (trace.truncated) {
-      details.append(
-        text(
-          'p',
-          `有界链路。Artifact 边界：${trace.boundary_artifact_refs.map(shortIdentity).join('、') || '无'}；Run 边界：${trace.boundary_run_ids.map(shortIdentity).join('、') || '无'}。`,
-          'trace-boundary',
-        ),
-      )
-    }
-    details.append(text('p', `读取边界：${trace.read_boundaries.join('；')}`, 'trace-boundary'))
-    return details
-  }
-
   function traceLegend(trace, componentCount) {
+    const missingObserveQueries = trace.runs.filter(
+      (run) =>
+        run.capability_id === 'observe' &&
+        run.lifecycle === 'succeeded' &&
+        run.output_mode === 'produced' &&
+        !trace.queries.some((query) => query.run_id === run.run_id),
+    ).length
+    const querySummary =
+      missingObserveQueries === 0
+        ? `${trace.queries.length} 条 SQL`
+        : `SQL 未提供（${missingObserveQueries} 个 observe）`
     const overview = document.createElement('header')
     overview.className = 'trace-overview'
     overview.append(
       text(
         'p',
-        `${trace.runs.length} 个分析动作 · ${trace.artifacts.length} 个数据工件 · ${trace.queries.length} 条 SQL · ${componentCount} 条链路`,
+        `${trace.runs.length} 个分析动作 · ${trace.artifacts.length} 个 Frame · ${querySummary} · ${componentCount} 条链路`,
         'trace-count',
       ),
     )
     const legend = document.createElement('div')
     legend.className = 'trace-legend'
     for (const [label, className] of [
-      ['Run', 'trace-legend-run'],
-      ['Artifact', 'trace-legend-artifact'],
-      ['produces', 'trace-legend-produces'],
-      ['reuses', 'trace-legend-reuses'],
-      ['consumes', 'trace-legend-consumes'],
+      ['分析动作', 'trace-legend-run'],
+      ['Frame', 'trace-legend-artifact'],
     ]) {
       legend.append(text('span', label, className))
     }
     overview.append(legend)
     return overview
+  }
+
+  function readBoundaryDisclosure() {
+    return text(
+      'p',
+      '该链路记录分析执行关系，不证明当前语义权威、数据源新鲜度或报告结论正确性。',
+      'trace-boundary',
+    )
   }
 
   function renderComponent(trace, component, componentIndex, live) {
@@ -960,7 +918,7 @@
     queryHost.className = 'trace-query-host'
     const detailByKey = new Map()
     for (const run of component.runs) {
-      const detail = runDetail(run)
+      const detail = runDetail(trace, run)
       detailByKey.set(`run:${run.run_id}`, detail)
       detailsPanel.append(detail)
     }
@@ -981,7 +939,17 @@
       queryHost.replaceChildren()
       if (key.startsWith('run:')) {
         const runId = key.slice(4)
-        queryHost.append(queryPanel(trace.queries.filter((query) => query.run_id === runId)))
+        const run = trace.runs.find((candidate) => candidate.run_id === runId)
+        const expected =
+          run.capability_id === 'observe' &&
+          run.lifecycle === 'succeeded' &&
+          run.output_mode === 'produced'
+        queryHost.append(
+          queryPanel(
+            trace.queries.filter((query) => query.run_id === runId),
+            expected,
+          ),
+        )
       }
     }
 
@@ -999,7 +967,7 @@
     title.textContent = `分析链路 ${componentIndex + 1}`
     const description = svgElement('desc')
     description.textContent =
-      '选择 Run 或 Artifact 节点可查看审计详情；成功状态不表示报告结论可信。'
+      '选择分析动作或 Frame 节点可查看审计详情；成功状态不表示报告结论可信。'
     const definitions = svgElement('defs')
     const marker = svgElement('marker', {
       id: `trace-arrow-${svgId}`,
@@ -1021,34 +989,29 @@
         edge.kind === 'consumes' ? `run:${edge.run_id}` : `artifact:${edge.artifact_ref}`
       const sourcePosition = layout.get(sourceKey)
       const targetPosition = layout.get(targetKey)
+      const run = component.runs.find((candidate) => candidate.run_id === edge.run_id)
+      const artifact = component.artifacts.find((candidate) => candidate.ref === edge.artifact_ref)
+      const sourceLabel = edge.kind === 'consumes' ? artifactLabel(artifact) : runLabel(run)
+      const targetLabel = edge.kind === 'consumes' ? runLabel(run) : artifactLabel(artifact)
       const line = svgElement('line', {
         class: 'trace-edge',
         'data-kind': edge.kind,
         role: 'img',
-        tabindex: 0,
         x1: sourcePosition.x + 170,
         x2: targetPosition.x,
         y1: sourcePosition.y + 38,
         y2: targetPosition.y + 38,
         'marker-end': `url(#trace-arrow-${svgId})`,
-        'aria-label': `${edge.kind}：${shortIdentity(edge.run_id)} 与 ${shortIdentity(edge.artifact_ref)}`,
+        'aria-label': `连接：${sourceLabel} 到 ${targetLabel}`,
       })
       viewport.append(line)
-      const label = svgElement('text', {
-        x: (sourcePosition.x + 170 + targetPosition.x) / 2,
-        y: (sourcePosition.y + targetPosition.y) / 2 + 30,
-        'text-anchor': 'middle',
-      })
-      label.textContent = edge.kind
-      viewport.append(label)
     }
     for (const run of component.runs) {
       const key = `run:${run.run_id}`
       const node = nodeGroup(
         'run',
-        run.run_id,
+        runLabel(run),
         run.capability_id,
-        `${run.lifecycle}；${run.started_at}`,
         layout.get(key),
         {
           'data-lifecycle': run.lifecycle,
@@ -1064,9 +1027,8 @@
       const key = `artifact:${artifact.ref}`
       const node = nodeGroup(
         'artifact',
-        artifact.ref,
-        artifact.family,
-        `${artifact.materialization}；${artifact.created_at}`,
+        artifactLabel(artifact),
+        artifact.analysis_purpose || artifact.semantic_shape || artifact.materialization,
         layout.get(key),
         {
           'data-boundary': String(trace.boundary_artifact_refs.includes(artifact.ref)),
@@ -1128,7 +1090,7 @@
     for (const [index, component] of components.entries()) {
       container.append(renderComponent(value, component, index, live))
     }
-    container.append(live, fallback(value))
+    container.append(live, readBoundaryDisclosure())
     return container
   }
 

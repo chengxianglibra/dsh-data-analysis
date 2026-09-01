@@ -1351,7 +1351,7 @@ chart-header       chart-title          chart-data-details  chart-details-trigge
 chart-details-popover chart-legend      table-wrap          data-table
 callout
 callout-warning    callout-critical     report-disclosure   report-footer
-report-trace       trace-shell          trace-boundary      trace-fallback
+report-trace       trace-shell          trace-boundary
 trace-node         trace-edge           trace-boundary-node skip-link
 ```
 
@@ -1522,19 +1522,19 @@ ReportTrace.renderSessionGraph(
 
 组件只标准化追溯 appendix，不成为主报告 renderer：
 
-- Run 和 Artifact 使用不同 node shape；`consumes`、`produces`、`reuses` 使用不同 line style 与可见 label；
+- 分析动作和 Frame 使用不同 node shape；连接方向与 line style 保留 edge kind，但连线上不重复显示技术 label；
 - succeeded、failed、incomplete 同时用文字、形状和颜色表达；不把 succeeded 映射成“可信”；
 - `report_artifact_refs` 使用 accent outline，说明它们进入报告，不表示所有报告文字由其蕴含；
 - layout 采用确定的 left-to-right topological levels；同层按输入 snapshot 顺序排列，layout coordinates 不写回
   snapshot；
-- `truncated=True` 时在标题、SVG boundary node 和 fallback 中同时显示“有界链路”，并列出 boundary refs；
-- SVG 有 `<title>`、`<desc>`、键盘可聚焦 node 与 edge summary；focus 状态同步到 live region；
-- 同时生成线性步骤/edge table fallback，包含 lifecycle、capability、inputs、output、time 和 boundary；
-- 默认折叠 `<details>`，审计报告可由 Agent 设为 open；线性 fallback 不依赖交互 SVG；
-- full Session id、Run id 和 Artifact ref 默认使用短标签，完整值只在 node details 中按需展开；
-- 弱连通 component 分成独立“分析链路”，每条链路采用左侧 DAG、右侧可选择 Run/Artifact 详情；Artifact
+- `truncated=True` 时在标题与 SVG boundary node 显示“有界链路”，不展示 boundary identity；
+- SVG 有 `<title>`、`<desc>`、键盘可聚焦 node；focus 状态同步到 live region；
+- 不生成重复 DAG 信息的线性步骤/edge table fallback；
+- Run id、Artifact ref 和 Session id 只作页面内部关联，不向普通读者展示；分析动作使用 `analysis_purpose`
+  （缺失时回退 capability），Frame 使用 family，并以分析目的作为辅助标签；
+- 弱连通 component 分成独立“分析链路”，每条链路采用左侧 DAG、右侧可选择分析动作/Frame 详情；Frame
   详情按 ref 复用已注册 Artifact dataset 的最多 10 行有界 Frame 预览，不把 rows 复制进 trace；
-- SQL 不挤在右侧节点栏：选择 Run 后在链路下方显示全宽 disclosure、结构化执行元数据、参数化说明、原始
+- SQL 不挤在右侧节点栏：选择分析动作后在链路下方显示全宽 disclosure、结构化执行元数据、参数化说明、原始
   换行横向滚动与可切换自动换行；
 - 不展示已从 snapshot 排除的 arguments、failure values、raw params、bind values 或 credential 内容；
 - 不生成“完整”“最新”“已验证”“可信”等结论；只忠实显示 snapshot 的 `truncated` 和 read boundaries。
@@ -1750,7 +1750,7 @@ ReportTrace.renderSessionGraph(
 );
 ```
 
-`renderSessionGraph` 总是生成 SVG 与线性 fallback。Agent 可以改写 appendix 标题、说明和页面位置，但不能
+`renderSessionGraph` 生成 SVG 与节点详情，不生成重复的线性 fallback。Agent 可以改写 appendix 标题、说明和页面位置，但不能
 删除 `truncated` / boundary / read-boundary 披露后仍称其为标准可追溯组件。
 
 #### 4. computed-only 删除路径
@@ -1905,7 +1905,7 @@ Agent 不需要记忆 dataset 或 trace schema；Python helper 生成，Starter 
   报告需要显式添加 remote script、stylesheet 或 font，其加载与供应链风险不由 Checker 验证；
 - 不默认持久化数据到 browser storage；
 - 不自动渲染技术 identity 给普通读者；
-- Trace 默认使用短标签和折叠 details，完整 identity 只在用户展开 node details 时显示；
+- Trace 不展示 Run、Artifact 或 Session identity；节点只显示分析目的、capability 和 Frame family；
 - 不把隐藏数据或完整 Artifact rows 仅为了 tooltip 嵌入页面。
 
 ## 失败模型
@@ -2004,7 +2004,7 @@ omissions 或 read boundaries 必须升级版本；不能借 dataset schema mino
 
 - ownership：`packages/dsh-data-analysis/skills/dsh-data-analysis-report/` 与对应 Starter/Skill tests；
 - 实现只含技术 shell 的 basic HTML/CSS；
-- 独立实现 dataset/chart/table/KPI、`ReportTrace`、trace fallback components 和可组合 snippets；
+- 独立实现 dataset/chart/table/KPI、`ReportTrace` 和可组合 snippets；
 - 实现明确标记为 reference-only 的 `analysis-brief` example；
 - 按 progressive disclosure 拆分 Skill 内容原则、dataset、trace、components 与 Checker references；
 - 缩短本插件 Skill description/`SKILL.md`；所有 Starter/example 作为 package resource 候选，不自动进入 prompt；
@@ -2246,7 +2246,7 @@ Helper 的行数/字节预算、防止 object 隐式 stringify、默认不展示
 - Managed Runtime 安装插件 wheel；管理员 Python 只探测，不由插件修改。
 - `starter/basic` 必须只包含最小 HTML 技术 shell 与 editorial/accessibility CSS，不包含固定业务章节、
   dataset/chart/trace mount、example data 或 app script。
-- 分发资源必须另外包含安全 registry、line/bar/KPI/table、独立 `ReportTrace`、线性 fallback、可组合 snippets
+- 分发资源必须另外包含安全 registry、line/bar/KPI/table、独立 `ReportTrace`、可组合 snippets
   和明确标记的 `analysis-brief` example。
 - 报告内容与组织由 Skill 原则指导；Checker 不检查章节名称、数量或顺序。
 - 纯文本输出直接遵循 `marivo-analysis` 的 material quality closeout，不加载 HTML report Skill，不生成

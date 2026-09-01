@@ -117,8 +117,8 @@ test('trace semantic validation preserves local truncation boundaries and requir
 })
 
 test('rule registry is unique, closed, and fixes severity for every V1 namespace', () => {
-  assert.equal(REPORT_CHECK_RULES.length, 58)
-  assert.equal(new Set(REPORT_CHECK_RULES.map((rule) => rule.code)).size, 58)
+  assert.equal(REPORT_CHECK_RULES.length, 60)
+  assert.equal(new Set(REPORT_CHECK_RULES.map((rule) => rule.code)).size, 60)
   assert.deepEqual(
     new Set(REPORT_CHECK_RULES.map((rule) => rule.group)),
     new Set([
@@ -139,6 +139,8 @@ test('rule registry is unique, closed, and fixes severity for every V1 namespace
   const byCode = new Map(REPORT_CHECK_RULES.map((rule) => [rule.code, rule.severity]))
   assert.equal(byCode.get('resource.external-dependency-unchecked'), 'warning')
   assert.equal(byCode.get('resource.external-navigation-unchecked'), 'info')
+  assert.equal(byCode.get('trace.artifact-preview-missing'), 'error')
+  assert.equal(byCode.get('trace.observe-query-missing'), 'error')
   assert.equal(byCode.get('trace.missing-for-artifact-report'), 'warning')
   assert.equal(byCode.get('a11y.table-header-missing'), 'error')
   assert.equal(byCode.get('budget.issue-count-truncated'), 'info')

@@ -346,8 +346,7 @@ a {
 }
 
 .chart-point:focus,
-.trace-node:focus,
-.trace-edge:focus {
+.trace-node:focus {
   outline: none;
   filter: drop-shadow(0 0 3px var(--focus));
 }
@@ -419,7 +418,6 @@ a {
 }
 
 .report-trace > details > summary,
-.trace-fallback > summary,
 .chart-fallback > summary {
   min-height: 44px;
   padding: 10px 0;
@@ -437,6 +435,14 @@ a {
   margin: 0;
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.trace-query-missing {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border-left: 4px solid var(--critical);
+  background: var(--surface);
+  color: var(--critical);
 }
 
 .trace-legend {
@@ -471,23 +477,6 @@ a {
 .trace-legend .trace-legend-artifact::before {
   border-color: var(--accent);
   background: var(--paper);
-}
-
-.trace-legend .trace-legend-produces::before,
-.trace-legend .trace-legend-reuses::before,
-.trace-legend .trace-legend-consumes::before {
-  height: 0;
-  border: 0;
-  border-top: 2px solid var(--muted);
-  border-radius: 0;
-}
-
-.trace-legend .trace-legend-reuses::before {
-  border-top-style: dashed;
-}
-
-.trace-legend .trace-legend-consumes::before {
-  border-top-style: dotted;
 }
 
 .trace-component {

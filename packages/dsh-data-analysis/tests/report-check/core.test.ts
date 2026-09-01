@@ -296,6 +296,55 @@ test('Artifact datasets without a valid trace warn while warning-only output sti
   assert.ok(codes(result).has('trace.missing-for-artifact-report'))
 })
 
+test('Session traces require Frame previews and SQL for produced observe Runs', async (t) => {
+  const root = await workspace(t)
+  const fixtureRoot = reportContractRoot()
+  const artifact = JSON.parse(
+    await readFile(new URL('fixtures/artifact-dataset.json', fixtureRoot), 'utf8'),
+  )
+  const trace = JSON.parse(
+    await readFile(new URL('fixtures/trace-succeeded.json', fixtureRoot), 'utf8'),
+  )
+  await writeFile(path.join(root, 'report-data.js'), 'globalThis.ReportData = {};')
+  await writeFile(path.join(root, 'report-trace.js'), 'globalThis.ReportTrace = {};')
+  await writeFile(
+    path.join(root, 'trace.js'),
+    `ReportTrace.register("trace-succeeded", ${JSON.stringify(trace)});`,
+  )
+  await writeFile(
+    path.join(root, 'index.html'),
+    html(
+      '<script src="report-data.js"></script><script src="report-trace.js"></script><script src="trace.js"></script>',
+    ),
+  )
+
+  const missingPreview = await check(root)
+  assert.equal(missingPreview.status, 'failed_static')
+  assert.ok(codes(missingPreview).has('trace.artifact-preview-missing'))
+  assert.equal(codes(missingPreview).has('trace.observe-query-missing'), false)
+
+  trace.queries = []
+  await writeFile(
+    path.join(root, 'artifact.js'),
+    `ReportData.register("artifact-sales", ${JSON.stringify(artifact)});`,
+  )
+  await writeFile(
+    path.join(root, 'trace.js'),
+    `ReportTrace.register("trace-succeeded", ${JSON.stringify(trace)});`,
+  )
+  await writeFile(
+    path.join(root, 'index.html'),
+    html(
+      '<script src="report-data.js"></script><script src="artifact.js"></script><script src="report-trace.js"></script><script src="trace.js"></script>',
+    ),
+  )
+
+  const missingQuery = await check(root)
+  assert.equal(missingQuery.status, 'failed_static')
+  assert.equal(codes(missingQuery).has('trace.artifact-preview-missing'), false)
+  assert.ok(codes(missingQuery).has('trace.observe-query-missing'))
+})
+
 test('budgets mark static coverage incomplete and diagnostic truncation is deterministic', async (t) => {
   const root = await workspace(t)
   await writeFile(
@@ -455,6 +504,22 @@ test('every registered V1 rule has an executable positive fixture and the health
     {
       'report-data.js': 'globalThis.ReportData = {};',
       'artifact.js': `ReportData.register("artifact-sales", ${JSON.stringify(artifact)});`,
+    },
+  )
+
+  const missingQueryTrace = structuredClone(trace)
+  missingQueryTrace.trace_id = 'trace-missing-query'
+  missingQueryTrace.queries = []
+  await run(
+    'trace-missing-query',
+    html(
+      '<script src="report-data.js"></script><script src="artifact.js"></script><script src="report-trace.js"></script><script src="trace.js"></script>',
+    ),
+    {
+      'report-data.js': 'globalThis.ReportData = {};',
+      'artifact.js': `ReportData.register("artifact-sales", ${JSON.stringify(artifact)});`,
+      'report-trace.js': 'globalThis.ReportTrace = {};',
+      'trace.js': `ReportTrace.register("trace-missing-query", ${JSON.stringify(missingQueryTrace)});`,
     },
   )
 

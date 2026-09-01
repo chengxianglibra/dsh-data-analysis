@@ -40,6 +40,8 @@
     { "code": "trace.unregistered-read", "severity": "error", "group": "trace" },
     { "code": "trace.schema-invalid", "severity": "error", "group": "trace" },
     { "code": "trace.identity-dangling", "severity": "error", "group": "trace" },
+    { "code": "trace.artifact-preview-missing", "severity": "error", "group": "trace" },
+    { "code": "trace.observe-query-missing", "severity": "error", "group": "trace" },
     { "code": "trace.missing-for-artifact-report", "severity": "warning", "group": "trace" },
     { "code": "a11y.image-alt-invalid", "severity": "error", "group": "a11y" },
     { "code": "a11y.control-name-missing", "severity": "error", "group": "a11y" },
