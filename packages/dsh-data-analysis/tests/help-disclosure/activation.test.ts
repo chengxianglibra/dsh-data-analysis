@@ -31,6 +31,7 @@ import {
   installMarivoPlugin,
   MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
   MARIVO_EVIDENCE_SOURCES_PROMPT,
+  MARIVO_REPORT_PROMPT,
 } from '../../src/plugin.ts'
 import { DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME } from '../../src/report-check/index.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
@@ -295,7 +296,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
 })
 
-test('Evidence source guidance appears only after analysis activation without a standing report prompt', async (t) => {
+test('analysis activation adds Evidence guidance and the concise report route', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -314,7 +315,9 @@ test('Evidence source guidance appears only after analysis activation without a 
   send(agent, 'analyze with exact evidence')
   await agent.whenIdle()
 
-  assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /marivo_evidence_sources/)
+  const initialPrompt = JSON.stringify(adapter.requests[0]?.system ?? '')
+  assert.doesNotMatch(initialPrompt, /marivo_evidence_sources/)
+  assert.doesNotMatch(initialPrompt, /Use dsh-data-analysis-report/)
   const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
   assert.match(activatedPrompt, /marivo_evidence_sources/)
   assert.match(activatedPrompt, /do not call marivo_evidence_sources by default/)
@@ -326,6 +329,11 @@ test('Evidence source guidance appears only after analysis activation without a 
   assert.match(activatedPrompt, /no exact persisted Finding/)
   assert.match(activatedPrompt, /do not emit a boilerplate quality or evidence section/)
   assert.match(activatedPrompt, /does not prove/)
+  assert.ok(activatedPrompt.includes(MARIVO_REPORT_PROMPT))
+  assert.equal(
+    MARIVO_REPORT_PROMPT,
+    'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation. For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill trace/SQL details.',
+  )
   assert.doesNotMatch(activatedPrompt, /marivo_report_render/)
   assert.doesNotMatch(activatedPrompt, /answer inline by default/)
   assert.doesNotMatch(activatedPrompt, /load the dsh-data-analysis-report Skill/)

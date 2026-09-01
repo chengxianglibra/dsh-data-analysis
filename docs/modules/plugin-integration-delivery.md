@@ -38,16 +38,21 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 和�
 ## Prompt 与 Skill 激活
 
 `marivo-semantic` 激活后注入 credential 规则；`marivo-analysis` 激活后注入 Evidence 调用策略和报告
-Skill 路由。用户明确请求或接受 HTML 报告时，Agent 加载 `dsh-data-analysis-report`；该 Skill 只说明：
+Skill 路由。用户请求 HTML/Web 输出，或分析需要多个图表/表格或较长的分章节呈现时，Agent 加载
+`dsh-data-analysis-report`；该 Skill 只说明：
 
-- 直接使用 Marivo public objects；
+- 直接恢复并 revalidate persisted Artifacts，不为展示重新执行 `observe`；
 - 新目录、相对资源、固定 `index.html`；
 - 资源先写、入口最后写；
-- Native/both 顶层 mutation 与 Code-only 路径降级；
+- Native/both 顶层 mutation、精确 Markdown 行内路径与 Code-only 路径降级；
 - 交付前执行资源、离线、安全、浏览器、键盘和打印检查；
 - 不把 Workspace bundle 描述为不可变发布、replay、share 或 Evidence proof。
 
 指导不定义章节、block、chart type、layout 或 renderer schema。
+
+Checker 校验 dataset、非 Query trace 结构、bundle 资源、安全与可访问性，但对 trace `queries` 使用空投影：
+不要求 `observe` Run 提供 Query，也不检查已有 Query 的 schema、重复 ID 或 Run/Artifact identity。Report kit
+仍可生成并校验调用方主动提供的安全 Query；`queries=[]` 时页面不渲染 SQL 区域。
 
 ## Web client
 
@@ -57,7 +62,8 @@ Web client 只保留：
 - `marivo_evidence_sources` Turn delivery 与折叠来源面板。
 
 不存在报告 Tool View、durable report block、report turn-tail selector 或专用 Host opener。HTML 入口使用 DSH
-通用 Produced Files 与 `openFile` / Host capability；remote/headless 自动降级为路径。
+通用 Produced Files 与精确行内路径，通过 `openFile` / Host capability 打开；Code-only nested mutation、
+remote/headless 自动降级为路径。
 
 ## Compatibility 与 package
 

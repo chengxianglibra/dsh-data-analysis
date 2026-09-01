@@ -40,10 +40,12 @@ Marivo 公共 API，不增加 convenience Tool。
 
 ## 报告交付
 
-用户明确请求或接受 HTML 报告后，Agent 加载 `dsh-data-analysis-report`。该 Skill 指导 Agent 自由生成
-`<workspace>/<new-report-directory>/index.html` 与可选相对资源。Native/both 的最终入口使用顶层 DSH
-`write` / `edit`；Code-only 在 `run_code` 内使用同一 Tool 并输出精确路径。插件不创建报告对象、digest、
-不可变发布、历史字节 replay 或 share link。
+用户请求 HTML/Web 输出，或分析需要多个图表/表格或较长的分章节呈现时，Agent 加载
+`dsh-data-analysis-report`。已有分析恢复并 revalidate persisted Artifacts，不为报告展示重新执行 `observe`。
+该 Skill 指导 Agent 自由生成 `<workspace>/<new-report-directory>/index.html` 与可选相对资源。Native/both 的
+最终入口使用顶层 DSH `write` / `edit`，并以精确 Markdown 行内路径交付，让 DSH Web 复用 Produced Files
+提供点击；Code-only 在 `run_code` 内使用同一 Tool，但嵌套 mutation 只保证精确路径。插件不创建报告对象、
+digest、不可变发布、历史字节 replay 或 share link。
 
 ## 验证
 

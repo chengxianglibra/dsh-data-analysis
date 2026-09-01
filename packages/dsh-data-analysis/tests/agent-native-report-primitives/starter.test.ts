@@ -103,11 +103,12 @@ test('Skill and references keep progressive disclosure closed and complete', asy
   const skill = await readFile(path.join(skillRoot, 'SKILL.md'), 'utf8')
   assert.match(
     skill,
-    /description: Create or revise a Workspace HTML analysis report\. Use only when the user explicitly requests HTML\/web output or accepts it; never use for inline, text, or other non-HTML output\./,
+    /description: Create or revise a Workspace HTML analysis report\. Use for requested HTML\/web output or when an analysis needs multiple charts\/tables or a long multi-section presentation\./,
   )
   assert.ok(skill.length < 5_000)
   assert.match(skill, /Read only the references needed/)
   assert.match(skill, /dsh_data_analysis_report_check/)
+  assert.match(skill, /exact file-Tool path as\s+Markdown inline code/)
   assert.doesNotMatch(skill, /renderLineChart\(|dsh-data-analysis-dataset\/v1|coverage\.external/)
 
   const references = [
@@ -430,8 +431,9 @@ test('ReportTrace renders an accessible bounded DAG with semantic labels and pre
   missingQuery.queries = []
   registry.register('trace-missing-query', missingQuery)
   registry.renderSessionGraph(host, registry.get('trace-missing-query'))
-  assert.match(host.textContent, /SQL 未提供（1 个 observe）/)
-  assert.match(host.textContent, /该 observe 未提供 SQL 执行记录，分析链路不完整/)
+  assert.equal(host.querySelectorAll('.trace-query-host').length, 0)
+  assert.equal(host.querySelectorAll('.trace-query-panel').length, 0)
+  assert.doesNotMatch(host.textContent, /SQL|分析链路不完整/)
 
   const bounded = await fixture('trace-succeeded.json')
   bounded.trace_id = 'trace-bounded'

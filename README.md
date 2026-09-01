@@ -91,8 +91,9 @@ marivo_evidence_sources({
 
 ## Agent 原生报告
 
-用户明确请求或接受 HTML 报告后，Agent 加载 `dsh-data-analysis-report` Skill。报告没有插件 schema 或
-renderer。Agent 直接读取：
+用户请求 HTML/Web 输出，或分析需要多个图表/表格或较长的分章节呈现时，Agent 加载
+`dsh-data-analysis-report` Skill。已有分析先恢复并 revalidate 精确 persisted Artifacts，不为生成报告或补齐
+trace/SQL 重新执行 `observe`。报告没有插件 schema 或 renderer。Agent 直接读取：
 
 - `artifact.show()` / `render()`、`contract()`、`quality_summary`、`lineage`；
 - `session.revalidate(ref)` 和 Artifact-owned `findings()` / `finding()`；
@@ -109,8 +110,9 @@ renderer。Agent 直接读取：
 ```
 
 先生成并检查资源，最后写 `index.html`。Native/both 模式通过顶层 `write` / `edit` 让入口进入 Produced
-Files；Code-only 模式在 `run_code` 内调用同一文件 Tool，并从外层输出和最终回答交付精确路径。普通目录
-bundle 没有目录级事务、digest、不可变身份、历史字节 replay、权限发布或 share 语义。
+Files；最终回答以 Markdown 行内代码交付文件 Tool 返回的精确路径，使 DSH Web 可将同轮产出解析为可点击
+入口。Code-only 模式在 `run_code` 内调用同一文件 Tool，但嵌套 mutation 只能保证精确路径。普通目录 bundle
+没有目录级事务、digest、不可变身份、历史字节 replay、权限发布或 share 语义。
 
 ## 开发与验证
 

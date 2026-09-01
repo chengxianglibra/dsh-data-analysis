@@ -28,8 +28,8 @@ emit_session_trace(
 )
 ```
 
-每个 `output_mode="produced"` 的 `observe` Run 都必须提供 SQL execution disclosure。只能传入调用方已经
-持有并确认可披露的参数化 SQL；Report kit 不读取 Marivo 私有 Store，也不从 bind values 还原原始业务值：
+SQL execution disclosure 是可选内容。仅当调用方已经持有并确认可披露的参数化 SQL 时传入；Report kit
+不读取 Marivo 私有 Store，也不从 bind values 还原原始业务值：
 
 ```python
 from dsh_data_analysis_report import SessionTraceQuery
@@ -58,8 +58,8 @@ emit_session_trace(
 
 SQL 在选中所属分析动作时显示于 DAG 与节点详情下方的全宽审计区，默认保留原始换行和横向滚动，并可切换
 自动换行。不要把 raw SQL、bind values、credential、env value 或含敏感字面量的查询传入该字段。当前 pin
-没有公开的 post-hoc Query read；调用方未在执行边界持有安全 Query record 时，报告必须保留
-`trace.observe-query-missing` error 并标记为未完成，不能读取私有持久化路径或把 `0 条 SQL` 当作完整链路。
+没有公开的 post-hoc Query read；没有安全 Query record 时保持 `queries=[]`，不要读取私有持久化路径、重新
+执行 `observe`，或重新编译当前语义来补齐历史 SQL。Checker 不检查 Query 的存在、内容或身份关系。
 
 Load provider, snapshot, and consumer in order:
 

@@ -165,6 +165,30 @@ function publicReadProgram(fixture: Fixture, artifactRef: string): string {
   ].join('\n')
 }
 
+async function sessionRunCount(
+  pythonExecutable: string,
+  projectRoot: string,
+  sessionId: string,
+): Promise<number> {
+  const program = [
+    'import marivo.analysis as mv',
+    `session = mv.session.resume(${JSON.stringify(sessionId)}, use_datasources=False)`,
+    'print(len(session.runs(limit=100).items))',
+  ].join('\n')
+  const result = await new FixedSubprocessPolicy(projectRoot).run({
+    executable: pythonExecutable,
+    args: ['-I', '-c', program],
+    limits: { timeoutMs: 120_000, stdoutMaxBytes: 4_096, stderrMaxBytes: 65_536 },
+  })
+  assert.equal(result.exitCode, 0, result.stderr.toString('utf8'))
+  const count = Number.parseInt(result.stdout.toString('utf8').trim(), 10)
+  assert.ok(
+    Number.isInteger(count) && count >= 0,
+    'Session Run count must be a non-negative integer',
+  )
+  return count
+}
+
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`
 }
@@ -573,14 +597,16 @@ async function main(): Promise<void> {
       id: 'static-narrative',
       mode: 'native' as const,
       shape: 'static' as const,
+      route: 'automatic' as const,
       ref: fixture.timeSeriesRef,
       requirement:
-        'Create a static Chinese long-form narrative with a custom SVG chart. If you show weekdays, compute them: 2026-08-20 is Thursday, 2026-08-21 is Friday, and 2026-08-22 is Saturday.',
+        'Create a self-contained static Chinese long-form narrative with at least two literal <svg> charts directly in the entry HTML and a table; do not generate charts with JavaScript. Keep all report content, CSS, and SVG in the bundle entry and create no other file in the report bundle. If you show weekdays, compute them: 2026-08-20 is Thursday, 2026-08-21 is Friday, and 2026-08-22 is Saturday.',
     },
     {
       id: 'interactive-dashboard',
       mode: 'code' as const,
       shape: 'dashboard' as const,
+      route: 'explicit' as const,
       ref: fixture.segmentedRef,
       requirement:
         'Create an interactive Chinese dashboard. Read vendor/mini-charts.js and copy it to the bundle as assets/mini-charts.js, then use it from a local type=module script with keyboard-operable buttons.',
@@ -589,6 +615,7 @@ async function main(): Promise<void> {
       id: 'print-audit',
       mode: 'both' as const,
       shape: 'audit' as const,
+      route: 'explicit' as const,
       ref: fixture.segmentedRef,
       requirement:
         'Create a print-first Chinese audit report with a table and a visible Session timeline. In both mode, call write directly rather than through run_code.',
@@ -615,6 +642,19 @@ async function main(): Promise<void> {
     await mkdir(path.dirname(queryPath), { recursive: true })
     const program = publicReadProgram(fixture, spec.ref)
     const command = `${shellQuote(environment.binding.pythonExecutable)} -I ${shellQuote(queryPath)}`
+    const runCountBefore = await sessionRunCount(
+      environment.binding.pythonExecutable,
+      projectRoot,
+      fixture.sessionId,
+    )
+    const routeInstruction =
+      spec.route === 'automatic'
+        ? 'Load marivo-analysis. Analyze the supplied persisted result with multiple charts/tables and a long multi-section presentation; choose the delivery medium from the active guidance.'
+        : 'Load marivo-analysis and dsh-data-analysis-report, then create the explicitly requested HTML report.'
+    const entryInstruction =
+      spec.route === 'automatic'
+        ? `Use ${path.dirname(entryPath)} as the report bundle directory.`
+        : `The exact final entry must be ${entryPath}.`
     agent.followup(
       createUserMessage({
         source: { kind: 'user' },
@@ -622,22 +662,28 @@ async function main(): Promise<void> {
           {
             type: 'text',
             text: [
-              'Load marivo-analysis and dsh-data-analysis-report, then create the explicitly requested HTML report.',
+              routeInstruction,
               `First use the file Tool to write this exact public-API program to ${queryPath}:\n${program}`,
               `Then call bash with this exact command and workdir ${projectRoot}: ${command}`,
               spec.requirement,
-              'Use only relative local resources, include @media print, create assets before the entry, and write index.html last.',
-              `The exact final entry must be ${entryPath}.`,
-              `End with AGENT_NATIVE_${spec.id.toUpperCase().replaceAll('-', '_')}_OK and the exact entry path.`,
+              'Use only relative local resources and include print styles. Create assets before the bundle entry; if any bundle file changes later, finish by editing the entry again.',
+              entryInstruction,
+              `End with AGENT_NATIVE_${spec.id.toUpperCase().replaceAll('-', '_')}_OK and the exact entry path formatted as Markdown inline code.`,
             ].join('\n'),
           },
         ],
       }),
     )
     await agent.whenIdle()
+    const runCountAfter = await sessionRunCount(
+      environment.binding.pythonExecutable,
+      projectRoot,
+      fixture.sessionId,
+    )
+    assert.equal(runCountAfter, runCountBefore, 'report generation must not create Marivo Runs')
     const text = finalText(agent)
     assert.match(text, new RegExp(`AGENT_NATIVE_${spec.id.toUpperCase().replaceAll('-', '_')}_OK`))
-    assert.ok(text.includes(entryPath))
+    assert.ok(text.includes(`\`${entryPath}\``), 'final entry path must use Markdown inline code')
     const bundle = await validateBundle(entryPath, spec.shape)
     const sessionMutations = mutations.filter((item) => item.sessionId === String(agent.session.id))
     const sessionBash = bashCalls.filter((item) => item.sessionId === String(agent.session.id))
@@ -646,8 +692,12 @@ async function main(): Promise<void> {
       .map((item) => item.name)
     assert.ok(sessionSkills.includes('marivo-analysis'))
     assert.ok(sessionSkills.includes('dsh-data-analysis-report'))
-    const queryBash = sessionBash.filter((item) => item.command === command)
-    assert.equal(queryBash.length, 1)
+    const queryBash = sessionBash.filter(
+      (item) =>
+        item.command.includes(environment.binding.pythonExecutable) &&
+        item.command.includes(queryPath),
+    )
+    assert.equal(queryBash.length, 1, JSON.stringify(sessionBash))
     assert.equal(queryBash[0]!.nested, spec.mode === 'code')
     assert.equal((await readFile(queryPath, 'utf8')).trim(), program)
     for (const required of [
@@ -689,6 +739,8 @@ async function main(): Promise<void> {
       entryNested: entryMutation?.nested,
       loadedSkills: sessionSkills,
       bashNested: queryBash[0]!.nested,
+      runCountBefore,
+      runCountAfter,
       bundle,
     })
     releasePresentation()

@@ -57,6 +57,11 @@ export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
   'A source attachment proves the identity of its Marivo Evidence source; it does not prove that the whole sentence, calculation, or business judgment is correct.',
 ].join(' ')
 
+export const MARIVO_REPORT_PROMPT = [
+  'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation.',
+  'For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill trace/SQL details.',
+].join(' ')
+
 const integrationSkillsRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -196,6 +201,14 @@ export function installMarivoPlugin(
         order: 180,
         text: () =>
           controller.activeSkills.includes('marivo-analysis') ? MARIVO_EVIDENCE_SOURCES_PROMPT : '',
+      }),
+    )
+    controller.addDisposer(
+      agent.ctx.systemPrompt.section({
+        name: 'marivo:report',
+        order: 185,
+        text: () =>
+          controller.activeSkills.includes('marivo-analysis') ? MARIVO_REPORT_PROMPT : '',
       }),
     )
     installed.set(agent, controller)

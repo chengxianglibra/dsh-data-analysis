@@ -9,10 +9,6 @@
 - `trace.artifact-preview-missing` means at least one Frame node lacks an identity-matched Marivo
   Artifact dataset. Load it through `session.artifact(ref)`, emit at most 10 preview rows, and load
   every snapshot before the trace consumer.
-- `trace.observe-query-missing` means a produced `observe` Run has no caller-supplied safe SQL
-  disclosure. Supply the exact parameterized Query record already held at execution time. Never
-  read private Marivo storage, recompile current semantics as historical SQL, or include bind
-  values; when no public record is available, keep the report incomplete.
 - An Artifact-backed report without a standard trace receives a warning. Add the focused trace,
   or retain the warning when the user explicitly requested omission and avoid complete
   traceability claims.

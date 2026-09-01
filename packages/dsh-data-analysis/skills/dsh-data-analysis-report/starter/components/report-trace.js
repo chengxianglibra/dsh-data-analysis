@@ -837,44 +837,24 @@
     return details
   }
 
-  function queryPanel(queries, expected) {
+  function queryPanel(queries) {
     const panel = document.createElement('section')
     panel.className = 'trace-query-panel'
-    if (queries.length === 0) {
-      panel.hidden = !expected
-      if (expected) {
-        panel.append(
-          text('p', '该 observe 未提供 SQL 执行记录，分析链路不完整。', 'trace-query-missing'),
-        )
-      }
-      return panel
-    }
     panel.append(text('h4', `SQL 执行记录（${queries.length}）`))
     for (const [index, query] of queries.entries()) panel.append(queryDisclosure(query, index))
     return panel
   }
 
   function traceLegend(trace, componentCount) {
-    const missingObserveQueries = trace.runs.filter(
-      (run) =>
-        run.capability_id === 'observe' &&
-        run.lifecycle === 'succeeded' &&
-        run.output_mode === 'produced' &&
-        !trace.queries.some((query) => query.run_id === run.run_id),
-    ).length
-    const querySummary =
-      missingObserveQueries === 0
-        ? `${trace.queries.length} 条 SQL`
-        : `SQL 未提供（${missingObserveQueries} 个 observe）`
+    const counts = [
+      `${trace.runs.length} 个分析动作`,
+      `${trace.artifacts.length} 个 Frame`,
+      ...(trace.queries.length > 0 ? [`${trace.queries.length} 条 SQL`] : []),
+      `${componentCount} 条链路`,
+    ]
     const overview = document.createElement('header')
     overview.className = 'trace-overview'
-    overview.append(
-      text(
-        'p',
-        `${trace.runs.length} 个分析动作 · ${trace.artifacts.length} 个 Frame · ${querySummary} · ${componentCount} 条链路`,
-        'trace-count',
-      ),
-    )
+    overview.append(text('p', counts.join(' · '), 'trace-count'))
     const legend = document.createElement('div')
     legend.className = 'trace-legend'
     for (const [label, className] of [
@@ -914,8 +894,8 @@
     const detailsPanel = document.createElement('aside')
     detailsPanel.className = 'trace-detail-panel'
     detailsPanel.setAttribute('aria-live', 'polite')
-    const queryHost = document.createElement('div')
-    queryHost.className = 'trace-query-host'
+    const queryHost = trace.queries.length > 0 ? document.createElement('div') : null
+    if (queryHost !== null) queryHost.className = 'trace-query-host'
     const detailByKey = new Map()
     for (const run of component.runs) {
       const detail = runDetail(trace, run)
@@ -936,20 +916,11 @@
         detail.setAttribute('aria-hidden', String(!selected))
       }
       for (const [candidate, node] of nodesByKey) node.dataset.selected = String(candidate === key)
-      queryHost.replaceChildren()
-      if (key.startsWith('run:')) {
+      queryHost?.replaceChildren()
+      if (queryHost !== null && key.startsWith('run:')) {
         const runId = key.slice(4)
-        const run = trace.runs.find((candidate) => candidate.run_id === runId)
-        const expected =
-          run.capability_id === 'observe' &&
-          run.lifecycle === 'succeeded' &&
-          run.output_mode === 'produced'
-        queryHost.append(
-          queryPanel(
-            trace.queries.filter((query) => query.run_id === runId),
-            expected,
-          ),
-        )
+        const queries = trace.queries.filter((query) => query.run_id === runId)
+        if (queries.length > 0) queryHost.append(queryPanel(queries))
       }
     }
 
@@ -1042,7 +1013,8 @@
     }
     canvasWrap.append(svg)
     workspace.append(canvasWrap, detailsPanel)
-    section.append(workspace, queryHost)
+    section.append(workspace)
+    if (queryHost !== null) section.append(queryHost)
 
     let scale = 1
     const applyScale = () => viewport.setAttribute('transform', `scale(${scale})`)

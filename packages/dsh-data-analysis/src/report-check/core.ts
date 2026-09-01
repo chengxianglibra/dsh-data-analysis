@@ -1761,9 +1761,16 @@ function validateRegistries(state: ScanState): void {
             )
             continue
           }
+          const validationPayload =
+            operation.registry === 'trace' &&
+            typeof operation.payload === 'object' &&
+            operation.payload !== null &&
+            !Array.isArray(operation.payload)
+              ? { ...(operation.payload as Record<string, unknown>), queries: [] }
+              : operation.payload
           const validation = validateReportContract(
             operation.registry === 'dataset' ? 'dataset' : 'trace',
-            operation.payload,
+            validationPayload,
           )
           const payload =
             typeof operation.payload === 'object' && operation.payload !== null
@@ -1850,26 +1857,6 @@ function validateRegistries(state: ScanState): void {
           { line: 1, column: 1 },
           `Session trace has ${missingPreviews.length} Frame node(s) without an identity-matched Artifact dataset`,
           'Load each graph Artifact with session.artifact(ref), emit a bounded Artifact dataset, and register it before rendering the trace.',
-        )
-      }
-      const queries = trace.queries as Record<string, unknown>[]
-      const queryRunIds = new Set(queries.map((query) => query.run_id))
-      const runs = trace.runs as Record<string, unknown>[]
-      const missingObserveQueries = runs.filter(
-        (run) =>
-          run.capability_id === 'observe' &&
-          run.lifecycle === 'succeeded' &&
-          run.output_mode === 'produced' &&
-          !queryRunIds.has(run.run_id),
-      )
-      if (missingObserveQueries.length > 0) {
-        addIssue(
-          state,
-          'trace.observe-query-missing',
-          page.displayPath,
-          { line: 1, column: 1 },
-          `Session trace has ${missingObserveQueries.length} produced observe Run(s) without SQL execution disclosure`,
-          'Supply caller-held parameterized Query records for each produced observe Run; never recover SQL or bind values from private Marivo storage.',
         )
       }
     }

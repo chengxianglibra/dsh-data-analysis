@@ -62,8 +62,9 @@ marivo_evidence_sources
 
 Plugin 同时挂载 Runtime 的 `marivo-analysis` / `marivo-semantic` 和随包分发的
 `dsh-data-analysis-report`。前两者激活后，controller 披露当前 Runtime 的根 Help；报告路由随
-`marivo-analysis` 激活，并要求在用户明确请求报告时加载报告 Skill，但不注册报告 Tool。Plugin disposal
-只移除自身 scope 的 Tool、prompt 与事件接线。
+`marivo-analysis` 激活，在用户请求 HTML/Web 输出或分析需要多个图表/表格、较长分章节呈现时加载报告
+Skill。已有分析恢复并 revalidate persisted Artifacts，不为展示重新执行 `observe`。插件不注册报告 Tool；
+Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
 ## 原生分析读取
 

@@ -103,11 +103,16 @@ test('the report Skill is a short progressive-disclosure router for the Workspac
   assert.match(normalized, /name: dsh-data-analysis-report/)
   assert.match(
     normalized,
-    /Use this Skill only for an explicitly requested or accepted HTML report/,
+    /when an analysis needs multiple charts\/tables or a long multi-section presentation/,
   )
+  assert.match(normalized, /recover its exact persisted Artifacts and revalidate them/)
+  assert.match(normalized, /Never rerun `observe` only to render HTML/)
   assert.match(normalized, /Read only the references needed/)
   assert.match(normalized, /dsh_data_analysis_report_check/)
   assert.match(normalized, /Static success is not browser or analytical validation/)
+  assert.match(normalized, /top-level file Tool as the bundle's final mutation/)
+  assert.match(normalized, /If any bundle file changes afterward/)
+  assert.match(normalized, /exact file-Tool path as Markdown inline code/)
   assert.match(normalized, /Produced Files and Host opening are navigation only/)
   assert.ok(skill.length < 5_000)
   assert.doesNotMatch(skill, /marivo_report_render|ReportDocument|report_publish|renderLineChart/)
