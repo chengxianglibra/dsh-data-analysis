@@ -70,6 +70,25 @@ test('trace semantic validation closes root, head, and acyclic topology', async 
   assert.match(cycleResult.errors.join('\n'), /acyclic Run and Artifact graph/)
 })
 
+test('trace semantic validation preserves local truncation boundaries and requires closed local edges', async () => {
+  const bounded = (await fixture('trace-succeeded.json')) as Record<string, any>
+  bounded.truncated = true
+  bounded.boundary_artifact_refs = ['artifact-1']
+  const boundedResult = validateReportContract('trace', bounded)
+  assert.equal(boundedResult.valid, true)
+
+  bounded.boundary_artifact_refs = ['outside-artifact']
+  const outsideResult = validateReportContract('trace', bounded)
+  assert.equal(outsideResult.valid, false)
+  assert.match(outsideResult.errors.join('\n'), /must identify local Artifact nodes/)
+
+  const missingEdge = (await fixture('trace-succeeded.json')) as Record<string, any>
+  missingEdge.edges = []
+  const missingEdgeResult = validateReportContract('trace', missingEdge)
+  assert.equal(missingEdgeResult.valid, false)
+  assert.match(missingEdgeResult.errors.join('\n'), /missing an output edge/)
+})
+
 test('rule registry is unique, closed, and fixes severity for every V1 namespace', () => {
   assert.equal(REPORT_CHECK_RULES.length, 59)
   assert.equal(new Set(REPORT_CHECK_RULES.map((rule) => rule.code)).size, 59)

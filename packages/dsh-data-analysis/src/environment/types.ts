@@ -18,6 +18,8 @@ export interface SharedMarivoRuntime {
   pythonExecutable: string
   marivoVersion: string
   packagePath: string
+  reportKitVersion: string
+  reportKitPackagePath: string
   skillsRoot: string
   installationPath: string
 }

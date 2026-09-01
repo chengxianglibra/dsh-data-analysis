@@ -16,6 +16,10 @@ export function environmentPayload(
       version: environment.binding.marivoVersion,
       packagePath: environment.binding.packagePath,
     },
+    reportKit: {
+      version: runtime.reportKitVersion,
+      packagePath: runtime.reportKitPackagePath,
+    },
     fingerprint: environment.binding.fingerprint,
   }
 }

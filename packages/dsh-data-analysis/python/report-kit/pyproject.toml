@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsh-data-analysis-report-kit"
+version = "2.0.0"
+description = "Bounded dataset and Session trace transport for DSH Workspace reports"
+requires-python = ">=3.10"
+dependencies = [
+  "marivo==0.5.1",
+  "pandas>=2.2.0,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+  "build>=1.2.2",
+  "jsonschema>=4.23.0",
+  "pytest>=8.3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dsh_data_analysis_report = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

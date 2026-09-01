@@ -183,11 +183,11 @@ function validateTraceSemantics(value: unknown): string[] {
   if (runs.length + artifacts.length > 200) {
     errors.push('$.runs and $.artifacts must contain at most 200 nodes in total')
   }
-  if ([...boundaryRuns].some((id) => runSet.has(id))) {
-    errors.push('$.boundary_run_ids must not overlap local Run nodes')
+  if ([...boundaryRuns].some((id) => !runSet.has(id))) {
+    errors.push('$.boundary_run_ids must identify local Run nodes')
   }
-  if ([...boundaryArtifacts].some((id) => artifactSet.has(id))) {
-    errors.push('$.boundary_artifact_refs must not overlap local Artifact nodes')
+  if ([...boundaryArtifacts].some((id) => !artifactSet.has(id))) {
+    errors.push('$.boundary_artifact_refs must identify local Artifact nodes')
   }
   if (root.truncated === false && (boundaryRuns.size > 0 || boundaryArtifacts.size > 0)) {
     errors.push('boundary identities require $.truncated=true')
@@ -246,16 +246,10 @@ function validateTraceSemantics(value: unknown): string[] {
   }
 
   for (const edge of edges) {
-    if (
-      typeof edge.run_id !== 'string' ||
-      (!runSet.has(edge.run_id) && !boundaryRuns.has(edge.run_id))
-    ) {
+    if (typeof edge.run_id !== 'string' || !runSet.has(edge.run_id)) {
       errors.push('$.edges contains a dangling run_id')
     }
-    if (
-      typeof edge.artifact_ref !== 'string' ||
-      (!artifactSet.has(edge.artifact_ref) && !boundaryArtifacts.has(edge.artifact_ref))
-    ) {
+    if (typeof edge.artifact_ref !== 'string' || !artifactSet.has(edge.artifact_ref)) {
       errors.push('$.edges contains a dangling artifact_ref')
     }
     const run = runs.find((candidate) => candidate.run_id === edge.run_id)
@@ -330,12 +324,12 @@ function validateTraceSemantics(value: unknown): string[] {
   for (const run of runs) {
     const inputs = Array.isArray(run.input_artifact_refs) ? run.input_artifact_refs : []
     for (const ref of inputs) {
-      if (typeof ref !== 'string' || (!artifactSet.has(ref) && !boundaryArtifacts.has(ref))) {
+      const localInput = typeof ref === 'string' && artifactSet.has(ref)
+      if ((!localInput && !boundaryRuns.has(String(run.run_id))) || typeof ref !== 'string') {
         errors.push(`$.runs contains dangling input Artifact ref for ${String(run.run_id)}`)
       }
       if (
-        typeof ref === 'string' &&
-        (artifactSet.has(ref) || boundaryArtifacts.has(ref)) &&
+        localInput &&
         !edges.some(
           (edge) =>
             edge.kind === 'consumes' && edge.run_id === run.run_id && edge.artifact_ref === ref,
@@ -347,14 +341,14 @@ function validateTraceSemantics(value: unknown): string[] {
     if (
       run.lifecycle === 'succeeded' &&
       (typeof run.output_artifact_ref !== 'string' ||
-        (!artifactSet.has(run.output_artifact_ref) &&
-          !boundaryArtifacts.has(run.output_artifact_ref)))
+        (!artifactSet.has(run.output_artifact_ref) && !boundaryRuns.has(String(run.run_id))))
     ) {
       errors.push(`$.runs contains dangling output Artifact ref for ${String(run.run_id)}`)
     }
     if (
       run.lifecycle === 'succeeded' &&
       typeof run.output_artifact_ref === 'string' &&
+      artifactSet.has(run.output_artifact_ref) &&
       !edges.some(
         (edge) =>
           edge.kind === (run.output_mode === 'reused' ? 'reuses' : 'produces') &&
@@ -369,7 +363,8 @@ function validateTraceSemantics(value: unknown): string[] {
     const producer = artifact.produced_by_run
     if (
       producer !== null &&
-      (typeof producer !== 'string' || (!runSet.has(producer) && !boundaryRuns.has(producer)))
+      (typeof producer !== 'string' ||
+        (!runSet.has(producer) && !boundaryArtifacts.has(String(artifact.ref))))
     ) {
       errors.push(`$.artifacts contains dangling produced_by_run for ${String(artifact.ref)}`)
     }

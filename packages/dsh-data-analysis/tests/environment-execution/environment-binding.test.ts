@@ -203,6 +203,13 @@ test('environment CLI payload exposes stable admission identity without a doctor
       pythonExecutable: environment.binding.pythonExecutable,
       marivoVersion: environment.binding.marivoVersion,
       packagePath: environment.binding.packagePath,
+      reportKitVersion: '2.0.0',
+      reportKitPackagePath: path.join(
+        fixture.root,
+        'site-packages',
+        'dsh_data_analysis_report',
+        '__init__.py',
+      ),
       skillsRoot: path.join(fixture.root, 'runtime', 'skills'),
       installationPath: path.join(fixture.root, 'runtime', 'installation.json'),
     },
@@ -211,6 +218,15 @@ test('environment CLI payload exposes stable admission identity without a doctor
 
   assert.equal(payload.status, 'ready')
   assert.equal(payload.projectRoot, fixture.root)
+  assert.deepEqual(payload.reportKit, {
+    version: '2.0.0',
+    packagePath: path.join(
+      fixture.root,
+      'site-packages',
+      'dsh_data_analysis_report',
+      '__init__.py',
+    ),
+  })
   assert.equal('doctorOverallStatus' in payload, false)
   assert.equal('diagnostics' in payload, false)
 })

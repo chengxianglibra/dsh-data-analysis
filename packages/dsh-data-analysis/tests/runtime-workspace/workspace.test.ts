@@ -79,6 +79,13 @@ test('Workspace bindings share Python and package identity but retain project st
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
+    reportKitVersion: '2.0.0',
+    reportKitPackagePath: path.join(
+      root,
+      'site-packages',
+      'dsh_data_analysis_report',
+      '__init__.py',
+    ),
     skillsRoot: path.join(root, 'runtime', 'skills'),
     installationPath: path.join(root, 'runtime', 'installation.json'),
   }
