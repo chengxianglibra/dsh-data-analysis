@@ -17,7 +17,7 @@ Marivo 项目语义和分析状态。
 | 组件 | 职责 |
 | --- | --- |
 | `ensureSharedMarivoRuntime()` | 验证、复用或安装一套 profile 级 Runtime |
-| `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、package 与 Skill 身份 |
+| `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、report-kit、package 与 Skill 身份 |
 | `initializeMarivoWorkspace()` | 幂等创建最小 `marivo.toml`、`models/` 和 `.marivo/` |
 | `MarivoWorkspaceEnvironmentManager` | 按 canonical project root 缓存初始化与 binding Promise |
 
@@ -34,16 +34,17 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-`installation.json` 使用 `dsh-data-analysis-runtime/v1` marker schema，记录实际 `marivoVersion`、
-`pythonExecutable`、`packagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
+`installation.json` 记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`reportKitVersion`、
+`reportKitPackagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
 启动时先读取 marker，再验证：
 
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.5.1`；
-5. 两个内置 Skill 的 `SKILL.md` 均存在。
+4. Marivo 版本严格等于 `0.5.2`；
+5. report-kit 版本、package path、公开 `emit_dataset` / `emit_session_trace` 与 pandas 范围一致；
+6. 两个内置 Skill 的 `SKILL.md` 均存在。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。
@@ -52,10 +53,10 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
-| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装 `marivo[duckdb,trino,clickhouse]==0.5.1` |
-| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器为 Marivo 0.5.1，随后同步 Skill 和发布 marker |
+| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装精确 Marivo 与随包 report-kit wheel |
+| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、report-kit 与 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都只支持已经正式发布的 Marivo 0.5.1；发布 marker 后按该版本稳定复用。任何版本或 schema
+两种模式都只支持已经正式发布的 Marivo 0.5.2；发布 marker 后按该版本稳定复用。任何版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -96,7 +97,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 | 范围 | 共享内容 | 隔离内容 |
 | --- | --- | --- |
-| Web profile | Python、Marivo package、内置 Skill 副本 | — |
+| Web profile | Python、Marivo package、report-kit、内置 Skill 副本 | — |
 | Workspace | 共享 Runtime 引用 | project root、manifest、models、state、doctor admission、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 

@@ -1,27 +1,30 @@
 # DSH Data Analysis
 
 `dsh-data-analysis` 把 Marivo 接入 DeepSeek Harness。插件只拥有跨系统 seam：共享 Runtime、
-Workspace binding、实时 Help transport、DSH Credentials 闭环，以及用户显式请求来源时的 Turn/Web
-Evidence 投影。分析语义、Artifact、Quality、Evidence、Lineage、revalidation 和 Session Graph 由
-Marivo 拥有；最终表达和报告页面由 Agent 拥有。
+Workspace binding、实时 Help transport、DSH Credentials 闭环、用户显式请求来源时的 Turn/Web Evidence
+投影，以及 Marivo Artifact/Session Graph 到有界 JavaScript 快照的忠实投影。分析语义、Artifact、Quality、
+Evidence、Lineage、revalidation 和 Session Graph 由 Marivo 拥有；最终表达和报告页面由 Agent 拥有。
 
 当前版本是一次 clean break：旧 `ReportDocument`、HTML renderer、报告发布器、专用 Web 卡片和旧产物
 replay 已删除，不提供 alias 或迁移路径。
 
 ## 当前能力
 
-- 在 `$DSH_HOME` 下安装或复用精确的 `marivo[duckdb,trino,clickhouse]==0.5.1`；
+- 在 `$DSH_HOME` 下安装或复用精确的 `marivo[duckdb,trino,clickhouse]==0.5.2`；
 - 为每个 Workspace 建立独立 binding，并在每次领域子进程内复核 Python/package identity；
 - 激活 `marivo-analysis` 或 `marivo-semantic` 时注入当前 Runtime 的实时根 Help；
 - 提供 `marivo_help` 作为 Native Tool transport；
 - 提供 `marivo_datasource_test`，完成缺失 DSH Credentials 的 Web 收集和显式连接测试；
 - 为普通 one-shot Shell 注入当前 Workspace datasource 的已配置 `DSH_*` 凭据引用；
 - 提供 `marivo_evidence_sources`，把精确 Artifact-owned Finding 投影到 DSH 来源面板；
-- 打包并挂载 `dsh-data-analysis-report` Skill，指导 Agent 把自由 HTML/CSS/SVG/JavaScript 写成普通
-  Workspace 目录 bundle。
+- 安装 `dsh-data-analysis-report-kit`，提供 `emit_dataset(BaseFrame, ...)` 与
+  `emit_session_trace(SessionGraph, ...)` 两个 Marivo JavaScript 投影器；
+- 打包并挂载 `dsh-data-analysis-report` Skill，其中只有内容组织、布局、样式和检查原则，以及配套的
+  Artifact/DAG JavaScript 读取运行时。
 
 插件不会注册 Artifact inspection、Quality、Session recovery、Session Graph、semantic readiness、
-datasource inspection、Artifact export 或报告 renderer Tool。Agent 应直接使用 Marivo 公共对象和实时 Help。
+datasource inspection、Artifact export、HTML Checker 或报告 renderer Tool。Agent 应直接使用 Marivo 公共对象
+和实时 Help。报告 Skill 不包含页面模板、CSS、通用 chart helper、snippets 或完整示例。
 
 ## 所有权边界
 
@@ -29,7 +32,7 @@ datasource inspection、Artifact export 或报告 renderer Tool。Agent 应直�
 | --- | --- |
 | DeepSeek Harness | Agent/session/tool/skill lifecycle、Credentials、文件 mutation、Produced Files、Host opener |
 | Marivo | Session、Run、Artifact、Finding、Evidence、Quality、Lineage、revalidation、公共读取语义 |
-| 本插件 | Runtime/Workspace binding、Help transport、credential-safe seam、精确来源 UI adapter |
+| 本插件 | Runtime/Workspace binding、Help transport、credential-safe seam、精确来源 UI adapter、Marivo JS 投影 |
 | Agent | 分析判断、内容选择、图表、HTML/CSS/JS、页面结构、交互与叙事 |
 
 详细设计见[总体架构](docs/architecture.md)和
@@ -46,9 +49,9 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-插件严格验证 `marivo.__version__`、`marivo.__file__`、解释器路径和 marker。管理员可通过
+插件严格验证 `marivo.__version__`、`marivo.__file__`、report-kit identity、解释器路径和 marker。管理员可通过
 `DSH_DATA_ANALYSIS_PYTHON` 提供已经安装精确版本的绝对 Python；未提供时插件使用 `uv` 安装固定 package
-spec。当前正式支持版本是已经发布的 Marivo 0.5.1；其他版本或开发 checkout 必须明确失败。
+spec。当前正式支持版本是已经发布的 Marivo 0.5.2；其他版本或开发 checkout 必须明确失败。
 
 Workspace 解析顺序为：显式 `projectRoot`、`DSH_DATA_ANALYSIS_PROJECT_ROOT`、Session cwd、`DSH_CWD`、
 进程 cwd。默认只补齐 `marivo.toml`、`models/` 和 `.marivo/`，不覆盖已有用户文件。
@@ -93,12 +96,17 @@ marivo_evidence_sources({
 
 用户请求 HTML/Web 输出，或分析需要多个图表/表格或较长的分章节呈现时，Agent 加载
 `dsh-data-analysis-report` Skill。已有分析先恢复并 revalidate 精确 persisted Artifacts，不为生成报告或补齐
-trace/SQL 重新执行 `observe`。报告没有插件 schema 或 renderer。Agent 直接读取：
+DAG 细节重新执行 `observe`。报告没有页面 schema、HTML Checker 或 renderer。Agent 直接读取：
 
 - `artifact.show()` / `render()`、`contract()`、`quality_summary`、`lineage`；
 - `session.revalidate(ref)` 和 Artifact-owned `findings()` / `finding()`；
 - `session.runs(...)`、`session.get_run(...)`、`session.graph(...)`；
 - 在实时 Help 允许的 terminal boundary 使用 `artifact.to_pandas()`。
+
+只有两个报告增强面由插件提供：`emit_dataset` 把 Marivo `BaseFrame` 投影成有界 Artifact JavaScript
+snapshot，`emit_session_trace` 把调用方已经取得的 `SessionGraph` 投影成有界 DAG JavaScript snapshot。前者
+不接受普通 DataFrame；多 Session 分别投影并集中展示，Frame preview 按 `session_id + artifact_ref` 精确
+关联。两者都不读取私有 Store、不重新分析，也不把快照提升为 Marivo authority。
 
 每份新报告或修订默认使用新目录，入口固定为 `index.html`，资源使用 bundle 内相对路径：
 
@@ -131,11 +139,7 @@ npm run verify:plugin-package
 npm run test:agent-native-report-primitives
 npm run test:datasource-credentials
 npm run test:evidence-sources
-npm run validate:agent-native-report-primitives:real
 ```
-
-真实 runner 只有在精确 Marivo 0.5.1、模型 Credentials 与对应 Host/Web 前置条件可用时才构成验收；
-本地单元测试、health、日志或路径存在不能替代真实 Agent 与浏览器终态。
 
 ## 模块文档
 

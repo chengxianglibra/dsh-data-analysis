@@ -12,7 +12,6 @@
     "artifacts",
     "runs",
     "edges",
-    "queries",
     "root_run_ids",
     "head_artifact_refs",
     "failed_run_ids",
@@ -154,11 +153,6 @@
         }
       }
     },
-    "queries": {
-      "type": "array",
-      "maxItems": 500,
-      "items": { "$ref": "#/$defs/query" }
-    },
     "root_run_ids": { "$ref": "#/$defs/identityArray" },
     "head_artifact_refs": { "$ref": "#/$defs/identityArray" },
     "failed_run_ids": { "$ref": "#/$defs/identityArray" },
@@ -169,11 +163,10 @@
     "projection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["run_arguments", "failure_values", "query_bind_values"],
+      "required": ["run_arguments", "failure_values"],
       "properties": {
         "run_arguments": { "const": "omitted" },
-        "failure_values": { "const": "omitted" },
-        "query_bind_values": { "const": "omitted" }
+        "failure_values": { "const": "omitted" }
       }
     },
     "read_boundaries": {
@@ -193,46 +186,6 @@
       "type": "array",
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
-    },
-    "query": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "run_id",
-        "query_id",
-        "datasource",
-        "dialect",
-        "sql",
-        "digest",
-        "status",
-        "duration_ms",
-        "row_count",
-        "started_at",
-        "finished_at",
-        "output_artifact_ref"
-      ],
-      "properties": {
-        "run_id": { "$ref": "#/$defs/identity" },
-        "query_id": { "$ref": "#/$defs/identity" },
-        "datasource": { "$ref": "#/$defs/identity" },
-        "dialect": { "$ref": "#/$defs/identity" },
-        "sql": { "type": "string", "minLength": 1, "maxLength": 262144 },
-        "digest": { "$ref": "#/$defs/identity" },
-        "status": { "enum": ["succeeded", "failed"] },
-        "duration_ms": { "type": "integer", "minimum": 0 },
-        "row_count": { "type": "integer", "minimum": 0 },
-        "started_at": {
-          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
-        },
-        "finished_at": {
-          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
-        },
-        "output_artifact_ref": {
-          "type": ["string", "null"],
-          "minLength": 1,
-          "maxLength": 2048
-        }
-      }
     },
     "runBaseProperties": {
       "type": "object"

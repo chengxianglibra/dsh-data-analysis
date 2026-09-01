@@ -53,7 +53,7 @@ def main() -> None:
         if metadata["Version"] != "2.0.0" or metadata["Requires-Python"] != ">=3.10":
             raise SystemExit("wheel version or Python requirement mismatch")
         requires = set(metadata.get_all("Requires-Dist", []))
-        if requires != {"marivo==0.5.1", "pandas<3.0.0,>=2.2.0"}:
+        if requires != {"marivo==0.5.2", "pandas<3.0.0,>=2.2.0"}:
             raise SystemExit(f"wheel dependency metadata mismatch: {sorted(requires)}")
         wheel_metadata = archive.read(wheel_metadata_name).decode()
         if (

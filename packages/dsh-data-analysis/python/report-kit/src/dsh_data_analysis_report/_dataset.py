@@ -1,4 +1,4 @@
-"""Bounded DataFrame and Marivo Artifact dataset snapshot emission."""
+"""Bounded Marivo Artifact snapshot emission."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ class DatasetReceipt:
     path: str
     schema: str
     dataset_id: str
-    source_kind: Literal["computed", "marivo_artifact"]
+    source_kind: Literal["marivo_artifact"]
     total_rows: int
     written_rows: int
     omitted_rows: int
@@ -394,23 +394,6 @@ def _rows(df: pd.DataFrame) -> list[list[object]]:
     ]
 
 
-def _computed_columns(df: pd.DataFrame) -> list[dict[str, object]]:
-    return [
-        {
-            "name": bounded_string(
-                name, location="table.columns.name", error_type=ReportDatasetError
-            ),
-            "dtype": bounded_string(
-                str(df.dtypes.iloc[index]),
-                location="table.columns.dtype",
-                error_type=ReportDatasetError,
-            ),
-            "contains_null": bool(df.iloc[:, index].isna().any()),
-        }
-        for index, name in enumerate(df.columns)
-    ]
-
-
 def _artifact_source(
     artifact: BaseFrame,
     df: pd.DataFrame,
@@ -540,14 +523,14 @@ def _artifact_source(
 
 
 def emit_dataset(
-    value: pd.DataFrame | BaseFrame,
+    value: BaseFrame,
     target: str | os.PathLike[str],
     *,
     dataset_id: str | None = None,
     max_rows: int | None = None,
     revalidation: ArtifactRevalidation | None = None,
 ) -> DatasetReceipt:
-    """Emit one bounded classic-script dataset registration atomically."""
+    """Emit one bounded Marivo Artifact registration atomically."""
 
     target_path = resolve_target(target, error_type=ReportDatasetError)
     identity = safe_identifier(
@@ -561,28 +544,18 @@ def emit_dataset(
         raise ReportDatasetError(
             "payload-limit-exceeded", "max_rows must be a positive integer"
         )
-    artifact: BaseFrame | None
-    if isinstance(value, BaseFrame):
-        artifact = value
-        frame = value.to_pandas()
-        if not isinstance(frame, pd.DataFrame):
-            raise ReportDatasetError(
-                "artifact-contract-unsupported",
-                "Artifact to_pandas() did not return a DataFrame",
-            )
-    elif isinstance(value, pd.DataFrame):
-        artifact = None
-        frame = value
-        if revalidation is not None:
-            raise ReportDatasetError(
-                "artifact-revalidation-mismatch",
-                "revalidation can only be supplied with a Marivo Artifact",
-            )
-    else:
+    if not isinstance(value, BaseFrame):
         raise ReportDatasetError(
             "input-type-unsupported",
-            "value must be a pandas DataFrame or Marivo BaseFrame",
+            "value must be a Marivo BaseFrame",
             {"valueType": type(value).__name__},
+        )
+    artifact = value
+    frame = value.to_pandas()
+    if not isinstance(frame, pd.DataFrame):
+        raise ReportDatasetError(
+            "artifact-contract-unsupported",
+            "Artifact to_pandas() did not return a DataFrame",
         )
     _validate_frame(frame)
     total_rows = len(frame)
@@ -594,16 +567,7 @@ def emit_dataset(
             {"limit": DATASET_MAX_ROWS, "actual": written_rows},
         )
     retained = frame.iloc[:written_rows]
-    if artifact is None:
-        source: dict[str, object] = {"kind": "computed"}
-        columns = _computed_columns(retained)
-        semantic_shape: str | None = None
-        source_kind: Literal["computed", "marivo_artifact"] = "computed"
-    else:
-        source, columns, semantic_shape = _artifact_source(
-            artifact, frame, revalidation
-        )
-        source_kind = "marivo_artifact"
+    source, columns, semantic_shape = _artifact_source(artifact, frame, revalidation)
     table: dict[str, object] = {
         "total_rows": total_rows,
         "written_rows": written_rows,
@@ -611,8 +575,7 @@ def emit_dataset(
         "columns": columns,
         "rows": _rows(retained),
     }
-    if artifact is not None:
-        table["semantic_shape"] = semantic_shape
+    table["semantic_shape"] = semantic_shape
     payload = {
         "schema": DATASET_SCHEMA,
         "dataset_id": identity,
@@ -633,7 +596,7 @@ def emit_dataset(
         path=str(target_path),
         schema=DATASET_SCHEMA,
         dataset_id=identity,
-        source_kind=source_kind,
+        source_kind="marivo_artifact",
         total_rows=total_rows,
         written_rows=written_rows,
         omitted_rows=total_rows - written_rows,

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 from conftest import parse_registration, validate_contract
@@ -18,55 +16,10 @@ from marivo.analysis.evidence import (
 )
 
 
-def test_computed_dataframe_round_trip_and_script_escape(tmp_path: Path) -> None:
-    frame = pd.DataFrame(
-        {
-            "label": ["</ScRiPt>\u2028safe", None],
-            "count": [1, 2],
-            "ratio": [math.inf, 1.5],
-            "active": [True, False],
-            "day": [date(2026, 1, 1), date(2026, 1, 2)],
-            "duration": [timedelta(seconds=1), timedelta(seconds=2)],
-        }
-    )
-    target = tmp_path / "computed.js"
-
-    receipt = emit_dataset(frame, target, max_rows=1)
-    payload = parse_registration(target, "ReportData")
-
-    assert receipt.dataset_id == "computed"
-    assert receipt.total_rows == 2
-    assert receipt.written_rows == 1
-    assert receipt.omitted_rows == 1
-    assert receipt.content_hash.startswith("sha256:")
-    assert payload["table"]["rows"][0][2] is None
-    assert payload["table"]["rows"][0][4] == "2026-01-01"
-    assert "</ScRiPt>" not in target.read_text()
-    assert "\\u003c/ScRiPt>" in target.read_text()
-    assert "\\u2028" in target.read_text()
-    validate_contract("dataset-v1.schema.json", payload)
-
-
-def test_numpy_datetime_scalar_is_stable(tmp_path: Path) -> None:
-    frame = pd.DataFrame(
-        {"when": pd.Series([np.datetime64("2026-01-01")], dtype=object)}
-    )
-    target = tmp_path / "datetime.js"
-    emit_dataset(frame, target)
-    payload = parse_registration(target, "ReportData")
-    assert payload["table"]["rows"] == [["2026-01-01"]]
-
-
 def test_large_integer_cells_preserve_artifact_identity(
     tmp_path: Path, artifact_frame: BaseFrame
 ) -> None:
     large_bytes = 26_000_000_000_000_000
-    computed_target = tmp_path / "computed-large.js"
-    emit_dataset(pd.DataFrame({"physical_input_bytes": [large_bytes]}), computed_target)
-    computed = parse_registration(computed_target, "ReportData")
-    assert computed["table"]["rows"] == [[large_bytes]]
-    validate_contract("dataset-v1.schema.json", computed)
-
     artifact = BaseFrame(
         pd.DataFrame(
             {
@@ -86,21 +39,13 @@ def test_large_integer_cells_preserve_artifact_identity(
     validate_contract("dataset-v1.schema.json", payload)
 
 
-def test_invalid_dataframe_and_cell_fail_without_replacing_target(
-    tmp_path: Path,
-) -> None:
+def test_plain_dataframe_is_not_a_public_projection_input(tmp_path: Path) -> None:
     target = tmp_path / "data.js"
     target.write_text("old", encoding="utf-8")
 
-    with pytest.raises(ReportDatasetError) as duplicate:
-        emit_dataset(pd.DataFrame([[1, 2]], columns=["x", "x"]), target)
-    assert duplicate.value.code == "columns-unsupported"
-    assert target.read_text() == "old"
-
     with pytest.raises(ReportDatasetError) as unsupported:
-        emit_dataset(pd.DataFrame({"x": [object()]}), target)
-    assert unsupported.value.code == "cell-type-unsupported"
-    assert "object" not in str(unsupported.value)
+        emit_dataset(pd.DataFrame({"x": [1]}), target)  # type: ignore[arg-type]
+    assert unsupported.value.code == "input-type-unsupported"
     assert target.read_text() == "old"
 
 
@@ -297,19 +242,8 @@ def test_revalidation_preserves_all_result_states_and_evidence_rule(
 
 
 def test_dataset_budgets_and_atomic_replace_failure_are_fail_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, artifact_frame: BaseFrame
 ) -> None:
-    with pytest.raises(ReportDatasetError) as rows:
-        emit_dataset(pd.DataFrame({"x": range(100_001)}), tmp_path / "rows.js")
-    assert rows.value.code == "payload-limit-exceeded"
-
-    with pytest.raises(ReportDatasetError) as columns:
-        emit_dataset(
-            pd.DataFrame([[0] * 101], columns=[f"c{index}" for index in range(101)]),
-            tmp_path / "columns.js",
-        )
-    assert columns.value.code == "payload-limit-exceeded"
-
     target = tmp_path / "atomic.js"
     target.write_text("old", encoding="utf-8")
     import dsh_data_analysis_report._common as common
@@ -319,7 +253,7 @@ def test_dataset_budgets_and_atomic_replace_failure_are_fail_closed(
 
     monkeypatch.setattr(common.os, "replace", fail_replace)
     with pytest.raises(ReportDatasetError) as write:
-        emit_dataset(pd.DataFrame({"x": [1]}), target)
+        emit_dataset(artifact_frame, target)
     assert write.value.code == "write-failed"
     assert target.read_text() == "old"
     assert [item.name for item in tmp_path.iterdir()] == ["atomic.js"]

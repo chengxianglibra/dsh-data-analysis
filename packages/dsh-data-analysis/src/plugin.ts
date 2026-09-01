@@ -30,7 +30,6 @@ import {
   installMarivoEvidenceSourcesCodeDelivery,
   registerMarivoEvidenceSourcesTool,
 } from './evidence/index.ts'
-import { installReportCheckDisclosure } from './report-disclosure/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -59,7 +58,7 @@ export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
 
 export const MARIVO_REPORT_PROMPT = [
   'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation.',
-  'For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill trace/SQL details.',
+  'For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
 ].join(' ')
 
 const integrationSkillsRoot = path.resolve(
@@ -184,7 +183,6 @@ export function installMarivoPlugin(
       registerMarivoEvidenceSourcesTool(agent.ctx, evidenceSource, agent.session),
     )
     controller.addDisposer(installMarivoEvidenceSourcesCodeDelivery(agent.ctx))
-    controller.addDisposer(installReportCheckDisclosure(agent))
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
         name: 'marivo:datasource-credentials',

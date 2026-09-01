@@ -36,7 +36,6 @@
     }
   ],
   "edges": [{ "kind": "consumes", "run_id": "run-incomplete", "artifact_ref": "artifact-input" }],
-  "queries": [],
   "root_run_ids": [],
   "head_artifact_refs": ["artifact-input"],
   "failed_run_ids": [],
@@ -46,8 +45,7 @@
   "truncated": false,
   "projection": {
     "run_arguments": "omitted",
-    "failure_values": "omitted",
-    "query_bind_values": "omitted"
+    "failure_values": "omitted"
   },
   "read_boundaries": [
     "semantic_authority_not_checked",

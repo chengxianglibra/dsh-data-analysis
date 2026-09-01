@@ -68,18 +68,6 @@
     }
   }
 
-  function utf8Length(value) {
-    let bytes = 0
-    for (const character of value) {
-      const codePoint = character.codePointAt(0)
-      if (codePoint <= 0x7f) bytes += 1
-      else if (codePoint <= 0x7ff) bytes += 2
-      else if (codePoint <= 0xffff) bytes += 3
-      else bytes += 4
-    }
-    return bytes
-  }
-
   function integer(value, path, nullable = false) {
     if (nullable && value === null) return
     if (!Number.isSafeInteger(value) || value < 0) fail(path, 'must be a non-negative safe integer')
@@ -235,7 +223,6 @@
       'artifacts',
       'runs',
       'edges',
-      'queries',
       'root_run_ids',
       'head_artifact_refs',
       'failed_run_ids',
@@ -404,47 +391,6 @@
     }
     if (visited !== graphNodes.length) fail('$.edges', 'must form an acyclic graph')
 
-    if (!Array.isArray(trace.queries) || trace.queries.length > 500)
-      fail('$.queries', 'must contain at most 500 Query disclosures')
-    const queryIds = new Set()
-    trace.queries.forEach((candidate, index) => {
-      const path = `$.queries[${index}]`
-      const query = object(candidate, path)
-      exactKeys(query, path, [
-        'run_id',
-        'query_id',
-        'datasource',
-        'dialect',
-        'sql',
-        'digest',
-        'status',
-        'duration_ms',
-        'row_count',
-        'started_at',
-        'finished_at',
-        'output_artifact_ref',
-      ])
-      for (const field of ['run_id', 'query_id', 'datasource', 'dialect', 'digest'])
-        string(query[field], `${path}.${field}`)
-      if (
-        typeof query.sql !== 'string' ||
-        query.sql.length === 0 ||
-        utf8Length(query.sql) > 262144
-      ) {
-        fail(`${path}.sql`, 'must be a non-empty UTF-8 string of at most 262144 bytes')
-      }
-      if (!['succeeded', 'failed'].includes(query.status)) fail(`${path}.status`, 'is unsupported')
-      integer(query.duration_ms, `${path}.duration_ms`)
-      integer(query.row_count, `${path}.row_count`)
-      timestamp(query.started_at, `${path}.started_at`)
-      timestamp(query.finished_at, `${path}.finished_at`)
-      string(query.output_artifact_ref, `${path}.output_artifact_ref`, true)
-      if (queryIds.has(query.query_id)) fail(`${path}.query_id`, 'must be unique')
-      queryIds.add(query.query_id)
-      if (!runSet.has(query.run_id)) fail(`${path}.run_id`, 'contains a dangling Run identity')
-      if (query.output_artifact_ref !== null && !artifactSet.has(query.output_artifact_ref))
-        fail(`${path}.output_artifact_ref`, 'contains a dangling Artifact identity')
-    })
     const consumers = new Set(
       runs.filter((run) => run.lifecycle === 'succeeded').flatMap((run) => run.input_artifact_refs),
     )
@@ -459,12 +405,8 @@
     }
 
     const projection = object(trace.projection, '$.projection')
-    exactKeys(projection, '$.projection', ['run_arguments', 'failure_values', 'query_bind_values'])
-    if (
-      projection.run_arguments !== 'omitted' ||
-      projection.failure_values !== 'omitted' ||
-      projection.query_bind_values !== 'omitted'
-    ) {
+    exactKeys(projection, '$.projection', ['run_arguments', 'failure_values'])
+    if (projection.run_arguments !== 'omitted' || projection.failure_values !== 'omitted') {
       fail('$.projection', 'must omit private values')
     }
     if (
@@ -623,6 +565,7 @@
     const group = svgElement('g', {
       class:
         attributes['data-boundary'] === 'true' ? 'trace-node trace-boundary-node' : 'trace-node',
+      'data-node-kind': kind,
       role: 'button',
       tabindex: 0,
       transform: `translate(${position.x} ${position.y})`,
@@ -660,13 +603,14 @@
     return `${Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt))} ms`
   }
 
-  function matchingDataset(artifactRef) {
+  function matchingDataset(sessionId, artifactRef) {
     const registry = scope.ReportData
     if (!registry || typeof registry.list !== 'function') return null
     for (const id of registry.list()) {
       const dataset = registry.get(id)
       if (
         dataset.source.kind === 'marivo_artifact' &&
+        dataset.source.artifact.session_id === sessionId &&
         dataset.source.artifact.ref === artifactRef
       ) {
         return dataset
@@ -759,7 +703,7 @@
     return article
   }
 
-  function artifactDetail(artifact) {
+  function artifactDetail(trace, artifact) {
     const article = document.createElement('article')
     article.className = 'trace-detail'
     article.dataset.nodeKey = `artifact:${artifact.ref}`
@@ -785,71 +729,16 @@
         ],
       ]),
     )
-    const dataset = matchingDataset(artifact.ref)
+    const dataset = matchingDataset(trace.session_id, artifact.ref)
     if (dataset) article.append(previewTable(dataset))
     else article.append(text('p', '此页面未注册该 Artifact 的 dataset 预览。', 'trace-frame-count'))
     return article
-  }
-
-  function queryDisclosure(query, index) {
-    const details = document.createElement('details')
-    details.className = 'trace-query'
-    if (index === 0) details.setAttribute('open', '')
-    details.append(text('summary', `SQL ${index + 1} · ${query.datasource} · ${query.status}`))
-    const body = document.createElement('div')
-    body.className = 'trace-query-body'
-    body.append(
-      definitionList(
-        [
-          ['方言', query.dialect],
-          ['Digest', query.digest],
-          ['耗时', `${query.duration_ms} ms`],
-          ['返回行', query.row_count],
-          ['开始', query.started_at],
-          ['完成', query.finished_at],
-        ],
-        'trace-query-meta',
-      ),
-    )
-    const toolbar = document.createElement('div')
-    toolbar.className = 'trace-query-toolbar'
-    toolbar.append(text('span', '参数化 SQL · bind values 未写入报告'))
-    const wrap = document.createElement('button')
-    wrap.type = 'button'
-    wrap.className = 'trace-query-wrap'
-    wrap.textContent = '自动换行'
-    wrap.setAttribute('aria-pressed', 'false')
-    const codeWrap = document.createElement('pre')
-    codeWrap.className = 'trace-query-code'
-    codeWrap.dataset.wrap = 'false'
-    const code = document.createElement('code')
-    code.textContent = query.sql.replaceAll('\r\n', '\n')
-    codeWrap.append(code)
-    wrap.addEventListener('click', () => {
-      const next = codeWrap.dataset.wrap !== 'true'
-      codeWrap.dataset.wrap = String(next)
-      wrap.setAttribute('aria-pressed', String(next))
-      wrap.textContent = next ? '保持原始换行' : '自动换行'
-    })
-    toolbar.append(wrap)
-    body.append(toolbar, codeWrap)
-    details.append(body)
-    return details
-  }
-
-  function queryPanel(queries) {
-    const panel = document.createElement('section')
-    panel.className = 'trace-query-panel'
-    panel.append(text('h4', `SQL 执行记录（${queries.length}）`))
-    for (const [index, query] of queries.entries()) panel.append(queryDisclosure(query, index))
-    return panel
   }
 
   function traceLegend(trace, componentCount) {
     const counts = [
       `${trace.runs.length} 个分析动作`,
       `${trace.artifacts.length} 个 Frame`,
-      ...(trace.queries.length > 0 ? [`${trace.queries.length} 条 SQL`] : []),
       `${componentCount} 条链路`,
     ]
     const overview = document.createElement('header')
@@ -894,8 +783,6 @@
     const detailsPanel = document.createElement('aside')
     detailsPanel.className = 'trace-detail-panel'
     detailsPanel.setAttribute('aria-live', 'polite')
-    const queryHost = trace.queries.length > 0 ? document.createElement('div') : null
-    if (queryHost !== null) queryHost.className = 'trace-query-host'
     const detailByKey = new Map()
     for (const run of component.runs) {
       const detail = runDetail(trace, run)
@@ -903,7 +790,7 @@
       detailsPanel.append(detail)
     }
     for (const artifact of component.artifacts) {
-      const detail = artifactDetail(artifact)
+      const detail = artifactDetail(trace, artifact)
       detailByKey.set(`artifact:${artifact.ref}`, detail)
       detailsPanel.append(detail)
     }
@@ -916,12 +803,6 @@
         detail.setAttribute('aria-hidden', String(!selected))
       }
       for (const [candidate, node] of nodesByKey) node.dataset.selected = String(candidate === key)
-      queryHost?.replaceChildren()
-      if (queryHost !== null && key.startsWith('run:')) {
-        const runId = key.slice(4)
-        const queries = trace.queries.filter((query) => query.run_id === runId)
-        if (queries.length > 0) queryHost.append(queryPanel(queries))
-      }
     }
 
     const layout = positions(component)
@@ -999,7 +880,7 @@
       const node = nodeGroup(
         'artifact',
         artifactLabel(artifact),
-        artifact.analysis_purpose || artifact.semantic_shape || artifact.materialization,
+        `${artifact.row_count} 行`,
         layout.get(key),
         {
           'data-boundary': String(trace.boundary_artifact_refs.includes(artifact.ref)),
@@ -1014,8 +895,6 @@
     canvasWrap.append(svg)
     workspace.append(canvasWrap, detailsPanel)
     section.append(workspace)
-    if (queryHost !== null) section.append(queryHost)
-
     let scale = 1
     const applyScale = () => viewport.setAttribute('transform', `scale(${scale})`)
     for (const [label, action] of [
@@ -1038,10 +917,14 @@
       })
       controls.append(button)
     }
-    const initialKey =
-      component.runs.length > 0
-        ? `run:${component.runs[0].run_id}`
-        : `artifact:${component.artifacts[0].ref}`
+    const reportArtifact = component.artifacts.find((artifact) =>
+      trace.report_artifact_refs.includes(artifact.ref),
+    )
+    const initialKey = reportArtifact
+      ? `artifact:${reportArtifact.ref}`
+      : component.artifacts.length > 0
+        ? `artifact:${component.artifacts[0].ref}`
+        : `run:${component.runs[0].run_id}`
     activate(initialKey)
     return section
   }
@@ -1066,7 +949,63 @@
     return container
   }
 
-  const api = Object.freeze({ get, has, list, register, renderSessionGraph })
+  function tracesForRender(traceIds) {
+    if (!Array.isArray(traceIds) || traceIds.length === 0 || traceIds.length > 20) {
+      fail('$traceIds', 'must contain between 1 and 20 registered trace ids')
+    }
+    const seen = new Set()
+    return traceIds.map((id, index) => {
+      validateId(id)
+      if (seen.has(id)) fail(`$traceIds[${index}]`, 'must be unique')
+      seen.add(id)
+      return [id, get(id)]
+    })
+  }
+
+  function renderSessionGraphs(container, traceIds = list()) {
+    if (!(container instanceof Element))
+      fail('$container', 'must be an Element', 'container-invalid')
+    const selected = tracesForRender(traceIds)
+    const sessions = new Map()
+    for (const entry of selected) {
+      const sessionId = entry[1].session_id
+      const session = sessions.get(sessionId) ?? []
+      session.push(entry)
+      sessions.set(sessionId, session)
+    }
+    container.replaceChildren()
+    container.append(
+      text(
+        'p',
+        `${sessions.size} 个 Session · ${selected.length} 个聚焦 Graph`,
+        'trace-session-count',
+      ),
+    )
+    let sessionIndex = 0
+    for (const [sessionId, entries] of sessions) {
+      sessionIndex += 1
+      const section = document.createElement('section')
+      section.className = 'trace-session'
+      const heading = document.createElement('header')
+      heading.className = 'trace-session-heading'
+      heading.append(text('h2', `Session ${sessionIndex}`), text('code', sessionId))
+      section.append(heading)
+      for (const [traceId, trace] of entries) {
+        const graph = document.createElement('section')
+        graph.className = 'trace-session-graph'
+        graph.append(text('h3', `聚焦 Graph · ${traceId}`))
+        const host = document.createElement('div')
+        host.className = 'trace-session-graph-host'
+        renderSessionGraph(host, trace)
+        graph.append(host)
+        section.append(graph)
+      }
+      container.append(section)
+    }
+    return container
+  }
+
+  const api = Object.freeze({ get, has, list, register, renderSessionGraph, renderSessionGraphs })
   Object.defineProperty(scope, 'ReportTrace', {
     configurable: false,
     enumerable: true,

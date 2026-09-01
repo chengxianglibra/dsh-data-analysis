@@ -223,13 +223,6 @@
   function validateSource(value, path, table) {
     const source = object(value, path)
     string(source.kind, `${path}.kind`)
-    if (source.kind === 'computed') {
-      exactKeys(source, path, ['kind'])
-      if (Object.hasOwn(table, 'semantic_shape')) {
-        fail('$.table.semantic_shape', 'is not allowed for a computed dataset')
-      }
-      return 'computed'
-    }
     if (source.kind !== 'marivo_artifact') fail(`${path}.kind`, 'is unsupported')
     exactKeys(source, path, [
       'kind',
@@ -307,7 +300,6 @@
     if (artifact.row_count !== table.total_rows) {
       fail(`${path}.artifact.row_count`, 'must equal $.table.total_rows')
     }
-    return 'marivo_artifact'
   }
 
   function validateDataset(value, registrationId) {
@@ -337,25 +329,28 @@
     if (!Array.isArray(table.columns) || table.columns.length > 100) {
       fail('$.table.columns', 'must contain at most 100 columns')
     }
-    const sourceKind = validateSource(dataset.source, '$.source', table)
+    validateSource(dataset.source, '$.source', table)
     const names = new Set()
     table.columns.forEach((candidate, index) => {
       const columnPath = `$.table.columns[${index}]`
       const column = object(candidate, columnPath)
-      const computedKeys = ['name', 'dtype', 'contains_null']
-      const artifactKeys = [...computedKeys, 'artifact_dtype', 'nullable', 'role']
-      exactKeys(column, columnPath, sourceKind === 'computed' ? computedKeys : artifactKeys)
+      exactKeys(column, columnPath, [
+        'name',
+        'dtype',
+        'contains_null',
+        'artifact_dtype',
+        'nullable',
+        'role',
+      ])
       string(column.name, `${columnPath}.name`)
       string(column.dtype, `${columnPath}.dtype`)
       if (names.has(column.name)) fail(`${columnPath}.name`, 'must be unique')
       names.add(column.name)
       if (typeof column.contains_null !== 'boolean')
         fail(`${columnPath}.contains_null`, 'must be boolean')
-      if (sourceKind === 'marivo_artifact') {
-        string(column.artifact_dtype, `${columnPath}.artifact_dtype`)
-        if (typeof column.nullable !== 'boolean') fail(`${columnPath}.nullable`, 'must be boolean')
-        if (!ARTIFACT_ROLES.has(column.role)) fail(`${columnPath}.role`, 'is unsupported')
-      }
+      string(column.artifact_dtype, `${columnPath}.artifact_dtype`)
+      if (typeof column.nullable !== 'boolean') fail(`${columnPath}.nullable`, 'must be boolean')
+      if (!ARTIFACT_ROLES.has(column.role)) fail(`${columnPath}.role`, 'is unsupported')
     })
     if (!Array.isArray(table.rows) || table.rows.length > 100000) {
       fail('$.table.rows', 'must contain at most 100000 rows')

@@ -39,22 +39,6 @@
     }
   ],
   "edges": [{ "kind": "produces", "run_id": "run-1", "artifact_ref": "artifact-1" }],
-  "queries": [
-    {
-      "run_id": "run-1",
-      "query_id": "query-1",
-      "datasource": "warehouse",
-      "dialect": "trino",
-      "sql": "SELECT\n  date_trunc('month', order_date) AS month,\n  SUM(revenue) AS revenue\nFROM analytics.orders\nWHERE order_date >= ?\nGROUP BY 1\nORDER BY 1",
-      "digest": "7f83b1657ff1fc53",
-      "status": "succeeded",
-      "duration_ms": 842,
-      "row_count": 12,
-      "started_at": "2026-08-31T11:57:01Z",
-      "finished_at": "2026-08-31T11:57:01.842Z",
-      "output_artifact_ref": "artifact-1"
-    }
-  ],
   "root_run_ids": ["run-1"],
   "head_artifact_refs": ["artifact-1"],
   "failed_run_ids": [],
@@ -64,8 +48,7 @@
   "truncated": false,
   "projection": {
     "run_arguments": "omitted",
-    "failure_values": "omitted",
-    "query_bind_values": "omitted"
+    "failure_values": "omitted"
   },
   "read_boundaries": [
     "semantic_authority_not_checked",

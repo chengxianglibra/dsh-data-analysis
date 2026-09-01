@@ -9,8 +9,7 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "bin": {
-    "dsh-data-analysis-env": "./lib/bin/environment.js",
-    "dsh-data-analysis-report-check": "./lib/report-check/cli.js"
+    "dsh-data-analysis-env": "./lib/bin/environment.js"
   },
   "exports": {
     ".": {
@@ -36,10 +35,6 @@
     "./evidence": {
       "types": "./lib/types/evidence/index.d.ts",
       "default": "./lib/evidence/index.js"
-    },
-    "./report-check": {
-      "types": "./lib/types/report-check/index.d.ts",
-      "default": "./lib/report-check/index.js"
     },
     "./compatibility": {
       "types": "./lib/types/compatibility.d.ts",
@@ -74,8 +69,8 @@
       "peerRange": "0.1.1-rc.2"
     },
     "marivo": {
-      "version": "0.5.1",
-      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.5.1"
+      "version": "0.5.2",
+      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.5.2"
     },
     "contracts": {
       "runtimeInstallation": "dsh-data-analysis-runtime/v1",
@@ -98,12 +93,7 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1",
-    "acorn": "^8.18.0",
-    "ajv": "^8.20.0",
-    "parse5": "^8.0.1",
-    "postcss": "^8.5.26",
-    "saxes": "^6.0.0"
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent-loop": "^0.1.1-rc.2",
@@ -122,6 +112,7 @@
     "@deepseek-ai/dsh-subprocess-local": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-tool-bash": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-tool-fs": "^0.1.1-rc.2",
+    "ajv": "^8.20.0",
     "@types/react": "^18.3.31",
     "react": "^18.3.1",
     "typescript": "^6.0.3"

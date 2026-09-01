@@ -3,18 +3,9 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
-import LocalBashExecutor from '@deepseek-ai/dsh-bash-local'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import * as ShellEnv from '@deepseek-ai/dsh-shell-env'
-import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import * as ToolBash from '@deepseek-ai/dsh-tool-bash'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { MARIVO_DATASOURCE_TEST_TOOL_NAME } from '../../src/datasource/index.ts'
 import { MARIVO_HELP_TOOL_NAME } from '../../src/disclosure/index.ts'
 import { MARIVO_EVIDENCE_SOURCES_TOOL_NAME } from '../../src/evidence/index.ts'
-import { DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME } from '../../src/report-check/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const sourceRoot = path.join(packageRoot, 'src')
@@ -30,20 +21,14 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return result
 }
 
-test('public plugin Tool surface contains only the four cross-boundary adapters', () => {
+test('public plugin Tool surface contains only the three cross-boundary adapters', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
       MARIVO_DATASOURCE_TEST_TOOL_NAME,
       MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
-      DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME,
     ].sort(),
-    [
-      'dsh_data_analysis_report_check',
-      'marivo_datasource_test',
-      'marivo_evidence_sources',
-      'marivo_help',
-    ],
+    ['marivo_datasource_test', 'marivo_evidence_sources', 'marivo_help'],
   )
 })
 
@@ -71,6 +56,7 @@ test('removed and rejected convenience surfaces cannot regress into plugin sourc
     'ReportDocument',
     'dsh-data-analysis-report/v1',
     'dsh-data-analysis-html/v1',
+    'dsh_data_analysis_report_check',
   ]) {
     assert.equal(source.includes(forbidden), false, `${forbidden} must stay absent from source`)
   }
@@ -82,14 +68,18 @@ test('removed and rejected convenience surfaces cannot regress into plugin sourc
     },
   )
   assert.deepEqual(remainingReportFiles, [])
+  await assert.rejects(() => stat(path.join(sourceRoot, 'report-check')), { code: 'ENOENT' })
+  await assert.rejects(() => stat(path.join(sourceRoot, 'report-disclosure')), { code: 'ENOENT' })
 })
 
 test('package cutover removes report exports and pins the native runtime release', async () => {
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
   assert.equal(Object.hasOwn(manifest.exports, './report'), false)
+  assert.equal(Object.hasOwn(manifest.exports, './report-check'), false)
+  assert.equal(Object.hasOwn(manifest.bin, 'dsh-data-analysis-report-check'), false)
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.marivo, {
-    version: '0.5.1',
-    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.1',
+    version: '0.5.2',
+    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.2',
   })
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {
     runtimeInstallation: 'dsh-data-analysis-runtime/v1',
@@ -97,46 +87,39 @@ test('package cutover removes report exports and pins the native runtime release
   })
 })
 
-test('the report Skill is a short progressive-disclosure router for the Workspace workflow', async () => {
+test('the report Skill contains principles and only Marivo projection assets', async () => {
   const skill = await readFile(reportSkillPath, 'utf8')
   const normalized = skill.replaceAll(/\s+/g, ' ')
   assert.match(normalized, /name: dsh-data-analysis-report/)
   assert.match(
     normalized,
-    /when an analysis needs multiple charts\/tables or a long multi-section presentation/,
+    /when an analysis needs multiple charts, tables, or a long multi-section presentation/,
   )
-  assert.match(normalized, /recover its exact persisted Artifacts and revalidate them/)
-  assert.match(normalized, /Never rerun `observe` only to render HTML/)
-  assert.match(normalized, /Read only the references needed/)
-  assert.match(normalized, /dsh_data_analysis_report_check/)
-  assert.match(normalized, /Static success is not browser or analytical validation/)
-  assert.match(normalized, /top-level file Tool as the bundle's final mutation/)
-  assert.match(normalized, /If any bundle file changes afterward/)
-  assert.match(normalized, /exact file-Tool path as Markdown inline code/)
-  assert.match(normalized, /Produced Files and Host opening are navigation only/)
+  assert.match(normalized, /emit_dataset\(artifact, target, revalidation=\.\.\.\)/)
+  assert.match(normalized, /不接受普通 DataFrame/)
+  assert.match(normalized, /普通报告资源/)
+  assert.match(normalized, /不得注册进 `ReportData` \/ `ReportTrace`/)
+  assert.match(normalized, /emit_session_trace\(graph, target, report_artifact_refs=\[\.\.\.\]\)/)
+  assert.match(normalized, /每个 Marivo Session/)
+  assert.match(normalized, /report_artifact_refs.*实际支撑可见内容/)
+  assert.match(normalized, /单次最多接收 20 个 trace/)
+  assert.match(normalized, /ReportTrace\.renderSessionGraphs/)
+  assert.match(normalized, /session_id \+ artifact_ref/)
+  assert.match(normalized, /经典脚本顺序固定/)
+  assert.match(normalized, /dataset_id.*trace_id.*必须唯一/)
+  assert.match(normalized, /内容组织/)
+  assert.match(normalized, /布局与样式/)
+  assert.match(normalized, /生成与检查/)
+  assert.match(normalized, /新报告使用新的 Workspace 目录；修订使用用户指定或已确认的现有目录/)
+  assert.match(normalized, /Produced Files 与 Host opening 只是导航/)
   assert.ok(skill.length < 5_000)
-  assert.doesNotMatch(skill, /marivo_report_render|ReportDocument|report_publish|renderLineChart/)
-})
-
-test('the real runner shell stack executes through the production DSH Bash Tool', async (t) => {
-  const ctx = new Context()
-  t.after(() => ctx.fiber.dispose())
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
-  await ctx.plugin(ShellEnv)
-  await ctx.plugin(LocalSubprocessRuntime)
-  await ctx.plugin(LocalBashExecutor, { cwd: packageRoot })
-  await ctx.plugin(ToolBash, { enableRunInBackground: false })
-
-  const result = await ctx.tools.execute({
-    signal: new AbortController().signal,
-    callId: CallId('agent-native-report-bash-smoke'),
-    name: 'bash',
-    arguments: {
-      command: 'printf AGENT_NATIVE_REPORT_BASH_OK',
-      description: 'Exercise the real report-validation shell seam',
-    },
-  })
-  assert.equal(result.isError, false)
-  assert.match(JSON.stringify(result.content), /AGENT_NATIVE_REPORT_BASH_OK/)
+  assert.doesNotMatch(
+    skill,
+    /dsh_data_analysis_report_check|starter\/|references\/|renderLineChart/,
+  )
+  assert.deepEqual((await readdir(path.dirname(reportSkillPath))).sort(), ['SKILL.md', 'assets'])
+  assert.deepEqual((await readdir(path.join(path.dirname(reportSkillPath), 'assets'))).sort(), [
+    'marivo-artifact.js',
+    'marivo-session-dag.js',
+  ])
 })

@@ -17,7 +17,7 @@
     "pack:plugin": "npm run check && npm run verify:plugin-package && node scripts/pack-plugin.mjs",
     "quality": "biome check .",
     "quality:fix": "biome check --write .",
-    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:evidence-sources && npm run test:agent-native-report-primitives && npm run test:report-check && npm run test:report-disclosure && npm run test:plugin-integration-delivery",
+    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:evidence-sources && npm run test:agent-native-report-primitives && npm run test:plugin-integration-delivery",
     "test:runtime-workspace": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/runtime-workspace/*.test.ts",
     "test:environment-execution": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/environment-execution/*.test.ts",
     "test:help-disclosure": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/help-disclosure/*.test.ts",
@@ -25,8 +25,6 @@
     "test:evidence-sources": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/evidence-sources/*.test.ts",
     "test:agent-native-report-primitives": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/agent-native-report-primitives/*.test.ts",
     "test:plugin-integration-delivery": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/plugin-integration-delivery/*.test.ts",
-    "test:report-check": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/report-check/*.test.ts",
-    "test:report-disclosure": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/report-disclosure/*.test.ts",
     "typecheck": "npm run typecheck:source && npm run typecheck:scripts",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "typecheck:source": "tsc -p tsconfig.json",
@@ -36,7 +34,6 @@
     "validate:help-disclosure:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-help-disclosure-real.ts",
     "validate:datasource-credentials:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-credentials-real.ts",
     "validate:evidence-sources:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-evidence-sources-real.ts",
-    "validate:agent-native-report-primitives:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-agent-native-report-primitives-real.ts",
     "validate:plugin-integration-delivery:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-integration-delivery-real.ts"
   },
   "devDependencies": {

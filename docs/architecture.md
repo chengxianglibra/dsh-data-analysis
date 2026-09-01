@@ -9,11 +9,12 @@ Lineage、revalidation 与 Session runtime；本项目只连接两者，不复�
 ```mermaid
 flowchart LR
   D[DeepSeek Harness] --> P[dsh-data-analysis]
-  P --> R[Shared Marivo 0.5.1 Runtime]
+  P --> R[Shared Marivo 0.5.2 Runtime]
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
   P --> E[marivo_evidence_sources]
+  P --> J[Marivo Artifact and DAG JS projection]
   R --> M[Marivo public objects]
   M --> A[Agent analysis and expression]
   A --> F[Workspace HTML directory bundle]
@@ -29,7 +30,7 @@ flowchart LR
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
 | Datasource | DSH Credentials 缺失收集、connection test、Shell env 注入 | table/source inspection 语义 |
 | Evidence delivery | 精确 Artifact/Finding 到 Turn/Web 的忠实投影 | 分析读取、Finding 组合、蕴含判断 |
-| Report workflow | 打包的 `dsh-data-analysis-report` Skill 与激活式路由 | 报告 DSL、renderer、publisher、专用 Web card |
+| Report workflow | 原则型 `dsh-data-analysis-report` Skill 与 Artifact/DAG JS 投影 | 页面模板、通用 chart helper、HTML Checker、renderer、publisher、专用 Web card |
 
 模块文档：
 
@@ -42,7 +43,7 @@ flowchart LR
 
 ## Runtime 与 identity
 
-Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.1`。默认 Runtime 位于
+Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.2`。默认 Runtime 位于
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo/`；管理员也可提供绝对 Python。两种模式都必须让版本、
 package path、解释器和 marker 一致。
 
@@ -52,7 +53,7 @@ identity；各领域 bridge 通过同一 `MarivoCheckedRunner` 执行，并在�
 ## Agent scope
 
 Plugin 为每个 Agent 安装一个 controller，并共享同一 Environment 对应的 Help、Datasource 与 Evidence
-bridge。可见 Tool 只有：
+bridge。可见 DSH Tool 只有：
 
 ```text
 marivo_help
@@ -65,6 +66,12 @@ Plugin 同时挂载 Runtime 的 `marivo-analysis` / `marivo-semantic` 和随包�
 `marivo-analysis` 激活，在用户请求 HTML/Web 输出或分析需要多个图表/表格、较长分章节呈现时加载报告
 Skill。已有分析恢复并 revalidate persisted Artifacts，不为展示重新执行 `observe`。插件不注册报告 Tool；
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
+
+Runtime 另外安装 `dsh-data-analysis-report-kit`。其 `emit_dataset` 只接受 Marivo `BaseFrame`，
+`emit_session_trace` 只接受调用方已取得的公开 `SessionGraph`；配套 Skill assets 只负责在浏览器侧校验和读取
+这些快照。一次分析涉及多个 Marivo Session 时，每个 Session 保持独立 Graph 投影，由浏览器运行时集中展示；
+Frame preview 按 `session_id + artifact_ref` 关联对应 Artifact snapshot。它们不是 DSH Tool，也不拥有页面
+结构、图表、样式或通用数据传输。
 
 ## 原生分析读取
 
@@ -99,7 +106,8 @@ Artifact，再调用 `artifact.finding(finding_id)`，并验证 Finding 的 Sess
 
 ## Agent 原生报告与文件交付
 
-Agent 选择任意 HTML/CSS/SVG/JavaScript、图表和本地依赖，输出普通目录：
+Agent 按 Skill 原则自行选择 HTML/CSS/SVG/JavaScript、图表和本地依赖，输出普通目录。插件不提供页面
+示例或静态 HTML Checker：
 
 ```text
 <workspace>/<new-report-directory>/
@@ -122,9 +130,8 @@ Agent 选择任意 HTML/CSS/SVG/JavaScript、图表和本地依赖，输出普�
 npm run check
 npm run build
 npm run verify:plugin-package
-npm run validate:agent-native-report-primitives:real
 ```
 
-确定性测试守住 Tool 最小性、旧 surface 删除、Evidence 精确归属与包导出。真实 runner 使用精确 Runtime、
-实际文件 Tool 和真实模型跑 Native、Code、both 三种 journey；Web Produced Files、Host opener、浏览器、
-打印和隔离磁盘配额仍必须在对应真实环境完成，不能由 runner 日志代替。
+确定性测试守住 Tool 最小性、旧 surface 删除、Artifact/DAG 投影契约、Evidence 精确归属与包导出。页面的
+Web Produced Files、Host opener、浏览器、打印和隔离磁盘配额由具体交付工作流按 Skill 原则验证，不能由
+路径存在或本地日志代替。

@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
 
 from marivo.analysis import (
     ArtifactSummary,
@@ -33,7 +32,6 @@ from .errors import ReportSessionTraceError
 TRACE_SCHEMA = "dsh-data-analysis-session-trace/v1"
 TRACE_MAX_NODES = 200
 TRACE_MAX_EDGES = 1_000
-TRACE_MAX_QUERIES = 500
 TRACE_MAX_BYTES = 4 * 1024 * 1024
 TRACE_MAX_REPORT_REFS = 20
 JAVASCRIPT_REGISTRY = "ReportTrace"
@@ -63,32 +61,9 @@ class SessionTraceReceipt:
     run_count: int
     artifact_count: int
     edge_count: int
-    query_count: int
     truncated: bool
     byte_size: int
     content_hash: str
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class SessionTraceQuery:
-    """Caller-supplied, parameterized SQL disclosure for one persisted Run.
-
-    ``sql`` is presentation text and must not contain bind values or credentials. The
-    report kit never reads Marivo private stores to recover query records.
-    """
-
-    run_id: str
-    query_id: str
-    datasource: str
-    dialect: str
-    sql: str
-    digest: str
-    status: str
-    duration_ms: int
-    row_count: int
-    started_at: datetime
-    finished_at: datetime
-    output_artifact_ref: str | None = None
 
 
 def _identity(value: object, location: str) -> str:
@@ -334,68 +309,6 @@ def _project_edge(value: object, index: int) -> dict[str, str]:
     }
 
 
-def _project_query(value: object, index: int) -> dict[str, object]:
-    if not isinstance(value, SessionTraceQuery):
-        raise ReportSessionTraceError(
-            "session-trace-query-invalid",
-            "queries must contain SessionTraceQuery values",
-            {"queryIndex": index, "queryType": type(value).__name__},
-        )
-    if value.status not in {"succeeded", "failed"}:
-        raise ReportSessionTraceError(
-            "session-trace-query-invalid",
-            "Query status must be succeeded or failed",
-            {"queryIndex": index, "status": value.status},
-        )
-    if (
-        not isinstance(value.sql, str)
-        or not value.sql
-        or len(value.sql.encode("utf-8")) > 256 * 1024
-    ):
-        raise ReportSessionTraceError(
-            "session-trace-query-invalid",
-            "Query SQL must be a non-empty UTF-8 string of at most 262144 bytes",
-            {"queryIndex": index},
-        )
-    return {
-        "run_id": _identity(value.run_id, f"queries[{index}].run_id"),
-        "query_id": _identity(value.query_id, f"queries[{index}].query_id"),
-        "datasource": _identity(value.datasource, f"queries[{index}].datasource"),
-        "dialect": _identity(value.dialect, f"queries[{index}].dialect"),
-        "sql": value.sql,
-        "digest": _identity(value.digest, f"queries[{index}].digest"),
-        "status": value.status,
-        "duration_ms": nonnegative_integer(
-            value.duration_ms,
-            location=f"queries[{index}].duration_ms",
-            error_type=ReportSessionTraceError,
-        ),
-        "row_count": nonnegative_integer(
-            value.row_count,
-            location=f"queries[{index}].row_count",
-            error_type=ReportSessionTraceError,
-        ),
-        "started_at": source_timestamp(
-            value.started_at,
-            location=f"queries[{index}].started_at",
-            error_type=ReportSessionTraceError,
-        ),
-        "finished_at": source_timestamp(
-            value.finished_at,
-            location=f"queries[{index}].finished_at",
-            error_type=ReportSessionTraceError,
-        ),
-        "output_artifact_ref": (
-            None
-            if value.output_artifact_ref is None
-            else _identity(
-                value.output_artifact_ref,
-                f"queries[{index}].output_artifact_ref",
-            )
-        ),
-    }
-
-
 def _validate_topology(
     artifacts: list[dict[str, object]],
     runs: list[dict[str, object]],
@@ -617,7 +530,6 @@ def emit_session_trace(
     target: str | os.PathLike[str],
     *,
     report_artifact_refs: Sequence[str],
-    queries: Sequence[SessionTraceQuery] = (),
     trace_id: str | None = None,
 ) -> SessionTraceReceipt:
     """Emit one bounded classic-script Session trace registration atomically."""
@@ -664,24 +576,11 @@ def emit_session_trace(
             "SessionGraph exceeds the trace edge limit; request a smaller focused graph",
             {"limit": TRACE_MAX_EDGES, "actual": len(graph.edges)},
         )
-    if isinstance(queries, (str, bytes)) or not isinstance(queries, Sequence):
-        raise ReportSessionTraceError(
-            "session-trace-query-invalid", "queries must be a sequence"
-        )
-    if len(queries) > TRACE_MAX_QUERIES:
-        raise ReportSessionTraceError(
-            "session-trace-limit-exceeded",
-            "Session trace exceeds the query disclosure limit",
-            {"limit": TRACE_MAX_QUERIES, "actual": len(queries)},
-        )
     artifacts = [
         _project_artifact(item, index) for index, item in enumerate(graph.artifacts)
     ]
     runs = [_project_run(item, index) for index, item in enumerate(graph.runs)]
     edges = [_project_edge(item, index) for index, item in enumerate(graph.edges)]
-    projected_queries = [
-        _project_query(item, index) for index, item in enumerate(queries)
-    ]
     root_run_ids = _identity_array(graph.root_run_ids, "root_run_ids")
     head_artifact_refs = _identity_array(graph.head_artifact_refs, "head_artifact_refs")
     failed_run_ids = _identity_array(graph.failed_run_ids, "failed_run_ids")
@@ -708,31 +607,11 @@ def emit_session_trace(
         truncated,
     )
     artifact_set = {str(item["ref"]) for item in artifacts}
-    run_set = {str(item["run_id"]) for item in runs}
     if any(ref not in artifact_set for ref in report_refs):
         raise ReportSessionTraceError(
             "session-trace-report-refs-invalid",
             "Every report Artifact ref must exist in the local graph",
         )
-    query_ids: set[str] = set()
-    for query in projected_queries:
-        query_id = str(query["query_id"])
-        if query_id in query_ids:
-            raise ReportSessionTraceError(
-                "session-trace-query-invalid", "Query identities must be unique"
-            )
-        query_ids.add(query_id)
-        if query["run_id"] not in run_set:
-            raise ReportSessionTraceError(
-                "session-trace-query-invalid",
-                "Every Query must identify a local Run",
-            )
-        output_ref = query["output_artifact_ref"]
-        if output_ref is not None and output_ref not in artifact_set:
-            raise ReportSessionTraceError(
-                "session-trace-query-invalid",
-                "Query output_artifact_ref must identify a local Artifact",
-            )
     payload = {
         "schema": TRACE_SCHEMA,
         "trace_id": identity,
@@ -742,7 +621,6 @@ def emit_session_trace(
         "artifacts": artifacts,
         "runs": runs,
         "edges": edges,
-        "queries": projected_queries,
         "root_run_ids": root_run_ids,
         "head_artifact_refs": head_artifact_refs,
         "failed_run_ids": failed_run_ids,
@@ -753,7 +631,6 @@ def emit_session_trace(
         "projection": {
             "run_arguments": "omitted",
             "failure_values": "omitted",
-            "query_bind_values": "omitted",
         },
         "read_boundaries": [
             "semantic_authority_not_checked",
@@ -779,11 +656,10 @@ def emit_session_trace(
         run_count=len(runs),
         artifact_count=len(artifacts),
         edge_count=len(edges),
-        query_count=len(projected_queries),
         truncated=truncated,
         byte_size=len(content),
         content_hash=digest,
     )
 
 
-__all__ = ["SessionTraceQuery", "SessionTraceReceipt", "emit_session_trace"]
+__all__ = ["SessionTraceReceipt", "emit_session_trace"]

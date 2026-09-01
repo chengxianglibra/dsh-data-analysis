@@ -29,7 +29,6 @@ from marivo.analysis.session._read_model import (
 def main() -> None:
     root = Path(sys.argv[1])
     root.mkdir(parents=True, exist_ok=True)
-    dataset_path = root / "computed.js"
     artifact_path = root / "artifact.js"
     trace_path = root / "trace.js"
     frame = pd.DataFrame(
@@ -38,7 +37,6 @@ def main() -> None:
             "revenue": [1024.5, None],
         }
     )
-    emit_dataset(frame, dataset_path)
     now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
     artifact_frame = BaseFrame(
         frame,
@@ -134,7 +132,6 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "dataset": str(dataset_path),
                 "artifact": str(artifact_path),
                 "trace": str(trace_path),
             }

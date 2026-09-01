@@ -77,7 +77,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "marivo", specifier = "==0.5.1" },
+    { name = "marivo", specifier = "==0.5.2" },
     { name = "pandas", specifier = ">=2.2.0,<3.0.0" },
 ]
 
@@ -169,7 +169,7 @@ wheels = [
 
 [[package]]
 name = "marivo"
-version = "0.5.1"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ibis-framework" },
@@ -186,9 +186,9 @@ dependencies = [
     { name = "tomli-w" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/7f/1e2b80239f63dcdb6b35db1c662828068f25c1f83d7acbcb58275c29826e/marivo-0.5.1.tar.gz", hash = "sha256:3e1a31531f0a89aa65da3927e510118731b4a5b08999b8c3bbb332aab6c4c692", size = 1960084, upload-time = "2026-08-31T06:47:20.067Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/cd/c953b39ff355402b59103b66672e56cf97c7ec62411d90a36e59fd1a748b/marivo-0.5.2.tar.gz", hash = "sha256:bd47e5b2c3c27b42d5f219252b00a19145647fdec82b3f00d42fb7ad5f08b2ed", size = 1972599, upload-time = "2026-09-01T08:36:16.196Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/ae/f4f21424a09a924fec92924265e0536fef24ec746ecdcda6466f9bfbfd43/marivo-0.5.1-py3-none-any.whl", hash = "sha256:f09a58ad062eeee162b0096b8b559ebad7a59b8032af51b187ba720a74983e7d", size = 1392903, upload-time = "2026-08-31T06:47:17.958Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/ab/a58e57fc9efc9a9b8bbaff600c54f9eb5f6fa32412ff5f0fc3a4f72b26be/marivo-0.5.2-py3-none-any.whl", hash = "sha256:f4dcc1ccee26589c5a42fa54b0739fa6ac03fe552852ca8e321b9399056177ab", size = 1399247, upload-time = "2026-09-01T08:36:14.35Z" },
 ]
 
 [[package]]

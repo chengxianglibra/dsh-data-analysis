@@ -2,9 +2,9 @@
 
 ## 作用
 
-本模块把 profile 级 Marivo Runtime、per-Workspace binding、三个跨边界 Tool、激活式 Help/工作流指导和
-Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness 的普通 Tool、Session 或 profile
-语义，也不拥有报告对象。
+本模块把 profile 级 Marivo Runtime、per-Workspace binding、三个跨边界 Tool、两个 Marivo JavaScript
+投影器、激活式 Help/工作流指导和 Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness
+的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
 实现入口：
 
@@ -15,7 +15,7 @@ Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness �
 
 ## 生命周期
 
-1. `apply()` 确保精确 Marivo 0.5.1 shared Runtime。
+1. `apply()` 确保精确 Marivo 0.5.2 shared Runtime。
 2. Runtime 的 `marivo-analysis`、`marivo-semantic` 与随插件包分发的 `dsh-data-analysis-report` skills
    挂载到 profile skill registry。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性初始化并绑定 Workspace。
@@ -39,7 +39,7 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 和�
 
 `marivo-semantic` 激活后注入 credential 规则；`marivo-analysis` 激活后注入 Evidence 调用策略和报告
 Skill 路由。用户请求 HTML/Web 输出，或分析需要多个图表/表格或较长的分章节呈现时，Agent 加载
-`dsh-data-analysis-report`；该 Skill 只说明：
+`dsh-data-analysis-report`；该 Skill 只提供：
 
 - 直接恢复并 revalidate persisted Artifacts，不为展示重新执行 `observe`；
 - 新目录、相对资源、固定 `index.html`；
@@ -48,11 +48,11 @@ Skill 路由。用户请求 HTML/Web 输出，或分析需要多个图表/表格
 - 交付前执行资源、离线、安全、浏览器、键盘和打印检查；
 - 不把 Workspace bundle 描述为不可变发布、replay、share 或 Evidence proof。
 
-指导不定义章节、block、chart type、layout 或 renderer schema。
-
-Checker 校验 dataset、非 Query trace 结构、bundle 资源、安全与可访问性，但对 trace `queries` 使用空投影：
-不要求 `observe` Run 提供 Query，也不检查已有 Query 的 schema、重复 ID 或 Run/Artifact identity。Report kit
-仍可生成并校验调用方主动提供的安全 Query；`queries=[]` 时页面不渲染 SQL 区域。
+指导不给出 HTML/CSS/JavaScript 示例，不定义 block、chart type 或 renderer schema。Skill assets 只保留
+`marivo-artifact.js` 与 `marivo-session-dag.js`；Python report-kit 只提供对应的 Marivo `BaseFrame` 与
+`SessionGraph` 快照，不接受普通 DataFrame。插件不注册 HTML Checker，页面检查由 Agent 按 Skill 原则使用
+通用文件、代码和浏览器能力完成。多 Session 各自保留独立 Graph，由运行时集中展示；Frame preview 只按
+`session_id + artifact_ref` 关联精确 Artifact snapshot。
 
 ## Web client
 
@@ -72,12 +72,13 @@ remote/headless 自动降级为路径。
 | 边界 | 当前值 |
 | --- | --- |
 | DSH distribution/peers | `0.1.1-rc.2` |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.1` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.2` |
 | Runtime marker | `dsh-data-analysis-runtime/v1` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v1` |
 
-Package 不导出 `./report`，tarball 不包含 report implementation/types。版本、package path 或解释器不匹配
-时 fail closed；不维护 compatibility alias 或 capability matrix。
+Package 不导出 `./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 只包含 report-kit wheel、
+投影 schemas、原则型 Skill 与两个 JS runtime assets。版本、package path 或解释器不匹配时 fail closed；
+不维护 compatibility alias 或 capability matrix。
 
 ## 验证
 
@@ -87,11 +88,7 @@ npm run test:agent-native-report-primitives
 npm run build
 npm run verify:plugin-package
 npm run validate:plugin-integration-delivery:real
-npm run validate:agent-native-report-primitives:real
 ```
 
-Real runner 需要正式 Marivo 0.5.1 与真实模型。它要求 Agent 实际加载 `marivo-analysis` 和
-`dsh-data-analysis-report`，通过生产 `dsh-tool-bash` / local subprocess seam 执行可审计的原生公共 API
-step，再使用 Harness 真实文件 Tool 跑 Native、Code、both 三种 report journey 并检查目录 bundle。
-Produced Files、Host opener、浏览器/打印、remote/headless 与隔离磁盘配额仍需在对应真实 DSH Web 环境验收；
-runner 不能伪造这些外部能力。
+Real runner 需要正式 Marivo 0.5.2 与真实模型。Produced Files、Host opener、浏览器/打印、remote/headless
+与隔离磁盘配额仍需在对应真实 DSH Web 环境验收；路径、runner 日志或静态 schema 不能伪造这些外部能力。

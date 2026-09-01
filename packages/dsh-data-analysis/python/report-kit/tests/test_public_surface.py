@@ -14,7 +14,6 @@ def test_public_surface_is_small_and_versioned() -> None:
         "ReportKitError",
         "ReportSessionTraceError",
         "SessionTraceReceipt",
-        "SessionTraceQuery",
         "emit_dataset",
         "emit_session_trace",
     }
@@ -25,7 +24,7 @@ def test_receipts_are_frozen_and_slotted() -> None:
         path="data.js",
         schema="dsh-data-analysis-dataset/v1",
         dataset_id="data",
-        source_kind="computed",
+        source_kind="marivo_artifact",
         total_rows=0,
         written_rows=0,
         omitted_rows=0,

@@ -14,136 +14,127 @@
       "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
     },
     "source": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind"],
-          "properties": { "kind": { "const": "computed" } }
-        },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "artifact",
+        "quality_summary",
+        "issues",
+        "issues_omitted",
+        "lineage",
+        "revalidation"
+      ],
+      "properties": {
+        "kind": { "const": "marivo_artifact" },
+        "artifact": {
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "session_id",
+            "ref",
             "kind",
-            "artifact",
-            "quality_summary",
-            "issues",
-            "issues_omitted",
-            "lineage",
-            "revalidation"
+            "artifact_schema_version",
+            "content_hash",
+            "created_at",
+            "row_count",
+            "evidence_status",
+            "finding_count"
           ],
           "properties": {
-            "kind": { "const": "marivo_artifact" },
-            "artifact": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "session_id",
-                "ref",
-                "kind",
-                "artifact_schema_version",
-                "content_hash",
-                "created_at",
-                "row_count",
-                "evidence_status",
-                "finding_count"
-              ],
-              "properties": {
-                "session_id": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                "ref": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                "kind": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                "artifact_schema_version": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 2048
-                },
-                "content_hash": {
-                  "type": ["string", "null"],
-                  "maxLength": 2048
-                },
-                "created_at": {
-                  "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
-                },
-                "row_count": { "type": "integer", "minimum": 0 },
-                "evidence_status": { "enum": ["complete", "partial", "unavailable"] },
-                "finding_count": { "type": "integer", "minimum": 0 }
-              }
+            "session_id": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "ref": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "kind": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "artifact_schema_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
             },
-            "quality_summary": {
-              "oneOf": [
-                {
-                  "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/qualitySummary"
-                },
-                { "type": "null" }
-              ]
+            "content_hash": {
+              "type": ["string", "null"],
+              "maxLength": 2048
             },
-            "issues": {
+            "created_at": {
+              "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+            },
+            "row_count": { "type": "integer", "minimum": 0 },
+            "evidence_status": { "enum": ["complete", "partial", "unavailable"] },
+            "finding_count": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "quality_summary": {
+          "oneOf": [
+            {
+              "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/qualitySummary"
+            },
+            { "type": "null" }
+          ]
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/artifactIssue"
+          }
+        },
+        "issues_omitted": { "type": "integer", "minimum": 0 },
+        "lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["external_inputs", "external_inputs_omitted", "steps", "steps_omitted"],
+          "properties": {
+            "external_inputs": {
+              "type": "array",
+              "maxItems": 100,
+              "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
+            },
+            "external_inputs_omitted": { "type": "integer", "minimum": 0 },
+            "steps": {
               "type": "array",
               "maxItems": 100,
               "items": {
-                "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/artifactIssue"
-              }
-            },
-            "issues_omitted": { "type": "integer", "minimum": 0 },
-            "lineage": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["external_inputs", "external_inputs_omitted", "steps", "steps_omitted"],
-              "properties": {
-                "external_inputs": {
-                  "type": "array",
-                  "maxItems": 100,
-                  "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
-                },
-                "external_inputs_omitted": { "type": "integer", "minimum": 0 },
-                "steps": {
-                  "type": "array",
-                  "maxItems": 100,
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "intent",
-                      "job_ref",
-                      "inputs",
-                      "params_digest",
-                      "analysis_purpose"
-                    ],
-                    "properties": {
-                      "intent": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                      "job_ref": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                      "inputs": {
-                        "type": "array",
-                        "maxItems": 100,
-                        "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
-                      },
-                      "params_digest": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 2048
-                      },
-                      "analysis_purpose": {
-                        "type": ["string", "null"],
-                        "maxLength": 2048
-                      }
-                    }
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["intent", "job_ref", "inputs", "params_digest", "analysis_purpose"],
+                "properties": {
+                  "intent": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "job_ref": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "inputs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
+                  },
+                  "params_digest": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "analysis_purpose": {
+                    "type": ["string", "null"],
+                    "maxLength": 2048
                   }
-                },
-                "steps_omitted": { "type": "integer", "minimum": 0 }
+                }
               }
             },
-            "revalidation": {
-              "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/revalidation-v1.schema.json"
-            }
+            "steps_omitted": { "type": "integer", "minimum": 0 }
           }
+        },
+        "revalidation": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/revalidation-v1.schema.json"
         }
-      ]
+      }
     },
     "table": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["total_rows", "written_rows", "omitted_rows", "columns", "rows"],
+      "required": [
+        "total_rows",
+        "written_rows",
+        "omitted_rows",
+        "semantic_shape",
+        "columns",
+        "rows"
+      ],
       "properties": {
         "total_rows": { "type": "integer", "minimum": 0 },
         "written_rows": { "type": "integer", "minimum": 0, "maximum": 100000 },
@@ -153,38 +144,17 @@
           "type": "array",
           "maxItems": 100,
           "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["name", "dtype", "contains_null"],
-                "properties": {
-                  "name": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                  "dtype": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                  "contains_null": { "type": "boolean" }
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "name",
-                  "dtype",
-                  "artifact_dtype",
-                  "contains_null",
-                  "nullable",
-                  "role"
-                ],
-                "properties": {
-                  "name": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                  "dtype": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                  "artifact_dtype": { "type": "string", "minLength": 1, "maxLength": 2048 },
-                  "contains_null": { "type": "boolean" },
-                  "nullable": { "type": "boolean" },
-                  "role": { "enum": ["time", "dimension", "value", "measure", "unknown"] }
-                }
-              }
-            ]
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "dtype", "artifact_dtype", "contains_null", "nullable", "role"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 2048 },
+              "dtype": { "type": "string", "minLength": 1, "maxLength": 2048 },
+              "artifact_dtype": { "type": "string", "minLength": 1, "maxLength": 2048 },
+              "contains_null": { "type": "boolean" },
+              "nullable": { "type": "boolean" },
+              "role": { "enum": ["time", "dimension", "value", "measure", "unknown"] }
+            }
           }
         },
         "rows": {

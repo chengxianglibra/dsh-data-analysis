@@ -33,7 +33,6 @@ import {
   MARIVO_EVIDENCE_SOURCES_PROMPT,
   MARIVO_REPORT_PROMPT,
 } from '../../src/plugin.ts'
-import { DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME } from '../../src/report-check/index.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 const FAKE_PYTHON = String.raw`#!/usr/bin/env node
@@ -332,7 +331,7 @@ test('analysis activation adds Evidence guidance and the concise report route', 
   assert.ok(activatedPrompt.includes(MARIVO_REPORT_PROMPT))
   assert.equal(
     MARIVO_REPORT_PROMPT,
-    'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation. For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill trace/SQL details.',
+    'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation. For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
   )
   assert.doesNotMatch(activatedPrompt, /marivo_report_render/)
   assert.doesNotMatch(activatedPrompt, /answer inline by default/)
@@ -340,45 +339,6 @@ test('analysis activation adds Evidence guidance and the concise report route', 
   assert.doesNotMatch(activatedPrompt, /No plugin report Tool, schema, renderer, publisher/)
   assert.doesNotMatch(activatedPrompt, /session\.evidence\.compatibility/)
   assert.match(MARIVO_EVIDENCE_SOURCES_PROMPT, /markers, footnotes, or a source appendix/)
-})
-
-test('report Checker is visible only after the report Skill load and only for that turn', async (t) => {
-  const fixture = await environmentFixture()
-  t.after(fixture.cleanup)
-  const adapter = new MockAdapter([
-    toolCallsResponse([
-      { id: 'report-skill', name: 'skill', args: { name: 'dsh-data-analysis-report' } },
-    ]),
-    textResponse('report turn done'),
-    textResponse('ordinary turn done'),
-  ])
-  const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'report-check-disclosure')
-  const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: { resolve: () => Promise.resolve(undefined) },
-  })
-  t.after(dispose)
-
-  send(agent, 'create an HTML report')
-  await agent.whenIdle()
-
-  assert.doesNotMatch(
-    requestToolNames(adapter.requests[0]).join(','),
-    new RegExp(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME),
-  )
-  assert.match(
-    requestToolNames(adapter.requests[1]).join(','),
-    new RegExp(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME),
-  )
-  assert.equal(agent.ctx.tools.get(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME, agent), undefined)
-
-  send(agent, 'answer inline only')
-  await agent.whenIdle()
-
-  assert.doesNotMatch(
-    requestToolNames(adapter.requests[2]).join(','),
-    new RegExp(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME),
-  )
 })
 
 test('an Agent-plane inherited skill Tool activates Evidence guidance and root help', async (t) => {

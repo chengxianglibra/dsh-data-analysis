@@ -80,7 +80,7 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
   appendFileSync(${JSON.stringify(recordPath)}, projectRoot + '\\n')
   process.stdout.write(JSON.stringify({
     status: 'ok', project_root: projectRoot, python_executable: executable,
-    marivo: { version: '0.5.1', package_path: ${JSON.stringify(packagePath)} },
+    marivo: { version: '0.5.2', package_path: ${JSON.stringify(packagePath)} },
     sections: [
       { id: 'installation', status: 'ok', checks: [
         { id: 'installation.python', status: 'ok', summary: 'shared Python' },
@@ -96,7 +96,7 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
 if (args[0] === '-c' && args.length === 2) {
   process.stdout.write(JSON.stringify({
     python_executable: executable,
-    marivo_version: '0.5.1',
+    marivo_version: '0.5.2',
     package_path: ${JSON.stringify(packagePath)},
     pandas_version: '2.3.3',
     pandas_supported: true,
@@ -198,7 +198,7 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   await mkdir(secondRoot)
   await mkdir(path.dirname(packagePath), { recursive: true })
   await mkdir(path.dirname(reportKitPackagePath), { recursive: true })
-  await writeFile(packagePath, '__version__ = "0.5.1"\n')
+  await writeFile(packagePath, '__version__ = "0.5.2"\n')
   await writeFile(reportKitPackagePath, '__version__ = "2.0.0"\n')
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)

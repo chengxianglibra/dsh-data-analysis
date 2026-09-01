@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process'
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -8,7 +7,6 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
-  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -76,22 +74,6 @@ function run(executable, args, options = {}) {
     process.exit(result.status ?? 1)
   }
   return result.stdout
-}
-
-/**
- * @param {string} executable
- * @param {string[]} args
- * @param {Omit<import('node:child_process').SpawnSyncOptionsWithStringEncoding, 'encoding'>} [options]
- */
-function runFailure(executable, args, options = {}) {
-  const result = spawnSync(executable, args, {
-    cwd: root,
-    ...options,
-    encoding: 'utf8',
-  })
-  if (result.error !== undefined) throw result.error
-  if (result.status === 0) fail(`${executable} unexpectedly succeeded`)
-  return `${result.stdout ?? ''}${result.stderr ?? ''}`
 }
 
 /** @param {string} packageName */
@@ -197,6 +179,14 @@ try {
   const skillFiles = recursivePackageFiles(
     path.join(packageRoot, 'skills', 'dsh-data-analysis-report'),
   )
+  const expectedSkillFiles = [
+    'skills/dsh-data-analysis-report/SKILL.md',
+    'skills/dsh-data-analysis-report/assets/marivo-artifact.js',
+    'skills/dsh-data-analysis-report/assets/marivo-session-dag.js',
+  ]
+  if (JSON.stringify(skillFiles) !== JSON.stringify(expectedSkillFiles)) {
+    fail('report Skill must contain only its principles and Marivo projection assets')
+  }
   const contractFiles = readdirSync(path.join(packageRoot, 'report-contracts'), {
     withFileTypes: true,
   })
@@ -215,9 +205,6 @@ try {
     'lib/evidence/index.js',
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
-    'lib/report-check/cli.js',
-    'lib/report-check/index.js',
-    'lib/types/report-check/index.d.ts',
     reportKitWheelPath,
     ...contractFiles,
     ...skillFiles,
@@ -231,6 +218,12 @@ try {
     }
     if (filename.startsWith('lib/report/') || filename.startsWith('lib/types/report/')) {
       fail(`packed plugin contains removed report surface ${filename}`)
+    }
+    if (
+      filename.startsWith('lib/report-check/') ||
+      filename.startsWith('lib/types/report-check/')
+    ) {
+      fail(`packed plugin contains removed report Checker surface ${filename}`)
     }
     if (filename.startsWith('report-contracts/fixtures/')) {
       fail(`packed plugin contains report contract fixture ${filename}`)
@@ -252,11 +245,6 @@ try {
   if (environmentBin === undefined || (environmentBin.mode & 0o111) === 0) {
     fail('packed environment CLI is not executable')
   }
-  const reportCheckBin = files.get('lib/report-check/cli.js')
-  if (reportCheckBin === undefined || (reportCheckBin.mode & 0o111) === 0) {
-    fail('packed report Checker CLI is not executable')
-  }
-
   const tarball = path.join(temporaryRoot, manifest.filename)
   const extracted = path.join(temporaryRoot, 'extracted')
   mkdirSync(extracted)
@@ -287,9 +275,9 @@ try {
   }
   if (
     packedManifest.bin?.['dsh-data-analysis-env'] !== './lib/bin/environment.js' ||
-    packedManifest.bin?.['dsh-data-analysis-report-check'] !== './lib/report-check/cli.js'
+    Object.hasOwn(packedManifest.bin ?? {}, 'dsh-data-analysis-report-check')
   ) {
-    fail('packed CLI manifest does not expose both supported binaries')
+    fail('packed CLI manifest must expose only the supported environment binary')
   }
   const linkedDependencies = new Set([
     ...Object.keys(peerDependencies),
@@ -300,14 +288,11 @@ try {
     const root = await import('@deepseek-ai/dsh-data-analysis')
     const compatibility = await import('@deepseek-ai/dsh-data-analysis/compatibility')
     const environment = await import('@deepseek-ai/dsh-data-analysis/environment')
-    const reportCheck = await import('@deepseek-ai/dsh-data-analysis/report-check')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.5.1') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.1') throw new Error('packed Marivo package spec mismatch')
+    if (compatibility.MARIVO_VERSION !== '0.5.2') throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.2') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v1') throw new Error('packed subprocess policy mismatch')
-    if (typeof reportCheck.checkWorkspaceReport !== 'function') throw new Error('packed report Checker export is not loadable')
-    if (typeof reportCheck.createDshDataAnalysisReportCheckTool !== 'function') throw new Error('packed report Checker Tool export is not loadable')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {
       if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
@@ -315,63 +300,8 @@ try {
   `
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
-  const reportWorkspace = path.join(temporaryRoot, 'report-workspace')
-  mkdirSync(reportWorkspace)
-  writeFileSync(
-    path.join(reportWorkspace, 'index.html'),
-    '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"><title>Package smoke</title></head><body><main><h1>Package smoke</h1></main></body></html>',
-  )
-  const checkerOutput = run(
-    process.execPath,
-    [path.join(installedPlugin, 'lib', 'report-check', 'cli.js'), 'index.html', '--json'],
-    { cwd: reportWorkspace },
-  )
-  const checkerResult = JSON.parse(checkerOutput)
-  if (checkerResult.status !== 'passed_static') fail('packed report Checker CLI smoke failed')
-
-  const starterWorkspace = path.join(temporaryRoot, 'starter-workspace')
-  mkdirSync(starterWorkspace)
-  const copyStarter = path.join(
-    installedPlugin,
-    'skills',
-    'dsh-data-analysis-report',
-    'scripts',
-    'copy-starter.mjs',
-  )
-  run(
-    process.execPath,
-    [
-      copyStarter,
-      '--target',
-      'reports/demo',
-      '--basic',
-      '--component',
-      'report-data',
-      '--snippet',
-      'kpi-grid',
-    ],
-    { cwd: starterWorkspace },
-  )
-  for (const filename of [
-    'reports/demo/index.html',
-    'reports/demo/assets/report-base.css',
-    'reports/demo/assets/report-data.js',
-    'reports/demo/snippets/kpi-grid.html',
-  ]) {
-    if (!existsSync(path.join(starterWorkspace, filename))) {
-      fail(`packed Starter copier did not create ${filename}`)
-    }
-  }
-  const overwriteFailure = runFailure(
-    process.execPath,
-    [copyStarter, '--target', 'reports/demo', '--basic'],
-    { cwd: starterWorkspace },
-  )
-  if (!overwriteFailure.includes('target-exists')) {
-    fail('packed Starter copier did not preserve the no-overwrite boundary')
-  }
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed report-kit, Checker CLI, and Starter smoke passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed Marivo projection kit and principles-only report Skill passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })
