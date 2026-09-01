@@ -132,6 +132,7 @@ function validateTraceSemantics(value: unknown): string[] {
   const runs = arrayOfRecords(root.runs)
   const artifacts = arrayOfRecords(root.artifacts)
   const edges = arrayOfRecords(root.edges)
+  const queries = arrayOfRecords(root.queries)
   const runIds = runs.map((run) => run.run_id).filter((id): id is string => typeof id === 'string')
   const artifactRefs = artifacts
     .map((artifact) => artifact.ref)
@@ -151,6 +152,21 @@ function validateTraceSemantics(value: unknown): string[] {
   const errors: string[] = []
   if (duplicateValues(runIds).length > 0) errors.push('$.runs run_id values must be unique')
   if (duplicateValues(artifactRefs).length > 0) errors.push('$.artifacts ref values must be unique')
+  const queryIds = queries
+    .map((query) => query.query_id)
+    .filter((id): id is string => typeof id === 'string')
+  if (duplicateValues(queryIds).length > 0) errors.push('$.queries query_id values must be unique')
+  for (const query of queries) {
+    if (typeof query.run_id !== 'string' || !runSet.has(query.run_id)) {
+      errors.push('$.queries contains a dangling run_id')
+    }
+    if (
+      query.output_artifact_ref !== null &&
+      (typeof query.output_artifact_ref !== 'string' || !artifactSet.has(query.output_artifact_ref))
+    ) {
+      errors.push('$.queries contains a dangling output_artifact_ref')
+    }
+  }
 
   const requireRuns = (name: string, expectedLifecycle?: string): void => {
     const values = Array.isArray(root[name]) ? root[name] : []

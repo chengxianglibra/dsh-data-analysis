@@ -44,5 +44,9 @@ or `data-chart-title`, then call `ReportCharts.attachDataDetails(host, dataset)`
 drives the chart. For multi-source charts, disclose each source separately instead of merging
 quality states.
 
+`ReportTrace` 采用“链路 DAG + 右侧 Run/Artifact 详情”的审计布局。若对应 Artifact dataset 已通过
+`ReportData.register(...)` 注册，Artifact 详情会复用该 snapshot 展示有界 Frame 预览；SQL disclosure
+位于链路下方的全宽区域，不挤在详情侧栏中。
+
 Use the `mount` helper from `starter/snippets/mount-error.js` for visible initialization failure.
 It writes a non-sensitive component code, rethrows, and never substitutes an empty chart.

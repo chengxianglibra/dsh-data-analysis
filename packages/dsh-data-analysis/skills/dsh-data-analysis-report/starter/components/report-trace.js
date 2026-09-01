@@ -68,6 +68,18 @@
     }
   }
 
+  function utf8Length(value) {
+    let bytes = 0
+    for (const character of value) {
+      const codePoint = character.codePointAt(0)
+      if (codePoint <= 0x7f) bytes += 1
+      else if (codePoint <= 0x7ff) bytes += 2
+      else if (codePoint <= 0xffff) bytes += 3
+      else bytes += 4
+    }
+    return bytes
+  }
+
   function integer(value, path, nullable = false) {
     if (nullable && value === null) return
     if (!Number.isSafeInteger(value) || value < 0) fail(path, 'must be a non-negative safe integer')
@@ -223,6 +235,7 @@
       'artifacts',
       'runs',
       'edges',
+      'queries',
       'root_run_ids',
       'head_artifact_refs',
       'failed_run_ids',
@@ -390,6 +403,48 @@
       }
     }
     if (visited !== graphNodes.length) fail('$.edges', 'must form an acyclic graph')
+
+    if (!Array.isArray(trace.queries) || trace.queries.length > 500)
+      fail('$.queries', 'must contain at most 500 Query disclosures')
+    const queryIds = new Set()
+    trace.queries.forEach((candidate, index) => {
+      const path = `$.queries[${index}]`
+      const query = object(candidate, path)
+      exactKeys(query, path, [
+        'run_id',
+        'query_id',
+        'datasource',
+        'dialect',
+        'sql',
+        'digest',
+        'status',
+        'duration_ms',
+        'row_count',
+        'started_at',
+        'finished_at',
+        'output_artifact_ref',
+      ])
+      for (const field of ['run_id', 'query_id', 'datasource', 'dialect', 'digest'])
+        string(query[field], `${path}.${field}`)
+      if (
+        typeof query.sql !== 'string' ||
+        query.sql.length === 0 ||
+        utf8Length(query.sql) > 262144
+      ) {
+        fail(`${path}.sql`, 'must be a non-empty UTF-8 string of at most 262144 bytes')
+      }
+      if (!['succeeded', 'failed'].includes(query.status)) fail(`${path}.status`, 'is unsupported')
+      integer(query.duration_ms, `${path}.duration_ms`)
+      integer(query.row_count, `${path}.row_count`)
+      timestamp(query.started_at, `${path}.started_at`)
+      timestamp(query.finished_at, `${path}.finished_at`)
+      string(query.output_artifact_ref, `${path}.output_artifact_ref`, true)
+      if (queryIds.has(query.query_id)) fail(`${path}.query_id`, 'must be unique')
+      queryIds.add(query.query_id)
+      if (!runSet.has(query.run_id)) fail(`${path}.run_id`, 'contains a dangling Run identity')
+      if (query.output_artifact_ref !== null && !artifactSet.has(query.output_artifact_ref))
+        fail(`${path}.output_artifact_ref`, 'contains a dangling Artifact identity')
+    })
     const consumers = new Set(
       runs.filter((run) => run.lifecycle === 'succeeded').flatMap((run) => run.input_artifact_refs),
     )
@@ -404,8 +459,12 @@
     }
 
     const projection = object(trace.projection, '$.projection')
-    exactKeys(projection, '$.projection', ['run_arguments', 'failure_values'])
-    if (projection.run_arguments !== 'omitted' || projection.failure_values !== 'omitted') {
+    exactKeys(projection, '$.projection', ['run_arguments', 'failure_values', 'query_bind_values'])
+    if (
+      projection.run_arguments !== 'omitted' ||
+      projection.failure_values !== 'omitted' ||
+      projection.query_bind_values !== 'omitted'
+    ) {
       fail('$.projection', 'must omit private values')
     }
     if (
@@ -470,13 +529,50 @@
     return value.length <= 20 ? value : `${value.slice(0, 9)}…${value.slice(-6)}`
   }
 
-  function positions(trace) {
+  function graphComponents(trace) {
     const ordered = [
       ...trace.runs.map((run) => `run:${run.run_id}`),
       ...trace.artifacts.map((artifact) => `artifact:${artifact.ref}`),
     ]
-    const predecessor = new Map(ordered.map((node) => [node, []]))
+    const neighbors = new Map(ordered.map((node) => [node, new Set()]))
     for (const edge of trace.edges) {
+      const run = `run:${edge.run_id}`
+      const artifact = `artifact:${edge.artifact_ref}`
+      neighbors.get(run).add(artifact)
+      neighbors.get(artifact).add(run)
+    }
+    const seen = new Set()
+    const components = []
+    for (const start of ordered) {
+      if (seen.has(start)) continue
+      const pending = [start]
+      const nodes = new Set()
+      while (pending.length > 0) {
+        const node = pending.shift()
+        if (seen.has(node)) continue
+        seen.add(node)
+        nodes.add(node)
+        for (const neighbor of neighbors.get(node)) if (!seen.has(neighbor)) pending.push(neighbor)
+      }
+      components.push({
+        nodes,
+        runs: trace.runs.filter((run) => nodes.has(`run:${run.run_id}`)),
+        artifacts: trace.artifacts.filter((artifact) => nodes.has(`artifact:${artifact.ref}`)),
+        edges: trace.edges.filter(
+          (edge) => nodes.has(`run:${edge.run_id}`) && nodes.has(`artifact:${edge.artifact_ref}`),
+        ),
+      })
+    }
+    return components
+  }
+
+  function positions(component) {
+    const ordered = [
+      ...component.runs.map((run) => `run:${run.run_id}`),
+      ...component.artifacts.map((artifact) => `artifact:${artifact.ref}`),
+    ]
+    const predecessor = new Map(ordered.map((node) => [node, []]))
+    for (const edge of component.edges) {
       const source =
         edge.kind === 'consumes' ? `artifact:${edge.artifact_ref}` : `run:${edge.run_id}`
       const target =
@@ -515,11 +611,11 @@
     return result
   }
 
-  function nodeGroup(kind, identity, title, subtitle, position, attributes, live) {
+  function nodeGroup(kind, identity, title, subtitle, position, attributes, live, activate) {
     const group = svgElement('g', {
       class:
         attributes['data-boundary'] === 'true' ? 'trace-node trace-boundary-node' : 'trace-node',
-      role: 'img',
+      role: 'button',
       tabindex: 0,
       transform: `translate(${position.x} ${position.y})`,
       'aria-label': `${title}，${shortIdentity(identity)}，${subtitle}`,
@@ -535,7 +631,209 @@
     group.addEventListener('focus', () => {
       live.textContent = `${title}：${shortIdentity(identity)}；${subtitle}`
     })
+    group.addEventListener('click', activate)
+    group.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') activate()
+    })
     return group
+  }
+
+  function definitionList(entries, className = 'trace-detail-list') {
+    const list = document.createElement('dl')
+    list.className = className
+    for (const [label, value] of entries) {
+      list.append(text('dt', label), text('dd', value === null || value === '' ? '—' : value))
+    }
+    return list
+  }
+
+  function elapsed(startedAt, finishedAt) {
+    if (!finishedAt) return '进行中'
+    return `${Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt))} ms`
+  }
+
+  function matchingDataset(artifactRef) {
+    const registry = scope.ReportData
+    if (!registry || typeof registry.list !== 'function') return null
+    for (const id of registry.list()) {
+      const dataset = registry.get(id)
+      if (
+        dataset.source.kind === 'marivo_artifact' &&
+        dataset.source.artifact.ref === artifactRef
+      ) {
+        return dataset
+      }
+    }
+    return null
+  }
+
+  function previewTable(dataset) {
+    const section = document.createElement('section')
+    section.className = 'trace-frame-preview'
+    section.append(text('h5', '数据预览'))
+    section.append(
+      text(
+        'p',
+        `显示 ${Math.min(10, dataset.table.rows.length)} / 快照 ${dataset.table.written_rows} / 总计 ${dataset.table.total_rows} / 省略 ${dataset.table.omitted_rows} 行`,
+        'trace-frame-count',
+      ),
+    )
+    const wrap = document.createElement('div')
+    wrap.className = 'table-wrap trace-frame-table-wrap'
+    const table = document.createElement('table')
+    table.className = 'data-table trace-frame-table'
+    table.append(text('caption', 'Artifact dataset 有界预览', 'sr-only'))
+    const header = document.createElement('tr')
+    for (const column of dataset.table.columns) {
+      const cell = text('th', column.name)
+      cell.scope = 'col'
+      header.append(cell)
+    }
+    const head = document.createElement('thead')
+    head.append(header)
+    const body = document.createElement('tbody')
+    for (const row of dataset.table.rows.slice(0, 10)) {
+      const item = document.createElement('tr')
+      for (const value of row) item.append(text('td', value === null ? '—' : value))
+      body.append(item)
+    }
+    table.append(head, body)
+    wrap.append(table)
+    section.append(wrap)
+    return section
+  }
+
+  function runDetail(run) {
+    const article = document.createElement('article')
+    article.className = 'trace-detail'
+    article.dataset.nodeKey = `run:${run.run_id}`
+    article.append(text('p', `Run · ${run.lifecycle}`, 'trace-detail-kind'))
+    article.append(text('h4', run.run_id))
+    const entries = [
+      ['能力', run.capability_id],
+      ['状态', run.lifecycle],
+      ['分析目的', run.analysis_purpose],
+      ['开始', run.started_at],
+      [
+        run.lifecycle === 'failed' ? '失败' : '完成',
+        run.lifecycle === 'succeeded'
+          ? run.finished_at
+          : run.lifecycle === 'failed'
+            ? run.failed_at
+            : null,
+      ],
+      [
+        '耗时',
+        elapsed(
+          run.started_at,
+          run.lifecycle === 'succeeded'
+            ? run.finished_at
+            : run.lifecycle === 'failed'
+              ? run.failed_at
+              : null,
+        ),
+      ],
+      ['输入', run.input_artifact_refs.map(shortIdentity).join('、') || '无'],
+    ]
+    if (run.lifecycle === 'succeeded') {
+      entries.push(['输出', shortIdentity(run.output_artifact_ref)])
+      entries.push(['输出模式', run.output_mode])
+    }
+    if (run.lifecycle === 'failed') entries.push(['失败类型', run.failure.error_type])
+    article.append(definitionList(entries))
+    return article
+  }
+
+  function artifactDetail(artifact) {
+    const article = document.createElement('article')
+    article.className = 'trace-detail'
+    article.dataset.nodeKey = `artifact:${artifact.ref}`
+    article.append(text('p', `Artifact · ${artifact.materialization}`, 'trace-detail-kind'))
+    article.append(text('h4', artifact.ref))
+    article.append(
+      definitionList([
+        ['Frame', artifact.family],
+        ['语义形状', artifact.semantic_shape],
+        ['创建', artifact.created_at],
+        ['分析目的', artifact.analysis_purpose],
+        ['行数', artifact.row_count],
+        ['Evidence', `${artifact.evidence.status} · ${artifact.evidence.finding_count} 条 Finding`],
+        [
+          '质量',
+          artifact.quality === null
+            ? '未评估或不适用'
+            : `coverage ${artifact.quality.coverage ?? '—'} · null rate ${artifact.quality.null_rate ?? '—'}`,
+        ],
+        [
+          '问题',
+          `${artifact.issue_counts.warning} warning · ${artifact.issue_counts.blocking} blocking`,
+        ],
+      ]),
+    )
+    const dataset = matchingDataset(artifact.ref)
+    if (dataset) article.append(previewTable(dataset))
+    else article.append(text('p', '此页面未注册该 Artifact 的 dataset 预览。', 'trace-frame-count'))
+    return article
+  }
+
+  function queryDisclosure(query, index) {
+    const details = document.createElement('details')
+    details.className = 'trace-query'
+    if (index === 0) details.setAttribute('open', '')
+    details.append(text('summary', `SQL ${index + 1} · ${query.datasource} · ${query.status}`))
+    const body = document.createElement('div')
+    body.className = 'trace-query-body'
+    body.append(
+      definitionList(
+        [
+          ['Query ID', query.query_id],
+          ['方言', query.dialect],
+          ['Digest', query.digest],
+          ['耗时', `${query.duration_ms} ms`],
+          ['返回行', query.row_count],
+          ['开始', query.started_at],
+          ['完成', query.finished_at],
+          ['输出', query.output_artifact_ref],
+        ],
+        'trace-query-meta',
+      ),
+    )
+    const toolbar = document.createElement('div')
+    toolbar.className = 'trace-query-toolbar'
+    toolbar.append(text('span', '参数化 SQL · bind values 未写入报告'))
+    const wrap = document.createElement('button')
+    wrap.type = 'button'
+    wrap.className = 'trace-query-wrap'
+    wrap.textContent = '自动换行'
+    wrap.setAttribute('aria-pressed', 'false')
+    const codeWrap = document.createElement('pre')
+    codeWrap.className = 'trace-query-code'
+    codeWrap.dataset.wrap = 'false'
+    const code = document.createElement('code')
+    code.textContent = query.sql.replaceAll('\r\n', '\n')
+    codeWrap.append(code)
+    wrap.addEventListener('click', () => {
+      const next = codeWrap.dataset.wrap !== 'true'
+      codeWrap.dataset.wrap = String(next)
+      wrap.setAttribute('aria-pressed', String(next))
+      wrap.textContent = next ? '保持原始换行' : '自动换行'
+    })
+    toolbar.append(wrap)
+    body.append(toolbar, codeWrap)
+    details.append(body)
+    return details
+  }
+
+  function queryPanel(queries) {
+    const panel = document.createElement('section')
+    panel.className = 'trace-query-panel'
+    if (queries.length === 0) {
+      panel.hidden = true
+      return panel
+    }
+    panel.append(text('h4', `SQL 执行记录（${queries.length}）`))
+    for (const [index, query] of queries.entries()) panel.append(queryDisclosure(query, index))
+    return panel
   }
 
   function fallback(trace) {
@@ -614,34 +912,97 @@
     return details
   }
 
-  function renderSessionGraph(container, trace) {
-    if (!(container instanceof Element))
-      fail('$container', 'must be an Element', 'container-invalid')
-    const value = validateTrace(trace, trace?.trace_id)
-    container.replaceChildren()
-    const live = text('p', '', 'sr-only')
-    live.setAttribute('aria-live', 'polite')
-    const liveId = `trace-live-${++nextId}`
-    live.id = liveId
-    if (value.truncated)
-      container.append(text('p', '有界链路：以下视图包含截断边界。', 'trace-boundary'))
-    const layout = positions(value)
+  function traceLegend(trace, componentCount) {
+    const overview = document.createElement('header')
+    overview.className = 'trace-overview'
+    overview.append(
+      text(
+        'p',
+        `${trace.runs.length} 个分析动作 · ${trace.artifacts.length} 个数据工件 · ${trace.queries.length} 条 SQL · ${componentCount} 条链路`,
+        'trace-count',
+      ),
+    )
+    const legend = document.createElement('div')
+    legend.className = 'trace-legend'
+    for (const [label, className] of [
+      ['Run', 'trace-legend-run'],
+      ['Artifact', 'trace-legend-artifact'],
+      ['produces', 'trace-legend-produces'],
+      ['reuses', 'trace-legend-reuses'],
+      ['consumes', 'trace-legend-consumes'],
+    ]) {
+      legend.append(text('span', label, className))
+    }
+    overview.append(legend)
+    return overview
+  }
+
+  function renderComponent(trace, component, componentIndex, live) {
+    const section = document.createElement('section')
+    section.className = 'trace-component'
+    const heading = document.createElement('div')
+    heading.className = 'trace-component-heading'
+    heading.append(text('h3', `分析链路 ${componentIndex + 1}`))
+    const controls = document.createElement('div')
+    controls.className = 'trace-controls'
+    controls.setAttribute('aria-label', '链路缩放')
+    heading.append(controls)
+    section.append(heading)
+
+    const workspace = document.createElement('div')
+    workspace.className = 'trace-workspace'
+    const canvasWrap = document.createElement('div')
+    canvasWrap.className = 'trace-canvas-wrap'
+    const detailsPanel = document.createElement('aside')
+    detailsPanel.className = 'trace-detail-panel'
+    detailsPanel.setAttribute('aria-live', 'polite')
+    const queryHost = document.createElement('div')
+    queryHost.className = 'trace-query-host'
+    const detailByKey = new Map()
+    for (const run of component.runs) {
+      const detail = runDetail(run)
+      detailByKey.set(`run:${run.run_id}`, detail)
+      detailsPanel.append(detail)
+    }
+    for (const artifact of component.artifacts) {
+      const detail = artifactDetail(artifact)
+      detailByKey.set(`artifact:${artifact.ref}`, detail)
+      detailsPanel.append(detail)
+    }
+    const nodesByKey = new Map()
+    const activate = (key) => {
+      for (const [candidate, detail] of detailByKey) {
+        const selected = candidate === key
+        detail.hidden = !selected
+        detail.dataset.active = String(selected)
+        detail.setAttribute('aria-hidden', String(!selected))
+      }
+      for (const [candidate, node] of nodesByKey) node.dataset.selected = String(candidate === key)
+      queryHost.replaceChildren()
+      if (key.startsWith('run:')) {
+        const runId = key.slice(4)
+        queryHost.append(queryPanel(trace.queries.filter((query) => query.run_id === runId)))
+      }
+    }
+
+    const layout = positions(component)
     const maxX = Math.max(...[...layout.values()].map((position) => position.x), 40)
     const maxY = Math.max(...[...layout.values()].map((position) => position.y), 40)
+    const svgId = ++nextId
     const svg = svgElement('svg', {
       class: 'trace-svg',
       role: 'group',
       viewBox: `0 0 ${maxX + 230} ${maxY + 130}`,
-      'aria-describedby': liveId,
-      'aria-labelledby': `trace-title-${nextId}`,
+      'aria-labelledby': `trace-title-${svgId}`,
     })
-    const title = svgElement('title', { id: `trace-title-${nextId}` })
-    title.textContent = value.truncated ? '有界 Marivo Session 分析链路' : 'Marivo Session 分析链路'
+    const title = svgElement('title', { id: `trace-title-${svgId}` })
+    title.textContent = `分析链路 ${componentIndex + 1}`
     const description = svgElement('desc')
-    description.textContent = 'Run 与 Artifact 的有向无环关系；成功状态不表示报告结论可信。'
+    description.textContent =
+      '选择 Run 或 Artifact 节点可查看审计详情；成功状态不表示报告结论可信。'
     const definitions = svgElement('defs')
     const marker = svgElement('marker', {
-      id: `trace-arrow-${nextId}`,
+      id: `trace-arrow-${svgId}`,
       markerHeight: 8,
       markerWidth: 8,
       orient: 'auto',
@@ -651,8 +1012,9 @@
     })
     marker.append(svgElement('path', { d: 'M0 0 L8 4 L0 8 Z', fill: 'currentColor' }))
     definitions.append(marker)
-    svg.append(title, description, definitions)
-    for (const edge of value.edges) {
+    const viewport = svgElement('g', { 'data-trace-viewport': '' })
+    svg.append(title, description, definitions, viewport)
+    for (const edge of component.edges) {
       const sourceKey =
         edge.kind === 'consumes' ? `artifact:${edge.artifact_ref}` : `run:${edge.run_id}`
       const targetKey =
@@ -668,54 +1030,105 @@
         x2: targetPosition.x,
         y1: sourcePosition.y + 38,
         y2: targetPosition.y + 38,
-        'marker-end': `url(#trace-arrow-${nextId})`,
+        'marker-end': `url(#trace-arrow-${svgId})`,
         'aria-label': `${edge.kind}：${shortIdentity(edge.run_id)} 与 ${shortIdentity(edge.artifact_ref)}`,
       })
-      line.addEventListener('focus', () => {
-        live.textContent = `${edge.kind}：Run ${shortIdentity(edge.run_id)}，Artifact ${shortIdentity(edge.artifact_ref)}`
-      })
-      svg.append(line)
+      viewport.append(line)
       const label = svgElement('text', {
         x: (sourcePosition.x + 170 + targetPosition.x) / 2,
         y: (sourcePosition.y + targetPosition.y) / 2 + 30,
         'text-anchor': 'middle',
       })
       label.textContent = edge.kind
-      svg.append(label)
+      viewport.append(label)
     }
-    for (const run of value.runs) {
-      svg.append(
-        nodeGroup(
-          'run',
-          run.run_id,
-          `Run · ${run.lifecycle}`,
-          `${run.capability_id}；${run.started_at}`,
-          layout.get(`run:${run.run_id}`),
-          {
-            'data-lifecycle': run.lifecycle,
-            'data-boundary': String(value.boundary_run_ids.includes(run.run_id)),
-          },
-          live,
-        ),
+    for (const run of component.runs) {
+      const key = `run:${run.run_id}`
+      const node = nodeGroup(
+        'run',
+        run.run_id,
+        run.capability_id,
+        `${run.lifecycle}；${run.started_at}`,
+        layout.get(key),
+        {
+          'data-lifecycle': run.lifecycle,
+          'data-boundary': String(trace.boundary_run_ids.includes(run.run_id)),
+        },
+        live,
+        () => activate(key),
       )
+      nodesByKey.set(key, node)
+      viewport.append(node)
     }
-    for (const artifact of value.artifacts) {
-      svg.append(
-        nodeGroup(
-          'artifact',
-          artifact.ref,
-          `Artifact · ${artifact.family}`,
-          `${artifact.materialization}；${artifact.created_at}`,
-          layout.get(`artifact:${artifact.ref}`),
-          {
-            'data-boundary': String(value.boundary_artifact_refs.includes(artifact.ref)),
-            'data-report-artifact': String(value.report_artifact_refs.includes(artifact.ref)),
-          },
-          live,
-        ),
+    for (const artifact of component.artifacts) {
+      const key = `artifact:${artifact.ref}`
+      const node = nodeGroup(
+        'artifact',
+        artifact.ref,
+        artifact.family,
+        `${artifact.materialization}；${artifact.created_at}`,
+        layout.get(key),
+        {
+          'data-boundary': String(trace.boundary_artifact_refs.includes(artifact.ref)),
+          'data-report-artifact': String(trace.report_artifact_refs.includes(artifact.ref)),
+        },
+        live,
+        () => activate(key),
       )
+      nodesByKey.set(key, node)
+      viewport.append(node)
     }
-    container.append(svg, live, fallback(value))
+    canvasWrap.append(svg)
+    workspace.append(canvasWrap, detailsPanel)
+    section.append(workspace, queryHost)
+
+    let scale = 1
+    const applyScale = () => viewport.setAttribute('transform', `scale(${scale})`)
+    for (const [label, action] of [
+      ['−', 'out'],
+      ['+', 'in'],
+      ['重置', 'reset'],
+    ]) {
+      const button = text('button', label)
+      button.type = 'button'
+      button.setAttribute(
+        'aria-label',
+        action === 'out' ? '缩小' : action === 'in' ? '放大' : '重置缩放',
+      )
+      button.addEventListener('click', () => {
+        scale =
+          action === 'reset'
+            ? 1
+            : Math.min(2.5, Math.max(0.5, scale * (action === 'in' ? 1.2 : 0.8)))
+        applyScale()
+      })
+      controls.append(button)
+    }
+    const initialKey =
+      component.runs.length > 0
+        ? `run:${component.runs[0].run_id}`
+        : `artifact:${component.artifacts[0].ref}`
+    activate(initialKey)
+    return section
+  }
+
+  function renderSessionGraph(container, trace) {
+    if (!(container instanceof Element))
+      fail('$container', 'must be an Element', 'container-invalid')
+    const value = validateTrace(trace, trace?.trace_id)
+    container.replaceChildren()
+    const live = text('p', '', 'sr-only')
+    live.setAttribute('aria-live', 'polite')
+    const liveId = `trace-live-${++nextId}`
+    live.id = liveId
+    if (value.truncated)
+      container.append(text('p', '有界链路：以下视图包含截断边界。', 'trace-boundary'))
+    const components = graphComponents(value)
+    container.append(traceLegend(value, components.length))
+    for (const [index, component] of components.entries()) {
+      container.append(renderComponent(value, component, index, live))
+    }
+    container.append(live, fallback(value))
     return container
   }
 

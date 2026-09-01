@@ -51,6 +51,22 @@ test('trace semantic validation rejects dangling identities and lifecycle set dr
   assert.match(result.errors.join('\n'), /lifecycle succeeded|exactly match failed/)
 })
 
+test('trace query disclosures stay attached to local Run and Artifact identities', async () => {
+  const dangling = (await fixture('trace-succeeded.json')) as Record<string, any>
+  dangling.queries[0].run_id = 'missing-run'
+  dangling.queries[0].output_artifact_ref = 'missing-artifact'
+  const result = validateReportContract('trace', dangling)
+  assert.equal(result.valid, false)
+  assert.match(result.errors.join('\n'), /queries contains a dangling run_id/)
+  assert.match(result.errors.join('\n'), /queries contains a dangling output_artifact_ref/)
+
+  const duplicate = (await fixture('trace-succeeded.json')) as Record<string, any>
+  duplicate.queries.push({ ...duplicate.queries[0] })
+  const duplicateResult = validateReportContract('trace', duplicate)
+  assert.equal(duplicateResult.valid, false)
+  assert.match(duplicateResult.errors.join('\n'), /query_id values must be unique/)
+})
+
 test('trace semantic validation closes root, head, and acyclic topology', async () => {
   const drift = (await fixture('trace-succeeded.json')) as Record<string, any>
   drift.root_run_ids = []

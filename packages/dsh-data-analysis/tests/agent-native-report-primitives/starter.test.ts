@@ -394,6 +394,7 @@ test('ReportTrace validates identities and renders an accessible bounded DAG wit
   const context = await starterContext(true)
   const registry = context.ReportTrace!
   const trace = await fixture('trace-succeeded.json')
+  context.ReportData!.register('artifact-sales', await fixture('artifact-dataset.json'))
   registry.register('trace-succeeded', trace)
   assert.deepEqual(plain(registry.list()), ['trace-succeeded'])
   assert.equal(Object.isFrozen(registry.get('trace-succeeded')), true)
@@ -402,11 +403,16 @@ test('ReportTrace validates identities and renders an accessible bounded DAG wit
   assert.equal(host.querySelectorAll('.trace-svg').length, 1)
   assert.equal(host.querySelectorAll('.trace-node').length, 2)
   assert.equal(host.querySelectorAll('.trace-edge').length, 1)
-  assert.equal(host.querySelectorAll('table').length, 1)
+  assert.equal(host.querySelectorAll('.trace-component').length, 1)
+  assert.equal(host.querySelectorAll('.trace-detail-panel').length, 1)
+  assert.equal(host.querySelectorAll('.trace-frame-table').length, 1)
+  assert.equal(host.querySelectorAll('.trace-query-panel').length, 1)
+  assert.equal(host.querySelectorAll('.trace-query-code').length, 1)
+  assert.equal(host.querySelectorAll('table').length, 2)
   assert.match(host.textContent, /Run 与 Artifact 关系/)
   assert.match(host.querySelector('svg')!.textContent, /成功状态不表示报告结论可信/)
   assert.equal(host.querySelector('svg')!.getAttribute('role'), 'group')
-  assert.equal(host.querySelector('.trace-node')!.getAttribute('role'), 'img')
+  assert.equal(host.querySelector('.trace-node')!.getAttribute('role'), 'button')
   assert.equal(host.querySelector('.trace-edge')!.getAttribute('role'), 'img')
 
   const bounded = await fixture('trace-succeeded.json')
@@ -430,11 +436,13 @@ test('ReportTrace validates identities and renders an accessible bounded DAG wit
   longIdentity.runs[0].output_artifact_ref = artifactRef
   longIdentity.edges[0].run_id = runId
   longIdentity.edges[0].artifact_ref = artifactRef
+  longIdentity.queries[0].run_id = runId
+  longIdentity.queries[0].output_artifact_ref = artifactRef
   longIdentity.root_run_ids = [runId]
   longIdentity.head_artifact_refs = [artifactRef]
   registry.register('trace-long-identity', longIdentity)
   registry.renderSessionGraph(host, registry.get('trace-long-identity'))
-  const edgeTable = host.querySelector('table')!
+  const edgeTable = host.querySelector('.trace-fallback')!.querySelector('table')!
   assert.doesNotMatch(edgeTable.textContent, new RegExp(runId))
   assert.doesNotMatch(edgeTable.textContent, new RegExp(artifactRef))
   assert.match(host.textContent, new RegExp(`完整 Run ID：${runId}`))

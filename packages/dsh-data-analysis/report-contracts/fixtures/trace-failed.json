@@ -38,6 +38,7 @@
     }
   ],
   "edges": [{ "kind": "consumes", "run_id": "run-failed", "artifact_ref": "artifact-input" }],
+  "queries": [],
   "root_run_ids": [],
   "head_artifact_refs": ["artifact-input"],
   "failed_run_ids": ["run-failed"],
@@ -45,7 +46,11 @@
   "boundary_artifact_refs": [],
   "boundary_run_ids": [],
   "truncated": false,
-  "projection": { "run_arguments": "omitted", "failure_values": "omitted" },
+  "projection": {
+    "run_arguments": "omitted",
+    "failure_values": "omitted",
+    "query_bind_values": "omitted"
+  },
   "read_boundaries": [
     "semantic_authority_not_checked",
     "datasource_freshness_not_checked",

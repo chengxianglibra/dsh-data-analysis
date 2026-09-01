@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 from conftest import parse_registration, validate_contract
-from dsh_data_analysis_report import ReportSessionTraceError, emit_session_trace
+from dsh_data_analysis_report import (
+    ReportSessionTraceError,
+    SessionTraceQuery,
+    emit_session_trace,
+)
 from marivo.analysis import (
     ArtifactSummary,
     FailedRun,
@@ -154,8 +158,89 @@ def test_session_trace_projects_all_lifecycles_without_sensitive_fields(
     assert payload["projection"] == {
         "run_arguments": "omitted",
         "failure_values": "omitted",
+        "query_bind_values": "omitted",
     }
+    assert payload["queries"] == []
     validate_contract("session-trace-v1.schema.json", payload)
+
+
+def test_session_trace_projects_parameterized_query_disclosure(tmp_path: Path) -> None:
+    target = tmp_path / "trace.js"
+    query = SessionTraceQuery(
+        run_id="run-result",
+        query_id="query-1",
+        datasource="warehouse",
+        dialect="trino",
+        sql="SELECT month, SUM(revenue) FROM orders WHERE month >= ? GROUP BY 1",
+        digest="7f83b1657ff1fc53",
+        status="succeeded",
+        duration_ms=842,
+        row_count=12,
+        started_at=NOW,
+        finished_at=NOW,
+        output_artifact_ref="artifact-result",
+    )
+    receipt = emit_session_trace(
+        graph_with_every_lifecycle(),
+        target,
+        report_artifact_refs=["artifact-result"],
+        queries=[query],
+    )
+    payload = parse_registration(target, "ReportTrace")
+
+    assert receipt.query_count == 1
+    assert payload["queries"] == [
+        {
+            "run_id": "run-result",
+            "query_id": "query-1",
+            "datasource": "warehouse",
+            "dialect": "trino",
+            "sql": "SELECT month, SUM(revenue) FROM orders WHERE month >= ? GROUP BY 1",
+            "digest": "7f83b1657ff1fc53",
+            "status": "succeeded",
+            "duration_ms": 842,
+            "row_count": 12,
+            "started_at": "2026-08-31T12:00:00Z",
+            "finished_at": "2026-08-31T12:00:00Z",
+            "output_artifact_ref": "artifact-result",
+        }
+    ]
+    assert "bind_params" not in target.read_text()
+    validate_contract("session-trace-v1.schema.json", payload)
+
+
+def test_query_disclosure_requires_local_run_and_artifact(tmp_path: Path) -> None:
+    query = SessionTraceQuery(
+        run_id="missing",
+        query_id="query-1",
+        datasource="warehouse",
+        dialect="trino",
+        sql="SELECT 1",
+        digest="digest",
+        status="succeeded",
+        duration_ms=1,
+        row_count=1,
+        started_at=NOW,
+        finished_at=NOW,
+        output_artifact_ref="artifact-result",
+    )
+    with pytest.raises(ReportSessionTraceError) as error:
+        emit_session_trace(
+            graph_with_every_lifecycle(),
+            tmp_path / "trace.js",
+            report_artifact_refs=["artifact-result"],
+            queries=[query],
+        )
+    assert error.value.code == "session-trace-query-invalid"
+
+    with pytest.raises(ReportSessionTraceError) as empty_output:
+        emit_session_trace(
+            graph_with_every_lifecycle(),
+            tmp_path / "trace-empty-output.js",
+            report_artifact_refs=["artifact-result"],
+            queries=[replace(query, run_id="run-result", output_artifact_ref="")],
+        )
+    assert empty_output.value.code == "session-trace-identity-invalid"
 
 
 def test_report_refs_and_topology_fail_closed(tmp_path: Path) -> None:

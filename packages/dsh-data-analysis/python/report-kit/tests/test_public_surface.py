@@ -14,6 +14,7 @@ def test_public_surface_is_small_and_versioned() -> None:
         "ReportKitError",
         "ReportSessionTraceError",
         "SessionTraceReceipt",
+        "SessionTraceQuery",
         "emit_dataset",
         "emit_session_trace",
     }
