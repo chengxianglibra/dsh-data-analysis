@@ -30,6 +30,7 @@ import {
   installMarivoEvidenceSourcesCodeDelivery,
   registerMarivoEvidenceSourcesTool,
 } from './evidence/index.ts'
+import { installReportCheckDisclosure } from './report-disclosure/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -54,15 +55,6 @@ export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
   'If an explicitly requested fact has no exact persisted Finding, disclose that unsupported boundary instead of inventing a source.',
   'Keep only decision-relevant scope, quality, freshness, and limitation disclosures in ordinary prose; do not emit a boilerplate quality or evidence section when nothing material needs disclosure.',
   'A source attachment proves the identity of its Marivo Evidence source; it does not prove that the whole sentence, calculation, or business judgment is correct.',
-].join(' ')
-
-export const MARIVO_AGENT_REPORT_PROMPT = [
-  'When marivo-analysis is active, answer inline by default.',
-  'Create a Workspace HTML report only when the user explicitly requests one, accepts an offer to create one, or asks to revise a report already created in this conversation.',
-  'Do not create one solely because the analysis is complex or contains charts or Artifacts.',
-  'An explicit quick-answer, no-file, or other-output request takes precedence.',
-  'Before creating or revising one, load the dsh-data-analysis-report Skill and follow its Workspace bundle, mode-specific delivery, checking, and failure contract.',
-  'No plugin report Tool, schema, renderer, publisher, durable block, or dedicated Web delivery exists.',
 ].join(' ')
 
 const integrationSkillsRoot = path.resolve(
@@ -187,6 +179,7 @@ export function installMarivoPlugin(
       registerMarivoEvidenceSourcesTool(agent.ctx, evidenceSource, agent.session),
     )
     controller.addDisposer(installMarivoEvidenceSourcesCodeDelivery(agent.ctx))
+    controller.addDisposer(installReportCheckDisclosure(agent))
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
         name: 'marivo:datasource-credentials',
@@ -203,14 +196,6 @@ export function installMarivoPlugin(
         order: 180,
         text: () =>
           controller.activeSkills.includes('marivo-analysis') ? MARIVO_EVIDENCE_SOURCES_PROMPT : '',
-      }),
-    )
-    controller.addDisposer(
-      agent.ctx.systemPrompt.section({
-        name: 'marivo:agent-native-report',
-        order: 190,
-        text: () =>
-          controller.activeSkills.includes('marivo-analysis') ? MARIVO_AGENT_REPORT_PROMPT : '',
       }),
     )
     installed.set(agent, controller)

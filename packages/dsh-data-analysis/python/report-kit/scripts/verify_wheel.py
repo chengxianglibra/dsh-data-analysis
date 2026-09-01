@@ -20,7 +20,16 @@ ALLOWED_PACKAGE_FILES = {
 
 
 def main() -> None:
-    wheel = Path(__file__).parents[1] / "dist" / WHEEL_NAME
+    if len(sys.argv) > 2:
+        raise SystemExit("usage: verify_wheel.py [wheel]")
+    wheel = (
+        Path(sys.argv[1])
+        if len(sys.argv) == 2
+        else Path(__file__).parents[1] / "dist" / WHEEL_NAME
+    )
+    wheel = wheel.resolve()
+    if wheel.name != WHEEL_NAME:
+        raise SystemExit(f"unexpected wheel name: {wheel.name}")
     if not wheel.is_file():
         raise SystemExit(f"missing wheel: {wheel}")
     with zipfile.ZipFile(wheel) as archive:

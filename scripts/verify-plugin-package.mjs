@@ -1,5 +1,15 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +18,15 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const reportKitWheelPath =
+  'python/report-kit/dist/dsh_data_analysis_report_kit-2.0.0-py3-none-any.whl'
+const reportKitVerifier = path.join(
+  packageRoot,
+  'python',
+  'report-kit',
+  'scripts',
+  'verify_wheel.py',
+)
 
 /**
  * @param {string} message
@@ -20,6 +39,23 @@ function fail(message) {
 /** @param {string} filename */
 function readJson(filename) {
   return JSON.parse(readFileSync(filename, 'utf8'))
+}
+
+/** @param {string} directory */
+function recursivePackageFiles(directory) {
+  /** @type {string[]} */
+  const result = []
+  /** @param {string} current */
+  const visit = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const target = path.join(current, entry.name)
+      if (entry.isDirectory()) visit(target)
+      else if (entry.isFile())
+        result.push(path.relative(packageRoot, target).split(path.sep).join('/'))
+    }
+  }
+  visit(directory)
+  return result.sort()
 }
 
 /**
@@ -40,6 +76,22 @@ function run(executable, args, options = {}) {
     process.exit(result.status ?? 1)
   }
   return result.stdout
+}
+
+/**
+ * @param {string} executable
+ * @param {string[]} args
+ * @param {Omit<import('node:child_process').SpawnSyncOptionsWithStringEncoding, 'encoding'>} [options]
+ */
+function runFailure(executable, args, options = {}) {
+  const result = spawnSync(executable, args, {
+    cwd: root,
+    ...options,
+    encoding: 'utf8',
+  })
+  if (result.error !== undefined) throw result.error
+  if (result.status === 0) fail(`${executable} unexpectedly succeeded`)
+  return `${result.stdout ?? ''}${result.stderr ?? ''}`
 }
 
 /** @param {string} packageName */
@@ -114,12 +166,14 @@ for (const [name, version] of Object.entries(compatibility.contracts ?? {})) {
 
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'dsh-data-analysis-package-'))
 try {
+  run(npmExecutable, ['run', 'prepack', '--workspace', '@deepseek-ai/dsh-data-analysis'])
   const packOutput = run(
     npmExecutable,
     [
       'pack',
       '--workspace',
       '@deepseek-ai/dsh-data-analysis',
+      '--ignore-scripts',
       '--json',
       '--pack-destination',
       temporaryRoot,
@@ -140,6 +194,15 @@ try {
   if (manifest === undefined) fail('npm pack returned no manifest')
   const paths = new Set(manifest.files.map((file) => file.path))
   const files = new Map(manifest.files.map((file) => [file.path, file]))
+  const skillFiles = recursivePackageFiles(
+    path.join(packageRoot, 'skills', 'dsh-data-analysis-report'),
+  )
+  const contractFiles = readdirSync(path.join(packageRoot, 'report-contracts'), {
+    withFileTypes: true,
+  })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .map((entry) => `report-contracts/${entry.name}`)
+    .sort()
   const required = [
     'README.md',
     'cordis.patch.yml',
@@ -152,7 +215,12 @@ try {
     'lib/evidence/index.js',
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
-    'skills/dsh-data-analysis-report/SKILL.md',
+    'lib/report-check/cli.js',
+    'lib/report-check/index.js',
+    'lib/types/report-check/index.d.ts',
+    reportKitWheelPath,
+    ...contractFiles,
+    ...skillFiles,
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
@@ -164,10 +232,29 @@ try {
     if (filename.startsWith('lib/report/') || filename.startsWith('lib/types/report/')) {
       fail(`packed plugin contains removed report surface ${filename}`)
     }
+    if (filename.startsWith('report-contracts/fixtures/')) {
+      fail(`packed plugin contains report contract fixture ${filename}`)
+    }
+  }
+  const packedSkillFiles = [...paths]
+    .filter((filename) => filename.startsWith('skills/dsh-data-analysis-report/'))
+    .sort()
+  if (JSON.stringify(packedSkillFiles) !== JSON.stringify(skillFiles)) {
+    fail('packed report Skill resources differ from the source resource tree')
+  }
+  const packedContractFiles = [...paths]
+    .filter((filename) => filename.startsWith('report-contracts/'))
+    .sort()
+  if (JSON.stringify(packedContractFiles) !== JSON.stringify(contractFiles)) {
+    fail('packed report contracts differ from the required runtime contracts')
   }
   const environmentBin = files.get('lib/bin/environment.js')
   if (environmentBin === undefined || (environmentBin.mode & 0o111) === 0) {
     fail('packed environment CLI is not executable')
+  }
+  const reportCheckBin = files.get('lib/report-check/cli.js')
+  if (reportCheckBin === undefined || (reportCheckBin.mode & 0o111) === 0) {
+    fail('packed report Checker CLI is not executable')
   }
 
   const tarball = path.join(temporaryRoot, manifest.filename)
@@ -179,11 +266,30 @@ try {
   const installedPlugin = path.join(nodeModules, '@deepseek-ai/dsh-data-analysis')
   mkdirSync(path.dirname(installedPlugin), { recursive: true })
   renameSync(path.join(extracted, 'package'), installedPlugin)
+  run(
+    'uv',
+    [
+      'run',
+      '--project',
+      path.join(packageRoot, 'python', 'report-kit'),
+      '--frozen',
+      'python',
+      reportKitVerifier,
+      path.join(installedPlugin, reportKitWheelPath),
+    ],
+    { cwd: packageRoot },
+  )
   const packedManifest = readJson(path.join(installedPlugin, 'package.json'))
   if (
     JSON.stringify(packedManifest.dshDataAnalysisCompatibility) !== JSON.stringify(compatibility)
   ) {
     fail('packed compatibility manifest differs from the source package contract')
+  }
+  if (
+    packedManifest.bin?.['dsh-data-analysis-env'] !== './lib/bin/environment.js' ||
+    packedManifest.bin?.['dsh-data-analysis-report-check'] !== './lib/report-check/cli.js'
+  ) {
+    fail('packed CLI manifest does not expose both supported binaries')
   }
   const linkedDependencies = new Set([
     ...Object.keys(peerDependencies),
@@ -194,19 +300,78 @@ try {
     const root = await import('@deepseek-ai/dsh-data-analysis')
     const compatibility = await import('@deepseek-ai/dsh-data-analysis/compatibility')
     const environment = await import('@deepseek-ai/dsh-data-analysis/environment')
+    const reportCheck = await import('@deepseek-ai/dsh-data-analysis/report-check')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
     if (compatibility.MARIVO_VERSION !== '0.5.1') throw new Error('packed Marivo version mismatch')
     if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.1') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v1') throw new Error('packed subprocess policy mismatch')
+    if (typeof reportCheck.checkWorkspaceReport !== 'function') throw new Error('packed report Checker export is not loadable')
+    if (typeof reportCheck.createDshDataAnalysisReportCheckTool !== 'function') throw new Error('packed report Checker Tool export is not loadable')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {
       if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
     }
   `
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
+
+  const reportWorkspace = path.join(temporaryRoot, 'report-workspace')
+  mkdirSync(reportWorkspace)
+  writeFileSync(
+    path.join(reportWorkspace, 'index.html'),
+    '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"><title>Package smoke</title></head><body><main><h1>Package smoke</h1></main></body></html>',
+  )
+  const checkerOutput = run(
+    process.execPath,
+    [path.join(installedPlugin, 'lib', 'report-check', 'cli.js'), 'index.html', '--json'],
+    { cwd: reportWorkspace },
+  )
+  const checkerResult = JSON.parse(checkerOutput)
+  if (checkerResult.status !== 'passed_static') fail('packed report Checker CLI smoke failed')
+
+  const starterWorkspace = path.join(temporaryRoot, 'starter-workspace')
+  mkdirSync(starterWorkspace)
+  const copyStarter = path.join(
+    installedPlugin,
+    'skills',
+    'dsh-data-analysis-report',
+    'scripts',
+    'copy-starter.mjs',
+  )
+  run(
+    process.execPath,
+    [
+      copyStarter,
+      '--target',
+      'reports/demo',
+      '--basic',
+      '--component',
+      'report-data',
+      '--snippet',
+      'kpi-grid',
+    ],
+    { cwd: starterWorkspace },
+  )
+  for (const filename of [
+    'reports/demo/index.html',
+    'reports/demo/assets/report-base.css',
+    'reports/demo/assets/report-data.js',
+    'reports/demo/snippets/kpi-grid.html',
+  ]) {
+    if (!existsSync(path.join(starterWorkspace, filename))) {
+      fail(`packed Starter copier did not create ${filename}`)
+    }
+  }
+  const overwriteFailure = runFailure(
+    process.execPath,
+    [copyStarter, '--target', 'reports/demo', '--basic'],
+    { cwd: starterWorkspace },
+  )
+  if (!overwriteFailure.includes('target-exists')) {
+    fail('packed Starter copier did not preserve the no-overwrite boundary')
+  }
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed entry smoke passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed report-kit, Checker CLI, and Starter smoke passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

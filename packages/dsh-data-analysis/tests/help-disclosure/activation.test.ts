@@ -29,10 +29,10 @@ import {
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 import {
   installMarivoPlugin,
-  MARIVO_AGENT_REPORT_PROMPT,
   MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
   MARIVO_EVIDENCE_SOURCES_PROMPT,
 } from '../../src/plugin.ts'
+import { DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME } from '../../src/report-check/index.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 const FAKE_PYTHON = String.raw`#!/usr/bin/env node
@@ -295,7 +295,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
 })
 
-test('Evidence source and Agent-native report guidance appear only after analysis activation', async (t) => {
+test('Evidence source guidance appears only after analysis activation without a standing report prompt', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -327,12 +327,50 @@ test('Evidence source and Agent-native report guidance appear only after analysi
   assert.match(activatedPrompt, /do not emit a boilerplate quality or evidence section/)
   assert.match(activatedPrompt, /does not prove/)
   assert.doesNotMatch(activatedPrompt, /marivo_report_render/)
-  assert.match(activatedPrompt, /answer inline by default/)
-  assert.match(activatedPrompt, /load the dsh-data-analysis-report Skill/)
-  assert.match(activatedPrompt, /No plugin report Tool, schema, renderer, publisher/)
+  assert.doesNotMatch(activatedPrompt, /answer inline by default/)
+  assert.doesNotMatch(activatedPrompt, /load the dsh-data-analysis-report Skill/)
+  assert.doesNotMatch(activatedPrompt, /No plugin report Tool, schema, renderer, publisher/)
   assert.doesNotMatch(activatedPrompt, /session\.evidence\.compatibility/)
-  assert.doesNotMatch(MARIVO_AGENT_REPORT_PROMPT, /report card/i)
   assert.match(MARIVO_EVIDENCE_SOURCES_PROMPT, /markers, footnotes, or a source appendix/)
+})
+
+test('report Checker is visible only after the report Skill load and only for that turn', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallsResponse([
+      { id: 'report-skill', name: 'skill', args: { name: 'dsh-data-analysis-report' } },
+    ]),
+    textResponse('report turn done'),
+    textResponse('ordinary turn done'),
+  ])
+  const ctx = await harness(adapter)
+  const agent = createAgent(ctx, 'report-check-disclosure')
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
+    credentials: { resolve: () => Promise.resolve(undefined) },
+  })
+  t.after(dispose)
+
+  send(agent, 'create an HTML report')
+  await agent.whenIdle()
+
+  assert.doesNotMatch(
+    requestToolNames(adapter.requests[0]).join(','),
+    new RegExp(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME),
+  )
+  assert.match(
+    requestToolNames(adapter.requests[1]).join(','),
+    new RegExp(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME),
+  )
+  assert.equal(agent.ctx.tools.get(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME, agent), undefined)
+
+  send(agent, 'answer inline only')
+  await agent.whenIdle()
+
+  assert.doesNotMatch(
+    requestToolNames(adapter.requests[2]).join(','),
+    new RegExp(DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME),
+  )
 })
 
 test('an Agent-plane inherited skill Tool activates Evidence guidance and root help', async (t) => {

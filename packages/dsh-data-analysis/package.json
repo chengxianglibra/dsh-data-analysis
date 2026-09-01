@@ -9,7 +9,8 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "bin": {
-    "dsh-data-analysis-env": "./lib/bin/environment.js"
+    "dsh-data-analysis-env": "./lib/bin/environment.js",
+    "dsh-data-analysis-report-check": "./lib/report-check/cli.js"
   },
   "exports": {
     ".": {
@@ -36,6 +37,10 @@
       "types": "./lib/types/evidence/index.d.ts",
       "default": "./lib/evidence/index.js"
     },
+    "./report-check": {
+      "types": "./lib/types/report-check/index.d.ts",
+      "default": "./lib/report-check/index.js"
+    },
     "./compatibility": {
       "types": "./lib/types/compatibility.d.ts",
       "default": "./lib/compatibility.js"
@@ -47,14 +52,17 @@
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/types/**/*.d.ts",
-    "skills/**/*.md",
+    "python/report-kit/dist/dsh_data_analysis_report_kit-2.0.0-py3-none-any.whl",
+    "report-contracts/*.json",
+    "skills/**/*",
     "cordis.patch.yml",
     "README.md"
   ],
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
+    "build:report-kit": "node scripts/build-report-kit.mjs",
     "clean": "node scripts/clean.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build:report-kit && npm run build"
   },
   "publishConfig": {
     "access": "public"

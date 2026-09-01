@@ -14,6 +14,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { MARIVO_DATASOURCE_TEST_TOOL_NAME } from '../../src/datasource/index.ts'
 import { MARIVO_HELP_TOOL_NAME } from '../../src/disclosure/index.ts'
 import { MARIVO_EVIDENCE_SOURCES_TOOL_NAME } from '../../src/evidence/index.ts'
+import { DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME } from '../../src/report-check/index.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const sourceRoot = path.join(packageRoot, 'src')
@@ -29,14 +30,20 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return result
 }
 
-test('public plugin Tool surface contains only the three cross-boundary adapters', () => {
+test('public plugin Tool surface contains only the four cross-boundary adapters', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
       MARIVO_DATASOURCE_TEST_TOOL_NAME,
       MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
+      DSH_DATA_ANALYSIS_REPORT_CHECK_TOOL_NAME,
     ].sort(),
-    ['marivo_datasource_test', 'marivo_evidence_sources', 'marivo_help'],
+    [
+      'dsh_data_analysis_report_check',
+      'marivo_datasource_test',
+      'marivo_evidence_sources',
+      'marivo_help',
+    ],
   )
 })
 

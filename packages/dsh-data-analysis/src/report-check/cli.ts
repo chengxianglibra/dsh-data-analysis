@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { renderReportCheckResult } from './tool.ts'
 import { ReportCheckInvocationError } from './types.ts'
 import { checkWorkspaceReport } from './workspace.ts'
@@ -73,7 +74,7 @@ export async function runReportCheckCli(
 const invokedPath = process.argv[1]
 if (
   invokedPath !== undefined &&
-  import.meta.url === pathToFileURL(path.resolve(invokedPath)).href
+  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(path.resolve(invokedPath))
 ) {
   process.exitCode = await runReportCheckCli(process.argv.slice(2))
 }
