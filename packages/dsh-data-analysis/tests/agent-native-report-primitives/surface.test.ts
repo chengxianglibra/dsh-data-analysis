@@ -90,17 +90,20 @@ test('package cutover removes report exports and pins the native runtime release
   })
 })
 
-test('the packaged report Skill owns the free-form Workspace bundle workflow', async () => {
+test('the report Skill is a short progressive-disclosure router for the Workspace workflow', async () => {
   const skill = await readFile(reportSkillPath, 'utf8')
   const normalized = skill.replaceAll(/\s+/g, ' ')
   assert.match(normalized, /name: dsh-data-analysis-report/)
-  assert.match(normalized, /Marivo public objects/)
-  assert.match(normalized, /new directory for every report or revision/)
-  assert.match(normalized, /top-level DSH file Tool/)
-  assert.match(normalized, /Nested mutations do not appear in Produced Files/)
-  assert.match(normalized, /Use a browser/)
-  assert.match(normalized, /report is incomplete/)
-  assert.doesNotMatch(skill, /marivo_report_render|ReportDocument|report_publish|report_check/)
+  assert.match(
+    normalized,
+    /Use this Skill only for an explicitly requested or accepted HTML report/,
+  )
+  assert.match(normalized, /Read only the references needed/)
+  assert.match(normalized, /dsh_data_analysis_report_check/)
+  assert.match(normalized, /Static success is not browser or analytical validation/)
+  assert.match(normalized, /Produced Files and Host opening are navigation only/)
+  assert.ok(skill.length < 5_000)
+  assert.doesNotMatch(skill, /marivo_report_render|ReportDocument|report_publish|renderLineChart/)
 })
 
 test('the real runner shell stack executes through the production DSH Bash Tool', async (t) => {
