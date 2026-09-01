@@ -57,6 +57,35 @@ def test_numpy_datetime_scalar_is_stable(tmp_path: Path) -> None:
     assert payload["table"]["rows"] == [["2026-01-01"]]
 
 
+def test_large_integer_cells_preserve_artifact_identity(
+    tmp_path: Path, artifact_frame: BaseFrame
+) -> None:
+    large_bytes = 26_000_000_000_000_000
+    computed_target = tmp_path / "computed-large.js"
+    emit_dataset(pd.DataFrame({"physical_input_bytes": [large_bytes]}), computed_target)
+    computed = parse_registration(computed_target, "ReportData")
+    assert computed["table"]["rows"] == [[large_bytes]]
+    validate_contract("dataset-v1.schema.json", computed)
+
+    artifact = BaseFrame(
+        pd.DataFrame(
+            {
+                "month": pd.to_datetime(["2026-01-01"]),
+                "physical_input_bytes": [large_bytes],
+            }
+        ),
+        artifact_frame.meta,
+    )
+    artifact_target = tmp_path / "artifact-large.js"
+    receipt = emit_dataset(artifact, artifact_target)
+    payload = parse_registration(artifact_target, "ReportData")
+
+    assert receipt.source_kind == "marivo_artifact"
+    assert payload["source"]["artifact"]["ref"] == "artifact-1"
+    assert payload["table"]["rows"] == [["2026-01-01T00:00:00", large_bytes]]
+    validate_contract("dataset-v1.schema.json", payload)
+
+
 def test_invalid_dataframe_and_cell_fail_without_replacing_target(
     tmp_path: Path,
 ) -> None:

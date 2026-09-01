@@ -94,12 +94,6 @@ function validateDatasetSemantics(value: unknown): string[] {
     if (Array.isArray(row) && row.length !== columns.length) {
       errors.push(`$.table.rows/${index} must contain exactly ${columns.length} cells`)
     }
-    if (
-      Array.isArray(row) &&
-      row.some((cell) => Number.isInteger(cell) && !Number.isSafeInteger(cell))
-    ) {
-      errors.push(`$.table.rows/${index} contains an integer outside the JavaScript safe range`)
-    }
   }
   const duplicateColumns = duplicateValues(columns.map((column) => column.name))
   if (duplicateColumns.length > 0) errors.push('$.table.columns names must be unique')

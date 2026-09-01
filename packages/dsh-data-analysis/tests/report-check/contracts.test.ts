@@ -41,6 +41,17 @@ test('dataset semantic invariants remain closed beyond structural JSON Schema va
   assert.match(result.errors.join('\n'), /must contain exactly 2 cells/)
 })
 
+test('dataset cells accept finite integers outside the JavaScript safe range', async () => {
+  const dataset = (await fixture('computed-dataset.json')) as Record<string, any>
+  const largeBytes = 26_000_000_000_000_000
+  assert.equal(Number.isSafeInteger(largeBytes), false)
+  dataset.table.rows[0][1] = largeBytes
+
+  const result = validateReportContract('dataset', dataset)
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.errors, [])
+})
+
 test('trace semantic validation rejects dangling identities and lifecycle set drift', async () => {
   const trace = (await fixture('trace-succeeded.json')) as Record<string, any>
   trace.edges[0].run_id = 'missing-run'
@@ -106,8 +117,8 @@ test('trace semantic validation preserves local truncation boundaries and requir
 })
 
 test('rule registry is unique, closed, and fixes severity for every V1 namespace', () => {
-  assert.equal(REPORT_CHECK_RULES.length, 59)
-  assert.equal(new Set(REPORT_CHECK_RULES.map((rule) => rule.code)).size, 59)
+  assert.equal(REPORT_CHECK_RULES.length, 58)
+  assert.equal(new Set(REPORT_CHECK_RULES.map((rule) => rule.code)).size, 58)
   assert.deepEqual(
     new Set(REPORT_CHECK_RULES.map((rule) => rule.group)),
     new Set([

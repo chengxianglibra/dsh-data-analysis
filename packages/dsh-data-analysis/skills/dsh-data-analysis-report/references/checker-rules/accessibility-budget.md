@@ -1,7 +1,9 @@
 # Accessibility and budget repairs
 
-- Give images, controls, figures, SVGs, tables, and headings the names and associations reported by
+- Give images, controls, SVGs, tables, and headings the names and associations reported by
   `a11y.*` diagnostics. Remove positive tabindex and autoplay.
+- Built-in charts create their visible `figcaption` at runtime. The static Checker does not require
+  a placeholder caption in source HTML; verify the rendered caption in the browser journey.
 - Make hover information reachable by focus and click/touch. Provide visible focus and reduced
   motion handling. Never use color as the only state signal.
 - Keep table headers mechanically associated and provide captions. Static heuristics do not prove

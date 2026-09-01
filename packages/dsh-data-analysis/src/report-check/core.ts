@@ -1459,19 +1459,6 @@ function analyzeHtml(
         )
       }
     }
-    if (
-      tag === 'figure' &&
-      !elements(element).some((candidate) => candidate.tagName === 'figcaption')
-    ) {
-      addIssue(
-        state,
-        'a11y.figure-caption-missing',
-        displayPath,
-        location,
-        'figure has no figcaption',
-        'Add a concise figcaption.',
-      )
-    }
     if (tag === 'svg') {
       const descendants = elements(element)
       if (

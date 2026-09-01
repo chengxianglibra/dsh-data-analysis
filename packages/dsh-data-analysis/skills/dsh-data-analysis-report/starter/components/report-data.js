@@ -375,9 +375,6 @@
         if (typeof cell === 'number' && !Number.isFinite(cell)) {
           fail(`${rowPath}[${cellIndex}]`, 'must be finite')
         }
-        if (Number.isInteger(cell) && !Number.isSafeInteger(cell)) {
-          fail(`${rowPath}[${cellIndex}]`, 'must be a safe integer')
-        }
       })
     })
     return dataset

@@ -81,7 +81,6 @@ test('document, accessibility, security, and Starter rules report stable codes a
     'a11y.control-name-missing',
     'a11y.table-caption-missing',
     'a11y.table-header-missing',
-    'a11y.figure-caption-missing',
     'a11y.svg-name-missing',
     'a11y.heading-order-invalid',
     'a11y.h1-invalid',
@@ -93,6 +92,7 @@ test('document, accessibility, security, and Starter rules report stable codes a
   ]) {
     assert.ok(actual.has(expected), `missing ${expected}: ${JSON.stringify(result.issues)}`)
   }
+  assert.equal(actual.has('a11y.figure-caption-missing'), false)
   assert.equal(result.status, 'failed_static')
   assert.ok(result.issues.every((issue) => !issue.path.startsWith('/')))
 })

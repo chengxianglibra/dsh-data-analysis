@@ -265,6 +265,14 @@ test('ReportData validates, freezes, caches records, and fails closed', async ()
   assert.equal(registry.records('computed-sales'), records)
   assert.equal(Object.isFrozen(records[0]), true)
 
+  const large = await fixture('computed-dataset.json')
+  const largeBytes = 26_000_000_000_000_000
+  assert.equal(Number.isSafeInteger(largeBytes), false)
+  large.dataset_id = 'computed-large'
+  large.table.rows[0][1] = largeBytes
+  registry.register('computed-large', large)
+  assert.equal(registry.records('computed-large')[0]?.revenue, largeBytes)
+
   assert.throws(() => registry.register('computed-sales', dataset), /already registered/)
   const invalid = await fixture('computed-dataset.json')
   invalid.table.rows[0].push('extra')

@@ -284,15 +284,7 @@ def json_scalar(value: object, *, location: str, error_type: type[ErrorT]) -> ob
     if isinstance(value, (bool, np.bool_)):
         return bool(value)
     if isinstance(value, (int, np.integer)):
-        resolved = int(value)
-        if abs(resolved) > 9_007_199_254_740_991:
-            fail(
-                error_type,
-                "cell-type-unsupported",
-                "An integer cell exceeds the JavaScript safe range",
-                location=location,
-            )
-        return resolved
+        return int(value)
     if isinstance(value, (float, np.floating)):
         resolved = float(value)
         return resolved if math.isfinite(resolved) else None

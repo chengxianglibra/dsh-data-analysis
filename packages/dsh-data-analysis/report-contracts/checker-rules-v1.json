@@ -46,7 +46,6 @@
     { "code": "a11y.table-caption-missing", "severity": "warning", "group": "a11y" },
     { "code": "a11y.table-header-missing", "severity": "error", "group": "a11y" },
     { "code": "a11y.table-header-association-uncertain", "severity": "warning", "group": "a11y" },
-    { "code": "a11y.figure-caption-missing", "severity": "error", "group": "a11y" },
     { "code": "a11y.svg-name-missing", "severity": "error", "group": "a11y" },
     { "code": "a11y.heading-order-invalid", "severity": "error", "group": "a11y" },
     { "code": "a11y.h1-invalid", "severity": "error", "group": "a11y" },

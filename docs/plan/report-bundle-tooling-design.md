@@ -454,7 +454,6 @@ a11y.control-name-missing
 a11y.table-caption-missing
 a11y.table-header-missing
 a11y.table-header-association-uncertain
-a11y.figure-caption-missing
 a11y.svg-name-missing
 a11y.heading-order-invalid
 a11y.h1-invalid
@@ -686,9 +685,11 @@ Rows 使用 positional arrays，而不是每行重复 column name：
 
 列顺序和行顺序与 public DataFrame view 保持一致。`dtype` 描述实际被序列化的 terminal DataFrame dtype，
 `contains_null` 只描述本次 snapshot 是否观察到 null，不冒充可空性约束。允许的 cell 是 JSON scalar：
-`string`、有限 `number`、`boolean` 或 `null`。整数必须落在 JavaScript safe integer 范围，超出时明确失败；
-日期、时间和 timedelta 采用稳定 ISO/string 表示；Decimal 在 Artifact 的公共 `to_pandas()` terminal
-boundary 规则下变为 float。无法无损转换的 object cell 明确失败，不隐式调用任意对象的 `repr()`。
+`string`、有限 `number`、`boolean` 或 `null`。整数不受 JavaScript safe integer 范围限制；浏览器以 IEEE-754
+`number` 消费超出该范围的值，因此最低有效位可能舍入。字节等大数指标应在展示层显式换算单位，不得为了绕过
+传输检测而把 Artifact 重发为 computed dataset。日期、时间和 timedelta 采用稳定 ISO/string 表示；Decimal
+在 Artifact 的公共 `to_pandas()` terminal boundary 规则下变为 float。无法转换为受支持 JSON scalar 的
+object cell 明确失败，不隐式调用任意对象的 `repr()`。
 
 V1 上限：100 列、100,000 写入行、16 MiB 最终输出文件（包含 `.js` 注册 wrapper）。超过任何上限必须由
 调用方显式设置更小 `max_rows`、预聚合或选择其他格式；helper 不静默截断。即使设置 `max_rows`，
