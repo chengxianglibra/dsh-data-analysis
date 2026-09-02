@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dsh-data-analysis-report-kit"
-version = "2.0.0"
-description = "Bounded Marivo Artifact and Session Graph JavaScript projection"
+version = "2.1.0"
+description = "Bounded report data and Marivo component JavaScript projections"
 requires-python = ">=3.10"
 dependencies = [
   "marivo==0.5.2",

@@ -2,8 +2,8 @@
 
 ## 作用
 
-本模块把 profile 级 Marivo Runtime、per-Workspace binding、三个跨边界 Tool、两个 Marivo JavaScript
-投影器、激活式 Help/工作流指导和 Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness
+本模块把 profile 级 Marivo Runtime、per-Workspace binding、三个跨边界 Tool、报告数据 runtime、两个
+Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness
 的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
 实现入口：
@@ -48,11 +48,12 @@ Skill 路由。用户请求 HTML/Web 输出，或分析需要多个图表/表格
 - 交付前执行资源、离线、安全、浏览器、键盘和打印检查；
 - 不把 Workspace bundle 描述为不可变发布、replay、share 或 Evidence proof。
 
-指导不给出 HTML/CSS/JavaScript 示例，不定义 block、chart type 或 renderer schema。Skill assets 只保留
-`marivo-artifact.js` 与 `marivo-session-dag.js`；Python report-kit 只提供对应的 Marivo `BaseFrame` 与
-`SessionGraph` 快照，不接受普通 DataFrame。插件不注册 HTML Checker，页面检查由 Agent 按 Skill 原则使用
-通用文件、代码和浏览器能力完成。多 Session 各自保留独立 Graph，由运行时集中展示；Frame preview 只按
-`session_id + artifact_ref` 关联精确 Artifact snapshot。
+指导不给出页面模板，不定义 block、chart type、可视化 DSL 或 renderer schema。Skill assets 只保留
+`report-data.js`、`marivo-artifact.js` 与 `marivo-session-dag.js`：第一项降低 Artifact/pandas 数据的
+JavaScript 读取成本，后两项提供精简 Artifact 摘要与 Session DAG。Python report-kit 通过独立
+`emit_dataset`、`emit_computed`、`emit_session_trace` 发射快照。插件不提供 chart helper 或 HTML Checker，
+页面与图表由 Agent 使用通用文件、代码和浏览器能力完成。多 Session 各自保留独立 Graph；Frame preview
+只按 `session_id + artifact_ref` 关联精确 Artifact snapshot。
 
 ## Web client
 
@@ -77,7 +78,7 @@ remote/headless 自动降级为路径。
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v1` |
 
 Package 不导出 `./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 只包含 report-kit wheel、
-投影 schemas、原则型 Skill 与两个 JS runtime assets。版本、package path 或解释器不匹配时 fail closed；
+投影 schemas、原则型 Skill、数据 runtime 与两个 Marivo components。版本、package path 或解释器不匹配时 fail closed；
 不维护 compatibility alias 或 capability matrix。
 
 ## 验证

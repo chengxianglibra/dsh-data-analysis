@@ -39,6 +39,7 @@
     }
   ],
   "edges": [{ "kind": "produces", "run_id": "run-1", "artifact_ref": "artifact-1" }],
+  "queries": [],
   "root_run_ids": ["run-1"],
   "head_artifact_refs": ["artifact-1"],
   "failed_run_ids": [],
@@ -48,7 +49,8 @@
   "truncated": false,
   "projection": {
     "run_arguments": "omitted",
-    "failure_values": "omitted"
+    "failure_values": "omitted",
+    "query_bind_values": "omitted"
   },
   "read_boundaries": [
     "semantic_authority_not_checked",

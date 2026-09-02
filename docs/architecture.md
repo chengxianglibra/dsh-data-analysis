@@ -67,11 +67,11 @@ Plugin 同时挂载 Runtime 的 `marivo-analysis` / `marivo-semantic` 和随包�
 Skill。已有分析恢复并 revalidate persisted Artifacts，不为展示重新执行 `observe`。插件不注册报告 Tool；
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
-Runtime 另外安装 `dsh-data-analysis-report-kit`。其 `emit_dataset` 只接受 Marivo `BaseFrame`，
-`emit_session_trace` 只接受调用方已取得的公开 `SessionGraph`；配套 Skill assets 只负责在浏览器侧校验和读取
-这些快照。一次分析涉及多个 Marivo Session 时，每个 Session 保持独立 Graph 投影，由浏览器运行时集中展示；
-Frame preview 按 `session_id + artifact_ref` 关联对应 Artifact snapshot。它们不是 DSH Tool，也不拥有页面
-结构、图表、样式或通用数据传输。
+Runtime 另外安装 `dsh-data-analysis-report-kit`。`emit_dataset` 只接受 Marivo `BaseFrame`，
+`emit_computed` 只接受 pandas `DataFrame`，`emit_session_trace` 只接受调用方已取得的公开 `SessionGraph`。
+浏览器 assets 分别提供 `ReportData`、精简 Artifact 摘要与 Session DAG；Artifact 组件只披露对报告读者有用的
+正常摘要和实质风险，不充当 metadata inspector。一次分析涉及多个 Session 时，每个 Session 保持独立 Graph，
+Frame preview 按 `session_id + artifact_ref` 关联。插件不拥有页面结构、图表类型、样式或可视化实现。
 
 ## 原生分析读取
 

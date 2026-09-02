@@ -25,9 +25,9 @@ export const SHARED_PYTHON_SPEC = '3.10'
 const PINNED_MARIVO_VERSION = MARIVO_VERSION
 export const SHARED_MARIVO_PACKAGE_SPEC = MARIVO_PACKAGE_SPEC
 export const REPORT_KIT_DISTRIBUTION = 'dsh-data-analysis-report-kit'
-export const REPORT_KIT_VERSION = '2.0.0'
+export const REPORT_KIT_VERSION = '2.1.0'
 export const REPORT_KIT_PANDAS_RANGE = '>=2.2.0,<3.0.0'
-export const REPORT_KIT_WHEEL_FILENAME = 'dsh_data_analysis_report_kit-2.0.0-py3-none-any.whl'
+export const REPORT_KIT_WHEEL_FILENAME = 'dsh_data_analysis_report_kit-2.1.0-py3-none-any.whl'
 export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 
 const INSTALLATION_SCHEMA = 'dsh-data-analysis-runtime/v2' as const
@@ -52,6 +52,7 @@ print(json.dumps({
     "report_kit_version": dsh_data_analysis_report.__version__,
     "report_kit_package_path": os.path.abspath(dsh_data_analysis_report.__file__ or ""),
     "report_kit_public_imports": all(callable(value) for value in (
+        dsh_data_analysis_report.emit_computed,
         dsh_data_analysis_report.emit_dataset,
         dsh_data_analysis_report.emit_session_trace,
     )),

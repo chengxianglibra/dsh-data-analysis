@@ -7,7 +7,8 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
 - datasource one-shot Shell 的 operation-scoped credential injection；
 - `marivo_evidence_sources({ session_id, sources })` 的 Artifact-owned Finding 来源投影；
-- `emit_dataset(BaseFrame, ...)` 与 `emit_session_trace(SessionGraph, ...)` 的有界 JavaScript 投影；
+- `emit_dataset(BaseFrame, ...)`、`emit_computed(DataFrame, ...)` 与
+  `emit_session_trace(SessionGraph, ...)` 的有界 JavaScript 投影；
 - 随包分发并挂载的 `dsh-data-analysis-report` Skill，以及 `marivo-analysis` 激活后的按需路由。
 
 旧 `marivo_test`、`marivo_report_render`、`ReportDocument`、报告 parser/renderer/publisher、专用报告 Web
@@ -43,10 +44,10 @@ Marivo 公共 API，不增加 convenience Tool。
 
 用户请求 HTML/Web 输出，或分析需要多个图表/表格或较长的分章节呈现时，Agent 加载
 `dsh-data-analysis-report`。已有分析恢复并 revalidate persisted Artifacts，不为报告展示重新执行 `observe`。
-该 Skill 只提供内容组织、布局、样式和检查原则，不包含 HTML/CSS/JavaScript 示例、Starter、通用 chart
-helper 或 HTML Checker。配套 assets 仅包含 Artifact 与 Session DAG 的 JavaScript 校验/读取运行时；Python
-report-kit 仅把 Marivo `BaseFrame` / `SessionGraph` 投影到对应快照，不接受普通 DataFrame。多 Session 的
-独立 Graph 集中展示，Frame preview 只按精确 Session 与 Artifact identity 关联。Agent 自由生成
+该 Skill 只提供内容组织、布局、样式和检查原则，不包含页面 Starter、通用 chart helper、可视化 DSL 或
+HTML Checker。配套 assets 提供 `ReportData` 读取、精简 Artifact 摘要和 Session DAG；Python report-kit
+分别通过 `emit_dataset`、`emit_computed`、`emit_session_trace` 发射 Artifact、pandas DataFrame 与 Graph
+快照。多 Session 的独立 Graph 集中展示，Frame preview 只按精确 Session 与 Artifact identity 关联。Agent 自由生成
 `<workspace>/<new-report-directory>/index.html` 与可选相对资源。Native/both 的
 最终入口使用顶层 DSH `write` / `edit`，并以精确 Markdown 行内路径交付，让 DSH Web 复用 Produced Files
 提供点击；Code-only 在 `run_code` 内使用同一 Tool，但嵌套 mutation 只保证精确路径。插件不创建报告对象、

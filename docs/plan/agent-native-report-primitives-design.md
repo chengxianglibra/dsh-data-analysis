@@ -2,8 +2,8 @@
 
 ## 状态与结论
 
-> 当前已实施。报告展示层采用 Skill-only 指导；插件只保留 Marivo Artifact 与 Session Graph 的有界
-> JavaScript 投影增强，不提供页面模板、HTML/CSS/JavaScript 示例、HTML Checker、renderer 或 publisher。
+> 当前已实施。插件只提供 Artifact/pandas 数据读取与 Marivo 专属组件，不提供页面模板、chart helper、
+> 可视化 DSL、HTML Checker、通用 renderer 或 publisher。
 
 这是一次 clean break。已删除的 Starter、snippets、完整示例、chart helper、静态 Checker Tool/CLI/export 与
 turn-scoped disclosure 不保留 alias 或迁移路径。旧 HTML renderer/ReportDocument 仍维持已删除状态。
@@ -13,7 +13,7 @@ turn-scoped disclosure 不保留 alias 或迁移路径。旧 HTML renderer/Repor
 | 所有者 | 职责 |
 | --- | --- |
 | Marivo | Session、Run、Session Graph、Artifact、Quality、Evidence、Lineage、revalidation 与公共读取语义 |
-| 本插件 | Runtime/Workspace binding、实时 Help、credential-safe seam、Evidence UI adapter、Marivo 对象的忠实有界 JS 投影 |
+| 本插件 | Runtime/Workspace binding、实时 Help、credential-safe seam、Evidence UI adapter、数据读取与 Marivo 专属组件 |
 | `dsh-data-analysis-report` Skill | 内容组织、布局、样式、检查和文件交付原则 |
 | Agent | 报告叙事、页面结构、图表、CSS、交互、通用数据处理与实际检查 |
 | DSH | Tool/Skill/session lifecycle、文件 mutation、Produced Files、Host opening |
@@ -21,23 +21,28 @@ turn-scoped disclosure 不保留 alias 或迁移路径。旧 HTML renderer/Repor
 本插件不得把 Agent 展示选择升级为 Marivo 事实，也不得复制 Marivo 私有 Store、重新执行分析、拥有页面
 schema，或把路径存在解释为报告 ready。
 
-## 唯一报告增强面
+## 报告增强面
 
-Python report-kit 只公开两个与 Marivo 公共对象直接对应的 emitter：
+Python report-kit 公开三个边界明确的 emitter：
 
 - `emit_dataset(BaseFrame, target, revalidation=...)`：读取 `BaseFrame` 的公开 contract、metadata 与
-  `to_pandas()` terminal boundary，输出有界 Artifact snapshot；普通 pandas DataFrame 明确拒绝。
+  `to_pandas()` terminal boundary，输出有界 Artifact snapshot；普通 pandas DataFrame 明确拒绝；
+- `emit_computed(DataFrame, target)`：输出有界 computed snapshot，不声明 Artifact、Evidence、Quality、
+  revalidation、Lineage 或 freshness；
 - `emit_session_trace(SessionGraph, target, report_artifact_refs=...)`：忠实投影调用方已取得的有界
-  `SessionGraph`；不打开 Session、不读取 Store、不合并 graph，也不添加 Graph 之外的查询扩展。
+  `SessionGraph`；不打开 Session、不读取 Store、不合并 graph。当前固定 Marivo 0.5.2 的 Run 未公开 Query，
+  因此投影固定包含空 `queries` 与 `query_bind_values: "omitted"`，不接受调用方补造 Query。
 
-Skill assets 只保留两个浏览器运行时：
+Skill assets 分成数据读取与两个 Marivo 组件：
 
-- `assets/marivo-artifact.js`：校验、冻结、注册并读取 Artifact snapshot；
+- `assets/report-data.js`：校验、冻结、注册并读取 Artifact/computed snapshot；
+- `assets/marivo-artifact.js`：输出读者导向的精简 Artifact 摘要。正常时只有类型、semantic shape、行数和
+  生成时间；仅对截断、Evidence、revalidation、质量检查或 issues 的实质状态追加提示；
 - `assets/marivo-session-dag.js`：校验、冻结、注册并按需展示 Session DAG snapshot；Frame 节点显示
-  family 与行数，并按 `session_id + artifact_ref` 精确关联已注册 Artifact preview。
+  family 与行数，按 `session_id + artifact_ref` 精确关联 preview，并复用 Artifact 摘要组件。
 
-这两个文件是实现资产，不是示例或模板。它们不提供颜色系统、页面 shell、KPI、通用 chart、章节或业务
-叙事。Agent 只有实际使用对应 snapshot 时才复制资产。
+这些文件是实现资产，不是示例或模板。它们不提供颜色系统、页面 shell、KPI、通用 chart、章节或业务
+叙事。图表库、类型、DOM/SVG/Canvas 实现、布局、主题和交互完全由 Agent 决定。
 
 一次分析使用多个 Marivo Session 时，每个 Session 独立调用 `session.graph(...)` 和
 `emit_session_trace(...)`，浏览器运行时用 `renderSessionGraphs(...)` 分 Session 展示全部 trace。插件不跨
@@ -46,8 +51,8 @@ Session 合并节点或推断边；需要 Frame preview 时，Agent 另行恢复
 
 ## 投影契约
 
-`report-contracts/` 只保留 emitter 所需的 common、Artifact dataset、revalidation 与 Session trace schemas 及
-测试 fixtures。通用 computed dataset source 与 Checker rule registry 已删除。
+`report-contracts/` 只保留 emitter 所需的 common、Artifact/computed dataset、revalidation 与 Session trace
+schemas 及测试 fixtures；不恢复 Checker rule registry。
 
 投影必须保留：
 
@@ -77,7 +82,8 @@ Agent 使用任务环境已有的通用 lint、测试、文件和浏览器能力
 ## Package 与运行时
 
 Shared Runtime 同时验证精确 Marivo 与 report-kit identity。npm package 分发 report-kit wheel、四类投影
-schema、原则型 Skill 和两个 JS assets；不分发 Starter、Checker CLI/export、HTML/CSS 文件或报告示例。
+schema、原则型 Skill、`ReportData` runtime 和两个 Marivo components；不分发 Starter、chart helper、
+Checker CLI/export、HTML/CSS shell 或报告示例。
 
 公开 DSH Tool surface 仍只有：
 
@@ -91,11 +97,11 @@ Artifact/DAG emitter 是绑定 Python 中的增强库，不增加 DSH Tool，不
 
 确定性门禁必须证明：
 
-- report-kit 拒绝普通 DataFrame，只接受 Marivo `BaseFrame`；
-- Artifact 与 Session Graph emitter 通过保留的 schemas、Python tests 与 wheel smoke；
-- 两个 JS assets 接受合法投影、冻结结果，并拒绝 computed 或悬空 graph identity；
+- `emit_dataset` 拒绝 DataFrame，`emit_computed` 接受有界 pandas DataFrame；
+- Artifact、computed 与 Session Graph emitter 通过 schemas、Python tests 与 wheel smoke；
+- `ReportData` 接受两类 dataset；Artifact component 隐藏机器 metadata 并只显示实质提示；DAG 拒绝悬空 identity；
 - package 不含 Starter、示例、HTML/CSS、Checker source/types/bin/export 或 rule registry；
-- Skill 资源树只有 `SKILL.md` 与两个 Marivo assets，且覆盖内容、布局、样式、检查和文件交付原则；
+- Skill 资源树只有 `SKILL.md`、数据 runtime 与两个 Marivo components，且不包含 chart helper；
 - `npm run check`、`npm run build`、`npm run verify:plugin-package` 通过。
 
 真实页面的视觉、键盘、打印、Produced Files 与 Host opening 由具体报告任务按 Skill 原则在实际环境验收；

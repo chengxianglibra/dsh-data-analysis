@@ -2,7 +2,7 @@
 
 `dsh-data-analysis` 把 Marivo 接入 DeepSeek Harness。插件只拥有跨系统 seam：共享 Runtime、
 Workspace binding、实时 Help transport、DSH Credentials 闭环、用户显式请求来源时的 Turn/Web Evidence
-投影，以及 Marivo Artifact/Session Graph 到有界 JavaScript 快照的忠实投影。分析语义、Artifact、Quality、
+投影，以及 Artifact/pandas 数据快照与 Marivo 专属 HTML 组件。分析语义、Artifact、Quality、
 Evidence、Lineage、revalidation 和 Session Graph 由 Marivo 拥有；最终表达和报告页面由 Agent 拥有。
 
 当前版本是一次 clean break：旧 `ReportDocument`、HTML renderer、报告发布器、专用 Web 卡片和旧产物
@@ -17,10 +17,10 @@ replay 已删除，不提供 alias 或迁移路径。
 - 提供 `marivo_datasource_test`，完成缺失 DSH Credentials 的 Web 收集和显式连接测试；
 - 为普通 one-shot Shell 注入当前 Workspace datasource 的已配置 `DSH_*` 凭据引用；
 - 提供 `marivo_evidence_sources`，把精确 Artifact-owned Finding 投影到 DSH 来源面板；
-- 安装 `dsh-data-analysis-report-kit`，提供 `emit_dataset(BaseFrame, ...)` 与
-  `emit_session_trace(SessionGraph, ...)` 两个 Marivo JavaScript 投影器；
-- 打包并挂载 `dsh-data-analysis-report` Skill，其中只有内容组织、布局、样式和检查原则，以及配套的
-  Artifact/DAG JavaScript 读取运行时。
+- 安装 `dsh-data-analysis-report-kit`，提供 `emit_dataset(BaseFrame, ...)`、
+  `emit_computed(DataFrame, ...)` 与 `emit_session_trace(SessionGraph, ...)`；
+- 打包并挂载 `dsh-data-analysis-report` Skill，以及 `ReportData`、精简 Artifact 摘要和 Session DAG
+  JavaScript 组件。
 
 插件不会注册 Artifact inspection、Quality、Session recovery、Session Graph、semantic readiness、
 datasource inspection、Artifact export、HTML Checker 或报告 renderer Tool。Agent 应直接使用 Marivo 公共对象
@@ -103,10 +103,11 @@ DAG 细节重新执行 `observe`。报告没有页面 schema、HTML Checker 或 
 - `session.runs(...)`、`session.get_run(...)`、`session.graph(...)`；
 - 在实时 Help 允许的 terminal boundary 使用 `artifact.to_pandas()`。
 
-只有两个报告增强面由插件提供：`emit_dataset` 把 Marivo `BaseFrame` 投影成有界 Artifact JavaScript
-snapshot，`emit_session_trace` 把调用方已经取得的 `SessionGraph` 投影成有界 DAG JavaScript snapshot。前者
-不接受普通 DataFrame；多 Session 分别投影并集中展示，Frame preview 按 `session_id + artifact_ref` 精确
-关联。两者都不读取私有 Store、不重新分析，也不把快照提升为 Marivo authority。
+报告增强面只降低数据读取与 Marivo 信息展示成本：`emit_dataset` 发射 Artifact snapshot，
+`emit_computed` 发射 pandas DataFrame snapshot，二者均由浏览器 `ReportData` 读取；
+`emit_session_trace` 发射公开 `SessionGraph`，由标准 DAG 组件展示。精简 Artifact 组件只显示类型、
+semantic shape、行数、生成时间及会改变读者判断的截断、Evidence、revalidation、质量或 issue 提示。
+插件不提供 chart helper、可视化 DSL 或页面 renderer；图表、布局与交互仍由 Agent 决定。
 
 每份新报告或修订默认使用新目录，入口固定为 `index.html`，资源使用 bundle 内相对路径：
 

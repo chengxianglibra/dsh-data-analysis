@@ -43,7 +43,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
 4. Marivo 版本严格等于 `0.5.2`；
-5. report-kit 版本、package path、公开 `emit_dataset` / `emit_session_trace` 与 pandas 范围一致；
+5. report-kit 版本、package path、公开 `emit_dataset` / `emit_computed` / `emit_session_trace` 与 pandas 范围一致；
 6. 两个内置 Skill 的 `SKILL.md` 均存在。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发

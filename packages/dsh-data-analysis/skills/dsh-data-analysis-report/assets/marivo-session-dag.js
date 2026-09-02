@@ -223,6 +223,7 @@
       'artifacts',
       'runs',
       'edges',
+      'queries',
       'root_run_ids',
       'head_artifact_refs',
       'failed_run_ids',
@@ -391,6 +392,10 @@
     }
     if (visited !== graphNodes.length) fail('$.edges', 'must form an acyclic graph')
 
+    if (!Array.isArray(trace.queries) || trace.queries.length !== 0) {
+      fail('$.queries', 'must be an empty array for the supported Marivo runtime')
+    }
+
     const consumers = new Set(
       runs.filter((run) => run.lifecycle === 'succeeded').flatMap((run) => run.input_artifact_refs),
     )
@@ -405,8 +410,12 @@
     }
 
     const projection = object(trace.projection, '$.projection')
-    exactKeys(projection, '$.projection', ['run_arguments', 'failure_values'])
-    if (projection.run_arguments !== 'omitted' || projection.failure_values !== 'omitted') {
+    exactKeys(projection, '$.projection', ['run_arguments', 'failure_values', 'query_bind_values'])
+    if (
+      projection.run_arguments !== 'omitted' ||
+      projection.failure_values !== 'omitted' ||
+      projection.query_bind_values !== 'omitted'
+    ) {
       fail('$.projection', 'must omit private values')
     }
     if (
@@ -707,31 +716,20 @@
     const article = document.createElement('article')
     article.className = 'trace-detail'
     article.dataset.nodeKey = `artifact:${artifact.ref}`
-    article.append(text('p', `Frame · ${artifact.materialization}`, 'trace-detail-kind'))
     article.append(text('h4', artifactLabel(artifact)))
-    article.append(
-      definitionList([
-        ['Frame', artifact.family],
-        ['语义形状', artifact.semantic_shape],
-        ['创建', artifact.created_at],
-        ['分析目的', artifact.analysis_purpose],
-        ['行数', artifact.row_count],
-        ['Evidence', `${artifact.evidence.status} · ${artifact.evidence.finding_count} 条 Finding`],
-        [
-          '质量',
-          artifact.quality === null
-            ? '未评估或不适用'
-            : `coverage ${artifact.quality.coverage ?? '—'} · null rate ${artifact.quality.null_rate ?? '—'}`,
-        ],
-        [
-          '问题',
-          `${artifact.issue_counts.warning} warning · ${artifact.issue_counts.blocking} blocking`,
-        ],
-      ]),
-    )
     const dataset = matchingDataset(trace.session_id, artifact.ref)
-    if (dataset) article.append(previewTable(dataset))
-    else article.append(text('p', '此页面未注册该 Artifact 的 dataset 预览。', 'trace-frame-count'))
+    if (dataset) {
+      const component = scope.MarivoArtifact
+      if (!component || typeof component.render !== 'function') {
+        fail('$MarivoArtifact', 'must be loaded before rendering a Session DAG')
+      }
+      const summary = document.createElement('div')
+      summary.className = 'trace-artifact-summary'
+      component.render(summary, dataset.dataset_id)
+      article.append(summary, previewTable(dataset))
+    } else {
+      article.append(text('p', '此页面未注册该 Artifact 的 dataset 预览。', 'trace-frame-count'))
+    }
     return article
   }
 

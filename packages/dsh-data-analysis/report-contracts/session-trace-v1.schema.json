@@ -12,6 +12,7 @@
     "artifacts",
     "runs",
     "edges",
+    "queries",
     "root_run_ids",
     "head_artifact_refs",
     "failed_run_ids",
@@ -154,6 +155,11 @@
       }
     },
     "root_run_ids": { "$ref": "#/$defs/identityArray" },
+    "queries": {
+      "type": "array",
+      "maxItems": 0,
+      "items": false
+    },
     "head_artifact_refs": { "$ref": "#/$defs/identityArray" },
     "failed_run_ids": { "$ref": "#/$defs/identityArray" },
     "incomplete_run_ids": { "$ref": "#/$defs/identityArray" },
@@ -163,10 +169,11 @@
     "projection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["run_arguments", "failure_values"],
+      "required": ["run_arguments", "failure_values", "query_bind_values"],
       "properties": {
         "run_arguments": { "const": "omitted" },
-        "failure_values": { "const": "omitted" }
+        "failure_values": { "const": "omitted" },
+        "query_bind_values": { "const": "omitted" }
       }
     },
     "read_boundaries": {

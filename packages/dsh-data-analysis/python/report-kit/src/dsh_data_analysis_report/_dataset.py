@@ -49,7 +49,7 @@ class DatasetReceipt:
     path: str
     schema: str
     dataset_id: str
-    source_kind: Literal["marivo_artifact"]
+    source_kind: Literal["computed", "marivo_artifact"]
     total_rows: int
     written_rows: int
     omitted_rows: int
@@ -394,6 +394,23 @@ def _rows(df: pd.DataFrame) -> list[list[object]]:
     ]
 
 
+def _computed_columns(df: pd.DataFrame) -> list[dict[str, object]]:
+    return [
+        {
+            "name": bounded_string(
+                name, location="table.columns.name", error_type=ReportDatasetError
+            ),
+            "dtype": bounded_string(
+                str(df.dtypes.iloc[index]),
+                location="table.columns.dtype",
+                error_type=ReportDatasetError,
+            ),
+            "contains_null": bool(df.iloc[:, index].isna().any()),
+        }
+        for index, name in enumerate(df.columns)
+    ]
+
+
 def _artifact_source(
     artifact: BaseFrame,
     df: pd.DataFrame,
@@ -606,4 +623,76 @@ def emit_dataset(
     )
 
 
-__all__ = ["DatasetReceipt", "emit_dataset"]
+def emit_computed(
+    value: pd.DataFrame,
+    target: str | os.PathLike[str],
+    *,
+    dataset_id: str | None = None,
+    max_rows: int | None = None,
+) -> DatasetReceipt:
+    """Emit one bounded pandas DataFrame registration atomically."""
+
+    target_path = resolve_target(target, error_type=ReportDatasetError)
+    identity = safe_identifier(
+        target_path.stem if dataset_id is None else dataset_id,
+        location="dataset-id",
+        error_type=ReportDatasetError,
+    )
+    if max_rows is not None and (
+        isinstance(max_rows, bool) or not isinstance(max_rows, int) or max_rows < 1
+    ):
+        raise ReportDatasetError(
+            "payload-limit-exceeded", "max_rows must be a positive integer"
+        )
+    if not isinstance(value, pd.DataFrame):
+        raise ReportDatasetError(
+            "input-type-unsupported",
+            "value must be a pandas DataFrame",
+            {"valueType": type(value).__name__},
+        )
+    _validate_frame(value)
+    total_rows = len(value)
+    written_rows = total_rows if max_rows is None else min(total_rows, max_rows)
+    if written_rows > DATASET_MAX_ROWS:
+        raise ReportDatasetError(
+            "payload-limit-exceeded",
+            "Dataset exceeds the report row limit; provide max_rows or pre-aggregate",
+            {"limit": DATASET_MAX_ROWS, "actual": written_rows},
+        )
+    payload = {
+        "schema": DATASET_SCHEMA,
+        "dataset_id": identity,
+        "emitted_at": utc_timestamp(),
+        "source": {"kind": "computed"},
+        "table": {
+            "total_rows": total_rows,
+            "written_rows": written_rows,
+            "omitted_rows": total_rows - written_rows,
+            "columns": _computed_columns(value),
+            "rows": _rows(value.iloc[:written_rows]),
+        },
+    }
+    content = encoded_registration(JAVASCRIPT_REGISTRY, identity, payload)
+    if len(content) > DATASET_MAX_BYTES:
+        raise ReportDatasetError(
+            "payload-limit-exceeded",
+            "Dataset snapshot exceeds the file-size limit",
+            {"limit": DATASET_MAX_BYTES, "actual": len(content)},
+        )
+    digest = content_hash(content)
+    atomic_write(target_path, content, error_type=ReportDatasetError)
+    return DatasetReceipt(
+        path=str(target_path),
+        schema=DATASET_SCHEMA,
+        dataset_id=identity,
+        source_kind="computed",
+        total_rows=total_rows,
+        written_rows=written_rows,
+        omitted_rows=total_rows - written_rows,
+        column_count=len(value.columns),
+        byte_size=len(content),
+        content_hash=digest,
+    )
+
+
+__all__ = ["DatasetReceipt", "emit_computed", "emit_dataset"]

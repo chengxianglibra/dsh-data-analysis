@@ -87,7 +87,7 @@ test('package cutover removes report exports and pins the native runtime release
   })
 })
 
-test('the report Skill contains principles and only Marivo projection assets', async () => {
+test('the report Skill contains principles, data access, and only Marivo components', async () => {
   const skill = await readFile(reportSkillPath, 'utf8')
   const normalized = skill.replaceAll(/\s+/g, ' ')
   assert.match(normalized, /name: dsh-data-analysis-report/)
@@ -96,23 +96,34 @@ test('the report Skill contains principles and only Marivo projection assets', a
     /when an analysis needs multiple charts, tables, or a long multi-section presentation/,
   )
   assert.match(normalized, /emit_dataset\(artifact, target, revalidation=\.\.\.\)/)
-  assert.match(normalized, /不接受普通 DataFrame/)
-  assert.match(normalized, /普通报告资源/)
-  assert.match(normalized, /不得注册进 `ReportData` \/ `ReportTrace`/)
+  assert.match(normalized, /emit_computed\(frame, target\)/)
+  assert.match(
+    normalized,
+    /`ReportData`.*`ReportData\.get\(\.\.\.\)`.*`ReportData\.records\(\.\.\.\)`/,
+  )
+  assert.match(normalized, /不要把 DataFrame 传给 `emit_dataset`/)
+  assert.match(normalized, /不要手写 `ReportData\.register\(\.\.\.\)` payload/)
+  assert.match(normalized, /图表库和 DOM\/SVG\/Canvas 实现仍由 Agent 自主选择/)
   assert.match(normalized, /emit_session_trace\(graph, target, report_artifact_refs=\[\.\.\.\]\)/)
-  assert.match(normalized, /每个 Marivo Session/)
+  assert.match(normalized, /每个实质支撑报告内容的 Marivo Session/)
   assert.match(normalized, /report_artifact_refs.*实际支撑可见内容/)
   assert.match(normalized, /单次最多接收 20 个 trace/)
   assert.match(normalized, /ReportTrace\.renderSessionGraphs/)
   assert.match(normalized, /session_id \+ artifact_ref/)
+  assert.match(normalized, /MarivoArtifact\.render\(container, dataset_id\)/)
+  assert.match(normalized, /不是 metadata inspector/)
   assert.match(normalized, /经典脚本顺序固定/)
   assert.match(normalized, /dataset_id.*trace_id.*必须唯一/)
+  assert.match(normalized, /取得报告数据.*添加 Marivo 组件.*装配浏览器资源/)
   assert.match(normalized, /内容组织/)
   assert.match(normalized, /布局与样式/)
+  assert.match(normalized, /所有图表坐标轴.*不得出现刻度标签彼此重叠/)
+  assert.match(normalized, /空间不足时不要强行显示每个刻度/)
+  assert.match(normalized, /默认宽度和窄屏宽度.*逐图确认每条坐标轴的刻度标签无碰撞/)
   assert.match(normalized, /生成与检查/)
   assert.match(normalized, /新报告使用新的 Workspace 目录；修订使用用户指定或已确认的现有目录/)
   assert.match(normalized, /Produced Files 与 Host opening 只是导航/)
-  assert.ok(skill.length < 5_000)
+  assert.ok(skill.length < 6_000)
   assert.doesNotMatch(
     skill,
     /dsh_data_analysis_report_check|starter\/|references\/|renderLineChart/,
@@ -121,5 +132,6 @@ test('the report Skill contains principles and only Marivo projection assets', a
   assert.deepEqual((await readdir(path.join(path.dirname(reportSkillPath), 'assets'))).sort(), [
     'marivo-artifact.js',
     'marivo-session-dag.js',
+    'report-data.js',
   ])
 })

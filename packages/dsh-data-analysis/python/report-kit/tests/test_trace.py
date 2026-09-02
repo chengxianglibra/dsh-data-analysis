@@ -154,7 +154,9 @@ def test_session_trace_projects_all_lifecycles_without_sensitive_fields(
     assert payload["projection"] == {
         "run_arguments": "omitted",
         "failure_values": "omitted",
+        "query_bind_values": "omitted",
     }
+    assert payload["queries"] == []
     validate_contract("session-trace-v1.schema.json", payload)
 
 

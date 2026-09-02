@@ -621,6 +621,7 @@ def emit_session_trace(
         "artifacts": artifacts,
         "runs": runs,
         "edges": edges,
+        "queries": [],
         "root_run_ids": root_run_ids,
         "head_artifact_refs": head_artifact_refs,
         "failed_run_ids": failed_run_ids,
@@ -631,6 +632,7 @@ def emit_session_trace(
         "projection": {
             "run_arguments": "omitted",
             "failure_values": "omitted",
+            "query_bind_values": "omitted",
         },
         "read_boundaries": [
             "semantic_authority_not_checked",

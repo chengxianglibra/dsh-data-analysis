@@ -17,7 +17,7 @@ const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const reportKitWheelPath =
-  'python/report-kit/dist/dsh_data_analysis_report_kit-2.0.0-py3-none-any.whl'
+  'python/report-kit/dist/dsh_data_analysis_report_kit-2.1.0-py3-none-any.whl'
 const reportKitVerifier = path.join(
   packageRoot,
   'python',
@@ -183,9 +183,10 @@ try {
     'skills/dsh-data-analysis-report/SKILL.md',
     'skills/dsh-data-analysis-report/assets/marivo-artifact.js',
     'skills/dsh-data-analysis-report/assets/marivo-session-dag.js',
+    'skills/dsh-data-analysis-report/assets/report-data.js',
   ]
   if (JSON.stringify(skillFiles) !== JSON.stringify(expectedSkillFiles)) {
-    fail('report Skill must contain only its principles and Marivo projection assets')
+    fail('report Skill must contain only its principles, data runtime, and Marivo components')
   }
   const contractFiles = readdirSync(path.join(packageRoot, 'report-contracts'), {
     withFileTypes: true,
@@ -301,7 +302,7 @@ try {
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed Marivo projection kit and principles-only report Skill passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed report data kit and Marivo components passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

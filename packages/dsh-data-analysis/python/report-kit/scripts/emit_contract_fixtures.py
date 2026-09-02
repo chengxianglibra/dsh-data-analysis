@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from dsh_data_analysis_report import emit_dataset, emit_session_trace
+from dsh_data_analysis_report import emit_computed, emit_dataset, emit_session_trace
 from marivo.analysis import (
     ArtifactRevalidation,
     ArtifactSummary,
@@ -30,6 +30,7 @@ def main() -> None:
     root = Path(sys.argv[1])
     root.mkdir(parents=True, exist_ok=True)
     artifact_path = root / "artifact.js"
+    computed_path = root / "computed.js"
     trace_path = root / "trace.js"
     frame = pd.DataFrame(
         {
@@ -79,6 +80,7 @@ def main() -> None:
         fingerprint="result",
     )
     emit_dataset(artifact_frame, artifact_path, revalidation=checked)
+    emit_computed(frame, computed_path)
     run = SucceededRun(
         run_id="run-1",
         capability_id="observe",
@@ -133,6 +135,7 @@ def main() -> None:
         json.dumps(
             {
                 "artifact": str(artifact_path),
+                "computed": str(computed_path),
                 "trace": str(trace_path),
             }
         )

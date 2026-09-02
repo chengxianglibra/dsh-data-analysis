@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from conftest import parse_registration, validate_contract
-from dsh_data_analysis_report import ReportDatasetError, emit_dataset
+from dsh_data_analysis_report import ReportDatasetError, emit_computed, emit_dataset
 from marivo.analysis import ArtifactRevalidation, BaseFrame, CandidateResolutionIssue
 from marivo.analysis.evidence import (
     ComparabilityIssue,
@@ -45,6 +45,53 @@ def test_plain_dataframe_is_not_a_public_projection_input(tmp_path: Path) -> Non
 
     with pytest.raises(ReportDatasetError) as unsupported:
         emit_dataset(pd.DataFrame({"x": [1]}), target)  # type: ignore[arg-type]
+    assert unsupported.value.code == "input-type-unsupported"
+    assert target.read_text() == "old"
+
+
+def test_computed_pivot_dataframe_is_bounded_and_schema_valid(tmp_path: Path) -> None:
+    source = pd.DataFrame(
+        {
+            "hour": pd.to_datetime(
+                ["2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", "2026-09-01T01:00:00Z"]
+            ),
+            "channel": ["web", "store", "web"],
+            "revenue": [120.0, 80.0, None],
+        }
+    )
+    pivot = source.pivot_table(
+        index="hour", columns="channel", values="revenue", aggfunc="sum"
+    ).reset_index()
+    pivot.columns = [str(column) for column in pivot.columns]
+    target = tmp_path / "hourly-revenue.js"
+
+    receipt = emit_computed(pivot, target, max_rows=1)
+    payload = parse_registration(target, "ReportData")
+
+    assert receipt.source_kind == "computed"
+    assert receipt.total_rows == 2
+    assert receipt.written_rows == 1
+    assert receipt.omitted_rows == 1
+    assert payload["source"] == {"kind": "computed"}
+    assert "semantic_shape" not in payload["table"]
+    assert payload["table"]["rows"][0][0].startswith("2026-09-01T00:00:00")
+    assert [column["name"] for column in payload["table"]["columns"]] == [
+        "hour",
+        "store",
+        "web",
+    ]
+    validate_contract("dataset-v1.schema.json", payload)
+
+
+def test_emit_computed_rejects_non_dataframe_without_replacing_target(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "computed.js"
+    target.write_text("old", encoding="utf-8")
+
+    with pytest.raises(ReportDatasetError) as unsupported:
+        emit_computed([{"x": 1}], target)  # type: ignore[arg-type]
+
     assert unsupported.value.code == "input-type-unsupported"
     assert target.read_text() == "old"
 
@@ -257,3 +304,21 @@ def test_dataset_budgets_and_atomic_replace_failure_are_fail_closed(
     assert write.value.code == "write-failed"
     assert target.read_text() == "old"
     assert [item.name for item in tmp_path.iterdir()] == ["atomic.js"]
+
+
+def test_computed_atomic_replace_failure_is_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "computed-atomic.js"
+    target.write_text("old", encoding="utf-8")
+    import dsh_data_analysis_report._common as common
+
+    def fail_replace(source: object, destination: object) -> None:
+        raise OSError("fixture replace failure")
+
+    monkeypatch.setattr(common.os, "replace", fail_replace)
+    with pytest.raises(ReportDatasetError) as write:
+        emit_computed(pd.DataFrame({"x": [1]}), target)
+    assert write.value.code == "write-failed"
+    assert target.read_text() == "old"
+    assert [item.name for item in tmp_path.iterdir()] == ["computed-atomic.js"]

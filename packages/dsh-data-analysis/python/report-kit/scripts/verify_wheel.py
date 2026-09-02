@@ -8,7 +8,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-WHEEL_NAME = "dsh_data_analysis_report_kit-2.0.0-py3-none-any.whl"
+WHEEL_NAME = "dsh_data_analysis_report_kit-2.1.0-py3-none-any.whl"
 ALLOWED_PACKAGE_FILES = {
     "dsh_data_analysis_report/__init__.py",
     "dsh_data_analysis_report/_common.py",
@@ -50,7 +50,7 @@ def main() -> None:
         metadata = email.message_from_bytes(archive.read(metadata_name))
         if metadata["Name"] != "dsh-data-analysis-report-kit":
             raise SystemExit("wheel distribution identity mismatch")
-        if metadata["Version"] != "2.0.0" or metadata["Requires-Python"] != ">=3.10":
+        if metadata["Version"] != "2.1.0" or metadata["Requires-Python"] != ">=3.10":
             raise SystemExit("wheel version or Python requirement mismatch")
         requires = set(metadata.get_all("Requires-Dist", []))
         if requires != {"marivo==0.5.2", "pandas<3.0.0,>=2.2.0"}:
@@ -69,9 +69,16 @@ def main() -> None:
         ):
             del sys.modules[name]
     package = importlib.import_module("dsh_data_analysis_report")
-    if package.__version__ != "2.0.0":
+    if package.__version__ != "2.1.0":
         raise SystemExit("wheel public version mismatch")
-    if not callable(package.emit_dataset) or not callable(package.emit_session_trace):
+    if not all(
+        callable(value)
+        for value in (
+            package.emit_computed,
+            package.emit_dataset,
+            package.emit_session_trace,
+        )
+    ):
         raise SystemExit("wheel public emitters are unavailable")
     print(
         f"verified {wheel.name}: {len(names)} files, exact metadata and public imports"

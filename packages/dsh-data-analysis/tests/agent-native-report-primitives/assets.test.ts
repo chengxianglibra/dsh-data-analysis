@@ -21,8 +21,13 @@ interface TraceRegistry extends Registry {
   renderSessionGraphs(container: TestElement, traceIds?: readonly string[]): TestElement
 }
 
+interface ArtifactComponent {
+  render(container: TestElement, datasetId: string): TestElement
+}
+
 interface ProjectionContext extends vm.Context {
   ReportData?: Registry & { records(id: string): readonly Record<string, unknown>[] }
+  MarivoArtifact?: ArtifactComponent
   ReportTrace?: TraceRegistry
 }
 
@@ -118,13 +123,13 @@ async function projectionContext(withDom = false): Promise<ProjectionContext> {
   const context = vm.createContext(
     withDom ? { console, document: new TestDocument(), Element: TestElement } : { console },
   ) as ProjectionContext
-  for (const name of ['marivo-artifact.js', 'marivo-session-dag.js']) {
+  for (const name of ['report-data.js', 'marivo-artifact.js', 'marivo-session-dag.js']) {
     vm.runInContext(await readFile(path.join(assetRoot, name), 'utf8'), context, { filename: name })
   }
   return context
 }
 
-test('Artifact runtime accepts only closed Marivo Artifact projections', async () => {
+test('ReportData accepts closed Artifact and computed projections', async () => {
   const context = await projectionContext()
   const registry = context.ReportData!
   const artifact = await fixture('artifact-dataset.json')
@@ -140,14 +145,80 @@ test('Artifact runtime accepts only closed Marivo Artifact projections', async (
     { month: '2026-01-01T00:00:00' },
   ])
 
-  const computed = structuredClone(artifact)
-  computed.dataset_id = 'computed'
-  computed.source = { kind: 'computed' }
-  delete computed.table.semantic_shape
-  computed.table.columns = computed.table.columns.map(
-    ({ name, dtype, contains_null }: Record<string, unknown>) => ({ name, dtype, contains_null }),
+  const computed = await fixture('computed-dataset.json')
+  registry.register('computed-sales', computed)
+  assert.deepEqual(JSON.parse(JSON.stringify(registry.records('computed-sales'))), [
+    { month: '2026-01-01T00:00:00', revenue: 1024.5 },
+    { month: '2026-02-01T00:00:00', revenue: null },
+  ])
+})
+
+test('MarivoArtifact renders one reader summary and only material notices', async () => {
+  const context = await projectionContext(true)
+  const datasets = context.ReportData!
+  const component = context.MarivoArtifact!
+  const artifact = await fixture('artifact-dataset.json')
+  datasets.register('artifact-sales', artifact)
+
+  const normal = new TestElement()
+  component.render(normal, 'artifact-sales')
+  assert.match(normal.textContent, /metric_frame · time_series · 1 行 · 结果生成于/)
+  for (const hidden of ['session-1', 'artifact-1', 'sha256:fixture', 'Finding', 'lineage']) {
+    assert.equal(normal.textContent.includes(hidden), false, hidden)
+  }
+  assert.equal(normal.querySelectorAll('.marivo-artifact-notice').length, 0)
+
+  const material = structuredClone(artifact)
+  material.dataset_id = 'material'
+  material.source.artifact.row_count = 3
+  material.source.artifact.evidence_status = 'partial'
+  material.table.total_rows = 3
+  material.table.omitted_rows = 2
+  material.source.quality_summary = {
+    coverage: 1,
+    null_rate: 0,
+    sample_size: 3,
+    sample_coverage_min: null,
+    sample_coverage_avg: null,
+    sample_coverage_partial_buckets: null,
+    zero_denominator_rows: 0,
+    evaluated_check_count: 2,
+    failed_check_count: 1,
+    warning_check_count: 1,
+  }
+  material.source.issues = [
+    {
+      category: 'data_quality',
+      kind: 'sample_size_low',
+      severity: 'warning',
+      check_id: 'row_count',
+      expectation: 'row_count >= 5',
+      repair: null,
+    },
+  ]
+  material.source.issues_omitted = 1
+  material.source.revalidation = {
+    ...(await fixture('checked-revalidation.json')),
+    result: 'stale',
+    semantic_status: 'stale',
+  }
+  datasets.register('material', material)
+  const notices = new TestElement()
+  component.render(notices, 'material')
+  assert.match(notices.textContent, /展示数据已截断/)
+  assert.match(notices.textContent, /分析依据不完整/)
+  assert.match(notices.textContent, /stale/)
+  assert.match(notices.textContent, /1 项未通过的质量检查/)
+  assert.match(notices.textContent, /1 项质量警告/)
+  assert.match(notices.textContent, /1 个警告问题/)
+  assert.match(notices.textContent, /另有 1 个问题/)
+
+  const computed = await fixture('computed-dataset.json')
+  datasets.register('computed-sales', computed)
+  assert.throws(
+    () => component.render(new TestElement(), 'computed-sales'),
+    /artifact-dataset-required/,
   )
-  assert.throws(() => registry.register('computed', computed), /source.kind.*unsupported/)
 })
 
 test('Session DAG runtime validates and freezes Marivo graph projections', async () => {
@@ -163,6 +234,11 @@ test('Session DAG runtime validates and freezes Marivo graph projections', async
   dangling.trace_id = 'dangling'
   dangling.edges[0].run_id = 'missing-run'
   assert.throws(() => registry.register('dangling', dangling), /contains a dangling identity/)
+
+  const queries = structuredClone(trace)
+  queries.trace_id = 'queries'
+  queries.queries = [{ query_id: 'query-1' }]
+  assert.throws(() => registry.register('queries', queries), /must be an empty array/)
 })
 
 test('Session DAG renders Frame row counts, exact previews, and every selected Session', async () => {
@@ -196,6 +272,8 @@ test('Session DAG renders Frame row counts, exact previews, and every selected S
   assert.equal(frameNodes.length, 2)
   assert.ok(frameNodes.every((node) => node.textContent === 'MetricFrame1 行'))
   assert.equal(container.querySelectorAll('.trace-frame-preview').length, 2)
+  assert.equal(container.querySelectorAll('.marivo-artifact').length, 2)
+  assert.equal(container.textContent.includes('Finding'), false)
   const frameDetails = container
     .querySelectorAll('.trace-detail')
     .filter((detail) => detail.dataset.nodeKey?.startsWith('artifact:'))

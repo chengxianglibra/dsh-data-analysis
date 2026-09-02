@@ -100,7 +100,7 @@ if (args[0] === '-c' && args.length === 2) {
     package_path: ${JSON.stringify(packagePath)},
     pandas_version: '2.3.3',
     pandas_supported: true,
-    report_kit_version: '2.0.0',
+    report_kit_version: '2.1.0',
     report_kit_package_path: ${JSON.stringify(reportKitPackagePath)},
     report_kit_public_imports: true,
   }))
@@ -199,7 +199,7 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   await mkdir(path.dirname(packagePath), { recursive: true })
   await mkdir(path.dirname(reportKitPackagePath), { recursive: true })
   await writeFile(packagePath, '__version__ = "0.5.2"\n')
-  await writeFile(reportKitPackagePath, '__version__ = "2.0.0"\n')
+  await writeFile(reportKitPackagePath, '__version__ = "2.1.0"\n')
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
@@ -289,7 +289,7 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
     await readFile(path.join(runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v2')
-  assert.equal(marker.reportKitVersion, '2.0.0')
+  assert.equal(marker.reportKitVersion, '2.1.0')
   assert.equal(marker.reportKitPackagePath, reportKitPackagePath)
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()
