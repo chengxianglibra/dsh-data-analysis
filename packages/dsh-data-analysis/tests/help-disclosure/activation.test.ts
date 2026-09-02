@@ -319,26 +319,22 @@ test('analysis activation adds Evidence guidance and the concise report route', 
   assert.doesNotMatch(initialPrompt, /Use dsh-data-analysis-report/)
   const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
   assert.match(activatedPrompt, /marivo_evidence_sources/)
-  assert.match(activatedPrompt, /do not call marivo_evidence_sources by default/)
   assert.match(activatedPrompt, /only when the user explicitly requests sources/)
-  assert.match(activatedPrompt, /never copy or restate the supported fact/)
-  assert.match(activatedPrompt, /Even when the user requests audit details/)
-  assert.match(activatedPrompt, /Do not announce the Tool call/)
-  assert.match(activatedPrompt, /must not mention the Web, a panel, or any display location/)
-  assert.match(activatedPrompt, /no exact persisted Finding/)
-  assert.match(activatedPrompt, /do not emit a boilerplate quality or evidence section/)
-  assert.match(activatedPrompt, /does not prove/)
+  assert.match(activatedPrompt, /only exact persisted Findings/)
+  assert.match(activatedPrompt, /no exact Finding exists/)
+  assert.match(activatedPrompt, /source cannot be recovered/)
+  assert.match(activatedPrompt, /whole conclusion, calculation, or business judgment/)
   assert.ok(activatedPrompt.includes(MARIVO_REPORT_PROMPT))
   assert.equal(
     MARIVO_REPORT_PROMPT,
-    'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation. For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
+    'Use dsh-data-analysis-report only when the user explicitly requests HTML/web or a durable report file, accepts an Agent proposal to create one, or asks to revise an existing Workspace report bundle. Answer ordinary analysis in the conversation even when it is long or contains multiple charts or tables. For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
   )
   assert.doesNotMatch(activatedPrompt, /marivo_report_render/)
   assert.doesNotMatch(activatedPrompt, /answer inline by default/)
   assert.doesNotMatch(activatedPrompt, /load the dsh-data-analysis-report Skill/)
   assert.doesNotMatch(activatedPrompt, /No plugin report Tool, schema, renderer, publisher/)
   assert.doesNotMatch(activatedPrompt, /session\.evidence\.compatibility/)
-  assert.match(MARIVO_EVIDENCE_SOURCES_PROMPT, /markers, footnotes, or a source appendix/)
+  assert.doesNotMatch(MARIVO_EVIDENCE_SOURCES_PROMPT, /panel|never copy|only one brief/)
 })
 
 test('an Agent-plane inherited skill Tool activates Evidence guidance and root help', async (t) => {
@@ -857,7 +853,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   assert.deepEqual(requestToolNames(adapter.requests[1]), ['ordinary', 'skill'])
 })
 
-test('plugin lifetime fixes MARIVO_PERSIST_CREDENTIALS and restores the previous value', async (t) => {
+test('plugin lifecycle never mutates the Host persistence environment', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
@@ -868,12 +864,13 @@ test('plugin lifetime fixes MARIVO_PERSIST_CREDENTIALS and restores the previous
     if (previous === undefined) delete process.env.MARIVO_PERSIST_CREDENTIALS
     else process.env.MARIVO_PERSIST_CREDENTIALS = previous
   })
+  const environmentBeforeInstall = { ...process.env }
 
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
     credentials: { resolve: async () => undefined },
   })
-  assert.equal(process.env.MARIVO_PERSIST_CREDENTIALS, '0')
+  assert.deepEqual({ ...process.env }, environmentBeforeInstall)
 
   dispose()
-  assert.equal(process.env.MARIVO_PERSIST_CREDENTIALS, 'previous-value')
+  assert.deepEqual({ ...process.env }, environmentBeforeInstall)
 })

@@ -2,20 +2,6 @@
   const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
   const TRACE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
   const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
-  const FAMILIES = new Set([
-    'MetricFrame',
-    'EventFrame',
-    'LifecycleFrame',
-    'SubjectSet',
-    'DeltaFrame',
-    'AttributionFrame',
-    'ForecastFrame',
-    'CandidateSet',
-    'AssociationResult',
-    'ComponentFrame',
-    'CoverageFrame',
-    'HypothesisTestResult',
-  ])
   const traces = new Map()
   let nextId = 0
 
@@ -137,15 +123,13 @@
       'issue_counts',
     ])
     string(artifact.ref, `${path}.ref`)
-    if (!FAMILIES.has(artifact.family)) fail(`${path}.family`, 'is unsupported')
+    string(artifact.family, `${path}.family`)
     string(artifact.semantic_shape, `${path}.semantic_shape`, true)
     timestamp(artifact.created_at, `${path}.created_at`)
     string(artifact.produced_by_run, `${path}.produced_by_run`, true)
     string(artifact.analysis_purpose, `${path}.analysis_purpose`, true)
     integer(artifact.row_count, `${path}.row_count`)
-    if (!['materialized', 'recomputed', 'partial'].includes(artifact.materialization)) {
-      fail(`${path}.materialization`, 'is unsupported')
-    }
+    string(artifact.materialization, `${path}.materialization`)
     const evidence = object(artifact.evidence, `${path}.evidence`)
     exactKeys(evidence, `${path}.evidence`, [
       'status',
@@ -154,9 +138,7 @@
       'digest_item_count',
       'omitted_item_count',
     ])
-    if (!['complete', 'partial', 'unavailable'].includes(evidence.status)) {
-      fail(`${path}.evidence.status`, 'is unsupported')
-    }
+    string(evidence.status, `${path}.evidence.status`)
     integer(evidence.finding_count, `${path}.evidence.finding_count`)
     if (typeof evidence.digest_present !== 'boolean') {
       fail(`${path}.evidence.digest_present`, 'must be boolean')
@@ -171,7 +153,37 @@
     return artifact
   }
 
-  function validateRun(value, path) {
+  function validateQueries(value, path, detail, omitted) {
+    if (!Array.isArray(value) || value.length > 100) fail(path, 'must contain at most 100 queries')
+    integer(omitted, `${path}_omitted`)
+    if (detail === 'reader' && value.length !== 0) fail(path, 'must be omitted in reader detail')
+    value.forEach((candidate, index) => {
+      const queryPath = `${path}[${index}]`
+      const query = object(candidate, queryPath)
+      const fields = [
+        'query_id',
+        'datasource',
+        'dialect',
+        'sql',
+        'sql_digest',
+        'row_count',
+        'duration_ms',
+        'started_at',
+        'finished_at',
+        'status',
+      ]
+      exactKeys(query, queryPath, fields)
+      for (const field of ['query_id', 'datasource', 'dialect', 'sql', 'sql_digest', 'status']) {
+        string(query[field], `${queryPath}.${field}`)
+      }
+      integer(query.row_count, `${queryPath}.row_count`)
+      integer(query.duration_ms, `${queryPath}.duration_ms`)
+      timestamp(query.started_at, `${queryPath}.started_at`)
+      timestamp(query.finished_at, `${queryPath}.finished_at`)
+    })
+  }
+
+  function validateRun(value, path, detail) {
     const run = object(value, path)
     string(run.lifecycle, `${path}.lifecycle`)
     const common = [
@@ -184,8 +196,16 @@
     ]
     if (run.lifecycle === 'incomplete') exactKeys(run, path, common)
     else if (run.lifecycle === 'succeeded') {
-      exactKeys(run, path, [...common, 'finished_at', 'output_artifact_ref', 'output_mode'])
-    } else if (run.lifecycle === 'failed') exactKeys(run, path, [...common, 'failed_at', 'failure'])
+      exactKeys(run, path, [
+        ...common,
+        'finished_at',
+        'output_artifact_ref',
+        'output_mode',
+        'queries',
+        'queries_omitted',
+      ])
+    } else if (run.lifecycle === 'failed')
+      exactKeys(run, path, [...common, 'failed_at', 'failure', 'queries', 'queries_omitted'])
     else fail(`${path}.lifecycle`, 'is unsupported')
     string(run.run_id, `${path}.run_id`)
     string(run.capability_id, `${path}.capability_id`)
@@ -197,6 +217,7 @@
       string(run.output_artifact_ref, `${path}.output_artifact_ref`)
       if (!['produced', 'reused'].includes(run.output_mode))
         fail(`${path}.output_mode`, 'is unsupported')
+      validateQueries(run.queries, `${path}.queries`, detail, run.queries_omitted)
     }
     if (run.lifecycle === 'failed') {
       timestamp(run.failed_at, `${path}.failed_at`)
@@ -204,18 +225,16 @@
       exactKeys(failure, `${path}.failure`, ['error_type', 'location'])
       string(failure.error_type, `${path}.failure.error_type`)
       string(failure.location, `${path}.failure.location`, true)
+      validateQueries(run.queries, `${path}.queries`, detail, run.queries_omitted)
     }
     return run
-  }
-
-  function sameSet(left, right) {
-    return left.size === right.size && [...left].every((value) => right.has(value))
   }
 
   function validateTrace(value, registrationId) {
     const trace = object(value, '$')
     exactKeys(trace, '$', [
       'schema',
+      'detail',
       'trace_id',
       'emitted_at',
       'session_id',
@@ -223,7 +242,6 @@
       'artifacts',
       'runs',
       'edges',
-      'queries',
       'root_run_ids',
       'head_artifact_refs',
       'failed_run_ids',
@@ -234,7 +252,8 @@
       'projection',
       'read_boundaries',
     ])
-    if (trace.schema !== 'dsh-data-analysis-session-trace/v1') fail('$.schema', 'is unsupported')
+    if (trace.schema !== 'dsh-data-analysis-session-trace/v2') fail('$.schema', 'is unsupported')
+    if (!['reader', 'audit'].includes(trace.detail)) fail('$.detail', 'is unsupported')
     if (typeof trace.trace_id !== 'string' || !TRACE_ID.test(trace.trace_id))
       fail('$.trace_id', 'is invalid')
     if (trace.trace_id !== registrationId) {
@@ -254,7 +273,7 @@
     const artifacts = trace.artifacts.map((artifact, index) =>
       validateArtifact(artifact, `$.artifacts[${index}]`),
     )
-    const runs = trace.runs.map((run, index) => validateRun(run, `$.runs[${index}]`))
+    const runs = trace.runs.map((run, index) => validateRun(run, `$.runs[${index}]`, trace.detail))
     const artifactSet = new Set(artifacts.map((artifact) => artifact.ref))
     const runSet = new Set(runs.map((run) => run.run_id))
     if (artifactSet.size !== artifacts.length) fail('$.artifacts', 'refs must be unique')
@@ -281,29 +300,9 @@
     if (!trace.truncated && (boundaryArtifacts.size > 0 || boundaryRuns.size > 0)) {
       fail('$', 'boundary identities require truncated=true')
     }
-    const actualRoots = new Set(
-      runs.filter((run) => run.input_artifact_refs.length === 0).map((run) => run.run_id),
-    )
-    const actualFailed = new Set(
-      runs.filter((run) => run.lifecycle === 'failed').map((run) => run.run_id),
-    )
-    const actualIncomplete = new Set(
-      runs.filter((run) => run.lifecycle === 'incomplete').map((run) => run.run_id),
-    )
-    if (!sameSet(roots, actualRoots)) fail('$.root_run_ids', 'must exactly match root Runs')
-    if (!sameSet(failed, actualFailed)) fail('$.failed_run_ids', 'must exactly match failed Runs')
-    if (!sameSet(incomplete, actualIncomplete))
-      fail('$.incomplete_run_ids', 'must exactly match incomplete Runs')
-
     if (!Array.isArray(trace.edges) || trace.edges.length > 1000)
       fail('$.edges', 'must contain at most 1000 edges')
     const edgeKeys = new Set()
-    const graphNodes = [
-      ...runs.map((run) => `run:${run.run_id}`),
-      ...artifacts.map((artifact) => `artifact:${artifact.ref}`),
-    ]
-    const outgoing = new Map(graphNodes.map((node) => [node, new Set()]))
-    const indegree = new Map(graphNodes.map((node) => [node, 0]))
     trace.edges.forEach((candidate, index) => {
       const path = `$.edges[${index}]`
       const edge = object(candidate, path)
@@ -317,47 +316,15 @@
       const key = `${edge.kind}\u0000${edge.run_id}\u0000${edge.artifact_ref}`
       if (edgeKeys.has(key)) fail(path, 'must be unique')
       edgeKeys.add(key)
-      const run = runs.find((item) => item.run_id === edge.run_id)
-      if (edge.kind === 'consumes' && !run.input_artifact_refs.includes(edge.artifact_ref)) {
-        fail(path, 'disagrees with Run inputs')
-      }
-      if (edge.kind !== 'consumes') {
-        const mode = edge.kind === 'produces' ? 'produced' : 'reused'
-        if (
-          run.lifecycle !== 'succeeded' ||
-          run.output_mode !== mode ||
-          run.output_artifact_ref !== edge.artifact_ref
-        ) {
-          fail(path, 'disagrees with succeeded Run output')
-        }
-      }
-      const source =
-        edge.kind === 'consumes' ? `artifact:${edge.artifact_ref}` : `run:${edge.run_id}`
-      const target =
-        edge.kind === 'consumes' ? `run:${edge.run_id}` : `artifact:${edge.artifact_ref}`
-      if (!outgoing.get(source).has(target)) {
-        outgoing.get(source).add(target)
-        indegree.set(target, indegree.get(target) + 1)
-      }
     })
     for (const run of runs) {
       for (const ref of run.input_artifact_refs) {
         if (!artifactSet.has(ref) && !boundaryRuns.has(run.run_id))
           fail('$.runs', 'contains a dangling input ref')
-        if (artifactSet.has(ref) && !edgeKeys.has(`consumes\u0000${run.run_id}\u0000${ref}`)) {
-          fail('$.runs', 'is missing a consumes edge')
-        }
       }
       if (run.lifecycle === 'succeeded') {
         if (!artifactSet.has(run.output_artifact_ref) && !boundaryRuns.has(run.run_id)) {
           fail('$.runs', 'contains a dangling output ref')
-        }
-        const kind = run.output_mode === 'reused' ? 'reuses' : 'produces'
-        if (
-          artifactSet.has(run.output_artifact_ref) &&
-          !edgeKeys.has(`${kind}\u0000${run.run_id}\u0000${run.output_artifact_ref}`)
-        ) {
-          fail('$.runs', 'is missing an output edge')
         }
       }
     }
@@ -369,44 +336,6 @@
       ) {
         fail('$.artifacts', 'contains a dangling producer')
       }
-      if (artifact.produced_by_run !== null && runSet.has(artifact.produced_by_run)) {
-        const producer = runs.find((run) => run.run_id === artifact.produced_by_run)
-        if (
-          producer.lifecycle !== 'succeeded' ||
-          producer.output_mode !== 'produced' ||
-          producer.output_artifact_ref !== artifact.ref
-        ) {
-          fail('$.artifacts', 'producer disagrees with the Artifact')
-        }
-      }
-    }
-    const ready = graphNodes.filter((node) => indegree.get(node) === 0)
-    let visited = 0
-    while (ready.length > 0) {
-      const node = ready.shift()
-      visited += 1
-      for (const target of outgoing.get(node)) {
-        indegree.set(target, indegree.get(target) - 1)
-        if (indegree.get(target) === 0) ready.push(target)
-      }
-    }
-    if (visited !== graphNodes.length) fail('$.edges', 'must form an acyclic graph')
-
-    if (!Array.isArray(trace.queries) || trace.queries.length !== 0) {
-      fail('$.queries', 'must be an empty array for the supported Marivo runtime')
-    }
-
-    const consumers = new Set(
-      runs.filter((run) => run.lifecycle === 'succeeded').flatMap((run) => run.input_artifact_refs),
-    )
-    const actualLocalHeads = new Set(
-      artifacts
-        .filter((artifact) => !boundaryArtifacts.has(artifact.ref) && !consumers.has(artifact.ref))
-        .map((artifact) => artifact.ref),
-    )
-    const listedLocalHeads = new Set([...heads].filter((ref) => !boundaryArtifacts.has(ref)))
-    if (!sameSet(listedLocalHeads, actualLocalHeads)) {
-      fail('$.head_artifact_refs', 'must exactly match non-boundary graph heads')
     }
 
     const projection = object(trace.projection, '$.projection')

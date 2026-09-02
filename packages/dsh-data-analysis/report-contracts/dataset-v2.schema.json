@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/dataset-v1.schema.json",
+  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/dataset-v2.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "dataset_id", "emitted_at", "source", "table"],
   "properties": {
-    "schema": { "const": "dsh-data-analysis-dataset/v1" },
+    "schema": { "const": "dsh-data-analysis-dataset/v2" },
     "dataset_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
@@ -26,6 +26,7 @@
           "additionalProperties": false,
           "required": [
             "kind",
+            "detail",
             "artifact",
             "quality_summary",
             "issues",
@@ -35,6 +36,7 @@
           ],
           "properties": {
             "kind": { "const": "marivo_artifact" },
+            "detail": { "enum": ["reader", "audit"] },
             "artifact": {
               "type": "object",
               "additionalProperties": false,

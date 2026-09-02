@@ -131,14 +131,13 @@ test('registered tool exposes only the native targets schema and keeps timeout h
   assert.deepEqual(schema, {
     name: MARIVO_HELP_TOOL_NAME,
     description:
-      'Request current live Marivo API help for zero, one, or multiple canonical string targets from the bound project environment.',
+      'Request current live Marivo API help for one or more canonical string targets from the exact shared Runtime.',
     parameters: {
       type: 'object',
       properties: {
         targets: {
           type: 'array',
-          description:
-            'Canonical Marivo help targets. Use an empty array when no additional API information is needed.',
+          description: 'One or more canonical Marivo help targets.',
           items: { type: 'string' },
         },
       },
@@ -148,15 +147,15 @@ test('registered tool exposes only the native targets schema and keeps timeout h
   assert.equal('timeoutMs' in (schema as object), false)
 })
 
-test('targets=[] succeeds without starting a help subprocess', async (t) => {
+test('targets=[] fails before starting a help subprocess', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.bridge)
   const result = await executeHelp(ctx, [])
-  assert.equal(result.isError, false)
+  assert.equal(result.isError, true)
   assert.match(
     result.content[0]?.type === 'text' ? result.content[0].text : '',
-    /no targets requested/,
+    /must contain at least one target/,
   )
   await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
 })
@@ -190,6 +189,8 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
     'analysis.compare',
   ])
   const text = result.content[0]?.type === 'text' ? result.content[0].text : ''
+  assert.match(text, /^Marivo version: /)
+  assert.doesNotMatch(text, /Python:|Package:|Fingerprint:|[a-f0-9]{64}/)
   assert.ok(text.includes('Target: analysis.observe\nhelp-body:analysis.observe\n'))
   assert.ok(text.includes('Target: analysis.compare\nhelp-body:analysis.compare\n'))
 })

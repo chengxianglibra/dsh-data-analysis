@@ -1,6 +1,6 @@
 ---
 name: dsh-data-analysis-report
-description: Create or revise a Workspace HTML analysis report. Use for requested HTML/web output or when an analysis needs multiple charts, tables, or a long multi-section presentation.
+description: Create or revise a Workspace HTML analysis report only when the user explicitly requests HTML/web or a durable report file, accepts a proposal to create one, or asks to revise an existing report bundle.
 ---
 
 # DSH data-analysis report
@@ -15,7 +15,7 @@ description: Create or revise a Workspace HTML analysis report. Use for requeste
 
 | 输入 | Python 发射入口 | 语义边界 |
 | --- | --- | --- |
-| Marivo `BaseFrame` Artifact | `emit_dataset(artifact, target, revalidation=...)` | 保留 Artifact、Evidence、quality、lineage 与 revalidation 投影。 |
+| Marivo `BaseFrame` Artifact | `emit_dataset(artifact, target, detail="reader", revalidation=...)` | `reader` 默认只保留读者摘要与实质提示；明确审计请求才使用 `detail="audit"` 投影公共详情。 |
 | pandas `DataFrame` 计算结果 | `emit_computed(frame, target)` | 仅表示 computed snapshot，不声明 Artifact、Evidence、lineage、freshness 或 revalidation。 |
 
 两个 emitter 都生成由 `ReportData` 注册的数据文件。不要把 DataFrame 传给 `emit_dataset`，不要手写 `ReportData.register(...)` payload，也不要从浏览器 validator 反推 schema。浏览器通过 `ReportData.get(...)` 读取快照，或通过 `ReportData.records(...)` 取得行对象；图表库和 DOM/SVG/Canvas 实现仍由 Agent 自主选择。
@@ -25,7 +25,7 @@ description: Create or revise a Workspace HTML analysis report. Use for requeste
 ### 添加 Marivo 组件
 
 - `MarivoArtifact.render(container, dataset_id)` 展示面向读者的 Artifact 摘要：正常状态仅含类型、semantic shape、行数和结果生成时间；仅在截断、Evidence 不完整、revalidation 异常、质量检查或 issues 会改变判断时追加提示。它不是 metadata inspector，不展示机器 identity、hash、Job、Finding 数量或完整 lineage。
-- 对每个实质支撑报告内容的 Marivo Session，分别用公开 `session.graph(...)` 取得聚焦 `SessionGraph`，再调用 `emit_session_trace(graph, target, report_artifact_refs=[...])`。`report_artifact_refs` 只列该 Graph 内实际支撑可见内容的本地 Artifacts；不得跨 Session 合并、读取私有 Store 或补造事实。
+- 对每个实质支撑报告内容的 Marivo Session，分别用公开 `session.graph(...)` 取得聚焦 `SessionGraph`，再调用 `emit_session_trace(graph, target, report_artifact_refs=[...], detail="reader")`。只有明确审计、Lineage、质量详情或可追溯性请求才改用 `detail="audit"`。`report_artifact_refs` 只列该 Graph 内实际支撑可见内容的本地 Artifacts；不得跨 Session 合并、读取私有 Store 或补造事实。
 - DAG 中需要预览的本地 Frame，必须从所属精确 Session 恢复并 `emit_dataset(...)`。浏览器按 `session_id + artifact_ref` 关联；缺少快照时明确显示未注册。Artifact 详情复用 `MarivoArtifact`，Frame 节点只显示 family 与行数。
 - Graph 超出 emitter 限制时，为同一 Session 输出多个具有唯一 `trace_id` 的聚焦 Graph。`ReportTrace.renderSessionGraphs(...)` 单次最多接收 20 个 trace；超出时分批渲染，不得静默遗漏实际使用的 Session。
 

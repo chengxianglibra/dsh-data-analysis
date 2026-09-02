@@ -92,6 +92,7 @@ def main() -> None:
         output_artifact_ref="artifact-1",
         output_mode="produced",
         finished_at=now,
+        queries=(),
     )
     artifact = ArtifactSummary(
         ref="artifact-1",

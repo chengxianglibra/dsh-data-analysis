@@ -24,15 +24,6 @@ export interface SharedMarivoRuntime {
   installationPath: string
 }
 
-/** Result of idempotently preparing one Workspace for Marivo. */
-export interface MarivoWorkspaceLayout {
-  projectRoot: string
-  manifestPath: string
-  modelsPath: string
-  statePath: string
-  created: readonly string[]
-}
-
 export type DoctorStatus = 'ok' | 'info' | 'warning' | 'fail' | 'skipped'
 export type DoctorOverallStatus = 'ok' | 'warning' | 'fail'
 

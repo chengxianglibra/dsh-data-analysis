@@ -2,8 +2,8 @@
 
 ## 状态与结论
 
-> 当前已实施。插件只提供 Artifact/pandas 数据读取与 Marivo 专属组件，不提供页面模板、chart helper、
-> 可视化 DSL、HTML Checker、通用 renderer 或 publisher。
+> 历史设计。其精简报告组件方向仍保留，但报告触发、reader/audit transport、Marivo `0.5.3` RunQuery
+> 投影和 credential 生命周期已由[插件能力优化设计](plugin-capability-optimization-design.md)及当前架构替换。
 
 这是一次 clean break。已删除的 Starter、snippets、完整示例、chart helper、静态 Checker Tool/CLI/export 与
 turn-scoped disclosure 不保留 alias 或迁移路径。旧 HTML renderer/ReportDocument 仍维持已删除状态。
@@ -30,7 +30,7 @@ Python report-kit 公开三个边界明确的 emitter：
 - `emit_computed(DataFrame, target)`：输出有界 computed snapshot，不声明 Artifact、Evidence、Quality、
   revalidation、Lineage 或 freshness；
 - `emit_session_trace(SessionGraph, target, report_artifact_refs=...)`：忠实投影调用方已取得的有界
-  `SessionGraph`；不打开 Session、不读取 Store、不合并 graph。当前固定 Marivo 0.5.2 的 Run 未公开 Query，
+  `SessionGraph`；不打开 Session、不读取 Store、不合并 graph。当时固定的 Marivo 0.5.2 Run 未公开 Query，
   因此投影固定包含空 `queries` 与 `query_bind_values: "omitted"`，不接受调用方补造 Query。
 
 Skill assets 分成数据读取与两个 Marivo 组件：

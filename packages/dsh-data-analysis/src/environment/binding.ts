@@ -11,6 +11,7 @@ import type {
   MarivoCheckedRunRequest,
   MarivoEnvironmentBinding,
   MarivoEnvironmentConfig,
+  SharedMarivoRuntime,
   SubprocessLimits,
 } from './types.ts'
 
@@ -283,6 +284,28 @@ export class MarivoEnvironment {
   }
 }
 
+/** Build an identity-checked Help runner directly from an admitted shared Runtime. */
+export function createSharedMarivoRuntimeRunner(
+  runtime: Pick<
+    SharedMarivoRuntime,
+    'runtimeRoot' | 'pythonExecutable' | 'marivoVersion' | 'packagePath'
+  >,
+  options: { environment?: NodeJS.ProcessEnv } = {},
+): MarivoEnvironment {
+  const subprocessPolicy = new FixedSubprocessPolicy(runtime.runtimeRoot, options.environment)
+  const partialBinding = {
+    projectRoot: runtime.runtimeRoot,
+    pythonExecutable: runtime.pythonExecutable,
+    marivoVersion: runtime.marivoVersion,
+    packagePath: runtime.packagePath,
+    subprocessPolicyId: subprocessPolicy.id,
+  }
+  return new MarivoEnvironment(
+    { ...partialBinding, fingerprint: fingerprint(partialBinding) },
+    subprocessPolicy,
+  )
+}
+
 /** Resolve, probe, and establish one Marivo Environment Binding. */
 export async function bindMarivoEnvironment(
   config: MarivoEnvironmentConfig,
@@ -294,6 +317,9 @@ export async function bindMarivoEnvironment(
   const result = await subprocessPolicy.run({
     executable: pythonExecutable,
     args: ['-m', 'marivo', 'doctor', '--project-root', projectRoot, '--format', 'json'],
+    // Admission is observational. Keep Marivo's default telemetry from creating
+    // .marivo/telemetry merely because DSH resolved a Workspace binding.
+    environmentOverlay: { MARIVO_TELEMETRY: 'off' },
     limits: DOCTOR_LIMITS,
     signal: options.signal,
   })

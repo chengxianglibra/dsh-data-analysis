@@ -11,28 +11,33 @@ import {
 
 export const MARIVO_EVIDENCE_SOURCES_TOOL_NAME = 'marivo_evidence_sources'
 export const MARIVO_EVIDENCE_SOURCES_META_KIND = 'marivo-evidence-sources'
-export const MARIVO_EVIDENCE_SOURCES_META_VERSION = 1
+export const MARIVO_EVIDENCE_SOURCES_META_VERSION = 2
 export const MARIVO_EVIDENCE_SOURCES_DURABLE_CONTENT_KIND = 'marivo-evidence-sources-card'
 export const MARIVO_EVIDENCE_SOURCES_MAX_PER_CALL = 20
 
 export interface MarivoEvidenceSource {
   [key: string]: JsonValue
-  rendered: {
-    [key: string]: JsonValue
-    en: string
-    zh: string
-  }
+  status: 'available' | 'missing' | 'unsupported'
+  title: string
+  locator: string
+  excerpt: string | null
+  truncated: boolean
   environmentFingerprint: string
   sessionId: string
   findingId: string
-  findingType: string
-  epistemicKind: string
+  findingType: string | null
+  epistemicKind: string | null
   artifactRef: string
-  canonicalItemKey: string
-  qualityStatus: string | null
-  committedAt: string
-  extractorVersion: string
-  artifactSchemaVersion: string
+  canonicalItemKey: string | null
+  committedAt: string | null
+  sourceRefs: string[]
+  revalidation: {
+    [key: string]: JsonValue
+    status: string
+    semanticStatus: string | null
+    evidenceStatus: string | null
+    dependencyStatus: string | null
+  } | null
 }
 
 export interface MarivoEvidenceSourcesValue {
@@ -55,34 +60,49 @@ export interface MarivoEvidenceSourcesMeta {
   sources: MarivoEvidenceSource[]
 }
 
-const renderedSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    en: { type: 'string', required: true },
-    zh: { type: 'string', required: true },
-  },
-} as const
+const nullableStringSchema = { oneOf: [{ type: 'string' }, { type: 'null' }] } as const
 
 const evidenceSourceSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    rendered: { ...renderedSchema, required: true },
+    status: {
+      oneOf: [
+        { type: 'string', const: 'available' },
+        { type: 'string', const: 'missing' },
+        { type: 'string', const: 'unsupported' },
+      ],
+      required: true,
+    },
+    title: { type: 'string', required: true },
+    locator: { type: 'string', required: true },
+    excerpt: { ...nullableStringSchema, required: true },
+    truncated: { type: 'boolean', required: true },
     environmentFingerprint: { type: 'string', required: true },
     sessionId: { type: 'string', required: true },
     findingId: { type: 'string', required: true },
-    findingType: { type: 'string', required: true },
-    epistemicKind: { type: 'string', required: true },
+    findingType: { ...nullableStringSchema, required: true },
+    epistemicKind: { ...nullableStringSchema, required: true },
     artifactRef: { type: 'string', required: true },
-    canonicalItemKey: { type: 'string', required: true },
-    qualityStatus: {
-      oneOf: [{ type: 'string' }, { type: 'null' }],
+    canonicalItemKey: { ...nullableStringSchema, required: true },
+    committedAt: { ...nullableStringSchema, required: true },
+    sourceRefs: { type: 'array', items: { type: 'string' }, required: true },
+    revalidation: {
+      oneOf: [
+        { type: 'null' },
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            status: { type: 'string', required: true },
+            semanticStatus: { ...nullableStringSchema, required: true },
+            evidenceStatus: { ...nullableStringSchema, required: true },
+            dependencyStatus: { ...nullableStringSchema, required: true },
+          },
+        },
+      ],
       required: true,
     },
-    committedAt: { type: 'string', required: true },
-    extractorVersion: { type: 'string', required: true },
-    artifactSchemaVersion: { type: 'string', required: true },
   },
 } as const
 
@@ -161,6 +181,11 @@ function evidenceSource(
   finding: MarivoFindingProjection,
 ): MarivoEvidenceSource {
   return {
+    status: finding.status,
+    title: finding.title,
+    locator: finding.locator,
+    excerpt: finding.excerpt,
+    truncated: finding.truncated,
     environmentFingerprint,
     sessionId: finding.sessionId,
     findingId: finding.findingId,
@@ -168,21 +193,40 @@ function evidenceSource(
     epistemicKind: finding.epistemicKind,
     artifactRef: finding.artifactRef,
     canonicalItemKey: finding.canonicalItemKey,
-    qualityStatus: finding.qualityStatus,
     committedAt: finding.committedAt,
-    extractorVersion: finding.extractorVersion,
-    artifactSchemaVersion: finding.artifactSchemaVersion,
-    rendered: { ...finding.rendered },
+    sourceRefs: [...finding.sourceRefs],
+    revalidation: finding.revalidation === null ? null : { ...finding.revalidation },
   }
 }
 
 function renderSources(value: MarivoEvidenceSourcesValue): string {
-  return [
-    `${value.sources.length} exact Marivo Evidence source(s) attached to this turn.`,
-    'The source request is fulfilled by the Web source panel. Never copy or restate the supported fact, any numeric or textual value from it, Finding statements, or any Session, Finding, Artifact, canonical item, schema, extractor, or Environment identifier from Skill context, Tool arguments, or Tool results into the final answer, even when the user requested audit details.',
-    'Do not add markers, footnotes, technical fields, or a source appendix; the Web source panel renders them on demand.',
-    'Do not announce this Tool call, describe the panel, or say where details can be viewed. If the request is solely for sources, the final answer must be only one brief acknowledgement that the source details are attached; it must not mention the Web, a panel, or any display location.',
-  ].join(' ')
+  const lines = [
+    `Exact Marivo Evidence sources (${value.sources.length})`,
+    `Marivo Session: ${value.sessionId}`,
+  ]
+  value.sources.forEach((source, index) => {
+    lines.push('', `${index + 1}. ${source.title}`, `   status: ${source.status}`)
+    lines.push(`   locator: ${source.locator}`)
+    lines.push(`   excerpt: ${source.excerpt ?? 'unavailable'}`)
+    lines.push(`   excerpt_state: ${source.truncated ? 'truncated' : 'complete'}`)
+    const revalidation = source.revalidation
+    lines.push(`   revalidation: ${revalidation === null ? 'unavailable' : revalidation.status}`)
+    if (revalidation !== null) {
+      lines.push(
+        `   semantic_status: ${revalidation.semanticStatus ?? 'unavailable'}`,
+        `   evidence_status: ${revalidation.evidenceStatus ?? 'unavailable'}`,
+        `   dependency_status: ${revalidation.dependencyStatus ?? 'unavailable'}`,
+      )
+    }
+    lines.push(
+      `   source_refs: ${source.sourceRefs.length === 0 ? 'none' : source.sourceRefs.join(', ')}`,
+    )
+  })
+  lines.push(
+    '',
+    'Boundary: source identity and availability do not prove that an entire conclusion, calculation, or business judgment is correct.',
+  )
+  return lines.join('\n')
 }
 
 export function evidenceSourcesMeta(value: MarivoEvidenceSourcesValue): MarivoEvidenceSourcesMeta {
@@ -192,7 +236,8 @@ export function evidenceSourcesMeta(value: MarivoEvidenceSourcesValue): MarivoEv
     dshSessionId: value.dshSessionId,
     sources: value.sources.map((source) => ({
       ...source,
-      rendered: { ...source.rendered },
+      sourceRefs: [...source.sourceRefs],
+      revalidation: source.revalidation === null ? null : { ...source.revalidation },
     })),
   }
 }

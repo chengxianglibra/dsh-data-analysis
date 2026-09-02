@@ -9,7 +9,7 @@ Lineage、revalidation 与 Session runtime；本项目只连接两者，不复�
 ```mermaid
 flowchart LR
   D[DeepSeek Harness] --> P[dsh-data-analysis]
-  P --> R[Shared Marivo 0.5.2 Runtime]
+  P --> R[Shared Marivo 0.5.3 Runtime]
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
@@ -25,7 +25,7 @@ flowchart LR
 
 | 层 | 本项目职责 | 不属于本项目 |
 | --- | --- | --- |
-| Runtime/Workspace | 精确安装、marker、Workspace 初始化、binding identity | Marivo 项目语义、Session 数据 |
+| Runtime/Workspace | 精确安装、marker、zero-init binding identity | Marivo 项目语义、Session 数据与按需写入 |
 | Environment | checked runner、受限 argv、资源上限、overlay 脱敏 | Artifact/Evidence/Graph schema |
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
 | Datasource | DSH Credentials 缺失收集、connection test、Shell env 注入 | table/source inspection 语义 |
@@ -43,7 +43,7 @@ flowchart LR
 
 ## Runtime 与 identity
 
-Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.2`。默认 Runtime 位于
+Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.3`。默认 Runtime 位于
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo/`；管理员也可提供绝对 Python。两种模式都必须让版本、
 package path、解释器和 marker 一致。
 
@@ -63,12 +63,15 @@ marivo_evidence_sources
 
 Plugin 同时挂载 Runtime 的 `marivo-analysis` / `marivo-semantic` 和随包分发的
 `dsh-data-analysis-report`。前两者激活后，controller 披露当前 Runtime 的根 Help；报告路由随
-`marivo-analysis` 激活，在用户请求 HTML/Web 输出或分析需要多个图表/表格、较长分章节呈现时加载报告
-Skill。已有分析恢复并 revalidate persisted Artifacts，不为展示重新执行 `observe`。插件不注册报告 Tool；
+`marivo-analysis` 激活后只注入报告选择边界：用户明确请求 HTML/Web 或耐久报告、接受生成提议，或修改已有
+bundle 时才加载报告 Skill；普通长回答或多图表/表格不触发文件生成。已有分析恢复并 revalidate persisted
+Artifacts，不为展示重新执行 `observe`。插件不注册报告 Tool；
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
 Runtime 另外安装 `dsh-data-analysis-report-kit`。`emit_dataset` 只接受 Marivo `BaseFrame`，
 `emit_computed` 只接受 pandas `DataFrame`，`emit_session_trace` 只接受调用方已取得的公开 `SessionGraph`。
+Artifact/Graph emitter 默认使用 `reader` profile，明确审计请求才使用 `audit`；profile 只裁剪公开字段，
+不重算 Marivo 语义。
 浏览器 assets 分别提供 `ReportData`、精简 Artifact 摘要与 Session DAG；Artifact 组件只披露对报告读者有用的
 正常摘要和实质风险，不充当 metadata inspector。一次分析涉及多个 Session 时，每个 Session 保持独立 Graph，
 Frame preview 按 `session_id + artifact_ref` 关联。插件不拥有页面结构、图表类型、样式或可视化实现。
@@ -90,9 +93,10 @@ Agent 直接使用 Marivo：
 ## Datasource 与 Credentials
 
 `marivo_datasource_test({ name })` 读取配置中的 `DSH_*` 引用，逐项通过 DSH Credentials resolve，再把
-secret 作为单次环境 overlay 传给 `md.test()`。描述成功后的非秘密引用名进入 Workspace 内存 registry，
-使普通 one-shot Shell 和 Code Mode 嵌套调用获得相同注入。所有调用强制
-`MARIVO_PERSIST_CREDENTIALS=0`，secret 不进入 argv、日志、结果或 telemetry。
+secret 作为单次环境 overlay 传给 `md.test()`。只有 test 成功才签发最长 60 秒的一次性 capability；精确
+marker 首行将它绑定到一个 foreground Shell execution，并在异步 fresh-resolve 前原子 claim。普通、过期、
+复用、错 Agent/Workspace、background 或 persistent Shell 均不获得 secret。所有子进程强制
+`MARIVO_PERSIST_CREDENTIALS=0`；Host `process.env` 不被修改。
 
 Source metadata inspection 由 Agent 直接调用 `md.inspect(...)`；connection test 不是 inspection 的前置。
 
@@ -100,7 +104,8 @@ Source metadata inspection 由 Agent 直接调用 `md.inspect(...)`；connection
 
 `marivo_evidence_sources` 接受 1–20 个精确 `{ artifact_ref, finding_id }`。Bridge 恢复 Session、取得 owning
 Artifact，再调用 `artifact.finding(finding_id)`，并验证 Finding 的 Session 与 Artifact identity。成功结果
-投影到当前 Turn；Code Mode 子调用通过 durable source block 保留相同元数据。Web 只提供折叠来源面板。
+投影到当前 Turn；Tool text 提供完整有界 title、locator、excerpt、状态、截断、revalidation 与语义边界。
+Code Mode 子调用通过 durable source block 保留相同元数据；Web 只增强同一 closed result，不重新读取 Evidence。
 
 该 adapter 不是报告数据入口，不自动拦截回答，不生成脚注或 citation manifest，也不证明自由文本正确。
 

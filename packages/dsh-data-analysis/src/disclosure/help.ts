@@ -63,9 +63,14 @@ export type MarivoHelpDeliveryResolver = (
 export interface MarivoHelpValue {
   environment: {
     version: string
-    pythonExecutable: string
-    packagePath: string
     fingerprint: string
+  }
+  targets: MarivoHelpTargetResult[]
+}
+
+export interface MarivoHelpToolValue {
+  environment: {
+    version: string
   }
   targets: MarivoHelpTargetResult[]
 }
@@ -104,6 +109,12 @@ export function resolveMarivoHelpLimits(
 export function normalizeHelpTargets(input: unknown, limits: Readonly<MarivoHelpLimits>): string[] {
   if (!Array.isArray(input)) {
     throw new MarivoHelpError('invalid-request', 'marivo_help targets must be an array')
+  }
+  if (input.length === 0) {
+    throw new MarivoHelpError(
+      'invalid-request',
+      'marivo_help targets must contain at least one target',
+    )
   }
   if (input.length > limits.maxTargets) {
     throw new MarivoHelpError(
@@ -168,22 +179,24 @@ export function marivoHelpBodyDigest(body: string): string {
   return createHash('sha256').update(body).digest('hex')
 }
 
-export function renderMarivoHelpValue(value: MarivoHelpValue): string {
-  if (value.targets.length === 0) {
-    return `Marivo help request completed for ${value.environment.version}: no targets requested.`
-  }
-  const header = `Marivo environment: ${value.environment.version}; Python: ${value.environment.pythonExecutable}; Package: ${value.environment.packagePath}; Fingerprint: ${value.environment.fingerprint}`
+export function renderMarivoHelpValue(value: MarivoHelpToolValue): string {
+  const header = `Marivo version: ${value.environment.version}`
   return [
     header,
     ...value.targets.map((item) => {
       if (item.delivery === 'already-visible') {
-        return `Target: ${item.target}\nCurrent help is already visible in this prompt (digest: ${item.bodyDigest}).`
+        return `Target: ${item.target}\nCurrent help is already visible in this prompt.`
       }
-      const replacement =
-        item.delivery === 'replacement' ? `Replacement digest: ${item.bodyDigest}\n` : ''
-      return `Target: ${item.target}\n${replacement}${item.body}`
+      return `Target: ${item.target}\n${item.body}`
     }),
   ].join('\n\n')
+}
+
+function helpPresentationKey(value: MarivoHelpToolValue): string {
+  return JSON.stringify([
+    value.environment.version,
+    value.targets.map((item) => [item.target, item.bodyDigest, item.delivery]),
+  ])
 }
 
 /** Read one all-or-nothing batch from the bound live Marivo help surface. */
@@ -200,11 +213,8 @@ export async function readMarivoHelpTargets(
   const targets = normalizeHelpTargets(rawTargets, limits)
   const environmentIdentity = {
     version: bridge.binding.marivoVersion,
-    pythonExecutable: bridge.binding.pythonExecutable,
-    packagePath: bridge.binding.packagePath,
     fingerprint: bridge.binding.fingerprint,
   }
-  if (targets.length === 0) return { environment: environmentIdentity, targets: [] }
 
   const results: MarivoHelpTargetResult[] = []
   let combinedBytes = 0
@@ -250,16 +260,16 @@ export function createMarivoHelpTool(
   resolveDelivery?: MarivoHelpDeliveryResolver,
 ): ToolDefinition {
   const limits = resolveMarivoHelpLimits(limitOverrides)
+  const presentations = new Map<string, string[]>()
   return defineTool({
     name: MARIVO_HELP_TOOL_NAME,
     description:
-      'Request current live Marivo API help for zero, one, or multiple canonical string targets from the bound project environment.',
+      'Request current live Marivo API help for one or more canonical string targets from the exact shared Runtime.',
     parameters: {
       targets: {
         type: 'array',
         required: true,
-        description:
-          'Canonical Marivo help targets. Use an empty array when no additional API information is needed.',
+        description: 'One or more canonical Marivo help targets.',
         items: { type: 'string' },
       },
     },
@@ -274,9 +284,6 @@ export function createMarivoHelpTool(
             additionalProperties: false,
             properties: {
               version: { type: 'string', required: true },
-              pythonExecutable: { type: 'string', required: true },
-              packagePath: { type: 'string', required: true },
-              fingerprint: { type: 'string', required: true },
             },
           },
           targets: {
@@ -300,24 +307,42 @@ export function createMarivoHelpTool(
         },
       },
       render: (_args, value) => [{ type: 'text', text: renderMarivoHelpValue(value) }],
-      presentationMeta: (_args, value) => ({
-        kind: 'marivo-help-disclosure',
-        environmentFingerprint: value.environment.fingerprint,
-        targets: value.targets.map((item) => ({
-          target: item.target,
-          bodyDigest: item.bodyDigest,
-          delivery: item.delivery,
-        })),
-      }),
+      presentationMeta: (_args, value) => {
+        const key = helpPresentationKey(value)
+        const pending = presentations.get(key)
+        const environmentFingerprint = pending?.shift()
+        if (pending?.length === 0) presentations.delete(key)
+        if (environmentFingerprint === undefined) {
+          throw new Error('marivo_help presentation identity is unavailable')
+        }
+        return {
+          kind: 'marivo-help-disclosure',
+          environmentFingerprint,
+          targets: value.targets.map((item) => ({
+            target: item.target,
+            bodyDigest: item.bodyDigest,
+            delivery: item.delivery,
+          })),
+        }
+      },
     },
     timeoutMs: limits.toolTimeoutMs,
     async execute(args, exec) {
       const bridge = await resolveMarivoHelpBridge(bridgeSource)
-      return readMarivoHelpTargets(bridge, args.targets, {
+      const internal = await readMarivoHelpTargets(bridge, args.targets, {
         limits,
         signal: exec.signal,
         resolveDelivery,
       })
+      const value: MarivoHelpToolValue = {
+        environment: { version: internal.environment.version },
+        targets: internal.targets,
+      }
+      const key = helpPresentationKey(value)
+      const pending = presentations.get(key) ?? []
+      pending.push(internal.environment.fingerprint)
+      presentations.set(key, pending)
+      return value
     },
   })
 }

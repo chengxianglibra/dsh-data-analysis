@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from conftest import parse_registration, validate_contract
@@ -59,6 +60,7 @@ def graph_with_every_lifecycle() -> SessionGraph:
         output_artifact_ref="artifact-input",
         output_mode="produced",
         finished_at=NOW,
+        queries=(),
     )
     failed = FailedRun(
         run_id="run-failed",
@@ -69,6 +71,7 @@ def graph_with_every_lifecycle() -> SessionGraph:
         omitted_argument_names=(),
         started_at=NOW,
         failed_at=NOW,
+        queries=(),
         failure=RunFailure(
             error_type="AnalysisError",
             message="must-not-leak",
@@ -98,6 +101,7 @@ def graph_with_every_lifecycle() -> SessionGraph:
         output_artifact_ref="artifact-result",
         output_mode="produced",
         finished_at=NOW,
+        queries=(),
     )
     return SessionGraph(
         session_id="session-1",
@@ -156,11 +160,12 @@ def test_session_trace_projects_all_lifecycles_without_sensitive_fields(
         "failure_values": "omitted",
         "query_bind_values": "omitted",
     }
-    assert payload["queries"] == []
-    validate_contract("session-trace-v1.schema.json", payload)
+    assert "queries" not in payload
+    assert all(run.get("queries", []) == [] for run in payload["runs"])
+    validate_contract("session-trace-v2.schema.json", payload)
 
 
-def test_report_refs_and_topology_fail_closed(tmp_path: Path) -> None:
+def test_report_refs_fail_closed_without_rejudging_graph_summaries(tmp_path: Path) -> None:
     graph = graph_with_every_lifecycle()
     with pytest.raises(ReportSessionTraceError) as report_ref:
         emit_session_trace(
@@ -181,11 +186,9 @@ def test_report_refs_and_topology_fail_closed(tmp_path: Path) -> None:
         boundary_run_ids=(),
         truncated=False,
     )
-    with pytest.raises(ReportSessionTraceError) as topology:
-        emit_session_trace(
-            broken, tmp_path / "trace.js", report_artifact_refs=["artifact-result"]
-        )
-    assert topology.value.code == "session-graph-unsupported"
+    target = tmp_path / "trace.js"
+    emit_session_trace(broken, target, report_artifact_refs=["artifact-result"])
+    assert parse_registration(target, "ReportTrace")["root_run_ids"] == []
 
 
 def test_boundary_is_preserved_only_for_truncated_graph(tmp_path: Path) -> None:
@@ -211,7 +214,7 @@ def test_boundary_is_preserved_only_for_truncated_graph(tmp_path: Path) -> None:
     assert payload["boundary_run_ids"] == []
 
 
-def test_trace_requires_every_local_run_edge(tmp_path: Path) -> None:
+def test_trace_transports_public_edges_without_rederiving_missing_edges(tmp_path: Path) -> None:
     graph = graph_with_every_lifecycle()
     broken = SessionGraph(
         session_id=graph.session_id,
@@ -230,11 +233,57 @@ def test_trace_requires_every_local_run_edge(tmp_path: Path) -> None:
         boundary_run_ids=(),
         truncated=False,
     )
+    target = tmp_path / "trace.js"
+    emit_session_trace(broken, target, report_artifact_refs=["artifact-result"])
+    payload = parse_registration(target, "ReportTrace")
+    assert len(payload["edges"]) == len(graph.edges) - 1
+
+
+def test_trace_profiles_are_closed(tmp_path: Path) -> None:
+    graph = graph_with_every_lifecycle()
+    query = SimpleNamespace(
+        query_id="query-1",
+        datasource="warehouse",
+        dialect="duckdb",
+        sql="select 1",
+        sql_digest="sha256:query",
+        row_count=1,
+        duration_ms=2,
+        started_at=NOW,
+        finished_at=NOW,
+        status="succeeded",
+    )
+    graph = replace(
+        graph,
+        runs=tuple(
+            replace(run, queries=(query,)) if isinstance(run, SucceededRun) else run
+            for run in graph.runs
+        ),
+    )
+    target = tmp_path / "trace.js"
+    emit_session_trace(
+        graph, target, report_artifact_refs=["artifact-result"], detail="reader"
+    )
+    reader = parse_registration(target, "ReportTrace")
+    assert all(run.get("queries", []) == [] for run in reader["runs"])
+    assert sum(run.get("queries_omitted", 0) for run in reader["runs"]) == 2
+    emit_session_trace(
+        graph, target, report_artifact_refs=["artifact-result"], detail="audit"
+    )
+    audit = parse_registration(target, "ReportTrace")
+    assert audit["detail"] == "audit"
+    assert [query["sql"] for run in audit["runs"] for query in run.get("queries", [])] == [
+        "select 1",
+        "select 1",
+    ]
     with pytest.raises(ReportSessionTraceError) as error:
         emit_session_trace(
-            broken, tmp_path / "trace.js", report_artifact_refs=["artifact-result"]
+            graph,
+            target,
+            report_artifact_refs=["artifact-result"],
+            detail="full",  # type: ignore[arg-type]
         )
-    assert error.value.code == "session-graph-unsupported"
+    assert error.value.code == "detail-unsupported"
 
 
 def test_trace_string_budget_counts_utf8_bytes(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from marivo.analysis import (
     ArtifactSummary,
@@ -29,26 +30,12 @@ from ._common import (
 )
 from .errors import ReportSessionTraceError
 
-TRACE_SCHEMA = "dsh-data-analysis-session-trace/v1"
+TRACE_SCHEMA = "dsh-data-analysis-session-trace/v2"
 TRACE_MAX_NODES = 200
 TRACE_MAX_EDGES = 1_000
 TRACE_MAX_BYTES = 4 * 1024 * 1024
 TRACE_MAX_REPORT_REFS = 20
 JAVASCRIPT_REGISTRY = "ReportTrace"
-ARTIFACT_FAMILIES = {
-    "MetricFrame",
-    "EventFrame",
-    "LifecycleFrame",
-    "SubjectSet",
-    "DeltaFrame",
-    "AttributionFrame",
-    "ForecastFrame",
-    "CandidateSet",
-    "AssociationResult",
-    "ComponentFrame",
-    "CoverageFrame",
-    "HypothesisTestResult",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,28 +99,15 @@ def _project_artifact(value: object, index: int) -> dict[str, object]:
             "SessionGraph contains an unsupported Artifact node",
             {"artifactIndex": index, "artifactType": type(value).__name__},
         )
-    family = getattr(value, "family", None)
-    if family not in ARTIFACT_FAMILIES:
-        raise ReportSessionTraceError(
-            "session-graph-unsupported",
-            "SessionGraph contains an unsupported Artifact family",
-            {"artifactIndex": index, "family": family},
-        )
-    materialization = getattr(value, "materialization", None)
-    if materialization not in {"materialized", "recomputed", "partial"}:
-        raise ReportSessionTraceError(
-            "session-graph-unsupported",
-            "SessionGraph contains an unsupported materialization state",
-            {"artifactIndex": index},
-        )
+    family = _identity(getattr(value, "family", None), f"artifacts[{index}].family")
+    materialization = _identity(
+        getattr(value, "materialization", None),
+        f"artifacts[{index}].materialization",
+    )
     evidence = getattr(value, "evidence", None)
-    status = getattr(evidence, "status", None)
-    if status not in {"complete", "partial", "unavailable"}:
-        raise ReportSessionTraceError(
-            "session-graph-unsupported",
-            "SessionGraph contains an unsupported Evidence status",
-            {"artifactIndex": index},
-        )
+    status = _identity(
+        getattr(evidence, "status", None), f"artifacts[{index}].evidence.status"
+    )
     counts = getattr(value, "issue_counts", None)
     try:
         quality = project_quality(
@@ -229,7 +203,61 @@ def _run_base(value: object, index: int) -> dict[str, object]:
     }
 
 
-def _project_run(value: object, index: int) -> dict[str, object]:
+def _project_queries(value: object, index: int, detail: Literal["reader", "audit"]):
+    queries = getattr(value, "queries", ())
+    if not isinstance(queries, (list, tuple)):
+        raise ReportSessionTraceError(
+            "session-graph-unsupported", "Run queries must be a public bounded sequence"
+        )
+    if len(queries) > 100:
+        raise ReportSessionTraceError(
+            "session-trace-limit-exceeded", "Run query count exceeds the transport limit"
+        )
+    if detail == "reader":
+        return [], len(queries)
+    projected = []
+    for query_index, query in enumerate(queries):
+        location = f"runs[{index}].queries[{query_index}]"
+        projected.append(
+            {
+                "query_id": _identity(getattr(query, "query_id", None), f"{location}.query_id"),
+                "datasource": _identity(
+                    getattr(query, "datasource", None), f"{location}.datasource"
+                ),
+                "dialect": _identity(getattr(query, "dialect", None), f"{location}.dialect"),
+                "sql": _identity(getattr(query, "sql", None), f"{location}.sql"),
+                "sql_digest": _identity(
+                    getattr(query, "sql_digest", None), f"{location}.sql_digest"
+                ),
+                "row_count": nonnegative_integer(
+                    getattr(query, "row_count", None),
+                    location=f"graph.{location}.row_count",
+                    error_type=ReportSessionTraceError,
+                ),
+                "duration_ms": nonnegative_integer(
+                    getattr(query, "duration_ms", None),
+                    location=f"graph.{location}.duration_ms",
+                    error_type=ReportSessionTraceError,
+                ),
+                "started_at": source_timestamp(
+                    getattr(query, "started_at", None),
+                    location=f"graph.{location}.started_at",
+                    error_type=ReportSessionTraceError,
+                ),
+                "finished_at": source_timestamp(
+                    getattr(query, "finished_at", None),
+                    location=f"graph.{location}.finished_at",
+                    error_type=ReportSessionTraceError,
+                ),
+                "status": _identity(getattr(query, "status", None), f"{location}.status"),
+            }
+        )
+    return projected, 0
+
+
+def _project_run(
+    value: object, index: int, detail: Literal["reader", "audit"]
+) -> dict[str, object]:
     if not isinstance(value, (IncompleteRun, SucceededRun, FailedRun)):
         raise ReportSessionTraceError(
             "session-graph-unsupported",
@@ -238,19 +266,9 @@ def _project_run(value: object, index: int) -> dict[str, object]:
         )
     result = _run_base(value, index)
     if isinstance(value, IncompleteRun):
-        if value.lifecycle != "incomplete":
-            raise ReportSessionTraceError(
-                "session-graph-unsupported", "IncompleteRun lifecycle is inconsistent"
-            )
         return result
     if isinstance(value, SucceededRun):
-        if value.lifecycle != "succeeded" or value.output_mode not in {
-            "produced",
-            "reused",
-        }:
-            raise ReportSessionTraceError(
-                "session-graph-unsupported", "SucceededRun lifecycle is inconsistent"
-            )
+        queries, queries_omitted = _project_queries(value, index, detail)
         result.update(
             {
                 "finished_at": source_timestamp(
@@ -262,14 +280,13 @@ def _project_run(value: object, index: int) -> dict[str, object]:
                     value.output_artifact_ref, f"runs[{index}].output_artifact_ref"
                 ),
                 "output_mode": value.output_mode,
+                "queries": queries,
+                "queries_omitted": queries_omitted,
             }
         )
         return result
-    if value.lifecycle != "failed":
-        raise ReportSessionTraceError(
-            "session-graph-unsupported", "FailedRun lifecycle is inconsistent"
-        )
     failure = value.failure
+    queries, queries_omitted = _project_queries(value, index, detail)
     result.update(
         {
             "failed_at": source_timestamp(
@@ -287,6 +304,8 @@ def _project_run(value: object, index: int) -> dict[str, object]:
                     f"runs[{index}].failure.location",
                 ),
             },
+            "queries": queries,
+            "queries_omitted": queries_omitted,
         }
     )
     return result
@@ -309,7 +328,7 @@ def _project_edge(value: object, index: int) -> dict[str, str]:
     }
 
 
-def _validate_topology(
+def _validate_references(
     artifacts: list[dict[str, object]],
     runs: list[dict[str, object]],
     edges: list[dict[str, str]],
@@ -346,46 +365,12 @@ def _validate_topology(
             "session-graph-unsupported",
             "Graph boundary identities require truncated=true",
         )
-    expected_failed = {
-        str(run["run_id"]) for run in runs if run["lifecycle"] == "failed"
-    }
-    expected_incomplete = {
-        str(run["run_id"]) for run in runs if run["lifecycle"] == "incomplete"
-    }
-    expected_roots = {
-        str(run["run_id"]) for run in runs if not run["input_artifact_refs"]
-    }
-    if (
-        set(failed_run_ids) != expected_failed
-        or set(incomplete_run_ids) != expected_incomplete
-    ):
-        raise ReportSessionTraceError(
-            "session-graph-unsupported",
-            "Graph lifecycle identity sets are inconsistent",
-        )
-    if set(root_run_ids) != expected_roots:
-        raise ReportSessionTraceError(
-            "session-graph-unsupported", "Graph root Run identities are inconsistent"
-        )
-    if not set(head_artifact_refs).issubset(artifact_set):
+    if not set(head_artifact_refs).issubset(artifact_set) or not set(
+        failed_run_ids + incomplete_run_ids + root_run_ids
+    ).issubset(run_set):
         raise ReportSessionTraceError(
             "session-trace-identity-invalid",
-            "Graph head Artifact identities must be local",
-        )
-    succeeded_inputs = {
-        str(item)
-        for run in runs
-        if run["lifecycle"] == "succeeded"
-        for item in run["input_artifact_refs"]  # type: ignore[union-attr]
-    }
-    listed_heads = set(head_artifact_refs)
-    if any(
-        (ref in listed_heads) == (ref in succeeded_inputs)
-        for ref in artifact_set - boundary_artifacts
-    ):
-        raise ReportSessionTraceError(
-            "session-graph-unsupported",
-            "Graph head Artifact identities are inconsistent",
+            "Graph summary identities must identify local nodes",
         )
     for run in runs:
         run_id = str(run["run_id"])
@@ -405,13 +390,7 @@ def _validate_topology(
                 "session-trace-identity-invalid",
                 "Run output references an unknown Artifact",
             )
-    run_by_id = {str(run["run_id"]): run for run in runs}
     edge_keys: set[tuple[str, str, str]] = set()
-    outgoing: dict[tuple[str, str], set[tuple[str, str]]] = {
-        **{("run", identity): set() for identity in run_ids},
-        **{("artifact", identity): set() for identity in artifact_refs},
-    }
-    indegree = {node: 0 for node in outgoing}
     for edge in edges:
         key = (edge["kind"], edge["run_id"], edge["artifact_ref"])
         if key in edge_keys:
@@ -428,66 +407,6 @@ def _validate_topology(
                 "session-trace-identity-invalid",
                 "Graph edge references an unknown Artifact",
             )
-        run = run_by_id.get(edge["run_id"])
-        if run is not None:
-            if (
-                edge["kind"] == "consumes"
-                and edge["artifact_ref"] not in run["input_artifact_refs"]
-            ):
-                raise ReportSessionTraceError(
-                    "session-graph-unsupported",
-                    "A consumes edge disagrees with its Run",
-                )
-            if edge["kind"] in {"produces", "reuses"}:
-                expected_mode = "produced" if edge["kind"] == "produces" else "reused"
-                if (
-                    run["lifecycle"] != "succeeded"
-                    or run.get("output_mode") != expected_mode
-                    or run.get("output_artifact_ref") != edge["artifact_ref"]
-                ):
-                    raise ReportSessionTraceError(
-                        "session-graph-unsupported",
-                        "An output edge disagrees with its Run",
-                    )
-        source = (
-            ("artifact", edge["artifact_ref"])
-            if edge["kind"] == "consumes"
-            else ("run", edge["run_id"])
-        )
-        target = (
-            ("run", edge["run_id"])
-            if edge["kind"] == "consumes"
-            else ("artifact", edge["artifact_ref"])
-        )
-        if target not in outgoing[source]:
-            outgoing[source].add(target)
-            indegree[target] += 1
-    for run in runs:
-        run_id = str(run["run_id"])
-        for artifact_ref in run["input_artifact_refs"]:  # type: ignore[union-attr]
-            if (
-                artifact_ref in artifact_set
-                and (
-                    "consumes",
-                    run_id,
-                    artifact_ref,
-                )
-                not in edge_keys
-            ):
-                raise ReportSessionTraceError(
-                    "session-graph-unsupported",
-                    "A local Run input is missing its consumes edge",
-                )
-        output = run.get("output_artifact_ref")
-        if run["lifecycle"] == "succeeded" and output in artifact_set:
-            expected_kind = (
-                "produces" if run.get("output_mode") == "produced" else "reuses"
-            )
-            if (expected_kind, run_id, str(output)) not in edge_keys:
-                raise ReportSessionTraceError(
-                    "session-graph-unsupported",
-                    "A local succeeded Run output is missing its edge",
-                )
     for artifact in artifacts:
         artifact_ref = str(artifact["ref"])
         producer = artifact.get("produced_by_run")
@@ -500,29 +419,6 @@ def _validate_topology(
                     "Artifact producer references an unknown Run",
                 )
             continue
-        producer_run = run_by_id[str(producer)]
-        if (
-            producer_run["lifecycle"] != "succeeded"
-            or producer_run.get("output_mode") != "produced"
-            or producer_run.get("output_artifact_ref") != artifact_ref
-        ):
-            raise ReportSessionTraceError(
-                "session-graph-unsupported",
-                "An Artifact producer disagrees with its Run",
-            )
-    ready = [node for node, degree in indegree.items() if degree == 0]
-    visited = 0
-    while ready:
-        node = ready.pop()
-        visited += 1
-        for target in outgoing[node]:
-            indegree[target] -= 1
-            if indegree[target] == 0:
-                ready.append(target)
-    if visited != len(indegree):
-        raise ReportSessionTraceError(
-            "session-graph-unsupported", "SessionGraph must remain acyclic"
-        )
 
 
 def emit_session_trace(
@@ -531,12 +427,17 @@ def emit_session_trace(
     *,
     report_artifact_refs: Sequence[str],
     trace_id: str | None = None,
+    detail: Literal["reader", "audit"] = "reader",
 ) -> SessionTraceReceipt:
     """Emit one bounded classic-script Session trace registration atomically."""
 
     if not isinstance(graph, SessionGraph):
         raise ReportSessionTraceError(
             "session-graph-unsupported", "graph must be a Marivo SessionGraph"
+        )
+    if detail not in {"reader", "audit"}:
+        raise ReportSessionTraceError(
+            "detail-unsupported", "detail must be 'reader' or 'audit'"
         )
     target_path = resolve_target(target, error_type=ReportSessionTraceError)
     identity = safe_identifier(
@@ -579,7 +480,7 @@ def emit_session_trace(
     artifacts = [
         _project_artifact(item, index) for index, item in enumerate(graph.artifacts)
     ]
-    runs = [_project_run(item, index) for index, item in enumerate(graph.runs)]
+    runs = [_project_run(item, index, detail) for index, item in enumerate(graph.runs)]
     edges = [_project_edge(item, index) for index, item in enumerate(graph.edges)]
     root_run_ids = _identity_array(graph.root_run_ids, "root_run_ids")
     head_artifact_refs = _identity_array(graph.head_artifact_refs, "head_artifact_refs")
@@ -594,7 +495,7 @@ def emit_session_trace(
         location="graph.truncated",
         error_type=ReportSessionTraceError,
     )
-    _validate_topology(
+    _validate_references(
         artifacts,
         runs,
         edges,
@@ -614,6 +515,7 @@ def emit_session_trace(
         )
     payload = {
         "schema": TRACE_SCHEMA,
+        "detail": detail,
         "trace_id": identity,
         "emitted_at": utc_timestamp(),
         "session_id": _identity(graph.session_id, "session_id"),
@@ -621,7 +523,6 @@ def emit_session_trace(
         "artifacts": artifacts,
         "runs": runs,
         "edges": edges,
-        "queries": [],
         "root_run_ids": root_run_ids,
         "head_artifact_refs": head_artifact_refs,
         "failed_run_ids": failed_run_ids,

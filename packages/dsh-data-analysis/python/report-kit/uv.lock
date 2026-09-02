@@ -61,7 +61,7 @@ wheels = [
 
 [[package]]
 name = "dsh-data-analysis-report-kit"
-version = "2.1.0"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "marivo" },
@@ -77,7 +77,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "marivo", specifier = "==0.5.2" },
+    { name = "marivo", specifier = "==0.5.3" },
     { name = "pandas", specifier = ">=2.2.0,<3.0.0" },
 ]
 
@@ -169,7 +169,7 @@ wheels = [
 
 [[package]]
 name = "marivo"
-version = "0.5.2"
+version = "0.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ibis-framework" },
@@ -186,9 +186,9 @@ dependencies = [
     { name = "tomli-w" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/cd/c953b39ff355402b59103b66672e56cf97c7ec62411d90a36e59fd1a748b/marivo-0.5.2.tar.gz", hash = "sha256:bd47e5b2c3c27b42d5f219252b00a19145647fdec82b3f00d42fb7ad5f08b2ed", size = 1972599, upload-time = "2026-09-01T08:36:16.196Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/dc/853f8215ae5d347b9babd458dee74090d09eaa1334ecba9de9b312391fe9/marivo-0.5.3.tar.gz", hash = "sha256:61fc7cf38b739c28f950a5f3e97746c122f82812de5268df5c4beaceed1dff25", size = 1980683, upload-time = "2026-09-02T07:14:15.017Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/ab/a58e57fc9efc9a9b8bbaff600c54f9eb5f6fa32412ff5f0fc3a4f72b26be/marivo-0.5.2-py3-none-any.whl", hash = "sha256:f4dcc1ccee26589c5a42fa54b0739fa6ac03fe552852ca8e321b9399056177ab", size = 1399247, upload-time = "2026-09-01T08:36:14.35Z" },
+    { url = "https://files.pythonhosted.org/packages/55/f5/48fac2aae6f0b3e7d71658636aa61aabd3db7ff02db90dd2c394eb25e2f1/marivo-0.5.3-py3-none-any.whl", hash = "sha256:aa92ba4020e597d40c03aeb4636b511ae7fb8d3b023f3edee4a3e48305ef979d", size = 1402074, upload-time = "2026-09-02T07:14:13.292Z" },
 ]
 
 [[package]]

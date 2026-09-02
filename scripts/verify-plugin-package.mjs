@@ -17,7 +17,7 @@ const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const reportKitWheelPath =
-  'python/report-kit/dist/dsh_data_analysis_report_kit-2.1.0-py3-none-any.whl'
+  'python/report-kit/dist/dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl'
 const reportKitVerifier = path.join(
   packageRoot,
   'python',
@@ -194,6 +194,15 @@ try {
     .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
     .map((entry) => `report-contracts/${entry.name}`)
     .sort()
+  const expectedContractFiles = [
+    'report-contracts/common-v1.schema.json',
+    'report-contracts/dataset-v2.schema.json',
+    'report-contracts/revalidation-v1.schema.json',
+    'report-contracts/session-trace-v2.schema.json',
+  ]
+  if (JSON.stringify(contractFiles) !== JSON.stringify(expectedContractFiles)) {
+    fail('report contracts must contain only the current v2 transport schemas and dependencies')
+  }
   const required = [
     'README.md',
     'cordis.patch.yml',
@@ -291,9 +300,9 @@ try {
     const environment = await import('@deepseek-ai/dsh-data-analysis/environment')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.5.2') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.2') throw new Error('packed Marivo package spec mismatch')
-    if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v1') throw new Error('packed subprocess policy mismatch')
+    if (compatibility.MARIVO_VERSION !== '0.5.3') throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.3') throw new Error('packed Marivo package spec mismatch')
+    if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v2') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {
       if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)

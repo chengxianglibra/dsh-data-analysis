@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import process from 'node:process'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -11,311 +10,350 @@ import ToolRuntime, {
   type ToolExecution,
   type ToolExecutionToken,
 } from '@deepseek-ai/dsh-tools'
-import type { MarivoDatasourceInventoryBridge } from '../../src/datasource/index.ts'
-import { MarivoShellCredentialBridge } from '../../src/datasource/shell-env.ts'
-import { MARIVO_PERSIST_CREDENTIALS_ENV } from '../../src/environment/index.ts'
+import type { MarivoDatasourceBridgePort } from '../../src/datasource/index.ts'
+import {
+  MARIVO_CREDENTIAL_GRANT_PREFIX,
+  MarivoShellCredentialGrants,
+  registerMarivoRuntimeShellEnvironment,
+} from '../../src/datasource/shell-env.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 class RotatingCredentials {
   readonly values = new Map<string, string>()
   readonly resolved: string[] = []
+  readonly failures = new Set<string>()
 
   async resolve(ref: CredentialRef) {
     this.resolved.push(ref)
+    if (this.failures.has(ref)) throw new Error(`provider leaked ${this.values.get(ref)}`)
     const value = this.values.get(ref)
     return value === undefined ? undefined : { value, source: 'memory' }
   }
 }
 
-function execution(id: string): ToolExecution {
-  const callId = CallId(id)
+function binding(fingerprint: string) {
   return {
-    callId,
-    rootCallId: callId,
-    name: 'bash',
-    arguments: { command: 'python analysis.py' },
-    signal: new AbortController().signal,
-    token: Symbol(id) as ToolExecutionToken,
+    projectRoot: `/workspace/${fingerprint}`,
+    pythonExecutable: '/runtime/python',
+    marivoVersion: '0.5.3',
+    packagePath: '/runtime/marivo/__init__.py',
+    subprocessPolicyId: 'fixture',
+    fingerprint,
   }
 }
 
-function environment(
-  datasources: Array<{ name: string; refs: string[] }>,
-  calls: { count: number },
-): MarivoDatasourceInventoryBridge {
+function datasource(fingerprint: string): MarivoDatasourceBridgePort {
   return {
-    async inventory() {
-      calls.count += 1
-      return datasources
-    },
+    binding: binding(fingerprint),
+    describe: async (name) => ({ name, refs: [] }),
+    inventory: async () => [],
+    test: async (name) => ({
+      name,
+      ok: true,
+      latency_ms: 1,
+      failure: null,
+      repair: null,
+    }),
   }
 }
 
-async function fixture() {
+async function fixture(options: { ttlMs?: number } = {}) {
   const ctx = new Context()
+  await ctx.plugin(SystemPrompt)
   await ctx.plugin(TestShellEnv)
+  await ctx.plugin(ToolRuntime)
   const credentials = new RotatingCredentials()
-  const bridge = new MarivoShellCredentialBridge(ctx, credentials)
-  return { ctx, credentials, bridge }
+  const grants = new MarivoShellCredentialGrants(ctx, credentials, options)
+  const agent = {
+    ctx,
+    session: { header: { id: 'agent-a', cwd: '/workspace/a' } },
+  } as unknown as Agent
+  return { ctx, credentials, grants, agent }
 }
 
 function shellEnv(ctx: Context): TestShellEnv {
   return (ctx as unknown as { shellEnv: TestShellEnv }).shellEnv
 }
 
-async function executeTool(ctx: Context, agent: Agent, name: string) {
-  return ctx.tools.execute({
-    callId: CallId(`tool-${name}`),
-    name,
-    arguments: {},
+function command(token: string, body = 'python analysis.py'): string {
+  return `${MARIVO_CREDENTIAL_GRANT_PREFIX}${token}\n${body}`
+}
+
+function execution(
+  id: string,
+  agent: Agent,
+  commandText: string,
+  extra: Record<string, unknown> = {},
+): ToolExecution {
+  const callId = CallId(id)
+  return {
+    callId,
+    rootCallId: callId,
+    name: 'bash',
+    arguments: { command: commandText, ...extra },
+    agent,
+    signal: new AbortController().signal,
+    token: Symbol(id) as ToolExecutionToken,
+  }
+}
+
+test('ordinary Shell calls never inventory or receive ambient datasource credentials', async (t) => {
+  const { ctx, credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  credentials.values.set('DSH_DB_PASSWORD', 'ambient-secret')
+  const call = execution('ordinary', agent, 'python analysis.py')
+
+  assert.equal(await grants.prepareExecution(agent, datasource('workspace-a'), call), false)
+  assert.deepEqual(shellEnv(ctx).collect(call), {})
+  assert.deepEqual(credentials.resolved, [])
+})
+
+test('a successful datasource grant is fresh-resolved once for only its bound refs', async (t) => {
+  const { ctx, credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  credentials.values.set('DSH_DB_USER', 'alice')
+  credentials.values.set('DSH_DB_PASSWORD', 'first-secret')
+  credentials.values.set('DSH_OTHER_SECRET', 'must-stay-hidden')
+  const receipt = grants.issueGrant(agent, workspace, 'warehouse', [
+    'DSH_DB_USER',
+    'DSH_DB_PASSWORD',
+    'DSH_DB_PASSWORD',
+  ])
+  credentials.values.set('DSH_DB_PASSWORD', 'fresh-secret')
+  const call = execution('granted', agent, command(receipt.token))
+
+  assert.equal(await grants.prepareExecution(agent, workspace, call), true)
+  assert.deepEqual(shellEnv(ctx).collect(call), {
+    DSH_DB_PASSWORD: 'fresh-secret',
+    DSH_DB_USER: 'alice',
+  })
+  assert.deepEqual(credentials.resolved, ['DSH_DB_USER', 'DSH_DB_PASSWORD'])
+  assert.equal(receipt.token.length, 43)
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(agent, workspace, execution('reuse', agent, command(receipt.token))),
+    /unknown or has already been used/,
+  )
+})
+
+test('wrong Agent and Workspace grants fail closed without leaking or stealing the valid claim', async (t) => {
+  const { ctx, credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  const otherAgent = {
+    ctx,
+    session: { header: { id: 'agent-b', cwd: '/workspace/a' } },
+  } as unknown as Agent
+  credentials.values.set('DSH_SCOPE_SECRET', 'scope-secret')
+  const receipt = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_SCOPE_SECRET'])
+
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(
+        otherAgent,
+        workspace,
+        execution('wrong-agent', otherAgent, command(receipt.token)),
+      ),
+    /belongs to another Agent/,
+  )
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(
+        agent,
+        datasource('workspace-b'),
+        execution('wrong-workspace', agent, command(receipt.token)),
+      ),
+    /belongs to another Workspace binding/,
+  )
+  const valid = execution('valid-scope', agent, command(receipt.token))
+  await grants.prepareExecution(agent, workspace, valid)
+  assert.deepEqual(shellEnv(ctx).collect(valid), { DSH_SCOPE_SECRET: 'scope-secret' })
+})
+
+test('expired and malformed markers fail before credential resolution', async (t) => {
+  const { credentials, grants, agent } = await fixture({ ttlMs: 1 })
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  credentials.values.set('DSH_EXPIRING_SECRET', 'expiring-secret')
+  const receipt = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_EXPIRING_SECRET'])
+  await new Promise((resolve) => setTimeout(resolve, 5))
+
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(
+        agent,
+        workspace,
+        execution('expired', agent, command(receipt.token)),
+      ),
+    /has expired/,
+  )
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(
+        agent,
+        workspace,
+        execution('malformed', agent, '# dsh-marivo-credential-grant:not valid\ntrue'),
+      ),
+    /marker is malformed/,
+  )
+  assert.deepEqual(credentials.resolved, [])
+})
+
+test('a credential resolution failure consumes the grant and redacts provider errors', async (t) => {
+  const { credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  credentials.values.set('DSH_FAIL_SECRET', 'never-render-this-secret')
+  credentials.failures.add('DSH_FAIL_SECRET')
+  const receipt = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_FAIL_SECRET'])
+  const first = execution('resolve-failure', agent, command(receipt.token))
+
+  await assert.rejects(
+    () => grants.prepareExecution(agent, workspace, first),
+    (error: unknown) => {
+      assert.doesNotMatch(String(error), /never-render-this-secret/)
+      assert.doesNotMatch(JSON.stringify(error), new RegExp(receipt.token))
+      return /could not be resolved/.test(String(error))
+    },
+  )
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(
+        agent,
+        workspace,
+        execution('resolve-reuse', agent, command(receipt.token)),
+      ),
+    /unknown or has already been used/,
+  )
+})
+
+test('background and persistent Shell grants are consumed and rejected before spawn', async (t) => {
+  const { ctx, credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  credentials.values.set('DSH_DB_PASSWORD', 'never-render-this-secret')
+  let executions = 0
+  ctx.tools.register(
+    defineTool({
+      name: 'bash',
+      description: 'persistent fixture',
+      parameters: {
+        command: { type: 'string', required: true },
+        run_in_background: { type: 'boolean' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => [{ type: 'text', text: value }],
+      },
+      execute: () => {
+        executions++
+        return Promise.resolve('must not run')
+      },
+    }),
+  )
+  const disposeAgent = grants.installAgent(agent, workspace)
+  t.after(disposeAgent)
+  const background = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_DB_PASSWORD'])
+  const persistent = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_DB_PASSWORD'])
+
+  const backgroundResult = await ctx.tools.execute({
+    callId: CallId('background'),
+    name: 'bash',
+    arguments: { command: command(background.token), run_in_background: true },
     agent,
     signal: new AbortController().signal,
   })
-}
-
-test('the first Shell call inventories once while every call resolves a fresh credential snapshot', async (t) => {
-  const previous = process.env[MARIVO_PERSIST_CREDENTIALS_ENV]
-  t.after(() => {
-    if (previous === undefined) delete process.env[MARIVO_PERSIST_CREDENTIALS_ENV]
-    else process.env[MARIVO_PERSIST_CREDENTIALS_ENV] = previous
-  })
-  const { ctx, credentials, bridge } = await fixture()
-  t.after(() => bridge.dispose())
-  const inventory = { count: 0 }
-  const workspace = environment(
-    [
-      { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD', 'DSH_DB_PASSWORD'] },
-      { name: 'replica', refs: ['DSH_DB_USER'] },
-    ],
-    inventory,
-  )
-  credentials.values.set('DSH_DB_USER', 'alice')
-  credentials.values.set('DSH_DB_PASSWORD', 'first-secret')
-
-  const first = execution('shell-first')
-  await bridge.prepareExecution(workspace, first)
-  assert.deepEqual(shellEnv(ctx).collect(first), {
-    DSH_DB_PASSWORD: 'first-secret',
-    DSH_DB_USER: 'alice',
+  const persistentResult = await ctx.tools.execute({
+    callId: CallId('persistent'),
+    name: 'bash',
+    arguments: { command: command(persistent.token) },
+    agent,
+    signal: new AbortController().signal,
   })
 
-  credentials.values.set('DSH_DB_PASSWORD', 'second-secret')
-  const second = execution('shell-second')
-  await bridge.prepareExecution(workspace, second)
-  assert.deepEqual(shellEnv(ctx).collect(second), {
-    DSH_DB_PASSWORD: 'second-secret',
-    DSH_DB_USER: 'alice',
-  })
-  assert.equal(inventory.count, 1)
-  assert.deepEqual(credentials.resolved, [
-    'DSH_DB_USER',
-    'DSH_DB_PASSWORD',
-    'DSH_DB_USER',
-    'DSH_DB_PASSWORD',
-  ])
-  assert.equal(process.env[MARIVO_PERSIST_CREDENTIALS_ENV], '0')
-})
-
-test('missing credentials and non-DSH inventory references are omitted without blocking Shell', async (t) => {
-  const { ctx, credentials, bridge } = await fixture()
-  t.after(() => bridge.dispose())
-  const inventory = { count: 0 }
-  const workspace = environment(
-    [{ name: 'warehouse', refs: ['DSH_DB_USER', 'DB_PASSWORD'] }],
-    inventory,
+  assert.equal(backgroundResult.isError, true)
+  assert.equal(persistentResult.isError, true)
+  assert.match(JSON.stringify(backgroundResult), /cannot be used by background Shell/)
+  assert.match(JSON.stringify(persistentResult), /cannot be used by persistent bash/)
+  assert.doesNotMatch(
+    JSON.stringify([backgroundResult, persistentResult]),
+    /never-render-this-secret/,
   )
-  credentials.values.set('DSH_DB_USER', 'alice')
-
-  const call = execution('shell-partial')
-  await bridge.prepareExecution(workspace, call)
-
-  assert.deepEqual(shellEnv(ctx).collect(call), { DSH_DB_USER: 'alice' })
-  assert.deepEqual(credentials.resolved, ['DSH_DB_USER'])
-  assert.equal(inventory.count, 1)
-})
-
-test('workspace and concurrent execution snapshots stay isolated', async (t) => {
-  const { ctx, credentials, bridge } = await fixture()
-  t.after(() => bridge.dispose())
-  const leftInventory = { count: 0 }
-  const rightInventory = { count: 0 }
-  const leftWorkspace = environment([{ name: 'left', refs: ['DSH_LEFT_TOKEN'] }], leftInventory)
-  const rightWorkspace = environment([{ name: 'right', refs: ['DSH_RIGHT_TOKEN'] }], rightInventory)
-  credentials.values.set('DSH_LEFT_TOKEN', 'left-secret')
-  credentials.values.set('DSH_RIGHT_TOKEN', 'right-secret')
-  const left = execution('shell-left')
-  const right = execution('shell-right')
-
-  await Promise.all([
-    bridge.prepareExecution(leftWorkspace, left),
-    bridge.prepareExecution(rightWorkspace, right),
-  ])
-
-  assert.deepEqual(shellEnv(ctx).collect(left), { DSH_LEFT_TOKEN: 'left-secret' })
-  assert.deepEqual(shellEnv(ctx).collect(right), { DSH_RIGHT_TOKEN: 'right-secret' })
-  assert.equal(leftInventory.count, 1)
-  assert.equal(rightInventory.count, 1)
-})
-
-test('marivo_datasource_test describe updates replace cached datasource references', async (t) => {
-  const { ctx, credentials, bridge } = await fixture()
-  t.after(() => bridge.dispose())
-  const inventory = { count: 0 }
-  const workspace = environment([{ name: 'warehouse', refs: ['DSH_OLD_TOKEN'] }], inventory)
-  credentials.values.set('DSH_OLD_TOKEN', 'old-secret')
-  credentials.values.set('DSH_NEW_TOKEN', 'new-secret')
-
-  const initial = execution('shell-before-update')
-  await bridge.prepareExecution(workspace, initial)
-  bridge.recordDatasource(workspace, 'warehouse', ['DSH_NEW_TOKEN'])
-  const updated = execution('shell-after-update')
-  await bridge.prepareExecution(workspace, updated)
-
-  assert.deepEqual(shellEnv(ctx).collect(initial), { DSH_OLD_TOKEN: 'old-secret' })
-  assert.deepEqual(shellEnv(ctx).collect(updated), { DSH_NEW_TOKEN: 'new-secret' })
-  assert.equal(inventory.count, 1)
-})
-
-test('inventory failure is attempted once and leaves a repair Shell environment empty', async (t) => {
-  const { ctx, credentials, bridge } = await fixture()
-  t.after(() => bridge.dispose())
-  let calls = 0
-  const workspace: MarivoDatasourceInventoryBridge = {
-    async inventory() {
-      calls += 1
-      throw new Error('broken datasource file')
-    },
-  }
-  const first = execution('shell-inventory-failure')
-
-  await assert.rejects(() => bridge.prepareExecution(workspace, first), /broken datasource file/)
-  const second = execution('shell-repair')
-  await bridge.prepareExecution(workspace, second)
-
-  assert.deepEqual(shellEnv(ctx).collect(second), {})
-  assert.deepEqual(credentials.resolved, [])
-  assert.equal(calls, 1)
-})
-
-test('the pre-execute bridge covers bash and pwsh, skips other tools, and fails open', async (t) => {
-  const ctx = new Context()
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(TestShellEnv)
-  await ctx.plugin(ToolRuntime)
-  const credentials = new RotatingCredentials()
-  const bridge = new MarivoShellCredentialBridge(ctx, credentials)
-  t.after(() => bridge.dispose())
-  for (const name of ['bash', 'pwsh', 'ordinary']) {
-    ctx.tools.register(
-      defineTool({
-        name,
-        description: `${name} fixture`,
-        parameters: {},
-        output: {
-          schema: { type: 'json' },
-          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-        },
-        execute: (_args, exec) => Promise.resolve(shellEnv(ctx).collect(exec)),
-      }),
-    )
-  }
-  let inventoryCalls = 0
-  const brokenWorkspace: MarivoDatasourceInventoryBridge = {
-    async inventory() {
-      inventoryCalls += 1
-      throw new Error('invalid datasource config')
-    },
-  }
-  const agent = {
-    ctx,
-    session: { header: { id: 'shell-agent' } },
-  } as unknown as Agent
-  const disposeAgent = bridge.installAgent(agent, brokenWorkspace)
-  t.after(disposeAgent)
-
-  const ordinary = await executeTool(ctx, agent, 'ordinary')
-  assert.equal(ordinary.isError, false)
-  assert.equal(inventoryCalls, 0)
-  const bash = await executeTool(ctx, agent, 'bash')
-  const pwsh = await executeTool(ctx, agent, 'pwsh')
-
-  assert.equal(bash.isError, false)
-  assert.equal(pwsh.isError, false)
-  assert.equal(inventoryCalls, 1)
-  if (!bash.isError) assert.deepEqual(bash.value, {})
-  if (!pwsh.isError) assert.deepEqual(pwsh.value, {})
-})
-
-test('persistent bash and pwsh fail explicitly instead of running without resolved credentials', async (t) => {
-  const ctx = new Context()
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(TestShellEnv)
-  await ctx.plugin(ToolRuntime)
-  const credentials = new RotatingCredentials()
-  credentials.values.set('DSH_DB_PASSWORD', 'never-render-this-secret')
-  const bridge = new MarivoShellCredentialBridge(ctx, credentials)
-  t.after(() => bridge.dispose())
-  let executions = 0
-  for (const name of ['bash', 'pwsh']) {
-    ctx.tools.register(
-      defineTool({
-        name,
-        description: `Run commands in a persistent ${name} shell.`,
-        parameters: {},
-        output: {
-          schema: { type: 'string' },
-          render: (_args, value) => [{ type: 'text', text: value }],
-        },
-        execute: () => {
-          executions += 1
-          return Promise.resolve('must not run')
-        },
-      }),
-    )
-  }
-  const workspace = environment([{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }], { count: 0 })
-  const agent = {
-    ctx,
-    session: { header: { id: 'persistent-shell-agent' } },
-  } as unknown as Agent
-  const disposeAgent = bridge.installAgent(agent, workspace)
-  t.after(disposeAgent)
-
-  const bash = await executeTool(ctx, agent, 'bash')
-  const pwsh = await executeTool(ctx, agent, 'pwsh')
-
-  assert.equal(bash.isError, true)
-  assert.equal(pwsh.isError, true)
-  assert.match(
-    JSON.stringify(bash),
-    /persistent bash tool cannot receive per-execution DSH datasource credentials/,
-  )
-  assert.match(
-    JSON.stringify(pwsh),
-    /persistent pwsh tool cannot receive per-execution DSH datasource credentials/,
-  )
-  assert.doesNotMatch(JSON.stringify([bash, pwsh]), /never-render-this-secret/)
   assert.equal(executions, 0)
+  assert.deepEqual(credentials.resolved, [])
 })
 
-test('dispose during first inventory cannot register a late Shell contributor', async () => {
-  const { ctx, bridge } = await fixture()
-  let releaseInventory: (() => void) | undefined
-  const inventory = new Promise<void>((resolve) => {
-    releaseInventory = resolve
+test('Code Mode nested Shell dispatch uses the same grant rule and settles its snapshot', async (t) => {
+  const { ctx, credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  credentials.values.set('DSH_NESTED_SECRET', 'nested-secret')
+  let capturedExecution: ToolExecution | undefined
+  ctx.tools.register(
+    defineTool({
+      name: 'bash',
+      description: 'foreground fixture',
+      parameters: { command: { type: 'string', required: true } },
+      output: {
+        schema: { type: 'json' },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: (_args, exec) => {
+        capturedExecution = exec
+        return Promise.resolve(shellEnv(ctx).collect(exec))
+      },
+    }),
+  )
+  const disposeAgent = grants.installAgent(agent, workspace)
+  t.after(disposeAgent)
+  const receipt = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_NESTED_SECRET'])
+  const parent = Symbol('run-code') as ToolExecutionToken
+
+  const result = await ctx.tools.execute({
+    callId: CallId('nested'),
+    rootCallId: CallId('outer'),
+    name: 'bash',
+    arguments: { command: command(receipt.token) },
+    agent,
+    parent,
+    signal: new AbortController().signal,
   })
-  const workspace: MarivoDatasourceInventoryBridge = {
-    async inventory() {
-      await inventory
-      return [{ name: 'warehouse', refs: ['DSH_DB_PASSWORD'] }]
-    },
-  }
-  const pending = bridge.prepareExecution(workspace, execution('dispose-race'))
-  await new Promise((resolve) => setImmediate(resolve))
 
-  bridge.dispose()
-  releaseInventory?.()
-  await pending
+  assert.equal(result.isError, false)
+  if (!result.isError) assert.deepEqual(result.value, { DSH_NESTED_SECRET: 'nested-secret' })
+  assert.ok(capturedExecution)
+  assert.deepEqual(shellEnv(ctx).collect(capturedExecution), {})
+})
 
-  assert.deepEqual(shellEnv(ctx).list(), [])
+test('disposing an Agent invalidates its outstanding grants', async (t) => {
+  const { credentials, grants, agent } = await fixture()
+  t.after(() => grants.dispose())
+  const workspace = datasource('workspace-a')
+  credentials.values.set('DSH_DISPOSE_SECRET', 'dispose-secret')
+  const receipt = grants.issueGrant(agent, workspace, 'warehouse', ['DSH_DISPOSE_SECRET'])
+  const disposeAgent = grants.installAgent(agent, workspace)
+  disposeAgent()
+
+  await assert.rejects(
+    () =>
+      grants.prepareExecution(
+        agent,
+        workspace,
+        execution('after-dispose', agent, command(receipt.token)),
+      ),
+    /unknown or has already been used/,
+  )
+  assert.deepEqual(credentials.resolved, [])
+})
+
+test('the shared interpreter is a standing non-secret Shell fact', async () => {
+  const { ctx, agent } = await fixture()
+  const dispose = registerMarivoRuntimeShellEnvironment(ctx, '/runtime/exact-python')
+  const call = execution('runtime-fact', agent, 'true')
+  assert.deepEqual(shellEnv(ctx).collect(call), {
+    DSH_DATA_ANALYSIS_PYTHON: '/runtime/exact-python',
+  })
+  dispose()
+  assert.deepEqual(shellEnv(ctx).collect(call), {})
 })

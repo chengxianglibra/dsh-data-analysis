@@ -1,5 +1,5 @@
 {
-  "schema": "dsh-data-analysis-dataset/v1",
+  "schema": "dsh-data-analysis-dataset/v2",
   "dataset_id": "computed-sales",
   "emitted_at": "2026-08-31T12:00:00Z",
   "source": { "kind": "computed" },

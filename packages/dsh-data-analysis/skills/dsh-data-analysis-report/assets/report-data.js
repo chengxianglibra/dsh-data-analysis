@@ -233,6 +233,7 @@
     if (source.kind !== 'marivo_artifact') fail(`${path}.kind`, 'is unsupported')
     exactKeys(source, path, [
       'kind',
+      'detail',
       'artifact',
       'quality_summary',
       'issues',
@@ -240,6 +241,7 @@
       'lineage',
       'revalidation',
     ])
+    if (!['reader', 'audit'].includes(source.detail)) fail(`${path}.detail`, 'is unsupported')
     const artifact = object(source.artifact, `${path}.artifact`)
     exactKeys(artifact, `${path}.artifact`, [
       'session_id',
@@ -313,7 +315,7 @@
   function validateDataset(value, registrationId) {
     const dataset = object(value, '$')
     exactKeys(dataset, '$', ['schema', 'dataset_id', 'emitted_at', 'source', 'table'])
-    if (dataset.schema !== 'dsh-data-analysis-dataset/v1') fail('$.schema', 'is unsupported')
+    if (dataset.schema !== 'dsh-data-analysis-dataset/v2') fail('$.schema', 'is unsupported')
     if (typeof dataset.dataset_id !== 'string' || !DATASET_ID.test(dataset.dataset_id)) {
       fail('$.dataset_id', 'is invalid')
     }

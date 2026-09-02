@@ -34,9 +34,10 @@ def test_large_integer_cells_preserve_artifact_identity(
     payload = parse_registration(artifact_target, "ReportData")
 
     assert receipt.source_kind == "marivo_artifact"
+    assert payload["source"]["detail"] == "reader"
     assert payload["source"]["artifact"]["ref"] == "artifact-1"
     assert payload["table"]["rows"] == [["2026-01-01T00:00:00", large_bytes]]
-    validate_contract("dataset-v1.schema.json", payload)
+    validate_contract("dataset-v2.schema.json", payload)
 
 
 def test_plain_dataframe_is_not_a_public_projection_input(tmp_path: Path) -> None:
@@ -80,7 +81,7 @@ def test_computed_pivot_dataframe_is_bounded_and_schema_valid(tmp_path: Path) ->
         "store",
         "web",
     ]
-    validate_contract("dataset-v1.schema.json", payload)
+    validate_contract("dataset-v2.schema.json", payload)
 
 
 def test_emit_computed_rejects_non_dataframe_without_replacing_target(
@@ -109,7 +110,7 @@ def test_artifact_projection_is_bounded_and_schema_valid(
     assert payload["source"]["revalidation"] == {"status": "not_checked"}
     assert "project_root" not in target.read_text()
     assert "byte_size" not in target.read_text()
-    validate_contract("dataset-v1.schema.json", payload)
+    validate_contract("dataset-v2.schema.json", payload)
 
 
 def test_revalidation_requires_exact_artifact_identity(
@@ -133,7 +134,7 @@ def test_revalidation_requires_exact_artifact_identity(
     emit_dataset(artifact_frame, target, revalidation=checked)
     payload = parse_registration(target, "ReportData")
     assert payload["source"]["revalidation"]["result"] == "admissible"
-    validate_contract("dataset-v1.schema.json", payload)
+    validate_contract("dataset-v2.schema.json", payload)
 
     mismatch = checked.model_copy(update={"artifact_ref": "other"})
     with pytest.raises(ReportDatasetError) as error:
@@ -157,7 +158,7 @@ def test_lineage_without_transportable_job_ref_fails_closed(
         ]
     )
     with pytest.raises(ReportDatasetError) as error:
-        emit_dataset(artifact_frame, tmp_path / "artifact.js")
+        emit_dataset(artifact_frame, tmp_path / "artifact.js", detail="audit")
     assert error.value.code == "artifact-contract-unsupported"
 
 
@@ -224,7 +225,7 @@ def test_all_artifact_issue_categories_project_without_sensitive_values(
     artifact_frame.meta.issues = artifact_issues()  # type: ignore[assignment]
     target = tmp_path / "issues.js"
 
-    emit_dataset(artifact_frame, target)
+    emit_dataset(artifact_frame, target, detail="audit")
     payload = parse_registration(target, "ReportData")
 
     assert [issue["category"] for issue in payload["source"]["issues"]] == [
@@ -236,7 +237,7 @@ def test_all_artifact_issue_categories_project_without_sensitive_values(
     assert "observed_value" not in target.read_text()
     assert "must-not-leak" not in target.read_text()
     assert "snippet" not in target.read_text()
-    validate_contract("dataset-v1.schema.json", payload)
+    validate_contract("dataset-v2.schema.json", payload)
 
 
 @pytest.mark.parametrize(
@@ -279,13 +280,30 @@ def test_revalidation_preserves_all_result_states_and_evidence_rule(
     )
     target = tmp_path / f"{status}.js"
 
-    emit_dataset(artifact_frame, target, revalidation=checked)
+    emit_dataset(artifact_frame, target, revalidation=checked, detail="audit")
     payload = parse_registration(target, "ReportData")
 
     projection = payload["source"]["revalidation"]
     assert projection["result"] == status
     assert projection["issues"][0]["category"] == "evidence_rule"
-    validate_contract("dataset-v1.schema.json", payload)
+    validate_contract("dataset-v2.schema.json", payload)
+
+
+def test_reader_omits_audit_detail_and_invalid_profile_fails(
+    tmp_path: Path, artifact_frame: BaseFrame
+) -> None:
+    artifact_frame.meta.issues = artifact_issues()  # type: ignore[assignment]
+    target = tmp_path / "reader.js"
+    emit_dataset(artifact_frame, target)
+    source = parse_registration(target, "ReportData")["source"]
+    assert source["detail"] == "reader"
+    assert source["issues"] == []
+    assert source["issues_omitted"] == len(artifact_issues())
+    assert source["lineage"]["steps"] == []
+
+    with pytest.raises(ReportDatasetError) as error:
+        emit_dataset(artifact_frame, target, detail="full")  # type: ignore[arg-type]
+    assert error.value.code == "detail-unsupported"
 
 
 def test_dataset_budgets_and_atomic_replace_failure_are_fail_closed(

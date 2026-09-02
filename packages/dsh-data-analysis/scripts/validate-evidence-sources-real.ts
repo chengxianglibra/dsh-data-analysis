@@ -91,10 +91,7 @@ print(json.dumps({
     "sessionId": session.id,
     "findingId": finding.finding_id,
     "artifactRef": frame.ref,
-    "rendered": {
-        "en": finding.render(language="en"),
-        "zh": finding.render(language="zh"),
-    },
+    "excerpt": finding.render(max_output_bytes=4096),
 }, ensure_ascii=False, allow_nan=False))
 `
 
@@ -109,7 +106,7 @@ const fixture = JSON.parse(fixtureResult.stdout.toString('utf8')) as {
   sessionId: string
   findingId: string
   artifactRef: string
-  rendered: { en: string; zh: string }
+  excerpt: string
 }
 
 const environment = await bindMarivoEnvironment({ projectRoot: fixtureRoot, pythonExecutable })
@@ -135,7 +132,10 @@ assert.equal(value.sources.length, 1)
 assert.equal(value.sources[0]?.findingId, fixture.findingId)
 assert.equal(value.sources[0]?.artifactRef, fixture.artifactRef)
 assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'artifactId'), false)
-assert.deepEqual(value.sources[0]?.rendered, fixture.rendered)
+assert.equal(value.sources[0]?.status, 'available')
+assert.equal(value.sources[0]?.excerpt, fixture.excerpt)
+assert.equal(value.sources[0]?.revalidation?.status, 'admissible')
+assert.match(value.sources[0]?.locator ?? '', new RegExp(fixture.findingId))
 assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'marker'), false)
 assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'definition'), false)
 
@@ -195,9 +195,9 @@ await modelContext.plugin(LocalCredentialProvider, { watch: false })
 await modelContext.plugin(DeepSeek, {
   thinking: 'disabled',
   reasoningEffort: 'off',
-  maxTokens: 2_048,
+  maxTokens: 4_096,
   streamIdleTimeoutMs: 180_000,
-  models: [{ id: model, contextWindow: 128_000, maxTokens: 2_048 }],
+  models: [{ id: model, contextWindow: 128_000, maxTokens: 4_096 }],
 })
 await modelContext.plugin(SessionStore)
 await modelContext.plugin(SystemPrompt)
@@ -240,7 +240,6 @@ modelContext.tools.register(
         content: [
           'Use exact persisted Marivo Findings and follow the active plugin source policy.',
           'The observed revenue is 20.',
-          `The exact persisted Evidence identity is Marivo Session ${fixture.sessionId}, Artifact ${fixture.artifactRef}, and Finding ${fixture.findingId}.`,
         ].join(' '),
       }
     },
@@ -249,7 +248,7 @@ modelContext.tools.register(
 const disposePlugin = installMarivoPlugin(modelContext, environment)
 const ordinaryAgent = modelContext.agentLoop.create(
   SessionId(`evidence-sources-ordinary-${runId}`),
-  { provider: 'deepseek-official', model, maxTokens: 2_048 },
+  { provider: 'deepseek-official', model, maxTokens: 4_096 },
   { cwd: fixtureRoot },
 )
 const ordinary = await runJourney(
@@ -268,14 +267,15 @@ assert.doesNotMatch(ordinary.finalText, /\[\^mv-|## Footnotes|Finding\s|artifact
 
 const explicitAgent = modelContext.agentLoop.create(
   SessionId(`evidence-sources-explicit-${runId}`),
-  { provider: 'deepseek-official', model, maxTokens: 2_048 },
+  { provider: 'deepseek-official', model, maxTokens: 4_096 },
   { cwd: fixtureRoot },
 )
 const explicit = await runJourney(
   explicitAgent,
   [
     '请先加载 marivo-analysis skill。',
-    '请给我观测收入事实的准确来源和审计信息；正文只需简短确认来源已经附上。',
+    `精确持久化 Evidence identity 是 Session ${fixture.sessionId}、Artifact ${fixture.artifactRef}、Finding ${fixture.findingId}。`,
+    '请用最多六行概括观测收入事实的 locator、摘录、revalidation 状态和“来源不证明整个结论”的边界，不要表格。',
     'End with EXPLICIT_SOURCE_POLICY_OK.',
   ].join('\n'),
 )
@@ -283,13 +283,8 @@ assert.match(explicit.finalText, /EXPLICIT_SOURCE_POLICY_OK/)
 assert.equal(explicit.skillCallCount, 1)
 assert.equal(explicit.sourceCallCount, 1)
 assert.equal(explicit.successfulSourceResultCount, 1)
-assert.doesNotMatch(explicit.finalText, /\[\^mv-|## Footnotes|Finding\s|artifact-/i)
-assert.doesNotMatch(explicit.finalText, /(?:^|\D)20(?:\D|$)/)
-assert.doesNotMatch(explicit.finalText, new RegExp(fixture.findingId))
-assert.doesNotMatch(
-  explicit.finalText,
-  /Finding|Evidence|来源面板|Web panel|marivo_evidence_sources/i,
-)
+assert.match(explicit.finalText, /来源|source|Finding|Evidence/i)
+assert.match(explicit.finalText, /不.*(?:证明|推断)|does not prove/i)
 disposePlugin()
 
 await writeFile(
@@ -309,7 +304,7 @@ await writeFile(
         sessionId: fixture.sessionId,
         findingId: fixture.findingId,
         artifactRef: fixture.artifactRef,
-        languages: ['zh', 'en'],
+        portableTranscript: true,
         sourceNoisePresent: false,
       },
       modelJourneys: {

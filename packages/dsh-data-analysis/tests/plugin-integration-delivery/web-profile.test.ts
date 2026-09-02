@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -80,7 +80,7 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
   appendFileSync(${JSON.stringify(recordPath)}, projectRoot + '\\n')
   process.stdout.write(JSON.stringify({
     status: 'ok', project_root: projectRoot, python_executable: executable,
-    marivo: { version: '0.5.2', package_path: ${JSON.stringify(packagePath)} },
+    marivo: { version: '0.5.3', package_path: ${JSON.stringify(packagePath)} },
     sections: [
       { id: 'installation', status: 'ok', checks: [
         { id: 'installation.python', status: 'ok', summary: 'shared Python' },
@@ -96,11 +96,11 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
 if (args[0] === '-c' && args.length === 2) {
   process.stdout.write(JSON.stringify({
     python_executable: executable,
-    marivo_version: '0.5.2',
+    marivo_version: '0.5.3',
     package_path: ${JSON.stringify(packagePath)},
     pandas_version: '2.3.3',
     pandas_supported: true,
-    report_kit_version: '2.1.0',
+    report_kit_version: '3.0.0',
     report_kit_package_path: ${JSON.stringify(reportKitPackagePath)},
     report_kit_public_imports: true,
   }))
@@ -179,7 +179,7 @@ async function absent(target: string): Promise<void> {
   await assert.rejects(() => stat(target), { code: 'ENOENT' })
 }
 
-test('Web-profile plugin shares one Runtime while initializing and binding each session cwd independently', async (t) => {
+test('Web-profile plugin exposes Runtime Help and skills without writing either Workspace', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-web-profile-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const firstRoot = path.join(root, 'workspace-a')
@@ -198,8 +198,8 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   await mkdir(secondRoot)
   await mkdir(path.dirname(packagePath), { recursive: true })
   await mkdir(path.dirname(reportKitPackagePath), { recursive: true })
-  await writeFile(packagePath, '__version__ = "0.5.2"\n')
-  await writeFile(reportKitPackagePath, '__version__ = "2.1.0"\n')
+  await writeFile(packagePath, '__version__ = "0.5.3"\n')
+  await writeFile(reportKitPackagePath, '__version__ = "3.0.0"\n')
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
@@ -275,21 +275,31 @@ test('Web-profile plugin shares one Runtime while initializing and binding each 
   send(second, 'analyze workspace b')
   await second.whenIdle()
 
-  const roots = (await readFile(doctorRecord, 'utf8')).trim().split('\n').sort()
-  assert.deepEqual(roots, [await realpath(firstRoot), await realpath(secondRoot)].sort())
+  await absent(doctorRecord)
   for (const workspace of [firstRoot, secondRoot]) {
-    await stat(path.join(workspace, 'marivo.toml'))
-    await stat(path.join(workspace, 'models'))
-    await stat(path.join(workspace, '.marivo'))
+    await absent(path.join(workspace, 'marivo.toml'))
+    await absent(path.join(workspace, 'models'))
+    await absent(path.join(workspace, '.marivo'))
     await absent(path.join(workspace, '.venv'))
     await absent(path.join(workspace, '.agents', 'skills', 'marivo-analysis'))
     await absent(path.join(workspace, '.codex', 'skills', 'marivo-analysis'))
   }
+  const shellEnvironment = (ctx as unknown as { shellEnv: TestShellEnv }).shellEnv
+  assert.deepEqual(
+    shellEnvironment.list().filter((item) => item.contributor === 'dsh-data-analysis:runtime'),
+    [
+      {
+        contributor: 'dsh-data-analysis:runtime',
+        key: 'DSH_DATA_ANALYSIS_PYTHON',
+        description: 'Exact Python interpreter admitted by the shared Marivo Runtime.',
+      },
+    ],
+  )
   const marker = JSON.parse(
     await readFile(path.join(runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v2')
-  assert.equal(marker.reportKitVersion, '2.1.0')
+  assert.equal(marker.reportKitVersion, '3.0.0')
   assert.equal(marker.reportKitPackagePath, reportKitPackagePath)
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()

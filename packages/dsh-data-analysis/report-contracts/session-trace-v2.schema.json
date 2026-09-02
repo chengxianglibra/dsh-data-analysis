@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/session-trace-v1.schema.json",
+  "$id": "https://deepseek.com/dsh-data-analysis/report-contracts/session-trace-v2.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema",
+    "detail",
     "trace_id",
     "emitted_at",
     "session_id",
@@ -12,7 +13,6 @@
     "artifacts",
     "runs",
     "edges",
-    "queries",
     "root_run_ids",
     "head_artifact_refs",
     "failed_run_ids",
@@ -24,7 +24,8 @@
     "read_boundaries"
   ],
   "properties": {
-    "schema": { "const": "dsh-data-analysis-session-trace/v1" },
+    "schema": { "const": "dsh-data-analysis-session-trace/v2" },
+    "detail": { "enum": ["reader", "audit"] },
     "trace_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
@@ -61,22 +62,7 @@
         ],
         "properties": {
           "ref": { "type": "string", "minLength": 1, "maxLength": 2048 },
-          "family": {
-            "enum": [
-              "MetricFrame",
-              "EventFrame",
-              "LifecycleFrame",
-              "SubjectSet",
-              "DeltaFrame",
-              "AttributionFrame",
-              "ForecastFrame",
-              "CandidateSet",
-              "AssociationResult",
-              "ComponentFrame",
-              "CoverageFrame",
-              "HypothesisTestResult"
-            ]
-          },
+          "family": { "type": "string", "minLength": 1, "maxLength": 2048 },
           "semantic_shape": { "type": ["string", "null"], "maxLength": 2048 },
           "created_at": {
             "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
@@ -84,7 +70,7 @@
           "produced_by_run": { "type": ["string", "null"], "maxLength": 2048 },
           "analysis_purpose": { "type": ["string", "null"], "maxLength": 2048 },
           "row_count": { "type": "integer", "minimum": 0 },
-          "materialization": { "enum": ["materialized", "recomputed", "partial"] },
+          "materialization": { "type": "string", "minLength": 1, "maxLength": 2048 },
           "evidence": {
             "type": "object",
             "additionalProperties": false,
@@ -96,7 +82,7 @@
               "omitted_item_count"
             ],
             "properties": {
-              "status": { "enum": ["complete", "partial", "unavailable"] },
+              "status": { "type": "string", "minLength": 1, "maxLength": 2048 },
               "finding_count": { "type": "integer", "minimum": 0 },
               "digest_present": { "type": "boolean" },
               "digest_item_count": { "type": "integer", "minimum": 0 },
@@ -155,11 +141,6 @@
       }
     },
     "root_run_ids": { "$ref": "#/$defs/identityArray" },
-    "queries": {
-      "type": "array",
-      "maxItems": 0,
-      "items": false
-    },
     "head_artifact_refs": { "$ref": "#/$defs/identityArray" },
     "failed_run_ids": { "$ref": "#/$defs/identityArray" },
     "incomplete_run_ids": { "$ref": "#/$defs/identityArray" },
@@ -231,7 +212,9 @@
         "started_at",
         "finished_at",
         "output_artifact_ref",
-        "output_mode"
+        "output_mode",
+        "queries",
+        "queries_omitted"
       ],
       "properties": {
         "run_id": { "$ref": "#/$defs/identity" },
@@ -246,7 +229,13 @@
           "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
         },
         "output_artifact_ref": { "$ref": "#/$defs/identity" },
-        "output_mode": { "enum": ["produced", "reused"] }
+        "output_mode": { "enum": ["produced", "reused"] },
+        "queries": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/runQuery" }
+        },
+        "queries_omitted": { "type": "integer", "minimum": 0 }
       }
     },
     "failedRun": {
@@ -260,7 +249,9 @@
         "input_artifact_refs",
         "started_at",
         "failed_at",
-        "failure"
+        "failure",
+        "queries",
+        "queries_omitted"
       ],
       "properties": {
         "run_id": { "$ref": "#/$defs/identity" },
@@ -282,9 +273,47 @@
             "error_type": { "$ref": "#/$defs/identity" },
             "location": { "type": ["string", "null"], "maxLength": 2048 }
           }
-        }
+        },
+        "queries": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/runQuery" }
+        },
+        "queries_omitted": { "type": "integer", "minimum": 0 }
       }
     },
-    "identity": { "type": "string", "minLength": 1, "maxLength": 2048 }
+    "identity": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "runQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "query_id",
+        "datasource",
+        "dialect",
+        "sql",
+        "sql_digest",
+        "row_count",
+        "duration_ms",
+        "started_at",
+        "finished_at",
+        "status"
+      ],
+      "properties": {
+        "query_id": { "$ref": "#/$defs/identity" },
+        "datasource": { "$ref": "#/$defs/identity" },
+        "dialect": { "$ref": "#/$defs/identity" },
+        "sql": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "sql_digest": { "$ref": "#/$defs/identity" },
+        "row_count": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "started_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "finished_at": {
+          "$ref": "https://deepseek.com/dsh-data-analysis/report-contracts/common-v1.schema.json#/$defs/timestamp"
+        },
+        "status": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    }
   }
 }

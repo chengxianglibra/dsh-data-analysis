@@ -16,7 +16,11 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { MARIVO_PACKAGE_SPEC, MARIVO_VERSION } from '../compatibility.ts'
+import {
+  MARIVO_PACKAGE_SPEC,
+  MARIVO_VERSION,
+  RUNTIME_INSTALLATION_VERSION,
+} from '../compatibility.ts'
 import { MarivoEnvironmentError } from './errors.ts'
 import { FixedSubprocessPolicy } from './subprocess.ts'
 import type { SharedMarivoRuntime, SharedMarivoRuntimeConfig, SubprocessResult } from './types.ts'
@@ -25,14 +29,15 @@ export const SHARED_PYTHON_SPEC = '3.10'
 const PINNED_MARIVO_VERSION = MARIVO_VERSION
 export const SHARED_MARIVO_PACKAGE_SPEC = MARIVO_PACKAGE_SPEC
 export const REPORT_KIT_DISTRIBUTION = 'dsh-data-analysis-report-kit'
-export const REPORT_KIT_VERSION = '2.1.0'
+export const REPORT_KIT_VERSION = '3.0.0'
 export const REPORT_KIT_PANDAS_RANGE = '>=2.2.0,<3.0.0'
-export const REPORT_KIT_WHEEL_FILENAME = 'dsh_data_analysis_report_kit-2.1.0-py3-none-any.whl'
+export const REPORT_KIT_WHEEL_FILENAME = 'dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl'
 export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 
-const INSTALLATION_SCHEMA = 'dsh-data-analysis-runtime/v2' as const
+const INSTALLATION_SCHEMA = RUNTIME_INSTALLATION_VERSION
 const INSTALLATION_FILENAME = 'installation.json'
 const SKILL_NAMES = ['marivo-analysis', 'marivo-semantic'] as const
+const REPORT_ADAPTER_KIND = 'dsh-data-analysis-report-transport-adapter' as const
 const PROBE_SCRIPT = String.raw`
 import json
 import os
@@ -86,6 +91,7 @@ interface InstallationRecord {
   marivoVersion: string
   pythonExecutable: string
   packagePath: string
+  reportAdapterKind: typeof REPORT_ADAPTER_KIND
   reportKitVersion: string
   reportKitPackagePath: string
   skillsRoot: string
@@ -368,10 +374,21 @@ async function validateSkills(skillsRoot: string): Promise<void> {
     const skillFile = path.join(skillsRoot, skill, 'SKILL.md')
     try {
       if (!(await stat(skillFile)).isFile()) throw new Error('not a file')
+      const lines = (await readFile(skillFile, 'utf8')).split(/\r?\n/)
+      if (lines[0] !== '---') throw new Error('frontmatter is missing')
+      const closing = lines.indexOf('---', 1)
+      if (closing < 2) throw new Error('frontmatter is not closed')
+      const names = lines
+        .slice(1, closing)
+        .filter((line) => line.startsWith('name:'))
+        .map((line) => line.slice('name:'.length).trim())
+      if (names.length !== 1 || names[0] !== skill) {
+        throw new Error(`frontmatter name must be ${skill}`)
+      }
     } catch (cause) {
       throw new MarivoEnvironmentError(
         'shared-runtime-skills-invalid',
-        `Shared Marivo skill is missing: ${skillFile}`,
+        `Shared Marivo skill is invalid: ${skillFile}`,
         { skillsRoot, skill },
         { cause },
       )
@@ -423,6 +440,7 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       'marivoVersion',
       'packagePath',
       'pythonExecutable',
+      'reportAdapterKind',
       'reportKitPackagePath',
       'reportKitVersion',
       'schema',
@@ -438,6 +456,7 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       record.pythonExecutable.length === 0 ||
       typeof record.packagePath !== 'string' ||
       record.packagePath.length === 0 ||
+      record.reportAdapterKind !== REPORT_ADAPTER_KIND ||
       typeof record.reportKitVersion !== 'string' ||
       record.reportKitVersion.length === 0 ||
       typeof record.reportKitPackagePath !== 'string' ||
@@ -742,6 +761,7 @@ export async function ensureSharedMarivoRuntime(
       marivoVersion: probe.marivo_version,
       pythonExecutable: probe.python_executable,
       packagePath: probe.package_path,
+      reportAdapterKind: REPORT_ADAPTER_KIND,
       reportKitVersion: probe.report_kit_version,
       reportKitPackagePath: probe.report_kit_package_path,
       skillsRoot,

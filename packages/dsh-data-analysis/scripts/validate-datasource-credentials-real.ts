@@ -85,11 +85,20 @@ try {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoDatasourceTestTool(ctx, guardedBridge, {
-    resolve() {
-      return Promise.resolve(undefined)
+  registerMarivoDatasourceTestTool(
+    ctx,
+    guardedBridge,
+    {
+      resolve() {
+        return Promise.resolve(undefined)
+      },
     },
-  })
+    {
+      issueShellGrant() {
+        throw new Error('missing credentials must not issue a shell grant')
+      },
+    },
+  )
 
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,

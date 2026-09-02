@@ -11,17 +11,25 @@ const EVIDENCE_LIMITS = Object.freeze({
 })
 
 export interface MarivoFindingProjection {
+  status: 'available' | 'missing' | 'unsupported'
+  title: string
+  locator: string
+  excerpt: string | null
+  truncated: boolean
   findingId: string
-  findingType: string
-  epistemicKind: string
+  findingType: string | null
+  epistemicKind: string | null
   artifactRef: string
   sessionId: string
-  canonicalItemKey: string
-  qualityStatus: string | null
-  committedAt: string
-  extractorVersion: string
-  artifactSchemaVersion: string
-  rendered: { en: string; zh: string }
+  canonicalItemKey: string | null
+  committedAt: string | null
+  sourceRefs: string[]
+  revalidation: {
+    status: string
+    semanticStatus: string | null
+    evidenceStatus: string | null
+    dependencyStatus: string | null
+  } | null
 }
 
 export interface MarivoFindingSelection {
@@ -47,12 +55,33 @@ function nonEmptyString(value: unknown, field: string, maxChars = 2_048): string
   return value
 }
 
-function renderedText(value: unknown, field: string): string {
-  const result = nonEmptyString(value, field, 8_192)
-  if (/\r|\n/.test(result) || Buffer.byteLength(result, 'utf8') > 8_192) {
-    throw new TypeError(`${field} must be one UTF-8 line of at most 8192 bytes`)
+function boundedText(value: unknown, field: string, maxBytes = 4_096): string {
+  const result = nonEmptyString(value, field, maxBytes)
+  if (Buffer.byteLength(result, 'utf8') > maxBytes) {
+    throw new TypeError(`${field} must be at most ${maxBytes} UTF-8 bytes`)
   }
   return result
+}
+
+function nullableString(value: unknown, field: string, maxChars = 2_048): string | null {
+  return value === null ? null : nonEmptyString(value, field, maxChars)
+}
+
+function parseRevalidation(value: unknown): MarivoFindingProjection['revalidation'] {
+  if (value === null) return null
+  const item = jsonObject(value)
+  if (item === undefined) throw new TypeError('revalidation must be an object or null')
+  exactKeys(
+    item,
+    ['status', 'semantic_status', 'evidence_status', 'dependency_status'],
+    'revalidation',
+  )
+  return {
+    status: nonEmptyString(item.status, 'revalidation.status', 128),
+    semanticStatus: nullableString(item.semantic_status, 'revalidation.semantic_status', 128),
+    evidenceStatus: nullableString(item.evidence_status, 'revalidation.evidence_status', 128),
+    dependencyStatus: nullableString(item.dependency_status, 'revalidation.dependency_status', 128),
+  }
 }
 
 function jsonObject(value: unknown): Record<string, unknown> | undefined {
@@ -75,40 +104,67 @@ function parseFinding(value: unknown): MarivoFindingProjection {
     item,
     [
       'finding_id',
+      'status',
+      'title',
+      'locator',
+      'excerpt',
+      'truncated',
       'finding_type',
       'epistemic_kind',
       'artifact_ref',
       'session_id',
       'canonical_item_key',
-      'quality_status',
       'committed_at',
-      'extractor_version',
-      'artifact_schema_version',
-      'rendered',
+      'source_refs',
+      'revalidation',
     ],
     'finding',
   )
-  const rendered = jsonObject(item.rendered)
-  if (rendered === undefined) throw new TypeError('rendered must be an object')
-  exactKeys(rendered, ['en', 'zh'], 'rendered')
-  const qualityStatus =
-    item.quality_status === null ? null : nonEmptyString(item.quality_status, 'quality_status', 128)
-  return {
+  if (!['available', 'missing', 'unsupported'].includes(String(item.status))) {
+    throw new TypeError('status must be available, missing, or unsupported')
+  }
+  if (typeof item.truncated !== 'boolean') throw new TypeError('truncated must be boolean')
+  if (!Array.isArray(item.source_refs) || item.source_refs.length > 100) {
+    throw new TypeError('source_refs must be a bounded array')
+  }
+  const parsed: MarivoFindingProjection = {
+    status: item.status as MarivoFindingProjection['status'],
+    title: boundedText(item.title, 'title', 2_048),
+    locator: boundedText(item.locator, 'locator', 2_048),
+    excerpt: item.excerpt === null ? null : boundedText(item.excerpt, 'excerpt'),
+    truncated: item.truncated,
     findingId: nonEmptyString(item.finding_id, 'finding_id'),
-    findingType: nonEmptyString(item.finding_type, 'finding_type'),
-    epistemicKind: nonEmptyString(item.epistemic_kind, 'epistemic_kind'),
+    findingType: nullableString(item.finding_type, 'finding_type'),
+    epistemicKind: nullableString(item.epistemic_kind, 'epistemic_kind'),
     artifactRef: nonEmptyString(item.artifact_ref, 'artifact_ref'),
     sessionId: nonEmptyString(item.session_id, 'finding session_id'),
-    canonicalItemKey: nonEmptyString(item.canonical_item_key, 'canonical_item_key'),
-    qualityStatus,
-    committedAt: nonEmptyString(item.committed_at, 'committed_at'),
-    extractorVersion: nonEmptyString(item.extractor_version, 'extractor_version'),
-    artifactSchemaVersion: nonEmptyString(item.artifact_schema_version, 'artifact_schema_version'),
-    rendered: {
-      en: renderedText(rendered.en, 'rendered.en'),
-      zh: renderedText(rendered.zh, 'rendered.zh'),
-    },
+    canonicalItemKey: nullableString(item.canonical_item_key, 'canonical_item_key'),
+    committedAt: nullableString(item.committed_at, 'committed_at'),
+    sourceRefs: item.source_refs.map((ref, index) =>
+      nonEmptyString(ref, `source_refs[${index}]`, 2_048),
+    ),
+    revalidation: parseRevalidation(item.revalidation),
   }
+  if (
+    (parsed.status === 'available' &&
+      (parsed.excerpt === null ||
+        parsed.findingType === null ||
+        parsed.epistemicKind === null ||
+        parsed.canonicalItemKey === null ||
+        parsed.committedAt === null)) ||
+    (parsed.status === 'missing' &&
+      (parsed.excerpt !== null ||
+        parsed.truncated ||
+        parsed.findingType !== null ||
+        parsed.epistemicKind !== null ||
+        parsed.canonicalItemKey !== null ||
+        parsed.committedAt !== null)) ||
+    (parsed.status === 'unsupported' && parsed.excerpt !== null) ||
+    (parsed.truncated && parsed.excerpt === null)
+  ) {
+    throw new TypeError('finding status fields are inconsistent')
+  }
+  return parsed
 }
 
 function parseFindingsPayload(
@@ -118,15 +174,15 @@ function parseFindingsPayload(
 ): MarivoFindingProjection[] {
   try {
     const root = jsonObject(JSON.parse(stdout.toString('utf8')))
-    if (root !== undefined) exactKeys(root, ['session_id', 'findings'], 'root')
+    if (root !== undefined) exactKeys(root, ['session_id', 'sources'], 'root')
     if (
       root === undefined ||
       root.session_id !== expectedSessionId ||
-      !Array.isArray(root.findings)
+      !Array.isArray(root.sources)
     ) {
       throw new TypeError('root fields are invalid')
     }
-    const findings = root.findings.map(parseFinding)
+    const findings = root.sources.map(parseFinding)
     if (findings.length !== expectedSelections.length) throw new TypeError('finding count differs')
     for (let index = 0; index < findings.length; index++) {
       const finding = findings[index]

@@ -8,6 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import LlmRuntime, {
   type ContentBlock,
   createUserMessage,
@@ -34,6 +35,15 @@ const reportPath = path.join(
   'plugin-integration-delivery-real-model.json',
 )
 const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-flash'
+const pythonExecutable =
+  process.env.DSH_DATA_ANALYSIS_PYTHON ??
+  path.join(
+    resolveDshHome(),
+    'dsh-data-analysis',
+    'runtimes',
+    'marivo',
+    process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
+  )
 const missingDatasourceCredentials = ['DSH_VALIDATION_USER', 'DSH_VALIDATION_PASSWORD'] as const
 
 interface UsageTotals extends TokenUsage {
@@ -200,7 +210,7 @@ await writeFile(
     '',
   ].join('\n'),
 )
-const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot })
+const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
 await assertMissingCredentialDoctorFixture(
   environment.binding.pythonExecutable,
   credentialProjectRoot,
@@ -372,6 +382,11 @@ const specs = [
     prompt: `Call skill with {"name":"marivo-analysis"}. After the automatic analysis root help, call marivo_help twice in separate steps with exactly ["analysis.observe"] each time. Confirm that the second result is an already-visible receipt and end with ${markerFor('focused-help-dedup')}.`,
   },
   {
+    id: 'dual-skill-same-turn',
+    projectRoot: workspaceRoot,
+    prompt: `In this one turn, call skill first with {"name":"marivo-analysis"} and then with {"name":"marivo-semantic"}, in that exact order and in separate steps. Do not call marivo_help. After both automatic root-help disclosures, state their order and end with ${markerFor('dual-skill-same-turn')}.`,
+  },
+  {
     id: 'missing-datasource-credential',
     projectRoot: credentialProjectRoot,
     prompt: `Call skill with {"name":"marivo-semantic"}. After automatic authoring help, call marivo_help with exactly ["datasource"]. Explain that live disclosure remains usable while datasource credentials are missing. End with ${markerFor('missing-datasource-credential')}.`,
@@ -411,6 +426,18 @@ assert.deepEqual(
   toolCalls(focused, 'marivo_help').flatMap((call) => call.delivery ?? []),
   ['delivered', 'already-visible'],
 )
+
+const dualSkill = byId.get('dual-skill-same-turn')
+assert.ok(dualSkill?.completed)
+assert.deepEqual(
+  toolCalls(dualSkill, 'skill').map((call) =>
+    typeof call.arguments === 'object' && call.arguments !== null && 'name' in call.arguments
+      ? (call.arguments as { name: unknown }).name
+      : undefined,
+  ),
+  ['marivo-analysis', 'marivo-semantic'],
+)
+assert.deepEqual(dualSkill.rootHelpTargets, ['analysis', 'authoring'])
 
 const datasource = byId.get('missing-datasource-credential')
 assert.ok(datasource?.completed)

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-data-analysis",
   "description": "Marivo runtime, live-help, datasource, and on-demand Evidence source integration for DeepSeek Harness",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -47,7 +47,7 @@
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/types/**/*.d.ts",
-    "python/report-kit/dist/dsh_data_analysis_report_kit-2.1.0-py3-none-any.whl",
+    "python/report-kit/dist/dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl",
     "report-contracts/*.json",
     "skills/**/*",
     "cordis.patch.yml",
@@ -63,18 +63,18 @@
     "access": "public"
   },
   "dshDataAnalysisCompatibility": {
-    "schema": "dsh-data-analysis-compatibility/v1",
+    "schema": "dsh-data-analysis-compatibility/v2",
     "dsh": {
       "distribution": "@deepseek-ai/dsh",
       "peerRange": "0.1.1-rc.2"
     },
     "marivo": {
-      "version": "0.5.2",
-      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.5.2"
+      "version": "0.5.3",
+      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.5.3"
     },
     "contracts": {
-      "runtimeInstallation": "dsh-data-analysis-runtime/v1",
-      "subprocessPolicy": "direct-argv-inherited-env-snapshot-overlay-v1"
+      "runtimeInstallation": "dsh-data-analysis-runtime/v2",
+      "subprocessPolicy": "direct-argv-inherited-env-snapshot-overlay-v2"
     }
   },
   "dsh": {

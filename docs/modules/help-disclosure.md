@@ -20,7 +20,7 @@
 | 入口 | 触发方式 | 目标 | 交付位置 |
 | --- | --- | --- | --- |
 | 根 Help | 成功加载 Marivo Skill，或用户显式 Skill invocation | `analysis` / `authoring` | 下一模型请求前注入 DSH user message |
-| Focused Help | Agent 调用 `marivo_help({ targets })` | 零到多个 canonical string target | Tool Result |
+| Focused Help | Agent 调用 `marivo_help({ targets })` | 一到多个 canonical string target | Tool Result |
 
 Skill 与根 target 的映射是插件拥有的唯一小型映射：
 
@@ -33,15 +33,16 @@ marivo-semantic  -> authoring
 
 ## `marivo_help` 读取流程
 
-1. 惰性解析当前 Agent/Workspace 的 `MarivoHelpBridge`。
+1. 使用插件启动时已验证的 shared Runtime `MarivoHelpBridge`，不解析或初始化 Workspace。
 2. 对 `targets` 只做机械边界校验：必须是数组、数量/单项长度/总长度受限。
-3. 按首次出现顺序去重；空数组成功返回空结果。
+3. 按首次出现顺序去重；空数组在启动子进程前失败。
 4. 对每个 target 调用 Help adapter；adapter 拥有 Python program，并通过 Environment 通用 checked runner
    在同一进程核对 import identity 后执行真实 `marivo.help(target)`。
 5. 检查单 target timeout、stdout/stderr 上限、空 stdout 和批次总输出上限。
 6. 计算正文 SHA-256 digest，并结合当前 prompt 可见性标记 `delivered`、`already-visible` 或
    `replacement`。
-7. 整批成功后返回 Environment identity 和按请求顺序排列的结果。
+7. 整批成功后只向模型正文返回 Runtime 版本、target、Help body 与有界失败/截断；绝对路径和完整
+   fingerprint 只用于 Host presentation metadata，不进入模型正文。
 
 多 target 读取是 all-or-nothing：任何 target 失败都使 Tool call 失败，不返回其他 target 的部分正文。
 模块不把 invalid target 替换成相近名称；Marivo 的真实错误经稳定 `target-failed` 边界返回。
@@ -118,7 +119,7 @@ packages/dsh-data-analysis/tests/help-disclosure/help-tool.test.ts
 packages/dsh-data-analysis/tests/help-disclosure/activation.test.ts
 ```
 
-测试重点包括空/重复/multi target、raw stdout parity、无 shadow registry、原子失败、Skill 激活、
+测试重点包括空数组拒绝、重复/multi target、raw stdout parity、无 shadow registry、原子失败、Skill 激活、
 compaction 恢复、Environment 替换、普通工具持续可见和 controller dispose。
 
 `npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding

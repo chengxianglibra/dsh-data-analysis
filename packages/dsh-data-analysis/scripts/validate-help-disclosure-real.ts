@@ -84,7 +84,9 @@ for (const result of focusedValue.targets)
   assert.equal(result.body, directBodies.get(result.target))
 
 const empty = await executeFocused([])
-assert.equal(empty.isError, false)
+assert.equal(empty.isError, true)
+const emptyText = empty.content[0]?.type === 'text' ? empty.content[0].text : ''
+assert.match(emptyText, /at least one target/i)
 const invalid = await executeFocused(['analysis.observe', 'definitely.not.a.target'])
 assert.equal(invalid.isError, true)
 const invalidText = invalid.content[0]?.type === 'text' ? invalid.content[0].text : ''

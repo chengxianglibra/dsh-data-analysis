@@ -3,7 +3,7 @@
 ## 作用
 
 本模块解决两个不同层级的问题：在一个 DSH Web profile 内提供一套可复用的 Marivo 安装，并为
-每个 Agent 所在 Workspace 建立独立的最小项目布局与 Environment。它只准备运行条件，不拥有
+每个 Agent 所在 Workspace 建立独立的 zero-init binding 与 Environment。它只准备运行条件，不拥有
 Marivo 项目语义和分析状态。
 
 总体关系见[总体架构](../architecture.md)。实现集中在：
@@ -18,8 +18,7 @@ Marivo 项目语义和分析状态。
 | --- | --- |
 | `ensureSharedMarivoRuntime()` | 验证、复用或安装一套 profile 级 Runtime |
 | `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、report-kit、package 与 Skill 身份 |
-| `initializeMarivoWorkspace()` | 幂等创建最小 `marivo.toml`、`models/` 和 `.marivo/` |
-| `MarivoWorkspaceEnvironmentManager` | 按 canonical project root 缓存初始化与 binding Promise |
+| `MarivoWorkspaceEnvironmentManager` | 按 canonical project root 缓存 binding Promise，不创建 Workspace 文件 |
 
 ## 共享 Runtime 生命周期
 
@@ -42,9 +41,9 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.5.2`；
+4. Marivo 版本严格等于 `0.5.3`；
 5. report-kit 版本、package path、公开 `emit_dataset` / `emit_computed` / `emit_session_trace` 与 pandas 范围一致；
-6. 两个内置 Skill 的 `SKILL.md` 均存在。
+6. 两个内置 Skill 的 `SKILL.md` 均存在，frontmatter `name` 与目录名精确一致。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。
@@ -56,7 +55,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 | 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装精确 Marivo 与随包 report-kit wheel |
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、report-kit 与 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都只支持已经正式发布的 Marivo 0.5.2；发布 marker 后按该版本稳定复用。任何版本或 schema
+两种模式都只支持已经正式发布的 Marivo 0.5.3；发布 marker 后按该版本稳定复用。任何版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -66,7 +65,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 存活时才会回收 stale lock。Skill 先复制到 staging 并完整验证，再以 rename 替换；marker 通过临时
 文件写入并原子 rename，避免半完成安装被当成可复用 Runtime。
 
-## Workspace 解析与初始化
+## Workspace 解析与 zero-init binding
 
 插件按以下优先级选择 project root：
 
@@ -79,19 +78,11 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 默认行为让不同 Session、fork 或进程内 subagent 使用自己的 Workspace。显式全局 project root
 会使所有 Agent 指向同一 Workspace，因此只适合管理员有意固定项目的场景。
 
-首次 resolve 时，manager 对 project root 执行 `realpath`，以 canonical path 作为 cache key。启用
-`initializeWorkspace` 时，它只补齐：
-
-```text
-<workspace>/
-├── marivo.toml
-├── models/
-└── .marivo/
-```
-
-最小 manifest 仅包含基于目录名的 `[project].name`。已有文件不覆盖；manifest 必须是可读文件，
-`models/` 和 `.marivo/` 必须是目录。模块不会创建 Workspace `.venv`，也不会向 `.dsh/skills`、
-`.agents/skills`、`.claude/skills` 或 `.codex/skills` 写链接。
+首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
+`marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。缺少 manifest
+时，Marivo 0.5.3 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
+写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
+“插件 install 零写入”解释为“分析永不写入”。
 
 ## 隔离模型
 
@@ -101,21 +92,21 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 | Workspace | 共享 Runtime 引用 | project root、manifest、models、state、doctor admission、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 
-manager 只在进程内缓存 Promise。初始化或 binding rejection 也保留在该 key 上，防止一次运行中静默
+manager 只在进程内缓存 Promise。binding rejection 也保留在该 key 上，防止一次运行中静默
 切换身份；显式重建 plugin/manager 才会重新解析。
 
 ## 失败边界
 
 - 非绝对 Runtime、Python 或显式 `uvExecutable` 配置直接拒绝。
 - 无效 marker 被视为不可复用安装，不从不完整字段猜测身份。
-- Workspace 文件/目录冲突只使该 Workspace resolve 失败，不改写已有用户文件。
+- project root 不存在或显式 manifest 无效只使该 Workspace resolve 失败，不改写已有用户文件。
 - Runtime 级安装或 Skill 校验失败会阻止插件启动，因为所有 Workspace 都依赖同一安装。
 - 模块不解释 `marivo.toml` 的业务内容；语义校验由后续真实 `marivo doctor` 负责。
 
 ## 公共接口与验证
 
 公共导出位于 `packages/dsh-data-analysis/src/environment/index.ts`。关键测试分别覆盖 Runtime 复用、
-锁与 marker、Workspace 幂等初始化、路径 identity、共享 Runtime/多 Workspace 集成：
+锁与 marker、Workspace 零写入、路径 identity、共享 Runtime/多 Workspace 集成：
 
 ```text
 packages/dsh-data-analysis/tests/runtime-workspace/shared-runtime.test.ts

@@ -1,9 +1,10 @@
 {
-  "schema": "dsh-data-analysis-dataset/v1",
+  "schema": "dsh-data-analysis-dataset/v2",
   "dataset_id": "artifact-sales",
   "emitted_at": "2026-08-31T12:00:00Z",
   "source": {
     "kind": "marivo_artifact",
+    "detail": "reader",
     "artifact": {
       "session_id": "session-1",
       "ref": "artifact-1",

@@ -1,4 +1,8 @@
-export { bindMarivoEnvironment, MarivoEnvironment } from './binding.ts'
+export {
+  bindMarivoEnvironment,
+  createSharedMarivoRuntimeRunner,
+  MarivoEnvironment,
+} from './binding.ts'
 export { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 export { MarivoEnvironmentError } from './errors.ts'
 export {
@@ -30,11 +34,10 @@ export type {
   MarivoCheckedRunRequest,
   MarivoEnvironmentBinding,
   MarivoEnvironmentConfig,
-  MarivoWorkspaceLayout,
   SharedMarivoRuntime,
   SharedMarivoRuntimeConfig,
   SubprocessLimits,
   SubprocessRequest,
   SubprocessResult,
 } from './types.ts'
-export { initializeMarivoWorkspace, MarivoWorkspaceEnvironmentManager } from './workspace.ts'
+export { MarivoWorkspaceEnvironmentManager } from './workspace.ts'

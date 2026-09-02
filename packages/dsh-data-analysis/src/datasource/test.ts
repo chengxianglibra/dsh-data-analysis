@@ -9,7 +9,11 @@ import {
   type MarivoDatasourceRepair,
   resolveMarivoDatasourceBridge,
 } from './bridge.ts'
-import { assertDshCredentialReferences } from './shell-env.ts'
+import {
+  assertDshCredentialReferences,
+  MARIVO_CREDENTIAL_GRANT_PREFIX,
+  type MarivoShellGrantReceipt,
+} from './shell-env.ts'
 
 export const MARIVO_DATASOURCE_TEST_TOOL_NAME = 'marivo_datasource_test'
 
@@ -19,7 +23,12 @@ interface JsonObject {
 
 export type MarivoDatasourceTestValue =
   | ({ status: 'needs-credentials'; name: string; refs: string[] } & JsonObject)
-  | ({ status: 'ok'; name: string; latency_ms: number | null } & JsonObject)
+  | ({
+      status: 'ok'
+      name: string
+      latency_ms: number | null
+      shell_grant: MarivoShellGrantReceipt
+    } & JsonObject)
   | ({
       status: 'failed'
       name: string
@@ -29,8 +38,12 @@ export type MarivoDatasourceTestValue =
     } & JsonObject)
 
 export interface MarivoDatasourceTestOptions {
-  /** Observe the validated non-secret datasource reference-name projection. */
-  onDescribe?: (bridge: MarivoDatasourceBridgePort, name: string, refs: readonly string[]) => void
+  /** Issue the one-shot capability only after the real connection test succeeds. */
+  issueShellGrant(
+    bridge: MarivoDatasourceBridgePort,
+    name: string,
+    refs: readonly string[],
+  ): MarivoShellGrantReceipt
 }
 
 function datasourceName(value: unknown): string {
@@ -45,7 +58,11 @@ function datasourceName(value: unknown): string {
 function renderValue(value: MarivoDatasourceTestValue): string {
   if (value.status === 'needs-credentials') return JSON.stringify(value)
   if (value.status === 'ok') {
-    return `Marivo datasource ${value.name} connection test succeeded${value.latency_ms === null ? '' : ` in ${value.latency_ms} ms`}.`
+    return [
+      `Marivo datasource ${value.name} connection test succeeded${value.latency_ms === null ? '' : ` in ${value.latency_ms} ms`}.`,
+      `One-shot foreground Shell grant: ${value.shell_grant.token} (expires in ${value.shell_grant.expires_in_ms} ms).`,
+      `Use this exact first command line: ${MARIVO_CREDENTIAL_GRANT_PREFIX}${value.shell_grant.token}`,
+    ].join('\n')
   }
   return JSON.stringify(value)
 }
@@ -54,7 +71,7 @@ function renderValue(value: MarivoDatasourceTestValue): string {
 export function createMarivoDatasourceTestTool(
   bridgeSource: MarivoDatasourceBridgeSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
-  options: MarivoDatasourceTestOptions = {},
+  options: MarivoDatasourceTestOptions,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
@@ -79,7 +96,6 @@ export function createMarivoDatasourceTestTool(
       const bridge = await resolveMarivoDatasourceBridge(bridgeSource)
       const described = await bridge.describe(name, exec.signal)
       assertDshCredentialReferences(described.refs)
-      options.onDescribe?.(bridge, described.name, described.refs)
       const overlay: NodeJS.ProcessEnv = {}
       const missing: string[] = []
       for (const refName of described.refs) {
@@ -94,7 +110,14 @@ export function createMarivoDatasourceTestTool(
         return { status: 'needs-credentials', name: described.name, refs: missing }
 
       const tested = await bridge.test(name, overlay, exec.signal)
-      if (tested.ok) return { status: 'ok', name: tested.name, latency_ms: tested.latency_ms }
+      if (tested.ok) {
+        return {
+          status: 'ok',
+          name: tested.name,
+          latency_ms: tested.latency_ms,
+          shell_grant: options.issueShellGrant(bridge, tested.name, described.refs),
+        }
+      }
       return {
         status: 'failed',
         name: tested.name,
@@ -110,7 +133,7 @@ export function registerMarivoDatasourceTestTool(
   ctx: Context,
   bridgeSource: MarivoDatasourceBridgeSource,
   credentials: Pick<CredentialProvider, 'resolve'>,
-  options: MarivoDatasourceTestOptions = {},
+  options: MarivoDatasourceTestOptions,
 ): () => void {
   return ctx.tools.register(createMarivoDatasourceTestTool(bridgeSource, credentials, options))
 }

@@ -241,7 +241,15 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoDatasourceTestTool(ctx, new MarivoDatasourceBridge(environment), credentials)
+  registerMarivoDatasourceTestTool(ctx, new MarivoDatasourceBridge(environment), credentials, {
+    issueShellGrant() {
+      return {
+        token: 'g'.repeat(43),
+        expires_in_ms: 60_000,
+        usage: 'one-foreground-shell',
+      }
+    },
+  })
 
   const first = await ctx.tools.execute({
     signal: new AbortController().signal,

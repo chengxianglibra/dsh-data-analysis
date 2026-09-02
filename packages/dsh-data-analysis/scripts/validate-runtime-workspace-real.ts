@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -25,6 +25,10 @@ try {
   const secondWorkspace = path.join(validationRoot, 'workspace-b')
   await mkdir(firstWorkspace)
   await mkdir(secondWorkspace)
+  const before = new Map([
+    [firstWorkspace, await readdir(firstWorkspace)],
+    [secondWorkspace, await readdir(secondWorkspace)],
+  ])
 
   const runtime = await ensureSharedMarivoRuntime({ runtimeRoot, pythonExecutable })
   const reused = await ensureSharedMarivoRuntime({ runtimeRoot, pythonExecutable })
@@ -52,9 +56,7 @@ try {
   assert.notEqual(first.binding.projectRoot, second.binding.projectRoot)
   assert.notEqual(first.binding.fingerprint, second.binding.fingerprint)
   for (const workspace of [firstWorkspace, secondWorkspace]) {
-    assert.ok((await stat(path.join(workspace, 'marivo.toml'))).isFile())
-    assert.ok((await stat(path.join(workspace, 'models'))).isDirectory())
-    assert.ok((await stat(path.join(workspace, '.marivo'))).isDirectory())
+    assert.deepEqual(await readdir(workspace), before.get(workspace))
   }
   manager.dispose()
 
@@ -65,6 +67,7 @@ try {
         runtime,
         workspaces: [first.binding, second.binding],
         runtimeReused: true,
+        zeroWorkspaceWrites: true,
       },
       null,
       2,

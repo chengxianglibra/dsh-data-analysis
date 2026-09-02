@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 
-export const COMPATIBILITY_SCHEMA = 'dsh-data-analysis-compatibility/v1' as const
+export const COMPATIBILITY_SCHEMA = 'dsh-data-analysis-compatibility/v2' as const
 
 export interface DshDataAnalysisCompatibility {
   readonly schema: typeof COMPATIBILITY_SCHEMA
@@ -13,8 +13,8 @@ export interface DshDataAnalysisCompatibility {
     readonly packageSpec: string
   }
   readonly contracts: {
-    readonly runtimeInstallation: 'dsh-data-analysis-runtime/v1'
-    readonly subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v1'
+    readonly runtimeInstallation: 'dsh-data-analysis-runtime/v2'
+    readonly subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2'
   }
 }
 
@@ -85,12 +85,12 @@ function parsePackageManifest(value: unknown): PackageManifest {
       contracts: Object.freeze({
         runtimeInstallation: requiredLiteral(
           contracts.runtimeInstallation,
-          'dsh-data-analysis-runtime/v1',
+          'dsh-data-analysis-runtime/v2',
           'package compatibility contracts.runtimeInstallation',
         ),
         subprocessPolicy: requiredLiteral(
           contracts.subprocessPolicy,
-          'direct-argv-inherited-env-snapshot-overlay-v1',
+          'direct-argv-inherited-env-snapshot-overlay-v2',
           'package compatibility contracts.subprocessPolicy',
         ),
       }),

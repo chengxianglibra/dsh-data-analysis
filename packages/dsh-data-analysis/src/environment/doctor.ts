@@ -133,9 +133,14 @@ export function admitDoctorReport(
     admissionFailure('marivo.package_path', 'must be absolute')
   }
 
-  for (const id of ['installation.python', 'installation.marivo', 'project.marivo_toml']) {
+  for (const id of ['installation.python', 'installation.marivo']) {
     const check = findCheck(report, id)
     if (check === undefined) admissionFailure(id, 'check is missing')
     if (check.status !== 'ok') admissionFailure(id, `status is ${check.status}`)
+  }
+  const manifest = findCheck(report, 'project.marivo_toml')
+  if (manifest === undefined) admissionFailure('project.marivo_toml', 'check is missing')
+  if (manifest.status !== 'ok' && manifest.status !== 'info') {
+    admissionFailure('project.marivo_toml', `status is ${manifest.status}`)
   }
 }

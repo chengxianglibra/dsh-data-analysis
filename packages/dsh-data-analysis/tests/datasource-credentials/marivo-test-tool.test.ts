@@ -78,7 +78,13 @@ class FakeCredentials {
 
 async function fixture(
   options: { refs: string; ok?: boolean; stderrSecret?: boolean } = { refs: '' },
-  toolOptions: MarivoDatasourceTestOptions = {},
+  toolOptions: MarivoDatasourceTestOptions = {
+    issueShellGrant: () => ({
+      token: 'g'.repeat(43),
+      expires_in_ms: 60_000,
+      usage: 'one-foreground-shell',
+    }),
+  },
 ) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-marivo-test-')))
   const executable = path.join(root, 'fixture-python')
@@ -162,23 +168,27 @@ test('missing and partial credentials return only deduplicated missing refs with
   await absent(f.recordPath)
 })
 
-test('describe publishes validated reference names before returning needs-credentials', async (t) => {
-  const described: Array<{ name: string; refs: readonly string[] }> = []
+test('missing credentials never issue a Shell grant', async (t) => {
+  let issued = false
   const f = await fixture(
     { refs: 'DSH_DB_USER,DSH_DB_PASSWORD' },
-    { onDescribe: (_environment, name, refs) => described.push({ name, refs }) },
+    {
+      issueShellGrant: () => {
+        issued = true
+        return {
+          token: 'g'.repeat(43),
+          expires_in_ms: 60_000,
+          usage: 'one-foreground-shell',
+        }
+      },
+    },
   )
   t.after(f.cleanup)
 
   const result = await execute(f.ctx)
 
   assert.equal(result.isError, false)
-  assert.deepEqual(described, [
-    {
-      name: 'warehouse',
-      refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'],
-    },
-  ])
+  assert.equal(issued, false)
 })
 
 test('non-DSH datasource references fail before credential resolution or connection', async (t) => {
@@ -194,7 +204,20 @@ test('non-DSH datasource references fail before credential resolution or connect
 })
 
 test('configured credentials reach one child overlay and are re-resolved on the next operation', async (t) => {
-  const f = await fixture({ refs: 'DSH_DB_USER,DSH_DB_PASSWORD' })
+  const issued: Array<{ name: string; refs: readonly string[] }> = []
+  const f = await fixture(
+    { refs: 'DSH_DB_USER,DSH_DB_PASSWORD' },
+    {
+      issueShellGrant: (_bridge, name, refs) => {
+        issued.push({ name, refs })
+        return {
+          token: 'g'.repeat(43),
+          expires_in_ms: 60_000,
+          usage: 'one-foreground-shell',
+        }
+      },
+    },
+  )
   t.after(f.cleanup)
   f.credentials.values.set('DSH_DB_USER', { value: 'alice', source: 'user-env' })
   f.credentials.values.set('DSH_DB_PASSWORD', { value: 'first-secret', source: 'file' })
@@ -204,6 +227,22 @@ test('configured credentials reach one child overlay and are re-resolved on the 
   f.credentials.values.set('DSH_DB_PASSWORD', { value: 'second-secret', source: 'file' })
   const second = await execute(f.ctx)
   assert.equal(second.isError, false)
+  assert.deepEqual(issued, [
+    { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'] },
+    { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'] },
+  ])
+  if (!first.isError) {
+    const value = first.value as unknown as MarivoDatasourceTestValue
+    assert.equal(value.status, 'ok')
+    if (value.status === 'ok') {
+      assert.deepEqual(value.shell_grant, {
+        token: 'g'.repeat(43),
+        expires_in_ms: 60_000,
+        usage: 'one-foreground-shell',
+      })
+    }
+    assert.match(JSON.stringify(first.content), /dsh-marivo-credential-grant/)
+  }
 
   assert.deepEqual(f.credentials.resolved, [
     'DSH_DB_USER',

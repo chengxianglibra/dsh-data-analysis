@@ -133,6 +133,11 @@ test('ReportData accepts closed Artifact and computed projections', async () => 
   const context = await projectionContext()
   const registry = context.ReportData!
   const artifact = await fixture('artifact-dataset.json')
+  assert.throws(
+    () =>
+      registry.register('legacy-artifact', { ...artifact, schema: 'dsh-data-analysis-dataset/v1' }),
+    /unsupported/,
+  )
   registry.register('artifact-sales', artifact)
   assert.deepEqual([...registry.list()], ['artifact-sales'])
   assert.equal(registry.has('artifact-sales'), true)
@@ -225,6 +230,11 @@ test('Session DAG runtime validates and freezes Marivo graph projections', async
   const context = await projectionContext()
   const registry = context.ReportTrace!
   const trace = await fixture('trace-succeeded.json')
+  assert.throws(
+    () =>
+      registry.register('legacy-trace', { ...trace, schema: 'dsh-data-analysis-session-trace/v1' }),
+    /unsupported/,
+  )
   registry.register('trace-succeeded', trace)
   assert.deepEqual([...registry.list()], ['trace-succeeded'])
   assert.equal(registry.has('trace-succeeded'), true)
@@ -237,8 +247,15 @@ test('Session DAG runtime validates and freezes Marivo graph projections', async
 
   const queries = structuredClone(trace)
   queries.trace_id = 'queries'
-  queries.queries = [{ query_id: 'query-1' }]
-  assert.throws(() => registry.register('queries', queries), /must be an empty array/)
+  queries.runs[0].queries = [{}]
+  assert.throws(() => registry.register('queries', queries), /must be omitted in reader detail/)
+
+  const publicSummary = structuredClone(trace)
+  publicSummary.trace_id = 'public-summary'
+  publicSummary.root_run_ids = []
+  publicSummary.edges = []
+  registry.register('public-summary', publicSummary)
+  assert.equal(registry.has('public-summary'), true)
 })
 
 test('Session DAG renders Frame row counts, exact previews, and every selected Session', async () => {

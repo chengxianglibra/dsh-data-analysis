@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 const TOOL_NAME = 'marivo_datasource_test'
 const EVIDENCE_SOURCES_TOOL_NAME = 'marivo_evidence_sources'
 const EVIDENCE_SOURCES_META_KIND = 'marivo-evidence-sources'
-const EVIDENCE_SOURCES_META_VERSION = 1
+const EVIDENCE_SOURCES_META_VERSION = 2
 const EVIDENCE_SOURCES_DURABLE_CONTENT_KIND = 'marivo-evidence-sources-card'
 const EVIDENCE_SOURCES_DEFINITION_KIND = 'marivo-evidence-sources-delivery'
 const EVIDENCE_SOURCES_TURN_DATA_KEY = EVIDENCE_SOURCES_DEFINITION_KIND
@@ -23,15 +23,20 @@ const EVIDENCE_SOURCES_ZH = {
   'source.summary': '{artifacts} 个分析结果 · {findings} 条 Evidence',
   'source.artifact': '分析结果 {index}',
   'source.findings': '{count} 条 Evidence',
-  'source.quality': 'quality: {value}',
-  'source.unlabeled': '未标注',
+  'source.status': '状态：{value}',
+  'source.revalidation': '重新验证：{value}',
+  'source.excerptState': '摘录：{value}',
+  'source.complete': '完整',
+  'source.truncated': '已截断',
+  'source.unavailable': '不可用',
   'source.finding': 'Finding {id}',
   'source.artifactRef': 'Artifact {id}',
   'source.session': 'Marivo Session {id}',
   'source.committed': '提交 {committedAt}',
   'source.audit': '审计详情',
   'source.item': 'canonical item: {id}',
-  'source.versions': 'extractor {extractor} · Artifact schema {schema}',
+  'source.locator': '定位：{value}',
+  'source.refs': '来源引用：{value}',
   'source.environment': 'Environment {fingerprint}',
   'source.disclaimer': '来源面板确认 Evidence 身份，不等于验证整句话、计算或业务判断。',
 }
@@ -41,15 +46,20 @@ const EVIDENCE_SOURCES_EN = {
   'source.summary': '{artifacts} analysis results · {findings} Evidence findings',
   'source.artifact': 'Analysis result {index}',
   'source.findings': '{count} Evidence findings',
-  'source.quality': 'quality: {value}',
-  'source.unlabeled': 'not labeled',
+  'source.status': 'status: {value}',
+  'source.revalidation': 'revalidation: {value}',
+  'source.excerptState': 'excerpt: {value}',
+  'source.complete': 'complete',
+  'source.truncated': 'truncated',
+  'source.unavailable': 'unavailable',
   'source.finding': 'Finding {id}',
   'source.artifactRef': 'Artifact {id}',
   'source.session': 'Marivo Session {id}',
   'source.committed': 'committed {committedAt}',
   'source.audit': 'Audit details',
   'source.item': 'canonical item: {id}',
-  'source.versions': 'extractor {extractor} · Artifact schema {schema}',
+  'source.locator': 'locator: {value}',
+  'source.refs': 'source refs: {value}',
   'source.environment': 'Environment {fingerprint}',
   'source.disclaimer':
     'This panel confirms Evidence identity; it does not validate the whole statement, calculation, or business judgment.',
@@ -57,18 +67,26 @@ const EVIDENCE_SOURCES_EN = {
 const openedCalls = new Set<string>()
 
 export interface MarivoEvidenceSource {
-  rendered: { en: string; zh: string }
+  status: 'available' | 'missing' | 'unsupported'
+  title: string
+  locator: string
+  excerpt: string | null
+  truncated: boolean
   environmentFingerprint: string
   sessionId: string
   findingId: string
-  findingType: string
-  epistemicKind: string
+  findingType: string | null
+  epistemicKind: string | null
   artifactRef: string
-  canonicalItemKey: string
-  qualityStatus: string | null
-  committedAt: string
-  extractorVersion: string
-  artifactSchemaVersion: string
+  canonicalItemKey: string | null
+  committedAt: string | null
+  sourceRefs: string[]
+  revalidation: {
+    status: string
+    semanticStatus: string | null
+    evidenceStatus: string | null
+    dependencyStatus: string | null
+  } | null
 }
 
 export interface MarivoEvidenceSourcesMeta {
@@ -133,7 +151,11 @@ function evidenceSource(value: unknown): MarivoEvidenceSource | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const source = value as Record<string, unknown>
   const allowed = new Set([
-    'rendered',
+    'status',
+    'title',
+    'locator',
+    'excerpt',
+    'truncated',
     'environmentFingerprint',
     'sessionId',
     'findingId',
@@ -141,58 +163,92 @@ function evidenceSource(value: unknown): MarivoEvidenceSource | null {
     'epistemicKind',
     'artifactRef',
     'canonicalItemKey',
-    'qualityStatus',
     'committedAt',
-    'extractorVersion',
-    'artifactSchemaVersion',
+    'sourceRefs',
+    'revalidation',
   ])
   if (
     Object.keys(source).length !== allowed.size ||
     Object.keys(source).some((key) => !allowed.has(key)) ||
-    typeof source.rendered !== 'object' ||
-    source.rendered === null ||
-    Array.isArray(source.rendered) ||
+    !['available', 'missing', 'unsupported'].includes(String(source.status)) ||
+    typeof source.title !== 'string' ||
+    source.title.trim() === '' ||
+    utf8ByteLength(source.title) > 2_048 ||
+    typeof source.locator !== 'string' ||
+    source.locator.trim() === '' ||
+    utf8ByteLength(source.locator) > 2_048 ||
+    (source.excerpt !== null &&
+      (typeof source.excerpt !== 'string' ||
+        source.excerpt.trim() === '' ||
+        utf8ByteLength(source.excerpt) > 4_096)) ||
+    typeof source.truncated !== 'boolean' ||
     typeof source.environmentFingerprint !== 'string' ||
     source.environmentFingerprint === '' ||
     typeof source.sessionId !== 'string' ||
     source.sessionId === '' ||
     typeof source.findingId !== 'string' ||
     source.findingId === '' ||
-    typeof source.findingType !== 'string' ||
-    source.findingType === '' ||
-    typeof source.epistemicKind !== 'string' ||
-    source.epistemicKind === '' ||
+    (source.findingType !== null &&
+      (typeof source.findingType !== 'string' || source.findingType === '')) ||
+    (source.epistemicKind !== null &&
+      (typeof source.epistemicKind !== 'string' || source.epistemicKind === '')) ||
     typeof source.artifactRef !== 'string' ||
     source.artifactRef === '' ||
-    typeof source.canonicalItemKey !== 'string' ||
-    source.canonicalItemKey === '' ||
-    (source.qualityStatus !== null &&
-      (typeof source.qualityStatus !== 'string' || source.qualityStatus === '')) ||
-    typeof source.committedAt !== 'string' ||
-    source.committedAt === '' ||
-    typeof source.extractorVersion !== 'string' ||
-    source.extractorVersion === '' ||
-    typeof source.artifactSchemaVersion !== 'string' ||
-    source.artifactSchemaVersion === ''
+    (source.canonicalItemKey !== null &&
+      (typeof source.canonicalItemKey !== 'string' || source.canonicalItemKey === '')) ||
+    (source.committedAt !== null &&
+      (typeof source.committedAt !== 'string' || source.committedAt === '')) ||
+    !Array.isArray(source.sourceRefs) ||
+    source.sourceRefs.length > 100 ||
+    source.sourceRefs.some(
+      (ref) => typeof ref !== 'string' || ref === '' || utf8ByteLength(ref) > 2_048,
+    )
   )
     return null
-  const rendered = source.rendered as Record<string, unknown>
+  if (source.revalidation !== null) {
+    if (
+      typeof source.revalidation !== 'object' ||
+      Array.isArray(source.revalidation) ||
+      source.revalidation === null
+    )
+      return null
+    const revalidation = source.revalidation as Record<string, unknown>
+    const keys = ['status', 'semanticStatus', 'evidenceStatus', 'dependencyStatus']
+    if (
+      Object.keys(revalidation).length !== keys.length ||
+      Object.keys(revalidation).some((key) => !keys.includes(key)) ||
+      typeof revalidation.status !== 'string' ||
+      revalidation.status === '' ||
+      keys.slice(1).some((key) => {
+        const item = revalidation[key]
+        return item !== null && (typeof item !== 'string' || item === '')
+      })
+    )
+      return null
+  }
   if (
-    Object.keys(rendered).length !== 2 ||
-    Object.keys(rendered).some((key) => key !== 'en' && key !== 'zh') ||
-    typeof rendered.en !== 'string' ||
-    rendered.en.trim() === '' ||
-    /\r|\n/.test(rendered.en) ||
-    utf8ByteLength(rendered.en) > 8_192 ||
-    typeof rendered.zh !== 'string' ||
-    rendered.zh.trim() === '' ||
-    /\r|\n/.test(rendered.zh) ||
-    utf8ByteLength(rendered.zh) > 8_192
+    (source.status === 'available' &&
+      (source.excerpt === null ||
+        source.findingType === null ||
+        source.epistemicKind === null ||
+        source.canonicalItemKey === null ||
+        source.committedAt === null)) ||
+    (source.status === 'missing' &&
+      (source.excerpt !== null ||
+        source.truncated ||
+        source.findingType !== null ||
+        source.epistemicKind !== null ||
+        source.canonicalItemKey !== null ||
+        source.committedAt !== null)) ||
+    (source.status === 'unsupported' && source.excerpt !== null) ||
+    (source.truncated && source.excerpt === null)
   )
     return null
   return {
     ...source,
-    rendered: { en: rendered.en, zh: rendered.zh },
+    sourceRefs: [...source.sourceRefs],
+    revalidation:
+      source.revalidation === null ? null : { ...(source.revalidation as Record<string, unknown>) },
   } as unknown as MarivoEvidenceSource
 }
 
@@ -744,7 +800,6 @@ export function MarivoEvidenceSourcesPanel({
   t: (key: string, values?: Record<string, string>) => string
 }) {
   const groups = groupMarivoEvidenceSources(sources)
-  const language = t('source.language') === 'zh' ? 'zh' : 'en'
   return (
     <details style={sourcePanelStyle} aria-label={t('source.title')} data-marivo-sources-panel>
       <summary style={sourcePanelSummaryStyle}>
@@ -758,12 +813,14 @@ export function MarivoEvidenceSourcesPanel({
       </summary>
       <ul style={sourceGroupListStyle}>
         {groups.map((group, index) => {
-          const qualities = [
+          const statuses = [...new Set(group.sources.map((source) => source.status))]
+          const committed = [
             ...new Set(
-              group.sources.map((source) => source.qualityStatus ?? t('source.unlabeled')),
+              group.sources
+                .map((source) => source.committedAt)
+                .filter((value): value is string => value !== null),
             ),
           ]
-          const committed = [...new Set(group.sources.map((source) => source.committedAt))]
           return (
             <li key={group.key} style={sourceGroupStyle}>
               <strong>{t('source.artifact', { index: String(index + 1) })}</strong>
@@ -771,9 +828,9 @@ export function MarivoEvidenceSourcesPanel({
                 <span style={sourceSecondaryStyle}>
                   {t('source.findings', { count: String(group.sources.length) })}
                 </span>
-                {qualities.map((quality) => (
-                  <span key={quality} style={sourceBadgeStyle}>
-                    {t('source.quality', { value: quality })}
+                {statuses.map((status) => (
+                  <span key={status} style={sourceBadgeStyle}>
+                    {t('source.status', { value: status })}
                   </span>
                 ))}
                 {committed.length === 1 ? (
@@ -796,29 +853,53 @@ export function MarivoEvidenceSourcesPanel({
                   </span>
                   {group.sources.map((source) => (
                     <div key={evidenceSourceIdentity(source)} style={sourceFindingStyle}>
-                      <p style={sourceStatementStyle}>{source.rendered[language]}</p>
+                      <strong>{source.title}</strong>
+                      <p style={sourceStatementStyle}>
+                        {source.excerpt ?? t('source.unavailable')}
+                      </p>
                       <div style={sourceIdentityStyle}>
-                        <span style={sourceBadgeStyle}>{source.findingType}</span>
-                        <span style={sourceBadgeStyle}>{source.epistemicKind}</span>
                         <span style={sourceBadgeStyle}>
-                          {t('source.quality', {
-                            value: source.qualityStatus ?? t('source.unlabeled'),
+                          {t('source.status', { value: source.status })}
+                        </span>
+                        <span style={sourceBadgeStyle}>
+                          {t('source.excerptState', {
+                            value: source.truncated ? t('source.truncated') : t('source.complete'),
                           })}
                         </span>
+                        {source.findingType === null ? null : (
+                          <span style={sourceBadgeStyle}>{source.findingType}</span>
+                        )}
+                        {source.epistemicKind === null ? null : (
+                          <span style={sourceBadgeStyle}>{source.epistemicKind}</span>
+                        )}
                       </div>
+                      <span style={sourceSecondaryStyle}>
+                        {t('source.locator', { value: source.locator })}
+                      </span>
                       <span style={sourceSecondaryStyle}>
                         {t('source.finding', { id: source.findingId })}
                       </span>
+                      {source.canonicalItemKey === null ? null : (
+                        <span style={sourceSecondaryStyle}>
+                          {t('source.item', { id: source.canonicalItemKey })}
+                        </span>
+                      )}
+                      {source.committedAt === null ? null : (
+                        <span style={sourceSecondaryStyle}>
+                          {t('source.committed', { committedAt: source.committedAt })}
+                        </span>
+                      )}
                       <span style={sourceSecondaryStyle}>
-                        {t('source.item', { id: source.canonicalItemKey })}
+                        {t('source.revalidation', {
+                          value: source.revalidation?.status ?? t('source.unavailable'),
+                        })}
                       </span>
                       <span style={sourceSecondaryStyle}>
-                        {t('source.committed', { committedAt: source.committedAt })}
-                      </span>
-                      <span style={sourceSecondaryStyle}>
-                        {t('source.versions', {
-                          extractor: source.extractorVersion,
-                          schema: source.artifactSchemaVersion,
+                        {t('source.refs', {
+                          value:
+                            source.sourceRefs.length === 0
+                              ? t('source.unavailable')
+                              : source.sourceRefs.join(', '),
                         })}
                       </span>
                     </div>

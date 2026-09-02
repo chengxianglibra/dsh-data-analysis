@@ -47,7 +47,7 @@ doctor 即使以非零 exit code 返回，只要 stdout 是完整报告，仍按
 ## 固定子进程策略
 
 `FixedSubprocessPolicy` 的当前策略标识为
-`direct-argv-inherited-env-snapshot-overlay-v1`，关键约束如下：
+`direct-argv-inherited-env-snapshot-overlay-v2`，关键约束如下：
 
 - `spawn(executable, args)` 使用 direct argv 和 `shell: false`；
 - `cwd` 与基础环境在创建 binding 时一次冻结；
@@ -96,9 +96,9 @@ Datasource 连接失败不会污染 binding。
 
 | Adapter | 所有的 Marivo 操作与投影 |
 | --- | --- |
-| `MarivoHelpBridge` | `marivo.help()` inventory、`marivo.help(target)` program、raw Help body 与错误映射 |
+| `MarivoHelpBridge` | shared Runtime 上的 `marivo.help()` inventory、`marivo.help(target)` program、raw Help body 与错误映射；不解析 Workspace |
 | `MarivoDatasourceBridge` | `md.describe/list/test` programs、凭证引用与测试结果解析 |
-| `MarivoEvidenceBridge` | 精确 Artifact-owned Finding 读取、双语 render、identity/order parser |
+| `MarivoEvidenceBridge` | 精确 Artifact-owned Finding、公开 source refs、bounded render 与 revalidation 的 identity/order parser |
 
 adapter 分别位于自己的 `disclosure/`、`datasource/`、`evidence/` 目录。组合层按
 `MarivoEnvironment` 缓存一组 adapter，但 Environment 本身不暴露领域属性或 forwarding methods。

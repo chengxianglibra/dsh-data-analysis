@@ -1,5 +1,6 @@
 {
-  "schema": "dsh-data-analysis-session-trace/v1",
+  "schema": "dsh-data-analysis-session-trace/v2",
+  "detail": "reader",
   "trace_id": "trace-failed",
   "emitted_at": "2026-08-31T12:00:00Z",
   "session_id": "session-1",
@@ -34,11 +35,12 @@
       "input_artifact_refs": ["artifact-input"],
       "started_at": "2026-08-31T11:57:00Z",
       "failed_at": "2026-08-31T11:58:00Z",
-      "failure": { "error_type": "AnalysisError", "location": null }
+      "failure": { "error_type": "AnalysisError", "location": null },
+      "queries": [],
+      "queries_omitted": 0
     }
   ],
   "edges": [{ "kind": "consumes", "run_id": "run-failed", "artifact_ref": "artifact-input" }],
-  "queries": [],
   "root_run_ids": [],
   "head_artifact_refs": ["artifact-input"],
   "failed_run_ids": ["run-failed"],

@@ -43,30 +43,42 @@ if (process.env.EVIDENCE_MODE === 'slow') {
   process.stdout.write('{}')
   process.exit(0)
 }
-const findings = selections.map((selection, index) => ({
+const sources = selections.map((selection, index) => ({
+  status: process.env.EVIDENCE_MODE === 'missing'
+    ? 'missing'
+    : process.env.EVIDENCE_MODE === 'unsupported' ? 'unsupported' : 'available',
+  title: 'metric_value Finding: item-' + selection.findingId,
+  locator: 'marivo://session/' + sessionId + '/artifact/' + selection.artifactRef + '/finding/' + selection.findingId,
+  excerpt: process.env.EVIDENCE_MODE === 'missing' || process.env.EVIDENCE_MODE === 'unsupported'
+    ? null
+    : process.env.EVIDENCE_MODE === 'bounded-render'
+      ? 'x'.repeat(4096)
+      : process.env.EVIDENCE_MODE === 'oversize-render'
+        ? 'x'.repeat(4097)
+        : process.env.EVIDENCE_MODE === 'truncated'
+          ? 'Finding\noutput truncated at 4096 bytes; omitted: source_refs'
+          : 'Metric ' + selection.findingId + ': observed 12.',
+  truncated: process.env.EVIDENCE_MODE === 'truncated',
   finding_id: selection.findingId,
-  finding_type: process.env.EVIDENCE_MODE === 'extended-vocabulary'
+  finding_type: process.env.EVIDENCE_MODE === 'missing' ? null : process.env.EVIDENCE_MODE === 'extended-vocabulary'
     ? 'future_finding_type'
     : (index % 2 === 0 ? 'metric_value' : 'delta'),
-  epistemic_kind: process.env.EVIDENCE_MODE === 'extended-vocabulary'
+  epistemic_kind: process.env.EVIDENCE_MODE === 'missing' ? null : process.env.EVIDENCE_MODE === 'extended-vocabulary'
     ? 'future_epistemic_kind'
     : (index % 2 === 0 ? 'observed' : 'algebraic'),
   artifact_ref: selection.artifactRef,
   session_id: process.env.WRONG_SESSION === '1' ? 'other-session' : sessionId,
-  canonical_item_key: 'item-' + selection.findingId,
-  quality_status: process.env.EVIDENCE_MODE === 'extended-vocabulary'
-    ? 'future_quality_status'
-    : (index % 3 === 0 ? 'ready' : null),
-  committed_at: '2026-08-26T00:00:00+00:00',
-  extractor_version: 'v4',
-  artifact_schema_version: 'v4',
-  rendered: process.env.EVIDENCE_MODE === 'bounded-render'
-    ? { en: 'x'.repeat(8192), zh: '值'.repeat(2730) }
-    : process.env.EVIDENCE_MODE === 'oversize-render'
-      ? { en: 'x'.repeat(8193), zh: '值'.repeat(2731) }
-      : { en: 'Metric ' + selection.findingId + ': observed 12.', zh: '指标 ' + selection.findingId + '：观测值为 12。' },
+  canonical_item_key: process.env.EVIDENCE_MODE === 'missing' ? null : 'item-' + selection.findingId,
+  committed_at: process.env.EVIDENCE_MODE === 'missing' ? null : '2026-08-26T00:00:00+00:00',
+  source_refs: process.env.EVIDENCE_MODE === 'missing' ? [] : ['frame-source#row=' + index],
+  revalidation: {
+    status: 'admissible',
+    semantic_status: 'current',
+    evidence_status: 'complete',
+    dependency_status: 'admissible',
+  },
 }))
-process.stdout.write(JSON.stringify({ session_id: sessionId, findings }))
+process.stdout.write(JSON.stringify({ session_id: sessionId, sources }))
 `
 
 async function fixture(options: { mode?: string; wrongSession?: boolean } = {}) {
@@ -160,17 +172,16 @@ test('exact Finding reads return only this call sources without presentation noi
     ['artifact-shared', 'artifact-shared'],
   )
   assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'artifactId'), false)
-  assert.deepEqual(value.sources[0]?.rendered, {
-    en: 'Metric finding-a: observed 12.',
-    zh: '指标 finding-a：观测值为 12。',
-  })
+  assert.equal(value.sources[0]?.excerpt, 'Metric finding-a: observed 12.')
+  assert.equal(value.sources[0]?.status, 'available')
+  assert.equal(value.sources[0]?.revalidation?.status, 'admissible')
   assert.equal(Object.hasOwn(value, 'registry'), false)
   assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'handle'), false)
   assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'marker'), false)
   assert.equal(Object.hasOwn(value.sources[0] ?? {}, 'definition'), false)
   const meta = (result as { meta?: Record<string, unknown> }).meta
   assert.equal(meta?.kind, MARIVO_EVIDENCE_SOURCES_META_KIND)
-  assert.equal(meta?.version, 1)
+  assert.equal(meta?.version, 2)
   assert.equal(meta?.dshSessionId, String(f.session.id))
   assert.deepEqual(meta?.sources, value.sources)
   assert.doesNotMatch(JSON.stringify(result.content), /\[\^mv-|footnote definition/i)
@@ -245,7 +256,6 @@ test('render bounds, Marivo vocabulary, and identity stay fail closed', async (t
   const future = sourceValue(await sources(extended.ctx, 'mv-future', ['finding-a'])).sources[0]
   assert.equal(future?.findingType, 'future_finding_type')
   assert.equal(future?.epistemicKind, 'future_epistemic_kind')
-  assert.equal(future?.qualityStatus, 'future_quality_status')
 
   for (const mode of ['oversize-render', 'read-failed', 'invalid-json', 'identity']) {
     const f = await fixture({ mode })
@@ -255,6 +265,22 @@ test('render bounds, Marivo vocabulary, and identity stay fail closed', async (t
   const wrong = await fixture({ wrongSession: true })
   t.after(wrong.cleanup)
   assert.equal((await sources(wrong.ctx, 'mv-error', ['finding-a'])).isError, true)
+})
+
+test('headless transcript exposes bounded source, missing, unsupported, truncation, and revalidation states', async (t) => {
+  for (const mode of [undefined, 'missing', 'unsupported', 'truncated'] as const) {
+    const f = await fixture({ mode })
+    t.after(f.cleanup)
+    const result = await sources(f.ctx, 'mv-portable', ['finding-a'])
+    assert.equal(result.isError, false)
+    const text = result.content.map((item) => ('text' in item ? item.text : '')).join('\n')
+    assert.match(text, /locator: marivo:\/\/session\/mv-portable/)
+    assert.match(text, /revalidation: admissible/)
+    assert.match(text, /source identity and availability do not prove/i)
+    if (mode === 'missing') assert.match(text, /status: missing.*excerpt: unavailable/s)
+    if (mode === 'unsupported') assert.match(text, /status: unsupported.*excerpt: unavailable/s)
+    if (mode === 'truncated') assert.match(text, /excerpt_state: truncated/)
+  }
 })
 
 test('Evidence bridge timeout remains bounded by the shared subprocess policy', async (t) => {
@@ -282,6 +308,11 @@ test('Code Mode logs one durable source block without changing nested Tool text'
     sessionId: 'mv-session',
     sources: [
       {
+        status: 'available',
+        title: 'metric_value Finding: item-a',
+        locator: 'marivo://session/mv-session/artifact/artifact-a/finding/finding-a',
+        excerpt: 'Observed 12.',
+        truncated: false,
         environmentFingerprint: 'f'.repeat(64),
         sessionId: 'mv-session',
         findingId: 'finding-a',
@@ -289,11 +320,14 @@ test('Code Mode logs one durable source block without changing nested Tool text'
         epistemicKind: 'observed',
         artifactRef: 'artifact-a',
         canonicalItemKey: 'item-a',
-        qualityStatus: 'ready',
         committedAt: '2026-08-26T00:00:00+00:00',
-        extractorVersion: 'v4',
-        artifactSchemaVersion: 'v4',
-        rendered: { en: 'Observed 12.', zh: '观测值为 12。' },
+        sourceRefs: ['frame-source#row=0'],
+        revalidation: {
+          status: 'admissible',
+          semanticStatus: 'current',
+          evidenceStatus: 'complete',
+          dependencyStatus: 'admissible',
+        },
       },
     ],
   }
@@ -330,7 +364,7 @@ test('Code Mode logs one durable source block without changing nested Tool text'
       turn: 7,
       meta: {
         kind: 'marivo-evidence-sources',
-        version: 1,
+        version: 2,
         dshSessionId: 'dsh-session',
         sources: value.sources,
       },

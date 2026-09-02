@@ -19,15 +19,15 @@ interface PackageManifest {
   readonly peerDependenciesMeta?: Readonly<Record<string, unknown>>
 }
 
-test('v1 compatibility manifest binds plugin, DSH, Marivo, and project contracts', () => {
-  assert.equal(PLUGIN_VERSION, '1.0.0')
-  assert.equal(COMPATIBILITY_SCHEMA, 'dsh-data-analysis-compatibility/v1')
+test('v2 compatibility manifest binds plugin, DSH, Marivo, and project contracts', () => {
+  assert.equal(PLUGIN_VERSION, '2.0.0')
+  assert.equal(COMPATIBILITY_SCHEMA, 'dsh-data-analysis-compatibility/v2')
   assert.equal(DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.distribution, '@deepseek-ai/dsh')
   assert.equal(DSH_PEER_RANGE, '0.1.1-rc.2')
-  assert.equal(MARIVO_VERSION, '0.5.2')
-  assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.2')
-  assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v1')
-  assert.equal(SUBPROCESS_POLICY_VERSION, 'direct-argv-inherited-env-snapshot-overlay-v1')
+  assert.equal(MARIVO_VERSION, '0.5.3')
+  assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.3')
+  assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v2')
+  assert.equal(SUBPROCESS_POLICY_VERSION, 'direct-argv-inherited-env-snapshot-overlay-v2')
   const pluginMajor = Number(PLUGIN_VERSION.split('.')[0])
   assert.ok(
     Object.values(DSH_DATA_ANALYSIS_COMPATIBILITY.contracts).every(

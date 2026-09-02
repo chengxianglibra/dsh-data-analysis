@@ -10,17 +10,21 @@ import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesyst
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
 import { registerMarivoDatasourceTestTool } from './datasource/index.ts'
-import { MarivoShellCredentialBridge } from './datasource/shell-env.ts'
+import {
+  MARIVO_CREDENTIAL_GRANT_PREFIX,
+  MarivoShellCredentialGrants,
+  registerMarivoRuntimeShellEnvironment,
+} from './datasource/shell-env.ts'
+import { MarivoHelpBridge, type MarivoHelpBridgeSource } from './disclosure/bridge.ts'
 import {
   installMarivoDisclosure,
   type MarivoDisclosureController,
   type MarivoDisclosureOptions,
 } from './disclosure/index.ts'
 import {
+  createSharedMarivoRuntimeRunner,
   DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS,
   ensureSharedMarivoRuntime,
-  MARIVO_PERSIST_CREDENTIALS_DISABLED,
-  MARIVO_PERSIST_CREDENTIALS_ENV,
   MarivoEnvironment,
   type MarivoEnvironmentSource,
   MarivoWorkspaceEnvironmentManager,
@@ -42,22 +46,20 @@ export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'Never ask the user to provide credential values in chat, and never place credential values in commands or project files.',
   'Immediately after md.register(...) or a manual datasource-file change, call marivo_datasource_test with that datasource name.',
   'If marivo_datasource_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_datasource_test before continuing.',
+  `Only a successful test returns a one-shot grant. To use it, start one foreground bash or pwsh command with ${MARIVO_CREDENTIAL_GRANT_PREFIX}<token>, set MARIVO_PERSIST_CREDENTIALS=0 inside that command, and invoke $DSH_DATA_ANALYSIS_PYTHON (bash) or $env:DSH_DATA_ANALYSIS_PYTHON (pwsh).`,
+  'Never use a grant with background or persistent Shell execution. A claim is consumed even if later credential resolution fails.',
 ].join(' ')
 
 export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
-  'When marivo-analysis is active, do not call marivo_evidence_sources by default merely because the answer contains Findings, facts, numbers, or tables.',
-  'Call marivo_evidence_sources only when the user explicitly requests sources, provenance, citations, or audit details for facts supported by exact persisted Findings.',
-  'After a successful call, never copy or restate the supported fact, any numeric or textual value from it, Finding statements, machine identifiers, markers, footnotes, or a source appendix into the final answer; this includes every Session, Finding, Artifact, canonical item, schema, extractor, and Environment identifier seen in Skill context, Tool arguments, or Tool results.',
-  'Even when the user requests audit details, those machine identities and technical fields belong only in the Web source panel, which displays them on demand.',
-  'Do not announce the Tool call, describe the source panel, say where the details can be viewed, or repeat standard Evidence mechanics in the final answer.',
-  'If the user request is solely for sources, the final answer must be only one brief acknowledgement that the source details are attached; it must not mention the Web, a panel, or any display location.',
-  'If an explicitly requested fact has no exact persisted Finding, disclose that unsupported boundary instead of inventing a source.',
-  'Keep only decision-relevant scope, quality, freshness, and limitation disclosures in ordinary prose; do not emit a boilerplate quality or evidence section when nothing material needs disclosure.',
-  'A source attachment proves the identity of its Marivo Evidence source; it does not prove that the whole sentence, calculation, or business judgment is correct.',
+  'Call marivo_evidence_sources only when the user explicitly requests sources, citations, provenance, or audit details.',
+  'Request only exact persisted Findings by Marivo Session, Artifact, and Finding identity.',
+  'Treat source existence as identity and availability evidence, not as proof that the whole conclusion, calculation, or business judgment is entailed or correct.',
+  'If no exact Finding exists or its source cannot be recovered, say so instead of inventing or approximating a source.',
 ].join(' ')
 
 export const MARIVO_REPORT_PROMPT = [
-  'Use dsh-data-analysis-report when the user requests HTML/web output or the answer needs multiple charts/tables or a long multi-section presentation.',
+  'Use dsh-data-analysis-report only when the user explicitly requests HTML/web or a durable report file, accepts an Agent proposal to create one, or asks to revise an existing Workspace report bundle.',
+  'Answer ordinary analysis in the conversation even when it is long or contains multiple charts or tables.',
   'For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
 ].join(' ')
 
@@ -66,30 +68,6 @@ const integrationSkillsRoot = path.resolve(
   '..',
   'skills',
 )
-
-let persistencePolicyUsers = 0
-let previousPersistencePolicy: string | undefined
-
-function acquirePersistencePolicy(): () => void {
-  if (persistencePolicyUsers === 0) {
-    previousPersistencePolicy = process.env[MARIVO_PERSIST_CREDENTIALS_ENV]
-  }
-  persistencePolicyUsers += 1
-  process.env[MARIVO_PERSIST_CREDENTIALS_ENV] = MARIVO_PERSIST_CREDENTIALS_DISABLED
-  let active = true
-  return () => {
-    if (!active) return
-    active = false
-    persistencePolicyUsers -= 1
-    if (persistencePolicyUsers !== 0) return
-    if (previousPersistencePolicy === undefined) {
-      delete process.env[MARIVO_PERSIST_CREDENTIALS_ENV]
-    } else {
-      process.env[MARIVO_PERSIST_CREDENTIALS_ENV] = previousPersistencePolicy
-    }
-    previousPersistencePolicy = undefined
-  }
-}
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -103,8 +81,6 @@ export interface Config {
   readonly uvExecutable?: string
   /** Maximum time for installation and lock acquisition. */
   readonly installTimeoutMs?: number
-  /** Create missing marivo.toml, models/, and .marivo/ in each Workspace. */
-  readonly initializeWorkspace?: boolean
 }
 
 /** Cordis loader schema. Runtime defaults are resolved in {@link apply}. */
@@ -114,7 +90,6 @@ export const Config: z<Config> = z.object({
   runtimeRoot: z.string(),
   uvExecutable: z.string(),
   installTimeoutMs: z.number().default(DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS),
-  initializeWorkspace: z.boolean().default(true),
 })
 
 function configuredProjectRoot(config: Config, agent: Agent): string {
@@ -141,16 +116,16 @@ export function installMarivoPlugin(
   options: MarivoDisclosureOptions & {
     /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
     credentials?: Pick<CredentialProvider, 'resolve'>
+    /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
+    helpBridgeSource?: MarivoHelpBridgeSource
   } = {},
 ): () => void {
   const installed = new Map<Agent, MarivoDisclosureController>()
-  const releasePersistencePolicy = acquirePersistencePolicy()
   const credentials = options.credentials ?? ctx.credentials
   if (credentials === undefined) {
-    releasePersistencePolicy()
     throw new Error('dsh-data-analysis requires the DSH credentials service')
   }
-  const shellCredentials = new MarivoShellCredentialBridge(ctx, credentials)
+  const shellCredentials = new MarivoShellCredentialGrants(ctx, credentials)
   const bridgeSets = new WeakMap<MarivoEnvironment, MarivoBridgeSet>()
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
@@ -167,16 +142,15 @@ export function installMarivoPlugin(
       }
       return bridges
     }
-    const helpSource = async () => (await resolveBridgeSet()).help
+    const helpSource = options.helpBridgeSource ?? (async () => (await resolveBridgeSet()).help)
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
     const evidenceSource = async () => (await resolveBridgeSet()).evidence
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     controller.addDisposer(shellCredentials.installAgent(agent, datasourceSource))
     controller.addDisposer(
       registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentials, {
-        onDescribe: (bridge, datasourceName, refs) => {
-          shellCredentials.recordDatasource(bridge, datasourceName, refs)
-        },
+        issueShellGrant: (bridge, datasourceName, refs) =>
+          shellCredentials.issueGrant(agent, bridge, datasourceName, refs),
       }),
     )
     controller.addDisposer(
@@ -217,7 +191,6 @@ export function installMarivoPlugin(
   } catch (error: unknown) {
     for (const controller of installed.values()) controller.dispose()
     shellCredentials.dispose()
-    releasePersistencePolicy()
     throw error
   }
 
@@ -237,7 +210,6 @@ export function installMarivoPlugin(
     for (const controller of installed.values()) controller.dispose()
     installed.clear()
     shellCredentials.dispose()
-    releasePersistencePolicy()
   }
 }
 
@@ -252,18 +224,33 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => vo
     ...(uvExecutable === undefined ? {} : { uvExecutable }),
     ...(config.installTimeoutMs === undefined ? {} : { installTimeoutMs: config.installTimeoutMs }),
   })
-  installSkillFilesystem(ctx, {
-    providerName: 'dsh-data-analysis-marivo',
-    includeDefaultRoots: false,
-    customSkillDirs: [runtime.skillsRoot, integrationSkillsRoot],
-    watch: false,
-  })
-  const manager = new MarivoWorkspaceEnvironmentManager(runtime, config.initializeWorkspace ?? true)
-  const disposePlugin = installMarivoPlugin(ctx, (agent) =>
-    manager.resolve(configuredProjectRoot(config, agent)),
+  const disposeRuntimeShellEnvironment = registerMarivoRuntimeShellEnvironment(
+    ctx,
+    runtime.pythonExecutable,
   )
+  const manager = new MarivoWorkspaceEnvironmentManager(runtime)
+  let disposePlugin: () => void
+  try {
+    installSkillFilesystem(ctx, {
+      providerName: 'dsh-data-analysis-marivo',
+      includeDefaultRoots: false,
+      customSkillDirs: [runtime.skillsRoot, integrationSkillsRoot],
+      watch: false,
+    })
+    const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))
+    disposePlugin = installMarivoPlugin(
+      ctx,
+      (agent) => manager.resolve(configuredProjectRoot(config, agent)),
+      { helpBridgeSource: helpBridge },
+    )
+  } catch (error) {
+    manager.dispose()
+    disposeRuntimeShellEnvironment()
+    throw error
+  }
   return () => {
     disposePlugin()
     manager.dispose()
+    disposeRuntimeShellEnvironment()
   }
 }

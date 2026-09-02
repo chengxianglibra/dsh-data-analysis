@@ -131,19 +131,27 @@ test('Datasource bridge rejects missing and additional private projection fields
 
 test('Evidence bridge owns exact Finding identity and order parsing', async () => {
   const finding = {
+    status: 'available',
+    title: 'metric_observation Finding: metric|a',
+    locator: 'marivo://session/session-a/artifact/artifact-a/finding/finding-a',
+    excerpt: 'Observed value.',
+    truncated: false,
     finding_id: 'finding-a',
     finding_type: 'metric_observation',
     epistemic_kind: 'observed',
     artifact_ref: 'artifact-a',
     session_id: 'session-a',
     canonical_item_key: 'metric|a',
-    quality_status: null,
     committed_at: '2026-08-30T00:00:00+00:00',
-    extractor_version: 'v1',
-    artifact_schema_version: 'v4',
-    rendered: { en: 'Observed value.', zh: '已观测。' },
+    source_refs: ['frame-a#row=0'],
+    revalidation: {
+      status: 'admissible',
+      semantic_status: 'current',
+      evidence_status: 'complete',
+      dependency_status: 'admissible',
+    },
   }
-  const runner = new FakeCheckedRunner(result({ session_id: 'session-a', findings: [finding] }))
+  const runner = new FakeCheckedRunner(result({ session_id: 'session-a', sources: [finding] }))
   const bridge = new MarivoEvidenceBridge(runner)
   const projected = await bridge.findings('session-a', [
     { artifactRef: 'artifact-a', findingId: 'finding-a' },
@@ -161,29 +169,37 @@ test('Evidence bridge owns exact Finding identity and order parsing', async () =
 
 test('Evidence bridge rejects additional Finding fields and exact-order drift', async () => {
   const finding = {
+    status: 'available',
+    title: 'metric_observation Finding: metric|a',
+    locator: 'marivo://session/session-a/artifact/artifact-a/finding/finding-b',
+    excerpt: 'Observed value.',
+    truncated: false,
     finding_id: 'finding-b',
     finding_type: 'metric_observation',
     epistemic_kind: 'observed',
     artifact_ref: 'artifact-a',
     session_id: 'session-a',
     canonical_item_key: 'metric|a',
-    quality_status: null,
     committed_at: '2026-08-30T00:00:00+00:00',
-    extractor_version: 'v1',
-    artifact_schema_version: 'v4',
-    rendered: { en: 'Observed value.', zh: '已观测。' },
+    source_refs: ['frame-a#row=0'],
+    revalidation: {
+      status: 'admissible',
+      semantic_status: 'current',
+      evidence_status: 'complete',
+      dependency_status: 'admissible',
+    },
   }
   await assert.rejects(
     new MarivoEvidenceBridge(
       new FakeCheckedRunner(
-        result({ session_id: 'session-a', findings: [{ ...finding, extra: true }] }),
+        result({ session_id: 'session-a', sources: [{ ...finding, extra: true }] }),
       ),
     ).findings('session-a', [{ artifactRef: 'artifact-a', findingId: 'finding-b' }]),
     /invalid Finding payload/,
   )
   await assert.rejects(
     new MarivoEvidenceBridge(
-      new FakeCheckedRunner(result({ session_id: 'session-a', findings: [finding] })),
+      new FakeCheckedRunner(result({ session_id: 'session-a', sources: [finding] })),
     ).findings('session-a', [{ artifactRef: 'artifact-a', findingId: 'finding-a' }]),
     /invalid Finding payload/,
   )

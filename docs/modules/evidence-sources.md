@@ -2,8 +2,8 @@
 
 ## 作用
 
-本模块把用户明确选择的 Marivo Artifact-owned Finding 投影为 DSH Turn metadata，并在 Web 的折叠来源
-面板中展示。它只拥有跨 DSH Turn/Web 的交付，不是 Evidence 分析读取 API，也不判断 Finding 是否蕴含
+本模块把用户明确选择的 Marivo Artifact-owned Finding 投影为所有 client 可读的 Tool transcript，并在 Web
+以同一 closed result 增强为折叠来源面板。它只拥有跨 DSH Turn/client 的交付，不是 Evidence 分析读取 API，也不判断 Finding 是否蕴含
 Agent 的句子、计算或建议。
 
 ## Tool contract
@@ -35,14 +35,15 @@ sequenceDiagram
   loop each pair
     B->>M: session.artifact(artifact_ref)
     B->>M: artifact.finding(finding_id)
-    B->>B: verify Session and Artifact ownership
+    B->>B: verify Session and Artifact ownership; project public revalidation
   end
   B-->>T: bounded faithful projection
   T-->>D: Tool result meta / durable Code block
 ```
 
-Bridge 使用当前 binding 的 checked runner。Marivo 的 `FindingNotFoundError` 或跨 Artifact pair 会使整次请求
-失败；不回退到 Session-wide 搜索，不尝试 compatibility、自动组合或替代 Finding。
+Bridge 使用当前 binding 的 checked runner。找不到精确 Artifact/Finding 时返回 `missing`；读取到的 Finding
+仍必须精确属于请求 Session/Artifact，identity mismatch fail closed。它不回退到 Session-wide 搜索，不尝试
+compatibility、自动组合或替代 Finding。
 
 ## 输出与 Web 投影
 
@@ -50,13 +51,15 @@ Bridge 使用当前 binding 的 checked runner。Marivo 的 `FindingNotFoundErro
 
 - Environment fingerprint；
 - Session ID、Artifact ref、Finding ID；
-- Finding/epistemic kind、canonical item、quality、commit time；
-- extractor 与 Artifact schema version；
-- Marivo 公共 `Finding.render(language="en" | "zh")` 的单行有界文本。
+- `available`、`missing` 或 `unsupported` 状态；
+- 有界人类可读 title、精确 locator 与最多 4096 UTF-8 bytes 的 excerpt；
+- Finding/epistemic kind、canonical item、commit time 与公开 `source_refs`；
+- `truncated` 标志和公开 `session.revalidate(artifact_ref)` 状态；无法取得时明确 `unavailable`。
 
-输出字段使用 `artifactRef`，不保留旧 `artifactId` alias。Native 成功结果把 meta 附在本 Turn；Code Mode
-子调用把相同 meta 放到 durable `marivo-evidence-sources-card`。Web 严格解析闭合 shape、去重 identity，按
-Environment + Session + Artifact 分组，并默认折叠技术审计字段。
+输出字段使用 `artifactRef`，不保留旧 `artifactId` alias。Tool text 是权威交付，包含每个来源及“来源 identity
+不证明整个结论正确”的边界。Native 成功结果把同一结构化值附在本 Turn；Code Mode 子调用把相同 meta 放到
+durable `marivo-evidence-sources-card`。Web 严格解析 v2 closed shape、去重 identity，按 Environment + Session +
+Artifact 分组并默认折叠。未知 metadata version 安全忽略，不重放 v1。
 
 ## 调用策略
 
@@ -66,8 +69,8 @@ Environment + Session + Artifact 分组，并默认折叠技术审计字段。
 成功投影只证明来源 identity：
 
 - 不证明整句话、计算、图表或业务判断正确；
-- 不拦截最终回答；
-- 不自动生成 marker、脚注、appendix 或报告 provenance；
+- headless、remote 或不识别 metadata 的 client 仍可仅凭 Tool transcript 完整回答来源问题；
+- Web 不重新读取 Evidence，也不产生第二套事实；
 - 不要求 HTML 报告调用该 Tool。
 
 ## 验证
@@ -77,6 +80,7 @@ npm run test:evidence-sources
 npm run validate:evidence-sources:real
 ```
 
-确定性测试覆盖输入闭合、pair identity/order、跨 Artifact fail-closed、输出边界、Code Mode durable metadata
-和 Web replay。真实 runner 必须使用精确支持的 Marivo 0.5.2 及真实 Agent；版本或 identity 不匹配时应
+确定性测试覆盖输入闭合、pair identity/order、跨 Artifact fail-closed、missing/unsupported/truncated/
+revalidation、headless transcript、Code Mode durable metadata 和 Web progressive enhancement。真实 runner 必须
+使用精确支持的 Marivo 0.5.3 及真实 Agent；版本或 identity 不匹配时应
 记录为发布阻断，而不是沿用旧 Session Evidence namespace。

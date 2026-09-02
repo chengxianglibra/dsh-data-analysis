@@ -10,13 +10,15 @@ import { MARIVO_EVIDENCE_SOURCES_TOOL_NAME } from '../../src/evidence/index.ts'
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const sourceRoot = path.join(packageRoot, 'src')
 const reportSkillPath = path.join(packageRoot, 'skills', 'dsh-data-analysis-report', 'SKILL.md')
+const reportKitSourceRoot = path.join(packageRoot, 'python', 'report-kit', 'src')
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const result: string[] = []
   for (const entry of await readdir(directory)) {
     const target = path.join(directory, entry)
     if ((await stat(target)).isDirectory()) result.push(...(await sourceFiles(target)))
-    else if (target.endsWith('.ts') || target.endsWith('.tsx')) result.push(target)
+    else if (target.endsWith('.ts') || target.endsWith('.tsx') || target.endsWith('.py'))
+      result.push(target)
   }
   return result
 }
@@ -72,18 +74,37 @@ test('removed and rejected convenience surfaces cannot regress into plugin sourc
   await assert.rejects(() => stat(path.join(sourceRoot, 'report-disclosure')), { code: 'ENOENT' })
 })
 
+test('report transport does not reopen Session, Store, or synthesize Query state', async () => {
+  const files = await sourceFiles(reportKitSourceRoot)
+  const source = (await Promise.all(files.map((filename) => readFile(filename, 'utf8')))).join('\n')
+  for (const forbidden of [
+    'session.resume(',
+    'open_evidence_store(',
+    'query_findings(',
+    'query_bind_values": []',
+  ]) {
+    assert.equal(
+      source.includes(forbidden),
+      false,
+      `${forbidden} must stay outside report transport`,
+    )
+  }
+  assert.match(source, /"queries": queries/)
+  assert.match(source, /getattr\(value, "queries", \(\)\)/)
+})
+
 test('package cutover removes report exports and pins the native runtime release', async () => {
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
   assert.equal(Object.hasOwn(manifest.exports, './report'), false)
   assert.equal(Object.hasOwn(manifest.exports, './report-check'), false)
   assert.equal(Object.hasOwn(manifest.bin, 'dsh-data-analysis-report-check'), false)
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.marivo, {
-    version: '0.5.2',
-    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.2',
+    version: '0.5.3',
+    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.3',
   })
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {
-    runtimeInstallation: 'dsh-data-analysis-runtime/v1',
-    subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v1',
+    runtimeInstallation: 'dsh-data-analysis-runtime/v2',
+    subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2',
   })
 })
 
@@ -93,9 +114,9 @@ test('the report Skill contains principles, data access, and only Marivo compone
   assert.match(normalized, /name: dsh-data-analysis-report/)
   assert.match(
     normalized,
-    /when an analysis needs multiple charts, tables, or a long multi-section presentation/,
+    /only when the user explicitly requests HTML\/web or a durable report file/,
   )
-  assert.match(normalized, /emit_dataset\(artifact, target, revalidation=\.\.\.\)/)
+  assert.match(normalized, /emit_dataset\(artifact, target, detail="reader", revalidation=\.\.\.\)/)
   assert.match(normalized, /emit_computed\(frame, target\)/)
   assert.match(
     normalized,
@@ -104,7 +125,11 @@ test('the report Skill contains principles, data access, and only Marivo compone
   assert.match(normalized, /不要把 DataFrame 传给 `emit_dataset`/)
   assert.match(normalized, /不要手写 `ReportData\.register\(\.\.\.\)` payload/)
   assert.match(normalized, /图表库和 DOM\/SVG\/Canvas 实现仍由 Agent 自主选择/)
-  assert.match(normalized, /emit_session_trace\(graph, target, report_artifact_refs=\[\.\.\.\]\)/)
+  assert.match(
+    normalized,
+    /emit_session_trace\(graph, target, report_artifact_refs=\[\.\.\.\], detail="reader"\)/,
+  )
+  assert.match(normalized, /detail="audit"/)
   assert.match(normalized, /每个实质支撑报告内容的 Marivo Session/)
   assert.match(normalized, /report_artifact_refs.*实际支撑可见内容/)
   assert.match(normalized, /单次最多接收 20 个 trace/)

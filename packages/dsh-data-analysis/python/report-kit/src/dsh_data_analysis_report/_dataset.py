@@ -37,7 +37,7 @@ from ._common import (
 )
 from .errors import ReportDatasetError
 
-DATASET_SCHEMA = "dsh-data-analysis-dataset/v1"
+DATASET_SCHEMA = "dsh-data-analysis-dataset/v2"
 DATASET_MAX_COLUMNS = 100
 DATASET_MAX_ROWS = 100_000
 DATASET_MAX_BYTES = 16 * 1024 * 1024
@@ -289,7 +289,7 @@ def _project_lineage(lineage: object) -> dict[str, object]:
 
 
 def _project_revalidation(
-    value: ArtifactRevalidation | None, *, artifact: BaseFrame
+    value: ArtifactRevalidation | None, *, artifact: BaseFrame, detail: Literal["reader", "audit"]
 ) -> dict[str, object]:
     if value is None:
         return {"status": "not_checked"}
@@ -342,7 +342,10 @@ def _project_revalidation(
             "artifact-contract-unsupported",
             "Revalidation dependency status is unsupported",
         )
-    issues, omitted = _project_issues(value.issues, allow_evidence_rule=True)
+    if detail == "audit":
+        issues, omitted = _project_issues(value.issues, allow_evidence_rule=True)
+    else:
+        issues, omitted = [], len(value.issues)
     return {
         "status": "checked",
         "result": value.status,
@@ -415,6 +418,7 @@ def _artifact_source(
     artifact: BaseFrame,
     df: pd.DataFrame,
     revalidation: ArtifactRevalidation | None,
+    detail: Literal["reader", "audit"],
 ) -> tuple[dict[str, object], list[dict[str, object]], str | None]:
     meta = artifact.meta
     if meta.artifact_schema_version != "analysis-artifact/v13":
@@ -475,7 +479,19 @@ def _artifact_source(
         raise ReportDatasetError(
             "artifact-contract-unsupported", "Artifact column role is unsupported"
         )
-    issues, issues_omitted = _project_issues(contract.issues, allow_evidence_rule=False)
+    if detail == "audit":
+        issues, issues_omitted = _project_issues(
+            contract.issues, allow_evidence_rule=False
+        )
+        lineage = _project_lineage(meta.lineage)
+    else:
+        issues, issues_omitted = [], len(contract.issues)
+        lineage = {
+            "external_inputs": [],
+            "external_inputs_omitted": len(meta.lineage.external_inputs),
+            "steps": [],
+            "steps_omitted": len(meta.lineage.steps),
+        }
     evidence_status = meta.evidence_status
     if evidence_status not in {"complete", "partial", "unavailable"}:
         raise ReportDatasetError(
@@ -491,6 +507,7 @@ def _artifact_source(
     )
     source = {
         "kind": "marivo_artifact",
+        "detail": detail,
         "artifact": {
             "session_id": bounded_string(
                 meta.session_id,
@@ -527,8 +544,10 @@ def _artifact_source(
         ),
         "issues": issues,
         "issues_omitted": issues_omitted,
-        "lineage": _project_lineage(meta.lineage),
-        "revalidation": _project_revalidation(revalidation, artifact=artifact),
+        "lineage": lineage,
+        "revalidation": _project_revalidation(
+            revalidation, artifact=artifact, detail=detail
+        ),
     }
     semantic_shape = bounded_string(
         schema.semantic_shape,
@@ -546,10 +565,15 @@ def emit_dataset(
     dataset_id: str | None = None,
     max_rows: int | None = None,
     revalidation: ArtifactRevalidation | None = None,
+    detail: Literal["reader", "audit"] = "reader",
 ) -> DatasetReceipt:
     """Emit one bounded Marivo Artifact registration atomically."""
 
     target_path = resolve_target(target, error_type=ReportDatasetError)
+    if detail not in {"reader", "audit"}:
+        raise ReportDatasetError(
+            "detail-unsupported", "detail must be 'reader' or 'audit'"
+        )
     identity = safe_identifier(
         target_path.stem if dataset_id is None else dataset_id,
         location="dataset-id",
@@ -584,7 +608,9 @@ def emit_dataset(
             {"limit": DATASET_MAX_ROWS, "actual": written_rows},
         )
     retained = frame.iloc[:written_rows]
-    source, columns, semantic_shape = _artifact_source(artifact, frame, revalidation)
+    source, columns, semantic_shape = _artifact_source(
+        artifact, frame, revalidation, detail
+    )
     table: dict[str, object] = {
         "total_rows": total_rows,
         "written_rows": written_rows,

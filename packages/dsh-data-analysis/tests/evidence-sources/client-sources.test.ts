@@ -76,10 +76,11 @@ function source(
   overrides: Record<string, unknown> = {},
 ) {
   return {
-    rendered: {
-      en: `Metric ${findingId}: observed 12.`,
-      zh: `指标 ${findingId}：观测值为 12。`,
-    },
+    status: 'available',
+    title: `metric_value Finding: item-${findingId}`,
+    locator: `marivo://session/mv-session/artifact/${artifactRef}/finding/${findingId}`,
+    excerpt: `Metric ${findingId}: observed 12.`,
+    truncated: false,
     environmentFingerprint: 'a'.repeat(64),
     sessionId: 'mv-session',
     findingId,
@@ -87,16 +88,20 @@ function source(
     epistemicKind: 'observed',
     artifactRef,
     canonicalItemKey: `item-${findingId}`,
-    qualityStatus: 'ready',
     committedAt: '2026-08-26T00:00:00+00:00',
-    extractorVersion: 'v4',
-    artifactSchemaVersion: 'v4',
+    sourceRefs: [`${artifactRef}#row=0`],
+    revalidation: {
+      status: 'admissible',
+      semanticStatus: 'current',
+      evidenceStatus: 'complete',
+      dependencyStatus: 'admissible',
+    },
     ...overrides,
   }
 }
 
 function meta(sources: unknown[], dshSessionId = 'dsh-session') {
-  return { kind: 'marivo-evidence-sources', version: 1, dshSessionId, sources }
+  return { kind: 'marivo-evidence-sources', version: 2, dshSessionId, sources }
 }
 
 function nativeEvent(sources: unknown[], seq = 20) {
@@ -242,7 +247,7 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
   const client = await loadClient()
   const sources = [
     source('a'),
-    source('b', 'artifact-a', { qualityStatus: null }),
+    source('b', 'artifact-a', { status: 'unsupported', excerpt: null }),
     source('c', 'artifact-b', { committedAt: '2026-08-27T00:00:00+00:00' }),
   ]
   assert.equal(client.groupMarivoEvidenceSources(sources).length, 2)
@@ -252,15 +257,20 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
     'source.summary': '{artifacts} 个分析结果 · {findings} 条 Evidence',
     'source.artifact': '分析结果 {index}',
     'source.findings': '{count} 条 Evidence',
-    'source.quality': 'quality: {value}',
-    'source.unlabeled': '未标注',
+    'source.status': '状态：{value}',
+    'source.revalidation': '重新验证：{value}',
+    'source.excerptState': '摘录：{value}',
+    'source.complete': '完整',
+    'source.truncated': '已截断',
+    'source.unavailable': '不可用',
     'source.finding': 'Finding {id}',
     'source.artifactRef': 'Artifact {id}',
     'source.session': 'Marivo Session {id}',
     'source.committed': '提交 {committedAt}',
     'source.audit': '审计详情',
     'source.item': 'canonical item: {id}',
-    'source.versions': 'extractor {extractor} · Artifact schema {schema}',
+    'source.locator': '定位：{value}',
+    'source.refs': '来源引用：{value}',
     'source.environment': 'Environment {fingerprint}',
     'source.disclaimer': '身份说明',
   }
@@ -280,9 +290,9 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
   assert.equal(details.length, 3, 'one panel plus one nested audit per Artifact')
   const text = textContent(tree)
   assert.match(text, /数据来源.*2 个分析结果 · 3 条 Evidence/)
-  assert.match(text, /quality: ready/)
-  assert.match(text, /quality: 未标注/)
-  assert.match(text, /指标 a：观测值为 12。/)
+  assert.match(text, /状态：available/)
+  assert.match(text, /状态：unsupported/)
+  assert.match(text, /Metric a: observed 12./)
   assert.match(text, /Artifact artifact-a/)
   assert.match(text, /Finding a/)
 })

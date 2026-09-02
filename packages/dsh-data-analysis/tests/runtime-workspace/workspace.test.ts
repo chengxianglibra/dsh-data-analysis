@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import {
-  initializeMarivoWorkspace,
   MarivoEnvironmentError,
   MarivoWorkspaceEnvironmentManager,
   type SharedMarivoRuntime,
@@ -12,17 +11,18 @@ import {
 
 function doctorPython(packagePath: string): string {
   return `#!/usr/bin/env node
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
 const args = process.argv.slice(2)
 if (args[0] !== '-m' || args[1] !== 'marivo' || args[2] !== 'doctor') process.exit(2)
 const projectRoot = path.resolve(args[args.indexOf('--project-root') + 1])
-const manifest = readFileSync(path.join(projectRoot, 'marivo.toml'), 'utf8')
-const manifestStatus = manifest.includes('[project]') ? 'ok' : 'fail'
+const manifestPath = path.join(projectRoot, 'marivo.toml')
+const manifest = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : undefined
+const manifestStatus = manifest === undefined ? 'info' : manifest.includes('[project]') ? 'ok' : 'fail'
 process.stdout.write(JSON.stringify({
-  status: manifestStatus,
+  status: manifestStatus === 'fail' ? 'fail' : 'ok',
   project_root: projectRoot,
   python_executable: path.resolve(process.argv[1]),
   marivo: { version: '9.8.7', package_path: ${JSON.stringify(packagePath)} },
@@ -39,29 +39,7 @@ process.stdout.write(JSON.stringify({
 `
 }
 
-async function absent(target: string): Promise<void> {
-  await assert.rejects(() => stat(target), { code: 'ENOENT' })
-}
-
-test('Workspace initialization is minimal, atomic, and idempotent', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-workspace-init-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
-  const first = await initializeMarivoWorkspace(root)
-  const second = await initializeMarivoWorkspace(root)
-
-  assert.deepEqual(new Set(first.created), new Set(['models', '.marivo', 'marivo.toml']))
-  assert.deepEqual(second.created, [])
-  assert.equal(
-    await readFile(path.join(root, 'marivo.toml'), 'utf8'),
-    `[project]\nname = ${JSON.stringify(path.basename(root))}\n`,
-  )
-  await absent(path.join(root, '.venv'))
-  await absent(path.join(root, '.agents'))
-  await absent(path.join(root, '.claude'))
-  await absent(path.join(root, '.codex'))
-})
-
-test('Workspace bindings share Python and package identity but retain project state and Promise identity', async (t) => {
+test('zero-init Workspace bindings share Runtime identity without creating files', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-workspace-bindings-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const firstRoot = path.join(root, 'alpha')
@@ -79,7 +57,7 @@ test('Workspace bindings share Python and package identity but retain project st
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
-    reportKitVersion: '2.1.0',
+    reportKitVersion: '3.0.0',
     reportKitPackagePath: path.join(
       root,
       'site-packages',
@@ -99,8 +77,8 @@ test('Workspace bindings share Python and package identity but retain project st
   assert.equal(first.binding.packagePath, second.binding.packagePath)
   assert.notEqual(first.binding.projectRoot, second.binding.projectRoot)
   assert.notEqual(first.binding.fingerprint, second.binding.fingerprint)
-  await absent(path.join(firstRoot, '.venv'))
-  await absent(path.join(secondRoot, '.venv'))
+  assert.deepEqual(await readdir(firstRoot), [])
+  assert.deepEqual(await readdir(secondRoot), [])
 })
 
 test('one invalid Workspace fails closed without poisoning another Workspace', async (t) => {
@@ -110,13 +88,33 @@ test('one invalid Workspace fails closed without poisoning another Workspace', a
   const healthy = path.join(root, 'healthy')
   await mkdir(broken)
   await mkdir(healthy)
-  await writeFile(path.join(broken, 'models'), 'conflict')
+  await writeFile(path.join(broken, 'marivo.toml'), 'invalid [[ toml')
+  const packagePath = path.join(root, 'site-packages', 'marivo', '__init__.py')
+  const python = path.join(root, 'shared-python')
+  await mkdir(path.dirname(packagePath), { recursive: true })
+  await writeFile(packagePath, '__version__ = "9.8.7"\n')
+  await writeFile(python, doctorPython(packagePath))
+  await chmod(python, 0o755)
+  const manager = new MarivoWorkspaceEnvironmentManager({
+    runtimeRoot: path.join(root, 'runtime'),
+    pythonExecutable: python,
+    marivoVersion: '9.8.7',
+    packagePath,
+    reportKitVersion: '3.0.0',
+    reportKitPackagePath: path.join(root, 'report-kit.py'),
+    skillsRoot: path.join(root, 'runtime', 'skills'),
+    installationPath: path.join(root, 'runtime', 'installation.json'),
+  })
 
   await assert.rejects(
-    initializeMarivoWorkspace(broken),
+    manager.resolve(broken),
     (error: unknown) =>
-      error instanceof MarivoEnvironmentError && error.code === 'workspace-initialization-failed',
+      error instanceof MarivoEnvironmentError &&
+      error.code === 'doctor-admission-failed' &&
+      error.details.check === 'project.marivo_toml',
   )
-  const layout = await initializeMarivoWorkspace(healthy)
-  assert.equal(layout.projectRoot, await realpath(healthy))
+  const environment = await manager.resolve(healthy)
+  assert.equal(environment.binding.projectRoot, await realpath(healthy))
+  assert.deepEqual(await readdir(broken), ['marivo.toml'])
+  assert.deepEqual(await readdir(healthy), [])
 })

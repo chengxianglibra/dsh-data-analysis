@@ -1,5 +1,6 @@
 {
-  "schema": "dsh-data-analysis-session-trace/v1",
+  "schema": "dsh-data-analysis-session-trace/v2",
+  "detail": "reader",
   "trace_id": "trace-succeeded",
   "emitted_at": "2026-08-31T12:00:00Z",
   "session_id": "session-1",
@@ -35,11 +36,12 @@
       "started_at": "2026-08-31T11:57:00Z",
       "finished_at": "2026-08-31T11:58:00Z",
       "output_artifact_ref": "artifact-1",
-      "output_mode": "produced"
+      "output_mode": "produced",
+      "queries": [],
+      "queries_omitted": 0
     }
   ],
   "edges": [{ "kind": "produces", "run_id": "run-1", "artifact_ref": "artifact-1" }],
-  "queries": [],
   "root_run_ids": ["run-1"],
   "head_artifact_refs": ["artifact-1"],
   "failed_run_ids": [],
