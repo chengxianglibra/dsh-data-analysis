@@ -26,7 +26,7 @@
 - 插件另行分发 `dsh-data-analysis-report` 及 `report-data.js`、`marivo-artifact.js`、
   `marivo-session-dag.js`；
 - Runtime marker 为 `dsh-data-analysis-runtime/v2`，包含 Marivo、Python、report-kit 与 Skill root identity；
-- 插件版本为 `1.0.0`，锁定 Marivo `0.5.2`、DSH `0.1.1-rc.2` 与 report-kit `2.1.0`；
+- 已发布的插件基线为 `0.1.0`，锁定 Marivo `0.5.2`、DSH `0.1.1-rc.2` 与 report-kit `2.1.0`；
 - 基线包共 101 个文件，包含编译后的 server/client、类型、compatibility、report-kit wheel、三个 report
   schema、报告 Skill/assets、README 与 Cordis patch，不包含源码、测试、fixture 或已删除的旧 report API。
 
@@ -57,26 +57,26 @@
 
 ## v2 最终环境与确定性门禁
 
-最终验收日期：2026-09-02。候选包与真实 profile 使用同一组 identity：
+最终验收日期：2026-09-02。后续只校正 package SemVer，当前开发候选的 identity 为：
 
-- `@deepseek-ai/dsh-data-analysis@2.0.0`；
+- `@deepseek-ai/dsh-data-analysis@0.1.1-dev.0`；
 - DSH 与 16 个必需 peer：`0.1.1-rc.2`；
 - shared Python：`$DSH_HOME/dsh-data-analysis/runtimes/marivo/.venv/bin/python`；
 - Marivo：`0.5.3`；report-kit：`3.0.0`；
 - Runtime marker：`dsh-data-analysis-runtime/v2`；
 - subprocess policy：`direct-argv-inherited-env-snapshot-overlay-v2`。
 
-候选包为 `artifacts/npm/deepseek-ai-dsh-data-analysis-2.0.0.tgz`，SHA-1
-`94e58b5a88863877235c6fa01e8d6e5db1bce55e`。
+开发候选包为 `artifacts/npm/deepseek-ai-dsh-data-analysis-0.1.1-dev.0.tgz`，SHA-1
+`1f3487e55f868152e24fe3ea55258fc74bc305be`。该版本仅用于开发与验收，正式发布时才去掉预发布标识。
 
 | 检查 | 结果 | 终态证据 |
 | --- | --- | --- |
 | `npm run check` | `passed` | Biome、dependency tree、两组 TypeScript typecheck 与 124 tests 全部通过 |
 | `npm run build` | `passed` | server/client build 与 finalize 通过 |
-| `npm run verify:plugin-package` | `passed` | 107 files、484702 unpacked bytes、16 个 DSH peer、Marivo 0.5.3、wheel 与 assets 通过 |
+| `npm run verify:plugin-package` | `passed` | 65 files、326361 unpacked bytes、16 个 DSH peer、Marivo 0.5.3、wheel 与 assets 通过 |
 | `git diff --check` | `passed` | 无 whitespace error |
 | Markdown 相对链接检查 | `passed` | 16 个 Markdown 文件的全部相对目标存在；设计、当前架构和验收互链闭合 |
-| package install | `passed` | tarball 安装到真实 `web`、`headless` profile；两者均解析到 2.0.0/v2 compatibility |
+| package install | `unverified` | 新的 `0.1.1-dev.0` tarball 已通过隔离 consumer smoke，未仅为版本元数据更名重装真实 `web` / `headless` profile |
 | Web Runtime | `passed` | 真实 `npx dsh web` 服务 `127.0.0.1:3080`，J08/J15 均由重新安装后的候选包执行 |
 
 真实环境验证脚本全部使用上述 managed Python；`validate:runtime-workspace:real`、
@@ -138,7 +138,7 @@ Artifact 的源字段均为 `null`；reader/audit transport 忠实保留 `null`�
 | 2 bounded credential lease | test/access 解耦、Agent/Workspace/TTL/64 uses/foreground、fresh resolve | credential tests | J08–J13 与 real-model access artifact | `passed` |
 | 3 Evidence 可移植化 | closed v2 result、Artifact-owned exact Finding、Web 只增强 | Evidence 12 | J14–J15 headless/Web | `passed` |
 | 4 report-kit/Skill | schema v2、reader/audit、公共 RunQuery、无领域重判、显式报告意图 | report 9 | J16–J20 与三份实际浏览器报告 | `passed` |
-| 5 文档、Package、真实 Agent | README/architecture/modules/plan/acceptance 同步；2.0.0 package | 全量 124 tests + build/package/link gates | 真实 web/headless profile 与 J01–J20 | `passed` |
+| 5 文档、Package、真实 Agent | README/architecture/modules/plan/acceptance 同步；`0.1.1-dev.0` 开发包 | 全量 124 tests + build/package/link gates | 新版本 identity 未重装真实 profile | `unverified` |
 
 ## 安全 review 结论
 
@@ -152,5 +152,6 @@ datasource API 级隔离，应删除 Shell lease，而不是继续解析任意�
 
 ## 最终结论
 
-本方案的实现、focused tests、专项 review、候选包安装、J01–J21 terminal journeys 与独立浏览器复核全部
-`passed`。`2.0.0` 满足设计中的完成定义，没有 blocked、failed 或 unverified 项。
+本方案的实现、focused tests、专项 review、原候选包安装、J01–J21 terminal journeys 与独立浏览器复核全部
+`passed`。当前 `0.1.1-dev.0` 已通过全量确定性检查、构建、打包和隔离 consumer smoke；精确该版本的真实
+profile 重装保持 `unverified`。本记录不表示已正式发布。

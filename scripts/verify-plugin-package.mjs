@@ -99,12 +99,9 @@ function linkDependency(nodeModules, packageName) {
 const sourceManifest = readJson(packageJsonPath)
 const pluginVersion = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/.exec(sourceManifest.version)
 if (pluginVersion === null) fail('plugin version must be valid SemVer without build metadata')
-const pluginMajor = Number(pluginVersion[1])
 const compatibility = sourceManifest.dshDataAnalysisCompatibility
 const compatibilityMajor = /\/v(\d+)$/.exec(compatibility?.schema ?? '')
-if (compatibilityMajor === null || Number(compatibilityMajor[1]) !== pluginMajor) {
-  fail('package compatibility schema major must equal the plugin SemVer major')
-}
+if (compatibilityMajor === null) fail('package compatibility schema must end with a vN identity')
 if (compatibility.dsh?.distribution !== '@deepseek-ai/dsh') {
   fail('package compatibility must identify the @deepseek-ai/dsh distribution')
 }
@@ -141,9 +138,7 @@ if (
 }
 for (const [name, version] of Object.entries(compatibility.contracts ?? {})) {
   const contractMajor = typeof version === 'string' ? /v(\d+)$/.exec(version) : null
-  if (contractMajor === null || Number(contractMajor[1]) !== pluginMajor) {
-    fail(`project-owned contract ${name} major must equal the plugin SemVer major`)
-  }
+  if (contractMajor === null) fail(`project-owned contract ${name} must end with a vN identity`)
 }
 
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'dsh-data-analysis-package-'))

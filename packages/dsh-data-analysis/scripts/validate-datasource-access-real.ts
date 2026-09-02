@@ -456,7 +456,7 @@ const report = {
   model: { provider: 'deepseek-official', id: model, thinking: 'disabled' },
   runtimeIdentity: {
     dsh: '0.1.1-rc.2',
-    plugin: '2.0.0',
+    plugin: '0.1.1-dev.0',
     marivo: runtimeEnvironment.binding.marivoVersion,
     admittedRuntime: runtimeEnvironment.binding,
     syntheticBridgeBinding: binding('workspace-a'),

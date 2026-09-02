@@ -8,11 +8,11 @@ kebab-case 文件名，并在本页登记入口。
 
 ## 已实施设计
 
-- [插件能力优化设计](plugin-capability-optimization-design.md)（已实施；仅限本仓库的 `2.0.0` 能力收窄与 clean break）
+- [插件能力优化设计](plugin-capability-optimization-design.md)（已实施；仅限本仓库 `0.1.1-dev.0` 开发线的能力收窄与 clean break）
 
 ## 历史设计
 
-- [Agent 原生报告增强能力设计](agent-native-report-primitives-design.md)（历史；报告触发、transport 和 credential 边界已被 `2.0.0` 设计替换）
+- [Agent 原生报告增强能力设计](agent-native-report-primitives-design.md)（历史；报告触发、transport 和 credential 边界已被当前 `0.1.1-dev.0` 设计替换）
 - [HTML 分析报告最小实现设计](html-report-rendering-mvp-design.md)（历史设计；已被破坏性替换）
 
 ## 验收记录

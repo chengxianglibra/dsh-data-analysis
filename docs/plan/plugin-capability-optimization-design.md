@@ -2,7 +2,7 @@
 
 ## 状态与结论
 
-> 已于 2026-09-02 按阶段实施并完成 `2.0.0` clean break；不保留旧配置、别名、双读、双写或运行时迁移。
+> 已于 2026-09-02 按阶段实施 clean break；当前包版本为开发版 `0.1.1-dev.0`，不保留旧配置、别名、双读、双写或运行时迁移。
 > 当前契约以[总体架构](../architecture.md)、[模块文档](../modules/)和
 > [v2 验收记录](../acceptance/plugin-capability-optimization-v2.md)为准，本文保留为设计与决策记录。
 
@@ -621,7 +621,7 @@ Skill 不提供：
 
 工作：
 
-- 发布 `2.0.0`；
+- 将开发版本统一为 `0.1.1-dev.0`；只在正式发布时去掉预发布标识；
 - 更新 README、package README、architecture 与模块文档；
 - 把稳定契约从本文迁入当前架构；
 - 将旧设计标记为历史；
@@ -722,7 +722,7 @@ token 会进入 session transcript，因此必须短时、有界并绑定 Agent/
 6. `refactor(evidence): make source results headless-readable`；
 7. `refactor(report)!: separate transport integrity from Marivo semantics`；
 8. `docs!: document v2 boundaries and real acceptance`；
-9. `release!: dsh-data-analysis 2.0.0`。
+9. `build: enter dsh-data-analysis 0.1.1 development cycle`。
 
 每次 review 检查：是否修改 sibling repo、是否扩大 secret lifetime、是否产生隐藏 Workspace 写入、是否新增
 Marivo 事实副本、是否依赖 Web/路径夸大完成状态，以及是否用 deterministic health 替代真实 Runtime 证据。
