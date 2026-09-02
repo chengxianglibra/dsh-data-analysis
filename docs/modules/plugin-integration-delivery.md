@@ -2,7 +2,7 @@
 
 ## 作用
 
-本模块把 profile 级 Marivo Runtime、per-Workspace binding、三个跨边界 Tool、报告数据 runtime、两个
+本模块把 profile 级 Marivo Runtime、per-Workspace binding、四个跨边界 Tool、报告数据 runtime、两个
 Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影装入同一个 DSH plugin lifecycle。它不修改 Harness
 的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
@@ -21,7 +21,7 @@ Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Evidence adapter 与 prompt sections。
 5. 相同 Environment 共享 Help/Datasource/Evidence bridge set；Agent activation state 独立。
-6. plugin disposal 移除自身 Tool、prompt、事件与 outstanding credential grants，不影响原 profile Tool 或 Host environment。
+6. plugin disposal 移除自身 Tool、prompt、事件与 outstanding credential leases，不影响原 profile Tool 或 Host environment。
 
 ## Agent scope surface
 
@@ -29,6 +29,7 @@ Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影
 | --- | --- | --- |
 | `marivo_help` | Native mode 的受控解释器与实时 Help transport | Harness/Marivo 提供等价原生 transport |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
+| `marivo_datasource_access` | 不执行连接测试的有界 foreground Shell lease | DSH 提供通用 operation-scoped credential lease |
 | `marivo_evidence_sources` | 精确来源的 Turn metadata 与 Web 折叠面板 | DSH 提供通用结构化来源附件 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、

@@ -13,6 +13,7 @@ import {
   MarivoDatasourceBridge,
   type MarivoDatasourceBridgePort,
   type MarivoDatasourceTestValue,
+  marivoCredentialStorageRef,
   registerMarivoDatasourceTestTool,
 } from '../src/datasource/index.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
@@ -27,7 +28,7 @@ const pythonExecutable =
     process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python',
   )
 const datasourceName = 'credential_validation'
-const expectedRefs = ['DSH_VALIDATION_PASSWORD', 'DSH_VALIDATION_USER']
+const expectedRefs = ['VALIDATION_PASSWORD', 'VALIDATION_USER']
 
 const datasourceProjectRoot = await realpath(
   await mkdtemp(path.join(tmpdir(), 'dsh-datasource-real-')),
@@ -48,8 +49,8 @@ try {
       `    name=${JSON.stringify(datasourceName)},`,
       '    host="127.0.0.1",',
       '    database="validation",',
-      '    user_env="DSH_VALIDATION_USER",',
-      '    password_env="DSH_VALIDATION_PASSWORD",',
+      '    user_env="VALIDATION_USER",',
+      '    password_env="VALIDATION_PASSWORD",',
       ')',
       '',
     ].join('\n'),
@@ -65,7 +66,7 @@ try {
   assert.deepEqual(inventory, [
     {
       name: datasourceName,
-      refs: ['DSH_VALIDATION_USER', 'DSH_VALIDATION_PASSWORD'],
+      refs: ['VALIDATION_USER', 'VALIDATION_PASSWORD'],
     },
   ])
   let connectionAttempts = 0
@@ -85,18 +86,18 @@ try {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  const resolvedRefs: string[] = []
   registerMarivoDatasourceTestTool(
     ctx,
     guardedBridge,
     {
-      resolve() {
+      resolve(ref) {
+        resolvedRefs.push(ref)
         return Promise.resolve(undefined)
       },
     },
     {
-      issueShellGrant() {
-        throw new Error('missing credentials must not issue a shell grant')
-      },
+      revokeShellLease() {},
     },
   )
 
@@ -114,6 +115,10 @@ try {
   assert.equal(value.name, datasourceName)
   assert.deepEqual([...value.refs].sort(), expectedRefs)
   assert.equal(connectionAttempts, 0)
+  assert.deepEqual(resolvedRefs, [
+    marivoCredentialStorageRef('VALIDATION_USER'),
+    marivoCredentialStorageRef('VALIDATION_PASSWORD'),
+  ])
 
   process.stdout.write(
     `${JSON.stringify(
@@ -123,6 +128,7 @@ try {
         inventory,
         datasource: value,
         connectionAttempts,
+        resolvedRefs,
         credentialValuesRecorded: false,
       },
       null,

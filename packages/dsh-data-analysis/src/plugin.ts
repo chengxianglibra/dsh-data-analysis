@@ -9,10 +9,12 @@ import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
-import { registerMarivoDatasourceTestTool } from './datasource/index.ts'
 import {
-  MARIVO_CREDENTIAL_GRANT_PREFIX,
-  MarivoShellCredentialGrants,
+  registerMarivoDatasourceAccessTool,
+  registerMarivoDatasourceTestTool,
+} from './datasource/index.ts'
+import {
+  MarivoShellCredentialLeases,
   registerMarivoRuntimeShellEnvironment,
 } from './datasource/shell-env.ts'
 import { MarivoHelpBridge, type MarivoHelpBridgeSource } from './disclosure/bridge.ts'
@@ -42,12 +44,13 @@ export const name = 'dsh-data-analysis'
 export const inject = ['agents', 'credentials', 'shellEnv', 'skills', 'systemPrompt', 'tools']
 
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
-  'When marivo-semantic is active, every Marivo datasource *_env field must reference a DSH_* environment name.',
+  'When marivo-semantic is active, every Marivo datasource *_env field must reference a valid POSIX environment name outside the reserved MARIVO_* and DSH_DATA_ANALYSIS_* namespaces and Host-owned DSH shell facts.',
   'Never ask the user to provide credential values in chat, and never place credential values in commands or project files.',
   'Immediately after md.register(...) or a manual datasource-file change, call marivo_datasource_test with that datasource name.',
   'If marivo_datasource_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_datasource_test before continuing.',
-  `Only a successful test returns a one-shot grant. To use it, start one foreground bash or pwsh command with ${MARIVO_CREDENTIAL_GRANT_PREFIX}<token>, set MARIVO_PERSIST_CREDENTIALS=0 inside that command, and invoke $DSH_DATA_ANALYSIS_PYTHON (bash) or $env:DSH_DATA_ANALYSIS_PYTHON (pwsh).`,
-  'Never use a grant with background or persistent Shell execution. A claim is consumed even if later credential resolution fails.',
+  'Before datasource-backed analysis, call marivo_datasource_access once and reuse its exact bash_prelude or pwsh_prelude before each foreground analysis command until the bounded lease expires or is exhausted.',
+  'Do not call marivo_datasource_test before each analysis script. Renew access with marivo_datasource_access; run another connection test only after datasource changes, credential rotation, a connection failure, or an explicit user request.',
+  'Never use a lease with background or persistent Shell execution. Each admitted Shell consumes one use even if later credential resolution fails.',
 ].join(' ')
 
 export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
@@ -125,7 +128,7 @@ export function installMarivoPlugin(
   if (credentials === undefined) {
     throw new Error('dsh-data-analysis requires the DSH credentials service')
   }
-  const shellCredentials = new MarivoShellCredentialGrants(ctx, credentials)
+  const shellCredentials = new MarivoShellCredentialLeases(ctx, credentials)
   const bridgeSets = new WeakMap<MarivoEnvironment, MarivoBridgeSet>()
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
@@ -149,8 +152,16 @@ export function installMarivoPlugin(
     controller.addDisposer(shellCredentials.installAgent(agent, datasourceSource))
     controller.addDisposer(
       registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentials, {
-        issueShellGrant: (bridge, datasourceName, refs) =>
-          shellCredentials.issueGrant(agent, bridge, datasourceName, refs),
+        revokeShellLease: (bridge, datasourceName) =>
+          shellCredentials.revokeLease(agent, bridge, datasourceName),
+      }),
+    )
+    controller.addDisposer(
+      registerMarivoDatasourceAccessTool(agent.ctx, datasourceSource, credentials, {
+        revokeShellLease: (bridge, datasourceName) =>
+          shellCredentials.revokeLease(agent, bridge, datasourceName),
+        issueShellLease: (bridge, datasourceName, refs) =>
+          shellCredentials.issueLease(agent, bridge, datasourceName, refs),
       }),
     )
     controller.addDisposer(

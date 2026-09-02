@@ -15,7 +15,7 @@ replay 已删除，不提供 alias 或迁移路径。
 - 激活 `marivo-analysis` 或 `marivo-semantic` 时注入当前 Runtime 的实时根 Help；
 - 提供 `marivo_help` 作为 Native Tool transport；
 - 提供 `marivo_datasource_test`，完成缺失 DSH Credentials 的 Web 收集和显式连接测试；
-- 仅在 datasource test 成功后签发一次性 foreground Shell credential grant；
+- 提供 `marivo_datasource_access`，签发 30 分钟、最多 64 次 foreground Shell 的显式 lease；
 - 提供 `marivo_evidence_sources`，把精确 Artifact-owned Finding 交付为可移植文本，并由 Web 增强展示；
 - 安装 `dsh-data-analysis-report-kit`，提供 `emit_dataset(BaseFrame, ...)`、
   `emit_computed(DataFrame, ...)` 与 `emit_session_trace(SessionGraph, ...)`；
@@ -69,18 +69,25 @@ marivo_help({ targets: ["analysis.session.runtime", ...] })
 返回共享 Runtime 的实时公共 Help。插件不维护 target registry；`targets` 必须至少包含一个目标。模型可见
 正文不包含绝对 Python/package 路径或完整 Environment fingerprint。
 
-### `marivo_datasource_test`
+### `marivo_datasource_test` 与 `marivo_datasource_access`
 
 ```text
 marivo_datasource_test({ name: "warehouse" })
+marivo_datasource_access({ name: "warehouse" })
 ```
 
-Tool 先读取 datasource 的 `DSH_*` 引用，再通过 DSH Credentials operation-scoped resolve，最后调用真实
-`md.test()`。缺失值只返回引用名并交给 Web 表单，不把 secret 放进聊天、argv、日志或结果。Datasource
-成功结果额外返回最长 60 秒、一次 claim 的 `shell_grant`。只有以精确 marker 首行开头的一个 foreground
-Shell execution 能 fresh-resolve 该 datasource 的引用；普通、background、persistent、过期、复用、错
-Agent 或错 Workspace 的调用在 spawn 前失败。metadata inspection 不合并到该 Tool；Agent 在获授权的
-execution 中调用 `md.inspect(datasource_ref, source)`。
+两个 Tool 都接受 datasource 中任意合法 POSIX 环境变量引用，但拒绝插件控制面保留的 `MARIVO_*`、
+`DSH_DATA_ANALYSIS_*`，以及 Host 自有的 `DSH_HOME`、`DSH_SHELL`、`DSH_SESSION_ID`、
+`DSH_SESSION_JSONL`。原始引用统一映射到插件专属的 DSH Credentials 地址后执行 operation-scoped
+resolve；同名 Host credential 从不直接读取。缺失值只返回原始引用名并交给 Web 表单，不把 secret 放进
+聊天、argv、日志或结果。
+
+`marivo_datasource_test` 只以原始名称给真实 `md.test()` 注入一次性 overlay，成功结果只含 status、name 与
+latency；任何 test 开始都会撤销同作用域旧 lease。`marivo_datasource_access` 不执行连接测试，只在凭证齐全时
+返回 `shell_lease`，包含最长 30 分钟、最多 64 次 foreground Shell 可复用的精确 `bash_prelude` 与
+`pwsh_prelude`。每次 Shell claim 仍 fresh-resolve 映射凭证；background、persistent、过期、耗尽、错 Agent
+或错 Workspace 的调用在 resolve 前失败。开始分析时 access 一次并复用，只有 datasource 新建/修改、凭证
+轮换或连接失败时才 test，不应在每个脚本前 test。
 
 ### `marivo_evidence_sources`
 

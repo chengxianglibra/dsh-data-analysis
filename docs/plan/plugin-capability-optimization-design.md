@@ -89,7 +89,7 @@
 | --- | --- | --- |
 | 插件生命周期修改 `process.env` | 跨 Agent/Workspace 污染 Host | 删除全局修改，只保留 subprocess-local policy |
 | 插件默认预创建 Workspace layout | 抢占 Marivo `0.5.3` 的 lazy materialization 所有权 | 删除初始化器，空目录直接绑定 |
-| 每次 shell inventory 并注入全部 datasource secret | secret authority 过宽且可进入后台任务 | 改为 datasource test 签发的短时、单次 foreground grant |
+| 每次 shell inventory 并注入全部 datasource secret | secret authority 过宽且可进入后台任务 | 由独立 access Tool 签发短时、有界 foreground lease |
 | Help 向模型暴露安装路径和 fingerprint | 无分析价值并增加 Host 信息面 | 只显示版本、target、Help 与 truncation |
 | Evidence 依赖 Web panel 承载来源 | headless/remote 不完整 | Tool 文本成为可读交付，Web 使用同一结果增强 |
 | 报告触发包含“长回答/多个图表” | 未经用户确认改变交付介质 | 只按明确请求、接受提议或修改已有 bundle 触发 |
@@ -112,7 +112,7 @@ Agent
   |      |-- exact shared Marivo Runtime
   |      |-- explicit per-Workspace policy and binding
   |      |-- live Help adapter
-  |      |-- datasource test -> one-shot shell grant
+  |      |-- datasource test health check + datasource access lease
   |      |-- exact Finding -> readable Evidence + optional Web
   |      `-- bounded report transport + Marivo browser components
   |
@@ -133,8 +133,9 @@ Agent
 | Workspace binding | 保留并收窄 | session cwd / loader config | 精确 root binding | layout 创建与 `marivo init` |
 | Marivo Skills | 保留并强化 | DSH `skill` 按需加载 | 精确同步、挂载、激活监听 | Skill 内容与通用 lifecycle |
 | Live Help | 保留 | `marivo_help` | 调用、预算、呈现 | Help 内容 |
-| datasource test | 保留并扩展 | `marivo_datasource_test` | credential overlay、grant lifecycle | datasource 连接语义 |
-| shell credential bridge | 重构 | `bash`/`pwsh` command grant marker | 单次执行授权与注入 | 通用 shell access control |
+| datasource test | 保留并收窄 | `marivo_datasource_test` | credential overlay、旧 lease 撤销 | datasource 连接语义 |
+| datasource access | 新增 | `marivo_datasource_access` | 有界 lease lifecycle | datasource 连接语义 |
+| shell credential bridge | 重构 | `bash`/`pwsh` lease marker | foreground 执行授权与注入 | 通用 shell access control |
 | Evidence sources | 保留并简化 | `marivo_evidence_sources` | identity adapter、文本/Web 呈现 | Finding/Evidence 语义 |
 | Artifact dataset | 保留并收窄 | report-kit | 有界编码、原子写入、transport schema | Artifact 有效性 |
 | computed dataset | 保留并澄清 | report-kit | DataFrame 有界 serialization | Artifact/Evidence/Quality/Lineage |
@@ -256,85 +257,83 @@ Workspace zero-init 与 Skill lifecycle 相互独立：发现或加载两个 Ski
 保持当前调用顺序：
 
 1. 使用当前 Workspace binding 执行 `describe(name)`；
-2. 验证所有 refs 使用 DSH credential namespace；
-3. 通过 DSH credential provider operation-scoped resolve；
+2. 验证所有 refs 是合法 POSIX 名称，且不占用插件控制面保留 namespace 或 Host 自有 DSH Shell facts；
+3. 把原始 ref 确定性映射到插件专属地址，再通过 DSH credential provider operation-scoped resolve；
 4. 缺失时返回 `needs-credentials` 并触发现有 Web credential form；
 5. 凭据齐全时只给 datasource test subprocess 注入 overlay；
 6. 对结果、错误和 stderr 做 exact-value redaction。
 
-失败或 `needs-credentials` 不签发 shell grant。只有真实 connection test 成功后才签发。
-
-成功结果增加：
+任何 test 开始都撤销当前 Agent、Workspace、datasource 的活动 lease；missing、failed 和成功结果都不携带
+Shell 权限。成功结果为：
 
 ```json
 {
   "status": "ok",
   "name": "sales",
-  "latency_ms": 12,
-  "shell_grant": {
-    "token": "opaque-one-shot-token",
-    "expires_in_ms": 60000,
-    "usage": "one-foreground-shell"
-  }
+  "latency_ms": 12
 }
 ```
 
-`token` 不是 credential value；它只是本插件内短时 capability。它会进入当前 Tool result，因此必须满足：
+### `marivo_datasource_access` 与 Shell lease
+
+Access 复用同一 describe、校验、映射 resolve 与 missing 闭环，但不调用 `md.test()`。凭证齐全时返回
+`shell_lease`，其 token 不是 credential value，而是短时 capability：
 
 - 至少 128 bit 随机性；
 - 绑定 Agent identity、Workspace binding identity 和当前 datasource refs；
 - 只存储非秘密 ref names，不缓存 resolved values；
-- 最长 60 秒；
-- 一次 claim 后立即失效，包括后续 credential resolve 失败；
+- 最长 30 分钟、最多 64 次 foreground Shell；
+- 同作用域重新 access 先撤销旧 token；
+- 每次 claim 原子扣减一次，包括后续 credential resolve 失败；
 - plugin/Agent/Workspace dispose 时全部清除；
-- 日志只记录 grant lifecycle 和 datasource name，不记录 token 全文。
+- 日志只记录 lease lifecycle 和 datasource name，不记录 token 全文。
 
-### 单次 shell credential grant
-
-需要 datasource secret 的前台 shell 命令必须以严格的首行注释 marker 开头。bash 形状为：
+需要 datasource secret 的前台 shell 命令必须原样复用成功结果中的 prelude。bash 形状为：
 
 ```bash
-# dsh-marivo-credential-grant:<opaque-token>
-MARIVO_PERSIST_CREDENTIALS=0 \
+# dsh-marivo-credential-lease:<opaque-token>
+export ORIGINAL_REF="${DSH_DATA_ANALYSIS_CREDENTIAL_<ENCODED_REF>}"
+unset DSH_DATA_ANALYSIS_CREDENTIAL_<ENCODED_REF>
+export MARIVO_PERSIST_CREDENTIALS=0
 "$DSH_DATA_ANALYSIS_PYTHON" analysis.py
 ```
 
 pwsh 形状为：
 
 ```powershell
-# dsh-marivo-credential-grant:<opaque-token>
+# dsh-marivo-credential-lease:<opaque-token>
+$env:ORIGINAL_REF = $env:DSH_DATA_ANALYSIS_CREDENTIAL_<ENCODED_REF>
+Remove-Item Env:DSH_DATA_ANALYSIS_CREDENTIAL_<ENCODED_REF>
 $env:MARIVO_PERSIST_CREDENTIALS = '0'
 & $env:DSH_DATA_ANALYSIS_PYTHON analysis.py
 ```
 
-marker 只供插件把 grant 绑定到本次 `ToolExecution`；shell 将其视为注释，因此 token 不进入目标子进程环境。
+marker 只供插件把 lease 绑定到本次 `ToolExecution`；shell 将其视为注释，因此 token 不进入目标子进程环境。
 
 这是本插件在当前 DSH API 下能够实现的最窄授权。实现规则：
 
 - `tools/pre-execute` 只处理当前 Agent 的 `bash` 和 `pwsh`；
 - 从结构化 `execution.arguments.command` 的第一行完整匹配固定 marker，不搜索任意命令正文；
 - 没有 marker 的 shell 不解析、不注入任何 datasource credential；
-- marker 格式错误、未知、过期、已使用或 Workspace 不匹配时 fail closed；
+- marker 格式错误、未知、过期、耗尽或 Workspace 不匹配时 fail closed；
 - `run_in_background: true` 在 resolve 之前拒绝；
 - 当前已知 persistent bash/pwsh definition 在 resolve 之前拒绝；
-- grant 在异步 credential resolve 前原子 claim，避免并发复用；
-- 只 fresh-resolve grant 绑定的 refs，并写入这个 `ToolExecution` 的 WeakMap；
+- lease 在异步 credential resolve 前原子扣减，避免并发超额；
+- 只 fresh-resolve lease 绑定的 refs，并写入这个 `ToolExecution` 的 WeakMap；
 - `shellEnv.resolve(execution)` 只为该 execution 返回这些值；
 - Tool settle、取消或错误后删除 execution snapshot；
 - Code Mode nested `bash`/`pwsh` 同样经过现有 `tools/pre-execute`，不得建立旁路。
 
-不得继续执行全 Workspace datasource inventory，也不得因为一次 datasource test 成功，让后续所有 shell 持续获得
-secret。多个 datasource 的一次命令需要分别成功 test，并由插件签发一个显式的组合 grant；第一版若不能安全
-支持组合，则 fail closed 并要求拆分命令，不自动合并授权。
+不得继续执行全 Workspace datasource inventory，也不得因为一次 datasource test 成功，让后续 shell 获得
+secret。lease 只能由显式 access 签发；多个 datasource 不自动合并授权。
 
 #### 安全边界
 
-grant 约束的是 secret 何时进入哪个 shell execution，不约束该 shell execution 内的任意代码。获得 grant 的
+lease 约束的是 secret 何时进入哪个 shell execution，不约束该 shell execution 内的任意代码。获得 lease 的
 Agent 可以在该次执行中读取环境变量，这是运行 Marivo datasource 所必需的能力。
 
 如果验收要求“secret 只能用于某个结构化 datasource API，不能被 shell 代码读取”，当前 DSH 通用 shell 无法
-提供这个边界。本项目不得声称已经解决；唯一可行策略是完全删除 shell credential injection，只保留
-`marivo_datasource_test`。发布前必须由安全 review 明确接受上述一次执行边界，否则执行删除策略。
+提供这个边界。本项目不得声称已经解决；如果产品要求该边界，应完全删除 shell credential injection。
 
 ### `marivo_evidence_sources`
 
@@ -475,8 +474,8 @@ Skill 不提供：
 - Marivo `0.5.3` zero-init Workspace binding；
 - Runtime-level Help checked runner；
 - 两个 Marivo Skill 的原子同步、按需激活与 zero-write regression coverage；
-- datasource test 成功后的短时 one-shot shell grant；
-- grant marker、claim、expiry、foreground 与 Workspace validation；
+- datasource test 健康检查与独立 datasource access lease；
+- lease marker、原子用量扣减、expiry、foreground 与 Workspace validation；
 - Evidence 可读文本 renderer；
 - report transport 的 `reader`/`audit` profile；
 - 与精确 Marivo `0.5.3` 公共对象绑定的 adapter fixtures。
@@ -493,7 +492,7 @@ Skill 不提供：
 
 - 旧 config 不保留 alias；
 - 旧 runtime/package compatibility 不双读；
-- 旧 grant 不存在迁移问题，插件 restart 后全部失效；
+- 旧授权不迁移，插件 restart 后全部失效；
 - 破坏性变化的 report transport 升 version，不双写旧 payload；
 - 已生成的用户报告 bundle 不删除，但不保证由新插件升级或 replay。
 
@@ -507,7 +506,7 @@ Skill 不提供：
 
 工作：
 
-- 记录当前三个 Tool、两个 Marivo Skill、报告 Skill、runtime marker 和 package 内容；
+- 记录当前四个 Tool、两个 Marivo Skill、报告 Skill、runtime marker 和 package 内容；
 - 固定 Marivo `0.5.3` 与 DSH `0.1.1-rc.2` 为本方案不可修改的外部约束；
 - 为现有全局环境、自动 Workspace 写入、全量凭据和 Web-only Evidence 建立失败基线；
 - 删除设计中的所有 sibling repo implementation phase；
@@ -546,27 +545,27 @@ Skill 不提供：
 - 两个 Workspace 共享 Runtime 但 binding/error 状态隔离；
 - focused tests 和 root check 通过。
 
-### 阶段 2：一次性 credential grant
+### 阶段 2：有界 credential lease
 
 所有者：`src/datasource/`、相关 prompt/client 与测试。
 
 工作：
 
 - 删除 inventory-first shell bridge；
-- datasource test 只在成功后创建 grant；
-- 实现 token、TTL、Agent/Workspace/ref binding 和 atomic claim；
+- datasource test 与 access 解耦，test 开始即撤销旧 lease；
+- 实现 token、30 分钟 TTL、64 次用量、Agent/Workspace/ref binding 和 atomic claim；
 - 严格解析 command 前缀 marker；
 - 检查 `run_in_background` 与 persistent definition；
-- 每次 shell fresh-resolve grant refs；
+- 每次 shell fresh-resolve lease refs；
 - settle/cancel/dispose 后清理状态；
 - 更新 credential form retry 与 Agent 使用指导。
 
 门禁：
 
 - 普通 shell 永远看不到 datasource canary；
-- 成功 test 之前没有 grant；
-- grant 只能使用一次且只进入一个 foreground execution；
-- 错 Agent、错 Workspace、过期、复用、background、persistent 全部在 spawn 前失败；
+- test 结果永远没有 lease，access 不执行连接测试；
+- 同一 lease 最多进入 64 个 foreground executions，第 65 次失败；
+- 错 Agent、错 Workspace、过期、耗尽、background、persistent 全部在 spawn 前失败；
 - 只注入目标 datasource refs，其他 datasource canary 不可见；
 - Code Mode nested shell 服从同一规则；
 - token 全文和 secret value 不进入 Host 日志、错误或 telemetry；
@@ -649,11 +648,11 @@ Skill 不提供：
 6. lazy analysis state：首次 Session 操作创建所需 `.marivo/analysis/...`，不创建 manifest 或 models；
 7. 无效显式 manifest：在任何其他写入前 fail closed；
 8. datasource 缺凭据：Web form 正常，结果无 secret；
-9. datasource test 失败：不签发 grant；
-10. datasource test 成功：签发单次 grant，前台查询成功；
-11. 普通 shell：无 grant 时看不到任何 datasource secret；
-12. grant 隔离：A grant 看不到 B datasource secret；
-13. grant 生命周期：复用、过期、错 Workspace、background、persistent 全部失败；
+9. datasource test：失败与成功都不签发 lease；
+10. datasource access：不连接目标，签发 30 分钟、64 次 lease；
+11. 连续分析：一次 test、一次 access、至少七次 foreground Shell 复用同一 lease；
+12. 普通 shell：无 lease 时看不到任何 datasource secret；
+13. lease 生命周期：续签撤销、过期、耗尽、错 Workspace、background、persistent 按契约失败；
 14. Evidence headless：仅 transcript 即可理解来源与限制；
 15. Evidence Web：增强视图与 transcript 一致；
 16. 普通长分析：不自动生成报告；
@@ -673,7 +672,7 @@ Skill 不提供：
 | 插件抢占 lazy materialization | before/after filesystem tests | zero-init、authoring、Session 三条旅程 |
 | Skill 按需加载 | catalog/activation/compaction/scope tests | 两 Skill 分别与同轮加载旅程 |
 | Runtime identity | marker/interpreter/version tests | 发布候选真实 Help |
-| credential ambient exposure | canary、grant、TTL、foreground tests | test + one-shot query transcript |
+| credential ambient exposure | canary、lease、TTL、usage、foreground tests | test + access + reused query transcript |
 | background secret lifetime | pre-spawn rejection tests | background/persistent Agent 请求 |
 | Evidence portability | text/Web contract fixtures | headless 与 Web 两条旅程 |
 | report semantic overreach | public-object fixtures、forbidden-field tests | 真实 Artifact/Graph reader/audit 报告 |
@@ -690,9 +689,9 @@ authoring、Session、Artifact 或 telemetry 首次需要时创建对应路径�
 插件文档必须区分“插件不预创建”与“后续分析永不写入”。测试应控制 telemetry 设置，避免把 telemetry 写入
 误判为插件初始化。
 
-### shell grant 不是结构化查询 sandbox
+### Shell lease 不是结构化查询 sandbox
 
-grant 只能把 secret lifetime 收窄到一次 foreground shell，不能限制该 shell 内的代码。该限制必须进入安全
+lease 只能把 secret lifetime 收窄到一组有界 foreground Shell，不能限制这些 Shell 内的代码。该限制必须进入安全
 review 和用户文档。如果产品要求更强边界，则删除该能力；不得宣称通过 prompt 或 command parsing 获得了
 command-level least privilege。
 
@@ -706,9 +705,9 @@ plugin namespace 和删除 domain re-judgement 控制漂移。transport snapshot
 当前 DSH 没有通用报告 Skill。本插件可以为自身 bundle 提供必要指导，但不得宣传为平台规范，也不得扩展到
 非本插件工作流。内容只保留实际报告交付所需原则。
 
-### Tool result 中存在短时 grant token
+### Tool result 中存在短时 lease token
 
-token 会进入 session transcript，因此必须是单次、短时并绑定 Agent/Workspace。它不是 credential value，但在
+token 会进入 session transcript，因此必须短时、有界并绑定 Agent/Workspace。它不是 credential value，但在
 有效期内属于 capability。若 transcript 生命周期不满足安全 review，则取消 token 方案并删除 shell injection。
 
 ## 提交顺序
@@ -719,7 +718,7 @@ token 会进入 session transcript，因此必须是单次、短时并绑定 Age
 2. `refactor(runtime)!: adopt Marivo 0.5.3 zero-init workspaces`；
 3. `fix(runtime): remove host environment mutation`；
 4. `refactor(help): preserve on-demand skills and zero-write help`；
-5. `refactor(datasource)!: replace ambient credentials with one-shot grants`；
+5. `refactor(datasource)!: separate connection tests from bounded access leases`；
 6. `refactor(evidence): make source results headless-readable`；
 7. `refactor(report)!: separate transport integrity from Marivo semantics`；
 8. `docs!: document v2 boundaries and real acceptance`；
@@ -741,7 +740,7 @@ Marivo 事实副本、是否依赖 Web/路径夸大完成状态，以及是否�
 - `marivo-analysis` 与 `marivo-semantic` 都能被发现并分别按需加载，未激活内容不常驻 prompt；
 - 两个 Skill 的 root Help、条件指导、compaction 恢复、replacement、cancellation 和 scope isolation 已验证；
 - datasource secret 只进入一次已授权 foreground shell execution；
-- background、persistent、过期、复用和错 Workspace grant 全部 fail closed；
+- background、persistent、过期、耗尽和错 Workspace lease 全部 fail closed；
 - 若一次 shell 的安全边界未获接受，shell credential injection 已被删除；
 - Help 在空 Workspace 零写入可用；
 - Evidence 在无 Web 环境完整可读；

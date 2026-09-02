@@ -14,6 +14,7 @@ import {
   MarivoDatasourceBridge,
   type MarivoDatasourceTestOptions,
   type MarivoDatasourceTestValue,
+  marivoCredentialStorageRef,
   registerMarivoDatasourceTestTool,
 } from '../../src/datasource/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
@@ -31,8 +32,8 @@ if (script.includes('result = md.test')) {
   const record = {
     stage: 'test',
     name,
-    user: process.env.DSH_DB_USER,
-    password: process.env.DSH_DB_PASSWORD,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
     persistCredentials: process.env.MARIVO_PERSIST_CREDENTIALS,
   }
   appendFileSync(process.env.RECORD_PATH, JSON.stringify(record) + '\n')
@@ -41,7 +42,7 @@ if (script.includes('result = md.test')) {
     mkdirSync(directory, { recursive: true })
     writeFileSync(path.join(directory, 'secrets.toml'), 'should-not-exist')
   }
-  if (process.env.TEST_STDERR_SECRET === '1') process.stderr.write('stderr:' + process.env.DSH_DB_PASSWORD)
+  if (process.env.TEST_STDERR_SECRET === '1') process.stderr.write('stderr:' + process.env.DB_PASSWORD)
   const ok = process.env.TEST_OK !== '0'
   process.stdout.write(JSON.stringify(ok ? {
     name, ok: true, latency_ms: 7, failure: null, repair: null,
@@ -49,10 +50,10 @@ if (script.includes('result = md.test')) {
     name, ok: false, latency_ms: 9,
     failure: {
       code: 'connection_open_failed', exception_type: 'AuthError', backend_code: null,
-      backend_name: null, message: 'rejected credential ' + process.env.DSH_DB_PASSWORD,
+      backend_name: null, message: 'rejected credential ' + process.env.DB_PASSWORD,
     },
     repair: {
-      kind: 'reconnect', help_target: 'datasource.test', action: 'replace ' + process.env.DSH_DB_PASSWORD,
+      kind: 'reconnect', help_target: 'datasource.test', action: 'replace ' + process.env.DB_PASSWORD,
       snippet: null, candidates: [], preserves_evidence: null,
     },
   }))
@@ -79,11 +80,7 @@ class FakeCredentials {
 async function fixture(
   options: { refs: string; ok?: boolean; stderrSecret?: boolean } = { refs: '' },
   toolOptions: MarivoDatasourceTestOptions = {
-    issueShellGrant: () => ({
-      token: 'g'.repeat(43),
-      expires_in_ms: 60_000,
-      usage: 'one-foreground-shell',
-    }),
+    revokeShellLease: () => {},
   },
 ) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-marivo-test-')))
@@ -145,12 +142,15 @@ async function absent(target: string): Promise<void> {
   await assert.rejects(() => stat(target), { code: 'ENOENT' })
 }
 
-test('missing and partial credentials return only deduplicated missing refs without connecting', async (t) => {
-  const f = await fixture({ refs: 'DSH_DB_USER,DSH_DB_PASSWORD,DSH_DB_PASSWORD' })
+test('missing and partial credentials return only deduplicated original refs without connecting', async (t) => {
+  const f = await fixture({ refs: 'DB_USER,DB_PASSWORD,DB_PASSWORD' })
   t.after(f.cleanup)
   assert.ok(f.ctx.tools.get(MARIVO_DATASOURCE_TEST_TOOL_NAME))
   assert.equal(f.ctx.tools.get('marivo_test'), undefined)
-  f.credentials.values.set('DSH_DB_USER', { value: 'readonly-user', source: 'env' })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_USER'), {
+    value: 'readonly-user',
+    source: 'env',
+  })
 
   const result = await execute(f.ctx)
   assert.equal(result.isError, false)
@@ -158,28 +158,26 @@ test('missing and partial credentials return only deduplicated missing refs with
   assert.deepEqual(result.value as unknown as MarivoDatasourceTestValue, {
     status: 'needs-credentials',
     name: 'warehouse',
-    refs: ['DSH_DB_PASSWORD'],
+    refs: ['DB_PASSWORD'],
   })
-  assert.deepEqual(f.credentials.resolved, ['DSH_DB_USER', 'DSH_DB_PASSWORD'])
+  assert.deepEqual(f.credentials.resolved, [
+    marivoCredentialStorageRef('DB_USER'),
+    marivoCredentialStorageRef('DB_PASSWORD'),
+  ])
   assert.equal(
     result.content[0]?.type === 'text' ? result.content[0].text : '',
-    '{"status":"needs-credentials","name":"warehouse","refs":["DSH_DB_PASSWORD"]}',
+    '{"status":"needs-credentials","name":"warehouse","refs":["DB_PASSWORD"]}',
   )
   await absent(f.recordPath)
 })
 
-test('missing credentials never issue a Shell grant', async (t) => {
-  let issued = false
+test('every explicit test revokes prior datasource access before describing credentials', async (t) => {
+  const revoked: string[] = []
   const f = await fixture(
-    { refs: 'DSH_DB_USER,DSH_DB_PASSWORD' },
+    { refs: 'DB_USER,DB_PASSWORD' },
     {
-      issueShellGrant: () => {
-        issued = true
-        return {
-          token: 'g'.repeat(43),
-          expires_in_ms: 60_000,
-          usage: 'one-foreground-shell',
-        }
+      revokeShellLease: (_bridge, name) => {
+        revoked.push(name)
       },
     },
   )
@@ -188,67 +186,92 @@ test('missing credentials never issue a Shell grant', async (t) => {
   const result = await execute(f.ctx)
 
   assert.equal(result.isError, false)
-  assert.equal(issued, false)
+  assert.deepEqual(revoked, ['warehouse'])
 })
 
-test('non-DSH datasource references fail before credential resolution or connection', async (t) => {
-  const f = await fixture({ refs: 'DB_PASSWORD' })
+test('an original Host credential is a canary and is never resolved directly', async (t) => {
+  const f = await fixture({ refs: 'DEEPSEEK_API_KEY' })
+  t.after(f.cleanup)
+  f.credentials.values.set('DEEPSEEK_API_KEY', {
+    value: 'host-canary-must-stay-unread',
+    source: 'env',
+  })
+
+  const result = await execute(f.ctx)
+
+  assert.equal(result.isError, false)
+  if (!result.isError) {
+    assert.deepEqual(result.value as unknown as MarivoDatasourceTestValue, {
+      status: 'needs-credentials',
+      name: 'warehouse',
+      refs: ['DEEPSEEK_API_KEY'],
+    })
+  }
+  assert.deepEqual(f.credentials.resolved, [marivoCredentialStorageRef('DEEPSEEK_API_KEY')])
+  assert.doesNotMatch(JSON.stringify(result), /host-canary-must-stay-unread/)
+  await absent(f.recordPath)
+})
+
+test('invalid and reserved datasource references fail before credential resolution or connection', async (t) => {
+  const f = await fixture({ refs: 'DB-PASSWORD' })
   t.after(f.cleanup)
 
   const result = await execute(f.ctx)
 
   assert.equal(result.isError, true)
-  assert.match(JSON.stringify(result), /must use the DSH_\* namespace: DB_PASSWORD/)
+  assert.match(JSON.stringify(result), /invalid credential reference/)
   assert.deepEqual(f.credentials.resolved, [])
   await absent(f.recordPath)
+
+  const reserved = await fixture({ refs: 'marivo_persist_credentials' })
+  t.after(reserved.cleanup)
+  const reservedResult = await execute(reserved.ctx)
+  assert.equal(reservedResult.isError, true)
+  assert.match(JSON.stringify(reservedResult), /reserved runtime namespace/)
+  assert.deepEqual(reserved.credentials.resolved, [])
+  await absent(reserved.recordPath)
 })
 
 test('configured credentials reach one child overlay and are re-resolved on the next operation', async (t) => {
-  const issued: Array<{ name: string; refs: readonly string[] }> = []
+  const revoked: string[] = []
   const f = await fixture(
-    { refs: 'DSH_DB_USER,DSH_DB_PASSWORD' },
+    { refs: 'DB_USER,DB_PASSWORD' },
     {
-      issueShellGrant: (_bridge, name, refs) => {
-        issued.push({ name, refs })
-        return {
-          token: 'g'.repeat(43),
-          expires_in_ms: 60_000,
-          usage: 'one-foreground-shell',
-        }
+      revokeShellLease: (_bridge, name) => {
+        revoked.push(name)
       },
     },
   )
   t.after(f.cleanup)
-  f.credentials.values.set('DSH_DB_USER', { value: 'alice', source: 'user-env' })
-  f.credentials.values.set('DSH_DB_PASSWORD', { value: 'first-secret', source: 'file' })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_USER'), {
+    value: 'alice',
+    source: 'user-env',
+  })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
+    value: 'first-secret',
+    source: 'file',
+  })
 
   const first = await execute(f.ctx)
   assert.equal(first.isError, false, JSON.stringify(first))
-  f.credentials.values.set('DSH_DB_PASSWORD', { value: 'second-secret', source: 'file' })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
+    value: 'second-secret',
+    source: 'file',
+  })
   const second = await execute(f.ctx)
   assert.equal(second.isError, false)
-  assert.deepEqual(issued, [
-    { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'] },
-    { name: 'warehouse', refs: ['DSH_DB_USER', 'DSH_DB_PASSWORD'] },
-  ])
+  assert.deepEqual(revoked, ['warehouse', 'warehouse'])
   if (!first.isError) {
     const value = first.value as unknown as MarivoDatasourceTestValue
-    assert.equal(value.status, 'ok')
-    if (value.status === 'ok') {
-      assert.deepEqual(value.shell_grant, {
-        token: 'g'.repeat(43),
-        expires_in_ms: 60_000,
-        usage: 'one-foreground-shell',
-      })
-    }
-    assert.match(JSON.stringify(first.content), /dsh-marivo-credential-grant/)
+    assert.deepEqual(value, { status: 'ok', name: 'warehouse', latency_ms: 7 })
+    assert.doesNotMatch(JSON.stringify(first), /shell_lease|credential-lease/)
   }
 
   assert.deepEqual(f.credentials.resolved, [
-    'DSH_DB_USER',
-    'DSH_DB_PASSWORD',
-    'DSH_DB_USER',
-    'DSH_DB_PASSWORD',
+    marivoCredentialStorageRef('DB_USER'),
+    marivoCredentialStorageRef('DB_PASSWORD'),
+    marivoCredentialStorageRef('DB_USER'),
+    marivoCredentialStorageRef('DB_PASSWORD'),
   ])
   const calls = (await readFile(f.recordPath, 'utf8'))
     .trim()
@@ -276,9 +299,12 @@ test('configured credentials reach one child overlay and are re-resolved on the 
 })
 
 test('structured md.test failure redacts exact credential values from result and rendered output', async (t) => {
-  const f = await fixture({ refs: 'DSH_DB_PASSWORD', ok: false, stderrSecret: true })
+  const f = await fixture({ refs: 'DB_PASSWORD', ok: false, stderrSecret: true })
   t.after(f.cleanup)
-  f.credentials.values.set('DSH_DB_PASSWORD', { value: 'ultra-private', source: 'file' })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
+    value: 'ultra-private',
+    source: 'file',
+  })
 
   const result = await execute(f.ctx)
   assert.equal(result.isError, false, JSON.stringify(result))
@@ -292,9 +318,12 @@ test('structured md.test failure redacts exact credential values from result and
 })
 
 test('fixed persistence policy cannot be overridden by a datasource credential', async (t) => {
-  const f = await fixture({ refs: 'DSH_MARIVO_PERSIST_CREDENTIALS' })
+  const f = await fixture({ refs: 'DB_PASSWORD' })
   t.after(f.cleanup)
-  f.credentials.values.set('DSH_MARIVO_PERSIST_CREDENTIALS', { value: '1', source: 'file' })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
+    value: 'ordinary-secret',
+    source: 'file',
+  })
   const result = await execute(f.ctx)
   assert.equal(result.isError, false, JSON.stringify(result))
   const call = JSON.parse((await readFile(f.recordPath, 'utf8')).trim()) as {
@@ -305,9 +334,12 @@ test('fixed persistence policy cannot be overridden by a datasource credential',
 })
 
 test('subprocess start validation never exposes a malformed credential value', async (t) => {
-  const f = await fixture({ refs: 'DSH_DB_PASSWORD' })
+  const f = await fixture({ refs: 'DB_PASSWORD' })
   t.after(f.cleanup)
-  f.credentials.values.set('DSH_DB_PASSWORD', { value: 'nul-private\u0000tail', source: 'file' })
+  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
+    value: 'nul-private\u0000tail',
+    source: 'file',
+  })
 
   const result = await execute(f.ctx)
 

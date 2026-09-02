@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | Host 环境 | plugin lifecycle 写入并恢复 `process.env.MARIVO_PERSIST_CREDENTIALS` | install、error、dispose 前后 Host 环境逐键逐值相同 |
 | Workspace | 默认创建 `marivo.toml`、`models/`、`.marivo/` | install、Help、catalog、Skill load 对空 Workspace 零写入 |
-| shell credential | 首次 shell inventory 全 Workspace datasource，并给每次 shell fresh-resolve 全部已知 refs | 只有成功 test 签发的一次 foreground grant 可注入其绑定 refs |
+| shell credential | 首次 shell inventory 全 Workspace datasource，并给每次 shell fresh-resolve 全部已知 refs | test 只做健康检查；显式 access 签发有界 foreground lease |
 | Evidence | Tool text 不承载完整可读来源，prompt 抑制文本并依赖 Web panel | headless transcript 独立包含来源、状态和边界，Web 只增强同一结果 |
 | Help | `targets=[]` 成功 no-op；模型正文包含 Runtime 路径与 fingerprint | 至少一个 target；正文只含版本、target、Help body 与失败/截断 |
 | 报告意图 | 长回答或多个图表/表格可自动触发报告 | 只接受明确请求、接受提议或修改已有 bundle |
@@ -67,13 +67,13 @@
 - subprocess policy：`direct-argv-inherited-env-snapshot-overlay-v2`。
 
 候选包为 `artifacts/npm/deepseek-ai-dsh-data-analysis-2.0.0.tgz`，SHA-1
-`ba204a6a42fa8be560d2dab068d21c3dada2b4fd`。
+`94e58b5a88863877235c6fa01e8d6e5db1bce55e`。
 
 | 检查 | 结果 | 终态证据 |
 | --- | --- | --- |
-| `npm run check` | `passed` | Biome、dependency tree、两组 TypeScript typecheck 与 111 tests 全部通过 |
+| `npm run check` | `passed` | Biome、dependency tree、两组 TypeScript typecheck 与 124 tests 全部通过 |
 | `npm run build` | `passed` | server/client build 与 finalize 通过 |
-| `npm run verify:plugin-package` | `passed` | 101 files、464722 unpacked bytes、16 个 DSH peer、Marivo 0.5.3、wheel 与 assets 通过 |
+| `npm run verify:plugin-package` | `passed` | 107 files、484702 unpacked bytes、16 个 DSH peer、Marivo 0.5.3、wheel 与 assets 通过 |
 | `git diff --check` | `passed` | 无 whitespace error |
 | Markdown 相对链接检查 | `passed` | 16 个 Markdown 文件的全部相对目标存在；设计、当前架构和验收互链闭合 |
 | package install | `passed` | tarball 安装到真实 `web`、`headless` profile；两者均解析到 2.0.0/v2 compatibility |
@@ -81,13 +81,13 @@
 
 真实环境验证脚本全部使用上述 managed Python；`validate:runtime-workspace:real`、
 `validate:environment-execution:real`、`validate:help-disclosure:real`、
-`validate:datasource-credentials:real`、`validate:datasource-grants:real`、
+`validate:datasource-credentials:real`、`validate:datasource-access:real`、
 `validate:evidence-sources:real` 与 `validate:plugin-integration-delivery:real` 均为 `passed`。
 
 ## 真实 Agent terminal journeys
 
 Prompt、Tool calls、关键 transcript 与 Session identity 保存在 DSH Session Store；可移植的模型验证结果保存在
-`artifacts/plugin-integration-delivery-real-model.json`、`artifacts/datasource-grants-real-model.json` 和
+`artifacts/plugin-integration-delivery-real-model.json`、`artifacts/datasource-access-real-model.json` 和
 `artifacts/evidence-sources-real/.../validation.json`。Workspace 文件摘要及报告 bundle 位于
 `artifacts/plugin-capability-optimization-real/`。这些路径是验收证据，不是 published/immutable Artifact。
 
@@ -101,11 +101,11 @@ Prompt、Tool calls、关键 transcript 与 Session identity 保存在 DSH Sessi
 | J06 | Headless Session `session-05e8b94e-9c26-4d6e-9744-bd4ab18eb185`，Marivo Session `sess_7fd91a41230ff8eb3161c05f` | 只创建 `.marivo/analysis/session_store.db` 与该 Session metadata | `passed` |
 | J07 | Headless Session `session-47cfd5ae-16d7-40f6-afe5-a11d5cb78519` | 无效显式 manifest 在 datasource admission fail closed，未被修复且无其他写入 | `passed` |
 | J08 | Web Session `session-cc0cdef5-cf08-4300-a5bc-6f2d86126df2` | closed result 为 `needs-credentials`；空白 Web form 正常出现，未尝试连接、未输入或泄漏值；保存闭环另由 client terminal test 验证 | `passed` |
-| J09 | real-model datasource grant artifact：`broken` test 返回结构化失败 | 无 `shell_grant`，无 secret/token 落盘 | `passed` |
-| J10 | 同一真实 Agent 取得 `a` grant，带 marker 的一次 foreground execution 运行真实 Python/DuckDB 查询并得到 20 | 只向该 execution 注入 A refs；查询 terminal success | `passed` |
+| J09 | real-model datasource access artifact，Session `datasource-access-real-mtk70teq`：`broken` 与 `a` 各一次 test | test 结果无 lease；失败与成功都不暗留执行权限 | `passed` |
+| J10 | 同一真实 Agent 对 `a` 调用一次 access，复用同一 lease 运行七次 foreground Python 查询 | 七次查询均得 20，后续脚本之间没有 datasource test 或 access | `passed` |
 | J11 | 同一真实 Agent 随后的普通 foreground query | 查询仍得 20，但 A/B canary 均不可见 | `passed` |
-| J12 | granted execution 的 presence result | A user/password 可见，B 与 edge ref 不可见 | `passed` |
-| J13 | real-model 复用被拒；同一 Agent/ToolRuntime 对 expired、wrong Workspace、background、persistent 做 pre-spawn 请求 | 五条路径均 `isError=true`，persistent edge spawn count 为 0 | `passed` |
+| J12 | leased executions 的 presence result | A user/password 可见，B 与 edge ref 不可见；七次均 fresh resolve | `passed` |
+| J13 | 同一 Agent/ToolRuntime 的确定性 64/65 次与并发边界，并对 expired、wrong Workspace、background、persistent 做 pre-spawn 请求 | 拒绝路径均脱敏，非 claim 错误不消耗，persistent edge spawn count 为 0 | `passed` |
 | J14 | Evidence real-model artifact：Session `sess_fc5abbdbe3040a1830b4c857` | headless transcript 独立包含 locator、excerpt、available/revalidation 状态和“不证明整个结论”边界 | `passed` |
 | J15 | Web Session `session-61983476-198a-4698-88d8-c4492a24f5af`；Finding `fnd_fe484ae0e62589363bfa2be2` | Web 展开的是同一 closed result；locator、excerpt、revalidation 与 transcript 一致，无第二次读取 | `passed` |
 | J16 | Headless Session `session-4c7c855e-44eb-4f77-81f4-884be597fb27` | 长中文分析在对话内完成，报告 Workspace 在此前后仍为空 | `passed` |
@@ -113,10 +113,11 @@ Prompt、Tool calls、关键 transcript 与 Session identity 保存在 DSH Sessi
 | J18 | Headless Session `session-6d5742ed-4378-44e4-8fd2-f73dc1ef18f3`；`reports/j18-audit/index.html` | audit bundle 显示精确 Session/Artifact/Run/Query identity 与全部 10 个公共 RunQuery 字段；独立浏览器复核并修正 `queries_omitted` 为按 Run 汇总 0 | `passed` |
 | J19 | Headless Session `session-a82f23e4-4050-4ce8-8d64-60af8147778e`；`reports/j19-multi-session/index.html` | 两个 Session 分别投影、两个独立 Graph、20 项隔离检查 0 失败，无 Query 补造或跨 Session 边 | `passed` |
 | J20 | 同一 J19/J20 headless terminal transcript | 无 `openPath` 仍交付精确可读路径，并明确 Produced Files 不是 ready/published/immutable | `passed` |
+| J21 | 重装候选包后的 `dsh-test` 页面，datasource refs 为 `CDN_CH_USER` / `CDN_CH_PASSWORD` | 新 Web 表单显示原始名称；真实页面执行一次 test、一次 access，并由同一 lease 连续完成两次 `md.raw_sql` foreground 查询，中间无重复 test/access | `passed` |
 
-J09–J13 的 Agent、ToolRuntime、一次性 grant、foreground child process 与 Python/DuckDB 查询均为真实执行；
+J09–J13 的 Agent、ToolRuntime、有界 lease、foreground child process 与 Python 查询均为真实执行；
 为避免把第三方数据库可用性混入 capability 验收，datasource connection success/failure bridge 使用确定性的测试实现。
-因此这组证据证明的是 grant 的签发、隔离、消费与 fail-closed 边界，不声称验证某个外部数据库服务。
+因此这组证据证明的是 lease 的签发、隔离、消费与 fail-closed 边界，不声称验证某个外部数据库服务。
 
 J17–J19 又由独立 in-app browser 通过本地静态服务器实际打开。页面标题、identity、KPI、Graph、boundary、
 runtime self-check 与 console error count 均与 Headless transcript 一致；J18 的独立复核发现并修复一处只影响文案
@@ -134,22 +135,22 @@ Artifact 的源字段均为 `null`；reader/audit transport 忠实保留 `null`�
 | --- | --- | --- | --- | --- |
 | 0 基线与范围 | 冻结失败基线；范围只含本仓库 | v1 baseline 108 tests | 无 sibling 前置条件 | `passed` |
 | 1 Runtime/Workspace/Help | zero-init、Runtime-level Help、exact Skill、Host env 零 mutation | runtime 13 + environment 22 + help 30 | J01–J07 与 real validators | `passed` |
-| 2 one-shot credential grant | test 后签发、Agent/Workspace/TTL/foreground/single-use、fresh resolve | credential 22 | J08–J13 与 real-model grant artifact | `passed` |
+| 2 bounded credential lease | test/access 解耦、Agent/Workspace/TTL/64 uses/foreground、fresh resolve | credential tests | J08–J13 与 real-model access artifact | `passed` |
 | 3 Evidence 可移植化 | closed v2 result、Artifact-owned exact Finding、Web 只增强 | Evidence 12 | J14–J15 headless/Web | `passed` |
 | 4 report-kit/Skill | schema v2、reader/audit、公共 RunQuery、无领域重判、显式报告意图 | report 9 | J16–J20 与三份实际浏览器报告 | `passed` |
-| 5 文档、Package、真实 Agent | README/architecture/modules/plan/acceptance 同步；2.0.0 package | 全量 111 tests + build/package/link gates | 真实 web/headless profile 与 J01–J20 | `passed` |
+| 5 文档、Package、真实 Agent | README/architecture/modules/plan/acceptance 同步；2.0.0 package | 全量 124 tests + build/package/link gates | 真实 web/headless profile 与 J01–J20 | `passed` |
 
 ## 安全 review 结论
 
-阶段 2 的 shell injection 边界已明确接受：grant 只限制 secret 进入哪一次 foreground Shell execution，不能限制
-该 execution 内代码读取环境变量。实现与文档不把它描述为 command-level sandbox；若未来要求结构化 datasource
-API 级隔离，应删除 shell grant，而不是继续解析任意命令。
+阶段 2 的 shell injection 边界已明确接受：lease 只限制 secret 进入哪些有界 foreground Shell executions，不能
+限制这些 executions 内代码读取环境变量。实现与文档不把它描述为 command-level sandbox；若未来要求结构化
+datasource API 级隔离，应删除 Shell lease，而不是继续解析任意命令。
 
-同时接受 token 进入 Session transcript 的剩余风险：token 是最长 60 秒、单次 claim、绑定 Agent 与 Workspace
-的 capability，不是 credential value；claim 在 background/persistent 检查或 credential resolve 失败前即被消费。
+同时接受 token 进入 Session transcript 的剩余风险：token 最长 30 分钟、最多 64 次并绑定 Agent 与 Workspace，
+不是 credential value；background/persistent 与错 scope 在 claim 前拒绝，credential resolve 失败会消耗一次。
 真实验收产物会脱敏 token，且没有记录任何 credential value。
 
 ## 最终结论
 
-本方案的实现、focused tests、专项 review、候选包安装、J01–J20 terminal journeys 与独立浏览器复核全部
-`passed`。没有 blocked、failed 或 unverified 项；`2.0.0` 满足设计中的完成定义。
+本方案的实现、focused tests、专项 review、候选包安装、J01–J21 terminal journeys 与独立浏览器复核全部
+`passed`。`2.0.0` 满足设计中的完成定义，没有 blocked、failed 或 unverified 项。

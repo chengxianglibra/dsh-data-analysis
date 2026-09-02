@@ -33,7 +33,7 @@
     "validate:environment-execution:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-environment-execution-real.ts",
     "validate:help-disclosure:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-help-disclosure-real.ts",
     "validate:datasource-credentials:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-credentials-real.ts",
-    "validate:datasource-grants:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-grants-real.ts",
+    "validate:datasource-access:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-access-real.ts",
     "validate:evidence-sources:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-evidence-sources-real.ts",
     "validate:plugin-integration-delivery:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-integration-delivery-real.ts"
   },

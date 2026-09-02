@@ -3,7 +3,10 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { MARIVO_DATASOURCE_TEST_TOOL_NAME } from '../../src/datasource/index.ts'
+import {
+  MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
+  MARIVO_DATASOURCE_TEST_TOOL_NAME,
+} from '../../src/datasource/index.ts'
 import { MARIVO_HELP_TOOL_NAME } from '../../src/disclosure/index.ts'
 import { MARIVO_EVIDENCE_SOURCES_TOOL_NAME } from '../../src/evidence/index.ts'
 
@@ -23,14 +26,20 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return result
 }
 
-test('public plugin Tool surface contains only the three cross-boundary adapters', () => {
+test('public plugin Tool surface contains only the four cross-boundary adapters', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
       MARIVO_DATASOURCE_TEST_TOOL_NAME,
+      MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
       MARIVO_EVIDENCE_SOURCES_TOOL_NAME,
     ].sort(),
-    ['marivo_datasource_test', 'marivo_evidence_sources', 'marivo_help'],
+    [
+      'marivo_datasource_access',
+      'marivo_datasource_test',
+      'marivo_evidence_sources',
+      'marivo_help',
+    ],
   )
 })
 

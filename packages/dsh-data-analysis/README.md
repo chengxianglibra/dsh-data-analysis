@@ -5,7 +5,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - 精确 Marivo 0.5.3 共享 Runtime 与 zero-init per-Workspace binding；
 - `marivo_help` 实时公共 Help transport；
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
-- datasource test 成功后的一次性 foreground Shell credential grant；
+- `marivo_datasource_access` 的 30 分钟、最多 64 次 foreground Shell credential lease；
 - `marivo_evidence_sources({ session_id, sources })` 的可移植 Artifact-owned Finding 来源交付；
 - `emit_dataset(BaseFrame, ...)`、`emit_computed(DataFrame, ...)` 与
   `emit_session_trace(SessionGraph, ...)` 的有界 JavaScript 投影；
@@ -30,13 +30,15 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 ```text
 marivo_help({ targets: string[] })
 marivo_datasource_test({ name: string })
+marivo_datasource_access({ name: string })
 marivo_evidence_sources({
   session_id: string,
   sources: Array<{ artifact_ref: string, finding_id: string }>
 })
 ```
 
-`marivo_datasource_test` 只拥有缺失 Credentials 的 DSH/Web 闭环和显式连接测试。`md.inspect(...)`、
+`marivo_datasource_test` 只拥有缺失 Credentials 的 DSH/Web 闭环和显式连接测试；
+`marivo_datasource_access` 只签发有界 foreground Shell lease，不执行连接测试。`md.inspect(...)`、
 Session recovery、Artifact revalidation、Quality、Evidence 读取、Session Graph 与 `to_pandas()` 都直接使用
 Marivo 公共 API，不增加 convenience Tool。
 

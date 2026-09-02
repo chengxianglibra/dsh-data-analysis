@@ -11,13 +11,17 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
+  marivoCredentialStorageRef as hostCredentialStorageRef,
+  MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
   MARIVO_DATASOURCE_TEST_TOOL_NAME,
   MarivoDatasourceBridge,
+  registerMarivoDatasourceAccessTool,
   registerMarivoDatasourceTestTool,
 } from '../../src/datasource/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
 
 interface ClientExports {
+  marivoCredentialStorageRef(ref: string): string
   parseNeedsCredentials(text: string): { name: string; refs: string[] } | null
   shouldAutoOpen(sessionId: string, callId: string, result: unknown): boolean
   blankCredentialValues(refs: readonly string[]): Record<string, string>
@@ -37,6 +41,7 @@ interface ClientExports {
     }>
   }
   MarivoDatasourceTestToolView(props: unknown): unknown
+  MarivoDatasourceAccessToolView(props: unknown): unknown
 }
 
 interface ClientRuntime {
@@ -158,7 +163,7 @@ function credentialResponse(configured: boolean) {
       ok: true,
       value: {
         credentials: {
-          DSH_DB_PASSWORD: { configured, writable: true },
+          [hostCredentialStorageRef('DB_PASSWORD')]: { configured, writable: true },
         },
       },
     },
@@ -175,7 +180,7 @@ function needsCredentialsBlock(callId: string) {
         text: JSON.stringify({
           status: 'needs-credentials',
           name: 'warehouse',
-          refs: ['DSH_DB_PASSWORD'],
+          refs: ['DB_PASSWORD'],
         }),
       },
     ],
@@ -191,7 +196,7 @@ const script = args[1] ?? ''
 const name = args[5]
 if (script.includes('result = md.test')) {
   appendFileSync(process.env.RECORD_PATH, JSON.stringify({
-    key: process.env.DSH_WEB_API_KEY,
+    key: process.env.WEB_API_KEY,
     persistCredentials: process.env.MARIVO_PERSIST_CREDENTIALS,
   }) + '\n')
   process.stdout.write(JSON.stringify({
@@ -200,7 +205,7 @@ if (script.includes('result = md.test')) {
   process.exit(0)
 }
 if (script.includes('md.describe')) {
-  process.stdout.write(JSON.stringify({ name, refs: ['DSH_WEB_API_KEY'] }))
+  process.stdout.write(JSON.stringify({ name, refs: ['WEB_API_KEY'] }))
   process.exit(0)
 }
 process.exit(2)
@@ -213,6 +218,52 @@ class MapCredentials {
     return value === undefined ? undefined : { value, source: 'file' }
   }
 }
+
+const LEASE_TOKEN = 'l'.repeat(43)
+
+function leaseReceipt(refs: readonly string[]) {
+  return {
+    token: LEASE_TOKEN,
+    expires_in_ms: 1_800_000,
+    max_uses: 64,
+    usage: 'bounded-foreground-shell-lease' as const,
+    bash_prelude: [
+      `# dsh-marivo-credential-lease:${LEASE_TOKEN}`,
+      ...refs.flatMap((ref) => {
+        const storageRef = hostCredentialStorageRef(ref)
+        return [`export ${ref}="\${${storageRef}}"`, `unset ${storageRef}`]
+      }),
+      'export MARIVO_PERSIST_CREDENTIALS=0',
+    ].join('\n'),
+    pwsh_prelude: [
+      `# dsh-marivo-credential-lease:${LEASE_TOKEN}`,
+      ...refs.flatMap((ref) => {
+        const storageRef = hostCredentialStorageRef(ref)
+        return [`$env:${ref} = $env:${storageRef}`, `Remove-Item Env:${storageRef}`]
+      }),
+      "$env:MARIVO_PERSIST_CREDENTIALS = '0'",
+    ].join('\n'),
+  }
+}
+
+test('browser and Host credential mappings stay identical for valid and reserved refs', async () => {
+  const client = await loadClient()
+  for (const ref of ['CDN_CH_USER', 'DSH_CDN_CH_PASSWORD', 'Api_Token', '_private']) {
+    assert.equal(client.marivoCredentialStorageRef(ref), hostCredentialStorageRef(ref))
+  }
+  for (const ref of [
+    'NOT-POSIX',
+    'MARIVO_PERSIST_CREDENTIALS',
+    'dsh_data_analysis_python',
+    'DSH_HOME',
+    'dsh_shell',
+    'DSH_SESSION_ID',
+    'dsh_session_jsonl',
+  ]) {
+    assert.throws(() => client.marivoCredentialStorageRef(ref))
+    assert.throws(() => hostCredentialStorageRef(ref))
+  }
+})
 
 test('browser bundle opens once per session, keeps fields blank, saves, then waits for manual retry', async (t) => {
   const client = await loadClient()
@@ -241,14 +292,13 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  registerMarivoDatasourceTestTool(ctx, new MarivoDatasourceBridge(environment), credentials, {
-    issueShellGrant() {
-      return {
-        token: 'g'.repeat(43),
-        expires_in_ms: 60_000,
-        usage: 'one-foreground-shell',
-      }
-    },
+  const bridge = new MarivoDatasourceBridge(environment)
+  registerMarivoDatasourceTestTool(ctx, bridge, credentials, {
+    revokeShellLease: () => {},
+  })
+  registerMarivoDatasourceAccessTool(ctx, bridge, credentials, {
+    revokeShellLease: () => {},
+    issueShellLease: (_bridge, _name, refs) => leaseReceipt(refs),
   })
 
   const first = await ctx.tools.execute({
@@ -263,13 +313,13 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
   assert.deepEqual(JSON.parse(JSON.stringify(missing)), {
     status: 'needs-credentials',
     name: 'warehouse',
-    refs: ['DSH_WEB_API_KEY'],
+    refs: ['WEB_API_KEY'],
   })
   assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), true)
   assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), false)
   assert.equal(client.shouldAutoOpen('session-b', 'web-missing', missing), true)
   assert.deepEqual(JSON.parse(JSON.stringify(client.blankCredentialValues(missing?.refs ?? []))), {
-    DSH_WEB_API_KEY: '',
+    WEB_API_KEY: '',
   })
   await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
 
@@ -293,24 +343,24 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
       },
     },
   })
-  assert.deepEqual(JSON.parse(JSON.stringify(await controller.describe(['DSH_WEB_API_KEY']))), {
-    DSH_WEB_API_KEY: { configured: false },
+  assert.deepEqual(JSON.parse(JSON.stringify(await controller.describe(['WEB_API_KEY']))), {
+    WEB_API_KEY: { configured: false },
   })
   assert.deepEqual(
-    JSON.parse(JSON.stringify(await controller.save({ DSH_WEB_API_KEY: 'web-secret' }))),
+    JSON.parse(JSON.stringify(await controller.save({ WEB_API_KEY: 'web-secret' }))),
     {
       ok: true,
-      saved: ['DSH_WEB_API_KEY'],
+      saved: ['WEB_API_KEY'],
       errors: {},
     },
   )
   assert.deepEqual(JSON.parse(JSON.stringify(sets)), [
-    { ref: 'DSH_WEB_API_KEY', value: 'web-secret' },
+    { ref: hostCredentialStorageRef('WEB_API_KEY'), value: 'web-secret' },
   ])
   assert.deepEqual(JSON.parse(JSON.stringify(client.parseNeedsCredentials(text))), {
     status: 'needs-credentials',
     name: 'warehouse',
-    refs: ['DSH_WEB_API_KEY'],
+    refs: ['WEB_API_KEY'],
   })
   // Saving never resumes the Tool; the fake Python has still not been called.
   await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
@@ -328,6 +378,18 @@ test('browser bundle opens once per session, keeps fields blank, saves, then wai
     persistCredentials: '0',
   })
   assert.doesNotMatch(JSON.stringify(retried), /web-secret/)
+
+  const access = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('web-access'),
+    name: MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
+    arguments: { name: 'warehouse' },
+  })
+  assert.equal(access.isError, false)
+  if (!access.isError) {
+    assert.deepEqual((access.value as any).shell_lease, leaseReceipt(['WEB_API_KEY']))
+  }
+  assert.equal((await readFile(recordPath, 'utf8')).trim().split('\n').length, 1)
 })
 
 test('partial credential writes retain failures and redact entered values', async () => {
@@ -337,7 +399,7 @@ test('partial credential writes retain failures and redact entered values', asyn
     credentials: {
       async set({ ref, value }: { ref: string; value: string }) {
         calls.push(ref)
-        if (ref === 'SECOND') {
+        if (ref === hostCredentialStorageRef('SECOND')) {
           return { result: { ok: false, error: { message: `rejected ${value}` } } }
         }
         return { result: { ok: true, value: {} } }
@@ -345,7 +407,7 @@ test('partial credential writes retain failures and redact entered values', asyn
     },
   })
   const result = await controller.save({ FIRST: 'first-secret', SECOND: 'second-secret' })
-  assert.deepEqual(calls, ['FIRST', 'SECOND'])
+  assert.deepEqual(calls, [hostCredentialStorageRef('FIRST'), hostCredentialStorageRef('SECOND')])
   assert.equal(result.ok, false)
   assert.deepEqual([...result.saved], ['FIRST'])
   assert.equal(result.errors.SECOND, 'rejected [REDACTED]')
@@ -392,6 +454,37 @@ test('replayed needs-credentials result stays closed when every ref is now confi
     findElement(reconciled, (element) => element.props?.children === '配置凭证'),
     null,
   )
+})
+
+test('access credential view names access in its manual retry prompt', async () => {
+  const harness = new HookHarness()
+  const client = await loadClient({
+    react: harness.react,
+    jsxRuntime: harness.jsxRuntime,
+    primitives: { Button() {}, Modal() {} },
+  })
+  const props = {
+    sessionId: 'access-replay-session',
+    callId: 'access-replay-configured',
+    block: needsCredentialsBlock('access-replay-configured'),
+    connection: {
+      api: {
+        credentials: {
+          async describe() {
+            return credentialResponse(true)
+          },
+        },
+      },
+    },
+  }
+
+  harness.render(client.MarivoDatasourceAccessToolView, props)
+  harness.flushEffects()
+  await settleAsyncState()
+  const reconciled = harness.render(client.MarivoDatasourceAccessToolView, props)
+
+  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_datasource_access/)
+  assert.match(JSON.stringify(reconciled), /Marivo 执行授权/)
 })
 
 test('a stale credential inspection cannot reopen a dialog closed by a newer result', async () => {
@@ -492,8 +585,11 @@ test('credential inspection keeps only currently unconfigured refs editable', as
             ok: true,
             value: {
               credentials: {
-                DSH_DB_USER: { configured: true, writable: true },
-                DSH_DB_PASSWORD: { configured: false, writable: true },
+                [hostCredentialStorageRef('DB_USER')]: { configured: true, writable: true },
+                [hostCredentialStorageRef('DB_PASSWORD')]: {
+                  configured: false,
+                  writable: true,
+                },
               },
             },
           },
@@ -503,10 +599,10 @@ test('credential inspection keeps only currently unconfigured refs editable', as
   })
 
   assert.deepEqual(
-    JSON.parse(JSON.stringify(await controller.inspect(['DSH_DB_USER', 'DSH_DB_PASSWORD']))),
+    JSON.parse(JSON.stringify(await controller.inspect(['DB_USER', 'DB_PASSWORD']))),
     {
-      configured: { DSH_DB_USER: true, DSH_DB_PASSWORD: false },
-      missing: ['DSH_DB_PASSWORD'],
+      configured: { DB_USER: true, DB_PASSWORD: false },
+      missing: ['DB_PASSWORD'],
       shouldOpen: true,
     },
   )

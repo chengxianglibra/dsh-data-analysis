@@ -297,7 +297,7 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
   assert.match(text, /Finding a/)
 })
 
-test('client registers only source delivery projection with one source turn tail', async () => {
+test('client registers both datasource views and one source turn tail', async () => {
   const client = await loadClient()
   const definitions: any[] = []
   const slots: any[] = []
@@ -334,7 +334,11 @@ test('client registers only source delivery projection with one source turn tail
     definitions.map((item) => item.kind),
     ['marivo-evidence-sources-delivery'],
   )
-  assert.equal(slots.length, 2)
-  assert.equal(slots[1].options.name, 'conversation.chat.turnTail')
-  assert.equal(typeof slots[1].options.select, 'function')
+  assert.equal(slots.length, 3)
+  assert.deepEqual(
+    slots.slice(0, 2).map((slot) => slot.options.key),
+    ['marivo_datasource_test', 'marivo_datasource_access'],
+  )
+  assert.equal(slots[2].options.name, 'conversation.chat.turnTail')
+  assert.equal(typeof slots[2].options.select, 'function')
 })

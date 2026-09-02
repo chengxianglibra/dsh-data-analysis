@@ -14,27 +14,44 @@ import {
   resolveMarivoDatasourceBridge,
 } from './bridge.ts'
 
-export const DSH_CREDENTIAL_REF_PATTERN = /^DSH_[A-Z][A-Z0-9_]*$/
-export const MARIVO_CREDENTIAL_GRANT_PREFIX = '# dsh-marivo-credential-grant:'
-export const DEFAULT_MARIVO_CREDENTIAL_GRANT_TTL_MS = 60_000
+export const MARIVO_CREDENTIAL_STORAGE_PREFIX = 'DSH_DATA_ANALYSIS_CREDENTIAL_'
+export const MARIVO_CREDENTIAL_LEASE_PREFIX = '# dsh-marivo-credential-lease:'
+export const DEFAULT_MARIVO_CREDENTIAL_LEASE_TTL_MS = 30 * 60_000
+export const DEFAULT_MARIVO_CREDENTIAL_LEASE_MAX_USES = 64
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
 const SHELL_TOOL_NAMES = new Set(['bash', 'pwsh'])
+const HOST_SHELL_ENVIRONMENT_NAMES = new Set([
+  'DSH_HOME',
+  'DSH_SESSION_ID',
+  'DSH_SESSION_JSONL',
+  'DSH_SHELL',
+])
 type DshCredentialRefName = `DSH_${string}`
+type MarivoCredentialStorageRefName = `DSH_DATA_ANALYSIS_CREDENTIAL_${string}`
 
-export interface MarivoShellGrantReceipt {
+interface MarivoCredentialBinding {
+  environmentRef: string
+  storageRef: MarivoCredentialStorageRefName
+}
+
+export interface MarivoShellLeaseReceipt {
   [key: string]: string | number
   token: string
   expires_in_ms: number
-  usage: 'one-foreground-shell'
+  max_uses: number
+  usage: 'bounded-foreground-shell-lease'
+  bash_prelude: string
+  pwsh_prelude: string
 }
 
-interface PendingGrant {
+interface PendingLease {
   agent: Agent
   workspaceFingerprint: string
   datasourceName: string
-  refs: readonly DshCredentialRefName[]
+  bindings: readonly MarivoCredentialBinding[]
   expiresAt: number
+  remainingUses: number
 }
 
 interface ExecutionSnapshot {
@@ -71,20 +88,80 @@ export function registerMarivoRuntimeShellEnvironment(
 }
 
 function invalidReference(ref: string): MarivoEnvironmentError {
+  const valid = isCredentialRefName(ref)
   return new MarivoEnvironmentError(
     'datasource-credential-ref-invalid',
-    `Marivo datasource credential reference must use the DSH_* namespace: ${ref}`,
-    { ref, expected: 'DSH_[A-Z][A-Z0-9_]*' },
+    valid
+      ? `Marivo datasource credential reference uses a reserved runtime namespace or Host name: ${ref}`
+      : `Marivo datasource credential reference must be a POSIX environment name: ${ref}`,
+    {
+      ref,
+      expected: valid
+        ? 'a POSIX environment name outside MARIVO_*, DSH_DATA_ANALYSIS_*, and Host-owned DSH shell facts'
+        : '[A-Za-z_][A-Za-z0-9_]*',
+    },
   )
 }
 
-function grantFailure(
+function isReservedDatasourceCredentialReference(ref: string): boolean {
+  const upper = ref.toUpperCase()
+  return (
+    upper.startsWith('MARIVO_') ||
+    upper.startsWith('DSH_DATA_ANALYSIS_') ||
+    HOST_SHELL_ENVIRONMENT_NAMES.has(upper)
+  )
+}
+
+/** Map one user-authored datasource environment reference to plugin-owned DSH storage. */
+export function marivoCredentialStorageRef(ref: string): MarivoCredentialStorageRefName {
+  if (!isCredentialRefName(ref) || isReservedDatasourceCredentialReference(ref)) {
+    throw invalidReference(ref)
+  }
+  const encoded = [...ref]
+    .map((character) => character.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase())
+    .join('')
+  return `${MARIVO_CREDENTIAL_STORAGE_PREFIX}${encoded}`
+}
+
+function credentialBindings(refs: readonly string[]): readonly MarivoCredentialBinding[] {
+  return Object.freeze(
+    [...new Set(refs)].map((environmentRef) => ({
+      environmentRef,
+      storageRef: marivoCredentialStorageRef(environmentRef),
+    })),
+  )
+}
+
+function bashPrelude(token: string, bindings: readonly MarivoCredentialBinding[]): string {
+  return [
+    `${MARIVO_CREDENTIAL_LEASE_PREFIX}${token}`,
+    ...bindings.flatMap(({ environmentRef, storageRef }) => [
+      `export ${environmentRef}="\${${storageRef}}"`,
+      `unset ${storageRef}`,
+    ]),
+    'export MARIVO_PERSIST_CREDENTIALS=0',
+  ].join('\n')
+}
+
+function pwshPrelude(token: string, bindings: readonly MarivoCredentialBinding[]): string {
+  return [
+    `${MARIVO_CREDENTIAL_LEASE_PREFIX}${token}`,
+    ...bindings.flatMap(({ environmentRef, storageRef }) => [
+      `$env:${environmentRef} = $env:${storageRef}`,
+      `Remove-Item Env:${storageRef}`,
+    ]),
+    "$env:MARIVO_PERSIST_CREDENTIALS = '0'",
+  ].join('\n')
+}
+
+function leaseFailure(
   code:
-    | 'shell-credential-grant-invalid'
-    | 'shell-credential-grant-expired'
-    | 'shell-credential-grant-scope-mismatch'
+    | 'shell-credential-lease-invalid'
+    | 'shell-credential-lease-expired'
+    | 'shell-credential-lease-exhausted'
+    | 'shell-credential-lease-scope-mismatch'
     | 'shell-credential-injection-unsupported'
-    | 'shell-credential-grant-resolve-failed',
+    | 'shell-credential-lease-resolve-failed',
   message: string,
   details: Readonly<Record<string, unknown>> = {},
 ): MarivoEnvironmentError {
@@ -99,18 +176,18 @@ function commandArguments(execution: ToolExecution): Record<string, unknown> | u
     : undefined
 }
 
-function grantToken(execution: ToolExecution): string | undefined {
+function leaseToken(execution: ToolExecution): string | undefined {
   const command = commandArguments(execution)?.command
   if (typeof command !== 'string') return undefined
   const firstLine = command.split(/\r?\n/, 1)[0] ?? ''
-  const candidate = firstLine.startsWith(MARIVO_CREDENTIAL_GRANT_PREFIX)
-    ? firstLine.slice(MARIVO_CREDENTIAL_GRANT_PREFIX.length)
+  const candidate = firstLine.startsWith(MARIVO_CREDENTIAL_LEASE_PREFIX)
+    ? firstLine.slice(MARIVO_CREDENTIAL_LEASE_PREFIX.length)
     : undefined
   if (candidate !== undefined && TOKEN_PATTERN.test(candidate)) return candidate
-  if (firstLine.includes('dsh-marivo-credential-grant')) {
-    throw grantFailure(
-      'shell-credential-grant-invalid',
-      'Marivo shell credential grant marker is malformed',
+  if (firstLine.includes('dsh-marivo-credential-')) {
+    throw leaseFailure(
+      'shell-credential-lease-invalid',
+      'Marivo shell credential lease marker is malformed or unsupported',
     )
   }
   return undefined
@@ -121,22 +198,19 @@ function isHarnessPersistentShell(agent: Agent, name: string): boolean {
   return definition?.output.schema.type === 'string'
 }
 
-export function assertDshCredentialReferences(
-  refs: readonly string[],
-): asserts refs is readonly DshCredentialRefName[] {
+export function assertMarivoCredentialReferences(refs: readonly string[]): void {
   for (const ref of refs) {
-    if (!isCredentialRefName(ref) || !DSH_CREDENTIAL_REF_PATTERN.test(ref)) {
-      throw invalidReference(ref)
-    }
+    marivoCredentialStorageRef(ref)
   }
 }
 
-/** Own short-lived grants and expose credential values only to their claimed Shell execution. */
-export class MarivoShellCredentialGrants {
+/** Own bounded leases and expose credential values only to each admitted Shell execution. */
+export class MarivoShellCredentialLeases {
   readonly #ctx: Context
   readonly #credentials: Pick<CredentialProvider, 'resolve'>
   readonly #ttlMs: number
-  readonly #grants = new Map<string, PendingGrant>()
+  readonly #maxUses: number
+  readonly #leases = new Map<string, PendingLease>()
   readonly #executionValues = new Map<ToolExecution, ExecutionSnapshot>()
   readonly #contributors = new Map<DshCredentialRefName, () => void>()
   #disposed = false
@@ -144,19 +218,36 @@ export class MarivoShellCredentialGrants {
   constructor(
     ctx: Context,
     credentials: Pick<CredentialProvider, 'resolve'>,
-    options: { ttlMs?: number } = {},
+    options: { ttlMs?: number; maxUses?: number } = {},
   ) {
-    const ttlMs = options.ttlMs ?? DEFAULT_MARIVO_CREDENTIAL_GRANT_TTL_MS
-    if (!Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > 60_000) {
-      throw new TypeError('Marivo shell credential grant ttlMs must be an integer from 1 to 60000')
+    const ttlMs = options.ttlMs ?? DEFAULT_MARIVO_CREDENTIAL_LEASE_TTL_MS
+    const maxUses = options.maxUses ?? DEFAULT_MARIVO_CREDENTIAL_LEASE_MAX_USES
+    if (
+      !Number.isSafeInteger(ttlMs) ||
+      ttlMs < 1 ||
+      ttlMs > DEFAULT_MARIVO_CREDENTIAL_LEASE_TTL_MS
+    ) {
+      throw new TypeError(
+        `Marivo shell credential lease ttlMs must be an integer from 1 to ${DEFAULT_MARIVO_CREDENTIAL_LEASE_TTL_MS}`,
+      )
+    }
+    if (
+      !Number.isSafeInteger(maxUses) ||
+      maxUses < 1 ||
+      maxUses > DEFAULT_MARIVO_CREDENTIAL_LEASE_MAX_USES
+    ) {
+      throw new TypeError(
+        `Marivo shell credential lease maxUses must be an integer from 1 to ${DEFAULT_MARIVO_CREDENTIAL_LEASE_MAX_USES}`,
+      )
     }
     this.#ctx = ctx
     this.#credentials = credentials
     this.#ttlMs = ttlMs
+    this.#maxUses = maxUses
   }
 
   #ensureContributor(ref: DshCredentialRefName): void {
-    if (this.#disposed) throw new Error('Marivo shell credential grants are disposed')
+    if (this.#disposed) throw new Error('Marivo shell credential leases are disposed')
     if (this.#contributors.has(ref)) return
     const dispose = shellEnvironmentRegistry(this.#ctx).register({
       name: `dsh-data-analysis:credential:${ref}`,
@@ -174,32 +265,53 @@ export class MarivoShellCredentialGrants {
   }
 
   #purgeExpired(now: number): void {
-    for (const [token, grant] of this.#grants) {
-      if (grant.expiresAt <= now) this.#grants.delete(token)
+    for (const [token, lease] of this.#leases) {
+      if (lease.expiresAt <= now) this.#leases.delete(token)
     }
   }
 
-  issueGrant(
+  revokeLease(agent: Agent, bridge: MarivoDatasourceBridgePort, datasourceName: string): void {
+    for (const [token, lease] of this.#leases) {
+      if (
+        lease.agent === agent &&
+        lease.workspaceFingerprint === bridge.binding.fingerprint &&
+        lease.datasourceName === datasourceName
+      ) {
+        this.#leases.delete(token)
+      }
+    }
+  }
+
+  issueLease(
     agent: Agent,
     bridge: MarivoDatasourceBridgePort,
     datasourceName: string,
     refs: readonly string[],
-  ): MarivoShellGrantReceipt {
-    if (this.#disposed) throw new Error('Marivo shell credential grants are disposed')
+  ): MarivoShellLeaseReceipt {
+    if (this.#disposed) throw new Error('Marivo shell credential leases are disposed')
     const now = Date.now()
     this.#purgeExpired(now)
-    assertDshCredentialReferences(refs)
-    const accepted = [...new Set(refs)]
-    for (const ref of accepted) this.#ensureContributor(ref)
+    this.revokeLease(agent, bridge, datasourceName)
+    assertMarivoCredentialReferences(refs)
+    const bindings = credentialBindings(refs)
+    for (const binding of bindings) this.#ensureContributor(binding.storageRef)
     const token = randomBytes(32).toString('base64url')
-    this.#grants.set(token, {
+    this.#leases.set(token, {
       agent,
       workspaceFingerprint: bridge.binding.fingerprint,
       datasourceName,
-      refs: Object.freeze(accepted),
+      bindings,
       expiresAt: now + this.#ttlMs,
+      remainingUses: this.#maxUses,
     })
-    return { token, expires_in_ms: this.#ttlMs, usage: 'one-foreground-shell' }
+    return {
+      token,
+      expires_in_ms: this.#ttlMs,
+      max_uses: this.#maxUses,
+      usage: 'bounded-foreground-shell-lease',
+      bash_prelude: bashPrelude(token, bindings),
+      pwsh_prelude: pwshPrelude(token, bindings),
+    }
   }
 
   async #claim(
@@ -208,81 +320,95 @@ export class MarivoShellCredentialGrants {
     execution: ToolExecution,
     token: string,
   ): Promise<void> {
-    const grant = this.#grants.get(token)
-    if (grant === undefined) {
-      throw grantFailure(
-        'shell-credential-grant-invalid',
-        'Marivo shell credential grant is unknown or has already been used',
+    const lease = this.#leases.get(token)
+    if (lease === undefined) {
+      throw leaseFailure(
+        'shell-credential-lease-invalid',
+        'Marivo shell credential lease is unknown; call marivo_datasource_access again',
       )
     }
-    if (grant.expiresAt <= Date.now()) {
-      this.#grants.delete(token)
-      throw grantFailure(
-        'shell-credential-grant-expired',
-        'Marivo shell credential grant has expired',
-        { datasourceName: grant.datasourceName },
+    if (lease.expiresAt <= Date.now()) {
+      this.#leases.delete(token)
+      throw leaseFailure(
+        'shell-credential-lease-expired',
+        'Marivo shell credential lease has expired; call marivo_datasource_access again',
+        { datasourceName: lease.datasourceName },
       )
     }
-    if (execution.agent !== agent || grant.agent !== agent) {
-      throw grantFailure(
-        'shell-credential-grant-scope-mismatch',
-        'Marivo shell credential grant belongs to another Agent',
+    if (execution.agent !== agent || lease.agent !== agent) {
+      throw leaseFailure(
+        'shell-credential-lease-scope-mismatch',
+        'Marivo shell credential lease belongs to another Agent',
       )
     }
     const bridge = await resolveMarivoDatasourceBridge(bridgeSource)
-    if (grant.workspaceFingerprint !== bridge.binding.fingerprint) {
-      throw grantFailure(
-        'shell-credential-grant-scope-mismatch',
-        'Marivo shell credential grant belongs to another Workspace binding',
+    if (this.#leases.get(token) !== lease) {
+      throw leaseFailure(
+        'shell-credential-lease-invalid',
+        'Marivo shell credential lease was revoked; call marivo_datasource_access again',
       )
     }
-    if (grant.expiresAt <= Date.now()) {
-      this.#grants.delete(token)
-      throw grantFailure(
-        'shell-credential-grant-expired',
-        'Marivo shell credential grant has expired',
-        { datasourceName: grant.datasourceName },
+    if (lease.workspaceFingerprint !== bridge.binding.fingerprint) {
+      throw leaseFailure(
+        'shell-credential-lease-scope-mismatch',
+        'Marivo shell credential lease belongs to another Workspace binding',
+      )
+    }
+    if (lease.expiresAt <= Date.now()) {
+      this.#leases.delete(token)
+      throw leaseFailure(
+        'shell-credential-lease-expired',
+        'Marivo shell credential lease has expired; call marivo_datasource_access again',
+        { datasourceName: lease.datasourceName },
       )
     }
 
-    this.#grants.delete(token)
     const args = commandArguments(execution)
     if (args?.run_in_background === true) {
-      throw grantFailure(
+      throw leaseFailure(
         'shell-credential-injection-unsupported',
-        'Marivo shell credential grants cannot be used by background Shell executions',
+        'Marivo shell credential leases cannot be used by background Shell executions',
         { tool: execution.name },
       )
     }
     if (isHarnessPersistentShell(agent, execution.name)) {
-      throw grantFailure(
+      throw leaseFailure(
         'shell-credential-injection-unsupported',
-        `Marivo shell credential grants cannot be used by persistent ${execution.name}`,
+        `Marivo shell credential leases cannot be used by persistent ${execution.name}`,
         { tool: execution.name },
       )
     }
+    if (lease.remainingUses < 1) {
+      this.#leases.delete(token)
+      throw leaseFailure(
+        'shell-credential-lease-exhausted',
+        'Marivo shell credential lease is exhausted; call marivo_datasource_access again',
+        { datasourceName: lease.datasourceName },
+      )
+    }
+    lease.remainingUses--
 
     const values = new Map<DshCredentialRefName, string>()
-    for (const ref of grant.refs) {
+    for (const binding of lease.bindings) {
       execution.signal.throwIfAborted()
       let resolved: { readonly value: string } | undefined
       try {
-        resolved = await this.#credentials.resolve(credentialRef(ref))
+        resolved = await this.#credentials.resolve(credentialRef(binding.storageRef))
       } catch {
-        throw grantFailure(
-          'shell-credential-grant-resolve-failed',
-          'A credential authorized by the Marivo shell grant could not be resolved',
-          { datasourceName: grant.datasourceName, ref },
+        throw leaseFailure(
+          'shell-credential-lease-resolve-failed',
+          'A credential authorized by the Marivo shell lease could not be resolved',
+          { datasourceName: lease.datasourceName, ref: binding.environmentRef },
         )
       }
       if (resolved === undefined) {
-        throw grantFailure(
-          'shell-credential-grant-resolve-failed',
-          'A credential authorized by the Marivo shell grant is no longer configured',
-          { datasourceName: grant.datasourceName, ref },
+        throw leaseFailure(
+          'shell-credential-lease-resolve-failed',
+          'A credential authorized by the Marivo shell lease is no longer configured',
+          { datasourceName: lease.datasourceName, ref: binding.environmentRef },
         )
       }
-      values.set(ref, resolved.value)
+      values.set(binding.storageRef, resolved.value)
     }
     this.#executionValues.set(execution, { agent, values })
   }
@@ -292,8 +418,8 @@ export class MarivoShellCredentialGrants {
     bridgeSource: MarivoDatasourceBridgeSource,
     execution: ToolExecution,
   ): Promise<boolean> {
-    if (this.#disposed) throw new Error('Marivo shell credential grants are disposed')
-    const token = grantToken(execution)
+    if (this.#disposed) throw new Error('Marivo shell credential leases are disposed')
+    const token = leaseToken(execution)
     if (token === undefined) return false
     await this.#claim(agent, bridgeSource, execution, token)
     return true
@@ -315,8 +441,8 @@ export class MarivoShellCredentialGrants {
       active = false
       stopPreExecute()
       stopResult()
-      for (const [token, grant] of this.#grants) {
-        if (grant.agent === agent) this.#grants.delete(token)
+      for (const [token, lease] of this.#leases) {
+        if (lease.agent === agent) this.#leases.delete(token)
       }
       for (const [execution, snapshot] of this.#executionValues) {
         if (snapshot.agent === agent) this.#executionValues.delete(execution)
@@ -327,7 +453,7 @@ export class MarivoShellCredentialGrants {
   dispose(): void {
     if (this.#disposed) return
     this.#disposed = true
-    this.#grants.clear()
+    this.#leases.clear()
     this.#executionValues.clear()
     for (const dispose of this.#contributors.values()) dispose()
     this.#contributors.clear()

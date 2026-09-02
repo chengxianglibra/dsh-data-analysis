@@ -92,11 +92,18 @@ Agent 直接使用 Marivo：
 
 ## Datasource 与 Credentials
 
-`marivo_datasource_test({ name })` 读取配置中的 `DSH_*` 引用，逐项通过 DSH Credentials resolve，再把
-secret 作为单次环境 overlay 传给 `md.test()`。只有 test 成功才签发最长 60 秒的一次性 capability；精确
-marker 首行将它绑定到一个 foreground Shell execution，并在异步 fresh-resolve 前原子 claim。普通、过期、
-复用、错 Agent/Workspace、background 或 persistent Shell 均不获得 secret。所有子进程强制
-`MARIVO_PERSIST_CREDENTIALS=0`；Host `process.env` 不被修改。
+`marivo_datasource_test({ name })` 接受配置中的任意合法 POSIX 环境变量引用，拒绝 `MARIVO_*`、
+`DSH_DATA_ANALYSIS_*`，以及 `DSH_HOME`、`DSH_SHELL`、`DSH_SESSION_ID`、`DSH_SESSION_JSONL` 等 Host
+Shell facts，并把每个原始引用确定性映射到插件专属 DSH Credentials 地址。resolve 只
+访问映射地址；传给 `md.test()` 的单次环境 overlay 仍使用原始名称，因此同名 Host credential 不会成为隐式
+回退。
+
+`marivo_datasource_test` 是健康检查：凭证齐全时只给 `md.test()` 注入单次 overlay，任何 test 开始都会撤销
+同作用域旧 lease，结果不携带执行权限。`marivo_datasource_access` 是执行授权：不调用连接测试，只签发最长
+30 分钟、最多 64 次 foreground Shell 的 lease。返回的 `bash_prelude` / `pwsh_prelude` 以精确 lease marker
+开头，把映射变量复制到原始名称后清除内部变量，并固定 `MARIVO_PERSIST_CREDENTIALS=0`。每次 claim 在异步
+fresh-resolve 前原子扣减一次；普通、过期、耗尽、错 Agent/Workspace、background 或 persistent Shell 均不
+获得 secret，Host `process.env` 不被修改。
 
 Source metadata inspection 由 Agent 直接调用 `md.inspect(...)`；connection test 不是 inspection 的前置。
 

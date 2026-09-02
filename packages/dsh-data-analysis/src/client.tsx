@@ -9,10 +9,18 @@ import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-const TOOL_NAME = 'marivo_datasource_test'
+const DATASOURCE_TEST_TOOL_NAME = 'marivo_datasource_test'
+const DATASOURCE_ACCESS_TOOL_NAME = 'marivo_datasource_access'
+export const MARIVO_CREDENTIAL_STORAGE_PREFIX = 'DSH_DATA_ANALYSIS_CREDENTIAL_'
 const EVIDENCE_SOURCES_TOOL_NAME = 'marivo_evidence_sources'
 const EVIDENCE_SOURCES_META_KIND = 'marivo-evidence-sources'
 const EVIDENCE_SOURCES_META_VERSION = 2
+const HOST_SHELL_ENVIRONMENT_NAMES = new Set([
+  'DSH_HOME',
+  'DSH_SESSION_ID',
+  'DSH_SESSION_JSONL',
+  'DSH_SHELL',
+])
 const EVIDENCE_SOURCES_DURABLE_CONTENT_KIND = 'marivo-evidence-sources-card'
 const EVIDENCE_SOURCES_DEFINITION_KIND = 'marivo-evidence-sources-delivery'
 const EVIDENCE_SOURCES_TURN_DATA_KEY = EVIDENCE_SOURCES_DEFINITION_KIND
@@ -65,6 +73,32 @@ const EVIDENCE_SOURCES_EN = {
     'This panel confirms Evidence identity; it does not validate the whole statement, calculation, or business judgment.',
 }
 const openedCalls = new Set<string>()
+
+function invalidCredentialReference(ref: string): Error {
+  const valid = /^[A-Za-z_][A-Za-z0-9_]*$/.test(ref)
+  return new Error(
+    valid
+      ? `Marivo datasource credential reference uses a reserved runtime namespace or Host name: ${ref}`
+      : `Marivo datasource credential reference must be a POSIX environment name: ${ref}`,
+  )
+}
+
+/** Browser-side copy of the Host mapping; contract tests keep both implementations identical. */
+export function marivoCredentialStorageRef(ref: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(ref)) throw invalidCredentialReference(ref)
+  const upper = ref.toUpperCase()
+  if (
+    upper.startsWith('MARIVO_') ||
+    upper.startsWith('DSH_DATA_ANALYSIS_') ||
+    HOST_SHELL_ENVIRONMENT_NAMES.has(upper)
+  ) {
+    throw invalidCredentialReference(ref)
+  }
+  const encoded = [...ref]
+    .map((character) => character.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase())
+    .join('')
+  return `${MARIVO_CREDENTIAL_STORAGE_PREFIX}${encoded}`
+}
 
 export interface MarivoEvidenceSource {
   status: 'available' | 'missing' | 'unsupported'
@@ -510,9 +544,14 @@ export class CredentialDialogController {
   }
 
   async describe(refs: readonly string[]): Promise<Record<string, { configured: boolean }>> {
-    const response = await this.api.credentials.describe({ refs: [...refs] })
+    const bindings = refs.map((ref) => [ref, marivoCredentialStorageRef(ref)] as const)
+    const response = await this.api.credentials.describe({
+      refs: bindings.map(([, storageRef]) => storageRef),
+    })
     if (!response.result.ok) throw new Error(response.result.error.message)
-    return response.result.value.credentials
+    return Object.fromEntries(
+      bindings.map(([ref, storageRef]) => [ref, response.result.value.credentials[storageRef]]),
+    )
   }
 
   async inspect(refs: readonly string[]): Promise<{
@@ -544,7 +583,10 @@ export class CredentialDialogController {
         continue
       }
       try {
-        const response = await this.api.credentials.set({ ref, value })
+        const response = await this.api.credentials.set({
+          ref: marivoCredentialStorageRef(ref),
+          value,
+        })
         if (response.result.ok) saved.push(ref)
         else errors[ref] = redact(response.result.error.message, secretValues)
       } catch (error) {
@@ -586,7 +628,13 @@ const inputStyle = {
 }
 const errorStyle = { color: 'var(--dsw-alias-text-error, #c22)', fontSize: 12, margin: 0 }
 
-export function MarivoDatasourceTestToolView({ sessionId, callId, block, connection }: any) {
+function MarivoDatasourceCredentialToolView({
+  sessionId,
+  callId,
+  block,
+  connection,
+  toolName,
+}: any) {
   const text = settledText(block)
   const missing = useMemo(() => parseNeedsCredentials(text), [text])
   const [open, setOpen] = useState(false)
@@ -669,16 +717,24 @@ export function MarivoDatasourceTestToolView({ sessionId, callId, block, connect
 
   const summary =
     missing === null
-      ? text || ('kind' in block ? '连接测试已完成' : '正在测试连接…')
+      ? text ||
+        ('kind' in block
+          ? toolName === DATASOURCE_TEST_TOOL_NAME
+            ? '连接测试已完成'
+            : '执行授权已完成'
+          : toolName === DATASOURCE_TEST_TOOL_NAME
+            ? '正在测试连接…'
+            : '正在申请执行授权…')
       : `缺少凭证：${missing.refs.join(', ')}`
+  const title = toolName === DATASOURCE_TEST_TOOL_NAME ? 'Marivo 连接测试' : 'Marivo 执行授权'
 
   return (
     <>
-      <div style={rowStyle} data-marivo-test-call={callId}>
+      <div style={rowStyle} data-marivo-datasource-tool={toolName} data-marivo-call={callId}>
         <span aria-hidden="true">●</span>
-        <strong>Marivo 连接测试</strong>
+        <strong>{title}</strong>
         <span style={summaryStyle}>
-          {credentialsReady ? '凭证已配置，请重试 marivo_datasource_test' : summary}
+          {credentialsReady ? `凭证已配置，请重试 ${toolName}` : summary}
         </span>
         {missing !== null && !credentialsReady ? (
           <Button
@@ -741,6 +797,20 @@ export function MarivoDatasourceTestToolView({ sessionId, callId, block, connect
       </Modal>
     </>
   )
+}
+
+export function MarivoDatasourceTestToolView(props: any) {
+  return MarivoDatasourceCredentialToolView({
+    ...props,
+    toolName: DATASOURCE_TEST_TOOL_NAME,
+  })
+}
+
+export function MarivoDatasourceAccessToolView(props: any) {
+  return MarivoDatasourceCredentialToolView({
+    ...props,
+    toolName: DATASOURCE_ACCESS_TOOL_NAME,
+  })
 }
 
 const sourcePanelStyle = {
@@ -922,15 +992,29 @@ export function apply(ctx: Context): void {
   const BoundMarivoDatasourceTestToolView = (props: any) => (
     <MarivoDatasourceTestToolView {...props} connection={connection} />
   )
-  ctx.slots.inject('tool.call.toolview', () =>
-    ctx.slots.register(
+  const BoundMarivoDatasourceAccessToolView = (props: any) => (
+    <MarivoDatasourceAccessToolView {...props} connection={connection} />
+  )
+  ctx.slots.inject('tool.call.toolview', () => {
+    const disposeTest = ctx.slots.register(
       {
         name: 'tool.call.toolview',
-        key: TOOL_NAME,
+        key: DATASOURCE_TEST_TOOL_NAME,
       },
       BoundMarivoDatasourceTestToolView,
-    ),
-  )
+    )
+    const disposeAccess = ctx.slots.register(
+      {
+        name: 'tool.call.toolview',
+        key: DATASOURCE_ACCESS_TOOL_NAME,
+      },
+      BoundMarivoDatasourceAccessToolView,
+    )
+    return () => {
+      disposeAccess()
+      disposeTest()
+    }
+  })
   ctx.conversationEvents.register(marivoEvidenceSourcesDeliveryDefinition)
   ctx.effect(
     () =>
