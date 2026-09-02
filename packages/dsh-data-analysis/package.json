@@ -45,10 +45,8 @@
   },
   "files": [
     "lib/**/*.js",
-    "lib/**/*.js.map",
     "lib/types/**/*.d.ts",
     "python/report-kit/dist/dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl",
-    "report-contracts/*.json",
     "skills/**/*",
     "cordis.patch.yml",
     "README.md"

@@ -107,6 +107,8 @@ test('package cutover removes report exports and pins the native runtime release
   assert.equal(Object.hasOwn(manifest.exports, './report'), false)
   assert.equal(Object.hasOwn(manifest.exports, './report-check'), false)
   assert.equal(Object.hasOwn(manifest.bin, 'dsh-data-analysis-report-check'), false)
+  assert.equal(manifest.files.includes('lib/**/*.js.map'), false)
+  assert.equal(manifest.files.includes('report-contracts/*.json'), false)
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.marivo, {
     version: '0.5.3',
     packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.3',

@@ -51,8 +51,8 @@ Session 合并节点或推断边；需要 Frame preview 时，Agent 另行恢复
 
 ## 投影契约
 
-`report-contracts/` 只保留 emitter 所需的 common、Artifact/computed dataset、revalidation 与 Session trace
-schemas 及测试 fixtures；不恢复 Checker rule registry。
+`report-contracts/` 只保留开发期 emitter/consumer 合约测试所需的 common、Artifact/computed dataset、
+revalidation 与 Session trace schemas 及测试 fixtures；它们不进入 npm tarball，也不恢复 Checker rule registry。
 
 投影必须保留：
 

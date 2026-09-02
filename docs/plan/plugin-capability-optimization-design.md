@@ -483,7 +483,7 @@ Skill 不提供：
 ### 保留但重新定义
 
 - report-kit wheel：plugin-owned transport adapter；
-- report contracts：plugin consumer schema，不是 Marivo schema；
+- report contracts：仅供开发期验证的 plugin consumer schema，不是 Marivo schema，也不进入 npm tarball；
 - `emit_computed`：generic computed snapshot，不是 Marivo Artifact；
 - `dsh-data-analysis-report`：本插件 Workspace 报告 Skill，不是 DSH 平台通用 Skill；
 - Produced Files/openPath：路径与导航能力，不是发布能力。
@@ -612,7 +612,7 @@ Skill 不提供：
 - `emit_session_trace` 不读取 Store、不打开 Session、不补造 Query、不跨 Session 合并；
 - reader 默认最小，audit 只投影公共字段；
 - unknown schema/version fail closed；
-- wheel smoke、schemas、Python tests、client tests 和 package allowlist 通过；
+- wheel smoke、schemas、Python tests、client tests 和排除开发期 schemas 的 package allowlist 通过；
 - 普通长回答不生成文件，明确 HTML 请求才执行 Skill。
 
 ### 阶段 5：文档、Package 与真实 Agent 验收

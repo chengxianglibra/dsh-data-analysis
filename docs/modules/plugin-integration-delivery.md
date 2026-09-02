@@ -81,8 +81,8 @@ remote/headless 自动降级为路径。
 | Report-kit | `dsh-data-analysis-report-kit==3.0.0`，dataset/trace transport v2 |
 
 Package 不导出 `./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 只包含 report-kit wheel、
-投影 schemas、原则型 Skill、数据 runtime 与两个 Marivo components。版本、package path 或解释器不匹配时 fail closed；
-不维护 compatibility alias 或 capability matrix。
+原则型 Skill、数据 runtime 与两个 Marivo components；投影 schemas 只用于开发期 emitter/consumer 合约测试，不进入
+tarball。版本、package path 或解释器不匹配时 fail closed；不维护 compatibility alias 或 capability matrix。
 
 ## 验证
 
@@ -96,3 +96,4 @@ npm run validate:plugin-integration-delivery:real
 
 Real runner 需要正式 Marivo 0.5.3 与真实模型。Produced Files、Host opener、浏览器/打印、remote/headless
 与隔离磁盘配额仍需在对应真实 DSH Web 环境验收；路径、runner 日志或静态 schema 不能伪造这些外部能力。
+本次 tarball 内容收窄的确定性证据见 [Package 内容收窄验收](../acceptance/package-content-cleanup.md)。

@@ -201,8 +201,19 @@ try {
     'report-contracts/session-trace-v2.schema.json',
   ]
   if (JSON.stringify(contractFiles) !== JSON.stringify(expectedContractFiles)) {
-    fail('report contracts must contain only the current v2 transport schemas and dependencies')
+    fail(
+      'development report contracts must contain only the current v2 transport schemas and dependencies',
+    )
   }
+  const unreachableBuildOutputs = [
+    'lib/environment/types.js',
+    'lib/types/bin/environment.d.ts',
+    'lib/types/datasource/bridge-programs.d.ts',
+    'lib/types/datasource/credentials.d.ts',
+    'lib/types/disclosure/bridge-program.d.ts',
+    'lib/types/environment/summary.d.ts',
+    'lib/types/evidence/bridge-program.d.ts',
+  ]
   const required = [
     'README.md',
     'cordis.patch.yml',
@@ -216,13 +227,18 @@ try {
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
     reportKitWheelPath,
-    ...contractFiles,
     ...skillFiles,
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
   }
   for (const filename of paths) {
+    if (filename.endsWith('.js.map')) {
+      fail(`packed plugin contains source map ${filename}`)
+    }
+    if (unreachableBuildOutputs.includes(filename)) {
+      fail(`packed plugin contains unreachable build output ${filename}`)
+    }
     if (/^(?:src|tests|scripts)\//.test(filename) || filename.endsWith('tsconfig.build.json')) {
       fail(`packed plugin contains development-only file ${filename}`)
     }
@@ -235,8 +251,8 @@ try {
     ) {
       fail(`packed plugin contains removed report Checker surface ${filename}`)
     }
-    if (filename.startsWith('report-contracts/fixtures/')) {
-      fail(`packed plugin contains report contract fixture ${filename}`)
+    if (filename.startsWith('report-contracts/')) {
+      fail(`packed plugin contains development-only report contract ${filename}`)
     }
   }
   const packedSkillFiles = [...paths]
@@ -244,12 +260,6 @@ try {
     .sort()
   if (JSON.stringify(packedSkillFiles) !== JSON.stringify(skillFiles)) {
     fail('packed report Skill resources differ from the source resource tree')
-  }
-  const packedContractFiles = [...paths]
-    .filter((filename) => filename.startsWith('report-contracts/'))
-    .sort()
-  if (JSON.stringify(packedContractFiles) !== JSON.stringify(contractFiles)) {
-    fail('packed report contracts differ from the required runtime contracts')
   }
   const environmentBin = files.get('lib/bin/environment.js')
   if (environmentBin === undefined || (environmentBin.mode & 0o111) === 0) {
