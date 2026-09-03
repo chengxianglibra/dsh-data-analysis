@@ -1,0 +1,4 @@
+interface:
+  display_name: "重建 DSH 数据分析插件"
+  short_description: "清理本地状态后构建、重装并重启 DSH 数据分析插件"
+  default_prompt: "使用 $dsh-plugin-rebuild 执行“发射插件”流程。"
