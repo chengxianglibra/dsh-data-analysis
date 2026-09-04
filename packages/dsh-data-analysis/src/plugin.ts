@@ -48,9 +48,10 @@ export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'Never ask the user to provide credential values in chat, and never place credential values in commands or project files.',
   'Immediately after md.register(...) or a manual datasource-file change, call marivo_datasource_test with that datasource name.',
   'If marivo_datasource_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_datasource_test before continuing.',
-  'Before datasource-backed analysis, call marivo_datasource_access once and reuse its exact bash_prelude or pwsh_prelude before each foreground analysis command until the bounded lease expires or is exhausted.',
+  'Before datasource-backed analysis, call marivo_datasource_access once and reuse its exact bash_prelude or pwsh_prelude before each foreground analysis command until the bounded lease expires or is exhausted. The first # dsh-marivo-credential-lease: line is a required control marker; never remove or move it.',
   'Do not call marivo_datasource_test before each analysis script. Renew access with marivo_datasource_access; run another connection test only after datasource changes, credential rotation, a connection failure, or an explicit user request.',
   'Never use a lease with background or persistent Shell execution. Each admitted Shell consumes one use even if later credential resolution fails.',
+  'If a datasource credential environment variable is missing, reacquire access and retry with the exact prelude in a foreground Shell. Never inspect or read DSH credential files, credential backups, or ~/.marivo/secrets.toml.',
 ].join(' ')
 
 export const MARIVO_EVIDENCE_SOURCES_PROMPT = [

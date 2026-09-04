@@ -80,14 +80,16 @@ marivo_datasource_access({ name: "warehouse" })
 `DSH_DATA_ANALYSIS_*`，以及 Host 自有的 `DSH_HOME`、`DSH_SHELL`、`DSH_SESSION_ID`、
 `DSH_SESSION_JSONL`。原始引用统一映射到插件专属的 DSH Credentials 地址后执行 operation-scoped
 resolve；同名 Host credential 从不直接读取。缺失值只返回原始引用名并交给 Web 表单，不把 secret 放进
-聊天、argv、日志或结果。
+聊天、argv、日志或结果。插件不创建或同步 `~/.marivo/secrets.toml`；同名配置以 DSH Credentials 的
+operation-scoped overlay 为准。
 
 `marivo_datasource_test` 只以原始名称给真实 `md.test()` 注入一次性 overlay，成功结果只含 status、name 与
 latency；任何 test 开始都会撤销同作用域旧 lease。`marivo_datasource_access` 不执行连接测试，只在凭证齐全时
 返回 `shell_lease`，包含最长 30 分钟、最多 64 次 foreground Shell 可复用的精确 `bash_prelude` 与
 `pwsh_prelude`。每次 Shell claim 仍 fresh-resolve 映射凭证；background、persistent、过期、耗尽、错 Agent
 或错 Workspace 的调用在 resolve 前失败。开始分析时 access 一次并复用，只有 datasource 新建/修改、凭证
-轮换或连接失败时才 test，不应在每个脚本前 test。
+轮换或连接失败时才 test，不应在每个脚本前 test。Prelude 首行的 lease marker 必须保留在命令首行；缺失时
+重新 access 并以前台方式重试，不读取 DSH credential 文件、备份或 `~/.marivo/secrets.toml`。
 
 ### `marivo_evidence_sources`
 

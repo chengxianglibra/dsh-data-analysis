@@ -38,6 +38,9 @@ Datasource 的 `*_env` 字段可以使用任意合法 POSIX 环境变量名；`M
 
 missing、failed 与成功都不会隐式保留旧执行权限。
 
+插件模式不创建或同步 `~/.marivo/secrets.toml`；该文件是否存在不影响 DSH Credentials 作为凭据权威。同名配置
+以 operation-scoped overlay 为准，`MARIVO_PERSIST_CREDENTIALS=0` 只固定禁止 Marivo 回写。
+
 ## Access 是执行授权
 
 `marivo_datasource_access` 不调用 `md.test()`。凭证齐全时，它撤销同作用域旧 lease，再签发随机 token，绑定
@@ -54,8 +57,9 @@ Prelude 首行是：
 # dsh-marivo-credential-lease:<opaque-token>
 ```
 
-后续行把 Shell registry 中的映射变量复制到原始环境变量名，清除内部变量，并设置
-`MARIVO_PERSIST_CREDENTIALS=0`。Agent 原样复用同一 prelude，不自行推导映射。
+该行虽是 Shell 注释形式，却是插件识别与校验 lease 的必需控制标记，必须保留在命令首行。后续行把 Shell
+registry 中的映射变量复制到原始环境变量名，清除内部变量，并设置 `MARIVO_PERSIST_CREDENTIALS=0`。Agent
+逐行原样复用同一 prelude，不删除、移动或自行推导映射。
 
 每次 claim 先校验 token、TTL、Agent、Workspace 与 foreground 类型，再原子扣减一次，最后 fresh-resolve
 映射凭证并创建只属于该 `ToolExecution` 的 snapshot。resolve 失败也消耗本次额度；格式错误、错作用域、
@@ -70,8 +74,11 @@ Shell 不 inventory Workspace datasource，也不获得 datasource credential。
 
 - datasource 新建、修改、凭证轮换、连接失败或用户明确要求时调用 `marivo_datasource_test`；
 - `needs-credentials` 后等待用户在 Web 保存，再重试同一个来源 Tool；
-- 开始 datasource-backed 分析时调用一次 `marivo_datasource_access`，后续脚本复用同一 prelude；
+- 开始 datasource-backed 分析时调用一次 `marivo_datasource_access`，后续 foreground 脚本逐行原样复用同一
+  prelude；
 - lease 过期或耗尽时只续签 access，不在每个分析脚本前 test；
+- 环境变量缺失时重新 access 并以前台方式重试，不读取 DSH credential 文件、备份或
+  `~/.marivo/secrets.toml`；
 - 不在聊天、命令、源文件或报告中索取或写入 secret；
 - source metadata 问题直接运行 `md.inspect(...)`。
 

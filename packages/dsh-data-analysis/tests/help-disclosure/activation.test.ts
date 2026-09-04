@@ -404,6 +404,8 @@ test('marivo-semantic activation adds datasource credential guidance only after 
   assert.match(activatedPrompt, /Immediately after md\.register/)
   assert.match(activatedPrompt, /marivo_datasource_test/)
   assert.match(activatedPrompt, /marivo_datasource_access once/)
+  assert.match(activatedPrompt, /required control marker/)
+  assert.match(activatedPrompt, /Never inspect or read DSH credential files/)
   assert.match(activatedPrompt, /Do not call marivo_datasource_test before each analysis script/)
   assert.match(activatedPrompt, /needs-credentials/)
   assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_sources/)

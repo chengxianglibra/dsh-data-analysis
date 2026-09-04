@@ -176,6 +176,83 @@ function commandArguments(execution: ToolExecution): Record<string, unknown> | u
     : undefined
 }
 
+function hasCredentialStorageRefAt(command: string, offset: number, caseInsensitive: boolean) {
+  const candidate = caseInsensitive ? command.slice(offset).toUpperCase() : command.slice(offset)
+  if (!candidate.startsWith(MARIVO_CREDENTIAL_STORAGE_PREFIX)) return false
+  let cursor = MARIVO_CREDENTIAL_STORAGE_PREFIX.length
+  const firstHex = cursor
+  while (cursor < candidate.length && /[A-F0-9]/.test(candidate[cursor] ?? '')) cursor++
+  return (
+    cursor > firstHex &&
+    (cursor === candidate.length || !/[A-Z0-9_]/i.test(candidate[cursor] ?? ''))
+  )
+}
+
+function isBashCommentStart(command: string, offset: number): boolean {
+  if (offset === 0) return true
+  return /[\s;&|()]/.test(command[offset - 1] ?? '')
+}
+
+function containsCredentialDereference(execution: ToolExecution): boolean {
+  const command = commandArguments(execution)?.command
+  if (typeof command !== 'string') return false
+  const pwsh = execution.name === 'pwsh'
+  let quote: "'" | '"' | undefined
+  let comment = false
+
+  for (let index = 0; index < command.length; index++) {
+    const character = command[index]
+    if (comment) {
+      if (character === '\n' || character === '\r') comment = false
+      continue
+    }
+    if (quote === "'") {
+      if (character === "'") {
+        if (pwsh && command[index + 1] === "'") index++
+        else quote = undefined
+      }
+      continue
+    }
+    if (character === (pwsh ? '`' : '\\')) {
+      index++
+      continue
+    }
+    if (character === '#' && quote === undefined && (pwsh || isBashCommentStart(command, index))) {
+      comment = true
+      continue
+    }
+    if (character === "'" && quote === undefined) {
+      quote = "'"
+      continue
+    }
+    if (character === '"') {
+      quote = quote === '"' ? undefined : '"'
+      continue
+    }
+    if (character !== '$') continue
+
+    if (pwsh) {
+      if (
+        command.slice(index + 1, index + 5).toLowerCase() === 'env:' &&
+        hasCredentialStorageRefAt(command, index + 5, true)
+      ) {
+        return true
+      }
+      if (
+        command.slice(index + 1, index + 6).toLowerCase() === '{env:' &&
+        hasCredentialStorageRefAt(command, index + 6, true)
+      ) {
+        return true
+      }
+      continue
+    }
+
+    const refOffset = command[index + 1] === '{' ? index + 2 : index + 1
+    if (hasCredentialStorageRefAt(command, refOffset, false)) return true
+  }
+  return false
+}
+
 function leaseToken(execution: ToolExecution): string | undefined {
   const command = commandArguments(execution)?.command
   if (typeof command !== 'string') return undefined
@@ -420,7 +497,16 @@ export class MarivoShellCredentialLeases {
   ): Promise<boolean> {
     if (this.#disposed) throw new Error('Marivo shell credential leases are disposed')
     const token = leaseToken(execution)
-    if (token === undefined) return false
+    if (token === undefined) {
+      if (containsCredentialDereference(execution)) {
+        throw leaseFailure(
+          'shell-credential-lease-invalid',
+          'Marivo shell credential reference is not authorized because the exact prelude lease marker is missing. Call marivo_datasource_access again, copy the exact prelude, and use a foreground Shell execution',
+          { tool: execution.name },
+        )
+      }
+      return false
+    }
     await this.#claim(agent, bridgeSource, execution, token)
     return true
   }

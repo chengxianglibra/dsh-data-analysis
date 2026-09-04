@@ -42,7 +42,9 @@ function renderValue(value: MarivoDatasourceAccessValue): string {
   if (value.status === 'needs-credentials') return JSON.stringify(value)
   return [
     `Marivo datasource ${value.name} foreground Shell access is ready for up to ${value.shell_lease.max_uses} executions within ${value.shell_lease.expires_in_ms} ms.`,
-    'Reuse the matching exact prelude before each foreground analysis command.',
+    'Copy every line of the matching prelude verbatim before each foreground analysis command.',
+    'The first line beginning with "# dsh-marivo-credential-lease:" is a required control marker; do not remove or move it.',
+    'Use run_in_background=false (or omit it). If a datasource credential environment variable is missing, reacquire access; never read DSH credential files or ~/.marivo/secrets.toml.',
     `bash prelude:\n${value.shell_lease.bash_prelude}`,
     `pwsh prelude:\n${value.shell_lease.pwsh_prelude}`,
   ].join('\n')

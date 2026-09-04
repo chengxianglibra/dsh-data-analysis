@@ -110,6 +110,137 @@ test('ordinary Shell calls never inventory or receive ambient datasource credent
   assert.deepEqual(credentials.resolved, [])
 })
 
+test('a copied credential binding without its lease marker fails before Shell execution', async (t) => {
+  const { ctx, credentials, leases, agent } = await fixture({ maxUses: 1 })
+  t.after(() => leases.dispose())
+  const workspace = datasource('workspace-a')
+  const storageRef = marivoCredentialStorageRef('DB_PASSWORD')
+  credentials.values.set(storageRef, 'never-render-this-secret')
+  const receipt = leases.issueLease(agent, workspace, 'warehouse', ['DB_PASSWORD'])
+  const incompleteBashPrelude = receipt.bash_prelude.split('\n').slice(1).join('\n')
+  const incomplete = execution(
+    'missing-marker',
+    agent,
+    `${incompleteBashPrelude}\npython analysis.py`,
+  )
+
+  await assert.rejects(
+    () => leases.prepareExecution(agent, workspace, incomplete),
+    (error: unknown) => {
+      assert.match(String(error), /exact prelude lease marker is missing/)
+      assert.doesNotMatch(String(error), /never-render-this-secret/)
+      assert.doesNotMatch(JSON.stringify(error), new RegExp(receipt.token))
+      return true
+    },
+  )
+  assert.deepEqual(shellEnv(ctx).collect(incomplete), {})
+  await assert.rejects(
+    () =>
+      leases.prepareExecution(
+        agent,
+        workspace,
+        execution('missing-marker-background', agent, incompleteBashPrelude, {
+          run_in_background: true,
+        }),
+      ),
+    /exact prelude lease marker is missing.*foreground Shell execution/,
+  )
+  assert.deepEqual(credentials.resolved, [])
+
+  const valid = execution(
+    'valid-after-failure',
+    agent,
+    `${receipt.bash_prelude}\npython analysis.py`,
+  )
+  assert.equal(await leases.prepareExecution(agent, workspace, valid), true)
+  assert.deepEqual(shellEnv(ctx).collect(valid), { [storageRef]: 'never-render-this-secret' })
+})
+
+test('a PowerShell credential binding without its lease marker also fails closed', async (t) => {
+  const { credentials, leases, agent } = await fixture()
+  t.after(() => leases.dispose())
+  const workspace = datasource('workspace-a')
+  const storageRef = marivoCredentialStorageRef('DB_PASSWORD')
+  credentials.values.set(storageRef, 'never-render-this-secret')
+  const receipt = leases.issueLease(agent, workspace, 'warehouse', ['DB_PASSWORD'])
+  const incompletePwshPrelude = receipt.pwsh_prelude.split('\n').slice(1).join('\n')
+
+  await assert.rejects(
+    () =>
+      leases.prepareExecution(
+        agent,
+        workspace,
+        execution('missing-pwsh-marker', agent, incompletePwshPrelude, {}, 'pwsh'),
+      ),
+    /exact prelude lease marker is missing/,
+  )
+  assert.deepEqual(credentials.resolved, [])
+})
+
+test('unleased Bash credential probes and alternate assignments fail closed', async (t) => {
+  const { credentials, leases, agent } = await fixture()
+  t.after(() => leases.dispose())
+  const workspace = datasource('workspace-a')
+  const storageRef = marivoCredentialStorageRef('DB_PASSWORD')
+  credentials.values.set(storageRef, 'never-render-this-secret')
+  const bracedRef = `\${${storageRef}}`
+
+  for (const [id, commandText] of [
+    ['braced-probe', `if [ -n "${bracedRef}" ]; then echo present; fi`],
+    ['plain-probe', `test -n "$${storageRef}"`],
+    ['env-assignment', `env DB_PASSWORD="${bracedRef}" python analysis.py`],
+  ] as const) {
+    await assert.rejects(
+      () => leases.prepareExecution(agent, workspace, execution(id, agent, commandText)),
+      /exact prelude lease marker is missing/,
+    )
+  }
+  assert.deepEqual(credentials.resolved, [])
+})
+
+test('unleased PowerShell credential probes fail closed', async (t) => {
+  const { credentials, leases, agent } = await fixture()
+  t.after(() => leases.dispose())
+  const workspace = datasource('workspace-a')
+  const storageRef = marivoCredentialStorageRef('DB_PASSWORD')
+  credentials.values.set(storageRef, 'never-render-this-secret')
+
+  for (const [id, commandText] of [
+    ['pwsh-env-probe', `if ($env:${storageRef}) { Write-Output present }`],
+    ['pwsh-braced-probe', `if (\${env:${storageRef}}) { Write-Output present }`],
+  ] as const) {
+    await assert.rejects(
+      () =>
+        leases.prepareExecution(agent, workspace, execution(id, agent, commandText, {}, 'pwsh')),
+      /exact prelude lease marker is missing/,
+    )
+  }
+  assert.deepEqual(credentials.resolved, [])
+})
+
+test('quoted, escaped, and commented credential names remain inert Shell text', async (t) => {
+  const { credentials, leases, agent } = await fixture()
+  t.after(() => leases.dispose())
+  const workspace = datasource('workspace-a')
+  const storageRef = marivoCredentialStorageRef('DB_PASSWORD')
+  const bracedRef = `\${${storageRef}}`
+
+  for (const [id, commandText, name] of [
+    ['bash-single-quoted', `printf '%s\\n' '${bracedRef}'`, 'bash'],
+    ['bash-escaped', `printf '%s\\n' "\\${bracedRef}"`, 'bash'],
+    ['bash-commented', `# ${bracedRef}\npython analysis.py`, 'bash'],
+    ['pwsh-single-quoted', `Write-Output '$env:${storageRef}'`, 'pwsh'],
+    ['pwsh-escaped', `Write-Output "\`$env:${storageRef}"`, 'pwsh'],
+    ['pwsh-commented', `# $env:${storageRef}\npython analysis.py`, 'pwsh'],
+  ] as const) {
+    assert.equal(
+      await leases.prepareExecution(agent, workspace, execution(id, agent, commandText, {}, name)),
+      false,
+    )
+  }
+  assert.deepEqual(credentials.resolved, [])
+})
+
 test('credential storage mapping is deterministic, case-sensitive, and rejects reserved names', () => {
   assert.equal(
     marivoCredentialStorageRef('CDN_CH_USER'),

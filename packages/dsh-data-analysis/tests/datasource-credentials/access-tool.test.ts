@@ -143,7 +143,11 @@ test('configured access resolves only mapped storage and returns the bounded lea
     if (value.status === 'ok') {
       assert.deepEqual(value.shell_lease, leaseReceipt(['DEEPSEEK_API_KEY']))
     }
-    assert.match(JSON.stringify(result.content), /reuse|Reuse/)
+    const rendered = JSON.stringify(result.content)
+    assert.match(rendered, /Copy every line/)
+    assert.match(rendered, /required control marker/)
+    assert.match(rendered, /run_in_background=false/)
+    assert.match(rendered, /never read DSH credential files/)
   }
   assert.deepEqual(f.credentials.resolved, [marivoCredentialStorageRef('DEEPSEEK_API_KEY')])
   assert.deepEqual(f.calls, {
