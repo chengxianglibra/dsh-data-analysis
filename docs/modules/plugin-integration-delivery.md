@@ -53,7 +53,8 @@ Skill 路由。只有用户明确请求 HTML/Web 或耐久报告、接受生成�
 `report-data.js`、`marivo-artifact.js` 与 `marivo-session-dag.js`：第一项降低 Artifact/pandas 数据的
 JavaScript 读取成本，后两项提供精简 Artifact 摘要与 Session DAG。Python report-kit 通过独立
 `emit_dataset`、`emit_computed`、`emit_session_trace` 发射 v2 transport 快照；Artifact/Graph 默认 reader，明确
-审计请求才使用 audit。插件不提供 chart helper 或 HTML Checker，
+审计或 action SQL/Query 请求才使用 audit；DAG 详情确定性格式化并展示公开 Query metadata 与 SQL，但始终省略 bind values。
+插件不提供 chart helper 或 HTML Checker，
 页面与图表由 Agent 使用通用文件、代码和浏览器能力完成。多 Session 各自保留独立 Graph；Frame preview
 只按 `session_id + artifact_ref` 关联精确 Artifact snapshot。
 

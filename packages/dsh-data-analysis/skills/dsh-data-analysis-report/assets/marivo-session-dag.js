@@ -2,6 +2,7 @@
   const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
   const TRACE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
   const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+  const QUERY_SQL_MAX_BYTES = 64 * 1024
   const traces = new Map()
   let nextId = 0
 
@@ -51,6 +52,16 @@
       !Number.isFinite(Date.parse(value))
     ) {
       fail(path, 'must be an RFC 3339 timestamp')
+    }
+  }
+
+  function querySql(value, path) {
+    if (
+      typeof value !== 'string' ||
+      value.length === 0 ||
+      new TextEncoder().encode(value).length > QUERY_SQL_MAX_BYTES
+    ) {
+      fail(path, `must be a non-empty UTF-8 string of at most ${QUERY_SQL_MAX_BYTES} bytes`)
     }
   }
 
@@ -173,9 +184,10 @@
         'status',
       ]
       exactKeys(query, queryPath, fields)
-      for (const field of ['query_id', 'datasource', 'dialect', 'sql', 'sql_digest', 'status']) {
+      for (const field of ['query_id', 'datasource', 'dialect', 'sql_digest', 'status']) {
         string(query[field], `${queryPath}.${field}`)
       }
+      querySql(query.sql, `${queryPath}.sql`)
       integer(query.row_count, `${queryPath}.row_count`)
       integer(query.duration_ms, `${queryPath}.duration_ms`)
       timestamp(query.started_at, `${queryPath}.started_at`)
@@ -593,6 +605,251 @@
     return section
   }
 
+  function sqlTokens(sql) {
+    const tokens = []
+    let index = 0
+    while (index < sql.length) {
+      const character = sql[index]
+      if (/\s/.test(character)) {
+        index += 1
+        continue
+      }
+      if (sql.startsWith('--', index)) {
+        const end = sql.indexOf('\n', index)
+        tokens.push({ kind: 'comment', text: sql.slice(index, end < 0 ? sql.length : end) })
+        index = end < 0 ? sql.length : end + 1
+        continue
+      }
+      if (sql.startsWith('/*', index)) {
+        const end = sql.indexOf('*/', index + 2)
+        const stop = end < 0 ? sql.length : end + 2
+        tokens.push({ kind: 'comment', text: sql.slice(index, stop) })
+        index = stop
+        continue
+      }
+      if (character === "'" || character === '"' || character === '`') {
+        const quote = character
+        let end = index + 1
+        while (end < sql.length) {
+          if (sql[end] === quote) {
+            if (sql[end + 1] === quote) {
+              end += 2
+              continue
+            }
+            end += 1
+            break
+          }
+          end += 1
+        }
+        tokens.push({ kind: 'quoted', text: sql.slice(index, end) })
+        index = end
+        continue
+      }
+      const word = sql.slice(index).match(/^[A-Za-z_][A-Za-z0-9_$]*/)?.[0]
+      if (word) {
+        tokens.push({ kind: 'word', text: word })
+        index += word.length
+        continue
+      }
+      const number = sql.slice(index).match(/^\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?/)?.[0]
+      if (number) {
+        tokens.push({ kind: 'number', text: number })
+        index += number.length
+        continue
+      }
+      const operator = ['->>', '->', '<=', '>=', '<>', '!=', '||', '::'].find((value) =>
+        sql.startsWith(value, index),
+      )
+      if (operator) {
+        tokens.push({ kind: 'operator', text: operator })
+        index += operator.length
+        continue
+      }
+      tokens.push({
+        kind: ['(', ')', ',', '.', ';'].includes(character) ? 'punctuation' : 'operator',
+        text: character,
+      })
+      index += 1
+    }
+    return tokens
+  }
+
+  function formatSql(sql) {
+    const tokens = sqlTokens(sql)
+    const lines = []
+    let line = ''
+    let indentation = 0
+    let continuation = 0
+    let previous = null
+    const parentheses = []
+    const scopes = [{ depth: 0, clause: null }]
+    const clauseKeywords = new Set([
+      'SELECT',
+      'FROM',
+      'WHERE',
+      'GROUP',
+      'HAVING',
+      'ORDER',
+      'LIMIT',
+      'OFFSET',
+      'FETCH',
+      'UNION',
+      'EXCEPT',
+      'INTERSECT',
+      'JOIN',
+      'ON',
+    ])
+    const flush = (extra = 0) => {
+      if (line.trim()) lines.push(line.trimEnd())
+      line = ''
+      continuation = extra
+      previous = null
+    }
+    const write = (token) => {
+      if (!line) line = '  '.repeat(indentation + continuation)
+      const current = token.text
+      const prior = previous?.text
+      const keyword = previous?.kind === 'word' ? prior.toUpperCase() : ''
+      const spaceBefore =
+        previous !== null &&
+        ![',', '.', ')', ';'].includes(current) &&
+        !['(', '.'].includes(prior) &&
+        !(
+          current === '(' &&
+          previous.kind === 'word' &&
+          !['IN', 'EXISTS', 'FROM', 'JOIN', 'ON', 'WHERE'].includes(keyword)
+        )
+      if (spaceBefore && !line.endsWith(' ')) line += ' '
+      line += current
+      previous = token
+    }
+    const nextWord = (start) => {
+      for (let index = start; index < tokens.length; index += 1) {
+        if (tokens[index].kind !== 'comment') return tokens[index].text.toUpperCase()
+      }
+      return ''
+    }
+
+    tokens.forEach((token, index) => {
+      const upper = token.kind === 'word' ? token.text.toUpperCase() : ''
+      const next = nextWord(index + 1)
+      if (token.kind === 'comment') {
+        flush()
+        write(token)
+        flush()
+        return
+      }
+      if (token.text === '(') {
+        const subquery = next === 'SELECT' || next === 'WITH'
+        write(token)
+        parentheses.push({ subquery })
+        if (subquery) {
+          indentation += 1
+          scopes.push({ depth: parentheses.length, clause: null })
+          flush()
+        }
+        return
+      }
+      if (token.text === ')') {
+        const parenthesis = parentheses.pop()
+        if (parenthesis?.subquery) {
+          indentation = Math.max(0, indentation - 1)
+          scopes.pop()
+          flush()
+        }
+        write(token)
+        return
+      }
+      const joinedClause =
+        ['LEFT', 'RIGHT', 'FULL', 'INNER', 'CROSS'].includes(upper) && next === 'JOIN'
+      if (clauseKeywords.has(upper) || joinedClause) {
+        flush()
+        write(token)
+        scopes.at(-1).clause = upper.toLowerCase()
+        return
+      }
+      if (
+        (upper === 'AND' || upper === 'OR') &&
+        ['where', 'on', 'having'].includes(scopes.at(-1).clause)
+      ) {
+        flush(1)
+        write(token)
+        return
+      }
+      if (token.text === ',') {
+        write(token)
+        const scope = scopes.at(-1)
+        if (
+          parentheses.length === scope.depth &&
+          ['select', 'group', 'order'].includes(scope.clause)
+        ) {
+          flush(1)
+        }
+        return
+      }
+      write(token)
+      if (token.text === ';') flush()
+    })
+    flush()
+    return lines.join('\n')
+  }
+
+  function queryDetail(query, index, total) {
+    const disclosure = document.createElement('details')
+    disclosure.className = 'trace-query'
+    if (total === 1) disclosure.open = true
+    disclosure.append(
+      text(
+        'summary',
+        `Query ${index + 1} · ${query.datasource} · ${query.status} · ${query.duration_ms} ms`,
+      ),
+    )
+    const body = document.createElement('div')
+    body.className = 'trace-query-body'
+    body.append(
+      definitionList(
+        [
+          ['数据源', query.datasource],
+          ['方言', query.dialect],
+          ['状态', query.status],
+          ['返回行数', query.row_count],
+          ['耗时', `${query.duration_ms} ms`],
+          ['开始', query.started_at],
+          ['完成', query.finished_at],
+          ['Query ID', query.query_id],
+          ['SQL digest', query.sql_digest],
+        ],
+        'trace-query-meta',
+      ),
+    )
+    const sql = document.createElement('pre')
+    sql.className = 'trace-query-sql'
+    sql.setAttribute('aria-label', `Query ${index + 1} SQL`)
+    sql.append(text('code', formatSql(query.sql)))
+    body.append(sql)
+    disclosure.append(body)
+    return disclosure
+  }
+
+  function querySection(run) {
+    if (!Object.hasOwn(run, 'queries')) return null
+    if (run.queries.length === 0) {
+      if (run.queries_omitted === 0) return null
+      return text(
+        'p',
+        `该动作执行了 ${run.queries_omitted} 条 Query；reader 投影未包含 SQL。`,
+        'trace-query-omitted',
+      )
+    }
+    const section = document.createElement('section')
+    section.className = 'trace-query-section'
+    section.append(text('h5', `查询详情（${run.queries.length}）`))
+    run.queries.forEach((query, index) => {
+      section.append(queryDetail(query, index, run.queries.length))
+    })
+    return section
+  }
+
   function runDetail(trace, run) {
     const article = document.createElement('article')
     article.className = 'trace-detail'
@@ -638,6 +895,8 @@
     }
     if (run.lifecycle === 'failed') entries.push(['失败类型', run.failure.error_type])
     article.append(definitionList(entries))
+    const queries = querySection(run)
+    if (queries) article.append(queries)
     return article
   }
 

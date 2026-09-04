@@ -35,6 +35,7 @@ TRACE_MAX_NODES = 200
 TRACE_MAX_EDGES = 1_000
 TRACE_MAX_BYTES = 4 * 1024 * 1024
 TRACE_MAX_REPORT_REFS = 20
+QUERY_SQL_MAX_BYTES = 64 * 1024
 JAVASCRIPT_REGISTRY = "ReportTrace"
 
 
@@ -90,6 +91,21 @@ def _nullable_text(value: object, location: str) -> str | None:
         nullable=True,
         allow_empty=True,
     )
+
+
+def _query_sql(value: object, location: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value.encode("utf-8")) > QUERY_SQL_MAX_BYTES
+    ):
+        raise ReportSessionTraceError(
+            "session-trace-limit-exceeded",
+            f"graph.{location} must be a non-empty UTF-8 string of at most "
+            f"{QUERY_SQL_MAX_BYTES} bytes",
+            {"location": f"graph.{location}", "limit": QUERY_SQL_MAX_BYTES},
+        )
+    return value
 
 
 def _project_artifact(value: object, index: int) -> dict[str, object]:
@@ -225,7 +241,7 @@ def _project_queries(value: object, index: int, detail: Literal["reader", "audit
                     getattr(query, "datasource", None), f"{location}.datasource"
                 ),
                 "dialect": _identity(getattr(query, "dialect", None), f"{location}.dialect"),
-                "sql": _identity(getattr(query, "sql", None), f"{location}.sql"),
+                "sql": _query_sql(getattr(query, "sql", None), f"{location}.sql"),
                 "sql_digest": _identity(
                     getattr(query, "sql_digest", None), f"{location}.sql_digest"
                 ),

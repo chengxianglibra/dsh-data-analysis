@@ -141,6 +141,7 @@ test('the report Skill contains principles, data access, and only Marivo compone
     /emit_session_trace\(graph, target, report_artifact_refs=\[\.\.\.\], detail="reader"\)/,
   )
   assert.match(normalized, /detail="audit"/)
+  assert.match(normalized, /action SQL\/Query 请求.*bind values 仍必须省略/)
   assert.match(normalized, /每个实质支撑报告内容的 Marivo Session/)
   assert.match(normalized, /report_artifact_refs.*实际支撑可见内容/)
   assert.match(normalized, /单次最多接收 20 个 trace/)
@@ -153,7 +154,10 @@ test('the report Skill contains principles, data access, and only Marivo compone
   assert.match(normalized, /取得报告数据.*添加 Marivo 组件.*装配浏览器资源/)
   assert.match(normalized, /内容组织/)
   assert.match(normalized, /布局与样式/)
-  assert.match(normalized, /Marivo 组件只输出语义化 DOM\/SVG 与 class hooks.*浏览器默认黑色图形/)
+  assert.match(
+    normalized,
+    /Marivo 组件只输出语义化 DOM\/SVG 与 class hooks.*audit SQL 的确定性格式化/,
+  )
   assert.match(normalized, /所有图表坐标轴.*不得出现刻度标签彼此重叠/)
   assert.match(normalized, /空间不足时不要强行显示每个刻度/)
   assert.match(normalized, /生成与检查/)
@@ -164,7 +168,7 @@ test('the report Skill contains principles, data access, and only Marivo compone
   assert.ok(skill.length < 6_000)
   assert.doesNotMatch(
     skill,
-    /dsh_data_analysis_report_check|starter\/|references\/|renderLineChart/,
+    /dsh_data_analysis_report_check|starter\/|references\/|renderLineChart|真实浏览器|浏览器能力完成|视觉检查/,
   )
   assert.deepEqual((await readdir(path.dirname(reportSkillPath))).sort(), ['SKILL.md', 'assets'])
   assert.deepEqual((await readdir(path.join(path.dirname(reportSkillPath), 'assets'))).sort(), [

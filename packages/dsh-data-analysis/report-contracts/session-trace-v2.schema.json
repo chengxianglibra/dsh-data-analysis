@@ -302,7 +302,7 @@
         "query_id": { "$ref": "#/$defs/identity" },
         "datasource": { "$ref": "#/$defs/identity" },
         "dialect": { "$ref": "#/$defs/identity" },
-        "sql": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "sql": { "type": "string", "minLength": 1, "maxLength": 65536 },
         "sql_digest": { "$ref": "#/$defs/identity" },
         "row_count": { "type": "integer", "minimum": 0 },
         "duration_ms": { "type": "integer", "minimum": 0 },

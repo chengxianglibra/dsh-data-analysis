@@ -5,7 +5,7 @@ description: Create or revise a Workspace HTML analysis report only when the use
 
 # DSH data-analysis report
 
-本 Skill 只提供报告原则、数据读取接线与 Marivo 专属组件。页面、图表、样式、交互和通用检查由 Agent 使用普通文件、代码与浏览器能力完成；插件不提供模板、chart helper、可视化 DSL、HTML Checker、通用 renderer 或 publisher。
+本 Skill 只提供报告原则、数据读取接线与 Marivo 专属组件。页面、图表、样式、交互和通用检查由 Agent 使用普通文件与代码能力完成；插件不提供模板、chart helper、可视化 DSL、HTML Checker、通用 renderer 或 publisher。
 
 ## 分析事实与 Marivo 投影
 
@@ -25,7 +25,7 @@ description: Create or revise a Workspace HTML analysis report only when the use
 ### 添加 Marivo 组件
 
 - `MarivoArtifact.render(container, dataset_id)` 展示面向读者的 Artifact 摘要：正常状态仅含类型、semantic shape、行数和结果生成时间；仅在截断、Evidence 不完整、revalidation 异常、质量检查或 issues 会改变判断时追加提示。它不是 metadata inspector，不展示机器 identity、hash、Job、Finding 数量或完整 lineage。
-- 对每个实质支撑报告内容的 Marivo Session，分别用公开 `session.graph(...)` 取得聚焦 `SessionGraph`，再调用 `emit_session_trace(graph, target, report_artifact_refs=[...], detail="reader")`。只有明确审计、Lineage、质量详情或可追溯性请求才改用 `detail="audit"`。`report_artifact_refs` 只列该 Graph 内实际支撑可见内容的本地 Artifacts；不得跨 Session 合并、读取私有 Store 或补造事实。
+- 对每个实质支撑报告内容的 Marivo Session，分别用公开 `session.graph(...)` 取得聚焦 `SessionGraph`，再调用 `emit_session_trace(graph, target, report_artifact_refs=[...], detail="reader")`。只有明确审计、Lineage、质量详情、可追溯性或 action SQL/Query 请求才改用 `detail="audit"`；DAG 详情只展示投影中已有的公开 Query，bind values 仍必须省略。`report_artifact_refs` 只列该 Graph 内实际支撑可见内容的本地 Artifacts；不得跨 Session 合并、读取私有 Store 或补造事实。
 - DAG 中需要预览的本地 Frame，必须从所属精确 Session 恢复并 `emit_dataset(...)`。浏览器按 `session_id + artifact_ref` 关联；缺少快照时明确显示未注册。Artifact 详情复用 `MarivoArtifact`，Frame 节点只显示 family 与行数。
 - Graph 超出 emitter 限制时，为同一 Session 输出多个具有唯一 `trace_id` 的聚焦 Graph。`ReportTrace.renderSessionGraphs(...)` 单次最多接收 20 个 trace；超出时分批渲染，不得静默遗漏实际使用的 Session。
 
@@ -43,7 +43,7 @@ description: Create or revise a Workspace HTML analysis report only when the use
 ## 布局与样式
 
 - 建立清晰标题层级和阅读顺序；宽屏可分栏，窄屏回到单列。关键结论不能只靠颜色、位置、hover 或动画表达。
-- Marivo 组件只输出语义化 DOM/SVG 与 class hooks，不携带页面主题；使用 `MarivoArtifact` 或 `ReportTrace` 时，必须为生成内容补齐可读的文本、节点 fill/stroke、连线、状态、键盘焦点、详情面板与窄屏样式，并在真实浏览器确认未退化成浏览器默认黑色图形。
+- Marivo 组件只输出语义化 DOM/SVG 与 class hooks，不携带页面主题；使用 `MarivoArtifact` 或 `ReportTrace` 时，必须为生成内容补齐可读的文本、节点 fill/stroke、连线、状态、键盘焦点、详情面板与窄屏样式，并保留组件对 audit SQL 的确定性格式化。
 - 优先使用语义化结构、可读字号、充足行距、稳定留白和高对比度。颜色用于编码而非装饰；同一含义保持一致，并提供文字、图例或形状冗余。
 - 图表必须有标题、单位、时间范围、刻度与数据缺失说明；表格提供明确表头和适合内容的对齐。避免 3D、双轴、过密标签和无解释的视觉噪声。
 - 所有图表坐标轴在各目标宽度下都不得出现刻度标签彼此重叠、被裁切、侵入绘图区，或与轴标题、图例等元素重叠。按轴类型、标签长度与可用空间选择合适的格式、刻度密度、换行、方向、边距和图表尺寸；空间不足时不要强行显示每个刻度。只有保持可读时才旋转标签，完整标签与数值保留在数据表、可访问文本或按需提示中。

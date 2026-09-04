@@ -121,7 +121,9 @@ async function fixture(name: string): Promise<any> {
 
 async function projectionContext(withDom = false): Promise<ProjectionContext> {
   const context = vm.createContext(
-    withDom ? { console, document: new TestDocument(), Element: TestElement } : { console },
+    withDom
+      ? { console, document: new TestDocument(), Element: TestElement, TextEncoder }
+      : { console, TextEncoder },
   ) as ProjectionContext
   for (const name of ['report-data.js', 'marivo-artifact.js', 'marivo-session-dag.js']) {
     vm.runInContext(await readFile(path.join(assetRoot, name), 'utf8'), context, { filename: name })
@@ -308,4 +310,62 @@ test('Session DAG renders Frame row counts, exact previews, and every selected S
     () => traces.renderSessionGraphs(new TestElement(), traceIds),
     /between 1 and 20 registered trace ids/,
   )
+})
+
+test('Session DAG renders audit Query details and reader omission disclosure per action', async () => {
+  const context = await projectionContext(true)
+  const traces = context.ReportTrace!
+  const fixtureTrace = await fixture('trace-succeeded.json')
+
+  const audit = structuredClone(fixtureTrace)
+  audit.trace_id = 'trace-audit-query'
+  audit.detail = 'audit'
+  audit.runs[0].queries = [
+    {
+      query_id: 'query-1',
+      datasource: 'warehouse',
+      dialect: 'trino',
+      sql: `SELECT 'FROM AND' AS "order", count(*) FROM (SELECT "t0"."label", greatest("t0"."score", 2) AS "score" FROM "catalog"."table" AS "t0" WHERE "t0"."label" = 'x,y' AND "t0"."active" = true) AS "t1" /* ${'界'.repeat(1_000)} */`,
+      sql_digest: 'sha256:query-1',
+      row_count: 1,
+      duration_ms: 42,
+      started_at: '2026-08-31T11:57:00Z',
+      finished_at: '2026-08-31T11:57:00Z',
+      status: 'succeeded',
+    },
+  ]
+  traces.register(audit.trace_id, audit)
+  const auditContainer = new TestElement()
+  traces.renderSessionGraph(auditContainer, audit)
+  assert.match(auditContainer.textContent, /查询详情（1）/)
+  assert.match(auditContainer.textContent, /Query 1 · warehouse · succeeded · 42 ms/)
+  const [sqlElement] = auditContainer.querySelectorAll('.trace-query-sql')
+  assert.ok(sqlElement)
+  const formattedSql = sqlElement.textContent
+  assert.match(formattedSql, /SELECT 'FROM AND' AS "order",\n {2}count\(\*\)/)
+  assert.match(
+    formattedSql,
+    /\nFROM \(\n {2}SELECT "t0"\."label",\n {4}greatest\("t0"\."score", 2\)/,
+  )
+  assert.match(
+    formattedSql,
+    /\n {2}WHERE "t0"\."label" = 'x,y'\n {4}AND "t0"\."active" = true\n\) AS "t1"/,
+  )
+  assert.match(formattedSql, /\/\* 界+/)
+  assert.match(auditContainer.textContent, /Query IDquery-1/)
+  assert.equal(auditContainer.querySelectorAll('.trace-query-sql').length, 1)
+
+  const oversized = structuredClone(audit)
+  oversized.trace_id = 'trace-oversized-query'
+  oversized.runs[0].queries[0].sql = '界'.repeat(21_846)
+  assert.throws(() => traces.register(oversized.trace_id, oversized), /at most 65536 bytes/)
+
+  const reader = structuredClone(fixtureTrace)
+  reader.trace_id = 'trace-reader-query'
+  reader.runs[0].queries_omitted = 1
+  traces.register(reader.trace_id, reader)
+  const readerContainer = new TestElement()
+  traces.renderSessionGraph(readerContainer, reader)
+  assert.match(readerContainer.textContent, /执行了 1 条 Query；reader 投影未包含 SQL/)
+  assert.equal(readerContainer.querySelectorAll('.trace-query-sql').length, 0)
 })

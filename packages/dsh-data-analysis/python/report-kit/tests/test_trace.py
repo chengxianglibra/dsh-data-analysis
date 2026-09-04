@@ -241,11 +241,12 @@ def test_trace_transports_public_edges_without_rederiving_missing_edges(tmp_path
 
 def test_trace_profiles_are_closed(tmp_path: Path) -> None:
     graph = graph_with_every_lifecycle()
+    query_sql = "select '" + ("界" * 1_000) + "'"
     query = SimpleNamespace(
         query_id="query-1",
         datasource="warehouse",
         dialect="duckdb",
-        sql="select 1",
+        sql=query_sql,
         sql_digest="sha256:query",
         row_count=1,
         duration_ms=2,
@@ -273,8 +274,8 @@ def test_trace_profiles_are_closed(tmp_path: Path) -> None:
     audit = parse_registration(target, "ReportTrace")
     assert audit["detail"] == "audit"
     assert [query["sql"] for run in audit["runs"] for query in run.get("queries", [])] == [
-        "select 1",
-        "select 1",
+        query_sql,
+        query_sql,
     ]
     with pytest.raises(ReportSessionTraceError) as error:
         emit_session_trace(
@@ -284,6 +285,38 @@ def test_trace_profiles_are_closed(tmp_path: Path) -> None:
             detail="full",  # type: ignore[arg-type]
         )
     assert error.value.code == "detail-unsupported"
+
+
+def test_trace_query_sql_has_a_closed_utf8_byte_budget(tmp_path: Path) -> None:
+    graph = graph_with_every_lifecycle()
+    query = SimpleNamespace(
+        query_id="query-oversized",
+        datasource="warehouse",
+        dialect="trino",
+        sql="界" * 21_846,
+        sql_digest="sha256:query-oversized",
+        row_count=1,
+        duration_ms=2,
+        started_at=NOW,
+        finished_at=NOW,
+        status="succeeded",
+    )
+    graph = replace(
+        graph,
+        runs=tuple(
+            replace(run, queries=(query,)) if isinstance(run, SucceededRun) else run
+            for run in graph.runs
+        ),
+    )
+    with pytest.raises(ReportSessionTraceError) as error:
+        emit_session_trace(
+            graph,
+            tmp_path / "trace.js",
+            report_artifact_refs=["artifact-result"],
+            detail="audit",
+        )
+    assert error.value.code == "session-trace-limit-exceeded"
+    assert error.value.context["limit"] == 64 * 1024
 
 
 def test_trace_string_budget_counts_utf8_bytes(tmp_path: Path) -> None:
