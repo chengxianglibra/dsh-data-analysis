@@ -16,7 +16,7 @@ const transpiled = ts.transpileModule(source, {
     verbatimModuleSyntax: false,
   },
 })
-const id = '@deepseek-ai/dsh-data-analysis'
+const id = '@chengxianglibra/dsh-data-analysis'
 const bundle = [
   `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`,
   'var module = { exports: {} }; var exports = module.exports;',

@@ -3,7 +3,7 @@
 
 - insert:
     - id: dsh-data-analysis
-      name: '@deepseek-ai/dsh-data-analysis'
+      name: '@chengxianglibra/dsh-data-analysis'
       config:
         projectRoot: !!js process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT
         pythonExecutable: !!js process.env.DSH_DATA_ANALYSIS_PYTHON

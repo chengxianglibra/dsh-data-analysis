@@ -20,7 +20,7 @@ interface PackageManifest {
 }
 
 test('v2 compatibility manifest binds plugin, DSH, Marivo, and project contracts', () => {
-  assert.equal(PLUGIN_VERSION, '0.1.1-dev.0')
+  assert.equal(PLUGIN_VERSION, '0.1.1')
   assert.equal(COMPATIBILITY_SCHEMA, 'dsh-data-analysis-compatibility/v2')
   assert.equal(DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.distribution, '@deepseek-ai/dsh')
   assert.equal(DSH_PEER_RANGE, '0.1.1-rc.2')

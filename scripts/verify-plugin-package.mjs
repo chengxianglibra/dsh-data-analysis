@@ -143,13 +143,13 @@ for (const [name, version] of Object.entries(compatibility.contracts ?? {})) {
 
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'dsh-data-analysis-package-'))
 try {
-  run(npmExecutable, ['run', 'prepack', '--workspace', '@deepseek-ai/dsh-data-analysis'])
+  run(npmExecutable, ['run', 'prepack', '--workspace', '@chengxianglibra/dsh-data-analysis'])
   const packOutput = run(
     npmExecutable,
     [
       'pack',
       '--workspace',
-      '@deepseek-ai/dsh-data-analysis',
+      '@chengxianglibra/dsh-data-analysis',
       '--ignore-scripts',
       '--json',
       '--pack-destination',
@@ -266,7 +266,7 @@ try {
   run('tar', ['-xzf', tarball, '-C', extracted])
   const consumer = path.join(temporaryRoot, 'consumer')
   const nodeModules = path.join(consumer, 'node_modules')
-  const installedPlugin = path.join(nodeModules, '@deepseek-ai/dsh-data-analysis')
+  const installedPlugin = path.join(nodeModules, '@chengxianglibra/dsh-data-analysis')
   mkdirSync(path.dirname(installedPlugin), { recursive: true })
   renameSync(path.join(extracted, 'package'), installedPlugin)
   run(
@@ -300,9 +300,9 @@ try {
   ])
   for (const packageName of linkedDependencies) linkDependency(nodeModules, packageName)
   const smokeProgram = `
-    const root = await import('@deepseek-ai/dsh-data-analysis')
-    const compatibility = await import('@deepseek-ai/dsh-data-analysis/compatibility')
-    const environment = await import('@deepseek-ai/dsh-data-analysis/environment')
+    const root = await import('@chengxianglibra/dsh-data-analysis')
+    const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
+    const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
     if (compatibility.MARIVO_VERSION !== '0.5.3') throw new Error('packed Marivo version mismatch')

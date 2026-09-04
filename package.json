@@ -6,10 +6,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @deepseek-ai/dsh-data-analysis",
+    "build": "npm run build --workspace @chengxianglibra/dsh-data-analysis",
     "check": "npm run quality && npm run deps:check && npm run typecheck && npm test",
     "ci": "biome ci . && npm run deps:check && npm run typecheck && npm test && npm run build && npm run verify:plugin-package",
-    "clean": "npm run clean --workspace @deepseek-ai/dsh-data-analysis",
+    "clean": "npm run clean --workspace @chengxianglibra/dsh-data-analysis",
     "deps:check": "node scripts/check-dependencies.mjs",
     "format": "biome format --write .",
     "format:check": "biome format .",

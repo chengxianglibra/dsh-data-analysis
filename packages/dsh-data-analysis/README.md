@@ -1,4 +1,6 @@
-# @deepseek-ai/dsh-data-analysis
+# @chengxianglibra/dsh-data-analysis
+
+由个人维护的 DeepSeek Harness 社区插件，并非 DeepSeek 官方发行或维护的软件包。
 
 DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 

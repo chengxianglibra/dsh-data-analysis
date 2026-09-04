@@ -9,7 +9,7 @@ const result = spawnSync(
   [
     'pack',
     '--workspace',
-    '@deepseek-ai/dsh-data-analysis',
+    '@chengxianglibra/dsh-data-analysis',
     '--pack-destination',
     destination.pathname,
   ],

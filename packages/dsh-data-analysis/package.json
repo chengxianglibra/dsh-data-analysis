@@ -1,7 +1,17 @@
 {
-  "name": "@deepseek-ai/dsh-data-analysis",
+  "name": "@chengxianglibra/dsh-data-analysis",
   "description": "Marivo runtime, live-help, datasource, and on-demand Evidence source integration for DeepSeek Harness",
-  "version": "0.1.1-dev.0",
+  "version": "0.1.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chengxianglibra/dsh-data-analysis.git",
+    "directory": "packages/dsh-data-analysis"
+  },
+  "homepage": "https://github.com/chengxianglibra/dsh-data-analysis#readme",
+  "bugs": {
+    "url": "https://github.com/chengxianglibra/dsh-data-analysis/issues"
+  },
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -58,7 +68,8 @@
     "prepack": "npm run build:report-kit && npm run build"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "dshDataAnalysisCompatibility": {
     "schema": "dsh-data-analysis-compatibility/v2",
