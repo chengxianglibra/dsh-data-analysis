@@ -480,3 +480,25 @@ test('subprocess timeout, cancellation, and output limits are explicit', async (
     'subprocess-output-limit',
   )
 })
+
+test('fixed non-secret process controls preserve v1 refs while credential overlays remain redacted', async (t) => {
+  const fixture = await fixtureProject()
+  t.after(fixture.cleanup)
+  const environment = await bindMarivoEnvironment(
+    { projectRoot: fixture.root },
+    { environment: { ...process.env, CHECKED_MODE: 'domain' } },
+  )
+  const result = await environment.runChecked({
+    program: 'fixture',
+    args: ['marivo.semantic_ref/v1 office'],
+    environmentOverlay: {
+      MARIVO_TELEMETRY: 'off',
+      PYTHONDONTWRITEBYTECODE: '1',
+      TEST_CREDENTIAL: 'test-secret',
+    },
+  })
+  const payload = JSON.parse(result.stdout.toString('utf8'))
+  assert.equal(payload.argument, 'marivo.semantic_ref/v1 office')
+  assert.equal(payload.nested.secret, '[REDACTED]')
+  assert.ok(!result.stderr.toString('utf8').includes('test-secret'))
+})

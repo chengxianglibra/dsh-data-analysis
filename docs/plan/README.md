@@ -8,6 +8,8 @@ kebab-case 文件名，并在本页登记入口。
 
 ## 已实施设计
 
+- [语义对象引用输入 MVP 设计](semantic-reference-input-mvp-design.md)（已实施并通过本机验收；复用 `@` 的 Catalog 候选、
+  七日热度、分层词法检索与原子 ref）
 - [插件能力优化设计](plugin-capability-optimization-design.md)（已实施；仅限本仓库 `0.1.1-dev.0` 开发线的能力收窄与 clean break）
 
 ## 历史设计

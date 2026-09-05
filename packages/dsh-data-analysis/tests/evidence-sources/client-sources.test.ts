@@ -27,6 +27,8 @@ async function loadClient(): Promise<ClientExports> {
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8')
   let registration: { factory: (require: (id: string) => unknown) => ClientExports } | undefined
   vm.runInNewContext(source, {
+    AbortController,
+    AbortSignal,
     window: {
       __ModuleLoader__: {
         load(value: typeof registration) {
@@ -314,7 +316,15 @@ test('client registers both datasource views and one source turn tail', async ()
     effect(install: () => unknown) {
       install()
     },
+    inputTriggers: {
+      registerSource() {
+        return () => {}
+      },
+    },
     locale: {
+      bind() {
+        return (key: string) => key
+      },
       register() {
         return () => {}
       },

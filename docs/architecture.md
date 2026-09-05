@@ -14,6 +14,7 @@ flowchart LR
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
   P --> E[marivo_evidence_sources]
+  P --> S[Semantic reference input and usage sidecar]
   P --> J[Marivo Artifact and DAG JS projection]
   R --> M[Marivo public objects]
   M --> A[Agent analysis and expression]
@@ -30,6 +31,7 @@ flowchart LR
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
 | Datasource | DSH Credentials 缺失收集、connection test、Shell env 注入 | table/source inspection 语义 |
 | Evidence delivery | 精确 Artifact/Finding 到 Turn/Web 的忠实投影 | 分析读取、Finding 组合、蕴含判断 |
+| Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Report workflow | 原则型 `dsh-data-analysis-report` Skill 与 Artifact/DAG JS 投影 | 页面模板、通用 chart helper、HTML Checker、renderer、publisher、专用 Web card |
 
 模块文档：
@@ -39,6 +41,7 @@ flowchart LR
 - [实时 Help 披露](modules/help-disclosure.md)
 - [Datasource Credentials](modules/datasource-credentials.md)
 - [Evidence 来源交付](modules/evidence-sources.md)
+- [语义对象引用输入](modules/semantic-reference-input.md)
 - [插件集成与交付](modules/plugin-integration-delivery.md)
 
 ## Runtime 与 identity

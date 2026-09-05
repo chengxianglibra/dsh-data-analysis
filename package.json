@@ -17,7 +17,7 @@
     "pack:plugin": "npm run check && npm run verify:plugin-package && node scripts/pack-plugin.mjs",
     "quality": "biome check .",
     "quality:fix": "biome check --write .",
-    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:evidence-sources && npm run test:agent-native-report-primitives && npm run test:plugin-integration-delivery",
+    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:evidence-sources && npm run test:agent-native-report-primitives && npm run test:plugin-integration-delivery && npm run test:semantic-reference-input",
     "test:runtime-workspace": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/runtime-workspace/*.test.ts",
     "test:environment-execution": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/environment-execution/*.test.ts",
     "test:help-disclosure": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/help-disclosure/*.test.ts",
@@ -35,7 +35,8 @@
     "validate:datasource-credentials:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-credentials-real.ts",
     "validate:datasource-access:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-access-real.ts",
     "validate:evidence-sources:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-evidence-sources-real.ts",
-    "validate:plugin-integration-delivery:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-integration-delivery-real.ts"
+    "validate:plugin-integration-delivery:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-integration-delivery-real.ts",
+    "test:semantic-reference-input": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/semantic-reference-input/*.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

@@ -28,6 +28,7 @@ import {
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { apply, inject } from '../../src/plugin.ts'
+import { installConnectionFixture, installStorage } from '../semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 class TestCredentials extends CredentialProvider {
@@ -218,6 +219,8 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   await chmod(python, 0o755)
 
   const ctx = new Context()
+  installConnectionFixture(ctx)
+  await installStorage(ctx, path.join(root, 'profile-storage'))
   await ctx.plugin(TestCredentials)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)

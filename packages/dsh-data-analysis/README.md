@@ -70,3 +70,9 @@ npm run verify:plugin-package
 当前架构与验收边界见仓库根目录的[总体架构](../../docs/architecture.md)、
 [插件能力优化设计](../../docs/plan/plugin-capability-optimization-design.md)和
 [v2 验收记录](../../docs/acceptance/plugin-capability-optimization-v2.md)。
+
+## 语义对象引用
+
+在 Web 输入框输入 `@` 选择当前 Workspace 的 Marivo 对象；多词检索使用 `@"monthly revenue"`。
+选中后显示完整 `kind:path`，提交只携带精确 ref。最近七个自然日热度保存在 DSH profile；候选缓存为 30 秒。
+对象有效性由执行时 Marivo Catalog 验证，删除对象不会被相似对象自动替换。

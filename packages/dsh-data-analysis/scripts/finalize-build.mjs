@@ -5,6 +5,8 @@ import './build-client.mjs'
 // runtime or declaration entrypoint can reach them.
 const unreachableOutputs = [
   'lib/environment/types.js',
+  'lib/client/semantic-reference-source.js',
+  'lib/types/client/semantic-reference-source.d.ts',
   'lib/types/bin/environment.d.ts',
   'lib/types/datasource/bridge-programs.d.ts',
   'lib/types/datasource/credentials.d.ts',

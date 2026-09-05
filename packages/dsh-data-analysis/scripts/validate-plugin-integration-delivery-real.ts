@@ -25,6 +25,10 @@ import {
   parseDoctorReport,
 } from '../src/environment/index.ts'
 import { apply, inject } from '../src/plugin.ts'
+import {
+  installConnectionFixture,
+  installStorage,
+} from '../tests/semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -221,6 +225,11 @@ const credentialFailureEnvironment = await bindMarivoEnvironment({
 })
 const pythonPolicy = new FixedSubprocessPolicy(environment.binding.projectRoot)
 const ctx = new Context()
+installConnectionFixture(ctx)
+await installStorage(
+  ctx,
+  path.join(environment.binding.projectRoot, '..', 'validation-profile-storage'),
+)
 await ctx.plugin(LlmRuntime)
 await ctx.plugin(LocalCredentialProvider, { watch: false })
 await ctx.plugin(DeepSeek, {

@@ -58,9 +58,18 @@ function redactSubprocessOutput(
   environmentOverlay: Readonly<NodeJS.ProcessEnv> | undefined,
 ) {
   if (environmentOverlay === undefined) return result
-  const secrets = Object.values(environmentOverlay).filter(
-    (value): value is string => value !== undefined && value !== '',
-  )
+  // These exact process controls carry no credential material. Redacting '1' would
+  // corrupt public schema IDs such as marivo.semantic_ref/v1.
+  const secrets = Object.entries(environmentOverlay)
+    .filter(
+      ([key, value]) =>
+        !(
+          (key === 'MARIVO_TELEMETRY' && value === 'off') ||
+          (key === 'PYTHONDONTWRITEBYTECODE' && value === '1')
+        ),
+    )
+    .map(([, value]) => value)
+    .filter((value): value is string => value !== undefined && value !== '')
   const redactText = (source: string): string => {
     let text = source
     for (const secret of secrets) text = text.split(secret).join('[REDACTED]')

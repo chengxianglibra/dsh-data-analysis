@@ -24,6 +24,12 @@ dsh --profile web
 - **易用**：Agent 可以直接开展数据分析，并在持续使用中逐渐沉淀可复用的业务语义，让后续分析更贴近业务、结果更一致。
 - **丰富**：不仅提供分析结论，还可结合证据、溯源和 HTML 报告等形式，满足从快速探索到完整交付的不同需求。
 
+## 引用语义对象
+
+输入 `@` 可选择当前 Workspace 的 Marivo 对象；输入 `@"monthly revenue"` 可检索多词。选中后显示完整
+`kind:path` 引用，空查询优先展示最近七天常用对象。引用使用执行时的语义定义；对象删除后分析会明确失败。
+参见[使用说明](docs/modules/semantic-reference-input.md)。
+
 ## License
 
 本项目采用 [MIT License](packages/dsh-data-analysis/LICENSE)。

@@ -9,6 +9,8 @@ import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { installSemanticReferenceSource } from './client/semantic-reference-source.ts'
+
 const DATASOURCE_TEST_TOOL_NAME = 'marivo_datasource_test'
 const DATASOURCE_ACCESS_TOOL_NAME = 'marivo_datasource_access'
 export const MARIVO_CREDENTIAL_STORAGE_PREFIX = 'DSH_DATA_ANALYSIS_CREDENTIAL_'
@@ -985,10 +987,11 @@ export function MarivoEvidenceSourcesPanel({
   )
 }
 
-export const inject = ['connection', 'slots', 'locale', 'conversationEvents']
+export const inject = ['connection', 'slots', 'locale', 'conversationEvents', 'inputTriggers']
 
 export function apply(ctx: Context): void {
   const connection = ctx.get('connection')
+  installSemanticReferenceSource(ctx, connection.rpc)
   const BoundMarivoDatasourceTestToolView = (props: any) => (
     <MarivoDatasourceTestToolView {...props} connection={connection} />
   )

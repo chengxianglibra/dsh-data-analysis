@@ -5,8 +5,10 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-client-connection'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
+import type {} from '@deepseek-ai/dsh-storage-domain'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
 import {
@@ -36,12 +38,26 @@ import {
   installMarivoEvidenceSourcesCodeDelivery,
   registerMarivoEvidenceSourcesTool,
 } from './evidence/index.ts'
+import {
+  registerSemanticReferenceRpc,
+  SemanticReferenceService,
+  SemanticReferenceUsage,
+} from './semantic-reference/index.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
 
 /** Services that must exist before the plugin binds and watches Agent scopes. */
-export const inject = ['agents', 'credentials', 'shellEnv', 'skills', 'systemPrompt', 'tools']
+export const inject = [
+  'agents',
+  'connection',
+  'storageDomain',
+  'credentials',
+  'shellEnv',
+  'skills',
+  'systemPrompt',
+  'tools',
+]
 
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'When marivo-semantic is active, every Marivo datasource *_env field must reference a valid POSIX environment name outside the reserved MARIVO_* and DSH_DATA_ANALYSIS_* namespaces and Host-owned DSH shell facts.',
@@ -226,7 +242,7 @@ export function installMarivoPlugin(
 }
 
 /** Ensure the shared Runtime once, mount its skills, then bind each Workspace lazily. */
-export async function apply(ctx: Context, config: Config = {}): Promise<() => void> {
+export async function apply(ctx: Context, config: Config = {}): Promise<() => Promise<void>> {
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
   const uvExecutable = config.uvExecutable ?? process.env.DSH_DATA_ANALYSIS_UV
@@ -241,7 +257,18 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => vo
     runtime.pythonExecutable,
   )
   const manager = new MarivoWorkspaceEnvironmentManager(runtime)
-  let disposePlugin: () => void
+  const bindings = new WeakMap<Agent, { root: string; environment: Promise<MarivoEnvironment> }>()
+  const resolveEnvironment = (agent: Agent): Promise<MarivoEnvironment> => {
+    const root = configuredProjectRoot(config, agent)
+    const existing = bindings.get(agent)
+    if (existing?.root === root) return existing.environment
+    const environment = manager.resolve(root)
+    bindings.set(agent, { root, environment })
+    return environment
+  }
+  let disposeReferences: (() => Promise<void>) | undefined
+  let referenceService: SemanticReferenceService | undefined
+  let disposePlugin: (() => void) | undefined
   try {
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',
@@ -250,18 +277,44 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => vo
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))
-    disposePlugin = installMarivoPlugin(
-      ctx,
-      (agent) => manager.resolve(configuredProjectRoot(config, agent)),
-      { helpBridgeSource: helpBridge },
-    )
+    disposePlugin = installMarivoPlugin(ctx, resolveEnvironment, { helpBridgeSource: helpBridge })
+    let lastDiagnostic = -Infinity
+    const usage = new SemanticReferenceUsage(ctx.storageDomain, Date.now, () => {
+      if (Date.now() - lastDiagnostic >= 30_000) {
+        lastDiagnostic = Date.now()
+        console.warn('dsh-data-analysis semantic-reference usage unavailable')
+      }
+    })
+    referenceService = new SemanticReferenceService(async (sessionId, purpose) => {
+      const agent = ctx.agents.list().find((item) => item.session.id === sessionId)
+      if (!agent) throw new Error('unknown-session')
+      const bound = bindings.get(agent)
+      if (
+        purpose === 'reference' &&
+        (!bound || bound.root !== configuredProjectRoot(config, agent))
+      )
+        throw new Error('environment-unbound')
+      const environment = await (purpose === 'reference'
+        ? bound!.environment
+        : resolveEnvironment(agent))
+      if (
+        !ctx.agents.list().includes(agent) ||
+        bindings.get(agent)?.root !== configuredProjectRoot(config, agent)
+      )
+        throw new Error('environment-changed')
+      return environment
+    }, usage)
+    disposeReferences = registerSemanticReferenceRpc(ctx.connection, referenceService)
   } catch (error) {
+    await referenceService?.close()
+    disposePlugin?.()
     manager.dispose()
     disposeRuntimeShellEnvironment()
     throw error
   }
-  return () => {
-    disposePlugin()
+  return async () => {
+    await disposeReferences?.()
+    disposePlugin?.()
     manager.dispose()
     disposeRuntimeShellEnvironment()
   }

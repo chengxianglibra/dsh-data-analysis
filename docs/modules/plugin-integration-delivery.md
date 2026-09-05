@@ -21,7 +21,8 @@ Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Evidence adapter 与 prompt sections。
 5. 相同 Environment 共享 Help/Datasource/Evidence bridge set；Agent activation state 独立。
-6. plugin disposal 移除自身 Tool、prompt、事件与 outstanding credential leases，不影响原 profile Tool 或 Host environment。
+6. profile 级 Connection RPC 与 storageDomain 承载[语义对象引用输入](semantic-reference-input.md)，Browser 注册独立 `@` source。
+7. plugin disposal 先停止语义引用 RPC、取消 Catalog 加载并 drain usage 写入，再移除自身 Tool、prompt、事件与 outstanding credential leases，不影响原 profile Tool 或 Host environment。
 
 ## Agent scope surface
 
@@ -98,3 +99,8 @@ npm run validate:plugin-integration-delivery:real
 Real runner 需要正式 Marivo 0.5.3 与真实模型。Produced Files、Host opener、浏览器/打印、remote/headless
 与隔离磁盘配额仍需在对应真实 DSH Web 环境验收；路径、runner 日志或静态 schema 不能伪造这些外部能力。
 本次 tarball 内容收窄的确定性证据见 [Package 内容收窄验收](../acceptance/package-content-cleanup.md)。
+
+## Browser 构建
+
+client 使用 esbuild 打包本地 Browser source 与共享 wire contracts，DSH/React 保持外部依赖，由 DSH module loader 提供。
+构建白名单拒绝 Host 模块进入 Browser bundle；不增加公开 npm subpath。

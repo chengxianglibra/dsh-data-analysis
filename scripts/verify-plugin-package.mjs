@@ -141,6 +141,16 @@ for (const [name, version] of Object.entries(compatibility.contracts ?? {})) {
   if (contractMajor === null) fail(`project-owned contract ${name} must end with a vN identity`)
 }
 
+for (const peer of [
+  '@deepseek-ai/dsh-client-ui-input-trigger',
+  '@deepseek-ai/dsh-storage-domain',
+]) {
+  if (peerDependencies[peer] !== dshPeerRange) fail(`semantic reference peer missing: ${peer}`)
+}
+if (!sourceManifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-input-trigger'))
+  fail('semantic reference client injection missing')
+if (!sourceManifest.dependencies.zod) fail('storage schema requires direct zod dependency')
+
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'dsh-data-analysis-package-'))
 try {
   run(npmExecutable, ['run', 'prepack', '--workspace', '@chengxianglibra/dsh-data-analysis'])
@@ -202,6 +212,8 @@ try {
   }
   const unreachableBuildOutputs = [
     'lib/environment/types.js',
+    'lib/client/semantic-reference-source.js',
+    'lib/types/client/semantic-reference-source.d.ts',
     'lib/types/bin/environment.d.ts',
     'lib/types/datasource/bridge-programs.d.ts',
     'lib/types/datasource/credentials.d.ts',
@@ -219,6 +231,10 @@ try {
     'lib/compatibility.js',
     'lib/types/compatibility.d.ts',
     'lib/evidence/index.js',
+    'lib/semantic-reference/rpc.js',
+    'lib/semantic-reference/bridge.js',
+    'lib/semantic-reference/contracts.js',
+    'lib/semantic-reference/usage.js',
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
     reportKitWheelPath,
