@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import {
   access,
@@ -17,8 +17,9 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import {
-  MARIVO_PACKAGE_SPEC,
   MARIVO_VERSION,
+  MARIVO_WHEEL_FILENAME,
+  MARIVO_WHEEL_SHA256,
   RUNTIME_INSTALLATION_VERSION,
 } from '../compatibility.ts'
 import { MarivoEnvironmentError } from './errors.ts'
@@ -27,7 +28,8 @@ import type { SharedMarivoRuntime, SharedMarivoRuntimeConfig, SubprocessResult }
 
 export const SHARED_PYTHON_SPEC = '3.10'
 const PINNED_MARIVO_VERSION = MARIVO_VERSION
-export const SHARED_MARIVO_PACKAGE_SPEC = MARIVO_PACKAGE_SPEC
+const MARIVO_WHEEL_URL = new URL(`../../python/marivo/${MARIVO_WHEEL_FILENAME}`, import.meta.url)
+export const SHARED_MARIVO_PACKAGE_SPEC = `marivo[duckdb,trino,clickhouse] @ ${MARIVO_WHEEL_URL.href}#sha256=${MARIVO_WHEEL_SHA256}`
 export const REPORT_KIT_DISTRIBUTION = 'dsh-data-analysis-report-kit'
 export const REPORT_KIT_VERSION = '3.0.0'
 export const REPORT_KIT_PANDAS_RANGE = '>=2.2.0,<3.0.0'
@@ -43,6 +45,10 @@ import json
 import os
 import sys
 import marivo
+from importlib.metadata import distribution
+from urllib.parse import urlparse, parse_qs
+from marivo.semantic.definition import SemanticDefinition
+marivo_origin = json.loads(distribution("marivo").read_text("direct_url.json") or "{}")
 import pandas
 import dsh_data_analysis_report
 from packaging.specifiers import SpecifierSet
@@ -51,6 +57,7 @@ from packaging.version import Version
 print(json.dumps({
     "python_executable": os.path.abspath(sys.executable),
     "marivo_version": marivo.__version__,
+    "marivo_wheel_sha256": marivo_origin.get("archive_info", {}).get("hashes", {}).get("sha256") or parse_qs(urlparse(marivo_origin.get("url", "")).fragment).get("sha256", [None])[0],
     "package_path": os.path.abspath(marivo.__file__ or ""),
     "pandas_version": pandas.__version__,
     "pandas_supported": Version(pandas.__version__) in SpecifierSet(">=2.2.0,<3.0.0"),
@@ -78,6 +85,7 @@ print(json.dumps({
 interface RuntimeProbe {
   python_executable: string
   marivo_version: string
+  marivo_wheel_sha256: string
   package_path: string
   pandas_version: string
   pandas_supported: boolean
@@ -89,6 +97,7 @@ interface RuntimeProbe {
 interface InstallationRecord {
   schema: typeof INSTALLATION_SCHEMA
   marivoVersion: string
+  marivoWheelSha256: string
   pythonExecutable: string
   packagePath: string
   reportAdapterKind: typeof REPORT_ADAPTER_KIND
@@ -322,6 +331,13 @@ async function probeRuntime(
       },
     )
   }
+  if (probe.marivo_wheel_sha256 !== MARIVO_WHEEL_SHA256) {
+    throw new MarivoEnvironmentError(
+      'shared-runtime-identity-mismatch',
+      'Marivo must be installed from the bundled source wheel.' + (repair?.message ?? ''),
+      { expectedSha256: MARIVO_WHEEL_SHA256, repairCommands: repair?.commands },
+    )
+  }
   if (!probe.pandas_supported) {
     throw new MarivoEnvironmentError(
       'shared-runtime-pandas-unsupported',
@@ -360,6 +376,7 @@ async function probeRuntime(
   return {
     python_executable: canonical,
     marivo_version: probe.marivo_version,
+    marivo_wheel_sha256: probe.marivo_wheel_sha256,
     package_path: path.resolve(probe.package_path),
     pandas_version: probe.pandas_version,
     pandas_supported: probe.pandas_supported,
@@ -438,6 +455,7 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
     const fields = Object.keys(record).sort()
     const expectedFields = [
       'marivoVersion',
+      'marivoWheelSha256',
       'packagePath',
       'pythonExecutable',
       'reportAdapterKind',
@@ -452,6 +470,7 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       record.schema !== INSTALLATION_SCHEMA ||
       typeof record.marivoVersion !== 'string' ||
       record.marivoVersion.length === 0 ||
+      record.marivoWheelSha256 !== MARIVO_WHEEL_SHA256 ||
       typeof record.pythonExecutable !== 'string' ||
       record.pythonExecutable.length === 0 ||
       typeof record.packagePath !== 'string' ||
@@ -713,6 +732,12 @@ export async function ensureSharedMarivoRuntime(
   const reportKitWheel = path.normalize(
     path.resolve(options.reportKitWheelPath ?? bundledReportKitWheel()),
   )
+  const wheelBytes = await readFile(MARIVO_WHEEL_URL)
+  if (createHash('sha256').update(wheelBytes).digest('hex') !== MARIVO_WHEEL_SHA256)
+    throw new MarivoEnvironmentError(
+      'shared-runtime-identity-mismatch',
+      'Bundled Marivo wheel checksum mismatch',
+    )
   const existing = await validatedExisting(
     runtimeRoot,
     configuredPython,
@@ -759,6 +784,7 @@ export async function ensureSharedMarivoRuntime(
     const record: InstallationRecord = {
       schema: INSTALLATION_SCHEMA,
       marivoVersion: probe.marivo_version,
+      marivoWheelSha256: MARIVO_WHEEL_SHA256,
       pythonExecutable: probe.python_executable,
       packagePath: probe.package_path,
       reportAdapterKind: REPORT_ADAPTER_KIND,

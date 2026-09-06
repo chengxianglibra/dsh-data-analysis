@@ -9,12 +9,13 @@ Lineage、revalidation 与 Session runtime；本项目只连接两者，不复�
 ```mermaid
 flowchart LR
   D[DeepSeek Harness] --> P[dsh-data-analysis]
-  P --> R[Shared Marivo 0.5.3 Runtime]
+  P --> R[Shared Marivo 0.5.3.dev0 Runtime]
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
   P --> E[marivo_evidence_sources]
   P --> S[Semantic reference input and usage sidecar]
+  P --> B[Read-only Workspace semantic browser]
   P --> J[Marivo Artifact and DAG JS projection]
   R --> M[Marivo public objects]
   M --> A[Agent analysis and expression]
@@ -32,6 +33,7 @@ flowchart LR
 | Datasource | DSH Credentials 缺失收集、connection test、Shell env 注入 | table/source inspection 语义 |
 | Evidence delivery | 精确 Artifact/Finding 到 Turn/Web 的忠实投影 | 分析读取、Finding 组合、蕴含判断 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
+| Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
 | Report workflow | 原则型 `dsh-data-analysis-report` Skill 与 Artifact/DAG JS 投影 | 页面模板、通用 chart helper、HTML Checker、renderer、publisher、专用 Web card |
 
 模块文档：
@@ -42,13 +44,14 @@ flowchart LR
 - [Datasource Credentials](modules/datasource-credentials.md)
 - [Evidence 来源交付](modules/evidence-sources.md)
 - [语义对象引用输入](modules/semantic-reference-input.md)
+- [只读语义层对象浏览器](modules/semantic-browser.md)
 - [插件集成与交付](modules/plugin-integration-delivery.md)
 
 ## Runtime 与 identity
 
-Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.3`。默认 Runtime 位于
+Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.3.dev0`。默认 Runtime 位于
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo/`；管理员也可提供绝对 Python。两种模式都必须让版本、
-package path、解释器和 marker 一致。
+package path、解释器和 marker 一致；本开发包从随包源码 wheel 安装 Marivo，并核对 wheel SHA-256。
 
 每个 Workspace 独立解析 project root、最小目录与 doctor admission。`MarivoEnvironment` 冻结 binding
 identity；各领域 bridge 通过同一 `MarivoCheckedRunner` 执行，并在同一子进程内先复核 import identity。

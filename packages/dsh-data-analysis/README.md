@@ -4,8 +4,9 @@
 
 DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 
-- 精确 Marivo 0.5.3 共享 Runtime 与 zero-init per-Workspace binding；
+- 精确 Marivo 0.5.3.dev0 共享 Runtime 与 zero-init per-Workspace binding；
 - `marivo_help` 实时公共 Help transport；
+- 侧栏“语义层”对象浏览器：Workspace 分类搜索、只读详情与局部关系图；
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
 - `marivo_datasource_access` 的 30 分钟、最多 64 次 foreground Shell credential lease；
 - `marivo_evidence_sources({ session_id, sources })` 的可移植 Artifact-owned Finding 来源交付；
@@ -21,7 +22,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 包内 `dshDataAnalysisCompatibility` 是唯一运行时兼容声明：
 
 - DSH distribution 与所有必需 peer 精确使用 `0.1.1-rc.2`；
-- Marivo package spec 精确为 `marivo[duckdb,trino,clickhouse]==0.5.3`；
+- Marivo 随包分发源码构建 wheel，并校验 SHA-256；版本约束为 `marivo[duckdb,trino,clickhouse]==0.5.3.dev0`；
 - 项目自有 Runtime marker 为 `dsh-data-analysis-runtime/v2`；
 - 子进程策略为 `direct-argv-inherited-env-snapshot-overlay-v2`。
 
@@ -43,6 +44,15 @@ marivo_evidence_sources({
 `marivo_datasource_access` 只签发有界 foreground Shell lease，不执行连接测试。`md.inspect(...)`、
 Session recovery、Artifact revalidation、Quality、Evidence 读取、Session Graph 与 `to_pandas()` 都直接使用
 Marivo 公共 API，不增加 convenience Tool。
+
+## 语义层对象浏览器
+
+点击 DSH 侧栏底部“语义层”，选择 Workspace 查看对象。可按业务域和类型筛选，搜索名称、引用与业务定义，
+复制对象引用、查看定义位置，并在对象关系中逐层浏览。桌面采用三栏布局，窄屏支持列表与详情切换。
+
+页面不要求 live Agent，只读取 Marivo Catalog 元数据，不执行 `observe`、数据预览或连接测试。
+打开和手动刷新重新加载；读取失败时明确标注上次成功内容。数据源连接配置、凭证值与原始源码不展示。
+使用及验收边界见[模块说明](../../docs/modules/semantic-browser.md)。
 
 ## 报告交付
 

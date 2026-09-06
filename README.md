@@ -30,6 +30,10 @@ dsh --profile web
 `kind:path` 引用，空查询优先展示最近七天常用对象。引用使用执行时的语义定义；对象删除后分析会明确失败。
 参见[使用说明](docs/modules/semantic-reference-input.md)。
 
+在 DSH 侧栏底部点击“语义层”，按 Workspace 浏览对象分类、业务定义、语义属性与对象关系。
+支持搜索、复制引用和手动刷新；页面只读取对象元数据，不执行分析查询，也不要求 Agent 正在运行。
+参见[语义层对象浏览器](docs/modules/semantic-browser.md)。
+
 ## License
 
 本项目采用 [MIT License](packages/dsh-data-analysis/LICENSE)。

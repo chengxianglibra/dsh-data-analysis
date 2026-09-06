@@ -36,7 +36,7 @@ function binding(fingerprint: string) {
   return {
     projectRoot: `/workspace/${fingerprint}`,
     pythonExecutable: '/runtime/python',
-    marivoVersion: '0.5.3',
+    marivoVersion: '0.5.3.dev0',
     packagePath: '/runtime/marivo/__init__.py',
     subprocessPolicyId: 'fixture',
     fingerprint,

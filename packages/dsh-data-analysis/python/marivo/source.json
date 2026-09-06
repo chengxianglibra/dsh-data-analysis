@@ -1,0 +1,14 @@
+{
+  "version": "0.5.3.dev0",
+  "wheel": "marivo-0.5.3.dev0-py3-none-any.whl",
+  "sha256": "ea93683e2d70c5cd577f297f24cc5720ba1a31c6c442e7bf48c9be7215e6f25a",
+  "sourceCommit": "f93493f32bfa881f40b3a41b5cfbf0962f378f40",
+  "source": "Existing sourceCommit plus the expression-display changes listed below; unrelated credential changes excluded",
+  "builtAt": "2026-09-06",
+  "patchFiles": {
+    "marivo/semantic/definition.py": "a059416e5a7b026a2432461882eb82d6cf9dbc4cc364e0dccbdefd5dc9c86268",
+    "marivo/semantic/_capabilities/registry.py": "015b77471dc4780aa076b7c5bee6d7781f7906db06920e5aeb87381340cbdf5a",
+    "marivo/semantic/_definition_expression.py": "40f88f89c1d867afc340facb61aa66cede10b59b4a157f81861f13f1d17ed9ee",
+    "marivo/semantic/_definition_display.py": "4eac803f4b3bcd66d8747de53798222be1ddfb885db7532a0649172f45438269"
+  }
+}

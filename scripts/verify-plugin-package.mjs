@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   mkdirSync,
   mkdtempSync,
@@ -150,6 +151,15 @@ for (const peer of [
 if (!sourceManifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-input-trigger'))
   fail('semantic reference client injection missing')
 if (!sourceManifest.dependencies.zod) fail('storage schema requires direct zod dependency')
+for (const peer of [
+  '@deepseek-ai/dsh-workspace',
+  '@deepseek-ai/dsh-client-ui-sidebar',
+  '@deepseek-ai/dsh-client-ui-layout',
+]) {
+  if (peerDependencies[peer] !== dshPeerRange) fail(`semantic browser peer missing: ${peer}`)
+  if (peer !== '@deepseek-ai/dsh-workspace' && !sourceManifest.dsh.client.inject.includes(peer))
+    fail(`semantic browser client injection missing: ${peer}`)
+}
 
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'dsh-data-analysis-package-'))
 try {
@@ -222,6 +232,9 @@ try {
     'lib/types/evidence/bridge-program.d.ts',
   ]
   const required = [
+    'lib/semantic-browser/service.js',
+    'lib/semantic-browser/program.js',
+    'lib/semantic-browser/contracts.js',
     'README.md',
     'cordis.patch.yml',
     'lib/index.js',
@@ -238,12 +251,18 @@ try {
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
     reportKitWheelPath,
+    'python/marivo/' + sourceManifest.dshDataAnalysisCompatibility.marivo.wheelFilename,
     ...skillFiles,
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
   }
   for (const filename of paths) {
+    if (
+      filename.startsWith('lib/client/semantic-browser/') ||
+      filename.startsWith('lib/types/client/semantic-browser/')
+    )
+      fail(`packed plugin contains unreachable browser output ${filename}`)
     if (filename.endsWith('.js.map')) {
       fail(`packed plugin contains source map ${filename}`)
     }
@@ -315,14 +334,20 @@ try {
     ...Object.keys(sourceManifest.dependencies ?? {}),
   ])
   for (const packageName of linkedDependencies) linkDependency(nodeModules, packageName)
+  const bundledMarivo = sourceManifest.dshDataAnalysisCompatibility.marivo
+  const wheelData = readFileSync(
+    path.join(installedPlugin, 'python/marivo', bundledMarivo.wheelFilename),
+  )
+  if (createHash('sha256').update(wheelData).digest('hex') !== bundledMarivo.wheelSha256)
+    fail('packed Marivo wheel checksum mismatch')
   const smokeProgram = `
     const root = await import('@chengxianglibra/dsh-data-analysis')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.5.3') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.3') throw new Error('packed Marivo package spec mismatch')
+    if (compatibility.MARIVO_VERSION !== '0.5.3.dev0') throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.3.dev0') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v2') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {

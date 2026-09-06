@@ -1,4 +1,4 @@
-import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { SemanticReferenceBridge } from './bridge.ts'
 import {
@@ -124,10 +124,14 @@ export class SemanticReferenceService {
 export function registerSemanticReferenceRpc(
   connection: HostConnectionHandle,
   service: SemanticReferenceService,
+  browser?: ConnectionRpcHandler,
 ): () => Promise<void> {
   const unregister = connection.rpc.handle(
     CHANNEL,
     async (endpoint, payload, signal) => {
+      if (browser && endpoint === 'semantic-browser/catalog') {
+        return browser(endpoint, payload, signal)
+      }
       try {
         return { ok: true, value: await service.handle(endpoint, payload, signal) }
       } catch {

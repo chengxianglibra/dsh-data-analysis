@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import type {} from '@deepseek-ai/dsh-storage-domain'
+import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
 import {
@@ -38,6 +39,7 @@ import {
   installMarivoEvidenceSourcesCodeDelivery,
   registerMarivoEvidenceSourcesTool,
 } from './evidence/index.ts'
+import { browserFailure, SemanticBrowserService } from './semantic-browser/service.ts'
 import {
   registerSemanticReferenceRpc,
   SemanticReferenceService,
@@ -52,6 +54,7 @@ export const inject = [
   'agents',
   'connection',
   'storageDomain',
+  'workspaceRegistry',
   'credentials',
   'shellEnv',
   'skills',
@@ -269,6 +272,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
   let disposeReferences: (() => Promise<void>) | undefined
   let referenceService: SemanticReferenceService | undefined
   let disposePlugin: (() => void) | undefined
+  const browserService = new SemanticBrowserService({
+    getWorkspace: (id) => ctx.workspaceRegistry.get(WorkspaceId(id)),
+    projectRoot: (workspace) =>
+      config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? workspace.path,
+    resolve: (root) => manager.resolve(root),
+  })
   try {
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',
@@ -304,8 +313,22 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
         throw new Error('environment-changed')
       return environment
     }, usage)
-    disposeReferences = registerSemanticReferenceRpc(ctx.connection, referenceService)
+    disposeReferences = registerSemanticReferenceRpc(
+      ctx.connection,
+      referenceService,
+      async (_endpoint, payload, signal) => {
+        try {
+          return { ok: true, value: await browserService.read(payload, signal) }
+        } catch (error) {
+          return {
+            ok: false,
+            error: { code: 'internal', message: browserFailure(error), details: {} },
+          }
+        }
+      },
+    )
   } catch (error) {
+    browserService.dispose()
     await referenceService?.close()
     disposePlugin?.()
     manager.dispose()
@@ -313,6 +336,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     throw error
   }
   return async () => {
+    browserService.dispose()
     await disposeReferences?.()
     disposePlugin?.()
     manager.dispose()

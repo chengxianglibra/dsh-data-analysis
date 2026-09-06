@@ -17,5 +17,8 @@ const unreachableOutputs = [
 for (const output of unreachableOutputs) {
   rmSync(new URL(`../${output}`, import.meta.url), { force: true })
 }
+for (const output of ['lib/client/semantic-browser', 'lib/types/client/semantic-browser']) {
+  rmSync(new URL(`../${output}`, import.meta.url), { recursive: true, force: true })
+}
 
 chmodSync(new URL('../lib/bin/environment.js', import.meta.url), 0o755)

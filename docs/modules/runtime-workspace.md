@@ -36,12 +36,12 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 `installation.json` 记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`reportKitVersion`、
 `reportKitPackagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
-启动时先读取 marker，再验证：
+启动时先校验随包 Marivo wheel 的 SHA-256，再读取 marker 并验证：
 
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.5.3`；
+4. Marivo 版本严格等于 `0.5.3.dev0`，安装来源与 marker 的 wheel SHA-256 一致；
 5. report-kit 版本、package path、公开 `emit_dataset` / `emit_computed` / `emit_session_trace` 与 pandas 范围一致；
 6. 两个内置 Skill 的 `SKILL.md` 均存在，frontmatter `name` 与目录名精确一致。
 
@@ -55,7 +55,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 | 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装精确 Marivo 与随包 report-kit wheel |
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、report-kit 与 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都只支持已经正式发布的 Marivo 0.5.3；发布 marker 后按该版本稳定复用。任何版本或 schema
+两种模式都要求本插件随包分发的 Marivo 0.5.3.dev0 源码 wheel；marker 记录 wheel SHA-256，探针验证安装来源。相同版本号但不同 wheel 不复用。任何版本、wheel 或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -80,7 +80,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
 `marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。缺少 manifest
-时，Marivo 0.5.3 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
+时，Marivo 0.5.3.dev0 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
 写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
@@ -115,3 +115,13 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 
 `npm run test:runtime-workspace` 执行确定性测试；`npm run validate:runtime-workspace:real` 使用仓库真实
 Marivo Python 创建临时 Runtime 和两个 Workspace，验证安装 marker、Skill 同步、Runtime 复用和项目隔离。
+
+## 当前源码构建依赖
+
+开发包随附 `python/marivo/marivo-0.5.3.dev0-py3-none-any.whl`，来源信息记录在同目录 `source.json`。
+Compatibility manifest 的 `packageSpec` 是版本约束；实际安装使用随包 wheel 的 file URL、extras 和 SHA-256，
+不从 PyPI 查找同名开发版本，也不使用 editable checkout。管理员 Python 的修复命令同样指向该 wheel。
+
+本次 wheel 从 `source.json` 记录的源码 commit 导出到干净临时目录，再叠加 `patchFiles` 所列文件后运行 `uv build --wheel`，
+避免混入无关工作区改动、源仓库 `build/` 中的旧文件与 Python 字节码。源码更新后应重新构建 wheel 并同步 manifest 的版本、文件名、
+SHA-256 和 `source.json`；普通 npm build/prepack 只使用已固定的 wheel，不自动跟随其他仓库变化。

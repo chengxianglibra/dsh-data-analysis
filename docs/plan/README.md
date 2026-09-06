@@ -6,6 +6,10 @@ kebab-case 文件名，并在本页登记入口。
 已实现且反映当前代码事实的总体与模块架构继续维护在 `docs/architecture.md` 和 `docs/modules/`；设计完成
 并落地后，应把稳定契约同步到对应架构文档，再决定是否保留原设计作为历史记录。
 
+## 待实施交接
+
+- [Marivo 指标口径可视化接口交接](marivo-metric-definition-handoff.md)（需求与接口建议；含 P0/P1 缺口、职责边界和验收用例）
+
 ## 已实施设计
 
 - [语义对象引用输入 MVP 设计](semantic-reference-input-mvp-design.md)（已实施并通过本机验收；复用 `@` 的 Catalog 候选、

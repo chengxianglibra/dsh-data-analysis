@@ -55,7 +55,7 @@ async function fixture(refs: readonly string[]) {
     binding: {
       projectRoot: '/workspace/access',
       pythonExecutable: '/runtime/python',
-      marivoVersion: '0.5.3',
+      marivoVersion: '0.5.3.dev0',
       packagePath: '/runtime/marivo/__init__.py',
       subprocessPolicyId: 'fixture',
       fingerprint: 'a'.repeat(64),

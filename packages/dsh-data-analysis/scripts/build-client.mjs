@@ -16,7 +16,11 @@ const result = await build({
   metafile: true,
 })
 for (const input of Object.keys(result.metafile.inputs)) {
-  if (!/(?:^|\/)src\/(client(?:\.tsx|\/)|semantic-reference\/contracts\.ts$)/.test(input)) {
+  if (
+    !/(?:^|\/)src\/(client(?:\.tsx|\/)|semantic-reference\/contracts\.ts$|semantic-browser\/(?:contracts|definition)\.ts$)/.test(
+      input,
+    )
+  ) {
     throw new Error(`Host module in browser bundle: ${input}`)
   }
 }

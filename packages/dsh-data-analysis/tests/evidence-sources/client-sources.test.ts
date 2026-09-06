@@ -304,6 +304,9 @@ test('client registers both datasource views and one source turn tail', async ()
   const definitions: any[] = []
   const slots: any[] = []
   const ctx = {
+    on() {
+      return () => {}
+    },
     get(name: string) {
       assert.equal(name, 'connection')
       return { api: {} }
@@ -344,11 +347,18 @@ test('client registers both datasource views and one source turn tail', async ()
     definitions.map((item) => item.kind),
     ['marivo-evidence-sources-delivery'],
   )
-  assert.equal(slots.length, 3)
+  assert.equal(slots.length, 5)
+  const evidenceSlots = slots.filter(
+    (slot) => !['sidebar.footer.action', 'shell.overlay'].includes(slot.options.name),
+  )
   assert.deepEqual(
-    slots.slice(0, 2).map((slot) => slot.options.key),
+    evidenceSlots.slice(0, 2).map((slot) => slot.options.key),
     ['marivo_datasource_test', 'marivo_datasource_access'],
   )
-  assert.equal(slots[2].options.name, 'conversation.chat.turnTail')
-  assert.equal(typeof slots[2].options.select, 'function')
+  assert.equal(evidenceSlots[2].options.name, 'conversation.chat.turnTail')
+  assert.equal(typeof evidenceSlots[2].options.select, 'function')
+  assert.deepEqual(
+    slots.slice(0, 2).map((slot) => slot.options.name),
+    ['sidebar.footer.action', 'shell.overlay'],
+  )
 })
