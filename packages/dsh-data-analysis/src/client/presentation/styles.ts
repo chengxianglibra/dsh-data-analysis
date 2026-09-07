@@ -201,4 +201,10 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-reader pre { white-space:pre-wrap }
 }
 ${CHART_STYLES}
+
+.pr-cell-editor{border:1px solid var(--pr-border);border-radius:8px;padding:12px;margin:8px 0 16px;min-width:0;background:var(--pr-soft)}
+.pr-editor-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.pr-cell-editor label{display:block}.pr-cell-editor textarea{display:block;width:100%;min-height:120px;resize:vertical}.pr-cell-editor input:not([type=checkbox]),.pr-report-title-editor input{display:block;width:100%;min-width:0}.pr-cell-editor button,.pr-dataset-filters button{margin:4px;padding:5px 9px}.pr-cell-editor .pr-editor-column{display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0}
+.pr-report-title-editor{display:block;font-weight:600}.pr-report-title-editor input{font:inherit;font-size:24px;padding:8px}
+.pr-cell-editor input,.pr-cell-editor textarea,.pr-dataset-filters select,.pr-report-title-editor input{font-family:inherit;color:var(--pr-text);background:var(--pr-bg);border:1px solid var(--pr-border);border-radius:5px;padding:6px;box-sizing:border-box}
+.pr-dataset-filters{border:1px solid var(--pr-border);border-radius:8px;padding:10px 14px;margin:8px 0}.pr-dataset-filters label,.pr-dataset-filters select{display:block;width:100%;max-width:560px;margin:6px 0}.pr-dataset-filters summary{cursor:pointer;font-weight:600}
 `

@@ -85,8 +85,9 @@ if (options.has('--projection-evidence')) {
 const attack =
   '</script><img src="https://presentation.invalid/xss" onerror="window.__presentationXss=true">'
 const interaction = parsePresentationDocument({
-  schemaVersion: 1,
+  schemaVersion: 2,
   workspaceId: 's3-validation-workspace',
+  reportId: 'report',
   buildId: 's3-interactions',
   title: 'S3 交互与安全验证',
   generatedAt: '2026-09-07T00:00:00Z',

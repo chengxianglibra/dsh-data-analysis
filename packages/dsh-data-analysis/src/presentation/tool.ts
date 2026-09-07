@@ -2,8 +2,6 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { buildPresentation } from './build/index.ts'
-import { commitPresentation } from './commit.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -11,6 +9,7 @@ import {
   parsePresentationDelivery,
   presentationReceiptText,
 } from './receipt.ts'
+import { publishPresentation } from './reports.ts'
 
 export interface PresentationBinding {
   workspaceId: string
@@ -94,18 +93,17 @@ export function createMarivoPresentTool(
       await check()
       const document = await binding.projection.project(draft, {
         workspaceId: binding.workspaceId,
+        reportId: randomUUID(),
         buildId: randomUUID(),
         signal,
       })
       await check()
-      const built = await buildPresentation(document)
-      await check()
-      const receipt = await commitPresentation(identity.projectRoot, built, check, signal)
+      const receipt = await publishPresentation(identity.projectRoot, document, null, check, signal)
       return {
         deliveryJson: JSON.stringify(
           parsePresentationDelivery({
             kind: MARIVO_PRESENTATION_DELIVERY_KIND,
-            schemaVersion: 1,
+            schemaVersion: 2,
             dshSessionId: String(session.id),
             turn: call.data.turn,
             receipt,

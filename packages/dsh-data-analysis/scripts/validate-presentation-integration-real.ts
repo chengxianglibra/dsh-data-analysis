@@ -23,6 +23,11 @@ import {
   parsePresentationDocument,
 } from '../src/presentation/contracts/index.ts'
 import type { PresentationBlock, TypedDataset } from '../src/presentation/contracts/types.ts'
+import {
+  verifyAllChartFilters,
+  verifyEditing,
+  verifyPreparedFilters,
+} from './presentation-s4/editing.ts'
 import { validatePresentationHost } from './presentation-s4/host.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
@@ -373,6 +378,8 @@ try {
     await overlay.evaluate((element) => element.scrollTo({ top: 0 }))
     await overlay.screenshot({ path: path.join(outputRoot, `${index}-web.png`) })
     const hostExploration = await exploreReader(page, document)
+    const allChartFilters =
+      !agentEvidence && index === 3 ? await verifyAllChartFilters(page, document) : undefined
     await overlay.screenshot({ path: path.join(outputRoot, `${index}-web-explored.png`) })
     await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
     await overlay.waitFor({ state: 'detached' })
@@ -401,6 +408,8 @@ try {
     await offlinePage.goto(pathToFileURL(downloadPath).href)
     await verifyReader(offlinePage, document)
     const portableExploration = await exploreReader(offlinePage, document)
+    const portableAllChartFilters =
+      !agentEvidence && index === 3 ? await verifyAllChartFilters(offlinePage, document) : undefined
     assert.deepEqual(
       JSON.parse((await offlinePage.locator('#presentation-data').textContent())!),
       document,
@@ -431,6 +440,8 @@ try {
       downloadedAfterReaderClosed: true,
       originalHtmlBytesRetained: true,
       hostExploration,
+      allChartFilters,
+      portableAllChartFilters,
       reopenedAuthorConfiguration,
       portableExploration,
       portableReopenedAuthorConfiguration,
@@ -438,6 +449,18 @@ try {
       noScript: true,
     })
   }
+  if (!agentEvidence) checks.push(await verifyPreparedFilters(page, server.deliveries[3]!))
+  if (!agentEvidence)
+    checks.push(
+      await verifyEditing(
+        page,
+        browser,
+        server.deliveries[1]!,
+        server.durablePath!,
+        outputRoot,
+        server.processAuditPath,
+      ),
+    )
   const receipt = server.deliveries[0]!.receipt
   const payload = { sessionId: server.sessionId, receipt, asset: 'presentation.json' }
   const read = await rpc('/marivo-presentation', 'files/read', payload)
@@ -503,6 +526,19 @@ try {
       await reversedPage.locator('[data-produced-files-row]').count(),
       expectedProducedRows,
     )
+    if (!agentEvidence) {
+      const previous = server.deliveries[1]!.receipt
+      const resolved = await reversedPage.evaluate(
+        ({ sessionId, reportId }) =>
+          (window as any).__s4Rpc('/marivo-presentation', 'reports/resolve', {
+            sessionId,
+            reportId,
+          }),
+        { sessionId: reversed.sessionId, reportId: previous.reportId },
+      )
+      assert.equal(resolved.ok, false)
+      checks.push({ samePathDifferentWorkspaceCannotResolveSavedReport: true })
+    }
     assert.equal(await reversedPage.evaluate(() => (window as any).__s4ClientOrder), 'report-first')
     await reversedPage.screenshot({
       path: path.join(outputRoot, 'reversed-client-order.png'),
@@ -516,6 +552,54 @@ try {
     await reversedContext.close()
   } finally {
     await reversed.stop()
+  }
+  if (!agentEvidence) {
+    const eventsBeforeRestart = await rpc('/presentation-s4-validation', 'events', {})
+    assert.equal(eventsBeforeRestart.ok, true)
+    assert.ok(eventsBeforeRestart.value.length > 0)
+    const restarted = await server.restart()
+    assert.notEqual(restarted.pid, server.pid)
+    assert.equal(restarted.workspaceId, server.workspaceId)
+    const restartContext = await browser.newContext()
+    const restartPage = await restartContext.newPage()
+    await restartPage.goto(restarted.url)
+    await restartPage
+      .getByText('S4 production Tool delivery', { exact: true })
+      .first()
+      .waitFor({ timeout: 45_000 })
+    const notice = restartPage.getByRole('button', { name: '稍后配置', exact: true })
+    if (await notice.isVisible()) await notice.click()
+    await restartPage.getByText('S4 production Tool delivery', { exact: true }).first().click()
+    const card = restartPage.locator(
+      `[data-presentation-card="${server.deliveries[1]!.receipt.buildId}"]`,
+    )
+    await card
+      .getByRole('heading', { name: '另一个窗口的保存', exact: true })
+      .waitFor({ timeout: 30_000 })
+    assert.equal(
+      await restartPage.locator('[data-presentation-card]').count(),
+      inputs.draftPaths.length,
+    )
+    await card.getByRole('button', { name: '打开分析', exact: true }).click()
+    await restartPage
+      .locator('[data-mode="interactive"]')
+      .getByText('这份报告尚无 cell。数据与来源仍保留。', { exact: true })
+      .waitFor()
+    await restartPage.screenshot({
+      path: path.join(outputRoot, 'editing-restarted-original-card.png'),
+    })
+    const eventsAfterRestart = await restartPage.evaluate(() =>
+      (window as any).__s4Rpc('/presentation-s4-validation', 'events', {}),
+    )
+    assert.deepEqual(eventsAfterRestart, eventsBeforeRestart)
+    checks.push({
+      sameProfileRestart: true,
+      originalCardOpensLatestAfterRestart: true,
+      cardCount: inputs.draftPaths.length,
+      workspaceIdentityPreserved: true,
+      noNewAgentEvents: true,
+    })
+    await restartContext.close()
   }
   assert.deepEqual(errors, [])
   const evidence = {

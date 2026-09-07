@@ -33,9 +33,10 @@ async function fixture(t: { after: (cleanup: () => Promise<void>) => void }) {
   await mkdir(path.dirname(files.document.path), { recursive: true })
   for (const file of Object.values(files)) await writeFile(file.path, file.content)
   const receipt: PresentationReceipt = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'marivo.presentation',
     workspaceId: 's0-workspace',
+    reportId: 'report',
     buildId: 's0-build',
     title: 'S0 Host 接缝',
     summary: '固定文件和 receipt。',
@@ -56,6 +57,7 @@ async function fixture(t: { after: (cleanup: () => Promise<void>) => void }) {
   }
   const input = {
     workspaceId: receipt.workspaceId,
+    reportId: 'report',
     buildId: receipt.buildId,
     asset: files.document.asset,
     sha256: receipt.files.document.sha256,

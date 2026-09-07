@@ -173,7 +173,11 @@ const artifactDraft: PresentationDraft = {
     { id: 'account', kind: 'table', datasetId: 'account' },
   ],
 }
-const artifact = await projection.project(artifactDraft, { ...base, buildId: 'real-artifact' })
+const artifact = await projection.project(artifactDraft, {
+  ...base,
+  reportId: 'report',
+  buildId: 'real-artifact',
+})
 assert.equal(artifact.datasets[0]!.data.rowCount, 4)
 assert.equal(artifact.datasets[0]!.data.truncated, true)
 // Preserve Marivo row order. Compare keyed values without sorting the projection.
@@ -183,7 +187,7 @@ const fullRevenue = await projection.project(
     datasets: [{ id: 'revenue', kind: 'artifact', sourceId: 'revenue', rowLimit: 4 }],
     blocks: [{ id: 'table', kind: 'table', datasetId: 'revenue' }],
   },
-  { ...base, buildId: 'real-full-artifact' },
+  { ...base, reportId: 'report', buildId: 'real-full-artifact' },
 )
 assert.deepEqual(Object.fromEntries(fullRevenue.datasets[0]!.data.rows), {
   A: 12.5,
@@ -234,7 +238,7 @@ const computed = await projection.project(
     ],
     blocks: [{ id: 'table', kind: 'table', datasetId: 'computed' }],
   },
-  { ...base, buildId: 'real-computed' },
+  { ...base, reportId: 'report', buildId: 'real-computed' },
 )
 assert.deepEqual(
   computed.datasets[0]!.data,
@@ -252,7 +256,7 @@ const sourceOnly = await projection.project(
     datasets: [],
     blocks: [{ id: 'sources', kind: 'source', sourceIds: sources.map((source) => source.id) }],
   },
-  { ...base, buildId: 'real-source-only' },
+  { ...base, reportId: 'report', buildId: 'real-source-only' },
 )
 assert.deepEqual(sourceOnly.datasets, [])
 const missingFinding = await projection.project(
@@ -265,7 +269,7 @@ const missingFinding = await projection.project(
     datasets: [],
     blocks: [{ id: 'source', kind: 'source', sourceIds: ['revenue'] }],
   },
-  { ...base, buildId: 'missing-finding' },
+  { ...base, reportId: 'report', buildId: 'missing-finding' },
 )
 assert.equal(missingFinding.sources[0]!.status, 'available')
 assert.ok(missingFinding.diagnostics.some((item) => item.code === 'finding_unavailable'))
@@ -276,7 +280,7 @@ const missingData = {
   blocks: [{ id: 'table', kind: 'table' as const, datasetId: 'revenue' }],
 }
 await assert.rejects(
-  projection.project(missingData, { ...base, buildId: 'missing-data' }),
+  projection.project(missingData, { ...base, reportId: 'report', buildId: 'missing-data' }),
   (error: unknown) =>
     error instanceof PresentationContractError && error.code === 'artifact_data_unavailable',
 )
@@ -287,7 +291,7 @@ const precisionDraft = {
   blocks: [{ id: 'table', kind: 'table' as const, datasetId: 'precision' }],
 }
 await assert.rejects(
-  projection.project(precisionDraft, { ...base, buildId: 'unsafe-float' }),
+  projection.project(precisionDraft, { ...base, reportId: 'report', buildId: 'unsafe-float' }),
   (error: unknown) =>
     error instanceof PresentationContractError && error.code === 'numeric_precision',
 )

@@ -3,7 +3,7 @@
 ## 责任与入口
 
 S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `PresentationDocument` 变成可读内容。
-插件拥有展示组件、局部阅读状态和自包含 HTML；Marivo 继续拥有分析语义与来源事实，Harness 继续拥有 Workspace
+插件拥有展示组件、阅读／编辑草稿状态和自包含 HTML；Marivo 继续拥有分析语义与来源事实，Harness 继续拥有 Workspace
 和交付生命周期。reader 只读取文档快照，展开来源不调用 Python、凭据、observe 或 revalidation。
 
 实现入口为 [共享 reader](../../packages/dsh-data-analysis/src/client/presentation/reader.tsx)、
@@ -27,7 +27,8 @@ S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `Presentatio
 computed 来源表示作者声明，不能证明转换正确。int64/Decimal 的排序和表格显示不经浮点转换。
 单位只使用文档已有字段，不猜测百分比、缩放倍数或业务口径。普通多系列图按单位分图；堆叠图与 heatmap 拒绝混合单位；
 过长坐标标签缩略，刻度使用中文千分位与紧凑量级，极大或极小刻度使用科学计数法；完整值保留在 tooltip 和精确数据预览中。截断数据不派生全量 KPI、总计或排名。
-图形／字段切换、分类过滤、系列显隐、表格排序/分页和复制追问上下文都是本地阅读交互，不产生新分析，也不直接发送消息。
+普通阅读中的图形／字段切换、系列显隐、表格排序/分页和复制上下文是本地交互，不产生新分析。
+编辑模式只保存明确提交的呈现字段；筛选永远是临时阅读状态。
 
 ## 图形与临时探索
 
@@ -37,11 +38,33 @@ bar 包括纵横、并列、堆叠和 100% 堆叠；line 固定 monotone，支�
 统计图的分箱边界、频数、五数摘要、占比、分母、排名、瀑布起止值均由分析阶段准备。
 reader 只校验和绘制，不聚合、分箱、归一化、排序排名或重新累计。
 
-每个 chart 的“探索图表”面板只保留本次阅读状态；普通字段只在现有 dataset 中选择，
+普通阅读中，每个 chart 的“探索图表”面板只保留本次阅读状态；普通字段只在现有 dataset 中选择，
 需要另一种统计结果时切换作者声明的 `preparedViews`。缺少所需字段的类型禁用并说明原因。
 过滤与显隐保持原始行身份、比例分母和角度；来源预览和复制上下文使用当前绑定及过滤状态，
 并保留原始快照 identity。恢复原图、切换 build 或重新打开恢复作者配置。
-下载继续提供原始 HTML；Host 与 portable 的打印及无脚本阅读使用原始精确数据表。
+下载提供当前显示构建的已保存 HTML；打印及无脚本阅读使用已保存正文和精确数据表，不应用临时筛选或未保存草稿。
+
+## 在线编辑与删除
+
+Host 提供编辑、保存、取消和保存前的撤销／重做；独立草稿从已保存文档建立，普通探索不自动成为编辑内容。
+支持报告标题、Markdown 正文、metric 标签、ChartExplorer 的图形／字段／系列／样式及 prepared view，
+表格列选择与顺序（至少一列），全部 cell 的上移、下移和删除。按钮和表单支持键盘操作，继续使用自适应顺序排版。
+source cell 只能移动或删除，引用和来源事实不可编辑。不新增 cell、任意布局或数据编辑。
+
+删除立即更新草稿并可撤销；全部删空可保存，显示空报告提示，底层 datasets、sources、代码和 diagnostics 保留。
+首次 Agent Draft 仍至少一个 block。保存成功清除编辑历史，失败保留草稿；主动关闭有未保存修改时提示放弃或继续。
+保存协议和并发边界见[展示交付](presentation-delivery.md#rpc编辑与当前指针)。portable 不包含编辑／宿主保存入口。
+
+## 同 dataset 联动筛选
+
+`PresentationReader` 按实际 datasetId 管理共享 typed 值筛选。同字段多值为 OR，不同字段为 AND；
+null、空字符串、int64 和 Decimal 保持原类型和值，不使用字符串化匹配或浮点等价判断。
+全部 18 种 chart 共用命中集合，包含直方图、箱线图、散点图、热力图、饼／环形图、排行、漏斗和瀑布等特殊图形。
+命中集合保留原始 rowIndex，交给使用该 dataset 的图表、表格及来源数据预览；排序与分页作用于命中行，
+筛选变化重置分页。预备视图按实际 datasetId 联动，不推断不同 dataset 的关系。
+
+metric 与正文保持原快照并明确提示不重算；比例、排名、分母等预计算值保留原值。截断提示区分已保存行与命中行。
+筛选不标记编辑 dirty，不进入保存请求、文档、receipt、HTML、打印或浏览器存储；关闭或切换报告、build、Workspace 后清空。
 
 ## 通用阅读层级
 
@@ -81,7 +104,7 @@ Host 与 portable 共用 `PresentationReader`、样式和数据模型。Host 外
 portable 从内嵌 JSON 加载，包含自己的 React/Recharts，不依赖 DSH module loader。
 
 `buildPresentation(document)` 校验并快照输入，返回生成文档、JSON 字节和 HTML 字节。
-builder 不分配 Workspace/build identity，不登记文件、不创建目录、不生成 receipt；S4 唯一负责完整目录提交。
+builder 不分配 Workspace/report/build identity，不登记文件、不创建目录、不生成 receipt；S4 唯一负责完整目录提交。
 文档及 HTML 受 [S0 字节预算](../plan/marivo-analytics-presentation-s0-contracts.md#预算错误与文件身份)约束，超限明确失败。
 
 HTML 同时保存完整文档、共享 reader 生成的静态正文和交互脚本。静态模式用原生 `details` 按需展开来源、保留必要数据行，
@@ -112,3 +135,5 @@ portable 的数值/来源一致性、局部交互、窄屏/键盘/主题、断�
 S3 的真实 Web 验证只接入 reader，不代表 S4 Tool、receipt/RPC 或 S5 Agent 自动路由已实现。
 代码快照、真实 Python/SQL 与离线阅读的边界见[数据源代码页验收](../plan/2026-09-07-presentation-source-code-acceptance.md)。
 18 类图形、探索、下载和真实 Agent 的证据及限制见[图形与探索验收](../plan/2026-09-07-presentation-charts-acceptance.md)。
+
+在线编辑、全部 18 种 chart 的联动与重启验证见[编辑与联动筛选验收](../plan/2026-09-07-presentation-editing-acceptance.md)。

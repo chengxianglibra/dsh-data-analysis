@@ -146,7 +146,7 @@ export function ChartExplorer({
                     ? savedChartView({ ...prepared, kind: 'chart' })
                     : savedChartView(block),
                   hidden: [],
-                  filters: {},
+                  filters: state.filters,
                   preparedViewId: prepared?.id,
                 })
               }}
@@ -461,7 +461,7 @@ export function ChartExplorer({
           type="button"
           onClick={() => {
             setFilterColumn('')
-            onChange(initialChartExploration(block))
+            onChange({ ...initialChartExploration(block), filters: state.filters })
           }}
         >
           恢复原图

@@ -8,6 +8,7 @@ import {
   exploredChartBlock,
   filteredChartRows,
   initialChartExploration,
+  savedChartView,
   withChartSeries,
   withChartSeriesStyle,
   withChartX,
@@ -183,9 +184,10 @@ test('exploration switches only compatible prepared geometry, without calculatin
 
 test('copy context distinguishes current view, hidden series, filters and saved identity/source', () => {
   const document: PresentationDocument = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     title: '报告',
     workspaceId: 'workspace',
+    reportId: 'report',
     buildId: 'build',
     generatedAt: '2026-09-07T00:00:00Z',
     blocks: [block],
@@ -220,4 +222,11 @@ test('copy context distinguishes current view, hidden series, filters and saved 
   assert.match(copy, /Saved source original:/)
   assert.match(copy, /来源 derived:/)
   assert.doesNotMatch(copy, /9007199254740993/)
+})
+
+test('prepared view labels and IDs never become editable chart configuration', () => {
+  const prepared = savedChartView({ ...block, id: 'prepared', label: '预备视图标题' })
+  assert.deepEqual(prepared, initialChartExploration(block).view)
+  assert.equal(Object.hasOwn(prepared, 'label'), false)
+  assert.equal(Object.hasOwn(prepared, 'id'), false)
 })

@@ -102,16 +102,18 @@ export async function startPresentationWebHost(
       resolveDir: repoRoot,
       loader: 'ts',
       contents: `
-import {writeFile} from 'node:fs/promises';
+import {readFile,writeFile} from 'node:fs/promises';
 import * as production from '@chengxianglibra/dsh-data-analysis';
 import {runPresentationJourneys} from ${JSON.stringify(fileURLToPath(new URL('./host.ts', import.meta.url)))};
 export const name='presentation-s4';
 export const inject=[...production.inject,'llm','agentLoop','sessions','sessionPersistence','webServer'];
 export async function apply(ctx){
  await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:'none'});
- const result=await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(draftPaths)},true);
+ const previous = await readFile(${JSON.stringify(readyFile)},'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT') return undefined; throw error});
+ const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(draftPaths)},true);
  const workspace=ctx.workspaceRegistry.get(result.workspaceId);
  const stop=ctx.connection.rpc.handle('/presentation-s4-validation',async(endpoint,payload)=>{
+  if(endpoint==='events'){const stored=await ctx.sessionPersistence.load(result.sessionId);return {ok:true,value:stored.events.filter(event=>['agent','turn','step','user','request','assistant','tool'].includes(event.type.split('/')[0]))};}
   if(endpoint==='detach'){await workspace.detachSession(result.sessionId);return {ok:true};}
   if(endpoint==='attach'){await workspace.attachSession(result.sessionId);return {ok:true};}
   throw new Error('invalid-validation-request');
@@ -159,23 +161,21 @@ export async function apply(ctx){
     path.join(plugin, 'client.js'),
     `${await readFile(path.join(repoRoot, 'node_modules/@deepseek-ai/dsh-client-ui-deliverables/lib/client.js'), 'utf8')}\n${productionClient}\nwindow.__ModuleLoader__.load({id:'dsh-presentation-s4',factory:(require)=>{var module={exports:{}};var exports=module.exports;${wrapper.outputFiles[0]!.text};return module.exports;}});`,
   )
-  const child = spawn(
-    process.execPath,
-    [
-      path.join(repoRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
-      '--profile',
-      'web',
-      '--patch',
-      patch,
-      '--no-open',
-      '--port',
-      '0',
-    ],
-    {
-      cwd: workspaceRoot,
-      env: { ...process.env, DSH_HOME: home, DSH_TOOLS_MODE: 'both' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
+  const processAuditPath = path.join(outputRoot, 'process-audit.log')
+  const preload = path.join(outputRoot, 'process-audit.mjs')
+  await writeFile(processAuditPath, '')
+  await writeFile(
+    preload,
+    `import cp from 'node:child_process';
+import {appendFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
+const record = method => appendFileSync(${JSON.stringify(processAuditPath)}, method + "\\n");
+for(const method of ['spawn','spawnSync','exec','execFile','execSync','execFileSync','fork']) {
+ const wrap = fn => new Proxy(fn, {apply(target, receiver, args) {record(method);return Reflect.apply(target,receiver,args)},get(target,key,receiver) {const value=Reflect.get(target,key,receiver);return key===Symbol.for('nodejs.util.promisify.custom') && typeof value==='function' ? wrap(value) : value}});
+ cp[method]=wrap(cp[method]);
+}
+syncBuiltinESMExports();
+`,
   )
   let exited = false,
     spawnError: Error | undefined,
@@ -184,22 +184,52 @@ export async function apply(ctx){
     output = (output + chunk.toString()).slice(-32000)
     void appendFile(logPath, chunk)
   }
-  child.stdout.on('data', record)
-  child.stderr.on('data', record)
-  child.once('exit', () => {
-    exited = true
-  })
-  child.once('error', (error) => {
-    spawnError = error
-  })
+  const launch = () => {
+    exited = false
+    spawnError = undefined
+    const child = spawn(
+      process.execPath,
+      [
+        '--import',
+        preload,
+        path.join(repoRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
+        '--profile',
+        'web',
+        '--patch',
+        patch,
+        '--no-open',
+        '--port',
+        '0',
+      ],
+      {
+        cwd: workspaceRoot,
+        env: { ...process.env, DSH_HOME: home, DSH_TOOLS_MODE: 'both' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    )
+    child.stdout.on('data', record)
+    child.stderr.on('data', record)
+    child.once('exit', () => {
+      exited = true
+    })
+    child.once('error', (error) => {
+      spawnError = error
+    })
+    return child
+  }
+  let child = launch()
   async function stop() {
     if (exited || !child.pid) return
     child.kill('SIGTERM')
     const deadline = Date.now() + 5000
     while (!exited && Date.now() < deadline) await pause(50)
-    if (!exited) child.kill('SIGKILL')
+    if (!exited) {
+      const stopped = new Promise<void>((resolve) => child.once('exit', () => resolve()))
+      child.kill('SIGKILL')
+      await stopped
+    }
   }
-  try {
+  const waitReady = async () => {
     const deadline = Date.now() + 120_000
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError
@@ -209,22 +239,35 @@ export async function apply(ctx){
         ready = JSON.parse(await readFile(readyFile, 'utf8'))
       } catch {}
       if (ready) {
-        const response = await fetch(ready.url, { signal: AbortSignal.timeout(2000) })
-        if (response.ok && (await response.text()).includes('__DSH_BOOT__'))
-          return {
-            ...ready,
-            home,
-            profile,
-            logPath,
-            moduleDigests,
-            clientOrder,
-            pid: child.pid,
-            stop,
-          }
+        try {
+          const response = await fetch(ready.url, { signal: AbortSignal.timeout(2000) })
+          if (response.ok && (await response.text()).includes('__DSH_BOOT__')) return ready
+        } catch {
+          /* A restart can retain the old ready file while its new port is opening. */
+        }
       }
       await pause(100)
     }
     throw new Error(`S4 DSH Web readiness timeout: ${output}`)
+  }
+  try {
+    const ready = await waitReady()
+    return {
+      ...ready,
+      home,
+      profile,
+      logPath,
+      moduleDigests,
+      processAuditPath,
+      clientOrder,
+      pid: child.pid,
+      stop,
+      restart: async () => {
+        await stop()
+        child = launch()
+        return { ...(await waitReady()), pid: child.pid }
+      },
+    }
   } catch (error) {
     await stop()
     throw error

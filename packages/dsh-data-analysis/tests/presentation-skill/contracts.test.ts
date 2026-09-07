@@ -89,8 +89,9 @@ test('all presentation draft examples validate with production draft and documen
     // Source identities in tutorials are placeholders. This checks generated shape and field
     // selections against typed data; it does not claim a live Artifact recovery.
     parsePresentationDocument({
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceId: 'skill-example-workspace',
+      reportId: 'report',
       buildId: 'skill-example-build',
       title: draft.title,
       generatedAt: '2026-09-07T00:00:00Z',

@@ -14,6 +14,7 @@ export function SourceDialog({
   onClose,
   restoreFocusTo,
   rowIndices,
+  filterKey,
   explored = false,
 }: {
   document: PresentationDocument
@@ -21,6 +22,7 @@ export function SourceDialog({
   onClose: () => void
   restoreFocusTo?: HTMLElement | null
   rowIndices?: readonly number[]
+  filterKey?: string
   explored?: boolean
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -140,6 +142,7 @@ export function SourceDialog({
               <DatasetTable
                 data={dataset.data}
                 rowIndices={rowIndices}
+                filterKey={filterKey}
                 columns={columns}
                 mode="interactive"
                 caption={title ?? '数据预览'}

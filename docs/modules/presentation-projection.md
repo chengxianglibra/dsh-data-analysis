@@ -16,8 +16,8 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
 
 `MarivoPresentationProjection` 只接受 ready、携带 presentation-kit identity 的 bound runner。
 `readDraft(relativePath)` 从绑定 Workspace 有界读取草稿；
-`project(draft, { workspaceId, buildId, generatedAt?, signal? })` 返回校验过的 `PresentationDocument`。
-Workspace/build identity 由 Host 提供，Draft 不允许自行填写生成文档的来源事实。
+`project(draft, { workspaceId, reportId, buildId, generatedAt?, signal? })` 返回校验过的 `PresentationDocument`。
+Workspace/report/build identity 由 Host 提供，Draft 不允许自行填写生成文档的来源事实。
 
 | 输入 | 处理 | 失败边界 |
 | --- | --- | --- |

@@ -82,8 +82,9 @@ const source: Extract<SourceSnapshot, { status: 'available' }> = {
 
 function fixture(): PresentationDocument {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceId: 'workspace_saved',
+    reportId: 'report',
     buildId: 'build_saved',
     title: '报告原文',
     generatedAt: '2026-09-07T11:00:00Z',
@@ -450,7 +451,7 @@ test('current chart source includes auxiliary bindings and filters exact preview
   assert.match(html, /data-row-index="1"/)
   assert.doesNotMatch(html, /data-row-index="0"|12345678901234\.5678/)
   assert.match(html, /0\.1000/)
-  assert.match(html, /当前过滤：1 \/ 2 条快照观测/)
+  assert.match(html, /当前筛选：已保存 2 行中命中 1 行/)
   const overview = renderSummary(document, block)
   assert.match(overview, /收入 \(CNY\)/)
   assert.match(overview, /数量/)

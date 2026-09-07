@@ -3,7 +3,7 @@ import type { PythonCodeRef, PythonCodeSnippet } from '../../python-execution-co
 
 export type { PythonCodeRef, PythonCodeSnippet } from '../../python-execution-contracts.ts'
 
-export const PRESENTATION_SCHEMA_VERSION = 1 as const
+export const PRESENTATION_SCHEMA_VERSION = 2 as const
 
 export const PRESENTATION_BUDGETS = {
   documentBytes: 4 * 1024 * 1024,
@@ -211,7 +211,8 @@ export interface PresentationDiagnostic {
   message: string
 }
 export interface PresentationDocument {
-  schemaVersion: 1
+  schemaVersion: 2
+  reportId: string
   workspaceId: string
   buildId: string
   title: string
@@ -231,7 +232,8 @@ export interface PresentationFile<Asset extends PresentationAsset = Presentation
 }
 /** Session and Turn belong to the Host delivery envelope, not to the file identity. */
 export interface PresentationReceipt {
-  schemaVersion: 1
+  schemaVersion: 2
+  reportId: string
   kind: 'marivo.presentation'
   workspaceId: string
   buildId: string

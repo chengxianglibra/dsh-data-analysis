@@ -14,6 +14,7 @@ export function installS0(ctx: any, receipts: PresentationReceipt[]) {
     const file = html ? receipt.files.html : receipt.files.document
     const result = await rpc.call('/marivo-presentation-s0', 'files/read', {
       workspaceId: receipt.workspaceId,
+      reportId: 'report',
       buildId: receipt.buildId,
       asset: file.asset,
       sha256: file.sha256,

@@ -343,7 +343,7 @@ try {
     const datasource = await import('@chengxianglibra/dsh-data-analysis/datasource')
     const { buildPresentation } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/presentation/build/index.js')).href)})
     const presentation = await buildPresentation({
-      schemaVersion: 1, workspaceId: 'package-verification', buildId: 'package-verification',
+      schemaVersion: 2, workspaceId: 'package-verification', reportId: 'package-verification', buildId: 'package-verification',
       title: '离线展示包检查', generatedAt: '2026-09-07T00:00:00Z',
       datasets: [], sources: [], diagnostics: [],
       blocks: [{ id: 'body', kind: 'markdown', text: '已安装包中的 **共享 reader**。' }],

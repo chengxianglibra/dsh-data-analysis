@@ -172,8 +172,9 @@ function example(chart: ChartType): { view: ChartView; dataset: TypedDataset } {
 
 function document(view: ChartView, dataset: TypedDataset): PresentationDocument {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceId: 'workspace',
+    reportId: 'report',
     buildId: 'chart-contracts',
     title: 'Prepared chart data',
     generatedAt: '2026-09-07T00:00:00Z',

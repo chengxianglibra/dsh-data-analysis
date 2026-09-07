@@ -7,10 +7,11 @@ Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语�
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
 当前开发实现已接通一次 Python 执行准入、typed data projection、最小 Python helper、
-[共享 reader 与离线构建](modules/presentation-reader.md)、一次 present 文件交付，以及唯一
+[共享 reader 与离线构建](modules/presentation-reader.md)、稳定报告身份、阅读器在线呈现编辑和同 dataset 临时联动筛选，以及唯一
 [展示 Skill](modules/presentation-skill.md)。旧 report-kit、报告 Skill、经典 JS 和 Evidence 协议已删除。
 当前仍是未发布开发状态；阶段范围见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)，
-真实 Agent、Web 与离线旅程的实际验证状态见[S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。
+报告编辑、全图形筛选与原卡片重开的验证见[当前验收记录](plan/2026-09-07-presentation-editing-acceptance.md)；
+真实 Agent 路由的历史证据见[S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。
 
 ```mermaid
 flowchart LR
@@ -43,10 +44,10 @@ flowchart LR
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
 | Presentation Skill | 展示路由、内容组织、图形选择、来源声明与交付流程 | 分析语义、来源有效性判断、布局引擎 |
 | Datasource | DSH Credentials 管理、调用续接、connection test、resolver 注入 | table/source inspection 语义 |
-| Presentation delivery | 一次 present 完整提交、durable receipt、只读 RPC 与 Web 打开/下载 | 分析计算、长期版本管理、语义正确性 |
+| Presentation delivery | present 与编辑完整提交、current 指针、durable receipt、RPC 与打开/下载 | 分析计算、长期版本管理、语义正确性 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
-| Presentation reader | 五类 block、局部交互、共享静态正文与离线 HTML 字节 | 分析计算、文件提交、receipt/RPC、长期版本管理 |
+| Presentation reader | 五类 block、独立编辑草稿、临时联动筛选、共享静态正文与离线 HTML | 分析计算、文件提交、receipt/RPC、长期版本管理 |
 | Presentation data | 固定公开 Artifact 读取、typed JSON、声明来源快照与最小 Python writer | computed 转换审计、分析正确性、语义补齐、observe 或 revalidation |
 
 模块文档：

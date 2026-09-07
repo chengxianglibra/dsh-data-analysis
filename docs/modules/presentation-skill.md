@@ -64,3 +64,7 @@ Runtime Skill 的独立性。可安装包实际注册结果、真实 Agent 路�
 [S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
 本次比较范围、证据强度、抵消项与执行收尾的通用修复见
 [报告交付与质量修复验收](../plan/2026-09-07-presentation-delivery-quality-acceptance.md)。
+
+## 阅读器编辑边界
+
+只修改呈现时使用 Host 阅读器的编辑／保存，原卡片解析同 report 最新构建。可编辑标题、正文、metric 标签、图表／表格配置，移动或删除 cell（允许删空）；不编辑数据和来源。筛选不保存、不重算。新数据或分析仍由 Agent 生成 Draft 并 present，形成独立报告。

@@ -20,6 +20,7 @@ export { readWorkspaceJson } from './files.ts'
 export interface PresentationProjectionOptions {
   /** Workspace identity is resolved by Host together with this runner, never from a draft. */
   workspaceId: string
+  reportId: string
   buildId: string
   generatedAt?: string
   signal?: AbortSignal
@@ -262,7 +263,8 @@ export class MarivoPresentationProjection {
     }
     this.#assertReady(options.signal)
     return parsePresentationDocument({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      reportId: options.reportId,
       workspaceId: options.workspaceId,
       buildId: options.buildId,
       title: draft.title,

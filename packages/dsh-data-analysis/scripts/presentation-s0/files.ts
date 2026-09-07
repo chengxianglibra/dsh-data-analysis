@@ -12,6 +12,7 @@ import {
 export const S0_RPC_CHANNEL = '/marivo-presentation-s0'
 export interface S0AssetRequest {
   workspaceId: string
+  reportId: string
   buildId: string
   asset: PresentationAsset
   sha256: string
@@ -21,7 +22,7 @@ export function presentationAssetPath(
   buildId: string,
   asset: PresentationAsset,
 ): string {
-  return path.join(root, '.dsh-data-analysis', 'presentations', buildId, asset)
+  return path.join(root, '.dsh-data-analysis', 'presentations', 'report', 'builds', buildId, asset)
 }
 export function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
@@ -30,10 +31,11 @@ function request(value: unknown): S0AssetRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('invalid-request')
   const item = value as Record<string, unknown>
-  if (Object.keys(item).sort().join(',') !== 'asset,buildId,sha256,workspaceId')
+  if (Object.keys(item).sort().join(',') !== 'asset,buildId,reportId,sha256,workspaceId')
     throw new Error('invalid-request')
   if (typeof item.workspaceId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(item.workspaceId))
     throw new Error('invalid-workspace')
+  if (item.reportId !== 'report') throw new Error('invalid-report')
   if (typeof item.buildId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(item.buildId))
     throw new Error('invalid-build')
   if (item.asset !== 'presentation.json' && item.asset !== 'index.html')

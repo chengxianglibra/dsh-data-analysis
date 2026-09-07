@@ -85,9 +85,9 @@ function bytes(value: unknown, max: number, path = '') {
     fail(path, `JSON exceeds the ${max} byte budget.`, 'budget')
   }
 }
-function version(value: Record<string, unknown>, path: string) {
-  if (value.schemaVersion !== 1)
-    fail(pointer(path, 'schemaVersion'), 'Only schemaVersion 1 is accepted.')
+function version(value: Record<string, unknown>, path: string, expected = 1) {
+  if (value.schemaVersion !== expected)
+    fail(pointer(path, 'schemaVersion'), `Only schemaVersion ${expected} is accepted.`)
 }
 export function parsePresentationBuildId(value: unknown, path = '/buildId'): string {
   const result = string(value, path, 80)
@@ -282,7 +282,7 @@ export function formatCell(value: Cell, _column: DatasetColumn): string {
   return value === null ? '—' : String(value)
 }
 function common(value: Record<string, unknown>, generated: boolean) {
-  version(value, '')
+  version(value, '', generated ? 2 : 1)
   string(value.title, '/title', 512)
   const sources = array(value.sources, '/sources', budgets.sources)
   const sourceIds = sources.map((value, i) => {
@@ -371,92 +371,94 @@ function common(value: Record<string, unknown>, generated: boolean) {
     datasets.map((entry) => String(entry.id)),
     '/datasets',
   )
-  const blockIds = array(value.blocks, '/blocks', budgets.blocks, 1).map((value, i) => {
-    const path = `/blocks/${i}`
-    const entry = object(value, path)
-    const id = string(entry.id, `${path}/id`, 256)
-    if (entry.kind === 'markdown') {
-      keys(entry, ['id', 'kind', 'text'], [], path)
-      string(entry.text, `${path}/text`)
-      return id
-    }
-    if (entry.kind === 'source') {
-      keys(entry, ['id', 'kind', 'sourceIds'], [], path)
-      references(
-        stringArray(entry.sourceIds, `${path}/sourceIds`, budgets.sources, 1),
-        `${path}/sourceIds`,
-      )
-      return id
-    }
-    let selected: string[]
-    if (entry.kind === 'table') {
-      keys(entry, ['id', 'kind', 'datasetId'], ['columns'], path)
-      selected =
-        entry.columns === undefined
-          ? []
-          : stringArray(entry.columns, `${path}/columns`, budgets.columns, 1)
-    } else if (entry.kind === 'metric') {
-      keys(entry, ['id', 'kind', 'datasetId', 'columnId', 'rowIndex', 'label'], [], path)
-      selected = [string(entry.columnId, `${path}/columnId`, 256)]
-      integer(entry.rowIndex, `${path}/rowIndex`, 0, budgets.rows - 1)
-      string(entry.label, `${path}/label`, 512)
-    } else if (entry.kind === 'chart') {
-      keys(
-        entry,
-        ['id', 'kind', 'datasetId', 'chart', 'x', 'y', 'numericMode'],
-        ['bindings', 'options', 'preparedViews'],
-        path,
-      )
-      const { id: _id, kind: _kind, preparedViews, ...view } = entry
-      parseChartViewShape(view, path)
-      selected = chartColumns(view as unknown as ChartView)
-      if (preparedViews !== undefined) {
-        const ids = array(preparedViews, `${path}/preparedViews`, budgets.blocks, 1).map(
-          (value, i) => {
-            const viewPath = `${path}/preparedViews/${i}`
-            const prepared = object(value, viewPath)
-            const { id, label, ...binding } = prepared
-            string(id, `${viewPath}/id`, 256)
-            string(label, `${viewPath}/label`, 512)
-            parseChartViewShape(binding, viewPath)
-            const target = datasets.find((entry) => entry.id === binding.datasetId)
-            if (!target)
-              fail(`${viewPath}/datasetId`, 'Unknown dataset identifier.', 'invalid_reference')
-            if (generated)
-              validateChartView(
-                binding as unknown as ChartView,
-                target.data as TypedDataset,
-                viewPath,
-                `/datasets/${datasets.indexOf(target)}/data`,
-              )
-            return id as string
-          },
-        )
-        unique(ids, `${path}/preparedViews`)
+  const blockIds = array(value.blocks, '/blocks', budgets.blocks, generated ? 0 : 1).map(
+    (value, i) => {
+      const path = `/blocks/${i}`
+      const entry = object(value, path)
+      const id = string(entry.id, `${path}/id`, 256)
+      if (entry.kind === 'markdown') {
+        keys(entry, ['id', 'kind', 'text'], [], path)
+        string(entry.text, `${path}/text`)
+        return id
       }
-    } else fail(`${path}/kind`, 'Unknown presentation block.')
-    const datasetId = string(entry.datasetId, `${path}/datasetId`, 256)
-    const target = datasets.find((entry) => entry.id === datasetId)
-    if (!target) fail(`${path}/datasetId`, 'Unknown dataset identifier.', 'invalid_reference')
-    if (generated) {
-      const data = target.data as TypedDataset
-      selected.forEach((columnId) => {
-        if (!data.columns.some((entry) => entry.id === columnId))
-          fail(path, `Unknown column ${columnId}.`, 'invalid_reference')
-      })
-      if (entry.kind === 'metric' && Number(entry.rowIndex) >= data.rows.length)
-        fail(`${path}/rowIndex`, 'Metric must select one existing row.', 'invalid_reference')
-      if (entry.kind === 'chart') {
-        validateChartView(
-          entry as unknown as ChartView,
-          data,
+      if (entry.kind === 'source') {
+        keys(entry, ['id', 'kind', 'sourceIds'], [], path)
+        references(
+          stringArray(entry.sourceIds, `${path}/sourceIds`, budgets.sources, 1),
+          `${path}/sourceIds`,
+        )
+        return id
+      }
+      let selected: string[]
+      if (entry.kind === 'table') {
+        keys(entry, ['id', 'kind', 'datasetId'], ['columns'], path)
+        selected =
+          entry.columns === undefined
+            ? []
+            : stringArray(entry.columns, `${path}/columns`, budgets.columns, 1)
+      } else if (entry.kind === 'metric') {
+        keys(entry, ['id', 'kind', 'datasetId', 'columnId', 'rowIndex', 'label'], [], path)
+        selected = [string(entry.columnId, `${path}/columnId`, 256)]
+        integer(entry.rowIndex, `${path}/rowIndex`, 0, budgets.rows - 1)
+        string(entry.label, `${path}/label`, 512)
+      } else if (entry.kind === 'chart') {
+        keys(
+          entry,
+          ['id', 'kind', 'datasetId', 'chart', 'x', 'y', 'numericMode'],
+          ['bindings', 'options', 'preparedViews'],
           path,
-          `/datasets/${datasets.indexOf(target)}/data`,
         )
+        const { id: _id, kind: _kind, preparedViews, ...view } = entry
+        parseChartViewShape(view, path)
+        selected = chartColumns(view as unknown as ChartView)
+        if (preparedViews !== undefined) {
+          const ids = array(preparedViews, `${path}/preparedViews`, budgets.blocks, 1).map(
+            (value, i) => {
+              const viewPath = `${path}/preparedViews/${i}`
+              const prepared = object(value, viewPath)
+              const { id, label, ...binding } = prepared
+              string(id, `${viewPath}/id`, 256)
+              string(label, `${viewPath}/label`, 512)
+              parseChartViewShape(binding, viewPath)
+              const target = datasets.find((entry) => entry.id === binding.datasetId)
+              if (!target)
+                fail(`${viewPath}/datasetId`, 'Unknown dataset identifier.', 'invalid_reference')
+              if (generated)
+                validateChartView(
+                  binding as unknown as ChartView,
+                  target.data as TypedDataset,
+                  viewPath,
+                  `/datasets/${datasets.indexOf(target)}/data`,
+                )
+              return id as string
+            },
+          )
+          unique(ids, `${path}/preparedViews`)
+        }
+      } else fail(`${path}/kind`, 'Unknown presentation block.')
+      const datasetId = string(entry.datasetId, `${path}/datasetId`, 256)
+      const target = datasets.find((entry) => entry.id === datasetId)
+      if (!target) fail(`${path}/datasetId`, 'Unknown dataset identifier.', 'invalid_reference')
+      if (generated) {
+        const data = target.data as TypedDataset
+        selected.forEach((columnId) => {
+          if (!data.columns.some((entry) => entry.id === columnId))
+            fail(path, `Unknown column ${columnId}.`, 'invalid_reference')
+        })
+        if (entry.kind === 'metric' && Number(entry.rowIndex) >= data.rows.length)
+          fail(`${path}/rowIndex`, 'Metric must select one existing row.', 'invalid_reference')
+        if (entry.kind === 'chart') {
+          validateChartView(
+            entry as unknown as ChartView,
+            data,
+            path,
+            `/datasets/${datasets.indexOf(target)}/data`,
+          )
+        }
       }
-    }
-    return id
-  })
+      return id
+    },
+  )
   unique(blockIds, '/blocks')
 }
 
@@ -475,6 +477,7 @@ export function parsePresentationDocument(value: unknown): PresentationDocument 
     [
       'schemaVersion',
       'workspaceId',
+      'reportId',
       'buildId',
       'title',
       'generatedAt',
@@ -487,6 +490,7 @@ export function parsePresentationDocument(value: unknown): PresentationDocument 
     '',
   )
   string(entry.workspaceId, '/workspaceId', 512)
+  parsePresentationBuildId(entry.reportId, '/reportId')
   parsePresentationBuildId(entry.buildId, '/buildId')
   date(entry.generatedAt, '/generatedAt', true)
   array(entry.diagnostics, '/diagnostics', 128).forEach((value, i) => {
@@ -507,13 +511,14 @@ export function parsePresentationReceipt(value: unknown): PresentationReceipt {
   const entry = object(value, '')
   keys(
     entry,
-    ['schemaVersion', 'kind', 'workspaceId', 'buildId', 'title', 'summary', 'files'],
+    ['schemaVersion', 'kind', 'workspaceId', 'reportId', 'buildId', 'title', 'summary', 'files'],
     [],
     '',
   )
-  version(entry, '')
+  version(entry, '', 2)
   if (entry.kind !== 'marivo.presentation') fail('/kind', 'Expected marivo.presentation receipt.')
   string(entry.workspaceId, '/workspaceId', 512)
+  const reportId = parsePresentationBuildId(entry.reportId, '/reportId')
   const id = parsePresentationBuildId(entry.buildId, '/buildId')
   string(entry.title, '/title', 512)
   string(entry.summary, '/summary', 2048)
@@ -535,7 +540,7 @@ export function parsePresentationReceipt(value: unknown): PresentationReceipt {
         .split('/')
         .slice(1)
         .some((segment) => !segment || segment === '.' || segment === '..') ||
-      !filePath.endsWith(`/.dsh-data-analysis/presentations/${id}/${asset}`)
+      !filePath.endsWith(`/.dsh-data-analysis/presentations/${reportId}/builds/${id}/${asset}`)
     ) {
       fail(`${path}/path`, 'Asset path must identify this build in its Workspace.', 'file_boundary')
     }

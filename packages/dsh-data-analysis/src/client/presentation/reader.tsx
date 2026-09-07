@@ -10,6 +10,8 @@ import {
   initialChartExploration,
 } from './chart-view.ts'
 import { CopyContext } from './copy-context.tsx'
+import { DatasetFilterControls, type DatasetFilters } from './dataset-filters.tsx'
+import { CellEditor, type ReaderEditing } from './editor-controls.tsx'
 import { MoreIcon } from './icons.tsx'
 import { Markdown } from './markdown.tsx'
 import {
@@ -139,6 +141,7 @@ function Block({
   exploration,
   onExplorationChange,
   rowIndices,
+  filterKey,
 }: {
   block: PresentationBlock
   document: PresentationDocument
@@ -146,6 +149,7 @@ function Block({
   exploration?: ChartExploration
   onExplorationChange?: (state: ChartExploration) => void
   rowIndices?: readonly number[]
+  filterKey?: string
 }) {
   if (block.kind === 'markdown') return <Markdown text={block.text} />
   if (block.kind === 'source')
@@ -194,6 +198,8 @@ function Block({
           columns={block.columns}
           mode={mode}
           caption="数据表"
+          filterKey={filterKey}
+          rowIndices={rowIndices}
           showScope={dataset.data.truncated}
         />
       ) : null}
@@ -212,21 +218,52 @@ function blockGroups(blocks: PresentationBlock[]): PresentationBlock[][] {
   return groups
 }
 
-function ReaderContents({ document, mode }: { document: PresentationDocument; mode: ReaderMode }) {
+function ReaderContents({
+  document: savedDocument,
+  mode,
+  editing,
+}: {
+  document: PresentationDocument
+  mode: ReaderMode
+  editing?: ReaderEditing
+}) {
+  const document = editing ? { ...savedDocument, ...editing.edits } : savedDocument
+  const [filters, setFilters] = useState<Record<string, DatasetFilters>>({})
+  const selection = (id: string): DatasetFilters => (Object.hasOwn(filters, id) ? filters[id]! : {})
+  const updateFilters = (id: string, next: DatasetFilters) =>
+    setFilters((previous) => ({ ...previous, [id]: next }))
+  const rowsFor = (block: PresentationBlock) =>
+    'datasetId' in block && mode === 'interactive' && Object.keys(selection(block.datasetId)).length
+      ? filteredChartRows(datasetById(document, block.datasetId).data, selection(block.datasetId))
+      : undefined
+  const anyFilters =
+    mode === 'interactive' && Object.values(filters).some((entry) => Object.keys(entry).length > 0)
+
   const [sourceCell, setSourceCell] = useState<{ block: PresentationBlock; trigger: HTMLElement }>()
   const [explorations, setExplorations] = useState<Record<string, ChartExploration>>({})
   const [explorerCell, setExplorerCell] = useState<{ id: string; trigger: HTMLElement }>()
-  const updateExploration = (id: string, state: ChartExploration) =>
-    setExplorations((previous) => {
-      const saved = document.blocks.find((block) => block.id === id)
-      const next = { ...previous, [id]: state }
-      if (
-        saved?.kind === 'chart' &&
-        JSON.stringify(state) === JSON.stringify(initialChartExploration(saved))
-      )
-        delete next[id]
-      return next
-    })
+  const updateExploration = (id: string, state: ChartExploration) => {
+    const saved = document.blocks.find((block) => block.id === id)
+    if (saved?.kind !== 'chart') return
+    const previousDataset = editing
+      ? saved.datasetId
+      : Object.hasOwn(explorations, id)
+        ? explorations[id]!.view.datasetId
+        : saved.datasetId
+    if (previousDataset === state.view.datasetId) updateFilters(state.view.datasetId, state.filters)
+    if (
+      editing &&
+      !editing.disabled &&
+      JSON.stringify(state.view) !== JSON.stringify(initialChartExploration(saved).view)
+    ) {
+      const block = exploredChartBlock(saved, state)
+      editing.onChange({
+        ...editing.edits,
+        blocks: editing.edits.blocks.map((entry) => (entry.id === id ? block : entry)),
+      })
+    }
+    setExplorations((previous) => ({ ...previous, [id]: { ...state, filters: {} } }))
+  }
   // Known snapshot diagnostics have concise, contextual presentations below.
   const diagnostics = [
     ...new Set(
@@ -239,15 +276,30 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
     ),
   ]
   const renderBlock = (savedBlock: PresentationBlock) => {
-    const state =
+    const local =
       savedBlock.kind === 'chart' && Object.hasOwn(explorations, savedBlock.id)
         ? explorations[savedBlock.id]
         : undefined
-    const block = savedBlock.kind === 'chart' ? exploredChartBlock(savedBlock, state) : savedBlock
-    const rows =
-      block.kind === 'chart' && state
-        ? filteredChartRows(datasetById(document, block.datasetId).data, state.filters)
+    const view =
+      savedBlock.kind === 'chart'
+        ? editing
+          ? initialChartExploration(savedBlock).view
+          : (local?.view ?? initialChartExploration(savedBlock).view)
         : undefined
+    const state =
+      savedBlock.kind === 'chart' && view
+        ? {
+            ...(local ?? initialChartExploration(savedBlock)),
+            view,
+            preparedViewId:
+              editing && local && JSON.stringify(local.view) !== JSON.stringify(view)
+                ? undefined
+                : local?.preparedViewId,
+            filters: selection(view.datasetId),
+          }
+        : undefined
+    const block = savedBlock.kind === 'chart' ? exploredChartBlock(savedBlock, state) : savedBlock
+    const rows = rowsFor(block)
     return (
       <section
         className={`pr-block pr-block-${block.kind}`}
@@ -278,6 +330,7 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
             </CopyContext>
           </div>
         )}
+        {editing && <CellEditor block={savedBlock} document={document} editing={editing} />}
         <Block
           block={block}
           document={document}
@@ -289,6 +342,7 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
               : undefined
           }
           rowIndices={rows}
+          filterKey={'datasetId' in block ? JSON.stringify(selection(block.datasetId)) : undefined}
         />
         {savedBlock.kind === 'chart' && block.kind === 'chart' && explorerCell?.id === block.id && (
           <ChartExplorer
@@ -306,18 +360,41 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
       </section>
     )
   }
+  const sourceSaved =
+    sourceCell && document.blocks.find((block) => block.id === sourceCell.block.id)
+  const sourceLocal =
+    sourceSaved?.kind === 'chart' && Object.hasOwn(explorations, sourceSaved.id)
+      ? explorations[sourceSaved.id]
+      : undefined
   const sourceState =
-    sourceCell?.block.kind === 'chart' && Object.hasOwn(explorations, sourceCell.block.id)
-      ? explorations[sourceCell.block.id]
+    sourceSaved?.kind === 'chart'
+      ? {
+          ...(sourceLocal ?? initialChartExploration(sourceSaved)),
+          view: editing
+            ? initialChartExploration(sourceSaved).view
+            : (sourceLocal?.view ?? initialChartExploration(sourceSaved).view),
+        }
       : undefined
   const sourceBlock =
-    sourceCell?.block.kind === 'chart'
-      ? exploredChartBlock(sourceCell.block, sourceState)
-      : sourceCell?.block
+    sourceSaved?.kind === 'chart' ? exploredChartBlock(sourceSaved, sourceState) : sourceSaved
   return (
     <article className="pr-reader" data-presentation-reader="true" data-mode={mode}>
       <header className="pr-header">
-        <h1>{document.title}</h1>
+        {editing ? (
+          <label className="pr-report-title-editor">
+            报告标题
+            <input
+              aria-label="报告标题"
+              disabled={editing.disabled}
+              value={document.title}
+              onChange={(event) =>
+                editing.onChange({ ...editing.edits, title: event.target.value })
+              }
+            />
+          </label>
+        ) : (
+          <h1>{document.title}</h1>
+        )}
         <p className="pr-muted">
           生成于 <time dateTime={document.generatedAt}>{snapshotDate(document.generatedAt)}</time>
         </p>
@@ -331,6 +408,35 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
           </ul>
         </aside>
       )}
+      {mode === 'interactive' &&
+        document.datasets
+          .filter((dataset) =>
+            document.blocks.some((block) => {
+              if (block.kind === 'chart')
+                return (
+                  (editing
+                    ? block.datasetId
+                    : Object.hasOwn(explorations, block.id)
+                      ? explorations[block.id]!.view.datasetId
+                      : block.datasetId) === dataset.id
+                )
+              return block.kind === 'table' && block.datasetId === dataset.id
+            }),
+          )
+          .map((dataset) => (
+            <DatasetFilterControls
+              key={dataset.id}
+              dataset={dataset}
+              filters={selection(dataset.id)}
+              onChange={(next) => updateFilters(dataset.id, next)}
+            />
+          ))}
+      {anyFilters && (
+        <p className="pr-notice" role="status">
+          当前筛选只改变图表和表格的展示；正文和指标保持原快照范围，不随筛选重算。
+        </p>
+      )}
+      {!document.blocks.length && <p className="pr-empty">这份报告尚无 cell。数据与来源仍保留。</p>}
       <div className="pr-blocks">
         {blockGroups(document.blocks).map((group) =>
           group[0]!.kind === 'metric' ? (
@@ -349,12 +455,10 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
           document={document}
           block={sourceBlock}
           explored={!!sourceState}
-          rowIndices={
-            sourceState
-              ? filteredChartRows(
-                  datasetById(document, sourceState.view.datasetId).data,
-                  sourceState.filters,
-                )
+          rowIndices={rowsFor(sourceBlock)}
+          filterKey={
+            'datasetId' in sourceBlock
+              ? JSON.stringify(selection(sourceBlock.datasetId))
               : undefined
           }
           restoreFocusTo={sourceCell.trigger}
@@ -368,16 +472,19 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
 export function PresentationReader({
   document,
   mode = 'interactive',
+  editing,
 }: {
   document: PresentationDocument
   mode?: ReaderMode
+  editing?: ReaderEditing
 }) {
   const parsed = useMemo(() => parsePresentationDocument(document), [document])
   return (
     <ReaderContents
-      key={`${parsed.workspaceId}/${parsed.buildId}/${mode}`}
+      key={`${parsed.workspaceId}/${parsed.reportId}/${parsed.buildId}/${mode}/${editing ? 'edit' : 'read'}`}
       document={parsed}
       mode={mode}
+      editing={editing}
     />
   )
 }

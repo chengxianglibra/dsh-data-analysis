@@ -13,7 +13,7 @@ description: 将 Marivo 分析结果或已有 Workspace 数据展示为图表、
 2. 选数据。已有可恢复 Artifact 用 owning `sessionId` + `artifactRef` 引用，分别取实际 `session.id` 和 `artifact.ref`，不要从 Session 名称或日志标题猜测；必要时加 `findingId`，不重复导出同一份数据。需要计算后的 DataFrame 时，在绑定 Runtime 的 Python 中用 `dsh_data_analysis_presentation.write_dataset(frame, path)` 写纯 JSON。computed 的来源只在草稿声明，可为零个或多个 Artifact；不要求转换代码、字段映射、hash 或输入输出证明。来源 Quality/issues 仍属于原 Artifact，不证明 computed 的计算正确。
 3. 写草稿前读 [schema 与文件边界](references/schema.md)；报告、看板及比较型展示还必须先读 [叙事与证据检查](references/narrative.md)，按需读 [图形配置](references/charts.md)与[可改写示例](references/examples.md)。逐项对应用户问题，确定各比较的两侧、方向、分母及尚缺分支；核对原值、差值、比例、合计和余项，让正文结论与证据强度一致。用普通文件能力在当前 Workspace 写草稿；草稿与 computed 路径都相对于 Workspace 根目录。来源事实与 unavailable 状态由 builder 读取，不手填。
 4. 分析和草稿就绪后调用 `marivo_present({"draft_path":"analysis/presentation.draft.json"})`。成功已同时生成 `presentation.json` 与 `index.html`。失败按诊断的 `code`、`path`、原因和建议修正草稿或数据，再重试；没有成功 receipt 就不宣称交付完成。缺少 Artifact 保存数据时报告缺失，不为完成展示自动重新查询、observe 或 revalidate。修复展示错误也不自动重放分析。
-5. 交付主要结论、未完成分支、实质限制和 receipt 的打开/下载入口；headless 时给出 receipt 的精确文件路径。computed 来源不可恢复时如实保留 unavailable；区分 Agent 预筛选与 writer 截断，局部展示不能冒充全量总计或排名。只声明实际做过的浏览器检查。用户修改内容后重新 present 会生成另一份独立快照；不修改已生成 HTML 来绕过草稿。
+5. 交付主要结论、未完成分支、实质限制和 receipt 的打开/下载入口；headless 时给出 receipt 的精确文件路径。computed 来源不可恢复时如实保留 unavailable；区分 Agent 预筛选与 writer 截断，局部展示不能冒充全量总计或排名。只声明实际做过的浏览器检查。用户仅修改呈现时可在宿主阅读器编辑并保存同一报告，支持 cell 移动、删除（可删空）及撤销。原卡片打开最新保存构建；筛选只是临时展示，不进入保存或下载，也不重算指标。新分析或数据变化仍修改 Draft 并调用 present，生成另一份独立报告；不修改已生成 HTML 来绕过草稿。
 
 ## 来源追问
 

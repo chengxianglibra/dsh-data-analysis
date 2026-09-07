@@ -62,6 +62,8 @@ export async function commitPresentation(
     root,
     path.join(root, '.dsh-data-analysis'),
     path.join(root, '.dsh-data-analysis', 'presentations'),
+    path.join(root, '.dsh-data-analysis', 'presentations', document.reportId),
+    path.join(root, '.dsh-data-analysis', 'presentations', document.reportId, 'builds'),
   ]
   const identities: DirectoryIdentity[] = []
   for (const [index, filename] of paths.entries()) {
@@ -69,6 +71,7 @@ export async function commitPresentation(
       await sameDirectory(paths[index - 1]!, identities[index - 1]!)
       try {
         await mkdir(filename, { mode: 0o700 })
+        await syncDirectory(paths[index - 1]!)
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
       }
@@ -83,11 +86,16 @@ export async function commitPresentation(
     signal?.throwIfAborted()
   }
   await check()
-  const parent = paths[2]!
+  const parent = paths.at(-1)!
   const temporary = await mkdtemp(path.join(parent, '.pending-'))
   const ownedIdentity = await directory(temporary)
   const final = path.dirname(
-    presentationAssetPath(root, built.document.buildId, 'presentation.json'),
+    presentationAssetPath(
+      root,
+      built.document.reportId,
+      built.document.buildId,
+      'presentation.json',
+    ),
   )
   let owned = temporary
   try {
@@ -127,16 +135,24 @@ export async function commitPresentation(
     await sameDirectory(final, ownedIdentity)
     const document = await readPresentationAsset(
       root,
+      built.document.reportId,
       built.document.buildId,
       'presentation.json',
       signal,
     )
-    const html = await readPresentationAsset(root, built.document.buildId, 'index.html', signal)
+    const html = await readPresentationAsset(
+      root,
+      built.document.reportId,
+      built.document.buildId,
+      'index.html',
+      signal,
+    )
     if (!document.equals(built.documentBytes) || !html.equals(built.htmlBytes))
       throw new Error('presentation-build-changed')
     await check()
     return parsePresentationReceipt({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      reportId: built.document.reportId,
       kind: 'marivo.presentation',
       workspaceId: built.document.workspaceId,
       buildId: built.document.buildId,

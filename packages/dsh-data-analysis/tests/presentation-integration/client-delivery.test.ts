@@ -16,26 +16,27 @@ import { createHostChatFixture } from './host-client-fixture.ts'
 function delivery(buildId = 'build-a', sessionId = 'session-a', turn = 3): PresentationDelivery {
   return {
     kind: 'marivo.presentation.delivery',
-    schemaVersion: 1,
+    schemaVersion: 2,
     dshSessionId: sessionId,
     turn,
     receipt: {
       kind: 'marivo.presentation',
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceId: 'workspace-a',
+      reportId: 'report',
       buildId,
       title: '分析结果',
       summary: '数据与来源快照',
       files: {
         document: {
           asset: 'presentation.json',
-          path: `/workspace/.dsh-data-analysis/presentations/${buildId}/presentation.json`,
+          path: `/workspace/.dsh-data-analysis/presentations/report/builds/${buildId}/presentation.json`,
           bytes: 100,
           sha256: 'a'.repeat(64),
         },
         html: {
           asset: 'index.html',
-          path: `/workspace/.dsh-data-analysis/presentations/${buildId}/index.html`,
+          path: `/workspace/.dsh-data-analysis/presentations/report/builds/${buildId}/index.html`,
           bytes: 200,
           sha256: 'b'.repeat(64),
         },

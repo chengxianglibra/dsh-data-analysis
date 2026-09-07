@@ -36,7 +36,7 @@ import { TestShellEnv } from '../../tests/test-shell-env.ts'
 export type PresentationMode = 'native' | 'both' | 'code'
 export interface ActualDelivery {
   kind: 'marivo.presentation.delivery'
-  schemaVersion: 1
+  schemaVersion: 2
   dshSessionId: string
   turn: number
   receipt: PresentationReceipt
@@ -143,7 +143,7 @@ export function actualDeliveries(
       continue
     const value = raw as ActualDelivery
     assert.equal(value.dshSessionId, sessionId)
-    assert.equal(value.schemaVersion, 1)
+    assert.equal(value.schemaVersion, 2)
     result.push({ ...value, receipt: parsePresentationReceipt(value.receipt) })
   }
   return result

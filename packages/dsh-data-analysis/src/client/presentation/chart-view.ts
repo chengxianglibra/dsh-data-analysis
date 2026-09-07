@@ -14,8 +14,14 @@ export interface ChartExploration {
   preparedViewId?: string
 }
 
-export function savedChartView(block: ChartBlock): ChartView {
-  const { id: _id, kind: _kind, preparedViews: _preparedViews, ...view } = structuredClone(block)
+export function savedChartView(block: ChartBlock & { label?: string }): ChartView {
+  const {
+    id: _id,
+    kind: _kind,
+    label: _label,
+    preparedViews: _preparedViews,
+    ...view
+  } = structuredClone(block)
   return view
 }
 

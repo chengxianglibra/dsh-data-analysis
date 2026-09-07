@@ -20,7 +20,12 @@ import { MARIVO_PRESENTATION_READ_PROGRAM } from '../../src/presentation/project
 import { savePythonExecution } from '../../src/python-execution.ts'
 
 const fixtures = new URL('../presentation-s0/fixtures/', import.meta.url)
-const options = { workspaceId: 'workspace', buildId: 'build', generatedAt: '2026-09-07T00:00:00Z' }
+const options = {
+  workspaceId: 'workspace',
+  reportId: 'report',
+  buildId: 'build',
+  generatedAt: '2026-09-07T00:00:00Z',
+}
 const declared = {
   id: 'sales',
   ref: { sessionId: 'session', artifactRef: 'artifact', findingId: 'finding' },

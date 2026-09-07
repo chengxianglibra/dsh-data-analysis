@@ -77,10 +77,13 @@ null 保留缺失含义，datetime 必须带时区。它不保存来源或转换
 
 共享 reader 展示 Markdown、metric、18 类 chart、table 和 source，保留精确值、单位、截断与 unavailable 来源。chart 支持 bar/line 变体与当前页面的字段、图形及过滤探索；统计量由分析阶段准备，探索不改写保存快照。
 `marivo_present` 读取 Workspace 相对 Draft 路径，生成独立 build 的 JSON/自包含 HTML；
-卡片打开固定快照并下载 HTML。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
+原卡片通过 reportId 打开最近保存结果；阅读器可编辑标题、正文、指标标签、图表和表格配置，以及移动／删除 cell（允许删空），支持撤销／重做和保存／取消。
+保存生成同报告的新 build，保留底层数据、来源和代码，不运行 Agent 或 Python。
+全部 18 种 chart 与同 dataset 的表格和数据预览共享临时筛选；筛选不重算指标、不标记编辑修改、不进入保存、下载或打印。
+文档、receipt 与 delivery 使用 schema v2，Draft 和 typed dataset 保持 v1；旧报告不读取、不迁移，旧文件保留。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
 展开来源仅使用保存的快照；文件变化、缺失或 Workspace 归属变化会明确失败。
 实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)、
-[展示交付](../../docs/modules/presentation-delivery.md)和[S5 验收记录](../../docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
+[展示交付](../../docs/modules/presentation-delivery.md)和[编辑与筛选验收](../../docs/plan/2026-09-07-presentation-editing-acceptance.md)。
 
 ## 验证
 

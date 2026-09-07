@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TypedDataset } from '../../presentation/contracts/types.ts'
 import {
   cellText,
@@ -17,6 +17,7 @@ export function DatasetTable({
   caption,
   showScope = true,
   rowIndices,
+  filterKey,
 }: {
   data: TypedDataset
   columns?: string[]
@@ -24,6 +25,7 @@ export function DatasetTable({
   caption: string
   showScope?: boolean
   rowIndices?: readonly number[]
+  filterKey?: string
 }) {
   const [sort, setSort] = useState<{
     columnId: string
@@ -40,6 +42,11 @@ export function DatasetTable({
     const selected = rowIndices ? new Set(rowIndices) : undefined
     return sortedRowIndices(data, sort).filter((index) => !selected || selected.has(index))
   }, [data, sort, rowIndices])
+  const rowSelectionKey = `${filterKey ?? ''}/${rowIndices?.join(',') ?? ''}`
+  useEffect(() => {
+    void rowSelectionKey
+    setPage(0)
+  }, [rowSelectionKey])
   const pages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE))
   const activePage = Math.min(page, pages - 1)
   const shown =
@@ -53,7 +60,7 @@ export function DatasetTable({
       )}
       {rowIndices && rowIndices.length !== data.rows.length && (
         <p className="pr-muted">
-          当前过滤：{rowIndices.length} / {data.rows.length} 条快照观测
+          当前筛选：已保存 {data.rows.length} 行中命中 {rowIndices.length} 行
         </p>
       )}
       <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>

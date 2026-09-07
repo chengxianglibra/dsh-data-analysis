@@ -8,10 +8,19 @@ import {
   parsePresentationBuildId,
 } from './contracts/index.ts'
 
-export function presentationAssetPath(root: string, buildId: string, asset: PresentationAsset) {
+export function presentationReportPath(root: string, reportId: string) {
+  parsePresentationBuildId(reportId, '/reportId')
+  return path.join(root, '.dsh-data-analysis', 'presentations', reportId)
+}
+export function presentationAssetPath(
+  root: string,
+  reportId: string,
+  buildId: string,
+  asset: PresentationAsset,
+) {
   parsePresentationBuildId(buildId)
   if (asset !== 'presentation.json' && asset !== 'index.html') throw new Error('invalid-asset')
-  return path.join(root, '.dsh-data-analysis', 'presentations', buildId, asset)
+  return path.join(presentationReportPath(root, reportId), 'builds', buildId, asset)
 }
 export function presentationSha256(bytes: Uint8Array) {
   return createHash('sha256').update(bytes).digest('hex')
@@ -20,28 +29,41 @@ export function presentationSha256(bytes: Uint8Array) {
 /** Bounded raw-byte reader with no symbolic links and stable directory/file identity. */
 export async function readPresentationAsset(
   workspaceRoot: string,
+  reportId: string,
   buildId: string,
   asset: PresentationAsset,
   signal?: AbortSignal,
 ): Promise<Buffer> {
+  const filename = presentationAssetPath(workspaceRoot, reportId, buildId, asset)
+  return readReportFile(
+    workspaceRoot,
+    filename,
+    asset === 'presentation.json'
+      ? PRESENTATION_BUDGETS.documentBytes
+      : PRESENTATION_BUDGETS.htmlBytes,
+    signal,
+  )
+}
+
+export async function readReportFile(
+  workspaceRoot: string,
+  filename: string,
+  maximum: number,
+  signal?: AbortSignal,
+): Promise<Buffer> {
   signal?.throwIfAborted()
   const root = await realpath(workspaceRoot)
-  if (root !== path.resolve(workspaceRoot)) throw new Error('asset-path-mismatch')
-  const filename = presentationAssetPath(root, buildId, asset)
-  const parents = [
-    root,
-    path.join(root, '.dsh-data-analysis'),
-    path.dirname(path.dirname(filename)),
-    path.dirname(filename),
-  ]
+  if (root !== path.resolve(workspaceRoot) || !filename.startsWith(`${root}${path.sep}`))
+    throw new Error('asset-path-mismatch')
+  const parents = [root]
+  for (const segment of path.relative(root, path.dirname(filename)).split(path.sep)) {
+    if (!segment || segment === '..' || segment === '.') throw new Error('asset-path-mismatch')
+    parents.push(path.join(parents.at(-1)!, segment))
+  }
   const beforeParents = await Promise.all(parents.map((parent) => lstat(parent)))
   if (beforeParents.some((stat) => !stat.isDirectory() || stat.isSymbolicLink()))
     throw new Error('asset-path-mismatch')
   if ((await realpath(filename)) !== filename) throw new Error('asset-path-mismatch')
-  const maximum =
-    asset === 'presentation.json'
-      ? PRESENTATION_BUDGETS.documentBytes
-      : PRESENTATION_BUDGETS.htmlBytes
   const file = await open(
     filename,
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,

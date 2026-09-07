@@ -2,14 +2,14 @@
 
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   marivoPresentationDeliveryDefinition,
   PRESENTATION_TURN_DATA_KEY,
   presentationDeliveryIdentity,
   presentationsForNode,
 } from './delivery.ts'
-import { PresentationDeliveryModel } from './delivery-model.ts'
+import { PresentationDeliveryModel, reportKey } from './delivery-model.ts'
 import { HostPresentationReader } from './host-entry.tsx'
 
 const deliveryStyles = `
@@ -22,14 +22,22 @@ const deliveryStyles = `
 export function PresentationCards({ matched, sessionId, workspaces, model }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   // The runtime framework supplies sessionId independently of event data.
-  const deliveries = matched.filter((delivery) => delivery.dshSessionId === sessionId)
+  const deliveries = useMemo(
+    () => matched.filter((delivery) => delivery.dshSessionId === sessionId),
+    [matched, sessionId],
+  )
   const workspaceId =
     workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
+  useEffect(() => {
+    model.contextChanged(sessionId, workspaceId)
+    for (const delivery of deliveries) void model.preview(delivery, sessionId, workspaceId)
+  }, [model, sessionId, workspaceId, deliveries])
   if (!deliveries.length) return null
   return (
     <div className="pd-cards">
       <style>{deliveryStyles}</style>
       {deliveries.map((delivery) => {
+        const current = state.receipts[reportKey(delivery.receipt)] ?? delivery.receipt
         const selected =
           state.delivery &&
           presentationDeliveryIdentity(state.delivery) === presentationDeliveryIdentity(delivery)
@@ -39,8 +47,8 @@ export function PresentationCards({ matched, sessionId, workspaces, model }) {
             key={presentationDeliveryIdentity(delivery)}
             data-presentation-card={delivery.receipt.buildId}
           >
-            <h3>{delivery.receipt.title}</h3>
-            <p>{delivery.receipt.summary}</p>
+            <h3>{current.title}</h3>
+            <p>{current.summary}</p>
             <div className="pd-actions">
               <button
                 type="button"
@@ -82,12 +90,27 @@ export function PresentationOverlay({
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const dialog = useRef(null)
+  const closeReader = () => {
+    if (state.saving) return
+    if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并关闭报告？')) return
+    model.close()
+  }
   useEffect(() => {
-    if (state.delivery) model.contextChanged(sessionId, workspaceId)
-  }, [model, sessionId, workspaceId, state.delivery])
+    const beforeUnload = (event) => {
+      if (model.dirty) {
+        event.preventDefault()
+        event.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [model])
   useEffect(() => {
-    if (workspaceUnavailable && state.delivery) model.unavailable()
-  }, [model, workspaceUnavailable, state.delivery])
+    model.contextChanged(sessionId, workspaceId)
+  }, [model, sessionId, workspaceId])
+  useEffect(() => {
+    if (workspaceUnavailable) model.unavailable()
+  }, [model, workspaceUnavailable])
   useEffect(() => {
     if (!state.open) return undefined
     const opener = document.activeElement,
@@ -107,25 +130,72 @@ export function PresentationOverlay({
       aria-label="分析快照"
       onCancel={(event) => {
         event.preventDefault()
-        model.close()
+        closeReader()
       }}
     >
       <style>{deliveryStyles}</style>
       <header className="pd-toolbar">
-        <strong>{delivery.receipt.title}</strong>
+        <strong>{state.resolvedReceipt?.title ?? delivery.receipt.title}</strong>
         <div className="pd-actions">
           <button
             type="button"
             disabled={state.downloading || !!state.error}
-            onClick={() => void model.download(delivery, sessionId, workspaceId)}
+            onClick={() => void model.download(delivery, sessionId, workspaceId, true)}
           >
             {state.downloading ? '正在下载…' : '下载 HTML'}
           </button>
-          <button type="button" aria-label="关闭分析快照" onClick={() => model.close()}>
+          <button
+            type="button"
+            aria-label="关闭分析快照"
+            disabled={state.saving}
+            onClick={closeReader}
+          >
             关闭
           </button>
         </div>
       </header>
+      {state.document && (
+        <div
+          role="toolbar"
+          className="pd-actions pd-status pr-interactive"
+          aria-label="报告编辑操作"
+        >
+          {state.editing ? (
+            <>
+              <button
+                type="button"
+                disabled={state.saving || !state.editing.undo.length}
+                onClick={() => model.undoEdit()}
+              >
+                撤销
+              </button>
+              <button
+                type="button"
+                disabled={state.saving || !state.editing.redo.length}
+                onClick={() => model.redoEdit()}
+              >
+                重做
+              </button>
+              <button type="button" disabled={state.saving} onClick={() => void model.saveEdit()}>
+                {state.saving ? '正在保存…' : '保存编辑'}
+              </button>
+              <button type="button" disabled={state.saving} onClick={() => model.cancelEdit()}>
+                取消编辑
+              </button>
+              <span className="pd-muted">{model.dirty ? '有未保存的编辑' : '编辑模式'}</span>
+            </>
+          ) : (
+            <button type="button" onClick={() => model.beginEdit()}>
+              编辑报告
+            </button>
+          )}
+        </div>
+      )}
+      {state.editError && (
+        <p className="pd-status pd-error" role="alert">
+          {state.editError}
+        </p>
+      )}
       {state.loading && (
         <p className="pd-status" role="status">
           正在读取已保存的分析快照…
@@ -148,7 +218,18 @@ export function PresentationOverlay({
       )}
       {state.document && (
         <div className="pd-reader">
-          <HostPresentationReader document={state.document} />
+          <HostPresentationReader
+            document={state.document}
+            editing={
+              state.editing
+                ? {
+                    edits: state.editing.edits,
+                    onChange: (edits) => model.changeEdits(edits),
+                    disabled: state.saving,
+                  }
+                : undefined
+            }
+          />
         </div>
       )}
     </dialog>

@@ -13,26 +13,27 @@ import {
 function delivery() {
   return parsePresentationDelivery({
     kind: MARIVO_PRESENTATION_DELIVERY_KIND,
-    schemaVersion: 1,
+    schemaVersion: 2,
     dshSessionId: 'session',
     turn: 2,
     receipt: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       kind: 'marivo.presentation',
       workspaceId: 'workspace',
+      reportId: 'report',
       buildId: 'build',
       title: 'Title',
       summary: 'Summary',
       files: {
         document: {
           asset: 'presentation.json',
-          path: '/workspace/.dsh-data-analysis/presentations/build/presentation.json',
+          path: '/workspace/.dsh-data-analysis/presentations/report/builds/build/presentation.json',
           bytes: 10,
           sha256: 'a'.repeat(64),
         },
         html: {
           asset: 'index.html',
-          path: '/workspace/.dsh-data-analysis/presentations/build/index.html',
+          path: '/workspace/.dsh-data-analysis/presentations/report/builds/build/index.html',
           bytes: 20,
           sha256: 'b'.repeat(64),
         },

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
+import type { ReaderEditing } from './editor-controls.tsx'
 import { PresentationReader } from './reader.tsx'
 import { PRESENTATION_STYLES } from './styles.ts'
 
@@ -13,8 +14,10 @@ const HOST_PRESENTATION_STYLES = `
 export function HostPresentationReader({
   document,
   actions,
+  editing,
 }: {
   document: PresentationDocument
+  editing?: ReaderEditing
   actions?: ReactNode
 }) {
   return (
@@ -23,7 +26,7 @@ export function HostPresentationReader({
       <style>{HOST_PRESENTATION_STYLES}</style>
       {actions && <div className="pr-host-actions pr-interactive">{actions}</div>}
       <div className="pr-host-live">
-        <PresentationReader document={document} />
+        <PresentationReader document={document} editing={editing} />
       </div>
       <div className="pr-host-print">
         <PresentationReader document={document} mode="static" />

@@ -211,9 +211,10 @@ export async function buildS0Artifacts(root: string, documents: PresentationDocu
     })
     receipts.push(
       parsePresentationReceipt({
-        schemaVersion: 1,
+        schemaVersion: 2,
         kind: 'marivo.presentation',
         workspaceId: document.workspaceId,
+        reportId: 'report',
         buildId: document.buildId,
         title: document.title,
         summary: 'S0 接缝验证产物；完整 present 在 S4 接入。',

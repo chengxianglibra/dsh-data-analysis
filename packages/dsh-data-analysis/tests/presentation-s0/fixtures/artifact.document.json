@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "workspaceId": "s0-validation-workspace",
   "buildId": "s0-artifact",
   "title": "S0 真实 persisted Artifact 样例",
@@ -135,5 +135,6 @@
       "path": "/sources/0/facts/9",
       "message": "persisted Artifact 公开契约未提供历史指标定义；保留 unavailable，未读取当前定义冒充历史口径。"
     }
-  ]
+  ],
+  "reportId": "report"
 }

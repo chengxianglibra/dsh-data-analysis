@@ -23,19 +23,20 @@ async function fixture() {
     html = Buffer.from('<!doctype html><html><body>分析快照 9007199254740993</body></html>')
   const file = <Asset extends 'presentation.json' | 'index.html'>(asset: Asset, bytes: Buffer) => ({
     asset,
-    path: `/workspace/.dsh-data-analysis/presentations/${document.buildId}/${asset}`,
+    path: `/workspace/.dsh-data-analysis/presentations/report/builds/${document.buildId}/${asset}`,
     bytes: bytes.length,
     sha256: createHash('sha256').update(bytes).digest('hex'),
   })
   const delivery: PresentationDelivery = {
     kind: 'marivo.presentation.delivery',
-    schemaVersion: 1,
+    schemaVersion: 2,
     dshSessionId: 'session-a',
     turn: 3,
     receipt: {
       kind: 'marivo.presentation',
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceId: document.workspaceId,
+      reportId: 'report',
       buildId: document.buildId,
       title: document.title,
       summary: '保存的数据与来源',
@@ -48,6 +49,7 @@ async function fixture() {
       ok: true,
       value: {
         workspaceId: document.workspaceId,
+        reportId: 'report',
         buildId: document.buildId,
         asset,
         mimeType:
@@ -70,6 +72,7 @@ test('reader and HTML download verify bytes and only call the saved-asset RPC', 
   const rpc: PresentationRpc = {
     async call(channel, endpoint, payload, _signal) {
       calls.push({ channel, endpoint, payload })
+      if (endpoint === 'reports/resolve') return { ok: true, value: delivery.receipt }
       return response((payload as { asset: string }).asset)
     },
   }
@@ -79,14 +82,23 @@ test('reader and HTML download verify bytes and only call the saved-asset RPC', 
   await model.show(delivery, 'session-a', document.workspaceId)
   assert.deepEqual(model.getSnapshot().document, document)
   await model.download(delivery, 'session-a', document.workspaceId)
-  assert.deepEqual(saved, [{ bytes: html, filename: `marivo-${document.buildId}.html` }])
+  assert.deepEqual(saved, [
+    { bytes: html, filename: `marivo-${document.reportId}-${document.buildId}.html` },
+  ])
   assert.deepEqual(
     calls,
-    ['presentation.json', 'index.html'].map((asset) => ({
-      channel: '/marivo-presentation',
-      endpoint: 'files/read',
-      payload: { sessionId: 'session-a', receipt: delivery.receipt, asset },
-    })),
+    ['presentation.json', 'index.html'].flatMap((asset) => [
+      {
+        channel: '/marivo-presentation',
+        endpoint: 'reports/resolve',
+        payload: { sessionId: 'session-a', reportId: delivery.receipt.reportId },
+      },
+      {
+        channel: '/marivo-presentation',
+        endpoint: 'files/read',
+        payload: { sessionId: 'session-a', receipt: delivery.receipt, asset },
+      },
+    ]),
   )
   assert.equal(
     model.getSnapshot().document!.sources.filter((source) => source.status === 'unavailable')
@@ -180,7 +192,8 @@ test('missing files and corrupt HTML surface explicit errors without saving; clo
   assert.equal(saves, 0)
   const corrupted = new PresentationDeliveryModel(
     {
-      async call() {
+      async call(_channel, endpoint) {
+        if (endpoint === 'reports/resolve') return { ok: true, value: delivery.receipt }
         const value = response('index.html').value
         const bytes = Buffer.from(value.bodyBase64, 'base64')
         bytes[0] = 0

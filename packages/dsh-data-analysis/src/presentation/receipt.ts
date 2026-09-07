@@ -7,7 +7,7 @@ export const MARIVO_PRESENTATION_RPC_CHANNEL = '/marivo-presentation'
 
 export interface PresentationDelivery {
   kind: typeof MARIVO_PRESENTATION_DELIVERY_KIND
-  schemaVersion: 1
+  schemaVersion: 2
   dshSessionId: string
   turn: number
   receipt: PresentationReceipt
@@ -20,7 +20,7 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
   if (
     Object.keys(input).sort().join(',') !== 'dshSessionId,kind,receipt,schemaVersion,turn' ||
     input.kind !== MARIVO_PRESENTATION_DELIVERY_KIND ||
-    input.schemaVersion !== 1 ||
+    input.schemaVersion !== 2 ||
     typeof input.dshSessionId !== 'string' ||
     !input.dshSessionId.trim() ||
     input.dshSessionId.length > 512 ||
@@ -37,6 +37,7 @@ export function presentationReceiptText(receipt: PresentationReceipt): string {
     receipt.title,
     receipt.summary,
     `Workspace: ${receipt.workspaceId}`,
+    `Report: ${receipt.reportId}`,
     `Build: ${receipt.buildId}`,
     ...Object.values(receipt.files).flatMap((file) => [
       `${file.asset}: ${file.path}`,

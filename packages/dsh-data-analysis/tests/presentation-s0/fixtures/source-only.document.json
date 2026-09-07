@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "workspaceId": "s0-validation-workspace",
   "buildId": "s0-source-only",
   "title": "S0 仅来源样例",
@@ -34,5 +34,6 @@
       "path": "/sources/0",
       "message": "来源在生成时不可恢复；离线展示保存的不可用说明。"
     }
-  ]
+  ],
+  "reportId": "report"
 }

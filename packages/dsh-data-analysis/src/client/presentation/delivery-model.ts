@@ -1,20 +1,30 @@
+import { type PresentationEdits, presentationEdits } from '../../presentation/contracts/editing.ts'
 import {
   type PresentationDocument,
   type PresentationReceipt,
   parsePresentationDocument,
+  parsePresentationReceipt,
 } from '../../presentation/contracts/index.ts'
 import {
   MARIVO_PRESENTATION_RPC_CHANNEL,
   type PresentationDelivery,
   parsePresentationDelivery,
 } from '../../presentation/receipt.ts'
-import { presentationDeliveryIdentity } from './delivery.ts'
 
 export interface PresentationRpc {
   call(channel: string, endpoint: string, payload: unknown, signal: AbortSignal): Promise<unknown>
 }
 export type PresentationAsset = 'presentation.json' | 'index.html'
 export interface PresentationDeliveryState {
+  readonly receipts: Readonly<Record<string, PresentationReceipt>>
+  readonly resolvedReceipt?: PresentationReceipt
+  readonly editing?: {
+    edits: PresentationEdits
+    undo: PresentationEdits[]
+    redo: PresentationEdits[]
+  }
+  readonly saving?: boolean
+  readonly editError?: string
   readonly open: boolean
   readonly delivery?: PresentationDelivery
   readonly loading: boolean
@@ -56,8 +66,9 @@ export async function verifyPresentationAsset(
   const mime = asset === 'presentation.json' ? 'application/json' : 'text/html'
   if (
     Object.keys(file).sort().join(',') !==
-      'asset,bodyBase64,buildId,bytes,mimeType,sha256,workspaceId' ||
+      'asset,bodyBase64,buildId,bytes,mimeType,reportId,sha256,workspaceId' ||
     file.workspaceId !== receipt.workspaceId ||
+    file.reportId !== receipt.reportId ||
     file.buildId !== receipt.buildId ||
     file.asset !== asset ||
     file.sha256 !== expected.sha256 ||
@@ -82,6 +93,12 @@ export async function verifyPresentationAsset(
 
 function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
+  if (/report-save-conflict/.test(message))
+    return '报告已被其他窗口保存。你的编辑已保留，请重新打开报告后再编辑。'
+  if (/report-save-busy|lock.*timed out/i.test(message))
+    return '报告正在保存或写入锁不可用，请稍后重试。'
+  if (/invalid-report-edits|contract|invalid_value|unknown_field/i.test(message))
+    return '编辑内容无效，请检查标题、正文和图表字段。'
   if (/workspace|session/i.test(message))
     return 'Workspace 或 Session 已变化或不可用，请在原项目中重新打开分析快照。'
   if (/ENOENT|asset-missing|file-missing|not-found/i.test(message))
@@ -97,13 +114,23 @@ function errorMessage(error: unknown): string {
   return '无法读取分析快照，请检查 Host 连接后重新打开。'
 }
 
-/** A single reader owns only saved-file state. It cannot execute Python or request credentials. */
+export const reportKey = (receipt: PresentationReceipt) =>
+  `${receipt.workspaceId}/${receipt.reportId}`
+
+/** Host file actions and editor state; never an Agent or data-source execution path. */
 export class PresentationDeliveryModel {
   readonly #rpc: PresentationRpc
   readonly #save: SavePresentationHtml
   readonly #listeners = new Set<() => void>()
-  #state: PresentationDeliveryState = { open: false, loading: false, downloading: false }
+  #state: PresentationDeliveryState = {
+    receipts: {},
+    open: false,
+    loading: false,
+    downloading: false,
+  }
   #flights = new Set<AbortController>()
+  #previews = new Set<string>()
+  #context = ''
   #generation = 0
   #disposed = false
   constructor(rpc: PresentationRpc, save: SavePresentationHtml = savePresentationHtml) {
@@ -111,93 +138,133 @@ export class PresentationDeliveryModel {
     this.#save = save
   }
   getSnapshot = (): PresentationDeliveryState => this.#state
-  subscribe = (listener: () => void): (() => void) => {
+  subscribe = (listener: () => void) => {
     this.#listeners.add(listener)
     return () => {
       this.#listeners.delete(listener)
     }
   }
-  #publish(change: Partial<PresentationDeliveryState>): void {
+  #publish(change: Partial<PresentationDeliveryState>) {
     this.#state = { ...this.#state, ...change }
     for (const listener of this.#listeners) listener()
   }
-  #cancel(): void {
+  #cancel() {
     this.#generation++
     for (const flight of this.#flights) flight.abort()
     this.#flights.clear()
   }
-  #prepare(delivery: PresentationDelivery, sessionId: string, workspaceId: string): boolean {
-    if (this.#disposed) return false
+  #remember(receipt: PresentationReceipt) {
+    this.#publish({ receipts: { ...this.#state.receipts, [reportKey(receipt)]: receipt } })
+  }
+  #valid(delivery: PresentationDelivery, sessionId: string, workspaceId: string) {
     parsePresentationDelivery(delivery)
-    if (
-      presentationDeliveryIdentity(delivery) !==
-      (this.#state.delivery && presentationDeliveryIdentity(this.#state.delivery))
-    ) {
-      this.#cancel()
-      this.#state = { open: false, loading: false, downloading: false, delivery }
-    }
-    if (sessionId !== delivery.dshSessionId || workspaceId !== delivery.receipt.workspaceId) {
-      this.unavailable('Workspace 或 Session 已变化，无法读取这份分析快照。')
-      return false
-    }
-    return true
-  }
-  contextChanged(sessionId: string, workspaceId: string): void {
-    const delivery = this.#state.delivery
-    if (
-      delivery &&
-      (sessionId !== delivery.dshSessionId || workspaceId !== delivery.receipt.workspaceId)
+    return (
+      !this.#disposed &&
+      sessionId === delivery.dshSessionId &&
+      workspaceId === delivery.receipt.workspaceId
     )
-      this.unavailable('Workspace 或 Session 已变化，无法读取这份分析快照。')
   }
-  unavailable(message = 'Workspace 已不可用，无法读取这份分析快照。'): void {
-    this.#cancel()
-    this.#publish({
-      document: undefined,
-      loading: false,
-      downloading: false,
-      error: message,
-      downloadError: message,
-      notice: undefined,
-    })
+  async #call(endpoint: string, payload: unknown, signal: AbortSignal): Promise<unknown> {
+    signal.throwIfAborted()
+    const response = (await this.#rpc.call(
+      MARIVO_PRESENTATION_RPC_CHANNEL,
+      endpoint,
+      payload,
+      signal,
+    )) as {
+      ok?: boolean
+      value?: unknown
+      error?: { code?: string; message?: string }
+    }
+    signal.throwIfAborted()
+    if (response?.ok !== true) {
+      const message = [
+        response?.error?.code,
+        response?.error?.message ?? 'presentation-operation-failed',
+      ]
+        .filter(Boolean)
+        .join(': ')
+      if (/workspace-(unavailable|changed)|session-unavailable/.test(message)) this.unavailable()
+      throw new Error(message)
+    }
+    return response.value
   }
-  close(): void {
-    this.#cancel()
-    this.#publish({ open: false, loading: false, downloading: false, document: undefined })
-  }
-  resetConnection(): void {
-    if (this.#state.delivery) this.unavailable('Host 连接已重置，请重新打开分析快照。')
+  async #resolve(delivery: PresentationDelivery, signal: AbortSignal) {
+    const receipt = parsePresentationReceipt(
+      await this.#call(
+        'reports/resolve',
+        {
+          sessionId: delivery.dshSessionId,
+          reportId: delivery.receipt.reportId,
+        },
+        signal,
+      ),
+    )
+    if (
+      receipt.workspaceId !== delivery.receipt.workspaceId ||
+      receipt.reportId !== delivery.receipt.reportId
+    )
+      throw new Error('presentation-document-identity-mismatch')
+    return receipt
   }
   async #read(
     delivery: PresentationDelivery,
+    receipt: PresentationReceipt,
     asset: PresentationAsset,
     signal: AbortSignal,
-  ): Promise<Uint8Array> {
-    const response = (await this.#rpc.call(
-      MARIVO_PRESENTATION_RPC_CHANNEL,
-      'files/read',
-      {
-        sessionId: delivery.dshSessionId,
-        receipt: delivery.receipt,
-        asset,
-      },
-      signal,
-    )) as { ok?: boolean; value?: unknown; error?: { code?: string; message?: string } }
-    if (response?.ok !== true)
-      throw new Error(
-        [response?.error?.code, response?.error?.message ?? '无法读取分析快照。']
-          .filter(Boolean)
-          .join(': '),
-      )
-    return verifyPresentationAsset(response.value, delivery.receipt, asset)
+  ) {
+    return verifyPresentationAsset(
+      await this.#call('files/read', { sessionId: delivery.dshSessionId, receipt, asset }, signal),
+      receipt,
+      asset,
+    )
+  }
+  async #document(
+    delivery: PresentationDelivery,
+    receipt: PresentationReceipt,
+    signal: AbortSignal,
+  ) {
+    const bytes = await this.#read(delivery, receipt, 'presentation.json', signal)
+    const document = parsePresentationDocument(
+      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+    )
+    if (
+      document.workspaceId !== receipt.workspaceId ||
+      document.reportId !== receipt.reportId ||
+      document.buildId !== receipt.buildId ||
+      document.title !== receipt.title
+    )
+      throw new Error('presentation-document-identity-mismatch')
+    return document
+  }
+  async preview(delivery: PresentationDelivery, sessionId: string, workspaceId: string) {
+    const key = reportKey(delivery.receipt)
+    if (!this.#valid(delivery, sessionId, workspaceId) || this.#previews.has(key)) return
+    const flight = new AbortController(),
+      generation = this.#generation
+    this.#flights.add(flight)
+    this.#previews.add(key)
+    try {
+      const receipt = await this.#resolve(delivery, flight.signal)
+      if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
+        this.#remember(receipt)
+    } catch {
+      /* Opening exposes the exact read error; a failed preview never substitutes another build. */
+    } finally {
+      this.#flights.delete(flight)
+      this.#previews.delete(key)
+    }
   }
   async show(
     delivery: PresentationDelivery,
     sessionId: string,
     workspaceId: string,
   ): Promise<void> {
-    if (!this.#prepare(delivery, sessionId, workspaceId)) {
-      if (!this.#disposed) this.#publish({ open: true })
+    if (!this.#valid(delivery, sessionId, workspaceId)) {
+      if (!this.#disposed) {
+        this.#publish({ open: true, delivery })
+        this.unavailable()
+      }
       return
     }
     this.#cancel()
@@ -206,29 +273,140 @@ export class PresentationDeliveryModel {
     this.#flights.add(flight)
     this.#publish({
       open: true,
+      delivery,
       loading: true,
       downloading: false,
       document: undefined,
+      resolvedReceipt: undefined,
+      editing: undefined,
+      saving: false,
+      editError: undefined,
       error: undefined,
       downloadError: undefined,
       notice: undefined,
     })
     try {
-      const bytes = await this.#read(delivery, 'presentation.json', flight.signal)
+      const receipt = await this.#resolve(delivery, flight.signal)
+      const document = await this.#document(delivery, receipt, flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      const document = parsePresentationDocument(
-        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-      )
-      if (
-        document.workspaceId !== delivery.receipt.workspaceId ||
-        document.buildId !== delivery.receipt.buildId ||
-        document.title !== delivery.receipt.title
-      )
-        throw new Error('presentation-document-identity-mismatch')
-      this.#publish({ document, loading: false })
+      this.#remember(receipt)
+      this.#publish({ resolvedReceipt: receipt, document, loading: false })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ loading: false, error: errorMessage(error) })
+    } finally {
+      this.#flights.delete(flight)
+    }
+  }
+  get dirty() {
+    return (
+      !!this.#state.editing &&
+      !!this.#state.document &&
+      JSON.stringify(this.#state.editing.edits) !==
+        JSON.stringify(presentationEdits(this.#state.document))
+    )
+  }
+  beginEdit() {
+    if (!this.#state.document || this.#state.editing || this.#state.saving) return
+    this.#publish({
+      editing: { edits: presentationEdits(this.#state.document), undo: [], redo: [] },
+      editError: undefined,
+    })
+  }
+  changeEdits(edits: PresentationEdits) {
+    const current = this.#state.editing
+    if (!current || this.#state.saving || JSON.stringify(edits) === JSON.stringify(current.edits))
+      return
+    this.#publish({
+      editing: {
+        edits: structuredClone(edits),
+        undo: [...current.undo.slice(-99), current.edits],
+        redo: [],
+      },
+      editError: undefined,
+    })
+  }
+  undoEdit() {
+    const current = this.#state.editing
+    if (!current?.undo.length || this.#state.saving) return
+    this.#publish({
+      editing: {
+        edits: current.undo.at(-1)!,
+        undo: current.undo.slice(0, -1),
+        redo: [...current.redo, current.edits],
+      },
+      editError: undefined,
+    })
+  }
+  redoEdit() {
+    const current = this.#state.editing
+    if (!current?.redo.length || this.#state.saving) return
+    this.#publish({
+      editing: {
+        edits: current.redo.at(-1)!,
+        redo: current.redo.slice(0, -1),
+        undo: [...current.undo.slice(-99), current.edits],
+      },
+      editError: undefined,
+    })
+  }
+  cancelEdit() {
+    if (!this.#state.saving) this.#publish({ editing: undefined, editError: undefined })
+  }
+  async saveEdit() {
+    const { editing, document, resolvedReceipt, delivery } = this.#state
+    if (!editing || !document || !resolvedReceipt || !delivery || this.#state.saving) return
+    const flight = new AbortController(),
+      generation = this.#generation
+    this.#flights.add(flight)
+    this.#publish({ saving: true, editError: undefined })
+    try {
+      let receipt: PresentationReceipt
+      try {
+        receipt = parsePresentationReceipt(
+          await this.#call(
+            'reports/save',
+            {
+              sessionId: delivery.dshSessionId,
+              reportId: resolvedReceipt.reportId,
+              expectedBuildId: resolvedReceipt.buildId,
+              edits: editing.edits,
+            },
+            flight.signal,
+          ),
+        )
+      } catch (error) {
+        if (flight.signal.aborted || /conflict/.test(error instanceof Error ? error.message : ''))
+          throw error
+        // A lost response may follow a successful pointer commit. Confirm the exact submitted presentation.
+        const recovered = await this.#resolve(delivery, flight.signal)
+        const saved = await this.#document(delivery, recovered, flight.signal)
+        if (
+          recovered.buildId === resolvedReceipt.buildId ||
+          JSON.stringify(presentationEdits(saved)) !== JSON.stringify(editing.edits)
+        )
+          throw error
+        receipt = recovered
+      }
+      if (
+        receipt.reportId !== resolvedReceipt.reportId ||
+        receipt.workspaceId !== resolvedReceipt.workspaceId
+      )
+        throw new Error('presentation-document-identity-mismatch')
+      const saved = await this.#document(delivery, receipt, flight.signal)
+      if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+      this.#remember(receipt)
+      this.#publish({
+        document: saved,
+        resolvedReceipt: receipt,
+        editing: undefined,
+        saving: false,
+        notice: '编辑已保存',
+        editError: undefined,
+      })
+    } catch (error) {
+      if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
+        this.#publish({ saving: false, editError: errorMessage(error) })
     } finally {
       this.#flights.delete(flight)
     }
@@ -237,17 +415,26 @@ export class PresentationDeliveryModel {
     delivery: PresentationDelivery,
     sessionId: string,
     workspaceId: string,
+    displayed = false,
   ): Promise<void> {
-    if (!this.#prepare(delivery, sessionId, workspaceId) || this.#state.downloading) return
+    if (!this.#valid(delivery, sessionId, workspaceId)) {
+      this.unavailable()
+      return
+    }
     const flight = new AbortController(),
       generation = this.#generation
     this.#flights.add(flight)
-    this.#publish({ downloading: true, downloadError: undefined, notice: undefined })
+    this.#publish({ downloading: true, downloadError: undefined })
     try {
-      const bytes = await this.#read(delivery, 'index.html', flight.signal)
+      const receipt =
+        displayed && this.#state.resolvedReceipt
+          ? this.#state.resolvedReceipt
+          : await this.#resolve(delivery, flight.signal)
+      const bytes = await this.#read(delivery, receipt, 'index.html', flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      this.#save(bytes, `marivo-${delivery.receipt.buildId}.html`)
-      this.#publish({ downloading: false, notice: '已下载 HTML' })
+      this.#remember(receipt)
+      this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
+      this.#publish({ downloading: false, notice: '已下载已保存的 HTML（不包含临时筛选）' })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ downloading: false, downloadError: errorMessage(error) })
@@ -255,7 +442,50 @@ export class PresentationDeliveryModel {
       this.#flights.delete(flight)
     }
   }
-  dispose(): void {
+  contextChanged(sessionId: string, workspaceId: string) {
+    const context = JSON.stringify([sessionId, workspaceId])
+    if (this.#context && this.#context !== context) this.unavailable()
+    this.#context = context
+    const delivery = this.#state.delivery
+    if (
+      delivery &&
+      (sessionId !== delivery.dshSessionId || workspaceId !== delivery.receipt.workspaceId)
+    )
+      this.unavailable()
+  }
+  unavailable(message = 'Workspace 或 Session 已变化或不可用，请在原项目中重新打开报告。') {
+    this.#cancel()
+    this.#publish({
+      receipts: {},
+      document: undefined,
+      resolvedReceipt: undefined,
+      editing: undefined,
+      saving: false,
+      loading: false,
+      downloading: false,
+      editError: undefined,
+      error: message,
+      downloadError: message,
+      notice: undefined,
+    })
+  }
+  close() {
+    this.#cancel()
+    this.#publish({
+      open: false,
+      loading: false,
+      downloading: false,
+      document: undefined,
+      resolvedReceipt: undefined,
+      editing: undefined,
+      saving: false,
+      editError: undefined,
+    })
+  }
+  resetConnection() {
+    this.unavailable('Host 连接已重置，请重新打开报告。')
+  }
+  dispose() {
     this.#disposed = true
     this.#cancel()
     this.#listeners.clear()

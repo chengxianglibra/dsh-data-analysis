@@ -335,6 +335,7 @@ export function ChartRenderer({
                         fill={entry.color}
                         stroke="var(--pr-bg)"
                         data-chart-point={entry.id}
+                        data-source-row-index={rows[index]?.rowIndex}
                       />
                     ) : (
                       <g />
@@ -511,6 +512,7 @@ export function ChartRenderer({
                 {points.map((row) => (
                   <Cell
                     key={row.rowIndex}
+                    data-source-row-index={row.rowIndex}
                     fill={
                       bindings.color
                         ? CHART_COLORS[
@@ -556,6 +558,11 @@ export function ChartRenderer({
     <>
       <h2>{title}</h2>
       {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
+      {rowIndices && (
+        <p className="pr-muted">
+          当前筛选：已保存 {dataset.data.rows.length} 行中命中 {rowIndices.length} 行
+        </p>
+      )}
       {block.numericMode === 'approximate' && <p className="pr-notice">近似绘图</p>}
       {!rows.length ? (
         <p className="pr-empty">暂无可绘制数据。</p>

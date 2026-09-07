@@ -39,8 +39,9 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'presentation-s4-test-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   const document: PresentationDocument = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceId: 'workspace',
+    reportId: 'report',
     buildId: 'build',
     title: 'Snapshot',
     generatedAt: '2026-09-07T00:00:00Z',
@@ -54,7 +55,11 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     documentBytes: Buffer.from(JSON.stringify(document)),
     htmlBytes: Buffer.from('<!doctype html><p>Readable snapshot</p>'),
   }
-  return { root, built, parent: path.join(root, '.dsh-data-analysis', 'presentations') }
+  return {
+    root,
+    built,
+    parent: path.join(root, '.dsh-data-analysis', 'presentations', 'report', 'builds'),
+  }
 }
 
 test('commit publishes exactly two complete files, preserves old builds and returns exact hashes', async (t) => {
@@ -292,7 +297,7 @@ test('production present accepts computed and source-only drafts, uses independe
     assert(text.includes(file.sha256))
   }
   assert(text.includes('Workspace: workspace'))
-  assert.equal((await readdir(f.parent)).length, 2)
+  assert.equal((await readdir(path.join(f.root, '.dsh-data-analysis', 'presentations'))).length, 2)
   await assert.rejects(tool.execute({ draft_path: '../outside.json' }, exec), /Workspace/)
   const otherSession = {
     ...exec,
@@ -307,11 +312,11 @@ test('production present accepts computed and source-only drafts, uses independe
 test('internal file helpers reject traversal and commit rejects invalid or oversized bytes before creating output', async (t) => {
   const f = await fixture(t)
   assert.throws(
-    () => presentationAssetPath(f.root, '../outside', 'index.html'),
+    () => presentationAssetPath(f.root, 'report', '../outside', 'index.html'),
     /safe build identifier/,
   )
   assert.throws(
-    () => presentationAssetPath(f.root, 'build', '../outside' as 'index.html'),
+    () => presentationAssetPath(f.root, 'report', 'build', '../outside' as 'index.html'),
     /invalid-asset/,
   )
   await assert.rejects(
@@ -409,7 +414,16 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
       tool!.execute({ draft_path: 'draft.json' }, exec),
       failure === 'dispose' ? /abort/i : /presentation-workspace-changed/,
     )
-    assert.deepEqual(await readdir(f.parent), [])
+    const reportRoot = path.join(f.root, '.dsh-data-analysis', 'presentations')
+    const entries = await readdir(reportRoot, { recursive: true }).catch((error) => {
+      if (error.code === 'ENOENT') return []
+      throw error
+    })
+    assert(
+      !entries.some(
+        (entry) => entry.endsWith('current.json') || entry.endsWith('presentation.json'),
+      ),
+    )
     if (failure === 'dispose') assert.equal(unregistered, true)
     dispose()
   }

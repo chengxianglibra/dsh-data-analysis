@@ -231,11 +231,12 @@ test('draft file references reject absolute paths and traversal without inspecti
 })
 
 test('receipt binds two fixed assets to one build and never treats a digest as ownership', () => {
-  const dir = '/validation/workspace/.dsh-data-analysis/presentations/s0-test'
+  const dir = '/validation/workspace/.dsh-data-analysis/presentations/report/builds/s0-test'
   const receipt: PresentationReceipt = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'marivo.presentation',
     workspaceId: 'validation-workspace',
+    reportId: 'report',
     buildId: 's0-test',
     title: 'S0 文件身份',
     summary: '契约测试使用占位 digest；真实字节由 Host 接缝测试验证。',

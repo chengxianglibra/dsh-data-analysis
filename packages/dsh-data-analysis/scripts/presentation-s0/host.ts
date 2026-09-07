@@ -32,7 +32,7 @@ export const S0_TOOL_NAME = 'marivo_present_s0_probe'
 export const S0_DELIVERY_KIND = 'marivo.presentation.delivery'
 export interface S0Delivery {
   kind: typeof S0_DELIVERY_KIND
-  schemaVersion: 1
+  schemaVersion: 2
   dshSessionId: string
   turn: number
   receipt: PresentationReceipt
@@ -83,7 +83,7 @@ export function installS0ReceiptProbe(
         presentationMeta: (_args, value) =>
           wire({
             kind: S0_DELIVERY_KIND,
-            schemaVersion: 1,
+            schemaVersion: 2,
             dshSessionId: value.dshSessionId,
             turn: value.turn,
             receipt: parsePresentationReceipt(JSON.parse(value.receiptJson)),
@@ -101,6 +101,7 @@ export function installS0ReceiptProbe(
           const bytes = await files.read(
             {
               workspaceId: receipt.workspaceId,
+              reportId: 'report',
               buildId: receipt.buildId,
               asset: file.asset,
               sha256: file.sha256,
@@ -122,7 +123,7 @@ export function installS0ReceiptProbe(
     const value = result.value as { receiptJson: string; dshSessionId: string; turn: number }
     pending.set(String(exec.callId), {
       kind: S0_DELIVERY_KIND,
-      schemaVersion: 1,
+      schemaVersion: 2,
       dshSessionId: value.dshSessionId,
       turn: value.turn,
       receipt: parsePresentationReceipt(JSON.parse(value.receiptJson)),
@@ -189,7 +190,7 @@ export function collectS0Deliveries(
     const item = raw as S0Delivery
     if (
       item.kind !== S0_DELIVERY_KIND ||
-      item.schemaVersion !== 1 ||
+      item.schemaVersion !== 2 ||
       item.dshSessionId !== dshSessionId ||
       item.turn !== expectedTurn
     )
@@ -208,7 +209,7 @@ export function collectS0Deliveries(
       seen.add(key)
       result.push({
         kind: S0_DELIVERY_KIND,
-        schemaVersion: 1,
+        schemaVersion: 2,
         dshSessionId,
         turn: item.turn,
         receipt,
