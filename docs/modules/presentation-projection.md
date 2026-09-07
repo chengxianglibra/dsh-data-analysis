@@ -10,7 +10,7 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
 [projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts)和
 [Python writer](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_dataset.py)。
 五项结构、数值编码和预算以 [S0 契约记录](../plan/marivo-analytics-presentation-s0-contracts.md)为准。
-这些是内部展示接口；S3 的[共享 reader 与离线 builder](presentation-reader.md)消费其输出，`marivo_present` 在 S4 注册。
+这些是内部展示接口；S3 的[共享 reader 与离线 builder](presentation-reader.md)消费其输出，S4 的[展示交付](presentation-delivery.md)已注册 `marivo_present`。
 
 ## 数据流程
 

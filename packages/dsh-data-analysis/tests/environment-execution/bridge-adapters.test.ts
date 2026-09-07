@@ -8,7 +8,6 @@ import type {
   MarivoEnvironmentBinding,
   SubprocessResult,
 } from '../../src/environment/index.ts'
-import { MarivoEvidenceBridge } from '../../src/evidence/index.ts'
 
 const binding: MarivoEnvironmentBinding = {
   projectRoot: '/fixture/project',
@@ -122,81 +121,5 @@ test('Datasource bridge rejects missing and additional private projection fields
       new FakeCheckedRunner(result({ name: 'warehouse', ok: true, latency_ms: 1, failure: null })),
     ).test({ name: 'warehouse', refs: [], fields: {}, definition: 'd'.repeat(64) }, {}),
     /unexpected payload shape/,
-  )
-})
-
-test('Evidence bridge owns exact Finding identity and order parsing', async () => {
-  const finding = {
-    status: 'available',
-    title: 'metric_observation Finding: metric|a',
-    locator: 'marivo://session/session-a/artifact/artifact-a/finding/finding-a',
-    excerpt: 'Observed value.',
-    truncated: false,
-    finding_id: 'finding-a',
-    finding_type: 'metric_observation',
-    epistemic_kind: 'observed',
-    artifact_ref: 'artifact-a',
-    session_id: 'session-a',
-    canonical_item_key: 'metric|a',
-    committed_at: '2026-08-30T00:00:00+00:00',
-    source_refs: ['frame-a#row=0'],
-    revalidation: {
-      status: 'admissible',
-      semantic_status: 'current',
-      evidence_status: 'complete',
-      dependency_status: 'admissible',
-    },
-  }
-  const runner = new FakeCheckedRunner(result({ session_id: 'session-a', sources: [finding] }))
-  const bridge = new MarivoEvidenceBridge(runner)
-  const projected = await bridge.findings('session-a', [
-    { artifactRef: 'artifact-a', findingId: 'finding-a' },
-  ])
-  assert.equal(projected[0]?.findingId, 'finding-a')
-  assert.equal(projected[0]?.artifactRef, 'artifact-a')
-  assert.deepEqual(runner.requests[0]?.args, [
-    'session-a',
-    '[{"artifactRef":"artifact-a","findingId":"finding-a"}]',
-  ])
-  assert.match(runner.requests[0]?.program ?? '', /session\.artifact/)
-  assert.match(runner.requests[0]?.program ?? '', /artifact\.finding/)
-  assert.doesNotMatch(runner.requests[0]?.program ?? '', /session\.evidence/)
-})
-
-test('Evidence bridge rejects additional Finding fields and exact-order drift', async () => {
-  const finding = {
-    status: 'available',
-    title: 'metric_observation Finding: metric|a',
-    locator: 'marivo://session/session-a/artifact/artifact-a/finding/finding-b',
-    excerpt: 'Observed value.',
-    truncated: false,
-    finding_id: 'finding-b',
-    finding_type: 'metric_observation',
-    epistemic_kind: 'observed',
-    artifact_ref: 'artifact-a',
-    session_id: 'session-a',
-    canonical_item_key: 'metric|a',
-    committed_at: '2026-08-30T00:00:00+00:00',
-    source_refs: ['frame-a#row=0'],
-    revalidation: {
-      status: 'admissible',
-      semantic_status: 'current',
-      evidence_status: 'complete',
-      dependency_status: 'admissible',
-    },
-  }
-  await assert.rejects(
-    new MarivoEvidenceBridge(
-      new FakeCheckedRunner(
-        result({ session_id: 'session-a', sources: [{ ...finding, extra: true }] }),
-      ),
-    ).findings('session-a', [{ artifactRef: 'artifact-a', findingId: 'finding-b' }]),
-    /invalid Finding payload/,
-  )
-  await assert.rejects(
-    new MarivoEvidenceBridge(
-      new FakeCheckedRunner(result({ session_id: 'session-a', sources: [finding] })),
-    ).findings('session-a', [{ artifactRef: 'artifact-a', findingId: 'finding-a' }]),
-    /invalid Finding payload/,
   )
 })

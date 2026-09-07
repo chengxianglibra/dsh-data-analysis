@@ -10,12 +10,12 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
 - `marivo_python` 的本次执行准入与单次 resolver 凭证注入；
 - 侧栏“数据源与凭证”管理、测试与缺失输入提交后的原调用续接；
-- `marivo_evidence_sources({ session_id, sources })` 的可移植 Artifact-owned Finding 来源交付；
+- `marivo_present({ draft_path })` 的一次文件提交、结果卡片、打开与离线 HTML 下载；
 - `dsh_data_analysis_presentation.write_dataset(frame, path)` 的 computed typed JSON writer；
 - 内部 Artifact/computed/source-only 数据投影，保存精确来源及 unavailable 状态。
 
-当前为展示重构 S3 的未发布开发状态。旧 report-kit、report Skill 与三个经典 JS 资产已删除；
-共享 reader 与离线 builder 已实现，`marivo_present` 与新 presentation Skill 留在 S4/S5 接入。两个 Marivo Runtime Skill 继续挂载。
+当前为展示重构 S4 的未发布开发状态。旧 report-kit、report Skill、经典 JS 与 Evidence 卡协议已删除；
+共享 reader、离线 builder 和 `marivo_present` 已接通，新 presentation Skill 留在 S5。两个 Marivo Runtime Skill 继续挂载。
 
 ## Compatibility
 
@@ -34,10 +34,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 marivo_help({ targets: string[] })
 marivo_datasource_test({ name: string })
 marivo_python({ code: string, datasources: string[] })
-marivo_evidence_sources({
-  session_id: string,
-  sources: Array<{ artifact_ref: string, finding_id: string }>
-})
+marivo_present({ draft_path: string })
 ```
 
 `marivo_datasource_test` 只拥有缺失 Credentials 的 DSH/Web 闭环和显式连接测试；
@@ -66,8 +63,11 @@ null 保留缺失含义，datetime 必须带时区。它不保存来源或转换
 直接 Artifact dataset 缺必要数据会失败，computed 和 source-only 可以保留 unavailable 来源。
 
 S3 共用 reader 展示 Markdown、metric、line/bar、table 和 source，保留精确值、单位、截断与 unavailable 来源。
-内部 builder 返回 JSON/自包含 HTML 字节；文件提交、receipt 和打开/下载由 S4 接通，当前不提供展示 Tool。
+`marivo_present` 读取 Workspace 相对 Draft 路径，生成独立 build 的 JSON/自包含 HTML；
+卡片打开固定快照并下载 HTML。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
+展开来源仅使用保存的快照；文件变化、缺失或 Workspace 归属变化会明确失败。
 实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)
+、[展示交付](../../docs/modules/presentation-delivery.md)
 和[S3 验收记录](../../docs/plan/marivo-analytics-presentation-s3-acceptance.md)。
 
 ## 验证

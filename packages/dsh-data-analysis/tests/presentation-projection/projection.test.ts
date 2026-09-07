@@ -379,3 +379,38 @@ test('reader output must preserve selected Artifact columns and requested row bu
     )
   }
 })
+
+test('source snapshots reject extra fields and preserve multiple declared source order', async (t) => {
+  const extra = success()
+  Object.assign(extra.sources[0]!, { privateDetail: 'private-canary' })
+  const f = await fixture(extra)
+  t.after(f.cleanup)
+  await assert.rejects(f.bridge.project(artifactDraft(), options), (error: unknown) => {
+    assert.ok(error instanceof PresentationContractError)
+    assert.equal(error.code, 'unknown_field')
+    assert.doesNotMatch(JSON.stringify(error), /private-canary/)
+    return true
+  })
+  const second = { ...structuredClone(available), id: 'other' }
+  const g = await fixture({
+    ok: true,
+    sources: [second, available],
+    datasets: [],
+    diagnostics: [],
+  })
+  t.after(g.cleanup)
+  await assert.rejects(
+    g.bridge.project(
+      {
+        schemaVersion: 1,
+        title: 'Ordered sources',
+        sources: [declared, { id: second.id, ref: second.ref }],
+        datasets: [],
+        blocks: [{ id: 'sources', kind: 'source', sourceIds: [declared.id, second.id] }],
+      },
+      options,
+    ),
+    (error: unknown) =>
+      error instanceof MarivoEnvironmentError && error.code === 'subprocess-output-invalid',
+  )
+})

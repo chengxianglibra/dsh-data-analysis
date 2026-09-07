@@ -174,7 +174,6 @@ try {
     'lib/types/datasource/credentials.d.ts',
     'lib/types/disclosure/bridge-program.d.ts',
     'lib/types/environment/summary.d.ts',
-    'lib/types/evidence/bridge-program.d.ts',
   ]
   const required = [
     'lib/datasource/service.js',
@@ -192,12 +191,15 @@ try {
     'lib/types/index.d.ts',
     'lib/compatibility.js',
     'lib/types/compatibility.d.ts',
-    'lib/evidence/index.js',
+    'lib/presentation/index.js',
+    'lib/presentation/tool.js',
+    'lib/presentation/rpc.js',
+    'lib/presentation/receipt.js',
     'lib/semantic-reference/rpc.js',
     'lib/semantic-reference/bridge.js',
     'lib/semantic-reference/contracts.js',
     'lib/semantic-reference/usage.js',
-    'lib/types/evidence/index.d.ts',
+    'lib/types/presentation/index.d.ts',
     'lib/bin/environment.js',
     presentationKitWheelPath,
     'lib/presentation/contracts/index.js',
@@ -212,6 +214,8 @@ try {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
   }
   for (const filename of paths) {
+    if (filename.startsWith('lib/evidence/') || filename.startsWith('lib/types/evidence/'))
+      fail('packed plugin contains removed Evidence protocol ' + filename)
     if (filename.startsWith('skills/') || filename.startsWith('python/report-kit/'))
       fail(`S2 packed plugin contains a removed report Skill or helper ${filename}`)
     if (filename.startsWith('python/') && filename !== presentationKitWheelPath)

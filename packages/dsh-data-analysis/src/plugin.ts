@@ -31,9 +31,11 @@ import {
   resolveMarivoEnvironmentSource,
 } from './environment/index.ts'
 import {
-  installMarivoEvidenceSourcesCodeDelivery,
-  registerMarivoEvidenceSourcesTool,
-} from './evidence/index.ts'
+  installMarivoPresentationCodeDelivery,
+  MarivoPresentationFileService,
+  registerMarivoPresentationRpc,
+  registerMarivoPresentTool,
+} from './presentation/index.ts'
 import { browserFailure, SemanticBrowserService } from './semantic-browser/service.ts'
 import {
   registerSemanticReferenceRpc,
@@ -64,13 +66,6 @@ export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'marivo_python waits for all missing credentials and validates the bound Workspace and datasource identities before taking one fresh snapshot and starting user code once. Configured credentials need no extra connection test. Ordinary Shell receives no datasource secret.',
   'marivo_python installs credential_scope before user code. Create or resume Session/reader objects inside that execution, and close Sessions in finally. Do not replace the resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
   'Configured credentials do not imply a valid connection or query permissions. Preserve real failures; never automatically replay a script with possible side effects.',
-].join(' ')
-
-export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
-  'Call marivo_evidence_sources only when the user explicitly requests sources, citations, provenance, or audit details.',
-  'Request only exact persisted Findings by Marivo Session, Artifact, and Finding identity.',
-  'Treat source existence as identity and availability evidence, not as proof that the whole conclusion, calculation, or business judgment is entailed or correct.',
-  'If no exact Finding exists or its source cannot be recovered, say so instead of inventing or approximating a source.',
 ].join(' ')
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
@@ -158,17 +153,26 @@ export function installMarivoPlugin(
     }
     const helpSource = options.helpBridgeSource ?? (async () => (await resolveBridgeSet()).help)
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
-    const evidenceSource = async () => (await resolveBridgeSet()).evidence
+    const presentationSource = async () => {
+      const workspace = resolvePresentationWorkspace(ctx, String(agent.session.id))
+      const projection = (await resolveBridgeSet()).presentation
+      const current = resolvePresentationWorkspace(ctx, String(agent.session.id))
+      if (
+        workspace.id !== current.id ||
+        workspace.path !== current.path ||
+        projection.binding.projectRoot !== current.path
+      )
+        throw new Error('Presentation Workspace changed or does not match the bound Runtime')
+      return { workspaceId: current.id, projection }
+    }
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     controller.addDisposer(
       registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
     )
     controller.addDisposer(registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService))
     controller.addDisposer(() => credentialService.disposeAgent(agent))
-    controller.addDisposer(
-      registerMarivoEvidenceSourcesTool(agent.ctx, evidenceSource, agent.session),
-    )
-    controller.addDisposer(installMarivoEvidenceSourcesCodeDelivery(agent.ctx))
+    controller.addDisposer(registerMarivoPresentTool(agent.ctx, presentationSource, agent.session))
+    controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
         name: 'marivo:datasource-credentials',
@@ -177,14 +181,6 @@ export function installMarivoPlugin(
           controller.activeSkills.includes('marivo-semantic')
             ? MARIVO_DATASOURCE_CREDENTIAL_PROMPT
             : '',
-      }),
-    )
-    controller.addDisposer(
-      agent.ctx.systemPrompt.section({
-        name: 'marivo:evidence-sources',
-        order: 180,
-        text: () =>
-          controller.activeSkills.includes('marivo-analysis') ? MARIVO_EVIDENCE_SOURCES_PROMPT : '',
       }),
     )
     installed.set(agent, controller)
@@ -219,6 +215,18 @@ export function installMarivoPlugin(
   }
 }
 
+/** Resolve only Harness-owned, header-validated Workspace membership; never infer it from a path. */
+export function resolvePresentationWorkspace(
+  ctx: Context,
+  sessionId: string,
+): { id: string; path: string } {
+  const matches = ctx.workspaceRegistry
+    .list()
+    .filter((workspace) => workspace.sessionIds.some((id) => String(id) === sessionId))
+  if (matches.length !== 1) throw new Error('Presentation requires one current Session Workspace')
+  return { id: String(matches[0]!.id), path: matches[0]!.path }
+}
+
 /** Ensure the shared Runtime once, mount its skills, then bind each Workspace lazily. */
 export async function apply(ctx: Context, config: Config = {}): Promise<() => Promise<void>> {
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
@@ -250,6 +258,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
   )
   let disposeCredentials: (() => Promise<void>) | undefined
   let disposeReferences: (() => Promise<void>) | undefined
+  let disposePresentation: (() => Promise<void>) | undefined
   let referenceService: SemanticReferenceService | undefined
   let disposePlugin: (() => void) | undefined
   const browserService = new SemanticBrowserService({
@@ -285,6 +294,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
         throw new Error('Workspace changed')
       return new MarivoDatasourceBridge(environment)
     })
+    disposePresentation = registerMarivoPresentationRpc(
+      ctx.connection,
+      new MarivoPresentationFileService(async (sessionId) =>
+        resolvePresentationWorkspace(ctx, sessionId),
+      ),
+    )
     let lastDiagnostic = -Infinity
     const usage = new SemanticReferenceUsage(ctx.storageDomain, Date.now, () => {
       if (Date.now() - lastDiagnostic >= 30_000) {
@@ -327,6 +342,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     )
   } catch (error) {
     browserService.dispose()
+    await disposePresentation?.()
     await disposeCredentials?.()
     await credentialService.close()
     await referenceService?.close()
@@ -337,6 +353,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
   }
   return async () => {
     browserService.dispose()
+    await disposePresentation?.()
     await disposeCredentials?.()
     await credentialService.close()
     await disposeReferences?.()

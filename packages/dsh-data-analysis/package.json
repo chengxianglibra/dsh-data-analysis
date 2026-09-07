@@ -1,6 +1,6 @@
 {
   "name": "@chengxianglibra/dsh-data-analysis",
-  "description": "Marivo runtime, live-help, datasource, and on-demand Evidence source integration for DeepSeek Harness",
+  "description": "Marivo runtime, live Help, secure datasource execution and presentation delivery for DeepSeek Harness",
   "version": "0.1.2-dev.0",
   "repository": {
     "type": "git",
@@ -41,10 +41,6 @@
     "./datasource": {
       "types": "./lib/types/datasource/index.d.ts",
       "default": "./lib/datasource/index.js"
-    },
-    "./evidence": {
-      "types": "./lib/types/evidence/index.d.ts",
-      "default": "./lib/evidence/index.js"
     },
     "./compatibility": {
       "types": "./lib/types/compatibility.d.ts",

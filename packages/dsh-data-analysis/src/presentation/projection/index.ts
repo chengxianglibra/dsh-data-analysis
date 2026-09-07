@@ -48,6 +48,10 @@ export class MarivoPresentationProjection {
     this.#runner = runner
   }
 
+  get status() {
+    return this.#runner.status
+  }
+
   get binding() {
     return this.#runner.binding
   }

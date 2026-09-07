@@ -2,7 +2,7 @@
 
 ## 状态与交付目标
 
-状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3 的共享 reader、离线 HTML builder 与真实 Host/portable 验收已完成，见 [S3 验收记录](marivo-analytics-presentation-s3-acceptance.md)。S4–S5 尚未实施；旧 report-kit/Skill/JS 已删除，生产 presentation Tool/Skill/receipt/RPC 尚未接入。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
+状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3 的共享 reader、离线 HTML builder 与真实 Host/portable 验收已完成，见 [S3 验收记录](marivo-analytics-presentation-s3-acceptance.md)。S4 的 present、文件提交、receipt、RPC 和真实 Host/Web 交付已完成，见 [S4 验收记录](marivo-analytics-presentation-s4-acceptance.md)；S5 的新 Skill 与最终 Agent 自动路由尚未实施。旧 report-kit/Skill/JS 与 Evidence 公共协议已删除。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
 
 交付目标固定为 4 个 Tool（`marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_present`）、1 个插件 Skill（`dsh-data-analysis-presentation`）、1 套 reader、一次 present 完成 Web 阅读与离线 HTML。两个 Marivo Runtime Skill 继续挂载，凭据管理保留，computed 仅展示声明来源。
 
@@ -103,6 +103,8 @@
 **检查入口**：`test:presentation-reader` 已加入持续检查；`validate:presentation-reader:real` 使用实际 DSH module loader 验证生产 reader，并验证 portable 数据一致性、交互、断网、无脚本及打印。client 构建白名单、依赖打包规则、资产产出和 package verifier 已同步更新。该阶段没有独立 export Tool，也不生成新的版本管理服务。
 
 ## S4：一个 present 接通 DSH
+
+**状态：已完成。** 新 Tool、两文件提交、统一 receipt、只读 RPC 与打开/下载已接通；245 项持续测试、实际安装包、Native/both/Code/headless 和真实 Web/下载离线验收通过。旧 Evidence 公共协议已删除，新 Skill 与真实 Agent 自动路由留在 S5。见 [S4 验收记录](marivo-analytics-presentation-s4-acceptance.md)。
 
 **代码所有权**：新 `src/presentation/` 下 Tool、构建提交、receipt、RPC；`plugin.ts`、`client.tsx`、`bridges.ts`、`index.ts` 的接线及对应客户端入口。
 

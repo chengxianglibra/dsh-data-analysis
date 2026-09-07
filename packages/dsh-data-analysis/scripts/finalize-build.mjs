@@ -13,7 +13,6 @@ const unreachableOutputs = [
   'lib/types/datasource/credentials.d.ts',
   'lib/types/disclosure/bridge-program.d.ts',
   'lib/types/environment/summary.d.ts',
-  'lib/types/evidence/bridge-program.d.ts',
   'lib/types/client/presentation/portable-entry.d.ts',
 ]
 for (const output of unreachableOutputs) {

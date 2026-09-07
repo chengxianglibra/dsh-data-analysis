@@ -103,7 +103,7 @@ function version(value: Record<string, unknown>, path: string) {
   if (value.schemaVersion !== 1)
     fail(pointer(path, 'schemaVersion'), 'Only schemaVersion 1 is accepted.')
 }
-function buildId(value: unknown, path: string): string {
+export function parsePresentationBuildId(value: unknown, path = '/buildId'): string {
   const result = string(value, path, 80)
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(result)) fail(path, 'Expected a safe build identifier.')
   return result
@@ -453,7 +453,7 @@ export function parsePresentationDocument(value: unknown): PresentationDocument 
     '',
   )
   string(entry.workspaceId, '/workspaceId', 512)
-  buildId(entry.buildId, '/buildId')
+  parsePresentationBuildId(entry.buildId, '/buildId')
   date(entry.generatedAt, '/generatedAt', true)
   array(entry.diagnostics, '/diagnostics', 128).forEach((value, i) => {
     const path = `/diagnostics/${i}`
@@ -480,7 +480,7 @@ export function parsePresentationReceipt(value: unknown): PresentationReceipt {
   version(entry, '')
   if (entry.kind !== 'marivo.presentation') fail('/kind', 'Expected marivo.presentation receipt.')
   string(entry.workspaceId, '/workspaceId', 512)
-  const id = buildId(entry.buildId, '/buildId')
+  const id = parsePresentationBuildId(entry.buildId, '/buildId')
   string(entry.title, '/title', 512)
   string(entry.summary, '/summary', 2048)
   const files = object(entry.files, '/files')

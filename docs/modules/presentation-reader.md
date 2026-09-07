@@ -10,7 +10,7 @@ S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `Presentatio
 [Host entry](../../packages/dsh-data-analysis/src/client/presentation/host-entry.tsx)、
 [portable entry](../../packages/dsh-data-analysis/src/client/presentation/portable-entry.tsx)和
 [内部 builder](../../packages/dsh-data-analysis/src/presentation/build/index.ts)。
-`client` 导出 `HostPresentationReader` 供后续接线；S4 负责 `marivo_present`、receipt、RPC、overlay 打开与下载。
+`client` 导出 `HostPresentationReader`；S4 的[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、overlay 打开与下载。
 
 ## 共同的数据解释
 

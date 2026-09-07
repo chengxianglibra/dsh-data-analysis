@@ -27,7 +27,7 @@ import {
 } from '@deepseek-ai/dsh-skill-filesystem'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { apply, inject } from '../../src/plugin.ts'
+import { apply, inject, resolvePresentationWorkspace } from '../../src/plugin.ts'
 import { installConnectionFixture, installStorage } from '../semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
@@ -262,6 +262,16 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     { cwd: secondRoot },
   )
 
+  for (const agent of [first, second]) {
+    assert.deepEqual(
+      agent.ctx.tools
+        .schemas(agent)
+        .map((tool) => tool.name)
+        .filter((name) => name.startsWith('marivo_'))
+        .sort(),
+      ['marivo_datasource_test', 'marivo_help', 'marivo_present', 'marivo_python'],
+    )
+  }
   const catalog = await ctx.skills.snapshot({ cwd: firstRoot, scope: first })
   assert.equal(
     catalog.skills.find((skill) => skill.name === 'marivo-analysis')?.description,
@@ -314,4 +324,27 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   assert.equal(marker.presentationKitPackagePath, presentationKitPackagePath)
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()
+})
+
+test('presentation binding uses unique Harness Workspace membership without Runtime or path inference', () => {
+  let workspaces = [
+    { id: 'first', path: '/workspace/first', sessionIds: ['session'] },
+    { id: 'second', path: '/workspace/second', sessionIds: [] as string[] },
+  ]
+  const context = { workspaceRegistry: { list: () => workspaces } } as unknown as Context
+  assert.deepEqual(resolvePresentationWorkspace(context, 'session'), {
+    id: 'first',
+    path: '/workspace/first',
+  })
+  workspaces[0]!.sessionIds = []
+  assert.throws(() => resolvePresentationWorkspace(context, 'session'), /current Session Workspace/)
+  workspaces[1]!.sessionIds = ['session']
+  assert.deepEqual(resolvePresentationWorkspace(context, 'session'), {
+    id: 'second',
+    path: '/workspace/second',
+  })
+  workspaces[0]!.sessionIds = ['session']
+  assert.throws(() => resolvePresentationWorkspace(context, 'session'), /current Session Workspace/)
+  workspaces = []
+  assert.throws(() => resolvePresentationWorkspace(context, 'unknown'), /current Session Workspace/)
 })
