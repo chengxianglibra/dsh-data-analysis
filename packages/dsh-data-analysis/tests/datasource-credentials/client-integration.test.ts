@@ -1,609 +1,309 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
-import process from 'node:process'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import vm from 'node:vm'
-import { Context } from '@deepseek-ai/cordis'
-import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
-import {
-  marivoCredentialStorageRef as hostCredentialStorageRef,
-  MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
-  MARIVO_DATASOURCE_TEST_TOOL_NAME,
-  MarivoDatasourceBridge,
-  registerMarivoDatasourceAccessTool,
-  registerMarivoDatasourceTestTool,
-} from '../../src/datasource/index.ts'
-import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
+import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { context, fixture } from './fixtures.ts'
 
-interface ClientExports {
-  marivoCredentialStorageRef(ref: string): string
-  parseNeedsCredentials(text: string): { name: string; refs: string[] } | null
-  shouldAutoOpen(sessionId: string, callId: string, result: unknown): boolean
-  blankCredentialValues(refs: readonly string[]): Record<string, string>
-  CredentialDialogController: new (
-    api: unknown,
-  ) => {
-    describe(refs: readonly string[]): Promise<Record<string, { configured: boolean }>>
-    inspect(refs: readonly string[]): Promise<{
-      configured: Record<string, boolean>
-      missing: string[]
-      shouldOpen: boolean
-    }>
-    save(values: Readonly<Record<string, string>>): Promise<{
-      ok: boolean
-      saved: string[]
-      errors: Record<string, string>
-    }>
-  }
-  MarivoDatasourceTestToolView(props: unknown): unknown
-  MarivoDatasourceAccessToolView(props: unknown): unknown
-}
-
-interface ClientRuntime {
-  react?: unknown
-  jsxRuntime?: unknown
-  primitives?: unknown
-}
-
-async function loadClient(runtime: ClientRuntime = {}): Promise<ClientExports> {
-  const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8')
-  let registration: { factory: (require: (id: string) => unknown) => ClientExports } | undefined
-  const context = {
-    window: {
-      __ModuleLoader__: {
-        load(value: typeof registration) {
-          registration = value
-        },
+test('lost submit response queries the preallocated operation ID; secrets never enter storage or state', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f),
+    calls: string[] = [],
+    storage = new Map<string, string>()
+  let id = ''
+  const model = new CredentialClientModel(
+    {
+      async call(_channel, endpoint, payload) {
+        calls.push(endpoint)
+        if (endpoint === 'overview')
+          return { ok: true, value: { generation: f.service.generation, datasources: [view] } }
+        if (endpoint === 'start') {
+          id = (payload as { id: string }).id
+          throw new Error('response-lost')
+        }
+        if (endpoint === 'operation') {
+          assert.equal((payload as { id: string }).id, id)
+          return {
+            ok: true,
+            value: {
+              id,
+              scope: view.token,
+              action: 'update',
+              status: 'succeeded',
+              phase: 'settled',
+              saved: ['DB_PASSWORD'],
+              errors: [],
+            },
+          }
+        }
+        throw new Error('unexpected endpoint')
       },
     },
-  }
-  vm.runInNewContext(source, context)
-  assert.ok(registration)
-  return registration.factory((id) => {
-    if (id === 'react/jsx-runtime')
-      return runtime.jsxRuntime ?? { Fragment: Symbol('Fragment'), jsx() {}, jsxs() {} }
-    if (id === 'react')
-      return (
-        runtime.react ?? {
-          useCallback: (callback: unknown) => callback,
-          useEffect() {},
-          useMemo: (factory: () => unknown) => factory(),
-          useRef: (initial: unknown) => ({ current: initial }),
-          useState() {},
-        }
-      )
-    if (id === '@deepseek-ai/dsh-client-ui-primitives')
-      return runtime.primitives ?? { Button() {}, Modal() {} }
-    throw new Error(`unexpected client module request: ${id}`)
-  })
-}
-
-interface TestElement {
-  type: unknown
-  props: Record<string, any>
-}
-
-class HookHarness {
-  private readonly states: unknown[] = []
-  private effects: Array<() => unknown> = []
-  private cursor = 0
-
-  readonly react = {
-    useCallback: (callback: unknown) => callback,
-    useEffect: (effect: () => unknown) => {
-      this.effects.push(effect)
+    {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => {
+        assert.doesNotMatch(value, /private-value/)
+        storage.set(key, value)
+      },
+      removeItem: (key) => {
+        storage.delete(key)
+      },
     },
-    useMemo: (factory: () => unknown) => factory(),
-    useRef: (initial: unknown) => {
-      const index = this.cursor++
-      if (index >= this.states.length) this.states[index] = { current: initial }
-      return this.states[index]
-    },
-    useState: (initial: unknown) => {
-      const index = this.cursor++
-      if (index >= this.states.length) this.states[index] = initial
-      const set = (value: unknown) => {
-        this.states[index] =
-          typeof value === 'function'
-            ? (value as (current: unknown) => unknown)(this.states[index])
-            : value
+  )
+  t.after(() => model.dispose())
+  model.show('workspace')
+  await model.selectWorkspace('workspace')
+  await model.start(view, 'update', { DB_PASSWORD: 'private-value' })
+  assert.equal(calls.filter((x) => x === 'start').length, 1)
+  assert.doesNotMatch(JSON.stringify(model.getSnapshot()), /private-value/)
+  assert.equal(storage.size, 0)
+})
+test('unknown generation or operation is reported as unrecoverable, never as an unwritten save', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f)
+  const model = new CredentialClientModel({
+    async call(_channel, endpoint) {
+      return {
+        ok: true,
+        value: endpoint === 'overview' ? { generation: randomUUID(), datasources: [view] } : null,
       }
-      return [this.states[index], set]
     },
-  }
+  })
+  t.after(() => model.dispose())
+  await model.selectWorkspace('workspace')
+  await model.start(view, 'test')
+  assert.match(model.getSnapshot().error, /保存可能已经发生/)
+  assert.equal(model.getSnapshot().operation, undefined)
+})
+test('closing the page or switching Workspace ignores late overview replies', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f)
+  let finish!: (value: unknown) => void
+  const model = new CredentialClientModel({
+    call: async () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  })
+  t.after(() => model.dispose())
+  const pending = model.selectWorkspace('workspace')
+  model.close()
+  finish({ ok: true, value: { generation: randomUUID(), datasources: [view] } })
+  await pending
+  assert.deepEqual(model.getSnapshot().datasources, [])
+})
+test('bundle installs constant management and pending entries, with no historical result form', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const bundle = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8').catch(() =>
+    readFile(new URL('../../lib/client.js', new URL('../', import.meta.url)), 'utf8'),
+  )
+  assert.match(bundle, /marivo-credential-requests/)
+  assert.match(bundle, /marivo-credentials/)
+  assert.doesNotMatch(
+    bundle,
+    /shouldAutoOpen|CredentialDialogController|MarivoDatasourceCredentialToolView/,
+  )
+})
 
-  readonly jsxRuntime = {
-    Fragment: 'Fragment',
-    jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
-    jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
-  }
-
-  render(component: (props: unknown) => unknown, props: unknown): TestElement {
-    this.cursor = 0
-    this.effects = []
-    return component(props) as TestElement
-  }
-
-  flushEffects(): void {
-    const effects = this.effects
-    this.effects = []
-    for (const effect of effects) effect()
-  }
-}
-
-function findElement(
-  root: unknown,
-  predicate: (element: TestElement) => boolean,
-): TestElement | null {
-  if (Array.isArray(root)) {
-    for (const child of root) {
-      const found = findElement(child, predicate)
-      if (found !== null) return found
-    }
-    return null
-  }
-  if (typeof root !== 'object' || root === null) return null
-  const element = root as TestElement
-  if (predicate(element)) return element
-  return findElement(element.props?.children, predicate)
-}
-
-async function settleAsyncState(): Promise<void> {
-  await new Promise<void>((resolve) => setImmediate(resolve))
-}
-
-function credentialResponse(configured: boolean) {
-  return {
-    result: {
-      ok: true,
-      value: {
-        credentials: {
-          [hostCredentialStorageRef('DB_PASSWORD')]: { configured, writable: true },
-        },
+test('late submit A cannot replace operation B or cancel its query after a Workspace switch', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const a = await context(f),
+    b = { ...a, token: randomUUID(), name: 'other' }
+  const storage = new Map<string, string>(),
+    ids = new Map<string, string>()
+  let releaseA!: () => void, finishB!: () => void, queryBSignal: AbortSignal | undefined
+  let queriedB!: () => void
+  const readyB = new Promise<void>((resolve) => {
+    queriedB = resolve
+  })
+  const cancellations: string[] = []
+  const result = (scope: string, status: 'running' | 'succeeded') => ({
+    ok: true,
+    value: {
+      id: ids.get(scope)!,
+      scope,
+      action: 'update',
+      status,
+      phase: status === 'running' ? 'validating' : 'settled',
+      saved: [],
+      errors: [],
+    },
+  })
+  const model = new CredentialClientModel(
+    {
+      async call(_channel, endpoint, value, signal) {
+        const payload = value as { scope: string; id: string; workspaceId: string }
+        if (endpoint === 'overview')
+          return {
+            ok: true,
+            value: {
+              generation: f.service.generation,
+              datasources: [payload.workspaceId === 'A' ? a : b],
+            },
+          }
+        if (endpoint === 'start') {
+          ids.set(payload.scope, payload.id)
+          if (payload.scope === a.token)
+            await new Promise<void>((resolve) => {
+              releaseA = resolve
+            })
+          return result(payload.scope, 'running')
+        }
+        if (endpoint === 'operation') {
+          if (payload.scope === b.token) {
+            queryBSignal = signal
+            queriedB()
+            await new Promise<void>((resolve) => {
+              finishB = resolve
+            })
+          }
+          return result(payload.scope, 'succeeded')
+        }
+        if (endpoint === 'cancel-operation') {
+          cancellations.push(payload.id)
+          return { ok: true, value: {} }
+        }
+        throw new Error('unexpected endpoint')
       },
     },
-  }
-}
-
-function needsCredentialsBlock(callId: string) {
-  return {
-    kind: 'tool-result',
-    callId,
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify({
-          status: 'needs-credentials',
-          name: 'warehouse',
-          refs: ['DB_PASSWORD'],
-        }),
+    {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => {
+        storage.set(key, value)
       },
-    ],
-    isError: false,
-  }
-}
+      removeItem: (key) => {
+        storage.delete(key)
+      },
+    },
+  )
+  t.after(() => model.dispose())
+  await model.selectWorkspace('A')
+  const runA = model.start(a, 'update')
+  await model.selectWorkspace('B')
+  const runB = model.start(b, 'update')
+  await readyB
+  assert.equal(JSON.parse([...storage.values()][0]!).length, 2)
+  releaseA()
+  await runA
+  assert.equal(queryBSignal?.aborted, false)
+  assert.equal(model.getSnapshot().workspaceId, 'B')
+  assert.equal(model.getSnapshot().operation?.id, ids.get(b.token))
+  assert.equal(model.getSnapshot().handle?.id, ids.get(b.token))
+  const handles = JSON.parse([...storage.values()][0]!)
+  assert.deepEqual(
+    handles.map((entry: { handle: { id: string } }) => entry.handle.id),
+    [ids.get(b.token)],
+  )
+  model.selectOperation(ids.get(a.token)!)
+  assert.equal(model.getSnapshot().operation?.id, model.getSnapshot().handle?.id)
+  // The visible B form's cancel action stays bound to B even if A's result is selected.
+  await model.cancelOperation(b.token)
+  assert.deepEqual(cancellations, [ids.get(b.token)])
+  finishB()
+  await runB
+  assert.equal(storage.size, 0)
+})
 
-const FAKE_PYTHON = String.raw`#!/usr/bin/env node
-import { appendFileSync } from 'node:fs'
-import process from 'node:process'
-const args = process.argv.slice(2)
-const script = args[1] ?? ''
-const name = args[5]
-if (script.includes('result = md.test')) {
-  appendFileSync(process.env.RECORD_PATH, JSON.stringify({
-    key: process.env.WEB_API_KEY,
-    persistCredentials: process.env.MARIVO_PERSIST_CREDENTIALS,
-  }) + '\n')
-  process.stdout.write(JSON.stringify({
-    name, ok: true, latency_ms: 3, failure: null, repair: null,
+test('refresh recovers every outstanding operation independently without resending values', async (t) => {
+  const generation = randomUUID()
+  const entries = ['one', 'two'].map((name) => ({
+    name,
+    handle: { generation, id: randomUUID(), scope: randomUUID() },
   }))
-  process.exit(0)
-}
-if (script.includes('md.describe')) {
-  process.stdout.write(JSON.stringify({ name, refs: ['WEB_API_KEY'] }))
-  process.exit(0)
-}
-process.exit(2)
-`
-
-class MapCredentials {
-  readonly values = new Map<string, string>()
-  async resolve(ref: CredentialRef) {
-    const value = this.values.get(ref)
-    return value === undefined ? undefined : { value, source: 'file' }
-  }
-}
-
-const LEASE_TOKEN = 'l'.repeat(43)
-
-function leaseReceipt(refs: readonly string[]) {
-  return {
-    token: LEASE_TOKEN,
-    expires_in_ms: 1_800_000,
-    max_uses: 64,
-    usage: 'bounded-foreground-shell-lease' as const,
-    bash_prelude: [
-      `# dsh-marivo-credential-lease:${LEASE_TOKEN}`,
-      ...refs.flatMap((ref) => {
-        const storageRef = hostCredentialStorageRef(ref)
-        return [`export ${ref}="\${${storageRef}}"`, `unset ${storageRef}`]
-      }),
-      'export MARIVO_PERSIST_CREDENTIALS=0',
-    ].join('\n'),
-    pwsh_prelude: [
-      `# dsh-marivo-credential-lease:${LEASE_TOKEN}`,
-      ...refs.flatMap((ref) => {
-        const storageRef = hostCredentialStorageRef(ref)
-        return [`$env:${ref} = $env:${storageRef}`, `Remove-Item Env:${storageRef}`]
-      }),
-      "$env:MARIVO_PERSIST_CREDENTIALS = '0'",
-    ].join('\n'),
-  }
-}
-
-test('browser and Host credential mappings stay identical for valid and reserved refs', async () => {
-  const client = await loadClient()
-  for (const ref of ['CDN_CH_USER', 'DSH_CDN_CH_PASSWORD', 'Api_Token', '_private']) {
-    assert.equal(client.marivoCredentialStorageRef(ref), hostCredentialStorageRef(ref))
-  }
-  for (const ref of [
-    'NOT-POSIX',
-    'MARIVO_PERSIST_CREDENTIALS',
-    'dsh_data_analysis_python',
-    'DSH_HOME',
-    'dsh_shell',
-    'DSH_SESSION_ID',
-    'dsh_session_jsonl',
-  ]) {
-    assert.throws(() => client.marivoCredentialStorageRef(ref))
-    assert.throws(() => hostCredentialStorageRef(ref))
-  }
-})
-
-test('browser bundle opens once per session, keeps fields blank, saves, then waits for manual retry', async (t) => {
-  const client = await loadClient()
-  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-web-credential-')))
-  t.after(() => rm(root, { recursive: true, force: true }))
-  const executable = path.join(root, 'fixture-python')
-  const recordPath = path.join(root, 'test-calls.jsonl')
-  await writeFile(executable, FAKE_PYTHON)
-  await chmod(executable, 0o755)
-  const policy = new FixedSubprocessPolicy(root, {
-    PATH: process.env.PATH,
-    RECORD_PATH: recordPath,
-  })
-  const environment = new MarivoEnvironment(
+  const storage = new Map([['marivo-credential-operation', JSON.stringify(entries)]])
+  const queries = new Set<string>(),
+    finishes = new Map<string, () => void>()
+  const model = new CredentialClientModel(
     {
-      projectRoot: root,
-      pythonExecutable: executable,
-      marivoVersion: '0.0.web-test',
-      packagePath: path.join(root, 'fake-marivo', '__init__.py'),
-      subprocessPolicyId: policy.id,
-      fingerprint: 'e'.repeat(64),
-    },
-    policy,
-  )
-  const credentials = new MapCredentials()
-  const ctx = new Context()
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
-  const bridge = new MarivoDatasourceBridge(environment)
-  registerMarivoDatasourceTestTool(ctx, bridge, credentials, {
-    revokeShellLease: () => {},
-  })
-  registerMarivoDatasourceAccessTool(ctx, bridge, credentials, {
-    revokeShellLease: () => {},
-    issueShellLease: (_bridge, _name, refs) => leaseReceipt(refs),
-  })
-
-  const first = await ctx.tools.execute({
-    signal: new AbortController().signal,
-    callId: CallId('web-missing'),
-    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
-    arguments: { name: 'warehouse' },
-  })
-  assert.equal(first.isError, false)
-  const text = first.content[0]?.type === 'text' ? first.content[0].text : ''
-  const missing = client.parseNeedsCredentials(text)
-  assert.deepEqual(JSON.parse(JSON.stringify(missing)), {
-    status: 'needs-credentials',
-    name: 'warehouse',
-    refs: ['WEB_API_KEY'],
-  })
-  assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), true)
-  assert.equal(client.shouldAutoOpen('session-a', 'web-missing', missing), false)
-  assert.equal(client.shouldAutoOpen('session-b', 'web-missing', missing), true)
-  assert.deepEqual(JSON.parse(JSON.stringify(client.blankCredentialValues(missing?.refs ?? []))), {
-    WEB_API_KEY: '',
-  })
-  await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
-
-  const sets: Array<{ ref: string; value: string }> = []
-  const controller = new client.CredentialDialogController({
-    credentials: {
-      async describe({ refs }: { refs: string[] }) {
+      async call(_channel, endpoint, payload) {
+        assert.equal(endpoint, 'operation', 'recovery must never resend a mutation')
+        const handle = payload as { id: string; scope: string }
+        queries.add(handle.id)
+        await new Promise<void>((resolve) => {
+          finishes.set(handle.id, resolve)
+        })
         return {
-          result: {
-            ok: true,
-            value: {
-              credentials: Object.fromEntries(refs.map((ref) => [ref, { configured: false }])),
-            },
+          ok: true,
+          value: {
+            id: handle.id,
+            scope: handle.scope,
+            action: 'test',
+            status: 'succeeded',
+            phase: 'settled',
+            saved: [],
+            errors: [],
           },
         }
       },
-      async set(payload: { ref: string; value: string }) {
-        sets.push(payload)
-        credentials.values.set(payload.ref, payload.value)
-        return { result: { ok: true, value: {} } }
+    },
+    {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => {
+        storage.set(key, value)
+      },
+      removeItem: (key) => {
+        storage.delete(key)
       },
     },
-  })
-  assert.deepEqual(JSON.parse(JSON.stringify(await controller.describe(['WEB_API_KEY']))), {
-    WEB_API_KEY: { configured: false },
-  })
+  )
+  t.after(() => model.dispose())
+  model.recover()
   assert.deepEqual(
-    JSON.parse(JSON.stringify(await controller.save({ WEB_API_KEY: 'web-secret' }))),
+    [...queries],
+    entries.map((entry) => entry.handle.id),
+  )
+  assert.equal(model.getSnapshot().operations.length, 2)
+  finishes.get(entries[0]!.handle.id)!()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(JSON.parse([...storage.values()][0]!).length, 1)
+  finishes.get(entries[1]!.handle.id)!()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(storage.size, 0)
+  assert(model.getSnapshot().operations.every((entry) => entry.operation?.status === 'succeeded'))
+})
+
+test('an unrecoverable background operation keeps its own warning without replacing the selected result', async (t) => {
+  const entries = ['selected', 'background'].map((name) => ({
+    name,
+    handle: { generation: randomUUID(), id: randomUUID(), scope: randomUUID() },
+  }))
+  const model = new CredentialClientModel(
     {
-      ok: true,
-      saved: ['WEB_API_KEY'],
-      errors: {},
-    },
-  )
-  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [
-    { ref: hostCredentialStorageRef('WEB_API_KEY'), value: 'web-secret' },
-  ])
-  assert.deepEqual(JSON.parse(JSON.stringify(client.parseNeedsCredentials(text))), {
-    status: 'needs-credentials',
-    name: 'warehouse',
-    refs: ['WEB_API_KEY'],
-  })
-  // Saving never resumes the Tool; the fake Python has still not been called.
-  await assert.rejects(() => stat(recordPath), { code: 'ENOENT' })
-
-  const retried = await ctx.tools.execute({
-    signal: new AbortController().signal,
-    callId: CallId('web-manual-retry'),
-    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
-    arguments: { name: 'warehouse' },
-  })
-  assert.equal(retried.isError, false)
-  const child = JSON.parse((await readFile(recordPath, 'utf8')).trim())
-  assert.deepEqual(child, {
-    key: 'web-secret',
-    persistCredentials: '0',
-  })
-  assert.doesNotMatch(JSON.stringify(retried), /web-secret/)
-
-  const access = await ctx.tools.execute({
-    signal: new AbortController().signal,
-    callId: CallId('web-access'),
-    name: MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
-    arguments: { name: 'warehouse' },
-  })
-  assert.equal(access.isError, false)
-  if (!access.isError) {
-    assert.deepEqual((access.value as any).shell_lease, leaseReceipt(['WEB_API_KEY']))
-  }
-  assert.equal((await readFile(recordPath, 'utf8')).trim().split('\n').length, 1)
-})
-
-test('partial credential writes retain failures and redact entered values', async () => {
-  const client = await loadClient()
-  const calls: string[] = []
-  const controller = new client.CredentialDialogController({
-    credentials: {
-      async set({ ref, value }: { ref: string; value: string }) {
-        calls.push(ref)
-        if (ref === hostCredentialStorageRef('SECOND')) {
-          return { result: { ok: false, error: { message: `rejected ${value}` } } }
-        }
-        return { result: { ok: true, value: {} } }
-      },
-    },
-  })
-  const result = await controller.save({ FIRST: 'first-secret', SECOND: 'second-secret' })
-  assert.deepEqual(calls, [hostCredentialStorageRef('FIRST'), hostCredentialStorageRef('SECOND')])
-  assert.equal(result.ok, false)
-  assert.deepEqual([...result.saved], ['FIRST'])
-  assert.equal(result.errors.SECOND, 'rejected [REDACTED]')
-  assert.doesNotMatch(JSON.stringify(result), /first-secret|second-secret/)
-})
-
-test('replayed needs-credentials result stays closed when every ref is now configured', async () => {
-  const harness = new HookHarness()
-  const client = await loadClient({
-    react: harness.react,
-    jsxRuntime: harness.jsxRuntime,
-    primitives: { Button() {}, Modal() {} },
-  })
-  const props = {
-    sessionId: 'replay-session',
-    callId: 'replay-configured',
-    block: needsCredentialsBlock('replay-configured'),
-    connection: {
-      api: {
-        credentials: {
-          async describe() {
-            return credentialResponse(true)
-          },
-        },
-      },
-    },
-  }
-
-  const initial = harness.render(client.MarivoDatasourceTestToolView, props)
-  assert.equal(
-    findElement(initial, (element) => element.props?.open !== undefined)?.props.open,
-    false,
-  )
-  harness.flushEffects()
-  await settleAsyncState()
-
-  const reconciled = harness.render(client.MarivoDatasourceTestToolView, props)
-  assert.equal(
-    findElement(reconciled, (element) => element.props?.open !== undefined)?.props.open,
-    false,
-  )
-  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_datasource_test/)
-  assert.equal(
-    findElement(reconciled, (element) => element.props?.children === '配置凭证'),
-    null,
-  )
-})
-
-test('access credential view names access in its manual retry prompt', async () => {
-  const harness = new HookHarness()
-  const client = await loadClient({
-    react: harness.react,
-    jsxRuntime: harness.jsxRuntime,
-    primitives: { Button() {}, Modal() {} },
-  })
-  const props = {
-    sessionId: 'access-replay-session',
-    callId: 'access-replay-configured',
-    block: needsCredentialsBlock('access-replay-configured'),
-    connection: {
-      api: {
-        credentials: {
-          async describe() {
-            return credentialResponse(true)
-          },
-        },
-      },
-    },
-  }
-
-  harness.render(client.MarivoDatasourceAccessToolView, props)
-  harness.flushEffects()
-  await settleAsyncState()
-  const reconciled = harness.render(client.MarivoDatasourceAccessToolView, props)
-
-  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_datasource_access/)
-  assert.match(JSON.stringify(reconciled), /Marivo 执行授权/)
-})
-
-test('a stale credential inspection cannot reopen a dialog closed by a newer result', async () => {
-  const harness = new HookHarness()
-  const pending: Array<(value: unknown) => void> = []
-  const client = await loadClient({
-    react: harness.react,
-    jsxRuntime: harness.jsxRuntime,
-    primitives: { Button() {}, Modal() {} },
-  })
-  const props = {
-    sessionId: 'race-session',
-    callId: 'race-call',
-    block: needsCredentialsBlock('race-call'),
-    connection: {
-      api: {
-        credentials: {
-          describe() {
-            return new Promise((resolve) => pending.push(resolve))
-          },
-        },
-      },
-    },
-  }
-
-  const initial = harness.render(client.MarivoDatasourceTestToolView, props)
-  const configure = findElement(initial, (element) => element.props?.children === '配置凭证')
-  assert.ok(configure)
-  harness.flushEffects()
-  configure.props.onClick()
-  assert.equal(pending.length, 2)
-
-  pending[1]?.(credentialResponse(true))
-  await settleAsyncState()
-  pending[0]?.(credentialResponse(false))
-  await settleAsyncState()
-
-  const reconciled = harness.render(client.MarivoDatasourceTestToolView, props)
-  assert.equal(
-    findElement(reconciled, (element) => element.props?.open !== undefined)?.props.open,
-    false,
-  )
-  assert.match(JSON.stringify(reconciled), /凭证已配置，请重试 marivo_datasource_test/)
-})
-
-test('an inspection result from replaced Tool View props cannot update the current dialog', async () => {
-  const harness = new HookHarness()
-  const pending: Array<(value: unknown) => void> = []
-  const client = await loadClient({
-    react: harness.react,
-    jsxRuntime: harness.jsxRuntime,
-    primitives: { Button() {}, Modal() {} },
-  })
-  const connection = {
-    api: {
-      credentials: {
-        describe() {
-          return new Promise((resolve) => pending.push(resolve))
-        },
-      },
-    },
-  }
-  const firstProps = {
-    sessionId: 'identity-session',
-    callId: 'identity-old',
-    block: needsCredentialsBlock('identity-old'),
-    connection,
-  }
-  const currentProps = {
-    sessionId: 'identity-session',
-    callId: 'identity-current',
-    block: needsCredentialsBlock('identity-current'),
-    connection,
-  }
-
-  harness.render(client.MarivoDatasourceTestToolView, firstProps)
-  harness.flushEffects()
-  assert.equal(pending.length, 1)
-
-  harness.render(client.MarivoDatasourceTestToolView, currentProps)
-  pending[0]?.(credentialResponse(false))
-  await settleAsyncState()
-
-  const current = harness.render(client.MarivoDatasourceTestToolView, currentProps)
-  assert.equal(
-    findElement(current, (element) => element.props?.open !== undefined)?.props.open,
-    false,
-  )
-})
-
-test('credential inspection keeps only currently unconfigured refs editable', async () => {
-  const client = await loadClient()
-  const controller = new client.CredentialDialogController({
-    credentials: {
-      async describe() {
+      async call(_channel, endpoint, value) {
+        assert.equal(endpoint, 'operation')
+        const handle = value as { id: string; scope: string }
         return {
-          result: {
-            ok: true,
-            value: {
-              credentials: {
-                [hostCredentialStorageRef('DB_USER')]: { configured: true, writable: true },
-                [hostCredentialStorageRef('DB_PASSWORD')]: {
-                  configured: false,
-                  writable: true,
+          ok: true,
+          value:
+            handle.id === entries[1]!.handle.id
+              ? null
+              : {
+                  ...handle,
+                  action: 'test',
+                  status: 'succeeded',
+                  phase: 'settled',
+                  saved: [],
+                  errors: [],
                 },
-              },
-            },
-          },
         }
       },
     },
-  })
-
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(await controller.inspect(['DB_USER', 'DB_PASSWORD']))),
-    {
-      configured: { DB_USER: true, DB_PASSWORD: false },
-      missing: ['DB_PASSWORD'],
-      shouldOpen: true,
-    },
+    { getItem: () => JSON.stringify(entries), setItem: () => {}, removeItem: () => {} },
   )
+  t.after(() => model.dispose())
+  model.recover()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(model.getSnapshot().operation?.id, entries[0]!.handle.id)
+  assert.equal(model.getSnapshot().error, '')
+  assert.match(
+    model.getSnapshot().operations.find((entry) => entry.handle.id === entries[1]!.handle.id)!
+      .error!,
+    /保存可能已经发生/,
+  )
+  model.selectOperation(entries[1]!.handle.id)
+  assert.match(model.getSnapshot().error, /保存可能已经发生/)
+  assert.equal(model.getSnapshot().operation, undefined)
 })

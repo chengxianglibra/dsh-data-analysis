@@ -88,30 +88,26 @@ test('Help bridge maps non-zero and empty output without exposing subprocess pay
   )
 })
 
-test('Datasource bridge owns describe, inventory, test parsing and credential overlay', async () => {
+test('Datasource bridge owns definition projection and host-only pipe credentials', async () => {
+  const description = {
+    name: 'warehouse',
+    refs: ['DSH_USER'],
+    fields: { user: 'DSH_USER' },
+    definition: 'd'.repeat(64),
+  }
   const runner = new FakeCheckedRunner(
-    result({ name: 'warehouse', refs: ['DSH_USER', 'DSH_USER'] }),
-    result({ datasources: [{ name: 'warehouse', refs: ['DSH_USER'] }] }),
+    result(description),
+    result({ datasources: [description] }),
     result({ name: 'warehouse', ok: true, latency_ms: 12, failure: null, repair: null }),
   )
   const bridge = new MarivoDatasourceBridge(runner)
-  assert.deepEqual(await bridge.describe('warehouse'), {
-    name: 'warehouse',
-    refs: ['DSH_USER'],
-  })
-  assert.deepEqual(await bridge.inventory(), [{ name: 'warehouse', refs: ['DSH_USER'] }])
-  assert.deepEqual(await bridge.test('warehouse', { DSH_USER: 'secret' }), {
-    name: 'warehouse',
-    ok: true,
-    latency_ms: 12,
-    failure: null,
-    repair: null,
-  })
-  assert.deepEqual(
-    runner.requests.map((request) => request.args),
-    [['warehouse'], undefined, ['warehouse']],
-  )
-  assert.deepEqual(runner.requests[2]?.environmentOverlay, { DSH_USER: 'secret' })
+  assert.deepEqual(await bridge.describe('warehouse'), description)
+  assert.deepEqual(await bridge.inventory(), [description])
+  assert.equal((await bridge.test(description, { DSH_USER: 'secret' })).ok, true)
+  assert.equal(runner.requests[2]?.environmentOverlay, undefined)
+  assert.deepEqual(runner.requests[2]?.secretValues, ['secret'])
+  assert.equal(JSON.parse(runner.requests[2]!.stdin!).values.DSH_USER, 'secret')
+  assert.doesNotMatch(JSON.stringify(runner.requests[2]?.args), /secret/)
 })
 
 test('Datasource bridge rejects missing and additional private projection fields', async () => {
@@ -124,7 +120,7 @@ test('Datasource bridge rejects missing and additional private projection fields
   await assert.rejects(
     new MarivoDatasourceBridge(
       new FakeCheckedRunner(result({ name: 'warehouse', ok: true, latency_ms: 1, failure: null })),
-    ).test('warehouse', {}),
+    ).test({ name: 'warehouse', refs: [], fields: {}, definition: 'd'.repeat(64) }, {}),
     /unexpected payload shape/,
   )
 })

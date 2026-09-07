@@ -6,20 +6,20 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
-import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import type {} from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
+import { MarivoDatasourceBridge } from './datasource/bridge.ts'
 import {
   registerMarivoDatasourceAccessTool,
   registerMarivoDatasourceTestTool,
 } from './datasource/index.ts'
-import {
-  MarivoShellCredentialLeases,
-  registerMarivoRuntimeShellEnvironment,
-} from './datasource/shell-env.ts'
+import { registerMarivoPythonTool } from './datasource/python.ts'
+import { registerCredentialRpc } from './datasource/rpc.ts'
+import { type CredentialStore, MarivoCredentialService } from './datasource/service.ts'
+import { registerMarivoRuntimeShellEnvironment } from './datasource/shell-env.ts'
 import { MarivoHelpBridge, type MarivoHelpBridgeSource } from './disclosure/bridge.ts'
 import {
   installMarivoDisclosure,
@@ -63,14 +63,12 @@ export const inject = [
 ]
 
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
-  'When marivo-semantic is active, every Marivo datasource *_env field must reference a valid POSIX environment name outside the reserved MARIVO_* and DSH_DATA_ANALYSIS_* namespaces and Host-owned DSH shell facts.',
-  'Never ask the user to provide credential values in chat, and never place credential values in commands or project files.',
-  'Immediately after md.register(...) or a manual datasource-file change, call marivo_datasource_test with that datasource name.',
-  'If marivo_datasource_test returns needs-credentials, wait for the user to save the Web credential form, then retry marivo_datasource_test before continuing.',
-  'Before datasource-backed analysis, call marivo_datasource_access once and reuse its exact bash_prelude or pwsh_prelude before each foreground analysis command until the bounded lease expires or is exhausted. The first # dsh-marivo-credential-lease: line is a required control marker; never remove or move it.',
-  'Do not call marivo_datasource_test before each analysis script. Renew access with marivo_datasource_access; run another connection test only after datasource changes, credential rotation, a connection failure, or an explicit user request.',
-  'Never use a lease with background or persistent Shell execution. Each admitted Shell consumes one use even if later credential resolution fails.',
-  'If a datasource credential environment variable is missing, reacquire access and retry with the exact prelude in a foreground Shell. Never inspect or read DSH credential files, credential backups, or ~/.marivo/secrets.toml.',
+  'DSH Credentials owns Marivo datasource secrets. Never request values in chat, read credential files or ~/.marivo/secrets.toml, or write secrets to scripts, arguments, environment variables, reports or logs.',
+  'Use marivo_datasource_test after datasource changes, credential rotation, connection failures, or explicit user requests. Missing credentials wait for the Web form only while the original call remains alive.',
+  'Before datasource-backed work, acquire marivo_datasource_access for each datasource, then execute analysis, metadata inspection and semantic data reads through marivo_python with all required datasource names.',
+  'Access lasts up to 30 minutes and 64 foreground Python executions. Renew access when required; do not test before every script. Ordinary Shell receives no datasource secret and old Shell lease preludes are unsupported.',
+  'marivo_python installs credential_scope before user code. Create or resume Session/reader objects inside that execution, and close Sessions in finally. Do not replace the resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
+  'Configured credentials do not imply a valid connection or query permissions. Preserve real failures; never automatically replay a script with possible side effects.',
 ].join(' ')
 
 export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
@@ -94,6 +92,8 @@ const integrationSkillsRoot = path.resolve(
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
+  readonly credentialInteraction?: 'web' | 'none'
+
   /** Explicit project root override; otherwise each Agent uses session.header.cwd. */
   readonly projectRoot?: string
   /** Administrator-provided shared interpreter; must already contain an importable Marivo. */
@@ -108,6 +108,7 @@ export interface Config {
 
 /** Cordis loader schema. Runtime defaults are resolved in {@link apply}. */
 export const Config: z<Config> = z.object({
+  credentialInteraction: z.union(['web', 'none']).default('web'),
   projectRoot: z.string(),
   pythonExecutable: z.string(),
   runtimeRoot: z.string(),
@@ -138,7 +139,9 @@ export function installMarivoPlugin(
   environmentOrResolver: MarivoEnvironment | MarivoPluginEnvironmentResolver,
   options: MarivoDisclosureOptions & {
     /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
-    credentials?: Pick<CredentialProvider, 'resolve'>
+    credentials?: CredentialStore
+    credentialService?: MarivoCredentialService
+    credentialInteraction?: 'web' | 'none'
     /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
     helpBridgeSource?: MarivoHelpBridgeSource
   } = {},
@@ -148,7 +151,12 @@ export function installMarivoPlugin(
   if (credentials === undefined) {
     throw new Error('dsh-data-analysis requires the DSH credentials service')
   }
-  const shellCredentials = new MarivoShellCredentialLeases(ctx, credentials)
+  const credentialService =
+    options.credentialService ??
+    new MarivoCredentialService(credentials, options.credentialInteraction)
+  const stopCredentialUpdates = ctx.on('credentials/reference-updated', (ref) =>
+    credentialService.invalidateStorageRef(ref),
+  )
   const bridgeSets = new WeakMap<MarivoEnvironment, MarivoBridgeSet>()
   const install = (agent: Agent): void => {
     if (installed.has(agent)) return
@@ -169,21 +177,14 @@ export function installMarivoPlugin(
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
     const evidenceSource = async () => (await resolveBridgeSet()).evidence
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
-    controller.addDisposer(shellCredentials.installAgent(agent, datasourceSource))
     controller.addDisposer(
-      registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentials, {
-        revokeShellLease: (bridge, datasourceName) =>
-          shellCredentials.revokeLease(agent, bridge, datasourceName),
-      }),
+      registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
     )
     controller.addDisposer(
-      registerMarivoDatasourceAccessTool(agent.ctx, datasourceSource, credentials, {
-        revokeShellLease: (bridge, datasourceName) =>
-          shellCredentials.revokeLease(agent, bridge, datasourceName),
-        issueShellLease: (bridge, datasourceName, refs) =>
-          shellCredentials.issueLease(agent, bridge, datasourceName, refs),
-      }),
+      registerMarivoDatasourceAccessTool(agent.ctx, datasourceSource, credentialService),
     )
+    controller.addDisposer(registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService))
+    controller.addDisposer(() => credentialService.disposeAgent(agent))
     controller.addDisposer(
       registerMarivoEvidenceSourcesTool(agent.ctx, evidenceSource, agent.session),
     )
@@ -221,7 +222,8 @@ export function installMarivoPlugin(
     for (const agent of ctx.agents.list()) install(agent)
   } catch (error: unknown) {
     for (const controller of installed.values()) controller.dispose()
-    shellCredentials.dispose()
+    stopCredentialUpdates()
+    void credentialService.close()
     throw error
   }
 
@@ -238,9 +240,10 @@ export function installMarivoPlugin(
     active = false
     stopCreated()
     stopDisposed()
+    stopCredentialUpdates()
     for (const controller of installed.values()) controller.dispose()
     installed.clear()
-    shellCredentials.dispose()
+    void credentialService.close()
   }
 }
 
@@ -269,6 +272,11 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     bindings.set(agent, { root, environment })
     return environment
   }
+  const credentialService = new MarivoCredentialService(
+    ctx.credentials,
+    config.credentialInteraction,
+  )
+  let disposeCredentials: (() => Promise<void>) | undefined
   let disposeReferences: (() => Promise<void>) | undefined
   let referenceService: SemanticReferenceService | undefined
   let disposePlugin: (() => void) | undefined
@@ -286,7 +294,25 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))
-    disposePlugin = installMarivoPlugin(ctx, resolveEnvironment, { helpBridgeSource: helpBridge })
+    disposePlugin = installMarivoPlugin(ctx, resolveEnvironment, {
+      helpBridgeSource: helpBridge,
+      credentialService,
+    })
+    disposeCredentials = registerCredentialRpc(ctx.connection, credentialService, async (id) => {
+      const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
+      if (!workspace) throw new Error('Workspace unavailable')
+      const root =
+        config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? workspace.path
+      const environment = await manager.resolve(root)
+      const current = ctx.workspaceRegistry.get(WorkspaceId(id))
+      if (
+        !current ||
+        current.path !== workspace.path ||
+        (config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? current.path) !== root
+      )
+        throw new Error('Workspace changed')
+      return new MarivoDatasourceBridge(environment)
+    })
     let lastDiagnostic = -Infinity
     const usage = new SemanticReferenceUsage(ctx.storageDomain, Date.now, () => {
       if (Date.now() - lastDiagnostic >= 30_000) {
@@ -329,6 +355,8 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     )
   } catch (error) {
     browserService.dispose()
+    await disposeCredentials?.()
+    await credentialService.close()
     await referenceService?.close()
     disposePlugin?.()
     manager.dispose()
@@ -337,6 +365,8 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
   }
   return async () => {
     browserService.dispose()
+    await disposeCredentials?.()
+    await credentialService.close()
     await disposeReferences?.()
     disposePlugin?.()
     manager.dispose()

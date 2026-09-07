@@ -55,7 +55,7 @@ doctor 即使以非零 exit code 返回，只要 stdout 是完整报告，仍按
 - 无论基础环境和 overlay 如何设置，都强制 `MARIVO_PERSIST_CREDENTIALS=0`；
 - 每次调用都有正整数 timeout、stdout/stderr byte 上限和终止 grace period；
 - abort、timeout 或输出越界会终止整个 POSIX process group；Windows 使用 `taskkill /t /f`；
-- stdin 关闭，stdout/stderr 只在上限内收集并返回。
+- stdin 支持 Host 提供的单次管道输入，写入后关闭；stdout/stderr 只在上限内收集并返回。
 
 该策略降低 shell 注入、失控子进程和意外凭证持久化风险，但不是通用 OS sandbox，也不限制任意
 Agent 自己发起的 shell/Python 调用。
@@ -86,10 +86,10 @@ Datasource 连接失败不会污染 binding。
 | 方法 | 作用 | 附加约束 |
 | --- | --- | --- |
 | `assertImportIdentity()` | 仅 identity probe | mismatch 永久失败 |
-| `runChecked(request)` | 执行一个 adapter 提供的 Python program | identity prelude、direct argv、资源 limits、abort、overlay 脱敏 |
+| `runChecked(request)` | 执行一个 adapter 提供的 Python program | identity prelude、direct argv、资源 limits、abort、overlay 与显式 secretValues 脱敏 |
 
 `runChecked()` 不解释领域退出码或 JSON，只保留 identity exit `78`。普通非零退出返回 adapter；adapter
-决定是业务结果、领域错误还是 fail-open。所有非空 overlay value 都会从 stdout/stderr 文本和 JSON
+决定是业务结果、领域错误还是 fail-open。所有非空 overlay value 和显式 `secretValues` 都会从 stdout/stderr 文本和 JSON
 递归替换，Datasource adapter 仍保留领域内的第二次结果脱敏。
 
 ## 领域 Bridge 所有权
@@ -129,3 +129,9 @@ timeout/cancel、输出上限、进程树终止、环境冻结、overlay 脱敏�
 
 `npm run test:environment-execution` 执行确定性测试；`npm run validate:environment-execution:real` 绑定
 真实 Marivo 安装，验证 doctor admission、import identity 和同进程 shadow 后的 fail-closed 状态。
+
+## 受控 Python 执行
+
+`marivo_python` 的用户代码经 DSH Shell 服务执行，并绑定当前 session 的 sandbox policy；不使用固定
+bridge runner 绕过 Host 执行边界。独立 launcher 捕获并脱敏输出后才交回 Shell，worker 在复核解释器、
+package 和 cwd 后建立公开 credential scope。实现与限制见 [凭证模块](datasource-credentials.md)。

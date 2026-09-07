@@ -59,7 +59,7 @@ export interface MarivoDatasourceFailure extends JsonObject {
 
 export interface MarivoDatasourceRepair extends JsonObject {
   kind: string
-  help_target: string
+  help_target: { surface: string; canonical_id: string | null }
   action: string
   snippet: string | null
   candidates: string[]
@@ -69,6 +69,8 @@ export interface MarivoDatasourceRepair extends JsonObject {
 export interface MarivoDatasourceDescription {
   name: string
   refs: string[]
+  fields: Record<string, string>
+  definition: string
 }
 
 export interface MarivoDatasourceTestResult {
@@ -84,8 +86,8 @@ export interface MarivoDatasourceBridgePort {
   describe(name: string, signal?: AbortSignal): Promise<MarivoDatasourceDescription>
   inventory(signal?: AbortSignal): Promise<MarivoDatasourceDescription[]>
   test(
-    name: string,
-    environmentOverlay: Readonly<NodeJS.ProcessEnv>,
+    description: Readonly<MarivoDatasourceDescription>,
+    values: Readonly<Record<string, string>>,
     signal?: AbortSignal,
   ): Promise<MarivoDatasourceTestResult>
 }
@@ -127,9 +129,14 @@ function parseDescription(
       { phase },
     )
   }
-  exactKeys(source, ['name', 'refs'], phase)
+  exactKeys(source, ['name', 'refs', 'fields', 'definition'], phase)
   const name = string(source.name)
-  if (name === undefined || !Array.isArray(source.refs)) {
+  if (
+    name === undefined ||
+    name.length > 256 ||
+    !Array.isArray(source.refs) ||
+    source.refs.length > 128
+  ) {
     throw new MarivoEnvironmentError(
       'subprocess-output-invalid',
       `Marivo datasource ${phase} returned invalid fields`,
@@ -139,7 +146,7 @@ function parseDescription(
   const refs: string[] = []
   const seen = new Set<string>()
   for (const ref of source.refs) {
-    if (typeof ref !== 'string' || !isCredentialRefName(ref)) {
+    if (typeof ref !== 'string' || ref.length > 256 || !isCredentialRefName(ref)) {
       throw new MarivoEnvironmentError(
         'subprocess-output-invalid',
         `Marivo datasource ${phase} returned an invalid credential reference`,
@@ -151,7 +158,16 @@ function parseDescription(
       refs.push(ref)
     }
   }
-  return { name, refs }
+  const fields = object(source.fields)
+  if (
+    !fields ||
+    typeof source.definition !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(source.definition) ||
+    Object.values(fields).some((ref) => typeof ref !== 'string' || !refs.includes(ref)) ||
+    refs.some((ref) => !Object.values(fields).includes(ref))
+  )
+    throw new Error('Invalid datasource definition projection')
+  return { name, refs, fields: fields as Record<string, string>, definition: source.definition }
 }
 
 function parseInventory(stdout: Buffer): MarivoDatasourceDescription[] {
@@ -193,7 +209,9 @@ function parseRepair(value: unknown): MarivoDatasourceRepair {
   )
   if (
     string(source.kind) === undefined ||
-    string(source.help_target) === undefined ||
+    object(source.help_target) === undefined ||
+    string(object(source.help_target)?.surface) === undefined ||
+    !nullableString(object(source.help_target)?.canonical_id) ||
     typeof source.action !== 'string' ||
     !nullableString(source.snippet) ||
     !Array.isArray(source.candidates) ||
@@ -310,22 +328,25 @@ export class MarivoDatasourceBridge {
   }
 
   async test(
-    name: string,
-    environmentOverlay: Readonly<NodeJS.ProcessEnv>,
+    description: Readonly<MarivoDatasourceDescription>,
+    values: Readonly<Record<string, string>>,
     signal?: AbortSignal,
   ): Promise<MarivoDatasourceTestResult> {
+    const { name } = description
     const result = await this.#runner.runChecked({
       program: MARIVO_DATASOURCE_TEST_PROGRAM,
       args: [name],
-      environmentOverlay,
+      stdin: JSON.stringify({
+        project_root: this.binding.projectRoot,
+        grants: { [name]: description },
+        values,
+      }),
+      secretValues: Object.values(values),
       limits: DATASOURCE_LIMITS,
       signal,
     })
     this.#assertSuccess(result, 'test')
-    return parseTest(
-      result.stdout,
-      Object.values(environmentOverlay).filter((value): value is string => Boolean(value)),
-    )
+    return parseTest(result.stdout, Object.values(values))
   }
 
   #assertSuccess(

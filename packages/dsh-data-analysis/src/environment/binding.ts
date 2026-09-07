@@ -56,11 +56,12 @@ print(_dsh_json.dumps(_dsh_actual, sort_keys=True))
 function redactSubprocessOutput(
   result: Awaited<ReturnType<FixedSubprocessPolicy['run']>>,
   environmentOverlay: Readonly<NodeJS.ProcessEnv> | undefined,
+  secretValues: readonly string[] = [],
 ) {
-  if (environmentOverlay === undefined) return result
+  if (environmentOverlay === undefined && secretValues.length === 0) return result
   // These exact process controls carry no credential material. Redacting '1' would
   // corrupt public schema IDs such as marivo.semantic_ref/v1.
-  const secrets = Object.entries(environmentOverlay)
+  const secrets = Object.entries(environmentOverlay ?? {})
     .filter(
       ([key, value]) =>
         !(
@@ -70,6 +71,8 @@ function redactSubprocessOutput(
     )
     .map(([, value]) => value)
     .filter((value): value is string => value !== undefined && value !== '')
+  secrets.push(...secretValues.filter(Boolean))
+  secrets.sort((a, b) => b.length - a.length)
   const redactText = (source: string): string => {
     let text = source
     for (const secret of secrets) text = text.split(secret).join('[REDACTED]')
@@ -232,10 +235,15 @@ export class MarivoEnvironment {
       ...(request.environmentOverlay === undefined
         ? {}
         : { environmentOverlay: request.environmentOverlay }),
+      ...(request.stdin === undefined ? {} : { stdin: request.stdin }),
       ...(request.limits === undefined ? {} : { limits: request.limits }),
       ...(request.signal === undefined ? {} : { signal: request.signal }),
     })
-    const result = redactSubprocessOutput(rawResult, request.environmentOverlay)
+    const result = redactSubprocessOutput(
+      rawResult,
+      request.environmentOverlay,
+      request.secretValues,
+    )
     if (result.exitCode === 78) {
       this.#failed = true
       throw new MarivoEnvironmentError(

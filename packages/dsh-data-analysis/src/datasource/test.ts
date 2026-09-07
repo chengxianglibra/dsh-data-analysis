@@ -1,116 +1,58 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import {
-  type MarivoDatasourceBridgePort,
-  type MarivoDatasourceBridgeSource,
-  type MarivoDatasourceFailure,
-  type MarivoDatasourceRepair,
-  resolveMarivoDatasourceBridge,
-} from './bridge.ts'
-import { inspectMarivoDatasourceCredentials } from './credentials.ts'
+import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
+import type { MarivoCredentialService } from './service.ts'
 
 export const MARIVO_DATASOURCE_TEST_TOOL_NAME = 'marivo_datasource_test'
-
-interface JsonObject {
-  [key: string]: JsonValue
-}
-
-export type MarivoDatasourceTestValue =
-  | ({ status: 'needs-credentials'; name: string; refs: string[] } & JsonObject)
-  | ({ status: 'ok'; name: string; latency_ms: number | null } & JsonObject)
-  | ({
-      status: 'failed'
-      name: string
-      latency_ms: number | null
-      failure: MarivoDatasourceFailure
-      repair: MarivoDatasourceRepair
-    } & JsonObject)
-
-export interface MarivoDatasourceTestOptions {
-  /** Explicit validation invalidates prior access for this Agent and datasource. */
-  revokeShellLease(bridge: MarivoDatasourceBridgePort, name: string): void
-}
-
-function datasourceName(value: unknown): string {
-  if (typeof value !== 'string' || value.trim() === '' || value.length > 256) {
-    throw new TypeError(
-      'marivo_datasource_test name must be a non-empty string of at most 256 characters',
-    )
-  }
-  return value
-}
-
-function renderValue(value: MarivoDatasourceTestValue): string {
-  if (value.status === 'needs-credentials') return JSON.stringify(value)
-  if (value.status === 'ok') {
-    return `Marivo datasource ${value.name} connection test succeeded${value.latency_ms === null ? '' : ` in ${value.latency_ms} ms`}.`
-  }
-  return JSON.stringify(value)
-}
-
-/** Build the scoped datasource connection-test Tool. */
 export function createMarivoDatasourceTestTool(
-  bridgeSource: MarivoDatasourceBridgeSource,
-  credentials: Pick<CredentialProvider, 'resolve'>,
-  options: MarivoDatasourceTestOptions,
+  source: MarivoDatasourceBridgeSource,
+  service: MarivoCredentialService,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     description:
-      'Test one configured Marivo datasource connection. Missing datasource environment references are requested through the DSH credential service.',
+      'Test a Marivo datasource through Host credentials. Missing credentials wait for the Web form while this call remains alive; configured connection failures return directly.',
     parameters: {
-      name: {
-        type: 'string',
-        required: true,
-        description: 'Configured Marivo datasource name.',
-      },
+      name: { type: 'string', required: true, description: 'Configured datasource name.' },
     },
     output: {
       schema: { type: 'json' },
-      render: (_args, value) => [
-        { type: 'text', text: renderValue(value as MarivoDatasourceTestValue) },
-      ],
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
-    timeoutMs: 65_000,
-    async execute(args, exec): Promise<MarivoDatasourceTestValue> {
-      const name = datasourceName(args.name)
-      const bridge = await resolveMarivoDatasourceBridge(bridgeSource)
-      options.revokeShellLease(bridge, name)
-      const described = await bridge.describe(name, exec.signal)
-      const overlay: NodeJS.ProcessEnv = {}
-      const missing = await inspectMarivoDatasourceCredentials(
-        described.refs,
-        credentials,
-        exec.signal,
-        (ref, value) => {
-          overlay[ref] = value
-        },
+    async execute(args, exec) {
+      if (!args.name.trim() || args.name.length > 256) throw new Error('Invalid datasource name')
+      return datasourceToolValue(
+        await service.track(
+          service.prepare('test', exec, () => resolveMarivoDatasourceBridge(source), args.name),
+        ),
       )
-      if (missing.length > 0)
-        return { status: 'needs-credentials', name: described.name, refs: missing }
-
-      const tested = await bridge.test(name, overlay, exec.signal)
-      if (tested.ok) {
-        return { status: 'ok', name: tested.name, latency_ms: tested.latency_ms }
-      }
-      return {
-        status: 'failed',
-        name: tested.name,
-        latency_ms: tested.latency_ms,
-        failure: tested.failure as MarivoDatasourceFailure,
-        repair: tested.repair as MarivoDatasourceRepair,
-      }
     },
   })
 }
-
 export function registerMarivoDatasourceTestTool(
   ctx: Context,
-  bridgeSource: MarivoDatasourceBridgeSource,
-  credentials: Pick<CredentialProvider, 'resolve'>,
-  options: MarivoDatasourceTestOptions,
+  source: MarivoDatasourceBridgeSource,
+  service: MarivoCredentialService,
 ): () => void {
-  return ctx.tools.register(createMarivoDatasourceTestTool(bridgeSource, credentials, options))
+  return ctx.tools.register(createMarivoDatasourceTestTool(source, service))
+}
+
+/** Preserve the datasource tools' public status family; raw Marivo results stay inside the service. */
+export function datasourceToolValue(
+  result: Awaited<ReturnType<MarivoCredentialService['prepare']>>,
+) {
+  if (!('ok' in result)) return JSON.parse(JSON.stringify(result))
+  return JSON.parse(
+    JSON.stringify(
+      result.ok
+        ? { status: 'ok', name: result.name, latency_ms: result.latency_ms }
+        : {
+            status: 'failed',
+            name: result.name,
+            latency_ms: result.latency_ms,
+            failure: result.failure,
+            repair: result.repair,
+          },
+    ),
+  )
 }

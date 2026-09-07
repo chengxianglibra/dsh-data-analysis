@@ -232,6 +232,11 @@ try {
     'lib/types/evidence/bridge-program.d.ts',
   ]
   const required = [
+    'lib/datasource/service.js',
+    'lib/datasource/python.js',
+    'lib/datasource/resolver-program.js',
+    'lib/datasource/rpc.js',
+    'python/marivo/source.json',
     'lib/semantic-browser/service.js',
     'lib/semantic-browser/program.js',
     'lib/semantic-browser/contracts.js',
@@ -340,6 +345,14 @@ try {
   )
   if (createHash('sha256').update(wheelData).digest('hex') !== bundledMarivo.wheelSha256)
     fail('packed Marivo wheel checksum mismatch')
+  const marivoSource = readJson(path.join(installedPlugin, 'python/marivo/source.json'))
+  if (
+    marivoSource.sha256 !== bundledMarivo.wheelSha256 ||
+    marivoSource.wheel !== bundledMarivo.wheelFilename ||
+    marivoSource.version !== bundledMarivo.version ||
+    !/^[a-f0-9]{40}$/.test(marivoSource.sourceCommit ?? '')
+  )
+    fail('packed Marivo source record does not match its wheel')
   const smokeProgram = `
     const root = await import('@chengxianglibra/dsh-data-analysis')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')

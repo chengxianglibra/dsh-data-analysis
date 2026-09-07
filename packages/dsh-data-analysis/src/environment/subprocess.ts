@@ -95,7 +95,7 @@ export class FixedSubprocessPolicy {
           shell: false,
           windowsHide: true,
           detached: process.platform !== 'win32',
-          stdio: ['ignore', 'pipe', 'pipe'],
+          stdio: ['pipe', 'pipe', 'pipe'],
         })
       let child: ReturnType<typeof spawnChild>
       try {
@@ -113,6 +113,10 @@ export class FixedSubprocessPolicy {
         )
         return
       }
+
+      // A child may reject its input before all bytes are written. Do not log payloads.
+      child.stdin.on('error', () => {})
+      child.stdin.end(request.stdin)
 
       const stdout: Buffer[] = []
       const stderr: Buffer[] = []
@@ -170,6 +174,7 @@ export class FixedSubprocessPolicy {
           new MarivoEnvironmentError('subprocess-cancelled', 'Marivo subprocess was cancelled'),
         )
       request.signal?.addEventListener('abort', onAbort, { once: true })
+      if (request.signal?.aborted) onAbort()
 
       child.stdout.on('data', (chunk: Buffer) => {
         stdoutBytes += chunk.byteLength

@@ -30,7 +30,7 @@ flowchart LR
 | Runtime/Workspace | 精确安装、marker、zero-init binding identity | Marivo 项目语义、Session 数据与按需写入 |
 | Environment | checked runner、受限 argv、资源上限、overlay 脱敏 | Artifact/Evidence/Graph schema |
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
-| Datasource | DSH Credentials 缺失收集、connection test、Shell env 注入 | table/source inspection 语义 |
+| Datasource | DSH Credentials 管理、调用续接、connection test、resolver 注入 | table/source inspection 语义 |
 | Evidence delivery | 精确 Artifact/Finding 到 Turn/Web 的忠实投影 | 分析读取、Finding 组合、蕴含判断 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
@@ -98,18 +98,16 @@ Agent 直接使用 Marivo：
 
 ## Datasource 与 Credentials
 
-`marivo_datasource_test({ name })` 接受配置中的任意合法 POSIX 环境变量引用，拒绝 `MARIVO_*`、
-`DSH_DATA_ANALYSIS_*`，以及 `DSH_HOME`、`DSH_SHELL`、`DSH_SESSION_ID`、`DSH_SESSION_JSONL` 等 Host
-Shell facts，并把每个原始引用确定性映射到插件专属 DSH Credentials 地址。resolve 只
-访问映射地址；传给 `md.test()` 的单次环境 overlay 仍使用原始名称，因此同名 Host credential 不会成为隐式
-回退。
+DSH Credentials 是凭证值权威，Marivo 的公开 description 与 resolver 是字段和使用契约。插件把原始引用
+映射到专属 DSH 地址，通过 stdin snapshot 和 `md.credential_scope` 注入；普通 Shell 不获得凭证值。
 
-`marivo_datasource_test` 是健康检查：凭证齐全时只给 `md.test()` 注入单次 overlay，任何 test 开始都会撤销
-同作用域旧 lease，结果不携带执行权限。`marivo_datasource_access` 是执行授权：不调用连接测试，只签发最长
-30 分钟、最多 64 次 foreground Shell 的 lease。返回的 `bash_prelude` / `pwsh_prelude` 以精确 lease marker
-开头，把映射变量复制到原始名称后清除内部变量，并固定 `MARIVO_PERSIST_CREDENTIALS=0`。每次 claim 在异步
-fresh-resolve 前原子扣减一次；普通、过期、耗尽、错 Agent/Workspace、background 或 persistent Shell 均不
-获得 secret，Host `process.env` 不被修改。
+`marivo_datasource_test` 执行连接测试；`marivo_datasource_access` 发放最长 30 分钟、最多 64 次的内部
+执行授权；`marivo_python` 通过 DSH Shell 前台执行服务校验授权并 fresh-resolve。凭证不进入 Agent
+参数、环境或 argv。输出在 Host spill 前执行 exact-value 脱敏。
+
+常驻“数据源与凭证”管理页支持配置、替换、删除和测试。缺失配置时，Web 根 Agent 的原调用保持等待；
+提交验证成功后继续，失败可修正或交还 Agent。刷新、丢失响应、取消和定义变更由 Host 操作状态处理，
+不依赖历史 Tool Result 自动弹窗。详见 [Datasource Credentials](modules/datasource-credentials.md)。
 
 Source metadata inspection 由 Agent 直接调用 `md.inspect(...)`；connection test 不是 inspection 的前置。
 

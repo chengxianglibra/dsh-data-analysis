@@ -299,7 +299,7 @@ test('panel is collapsed, groups by Artifact identity, and nests facts and machi
   assert.match(text, /Finding a/)
 })
 
-test('client registers both datasource views and one source turn tail', async () => {
+test('client registers credential management, pending actions and one source turn tail', async () => {
   const client = await loadClient()
   const definitions: any[] = []
   const slots: any[] = []
@@ -347,18 +347,13 @@ test('client registers both datasource views and one source turn tail', async ()
     definitions.map((item) => item.kind),
     ['marivo-evidence-sources-delivery'],
   )
-  assert.equal(slots.length, 5)
-  const evidenceSlots = slots.filter(
-    (slot) => !['sidebar.footer.action', 'shell.overlay'].includes(slot.options.name),
+  assert.equal(slots.length, 6)
+  assert.equal(slots.filter((slot) => slot.options.name === 'conversation.chat.turnTail').length, 1)
+  assert.equal(
+    slots.filter((slot) => slot.options.name === 'conversation.session.header.actions').length,
+    1,
   )
-  assert.deepEqual(
-    evidenceSlots.slice(0, 2).map((slot) => slot.options.key),
-    ['marivo_datasource_test', 'marivo_datasource_access'],
-  )
-  assert.equal(evidenceSlots[2].options.name, 'conversation.chat.turnTail')
-  assert.equal(typeof evidenceSlots[2].options.select, 'function')
-  assert.deepEqual(
-    slots.slice(0, 2).map((slot) => slot.options.name),
-    ['sidebar.footer.action', 'shell.overlay'],
-  )
+  assert.equal(slots.filter((slot) => slot.options.name === 'sidebar.footer.action').length, 2)
+  assert.equal(slots.filter((slot) => slot.options.name === 'shell.overlay').length, 2)
+  assert.equal(slots.filter((slot) => slot.options.name === 'tool.call.toolview').length, 0)
 })

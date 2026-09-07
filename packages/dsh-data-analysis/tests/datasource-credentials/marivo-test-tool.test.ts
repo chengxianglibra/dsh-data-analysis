@@ -1,353 +1,349 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
-import process from 'node:process'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { Context } from '@deepseek-ai/cordis'
-import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
-import {
-  MARIVO_DATASOURCE_TEST_TOOL_NAME,
-  MarivoDatasourceBridge,
-  type MarivoDatasourceTestOptions,
-  type MarivoDatasourceTestValue,
-  marivoCredentialStorageRef,
-  registerMarivoDatasourceTestTool,
-} from '../../src/datasource/index.ts'
-import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
+import { marivoCredentialStorageRef } from '../../src/datasource/shell-env.ts'
+import { barrier, context, failed, finish, fixture, operation, waiting } from './fixtures.ts'
 
-const FAKE_PYTHON = String.raw`#!/usr/bin/env node
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
-import process from 'node:process'
-
-const args = process.argv.slice(2)
-const script = args[1] ?? ''
-const name = args[5]
-if (args[0] !== '-c' || name === undefined) process.exit(2)
-if (script.includes('result = md.test')) {
-  const record = {
-    stage: 'test',
-    name,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    persistCredentials: process.env.MARIVO_PERSIST_CREDENTIALS,
-  }
-  appendFileSync(process.env.RECORD_PATH, JSON.stringify(record) + '\n')
-  if (process.env.MARIVO_PERSIST_CREDENTIALS !== '0') {
-    const directory = path.join(process.env.HOME, '.marivo')
-    mkdirSync(directory, { recursive: true })
-    writeFileSync(path.join(directory, 'secrets.toml'), 'should-not-exist')
-  }
-  if (process.env.TEST_STDERR_SECRET === '1') process.stderr.write('stderr:' + process.env.DB_PASSWORD)
-  const ok = process.env.TEST_OK !== '0'
-  process.stdout.write(JSON.stringify(ok ? {
-    name, ok: true, latency_ms: 7, failure: null, repair: null,
-  } : {
-    name, ok: false, latency_ms: 9,
-    failure: {
-      code: 'connection_open_failed', exception_type: 'AuthError', backend_code: null,
-      backend_name: null, message: 'rejected credential ' + process.env.DB_PASSWORD,
-    },
-    repair: {
-      kind: 'reconnect', help_target: 'datasource.test', action: 'replace ' + process.env.DB_PASSWORD,
-      snippet: null, candidates: [], preserves_evidence: null,
-    },
-  }))
-  process.exit(0)
-}
-if (script.includes('md.describe')) {
-  const refs = (process.env.DESCRIBE_REFS ?? '').split(',').filter(Boolean)
-  process.stdout.write(JSON.stringify({ name, refs }))
-  process.exit(0)
-}
-process.exit(2)
-`
-
-class FakeCredentials {
-  readonly values = new Map<string, { value: string; source: string }>()
-  readonly resolved: string[] = []
-
-  async resolve(ref: CredentialRef) {
-    this.resolved.push(ref)
-    return this.values.get(ref)
-  }
-}
-
-async function fixture(
-  options: { refs: string; ok?: boolean; stderrSecret?: boolean } = { refs: '' },
-  toolOptions: MarivoDatasourceTestOptions = {
-    revokeShellLease: () => {},
-  },
-) {
-  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-marivo-test-')))
-  const executable = path.join(root, 'fixture-python')
-  const recordPath = path.join(root, 'calls.jsonl')
-  const home = path.join(root, 'home')
-  await writeFile(executable, FAKE_PYTHON)
-  await chmod(executable, 0o755)
-  const policy = new FixedSubprocessPolicy(root, {
-    PATH: process.env.PATH,
-    HOME: home,
-    RECORD_PATH: recordPath,
-    DESCRIBE_REFS: options.refs,
-    TEST_OK: options.ok === false ? '0' : '1',
-    TEST_STDERR_SECRET: options.stderrSecret ? '1' : '0',
-    MARIVO_PERSIST_CREDENTIALS: '1',
+test('missing Web test stays pending, submit validates once and settles the original call', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  let settled = false
+  const pending = f.service.prepare('test', f.exec, f.resolve, 'warehouse').then((value) => {
+    settled = true
+    return value
   })
-  const environment = new MarivoEnvironment(
-    {
-      projectRoot: root,
-      pythonExecutable: executable,
-      marivoVersion: '0.0.test',
-      packagePath: path.join(root, 'fake-marivo', '__init__.py'),
-      subprocessPolicyId: policy.id,
-      fingerprint: 'd'.repeat(64),
-    },
-    policy,
-  )
-  const bridge = new MarivoDatasourceBridge(environment)
-  const credentials = new FakeCredentials()
-  const ctx = new Context()
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
-  registerMarivoDatasourceTestTool(ctx, bridge, credentials, toolOptions)
-  return {
-    root,
-    home,
-    recordPath,
-    credentials,
-    ctx,
-    environment,
-    bridge,
-    cleanup: () => rm(root, { recursive: true, force: true }),
-  }
-}
-
-let sequence = 0
-async function execute(ctx: Context, name = 'warehouse') {
-  sequence++
-  return ctx.tools.execute({
-    signal: new AbortController().signal,
-    callId: CallId(`marivo-test-${sequence}`),
-    name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
-    arguments: { name },
+  const request = await waiting(f)
+  assert.equal(settled, false)
+  assert.equal(f.tests, 0)
+  assert.equal(f.store.calls.resolve, 0)
+  const op = await operation(f, request.context, 'submit', {
+    requestId: request.id,
+    changes: { DB_PASSWORD: 'submitted-canary' },
   })
-}
-
-async function absent(target: string): Promise<void> {
-  await assert.rejects(() => stat(target), { code: 'ENOENT' })
-}
-
-test('missing and partial credentials return only deduplicated original refs without connecting', async (t) => {
-  const f = await fixture({ refs: 'DB_USER,DB_PASSWORD,DB_PASSWORD' })
-  t.after(f.cleanup)
-  assert.ok(f.ctx.tools.get(MARIVO_DATASOURCE_TEST_TOOL_NAME))
-  assert.equal(f.ctx.tools.get('marivo_test'), undefined)
-  f.credentials.values.set(marivoCredentialStorageRef('DB_USER'), {
-    value: 'readonly-user',
-    source: 'env',
-  })
-
-  const result = await execute(f.ctx)
-  assert.equal(result.isError, false)
-  if (result.isError) return
-  assert.deepEqual(result.value as unknown as MarivoDatasourceTestValue, {
-    status: 'needs-credentials',
-    name: 'warehouse',
-    refs: ['DB_PASSWORD'],
-  })
-  assert.deepEqual(f.credentials.resolved, [
-    marivoCredentialStorageRef('DB_USER'),
-    marivoCredentialStorageRef('DB_PASSWORD'),
-  ])
-  assert.equal(
-    result.content[0]?.type === 'text' ? result.content[0].text : '',
-    '{"status":"needs-credentials","name":"warehouse","refs":["DB_PASSWORD"]}',
-  )
-  await absent(f.recordPath)
+  assert.equal(op.status, 'succeeded')
+  assert.equal(f.tests, 1)
+  assert.equal('ok' in (await pending) && ((await pending) as { ok: boolean }).ok, true)
+  assert.equal(f.service.watch('session').requests[0]?.status, 'succeeded')
+  assert.doesNotMatch(JSON.stringify(f.service.watch('session')), /submitted-canary/)
 })
-
-test('every explicit test revokes prior datasource access before describing credentials', async (t) => {
-  const revoked: string[] = []
-  const f = await fixture(
-    { refs: 'DB_USER,DB_PASSWORD' },
-    {
-      revokeShellLease: (_bridge, name) => {
-        revoked.push(name)
-      },
-    },
-  )
-  t.after(f.cleanup)
-
-  const result = await execute(f.ctx)
-
-  assert.equal(result.isError, false)
-  assert.deepEqual(revoked, ['warehouse'])
-})
-
-test('an original Host credential is a canary and is never resolved directly', async (t) => {
-  const f = await fixture({ refs: 'DEEPSEEK_API_KEY' })
-  t.after(f.cleanup)
-  f.credentials.values.set('DEEPSEEK_API_KEY', {
-    value: 'host-canary-must-stay-unread',
-    source: 'env',
+test('access after missing form verifies once before granting, without asking another model turn', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  const pending = f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const request = await waiting(f)
+  await operation(f, request.context, 'submit', {
+    requestId: request.id,
+    changes: { DB_PASSWORD: 'submitted-canary' },
   })
-
-  const result = await execute(f.ctx)
-
-  assert.equal(result.isError, false)
-  if (!result.isError) {
-    assert.deepEqual(result.value as unknown as MarivoDatasourceTestValue, {
-      status: 'needs-credentials',
-      name: 'warehouse',
-      refs: ['DEEPSEEK_API_KEY'],
+  assert.equal('status' in (await pending) && ((await pending) as { status: string }).status, 'ok')
+  assert.equal(f.tests, 1)
+  await f.service.claim(f.exec, f.resolve, ['warehouse'])
+})
+test('configured connection failures return directly, while form failures retain correction and diagnose', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  f.setResult(failed)
+  f.store.put('DB_PASSWORD')
+  assert.deepEqual(await f.service.prepare('test', f.exec, f.resolve, 'warehouse'), failed)
+  assert.equal(f.service.watch('session').requests.length, 0)
+  f.store.values.clear()
+  const pending = f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const request = await waiting(f)
+  const op = await operation(f, request.context, 'submit', {
+    requestId: request.id,
+    changes: { DB_PASSWORD: 'wrong-value' },
+  })
+  assert.deepEqual(op.result, failed)
+  assert.deepEqual(op.saved, ['DB_PASSWORD'])
+  const current = f.service.watch('session').requests[0]!
+  assert.equal(current.status, 'awaiting-decision')
+  await operation(f, current.context, 'diagnose', { requestId: request.id })
+  assert.deepEqual(await pending, failed)
+  assert.equal(f.tests, 2)
+})
+test('outer cancellation ends pending calls; a disconnected watch does not cancel them', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  const pending = f.service.prepare('test', f.exec, f.resolve, 'warehouse')
+  const rejection = assert.rejects(pending, /call-ended/)
+  const request = await waiting(f)
+  const watch = new AbortController()
+  const read = f.service.waitWatch('session', f.service.watch('session').cursor, watch.signal)
+  watch.abort()
+  await assert.rejects(read)
+  assert.equal(f.service.watch('session').requests[0]?.endedAt, undefined)
+  f.controller.abort()
+  await rejection
+  assert.throws(
+    () =>
+      f.service.start({
+        generation: f.service.generation,
+        id: randomUUID(),
+        scope: request.context.token,
+        version: request.context.version,
+        action: 'submit',
+        requestId: request.id,
+      }),
+    /call-ended/,
+  )
+})
+test('subagents never enter interactive waits', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  Object.assign(f.agent.session.header, { origin: 'subagent' })
+  assert.equal('status' in (await f.service.prepare('test', f.exec, f.resolve, 'warehouse')), true)
+  assert.equal(f.service.watch('session').requests.length, 0)
+})
+test('operation IDs deduplicate writes and tests, reject mismatched scope, and expire explicitly', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f),
+    id = randomUUID()
+  const input = {
+    generation: f.service.generation,
+    id,
+    scope: view.token,
+    version: view.version,
+    action: 'update' as const,
+    changes: { DB_PASSWORD: 'first-value' },
+  }
+  f.service.start(input)
+  f.service.start({ ...input, changes: { DB_PASSWORD: 'must-not-overwrite' } })
+  await finish(f, id, view.token)
+  assert.equal(f.store.calls.set, 1)
+  assert.equal(f.tests, 1)
+  assert.equal(f.store.values.get(marivoCredentialStorageRef('DB_PASSWORD')), 'first-value')
+  assert.throws(() => f.service.start({ ...input, action: 'test' }), /operation-scope-mismatch/)
+  f.advance(1_800_000)
+  assert.equal(f.service.operation(f.service.generation, id, view.token), undefined)
+  assert.equal(f.service.operation('old-generation', id, view.token), undefined)
+})
+test('partial saves retain successful values, never validate, and do not expose provider messages', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.description.refs.push('DB_USER')
+  f.description.fields.user = 'DB_USER'
+  f.store.fail = marivoCredentialStorageRef('DB_USER')
+  const op = await operation(f, await context(f), 'update', {
+    changes: { DB_PASSWORD: 'safe-canary', DB_USER: 'other-canary' },
+  })
+  assert.equal(op.status, 'failed')
+  assert.deepEqual(op.saved, ['DB_PASSWORD'])
+  assert.equal(f.tests, 0)
+  assert.doesNotMatch(JSON.stringify(op), /unsafe-provider|safe-canary|other-canary/)
+})
+test('deletion re-describes actual fallback, and readonly errors do not imply missing credentials', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  f.store.readonly = true
+  const op = await operation(f, await context(f), 'delete', { reference: 'DB_PASSWORD' })
+  assert.equal(op.status, 'failed')
+  assert.equal((await context(f)).credentials.DB_PASSWORD?.configured, true)
+  f.store.readonly = false
+  await operation(f, await context(f), 'delete', { reference: 'DB_PASSWORD' })
+  assert.equal((await context(f)).credentials.DB_PASSWORD?.configured, false)
+})
+test('stale definition and context writes fail before credential mutation', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f)
+  f.description.definition = 'e'.repeat(64)
+  const op = await operation(f, view, 'update', { changes: { DB_PASSWORD: 'must-not-save' } })
+  assert.equal(op.status, 'failed')
+  assert.equal(f.store.calls.set, 0)
+})
+test('a rotation racing snapshot resolution revokes its admission; committed snapshots remain usable', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  await f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const gate = barrier(),
+    entered = barrier(),
+    original = f.store.resolve.bind(f.store)
+  f.store.resolve = async (ref) => {
+    entered.release()
+    await gate.promise
+    return original(ref)
+  }
+  const pending = f.service.claim(f.exec, f.resolve, ['warehouse'])
+  const rejected = assert.rejects(pending, /credentials-changed|access-required/)
+  await entered.promise
+  f.service.invalidate(['DB_PASSWORD'])
+  gate.release()
+  await rejected
+  f.store.resolve = original
+  await f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const snapshot = await f.service.claim(f.exec, f.resolve, ['warehouse'])
+  f.service.invalidate(['DB_PASSWORD'])
+  assert.equal(snapshot.values.DB_PASSWORD, 'canary-private-4826')
+})
+test('definition change during validation cannot continue an old call', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  const gate = barrier(),
+    entered = barrier()
+  f.bridge.test = async () => {
+    entered.release()
+    await gate.promise
+    return { ...failed, ok: true, failure: null, repair: null }
+  }
+  const pending = f.service.prepare('test', f.exec, f.resolve, 'warehouse')
+  const rejected = assert.rejects(pending, /context-changed/)
+  const request = await waiting(f)
+  const completion = operation(f, request.context, 'submit', {
+    requestId: request.id,
+    changes: { DB_PASSWORD: 'value' },
+  })
+  await entered.promise
+  f.description.definition = 'e'.repeat(64)
+  gate.release()
+  assert.equal((await completion).status, 'failed')
+  await rejected
+})
+test('management cancel preserves completed saves and waits for its test to stop', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const entered = barrier()
+  f.bridge.test = async (_name, _values, signal) => {
+    entered.release()
+    await new Promise<void>((_resolve, reject) => {
+      signal!.addEventListener('abort', () => reject(new Error('stopped')), { once: true })
     })
+    return failed
   }
-  assert.deepEqual(f.credentials.resolved, [marivoCredentialStorageRef('DEEPSEEK_API_KEY')])
-  assert.doesNotMatch(JSON.stringify(result), /host-canary-must-stay-unread/)
-  await absent(f.recordPath)
+  const view = await context(f),
+    id = randomUUID()
+  f.service.start({
+    generation: f.service.generation,
+    id,
+    scope: view.token,
+    action: 'update',
+    version: view.version,
+    changes: { DB_PASSWORD: 'persisted-value' },
+  })
+  await entered.promise
+  f.service.cancelOperation(f.service.generation, id, view.token)
+  const op = await finish(f, id, view.token)
+  assert.equal(op.status, 'cancelled')
+  assert.deepEqual(op.saved, ['DB_PASSWORD'])
 })
 
-test('invalid and reserved datasource references fail before credential resolution or connection', async (t) => {
-  const f = await fixture({ refs: 'DB-PASSWORD' })
-  t.after(f.cleanup)
-
-  const result = await execute(f.ctx)
-
-  assert.equal(result.isError, true)
-  assert.match(JSON.stringify(result), /invalid credential reference/)
-  assert.deepEqual(f.credentials.resolved, [])
-  await absent(f.recordPath)
-
-  const reserved = await fixture({ refs: 'marivo_persist_credentials' })
-  t.after(reserved.cleanup)
-  const reservedResult = await execute(reserved.ctx)
-  assert.equal(reservedResult.isError, true)
-  assert.match(JSON.stringify(reservedResult), /reserved runtime namespace/)
-  assert.deepEqual(reserved.credentials.resolved, [])
-  await absent(reserved.recordPath)
+test('external credential updates refresh a pending form without replaying its call', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  const pending = f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const request = await waiting(f)
+  f.store.put('DB_PASSWORD')
+  f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
+  const snapshot = await f.service.waitWatch('session', undefined, f.controller.signal)
+  const refreshed = snapshot.requests.find((r) => r.id === request.id)!
+  assert.notEqual(refreshed.context.version, request.context.version)
+  assert.equal(refreshed.context.credentials.DB_PASSWORD?.configured, true)
+  await operation(f, refreshed.context, 'submit', { requestId: request.id })
+  assert.equal('status' in (await pending) && ((await pending) as { status: string }).status, 'ok')
 })
 
-test('configured credentials reach one child overlay and are re-resolved on the next operation', async (t) => {
-  const revoked: string[] = []
-  const f = await fixture(
-    { refs: 'DB_USER,DB_PASSWORD' },
-    {
-      revokeShellLease: (_bridge, name) => {
-        revoked.push(name)
-      },
+test('service disposal waits for an aborted foreground test to finish cleanup', async () => {
+  const f = fixture()
+  f.store.put('DB_PASSWORD')
+  const entered = barrier(),
+    cleaned = barrier()
+  f.bridge.test = async (_name, _values, signal) => {
+    entered.release()
+    await new Promise<void>((resolve) =>
+      signal!.addEventListener('abort', () => resolve(), { once: true }),
+    )
+    await cleaned.promise
+    signal!.throwIfAborted()
+    return failed
+  }
+  const pending = f.service.track(f.service.prepare('test', f.exec, f.resolve, 'warehouse'))
+  const rejected = assert.rejects(pending)
+  await entered.promise
+  let closed = false
+  const closing = f.service.close().then(() => {
+    closed = true
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(closed, false)
+  cleaned.release()
+  await closing
+  await rejected
+})
+
+test('test dispatch retains its admitted definition when the live definition changes', async (t) => {
+  const { MarivoDatasourceBridge } = await import('../../src/datasource/bridge.ts')
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  const admitted = f.description.definition
+  let granted: string | undefined
+  const bridge = new MarivoDatasourceBridge({
+    binding: f.bridge.binding,
+    status: 'ready',
+    runChecked: async (request) => {
+      assert(request.stdin, 'dispatch must not mint a new grant from another describe call')
+      granted = JSON.parse(request.stdin).grants.warehouse.definition
+      return {
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+        stderr: Buffer.alloc(0),
+        stdout: Buffer.from(JSON.stringify({ ...failed, ok: true, failure: null, repair: null })),
+      }
     },
+  })
+  f.bridge.test = async (description, values, signal) => {
+    f.description.definition = 'e'.repeat(64)
+    return bridge.test(description, values, signal)
+  }
+  await assert.rejects(f.service.prepare('test', f.exec, f.resolve, 'warehouse'), /context-changed/)
+  assert.equal(granted, admitted)
+})
+
+test('external updates during a direct test reject mixed snapshots without management or leases', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.description.refs = ['DB_PASSWORD', 'DB_USER']
+  f.description.fields = { password: 'DB_PASSWORD', user: 'DB_USER' }
+  f.store.put('DB_PASSWORD', 'old-password')
+  f.store.put('DB_USER', 'old-user')
+  const resolve = f.store.resolve.bind(f.store)
+  f.store.resolve = async (ref) => {
+    const result = await resolve(ref)
+    if (ref === marivoCredentialStorageRef('DB_PASSWORD')) {
+      f.store.put('DB_PASSWORD', 'new-password')
+      f.store.put('DB_USER', 'new-user')
+      for (const name of f.description.refs)
+        f.service.invalidateStorageRef(marivoCredentialStorageRef(name))
+    }
+    return result
+  }
+  await assert.rejects(
+    f.service.prepare('test', f.exec, f.resolve, 'warehouse'),
+    /credentials-changed/,
   )
-  t.after(f.cleanup)
-  f.credentials.values.set(marivoCredentialStorageRef('DB_USER'), {
-    value: 'alice',
-    source: 'user-env',
-  })
-  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
-    value: 'first-secret',
-    source: 'file',
-  })
-
-  const first = await execute(f.ctx)
-  assert.equal(first.isError, false, JSON.stringify(first))
-  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
-    value: 'second-secret',
-    source: 'file',
-  })
-  const second = await execute(f.ctx)
-  assert.equal(second.isError, false)
-  assert.deepEqual(revoked, ['warehouse', 'warehouse'])
-  if (!first.isError) {
-    const value = first.value as unknown as MarivoDatasourceTestValue
-    assert.deepEqual(value, { status: 'ok', name: 'warehouse', latency_ms: 7 })
-    assert.doesNotMatch(JSON.stringify(first), /shell_lease|credential-lease/)
-  }
-
-  assert.deepEqual(f.credentials.resolved, [
-    marivoCredentialStorageRef('DB_USER'),
-    marivoCredentialStorageRef('DB_PASSWORD'),
-    marivoCredentialStorageRef('DB_USER'),
-    marivoCredentialStorageRef('DB_PASSWORD'),
-  ])
-  const calls = (await readFile(f.recordPath, 'utf8'))
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line))
-  assert.deepEqual(calls, [
-    {
-      stage: 'test',
-      name: 'warehouse',
-      user: 'alice',
-      password: 'first-secret',
-      persistCredentials: '0',
-    },
-    {
-      stage: 'test',
-      name: 'warehouse',
-      user: 'alice',
-      password: 'second-secret',
-      persistCredentials: '0',
-    },
-  ])
-  assert.doesNotMatch(JSON.stringify(first), /first-secret/)
-  assert.doesNotMatch(JSON.stringify(second), /second-secret/)
-  await absent(path.join(f.home, '.marivo', 'secrets.toml'))
+  assert.equal(f.tests, 0)
+  f.store.resolve = resolve
+  assert.equal('ok' in (await f.service.prepare('test', f.exec, f.resolve, 'warehouse')), true)
+  // Settled direct tests retain history but no active reference subscriptions.
+  f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
+  assert.equal((await context(f)).lastTest?.stale, false)
 })
 
-test('structured md.test failure redacts exact credential values from result and rendered output', async (t) => {
-  const f = await fixture({ refs: 'DB_PASSWORD', ok: false, stderrSecret: true })
-  t.after(f.cleanup)
-  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
-    value: 'ultra-private',
-    source: 'file',
-  })
-
-  const result = await execute(f.ctx)
-  assert.equal(result.isError, false, JSON.stringify(result))
-  assert.doesNotMatch(JSON.stringify(result), /ultra-private/)
-  assert.match(JSON.stringify(result), /\[REDACTED\]/)
-  if (!result.isError) {
-    const value = result.value as unknown as MarivoDatasourceTestValue
-    assert.equal(value.status, 'failed')
+test('external updates during a direct connection test invalidate its result', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  f.bridge.test = async () => {
+    f.store.put('DB_PASSWORD', 'rotated')
+    f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
+    return { ...failed, ok: true, failure: null, repair: null }
   }
-  await absent(path.join(f.home, '.marivo', 'secrets.toml'))
-})
-
-test('fixed persistence policy cannot be overridden by a datasource credential', async (t) => {
-  const f = await fixture({ refs: 'DB_PASSWORD' })
-  t.after(f.cleanup)
-  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
-    value: 'ordinary-secret',
-    source: 'file',
-  })
-  const result = await execute(f.ctx)
-  assert.equal(result.isError, false, JSON.stringify(result))
-  const call = JSON.parse((await readFile(f.recordPath, 'utf8')).trim()) as {
-    persistCredentials: string
-  }
-  assert.equal(call.persistCredentials, '0')
-  await absent(path.join(f.home, '.marivo', 'secrets.toml'))
-})
-
-test('subprocess start validation never exposes a malformed credential value', async (t) => {
-  const f = await fixture({ refs: 'DB_PASSWORD' })
-  t.after(f.cleanup)
-  f.credentials.values.set(marivoCredentialStorageRef('DB_PASSWORD'), {
-    value: 'nul-private\u0000tail',
-    source: 'file',
-  })
-
-  const result = await execute(f.ctx)
-
-  assert.equal(result.isError, true)
-  assert.doesNotMatch(JSON.stringify(result), /nul-private|tail/)
-  if (result.isError) {
-    assert.equal(result.error.message, 'Could not start Marivo subprocess')
-  }
-  await absent(f.recordPath)
-  await absent(path.join(f.home, '.marivo', 'secrets.toml'))
+  await assert.rejects(
+    f.service.prepare('test', f.exec, f.resolve, 'warehouse'),
+    /credentials-changed/,
+  )
+  assert.equal((await context(f)).lastTest, undefined)
 })

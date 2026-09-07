@@ -69,6 +69,9 @@ export interface SubprocessLimits {
 }
 
 export interface SubprocessRequest {
+  /** Host-only pipe input. Never part of argv or the environment. */
+  stdin?: string
+
   executable: string
   args: readonly string[]
   /** Per-call environment values layered over the frozen binding snapshot. */
@@ -79,6 +82,11 @@ export interface SubprocessRequest {
 
 /** One identity-checked Python operation executed by a bound Environment. */
 export interface MarivoCheckedRunRequest {
+  /** Host-only pipe input; callers own its short operation lifetime. */
+  stdin?: string
+  /** Values to redact from captured output, never passed through the environment. */
+  secretValues?: readonly string[]
+
   program: string
   args?: readonly string[]
   /** Per-operation values; every non-empty value is redacted from captured output. */

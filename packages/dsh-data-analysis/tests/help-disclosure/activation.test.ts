@@ -307,7 +307,12 @@ test('analysis activation adds Evidence guidance and the concise report route', 
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'source-prompt-analysis')
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: { resolve: () => Promise.resolve(undefined) },
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
   })
   t.after(dispose)
 
@@ -364,7 +369,12 @@ test('an Agent-plane inherited skill Tool activates Evidence guidance and root h
   assert.equal(scopeParentOf(agent), parentScope)
   assert.equal(agent.ctx.tools.get('skill', agent), agent.ctx.tools.get('skill', parentScope))
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: { resolve: () => Promise.resolve(undefined) },
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
   })
   t.after(dispose)
 
@@ -388,7 +398,12 @@ test('marivo-semantic activation adds datasource credential guidance only after 
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'source-prompt-semantic')
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: { resolve: () => Promise.resolve(undefined) },
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
   })
   t.after(dispose)
 
@@ -397,19 +412,15 @@ test('marivo-semantic activation adds datasource credential guidance only after 
 
   assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /DSH_\*/)
   const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
-  assert.match(activatedPrompt, /valid POSIX environment name/)
-  assert.match(activatedPrompt, /bash_prelude or pwsh_prelude/)
-  assert.doesNotMatch(activatedPrompt, /must reference a DSH_\*/)
-  assert.match(activatedPrompt, /Never ask the user to provide credential values in chat/)
-  assert.match(activatedPrompt, /Immediately after md\.register/)
+  assert.match(activatedPrompt, /DSH Credentials owns/)
+  assert.match(activatedPrompt, /Never request values in chat/)
   assert.match(activatedPrompt, /marivo_datasource_test/)
-  assert.match(activatedPrompt, /marivo_datasource_access once/)
-  assert.match(activatedPrompt, /required control marker/)
-  assert.match(activatedPrompt, /Never inspect or read DSH credential files/)
-  assert.match(activatedPrompt, /Do not call marivo_datasource_test before each analysis script/)
-  assert.match(activatedPrompt, /needs-credentials/)
+  assert.match(activatedPrompt, /marivo_datasource_access/)
+  assert.match(activatedPrompt, /marivo_python installs credential_scope/)
+  assert.match(activatedPrompt, /Ordinary Shell receives no datasource secret/)
+  assert.match(activatedPrompt, /do not test before every script/)
   assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_sources/)
-  assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /manual datasource-file change/)
+  assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /after datasource changes/)
 })
 
 test('an explicit user skill invocation activates the matching root help without a skill Tool call', async (t) => {
@@ -840,7 +851,12 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   const ctx = await harness(adapter)
   const agent = createAgent(ctx, 'plugin-adapter')
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: { resolve: async () => undefined },
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
   })
 
   send(agent, 'before disposal')
@@ -854,6 +870,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
     'marivo_datasource_test',
     'marivo_evidence_sources',
     'marivo_help',
+    'marivo_python',
     'ordinary',
     'skill',
   ])
@@ -874,7 +891,12 @@ test('plugin lifecycle never mutates the Host persistence environment', async (t
   const environmentBeforeInstall = { ...process.env }
 
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: { resolve: async () => undefined },
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
   })
   assert.deepEqual({ ...process.env }, environmentBeforeInstall)
 
