@@ -24,8 +24,10 @@ dsh --profile web
 - **易用**：Agent 可以直接开展数据分析，并在持续使用中逐渐沉淀可复用的业务语义，让后续分析更贴近业务、结果更一致。
 - **来源**：分析可结合 persisted Artifact/Finding 的来源读取，语义与质量事实由 Marivo 提供。
 
-当前开发分支已接通 `marivo_present`：一次调用生成展示快照和自包含 HTML，可从 DSH 卡片打开、下载。
-旧 Evidence 接口与报告 Skill 已删除；新展示 Skill 和最终 Agent 路由验收留在 S5，见[路线图](docs/plan/marivo-analytics-presentation-roadmap.md)。
+当前开发分支通过唯一 `dsh-data-analysis-presentation` Skill 组织图表、表格、报告、看板和可读来源展示，
+调用 `marivo_present` 生成展示快照和自包含 HTML，可从 DSH 卡片打开、下载。普通事实问答使用文字；
+已有数据可直接展示，需要新分析时再加载 Marivo Runtime Skill 与实时 Help。
+使用边界见[展示 Skill](docs/modules/presentation-skill.md)，实施和实际验证状态见[S5 验收记录](docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
 
 ## 引用语义对象
 

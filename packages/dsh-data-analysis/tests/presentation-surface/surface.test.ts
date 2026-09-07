@@ -22,7 +22,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return result
 }
 
-test('S4 exposes Help, datasource test, Python and present', () => {
+test('presentation exposes Help, datasource test, Python and present', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
@@ -124,7 +124,7 @@ test('S2 removes the old helper, report Skill and JavaScript transport together'
     ),
   )
   assert.equal(
-    manifest.files.some((item: string) => /report-kit|skills/.test(item)),
+    manifest.files.some((item: string) => /report-kit|dsh-data-analysis-report/.test(item)),
     false,
   )
 })

@@ -290,6 +290,18 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
       .filter((skill) => skill.provider === 'dsh-data-analysis-marivo')
       .every((skill) => ['marivo-analysis', 'marivo-semantic'].includes(skill.name)),
   )
+  assert.deepEqual(
+    catalog.skills
+      .filter((skill) => skill.provider === 'dsh-data-analysis-presentation')
+      .map((skill) => skill.name),
+    ['dsh-data-analysis-presentation'],
+  )
+  const presentationSkill = await ctx.skills.get('dsh-data-analysis-presentation', {
+    cwd: firstRoot,
+    scope: first,
+  })
+  assert.ok(presentationSkill?.invocation.modelInvocable)
+  assert.equal(presentationSkill?.resourceBase?.kind, 'directory')
 
   send(first, 'analyze workspace a')
   await first.whenIdle()
@@ -324,6 +336,15 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   assert.equal(marker.presentationKitPackagePath, presentationKitPackagePath)
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()
+  const disposedCatalog = await ctx.skills.snapshot({ cwd: firstRoot, scope: first })
+  assert.equal(
+    disposedCatalog.skills.some((skill) => skill.provider.startsWith('dsh-data-analysis-')),
+    false,
+  )
+  assert.deepEqual(
+    first.ctx.tools.schemas(first).filter((tool) => tool.name.startsWith('marivo_')),
+    [],
+  )
 })
 
 test('presentation binding uses unique Harness Workspace membership without Runtime or path inference', () => {

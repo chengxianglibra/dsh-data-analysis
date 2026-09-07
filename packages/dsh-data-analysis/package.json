@@ -52,6 +52,7 @@
   "files": [
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
+    "skills/dsh-data-analysis-presentation/**",
     "python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl",
     "cordis.patch.yml",
     "README.md"
@@ -131,7 +132,9 @@
     "playwright": "1.63.0",
     "react-dom": "18.3.1",
     "react-is": "18.3.1",
-    "recharts": "3.8.1"
+    "recharts": "3.8.1",
+    "@deepseek-ai/dsh-launch-environment": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-tool-skill": "^0.1.1-rc.2"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "0.1.1-rc.2",

@@ -18,14 +18,24 @@ import { startPresentationWebHost } from './presentation-s4/web-host.ts'
 
 const arguments_ = process.argv.slice(2)
 assert.ok(
-  arguments_.length === 0 || (arguments_.length === 2 && arguments_[0] === '--resume-web'),
-  'Usage: validate-presentation-integration-real.ts [--resume-web /path/to/completed-host-evidence-root]',
+  arguments_.length === 0 ||
+    (arguments_.length === 2 && ['--resume-web', '--agent'].includes(arguments_[0]!)),
+  'Usage: validate-presentation-integration-real.ts [--resume-web /path/to/host-evidence-root | --agent /path/to/agent-evidence.json]',
 )
-const resume = arguments_[1]
+const resume = arguments_[0] === '--resume-web' ? arguments_[1] : undefined
+const agentEvidencePath = arguments_[0] === '--agent' ? path.resolve(arguments_[1]!) : undefined
+const agentEvidence = agentEvidencePath
+  ? JSON.parse(await readFile(agentEvidencePath, 'utf8'))
+  : undefined
+if (agentEvidence) assert.equal(agentEvidence.status, 'passed')
 const outputRoot = await realpath(
   resume ?? (await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s4-real-'))),
 )
-const workspaceRoot = path.join(outputRoot, 'workspace')
+const resumedInputs = resume
+  ? JSON.parse(await readFile(path.join(outputRoot, 'runtime-inputs.json'), 'utf8'))
+  : undefined
+const workspaceRoot =
+  agentEvidence?.workspaceRoot ?? resumedInputs?.workspaceRoot ?? path.join(outputRoot, 'workspace')
 const pythonExecutable =
   process.env.DSH_DATA_ANALYSIS_PYTHON ??
   path.join(
@@ -35,11 +45,32 @@ const pythonExecutable =
   )
 await mkdir(workspaceRoot, { recursive: true })
 process.stdout.write(`S4 isolated validation: ${outputRoot}\n`)
-const inputs: Awaited<ReturnType<typeof preparePresentationInputs>> = resume
-  ? JSON.parse(await readFile(path.join(outputRoot, 'runtime-inputs.json'), 'utf8'))
-  : await preparePresentationInputs(workspaceRoot, pythonExecutable)
+const inputs: Pick<
+  Awaited<ReturnType<typeof preparePresentationInputs>>,
+  'binding' | 'draftPaths' | 'generated'
+> = resumedInputs ??
+(agentEvidence
+  ? {
+      binding: agentEvidence.binding,
+      draftPaths: agentEvidence.draftPaths,
+      generated: { agentEvidencePath, draftSha256: agentEvidence.draftSha256 },
+    }
+  : await preparePresentationInputs(workspaceRoot, pythonExecutable))
 assert.equal(inputs.binding.pythonExecutable, pythonExecutable)
-await writeFile(path.join(outputRoot, 'runtime-inputs.json'), JSON.stringify(inputs, null, 2))
+if (agentEvidence) {
+  assert.equal(inputs.draftPaths.length, 1)
+  assert.equal(
+    createHash('sha256')
+      .update(await readFile(path.join(workspaceRoot, inputs.draftPaths[0]!)))
+      .digest('hex'),
+    agentEvidence.draftSha256,
+    'Real Agent draft changed before Web validation',
+  )
+}
+await writeFile(
+  path.join(outputRoot, 'runtime-inputs.json'),
+  JSON.stringify({ ...inputs, workspaceRoot }, null, 2),
+)
 const host: Awaited<ReturnType<typeof validatePresentationHost>> = resume
   ? JSON.parse(await readFile(path.join(outputRoot, 'host-evidence.json'), 'utf8'))
   : await validatePresentationHost(workspaceRoot, outputRoot, pythonExecutable, inputs.draftPaths)
@@ -240,7 +271,9 @@ try {
     },
     userProfileOrCredentialsModified: false,
     validationProfile: server.profile,
-    excluded: ['S5 real model automatic routing'],
+    excluded: [
+      'This runner uses scripted model dispatch; real-model routing has separate evidence',
+    ],
     boundary:
       'production plugin Tool/receipt/RPC/client on installed Harness with deterministic model adapter; isolated DSH Web CLI and actual downloaded portable bytes',
   }

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "title": "演示：季度已有数量与精确金额",
+  "datasets": [
+    {
+      "id": "quarter",
+      "kind": "computed",
+      "path": "presentation-example/computed.dataset.json",
+      "sourceIds": []
+    }
+  ],
+  "sources": [],
+  "blocks": [
+    {
+      "id": "scope",
+      "kind": "markdown",
+      "text": "演示数据，不是真实业务分析。数量按月份展示，精确金额和缺失值在表格中保留。"
+    },
+    {
+      "id": "january",
+      "kind": "metric",
+      "datasetId": "quarter",
+      "columnId": "count",
+      "rowIndex": 0,
+      "label": "演示：一月数量"
+    },
+    {
+      "id": "trend-title",
+      "kind": "markdown",
+      "text": "## 数量的月度变化\n按示例已有月份顺序绘图，不对缺失金额补零。"
+    },
+    {
+      "id": "trend",
+      "kind": "chart",
+      "datasetId": "quarter",
+      "chart": "line",
+      "x": "month",
+      "y": ["count"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "comparison",
+      "kind": "chart",
+      "datasetId": "quarter",
+      "chart": "bar",
+      "x": "month",
+      "y": ["count"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "values",
+      "kind": "table",
+      "datasetId": "quarter",
+      "columns": ["month", "count", "amount"]
+    }
+  ]
+}

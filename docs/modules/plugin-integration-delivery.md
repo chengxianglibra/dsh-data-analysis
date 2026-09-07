@@ -3,7 +3,7 @@
 ## 作用
 
 本模块把 profile 级 Marivo Runtime、per-Workspace binding、四个跨边界 Tool、presentation-kit、
-激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
+两个 Runtime Skill、唯一展示 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
 的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
 实现入口：
@@ -16,7 +16,7 @@
 ## 生命周期
 
 1. `apply()` 确保精确 Marivo 0.5.4 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
-2. 仅将 Runtime 的 `marivo-analysis`、`marivo-semantic` 挂载到 profile skill registry；新展示 Skill 在 S5 接入。
+2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与 prompt sections。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
@@ -40,9 +40,14 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 ## Prompt 与 Skill 激活
 
 `marivo-semantic` 激活后注入 credential 规则；`marivo-analysis` 激活后披露 Runtime 根 Help。
-旧 Evidence 专用 prompt 已删除；展示 Tool 通过当前工具定义可发现，新 Skill 路由留在 S5。
-S2 已删除旧报告 Skill、prompt、三个经典 JS 资产、emitter 和旧 transport schemas；不会将新 Runtime 路由到旧 helper。
-新 presentation Skill 留在 S5，当前开发包不提供报告兼容包装。
+插件常驻 prompt 只给出短路由：普通事实问答使用文字；图表、表格、报告、看板和可读来源展示加载唯一
+`dsh-data-analysis-presentation`。已有数据无需先激活分析 Skill；需要新分析或语义编写时，才加载对应
+Runtime Skill 与 live Help。展示 Skill 不增加 Help target，也不触发分析 Skill 的激活状态。
+
+展示 Skill 由 `dsh-data-analysis-presentation` provider 从包内 `skills/` 挂载；Runtime Skill 仍由
+`dsh-data-analysis-marivo` provider 从当前 Runtime 读取。两者不包含默认 roots，也不监听目录变化。
+主流程与按需 references 的职责见[展示 Skill](presentation-skill.md)。旧报告 Skill、prompt、三个经典 JS
+资产、emitter 和旧 transport schemas 不再分发，当前包不提供兼容包装。
 
 [展示数据投影](presentation-projection.md)使用相同 bound Workspace/Runtime 的公开读取程序，生成纯数据文档。
 `dsh_data_analysis_presentation.write_dataset(frame, path)` 只写 computed typed JSON 与有界 receipt，
@@ -57,7 +62,7 @@ Web client 只保留：
 - `marivo_present` Turn 卡片、共享 reader overlay 与离线 HTML 下载。
 
 生产 client bundle 导出 `HostPresentationReader`，与 portable 共用[展示 reader](presentation-reader.md)。
-S4 通过统一 Session/Turn delivery 汇总卡片，加载固定快照并校验下载字节；同一 receipt 的重复事件不重复显示。
+通过统一 Session/Turn delivery 汇总卡片，加载固定快照并校验下载字节；同一 receipt 的重复事件不重复显示。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
 ## Compatibility 与 package
@@ -73,7 +78,8 @@ S4 通过统一 Session/Turn delivery 汇总卡片，加载固定快照并校验
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.0.0`，typed dataset schemaVersion 1 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
-与内部纯数据 contracts/projection、builder 和预构建 portable/static 资产；旧 report-kit、Skill、JS registry 和旧 transport schemas 均不分发。
+与内部纯数据 contracts/projection、builder、预构建 portable/static 资产，以及唯一展示 Skill 的 `SKILL.md`、references 和 examples；
+旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
 ## 验证
@@ -90,9 +96,10 @@ npm run validate:presentation-integration:real
 ```
 
 原 plugin real-model runner 验证 Help/凭据接缝，需要正式 Marivo 0.5.4 与真实模型。
-S4 presentation runner 使用隔离 Workspace、真实 Tool dispatch、Host Web 与下载文件验证交付，最终 Agent 自动路由留在 S5。
+presentation integration runner 使用隔离 Workspace、真实 Tool dispatch、Host Web 与下载文件验证交付。
+当前可安装包的注册结果、真实 Agent 自动路由及最终旅程状态见[S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
 路径、runner 日志或静态 schema 不替代实际交互证据。
-本次 tarball 内容收窄的确定性证据见 [Package 内容收窄验收](../acceptance/package-content-cleanup.md)。
+此前 tarball 内容收窄的记录见 [Package 内容收窄验收](../acceptance/package-content-cleanup.md)。
 
 ## Browser 构建
 

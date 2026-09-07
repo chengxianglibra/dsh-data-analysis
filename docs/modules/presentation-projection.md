@@ -65,5 +65,6 @@ npm run validate:presentation-browser:real
 
 Python 合同测试随 `npm run check` 持续执行；真实脚本使用隔离目录，保留机器证据。
 Artifact 验证先通过 Marivo 公开分析生成并持久化，再在另一进程恢复；
-该 Chromium 验证只证明 Python/Node/browser 数据解释一致；reader/离线 HTML 另由 S3 验证，Host 交付留在 S4/S5。
+该 Chromium 验证只证明 Python/Node/browser 数据解释一致；reader/离线 HTML 由 S3 验证，Host 交付由 S4 接通。
+当前 Skill、分发和最终旅程见 [S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
 本次结果见 [S2 验收记录](../plan/marivo-analytics-presentation-s2-acceptance.md)。

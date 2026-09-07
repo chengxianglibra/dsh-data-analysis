@@ -11,11 +11,14 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `marivo_python` 的本次执行准入与单次 resolver 凭证注入；
 - 侧栏“数据源与凭证”管理、测试与缺失输入提交后的原调用续接；
 - `marivo_present({ draft_path })` 的一次文件提交、结果卡片、打开与离线 HTML 下载；
+- 唯一插件 Skill `dsh-data-analysis-presentation`，组织图表、表格、报告、看板与可读来源展示；
 - `dsh_data_analysis_presentation.write_dataset(frame, path)` 的 computed typed JSON writer；
 - 内部 Artifact/computed/source-only 数据投影，保存精确来源及 unavailable 状态。
 
-当前为展示重构 S4 的未发布开发状态。旧 report-kit、report Skill、经典 JS 与 Evidence 卡协议已删除；
-共享 reader、离线 builder 和 `marivo_present` 已接通，新 presentation Skill 留在 S5。两个 Marivo Runtime Skill 继续挂载。
+当前为展示重构 S5 的未发布开发状态。共享 reader、离线 builder、`marivo_present` 和展示 Skill 已接通；
+两个 Marivo Runtime Skill `marivo-analysis`、`marivo-semantic` 继续从当前 Runtime 挂载。
+旧 report-kit、report Skill、经典 JS 与 Evidence 卡协议不再分发。实际验证状态见
+[S5 验收记录](../../docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
 
 ## Compatibility
 
@@ -55,20 +58,25 @@ Marivo 公共 API，不增加 convenience Tool。
 打开和手动刷新重新加载；读取失败时明确标注上次成功内容。数据源连接配置、凭证值与原始源码不展示。
 使用及验收边界见[模块说明](../../docs/modules/semantic-browser.md)。
 
-## 展示数据
+## 分析与展示
+
+普通事实问答使用文字。图表、表格、报告、看板和可读来源展示加载 `dsh-data-analysis-presentation`，
+按 Skill 编写 Workspace 相对 Draft，再调用 `marivo_present`。已有 Artifact 或 computed 数据无需先激活
+`marivo-analysis`；需要新分析或语义编写时，按需加载对应 Runtime Skill 与 live Help。
+Skill 只指导内容组织、声明来源和交付，不承担分析计算或来源有效性判断；布局由 reader 自适应。
+完整流程见[展示 Skill](../../docs/modules/presentation-skill.md)。
 
 Python helper 只接受 pandas DataFrame，写入 `schemaVersion: 1` 的 typed JSON；int64/Decimal 保留精确字符串，
 null 保留缺失含义，datetime 必须带时区。它不保存来源或转换代码；来源在展示 Draft 中声明。
 固定 projection 从同一 bound Workspace 恢复 persisted Artifact 和可选 Finding，不自动 observe、revalidate 或读取凭据。
 直接 Artifact dataset 缺必要数据会失败，computed 和 source-only 可以保留 unavailable 来源。
 
-S3 共用 reader 展示 Markdown、metric、line/bar、table 和 source，保留精确值、单位、截断与 unavailable 来源。
+共享 reader 展示 Markdown、metric、line/bar、table 和 source，保留精确值、单位、截断与 unavailable 来源。
 `marivo_present` 读取 Workspace 相对 Draft 路径，生成独立 build 的 JSON/自包含 HTML；
 卡片打开固定快照并下载 HTML。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
 展开来源仅使用保存的快照；文件变化、缺失或 Workspace 归属变化会明确失败。
-实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)
-、[展示交付](../../docs/modules/presentation-delivery.md)
-和[S3 验收记录](../../docs/plan/marivo-analytics-presentation-s3-acceptance.md)。
+实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)、
+[展示交付](../../docs/modules/presentation-delivery.md)和[S5 验收记录](../../docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
 
 ## 验证
 
@@ -78,9 +86,8 @@ npm run build
 npm run verify:plugin-package
 ```
 
-当前架构与验收边界见仓库根目录的[总体架构](../../docs/architecture.md)、
-[插件能力优化设计](../../docs/plan/plugin-capability-optimization-design.md)和
-[v2 验收记录](../../docs/acceptance/plugin-capability-optimization-v2.md)。
+当前架构与验收边界见仓库根目录的[总体架构](../../docs/architecture.md)和
+[S5 验收记录](../../docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
 
 ## 语义对象引用
 

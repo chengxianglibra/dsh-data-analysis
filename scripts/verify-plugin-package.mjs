@@ -209,6 +209,7 @@ try {
     'lib/presentation/assets/portable.js',
     'lib/presentation/assets/static.js',
     'lib/types/client/presentation/host-entry.d.ts',
+    'skills/dsh-data-analysis-presentation/SKILL.md',
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
@@ -216,8 +217,12 @@ try {
   for (const filename of paths) {
     if (filename.startsWith('lib/evidence/') || filename.startsWith('lib/types/evidence/'))
       fail('packed plugin contains removed Evidence protocol ' + filename)
-    if (filename.startsWith('skills/') || filename.startsWith('python/report-kit/'))
-      fail(`S2 packed plugin contains a removed report Skill or helper ${filename}`)
+    if (
+      (filename.startsWith('skills/') &&
+        !filename.startsWith('skills/dsh-data-analysis-presentation/')) ||
+      filename.startsWith('python/report-kit/')
+    )
+      fail(`packed plugin contains an unexpected Skill or removed helper ${filename}`)
     if (filename.startsWith('python/') && filename !== presentationKitWheelPath)
       fail(`packed plugin contains an unexpected Python asset ${filename}`)
 
@@ -292,9 +297,46 @@ try {
   const linkedDependencies = new Set([
     ...Object.keys(peerDependencies),
     ...Object.keys(sourceManifest.dependencies ?? {}),
+    // Host registry used by this verification fixture, not a new production dependency.
+    '@deepseek-ai/dsh-skill',
   ])
   for (const packageName of linkedDependencies) linkDependency(nodeModules, packageName)
   const smokeProgram = `
+    const assert = (await import('node:assert/strict')).default
+    const { readFile, stat } = await import('node:fs/promises')
+    const path = (await import('node:path')).default
+    const { Context } = await import('@deepseek-ai/cordis')
+    const { default: SkillRuntime } = await import('@deepseek-ai/dsh-skill')
+    const skillFilesystem = await import('@deepseek-ai/dsh-skill-filesystem')
+    const skillContext = new Context()
+    await skillContext.plugin(SkillRuntime)
+    const skillProvider = await skillContext.plugin(skillFilesystem, {
+      providerName: 'packed-presentation', includeDefaultRoots: false, watch: false,
+      customSkillDirs: [${JSON.stringify(path.join(installedPlugin, 'skills'))}],
+    })
+    const catalog = await skillContext.skills.snapshot()
+    assert.equal(catalog.complete, true)
+    assert.deepEqual(catalog.skills.map(skill => skill.name), ['dsh-data-analysis-presentation'])
+    const skill = await skillContext.skills.get('dsh-data-analysis-presentation')
+    assert.ok(skill?.invocation.modelInvocable)
+    assert.equal(skill.resourceBase.kind, 'directory')
+    assert.equal(skill.resourceBase.path, ${JSON.stringify(path.join(installedPlugin, 'skills/dsh-data-analysis-presentation'))})
+    const visited = new Set()
+    async function checkReferences(filename) {
+      if (visited.has(filename)) return
+      visited.add(filename)
+      const markdown = await readFile(filename, 'utf8')
+      for (const match of markdown.matchAll(/\\[[^\\]]*\\]\\(([^)]+)\\)/g)) {
+        if (/^(?:https?:|#)/.test(match[1])) continue
+        const target = path.resolve(path.dirname(filename), match[1].split('#')[0])
+        assert.ok(target.startsWith(skill.resourceBase.path + path.sep), 'Skill reference must remain inside its installed bundle')
+        assert.ok((await stat(target)).isFile())
+        if (target.endsWith('.md')) await checkReferences(target)
+      }
+    }
+    await checkReferences(skill.path)
+    await skillProvider.dispose()
+    assert.deepEqual((await skillContext.skills.snapshot()).skills, [])
     const root = await import('@chengxianglibra/dsh-data-analysis')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
@@ -320,7 +362,7 @@ try {
       if (Object.hasOwn(root, removed) || Object.hasOwn(datasource, removed)) throw new Error('packed plugin still exports removed datasource access surface ' + removed)
     }
     if (typeof datasource.MarivoCredentialService.prototype.prepareExecution !== 'function' || typeof datasource.MarivoCredentialService.prototype.claim === 'function') throw new Error('packed credential service must use execution admission without claim')
-    for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool', 'MARIVO_REPORT_PROMPT']) {
+    for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool', 'MARIVO_REPORT_PROMPT', 'MARIVO_EVIDENCE_SOURCES_TOOL_NAME', 'registerMarivoEvidenceSourcesTool', 'MARIVO_EVIDENCE_SOURCES_PROMPT']) {
       if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
     }
   `

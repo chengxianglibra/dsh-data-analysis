@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "title": "演示：已有 Artifact 表格",
+  "datasets": [
+    {
+      "id": "result",
+      "kind": "artifact",
+      "sourceId": "analysis",
+      "rowLimit": 100,
+      "columns": ["region", "revenue"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "analysis",
+      "ref": { "sessionId": "example-session", "artifactRef": "example-artifact" }
+    }
+  ],
+  "blocks": [
+    {
+      "id": "scope",
+      "kind": "markdown",
+      "text": "演示草稿：请替换实际来源、列名和分析范围。展示最多 100 行，不据此声称全量总计。"
+    },
+    { "id": "values", "kind": "table", "datasetId": "result", "columns": ["region", "revenue"] }
+  ]
+}

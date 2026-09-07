@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "title": "演示：只读来源面板",
+  "datasets": [],
+  "sources": [
+    {
+      "id": "analysis",
+      "ref": { "sessionId": "example-session", "artifactRef": "example-artifact" }
+    }
+  ],
+  "blocks": [
+    {
+      "id": "scope",
+      "kind": "markdown",
+      "text": "演示草稿：替换实际引用后，查看生成时可恢复的公开来源事实。"
+    },
+    { "id": "sources", "kind": "source", "sourceIds": ["analysis"] }
+  ]
+}

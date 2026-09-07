@@ -2,7 +2,7 @@
 
 ## 状态与交付目标
 
-状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3 的共享 reader、离线 HTML builder 与真实 Host/portable 验收已完成，见 [S3 验收记录](marivo-analytics-presentation-s3-acceptance.md)。S4 的 present、文件提交、receipt、RPC 和真实 Host/Web 交付已完成，见 [S4 验收记录](marivo-analytics-presentation-s4-acceptance.md)；S5 的新 Skill 与最终 Agent 自动路由尚未实施。旧 report-kit/Skill/JS 与 Evidence 公共协议已删除。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
+状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3 的共享 reader、离线 HTML builder 与真实 Host/portable 验收已完成，见 [S3 验收记录](marivo-analytics-presentation-s3-acceptance.md)。S4 的 present、文件提交、receipt、RPC 和真实 Host/Web 交付已完成，见 [S4 验收记录](marivo-analytics-presentation-s4-acceptance.md)；S5 的唯一 Skill、单一路由、分发和最终真实 Agent/Web/离线验收已完成，见 [S5 验收记录](marivo-analytics-presentation-s5-acceptance.md)。本次 MVP 已完成，仍是未发布开发状态。旧 report-kit/Skill/JS 与 Evidence 公共协议已删除。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
 
 交付目标固定为 4 个 Tool（`marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_present`）、1 个插件 Skill（`dsh-data-analysis-presentation`）、1 套 reader、一次 present 完成 Web 阅读与离线 HTML。两个 Marivo Runtime Skill 继续挂载，凭据管理保留，computed 仅展示声明来源。
 
@@ -123,6 +123,8 @@
 **检查入口**：新增 presentation integration 与只读 RPC 测试，更新 `test:plugin-integration-delivery` 和对应真实脚本。在独立验证 Workspace 运行实际 Host/Web 工具旅程；最终真实 Agent 自动路由留到 S5。
 
 ## S5：单一 Skill、分发清理与最终验收
+
+**状态：已完成。** 唯一 Skill、短路由、实际包内资源检查和真实 Agent 验证入口已接入；248 项测试、实际注册的 4 Tool/1 插件 Skill/2 Runtime Skill、真实模型一次 present 与 Web/离线/打印均通过。首次模型身份误用已通过 Skill 的精确身份说明修正，保留失败与成功证据，见 [S5 验收记录](marivo-analytics-presentation-s5-acceptance.md)。
 
 **代码所有权**：新 Skill、剩余旧文件删除、Runtime/构建/包清单、架构文档和整体验收，由集成负责人汇总。
 

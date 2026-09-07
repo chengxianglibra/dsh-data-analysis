@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    { "id": "month", "label": "month", "type": "string", "nullable": false },
+    { "id": "count", "label": "count", "type": "int64", "nullable": false },
+    { "id": "amount", "label": "amount", "type": "decimal", "nullable": true }
+  ],
+  "rows": [["2026-01", "12", "120.5000"], ["2026-02", "18", null], ["2026-03", "9", "90.0000"]],
+  "rowCount": 3,
+  "limit": 5000,
+  "truncated": false
+}

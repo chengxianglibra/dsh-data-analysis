@@ -1,9 +1,10 @@
 /** Actual DSH CLI/profile with production server and client; only its model adapter is scripted. */
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { appendFile, cp, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { build } from 'esbuild'
 import type { runPresentationJourneys } from './host.ts'
 
@@ -34,10 +35,20 @@ export async function startPresentationWebHost(
   }
   const productionPackage = path.join(profile, 'node_modules/@chengxianglibra/dsh-data-analysis')
   await mkdir(productionPackage, { recursive: true })
-  for (const entry of ['package.json', 'lib', 'python/presentation-kit/dist', 'cordis.patch.yml'])
-    await cp(path.join(packageRoot, entry), path.join(productionPackage, entry), {
-      recursive: true,
-    })
+  const packed = await promisify(execFile)(
+    'npm',
+    ['pack', packageRoot, '--ignore-scripts', '--json', '--pack-destination', outputRoot],
+    { cwd: repoRoot, maxBuffer: 16 * 1024 * 1024 },
+  )
+  const manifest = JSON.parse(packed.stdout)[0]
+  await promisify(execFile)('tar', [
+    '-xzf',
+    path.join(outputRoot, manifest.filename),
+    '-C',
+    productionPackage,
+    '--strip-components=1',
+  ])
+  await writeFile(path.join(outputRoot, 'installed-package.json'), packed.stdout)
   await symlink(plugin, path.join(profile, 'node_modules/dsh-presentation-s4'))
   await symlink(path.join(profile, 'node_modules'), path.join(plugin, 'node_modules'))
   const productionManifest = JSON.parse(

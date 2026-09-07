@@ -6,11 +6,11 @@
 Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语义、Artifact、Evidence、Quality、
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
-展示重构的 S0 接缝与 S1 一次执行准入已完成，S2 已接入 typed data projection 和最小 Python helper，
-见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)与[S2 验收记录](plan/marivo-analytics-presentation-s2-acceptance.md)。
-S3 已增加[共享 reader 与离线构建](modules/presentation-reader.md)，从同一文档生成 Host 阅读和自包含 HTML。
-S4 已接通一次 present、文件提交、receipt 与 Web 打开/下载。旧 report-kit、报告 Skill、经典 JS 和 Evidence 协议已删除；
-当前仍是未发布开发状态，新展示 Skill 和最终 Agent 自动路由留在 S5。
+当前开发实现已接通一次 Python 执行准入、typed data projection、最小 Python helper、
+[共享 reader 与离线构建](modules/presentation-reader.md)、一次 present 文件交付，以及唯一
+[展示 Skill](modules/presentation-skill.md)。旧 report-kit、报告 Skill、经典 JS 和 Evidence 协议已删除。
+当前仍是未发布开发状态；阶段范围见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)，
+真实 Agent、Web 与离线旅程的实际验证状态见[S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。
 
 ```mermaid
 flowchart LR
@@ -21,6 +21,7 @@ flowchart LR
   P --> T[marivo_datasource_test]
   P --> Y[marivo_python]
   P --> E[marivo_present]
+  P --> K[dsh-data-analysis-presentation Skill]
   P --> S[Semantic reference input and usage sidecar]
   P --> B[Read-only Workspace semantic browser]
   P --> J[Presentation typed data projection]
@@ -40,6 +41,7 @@ flowchart LR
 | Runtime/Workspace | 精确安装、marker、zero-init binding identity | Marivo 项目语义、Session 数据与按需写入 |
 | Environment | checked runner、受限 argv、资源上限、overlay 脱敏 | Artifact/Evidence/Graph schema |
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
+| Presentation Skill | 展示路由、内容组织、图形选择、来源声明与交付流程 | 分析语义、来源有效性判断、布局引擎 |
 | Datasource | DSH Credentials 管理、调用续接、connection test、resolver 注入 | table/source inspection 语义 |
 | Presentation delivery | 一次 present 完整提交、durable receipt、只读 RPC 与 Web 打开/下载 | 分析计算、长期版本管理、语义正确性 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
@@ -54,6 +56,7 @@ flowchart LR
 - [实时 Help 披露](modules/help-disclosure.md)
 - [Datasource Credentials](modules/datasource-credentials.md)
 - [展示交付](modules/presentation-delivery.md)
+- [展示 Skill](modules/presentation-skill.md)
 - [语义对象引用输入](modules/semantic-reference-input.md)
 - [只读语义层对象浏览器](modules/semantic-browser.md)
 - [展示数据投影](modules/presentation-projection.md)
@@ -81,8 +84,10 @@ marivo_python
 marivo_present
 ```
 
-Plugin 当前只挂载 Runtime 的 `marivo-analysis` / `marivo-semantic`。激活后 controller 披露当前 Runtime 的根 Help；
-旧 Evidence Tool/prompt/卡协议与报告路由已删除，新 presentation Skill 在 S5 接入。
+Plugin 挂载 Runtime 的 `marivo-analysis` / `marivo-semantic`，另用独立 filesystem provider 挂载插件自带的
+`dsh-data-analysis-presentation`。常驻 prompt 只给出短路由：普通事实问答使用文字；图表、表格、报告、
+看板和可读来源展示加载展示 Skill。已有数据无需先激活分析 Skill；需要新分析或语义编写时才加载
+Runtime Skill 与 live Help。展示 Skill 不新增 Help target，也不改变两个 Runtime Skill 的激活披露。
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
 Runtime 安装 `dsh-data-analysis-presentation-kit==1.0.0`；公开 Python 函数
@@ -131,14 +136,15 @@ Native/both metadata 与 Code durable block 使用同一个带 Session/Turn 的 
 只读 RPC 按当前 Session Workspace 推导固定 asset 路径，校验归属、真实路径、大小与 digest；来源展开只读保存快照。
 不存在 report ID、revision、latest、CAS 或持久 operation 索引。详见[展示交付](modules/presentation-delivery.md)。
 
-## 展示数据与后续交付
+## 展示数据与内容组织
 
-S2 的内部 `MarivoPresentationProjection` 把 Draft 变成纯数据 `PresentationDocument`。
+内部 `MarivoPresentationProjection` 把 Draft 变成纯数据 `PresentationDocument`。
 Artifact dataset 必须恢复所需行和字段；computed dataset 从 Workspace 中有界读取 typed JSON；
 source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable，但不允许直接 Artifact dataset 假成功。
 
-S3 的共享 reader/离线 builder 与 S4 的 present、完整目录提交、receipt、Host 只读 RPC 已接通。
-S5 接入唯一展示 Skill，并验证真实 Agent 自动路由。阶段验收见[路线图](plan/marivo-analytics-presentation-roadmap.md)。
+展示 Skill 指导 Agent 选择现有数据、写出 Draft、调用一次 `marivo_present` 并解释结果；schema、图形配置、
+报告/看板叙事和示例按需读取 references。Agent 决定内容顺序和图形意图，reader 负责自适应布局，
+没有 Agent 可配置的网格。来源来自 Marivo 的公开快照；computed 的来源声明不构成转换审计或正确性证明。
 
 ## 验证
 
@@ -151,4 +157,5 @@ npm run verify:plugin-package
 确定性测试守住 Runtime/helper identity、Tool 最小性、旧 surface 删除、Python/Node typed JSON、
 Artifact/source identity、文件预算与包导出。真实 Artifact 恢复与 Chromium 数据读取见
 [S2 验收记录](plan/marivo-analytics-presentation-s2-acceptance.md)；实际 Native/Code/headless、Web 卡片、下载和离线交付见
-[S4 验收记录](plan/marivo-analytics-presentation-s4-acceptance.md)，真实 Agent 自动路由留在 S5。
+[S4 验收记录](plan/marivo-analytics-presentation-s4-acceptance.md)。当前安装包、Skill 路由与最终真实旅程状态见
+[S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。

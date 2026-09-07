@@ -1,6 +1,7 @@
 /** Cordis lifecycle adapter for the Web-profile shared Marivo Runtime. */
 
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -67,6 +68,9 @@ export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'marivo_python installs credential_scope before user code. Create or resume Session/reader objects inside that execution, and close Sessions in finally. Do not replace the resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
   'Configured credentials do not imply a valid connection or query permissions. Preserve real failures; never automatically replay a script with possible side effects.',
 ].join(' ')
+
+const PRESENTATION_PROMPT =
+  'Answer ordinary factual questions in text. For charts, tables, reports, dashboards or a readable source presentation, load the dsh-data-analysis-presentation skill and deliver through marivo_present. Existing data needs no prior Marivo skill activation; load the Runtime skills and live Help when new analysis or semantic authoring is needed.'
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -175,6 +179,13 @@ export function installMarivoPlugin(
     controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
     controller.addDisposer(
       agent.ctx.systemPrompt.section({
+        name: 'marivo:presentation',
+        order: 180,
+        text: PRESENTATION_PROMPT,
+      }),
+    )
+    controller.addDisposer(
+      agent.ctx.systemPrompt.section({
         name: 'marivo:datasource-credentials',
         order: 170,
         text: () =>
@@ -272,6 +283,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
       providerName: 'dsh-data-analysis-marivo',
       includeDefaultRoots: false,
       customSkillDirs: [runtime.skillsRoot],
+      watch: false,
+    })
+    installSkillFilesystem(ctx, {
+      providerName: 'dsh-data-analysis-presentation',
+      includeDefaultRoots: false,
+      customSkillDirs: [fileURLToPath(new URL('../skills/', import.meta.url))],
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))

@@ -9,6 +9,7 @@ Marivo 拥有分析、Artifact/Finding 与来源事实；Harness 拥有 Session/
 实现为 `src/presentation/{tool,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
 `bridges.ts` 和 `client.tsx`；客户端使用 `src/client/presentation/` 的共享 reader 与交付 adapter。
 数据契约见[展示投影](presentation-projection.md)，图形和离线行为见[展示 reader](presentation-reader.md)。
+Agent 的展示路由、Draft 编写与结果解释见[展示 Skill](presentation-skill.md)；已有数据可直接进入此交付流程。
 
 ## 单次调用与文件身份
 
@@ -66,4 +67,5 @@ npm run validate:presentation-integration:real
 
 确定性测试覆盖原子提交、取消、读取预算/路径/摘要、Workspace 变化、统一 receipt 和事件去重；
 隔离真实验证覆盖 Native/both/Code、实际 Web 卡片打开/下载与离线文件。实际结果见
-[S4 验收记录](../plan/marivo-analytics-presentation-s4-acceptance.md)。新展示 Skill 与真实 Agent 自动路由留在 S5。
+[S4 验收记录](../plan/marivo-analytics-presentation-s4-acceptance.md)。展示 Skill 的真实 Agent 自动路由和最终旅程状态见
+[S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
