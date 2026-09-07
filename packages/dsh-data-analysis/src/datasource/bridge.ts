@@ -5,10 +5,17 @@ import type { MarivoBridgeSource } from '../environment/source.ts'
 import { resolveMarivoBridgeSource } from '../environment/source.ts'
 import type { MarivoCheckedRunner, MarivoEnvironmentBinding } from '../environment/types.ts'
 import {
+  DATASOURCE_AUTHORING_PROGRAM,
+  type DatasourceAuthoring,
+  type DatasourceCreateInput,
+  datasourceAuthoringSchema,
+} from './authoring.ts'
+import {
   MARIVO_DATASOURCE_DESCRIBE_PROGRAM,
   MARIVO_DATASOURCE_INVENTORY_PROGRAM,
   MARIVO_DATASOURCE_TEST_PROGRAM,
 } from './bridge-programs.ts'
+import { marivoCredentialStorageRef } from './shell-env.ts'
 
 const DATASOURCE_LIMITS = Object.freeze({
   timeoutMs: 30_000,
@@ -83,6 +90,11 @@ export interface MarivoDatasourceTestResult {
 
 export interface MarivoDatasourceBridgePort {
   readonly binding: Readonly<MarivoEnvironmentBinding>
+  authoring?(signal?: AbortSignal): Promise<DatasourceAuthoring>
+  create?(
+    input: DatasourceCreateInput,
+    signal?: AbortSignal,
+  ): Promise<{ name?: string; error?: string }>
   describe(name: string, signal?: AbortSignal): Promise<MarivoDatasourceDescription>
   inventory(signal?: AbortSignal): Promise<MarivoDatasourceDescription[]>
   test(
@@ -304,6 +316,54 @@ export class MarivoDatasourceBridge {
   constructor(runner: MarivoCheckedRunner) {
     this.#runner = runner
     this.binding = runner.binding
+  }
+
+  async authoring(signal?: AbortSignal): Promise<DatasourceAuthoring> {
+    const result = await this.#runner.runChecked({
+      program: DATASOURCE_AUTHORING_PROGRAM,
+      stdin: JSON.stringify({ action: 'schema' }),
+      limits: DATASOURCE_LIMITS,
+      signal,
+    })
+    this.#assertSuccess(result, 'inventory')
+    return datasourceAuthoringSchema.parse({
+      ...parseJsonObject(result.stdout, 'inventory'),
+      fingerprint: this.binding.fingerprint,
+    })
+  }
+
+  async create(
+    input: DatasourceCreateInput,
+    signal?: AbortSignal,
+  ): Promise<{ name?: string; error?: string }> {
+    const refs = Object.entries(input.fields)
+      .filter(([key]) => key.endsWith('_env'))
+      .flatMap(([, value]) =>
+        typeof value === 'string'
+          ? [value]
+          : value && typeof value === 'object' && !Array.isArray(value)
+            ? Object.values(value)
+            : [],
+      )
+    for (const ref of refs) {
+      if (typeof ref !== 'string') throw new Error('Invalid credential reference')
+      marivoCredentialStorageRef(ref)
+    }
+    const result = await this.#runner.runChecked({
+      program: DATASOURCE_AUTHORING_PROGRAM,
+      stdin: JSON.stringify({ action: 'create', ...input, refs }),
+      limits: DATASOURCE_LIMITS,
+      signal,
+    })
+    this.#assertSuccess(result, 'inventory')
+    const value = parseJsonObject(result.stdout, 'inventory')
+    if (
+      value.error === 'datasource-already-exists' ||
+      value.error === 'datasource-definition-invalid'
+    )
+      return { error: value.error }
+    if (typeof value.name !== 'string') throw new Error('Invalid datasource creation result')
+    return { name: value.name }
   }
 
   async describe(name: string, signal?: AbortSignal): Promise<MarivoDatasourceDescription> {

@@ -59,7 +59,7 @@ const runners = new Map(
 )
 const workspaceList = [
   { workspaceId: 'sales', title: '销售分析', path: rootA, sessionIds: ['sales-session'] },
-  { workspaceId: 'empty', title: '空项目', path: rootB, sessionIds: [] },
+  { workspaceId: 'empty', title: '空项目', path: rootB, sessionIds: ['empty-session'] },
 ]
 const service = new SemanticBrowserService({
   getWorkspace: (id) => {
@@ -81,7 +81,7 @@ const app = await build({
     resolveDir: process.cwd(),
     loader: 'tsx',
     contents: `
-import React from 'react';
+import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {installSemanticBrowser} from ${JSON.stringify(installer)};
 const registrations=[], callbacks={};
@@ -94,9 +94,11 @@ installSemanticBrowser(ctx,{call:async(channel,endpoint,payload,signal)=>{
  const response=await fetch('/catalog',{method:'POST',body:JSON.stringify(payload),signal}); return response.json();
 }});
 const workspaces=${JSON.stringify(workspaceList)};
-const props={sessionId:'sales-session',useWorkspaces:selector=>selector({items:workspaces,state:'idle',phase:'ready'}),useSessions:selector=>selector({current:'sales-session'})};
+function App(){ const [sessionId,setSessionId]=useState('sales-session'); window.setFixtureSession=setSessionId;
+const props={sessionId,useWorkspaces:selector=>selector({items:workspaces,state:'idle',phase:'ready'}),useSessions:selector=>selector({current:sessionId})};
 const renderSeat=({options,component:Component})=><Component key={options.name+options.id} {...props}/>;
-createRoot(document.getElementById('app')).render(<><h1>DSH Slot 验收夹具</h1><p>真实 Marivo Catalog · 无 live Agent · 仅临时项目</p><header style={{display:'flex',alignItems:'center',gap:10}}><span>销售分析会话</span><nav aria-label="会话标题操作">{registrations.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>{registrations.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>);
+return <><h1>DSH Slot 验收夹具</h1><p>真实 Marivo Catalog · 无 live Agent · 仅临时项目</p><header style={{display:'flex',alignItems:'center',gap:10}}><span>销售分析会话</span><nav aria-label="会话标题操作">{registrations.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>{registrations.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>; }
+createRoot(document.getElementById('app')).render(<App/>);
 `,
   },
   bundle: true,
@@ -161,7 +163,7 @@ try {
   assert.equal(requests, 0)
   await page.getByRole('button', { name: '打开语义层' }).click()
   await page.getByRole('button', { name: '下一页' }).waitFor({ timeout: 30000 })
-  assert.equal(await page.getByLabel('选择 Workspace').inputValue(), 'sales')
+  assert.equal(await page.getByLabel('选择 Workspace').count(), 0)
   assert.equal(requests, 1)
   checks.push('会话标题入口默认打开所属 Workspace、无 live Agent 真实 Catalog 读取、大目录分页')
   await page.getByLabel('搜索语义对象').fill('metric:sales.quarter_spend')
@@ -224,8 +226,8 @@ try {
       name === 'stock_linear'
         ? /由计算公式及组成对象确定/
         : name === 'stock_last'
-          ? /末值/
-          : /分位数（0.95）/,
+          ? /last/
+          : /percentile\(q=0.95\)/,
     )
     if (name !== 'stock_linear')
       await temporal.getByRole('button', { name: 'sales.orders.ordered_at', exact: true }).waitFor()
@@ -335,9 +337,13 @@ try {
   await page.getByRole('alert').filter({ hasText: '当前显示上次成功加载的内容' }).waitFor()
   await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
   fail = false
-  await page.getByLabel('选择 Workspace').selectOption('empty')
+  await page.evaluate("window.setFixtureSession('empty-session')")
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: '打开语义层' }).click()
   await page.getByText('当前项目没有语义层对象。').waitFor({ timeout: 30000 })
-  await page.getByLabel('选择 Workspace').selectOption('sales')
+  await page.evaluate("window.setFixtureSession('sales-session')")
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: '打开语义层' }).click()
   await page.getByRole('button', { name: '刷新', exact: true }).waitFor({ timeout: 30000 })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()

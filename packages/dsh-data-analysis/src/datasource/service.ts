@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { DatasourceCreateInput } from './authoring.ts'
 import type {
   MarivoDatasourceBridgePort,
   MarivoDatasourceDescription,
@@ -13,7 +14,7 @@ export const CREDENTIAL_CHANNEL = '/dsh-data-analysis-credentials'
 const RETENTION = 30 * 60_000
 const CAPACITY = 512
 export type CredentialStore = Pick<CredentialProvider, 'describe' | 'resolve' | 'set' | 'unset'>
-export type CredentialAction = 'update' | 'delete' | 'test' | 'submit' | 'diagnose'
+export type CredentialAction = 'save' | 'update' | 'delete' | 'test' | 'submit' | 'diagnose'
 export interface CredentialContextView {
   token: string
   workspaceId: string
@@ -319,6 +320,26 @@ export class MarivoCredentialService {
     assert(current.binding.fingerprint === bridge.binding.fingerprint, 'context-changed')
     signal.throwIfAborted()
     return views
+  }
+
+  async createDatasource(
+    generation: string,
+    fingerprint: string,
+    input: DatasourceCreateInput,
+    resolve: () => Promise<MarivoDatasourceBridgePort>,
+    caller: AbortSignal,
+  ): Promise<{ name: string }> {
+    const signal = AbortSignal.any([caller, this.#lifetime.signal])
+    return this.#locked(async () => {
+      assert(generation === this.generation, 'context-changed')
+      const bridge = await resolve()
+      assert(bridge.binding.fingerprint === fingerprint, 'context-changed')
+      assert(bridge.create, 'datasource-authoring-unavailable')
+      signal.throwIfAborted()
+      const result = await bridge.create(input, signal)
+      assert(!result.error && result.name, result.error ?? 'datasource-definition-invalid')
+      return { name: result.name }
+    }, signal)
   }
   #watchRefs(refs: readonly string[]): () => void {
     const unique = new Set(refs)
@@ -655,7 +676,10 @@ export class MarivoCredentialService {
       'invalid-changes',
     )
     assert(
-      !Object.keys(changes).length || input.action === 'update' || input.action === 'submit',
+      !Object.keys(changes).length ||
+        input.action === 'save' ||
+        input.action === 'update' ||
+        input.action === 'submit',
       'invalid-changes',
     )
     assert(
@@ -736,7 +760,7 @@ export class MarivoCredentialService {
         }, signal)
         assert(op.errors.length === 0, 'credential-save-failed')
         for (const ref of Object.keys(changes)) delete changes[ref]
-        if (op.action !== 'delete') {
+        if (op.action !== 'delete' && op.action !== 'save') {
           op.phase = 'validating'
           this.#changed()
           const testedVersion = this.#version(context)

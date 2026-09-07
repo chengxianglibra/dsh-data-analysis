@@ -2,17 +2,6 @@
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 
-const operations = {
-  sum: '求和',
-  count: '计数',
-  count_distinct: '去重计数',
-  mean: '平均值',
-  min: '最小值',
-  max: '最大值',
-  percentile: '分位数',
-  first: '首值',
-  last: '末值',
-}
 const units = {
   second: '秒',
   minute: '分钟',
@@ -30,7 +19,7 @@ const reasons = {
 }
 const kinds = {
   aggregate: '聚合',
-  weighted_mean: '加权平均',
+  weighted_mean: 'weighted_mean',
   ratio: '比率',
   linear: '线性组合',
   cumulative: '累计',
@@ -38,7 +27,7 @@ const kinds = {
 }
 const field = (object, name) => object?.fields.find((x) => x.name === name)?.value
 const op = (operation) =>
-  `${operations[operation?.kind] ?? operation?.kind ?? '未声明'}${operation?.q === undefined ? '' : `（${operation.q}）`}`
+  `${operation?.kind ?? '未声明'}${operation?.q === undefined ? '' : `(q=${operation.q})`}`
 function anchorText(anchor) {
   if (anchor?.kind === 'all_history') return '从全部历史起点累计'
   if (anchor?.kind === 'trailing')
@@ -172,7 +161,7 @@ function Formula({ node, objects, navigate }) {
     case 'aggregate':
       return (
         <>
-          {op(node.operation)}（{link(node.target)}）
+          {op(node.operation)}({link(node.target)})
         </>
       )
     case 'ratio':
@@ -191,7 +180,7 @@ function Formula({ node, objects, navigate }) {
     case 'weighted_mean':
       return (
         <>
-          加权平均：{link(node.value)}，权重：{link(node.weight)}
+          weighted_mean({link(node.value)}, {link(node.weight)})
         </>
       )
     case 'cumulative':

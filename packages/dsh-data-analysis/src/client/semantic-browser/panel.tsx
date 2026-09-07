@@ -263,24 +263,6 @@ export function SemanticBrowserPanel({
       <div className="sb-shell">
         <header className="sb-header">
           <h1>语义层</h1>
-          <label>
-            Workspace{' '}
-            <select
-              aria-label="选择 Workspace"
-              value={state.workspaceId}
-              onChange={(event) => model.select(event.target.value)}
-            >
-              <option value="">请选择项目</option>
-              {state.workspaceId && !knownWorkspace && (
-                <option value={state.workspaceId}>项目已不可用</option>
-              )}
-              {workspaces.map((item) => (
-                <option key={item.workspaceId} value={item.workspaceId}>
-                  {item.title}
-                </option>
-              ))}
-            </select>
-          </label>
           <button
             type="button"
             disabled={!state.workspaceId || !knownWorkspace || workspaceError || view.loading}
@@ -324,9 +306,7 @@ export function SemanticBrowserPanel({
           <div className="sb-empty">
             {workspacePhase !== 'ready'
               ? '正在读取 Workspace 列表…'
-              : workspaces.length
-                ? '请选择一个 Workspace 查看语义层。'
-                : '尚无 Workspace，请先在 DSH 中添加项目。'}
+              : '当前会话未绑定 Workspace，请返回会话后重试。'}
           </div>
         ) : !snapshot ? (
           <div className="sb-empty">{view.loading ? '正在加载对象目录' : '尚未加载对象目录'}</div>

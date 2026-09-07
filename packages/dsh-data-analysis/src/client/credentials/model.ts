@@ -1,3 +1,4 @@
+import type { DatasourceAuthoring, DatasourceCreateInput } from '../../datasource/authoring.ts'
 import type {
   CredentialAction,
   CredentialContextView,
@@ -46,6 +47,9 @@ const messages: Record<string, string> = {
   'operation-busy': '该操作正在进行，请等待结果。',
   'credential-state-unavailable': '暂时无法读取凭证状态，请稍后重试。',
   'capacity-exceeded': '当前操作数量达到上限，请稍后重试。',
+  'datasource-already-exists': '该数据源已存在，请使用其他名称。',
+  'datasource-definition-invalid': '数据源定义无效，请检查名称、字段类型和凭证引用。',
+  'datasource-authoring-unavailable': '当前 Runtime 不支持新增数据源。',
 }
 export function credentialMessage(code: string): string {
   return messages[code] ?? '凭证操作失败，请检查配置后重试。'
@@ -119,6 +123,38 @@ export class CredentialClientModel {
   show(workspaceId: string): void {
     this.#patch({ open: true, requestId: '' })
     void this.selectWorkspace(workspaceId)
+  }
+  async authoring(
+    workspaceId: string,
+    signal: AbortSignal,
+  ): Promise<DatasourceAuthoring & { generation: string }> {
+    return (await this.#call('authoring', { workspaceId }, signal)) as DatasourceAuthoring & {
+      generation: string
+    }
+  }
+  async createDatasource(
+    workspaceId: string,
+    schema: DatasourceAuthoring & { generation: string },
+    input: DatasourceCreateInput,
+  ): Promise<void> {
+    let result: { name: string }
+    try {
+      result = (await this.#call('create-datasource', {
+        workspaceId,
+        generation: schema.generation,
+        fingerprint: schema.fingerprint,
+        ...input,
+      })) as { name: string }
+    } catch (error) {
+      throw new Error(
+        `${error instanceof Error ? error.message : '新增数据源失败。'} 如提交结果未确认，请刷新列表核对后再操作。`,
+      )
+    }
+    if (!this.#state.open || this.#state.workspaceId !== workspaceId) return
+    await this.selectWorkspace(workspaceId)
+    if (this.#state.workspaceId !== workspaceId) return
+    const created = this.#state.datasources.find((item) => item.name === result.name)
+    if (created) this.select(created.token)
   }
   close(): void {
     this.#read?.abort()

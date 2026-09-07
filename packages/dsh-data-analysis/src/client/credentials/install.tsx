@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
+import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
 import { credentialStyles } from './styles.ts'
 
@@ -133,6 +134,12 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
     setEditing({})
     setDeleting('')
   }, [context.token, context.version])
+  const saveReference = (ref) => {
+    const changes = { [ref]: values[ref] }
+    setValues({ ...values, [ref]: '' })
+    setEditing({ ...editing, [ref]: false })
+    void model.start(context, 'save', changes)
+  }
   const submit = () => {
     const changes = Object.fromEntries(Object.entries(values).filter(([, value]) => value !== ''))
     setValues({})
@@ -230,6 +237,16 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
                         value={values[ref] ?? ''}
                         onChange={(event) => setValues({ ...values, [ref]: event.target.value })}
                       />
+                      {!request && (
+                        <button
+                          type="button"
+                          className="mc-primary"
+                          disabled={!values[ref]}
+                          onClick={() => saveReference(ref)}
+                        >
+                          {info.configured ? '确认更换' : '新增凭证'}
+                        </button>
+                      )}
                     </label>
                   )}
                   {shared.length > 1 && (
@@ -279,9 +296,11 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
       </div>
       {!ended && (
         <div className="mc-form-footer">
-          <button className="mc-primary" type="button" disabled={busy} onClick={submit}>
-            {request ? '保存并验证后继续' : '保存并验证'}
-          </button>
+          {request && (
+            <button className="mc-primary" type="button" disabled={busy} onClick={submit}>
+              提交凭证并继续
+            </button>
+          )}
           <button
             type="button"
             disabled={busy}
@@ -335,18 +354,28 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
 function CredentialPanel({ model, workspaces }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const dialog = useRef(null)
+  const [creating, setCreating] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Switching context discards the creation form.
+  useEffect(() => setCreating(false), [state.open, state.workspaceId, state.requestId])
   useEffect(() => {
     if (state.open) dialog.current?.showModal()
     else dialog.current?.close()
   }, [state.open])
   const request = state.requests.find((item) => item.id === state.requestId)
-  const pending = state.requests.filter((item) => item.endedAt === undefined)
+  const pending = state.requests.filter(
+    (item) => item.endedAt === undefined && item.sessionId === state.sessionId,
+  )
   const context =
     request?.context ?? state.datasources.find((item) => item.token === state.selected)
   const workspaceId = request
     ? (workspaces.find((item) => item.sessionIds.includes(request.sessionId))?.workspaceId ?? '')
     : state.workspaceId
   const datasources = request ? [request.context] : state.datasources
+  const operations = state.operations.filter((entry) => entry.workspaceId === workspaceId)
+  const activeOperation = operations.find(
+    (entry) => entry.handle.id === state.handle?.id,
+  )?.operation
+  if (!state.open) return null
   return (
     <dialog
       ref={dialog}
@@ -394,23 +423,15 @@ function CredentialPanel({ model, workspaces }) {
         )}
         <div className="mc-columns">
           <aside className="mc-nav" aria-label="数据源导航">
-            <div>
-              <label className="mc-workspace-label" htmlFor="mc-workspace">
-                Workspace
-              </label>
-              <select
-                id="mc-workspace"
-                value={workspaceId}
-                onChange={(event) => void model.selectWorkspace(event.target.value)}
+            {!request && (
+              <button
+                type="button"
+                disabled={!workspaceId || state.loading}
+                onClick={() => setCreating(true)}
               >
-                <option value="">请选择 Workspace</option>
-                {workspaces.map((item) => (
-                  <option key={item.workspaceId} value={item.workspaceId}>
-                    {item.title ?? item.name ?? item.path ?? item.workspaceId}
-                  </option>
-                ))}
-              </select>
-            </div>
+                新增数据源
+              </button>
+            )}
             <div>
               <div className="mc-nav-heading">
                 <h3>{request ? '请求的数据源' : `数据源 · ${datasources.length}`}</h3>
@@ -439,9 +460,13 @@ function CredentialPanel({ model, workspaces }) {
                         type="button"
                         aria-label={`选择数据源 ${item.name}`}
                         aria-pressed={context?.token === item.token}
-                        onClick={() =>
-                          request ? model.openRequest(request.id) : model.select(item.token)
-                        }
+                        onClick={() => {
+                          if (request) model.openRequest(request.id)
+                          else {
+                            setCreating(false)
+                            model.select(item.token)
+                          }
+                        }}
                       >
                         <Icon name="database" />
                         <span className="mc-datasource-copy">
@@ -475,26 +500,34 @@ function CredentialPanel({ model, workspaces }) {
                 正在读取数据源与凭证状态…
               </p>
             )}
-            {!state.loading && !context && !state.error && (
+            {!creating && !state.loading && !context && !state.error && (
               <div className="mc-empty">
                 <Icon name="database" size={32} />
                 <h3>
                   {!state.workspaceId
-                    ? '选择一个 Workspace'
+                    ? '当前会话未绑定 Workspace'
                     : state.datasources.length === 0
                       ? '暂无数据源'
                       : '选择一个数据源'}
                 </h3>
                 <p>
                   {!state.workspaceId
-                    ? '查看该工作区的数据源和凭证配置。'
+                    ? '请返回会话后重试。'
                     : state.datasources.length === 0
                       ? '该 Workspace 没有已定义的数据源。'
                       : '查看凭证配置与最近一次连接测试。'}
                 </p>
               </div>
             )}
-            {state.open && context && (
+            {creating && (
+              <CreateDatasource
+                key={workspaceId}
+                model={model}
+                workspaceId={workspaceId}
+                close={() => setCreating(false)}
+              />
+            )}
+            {!creating && context && (
               <CredentialForm
                 key={context.token}
                 context={context}
@@ -504,11 +537,11 @@ function CredentialPanel({ model, workspaces }) {
                 workspaceId={workspaceId}
               />
             )}
-            {state.operations.length > 0 && (
+            {operations.length > 0 && (
               <section className="mc-activity" aria-label="进行中的凭证操作">
-                <p className="mc-activity-heading">进行中 · {state.operations.length}</p>
+                <p className="mc-activity-heading">进行中 · {operations.length}</p>
                 <div className="mc-activity-list">
-                  {state.operations.map((entry) => (
+                  {operations.map((entry) => (
                     <button
                       type="button"
                       key={entry.handle.id}
@@ -519,17 +552,17 @@ function CredentialPanel({ model, workspaces }) {
                     </button>
                   ))}
                 </div>
-                {state.operation?.status === 'running' && (
+                {activeOperation?.status === 'running' && (
                   <div className="mc-progress">
                     <p>
                       {state.operations.find((entry) => entry.handle.id === state.handle?.id)?.name}{' '}
-                      · {state.operation.phase === 'saving' ? '正在保存' : '正在验证连接'}
+                      · {activeOperation.phase === 'saving' ? '正在保存' : '正在验证连接'}
                     </p>
                     <button type="button" onClick={() => void model.cancelOperation()}>
                       取消此操作
                     </button>
-                    {state.operation.saved.length > 0 && (
-                      <p>已保存：{state.operation.saved.join('、')}。</p>
+                    {activeOperation.saved.length > 0 && (
+                      <p>已保存：{activeOperation.saved.join('、')}。</p>
                     )}
                   </div>
                 )}
@@ -598,8 +631,13 @@ export function installCredentials(ctx, rpc) {
       { name: 'shell.overlay', id: 'marivo-credentials' },
       function Overlay({ useSessions, useWorkspaces }) {
         const sessionId = useSessions((state) => state.current) ?? ''
+        const workspaces = useWorkspaces((state) => state.items)
+        const currentWorkspace =
+          workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
         useEffect(() => model.session(sessionId), [sessionId])
-        return <CredentialPanel model={model} workspaces={useWorkspaces((state) => state.items)} />
+        // biome-ignore lint/correctness/useExhaustiveDependencies: Workspace reassignment must dismiss old content.
+        useEffect(() => model.close(), [currentWorkspace])
+        return <CredentialPanel model={model} workspaces={workspaces} />
       },
     ),
   )

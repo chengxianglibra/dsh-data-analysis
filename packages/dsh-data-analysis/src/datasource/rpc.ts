@@ -8,7 +8,7 @@ const handle = { generation: z.string().uuid(), id: z.string().uuid(), scope: z.
 const mutation = z
   .object({
     ...handle,
-    action: z.enum(['update', 'delete', 'test', 'submit', 'diagnose']),
+    action: z.enum(['save', 'update', 'delete', 'test', 'submit', 'diagnose']),
     version: z.string().max(65536),
     requestId: z.string().uuid().optional(),
     reference: text.optional(),
@@ -37,6 +37,29 @@ export function registerCredentialRpc(
               signal,
             ),
           }
+        } else if (endpoint === 'authoring') {
+          const input = z.object({ workspaceId: text }).strict().parse(payload)
+          const bridge = await workspace(input.workspaceId)
+          if (!bridge.authoring) throw new Error('authoring-unavailable')
+          value = { generation: service.generation, ...(await bridge.authoring(signal)) }
+        } else if (endpoint === 'create-datasource') {
+          const input = z
+            .object({
+              workspaceId: text,
+              generation: z.string().uuid(),
+              fingerprint: z.string().min(1).max(256),
+              backend: text,
+              fields: z.record(text, z.unknown()),
+            })
+            .strict()
+            .parse(payload)
+          value = await service.createDatasource(
+            input.generation,
+            input.fingerprint,
+            input,
+            () => workspace(input.workspaceId),
+            signal,
+          )
         } else if (endpoint === 'watch') {
           const input = z
             .object({ sessionId: text, cursor: z.string().max(256).optional() })

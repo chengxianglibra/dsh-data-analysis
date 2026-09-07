@@ -95,7 +95,7 @@ const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,co
 const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
 installSemanticBrowser(ctx,rpc);
 installCredentials(ctx,rpc);
-const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']}];
+const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']},{workspaceId:'other',name:'其他工作区不应显示',sessionIds:['other-session']}];
 const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
 const renderSeat=({options,component:C})=><C key={options.name+options.id} {...props}/>;
 function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>}
@@ -154,7 +154,8 @@ const activeOperations = page.getByRole('region', { name: '进行中的凭证操
 const selectDatasource = (name: string) =>
   page.getByRole('button', { name: `选择数据源 ${name}`, exact: true }).click()
 async function assertPendingWorkspace() {
-  assert.equal(await page.getByLabel('Workspace', { exact: true }).inputValue(), 'workspace')
+  assert.equal(await page.getByLabel('Workspace', { exact: true }).count(), 0)
+  assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
   const navigation = page.getByRole('complementary', { name: '数据源导航' })
   await navigation.getByRole('heading', { name: '请求的数据源', exact: true }).waitFor()
   assert.equal(
@@ -246,12 +247,14 @@ try {
   await page.screenshot({ path: path.join(output, 'header-entries-mobile.png'), fullPage: true })
   await page.setViewportSize({ width: 1200, height: 900 })
   await page.getByRole('button', { name: '打开数据源与凭证' }).click()
-  assert.equal(await page.getByLabel('Workspace', { exact: true }).inputValue(), 'workspace')
+  assert.equal(await page.getByLabel('Workspace', { exact: true }).count(), 0)
+  assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
   await selectDatasource('warehouse')
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor({ timeout: 30000 })
   await page.getByLabel('新值').fill(secret)
-  await page.getByRole('button', { name: '保存并验证', exact: true }).click()
+  await page.getByRole('button', { name: '新增凭证', exact: true }).click()
   await page.getByRole('button', { name: '更换', exact: true }).waitFor({ timeout: 30000 })
+  await page.getByRole('button', { name: '测试连接', exact: true }).click()
   await page.getByText('连接测试成功', { exact: true }).waitFor()
   assert(!(await page.locator('body').innerText()).includes(secret))
   assert(!(await page.evaluate(() => JSON.stringify(sessionStorage))).includes(secret))
@@ -342,18 +345,21 @@ try {
   await page.screenshot({ path: path.join(output, 'completed-reopened.png'), fullPage: true })
   // New failed validation must supersede a previous success, even if the overview refresh fails.
   bridge.test = async (description) => ({ ...failed, name: description.name })
+  await page.getByRole('button', { name: '更换', exact: true }).click()
+  await page.getByLabel('新值').fill(secret)
+  await page.getByRole('button', { name: '确认更换', exact: true }).click()
+  await assertNoCompletedOperations()
+  await page.getByText('配置已变化，请重新测试', { exact: true }).waitFor()
   failOverview = true
   const overviewFailure = page.waitForResponse(
     (response: { status(): number }) => response.status() === 503,
     { timeout: 30000 },
   )
-  await page.getByRole('button', { name: '更换', exact: true }).click()
-  await page.getByLabel('新值').fill(secret)
-  await page.getByRole('button', { name: '保存并验证', exact: true }).click()
+  await page.getByRole('button', { name: '测试连接', exact: true }).click()
   assert.equal((await overviewFailure).request().postDataJSON().endpoint, 'overview')
   await page.getByText('connection rejected', { exact: true }).waitFor({ timeout: 30000 })
   assert.equal(await page.getByText('连接测试成功', { exact: true }).count(), 0)
-  await page.getByText('已保存：DB_PASSWORD。', { exact: true }).waitFor()
+  assert.equal(f.store.values.size, 1)
   await assertNoCompletedOperations()
   assert(!(await page.locator('body').innerText()).includes(secret))
   assert(!(await page.evaluate(() => JSON.stringify(sessionStorage))).includes(secret))
@@ -388,7 +394,7 @@ try {
     signal: f.controller.signal,
   })
   await page
-    .getByRole('button', { name: '保存并验证后继续', exact: true })
+    .getByRole('button', { name: '提交凭证并继续', exact: true })
     .waitFor({ timeout: 30000 })
   await assertPendingWorkspace()
   await page.evaluate('window.setFixtureHeaderVisible(true)')
@@ -402,14 +408,14 @@ try {
   assert.equal(starts, 0)
   await page.reload()
   await page
-    .getByRole('button', { name: '保存并验证后继续', exact: true })
+    .getByRole('button', { name: '提交凭证并继续', exact: true })
     .waitFor({ timeout: 30000 })
   await assertPendingWorkspace()
   assert.equal(await page.getByLabel('新值').inputValue(), '')
   assert.equal(starts, 0)
   await page.getByLabel('新值').fill(secret)
   await page.screenshot({ path: path.join(output, 'pending.png'), fullPage: true })
-  await page.getByRole('button', { name: '保存并验证后继续', exact: true }).click()
+  await page.getByRole('button', { name: '提交凭证并继续', exact: true }).click()
   const result = await pending
   assert(!result.isError, JSON.stringify(result))
   assert.equal((result.value as { exitCode: number }).exitCode, 0, JSON.stringify(result))
@@ -423,7 +429,8 @@ try {
   await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true })
   await page.getByRole('button', { name: '返回数据源管理', exact: true }).click()
   await page.getByRole('button', { name: '测试连接', exact: true }).waitFor({ timeout: 30000 })
-  assert.equal(await page.getByLabel('Workspace', { exact: true }).inputValue(), 'workspace')
+  assert.equal(await page.getByLabel('Workspace', { exact: true }).count(), 0)
+  assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
   const navigation = page.getByRole('complementary', { name: '数据源导航' })
   assert.equal(await navigation.getByRole('button', { name: /^选择数据源 / }).count(), 2)
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor()
@@ -433,10 +440,38 @@ try {
     path: path.join(output, 'returned-management-mobile.png'),
     fullPage: true,
   })
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.getByRole('button', { name: '新增数据源', exact: true }).click()
+  await page.getByLabel('引擎', { exact: true }).selectOption('duckdb')
+  await page.getByLabel('name', { exact: true }).fill('created_in_card')
+  await page.getByLabel('http_scope', { exact: true }).fill('http://127.0.0.1/')
+  await page.getByLabel('http_bearer_token_env', { exact: true }).fill('NEW_TOKEN')
+  await assertNoHorizontalOverflow()
+  await page.screenshot({ path: path.join(output, 'create-datasource.png'), fullPage: true })
+  await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  await page
+    .getByRole('heading', { name: 'created_in_card', exact: true })
+    .waitFor({ timeout: 30000 })
+  await page.getByLabel('新值').fill(secret)
+  await page.getByRole('button', { name: '新增凭证', exact: true }).click()
+  await page.getByRole('button', { name: '更换', exact: true }).waitFor({ timeout: 30000 })
+  assert.equal(await page.getByRole('button', { name: /保存并验证/ }).count(), 0)
+  await page.getByRole('button', { name: '测试连接', exact: true }).click()
+  await page.getByText('连接测试成功', { exact: true }).waitFor({ timeout: 30000 })
+  assert((await bridge.inventory()).some((item) => item.name === 'created_in_card'))
+  await page.screenshot({ path: path.join(output, 'created-datasource.png'), fullPage: true })
+  await page.getByRole('button', { name: '新增数据源', exact: true }).click()
+  await page.getByLabel('name', { exact: true }).fill('created_in_card')
+  await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  await page.getByRole('alert').filter({ hasText: '该数据源已存在' }).waitFor({ timeout: 30000 })
+  assert.equal((await bridge.describe('created_in_card')).refs[0], 'NEW_TOKEN')
   assert.deepEqual(errors, [])
   const evidence = {
     browser: 'passed',
     managementSaveDelete: 'passed',
+    createDatasourceAndCredential: 'passed',
+    duplicateDatasourceRejected: 'passed',
+    workspaceSelectorsRemoved: 'passed',
     lastTestFreshAndStale: 'passed',
     concurrentOperationsRecovery: 'passed',
     completedOperationsRemovedAndStayRemoved: 'passed',
@@ -460,6 +495,10 @@ try {
     `${JSON.stringify(evidence, null, 2)}\n`,
   )
   console.log(JSON.stringify(evidence))
+} catch (error) {
+  await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true })
+  console.error(await page.locator('body').innerText())
+  throw error
 } finally {
   f.controller.abort()
   await service.close()

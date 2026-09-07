@@ -2,6 +2,7 @@
 
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import { useEffect } from 'react'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { SemanticBrowserModel } from './model.ts'
 import { SemanticBrowserPanel } from './panel.tsx'
@@ -38,8 +39,13 @@ export function installSemanticBrowser(ctx, rpc) {
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
       { name: 'shell.overlay', id: 'marivo-semantic-browser' },
-      function BrowserOverlay({ useWorkspaces }) {
+      function BrowserOverlay({ useWorkspaces, useSessions }) {
+        const sessionId = useSessions((state) => state.current) ?? ''
         const workspaces = useWorkspaces((state) => state.items)
+        const currentWorkspace =
+          workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
+        // biome-ignore lint/correctness/useExhaustiveDependencies: Navigation must close the previous Workspace snapshot.
+        useEffect(() => model.close(), [sessionId, currentWorkspace])
         const phase = useWorkspaces((state) => state.phase)
         const error = useWorkspaces((state) => state.state === 'error')
         return (

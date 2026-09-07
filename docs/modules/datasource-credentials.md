@@ -6,17 +6,29 @@ DSH Credentials 保存、解析和描述凭证；Marivo 定义 datasource、凭�
 Workspace 绑定、管理页面、等待中的调用和单次执行注入。凭证使用遵循 Marivo 公开的
 `md.credential_scope(resolver)` 契约。
 
-在 DSH 会话标题旁点击“数据源与凭证”，默认打开该会话所属 Workspace 的管理面板，面板内仍可显式切换 Workspace。
+在 DSH 会话标题旁点击“数据源与凭证”，仅打开该会话所属 Workspace 的管理面板，不提供 Workspace 筛选项。
+切换会话或 Workspace 绑定变化时关闭旧面板；进行中的操作也仅显示当前 Workspace 的记录。
 入口通过 `conversation.session.header.actions` 使用所属会话的 `workspaceId`，面板复用 `shell.overlay`；
 无会话或空会话时 Harness 不显示会话标题，侧栏底部不保留入口。管理页不要求 live Agent，显示 datasource、
-字段引用、是否配置、来源、是否可写和最近测试。页面支持填写或替换、删除和测试，不回显已保存的值。替换与删除需要明确确认。
+字段引用、是否配置、来源、是否可写和最近测试。页面支持新增数据源，以及字段旁的“新增凭证”“确认更换”、删除和测试，不回显已保存的值。替换与删除需要明确确认。
+管理页的新增和更换直接保存当前字段，不自动测试尚未配齐的凭证，也没有独立的“保存并验证”按钮；“测试连接”使用已保存值。
+等待中的调用使用“提交凭证并继续”保存整组输入并验证，成功后继续原调用。
 同一原始引用跨 Workspace 共享；测试结果属于对应的环境和 datasource 定义，凭证更新后标记过期。
-入口与“语义层”共用会话标题按钮样式；管理页按 Workspace、数据源列表、凭证配置与连接状态分区，
+入口与“语义层”共用会话标题按钮样式；管理页按数据源列表、凭证配置与连接状态分区，
 适配窄屏和深色模式。已结束的调用不再列入会话待办；当前打开的调用仍显示结束原因和返回管理入口。
 页面只保留操作所需状态与反馈；常驻区域不重复解释安全机制、等待预算或连接测试的限定条件。
 
 原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，
 不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
+
+## 新增数据源
+
+表单通过 checked Runtime 读取公开 `md.DatasourceSpec` union 和各 Spec 的 dataclass 字段，展示引擎、必填项、默认值及说明。
+插件不维护引擎注册表或连接字段 schema。`ai_context` 不在连接表单中编辑；复杂配置字段接受 JSON，`*_env` 接受引用名称。
+点击“确认新增数据源”时 Host 重新解析 Workspace 并核对 generation 与 Runtime fingerprint，在串行写入区间内调用 `md.register(spec)`。
+Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增。表单不接受项目路径、Python 代码或凭证值，引用须符合 DSH 的命名限制。
+新增后刷新当前 Workspace 并选中新数据源，随后可填写凭证。此步骤不执行连接测试。
+新增请求不自动重放；响应未确认时提示先刷新核对。插件串行化自己的新增操作，同名检查与外部编辑器的同时写入不构成跨进程事务。
 
 ## 工具与自动续接
 
@@ -93,3 +105,5 @@ npm run validate:credentials:web
 此前的管理服务背景见 [凭证服务集成验收](../plan/2026-09-07-credential-service-acceptance.md)。
 管理页布局与完成状态清理见 [凭证界面验收](../plan/2026-09-07-credentials-ui-acceptance.md)。
 会话标题入口与独立待办监听验证见[入口验收](../acceptance/workspace-header-actions.md)。
+
+本次卡片交互调整见[验收记录](../acceptance/workspace-cards.md)。
