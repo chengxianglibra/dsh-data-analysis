@@ -77,7 +77,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "marivo", specifier = "==0.5.3" },
+    { name = "marivo", specifier = "==0.5.4" },
     { name = "pandas", specifier = ">=2.2.0,<3.0.0" },
 ]
 
@@ -169,7 +169,7 @@ wheels = [
 
 [[package]]
 name = "marivo"
-version = "0.5.3"
+version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ibis-framework" },
@@ -182,13 +182,14 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "sqlglot" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "tomli-w" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/dc/853f8215ae5d347b9babd458dee74090d09eaa1334ecba9de9b312391fe9/marivo-0.5.3.tar.gz", hash = "sha256:61fc7cf38b739c28f950a5f3e97746c122f82812de5268df5c4beaceed1dff25", size = 1980683, upload-time = "2026-09-02T07:14:15.017Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/cf/1373708ccb7f483b5f63267110ac9a1cf598a35d5d39bff2393b04a17925/marivo-0.5.4.tar.gz", hash = "sha256:b36e901b13cda8a45c556b594ec72ff67398efa556a95eb1cdcc0c1050995aef", size = 2015167, upload-time = "2026-09-07T04:25:26.753Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/f5/48fac2aae6f0b3e7d71658636aa61aabd3db7ff02db90dd2c394eb25e2f1/marivo-0.5.3-py3-none-any.whl", hash = "sha256:aa92ba4020e597d40c03aeb4636b511ae7fb8d3b023f3edee4a3e48305ef979d", size = 1402074, upload-time = "2026-09-02T07:14:13.292Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/52/6df18055b9e3b8422f2f18faf88ebc1dfbe0d21b22a4fbfd721813872546/marivo-0.5.4-py3-none-any.whl", hash = "sha256:e04077acc66a6cfddb0e79a0449475f3514877afd8eff408194a4aec58ea0e8b", size = 1423404, upload-time = "2026-09-07T04:25:25.094Z" },
 ]
 
 [[package]]

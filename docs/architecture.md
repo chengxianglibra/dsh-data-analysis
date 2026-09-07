@@ -9,7 +9,7 @@ Lineage、revalidation 与 Session runtime；本项目只连接两者，不复�
 ```mermaid
 flowchart LR
   D[DeepSeek Harness] --> P[dsh-data-analysis]
-  P --> R[Shared Marivo 0.5.3.dev0 Runtime]
+  P --> R[Shared Marivo 0.5.4 Runtime]
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
@@ -49,9 +49,9 @@ flowchart LR
 
 ## Runtime 与 identity
 
-Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.3.dev0`。默认 Runtime 位于
+Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.4`。默认 Runtime 位于
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo/`；管理员也可提供绝对 Python。两种模式都必须让版本、
-package path、解释器和 marker 一致；本开发包从随包源码 wheel 安装 Marivo，并核对 wheel SHA-256。
+package path、解释器和 marker 一致；Runtime 通过 pip 安装已发布的 Marivo package。
 
 每个 Workspace 独立解析 project root、最小目录与 doctor admission。`MarivoEnvironment` 冻结 binding
 identity；各领域 bridge 通过同一 `MarivoCheckedRunner` 执行，并在同一子进程内先复核 import identity。

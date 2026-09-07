@@ -29,7 +29,7 @@ async function tree(root: string): Promise<Record<string, string>> {
   await visit(root)
   return result
 }
-test('real Marivo 0.5.3.dev0: empty, large and failed Catalog reads create no Workspace files', async (t) => {
+test('real Marivo 0.5.4: empty, large and failed Catalog reads create no Workspace files', async (t) => {
   try {
     await access(python)
   } catch {
@@ -45,7 +45,7 @@ test('real Marivo 0.5.3.dev0: empty, large and failed Catalog reads create no Wo
     { projectRoot: root, pythonExecutable: python },
     { environment },
   )
-  assert.equal(runner.binding.marivoVersion, '0.5.3.dev0')
+  assert.equal(runner.binding.marivoVersion, '0.5.4')
   let now = 0
   const bridge = new SemanticReferenceBridge(() => now),
     signal = new AbortController().signal

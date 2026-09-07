@@ -3,7 +3,6 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { MARIVO_WHEEL_FILENAME, MARIVO_WHEEL_SHA256 } from '../../src/compatibility.ts'
 import {
   MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
   MARIVO_DATASOURCE_TEST_TOOL_NAME,
@@ -110,11 +109,13 @@ test('package cutover removes report exports and pins the native runtime release
   assert.equal(Object.hasOwn(manifest.bin, 'dsh-data-analysis-report-check'), false)
   assert.equal(manifest.files.includes('lib/**/*.js.map'), false)
   assert.equal(manifest.files.includes('report-contracts/*.json'), false)
+  assert.equal(
+    manifest.files.some((filename: string) => filename.startsWith('python/marivo/')),
+    false,
+  )
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.marivo, {
-    version: '0.5.3.dev0',
-    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.3.dev0',
-    wheelFilename: MARIVO_WHEEL_FILENAME,
-    wheelSha256: MARIVO_WHEEL_SHA256,
+    version: '0.5.4',
+    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.4',
   })
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {
     runtimeInstallation: 'dsh-data-analysis-runtime/v2',

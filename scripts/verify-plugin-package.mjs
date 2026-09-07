@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import {
   mkdirSync,
   mkdtempSync,
@@ -236,7 +235,6 @@ try {
     'lib/datasource/python.js',
     'lib/datasource/resolver-program.js',
     'lib/datasource/rpc.js',
-    'python/marivo/source.json',
     'lib/semantic-browser/service.js',
     'lib/semantic-browser/program.js',
     'lib/semantic-browser/contracts.js',
@@ -256,7 +254,6 @@ try {
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
     reportKitWheelPath,
-    'python/marivo/' + sourceManifest.dshDataAnalysisCompatibility.marivo.wheelFilename,
     ...skillFiles,
   ]
   for (const filename of required) {
@@ -339,28 +336,14 @@ try {
     ...Object.keys(sourceManifest.dependencies ?? {}),
   ])
   for (const packageName of linkedDependencies) linkDependency(nodeModules, packageName)
-  const bundledMarivo = sourceManifest.dshDataAnalysisCompatibility.marivo
-  const wheelData = readFileSync(
-    path.join(installedPlugin, 'python/marivo', bundledMarivo.wheelFilename),
-  )
-  if (createHash('sha256').update(wheelData).digest('hex') !== bundledMarivo.wheelSha256)
-    fail('packed Marivo wheel checksum mismatch')
-  const marivoSource = readJson(path.join(installedPlugin, 'python/marivo/source.json'))
-  if (
-    marivoSource.sha256 !== bundledMarivo.wheelSha256 ||
-    marivoSource.wheel !== bundledMarivo.wheelFilename ||
-    marivoSource.version !== bundledMarivo.version ||
-    !/^[a-f0-9]{40}$/.test(marivoSource.sourceCommit ?? '')
-  )
-    fail('packed Marivo source record does not match its wheel')
   const smokeProgram = `
     const root = await import('@chengxianglibra/dsh-data-analysis')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.5.3.dev0') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.3.dev0') throw new Error('packed Marivo package spec mismatch')
+    if (compatibility.MARIVO_VERSION !== '0.5.4') throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.4') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v2') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {

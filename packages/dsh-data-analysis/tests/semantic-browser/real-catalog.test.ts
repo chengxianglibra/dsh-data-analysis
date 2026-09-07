@@ -22,14 +22,14 @@ async function tree(root: string): Promise<Record<string, string>> {
   }
   return result
 }
-test('real Marivo 0.5.3.dev0: all 13 kinds, full definitions and relations; no data operations or project writes', async (t) => {
+test('real Marivo 0.5.4: all 13 kinds, full definitions and relations; no data operations or project writes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.5.3.dev0 Python unavailable')
+    t.skip('Marivo 0.5.4 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),

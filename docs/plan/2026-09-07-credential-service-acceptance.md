@@ -14,23 +14,20 @@
 
 ## Runtime 来源
 
-随包 wheel 为 `marivo-0.5.3.dev0-py3-none-any.whl`，从 Marivo 已提交源码
-`ca4d0fe59f47d0c967414abdbe2d433b43dc395a` 的 `git archive` 构建，未纳入 sibling 工作区的未提交变更。
+当前插件绑定已切换为已发布的 Marivo 0.5.4；Runtime 通过
+`marivo[duckdb,trino,clickhouse]==0.5.4` 的 pip spec 安装，不随包分发 source wheel 或 source manifest。
+报告 kit 的 Python metadata 同样精确声明 `marivo==0.5.4`，包验证器只检查该 package contract。
 
-SHA-256：`b888584da24ecbfbf8be6bc02d7d99cca22f83a21e065f8b1bee4319cfbd1717`。
-包内 [source.json](../../packages/dsh-data-analysis/python/marivo/source.json) 和兼容声明记录相同身份。
-本次构建产生的本地忽略文件已清除；包清单显式包含 wheel 与来源记录，验证器检查二者一致。
-
-真实 Python 使用该 wheel 安装的独立虚拟环境，未替换用户正在运行的 DSH profile。
+真实 Python 使用该 pip spec 安装的独立虚拟环境，未替换用户正在运行的 DSH profile。
 
 ## 确定性与包检查
 
 | 检查 | 结果 |
 | --- | --- |
-| `npm run check` | 通过；quality、依赖、源码与脚本类型检查、154 个测试 |
+| `npm run check` | 通过；quality、依赖、源码与脚本类型检查、153 个测试 |
 | datasource suite | 33 个通过；包括真实 DSH Code Mode worker 的预算内续接和外层超时取消 |
 | `npm run build` | 通过 |
-| `npm run verify:plugin-package` | 通过；真实 npm 包共 99 个文件，wheel 哈希、来源记录和导入检查通过 |
+| `npm run verify:plugin-package` | 通过；真实 npm 包 97 个文件、Marivo package contract 和 report-kit 导入检查通过 |
 | `git diff --check` | 通过 |
 
 覆盖的关键竞争包括：提交去重、保存部分成功、测试失败后重填、Agent/外层取消、定义变更、解析中轮换、

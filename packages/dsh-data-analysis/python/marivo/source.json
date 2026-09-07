@@ -1,9 +1,0 @@
-{
-  "version": "0.5.3.dev0",
-  "wheel": "marivo-0.5.3.dev0-py3-none-any.whl",
-  "sha256": "b888584da24ecbfbf8be6bc02d7d99cca22f83a21e065f8b1bee4319cfbd1717",
-  "sourceCommit": "ca4d0fe59f47d0c967414abdbe2d433b43dc395a",
-  "source": "Built from git archive of committed Marivo source; no working-tree changes included",
-  "builtAt": "2026-09-07",
-  "patchFiles": {}
-}

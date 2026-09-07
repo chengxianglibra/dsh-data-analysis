@@ -4,14 +4,13 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import test from 'node:test'
-import { MARIVO_WHEEL_SHA256 } from '../../src/compatibility.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoEnvironmentError,
   SHARED_MARIVO_PACKAGE_SPEC,
 } from '../../src/environment/index.ts'
 
-const FIXTURE_MARIVO_VERSION = '0.5.3.dev0'
+const FIXTURE_MARIVO_VERSION = '0.5.4'
 
 const FAKE_UV = String.raw`#!/usr/bin/env node
 import { appendFileSync, chmodSync, copyFileSync, mkdirSync } from 'node:fs'
@@ -62,7 +61,6 @@ if (script.includes('sys.version_info')) {
   }
   process.stdout.write(JSON.stringify({
     python_executable: path.resolve(process.argv[1]),
-    marivo_wheel_sha256: process.env.MARIVO_WHEEL_SHA256 ?? ${JSON.stringify(MARIVO_WHEEL_SHA256)},
     marivo_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
     package_path: ${JSON.stringify(packagePath)},
     pandas_version: process.env.PANDAS_VERSION ?? '2.3.3',
@@ -195,7 +193,7 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
     .split('\n')
     .map((line) => JSON.parse(line) as string[])
   assert.equal(calls.filter((args) => args[0] === 'pip' && args[1] === 'install').length, 2)
-  assert.ok(SHARED_MARIVO_PACKAGE_SPEC.includes('marivo-0.5.3.dev0-py3-none-any.whl'))
+  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.4')
   assert.ok(calls.some((args) => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC))
   assert.ok(
     calls.some(
@@ -228,7 +226,7 @@ test('a managed Runtime on another Marivo version is rebuilt to the pinned versi
   await writeFile(initial.installationPath, `${JSON.stringify(marker)}\n`)
 
   const current = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  assert.equal(current.marivoVersion, '0.5.3.dev0')
+  assert.equal(current.marivoVersion, '0.5.4')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')
@@ -395,22 +393,4 @@ test('managed Runtime rejects a missing bundled wheel before publishing a marker
   await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
     code: 'ENOENT',
   })
-})
-
-test('a different wheel hash at the same dev version invalidates the managed installation', async (t) => {
-  const item = await fixture()
-  t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
-  const initial = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  const marker = JSON.parse(await readFile(initial.installationPath, 'utf8'))
-  marker.marivoWheelSha256 = '0'.repeat(64)
-  await writeFile(initial.installationPath, JSON.stringify(marker))
-  await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  const updated = JSON.parse(await readFile(initial.installationPath, 'utf8'))
-  assert.equal(updated.marivoWheelSha256, MARIVO_WHEEL_SHA256)
-  const calls = (await readFile(item.recordPath, 'utf8'))
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line) as string[])
-  assert.equal(calls.filter((args) => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC).length, 2)
 })

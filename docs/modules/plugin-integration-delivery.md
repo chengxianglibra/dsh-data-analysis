@@ -15,7 +15,7 @@ Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影
 
 ## 生命周期
 
-1. `apply()` 确保精确 Marivo 0.5.3 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
+1. `apply()` 确保精确 Marivo 0.5.4 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
 2. Runtime 的 `marivo-analysis`、`marivo-semantic` 与随插件包分发的 `dsh-data-analysis-report` skills
    挂载到 profile skill registry。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
@@ -77,7 +77,7 @@ remote/headless 自动降级为路径。
 | 边界 | 当前值 |
 | --- | --- |
 | DSH distribution/peers | `0.1.1-rc.2` |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.3` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.4` |
 | Runtime marker | `dsh-data-analysis-runtime/v2` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
 | Report-kit | `dsh-data-analysis-report-kit==3.0.0`，dataset/trace transport v2 |
@@ -96,7 +96,7 @@ npm run verify:plugin-package
 npm run validate:plugin-integration-delivery:real
 ```
 
-Real runner 需要正式 Marivo 0.5.3 与真实模型。Produced Files、Host opener、浏览器/打印、remote/headless
+Real runner 需要正式 Marivo 0.5.4 与真实模型。Produced Files、Host opener、浏览器/打印、remote/headless
 与隔离磁盘配额仍需在对应真实 DSH Web 环境验收；路径、runner 日志或静态 schema 不能伪造这些外部能力。
 本次 tarball 内容收窄的确定性证据见 [Package 内容收窄验收](../acceptance/package-content-cleanup.md)。
 

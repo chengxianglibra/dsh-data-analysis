@@ -8,7 +8,7 @@ version = "3.0.0"
 description = "Bounded report data and Marivo component JavaScript projections"
 requires-python = ">=3.10"
 dependencies = [
-  "marivo==0.5.3",
+  "marivo==0.5.4",
   "pandas>=2.2.0,<3.0.0",
 ]
 

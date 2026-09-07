@@ -20,7 +20,7 @@
 同一对对象的多个关系合并绘制，标签的 `+N` 表示还有其他关系，可通过悬停或图中关系列表查看。
 这是对象声明关系，不是某次查询的执行血缘；候选维度不代表任意查询组合已通过验证。
 
-覆盖 Marivo 0.5.3.dev0 的 13 种对象：业务域、数据源、实体、维度、度量、时间维度、指标、关系、事件、状态模型、
+覆盖 Marivo 0.5.4 的 13 种对象：业务域、数据源、实体、维度、度量、时间维度、指标、关系、事件、状态模型、
 周期日历、时间集合和工作日程。未填写的定义有明确提示，不猜测口径。数据源只展示引擎类型和通用对象信息；
 实体展示来源类型、表身份与版本属性。文件或远程来源地址、请求参数、连接配置、凭证值和原始源码不投影到页面。
 
@@ -68,7 +68,7 @@ DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run validate:semantic-browser:web
 ```
 
-可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.3 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
+可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.4 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
 指定截图及结果记录目录。浏览器工具默认查找可导入的 `playwright`，其 Chromium 必须已安装。
 
 该夹具复用生产入口注册与页面代码，模拟 DSH 的槽位和 Workspace transport；不等同于当前已安装 DSH Profile 的

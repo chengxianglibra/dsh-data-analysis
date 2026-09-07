@@ -82,5 +82,5 @@ npm run validate:evidence-sources:real
 
 确定性测试覆盖输入闭合、pair identity/order、跨 Artifact fail-closed、missing/unsupported/truncated/
 revalidation、headless transcript、Code Mode durable metadata 和 Web progressive enhancement。真实 runner 必须
-使用精确支持的 Marivo 0.5.3 及真实 Agent；版本或 identity 不匹配时应
+使用精确支持的 Marivo 0.5.4 及真实 Agent；版本或 identity 不匹配时应
 记录为发布阻断，而不是沿用旧 Session Evidence namespace。

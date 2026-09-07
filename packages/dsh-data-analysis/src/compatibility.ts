@@ -11,8 +11,6 @@ export interface DshDataAnalysisCompatibility {
   readonly marivo: {
     readonly version: string
     readonly packageSpec: string
-    readonly wheelFilename: string
-    readonly wheelSha256: string
   }
   readonly contracts: {
     readonly runtimeInstallation: 'dsh-data-analysis-runtime/v2'
@@ -83,8 +81,6 @@ function parsePackageManifest(value: unknown): PackageManifest {
       marivo: Object.freeze({
         version: requiredString(marivo.version, 'package compatibility marivo.version'),
         packageSpec: requiredString(marivo.packageSpec, 'package compatibility marivo.packageSpec'),
-        wheelFilename: requiredString(marivo.wheelFilename, 'marivo.wheelFilename'),
-        wheelSha256: requiredString(marivo.wheelSha256, 'marivo.wheelSha256'),
       }),
       contracts: Object.freeze({
         runtimeInstallation: requiredLiteral(
@@ -125,6 +121,3 @@ export const MARIVO_PACKAGE_SPEC = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.packag
 export const RUNTIME_INSTALLATION_VERSION =
   DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.runtimeInstallation
 export const SUBPROCESS_POLICY_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.subprocessPolicy
-
-export const MARIVO_WHEEL_FILENAME = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.wheelFilename
-export const MARIVO_WHEEL_SHA256 = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.wheelSha256

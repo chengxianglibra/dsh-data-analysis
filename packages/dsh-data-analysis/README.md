@@ -4,7 +4,7 @@
 
 DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 
-- 精确 Marivo 0.5.3.dev0 共享 Runtime 与 zero-init per-Workspace binding；
+- 精确 Marivo 0.5.4 共享 Runtime 与 zero-init per-Workspace binding；
 - `marivo_help` 实时公共 Help transport；
 - 侧栏“语义层”对象浏览器：Workspace 分类搜索、只读详情与局部关系图；
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
@@ -23,7 +23,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 包内 `dshDataAnalysisCompatibility` 是唯一运行时兼容声明：
 
 - DSH distribution 与所有必需 peer 精确使用 `0.1.1-rc.2`；
-- Marivo 随包分发源码构建 wheel，并校验 SHA-256；版本约束为 `marivo[duckdb,trino,clickhouse]==0.5.3.dev0`；
+- Runtime 通过 pip 安装已发布的 Marivo 0.5.4；版本约束为 `marivo[duckdb,trino,clickhouse]==0.5.4`；
 - 项目自有 Runtime marker 为 `dsh-data-analysis-runtime/v2`；
 - 子进程策略为 `direct-argv-inherited-env-snapshot-overlay-v2`。
 
