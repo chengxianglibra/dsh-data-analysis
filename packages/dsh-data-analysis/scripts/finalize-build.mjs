@@ -1,5 +1,6 @@
 import { chmodSync, rmSync } from 'node:fs'
 import './build-client.mjs'
+import './build-presentation.mjs'
 
 // TypeScript emits these implementation-only outputs even though no supported
 // runtime or declaration entrypoint can reach them.
@@ -13,11 +14,16 @@ const unreachableOutputs = [
   'lib/types/disclosure/bridge-program.d.ts',
   'lib/types/environment/summary.d.ts',
   'lib/types/evidence/bridge-program.d.ts',
+  'lib/types/client/presentation/portable-entry.d.ts',
 ]
 for (const output of unreachableOutputs) {
   rmSync(new URL(`../${output}`, import.meta.url), { force: true })
 }
-for (const output of ['lib/client/semantic-browser', 'lib/types/client/semantic-browser']) {
+for (const output of [
+  'lib/client/semantic-browser',
+  'lib/types/client/semantic-browser',
+  'lib/client/presentation',
+]) {
   rmSync(new URL(`../${output}`, import.meta.url), { recursive: true, force: true })
 }
 

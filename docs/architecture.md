@@ -8,7 +8,8 @@ Lineage、revalidation 与 Session runtime；本项目只连接两者，不复�
 
 展示重构的 S0 接缝与 S1 一次执行准入已完成，S2 已接入 typed data projection 和最小 Python helper，
 见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)与[S2 验收记录](plan/marivo-analytics-presentation-s2-acceptance.md)。
-旧 report-kit、报告 Skill 和经典 JS 资产已删除；当前是未发布开发状态，生产 reader、`marivo_present` 和新 Skill 分别在 S3–S5 接入。
+S3 已增加[共享 reader 与离线构建](modules/presentation-reader.md)，从同一文档生成 Host 阅读和自包含 HTML。
+旧 report-kit、报告 Skill 和经典 JS 资产已删除；当前是未发布开发状态，`marivo_present` 与新 Skill 留在 S4/S5 接入。
 
 ```mermaid
 flowchart LR
@@ -27,6 +28,8 @@ flowchart LR
   A --> C[Computed typed JSON]
   C --> J
   M --> J
+  J --> V[Shared presentation reader]
+  V --> O[Self-contained HTML]
 ```
 
 ## 分层
@@ -40,6 +43,7 @@ flowchart LR
 | Evidence delivery | 精确 Artifact/Finding 到 Turn/Web 的忠实投影 | 分析读取、Finding 组合、蕴含判断 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
+| Presentation reader | 五类 block、局部交互、共享静态正文与离线 HTML 字节 | 分析计算、文件提交、receipt/RPC、长期版本管理 |
 | Presentation data | 固定公开 Artifact 读取、typed JSON、声明来源快照与最小 Python writer | computed 转换审计、分析正确性、语义补齐、observe 或 revalidation |
 
 模块文档：
@@ -52,6 +56,7 @@ flowchart LR
 - [语义对象引用输入](modules/semantic-reference-input.md)
 - [只读语义层对象浏览器](modules/semantic-browser.md)
 - [展示数据投影](modules/presentation-projection.md)
+- [展示 reader 与离线构建](modules/presentation-reader.md)
 - [插件集成与交付](modules/plugin-integration-delivery.md)
 
 ## Runtime 与 identity
@@ -82,7 +87,7 @@ Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 Runtime 安装 `dsh-data-analysis-presentation-kit==1.0.0`；公开 Python 函数
 `dsh_data_analysis_presentation.write_dataset(frame, path)` 接受 pandas DataFrame，只写 computed typed JSON。
 来源由 Draft 声明。固定 projection 在相同 bound Runtime 恢复 persisted Artifact 和可选 Finding，
-不执行 `observe`、`revalidate` 或凭据读取；reader 后续只消费生成文档快照。
+不执行 `observe`、`revalidate` 或凭据读取；reader 只消费生成文档快照，来源展开不触发运行时调用。
 
 ## 原生分析读取
 

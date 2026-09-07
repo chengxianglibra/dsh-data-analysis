@@ -53,7 +53,8 @@ Web client 只保留：
 - datasource 凭据管理与 `marivo_datasource_test` / `marivo_python` 的等待表单；
 - `marivo_evidence_sources` Turn delivery 与折叠来源面板。
 
-不存在报告 Tool View、durable report block、report turn-tail selector 或专用 Host opener。生产 reader 与 `marivo_present` 分别留在 S3/S4；现有 S0 Web 探针不属于生产入口。
+S3 在生产 client bundle 导出 `HostPresentationReader`，与 portable 共用[展示 reader](presentation-reader.md)。
+现阶段没有 presentation Tool View、durable receipt、RPC 或专用 Host opener；这些由 S4 接通。
 
 ## Compatibility 与 package
 
@@ -68,7 +69,7 @@ Web client 只保留：
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.0.0`，typed dataset schemaVersion 1 |
 
 Package 不导出 `./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
-与内部纯数据 contracts/projection；旧 report-kit、Skill、JS registry 和旧 transport schemas 均不分发。
+与内部纯数据 contracts/projection、builder 和预构建 portable/static 资产；旧 report-kit、Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
 ## 验证
@@ -88,5 +89,7 @@ Real runner 需要正式 Marivo 0.5.4 与真实模型。Produced Files、Host op
 
 ## Browser 构建
 
-client 使用 esbuild 打包本地 Browser source 与共享 wire contracts，DSH/React 保持外部依赖，由 DSH module loader 提供。
-构建白名单拒绝 Host 模块进入 Browser bundle；不增加公开 npm subpath。
+client 使用 esbuild 打包 Browser source、共享 contracts 和 Recharts 等依赖，DSH/React 保持外部依赖，
+由 DSH module loader 提供；构建检查拒绝第二份 Host React、Node 与 Runtime 模块。
+portable 将 React/Recharts 一并打包且不允许外部模块，静态 renderer 同样预构建，builder 运行不依赖开发工具。
+实际打包依赖保留许可证；不增加公开 npm subpath。

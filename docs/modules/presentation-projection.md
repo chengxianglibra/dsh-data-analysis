@@ -10,7 +10,7 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
 [projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts)和
 [Python writer](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_dataset.py)。
 五项结构、数值编码和预算以 [S0 契约记录](../plan/marivo-analytics-presentation-s0-contracts.md)为准。
-这些是内部展示接口；S2 没有注册 `marivo_present` 或生产 reader。
+这些是内部展示接口；S3 的[共享 reader 与离线 builder](presentation-reader.md)消费其输出，`marivo_present` 在 S4 注册。
 
 ## 数据流程
 
@@ -38,7 +38,7 @@ Workspace/build identity 由 Host 提供，Draft 不允许自行填写生成文�
 available 来源保存读取时间、Artifact 内容身份、公开语义引用、Quality/issues 及选定 Finding。
 可选 Finding 不可读取时保留 Artifact 来源并明确 Finding unavailable；身份不一致直接失败。
 当前公开契约不能提供历史 metric 定义时明确 unavailable，不用当前定义冒充历史口径。
-来源面板后续只读取这些快照，不再次执行 Python。
+来源面板只读取这些快照，不再次执行 Python。
 
 ## Python helper 与 Runtime
 
@@ -65,5 +65,5 @@ npm run validate:presentation-browser:real
 
 Python 合同测试随 `npm run check` 持续执行；真实脚本使用隔离目录，保留机器证据。
 Artifact 验证先通过 Marivo 公开分析生成并持久化，再在另一进程恢复；
-Chromium 验证只证明 Python/Node/browser 数据解释一致，reader、离线 HTML 与 Host 交付仍属 S3–S5。
+该 Chromium 验证只证明 Python/Node/browser 数据解释一致；reader/离线 HTML 另由 S3 验证，Host 交付留在 S4/S5。
 本次结果见 [S2 验收记录](../plan/marivo-analytics-presentation-s2-acceptance.md)。

@@ -14,8 +14,8 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `dsh_data_analysis_presentation.write_dataset(frame, path)` 的 computed typed JSON writer；
 - 内部 Artifact/computed/source-only 数据投影，保存精确来源及 unavailable 状态。
 
-当前为展示重构 S2 的未发布开发状态。旧 report-kit、report Skill 与三个经典 JS 资产已删除；
-reader、`marivo_present` 与新 presentation Skill 分别在 S3–S5 接入。两个 Marivo Runtime Skill 继续挂载。
+当前为展示重构 S3 的未发布开发状态。旧 report-kit、report Skill 与三个经典 JS 资产已删除；
+共享 reader 与离线 builder 已实现，`marivo_present` 与新 presentation Skill 留在 S4/S5 接入。两个 Marivo Runtime Skill 继续挂载。
 
 ## Compatibility
 
@@ -65,8 +65,10 @@ null 保留缺失含义，datetime 必须带时区。它不保存来源或转换
 固定 projection 从同一 bound Workspace 恢复 persisted Artifact 和可选 Finding，不自动 observe、revalidate 或读取凭据。
 直接 Artifact dataset 缺必要数据会失败，computed 和 source-only 可以保留 unavailable 来源。
 
-S2 不提供生产展示 Tool 或 reader。当前实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)
-和[S2 验收记录](../../docs/plan/marivo-analytics-presentation-s2-acceptance.md)。
+S3 共用 reader 展示 Markdown、metric、line/bar、table 和 source，保留精确值、单位、截断与 unavailable 来源。
+内部 builder 返回 JSON/自包含 HTML 字节；文件提交、receipt 和打开/下载由 S4 接通，当前不提供展示 Tool。
+实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)
+和[S3 验收记录](../../docs/plan/marivo-analytics-presentation-s3-acceptance.md)。
 
 ## 验证
 

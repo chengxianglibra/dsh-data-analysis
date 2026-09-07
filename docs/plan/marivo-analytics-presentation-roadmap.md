@@ -2,7 +2,7 @@
 
 ## 状态与交付目标
 
-状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3–S5 尚未实施；旧 report-kit/Skill/JS 已删除，生产 presentation Tool/Skill/reader 尚未接入。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
+状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3 的共享 reader、离线 HTML builder 与真实 Host/portable 验收已完成，见 [S3 验收记录](marivo-analytics-presentation-s3-acceptance.md)。S4–S5 尚未实施；旧 report-kit/Skill/JS 已删除，生产 presentation Tool/Skill/receipt/RPC 尚未接入。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
 
 交付目标固定为 4 个 Tool（`marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_present`）、1 个插件 Skill（`dsh-data-analysis-presentation`）、1 套 reader、一次 present 完成 Web 阅读与离线 HTML。两个 Marivo Runtime Skill 继续挂载，凭据管理保留，computed 仅展示声明来源。
 
@@ -86,6 +86,8 @@
 
 ## S3：同一 reader 与离线 HTML
 
+**状态：已完成。** 五类 block、line/bar、共享 reader、内部 HTML builder、Host 主题与 portable/打印均已实现。19 项聚焦测试、实际安装包和真实 DSH Web/离线浏览器验收通过；S2 留存的真实投影输出已接入。文件登记、receipt、RPC 与打开/下载留在 S4，见 [S3 验收记录](marivo-analytics-presentation-s3-acceptance.md)。
+
 **代码所有权**：新 `src/client/presentation/` 的 ChartRenderer、变换、表格、布局、sources、reader；纯展示构建代码与 portable entry。
 
 **实施顺序**：
@@ -98,7 +100,7 @@
 
 **验收**：两种入口显示相同数值/单位/来源；line/bar 与表格可核对；窄屏、键盘、主题、tooltip 和来源展开可用；HTML 断网无请求，无脚本时正文/指标/必要表格仍可读。host bundle 不含第二份 React，portable bundle 不依赖 Host。
 
-**检查入口**：新增共享 reader、portable 数据一致性与浏览器测试；更新 client 构建白名单、依赖打包规则和资产产出。该阶段没有独立 export Tool，也不生成新的版本管理服务。
+**检查入口**：`test:presentation-reader` 已加入持续检查；`validate:presentation-reader:real` 使用实际 DSH module loader 验证生产 reader，并验证 portable 数据一致性、交互、断网、无脚本及打印。client 构建白名单、依赖打包规则、资产产出和 package verifier 已同步更新。该阶段没有独立 export Tool，也不生成新的版本管理服务。
 
 ## S4：一个 present 接通 DSH
 

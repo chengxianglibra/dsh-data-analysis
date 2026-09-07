@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const packageRoot = path.join(root, 'packages/dsh-data-analysis')
@@ -203,6 +203,10 @@ try {
     'lib/presentation/contracts/index.js',
     'lib/presentation/contracts/types.js',
     'lib/presentation/projection/index.js',
+    'lib/presentation/build/index.js',
+    'lib/presentation/assets/portable.js',
+    'lib/presentation/assets/static.js',
+    'lib/types/client/presentation/host-entry.d.ts',
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
@@ -217,6 +221,7 @@ try {
       fail(`packed plugin contains removed datasource access Tool ${filename}`)
     if (
       filename.startsWith('lib/client/semantic-browser/') ||
+      filename.startsWith('lib/client/presentation/') ||
       filename.startsWith('lib/types/client/semantic-browser/')
     )
       fail(`packed plugin contains unreachable browser output ${filename}`)
@@ -290,6 +295,17 @@ try {
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
     const datasource = await import('@chengxianglibra/dsh-data-analysis/datasource')
+    const { buildPresentation } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/presentation/build/index.js')).href)})
+    const presentation = await buildPresentation({
+      schemaVersion: 1, workspaceId: 'package-verification', buildId: 'package-verification',
+      title: '离线展示包检查', generatedAt: '2026-09-07T00:00:00Z',
+      datasets: [], sources: [], diagnostics: [],
+      blocks: [{ id: 'body', kind: 'markdown', text: '已安装包中的 **共享 reader**。' }],
+    })
+    if (!Buffer.isBuffer(presentation.htmlBytes) || !Buffer.isBuffer(presentation.documentBytes)) throw new Error('packed presentation builder must return bytes')
+    if (!presentation.htmlBytes.toString('utf8').includes('presentation-data')) throw new Error('packed presentation omitted its saved document')
+    if (!presentation.htmlBytes.toString('utf8').includes('共享 reader')) throw new Error('packed presentation omitted semantic fallback')
+    if (JSON.parse(presentation.documentBytes.toString('utf8')).buildId !== 'package-verification') throw new Error('packed builder changed document identity')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
     if (compatibility.MARIVO_VERSION !== '0.5.4') throw new Error('packed Marivo version mismatch')
@@ -307,7 +323,7 @@ try {
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed presentation data kit and contracts passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed presentation kit, contracts and offline builder passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

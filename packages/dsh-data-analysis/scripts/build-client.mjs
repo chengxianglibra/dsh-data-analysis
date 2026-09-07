@@ -1,33 +1,34 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import {
+  assertBrowserInputs,
+  noticeComment,
+  thirdPartyNotices,
+} from './presentation-build/shared.mjs'
 
 const packageRoot = new URL('../', import.meta.url)
 const outputUrl = new URL('lib/client.js', packageRoot)
 const result = await build({
   entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
   bundle: true,
-  packages: 'external',
+  external: ['@deepseek-ai/*', 'react', 'react/*', 'react-dom', 'react-dom/*'],
   platform: 'browser',
   format: 'cjs',
   target: 'es2022',
   jsx: 'automatic',
   write: false,
   metafile: true,
+  define: { 'process.env.NODE_ENV': '"production"' },
+  minify: true,
+  legalComments: 'eof',
 })
-for (const input of Object.keys(result.metafile.inputs)) {
-  if (
-    !/(?:^|\/)src\/(client(?:\.tsx|\/)|semantic-reference\/contracts\.ts$|semantic-browser\/(?:contracts|definition)\.ts$)/.test(
-      input,
-    )
-  ) {
-    throw new Error(`Host module in browser bundle: ${input}`)
-  }
-}
+assertBrowserInputs(result.metafile, { portable: false })
 const output = result.outputFiles[0]
 if (output === undefined) throw new Error('client build returned no output')
 const id = '@chengxianglibra/dsh-data-analysis'
 const bundle = [
+  noticeComment(await thirdPartyNotices(result.metafile)),
   `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`,
   'var module = { exports: {} }; var exports = module.exports;',
   output.text,

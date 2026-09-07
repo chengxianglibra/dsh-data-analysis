@@ -10,6 +10,9 @@ import { installCredentials } from './client/credentials/install.tsx'
 import { installSemanticBrowser } from './client/semantic-browser/install.tsx'
 import { installSemanticReferenceSource } from './client/semantic-reference-source.ts'
 
+// Shared S3 reader; S4 owns receipt/RPC/overlay registration.
+export { HostPresentationReader } from './client/presentation/host-entry.tsx'
+
 const EVIDENCE_SOURCES_TOOL_NAME = 'marivo_evidence_sources'
 const EVIDENCE_SOURCES_META_KIND = 'marivo-evidence-sources'
 const EVIDENCE_SOURCES_META_VERSION = 2

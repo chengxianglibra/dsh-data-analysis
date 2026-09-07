@@ -17,7 +17,7 @@
     "pack:plugin": "npm run check && npm run verify:plugin-package && node scripts/pack-plugin.mjs",
     "quality": "biome check .",
     "quality:fix": "biome check --write .",
-    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:evidence-sources && npm run test:presentation-surface && npm run test:plugin-integration-delivery && npm run test:semantic-reference-input && npm run test:semantic-browser && npm run test:presentation-s0 && npm run test:presentation-projection",
+    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:evidence-sources && npm run test:presentation-surface && npm run test:plugin-integration-delivery && npm run test:semantic-reference-input && npm run test:semantic-browser && npm run test:presentation-s0 && npm run test:presentation-projection && npm run test:presentation-reader",
     "test:presentation-s0": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-s0/*.test.ts",
     "validate:presentation-s0:runtime": "node --experimental-strip-types packages/dsh-data-analysis/scripts/presentation-s0/runtime.ts",
     "validate:presentation-s0:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/presentation-s0/web.ts",
@@ -45,7 +45,9 @@
     "test:presentation-surface": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-surface/*.test.ts",
     "test:presentation-projection": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-projection/*.test.ts",
     "validate:presentation-projection:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-projection-real.ts",
-    "validate:presentation-browser:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-browser-real.ts"
+    "validate:presentation-browser:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-browser-real.ts",
+    "test:presentation-reader": "npm run build && node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-reader/*.test.ts",
+    "validate:presentation-reader:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-reader-real.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

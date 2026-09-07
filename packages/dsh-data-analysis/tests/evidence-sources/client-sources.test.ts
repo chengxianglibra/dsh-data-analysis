@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import vm from 'node:vm'
+import * as React from 'react'
+import * as ReactDOM from 'react-dom'
 
 interface ClientExports {
   parseEvidenceSourcesMeta(value: unknown): unknown
@@ -29,6 +31,9 @@ async function loadClient(): Promise<ClientExports> {
   vm.runInNewContext(source, {
     AbortController,
     AbortSignal,
+    TextEncoder,
+    setTimeout,
+    clearTimeout,
     window: {
       __ModuleLoader__: {
         load(value: typeof registration) {
@@ -45,10 +50,12 @@ async function loadClient(): Promise<ClientExports> {
     }
     if (id === 'react')
       return {
+        ...React,
         useEffect() {},
         useMemo: (factory: () => unknown) => factory(),
         useState() {},
       }
+    if (id === 'react-dom') return ReactDOM
     if (id === '@deepseek-ai/dsh-client-ui-primitives') return { Button() {}, Modal() {} }
     throw new Error(`unexpected client module request: ${id}`)
   })

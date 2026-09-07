@@ -2,7 +2,7 @@
 
 ## 状态、约束与本轮结论
 
-状态：目标设计；2026-09-07 已完成 [S0 契约与接缝验证](marivo-analytics-presentation-s0-acceptance.md)和 [S1 执行准入](marivo-analytics-presentation-s1-acceptance.md)，presentation 生产切换及 S2–S5 尚未实施。下文“当前”清单保留重构前基线，已实现状态以[实施路线图](marivo-analytics-presentation-roadmap.md)为准。设计约束：**破坏性更新，不做迁移、兼容、别名、双协议或旧卡恢复；从完整用户旅程决定最小能力，不从已有工具清单决定保留项。**
+状态：目标设计；2026-09-07 已完成 [S0 契约与接缝验证](marivo-analytics-presentation-s0-acceptance.md)和 [S1 执行准入](marivo-analytics-presentation-s1-acceptance.md)，S2 数据投影和 S3 共享 reader/离线构建也已完成，presentation Tool/receipt/RPC 与新 Skill 仍待 S4/S5 接通。下文“当前”清单保留重构前基线，已实现状态以[实施路线图](marivo-analytics-presentation-roadmap.md)为准。设计约束：**破坏性更新，不做迁移、兼容、别名、双协议或旧卡恢复；从完整用户旅程决定最小能力，不从已有工具清单决定保留项。**
 
 保留以下已确认约束：凭据管理继续提供；分析基于 Marivo 公开能力；适配 DSH Host；不包含 Sites 或其他托管。ChartRenderer、图表变换、表格、布局、来源面板、reader 明确参考 Analytics App Core 的实现方式，在本项目独立编写，不直接复制源码。computed 只展示声明的 Artifact 来源，不判断或验证转换逻辑。
 
@@ -290,6 +290,6 @@ computed 不加入任何转换审查测试。输入 Artifact 的 Quality/issues 
 
 - Analytics App Core 本机安装包：`src/analytics-app-core.md`、`charting/ChartRenderer.tsx`、`charting/chart-transforms`、`tables/DataTable.jsx`、layout/source/reader 及 portable builder；只参考实现方式，独立编写。
 - [当前插件入口](../../packages/dsh-data-analysis/src/plugin.ts)、[当前 Python Tool](../../packages/dsh-data-analysis/src/datasource/python.ts)、[当前凭据服务](../../packages/dsh-data-analysis/src/datasource/service.ts)、[当前凭据设计](marivo-credentials-design.md)。
-- [当前 report-kit](../../packages/dsh-data-analysis/python/report-kit/src/dsh_data_analysis_report/__init__.py)、[当前 Evidence 读取](../../packages/dsh-data-analysis/src/evidence/bridge-program.ts)、[语义浏览模块](../modules/semantic-browser.md)。
+- [当前 presentation-kit](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/__init__.py)（S2 已替换 report-kit）、[当前 Evidence 读取](../../packages/dsh-data-analysis/src/evidence/bridge-program.ts)、[语义浏览模块](../modules/semantic-browser.md)。
 - [Marivo 分析 Skill](../../../marivo/marivo/skills/marivo-analysis/SKILL.md)、[公开 Session](../../../marivo/marivo/analysis/session/core.py)、[Artifact contract](../../../marivo/marivo/analysis/frames/base.py)、[语义读取](../../../marivo/marivo/semantic/reader.py)。
 - [DSH slots](../../../deepseek-harness/packages/client/ui-slots/README.md)、[conversation UI](../../../deepseek-harness/packages/client/ui-conversation/README.md)、[Host API](../../../deepseek-harness/packages/host/apiproxy/README.md)、[连接边界](../../../deepseek-harness/packages/client/connection/README.md)。
