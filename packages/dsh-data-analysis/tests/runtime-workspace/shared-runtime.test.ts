@@ -55,6 +55,10 @@ if (script.includes('sys.version_info')) {
     prefix: path.dirname(path.resolve(process.argv[1])),
   }))
 } else if (script.includes('import marivo')) {
+  if (!script.includes('import dsh_data_analysis_presentation') ||
+      !script.includes('dsh_data_analysis_presentation.write_dataset') ||
+      !script.includes('presentation_distribution.version') ||
+      script.includes('dsh_data_analysis_report')) process.exit(29)
   if (process.env.PROBE_FAIL === '1') {
     process.stderr.write('fixture import failed')
     process.exit(23)
@@ -65,9 +69,11 @@ if (script.includes('sys.version_info')) {
     package_path: ${JSON.stringify(packagePath)},
     pandas_version: process.env.PANDAS_VERSION ?? '2.3.3',
     pandas_supported: process.env.PANDAS_SUPPORTED !== '0',
-    report_kit_version: process.env.REPORT_KIT_VERSION ?? '3.0.0',
-    report_kit_package_path: process.env.REPORT_KIT_PACKAGE_PATH,
-    report_kit_public_imports: process.env.REPORT_KIT_IMPORTS !== '0',
+    presentation_kit_version: process.env.PRESENTATION_KIT_VERSION ?? '1.0.0',
+    presentation_kit_distribution_version: process.env.PRESENTATION_KIT_DISTRIBUTION_VERSION ?? '1.0.0',
+    presentation_kit_package_path: process.env.PRESENTATION_KIT_PACKAGE_PATH,
+    presentation_kit_import_identity: process.env.PRESENTATION_KIT_IMPORT_IDENTITY !== '0',
+    presentation_kit_public_imports: process.env.PRESENTATION_KIT_IMPORTS !== '0',
   }))
 } else {
   process.stderr.write('runtime probe must import marivo')
@@ -97,17 +103,17 @@ async function fixture(): Promise<RuntimeFixture> {
   const fakePythonSource = path.join(root, 'fake-python')
   const recordPath = path.join(root, 'uv.jsonl')
   const packagePath = path.join(root, 'site-packages', 'marivo', '__init__.py')
-  const reportKitPackagePath = path.join(
+  const presentationKitPackagePath = path.join(
     root,
     'site-packages',
-    'dsh_data_analysis_report',
+    'dsh_data_analysis_presentation',
     '__init__.py',
   )
-  const wheel = path.join(root, 'dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl')
+  const wheel = path.join(root, 'dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl')
   await mkdir(path.dirname(packagePath), { recursive: true })
-  await mkdir(path.dirname(reportKitPackagePath), { recursive: true })
+  await mkdir(path.dirname(presentationKitPackagePath), { recursive: true })
   await writeFile(packagePath, `__version__ = "${FIXTURE_MARIVO_VERSION}"\n`)
-  await writeFile(reportKitPackagePath, '__version__ = "3.0.0"\n')
+  await writeFile(presentationKitPackagePath, '__version__ = "1.0.0"\n')
   await writeFile(wheel, 'fixture wheel')
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
@@ -136,7 +142,7 @@ async function fixture(): Promise<RuntimeFixture> {
       UV_RECORD: recordPath,
       MANAGED_PYTHON: managedPython,
       FAKE_PYTHON_SOURCE: fakePythonSource,
-      REPORT_KIT_PACKAGE_PATH: reportKitPackagePath,
+      PRESENTATION_KIT_PACKAGE_PATH: presentationKitPackagePath,
     },
     cleanup: () => rm(root, { recursive: true, force: true }),
   }
@@ -149,7 +155,7 @@ function runtimeOptions(
 ) {
   return {
     environment,
-    reportKitWheelPath: item.wheel,
+    presentationKitWheelPath: item.wheel,
     ...(waitIntervalMs === undefined ? {} : { waitIntervalMs }),
   }
 }
@@ -187,7 +193,7 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
   assert.equal(first.pythonExecutable, second.pythonExecutable)
   assert.equal(second.packagePath, third.packagePath)
   assert.equal(first.marivoVersion, FIXTURE_MARIVO_VERSION)
-  assert.equal(first.reportKitVersion, '3.0.0')
+  assert.equal(first.presentationKitVersion, '1.0.0')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')
@@ -204,10 +210,11 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
     await readFile(path.join(item.runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.marivoVersion, FIXTURE_MARIVO_VERSION)
-  assert.equal(marker.reportKitVersion, '3.0.0')
-  assert.equal(marker.reportKitPackagePath, first.reportKitPackagePath)
-  assert.equal(marker.reportAdapterKind, 'dsh-data-analysis-report-transport-adapter')
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v2')
+  assert.equal(marker.presentationKitVersion, '1.0.0')
+  assert.equal(marker.presentationKitPackagePath, first.presentationKitPackagePath)
+  assert.equal(marker.presentationKitDistribution, 'dsh-data-analysis-presentation-kit')
+  assert.equal('reportAdapterKind' in marker, false)
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
   assert.equal('capabilities' in marker, false)
   await stat(path.join(first.skillsRoot, 'marivo-analysis', 'SKILL.md'))
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
@@ -248,7 +255,7 @@ test('an unsupported marker is discarded instead of migrated or reused', async (
     string,
     unknown
   >
-  marker.schema = 'dsh-data-analysis-runtime/v1'
+  marker.schema = 'dsh-data-analysis-runtime/v2'
   await writeFile(first.installationPath, `${JSON.stringify(marker)}\n`)
 
   const rebuilt = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
@@ -261,13 +268,13 @@ test('an unsupported marker is discarded instead of migrated or reused', async (
     string,
     unknown
   >
-  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v2')
+  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v3')
   assert.equal('capabilities' in rebuiltMarker, false)
   const siblings = await import('node:fs/promises').then((fs) => fs.readdir(item.root))
   assert.ok(siblings.some((name) => name.startsWith('runtime.invalid-')))
 })
 
-test('a corrupt v2 marker is rebuilt instead of partially trusted', async (t) => {
+test('a corrupt v3 marker is rebuilt instead of partially trusted', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
   const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
@@ -279,8 +286,8 @@ test('a corrupt v2 marker is rebuilt instead of partially trusted', async (t) =>
     string,
     unknown
   >
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v2')
-  assert.equal(marker.reportKitVersion, '3.0.0')
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
+  assert.equal(marker.presentationKitVersion, '1.0.0')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')
@@ -327,19 +334,19 @@ test('administrator Python must use the exact supported Marivo version', async (
   )
 })
 
-test('administrator Python must provide the exact report kit and pandas range without mutation', async (t) => {
+test('administrator Python must provide the exact presentation kit and pandas range without mutation', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
   const python = item.environment.MANAGED_PYTHON as string
   await assert.rejects(
     ensureSharedMarivoRuntime(
-      { runtimeRoot: path.join(item.root, 'admin-report-kit'), pythonExecutable: python },
-      runtimeOptions(item, { ...item.environment, REPORT_KIT_VERSION: '1.9.0' }),
+      { runtimeRoot: path.join(item.root, 'admin-presentation-kit'), pythonExecutable: python },
+      runtimeOptions(item, { ...item.environment, PRESENTATION_KIT_VERSION: '1.9.0' }),
     ),
     (error: unknown) =>
       error instanceof MarivoEnvironmentError &&
-      error.code === 'shared-runtime-report-kit-unsupported' &&
-      error.details.supportedReportKitVersion === '3.0.0',
+      error.code === 'shared-runtime-presentation-kit-unsupported' &&
+      error.details.supportedPresentationKitVersion === '1.0.0',
   )
   await assert.rejects(
     ensureSharedMarivoRuntime(
@@ -379,18 +386,101 @@ test('administrator Python missing a package receives the bundled wheel repair w
 test('managed Runtime rejects a missing bundled wheel before publishing a marker', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
-  const missing = path.join(item.root, 'dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl')
+  const missing = path.join(item.root, 'dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl')
   await rm(missing)
   await assert.rejects(
     ensureSharedMarivoRuntime(
       { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 },
-      { ...runtimeOptions(item), reportKitWheelPath: missing },
+      { ...runtimeOptions(item), presentationKitWheelPath: missing },
     ),
     (error: unknown) =>
       error instanceof MarivoEnvironmentError &&
-      error.code === 'shared-runtime-report-kit-wheel-unavailable',
+      error.code === 'shared-runtime-presentation-kit-wheel-unavailable',
   )
   await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
     code: 'ENOENT',
   })
+  await assert.rejects(() => stat(item.recordPath), { code: 'ENOENT' })
 })
+
+test('managed Runtime rejects a differently named wheel before installing Python', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  await assert.rejects(
+    ensureSharedMarivoRuntime(
+      { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv },
+      { ...runtimeOptions(item), presentationKitWheelPath: path.join(item.root, 'wrong.whl') },
+    ),
+    (error: unknown) =>
+      error instanceof MarivoEnvironmentError &&
+      error.code === 'shared-runtime-presentation-kit-wheel-invalid',
+  )
+  await assert.rejects(() => stat(item.recordPath), { code: 'ENOENT' })
+})
+
+for (const [name, override, code] of [
+  ['missing import', { PROBE_FAIL: '1' }, 'shared-runtime-install-failed'],
+  [
+    'module version',
+    { PRESENTATION_KIT_VERSION: '0.9.0' },
+    'shared-runtime-presentation-kit-unsupported',
+  ],
+  [
+    'distribution version',
+    { PRESENTATION_KIT_DISTRIBUTION_VERSION: '0.9.0' },
+    'shared-runtime-presentation-kit-unsupported',
+  ],
+  ['public writer', { PRESENTATION_KIT_IMPORTS: '0' }, 'shared-runtime-identity-mismatch'],
+  ['module shadow', { PRESENTATION_KIT_IMPORT_IDENTITY: '0' }, 'shared-runtime-identity-mismatch'],
+] as const) {
+  test(`managed Runtime rejects ${name} after the selected install without fallback`, async (t) => {
+    const item = await fixture()
+    t.after(item.cleanup)
+    await assert.rejects(
+      ensureSharedMarivoRuntime(
+        { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv },
+        runtimeOptions(item, { ...item.environment, ...override }),
+      ),
+      (error: unknown) => error instanceof MarivoEnvironmentError && error.code === code,
+    )
+    const calls = (await readFile(item.recordPath, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as string[])
+    assert.equal(calls.filter((args) => args[0] === 'venv').length, 1)
+    assert.equal(calls.filter((args) => args[0] === 'pip').length, 2)
+    assert.equal(calls.filter((args) => args[0] === 'python' && args[1] === 'find').length, 1)
+    await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
+      code: 'ENOENT',
+    })
+  })
+}
+
+for (const [name, override, code] of [
+  [
+    'distribution version',
+    { PRESENTATION_KIT_DISTRIBUTION_VERSION: '0.9.0' },
+    'shared-runtime-presentation-kit-unsupported',
+  ],
+  ['public writer', { PRESENTATION_KIT_IMPORTS: '0' }, 'shared-runtime-identity-mismatch'],
+  ['module shadow', { PRESENTATION_KIT_IMPORT_IDENTITY: '0' }, 'shared-runtime-identity-mismatch'],
+] as const) {
+  test(`administrator Python rejects ${name} without installing or falling back`, async (t) => {
+    const item = await fixture()
+    t.after(item.cleanup)
+    await assert.rejects(
+      ensureSharedMarivoRuntime(
+        { runtimeRoot: item.runtimeRoot, pythonExecutable: item.environment.MANAGED_PYTHON },
+        runtimeOptions(item, { ...item.environment, ...override }),
+      ),
+      (error: unknown) =>
+        error instanceof MarivoEnvironmentError &&
+        error.code === code &&
+        Array.isArray(error.details.repairCommands),
+    )
+    await assert.rejects(() => stat(item.recordPath), { code: 'ENOENT' })
+    await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
+      code: 'ENOENT',
+    })
+  })
+}

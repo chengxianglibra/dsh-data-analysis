@@ -17,7 +17,7 @@ Marivo 项目语义和分析状态。
 | 组件 | 职责 |
 | --- | --- |
 | `ensureSharedMarivoRuntime()` | 验证、复用或安装一套 profile 级 Runtime |
-| `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、report-kit、package 与 Skill 身份 |
+| `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、presentation-kit、package 与 Skill 身份 |
 | `MarivoWorkspaceEnvironmentManager` | 按 canonical project root 缓存 binding Promise，不创建 Workspace 文件 |
 
 ## 共享 Runtime 生命周期
@@ -33,8 +33,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-`installation.json` 记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`reportKitVersion`、
-`reportKitPackagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
+`installation.json` 使用 `dsh-data-analysis-runtime/v3`，记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`presentationKitVersion`、
+`presentationKitPackagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
 启动时先读取 marker 并验证：
 
@@ -42,7 +42,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
 4. Marivo 版本严格等于 `0.5.4`；
-5. report-kit 版本、package path、公开 `emit_dataset` / `emit_computed` / `emit_session_trace` 与 pandas 范围一致；
+5. presentation-kit 版本、package path、distribution metadata、实际模块位置与公开 `write_dataset` 与 pandas 范围一致；
 6. 两个内置 Skill 的 `SKILL.md` 均存在，frontmatter `name` 与目录名精确一致。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
@@ -52,8 +52,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
-| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装精确 Marivo 与随包 report-kit wheel |
-| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、report-kit 与 pandas，随后同步 Skill 和发布 marker |
+| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装精确 Marivo 与随包 presentation-kit wheel |
+| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、presentation-kit 与 pandas，随后同步 Skill 和发布 marker |
 
 两种模式都要求通过 pip 安装精确的 Marivo 0.5.4；marker 记录版本与 package identity。其他版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
@@ -88,7 +88,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 | 范围 | 共享内容 | 隔离内容 |
 | --- | --- | --- |
-| Web profile | Python、Marivo package、report-kit、内置 Skill 副本 | — |
+| Web profile | Python、Marivo package、presentation-kit、内置 Skill 副本 | — |
 | Workspace | 共享 Runtime 引用 | project root、manifest、models、state、doctor admission、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 
@@ -114,10 +114,14 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 ```
 
 `npm run test:runtime-workspace` 执行确定性测试；`npm run validate:runtime-workspace:real` 使用仓库真实
-Marivo Python 创建临时 Runtime 和两个 Workspace，验证安装 marker、Skill 同步、Runtime 复用和项目隔离。
+安装来源创建隔离 managed Runtime 与两个 Workspace，验证安装 marker、Skill 同步、Runtime 复用和项目隔离。
 
 ## 当前安装来源
 
 开发包不随包分发 Marivo wheel；Compatibility manifest 的 `packageSpec` 是 pip 安装使用的精确版本约束
 `marivo[duckdb,trino,clickhouse]==0.5.4`，不使用 editable checkout。管理员 Python 的修复命令同样通过 pip
 安装该精确版本。普通 npm build/prepack 不会重新打包或构建 Marivo。
+
+S2 的 Python helper 合同由 `tests/runtime-workspace/presentation-kit-contracts.test.ts` 纳入持续检查，
+包括相同 fixtures 的 Python、Node 与 browser 读取。managed 安装失败和 administrator 缺 helper、版本错误、
+同名模块遮蔽均明确失败，不切换解释器；真实验证见 [S2 验收记录](../plan/marivo-analytics-presentation-s2-acceptance.md)。

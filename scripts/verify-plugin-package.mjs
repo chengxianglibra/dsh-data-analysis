@@ -1,13 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,12 +8,12 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const reportKitWheelPath =
-  'python/report-kit/dist/dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl'
-const reportKitVerifier = path.join(
+const presentationKitWheelPath =
+  'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl'
+const presentationKitVerifier = path.join(
   packageRoot,
   'python',
-  'report-kit',
+  'presentation-kit',
   'scripts',
   'verify_wheel.py',
 )
@@ -37,23 +29,6 @@ function fail(message) {
 /** @param {string} filename */
 function readJson(filename) {
   return JSON.parse(readFileSync(filename, 'utf8'))
-}
-
-/** @param {string} directory */
-function recursivePackageFiles(directory) {
-  /** @type {string[]} */
-  const result = []
-  /** @param {string} current */
-  const visit = (current) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const target = path.join(current, entry.name)
-      if (entry.isDirectory()) visit(target)
-      else if (entry.isFile())
-        result.push(path.relative(packageRoot, target).split(path.sep).join('/'))
-    }
-  }
-  visit(directory)
-  return result.sort()
 }
 
 /**
@@ -190,35 +165,6 @@ try {
   if (manifest === undefined) fail('npm pack returned no manifest')
   const paths = new Set(manifest.files.map((file) => file.path))
   const files = new Map(manifest.files.map((file) => [file.path, file]))
-  const skillFiles = recursivePackageFiles(
-    path.join(packageRoot, 'skills', 'dsh-data-analysis-report'),
-  )
-  const expectedSkillFiles = [
-    'skills/dsh-data-analysis-report/SKILL.md',
-    'skills/dsh-data-analysis-report/assets/marivo-artifact.js',
-    'skills/dsh-data-analysis-report/assets/marivo-session-dag.js',
-    'skills/dsh-data-analysis-report/assets/report-data.js',
-  ]
-  if (JSON.stringify(skillFiles) !== JSON.stringify(expectedSkillFiles)) {
-    fail('report Skill must contain only its principles, data runtime, and Marivo components')
-  }
-  const contractFiles = readdirSync(path.join(packageRoot, 'report-contracts'), {
-    withFileTypes: true,
-  })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-    .map((entry) => `report-contracts/${entry.name}`)
-    .sort()
-  const expectedContractFiles = [
-    'report-contracts/common-v1.schema.json',
-    'report-contracts/dataset-v2.schema.json',
-    'report-contracts/revalidation-v1.schema.json',
-    'report-contracts/session-trace-v2.schema.json',
-  ]
-  if (JSON.stringify(contractFiles) !== JSON.stringify(expectedContractFiles)) {
-    fail(
-      'development report contracts must contain only the current v2 transport schemas and dependencies',
-    )
-  }
   const unreachableBuildOutputs = [
     'lib/environment/types.js',
     'lib/client/semantic-reference-source.js',
@@ -253,13 +199,20 @@ try {
     'lib/semantic-reference/usage.js',
     'lib/types/evidence/index.d.ts',
     'lib/bin/environment.js',
-    reportKitWheelPath,
-    ...skillFiles,
+    presentationKitWheelPath,
+    'lib/presentation/contracts/index.js',
+    'lib/presentation/contracts/types.js',
+    'lib/presentation/projection/index.js',
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
   }
   for (const filename of paths) {
+    if (filename.startsWith('skills/') || filename.startsWith('python/report-kit/'))
+      fail(`S2 packed plugin contains a removed report Skill or helper ${filename}`)
+    if (filename.startsWith('python/') && filename !== presentationKitWheelPath)
+      fail(`packed plugin contains an unexpected Python asset ${filename}`)
+
     if (filename === 'lib/datasource/access.js' || filename === 'lib/types/datasource/access.d.ts')
       fail(`packed plugin contains removed datasource access Tool ${filename}`)
     if (
@@ -289,12 +242,6 @@ try {
       fail(`packed plugin contains development-only report contract ${filename}`)
     }
   }
-  const packedSkillFiles = [...paths]
-    .filter((filename) => filename.startsWith('skills/dsh-data-analysis-report/'))
-    .sort()
-  if (JSON.stringify(packedSkillFiles) !== JSON.stringify(skillFiles)) {
-    fail('packed report Skill resources differ from the source resource tree')
-  }
   const environmentBin = files.get('lib/bin/environment.js')
   if (environmentBin === undefined || (environmentBin.mode & 0o111) === 0) {
     fail('packed environment CLI is not executable')
@@ -313,11 +260,11 @@ try {
     [
       'run',
       '--project',
-      path.join(packageRoot, 'python', 'report-kit'),
+      path.join(packageRoot, 'python', 'presentation-kit'),
       '--frozen',
       'python',
-      reportKitVerifier,
-      path.join(installedPlugin, reportKitWheelPath),
+      presentationKitVerifier,
+      path.join(installedPlugin, presentationKitWheelPath),
     ],
     { cwd: packageRoot },
   )
@@ -353,14 +300,14 @@ try {
       if (Object.hasOwn(root, removed) || Object.hasOwn(datasource, removed)) throw new Error('packed plugin still exports removed datasource access surface ' + removed)
     }
     if (typeof datasource.MarivoCredentialService.prototype.prepareExecution !== 'function' || typeof datasource.MarivoCredentialService.prototype.claim === 'function') throw new Error('packed credential service must use execution admission without claim')
-    for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {
+    for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool', 'MARIVO_REPORT_PROMPT']) {
       if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
     }
   `
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed report data kit and Marivo components passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed presentation data kit and contracts passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

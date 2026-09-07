@@ -31,7 +31,6 @@ import {
   installMarivoPlugin,
   MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
   MARIVO_EVIDENCE_SOURCES_PROMPT,
-  MARIVO_REPORT_PROMPT,
 } from '../../src/plugin.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
@@ -329,11 +328,7 @@ test('analysis activation adds Evidence guidance and the concise report route', 
   assert.match(activatedPrompt, /no exact Finding exists/)
   assert.match(activatedPrompt, /source cannot be recovered/)
   assert.match(activatedPrompt, /whole conclusion, calculation, or business judgment/)
-  assert.ok(activatedPrompt.includes(MARIVO_REPORT_PROMPT))
-  assert.equal(
-    MARIVO_REPORT_PROMPT,
-    'Use dsh-data-analysis-report only when the user explicitly requests HTML/web or a durable report file, accepts an Agent proposal to create one, or asks to revise an existing Workspace report bundle. Answer ordinary analysis in the conversation even when it is long or contains multiple charts or tables. For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
-  )
+  assert.doesNotMatch(activatedPrompt, /dsh-data-analysis-report|marivo:report/)
   assert.doesNotMatch(activatedPrompt, /marivo_report_render/)
   assert.doesNotMatch(activatedPrompt, /answer inline by default/)
   assert.doesNotMatch(activatedPrompt, /load the dsh-data-analysis-report Skill/)

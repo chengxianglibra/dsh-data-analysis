@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsh-data-analysis-presentation-kit"
+version = "1.0.0"
+description = "Bounded typed JSON serialization for presentation data"
+requires-python = ">=3.10"
+dependencies = ["pandas>=2.2.0,<3.0.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.3.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dsh_data_analysis_presentation = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

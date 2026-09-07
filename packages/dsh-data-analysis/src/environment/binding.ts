@@ -53,6 +53,25 @@ const IMPORT_IDENTITY_PROGRAM = String.raw`
 print(_dsh_json.dumps(_dsh_actual, sort_keys=True))
 `.trim()
 
+const PRESENTATION_IDENTITY_PRELUDE = String.raw`
+try:
+    import dsh_data_analysis_presentation as _dsh_presentation
+    from importlib.metadata import distribution as _dsh_distribution
+    _dsh_presentation_distribution = _dsh_distribution("dsh-data-analysis-presentation-kit")
+    _dsh_presentation_path = _dsh_os.path.realpath(_dsh_presentation.__file__ or "")
+    if (
+        _dsh_presentation.__version__ != _dsh_expected_presentation["version"]
+        or _dsh_presentation_distribution.version != _dsh_expected_presentation["version"]
+        or _dsh_presentation_path != _dsh_os.path.realpath(_dsh_expected_presentation["packagePath"])
+        or _dsh_presentation_path != _dsh_os.path.realpath(_dsh_presentation_distribution.locate_file("dsh_data_analysis_presentation/__init__.py"))
+        or not callable(_dsh_presentation.write_dataset)
+    ):
+        raise ValueError("presentation helper identity mismatch")
+except Exception:
+    print(_dsh_json.dumps({"kind": "presentation-identity-mismatch"}), file=_dsh_sys.stderr)
+    raise SystemExit(78)
+`.trim()
+
 function redactSubprocessOutput(
   result: Awaited<ReturnType<FixedSubprocessPolicy['run']>>,
   environmentOverlay: Readonly<NodeJS.ProcessEnv> | undefined,
@@ -165,6 +184,9 @@ function fingerprint(binding: Omit<MarivoEnvironmentBinding, 'fingerprint'>): st
     binding.marivoVersion,
     binding.packagePath,
     binding.subprocessPolicyId,
+    ...(binding.presentationKit === undefined
+      ? []
+      : [binding.presentationKit.version, binding.presentationKit.packagePath]),
   ]
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex')
 }
@@ -200,7 +222,14 @@ export class MarivoEnvironment {
   #failed = false
 
   constructor(binding: MarivoEnvironmentBinding, subprocessPolicy: FixedSubprocessPolicy) {
-    this.binding = Object.freeze({ ...binding })
+    this.binding = Object.freeze({
+      ...binding,
+      ...(binding.presentationKit === undefined
+        ? {}
+        : {
+            presentationKit: Object.freeze({ ...binding.presentationKit }),
+          }),
+    })
     this.subprocessPolicy = subprocessPolicy
   }
 
@@ -222,11 +251,15 @@ export class MarivoEnvironment {
     }
     if (request.program.trim() === '')
       throw new TypeError('checked Python program must not be empty')
+    const presentationPrelude =
+      this.binding.presentationKit === undefined
+        ? ''
+        : `_dsh_expected_presentation = ${JSON.stringify(this.binding.presentationKit)}\n${PRESENTATION_IDENTITY_PRELUDE}\n`
     const rawResult = await this.subprocessPolicy.run({
       executable: this.binding.pythonExecutable,
       args: [
         '-c',
-        `${CHECKED_IDENTITY_PRELUDE}\n${request.program}`,
+        `${CHECKED_IDENTITY_PRELUDE}\n${presentationPrelude}${request.program}`,
         this.binding.pythonExecutable,
         this.binding.marivoVersion,
         this.binding.packagePath,
@@ -248,7 +281,7 @@ export class MarivoEnvironment {
       this.#failed = true
       throw new MarivoEnvironmentError(
         'binding-identity-mismatch',
-        'Marivo import identity changed; explicit rebind is required',
+        'Bound Runtime import identity changed; explicit rebind is required',
         {
           fingerprint: this.binding.fingerprint,
           exitCode: result.exitCode,
@@ -270,7 +303,7 @@ export class MarivoEnvironment {
       this.#failed = true
       throw new MarivoEnvironmentError(
         'binding-identity-mismatch',
-        'Marivo import identity changed; explicit rebind is required',
+        'Bound Runtime import identity changed; explicit rebind is required',
         {
           fingerprint: this.binding.fingerprint,
           exitCode: result.exitCode,
@@ -293,7 +326,7 @@ export class MarivoEnvironment {
       if (cause instanceof MarivoEnvironmentError) throw cause
       throw new MarivoEnvironmentError(
         'binding-identity-mismatch',
-        'Marivo import identity changed; explicit rebind is required',
+        'Bound Runtime import identity changed; explicit rebind is required',
         { fingerprint: this.binding.fingerprint },
         { cause },
       )
@@ -305,7 +338,12 @@ export class MarivoEnvironment {
 export function createSharedMarivoRuntimeRunner(
   runtime: Pick<
     SharedMarivoRuntime,
-    'runtimeRoot' | 'pythonExecutable' | 'marivoVersion' | 'packagePath'
+    | 'runtimeRoot'
+    | 'pythonExecutable'
+    | 'marivoVersion'
+    | 'packagePath'
+    | 'presentationKitVersion'
+    | 'presentationKitPackagePath'
   >,
   options: { environment?: NodeJS.ProcessEnv } = {},
 ): MarivoEnvironment {
@@ -315,6 +353,10 @@ export function createSharedMarivoRuntimeRunner(
     pythonExecutable: runtime.pythonExecutable,
     marivoVersion: runtime.marivoVersion,
     packagePath: runtime.packagePath,
+    presentationKit: {
+      version: runtime.presentationKitVersion,
+      packagePath: runtime.presentationKitPackagePath,
+    },
     subprocessPolicyId: subprocessPolicy.id,
   }
   return new MarivoEnvironment(
@@ -326,7 +368,11 @@ export function createSharedMarivoRuntimeRunner(
 /** Resolve, probe, and establish one Marivo Environment Binding. */
 export async function bindMarivoEnvironment(
   config: MarivoEnvironmentConfig,
-  options: { environment?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
+  options: {
+    environment?: NodeJS.ProcessEnv
+    signal?: AbortSignal
+    presentationKit?: Readonly<{ version: string; packagePath: string }>
+  } = {},
 ): Promise<MarivoEnvironment> {
   const projectRoot = await assertProjectRoot(config.projectRoot)
   const pythonExecutable = await resolvePythonExecutable(projectRoot, config.pythonExecutable)
@@ -365,6 +411,7 @@ export async function bindMarivoEnvironment(
     pythonExecutable,
     marivoVersion: report.marivo.version,
     packagePath: normalizeAbsolute(report.marivo.package_path),
+    ...(options.presentationKit === undefined ? {} : { presentationKit: options.presentationKit }),
     subprocessPolicyId: subprocessPolicy.id,
   }
   const binding: MarivoEnvironmentBinding = {

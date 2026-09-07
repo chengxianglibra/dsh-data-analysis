@@ -2,7 +2,7 @@
 
 ## 状态与交付目标
 
-状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2–S5 尚未实施，presentation Tool/Skill/reader 尚未切换。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
+状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2 的数据投影、Python helper 与 Runtime 切换已完成，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。S3–S5 尚未实施；旧 report-kit/Skill/JS 已删除，生产 presentation Tool/Skill/reader 尚未接入。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
 
 交付目标固定为 4 个 Tool（`marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_present`）、1 个插件 Skill（`dsh-data-analysis-presentation`）、1 套 reader、一次 present 完成 Web 阅读与离线 HTML。两个 Marivo Runtime Skill 继续挂载，凭据管理保留，computed 仅展示声明来源。
 
@@ -66,6 +66,8 @@
 
 ## S2：数据投影与最小 Python 帮助库
 
+**状态：已完成。** Artifact/computed/source-only 投影、共享 typed JSON 校验、新 Python writer、Runtime v3 identity 与安装包切换均已实现；真实 persisted Artifact 恢复、managed/admin Python 和 Chromium 数据读取已有通过证据。旧 helper/Skill/经典 JS 同阶段退出，当前仍是未发布开发状态。见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)。
+
 **代码所有权**：新 `src/presentation/contracts/`、`projection/`；新 `python/presentation-kit/`；Runtime 安装和包清单由集成负责人接入。
 
 **实施顺序**：
@@ -80,7 +82,7 @@
 
 **验收**：真实 Artifact 行、字段和来源身份一致；computed 数值编码与 Python/Node/browser 读取一致；直接 Artifact 缺必要数据失败，computed 的来源缺失可标 unavailable；source-only 不伪造 dataset；不存在 computed 转换分类、复算或证明要求。
 
-**检查入口**：新增 projection 与 Python helper 契约测试；更新 `test:runtime-workspace`、Runtime 安装探测和旧 `report-kit-contracts` 测试。用已生成的真实 Artifact 验证恢复读取，不以人工编写 metadata 代替。
+**检查入口**：`test:presentation-projection`、`test:presentation-surface` 和 `test:runtime-workspace` 已接入持续检查；旧 `report-kit-contracts` 已替换。`validate:runtime-workspace:real`、`validate:presentation-projection:real` 和 `validate:presentation-browser:real` 已实际通过，分别证明 Runtime 切换、真实 Artifact 恢复和 Python/Node/Chromium 数据一致性。
 
 ## S3：同一 reader 与离线 HTML
 

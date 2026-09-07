@@ -15,6 +15,18 @@ import {
 const fixture = (name: string): any =>
   JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'))
 
+test('Unicode strings match the Python writer and preserve complete emoji', () => {
+  const data = fixture('computed.dataset')
+  data.columns[0].label = '月份 📊'
+  data.rows[0][0] = '一月 📈'
+  assert.equal(parseTypedDataset(data).rows[0]![0], '一月 📈')
+  data.columns[0].label = '\uD800'
+  invalid(() => parseTypedDataset(data), '/columns/0/label')
+  data.columns[0].label = '月份'
+  data.rows[0][0] = '\uDC00'
+  invalid(() => parseTypedDataset(data), '/rows/0/0')
+})
+
 function invalid(run: () => unknown, path: string, code?: string) {
   assert.throws(run, (error: unknown) => {
     assert.ok(error instanceof PresentationContractError)

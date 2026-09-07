@@ -28,26 +28,29 @@ import type { SharedMarivoRuntime, SharedMarivoRuntimeConfig, SubprocessResult }
 export const SHARED_PYTHON_SPEC = '3.10'
 const PINNED_MARIVO_VERSION = MARIVO_VERSION
 export const SHARED_MARIVO_PACKAGE_SPEC = MARIVO_PACKAGE_SPEC
-export const REPORT_KIT_DISTRIBUTION = 'dsh-data-analysis-report-kit'
-export const REPORT_KIT_VERSION = '3.0.0'
-export const REPORT_KIT_PANDAS_RANGE = '>=2.2.0,<3.0.0'
-export const REPORT_KIT_WHEEL_FILENAME = 'dsh_data_analysis_report_kit-3.0.0-py3-none-any.whl'
+export const PRESENTATION_KIT_DISTRIBUTION = 'dsh-data-analysis-presentation-kit'
+export const PRESENTATION_KIT_VERSION = '1.0.0'
+export const PRESENTATION_KIT_PANDAS_RANGE = '>=2.2.0,<3.0.0'
+export const PRESENTATION_KIT_WHEEL_FILENAME =
+  'dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl'
 export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 
 const INSTALLATION_SCHEMA = RUNTIME_INSTALLATION_VERSION
 const INSTALLATION_FILENAME = 'installation.json'
 const SKILL_NAMES = ['marivo-analysis', 'marivo-semantic'] as const
-const REPORT_ADAPTER_KIND = 'dsh-data-analysis-report-transport-adapter' as const
 const PROBE_SCRIPT = String.raw`
 import json
 import os
 import sys
+from importlib.metadata import distribution
 import marivo
 from marivo.semantic.definition import SemanticDefinition
 import pandas
-import dsh_data_analysis_report
+import dsh_data_analysis_presentation
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
+
+presentation_distribution = distribution("dsh-data-analysis-presentation-kit")
 
 print(json.dumps({
     "python_executable": os.path.abspath(sys.executable),
@@ -55,13 +58,13 @@ print(json.dumps({
     "package_path": os.path.abspath(marivo.__file__ or ""),
     "pandas_version": pandas.__version__,
     "pandas_supported": Version(pandas.__version__) in SpecifierSet(">=2.2.0,<3.0.0"),
-    "report_kit_version": dsh_data_analysis_report.__version__,
-    "report_kit_package_path": os.path.abspath(dsh_data_analysis_report.__file__ or ""),
-    "report_kit_public_imports": all(callable(value) for value in (
-        dsh_data_analysis_report.emit_computed,
-        dsh_data_analysis_report.emit_dataset,
-        dsh_data_analysis_report.emit_session_trace,
-    )),
+    "presentation_kit_version": dsh_data_analysis_presentation.__version__,
+    "presentation_kit_distribution_version": presentation_distribution.version,
+    "presentation_kit_package_path": os.path.abspath(dsh_data_analysis_presentation.__file__ or ""),
+    "presentation_kit_import_identity": os.path.realpath(dsh_data_analysis_presentation.__file__ or "") == os.path.realpath(
+        presentation_distribution.locate_file("dsh_data_analysis_presentation/__init__.py")
+    ),
+    "presentation_kit_public_imports": callable(dsh_data_analysis_presentation.write_dataset),
 }, sort_keys=True))
 `.trim()
 const PYTHON_VERSION_SCRIPT = String.raw`
@@ -82,9 +85,11 @@ interface RuntimeProbe {
   package_path: string
   pandas_version: string
   pandas_supported: boolean
-  report_kit_version: string
-  report_kit_package_path: string
-  report_kit_public_imports: boolean
+  presentation_kit_version: string
+  presentation_kit_distribution_version: string
+  presentation_kit_package_path: string
+  presentation_kit_import_identity: boolean
+  presentation_kit_public_imports: boolean
 }
 
 interface InstallationRecord {
@@ -92,9 +97,9 @@ interface InstallationRecord {
   marivoVersion: string
   pythonExecutable: string
   packagePath: string
-  reportAdapterKind: typeof REPORT_ADAPTER_KIND
-  reportKitVersion: string
-  reportKitPackagePath: string
+  presentationKitDistribution: typeof PRESENTATION_KIT_DISTRIBUTION
+  presentationKitVersion: string
+  presentationKitPackagePath: string
   skillsRoot: string
 }
 
@@ -102,7 +107,7 @@ interface RuntimeInstallOptions {
   environment?: NodeJS.ProcessEnv
   waitIntervalMs?: number
   /** Test/build seam; production always resolves the wheel distributed beside the plugin. */
-  reportKitWheelPath?: string
+  presentationKitWheelPath?: string
 }
 
 interface AdministratorRepair {
@@ -113,8 +118,11 @@ interface AdministratorRepair {
   }[]
 }
 
-function administratorRepair(executable: string, reportKitWheel: string): AdministratorRepair {
-  const dependencies = [SHARED_MARIVO_PACKAGE_SPEC, `pandas${REPORT_KIT_PANDAS_RANGE}`]
+function administratorRepair(
+  executable: string,
+  presentationKitWheel: string,
+): AdministratorRepair {
+  const dependencies = [SHARED_MARIVO_PACKAGE_SPEC, `pandas${PRESENTATION_KIT_PANDAS_RANGE}`]
   const commands = [
     {
       executable,
@@ -122,7 +130,7 @@ function administratorRepair(executable: string, reportKitWheel: string): Admini
     },
     {
       executable,
-      args: ['-m', 'pip', 'install', '--no-deps', reportKitWheel],
+      args: ['-m', 'pip', 'install', '--no-deps', presentationKitWheel],
     },
   ] as const
   const commandText = (command: (typeof commands)[number]): string =>
@@ -160,30 +168,33 @@ function defaultRuntimeRoot(): string {
   return path.join(resolveDshHome(), 'dsh-data-analysis', 'runtimes', 'marivo')
 }
 
-function bundledReportKitWheel(): string {
+function bundledPresentationKitWheel(): string {
   return fileURLToPath(
-    new URL(`../../python/report-kit/dist/${REPORT_KIT_WHEEL_FILENAME}`, import.meta.url),
+    new URL(
+      `../../python/presentation-kit/dist/${PRESENTATION_KIT_WHEEL_FILENAME}`,
+      import.meta.url,
+    ),
   )
 }
 
-async function assertReportKitWheel(filename: string): Promise<string> {
+async function assertPresentationKitWheel(filename: string): Promise<string> {
   const selected = path.normalize(path.resolve(filename))
-  if (path.basename(selected) !== REPORT_KIT_WHEEL_FILENAME) {
+  if (path.basename(selected) !== PRESENTATION_KIT_WHEEL_FILENAME) {
     throw new MarivoEnvironmentError(
-      'shared-runtime-report-kit-wheel-invalid',
-      `Bundled report-kit wheel must be named ${REPORT_KIT_WHEEL_FILENAME}`,
-      { expectedWheel: REPORT_KIT_WHEEL_FILENAME, actualWheel: path.basename(selected) },
+      'shared-runtime-presentation-kit-wheel-invalid',
+      `Bundled presentation-kit wheel must be named ${PRESENTATION_KIT_WHEEL_FILENAME}`,
+      { expectedWheel: PRESENTATION_KIT_WHEEL_FILENAME, actualWheel: path.basename(selected) },
     )
   }
   try {
     if (!(await stat(selected)).isFile()) throw new Error('not a file')
   } catch (cause) {
     throw new MarivoEnvironmentError(
-      'shared-runtime-report-kit-wheel-unavailable',
-      `Bundled report-kit wheel is unavailable: ${selected}`,
+      'shared-runtime-presentation-kit-wheel-unavailable',
+      `Bundled presentation-kit wheel is unavailable: ${selected}`,
       {
-        distribution: REPORT_KIT_DISTRIBUTION,
-        version: REPORT_KIT_VERSION,
+        distribution: PRESENTATION_KIT_DISTRIBUTION,
+        version: PRESENTATION_KIT_VERSION,
         wheel: selected,
       },
       { cause },
@@ -258,7 +269,7 @@ async function probeRuntime(
   executable: string,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
-  reportKitWheel: string,
+  presentationKitWheel: string,
   administrator: boolean,
   expectedMarivoVersion?: string,
 ): Promise<RuntimeProbe> {
@@ -269,18 +280,18 @@ async function probeRuntime(
     args: ['-c', PROBE_SCRIPT],
     limits: { timeoutMs, stdoutMaxBytes: 16_384, stderrMaxBytes: 16_384 },
   })
-  const repair = administrator ? administratorRepair(canonical, reportKitWheel) : undefined
+  const repair = administrator ? administratorRepair(canonical, presentationKitWheel) : undefined
   if (administrator && result.exitCode !== 0) {
     throw new MarivoEnvironmentError(
       'shared-runtime-package-unavailable',
-      `Administrator Python must provide Marivo ${PINNED_MARIVO_VERSION}, pandas ${REPORT_KIT_PANDAS_RANGE}, and ${REPORT_KIT_DISTRIBUTION} ${REPORT_KIT_VERSION}. ${repair!.message}`,
+      `Administrator Python must provide Marivo ${PINNED_MARIVO_VERSION}, pandas ${PRESENTATION_KIT_PANDAS_RANGE}, and ${PRESENTATION_KIT_DISTRIBUTION} ${PRESENTATION_KIT_VERSION}. ${repair!.message}`,
       {
         pythonExecutable: canonical,
         marivoVersion: PINNED_MARIVO_VERSION,
-        pandasRange: REPORT_KIT_PANDAS_RANGE,
-        reportKitDistribution: REPORT_KIT_DISTRIBUTION,
-        reportKitVersion: REPORT_KIT_VERSION,
-        reportKitWheel: reportKitWheel,
+        pandasRange: PRESENTATION_KIT_PANDAS_RANGE,
+        presentationKitDistribution: PRESENTATION_KIT_DISTRIBUTION,
+        presentationKitVersion: PRESENTATION_KIT_VERSION,
+        presentationKitWheel: presentationKitWheel,
         exitCode: result.exitCode,
         stderr: boundedText(result.stderr),
         repairCommands: repair!.commands,
@@ -297,16 +308,19 @@ async function probeRuntime(
     typeof probe.pandas_version !== 'string' ||
     probe.pandas_version.length === 0 ||
     typeof probe.pandas_supported !== 'boolean' ||
-    typeof probe.report_kit_version !== 'string' ||
-    probe.report_kit_version.length === 0 ||
-    typeof probe.report_kit_package_path !== 'string' ||
-    probe.report_kit_package_path.length === 0 ||
-    probe.report_kit_public_imports !== true
+    typeof probe.presentation_kit_version !== 'string' ||
+    probe.presentation_kit_version.length === 0 ||
+    typeof probe.presentation_kit_distribution_version !== 'string' ||
+    probe.presentation_kit_distribution_version.length === 0 ||
+    typeof probe.presentation_kit_package_path !== 'string' ||
+    probe.presentation_kit_package_path.length === 0 ||
+    probe.presentation_kit_import_identity !== true ||
+    probe.presentation_kit_public_imports !== true
   ) {
     throw new MarivoEnvironmentError(
       'shared-runtime-identity-mismatch',
-      'Shared Runtime returned an incomplete package identity',
-      { probe },
+      'Shared Runtime returned an incomplete or mismatched package identity',
+      { probe, ...(repair === undefined ? {} : { repairCommands: repair.commands }) },
     )
   }
   const actualPython = await realpath(path.resolve(probe.python_executable))
@@ -326,23 +340,27 @@ async function probeRuntime(
   if (!probe.pandas_supported) {
     throw new MarivoEnvironmentError(
       'shared-runtime-pandas-unsupported',
-      `Shared Runtime pandas ${probe.pandas_version} is unsupported; install ${REPORT_KIT_PANDAS_RANGE}.${repair === undefined ? '' : ` ${repair.message}`}`,
+      `Shared Runtime pandas ${probe.pandas_version} is unsupported; install ${PRESENTATION_KIT_PANDAS_RANGE}.${repair === undefined ? '' : ` ${repair.message}`}`,
       {
-        supportedPandasRange: REPORT_KIT_PANDAS_RANGE,
+        supportedPandasRange: PRESENTATION_KIT_PANDAS_RANGE,
         actualPandasVersion: probe.pandas_version,
         ...(repair === undefined ? {} : { repairCommands: repair.commands }),
       },
     )
   }
-  if (probe.report_kit_version !== REPORT_KIT_VERSION) {
+  if (
+    probe.presentation_kit_version !== PRESENTATION_KIT_VERSION ||
+    probe.presentation_kit_distribution_version !== PRESENTATION_KIT_VERSION
+  ) {
     throw new MarivoEnvironmentError(
-      'shared-runtime-report-kit-unsupported',
-      `Shared Runtime report kit ${probe.report_kit_version} is unsupported; install ${REPORT_KIT_VERSION} from ${reportKitWheel}.${repair === undefined ? '' : ` ${repair.message}`}`,
+      'shared-runtime-presentation-kit-unsupported',
+      `Shared Runtime presentation kit module ${probe.presentation_kit_version} and distribution ${probe.presentation_kit_distribution_version} must both be ${PRESENTATION_KIT_VERSION}; install from ${presentationKitWheel}.${repair === undefined ? '' : ` ${repair.message}`}`,
       {
-        supportedReportKitVersion: REPORT_KIT_VERSION,
-        actualReportKitVersion: probe.report_kit_version,
-        reportKitPackagePath: probe.report_kit_package_path,
-        reportKitWheel,
+        supportedPresentationKitVersion: PRESENTATION_KIT_VERSION,
+        actualPresentationKitVersion: probe.presentation_kit_version,
+        actualPresentationKitDistributionVersion: probe.presentation_kit_distribution_version,
+        presentationKitPackagePath: probe.presentation_kit_package_path,
+        presentationKitWheel,
         ...(repair === undefined ? {} : { repairCommands: repair.commands }),
       },
     )
@@ -364,9 +382,11 @@ async function probeRuntime(
     package_path: path.resolve(probe.package_path),
     pandas_version: probe.pandas_version,
     pandas_supported: probe.pandas_supported,
-    report_kit_version: probe.report_kit_version,
-    report_kit_package_path: path.resolve(probe.report_kit_package_path),
-    report_kit_public_imports: true,
+    presentation_kit_version: probe.presentation_kit_version,
+    presentation_kit_distribution_version: probe.presentation_kit_distribution_version,
+    presentation_kit_package_path: path.resolve(probe.presentation_kit_package_path),
+    presentation_kit_import_identity: true,
+    presentation_kit_public_imports: true,
   }
 }
 
@@ -441,12 +461,12 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       'marivoVersion',
       'packagePath',
       'pythonExecutable',
-      'reportAdapterKind',
-      'reportKitPackagePath',
-      'reportKitVersion',
+      'presentationKitDistribution',
+      'presentationKitPackagePath',
+      'presentationKitVersion',
       'schema',
       'skillsRoot',
-    ]
+    ].sort()
     if (
       fields.length !== expectedFields.length ||
       fields.some((field, index) => field !== expectedFields[index]) ||
@@ -457,11 +477,11 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       record.pythonExecutable.length === 0 ||
       typeof record.packagePath !== 'string' ||
       record.packagePath.length === 0 ||
-      record.reportAdapterKind !== REPORT_ADAPTER_KIND ||
-      typeof record.reportKitVersion !== 'string' ||
-      record.reportKitVersion.length === 0 ||
-      typeof record.reportKitPackagePath !== 'string' ||
-      record.reportKitPackagePath.length === 0 ||
+      record.presentationKitDistribution !== PRESENTATION_KIT_DISTRIBUTION ||
+      typeof record.presentationKitVersion !== 'string' ||
+      record.presentationKitVersion.length === 0 ||
+      typeof record.presentationKitPackagePath !== 'string' ||
+      record.presentationKitPackagePath.length === 0 ||
       typeof record.skillsRoot !== 'string' ||
       record.skillsRoot.length === 0
     )
@@ -489,12 +509,12 @@ async function validatedExisting(
   configuredPython: string | undefined,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
-  reportKitWheel: string,
+  presentationKitWheel: string,
 ): Promise<SharedMarivoRuntime | undefined> {
   const record = await readInstallation(runtimeRoot)
   if (record === undefined) return undefined
   if (record.marivoVersion !== PINNED_MARIVO_VERSION) return undefined
-  if (record.reportKitVersion !== REPORT_KIT_VERSION) return undefined
+  if (record.presentationKitVersion !== PRESENTATION_KIT_VERSION) return undefined
   const expectedPython = configuredPython ?? venvPython(runtimeRoot)
   const expectedSkillsRoot = path.join(runtimeRoot, 'skills')
   if (path.normalize(record.skillsRoot) !== path.normalize(expectedSkillsRoot)) return undefined
@@ -506,13 +526,14 @@ async function validatedExisting(
       selectedPython,
       environment,
       timeoutMs,
-      reportKitWheel,
+      presentationKitWheel,
       configuredPython !== undefined,
       record.marivoVersion,
     )
     if (path.normalize(probe.package_path) !== path.normalize(record.packagePath)) return undefined
     if (
-      path.normalize(probe.report_kit_package_path) !== path.normalize(record.reportKitPackagePath)
+      path.normalize(probe.presentation_kit_package_path) !==
+      path.normalize(record.presentationKitPackagePath)
     )
       return undefined
     await validateSkills(record.skillsRoot)
@@ -521,8 +542,8 @@ async function validatedExisting(
       pythonExecutable: probe.python_executable,
       marivoVersion: probe.marivo_version,
       packagePath: probe.package_path,
-      reportKitVersion: probe.report_kit_version,
-      reportKitPackagePath: probe.report_kit_package_path,
+      presentationKitVersion: probe.presentation_kit_version,
+      presentationKitPackagePath: probe.presentation_kit_package_path,
       skillsRoot: record.skillsRoot,
       installationPath: path.join(runtimeRoot, INSTALLATION_FILENAME),
     }
@@ -605,7 +626,7 @@ async function backupInvalidRuntime(runtimeRoot: string): Promise<void> {
 async function installManagedRuntime(
   runtimeRoot: string,
   uvExecutable: string,
-  reportKitWheel: string,
+  presentationKitWheel: string,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
 ): Promise<RuntimeProbe> {
@@ -675,10 +696,10 @@ async function installManagedRuntime(
     }),
   )
   requireSuccess(
-    `install report kit ${REPORT_KIT_VERSION}`,
+    `install presentation kit ${PRESENTATION_KIT_VERSION}`,
     await policy.run({
       executable: uvExecutable,
-      args: ['pip', 'install', '--python', executable, '--no-deps', reportKitWheel],
+      args: ['pip', 'install', '--python', executable, '--no-deps', presentationKitWheel],
       limits,
     }),
   )
@@ -687,7 +708,7 @@ async function installManagedRuntime(
     executable,
     environment,
     timeoutMs,
-    reportKitWheel,
+    presentationKitWheel,
     false,
     PINNED_MARIVO_VERSION,
   )
@@ -711,15 +732,15 @@ export async function ensureSharedMarivoRuntime(
       ? 'uv'
       : normalizeAbsolute('uvExecutable', config.uvExecutable)
   const timeoutMs = positiveTimeout(config.installTimeoutMs)
-  const reportKitWheel = path.normalize(
-    path.resolve(options.reportKitWheelPath ?? bundledReportKitWheel()),
+  const presentationKitWheel = path.normalize(
+    path.resolve(options.presentationKitWheelPath ?? bundledPresentationKitWheel()),
   )
   const existing = await validatedExisting(
     runtimeRoot,
     configuredPython,
     options.environment,
     timeoutMs,
-    reportKitWheel,
+    presentationKitWheel,
   )
   if (existing !== undefined) return existing
 
@@ -732,10 +753,10 @@ export async function ensureSharedMarivoRuntime(
       configuredPython,
       options.environment,
       timeoutMs,
-      reportKitWheel,
+      presentationKitWheel,
     )
     if (afterLock !== undefined) return afterLock
-    if (configuredPython === undefined) await assertReportKitWheel(reportKitWheel)
+    if (configuredPython === undefined) await assertPresentationKitWheel(presentationKitWheel)
     await backupInvalidRuntime(runtimeRoot)
     await mkdir(runtimeRoot, { recursive: true })
     const probe =
@@ -743,7 +764,7 @@ export async function ensureSharedMarivoRuntime(
         ? await installManagedRuntime(
             runtimeRoot,
             uvExecutable,
-            reportKitWheel,
+            presentationKitWheel,
             options.environment,
             timeoutMs,
           )
@@ -752,7 +773,7 @@ export async function ensureSharedMarivoRuntime(
             configuredPython,
             options.environment,
             timeoutMs,
-            reportKitWheel,
+            presentationKitWheel,
             true,
             PINNED_MARIVO_VERSION,
           )
@@ -762,9 +783,9 @@ export async function ensureSharedMarivoRuntime(
       marivoVersion: probe.marivo_version,
       pythonExecutable: probe.python_executable,
       packagePath: probe.package_path,
-      reportAdapterKind: REPORT_ADAPTER_KIND,
-      reportKitVersion: probe.report_kit_version,
-      reportKitPackagePath: probe.report_kit_package_path,
+      presentationKitDistribution: PRESENTATION_KIT_DISTRIBUTION,
+      presentationKitVersion: probe.presentation_kit_version,
+      presentationKitPackagePath: probe.presentation_kit_package_path,
       skillsRoot,
     }
     const installationPath = await writeInstallation(runtimeRoot, record)
@@ -773,8 +794,8 @@ export async function ensureSharedMarivoRuntime(
       pythonExecutable: probe.python_executable,
       marivoVersion: probe.marivo_version,
       packagePath: probe.package_path,
-      reportKitVersion: probe.report_kit_version,
-      reportKitPackagePath: probe.report_kit_package_path,
+      presentationKitVersion: probe.presentation_kit_version,
+      presentationKitPackagePath: probe.presentation_kit_package_path,
       skillsRoot,
       installationPath,
     }

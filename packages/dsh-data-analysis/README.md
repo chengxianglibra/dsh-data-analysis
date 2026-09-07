@@ -11,12 +11,11 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `marivo_python` 的本次执行准入与单次 resolver 凭证注入；
 - 侧栏“数据源与凭证”管理、测试与缺失输入提交后的原调用续接；
 - `marivo_evidence_sources({ session_id, sources })` 的可移植 Artifact-owned Finding 来源交付；
-- `emit_dataset(BaseFrame, ...)`、`emit_computed(DataFrame, ...)` 与
-  `emit_session_trace(SessionGraph, ...)` 的有界 JavaScript 投影；
-- 随包分发并挂载的 `dsh-data-analysis-report` Skill，以及 `marivo-analysis` 激活后的按需路由。
+- `dsh_data_analysis_presentation.write_dataset(frame, path)` 的 computed typed JSON writer；
+- 内部 Artifact/computed/source-only 数据投影，保存精确来源及 unavailable 状态。
 
-旧 `marivo_test`、`marivo_report_render`、`ReportDocument`、报告 parser/renderer/publisher、专用报告 Web
-卡片与 replay 入口已删除，不提供 alias。
+当前为展示重构 S2 的未发布开发状态。旧 report-kit、report Skill 与三个经典 JS 资产已删除；
+reader、`marivo_present` 与新 presentation Skill 分别在 S3–S5 接入。两个 Marivo Runtime Skill 继续挂载。
 
 ## Compatibility
 
@@ -24,7 +23,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 
 - DSH distribution 与所有必需 peer 精确使用 `0.1.1-rc.2`；
 - Runtime 通过 pip 安装已发布的 Marivo 0.5.4；版本约束为 `marivo[duckdb,trino,clickhouse]==0.5.4`；
-- 项目自有 Runtime marker 为 `dsh-data-analysis-runtime/v2`；
+- 项目自有 Runtime marker 为 `dsh-data-analysis-runtime/v3`；
 - 子进程策略为 `direct-argv-inherited-env-snapshot-overlay-v2`。
 
 管理员解释器的 `marivo.__version__` 与 package identity 必须精确匹配；不使用 capability/version matrix。
@@ -59,20 +58,15 @@ Marivo 公共 API，不增加 convenience Tool。
 打开和手动刷新重新加载；读取失败时明确标注上次成功内容。数据源连接配置、凭证值与原始源码不展示。
 使用及验收边界见[模块说明](../../docs/modules/semantic-browser.md)。
 
-## 报告交付
+## 展示数据
 
-仅当用户明确请求 HTML/Web 或耐久报告、接受生成提议，或修改已有 bundle 时，Agent 加载
-`dsh-data-analysis-report`；普通长回答或多图表/表格不会自动产出文件。已有分析恢复并 revalidate persisted
-Artifacts，不为报告展示重新执行 `observe`。
-该 Skill 只提供内容组织、布局、样式和检查原则，不包含页面 Starter、通用 chart helper、可视化 DSL 或
-HTML Checker。配套 assets 提供 `ReportData` 读取、精简 Artifact 摘要和 Session DAG；Python report-kit
-分别通过 `emit_dataset`、`emit_computed`、`emit_session_trace` 发射 Artifact、pandas DataFrame 与 Graph
-快照；Artifact 与 Graph emitter 默认 `reader`，明确审计请求才使用 `audit`。多 Session 的独立 Graph 集中展示，
-Frame preview 只按精确 Session 与 Artifact identity 关联。Agent 自由生成
-`<workspace>/<new-report-directory>/index.html` 与可选相对资源。Native/both 的
-最终入口使用顶层 DSH `write` / `edit`，并以精确 Markdown 行内路径交付，让 DSH Web 复用 Produced Files
-提供点击；Code-only 在 `run_code` 内使用同一 Tool，但嵌套 mutation 只保证精确路径。插件不创建报告对象、
-digest、不可变发布、历史字节 replay 或 share link。
+Python helper 只接受 pandas DataFrame，写入 `schemaVersion: 1` 的 typed JSON；int64/Decimal 保留精确字符串，
+null 保留缺失含义，datetime 必须带时区。它不保存来源或转换代码；来源在展示 Draft 中声明。
+固定 projection 从同一 bound Workspace 恢复 persisted Artifact 和可选 Finding，不自动 observe、revalidate 或读取凭据。
+直接 Artifact dataset 缺必要数据会失败，computed 和 source-only 可以保留 unavailable 来源。
+
+S2 不提供生产展示 Tool 或 reader。当前实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)
+和[S2 验收记录](../../docs/plan/marivo-analytics-presentation-s2-acceptance.md)。
 
 ## 验证
 

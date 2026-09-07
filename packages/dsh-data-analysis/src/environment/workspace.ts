@@ -47,10 +47,18 @@ export class MarivoWorkspaceEnvironmentManager {
     const canonicalRoot = await canonicalWorkspaceRoot(projectRoot)
     let binding = this.#bindings.get(canonicalRoot)
     if (binding === undefined) {
-      binding = bindMarivoEnvironment({
-        projectRoot: canonicalRoot,
-        pythonExecutable: this.runtime.pythonExecutable,
-      })
+      binding = bindMarivoEnvironment(
+        {
+          projectRoot: canonicalRoot,
+          pythonExecutable: this.runtime.pythonExecutable,
+        },
+        {
+          presentationKit: {
+            version: this.runtime.presentationKitVersion,
+            packagePath: this.runtime.presentationKitPackagePath,
+          },
+        },
+      )
       this.#bindings.set(canonicalRoot, binding)
     }
     return binding

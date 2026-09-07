@@ -57,11 +57,11 @@ test('zero-init Workspace bindings share Runtime identity without creating files
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
-    reportKitVersion: '3.0.0',
-    reportKitPackagePath: path.join(
+    presentationKitVersion: '1.0.0',
+    presentationKitPackagePath: path.join(
       root,
       'site-packages',
-      'dsh_data_analysis_report',
+      'dsh_data_analysis_presentation',
       '__init__.py',
     ),
     skillsRoot: path.join(root, 'runtime', 'skills'),
@@ -100,8 +100,8 @@ test('one invalid Workspace fails closed without poisoning another Workspace', a
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
-    reportKitVersion: '3.0.0',
-    reportKitPackagePath: path.join(root, 'report-kit.py'),
+    presentationKitVersion: '1.0.0',
+    presentationKitPackagePath: path.join(root, 'presentation-kit.py'),
     skillsRoot: path.join(root, 'runtime', 'skills'),
     installationPath: path.join(root, 'runtime', 'installation.json'),
   })

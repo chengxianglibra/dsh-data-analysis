@@ -5,7 +5,8 @@
 本记录落实[路线图 S0](marivo-analytics-presentation-roadmap.md#s0先验证四个真正的阻塞点)的数据接缝。
 [纯 TypeScript 契约](../../packages/dsh-data-analysis/src/presentation/contracts/types.ts)
 及[校验函数](../../packages/dsh-data-analysis/src/presentation/contracts/index.ts)已实现，供 S0 验证入口共用。
-它们未接入生产 Tool、插件公共 exports、Python helper 或生产 reader；本记录不宣称 S2–S4 已完成。
+S0 时它们未接入生产 Tool、插件公共 exports、Python helper 或生产 reader。S2 已接入 projection 与 Python helper，
+并将日历/时钟/offset 和 Unicode 有效性校验对齐，见 [S2 验收记录](marivo-analytics-presentation-s2-acceptance.md)；生产 Tool/reader 留在 S3/S4。
 
 Marivo 继续拥有 Artifact、Finding、语义引用、Quality、issues 与有效性。
 契约只保存展示数据、精确来源定位及读取时公开事实。Harness 拥有 Workspace、Runtime、Session/Turn

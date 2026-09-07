@@ -1,8 +1,6 @@
 /** Cordis lifecycle adapter for the Web-profile shared Marivo Runtime. */
 
-import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -74,18 +72,6 @@ export const MARIVO_EVIDENCE_SOURCES_PROMPT = [
   'Treat source existence as identity and availability evidence, not as proof that the whole conclusion, calculation, or business judgment is entailed or correct.',
   'If no exact Finding exists or its source cannot be recovered, say so instead of inventing or approximating a source.',
 ].join(' ')
-
-export const MARIVO_REPORT_PROMPT = [
-  'Use dsh-data-analysis-report only when the user explicitly requests HTML/web or a durable report file, accepts an Agent proposal to create one, or asks to revise an existing Workspace report bundle.',
-  'Answer ordinary analysis in the conversation even when it is long or contains multiple charts or tables.',
-  'For existing analysis, recover and revalidate persisted Artifacts; never rerun observe only to create the report or fill DAG details.',
-].join(' ')
-
-const integrationSkillsRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'skills',
-)
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config {
@@ -201,14 +187,6 @@ export function installMarivoPlugin(
           controller.activeSkills.includes('marivo-analysis') ? MARIVO_EVIDENCE_SOURCES_PROMPT : '',
       }),
     )
-    controller.addDisposer(
-      agent.ctx.systemPrompt.section({
-        name: 'marivo:report',
-        order: 185,
-        text: () =>
-          controller.activeSkills.includes('marivo-analysis') ? MARIVO_REPORT_PROMPT : '',
-      }),
-    )
     installed.set(agent, controller)
   }
 
@@ -284,7 +262,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',
       includeDefaultRoots: false,
-      customSkillDirs: [runtime.skillsRoot, integrationSkillsRoot],
+      customSkillDirs: [runtime.skillsRoot],
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))

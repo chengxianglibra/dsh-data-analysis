@@ -13,7 +13,7 @@ export interface DshDataAnalysisCompatibility {
     readonly packageSpec: string
   }
   readonly contracts: {
-    readonly runtimeInstallation: 'dsh-data-analysis-runtime/v2'
+    readonly runtimeInstallation: 'dsh-data-analysis-runtime/v3'
     readonly subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2'
   }
 }
@@ -85,7 +85,7 @@ function parsePackageManifest(value: unknown): PackageManifest {
       contracts: Object.freeze({
         runtimeInstallation: requiredLiteral(
           contracts.runtimeInstallation,
-          'dsh-data-analysis-runtime/v2',
+          'dsh-data-analysis-runtime/v3',
           'package compatibility contracts.runtimeInstallation',
         ),
         subprocessPolicy: requiredLiteral(

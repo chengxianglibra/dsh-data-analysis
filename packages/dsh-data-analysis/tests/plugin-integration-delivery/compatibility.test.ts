@@ -26,7 +26,7 @@ test('v2 compatibility manifest binds plugin, DSH, Marivo, and project contracts
   assert.equal(DSH_PEER_RANGE, '0.1.1-rc.2')
   assert.equal(MARIVO_VERSION, '0.5.4')
   assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.4')
-  assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v2')
+  assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v3')
   assert.equal(SUBPROCESS_POLICY_VERSION, 'direct-argv-inherited-env-snapshot-overlay-v2')
 })
 

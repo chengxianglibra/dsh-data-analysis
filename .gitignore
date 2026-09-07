@@ -10,5 +10,10 @@ node_modules/
 artifacts/
 docs/acceptance/
 packages/dsh-data-analysis/lib/
+packages/dsh-data-analysis/python/**/build/
+packages/dsh-data-analysis/python/**/dist/
+packages/dsh-data-analysis/python/**/*.egg-info/
+packages/dsh-data-analysis/python/**/__pycache__/
+packages/dsh-data-analysis/python/**/.pytest_cache/
 *.tgz
 npm-debug.log*

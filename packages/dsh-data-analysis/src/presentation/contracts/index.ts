@@ -59,7 +59,8 @@ function string(value: unknown, path: string, max: number = budgets.text): strin
     typeof value !== 'string' ||
     value.length === 0 ||
     value.length > max ||
-    value.includes('\0')
+    value.includes('\0') ||
+    /[\uD800-\uDFFF]/u.test(value)
   ) {
     fail(path, `Expected a nonempty string of at most ${max} characters.`)
   }
@@ -114,6 +115,19 @@ function date(value: unknown, path: string, datetime: boolean) {
     : /^\d{4}-\d{2}-\d{2}$/
   if (!expression.test(text) || !Number.isFinite(Date.parse(text)))
     fail(path, 'Invalid ISO date/time.')
+  if (text.slice(0, 4) === '0000') fail(path, 'Calendar year must be between 0001 and 9999.')
+  if (datetime) {
+    if (
+      Number(text.slice(11, 13)) > 23 ||
+      Number(text.slice(14, 16)) > 59 ||
+      Number(text.slice(17, 19)) > 59
+    ) {
+      fail(path, 'Invalid clock time.')
+    }
+    const offset = /[+-](\d{2}):(\d{2})$/.exec(text)
+    if (offset && (Number(offset[1]) > 23 || Number(offset[2]) > 59))
+      fail(path, 'Invalid timezone offset.')
+  }
   // Date.parse normalizes impossible calendar dates such as February 30.
   const day = text.slice(0, 10)
   if (new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day) {
@@ -179,7 +193,12 @@ function cell(value: unknown, column: DatasetColumn, path: string) {
       date(value, path, column.type === 'datetime')
       break
     case 'string':
-      if (typeof value !== 'string' || value.length > budgets.text || value.includes('\0')) {
+      if (
+        typeof value !== 'string' ||
+        value.length > budgets.text ||
+        value.includes('\0') ||
+        /[\uD800-\uDFFF]/u.test(value)
+      ) {
         fail(path, 'Expected a bounded string.')
       }
       break

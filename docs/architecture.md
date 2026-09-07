@@ -6,9 +6,9 @@
 Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语义、Artifact、Evidence、Quality、
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
-展示重构已完成 S0 内部契约与接缝验证，S1 已将凭据准入并入 Python 执行，见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)、
-[S0 契约](plan/marivo-analytics-presentation-s0-contracts.md)和[验收记录](plan/marivo-analytics-presentation-s0-acceptance.md)。
-S0 的 reader、文件 RPC 与 receipt 探针只在临时验证插件中运行；展示 Tool、helper 与旧报告流程仍待 S2–S5 切换。
+展示重构的 S0 接缝与 S1 一次执行准入已完成，S2 已接入 typed data projection 和最小 Python helper，
+见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)与[S2 验收记录](plan/marivo-analytics-presentation-s2-acceptance.md)。
+旧 report-kit、报告 Skill 和经典 JS 资产已删除；当前是未发布开发状态，生产 reader、`marivo_present` 和新 Skill 分别在 S3–S5 接入。
 
 ```mermaid
 flowchart LR
@@ -21,11 +21,12 @@ flowchart LR
   P --> E[marivo_evidence_sources]
   P --> S[Semantic reference input and usage sidecar]
   P --> B[Read-only Workspace semantic browser]
-  P --> J[Marivo Artifact and DAG JS projection]
+  P --> J[Presentation typed data projection]
   R --> M[Marivo public objects]
   M --> A[Agent analysis and expression]
-  A --> F[Workspace HTML directory bundle]
-  F --> D
+  A --> C[Computed typed JSON]
+  C --> J
+  M --> J
 ```
 
 ## 分层
@@ -39,7 +40,7 @@ flowchart LR
 | Evidence delivery | 精确 Artifact/Finding 到 Turn/Web 的忠实投影 | 分析读取、Finding 组合、蕴含判断 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
-| Report workflow | 原则型 `dsh-data-analysis-report` Skill 与 Artifact/DAG JS 投影 | 页面模板、通用 chart helper、HTML Checker、renderer、publisher、专用 Web card |
+| Presentation data | 固定公开 Artifact 读取、typed JSON、声明来源快照与最小 Python writer | computed 转换审计、分析正确性、语义补齐、observe 或 revalidation |
 
 模块文档：
 
@@ -50,6 +51,7 @@ flowchart LR
 - [Evidence 来源交付](modules/evidence-sources.md)
 - [语义对象引用输入](modules/semantic-reference-input.md)
 - [只读语义层对象浏览器](modules/semantic-browser.md)
+- [展示数据投影](modules/presentation-projection.md)
 - [插件集成与交付](modules/plugin-integration-delivery.md)
 
 ## Runtime 与 identity
@@ -73,20 +75,14 @@ marivo_python
 marivo_evidence_sources
 ```
 
-Plugin 同时挂载 Runtime 的 `marivo-analysis` / `marivo-semantic` 和随包分发的
-`dsh-data-analysis-report`。前两者激活后，controller 披露当前 Runtime 的根 Help；报告路由随
-`marivo-analysis` 激活后只注入报告选择边界：用户明确请求 HTML/Web 或耐久报告、接受生成提议，或修改已有
-bundle 时才加载报告 Skill；普通长回答或多图表/表格不触发文件生成。已有分析恢复并 revalidate persisted
-Artifacts，不为展示重新执行 `observe`。插件不注册报告 Tool；
+Plugin 当前只挂载 Runtime 的 `marivo-analysis` / `marivo-semantic`。激活后 controller 披露当前 Runtime 的根 Help；
+原 Evidence prompt 继续保留到 S4。旧报告路由已删除，新 presentation Skill 在 S5 接入。
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
-Runtime 另外安装 `dsh-data-analysis-report-kit`。`emit_dataset` 只接受 Marivo `BaseFrame`，
-`emit_computed` 只接受 pandas `DataFrame`，`emit_session_trace` 只接受调用方已取得的公开 `SessionGraph`。
-Artifact/Graph emitter 默认使用 `reader` profile，明确审计请求才使用 `audit`；profile 只裁剪公开字段，
-不重算 Marivo 语义。
-浏览器 assets 分别提供 `ReportData`、精简 Artifact 摘要与 Session DAG；Artifact 组件只披露对报告读者有用的
-正常摘要和实质风险，不充当 metadata inspector。一次分析涉及多个 Session 时，每个 Session 保持独立 Graph，
-Frame preview 按 `session_id + artifact_ref` 关联。插件不拥有页面结构、图表类型、样式或可视化实现。
+Runtime 安装 `dsh-data-analysis-presentation-kit==1.0.0`；公开 Python 函数
+`dsh_data_analysis_presentation.write_dataset(frame, path)` 接受 pandas DataFrame，只写 computed typed JSON。
+来源由 Draft 声明。固定 projection 在相同 bound Runtime 恢复 persisted Artifact 和可选 Finding，
+不执行 `observe`、`revalidate` 或凭据读取；reader 后续只消费生成文档快照。
 
 ## 原生分析读取
 
@@ -127,25 +123,14 @@ Code Mode 子调用通过 durable source block 保留相同元数据；Web 只�
 
 该 adapter 不是报告数据入口，不自动拦截回答，不生成脚注或 citation manifest，也不证明自由文本正确。
 
-## Agent 原生报告与文件交付
+## 展示数据与后续交付
 
-Agent 按 Skill 原则自行选择 HTML/CSS/SVG/JavaScript、图表和本地依赖，输出普通目录。插件不提供页面
-示例或静态 HTML Checker：
+S2 的内部 `MarivoPresentationProjection` 把 Draft 变成纯数据 `PresentationDocument`。
+Artifact dataset 必须恢复所需行和字段；computed dataset 从 Workspace 中有界读取 typed JSON；
+source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable，但不允许直接 Artifact dataset 假成功。
 
-```text
-<workspace>/<new-report-directory>/
-├── index.html
-├── assets/   # optional
-└── data/     # optional
-```
-
-资源先写，入口最后写。Native/both 的顶层成功 mutation 会让入口路径进入 Produced Files；Code-only 的
-嵌套 mutation 只进入 Harness 日志，因此由外层输出和最终回答交付精确路径。Host opener 仅在 loopback 且
-`canOpenPath` 可用时工作；remote/headless 只交付路径。
-
-文件级 mutation 可以原子写入，但目录没有事务、ready gate、digest、不可变 identity、历史字节 replay、
-权限发布、share 或 GC。资源闭合、离线依赖、安全、浏览器、键盘与打印检查属于 Agent 工作流；失败时必须
-明确报告未完成。
+当前没有生产目录 builder、present Tool 或 reader。S3 将使用相同数据契约构建 reader/离线 HTML，
+S4 才负责完整文件提交、receipt 与 Host 只读 RPC；S5 接入唯一展示 Skill。详见[路线图](plan/marivo-analytics-presentation-roadmap.md)。
 
 ## 验证
 
@@ -155,6 +140,6 @@ npm run build
 npm run verify:plugin-package
 ```
 
-确定性测试守住 Tool 最小性、旧 surface 删除、Artifact/DAG 投影契约、Evidence 精确归属与包导出。页面的
-Web Produced Files、Host opener、浏览器、打印和隔离磁盘配额由具体交付工作流按 Skill 原则验证，不能由
-路径存在或本地日志代替。
+确定性测试守住 Runtime/helper identity、Tool 最小性、旧 surface 删除、Python/Node typed JSON、
+Artifact/source identity、文件预算与包导出。真实 Artifact 恢复与 Chromium 数据读取见
+[S2 验收记录](plan/marivo-analytics-presentation-s2-acceptance.md)；不将其当作后续 Host/reader/Agent 交付验收。

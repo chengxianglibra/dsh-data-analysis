@@ -22,7 +22,10 @@ dsh --profile web
 
 - **安全**：以受控方式连接分析环境和数据源，保护敏感凭证，并让分析过程与结果保持清晰、可靠的边界。
 - **易用**：Agent 可以直接开展数据分析，并在持续使用中逐渐沉淀可复用的业务语义，让后续分析更贴近业务、结果更一致。
-- **丰富**：不仅提供分析结论，还可结合证据、溯源和 HTML 报告等形式，满足从快速探索到完整交付的不同需求。
+- **来源**：分析可结合 persisted Artifact/Finding 的来源读取，语义与质量事实由 Marivo 提供。
+
+当前开发分支正在实施展示重构，已切换 S2 数据投影和 Python helper；旧报告 Skill 已删除，新的 reader 与
+`marivo_present` 尚待后续阶段接入，见[路线图](docs/plan/marivo-analytics-presentation-roadmap.md)。
 
 ## 引用语义对象
 
