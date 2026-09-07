@@ -55,8 +55,18 @@ if (os.path.abspath(sys.executable) != expected["pythonExecutable"] or
 resolver = SnapshotResolver(payload)
 code = payload.pop("code")
 sys.stdin = open(os.devnull)
-with md.credential_scope(resolver=resolver):
-    exec(compile(code, "<marivo_python>", "exec"), {"__name__": "__main__"})
+try:
+    with md.credential_scope(resolver=resolver):
+        for name, grant in resolver.grants.items():
+            description = md.describe(name)
+            if grant["name"] != name or description.name != name:
+                raise RuntimeError("Marivo datasource identity changed; execution cancelled")
+            if definition(description) != grant["definition"]:
+                raise RuntimeError("Marivo datasource definition changed; execution cancelled")
+        exec(compile(code, "<marivo_python>", "exec"), {"__name__": "__main__"})
+finally:
+    resolver.values.clear()
+    payload.clear()
 `}`
 
 /** Capture raw fd output before Harness collection/spill, including driver writes. */

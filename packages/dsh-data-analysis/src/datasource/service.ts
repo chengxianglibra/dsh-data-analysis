@@ -58,21 +58,34 @@ interface BoundContext {
   resolve: () => Promise<MarivoDatasourceBridgePort>
   touched: number
 }
+interface PreparedCredentialTest {
+  result: MarivoDatasourceTestResult
+  version: string
+}
 interface PendingRequest {
   view: CredentialRequestView
   context: BoundContext
   exec: ToolExecution
   signal: AbortSignal
-  finish: (value: MarivoDatasourceTestResult) => void
+  finish: (value: PreparedCredentialTest) => void
   reject: (error: Error) => void
   stop: () => void
 }
-interface Lease {
-  agent: Agent
-  fingerprint: string
-  description: MarivoDatasourceDescription
-  expires: number
-  uses: number
+export interface CredentialNeedsInput {
+  status: 'needs-credentials'
+  name: string
+  refs: string[]
+}
+export interface PreparedCredentialExecution {
+  status: 'ready'
+  values: Record<string, string>
+  grants: Record<string, MarivoDatasourceDescription>
+  bridge: MarivoDatasourceBridgePort
+  signal: AbortSignal
+  /** Call synchronously immediately before starting the resolved Shell request. */
+  assertCurrent: () => void
+  /** Forget values and stop operation-scoped credential tracking. */
+  release: () => void
 }
 export class CredentialServiceError extends Error {
   readonly code: string
@@ -89,7 +102,7 @@ function assert(condition: unknown, code: string): asserts condition {
   if (!condition) throw new CredentialServiceError(code)
 }
 
-/** Owns only plugin operations, waits and grants. No value cache or datasource registry. */
+/** Owns only plugin operations and execution-scoped waits. No value cache or datasource registry. */
 export class MarivoCredentialService {
   readonly generation = randomUUID()
   readonly #store: CredentialStore
@@ -98,12 +111,11 @@ export class MarivoCredentialService {
   readonly #operations = new Map<string, CredentialOperationView>()
   readonly #controllers = new Map<string, AbortController>()
   readonly #tasks = new Set<Promise<void>>()
-  readonly #leases = new Set<Lease>()
   readonly #versions = new Map<string, number>()
   readonly #activeRefs = new Map<string, number>()
   readonly #history = new Map<
     string,
-    { at: number; version: string; result: MarivoDatasourceTestResult }
+    { at: number; version: string; refs: string[]; result: MarivoDatasourceTestResult }
   >()
   readonly #lifetime = new AbortController()
   readonly #agents = new WeakMap<Agent, AbortController>()
@@ -152,9 +164,14 @@ export class MarivoCredentialService {
         ![...this.#operations.values()].some((op) => op.scope === id && op.status === 'running')
       )
         this.#contexts.delete(id)
-    for (const lease of this.#leases) if (lease.expires <= now) this.#leases.delete(lease)
     for (const [key, history] of this.#history)
       if (now - history.at >= RETENTION) this.#history.delete(key)
+    const retainedRefs = new Set([
+      ...[...this.#contexts.values()].flatMap((context) => context.description.refs),
+      ...[...this.#history.values()].flatMap((history) => history.refs),
+      ...this.#activeRefs.keys(),
+    ])
+    for (const ref of this.#versions.keys()) if (!retainedRefs.has(ref)) this.#versions.delete(ref)
   }
   async #locked<T>(fn: () => Promise<T>, signal: AbortSignal): Promise<T> {
     const previous = this.#tail
@@ -187,13 +204,11 @@ export class MarivoCredentialService {
       [...this.#contexts.values()].flatMap((context) => context.description.refs),
     )
     for (const ref of this.#activeRefs.keys()) refs.add(ref)
-    for (const lease of this.#leases) for (const ref of lease.description.refs) refs.add(ref)
+    for (const history of this.#history.values()) for (const ref of history.refs) refs.add(ref)
     this.invalidate([...refs].filter((ref) => marivoCredentialStorageRef(ref) === storageRef))
   }
   invalidate(refs: readonly string[]): void {
     for (const ref of refs) this.#versions.set(ref, (this.#versions.get(ref) ?? 0) + 1)
-    for (const lease of this.#leases)
-      if (lease.description.refs.some((ref) => refs.includes(ref))) this.#leases.delete(lease)
     this.#changed()
   }
   async #current(context: BoundContext, signal: AbortSignal): Promise<void> {
@@ -246,6 +261,7 @@ export class MarivoCredentialService {
     assert(!this.#lifetime.signal.aborted, 'disposed')
     const bridge = await resolve()
     const description = await bridge.describe(name, signal)
+    assert(description.name === name, 'invalid-datasource-context')
     for (const ref of description.refs) marivoCredentialStorageRef(ref)
     assert(
       typeof description.definition === 'string' && !!description.fields,
@@ -355,149 +371,178 @@ export class MarivoCredentialService {
       const result = await context.bridge.test(context.description, values, signal)
       await this.#current(context, signal)
       assert(version === this.#version(context), 'credentials-changed')
-      this.#history.set(this.#historyKey(context), { at: this.now(), version, result })
+      const key = this.#historyKey(context)
+      this.#history.delete(key)
+      if (this.#history.size >= CAPACITY) this.#history.delete(this.#history.keys().next().value!)
+      this.#history.set(key, {
+        at: this.now(),
+        version,
+        refs: [...context.description.refs],
+        result,
+      })
       return result
     } finally {
       if (values) for (const ref of Object.keys(values)) delete values[ref]
       stop()
     }
   }
-  revoke(agent: Agent, fingerprint?: string, name?: string): void {
-    for (const lease of this.#leases)
-      if (
-        lease.agent === agent &&
-        (!fingerprint || lease.fingerprint === fingerprint) &&
-        (!name || lease.description.name === name)
-      )
-        this.#leases.delete(lease)
+  async #awaitCredentials(
+    exec: ToolExecution,
+    context: BoundContext,
+    view: CredentialContextView,
+    signal: AbortSignal,
+  ): Promise<PreparedCredentialTest | CredentialNeedsInput | undefined> {
+    const agent = exec.agent!
+    const missing = view.refs.filter((ref) => !view.credentials[ref]?.configured)
+    if (missing.length === 0) return undefined
+    if (
+      this.interaction === 'none' ||
+      agent.session.header.origin === 'subagent' ||
+      (agent.session.header.delegationDepth ?? 0) > 0
+    )
+      return { status: 'needs-credentials', name: context.description.name, refs: missing }
+    this.#prune()
+    assert(this.#requests.size < CAPACITY / 2, 'capacity-exceeded')
+    assert(this.#contexts.size < CAPACITY, 'capacity-exceeded')
+    this.#contexts.set(context.token, context)
+    return new Promise<PreparedCredentialTest>((finish, reject) => {
+      const id = randomUUID()
+      const request: PendingRequest = {
+        context,
+        exec,
+        signal,
+        finish,
+        reject,
+        stop: () => signal.removeEventListener('abort', abort),
+        view: { id, sessionId: agent.session.id, context: view, status: 'awaiting-input' },
+      }
+      const abort = () => {
+        if (request.view.endedAt !== undefined) return
+        request.view.status = 'call-ended'
+        request.view.endedAt = this.now()
+        request.stop()
+        reject(new CredentialServiceError('call-ended'))
+        this.#changed()
+      }
+      this.#requests.set(id, request)
+      signal.addEventListener('abort', abort, { once: true })
+      if (signal.aborted) abort()
+      this.#changed()
+    })
   }
   async prepare(
-    kind: 'test' | 'access',
+    _kind: 'test',
     exec: ToolExecution,
     resolve: () => Promise<MarivoDatasourceBridgePort>,
     name: string,
-  ): Promise<
-    | MarivoDatasourceTestResult
-    | { status: 'needs-credentials'; name: string; refs: string[] }
-    | {
-        status: 'ok'
-        name: string
-        access: { usage: string; expires_in_ms: number; max_uses: number }
-      }
-  > {
-    const agent = exec.agent
-    assert(agent, 'agent-required')
+  ): Promise<MarivoDatasourceTestResult | CredentialNeedsInput> {
+    assert(exec.agent, 'agent-required')
     const signal = this.executionSignal(exec.signal, exec.agent)
     const context = await this.#bind('', resolve, name, signal)
-    this.revoke(agent, context.bridge.binding.fingerprint, name)
-    let view = await this.#view(context)
-    const missing = view.refs.filter((ref) => !view.credentials[ref]?.configured)
-    let tested: MarivoDatasourceTestResult | undefined
-    if (missing.length > 0) {
-      if (
-        this.interaction === 'none' ||
-        agent.session.header.origin === 'subagent' ||
-        (agent.session.header.delegationDepth ?? 0) > 0
-      )
-        return { status: 'needs-credentials', name, refs: missing }
-      this.#prune()
-      assert(this.#requests.size < CAPACITY / 2, 'capacity-exceeded')
-      assert(this.#contexts.size < CAPACITY, 'capacity-exceeded')
-      this.#contexts.set(context.token, context)
-      tested = await new Promise<MarivoDatasourceTestResult>((finish, reject) => {
-        const id = randomUUID()
-        const request: PendingRequest = {
-          context,
-          exec,
-          signal,
-          finish,
-          reject,
-          stop: () => signal.removeEventListener('abort', abort),
-          view: { id, sessionId: agent.session.id, context: view, status: 'awaiting-input' },
-        }
-        const abort = () => {
-          if (request.view.endedAt !== undefined) return
-          request.view.status = 'call-ended'
-          request.view.endedAt = this.now()
-          request.stop()
-          reject(new CredentialServiceError('call-ended'))
-          this.#changed()
-        }
-        this.#requests.set(id, request)
-        signal.addEventListener('abort', abort, { once: true })
-        if (signal.aborted) abort()
-        this.#changed()
-      })
-      if (!tested.ok) return tested
-    }
-    if (kind === 'test') return tested ?? this.#test(context, signal)
-    await this.#current(context, signal)
-    view = await this.#view(context)
-    assert(
-      view.refs.every((ref) => view.credentials[ref]?.configured),
-      'credential-missing',
-    )
-    signal.throwIfAborted()
-    this.#leases.add({
-      agent,
-      fingerprint: context.bridge.binding.fingerprint,
-      description: context.description,
-      expires: this.now() + RETENTION,
-      uses: 64,
-    })
-    return {
-      status: 'ok',
-      name,
-      access: { usage: 'bounded-foreground-python-access', expires_in_ms: RETENTION, max_uses: 64 },
+    const stop = this.#watchRefs(context.description.refs)
+    try {
+      const tested = await this.#awaitCredentials(exec, context, await this.#view(context), signal)
+      return tested
+        ? 'result' in tested
+          ? tested.result
+          : tested
+        : await this.#test(context, signal)
+    } finally {
+      stop()
     }
   }
-  async claim(
+  async prepareExecution(
     exec: ToolExecution,
     resolve: () => Promise<MarivoDatasourceBridgePort>,
     names: string[],
-  ): Promise<{
-    values: Record<string, string>
-    grants: Record<string, MarivoDatasourceDescription>
-    bridge: MarivoDatasourceBridgePort
-  }> {
+  ): Promise<PreparedCredentialExecution | CredentialNeedsInput | MarivoDatasourceTestResult> {
     assert(exec.agent, 'agent-required')
-    assert(names.length <= 16 && new Set(names).size === names.length, 'invalid-datasources')
+    assert(
+      names.length <= 16 &&
+        new Set(names).size === names.length &&
+        names.every((name) => typeof name === 'string' && !!name.trim() && name.length <= 256),
+      'invalid-datasources',
+    )
     const signal = this.executionSignal(exec.signal, exec.agent)
-    if (names.length === 0) {
-      const bridge = await resolve()
-      signal.throwIfAborted()
-      return { bridge, values: {}, grants: {} }
-    }
+    const session = exec.agent.session
+    const currentWorkspace = () =>
+      JSON.stringify([Reflect.get(session.header, 'workspaceId'), session.header.cwd])
+    const workspace = currentWorkspace()
     const contexts: BoundContext[] = []
-    const leases: Lease[] = []
-    this.#prune()
-    for (const name of names) {
-      const context = await this.#bind('', resolve, name, signal)
-      const lease = [...this.#leases].find(
-        (item) =>
-          item.agent === exec.agent &&
-          item.fingerprint === context.bridge.binding.fingerprint &&
-          item.description.name === name &&
-          item.description.definition === context.description.definition,
-      )
-      assert(lease && lease.uses > 0 && lease.expires > this.now(), 'access-required')
-      contexts.push(context)
-      leases.push(lease)
-    }
-    // Admission consumes once, even when later resolution fails.
-    for (const lease of leases) {
-      assert(this.#leases.has(lease) && lease.uses > 0, 'access-required')
-      lease.uses--
-    }
-    const values = await this.#snapshot(contexts, signal)
-    if (!leases.every((lease) => this.#leases.has(lease) && lease.expires > this.now())) {
+    const stops: (() => void)[] = []
+    const versions = new Map<BoundContext, string>()
+    let values: Record<string, string> = {}
+    let released = false
+    const release = () => {
+      if (released) return
+      released = true
       for (const ref of Object.keys(values)) delete values[ref]
-      throw new CredentialServiceError('access-required')
+      for (const stop of stops) stop()
     }
-    return {
-      values,
-      grants: Object.fromEntries(contexts.map((c) => [c.description.name, c.description])),
-      bridge: contexts[0]!.bridge,
+    try {
+      for (const name of names) {
+        const context = await this.#bind('', resolve, name, signal)
+        assert(
+          !contexts.length ||
+            context.bridge.binding.fingerprint === contexts[0]!.bridge.binding.fingerprint,
+          'context-changed',
+        )
+        contexts.push(context)
+        stops.push(this.#watchRefs(context.description.refs))
+        const view = await this.#view(context)
+        if (view.refs.every((ref) => view.credentials[ref]?.configured))
+          versions.set(context, view.version)
+      }
+      for (const context of contexts) {
+        // Another datasource form may have supplied shared refs while this call waited.
+        const view = await this.#view(context)
+        if (!versions.has(context) && view.refs.every((ref) => view.credentials[ref]?.configured))
+          versions.set(context, view.version)
+        const prepared = await this.#awaitCredentials(exec, context, view, signal)
+        if (prepared && (!('result' in prepared) || !prepared.result.ok)) {
+          release()
+          return 'result' in prepared ? prepared.result : prepared
+        }
+        if (prepared) {
+          assert(
+            !versions.has(context) || versions.get(context) === prepared.version,
+            'credentials-changed',
+          )
+          versions.set(context, prepared.version)
+        }
+      }
+      const assertCurrent = () => {
+        assert(!released, 'execution-ended')
+        signal.throwIfAborted()
+        assert(
+          exec.agent?.session === session && currentWorkspace() === workspace,
+          'context-changed',
+        )
+        for (const context of contexts)
+          assert(versions.get(context) === this.#version(context), 'credentials-changed')
+      }
+      assertCurrent()
+      values = await this.#snapshot(contexts, signal)
+      assertCurrent()
+      const bridge = contexts[0]?.bridge ?? (await resolve())
+      if (!contexts.length) {
+        const fingerprint = bridge.binding.fingerprint
+        const current = await resolve()
+        assert(current.binding.fingerprint === fingerprint, 'context-changed')
+      }
+      assertCurrent()
+      return {
+        status: 'ready',
+        bridge,
+        values,
+        grants: Object.fromEntries(contexts.map((c) => [c.description.name, c.description])),
+        signal,
+        assertCurrent,
+        release,
+      }
+    } catch (error) {
+      release()
+      throw error
     }
   }
   watch(
@@ -669,7 +714,7 @@ export class MarivoCredentialService {
         request.view.status = 'handed-off'
         request.view.endedAt = this.now()
         request.stop()
-        request.finish(op.result)
+        request.finish({ result: op.result, version: this.#version(context) })
       } else {
         await this.#locked(async () => {
           await this.#current(context, signal)
@@ -694,15 +739,17 @@ export class MarivoCredentialService {
         if (op.action !== 'delete') {
           op.phase = 'validating'
           this.#changed()
+          const testedVersion = this.#version(context)
           op.result = await this.#test(context, signal)
           if (request && request.view.endedAt === undefined) {
             request.view.context = await this.#view(context)
             signal.throwIfAborted()
+            assert(testedVersion === this.#version(context), 'credentials-changed')
             if (op.result.ok) {
               request.view.status = 'succeeded'
               request.view.endedAt = this.now()
               request.stop()
-              request.finish(op.result)
+              request.finish({ result: op.result, version: testedVersion })
             } else {
               request.view.status = 'awaiting-decision'
               request.view.failure = op.result
@@ -748,7 +795,6 @@ export class MarivoCredentialService {
   }
   disposeAgent(agent: Agent): void {
     this.#agents.get(agent)?.abort()
-    this.revoke(agent)
     for (const request of this.#requests.values())
       if (request.exec.agent === agent && request.view.endedAt === undefined) {
         request.view.status = 'call-ended'
@@ -770,7 +816,6 @@ export class MarivoCredentialService {
   }
   async close(): Promise<void> {
     this.#lifetime.abort()
-    this.#leases.clear()
     this.#changed()
     await Promise.allSettled([...this.#tasks])
   }

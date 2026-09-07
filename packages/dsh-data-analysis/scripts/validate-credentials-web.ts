@@ -6,13 +6,24 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import BashLocal from '@deepseek-ai/dsh-bash-local'
 import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import LlmRuntime, { CallId } from '@deepseek-ai/dsh-llm'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { build } from 'esbuild'
 import { MarivoDatasourceBridge } from '../src/datasource/bridge.ts'
+import { registerMarivoPythonTool } from '../src/datasource/python.ts'
 import { registerCredentialRpc } from '../src/datasource/rpc.ts'
 import { MarivoCredentialService } from '../src/datasource/service.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 import { fixture } from '../tests/datasource-credentials/fixtures.ts'
+import { TestShellEnv } from '../tests/test-shell-env.ts'
 
 const { chromium } = await import(process.env.DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE ?? 'playwright')
 const python = process.env.DSH_DATA_ANALYSIS_PYTHON
@@ -34,6 +45,29 @@ await writeFile(
 )
 const runner = await bindMarivoEnvironment({ projectRoot: root, pythonExecutable: python })
 const bridge = new MarivoDatasourceBridge(runner)
+const ctx = new Context()
+await ctx.plugin(LlmRuntime)
+await ctx.plugin(SessionStore)
+await ctx.plugin(SystemPrompt)
+await ctx.plugin(TestShellEnv)
+await ctx.plugin(ToolRuntime)
+await ctx.plugin(AgentRegistry)
+await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
+await ctx.plugin(SubprocessLocal)
+await ctx.plugin(BashLocal, { timeoutMs: 120_000, maxOutputBytes: 65536 })
+const agent = ctx.agentLoop.create(
+  SessionId('session'),
+  { provider: 'fixture', model: 'unused' },
+  { cwd: root },
+)
+registerMarivoPythonTool(agent.ctx, bridge, service)
+let starts = 0
+const shell = agent.ctx.get('shell')!
+const originalRun = shell.run.bind(shell)
+shell.run = (spec) => {
+  starts++
+  return originalRun(spec)
+}
 let handler!: ConnectionRpcHandler
 const connection = {
   rpc: {
@@ -111,6 +145,7 @@ try {
   await page.getByLabel('新值').fill(secret)
   await page.getByRole('button', { name: '保存并验证', exact: true }).click()
   await page.getByRole('button', { name: '更换', exact: true }).waitFor({ timeout: 30000 })
+  await page.getByText('仅代表该次连接往返', { exact: false }).waitFor()
   assert(!(await page.locator('body').innerText()).includes(secret))
   assert(!(await page.evaluate(() => JSON.stringify(sessionStorage))).includes(secret))
   await page.screenshot({ path: path.join(output, 'management.png'), fullPage: true })
@@ -177,41 +212,65 @@ try {
   await page.getByRole('button', { name: '删除已保存值', exact: true }).click()
   await page.getByRole('button', { name: '确认删除已保存值', exact: true }).click()
   await page.getByLabel('新值').waitFor({ timeout: 30000 })
+  await page.getByText('配置已变化，请重新测试', { exact: false }).waitFor()
   await page.getByRole('button', { name: '收起', exact: true }).click()
-  const pending = service.prepare('access', f.exec, async () => bridge, 'warehouse')
+  const pending = agent.ctx.tools.execute({
+    agent,
+    name: 'marivo_python',
+    arguments: {
+      datasources: ['warehouse'],
+      code: 'import os\nimport marivo.datasource as md\nassert "DB_PASSWORD" not in os.environ\nwith md.connect("warehouse") as backend:\n    assert backend.raw_sql("SELECT 42").fetchall() == [(42,)]\nprint("WEB_EXECUTION_OK")',
+    },
+    callId: CallId('web-execution'),
+    signal: f.controller.signal,
+  })
   await page
     .getByRole('button', { name: '保存并验证后继续', exact: true })
     .waitFor({ timeout: 30000 })
   await page.getByLabel('新值').fill('unsubmitted')
+  assert.equal(starts, 0)
   await page.reload()
   await page
     .getByRole('button', { name: '保存并验证后继续', exact: true })
     .waitFor({ timeout: 30000 })
   assert.equal(await page.getByLabel('新值').inputValue(), '')
+  assert.equal(starts, 0)
   await page.getByLabel('新值').fill(secret)
   await page.screenshot({ path: path.join(output, 'pending.png'), fullPage: true })
   await page.getByRole('button', { name: '保存并验证后继续', exact: true }).click()
   const result = await pending
-  assert.equal('status' in result && result.status, 'ok')
+  assert(!result.isError, JSON.stringify(result))
+  assert.equal((result.value as { exitCode: number }).exitCode, 0, JSON.stringify(result))
+  assert.match((result.value as { stdout: string }).stdout, /WEB_EXECUTION_OK/)
+  assert.equal(starts, 1)
+  assert(!JSON.stringify(result).includes(secret))
   await page.getByText('验证完成，原调用继续', { exact: false }).first().waitFor({ timeout: 30000 })
   assert(!(await page.locator('body').innerText()).includes(secret))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true })
   assert.deepEqual(errors, [])
-  console.log(
-    JSON.stringify({
-      browser: 'passed',
-      managementSaveDelete: 'passed',
-      concurrentOperationsRecovery: 'passed',
-      refreshRestoresPendingWithoutSecret: 'passed',
-      originalCallResumed: 'passed',
-      screenshots: output,
-      surface: 'isolated DSH slots and HTTP transport; not full DSH Web deployment',
-    }),
+  const evidence = {
+    browser: 'passed',
+    managementSaveDelete: 'passed',
+    lastTestFreshAndStale: 'passed',
+    concurrentOperationsRecovery: 'passed',
+    refreshRestoresPendingWithoutSecret: 'passed',
+    originalCallResumed: 'passed',
+    originalPythonStartedOnce: 'passed',
+    screenshots: output,
+    surface: 'isolated DSH slots and HTTP transport; not full DSH Web deployment',
+    runtime: bridge.binding,
+    pythonStarts: starts,
+  }
+  await writeFile(
+    path.join(output, 'browser-evidence.json'),
+    `${JSON.stringify(evidence, null, 2)}\n`,
   )
+  console.log(JSON.stringify(evidence))
 } finally {
   f.controller.abort()
   await service.close()
+  await ctx.fiber.dispose()
   await unregister()
   await browser.close()
   server.closeAllConnections()

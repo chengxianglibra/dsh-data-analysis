@@ -2,7 +2,7 @@
 
 ## 状态、约束与本轮结论
 
-状态：目标设计；2026-09-07 已完成 [S0 契约与接缝验证](marivo-analytics-presentation-s0-acceptance.md)，生产切换及 S1–S5 尚未实施。设计约束：**破坏性更新，不做迁移、兼容、别名、双协议或旧卡恢复；从完整用户旅程决定最小能力，不从已有工具清单决定保留项。**
+状态：目标设计；2026-09-07 已完成 [S0 契约与接缝验证](marivo-analytics-presentation-s0-acceptance.md)和 [S1 执行准入](marivo-analytics-presentation-s1-acceptance.md)，presentation 生产切换及 S2–S5 尚未实施。下文“当前”清单保留重构前基线，已实现状态以[实施路线图](marivo-analytics-presentation-roadmap.md)为准。设计约束：**破坏性更新，不做迁移、兼容、别名、双协议或旧卡恢复；从完整用户旅程决定最小能力，不从已有工具清单决定保留项。**
 
 保留以下已确认约束：凭据管理继续提供；分析基于 Marivo 公开能力；适配 DSH Host；不包含 Sites 或其他托管。ChartRenderer、图表变换、表格、布局、来源面板、reader 明确参考 Analytics App Core 的实现方式，在本项目独立编写，不直接复制源码。computed 只展示声明的 Artifact 来源，不判断或验证转换逻辑。
 

@@ -1,5 +1,8 @@
 # 凭证服务集成验收
 
+本文记录 S1 之前的集成验收；access Tool、跨调用 lease 与旧真实验证命令现已删除。
+当前执行准入及复现入口见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。
+
 日期：2026-09-07。范围：插件源码集成、随包 Marivo Runtime、确定性回归、真实 Python、真实模型和隔离浏览器。
 当前契约见 [Datasource Credentials](../modules/datasource-credentials.md)，实施计划见
 [凭证服务集成](../plan/2026-09-07-credential-service-integration.md)。
@@ -45,12 +48,12 @@
 调用 `marivo_python`，读取实际 HTTP 数据并完成聚合。Session events 和项目扫描未发现 fixture value。
 模型分支自身不重复声称验证 fd 脱敏；该项由上一项独立验证。
 
-可复现命令：
+当时的验证参数如下；当前模型验证入口已改为 `validate:datasource-execution:real`：
 
 ```bash
 export DSH_DATA_ANALYSIS_PYTHON=/absolute/path/to/isolated/bin/python
 npm run validate:datasource-credentials:real
-DSH_CREDENTIAL_WAIT_MS=66000 npm run validate:datasource-access:real
+DSH_CREDENTIAL_WAIT_MS=66000 npm run validate:datasource-execution:real
 ```
 
 模型验证需要现有 DSH `DEEPSEEK_API_KEY`。缺失时脚本报告 blocked，不算通过；fixture datasource 使用

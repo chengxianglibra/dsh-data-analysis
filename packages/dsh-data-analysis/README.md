@@ -8,7 +8,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `marivo_help` 实时公共 Help transport；
 - 侧栏“语义层”对象浏览器：Workspace 分类搜索、只读详情与局部关系图；
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
-- `marivo_datasource_access` 的有界授权与 `marivo_python` 的单次 resolver 凭证注入；
+- `marivo_python` 的本次执行准入与单次 resolver 凭证注入；
 - 侧栏“数据源与凭证”管理、测试与缺失输入提交后的原调用续接；
 - `marivo_evidence_sources({ session_id, sources })` 的可移植 Artifact-owned Finding 来源交付；
 - `emit_dataset(BaseFrame, ...)`、`emit_computed(DataFrame, ...)` 与
@@ -34,7 +34,6 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 ```text
 marivo_help({ targets: string[] })
 marivo_datasource_test({ name: string })
-marivo_datasource_access({ name: string })
 marivo_python({ code: string, datasources: string[] })
 marivo_evidence_sources({
   session_id: string,
@@ -43,9 +42,10 @@ marivo_evidence_sources({
 ```
 
 `marivo_datasource_test` 只拥有缺失 Credentials 的 DSH/Web 闭环和显式连接测试；
-`marivo_datasource_access` 在配置齐全时只签发内部有界授权；`marivo_python` 使用 DSH 前台执行服务与
-Marivo 公开 resolver，每次 fresh-resolve，普通 Shell 不获得凭证。缺失输入时默认等待 Web 表单，提交测试
-成功后继续原调用；无 Web 场景配置 `credentialInteraction: 'none'`。
+`marivo_python` 在本次调用内等待全部数据源凭证就绪、核验身份并取得 fresh snapshot，再通过 DSH 前台
+执行服务与 Marivo 公开 resolver 启动一次代码。配置齐全时不额外测试；普通 Shell 不获得凭证。
+缺失输入时默认等待 Web 表单，提交测试成功后继续原调用；取消、轮换或 Workspace 变化终止旧准备，
+已启动代码失败不重放。无 Web 场景配置 `credentialInteraction: 'none'`，subagent 同样不等待表单。
 详见[凭证模块](../../docs/modules/datasource-credentials.md)。`md.inspect(...)`、
 Session recovery、Artifact revalidation、Quality、Evidence 读取、Session Graph 与 `to_pandas()` 都直接使用
 Marivo 公共 API，不增加 convenience Tool。

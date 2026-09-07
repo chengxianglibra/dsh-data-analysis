@@ -2,7 +2,7 @@
 
 ## 状态与交付目标
 
-状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1–S5 尚未实施，生产 Tool/Skill/reader 尚未切换。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
+状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1 的一次 Python 执行准入已完成，access Tool 与跨调用 lease 已删除，见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。S2–S5 尚未实施，presentation Tool/Skill/reader 尚未切换。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
 
 交付目标固定为 4 个 Tool（`marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_present`）、1 个插件 Skill（`dsh-data-analysis-presentation`）、1 套 reader、一次 present 完成 Web 阅读与离线 HTML。两个 Marivo Runtime Skill 继续挂载，凭据管理保留，computed 仅展示声明来源。
 
@@ -47,6 +47,8 @@
 
 ## S1：凭据准入并入一次执行
 
+**状态：已完成。** 一次调用完成多 datasource 凭据准备、fresh snapshot 和唯一启动；取消、轮换、身份漂移、秘密脱敏及管理测试状态已有回归与真实接缝证据。真实 Agent 使用 fixture 提供的有效 Python 验证原调用续接；自然代码生成路由与完整 DSH Web 部署不作为本阶段已通过项，详见 [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。
+
 **代码所有权**：`src/datasource/service.ts`、`python.ts`、`resolver-program.ts`、`rpc.ts` 及相关测试；公共接线由集成负责人同步完成。
 
 **实施顺序**：
@@ -60,7 +62,7 @@
 
 **验收**：多 datasource 有一个缺失时启动次数为 0，全部就绪后为 1；取消、轮换或 Workspace 变化不执行旧代码；已启动代码失败不会重放；test 的 `lastTest/stale` 与管理 UI 一致。输出及错误中 secret canary 不泄漏。
 
-**检查入口**：改造 `test:datasource-credentials`、`validate:datasource-access:real` 及相关脚本为新的执行准入验收，移除旧命令名；保留 `validate:datasource-credentials:real` 和 `validate:credentials:web` 的有效管理用例。新命令在本阶段接入根脚本后才能列为可执行命令。
+**检查入口**：`test:datasource-credentials` 已改验本次执行准入；新增 `validate:datasource-execution:real`，旧 access 命令已删除。`validate:datasource-credentials:real` 和 `validate:credentials:web` 保留有效的执行与管理用例。以上命令均已接入根脚本并实际运行。
 
 ## S2：数据投影与最小 Python 帮助库
 

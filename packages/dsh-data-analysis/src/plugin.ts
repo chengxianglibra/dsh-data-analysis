@@ -12,10 +12,7 @@ import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
 import { MarivoDatasourceBridge } from './datasource/bridge.ts'
-import {
-  registerMarivoDatasourceAccessTool,
-  registerMarivoDatasourceTestTool,
-} from './datasource/index.ts'
+import { registerMarivoDatasourceTestTool } from './datasource/index.ts'
 import { registerMarivoPythonTool } from './datasource/python.ts'
 import { registerCredentialRpc } from './datasource/rpc.ts'
 import { type CredentialStore, MarivoCredentialService } from './datasource/service.ts'
@@ -65,8 +62,8 @@ export const inject = [
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'DSH Credentials owns Marivo datasource secrets. Never request values in chat, read credential files or ~/.marivo/secrets.toml, or write secrets to scripts, arguments, environment variables, reports or logs.',
   'Use marivo_datasource_test after datasource changes, credential rotation, connection failures, or explicit user requests. Missing credentials wait for the Web form only while the original call remains alive.',
-  'Before datasource-backed work, acquire marivo_datasource_access for each datasource, then execute analysis, metadata inspection and semantic data reads through marivo_python with all required datasource names.',
-  'Access lasts up to 30 minutes and 64 foreground Python executions. Renew access when required; do not test before every script. Ordinary Shell receives no datasource secret and old Shell lease preludes are unsupported.',
+  'Execute analysis, metadata inspection and semantic data reads through marivo_python with all exact datasource names required by this execution. Use an empty list for work that needs no datasource.',
+  'marivo_python waits for all missing credentials and validates the bound Workspace and datasource identities before taking one fresh snapshot and starting user code once. Configured credentials need no extra connection test. Ordinary Shell receives no datasource secret.',
   'marivo_python installs credential_scope before user code. Create or resume Session/reader objects inside that execution, and close Sessions in finally. Do not replace the resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
   'Configured credentials do not imply a valid connection or query permissions. Preserve real failures; never automatically replay a script with possible side effects.',
 ].join(' ')
@@ -179,9 +176,6 @@ export function installMarivoPlugin(
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     controller.addDisposer(
       registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
-    )
-    controller.addDisposer(
-      registerMarivoDatasourceAccessTool(agent.ctx, datasourceSource, credentialService),
     )
     controller.addDisposer(registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService))
     controller.addDisposer(() => credentialService.disposeAgent(agent))

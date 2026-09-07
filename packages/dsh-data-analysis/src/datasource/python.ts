@@ -7,6 +7,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import { PYTHON_LAUNCHER, PYTHON_WORKER } from './resolver-program.ts'
 import type { MarivoCredentialService } from './service.ts'
+import { datasourceToolValue } from './test.ts'
 
 function quote(value: string): string {
   return process.platform === 'win32'
@@ -22,7 +23,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Execute foreground Python in the bound Marivo Workspace using Host-injected credentials. First acquire marivo_datasource_access for every listed datasource. Create/resume Sessions and readers inside this execution; close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay.',
+        'Execute foreground Python in the bound Marivo Workspace using Host-injected credentials. This call waits for missing credentials for every listed datasource before starting Python once; configured credentials do not trigger a connection test. Create/resume Sessions and readers inside this execution; close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay.',
       parameters: {
         code: {
           type: 'string',
@@ -33,7 +34,8 @@ export function registerMarivoPythonTool(
           type: 'array',
           required: true,
           items: { type: 'string' },
-          description: 'Exact datasource names authorized through marivo_datasource_access.',
+          description:
+            'Exact datasource names this execution may use; pass [] for work without datasource credentials.',
         },
       },
       output: {
@@ -50,40 +52,42 @@ export function registerMarivoPythonTool(
         const policyService = ctx.get('sandboxPolicy')
         if (shell.sandboxMode !== undefined && !policyService)
           throw new Error('DSH sandbox policy is required')
-        const policy = policyService?.resolve(exec.agent ? { session: exec.agent.session } : {})
-        const claimed = await service.claim(
-          exec,
-          () => resolveMarivoDatasourceBridge(source),
-          args.datasources,
+        const prepared = await service.track(
+          service.prepareExecution(
+            exec,
+            () => resolveMarivoDatasourceBridge(source),
+            args.datasources,
+          ),
         )
+        if (!('status' in prepared) || prepared.status !== 'ready')
+          return datasourceToolValue(prepared)
         try {
-          const { binding } = claimed.bridge
-          const signal = service.executionSignal(exec.signal, exec.agent)
-          signal.throwIfAborted()
-          const result = await service.track(
-            shell.run(
-              shell.resolve({
-                command: `${process.platform === 'win32' ? '& ' : ''}${quote(binding.pythonExecutable)} -c ${quote(PYTHON_LAUNCHER)}`,
-                workdir: binding.projectRoot,
-                timeoutMs: 120_000,
-                signal,
-                stdin: JSON.stringify({
-                  identity: binding,
-                  project_root: binding.projectRoot,
-                  grants: claimed.grants,
-                  values: claimed.values,
-                  code: args.code,
-                  worker: PYTHON_WORKER,
-                }),
-                env: { MARIVO_PERSIST_CREDENTIALS: '0' },
-                dshEnv: shellEnv.collect(exec),
-                ...(policy ? { sandboxPolicy: policy } : {}),
-              }),
-            ),
-          )
+          const { binding } = prepared.bridge
+          const policy = policyService?.resolve(exec.agent ? { session: exec.agent.session } : {})
+          const spec = shell.resolve({
+            command: `${process.platform === 'win32' ? '& ' : ''}${quote(binding.pythonExecutable)} -c ${quote(PYTHON_LAUNCHER)}`,
+            workdir: binding.projectRoot,
+            timeoutMs: 120_000,
+            signal: prepared.signal,
+            stdin: JSON.stringify({
+              identity: binding,
+              project_root: binding.projectRoot,
+              grants: prepared.grants,
+              values: prepared.values,
+              code: args.code,
+              worker: PYTHON_WORKER,
+            }),
+            env: { MARIVO_PERSIST_CREDENTIALS: '0' },
+            dshEnv: shellEnv.collect(exec),
+            ...(policy ? { sandboxPolicy: policy } : {}),
+          })
+          // Keep this guard adjacent to the only launch, after synchronous Host hooks.
+          prepared.assertCurrent()
+          const result = await service.track(shell.run(spec))
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
-            Object.values(claimed.values)
+            Object.values(prepared.values)
+              .filter(Boolean)
               .sort((a, b) => b.length - a.length)
               .reduce((out, value) => out.split(value).join('[REDACTED]'), text)
           return JSON.parse(
@@ -102,7 +106,7 @@ export function registerMarivoPythonTool(
             'Marivo Python execution failed or was cancelled; inspect the execution policy and retry only after checking effects',
           )
         } finally {
-          for (const ref of Object.keys(claimed.values)) delete claimed.values[ref]
+          prepared.release()
         }
       },
     }),

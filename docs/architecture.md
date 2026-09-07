@@ -6,9 +6,9 @@
 Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语义、Artifact、Evidence、Quality、
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
-展示重构已开始 S0 的内部契约与隔离接缝验证，见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)、
+展示重构已完成 S0 内部契约与接缝验证，S1 已将凭据准入并入 Python 执行，见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)、
 [S0 契约](plan/marivo-analytics-presentation-s0-contracts.md)和[验收记录](plan/marivo-analytics-presentation-s0-acceptance.md)。
-S0 的 reader、文件 RPC 与 receipt 探针只在临时验证插件中运行；下面描述的生产注册面与旧报告流程尚未切换。
+S0 的 reader、文件 RPC 与 receipt 探针只在临时验证插件中运行；展示 Tool、helper 与旧报告流程仍待 S2–S5 切换。
 
 ```mermaid
 flowchart LR
@@ -17,6 +17,7 @@ flowchart LR
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
+  P --> Y[marivo_python]
   P --> E[marivo_evidence_sources]
   P --> S[Semantic reference input and usage sidecar]
   P --> B[Read-only Workspace semantic browser]
@@ -68,6 +69,7 @@ bridge。可见 DSH Tool 只有：
 ```text
 marivo_help
 marivo_datasource_test
+marivo_python
 marivo_evidence_sources
 ```
 
@@ -105,9 +107,10 @@ Agent 直接使用 Marivo：
 DSH Credentials 是凭证值权威，Marivo 的公开 description 与 resolver 是字段和使用契约。插件把原始引用
 映射到专属 DSH 地址，通过 stdin snapshot 和 `md.credential_scope` 注入；普通 Shell 不获得凭证值。
 
-`marivo_datasource_test` 执行连接测试；`marivo_datasource_access` 发放最长 30 分钟、最多 64 次的内部
-执行授权；`marivo_python` 通过 DSH Shell 前台执行服务校验授权并 fresh-resolve。凭证不进入 Agent
-参数、环境或 argv。输出在 Host spill 前执行 exact-value 脱敏。
+`marivo_datasource_test` 执行连接测试并同步管理页状态；`marivo_python` 在一次调用内等待全部 datasource
+就绪，核验身份并取得 fresh snapshot，再通过 DSH Shell 前台执行服务启动一次代码。配置齐全不附加测试，
+取消、轮换或 Workspace 变化终止旧准备，失败不重放。凭证不进入 Agent 参数、环境或 argv；输出在 Host
+spill 前执行 exact-value 脱敏。access Tool 与跨调用 lease 已删除。
 
 常驻“数据源与凭证”管理页支持配置、替换、删除和测试。缺失配置时，Web 根 Agent 的原调用保持等待；
 提交验证成功后继续，失败可修正或交还 Agent。刷新、丢失响应、取消和定义变更由 Host 操作状态处理，

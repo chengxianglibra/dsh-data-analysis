@@ -61,7 +61,7 @@ function CredentialForm({ context, request, state, model }) {
     <section>
       <h3>{context.name}</h3>
       <p className="mc-note">
-        相同引用在其他 Workspace 中也可能共享。更换或删除会撤销相关的后续执行授权。
+        相同引用在其他 Workspace 中也可能共享。更换或删除后，使用旧凭证等待执行的代码不会启动。
       </p>
       {request && (
         <p role="status">

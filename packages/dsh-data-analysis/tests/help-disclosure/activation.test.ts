@@ -415,10 +415,12 @@ test('marivo-semantic activation adds datasource credential guidance only after 
   assert.match(activatedPrompt, /DSH Credentials owns/)
   assert.match(activatedPrompt, /Never request values in chat/)
   assert.match(activatedPrompt, /marivo_datasource_test/)
-  assert.match(activatedPrompt, /marivo_datasource_access/)
+  assert.match(activatedPrompt, /marivo_python/)
+  assert.doesNotMatch(activatedPrompt, /marivo_datasource_access|lease|64 foreground/)
   assert.match(activatedPrompt, /marivo_python installs credential_scope/)
   assert.match(activatedPrompt, /Ordinary Shell receives no datasource secret/)
-  assert.match(activatedPrompt, /do not test before every script/)
+  assert.match(activatedPrompt, /Configured credentials need no extra connection test/)
+  assert.match(activatedPrompt, /starting user code once/)
   assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_sources/)
   assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /after datasource changes/)
 })
@@ -866,7 +868,6 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   await agent.whenIdle()
 
   assert.deepEqual(requestToolNames(adapter.requests[0]), [
-    'marivo_datasource_access',
     'marivo_datasource_test',
     'marivo_evidence_sources',
     'marivo_help',

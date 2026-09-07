@@ -1,7 +1,7 @@
 > 状态：核心方案已实施。以下保留设计推导；实际执行入口已确定为 `marivo_python` + stdin snapshot +
-> `md.credential_scope`，不再采用 Shell 环境凭证 lease。当前契约以
+> `md.credential_scope`；S1 已进一步删除 access Tool 与全部跨调用 lease，准入并入本次 Python 执行。当前契约以
 > [模块说明](../modules/datasource-credentials.md) 为准，验收范围见
-> [验收记录](../plan/2026-09-07-credential-service-acceptance.md)。
+> [S1 验收记录](marivo-analytics-presentation-s1-acceptance.md)。下文 access/lease 内容仅保留为历史设计推导。
 
 # Marivo 凭证配置、使用与管理设计
 
@@ -33,7 +33,7 @@
 
 相关源码：
 
-- [Tool：test](../../packages/dsh-data-analysis/src/datasource/test.ts)、[access](../../packages/dsh-data-analysis/src/datasource/access.ts)。
+- 当前 [Tool：test](../../packages/dsh-data-analysis/src/datasource/test.ts)、[Python 执行](../../packages/dsh-data-analysis/src/datasource/python.ts)；原 access 已删除。
 - [Client 表单](../../packages/dsh-data-analysis/src/client.tsx)。
 - [凭证映射与 Shell lease](../../packages/dsh-data-analysis/src/datasource/shell-env.ts)。
 
@@ -348,7 +348,7 @@ test 的最终结构化失败沿用当前 `failure/repair`。access 的交互配
 
 ### 6.3 Shell 使用
 
-沿用[当前 lease 契约](../modules/datasource-credentials.md#access-是执行授权)：Agent/Workspace/datasource
+本节为原 lease 设计，现已由[单次凭证注入](../modules/datasource-credentials.md#单次凭证注入)替代。原方案采用 Agent/Workspace/datasource
 绑定、完整首行 marker、30 分钟、64 次 foreground 使用、每次 fresh-resolve、operation-scoped snapshot、
 settle/cancel/dispose 清理以及 stdout/stderr 脱敏。普通 Shell 不获得 datasource secret，background 和
 persistent Shell 不接受 lease。

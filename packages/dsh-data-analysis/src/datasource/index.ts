@@ -1,8 +1,3 @@
-export {
-  createMarivoDatasourceAccessTool,
-  MARIVO_DATASOURCE_ACCESS_TOOL_NAME,
-  registerMarivoDatasourceAccessTool,
-} from './access.ts'
 export type {
   MarivoDatasourceBridgePort,
   MarivoDatasourceBridgeSource,

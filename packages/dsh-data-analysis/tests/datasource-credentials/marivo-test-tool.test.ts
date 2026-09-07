@@ -26,18 +26,20 @@ test('missing Web test stays pending, submit validates once and settles the orig
   assert.equal(f.service.watch('session').requests[0]?.status, 'succeeded')
   assert.doesNotMatch(JSON.stringify(f.service.watch('session')), /submitted-canary/)
 })
-test('access after missing form verifies once before granting, without asking another model turn', async (t) => {
+test('execution after missing form verifies once before returning a fresh snapshot', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
-  const pending = f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
   const request = await waiting(f)
   await operation(f, request.context, 'submit', {
     requestId: request.id,
     changes: { DB_PASSWORD: 'submitted-canary' },
   })
-  assert.equal('status' in (await pending) && ((await pending) as { status: string }).status, 'ok')
+  const prepared = await pending
+  assert('status' in prepared && prepared.status === 'ready')
   assert.equal(f.tests, 1)
-  await f.service.claim(f.exec, f.resolve, ['warehouse'])
+  assert.equal(f.store.calls.resolve, 2)
+  prepared.release()
 })
 test('configured connection failures return directly, while form failures retain correction and diagnose', async (t) => {
   const f = fixture('web')
@@ -47,7 +49,7 @@ test('configured connection failures return directly, while form failures retain
   assert.deepEqual(await f.service.prepare('test', f.exec, f.resolve, 'warehouse'), failed)
   assert.equal(f.service.watch('session').requests.length, 0)
   f.store.values.clear()
-  const pending = f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
   const request = await waiting(f)
   const op = await operation(f, request.context, 'submit', {
     requestId: request.id,
@@ -153,31 +155,6 @@ test('stale definition and context writes fail before credential mutation', asyn
   assert.equal(op.status, 'failed')
   assert.equal(f.store.calls.set, 0)
 })
-test('a rotation racing snapshot resolution revokes its admission; committed snapshots remain usable', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  f.store.put('DB_PASSWORD')
-  await f.service.prepare('access', f.exec, f.resolve, 'warehouse')
-  const gate = barrier(),
-    entered = barrier(),
-    original = f.store.resolve.bind(f.store)
-  f.store.resolve = async (ref) => {
-    entered.release()
-    await gate.promise
-    return original(ref)
-  }
-  const pending = f.service.claim(f.exec, f.resolve, ['warehouse'])
-  const rejected = assert.rejects(pending, /credentials-changed|access-required/)
-  await entered.promise
-  f.service.invalidate(['DB_PASSWORD'])
-  gate.release()
-  await rejected
-  f.store.resolve = original
-  await f.service.prepare('access', f.exec, f.resolve, 'warehouse')
-  const snapshot = await f.service.claim(f.exec, f.resolve, ['warehouse'])
-  f.service.invalidate(['DB_PASSWORD'])
-  assert.equal(snapshot.values.DB_PASSWORD, 'canary-private-4826')
-})
 test('definition change during validation cannot continue an old call', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
@@ -232,7 +209,7 @@ test('management cancel preserves completed saves and waits for its test to stop
 test('external credential updates refresh a pending form without replaying its call', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
-  const pending = f.service.prepare('access', f.exec, f.resolve, 'warehouse')
+  const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
   const request = await waiting(f)
   f.store.put('DB_PASSWORD')
   f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
@@ -241,7 +218,9 @@ test('external credential updates refresh a pending form without replaying its c
   assert.notEqual(refreshed.context.version, request.context.version)
   assert.equal(refreshed.context.credentials.DB_PASSWORD?.configured, true)
   await operation(f, refreshed.context, 'submit', { requestId: request.id })
-  assert.equal('status' in (await pending) && ((await pending) as { status: string }).status, 'ok')
+  const prepared = await pending
+  assert('status' in prepared && prepared.status === 'ready')
+  prepared.release()
 })
 
 test('service disposal waits for an aborted foreground test to finish cleanup', async () => {
@@ -302,7 +281,7 @@ test('test dispatch retains its admitted definition when the live definition cha
   assert.equal(granted, admitted)
 })
 
-test('external updates during a direct test reject mixed snapshots without management or leases', async (t) => {
+test('external updates during a direct test reject mixed snapshots without management', async (t) => {
   const f = fixture()
   t.after(() => f.service.close())
   f.description.refs = ['DB_PASSWORD', 'DB_USER']
@@ -327,9 +306,9 @@ test('external updates during a direct test reject mixed snapshots without manag
   assert.equal(f.tests, 0)
   f.store.resolve = resolve
   assert.equal('ok' in (await f.service.prepare('test', f.exec, f.resolve, 'warehouse')), true)
-  // Settled direct tests retain history but no active reference subscriptions.
+  // Settled tests retain ref provenance so management history observes later rotations.
   f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
-  assert.equal((await context(f)).lastTest?.stale, false)
+  assert.equal((await context(f)).lastTest?.stale, true)
 })
 
 test('external updates during a direct connection test invalidate its result', async (t) => {

@@ -22,7 +22,7 @@ Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Evidence adapter 与 prompt sections。
 5. 相同 Environment 共享 Help/Datasource/Evidence bridge set；Agent activation state 独立。
 6. profile 级 Connection RPC 与 storageDomain 承载[语义对象引用输入](semantic-reference-input.md)，Browser 注册独立 `@` source。
-7. plugin disposal 先停止语义引用 RPC、取消 Catalog 加载并 drain usage 写入，再移除自身 Tool、prompt、事件与 outstanding credential leases，不影响原 profile Tool 或 Host environment。
+7. plugin disposal 先停止语义引用 RPC、取消 Catalog 加载并 drain usage 写入，再取消并 drain 凭据准备、测试与 Python 执行，移除自身 Tool、prompt 和事件，不影响原 profile Tool 或 Host environment。
 
 ## Agent scope surface
 
@@ -30,7 +30,7 @@ Marivo JavaScript 组件、激活式 Help/工作流指导和 Evidence Web 投影
 | --- | --- | --- |
 | `marivo_help` | Native mode 的受控解释器与实时 Help transport | Harness/Marivo 提供等价原生 transport |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
-| `marivo_datasource_access` | 不执行连接测试的有界 foreground Shell lease | DSH 提供通用 operation-scoped credential lease |
+| `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
 | `marivo_evidence_sources` | 精确来源的 Turn metadata 与 Web 折叠面板 | DSH 提供通用结构化来源附件 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
@@ -63,7 +63,7 @@ JavaScript 读取成本，后两项提供精简 Artifact 摘要与 Session DAG�
 
 Web client 只保留：
 
-- `marivo_datasource_test` credential form；
+- datasource 凭据管理与 `marivo_datasource_test` / `marivo_python` 的等待表单；
 - `marivo_evidence_sources` Turn delivery 与折叠来源面板。
 
 不存在报告 Tool View、durable report block、report turn-tail selector 或专用 Host opener。HTML 入口使用 DSH

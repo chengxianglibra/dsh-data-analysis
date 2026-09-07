@@ -260,6 +260,8 @@ try {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
   }
   for (const filename of paths) {
+    if (filename === 'lib/datasource/access.js' || filename === 'lib/types/datasource/access.d.ts')
+      fail(`packed plugin contains removed datasource access Tool ${filename}`)
     if (
       filename.startsWith('lib/client/semantic-browser/') ||
       filename.startsWith('lib/types/client/semantic-browser/')
@@ -340,12 +342,17 @@ try {
     const root = await import('@chengxianglibra/dsh-data-analysis')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
+    const datasource = await import('@chengxianglibra/dsh-data-analysis/datasource')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
     if (compatibility.MARIVO_VERSION !== '0.5.4') throw new Error('packed Marivo version mismatch')
     if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.4') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v2') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
+    for (const removed of ['MARIVO_DATASOURCE_ACCESS_TOOL_NAME', 'createMarivoDatasourceAccessTool', 'registerMarivoDatasourceAccessTool']) {
+      if (Object.hasOwn(root, removed) || Object.hasOwn(datasource, removed)) throw new Error('packed plugin still exports removed datasource access surface ' + removed)
+    }
+    if (typeof datasource.MarivoCredentialService.prototype.prepareExecution !== 'function' || typeof datasource.MarivoCredentialService.prototype.claim === 'function') throw new Error('packed credential service must use execution admission without claim')
     for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool']) {
       if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
     }
