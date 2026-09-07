@@ -10,8 +10,9 @@ import { createConnection } from 'node:net'
 import { cleanLocalState, validateLocalStateTargets } from './clean-local-state.mjs'
 import { selectManagedProcessGroup, selectTakeoverProcessGroup } from './process-targeting.mjs'
 
-const PLUGIN_NAME = '@deepseek-ai/dsh-data-analysis'
-const PLUGIN_TARBALL_PREFIX = 'deepseek-ai-dsh-data-analysis'
+const PLUGIN_NAME = '@chengxianglibra/dsh-data-analysis'
+const PLUGIN_TARBALL_PREFIX = 'chengxianglibra-dsh-data-analysis'
+const REPLACED_PLUGIN_NAMES = [PLUGIN_NAME, '@deepseek-ai/dsh-data-analysis']
 const DEFAULT_DSH_PACKAGE = '@deepseek-ai/dsh'
 const DEFAULT_PROFILE = 'web'
 const DEFAULT_URL = 'http://127.0.0.1:3080'
@@ -71,11 +72,13 @@ async function main() {
   console.log(`Tarball: ${tarballPath}`)
 
   const profileDir = join(dshHome, 'profiles', profile)
-  if (profileHasPlugin(profileDir)) {
-    console.log(`Removing existing ${PLUGIN_NAME} from profile ${profile}`)
-    runDsh(['plugin', '--profile', profile, 'remove', PLUGIN_NAME])
-  } else {
-    console.log(`No existing ${PLUGIN_NAME} dependency found in profile ${profile}`)
+  const configuredPluginNames = findConfiguredPluginNames(profileDir)
+  if (configuredPluginNames.length === 0) {
+    console.log(`No existing data-analysis plugin dependency found in profile ${profile}`)
+  }
+  for (const configuredPluginName of configuredPluginNames) {
+    console.log(`Removing existing ${configuredPluginName} from profile ${profile}`)
+    runDsh(['plugin', '--profile', profile, 'remove', configuredPluginName])
   }
 
   console.log(`Installing ${PLUGIN_NAME} into profile ${profile}`)
@@ -167,15 +170,18 @@ function readJson(filePath) {
   }
 }
 
-function profileHasPlugin(profileDir) {
+function findConfiguredPluginNames(profileDir) {
   const packagePath = join(profileDir, 'package.json')
-  if (existsSync(packagePath)) {
-    const packageJson = readJson(packagePath)
-    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-      if (packageJson[field]?.[PLUGIN_NAME] !== undefined) return true
+  if (!existsSync(packagePath)) return []
+
+  const packageJson = readJson(packagePath)
+  const configured = new Set()
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    for (const pluginName of REPLACED_PLUGIN_NAMES) {
+      if (packageJson[field]?.[pluginName] !== undefined) configured.add(pluginName)
     }
   }
-  return existsSync(join(profileDir, 'node_modules', '@deepseek-ai', 'dsh-data-analysis'))
+  return [...configured]
 }
 
 function run(command, args) {
@@ -201,7 +207,7 @@ function runDsh(args) {
 function startDsh(logFd) {
   const launcher = process.env.DSH_LAUNCHER ?? 'npx'
   const args = profile === 'web'
-    ? ['web']
+    ? ['web', '--no-open']
     : ['--profile', profile]
   const invocation = launcher === 'npx'
     ? [launcher, ['--no-install', dshPackage, ...args]]

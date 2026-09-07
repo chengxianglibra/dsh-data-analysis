@@ -1,39 +1,56 @@
 ---
 name: dsh-plugin-rebuild
-description: Build and package the current DSH data-analysis plugin, reinstall it into a clean local DSH and Marivo test state, and restart DSH Web when the user says “发射插件”.
+description: Build, reinstall, reset local test state, and restart DSH Web when the user requests “发射插件” or this complete local rebuild workflow.
 ---
 
 # DSH Plugin Rebuild
 
-触发短语是“发射插件”。该流程会修改被 Git 忽略的构建/打包产物和本机 DSH profile，并删除指定测试 Workspace 的 Marivo 状态与本机 DSH Workspace/会话数据；不会发布 npm 包、推送 Git 或清理其他工作区文件。
+## 范围与授权
 
-## 执行
+“发射插件”授权下述完整本地流程，沿用用户已指定的目标；只要求构建、审计或修改此 Skill 时，不执行清理与重启。
+若用户要求保留会话或状态，不能运行这个始终清理状态的脚本，应按受限请求另行执行对应步骤。
 
-必须从本仓库根目录运行：
+运行前说明实际 profile、`DSH_HOME`、测试 Workspace 和清理范围；目标明确且已授权时直接推进。
+该流程清空测试 Workspace 的 `.marivo/` 及整个 `$DSH_HOME/sessions/`，并删除
+`$DSH_HOME/storages/workspace.json` 和 `session_projcache.json`。DSH 会话与注册表清理跨该 Home 的
+所有 Workspace，并非仅目标 profile。保留目录本身、profile、凭据、settings 和其他工作区文件。
+不发布 npm、不提交或推送 Git。
+
+## 执行入口
+
+从当前仓库根目录执行：
 
 ```sh
 node .agents/skills/dsh-plugin-rebuild/scripts/rebuild-reinstall-restart.mjs
 ```
 
-脚本按以下顺序执行：
+[脚本](scripts/rebuild-reinstall-restart.mjs) 是步骤与默认值的事实来源：校验清理路径 →
+`npm run pack:plugin` → 对目标 profile 精确移除已登记的当前或旧 scope 插件依赖并安装当前
+`@chengxianglibra/dsh-data-analysis` tarball → 停止已验证的进程组 → 清理状态 → detached 启动并核对监听。
+默认 `web` 使用 `dsh web --no-open`；其他 profile 使用 `--profile` 启动。
 
-1. 运行 `npm run pack:plugin`，完成 check、build、package verification，并生成当前版本的 tarball。
-2. 读取 `@deepseek-ai/dsh-data-analysis` 的版本，确认对应 tarball 存在。
-3. 仅当目标 profile 已安装该插件时，先通过 DSH CLI 移除旧依赖，再添加新的绝对 tarball 路径。
-4. 停止由本 skill 托管的目标进程组，或接管一个可精确验证的旧 DSH 进程组。接管时，配置 URL 的监听 PID 必须属于唯一进程组，监听进程本身必须匹配目标 DSH 命令，且组内所有进程 cwd 都必须等于当前仓库；随后等待端口释放。
-5. 无条件清空测试 Workspace 的 `.marivo/` 内容和 `$DSH_HOME/sessions/` 内容，并删除 `$DSH_HOME/storages/workspace.json` 与派生缓存 `$DSH_HOME/storages/session_projcache.json`。保留目录本身、DSH profile、凭据、settings 及其他本地数据；DSH 启动后不恢复旧 Workspace 或会话。
-6. 以 detached 方式启动 DSH，等待本机 DSH URL 可通过 HTTP 访问后才报告成功。
+仅在需要覆盖目标或排错时查阅这些参数：
 
-默认值：`DSH_PROFILE=web`、`DSH_URL=http://127.0.0.1:3080`、`DSH_PACKAGE=@deepseek-ai/dsh`。CLI 默认通过 `npx --no-install` 调用，避免流程隐式联网。
+| 环境变量 | 默认值或用途 |
+| --- | --- |
+| `DSH_PROFILE` | `web` |
+| `DSH_HOME` | `~/.dsh`，已有真实目录 |
+| `DSH_CLEAN_WORKSPACE` | `~/source/silin/dsh-test`，已有真实测试 Workspace |
+| `DSH_URL` | `http://127.0.0.1:3080`；监听探测地址，不修改 DSH 服务配置 |
+| `DSH_PACKAGE` / `DSH_LAUNCHER` | `@deepseek-ai/dsh` / `npx`；直接指定 `dsh` 时跳过 npx 参数 |
+| `DSH_LOG_PATH` | 系统临时目录下的 profile 日志 |
+| `DSH_START_TIMEOUT_MS` | `30000` |
 
-可选环境变量：
+`npx --no-install` 只避免下载启动器，不保证整个安装流程离线。
 
-- `DSH_HOME`：profile 根目录；默认使用 `~/.dsh`。
-- `DSH_CLEAN_WORKSPACE`：每次发射时重置 Marivo 状态的测试 Workspace；默认使用 `~/source/silin/dsh-test`。
-- `DSH_LAUNCHER`：DSH 启动器；默认是 `npx`，设置为直接的 `dsh` 可执行文件时会跳过 npx 参数。
-- `DSH_LOG_PATH`：后台 DSH stdout/stderr 文件；默认写入系统临时目录。
-- `DSH_START_TIMEOUT_MS`：等待 DSH 启动的超时，默认 30000 毫秒。
+## 停止条件与验证
 
-安全边界：URL 必须是 loopback HTTP(S) 地址。脚本把自身启动的进程身份记录在 `$DSH_HOME/dsh-data-analysis/`。托管状态不匹配、监听 PID 无法归入唯一进程组、监听进程不匹配目标 DSH 命令、任一组内进程 cwd 不属于当前仓库、未知进程占用端口或无法确认 profile 时，脚本停止并报告；不会使用 `pkill`/`killall` 等宽泛终止命令。满足全部接管条件的旧 DSH 进程组会被直接终止并由新实例替换。`DSH_HOME` 与测试 Workspace 必须是已存在的真实目录而非符号链接，且不能是文件系统根目录；两个清理目录若已存在，也必须是真实目录。不满足时会在构建前停止。
+`DSH_URL` 必须是 loopback HTTP(S) 地址；托管进程 identity 保存在 `$DSH_HOME/dsh-data-analysis/`。
+[进程身份校验](scripts/process-targeting.mjs) 要求托管 identity、目标命令、监听与仓库 cwd 一致；
+接管旧实例还要求监听 PID 归属唯一进程组且监听进程匹配 DSH 命令。组内所有进程 cwd 必须属于当前仓库。
+未知监听、身份不匹配或无法确认目标时停止，不用 `pkill`/`killall` 绕过校验。
+[清理路径校验](scripts/clean-local-state.mjs) 拒绝根目录、缺失或符号链接 base，以及已存在但非真实目录的清理目标。
 
-完成后报告 tarball、profile、已清理路径、监听 URL 和日志路径，并再次检查 `git status --short`，确认没有误改动未纳入流程的文件。
+失败时报告已完成的阶段和剩余状态：profile 安装可能已完成，流程不具备整体回滚能力。
+成功要求进程归属与 HTTP 可达；脚本接受 HTTP 错误状态作为“可达”，不能据此宣称页面或真实 Agent 功能验收通过。
+交付 tarball、profile、已清理路径、URL、日志与验证结果，并对照执行前后的 Git 状态确认无关文件未被修改。
