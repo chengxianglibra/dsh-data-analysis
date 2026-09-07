@@ -9,6 +9,9 @@ Workspace 绑定、管理页面、等待中的调用和单次执行注入。上�
 侧栏“数据源与凭证”不要求 live Agent。选择 Workspace 后显示 datasource、字段引用、是否配置、来源、
 是否可写和最近测试。页面支持填写或替换、删除和测试，不回显已保存的值。替换与删除需要明确确认。
 同一原始引用跨 Workspace 共享；测试结果属于对应的环境和 datasource 定义，凭证更新后标记过期。
+入口与“语义层”共用侧栏按钮样式；管理页按 Workspace、数据源列表、凭证配置与连接状态分区，
+适配窄屏和深色模式。已结束的调用不再列入会话待办；当前打开的调用仍显示结束原因和返回管理入口。
+页面只保留操作所需状态与反馈；常驻区域不重复解释安全机制、等待预算或连接测试的限定条件。
 
 原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，
 不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
@@ -50,7 +53,9 @@ Python 通过 DSH Shell 服务继承前台执行、沙箱策略、限制和取�
 
 私有 RPC 使用 Host generation、context token、凭证 version 和 operation ID。相同 ID 只执行一次；
 响应丢失后仅查询，不重发秘密值。Client 按 operation ID 独立查询、展示与取消；刷新恢复全部未完成句柄，
-一个操作结束或晚到的响应不覆盖另一个操作。终态和待办保留 30 分钟，容量有界；Host 重启后明确不可恢复。
+一个操作结束或晚到的响应不覆盖另一个操作。Client 操作列表只展示进行中状态，结束后立即移除记录和
+恢复句柄；对应数据源保留最近测试结果及必要的失败、取消或部分保存反馈，不累积历史操作列表。
+Host 为响应丢失恢复而保留终态和待办 30 分钟，容量有界；Host 重启后明确不可恢复。
 管理页关闭或刷新不取消正在保存的操作，显式取消才终止验证。已经成功保存的字段不会因为后续测试失败而回滚。
 
 写入与 snapshot 解析串行，写入时使受影响的待执行快照失效。执行前后复核定义和 version，拒绝旧上下文的晚到动作。
@@ -69,3 +74,4 @@ npm run validate:credentials:web
 
 一次执行准入的验收与限制见 [S1 验收记录](../plan/marivo-analytics-presentation-s1-acceptance.md)。
 此前的管理服务背景见 [凭证服务集成验收](../plan/2026-09-07-credential-service-acceptance.md)。
+管理页布局与完成状态清理见 [凭证界面验收](../plan/2026-09-07-credentials-ui-acceptance.md)。

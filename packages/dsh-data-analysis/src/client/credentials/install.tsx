@@ -2,12 +2,10 @@
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { SidebarAction } from '../sidebar-action.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
+import { credentialStyles } from './styles.ts'
 
-const styles = `
-.mc-dialog{width:min(850px,calc(100vw - 32px));max-height:85vh;padding:0;border:1px solid #87939b;border-radius:12px;background:var(--dsw-alias-surface-primary,#fff);color:var(--dsw-alias-text-primary,#18242c)}
-.mc-dialog::backdrop{background:#0007}.mc-content{padding:24px}.mc-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.mc-row h2{flex:1;margin:0}.mc-dialog button,.mc-dialog select,.mc-dialog input{font:inherit;padding:8px 10px;border:1px solid #87939b;border-radius:6px;background:transparent;color:inherit}.mc-dialog button{cursor:pointer}.mc-dialog button:disabled{opacity:.5;cursor:default}.mc-dialog input{min-width:200px;max-width:100%;box-sizing:border-box}.mc-dialog fieldset{margin:16px 0;border:1px solid #87939b;border-radius:8px;padding:16px}.mc-note{font-size:12px;opacity:.8}.mc-error{padding:12px;background:#b7541515;white-space:pre-wrap}.mc-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}.mc-status{border-left:3px solid #269786;padding-left:12px;margin:16px 0}
-`
 const statusLabels = {
   'awaiting-input': '等待填写',
   executing: '正在保存或验证',
@@ -17,34 +15,117 @@ const statusLabels = {
   'call-ended': '原调用已结束',
   'context-changed': '上下文已变化',
 }
-function TestResult({ result }) {
+function Icon({ name, size = 18 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {name === 'database' && (
+        <>
+          <ellipse cx="12" cy="5" rx="8" ry="3" />
+          <path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0" />
+        </>
+      )}
+      {name === 'lock' && (
+        <>
+          <rect x="4" y="10" width="16" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" />
+        </>
+      )}
+      {name === 'close' && <path d="m6 6 12 12M6 18 18 6" />}
+      {name === 'refresh' && (
+        <path d="M20 7v5h-5M4 17v-5h5M6.1 6a8 8 0 0 1 13.4 3M4.5 15a8 8 0 0 0 13.4 3" />
+      )}
+      {name === 'check' && <path d="m5 12 4 4L19 6" />}
+      {name === 'info' && (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v6m0-10v.01" />
+        </>
+      )}
+    </svg>
+  )
+}
+function TestResult({ result, stale = false }) {
   if (!result) return null
   return (
-    <div className="mc-status">
-      {result.ok ? '连接测试成功' : '连接测试失败'}
-      {!result.ok && (
+    <div
+      className="mc-result"
+      data-tone={stale ? 'stale' : result.ok ? 'success' : 'error'}
+      role="status"
+    >
+      <div className="mc-result-title">
+        <Icon name={stale || !result.ok ? 'info' : 'check'} size={16} />
+        {stale ? '配置已变化，请重新测试' : result.ok ? '连接测试成功' : '连接测试失败'}
+      </div>
+      {!result.ok && !stale && (
         <>
-          <pre>{result.failure?.message}</pre>
-          <p>{result.repair?.action}</p>
-          <small>{result.failure?.code}</small>
+          <p>{result.failure?.message}</p>
+          {result.repair?.action && <p>{result.repair.action}</p>}
+          {result.failure?.code && (
+            <details>
+              <summary>查看错误代码</summary>
+              <pre>{result.failure.code}</pre>
+            </details>
+          )}
         </>
       )}
     </div>
   )
 }
-function CredentialForm({ context, request, state, model }) {
+function OperationOutcome({ entry }) {
+  if (!entry) return null
+  const operation = entry.operation
+  const errors = operation?.errors ?? []
+  const unsuccessful =
+    entry.error ||
+    operation?.status === 'cancelled' ||
+    operation?.status === 'failed' ||
+    operation?.result?.ok === false
+  if (!unsuccessful && operation?.action !== 'delete') return null
+  return (
+    <div
+      className="mc-operation-note"
+      data-error={Boolean(entry.error || errors.length)}
+      role="status"
+    >
+      {entry.error && <p>{entry.error}</p>}
+      {operation?.status === 'cancelled' && <p>本次操作已取消。</p>}
+      {operation?.status === 'succeeded' && operation.action === 'delete' && (
+        <p>已删除保存值，当前配置状态已更新。</p>
+      )}
+      {errors.length > 0 && <p>{errors.map(credentialMessage).join(' ')}</p>}
+      {operation?.status === 'failed' && errors.length === 0 && !operation.result && (
+        <p>操作未完成，请重试。</p>
+      )}
+      {unsuccessful && operation?.saved.length > 0 && <p>已保存：{operation.saved.join('、')}。</p>}
+    </div>
+  )
+}
+function CredentialForm({ context, request, state, model, workspaceId }) {
   const [values, setValues] = useState({})
   const [editing, setEditing] = useState({})
   const [deleting, setDeleting] = useState('')
   const busy =
     request?.status === 'executing' ||
-    state.operations.some(
-      (entry) =>
-        entry.handle.scope === context.token &&
-        !entry.error &&
-        (!entry.operation || entry.operation.status === 'running'),
-    )
+    state.operations.some((entry) => entry.handle.scope === context.token)
   const ended = request?.endedAt !== undefined
+  const configured = context.refs.filter((ref) => context.credentials[ref]?.configured).length
+  const ready = configured === context.refs.length
+  const outcome = state.outcomes[context.token]
+  const latestTest =
+    !outcome?.overviewUpdated && outcome?.operation?.result
+      ? { result: outcome.operation.result, at: outcome.operation.endedAt, stale: false }
+      : context.lastTest
+  const latestResult = request?.failure ?? latestTest?.result
   // biome-ignore lint/correctness/useExhaustiveDependencies: Identity or credential revision changes must discard unsubmitted secrets.
   useEffect(() => {
     setValues({})
@@ -58,98 +139,146 @@ function CredentialForm({ context, request, state, model }) {
     void model.start(context, request ? 'submit' : 'update', changes)
   }
   return (
-    <section>
-      <h3>{context.name}</h3>
-      <p className="mc-note">
-        相同引用在其他 Workspace 中也可能共享。更换或删除后，使用旧凭证等待执行的代码不会启动。
-      </p>
-      {request && (
-        <p role="status">
-          {statusLabels[request.status]}。
-          {ended
-            ? request.status === 'call-ended' || request.status === 'context-changed'
-              ? request.status === 'call-ended' || request.status === 'context-changed'
-                ? '已保存的值仍保留；需要继续时请重新发起任务。'
-                : '凭证配置已完成。'
-              : '凭证配置已完成。'
-            : '等待受原工具调用与 Code Mode 外层预算限制。'}
-        </p>
-      )}
-      {context.refs.length === 0 && <p>该数据源没有凭证引用，可直接测试连接。</p>}
-      {context.refs.map((ref) => {
-        const info = context.credentials[ref]
-        const shared = state.datasources
-          .filter((item) => item.refs.includes(ref))
-          .map((item) => item.name)
-        return (
-          <fieldset key={ref} disabled={busy || ended}>
-            <legend>{ref}</legend>
-            <p className="mc-note">
-              字段：
-              {Object.entries(context.fields)
-                .filter(([, value]) => value === ref)
-                .map(([field]) => field)
-                .join('、')}{' '}
-              · {info?.configured ? '已配置' : '未配置'} · 来源：{info?.source ?? '无'} ·{' '}
-              {info?.writable ? '可更换' : '来源只读'}
-            </p>
-            {shared.length > 1 && (
-              <p className="mc-note">当前列表共享数据源：{shared.join('、')}</p>
+    <section className="mc-form" aria-label={`${context.name} 凭证配置`}>
+      <div className="mc-form-body">
+        <div className="mc-detail-heading">
+          <div>
+            <p className="mc-eyebrow">数据源配置</p>
+            <h3>{context.name}</h3>
+          </div>
+          <span className="mc-badge" data-ready={ready}>
+            {ready && <Icon name="check" size={13} />}
+            {context.refs.length === 0
+              ? '无需凭证'
+              : ready
+                ? '凭证已配齐'
+                : `${configured} / ${context.refs.length} 项已配置`}
+          </span>
+        </div>
+        {request && (
+          <div className="mc-request-status" role="status">
+            <strong>{statusLabels[request.status]}</strong>
+            {!ended && <p>验证成功后继续当前任务。</p>}
+            {(request.status === 'call-ended' || request.status === 'context-changed') && (
+              <p>请重新发起任务。</p>
             )}
-            {info?.writable && (
-              <div className="mc-row">
-                {!info.configured || editing[ref] ? (
-                  <label>
-                    新值{' '}
-                    <input
-                      type="password"
-                      autoComplete="new-password"
-                      value={values[ref] ?? ''}
-                      onChange={(event) => setValues({ ...values, [ref]: event.target.value })}
-                    />
-                  </label>
-                ) : (
-                  <button type="button" onClick={() => setEditing({ ...editing, [ref]: true })}>
-                    更换
-                  </button>
-                )}
-                {!request && info.configured && (
-                  <button type="button" onClick={() => setDeleting(ref)}>
-                    删除已保存值
-                  </button>
-                )}
-                {deleting === ref && (
-                  <>
-                    <span>删除后可能仍由其他来源提供。</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeleting('')
-                        void model.start(context, 'delete', {}, ref)
-                      }}
-                    >
-                      确认删除已保存值
-                    </button>
-                    <button type="button" onClick={() => setDeleting('')}>
-                      保留
-                    </button>
-                  </>
-                )}
-              </div>
+          </div>
+        )}
+        {context.refs.length === 0 && (
+          <p className="mc-note">该数据源没有凭证引用，可直接测试连接。</p>
+        )}
+        {context.refs.length > 0 && (
+          <div className="mc-fields">
+            {context.refs.map((ref) => {
+              const info = context.credentials[ref]
+              const shared = state.datasources
+                .filter((item) => item.refs.includes(ref))
+                .map((item) => item.name)
+              return (
+                <fieldset className="mc-field" key={ref} disabled={busy || ended} aria-label={ref}>
+                  <div className="mc-field-header">
+                    <div className="mc-field-title">
+                      <h4>{ref}</h4>
+                      <p>
+                        字段：
+                        {Object.entries(context.fields)
+                          .filter(([, value]) => value === ref)
+                          .map(([field]) => field)
+                          .join('、')}{' '}
+                        · 来源：{info?.source ?? '无'}
+                        {!info?.writable && ' · 来源只读'}
+                      </p>
+                    </div>
+                    <div className="mc-field-actions">
+                      <span className="mc-badge" data-ready={Boolean(info?.configured)}>
+                        {info?.configured ? '已配置' : '未配置'}
+                      </span>
+                      {info?.writable && info.configured && !editing[ref] && (
+                        <button
+                          type="button"
+                          onClick={() => setEditing({ ...editing, [ref]: true })}
+                        >
+                          更换
+                        </button>
+                      )}
+                      {info?.writable && info.configured && editing[ref] && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setValues({ ...values, [ref]: '' })
+                            setEditing({ ...editing, [ref]: false })
+                          }}
+                        >
+                          取消更换
+                        </button>
+                      )}
+                      {info?.writable && !request && info.configured && (
+                        <button className="mc-quiet" type="button" onClick={() => setDeleting(ref)}>
+                          删除已保存值
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {info?.writable && (!info.configured || editing[ref]) && (
+                    <label className="mc-secret-input">
+                      新值
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="输入凭证值"
+                        value={values[ref] ?? ''}
+                        onChange={(event) => setValues({ ...values, [ref]: event.target.value })}
+                      />
+                    </label>
+                  )}
+                  {shared.length > 1 && (
+                    <p className="mc-field-note">
+                      与 {shared.filter((name) => name !== context.name).join('、')} 共享此引用
+                    </p>
+                  )}
+                  {deleting === ref && (
+                    <div className="mc-confirm">
+                      <p>确认删除 {ref} 的已保存值？</p>
+                      <button
+                        className="mc-danger"
+                        type="button"
+                        onClick={() => {
+                          setDeleting('')
+                          void model.start(context, 'delete', {}, ref)
+                        }}
+                      >
+                        确认删除已保存值
+                      </button>
+                      <button type="button" onClick={() => setDeleting('')}>
+                        保留
+                      </button>
+                    </div>
+                  )}
+                </fieldset>
+              )
+            })}
+          </div>
+        )}
+        <div className="mc-test">
+          <div className="mc-test-heading">
+            <h4>连接状态</h4>
+            {latestTest?.at !== undefined && (
+              <time dateTime={new Date(latestTest.at).toISOString()}>
+                上次测试：{new Date(latestTest.at).toLocaleString()}
+              </time>
             )}
-          </fieldset>
-        )
-      })}
-      {context.lastTest && (
-        <p className="mc-note">
-          上次测试：{new Date(context.lastTest.at).toLocaleString()} ·{' '}
-          {context.lastTest.stale ? '配置已变化，请重新测试' : '仅代表该次连接往返'}
-        </p>
-      )}
-      <TestResult result={request?.failure ?? context.lastTest?.result} />
+          </div>
+          {latestResult ? (
+            <TestResult result={latestResult} stale={!request?.failure && latestTest?.stale} />
+          ) : (
+            <p className="mc-empty-test">尚未测试连接。</p>
+          )}
+          <OperationOutcome entry={outcome} />
+        </div>
+      </div>
       {!ended && (
-        <div className="mc-row">
-          <button type="button" disabled={busy} onClick={submit}>
+        <div className="mc-form-footer">
+          <button className="mc-primary" type="button" disabled={busy} onClick={submit}>
             {request ? '保存并验证后继续' : '保存并验证'}
           </button>
           <button
@@ -169,16 +298,34 @@ function CredentialForm({ context, request, state, model }) {
             </button>
           )}
           {request ? (
-            <button type="button" onClick={() => void model.cancelRequest(request.id)}>
+            <button
+              className="mc-quiet mc-cancel"
+              type="button"
+              onClick={() => void model.cancelRequest(request.id)}
+            >
               取消本轮
             </button>
           ) : (
             busy && (
-              <button type="button" onClick={() => void model.cancelOperation(context.token)}>
+              <button
+                className="mc-quiet mc-cancel"
+                type="button"
+                onClick={() => void model.cancelOperation(context.token)}
+              >
                 取消操作
               </button>
             )
           )}
+        </div>
+      )}
+      {ended && (
+        <div className="mc-form-footer">
+          <button type="button" onClick={() => model.show(workspaceId)}>
+            返回数据源管理
+          </button>
+          <button className="mc-quiet" type="button" onClick={() => model.close()}>
+            完成
+          </button>
         </div>
       )}
     </section>
@@ -192,8 +339,13 @@ function CredentialPanel({ model, workspaces }) {
     else dialog.current?.close()
   }, [state.open])
   const request = state.requests.find((item) => item.id === state.requestId)
+  const pending = state.requests.filter((item) => item.endedAt === undefined)
   const context =
     request?.context ?? state.datasources.find((item) => item.token === state.selected)
+  const workspaceId = request
+    ? (workspaces.find((item) => item.sessionIds.includes(request.sessionId))?.workspaceId ?? '')
+    : state.workspaceId
+  const datasources = request ? [request.context] : state.datasources
   return (
     <dialog
       ref={dialog}
@@ -204,132 +356,186 @@ function CredentialPanel({ model, workspaces }) {
       }}
       aria-labelledby="marivo-credentials-title"
     >
-      <style>{styles}</style>
-      <div className="mc-content">
-        <div className="mc-row">
-          <h2 id="marivo-credentials-title">数据源与凭证</h2>
-          <button type="button" onClick={() => model.close()}>
-            收起
+      <style>{credentialStyles}</style>
+      <div className="mc-shell">
+        <header className="mc-header">
+          <div className="mc-header-mark">
+            <Icon name="lock" size={22} />
+          </div>
+          <div className="mc-header-copy">
+            <h2 id="marivo-credentials-title">数据源与凭证</h2>
+            <p>配置访问凭证，测试数据源连接。</p>
+          </div>
+          <button
+            className="mc-close"
+            type="button"
+            aria-label="收起"
+            title="收起"
+            onClick={() => model.close()}
+          >
+            <Icon name="close" size={20} />
           </button>
-        </div>
-        <p className="mc-note">
-          凭证由 DSH 保存。页面只展示配置状态，不回显已保存值；收起页面不会取消正在运行的操作。
-        </p>
-        {!request && (
-          <div className="mc-row">
-            <label>
-              Workspace{' '}
+        </header>
+        {pending.length > 0 && (
+          <div className="mc-requests">
+            <span>本会话待办</span>
+            {pending.map((item) => (
+              <button type="button" key={item.id} onClick={() => model.openRequest(item.id)}>
+                {item.context.name} · {statusLabels[item.status]}
+              </button>
+            ))}
+            {request && (
+              <button className="mc-quiet" type="button" onClick={() => model.show(workspaceId)}>
+                数据源管理
+              </button>
+            )}
+          </div>
+        )}
+        <div className="mc-columns">
+          <aside className="mc-nav" aria-label="数据源导航">
+            <div>
+              <label className="mc-workspace-label" htmlFor="mc-workspace">
+                Workspace
+              </label>
               <select
-                value={state.workspaceId}
+                id="mc-workspace"
+                value={workspaceId}
                 onChange={(event) => void model.selectWorkspace(event.target.value)}
               >
-                <option value="">请选择</option>
+                <option value="">请选择 Workspace</option>
                 {workspaces.map((item) => (
                   <option key={item.workspaceId} value={item.workspaceId}>
                     {item.title ?? item.name ?? item.path ?? item.workspaceId}
                   </option>
                 ))}
               </select>
-            </label>
-            <button
-              type="button"
-              disabled={state.loading || !state.workspaceId}
-              onClick={() => void model.selectWorkspace(state.workspaceId)}
-            >
-              刷新状态
-            </button>
-            <select
-              aria-label="数据源"
-              value={state.selected}
-              onChange={(event) => model.select(event.target.value)}
-            >
-              <option value="">选择数据源</option>
-              {state.datasources.map((item) => (
-                <option key={item.token} value={item.token}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {state.requests.length > 0 && (
-          <div className="mc-row">
-            本会话待办：
-            {state.requests.map((item) => (
-              <button type="button" key={item.id} onClick={() => model.openRequest(item.id)}>
-                {item.context.name} · {statusLabels[item.status]}
-              </button>
-            ))}
-          </div>
-        )}
-        {state.error && (
-          <p role="alert" className="mc-error">
-            {state.error}
-          </p>
-        )}
-        {state.loading && <p role="status">正在读取数据源与凭证状态…</p>}
-        {!request &&
-          state.workspaceId &&
-          !state.loading &&
-          !state.error &&
-          state.datasources.length === 0 && <p>该 Workspace 没有已定义的数据源。</p>}
-        {state.open && context && (
-          <CredentialForm
-            key={context.token}
-            context={context}
-            request={request}
-            state={state}
-            model={model}
-          />
-        )}
-        {state.operations.length > 1 && (
-          <fieldset className="mc-row">
-            <legend>凭证操作</legend>
-            {state.operations.map((entry) => (
-              <button
-                type="button"
-                key={entry.handle.id}
-                aria-pressed={state.handle?.id === entry.handle.id}
-                onClick={() => model.selectOperation(entry.handle.id)}
-              >
-                {entry.name} ·{' '}
-                {entry.error
-                  ? '状态不可恢复'
-                  : entry.operation && entry.operation.status !== 'running'
-                    ? '已结束'
-                    : '处理中'}
-              </button>
-            ))}
-          </fieldset>
-        )}
-        {state.operation && (
-          <div className="mc-status" role="status">
-            <p>{state.operations.find((entry) => entry.handle.id === state.handle?.id)?.name}</p>
-            <p>
-              {state.operation.status === 'running'
-                ? state.operation.phase === 'saving'
-                  ? '正在保存'
-                  : '正在验证连接'
-                : '本次操作已结束'}
-            </p>
-            {state.operation.status === 'running' && (
-              <button type="button" onClick={() => void model.cancelOperation()}>
-                取消此操作
-              </button>
-            )}
-            {state.operation.saved.length > 0 && (
-              <p>
-                已保存变更：{state.operation.saved.join('、')}。连接验证失败或取消不会回滚已保存值。
+            </div>
+            <div>
+              <div className="mc-nav-heading">
+                <h3>{request ? '请求的数据源' : `数据源 · ${datasources.length}`}</h3>
+                <button
+                  className="mc-quiet"
+                  type="button"
+                  aria-label="刷新状态"
+                  title="刷新状态"
+                  disabled={state.loading || !workspaceId}
+                  onClick={() => void model.selectWorkspace(workspaceId)}
+                >
+                  <Icon name="refresh" size={16} />
+                </button>
+              </div>
+              <ul className="mc-datasources">
+                {datasources.map((item) => {
+                  const count = item.refs.filter((ref) => item.credentials[ref]?.configured).length
+                  const ready = count === item.refs.length
+                  const running = state.operations.some(
+                    (entry) => entry.handle.scope === item.token,
+                  )
+                  return (
+                    <li key={item.token}>
+                      <button
+                        className="mc-datasource"
+                        type="button"
+                        aria-label={`选择数据源 ${item.name}`}
+                        aria-pressed={context?.token === item.token}
+                        onClick={() =>
+                          request ? model.openRequest(request.id) : model.select(item.token)
+                        }
+                      >
+                        <Icon name="database" />
+                        <span className="mc-datasource-copy">
+                          <span className="mc-datasource-name">{item.name}</span>
+                          <span className="mc-datasource-status">
+                            <span className="mc-dot" data-ready={ready} />
+                            {running
+                              ? '正在处理…'
+                              : item.refs.length === 0
+                                ? '无需凭证'
+                                : ready
+                                  ? '凭证已配齐'
+                                  : `${count} / ${item.refs.length} 项已配置`}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </aside>
+          <main className="mc-main">
+            {state.error && (
+              <p role="alert" className="mc-alert">
+                {state.error}
               </p>
             )}
-            {state.operation.errors.length > 0 && (
-              <p className="mc-error">{state.operation.errors.map(credentialMessage).join(' ')}</p>
+            {state.loading && (
+              <p className="mc-loading" role="status">
+                正在读取数据源与凭证状态…
+              </p>
             )}
-            <TestResult
-              result={state.operation.scope !== context?.token ? state.operation.result : undefined}
-            />
-          </div>
-        )}
+            {!state.loading && !context && !state.error && (
+              <div className="mc-empty">
+                <Icon name="database" size={32} />
+                <h3>
+                  {!state.workspaceId
+                    ? '选择一个 Workspace'
+                    : state.datasources.length === 0
+                      ? '暂无数据源'
+                      : '选择一个数据源'}
+                </h3>
+                <p>
+                  {!state.workspaceId
+                    ? '查看该工作区的数据源和凭证配置。'
+                    : state.datasources.length === 0
+                      ? '该 Workspace 没有已定义的数据源。'
+                      : '查看凭证配置与最近一次连接测试。'}
+                </p>
+              </div>
+            )}
+            {state.open && context && (
+              <CredentialForm
+                key={context.token}
+                context={context}
+                request={request}
+                state={state}
+                model={model}
+                workspaceId={workspaceId}
+              />
+            )}
+            {state.operations.length > 0 && (
+              <section className="mc-activity" aria-label="进行中的凭证操作">
+                <p className="mc-activity-heading">进行中 · {state.operations.length}</p>
+                <div className="mc-activity-list">
+                  {state.operations.map((entry) => (
+                    <button
+                      type="button"
+                      key={entry.handle.id}
+                      aria-pressed={state.handle?.id === entry.handle.id}
+                      onClick={() => model.selectOperation(entry.handle.id)}
+                    >
+                      {entry.name} · 处理中
+                    </button>
+                  ))}
+                </div>
+                {state.operation?.status === 'running' && (
+                  <div className="mc-progress">
+                    <p>
+                      {state.operations.find((entry) => entry.handle.id === state.handle?.id)?.name}{' '}
+                      · {state.operation.phase === 'saving' ? '正在保存' : '正在验证连接'}
+                    </p>
+                    <button type="button" onClick={() => void model.cancelOperation()}>
+                      取消此操作
+                    </button>
+                    {state.operation.saved.length > 0 && (
+                      <p>已保存：{state.operation.saved.join('、')}。</p>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+          </main>
+        </div>
       </div>
     </dialog>
   )
@@ -355,14 +561,12 @@ export function installCredentials(ctx, rpc) {
         const selected =
           workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
         return (
-          <button
-            type="button"
-            aria-label="打开数据源与凭证"
-            title="数据源与凭证"
+          <SidebarAction
+            wide={wide}
+            label="数据源与凭证"
+            icon="credentials"
             onClick={() => model.show(selected)}
-          >
-            {wide ? '数据源与凭证' : '⚿'}
-          </button>
+          />
         )
       },
     ),
@@ -376,7 +580,11 @@ export function installCredentials(ctx, rpc) {
           (item) => item.sessionId === sessionId && item.endedAt === undefined,
         )
         return request ? (
-          <button type="button" onClick={() => model.openRequest(request.id)}>
+          <button
+            className="mc-pending-entry"
+            type="button"
+            onClick={() => model.openRequest(request.id)}
+          >
             等待配置凭证
           </button>
         ) : null

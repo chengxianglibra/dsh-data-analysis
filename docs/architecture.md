@@ -121,7 +121,9 @@ spill 前执行 exact-value 脱敏。access Tool 与跨调用 lease 已删除。
 
 常驻“数据源与凭证”管理页支持配置、替换、删除和测试。缺失配置时，Web 根 Agent 的原调用保持等待；
 提交验证成功后继续，失败可修正或交还 Agent。刷新、丢失响应、取消和定义变更由 Host 操作状态处理，
-不依赖历史 Tool Result 自动弹窗。详见 [Datasource Credentials](modules/datasource-credentials.md)。
+不依赖历史 Tool Result 自动弹窗。管理页与语义层共用侧栏入口样式；操作列表只显示进行中操作，完成后
+在对应数据源展示最近测试和必要反馈，Host 仍保留有界的终态查询能力。
+详见 [Datasource Credentials](modules/datasource-credentials.md)。
 
 Source metadata inspection 由 Agent 直接调用 `md.inspect(...)`；connection test 不是 inspection 的前置。
 

@@ -16,6 +16,8 @@ interface QueryHandle {
 export interface ClientOperation {
   handle: QueryHandle
   name: string
+  workspaceId?: string
+  overviewUpdated?: boolean
   error?: string
   operation?: CredentialOperationView
 }
@@ -31,6 +33,7 @@ export interface CredentialClientState {
   loading: boolean
   error: string
   operations: ClientOperation[]
+  outcomes: Record<string, ClientOperation>
   operation?: CredentialOperationView
   handle?: QueryHandle
 }
@@ -72,6 +75,7 @@ export class CredentialClientModel {
     loading: false,
     error: '',
     operations: [],
+    outcomes: {},
   }
   readonly #rpc: BrowserRpc
   readonly #storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
@@ -79,6 +83,7 @@ export class CredentialClientModel {
   readonly #lifetime = new AbortController()
   #watch?: AbortController
   #read?: AbortController
+  #refresh?: AbortController
   readonly #polls = new Map<string, AbortController>()
   readonly #operations = new Map<string, ClientOperation>()
   readonly #opened = new Set<string>()
@@ -117,19 +122,29 @@ export class CredentialClientModel {
   }
   close(): void {
     this.#read?.abort()
+    this.#refresh?.abort()
     this.#patch({ open: false, loading: false })
   }
   openRequest(id: string): void {
     this.#read?.abort()
+    this.#refresh?.abort()
     this.#patch({ open: true, requestId: id, loading: false })
   }
   select(token: string): void {
-    this.#patch({ selected: token, requestId: '' })
+    this.#patch({ selected: token, requestId: '', error: '' })
   }
   async selectWorkspace(workspaceId: string): Promise<void> {
     this.#read?.abort()
+    this.#refresh?.abort()
     const flight = new AbortController()
     this.#read = flight
+    const selected = this.#state.workspaceId === workspaceId ? this.#state.selected : ''
+    const activity = new Map(
+      [...Object.values(this.#state.outcomes), ...this.#operations.values()].map((entry) => [
+        entry.handle.scope,
+        entry.handle.id,
+      ]),
+    )
     this.#patch({
       workspaceId,
       datasources: [],
@@ -148,7 +163,10 @@ export class CredentialClientModel {
       this.#patch({
         generation: value.generation,
         datasources: value.datasources,
-        selected: value.datasources[0]?.token ?? '',
+        outcomes: this.#currentOutcomes(workspaceId, value.generation, value.datasources, activity),
+        selected: value.datasources.some((item) => item.token === selected)
+          ? selected
+          : (value.datasources[0]?.token ?? ''),
         loading: false,
       })
     } catch (error) {
@@ -163,6 +181,7 @@ export class CredentialClientModel {
     if (sessionId === this.#state.sessionId && this.#watch) return
     this.#watch?.abort()
     this.#read?.abort()
+    this.#refresh?.abort()
     const controller = new AbortController()
     this.#watch = controller
     this.#patch({ sessionId, requests: [], requestId: '', open: false })
@@ -203,20 +222,121 @@ export class CredentialClientModel {
         .filter(
           (entry) => !entry.error && (!entry.operation || entry.operation.status === 'running'),
         )
-        .map(({ handle, name }) => ({ handle, name }))
+        .map(({ handle, name, workspaceId }) => ({ handle, name, workspaceId }))
       if (pending.length) this.#storage?.setItem(STORAGE_KEY, JSON.stringify(pending))
       else this.#storage?.removeItem(STORAGE_KEY)
     } catch {
       /* in-memory queries still work */
     }
   }
+  #visible(scope: string): boolean {
+    const selected = this.#state.requestId
+      ? this.#state.requests.find((request) => request.id === this.#state.requestId)?.context.token
+      : this.#state.selected
+    return selected === scope
+  }
+  #currentOutcomes(
+    workspaceId: string,
+    generation: string,
+    datasources: CredentialContextView[],
+    activity: Map<string, string | undefined>,
+  ): Record<string, ClientOperation> {
+    const scopes = new Set(datasources.map((context) => context.token))
+    return Object.fromEntries(
+      Object.entries(this.#state.outcomes)
+        .filter(
+          ([scope, entry]) =>
+            entry.handle.generation === generation &&
+            (entry.workspaceId !== workspaceId || scopes.has(scope)),
+        )
+        .map(([scope, entry]) => [
+          scope,
+          scopes.has(scope) && activity.get(scope) === entry.handle.id
+            ? { ...entry, overviewUpdated: true }
+            : entry,
+        ]),
+    )
+  }
+  #activity(scope: string): string | undefined {
+    return (
+      [...this.#operations.values()].find((entry) => entry.handle.scope === scope)?.handle.id ??
+      this.#state.outcomes[scope]?.handle.id
+    )
+  }
+  async #refreshOverview(handle: QueryHandle): Promise<void> {
+    const { workspaceId, generation, datasources, open, requestId } = this.#state
+    if (
+      !open ||
+      requestId ||
+      handle.generation !== generation ||
+      !datasources.some((context) => context.token === handle.scope)
+    )
+      return
+    this.#refresh?.abort()
+    const flight = new AbortController(),
+      read = this.#read,
+      activity = new Map(
+        datasources.map((context) => [context.token, this.#activity(context.token)]),
+      )
+    this.#refresh = flight
+    try {
+      const value = (await this.#call('overview', { workspaceId }, flight.signal)) as {
+        generation: string
+        datasources: CredentialContextView[]
+      }
+      if (
+        flight.signal.aborted ||
+        read !== this.#read ||
+        workspaceId !== this.#state.workspaceId ||
+        generation !== this.#state.generation ||
+        value.generation !== generation
+      )
+        return
+      const current = new Map(this.#state.datasources.map((context) => [context.token, context]))
+      const updated = value.datasources.map((context) =>
+        current.has(context.token) && activity.get(context.token) !== this.#activity(context.token)
+          ? current.get(context.token)!
+          : context,
+      )
+      this.#patch({
+        datasources: updated,
+        outcomes: this.#currentOutcomes(workspaceId, generation, updated, activity),
+        selected: updated.some((context) => context.token === this.#state.selected)
+          ? this.#state.selected
+          : (updated[0]?.token ?? ''),
+      })
+    } catch {
+      // Keep the last authoritative overview and scoped outcome if a passive refresh fails.
+    }
+  }
   #publish(handle: QueryHandle, operation: CredentialOperationView): void {
     const entry = this.#operations.get(handle.id)
     if (!entry) return
+    if (operation.status !== 'running') {
+      this.#settle({ ...entry, operation })
+      return
+    }
     this.#operations.set(handle.id, { ...entry, operation })
     this.#patch({
       operations: [...this.#operations.values()],
-      ...(this.#state.handle?.id === handle.id ? { operation, error: '' } : {}),
+      ...(this.#state.handle?.id === handle.id
+        ? { operation, ...(this.#visible(handle.scope) ? { error: '' } : {}) }
+        : {}),
+    })
+    this.#persist()
+  }
+  #settle(entry: ClientOperation): void {
+    this.#operations.delete(entry.handle.id)
+    this.#patch({
+      operations: [...this.#operations.values()],
+      outcomes: { ...this.#state.outcomes, [entry.handle.scope]: entry },
+      ...(this.#state.handle?.id === entry.handle.id
+        ? {
+            handle: undefined,
+            operation: undefined,
+            ...(this.#visible(entry.handle.scope) ? { error: entry.error ?? '' } : {}),
+          }
+        : {}),
     })
     this.#persist()
   }
@@ -243,9 +363,8 @@ export class CredentialClientModel {
       this.#patch({ error: credentialMessage('operation-busy') })
       return
     }
-    // Keep one completed result per context, while retaining every outstanding operation.
-    for (const [id, entry] of this.#operations)
-      if (entry.handle.scope === context.token) this.#operations.delete(id)
+    const outcomes = { ...this.#state.outcomes }
+    delete outcomes[context.token]
     const handle = {
       generation: this.#state.generation,
       id: crypto.randomUUID(),
@@ -262,8 +381,19 @@ export class CredentialClientModel {
       saved: [],
       errors: [],
     }
-    this.#operations.set(handle.id, { handle, name: context.name, operation })
-    this.#patch({ handle, operation, operations: [...this.#operations.values()], error: '' })
+    this.#operations.set(handle.id, {
+      handle,
+      name: context.name,
+      workspaceId: context.workspaceId,
+      operation,
+    })
+    this.#patch({
+      handle,
+      operation,
+      operations: [...this.#operations.values()],
+      outcomes,
+      error: '',
+    })
     this.#persist()
     try {
       // Only operation queries publish authoritative progress. A late submit reply cannot
@@ -277,7 +407,7 @@ export class CredentialClientModel {
         ...(reference ? { reference } : {}),
       })
     } catch {
-      if (this.#state.handle?.id === handle.id)
+      if (this.#state.handle?.id === handle.id && this.#visible(handle.scope))
         this.#patch({ error: '提交响应未确认，正在查询操作状态；不会重新发送秘密值。' })
     } finally {
       for (const ref of Object.keys(changes)) delete changes[ref]
@@ -307,34 +437,20 @@ export class CredentialClientModel {
           if (signal.aborted) return
           if (!operation) {
             const error = '操作状态不可恢复。保存可能已经发生，请重新读取实际配置后决定下一步。'
-            this.#operations.set(handle.id, { ...entry, operation: undefined, error })
-            this.#patch({
-              operations: [...this.#operations.values()],
-              ...(this.#state.handle?.id === handle.id
-                ? {
-                    operation: undefined,
-                    handle: undefined,
-                    error,
-                  }
-                : {}),
-            })
-            this.#persist()
+            this.#settle({ ...entry, operation: undefined, error })
             return
           }
           this.#publish(handle, operation)
           if (operation.status !== 'running') {
-            // Refresh only the still-visible context that owned this operation.
-            if (
-              !this.#state.requestId &&
-              this.#state.selected === handle.scope &&
-              this.#state.workspaceId &&
-              this.#state.open
-            )
-              await this.selectWorkspace(this.#state.workspaceId)
+            await this.#refreshOverview(handle)
             return
           }
         } catch {
-          if (!signal.aborted && this.#state.handle?.id === handle.id)
+          if (
+            !signal.aborted &&
+            this.#state.handle?.id === handle.id &&
+            this.#visible(handle.scope)
+          )
             this.#patch({ error: '正在恢复操作结果；已提交的保存不会自动重发。' })
         }
         await delay(1000, signal)
@@ -347,7 +463,11 @@ export class CredentialClientModel {
     try {
       const raw = this.#storage?.getItem(STORAGE_KEY)
       if (!raw) return
-      const entries = JSON.parse(raw) as Array<{ handle: QueryHandle; name: string }>
+      const entries = JSON.parse(raw) as Array<{
+        handle: QueryHandle
+        name: string
+        workspaceId?: string
+      }>
       if (!Array.isArray(entries)) return
       for (const entry of entries) {
         const handle = entry?.handle
@@ -360,7 +480,11 @@ export class CredentialClientModel {
         )
           continue
         if (!this.#operations.has(handle.id))
-          this.#operations.set(handle.id, { handle, name: entry.name })
+          this.#operations.set(handle.id, {
+            handle,
+            name: entry.name,
+            ...(typeof entry.workspaceId === 'string' ? { workspaceId: entry.workspaceId } : {}),
+          })
         if (!this.#state.handle) this.selectOperation(handle.id)
         void this.#query(handle)
       }
@@ -402,6 +526,7 @@ export class CredentialClientModel {
     this.#lifetime.abort()
     this.#watch?.abort()
     this.#read?.abort()
+    this.#refresh?.abort()
     for (const controller of this.#polls.values()) controller.abort()
     this.#listeners.clear()
   }

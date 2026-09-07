@@ -192,6 +192,11 @@ test('late submit A cannot replace operation B or cancel its query after a Works
   assert.equal(model.getSnapshot().workspaceId, 'B')
   assert.equal(model.getSnapshot().operation?.id, ids.get(b.token))
   assert.equal(model.getSnapshot().handle?.id, ids.get(b.token))
+  assert.deepEqual(
+    model.getSnapshot().operations.map((entry) => entry.handle.id),
+    [ids.get(b.token)],
+  )
+  assert.equal(model.getSnapshot().outcomes[a.token]?.operation?.status, 'succeeded')
   const handles = JSON.parse([...storage.values()][0]!)
   assert.deepEqual(
     handles.map((entry: { handle: { id: string } }) => entry.handle.id),
@@ -199,12 +204,14 @@ test('late submit A cannot replace operation B or cancel its query after a Works
   )
   model.selectOperation(ids.get(a.token)!)
   assert.equal(model.getSnapshot().operation?.id, model.getSnapshot().handle?.id)
-  // The visible B form's cancel action stays bound to B even if A's result is selected.
+  // A completed operation cannot replace B's active selection or cancellation target.
   await model.cancelOperation(b.token)
   assert.deepEqual(cancellations, [ids.get(b.token)])
   finishB()
   await runB
   assert.equal(storage.size, 0)
+  assert.deepEqual(model.getSnapshot().operations, [])
+  assert.equal(model.getSnapshot().operation, undefined)
 })
 
 test('refresh recovers every outstanding operation independently without resending values', async (t) => {
@@ -262,10 +269,15 @@ test('refresh recovers every outstanding operation independently without resendi
   finishes.get(entries[1]!.handle.id)!()
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(storage.size, 0)
-  assert(model.getSnapshot().operations.every((entry) => entry.operation?.status === 'succeeded'))
+  assert.deepEqual(model.getSnapshot().operations, [])
+  assert(
+    Object.values(model.getSnapshot().outcomes).every(
+      (entry) => entry.operation?.status === 'succeeded',
+    ),
+  )
 })
 
-test('an unrecoverable background operation keeps its own warning without replacing the selected result', async (t) => {
+test('an unrecoverable background operation keeps a scoped warning without leaving a history entry', async (t) => {
   const entries = ['selected', 'background'].map((name) => ({
     name,
     handle: { generation: randomUUID(), id: randomUUID(), scope: randomUUID() },
@@ -296,14 +308,18 @@ test('an unrecoverable background operation keeps its own warning without replac
   t.after(() => model.dispose())
   model.recover()
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(model.getSnapshot().operation?.id, entries[0]!.handle.id)
+  assert.equal(model.getSnapshot().operation, undefined)
+  assert.equal(model.getSnapshot().handle, undefined)
   assert.equal(model.getSnapshot().error, '')
+  assert.deepEqual(model.getSnapshot().operations, [])
+  assert.equal(
+    model.getSnapshot().outcomes[entries[0]!.handle.scope]?.operation?.status,
+    'succeeded',
+  )
+  assert.match(model.getSnapshot().outcomes[entries[1]!.handle.scope]!.error!, /保存可能已经发生/)
+  model.select(entries[1]!.handle.scope)
   assert.match(
-    model.getSnapshot().operations.find((entry) => entry.handle.id === entries[1]!.handle.id)!
-      .error!,
+    model.getSnapshot().outcomes[model.getSnapshot().selected]!.error!,
     /保存可能已经发生/,
   )
-  model.selectOperation(entries[1]!.handle.id)
-  assert.match(model.getSnapshot().error, /保存可能已经发生/)
-  assert.equal(model.getSnapshot().operation, undefined)
 })

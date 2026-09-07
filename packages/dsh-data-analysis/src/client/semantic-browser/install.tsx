@@ -1,6 +1,7 @@
 // @ts-nocheck -- browser slot contracts are provided by DSH's runtime module table.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import { SidebarAction } from '../sidebar-action.tsx'
 import { SemanticBrowserModel } from './model.ts'
 import { SemanticBrowserPanel } from './panel.tsx'
 
@@ -17,21 +18,12 @@ export function installSemanticBrowser(ctx, rpc) {
         const selected =
           workspaces.find((item) => item.sessionIds.includes(current))?.workspaceId ?? ''
         return (
-          <button
-            type="button"
-            title="语义层"
-            aria-label="打开语义层"
+          <SidebarAction
+            wide={wide}
+            label="语义层"
+            icon="semantic"
             onClick={() => model.show(selected)}
-            style={{
-              cursor: 'pointer',
-              padding: '8px 10px',
-              border: 0,
-              background: 'transparent',
-              color: 'inherit',
-            }}
-          >
-            {wide ? '语义层' : '◇'}
-          </button>
+          />
         )
       },
     ),

@@ -22,7 +22,7 @@ import { registerMarivoPythonTool } from '../src/datasource/python.ts'
 import { registerCredentialRpc } from '../src/datasource/rpc.ts'
 import { MarivoCredentialService } from '../src/datasource/service.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
-import { fixture } from '../tests/datasource-credentials/fixtures.ts'
+import { failed, fixture } from '../tests/datasource-credentials/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
 
 const { chromium } = await import(process.env.DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE ?? 'playwright')
@@ -79,6 +79,9 @@ const connection = {
 } as unknown as HostConnectionHandle
 const unregister = registerCredentialRpc(connection, service, async () => bridge)
 const installer = fileURLToPath(new URL('../src/client/credentials/install.tsx', import.meta.url))
+const semanticInstaller = fileURLToPath(
+  new URL('../src/client/semantic-browser/install.tsx', import.meta.url),
+)
 const app = await build({
   stdin: {
     resolveDir: process.cwd(),
@@ -86,12 +89,16 @@ const app = await build({
     contents: `
 import React from 'react'; import {createRoot} from 'react-dom/client';
 import {installCredentials} from ${JSON.stringify(installer)};
+import {installSemanticBrowser} from ${JSON.stringify(semanticInstaller)};
 const seats=[];
-installCredentials({effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}},
-{call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()});
+const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
+const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
+installSemanticBrowser(ctx,rpc);
+installCredentials(ctx,rpc);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']}];
-const props={sessionId:'session',wide:true,useWorkspaces:fn=>fn({items:workspaces}),useSessions:fn=>fn({current:'session'})};
-createRoot(document.getElementById('app')).render(<><h1>凭证集成验收夹具</h1>{seats.map(({options,component:C})=><C key={options.id} {...props}/>)}</>);
+const props={sessionId:'session',wide:true,useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
+const renderSeat=({options,component:C})=><C key={options.name+options.id} {...props}/>;
+createRoot(document.getElementById('app')).render(<><h1>凭证集成验收夹具</h1><nav aria-label="插件入口">{seats.filter(({options})=>options.name==='sidebar.footer.action').map(renderSeat)}</nav>{seats.filter(({options})=>options.name!=='sidebar.footer.action').map(renderSeat)}</>);
 `,
   },
   bundle: true,
@@ -101,6 +108,7 @@ createRoot(document.getElementById('app')).render(<><h1>凭证集成验收夹具
   jsx: 'automatic',
   define: { 'process.env.NODE_ENV': '"development"' },
 })
+let failOverview = false
 const server = createServer(async (req, res) => {
   if (req.url === '/app.js') {
     res.setHeader('Content-Type', 'text/javascript')
@@ -120,6 +128,12 @@ const server = createServer(async (req, res) => {
   res.on('close', () => controller.abort())
   try {
     const { endpoint, payload } = JSON.parse(Buffer.concat(chunks).toString())
+    if (endpoint === 'overview' && failOverview) {
+      res.statusCode = 503
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ ok: false, error: { message: 'fixture-overview-unavailable' } }))
+      return
+    }
     const result = await handler(endpoint, payload, controller.signal)
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify(result))
@@ -135,20 +149,92 @@ const page = await browser.newPage({ viewport: { width: 1200, height: 900 } })
 const errors: string[] = []
 page.on('pageerror', (error: Error) => errors.push(error.message))
 const secret = 'browser-private-canary-32457'
+const activeOperations = page.getByRole('region', { name: '进行中的凭证操作' })
+const selectDatasource = (name: string) =>
+  page.getByRole('button', { name: `选择数据源 ${name}`, exact: true }).click()
+async function assertPendingWorkspace() {
+  assert.equal(await page.getByLabel('Workspace', { exact: true }).inputValue(), 'workspace')
+  const navigation = page.getByRole('complementary', { name: '数据源导航' })
+  await navigation.getByRole('heading', { name: '请求的数据源', exact: true }).waitFor()
+  assert.equal(
+    await navigation.getByRole('button', { name: '选择数据源 warehouse', exact: true }).count(),
+    1,
+  )
+}
+async function assertNoCompletedOperations() {
+  await activeOperations.waitFor({ state: 'hidden', timeout: 30000 })
+  assert.equal(await page.getByRole('button', { name: /· 已结束$/ }).count(), 0)
+  assert.equal(await page.getByText('本次操作已结束', { exact: true }).count(), 0)
+  assert.equal(
+    await page.evaluate(
+      () => JSON.parse(sessionStorage.getItem('marivo-credential-operation') ?? '[]').length,
+    ),
+    0,
+  )
+}
+async function assertNoHorizontalOverflow() {
+  const bounds = await page.getByRole('dialog', { name: '数据源与凭证' }).boundingBox()
+  assert(bounds)
+  assert(bounds.x >= 0 && bounds.x + bounds.width <= page.viewportSize()!.width + 1)
+  const overflows = await page
+    .getByRole('dialog', { name: '数据源与凭证' })
+    .evaluate((dialog: Element) =>
+      [document.documentElement, dialog, ...dialog.querySelectorAll('*')]
+        .filter(
+          (element) => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1,
+        )
+        .map((element) => `${element.tagName}.${element.className}`),
+    )
+  assert.deepEqual(overflows, [], 'dialog and page must not overflow horizontally')
+}
 try {
   await page.goto(`http://127.0.0.1:${address.port}`)
+  const entryStyles = await page
+    .getByRole('navigation', { name: '插件入口' })
+    .getByRole('button')
+    .evaluateAll((buttons: Element[]) =>
+      buttons.map((button) => {
+        const styles = getComputedStyle(button)
+        return Object.fromEntries(
+          [
+            'display',
+            'align-items',
+            'justify-content',
+            'padding',
+            'border-width',
+            'border-radius',
+            'background-color',
+            'color',
+            'font-family',
+            'font-size',
+            'line-height',
+          ].map((property) => [property, styles.getPropertyValue(property)]),
+        )
+      }),
+    )
+  assert.equal(entryStyles.length, 2)
+  assert.deepEqual(entryStyles[0], entryStyles[1], 'semantic and credential entries share a style')
+  await page.screenshot({ path: path.join(output, 'sidebar-entries.png'), fullPage: true })
   await page.getByRole('button', { name: '打开数据源与凭证' }).click()
-  await page
-    .getByLabel('数据源', { exact: true })
-    .selectOption({ label: 'warehouse' }, { timeout: 30000 })
+  await selectDatasource('warehouse')
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor({ timeout: 30000 })
   await page.getByLabel('新值').fill(secret)
   await page.getByRole('button', { name: '保存并验证', exact: true }).click()
   await page.getByRole('button', { name: '更换', exact: true }).waitFor({ timeout: 30000 })
-  await page.getByText('仅代表该次连接往返', { exact: false }).waitFor()
+  await page.getByText('连接测试成功', { exact: true }).waitFor()
   assert(!(await page.locator('body').innerText()).includes(secret))
   assert(!(await page.evaluate(() => JSON.stringify(sessionStorage))).includes(secret))
+  await assertNoCompletedOperations()
+  await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'management.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await assertNoHorizontalOverflow()
+  await page.screenshot({ path: path.join(output, 'management-mobile.png'), fullPage: true })
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await assertNoHorizontalOverflow()
+  await page.screenshot({ path: path.join(output, 'management-dark.png'), fullPage: true })
+  await page.emulateMedia({ colorScheme: 'light' })
   // Hold two actual bridge validations so navigation and reload happen while both are live.
   const originalTest = bridge.test.bind(bridge)
   const gates = new Map<string, () => void>()
@@ -170,7 +256,7 @@ try {
     return originalTest(description, values, signal)
   }
   await page.getByRole('button', { name: '测试连接', exact: true }).click()
-  await page.getByLabel('数据源', { exact: true }).selectOption({ label: 'warehouse_two' })
+  await selectDatasource('warehouse_two')
   await page.getByRole('button', { name: '测试连接', exact: true }).click()
   await page.getByRole('button', { name: 'warehouse_two · 处理中', exact: true }).waitFor()
   assert.equal(
@@ -193,8 +279,12 @@ try {
   assert(gates.has('warehouse') && gates.has('warehouse_two'))
   gates.get('warehouse')!()
   await page
-    .getByRole('button', { name: 'warehouse · 已结束', exact: true })
-    .waitFor({ timeout: 30000 })
+    .getByRole('button', { name: 'warehouse · 处理中', exact: true })
+    .waitFor({ state: 'hidden', timeout: 30000 })
+  assert.equal(
+    await page.getByRole('button', { name: 'warehouse · 已结束', exact: true }).count(),
+    0,
+  )
   assert.equal(
     await page.evaluate(
       () => JSON.parse(sessionStorage.getItem('marivo-credential-operation') ?? '[]').length,
@@ -202,13 +292,50 @@ try {
     1,
   )
   await page.getByRole('button', { name: 'warehouse_two · 处理中', exact: true }).click()
+  await page
+    .getByRole('button', { name: '选择数据源 warehouse_two', exact: true })
+    .waitFor({ timeout: 30000 })
+  await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'concurrent-operations.png'), fullPage: true })
   gates.get('warehouse_two')!()
-  await page
-    .getByRole('button', { name: 'warehouse_two · 已结束', exact: true })
-    .waitFor({ timeout: 30000 })
+  await assertNoCompletedOperations()
   bridge.test = originalTest
-  await page.getByLabel('数据源', { exact: true }).selectOption({ label: 'warehouse' })
+  await page.getByText('连接测试成功', { exact: true }).waitFor()
+  await page.getByRole('button', { name: '收起', exact: true }).click()
+  await page.getByRole('button', { name: '打开数据源与凭证' }).click()
+  await selectDatasource('warehouse_two')
+  await page.getByText('连接测试成功', { exact: true }).waitFor()
+  await assertNoCompletedOperations()
+  await page.screenshot({ path: path.join(output, 'completed-reopened.png'), fullPage: true })
+  // New failed validation must supersede a previous success, even if the overview refresh fails.
+  bridge.test = async (description) => ({ ...failed, name: description.name })
+  failOverview = true
+  const overviewFailure = page.waitForResponse(
+    (response: { status(): number }) => response.status() === 503,
+    { timeout: 30000 },
+  )
+  await page.getByRole('button', { name: '更换', exact: true }).click()
+  await page.getByLabel('新值').fill(secret)
+  await page.getByRole('button', { name: '保存并验证', exact: true }).click()
+  assert.equal((await overviewFailure).request().postDataJSON().endpoint, 'overview')
+  await page.getByText('connection rejected', { exact: true }).waitFor({ timeout: 30000 })
+  assert.equal(await page.getByText('连接测试成功', { exact: true }).count(), 0)
+  await page.getByText('已保存：DB_PASSWORD。', { exact: true }).waitFor()
+  await assertNoCompletedOperations()
+  assert(!(await page.locator('body').innerText()).includes(secret))
+  assert(!(await page.evaluate(() => JSON.stringify(sessionStorage))).includes(secret))
+  await page.screenshot({ path: path.join(output, 'failed-overview.png'), fullPage: true })
+  failOverview = false
+  await page.getByRole('button', { name: '刷新状态', exact: true }).click()
+  await page.getByText('connection rejected', { exact: true }).waitFor()
+  await page.getByRole('button', { name: '收起', exact: true }).click()
+  await page.getByRole('button', { name: '打开数据源与凭证' }).click()
+  await selectDatasource('warehouse_two')
+  await page.getByText('connection rejected', { exact: true }).waitFor()
+  await assertNoCompletedOperations()
+  await page.screenshot({ path: path.join(output, 'failed-reopened.png'), fullPage: true })
+  bridge.test = originalTest
+  await selectDatasource('warehouse')
   await page.getByRole('button', { name: '删除已保存值', exact: true }).click()
   await page.getByRole('button', { name: '确认删除已保存值', exact: true }).click()
   await page.getByLabel('新值').waitFor({ timeout: 30000 })
@@ -227,12 +354,14 @@ try {
   await page
     .getByRole('button', { name: '保存并验证后继续', exact: true })
     .waitFor({ timeout: 30000 })
+  await assertPendingWorkspace()
   await page.getByLabel('新值').fill('unsubmitted')
   assert.equal(starts, 0)
   await page.reload()
   await page
     .getByRole('button', { name: '保存并验证后继续', exact: true })
     .waitFor({ timeout: 30000 })
+  await assertPendingWorkspace()
   assert.equal(await page.getByLabel('新值').inputValue(), '')
   assert.equal(starts, 0)
   await page.getByLabel('新值').fill(secret)
@@ -247,14 +376,34 @@ try {
   await page.getByText('验证完成，原调用继续', { exact: false }).first().waitFor({ timeout: 30000 })
   assert(!(await page.locator('body').innerText()).includes(secret))
   await page.setViewportSize({ width: 390, height: 844 })
+  await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true })
+  await page.getByRole('button', { name: '返回数据源管理', exact: true }).click()
+  await page.getByRole('button', { name: '测试连接', exact: true }).waitFor({ timeout: 30000 })
+  assert.equal(await page.getByLabel('Workspace', { exact: true }).inputValue(), 'workspace')
+  const navigation = page.getByRole('complementary', { name: '数据源导航' })
+  assert.equal(await navigation.getByRole('button', { name: /^选择数据源 / }).count(), 2)
+  await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: '返回数据源管理', exact: true }).count(), 0)
+  await assertNoHorizontalOverflow()
+  await page.screenshot({
+    path: path.join(output, 'returned-management-mobile.png'),
+    fullPage: true,
+  })
   assert.deepEqual(errors, [])
   const evidence = {
     browser: 'passed',
     managementSaveDelete: 'passed',
     lastTestFreshAndStale: 'passed',
     concurrentOperationsRecovery: 'passed',
+    completedOperationsRemovedAndStayRemoved: 'passed',
+    lastSuccessAndFailureSurviveReopen: 'passed',
+    failedValidationSupersedesOldSuccessWithoutOverview: 'passed',
+    savedChangesRemainVisibleAfterFailedValidation: 'passed',
+    sidebarEntryStyleConsistency: 'passed',
+    desktopMobileDarkWithoutHorizontalOverflow: 'passed',
     refreshRestoresPendingWithoutSecret: 'passed',
+    pendingWorkspaceAndReturnToManagement: 'passed',
     originalCallResumed: 'passed',
     originalPythonStartedOnce: 'passed',
     screenshots: output,
