@@ -28,14 +28,15 @@ export function registerMarivoPythonTool(
         code: {
           type: 'string',
           required: true,
-          description: 'Python code, never credential values.',
+          description:
+            'Python code, never credential values. Use try/finally for per-call Session resource cleanup; consult current Runtime Help for Session APIs.',
         },
         datasources: {
           type: 'array',
           required: true,
           items: { type: 'string' },
           description:
-            'Exact datasource names this execution may use; pass [] for work without datasource credentials.',
+            'All exact datasource names this execution may access through data or metadata connections, including inspection and datasources without passwords; pass [] only when no datasource will be accessed. Catalog-only definition reads need no datasource connection.',
         },
       },
       output: {

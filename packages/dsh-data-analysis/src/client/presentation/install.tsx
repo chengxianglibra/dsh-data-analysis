@@ -1,10 +1,13 @@
 // @ts-nocheck -- Host slot and hook contracts are supplied by DSH's runtime module table.
+
+import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   marivoPresentationDeliveryDefinition,
+  PRESENTATION_TURN_DATA_KEY,
   presentationDeliveryIdentity,
-  selectMarivoPresentations,
+  presentationsForNode,
 } from './delivery.ts'
 import { PresentationDeliveryModel } from './delivery-model.ts'
 import { HostPresentationReader } from './host-entry.tsx'
@@ -156,22 +159,32 @@ export function installPresentation(ctx, rpc) {
   const model = new PresentationDeliveryModel(rpc)
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: presentation reader lifecycle')
   ctx.on('connection/reset', () => model.resetConnection())
-  ctx.conversationEvents.register(marivoPresentationDeliveryDefinition)
-  ctx.slots.inject('conversation.chat.turnTail', () =>
-    ctx.slots.register(
-      { name: 'conversation.chat.turnTail', select: selectMarivoPresentations },
-      function Cards({ matched, sessionId, useWorkspaces }) {
+  ctx.slots.inject('conversation.chat.node', () => {
+    const disposeCards = ctx.slots.register(
+      { name: 'conversation.chat.node', key: PRESENTATION_TURN_DATA_KEY },
+      function Cards({
+        node,
+        sessionId,
+        useWorkspaces,
+      }: ChatNodeViewProps<typeof PRESENTATION_TURN_DATA_KEY>) {
         return (
           <PresentationCards
-            matched={matched}
+            matched={presentationsForNode(node, sessionId)}
             sessionId={sessionId}
             workspaces={useWorkspaces((state) => state.items)}
             model={model}
           />
         )
       },
-    ),
-  )
+    )
+    // A new Definition can immediately replay existing events. Its keyed renderer
+    // must already exist, including when the Host declares this slot after us.
+    const disposeDefinition = ctx.conversationEvents.register(marivoPresentationDeliveryDefinition)
+    return () => {
+      disposeDefinition()
+      disposeCards()
+    }
+  })
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
       { name: 'shell.overlay', id: 'marivo-presentation' },

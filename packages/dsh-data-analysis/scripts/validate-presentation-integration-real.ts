@@ -27,7 +27,11 @@ const agentEvidencePath = arguments_[0] === '--agent' ? path.resolve(arguments_[
 const agentEvidence = agentEvidencePath
   ? JSON.parse(await readFile(agentEvidencePath, 'utf8'))
   : undefined
-if (agentEvidence) assert.equal(agentEvidence.status, 'passed')
+if (agentEvidence)
+  assert.ok(
+    ['passed', 'passed-awaiting-semantic-review'].includes(agentEvidence.status),
+    'Use successful execution evidence; Web validation does not certify semantic conclusions',
+  )
 const outputRoot = await realpath(
   resume ?? (await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s4-real-'))),
 )
@@ -52,7 +56,11 @@ const inputs: Pick<
 (agentEvidence
   ? {
       binding: agentEvidence.binding,
-      draftPaths: agentEvidence.draftPaths,
+      draftPaths: agentEvidence.draftPaths.map((draft: string) => {
+        const relative = path.relative(workspaceRoot, path.resolve(workspaceRoot, draft))
+        assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+        return relative
+      }),
       generated: { agentEvidencePath, draftSha256: agentEvidence.draftSha256 },
     }
   : await preparePresentationInputs(workspaceRoot, pythonExecutable))
@@ -88,6 +96,9 @@ const server = await startPresentationWebHost(
 let browser: Browser | undefined, page: Page | undefined
 const errors: string[] = []
 const checks: Record<string, unknown>[] = []
+// Turn 1 has only pre-tool prose: its native closing boundary precedes the
+// produced file. The report node must appear even though that tail stays empty.
+const expectedProducedRows = Math.max(0, inputs.draftPaths.length - 1)
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 async function verifyReader(target: Page, document: PresentationDocument, staticMode = false) {
   const reader = target.locator(
@@ -140,6 +151,9 @@ try {
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
   await page.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
   assert.equal(await page.locator('[data-presentation-card]').count(), inputs.draftPaths.length)
+  const producedFiles = page.locator('[data-produced-files-row]')
+  assert.equal(await producedFiles.count(), expectedProducedRows)
+  assert.ok((await producedFiles.allTextContents()).every((text) => text.includes('s4-produced-')))
   await page.setViewportSize({ width: 1440, height: 1800 })
   await page.locator('[data-presentation-card]').first().scrollIntoViewIfNeeded()
   await page.screenshot({ path: path.join(outputRoot, 'cards-overview.png'), fullPage: true })
@@ -245,8 +259,48 @@ try {
     workspaceDetachRejected: workspace.error.message,
     reattachRestoresAccess: true,
     duplicatePersistedEventCards: inputs.draftPaths.length,
+    coexistingProducedFilesRows: await page.locator('[data-produced-files-row]').count(),
     reconnect: true,
   })
+  const reversed = await startPresentationWebHost(
+    workspaceRoot,
+    await mkdtemp(path.join(outputRoot, 'web-reversed-')),
+    pythonExecutable,
+    inputs.draftPaths,
+    'report-first',
+  )
+  try {
+    const reversedContext = await browser.newContext()
+    const reversedPage = await reversedContext.newPage()
+    await reversedPage.goto(reversed.url)
+    await reversedPage.getByRole('button', { name: '继续', exact: true }).click({ timeout: 45_000 })
+    await reversedPage.getByText('内测声明', { exact: true }).waitFor({ state: 'hidden' })
+    const notice = reversedPage.getByRole('button', { name: '稍后配置', exact: true })
+    if (await notice.isVisible()) await notice.click()
+    await reversedPage.getByText('S4 production Tool delivery', { exact: true }).first().click()
+    await reversedPage.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
+    assert.equal(
+      await reversedPage.locator('[data-presentation-card]').count(),
+      inputs.draftPaths.length,
+    )
+    assert.equal(
+      await reversedPage.locator('[data-produced-files-row]').count(),
+      expectedProducedRows,
+    )
+    assert.equal(await reversedPage.evaluate(() => (window as any).__s4ClientOrder), 'report-first')
+    await reversedPage.screenshot({
+      path: path.join(outputRoot, 'reversed-client-order.png'),
+      fullPage: true,
+    })
+    checks.push({
+      clientOrder: reversed.clientOrder,
+      reportCards: inputs.draftPaths.length,
+      producedFilesRows: expectedProducedRows,
+    })
+    await reversedContext.close()
+  } finally {
+    await reversed.stop()
+  }
   assert.deepEqual(errors, [])
   const evidence = {
     status: 'passed',

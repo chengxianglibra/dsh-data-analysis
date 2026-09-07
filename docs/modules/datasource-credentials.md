@@ -20,7 +20,15 @@ Workspace 绑定、管理页面、等待中的调用和单次执行注入。上�
 
 - `marivo_datasource_test({ name })`：执行真实 `md.test()`，同步管理页的 `lastTest/stale`。
 - `marivo_python({ code, datasources })`：在本次调用内准备全部精确 datasource，再执行一次前台 Python。
-  无数据源代码可传空列表，仍安装拒绝未声明凭证请求的 resolver。
+  声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；完全不访问数据源时才传空列表，
+  仍安装拒绝未声明凭证请求的 resolver。
+
+`marivo-analysis` 或 `marivo-semantic` 激活后均披露此执行接缝，提示在一次调用内创建/恢复 Session，
+并在 `try/finally` 中显式 `session.close()`。插件不接管 Session 生命周期，也不拦截 Agent 代码。
+这里关闭的是本次独立 Python 进程中的资源，不是结束分析问题或删除持久 Artifacts；后续调用继续恢复
+同一 Session 身份。未显式关闭属于清理约定偏差，须结合子进程退出边界判断，不能直接推断分析错误或泄漏。
+分析激活后另有简短收尾提示，普通文字回答也须逐项回应用户问题与比较范围，保留未完成分支。
+分析语义、执行流程和 Artifact 复用指导仍由当前 Runtime Skill 与 Help 提供，插件不补写这类规则。
 
 默认 `credentialInteraction: 'web'`。缺失配置时，根 Agent 的 test/python 保持原调用等待，并在会话标题
 显示待办入口。用户提交后先保存，再测试；成功继续原调用。测试失败保持表单，可修改后重试，或把 Marivo

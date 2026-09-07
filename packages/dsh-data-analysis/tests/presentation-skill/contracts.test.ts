@@ -37,6 +37,13 @@ async function drafts(): Promise<PresentationDraft[]> {
   )
 }
 
+async function computedExample(relativePath: string) {
+  assert.equal(path.dirname(relativePath), 'presentation-example')
+  return parseTypedDataset(
+    JSON.parse(await readFile(path.join(examplesRoot, path.basename(relativePath)), 'utf8')),
+  )
+}
+
 test('presentation Skill resources are reachable within the shipped folder and stay bounded', async () => {
   const entrypoint = path.join(skillRoot, 'SKILL.md')
   const allFiles = (await files(skillRoot)).sort()
@@ -69,9 +76,6 @@ test('presentation Skill resources are reachable within the shipped folder and s
 
 test('all presentation draft examples validate with production draft and document parsers', async () => {
   const examples = await drafts()
-  const computed = parseTypedDataset(
-    JSON.parse(await readFile(path.join(examplesRoot, 'computed.dataset.json'), 'utf8')),
-  )
   const artifactFixture = parsePresentationDocument(
     JSON.parse(
       await readFile(
@@ -98,12 +102,17 @@ test('all presentation draft examples validate with production draft and documen
               reason: 'Tutorial identity has not been resolved.',
             },
       ),
-      datasets: draft.datasets.map((dataset) => ({
-        id: dataset.id,
-        origin: dataset.kind,
-        data: dataset.kind === 'computed' ? computed : artifactFixture.datasets[0]!.data,
-        sourceIds: dataset.kind === 'computed' ? dataset.sourceIds : [dataset.sourceId],
-      })),
+      datasets: await Promise.all(
+        draft.datasets.map(async (dataset) => ({
+          id: dataset.id,
+          origin: dataset.kind,
+          data:
+            dataset.kind === 'computed'
+              ? await computedExample(dataset.path)
+              : artifactFixture.datasets[0]!.data,
+          sourceIds: dataset.kind === 'computed' ? dataset.sourceIds : [dataset.sourceId],
+        })),
+      ),
       blocks: draft.blocks,
       diagnostics: [],
     })
@@ -132,27 +141,31 @@ test('all presentation draft examples validate with production draft and documen
   }
 })
 
-test('the runnable Python example writes the documented typed data at each draft computed path', async (t) => {
+test('runnable Python examples write the documented typed data at every draft computed path', async (t) => {
   const workspace = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-presentation-skill-')))
   t.after(() => rm(workspace, { recursive: true, force: true }))
-  const result = spawnSync(
-    'uv',
-    [
-      'run',
-      '--project',
-      path.join(packageRoot, 'python', 'presentation-kit'),
-      '--frozen',
-      'python',
-      path.join(examplesRoot, 'write-computed.py'),
-    ],
-    { cwd: workspace, encoding: 'utf8', timeout: 60_000 },
-  )
-  if (result.error) throw result.error
-  assert.equal(result.status, 0, result.stderr || result.stdout)
-  const receipt = JSON.parse(result.stdout)
-  const expected = parseTypedDataset(
-    JSON.parse(await readFile(path.join(examplesRoot, 'computed.dataset.json'), 'utf8')),
-  )
+  const receipts = new Map<string, Record<string, unknown>>()
+  for (const script of (await files(examplesRoot)).filter((file) => file.endsWith('.py'))) {
+    const result = spawnSync(
+      'uv',
+      [
+        'run',
+        '--project',
+        path.join(packageRoot, 'python', 'presentation-kit'),
+        '--frozen',
+        'python',
+        script,
+      ],
+      { cwd: workspace, encoding: 'utf8', timeout: 60_000 },
+    )
+    if (result.error) throw result.error
+    assert.equal(result.status, 0, result.stderr || result.stdout)
+    const output = JSON.parse(result.stdout)
+    for (const receipt of Array.isArray(output) ? output : [output]) {
+      assert.equal(receipts.has(receipt.path), false, `Duplicate output: ${receipt.path}`)
+      receipts.set(receipt.path, receipt)
+    }
+  }
   const paths = new Set(
     (await drafts()).flatMap((draft) =>
       draft.datasets.flatMap((dataset) => (dataset.kind === 'computed' ? [dataset.path] : [])),
@@ -163,7 +176,9 @@ test('the runnable Python example writes the documented typed data at each draft
     const outputPath = path.join(workspace, relativePath)
     const raw = await readFile(outputPath, 'utf8')
     const actual = parseTypedDataset(JSON.parse(raw))
-    assert.deepEqual(actual, expected)
+    assert.deepEqual(actual, await computedExample(relativePath))
+    const receipt = receipts.get(outputPath)
+    assert.ok(receipt, `No writer receipt for ${relativePath}`)
     assert.equal(receipt.path, outputPath)
     assert.equal(receipt.bytes, Buffer.byteLength(raw))
     assert.equal(receipt.row_count, actual.rowCount)
@@ -171,4 +186,62 @@ test('the runnable Python example writes the documented typed data at each draft
     assert.equal(receipt.limit, actual.limit)
     assert.equal(receipt.truncated, actual.truncated)
   }
+  assert.equal(receipts.size, paths.size)
+})
+
+test('the comparison example reconciles selected decreases with the full baseline and other net change', async () => {
+  const full = await computedExample('presentation-example/comparison.dataset.json')
+  const selected = await computedExample('presentation-example/comparison-selected.dataset.json')
+  const summary = await computedExample('presentation-example/comparison-summary.dataset.json')
+  const draft = parsePresentationDraft(
+    JSON.parse(await readFile(path.join(examplesRoot, 'comparison.draft.json'), 'utf8')),
+  )
+  const values = (data: typeof full, columnId: string) => {
+    const index = data.columns.findIndex((column) => column.id === columnId)
+    assert.notEqual(index, -1, columnId)
+    return data.rows.map((row) => Number(row[index]))
+  }
+  const sum = (numbers: number[]) => numbers.reduce((total, number) => total + number, 0)
+  const baseline = values(full, 'baseline')
+  const current = values(full, 'current')
+  const delta = values(full, 'delta_current_minus_baseline')
+  assert.deepEqual(baseline, [100, 80, 20])
+  assert.deepEqual(current, [50, 50, 50])
+  assert.deepEqual(
+    delta,
+    current.map((value, index) => value - baseline[index]!),
+  )
+  assert.equal(sum(delta), -50)
+  assert.equal(sum(delta) / sum(baseline), -0.25)
+
+  assert.equal(selected.rowCount, 2)
+  assert.equal(selected.truncated, false)
+  assert.equal(full.rowCount, 3)
+  assert.deepEqual(
+    selected.rows.map((row) => row[0]),
+    ['A', 'B'],
+  )
+  const decreases = values(selected, 'decrease_baseline_minus_current')
+  const selectedDelta = values(selected, 'delta_current_minus_baseline')
+  assert.deepEqual(
+    decreases,
+    selectedDelta.map((value) => -value),
+  )
+  assert.equal(sum(decreases), 80)
+  const summaryDelta = values(summary, 'delta_current_minus_baseline')
+  assert.deepEqual(values(summary, 'baseline'), [200, 180, 20])
+  assert.deepEqual(values(summary, 'current'), [150, 100, 50])
+  assert.deepEqual(summaryDelta, [-50, -80, 30])
+  assert.equal(summaryDelta[0], summaryDelta[1]! + summaryDelta[2]!)
+
+  const chart = draft.blocks.find((block) => block.kind === 'chart')
+  assert.ok(chart && chart.kind === 'chart')
+  assert.equal(chart.datasetId, 'selected')
+  assert.equal(chart.x, 'category')
+  assert.deepEqual(chart.y, ['decrease_baseline_minus_current'])
+  const metric = draft.blocks.find((block) => block.kind === 'metric')
+  assert.ok(metric && metric.kind === 'metric')
+  assert.equal(metric.datasetId, 'summary')
+  assert.equal(metric.columnId, 'delta_current_minus_baseline')
+  assert.equal(metric.rowIndex, 0)
 })

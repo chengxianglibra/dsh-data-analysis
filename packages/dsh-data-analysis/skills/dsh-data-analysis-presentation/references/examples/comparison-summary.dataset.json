@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    { "id": "scope", "label": "scope", "type": "string", "nullable": false },
+    { "id": "baseline", "label": "baseline", "type": "int64", "nullable": false },
+    { "id": "current", "label": "current", "type": "int64", "nullable": false },
+    {
+      "id": "delta_current_minus_baseline",
+      "label": "delta_current_minus_baseline",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "rows": [
+    ["全量", "200", "150", "-50"],
+    ["选中 A、B", "180", "100", "-80"],
+    ["其他 C", "20", "50", "30"]
+  ],
+  "rowCount": 3,
+  "limit": 5000,
+  "truncated": false
+}

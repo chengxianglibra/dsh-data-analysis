@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type {
+  ConversationLocation,
+  ConversationMatch,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import {
   marivoPresentationDeliveryDefinition as definition,
   parsePresentationDurableContent,
   presentationDeliveryFromEvent,
-  presentationsForClosing,
-  selectMarivoPresentations,
+  presentationsForNode,
 } from '../../src/client/presentation/delivery.ts'
 import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
+import { createHostChatFixture } from './host-client-fixture.ts'
 
 function delivery(buildId = 'build-a', sessionId = 'session-a', turn = 3): PresentationDelivery {
   return {
@@ -139,13 +143,79 @@ test('receipts require successful own-Turn call correlation and cannot cross Nat
   )
 })
 
-test('Turn publication deduplicates receipt events, preserves independent builds, and filters exact Session and Turn end', () => {
+function initialState() {
   let state = definition.start({}, { event: { type: 'turn/start', data: { turn: 3 } } })
   for (const [callId, name] of calls)
     state = definition.update(
       { state },
       { event: { type: 'tool/call', data: { turn: 3, callId, name } } },
     )
+  return state
+}
+
+function view(
+  state: ReturnType<typeof initialState>,
+  end?: { seq: number; turn?: number; reason?: string },
+  locationOverride?: ConversationLocation,
+) {
+  const start = { type: 'turn/start', seq: 1, data: { turn: 3 } } as ConversationMatch['event']
+  const location: ConversationLocation = locationOverride ?? {
+    kind: 'turn',
+    turn: {
+      turn: 3,
+      start: undefined,
+      end: end
+        ? ({
+            type: 'turn/end',
+            seq: end.seq,
+            data: { turn: end.turn ?? 3, reason: end.reason },
+          } as ConversationMatch['event'] & { type: 'turn/end' })
+        : undefined,
+      status: end ? 'closed' : 'open',
+      steps: [],
+      data: { get: () => undefined },
+    },
+  }
+  return definition.buildViewNode({
+    key: 'marivo-presentation-delivery:3',
+    kind: definition.kind,
+    id: '3',
+    matches: [],
+    current: new Map(),
+    start: { event: start, view: undefined, role: 'start', location },
+    state,
+  })
+}
+
+const builds = (node: NonNullable<ReturnType<typeof view>>, sessionId = 'session-a') =>
+  Array.from(presentationsForNode(node, sessionId), (item) => item.receipt.buildId)
+
+test('an independent Chat node appears at the first successful receipt before any final text or Turn end', () => {
+  let state = initialState()
+  assert.equal(definition.target, 'chat')
+  assert.equal(view(state), null)
+  const failed = native()
+  failed.data.message.content[0]!.isError = true
+  state = definition.update({ state }, { event: failed })
+  assert.equal(view(state), null)
+  state = definition.update({ state }, { event: native(delivery('first'), 20) })
+  const first = view(state)!
+  assert.equal(first.kind, definition.kind)
+  assert.equal(first.visibility, 'visible')
+  assert.equal(first.anchorSeq, 20)
+  assert.deepEqual(builds(first), ['first'])
+  state = definition.update({ state }, { event: code(delivery('second'), 30) })
+  const second = view(state)!
+  assert.equal(second.key, first.key)
+  assert.equal(second.id, first.id)
+  assert.equal(second.anchorSeq, first.anchorSeq)
+  assert.deepEqual(builds(second), ['first', 'second'])
+  assert.equal(view(state, undefined, { kind: 'unresolved' }), null)
+  assert.equal(view(state, undefined, { kind: 'session' }), null)
+})
+
+test('Turn publication deduplicates Native and Code receipts and filters exact Session and Host Turn boundary', () => {
+  let state = initialState()
   for (const event of [
     native(),
     code(),
@@ -155,38 +225,13 @@ test('Turn publication deduplicates receipt events, preserves independent builds
   ])
     state = definition.update({ state }, { event })
   assert.equal(state.deliveries.length, 3)
+  assert.deepEqual(builds(view(state)!), ['build-a', 'build-b'])
+  assert.deepEqual(builds(view(state, { seq: 25 })!), ['build-a'])
+  assert.deepEqual(builds(view(state, { seq: 19 })!), [])
+  assert.deepEqual(builds(view(state)!, 'session-c'), [])
+  assert.deepEqual(builds(view(state, { seq: 40, turn: 4 })!), [])
   const location = definition.buildLocationData({ state }, 'turn')!
-  const owner = {
-    seq: 40,
-    turn: {
-      turn: 3,
-      end: { type: 'turn/end', seq: 40, data: { turn: 3 } },
-      data: { get: () => location.value },
-    },
-  }
-  assert.deepEqual(
-    presentationsForClosing(owner, 'session-a').map((item) => item.receipt.buildId),
-    ['build-a', 'build-b'],
-  )
-  assert.deepEqual(
-    presentationsForClosing(
-      { ...owner, turn: { ...owner.turn, end: { ...owner.turn.end, seq: 25 } } },
-      'session-a',
-    ).map((item) => item.receipt.buildId),
-    ['build-a'],
-  )
-  assert.deepEqual(presentationsForClosing(owner, 'session-c'), [])
-  assert.equal(
-    selectMarivoPresentations({
-      ...owner,
-      turn: { ...owner.turn, end: { ...owner.turn.end, seq: 19 } },
-    }),
-    null,
-  )
-  assert.deepEqual(
-    presentationsForClosing({ ...owner, turn: { ...owner.turn, turn: 4 } }, 'session-a'),
-    [],
-  )
+  assert.deepEqual(location.value, view(state)!.data)
   assert.equal(definition.buildLocationData({ state }, 'step'), null)
   const previous = state
   state = definition.update(
@@ -197,41 +242,149 @@ test('Turn publication deduplicates receipt events, preserves independent builds
   assert.equal(state.calls.has('foreign-code'), false)
 })
 
-test('successful Native and discarded Code receipts remain visible after pre-tool text and an empty, failed, or cancelled ending', () => {
+test('successful Native and discarded Code receipts survive later tool failure, empty completion, and cancellation', () => {
   for (const reason of ['stop', 'error', 'cancelled']) {
-    let state = definition.start({}, { event: { type: 'turn/start', data: { turn: 3 } } })
-    for (const [callId, name] of calls)
-      state = definition.update(
-        { state },
-        { event: { type: 'tool/call', data: { turn: 3, callId, name } } },
-      )
+    let state = initialState()
     state = definition.update({ state }, { event: native(delivery('native-saved'), 20) })
     state = definition.update({ state }, { event: code(delivery('code-discarded-return'), 21) })
-    const location = definition.buildLocationData({ state }, 'turn')!
-    // Host anchors the Turn tail to the earlier nonempty Assistant message.
-    // The later request can end with no text while the successful deliveries survive.
-    const owner = {
-      seq: 10,
-      turn: {
-        turn: 3,
-        end: { type: 'turn/end', seq: 30, data: { turn: 3, reason } },
-        data: { get: () => location.value },
+    const first = view(state)!
+    const failed = native(delivery('failed'), 25)
+    failed.data.message.content[0]!.isError = true
+    state = definition.update({ state }, { event: failed })
+    state = definition.update(
+      { state },
+      {
+        event: { ...code(delivery('failed-code'), 26), data: { ...code().data, isError: true } },
       },
+    )
+    const closed = view(state, { seq: 30, reason })!
+    assert.equal(closed.key, first.key)
+    assert.equal(closed.anchorSeq, 20)
+    assert.deepEqual(builds(closed), ['native-saved', 'code-discarded-return'])
+    assert.deepEqual(builds(closed, 'session-b'), [])
+    assert.equal(definition.match({ type: 'turn/end', data: { turn: 3, reason } }), null)
+  }
+})
+
+test('rebuilding from history or reconnecting preserves one node and receipt order', () => {
+  const events = [native(delivery('a'), 20), code(delivery('b'), 21), native(delivery('a'), 22)]
+  const replay = () => {
+    let state = initialState()
+    for (const event of events) state = definition.update({ state }, { event })
+    return view(state, { seq: 30 })!
+  }
+  const before = replay()
+  for (let count = 0; count < 3; count++) {
+    const after = replay()
+    assert.equal(after.key, before.key)
+    assert.equal(after.anchorSeq, before.anchorSeq)
+    assert.deepEqual(after.data, before.data)
+    assert.deepEqual(builds(after), ['a', 'b'])
+    assert.deepEqual(builds(after, 'session-b'), [])
+    assert.deepEqual(builds(after, 'session-a'), ['a', 'b'])
+  }
+})
+
+test('unchanged Host registries keep ProducedFiles and independent report nodes in either plugin order', async (t) => {
+  for (const order of [
+    ['native', 'presentation'],
+    ['presentation', 'native'],
+  ]) {
+    const host = await createHostChatFixture(order)
+    t.after(() => host.dispose())
+    const assembler = host.createAssembler()
+    const write = native(undefined, 5)
+    write.data.message.source.callId = 'write-call'
+    write.data.message.content[0]!.toolCallId = 'write-call'
+    const inputs = [
+      { event: { seq: 1, type: 'turn/start', data: { turn: 3 } } },
+      { event: { seq: 2, type: 'step/start', data: { turn: 3, step: 1 } } },
+      {
+        event: {
+          seq: 4,
+          type: 'tool/call',
+          data: { turn: 3, step: 1, callId: 'write-call', name: 'write', args: '{}' },
+        },
+        view: {
+          for: 'call',
+          view: { card: 'diff', locations: [{ path: '/workspace/draft.json' }] },
+        },
+      },
+      { event: write },
+      {
+        event: {
+          seq: 10,
+          type: 'tool/call',
+          data: { turn: 3, step: 1, callId: 'present-call', name: 'marivo_present', args: '{}' },
+        },
+      },
+      { event: native() },
+      {
+        event: {
+          seq: 22,
+          type: 'tool/call',
+          data: { turn: 3, step: 1, callId: 'code-call', name: 'run_code', args: '{}' },
+        },
+      },
+      { event: code(delivery('build-b'), 25) },
+      { event: native(delivery(), 26) },
+    ]
+    const reports = () => {
+      const snapshot = assembler.snapshot('chat')
+      return snapshot.order
+        .map((key: string) => snapshot.nodes.get(key))
+        .filter((node: { kind: string }) => node.kind === definition.kind)
     }
+    for (const input of inputs) {
+      assembler.append(input)
+      assembler.flush()
+      if (input.event.seq < 20) assert.equal(reports().length, 0)
+      else assert.equal(reports().length, 1, `one report node after receipt seq ${input.event.seq}`)
+    }
+    const first = reports()[0]
+    assert.equal(first.anchorSeq, 20)
+    assert.deepEqual(builds(first), ['build-a', 'build-b'])
+    const closing = { event: { seq: 30, type: 'turn/end', data: { turn: 3, reason: 'cancelled' } } }
+    assembler.append(closing)
+    assembler.flush()
+    const snapshot = assembler.snapshot('chat')
+    const tails = host.slots.entries('conversation.chat.turnTail')
+    // Native owns its original exclusive chain; report rendering has its own keyed seat.
+    assert.equal(tails.length, 1)
     assert.deepEqual(
-      presentationsForClosing(owner, 'session-a').map((item) => item.receipt.buildId),
-      ['native-saved', 'code-discarded-return'],
+      Array.from(tails[0].select({ turn: snapshot.timeline.turns.get(3), seq: 30 })),
+      ['/workspace/draft.json'],
     )
-    assert.equal(selectMarivoPresentations(owner)?.length, 2)
-    assert.deepEqual(presentationsForClosing(owner, 'session-b'), [])
+    const renderer = host.slots
+      .entries('conversation.chat.node')
+      .find((entry: { options: { key: string } }) => entry.options.key === definition.kind)
+    assert.ok(renderer)
+    const element = renderer.component({
+      node: reports()[0],
+      sessionId: 'session-a',
+      useWorkspaces: () => [],
+    })
     assert.deepEqual(
-      presentationsForClosing({ ...owner, turn: { ...owner.turn, turn: 4 } }, 'session-a'),
-      [],
+      Array.from(element.props.matched, (item: PresentationDelivery) => item.receipt.buildId),
+      ['build-a', 'build-b'],
     )
-    assert.equal(
-      presentationsForClosing({ ...owner, turn: { ...owner.turn, end: undefined } }, 'session-a')
-        .length,
-      2,
-    )
+    const foreign = renderer.component({
+      node: reports()[0],
+      sessionId: 'session-b',
+      useWorkspaces: () => [],
+    })
+    assert.equal(foreign.props.matched.length, 0)
+    for (const replay of [
+      () => assembler.replaceWindow([...inputs, closing], false),
+      () => assembler.rebuildRegistry(),
+      () => assembler.replaceWindow([...inputs, closing], false),
+    ]) {
+      replay()
+      assembler.flush()
+      assert.equal(reports().length, 1)
+      assert.equal(reports()[0].key, first.key)
+      assert.equal(reports()[0].anchorSeq, first.anchorSeq)
+      assert.deepEqual(builds(reports()[0]), ['build-a', 'build-b'])
+    }
   }
 })

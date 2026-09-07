@@ -20,6 +20,14 @@
 
 一个成功的 `marivo_present` 已完成 reader 与离线 HTML 构建；根据 receipt 交付，不能把示例数据解释成用户的真实业务结论。
 
+## 比较与抵消项
+
+[write-comparison.py](examples/write-comparison.py) 使用完整演示数据：baseline `[100, 80, 20]`、current `[50, 50, 50]`。它仅演示已有数据的展示，不是业务分析流程。可用 `datasources: []` 运行；写出路径与[比较草稿](examples/comparison.draft.json)一致。
+
+完整[明细](examples/comparison.dataset.json)保留三项原值与 `current - baseline` 的差值 `[-50, -30, +30]`；[Top 2 数据](examples/comparison-selected.dataset.json)按减少量降序预选 A、B，writer 收到两行，因此 `rowCount: 2` 且 `truncated: false`。[汇总](examples/comparison-summary.dataset.json)保留全量、选中项、其他项的两侧原值与净差。
+
+草稿的正文、图和表统一变化方向：全量 200 → 150，净变化 -50（以 baseline 总量 200 为分母，-25%）；两项减少量 80，其他项增加 30，抵消后净减少 50。80 / 50 = 160% 是选中减少量与全量净减少的比值，不能称为覆盖率。示例只证明数值关系，没有原因或联合关系证据。
+
 ## 仅展示来源
 
 [source-only.draft.json](examples/source-only.draft.json) 的 datasets 为空，直接用 source block。替换精确引用后提交即可；无须生成 computed 文件、图或虚构单值。

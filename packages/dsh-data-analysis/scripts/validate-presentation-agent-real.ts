@@ -1,4 +1,4 @@
-/** S5 autonomous real-model journey against an actual npm tarball in an isolated profile. */
+/** Real model journeys against the packed plugin in isolated Workspaces and Harness profiles. */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -37,18 +37,31 @@ import {
   installConnectionFixture,
   installStorage,
 } from '../tests/semantic-reference-input/fixtures.ts'
+import {
+  type Journey,
+  journeys,
+  seedProgram,
+  workspaceFiles,
+} from './presentation-agent-real/fixtures.ts'
+import {
+  assessLifecycle,
+  type RuntimeObservation,
+  verifyReport,
+} from './presentation-agent-real/verify.ts'
 import { actualDeliveries } from './presentation-s4/host.ts'
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const repositoryRoot = path.resolve(packageRoot, '../..')
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
 assert.ok(pythonExecutable, 'Set DSH_DATA_ANALYSIS_PYTHON to a verified isolated Marivo Runtime')
-const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-flash'
+const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-pro'
+const effort = process.env.DSH_DATA_ANALYSIS_VALIDATION_EFFORT ?? 'high'
+assert.ok(['off', 'low', 'high', 'max'].includes(effort), 'Unsupported DeepSeek reasoning effort')
+const reasoningEffort = effort as 'off' | 'low' | 'high' | 'max'
+const turnDeadlineMs = Number(process.env.DSH_DATA_ANALYSIS_VALIDATION_TURN_TIMEOUT_MS ?? 1_200_000)
+assert.ok(Number.isSafeInteger(turnDeadlineMs) && turnDeadlineMs > 0)
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s5-agent-')))
-const workspaceRoot = path.join(outputRoot, 'workspace')
-const profileRoot = path.join(outputRoot, 'isolated-profile')
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-const ctx = new Context()
 let modelSecret = ''
 const redact = (text: string) => (modelSecret ? text.replaceAll(modelSecret, '[REDACTED]') : text)
 const save = (name: string, value: unknown) =>
@@ -134,41 +147,21 @@ async function installPackedPlugin() {
   }
 }
 
-/** Seed only business data and semantic declarations: no analysis, draft or receipt exists yet. */
-async function prepareWorkspace() {
-  const files = {
-    'marivo.toml': '[project]\nname = "s5-autonomous-sales"\n',
-    'models/datasources/warehouse.py':
-      'import marivo.datasource as md\nmd.duckdb(name="warehouse", path="warehouse.duckdb")\n',
-    'models/semantic/sales/__init__.py': '',
-    'models/semantic/sales/_domain.py':
-      'import marivo.semantic as ms\nms.domain(name="sales", owner="S5 validation")\n',
-    'models/semantic/sales/objects.py': [
-      'import marivo.datasource as md',
-      'import marivo.semantic as ms',
-      'orders = ms.entity(name="orders", datasource=ms.ref.datasource("warehouse"), source=md.table("orders"))',
-      'region = ms.dimension_column(name="region", entity=orders, column="region")',
-      '@ms.metric(entities=[orders], additivity="additive", name="revenue", unit="USD")',
-      'def revenue(orders): return orders.amount.sum()',
-      '',
-    ].join('\n'),
-  }
-  for (const [relative, contents] of Object.entries(files)) {
+async function prepareWorkspace(journey: Journey, workspaceRoot: string) {
+  for (const [relative, contents] of Object.entries(workspaceFiles(journey))) {
     const filename = path.join(workspaceRoot, relative)
     await mkdir(path.dirname(filename), { recursive: true })
     await writeFile(filename, contents)
   }
   const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
-  const setup = await environment.runChecked({
-    program: [
-      'import duckdb',
-      'connection = duckdb.connect("warehouse.duckdb")',
-      'connection.execute("CREATE TABLE orders (region VARCHAR, amount DOUBLE)")',
-      "connection.execute(\"INSERT INTO orders VALUES ('华东', 120.0), ('华东', 80.0), ('华南', 75.0), ('华南', 25.0), ('华北', 40.0), ('华北', 10.0)\")",
-      'connection.close()',
-    ].join('\n'),
-  })
+  const setup = await environment.runChecked({ program: seedProgram(journey) })
   assert.equal(setup.exitCode, 0, setup.stderr.toString('utf8'))
+  await save(`${journey.id}/fixture.json`, {
+    files: workspaceFiles(journey),
+    seedProgram: seedProgram(journey),
+    binding: environment.binding,
+    readiness: setup.stdout.toString('utf8'),
+  })
   return environment.binding
 }
 
@@ -198,295 +191,449 @@ function summarizeCalls(events: readonly SessionEvent[]) {
   })
 }
 
-try {
-  const credential = await discoverModelCredential()
-  modelSecret = credential.value
-  const packed = await installPackedPlugin()
-  const binding = await prepareWorkspace()
-  await mkdir(profileRoot, { recursive: true, mode: 0o700 })
-  ctx.provide(
-    'launchEnvironment',
-    createLaunchEnvironmentSnapshot([
-      { source: 'process', values: { DEEPSEEK_API_KEY: modelSecret } },
-    ]),
-  )
-  installConnectionFixture(ctx)
-  await installStorage(ctx, path.join(profileRoot, 'storage'))
-  await ctx.plugin(LlmRuntime)
-  await ctx.plugin(LocalCredentialProvider, { dshHome: profileRoot, watch: false })
-  assert.equal((await ctx.credentials.describe(credentialRef('DEEPSEEK_API_KEY'))).configured, true)
-  await ctx.plugin(DeepSeek, {
-    thinking: 'disabled',
-    reasoningEffort: 'off',
-    maxTokens: 8192,
-    streamIdleTimeoutMs: 120_000,
-    models: [{ id: model, contextWindow: 128_000, maxTokens: 8192 }],
-  })
-  await ctx.plugin(SessionStore)
-  await ctx.plugin(JsonlSessionPersistence, {
-    root: path.join(profileRoot, 'sessions'),
-    compression: 'none',
-    packChunks: false,
-  })
-  await ctx.plugin(WorkspaceRegistry)
-  await ctx.plugin(SkillRuntime)
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ShellEnv, { dshHome: profileRoot })
-  await ctx.plugin(SubprocessLocal)
-  await ctx.plugin(BashLocal, { cwd: workspaceRoot, timeoutMs: 120_000, maxOutputBytes: 65_536 })
-  await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
-  await ctx.plugin(ToolRuntime)
-  await ctx.plugin(AgentRegistry)
-  await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
-  await ctx.plugin(SkillTool)
-  await ctx.plugin(FilesystemTools)
-  await ctx.plugin(packed.module, {
-    pythonExecutable,
-    runtimeRoot: path.join(profileRoot, 'runtime-marker'),
-    credentialInteraction: 'none',
-  })
-  ctx.systemPrompt.section({
-    name: 's5-validation-workspace',
-    order: 10,
-    text: `You are working in the isolated Workspace ${workspaceRoot}. Complete the user's task autonomously using available skills and tools. Read and write task data only in this Workspace; packaged skill resources may be read at their declared resource bases. Never inspect user profiles or credentials. The Workspace already contains a local warehouse datasource and sales semantic definitions. No user confirmation is needed for this isolated analysis.`,
-  })
-  const workspace = await ctx.workspaceRegistry.create(workspaceRoot, 'S5 autonomous sales')
-  const sessionId = SessionId(`presentation-s5-${Date.now().toString(36)}`)
-  const agent = ctx.agentLoop.create(
-    sessionId,
-    { provider: 'deepseek-official', model, maxTokens: 8192 },
-    { cwd: workspace.path },
-  )
-  await workspace.attachSession(sessionId)
-  const tools = ctx.tools.schemas(agent)
-  const pluginTools = tools
-    .filter((tool) => tool.name.startsWith('marivo_'))
-    .map((tool) => tool.name)
-    .sort()
-  assert.deepEqual(pluginTools, [
-    'marivo_datasource_test',
-    'marivo_help',
-    'marivo_present',
-    'marivo_python',
-  ])
-  const skills = await ctx.skills.list({ cwd: workspaceRoot, scope: agent })
-  assert.deepEqual(skills.map((skill) => skill.name).sort(), [
-    'dsh-data-analysis-presentation',
-    'marivo-analysis',
-    'marivo-semantic',
-  ])
-  const presentationSkill = await ctx.skills.get('dsh-data-analysis-presentation', {
-    cwd: workspaceRoot,
-    scope: agent,
-  })
-  assert.equal(presentationSkill?.resourceBase?.kind, 'directory')
-  assert.ok(
-    presentationSkill?.resourceBase?.kind === 'directory' &&
-      presentationSkill.resourceBase.path.startsWith(`${packed.root}${path.sep}`),
-  )
-  await save('registration-evidence.json', {
-    packed: packed.evidence,
-    binding,
-    pluginTools,
-    skills,
-  })
-  const prompt =
-    '请分析当前 Workspace 中 sales 的区域销售额，比较各区域的表现并说明主要差异。请交付一份中文分析报告：有清楚的结论、可核对的区域销售额表格和柱状图，并展示真实分析来源；我需要在 Harness 中打开报告，并能下载完整 HTML 离线阅读。最后简短解释结果与报告位置。'
+function finalText(events: readonly SessionEvent[]) {
+  const last = events.filter((event) => event.type === 'assistant/message').at(-1)
+  return last?.type === 'assistant/message'
+    ? last.data.message.content
+        .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+        .join('\n')
+    : ''
+}
+
+async function readObservations(workspaceRoot: string) {
+  const text = await readFile(path.join(outputRoot, 'runtime-observations.jsonl'), 'utf8')
+  return text
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as RuntimeObservation)
+    .filter((item) => item.cwd === workspaceRoot)
+}
+
+type PackedPlugin = Awaited<ReturnType<typeof installPackedPlugin>>
+
+async function runJourney(journey: Journey, packed: PackedPlugin, credentialSource: string) {
+  const journeyRoot = path.join(outputRoot, journey.id)
+  const workspaceRoot = path.join(journeyRoot, 'workspace')
+  const profileRoot = path.join(journeyRoot, 'isolated-profile')
+  await mkdir(journeyRoot)
+  const binding = await prepareWorkspace(journey, workspaceRoot)
+  if (process.env.DSH_DATA_ANALYSIS_VALIDATION_PREFLIGHT === '1')
+    return { journeyId: journey.id, status: 'preflight-passed', workspaceRoot, binding }
+  const ctx = new Context()
   const started = Date.now()
-  let timedOut = false
-  const deadline = setTimeout(() => {
-    timedOut = true
-    agent.cancel({ kind: 'user' }, { keepInbox: true })
-  }, 12 * 60_000)
-  const progress = setInterval(() => {
-    const calls = agent.session.events.filter((event) => event.type === 'tool/call')
-    process.stdout.write(
-      `S5 real model: ${Math.round((Date.now() - started) / 1000)}s, ${calls.length} tool calls\n`,
-    )
-  }, 25_000)
+  const turns: { prompt: string; started: number; finished: number; finalText: string }[] = []
   try {
-    agent.followup(
-      createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }),
+    await mkdir(profileRoot, { recursive: true, mode: 0o700 })
+    ctx.provide(
+      'launchEnvironment',
+      createLaunchEnvironmentSnapshot([
+        {
+          source: 'process',
+          values: {
+            DEEPSEEK_API_KEY: modelSecret,
+            ...(process.env.DEEPSEEK_BASE_URL
+              ? { DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL }
+              : {}),
+          },
+        },
+      ]),
     )
-    await agent.whenIdle()
-  } finally {
-    clearTimeout(deadline)
-    clearInterval(progress)
-  }
-  await ctx.sessions.flush(agent.session)
-  const stored = await ctx.sessionPersistence.load(sessionId)
-  assert.deepEqual(stored.events, agent.session.events)
-  const calls = summarizeCalls(stored.events)
-  const deliveries = actualDeliveries(stored.events, String(sessionId))
-  const last = stored.events.filter((event) => event.type === 'assistant/message').at(-1)
-  const finalText =
-    last?.type === 'assistant/message'
-      ? last.data.message.content
-          .flatMap((block) => (block.type === 'text' ? [block.text] : []))
-          .join('\n')
-      : ''
-  await save('agent-events.json', stored)
-  await save('agent-trace.json', { prompt, calls, finalText, deliveries, timedOut })
-  assert.equal(timedOut, false, 'Real-model journey exceeded its deadline')
-  assert.ok(
-    !JSON.stringify(stored).includes(modelSecret),
-    'Model credential leaked into session evidence',
-  )
-  assert.ok(
-    calls.some(
-      (call) => call.name === 'skill' && call.arguments.name === 'dsh-data-analysis-presentation',
-    ),
-    'Real Agent did not select the presentation Skill',
-  )
-  assert.ok(
-    calls.some((call) => call.name === 'skill' && call.arguments.name === 'marivo-analysis'),
-    'Real Agent did not select the Runtime analysis Skill',
-  )
-  assert.ok(
-    calls.some((call) => call.name === 'marivo_help' && !call.isError),
-    'Real Agent did not consult live Help',
-  )
-  assert.ok(
-    calls.some((call) => call.name === 'marivo_python' && !call.isError),
-    'Real Agent did not execute Python',
-  )
-  const presentCalls = calls.filter((call) => call.name === 'marivo_present')
-  assert.equal(presentCalls.length, 1, 'The report must be delivered by one present call')
-  assert.equal(presentCalls[0]!.isError, false)
-  assert.equal(deliveries.length, 1)
-  assert.doesNotMatch(
-    calls
-      .map((call) => (call.name === 'skill' ? String(call.arguments.name) : call.name))
-      .join('\n'),
-    /marivo_datasource_access|marivo_evidence|dsh-data-analysis-report/,
-  )
-  assert.ok(finalText.length > 20, 'The real Agent did not explain its completed report')
-  const receipt = deliveries[0]!.receipt
-  assert.equal(receipt.workspaceId, String(workspace.id))
-  for (const file of Object.values(receipt.files))
-    assert.equal(sha256(await readFile(file.path)), file.sha256)
-  const document = parsePresentationDocument(
-    JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
-  )
-  assert.ok(
-    document.datasets.length > 0 &&
-      document.sources.some((source) => source.status === 'available'),
-  )
-  const expectedSales = new Map([
-    ['华东', 200],
-    ['华南', 100],
-    ['华北', 50],
-  ])
-  const verifiedBindings = document.datasets.flatMap((dataset) => {
-    if (dataset.data.rows.length !== expectedSales.size) return []
-    return dataset.data.columns.flatMap((regionColumn, regionIndex) =>
-      dataset.data.columns.flatMap((revenueColumn, revenueIndex) => {
-        if (
-          regionIndex === revenueIndex ||
-          !['float64', 'int64', 'decimal'].includes(revenueColumn.type)
-        )
-          return []
-        const actual = new Map(
-          dataset.data.rows.map((row) => [String(row[regionIndex]), Number(row[revenueIndex])]),
-        )
-        if (
-          actual.size !== expectedSales.size ||
-          [...expectedSales].some(([region, amount]) => actual.get(region) !== amount)
-        )
-          return []
-        const chart = document.blocks.find(
-          (block) =>
-            block.kind === 'chart' &&
-            block.chart === 'bar' &&
-            block.datasetId === dataset.id &&
-            block.x === regionColumn.id &&
-            block.y.includes(revenueColumn.id),
-        )
-        const table = document.blocks.find(
-          (block) =>
-            block.kind === 'table' &&
-            block.datasetId === dataset.id &&
-            (!block.columns ||
-              (block.columns.includes(regionColumn.id) &&
-                block.columns.includes(revenueColumn.id))),
-        )
-        return chart && table
-          ? [
-              {
-                datasetId: dataset.id,
-                regionColumn: regionColumn.id,
-                revenueColumn: revenueColumn.id,
-                rows: Object.fromEntries(actual),
-                chartBlock: chart.id,
-                tableBlock: table.id,
-              },
-            ]
-          : []
-      }),
+    installConnectionFixture(ctx)
+    await installStorage(ctx, path.join(profileRoot, 'storage'))
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(LocalCredentialProvider, { dshHome: profileRoot, watch: false })
+    assert.equal(
+      (await ctx.credentials.describe(credentialRef('DEEPSEEK_API_KEY'))).configured,
+      true,
     )
-  })
-  assert.ok(
-    verifiedBindings.length > 0,
-    'The table and bar chart must bind the same verified region-to-revenue dataset',
-  )
-  const usage = stored.events.reduce(
-    (total, event) => {
-      if (event.type === 'assistant/message' && event.data.usage) {
-        total.inputTokens += event.data.usage.inputTokens
-        total.outputTokens += event.data.usage.outputTokens
+    await ctx.plugin(DeepSeek, {
+      thinking: reasoningEffort === 'off' ? 'disabled' : 'enabled',
+      reasoningEffort,
+      maxTokens: 16_384,
+      streamIdleTimeoutMs: 180_000,
+      models: [{ id: model, contextWindow: 256_000, maxTokens: 16_384 }],
+    })
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(JsonlSessionPersistence, {
+      root: path.join(profileRoot, 'sessions'),
+      compression: 'none',
+      packChunks: false,
+    })
+    await ctx.plugin(WorkspaceRegistry)
+    await ctx.plugin(SkillRuntime)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ShellEnv, { dshHome: profileRoot })
+    await ctx.plugin(SubprocessLocal)
+    await ctx.plugin(BashLocal, { cwd: workspaceRoot, timeoutMs: 120_000, maxOutputBytes: 65_536 })
+    await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
+    await ctx.plugin(SkillTool)
+    await ctx.plugin(FilesystemTools)
+    await ctx.plugin(packed.module, {
+      pythonExecutable,
+      runtimeRoot: path.join(profileRoot, 'runtime-marker'),
+      credentialInteraction: 'none',
+    })
+    ctx.systemPrompt.section({
+      name: 'real-validation-workspace',
+      order: 10,
+      text: `You are working in the isolated Workspace ${workspaceRoot}. Complete the user's task autonomously using available skills and tools. Read and write task data only in this Workspace; packaged skill resources may be read at their declared resource bases. Never inspect user profiles or credentials. Read the Workspace README for business context. This isolated task authorizes analysis, necessary minimal semantic definitions and report creation.`,
+    })
+    const workspace = await ctx.workspaceRegistry.create(workspaceRoot, journey.title)
+    const sessionId = SessionId(`presentation-${journey.id}-${Date.now().toString(36)}`)
+    const agent = ctx.agentLoop.create(
+      sessionId,
+      { provider: 'deepseek-official', model, maxTokens: 16_384 },
+      { cwd: workspace.path },
+    )
+    await workspace.attachSession(sessionId)
+    const pluginTools = ctx.tools
+      .schemas(agent)
+      .filter((tool) => tool.name.startsWith('marivo_'))
+      .map((tool) => tool.name)
+      .sort()
+    assert.deepEqual(pluginTools, [
+      'marivo_datasource_test',
+      'marivo_help',
+      'marivo_present',
+      'marivo_python',
+    ])
+    const skills = await ctx.skills.list({ cwd: workspaceRoot, scope: agent })
+    assert.deepEqual(skills.map((skill) => skill.name).sort(), [
+      'dsh-data-analysis-presentation',
+      'marivo-analysis',
+      'marivo-semantic',
+    ])
+    const skill = await ctx.skills.get('dsh-data-analysis-presentation', {
+      cwd: workspaceRoot,
+      scope: agent,
+    })
+    assert.ok(
+      skill?.resourceBase?.kind === 'directory' &&
+        skill.resourceBase.path.startsWith(`${packed.root}${path.sep}`),
+    )
+    await save(`${journey.id}/registration.json`, {
+      binding,
+      pluginTools,
+      skills,
+      model,
+      reasoningEffort,
+    })
+    for (const [index, prompt] of journey.prompts.entries()) {
+      const turnStarted = Date.now()
+      let timedOut = false
+      const deadline = setTimeout(() => {
+        timedOut = true
+        agent.cancel({ kind: 'user' }, { keepInbox: true })
+      }, turnDeadlineMs)
+      const progress = setInterval(() => {
+        const calls = agent.session.events.filter((event) => event.type === 'tool/call')
+        process.stdout.write(
+          `${journey.id} turn ${index + 1}: ${Math.round((Date.now() - turnStarted) / 1000)}s, ${calls.length} calls, last=${calls.at(-1)?.data.name ?? 'thinking'}\n`,
+        )
+      }, 25_000)
+      try {
+        agent.followup(
+          createUserMessage({
+            content: [{ type: 'text', text: prompt }],
+            source: { kind: 'user' },
+          }),
+        )
+        await agent.whenIdle()
+      } finally {
+        clearTimeout(deadline)
+        clearInterval(progress)
+        await ctx.sessions.flush(agent.session)
+        const stored = await ctx.sessionPersistence.load(sessionId)
+        assert.deepEqual(stored.events, agent.session.events)
+        const turn = {
+          prompt,
+          started: turnStarted,
+          finished: Date.now(),
+          finalText: finalText(stored.events),
+        }
+        turns.push(turn)
+        await save(`${journey.id}/turn-${index + 1}-events.json`, stored)
+        await save(`${journey.id}/turn-${index + 1}-trace.json`, {
+          ...turn,
+          calls: summarizeCalls(stored.events),
+          timedOut,
+        })
       }
-      return total
-    },
-    { inputTokens: 0, outputTokens: 0 },
-  )
-  assert.ok(usage.outputTokens > 0, 'The real model did not report generated output tokens')
-  const draftPath = path.resolve(workspaceRoot, String(presentCalls[0]!.arguments.draft_path))
-  assert.ok(draftPath.startsWith(`${workspaceRoot}${path.sep}`))
-  const draftBytes = await readFile(draftPath)
-  await save('agent-evidence.json', {
-    status: 'passed',
-    outputRoot,
-    workspaceRoot,
-    profileRoot,
-    model: {
-      provider: 'deepseek-official',
-      id: model,
-      thinking: 'disabled',
-      credentialSource: credential.source,
-    },
-    binding,
-    packed: packed.evidence,
-    registration: { pluginTools, skills },
-    sessionId,
-    workspaceId: workspace.id,
-    durablePath: ctx.sessionPersistence.locate(stored.meta)?.path,
-    prompt,
-    calls,
-    finalText,
-    receipt,
-    draftPaths: [path.relative(workspaceRoot, draftPath)],
-    draftSha256: sha256(draftBytes),
-    verifiedBindings,
-    usage,
-    latencyMs: Date.now() - started,
-    boundary:
-      'actual packed production plugin, native Harness skill/fs/Shell services, official DeepSeek network adapter; no scripted LLM responses, Python, draft, or receipt',
-    userProfileOrCredentialsModified: false,
-    web: 'This script proves the real-model and file boundary; use retained draftPaths/workspaceRoot for actual Web download verification.',
-  })
-  process.stdout.write(
-    JSON.stringify(
-      {
-        status: 'passed',
-        outputRoot,
-        evidencePath: path.join(outputRoot, 'agent-evidence.json'),
-        toolCalls: calls.map((call) => call.name),
-        receipt,
+      assert.equal(timedOut, false, `Real-model turn ${index + 1} exceeded deadline`)
+      if (journey.id === 'semantic-gap-reuse' && index === 0)
+        assert.equal(
+          actualDeliveries(agent.session.events, String(sessionId)).length,
+          0,
+          'First turn should retain analysis without a report',
+        )
+    }
+    const stored = await ctx.sessionPersistence.load(sessionId)
+    assert.ok(
+      !JSON.stringify(stored).includes(modelSecret),
+      'Model credential leaked into real session evidence',
+    )
+    const calls = summarizeCalls(stored.events)
+    const deliveries = actualDeliveries(stored.events, String(sessionId))
+    for (const required of ['marivo-analysis', 'dsh-data-analysis-presentation'])
+      assert.ok(
+        calls.some((call) => call.name === 'skill' && call.arguments.name === required),
+        `Agent never selected ${required}`,
+      )
+    assert.ok(calls.some((call) => call.name === 'marivo_help' && !call.isError))
+    const presentCalls = calls.filter((call) => call.name === 'marivo_present')
+    assert.equal(deliveries.length, 1, 'Journey must produce one actual delivery')
+    assert.equal(presentCalls.filter((call) => !call.isError).length, 1)
+    const receipt = deliveries[0]!.receipt
+    assert.equal(receipt.workspaceId, String(workspace.id))
+    for (const file of Object.values(receipt.files)) {
+      const bytes = await readFile(file.path)
+      assert.equal(sha256(bytes), file.sha256)
+      assert.ok(!bytes.toString('utf8').includes(modelSecret))
+      await writeFile(path.join(journeyRoot, file.asset), bytes, { mode: 0o600 })
+    }
+    const document = parsePresentationDocument(
+      JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
+    )
+    const numericalEvidence = verifyReport(document, journey.id)
+    const observations = await readObservations(workspaceRoot)
+    await save(`${journey.id}/runtime-observations.json`, observations)
+    const produced = observations.filter(
+      (item) =>
+        item.operation === 'observe' ||
+        item.operation === 'compare' ||
+        item.operation === 'attribute',
+    )
+    assert.ok(produced.length > 0, 'No actual typed Artifact production observed')
+    const contractEnvironment = await bindMarivoEnvironment({
+      projectRoot: workspaceRoot,
+      pythonExecutable,
+    })
+    const contracts = await contractEnvironment.runChecked({
+      program: await readFile(
+        new URL('./presentation-agent-real/read-artifact-contracts.py', import.meta.url),
+        'utf8',
+      ),
+      args: [
+        JSON.stringify([
+          ...produced.map(({ sessionId, artifactRef, operation, timeMs }) => ({
+            sessionId,
+            artifactRef,
+            operation,
+            timeMs,
+          })),
+          ...document.sources.map((source) => source.ref),
+        ]),
+      ],
+    })
+    assert.equal(contracts.exitCode, 0, contracts.stderr.toString('utf8'))
+    const artifactContracts = JSON.parse(contracts.stdout.toString('utf8')) as {
+      sessionId: string
+      artifactRef: string
+      createdAt: string
+      contract: unknown
+    }[]
+    await save(`${journey.id}/artifact-contracts.json`, artifactContracts)
+    const lifecycle = assessLifecycle(observations)
+    for (const source of document.sources)
+      assert.ok(
+        artifactContracts.some(
+          (item) =>
+            item.sessionId === source.ref.sessionId && item.artifactRef === source.ref.artifactRef,
+        ),
+        'Report source must resolve to its exact persisted Session/Artifact identity',
+      )
+    let reuseEvidence: unknown = null
+    if (journey.id === 'semantic-gap-reuse') {
+      assert.ok(
+        calls.some((call) => call.name === 'skill' && call.arguments.name === 'marivo-semantic'),
+      )
+      const semanticSource = await readFile(
+        path.join(workspaceRoot, 'models/semantic/operations/requests.py'),
+        'utf8',
+      )
+      await save(`${journey.id}/semantic-source-after.json`, { source: semanticSource })
+      const second = turns[1]!
+      const initial = produced.filter((item) => item.timeMs < second.started)
+      const later = observations.filter((item) => item.timeMs >= second.started)
+      const recovered = later.filter((item) => item.operation === 'artifact')
+      reuseEvidence = {
+        classification: 'observation-only',
+        initial,
+        recovered,
+        secondTurnObserveCount: later.filter((item) => item.operation === 'observe').length,
+        recoveredFirstTurnArtifacts: recovered.filter((item) =>
+          initial.some(
+            (prior) => prior.sessionId === item.sessionId && prior.artifactRef === item.artifactRef,
+          ),
+        ),
+        sources: document.sources.map((source) => ({
+          ...source.ref,
+          observedProducedInFirstTurn: initial.some(
+            (item) =>
+              item.sessionId === source.ref.sessionId &&
+              item.artifactRef === source.ref.artifactRef,
+          ),
+          persistedCreatedInFirstTurn: artifactContracts.some(
+            (item) =>
+              item.sessionId === source.ref.sessionId &&
+              item.artifactRef === source.ref.artifactRef &&
+              Date.parse(item.createdAt) >= turns[0]!.started &&
+              Date.parse(item.createdAt) < second.started,
+          ),
+        })),
+        boundary:
+          'Reuse and repeated observation are efficiency observations, not report acceptance gates. Retained identities support review of whether new results were represented as earlier Artifacts.',
+      }
+    }
+    const usage = stored.events.reduce(
+      (total, event) => {
+        if (event.type === 'assistant/message' && event.data.usage) {
+          total.inputTokens += event.data.usage.inputTokens
+          total.outputTokens += event.data.usage.outputTokens
+        }
+        return total
       },
-      null,
-      2,
-    ) + '\n',
+      { inputTokens: 0, outputTokens: 0 },
+    )
+    assert.ok(usage.outputTokens > 0)
+    const draftPaths = presentCalls
+      .filter((call) => !call.isError)
+      .map((call) => path.resolve(workspaceRoot, String(call.arguments.draft_path)))
+    assert.ok(draftPaths.every((filename) => filename.startsWith(`${workspaceRoot}${path.sep}`)))
+    const draftHashes = await Promise.all(
+      draftPaths.map(async (filename) => ({
+        path: filename,
+        sha256: sha256(await readFile(filename)),
+      })),
+    )
+    const evidence = {
+      status: 'passed-awaiting-semantic-review',
+      journeyId: journey.id,
+      outputRoot,
+      workspaceRoot,
+      profileRoot,
+      binding,
+      model: { id: model, reasoningEffort, credentialSource },
+      sessionId,
+      workspaceId: workspace.id,
+      durablePath: ctx.sessionPersistence.locate(stored.meta)?.path,
+      turns,
+      calls,
+      receipt,
+      draftPaths,
+      draftHashes,
+      draftSha256: draftHashes.length === 1 ? draftHashes[0]!.sha256 : undefined,
+      numericalEvidence,
+      artifactContracts,
+      executionReviewRequired:
+        'Use the retained real calls/results and per-observation public contracts to check data/metadata datasource declarations and repeated successful observations in the first turn; a second-turn observe count alone does not prove those obligations.',
+      lifecycle,
+      reuseEvidence,
+      usage,
+      latencyMs: Date.now() - started,
+      reviewObligations: journey.reviewObligations,
+      semanticReview:
+        'Required: inspect actual report narrative and transcript against the obligations; no keyword match establishes correctness.',
+      boundary:
+        'Packed production plugin, native Harness skill/fs/Shell services and real DeepSeek adapter. A read-only Python profiler observes Session calls without replacing functions. No scripted model response, analysis, draft or receipt.',
+      userProfileOrRuntimeModified: false,
+    }
+    await save(`${journey.id}/agent-evidence.json`, evidence)
+    await writeFile(
+      path.join(journeyRoot, 'semantic-review.md'),
+      [
+        `# ${journey.title}：待审核实际正文`,
+        '',
+        '## 验收义务',
+        '',
+        ...journey.reviewObligations.map((item) => `- ${item}`),
+        '',
+        '## Agent 最终答复',
+        '',
+        ...turns.flatMap((turn, index) => [`### 第 ${index + 1} 轮`, '', turn.finalText, '']),
+        '## 报告正文',
+        '',
+        ...document.blocks.flatMap((block) => (block.kind === 'markdown' ? [block.text, ''] : [])),
+      ].join('\n'),
+      { mode: 0o600 },
+    )
+    return evidence
+  } finally {
+    await ctx.fiber.dispose()
+  }
+}
+
+const previousPythonPath = process.env.PYTHONPATH
+try {
+  const preflight = process.env.DSH_DATA_ANALYSIS_VALIDATION_PREFLIGHT === '1'
+  const credential = preflight
+    ? { value: '', source: 'preflight-no-model' }
+    : await discoverModelCredential()
+  modelSecret = credential.value
+  const observerRoot = path.join(outputRoot, 'observer')
+  await mkdir(observerRoot)
+  const observerPath = path.join(outputRoot, 'runtime-observations.jsonl')
+  await writeFile(observerPath, '', { mode: 0o600 })
+  const observer = await readFile(
+    new URL('./presentation-agent-real/sitecustomize.py', import.meta.url),
+    'utf8',
   )
+  await writeFile(
+    path.join(observerRoot, 'sitecustomize.py'),
+    observer.replace('LOG_PATH = None', `LOG_PATH = ${JSON.stringify(observerPath)}`),
+    { mode: 0o600 },
+  )
+  await save('observer.json', {
+    path: path.join(observerRoot, 'sitecustomize.py'),
+    sha256: sha256(await readFile(path.join(observerRoot, 'sitecustomize.py'))),
+    authority:
+      'Observe public Session factory returns and close/Artifact operations. Private recovery constructors are retained but impose no caller close obligation.',
+    changesRuntimeFunctions: false,
+  })
+  process.env.PYTHONPATH = observerRoot
+  const packed = await installPackedPlugin()
+  await save('packed-plugin.json', packed.evidence)
+  const selection = process.env.DSH_DATA_ANALYSIS_VALIDATION_JOURNEYS?.split(',')
+  const selected = selection
+    ? journeys.filter((journey) => selection.includes(journey.id))
+    : journeys
+  assert.ok(
+    selected.length > 0 && (!selection || selected.length === selection.length),
+    'Unknown or repeated journey selection',
+  )
+  const results: unknown[] = []
+  let failed = false
+  for (const journey of selected) {
+    try {
+      const result = await runJourney(journey, packed, credential.source)
+      results.push(result)
+      process.stdout.write(`${journey.id}: ${result.status}\n`)
+    } catch (error) {
+      failed = true
+      const result = {
+        status: 'failed',
+        journeyId: journey.id,
+        message: error instanceof Error ? error.message : String(error),
+      }
+      results.push(result)
+      await save(`${journey.id}/failure.json`, result)
+      process.stderr.write(redact(`${journey.id} failed: ${result.message}\n`))
+    }
+  }
+  await save('agent-evidence.json', {
+    status: failed ? 'failed' : preflight ? 'preflight-passed' : 'passed-awaiting-semantic-review',
+    outputRoot,
+    model,
+    reasoningEffort,
+    packed: packed.evidence,
+    results,
+  })
+  process.stdout.write(`Real Agent evidence: ${path.join(outputRoot, 'agent-evidence.json')}\n`)
+  if (failed) process.exitCode = 1
 } catch (error) {
   await save('failure.json', {
     status: 'failed',
@@ -495,10 +642,11 @@ try {
   })
   process.stderr.write(
     redact(
-      `S5 real Agent validation failed: ${error instanceof Error ? error.message : String(error)}\nEvidence: ${outputRoot}\n`,
+      `Real Agent validation failed: ${error instanceof Error ? error.message : String(error)}\nEvidence: ${outputRoot}\n`,
     ),
   )
   process.exitCode = 1
 } finally {
-  await ctx.fiber.dispose()
+  if (previousPythonPath === undefined) delete process.env.PYTHONPATH
+  else process.env.PYTHONPATH = previousPythonPath
 }

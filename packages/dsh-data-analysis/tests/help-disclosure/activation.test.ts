@@ -372,44 +372,58 @@ test('an Agent-plane inherited skill Tool activates root help without a legacy r
   assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
 })
 
-test('marivo-semantic activation adds datasource credential guidance only after activation', async (t) => {
-  const fixture = await environmentFixture()
-  t.after(fixture.cleanup)
-  const adapter = new MockAdapter([
-    toolCallsResponse([
-      { id: 'semantic-no-sources', name: 'skill', args: { name: 'marivo-semantic' } },
-    ]),
-    textResponse('semantic ready'),
-  ])
-  const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'source-prompt-semantic')
-  const dispose = installMarivoPlugin(ctx, fixture.environment, {
-    credentials: {
-      resolve: async () => undefined,
-      describe: async () => ({ configured: false, writable: true }),
-      set: async () => {},
-      unset: async () => {},
-    },
+for (const skill of ['marivo-analysis', 'marivo-semantic']) {
+  test(`${skill} activation adds execution guidance only after activation`, async (t) => {
+    const fixture = await environmentFixture()
+    t.after(fixture.cleanup)
+    const adapter = new MockAdapter([
+      toolCallsResponse([{ id: 'activate-no-sources', name: 'skill', args: { name: skill } }]),
+      textResponse('semantic ready'),
+    ])
+    const ctx = await harness(adapter)
+    const agent = createAgent(ctx, `source-prompt-${skill}`)
+    const dispose = installMarivoPlugin(ctx, fixture.environment, {
+      credentials: {
+        resolve: async () => undefined,
+        describe: async () => ({ configured: false, writable: true }),
+        set: async () => {},
+        unset: async () => {},
+      },
+    })
+    t.after(dispose)
+
+    send(agent, 'author semantics')
+    await agent.whenIdle()
+
+    assert.doesNotMatch(
+      JSON.stringify(adapter.requests[0]?.system ?? ''),
+      /DSH Credentials owns|Before completing any analysis/,
+    )
+    const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
+    assert.match(activatedPrompt, /DSH Credentials owns/)
+    assert.match(activatedPrompt, /Never request values in chat/)
+    assert.match(activatedPrompt, /marivo_datasource_test/)
+    assert.match(activatedPrompt, /marivo_python/)
+    assert.doesNotMatch(activatedPrompt, /marivo_datasource_access|\blease\b|64 foreground/)
+    assert.match(activatedPrompt, /marivo_python installs credential_scope/)
+    assert.match(activatedPrompt, /Ordinary Shell receives no datasource secret/)
+    assert.match(activatedPrompt, /Configured credentials need no extra connection test/)
+    assert.match(activatedPrompt, /starting user code once/)
+    assert.match(activatedPrompt, /including datasources without passwords/)
+    assert.match(activatedPrompt, /only when no datasource will be accessed/)
+    assert.ok(activatedPrompt.includes('session.close()'))
+    if (skill === 'marivo-analysis') {
+      assert.match(activatedPrompt, /contracts come from the activated Runtime Skill/)
+      assert.match(activatedPrompt, /text-only answer/)
+      assert.match(activatedPrompt, /Keep incomplete branches explicit/)
+    } else assert.doesNotMatch(activatedPrompt, /Before completing any analysis/)
+    assert.doesNotMatch(
+      JSON.stringify(adapter.requests[1]?.system ?? ''),
+      /marivo_evidence_sources/,
+    )
+    assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /after datasource changes/)
   })
-  t.after(dispose)
-
-  send(agent, 'author semantics')
-  await agent.whenIdle()
-
-  assert.doesNotMatch(JSON.stringify(adapter.requests[0]?.system ?? ''), /DSH_\*/)
-  const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
-  assert.match(activatedPrompt, /DSH Credentials owns/)
-  assert.match(activatedPrompt, /Never request values in chat/)
-  assert.match(activatedPrompt, /marivo_datasource_test/)
-  assert.match(activatedPrompt, /marivo_python/)
-  assert.doesNotMatch(activatedPrompt, /marivo_datasource_access|lease|64 foreground/)
-  assert.match(activatedPrompt, /marivo_python installs credential_scope/)
-  assert.match(activatedPrompt, /Ordinary Shell receives no datasource secret/)
-  assert.match(activatedPrompt, /Configured credentials need no extra connection test/)
-  assert.match(activatedPrompt, /starting user code once/)
-  assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_sources/)
-  assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /after datasource changes/)
-})
+}
 
 test('an explicit user skill invocation activates the matching root help without a skill Tool call', async (t) => {
   const fixture = await environmentFixture()

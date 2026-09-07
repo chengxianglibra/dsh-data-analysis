@@ -17,6 +17,7 @@ export async function startPresentationWebHost(
   outputRoot: string,
   pythonExecutable: string,
   draftPaths: readonly string[],
+  clientOrder: 'native-first' | 'report-first' = 'native-first',
 ) {
   const home = path.join(outputRoot, 'isolated-dsh-home')
   const profile = path.join(home, 'profiles/web')
@@ -90,7 +91,12 @@ export async function startPresentationWebHost(
       2,
     ),
   )
-  await writeFile(patch, '- insert:\n    - id: presentation-s4\n      name: dsh-presentation-s4\n')
+  // The isolated wrapper composes both public client plugins explicitly so the
+  // same real Web can verify either registration order without duplicate seats.
+  await writeFile(
+    patch,
+    '- id: ui-deliverables\n  disabled: true\n- insert:\n    - id: presentation-s4\n      name: dsh-presentation-s4\n',
+  )
   await build({
     stdin: {
       resolveDir: repoRoot,
@@ -131,10 +137,12 @@ export async function apply(ctx){
       resolveDir: repoRoot,
       contents: `
 import * as production from '@chengxianglibra/dsh-data-analysis/client';
+import * as native from '@deepseek-ai/dsh-client-ui-deliverables/client';
 export const inject=production.inject;
-export function apply(ctx){
+export async function apply(ctx){
  window.__s4Rpc=(channel,endpoint,payload)=>ctx.get('connection').rpc.call(channel,endpoint,payload);
- return production.apply(ctx);
+ ${clientOrder === 'native-first' ? 'await ctx.plugin(native); production.apply(ctx);' : 'production.apply(ctx); await ctx.plugin(native);'}
+ window.__s4ClientOrder=${JSON.stringify(clientOrder)};
 }
 `,
     },
@@ -142,11 +150,14 @@ export function apply(ctx){
     write: false,
     platform: 'browser',
     format: 'cjs',
-    external: ['@chengxianglibra/dsh-data-analysis/client'],
+    external: [
+      '@chengxianglibra/dsh-data-analysis/client',
+      '@deepseek-ai/dsh-client-ui-deliverables/client',
+    ],
   })
   await writeFile(
     path.join(plugin, 'client.js'),
-    `${productionClient}\nwindow.__ModuleLoader__.load({id:'dsh-presentation-s4',factory:(require)=>{var module={exports:{}};var exports=module.exports;${wrapper.outputFiles[0]!.text};return module.exports;}});`,
+    `${await readFile(path.join(repoRoot, 'node_modules/@deepseek-ai/dsh-client-ui-deliverables/lib/client.js'), 'utf8')}\n${productionClient}\nwindow.__ModuleLoader__.load({id:'dsh-presentation-s4',factory:(require)=>{var module={exports:{}};var exports=module.exports;${wrapper.outputFiles[0]!.text};return module.exports;}});`,
   )
   const child = spawn(
     process.execPath,
@@ -200,7 +211,16 @@ export function apply(ctx){
       if (ready) {
         const response = await fetch(ready.url, { signal: AbortSignal.timeout(2000) })
         if (response.ok && (await response.text()).includes('__DSH_BOOT__'))
-          return { ...ready, home, profile, logPath, moduleDigests, pid: child.pid, stop }
+          return {
+            ...ready,
+            home,
+            profile,
+            logPath,
+            moduleDigests,
+            clientOrder,
+            pid: child.pid,
+            stop,
+          }
       }
       await pause(100)
     }

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    { "id": "category", "label": "category", "type": "string", "nullable": false },
+    { "id": "baseline", "label": "baseline", "type": "int64", "nullable": false },
+    { "id": "current", "label": "current", "type": "int64", "nullable": false },
+    {
+      "id": "delta_current_minus_baseline",
+      "label": "delta_current_minus_baseline",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "decrease_baseline_minus_current",
+      "label": "decrease_baseline_minus_current",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "rows": [["A", "100", "50", "-50", "50"], ["B", "80", "50", "-30", "30"]],
+  "rowCount": 2,
+  "limit": 5000,
+  "truncated": false
+}

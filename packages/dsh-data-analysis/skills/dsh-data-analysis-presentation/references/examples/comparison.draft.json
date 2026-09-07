@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "title": "演示：减少项与其他项抵消后的净变化",
+  "datasets": [
+    {
+      "id": "full",
+      "kind": "computed",
+      "path": "presentation-example/comparison.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "selected",
+      "kind": "computed",
+      "path": "presentation-example/comparison-selected.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "summary",
+      "kind": "computed",
+      "path": "presentation-example/comparison-summary.dataset.json",
+      "sourceIds": []
+    }
+  ],
+  "sources": [],
+  "blocks": [
+    {
+      "id": "answer",
+      "kind": "markdown",
+      "text": "演示数据，不是真实业务结果。全量 baseline 200 → current 150，净变化 -50；变化率为 -25%，分母是 baseline 全量 200。A、B 的减少量合计 80，其他项 C 增加 30，抵消后净减少 50。这里是观测值的贡献分解，没有解释变化原因的证据。"
+    },
+    {
+      "id": "net-change",
+      "kind": "metric",
+      "datasetId": "summary",
+      "columnId": "delta_current_minus_baseline",
+      "rowIndex": 0,
+      "label": "全量净变化：current - baseline"
+    },
+    {
+      "id": "selection",
+      "kind": "markdown",
+      "text": "## 按减少量降序选取 Top 2\n从完整三项按 baseline - current 降序预选 A、B。图展示的是反向命名明确的减少量，不是全量净变化。writer 收到两行，rowCount = 2、truncated = false；这不表示未做预选。80 / 50 = 160% 是局部减少量与全量净减少的比值，不能称为覆盖率。"
+    },
+    {
+      "id": "selected-decreases",
+      "kind": "chart",
+      "datasetId": "selected",
+      "chart": "bar",
+      "x": "category",
+      "y": ["decrease_baseline_minus_current"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "reconciliation",
+      "kind": "markdown",
+      "text": "## 全量与余项核对\n下面各表的 delta 均为 current - baseline。选中项 -80 + 其他项 +30 = 全量 -50；保留其他项的净贡献，不能将选中项的减少量 80 写成全量净减少。"
+    },
+    {
+      "id": "scope-values",
+      "kind": "table",
+      "datasetId": "summary",
+      "columns": ["scope", "baseline", "current", "delta_current_minus_baseline"]
+    },
+    {
+      "id": "all-values",
+      "kind": "table",
+      "datasetId": "full",
+      "columns": ["category", "baseline", "current", "delta_current_minus_baseline"]
+    }
+  ]
+}

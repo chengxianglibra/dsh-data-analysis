@@ -1,5 +1,6 @@
 /** Production plugin on actual Harness services; deterministic adapter stops at the model boundary. */
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -7,6 +8,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, {
   CallId,
   createUserMessage,
@@ -19,6 +21,7 @@ import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-ses
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { apply, inject } from '../../src/plugin.ts'
@@ -43,6 +46,7 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
   #step = 0
   readonly mode: PresentationMode
   readonly draftPaths: readonly string[]
+  readonly runId = randomUUID()
   constructor(mode: PresentationMode, draftPaths: readonly string[]) {
     super()
     this.mode = mode
@@ -64,19 +68,29 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
     }
     assert.equal(options.purpose, undefined)
     const step = this.#step++
-    if (step % 2 === 0) {
-      const draft = this.draftPaths[Math.floor(step / 2)]
+    const phase = step % 4
+    const turnIndex = Math.floor(step / 4)
+    if (phase < 3) {
+      const draft = this.draftPaths[turnIndex]
       assert.ok(draft, 'Scripted model received an unexpected extra Tool request')
       const id = CallId(`s4-${this.mode}-${step}`)
-      const codeDispatch = this.mode === 'code' || (this.mode === 'both' && step === 0)
-      const name = codeDispatch ? 'run_code' : 'marivo_present'
+      const codeDispatch = this.mode === 'code' || (this.mode === 'both' && step === 1)
+      const file = `s4-produced-${this.runId}-${turnIndex}.txt`
+      const toolName = phase === 0 ? 'write' : phase === 1 ? 'marivo_present' : 'read'
+      const toolArgs =
+        phase === 0
+          ? { file_path: file, content: 'Ordinary Harness produced file before report delivery.\n' }
+          : phase === 1
+            ? { draft_path: draft }
+            : { file_path: file }
+      const name = codeDispatch ? 'run_code' : toolName
       const args = JSON.stringify(
         codeDispatch
           ? {
-              description: 'Production marivo_present through actual worker dispatch',
-              code: `await tools.marivo_present({draft_path:${JSON.stringify(draft)}}); console.log("S4_DISPATCH_COMPLETED");`,
+              description: 'Production tool through actual worker dispatch',
+              code: `await tools.${toolName}(${JSON.stringify(toolArgs)}); console.log("S4_DISPATCH_COMPLETED");`,
             }
-          : { draft_path: draft },
+          : toolArgs,
       )
       if (step === 0) {
         const text =
@@ -91,7 +105,7 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
       yield { type: 'block-end', index, block: { type: 'tool-call', id, name, arguments: args } }
       yield { type: 'finish', reason: { kind: 'tool-calls' } }
     } else {
-      if (step === 1) {
+      if (turnIndex === 0) {
         yield { type: 'finish', reason: { kind: 'stop' } }
         return
       }
@@ -152,6 +166,9 @@ export async function runPresentationJourneys(
     { provider, model: 'deterministic-seam' },
     { cwd: workspace.path },
   )
+  // This direct AgentLoop journey does not load a Web agent preset. Install the
+  // real filesystem tools in its Agent scope, just as the preset normally does.
+  await agent.ctx.plugin(FilesystemTools)
   let duplicated = false
   let duplicateError: unknown
   const stopDuplicate = agent.ctx.on('session/event', (owner, event) => {
@@ -159,7 +176,8 @@ export async function runPresentationJourneys(
       duplicateDispatch &&
       !duplicated &&
       owner.id === agent.session.id &&
-      event.type === 'tool/code-dispatch'
+      event.type === 'tool/code-dispatch' &&
+      event.data.name === 'marivo_present'
     ) {
       duplicated = true
       // Replay one actual receipt as a second durable transport event while its
@@ -213,7 +231,9 @@ export async function runPresentationJourneys(
   )
   assert.equal(new Set(deliveries.map((item) => item.receipt.buildId)).size, draftPaths.length)
   assert.ok(deliveries.every((item) => item.receipt.workspaceId === String(workspace.id)))
-  const dispatches = stored.events.filter((event) => event.type === 'tool/code-dispatch')
+  const dispatches = stored.events.filter(
+    (event) => event.type === 'tool/code-dispatch' && event.data.name === 'marivo_present',
+  )
   assert.equal(
     dispatches.length,
     (mode === 'code' ? draftPaths.length : mode === 'both' ? 1 : 0) + (duplicateDispatch ? 1 : 0),
@@ -236,10 +256,40 @@ export async function runPresentationJourneys(
       assert.ok(text.includes(file.path) && text.includes(file.sha256))
   if (mode === 'code') assert.ok(text.includes('S4_DISPATCH_COMPLETED'))
   const firstResult = stored.events.find(
-    (event) => event.type === (mode === 'native' ? 'tool/result' : 'tool/code-dispatch'),
+    (event) =>
+      event.type === (mode === 'native' ? 'tool/result' : 'tool/code-dispatch') &&
+      (event.type === 'tool/code-dispatch'
+        ? event.data.name === 'marivo_present'
+        : (event.data.meta as { kind?: string } | undefined)?.kind ===
+          'marivo.presentation.delivery'),
   )!
   const firstEnd = stored.events.find((event) => event.type === 'turn/end')!
   assert.ok(firstResult && firstEnd)
+  for (const event of stored.events) {
+    if (event.type === 'tool/result')
+      for (const block of event.data.message.content)
+        if (block.type === 'tool-result')
+          assert.notEqual(block.isError, true, JSON.stringify(block.content))
+    if (event.type === 'tool/code-dispatch') assert.equal(event.data.isError, false)
+  }
+  for (const turn of deliveries.map((delivery) => delivery.turn)) {
+    const start = stored.events.find(
+      (event) => event.type === 'turn/start' && event.data.turn === turn,
+    )!
+    const end = stored.events.find(
+      (event) => event.type === 'turn/end' && event.data.turn === turn,
+    )!
+    const tools = stored.events.filter(
+      (event) =>
+        event.type === (mode === 'code' ? 'tool/code-dispatch' : 'tool/call') &&
+        event.seq > start.seq &&
+        event.seq < end.seq,
+    )
+    const names = tools.map((event) => (event.data as { name: string }).name)
+    assert.equal(names[0], 'write')
+    assert.equal(names.at(-1), 'read')
+    assert.ok(names.includes(mode === 'both' && turn === 1 ? 'run_code' : 'marivo_present'))
+  }
   assert.equal(
     stored.events.filter(
       (event) =>
@@ -260,6 +310,7 @@ export async function runPresentationJourneys(
     deliveries,
     headlessTextIncludesPathsAndDigests: true,
     firstTurnHasNoPostToolAssistantText: true,
+    ordinaryWriteBeforePresentAndReadAfter: true,
     duplicatedCodeReceiptEvents: rawDeliveries.length - deliveries.length,
     receiptProducedBy: 'production plugin ToolRuntime execution; no model result printing',
   }
@@ -297,6 +348,7 @@ export async function validatePresentationHost(
       await ctx.plugin(TestShellEnv)
       await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs: 120_000 })
       await ctx.plugin(ToolRuntime, { mode })
+      await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(

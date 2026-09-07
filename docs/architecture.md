@@ -135,6 +135,8 @@ Agent 调用 `marivo_present({ draft_path })`。Tool 从当前 Session 的 Harne
 
 Native/both metadata 与 Code durable block 使用同一个带 Session/Turn 的 delivery envelope；文本包含
 两个文件的精确路径、SHA-256 与字节数，headless 同样可用。Web 卡片打开共享 reader，并下载自包含 HTML。
+报告使用公开 Conversation Definition 的独立 Chat 节点和 keyed renderer，每轮以首次成功回执的位置
+展示有序卡片，不依赖最终回复或 `turnTail` chain；原生 ProducedFiles 继续由 Harness 自己展示。
 只读 RPC 按当前 Session Workspace 推导固定 asset 路径，校验归属、真实路径、大小与 digest；来源展开只读保存快照。
 不存在 report ID、revision、latest、CAS 或持久 operation 索引。详见[展示交付](modules/presentation-delivery.md)。
 
@@ -145,7 +147,8 @@ Artifact dataset 必须恢复所需行和字段；computed dataset 从 Workspace
 source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable，但不允许直接 Artifact dataset 假成功。
 
 展示 Skill 指导 Agent 选择现有数据、写出 Draft、调用一次 `marivo_present` 并解释结果；schema、图形配置、
-报告/看板叙事和示例按需读取 references。Agent 决定内容顺序和图形意图，reader 负责自适应布局，
+报告、看板及比较型展示在写草稿前读取 narrative；细则涵盖比较两侧、方向和分母、证据强度、数值核对，
+以及 Agent 选取范围与 writer 截断的区别。示例按需读取。Agent 决定内容顺序和图形意图，reader 负责自适应布局，
 没有 Agent 可配置的网格。来源来自 Marivo 的公开快照；computed 的来源声明不构成转换审计或正确性证明。
 
 ## 验证
@@ -161,3 +164,5 @@ Artifact/source identity、文件预算与包导出。真实 Artifact 恢复与 
 [S2 验收记录](plan/marivo-analytics-presentation-s2-acceptance.md)；实际 Native/Code/headless、Web 卡片、下载和离线交付见
 [S4 验收记录](plan/marivo-analytics-presentation-s4-acceptance.md)。当前安装包、Skill 路由与最终真实旅程状态见
 [S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。
+独立 Chat 卡片、ProducedFiles 共存与通用质量修复见
+[报告交付与质量验收](plan/2026-09-07-presentation-delivery-quality-acceptance.md)。

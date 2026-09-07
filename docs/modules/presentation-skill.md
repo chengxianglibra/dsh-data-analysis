@@ -9,8 +9,9 @@ Harness 拥有 Skill 发现和激活，插件的 projection、reader 与 deliver
 Skill 入口是 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
 主文件只保留完整短流程；[schema](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/schema.md)、
 [图形配置](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/charts.md)、
-[报告/看板叙事](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
-[示例说明](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)放在 references，按需读取。
+[叙事与证据检查](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
+[示例说明](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)放在 references。
+报告、看板和比较型展示必须在写草稿前读取 narrative；其余资源按需读取。
 可改写的 Draft、dataset 和 Python 示例随 Skill 一同分发。
 
 ## 发现与路由
@@ -38,7 +39,16 @@ Draft 只使用当前五类 block：Markdown、metric、line/bar chart、table �
 图形类型、字段与标签，reader 负责自适应布局，没有网格配置。报告和看板共用同一数据契约与 reader，
 不创建新的对象类型、模板协议或长期版本。
 
-结论应与已读取数据对应，明确时间、单位、缺失、截断和影响结论的质量限制。来源 Quality/issues 仍属于
+结论逐项对应用户问题与比较范围，每组比较明确两侧、方向和分母；缺失分支保留在正文，不能由另一组
+成功比较替代。观测、贡献分解、解释和假设使用相应证据强度；边际分布不支持联合关系，原因或排除性
+结论需要匹配证据。限制须落实到具体结论措辞，不能仅由末尾免责声明承担。
+
+原值、差值、比例、合计和余项需要核对，正文、图和表保持比较方向一致。Agent 预筛选与 writer 截断
+分别披露；Top N 说明规则和范围，全量归因保留全量基准与其他项净贡献。Skill 随附可运行的通用比较
+示例，以 200 → 150、减少项 80 和其他项抵消 30 演示数值关系，并由测试核对 writer 输出与图表绑定。
+这些是表达和复核引导，不新增结论 schema、业务推理 validator 或审核服务。
+
+来源 Quality/issues 仍属于
 原 Artifact。保留 unavailable 来源，不将 unavailable 写成成功验证；reader 与来源展开只读取保存快照，
 不自动重新分析。
 具体契约见[展示数据投影](presentation-projection.md)与[展示 reader](presentation-reader.md)。
@@ -52,3 +62,5 @@ Agent 将 Draft 保存为 Workspace 相对路径，调用 `marivo_present({ draf
 包验证同时检查 Skill 主文件与 references 的实际分发；插件测试检查 provider 接线、短路由和现有
 Runtime Skill 的独立性。可安装包实际注册结果、真实 Agent 路由与 Web/离线旅程的结果及限制见
 [S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
+本次比较范围、证据强度、抵消项与执行收尾的通用修复见
+[报告交付与质量修复验收](../plan/2026-09-07-presentation-delivery-quality-acceptance.md)。

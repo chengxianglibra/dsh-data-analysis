@@ -14,8 +14,7 @@ export {
   marivoPresentationDeliveryDefinition,
   parsePresentationDurableContent,
   presentationDeliveryFromEvent,
-  presentationsForClosing,
-  selectMarivoPresentations,
+  presentationsForNode,
 } from './client/presentation/delivery.ts'
 export { PresentationDeliveryModel } from './client/presentation/delivery-model.ts'
 export { HostPresentationReader } from './client/presentation/host-entry.tsx'

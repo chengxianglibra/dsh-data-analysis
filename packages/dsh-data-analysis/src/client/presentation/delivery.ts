@@ -1,3 +1,8 @@
+import type {
+  ChatConversationViewNode,
+  ConversationNodeContext,
+  ConversationNodeDefinition,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import {
   MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -21,6 +26,12 @@ interface PresentationTurnState extends PresentationTurnData {
 
 declare module '@deepseek-ai/dsh-client-runtime/client' {
   interface ConversationTurnDataMap {
+    'marivo-presentation-delivery': PresentationTurnData
+  }
+}
+
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface ChatNodeDataMap {
     'marivo-presentation-delivery': PresentationTurnData
   }
 }
@@ -109,6 +120,7 @@ export function presentationDeliveryFromEvent(
 
 export const marivoPresentationDeliveryDefinition = {
   kind: PRESENTATION_TURN_DATA_KEY,
+  target: 'chat',
   match(value: unknown) {
     const event = record(value),
       data = record(event?.data)
@@ -160,23 +172,53 @@ export const marivoPresentationDeliveryDefinition = {
       value: Object.freeze({ deliveries: context.state.deliveries }),
     }
   },
-}
+  buildViewNode(context: ConversationNodeContext<PresentationTurnState>) {
+    const { state, start } = context
+    const first = state?.deliveries[0]
+    const location = start?.location
+    if (
+      !state ||
+      !first ||
+      !location ||
+      (location.kind !== 'turn' && location.kind !== 'step') ||
+      location.turn.turn !== state.turn
+    )
+      return null
+    return {
+      key: context.key,
+      id: context.id,
+      kind: PRESENTATION_TURN_DATA_KEY,
+      target: 'chat',
+      anchorSeq: first.seq,
+      location,
+      visibility: 'visible',
+      data: Object.freeze({ deliveries: state.deliveries }),
+    } satisfies ChatConversationViewNode
+  },
+} satisfies ConversationNodeDefinition<PresentationTurnState>
 
-/** Session identity comes from the Host's scoped slot, never from an event field. */
-export function presentationsForClosing(owner: any, sessionId?: string): PresentationDelivery[] {
-  const data = owner?.turn?.data?.get?.(PRESENTATION_TURN_DATA_KEY)
+/** Session identity comes from the Host's keyed Chat slot, never from an event field. */
+export function presentationsForNode(
+  node: ChatConversationViewNode,
+  sessionId: string,
+): PresentationDelivery[] {
+  if (node.kind !== PRESENTATION_TURN_DATA_KEY || node.target !== 'chat') return []
+  const { location } = node
+  if (location.kind !== 'turn' && location.kind !== 'step') return []
+  const { turn } = location
+  const data = record(node.data)
   if (!Array.isArray(data?.deliveries)) return []
-  const end = owner.turn.end
+  const end = turn.end
   if (
     end !== undefined &&
     (end.type !== 'turn/end' ||
-      end.data?.turn !== owner.turn.turn ||
+      end.data?.turn !== turn.turn ||
       !Number.isSafeInteger(end.seq) ||
       end.seq < 0)
   )
     return []
-  // TurnTail's owner.seq can point to text written before present. Only the
-  // Harness Turn boundary limits its receipts; no later Assistant text is required.
+  // The Host Turn boundary limits receipts; neither final text nor Turn completion
+  // is required for this independent node to publish successful deliveries.
   const boundary = end?.seq ?? Number.POSITIVE_INFINITY
   const seen = new Set<string>()
   const items: PresentationTurnDelivery[] = data.deliveries
@@ -184,20 +226,10 @@ export function presentationsForClosing(owner: any, sessionId?: string): Present
     .sort((left: PresentationTurnDelivery, right: PresentationTurnDelivery) => left.seq - right.seq)
   return items.flatMap((item) => {
     const delivery = parsedDelivery(item.delivery)
-    if (
-      !delivery ||
-      delivery.turn !== owner.turn.turn ||
-      (sessionId !== undefined && delivery.dshSessionId !== sessionId)
-    )
-      return []
+    if (!delivery || delivery.turn !== turn.turn || delivery.dshSessionId !== sessionId) return []
     const id = presentationDeliveryIdentity(delivery)
     if (seen.has(id)) return []
     seen.add(id)
     return [delivery]
   })
-}
-
-export function selectMarivoPresentations(owner: unknown): PresentationDelivery[] | null {
-  const deliveries = presentationsForClosing(owner)
-  return deliveries.length ? deliveries : null
 }
