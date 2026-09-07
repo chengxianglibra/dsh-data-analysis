@@ -72,22 +72,21 @@ test('static reader keeps exact data, null metric units, sources omitted from bl
   assert.match(html, /0\.1000/)
   assert.match(html, /金额 \(CNY\)/)
   assert.match(html, /data-cell-null="true"/)
-  assert.match(html, /来源不可用/)
-  assert.match(html, /art_000000000000000000000000/)
-  assert.match(html, /共 5 行/)
-  assert.doesNotMatch(html, /<button|<select|<details|<svg/)
+  assert.match(html, /The declared Artifact is not available/)
+  assert.match(html, /显示 3 \/ 5 行（已截断）/)
+  assert.doesNotMatch(html, /<button|<select|<svg/)
+  assert.match(html, /<details/)
 })
 
 test('source-only reader has no synthetic dataset and keeps unreferenced saved sources readable', async () => {
   const document = await fixture('source-only')
   document.blocks = [{ id: 'text', kind: 'markdown', text: '只保留来源。' }]
   const html = renderDocument(document)
-  assert.match(html, /来源不可用/)
-  assert.match(html, /art_000000000000000000000000/)
+  assert.match(html, /The declared Artifact is not available/)
   assert.doesNotMatch(html, /<table/)
 })
 
-test('static line and bar are exact tables; interactive selected coordinates retain original units and decimal spelling', async () => {
+test('static charts keep exact tables while interactive chart details live behind cell tools', async () => {
   const document = await fixture('computed')
   document.blocks = [
     {
@@ -101,14 +100,15 @@ test('static line and bar are exact tables; interactive selected coordinates ret
     },
   ]
   const html = renderDocument(document)
-  assert.match(html, /图形为近似编码/)
+  assert.doesNotMatch(html, /图形为近似编码|近似绘图/)
   assert.match(html, /精确数据/)
   assert.match(html, /12345678901234\.5678/)
   const interactive = renderDocument(document, 'interactive')
-  assert.match(interactive, /不同单位分图展示/)
-  assert.match(interactive, /12345678901234\.5678 CNY/)
-  assert.match(interactive, /12 次/)
-  assert.match(interactive, /aria-label="选择图表数据行"/)
+  assert.equal((interactive.match(/class="pr-chart-group"/g) ?? []).length, 2)
+  assert.doesNotMatch(interactive, /pr-axis-unit|不同单位分图展示|纵轴：/)
+  assert.match(interactive, /近似绘图/)
+  assert.match(interactive, /aria-label="cell 更多操作"/)
+  assert.doesNotMatch(interactive, /选择图表数据行|查看数据|pr-exact-data|<table/)
 })
 
 test('read-only Markdown renders structure while refusing executable HTML, image requests and unsafe URLs', () => {
@@ -116,6 +116,7 @@ test('read-only Markdown renders structure while refusing executable HTML, image
     '# 标题\n\n**重点** 和 *斜体* 与 `代码`\n\n- 项目\n\n> 引用\n\n```js\n<script>evil()</script>\n```\n\n[安全](https://example.com) [坏](javascript:evil) ![图片](https://example.com/image.png)\n\n<img src="https://example.com/raw.png">',
   )
   assert.match(html, /<h2>标题<\/h2>/)
+  assert.match(renderMarkdown('## 章节\n\n### 子章节'), /<h2>章节<\/h2><h3>子章节<\/h3>/)
   assert.match(html, /<strong>重点<\/strong>/)
   assert.match(html, /<em>斜体<\/em>/)
   assert.match(html, /<ul>/)
@@ -135,4 +136,60 @@ test('maximum-size malformed link delimiters remain complete plain text', () => 
     renderMarkdown('[普通链接](https://example.com/path?q=value)'),
     /href="https:\/\/example.com\/path\?q=value"/,
   )
+})
+
+test('reader keeps authored cells and document intact while presenting concise cell tools', async () => {
+  const document = await fixture('computed')
+  const metric = {
+    id: 'first',
+    kind: 'metric' as const,
+    datasetId: 'computed',
+    columnId: 'count',
+    rowIndex: 0,
+    label: '原始指标',
+  }
+  document.blocks = [
+    metric,
+    { ...metric, id: 'second' },
+    { ...metric, id: 'third' },
+    { id: 'body', kind: 'markdown', text: '原始正文：未经任何解释性改写。' },
+    { ...metric, id: 'fourth' },
+    { id: 'sources', kind: 'source', sourceIds: document.sources.map((source) => source.id) },
+  ]
+  document.diagnostics = [
+    { code: 'definition_unavailable', message: 'original definition message', path: '/sources/0' },
+    { code: 'definition_unavailable', message: 'original definition message', path: '/sources/1' },
+    { code: 'unknown_warning', message: '保留未知提示', path: '/datasets/0' },
+  ]
+  const before = structuredClone(document)
+  for (const mode of ['static', 'interactive'] as const) {
+    const html = renderDocument(document, mode)
+    assert.equal(html.split('class="pr-metric-group"').length - 1, 2)
+    const positions = document.blocks.map((block) => html.indexOf(`data-block-id="${block.id}"`))
+    assert.ok(
+      positions.every(
+        (position, index) => position >= 0 && (!index || position > positions[index - 1]!),
+      ),
+    )
+    assert.match(html, /原始正文：未经任何解释性改写。/)
+    for (const source of document.sources) {
+      assert.equal(
+        html.split(`data-source-id="${source.id}"`).length - 1,
+        mode === 'static' ? 1 : 0,
+      )
+    }
+    assert.doesNotMatch(html, /original definition message|\/sources\/0|\/sources\/1/)
+    assert.ok(html.indexOf('保留未知提示') < html.indexOf('data-block-id="first"'))
+    assert.doesNotMatch(
+      html,
+      /pr-diagnostics-secondary|pr-footer|pr-source-links|继续分析|声明关联|计算已验证|保存数据第/,
+    )
+    assert.doesNotMatch(html, /aria-label="复制 cell 上下文"/)
+    assert.equal(
+      html.split('aria-label="cell 更多操作"').length - 1,
+      mode === 'interactive' ? document.blocks.length : 0,
+    )
+    assert.doesNotMatch(html, /class="pr-source-dialog"/)
+    assert.deepEqual(document, before)
+  }
 })

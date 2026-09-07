@@ -7,10 +7,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { type Browser, chromium, type Locator, type Page } from 'playwright'
 import {
-  formatCell,
+  cellText,
+  columnLabel,
+  datasetById,
+  metricText,
+  selectedSources,
+  valueWithUnit,
+} from '../src/client/presentation/model.ts'
+import { semanticKindLabel, sourceOverviewFacts } from '../src/client/presentation/source-facts.ts'
+import {
   type PresentationDocument,
   parsePresentationDocument,
 } from '../src/presentation/contracts/index.ts'
+import type {
+  PresentationBlock,
+  SourceSnapshot,
+  TypedDataset,
+} from '../src/presentation/contracts/types.ts'
 import { prepareS0WebHost } from './presentation-s0/web-host.ts'
 
 // This exercises the production reader through an actual isolated DSH Web module loader.
@@ -103,6 +116,41 @@ const interaction = parsePresentationDocument({
         truncated: false,
       },
     },
+    {
+      id: 'negative-values',
+      origin: 'computed',
+      sourceIds: [],
+      data: {
+        schemaVersion: 1,
+        columns: [
+          { id: 'category', label: '类别', type: 'string', nullable: false },
+          { id: 'change', label: '变化量', type: 'float64', nullable: false, unit: '次' },
+        ],
+        rows: [
+          ['A', -0.05],
+          ['B', -0.01],
+        ],
+        rowCount: 2,
+        limit: 2,
+        truncated: false,
+      },
+    },
+    {
+      id: 'single-value',
+      origin: 'computed',
+      sourceIds: [],
+      data: {
+        schemaVersion: 1,
+        columns: [
+          { id: 'category', label: '类别', type: 'string', nullable: false },
+          { id: 'count', label: '数量', type: 'float64', nullable: false, unit: '次' },
+        ],
+        rows: [['唯一类别', 12]],
+        rowCount: 1,
+        limit: 1,
+        truncated: false,
+      },
+    },
   ],
   sources: [
     {
@@ -150,6 +198,24 @@ const interaction = parsePresentationDocument({
       x: 'name',
       y: ['amount'],
       numericMode: 'approximate',
+    },
+    {
+      id: 'negative-bar',
+      kind: 'chart',
+      datasetId: 'negative-values',
+      chart: 'bar',
+      x: 'category',
+      y: ['change'],
+      numericMode: 'exact',
+    },
+    {
+      id: 'single-bar',
+      kind: 'chart',
+      datasetId: 'single-value',
+      chart: 'bar',
+      x: 'category',
+      y: ['count'],
+      numericMode: 'exact',
     },
     { id: 'table', kind: 'table', datasetId: 'values' },
     { id: 'empty-table', kind: 'table', datasetId: 'empty' },
@@ -234,81 +300,250 @@ const errors: string[] = []
 const checks: Record<string, unknown>[] = []
 
 async function expandDetails(reader: Locator) {
-  // Exercise native details activation, including keyboard activation on the first disclosure.
-  const details = reader.locator('details:not([open])')
-  while (await details.count()) {
-    const summary = details.first().locator(':scope > summary')
-    await summary.focus()
-    await summary.press('Enter')
+  // Open visible parents before nested disclosures; CSS-hidden summaries stay untouched.
+  while (true) {
+    let expanded = false
+    for (const summary of await reader.locator('details:not([open]) > summary').all()) {
+      if (!(await summary.isVisible())) continue
+      await summary.focus()
+      await summary.press('Enter')
+      expanded = true
+      break
+    }
+    if (!expanded) return
   }
 }
 
-async function verifyReader(page: Page, document: PresentationDocument, staticMode = false) {
+function sourceSelection(document: PresentationDocument, block: PresentationBlock) {
+  const ids =
+    block.kind === 'source'
+      ? block.sourceIds
+      : 'datasetId' in block
+        ? datasetById(document, block.datasetId).sourceIds
+        : []
+  return selectedSources(document, ids)
+}
+
+async function verifySourceOverview(
+  overview: Locator,
+  document: PresentationDocument,
+  sources: SourceSnapshot[],
+) {
+  assert.ok(await overview.isVisible())
+  assert.equal(
+    await overview.locator(':scope > .pr-source-overview-grid time').getAttribute('datetime'),
+    document.generatedAt,
+  )
+  const snapshot: Record<string, unknown>[] = []
+  let expectedCards = 0
+  for (const source of sources) {
+    const { createdAt, semanticGroups, issues, notices } = sourceOverviewFacts(source)
+    const included =
+      source.status === 'unavailable' ||
+      Boolean(createdAt || semanticGroups.length || issues.length || notices.length)
+    const card = overview.locator(`[data-source-id="${source.id}"]`)
+    assert.equal(await card.count(), included ? 1 : 0, `source ${source.id}: unexpected card count`)
+    if (!included) continue
+    expectedCards++
+    assert.ok(await card.isVisible())
+    const text = await card.innerText()
+    if (source.status === 'unavailable') assert.ok(text.includes(source.reason))
+    if (createdAt) {
+      if (Number.isNaN(Date.parse(createdAt))) assert.ok(text.includes(createdAt))
+      else assert.equal(await card.locator('time').getAttribute('datetime'), createdAt)
+    }
+    for (const group of semanticGroups) {
+      assert.ok(text.includes(semanticKindLabel(group.kind)))
+      for (const semanticPath of group.paths) assert.ok(text.includes(semanticPath))
+    }
+    for (const issue of issues) {
+      assert.ok(text.includes(issue.kind))
+      if (issue.severity) assert.ok(text.includes(issue.severity))
+    }
+    for (const notice of notices) assert.ok(text.includes(notice))
+    snapshot.push({ source: source.id, text: text.trim() })
+  }
+  assert.equal(await overview.locator('[data-source-id]').count(), expectedCards)
+  return snapshot
+}
+
+async function openCellMenu(cell: Locator) {
+  const trigger = cell.getByRole('button', { name: 'cell 更多操作', exact: true })
+  await trigger.focus()
+  await trigger.press('Enter')
+  const menu = cell.getByRole('menu', { name: 'cell 操作', exact: true })
+  await menu.waitFor({ state: 'visible' })
+  assert.equal(await menu.getByRole('menuitem', { name: '复制上下文', exact: true }).count(), 1)
+  return { menu, trigger }
+}
+
+async function openSourceDialog(reader: Locator, cell: Locator) {
+  const { menu, trigger } = await openCellMenu(cell)
+  assert.equal(await menu.getByRole('menuitem').count(), 2)
+  await menu.getByRole('menuitem', { name: '数据源', exact: true }).press('Enter')
+  const dialog = reader.getByRole('dialog', { name: '数据源', exact: true })
+  await dialog.waitFor({ state: 'visible' })
+  assert.equal(await dialog.count(), 1)
+  return { dialog, trigger }
+}
+
+async function closeSourceDialog(dialog: Locator, trigger: Locator) {
+  await dialog.press('Escape')
+  await dialog.waitFor({ state: 'detached' })
+  assert.ok(await trigger.evaluate((node) => node.ownerDocument.activeElement === node))
+}
+
+async function verifyDatasetTable(
+  container: Locator,
+  dataset: TypedDataset,
+  columns: string[],
+  staticMode: boolean,
+) {
+  const table = container.locator('table')
+  assert.equal(await table.count(), 1)
+  assert.ok(await table.isVisible())
+  assert.deepEqual(
+    await table
+      .locator('thead th')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-column-id'))),
+    columns,
+  )
+  const indices = columns.map((id) => dataset.columns.findIndex((column) => column.id === id))
+  const rows = dataset.rows.slice(0, staticMode ? undefined : 20)
+  const expected = rows.flatMap((row) =>
+    indices.map((index) => cellText(row[index]!, dataset.columns[index]!)),
+  )
+  const actual = await table.locator('tbody td').allTextContents()
+  assert.deepEqual(actual, expected)
+  assert.equal(await table.locator('tbody tr').count(), rows.length)
+  if (dataset.truncated) assert.match(await container.innerText(), /已截断/)
+  return actual
+}
+
+async function verifyEmbeddedDocument(page: Page, expected: PresentationDocument) {
+  const embedded = JSON.parse((await page.locator('#presentation-data').textContent())!)
+  assert.deepEqual(embedded, expected)
+  assert.deepEqual(embedded.sources, expected.sources)
+}
+
+async function verifyReader(
+  page: Page,
+  document: PresentationDocument,
+  staticMode = false,
+  printMode = false,
+) {
+  assert.ok(!printMode || staticMode, 'Print validation must inspect the static fallback')
   const reader = page.locator(
     `[data-presentation-reader][data-mode="${staticMode ? 'static' : 'interactive'}"]`,
   )
   await reader.getByRole('heading', { name: document.title, exact: true }).waitFor()
-  await expandDetails(reader)
+  if (printMode) assert.equal(await reader.locator('details[open]').count(), 0)
+  else if (staticMode) await expandDetails(reader)
+  assert.equal(
+    await reader.getByRole('button', { name: 'cell 更多操作', exact: true }).count(),
+    staticMode ? 0 : document.blocks.length,
+  )
   const snapshot: Record<string, unknown>[] = []
   for (const block of document.blocks) {
     const node = reader.locator(`[data-block-id="${block.id}"]`)
     await node.waitFor()
     if (block.kind === 'markdown') {
-      const text = await node.innerText()
+      const text = await node.locator('.pr-markdown').innerText()
       if (document.buildId === interaction.buildId) {
         assert.ok(text.includes('已保存的正文'))
         assert.ok(text.includes('精确值'))
         assert.ok(text.includes(attack))
       } else assert.ok(text.includes(block.text), `markdown ${block.id} lost its body`)
       snapshot.push({ id: block.id, markdown: text.trim() })
+      if (!staticMode) {
+        const { menu, trigger } = await openCellMenu(node)
+        assert.equal(await menu.getByRole('menuitem').count(), 1)
+        assert.equal(await menu.getByRole('menuitem', { name: '数据源', exact: true }).count(), 0)
+        await menu.getByRole('menuitem', { name: '复制上下文', exact: true }).press('Escape')
+        await menu.waitFor({ state: 'detached' })
+        assert.ok(
+          await trigger.evaluate((element) => element.ownerDocument.activeElement === element),
+        )
+      }
+      continue
     }
+    const dataset = 'datasetId' in block ? datasetById(document, block.datasetId).data : undefined
+    const selected = dataset
+      ? block.kind === 'chart'
+        ? [...new Set([block.x, ...block.y])]
+        : block.kind === 'table' && block.columns
+          ? block.columns
+          : dataset.columns.map((column) => column.id)
+      : []
     if (block.kind === 'metric') {
-      const dataset = document.datasets.find((value) => value.id === block.datasetId)!.data
-      const index = dataset.columns.findIndex((column) => column.id === block.columnId)
-      const text = await node.innerText()
-      const value = formatCell(dataset.rows[block.rowIndex]![index]!, dataset.columns[index]!)
-      assert.ok(text.includes(value), `metric ${block.id} lost ${value}`)
-      if (dataset.columns[index]!.unit) assert.ok(text.includes(dataset.columns[index]!.unit!))
-      snapshot.push({ id: block.id, metric: text.trim() })
+      const index = dataset!.columns.findIndex((column) => column.id === block.columnId)
+      const column = dataset!.columns[index]!
+      const value = dataset!.rows[block.rowIndex]![index]!
+      const metric = node.locator('[data-metric-value]')
+      assert.equal(await metric.count(), 1, `metric ${block.id} must have one displayed value`)
+      assert.equal(await metric.innerText(), metricText(value, column))
+      assert.equal(
+        await metric.getAttribute('title'),
+        value === null ? '缺失值' : valueWithUnit(value, column),
+      )
+      snapshot.push({ id: block.id, metric: await metric.innerText() })
     }
-    if (block.kind === 'table' || block.kind === 'chart') {
-      const dataset = document.datasets.find((value) => value.id === block.datasetId)!.data
-      const selected =
-        block.kind === 'chart'
-          ? [block.x, ...block.y]
-          : (block.columns ?? dataset.columns.map((column) => column.id))
-      const text = await node.innerText()
-      for (const id of selected) {
-        const column = dataset.columns.find((value) => value.id === id)!
-        assert.ok(text.includes(column.label), `${block.id}: missing label ${column.label}`)
-        if (column.unit)
-          assert.ok(text.includes(column.unit), `${block.id}: missing unit ${column.unit}`)
-      }
-      for (const row of dataset.rows.slice(0, staticMode ? undefined : 20)) {
-        for (const id of selected) {
-          const index = dataset.columns.findIndex((column) => column.id === id)
-          const value = formatCell(row[index]!, dataset.columns[index]!)
-          assert.ok(text.includes(value), `${block.id}: missing cell ${value}`)
-        }
-      }
-      if (dataset.truncated) assert.match(text, /截断/)
-      if (!staticMode && block.kind === 'chart' && dataset.rows.length) {
+    if (block.kind === 'table' || (block.kind === 'chart' && staticMode)) {
+      snapshot.push({
+        id: block.id,
+        cells: await verifyDatasetTable(node, dataset!, selected, staticMode),
+      })
+    }
+    if (block.kind === 'chart' && !staticMode) {
+      if (dataset!.truncated) assert.match(await node.innerText(), /已截断/)
+      if (dataset!.rows.length) {
         await node.locator('svg.recharts-surface').waitFor()
         const marks = block.chart === 'line' ? '.recharts-line-curve' : '.recharts-bar-rectangle'
         assert.ok(await node.locator(marks).count(), `${block.chart} has no plotted marks`)
       }
-      snapshot.push({ id: block.id, cells: await node.locator('tbody td').allTextContents() })
+      assert.equal(await node.locator('table,select').count(), 0)
+    }
+    if (!staticMode) {
+      const { dialog, trigger } = await openSourceDialog(reader, node)
+      const overview = dialog.locator('.pr-source-overview')
+      const sources = await verifySourceOverview(
+        overview,
+        document,
+        sourceSelection(document, block),
+      )
+      snapshot.push({ id: block.id, sources })
+      if (dataset) {
+        const overviewColumns = block.kind === 'metric' ? [block.columnId] : selected
+        assert.deepEqual(
+          await overview.locator('.pr-source-fields li').allTextContents(),
+          overviewColumns.map((id) =>
+            columnLabel(dataset.columns.find((column) => column.id === id)!),
+          ),
+        )
+        assert.equal(await dialog.getByRole('tab').count(), 2)
+        await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
+        const preview = dialog.getByRole('tabpanel', { name: '数据预览', exact: true })
+        await preview.waitFor({ state: 'visible' })
+        snapshot.push({
+          id: block.id,
+          previewCells: await verifyDatasetTable(preview, dataset, selected, false),
+        })
+      } else assert.equal(await dialog.getByRole('tab').count(), 0)
+      await closeSourceDialog(dialog, trigger)
     }
   }
-  for (const source of document.sources) {
-    const node = reader.locator(`[data-source-id="${source.id}"]`).first()
-    const text = await node.innerText()
-    assert.equal(await node.getAttribute('data-source-status'), source.status)
-    for (const value of Object.values(source.ref)) assert.ok(text.includes(value))
-    if (source.status === 'unavailable') assert.ok(text.includes(source.reason))
-    else for (const fact of source.facts) assert.ok(text.includes(fact.value))
-    snapshot.push({ source: source.id, text: text.trim() })
+  if (staticMode && document.sources.length) {
+    const summary = reader.locator('details.pr-source-summary')
+    assert.equal(await summary.count(), 1)
+    snapshot.push({
+      sources: await verifySourceOverview(
+        summary.locator('.pr-source-overview'),
+        document,
+        document.sources,
+      ),
+    })
   }
+  if (printMode) assert.equal(await reader.locator('details[open]').count(), 0)
   if (!document.datasets.length) assert.equal(await reader.locator('table').count(), 0)
   assert.equal(
     await reader.locator('img,script,iframe,object,embed,a[href^="javascript:"]').count(),
@@ -318,9 +553,46 @@ async function verifyReader(page: Page, document: PresentationDocument, staticMo
   return snapshot
 }
 
+const yAxisTickSelector = '.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value'
+const yAxisTitleSelector = '.recharts-label[transform^="rotate(-90"]'
+
+async function verifyBarGeometry(reader: Locator) {
+  const snapshots = []
+  for (const [blockId, expectedCount, direction] of [
+    ['negative-bar', 2, 'negative'],
+    ['single-bar', 1, 'positive'],
+  ] as const) {
+    const cell = reader.locator(`[data-block-id="${blockId}"]`)
+    const rectangles = cell.locator('.recharts-bar-rectangle')
+    assert.equal(await rectangles.count(), expectedCount, `${blockId}: a nonzero bar disappeared`)
+    const zeroLine = cell.locator('.recharts-reference-line-line')
+    assert.equal(await zeroLine.count(), 1, `${blockId}: zero baseline is missing`)
+    assert.equal(await zeroLine.getAttribute('y1'), await zeroLine.getAttribute('y2'))
+    const ticks = cell.locator(yAxisTickSelector)
+    assert.ok((await ticks.count()) > 0, `${blockId}: numeric tick labels are missing`)
+    assert.ok(
+      (await ticks.allTextContents()).includes('0'),
+      `${blockId}: numeric axis must retain the zero tick`,
+    )
+    const zeroY = await zeroLine.evaluate((node) => node.getBoundingClientRect().top)
+    const bars = []
+    for (const rectangle of await rectangles.all()) {
+      const bounds = await rectangle.boundingBox()
+      assert.ok(bounds && bounds.height > 0, `${blockId}: expected a nonzero bar height`)
+      assert.ok(bounds.width > 0 && bounds.width <= 48.01, `${blockId}: bar width exceeds 48px`)
+      const zeroEdge = direction === 'negative' ? bounds.y : bounds.y + bounds.height
+      assert.ok(Math.abs(zeroEdge - zeroY) <= 1, `${blockId}: bar does not start from zero`)
+      bars.push({ width: bounds.width, height: bounds.height })
+    }
+    snapshots.push({ blockId, zeroTick: true, bars })
+  }
+  return snapshots
+}
+
 async function verifyInteractions(page: Page) {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   const reader = page.locator('[data-presentation-reader][data-mode="interactive"]')
+  const barGeometry = await verifyBarGeometry(reader)
   const table = reader.locator('[data-block-id="table"]')
   assert.equal(await table.locator('tbody tr').count(), 20)
   const sort = table.getByRole('button', { name: '按 精确金额 排序', exact: true })
@@ -344,30 +616,35 @@ async function verifyInteractions(page: Page) {
   assert.equal(await chart.locator('.recharts-line-curve').count(), 1)
   await series.press('Space')
   assert.equal(await chart.locator('.recharts-line-curve').count(), 2)
-  const select = chart.getByLabel('选择图表数据行', { exact: true })
-  await select.focus()
-  // Native macOS Chromium pop-up menus are not driven by synthetic ArrowDown;
-  // HTML select type-ahead remains a real keyboard path and selects row "2.".
-  await select.press('2')
-  await select.press('Tab')
-  assert.equal(await select.inputValue(), '1')
-  const tooltip = chart.locator('.pr-coordinate [data-chart-tooltip]')
-  assert.ok((await tooltip.innerText()).includes('24'))
   const approximate = reader.locator('[data-block-id="approximate"]')
-  await approximate.getByLabel('选择图表数据行', { exact: true }).selectOption('0')
-  assert.ok(
-    (await approximate.locator('.pr-coordinate [data-chart-tooltip]').innerText()).includes(
-      '9007199254741016.1000',
-    ),
-  )
+  const { dialog, trigger } = await openSourceDialog(reader, approximate)
+  const overviewTab = dialog.getByRole('tab', { name: '概要', exact: true })
+  const previewTab = dialog.getByRole('tab', { name: '数据预览', exact: true })
+  assert.equal(await overviewTab.getAttribute('aria-selected'), 'true')
+  await overviewTab.focus()
+  await overviewTab.press('ArrowRight')
+  assert.equal(await previewTab.getAttribute('aria-selected'), 'true')
+  assert.ok(await previewTab.evaluate((node) => node.ownerDocument.activeElement === node))
+  const preview = dialog.getByRole('tabpanel', { name: '数据预览', exact: true })
+  await verifyDatasetTable(preview, interaction.datasets[0]!.data, ['name', 'amount'], false)
+  await previewTab.press('Home')
+  assert.equal(await overviewTab.getAttribute('aria-selected'), 'true')
+  assert.ok(await overviewTab.evaluate((node) => node.ownerDocument.activeElement === node))
+  await overviewTab.press('End')
+  assert.equal(await previewTab.getAttribute('aria-selected'), 'true')
+  await previewTab.press('Tab')
+  assert.ok(await dialog.evaluate((node) => node.contains(node.ownerDocument.activeElement)))
+  await closeSourceDialog(dialog, trigger)
   await approximate.locator('.recharts-bar-rectangle').first().hover()
   const pointerTooltip = approximate.locator('.recharts-tooltip-wrapper [data-chart-tooltip]')
   await pointerTooltip.waitFor({ state: 'visible' })
   assert.ok((await pointerTooltip.innerText()).includes('9007199254741016.1000'))
-  const copy = reader.getByRole('button', { name: '复制追问上下文', exact: true }).first()
-  await copy.focus()
-  await copy.press('Enter')
-  await reader.getByText('已复制，可粘贴到对话中继续分析。', { exact: true }).first().waitFor()
+  const followUp = chart.locator('.pr-copy')
+  const { menu: copyMenu, trigger: copyTrigger } = await openCellMenu(chart)
+  await copyMenu.getByRole('menuitem', { name: '复制上下文', exact: true }).press('Enter')
+  await copyMenu.waitFor({ state: 'detached' })
+  await followUp.getByText('已复制', { exact: true }).waitFor()
+  assert.ok(await copyTrigger.evaluate((node) => node.ownerDocument.activeElement === node))
   const clipboard = await page.evaluate(async () => {
     try {
       return await navigator.clipboard.readText()
@@ -375,16 +652,26 @@ async function verifyInteractions(page: Page) {
       return null
     }
   })
-  const copied = clipboard ?? (await reader.getByLabel('追问上下文', { exact: true }).inputValue())
+  const copied =
+    clipboard ?? (await followUp.getByLabel('cell 上下文', { exact: true }).inputValue())
+  assert.ok(copied.includes('Cell: line'))
+  assert.ok(copied.includes('"x":"name","y":["count","other"]'))
+  assert.ok(!copied.includes('保存行索引'))
+  assert.ok(!copied.includes('9007199254741016.1000'))
   assert.ok(copied.includes('s3-artifact'))
   assert.ok(copied.includes('s3-session'))
+  assert.equal(await reader.locator('.pr-header .pr-copy').count(), 0)
   return {
     sortingExactDecimal: true,
     pagination: true,
     seriesKeyboard: true,
-    exactTooltip: true,
     pointerTooltip: true,
+    sourceModalKeyboardTabs: true,
+    sourceEscapeFocus: true,
+    exactPreview: true,
+    cellContextCopied: true,
     copiedSourceIdentity: true,
+    barGeometry,
   }
 }
 
@@ -474,10 +761,7 @@ try {
     await offlinePage.waitForFunction(
       () => document.documentElement.dataset.presentationReady === 'true',
     )
-    assert.deepEqual(
-      JSON.parse((await offlinePage.locator('#presentation-data').textContent())!),
-      item.document,
-    )
+    await verifyEmbeddedDocument(offlinePage, item.document)
     assert.deepEqual(await verifyReader(offlinePage, item.document), hostSnapshot)
     await offlinePage.screenshot({
       path: path.join(outputRoot, `${item.name}-offline.png`),
@@ -528,18 +812,30 @@ try {
       await offlinePage.evaluate(() => window.scrollTo(0, 0))
       await offlinePage.screenshot({ path: path.join(outputRoot, 'interactions-narrow-dark.png') })
       for (const [blockId, mark] of [
-        ['line', '.recharts-line-dots circle'],
+        ['line', '.recharts-line-curve'],
         ['approximate', '.recharts-bar-rectangle'],
+        ['negative-bar', '.recharts-bar-rectangle'],
+        ['single-bar', '.recharts-bar-rectangle'],
       ] as const) {
         const chart = offlinePage.locator(`[data-mode="interactive"] [data-block-id="${blockId}"]`)
-        await chart.locator('h2').evaluate((node) => node.scrollIntoView({ block: 'start' }))
-        for (const tick of await chart
-          .locator('.recharts-yAxis .recharts-cartesian-axis-tick-value')
+        await chart
+          .locator(':scope > h2')
+          .evaluate((node) => node.scrollIntoView({ block: 'start' }))
+        const surface = await chart.locator('svg.recharts-surface').boundingBox()
+        assert.ok(surface)
+        assert.ok((await chart.locator(yAxisTickSelector).count()) > 0)
+        assert.equal(await chart.locator(yAxisTitleSelector).count(), 1)
+        for (const label of await chart
+          .locator(`${yAxisTickSelector}, ${yAxisTitleSelector}`)
           .all()) {
-          const bounds = await tick.boundingBox()
+          const bounds = await label.boundingBox()
           assert.ok(
-            bounds && bounds.x >= 0 && bounds.x + bounds.width <= 376,
-            'narrow Y-axis tick is clipped horizontally',
+            bounds && bounds.x >= 0 && bounds.x + bounds.width <= layout.width + 1,
+            `narrow ${blockId} Y-axis title or tick is clipped horizontally`,
+          )
+          assert.ok(
+            bounds.y >= surface.y - 1 && bounds.y + bounds.height <= surface.y + surface.height + 1,
+            `narrow ${blockId} Y-axis title or tick is clipped vertically`,
           )
         }
         await chart.locator(mark).first().hover()
@@ -554,12 +850,18 @@ try {
           `narrow ${blockId} tooltip is clipped horizontally: ${JSON.stringify(bounds)}`,
         )
       }
-      checks.push({ narrowDark: { ...layout, contrast }, keyboard: true })
+      checks.push({
+        narrowDark: { ...layout, contrast },
+        keyboard: true,
+        barGeometry: await verifyBarGeometry(
+          offlinePage.locator('[data-presentation-reader][data-mode="interactive"]'),
+        ),
+      })
     }
     await offlinePage.emulateMedia({ media: 'print', colorScheme: 'light' })
     assert.ok(await offlinePage.locator('#presentation-fallback').isVisible())
     assert.ok(!(await offlinePage.locator('#reader').isVisible()))
-    await verifyReader(offlinePage, item.document, true)
+    await verifyReader(offlinePage, item.document, true, true)
     await offlinePage.pdf({
       path: path.join(outputRoot, `${item.name}-print.pdf`),
       format: 'A4',
@@ -574,6 +876,7 @@ try {
       if (!request.url().startsWith('file:')) noScriptRequests.push(request.url())
     })
     await noScriptPage.goto(pathToFileURL(portableFiles.get(item.name)!).href)
+    await verifyEmbeddedDocument(noScriptPage, item.document)
     await verifyReader(noScriptPage, item.document, true)
     assert.deepEqual(noScriptRequests, [])
     await noScript.close()
@@ -584,6 +887,9 @@ try {
       offlineRequests: requests,
       noScriptRequests,
       staticAndPrintReadable: true,
+      defaultPrintDisclosures: true,
+      noScriptSourcesExpandable: true,
+      embeddedSourceSnapshotsUnchanged: true,
       interactions,
     })
     process.stdout.write(`S3 reader passed: ${item.name}\n`)

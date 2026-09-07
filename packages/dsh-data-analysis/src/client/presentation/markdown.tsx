@@ -81,7 +81,8 @@ export function Markdown({ text, depth = 0 }: { text: string; depth?: number }) 
     }
     const heading = /^(#{1,6})\s+(.+?)\s*#*$/.exec(line)
     if (heading) {
-      const Tag = `h${Math.min(6, heading[1]!.length + 1)}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+      // Reserve h1 for the report title without demoting authored h2 sections.
+      const Tag = `h${Math.max(2, heading[1]!.length)}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
       blocks.push(<Tag key={start}>{inline(heading[2]!)}</Tag>)
       index += 1
       continue

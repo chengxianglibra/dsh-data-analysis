@@ -23,16 +23,48 @@ export function valueWithUnit(value: Cell, column: DatasetColumn): string {
   return column.unit && value !== null && value !== '' ? `${text} ${column.unit}` : text
 }
 
+/** Add grouping separators only; never round, rescale, or convert exact decimal text. */
+export function metricText(value: Cell, column: DatasetColumn): string {
+  const text = cellText(value, column)
+  const grouped =
+    ['int64', 'decimal', 'float64'].includes(column.type) && /^-?\d+(?:\.\d+)?$/.test(text)
+      ? text.replace(/^-?\d+/, (whole) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ','))
+      : text
+  return column.unit && value !== null && value !== '' ? `${grouped} ${column.unit}` : grouped
+}
+
+/** A stable explicit timezone keeps portable and Host metadata equally readable. */
+export function snapshotDate(value: string): string {
+  return (
+    new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(new Date(value)) + ' UTC'
+  )
+}
+
 export function columnLabel(column: DatasetColumn): string {
   return column.unit ? `${column.label} (${column.unit})` : column.label
 }
 
 /** Axis labels are compact coordinates; tooltips and tables retain exact source text. */
 export function formatAxisTick(value: number): string {
-  const text = String(value)
-  return text.length > 10 || (value !== 0 && Math.abs(value) < 0.0001)
-    ? value.toExponential(2)
-    : text
+  const magnitude = Math.abs(value)
+  if (magnitude >= 1e12 || (value !== 0 && magnitude < 0.0001)) return value.toExponential(2)
+  return new Intl.NumberFormat('zh-CN', {
+    notation: magnitude >= 100_000 ? 'compact' : 'standard',
+    maximumFractionDigits:
+      magnitude >= 100_000
+        ? 1
+        : magnitude > 0 && magnitude < 1
+          ? 2 - Math.floor(Math.log10(magnitude))
+          : 2,
+  }).format(value)
 }
 
 export function formatCategoryTick(value: string): string {
@@ -127,10 +159,9 @@ export function sortedRowIndices(
 }
 
 export function datasetScope(dataset: TypedDataset): string {
-  if (dataset.rowCount === 0) return '暂无数据；列定义已保留。'
-  if (dataset.truncated)
-    return `已截断：共 ${dataset.rowCount} 行，保存前 ${dataset.rows.length} 行（限制 ${dataset.limit} 行）。图表和排序仅覆盖已保存行，不能代表全量总计或排名。`
-  return `共 ${dataset.rowCount} 行，全部已保存。`
+  if (dataset.rowCount === 0) return '暂无数据'
+  if (dataset.truncated) return `显示 ${dataset.rows.length} / ${dataset.rowCount} 行（已截断）`
+  return `${dataset.rowCount} 行`
 }
 
 export interface ChartRow {
@@ -169,38 +200,42 @@ export function selectedSources(document: PresentationDocument, ids: string[]): 
   })
 }
 
-export function followUpContext(
-  document: PresentationDocument,
-  block?: PresentationBlock,
-  rowIndex?: number,
-): string {
+export function followUpContext(document: PresentationDocument, block: PresentationBlock): string {
   const lines = [
     document.title,
     `Build ID: ${document.buildId}`,
     `Workspace: ${document.workspaceId}`,
+    `Cell: ${block.id}`,
+    `Block kind: ${block.kind}`,
   ]
-  let sources = document.sources
-  if (block) {
-    lines.push(`Block: ${block.id}`)
-    if ('datasetId' in block) {
-      const dataset = datasetById(document, block.datasetId)
+  let sources: SourceSnapshot[] = []
+  if (block.kind === 'markdown') lines.push(`Markdown:\n${block.text}`)
+  else {
+    lines.push(`Block binding: ${JSON.stringify(block)}`)
+    if (block.kind === 'source') sources = selectedSources(document, block.sourceIds)
+  }
+  if ('datasetId' in block) {
+    const dataset = datasetById(document, block.datasetId)
+    const columnIds =
+      block.kind === 'metric'
+        ? [block.columnId]
+        : block.kind === 'chart'
+          ? [...new Set([block.x, ...block.y])]
+          : (block.columns ?? dataset.data.columns.map((column) => column.id))
+    lines.push(
+      `Dataset: ${dataset.id}`,
+      `来源类型: ${dataset.origin}`,
+      datasetScope(dataset.data),
+      `Columns: ${JSON.stringify(columnIds.map((id) => dataset.data.columns[columnIndex(dataset.data, id)]!))}`,
+    )
+    sources = selectedSources(document, dataset.sourceIds)
+    if (block.kind === 'metric') {
+      const metric = selectMetric(dataset.data, block)
       lines.push(
-        `Dataset: ${dataset.id}`,
-        `来源类型: ${dataset.origin}`,
-        datasetScope(dataset.data),
+        `Metric value: ${valueWithUnit(metric.value, metric.column)}`,
+        `Metric raw value: ${JSON.stringify(metric.value)}`,
       )
-      sources = selectedSources(document, dataset.sourceIds)
-      if (block.kind === 'chart') lines.push(`图表: ${chartTitle(dataset.data, block)}`)
-      const selected = block.kind === 'metric' ? block.rowIndex : rowIndex
-      if (selected !== undefined) {
-        const row = dataset.data.rows[selected]
-        if (!row) throw new Error(`Unknown presentation row: ${selected}`)
-        lines.push(`保存行索引: ${selected}`)
-        dataset.data.columns.forEach((column, index) => {
-          lines.push(`${column.label}: ${valueWithUnit(row[index]!, column)}`)
-        })
-      }
-    } else if (block.kind === 'source') sources = selectedSources(document, block.sourceIds)
+    }
   }
   for (const source of sources) {
     lines.push(

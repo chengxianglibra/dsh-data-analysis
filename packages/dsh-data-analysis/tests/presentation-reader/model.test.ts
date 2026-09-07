@@ -10,7 +10,9 @@ import {
   followUpContext,
   formatAxisTick,
   formatCategoryTick,
+  metricText,
   selectMetric,
+  snapshotDate,
   sortedRowIndices,
   valueWithUnit,
 } from '../../src/client/presentation/model.ts'
@@ -83,9 +85,26 @@ test('cells distinguish null, empty, exact decimal, zero and units without resca
   assert.equal(cellText('9007199254740993', { ...decimal, type: 'int64' }), '9007199254740993')
 })
 
+test('metric grouping keeps exact significant and fractional digits without rounding or rescaling', () => {
+  assert.equal(
+    metricText('9007199254740993', { ...decimal, type: 'int64' }),
+    '9,007,199,254,740,993 CNY',
+  )
+  assert.equal(metricText('-1234567.123456700', decimal), '-1,234,567.123456700 CNY')
+  assert.equal(metricText('0.1000', decimal), '0.1000 CNY')
+  assert.equal(metricText('1.234e99', decimal), '1.234e99 CNY')
+  assert.equal(metricText(null, decimal), '—')
+  assert.equal(metricText('1234567', { ...decimal, type: 'string' }), '1234567 CNY')
+  assert.match(snapshotDate('2026-09-07T17:08:22+08:00'), /2026\/09\/07 09:08 UTC/)
+})
+
 test('axis labels keep large/tiny signs and exponents and truncate only presentation text', () => {
   assert.equal(formatAxisTick(0), '0')
   assert.equal(formatAxisTick(12.5), '12.5')
+  assert.equal(formatAxisTick(50_000), '50,000')
+  assert.equal(formatAxisTick(150_000), '15万')
+  assert.equal(formatAxisTick(-150_000), '-15万')
+  assert.equal(formatAxisTick(0.00123), '0.00123')
   assert.equal(formatAxisTick(9007199254740992), '9.01e+15')
   assert.equal(formatAxisTick(-9007199254740992), '-9.01e+15')
   assert.equal(formatAxisTick(0.0000000000123), '1.23e-11')
@@ -145,13 +164,17 @@ test('chart coordinates keep duplicate labels, null gaps and original precision'
   )
 })
 
-test('empty and truncated scope stays explicit, copied coordinates include exact values and all declared refs', async () => {
-  assert.match(datasetScope(data([])), /暂无数据/)
-  assert.match(
+test('dataset scope reports only empty, complete or truncated row counts', () => {
+  assert.equal(datasetScope(data([])), '暂无数据')
+  assert.equal(datasetScope(data(['1'])), '1 行')
+  assert.equal(
     datasetScope({ ...data(['1']), rowCount: 9, truncated: true }),
-    /共 9 行.*保存前 1 行.*不能代表全量/,
+    '显示 1 / 9 行（已截断）',
   )
-  const document = parsePresentationDocument(
+})
+
+async function contextFixture() {
+  return parsePresentationDocument(
     JSON.parse(
       await fs.readFile(
         new URL('../presentation-s0/fixtures/computed.document.json', import.meta.url),
@@ -159,14 +182,68 @@ test('empty and truncated scope stays explicit, copied coordinates include exact
       ),
     ),
   )
+}
+
+test('chart cell context keeps declared bindings and references without copying a selected row', async () => {
+  const document = await contextFixture()
+  const before = JSON.stringify(document)
   const block = document.blocks.find((entry) => entry.kind === 'chart')!
-  const context = followUpContext(document, block, 0)
+  const context = followUpContext(document, block)
   assert.match(context, /Build ID: s0-computed/)
-  assert.match(context, /图表: 数量 · 月份/)
-  assert.match(context, /保存行索引: 0/)
-  assert.match(context, /12345678901234\.5678 CNY/)
-  assert.match(context, /9007199254740993/)
+  assert.match(context, /Cell: chart/)
+  assert.match(context, /Block kind: chart/)
+  assert.ok(context.includes(`Block binding: ${JSON.stringify(block)}`))
+  assert.match(context, /"id":"count","label":"数量","type":"float64","nullable":false,"unit":"次"/)
+  assert.doesNotMatch(context, /保存行索引|12345678901234\.5678|9007199254740993|account_id/)
   assert.match(context, /来源 sales:/)
   assert.match(context, /来源 accounts:/)
   assert.match(context, /来源 missing:.*unavailable/)
+  assert.equal(JSON.stringify(document), before)
+})
+
+test('metric cell context keeps only its bound exact value and authored coordinate', async () => {
+  const document = await contextFixture()
+  const block = {
+    id: 'exact-metric',
+    kind: 'metric' as const,
+    datasetId: 'computed',
+    columnId: 'amount',
+    rowIndex: 0,
+    label: '原指标',
+  }
+  const context = followUpContext(document, block)
+  assert.ok(context.includes(`Block binding: ${JSON.stringify(block)}`))
+  assert.match(context, /Metric value: 12345678901234\.5678 CNY/)
+  assert.match(context, /Metric raw value: "12345678901234\.5678"/)
+  assert.doesNotMatch(context, /account_id|9007199254740993|保存行索引/)
+  const missing = followUpContext(document, { ...block, rowIndex: 1 })
+  assert.match(missing, /Metric raw value: null/)
+})
+
+test('markdown cell context preserves its exact text and does not acquire unrelated source references', async () => {
+  const document = await contextFixture()
+  const text = '## 原始标题\n\n**原文**与 `query_count`。\n\n[链接](https://example.com)'
+  const context = followUpContext(document, { id: 'text', kind: 'markdown', text })
+  assert.match(context, /Cell: text/)
+  assert.ok(context.endsWith(`Markdown:\n${text}`))
+  assert.doesNotMatch(context, /来源 sales:|来源 accounts:|来源 missing:/)
+})
+
+test('table and source cell context stays within declared column and source selections', async () => {
+  const document = await contextFixture()
+  const table = followUpContext(document, {
+    id: 'table',
+    kind: 'table',
+    datasetId: 'computed',
+    columns: ['count'],
+  })
+  assert.match(table, /"columns":\["count"\]/)
+  assert.doesNotMatch(table, /"id":"amount"|"id":"account_id"|12345678901234\.5678/)
+  const source = followUpContext(document, {
+    id: 'selected-sources',
+    kind: 'source',
+    sourceIds: ['missing'],
+  })
+  assert.match(source, /来源 missing:/)
+  assert.doesNotMatch(source, /来源 sales:|来源 accounts:/)
 })

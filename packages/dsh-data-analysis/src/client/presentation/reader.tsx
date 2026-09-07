@@ -1,21 +1,126 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { parsePresentationDocument } from '../../presentation/contracts/index.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
 import { ChartRenderer } from './chart-renderer.tsx'
 import { CopyContext } from './copy-context.tsx'
+import { MoreIcon } from './icons.tsx'
 import { Markdown } from './markdown.tsx'
 import {
-  columnLabel,
   datasetById,
   datasetScope,
   followUpContext,
+  metricText,
   type ReaderMode,
-  selectedSources,
   selectMetric,
+  snapshotDate,
   valueWithUnit,
 } from './model.ts'
-import { Sources } from './sources.tsx'
+import { SourceDialog } from './source-dialog.tsx'
+import { blockSources, SourceSummary } from './sources.tsx'
 import { DatasetTable } from './table.tsx'
+
+function CellMenu({
+  onSource,
+  onCopy,
+}: {
+  onSource?: (trigger: HTMLElement) => void
+  onCopy: (trigger: HTMLElement) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const container = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const focusIndex = useRef(0)
+  const actions = [
+    ...(onSource ? [{ label: '数据源', run: onSource }] : []),
+    { label: '复制上下文', run: onCopy },
+  ]
+  useEffect(() => {
+    if (!open) return
+    container.current
+      ?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+      [focusIndex.current]?.focus()
+    const owner = container.current!.ownerDocument
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !container.current?.contains(event.target)) setOpen(false)
+    }
+    owner.addEventListener('pointerdown', dismiss)
+    return () => owner.removeEventListener('pointerdown', dismiss)
+  }, [open])
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: Delegate keyboard and focus events from the native menu buttons.
+    <div
+      className="pr-cell-menu"
+      ref={container}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          setOpen(false)
+          trigger.current?.focus()
+        } else if (event.key === 'Tab') {
+          setOpen(false)
+        } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault()
+          const items = [
+            ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+          ]
+          const active = items.indexOf(
+            event.currentTarget.ownerDocument.activeElement as HTMLButtonElement,
+          )
+          focusIndex.current =
+            event.key === 'Home'
+              ? 0
+              : event.key === 'End'
+                ? actions.length - 1
+                : event.key === 'ArrowUp'
+                  ? active <= 0
+                    ? actions.length - 1
+                    : active - 1
+                  : (active + 1) % actions.length
+          if (!open) setOpen(true)
+          else items[focusIndex.current]?.focus()
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="pr-icon-button"
+        ref={trigger}
+        aria-label="cell 更多操作"
+        title="更多操作"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          focusIndex.current = 0
+          setOpen(!open)
+        }}
+      >
+        <MoreIcon />
+      </button>
+      {open && (
+        <div className="pr-cell-menu-popup" role="menu" aria-label="cell 操作">
+          {actions.map((action) => (
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              key={action.label}
+              onClick={() => {
+                setOpen(false)
+                trigger.current?.focus()
+                action.run(trigger.current!)
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Block({
   block,
@@ -28,7 +133,12 @@ function Block({
 }) {
   if (block.kind === 'markdown') return <Markdown text={block.text} />
   if (block.kind === 'source')
-    return <Sources sources={selectedSources(document, block.sourceIds)} mode={mode} />
+    return (
+      <>
+        <h2>数据源</h2>
+        <p className="pr-muted">{block.sourceIds.length} 个来源</p>
+      </>
+    )
   const dataset = datasetById(document, block.datasetId)
   const metric = block.kind === 'metric' ? selectMetric(dataset.data, block) : undefined
   return (
@@ -39,93 +149,118 @@ function Block({
           <p
             className="pr-metric-value"
             data-metric-value="true"
-            title={metric.value === null ? '缺失值' : undefined}
+            title={metric.value === null ? '缺失值' : valueWithUnit(metric.value, metric.column)}
           >
-            {valueWithUnit(metric.value, metric.column)}
-          </p>
-          <p className="pr-muted">
-            保存数据第 {block.rowIndex + 1} 行 · {columnLabel(metric.column)}
+            {metricText(metric.value, metric.column)}
           </p>
           {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
         </>
       ) : block.kind === 'chart' ? (
-        <ChartRenderer document={document} dataset={dataset} block={block} mode={mode} />
+        <ChartRenderer dataset={dataset} block={block} mode={mode} />
       ) : block.kind === 'table' ? (
-        <DatasetTable data={dataset.data} columns={block.columns} mode={mode} caption="数据表" />
+        <DatasetTable
+          data={dataset.data}
+          columns={block.columns}
+          mode={mode}
+          caption="数据表"
+          showScope={dataset.data.truncated}
+        />
       ) : null}
-      <Sources
-        sources={selectedSources(document, dataset.sourceIds)}
-        mode={mode}
-        origin={dataset.origin}
-      />
-      {mode === 'interactive' && block.kind !== 'chart' && (
-        <CopyContext text={followUpContext(document, block)} />
-      )}
     </>
   )
 }
 
-function ReaderContents({ document, mode }: { document: PresentationDocument; mode: ReaderMode }) {
-  const shownSources = new Set<string>()
-  for (const block of document.blocks) {
-    if (block.kind === 'source')
-      block.sourceIds.forEach((id) => {
-        shownSources.add(id)
-      })
-    else if ('datasetId' in block)
-      datasetById(document, block.datasetId).sourceIds.forEach((id) => {
-        shownSources.add(id)
-      })
+/** Group adjacent metrics without changing the authored block order. */
+function blockGroups(blocks: PresentationBlock[]): PresentationBlock[][] {
+  const groups: PresentationBlock[][] = []
+  for (const block of blocks) {
+    const previous = groups.at(-1)
+    if (block.kind === 'metric' && previous?.[0]?.kind === 'metric') previous.push(block)
+    else groups.push([block])
   }
-  const remaining = document.sources.filter((source) => !shownSources.has(source.id))
+  return groups
+}
+
+function ReaderContents({ document, mode }: { document: PresentationDocument; mode: ReaderMode }) {
+  const [sourceCell, setSourceCell] = useState<{ block: PresentationBlock; trigger: HTMLElement }>()
+  // Known snapshot diagnostics have concise, contextual presentations below.
+  const diagnostics = [
+    ...new Set(
+      document.diagnostics
+        .filter(
+          (entry) =>
+            !['definition_unavailable', 'truncated', 'source_unavailable'].includes(entry.code),
+        )
+        .map((entry) => entry.message),
+    ),
+  ]
+  const renderBlock = (block: PresentationBlock) => (
+    <section
+      className={`pr-block pr-block-${block.kind}`}
+      key={block.id}
+      data-block-id={block.id}
+      data-block-kind={block.kind}
+    >
+      {mode === 'interactive' && (
+        <div className="pr-cell-toolbar pr-interactive">
+          <CopyContext text={followUpContext(document, block)}>
+            {(copy) => (
+              <CellMenu
+                onCopy={copy}
+                onSource={
+                  block.kind === 'markdown'
+                    ? undefined
+                    : (trigger) => setSourceCell({ block, trigger })
+                }
+              />
+            )}
+          </CopyContext>
+        </div>
+      )}
+      <Block block={block} document={document} mode={mode} />
+      {blockSources(document, block).some((source) => source.status === 'unavailable') && (
+        <p className="pr-notice">数据源不可用</p>
+      )}
+    </section>
+  )
   return (
     <article className="pr-reader" data-presentation-reader="true" data-mode={mode}>
       <header className="pr-header">
-        <p className="pr-eyebrow">MARIVO · 分析快照</p>
         <h1>{document.title}</h1>
         <p className="pr-muted">
-          生成时间：<time dateTime={document.generatedAt}>{document.generatedAt}</time>
+          生成于 <time dateTime={document.generatedAt}>{snapshotDate(document.generatedAt)}</time>
         </p>
-        {mode === 'interactive' && <CopyContext text={followUpContext(document)} />}
       </header>
-      {document.diagnostics.length > 0 && (
+      {diagnostics.length > 0 && (
         <aside className="pr-diagnostics" aria-label="展示说明">
-          <h2>展示说明</h2>
           <ul>
-            {document.diagnostics.map((entry, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: Immutable snapshot facts can repeat and carry no separate identifier.
-              <li key={`${index}-${entry.code}`}>{entry.message}</li>
+            {diagnostics.map((message) => (
+              <li key={message}>{message}</li>
             ))}
           </ul>
         </aside>
       )}
       <div className="pr-blocks">
-        {document.blocks.map((block) => (
-          <section
-            className={`pr-block pr-block-${block.kind}`}
-            key={block.id}
-            data-block-id={block.id}
-            data-block-kind={block.kind}
-          >
-            <Block block={block} document={document} mode={mode} />
-          </section>
-        ))}
-      </div>
-      {remaining.length > 0 && <Sources sources={remaining} mode={mode} />}
-      <footer className="pr-footer">
-        {mode === 'static' ? (
-          <p>
-            快照标识 · Build ID: {document.buildId} · Workspace: {document.workspaceId}
-          </p>
-        ) : (
-          <details>
-            <summary>快照标识</summary>
-            <p>
-              Build ID: {document.buildId} · Workspace: {document.workspaceId}
-            </p>
-          </details>
+        {blockGroups(document.blocks).map((group) =>
+          group[0]!.kind === 'metric' ? (
+            <div className="pr-metric-group" key={group[0]!.id}>
+              {group.map(renderBlock)}
+            </div>
+          ) : (
+            renderBlock(group[0]!)
+          ),
         )}
-      </footer>
+      </div>
+      {mode === 'static' && document.sources.length > 0 && <SourceSummary document={document} />}
+      {sourceCell && (
+        <SourceDialog
+          key={sourceCell.block.id}
+          document={document}
+          block={sourceCell.block}
+          restoreFocusTo={sourceCell.trigger}
+          onClose={() => setSourceCell(undefined)}
+        />
+      )}
     </article>
   )
 }

@@ -15,11 +15,13 @@ export function DatasetTable({
   columns,
   mode,
   caption,
+  showScope = true,
 }: {
   data: TypedDataset
   columns?: string[]
   mode: ReaderMode
   caption: string
+  showScope?: boolean
 }) {
   const [sort, setSort] = useState<{
     columnId: string
@@ -27,6 +29,11 @@ export function DatasetTable({
   }>()
   const [page, setPage] = useState(0)
   const indices = columns?.map((id) => columnIndex(data, id)) ?? data.columns.map((_, i) => i)
+  const numericColumns = new Set(
+    data.columns
+      .filter((column) => ['float64', 'int64', 'decimal'].includes(column.type))
+      .map((column) => column.id),
+  )
   const sorted = useMemo(() => sortedRowIndices(data, sort), [data, sort])
   const pages = Math.max(1, Math.ceil(data.rows.length / TABLE_PAGE_SIZE))
   const activePage = Math.min(page, pages - 1)
@@ -36,7 +43,9 @@ export function DatasetTable({
       : sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
   return (
     <div className="pr-table">
-      <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{datasetScope(data)}</p>
+      {showScope && (
+        <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{datasetScope(data)}</p>
+      )}
       <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>
         <table>
           <caption>{caption}</caption>
@@ -49,6 +58,7 @@ export function DatasetTable({
                     key={column.id}
                     scope="col"
                     data-column-id={column.id}
+                    className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
                     aria-sort={
                       mode === 'interactive' && sort?.columnId === column.id
                         ? sort.direction
@@ -72,13 +82,13 @@ export function DatasetTable({
                           setPage(0)
                         }}
                       >
-                        {columnLabel(column)}
-                        <span aria-hidden="true">
+                        <span className="pr-column-label">{columnLabel(column)}</span>
+                        <span className="pr-sort-indicator" aria-hidden="true">
                           {sort?.columnId === column.id
                             ? sort.direction === 'ascending'
-                              ? ' ↑'
-                              : ' ↓'
-                            : ' ↕'}
+                              ? '↑'
+                              : '↓'
+                            : '↕'}
                         </span>
                       </button>
                     )}
@@ -98,11 +108,7 @@ export function DatasetTable({
                       key={column.id}
                       data-column-id={column.id}
                       data-cell-null={value === null ? 'true' : undefined}
-                      className={
-                        ['float64', 'int64', 'decimal'].includes(column.type)
-                          ? 'pr-numeric'
-                          : undefined
-                      }
+                      className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
                       aria-label={value === null ? '缺失值' : value === '' ? '空字符串' : undefined}
                     >
                       {cellText(value, column)}
