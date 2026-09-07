@@ -1,3 +1,5 @@
+import { CHART_STYLES } from './chart-styles.ts'
+
 export const PRESENTATION_STYLES = `
 .pr-reader {
   --pr-bg:#fff; --pr-soft:#f7f7f8; --pr-text:#242424; --pr-muted:#666;
@@ -118,9 +120,33 @@ export const PRESENTATION_STYLES = `
 .pr-source-issues { margin:12px 0 0; color:var(--pr-warning); font-size:13px }
 .pr-source-summary { margin-top:32px; padding-top:16px; border-top:1px solid var(--pr-border) }
 .pr-source-summary>summary { font-size:14px }
+.pr-source-code { display:flex; flex-direction:column; gap:20px; min-width:0 }
+.pr-source-code-snippet { min-width:0 }
+.pr-source-code-header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px }
+.pr-source-code-header h3 { margin:0; font-size:14px; font-weight:500 }
+.pr-source-code-copy { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; color:var(--pr-muted) }
+.pr-source-code-copy button { font-size:12px }
+.pr-source-code pre { margin:0; padding:14px 16px; border:1px solid var(--pr-border); border-radius:10px; background:var(--pr-soft); max-height:420px; overflow:auto; white-space:pre; tab-size:4; user-select:text; font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+.pr-source-code-summary { margin-top:20px }
+.pr-source-code-summary>summary { margin-bottom:12px; font-size:14px }
 .pr-copy-dialog { max-width:640px; padding-bottom:24px; overflow:auto }
 .pr-copy-dialog>p,.pr-copy-dialog>label { margin:16px 24px }
 .pr-copy-dialog textarea { display:block; width:calc(100% - 48px); min-height:220px; max-height:50vh; margin:16px 24px 0; padding:12px; background:var(--pr-soft); color:var(--pr-text); border:1px solid var(--pr-border); border-radius:8px; font:13px/1.65 ui-monospace,monospace; resize:vertical }
+
+.pr-chart-explorer { margin:18px 0; padding:20px; border:1px solid var(--pr-border); border-radius:12px; background:var(--pr-soft); font-size:13px; min-width:0 }
+.pr-explorer-header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start }
+.pr-explorer-header h3 { margin:0 }
+.pr-explorer-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); gap:14px; margin:14px 0 }
+.pr-explorer-grid>label { display:flex; flex-direction:column; gap:6px; min-width:0 }
+.pr-explorer-grid select { width:100%; min-width:0 }
+.pr-explorer-fields { border:0; border-top:1px solid var(--pr-border); padding:12px 0 0; margin:16px 0 0; min-width:0 }
+.pr-explorer-fields legend { font-weight:600; padding:0 8px 0 0 }
+.pr-explorer-series { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:8px 0 }
+.pr-explorer-series label { display:flex; align-items:center; gap:6px }
+.pr-explorer-series input { accent-color:var(--pr-accent); min-width:16px; min-height:16px }
+.pr-explorer-visible { color:var(--pr-muted) }
+.pr-explorer-footer { margin-top:16px; display:flex; justify-content:flex-end }
+.pr-host-print { display:none }
 
 .pr-host { min-width:0 }
 .pr-host-actions { display:flex; gap:10px; justify-content:flex-end; padding:12px }
@@ -151,6 +177,8 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
 @media(max-width:420px) { .pr-metric-group { grid-template-columns:1fr } }
 @media(pointer:coarse) { .pr-reader summary,.pr-reader button { min-height:44px } .pr-reader .pr-icon-button { width:36px } .pr-block-metric>h2,.pr-block-chart>h2 { padding-right:44px } .pr-reader select,.pr-reader textarea { font-size:16px } }
 @media print {
+  .pr-host-live { display:none!important }
+  .pr-host-print { display:block!important }
   html[data-presentation-ready=true] body[data-presentation-portable] #presentation-fallback,body[data-presentation-portable] #presentation-fallback { display:block!important }
   body[data-presentation-portable] #reader,.pr-interactive { display:none!important }
   .pr-reader { --pr-bg:#fff; --pr-soft:#fff; --pr-text:#111; --pr-muted:#444; --pr-border:#bbb; --pr-accent:#222; --pr-warning:#333; max-width:none; padding:0; font-size:10pt; color-scheme:light }
@@ -159,6 +187,7 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-block-metric>h2,.pr-block-chart>h2,.pr-block-markdown .pr-markdown>:first-child { padding-right:0 }
   .pr-source-summary::details-content { content-visibility:visible }
   .pr-source-summary>* { display:block }
+  .pr-source-code-summary { display:none!important }
   .pr-source-dialog,.pr-dialog { display:none!important }
   .pr-metric-group { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) }
   .pr-header { break-after:avoid }
@@ -171,4 +200,5 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-table thead { display:table-header-group }
   .pr-reader pre { white-space:pre-wrap }
 }
+${CHART_STYLES}
 `

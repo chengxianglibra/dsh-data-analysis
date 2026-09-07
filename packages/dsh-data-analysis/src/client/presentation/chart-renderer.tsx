@@ -1,19 +1,38 @@
 import { useMemo, useState } from 'react'
 import {
+  Area,
   Bar,
-  BarChart,
   CartesianGrid,
+  Cell,
+  ComposedChart,
+  LabelList,
   Line,
-  LineChart,
+  Rectangle,
   ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from 'recharts'
+import { chartColumns } from '../../presentation/contracts/charts.ts'
 import type { DocumentDataset } from '../../presentation/contracts/types.ts'
 import {
+  CHART_COLORS,
+  chartCoordinate,
+  numericDrawingAxis,
+  pointIsDrawable,
+  seriesAppearance,
+  showValueLabels,
+  stackCoordinates,
+} from './chart-geometry.ts'
+import { SPECIAL_CHARTS, SpecialChart } from './chart-specials.tsx'
+import { ExactTooltip } from './chart-tooltip.tsx'
+import {
   type ChartBlock,
+  cellText,
   chartRows,
   chartTitle,
   columnIndex,
@@ -26,83 +45,513 @@ import {
 } from './model.ts'
 import { DatasetTable } from './table.tsx'
 
-const COLORS = Array.from({ length: 6 }, (_, index) => `var(--pr-chart-${index + 1})`)
-
-function ExactTooltip({
-  dataset,
-  block,
-  rowIndex,
-  visible,
-}: {
-  dataset: DocumentDataset
-  block: ChartBlock
+interface DrawingRow {
   rowIndex: number
-  visible: Set<string>
-}) {
-  const row = dataset.data.rows[rowIndex]
-  if (!row) return null
-  const xIndex = columnIndex(dataset.data, block.x)
-  return (
-    <div className="pr-tooltip" data-chart-tooltip="true">
-      <strong>{valueWithUnit(row[xIndex]!, dataset.data.columns[xIndex]!)}</strong>
-      <dl>
-        {block.y
-          .filter((id) => visible.has(id))
-          .map((id) => {
-            const index = columnIndex(dataset.data, id)
-            const column = dataset.data.columns[index]!
-            return (
-              <div key={id}>
-                <dt>{column.label}</dt>
-                <dd>{valueWithUnit(row[index]!, column)}</dd>
-              </div>
-            )
-          })}
-      </dl>
-    </div>
-  )
+  xLabel: string
+  [key: string]: number | string | null | [number, number]
 }
 
 export function ChartRenderer({
   dataset,
   block,
   mode,
+  hidden: controlledHidden,
+  onHiddenChange,
+  rowIndices,
 }: {
   dataset: DocumentDataset
   block: ChartBlock
   mode: ReaderMode
+  hidden?: readonly string[]
+  onHiddenChange?: (hidden: string[]) => void
+  rowIndices?: readonly number[]
 }) {
-  const [hidden, setHidden] = useState<Set<string>>(() => new Set())
-  const rows = useMemo(() => chartRows(dataset.data, block), [dataset.data, block])
+  const [localHidden, setLocalHidden] = useState<string[]>([])
+  const hidden = new Set(controlledHidden ?? localHidden)
+  const originalRows = useMemo(() => chartRows(dataset.data, block), [dataset.data, block])
+  const indices = rowIndices ?? originalRows.map((row) => row.rowIndex)
+  const rows: DrawingRow[] = indices.map((index) => ({ ...originalRows[index]! }))
+  const horizontal = block.chart.startsWith('horizontal')
+  const stacked = block.chart.toLowerCase().includes('stacked')
+  const normalized = block.chart.endsWith('100')
+  const area = block.chart === 'area' || block.chart === 'stackedArea'
+  const trend = block.chart === 'line' || area || block.chart === 'sparkline'
+  const sparkline = block.chart === 'sparkline'
   const series = block.y.map((id, index) => ({
     id,
+    index,
     key: `series${index}`,
-    color: COLORS[index % COLORS.length]!,
+    ...seriesAppearance(block, id, index),
     column: dataset.data.columns[columnIndex(dataset.data, id)]!,
   }))
   const visible = new Set(block.y.filter((id) => !hidden.has(id)))
-  // One axis per explicitly declared unit. No unit inference, rescaling or aggregation.
+  for (const row of rows) {
+    const ranges = stacked
+      ? stackCoordinates(
+          series.map((entry) => (visible.has(entry.id) ? (row[entry.key] as number | null) : null)),
+        )
+      : []
+    for (const entry of series) {
+      const value = dataset.data.rows[row.rowIndex]![columnIndex(dataset.data, entry.id)]!
+      row[`valueLabel${entry.index}`] =
+        value === null ? null : formatCategoryTick(valueWithUnit(value, entry.column))
+      if (stacked && area) row[entry.key] = ranges[entry.index]!
+    }
+  }
+  const rowByIndex = new Map(rows.map((row) => [row.rowIndex, row]))
+  const title = chartTitle(dataset.data, block)
+  const xColumn = dataset.data.columns[columnIndex(dataset.data, block.x)]!
+  const labels = showValueLabels(block, rows.length * visible.size)
+  // An explicitly declared unit owns one scale. Stacked inputs are validated to share a unit.
   const groups = new Map<string | undefined, typeof series>()
   for (const entry of series) {
     const entries = groups.get(entry.column.unit) ?? []
     entries.push(entry)
     groups.set(entry.column.unit, entries)
   }
-  const title = chartTitle(dataset.data, block)
-  const xColumn = dataset.data.columns[columnIndex(dataset.data, block.x)]!
-  const exactColumns = [...new Set([block.x, ...block.y])]
   if (mode === 'static')
     return (
       <>
         <h2>{title}</h2>
         <DatasetTable
           data={dataset.data}
-          columns={exactColumns}
+          columns={chartColumns(block)}
           mode={mode}
           caption={`${title} · 精确数据`}
         />
       </>
     )
+  const tooltip = (shown: typeof series) => (
+    <Tooltip
+      cursor={
+        trend
+          ? { stroke: 'var(--pr-chart-grid)' }
+          : { fill: 'var(--pr-chart-hover)', stroke: 'none' }
+      }
+      position={{ x: 0 }}
+      wrapperStyle={{ maxWidth: '100%' }}
+      filterNull={false}
+      isAnimationActive={false}
+      content={({ active, payload }) => {
+        const rowIndex: unknown = payload?.[0]?.payload?.rowIndex
+        return active && typeof rowIndex === 'number' ? (
+          <ExactTooltip
+            dataset={dataset}
+            block={block}
+            rowIndex={rowIndex}
+            visible={new Set(shown.map((entry) => entry.id))}
+          />
+        ) : null
+      }}
+    />
+  )
+  const referenceLines = (xDivisor = 1, yDivisor = 1) =>
+    (block.options?.referenceLines ?? []).map((reference) => (
+      <ReferenceLine
+        key={`${reference.axis}:${reference.value}:${reference.label ?? ''}`}
+        {...(reference.axis === 'x'
+          ? { x: reference.value / xDivisor }
+          : { y: reference.value / yDivisor })}
+        ifOverflow="extendDomain"
+        stroke="var(--pr-chart-muted)"
+        strokeDasharray="5 5"
+        label={{
+          value: reference.label ?? formatAxisTick(reference.value),
+          fill: 'var(--pr-text)',
+          fontSize: 11,
+        }}
+      />
+    ))
+  const renderCartesian = (entries: typeof series, unit: string | undefined) => {
+    const shown = entries.filter((entry) => visible.has(entry.id))
+    if (!shown.length) return null
+    const numeric = rows.some((row) => shown.some((entry) => row[entry.key] !== null))
+    const numericAxis = numericDrawingAxis([
+      ...rows.flatMap((row) =>
+        stacked && !area
+          ? stackCoordinates(shown.map((entry) => row[entry.key] as number | null)).flatMap(
+              (value) => value ?? [null],
+            )
+          : shown.flatMap((entry) =>
+              Array.isArray(row[entry.key])
+                ? (row[entry.key] as [number, number])
+                : [row[entry.key] as number | null],
+            ),
+      ),
+      ...(block.options?.referenceLines ?? []).map((reference) => reference.value),
+    ])
+    const displayRows =
+      numericAxis.divisor === 1
+        ? rows
+        : rows.map((row) => {
+            const result = { ...row }
+            for (const entry of shown) {
+              const value = row[entry.key]
+              result[entry.key] = Array.isArray(value)
+                ? [value[0] / numericAxis.divisor, value[1] / numericAxis.divisor]
+                : value === null
+                  ? null
+                  : (value as number) / numericAxis.divisor
+            }
+            return result
+          })
+    const axisTitle =
+      shown.length === 1
+        ? columnLabel(shown[0]!.column)
+        : (unit ?? shown.map((entry) => entry.column.label).join('、'))
+    const axisStyle = { fill: 'var(--pr-chart-muted)', fontSize: 12 }
+    const numericFormatter = normalized
+      ? (value: number) => `${formatAxisTick(value * 100)}%`
+      : (value: number) => formatAxisTick(value * numericAxis.divisor)
+    const categoryFormatter = (value: number) =>
+      formatCategoryTick(rowByIndex.get(value)?.xLabel ?? '')
+    const numericDomain: [number | string, number | string] = normalized
+      ? [0, 1]
+      : numericAxis.divisor === 1
+        ? ['auto', 'auto']
+        : numericAxis.domain
+    const axisLabel = (value: string) => ({
+      value: formatCategoryTick(value),
+      fill: 'var(--pr-text)',
+      fontSize: 12,
+      fontWeight: 500,
+    })
+    const axes = (
+      <>
+        {!sparkline && (
+          <CartesianGrid
+            stroke="var(--pr-chart-grid)"
+            vertical={horizontal}
+            horizontal={!horizontal}
+          />
+        )}
+        <XAxis
+          dataKey={horizontal ? undefined : 'rowIndex'}
+          type={horizontal ? 'number' : 'category'}
+          tickFormatter={horizontal ? numericFormatter : categoryFormatter}
+          tick={axisStyle}
+          tickLine={false}
+          axisLine={false}
+          height={40}
+          tickMargin={2}
+          hide={sparkline}
+          domain={horizontal ? numericDomain : undefined}
+          label={
+            sparkline
+              ? undefined
+              : {
+                  ...axisLabel(horizontal ? axisTitle : columnLabel(xColumn)),
+                  position: 'insideBottom',
+                  offset: -4,
+                  textAnchor: 'middle',
+                }
+          }
+          interval="preserveStartEnd"
+          minTickGap={24}
+        />
+        <YAxis
+          dataKey={horizontal ? 'rowIndex' : undefined}
+          type={horizontal ? 'category' : 'number'}
+          tickFormatter={horizontal ? categoryFormatter : numericFormatter}
+          tick={axisStyle}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={4}
+          width={horizontal ? 112 : 'auto'}
+          hide={sparkline}
+          domain={horizontal ? undefined : numericDomain}
+          label={
+            sparkline
+              ? undefined
+              : {
+                  ...axisLabel(horizontal ? columnLabel(xColumn) : axisTitle),
+                  angle: -90,
+                  position: 'insideLeft',
+                  offset: 0,
+                  textAnchor: 'middle',
+                }
+          }
+        />
+        {!sparkline && (
+          <ReferenceLine
+            {...(horizontal ? { x: 0 } : { y: 0 })}
+            ifOverflow="extendDomain"
+            stroke="var(--pr-chart-grid)"
+          />
+        )}
+        {referenceLines(horizontal ? numericAxis.divisor : 1, horizontal ? 1 : numericAxis.divisor)}
+        {tooltip(shown)}
+      </>
+    )
+    return (
+      <div className="pr-chart-group" key={unit === undefined ? 'no-unit' : `unit:${unit}`}>
+        {!numeric ? (
+          <p className="pr-empty">所选系列均为 null，没有可绘制数值。</p>
+        ) : (
+          <figure
+            className={`pr-chart${sparkline ? ' pr-chart-sparkline' : ''}`}
+            aria-label={`${title}，${unit ?? '未声明单位'}`}
+            data-chart-type={block.chart}
+          >
+            <ResponsiveContainer width="100%" height={sparkline ? 128 : 320} minWidth={0}>
+              <ComposedChart
+                data={displayRows}
+                layout={horizontal ? 'vertical' : 'horizontal'}
+                stackOffset="sign"
+                accessibilityLayer
+                margin={{ top: labels ? 26 : 8, right: labels ? 24 : 0, bottom: 8, left: 8 }}
+                barCategoryGap="24%"
+                barGap={stacked ? 0 : 4}
+              >
+                {axes}
+                {shown.map((entry) => {
+                  const valueLabel = labels ? (
+                    <LabelList
+                      dataKey={`valueLabel${entry.index}`}
+                      position={horizontal ? 'right' : 'top'}
+                      fill="var(--pr-text)"
+                      fontSize={11}
+                    />
+                  ) : null
+                  const dot = ({ cx, cy, index }: { cx?: number; cy?: number; index?: number }) => {
+                    if (
+                      typeof index !== 'number' ||
+                      !pointIsDrawable(rows[index]?.[entry.key], cx, cy)
+                    )
+                      return <g />
+                    const isolated =
+                      typeof index === 'number' &&
+                      rows[index]?.[entry.key] !== null &&
+                      (index === 0 || rows[index - 1]?.[entry.key] === null) &&
+                      (index === rows.length - 1 || rows[index + 1]?.[entry.key] === null)
+                    const show =
+                      block.options?.showPoints === 'always' ||
+                      (block.options?.showPoints !== 'never' && isolated)
+                    return show ? (
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={3}
+                        fill={entry.color}
+                        stroke="var(--pr-bg)"
+                        data-chart-point={entry.id}
+                      />
+                    ) : (
+                      <g />
+                    )
+                  }
+                  if (trend) {
+                    const common = {
+                      name: columnLabel(entry.column),
+                      dataKey: entry.key,
+                      type: 'monotone' as const,
+                      stroke: entry.color,
+                      strokeWidth: 2,
+                      strokeDasharray: entry.dash,
+                      dot,
+                      activeDot:
+                        block.options?.showPoints === 'never'
+                          ? (false as const)
+                          : { r: 4, stroke: 'var(--pr-bg)', strokeWidth: 2 },
+                      connectNulls: false,
+                      isAnimationActive: false,
+                    }
+                    return area ? (
+                      <Area
+                        key={entry.id}
+                        {...common}
+                        fill={entry.color}
+                        fillOpacity={stacked ? 0.55 : 0.18}
+                      >
+                        {valueLabel}
+                      </Area>
+                    ) : (
+                      <Line key={entry.id} {...common}>
+                        {valueLabel}
+                      </Line>
+                    )
+                  }
+                  // Null never becomes a painted zero observation, including Recharts stack offsets.
+                  return (
+                    <Bar
+                      key={entry.id}
+                      name={columnLabel(entry.column)}
+                      dataKey={entry.key}
+                      stackId={stacked ? 'authored-values' : undefined}
+                      fill={entry.color}
+                      maxBarSize={48}
+                      isAnimationActive={false}
+                      shape={(props: any) =>
+                        props.payload?.[entry.key] === null ? (
+                          <g />
+                        ) : (
+                          <Rectangle {...props} data-source-row-index={props.payload?.rowIndex} />
+                        )
+                      }
+                    >
+                      {valueLabel}
+                    </Bar>
+                  )
+                })}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </figure>
+        )}
+      </div>
+    )
+  }
+  const renderScatter = () => {
+    const entry = series[0]!
+    const bindings = block.bindings ?? {}
+    const category = (index: number) =>
+      bindings.color
+        ? JSON.stringify(dataset.data.rows[index]![columnIndex(dataset.data, bindings.color)]!)
+        : ''
+    const categories = [...new Set(dataset.data.rows.map((_, index) => category(index)))]
+    const points = rows
+      .map(
+        (row): DrawingRow => ({
+          ...row,
+          xCoordinate: chartCoordinate(dataset.data, block, row.rowIndex, block.x),
+          sizeCoordinate: bindings.size
+            ? chartCoordinate(dataset.data, block, row.rowIndex, bindings.size)
+            : 1,
+          pointLabel: bindings.label
+            ? formatCategoryTick(
+                cellText(
+                  dataset.data.rows[row.rowIndex]![columnIndex(dataset.data, bindings.label)]!,
+                  dataset.data.columns[columnIndex(dataset.data, bindings.label)]!,
+                ),
+              )
+            : (row.valueLabel0 ?? null),
+        }),
+      )
+      .filter(
+        (row) =>
+          row.xCoordinate !== null &&
+          row[entry.key] !== null &&
+          row.sizeCoordinate !== null &&
+          (!bindings.size || row.sizeCoordinate !== 0),
+      )
+    if (!points.length) return <p className="pr-empty">所选坐标均为 null，没有可绘制数值。</p>
+    const axis = (coordinate: string, referenceAxis: 'x' | 'y') =>
+      numericDrawingAxis([
+        ...points.map((row) => row[coordinate] as number),
+        ...(block.options?.referenceLines ?? [])
+          .filter((reference) => reference.axis === referenceAxis)
+          .map((reference) => reference.value),
+      ])
+    const xAxis = axis('xCoordinate', 'x')
+    const yAxis = axis(entry.key, 'y')
+    const sizeAxis = numericDrawingAxis(points.map((row) => row.sizeCoordinate as number))
+    const displayPoints = points.map((row) => ({
+      ...row,
+      xCoordinate: (row.xCoordinate as number) / xAxis.divisor,
+      [entry.key]: (row[entry.key] as number) / yAxis.divisor,
+      sizeCoordinate: (row.sizeCoordinate as number) / sizeAxis.divisor,
+    }))
+    return (
+      <>
+        <figure className="pr-chart" aria-label={title} data-chart-type="scatter">
+          <ResponsiveContainer width="100%" height={320} minWidth={0}>
+            <ScatterChart
+              accessibilityLayer
+              margin={{ top: labels ? 26 : 8, right: 24, bottom: 8, left: 8 }}
+            >
+              <CartesianGrid stroke="var(--pr-chart-grid)" />
+              <XAxis
+                dataKey="xCoordinate"
+                type="number"
+                name={columnLabel(xColumn)}
+                tickFormatter={(value: number) => formatAxisTick(value * xAxis.divisor)}
+                tick={{ fill: 'var(--pr-chart-muted)', fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+                height={40}
+                domain={xAxis.divisor === 1 ? ['auto', 'auto'] : xAxis.domain}
+                label={{
+                  value: formatCategoryTick(columnLabel(xColumn)),
+                  position: 'insideBottom',
+                  offset: -4,
+                  fill: 'var(--pr-text)',
+                  fontSize: 12,
+                }}
+              />
+              <YAxis
+                dataKey={entry.key}
+                type="number"
+                name={columnLabel(entry.column)}
+                tickFormatter={(value: number) => formatAxisTick(value * yAxis.divisor)}
+                tick={{ fill: 'var(--pr-chart-muted)', fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+                width="auto"
+                domain={yAxis.divisor === 1 ? ['auto', 'auto'] : yAxis.domain}
+                label={{
+                  value: formatCategoryTick(columnLabel(entry.column)),
+                  angle: -90,
+                  position: 'insideLeft',
+                  fill: 'var(--pr-text)',
+                  fontSize: 12,
+                }}
+              />
+              <ZAxis
+                dataKey="sizeCoordinate"
+                range={bindings.size ? [0, 240] : [48, 48]}
+                domain={bindings.size ? [0, 'dataMax'] : [0, 1]}
+              />
+              {referenceLines(xAxis.divisor, yAxis.divisor)}
+              {tooltip([entry])}
+              <Scatter
+                data={displayPoints}
+                name={columnLabel(entry.column)}
+                fill={entry.color}
+                isAnimationActive={false}
+              >
+                {points.map((row) => (
+                  <Cell
+                    key={row.rowIndex}
+                    fill={
+                      bindings.color
+                        ? CHART_COLORS[
+                            categories.indexOf(category(row.rowIndex)) % CHART_COLORS.length
+                          ]
+                        : entry.color
+                    }
+                  />
+                ))}
+                {(bindings.label || labels) && (
+                  <LabelList
+                    dataKey="pointLabel"
+                    position="top"
+                    fill="var(--pr-text)"
+                    fontSize={11}
+                  />
+                )}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+        </figure>
+        {bindings.color && (
+          <section className="pr-color-key" aria-label="分类颜色">
+            {categories.map((name, index) => (
+              <span key={name}>
+                <i
+                  className="pr-swatch"
+                  style={{ background: CHART_COLORS[index % CHART_COLORS.length] }}
+                  aria-hidden="true"
+                />
+                {cellText(
+                  JSON.parse(name),
+                  dataset.data.columns[columnIndex(dataset.data, bindings.color!)]!,
+                )}
+              </span>
+            ))}
+          </section>
+        )}
+      </>
+    )
+  }
   return (
     <>
       <h2>{title}</h2>
@@ -112,155 +561,18 @@ export function ChartRenderer({
         <p className="pr-empty">暂无可绘制数据。</p>
       ) : !visible.size ? (
         <p className="pr-empty">所有系列已隐藏，请选择要显示的系列。</p>
+      ) : SPECIAL_CHARTS.has(block.chart) ? (
+        <SpecialChart
+          dataset={dataset}
+          block={block}
+          rowIndices={indices}
+          visible={visible}
+          title={title}
+        />
+      ) : block.chart === 'scatter' ? (
+        renderScatter()
       ) : (
-        [...groups].map(([unit, entries]) => {
-          const shown = entries.filter((entry) => visible.has(entry.id))
-          if (!shown.length) return null
-          const numeric = rows.some((row) => shown.some((entry) => row[entry.key] !== null))
-          const shared = {
-            data: rows,
-            accessibilityLayer: true,
-            margin: { top: 8, right: 0, bottom: 8, left: 8 },
-          }
-          const axisTitle =
-            shown.length === 1
-              ? columnLabel(shown[0]!.column)
-              : (unit ?? shown.map((entry) => entry.column.label).join('、'))
-          const axes = (
-            <>
-              <CartesianGrid stroke="var(--pr-chart-grid)" vertical={false} />
-              <XAxis
-                dataKey="rowIndex"
-                type="category"
-                tickFormatter={(value: number) => formatCategoryTick(rows[value]?.xLabel ?? '')}
-                tick={{ fill: 'var(--pr-chart-muted)', fontSize: 12 }}
-                tickLine={false}
-                axisLine={false}
-                height={40}
-                tickMargin={2}
-                label={{
-                  value: formatCategoryTick(columnLabel(xColumn)),
-                  position: 'insideBottom',
-                  offset: -4,
-                  textAnchor: 'middle',
-                  fill: 'var(--pr-text)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                }}
-                interval="preserveStartEnd"
-                minTickGap={24}
-              />
-              <YAxis
-                tickFormatter={formatAxisTick}
-                tick={{ fill: 'var(--pr-chart-muted)', fontSize: 12 }}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={4}
-                width="auto"
-                domain={['auto', 'auto']}
-                label={{
-                  value: formatCategoryTick(axisTitle),
-                  angle: -90,
-                  position: 'insideLeft',
-                  offset: 0,
-                  textAnchor: 'middle',
-                  fill: 'var(--pr-text)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                }}
-              />
-              {/* Include zero before Recharts computes nice ticks, including all-negative series. */}
-              <ReferenceLine y={0} ifOverflow="extendDomain" stroke="var(--pr-chart-grid)" />
-              <Tooltip
-                cursor={
-                  block.chart === 'bar'
-                    ? { fill: 'var(--pr-chart-hover)', stroke: 'none' }
-                    : { stroke: 'var(--pr-chart-grid)' }
-                }
-                // A narrow plot can be smaller than the exact value tooltip. Anchor
-                // to the chart frame so Recharts does not push text outside it.
-                position={{ x: 0 }}
-                wrapperStyle={{ maxWidth: '100%' }}
-                filterNull={false}
-                isAnimationActive={false}
-                content={({ active, payload }) => {
-                  const rowIndex: unknown = payload?.[0]?.payload?.rowIndex
-                  return active && typeof rowIndex === 'number' ? (
-                    <ExactTooltip
-                      dataset={dataset}
-                      block={block}
-                      rowIndex={rowIndex}
-                      visible={new Set(shown.map((entry) => entry.id))}
-                    />
-                  ) : null
-                }}
-              />
-            </>
-          )
-          return (
-            <div className="pr-chart-group" key={unit === undefined ? 'no-unit' : `unit:${unit}`}>
-              {!numeric ? (
-                <p className="pr-empty">所选系列均为 null，没有可绘制数值。</p>
-              ) : (
-                <figure className="pr-chart" aria-label={`${title}，${unit ?? '未声明单位'}`}>
-                  <ResponsiveContainer width="100%" height={320} minWidth={0}>
-                    {block.chart === 'line' ? (
-                      <LineChart {...shared}>
-                        {axes}
-                        {shown.map((entry) => (
-                          <Line
-                            key={entry.id}
-                            name={columnLabel(entry.column)}
-                            dataKey={entry.key}
-                            type="monotone"
-                            stroke={entry.color}
-                            strokeWidth={2}
-                            dot={({ cx, cy, index }) => {
-                              // Keep isolated observations visible without decorating every point.
-                              const isolated =
-                                typeof index === 'number' &&
-                                rows[index]?.[entry.key] !== null &&
-                                (index === 0 || rows[index - 1]?.[entry.key] === null) &&
-                                (index === rows.length - 1 || rows[index + 1]?.[entry.key] === null)
-                              return isolated ? (
-                                <circle
-                                  cx={cx}
-                                  cy={cy}
-                                  r={3}
-                                  fill={entry.color}
-                                  stroke="var(--pr-bg)"
-                                />
-                              ) : (
-                                <g />
-                              )
-                            }}
-                            activeDot={{ r: 4, stroke: 'var(--pr-bg)', strokeWidth: 2 }}
-                            connectNulls={false}
-                            isAnimationActive={false}
-                          />
-                        ))}
-                      </LineChart>
-                    ) : (
-                      <BarChart {...shared} barCategoryGap="24%" barGap={4}>
-                        {axes}
-                        {shown.map((entry) => (
-                          <Bar
-                            key={entry.id}
-                            name={columnLabel(entry.column)}
-                            dataKey={entry.key}
-                            fill={entry.color}
-                            maxBarSize={48}
-                            isAnimationActive={false}
-                          />
-                        ))}
-                      </BarChart>
-                    )}
-                  </ResponsiveContainer>
-                </figure>
-              )}
-            </div>
-          )
-        })
+        [...groups].map(([unit, entries]) => renderCartesian(entries, unit))
       )}
       {series.length > 1 && (
         <section className="pr-legend pr-interactive" aria-label="图表系列">
@@ -274,11 +586,34 @@ export function ChartRenderer({
                 const next = new Set(hidden)
                 if (next.has(entry.id)) next.delete(entry.id)
                 else next.add(entry.id)
-                setHidden(next)
+                const result = [...next]
+                if (onHiddenChange) onHiddenChange(result)
+                else setLocalHidden(result)
               }}
             >
-              <span className="pr-swatch" style={{ background: entry.color }} aria-hidden="true" />
+              {trend ? (
+                <svg width={18} height={10} aria-hidden="true">
+                  <line
+                    x1={0}
+                    x2={18}
+                    y1={5}
+                    y2={5}
+                    stroke={entry.color}
+                    strokeWidth={2}
+                    strokeDasharray={entry.dash}
+                  />
+                </svg>
+              ) : block.chart === 'heatmap' ? null : (
+                <span
+                  className="pr-swatch"
+                  style={{ background: entry.color }}
+                  aria-hidden="true"
+                />
+              )}
               {columnLabel(entry.column)}
+              {block.options?.series?.[entry.id]?.role && (
+                <span className="pr-chart-role">{block.options.series[entry.id]!.role}</span>
+              )}
             </button>
           ))}
         </section>

@@ -14,7 +14,9 @@ import {
   selectedSources,
   valueWithUnit,
 } from '../src/client/presentation/model.ts'
+import { sourceTabs } from '../src/client/presentation/source-code-model.ts'
 import { semanticKindLabel, sourceOverviewFacts } from '../src/client/presentation/source-facts.ts'
+import { chartColumns } from '../src/presentation/contracts/charts.ts'
 import {
   type PresentationDocument,
   parsePresentationDocument,
@@ -24,6 +26,8 @@ import type {
   SourceSnapshot,
   TypedDataset,
 } from '../src/presentation/contracts/types.ts'
+import { verifyChartGallery, verifyChartReopen } from './presentation-chart-browser.ts'
+import { chartGallery } from './presentation-chart-gallery.ts'
 import { prepareS0WebHost } from './presentation-s0/web-host.ts'
 
 // This exercises the production reader through an actual isolated DSH Web module loader.
@@ -35,9 +39,16 @@ const outputRoot = await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s3-reader
 process.stdout.write(`S3 reader evidence: ${outputRoot}\n`)
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
 const args = process.argv.slice(2)
+const options = new Map<string, string>()
+for (let index = 0; index < args.length; index += 2) {
+  const option = args[index]!
+  assert.ok(['--projection-evidence', '--agent-document'].includes(option))
+  assert.ok(args[index + 1] && !options.has(option))
+  options.set(option, args[index + 1]!)
+}
 assert.ok(
-  args.length === 0 || (args.length === 2 && args[0] === '--projection-evidence'),
-  'Usage: validate-presentation-reader-real.ts [--projection-evidence /path/projection-evidence.json]',
+  args.length % 2 === 0 && args.length <= 4,
+  'Usage: validate-presentation-reader-real.ts [--projection-evidence /path/projection-evidence.json] [--agent-document /path/presentation.json]',
 )
 const cases: { name: string; document: PresentationDocument; provenance: string }[] = []
 for (const name of ['artifact', 'computed', 'source-only']) {
@@ -52,8 +63,8 @@ for (const name of ['artifact', 'computed', 'source-only']) {
   cases.push({ name: `s0-${name}`, document, provenance: 'checked-in S0 fixture' })
 }
 let projectionEvidence: { path: string; sha256: string; runtime: unknown } | undefined
-if (args[1]) {
-  const evidencePath = path.resolve(args[1])
+if (options.has('--projection-evidence')) {
+  const evidencePath = path.resolve(options.get('--projection-evidence')!)
   const bytes = await readFile(evidencePath)
   const evidence = JSON.parse(bytes.toString()) as Record<string, unknown>
   assert.equal(evidence.status, 'passed', 'S2 evidence must record a passed projection run')
@@ -228,6 +239,22 @@ cases.push({
   document: interaction,
   provenance: 'synthetic interaction/security fixture',
 })
+cases.push({
+  name: 'chart-gallery',
+  document: await chartGallery(),
+  provenance: 'runnable synthetic Skill chart examples',
+})
+let agentDocumentEvidence: { path: string; sha256: string } | undefined
+if (options.has('--agent-document')) {
+  const filename = path.resolve(options.get('--agent-document')!)
+  const bytes = await readFile(filename)
+  cases.push({
+    name: 'agent-complex-charts',
+    document: parsePresentationDocument(JSON.parse(bytes.toString())),
+    provenance: 'saved Agent document re-read by current reader; generation verified separately',
+  })
+  agentDocumentEvidence = { path: filename, sha256: sha256(bytes) }
+}
 
 const { buildPresentation } = (await import(
   pathToFileURL(path.join(packageRoot, 'lib/presentation/build/index.js')).href
@@ -263,6 +290,8 @@ const overlay = await build({
 import {useEffect,useState,version} from 'react';
 import {HostPresentationReader} from '@chengxianglibra/dsh-data-analysis/client';
 const cases=${JSON.stringify(cases.map(({ name, document }) => ({ name, document })))};
+function freeze(value){if(value&&typeof value==='object'){Object.freeze(value);Object.values(value).forEach(freeze)}return value}
+cases.forEach(freeze);
 export const inject=['slots','theme'];
 export function apply(ctx){
  ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'presentation-s3-open'},()=>
@@ -379,7 +408,10 @@ async function openCellMenu(cell: Locator) {
 
 async function openSourceDialog(reader: Locator, cell: Locator) {
   const { menu, trigger } = await openCellMenu(cell)
-  assert.equal(await menu.getByRole('menuitem').count(), 2)
+  assert.equal(
+    await menu.getByRole('menuitem').count(),
+    (await cell.getAttribute('data-block-kind')) === 'chart' ? 3 : 2,
+  )
   await menu.getByRole('menuitem', { name: '数据源', exact: true }).press('Enter')
   const dialog = reader.getByRole('dialog', { name: '数据源', exact: true })
   await dialog.waitFor({ state: 'visible' })
@@ -453,7 +485,18 @@ async function verifyReader(
         assert.ok(text.includes('已保存的正文'))
         assert.ok(text.includes('精确值'))
         assert.ok(text.includes(attack))
-      } else assert.ok(text.includes(block.text), `markdown ${block.id} lost its body`)
+      } else {
+        // These fixtures use basic headings, lists, emphasis and inline code; their syntax
+        // is not literal reader text. The embedded document retains the complete source.
+        const plain = block.text
+          .replace(/^\s*#{1,6}\s+/gm, '')
+          .replace(/^\s*[-*+]\s+/gm, '')
+          .replace(/`([^`\n]+)`/g, '$1')
+          .replace(/\*\*([^\n]+?)\*\*/g, '$1')
+          .replace(/\s+/g, ' ')
+          .trim()
+        assert.ok(text.replace(/\s+/g, ' ').includes(plain), `markdown ${block.id} lost its body`)
+      }
       snapshot.push({ id: block.id, markdown: text.trim() })
       if (!staticMode) {
         const { menu, trigger } = await openCellMenu(node)
@@ -470,7 +513,7 @@ async function verifyReader(
     const dataset = 'datasetId' in block ? datasetById(document, block.datasetId).data : undefined
     const selected = dataset
       ? block.kind === 'chart'
-        ? [...new Set([block.x, ...block.y])]
+        ? chartColumns(block)
         : block.kind === 'table' && block.columns
           ? block.columns
           : dataset.columns.map((column) => column.id)
@@ -497,8 +540,16 @@ async function verifyReader(
     if (block.kind === 'chart' && !staticMode) {
       if (dataset!.truncated) assert.match(await node.innerText(), /已截断/)
       if (dataset!.rows.length) {
-        await node.locator('svg.recharts-surface').waitFor()
-        const marks = block.chart === 'line' ? '.recharts-line-curve' : '.recharts-bar-rectangle'
+        await node.locator('svg').first().waitFor()
+        const marks =
+          block.chart === 'line' || block.chart === 'sparkline'
+            ? '.recharts-line-curve'
+            : block.chart === 'bar' ||
+                block.chart === 'horizontalBar' ||
+                block.chart.includes('StackedBar') ||
+                block.chart.startsWith('stackedBar')
+              ? '.recharts-bar-rectangle'
+              : '[data-chart-mark],.recharts-area-area,.recharts-scatter-symbol'
         assert.ok(await node.locator(marks).count(), `${block.chart} has no plotted marks`)
       }
       assert.equal(await node.locator('table,select').count(), 0)
@@ -520,7 +571,7 @@ async function verifyReader(
             columnLabel(dataset.columns.find((column) => column.id === id)!),
           ),
         )
-        assert.equal(await dialog.getByRole('tab').count(), 2)
+        assert.equal(await dialog.getByRole('tab').count(), sourceTabs(true).length)
         await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
         const preview = dialog.getByRole('tabpanel', { name: '数据预览', exact: true })
         await preview.waitFor({ state: 'visible' })
@@ -528,7 +579,7 @@ async function verifyReader(
           id: block.id,
           previewCells: await verifyDatasetTable(preview, dataset, selected, false),
         })
-      } else assert.equal(await dialog.getByRole('tab').count(), 0)
+      } else assert.equal(await dialog.getByRole('tab').count(), sourceTabs(false).length)
       await closeSourceDialog(dialog, trigger)
     }
   }
@@ -631,7 +682,9 @@ async function verifyInteractions(page: Page) {
   assert.equal(await overviewTab.getAttribute('aria-selected'), 'true')
   assert.ok(await overviewTab.evaluate((node) => node.ownerDocument.activeElement === node))
   await overviewTab.press('End')
-  assert.equal(await previewTab.getAttribute('aria-selected'), 'true')
+  assert.equal(await dialog.getByRole('tab').last().getAttribute('aria-selected'), 'true')
+  await dialog.getByRole('tab').last().press('Home')
+  await overviewTab.press('ArrowRight')
   await previewTab.press('Tab')
   assert.ok(await dialog.evaluate((node) => node.contains(node.ownerDocument.activeElement)))
   await closeSourceDialog(dialog, trigger)
@@ -713,6 +766,17 @@ async function verifyHostTheme(page: Page) {
   }
 }
 
+async function waitForResponsiveCharts(page: Page) {
+  // ResizeObserver must publish the new container width before inspecting SVG geometry.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll<HTMLElement>('.pr-chart .recharts-wrapper')].every((node) => {
+      if (!node.getBoundingClientRect().width) return true
+      const chart = node.closest<HTMLElement>('.pr-chart')!
+      return node.getBoundingClientRect().width <= chart.clientWidth + 1
+    }),
+  )
+}
+
 try {
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
@@ -768,6 +832,39 @@ try {
       fullPage: true,
     })
     let interactions: unknown
+    if (item.name === 'chart-gallery') {
+      interactions = {
+        host: await verifyChartGallery(page),
+        portable: await verifyChartGallery(offlinePage),
+        hostReopen: await verifyChartReopen(page, async () => {
+          const navigation = page.getByRole('navigation', { name: '验证样例', exact: true })
+          await navigation.getByRole('button', { name: 's0-artifact', exact: true }).click()
+          await navigation.getByRole('button', { name: item.name, exact: true }).click()
+        }),
+        portableReopen: await verifyChartReopen(offlinePage, async () => {
+          await offlinePage.reload()
+          await offlinePage.waitForFunction(
+            () => document.documentElement.dataset.presentationReady === 'true',
+          )
+        }),
+      }
+      await verifyEmbeddedDocument(offlinePage, item.document)
+      await offlinePage.setViewportSize({ width: 375, height: 812 })
+      await offlinePage.emulateMedia({ colorScheme: 'dark' })
+      await waitForResponsiveCharts(offlinePage)
+      assert.equal(
+        await offlinePage.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+        true,
+      )
+      await offlinePage.screenshot({
+        path: path.join(outputRoot, 'chart-gallery-narrow-dark.png'),
+        fullPage: true,
+      })
+      await offlinePage.setViewportSize({ width: 1440, height: 1100 })
+      await offlinePage.emulateMedia({ colorScheme: 'light' })
+    }
     if (item.name === 'interactions') {
       interactions = {
         hostTheme: await verifyHostTheme(page),
@@ -779,6 +876,7 @@ try {
         .evaluate((node) => getComputedStyle(node).backgroundColor)
       await offlinePage.setViewportSize({ width: 375, height: 812 })
       await offlinePage.emulateMedia({ colorScheme: 'dark' })
+      await waitForResponsiveCharts(offlinePage)
       const layout = await offlinePage.evaluate(() => ({
         width: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -838,7 +936,8 @@ try {
             `narrow ${blockId} Y-axis title or tick is clipped vertically`,
           )
         }
-        await chart.locator(mark).first().hover()
+        // Two trend paths can cross at their bounding-box centers; the last path is topmost.
+        await chart.locator(mark).last().hover()
         const tooltip = chart.locator('.recharts-tooltip-wrapper [data-chart-tooltip]')
         await tooltip.waitFor({ state: 'visible' })
         const bounds = await tooltip.boundingBox()
@@ -910,6 +1009,7 @@ try {
       'real Agent routing',
     ],
     projectionEvidence,
+    agentDocumentEvidence,
     checks,
     errors,
   }

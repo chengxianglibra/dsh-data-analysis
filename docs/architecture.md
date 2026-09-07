@@ -155,6 +155,14 @@ source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable�
 以及 Agent 选取范围与 writer 截断的区别。示例按需读取。Agent 决定内容顺序和图形意图，reader 负责自适应布局，
 没有 Agent 可配置的网格。来源来自 Marivo 的公开快照；computed 的来源声明不构成转换审计或正确性证明。
 
+共享图形契约覆盖 18 类图形与 bar/line 变体；分箱、分位数、占比、排名和累计值先在分析阶段准备。
+前端探索只选择现有列或显式 `preparedViews`，过滤和显隐不改变统计口径；当前视图用于来源预览与复制上下文，
+保存文档、下载与打印仍使用作者快照。详细规则见[reader 模块](modules/presentation-reader.md)。
+数据源的代码页保存 Marivo 生产记录中的 SQL，以及 dataset 显式关联的 Python 执行快照。
+插件在成功 `marivo_python` 后记录本次提交代码并返回 `codeRef`，报告构建核验其 Workspace 与文件摘要；
+Harness 的原生执行与凭据生命周期保持原契约，代码记录失败不改变已有执行结果。
+reader 只读报告内嵌原文，不重新执行；执行记录与 dataset 的关联仍由作者声明。详见[展示数据投影](modules/presentation-projection.md)。
+
 ## 验证
 
 ```bash

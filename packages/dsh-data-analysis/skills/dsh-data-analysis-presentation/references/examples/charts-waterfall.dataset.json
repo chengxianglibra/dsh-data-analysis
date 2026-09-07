@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "step",
+      "label": "step",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "change",
+      "label": "change",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "start",
+      "label": "start",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "end",
+      "label": "end",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "role",
+      "label": "role",
+      "type": "string",
+      "nullable": false
+    }
+  ],
+  "rows": [
+    ["期初", 100, 0, 100, "start"],
+    ["减少", -20, 100, 80, "delta"],
+    ["增加", 30, 80, 110, "delta"],
+    ["期末", 110, 0, 110, "total"]
+  ],
+  "rowCount": 4,
+  "limit": 5000,
+  "truncated": false
+}

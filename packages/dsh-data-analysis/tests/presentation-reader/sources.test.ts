@@ -6,6 +6,11 @@ import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import {
+  sourceCodeFacts,
+  sourceTabForKey,
+  sourceTabs,
+} from '../../src/client/presentation/source-code-model.ts'
+import {
   semanticKindLabel,
   sourceOverviewFacts,
 } from '../../src/client/presentation/source-facts.ts'
@@ -17,7 +22,11 @@ import type {
 
 let directory: string
 let renderSummary: (document: PresentationDocument, block?: PresentationBlock) => string
-let renderDialog: (document: PresentationDocument, block: PresentationBlock) => string
+let renderDialog: (
+  document: PresentationDocument,
+  block: PresentationBlock,
+  rowIndices?: number[],
+) => string
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-source-render-'))
@@ -29,7 +38,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { SourceSummary } from './src/client/presentation/sources.tsx';
 import { SourceDialog } from './src/client/presentation/source-dialog.tsx';
 export function renderSummary(document, block) { return renderToStaticMarkup(createElement(SourceSummary, { document, block })); }
-export function renderDialog(document, block) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, onClose() {} })); }`,
+export function renderDialog(document, block, rowIndices) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, rowIndices, explored: !!rowIndices, onClose() {} })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
     outfile,
@@ -48,7 +57,7 @@ after(async () => {
   if (directory) await fs.rm(directory, { recursive: true, force: true })
 })
 
-const source: SourceSnapshot = {
+const source: Extract<SourceSnapshot, { status: 'available' }> = {
   id: 'sales',
   status: 'available',
   label: 'metric_frame art_saved',
@@ -143,9 +152,10 @@ test('source overview exposes saved dataset fields, semantic paths and issues wi
 test('data preview is a modal tab with precise saved values and necessary truncation status', () => {
   const document = fixture()
   const html = renderDialog(document, document.blocks[0]!)
-  assert.equal(html.split('role="tab"').length - 1, 2)
+  assert.equal(html.split('role="tab"').length - 1, 3)
   assert.match(html, /role="tab"[^>]+aria-selected="true"[^>]*>概要<\/button>/)
   assert.match(html, /role="tab"[^>]+aria-selected="false"[^>]*>数据预览<\/button>/)
+  assert.match(html, /role="tab"[^>]+aria-selected="false"[^>]*>代码<\/button>/)
   assert.match(html, /role="tabpanel"[^>]+hidden=""/)
   assert.match(html, /12345678901234\.5678/)
   assert.match(html, /9007199254740993/)
@@ -154,7 +164,7 @@ test('data preview is a modal tab with precise saved values and necessary trunca
   assert.doesNotMatch(html, /9007199254740992|复制选中行|复制完整数据行|选择图表数据行/)
 })
 
-test('chart previews use the selected cell columns and source-only dialogs omit data and SQL tabs', () => {
+test('chart previews use the selected cell columns and source-only dialogs retain overview and code tabs', () => {
   const document = fixture()
   const chart: PresentationBlock = {
     id: 'chart',
@@ -174,7 +184,203 @@ test('chart previews use the selected cell columns and source-only dialogs omit 
     kind: 'source',
     sourceIds: ['sales'],
   })
-  assert.doesNotMatch(onlySources, /role="tab"|数据预览|SQL|暂无数据|未声明来源/)
+  assert.equal(onlySources.split('role="tab"').length - 1, 2)
+  assert.match(onlySources, /role="tab"[^>]*>代码<\/button>/)
+  assert.doesNotMatch(onlySources, /数据预览|SQL|暂无数据|未声明来源/)
+})
+
+const pythonText = 'secret_value = "retain-this-value"\nprint("<script>literal()</script>")\n'
+const sqlText =
+  "SELECT '<script>literal()</script>', 'retain-this-value'\nFROM sales WHERE region = '华东'\n"
+
+function fixtureWithCode(): PresentationDocument {
+  const document = fixture()
+  document.datasets[0]!.code = [
+    {
+      language: 'python',
+      text: pythonText,
+      provenance: 'execution',
+      executionId: '12345678-1234-4567-89ab-123456789abc',
+      sha256: 'a'.repeat(64),
+    },
+  ]
+  document.sources[0] = {
+    ...source,
+    code: {
+      snippets: [
+        {
+          language: 'sql',
+          text: sqlText,
+          provenance: 'execution',
+          runId: 'run_saved',
+          queryId: 'query_saved',
+          artifactRef: 'art_saved',
+        },
+      ],
+      notices: [],
+    },
+  }
+  return document
+}
+
+test('code tab preserves execution text, states author association and escapes text without interpreting it', () => {
+  const document = fixtureWithCode()
+  const saved = structuredClone(document)
+  const html = renderDialog(document, document.blocks[0]!)
+  assert.match(html, /Python · 执行记录/)
+  assert.match(html, /SQL · 执行记录/)
+  assert.match(html, /该执行记录由作者关联到此数据集。/)
+  assert.match(html, /复制代码/)
+  assert.match(html, /<pre tabindex="0"><code>/)
+  assert.match(html, /retain-this-value/)
+  assert.match(html, /&lt;script&gt;literal\(\)&lt;\/script&gt;/)
+  assert.doesNotMatch(html, /<script|作者提供|未保存生成代码/)
+  assert.equal(sourceCodeFacts(document, document.blocks[0]!).entries[0]?.text, pythonText)
+  assert.equal(sourceCodeFacts(document, document.blocks[0]!).entries[1]?.text, sqlText)
+  assert.deepEqual(document, saved)
+})
+
+test('cell code follows only its selected binding and source-only code follows its source IDs', () => {
+  const document = fixtureWithCode()
+  document.datasets.push({
+    ...structuredClone(document.datasets[0]!),
+    id: 'other-data',
+    sourceIds: ['other-source'],
+    code: [
+      {
+        language: 'python',
+        text: 'unselected_python()',
+        provenance: 'execution',
+        executionId: 'python_other',
+        sha256: 'b'.repeat(64),
+      },
+    ],
+  })
+  document.sources.push({
+    ...source,
+    id: 'other-source',
+    code: {
+      snippets: [
+        {
+          language: 'sql',
+          text: 'SELECT unselected_sql',
+          provenance: 'execution',
+          runId: 'run_other',
+          queryId: 'query_other',
+          artifactRef: 'art_other',
+        },
+      ],
+      notices: [],
+    },
+  })
+  const chart: PresentationBlock = {
+    id: 'chart-code',
+    kind: 'chart',
+    datasetId: 'regional-sales',
+    chart: 'bar',
+    x: 'region',
+    y: ['revenue'],
+    numericMode: 'approximate',
+    preparedViews: [
+      {
+        id: 'unselected',
+        label: '未选视图',
+        datasetId: 'other-data',
+        chart: 'bar',
+        x: 'region',
+        y: ['revenue'],
+        numericMode: 'approximate',
+      },
+    ],
+  }
+  for (const html of [renderDialog(document, chart), renderSummary(document, chart)]) {
+    assert.match(html, /retain-this-value/)
+    assert.doesNotMatch(html, /unselected_python|unselected_sql/)
+  }
+  const sourceOnly = renderDialog(document, {
+    id: 'source-code',
+    kind: 'source',
+    sourceIds: ['other-source'],
+  })
+  assert.match(sourceOnly, /SELECT unselected_sql/)
+  assert.doesNotMatch(sourceOnly, /Python|retain-this-value|unselected_python/)
+})
+
+test('execution SQL deduplicates by session, run and query, never by text alone', () => {
+  const document = fixtureWithCode()
+  const savedSource = document.sources[0]!
+  assert.equal(savedSource.status, 'available')
+  if (savedSource.status !== 'available') throw new Error('Expected available fixture')
+  document.datasets[0]!.sourceIds.push('same-query', 'other-run', 'other-session')
+  document.sources.push(
+    { ...structuredClone(savedSource), id: 'same-query' },
+    {
+      ...structuredClone(savedSource),
+      id: 'other-run',
+      code: {
+        snippets: [{ ...savedSource.code!.snippets[0]!, runId: 'run_other' }],
+        notices: [],
+      },
+    },
+    {
+      ...structuredClone(savedSource),
+      id: 'other-session',
+      ref: { ...savedSource.ref, sessionId: 'session_other' },
+    },
+  )
+  const { entries } = sourceCodeFacts(document, document.blocks[0]!)
+  assert.equal(entries.filter((entry) => entry.language === 'sql').length, 3)
+  assert.equal(entries.filter((entry) => entry.text === sqlText).length, 3)
+})
+
+test('native code disclosures stay readable offline and preserve per-cell bindings without copy buttons', () => {
+  const document = fixtureWithCode()
+  const html = renderSummary(document)
+  assert.match(
+    html,
+    /<details class="pr-source-code-summary" data-code-block-id="revenue"><summary>代码 · 收入指标原文<\/summary>/,
+  )
+  assert.match(html, /<pre><code>secret_value/)
+  assert.match(html, /SQL · 执行记录/)
+  assert.match(html, /retain-this-value/)
+  assert.doesNotMatch(html, /<button| open=""|<script/)
+  document.sources = []
+  document.datasets[0]!.sourceIds = []
+  assert.match(renderSummary(document), /Python · 执行记录/)
+})
+
+test('missing code and partial unavailable sources report saved facts explicitly', () => {
+  const document = fixture()
+  assert.match(renderDialog(document, document.blocks[0]!), /未保存生成代码/)
+  assert.match(renderSummary(document, document.blocks[0]!), /未保存生成代码/)
+  document.sources[0] = {
+    ...source,
+    code: { snippets: [], notices: ['执行记录未保存 SQL 文本'] },
+  }
+  document.sources.push({
+    id: 'missing',
+    ref: { sessionId: 'missing', artifactRef: 'missing' },
+    status: 'unavailable',
+    reason: 'Artifact 已不可用',
+  })
+  document.datasets[0]!.sourceIds.push('missing')
+  const html = renderDialog(document, document.blocks[0]!)
+  assert.match(html, /来源 sales：执行记录未保存 SQL 文本/)
+  assert.match(html, /来源 missing 不可用：Artifact 已不可用/)
+  assert.match(html, /未保存生成代码/)
+})
+
+test('source tabs support forward, backward, Home and End navigation for both tab sets', () => {
+  assert.deepEqual(sourceTabs(true), ['overview', 'preview', 'code'])
+  assert.deepEqual(sourceTabs(false), ['overview', 'code'])
+  for (const tabs of [sourceTabs(true), sourceTabs(false)]) {
+    assert.equal(sourceTabForKey(tabs, 'overview', 'Home'), 'overview')
+    assert.equal(sourceTabForKey(tabs, 'overview', 'End'), 'code')
+    assert.equal(sourceTabForKey(tabs, 'overview', 'ArrowLeft'), 'code')
+    assert.equal(sourceTabForKey(tabs, 'code', 'ArrowRight'), 'overview')
+    assert.equal(sourceTabForKey(tabs, 'overview', 'ArrowRight'), tabs[1])
+    assert.equal(sourceTabForKey(tabs, 'code', 'Escape'), undefined)
+  }
 })
 
 test('native static summary keeps unavailable reasons and valuable source fields without buttons or technical disclosures', () => {
@@ -224,4 +430,28 @@ test('malformed optional fact structures are not interpreted and displayed strin
   assert.doesNotMatch(html, /<script|<img/)
   assert.match(html, /&lt;script&gt;/)
   assert.match(html, /&lt;img src=x&gt;/)
+})
+
+test('current chart source includes auxiliary bindings and filters exact preview by original row identity', () => {
+  const document = fixture()
+  const block: PresentationBlock = {
+    id: 'histogram',
+    kind: 'chart',
+    datasetId: 'regional-sales',
+    chart: 'histogram',
+    x: 'region',
+    y: ['count'],
+    bindings: { binStart: 'revenue', binEnd: 'count' },
+    numericMode: 'approximate',
+  }
+  const html = renderDialog(document, block, [1])
+  assert.match(html, /当前探索视图/)
+  assert.match(html, /data-column-id="revenue"/)
+  assert.match(html, /data-row-index="1"/)
+  assert.doesNotMatch(html, /data-row-index="0"|12345678901234\.5678/)
+  assert.match(html, /0\.1000/)
+  assert.match(html, /当前过滤：1 \/ 2 条快照观测/)
+  const overview = renderSummary(document, block)
+  assert.match(overview, /收入 \(CNY\)/)
+  assert.match(overview, /数量/)
 })

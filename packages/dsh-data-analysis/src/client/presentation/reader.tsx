@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { parsePresentationDocument } from '../../presentation/contracts/index.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
+import { ChartExplorer } from './chart-explorer.tsx'
 import { ChartRenderer } from './chart-renderer.tsx'
+import {
+  type ChartExploration,
+  exploredChartBlock,
+  filteredChartRows,
+  initialChartExploration,
+} from './chart-view.ts'
 import { CopyContext } from './copy-context.tsx'
 import { MoreIcon } from './icons.tsx'
 import { Markdown } from './markdown.tsx'
@@ -22,15 +29,18 @@ import { DatasetTable } from './table.tsx'
 function CellMenu({
   onSource,
   onCopy,
+  onExplore,
 }: {
   onSource?: (trigger: HTMLElement) => void
   onCopy: (trigger: HTMLElement) => void
+  onExplore?: (trigger: HTMLElement) => void
 }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const focusIndex = useRef(0)
   const actions = [
+    ...(onExplore ? [{ label: '探索图表', run: onExplore }] : []),
     ...(onSource ? [{ label: '数据源', run: onSource }] : []),
     { label: '复制上下文', run: onCopy },
   ]
@@ -126,10 +136,16 @@ function Block({
   block,
   document,
   mode,
+  exploration,
+  onExplorationChange,
+  rowIndices,
 }: {
   block: PresentationBlock
   document: PresentationDocument
   mode: ReaderMode
+  exploration?: ChartExploration
+  onExplorationChange?: (state: ChartExploration) => void
+  rowIndices?: readonly number[]
 }) {
   if (block.kind === 'markdown') return <Markdown text={block.text} />
   if (block.kind === 'source')
@@ -156,7 +172,22 @@ function Block({
           {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
         </>
       ) : block.kind === 'chart' ? (
-        <ChartRenderer dataset={dataset} block={block} mode={mode} />
+        <ChartRenderer
+          dataset={dataset}
+          block={block}
+          mode={mode}
+          hidden={exploration?.hidden ?? []}
+          onHiddenChange={
+            onExplorationChange
+              ? (hidden) =>
+                  onExplorationChange({
+                    ...(exploration ?? initialChartExploration(block)),
+                    hidden,
+                  })
+              : undefined
+          }
+          rowIndices={rowIndices}
+        />
       ) : block.kind === 'table' ? (
         <DatasetTable
           data={dataset.data}
@@ -183,6 +214,19 @@ function blockGroups(blocks: PresentationBlock[]): PresentationBlock[][] {
 
 function ReaderContents({ document, mode }: { document: PresentationDocument; mode: ReaderMode }) {
   const [sourceCell, setSourceCell] = useState<{ block: PresentationBlock; trigger: HTMLElement }>()
+  const [explorations, setExplorations] = useState<Record<string, ChartExploration>>({})
+  const [explorerCell, setExplorerCell] = useState<{ id: string; trigger: HTMLElement }>()
+  const updateExploration = (id: string, state: ChartExploration) =>
+    setExplorations((previous) => {
+      const saved = document.blocks.find((block) => block.id === id)
+      const next = { ...previous, [id]: state }
+      if (
+        saved?.kind === 'chart' &&
+        JSON.stringify(state) === JSON.stringify(initialChartExploration(saved))
+      )
+        delete next[id]
+      return next
+    })
   // Known snapshot diagnostics have concise, contextual presentations below.
   const diagnostics = [
     ...new Set(
@@ -194,35 +238,82 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
         .map((entry) => entry.message),
     ),
   ]
-  const renderBlock = (block: PresentationBlock) => (
-    <section
-      className={`pr-block pr-block-${block.kind}`}
-      key={block.id}
-      data-block-id={block.id}
-      data-block-kind={block.kind}
-    >
-      {mode === 'interactive' && (
-        <div className="pr-cell-toolbar pr-interactive">
-          <CopyContext text={followUpContext(document, block)}>
-            {(copy) => (
-              <CellMenu
-                onCopy={copy}
-                onSource={
-                  block.kind === 'markdown'
-                    ? undefined
-                    : (trigger) => setSourceCell({ block, trigger })
-                }
-              />
-            )}
-          </CopyContext>
-        </div>
-      )}
-      <Block block={block} document={document} mode={mode} />
-      {blockSources(document, block).some((source) => source.status === 'unavailable') && (
-        <p className="pr-notice">数据源不可用</p>
-      )}
-    </section>
-  )
+  const renderBlock = (savedBlock: PresentationBlock) => {
+    const state =
+      savedBlock.kind === 'chart' && Object.hasOwn(explorations, savedBlock.id)
+        ? explorations[savedBlock.id]
+        : undefined
+    const block = savedBlock.kind === 'chart' ? exploredChartBlock(savedBlock, state) : savedBlock
+    const rows =
+      block.kind === 'chart' && state
+        ? filteredChartRows(datasetById(document, block.datasetId).data, state.filters)
+        : undefined
+    return (
+      <section
+        className={`pr-block pr-block-${block.kind}`}
+        key={block.id}
+        data-block-id={block.id}
+        data-block-kind={block.kind}
+      >
+        {mode === 'interactive' && (
+          <div className="pr-cell-toolbar pr-interactive">
+            <CopyContext text={followUpContext(document, savedBlock, state)}>
+              {(copy) => (
+                <CellMenu
+                  onCopy={copy}
+                  onExplore={
+                    savedBlock.kind === 'chart'
+                      ? (trigger) => {
+                          setExplorerCell({ id: savedBlock.id, trigger })
+                        }
+                      : undefined
+                  }
+                  onSource={
+                    block.kind === 'markdown'
+                      ? undefined
+                      : (trigger) => setSourceCell({ block: savedBlock, trigger })
+                  }
+                />
+              )}
+            </CopyContext>
+          </div>
+        )}
+        <Block
+          block={block}
+          document={document}
+          mode={mode}
+          exploration={state}
+          onExplorationChange={
+            block.kind === 'chart' && mode === 'interactive'
+              ? (next) => updateExploration(block.id, next)
+              : undefined
+          }
+          rowIndices={rows}
+        />
+        {savedBlock.kind === 'chart' && block.kind === 'chart' && explorerCell?.id === block.id && (
+          <ChartExplorer
+            block={savedBlock}
+            data={datasetById(document, block.datasetId).data}
+            state={state ?? initialChartExploration(savedBlock)}
+            onChange={(next) => updateExploration(block.id, next)}
+            onClose={() => setExplorerCell(undefined)}
+            restoreFocusTo={explorerCell.trigger}
+          />
+        )}
+        {blockSources(document, block).some((source) => source.status === 'unavailable') && (
+          <p className="pr-notice">数据源不可用</p>
+        )}
+      </section>
+    )
+  }
+  const sourceState =
+    sourceCell?.block.kind === 'chart' && Object.hasOwn(explorations, sourceCell.block.id)
+      ? explorations[sourceCell.block.id]
+      : undefined
+  const sourceBlock =
+    sourceCell?.block.kind === 'chart'
+      ? exploredChartBlock(sourceCell.block, sourceState)
+      : sourceCell?.block
   return (
     <article className="pr-reader" data-presentation-reader="true" data-mode={mode}>
       <header className="pr-header">
@@ -251,12 +342,21 @@ function ReaderContents({ document, mode }: { document: PresentationDocument; mo
           ),
         )}
       </div>
-      {mode === 'static' && document.sources.length > 0 && <SourceSummary document={document} />}
-      {sourceCell && (
+      {mode === 'static' && <SourceSummary document={document} />}
+      {sourceCell && sourceBlock && (
         <SourceDialog
           key={sourceCell.block.id}
           document={document}
-          block={sourceCell.block}
+          block={sourceBlock}
+          explored={!!sourceState}
+          rowIndices={
+            sourceState
+              ? filteredChartRows(
+                  datasetById(document, sourceState.view.datasetId).data,
+                  sourceState.filters,
+                )
+              : undefined
+          }
           restoreFocusTo={sourceCell.trigger}
           onClose={() => setSourceCell(undefined)}
         />

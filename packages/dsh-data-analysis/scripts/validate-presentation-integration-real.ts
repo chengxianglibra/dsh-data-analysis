@@ -6,12 +6,23 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { type Browser, type BrowserContext, chromium, type Page } from 'playwright'
+import { type Browser, type BrowserContext, chromium, type Locator, type Page } from 'playwright'
 import {
-  formatCell,
+  cellText,
+  columnLabel,
+  datasetById,
+  metricText,
+  selectedSources,
+  selectMetric,
+  snapshotDate,
+} from '../src/client/presentation/model.ts'
+import { sourceOverviewFacts } from '../src/client/presentation/source-facts.ts'
+import { chartColumns, chartTransition } from '../src/presentation/contracts/charts.ts'
+import {
   type PresentationDocument,
   parsePresentationDocument,
 } from '../src/presentation/contracts/index.ts'
+import type { PresentationBlock, TypedDataset } from '../src/presentation/contracts/types.ts'
 import { validatePresentationHost } from './presentation-s4/host.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
@@ -100,26 +111,207 @@ const checks: Record<string, unknown>[] = []
 // produced file. The report node must appear even though that tail stays empty.
 const expectedProducedRows = Math.max(0, inputs.draftPaths.length - 1)
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
+function selectedColumns(block: PresentationBlock, data: TypedDataset): string[] {
+  return block.kind === 'chart'
+    ? chartColumns(block)
+    : block.kind === 'metric'
+      ? [block.columnId]
+      : block.kind === 'table' && block.columns
+        ? block.columns
+        : data.columns.map((column) => column.id)
+}
+async function verifyExactTable(
+  node: Locator,
+  data: TypedDataset,
+  columns: string[],
+  staticMode: boolean,
+) {
+  const seen = new Set<number>()
+  for (const id of columns)
+    assert.equal(await node.locator(`thead [data-column-id="${id}"]`).count(), 1)
+  while (true) {
+    for (const row of await node.locator('tbody tr').all()) {
+      const identity = await row.getAttribute('data-row-index')
+      assert.notEqual(identity, null)
+      const index = Number(identity)
+      assert.ok(Number.isSafeInteger(index) && index >= 0 && index < data.rows.length)
+      assert.ok(!seen.has(index), `Snapshot row ${index} appeared twice`)
+      seen.add(index)
+      for (const id of columns) {
+        const field = data.columns.findIndex((column) => column.id === id)
+        assert.equal(
+          await row.locator(`[data-column-id="${id}"]`).textContent(),
+          cellText(data.rows[index]![field]!, data.columns[field]!),
+          `Exact preview changed ${id} at saved row ${index}`,
+        )
+      }
+    }
+    const next = node.getByRole('button', { name: '下一页', exact: true })
+    if (staticMode || !(await next.count()) || (await next.isDisabled())) break
+    await next.click()
+  }
+  assert.equal(
+    seen.size,
+    data.rows.length,
+    'Preview must expose every saved row through pagination',
+  )
+}
 async function verifyReader(target: Page, document: PresentationDocument, staticMode = false) {
   const reader = target.locator(
     `[data-presentation-reader][data-mode="${staticMode ? 'static' : 'interactive'}"]`,
   )
   await reader.getByRole('heading', { name: document.title, exact: true }).waitFor()
-  while (await reader.locator('details:not([open])').count())
-    await reader.locator('details:not([open])').first().locator(':scope > summary').click()
-  const text = await reader.innerText()
-  for (const dataset of document.datasets)
-    for (const row of dataset.data.rows)
-      for (const [index, cell] of row.entries())
-        assert.ok(
-          text.includes(formatCell(cell, dataset.data.columns[index]!)),
-          `Missing cell ${String(cell)}`,
-        )
-  for (const source of document.sources) {
-    assert.ok(text.includes(source.ref.artifactRef))
-    if (source.status === 'unavailable') assert.ok(text.includes(source.reason))
+  if (staticMode)
+    while (await reader.locator('details:not([open])').count())
+      await reader.locator('details:not([open])').first().locator(':scope > summary').click()
+  for (const block of document.blocks) {
+    const node = reader.locator(`[data-block-id="${block.id}"]`)
+    await node.waitFor()
+    if (block.kind === 'markdown') continue
+    const dataset = 'datasetId' in block ? datasetById(document, block.datasetId) : undefined
+    const columns = dataset ? selectedColumns(block, dataset.data) : []
+    if (block.kind === 'metric' && dataset) {
+      const metric = selectMetric(dataset.data, block)
+      assert.equal(
+        await node.locator('[data-metric-value]').textContent(),
+        metricText(metric.value, metric.column),
+      )
+    }
+    if (dataset && (block.kind === 'table' || (block.kind === 'chart' && staticMode)))
+      await verifyExactTable(node, dataset.data, columns, staticMode)
+    if (staticMode) continue
+    await node.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
+    await node.getByRole('menuitem', { name: '数据源', exact: true }).click()
+    const dialog = reader.getByRole('dialog', { name: '数据源', exact: true })
+    await dialog.waitFor()
+    const overview = dialog.locator('.pr-source-overview')
+    if (dataset) {
+      assert.ok((await overview.innerText()).includes(dataset.id))
+      assert.deepEqual(
+        await overview.locator('.pr-source-fields li').allTextContents(),
+        columns.map((id) => columnLabel(dataset.data.columns.find((column) => column.id === id)!)),
+      )
+    }
+    const sources = selectedSources(
+      document,
+      block.kind === 'source' ? block.sourceIds : dataset!.sourceIds,
+    )
+    for (const source of sources) {
+      const card = overview.locator(`[data-source-id="${source.id}"]`)
+      if (source.status === 'unavailable') {
+        assert.ok((await card.innerText()).includes(source.reason))
+        continue
+      }
+      const facts = sourceOverviewFacts(source)
+      const labels = [
+        ...facts.semanticGroups.flatMap((group) => group.paths),
+        ...facts.issues.map((issue) => issue.kind),
+        ...facts.notices,
+        ...(facts.createdAt
+          ? [
+              Number.isNaN(Date.parse(facts.createdAt))
+                ? facts.createdAt
+                : snapshotDate(facts.createdAt),
+            ]
+          : []),
+      ]
+      if (labels.length) {
+        const visible = await card.innerText()
+        for (const label of labels)
+          assert.ok(visible.includes(label), `Missing saved source fact ${label}`)
+      }
+    }
+    if (dataset) {
+      await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
+      await verifyExactTable(
+        dialog.getByRole('tabpanel', { name: '数据预览', exact: true }),
+        dataset.data,
+        columns,
+        false,
+      )
+    }
+    await dialog.getByRole('button', { name: '关闭数据源', exact: true }).click()
+    await dialog.waitFor({ state: 'detached' })
   }
+  if (staticMode)
+    for (const source of document.sources)
+      if (source.status === 'unavailable')
+        assert.ok((await reader.innerText()).includes(source.reason))
   if (!document.datasets.length) assert.equal(await reader.locator('table').count(), 0)
+}
+async function openFirstOrdinaryChart(target: Page, document: PresentationDocument) {
+  const block = document.blocks.find(
+    (entry) => entry.kind === 'chart' && (entry.chart === 'line' || entry.chart === 'bar'),
+  )
+  if (block?.kind !== 'chart') return undefined
+  const cell = target.locator(
+    `[data-presentation-reader][data-mode="interactive"] [data-block-id="${block.id}"]`,
+  )
+  await cell.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
+  await cell.getByRole('menuitem', { name: '探索图表', exact: true }).click()
+  const panel = cell.getByRole('region', { name: '探索图表', exact: true })
+  await panel.waitFor()
+  return { block, cell, panel }
+}
+async function exploreReader(target: Page, document: PresentationDocument) {
+  const selected = await openFirstOrdinaryChart(target, document)
+  if (!selected) return { skipped: 'No authored line/bar chart in this document' }
+  const { block, cell, panel } = selected
+  const type = block.chart === 'line' ? 'bar' : 'line'
+  assert.ok(chartTransition(block, type, datasetById(document, block.datasetId).data))
+  const picker = panel.getByRole('combobox', { name: '图形类型', exact: true })
+  assert.equal(await picker.inputValue(), block.chart)
+  await picker.selectOption(type)
+  assert.equal(await picker.inputValue(), type)
+  const retained = panel.getByRole('listbox', { name: '保留分类值', exact: true })
+  let filter: { column: string; value: string } | undefined
+  if ((await retained.count()) && (await retained.locator('option').count())) {
+    const value = (await retained.locator('option').first().getAttribute('value'))!
+    const column = await panel.getByRole('combobox', { name: '过滤字段', exact: true }).inputValue()
+    await retained.selectOption(value)
+    assert.deepEqual(
+      await retained.evaluate((node: HTMLSelectElement) =>
+        [...node.selectedOptions].map((option) => option.value),
+      ),
+      [value],
+    )
+    filter = { column, value }
+  }
+  if (await cell.locator('[data-chart-type]').count())
+    assert.equal(
+      await cell.locator('[data-chart-type]').first().getAttribute('data-chart-type'),
+      type,
+    )
+  return {
+    cellId: block.id,
+    originalType: block.chart,
+    exploredType: type,
+    filter,
+    pageLocalOnly: true,
+  }
+}
+async function verifyReopenedChart(target: Page, document: PresentationDocument) {
+  const selected = await openFirstOrdinaryChart(target, document)
+  if (!selected) return false
+  const { block, panel } = selected
+  assert.equal(
+    await panel.getByRole('combobox', { name: '图形类型', exact: true }).inputValue(),
+    block.chart,
+  )
+  assert.equal(
+    await panel.getByRole('combobox', { name: 'X 字段', exact: true }).inputValue(),
+    block.x,
+  )
+  for (const input of await panel.locator('.pr-explorer-visible input').all())
+    assert.ok(await input.isChecked())
+  const retained = panel.getByRole('listbox', { name: '保留分类值', exact: true })
+  if (await retained.count())
+    assert.equal(
+      await retained.evaluate((node: HTMLSelectElement) => node.selectedOptions.length),
+      await retained.locator('option').count(),
+    )
+  await panel.getByRole('button', { name: '关闭探索图表', exact: true }).click()
+  return true
 }
 async function rpc(channel: string, endpoint: string, payload: unknown) {
   return page!.evaluate(
@@ -172,18 +364,31 @@ try {
     const document = parsePresentationDocument(
       JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
     )
+    const originalHtml = await readFile(receipt.files.html.path)
+    assert.equal(sha256(originalHtml), receipt.files.html.sha256)
     const card = page.locator(`[data-presentation-card="${receipt.buildId}"]`)
     await card.getByRole('button', { name: '打开分析', exact: true }).click()
     const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
     await verifyReader(page, document)
     await overlay.evaluate((element) => element.scrollTo({ top: 0 }))
     await overlay.screenshot({ path: path.join(outputRoot, `${index}-web.png`) })
+    const hostExploration = await exploreReader(page, document)
+    await overlay.screenshot({ path: path.join(outputRoot, `${index}-web-explored.png`) })
+    await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
+    await overlay.waitFor({ state: 'detached' })
     const waitDownload = page.waitForEvent('download')
-    await overlay.getByRole('button', { name: '下载 HTML', exact: true }).click()
+    await card.getByRole('button', { name: '下载 HTML', exact: true }).click()
     const download = await waitDownload
     const downloadPath = path.join(outputRoot, `${index}-${download.suggestedFilename()}`)
     await download.saveAs(downloadPath)
-    assert.equal(sha256(await readFile(downloadPath)), receipt.files.html.sha256)
+    const downloadedHtml = await readFile(downloadPath)
+    assert.equal(sha256(downloadedHtml), receipt.files.html.sha256)
+    assert.ok(downloadedHtml.equals(originalHtml), 'Exploration changed downloaded HTML bytes')
+    await card.getByRole('button', { name: '打开分析', exact: true }).click()
+    await verifyReader(page, document)
+    const reopenedAuthorConfiguration = await verifyReopenedChart(page, document)
+    await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
+    await overlay.waitFor({ state: 'detached' })
     const offline: BrowserContext = await browser.newContext({
       offline: true,
       viewport: { width: 1200, height: 1000 },
@@ -195,6 +400,7 @@ try {
     })
     await offlinePage.goto(pathToFileURL(downloadPath).href)
     await verifyReader(offlinePage, document)
+    const portableExploration = await exploreReader(offlinePage, document)
     assert.deepEqual(
       JSON.parse((await offlinePage.locator('#presentation-data').textContent())!),
       document,
@@ -204,13 +410,17 @@ try {
       path: path.join(outputRoot, `${index}-offline.png`),
       fullPage: true,
     })
+    await offlinePage.reload()
+    await verifyReader(offlinePage, document)
+    const portableReopenedAuthorConfiguration = await verifyReopenedChart(offlinePage, document)
+    assert.deepEqual(network, [])
+    assert.ok((await readFile(downloadPath)).equals(originalHtml))
     await offline.close()
     const noScript = await browser.newContext({ offline: true, javaScriptEnabled: false })
     const noScriptPage = await noScript.newPage()
     await noScriptPage.goto(pathToFileURL(downloadPath).href)
     await verifyReader(noScriptPage, document, true)
     await noScript.close()
-    await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
     checks.push({
       title: document.title,
       buildId: receipt.buildId,
@@ -218,6 +428,12 @@ try {
       actualWebCard: true,
       open: true,
       downloadSha256: receipt.files.html.sha256,
+      downloadedAfterReaderClosed: true,
+      originalHtmlBytesRetained: true,
+      hostExploration,
+      reopenedAuthorConfiguration,
+      portableExploration,
+      portableReopenedAuthorConfiguration,
       offlineNetworkRequests: 0,
       noScript: true,
     })

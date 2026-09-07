@@ -11,6 +11,8 @@ import type { PresentationDocument } from '../../src/presentation/contracts/type
 let directory: string
 let renderDocument: (document: PresentationDocument, mode?: 'static' | 'interactive') => string
 let renderMarkdown: (text: string) => string
+let renderExplorer: (document: PresentationDocument) => string
+let renderHost: (document: PresentationDocument) => string
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-reader-render-'))
@@ -21,6 +23,11 @@ before(async () => {
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PresentationReader } from './src/client/presentation/reader.tsx';
 import { Markdown } from './src/client/presentation/markdown.tsx';
+import { ChartExplorer } from './src/client/presentation/chart-explorer.tsx';
+import { initialChartExploration } from './src/client/presentation/chart-view.ts';
+import { HostPresentationReader } from './src/client/presentation/host-entry.tsx';
+export function renderExplorer(document) { const block = document.blocks.find(b => b.kind === 'chart'); const data = document.datasets.find(d => d.id === block.datasetId).data; return renderToStaticMarkup(createElement(ChartExplorer, { block, data, state: initialChartExploration(block), onChange() {}, onClose() {} })); }
+export function renderHost(document) { return renderToStaticMarkup(createElement(HostPresentationReader, { document })); }
 export function renderDocument(document, mode = 'static') { return renderToStaticMarkup(createElement(PresentationReader, { document, mode })); }
 export function renderMarkdown(text) { return renderToStaticMarkup(createElement(Markdown, { text })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -34,7 +41,9 @@ export function renderMarkdown(text) { return renderToStaticMarkup(createElement
     },
     logLevel: 'silent',
   })
-  ;({ renderDocument, renderMarkdown } = await import(pathToFileURL(outfile).href))
+  ;({ renderDocument, renderMarkdown, renderExplorer, renderHost } = await import(
+    pathToFileURL(outfile).href
+  ))
 })
 
 after(async () => {
@@ -84,6 +93,64 @@ test('source-only reader has no synthetic dataset and keeps unreferenced saved s
   const html = renderDocument(document)
   assert.match(html, /The declared Artifact is not available/)
   assert.doesNotMatch(html, /<table/)
+})
+
+test('explorer exposes all types with unavailable prepared statistics disabled and native keyboard controls', async () => {
+  const document = await fixture('computed')
+  const html = renderExplorer(document)
+  assert.match(html, /aria-label="探索图表"/)
+  assert.match(html, /aria-label="关闭探索图表"/)
+  for (const type of [
+    'line',
+    'area',
+    'stackedArea',
+    'sparkline',
+    'bar',
+    'horizontalBar',
+    'stackedBar',
+    'stackedBar100',
+    'horizontalStackedBar',
+    'horizontalStackedBar100',
+    'histogram',
+    'boxPlot',
+    'scatter',
+    'heatmap',
+    'pie',
+    'leaderboard',
+    'funnel',
+    'waterfall',
+  ])
+    assert.ok(html.includes(`value="${type}"`), type)
+  assert.match(html, /value="histogram" disabled=""/)
+  assert.match(html, /value="stackedBar100" disabled=""/)
+  assert.match(html, /数值系列/)
+  assert.match(html, /X 字段/)
+  assert.match(html, /保留分类值/)
+  assert.match(html, /<select[^>]+multiple=""/)
+  assert.match(html, /恢复原图/)
+  assert.doesNotMatch(html, /<script|fetch\(|localStorage/)
+})
+
+test('Host includes an original full exact snapshot for printing independently of interactive exploration', async () => {
+  const document = await fixture('computed')
+  const html = renderHost(document)
+  assert.match(html, /class="pr-host-live"/)
+  assert.match(html, /class="pr-host-print"><article[^>]+data-mode="static"/)
+  assert.match(html, /\.pr-host-live \{ display:none!important \}/)
+  assert.match(html, /\.pr-host-print \{ display:block!important \}/)
+  assert.match(html, /9007199254740993/)
+  assert.match(html, /0\.1000/)
+})
+
+test('cell and filter identifiers matching Object prototype names remain ordinary snapshot identifiers', async () => {
+  const document = await fixture('computed')
+  const block = document.blocks.find((entry) => entry.kind === 'chart')!
+  assert.equal(block.kind, 'chart')
+  const dataset = document.datasets.find((entry) => entry.id === block.datasetId)!
+  dataset.data.columns.find((column) => column.id === block.x)!.id = 'constructor'
+  document.blocks = [{ ...block, id: 'constructor', x: 'constructor' }]
+  assert.match(renderDocument(document, 'interactive'), /data-block-id="constructor"/)
+  assert.match(renderExplorer(document), /data-chart-explorer="constructor"/)
 })
 
 test('static charts keep exact tables while interactive chart details live behind cell tools', async () => {

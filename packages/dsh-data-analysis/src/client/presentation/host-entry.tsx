@@ -22,7 +22,12 @@ export function HostPresentationReader({
       <style>{PRESENTATION_STYLES}</style>
       <style>{HOST_PRESENTATION_STYLES}</style>
       {actions && <div className="pr-host-actions pr-interactive">{actions}</div>}
-      <PresentationReader document={document} />
+      <div className="pr-host-live">
+        <PresentationReader document={document} />
+      </div>
+      <div className="pr-host-print">
+        <PresentationReader document={document} mode="static" />
+      </div>
     </div>
   )
 }

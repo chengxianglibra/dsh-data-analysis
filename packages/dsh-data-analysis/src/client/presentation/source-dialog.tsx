@@ -1,7 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { chartColumns } from '../../presentation/contracts/charts.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
 import { CloseIcon } from './icons.tsx'
 import { chartTitle, datasetById } from './model.ts'
+import { SourceCode } from './source-code.tsx'
+import { type SourceTab, sourceTabForKey, sourceTabs } from './source-code-model.ts'
 import { SourceOverview } from './sources.tsx'
 import { DatasetTable } from './table.tsx'
 
@@ -10,20 +13,25 @@ export function SourceDialog({
   block,
   onClose,
   restoreFocusTo,
+  rowIndices,
+  explored = false,
 }: {
   document: PresentationDocument
   block: PresentationBlock
   onClose: () => void
   restoreFocusTo?: HTMLElement | null
+  rowIndices?: readonly number[]
+  explored?: boolean
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const backdropPointer = useRef(false)
-  const [tab, setTab] = useState<'overview' | 'preview'>('overview')
+  const [tab, setTab] = useState<SourceTab>('overview')
   const id = useId()
   const dataset = 'datasetId' in block ? datasetById(document, block.datasetId) : undefined
+  const tabs = sourceTabs(Boolean(dataset))
   const columns =
     block.kind === 'chart'
-      ? [...new Set([block.x, ...block.y])]
+      ? chartColumns(block)
       : block.kind === 'table'
         ? block.columns
         : undefined
@@ -80,58 +88,48 @@ export function SourceDialog({
             <CloseIcon />
           </button>
         </header>
-        {dataset && (
-          <div className="pr-source-tabs" role="tablist" aria-label="数据源视图">
-            {(['overview', 'preview'] as const).map((item) => (
-              <button
-                type="button"
-                role="tab"
-                className="pr-source-tab"
-                id={`${id}-${item}-tab`}
-                key={item}
-                data-tab={item}
-                aria-selected={tab === item}
-                aria-controls={`${id}-${item}`}
-                tabIndex={tab === item ? 0 : -1}
-                onClick={() => setTab(item)}
-                onKeyDown={(event) => {
-                  const next =
-                    event.key === 'Home'
-                      ? 'overview'
-                      : event.key === 'End'
-                        ? 'preview'
-                        : event.key === 'ArrowLeft' || event.key === 'ArrowRight'
-                          ? tab === 'overview'
-                            ? 'preview'
-                            : 'overview'
-                          : undefined
-                  if (!next) return
-                  event.preventDefault()
-                  setTab(next)
-                  event.currentTarget.parentElement
-                    ?.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)
-                    ?.focus()
-                }}
-              >
-                {item === 'overview' ? '概要' : '数据预览'}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="pr-source-tabs" role="tablist" aria-label="数据源视图">
+          {tabs.map((item) => (
+            <button
+              type="button"
+              role="tab"
+              className="pr-source-tab"
+              id={`${id}-${item}-tab`}
+              key={item}
+              data-tab={item}
+              aria-selected={tab === item}
+              aria-controls={`${id}-${item}`}
+              tabIndex={tab === item ? 0 : -1}
+              onClick={() => setTab(item)}
+              onKeyDown={(event) => {
+                const next = sourceTabForKey(tabs, item, event.key)
+                if (!next) return
+                event.preventDefault()
+                setTab(next)
+                event.currentTarget.parentElement
+                  ?.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)
+                  ?.focus()
+              }}
+            >
+              {item === 'overview' ? '概要' : item === 'preview' ? '数据预览' : '代码'}
+            </button>
+          ))}
+        </div>
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Keep overflowing source details scrollable by keyboard. */}
         <div className="pr-source-dialog-body" tabIndex={0}>
-          {dataset ? (
-            <div
-              id={`${id}-overview`}
-              role="tabpanel"
-              aria-labelledby={`${id}-overview-tab`}
-              hidden={tab !== 'overview'}
-            >
-              <SourceOverview document={document} block={block} />
-            </div>
-          ) : (
-            <SourceOverview document={document} block={block} />
+          {explored && (
+            <p className="pr-muted">
+              当前探索视图 · 未保存。分类过滤与系列显隐不改变作者提供的占比分母。
+            </p>
           )}
+          <div
+            id={`${id}-overview`}
+            role="tabpanel"
+            aria-labelledby={`${id}-overview-tab`}
+            hidden={tab !== 'overview'}
+          >
+            <SourceOverview document={document} block={block} />
+          </div>
           {dataset && (
             <div
               id={`${id}-preview`}
@@ -141,6 +139,7 @@ export function SourceDialog({
             >
               <DatasetTable
                 data={dataset.data}
+                rowIndices={rowIndices}
                 columns={columns}
                 mode="interactive"
                 caption={title ?? '数据预览'}
@@ -148,6 +147,14 @@ export function SourceDialog({
               />
             </div>
           )}
+          <div
+            id={`${id}-code`}
+            role="tabpanel"
+            aria-labelledby={`${id}-code-tab`}
+            hidden={tab !== 'code'}
+          >
+            <SourceCode document={document} block={block} interactive />
+          </div>
         </div>
       </div>
     </dialog>

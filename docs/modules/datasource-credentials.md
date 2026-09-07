@@ -32,6 +32,13 @@ Workspace 绑定、管理页面、等待中的调用和单次执行注入。凭�
 分析激活后另有简短收尾提示，普通文字回答也须逐项回应用户问题与比较范围，保留未完成分支。
 分析语义、执行流程和 Artifact 复用指导仍由当前 Runtime Skill 与 Help 提供，插件不补写这类规则。
 
+成功 `marivo_python` 会在 Host 的 `$DSH_HOME/dsh-data-analysis/python-executions/` 按 Workspace 隔离，
+原子保存本次提交的 Python 原文，并返回 `codeRef: {executionId, sha256}`，供报告 dataset 显式关联。
+读写位置由 Host 决定，不从 Workspace 接受作者自报的执行记录文件。
+只保存代码和完成时间等执行记录，不包含 resolver、注入 wrapper 或 credential snapshot。
+记录失败通过 `codeCaptureError` 单独返回，保留原执行结果；调用方不应因此重放已经成功的分析。
+非零退出、超时或取消不签发成功执行引用。报告构建的精确引用读取见[展示数据投影](presentation-projection.md)。
+
 默认 `credentialInteraction: 'web'`。缺失配置时，根 Agent 的 test/python 保持原调用等待，并在会话标题
 显示待办入口。用户提交后先保存，再测试；成功继续原调用。测试失败保持表单，可修改后重试，或把 Marivo
 的失败与修复信息交还 Agent。已经配置齐全时的测试失败直接返回 Agent，不制造缺失输入待办。

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "bin",
+      "label": "bin",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "lower",
+      "label": "lower",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "upper",
+      "label": "upper",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "frequency",
+      "label": "frequency",
+      "type": "float64",
+      "nullable": false
+    }
+  ],
+  "rows": [["0–1", 0, 1, 2], ["1–3", 1, 3, 3], ["3–6", 3, 6, 1]],
+  "rowCount": 3,
+  "limit": 5000,
+  "truncated": false
+}

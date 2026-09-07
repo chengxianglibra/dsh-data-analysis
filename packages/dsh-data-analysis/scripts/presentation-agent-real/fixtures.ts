@@ -1,5 +1,9 @@
 /** Business fixtures only. The real Agent must create every analysis Artifact and report. */
-export type JourneyId = 'multiple-baselines' | 'semantic-gap-reuse' | 'incomplete-evidence'
+export type JourneyId =
+  | 'multiple-baselines'
+  | 'semantic-gap-reuse'
+  | 'incomplete-evidence'
+  | 'complex-charts'
 
 export interface Journey {
   id: JourneyId
@@ -17,6 +21,21 @@ export const regionalValues = [
 ] as const
 
 export const journeys: Journey[] = [
+  {
+    id: 'complex-charts',
+    title: '复杂图形与分析阶段统计准备',
+    prompts: [
+      '请读取当前 Workspace 的 operations.request_count，保存三个已提供日期各区域的真实分析结果，并交付中文图表报告。全部使用现有 presentation Skill 的图表契约：按日期显示各区域占比的 100% 堆叠柱图；以 09-05 总量为期初、各区域到 09-06 的增减为步骤、09-06 总量为期末的 waterfall；每个区域三个日期请求量的 boxPlot（min、线性插值 Q1、median、Q3、max）；九个日期-区域观测值的 histogram，区间 [0,25)、[25,50)、[50,75)、[75,101)，频数完整保留。统计量、分母和累计起止值都先在 Python 分析中算好并保存到 typed dataset；请保留真实来源、精确字段与比例定义，说明只有三个离散日期的样本限制。再用普通多系列 line 展示已观测的三个日期，不补齐日期，并给该 line 声明可切换到已准备 boxPlot 和 histogram 的 preparedViews。交付可打开和下载的 HTML，不使用前端统计转换。',
+    ],
+    reviewObligations: [
+      '真实 Marivo Artifact 覆盖三个日期、三个区域；computed 统计来源明确关联该 Artifact。',
+      '三个日期分母为 70、200、150；隐藏系列和筛选不改变分母或占比。',
+      '瀑布为 200 → 150：North -50，South -30，West +30；起止与锚点明确。',
+      '箱线图五数 North [40,45,50,75,100]、South [20,35,50,65,80]、West [10,15,20,35,50]。',
+      '直方图频数 [3,1,3,2]，总计9，区间边界 [0,25,50,75,101]。',
+      '三个离散时点不是连续采样；样本限制在正文可见，交付不宣称因果结论。',
+    ],
+  },
   {
     id: 'multiple-baselines',
     title: '独立基线与正负贡献',

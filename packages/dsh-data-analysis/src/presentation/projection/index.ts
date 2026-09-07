@@ -1,5 +1,6 @@
 import { MarivoEnvironmentError } from '../../environment/errors.ts'
 import type { MarivoCheckedRunner } from '../../environment/types.ts'
+import { readPythonExecution } from '../../python-execution.ts'
 import {
   type DocumentDataset,
   PRESENTATION_BUDGETS,
@@ -92,7 +93,18 @@ export class MarivoPresentationProjection {
     const draft = structuredClone(parsePresentationDraft(value))
     const datasets: DocumentDataset[] = []
     const artifactSelections = draft.datasets.flatMap((dataset, index) =>
-      dataset.kind === 'artifact' ? [{ ...dataset, index }] : [],
+      dataset.kind === 'artifact'
+        ? [
+            {
+              id: dataset.id,
+              kind: dataset.kind,
+              sourceId: dataset.sourceId,
+              rowLimit: dataset.rowLimit,
+              ...(dataset.columns ? { columns: dataset.columns } : {}),
+              index,
+            },
+          ]
+        : [],
     )
     let sources: unknown = []
     let diagnostics: PresentationDiagnostic[] = []
@@ -208,11 +220,28 @@ export class MarivoPresentationProjection {
         )
           invalidOutput()
       }
+      const code: NonNullable<DocumentDataset['code']> = []
+      for (const [codeIndex, ref] of (dataset.codeRefs ?? []).entries()) {
+        this.#assertReady(options.signal)
+        try {
+          code.push(await readPythonExecution(this.binding.projectRoot, ref, options.signal))
+        } catch {
+          options.signal?.throwIfAborted()
+          throw new PresentationContractError(
+            'code_unavailable',
+            `${location}/codeRefs/${codeIndex}`,
+            'The captured Python execution cannot be read with its exact Workspace identity and digest.',
+            'Check the codeRef returned by the successful marivo_python call; do not rerun analysis to repair presentation.',
+          )
+        }
+      }
+      this.#assertReady(options.signal)
       datasets.push({
         id: dataset.id,
         origin: dataset.kind,
         data: data as DocumentDataset['data'],
         sourceIds: dataset.kind === 'artifact' ? [dataset.sourceId] : dataset.sourceIds,
+        ...(dataset.codeRefs !== undefined ? { code } : {}),
       })
     }
     for (const [index, dataset] of datasets.entries()) {

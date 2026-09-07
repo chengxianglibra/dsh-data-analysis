@@ -169,6 +169,79 @@ export function verifyReport(document: PresentationDocument, journey: JourneyId)
     ),
     'Every analytical dataset needs complete rows and exact declared sources',
   )
+  if (journey === 'complex-charts') {
+    const charts = document.blocks.filter((block) => block.kind === 'chart')
+    for (const type of ['line', 'stackedBar100', 'boxPlot', 'histogram', 'waterfall'])
+      assert.ok(
+        charts.some((block) => block.chart === type),
+        `Missing authored ${type}`,
+      )
+    const values = (type: string, columns: (block: (typeof charts)[number]) => string[]) => {
+      const block = charts.find((block) => block.chart === type)!
+      const dataset = document.datasets.find((dataset) => dataset.id === block.datasetId)!.data
+      const indices = columns(block).map((id) =>
+        dataset.columns.findIndex((column) => column.id === id),
+      )
+      return dataset.rows.map((row) => indices.map((index) => Number(row[index])))
+    }
+    assert.deepEqual(
+      values('histogram', (block) => [
+        block.bindings!.binStart!,
+        block.bindings!.binEnd!,
+        block.y[0]!,
+      ]),
+      [
+        [0, 25, 3],
+        [25, 50, 1],
+        [50, 75, 3],
+        [75, 101, 2],
+      ],
+    )
+    assert.deepEqual(
+      values('boxPlot', (block) => [
+        block.bindings!.minimum!,
+        block.bindings!.q1!,
+        block.y[0]!,
+        block.bindings!.q3!,
+        block.bindings!.maximum!,
+      ]).sort((a, b) => a[0]! - b[0]!),
+      [
+        [10, 15, 20, 35, 50],
+        [20, 35, 50, 65, 80],
+        [40, 45, 50, 75, 100],
+      ],
+    )
+    const waterfall = values('waterfall', (block) => [
+      block.bindings!.start!,
+      block.bindings!.end!,
+      block.y[0]!,
+    ])
+    assert.deepEqual(waterfall[0], [0, 200, 200])
+    assert.deepEqual(waterfall.at(-1), [0, 150, 150])
+    assert.deepEqual(
+      waterfall
+        .slice(1, -1)
+        .map((row) => row[2]!)
+        .sort((a, b) => a - b),
+      [-50, -30, 30],
+    )
+    assert.deepEqual(
+      values('stackedBar100', (block) => [block.bindings!.denominator!])
+        .flat()
+        .sort((a, b) => a - b),
+      [70, 150, 200],
+    )
+    const line = charts.find((block) => block.chart === 'line')!
+    assert.ok(line.preparedViews?.some((view) => view.chart === 'histogram'))
+    assert.ok(line.preparedViews?.some((view) => view.chart === 'boxPlot'))
+    return {
+      chartTypes: charts.map((block) => block.chart),
+      precomputedStatistics: true,
+      waterfall,
+      narrativeReviewRequired:
+        'Review actual source binding, sample size and three-date limitations.',
+    }
+  }
   if (journey === 'semantic-gap-reuse') {
     return { daily: comparison(document, { acct_a: [100, 170, -70], acct_b: [50, 30, 20] }) }
   }

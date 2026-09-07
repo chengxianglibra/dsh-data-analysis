@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "label",
+      "label": "label",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "amount",
+      "label": "amount",
+      "type": "decimal",
+      "nullable": true
+    }
+  ],
+  "rows": [["精确值", "0.1000"], ["缺失", null], ["长小数", "12345678901234.5678"]],
+  "rowCount": 3,
+  "limit": 5000,
+  "truncated": false
+}

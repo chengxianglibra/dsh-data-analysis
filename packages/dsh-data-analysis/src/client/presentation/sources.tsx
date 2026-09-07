@@ -1,9 +1,11 @@
+import { chartColumns } from '../../presentation/contracts/charts.ts'
 import type {
   PresentationBlock,
   PresentationDocument,
   SourceSnapshot,
 } from '../../presentation/contracts/types.ts'
 import { columnIndex, columnLabel, datasetById, selectedSources, snapshotDate } from './model.ts'
+import { SourceCodeSummary } from './source-code.tsx'
 import { semanticKindLabel, sourceOverviewFacts } from './source-facts.ts'
 
 export function blockSources(document: PresentationDocument, block?: PresentationBlock) {
@@ -93,7 +95,7 @@ export function SourceOverview({
     block?.kind === 'metric'
       ? [block.columnId]
       : block?.kind === 'chart'
-        ? [block.x, ...block.y]
+        ? chartColumns(block)
         : block?.kind === 'table' && block.columns
           ? block.columns
           : dataset?.data.columns.map((column) => column.id)
@@ -154,11 +156,16 @@ export function SourceSummary({
   document: PresentationDocument
   block?: PresentationBlock
 }) {
-  if (!blockSources(document, block).length && (!block || !('datasetId' in block))) return null
+  if (
+    !blockSources(document, block).length &&
+    !(block ? 'datasetId' in block : document.blocks.some((item) => 'datasetId' in item))
+  )
+    return null
   return (
     <details className="pr-source-summary">
       <summary>数据来源</summary>
       <SourceOverview document={document} block={block} />
+      <SourceCodeSummary document={document} block={block} />
     </details>
   )
 }

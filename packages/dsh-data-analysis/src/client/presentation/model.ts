@@ -1,3 +1,4 @@
+import { type ChartView, chartColumns } from '../../presentation/contracts/charts.ts'
 import { chartNumber, formatCell } from '../../presentation/contracts/index.ts'
 import type {
   Cell,
@@ -8,6 +9,7 @@ import type {
   SourceSnapshot,
   TypedDataset,
 } from '../../presentation/contracts/types.ts'
+import type { ChartExploration } from './chart-view.ts'
 
 export type ReaderMode = 'interactive' | 'static'
 export type ChartBlock = Extract<PresentationBlock, { kind: 'chart' }>
@@ -170,7 +172,7 @@ export interface ChartRow {
   [key: string]: number | string | null
 }
 
-export function chartRows(dataset: TypedDataset, block: ChartBlock): ChartRow[] {
+export function chartRows(dataset: TypedDataset, block: ChartView): ChartRow[] {
   const x = columnIndex(dataset, block.x)
   const indices = block.y.map((id) => columnIndex(dataset, id))
   return dataset.rows.map((row, rowIndex) => {
@@ -186,7 +188,7 @@ export function chartRows(dataset: TypedDataset, block: ChartBlock): ChartRow[] 
   })
 }
 
-export function chartTitle(dataset: TypedDataset, block: ChartBlock): string {
+export function chartTitle(dataset: TypedDataset, block: ChartView): string {
   const x = dataset.columns[columnIndex(dataset, block.x)]!
   const y = block.y.map((id) => dataset.columns[columnIndex(dataset, id)]!.label)
   return `${y.join('、')} · ${x.label}`
@@ -200,7 +202,15 @@ export function selectedSources(document: PresentationDocument, ids: string[]): 
   })
 }
 
-export function followUpContext(document: PresentationDocument, block: PresentationBlock): string {
+export function followUpContext(
+  document: PresentationDocument,
+  savedBlock: PresentationBlock,
+  exploration?: ChartExploration,
+): string {
+  const block =
+    savedBlock.kind === 'chart' && exploration
+      ? { ...exploration.view, id: savedBlock.id, kind: 'chart' as const }
+      : savedBlock
   const lines = [
     document.title,
     `Build ID: ${document.buildId}`,
@@ -209,6 +219,24 @@ export function followUpContext(document: PresentationDocument, block: Presentat
     `Block kind: ${block.kind}`,
   ]
   let sources: SourceSnapshot[] = []
+  if (savedBlock.kind === 'chart') {
+    lines.push(`Saved chart binding: ${JSON.stringify(savedBlock)}`)
+    if (exploration) {
+      lines.push(
+        'Current chart view: page-local exploration (not saved; download retains original chart)',
+        `Current chart binding: ${JSON.stringify(exploration.view)}`,
+        `Category filters: ${JSON.stringify(exploration.filters)}`,
+        `Hidden series: ${JSON.stringify(exploration.hidden)}`,
+        `Prepared view: ${exploration.preparedViewId ?? 'authored'}`,
+      )
+      if (exploration.view.datasetId !== savedBlock.datasetId) {
+        const original = datasetById(document, savedBlock.datasetId)
+        lines.push(`Saved dataset: ${original.id}`)
+        for (const source of selectedSources(document, original.sourceIds))
+          lines.push(`Saved source ${source.id}: ${JSON.stringify(source.ref)} [${source.status}]`)
+      }
+    } else lines.push('Current chart view: authored snapshot')
+  }
   if (block.kind === 'markdown') lines.push(`Markdown:\n${block.text}`)
   else {
     lines.push(`Block binding: ${JSON.stringify(block)}`)
@@ -220,7 +248,7 @@ export function followUpContext(document: PresentationDocument, block: Presentat
       block.kind === 'metric'
         ? [block.columnId]
         : block.kind === 'chart'
-          ? [...new Set([block.x, ...block.y])]
+          ? chartColumns(block)
           : (block.columns ?? dataset.data.columns.map((column) => column.id))
     lines.push(
       `Dataset: ${dataset.id}`,

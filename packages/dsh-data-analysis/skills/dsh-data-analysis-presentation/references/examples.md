@@ -30,4 +30,6 @@
 
 ## 仅展示来源
 
+[全部图形样例](chart-examples.md)另提供 18 类图形、bar/line 变体、预计算数据和探索配置。
+
 [source-only.draft.json](examples/source-only.draft.json) 的 datasets 为空，直接用 source block。替换精确引用后提交即可；无须生成 computed 文件、图或虚构单值。

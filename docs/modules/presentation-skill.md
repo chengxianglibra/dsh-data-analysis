@@ -35,7 +35,7 @@ Agent 按用途选择数据与表达：Artifact dataset 直接恢复持久化结
 生成的 typed JSON；只需解释来源时使用 source-only。来源在 Draft 声明，可为零到多个精确引用。
 computed 不要求转换代码、转换分类或复算信息；可恢复来源只说明快照可读取，不能证明计算正确。
 
-Draft 只使用当前五类 block：Markdown、metric、line/bar chart、table 和 source。Agent 决定内容顺序、
+Draft 使用五类 block：Markdown、metric、支持 18 类图形的 chart、table 和 source。Agent 决定内容顺序、
 图形类型、字段与标签，reader 负责自适应布局，没有网格配置。报告和看板共用同一数据契约与 reader，
 不创建新的对象类型、模板协议或长期版本。
 

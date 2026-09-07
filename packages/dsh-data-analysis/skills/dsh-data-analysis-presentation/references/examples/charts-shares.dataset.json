@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "category",
+      "label": "category",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "a",
+      "label": "a",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "b",
+      "label": "b",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "denominator",
+      "label": "denominator",
+      "type": "float64",
+      "nullable": false
+    }
+  ],
+  "rows": [["A", 0.6, 0.4, 100], ["B", 0.3, 0.7, 200], ["C", 0.8, 0.2, 50]],
+  "rowCount": 3,
+  "limit": 5000,
+  "truncated": false
+}

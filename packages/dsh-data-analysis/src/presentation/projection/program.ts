@@ -1,3 +1,5 @@
+import { MARIVO_PRESENTATION_SQL_CODE_PROGRAM } from './sql-code.ts'
+
 /** Fixed public read program. Drafts contain references and data paths, never executable code. */
 export const MARIVO_PRESENTATION_READ_PROGRAM = String.raw`
 import json
@@ -24,6 +26,9 @@ def text(value, limit=32768):
     result = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     result = result.replace("\0", "\\u0000")
     return result if len(result) <= limit else result[:limit - 14] + " [truncated]"
+
+
+${MARIVO_PRESENTATION_SQL_CODE_PROGRAM}
 
 
 def read(request):
@@ -86,7 +91,7 @@ def read(request):
             fact("历史定义 unavailable", "The persisted Artifact public contract does not provide a historical metric definition; no current definition was substituted.")
             diagnostics.append({"code": "definition_unavailable", "path": definition_path, "message": "Historical metric definition is unavailable in the persisted Artifact public contract."})
             fact("revalidation", "not_requested")
-            sources.append({**declared, "status": "available", "label": text(str(meta.kind) + " " + artifact.ref, 512), "facts": facts})
+            sources.append({**declared, "status": "available", "label": text(str(meta.kind) + " " + artifact.ref, 512), "facts": facts, "code": sql_code_snapshot(session, artifact)})
 
         for selection in request["datasets"]:
             dataset_path = "/datasets/" + str(selection["index"])

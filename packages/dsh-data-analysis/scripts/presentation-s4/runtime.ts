@@ -3,7 +3,12 @@ import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { bindMarivoEnvironment } from '../../src/environment/index.ts'
-import type { PresentationDraft, SourceRef } from '../../src/presentation/contracts/index.ts'
+import { CHART_TYPES } from '../../src/presentation/contracts/charts.ts'
+import {
+  type PresentationDraft,
+  parsePresentationDraft,
+  type SourceRef,
+} from '../../src/presentation/contracts/index.ts'
 
 export async function preparePresentationInputs(workspaceRoot: string, pythonExecutable: string) {
   await mkdir(path.join(workspaceRoot, 'models/datasources'), { recursive: true })
@@ -71,6 +76,39 @@ print(json.dumps(dataclasses.asdict(receipt)))
 `,
   })
   assert.equal(writer.exitCode, 0, writer.stderr.toString('utf8'))
+  const chartWriter = await environment.runChecked({
+    program: await readFile(
+      new URL(
+        '../../skills/dsh-data-analysis-presentation/references/examples/write-charts.py',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    limits: { timeoutMs: 120_000, stdoutMaxBytes: 262_144, stderrMaxBytes: 65_536 },
+  })
+  assert.equal(chartWriter.exitCode, 0, chartWriter.stderr.toString('utf8'))
+  const chartWriterReceipts = JSON.parse(chartWriter.stdout.toString('utf8'))
+  const chartDraft = parsePresentationDraft(
+    JSON.parse(
+      await readFile(
+        new URL(
+          '../../skills/dsh-data-analysis-presentation/references/examples/charts.draft.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    ),
+  )
+  assert.ok(Array.isArray(chartWriterReceipts))
+  assert.equal(chartWriterReceipts.length, chartDraft.datasets.length)
+  const chartTypes = [
+    ...new Set(chartDraft.blocks.flatMap((block) => (block.kind === 'chart' ? [block.chart] : []))),
+  ].sort()
+  assert.deepEqual(
+    chartTypes,
+    [...CHART_TYPES].sort(),
+    'S4 synthetic gallery must cover every supported chart type',
+  )
   const drafts: PresentationDraft[] = [
     {
       schemaVersion: 1,
@@ -125,13 +163,26 @@ print(json.dumps(dataclasses.asdict(receipt)))
         { id: 'sources', kind: 'source', sourceIds: sources.map((item) => item.id) },
       ],
     },
+    chartDraft,
   ]
-  const draftPaths = ['artifact.draft.json', 'computed.draft.json', 'source-only.draft.json']
+  const draftPaths = [
+    'artifact.draft.json',
+    'computed.draft.json',
+    'source-only.draft.json',
+    'charts.draft.json',
+  ]
   for (const [index, draft] of drafts.entries())
     await writeFile(path.join(workspaceRoot, draftPaths[index]!), JSON.stringify(draft, null, 2))
   return {
     binding: environment.binding,
-    generated,
+    generated: {
+      ...generated,
+      chartGallery: {
+        chartTypes,
+        writerReceipts: chartWriterReceipts,
+        provenance: 'Skill synthetic example executed in the bound Workspace Runtime',
+      },
+    },
     writerReceipt: JSON.parse(writer.stdout.toString('utf8')),
     draftPaths,
     drafts,

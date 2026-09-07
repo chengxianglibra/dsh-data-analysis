@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "period",
+      "label": "period",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "a",
+      "label": "a",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "b",
+      "label": "b",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "coordinate",
+      "label": "coordinate",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "volume",
+      "label": "volume",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "segment",
+      "label": "segment",
+      "type": "string",
+      "nullable": false
+    }
+  ],
+  "rows": [
+    ["2026-01", 12, 8, 1, 10, "A"],
+    ["2026-02", 18, 11, 2, 20, "B"],
+    ["2026-03", 15, 10, 3, 30, "A"],
+    ["2026-04", 24, 14, 4, 40, "B"],
+    ["2026-05", 19, 13, 5, 50, "A"],
+    ["2026-06", 30, 17, 6, 60, "B"],
+    ["2026-07", 28, 19, 7, 70, "A"],
+    ["2026-08", 34, 18, 8, 80, "B"],
+    ["2026-09", 31, 22, 9, 90, "A"],
+    ["2026-10", 42, 25, 10, 100, "B"],
+    ["2026-11", 39, 24, 11, 110, "A"],
+    ["2026-12", 45, 28, 12, 120, "B"]
+  ],
+  "rowCount": 12,
+  "limit": 5000,
+  "truncated": false
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "group",
+      "label": "group",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "minimum",
+      "label": "minimum",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "q1",
+      "label": "q1",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "median",
+      "label": "median",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "q3",
+      "label": "q3",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "maximum",
+      "label": "maximum",
+      "type": "float64",
+      "nullable": false
+    }
+  ],
+  "rows": [["A", 1, 2, 3, 4, 5], ["B", 2, 3, 4, 5, 6]],
+  "rowCount": 2,
+  "limit": 5000,
+  "truncated": false
+}

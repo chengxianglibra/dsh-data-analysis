@@ -1,0 +1,392 @@
+{
+  "schemaVersion": 1,
+  "title": "图表与探索样例（全部为合成演示数据）",
+  "datasets": [
+    {
+      "id": "charts-series",
+      "kind": "computed",
+      "path": "presentation-example/charts-series.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-shares",
+      "kind": "computed",
+      "path": "presentation-example/charts-shares.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-bins",
+      "kind": "computed",
+      "path": "presentation-example/charts-bins.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-boxes",
+      "kind": "computed",
+      "path": "presentation-example/charts-boxes.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-composition",
+      "kind": "computed",
+      "path": "presentation-example/charts-composition.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-funnel",
+      "kind": "computed",
+      "path": "presentation-example/charts-funnel.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-waterfall",
+      "kind": "computed",
+      "path": "presentation-example/charts-waterfall.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "charts-precision",
+      "kind": "computed",
+      "path": "presentation-example/charts-precision.dataset.json",
+      "sourceIds": []
+    }
+  ],
+  "sources": [],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "全部为合成演示数据。统计量在 Python 示例中预计算；探索只改变本次页面显示。"
+    },
+    {
+      "id": "gallery-line",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "line",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact",
+      "preparedViews": [
+        {
+          "id": "prepared-stackedBar100",
+          "label": "stackedBar100",
+          "datasetId": "charts-shares",
+          "chart": "stackedBar100",
+          "x": "category",
+          "y": ["a", "b"],
+          "numericMode": "exact",
+          "bindings": {
+            "denominator": "denominator"
+          }
+        },
+        {
+          "id": "prepared-histogram",
+          "label": "histogram",
+          "datasetId": "charts-bins",
+          "chart": "histogram",
+          "x": "bin",
+          "y": ["frequency"],
+          "numericMode": "exact",
+          "bindings": {
+            "binStart": "lower",
+            "binEnd": "upper"
+          }
+        },
+        {
+          "id": "prepared-scatter",
+          "label": "scatter",
+          "datasetId": "charts-series",
+          "chart": "scatter",
+          "x": "coordinate",
+          "y": ["a"],
+          "numericMode": "exact",
+          "bindings": {
+            "size": "volume",
+            "label": "period",
+            "color": "segment"
+          }
+        },
+        {
+          "id": "prepared-waterfall",
+          "label": "waterfall",
+          "datasetId": "charts-waterfall",
+          "chart": "waterfall",
+          "x": "step",
+          "y": ["change"],
+          "numericMode": "exact",
+          "bindings": {
+            "start": "start",
+            "end": "end",
+            "role": "role"
+          }
+        },
+        {
+          "id": "prepared-boxPlot",
+          "label": "boxPlot",
+          "datasetId": "charts-boxes",
+          "chart": "boxPlot",
+          "x": "group",
+          "y": ["median"],
+          "numericMode": "exact",
+          "bindings": {
+            "minimum": "minimum",
+            "q1": "q1",
+            "q3": "q3",
+            "maximum": "maximum"
+          }
+        }
+      ],
+      "options": {
+        "showPoints": "always",
+        "series": {
+          "a": {
+            "lineStyle": "solid",
+            "role": "actual"
+          },
+          "b": {
+            "lineStyle": "dashed",
+            "role": "forecast"
+          }
+        },
+        "valueLabels": "none",
+        "referenceLines": [
+          {
+            "axis": "y",
+            "value": 20,
+            "label": "参考值"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gallery-area",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "area",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-stackedArea",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "stackedArea",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-bar",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "bar",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-horizontalBar",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "horizontalBar",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-stackedBar",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "stackedBar",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-stackedBar100",
+      "kind": "chart",
+      "datasetId": "charts-shares",
+      "chart": "stackedBar100",
+      "x": "category",
+      "y": ["a", "b"],
+      "numericMode": "exact",
+      "bindings": {
+        "denominator": "denominator"
+      }
+    },
+    {
+      "id": "gallery-horizontalStackedBar",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "horizontalStackedBar",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-horizontalStackedBar100",
+      "kind": "chart",
+      "datasetId": "charts-shares",
+      "chart": "horizontalStackedBar100",
+      "x": "category",
+      "y": ["a", "b"],
+      "numericMode": "exact",
+      "bindings": {
+        "denominator": "denominator"
+      }
+    },
+    {
+      "id": "gallery-histogram",
+      "kind": "chart",
+      "datasetId": "charts-bins",
+      "chart": "histogram",
+      "x": "bin",
+      "y": ["frequency"],
+      "numericMode": "exact",
+      "bindings": {
+        "binStart": "lower",
+        "binEnd": "upper"
+      }
+    },
+    {
+      "id": "gallery-scatter",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "scatter",
+      "x": "coordinate",
+      "y": ["a"],
+      "numericMode": "exact",
+      "bindings": {
+        "size": "volume",
+        "label": "period",
+        "color": "segment"
+      }
+    },
+    {
+      "id": "gallery-heatmap",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "heatmap",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-pie",
+      "kind": "chart",
+      "datasetId": "charts-composition",
+      "chart": "pie",
+      "x": "category",
+      "y": ["value"],
+      "numericMode": "exact",
+      "bindings": {
+        "share": "share"
+      }
+    },
+    {
+      "id": "gallery-leaderboard",
+      "kind": "chart",
+      "datasetId": "charts-composition",
+      "chart": "leaderboard",
+      "x": "category",
+      "y": ["value"],
+      "numericMode": "exact",
+      "bindings": {
+        "rank": "rank"
+      }
+    },
+    {
+      "id": "gallery-sparkline",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "sparkline",
+      "x": "period",
+      "y": ["a"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "gallery-funnel",
+      "kind": "chart",
+      "datasetId": "charts-funnel",
+      "chart": "funnel",
+      "x": "stage",
+      "y": ["value"],
+      "numericMode": "exact",
+      "bindings": {
+        "share": "share"
+      }
+    },
+    {
+      "id": "gallery-waterfall",
+      "kind": "chart",
+      "datasetId": "charts-waterfall",
+      "chart": "waterfall",
+      "x": "step",
+      "y": ["change"],
+      "numericMode": "exact",
+      "bindings": {
+        "start": "start",
+        "end": "end",
+        "role": "role"
+      }
+    },
+    {
+      "id": "gallery-boxPlot",
+      "kind": "chart",
+      "datasetId": "charts-boxes",
+      "chart": "boxPlot",
+      "x": "group",
+      "y": ["median"],
+      "numericMode": "exact",
+      "bindings": {
+        "minimum": "minimum",
+        "q1": "q1",
+        "q3": "q3",
+        "maximum": "maximum"
+      }
+    },
+    {
+      "id": "gallery-dotted",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "line",
+      "x": "period",
+      "y": ["a", "b"],
+      "numericMode": "exact",
+      "options": {
+        "showPoints": "never",
+        "series": {
+          "a": {
+            "lineStyle": "dotted"
+          },
+          "b": {
+            "lineStyle": "solid",
+            "role": "comparison"
+          }
+        }
+      }
+    },
+    {
+      "id": "gallery-single",
+      "kind": "chart",
+      "datasetId": "charts-series",
+      "chart": "bar",
+      "x": "period",
+      "y": ["a"],
+      "numericMode": "exact",
+      "options": {
+        "valueLabels": "all"
+      }
+    },
+    {
+      "id": "gallery-precision",
+      "kind": "chart",
+      "datasetId": "charts-precision",
+      "chart": "line",
+      "x": "label",
+      "y": ["amount"],
+      "numericMode": "approximate"
+    }
+  ]
+}

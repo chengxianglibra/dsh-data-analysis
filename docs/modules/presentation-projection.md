@@ -40,6 +40,17 @@ available 来源保存读取时间、Artifact 内容身份、公开语义引用�
 当前公开契约不能提供历史 metric 定义时明确 unavailable，不用当前定义冒充历史口径。
 来源面板只读取这些快照，不再次执行 Python。
 
+来源 `code` 快照通过公开 `artifact.meta.produced_by_job`、`session.get_run(...)` 与 Run 的
+`input_artifact_refs` 读取当前 Artifact 及其上游的实际 SQL；核验生产记录的输出身份和 Workspace，
+不枚举其他 Run、不重新编译 SQL。每个来源最多读取 64 个上游 Artifact、保存 32 条 SQL，单条最多 32768 UTF-16 code units；
+无查询、缺失记录及超限保留明确说明，不把截断 SQL 当作原文。
+
+dataset 可通过 `codeRefs` 引用成功 `marivo_python` 的执行记录。投影只从 Host 管理的执行存储按精确 Workspace、execution ID 和
+完整记录字节的 SHA-256 读取 Python 原文，再保存到 dataset 的 `code`；不接受 Workspace 自报记录。
+引用不可恢复时构建失败，不读取同名脚本补齐。
+执行记录证明提交的 Python 成功执行，作者仍负责它与 dataset 的关联；不审计外部导入文件或计算正确性。
+代码以原文保存，不做字面量脱敏，不从凭据 payload 提取内容。生成 JSON 与离线 HTML 均包含同一份代码快照。
+
 ## Python helper 与 Runtime
 
 `dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000)` 只接受 pandas DataFrame，

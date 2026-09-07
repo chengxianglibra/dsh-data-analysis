@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import test from 'node:test'
+import test, { after, before } from 'node:test'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import type { MarivoCheckedRunner, MarivoCheckedRunRequest } from '../../src/environment/types.ts'
 import {
@@ -17,6 +17,7 @@ import {
   readWorkspaceJson,
 } from '../../src/presentation/projection/index.ts'
 import { MARIVO_PRESENTATION_READ_PROGRAM } from '../../src/presentation/projection/program.ts'
+import { savePythonExecution } from '../../src/python-execution.ts'
 
 const fixtures = new URL('../presentation-s0/fixtures/', import.meta.url)
 const options = { workspaceId: 'workspace', buildId: 'build', generatedAt: '2026-09-07T00:00:00Z' }
@@ -38,6 +39,17 @@ const smallData = {
   limit: 1,
   truncated: false,
 }
+const originalDshHome = process.env.DSH_HOME
+let captureHome: string
+before(async () => {
+  captureHome = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-projection-capture-home-')))
+  process.env.DSH_HOME = captureHome
+})
+after(async () => {
+  if (originalDshHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = originalDshHome
+  if (captureHome) await rm(captureHome, { recursive: true, force: true })
+})
 function artifactDraft(): PresentationDraft {
   return {
     schemaVersion: 1,
@@ -106,6 +118,70 @@ function errorAt(code: string, location: string) {
   return (error: unknown) =>
     error instanceof PresentationContractError && error.code === code && error.path === location
 }
+
+test('projects only exact linked Python execution snapshots without running them again', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  const text = 'print("literal-value <script> 📊")\n'
+  const codeRef = await savePythonExecution(f.root, {
+    text,
+    startedAt: '2026-09-07T00:00:00.000Z',
+    finishedAt: '2026-09-07T00:00:01.000Z',
+  })
+  await savePythonExecution(f.root, {
+    text: 'print("unrelated execution")',
+    startedAt: '2026-09-07T00:00:00.000Z',
+    finishedAt: '2026-09-07T00:00:01.000Z',
+  })
+  const draft = artifactDraft()
+  draft.datasets[0]!.codeRefs = [codeRef]
+  const document = await f.bridge.project(draft, options)
+  assert.deepEqual(document.datasets[0]!.code, [
+    {
+      ...codeRef,
+      language: 'python',
+      provenance: 'execution',
+      text,
+    },
+  ])
+  assert.equal(f.requests.length, 1, 'Only the persisted Artifact read runs Python')
+  assert.equal(JSON.stringify(f.requests).includes(codeRef.executionId), false)
+  assert.equal(JSON.stringify(f.requests).includes(text), false)
+  await writeFile(path.join(f.root, 'computed.json'), JSON.stringify(smallData))
+  const computed = computedDraft()
+  computed.datasets[0]!.codeRefs = [codeRef]
+  assert.deepEqual(
+    (await f.bridge.project(computed, options)).datasets[0]!.code,
+    document.datasets[0]!.code,
+  )
+  assert.equal(f.requests.length, 1, 'Computed code reads never run Python')
+  assert.deepEqual(draft.datasets[0]!.codeRefs, [codeRef])
+})
+
+test('missing or mismatched Python capture rejects its exact reference without replay', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  await writeFile(path.join(f.root, 'computed.json'), JSON.stringify(smallData))
+  const codeRef = await savePythonExecution(f.root, {
+    text: 'print("saved")',
+    startedAt: '2026-09-07T00:00:00.000Z',
+    finishedAt: '2026-09-07T00:00:01.000Z',
+  })
+  const draft = computedDraft()
+  draft.datasets[0]!.codeRefs = [{ ...codeRef, sha256: '0'.repeat(64) }]
+  await assert.rejects(
+    f.bridge.project(draft, options),
+    errorAt('code_unavailable', '/datasets/0/codeRefs/0'),
+  )
+  draft.datasets[0]!.codeRefs = [
+    { ...codeRef, executionId: '12345678-1234-4567-89ab-123456789abc' },
+  ]
+  await assert.rejects(
+    f.bridge.project(draft, options),
+    errorAt('code_unavailable', '/datasets/0/codeRefs/0'),
+  )
+  assert.equal(f.requests.length, 0)
+})
 
 test('projects exact Artifact values, selections and identities through the fixed checked reader', async (t) => {
   const f = await fixture()

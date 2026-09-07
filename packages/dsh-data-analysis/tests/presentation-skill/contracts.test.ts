@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { CHART_TYPES } from '../../src/presentation/contracts/charts.ts'
 import {
   type PresentationDraft,
   parsePresentationDocument,
@@ -71,7 +72,7 @@ test('presentation Skill resources are reachable within the shipped folder and s
     }
   }
   assert.deepEqual([...visited].sort(), allFiles, 'Every shipped resource must be discoverable')
-  assert.ok(totalBytes <= 40 * 1024, 'Keep the complete Skill and examples bounded')
+  assert.ok(totalBytes <= 80 * 1024, 'Keep the complete Skill and 18-chart examples bounded')
 })
 
 test('all presentation draft examples validate with production draft and document parsers', async () => {
@@ -127,7 +128,7 @@ test('all presentation draft examples validate with production draft and documen
         draft.blocks.flatMap((block) => (block.kind === 'chart' ? [block.chart] : [])),
       ),
     ),
-    new Set(['line', 'bar']),
+    new Set(CHART_TYPES),
   )
   assert.ok(examples.some((draft) => draft.datasets.length === 0 && draft.sources.length > 0))
   for (const sourceCount of [0, 2]) {

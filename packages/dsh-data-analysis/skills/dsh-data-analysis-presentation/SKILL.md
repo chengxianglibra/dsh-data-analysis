@@ -17,4 +17,4 @@ description: 将 Marivo 分析结果或已有 Workspace 数据展示为图表、
 
 ## 来源追问
 
-简短来源问题可通过 Marivo 公开 Python API 回答。需要可视来源面板时，使用 `datasets: []` 与 `source` block，无需制造图表或 dataset。打开、下载和来源展开读取生成时保存的快照；用户要求新范围、刷新或进一步分析时回到普通分析流程。
+简短来源问题可通过 Marivo 公开 Python API 回答。需要可视来源面板时，使用 `datasets: []` 与 `source` block，无需制造图表或 dataset。需要保留生成脚本时，将成功 `marivo_python` 返回的 `codeRef` 写入相应 dataset 的 `codeRefs`，详见 [生成代码](references/schema.md#生成代码)；Artifact 执行 SQL 自动读取，执行记录与数据集的关联不构成计算正确性证明。打开、下载和来源展开读取生成时保存的快照；用户要求新范围、刷新或进一步分析时回到普通分析流程。

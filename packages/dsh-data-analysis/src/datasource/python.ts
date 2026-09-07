@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import { PYTHON_LAUNCHER, PYTHON_WORKER } from './resolver-program.ts'
 import type { MarivoCredentialService } from './service.ts'
@@ -23,7 +24,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Execute foreground Python in the bound Marivo Workspace using Host-injected credentials. This call waits for missing credentials for every listed datasource before starting Python once; configured credentials do not trigger a connection test. Create/resume Sessions and readers inside this execution; close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay.',
+        'Execute foreground Python in the bound Marivo Workspace using Host-injected credentials. This call waits for missing credentials for every listed datasource before starting Python once; configured credentials do not trigger a connection test. Create/resume Sessions and readers inside this execution; close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay. Successful execution saves the exact submitted code and returns codeRef; explicitly associate it with presentation datasets through draft codeRefs. A codeCaptureError does not change the execution outcome and must not trigger replay.',
       parameters: {
         code: {
           type: 'string',
@@ -44,7 +45,8 @@ export function registerMarivoPythonTool(
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       async execute(args, exec) {
-        if (!args.code.trim() || Buffer.byteLength(args.code) > 131072)
+        const code = args.code
+        if (!code.trim() || Buffer.byteLength(code) > 131072)
           throw new Error('Invalid Python code size')
         const shell = ctx.get('shell')
         if (!shell) throw new Error('DSH Shell execution service is required')
@@ -75,7 +77,7 @@ export function registerMarivoPythonTool(
               project_root: binding.projectRoot,
               grants: prepared.grants,
               values: prepared.values,
-              code: args.code,
+              code,
               worker: PYTHON_WORKER,
             }),
             env: { MARIVO_PERSIST_CREDENTIALS: '0' },
@@ -84,13 +86,36 @@ export function registerMarivoPythonTool(
           })
           // Keep this guard adjacent to the only launch, after synchronous Host hooks.
           prepared.assertCurrent()
+          const startedAt = new Date().toISOString()
           const result = await service.track(shell.run(spec))
+          const finishedAt = new Date().toISOString()
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
             Object.values(prepared.values)
               .filter(Boolean)
               .sort((a, b) => b.length - a.length)
               .reduce((out, value) => out.split(value).join('[REDACTED]'), text)
+          let codeRef: PythonCodeRef | undefined
+          let codeCaptureError: string | undefined
+          if (result.exitCode === 0 && !result.timedOut && !result.aborted) {
+            try {
+              prepared.assertCurrent()
+              if (Object.values(prepared.values).some((value) => value && code.includes(value)))
+                throw new Error('Host credential in submitted code')
+              codeRef = await service.track(
+                savePythonExecution(
+                  binding.projectRoot,
+                  { text: code, startedAt, finishedAt },
+                  prepared.signal,
+                ),
+              )
+              prepared.assertCurrent()
+            } catch {
+              codeRef = undefined
+              codeCaptureError =
+                'Python completed successfully, but its source code could not be saved. Do not rerun the code to recover this snapshot; inspect its existing effects.'
+            }
+          }
           return JSON.parse(
             JSON.stringify({
               exitCode: result.exitCode,
@@ -100,6 +125,8 @@ export function registerMarivoPythonTool(
               stderr: redact(result.stderr.text),
               truncated: result.stdout.truncated || result.stderr.truncated,
               sandbox: result.sandbox ?? null,
+              ...(codeRef ? { codeRef } : {}),
+              ...(codeCaptureError ? { codeCaptureError } : {}),
             }),
           )
         } catch {

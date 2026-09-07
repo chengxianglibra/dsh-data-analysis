@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "stage",
+      "label": "stage",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "value",
+      "label": "value",
+      "type": "float64",
+      "nullable": false
+    },
+    {
+      "id": "share",
+      "label": "share",
+      "type": "float64",
+      "nullable": false
+    }
+  ],
+  "rows": [["访问", 100, 1], ["注册", 60, 0.6], ["购买", 20, 0.2]],
+  "rowCount": 3,
+  "limit": 5000,
+  "truncated": false
+}

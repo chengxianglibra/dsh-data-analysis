@@ -1,33 +1,19 @@
+import { chartColumns, parseChartViewShape, validateChartView } from './charts.ts'
 import {
   PRESENTATION_BUDGETS as budgets,
   type Cell,
+  type ChartView,
   type DatasetColumn,
   type PresentationDocument,
   type PresentationDraft,
   type PresentationReceipt,
   type TypedDataset,
 } from './types.ts'
+import { PresentationContractError } from './values.ts'
 
+export * from './charts.ts'
 export * from './types.ts'
-
-export class PresentationContractError extends Error {
-  readonly code: string
-  readonly path: string
-  readonly hint: string
-
-  constructor(
-    code: string,
-    path: string,
-    message: string,
-    hint = 'Correct the value at this path.',
-  ) {
-    super(`${path || '/'}: ${message}`)
-    this.name = 'PresentationContractError'
-    this.code = code
-    this.path = path
-    this.hint = hint
-  }
-}
+export * from './values.ts'
 
 function fail(path: string, message: string, code = 'invalid_value'): never {
   throw new PresentationContractError(code, path, message)
@@ -141,6 +127,60 @@ function sourceRef(value: unknown, path: string) {
   string(ref.artifactRef, pointer(path, 'artifactRef'), 512)
   if (ref.findingId !== undefined) string(ref.findingId, pointer(path, 'findingId'), 512)
 }
+function sourceCode(value: unknown, path: string) {
+  const snapshot = object(value, path)
+  keys(snapshot, ['snippets', 'notices'], [], path)
+  const identities = array(snapshot.snippets, `${path}/snippets`, budgets.codeSnippets).map(
+    (value, i) => {
+      const location = `${path}/snippets/${i}`
+      const entry = object(value, location)
+      keys(
+        entry,
+        ['language', 'text', 'provenance', 'runId', 'queryId', 'artifactRef'],
+        [],
+        location,
+      )
+      if (entry.language !== 'sql' || entry.provenance !== 'execution')
+        fail(location, 'Expected SQL captured from a persisted execution.')
+      if (!string(entry.text, `${location}/text`).trim())
+        fail(`${location}/text`, 'Expected nonblank source code.')
+      for (const field of ['runId', 'queryId', 'artifactRef'])
+        string(entry[field], `${location}/${field}`, 512)
+      return JSON.stringify([entry.runId, entry.queryId])
+    },
+  )
+  unique(identities, `${path}/snippets`)
+  stringArray(snapshot.notices, `${path}/notices`, 64)
+}
+function pythonCode(value: unknown, path: string, generated: boolean) {
+  const identities = array(value, path, budgets.codeSnippets).map((value, i) => {
+    const location = `${path}/${i}`
+    const entry = object(value, location)
+    keys(
+      entry,
+      generated
+        ? ['executionId', 'sha256', 'language', 'text', 'provenance']
+        : ['executionId', 'sha256'],
+      [],
+      location,
+    )
+    const id = string(entry.executionId, `${location}/executionId`, 36)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id))
+      fail(`${location}/executionId`, 'Expected a captured execution UUID.')
+    const digest = string(entry.sha256, `${location}/sha256`, 64)
+    if (!/^[0-9a-f]{64}$/.test(digest))
+      fail(`${location}/sha256`, 'Expected the captured execution SHA-256 digest.')
+    if (generated) {
+      if (entry.language !== 'python' || entry.provenance !== 'execution')
+        fail(location, 'Expected Python captured from an execution.')
+      const text = string(entry.text, `${location}/text`, 131_072)
+      if (!text.trim() || new TextEncoder().encode(text).length > 131_072)
+        fail(`${location}/text`, 'Expected nonblank Python source of at most 128 KiB.')
+    }
+    return id
+  })
+  unique(identities, path)
+}
 function column(value: unknown, path: string): DatasetColumn {
   const entry = object(value, path)
   keys(entry, ['id', 'label', 'type', 'nullable'], ['unit'], path)
@@ -241,32 +281,6 @@ export function parseTypedDataset(value: unknown): TypedDataset {
 export function formatCell(value: Cell, _column: DatasetColumn): string {
   return value === null ? '—' : String(value)
 }
-export function chartNumber(
-  value: Cell,
-  column: DatasetColumn,
-  mode: 'exact' | 'approximate',
-  path = '',
-): number | null {
-  if (value === null) return null
-  if (!['float64', 'int64', 'decimal'].includes(column.type))
-    fail(path, 'Chart series must be numeric.')
-  if (
-    mode === 'exact' &&
-    (column.type === 'decimal' || (column.type === 'int64' && !Number.isSafeInteger(Number(value))))
-  ) {
-    throw new PresentationContractError(
-      'numeric_precision',
-      path,
-      'Exact chart encoding cannot represent this value.',
-      'Set numericMode to approximate explicitly, or show the exact value in a table.',
-    )
-  }
-  const number = Number(value)
-  if (!Number.isFinite(number))
-    fail(path, 'Chart encoding must remain finite.', 'numeric_precision')
-  return number
-}
-
 function common(value: Record<string, unknown>, generated: boolean) {
   version(value, '')
   string(value.title, '/title', 512)
@@ -276,7 +290,8 @@ function common(value: Record<string, unknown>, generated: boolean) {
     const entry = object(value, path)
     if (!generated) keys(entry, ['id', 'ref'], [], path)
     else if (entry.status === 'available') {
-      keys(entry, ['id', 'ref', 'status', 'label', 'facts'], [], path)
+      keys(entry, ['id', 'ref', 'status', 'label', 'facts'], ['code'], path)
+      if (entry.code !== undefined) sourceCode(entry.code, `${path}/code`)
       string(entry.label, `${path}/label`, 512)
       array(entry.facts, `${path}/facts`, 64).forEach((value, i) => {
         const factPath = `${path}/facts/${i}`
@@ -304,7 +319,8 @@ function common(value: Record<string, unknown>, generated: boolean) {
     const entry = object(value, path)
     string(entry.id, `${path}/id`, 256)
     if (generated) {
-      keys(entry, ['id', 'origin', 'data', 'sourceIds'], [], path)
+      keys(entry, ['id', 'origin', 'data', 'sourceIds'], ['code'], path)
+      if (entry.code !== undefined) pythonCode(entry.code, `${path}/code`, true)
       if (entry.origin !== 'artifact' && entry.origin !== 'computed')
         fail(`${path}/origin`, 'Expected artifact or computed.')
       bytes(entry.data, budgets.datasetBytes, `${path}/data`)
@@ -323,13 +339,13 @@ function common(value: Record<string, unknown>, generated: boolean) {
         )
       }
     } else if (entry.kind === 'artifact') {
-      keys(entry, ['id', 'kind', 'sourceId', 'rowLimit'], ['columns'], path)
+      keys(entry, ['id', 'kind', 'sourceId', 'rowLimit'], ['columns', 'codeRefs'], path)
       references([string(entry.sourceId, `${path}/sourceId`, 256)], `${path}/sourceId`, true)
       integer(entry.rowLimit, `${path}/rowLimit`, 1, budgets.rows)
       if (entry.columns !== undefined)
         stringArray(entry.columns, `${path}/columns`, budgets.columns, 1)
     } else if (entry.kind === 'computed') {
-      keys(entry, ['id', 'kind', 'path', 'sourceIds'], [], path)
+      keys(entry, ['id', 'kind', 'path', 'sourceIds'], ['codeRefs'], path)
       const file = string(entry.path, `${path}/path`, 1024)
       if (
         file.startsWith('/') ||
@@ -347,6 +363,8 @@ function common(value: Record<string, unknown>, generated: boolean) {
         `${path}/sourceIds`,
       )
     } else fail(`${path}/kind`, 'Expected artifact or computed.')
+    if (!generated && entry.codeRefs !== undefined)
+      pythonCode(entry.codeRefs, `${path}/codeRefs`, false)
     return entry
   })
   unique(
@@ -383,15 +401,39 @@ function common(value: Record<string, unknown>, generated: boolean) {
       integer(entry.rowIndex, `${path}/rowIndex`, 0, budgets.rows - 1)
       string(entry.label, `${path}/label`, 512)
     } else if (entry.kind === 'chart') {
-      keys(entry, ['id', 'kind', 'datasetId', 'chart', 'x', 'y', 'numericMode'], [], path)
-      if (entry.chart !== 'line' && entry.chart !== 'bar')
-        fail(`${path}/chart`, 'Expected line or bar.')
-      if (entry.numericMode !== 'exact' && entry.numericMode !== 'approximate')
-        fail(`${path}/numericMode`, 'Declare exact or approximate encoding.')
-      selected = [
-        string(entry.x, `${path}/x`, 256),
-        ...stringArray(entry.y, `${path}/y`, budgets.columns, 1),
-      ]
+      keys(
+        entry,
+        ['id', 'kind', 'datasetId', 'chart', 'x', 'y', 'numericMode'],
+        ['bindings', 'options', 'preparedViews'],
+        path,
+      )
+      const { id: _id, kind: _kind, preparedViews, ...view } = entry
+      parseChartViewShape(view, path)
+      selected = chartColumns(view as unknown as ChartView)
+      if (preparedViews !== undefined) {
+        const ids = array(preparedViews, `${path}/preparedViews`, budgets.blocks, 1).map(
+          (value, i) => {
+            const viewPath = `${path}/preparedViews/${i}`
+            const prepared = object(value, viewPath)
+            const { id, label, ...binding } = prepared
+            string(id, `${viewPath}/id`, 256)
+            string(label, `${viewPath}/label`, 512)
+            parseChartViewShape(binding, viewPath)
+            const target = datasets.find((entry) => entry.id === binding.datasetId)
+            if (!target)
+              fail(`${viewPath}/datasetId`, 'Unknown dataset identifier.', 'invalid_reference')
+            if (generated)
+              validateChartView(
+                binding as unknown as ChartView,
+                target.data as TypedDataset,
+                viewPath,
+                `/datasets/${datasets.indexOf(target)}/data`,
+              )
+            return id as string
+          },
+        )
+        unique(ids, `${path}/preparedViews`)
+      }
     } else fail(`${path}/kind`, 'Unknown presentation block.')
     const datasetId = string(entry.datasetId, `${path}/datasetId`, 256)
     const target = datasets.find((entry) => entry.id === datasetId)
@@ -405,20 +447,12 @@ function common(value: Record<string, unknown>, generated: boolean) {
       if (entry.kind === 'metric' && Number(entry.rowIndex) >= data.rows.length)
         fail(`${path}/rowIndex`, 'Metric must select one existing row.', 'invalid_reference')
       if (entry.kind === 'chart') {
-        for (const columnId of selected.slice(1)) {
-          const index = data.columns.findIndex((entry) => entry.id === columnId)
-          const column = data.columns[index]!
-          if (!['float64', 'int64', 'decimal'].includes(column.type))
-            fail(`${path}/y`, 'Chart series must be numeric.')
-          data.rows.forEach((row, i) => {
-            chartNumber(
-              row[index]!,
-              column,
-              entry.numericMode as 'exact' | 'approximate',
-              `/datasets/${datasets.indexOf(target)}/data/rows/${i}/${index}`,
-            )
-          })
-        }
+        validateChartView(
+          entry as unknown as ChartView,
+          data,
+          path,
+          `/datasets/${datasets.indexOf(target)}/data`,
+        )
       }
     }
     return id

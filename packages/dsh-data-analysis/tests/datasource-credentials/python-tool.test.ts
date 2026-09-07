@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
@@ -73,6 +76,17 @@ function pythonTool(f: ReturnType<typeof fixture>) {
 
 test('Python admits configured credentials once, uses stdin, and clears its fresh snapshot', async (t) => {
   const f = fixture()
+  const projectRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), 'python-tool-')))
+  const hostRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), 'python-tool-host-')))
+  const oldHome = process.env.DSH_HOME
+  process.env.DSH_HOME = hostRoot
+  Object.assign(f.bridge.binding, { projectRoot })
+  t.after(async () => {
+    if (oldHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = oldHome
+    await rm(hostRoot, { recursive: true, force: true })
+  })
+  t.after(() => rm(f.bridge.binding.projectRoot, { recursive: true, force: true }))
   t.after(() => f.service.close())
   const p = pythonTool(f)
   f.store.put('DB_PASSWORD')
@@ -83,7 +97,9 @@ test('Python admits configured credentials once, uses stdin, and clears its fres
     if ('status' in result && result.status === 'ready') values = result.values
     return result
   }
-  assert.deepEqual(await p.call(), {
+  const { codeRef, ...result } = (await p.call()) as Record<string, unknown>
+  assert(codeRef)
+  assert.deepEqual(result, {
     exitCode: 0,
     timedOut: false,
     aborted: false,

@@ -75,7 +75,7 @@ null 保留缺失含义，datetime 必须带时区。它不保存来源或转换
 固定 projection 从同一 bound Workspace 恢复 persisted Artifact 和可选 Finding，不自动 observe、revalidate 或读取凭据。
 直接 Artifact dataset 缺必要数据会失败，computed 和 source-only 可以保留 unavailable 来源。
 
-共享 reader 展示 Markdown、metric、line/bar、table 和 source，保留精确值、单位、截断与 unavailable 来源。
+共享 reader 展示 Markdown、metric、18 类 chart、table 和 source，保留精确值、单位、截断与 unavailable 来源。chart 支持 bar/line 变体与当前页面的字段、图形及过滤探索；统计量由分析阶段准备，探索不改写保存快照。
 `marivo_present` 读取 Workspace 相对 Draft 路径，生成独立 build 的 JSON/自包含 HTML；
 卡片打开固定快照并下载 HTML。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
 展开来源仅使用保存的快照；文件变化、缺失或 Workspace 归属变化会明确失败。

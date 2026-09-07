@@ -16,12 +16,14 @@ export function DatasetTable({
   mode,
   caption,
   showScope = true,
+  rowIndices,
 }: {
   data: TypedDataset
   columns?: string[]
   mode: ReaderMode
   caption: string
   showScope?: boolean
+  rowIndices?: readonly number[]
 }) {
   const [sort, setSort] = useState<{
     columnId: string
@@ -34,17 +36,25 @@ export function DatasetTable({
       .filter((column) => ['float64', 'int64', 'decimal'].includes(column.type))
       .map((column) => column.id),
   )
-  const sorted = useMemo(() => sortedRowIndices(data, sort), [data, sort])
-  const pages = Math.max(1, Math.ceil(data.rows.length / TABLE_PAGE_SIZE))
+  const sorted = useMemo(() => {
+    const selected = rowIndices ? new Set(rowIndices) : undefined
+    return sortedRowIndices(data, sort).filter((index) => !selected || selected.has(index))
+  }, [data, sort, rowIndices])
+  const pages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE))
   const activePage = Math.min(page, pages - 1)
   const shown =
     mode === 'static'
-      ? data.rows.map((_, i) => i)
+      ? (rowIndices ?? data.rows.map((_, i) => i))
       : sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
   return (
     <div className="pr-table">
       {showScope && (
         <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{datasetScope(data)}</p>
+      )}
+      {rowIndices && rowIndices.length !== data.rows.length && (
+        <p className="pr-muted">
+          当前过滤：{rowIndices.length} / {data.rows.length} 条快照观测
+        </p>
       )}
       <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>
         <table>
