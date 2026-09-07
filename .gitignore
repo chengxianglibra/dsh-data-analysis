@@ -8,6 +8,7 @@
 !.env.*.example
 node_modules/
 artifacts/
+docs/acceptance/
 packages/dsh-data-analysis/lib/
 *.tgz
 npm-debug.log*
