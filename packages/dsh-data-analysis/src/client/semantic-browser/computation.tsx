@@ -272,13 +272,12 @@ function DefinitionNode({ object, objects, navigate }) {
     </div>
   )
 }
-function TemporalRules({ temporal, objects, navigate, compact = false }) {
+function TemporalRules({ temporal, objects, navigate }) {
   if (
     !temporal ||
     (temporal.declared.status === 'not_declared' &&
       temporal.override.status === 'not_declared' &&
-      (temporal.effective.status === 'not_applicable' ||
-        (compact && temporal.effective.status === 'context_required')))
+      temporal.effective.status === 'not_applicable')
   )
     return null
   const row = (label, rule) => (
@@ -290,12 +289,14 @@ function TemporalRules({ temporal, objects, navigate, compact = false }) {
         </>
       ) : rule.fold ? (
         op(rule.fold)
-      ) : rule.status === 'context_required' ? (
-        '需观察上下文确定'
+      ) : rule.status === 'component_defined' ? (
+        '由计算公式及组成对象确定'
       ) : rule.status === 'not_declared' ? (
         '未声明'
-      ) : (
+      ) : rule.status === 'not_applicable' ? (
         '不适用'
+      ) : (
+        `暂不支持的规则状态：${rule.status}`
       )}
     </div>
   )
@@ -357,7 +358,6 @@ export function ComputationCard({ object, objects, navigate }) {
                 temporal={child.computation.temporal}
                 objects={objects}
                 navigate={navigate}
-                compact
               />
             </section>
           ))}

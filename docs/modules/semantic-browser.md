@@ -84,6 +84,10 @@ npm run validate:semantic-browser:web
 引用定义按精确 Ref 去重后平铺，公式中的重复项和顺序原样保留；引用对象最多展示 40 个，超限明确提示点击对象继续查看。
 不重复附加各引用对象的业务说明；其实际使用约束和声明的时间规则保留在对应对象下，支持点击跳转和返回。
 补充属性省略空值、已由公式展示的计算字段和关系页中的引用列表；时间规则区分声明、覆盖和有效规则。页面不把 `verified` 解释为业务审批或数据可用性。
+Marivo 0.5.4 的 `temporal.effective.status` 直接决定展示：`not_applicable` 且没有声明或覆盖时不显示时间折叠区；
+`component_defined` 显示“由计算公式及组成对象确定”，组成对象的规则保留在下方引用定义中；
+`resolved` 展示精确时间轴和 fold（包括 percentile 的 `q`）。插件不根据可加性或子对象规则推导统一 fold。
+累计节点 `node.over` 的默认轴 `context_required` 仍单独提示需要上下文，与有效折叠规则的状态无关。
 结构化定义必须匹配对象 Ref 和 Catalog fingerprint；插件只接受公开 payload 字段，不解析终端文本或私有 IR。
 此次浏览并未执行 observe、认证日历、编译 SQL 或额外读取源码。
 

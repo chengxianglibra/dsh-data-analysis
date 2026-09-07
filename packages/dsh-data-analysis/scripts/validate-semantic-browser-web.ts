@@ -165,6 +165,7 @@ try {
   assert.equal(await computation.count(), 0)
   await page.getByRole('button', { name: '定义', exact: true }).click()
   await computation.waitFor()
+  await computation.getByText('由计算公式及组成对象确定').waitFor()
   assert.match(
     await computation.locator('.sb-formula').first().innerText(),
     /从 sales.fiscal 的 week 周期起点累计/,
@@ -188,6 +189,7 @@ try {
   await page.getByLabel('搜索语义对象').fill('metric:sales.ratio')
   await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
   await computation.getByText('sales.revenue ÷ sales.revenue', { exact: true }).waitFor()
+  await computation.getByText('由计算公式及组成对象确定').waitFor()
   assert.equal(
     await computation.getByRole('region', { name: 'metric:sales.revenue', exact: true }).count(),
     1,
@@ -205,6 +207,32 @@ try {
   assert.equal(
     await computation.getByRole('region', { name: 'metric:sales.revenue', exact: true }).count(),
     1,
+  )
+  assert.equal(await computation.getByRole('region', { name: '时间折叠规则' }).count(), 0)
+  for (const name of ['stock_total', 'stock_last', 'stock_linear']) {
+    await page.getByLabel('搜索语义对象').fill(`metric:sales.${name}`)
+    await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
+    const temporal = computation.locator(':scope > .sb-temporal')
+    const text = await temporal.innerText()
+    assert.match(
+      text,
+      name === 'stock_linear'
+        ? /由计算公式及组成对象确定/
+        : name === 'stock_last'
+          ? /末值/
+          : /分位数（0.95）/,
+    )
+    if (name !== 'stock_linear')
+      await temporal.getByRole('button', { name: 'sales.orders.ordered_at', exact: true }).waitFor()
+    assert.doesNotMatch(await computation.innerText(), /需观察上下文确定|不适用/)
+  }
+  await page.screenshot({ path: path.join(output, 'temporal-component-defined.png') })
+  await page.getByLabel('搜索语义对象').fill('metric:sales.all_spend')
+  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
+  await computation.getByText('使用默认时间轴，需观察上下文确定', { exact: true }).waitFor()
+  await computation.getByText('由计算公式及组成对象确定').waitFor()
+  checks.push(
+    '0.5.4 时间规则：普通加减无独立折叠、组合定义、继承分位数、末值覆盖；默认累计轴单独保留上下文提示',
   )
   await page.getByLabel('搜索语义对象').fill('metric:sales.cancellation_rate')
   await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()

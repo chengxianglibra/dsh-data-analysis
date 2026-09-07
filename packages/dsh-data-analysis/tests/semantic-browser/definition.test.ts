@@ -17,7 +17,7 @@ const payload = {
   temporal: {
     declared: { status: 'not_declared' },
     override: { status: 'not_declared' },
-    effective: { status: 'context_required' },
+    effective: { status: 'component_defined' },
   },
 }
 test('definition transport preserves default and availability states and validates snapshot identity', () => {

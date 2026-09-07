@@ -110,3 +110,26 @@ Enter 复制内容、定义位置保留、两段说明删除，以及 390px 下�
 Ibis 复制和 390px 布局正常，页面异常为 0。已安装客户端摘要匹配，Workspace 与会话摘要未变。
 截图为 `/tmp/dsh-definition-overview-desktop.png`、`/tmp/dsh-definition-flat-desktop.png` 和
 `/tmp/dsh-definition-flat-mobile.png`。
+
+## 2026-09-07：Marivo 0.5.4 时间规则状态
+
+接入 Marivo issue #2 修复后的公共 `temporal.effective` 状态，不在插件内推导 fold。
+无声明、无覆盖且 `not_applicable` 时省略时间折叠区；`component_defined` 显示“由计算公式及组成对象确定”，
+并保留引用对象下的明确规则。`resolved` 继续展示精确时间轴、分位数参数和指标覆盖。
+累计默认轴的 `node.over.resolution=context_required` 独立保留，不再用于解释有效 fold。
+未知状态明确显示不支持，避免误标为“不适用”。
+
+在独立安装的正式 Marivo 0.5.4 Runtime 中验证：
+
+- 真实 Catalog 夹具覆盖全部 13 种对象；普通聚合和加减返回 `not_applicable`，比率、累计和含时间折叠输入的线性组合返回 `component_defined`。
+- 声明、度量继承和指标覆盖的 `resolved` payload 保留 source、精确 over Ref、percentile `q=0.95` 及 `last`。
+- 禁止 observe、preview、readiness、连接测试与分析 Session 创建的测试通过，项目目录读取前后摘要一致。
+- ecommerce 项目成功读取 140 个对象：`commerce.gross_profit` 无独立折叠；`commerce.gross_margin_rate` 与
+  `growth.retail_quarter_to_date_campaign_spend` 由组成定义决定；`operations.sellable_inventory` 明确沿
+  `operations.inventory_daily.snapshot_date` 取末值。
+- Chromium 夹具通过时间规则展示、默认累计轴提示、公式重复项与引用去重、Ibis 复制、对象导航、过滤、刷新失败和窄屏验证。
+  证据保存于 `/tmp/dsh-temporal-054-browser/result.json` 和 `temporal-component-defined.png`。
+
+Node.js 24.18.0 下专项 12 项测试通过，`npm run check` 共 153 项测试通过，0 失败、0 跳过。
+`npm run build`、`npm run verify:plugin-package` 和 `git diff --check` 通过。
+浏览器使用生产页面和真实 Catalog，Host/slot 为隔离夹具；本次未重装或重启正在使用的 DSH Profile。

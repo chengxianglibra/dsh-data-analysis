@@ -80,6 +80,27 @@ mv.session = forbidden
     assert.equal(node.status, 'unsupported')
     assert.equal((node.display as { text: string }).text, expression)
   }
+  const temporal = (name: string) =>
+    data.objects.find((x) => x.ref.path === name)!.computation!.temporal!
+  for (const name of ['revenue', 'linear'])
+    assert.deepEqual(temporal(`sales.${name}`).effective, { status: 'not_applicable' })
+  for (const name of ['ratio', 'quarter_spend', 'all_spend', 'rolling_spend', 'stock_linear'])
+    assert.deepEqual(temporal(`sales.${name}`).effective, { status: 'component_defined' })
+  assert.deepEqual(
+    data.objects.find((x) => x.ref.path === 'sales.all_spend')!.computation!.node.over,
+    { selection: 'default', resolution: 'context_required' },
+  )
+  const over = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'time_dimension',
+    path: 'sales.orders.ordered_at',
+  }
+  for (const [name, source, fold] of [
+    ['sales.orders.stock', 'declared', { kind: 'percentile', q: 0.95 }],
+    ['sales.stock_total', 'measure', { kind: 'percentile', q: 0.95 }],
+    ['sales.stock_last', 'metric_override', { kind: 'last' }],
+  ] as const)
+    assert.deepEqual(temporal(name).effective, { status: 'resolved', source, over, fold })
   assert.equal(cumulative.computation!.node.kind, 'cumulative')
   assert.deepEqual(cumulative.computation!.node.anchor, {
     kind: 'grain_to_date',
