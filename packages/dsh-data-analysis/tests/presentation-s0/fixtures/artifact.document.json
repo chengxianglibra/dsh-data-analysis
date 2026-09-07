@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "workspaceId": "s0-validation-workspace",
+  "buildId": "s0-artifact",
+  "title": "S0 真实 persisted Artifact 样例",
+  "generatedAt": "2026-09-07T05:50:05.932344+00:00",
+  "datasets": [
+    {
+      "id": "artifact",
+      "origin": "artifact",
+      "data": {
+        "schemaVersion": 1,
+        "columns": [
+          {
+            "id": "region",
+            "label": "region",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "id": "revenue",
+            "label": "revenue",
+            "type": "float64",
+            "nullable": true
+          }
+        ],
+        "rows": [["A", 12.5], ["B", 8.25], ["C", null]],
+        "rowCount": 4,
+        "limit": 3,
+        "truncated": true
+      },
+      "sourceIds": ["sales"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "sales",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_131d63e9328690a9903ba484",
+        "findingId": "fnd_dad7ce96e4a20d043c758b99"
+      },
+      "status": "available",
+      "label": "真实 persisted revenue Artifact",
+      "facts": [
+        {
+          "label": "读取时间",
+          "value": "2026-09-07T05:50:05.932344+00:00"
+        },
+        {
+          "label": "Artifact kind",
+          "value": "metric_frame"
+        },
+        {
+          "label": "创建时间",
+          "value": "2026-09-07T05:50:03.862359+00:00"
+        },
+        {
+          "label": "内容身份",
+          "value": "sha256:759494f7837792894d8e15d712fd616d9486e9f2ed75a46034f4e14c537c2088"
+        },
+        {
+          "label": "Evidence status",
+          "value": "complete"
+        },
+        {
+          "label": "公开语义引用",
+          "value": "[{\"role\": \"metric\", \"kind\": \"metric\", \"path\": \"sales.revenue\", \"outputColumn\": \"revenue\"}, {\"role\": \"dimension_axis\", \"kind\": \"dimension\", \"path\": \"sales.orders.region\", \"outputColumn\": \"region\"}]"
+        },
+        {
+          "label": "Quality",
+          "value": "{\"coverage\": null, \"nullRate\": 0.25, \"sampleSize\": 4, \"evaluatedCheckCount\": 4, \"failedCheckCount\": 0, \"warningCheckCount\": 2}"
+        },
+        {
+          "label": "Issues",
+          "value": "[{\"kind\": \"sample_size_low\", \"severity\": \"warning\"}, {\"kind\": \"null_rate_high\", \"severity\": \"warning\"}]"
+        },
+        {
+          "label": "选择的 Finding",
+          "value": "Finding id=fnd_dad7ce96e4a20d043c758b99 type=metric_value artifact=art_131d63e9328690a9903ba484\nstatus: observed\ncommitted_at: 2026-09-07T05:50:03.920558+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"A\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_131d63e9328690a9903ba484\nsource_fields:\n- region\n- value\nsource_refs:\n- art_131d63e9328690a9903ba484\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
+        },
+        {
+          "label": "历史定义 unavailable",
+          "value": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
+        },
+        {
+          "label": "revalidation",
+          "value": "not_requested"
+        }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "由独立验证 Workspace 的真实 persisted Artifact 经公开 API 在新进程恢复。仅展示保存的 3 行；不重新 observe、revalidate 或读取凭据。"
+    },
+    {
+      "id": "metric",
+      "kind": "metric",
+      "datasetId": "artifact",
+      "columnId": "revenue",
+      "rowIndex": 0,
+      "label": "A 分组已有 revenue"
+    },
+    {
+      "id": "line",
+      "kind": "chart",
+      "datasetId": "artifact",
+      "chart": "line",
+      "x": "region",
+      "y": ["revenue"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "table",
+      "kind": "table",
+      "datasetId": "artifact"
+    },
+    {
+      "id": "sources",
+      "kind": "source",
+      "sourceIds": ["sales"]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "truncated",
+      "path": "/datasets/0/data/rows",
+      "message": "共 4 行，按展示预算写入前 3 行；不能从截断数据推算全量总计。"
+    },
+    {
+      "code": "definition_unavailable",
+      "path": "/sources/0/facts/9",
+      "message": "persisted Artifact 公开契约未提供历史指标定义；保留 unavailable，未读取当前定义冒充历史口径。"
+    }
+  ]
+}

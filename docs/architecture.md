@@ -6,6 +6,10 @@
 Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语义、Artifact、Evidence、Quality、
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
+展示重构已开始 S0 的内部契约与隔离接缝验证，见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)、
+[S0 契约](plan/marivo-analytics-presentation-s0-contracts.md)和[验收记录](plan/marivo-analytics-presentation-s0-acceptance.md)。
+S0 的 reader、文件 RPC 与 receipt 探针只在临时验证插件中运行；下面描述的生产注册面与旧报告流程尚未切换。
+
 ```mermaid
 flowchart LR
   D[DeepSeek Harness] --> P[dsh-data-analysis]

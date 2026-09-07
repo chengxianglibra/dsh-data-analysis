@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "workspaceId": "s0-validation-workspace",
+  "buildId": "s0-source-only",
+  "title": "S0 仅来源样例",
+  "generatedAt": "2026-09-07T05:50:07.750130+00:00",
+  "datasets": [],
+  "sources": [
+    {
+      "id": "missing",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_000000000000000000000000"
+      },
+      "status": "unavailable",
+      "reason": "The declared Artifact is not available in the bound Workspace Session."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "本样例只展示来源引用和不可用说明，没有 dataset，也不触发数据恢复或新分析。"
+    },
+    {
+      "id": "sources",
+      "kind": "source",
+      "sourceIds": ["missing"]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "source_unavailable",
+      "path": "/sources/0",
+      "message": "来源在生成时不可恢复；离线展示保存的不可用说明。"
+    }
+  ]
+}

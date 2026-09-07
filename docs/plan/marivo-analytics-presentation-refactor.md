@@ -2,13 +2,13 @@
 
 ## 状态、约束与本轮结论
 
-状态：设计提案，尚未实施。本轮按用户要求重新审查：**破坏性更新，不做迁移、兼容、别名、双协议或旧卡恢复；从完整用户旅程决定最小能力，不从已有工具清单决定保留项。**
+状态：目标设计；2026-09-07 已完成 [S0 契约与接缝验证](marivo-analytics-presentation-s0-acceptance.md)，生产切换及 S1–S5 尚未实施。设计约束：**破坏性更新，不做迁移、兼容、别名、双协议或旧卡恢复；从完整用户旅程决定最小能力，不从已有工具清单决定保留项。**
 
 保留以下已确认约束：凭据管理继续提供；分析基于 Marivo 公开能力；适配 DSH Host；不包含 Sites 或其他托管。ChartRenderer、图表变换、表格、布局、来源面板、reader 明确参考 Analytics App Core 的实现方式，在本项目独立编写，不直接复制源码。computed 只展示声明的 Artifact 来源，不判断或验证转换逻辑。
 
 **修订后的最小方案是：4 个插件 Tool、1 个插件展示 Skill、1 套 reader、1 次生成完成 Web 阅读与离线 HTML 交付。** Marivo Runtime 的两个上游 Skill 继续挂载。没有展示版本管理平台、独立 validate/export Tool、在线编辑事务或长期展示服务。
 
-此方案有意改变当前插件不拥有页面 schema/renderer 的边界。实际代码切换时同步更新[总体架构](../architecture.md)与[集成交付模块](../modules/plugin-integration-delivery.md)；本次仅修改设计，不把提案写成已经实现的运行契约。
+此方案有意改变当前插件不拥有页面 schema/renderer 的边界。实际代码切换时同步更新[总体架构](../architecture.md)与[集成交付模块](../modules/plugin-integration-delivery.md)；S0 的内部契约和隔离探针不代表目标生产契约已经接通。
 
 ## Review：原方案为什么需要收敛
 

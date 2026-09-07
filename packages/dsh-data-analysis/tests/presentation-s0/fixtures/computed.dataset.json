@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "period",
+      "label": "月份",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "amount",
+      "label": "精确金额",
+      "type": "decimal",
+      "nullable": true,
+      "unit": "CNY"
+    },
+    {
+      "id": "account_id",
+      "label": "大整数标识",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "count",
+      "label": "数量",
+      "type": "float64",
+      "nullable": false,
+      "unit": "次"
+    },
+    {
+      "id": "observed_on",
+      "label": "日期",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "recorded_at",
+      "label": "记录时间",
+      "type": "datetime",
+      "nullable": false
+    },
+    {
+      "id": "active",
+      "label": "启用",
+      "type": "boolean",
+      "nullable": false
+    }
+  ],
+  "rows": [
+    [
+      "一月",
+      "12345678901234.5678",
+      "9007199254740993",
+      12,
+      "2026-01-01",
+      "2026-01-01T00:00:00+08:00",
+      true
+    ],
+    ["二月", null, "9223372036854775807", 18, "2026-02-01", "2026-02-01T00:00:00+08:00", false],
+    ["三月", "0.1000", "-9223372036854775808", 9, "2026-03-01", "2026-03-01T00:00:00+08:00", true]
+  ],
+  "rowCount": 5,
+  "limit": 3,
+  "truncated": true
+}

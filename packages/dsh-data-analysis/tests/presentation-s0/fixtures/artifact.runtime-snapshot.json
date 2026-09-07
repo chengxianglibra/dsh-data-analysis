@@ -1,0 +1,354 @@
+{
+  "recordedAt": "2026-09-07T05:50:07.750130+00:00",
+  "marivoVersion": "0.5.4",
+  "runtimeFingerprint": "22ed6dc01b43b4ad6da235ccba0fd79fd0820378163237eaed838e7317b9cd80",
+  "generationApi": "session.observe(metrics=public_catalog_metrics, dimensions=public_catalog_dimensions)",
+  "generated": {
+    "primary": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_131d63e9328690a9903ba484",
+      "findingId": "fnd_dad7ce96e4a20d043c758b99",
+      "persistedRowCount": 4,
+      "valueColumns": ["revenue"]
+    },
+    "secondary": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_f9f0db95c4d8ec143c2b9570",
+      "findingId": "fnd_ac9a23e52811f2dbc6ec0392",
+      "persistedRowCount": 4,
+      "valueColumns": ["account_id"]
+    },
+    "precisionProbe": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_158eec365e17e8eb00b2e543",
+      "findingId": "fnd_f4ad4c15887bf0c718b4cfc9",
+      "persistedRowCount": 4,
+      "valueColumns": ["precision_revenue", "precision_account_id"]
+    },
+    "precisionInputs": {
+      "decimal": "12345678901234.5678",
+      "int64": "9007199254740993"
+    }
+  },
+  "restored": {
+    "schema": "dsh-data-analysis-presentation-s0-runtime/v1",
+    "readAt": "2026-09-07T05:50:05.932344+00:00",
+    "source": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_131d63e9328690a9903ba484",
+      "kind": "metric_frame",
+      "createdAt": "2026-09-07T05:50:03.862359+00:00",
+      "contentHash": "sha256:759494f7837792894d8e15d712fd616d9486e9f2ed75a46034f4e14c537c2088",
+      "evidenceStatus": "complete",
+      "findingCount": 5,
+      "semanticInputs": [
+        {
+          "role": "metric",
+          "kind": "metric",
+          "path": "sales.revenue",
+          "outputColumn": "revenue"
+        },
+        {
+          "role": "dimension_axis",
+          "kind": "dimension",
+          "path": "sales.orders.region",
+          "outputColumn": "region"
+        }
+      ],
+      "quality": {
+        "coverage": null,
+        "nullRate": 0.25,
+        "sampleSize": 4,
+        "evaluatedCheckCount": 4,
+        "failedCheckCount": 0,
+        "warningCheckCount": 2
+      },
+      "issues": [
+        {
+          "kind": "sample_size_low",
+          "severity": "warning"
+        },
+        {
+          "kind": "null_rate_high",
+          "severity": "warning"
+        }
+      ],
+      "finding": {
+        "id": "fnd_dad7ce96e4a20d043c758b99",
+        "type": "metric_value",
+        "sourceRefs": ["art_131d63e9328690a9903ba484"],
+        "excerpt": "Finding id=fnd_dad7ce96e4a20d043c758b99 type=metric_value artifact=art_131d63e9328690a9903ba484\nstatus: observed\ncommitted_at: 2026-09-07T05:50:03.920558+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"A\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_131d63e9328690a9903ba484\nsource_fields:\n- region\n- value\nsource_refs:\n- art_131d63e9328690a9903ba484\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
+      },
+      "definition": {
+        "status": "unavailable",
+        "reason": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
+      },
+      "revalidation": {
+        "status": "not_requested"
+      }
+    },
+    "columns": [
+      {
+        "name": "region",
+        "artifactDtype": "object",
+        "pandasDtype": "object",
+        "nullable": false,
+        "role": "dimension",
+        "pythonTypes": ["str"]
+      },
+      {
+        "name": "revenue",
+        "artifactDtype": "float64",
+        "pandasDtype": "float64",
+        "nullable": true,
+        "role": "value",
+        "pythonTypes": ["float"]
+      }
+    ],
+    "rows": [["A", 12.5], ["B", 8.25], ["C", null]],
+    "truncation": {
+      "totalRows": 4,
+      "writtenRows": 3,
+      "omittedRows": 1,
+      "rowLimit": 3
+    },
+    "readApi": [
+      "mv.session.resume(use_datasources=False)",
+      "session.artifact",
+      "artifact.contract",
+      "artifact.to_pandas",
+      "artifact.finding",
+      "finding.render"
+    ],
+    "forbiddenCalls": {
+      "observe": 0,
+      "revalidate": 0,
+      "credentialResolve": 0
+    }
+  },
+  "secondary": {
+    "schema": "dsh-data-analysis-presentation-s0-runtime/v1",
+    "readAt": "2026-09-07T05:50:07.750130+00:00",
+    "source": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_f9f0db95c4d8ec143c2b9570",
+      "kind": "metric_frame",
+      "createdAt": "2026-09-07T05:50:03.962344+00:00",
+      "contentHash": "sha256:4605c403cab10c10487b1f8d37357edf2e45dd42ae2fea07e511b165cde7dc40",
+      "evidenceStatus": "complete",
+      "findingCount": 5,
+      "semanticInputs": [
+        {
+          "role": "metric",
+          "kind": "metric",
+          "path": "sales.account_id",
+          "outputColumn": "account_id"
+        },
+        {
+          "role": "dimension_axis",
+          "kind": "dimension",
+          "path": "sales.orders.region",
+          "outputColumn": "region"
+        }
+      ],
+      "quality": {
+        "coverage": null,
+        "nullRate": 0,
+        "sampleSize": 4,
+        "evaluatedCheckCount": 4,
+        "failedCheckCount": 0,
+        "warningCheckCount": 1
+      },
+      "issues": [
+        {
+          "kind": "sample_size_low",
+          "severity": "warning"
+        }
+      ],
+      "finding": {
+        "id": "fnd_ac9a23e52811f2dbc6ec0392",
+        "type": "metric_value",
+        "sourceRefs": ["art_f9f0db95c4d8ec143c2b9570"],
+        "excerpt": "Finding id=fnd_ac9a23e52811f2dbc6ec0392 type=metric_value artifact=art_f9f0db95c4d8ec143c2b9570\nstatus: observed\ncommitted_at: 2026-09-07T05:50:03.967084+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"A\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_f9f0db95c4d8ec143c2b9570\nsource_fields:\n- region\n- value\nsource_refs:\n- art_f9f0db95c4d8ec143c2b9570\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
+      },
+      "definition": {
+        "status": "unavailable",
+        "reason": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
+      },
+      "revalidation": {
+        "status": "not_requested"
+      }
+    },
+    "columns": [
+      {
+        "name": "region",
+        "artifactDtype": "object",
+        "pandasDtype": "object",
+        "nullable": false,
+        "role": "dimension",
+        "pythonTypes": ["str"]
+      },
+      {
+        "name": "account_id",
+        "artifactDtype": "int64",
+        "pandasDtype": "int64",
+        "nullable": false,
+        "role": "value",
+        "pythonTypes": ["int"]
+      }
+    ],
+    "rows": [["A", "9007199254740993"], ["B", "9007199254740995"], ["C", "9007199254740997"]],
+    "truncation": {
+      "totalRows": 4,
+      "writtenRows": 3,
+      "omittedRows": 1,
+      "rowLimit": 3
+    },
+    "readApi": [
+      "mv.session.resume(use_datasources=False)",
+      "session.artifact",
+      "artifact.contract",
+      "artifact.to_pandas",
+      "artifact.finding",
+      "finding.render"
+    ],
+    "forbiddenCalls": {
+      "observe": 0,
+      "revalidate": 0,
+      "credentialResolve": 0
+    }
+  },
+  "unavailable": {
+    "status": "unavailable",
+    "ref": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_000000000000000000000000"
+    },
+    "reason": "The declared Artifact is not available in the bound Workspace Session.",
+    "exceptionType": "ArtifactNotFoundError",
+    "forbiddenCalls": {
+      "observe": 0,
+      "revalidate": 0,
+      "credentialResolve": 0
+    }
+  },
+  "precisionProbe": {
+    "schema": "dsh-data-analysis-presentation-s0-runtime/v1",
+    "readAt": "2026-09-07T05:50:09.508624+00:00",
+    "source": {
+      "sessionId": "sess_b8826bb02a1e4da22572b38b",
+      "artifactRef": "art_158eec365e17e8eb00b2e543",
+      "kind": "metric_frame",
+      "createdAt": "2026-09-07T05:50:04.016137+00:00",
+      "contentHash": "sha256:cbb88b9f2bea9413a8d4419ec46420f0d81bf762d0fb58907f780efc2f33e84e",
+      "evidenceStatus": "complete",
+      "findingCount": 10,
+      "semanticInputs": [
+        {
+          "role": "metric[0]",
+          "kind": "metric",
+          "path": "sales.precision_revenue",
+          "outputColumn": "precision_revenue"
+        },
+        {
+          "role": "metric[1]",
+          "kind": "metric",
+          "path": "sales.precision_account_id",
+          "outputColumn": "precision_account_id"
+        },
+        {
+          "role": "dimension_axis",
+          "kind": "dimension",
+          "path": "sales.precise_orders.region",
+          "outputColumn": "region"
+        }
+      ],
+      "quality": {
+        "coverage": null,
+        "nullRate": null,
+        "sampleSize": 4,
+        "evaluatedCheckCount": 5,
+        "failedCheckCount": 0,
+        "warningCheckCount": 2
+      },
+      "issues": [
+        {
+          "kind": "sample_size_low",
+          "severity": "warning"
+        },
+        {
+          "kind": "null_rate_high",
+          "severity": "warning"
+        }
+      ],
+      "finding": {
+        "id": "fnd_f4ad4c15887bf0c718b4cfc9",
+        "type": "metric_value",
+        "sourceRefs": ["art_158eec365e17e8eb00b2e543"],
+        "excerpt": "Finding id=fnd_f4ad4c15887bf0c718b4cfc9 type=metric_value artifact=art_158eec365e17e8eb00b2e543\nstatus: observed\ncommitted_at: 2026-09-07T05:50:04.021217+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"item_key_prefix\",\"type\":\"string\",\"value\":\"metric:sales.precision_revenue\"},{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"D\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_158eec365e17e8eb00b2e543\nsource_fields:\n- region\n- precision_revenue\nsource_refs:\n- art_158eec365e17e8eb00b2e543\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
+      },
+      "definition": {
+        "status": "unavailable",
+        "reason": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
+      },
+      "revalidation": {
+        "status": "not_requested"
+      }
+    },
+    "columns": [
+      {
+        "name": "region",
+        "artifactDtype": "object",
+        "pandasDtype": "object",
+        "nullable": false,
+        "role": "dimension",
+        "pythonTypes": ["str"]
+      },
+      {
+        "name": "precision_revenue",
+        "artifactDtype": "float64",
+        "pandasDtype": "float64",
+        "nullable": true,
+        "role": "dimension",
+        "pythonTypes": ["float"]
+      },
+      {
+        "name": "precision_account_id",
+        "artifactDtype": "float64",
+        "pandasDtype": "float64",
+        "nullable": false,
+        "role": "dimension",
+        "pythonTypes": ["float"]
+      }
+    ],
+    "rows": [
+      ["A", 12345678901234.568, 9007199254740992],
+      ["B", 0.1, 9007199254740996],
+      ["C", null, 9007199254740996],
+      ["D", -12.34, 9007199254741000]
+    ],
+    "truncation": {
+      "totalRows": 4,
+      "writtenRows": 4,
+      "omittedRows": 0,
+      "rowLimit": 4
+    },
+    "readApi": [
+      "mv.session.resume(use_datasources=False)",
+      "session.artifact",
+      "artifact.contract",
+      "artifact.to_pandas",
+      "artifact.finding",
+      "finding.render"
+    ],
+    "forbiddenCalls": {
+      "observe": 0,
+      "revalidate": 0,
+      "credentialResolve": 0
+    }
+  },
+  "freshProcessRead": true,
+  "inputDatabaseWasProcessLocal": true,
+  "workspaceDefinitionsRequired": true,
+  "profileOrCredentialsModified": false
+}

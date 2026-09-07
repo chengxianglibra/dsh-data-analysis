@@ -1,0 +1,33 @@
+{
+  "artifact": {
+    "columns": ["region", "revenue"],
+    "rows": [["A", 12.5], ["B", 8.25], ["C", null]],
+    "totalRows": 4,
+    "writtenRows": 3,
+    "truncated": true
+  },
+  "computed": {
+    "firstDecimal": "12345678901234.5678",
+    "firstInt64": "9007199254740993",
+    "lastDecimal": "0.1000",
+    "nullCell": [1, 1],
+    "totalRows": 5,
+    "writtenRows": 3,
+    "availableSources": 2,
+    "unavailableSources": 1
+  },
+  "sourceOnly": {
+    "datasets": 0,
+    "unavailableSources": 1
+  },
+  "secondaryArtifact": {
+    "firstInt64": "9007199254740993"
+  },
+  "precisionProbe": {
+    "inputDecimal": "12345678901234.5678",
+    "publicDecimal": 12345678901234.568,
+    "inputInt64": "9007199254740993",
+    "publicInt64": 9007199254740992,
+    "expectedPresentationOutcome": "reject unsafe float64 integer; do not relabel as an exact int64/decimal"
+  }
+}

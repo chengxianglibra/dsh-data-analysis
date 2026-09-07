@@ -2,7 +2,7 @@
 
 ## 状态与交付目标
 
-状态：待实施。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。本轮只完成路线图；以下阶段均未据此执行或验收。
+状态：2026-09-07 已完成 S0 的最小契约、fixtures 和实际接缝验证，见 [S0 验收记录](marivo-analytics-presentation-s0-acceptance.md)与[契约记录](marivo-analytics-presentation-s0-contracts.md)。S1–S5 尚未实施，生产 Tool/Skill/reader 尚未切换。本文落实[重构设计](marivo-analytics-presentation-refactor.md)，不新增产品范围。
 
 交付目标固定为 4 个 Tool（`marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_present`）、1 个插件 Skill（`dsh-data-analysis-presentation`）、1 套 reader、一次 present 完成 Web 阅读与离线 HTML。两个 Marivo Runtime Skill 继续挂载，凭据管理保留，computed 仅展示声明来源。
 
@@ -26,6 +26,8 @@
 以下路径除特别注明外，均相对 `packages/dsh-data-analysis/`。新增路径为计划位置，尚不存在的模块不作为已实现接口。
 
 ## S0：先验证四个真正的阻塞点
+
+**状态：已完成。** 实际 bound Runtime 恢复读取、Native/both/worker Code dispatch、真实 DSH Web 模块加载/RPC/下载、下载文件断网及无脚本检查均通过。验证探针位于 `scripts/presentation-s0/`，未注册到生产入口。上游 float64 精度限制、Workspace 声明前提与 S2/S3/S4 的剩余工作见验收记录。
 
 **实施范围**：小规模契约、fixtures 和可丢弃的接缝验证，不搭建完整展示系统。
 

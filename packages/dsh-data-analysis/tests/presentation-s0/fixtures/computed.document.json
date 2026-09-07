@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "workspaceId": "s0-validation-workspace",
+  "buildId": "s0-computed",
+  "title": "S0 computed 精确数值样例",
+  "generatedAt": "2026-09-07T05:50:07.750130+00:00",
+  "datasets": [
+    {
+      "id": "computed",
+      "origin": "computed",
+      "data": {
+        "schemaVersion": 1,
+        "columns": [
+          {
+            "id": "period",
+            "label": "月份",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "id": "amount",
+            "label": "精确金额",
+            "type": "decimal",
+            "nullable": true,
+            "unit": "CNY"
+          },
+          {
+            "id": "account_id",
+            "label": "大整数标识",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "id": "count",
+            "label": "数量",
+            "type": "float64",
+            "nullable": false,
+            "unit": "次"
+          },
+          {
+            "id": "observed_on",
+            "label": "日期",
+            "type": "date",
+            "nullable": false
+          },
+          {
+            "id": "recorded_at",
+            "label": "记录时间",
+            "type": "datetime",
+            "nullable": false
+          },
+          {
+            "id": "active",
+            "label": "启用",
+            "type": "boolean",
+            "nullable": false
+          }
+        ],
+        "rows": [
+          [
+            "一月",
+            "12345678901234.5678",
+            "9007199254740993",
+            12,
+            "2026-01-01",
+            "2026-01-01T00:00:00+08:00",
+            true
+          ],
+          [
+            "二月",
+            null,
+            "9223372036854775807",
+            18,
+            "2026-02-01",
+            "2026-02-01T00:00:00+08:00",
+            false
+          ],
+          [
+            "三月",
+            "0.1000",
+            "-9223372036854775808",
+            9,
+            "2026-03-01",
+            "2026-03-01T00:00:00+08:00",
+            true
+          ]
+        ],
+        "rowCount": 5,
+        "limit": 3,
+        "truncated": true
+      },
+      "sourceIds": ["sales", "accounts", "missing"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "sales",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_131d63e9328690a9903ba484",
+        "findingId": "fnd_dad7ce96e4a20d043c758b99"
+      },
+      "status": "available",
+      "label": "真实 persisted revenue Artifact",
+      "facts": [
+        {
+          "label": "读取时间",
+          "value": "2026-09-07T05:50:05.932344+00:00"
+        },
+        {
+          "label": "Artifact kind",
+          "value": "metric_frame"
+        },
+        {
+          "label": "创建时间",
+          "value": "2026-09-07T05:50:03.862359+00:00"
+        },
+        {
+          "label": "内容身份",
+          "value": "sha256:759494f7837792894d8e15d712fd616d9486e9f2ed75a46034f4e14c537c2088"
+        },
+        {
+          "label": "Evidence status",
+          "value": "complete"
+        },
+        {
+          "label": "公开语义引用",
+          "value": "[{\"role\": \"metric\", \"kind\": \"metric\", \"path\": \"sales.revenue\", \"outputColumn\": \"revenue\"}, {\"role\": \"dimension_axis\", \"kind\": \"dimension\", \"path\": \"sales.orders.region\", \"outputColumn\": \"region\"}]"
+        },
+        {
+          "label": "Quality",
+          "value": "{\"coverage\": null, \"nullRate\": 0.25, \"sampleSize\": 4, \"evaluatedCheckCount\": 4, \"failedCheckCount\": 0, \"warningCheckCount\": 2}"
+        },
+        {
+          "label": "Issues",
+          "value": "[{\"kind\": \"sample_size_low\", \"severity\": \"warning\"}, {\"kind\": \"null_rate_high\", \"severity\": \"warning\"}]"
+        },
+        {
+          "label": "选择的 Finding",
+          "value": "Finding id=fnd_dad7ce96e4a20d043c758b99 type=metric_value artifact=art_131d63e9328690a9903ba484\nstatus: observed\ncommitted_at: 2026-09-07T05:50:03.920558+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"A\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_131d63e9328690a9903ba484\nsource_fields:\n- region\n- value\nsource_refs:\n- art_131d63e9328690a9903ba484\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
+        },
+        {
+          "label": "历史定义 unavailable",
+          "value": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
+        },
+        {
+          "label": "revalidation",
+          "value": "not_requested"
+        }
+      ]
+    },
+    {
+      "id": "accounts",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_f9f0db95c4d8ec143c2b9570",
+        "findingId": "fnd_ac9a23e52811f2dbc6ec0392"
+      },
+      "status": "available",
+      "label": "真实 persisted account_id Artifact",
+      "facts": [
+        {
+          "label": "读取时间",
+          "value": "2026-09-07T05:50:07.750130+00:00"
+        },
+        {
+          "label": "Artifact kind",
+          "value": "metric_frame"
+        },
+        {
+          "label": "创建时间",
+          "value": "2026-09-07T05:50:03.962344+00:00"
+        },
+        {
+          "label": "内容身份",
+          "value": "sha256:4605c403cab10c10487b1f8d37357edf2e45dd42ae2fea07e511b165cde7dc40"
+        },
+        {
+          "label": "Evidence status",
+          "value": "complete"
+        },
+        {
+          "label": "公开语义引用",
+          "value": "[{\"role\": \"metric\", \"kind\": \"metric\", \"path\": \"sales.account_id\", \"outputColumn\": \"account_id\"}, {\"role\": \"dimension_axis\", \"kind\": \"dimension\", \"path\": \"sales.orders.region\", \"outputColumn\": \"region\"}]"
+        },
+        {
+          "label": "Quality",
+          "value": "{\"coverage\": null, \"nullRate\": 0, \"sampleSize\": 4, \"evaluatedCheckCount\": 4, \"failedCheckCount\": 0, \"warningCheckCount\": 1}"
+        },
+        {
+          "label": "Issues",
+          "value": "[{\"kind\": \"sample_size_low\", \"severity\": \"warning\"}]"
+        },
+        {
+          "label": "选择的 Finding",
+          "value": "Finding id=fnd_ac9a23e52811f2dbc6ec0392 type=metric_value artifact=art_f9f0db95c4d8ec143c2b9570\nstatus: observed\ncommitted_at: 2026-09-07T05:50:03.967084+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"A\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_f9f0db95c4d8ec143c2b9570\nsource_fields:\n- region\n- value\nsource_refs:\n- art_f9f0db95c4d8ec143c2b9570\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
+        },
+        {
+          "label": "历史定义 unavailable",
+          "value": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
+        },
+        {
+          "label": "revalidation",
+          "value": "not_requested"
+        }
+      ]
+    },
+    {
+      "id": "missing",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_000000000000000000000000"
+      },
+      "status": "unavailable",
+      "reason": "The declared Artifact is not available in the bound Workspace Session."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "S0 固定展示样例。computed 数值用于验证精确序列化，不作为真实业务分析结论。图表仅绘制已有数量；表格保留金额、大整数和 null。"
+    },
+    {
+      "id": "count",
+      "kind": "metric",
+      "datasetId": "computed",
+      "columnId": "count",
+      "rowIndex": 0,
+      "label": "一月已有数量"
+    },
+    {
+      "id": "chart",
+      "kind": "chart",
+      "datasetId": "computed",
+      "chart": "bar",
+      "x": "period",
+      "y": ["count"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "table",
+      "kind": "table",
+      "datasetId": "computed"
+    },
+    {
+      "id": "sources",
+      "kind": "source",
+      "sourceIds": ["sales", "accounts", "missing"]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "truncated",
+      "path": "/datasets/0/data/rows",
+      "message": "共 5 行，按展示预算写入前 3 行；图表仅包含已写入行，不代表全量总计。"
+    }
+  ]
+}

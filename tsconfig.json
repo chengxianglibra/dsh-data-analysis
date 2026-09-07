@@ -3,6 +3,7 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
     "module": "NodeNext",
     "noEmit": true,
     "noFallthroughCasesInSwitch": true,

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "title": "S0 computed 精确数值样例",
+  "datasets": [
+    {
+      "id": "computed",
+      "kind": "computed",
+      "path": "computed.dataset.json",
+      "sourceIds": ["sales", "accounts", "missing"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "sales",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_131d63e9328690a9903ba484",
+        "findingId": "fnd_dad7ce96e4a20d043c758b99"
+      }
+    },
+    {
+      "id": "accounts",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_f9f0db95c4d8ec143c2b9570",
+        "findingId": "fnd_ac9a23e52811f2dbc6ec0392"
+      }
+    },
+    {
+      "id": "missing",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_000000000000000000000000"
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "S0 固定展示样例。computed 数值用于验证精确序列化，不作为真实业务分析结论。图表仅绘制已有数量；表格保留金额、大整数和 null。"
+    },
+    {
+      "id": "count",
+      "kind": "metric",
+      "datasetId": "computed",
+      "columnId": "count",
+      "rowIndex": 0,
+      "label": "一月已有数量"
+    },
+    {
+      "id": "chart",
+      "kind": "chart",
+      "datasetId": "computed",
+      "chart": "bar",
+      "x": "period",
+      "y": ["count"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "table",
+      "kind": "table",
+      "datasetId": "computed"
+    },
+    {
+      "id": "sources",
+      "kind": "source",
+      "sourceIds": ["sales", "accounts", "missing"]
+    }
+  ]
+}

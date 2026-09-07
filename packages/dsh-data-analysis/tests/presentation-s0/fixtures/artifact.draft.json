@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "title": "S0 真实 persisted Artifact 样例",
+  "datasets": [
+    {
+      "id": "artifact",
+      "kind": "artifact",
+      "sourceId": "sales",
+      "columns": ["region", "revenue"],
+      "rowLimit": 3
+    }
+  ],
+  "sources": [
+    {
+      "id": "sales",
+      "ref": {
+        "sessionId": "sess_b8826bb02a1e4da22572b38b",
+        "artifactRef": "art_131d63e9328690a9903ba484",
+        "findingId": "fnd_dad7ce96e4a20d043c758b99"
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "由独立验证 Workspace 的真实 persisted Artifact 经公开 API 在新进程恢复。仅展示保存的 3 行；不重新 observe、revalidate 或读取凭据。"
+    },
+    {
+      "id": "metric",
+      "kind": "metric",
+      "datasetId": "artifact",
+      "columnId": "revenue",
+      "rowIndex": 0,
+      "label": "A 分组已有 revenue"
+    },
+    {
+      "id": "line",
+      "kind": "chart",
+      "datasetId": "artifact",
+      "chart": "line",
+      "x": "region",
+      "y": ["revenue"],
+      "numericMode": "exact"
+    },
+    {
+      "id": "table",
+      "kind": "table",
+      "datasetId": "artifact"
+    },
+    {
+      "id": "sources",
+      "kind": "source",
+      "sourceIds": ["sales"]
+    }
+  ]
+}
