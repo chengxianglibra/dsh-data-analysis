@@ -35,9 +35,13 @@ dsh --profile web
 `kind:path` 引用，空查询优先展示最近七天常用对象。引用使用执行时的语义定义；对象删除后分析会明确失败。
 参见[使用说明](docs/modules/semantic-reference-input.md)。
 
-在 DSH 侧栏底部点击“语义层”，按 Workspace 浏览对象分类、业务定义、语义属性与对象关系。
+在 DSH 会话标题旁点击“语义层”，默认浏览该会话所属 Workspace 的对象分类、业务定义、语义属性与对象关系。
 支持搜索、复制引用和手动刷新；页面只读取对象元数据，不执行分析查询，也不要求 Agent 正在运行。
 参见[语义层对象浏览器](docs/modules/semantic-browser.md)。
+
+标题旁的“数据源与凭证”打开同一 Workspace 的管理面板，支持配置凭证和测试数据源连接。
+两个面板内均可显式切换 Workspace；入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
+参见[凭证模块](docs/modules/datasource-credentials.md)。
 
 ## License
 

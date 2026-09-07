@@ -1,7 +1,8 @@
 // @ts-nocheck -- browser slot contracts are provided by DSH's runtime module table.
+
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import { SidebarAction } from '../sidebar-action.tsx'
+import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { SemanticBrowserModel } from './model.ts'
 import { SemanticBrowserPanel } from './panel.tsx'
 
@@ -9,20 +10,26 @@ export function installSemanticBrowser(ctx, rpc) {
   const model = new SemanticBrowserModel(rpc)
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: semantic browser lifecycle')
   ctx.on('connection/reset', () => model.resetConnection())
-  ctx.slots.inject('sidebar.footer.action', () =>
+  ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
-      { name: 'sidebar.footer.action', id: 'marivo-semantic-browser', order: 100 },
-      function BrowserEntry({ wide, useSessions, useWorkspaces }) {
-        const current = useSessions((state) => state.current)
+      {
+        name: 'conversation.session.header.actions',
+        id: 'marivo-semantic-browser',
+        order: 100,
+      },
+      function BrowserEntry({ sessionId, useWorkspaces }) {
         const workspaces = useWorkspaces((state) => state.items)
         const selected =
-          workspaces.find((item) => item.sessionIds.includes(current))?.workspaceId ?? ''
+          workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
         return (
-          <SidebarAction
-            wide={wide}
+          <WorkspaceHeaderAction
             label="语义层"
             icon="semantic"
-            onClick={() => model.show(selected)}
+            disabled={!selected}
+            title={selected ? '语义层' : '当前会话未绑定工作区，无法打开语义层'}
+            onClick={() => {
+              if (selected) model.show(selected)
+            }}
           />
         )
       },

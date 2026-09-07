@@ -2,8 +2,9 @@
 
 ## 使用方式
 
-在 DSH 侧栏底部点击“语义层”，打开当前页面内的宽幅面板。当前会话有明确归属时默认选择其 Workspace；
-否则由用户选择项目。浏览器不要求 live Agent，不自动创建会话。顶部显示有效项目路径和最近加载时间。
+在 DSH 会话标题旁点击“语义层”，打开当前页面内的宽幅面板，默认选择该会话所属 Workspace；
+面板内仍可显式选择其他 Workspace。入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
+浏览器不要求 live Agent，不自动创建会话。顶部显示有效项目路径和最近加载时间。
 
 对象类型导航的“全部对象”及各类型数量按当前业务域统计；选择类型或输入搜索词不改变分类计数，当前业务域下没有对象的类型显示 0。
 
@@ -26,7 +27,8 @@
 
 ## 所有权与读取边界
 
-DSH 的 `sidebar.footer.action` 和 `shell.overlay` 提供入口与容器，`workspaceRegistry` 提供项目身份。
+DSH 的 `conversation.session.header.actions` 和 `shell.overlay` 提供入口与容器，入口使用所属会话的
+`workspaceId`，`workspaceRegistry` 提供项目身份。
 插件提供界面、受控读取和展示投影；Marivo Catalog 拥有对象内容与关系语义。
 
 现有 `/dsh-data-analysis` 的单个 `trusted-host` handler 增加 `semantic-browser/catalog` 分派，请求仅接受
@@ -73,6 +75,7 @@ npm run validate:semantic-browser:web
 
 该夹具复用生产入口注册与页面代码，模拟 DSH 的槽位和 Workspace transport；不等同于当前已安装 DSH Profile 的
 端到端验收。详见[验收记录](../acceptance/semantic-browser.md)。
+会话标题入口迁移与 Workspace 绑定验证见[入口验收](../acceptance/workspace-header-actions.md)。
 
 ## 指标计算口径
 

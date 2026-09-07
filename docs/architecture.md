@@ -119,9 +119,13 @@ DSH Credentials 是凭证值权威，Marivo 的公开 description 与 resolver �
 取消、轮换或 Workspace 变化终止旧准备，失败不重放。凭证不进入 Agent 参数、环境或 argv；输出在 Host
 spill 前执行 exact-value 脱敏。access Tool 与跨调用 lease 已删除。
 
-常驻“数据源与凭证”管理页支持配置、替换、删除和测试。缺失配置时，Web 根 Agent 的原调用保持等待；
+“语义层”和“数据源与凭证”通过 `conversation.session.header.actions` 显示在会话标题旁，以所属会话的
+`workspaceId` 打开 `shell.overlay` 面板，面板内保留显式 Workspace 选择。入口随 Harness 的会话标题显示，
+无会话或空会话时不显示，侧栏底部不保留入口；管理与浏览均不要求 live Agent。
+
+“数据源与凭证”管理页支持配置、替换、删除和测试。缺失配置时，Web 根 Agent 的原调用保持等待；
 提交验证成功后继续，失败可修正或交还 Agent。刷新、丢失响应、取消和定义变更由 Host 操作状态处理，
-不依赖历史 Tool Result 自动弹窗。管理页与语义层共用侧栏入口样式；操作列表只显示进行中操作，完成后
+不依赖历史 Tool Result 自动弹窗。管理页与语义层共用会话标题按钮样式；操作列表只显示进行中操作，完成后
 在对应数据源展示最近测试和必要反馈，Host 仍保留有界的终态查询能力。
 详见 [Datasource Credentials](modules/datasource-credentials.md)。
 

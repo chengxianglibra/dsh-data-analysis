@@ -6,10 +6,10 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 
 - 精确 Marivo 0.5.4 共享 Runtime 与 zero-init per-Workspace binding；
 - `marivo_help` 实时公共 Help transport；
-- 侧栏“语义层”对象浏览器：Workspace 分类搜索、只读详情与局部关系图；
+- 会话标题旁的“语义层”对象浏览器：Workspace 分类搜索、只读详情与局部关系图；
 - `marivo_datasource_test` 的 DSH Credentials 收集与显式 connection test；
 - `marivo_python` 的本次执行准入与单次 resolver 凭证注入；
-- 侧栏“数据源与凭证”管理、测试与缺失输入提交后的原调用续接；
+- 会话标题旁的“数据源与凭证”管理、测试与缺失输入提交后的原调用续接；
 - `marivo_present({ draft_path })` 的一次文件提交、结果卡片、打开与离线 HTML 下载；
 - 唯一插件 Skill `dsh-data-analysis-presentation`，组织图表、表格、报告、看板与可读来源展示；
 - `dsh_data_analysis_presentation.write_dataset(frame, path)` 的 computed typed JSON writer；
@@ -51,12 +51,16 @@ Marivo 公共 API，不增加 convenience Tool。
 
 ## 语义层对象浏览器
 
-点击 DSH 侧栏底部“语义层”，选择 Workspace 查看对象。可按业务域和类型筛选，搜索名称、引用与业务定义，
+点击 DSH 会话标题旁的“语义层”，默认查看该会话所属 Workspace，也可在面板内显式切换 Workspace。
+可按业务域和类型筛选，搜索名称、引用与业务定义，
 复制对象引用、查看定义位置，并在对象关系中逐层浏览。桌面采用三栏布局，窄屏支持列表与详情切换。
 
 页面不要求 live Agent，只读取 Marivo Catalog 元数据，不执行 `observe`、数据预览或连接测试。
 打开和手动刷新重新加载；读取失败时明确标注上次成功内容。数据源连接配置、凭证值与原始源码不展示。
 使用及验收边界见[模块说明](../../docs/modules/semantic-browser.md)。
+
+“数据源与凭证”位于同一会话标题旁，打开时同样使用该会话所属 Workspace，面板内保留 Workspace 选择。
+两个入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
 
 ## 分析与展示
 

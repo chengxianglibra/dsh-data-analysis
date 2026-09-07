@@ -58,7 +58,7 @@ const runners = new Map(
   ),
 )
 const workspaceList = [
-  { workspaceId: 'sales', title: '销售分析', path: rootA, sessionIds: [] },
+  { workspaceId: 'sales', title: '销售分析', path: rootA, sessionIds: ['sales-session'] },
   { workspaceId: 'empty', title: '空项目', path: rootB, sessionIds: [] },
 ]
 const service = new SemanticBrowserService({
@@ -94,8 +94,9 @@ installSemanticBrowser(ctx,{call:async(channel,endpoint,payload,signal)=>{
  const response=await fetch('/catalog',{method:'POST',body:JSON.stringify(payload),signal}); return response.json();
 }});
 const workspaces=${JSON.stringify(workspaceList)};
-const props={wide:true,useWorkspaces:selector=>selector({items:workspaces,state:'idle',phase:'ready'}),useSessions:selector=>selector({current:undefined})};
-createRoot(document.getElementById('app')).render(<><h1>DSH Slot 验收夹具</h1><p>真实 Marivo Catalog · 无 Agent · 仅临时项目</p>{registrations.map(({options,component:Component})=><Component key={options.name} {...props}/>)}</>);
+const props={sessionId:'sales-session',useWorkspaces:selector=>selector({items:workspaces,state:'idle',phase:'ready'}),useSessions:selector=>selector({current:'sales-session'})};
+const renderSeat=({options,component:Component})=><Component key={options.name+options.id} {...props}/>;
+createRoot(document.getElementById('app')).render(<><h1>DSH Slot 验收夹具</h1><p>真实 Marivo Catalog · 无 live Agent · 仅临时项目</p><header style={{display:'flex',alignItems:'center',gap:10}}><span>销售分析会话</span><nav aria-label="会话标题操作">{registrations.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>{registrations.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>);
 `,
   },
   bundle: true,
@@ -153,12 +154,16 @@ page.on('pageerror', (error: Error) => errors.push(error.message))
 const checks: string[] = []
 try {
   await page.goto(url)
-  await page.getByRole('button', { name: '打开语义层' }).click()
-  await page.getByText('请选择一个 Workspace 查看语义层。').waitFor()
+  await page
+    .getByRole('navigation', { name: '会话标题操作' })
+    .getByRole('button', { name: '打开语义层' })
+    .waitFor()
   assert.equal(requests, 0)
-  await page.getByLabel('选择 Workspace').selectOption('sales')
+  await page.getByRole('button', { name: '打开语义层' }).click()
   await page.getByRole('button', { name: '下一页' }).waitFor({ timeout: 30000 })
-  checks.push('无 Agent 打开、选择 Workspace、真实 Catalog 读取、大目录分页')
+  assert.equal(await page.getByLabel('选择 Workspace').inputValue(), 'sales')
+  assert.equal(requests, 1)
+  checks.push('会话标题入口默认打开所属 Workspace、无 live Agent 真实 Catalog 读取、大目录分页')
   await page.getByLabel('搜索语义对象').fill('metric:sales.quarter_spend')
   await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
   const computation = page.getByRole('region', { name: '指标计算口径' })

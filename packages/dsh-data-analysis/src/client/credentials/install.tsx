@@ -1,8 +1,9 @@
 // @ts-nocheck -- JSX and slot faces are supplied by the DSH client runtime module table.
+
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { SidebarAction } from '../sidebar-action.tsx'
+import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
 import { credentialStyles } from './styles.ts'
 
@@ -551,21 +552,22 @@ export function installCredentials(ctx, rpc) {
   model.recover()
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: credential client lifecycle')
   ctx.on('connection/reset', () => model.reset())
-  ctx.slots.inject('sidebar.footer.action', () =>
+  ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
-      { name: 'sidebar.footer.action', id: 'marivo-credentials', order: 110 },
-      function Entry({ wide, useSessions, useWorkspaces }) {
-        const sessionId = useSessions((state) => state.current) ?? ''
+      { name: 'conversation.session.header.actions', id: 'marivo-credentials', order: 110 },
+      function Entry({ sessionId, useWorkspaces }) {
         const workspaces = useWorkspaces((state) => state.items)
-        useEffect(() => model.session(sessionId), [sessionId])
         const selected =
           workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
         return (
-          <SidebarAction
-            wide={wide}
+          <WorkspaceHeaderAction
             label="数据源与凭证"
             icon="credentials"
-            onClick={() => model.show(selected)}
+            disabled={!selected}
+            title={selected ? '数据源与凭证' : '当前会话未绑定工作区，无法打开数据源与凭证'}
+            onClick={() => {
+              if (selected) model.show(selected)
+            }}
           />
         )
       },
@@ -573,7 +575,7 @@ export function installCredentials(ctx, rpc) {
   )
   ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
-      { name: 'conversation.session.header.actions', id: 'marivo-credential-requests', order: 110 },
+      { name: 'conversation.session.header.actions', id: 'marivo-credential-requests', order: 120 },
       function Pending({ sessionId }) {
         const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
         const request = state.requests.find(
@@ -594,7 +596,9 @@ export function installCredentials(ctx, rpc) {
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
       { name: 'shell.overlay', id: 'marivo-credentials' },
-      function Overlay({ useWorkspaces }) {
+      function Overlay({ useSessions, useWorkspaces }) {
+        const sessionId = useSessions((state) => state.current) ?? ''
+        useEffect(() => model.session(sessionId), [sessionId])
         return <CredentialPanel model={model} workspaces={useWorkspaces((state) => state.items)} />
       },
     ),

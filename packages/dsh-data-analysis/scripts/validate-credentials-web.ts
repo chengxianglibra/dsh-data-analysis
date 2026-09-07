@@ -87,7 +87,7 @@ const app = await build({
     resolveDir: process.cwd(),
     loader: 'tsx',
     contents: `
-import React from 'react'; import {createRoot} from 'react-dom/client';
+import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
 import {installCredentials} from ${JSON.stringify(installer)};
 import {installSemanticBrowser} from ${JSON.stringify(semanticInstaller)};
 const seats=[];
@@ -96,9 +96,10 @@ const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{met
 installSemanticBrowser(ctx,rpc);
 installCredentials(ctx,rpc);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']}];
-const props={sessionId:'session',wide:true,useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
+const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
 const renderSeat=({options,component:C})=><C key={options.name+options.id} {...props}/>;
-createRoot(document.getElementById('app')).render(<><h1>凭证集成验收夹具</h1><nav aria-label="插件入口">{seats.filter(({options})=>options.name==='sidebar.footer.action').map(renderSeat)}</nav>{seats.filter(({options})=>options.name!=='sidebar.footer.action').map(renderSeat)}</>);
+function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>}
+createRoot(document.getElementById('app')).render(<App/>);
 `,
   },
   bundle: true,
@@ -188,9 +189,17 @@ async function assertNoHorizontalOverflow() {
   assert.deepEqual(overflows, [], 'dialog and page must not overflow horizontally')
 }
 try {
+  const initialWatch = page.waitForRequest(
+    (request: { method(): string; postDataJSON(): { endpoint: string } }) =>
+      request.method() === 'POST' && request.postDataJSON().endpoint === 'watch',
+  )
   await page.goto(`http://127.0.0.1:${address.port}`)
+  assert.equal((await initialWatch).postDataJSON().payload.sessionId, 'session')
+  assert.equal(await page.getByRole('navigation', { name: '会话标题操作' }).count(), 0)
+  await page.evaluate('window.setFixtureHeaderVisible(true)')
+  await page.getByRole('button', { name: '打开数据源与凭证' }).waitFor()
   const entryStyles = await page
-    .getByRole('navigation', { name: '插件入口' })
+    .getByRole('navigation', { name: '会话标题操作' })
     .getByRole('button')
     .evaluateAll((buttons: Element[]) =>
       buttons.map((button) => {
@@ -214,8 +223,30 @@ try {
     )
   assert.equal(entryStyles.length, 2)
   assert.deepEqual(entryStyles[0], entryStyles[1], 'semantic and credential entries share a style')
-  await page.screenshot({ path: path.join(output, 'sidebar-entries.png'), fullPage: true })
+  await page.screenshot({ path: path.join(output, 'header-entries.png'), fullPage: true })
+  await page.setViewportSize({ width: 320, height: 740 })
+  const compactEntries = await page
+    .getByRole('navigation', { name: '会话标题操作' })
+    .getByRole('button')
+    .evaluateAll((buttons: Element[]) =>
+      buttons.map((button) => {
+        const bounds = button.getBoundingClientRect()
+        return {
+          width: bounds.width,
+          height: bounds.height,
+          label: getComputedStyle(button.querySelector('span')!).display,
+        }
+      }),
+    )
+  assert.deepEqual(compactEntries, [
+    { width: 32, height: 32, label: 'none' },
+    { width: 32, height: 32, label: 'none' },
+  ])
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+  await page.screenshot({ path: path.join(output, 'header-entries-mobile.png'), fullPage: true })
+  await page.setViewportSize({ width: 1200, height: 900 })
   await page.getByRole('button', { name: '打开数据源与凭证' }).click()
+  assert.equal(await page.getByLabel('Workspace', { exact: true }).inputValue(), 'workspace')
   await selectDatasource('warehouse')
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor({ timeout: 30000 })
   await page.getByLabel('新值').fill(secret)
@@ -273,6 +304,8 @@ try {
     })
   })
   await page.reload()
+  await page.waitForFunction('typeof window.setFixtureHeaderVisible === "function"')
+  await page.evaluate('window.setFixtureHeaderVisible(true)')
   await page.getByRole('button', { name: '打开数据源与凭证' }).click()
   await page.getByRole('button', { name: 'warehouse · 处理中', exact: true }).waitFor()
   await page.getByRole('button', { name: 'warehouse_two · 处理中', exact: true }).waitFor()
@@ -341,6 +374,9 @@ try {
   await page.getByLabel('新值').waitFor({ timeout: 30000 })
   await page.getByText('配置已变化，请重新测试', { exact: false }).waitFor()
   await page.getByRole('button', { name: '收起', exact: true }).click()
+  // The global overlay must keep watching even when no header entry is mounted.
+  await page.evaluate('window.setFixtureHeaderVisible(false)')
+  await page.getByRole('navigation', { name: '会话标题操作' }).waitFor({ state: 'hidden' })
   const pending = agent.ctx.tools.execute({
     agent,
     name: 'marivo_python',
@@ -354,6 +390,13 @@ try {
   await page
     .getByRole('button', { name: '保存并验证后继续', exact: true })
     .waitFor({ timeout: 30000 })
+  await assertPendingWorkspace()
+  await page.evaluate('window.setFixtureHeaderVisible(true)')
+  await page.getByRole('button', { name: '收起', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: '会话标题操作' })
+    .getByRole('button', { name: '等待配置凭证', exact: true })
+    .click()
   await assertPendingWorkspace()
   await page.getByLabel('新值').fill('unsubmitted')
   assert.equal(starts, 0)
@@ -400,7 +443,8 @@ try {
     lastSuccessAndFailureSurviveReopen: 'passed',
     failedValidationSupersedesOldSuccessWithoutOverview: 'passed',
     savedChangesRemainVisibleAfterFailedValidation: 'passed',
-    sidebarEntryStyleConsistency: 'passed',
+    headerEntryStyleAndWorkspaceBinding: 'passed',
+    pendingWatchStartsWithoutHeaderAndSurvivesUnmount: 'passed',
     desktopMobileDarkWithoutHorizontalOverflow: 'passed',
     refreshRestoresPendingWithoutSecret: 'passed',
     pendingWorkspaceAndReturnToManagement: 'passed',
