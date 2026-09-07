@@ -8,6 +8,8 @@ kebab-case 文件名，并在本页登记入口。
 
 ## 待实施交接
 
+- [Marivo 分析展示与交付重构设计](marivo-analytics-presentation-refactor.md)（破坏性重构提案，无迁移兼容；以 4 Tool、1 个插件展示 Skill、一次生成完成 DSH 阅读与离线 HTML，列明旧接口删除及凭据准入调整，覆盖七类能力的最小闭环，不包含 Sites）
+- [Marivo 分析展示重构实施路线图](marivo-analytics-presentation-roadmap.md)（待实施；S0–S5 的代码范围、依赖与分工、同步删除项及 Runtime/Agent/Web 验收门槛）
 - [Marivo 指标口径可视化接口交接](marivo-metric-definition-handoff.md)（需求与接口建议；含 P0/P1 缺口、职责边界和验收用例）
 
 ## 已实施设计
