@@ -175,6 +175,30 @@ function Block({
           >
             {metricText(metric.value, metric.column)}
           </p>
+          {block.description && <p className="pr-muted">{block.description}</p>}
+          {metric.comparisons.length > 0 && (
+            <div className="pr-metric-comparisons">
+              {metric.comparisons.map((comparison) => (
+                <div className="pr-metric-comparison" key={comparison.label}>
+                  <span className="pr-muted">{comparison.label}</span>
+                  {comparison.reference && <span>参考值 {comparison.reference.text}</span>}
+                  {(comparison.delta || comparison.relative) && (
+                    <span className={`pr-metric-change pr-metric-change-${comparison.tone}`}>
+                      {comparison.sign === undefined
+                        ? '变化不可用'
+                        : comparison.sign === 0
+                          ? '持平'
+                          : comparison.sign === 1
+                            ? '↑ 上升'
+                            : '↓ 下降'}
+                      {comparison.delta && <span>变化 {comparison.delta.text}</span>}
+                      {comparison.relative && <span>变化率 {comparison.relative.text}</span>}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
         </>
       ) : block.kind === 'chart' ? (

@@ -34,10 +34,18 @@ export const PRESENTATION_STYLES = `
 .pr-block-markdown { padding:0 }
 .pr-block-chart { padding:0; border:0; border-radius:0 }
 .pr-block-chart>h2 { font-size:17px }
-.pr-metric-group { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:16px }
+.pr-metric-group { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:16px }
 .pr-block-metric { border:1px solid var(--pr-border); border-radius:14px; padding:20px; display:flex; flex-direction:column; gap:4px }
 .pr-block-metric h2 { font-size:13px; font-weight:500; color:var(--pr-muted); margin:0 }
 .pr-metric-value { font-size:clamp(24px,3vw,32px); font-variant-numeric:tabular-nums; font-weight:600; line-height:1.35; letter-spacing:-.025em }
+.pr-metric-value { white-space:nowrap; overflow-x:auto; max-width:100% }
+.pr-metric-comparisons { display:grid; gap:12px; margin-top:auto; padding-top:12px }
+.pr-metric-comparison { display:flex; flex-wrap:wrap; gap:4px 10px; border-top:1px solid var(--pr-border); padding-top:10px; font-size:13px; font-variant-numeric:tabular-nums }
+.pr-metric-comparison>.pr-muted { flex-basis:100% }
+.pr-metric-change { display:flex; flex-wrap:wrap; gap:4px 8px }
+.pr-metric-change-positive { color:#167044 }
+.pr-metric-change-negative { color:#b42318 }
+.pr-metric-change-neutral { color:var(--pr-muted) }
 .pr-notice { color:var(--pr-warning); font-size:13px; border-left:2px solid currentColor; padding-left:12px }
 .pr-empty { padding:24px; text-align:center; color:var(--pr-muted); background:var(--pr-soft); border-radius:8px }
 .pr-markdown p { white-space:pre-wrap }

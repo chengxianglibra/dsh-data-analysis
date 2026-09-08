@@ -169,3 +169,20 @@ S3 的真实 Web 验证只接入 reader，不代表 S4 Tool、receipt/RPC 或 S5
 18 类图形、探索、下载和真实 Agent 的证据及限制见[图形与探索验收](../plan/2026-09-07-presentation-charts-acceptance.md)。
 
 在线编辑、全部 18 种 chart 的联动与重启验证见[编辑与联动筛选验收](../plan/2026-09-07-presentation-editing-acceptance.md)。
+
+
+## KPI 比较卡片
+
+现有 `metric` 可声明 `description` 和最多四条 `comparisons`，使用同一选中行的数值列展示参考值、
+绝对变化及变化率；见 [KPI 编写契约](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/schema.md#kpi-比较卡片)。
+Marivo／分析作者负责周期、分母、差值、百分比与好坏方向；插件验证引用并格式化，不计算同比／环比。
+比较数据跟随 `rowSelection: "slice"`，复制上下文包含比较列和原值，静态 HTML 保留全部比较。
+`sentiment` 独立于涨跌符号，默认中性；数值不经过浮点转换，缺失和持平分别显示。
+卡片自适应最小宽度为 240px，主值保持一行，极长精确值可横向滚动。
+
+设计参考：[Power BI reference labels](https://learn.microsoft.com/en-us/power-bi/visuals/power-bi-visualization-card)、
+[Looker Studio scorecard](https://cloud.google.com/looker/docs/studio/scorecard-reference)。
+
+验收：契约／reader 回归覆盖多基准、精确数值、方向、空值、非法引用与筛选同一行；生产 builder
+生成的示例 HTML 已检查 1100px、390px 和禁用 JavaScript 阅读。示例采用截图数值，不代表重查业务
+数据或真实 Agent 验收；未重装本地插件、重启 Harness 或改写已有报告。

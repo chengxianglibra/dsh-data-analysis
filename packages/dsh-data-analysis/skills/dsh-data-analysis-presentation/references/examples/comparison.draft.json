@@ -32,9 +32,17 @@
       "id": "net-change",
       "kind": "metric",
       "datasetId": "summary",
-      "columnId": "delta_current_minus_baseline",
+      "columnId": "current",
       "rowIndex": 0,
-      "label": "全量净变化：current - baseline"
+      "label": "全量当前值",
+      "comparisons": [
+        {
+          "label": "较基准",
+          "referenceColumnId": "baseline",
+          "deltaColumnId": "delta_current_minus_baseline",
+          "sentiment": "neutral"
+        }
+      ]
     },
     {
       "id": "selection",

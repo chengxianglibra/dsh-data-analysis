@@ -36,7 +36,7 @@ Python / SQL 原文随报告快照保存，不做字面量脱敏；reader 只显
 | kind | 必填字段（除 `id`、`kind`） | 可选字段 |
 | --- | --- | --- |
 | `markdown` | `text` | 无 |
-| `metric` | `datasetId`, `columnId`, `rowIndex`, `label` | 无 |
+| `metric` | `datasetId`, `columnId`, `rowIndex`, `label` | `description`, `comparisons`；动态行见下文 |
 | `chart` | `datasetId`, `chart`, `x`, `y: string[]`, `numericMode: "exact" \| "approximate"` | 按类型声明 `bindings`；`options`、`preparedViews`，见[图形配置](charts.md) |
 | `table` | `datasetId` | `columns: string[]` |
 | `source` | 非空 `sourceIds: string[]` | 无 |
@@ -86,3 +86,23 @@ int64 单元格必须是精确整数字符串，例如 `"42"`；JSON number `42`
 诊断保留 JSON pointer，并显示 `column query_count type=int64`、原因与修复建议。
 超过 JS 安全整数范围的 number 可能已舍入，不能转成字符串来恢复精度；应从原始精确数据重写，
 或使用绑定 Runtime 中的 `write_dataset`。预检通过不等于成功交付，仍需 present 的成功 receipt。
+
+
+## KPI 比较卡片
+
+`metric` 支持简短标题、主值、可选 `description`（周期或口径）以及 1–4 条 `comparisons`。
+每条包含唯一 `label`（如“同比 · 去年同期”“环比 · 上月”“较目标”），并至少绑定一个
+`referenceColumnId`（参考值）、`deltaColumnId`（绝对变化）或 `relativeColumnId`（变化率）。
+所有引用均为同一 dataset、同一选中行的数值列；动态 KPI 的比较值也随 slice 一起切换。
+
+```json
+{"id":"queries","kind":"metric","datasetId":"summary","columnId":"current","rowIndex":0,"label":"查询量","description":"全天 0–23h","comparisons":[{"label":"较上周一","referenceColumnId":"baseline","deltaColumnId":"delta_current_minus_baseline","sentiment":"neutral"}]}
+```
+
+分析端预先计算 current − baseline 与变化率，声明分母及比较周期。百分比用已乘 100 的值
+配 `unit: "%"`，百分点差用 delta 列配 `unit: "百分点"`。基准为零而变化率无定义时保存 nullable
+`null`，不要伪造 0%。reader 不从日期、主值或参考值计算比较，也不自动重缩放。
+`sentiment` 可为 `higher-is-better`、`lower-is-better` 或默认 `neutral`；例如失败率越低越好。
+箭头取已准备的 delta 符号（缺失则取 relative 符号），零显示“持平”，两者缺失显示“变化不可用”；
+作者须保证两个变化字段方向一致。颜色表达业务好坏，文字与箭头表达涨跌，不将上涨自动判为利好。
+不要把基准、变化率塞进标题或拆成独立 KPI；无比较时原有单值卡片仍有效。

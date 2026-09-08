@@ -102,7 +102,28 @@ export function selectMetric(
   const indexOfRow = block.rowSelection === 'slice' ? rowIndices![0]! : block.rowIndex
   const row = dataset.rows[indexOfRow]
   if (!row) throw new Error(`Metric must select one existing row: ${block.rowIndex}`)
-  return { column: dataset.columns[index]!, value: row[index]! }
+  const comparisons = (block.comparisons ?? []).map((comparison) => {
+    const read = (id: string | undefined, signed: boolean) => {
+      if (!id) return undefined
+      const column = dataset.columns[columnIndex(dataset, id)]!
+      const value = row[columnIndex(dataset, id)]!
+      const sign = value === null ? undefined : decimalParts(String(value)).sign
+      return { value, sign, text: `${signed && sign === 1 ? '+' : ''}${metricText(value, column)}` }
+    }
+    const reference = read(comparison.referenceColumnId, false)
+    const delta = read(comparison.deltaColumnId, true)
+    const relative = read(comparison.relativeColumnId, true)
+    const sign = delta?.sign ?? relative?.sign
+    const sentiment = comparison.sentiment ?? 'neutral'
+    const tone =
+      sign === undefined || sign === 0 || sentiment === 'neutral'
+        ? 'neutral'
+        : (sign === 1) === (sentiment === 'higher-is-better')
+          ? 'positive'
+          : 'negative'
+    return { label: comparison.label, reference, delta, relative, sign, tone }
+  })
+  return { column: dataset.columns[index]!, value: row[index]!, comparisons }
 }
 
 // Compare decimal text without passing its significand or exponent through Number.
@@ -271,7 +292,16 @@ export function followUpContext(
     const dataset = datasetById(document, block.datasetId)
     const columnIds =
       block.kind === 'metric'
-        ? [block.columnId]
+        ? [
+            block.columnId,
+            ...(block.comparisons ?? []).flatMap((comparison) =>
+              [
+                comparison.referenceColumnId,
+                comparison.deltaColumnId,
+                comparison.relativeColumnId,
+              ].filter((id): id is string => id !== undefined),
+            ),
+          ]
         : block.kind === 'chart'
           ? chartColumns(block)
           : (block.columns ?? dataset.data.columns.map((column) => column.id))
@@ -287,6 +317,7 @@ export function followUpContext(
       lines.push(
         `Metric value: ${valueWithUnit(metric.value, metric.column)}`,
         `Metric raw value: ${JSON.stringify(metric.value)}`,
+        `Metric comparisons: ${JSON.stringify(metric.comparisons)}`,
       )
     }
   }

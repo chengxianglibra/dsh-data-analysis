@@ -186,3 +186,7 @@ Artifact/source identity、文件预算与包导出。真实 Artifact 恢复与 
 [S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。
 独立 Chat 卡片、ProducedFiles 共存与通用质量修复见
 [报告交付与质量验收](plan/2026-09-07-presentation-delivery-quality-acceptance.md)。
+
+
+KPI 比较沿用 presentation `metric`，将主值、参考值、预计算变化绑定到同一行；插件仅验证和展示，
+不承担同比／环比计算或业务好坏推断。详见 [KPI 比较卡片](modules/presentation-reader.md#kpi-比较卡片)。

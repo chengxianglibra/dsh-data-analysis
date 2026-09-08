@@ -180,6 +180,15 @@ export type ChartView = ChartViewFields &
     | PreparedChart<'stackedBar100' | 'horizontalStackedBar100', 'denominator'>
   )
 
+/** Prepared values in the metric's selected row; no reader-side calculations. */
+export interface MetricComparison {
+  label: string
+  referenceColumnId?: string
+  deltaColumnId?: string
+  relativeColumnId?: string
+  sentiment?: 'higher-is-better' | 'lower-is-better' | 'neutral'
+}
+
 export type PresentationBlock =
   | { id: string; kind: 'markdown'; text: string }
   | ({
@@ -188,6 +197,8 @@ export type PresentationBlock =
       datasetId: string
       columnId: string
       label: string
+      description?: string
+      comparisons?: MetricComparison[]
     } & ({ rowIndex: number; rowSelection?: never } | { rowSelection: 'slice'; rowIndex?: never }))
   | ({
       id: string

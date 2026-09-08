@@ -275,3 +275,62 @@ test('declared filters render one region, dynamic default KPI and only default r
   assert.doesNotMatch(interactive, /筛选字段|pr-dataset-filters|multiple=/)
   assert.match(interactive, /重置筛选/)
 })
+
+test('KPI comparisons preserve exact prepared values, units, missing values and business sentiment offline', async () => {
+  const document = await fixture('computed')
+  const data = document.datasets[0]!.data
+  data.columns = [
+    { id: 'current', label: '当前', type: 'int64', nullable: false, unit: '次' },
+    { id: 'base', label: '上周一', type: 'int64', nullable: false, unit: '次' },
+    { id: 'delta', label: '变化', type: 'decimal', nullable: true, unit: '次' },
+    { id: 'rate', label: '变化率', type: 'decimal', nullable: true, unit: '%' },
+  ]
+  data.rows = [['2630853', '2805879', '-175026', '-6.24']]
+  data.rowCount = 1
+  data.truncated = false
+  document.blocks = [
+    {
+      id: 'kpi',
+      kind: 'metric',
+      datasetId: document.datasets[0]!.id,
+      columnId: 'current',
+      rowIndex: 0,
+      label: '查询量',
+      description: '全天 0–23h',
+      comparisons: [
+        {
+          label: '较上周一',
+          referenceColumnId: 'base',
+          deltaColumnId: 'delta',
+          relativeColumnId: 'rate',
+          sentiment: 'lower-is-better',
+        },
+        { label: '同比', relativeColumnId: 'rate' },
+      ],
+    },
+  ]
+  parsePresentationDocument(document)
+  for (const mode of ['static', 'interactive'] as const) {
+    const html = renderDocument(document, mode)
+    assert.match(html, /2,630,853 次/)
+    assert.match(html, /参考值 2,805,879 次/)
+    assert.match(html, /变化 -175,026 次/)
+    assert.match(html, /变化率 -6.24 %/)
+    assert.match(html, /pr-metric-change-positive/)
+    assert.match(html, /pr-metric-change-neutral/)
+    assert.match(html, /↓ 下降/)
+  }
+  data.rows[0]![2] = '0.0000'
+  data.rows[0]![3] = null
+  assert.match(renderDocument(document), /持平/)
+  assert.match(renderDocument(document), /变化不可用/)
+  data.rows[0]![2] = '9007199254740993.0001'
+  assert.match(renderDocument(document), /变化 \+9,007,199,254,740,993.0001 次/)
+  assert.match(renderDocument(document), /pr-metric-change-negative/)
+  const metric = document.blocks[0]!
+  if (metric.kind !== 'metric') throw new Error('Expected metric')
+  metric.comparisons![0]!.deltaColumnId = 'missing'
+  assert.throws(() => parsePresentationDocument(document), /Unknown column/)
+  metric.comparisons = [{ label: '空比较' }]
+  assert.throws(() => parsePresentationDocument(document), /prepared value/)
+})

@@ -425,7 +425,7 @@ function common(value: Record<string, unknown>, generated: boolean) {
         keys(
           entry,
           ['id', 'kind', 'datasetId', 'columnId', 'label'],
-          ['rowIndex', 'rowSelection'],
+          ['rowIndex', 'rowSelection', 'description', 'comparisons'],
           path,
         )
         if (entry.rowSelection !== undefined) {
@@ -434,6 +434,33 @@ function common(value: Record<string, unknown>, generated: boolean) {
         } else integer(entry.rowIndex, `${path}/rowIndex`, 0, budgets.rows - 1)
         selected = [string(entry.columnId, `${path}/columnId`, 256)]
         string(entry.label, `${path}/label`, 512)
+        if (entry.description !== undefined) string(entry.description, `${path}/description`, 512)
+        if (entry.comparisons !== undefined) {
+          const comparisonLabels: string[] = []
+          array(entry.comparisons, `${path}/comparisons`, 4, 1).forEach((value, i) => {
+            const at = `${path}/comparisons/${i}`
+            const comparison = object(value, at)
+            keys(
+              comparison,
+              ['label'],
+              ['referenceColumnId', 'deltaColumnId', 'relativeColumnId', 'sentiment'],
+              at,
+            )
+            comparisonLabels.push(string(comparison.label, `${at}/label`, 256))
+            const bindings = ['referenceColumnId', 'deltaColumnId', 'relativeColumnId'].filter(
+              (key) => comparison[key] !== undefined,
+            )
+            if (!bindings.length) fail(at, 'Comparison requires at least one prepared value.')
+            for (const key of bindings) selected.push(string(comparison[key], `${at}/${key}`, 256))
+            if (
+              comparison.sentiment !== undefined &&
+              (typeof comparison.sentiment !== 'string' ||
+                !['higher-is-better', 'lower-is-better', 'neutral'].includes(comparison.sentiment))
+            )
+              fail(`${at}/sentiment`, 'Unknown comparison sentiment.')
+          })
+          unique(comparisonLabels, `${path}/comparisons`)
+        }
       } else if (entry.kind === 'chart') {
         keys(
           entry,
@@ -480,6 +507,16 @@ function common(value: Record<string, unknown>, generated: boolean) {
           if (!data.columns.some((entry) => entry.id === columnId))
             fail(path, `Unknown column ${columnId}.`, 'invalid_reference')
         })
+        if (entry.kind === 'metric' && entry.comparisons !== undefined) {
+          for (const id of selected) {
+            if (
+              !['int64', 'decimal', 'float64'].includes(
+                data.columns.find((column) => column.id === id)!.type,
+              )
+            )
+              fail(path, 'Metric comparisons require numeric columns.')
+          }
+        }
         if (entry.kind === 'metric' && Number(entry.rowIndex) >= data.rows.length)
           fail(`${path}/rowIndex`, 'Metric must select one existing row.', 'invalid_reference')
         if (entry.kind === 'chart') {
