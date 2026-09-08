@@ -82,6 +82,13 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
+## npm 发布
+
+[`release.yml`](../../.github/workflows/release.yml) 通过 GitHub Actions 的 `npm` Environment 和 OIDC
+发布包，并将同一 tarball 上传为 GitHub Release 附件。项目 `.npmrc` 只配置 registry 与依赖安装选项，
+不设置认证项；项目层的空认证值也会遮蔽 npm 写入 user 配置的短期 OIDC 凭据，导致发布失败。
+认证由运行环境提供，仓库不保存 token。发布以 workflow 成功、公共 registry 版本与附件字节一致性为准。
+
 ## 验证
 
 ```bash
