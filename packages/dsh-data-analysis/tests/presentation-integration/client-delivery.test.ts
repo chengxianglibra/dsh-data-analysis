@@ -191,6 +191,102 @@ function view(
 const builds = (node: NonNullable<ReturnType<typeof view>>, sessionId = 'session-a') =>
   Array.from(presentationsForNode(node, sessionId), (item) => item.receipt.buildId)
 
+test('completed reports follow final replies despite intervening steps, including Host replay', async (t) => {
+  const host = await createHostChatFixture()
+  t.after(() => host.dispose())
+  for (const withDiagnostics of [false, true]) {
+    const assembler = host.createAssembler()
+    const message = (seq: number, step: number, text: string) => ({
+      event: {
+        seq,
+        type: 'assistant/message',
+        surfaceOp: 'append',
+        data: {
+          turn: 3,
+          step,
+          message: {
+            id: `message-${seq}`,
+            role: 'assistant',
+            content: [{ type: 'text', text }],
+          },
+        },
+      },
+    })
+    const inputs = [
+      { event: { seq: 1, type: 'turn/start', data: { turn: 3 } } },
+      { event: { seq: 2, type: 'step/start', data: { turn: 3, step: 1 } } },
+      {
+        event: {
+          seq: 3,
+          type: 'tool/call',
+          data: {
+            turn: 3,
+            step: 1,
+            callId: 'present-call',
+            name: 'marivo_present',
+            args: '{}',
+          },
+        },
+      },
+      { event: native() },
+      ...(withDiagnostics
+        ? [
+            message(22, 2, '正在检查报告诊断'),
+            {
+              event: {
+                seq: 23,
+                type: 'tool/call',
+                data: {
+                  turn: 3,
+                  step: 2,
+                  callId: 'check-call',
+                  name: 'bash',
+                  args: '{}',
+                },
+              },
+            },
+            message(25, 3, '检查完成，更新待办'),
+          ]
+        : []),
+      message(28, 4, '最终分析结论'),
+    ]
+    const reports = () => {
+      const snapshot = assembler.snapshot('chat')
+      return snapshot.order
+        .map((key: string) => snapshot.nodes.get(key))
+        .filter((node: { kind: string }) => node.kind === definition.kind)
+    }
+    for (const input of inputs) assembler.append(input)
+    assembler.flush()
+    const originalKey = reports()[0].key
+    assert.equal(reports()[0].anchorSeq, 20)
+    const end = {
+      event: {
+        seq: 30,
+        type: 'turn/end',
+        data: {
+          turn: 3,
+          reason: { kind: 'completed' },
+        },
+      },
+    }
+    assembler.append(end)
+    assembler.flush()
+    for (const replay of [
+      () => {},
+      () => assembler.replaceWindow([...inputs, end], false),
+      () => assembler.rebuildRegistry(),
+    ]) {
+      replay()
+      assembler.flush()
+      assert.equal(reports().length, 1)
+      assert.equal(reports()[0].key, originalKey)
+      assert.equal(reports()[0].anchorSeq, 30)
+      assert.deepEqual(builds(reports()[0]), ['build-a'])
+    }
+  }
+})
+
 test('an independent Chat node appears at the first successful receipt before any final text or Turn end', () => {
   let state = initialState()
   assert.equal(definition.target, 'chat')
@@ -263,7 +359,10 @@ test('successful Native and discarded Code receipts survive later tool failure, 
     assert.equal(closed.anchorSeq, 20)
     assert.deepEqual(builds(closed), ['native-saved', 'code-discarded-return'])
     assert.deepEqual(builds(closed, 'session-b'), [])
-    assert.equal(definition.match({ type: 'turn/end', data: { turn: 3, reason } }), null)
+    assert.deepEqual(definition.match({ type: 'turn/end', data: { turn: 3, reason } }), {
+      id: '3',
+      role: 'update',
+    })
   }
 })
 

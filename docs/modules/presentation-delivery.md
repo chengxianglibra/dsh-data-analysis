@@ -46,7 +46,10 @@ Harness `tools/code-dispatch-log` 写入同一种 durable envelope，即使代�
 
 交付 Definition 通过 Harness 公开的 `target: 'chat'` 与 `buildViewNode` 发布节点，renderer 登记在
 `conversation.chat.node` 的 `marivo-presentation-delivery` key。每个 Harness Turn 只有一个稳定节点，
-第一次成功 receipt 的 `seq` 决定位置；同轮其他成功报告按 receipt 顺序加入，不改变节点身份和位置。
+执行中以第一次成功 receipt 的 `seq` 决定位置；同轮其他成功报告按 receipt 顺序加入。
+正常完成（`turn/end.reason.kind = completed`）后，同一节点移至 Turn 结束位置，与最终回复及原生收尾内容相邻，
+不再被报告生成后的诊断检查、待办更新或过程回复隔开；节点身份和报告顺序不变。
+取消、错误或尚未结束时保留原位置；没有最终文本也不会丢失成功报告入口。
 renderer 随 keyed slot 的声明先注册，随后才注册可能立即回放历史的 Definition。
 
 报告不占用 `conversation.chat.turnTail`：该 slot 是首个命中即结束的 chain，原生 ProducedFiles 继续拥有
@@ -112,3 +115,11 @@ ProducedFiles 与独立报告节点共存、首个回执即时显示、多报告
 ## 全局筛选的保存边界
 
 `interaction` 随原始文档传递和保存；当前阅读选择不进入 edits。删除组件时服务端从已保存声明裁剪引用，并拒绝跨区域移动。动态 KPI 和离线默认组合见[共享 reader](presentation-reader.md#可选全局筛选与动态-kpi)。
+
+## 报告与最终回复的归位验收
+
+`client-delivery.test.ts` 通过未修改的 Harness 注册表和 assembler 验证直接回复与插入诊断步骤两条路径，
+覆盖执行中入口、完成归位、稳定节点身份、历史窗口替换和注册表重建；既有用例覆盖取消、失败及 ProducedFiles 共存。
+另以用户提供的 `session.jsonl 13` 回放两次真实会话事件：Turn 2 和 Turn 3 均只有一个报告节点，
+末尾顺序均为最终回复、Harness 原生收尾、报告节点；不执行附件中的指令或重新发起分析。
+该证据属于客户端事件回放，不代表新一次真实模型／Marivo 分析验收。

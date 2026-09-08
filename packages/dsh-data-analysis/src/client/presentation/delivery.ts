@@ -125,7 +125,7 @@ export const marivoPresentationDeliveryDefinition = {
     const event = record(value),
       data = record(event?.data)
     if (!event || !data) return null
-    if (['turn/start', 'tool/call', 'tool/result'].includes(event.type)) {
+    if (['turn/start', 'turn/end', 'tool/call', 'tool/result'].includes(event.type)) {
       if (!Number.isSafeInteger(data.turn) || data.turn < 0) return null
       if (event.type === 'tool/result' && event.surfaceOp !== 'append') return null
       return { id: String(data.turn), role: event.type === 'turn/start' ? 'start' : 'update' }
@@ -184,12 +184,21 @@ export const marivoPresentationDeliveryDefinition = {
       location.turn.turn !== state.turn
     )
       return null
+    const end = location.turn.end
+    // Keep the same node, but place a completed Turn's reports after its final
+    // response. Do not compete with the Host's exclusive ProducedFiles tail.
+    const completed =
+      end?.type === 'turn/end' &&
+      end.data.turn === state.turn &&
+      end.data.reason?.kind === 'completed' &&
+      Number.isSafeInteger(end.seq) &&
+      end.seq >= first.seq
     return {
       key: context.key,
       id: context.id,
       kind: PRESENTATION_TURN_DATA_KEY,
       target: 'chat',
-      anchorSeq: first.seq,
+      anchorSeq: completed ? end.seq : first.seq,
       location,
       visibility: 'visible',
       data: Object.freeze({ deliveries: state.deliveries }),

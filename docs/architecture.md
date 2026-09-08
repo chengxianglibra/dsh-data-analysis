@@ -145,7 +145,8 @@ Agent 调用 `marivo_present({ draft_path })`。Tool 从当前 Session 的 Harne
 Native/both metadata 与 Code durable block 使用同一个带 Session/Turn 的 delivery envelope；文本包含
 两个文件的精确路径、SHA-256 与字节数，headless 同样可用。Web 卡片打开共享 reader，并下载自包含 HTML。
 报告使用公开 Conversation Definition 的独立 Chat 节点和 keyed renderer，每轮以首次成功回执的位置
-展示有序卡片，不依赖最终回复或 `turnTail` chain；原生 ProducedFiles 继续由 Harness 自己展示。
+展示有序卡片；执行中即时出现，正常完成后同一节点移至 Turn 结束位置，与最终回复相邻。
+卡片不依赖最终文本存在，也不占用 `turnTail` chain；原生 ProducedFiles 继续由 Harness 自己展示。
 只读 RPC 按当前 Session Workspace 推导固定 asset 路径，校验归属、真实路径、大小与 digest；来源展开只读保存快照。
 不存在 report ID、revision、latest、CAS 或持久 operation 索引。详见[展示交付](modules/presentation-delivery.md)。
 
