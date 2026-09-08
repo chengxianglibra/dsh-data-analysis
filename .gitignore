@@ -9,6 +9,7 @@
 node_modules/
 artifacts/
 docs/acceptance/
+docs/plan/
 packages/dsh-data-analysis/lib/
 packages/dsh-data-analysis/python/**/build/
 packages/dsh-data-analysis/python/**/dist/
