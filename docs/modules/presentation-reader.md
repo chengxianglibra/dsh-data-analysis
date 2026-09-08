@@ -82,10 +82,16 @@ ChartExplorer 不再包含局部行过滤；图形切换、系列显隐和表格
 
 ## 通用阅读层级
 
-正文使用单列文档布局；只有相邻 metric 合并为自适应指标行，不重排或改写作者的正文和 block 顺序；指标行不跨越固定区与交互区边界。
+正文按作者顺序排版；相邻 metric 合并为自适应指标行，连续 chart 合并为可换行的图表组。
+两种分组都不跨越固定区与交互区边界，也不跨过 Markdown、table 或 source；不重排或改写正文。
 Host 预览与导出 HTML 共用流式宽度：reader 占满可用容器，水平内边距为 `clamp(20px,4%,64px)`，
 没有固定的桌面最大宽度。Host 报告弹窗使用 `96vw`，手机沿用全屏；数据源等次级弹窗保持原尺寸。
-Markdown 内容限制在 `820px` 内并左对齐，图表、表格、筛选区和 KPI 使用完整内容宽度。
+Markdown、表格和筛选区跟随完整内容宽度。KPI 按可用空间自动换行，单卡宽度为 `240–480px`，
+容器不足 `240px` 时收至容器宽度；少量卡片靠左排列，行尾留白，不无限拉伸。
+交互图表每行最多两张，按内容容器宽度而非屏幕断点换行；普通图最小卡宽 `560px`，环形图 `720px`，
+图间距 `32px`。默认等分行宽，一张图需要更宽空间时先换行，末尾单图铺满整行；
+窄容器按原顺序单列。缩放仅由 CSS 排布，保持组件 identity 和筛选／探索状态。
+无脚本与打印中的 chart 是精确数据表，保持单列；该规则不增加作者可配置的网格或 schema 字段。
 窄屏保留紧凑间距和局部滚动；打印移除屏幕留白及正文宽度限制，按纸张宽度排版。
 指标可以增加千分位，但不舍入、不缩放、不经过浮点转换；精确值仍保留在 tooltip、数据表和原文档中。
 生成时间以带 UTC 标识的可读日期展示，原时间戳保留在 `time.dateTime` 和文档中。
@@ -144,6 +150,7 @@ portable 从内嵌 JSON 加载，包含自己的 React/Recharts，不依赖 DSH 
 已生成 HTML 内嵌当时的样式与脚本；更新插件不会修改历史文件，需重新生成报告才能获得新布局。
 
 自适应宽度的覆盖范围与证据见[宽屏自适应验收](../plan/2026-09-08-presentation-responsive-acceptance.md)。
+文本、KPI 宽度与图表并排的后续验收见[内容布局验收](../plan/2026-09-08-presentation-layout-acceptance.md)。
 
 `buildPresentation(document)` 校验并快照输入，返回生成文档、JSON 字节和 HTML 字节。
 builder 不分配 Workspace/report/build identity，不登记文件、不创建目录、不生成 receipt；S4 唯一负责完整目录提交。
@@ -190,7 +197,8 @@ S3 的真实 Web 验证只接入 reader，不代表 S4 Tool、receipt/RPC 或 S5
 Marivo／分析作者负责周期、分母、差值、百分比与好坏方向；插件验证引用并格式化，不计算同比／环比。
 比较数据跟随 `rowSelection: "slice"`，复制上下文包含比较列和原值，静态 HTML 保留全部比较。
 `sentiment` 独立于涨跌符号，默认中性；数值不经过浮点转换，缺失和持平分别显示。
-卡片自适应最小宽度为 240px，主值保持一行，极长精确值可横向滚动。
+卡片按内容容器自适应，宽度上限为 `480px`，常规最小宽度为 `240px`；更窄时使用容器全宽。
+主值保持一行，极长精确值可横向滚动。
 
 设计参考：[Power BI reference labels](https://learn.microsoft.com/en-us/power-bi/visuals/power-bi-visualization-card)、
 [Looker Studio scorecard](https://cloud.google.com/looker/docs/studio/scorecard-reference)。

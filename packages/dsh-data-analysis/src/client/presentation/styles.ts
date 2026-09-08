@@ -31,10 +31,16 @@ export const PRESENTATION_STYLES = `
 .pr-header { padding-bottom:28px; margin-bottom:32px; border-bottom:1px solid var(--pr-border) }
 .pr-blocks { display:flex; flex-direction:column; gap:32px }
 .pr-block { min-width:0; position:relative }
-.pr-block-markdown { padding:0; width:100%; max-width:820px; align-self:flex-start }
+.pr-block-markdown { padding:0; width:100% }
 .pr-block-chart { padding:0; border:0; border-radius:0 }
 .pr-block-chart>h2 { font-size:17px }
-.pr-metric-group { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:16px }
+.pr-chart-row { display:flex; flex-direction:column; gap:32px; min-width:0 }
+.pr-chart-row>.pr-block-chart { width:100% }
+.pr-reader[data-mode=interactive] .pr-chart-row { flex-direction:row; flex-wrap:wrap; align-items:flex-start }
+.pr-reader[data-mode=interactive] .pr-chart-row>.pr-block-chart { flex:1 1 calc((100% - 32px)/2); min-width:min(100%,560px); max-width:100% }
+.pr-reader[data-mode=interactive] .pr-chart-row>.pr-block-chart[data-chart-layout=wide] { min-width:min(100%,720px) }
+.pr-metric-group { display:flex; flex-wrap:wrap; gap:16px; min-width:0 }
+.pr-metric-group>.pr-block-metric { flex:1 1 240px; min-width:min(100%,240px); max-width:min(100%,480px) }
 .pr-block-metric { border:1px solid var(--pr-border); border-radius:14px; padding:20px; display:flex; flex-direction:column; gap:4px }
 .pr-block-metric h2 { font-size:13px; font-weight:500; color:var(--pr-muted); margin:0 }
 .pr-metric-value { font-size:clamp(24px,3vw,32px); font-variant-numeric:tabular-nums; font-weight:600; line-height:1.35; letter-spacing:-.025em }
@@ -180,13 +186,12 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-source-tabs { padding:0 18px }
   .pr-source-dialog-body { padding:18px }
   .pr-source-overview-grid { grid-template-columns:1fr; gap:16px }
-  .pr-metric-group { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+  .pr-metric-group { gap:12px }
   .pr-block-metric { padding:16px }
   .pr-metric-value { font-size:25px }
   .pr-pagination { justify-content:space-between; gap:8px }
   .pr-tooltip { max-width:80vw }
 }
-@media(max-width:420px) { .pr-metric-group { grid-template-columns:1fr } }
 @media(pointer:coarse) { .pr-reader summary,.pr-reader button { min-height:44px } .pr-reader .pr-icon-button { width:36px } .pr-block-metric>h2,.pr-block-chart>h2 { padding-right:44px } .pr-reader select,.pr-reader textarea { font-size:16px } }
 @media print {
   .pr-host-live { display:none!important }
@@ -203,6 +208,9 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-source-code-summary { display:none!important }
   .pr-source-dialog,.pr-dialog { display:none!important }
   .pr-metric-group { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) }
+  .pr-metric-group>.pr-block-metric { min-width:0; max-width:none }
+  .pr-reader[data-mode] .pr-chart-row { display:block }
+  .pr-reader[data-mode] .pr-chart-row>.pr-block-chart { min-width:0; max-width:none }
   .pr-header { break-after:avoid }
   .pr-reader h1,.pr-reader h2,.pr-reader h3 { break-after:avoid }
   .pr-table-scroll { overflow:visible }

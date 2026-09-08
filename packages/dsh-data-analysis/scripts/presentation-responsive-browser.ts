@@ -85,7 +85,11 @@ export async function verifyResponsiveGallery(
       assert.ok(Math.abs(frame.x - (pageWidth.viewport - frame.width) / 2) <= 1)
     }
     for (const markdown of await reader.locator('.pr-markdown').all()) {
-      assert.ok((await markdown.boundingBox())!.width <= 821, 'Markdown line length exceeds 820px')
+      const bounds = (await markdown.boundingBox())!
+      assert.ok(
+        Math.abs(bounds.width - (frame.width - frame.leftPadding - frame.rightPadding)) <= 1,
+        'Markdown must follow the reader content width',
+      )
     }
     const charts = []
     for (const type of CHART_TYPES) {

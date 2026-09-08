@@ -234,12 +234,13 @@ function Block({
   )
 }
 
-/** Group adjacent metrics without changing the authored block order. */
+/** Group adjacent cards/charts within one region, preserving authored order at every width. */
 function blockGroups(blocks: PresentationBlock[]): PresentationBlock[][] {
   const groups: PresentationBlock[][] = []
   for (const block of blocks) {
     const previous = groups.at(-1)
-    if (block.kind === 'metric' && previous?.[0]?.kind === 'metric') previous.push(block)
+    if ((block.kind === 'metric' || block.kind === 'chart') && previous?.[0]?.kind === block.kind)
+      previous.push(block)
     else groups.push([block])
   }
   return groups
@@ -332,6 +333,7 @@ function ReaderContents({
         key={block.id}
         data-block-id={block.id}
         data-block-kind={block.kind}
+        data-chart-layout={block.kind === 'chart' && block.chart === 'pie' ? 'wide' : undefined}
       >
         {mode === 'interactive' && (
           <div className="pr-cell-toolbar pr-interactive">
@@ -448,8 +450,11 @@ function ReaderContents({
         {(() => {
           const renderGroups = (blocks: PresentationBlock[]) =>
             blockGroups(blocks).map((group) =>
-              group[0]!.kind === 'metric' ? (
-                <div className="pr-metric-group" key={group[0]!.id}>
+              group[0]!.kind === 'metric' || group[0]!.kind === 'chart' ? (
+                <div
+                  className={group[0]!.kind === 'metric' ? 'pr-metric-group' : 'pr-chart-row'}
+                  key={group[0]!.id}
+                >
                   {group.map(renderBlock)}
                 </div>
               ) : (

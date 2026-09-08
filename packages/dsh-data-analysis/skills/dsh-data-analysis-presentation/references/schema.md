@@ -68,6 +68,11 @@ metric 选取一个现有行列交叉值，`rowIndex` 从 0 开始；它不求�
 
 blocks 数组决定阅读顺序，reader 自行适配布局；schema 没有 `layout`、`theme` 或 chart `title` 字段。图前说明用 markdown block，图例和坐标标签来自 dataset 列。Markdown 支持正文、标题、列表、引用、代码和链接；HTML 作为文字，图片不加载，不接受作者 JavaScript 或任意 renderer 配置。
 
+文本跟随内容区宽度，相邻 metric 自动换行且单卡有宽度上限。连续 chart 在容器足够宽时最多并排两列，
+窄容器恢复原顺序单列；Markdown、table、source 和固定／筛选分区边界都会断开图表组。
+需要并排比较时连续放置 chart，共同说明放在这组图前；不要使用空白 block 占位或假定固定行列位置。
+无脚本和打印使用单列精确数据表。
+
 ## computed typed JSON
 
 优先让 `write_dataset` 处理 DataFrame 类型。手工提供纯数据 JSON 时必须满足下列契约，不能使用普通 records 数组或 JavaScript 注册脚本。
