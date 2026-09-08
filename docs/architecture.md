@@ -173,8 +173,10 @@ Host 预览与离线 HTML 共用流式宽度；正文跟随容器，KPI 限制�
 布局变化只影响阅读呈现，不修改报告 schema、保存快照或分析语义，详见[reader 模块](modules/presentation-reader.md#通用阅读层级)。
 
 共享图形契约覆盖 18 类图形与 bar/line 变体；分箱、分位数、占比、排名和累计值先在分析阶段准备。
-前端探索只选择现有列或显式 `preparedViews`，过滤和显隐不改变统计口径；当前视图用于来源预览与复制上下文，
+前端探索只选择现有列或显式 `preparedViews`，过滤和显隐不改变统计口径；当前视图用于来源预览与 cell 上下文，
 保存文档、下载与打印仍使用作者快照。详细规则见[reader 模块](modules/presentation-reader.md)。
+Host 的 Ask DSH 通过 reader 回调把当前 cell 上下文追加到报告所属会话的输入草稿，成功后关闭报告；
+Harness 继续拥有输入状态、引用、附件及提交行为。编辑模式禁用此操作，portable 保留复制上下文。
 数据源的代码页保存 Marivo 生产记录中的 SQL，以及 dataset 显式关联的 Python 执行快照。
 插件在成功 `marivo_python` 后记录本次提交代码并返回 `codeRef`，报告构建核验其 Workspace 与文件摘要；
 Harness 的原生执行与凭据生命周期保持原契约，代码记录失败不改变已有执行结果。

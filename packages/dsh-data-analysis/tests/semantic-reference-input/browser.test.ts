@@ -6,6 +6,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 import { build } from 'esbuild'
+import { appendPresentationContext } from '../../src/client/presentation/ask-dsh.ts'
 import { createSemanticReferenceSource } from '../../src/client/semantic-reference-source.ts'
 import { envelopeJson, modelMarker } from '../../src/semantic-reference/contracts.ts'
 import { candidate, envelope } from './fixtures.ts'
@@ -49,7 +50,7 @@ if (result)
   })
 const { InputMachine, projectClipboard, InputTriggerController, SessionInputShell } = module.exports
 
-function setup() {
+function setup(sessionId = 'a') {
   const calls = [],
     delivered = []
   let failure = false
@@ -87,7 +88,7 @@ function setup() {
   }
   const controller = new InputTriggerController({
     actx,
-    sessionId: 'a',
+    sessionId,
     roster: { all: () => sources, sources: () => sources },
   })
   shell = new SessionInputShell({
@@ -104,6 +105,7 @@ function setup() {
     },
   })
   return {
+    actx,
     source,
     shell,
     controller,
@@ -114,6 +116,58 @@ function setup() {
     },
   }
 }
+
+integrationTest(
+  'Ask DSH preserves real input references and images without serialization or submission',
+  async () => {
+    const a = setup('a')
+    const b = setup('b')
+    try {
+      a.shell.setDraft('分析 @')
+      const insert = a.source.onPick({
+        session: { sessionId: 'a' },
+        candidate: { value: envelopeJson(envelope()) },
+      }).insert
+      a.shell.insertReference(insert, { start: 3, end: 4, draftRev: a.shell.snapshot.draftRev })
+      assert.equal(a.shell.addImages(['image-a']), true)
+      b.shell.setDraft('另一个会话的问题')
+      await tick()
+      const before = a.shell.snapshot
+      const calls = a.calls.length
+      const host = {
+        sessions: {
+          list: { getSnapshot: () => ({ current: 'a' }) },
+          scope: (id) => ({ a: a.actx, b: b.actx })[id],
+        },
+        workspaces: {
+          list: {
+            getSnapshot: () => ({
+              phase: 'ready',
+              state: 'idle',
+              items: [{ workspaceId: 'workspace', sessionIds: ['a', 'b'] }],
+            }),
+          },
+        },
+        conversation: { input: { for: (actx) => (actx === a.actx ? a.shell : b.shell) } },
+      }
+      appendPresentationContext(host, 'a', 'workspace', 'Cell: metric\nMetric raw value: "150"')
+      await tick()
+      assert.equal(a.shell.snapshot.occurrences.length, 1)
+      assert.deepEqual(a.shell.snapshot.occurrences, before.occurrences)
+      assert.deepEqual(a.shell.snapshot.imageIds, before.imageIds)
+      assert.ok(a.shell.snapshot.draft.startsWith(`${before.draft}\n\n【报告上下文】\n`))
+      assert.equal(b.shell.snapshot.draft, '另一个会话的问题')
+      assert.equal(a.calls.length, calls)
+      assert.equal(a.delivered.length, 0)
+      assert.equal(b.delivered.length, 0)
+    } finally {
+      a.controller.dispose()
+      a.shell.dispose()
+      b.controller.dispose()
+      b.shell.dispose()
+    }
+  },
+)
 
 integrationTest(
   'real DSH controller coexists with file source and routes one pick into an atomic occurrence',

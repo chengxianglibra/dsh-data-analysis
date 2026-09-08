@@ -105,6 +105,8 @@ export const PRESENTATION_STYLES = `
 .pr-copy-status:not(:empty) { padding:4px 8px; border:1px solid var(--pr-border); box-shadow:0 2px 8px #0001 }
 .pr-cell-menu-popup { position:absolute; right:0; top:calc(100% + 4px); min-width:136px; padding:4px; background:var(--pr-bg); border:1px solid var(--pr-border); border-radius:10px; box-shadow:0 6px 24px #0002; z-index:3 }
 .pr-cell-menu-popup>button { display:block; width:100%; border:0; border-radius:6px; text-align:left; font-size:13px; padding:8px 12px; white-space:nowrap }
+.pr-cell-menu-popup>button[aria-disabled=true] { color:var(--pr-muted); cursor:not-allowed }
+.pr-cell-menu-popup>button small { display:block; font-size:12px; font-weight:normal }
 .pr-source-dialog,.pr-dialog { color:var(--pr-text); background:var(--pr-bg); border:1px solid var(--pr-border); border-radius:24px; width:min(800px,calc(100vw - 48px)); max-width:none; max-height:min(760px,calc(100dvh - 48px)); margin:auto; padding:0; box-shadow:0 18px 70px #0003; font:14px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; overflow:hidden }
 .pr-source-dialog[open],.pr-dialog[open] { display:flex; flex-direction:column }
 .pr-source-dialog-shell { display:flex; flex-direction:column; min-height:0; width:100% }

@@ -17,11 +17,13 @@ export function HostPresentationReader({
   actions,
   editing,
   onOpenSemanticRef,
+  onAskDsh,
 }: {
   document: PresentationDocument
   editing?: ReaderEditing
   actions?: ReactNode
   onOpenSemanticRef?: OpenSemanticRef
+  onAskDsh?: (context: string) => void
 }) {
   return (
     <div className="pr-host">
@@ -33,6 +35,7 @@ export function HostPresentationReader({
           document={document}
           editing={editing}
           onOpenSemanticRef={onOpenSemanticRef}
+          onAskDsh={onAskDsh}
         />
       </div>
       <div className="pr-host-print">

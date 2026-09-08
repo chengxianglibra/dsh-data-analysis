@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { parsePresentationDocument } from '../../presentation/contracts/index.ts'
 import {
   defaultSelection,
@@ -32,21 +32,30 @@ import { DatasetTable } from './table.tsx'
 
 function CellMenu({
   onSource,
-  onCopy,
+  onContext,
+  askDsh,
+  contextDisabled,
   onExplore,
 }: {
   onSource?: (trigger: HTMLElement) => void
-  onCopy: (trigger: HTMLElement) => void
+  onContext: (trigger: HTMLElement) => void
+  askDsh?: boolean
+  contextDisabled?: boolean
   onExplore?: (trigger: HTMLElement) => void
 }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const focusIndex = useRef(0)
-  const actions = [
+  const disabledReasonId = useId()
+  const actions: {
+    label: string
+    run: (trigger: HTMLElement) => void
+    disabled?: boolean
+  }[] = [
     ...(onExplore ? [{ label: '探索图表', run: onExplore }] : []),
     ...(onSource ? [{ label: '数据源', run: onSource }] : []),
-    { label: '复制上下文', run: onCopy },
+    { label: askDsh ? 'Ask DSH' : '复制上下文', run: onContext, disabled: contextDisabled },
   ]
   useEffect(() => {
     if (!open) return
@@ -121,13 +130,18 @@ function CellMenu({
               role="menuitem"
               tabIndex={-1}
               key={action.label}
+              aria-label={action.label}
+              aria-disabled={action.disabled || undefined}
+              aria-describedby={action.disabled ? disabledReasonId : undefined}
               onClick={() => {
+                if (action.disabled) return
                 setOpen(false)
                 trigger.current?.focus()
                 action.run(trigger.current!)
               }}
             >
               {action.label}
+              {action.disabled && <small id={disabledReasonId}>请先保存或取消编辑</small>}
             </button>
           ))}
         </div>
@@ -251,11 +265,13 @@ function ReaderContents({
   mode,
   editing,
   onOpenSemanticRef,
+  onAskDsh,
 }: {
   document: PresentationDocument
   mode: ReaderMode
   editing?: ReaderEditing
   onOpenSemanticRef?: OpenSemanticRef
+  onAskDsh?: (context: string) => void
 }) {
   const document = editing
     ? {
@@ -327,6 +343,23 @@ function ReaderContents({
         : undefined
     const block = savedBlock.kind === 'chart' ? exploredChartBlock(savedBlock, state) : savedBlock
     const rows = rowsFor(block)
+    const cellMenu = (onContext: (trigger: HTMLElement) => void) => (
+      <CellMenu
+        onContext={onContext}
+        askDsh={!!onAskDsh}
+        contextDisabled={!!onAskDsh && !!editing}
+        onExplore={
+          savedBlock.kind === 'chart'
+            ? (trigger) => setExplorerCell({ id: savedBlock.id, trigger })
+            : undefined
+        }
+        onSource={
+          block.kind === 'markdown'
+            ? undefined
+            : (trigger) => setSourceCell({ block: savedBlock, trigger })
+        }
+      />
+    )
     return (
       <section
         className={`pr-block pr-block-${block.kind}`}
@@ -337,25 +370,13 @@ function ReaderContents({
       >
         {mode === 'interactive' && (
           <div className="pr-cell-toolbar pr-interactive">
-            <CopyContext text={followUpContext(document, savedBlock, state, selection)}>
-              {(copy) => (
-                <CellMenu
-                  onCopy={copy}
-                  onExplore={
-                    savedBlock.kind === 'chart'
-                      ? (trigger) => {
-                          setExplorerCell({ id: savedBlock.id, trigger })
-                        }
-                      : undefined
-                  }
-                  onSource={
-                    block.kind === 'markdown'
-                      ? undefined
-                      : (trigger) => setSourceCell({ block: savedBlock, trigger })
-                  }
-                />
-              )}
-            </CopyContext>
+            {onAskDsh ? (
+              cellMenu(() => onAskDsh(followUpContext(document, savedBlock, state, selection)))
+            ) : (
+              <CopyContext text={followUpContext(document, savedBlock, state, selection)}>
+                {cellMenu}
+              </CopyContext>
+            )}
           </div>
         )}
         {editing && <CellEditor block={savedBlock} document={savedDocument} editing={editing} />}
@@ -522,11 +543,13 @@ export function PresentationReader({
   mode = 'interactive',
   editing,
   onOpenSemanticRef,
+  onAskDsh,
 }: {
   document: PresentationDocument
   mode?: ReaderMode
   editing?: ReaderEditing
   onOpenSemanticRef?: OpenSemanticRef
+  onAskDsh?: (context: string) => void
 }) {
   const parsed = useMemo(() => parsePresentationDocument(document), [document])
   return (
@@ -536,6 +559,7 @@ export function PresentationReader({
       mode={mode}
       editing={editing}
       onOpenSemanticRef={mode === 'interactive' ? onOpenSemanticRef : undefined}
+      onAskDsh={mode === 'interactive' ? onAskDsh : undefined}
     />
   )
 }

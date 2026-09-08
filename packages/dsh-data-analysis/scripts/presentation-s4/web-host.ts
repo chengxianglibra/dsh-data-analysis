@@ -18,6 +18,7 @@ export async function startPresentationWebHost(
   pythonExecutable: string,
   draftPaths: readonly string[],
   clientOrder: 'native-first' | 'report-first' = 'native-first',
+  options: { askDshProbe?: boolean } = {},
 ) {
   const home = path.join(outputRoot, 'isolated-dsh-home')
   const profile = path.join(home, 'profiles/web')
@@ -131,7 +132,10 @@ export async function apply(ctx){
     external: [fileURLToPath(new URL('./host.ts', import.meta.url))],
   })
   const productionClient = await readFile(path.join(productionPackage, 'lib/client.js'), 'utf8')
-  if (!productionClient.includes('installPresentation'))
+  if (
+    !productionClient.includes('window.__ModuleLoader__.load') ||
+    !productionClient.includes('installPresentation')
+  )
     throw new Error('Build the S4 production client before real validation')
   const wrapper = await build({
     stdin: {
@@ -143,6 +147,34 @@ import * as native from '@deepseek-ai/dsh-client-ui-deliverables/client';
 export const inject=production.inject;
 export async function apply(ctx){
  window.__s4Rpc=(channel,endpoint,payload)=>ctx.get('connection').rpc.call(channel,endpoint,payload);
+ ${
+   options.askDshProbe
+     ? `
+ // Isolated acceptance instrumentation only: production modules remain byte-identical.
+ const rpc=ctx.get('connection').rpc, call=rpc.call.bind(rpc), calls=[];
+ rpc.call=(channel,endpoint,payload,...rest)=>{calls.push({channel,endpoint});return call(channel,endpoint,payload,...rest)};
+ const sessions=ctx.sessions, scope=sessions.scope.bind(sessions);
+ const resolver=ctx.conversation.input, resolve=resolver.for.bind(resolver);
+ let failure, writes=0;
+ const wrapped=new WeakMap();
+ sessions.scope=(id)=>{if(failure==='scope'){failure=undefined;throw new Error('Ask DSH validation: session unavailable')}return scope(id)};
+ resolver.for=(actx)=>{
+   const input=resolve(actx);
+   let proxy=wrapped.get(input);
+   if(!proxy){proxy=new Proxy(input,{get(target,key){
+     if(key==='setDraft')return text=>{writes++;if(failure==='write'){failure=undefined;throw new Error('Ask DSH validation: draft write failed')}return target.setDraft(text)};
+     const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+   }});wrapped.set(input,proxy)}
+   return proxy;
+ };
+ window.__askDshProbe={
+   read:id=>structuredClone(resolve(scope(id)).state.getSnapshot()),
+   audit:()=>({writes,calls:structuredClone(calls)}),
+   failNext:kind=>{if(!['scope','write'].includes(kind))throw new Error('invalid failure');failure=kind},
+ };
+ `
+     : ''
+}
  ${clientOrder === 'native-first' ? 'await ctx.plugin(native); production.apply(ctx);' : 'production.apply(ctx); await ctx.plugin(native);'}
  window.__s4ClientOrder=${JSON.stringify(clientOrder)};
 }

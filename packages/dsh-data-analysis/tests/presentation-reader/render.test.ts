@@ -13,7 +13,7 @@ let directory: string
 let renderDocument: (document: PresentationDocument, mode?: 'static' | 'interactive') => string
 let renderMarkdown: (text: string) => string
 let renderExplorer: (document: PresentationDocument) => string
-let renderHost: (document: PresentationDocument) => string
+let renderHost: (document: PresentationDocument, onAskDsh?: (context: string) => void) => string
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-reader-render-'))
@@ -30,7 +30,7 @@ import { ChartExplorer } from './src/client/presentation/chart-explorer.tsx';
 import { initialChartExploration } from './src/client/presentation/chart-view.ts';
 import { HostPresentationReader } from './src/client/presentation/host-entry.tsx';
 export function renderExplorer(document) { const block = document.blocks.find(b => b.kind === 'chart'); const data = document.datasets.find(d => d.id === block.datasetId).data; return renderToStaticMarkup(createElement(ChartExplorer, { block, data, state: initialChartExploration(block), onChange() {}, onClose() {} })); }
-export function renderHost(document) { return renderToStaticMarkup(createElement(HostPresentationReader, { document })); }
+export function renderHost(document, onAskDsh) { return renderToStaticMarkup(createElement(HostPresentationReader, { document, onAskDsh })); }
 export function renderDocument(document, mode = 'static') { return renderToStaticMarkup(createElement(PresentationReader, { document, mode })); }
 export function renderMarkdown(text) { return renderToStaticMarkup(createElement(Markdown, { text })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -142,6 +142,18 @@ test('Host includes an original full exact snapshot for printing independently o
   assert.match(html, /\.pr-host-print \{ display:block!important \}/)
   assert.match(html, /9007199254740993/)
   assert.match(html, /0\.1000/)
+})
+
+test('Host Ask DSH callback replaces clipboard UI while portable and fallback readers retain manual copy', async () => {
+  const document = await fixture('computed')
+  const contexts: string[] = []
+  const html = renderHost(document, (context) => contexts.push(context))
+  assert.match(html, /aria-label="cell 更多操作"/)
+  assert.match(html, /class="pr-host-print"><article[^>]+data-mode="static"/)
+  assert.doesNotMatch(html, /手动复制 cell 上下文|aria-label="cell 上下文"/)
+  assert.deepEqual(contexts, [])
+  assert.match(renderHost(document), /手动复制 cell 上下文/)
+  assert.match(renderDocument(document, 'interactive'), /手动复制 cell 上下文/)
 })
 
 test('cell and filter identifiers matching Object prototype names remain ordinary snapshot identifiers', async () => {

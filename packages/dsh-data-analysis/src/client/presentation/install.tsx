@@ -2,7 +2,8 @@
 
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { appendPresentationContext } from './ask-dsh.ts'
 import {
   marivoPresentationDeliveryDefinition,
   PRESENTATION_TURN_DATA_KEY,
@@ -15,8 +16,8 @@ import { HostPresentationReader } from './host-entry.tsx'
 const deliveryStyles = `
 .pd-cards{display:grid;gap:10px;margin-top:12px}.pd-card{border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:10px;padding:14px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-module-platform,#f4f7f7)}
 .pd-card h3{margin:0 0 7px;font-size:15px}.pd-card p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}.pd-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pd-actions button{font:inherit;padding:6px 12px;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:6px;background:var(--dsw-alias-bg-base,#fff);color:inherit;cursor:pointer}.pd-actions button:disabled{opacity:.55;cursor:wait}.pd-actions button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#087c71);outline-offset:3px}
-.pd-muted{font-size:12px;color:var(--dsw-alias-label-secondary,#5b7076)}.pd-error{color:var(--dsw-alias-state-warn-label,#805b20);overflow-wrap:anywhere}.pd-dialog{position:fixed;inset:0;width:96vw;height:92vh;max-height:96vh;max-width:96vw;padding:0;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:12px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-base,#fff);overflow:auto;pointer-events:auto}.pd-dialog::backdrop{background:#0008}.pd-toolbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5);background:var(--dsw-alias-bg-base,#fff)}.pd-status{padding:12px 20px}.pd-toolbar strong{overflow-wrap:anywhere}.pd-reader{padding:8px}
-@media(max-width:600px){.pd-dialog{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0}.pd-toolbar{flex-wrap:wrap}}
+.pd-muted{font-size:12px;color:var(--dsw-alias-label-secondary,#5b7076)}.pd-error{color:var(--dsw-alias-state-warn-label,#805b20);overflow-wrap:anywhere}.pd-dialog{position:fixed;inset:0;width:80vw;height:92vh;max-height:96vh;max-width:none;box-sizing:border-box;padding:0;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:12px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-base,#fff);overflow:auto;pointer-events:auto}.pd-dialog::backdrop{background:#0008}.pd-toolbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5);background:var(--dsw-alias-bg-base,#fff)}.pd-status{padding:12px 20px}.pd-toolbar strong{overflow-wrap:anywhere}.pd-reader{padding:8px}
+@media(max-width:600px){.pd-dialog{height:100dvh;max-height:100dvh;border-radius:0}.pd-toolbar{flex-wrap:wrap}}
 `
 
 export function PresentationCards({ matched, sessionId, workspaces, model }) {
@@ -88,9 +89,14 @@ export function PresentationOverlay({
   workspaceId,
   workspaceUnavailable = false,
   openSemanticObject,
+  onAskDsh,
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
+  const [askError, setAskError] = useState('')
   const dialog = useRef(null)
+  useEffect(() => {
+    if (!state.open || !state.document) setAskError('')
+  }, [state.document, state.open])
   const closeReader = () => {
     if (state.saving) return
     if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并关闭报告？')) return
@@ -116,8 +122,25 @@ export function PresentationOverlay({
     if (!state.open) return undefined
     const opener = document.activeElement,
       element = dialog.current
+    // Measure the Host conversation surface, excluding its navigation and details columns.
+    const analysisArea = document.querySelector('[data-conversation-scroll]')
+    const updateGeometry = () => {
+      if (!analysisArea) return
+      const bounds = analysisArea.getBoundingClientRect()
+      element.style.width = `${bounds.width * 0.8}px`
+      element.style.left = `${bounds.left + bounds.width * 0.1}px`
+      element.style.right = 'auto'
+      element.style.marginLeft = '0'
+      element.style.marginRight = '0'
+    }
+    updateGeometry()
+    const resize = new ResizeObserver(updateGeometry)
+    if (analysisArea) resize.observe(analysisArea)
+    window.addEventListener('resize', updateGeometry)
     element.showModal()
     return () => {
+      resize.disconnect()
+      window.removeEventListener('resize', updateGeometry)
       element.close()
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
@@ -197,6 +220,11 @@ export function PresentationOverlay({
           {state.editError}
         </p>
       )}
+      {askError && (
+        <p className="pd-status pd-error" role="alert">
+          {askError}
+        </p>
+      )}
       {state.loading && (
         <p className="pd-status" role="status">
           正在读取已保存的分析快照…
@@ -221,6 +249,40 @@ export function PresentationOverlay({
         <div className="pd-reader">
           <HostPresentationReader
             document={state.document}
+            onAskDsh={
+              onAskDsh
+                ? (context) => {
+                    setAskError('')
+                    const current = model.getSnapshot()
+                    if (current.editing || current.saving) {
+                      setAskError('请先保存或取消编辑')
+                      return
+                    }
+                    if (
+                      !current.open ||
+                      current.document !== state.document ||
+                      current.delivery !== delivery ||
+                      current.error ||
+                      workspaceUnavailable ||
+                      sessionId !== delivery.dshSessionId ||
+                      workspaceId !== current.document?.workspaceId
+                    ) {
+                      setAskError('报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。')
+                      return
+                    }
+                    try {
+                      onAskDsh(delivery.dshSessionId, current.document.workspaceId, context)
+                      model.close()
+                    } catch (error) {
+                      setAskError(
+                        error instanceof Error
+                          ? error.message
+                          : '无法写入 DSH 输入草稿，请稍后重试。',
+                      )
+                    }
+                  }
+                : undefined
+            }
             onOpenSemanticRef={
               openSemanticObject &&
               !workspaceUnavailable &&
@@ -292,6 +354,9 @@ export function installPresentation(ctx, rpc, openSemanticObject) {
             workspaceId={workspaceId}
             workspaceUnavailable={error || (phase === 'ready' && !workspaceId)}
             openSemanticObject={openSemanticObject}
+            onAskDsh={(targetSessionId, targetWorkspaceId, context) =>
+              appendPresentationContext(ctx, targetSessionId, targetWorkspaceId, context)
+            }
           />
         )
       },

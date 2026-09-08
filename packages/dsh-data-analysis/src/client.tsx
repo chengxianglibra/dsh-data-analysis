@@ -24,7 +24,16 @@ export {
   PresentationOverlay,
 } from './client/presentation/install.tsx'
 
-export const inject = ['connection', 'slots', 'locale', 'conversationEvents', 'inputTriggers']
+export const inject = [
+  'connection',
+  'slots',
+  'locale',
+  'conversationEvents',
+  'inputTriggers',
+  'sessions',
+  'workspaces',
+  'conversation',
+]
 
 export function apply(ctx: Context): void {
   const connection = ctx.get('connection')
