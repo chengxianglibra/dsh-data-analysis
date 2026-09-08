@@ -111,12 +111,12 @@ test('box plots draw all five summary components, and missing summaries have no 
   assert.equal((sparse.match(/data-box-part="box"/g) ?? []).length, 1)
 })
 
-test('pie filtering preserves authored angular offsets, values and denominator shares', () => {
+test('pie slices use their own angular origin without renormalizing prepared shares', () => {
   const { block, dataset } = fixture('pie')
   const filtered = render(dataset, block, { rowIndices: [1] })
   assert.match(filtered, /data-source-row-index="1"/)
-  assert.match(filtered, /data-share-start="0\.6"/)
-  assert.match(filtered, /data-share-end="0\.8999999999999999"/)
+  assert.match(filtered, /data-share-start="0"/)
+  assert.match(filtered, /data-share-end="0\.3"/)
   assert.match(filtered, /B: 30 · 0\.3/)
   assert.equal((filtered.match(/<path /g) ?? []).length, 1)
 })

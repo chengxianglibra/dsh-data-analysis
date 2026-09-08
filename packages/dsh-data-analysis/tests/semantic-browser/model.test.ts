@@ -10,6 +10,71 @@ import { parseCatalogSnapshot } from '../../src/semantic-browser/contracts.ts'
 import { object, snapshot } from './fixtures.ts'
 
 const tick = () => new Promise((resolve) => setImmediate(resolve))
+test('report navigation refreshes exact references, clears hidden filters and selects the target page', async () => {
+  const { calls, model } = setup()
+  model.show('a')
+  calls[0]!.resolve({ ok: true, value: snapshot() })
+  await tick()
+  model.patch({
+    query: 'hidden',
+    kind: 'entity',
+    domain: 'other',
+    tab: 'relations',
+    history: ['old'],
+  })
+  const target = object('zz_target')
+  model.showObject('a', target.ref)
+  let view = model.getSnapshot().views.a!
+  assert.equal(view.snapshot, undefined)
+  assert.equal(view.selected, 'metric:sales.zz_target')
+  assert.equal(view.query, '')
+  assert.equal(view.kind, '')
+  assert.equal(view.domain, '')
+  assert.equal(view.tab, 'overview')
+  assert.deepEqual(view.history, [])
+  const objects = [
+    ...Array.from({ length: 85 }, (_, index) => object(`a${index}`)),
+    target,
+    object('zz_target', 'measure'),
+  ]
+  calls[1]!.resolve({ ok: true, value: snapshot('a', objects) })
+  await tick()
+  view = model.getSnapshot().views.a!
+  assert.equal(view.page, 2)
+  assert.equal(view.selected, 'metric:sales.zz_target')
+  model.showObject('b', target.ref)
+  assert.equal(model.getSnapshot().views.b!.snapshot, undefined)
+  calls[2]!.resolve({ ok: true, value: snapshot('b', []) })
+  await tick()
+  assert.equal(model.getSnapshot().views.b!.selected, 'metric:sales.zz_target')
+  assert.deepEqual(model.getSnapshot().views.b!.snapshot!.objects, [])
+  model.show('a')
+  assert.equal(model.getSnapshot().fromReport, false)
+  model.dispose()
+})
+
+test('rapid report jumps reject stale replies and do not display cached definitions after failure', async () => {
+  const { calls, model } = setup()
+  model.showObject('a', object().ref)
+  model.showObject('b', object('target').ref)
+  assert.equal(calls[0]!.signal.aborted, true)
+  calls[0]!.resolve({ ok: true, value: snapshot() })
+  calls[1]!.resolve({ ok: false, error: { message: 'Catalog unavailable' } })
+  await tick()
+  assert.equal(model.getSnapshot().workspaceId, 'b')
+  assert.equal(model.getSnapshot().views.a!.snapshot, undefined)
+  assert.equal(model.getSnapshot().views.b!.snapshot, undefined)
+  assert.equal(model.getSnapshot().views.b!.error, 'Catalog unavailable')
+  model.showObject('b', object().ref)
+  model.close()
+  calls[2]!.resolve({ ok: true, value: snapshot('b') })
+  await tick()
+  assert.equal(model.getSnapshot().open, false)
+  assert.equal(model.getSnapshot().views.b!.snapshot, undefined)
+  model.dispose()
+  model.showObject('a', object().ref)
+  assert.equal(calls.length, 3)
+})
 test('type counts follow domain and include unassigned objects only in all domains', () => {
   const objects = [
     object(),

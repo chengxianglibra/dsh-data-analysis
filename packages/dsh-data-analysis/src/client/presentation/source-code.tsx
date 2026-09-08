@@ -1,6 +1,37 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
 import { sourceCodeFacts } from './source-code-model.ts'
+import { formatSource } from './source-format.ts'
+import { highlightSource } from './source-highlight.ts'
+
+function FormattedCode({
+  text,
+  language,
+  interactive,
+}: {
+  text: string
+  language: 'python' | 'sql'
+  interactive: boolean
+}) {
+  const display = useMemo(() => formatSource(text, language), [text, language])
+  const tokens = useMemo(() => highlightSource(display.text, language), [display.text, language])
+  return (
+    <>
+      <p className="pr-source-code-note">
+        {display.formatted ? '已格式化展示；复制代码保留执行原文。' : '无法格式化，显示执行原文。'}
+      </p>
+      <pre tabIndex={interactive ? 0 : undefined}>
+        <code className={`language-${language}`}>
+          {tokens.map((token) => (
+            <span key={token.offset} style={token.color ? { color: token.color } : undefined}>
+              {token.text}
+            </span>
+          ))}
+        </code>
+      </pre>
+    </>
+  )
+}
 
 function CopyCode({ text }: { text: string }) {
   const [status, setStatus] = useState('')
@@ -44,9 +75,7 @@ export function SourceCode({
             {interactive && <CopyCode text={entry.text} />}
           </header>
           {entry.authorAssociated && <p className="pr-muted">该执行记录由作者关联到此数据集。</p>}
-          <pre tabIndex={interactive ? 0 : undefined}>
-            <code>{entry.text}</code>
-          </pre>
+          <FormattedCode text={entry.text} language={entry.language} interactive={interactive} />
         </section>
       ))}
       {notices.map((notice) => (

@@ -272,6 +272,7 @@ export class MarivoPresentationProjection {
       datasets,
       sources,
       blocks: draft.blocks,
+      ...(draft.interaction ? { interaction: draft.interaction } : {}),
       diagnostics,
     })
   }

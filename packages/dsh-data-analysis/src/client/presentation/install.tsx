@@ -87,6 +87,7 @@ export function PresentationOverlay({
   sessionId,
   workspaceId,
   workspaceUnavailable = false,
+  openSemanticObject,
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const dialog = useRef(null)
@@ -220,6 +221,14 @@ export function PresentationOverlay({
         <div className="pd-reader">
           <HostPresentationReader
             document={state.document}
+            onOpenSemanticRef={
+              openSemanticObject &&
+              !workspaceUnavailable &&
+              sessionId === delivery.dshSessionId &&
+              workspaceId === state.document.workspaceId
+                ? (ref) => openSemanticObject(state.document.workspaceId, ref)
+                : undefined
+            }
             editing={
               state.editing
                 ? {
@@ -236,7 +245,7 @@ export function PresentationOverlay({
   )
 }
 
-export function installPresentation(ctx, rpc) {
+export function installPresentation(ctx, rpc, openSemanticObject) {
   const model = new PresentationDeliveryModel(rpc)
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: presentation reader lifecycle')
   ctx.on('connection/reset', () => model.resetConnection())
@@ -282,6 +291,7 @@ export function installPresentation(ctx, rpc) {
             sessionId={sessionId}
             workspaceId={workspaceId}
             workspaceUnavailable={error || (phase === 'ready' && !workspaceId)}
+            openSemanticObject={openSemanticObject}
           />
         )
       },

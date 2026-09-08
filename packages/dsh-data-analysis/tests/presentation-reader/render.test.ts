@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import type { PresentationDocument } from '../../src/presentation/contracts/types.ts'
+import { interactionFixture } from './interaction-fixture.ts'
 
 let directory: string
 let renderDocument: (document: PresentationDocument, mode?: 'static' | 'interactive') => string
@@ -18,6 +19,8 @@ before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-reader-render-'))
   const outfile = path.join(directory, 'render.mjs')
   await build({
+    loader: { '.wasm': 'binary' },
+    target: 'es2022',
     stdin: {
       contents: `import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -125,8 +128,7 @@ test('explorer exposes all types with unavailable prepared statistics disabled a
   assert.match(html, /value="stackedBar100" disabled=""/)
   assert.match(html, /数值系列/)
   assert.match(html, /X 字段/)
-  assert.match(html, /保留分类值/)
-  assert.match(html, /<select[^>]+multiple=""/)
+  assert.doesNotMatch(html, /保留分类值|分类过滤|联动筛选|multiple=/)
   assert.match(html, /恢复原图/)
   assert.doesNotMatch(html, /<script|fetch\(|localStorage/)
 })
@@ -259,4 +261,17 @@ test('reader keeps authored cells and document intact while presenting concise c
     assert.doesNotMatch(html, /class="pr-source-dialog"/)
     assert.deepEqual(document, before)
   }
+})
+
+test('declared filters render one region, dynamic default KPI and only default rows without scripts', async () => {
+  const { document } = await interactionFixture()
+  const staticHtml = renderDocument(document)
+  assert.match(staticHtml, /pr-interaction-region/)
+  assert.match(staticHtml, /原始快照 · 不随筛选变化/)
+  assert.match(staticHtml, /550/)
+  assert.doesNotMatch(staticHtml, /<button|<select|data-row-index="2"/)
+  const interactive = renderDocument(document, 'interactive')
+  assert.equal((interactive.match(/aria-label="全局筛选"/g) ?? []).length, 1)
+  assert.doesNotMatch(interactive, /筛选字段|pr-dataset-filters|multiple=/)
+  assert.match(interactive, /重置筛选/)
 })

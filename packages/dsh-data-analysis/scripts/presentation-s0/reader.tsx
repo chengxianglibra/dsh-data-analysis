@@ -51,6 +51,8 @@ export function S0Reader({ document }: { document: PresentationDocument }) {
         const dataset = document.datasets.find((dataset) => dataset.id === block.datasetId)!
         const { data } = dataset
         if (block.kind === 'metric') {
+          if (block.rowSelection === 'slice')
+            throw new Error('S0 reference renderer supports fixed metrics only.')
           const index = data.columns.findIndex((column) => column.id === block.columnId)
           return (
             <section key={block.id}>

@@ -50,6 +50,11 @@ test('portable HTML embeds identical Python and SQL snapshots as data and readab
   const fallback = html.split('<div id="reader">')[0]!
   assert.match(fallback, /Python · 执行记录/)
   assert.match(fallback, /SQL · 执行记录/)
+  assert.match(fallback, /<code class="language-python"><span style="color:/)
+  assert.match(fallback, /<code class="language-sql"><span style="color:/)
+  assert.match(fallback, /已格式化展示/)
+  assert.doesNotMatch(fallback, /无法格式化/)
+  assert.match(html, /&#39;wasm-unsafe-eval&#39;/)
   assert.match(fallback, /literal-value/)
   assert.match(fallback, /&lt;\/script&gt;&lt;img src=x onerror=attack\(\)&gt;/)
   assert.doesNotMatch(html, /<img src=x|<script[^>]+src=/)

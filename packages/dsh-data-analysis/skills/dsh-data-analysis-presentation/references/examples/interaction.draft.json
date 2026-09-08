@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 1,
+  "title": "查询运行概览 · 全局筛选演示",
+  "sources": [],
+  "datasets": [
+    {
+      "id": "summary",
+      "kind": "computed",
+      "path": "presentation-example/interaction-summary.dataset.json",
+      "sourceIds": []
+    },
+    {
+      "id": "detail",
+      "kind": "computed",
+      "path": "presentation-example/interaction-detail.dataset.json",
+      "sourceIds": []
+    }
+  ],
+  "blocks": [
+    {
+      "id": "intro",
+      "kind": "markdown",
+      "text": "## 两日查询概览\n\n这是合成测试数据，用于验证全局筛选；不代表真实 Trino 查询结果。全量包含 550 次查询、15 次失败。下方可按日期和集群查看预先计算的结果。"
+    },
+    {
+      "id": "fixed",
+      "kind": "metric",
+      "datasetId": "summary",
+      "columnId": "query_count",
+      "rowIndex": 0,
+      "label": "完整快照查询数"
+    },
+    {
+      "id": "count",
+      "kind": "metric",
+      "datasetId": "summary",
+      "columnId": "query_count",
+      "rowSelection": "slice",
+      "label": "当前查询数"
+    },
+    {
+      "id": "failed",
+      "kind": "metric",
+      "datasetId": "summary",
+      "columnId": "failed_count",
+      "rowSelection": "slice",
+      "label": "当前失败数"
+    },
+    {
+      "id": "rate",
+      "kind": "metric",
+      "datasetId": "summary",
+      "columnId": "failure_rate",
+      "rowSelection": "slice",
+      "label": "当前失败率（%）"
+    },
+    {
+      "id": "chart",
+      "kind": "chart",
+      "datasetId": "detail",
+      "chart": "bar",
+      "x": "category",
+      "y": ["query_count"],
+      "numericMode": "exact",
+      "preparedViews": [
+        {
+          "id": "horizontal",
+          "label": "横向比较",
+          "datasetId": "detail",
+          "chart": "horizontalBar",
+          "x": "category",
+          "y": ["query_count"],
+          "numericMode": "exact"
+        }
+      ]
+    },
+    {
+      "id": "table",
+      "kind": "table",
+      "datasetId": "detail"
+    },
+    {
+      "id": "limitations",
+      "kind": "markdown",
+      "text": "## 口径说明\n\n失败率由 Python 按当前组合的失败数 / 查询数预先计算，单位为 %。每个筛选组合均有完整快照，阅读器不重新求和或计算比例。"
+    }
+  ],
+  "interaction": {
+    "title": "交互分析",
+    "blockIds": ["count", "failed", "rate", "chart", "table"],
+    "filters": [
+      {
+        "id": "day",
+        "label": "日期",
+        "allOptionId": "any",
+        "options": [
+          {
+            "id": "any",
+            "label": "全部"
+          },
+          {
+            "id": "mon",
+            "label": "周一"
+          },
+          {
+            "id": "tue",
+            "label": "周二"
+          }
+        ]
+      },
+      {
+        "id": "cluster",
+        "label": "集群",
+        "allOptionId": "any",
+        "options": [
+          {
+            "id": "any",
+            "label": "全部"
+          },
+          {
+            "id": "a",
+            "label": "甲集群"
+          },
+          {
+            "id": "b",
+            "label": "乙集群"
+          }
+        ]
+      }
+    ],
+    "slices": [
+      {
+        "selection": {
+          "day": "any",
+          "cluster": "any"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [0]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [0, 1]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "any",
+          "cluster": "a"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [1]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [2, 3]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "any",
+          "cluster": "b"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [2]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [4, 5]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "mon",
+          "cluster": "any"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [3]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [6, 7]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "mon",
+          "cluster": "a"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [4]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [8, 9]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "mon",
+          "cluster": "b"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [5]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [10, 11]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "tue",
+          "cluster": "any"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [6]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [12, 13]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "tue",
+          "cluster": "a"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [7]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [14, 15]
+          }
+        ]
+      },
+      {
+        "selection": {
+          "day": "tue",
+          "cluster": "b"
+        },
+        "datasets": [
+          {
+            "datasetId": "summary",
+            "rowIndices": [8]
+          },
+          {
+            "datasetId": "detail",
+            "rowIndices": [16, 17]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -13,6 +13,7 @@ const assetsRoot = new URL('lib/presentation/assets/', packageRoot)
 const common = {
   absWorkingDir: fileURLToPath(packageRoot),
   bundle: true,
+  loader: { '.wasm': /** @type {const} */ ('binary') },
   write: /** @type {const} */ (false),
   jsx: /** @type {const} */ ('automatic'),
   target: 'es2022',

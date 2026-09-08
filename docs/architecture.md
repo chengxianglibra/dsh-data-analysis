@@ -7,7 +7,7 @@ Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语�
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
 当前开发实现已接通一次 Python 执行准入、typed data projection、最小 Python helper、
-[共享 reader 与离线构建](modules/presentation-reader.md)、稳定报告身份、阅读器在线呈现编辑和同 dataset 临时联动筛选，以及唯一
+[共享 reader 与离线构建](modules/presentation-reader.md)、稳定报告身份、阅读器在线呈现编辑和Agent 声明的可选全局筛选与动态 KPI，以及唯一
 [展示 Skill](modules/presentation-skill.md)。旧 report-kit、报告 Skill、经典 JS 和 Evidence 协议已删除。
 当前仍是未发布开发状态；阶段范围见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)，
 报告编辑、全图形筛选与原卡片重开的验证见[当前验收记录](plan/2026-09-07-presentation-editing-acceptance.md)；
@@ -47,7 +47,7 @@ flowchart LR
 | Presentation delivery | present 与编辑完整提交、current 指针、durable receipt、RPC 与打开/下载 | 分析计算、长期版本管理、语义正确性 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
-| Presentation reader | 五类 block、独立编辑草稿、临时联动筛选、共享静态正文与离线 HTML | 分析计算、文件提交、receipt/RPC、长期版本管理 |
+| Presentation reader | 五类 block、独立编辑草稿、预计算组合选择、共享静态正文与离线 HTML | 分析计算、文件提交、receipt/RPC、长期版本管理 |
 | Presentation data | 固定公开 Artifact 读取、typed JSON、声明来源快照与最小 Python writer | computed 转换审计、分析正确性、语义补齐、observe 或 revalidation |
 
 模块文档：
@@ -124,6 +124,10 @@ spill 前执行 exact-value 脱敏。access Tool 与跨调用 lease 已删除。
 `workspaceId` 打开 `shell.overlay` 面板，面板内保留显式 Workspace 选择。入口随 Harness 的会话标题显示，
 无会话或空会话时不显示，侧栏底部不保留入口；管理与浏览均不要求 live Agent。
 
+报告 reader 通过 Host 注入的导航回调将来源中的公开语义引用连接到同一 Workspace 的语义层面板，
+按 `kind + path` 读取当前 Catalog 并定位；共享 reader 不持有语义层服务，portable 保留来源文本。
+该入口不执行查询或更新报告，详见[报告阅读器](modules/presentation-reader.md#通用阅读层级)。
+
 “数据源与凭证”管理页支持配置、替换、删除和测试。缺失配置时，Web 根 Agent 的原调用保持等待；
 提交验证成功后继续，失败可修正或交还 Agent。刷新、丢失响应、取消和定义变更由 Host 操作状态处理，
 不依赖历史 Tool Result 自动弹窗。管理页与语义层共用会话标题按钮样式；操作列表只显示进行中操作，完成后
@@ -162,7 +166,8 @@ source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable�
 数据源的代码页保存 Marivo 生产记录中的 SQL，以及 dataset 显式关联的 Python 执行快照。
 插件在成功 `marivo_python` 后记录本次提交代码并返回 `codeRef`，报告构建核验其 Workspace 与文件摘要；
 Harness 的原生执行与凭据生命周期保持原契约，代码记录失败不改变已有执行结果。
-reader 只读报告内嵌原文，不重新执行；执行记录与 dataset 的关联仍由作者声明。详见[展示数据投影](modules/presentation-projection.md)。
+reader 只读报告内嵌原文，不重新执行；Python、SQL 自动格式化与语法高亮仅影响展示，保存及复制保持执行原文。
+执行记录与 dataset 的关联仍由作者声明。详见[展示数据投影](modules/presentation-projection.md)和[reader 模块](modules/presentation-reader.md)。
 
 ## 验证
 

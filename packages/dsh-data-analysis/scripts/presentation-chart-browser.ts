@@ -79,19 +79,18 @@ export async function verifyChartGallery(page: Page) {
   await panel.getByRole('combobox', { name: '图形类型', exact: true }).selectOption('horizontalBar')
   await panel.getByRole('combobox', { name: 'X 字段', exact: true }).selectOption('coordinate')
   await panel.getByRole('checkbox', { name: 'b', exact: true }).uncheck()
-  await panel.getByRole('combobox', { name: '过滤字段', exact: true }).selectOption('segment')
-  await panel.getByRole('listbox', { name: '保留分类值', exact: true }).selectOption('"A"')
-  assert.equal(await line.locator('.recharts-bar-rectangle').count(), 6)
+  assert.equal(await panel.getByText('分类过滤', { exact: true }).count(), 0)
+  assert.equal(await line.locator('.recharts-bar-rectangle').count(), 12)
   await line.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
   await line.getByRole('menuitem', { name: '数据源', exact: true }).click()
   const dialog = reader.locator('dialog.pr-source-dialog')
   await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
-  assert.equal(await dialog.locator('tbody tr').count(), 6)
+  assert.equal(await dialog.locator('tbody tr').count(), 12)
   assert.deepEqual(
     await dialog
       .locator('tbody tr')
       .evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute('data-row-index')))),
-    [0, 2, 4, 6, 8, 10],
+    Array.from({ length: 12 }, (_, i) => i),
   )
   assert.deepEqual(
     await dialog
@@ -108,7 +107,7 @@ export async function verifyChartGallery(page: Page) {
   assert.match(copied, /Saved chart binding: .*"chart":"line"/)
   assert.match(copied, /Current chart binding: .*"chart":"horizontalBar"/)
   assert.match(copied, /"x":"coordinate","y":\["a"\]/)
-  assert.match(copied, /Category filters: \{"segment":\["A"\]\}/)
+  assert.doesNotMatch(copied, /Category filters:/)
   assert.match(copied, /page-local exploration \(not saved; download retains original chart\)/)
   await panel.getByRole('button', { name: '恢复原图', exact: true }).click()
   assert.equal(

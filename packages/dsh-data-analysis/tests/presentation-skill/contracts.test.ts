@@ -116,6 +116,7 @@ test('all presentation draft examples validate with production draft and documen
         })),
       ),
       blocks: draft.blocks,
+      ...(draft.interaction ? { interaction: draft.interaction } : {}),
       diagnostics: [],
     })
   }

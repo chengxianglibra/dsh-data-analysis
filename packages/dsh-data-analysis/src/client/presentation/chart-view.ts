@@ -3,14 +3,13 @@ import {
   type ChartView,
   validateChartView,
 } from '../../presentation/contracts/charts.ts'
-import type { Cell, TypedDataset } from '../../presentation/contracts/types.ts'
-import { type ChartBlock, columnIndex } from './model.ts'
+import type { TypedDataset } from '../../presentation/contracts/types.ts'
+import type { ChartBlock } from './model.ts'
 
 /** Page-local state only: the authored block and snapshot are never modified. */
 export interface ChartExploration {
   view: ChartView
   hidden: string[]
-  filters: Record<string, Cell[]>
   preparedViewId?: string
 }
 
@@ -26,7 +25,7 @@ export function savedChartView(block: ChartBlock & { label?: string }): ChartVie
 }
 
 export function initialChartExploration(block: ChartBlock): ChartExploration {
-  return { view: savedChartView(block), hidden: [], filters: {} }
+  return { view: savedChartView(block), hidden: [] }
 }
 
 export function exploredChartBlock(block: ChartBlock, state?: ChartExploration): ChartBlock {
@@ -100,27 +99,6 @@ export function withChartSeriesStyle<Key extends keyof SeriesStyle>(
   return next
 }
 
-export function filteredChartRows(
-  dataset: TypedDataset,
-  filters: ChartExploration['filters'],
-): number[] {
-  const selections = Object.entries(filters).map(([id, values]) => ({
-    index: columnIndex(dataset, id),
-    values: new Set(values.map((value) => JSON.stringify(value))),
-  }))
-  return dataset.rows.flatMap((row, index) =>
-    selections.every((selection) => selection.values.has(JSON.stringify(row[selection.index])))
-      ? [index]
-      : [],
-  )
-}
-
-/** Preserve null, empty strings and repeated observations as distinct snapshot values. */
-export function chartFilterValues(dataset: TypedDataset, columnId: string): Cell[] {
-  const index = columnIndex(dataset, columnId)
-  return [...new Map(dataset.rows.map((row) => [JSON.stringify(row[index]), row[index]!])).values()]
-}
-
 export function changeChartView(
   state: ChartExploration,
   view: ChartView,
@@ -130,7 +108,6 @@ export function changeChartView(
   return {
     view,
     hidden: datasetChanged ? [] : state.hidden.filter((field) => view.y.includes(field)),
-    filters: datasetChanged ? {} : state.filters,
     preparedViewId,
   }
 }

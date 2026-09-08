@@ -12,6 +12,7 @@ const outputUrl = new URL('lib/client.js', packageRoot)
 const result = await build({
   entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
   bundle: true,
+  loader: { '.wasm': 'binary' },
   external: ['@deepseek-ai/*', 'react', 'react/*', 'react-dom', 'react-dom/*'],
   platform: 'browser',
   format: 'cjs',

@@ -21,6 +21,7 @@ import {
   type PresentationDocument,
   parsePresentationDocument,
 } from '../src/presentation/contracts/index.ts'
+import { defaultSelection, interactionRows } from '../src/presentation/contracts/interaction.ts'
 import type {
   PresentationBlock,
   SourceSnapshot,
@@ -522,7 +523,16 @@ async function verifyReader(
     if (block.kind === 'metric') {
       const index = dataset!.columns.findIndex((column) => column.id === block.columnId)
       const column = dataset!.columns[index]!
-      const value = dataset!.rows[block.rowIndex]![index]!
+      const value =
+        dataset!.rows[
+          block.rowSelection === 'slice'
+            ? interactionRows(
+                document.interaction,
+                defaultSelection(document.interaction!),
+                block,
+              )![0]!
+            : block.rowIndex
+        ]![index]!
       const metric = node.locator('[data-metric-value]')
       assert.equal(await metric.count(), 1, `metric ${block.id} must have one displayed value`)
       assert.equal(await metric.innerText(), metricText(value, column))

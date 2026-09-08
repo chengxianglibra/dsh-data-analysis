@@ -59,4 +59,5 @@ export function installSemanticBrowser(ctx, rpc) {
       },
     ),
   )
+  return model.showObject
 }

@@ -108,3 +108,7 @@ ProducedFiles 与独立报告节点共存、首个回执即时显示、多报告
 [报告交付与质量修复验收](../plan/2026-09-07-presentation-delivery-quality-acceptance.md)。
 
 在线编辑、原卡片重开与全图形筛选的当前结果见[编辑与联动筛选验收](../plan/2026-09-07-presentation-editing-acceptance.md)。
+
+## 全局筛选的保存边界
+
+`interaction` 随原始文档传递和保存；当前阅读选择不进入 edits。删除组件时服务端从已保存声明裁剪引用，并拒绝跨区域移动。动态 KPI 和离线默认组合见[共享 reader](presentation-reader.md#可选全局筛选与动态-kpi)。

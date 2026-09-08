@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { parsePresentationDocument } from '../../presentation/contracts/index.ts'
+import {
+  defaultSelection,
+  editedInteraction,
+  filterSummary,
+  interactionRows,
+} from '../../presentation/contracts/interaction.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
 import { ChartExplorer } from './chart-explorer.tsx'
 import { ChartRenderer } from './chart-renderer.tsx'
-import {
-  type ChartExploration,
-  exploredChartBlock,
-  filteredChartRows,
-  initialChartExploration,
-} from './chart-view.ts'
+import { type ChartExploration, exploredChartBlock, initialChartExploration } from './chart-view.ts'
 import { CopyContext } from './copy-context.tsx'
-import { DatasetFilterControls, type DatasetFilters } from './dataset-filters.tsx'
 import { CellEditor, type ReaderEditing } from './editor-controls.tsx'
+import { GlobalFilterControls } from './global-filters.tsx'
 import { MoreIcon } from './icons.tsx'
 import { Markdown } from './markdown.tsx'
 import {
@@ -25,6 +26,7 @@ import {
   valueWithUnit,
 } from './model.ts'
 import { SourceDialog } from './source-dialog.tsx'
+import type { OpenSemanticRef } from './source-facts.ts'
 import { blockSources, SourceSummary } from './sources.tsx'
 import { DatasetTable } from './table.tsx'
 
@@ -160,7 +162,7 @@ function Block({
       </>
     )
   const dataset = datasetById(document, block.datasetId)
-  const metric = block.kind === 'metric' ? selectMetric(dataset.data, block) : undefined
+  const metric = block.kind === 'metric' ? selectMetric(dataset.data, block, rowIndices) : undefined
   return (
     <>
       {block.kind === 'metric' && metric ? (
@@ -201,6 +203,7 @@ function Block({
           filterKey={filterKey}
           rowIndices={rowIndices}
           showScope={dataset.data.truncated}
+          showSelectionCount={dataset.data.truncated}
         />
       ) : null}
     </>
@@ -222,22 +225,28 @@ function ReaderContents({
   document: savedDocument,
   mode,
   editing,
+  onOpenSemanticRef,
 }: {
   document: PresentationDocument
   mode: ReaderMode
   editing?: ReaderEditing
+  onOpenSemanticRef?: OpenSemanticRef
 }) {
-  const document = editing ? { ...savedDocument, ...editing.edits } : savedDocument
-  const [filters, setFilters] = useState<Record<string, DatasetFilters>>({})
-  const selection = (id: string): DatasetFilters => (Object.hasOwn(filters, id) ? filters[id]! : {})
-  const updateFilters = (id: string, next: DatasetFilters) =>
-    setFilters((previous) => ({ ...previous, [id]: next }))
-  const rowsFor = (block: PresentationBlock) =>
-    'datasetId' in block && mode === 'interactive' && Object.keys(selection(block.datasetId)).length
-      ? filteredChartRows(datasetById(document, block.datasetId).data, selection(block.datasetId))
-      : undefined
-  const anyFilters =
-    mode === 'interactive' && Object.values(filters).some((entry) => Object.keys(entry).length > 0)
+  const document = editing
+    ? {
+        ...savedDocument,
+        ...editing.edits,
+        interaction: editedInteraction(savedDocument, editing.edits.blocks),
+      }
+    : savedDocument
+  const interaction = document.interaction
+  const [chosen, setChosen] = useState<Record<string, string>>(() =>
+    interaction ? defaultSelection(interaction) : {},
+  )
+  const selection = mode === 'static' && interaction ? defaultSelection(interaction) : chosen
+  const rowsFor = (block: PresentationBlock) => interactionRows(interaction, selection, block)
+  const summaryFor = (block: PresentationBlock) =>
+    interaction?.blockIds.includes(block.id) ? filterSummary(interaction, selection) : undefined
 
   const [sourceCell, setSourceCell] = useState<{ block: PresentationBlock; trigger: HTMLElement }>()
   const [explorations, setExplorations] = useState<Record<string, ChartExploration>>({})
@@ -245,12 +254,6 @@ function ReaderContents({
   const updateExploration = (id: string, state: ChartExploration) => {
     const saved = document.blocks.find((block) => block.id === id)
     if (saved?.kind !== 'chart') return
-    const previousDataset = editing
-      ? saved.datasetId
-      : Object.hasOwn(explorations, id)
-        ? explorations[id]!.view.datasetId
-        : saved.datasetId
-    if (previousDataset === state.view.datasetId) updateFilters(state.view.datasetId, state.filters)
     if (
       editing &&
       !editing.disabled &&
@@ -262,7 +265,7 @@ function ReaderContents({
         blocks: editing.edits.blocks.map((entry) => (entry.id === id ? block : entry)),
       })
     }
-    setExplorations((previous) => ({ ...previous, [id]: { ...state, filters: {} } }))
+    setExplorations((previous) => ({ ...previous, [id]: state }))
   }
   // Known snapshot diagnostics have concise, contextual presentations below.
   const diagnostics = [
@@ -295,7 +298,6 @@ function ReaderContents({
               editing && local && JSON.stringify(local.view) !== JSON.stringify(view)
                 ? undefined
                 : local?.preparedViewId,
-            filters: selection(view.datasetId),
           }
         : undefined
     const block = savedBlock.kind === 'chart' ? exploredChartBlock(savedBlock, state) : savedBlock
@@ -309,7 +311,7 @@ function ReaderContents({
       >
         {mode === 'interactive' && (
           <div className="pr-cell-toolbar pr-interactive">
-            <CopyContext text={followUpContext(document, savedBlock, state)}>
+            <CopyContext text={followUpContext(document, savedBlock, state, selection)}>
               {(copy) => (
                 <CellMenu
                   onCopy={copy}
@@ -330,7 +332,7 @@ function ReaderContents({
             </CopyContext>
           </div>
         )}
-        {editing && <CellEditor block={savedBlock} document={document} editing={editing} />}
+        {editing && <CellEditor block={savedBlock} document={savedDocument} editing={editing} />}
         <Block
           block={block}
           document={document}
@@ -342,12 +344,21 @@ function ReaderContents({
               : undefined
           }
           rowIndices={rows}
-          filterKey={'datasetId' in block ? JSON.stringify(selection(block.datasetId)) : undefined}
+          filterKey={summaryFor(block)}
         />
         {savedBlock.kind === 'chart' && block.kind === 'chart' && explorerCell?.id === block.id && (
           <ChartExplorer
             block={savedBlock}
-            data={datasetById(document, block.datasetId).data}
+            data={
+              rows
+                ? {
+                    ...datasetById(document, block.datasetId).data,
+                    rows: rows.map(
+                      (index) => datasetById(document, block.datasetId).data.rows[index]!,
+                    ),
+                  }
+                : datasetById(document, block.datasetId).data
+            }
             state={state ?? initialChartExploration(savedBlock)}
             onChange={(next) => updateExploration(block.id, next)}
             onClose={() => setExplorerCell(undefined)}
@@ -408,45 +419,53 @@ function ReaderContents({
           </ul>
         </aside>
       )}
-      {mode === 'interactive' &&
-        document.datasets
-          .filter((dataset) =>
-            document.blocks.some((block) => {
-              if (block.kind === 'chart')
-                return (
-                  (editing
-                    ? block.datasetId
-                    : Object.hasOwn(explorations, block.id)
-                      ? explorations[block.id]!.view.datasetId
-                      : block.datasetId) === dataset.id
-                )
-              return block.kind === 'table' && block.datasetId === dataset.id
-            }),
-          )
-          .map((dataset) => (
-            <DatasetFilterControls
-              key={dataset.id}
-              dataset={dataset}
-              filters={selection(dataset.id)}
-              onChange={(next) => updateFilters(dataset.id, next)}
-            />
-          ))}
-      {anyFilters && (
-        <p className="pr-notice" role="status">
-          当前筛选只改变图表和表格的展示；正文和指标保持原快照范围，不随筛选重算。
-        </p>
-      )}
       {!document.blocks.length && <p className="pr-empty">这份报告尚无 cell。数据与来源仍保留。</p>}
       <div className="pr-blocks">
-        {blockGroups(document.blocks).map((group) =>
-          group[0]!.kind === 'metric' ? (
-            <div className="pr-metric-group" key={group[0]!.id}>
-              {group.map(renderBlock)}
-            </div>
-          ) : (
-            renderBlock(group[0]!)
-          ),
-        )}
+        {(() => {
+          const renderGroups = (blocks: PresentationBlock[]) =>
+            blockGroups(blocks).map((group) =>
+              group[0]!.kind === 'metric' ? (
+                <div className="pr-metric-group" key={group[0]!.id}>
+                  {group.map(renderBlock)}
+                </div>
+              ) : (
+                renderBlock(group[0]!)
+              ),
+            )
+          if (!interaction) return renderGroups(document.blocks)
+          const start = document.blocks.findIndex((block) => block.id === interaction.blockIds[0])
+          const end = start + interaction.blockIds.length
+          const fixed = (blocks: PresentationBlock[], key: string) =>
+            blocks.length > 0 && (
+              <section className="pr-fixed-region pr-blocks" key={key} aria-label="固定内容">
+                <p className="pr-region-label">原始快照 · 不随筛选变化</p>
+                {renderGroups(blocks)}
+              </section>
+            )
+          return (
+            <>
+              {fixed(document.blocks.slice(0, start), 'before')}
+              <section className="pr-interaction-region" aria-label={interaction.title}>
+                <header className="pr-interaction-header">
+                  <h2>{interaction.title}</h2>
+                  <p className="pr-muted">以下指标、图表与表格随筛选同步更新</p>
+                  {mode === 'interactive' && (
+                    <GlobalFilterControls
+                      interaction={interaction}
+                      selection={selection}
+                      onChange={setChosen}
+                    />
+                  )}
+                  <p className="pr-filter-status" role="status">
+                    {filterSummary(interaction, selection)}
+                  </p>
+                </header>
+                <div className="pr-blocks">{renderGroups(document.blocks.slice(start, end))}</div>
+              </section>
+              {fixed(document.blocks.slice(end), 'after')}
+            </>
+          )
+        })()}
       </div>
       {mode === 'static' && <SourceSummary document={document} />}
       {sourceCell && sourceBlock && (
@@ -456,13 +475,11 @@ function ReaderContents({
           block={sourceBlock}
           explored={!!sourceState}
           rowIndices={rowsFor(sourceBlock)}
-          filterKey={
-            'datasetId' in sourceBlock
-              ? JSON.stringify(selection(sourceBlock.datasetId))
-              : undefined
-          }
+          filterKey={summaryFor(sourceBlock)}
+          filterSummary={summaryFor(sourceBlock)}
           restoreFocusTo={sourceCell.trigger}
           onClose={() => setSourceCell(undefined)}
+          onOpenSemanticRef={onOpenSemanticRef}
         />
       )}
     </article>
@@ -473,10 +490,12 @@ export function PresentationReader({
   document,
   mode = 'interactive',
   editing,
+  onOpenSemanticRef,
 }: {
   document: PresentationDocument
   mode?: ReaderMode
   editing?: ReaderEditing
+  onOpenSemanticRef?: OpenSemanticRef
 }) {
   const parsed = useMemo(() => parsePresentationDocument(document), [document])
   return (
@@ -485,6 +504,7 @@ export function PresentationReader({
       document={parsed}
       mode={mode}
       editing={editing}
+      onOpenSemanticRef={mode === 'interactive' ? onOpenSemanticRef : undefined}
     />
   )
 }

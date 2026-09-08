@@ -1,4 +1,5 @@
 import type { PresentationEdits } from '../../presentation/contracts/editing.ts'
+import { blockRegion } from '../../presentation/contracts/interaction.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
 
 export interface ReaderEditing {
@@ -22,10 +23,14 @@ export function CellEditor({
       ...editing.edits,
       blocks: editing.edits.blocks.map((entry) => (entry.id === block.id ? next : entry)),
     })
+  const canMove = (offset: number) => {
+    const other = editing.edits.blocks[index + offset]
+    return !!other && blockRegion(document, block.id) === blockRegion(document, other.id)
+  }
   const move = (offset: number) => {
     const blocks = [...editing.edits.blocks]
     const other = index + offset
-    if (other < 0 || other >= blocks.length) return
+    if (!canMove(offset)) return
     ;[blocks[index], blocks[other]] = [blocks[other]!, blocks[index]!]
     editing.onChange({ ...editing.edits, blocks })
   }
@@ -43,14 +48,10 @@ export function CellEditor({
     >
       <legend>编辑 cell</legend>
       <div className="pr-editor-actions">
-        <button type="button" disabled={index === 0} onClick={() => move(-1)}>
+        <button type="button" disabled={!canMove(-1)} onClick={() => move(-1)}>
           上移
         </button>
-        <button
-          type="button"
-          disabled={index === editing.edits.blocks.length - 1}
-          onClick={() => move(1)}
-        >
+        <button type="button" disabled={!canMove(1)} onClick={() => move(1)}>
           下移
         </button>
         <button

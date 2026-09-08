@@ -182,14 +182,13 @@ export type ChartView = ChartViewFields &
 
 export type PresentationBlock =
   | { id: string; kind: 'markdown'; text: string }
-  | {
+  | ({
       id: string
       kind: 'metric'
       datasetId: string
       columnId: string
-      rowIndex: number
       label: string
-    }
+    } & ({ rowIndex: number; rowSelection?: never } | { rowSelection: 'slice'; rowIndex?: never }))
   | ({
       id: string
       kind: 'chart'
@@ -198,12 +197,31 @@ export type PresentationBlock =
   | { id: string; kind: 'table'; datasetId: string; columns?: string[] }
   | { id: string; kind: 'source'; sourceIds: string[] }
 
+/** Author-prepared combinations; the reader never computes business aggregates. */
+export interface PresentationFilter {
+  id: string
+  label: string
+  allOptionId: string
+  options: { id: string; label: string }[]
+}
+export interface PresentationSlice {
+  selection: Record<string, string>
+  datasets: { datasetId: string; rowIndices: number[] }[]
+}
+export interface PresentationInteraction {
+  title: string
+  blockIds: string[]
+  filters: PresentationFilter[]
+  slices: PresentationSlice[]
+}
+
 export interface PresentationDraft {
   schemaVersion: 1
   title: string
   datasets: DraftDataset[]
   sources: DeclaredSource[]
   blocks: PresentationBlock[]
+  interaction?: PresentationInteraction
 }
 export interface PresentationDiagnostic {
   code: string
@@ -221,6 +239,7 @@ export interface PresentationDocument {
   sources: SourceSnapshot[]
   blocks: PresentationBlock[]
   diagnostics: PresentationDiagnostic[]
+  interaction?: PresentationInteraction
 }
 
 export type PresentationAsset = 'presentation.json' | 'index.html'

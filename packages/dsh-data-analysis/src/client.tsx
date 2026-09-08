@@ -29,7 +29,7 @@ export const inject = ['connection', 'slots', 'locale', 'conversationEvents', 'i
 export function apply(ctx: Context): void {
   const connection = ctx.get('connection')
   installSemanticReferenceSource(ctx, connection.rpc)
-  installSemanticBrowser(ctx, connection.rpc)
+  const openSemanticObject = installSemanticBrowser(ctx, connection.rpc)
   installCredentials(ctx, connection.rpc)
-  installPresentation(ctx, connection.rpc)
+  installPresentation(ctx, connection.rpc, openSemanticObject)
 }

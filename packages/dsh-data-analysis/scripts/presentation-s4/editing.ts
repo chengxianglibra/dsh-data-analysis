@@ -38,35 +38,7 @@ export async function verifyEditing(
   const cell = (id: string) => reader.locator(`[data-block-id="${id}"]`)
   await card.getByRole('button', { name: '打开分析', exact: true }).click()
   await reader.getByRole('heading', { name: original.title, exact: true }).waitFor()
-  await reader.getByText('联动筛选 · computed', { exact: true }).click()
-  const values = reader.getByRole('listbox', { name: '保留值（可多选）', exact: true })
-  await values.selectOption('1')
-  assert.deepEqual(
-    await cell('table')
-      .locator('tbody tr')
-      .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
-    ['1'],
-  )
-  for (const id of ['bar', 'line']) {
-    await cell(id).getByRole('button', { name: 'cell 更多操作' }).click()
-    await cell(id).getByRole('menuitem', { name: '数据源', exact: true }).click()
-    const dialog = reader.getByRole('dialog', { name: '数据源', exact: true })
-    await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
-    assert.deepEqual(
-      await dialog
-        .locator('tbody tr')
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
-      ['1'],
-    )
-    await dialog.getByRole('button', { name: '关闭数据源', exact: true }).click()
-  }
-  assert.equal(
-    await cell('metric').locator('[data-metric-value]').textContent(),
-    '9,007,199,254,740,993',
-  )
-  await values.selectOption([])
-  assert.equal(await cell('table').locator('tbody tr[data-row-index]').count(), 0)
-  await values.selectOption('1')
+  assert.equal(await reader.getByRole('group', { name: '全局筛选' }).count(), 0)
   await page.emulateMedia({ media: 'print' })
   assert.equal(
     await overlay.locator('[data-mode="static"] [data-block-id="table"] tbody tr').count(),
@@ -76,7 +48,7 @@ export async function verifyEditing(
   const downloadPending = page.waitForEvent('download')
   await overlay.getByRole('button', { name: '下载 HTML', exact: true }).click()
   const download = await downloadPending
-  const originalDownload = path.join(outputRoot, 'editing-filtered-download.html')
+  const originalDownload = path.join(outputRoot, 'editing-download.html')
   await download.saveAs(originalDownload)
   assert.deepEqual(
     await readFile(originalDownload),
@@ -84,10 +56,6 @@ export async function verifyEditing(
   )
   await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
   assert.equal(await cell('table').locator('tbody tr').count(), 2)
-  await reader.getByText('联动筛选 · computed', { exact: true }).click()
-  await values.selectOption('1')
-  assert.equal(await overlay.getByText('有未保存的编辑', { exact: true }).count(), 0)
-  await reader.getByRole('button', { name: '清除联动筛选', exact: true }).click()
   await reader.getByRole('textbox', { name: '报告标题', exact: true }).fill('阅读器保存验收')
   await reader
     .getByRole('textbox', { name: '正文 intro', exact: true })
@@ -237,8 +205,8 @@ export async function verifyEditing(
     editor: true,
     keyboard: true,
     narrow: true,
-    linkedOriginalRowIndices: true,
-    filteredDownloadUnchanged: true,
+    undeclaredFiltersAbsent: true,
+    downloadUnchanged: true,
     printUnfiltered: true,
     originalCardReopen: true,
     conflictRetainsDraft: true,
@@ -257,29 +225,15 @@ export async function verifyPreparedFilters(page: Page, delivery: PresentationDe
   await card.getByRole('button', { name: '打开分析', exact: true }).click()
   const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
   const reader = overlay.locator('[data-mode="interactive"]')
-  const controls = (id: string) =>
-    reader
-      .locator('.pr-dataset-filters')
-      .filter({ has: page.getByText(`联动筛选 · ${id}`, { exact: true }) })
-  for (const id of ['charts-series', 'charts-bins']) {
-    await controls(id).locator('summary').click()
-    await controls(id)
-      .getByRole('listbox', { name: '保留值（可多选）', exact: true })
-      .selectOption('1')
-  }
+  await reader.getByRole('button', { name: /展示范围/ }).click()
+  await reader.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
   const cell = reader.locator('[data-block-id="gallery-line"]')
   await cell.getByRole('button', { name: 'cell 更多操作' }).click()
   await cell.getByRole('menuitem', { name: '探索图表', exact: true }).click()
   const explorer = cell.locator('[data-chart-explorer]')
-  const check = async (view: string, field: string) => {
+  const check = async (view: string) => {
     await explorer.getByRole('combobox', { name: '已准备视图', exact: true }).selectOption(view)
-    const values = controls(field).getByRole('listbox', { name: '保留值（可多选）', exact: true })
-    assert.deepEqual(
-      await values.evaluate((node: HTMLSelectElement) =>
-        Array.from(node.selectedOptions, (option) => option.value),
-      ),
-      ['1'],
-    )
+    assert.equal(await reader.getByRole('button', { name: /展示范围.*第二条观测/ }).count(), 1)
     await cell.getByRole('button', { name: 'cell 更多操作' }).click()
     await cell.getByRole('menuitem', { name: '数据源', exact: true }).click()
     const dialog = reader.getByRole('dialog', { name: '数据源', exact: true })
@@ -292,9 +246,9 @@ export async function verifyPreparedFilters(page: Page, delivery: PresentationDe
     )
     await dialog.getByRole('button', { name: '关闭数据源', exact: true }).click()
   }
-  await check('prepared-histogram', 'charts-bins')
-  await check('', 'charts-series')
-  await check('prepared-scatter', 'charts-series')
+  await check('prepared-histogram')
+  await check('')
+  await check('prepared-scatter')
   await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
   await cell.getByRole('button', { name: 'cell 更多操作' }).click()
   await cell.getByRole('menuitem', { name: '探索图表', exact: true }).click()
@@ -332,8 +286,7 @@ export async function verifyPreparedFilters(page: Page, delivery: PresentationDe
     preparedViewUsesActualDataset: true,
     preparedViewSave: true,
     undoRedoPreparedView: true,
-    sameDatasetPreparedViewRetainsFilters: true,
-    unrelatedDatasetFilterRetained: true,
+    preparedViewRetainsGlobalSelection: true,
   }
 }
 
@@ -353,11 +306,11 @@ export async function verifyAllChartFilters(
     await panel.getByRole('button', { name: '恢复原图', exact: true }).click()
     await close.click()
   }
-  for (const controls of await reader.locator('.pr-dataset-filters').all()) {
-    if ((await controls.getAttribute('open')) === null) await controls.locator('summary').click()
-    await controls.getByRole('button', { name: '清除联动筛选', exact: true }).click()
-    await controls.locator('summary').click()
-  }
+  await reader
+    .getByRole('button', { name: '重置筛选', exact: true })
+    .evaluate((button: HTMLButtonElement) => {
+      if (!button.disabled) button.click()
+    })
   const facts = new Map<string, string[]>()
   for (const block of charts) {
     const cell = reader.locator(`[data-block-id="${block.id}"]`)
@@ -370,36 +323,25 @@ export async function verifyAllChartFilters(
           marks.map((mark) =>
             JSON.stringify([
               mark.getAttribute('aria-label'),
-              mark.getAttribute('data-share-start'),
-              mark.getAttribute('data-share-end'),
+              mark.getAttribute('data-share-end') === null
+                ? null
+                : Number(
+                    (
+                      Number(mark.getAttribute('data-share-end')) -
+                      Number(mark.getAttribute('data-share-start'))
+                    ).toFixed(12),
+                  ),
             ]),
           ),
         ),
     )
   }
-  for (const dataset of document.datasets) {
-    const controls = reader
-      .locator('.pr-dataset-filters')
-      .filter({ has: page.getByText(`联动筛选 · ${dataset.id}`, { exact: true }) })
-    if (!(await controls.count())) continue
-    await controls.locator('summary').click()
-    await controls.getByRole('button', { name: '清除联动筛选', exact: true }).click()
-    await controls
-      .getByRole('combobox', { name: '筛选字段', exact: true })
-      .selectOption(dataset.data.columns[0]!.id)
-    await controls.getByRole('listbox', { name: '保留值（可多选）', exact: true }).selectOption('1')
-    await controls.locator('summary').click()
-  }
+  await reader.getByRole('button', { name: /展示范围/ }).click()
+  await reader.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
   const checked: string[] = []
   for (const block of charts) {
     const cell = reader.locator(`[data-block-id="${block.id}"]`)
     await cell.scrollIntoViewIfNeeded()
-    await cell
-      .getByText(
-        `当前筛选：已保存 ${document.datasets.find((dataset) => dataset.id === block.datasetId)!.data.rows.length} 行中命中 1 行`,
-        { exact: true },
-      )
-      .waitFor()
     const rows = await cell
       .locator('[data-source-row-index]')
       .evaluateAll((marks) => marks.map((mark) => mark.getAttribute('data-source-row-index')))
@@ -423,8 +365,14 @@ export async function verifyAllChartFilters(
             marks.map((mark) =>
               JSON.stringify([
                 mark.getAttribute('aria-label'),
-                mark.getAttribute('data-share-start'),
-                mark.getAttribute('data-share-end'),
+                mark.getAttribute('data-share-end') === null
+                  ? null
+                  : Number(
+                      (
+                        Number(mark.getAttribute('data-share-end')) -
+                        Number(mark.getAttribute('data-share-start'))
+                      ).toFixed(12),
+                    ),
               ]),
             ),
           ),
@@ -444,11 +392,8 @@ export async function verifyAllChartFilters(
     await dialog.getByRole('button', { name: '关闭数据源', exact: true }).click()
     checked.push(block.chart)
   }
-  for (const controls of await reader.locator('.pr-dataset-filters').all()) {
-    await controls.locator('summary').click()
-    await controls.getByRole('listbox', { name: '保留值（可多选）', exact: true }).selectOption([])
-    await controls.locator('summary').click()
-  }
+  await reader.getByRole('button', { name: /展示范围/ }).click()
+  await reader.getByRole('menuitemradio', { name: '空结果', exact: true }).click()
   for (const block of charts) {
     const cell = reader.locator(`[data-block-id="${block.id}"]`)
     assert.equal(

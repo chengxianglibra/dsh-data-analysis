@@ -6,7 +6,12 @@ import type {
 } from '../../presentation/contracts/types.ts'
 import { columnIndex, columnLabel, datasetById, selectedSources, snapshotDate } from './model.ts'
 import { SourceCodeSummary } from './source-code.tsx'
-import { semanticKindLabel, sourceOverviewFacts } from './source-facts.ts'
+import {
+  type OpenSemanticRef,
+  semanticKindLabel,
+  sourceOverviewFacts,
+  sourceSemanticRef,
+} from './source-facts.ts'
 
 export function blockSources(document: PresentationDocument, block?: PresentationBlock) {
   if (!block) return document.sources
@@ -26,7 +31,15 @@ function SavedTime({ value }: { value: string }) {
   )
 }
 
-function SourceCard({ source, number }: { source: SourceSnapshot; number?: number }) {
+function SourceCard({
+  source,
+  number,
+  onOpenSemanticRef,
+}: {
+  source: SourceSnapshot
+  number?: number
+  onOpenSemanticRef?: OpenSemanticRef
+}) {
   const { createdAt, semanticGroups, issues, notices } = sourceOverviewFacts(source)
   if (
     source.status === 'available' &&
@@ -54,9 +67,25 @@ function SourceCard({ source, number }: { source: SourceSnapshot; number?: numbe
         <div className="pr-source-semantic-group" key={group.kind}>
           <h4 className="pr-source-overview-label">{semanticKindLabel(group.kind)}</h4>
           <ul className="pr-source-semantic-list">
-            {group.paths.map((semanticPath) => (
-              <li key={semanticPath}>{semanticPath}</li>
-            ))}
+            {group.paths.map((semanticPath) => {
+              const ref = sourceSemanticRef(group.kind, semanticPath)
+              return (
+                <li key={semanticPath}>
+                  {ref && onOpenSemanticRef ? (
+                    <button
+                      type="button"
+                      className="pr-semantic-link"
+                      onClick={() => onOpenSemanticRef(ref)}
+                      title="查看当前语义定义"
+                    >
+                      {semanticPath}
+                    </button>
+                  ) : (
+                    semanticPath
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
       ))}
@@ -85,9 +114,11 @@ function SourceCard({ source, number }: { source: SourceSnapshot; number?: numbe
 export function SourceOverview({
   document,
   block,
+  onOpenSemanticRef,
 }: {
   document: PresentationDocument
   block?: PresentationBlock
+  onOpenSemanticRef?: OpenSemanticRef
 }) {
   const dataset = block && 'datasetId' in block ? datasetById(document, block.datasetId) : undefined
   const sources = blockSources(document, block)
@@ -140,6 +171,7 @@ export function SourceOverview({
           <SourceCard
             key={source.id}
             source={source}
+            onOpenSemanticRef={onOpenSemanticRef}
             number={sources.length > 1 ? index + 1 : undefined}
           />
         ))}

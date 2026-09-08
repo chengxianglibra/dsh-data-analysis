@@ -14,6 +14,7 @@ import {
   semanticKindLabel,
   sourceOverviewFacts,
 } from '../../src/client/presentation/source-facts.ts'
+import { kindLabels } from '../../src/client/semantic-browser/labels.ts'
 import type {
   PresentationBlock,
   PresentationDocument,
@@ -26,19 +27,24 @@ let renderDialog: (
   document: PresentationDocument,
   block: PresentationBlock,
   rowIndices?: number[],
+  navigation?: boolean,
 ) => string
+let formatSource: (text: string, language: 'python' | 'sql') => { text: string; formatted: boolean }
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-source-render-'))
   const outfile = path.join(directory, 'sources.mjs')
   await build({
+    loader: { '.wasm': 'binary' },
+    target: 'es2022',
     stdin: {
       contents: `import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { SourceSummary } from './src/client/presentation/sources.tsx';
 import { SourceDialog } from './src/client/presentation/source-dialog.tsx';
+export { formatSource } from './src/client/presentation/source-format.ts';
 export function renderSummary(document, block) { return renderToStaticMarkup(createElement(SourceSummary, { document, block })); }
-export function renderDialog(document, block, rowIndices) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, rowIndices, explored: !!rowIndices, onClose() {} })); }`,
+export function renderDialog(document, block, rowIndices, navigation) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, rowIndices, onOpenSemanticRef: navigation ? () => {} : undefined, explored: !!rowIndices, onClose() {} })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
     outfile,
@@ -50,7 +56,7 @@ export function renderDialog(document, block, rowIndices) { return renderToStati
     },
     logLevel: 'silent',
   })
-  ;({ renderSummary, renderDialog } = await import(pathToFileURL(outfile).href))
+  ;({ renderSummary, renderDialog, formatSource } = await import(pathToFileURL(outfile).href))
 })
 
 after(async () => {
@@ -124,6 +130,50 @@ function fixture(): PresentationDocument {
     diagnostics: [],
   }
 }
+
+test('only host navigation turns saved semantic references into buttons; offline and invalid references stay text', () => {
+  const document = fixture()
+  const html = renderDialog(document, document.blocks[0]!, undefined, true)
+  assert.match(html, /class="pr-semantic-link"[^>]*>sales.revenue<\/button>/)
+  assert.match(html, /class="pr-semantic-link"[^>]*>sales.region<\/button>/)
+  assert.doesNotMatch(renderDialog(document, document.blocks[0]!), /pr-semantic-link/)
+  assert.doesNotMatch(renderSummary(document), /pr-semantic-link/)
+  const savedSource = document.sources[0]!
+  if (savedSource.status !== 'available') throw new Error('Expected available source')
+  savedSource.facts = [
+    {
+      label: '公开语义引用',
+      value: JSON.stringify([
+        { path: 'sales.untyped' },
+        { kind: 'metric', path: 'x'.repeat(2049) },
+      ]),
+    },
+  ]
+  const invalid = renderDialog(document, document.blocks[0]!, undefined, true)
+  assert.match(invalid, /sales.untyped/)
+  assert.doesNotMatch(invalid, /pr-semantic-link/)
+})
+
+test('every semantic object kind, including entity and new Catalog kinds, remains navigable', () => {
+  const document = fixture()
+  const kinds = [...Object.keys(kindLabels), 'future_kind']
+  const savedSource = document.sources[0]!
+  if (savedSource.status !== 'available') throw new Error('Expected available source')
+  savedSource.facts = [
+    {
+      label: '公开语义引用',
+      value: JSON.stringify(kinds.map((kind) => ({ kind, path: `sales.${kind}_object` }))),
+    },
+  ]
+  const html = renderDialog(document, document.blocks[0]!, undefined, true)
+  for (const kind of kinds) {
+    assert(html.includes(`>sales.${kind}_object</button>`), `${kind} must be clickable`)
+    assert.equal(semanticKindLabel(kind), kindLabels[kind] ?? kind)
+  }
+  assert.match(html, /pr-source-overview-label">实体<\/h4>/)
+  assert.equal((html.match(/class="pr-semantic-link"/g) ?? []).length, kinds.length)
+  assert.doesNotMatch(renderSummary(document), /pr-semantic-link/)
+})
 
 test('source overview exposes saved dataset fields, semantic paths and issues without technical facts or inferred filters', () => {
   const document = fixture()
@@ -224,7 +274,7 @@ function fixtureWithCode(): PresentationDocument {
   return document
 }
 
-test('code tab preserves execution text, states author association and escapes text without interpreting it', () => {
+test('code tab formats and highlights display while preserving execution snapshots and escaping text', () => {
   const document = fixtureWithCode()
   const saved = structuredClone(document)
   const html = renderDialog(document, document.blocks[0]!)
@@ -232,13 +282,41 @@ test('code tab preserves execution text, states author association and escapes t
   assert.match(html, /SQL · 执行记录/)
   assert.match(html, /该执行记录由作者关联到此数据集。/)
   assert.match(html, /复制代码/)
-  assert.match(html, /<pre tabindex="0"><code>/)
+  assert.match(html, /<pre tabindex="0"><code class="language-python">/)
+  assert.match(html, /<code class="language-sql">/)
+  assert.match(html, /color:var\(--pr-code-keyword\)/)
+  assert.match(html, /已格式化展示/)
   assert.match(html, /retain-this-value/)
   assert.match(html, /&lt;script&gt;literal\(\)&lt;\/script&gt;/)
   assert.doesNotMatch(html, /<script|作者提供|未保存生成代码/)
   assert.equal(sourceCodeFacts(document, document.blocks[0]!).entries[0]?.text, pythonText)
   assert.equal(sourceCodeFacts(document, document.blocks[0]!).entries[1]?.text, sqlText)
   assert.deepEqual(document, saved)
+})
+
+test('Python and SQL formatting expands compact code, preserves literals and never executes it', () => {
+  const python = 'def total( values ):\n  return sum( values )\nraise Exception("never execute")\n'
+  const formatted = formatSource(python, 'python')
+  assert.equal(formatted.formatted, true)
+  assert.match(formatted.text, /def total\(values\):\n {4}return sum\(values\)/)
+  assert.match(formatted.text, /raise Exception\("never execute"\)/)
+  const sql =
+    "select region,sum(amount) as total from sales where note='a  b' group by region order by total desc"
+  const query = formatSource(sql, 'sql')
+  assert.equal(query.formatted, true)
+  assert.match(query.text, /select\n {2}region,\n {2}sum\(amount\) as total\nfrom\n {2}sales/)
+  assert.match(query.text, /'a {2}b'/)
+  assert.match(query.text, /group by\n {2}region/)
+})
+
+test('invalid Python and unsupported SQL retain their original text with a visible notice', () => {
+  const python = 'def invalid(:\r\n  print("retain me")\r\n'
+  const sql = 'select $$unsupported dollar string$$'
+  assert.deepEqual(formatSource(python, 'python'), { text: python, formatted: false })
+  assert.deepEqual(formatSource(sql, 'sql'), { text: sql, formatted: false })
+  const document = fixtureWithCode()
+  document.datasets[0]!.code![0]!.text = python
+  assert.match(renderDialog(document, document.blocks[0]!), /无法格式化，显示执行原文/)
 })
 
 test('cell code follows only its selected binding and source-only code follows its source IDs', () => {
@@ -303,7 +381,7 @@ test('cell code follows only its selected binding and source-only code follows i
     kind: 'source',
     sourceIds: ['other-source'],
   })
-  assert.match(sourceOnly, /SELECT unselected_sql/)
+  assert.match(sourceOnly, /unselected_sql/)
   assert.doesNotMatch(sourceOnly, /Python|retain-this-value|unselected_python/)
 })
 
@@ -341,7 +419,8 @@ test('native code disclosures stay readable offline and preserve per-cell bindin
     html,
     /<details class="pr-source-code-summary" data-code-block-id="revenue"><summary>代码 · 收入指标原文<\/summary>/,
   )
-  assert.match(html, /<pre><code>secret_value/)
+  assert.match(html, /<pre><code class="language-python">/)
+  assert.match(html, /secret_value/)
   assert.match(html, /SQL · 执行记录/)
   assert.match(html, /retain-this-value/)
   assert.doesNotMatch(html, /<button| open=""|<script/)

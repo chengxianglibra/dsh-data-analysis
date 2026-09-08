@@ -267,7 +267,9 @@ export function validateChartView(
   dataset: TypedDataset,
   path = '',
   dataPath = '/data',
+  rowIndices?: readonly number[],
 ): void {
+  const rows = rowIndices ? rowIndices.map((index) => dataset.rows[index]!) : dataset.rows
   parseChartViewShape(
     {
       datasetId: view.datasetId,
@@ -294,8 +296,13 @@ export function validateChartView(
     const { column, index } = columns.get(id)!
     if (!['float64', 'decimal', 'int64'].includes(column.type))
       fail(path, `Column ${id} must be numeric.`)
-    dataset.rows.forEach((row, i) => {
-      chartNumber(row[index]!, column, view.numericMode, `${dataPath}/rows/${i}/${index}`)
+    rows.forEach((row, i) => {
+      chartNumber(
+        row[index]!,
+        column,
+        view.numericMode,
+        `${dataPath}/rows/${rowIndices?.[i] ?? i}/${index}`,
+      )
     })
   }
   if (bindings.role && columns.get(bindings.role)!.column.type !== 'string')
@@ -341,8 +348,8 @@ export function validateChartView(
     Math.abs(a - b) <= Number.EPSILON * 16 * Math.max(1, Math.abs(a), Math.abs(b))
   const equal = (a: NumericCell, b: NumericCell) =>
     exactStatistics ? compare(a, b) === 0 : close(Number(a), Number(b))
-  dataset.rows.forEach((row, i) => {
-    const rowPath = `${dataPath}/rows/${i}`
+  rows.forEach((row, i) => {
+    const rowPath = `${dataPath}/rows/${rowIndices?.[i] ?? i}`
     const values = view.y.map((id) => raw(row, id))
     const value = values[0]!
     if (['stackedArea', 'stackedBar', 'horizontalStackedBar'].includes(view.chart)) {
@@ -475,7 +482,7 @@ export function validateChartView(
   if (
     exactShares
       ? sumSign(pieShares) > 0
-      : totalShare > 1 + Number.EPSILON * Math.max(1, dataset.rows.length) * 4
+      : totalShare > 1 + Number.EPSILON * Math.max(1, rows.length) * 4
   )
     fail(dataPath, 'Prepared pie shares cannot exceed one in total.')
 }

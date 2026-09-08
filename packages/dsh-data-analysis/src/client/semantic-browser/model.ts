@@ -4,7 +4,7 @@ import {
   parseCatalogSnapshot,
   type SemanticObjectView,
 } from '../../semantic-browser/contracts.ts'
-import { CHANNEL, refKey } from '../../semantic-reference/contracts.ts'
+import { CHANNEL, refKey, type SemanticRef } from '../../semantic-reference/contracts.ts'
 
 export interface BrowserRpc {
   call(channel: string, endpoint: string, payload: unknown, signal: AbortSignal): Promise<unknown>
@@ -24,6 +24,7 @@ export interface BrowserView {
 export interface BrowserState {
   readonly open: boolean
   readonly workspaceId: string
+  readonly fromReport?: boolean
   readonly views: Readonly<Record<string, BrowserView>>
 }
 export const emptyView = (): BrowserView => ({
@@ -101,8 +102,24 @@ export class SemanticBrowserModel {
   }
   show(workspaceId: string): void {
     if (this.#disposed) return
-    this.#publish({ ...this.#state, open: true })
+    this.#publish({ ...this.#state, open: true, fromReport: false })
     this.select(workspaceId)
+  }
+  /** Resolve a saved reference against a fresh Catalog, without reusing old filters or data. */
+  showObject = (workspaceId: string, ref: SemanticRef): void => {
+    if (this.#disposed || !workspaceId) return
+    this.#cancel()
+    this.#publish({
+      ...this.#state,
+      open: true,
+      workspaceId,
+      fromReport: true,
+      views: {
+        ...this.#state.views,
+        [workspaceId]: { ...emptyView(), selected: refKey(ref) },
+      },
+    })
+    void this.refresh()
   }
   close(): void {
     this.#cancel()
@@ -166,7 +183,18 @@ export class SemanticBrowserModel {
       }
       const snapshot = parseCatalogSnapshot(result.value)
       if (snapshot.workspaceId !== id) throw new Error('workspace-mismatch')
-      this.patch({ loading: false, snapshot, error: undefined })
+      const view = this.#state.views[id] ?? emptyView()
+      const index = this.#state.fromReport
+        ? filterObjects(snapshot.objects, view).findIndex(
+            (item) => refKey(item.ref) === view.selected,
+          )
+        : -1
+      this.patch({
+        loading: false,
+        snapshot,
+        error: undefined,
+        ...(index >= 0 ? { page: Math.floor(index / PAGE_SIZE) } : {}),
+      })
     } catch {
       if (!this.#disposed && !flight.signal.aborted && generation === this.#generation)
         this.patch({ loading: false, error: '无法加载语义层，请检查连接后重试。' })

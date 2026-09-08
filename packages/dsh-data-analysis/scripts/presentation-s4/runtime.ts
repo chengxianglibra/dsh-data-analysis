@@ -9,6 +9,7 @@ import {
   parsePresentationDraft,
   type SourceRef,
 } from '../../src/presentation/contracts/index.ts'
+import { chartGallery } from '../presentation-chart-gallery.ts'
 
 export async function preparePresentationInputs(workspaceRoot: string, pythonExecutable: string) {
   await mkdir(path.join(workspaceRoot, 'models/datasources'), { recursive: true })
@@ -109,6 +110,7 @@ print(json.dumps(dataclasses.asdict(receipt)))
     [...CHART_TYPES].sort(),
     'S4 synthetic gallery must cover every supported chart type',
   )
+  chartDraft.interaction = (await chartGallery()).interaction
   const drafts: PresentationDraft[] = [
     {
       schemaVersion: 1,

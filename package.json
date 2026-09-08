@@ -45,6 +45,8 @@
     "validate:presentation-projection:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-projection-real.ts",
     "validate:presentation-browser:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-browser-real.ts",
     "test:presentation-reader": "npm run build && node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-reader/*.test.ts",
+    "validate:presentation-interaction": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-interaction.ts",
+    "validate:presentation-semantic-navigation": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-semantic-navigation.ts",
     "validate:presentation-reader:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-reader-real.ts",
     "test:presentation-integration": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-integration/*.test.ts",
     "validate:presentation-integration:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-integration-real.ts",

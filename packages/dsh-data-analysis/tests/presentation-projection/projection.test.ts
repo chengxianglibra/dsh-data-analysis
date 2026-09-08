@@ -18,6 +18,7 @@ import {
 } from '../../src/presentation/projection/index.ts'
 import { MARIVO_PRESENTATION_READ_PROGRAM } from '../../src/presentation/projection/program.ts'
 import { savePythonExecution } from '../../src/python-execution.ts'
+import { interactionFixture } from '../presentation-reader/interaction-fixture.ts'
 
 const fixtures = new URL('../presentation-s0/fixtures/', import.meta.url)
 const options = {
@@ -494,4 +495,23 @@ test('source snapshots reject extra fields and preserve multiple declared source
     (error: unknown) =>
       error instanceof MarivoEnvironmentError && error.code === 'subprocess-output-invalid',
   )
+})
+
+test('computed interaction survives projection and rejects out-of-range rows after data loading', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  const { draft, document } = await interactionFixture()
+  for (const dataset of draft.datasets) {
+    if (dataset.kind !== 'computed') continue
+    const filename = path.join(f.root, dataset.path)
+    await mkdir(path.dirname(filename), { recursive: true })
+    await writeFile(
+      filename,
+      JSON.stringify(document.datasets.find((item) => item.id === dataset.id)!.data),
+    )
+  }
+  assert.deepEqual((await f.bridge.project(draft, options)).interaction, draft.interaction)
+  assert.equal(f.requests.length, 0, 'Computed presentation must not run analysis')
+  draft.interaction!.slices[0]!.datasets[0]!.rowIndices = [999]
+  await assert.rejects(f.bridge.project(draft, options), /missing row/)
 })

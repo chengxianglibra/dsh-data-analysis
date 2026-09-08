@@ -156,6 +156,8 @@ export function renderS0Fallback(document: PresentationDocument) {
       }
       const { data } = document.datasets.find((dataset) => dataset.id === block.datasetId)!
       if (block.kind === 'metric') {
+        if (block.rowSelection === 'slice')
+          throw new Error('S0 reference renderer supports fixed metrics only.')
         const index = data.columns.findIndex((column) => column.id === block.columnId)
         const column = data.columns[index]!
         const value = escapeHtml(formatCell(data.rows[block.rowIndex]![index]!, column))

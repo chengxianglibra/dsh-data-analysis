@@ -5,6 +5,7 @@ import { CloseIcon } from './icons.tsx'
 import { chartTitle, datasetById } from './model.ts'
 import { SourceCode } from './source-code.tsx'
 import { type SourceTab, sourceTabForKey, sourceTabs } from './source-code-model.ts'
+import type { OpenSemanticRef } from './source-facts.ts'
 import { SourceOverview } from './sources.tsx'
 import { DatasetTable } from './table.tsx'
 
@@ -15,7 +16,9 @@ export function SourceDialog({
   restoreFocusTo,
   rowIndices,
   filterKey,
+  filterSummary,
   explored = false,
+  onOpenSemanticRef,
 }: {
   document: PresentationDocument
   block: PresentationBlock
@@ -23,7 +26,9 @@ export function SourceDialog({
   restoreFocusTo?: HTMLElement | null
   rowIndices?: readonly number[]
   filterKey?: string
+  filterSummary?: string
   explored?: boolean
+  onOpenSemanticRef?: OpenSemanticRef
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const backdropPointer = useRef(false)
@@ -62,6 +67,7 @@ export function SourceDialog({
       className="pr-source-dialog"
       aria-labelledby={`${id}-title`}
       onCancel={(event) => {
+        event.stopPropagation()
         event.preventDefault()
         onClose()
       }}
@@ -119,10 +125,9 @@ export function SourceDialog({
         </div>
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Keep overflowing source details scrollable by keyboard. */}
         <div className="pr-source-dialog-body" tabIndex={0}>
+          {filterSummary && <p className="pr-muted">当前筛选：{filterSummary}</p>}
           {explored && (
-            <p className="pr-muted">
-              当前探索视图 · 未保存。分类过滤与系列显隐不改变作者提供的占比分母。
-            </p>
+            <p className="pr-muted">当前探索视图 · 未保存。系列显隐不改变作者提供的占比分母。</p>
           )}
           <div
             id={`${id}-overview`}
@@ -130,7 +135,11 @@ export function SourceDialog({
             aria-labelledby={`${id}-overview-tab`}
             hidden={tab !== 'overview'}
           >
-            <SourceOverview document={document} block={block} />
+            <SourceOverview
+              document={document}
+              block={block}
+              onOpenSemanticRef={onOpenSemanticRef}
+            />
           </div>
           {dataset && (
             <div

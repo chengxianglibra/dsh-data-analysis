@@ -16,6 +16,7 @@ export function DatasetTable({
   mode,
   caption,
   showScope = true,
+  showSelectionCount = true,
   rowIndices,
   filterKey,
 }: {
@@ -24,6 +25,7 @@ export function DatasetTable({
   mode: ReaderMode
   caption: string
   showScope?: boolean
+  showSelectionCount?: boolean
   rowIndices?: readonly number[]
   filterKey?: string
 }) {
@@ -40,7 +42,9 @@ export function DatasetTable({
   )
   const sorted = useMemo(() => {
     const selected = rowIndices ? new Set(rowIndices) : undefined
-    return sortedRowIndices(data, sort).filter((index) => !selected || selected.has(index))
+    return sort
+      ? sortedRowIndices(data, sort).filter((index) => !selected || selected.has(index))
+      : [...(rowIndices ?? sortedRowIndices(data))]
   }, [data, sort, rowIndices])
   const rowSelectionKey = `${filterKey ?? ''}/${rowIndices?.join(',') ?? ''}`
   useEffect(() => {
@@ -58,7 +62,7 @@ export function DatasetTable({
       {showScope && (
         <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{datasetScope(data)}</p>
       )}
-      {rowIndices && rowIndices.length !== data.rows.length && (
+      {showSelectionCount && rowIndices && rowIndices.length !== data.rows.length && (
         <p className="pr-muted">
           当前筛选：已保存 {data.rows.length} 行中命中 {rowIndices.length} 行
         </p>

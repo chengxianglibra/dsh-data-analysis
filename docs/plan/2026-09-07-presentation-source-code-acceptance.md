@@ -6,6 +6,10 @@
 生产记录中的 SQL。支持原文复制、键盘切换、复制失败提示；代码作为文本呈现，不执行 HTML 或脚本。
 原文不做字面量脱敏。Host reader 与离线 HTML 消费同一份文档，禁用脚本时通过原生折叠区读取代码。
 
+2026-09-08：Python 与 SQL 展示增加自动换行、缩进和语法高亮，格式化失败明确提示并显示原文。
+文档快照、摘要核验和复制仍使用执行原文；静态 HTML 在构建时完成格式化和高亮。
+Python formatter 以 WASM 内嵌，不读取本地 Python 环境或执行代码；SQL 使用通用方言，不推测执行引擎。
+
 实现见[来源代码组件](../../packages/dsh-data-analysis/src/client/presentation/source-code.tsx)、
 [投影](../../packages/dsh-data-analysis/src/presentation/projection/index.ts)和
 [Python 执行记录](../../packages/dsh-data-analysis/src/python-execution.ts)。
@@ -38,6 +42,7 @@
 - [reader](../../packages/dsh-data-analysis/tests/presentation-reader/sources.test.ts)与
   [离线构建](../../packages/dsh-data-analysis/tests/presentation-reader/code-build.test.ts)：
   当前 cell/选中视图关联、纯 computed 无来源场景、HTML 转义、原文复制所需文本及静态内容、内嵌 JSON 与文档一致。
+  新增格式化回归覆盖嵌套 Python 缩进、SQL 子句换行、字面量保留，以及无效代码和不支持方言的原文提示。
 
 真实 Python 检查通过生产 `marivo_python` 工具、实际 launcher/worker 和当前安装的 Marivo 0.5.4 执行；
 成功只运行一次，失败不返回 `codeRef`。随后将实际生成的 computed 数据及引用交给投影和 builder，
@@ -47,9 +52,14 @@
 真实 Chrome 检查生产数据源组件的三个 Tab、方向键/Home/End、Escape 焦点恢复、实际剪贴板复制与失败提示、
 禁用 JavaScript 的原生展开和打印隐藏长代码。未重装插件、未重启已有 DSH Web 服务。
 
-实际 Python 生成的 portable HTML 另经 Chrome 检查：metric → 数据源 → 代码的 DOM 与真实剪贴板逐字符匹配
-文档代码；禁用脚本后仍可展开阅读。无脚本 HTML 解析按浏览器规则将 CRLF 规范为 LF，交互代码和复制保留原始 CRLF。
+格式化功能加入前，实际 Python 生成的 portable HTML 经 Chrome 检查：metric → 数据源 → 代码的 DOM 与真实剪贴板逐字符匹配
+文档代码；禁用脚本后仍可展开阅读。无脚本 HTML 解析按浏览器规则将 CRLF 规范为 LF。
 `codeRef.sha256` 校验完整执行记录字节，不是代码文本摘要。
+
+2026-09-08 格式化验证使用独立样例与生产 portable builder，经 Chromium 确认 Python 嵌套缩进、SQL 子句换行、
+语法颜色、浅色/深色、390px 窄屏及无脚本文件展开；浏览器无运行错误。
+显示文本完成格式化，真实剪贴板仍逐字匹配执行原文，包括 Python 的 CRLF；内嵌文档保持不变。
+此项验证未执行样例 Python/SQL，也未重装插件或重启 DSH Web，不代表真实 Agent 执行验收。
 
 ## 验证命令
 

@@ -42,5 +42,39 @@ export async function chartGallery() {
     )
   )
     throw new Error('Gallery must cover all chart types')
-  return document
+  const blocks = document.blocks.filter((block) => block.kind === 'chart')
+  const required = new Set(
+    blocks.flatMap((block) =>
+      block.kind === 'chart'
+        ? [block.datasetId, ...(block.preparedViews ?? []).map((view) => view.datasetId)]
+        : [],
+    ),
+  )
+  document.interaction = {
+    title: '图形联动验收（合成测试数据）',
+    blockIds: blocks.map((block) => block.id),
+    filters: [
+      {
+        id: 'scope',
+        label: '展示范围',
+        allOptionId: 'any',
+        options: [
+          { id: 'any', label: '全部' },
+          { id: 'one', label: '第二条观测' },
+          { id: 'empty', label: '空结果' },
+        ],
+      },
+    ],
+    slices: ['any', 'one', 'empty'].map((scope) => ({
+      selection: { scope },
+      datasets: document.datasets
+        .filter((dataset) => required.has(dataset.id))
+        .map((dataset) => ({
+          datasetId: dataset.id,
+          rowIndices:
+            scope === 'any' ? dataset.data.rows.map((_, i) => i) : scope === 'one' ? [1] : [],
+        })),
+    })),
+  }
+  return parsePresentationDocument(document)
 }

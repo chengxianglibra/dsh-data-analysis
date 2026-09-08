@@ -1,5 +1,10 @@
 import { type ChartView, chartColumns } from '../../presentation/contracts/charts.ts'
 import { chartNumber, formatCell } from '../../presentation/contracts/index.ts'
+import {
+  defaultSelection,
+  filterSummary,
+  interactionRows,
+} from '../../presentation/contracts/interaction.ts'
 import type {
   Cell,
   DatasetColumn,
@@ -86,9 +91,16 @@ export function columnIndex(dataset: TypedDataset, id: string): number {
   return index
 }
 
-export function selectMetric(dataset: TypedDataset, block: MetricBlock) {
+export function selectMetric(
+  dataset: TypedDataset,
+  block: MetricBlock,
+  rowIndices?: readonly number[],
+) {
   const index = columnIndex(dataset, block.columnId)
-  const row = dataset.rows[block.rowIndex]
+  if (block.rowSelection === 'slice' && rowIndices?.length !== 1)
+    throw new Error('Dynamic metric must select exactly one prepared row.')
+  const indexOfRow = block.rowSelection === 'slice' ? rowIndices![0]! : block.rowIndex
+  const row = dataset.rows[indexOfRow]
   if (!row) throw new Error(`Metric must select one existing row: ${block.rowIndex}`)
   return { column: dataset.columns[index]!, value: row[index]! }
 }
@@ -172,10 +184,15 @@ export interface ChartRow {
   [key: string]: number | string | null
 }
 
-export function chartRows(dataset: TypedDataset, block: ChartView): ChartRow[] {
+export function chartRows(
+  dataset: TypedDataset,
+  block: ChartView,
+  rowIndices?: readonly number[],
+): ChartRow[] {
   const x = columnIndex(dataset, block.x)
   const indices = block.y.map((id) => columnIndex(dataset, id))
-  return dataset.rows.map((row, rowIndex) => {
+  return (rowIndices ?? dataset.rows.map((_, i) => i)).map((rowIndex) => {
+    const row = dataset.rows[rowIndex]!
     const result: ChartRow = { rowIndex, xLabel: cellText(row[x]!, dataset.columns[x]!) }
     indices.forEach((index, series) => {
       result[`series${series}`] = chartNumber(
@@ -206,6 +223,7 @@ export function followUpContext(
   document: PresentationDocument,
   savedBlock: PresentationBlock,
   exploration?: ChartExploration,
+  selection?: Record<string, string>,
 ): string {
   const block =
     savedBlock.kind === 'chart' && exploration
@@ -218,6 +236,14 @@ export function followUpContext(
     `Cell: ${block.id}`,
     `Block kind: ${block.kind}`,
   ]
+  const chosen = selection ?? (document.interaction ? defaultSelection(document.interaction) : {})
+  const rows = interactionRows(document.interaction, chosen, block)
+  if (rows && document.interaction) {
+    lines.push(
+      `当前筛选: ${filterSummary(document.interaction, chosen)}`,
+      `Snapshot row indices: ${JSON.stringify(rows)}`,
+    )
+  }
   let sources: SourceSnapshot[] = []
   if (savedBlock.kind === 'chart') {
     lines.push(`Saved chart binding: ${JSON.stringify(savedBlock)}`)
@@ -225,7 +251,6 @@ export function followUpContext(
       lines.push(
         'Current chart view: page-local exploration (not saved; download retains original chart)',
         `Current chart binding: ${JSON.stringify(exploration.view)}`,
-        `Category filters: ${JSON.stringify(exploration.filters)}`,
         `Hidden series: ${JSON.stringify(exploration.hidden)}`,
         `Prepared view: ${exploration.preparedViewId ?? 'authored'}`,
       )
@@ -258,7 +283,7 @@ export function followUpContext(
     )
     sources = selectedSources(document, dataset.sourceIds)
     if (block.kind === 'metric') {
-      const metric = selectMetric(dataset.data, block)
+      const metric = selectMetric(dataset.data, block, rows)
       lines.push(
         `Metric value: ${valueWithUnit(metric.value, metric.column)}`,
         `Metric raw value: ${JSON.stringify(metric.value)}`,

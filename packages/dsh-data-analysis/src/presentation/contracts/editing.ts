@@ -1,4 +1,5 @@
 import { PRESENTATION_BUDGETS, parsePresentationDocument } from './index.ts'
+import { blockRegion, editedInteraction } from './interaction.ts'
 import type { PresentationBlock, PresentationDocument } from './types.ts'
 
 export interface PresentationEdits {
@@ -24,7 +25,14 @@ export function applyPresentationEdits(
     new TextEncoder().encode(JSON.stringify(edits)).length > PRESENTATION_BUDGETS.documentBytes
   )
     throw new Error('invalid-report-edits')
-  const next = parsePresentationDocument({ ...structuredClone(base), ...structuredClone(edits) })
+  const regions = edits.blocks.map((block) => blockRegion(base, block.id))
+  if (regions.some((region, i) => i > 0 && region < regions[i - 1]!))
+    throw new Error('invalid-report-edits: cannot move across interaction boundaries')
+  const candidate = { ...structuredClone(base), ...structuredClone(edits) }
+  const interaction = editedInteraction(base, edits.blocks)
+  if (interaction) candidate.interaction = interaction
+  else delete candidate.interaction
+  const next = parsePresentationDocument(candidate)
   for (const block of next.blocks) {
     const original = base.blocks.find((entry) => entry.id === block.id)
     if (!original || original.kind !== block.kind) throw new Error('invalid-report-edits')

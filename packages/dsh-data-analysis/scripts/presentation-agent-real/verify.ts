@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { defaultSelection, interactionRows } from '../../src/presentation/contracts/interaction.ts'
 import type { PresentationDocument } from '../../src/presentation/contracts/types.ts'
 import { days, type JourneyId, regionalValues, regions } from './fixtures.ts'
 
@@ -136,8 +137,25 @@ function comparison(document: PresentationDocument, expected: Expected) {
         return {
           ...block,
           column: data.data.columns[index],
-          row: data.data.rows[block.rowIndex],
-          value: data.data.rows[block.rowIndex]![index],
+          row: data.data.rows[
+            block.rowSelection === 'slice'
+              ? interactionRows(
+                  document.interaction,
+                  defaultSelection(document.interaction!),
+                  block,
+                )![0]!
+              : block.rowIndex
+          ],
+          value:
+            data.data.rows[
+              block.rowSelection === 'slice'
+                ? interactionRows(
+                    document.interaction,
+                    defaultSelection(document.interaction!),
+                    block,
+                  )![0]!
+                : block.rowIndex
+            ]![index],
         }
       }),
   }

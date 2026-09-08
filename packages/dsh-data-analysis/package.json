@@ -134,7 +134,12 @@
     "react-is": "18.3.1",
     "recharts": "3.8.1",
     "@deepseek-ai/dsh-launch-environment": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-tool-skill": "^0.1.1-rc.2"
+    "@deepseek-ai/dsh-tool-skill": "^0.1.1-rc.2",
+    "@shikijs/core": "4.4.3",
+    "@shikijs/engine-javascript": "4.4.3",
+    "@shikijs/langs": "4.4.3",
+    "@wasm-fmt/ruff_fmt": "0.15.20",
+    "sql-formatter": "15.8.2"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "0.1.1-rc.2",

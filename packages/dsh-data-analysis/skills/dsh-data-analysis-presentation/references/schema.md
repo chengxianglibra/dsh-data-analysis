@@ -67,3 +67,7 @@ Python helper 要求 `.json` 目标的父目录已存在，默认 `row_limit=500
 一份草稿最多 256 KiB、16 个 datasets、64 个 sources、64 个 blocks。每个 dataset 最多 2 MiB、64 列、5000 行、100000 个单元格；文本字段最多 32768 UTF-16 code units，title 最多 512。helper 会按行与单元格预算缩减有效 limit 并报告截断；字节或文本超限直接失败。生成文档与 HTML 还分别受 4 MiB、8 MiB 限制。
 
 错误中的 JSON pointer 定位需要修复的字段。列不存在时核对实际输出；metric 行不存在时改为现有值或空结果说明；`numeric_precision` 按[数值绘图规则](charts.md)处理；预算超限时选择问题需要的列和有界数据，并保留范围说明。不要删掉 unavailable 或截断提示来冒充完整结果。
+
+## 可选全局筛选
+
+Draft 与生成 Document 可声明 `interaction`；省略时不生成筛选器。字段及动态 metric 的互斥绑定见 [全局筛选与动态指标](interaction.md)。

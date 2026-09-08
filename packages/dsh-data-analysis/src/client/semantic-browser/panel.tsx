@@ -221,6 +221,12 @@ export function SemanticBrowserPanel({
   )
   const page = Math.min(view.page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1))
   const selected = objects.get(view.selected)
+  useEffect(() => {
+    if (state.open && state.fromReport && snapshot && view.selected)
+      dialog.current
+        ?.querySelector('.sb-objects [aria-pressed="true"]')
+        ?.scrollIntoView({ block: 'nearest' })
+  }, [state.open, state.fromReport, snapshot, view.selected])
   const knownWorkspace = workspaces.some((item) => item.workspaceId === state.workspaceId)
   useEffect(() => {
     if (
@@ -255,6 +261,7 @@ export function SemanticBrowserPanel({
       className="sb-dialog"
       aria-label="语义层对象浏览器"
       onCancel={(event) => {
+        event.stopPropagation()
         event.preventDefault()
         model.close()
       }}
@@ -279,6 +286,11 @@ export function SemanticBrowserPanel({
             关闭
           </button>
         </header>
+        {state.fromReport && (
+          <p className="sb-status">
+            此处展示当前语义定义；报告数据与来源仍是生成时的快照。关闭后返回报告。
+          </p>
+        )}
         {snapshot && (
           <div className="sb-meta">
             <span>项目：{snapshot.projectRoot}</span>
@@ -310,7 +322,7 @@ export function SemanticBrowserPanel({
           </div>
         ) : !snapshot ? (
           <div className="sb-empty">{view.loading ? '正在加载对象目录' : '尚未加载对象目录'}</div>
-        ) : !snapshot.objects.length ? (
+        ) : !snapshot.objects.length && !view.selected ? (
           <div className="sb-empty">当前项目没有语义层对象。</div>
         ) : (
           <div className={`sb-columns ${view.selected ? 'sb-has-selection' : ''}`}>
@@ -412,6 +424,7 @@ export function SemanticBrowserPanel({
                   {view.selected ? (
                     <>
                       <p>所选对象已不在当前 Catalog 中，请重新选择。</p>
+                      <p>{view.selected}</p>
                       <button type="button" onClick={() => model.patch({ selected: '' })}>
                         返回列表
                       </button>

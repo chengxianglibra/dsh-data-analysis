@@ -3,10 +3,8 @@ import test from 'node:test'
 import { seriesAppearance } from '../../src/client/presentation/chart-geometry.ts'
 import {
   changeChartView,
-  chartFilterValues,
   chartViewError,
   exploredChartBlock,
-  filteredChartRows,
   initialChartExploration,
   savedChartView,
   withChartSeries,
@@ -51,25 +49,13 @@ const block: ChartBlock = {
   },
 }
 
-test('exploration filters preserve original indices, repeated labels, null and exact data spelling', () => {
-  const before = JSON.stringify(data)
-  assert.deepEqual(chartFilterValues(data, 'category'), ['A', '', null])
-  assert.deepEqual(filteredChartRows(data, { category: ['A'] }), [0, 1])
-  assert.deepEqual(filteredChartRows(data, { category: ['A'], segment: ['south'] }), [1])
-  assert.deepEqual(filteredChartRows(data, { category: ['', null] }), [2, 3])
-  assert.deepEqual(filteredChartRows(data, { category: [] }), [])
-  assert.deepEqual(filteredChartRows(data, {}), [0, 1, 2, 3])
-  assert.equal(JSON.stringify(data), before)
-})
-
 test('chart state changes and reset do not modify authored view or share nested options', () => {
   const before = JSON.stringify(block)
   const initial = initialChartExploration(block)
   initial.view.options!.series!.actual!.lineStyle = 'dotted'
-  const state = { ...initial, filters: { category: ['A'] }, hidden: ['actual'] }
+  const state = { ...initial, hidden: ['actual'] }
   const next = changeChartView(state, withChartSeries(state.view, ['plan']))
   assert.deepEqual(next.hidden, [])
-  assert.deepEqual(next.filters, { category: ['A'] })
   assert.deepEqual(Object.keys(next.view.options!.series!), ['plan'])
   assert.equal(chartViewError(next.view, data), undefined)
   assert.equal(exploredChartBlock(block, next).id, block.id)
@@ -77,7 +63,6 @@ test('chart state changes and reset do not modify authored view or share nested 
   assert.equal(JSON.stringify(block), before)
   const prepared = changeChartView(state, { ...state.view, datasetId: 'other' }, 'prepared')
   assert.deepEqual(prepared.hidden, [])
-  assert.deepEqual(prepared.filters, {})
   assert.equal(prepared.preparedViewId, 'prepared')
 })
 
@@ -172,7 +157,7 @@ test('exploration switches only compatible prepared geometry, without calculatin
     numericMode: 'exact',
   }
   const snapshot = JSON.stringify(ratioData)
-  const selected = filteredChartRows(ratioData, { category: ['A'] })
+  const selected = [0]
   assert.deepEqual(selected, [0])
   assert.deepEqual(ratioData.rows[selected[0]!], ['A', 0.25, 0.75, 200])
   assert.equal(
@@ -208,7 +193,6 @@ test('copy context distinguishes current view, hidden series, filters and saved 
     ...initialChartExploration(block),
     view: { ...initialChartExploration(block).view, datasetId: 'prepared' },
     hidden: ['plan'],
-    filters: { category: ['A'] },
     preparedViewId: 'ready',
   }
   const copy = followUpContext(document, block, state)
@@ -217,7 +201,6 @@ test('copy context distinguishes current view, hidden series, filters and saved 
   assert.match(copy, /Saved chart binding:/)
   assert.match(copy, /Current chart binding:.*"datasetId":"prepared"/)
   assert.match(copy, /page-local exploration/)
-  assert.match(copy, /Category filters: \{"category":\["A"\]\}/)
   assert.match(copy, /Hidden series: \["plan"\]/)
   assert.match(copy, /Saved source original:/)
   assert.match(copy, /来源 derived:/)

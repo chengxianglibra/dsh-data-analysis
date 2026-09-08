@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   CHART_LABELS,
   CHART_TYPES,
@@ -11,7 +11,6 @@ import type { DatasetColumn, TypedDataset } from '../../presentation/contracts/t
 import {
   type ChartExploration,
   changeChartView,
-  chartFilterValues,
   chartViewError,
   initialChartExploration,
   savedChartView,
@@ -20,7 +19,7 @@ import {
   withChartX,
 } from './chart-view.ts'
 import { CloseIcon } from './icons.tsx'
-import { type ChartBlock, cellText, columnLabel } from './model.ts'
+import { type ChartBlock, columnLabel } from './model.ts'
 
 const numeric = (column: DatasetColumn) => ['float64', 'int64', 'decimal'].includes(column.type)
 const trendTypes = new Set<ChartType>(['line', 'area', 'stackedArea', 'sparkline'])
@@ -65,9 +64,7 @@ export function ChartExplorer({
   onClose: () => void
   restoreFocusTo?: HTMLElement
 }) {
-  const id = useId()
   const close = useRef<HTMLButtonElement>(null)
-  const [filterColumn, setFilterColumn] = useState('')
   const view = state.view
   const transitions = CHART_TYPES.map((type) => ({ type, next: chartTransition(view, type, data) }))
   const update = (next: ChartView) => {
@@ -84,14 +81,6 @@ export function ChartExplorer({
   useEffect(() => {
     close.current?.focus()
   }, [])
-  const categoryColumns = data.columns.filter((column) => !numeric(column) || column.id === view.x)
-  const selectedFilter =
-    categoryColumns.find((column) => column.id === filterColumn) ?? categoryColumns[0]
-  const values = selectedFilter ? chartFilterValues(data, selectedFilter.id) : []
-  const retained =
-    selectedFilter && Object.hasOwn(state.filters, selectedFilter.id)
-      ? state.filters[selectedFilter.id]!
-      : values
   const currentBarMode = view.chart.endsWith('100')
     ? 'percent'
     : view.chart.toLowerCase().includes('stacked')
@@ -146,7 +135,6 @@ export function ChartExplorer({
                     ? savedChartView({ ...prepared, kind: 'chart' })
                     : savedChartView(block),
                   hidden: [],
-                  filters: state.filters,
                   preparedViewId: prepared?.id,
                 })
               }}
@@ -397,71 +385,11 @@ export function ChartExplorer({
           </div>
         </fieldset>
       )}
-      {selectedFilter && (
-        <fieldset className="pr-explorer-fields">
-          <legend>分类过滤</legend>
-          <div className="pr-explorer-grid">
-            <label>
-              过滤字段
-              <select
-                value={selectedFilter.id}
-                onChange={(event) => setFilterColumn(event.target.value)}
-              >
-                {categoryColumns.map((column) => (
-                  <option key={column.id} value={column.id}>
-                    {columnLabel(column)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label htmlFor={`${id}-filter`}>
-              保留分类值
-              <select
-                id={`${id}-filter`}
-                multiple
-                size={Math.min(5, Math.max(2, values.length))}
-                value={retained.map((value) => JSON.stringify(value))}
-                onChange={(event) => {
-                  const allowed = new Set(
-                    [...event.target.selectedOptions].map((option) => option.value),
-                  )
-                  onChange({
-                    ...state,
-                    filters: {
-                      ...state.filters,
-                      [selectedFilter.id]: values.filter((value) =>
-                        allowed.has(JSON.stringify(value)),
-                      ),
-                    },
-                  })
-                }}
-              >
-                {values.map((value) => (
-                  <option key={JSON.stringify(value)} value={JSON.stringify(value)}>
-                    {cellText(value, selectedFilter)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <p className="pr-muted">按快照原顺序保留观测；可组合多个字段过滤。占比不会重新计算。</p>
-          {Object.entries(state.filters).map(([field, selected]) => (
-            <p className="pr-muted" key={field}>
-              {data.columns.find((column) => column.id === field)?.label}：保留 {selected.length}{' '}
-              个分类值
-            </p>
-          ))}
-          <button type="button" onClick={() => onChange({ ...state, filters: {} })}>
-            清除过滤
-          </button>
-        </fieldset>
-      )}
       <footer className="pr-explorer-footer">
         <button
           type="button"
           onClick={() => {
-            setFilterColumn('')
-            onChange({ ...initialChartExploration(block), filters: state.filters })
+            onChange(initialChartExploration(block))
           }}
         >
           恢复原图

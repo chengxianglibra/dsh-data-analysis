@@ -33,3 +33,10 @@
 [全部图形样例](chart-examples.md)另提供 18 类图形、bar/line 变体、预计算数据和探索配置。
 
 [source-only.draft.json](examples/source-only.draft.json) 的 datasets 为空，直接用 source block。替换精确引用后提交即可；无须生成 computed 文件、图或虚构单值。
+
+## 可选全局筛选与动态 KPI
+
+既有 computed 示例不声明筛选，可直接作为固定报告。需要交互时，参考[全局筛选契约](interaction.md)与[双筛选草稿](examples/interaction.draft.json)。
+[生成脚本](examples/write-interaction.py)使用合成测试数据，在 Python 中准备日期 × 集群的九个组合，每个维度均含“全部”。
+脚本生成[指标数据](examples/interaction-summary.dataset.json)和[类别数据](examples/interaction-detail.dataset.json)，路径与草稿一致。
+完整范围为 550 次查询、15 次失败；周一甲集群为 150 次查询、3 次失败、2.00% 失败率。区域外指标始终为 550，区域内三个 KPI、图表及表格一起切换。

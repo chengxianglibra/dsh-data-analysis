@@ -63,7 +63,7 @@ export function SpecialChart({
   const color = (row: number) => CHART_COLORS[row % CHART_COLORS.length]!
   const references = block.options?.referenceLines ?? []
   const values = (ids: string[]) =>
-    data.rows.flatMap((_, row) => ids.map((id) => coordinate(row, id)))
+    rowIndices.flatMap((row) => ids.map((id) => coordinate(row, id)))
   const valueLabels = showValueLabels(block, rowIndices.length * visible.size)
   const allVisibleFields = block.y.filter((id) => visible.has(id))
   const mark = (row: number, suffix = '') => ({
@@ -404,13 +404,13 @@ export function SpecialChart({
       </>
     )
   } else if (block.chart === 'pie') {
-    const intervals = shareIntervals(data.rows.map((_, row) => coordinate(row, bindings.share!)))
+    const intervals = shareIntervals(rowIndices.map((row) => coordinate(row, bindings.share!)))
     height = Math.max(320, rowIndices.length * 30 + 44)
     drawing = (
       <>
         <circle cx={165} cy={155} r={86} fill="none" stroke="var(--pr-soft)" strokeWidth={40} />
         {rowIndices.map((row, index) => {
-          const interval = intervals[row]
+          const interval = intervals[index]
           const value = coordinate(row, field)
           return (
             <g
@@ -445,7 +445,10 @@ export function SpecialChart({
     drawing = rowIndices.map((row, index) => {
       const share = coordinate(row, bindings.share!)
       const value = coordinate(row, field)
-      const nextShare = row + 1 < data.rows.length ? coordinate(row + 1, bindings.share!) : share
+      const nextShare =
+        rowIndices[index + 1] !== undefined
+          ? coordinate(rowIndices[index + 1]!, bindings.share!)
+          : share
       const center = (LEFT + RIGHT) / 2
       const topWidth = (share ?? 0) * (RIGHT - LEFT)
       const bottomWidth = (nextShare ?? share ?? 0) * (RIGHT - LEFT)

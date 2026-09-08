@@ -1,4 +1,16 @@
 import type { SourceSnapshot } from '../../presentation/contracts/types.ts'
+import { parseRef, type SemanticRef } from '../../semantic-reference/contracts.ts'
+import { kindLabels } from '../semantic-browser/labels.ts'
+
+export type OpenSemanticRef = (ref: SemanticRef) => void
+
+export function sourceSemanticRef(kind: string, path: string): SemanticRef | undefined {
+  try {
+    return parseRef({ schema: 'marivo.semantic_ref/v1', kind, path })
+  } catch {
+    return undefined
+  }
+}
 
 interface SemanticGroup {
   kind: string
@@ -46,10 +58,5 @@ export function sourceOverviewFacts(source: SourceSnapshot) {
 }
 
 export function semanticKindLabel(kind: string): string {
-  const labels: Record<string, string> = {
-    metric: '指标',
-    dimension: '维度',
-    time_dimension: '时间维度',
-  }
-  return Object.hasOwn(labels, kind) ? labels[kind]! : kind || '语义对象'
+  return Object.hasOwn(kindLabels, kind) ? kindLabels[kind]! : kind || '语义对象'
 }

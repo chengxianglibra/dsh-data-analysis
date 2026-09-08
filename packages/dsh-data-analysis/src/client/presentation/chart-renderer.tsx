@@ -68,9 +68,12 @@ export function ChartRenderer({
 }) {
   const [localHidden, setLocalHidden] = useState<string[]>([])
   const hidden = new Set(controlledHidden ?? localHidden)
-  const originalRows = useMemo(() => chartRows(dataset.data, block), [dataset.data, block])
+  const originalRows = useMemo(
+    () => chartRows(dataset.data, block, rowIndices),
+    [dataset.data, block, rowIndices],
+  )
   const indices = rowIndices ?? originalRows.map((row) => row.rowIndex)
-  const rows: DrawingRow[] = indices.map((index) => ({ ...originalRows[index]! }))
+  const rows: DrawingRow[] = originalRows.map((row) => ({ ...row }))
   const horizontal = block.chart.startsWith('horizontal')
   const stacked = block.chart.toLowerCase().includes('stacked')
   const normalized = block.chart.endsWith('100')
@@ -118,6 +121,7 @@ export function ChartRenderer({
           columns={chartColumns(block)}
           mode={mode}
           caption={`${title} · 精确数据`}
+          rowIndices={indices}
         />
       </>
     )
@@ -558,7 +562,7 @@ export function ChartRenderer({
     <>
       <h2>{title}</h2>
       {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
-      {rowIndices && (
+      {rowIndices && dataset.data.truncated && (
         <p className="pr-muted">
           当前筛选：已保存 {dataset.data.rows.length} 行中命中 {rowIndices.length} 行
         </p>

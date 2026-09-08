@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
 import type { ReaderEditing } from './editor-controls.tsx'
 import { PresentationReader } from './reader.tsx'
+import type { OpenSemanticRef } from './source-facts.ts'
 import { PRESENTATION_STYLES } from './styles.ts'
 
 // DSH's ThemePresenter owns the active palette, including manually selected themes.
@@ -15,10 +16,12 @@ export function HostPresentationReader({
   document,
   actions,
   editing,
+  onOpenSemanticRef,
 }: {
   document: PresentationDocument
   editing?: ReaderEditing
   actions?: ReactNode
+  onOpenSemanticRef?: OpenSemanticRef
 }) {
   return (
     <div className="pr-host">
@@ -26,7 +29,11 @@ export function HostPresentationReader({
       <style>{HOST_PRESENTATION_STYLES}</style>
       {actions && <div className="pr-host-actions pr-interactive">{actions}</div>}
       <div className="pr-host-live">
-        <PresentationReader document={document} editing={editing} />
+        <PresentationReader
+          document={document}
+          editing={editing}
+          onOpenSemanticRef={onOpenSemanticRef}
+        />
       </div>
       <div className="pr-host-print">
         <PresentationReader document={document} mode="static" />

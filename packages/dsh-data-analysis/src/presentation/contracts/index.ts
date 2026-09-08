@@ -4,6 +4,7 @@ import {
   type Cell,
   type ChartView,
   type DatasetColumn,
+  type PresentationBlock,
   type PresentationDocument,
   type PresentationDraft,
   type PresentationReceipt,
@@ -371,6 +372,9 @@ function common(value: Record<string, unknown>, generated: boolean) {
     datasets.map((entry) => String(entry.id)),
     '/datasets',
   )
+  const declaredInteraction = value.interaction as { blockIds?: unknown } | undefined
+  const inRegion = (id: string) =>
+    Array.isArray(declaredInteraction?.blockIds) && declaredInteraction.blockIds.includes(id)
   const blockIds = array(value.blocks, '/blocks', budgets.blocks, generated ? 0 : 1).map(
     (value, i) => {
       const path = `/blocks/${i}`
@@ -397,9 +401,17 @@ function common(value: Record<string, unknown>, generated: boolean) {
             ? []
             : stringArray(entry.columns, `${path}/columns`, budgets.columns, 1)
       } else if (entry.kind === 'metric') {
-        keys(entry, ['id', 'kind', 'datasetId', 'columnId', 'rowIndex', 'label'], [], path)
+        keys(
+          entry,
+          ['id', 'kind', 'datasetId', 'columnId', 'label'],
+          ['rowIndex', 'rowSelection'],
+          path,
+        )
+        if (entry.rowSelection !== undefined) {
+          if (entry.rowSelection !== 'slice' || Object.hasOwn(entry, 'rowIndex'))
+            fail(path, 'Use either rowIndex or rowSelection: slice.')
+        } else integer(entry.rowIndex, `${path}/rowIndex`, 0, budgets.rows - 1)
         selected = [string(entry.columnId, `${path}/columnId`, 256)]
-        integer(entry.rowIndex, `${path}/rowIndex`, 0, budgets.rows - 1)
         string(entry.label, `${path}/label`, 512)
       } else if (entry.kind === 'chart') {
         keys(
@@ -426,7 +438,9 @@ function common(value: Record<string, unknown>, generated: boolean) {
               if (generated)
                 validateChartView(
                   binding as unknown as ChartView,
-                  target.data as TypedDataset,
+                  inRegion(String(entry.id))
+                    ? { ...(target.data as TypedDataset), rows: [] }
+                    : (target.data as TypedDataset),
                   viewPath,
                   `/datasets/${datasets.indexOf(target)}/data`,
                 )
@@ -450,7 +464,7 @@ function common(value: Record<string, unknown>, generated: boolean) {
         if (entry.kind === 'chart') {
           validateChartView(
             entry as unknown as ChartView,
-            data,
+            inRegion(id) ? { ...data, rows: [] } : data,
             path,
             `/datasets/${datasets.indexOf(target)}/data`,
           )
@@ -460,12 +474,158 @@ function common(value: Record<string, unknown>, generated: boolean) {
     },
   )
   unique(blockIds, '/blocks')
+  interaction(value, datasets, generated)
+}
+
+function interaction(
+  value: Record<string, unknown>,
+  datasets: Record<string, unknown>[],
+  generated: boolean,
+) {
+  const blocks = value.blocks as PresentationBlock[]
+  const dynamic = blocks.filter(
+    (block) => block.kind === 'metric' && block.rowSelection === 'slice',
+  )
+  if (value.interaction === undefined) {
+    if (dynamic.length) fail('/interaction', 'Dynamic metrics require an interaction region.')
+    return
+  }
+  const path = '/interaction'
+  const entry = object(value.interaction, path)
+  keys(entry, ['title', 'blockIds', 'filters', 'slices'], [], path)
+  string(entry.title, `${path}/title`, 512)
+  const ids = stringArray(entry.blockIds, `${path}/blockIds`, budgets.blocks, 1)
+  const targets = ids.map((id, i) => {
+    const block = blocks.find((block) => block.id === id)
+    if (!block || !('datasetId' in block))
+      fail(
+        `${path}/blockIds/${i}`,
+        'Region requires existing metric, chart or table blocks.',
+        'invalid_reference',
+      )
+    if (block.kind === 'metric' && block.rowSelection !== 'slice')
+      fail(`${path}/blockIds/${i}`, 'Region metrics must select a slice row.')
+    return block
+  })
+  unique(ids, `${path}/blockIds`)
+  const positions = targets.map((block) => blocks.indexOf(block))
+  if (positions.some((position, i) => position !== positions[0]! + i))
+    fail(`${path}/blockIds`, 'Region blocks must be consecutive and follow document order.')
+  if (dynamic.some((block) => !ids.includes(block.id)))
+    fail(`${path}/blockIds`, 'Every dynamic metric must belong to the region.')
+  const required = new Set(
+    targets.flatMap((block) => [
+      block.datasetId,
+      ...(block.kind === 'chart' ? (block.preparedViews ?? []).map((view) => view.datasetId) : []),
+    ]),
+  )
+  const filters = array(entry.filters, `${path}/filters`, budgets.columns, 1).map((item, i) => {
+    const at = `${path}/filters/${i}`
+    const filter = object(item, at)
+    keys(filter, ['id', 'label', 'allOptionId', 'options'], [], at)
+    string(filter.id, `${at}/id`, 256)
+    string(filter.label, `${at}/label`, 512)
+    const all = string(filter.allOptionId, `${at}/allOptionId`, 256)
+    const options = array(filter.options, `${at}/options`, budgets.rows, 2).map((item, j) => {
+      const optionPath = `${at}/options/${j}`
+      const option = object(item, optionPath)
+      keys(option, ['id', 'label'], [], optionPath)
+      string(option.label, `${optionPath}/label`, 512)
+      return string(option.id, `${optionPath}/id`, 256)
+    })
+    unique(options, `${at}/options`)
+    if (!options.includes(all))
+      fail(`${at}/allOptionId`, 'Unknown all option.', 'invalid_reference')
+    return { id: filter.id as string, options }
+  })
+  unique(
+    filters.map((filter) => filter.id),
+    `${path}/filters`,
+  )
+  const slices = array(entry.slices, `${path}/slices`, budgets.draftBytes, 1)
+  // Bound the product by the already byte-bounded slice list, without expanding combinations.
+  let combinations = 1
+  for (const filter of filters) {
+    combinations *= filter.options.length
+    if (combinations > slices.length)
+      fail(`${path}/slices`, 'Every selectable combination requires one slice.')
+  }
+  if (combinations !== slices.length)
+    fail(`${path}/slices`, 'Every selectable combination requires exactly one slice.')
+  const seen = new Set<string>()
+  slices.forEach((item, i) => {
+    const at = `${path}/slices/${i}`
+    const slice = object(item, at)
+    keys(slice, ['selection', 'datasets'], [], at)
+    const selection = object(slice.selection, `${at}/selection`)
+    keys(
+      selection,
+      filters.map((filter) => filter.id),
+      [],
+      `${at}/selection`,
+    )
+    const combination = filters.map((filter) => {
+      const selected = string(selection[filter.id], pointer(`${at}/selection`, filter.id), 256)
+      if (!filter.options.includes(selected))
+        fail(`${at}/selection`, 'Unknown filter option.', 'invalid_reference')
+      return selected
+    })
+    const key = JSON.stringify(combination)
+    if (seen.has(key)) fail(`${at}/selection`, 'Duplicate filter combination.')
+    seen.add(key)
+    const bindings = array(slice.datasets, `${at}/datasets`, budgets.datasets, 1).map((item, j) => {
+      const bindingPath = `${at}/datasets/${j}`
+      const binding = object(item, bindingPath)
+      keys(binding, ['datasetId', 'rowIndices'], [], bindingPath)
+      const id = string(binding.datasetId, `${bindingPath}/datasetId`, 256)
+      if (!required.has(id))
+        fail(`${bindingPath}/datasetId`, 'Unexpected slice dataset.', 'invalid_reference')
+      const data = datasets.find((dataset) => dataset.id === id)?.data as TypedDataset | undefined
+      const rows = array(binding.rowIndices, `${bindingPath}/rowIndices`, budgets.rows).map(
+        (row, k) => integer(row, `${bindingPath}/rowIndices/${k}`, 0, budgets.rows - 1),
+      )
+      if (new Set(rows).size !== rows.length)
+        fail(`${bindingPath}/rowIndices`, 'Duplicate row index.')
+      if (generated && rows.some((row) => row >= data!.rows.length))
+        fail(`${bindingPath}/rowIndices`, 'Slice references a missing row.', 'invalid_reference')
+      if (
+        dynamic.some((block) => 'datasetId' in block && block.datasetId === id) &&
+        rows.length !== 1
+      )
+        fail(
+          `${bindingPath}/rowIndices`,
+          'Dynamic metrics require exactly one prepared row per slice.',
+        )
+      return id
+    })
+    unique(bindings, `${at}/datasets`)
+    if (bindings.length !== required.size)
+      fail(`${at}/datasets`, 'Slice must cover every region dataset and prepared view.')
+    if (generated) {
+      for (const block of targets) {
+        if (block.kind !== 'chart') continue
+        for (const view of [block, ...(block.preparedViews ?? [])]) {
+          const target = datasets.find((dataset) => dataset.id === view.datasetId)!
+          const binding = (slice.datasets as { datasetId: string; rowIndices: number[] }[]).find(
+            (binding) => binding.datasetId === view.datasetId,
+          )!
+          validateChartView(
+            view,
+            target.data as TypedDataset,
+            at,
+            `/datasets/${datasets.indexOf(target)}/data`,
+            binding.rowIndices,
+          )
+        }
+      }
+    }
+  })
 }
 
 export function parsePresentationDraft(value: unknown): PresentationDraft {
   bytes(value, budgets.draftBytes)
   const entry = object(value, '')
-  keys(entry, ['schemaVersion', 'title', 'datasets', 'sources', 'blocks'], [], '')
+  keys(entry, ['schemaVersion', 'title', 'datasets', 'sources', 'blocks'], ['interaction'], '')
   common(entry, false)
   return entry as unknown as PresentationDraft
 }
@@ -486,7 +646,7 @@ export function parsePresentationDocument(value: unknown): PresentationDocument 
       'blocks',
       'diagnostics',
     ],
-    [],
+    ['interaction'],
     '',
   )
   string(entry.workspaceId, '/workspaceId', 512)

@@ -54,7 +54,7 @@ export async function buildPresentation(value: PresentationDocument): Promise<Bu
   const scriptHash = createHash('sha256').update(script).digest('base64')
   const csp = [
     "default-src 'none'",
-    `script-src 'sha256-${scriptHash}'`,
+    `script-src 'sha256-${scriptHash}' 'wasm-unsafe-eval'`,
     "script-src-attr 'none'",
     "style-src 'unsafe-inline'",
     "connect-src 'none'",
