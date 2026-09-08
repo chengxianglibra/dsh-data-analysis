@@ -170,6 +170,7 @@ try {
     'lib/client/semantic-reference-source.js',
     'lib/types/client/semantic-reference-source.d.ts',
     'lib/types/bin/environment.d.ts',
+    'lib/types/bin/presentation-lint.d.ts',
     'lib/types/datasource/bridge-programs.d.ts',
     'lib/types/datasource/credentials.d.ts',
     'lib/types/disclosure/bridge-program.d.ts',
@@ -201,6 +202,7 @@ try {
     'lib/semantic-reference/usage.js',
     'lib/types/presentation/index.d.ts',
     'lib/bin/environment.js',
+    'lib/bin/presentation-lint.js',
     presentationKitWheelPath,
     'lib/presentation/contracts/index.js',
     'lib/presentation/contracts/types.js',
@@ -256,6 +258,10 @@ try {
       fail(`packed plugin contains development-only report contract ${filename}`)
     }
   }
+  const lintBin = files.get('lib/bin/presentation-lint.js')
+  if (lintBin === undefined || (lintBin.mode & 0o111) === 0) {
+    fail('packed presentation lint CLI is not executable')
+  }
   const environmentBin = files.get('lib/bin/environment.js')
   if (environmentBin === undefined || (environmentBin.mode & 0o111) === 0) {
     fail('packed environment CLI is not executable')
@@ -269,6 +275,12 @@ try {
   const installedPlugin = path.join(nodeModules, '@chengxianglibra/dsh-data-analysis')
   mkdirSync(path.dirname(installedPlugin), { recursive: true })
   renameSync(path.join(extracted, 'package'), installedPlugin)
+  const lintHelp = run(process.execPath, [
+    path.join(installedPlugin, 'lib/bin/presentation-lint.js'),
+    '--help',
+  ])
+  if (!lintHelp.includes('dsh-data-analysis-presentation-lint'))
+    fail('packed presentation lint CLI cannot start')
   run(
     'uv',
     [
@@ -290,9 +302,11 @@ try {
   }
   if (
     packedManifest.bin?.['dsh-data-analysis-env'] !== './lib/bin/environment.js' ||
+    packedManifest.bin?.['dsh-data-analysis-presentation-lint'] !==
+      './lib/bin/presentation-lint.js' ||
     Object.hasOwn(packedManifest.bin ?? {}, 'dsh-data-analysis-report-check')
   ) {
-    fail('packed CLI manifest must expose only the supported environment binary')
+    fail('packed CLI manifest must expose the supported environment and presentation lint binaries')
   }
   const linkedDependencies = new Set([
     ...Object.keys(peerDependencies),

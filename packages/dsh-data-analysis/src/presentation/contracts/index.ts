@@ -198,6 +198,19 @@ function column(value: unknown, path: string): DatasetColumn {
   return entry as unknown as DatasetColumn
 }
 function cell(value: unknown, column: DatasetColumn, path: string) {
+  try {
+    validateCell(value, column, path)
+  } catch (error) {
+    if (!(error instanceof PresentationContractError)) throw error
+    throw new PresentationContractError(
+      error.code,
+      error.path,
+      `column ${column.id} type=${column.type}: ${error.reason}`,
+      error.hint,
+    )
+  }
+}
+function validateCell(value: unknown, column: DatasetColumn, path: string) {
   if (value === null) {
     if (!column.nullable) fail(path, 'Column does not allow null.')
     return
@@ -214,6 +227,14 @@ function cell(value: unknown, column: DatasetColumn, path: string) {
       }
       break
     case 'int64': {
+      if (typeof value !== 'string') {
+        throw new PresentationContractError(
+          'invalid_value',
+          path,
+          'Expected an exact integer string for signed int64; JSON numbers are not accepted. Write 42 as "42".',
+          'Encode the original exact integer as a JSON string (for example, "42"). Do not stringify an already rounded number; use the original data or the Python write_dataset helper.',
+        )
+      }
       const text = string(value, path, 21)
       if (!/^-?(?:0|[1-9]\d*)$/.test(text)) fail(path, 'Expected an exact integer string.')
       const number = BigInt(text)
@@ -273,9 +294,9 @@ function dataset(value: unknown, path: string): TypedDataset {
   })
   return entry as unknown as TypedDataset
 }
-export function parseTypedDataset(value: unknown): TypedDataset {
-  bytes(value, budgets.datasetBytes)
-  return dataset(value, '')
+export function parseTypedDataset(value: unknown, path = ''): TypedDataset {
+  bytes(value, budgets.datasetBytes, path)
+  return dataset(value, path)
 }
 
 /** Tables retain the original decimal/int64 spelling, including trailing decimal zeroes. */

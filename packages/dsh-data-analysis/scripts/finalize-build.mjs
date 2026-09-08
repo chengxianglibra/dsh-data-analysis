@@ -9,6 +9,7 @@ const unreachableOutputs = [
   'lib/client/semantic-reference-source.js',
   'lib/types/client/semantic-reference-source.d.ts',
   'lib/types/bin/environment.d.ts',
+  'lib/types/bin/presentation-lint.d.ts',
   'lib/types/datasource/bridge-programs.d.ts',
   'lib/types/datasource/credentials.d.ts',
   'lib/types/disclosure/bridge-program.d.ts',
@@ -27,3 +28,5 @@ for (const output of [
 }
 
 chmodSync(new URL('../lib/bin/environment.js', import.meta.url), 0o755)
+
+chmodSync(new URL('../lib/bin/presentation-lint.js', import.meta.url), 0o755)

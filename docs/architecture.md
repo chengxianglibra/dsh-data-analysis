@@ -152,6 +152,8 @@ Native/both metadata 与 Code durable block 使用同一个带 Session/Turn 的 
 ## 展示数据与内容组织
 
 内部 `MarivoPresentationProjection` 把 Draft 变成纯数据 `PresentationDocument`。
+独立 `dsh-data-analysis-presentation-lint` 复用草稿、computed TypedDataset 和文件边界校验，
+仅提供静态预检；Runtime 来源读取与最终交付仍由 present 负责。单元格错误包含列名、类型与 JSON pointer。
 Artifact dataset 必须恢复所需行和字段；computed dataset 从 Workspace 中有界读取 typed JSON；
 source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable，但不允许直接 Artifact dataset 假成功。
 

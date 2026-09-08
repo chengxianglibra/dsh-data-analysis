@@ -515,3 +515,23 @@ test('computed interaction survives projection and rejects out-of-range rows aft
   draft.interaction!.slices[0]!.datasets[0]!.rowIndices = [999]
   await assert.rejects(f.bridge.project(draft, options), /missing row/)
 })
+
+test('computed projection preserves actionable column diagnostics without duplicate paths', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  const data = {
+    ...smallData,
+    columns: [{ id: 'query_count', label: '数量', type: 'int64', nullable: false }],
+    rows: [[42]],
+  }
+  await writeFile(path.join(f.root, 'computed.json'), JSON.stringify(data))
+  await assert.rejects(f.bridge.project(computedDraft(), options), (error: unknown) => {
+    assert.ok(error instanceof PresentationContractError)
+    assert.equal(error.path, '/datasets/0/data/rows/0/0')
+    assert.match(error.message, /column query_count type=int64: Expected an exact integer string/)
+    assert.equal(error.message.split(': /rows/').length, 1)
+    assert.match(error.hint, /original exact integer/)
+    return true
+  })
+  assert.equal(f.requests.length, 0)
+})

@@ -19,7 +19,8 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "bin": {
-    "dsh-data-analysis-env": "./lib/bin/environment.js"
+    "dsh-data-analysis-env": "./lib/bin/environment.js",
+    "dsh-data-analysis-presentation-lint": "./lib/bin/presentation-lint.js"
   },
   "exports": {
     ".": {

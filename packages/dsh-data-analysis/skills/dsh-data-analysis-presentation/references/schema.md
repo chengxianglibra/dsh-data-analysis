@@ -71,3 +71,18 @@ Python helper 要求 `.json` 目标的父目录已存在，默认 `row_limit=500
 ## 可选全局筛选
 
 Draft 与生成 Document 可声明 `interaction`；省略时不生成筛选器。字段及动态 metric 的互斥绑定见 [全局筛选与动态指标](interaction.md)。
+
+
+## 草稿静态预检
+
+在 Workspace 根目录运行 `dsh-data-analysis-presentation-lint analysis/presentation.draft.json`，
+或通过 `--project-root PATH` 显式指定 Workspace。CLI 复用 present 的草稿与 TypedDataset 校验及文件边界，
+检查草稿结构和引用的 computed JSON；不启动 Runtime、不执行分析、不生成报告文件。
+输出 JSON 的 `ok` 仅表示这些静态检查通过；`deferredChecks` 列出仍由 `marivo_present` 完成的
+Artifact 可用性与数据、codeRefs、投影后文档与渲染检查。退出码为 0（通过）、1（校验失败）、2（参数错误）。
+草稿结构通过后逐份检查 computed 文件，每份保留首个错误，修正后可再次预检。
+
+int64 单元格必须是精确整数字符串，例如 `"42"`；JSON number `42` 也不接受。
+诊断保留 JSON pointer，并显示 `column query_count type=int64`、原因与修复建议。
+超过 JS 安全整数范围的 number 可能已舍入，不能转成字符串来恢复精度；应从原始精确数据重写，
+或使用绑定 Runtime 中的 `write_dataset`。预检通过不等于成功交付，仍需 present 的成功 receipt。

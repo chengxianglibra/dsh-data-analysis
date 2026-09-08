@@ -199,18 +199,7 @@ export class MarivoPresentationProjection {
           options.signal,
         )
       } else data = artifactData.get(dataset.id)
-      try {
-        data = parseTypedDataset(data)
-      } catch (error) {
-        if (error instanceof PresentationContractError)
-          throw new PresentationContractError(
-            error.code,
-            `${location}/data${error.path}`,
-            error.message,
-            error.hint,
-          )
-        throw error
-      }
+      data = parseTypedDataset(data, `${location}/data`)
       if (dataset.kind === 'artifact') {
         const typed = data as DocumentDataset['data']
         if (
