@@ -141,17 +141,20 @@ Source metadata inspection 由 Agent 直接调用 `md.inspect(...)`；connection
 
 ## 一次展示交付
 
-Agent 调用 `marivo_present({ draft_path })`。Tool 从当前 Session 的 Harness Workspace 成员关系取得
+Agent 新建时调用 `marivo_present({ draft_path })`；更新时成对提供 `report_id` 与 `expected_build_id`。
+Tool 从当前 Session 的 Harness Workspace 成员关系取得
 身份，与 bound Runtime 的 project root 核对后读取 Draft、公开投影和构建，在临时目录写全 JSON/HTML，
-以单次目录 rename 提交。每次生成独立 build ID；只有完整文件通过字节校验才返回成功 receipt。
+以单次目录 rename 提交。更新沿用 report ID，每次生成独立 build ID；完整文件通过字节校验并原子发布 current 后才返回成功 receipt。
 
 Native/both metadata 与 Code durable block 使用同一个带 Session/Turn 的 delivery envelope；文本包含
 两个文件的精确路径、SHA-256 与字节数，headless 同样可用。Web 卡片打开共享 reader，并下载自包含 HTML。
 报告使用公开 Conversation Definition 的独立 Chat 节点和 keyed renderer，每轮以首次成功回执的位置
 展示有序卡片；执行中即时出现，正常完成后同一节点移至 Turn 结束位置，与最终回复相邻。
 卡片不依赖最终文本存在，也不占用 `turnTail` chain；原生 ProducedFiles 继续由 Harness 自己展示。
-只读 RPC 按当前 Session Workspace 推导固定 asset 路径，校验归属、真实路径、大小与 digest；来源展开只读保存快照。
-不存在 report ID、revision、latest、CAS 或持久 operation 索引。详见[展示交付](modules/presentation-delivery.md)。
+文件 RPC 按当前 Session Workspace 推导固定 asset 路径，校验归属、真实路径、大小与 digest；来源展开只读保存快照。
+稳定 report ID 下的 `current.json` 保存当前 receipt，Agent 完整 Draft 重建与 Host 受限呈现保存共用发布服务，
+在跨进程锁内比较 expected build 并更新 current。冲突不覆盖现有保存，不回退新建；历史 Build 保持不可变。
+原卡片重开解析 current，已打开 reader 与固定文件保持快照。详见[展示交付](modules/presentation-delivery.md)。
 
 ## 展示数据与内容组织
 

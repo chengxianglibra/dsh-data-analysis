@@ -4,7 +4,7 @@
 
 `marivo_present({ draft_path })` 将一次分析展示闭合为两个文件和一个 receipt。
 Marivo 拥有分析、Artifact/Finding 与来源事实；Harness 拥有 Session/Turn、Workspace 成员关系和事件存储；
-插件拥有固定快照投影、文件完整提交、receipt、阅读器呈现编辑保存与打开/下载。
+插件拥有固定快照投影、文件完整提交、receipt、Agent Draft 更新、阅读器呈现编辑保存与打开/下载。
 
 实现为 `src/presentation/{tool,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
 `bridges.ts` 和 `client.tsx`；客户端使用 `src/client/presentation/` 的共享 reader 与交付 adapter。
@@ -14,8 +14,8 @@ Agent 的展示路由、Draft 编写与结果解释见[展示 Skill](presentatio
 ## 单次调用与文件身份
 
 1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace，核对 bound Runtime 的 project root。
-2. 有界读取 Workspace 相对 Draft，使用同一个 checked Runtime 公开恢复 Artifact 和来源，读取 computed typed JSON。
-3. 生成稳定 UUID report ID 与首次 build ID，调用共享 builder 得到完整 JSON 和自包含 HTML 字节。
+2. 更新时先校验目标 Report 的 current 与 `expected_build_id`；有界读取 Workspace 相对 Draft，使用同一个 checked Runtime 公开恢复 Artifact 和来源，读取 computed typed JSON。
+3. 新建时生成 report ID，更新时沿用目标 report ID；每次生成新 build ID，调用共享 builder 得到完整 JSON 和自包含 HTML 字节。
 4. 在同一 Workspace 的新临时目录写入两个文件并同步，检查归属和目录身份后以一次 rename 提交。
 5. 重读校验两份完整文件，然后在跨进程锁内发布 current 指针，返回 receipt。指针生效前失败不破坏已有构建。
 
@@ -27,9 +27,26 @@ Agent 的展示路由、Draft 编写与结果解释见[展示 Skill](presentatio
 ```
 
 document 与 receipt 使用 schema v2，保存 Workspace/report/build 身份、标题、摘要及两份文件的精确路径、SHA-256 和字节数。
-重复调用 Tool 生成独立报告；阅读器保存为同一 report 创建新 build。
+Tool 默认创建独立报告；成对提供 `report_id` 与 `expected_build_id` 时更新已有报告。阅读器保存也为同一 report 创建新 build。
 `presentations/<reportId>/current.json` 保存 schema v2、Workspace、reportId 与完整当前 receipt。
 旧协议不读取、不迁移；旧文件保留。不提供历史浏览、回滚或自动清理。
+
+## Agent 更新契约
+
+`marivo_present({ draft_path, report_id, expected_build_id })` 以完整 Draft 重建已有 Report。
+两个身份参数必须成对提供，复用现有身份解析器；不按标题、Draft 路径或文件时间推测目标。
+Tool 在读取 Draft 和投影前 resolve 目标，校验 current、Workspace 及文档摘要，拒绝已过期的 expected build。
+构建完成后仍在共享发布服务的锁内比较 expected，防止投影期间发生的 UI 或 Agent 保存被覆盖。
+绑定失效、目标不存在、损坏或版本冲突均明确失败，不回退为新 Report。
+
+与 `reports/save` 的受限呈现编辑不同，完整 Draft 可新增／合并 KPI、改变绑定与数据声明；
+投影仍只读取已有保存数据，不自动执行分析。Agent 先读取当前保存内容并合并需要保留的用户编辑，
+未提交的内容不自动保留。`report-save-conflict` 后重新读取 current 和文档再判断，不能只换 expected ID 重试。
+普通文件读取用于准备 Draft，发布时的身份和摘要校验仍由 Tool 负责。
+
+返回 receipt 固定为本次成功发布的 Build，`current.json` 是当前构建的唯一权威；后续保存可继续推进 current。
+更新仍通过原有 Native／Code 交付路径生成本轮回执与卡片；历史交付事件不改写，同 Report 的卡片重开时解析同一 current。
+固定 Build 文件和离线 HTML 保留快照，不提供跨窗口实时刷新或自动历史清理。
 
 ## Native、Code 与 headless
 
@@ -111,6 +128,7 @@ ProducedFiles 与独立报告节点共存、首个回执即时显示、多报告
 [报告交付与质量修复验收](../plan/2026-09-07-presentation-delivery-quality-acceptance.md)。
 
 在线编辑、原卡片重开与全图形筛选的当前结果见[编辑与联动筛选验收](../plan/2026-09-07-presentation-editing-acceptance.md)。
+Agent 同 Report 重建、UI 并发与旧卡片重开见[Agent 报告更新验收](../plan/2026-09-08-agent-report-update-acceptance.md)。
 
 ## 全局筛选的保存边界
 

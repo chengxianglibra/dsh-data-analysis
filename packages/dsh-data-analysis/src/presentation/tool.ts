@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { parsePresentationBuildId } from './contracts/index.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -9,7 +10,7 @@ import {
   parsePresentationDelivery,
   presentationReceiptText,
 } from './receipt.ts'
-import { publishPresentation } from './reports.ts'
+import { publishPresentation, resolvePresentation } from './reports.ts'
 
 export interface PresentationBinding {
   workspaceId: string
@@ -26,12 +27,23 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present a Workspace-relative analysis draft as one saved document and self-contained offline HTML. Returns exact file locations and a reader card. Only saved Artifact and computed snapshots are read; sources are declarations, not verification of calculations.',
+      'Present a complete Workspace-relative analysis draft as one saved document and self-contained offline HTML. Omit report_id and expected_build_id to create a Report; provide both to replace an existing Report with a new immutable Build based on the version you have read. A report-save-conflict requires reading the current report and reconciling the draft; never retry by only changing expected_build_id. Returns the exact published receipt, file locations, and a reader card. Only saved Artifact and computed snapshots are read; sources are declarations, not verification of calculations.',
     parameters: {
       draft_path: {
         type: 'string',
         required: true,
-        description: 'Workspace-relative path of the presentation draft JSON.',
+        description:
+          'Workspace-relative path of the complete presentation draft JSON. Updates replace the whole report content; omitted content is not preserved.',
+      },
+      report_id: {
+        type: 'string',
+        description:
+          'Existing Report ID in the current Workspace to update. Must be provided together with expected_build_id; omit both to create a new Report.',
+      },
+      expected_build_id: {
+        type: 'string',
+        description:
+          'Build ID of the report version you have read and based this complete draft on. Must be provided together with report_id. A stale version fails with report-save-conflict; read and reconcile the current report before retrying.',
       },
     },
     output: {
@@ -59,6 +71,15 @@ export function createMarivoPresentTool(
         args.draft_path.length > 4096
       )
         throw new Error('invalid-draft-path')
+      const hasReportId = args.report_id !== undefined
+      const hasExpectedBuildId = args.expected_build_id !== undefined
+      if (hasReportId !== hasExpectedBuildId) throw new Error('invalid-report-update-target')
+      const reportId = hasReportId
+        ? parsePresentationBuildId(args.report_id, '/report_id')
+        : randomUUID()
+      const expectedBuildId = hasExpectedBuildId
+        ? parsePresentationBuildId(args.expected_build_id, '/expected_build_id')
+        : null
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
       const rootCallId = String(exec.rootCallId ?? exec.callId)
@@ -89,16 +110,32 @@ export function createMarivoPresentTool(
         signal.throwIfAborted()
       }
       await check()
+      if (expectedBuildId !== null) {
+        const current = await resolvePresentation(
+          identity.projectRoot,
+          identity.workspaceId,
+          reportId,
+          signal,
+        )
+        await check()
+        if (current.buildId !== expectedBuildId) throw new Error('report-save-conflict')
+      }
       const draft = await binding.projection.readDraft(args.draft_path, signal)
       await check()
       const document = await binding.projection.project(draft, {
         workspaceId: binding.workspaceId,
-        reportId: randomUUID(),
+        reportId,
         buildId: randomUUID(),
         signal,
       })
       await check()
-      const receipt = await publishPresentation(identity.projectRoot, document, null, check, signal)
+      const receipt = await publishPresentation(
+        identity.projectRoot,
+        document,
+        expectedBuildId,
+        check,
+        signal,
+      )
       return {
         deliveryJson: JSON.stringify(
           parsePresentationDelivery({

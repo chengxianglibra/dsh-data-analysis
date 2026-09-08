@@ -16,6 +16,29 @@
 
 `draft_path` 与 computed 的 `path` 均相对于当前绑定 Workspace 根目录，**不是相对于草稿文件目录**。使用根目录内的 JSON 文件；不使用绝对路径、`..`、`.` 路径段、反斜杠、空路径段或通向 Workspace 外的符号链接。不从其他项目、解释器或数据源补齐失败的引用。
 
+## 报告更新
+
+新建报告调用 `marivo_present({ draft_path })`。修改已有报告时使用：
+
+```text
+marivo_present({ draft_path, report_id, expected_build_id })
+```
+
+`report_id` 与 `expected_build_id` 是 Tool 参数，必须成对提供，不能放进 Draft。
+取实际 receipt 的 `reportId`、`buildId`；目标必须属于当前绑定 Workspace。更新前通过普通文件读取
+`.dsh-data-analysis/presentations/<reportId>/current.json` 中的 receipt，再读取该 receipt 指向的
+`presentation.json`，确认修改所基于的内容和 buildId。文件读取不替代 Tool 的身份与摘要校验。
+基于原始 Draft 合并需要保留的已保存编辑；生成文档包含投影快照，不能直接作为 Draft 提交。
+
+这是完整 Draft 重建，会重新读取声明的已有数据和来源、替换报告全部内容；省略的内容不会自动合并。
+更新成功保持 reportId，创建不可变新 buildId 并原子推进 current，返回本次提交的精确 receipt。
+宿主原卡片重开读取 current，已打开阅读器与固定文件链接保持各自快照。
+
+`invalid-report-update-target` 表示两个参数没有成对提供；非法身份、目标缺失或损坏均拒绝更新，不回退新建。
+`report-save-conflict` 表示当前版本已变化：读取 current 及其文档，核对用户编辑并重新形成 Draft，
+再以该已读取版本提交；不能只替换 expected ID 重试。响应丢失时也先读取 current 核对内容，避免重复提交。
+已有 Report 之间不自动合并，历史 Build 不覆盖或清理。
+
 ## 生成代码
 
 `marivo_python` 成功执行后自动保存该次提交的 Python 原文，并在结果中返回 `codeRef: {executionId, sha256}`。

@@ -27,6 +27,8 @@ import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { apply, inject } from '../../src/plugin.ts'
 import { parsePresentationReceipt } from '../../src/presentation/contracts/index.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
+import { presentationSha256, readPresentationAsset } from '../../src/presentation/files.ts'
+import { readReceiptDocument, resolvePresentation } from '../../src/presentation/reports.ts'
 import {
   installConnectionFixture,
   installStorage,
@@ -34,6 +36,9 @@ import {
 import { TestShellEnv } from '../../tests/test-shell-env.ts'
 
 export type PresentationMode = 'native' | 'both' | 'code'
+export interface PresentationJourneyOptions {
+  updateExistingReport?: boolean
+}
 export interface ActualDelivery {
   kind: 'marivo.presentation.delivery'
   schemaVersion: 2
@@ -46,11 +51,17 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
   #step = 0
   readonly mode: PresentationMode
   readonly draftPaths: readonly string[]
+  readonly previousReceipt?: () => PresentationReceipt | undefined
   readonly runId = randomUUID()
-  constructor(mode: PresentationMode, draftPaths: readonly string[]) {
+  constructor(
+    mode: PresentationMode,
+    draftPaths: readonly string[],
+    previousReceipt?: () => PresentationReceipt | undefined,
+  ) {
     super()
     this.mode = mode
     this.draftPaths = draftPaths
+    this.previousReceipt = previousReceipt
   }
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model })
@@ -77,11 +88,17 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
       const codeDispatch = this.mode === 'code' || (this.mode === 'both' && step === 1)
       const file = `s4-produced-${this.runId}-${turnIndex}.txt`
       const toolName = phase === 0 ? 'write' : phase === 1 ? 'marivo_present' : 'read'
+      let updateTarget: { report_id: string; expected_build_id: string } | undefined
+      if (phase === 1 && turnIndex > 0 && this.previousReceipt) {
+        const receipt = this.previousReceipt()
+        assert.ok(receipt, 'An update must use the previous actual Tool delivery')
+        updateTarget = { report_id: receipt.reportId, expected_build_id: receipt.buildId }
+      }
       const toolArgs =
         phase === 0
           ? { file_path: file, content: 'Ordinary Harness produced file before report delivery.\n' }
           : phase === 1
-            ? { draft_path: draft }
+            ? { draft_path: draft, ...updateTarget }
             : { file_path: file }
       const name = codeDispatch ? 'run_code' : toolName
       const args = JSON.stringify(
@@ -156,11 +173,21 @@ export async function runPresentationJourneys(
   mode: PresentationMode,
   draftPaths: readonly string[],
   duplicateDispatch = false,
+  options: PresentationJourneyOptions = {},
 ) {
   const workspace = await ctx.workspaceRegistry.create(workspaceRoot, 'S4 presentation validation')
   const provider = `s4-scripted-${mode}`
-  ctx.llm.registerAdapter([provider], new ScriptedPresentationAdapter(mode, draftPaths))
   const sessionId = SessionId(`presentation-s4-${mode}`)
+  ctx.llm.registerAdapter(
+    [provider],
+    new ScriptedPresentationAdapter(
+      mode,
+      draftPaths,
+      options.updateExistingReport
+        ? () => actualDeliveries(agent.session.events, String(sessionId)).at(-1)?.receipt
+        : undefined,
+    ),
+  )
   const agent = ctx.agentLoop.create(
     sessionId,
     { provider, model: 'deterministic-seam' },
@@ -193,7 +220,7 @@ export async function runPresentationJourneys(
   })
   await workspace.attachSession(sessionId)
   assert.ok(workspace.sessionIds.includes(sessionId))
-  for (const draft of draftPaths) {
+  for (const [index, draft] of draftPaths.entries()) {
     agent.followup(
       createUserMessage({
         content: [{ type: 'text', text: `S4 presentation validation: ${draft}` }],
@@ -201,6 +228,18 @@ export async function runPresentationJourneys(
       }),
     )
     await agent.whenIdle()
+    if (options.updateExistingReport) {
+      const delivery = actualDeliveries(agent.session.events, String(sessionId)).at(-1)
+      assert.ok(delivery, 'Each update must produce an actual Tool receipt')
+      assert.equal(delivery.turn, index + 1)
+      assert.deepEqual(
+        await resolvePresentation(workspaceRoot, String(workspace.id), delivery.receipt.reportId),
+        delivery.receipt,
+        'The published current pointer must equal the receipt returned by this turn',
+      )
+      // Read the saved version before the adapter bases its next draft on that Build.
+      await readReceiptDocument(workspaceRoot, delivery.receipt)
+    }
   }
   stopDuplicate()
   assert.ifError(duplicateError)
@@ -231,6 +270,40 @@ export async function runPresentationJourneys(
   )
   assert.equal(new Set(deliveries.map((item) => item.receipt.buildId)).size, draftPaths.length)
   assert.ok(deliveries.every((item) => item.receipt.workspaceId === String(workspace.id)))
+  let reportUpdate:
+    | {
+        reportId: string
+        buildIds: string[]
+        current: PresentationReceipt
+        historicalFilesMatchOriginalReceipts: true
+      }
+    | undefined
+  if (options.updateExistingReport) {
+    assert.ok(deliveries.length > 1, 'Report update validation requires multiple invocations')
+    assert.equal(new Set(deliveries.map((item) => item.receipt.reportId)).size, 1)
+    for (const { receipt } of deliveries) {
+      await readReceiptDocument(workspaceRoot, receipt)
+      for (const asset of Object.values(receipt.files)) {
+        const bytes = await readPresentationAsset(
+          workspaceRoot,
+          receipt.reportId,
+          receipt.buildId,
+          asset.asset,
+        )
+        assert.equal(bytes.length, asset.bytes)
+        assert.equal(presentationSha256(bytes), asset.sha256)
+      }
+    }
+    const latest = deliveries.at(-1)!.receipt
+    const current = await resolvePresentation(workspaceRoot, String(workspace.id), latest.reportId)
+    assert.deepEqual(current, latest)
+    reportUpdate = {
+      reportId: latest.reportId,
+      buildIds: deliveries.map((delivery) => delivery.receipt.buildId),
+      current,
+      historicalFilesMatchOriginalReceipts: true,
+    }
+  }
   const dispatches = stored.events.filter(
     (event) => event.type === 'tool/code-dispatch' && event.data.name === 'marivo_present',
   )
@@ -313,6 +386,7 @@ export async function runPresentationJourneys(
     ordinaryWriteBeforePresentAndReadAfter: true,
     duplicatedCodeReceiptEvents: rawDeliveries.length - deliveries.length,
     receiptProducedBy: 'production plugin ToolRuntime execution; no model result printing',
+    ...(reportUpdate ? { reportUpdate } : {}),
   }
   await writeFile(path.join(outputRoot, `${mode}-events.json`), JSON.stringify(stored, null, 2))
   await writeFile(path.join(outputRoot, `${mode}-evidence.json`), JSON.stringify(result, null, 2))
@@ -324,6 +398,7 @@ export async function validatePresentationHost(
   outputRoot: string,
   pythonExecutable: string,
   draftPaths: readonly string[],
+  options: PresentationJourneyOptions = {},
 ) {
   const modes = []
   for (const mode of ['native', 'both', 'code'] as const) {
@@ -359,12 +434,17 @@ export async function validatePresentationHost(
           credentialInteraction: 'none',
         },
       )
-      // A duplicate draft is a new invocation and must create an independent build.
+      // Every invocation creates an immutable Build, including a repeated draft.
       modes.push(
-        await runPresentationJourneys(ctx, workspaceRoot, outputRoot, mode, [
-          ...draftPaths,
-          draftPaths[0]!,
-        ]),
+        await runPresentationJourneys(
+          ctx,
+          workspaceRoot,
+          outputRoot,
+          mode,
+          [...draftPaths, draftPaths[0]!],
+          false,
+          options,
+        ),
       )
     } finally {
       await ctx.fiber.dispose()
