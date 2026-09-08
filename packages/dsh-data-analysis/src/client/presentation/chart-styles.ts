@@ -1,7 +1,7 @@
 export const CHART_STYLES = `
 .pr-special-frame { position:relative; min-width:0; margin:0 }
 .pr-special-scroll { overflow-x:auto; padding-bottom:4px; max-width:100% }
-.pr-special-chart { display:block; width:100%; min-width:520px; color:var(--pr-text); overflow:visible; font-size:12px; font-variant-numeric:tabular-nums }
+.pr-special-chart { display:block; color:var(--pr-text); overflow:visible; font-size:12px; font-variant-numeric:tabular-nums }
 .pr-special-chart text { fill:var(--pr-text) }
 .pr-special-chart .pr-axis-tick { fill:var(--pr-chart-muted) }
 .pr-special-chart [data-chart-mark]:focus { outline:2px solid var(--pr-accent); outline-offset:3px }

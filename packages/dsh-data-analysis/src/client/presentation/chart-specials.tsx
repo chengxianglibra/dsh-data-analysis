@@ -20,10 +20,10 @@ import {
   formatCategoryTick,
   valueWithUnit,
 } from './model.ts'
+import { useElementWidth } from './use-element-width.ts'
 
 const WIDTH = 720
 const LEFT = 148
-const RIGHT = 686
 const TOP = 22
 const BOTTOM = 270
 
@@ -51,6 +51,8 @@ export function SpecialChart({
   title: string
 }) {
   const [active, setActive] = useState<number | null>(null)
+  const { ref, width } = useElementWidth(block.chart === 'pie' ? WIDTH : 520, WIDTH)
+  const right = width - 34
   const data = dataset.data
   const bindings = block.bindings ?? {}
   const field = block.y[0]!
@@ -82,7 +84,7 @@ export function SpecialChart({
   const referenceValues = (axis: 'x' | 'y') =>
     references.filter((reference) => reference.axis === axis).map((reference) => reference.value)
   const horizontalAxis = (domain: [number, number], y: number, caption: string) => {
-    const scale = drawingScale(domain, LEFT, RIGHT)
+    const scale = drawingScale(domain, LEFT, right)
     return (
       <g>
         {domainTicks(domain).map((value) => (
@@ -99,7 +101,7 @@ export function SpecialChart({
             </text>
           </g>
         ))}
-        <text x={(LEFT + RIGHT) / 2} y={y + 42} textAnchor="middle">
+        <text x={(LEFT + right) / 2} y={y + 42} textAnchor="middle">
           {formatCategoryTick(caption)}
         </text>
         {references
@@ -133,7 +135,7 @@ export function SpecialChart({
           <g key={value}>
             <line
               x1={LEFT}
-              x2={RIGHT}
+              x2={right}
               y1={scale(value)}
               y2={scale(value)}
               stroke="var(--pr-chart-grid)"
@@ -160,13 +162,13 @@ export function SpecialChart({
             >
               <line
                 x1={LEFT}
-                x2={RIGHT}
+                x2={right}
                 y1={scale(reference.value)}
                 y2={scale(reference.value)}
                 stroke="var(--pr-chart-muted)"
                 strokeDasharray="5 5"
               />
-              <text x={RIGHT} y={scale(reference.value) - 6} textAnchor="end">
+              <text x={right} y={scale(reference.value) - 6} textAnchor="end">
                 {formatCategoryTick(reference.label ?? formatAxisTick(reference.value))}
               </text>
             </g>
@@ -184,7 +186,7 @@ export function SpecialChart({
     const end = bindings.binEnd!
     const xDomain = drawingDomain([...values([start, end]), ...referenceValues('x')])
     const yDomain = drawingDomain([...values([field]), ...referenceValues('y')])
-    const sx = drawingScale(xDomain, LEFT, RIGHT)
+    const sx = drawingScale(xDomain, LEFT, right)
     const sy = drawingScale(yDomain, BOTTOM, TOP)
     drawing = (
       <>
@@ -200,7 +202,7 @@ export function SpecialChart({
             {formatAxisTick(value)}
           </text>
         ))}
-        <text x={(LEFT + RIGHT) / 2} y={BOTTOM + 44} textAnchor="middle">
+        <text x={(LEFT + right) / 2} y={BOTTOM + 44} textAnchor="middle">
           {categoryCaption}
         </text>
         {rowIndices.map((row) => {
@@ -258,7 +260,7 @@ export function SpecialChart({
   } else if (block.chart === 'boxPlot') {
     const fields = [bindings.minimum!, bindings.q1!, field, bindings.q3!, bindings.maximum!]
     const domain = drawingDomain([...values(fields), ...referenceValues('x')])
-    const sx = drawingScale(domain, LEFT, RIGHT)
+    const sx = drawingScale(domain, LEFT, right)
     const band = 46
     const bottom = TOP + Math.max(rowIndices.length, 1) * band
     height = bottom + 52
@@ -345,7 +347,7 @@ export function SpecialChart({
       </>
     )
   } else if (block.chart === 'heatmap') {
-    const cellWidth = (RIGHT - LEFT) / Math.max(1, allVisibleFields.length)
+    const cellWidth = (right - LEFT) / Math.max(1, allVisibleFields.length)
     const cellHeight = 40
     height = Math.max(130, TOP + rowIndices.length * cellHeight + 74)
     // Color scale belongs to the full saved matrix so filtering does not change its meaning.
@@ -449,9 +451,9 @@ export function SpecialChart({
         rowIndices[index + 1] !== undefined
           ? coordinate(rowIndices[index + 1]!, bindings.share!)
           : share
-      const center = (LEFT + RIGHT) / 2
-      const topWidth = (share ?? 0) * (RIGHT - LEFT)
-      const bottomWidth = (nextShare ?? share ?? 0) * (RIGHT - LEFT)
+      const center = (LEFT + right) / 2
+      const topWidth = (share ?? 0) * (right - LEFT)
+      const bottomWidth = (nextShare ?? share ?? 0) * (right - LEFT)
       const y = TOP + index * band
       return (
         <g key={row} {...mark(row)}>
@@ -480,11 +482,12 @@ export function SpecialChart({
       ...referenceValues('y'),
     ])
     const sy = drawingScale(domain, BOTTOM, TOP)
-    const band = (RIGHT - LEFT) / Math.max(1, rowIndices.length)
+    const band = (right - LEFT) / Math.max(1, rowIndices.length)
+    const barWidth = Math.min(48, band * 0.6)
     drawing = (
       <>
         {verticalAxis(domain, axisCaption)}
-        <text x={(LEFT + RIGHT) / 2} y={BOTTOM + 44} textAnchor="middle">
+        <text x={(LEFT + right) / 2} y={BOTTOM + 44} textAnchor="middle">
           {categoryCaption}
         </text>
         {rowIndices.map((row, index) => {
@@ -492,7 +495,8 @@ export function SpecialChart({
           const end = coordinate(row, bindings.end!)
           const value = coordinate(row, field)
           const role = raw(row, bindings.role!)
-          const x = LEFT + (index + 0.2) * band
+          const center = LEFT + (index + 0.5) * band
+          const x = center - barWidth / 2
           const previous = rowIndices[index - 1]
           const previousEnd = previous === undefined ? null : coordinate(previous, bindings.end!)
           const connectorTarget = role === 'delta' ? start : end
@@ -510,7 +514,7 @@ export function SpecialChart({
                 <>
                   {connected && (
                     <line
-                      x1={x - band * 0.4}
+                      x1={x - band + barWidth}
                       x2={x}
                       y1={sy(previousEnd!)}
                       y2={sy(previousEnd!)}
@@ -522,7 +526,7 @@ export function SpecialChart({
                   <rect
                     x={x}
                     y={Math.min(sy(start), sy(end))}
-                    width={band * 0.6}
+                    width={barWidth}
                     height={Math.abs(sy(start) - sy(end))}
                     fill={
                       role === 'delta'
@@ -535,7 +539,7 @@ export function SpecialChart({
                   {valueLabels && (
                     <text
                       className="pr-chart-label"
-                      x={x + band * 0.3}
+                      x={center}
                       y={Math.min(sy(start), sy(end)) - 7}
                       textAnchor="middle"
                     >
@@ -544,7 +548,7 @@ export function SpecialChart({
                   )}
                 </>
               )}
-              <text className="pr-axis-tick" x={x + band * 0.3} y={BOTTOM + 20} textAnchor="middle">
+              <text className="pr-axis-tick" x={center} y={BOTTOM + 20} textAnchor="middle">
                 {formatCategoryTick(label(row))}
               </text>
             </g>
@@ -554,7 +558,7 @@ export function SpecialChart({
     )
   } else {
     const domain = drawingDomain([...values([field]), ...referenceValues('x')])
-    const sx = drawingScale(domain, LEFT, RIGHT)
+    const sx = drawingScale(domain, LEFT, right)
     const band = 40
     const bottom = TOP + Math.max(1, rowIndices.length) * band
     height = bottom + 52
@@ -599,15 +603,21 @@ export function SpecialChart({
   }
   return (
     <figure className="pr-special-frame" aria-label={title} data-chart-type={block.chart}>
-      <div className="pr-special-scroll">
+      <div className="pr-special-scroll" ref={ref}>
         <svg
           className="pr-special-chart"
-          viewBox={`0 0 ${WIDTH} ${height}`}
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
           role="img"
           aria-label={title}
         >
           <title>{title}</title>
-          {drawing}
+          {block.chart === 'pie' ? (
+            <g transform={`translate(${(width - WIDTH) / 2},0)`}>{drawing}</g>
+          ) : (
+            drawing
+          )}
         </svg>
       </div>
       {active !== null && rowIndices.includes(active) && (

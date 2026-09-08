@@ -168,6 +168,8 @@ source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable�
 报告、看板及比较型展示在写草稿前读取 narrative；细则涵盖比较两侧、方向和分母、证据强度、数值核对，
 以及 Agent 选取范围与 writer 截断的区别。示例按需读取。Agent 决定内容顺序和图形意图，reader 负责自适应布局，
 没有 Agent 可配置的网格。来源来自 Marivo 的公开快照；computed 的来源声明不构成转换审计或正确性证明。
+Host 预览与离线 HTML 共用流式宽度；正文独立限制行长，图表按容器宽度布局并保持字号、行高稳定。
+布局变化只影响阅读呈现，不修改报告 schema、保存快照或分析语义，详见[reader 模块](modules/presentation-reader.md#通用阅读层级)。
 
 共享图形契约覆盖 18 类图形与 bar/line 变体；分箱、分位数、占比、排名和累计值先在分析阶段准备。
 前端探索只选择现有列或显式 `preparedViews`，过滤和显隐不改变统计口径；当前视图用于来源预览与复制上下文，

@@ -7,7 +7,7 @@ export const PRESENTATION_STYLES = `
   --pr-border:#e5e5e7; --pr-accent:#3567b7; --pr-warning:#805b20;
   --pr-chart-1:#286dee; --pr-chart-2:#ba7039; --pr-chart-3:#548878;
   --pr-chart-muted:#96969b; --pr-chart-grid:rgba(13,13,13,.06); --pr-chart-hover:rgba(13,13,13,.03); --pr-chart-4:#8d6cb0; --pr-chart-5:#b46379; --pr-chart-6:#727c38;
-  box-sizing:border-box; margin:0 auto; padding:48px 40px; max-width:900px; min-width:0;
+  box-sizing:border-box; margin:0 auto; padding:48px clamp(20px,4%,64px); width:100%; max-width:none; min-width:0;
   color:var(--pr-text); background:var(--pr-bg); font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   overflow-wrap:anywhere; color-scheme:light;
 }
@@ -31,7 +31,7 @@ export const PRESENTATION_STYLES = `
 .pr-header { padding-bottom:28px; margin-bottom:32px; border-bottom:1px solid var(--pr-border) }
 .pr-blocks { display:flex; flex-direction:column; gap:32px }
 .pr-block { min-width:0; position:relative }
-.pr-block-markdown { padding:0 }
+.pr-block-markdown { padding:0; width:100%; max-width:820px; align-self:flex-start }
 .pr-block-chart { padding:0; border:0; border-radius:0 }
 .pr-block-chart>h2 { font-size:17px }
 .pr-metric-group { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:16px }
@@ -196,6 +196,7 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-reader { --pr-bg:#fff; --pr-soft:#fff; --pr-text:#111; --pr-muted:#444; --pr-border:#bbb; --pr-accent:#222; --pr-warning:#333; max-width:none; padding:0; font-size:10pt; color-scheme:light }
   .pr-blocks { display:block }
   .pr-block { border:0; padding:12px 0; border-radius:0 }
+  .pr-block-markdown { max-width:none }
   .pr-block-metric>h2,.pr-block-chart>h2,.pr-block-markdown .pr-markdown>:first-child { padding-right:0 }
   .pr-source-summary::details-content { content-visibility:visible }
   .pr-source-summary>* { display:block }

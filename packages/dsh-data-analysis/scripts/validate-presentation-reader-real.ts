@@ -29,6 +29,11 @@ import type {
 } from '../src/presentation/contracts/types.ts'
 import { verifyChartGallery, verifyChartReopen } from './presentation-chart-browser.ts'
 import { chartGallery } from './presentation-chart-gallery.ts'
+import {
+  verifyGalleryResizeState,
+  verifyResizeState,
+  verifyResponsiveGallery,
+} from './presentation-responsive-browser.ts'
 import { prepareS0WebHost } from './presentation-s0/web-host.ts'
 
 // This exercises the production reader through an actual isolated DSH Web module loader.
@@ -666,6 +671,10 @@ async function verifyInteractions(page: Page) {
   await table.getByRole('button', { name: '下一页', exact: true }).click()
   assert.equal(await table.locator('tbody tr').count(), 5)
   assert.ok((await table.innerText()).includes('9007199254740992.1000'))
+  const pageRows = await table.locator('tbody tr').allTextContents()
+  const paginationResize = await verifyResizeState(page, async () => {
+    assert.deepEqual(await table.locator('tbody tr').allTextContents(), pageRows)
+  })
   await table.getByRole('button', { name: '上一页', exact: true }).click()
   assert.equal(await table.locator('tbody tr').count(), 20)
   const chart = reader.locator('[data-block-id="line"]')
@@ -728,6 +737,7 @@ async function verifyInteractions(page: Page) {
   return {
     sortingExactDecimal: true,
     pagination: true,
+    paginationResize,
     seriesKeyboard: true,
     pointerTooltip: true,
     sourceModalKeyboardTabs: true,
@@ -845,6 +855,20 @@ try {
     let interactions: unknown
     if (item.name === 'chart-gallery') {
       interactions = {
+        hostResponsive: await verifyResponsiveGallery(
+          page,
+          outputRoot,
+          'gallery-host',
+          'module-loader',
+        ),
+        portableResponsive: await verifyResponsiveGallery(
+          offlinePage,
+          outputRoot,
+          'gallery-portable',
+          'portable',
+        ),
+        hostResizeState: await verifyGalleryResizeState(page),
+        portableResizeState: await verifyGalleryResizeState(offlinePage),
         host: await verifyChartGallery(page),
         portable: await verifyChartGallery(offlinePage),
         hostReopen: await verifyChartReopen(page, async () => {
@@ -960,8 +984,28 @@ try {
           `narrow ${blockId} tooltip is clipped horizontally: ${JSON.stringify(bounds)}`,
         )
       }
+      const longLabelChart = offlinePage.locator(
+        '[data-mode="interactive"] [data-block-id="approximate"]',
+      )
+      await longLabelChart.locator('.recharts-bar-rectangle').last().hover()
+      const longLabelTooltip = longLabelChart.locator(
+        '.recharts-tooltip-wrapper [data-chart-tooltip]',
+      )
+      await longLabelTooltip.waitFor({ state: 'visible' })
+      assert.ok((await longLabelTooltip.innerText()).includes(attack))
+      const longLabelBounds = await longLabelTooltip.boundingBox()
+      assert.ok(
+        longLabelBounds &&
+          longLabelBounds.x >= 0 &&
+          longLabelBounds.x + longLabelBounds.width <= 376,
+        `Long category tooltip is clipped: ${JSON.stringify(longLabelBounds)}`,
+      )
+      await offlinePage.screenshot({
+        path: path.join(outputRoot, 'interactions-narrow-long-label.png'),
+      })
       checks.push({
         narrowDark: { ...layout, contrast },
+        longCategoryTooltip: true,
         keyboard: true,
         barGeometry: await verifyBarGeometry(
           offlinePage.locator('[data-presentation-reader][data-mode="interactive"]'),

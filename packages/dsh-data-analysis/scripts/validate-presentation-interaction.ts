@@ -11,7 +11,13 @@ import { buildPresentation } from '../src/presentation/build/index.ts'
 import { publishPresentation } from '../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../src/presentation/rpc.ts'
 import { interactionFixture } from '../tests/presentation-reader/interaction-fixture.ts'
+import { verifyBrowserZoom } from './presentation-browser-zoom.ts'
 import { chartGallery } from './presentation-chart-gallery.ts'
+import {
+  verifyGalleryResizeState,
+  verifyResizeState,
+  verifyResponsiveGallery,
+} from './presentation-responsive-browser.ts'
 import { verifyAllChartFilters } from './presentation-s4/editing.ts'
 
 const output = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-global-filters-')))
@@ -20,6 +26,10 @@ const { document } = await interactionFixture()
 const workspace = path.join(output, 'workspace')
 await mkdir(workspace)
 const receipt = await publishPresentation(workspace, document, null, async () => {})
+const gallery = await chartGallery()
+gallery.workspaceId = document.workspaceId
+gallery.reportId = 'chart-gallery'
+const galleryReceipt = await publishPresentation(workspace, gallery, null, async () => {})
 const originalHtml = await readFile(receipt.files.html.path)
 const portablePath = path.join(output, 'interaction.html')
 await writeFile(portablePath, originalHtml)
@@ -30,6 +40,7 @@ const delivery = {
   turn: 0,
   receipt,
 }
+const galleryDelivery = { ...delivery, receipt: galleryReceipt }
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const hostBundle = await build({
   loader: { '.wasm': 'binary' },
@@ -42,11 +53,12 @@ import { createRoot } from 'react-dom/client';
 import { PresentationCards, PresentationOverlay } from './src/client/presentation/install.tsx';
 import { PresentationDeliveryModel } from './src/client/presentation/delivery-model.ts';
 const delivery = ${JSON.stringify(delivery)};
+const galleryDelivery = ${JSON.stringify(galleryDelivery)};
 const model = new PresentationDeliveryModel({call: async (_channel, endpoint, payload, signal) =>
   (await fetch('/rpc', {method:'POST', body:JSON.stringify({endpoint,payload}), signal})).json()});
 const workspaces = [{workspaceId: delivery.receipt.workspaceId, sessionIds: ['test']}];
 createRoot(document.getElementById('app')).render(<>
-<PresentationCards matched={[delivery]} sessionId="test" workspaces={workspaces} model={model}/>
+<PresentationCards matched={[delivery,galleryDelivery]} sessionId="test" workspaces={workspaces} model={model}/>
 <PresentationOverlay sessionId="test" workspaceId={delivery.receipt.workspaceId} model={model}/>
 </>);`,
   },
@@ -184,7 +196,7 @@ try {
   const page = await context.newPage()
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(`http://127.0.0.1:${address.port}`)
-  await page.getByRole('button', { name: '打开分析', exact: true }).click()
+  await page.getByRole('button', { name: '打开分析', exact: true }).first().click()
   const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
   const reader = overlay.locator('[data-mode="interactive"]')
   await exercise(page, reader)
@@ -230,6 +242,16 @@ try {
   assert.equal(await countCell.count(), 0)
   await overlay.getByRole('button', { name: '撤销', exact: true }).click()
   await reader.getByRole('textbox', { name: '报告标题', exact: true }).fill('全局筛选 · 保存验收')
+  checks.push(
+    await verifyResizeState(page, async () => {
+      assert.equal(
+        await reader.getByRole('textbox', { name: '报告标题', exact: true }).inputValue(),
+        '全局筛选 · 保存验收',
+      )
+      await overlay.getByText('有未保存的编辑', { exact: true }).waitFor()
+      assert.match(await reader.getByRole('button', { name: /^日期/ }).innerText(), /周一/)
+    }),
+  )
   await overlay.getByRole('button', { name: '保存编辑', exact: true }).click()
   await reader.getByRole('heading', { name: '全局筛选 · 保存验收', exact: true }).waitFor()
   await expectData(reader, '550', '15', '2.73', [0, 1])
@@ -241,7 +263,7 @@ try {
   assert.deepEqual(saved.interaction, document.interaction)
   await choose(reader, '日期', '周一')
   await overlay.getByRole('button', { name: '关闭分析快照' }).click()
-  await page.getByRole('button', { name: '打开分析', exact: true }).click()
+  await page.getByRole('button', { name: '打开分析', exact: true }).first().click()
   await reader.getByRole('heading', { name: '全局筛选 · 保存验收', exact: true }).waitFor()
   await expectData(reader, '550', '15', '2.73', [0, 1])
   checks.push({
@@ -288,12 +310,24 @@ try {
     keyboard: true,
     noExternalRequests: true,
   })
-  const gallery = await chartGallery()
+  await overlay.getByRole('button', { name: '关闭分析快照' }).click()
+  await page.getByRole('button', { name: '打开分析', exact: true }).last().click()
+  await reader.locator('[data-block-id="gallery-line"] svg').first().waitFor()
+  const galleryRequestsBefore = requests.length
+  checks.push(await verifyResponsiveGallery(page, output, 'gallery-overlay', 'overlay'))
+  checks.push({ hostGallery: await verifyGalleryResizeState(page) })
+  assert.deepEqual(
+    requests.slice(galleryRequestsBefore),
+    [],
+    'Resizing and filtering must stay reader-local',
+  )
   const galleryHtml = await buildPresentation(gallery)
   const galleryPath = path.join(output, 'chart-gallery.html')
   await writeFile(galleryPath, galleryHtml.htmlBytes)
   await offline.setViewportSize({ width: 1440, height: 1100 })
   await offline.goto(pathToFileURL(galleryPath).href)
+  checks.push(await verifyResponsiveGallery(offline, output, 'gallery-portable', 'portable'))
+  checks.push({ portableGallery: await verifyGalleryResizeState(offline) })
   checks.push(await verifyAllChartFilters(offline, gallery))
   const galleryReader = offline.locator('[data-mode="interactive"]')
   await choose(galleryReader, '展示范围', '第二条观测')
@@ -318,6 +352,8 @@ try {
   await preparedDialog.getByText('charts-bins', { exact: true }).waitFor()
   await preparedDialog.press('Escape')
   checks.push({ crossDatasetPreparedView: true })
+  assert.deepEqual(external, [], 'Portable responsive interactions must not request network data')
+  checks.push(await verifyBrowserZoom(galleryPath, output))
   assert.deepEqual(errors, [])
   await writeFile(
     path.join(output, 'evidence.json'),

@@ -163,17 +163,17 @@ export async function verifyChartGallery(page: Page) {
 
   const pie = cell('pie')
   const mark = pie.locator('[data-source-row-index="1"][data-chart-mark]')
-  const before = await mark.locator('path').getAttribute('d')
-  const piePanel = await openExplorer(pie)
-  await piePanel.getByRole('listbox', { name: '保留分类值', exact: true }).selectOption('"B"')
+  const authoredShare =
+    Number(await mark.getAttribute('data-share-end')) -
+    Number(await mark.getAttribute('data-share-start'))
+  await reader.getByRole('button', { name: /^展示范围/ }).click()
+  await reader.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
   assert.equal(await pie.locator('[data-chart-mark]').count(), 1)
-  assert.equal(
-    await mark.locator('path').getAttribute('d'),
-    before,
-    'Pie filter changed the supplied share angle',
+  assert.equal(Number(await mark.getAttribute('data-share-start')), 0)
+  assert.ok(
+    Math.abs(Number(await mark.getAttribute('data-share-end')) - authoredShare) < 0.000001,
+    'Global slice must preserve the supplied share extent without normalizing it to a full circle',
   )
-  assert.equal(Number(await mark.getAttribute('data-share-start')), 0.6)
-  await piePanel.getByRole('button', { name: '关闭探索图表', exact: true }).click()
 
   await page.emulateMedia({ media: 'print' })
   const print = page.locator('[data-presentation-reader][data-mode="static"]')
@@ -182,9 +182,7 @@ export async function verifyChartGallery(page: Page) {
   assert.equal(await print.locator('[data-block-id="gallery-line"] tbody tr').count(), 12)
   await page.emulateMedia({ media: 'screen' })
   assert.equal(await pie.locator('[data-chart-mark]').count(), 1)
-  await openExplorer(pie)
-  await piePanel.getByRole('button', { name: '恢复原图', exact: true }).click()
-  await piePanel.getByRole('button', { name: '关闭探索图表', exact: true }).click()
+  await reader.getByRole('button', { name: '重置筛选', exact: true }).click()
   page.off('request', recordRequest)
   assert.deepEqual(requests, [], 'Exploration must not request network or Runtime data')
   return {
@@ -205,10 +203,12 @@ export async function verifyChartGallery(page: Page) {
 }
 
 export async function verifyChartReopen(page: Page, reopen: () => Promise<void>) {
-  const line = page.locator('[data-mode="interactive"] [data-block-id="gallery-line"]')
+  const reader = page.locator('[data-mode="interactive"]')
+  const line = reader.locator('[data-block-id="gallery-line"]')
   const panel = await openExplorer(line)
   await panel.getByRole('combobox', { name: '图形类型', exact: true }).selectOption('horizontalBar')
-  await panel.getByRole('listbox', { name: '保留分类值', exact: true }).selectOption('"2026-01"')
+  await reader.getByRole('button', { name: /^展示范围/ }).click()
+  await reader.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
   await panel.getByRole('checkbox', { name: '显示 b', exact: true }).uncheck()
   await reopen()
   await line.locator('.recharts-line-curve').first().waitFor()
