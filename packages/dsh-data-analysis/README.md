@@ -70,6 +70,7 @@ Marivo 公共 API，不增加 convenience Tool。
 Skill 只指导内容组织、声明来源和交付，不承担分析计算或来源有效性判断；布局由 reader 自适应。
 完整流程见[展示 Skill](../../docs/modules/presentation-skill.md)。
 
+Python helper 的可选 `labels={列名: 展示名}` 设置中文表头、图例和 tooltip，字段绑定仍使用原列名。
 Python helper 只接受 pandas DataFrame，写入 `schemaVersion: 1` 的 typed JSON；int64/Decimal 保留精确字符串，
 null 保留缺失含义，datetime 必须带时区。它不保存来源或转换代码；来源在展示 Draft 中声明。
 固定 projection 从同一 bound Workspace 恢复 persisted Artifact 和可选 Finding，不自动 observe、revalidate 或读取凭据。

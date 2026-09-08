@@ -12,6 +12,7 @@ import math
 import os
 import re
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -372,10 +373,27 @@ def encode_dataset(
 
 
 def write_dataset(
-    frame: pd.DataFrame, path: str | os.PathLike[str], *, row_limit: int = MAX_ROWS
+    frame: pd.DataFrame,
+    path: str | os.PathLike[str],
+    *,
+    row_limit: int = MAX_ROWS,
+    labels: Mapping[str, str] | None = None,
 ) -> DatasetWriteReceipt:
-    """Atomically write bounded pure JSON; source references belong in the draft."""
+    """Atomically write bounded pure JSON; source references belong in the draft.
+
+    labels maps existing column IDs to display names; omitted columns keep their
+    names. Labels do not change DataFrame columns or draft field bindings.
+    """
     dataset = encode_dataset(frame, row_limit=row_limit)
+    if labels is not None:
+        if not isinstance(labels, Mapping):
+            _fail("/labels", "Expected a mapping from column identifiers to labels.")
+        columns = {column["id"]: column for column in dataset["columns"]}
+        for name, label in labels.items():
+            if not isinstance(name, str) or name not in columns:
+                _fail("/labels", "Label keys must name existing DataFrame columns.")
+            pointer = "/labels/" + name.replace("~", "~0").replace("/", "~1")
+            columns[name]["label"] = _string(label, pointer, 256)
     content = encoded_json(dataset)
     try:
         raw = os.fspath(path)

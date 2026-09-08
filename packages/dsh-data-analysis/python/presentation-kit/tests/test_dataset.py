@@ -305,3 +305,82 @@ def test_public_surface_has_only_writer_and_result_types() -> None:
         hasattr(package, name)
         for name in ("emit_dataset", "emit_computed", "emit_session_trace")
     )
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        None,
+        {},
+        {"base_0831": "基期（08月31日）"},
+        {"base_0831": "基期（08月31日）", "cur_0907": "本期（09月07日）"},
+        {"base_0831": "查询量", "cur_0907": "查询量"},
+    ],
+)
+def test_labels_only_change_display_metadata(tmp_path: Path, labels) -> None:
+    from types import MappingProxyType
+
+    frame = pd.DataFrame({"base_0831": [20, 10], "cur_0907": [30, 40]})
+    original = frame.copy(deep=True)
+    target = tmp_path / "computed.json"
+    receipt = write_dataset(
+        frame, target, labels=None if labels is None else MappingProxyType(labels)
+    )
+    data = validate_dataset(json.loads(target.read_text()))
+    expected = encode_dataset(frame)
+    for column in expected["columns"]:
+        column["label"] = (labels or {}).get(column["id"], column["id"])
+    assert data == expected
+    assert receipt.bytes == target.stat().st_size
+    pd.testing.assert_frame_equal(frame, original)
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        [],
+        "中文",
+        {"unknown": "未知"},
+        {1: "数字键"},
+        {"base_0831": None},
+        {"base_0831": 1},
+        {"base_0831": ""},
+        {"base_0831": "x\0y"},
+        {"base_0831": "\ud800"},
+        {"base_0831": "中" * 257},
+        {"base_0831": "😀" * 129},
+    ],
+)
+def test_invalid_labels_preserve_target(tmp_path: Path, labels) -> None:
+    target = tmp_path / "computed.json"
+    target.write_text("existing")
+    with pytest.raises(PresentationDatasetError) as error:
+        write_dataset(pd.DataFrame({"base_0831": [1]}), target, labels=labels)
+    assert error.value.path.startswith("/labels")
+    assert target.read_text() == "existing"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_label_pointer_escaping_and_utf16_boundary(tmp_path: Path) -> None:
+    target = tmp_path / "computed.json"
+    frame = pd.DataFrame({"a~/b": [1]})
+    write_dataset(frame, target, labels={"a~/b": "😀" * 128})
+    with pytest.raises(PresentationDatasetError) as error:
+        write_dataset(frame, target, labels={"a~/b": ""})
+    assert error.value.path == "/labels/a~0~1b"
+    assert json.loads(target.read_text())["columns"][0]["label"] == "😀" * 128
+
+
+def test_label_bytes_count_toward_final_budget(tmp_path: Path, monkeypatch) -> None:
+    from dsh_data_analysis_presentation import _dataset
+
+    frame = pd.DataFrame({"x": [1]})
+    baseline = _dataset.encoded_json(encode_dataset(frame))
+    monkeypatch.setattr(_dataset, "MAX_BYTES", len(baseline))
+    target = tmp_path / "computed.json"
+    write_dataset(frame, target)
+    with pytest.raises(PresentationDatasetError) as error:
+        write_dataset(frame, target, labels={"x": "中文展示名"})
+    assert error.value.code == "budget"
+    assert target.read_bytes() == baseline
+    assert list(tmp_path.iterdir()) == [target]

@@ -52,13 +52,15 @@ blocks 数组决定阅读顺序，reader 自行适配布局；schema 没有 `lay
 | 字段 | 含义 |
 | --- | --- |
 | `schemaVersion` | `1` |
-| `columns` | 非空数组；每列有 `id`, `label`, `type`, `nullable`；可选 `unit` |
+| `columns` | 非空数组；每列有 `id`, `label`, `type`, `nullable`；`id` 用于字段绑定，`label` 为独立展示名；可选 `unit` |
 | `rows` | 行数组，每行与 columns 等宽；null 仅用于 nullable 列 |
 | `rowCount` | 截断前的总行数，非负安全整数 |
 | `limit` | 1–5000；写出行数必须等于 `min(rowCount, limit)` |
 | `truncated` | 必须等于 `rowCount > rows.length` |
 
 列类型只接受 `string`、`boolean`、`float64`、`int64`、`decimal`、`date`、`datetime`。`int64` 是有符号 64 位范围内的精确整数字符串；更大整数用 `decimal`。`decimal` 用精确字符串保留尾零。`float64` 必须有限，整数值必须是 JS 安全整数。日期用 `YYYY-MM-DD`；datetime 用带 `Z` 或显式 UTC offset 的 ISO 字符串，最多微秒精度。不要猜时区或把已舍入的数据标成精确值。
+
+中文报告用 `write_dataset(frame, path, labels={"base_0831": "基期（08月31日）", "cur_0907": "本期（09月07日）"})` 设置表头、图例和 tooltip 展示名，Draft 仍绑定原始列 ID。允许部分映射，未映射列沿用列名；label 可重复，须为非空字符串且最多 256 UTF-16 code units，不含 NUL 或非法 Unicode。未知映射键和非法 label 报错，最终字节预算包含 label，失败不覆盖已有文件。
 
 Python helper 要求 `.json` 目标的父目录已存在，默认 `row_limit=5000`，返回 `path`、`bytes`、`row_count`、`written_rows`、`limit`、`truncated`。None、pandas 缺失值写为 null；无法表示的混合类型、无时区 datetime 和超精度值会报错。DataFrame index、attrs、来源和转换代码不会写入文件。
 

@@ -93,6 +93,9 @@ Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
 Runtime 安装 `dsh-data-analysis-presentation-kit==1.0.0`；公开 Python 函数
 `dsh_data_analysis_presentation.write_dataset(frame, path)` 接受 pandas DataFrame，只写 computed typed JSON。
+
+computed writer 可通过 `labels={列名: 展示名}` 显式设置列 `label`，未映射列沿用列名；
+列 `id` 和 Draft 绑定保持原样。typed JSON 继续使用现有 schemaVersion 1，展示名不改变分析语义。
 来源由 Draft 声明。固定 projection 在相同 bound Runtime 恢复 persisted Artifact 和可选 Finding，
 不执行 `observe`、`revalidate` 或凭据读取；reader 只消费生成文档快照，来源展开不触发运行时调用。
 

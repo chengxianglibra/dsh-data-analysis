@@ -1,10 +1,24 @@
 # Presentation Python 帮助库
 
-`dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000)`
+`dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000, labels=None)`
 将 pandas DataFrame 写为 `TypedDataset` v1 的纯 JSON，返回 `DatasetWriteReceipt`
 （`path`、`bytes`、`row_count`、`written_rows`、`limit`、`truncated`）。目标必须是父目录已存在的
 `.json` 文件；内容校验完成后才原子替换。来源引用只写在 presentation draft，helper 不读取
 Marivo、不验证转换、不生成 HTML、不注册全局变量。
+
+可选 `labels: Mapping[str, str] | None` 按 DataFrame 列名指定独立展示名，例如：
+
+```python
+write_dataset(frame, "computed.json", labels={
+    "base_0831": "基期（08月31日）",
+    "cur_0907": "本期（09月07日）",
+})
+```
+
+`id` 始终保留原列名，Draft 的字段绑定仍使用 `id`；中文报告的表头、图例和 tooltip 使用
+`label`。允许部分映射和重复展示名，未映射列沿用列名。未知键、非字符串、空字符串、
+NUL、非法 Unicode 或超过 256 UTF-16 code units 的 label 会报错；最终 JSON 字节预算包含 label。
+校验失败不覆盖已有文件，不修改 DataFrame，也不从 attrs 推断展示名。
 
 数值和预算以 [共享数据契约](../../src/presentation/contracts/types.ts) 为准：整数使用精确
 `int64` 字符串，超过有符号 int64 的整数使用 `decimal` 字符串；`Decimal` 保留精度和尾零。

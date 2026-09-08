@@ -17,5 +17,5 @@ frame = pd.DataFrame({
 })
 output = Path("presentation-example/computed.dataset.json")
 output.parent.mkdir(parents=True, exist_ok=True)
-receipt = write_dataset(frame, output)
+receipt = write_dataset(frame, output, labels={"month": "月份", "count": "数量", "amount": "金额"})
 print(json.dumps(asdict(receipt), ensure_ascii=False))

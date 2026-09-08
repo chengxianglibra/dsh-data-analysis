@@ -53,8 +53,11 @@ dataset 可通过 `codeRefs` 引用成功 `marivo_python` 的执行记录。投�
 
 ## Python helper 与 Runtime
 
-`dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000)` 只接受 pandas DataFrame，
+`dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000, labels=None)` 只接受 pandas DataFrame，
 原子写入 computed typed JSON，并返回路径、字节数、完整/写入行数和截断信息的有界 receipt。
+
+computed writer 可通过 `labels={列名: 展示名}` 显式设置列 `label`，未映射列沿用列名；
+列 `id` 和 Draft 绑定保持原样。typed JSON 继续使用现有 schemaVersion 1，展示名不改变分析语义。
 writer 不接收来源或转换说明；来源只写在 Draft。
 行和单元格预算确定实际 limit，超出字节预算明确失败；空结果保留列，未指定的展示标签使用列名。
 
