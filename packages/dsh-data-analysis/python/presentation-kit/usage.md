@@ -1,10 +1,17 @@
 # Presentation Python 帮助库
 
-`dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000, labels=None)`
+`dsh_data_analysis_presentation.write_dataset(frame, path, *, row_limit=5000, labels=None, dataset_id=None)`
 将 pandas DataFrame 写为 `TypedDataset` v1 的纯 JSON，返回 `DatasetWriteReceipt`
 （`path`、`bytes`、`row_count`、`written_rows`、`limit`、`truncated`）。目标必须是父目录已存在的
 `.json` 文件；内容校验完成后才原子替换。来源引用只写在 presentation draft，helper 不读取
 Marivo、不验证转换、不生成 HTML、不注册全局变量。
+
+可选 `dataset_id` 仅用于报错定位，例如 `write_dataset(frame, "summary.json", dataset_id="summary")`。
+`PresentationDatasetError` 保留原有 `code` 和 JSON Pointer `path`，报错文本增加目标路径、
+dataset id（如提供），列级错误增加列名与 dtype。类型推断或单元格编码失败还会提供首个异常值的
+零基行位置（不是 DataFrame index）、类型及最多 160 字符的转义预览；复杂对象仅显示类型。
+混合列定位第一个使类型组合不兼容的值。诊断信息不写入数据文件，writer 仍默认静默；
+内部 Artifact reader 不附加 writer 的路径或 dataset id。
 
 可选 `labels: Mapping[str, str] | None` 按 DataFrame 列名指定独立展示名，例如：
 

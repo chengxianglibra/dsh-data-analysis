@@ -384,3 +384,87 @@ def test_label_bytes_count_toward_final_budget(tmp_path: Path, monkeypatch) -> N
     assert error.value.code == "budget"
     assert target.read_bytes() == baseline
     assert list(tmp_path.iterdir()) == [target]
+
+
+@pytest.mark.parametrize("values", [[None, 1, "unknown"], [1, 1.5, Decimal("2")]])
+def test_writer_locates_first_incompatible_value(tmp_path: Path, values) -> None:
+    frame = pd.DataFrame({"amount": pd.Series(values, dtype=object)})
+    frame.index = [10, 20, 30]
+    target = tmp_path / "summary.json"
+    target.write_text("existing")
+    with pytest.raises(PresentationDatasetError) as original:
+        encode_dataset(frame)
+    with pytest.raises(PresentationDatasetError) as caught:
+        write_dataset(frame, target, dataset_id="summary")
+    error = caught.value
+    assert error.code == original.value.code == "unsupported_type"
+    assert error.path == original.value.path == "/columns/0/type"
+    message = str(error)
+    assert 'dataset="summary"' in message
+    assert f'target="{target}"' in message
+    assert 'column="amount", dtype="object", row_position=2' in message
+    assert f'value_type="{type(values[2]).__name__}"' in message
+    assert f'value="{values[2]}"' in message
+    assert str(original.value) in message
+    assert "target=" not in str(original.value)
+    assert target.read_text() == "existing"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_writer_does_not_format_arbitrary_objects(tmp_path: Path) -> None:
+    class Unprintable:
+        def __repr__(self):
+            raise AssertionError("must not call repr")
+
+        def __str__(self):
+            raise AssertionError("must not call str")
+
+    frame = pd.DataFrame({"bad": [None, Unprintable()]})
+    with pytest.raises(PresentationDatasetError) as caught:
+        write_dataset(frame, tmp_path / "bad.json")
+    message = str(caught.value)
+    assert "dataset=" not in message
+    assert 'column="bad", dtype="object", row_position=1' in message
+    assert 'value=<Unprintable>, value_type="Unprintable"' in message
+
+
+@pytest.mark.parametrize("value", [float("inf"), datetime(2026, 9, 8), "x" * 32769])
+def test_writer_cell_diagnostics(tmp_path: Path, value) -> None:
+    frame = pd.DataFrame({"value": pd.Series([None, value], dtype=object)})
+    with pytest.raises(PresentationDatasetError) as caught:
+        write_dataset(frame, tmp_path / "bad.json")
+    assert caught.value.path == "/rows/1/0"
+    message = str(caught.value)
+    assert 'column="value", dtype="object", row_position=1' in message
+    preview = message.split(", value=", 1)[1].split(", value_type=", 1)[0]
+    assert len(preview) <= 160
+    if isinstance(value, str):
+        assert preview.endswith("...")
+
+
+def test_writer_escapes_diagnostic_text(tmp_path: Path) -> None:
+    frame = pd.DataFrame({"line\nname": pd.Series([1, "bad\n\0value"], dtype=object)})
+    with pytest.raises(PresentationDatasetError) as caught:
+        write_dataset(frame, tmp_path / "bad.json", dataset_id="id\nname")
+    message = str(caught.value)
+    assert "\n" not in message and "\0" not in message
+    assert 'value="bad\\n\\u0000value"' in message
+
+
+def test_writer_context_preserves_silent_success_and_noncolumn_errors(tmp_path: Path, capsys) -> None:
+    frame = pd.DataFrame({"x": [1]})
+    original = frame.copy(deep=True)
+    target = tmp_path / "ok.json"
+    receipt = write_dataset(frame, target)
+    content = target.read_bytes()
+    assert write_dataset(frame, target, dataset_id="diagnostic-only") == receipt
+    assert target.read_bytes() == content
+    assert "dataset_id" not in json.loads(content)
+    pd.testing.assert_frame_equal(frame, original)
+    with pytest.raises(PresentationDatasetError) as caught:
+        write_dataset(frame, target, row_limit=0)
+    assert caught.value.path == "/limit"
+    assert f'target="{target}"' in str(caught.value)
+    assert "column=" not in str(caught.value)
+    assert target.read_bytes() == content
+    assert capsys.readouterr() == ("", "")

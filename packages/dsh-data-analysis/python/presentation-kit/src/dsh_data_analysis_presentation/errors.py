@@ -1,4 +1,4 @@
-"""Bounded errors without source values or transformation details."""
+"""Dataset errors; the writer adds bounded input diagnostics to the message."""
 
 
 class PresentationDatasetError(ValueError):
