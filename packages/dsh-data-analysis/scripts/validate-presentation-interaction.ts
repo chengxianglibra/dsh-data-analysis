@@ -20,6 +20,32 @@ import {
 } from './presentation-responsive-browser.ts'
 import { verifyAllChartFilters } from './presentation-s4/editing.ts'
 
+async function verifyFlatFilterLayout(reader: Locator) {
+  const region = reader.locator('.pr-interaction-region')
+  const style = await region.evaluate((element) => {
+    const css = getComputedStyle(element)
+    return [
+      css.borderTopWidth,
+      css.borderRightWidth,
+      css.borderBottomWidth,
+      css.borderLeftWidth,
+      css.paddingTop,
+      css.paddingRight,
+      css.paddingBottom,
+      css.paddingLeft,
+      css.borderRadius,
+      css.backgroundColor,
+    ]
+  })
+  assert.deepEqual(style, [...Array(9).fill('0px'), 'rgba(0, 0, 0, 0)'])
+  assert.equal(await reader.locator('.pr-region-divider').count(), 2)
+  const bounds = await reader.locator('[data-block-id="chart"]').boundingBox()
+  const fixed = await reader.locator('.pr-fixed-region').first().boundingBox()
+  assert(bounds && fixed)
+  assert.ok(Math.abs(bounds.x - fixed.x) < 1)
+  assert.ok(Math.abs(bounds.width - fixed.width) < 1)
+}
+
 const output = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-global-filters-')))
 process.stdout.write(`Interaction acceptance: ${output}\n`)
 const { document } = await interactionFixture()
@@ -282,8 +308,10 @@ try {
   await offline.goto(pathToFileURL(portablePath).href)
   const portableReader = offline.locator('[data-mode="interactive"]')
   await exercise(offline, portableReader)
+  await verifyFlatFilterLayout(portableReader)
   await portableReader.screenshot({ path: path.join(output, 'portable-desktop.png') })
   await offline.setViewportSize({ width: 390, height: 844 })
+  await verifyFlatFilterLayout(portableReader)
   await portableReader.getByRole('button', { name: /^集群/ }).click()
   await portableReader
     .locator('.pr-filter-popup')
@@ -302,6 +330,9 @@ try {
   )
   assert.equal(await staticPage.locator('[data-block-id="chart"] tbody tr').count(), 2)
   assert.equal(await staticPage.locator('[data-block-id="table"] tbody tr').count(), 2)
+  await verifyFlatFilterLayout(staticPage.locator('.pr-reader'))
+  await staticPage.emulateMedia({ media: 'print' })
+  await verifyFlatFilterLayout(staticPage.locator('.pr-reader'))
   await noScript.close()
   checks.push({
     offline: true,

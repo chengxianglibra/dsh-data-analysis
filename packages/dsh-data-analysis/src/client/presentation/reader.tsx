@@ -469,6 +469,7 @@ function ReaderContents({
           return (
             <>
               {fixed(document.blocks.slice(0, start), 'before')}
+              {start > 0 && <hr className="pr-region-divider" />}
               <section className="pr-interaction-region" aria-label={interaction.title}>
                 <header className="pr-interaction-header">
                   <h2>{interaction.title}</h2>
@@ -486,6 +487,7 @@ function ReaderContents({
                 </header>
                 <div className="pr-blocks">{renderGroups(document.blocks.slice(start, end))}</div>
               </section>
+              {end < document.blocks.length && <hr className="pr-region-divider" />}
               {fixed(document.blocks.slice(end), 'after')}
             </>
           )

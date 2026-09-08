@@ -276,6 +276,46 @@ test('declared filters render one region, dynamic default KPI and only default r
   assert.match(interactive, /重置筛选/)
 })
 
+test('filter boundaries separate only adjacent fixed content and preserve block order', async () => {
+  const { document } = await interactionFixture()
+  const targets = document.blocks.filter((block) =>
+    document.interaction!.blockIds.includes(block.id),
+  )
+  const before = document.blocks.slice(0, 2)
+  const after = document.blocks.slice(-1)
+  for (const [leading, trailing] of [
+    [before, after],
+    [before, []],
+    [[], after],
+    [[], []],
+  ]) {
+    const variant = { ...document, blocks: [...leading!, ...targets, ...trailing!] }
+    for (const mode of ['static', 'interactive'] as const) {
+      const html = renderDocument(variant, mode)
+      const dividers = [...html.matchAll(/<hr class="pr-region-divider"\/>/g)].map(
+        (match) => match.index!,
+      )
+      assert.equal(dividers.length, Number(leading!.length > 0) + Number(trailing!.length > 0))
+      const region = html.indexOf('<section class="pr-interaction-region"')
+      if (leading!.length) {
+        assert.ok(dividers[0]! > html.indexOf(`data-block-id="${leading!.at(-1)!.id}"`))
+        assert.ok(dividers[0]! < region)
+      }
+      if (trailing!.length) {
+        assert.ok(dividers.at(-1)! > html.indexOf(`data-block-id="${targets.at(-1)!.id}"`))
+        assert.ok(dividers.at(-1)! < html.indexOf(`data-block-id="${trailing![0]!.id}"`))
+      }
+      const positions = variant.blocks.map((block) => html.indexOf(`data-block-id="${block.id}"`))
+      assert.ok(
+        positions.every(
+          (position, index) => position >= 0 && (!index || position > positions[index - 1]!),
+        ),
+      )
+      assert.equal((html.match(/class="pr-metric-group"/g) ?? []).length, leading!.length ? 2 : 1)
+    }
+  }
+})
+
 test('KPI comparisons preserve exact prepared values, units, missing values and business sentiment offline', async () => {
   const document = await fixture('computed')
   const data = document.datasets[0]!.data
