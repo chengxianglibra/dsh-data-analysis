@@ -26,6 +26,7 @@ export function sourceOverviewFacts(source: SourceSnapshot) {
   if (source.status === 'available') {
     for (const fact of source.facts) {
       if (fact.label === '创建时间' && fact.value.trim()) createdAt = fact.value
+      if (fact.label === '指标定义说明' && fact.value.trim()) notices.push(fact.value)
       if (fact.label === '选择的 Finding unavailable' && fact.value.trim()) notices.push(fact.value)
       if (fact.label !== '公开语义引用' && fact.label !== 'Issues') continue
       let entries: unknown

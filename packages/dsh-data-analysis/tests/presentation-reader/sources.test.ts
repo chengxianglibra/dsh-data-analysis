@@ -535,3 +535,12 @@ test('current chart source includes auxiliary bindings and filters exact preview
   assert.match(overview, /收入 \(CNY\)/)
   assert.match(overview, /数量/)
 })
+
+test('source overview displays the persisted metric definition limitation locally', () => {
+  const document = fixture()
+  const notice = '信息：来源概要无法展示生成时的指标含义与口径；正常阅读无需处理。'
+  const available = document.sources[0] as Extract<SourceSnapshot, { status: 'available' }>
+  available.facts.push({ label: '指标定义说明', value: notice })
+  assert.deepEqual(sourceOverviewFacts(available).notices, [notice])
+  assert.ok(renderSummary(document, document.blocks[0]).includes(notice))
+})

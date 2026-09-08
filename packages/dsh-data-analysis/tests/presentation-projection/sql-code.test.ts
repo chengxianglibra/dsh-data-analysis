@@ -25,10 +25,11 @@ class SucceededRun(types.SimpleNamespace):
 class Artifact:
     def __init__(self, ref, config):
         self.ref = config.get("ref", ref)
-        self.meta = types.SimpleNamespace(kind="fixture", created_at=datetime.now(timezone.utc), content_hash="hash", evidence_status="complete", row_count=0, quality_summary=None, session_id=config.get("session_id", "session"), project_root=config.get("project_root", str(Path.cwd())), produced_by_job=config.get("producer"))
+        self.meta = types.SimpleNamespace(kind=config.get("kind", "fixture"), created_at=datetime.now(timezone.utc), content_hash="hash", evidence_status="complete", row_count=0, quality_summary=None, session_id=config.get("session_id", "session"), project_root=config.get("project_root", str(Path.cwd())), produced_by_job=config.get("producer"))
         self.contract_ref = config.get("contract_ref", self.ref)
+        self.semantic_inputs = [types.SimpleNamespace(role="metric", semantic_kind=types.SimpleNamespace(value=kind), semantic_path="fixture.value", output_column=None) for kind in config.get("semantic_kinds", [])]
     def contract(self):
-        return types.SimpleNamespace(ref=self.contract_ref, semantic_inputs=[], issues=[])
+        return types.SimpleNamespace(ref=self.contract_ref, semantic_inputs=self.semantic_inputs, issues=[])
 class Session:
     id = "session"
     def artifact(self, ref):
@@ -80,13 +81,13 @@ async function root(t: TestContext) {
   t.after(() => rm(directory, { recursive: true, force: true }))
   return directory
 }
-async function readFixture(t: TestContext, value: Fixture) {
+async function readFixture(t: TestContext, value: Fixture, readRequest = request) {
   const result = spawnSync(
     'python3',
     [
       '-c',
       `${bootstrap}\n${MARIVO_PRESENTATION_READ_PROGRAM}`,
-      JSON.stringify(request),
+      JSON.stringify(readRequest),
       JSON.stringify(value),
     ],
     {
@@ -342,4 +343,55 @@ sys.setprofile(audit)
     })),
     notices: [],
   })
+})
+
+test('historical definition limitation is informational and aggregated across nine metric sources', async (t) => {
+  const value = fixture()
+  value.artifacts.artifact!.kind = 'metric_frame'
+  const { payload } = await readFixture(t, value, {
+    sources: Array.from({ length: 9 }, (_, index) => ({
+      id: `source-${index}`,
+      ref: { sessionId: 'session', artifactRef: 'artifact' },
+    })),
+    datasets: [],
+  })
+  assert.equal(payload.ok, true)
+  assert.equal(payload.sources.length, 9)
+  assert.equal(payload.diagnostics.length, 1)
+  assert.equal(payload.diagnostics[0].code, 'definition_unavailable')
+  assert.equal(payload.diagnostics[0].path, '/sources')
+  assert.match(payload.diagnostics[0].message, /^信息：9 个指标来源/)
+  for (const source of payload.sources) {
+    assert.equal(source.status, 'available')
+    const notice = source.facts.find((fact: { label: string }) => fact.label === '指标定义说明')
+    assert.match(notice.value, /来源概要无法展示/)
+    assert.match(notice.value, /正常阅读无需处理/)
+    assert.match(notice.value, /核验历史口径需补充生成时的定义快照/)
+  }
+})
+
+test('non-metric sources do not emit historical metric definition limitations', async (t) => {
+  const { payload } = await readFixture(t, fixture())
+  assert.equal(payload.ok, true)
+  assert.deepEqual(payload.diagnostics, [])
+  assert.equal(
+    payload.sources[0].facts.some((fact: { label: string }) => fact.label === '指标定义说明'),
+    false,
+  )
+})
+
+test('metric semantic references receive the limitation while unavailable sources do not', async (t) => {
+  const value = fixture()
+  value.artifacts.artifact!.semantic_kinds = ['metric']
+  const { payload } = await readFixture(t, value, {
+    sources: [
+      ...request.sources,
+      { id: 'missing', ref: { sessionId: 'session', artifactRef: 'missing' } },
+    ],
+    datasets: [],
+  })
+  assert.equal(payload.ok, true)
+  assert.equal(payload.sources[1].status, 'unavailable')
+  assert.equal(payload.diagnostics.length, 1)
+  assert.match(payload.diagnostics[0].message, /^信息：1 个指标来源/)
 })

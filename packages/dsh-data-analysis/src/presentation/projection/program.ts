@@ -34,6 +34,7 @@ ${MARIVO_PRESENTATION_SQL_CODE_PROGRAM}
 def read(request):
     sessions, artifacts, contracts = {}, {}, {}
     sources, datasets, diagnostics = [], [], []
+    definition_sources = []
     read_at = datetime.now(timezone.utc).isoformat()
     try:
         for index, declared in enumerate(request["sources"]):
@@ -87,11 +88,14 @@ def read(request):
                 except Exception:
                     fact("选择的 Finding unavailable", "The requested Finding cannot be read through the persisted Artifact public API.")
                     diagnostics.append({"code": "finding_unavailable", "path": source_path + "/ref/findingId", "message": "Artifact is available; its requested Finding is unavailable."})
-            definition_path = source_path + "/facts/" + str(len(facts))
-            fact("历史定义 unavailable", "The persisted Artifact public contract does not provide a historical metric definition; no current definition was substituted.")
-            diagnostics.append({"code": "definition_unavailable", "path": definition_path, "message": "Historical metric definition is unavailable in the persisted Artifact public contract."})
+            if meta.kind == "metric_frame" or any(item.semantic_kind.value == "metric" for item in contract.semantic_inputs):
+                definition_sources.append(declared["id"])
+                fact("指标定义说明", "信息：Artifact 公开契约未提供生成时的指标定义快照，来源概要无法展示当时的指标含义与口径。不影响已保存数据、图表及已有代码的展示，正常阅读无需处理；核验历史口径需补充生成时的定义快照，当前语义层定义不能替代历史定义。")
             fact("revalidation", "not_requested")
             sources.append({**declared, "status": "available", "label": text(str(meta.kind) + " " + artifact.ref, 512), "facts": facts, "code": sql_code_snapshot(session, artifact)})
+
+        if definition_sources:
+            diagnostics.append({"code": "definition_unavailable", "path": "/sources", "message": "信息：" + str(len(definition_sources)) + " 个指标来源的 Artifact 公开契约未提供生成时的指标定义快照，来源概要无法展示当时的指标含义与口径。不影响已保存数据、图表及已有代码的展示，正常阅读无需处理；核验历史口径需补充生成时的定义快照，当前语义层定义不能替代历史定义。"})
 
         for selection in request["datasets"]:
             dataset_path = "/datasets/" + str(selection["index"])
