@@ -17,7 +17,7 @@ import types
 from datetime import datetime, timezone
 from pathlib import Path
 
-fixture = json.loads(sys.argv[2])
+fixture = json.load(sys.stdin)
 audit = {"artifacts": [], "runs": [], "closed": False}
 atexit.register(lambda: print(json.dumps(audit), file=sys.stderr))
 class SucceededRun(types.SimpleNamespace):
@@ -84,18 +84,16 @@ async function root(t: TestContext) {
 async function readFixture(t: TestContext, value: Fixture, readRequest = request) {
   const result = spawnSync(
     'python3',
-    [
-      '-c',
-      `${bootstrap}\n${MARIVO_PRESENTATION_READ_PROGRAM}`,
-      JSON.stringify(readRequest),
-      JSON.stringify(value),
-    ],
+    ['-c', `${bootstrap}\n${MARIVO_PRESENTATION_READ_PROGRAM}`, JSON.stringify(readRequest)],
     {
       cwd: await root(t),
       encoding: 'utf8',
+      // Large SQL fixtures can exceed Linux's per-argument execve limit.
+      input: JSON.stringify(value),
       maxBuffer: 2 * 1024 * 1024,
     },
   )
+  assert.ifError(result.error)
   assert.equal(result.status, 0, result.stderr)
   const payload = JSON.parse(result.stdout)
   const audit = JSON.parse(result.stderr.trim())

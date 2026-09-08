@@ -15,10 +15,10 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 - `dsh_data_analysis_presentation.write_dataset(frame, path)` 的 computed typed JSON writer；
 - 内部 Artifact/computed/source-only 数据投影，保存精确来源及 unavailable 状态。
 
-当前为展示重构 S5 的未发布开发状态。共享 reader、离线 builder、`marivo_present` 和展示 Skill 已接通；
+共享 reader、离线 builder、`marivo_present` 和展示 Skill 提供统一的展示交付；
 两个 Marivo Runtime Skill `marivo-analysis`、`marivo-semantic` 继续从当前 Runtime 挂载。
-旧 report-kit、report Skill、经典 JS 与 Evidence 卡协议不再分发。实际验证状态见
-[S5 验收记录](../../docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
+旧 report-kit、report Skill、经典 JS 与 Evidence 卡协议不再分发。升级说明见
+[0.1.2 发布说明](../../docs/releases/0.1.2.md)。
 
 ## Compatibility
 
@@ -86,7 +86,7 @@ null 保留缺失含义，datetime 必须带时区。它不保存来源或转换
 文档、receipt 与 delivery 使用 schema v2，Draft 和 typed dataset 保持 v1；旧报告不读取、不迁移，旧文件保留。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
 展开来源仅使用保存的快照；文件变化、缺失或 Workspace 归属变化会明确失败。
 实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)、
-[展示交付](../../docs/modules/presentation-delivery.md)和[编辑与筛选验收](../../docs/plan/2026-09-07-presentation-editing-acceptance.md)。
+[展示交付](../../docs/modules/presentation-delivery.md)。
 
 ## 验证
 
@@ -97,7 +97,7 @@ npm run verify:plugin-package
 ```
 
 当前架构与验收边界见仓库根目录的[总体架构](../../docs/architecture.md)和
-[S5 验收记录](../../docs/plan/marivo-analytics-presentation-s5-acceptance.md)。
+[展示交付](../../docs/modules/presentation-delivery.md)。
 
 ## 语义对象引用
 
