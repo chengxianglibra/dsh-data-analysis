@@ -98,7 +98,7 @@ installCredentials(ctx,rpc);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']},{workspaceId:'other',name:'其他工作区不应显示',sessionIds:['other-session']}];
 const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
 const renderSeat=({options,component:C})=><C key={options.name+options.id} {...props}/>;
-function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>}
+function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').sort((a,b)=>a.options.order-b.options.order).map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>}
 createRoot(document.getElementById('app')).render(<App/>);
 `,
   },
@@ -185,6 +185,11 @@ async function assertNoHorizontalOverflow() {
         .filter(
           (element) => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1,
         )
+        // The narrow-screen datasource navigation is an intentional horizontal scroller.
+        .filter(
+          (element) =>
+            !(element.matches('.mc-datasources') && getComputedStyle(element).overflowX === 'auto'),
+        )
         .map((element) => `${element.tagName}.${element.className}`),
     )
   assert.deepEqual(overflows, [], 'dialog and page must not overflow horizontally')
@@ -199,6 +204,13 @@ try {
   assert.equal(await page.getByRole('navigation', { name: '会话标题操作' }).count(), 0)
   await page.evaluate('window.setFixtureHeaderVisible(true)')
   await page.getByRole('button', { name: '打开数据源与凭证' }).waitFor()
+  assert.deepEqual(
+    await page
+      .getByRole('navigation', { name: '会话标题操作' })
+      .getByRole('button')
+      .allTextContents(),
+    ['数据源与凭证', '语义层'],
+  )
   const entryStyles = await page
     .getByRole('navigation', { name: '会话标题操作' })
     .getByRole('button')
@@ -442,6 +454,78 @@ try {
   })
   await page.setViewportSize({ width: 1200, height: 900 })
   await page.getByRole('button', { name: '新增数据源', exact: true }).click()
+  await page.getByLabel('引擎', { exact: true }).selectOption('clickhouse')
+  const fieldLayout = await page.getByLabel('host', { exact: true }).evaluate((input: Element) => {
+    const label = input.closest('label')!
+    const name = label.querySelector('.mc-input-name')!.getBoundingClientRect()
+    const description = label.querySelector('.mc-input-description')!.getBoundingClientRect()
+    const control = input.getBoundingClientRect()
+    return {
+      above: name.bottom <= control.top && description.bottom <= control.top,
+      sameRow: Math.abs(name.top - description.top) < 6,
+    }
+  })
+  assert.deepEqual(fieldLayout, { above: true, sameRow: true })
+  await page.screenshot({
+    path: path.join(output, 'create-field-descriptions.png'),
+    fullPage: true,
+  })
+  await page.getByLabel('name', { exact: true }).fill('clickhouse_in_card')
+  await page.getByLabel('host', { exact: true }).fill('example.invalid')
+  await page.getByLabel('port', { exact: true }).fill('80')
+  await page.getByLabel('database', { exact: true }).fill('analytics')
+  await page.getByLabel('secure', { exact: true }).selectOption('false')
+  await page.getByLabel('settings', { exact: true }).fill('{"max_execution_time":30}')
+  await page.getByLabel('user_env', { exact: true }).fill('CLICKHOUSE_TEST_USER')
+  await page.getByLabel('password_env', { exact: true }).fill('9invalid-reference-canary')
+  await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  const creationError = page.getByRole('alert').filter({ hasText: '凭证引用名称无效' })
+  await creationError.waitFor({ timeout: 30000 })
+  assert.doesNotMatch(
+    await creationError.innerText(),
+    /9invalid-reference-canary|提交结果未确认|凭证操作失败/,
+  )
+  assert(!(await bridge.inventory()).some((item) => item.name === 'clickhouse_in_card'))
+  await page.screenshot({
+    path: path.join(output, 'invalid-credential-reference.png'),
+    fullPage: true,
+  })
+  await page.getByLabel('password_env', { exact: true }).fill('CLICKHOUSE_TEST_PASSWORD')
+  await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  await page
+    .getByRole('heading', { name: 'clickhouse_in_card', exact: true })
+    .waitFor({ timeout: 30000 })
+  const properties = page.getByRole('region', { name: '数据源属性' })
+  assert(
+    await properties.evaluate(
+      (element: Element) =>
+        element.getBoundingClientRect().top >=
+        element.closest('.mc-main')!.getBoundingClientRect().top,
+    ),
+    'newly created datasource properties must start in view',
+  )
+  for (const value of [
+    'clickhouse',
+    'example.invalid',
+    '80',
+    'analytics',
+    'false',
+    'max_execution_time',
+  ]) {
+    assert((await properties.innerText()).includes(value), `Missing datasource property: ${value}`)
+  }
+  assert.doesNotMatch(await properties.innerText(), /CLICKHOUSE_TEST_PASSWORD|CLICKHOUSE_TEST_USER/)
+  assert.equal((await bridge.describe('clickhouse_in_card')).properties?.host, 'example.invalid')
+  await assertNoHorizontalOverflow()
+  await page.screenshot({ path: path.join(output, 'clickhouse-properties.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await assertNoHorizontalOverflow()
+  await page.screenshot({
+    path: path.join(output, 'clickhouse-properties-mobile.png'),
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.getByRole('button', { name: '新增数据源', exact: true }).click()
   await page.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await page.getByLabel('name', { exact: true }).fill('created_in_card')
   await page.getByLabel('http_scope', { exact: true }).fill('http://127.0.0.1/')
@@ -470,6 +554,10 @@ try {
     browser: 'passed',
     managementSaveDelete: 'passed',
     createDatasourceAndCredential: 'passed',
+    invalidCredentialReferenceRejectedBeforeWrite: 'passed',
+    clickhouseCreationAndProperties: 'passed',
+    descriptionsAboveInputsBesideNames: 'passed',
+    createdDatasourceScrollsToProperties: 'passed',
     duplicateDatasourceRejected: 'passed',
     workspaceSelectorsRemoved: 'passed',
     lastTestFreshAndStale: 'passed',

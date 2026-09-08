@@ -56,6 +56,14 @@ function nullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
+function jsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(jsonValue)
+  const fields = object(value)
+  return fields !== undefined && Object.values(fields).every(jsonValue)
+}
+
 export interface MarivoDatasourceFailure extends JsonObject {
   code: string
   exception_type: string
@@ -75,6 +83,8 @@ export interface MarivoDatasourceRepair extends JsonObject {
 
 export interface MarivoDatasourceDescription {
   name: string
+  backend?: string
+  properties?: Record<string, JsonValue>
   refs: string[]
   fields: Record<string, string>
   definition: string
@@ -141,11 +151,17 @@ function parseDescription(
       { phase },
     )
   }
-  exactKeys(source, ['name', 'refs', 'fields', 'definition'], phase)
+  exactKeys(source, ['name', 'backend', 'properties', 'refs', 'fields', 'definition'], phase)
   const name = string(source.name)
+  const backend = string(source.backend)
+  const properties = object(source.properties)
   if (
     name === undefined ||
     name.length > 256 ||
+    backend === undefined ||
+    backend.length > 256 ||
+    properties === undefined ||
+    !jsonValue(properties) ||
     !Array.isArray(source.refs) ||
     source.refs.length > 128
   ) {
@@ -179,7 +195,14 @@ function parseDescription(
     refs.some((ref) => !Object.values(fields).includes(ref))
   )
     throw new Error('Invalid datasource definition projection')
-  return { name, refs, fields: fields as Record<string, string>, definition: source.definition }
+  return {
+    name,
+    backend,
+    properties: properties as Record<string, JsonValue>,
+    refs,
+    fields: fields as Record<string, string>,
+    definition: source.definition,
+  }
 }
 
 function parseInventory(stdout: Buffer): MarivoDatasourceDescription[] {
@@ -346,8 +369,17 @@ export class MarivoDatasourceBridge {
             : [],
       )
     for (const ref of refs) {
-      if (typeof ref !== 'string') throw new Error('Invalid credential reference')
-      marivoCredentialStorageRef(ref)
+      if (typeof ref !== 'string') return { error: 'datasource-credential-ref-invalid' }
+      try {
+        marivoCredentialStorageRef(ref)
+      } catch (error) {
+        if (
+          error instanceof MarivoEnvironmentError &&
+          error.code === 'datasource-credential-ref-invalid'
+        )
+          return { error: 'datasource-credential-ref-invalid' }
+        throw error
+      }
     }
     const result = await this.#runner.runChecked({
       program: DATASOURCE_AUTHORING_PROGRAM,

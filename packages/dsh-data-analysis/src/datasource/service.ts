@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { DatasourceCreateInput } from './authoring.ts'
 import type {
@@ -19,6 +20,8 @@ export interface CredentialContextView {
   token: string
   workspaceId: string
   name: string
+  backend: string
+  properties: Record<string, JsonValue>
   refs: string[]
   fields: Record<string, string>
   version: string
@@ -237,6 +240,8 @@ export class MarivoCredentialService {
       token: context.token,
       workspaceId: context.workspaceId,
       name: context.description.name,
+      backend: context.description.backend ?? '',
+      properties: context.description.properties ?? {},
       refs: context.description.refs,
       fields: context.description.fields,
       version: this.#version(context),

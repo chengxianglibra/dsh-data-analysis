@@ -15,6 +15,8 @@ function datasource(name: string): CredentialContextView {
     token: randomUUID(),
     workspaceId: 'workspace',
     name,
+    backend: 'fixture',
+    properties: {},
     refs: [],
     fields: {},
     credentials: {},

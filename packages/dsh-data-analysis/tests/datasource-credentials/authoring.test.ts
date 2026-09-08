@@ -1,8 +1,116 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
+import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
+import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
+import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
 import { context, finish, fixture } from './fixtures.ts'
+
+test('invalid references reach the creation form as safe actionable errors before any write', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  let runs = 0
+  const bridge = new MarivoDatasourceBridge({
+    binding: f.bridge.binding,
+    status: 'ready',
+    async runChecked() {
+      runs++
+      throw new Error('invalid references must not execute Python')
+    },
+  } satisfies MarivoCheckedRunner)
+  let handler!: ConnectionRpcHandler
+  const unregister = registerCredentialRpc(
+    {
+      rpc: {
+        handle: (_channel: string, callback: ConnectionRpcHandler) => {
+          handler = callback
+          return async () => {}
+        },
+      },
+    } as unknown as HostConnectionHandle,
+    f.service,
+    async () => bridge,
+  )
+  t.after(unregister)
+  const model = new CredentialClientModel({
+    call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
+  })
+  t.after(() => model.dispose())
+  for (const reference of [
+    '9private-canary',
+    'MARIVO_PRIVATE',
+    'DSH_HOME',
+    'DSH_DATA_ANALYSIS_PRIVATE',
+    { password: 123 },
+  ]) {
+    const input = {
+      backend: 'clickhouse',
+      fields: { name: 'warehouse', host: 'localhost', password_env: reference },
+    }
+    const response = await handler(
+      'create-datasource',
+      {
+        workspaceId: 'workspace',
+        generation: f.service.generation,
+        fingerprint: bridge.binding.fingerprint,
+        ...input,
+      },
+      f.controller.signal,
+    )
+    assert.deepEqual(response, {
+      ok: false,
+      error: { code: 'internal', message: 'datasource-credential-ref-invalid', details: {} },
+    })
+    await assert.rejects(
+      model.createDatasource(
+        'workspace',
+        {
+          generation: f.service.generation,
+          fingerprint: bridge.binding.fingerprint,
+          backends: [],
+        },
+        input,
+      ),
+      (error: Error) => {
+        assert.match(error.message, /凭证引用名称无效/)
+        assert.match(error.message, /实际用户名和密码/)
+        assert.doesNotMatch(error.message, /9private-canary|提交结果未确认|凭证操作失败/)
+        return true
+      },
+    )
+  }
+  assert.equal(runs, 0)
+  assert.deepEqual(f.store.calls, { resolve: 0, set: 0, unset: 0 })
+})
+
+test('unconfirmed creation is not replayed and still asks the user to refresh', async (t) => {
+  for (const transportFailure of [false, true]) {
+    let calls = 0
+    const model = new CredentialClientModel({
+      async call() {
+        calls++
+        if (transportFailure) throw new Error('connection-lost')
+        return { ok: false, error: { message: 'credential-operation-failed' } }
+      },
+    })
+    t.after(() => model.dispose())
+    await assert.rejects(
+      model.createDatasource(
+        'workspace',
+        {
+          generation: 'host',
+          fingerprint: 'runtime',
+          backends: [],
+        },
+        { backend: 'duckdb', fields: { name: 'created' } },
+      ),
+      /提交结果未确认.*刷新列表/,
+    )
+    assert.equal(calls, 1)
+  }
+})
 
 test('adding one credential saves without testing incomplete datasource credentials', async (t) => {
   const f = fixture()

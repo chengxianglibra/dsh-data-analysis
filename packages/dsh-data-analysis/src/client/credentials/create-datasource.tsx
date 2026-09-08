@@ -85,8 +85,20 @@ export function CreateDatasource({ model, workspaceId, close }) {
                 key={field.name}
                 htmlFor={`mc-create-${field.name}`}
               >
-                {field.name}
-                {field.required ? ' *' : ''}
+                <span className="mc-input-heading">
+                  <span className="mc-input-name">
+                    {field.name}
+                    {field.name.endsWith('_env') ? '（凭证引用名）' : ''}
+                    {field.required ? ' *' : ''}
+                  </span>
+                  {(field.description || field.name.endsWith('_env')) && (
+                    <span className="mc-input-description">
+                      {field.description}
+                      {field.name.endsWith('_env') &&
+                        ' 填写引用名，如 MY_DB_PASSWORD；仅使用字母、数字和下划线，不能以数字开头。实际用户名或密码请在创建后的“新增凭证”中填写。'}
+                    </span>
+                  )}
+                </span>
                 {field.type === 'boolean' ? (
                   <select
                     id={`mc-create-${field.name}`}
@@ -117,12 +129,6 @@ export function CreateDatasource({ model, workspaceId, close }) {
                     value={values[field.name] ?? ''}
                     onChange={(event) => setValues({ ...values, [field.name]: event.target.value })}
                   />
-                )}
-                {field.description && <span className="mc-field-note">{field.description}</span>}
-                {field.name.endsWith('_env') && (
-                  <span className="mc-field-note">
-                    填写凭证引用名称；创建后可在数据源卡片中新增对应凭证值。
-                  </span>
                 )}
               </label>
             ))}

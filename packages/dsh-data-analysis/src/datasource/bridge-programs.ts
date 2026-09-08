@@ -12,7 +12,8 @@ import hashlib
 def project_description(description):
     payload = {"name": description.name, "backend": description.backend_type,
         "fields": description.literal_fields, "refs": description.env_refs}
-    return {"name": description.name, "refs": list(description.env_refs.values()),
+    return {"name": description.name, "backend": description.backend_type,
+        "properties": description.literal_fields, "refs": list(description.env_refs.values()),
         "fields": description.env_refs,
         "definition": hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()}
 
@@ -31,7 +32,8 @@ import hashlib
 def project_description(description):
     payload = {"name": description.name, "backend": description.backend_type,
         "fields": description.literal_fields, "refs": description.env_refs}
-    return {"name": description.name, "refs": list(description.env_refs.values()),
+    return {"name": description.name, "backend": description.backend_type,
+        "properties": description.literal_fields, "refs": list(description.env_refs.values()),
         "fields": description.env_refs,
         "definition": hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()}
 

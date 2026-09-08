@@ -100,7 +100,7 @@ test('management entries only occupy the session header and address its Workspac
   const header = f.seats.filter((entry) => entry.name === 'conversation.session.header.actions')
   assert.deepEqual(
     header.sort((a, b) => a.order - b.order).map((entry) => entry.id),
-    ['marivo-semantic-browser', 'marivo-credentials', 'marivo-credential-requests'],
+    ['marivo-credentials', 'marivo-semantic-browser', 'marivo-credential-requests'],
   )
   for (const id of ['marivo-semantic-browser', 'marivo-credentials']) {
     const button = f.render(id, 'session-b')

@@ -49,11 +49,21 @@ const messages: Record<string, string> = {
   'capacity-exceeded': '当前操作数量达到上限，请稍后重试。',
   'datasource-already-exists': '该数据源已存在，请使用其他名称。',
   'datasource-definition-invalid': '数据源定义无效，请检查名称、字段类型和凭证引用。',
+  'datasource-credential-ref-invalid':
+    '凭证引用名称无效。*_env 字段填写引用名（如 MY_DB_PASSWORD），仅可使用字母、数字和下划线，且不能以数字开头；不能使用 MARIVO_、DSH_DATA_ANALYSIS_ 前缀或 Host 保留名称。实际用户名和密码请在创建后的“新增凭证”中填写。',
   'datasource-authoring-unavailable': '当前 Runtime 不支持新增数据源。',
 }
 export function credentialMessage(code: string): string {
   return messages[code] ?? '凭证操作失败，请检查配置后重试。'
 }
+class CredentialResponseError extends Error {
+  readonly code: string
+  constructor(code: string) {
+    super(credentialMessage(code))
+    this.code = code
+  }
+}
+
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const done = () => {
@@ -117,7 +127,7 @@ export class CredentialClientModel {
       value?: unknown
       error?: { message?: string }
     }
-    if (!result.ok) throw new Error(credentialMessage(result.error?.message ?? ''))
+    if (!result.ok) throw new CredentialResponseError(result.error?.message ?? '')
     return result.value
   }
   show(workspaceId: string): void {
@@ -146,6 +156,15 @@ export class CredentialClientModel {
         ...input,
       })) as { name: string }
     } catch (error) {
+      if (
+        error instanceof CredentialResponseError &&
+        [
+          'datasource-credential-ref-invalid',
+          'datasource-already-exists',
+          'context-changed',
+        ].includes(error.code)
+      )
+        throw error
       throw new Error(
         `${error instanceof Error ? error.message : '新增数据源失败。'} 如提交结果未确认，请刷新列表核对后再操作。`,
       )

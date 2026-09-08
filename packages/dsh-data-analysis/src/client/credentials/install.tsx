@@ -112,6 +112,37 @@ function OperationOutcome({ entry }) {
     </div>
   )
 }
+function DatasourceProperties({ context }) {
+  const properties = Object.entries(context.properties ?? {})
+  return (
+    <section className="mc-properties" aria-label="数据源属性">
+      <h4 className="mc-section-heading">数据源属性</h4>
+      <dl className="mc-property-list">
+        <div className="mc-property">
+          <dt>引擎</dt>
+          <dd>{context.backend || '未提供'}</dd>
+        </div>
+        {properties.map(([field, value]) => (
+          <div className="mc-property" key={field}>
+            <dt>{field}</dt>
+            <dd>
+              {value !== null && typeof value === 'object' ? (
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll long JSON values.
+                <section className="mc-property-json" tabIndex={0} aria-label={`${field} 配置值`}>
+                  <pre>{JSON.stringify(value, null, 2)}</pre>
+                </section>
+              ) : (
+                <span>
+                  {typeof value === 'string' && value !== '' ? value : JSON.stringify(value)}
+                </span>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
 function CredentialForm({ context, request, state, model, workspaceId }) {
   const [values, setValues] = useState({})
   const [editing, setEditing] = useState({})
@@ -172,6 +203,8 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
             )}
           </div>
         )}
+        <DatasourceProperties context={context} />
+        <h4 className="mc-section-heading">凭证</h4>
         {context.refs.length === 0 && (
           <p className="mc-note">该数据源没有凭证引用，可直接测试连接。</p>
         )}
@@ -354,6 +387,8 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
 function CredentialPanel({ model, workspaces }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const dialog = useRef(null)
+  const columns = useRef(null)
+  const main = useRef(null)
   const [creating, setCreating] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: Switching context discards the creation form.
   useEffect(() => setCreating(false), [state.open, state.workspaceId, state.requestId])
@@ -367,6 +402,11 @@ function CredentialPanel({ model, workspaces }) {
   )
   const context =
     request?.context ?? state.datasources.find((item) => item.token === state.selected)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A different detail or creation page starts at the top of its content.
+  useEffect(() => {
+    if (main.current) main.current.scrollTop = 0
+    if (columns.current) columns.current.scrollTop = 0
+  }, [creating, context?.token])
   const workspaceId = request
     ? (workspaces.find((item) => item.sessionIds.includes(request.sessionId))?.workspaceId ?? '')
     : state.workspaceId
@@ -421,7 +461,7 @@ function CredentialPanel({ model, workspaces }) {
             )}
           </div>
         )}
-        <div className="mc-columns">
+        <div className="mc-columns" ref={columns}>
           <aside className="mc-nav" aria-label="数据源导航">
             {!request && (
               <button
@@ -489,7 +529,7 @@ function CredentialPanel({ model, workspaces }) {
               </ul>
             </div>
           </aside>
-          <main className="mc-main">
+          <main className="mc-main" ref={main}>
             {state.error && (
               <p role="alert" className="mc-alert">
                 {state.error}
@@ -587,7 +627,7 @@ export function installCredentials(ctx, rpc) {
   ctx.on('connection/reset', () => model.reset())
   ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
-      { name: 'conversation.session.header.actions', id: 'marivo-credentials', order: 110 },
+      { name: 'conversation.session.header.actions', id: 'marivo-credentials', order: 100 },
       function Entry({ sessionId, useWorkspaces }) {
         const workspaces = useWorkspaces((state) => state.items)
         const selected =

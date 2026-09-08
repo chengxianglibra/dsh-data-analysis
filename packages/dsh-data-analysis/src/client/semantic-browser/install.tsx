@@ -16,7 +16,7 @@ export function installSemanticBrowser(ctx, rpc) {
       {
         name: 'conversation.session.header.actions',
         id: 'marivo-semantic-browser',
-        order: 100,
+        order: 110,
       },
       function BrowserEntry({ sessionId, useWorkspaces }) {
         const workspaces = useWorkspaces((state) => state.items)

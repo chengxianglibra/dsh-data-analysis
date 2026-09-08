@@ -90,6 +90,8 @@ test('Help bridge maps non-zero and empty output without exposing subprocess pay
 test('Datasource bridge owns definition projection and host-only pipe credentials', async () => {
   const description = {
     name: 'warehouse',
+    backend: 'fixture',
+    properties: {},
     refs: ['DSH_USER'],
     fields: { user: 'DSH_USER' },
     definition: 'd'.repeat(64),
