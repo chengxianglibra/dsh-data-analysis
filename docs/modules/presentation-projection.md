@@ -61,7 +61,7 @@ computed writer 可通过 `labels={列名: 展示名}` 显式设置列 `label`�
 writer 不接收来源或转换说明；来源只写在 Draft。
 行和单元格预算确定实际 limit，超出字节预算明确失败；空结果保留列，未指定的展示标签使用列名。
 
-新 wheel 为 `dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl`，只依赖 pandas。
+新 wheel 为 `dsh_data_analysis_presentation_kit-1.1.0-py3-none-any.whl`，只依赖 pandas。
 Runtime marker v3 同时检查模块版本、distribution 版本、实际导入位置和公开 writer；
 每次 shared checked execution 再核验 helper，避免 Workspace 同名模块遮蔽。管理员 Python 失败时提供修复信息，
 不自动安装或切换解释器；managed 模式通过唯一新 wheel 安装路径准备环境。

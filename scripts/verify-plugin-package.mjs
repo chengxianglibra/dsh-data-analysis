@@ -9,7 +9,7 @@ const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const presentationKitWheelPath =
-  'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl'
+  'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.1.0-py3-none-any.whl'
 const presentationKitVerifier = path.join(
   packageRoot,
   'python',

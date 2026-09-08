@@ -75,7 +75,7 @@ Web client 只保留：
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.5.4` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
-| Presentation-kit | `dsh-data-analysis-presentation-kit==1.0.0`，typed dataset schemaVersion 1 |
+| Presentation-kit | `dsh-data-analysis-presentation-kit==1.1.0`，typed dataset schemaVersion 1 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
 与内部纯数据 contracts/projection、builder、预构建 portable/static 资产，以及唯一展示 Skill 的 `SKILL.md`、references 和 examples；

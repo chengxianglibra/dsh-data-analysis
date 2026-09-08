@@ -101,8 +101,8 @@ if (args[0] === '-c' && args.length === 2) {
     package_path: ${JSON.stringify(packagePath)},
     pandas_version: '2.3.3',
     pandas_supported: true,
-    presentation_kit_version: '1.0.0',
-    presentation_kit_distribution_version: '1.0.0',
+    presentation_kit_version: '1.1.0',
+    presentation_kit_distribution_version: '1.1.0',
     presentation_kit_import_identity: true,
     presentation_kit_package_path: ${JSON.stringify(presentationKitPackagePath)},
     presentation_kit_public_imports: true,
@@ -202,7 +202,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   await mkdir(path.dirname(packagePath), { recursive: true })
   await mkdir(path.dirname(presentationKitPackagePath), { recursive: true })
   await writeFile(packagePath, '__version__ = "0.5.4"\n')
-  await writeFile(presentationKitPackagePath, '__version__ = "1.0.0"\n')
+  await writeFile(presentationKitPackagePath, '__version__ = "1.1.0"\n')
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
@@ -332,7 +332,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     await readFile(path.join(runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
-  assert.equal(marker.presentationKitVersion, '1.0.0')
+  assert.equal(marker.presentationKitVersion, '1.1.0')
   assert.equal(marker.presentationKitPackagePath, presentationKitPackagePath)
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()

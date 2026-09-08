@@ -91,7 +91,7 @@ Plugin 挂载 Runtime 的 `marivo-analysis` / `marivo-semantic`，另用独立 f
 Runtime Skill 与 live Help。展示 Skill 不新增 Help target，也不改变两个 Runtime Skill 的激活披露。
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
-Runtime 安装 `dsh-data-analysis-presentation-kit==1.0.0`；公开 Python 函数
+Runtime 安装 `dsh-data-analysis-presentation-kit==1.1.0`；公开 Python 函数
 `dsh_data_analysis_presentation.write_dataset(frame, path)` 接受 pandas DataFrame，只写 computed typed JSON。
 
 computed writer 可通过 `labels={列名: 展示名}` 显式设置列 `label`，未映射列沿用列名；

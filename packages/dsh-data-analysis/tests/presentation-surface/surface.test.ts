@@ -120,7 +120,7 @@ test('S2 removes the old helper, report Skill and JavaScript transport together'
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
   assert.ok(
     manifest.files.includes(
-      'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.0.0-py3-none-any.whl',
+      'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.1.0-py3-none-any.whl',
     ),
   )
   assert.equal(

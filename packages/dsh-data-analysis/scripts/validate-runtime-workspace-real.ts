@@ -32,7 +32,7 @@ try {
   assert.deepEqual(reused, runtime)
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
   assert.equal(marker.marivoVersion, runtime.marivoVersion)
-  assert.equal(marker.presentationKitVersion, '1.0.0')
+  assert.equal(marker.presentationKitVersion, '1.1.0')
   assert.equal(marker.presentationKitPackagePath, runtime.presentationKitPackagePath)
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
   const administrator = await ensureSharedMarivoRuntime({
@@ -81,13 +81,20 @@ frame = pd.DataFrame({
     "count": pd.Series([9007199254740993, None], dtype="Int64"),
     "amount": [Decimal("12345678901234.5678"), Decimal("0.1000")],
 })
-receipt = write_dataset(frame, sys.argv[1])
+receipt = write_dataset(frame, sys.argv[1], labels={"count": "数量", "amount": "金额"}, dataset_id="computed")
 print(json.dumps(asdict(receipt)))
 `,
     args: [computedPath],
   })
   assert.equal(checkedWrite.exitCode, 0, checkedWrite.stderr.toString('utf8'))
   const computed = parseTypedDataset(JSON.parse(await readFile(computedPath, 'utf8')))
+  assert.deepEqual(
+    computed.columns.map(({ id, label }) => ({ id, label })),
+    [
+      { id: 'count', label: '数量' },
+      { id: 'amount', label: '金额' },
+    ],
+  )
   assert.deepEqual(computed.rows, [
     ['9007199254740993', '12345678901234.5678'],
     [null, '0.1000'],
@@ -97,7 +104,7 @@ print(json.dumps(asdict(receipt)))
   await mkdir(shadowRoot)
   await writeFile(
     path.join(shadowRoot, '__init__.py'),
-    '__version__ = "1.0.0"\ndef write_dataset(*args, **kwargs): pass\n',
+    '__version__ = "1.1.0"\ndef write_dataset(*args, **kwargs): pass\n',
   )
   await assert.rejects(
     first.runChecked({ program: 'raise RuntimeError("user program must never start")' }),
