@@ -108,7 +108,10 @@ export async function verifyChartGallery(page: Page) {
   assert.match(copied, /Current chart binding: .*"chart":"horizontalBar"/)
   assert.match(copied, /"x":"coordinate","y":\["a"\]/)
   assert.doesNotMatch(copied, /Category filters:/)
-  assert.match(copied, /page-local exploration \(not saved; download retains original chart\)/)
+  assert.match(
+    copied,
+    /page-local exploration \(not saved; full-report download retains original chart\)/,
+  )
   await panel.getByRole('button', { name: '恢复原图', exact: true }).click()
   assert.equal(
     await panel.getByRole('combobox', { name: '图形类型', exact: true }).inputValue(),

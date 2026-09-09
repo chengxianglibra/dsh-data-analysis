@@ -102,7 +102,9 @@ null 保留缺失含义，datetime 必须带时区。它不保存来源或转换
 保存生成同报告的新 build，保留底层数据、来源和代码，不运行 Agent 或 Python。
 Workspace「报告」列表支持标题搜索、最近更新和来源会话入口；历史版本只读，下载固定为正在查看的版本。
 报告读取无需来源 Session 存活；旧 current 缺少早期发布记录时只展示可确认的版本，不猜测历史。
-全部 18 种 chart 与同 dataset 的表格和数据预览共享临时筛选；筛选不重算指标、不标记编辑修改、不进入保存、下载或打印。
+全部 18 种 chart 与同 dataset 的表格和数据预览共享临时筛选；筛选不重算指标、不标记编辑修改、不进入保存、完整报告下载或既有打印。
+报告右上角导出菜单提供“下载完整报告”和“导出当前视图”；后者下载固定筛选、图形及表格排序的无脚本 HTML，
+包含筛选后的全部已保存表格行、来源 Build 与导出时间，保留固定内容和截断提示。编辑模式需先保存或取消。
 文档、receipt 与 delivery 使用 schema v2，Draft 和 typed dataset 保持 v1；旧报告不读取、不迁移，旧文件保留。文本始终包含两份文件的位置、digest 和字节数，headless 也能取得交付物。
 展开来源仅使用保存的快照；文件变化、缺失或 Workspace 归属变化会明确失败。
 实现与验收见[展示数据投影](../../docs/modules/presentation-projection.md)、[展示 reader](../../docs/modules/presentation-reader.md)、

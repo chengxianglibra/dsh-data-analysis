@@ -270,7 +270,7 @@ export function followUpContext(
     lines.push(`Saved chart binding: ${JSON.stringify(savedBlock)}`)
     if (exploration) {
       lines.push(
-        'Current chart view: page-local exploration (not saved; download retains original chart)',
+        'Current chart view: page-local exploration (not saved; full-report download retains original chart)',
         `Current chart binding: ${JSON.stringify(exploration.view)}`,
         `Hidden series: ${JSON.stringify(exploration.hidden)}`,
         `Prepared view: ${exploration.preparedViewId ?? 'authored'}`,

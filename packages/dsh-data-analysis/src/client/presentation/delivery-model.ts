@@ -1,3 +1,7 @@
+import { savePresentationHtml } from './download.ts'
+
+export { savePresentationHtml } from './download.ts'
+
 import {
   parseReportHistory,
   type ReportHistory,
@@ -56,23 +60,6 @@ export interface PresentationDeliveryState {
   readonly notice?: string
 }
 export type SavePresentationHtml = (bytes: Uint8Array, filename: string) => void
-
-/** Download verified bytes as an attachment; never insert generated HTML in the Host DOM. */
-export function savePresentationHtml(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([new Uint8Array(bytes)], { type: 'text/html;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  try {
-    document.body.append(anchor)
-    anchor.click()
-  } finally {
-    anchor.remove()
-    // Leave time for browsers to consume the download navigation.
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-}
 
 /** Check the exact receipt-bound bytes before either parsing JSON or downloading HTML. */
 export async function verifyPresentationAsset(

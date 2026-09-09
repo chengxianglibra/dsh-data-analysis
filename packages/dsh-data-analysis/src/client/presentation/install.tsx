@@ -235,15 +235,6 @@ export function PresentationOverlay({
               返回报告列表
             </button>
           )}
-          {state.open && (
-            <button
-              type="button"
-              disabled={state.downloading || !!state.error || !state.document}
-              onClick={() => void model.downloadDisplayed()}
-            >
-              {state.downloading ? '正在下载…' : '下载 HTML'}
-            </button>
-          )}
           <button
             type="button"
             aria-label="关闭分析快照"
@@ -363,6 +354,11 @@ export function PresentationOverlay({
           <div className="pd-reader">
             <HostPresentationReader
               document={state.document}
+              exportActions={{
+                downloadFullReport: () => void model.downloadDisplayed(),
+                downloading: state.downloading,
+                disabled: !!state.error || state.loading,
+              }}
               onAskDsh={
                 onAskDsh && delivery
                   ? (context) => {

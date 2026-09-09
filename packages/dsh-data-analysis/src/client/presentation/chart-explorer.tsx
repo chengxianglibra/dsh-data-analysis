@@ -109,7 +109,7 @@ export function ChartExplorer({
         <div>
           <h3>探索图表</h3>
           <p className="pr-muted">
-            仅当前页面生效；重新打开或下载仍为原图。统计值与占比分母由作者提供。
+            仅当前页面生效；导出当前视图可保留，重新打开完整报告仍为原图。统计值与占比分母由作者提供。
           </p>
         </div>
         <button

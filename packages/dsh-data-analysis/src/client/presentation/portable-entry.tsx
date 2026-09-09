@@ -2,6 +2,7 @@ import { Component, type ReactNode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { parsePresentationDocument } from '../../presentation/contracts/index.ts'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
+import { savePresentationHtml } from './download.ts'
 import { PresentationReader } from './reader.tsx'
 
 class PortableBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -24,7 +25,22 @@ function ReadyReader({ value }: { value: PresentationDocument }) {
       delete document.documentElement.dataset.presentationReady
     }
   }, [])
-  return <PresentationReader document={value} />
+  return (
+    <PresentationReader
+      document={value}
+      exportActions={{
+        downloadFullReport: () => {
+          const saved = document.documentElement.cloneNode(true) as HTMLElement
+          delete saved.dataset.presentationReady
+          saved.querySelector('#reader')?.replaceChildren()
+          savePresentationHtml(
+            new TextEncoder().encode(`<!doctype html>${saved.outerHTML}`),
+            `marivo-${value.reportId}-${value.buildId}.html`,
+          )
+        },
+      }}
+    />
+  )
 }
 
 const root = document.getElementById('reader')

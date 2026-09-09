@@ -40,6 +40,14 @@ export function MoreIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function ExportIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
+    </Icon>
+  )
+}
+
 export function CloseIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

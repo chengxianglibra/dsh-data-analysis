@@ -11,7 +11,10 @@ import { ChartExplorer } from './chart-explorer.tsx'
 import { ChartRenderer } from './chart-renderer.tsx'
 import { type ChartExploration, exploredChartBlock, initialChartExploration } from './chart-view.ts'
 import { CopyContext } from './copy-context.tsx'
+import { savePresentationHtml } from './download.ts'
 import { CellEditor, type ReaderEditing } from './editor-controls.tsx'
+import { ExportMenu, type ReaderExportActions } from './export-menu.tsx'
+import { exportCurrentView, type TableSort } from './export-view.ts'
 import { GlobalFilterControls } from './global-filters.tsx'
 import { MoreIcon } from './icons.tsx'
 import { Markdown } from './markdown.tsx'
@@ -158,6 +161,8 @@ function Block({
   onExplorationChange,
   rowIndices,
   filterKey,
+  tableSort,
+  onTableSortChange,
 }: {
   block: PresentationBlock
   document: PresentationDocument
@@ -166,6 +171,8 @@ function Block({
   onExplorationChange?: (state: ChartExploration) => void
   rowIndices?: readonly number[]
   filterKey?: string
+  tableSort?: TableSort
+  onTableSortChange?: (sort: TableSort) => void
 }) {
   if (block.kind === 'markdown') return <Markdown text={block.text} />
   if (block.kind === 'source')
@@ -238,6 +245,8 @@ function Block({
           columns={block.columns}
           mode={mode}
           caption="数据表"
+          sort={tableSort}
+          onSortChange={onTableSortChange}
           filterKey={filterKey}
           rowIndices={rowIndices}
           showScope={dataset.data.truncated}
@@ -266,12 +275,14 @@ function ReaderContents({
   editing,
   onOpenSemanticRef,
   onAskDsh,
+  exportActions,
 }: {
   document: PresentationDocument
   mode: ReaderMode
   editing?: ReaderEditing
   onOpenSemanticRef?: OpenSemanticRef
   onAskDsh?: (context: string) => void
+  exportActions?: ReaderExportActions
 }) {
   const document = editing
     ? {
@@ -280,6 +291,9 @@ function ReaderContents({
         interaction: editedInteraction(savedDocument, editing.edits.blocks),
       }
     : savedDocument
+  const readerRoot = useRef<HTMLElement>(null)
+  const [tableSorts, setTableSorts] = useState<Record<string, TableSort | undefined>>({})
+  const [exportStatus, setExportStatus] = useState<{ error?: boolean; message: string }>()
   const interaction = document.interaction
   const [chosen, setChosen] = useState<Record<string, string>>(() =>
     interaction ? defaultSelection(interaction) : {},
@@ -392,6 +406,10 @@ function ReaderContents({
           }
           rowIndices={rows}
           filterKey={summaryFor(block)}
+          tableSort={Object.hasOwn(tableSorts, block.id) ? tableSorts[block.id] : undefined}
+          onTableSortChange={(sort) =>
+            setTableSorts((previous) => ({ ...previous, [block.id]: sort }))
+          }
         />
         {savedBlock.kind === 'chart' && block.kind === 'chart' && explorerCell?.id === block.id && (
           <ChartExplorer
@@ -436,8 +454,41 @@ function ReaderContents({
   const sourceBlock =
     sourceSaved?.kind === 'chart' ? exploredChartBlock(sourceSaved, sourceState) : sourceSaved
   return (
-    <article className="pr-reader" data-presentation-reader="true" data-mode={mode}>
+    <article
+      ref={readerRoot}
+      className="pr-reader"
+      data-presentation-reader="true"
+      data-mode={mode}
+    >
       <header className="pr-header">
+        {mode === 'interactive' && exportActions && (
+          <ExportMenu
+            actions={exportActions}
+            editing={!!editing}
+            onExport={() => {
+              if (editing || exportActions.disabled || !readerRoot.current) return
+              try {
+                const result = exportCurrentView(readerRoot.current, savedDocument, {
+                  selection,
+                  explorations,
+                  tableSorts,
+                })
+                savePresentationHtml(result.bytes, result.filename)
+                setExportStatus({ message: '已导出当前视图（包含筛选后的全部已保存行）' })
+              } catch (error) {
+                setExportStatus({
+                  error: true,
+                  message: error instanceof Error ? error.message : '导出失败，请重试。',
+                })
+              }
+            }}
+          />
+        )}
+        {exportStatus && (
+          <p className="pr-interactive pr-muted" role={exportStatus.error ? 'alert' : 'status'}>
+            {exportStatus.message}
+          </p>
+        )}
         {editing ? (
           <label className="pr-report-title-editor">
             报告标题
@@ -544,12 +595,14 @@ export function PresentationReader({
   editing,
   onOpenSemanticRef,
   onAskDsh,
+  exportActions,
 }: {
   document: PresentationDocument
   mode?: ReaderMode
   editing?: ReaderEditing
   onOpenSemanticRef?: OpenSemanticRef
   onAskDsh?: (context: string) => void
+  exportActions?: ReaderExportActions
 }) {
   const parsed = useMemo(() => parsePresentationDocument(document), [document])
   return (
@@ -560,6 +613,7 @@ export function PresentationReader({
       editing={editing}
       onOpenSemanticRef={mode === 'interactive' ? onOpenSemanticRef : undefined}
       onAskDsh={mode === 'interactive' ? onAskDsh : undefined}
+      exportActions={exportActions}
     />
   )
 }

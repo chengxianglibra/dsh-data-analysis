@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
 import type { ReaderEditing } from './editor-controls.tsx'
+import type { ReaderExportActions } from './export-menu.tsx'
 import { PresentationReader } from './reader.tsx'
 import type { OpenSemanticRef } from './source-facts.ts'
 import { PRESENTATION_STYLES } from './styles.ts'
@@ -18,12 +19,14 @@ export function HostPresentationReader({
   editing,
   onOpenSemanticRef,
   onAskDsh,
+  exportActions,
 }: {
   document: PresentationDocument
   editing?: ReaderEditing
   actions?: ReactNode
   onOpenSemanticRef?: OpenSemanticRef
   onAskDsh?: (context: string) => void
+  exportActions?: ReaderExportActions
 }) {
   return (
     <div className="pr-host">
@@ -36,6 +39,7 @@ export function HostPresentationReader({
           editing={editing}
           onOpenSemanticRef={onOpenSemanticRef}
           onAskDsh={onAskDsh}
+          exportActions={exportActions}
         />
       </div>
       <div className="pr-host-print">

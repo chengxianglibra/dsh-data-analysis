@@ -30,6 +30,7 @@ Agent 修改已有报告时可保留同一 Report 并发布新 Build，版本冲
 Workspace「报告」入口支持按标题搜索、最近更新与来源会话查看；历史侧栏可只读查看并下载已确认发布的版本。
 阅读器支持呈现编辑、cell 移动／删除、撤销与保存；同 dataset 联动筛选只影响当前展示，不改写报告数据。普通事实问答使用文字；
 已有数据可直接展示，需要新分析时再加载 Marivo Runtime Skill 与实时 Help。
+报告右上角的导出菜单区分“下载完整报告”和“导出当前视图”；当前视图 HTML 保留筛选、图形和表格排序，附来源 Build 与导出时间，支持离线阅读。
 使用边界见[展示 Skill](docs/modules/presentation-skill.md)，编辑和筛选能力见[展示 reader](docs/modules/presentation-reader.md)。
 
 ## 引用语义对象

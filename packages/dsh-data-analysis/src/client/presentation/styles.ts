@@ -28,6 +28,7 @@ export const PRESENTATION_STYLES = `
 .pr-reader summary:hover { color:var(--pr-text) }
 .pr-reader details[open]>summary { margin-bottom:8px }
 .pr-muted { color:var(--pr-muted); font-size:13px }
+.pr-export-menu{float:right;position:relative;margin-left:16px;z-index:6}.pr-export-menu small{display:block;font-size:12px;color:var(--pr-muted);margin-top:3px}.pr-export-menu .pr-cell-menu-popup{min-width:240px}.pr-export-menu .pr-icon-button{width:34px;height:34px}
 .pr-header { padding-bottom:28px; margin-bottom:32px; border-bottom:1px solid var(--pr-border) }
 .pr-blocks { display:flex; flex-direction:column; gap:32px }
 .pr-block { min-width:0; position:relative }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { TypedDataset } from '../../presentation/contracts/types.ts'
+import type { TableSort } from './export-view.ts'
 import {
   cellText,
   columnIndex,
@@ -19,6 +20,8 @@ export function DatasetTable({
   showSelectionCount = true,
   rowIndices,
   filterKey,
+  sort: controlledSort,
+  onSortChange,
 }: {
   data: TypedDataset
   columns?: string[]
@@ -28,11 +31,12 @@ export function DatasetTable({
   showSelectionCount?: boolean
   rowIndices?: readonly number[]
   filterKey?: string
+  sort?: TableSort
+  onSortChange?: (sort: TableSort) => void
 }) {
-  const [sort, setSort] = useState<{
-    columnId: string
-    direction: 'ascending' | 'descending'
-  }>()
+  const [localSort, setLocalSort] = useState<TableSort>()
+  const sort = onSortChange ? controlledSort : localSort
+  const setSort = onSortChange ?? setLocalSort
   const [page, setPage] = useState(0)
   const indices = columns?.map((id) => columnIndex(data, id)) ?? data.columns.map((_, i) => i)
   const numericColumns = new Set(

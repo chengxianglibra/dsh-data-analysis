@@ -70,7 +70,8 @@ export async function verifyResponsiveGallery(
       }
     })
     assert.ok(Math.abs(frame.leftPadding - frame.rightPadding) <= 1)
-    if (width >= 1440) {
+    const availableWidth = layout === 'overlay' && width > 850 ? width * 0.8 : width
+    if (availableWidth >= 1440) {
       assert.ok(frame.width > 1240, `${prefix}: wide reader retains the old width limit`)
       assert.ok(frame.width - frame.leftPadding - frame.rightPadding > 1100)
     }
@@ -80,7 +81,7 @@ export async function verifyResponsiveGallery(
         .boundingBox()
       assert.ok(overlay)
       assert.ok(Math.abs(overlay.x - (width - overlay.width) / 2) <= 1)
-      assert.ok(Math.abs(overlay.width - width * (width <= 600 ? 1 : 0.96)) <= 2)
+      assert.ok(Math.abs(overlay.width - width * (width <= 850 ? 1 : 0.8)) <= 2)
     } else if (layout === 'portable') {
       assert.ok(Math.abs(frame.x - (pageWidth.viewport - frame.width) / 2) <= 1)
     }
@@ -204,8 +205,10 @@ export async function verifyResponsiveGallery(
     node.style.removeProperty('display')
   })
   await waitForResponsiveLayout(page)
-  assert.ok(
-    Number(await hiddenChart.locator('svg').getAttribute('width')) < Number(widthBeforeHide),
+  assert.notEqual(
+    Number(await hiddenChart.locator('svg').getAttribute('width')),
+    Number(widthBeforeHide),
+    'Restored chart must follow its new container width, including column wrapping',
   )
   await page.setViewportSize(originalViewport)
   await waitForResponsiveLayout(page)

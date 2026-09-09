@@ -46,7 +46,8 @@ export async function verifyEditing(
   )
   await page.emulateMedia({ media: 'screen' })
   const downloadPending = page.waitForEvent('download')
-  await overlay.getByRole('button', { name: '下载 HTML', exact: true }).click()
+  await overlay.getByRole('button', { name: '导出报告', exact: true }).click()
+  await overlay.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const download = await downloadPending
   const originalDownload = path.join(outputRoot, 'editing-download.html')
   await download.saveAs(originalDownload)
@@ -102,7 +103,8 @@ export async function verifyEditing(
     false,
   )
   const savedDownloadPending = page.waitForEvent('download')
-  await overlay.getByRole('button', { name: '下载 HTML', exact: true }).click()
+  await overlay.getByRole('button', { name: '导出报告', exact: true }).click()
+  await overlay.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const savedDownload = await savedDownloadPending
   const savedPath = path.join(outputRoot, 'editing-saved.html')
   await savedDownload.saveAs(savedPath)
@@ -160,7 +162,8 @@ export async function verifyEditing(
   await overlay.getByRole('button', { name: '编辑报告', exact: true }).waitFor()
   const empty = parsePresentationReceipt((await rpc('reports/resolve', request)).value)
   const finalDownloadPending = page.waitForEvent('download')
-  await overlay.getByRole('button', { name: '下载 HTML', exact: true }).click()
+  await overlay.getByRole('button', { name: '导出报告', exact: true }).click()
+  await overlay.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const finalDownload = await finalDownloadPending
   const finalPath = path.join(outputRoot, 'editing-empty-saved.html')
   await finalDownload.saveAs(finalPath)

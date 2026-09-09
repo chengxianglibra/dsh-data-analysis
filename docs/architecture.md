@@ -47,7 +47,7 @@ flowchart LR
 | Presentation delivery | present 与编辑完整提交、current 指针、durable receipt、RPC 与打开/下载 | 分析计算、长期版本管理、语义正确性 |
 | Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
-| Presentation reader | 五类 block、独立编辑草稿、预计算组合选择、共享静态正文与离线 HTML | 分析计算、文件提交、receipt/RPC、长期版本管理 |
+| Presentation reader | 五类 block、独立编辑草稿、预计算组合选择、共享静态正文、完整报告与当前视图 HTML | 分析计算、文件提交、receipt/RPC、长期版本管理 |
 | Presentation data | 固定公开 Artifact 读取、typed JSON、声明来源快照与最小 Python writer | computed 转换审计、分析正确性、语义补齐、observe 或 revalidation |
 
 模块文档：
@@ -174,12 +174,13 @@ source-only 保持 `datasets: []`。来源读取失败可以保存 unavailable�
 以及 Agent 选取范围与 writer 截断的区别。示例按需读取。Agent 决定内容顺序和图形意图，reader 负责自适应布局，
 没有 Agent 可配置的网格。来源来自 Marivo 的公开快照；computed 的来源声明不构成转换审计或正确性证明。
 Host 预览与离线 HTML 共用流式宽度；正文跟随容器，KPI 限制单卡最大宽度，连续图表按容器宽度最多并排两列，
-保持阅读顺序、分区、字号和行高；无脚本及打印中的图表数据表保持单列。
+保持阅读顺序、分区、字号和行高；完整报告的无脚本及打印图表数据表保持单列；当前视图导出保留已绘制 SVG。
 布局变化只影响阅读呈现，不修改报告 schema、保存快照或分析语义，详见[reader 模块](modules/presentation-reader.md#通用阅读层级)。
 
 共享图形契约覆盖 18 类图形与 bar/line 变体；分箱、分位数、占比、排名和累计值先在分析阶段准备。
 前端探索只选择现有列或显式 `preparedViews`，过滤和显隐不改变统计口径；当前视图用于来源预览与 cell 上下文，
-保存文档、下载与打印仍使用作者快照。详细规则见[reader 模块](modules/presentation-reader.md)。
+保存文档、完整报告下载与既有打印仍使用作者快照。当前视图导出同步冻结阅读结果，保留筛选、SVG、排序后的全部已保存表格行及来源概要；
+仅浏览器端下载，不生成新 Build、不改写数据或调用 RPC。详细规则见[reader 模块](modules/presentation-reader.md)。
 Host 的 Ask DSH 通过 reader 回调把当前 cell 上下文追加到报告所属会话的输入草稿，成功后关闭报告；
 Harness 继续拥有输入状态、引用、附件及提交行为。编辑模式禁用此操作，portable 保留复制上下文。
 数据源的代码页保存 Marivo 生产记录中的 SQL，以及 dataset 显式关联的 Python 执行快照。
