@@ -106,6 +106,10 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
                     <button
                       type="button"
                       onClick={async () => {
+                        if (reader.showHistory) {
+                          await reader.showHistory(state.workspaceId, version.receipt.reportId)
+                          return
+                        }
                         await reader.showReport(state.workspaceId, version.receipt.reportId)
                         if (reader.getSnapshot().open && !reader.getSnapshot().error)
                           await reader.toggleHistory()

@@ -278,7 +278,17 @@ export class PresentationDeliveryModel {
     if (this.#disposed) return
     await this.#openTarget({ workspaceId, reportId })
   }
-  async #openTarget(target: ReportTarget, version?: ReportVersion, preserveHistory = false) {
+  /** Open a fixed published Build without first displaying the current pointer. */
+  async showBuild(workspaceId: string, reportId: string, buildId: string) {
+    if (this.#disposed) return
+    await this.#openTarget({ workspaceId, reportId }, undefined, false, buildId)
+  }
+  async #openTarget(
+    target: ReportTarget,
+    version?: ReportVersion,
+    preserveHistory = false,
+    buildId?: string,
+  ) {
     this.#cancel()
     const flight = new AbortController(),
       generation = this.#generation
@@ -304,6 +314,22 @@ export class PresentationDeliveryModel {
       notice: undefined,
     })
     try {
+      if (buildId) {
+        const identity = targetIdentity(target)
+        const history = parseReportHistory(
+          await this.#call(
+            'reports/history',
+            { ...targetScope(target), reportId: identity.reportId },
+            flight.signal,
+          ),
+        )
+        if (history.workspaceId !== identity.workspaceId || history.reportId !== identity.reportId)
+          throw new Error('presentation-document-identity-mismatch')
+        version = history.versions.find((item) => item.receipt.buildId === buildId)
+        if (!version) throw new Error('report-build-not-found')
+        if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+        this.#publish({ history, historical: true })
+      }
       const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
       const document = await this.#document(target, receipt, flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return

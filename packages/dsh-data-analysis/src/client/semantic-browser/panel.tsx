@@ -21,7 +21,7 @@ function Fields({ fields }) {
   )
 }
 
-function ObjectDetail({ object, objects, view, model }) {
+function ObjectDetail({ object, objects, view, model, navigate, onReturnToList }) {
   const [notice, setNotice] = useState('')
   const [graph, setGraph] = useState(false)
   const key = refKey(object.ref)
@@ -65,7 +65,7 @@ function ObjectDetail({ object, objects, view, model }) {
         <button
           type="button"
           className="sb-back-list"
-          onClick={() => model.patch({ selected: '' })}
+          onClick={() => (onReturnToList ? onReturnToList() : model.patch({ selected: '' }))}
         >
           返回列表
         </button>
@@ -134,11 +134,7 @@ function ObjectDetail({ object, objects, view, model }) {
       {view.tab === 'definition' && (
         <>
           {object.computation && (
-            <ComputationCard
-              object={object}
-              objects={objects}
-              navigate={(key) => model.navigate(key)}
-            />
+            <ComputationCard object={object} objects={objects} navigate={(key) => navigate(key)} />
           )}
           {!!definitionFields.length && (
             <section aria-label="补充属性">
@@ -164,11 +160,7 @@ function ObjectDetail({ object, objects, view, model }) {
             {graph ? '收起关系图' : '查看关系图'}
           </button>
           {graph && (
-            <ObjectGraph
-              object={object}
-              objects={objects}
-              navigate={(next) => model.navigate(next)}
-            />
+            <ObjectGraph object={object} objects={objects} navigate={(next) => navigate(next)} />
           )}
           {!object.relations.length && <p>没有声明关联对象。</p>}
           <ul className="sb-relation-list">
@@ -182,7 +174,7 @@ function ObjectDetail({ object, objects, view, model }) {
                     type="button"
                     disabled={!related}
                     title={target}
-                    onClick={() => model.navigate(target)}
+                    onClick={() => navigate(target)}
                   >
                     {related?.name ?? target}
                   </button>
@@ -205,7 +197,12 @@ export function SemanticBrowserPanel({
   workspaces,
   workspacePhase = 'ready',
   workspaceError = false,
+  embedded = false,
+  onOpenObject,
+  onNavigateKey,
+  onReturnToList,
 }) {
+  const navigate = onNavigateKey ?? ((key) => model.navigate(key))
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const dialog = useRef(null)
   const view = state.views[state.workspaceId] ?? emptyView()
@@ -239,7 +236,7 @@ export function SemanticBrowserPanel({
       model.unavailable()
   }, [state.open, state.workspaceId, knownWorkspace, workspacePhase, workspaceError, model])
   useEffect(() => {
-    if (!state.open) return undefined
+    if (!state.open || embedded) return undefined
     const opener = document.activeElement,
       element = dialog.current
     element.showModal()
@@ -247,7 +244,7 @@ export function SemanticBrowserPanel({
       element.close()
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
-  }, [state.open])
+  }, [state.open, embedded])
   const domains = [
     ...new Set((snapshot?.objects ?? []).map((item) => item.domain).filter(Boolean)),
   ].sort()
@@ -255,10 +252,11 @@ export function SemanticBrowserPanel({
     snapshot.objects.some((item) => item.ref.kind === kind),
   )
   if (!state.open) return null
+  const Container = embedded ? 'section' : 'dialog'
   return (
-    <dialog
+    <Container
       ref={dialog}
-      className="sb-dialog"
+      className={embedded ? 'sb-embedded' : 'sb-dialog'}
       aria-label="语义层对象浏览器"
       onCancel={(event) => {
         event.stopPropagation()
@@ -277,18 +275,21 @@ export function SemanticBrowserPanel({
           >
             {view.loading ? '加载中…' : '刷新'}
           </button>
-          <button
-            type="button"
-            className="sb-close"
-            aria-label="关闭语义层"
-            onClick={() => model.close()}
-          >
-            关闭
-          </button>
+          {!embedded && (
+            <button
+              type="button"
+              className="sb-close"
+              aria-label="关闭语义层"
+              onClick={() => model.close()}
+            >
+              关闭
+            </button>
+          )}
         </header>
         {state.fromReport && (
           <p className="sb-status">
-            此处展示当前语义定义；报告数据与来源仍是生成时的快照。关闭后返回报告。
+            此处展示当前语义定义；报告数据与来源仍是生成时的快照。
+            {!embedded && '关闭后返回报告。'}
           </p>
         )}
         {snapshot && (
@@ -359,6 +360,38 @@ export function SemanticBrowserPanel({
               ))}
             </nav>
             <section className="sb-list" aria-label="对象列表">
+              {embedded && (
+                <div className="rt-semantic-filters">
+                  <label>
+                    业务域
+                    <select
+                      aria-label="窄格业务域"
+                      value={view.domain}
+                      onChange={(event) => model.patch({ domain: event.target.value, page: 0 })}
+                    >
+                      <option value="">全部业务域</option>
+                      {domains.map((domain) => (
+                        <option key={domain}>{domain}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    对象类型
+                    <select
+                      aria-label="窄格对象类型"
+                      value={view.kind}
+                      onChange={(event) => model.patch({ kind: event.target.value, page: 0 })}
+                    >
+                      <option value="">全部对象</option>
+                      {kinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kindLabels[kind] ?? kind}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
               <input
                 className="sb-search"
                 aria-label="搜索语义对象"
@@ -374,7 +407,7 @@ export function SemanticBrowserPanel({
                     <button
                       type="button"
                       aria-pressed={view.selected === refKey(item.ref)}
-                      onClick={() => model.navigate(refKey(item.ref))}
+                      onClick={() => navigate(refKey(item.ref))}
                     >
                       <span className="sb-object-title">
                         <strong>{item.name}</strong>
@@ -411,6 +444,11 @@ export function SemanticBrowserPanel({
               )}
             </section>
             <section className="sb-detail" aria-label="对象详情">
+              {selected && onOpenObject && (
+                <button type="button" onClick={() => onOpenObject(selected.ref)}>
+                  在独立标签页打开
+                </button>
+              )}
               {selected ? (
                 <ObjectDetail
                   key={`${snapshot.fingerprint}/${view.selected}`}
@@ -418,6 +456,8 @@ export function SemanticBrowserPanel({
                   objects={objects}
                   view={view}
                   model={model}
+                  navigate={navigate}
+                  onReturnToList={onReturnToList}
                 />
               ) : (
                 <div className="sb-empty">
@@ -425,7 +465,12 @@ export function SemanticBrowserPanel({
                     <>
                       <p>所选对象已不在当前 Catalog 中，请重新选择。</p>
                       <p>{view.selected}</p>
-                      <button type="button" onClick={() => model.patch({ selected: '' })}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onReturnToList ? onReturnToList() : model.patch({ selected: '' })
+                        }
+                      >
                         返回列表
                       </button>
                     </>
@@ -438,6 +483,6 @@ export function SemanticBrowserPanel({
           </div>
         )}
       </div>
-    </dialog>
+    </Container>
   )
 }

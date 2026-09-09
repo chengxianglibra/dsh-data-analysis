@@ -10,7 +10,7 @@ S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `Presentatio
 [Host entry](../../packages/dsh-data-analysis/src/client/presentation/host-entry.tsx)、
 [portable entry](../../packages/dsh-data-analysis/src/client/presentation/portable-entry.tsx)和
 [内部 builder](../../packages/dsh-data-analysis/src/presentation/build/index.ts)。
-`client` 导出 `HostPresentationReader`；S4 的[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、overlay 打开与下载。
+`client` 导出 `HostPresentationReader`；S4 的[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、原生 Tab 打开与下载；编辑及无 Session 阅读保留原容器。
 
 ## 共同的数据解释
 
@@ -110,8 +110,9 @@ ChartExplorer 不再包含局部行过滤；图形切换、系列显隐和表格
 正文按作者顺序排版；相邻 metric 合并为自适应指标行，连续 chart 合并为可换行的图表组。
 两种分组都不跨越固定区与交互区边界，也不跨过 Markdown、table 或 source；不重排或改写正文。
 Host 预览与导出 HTML 共用流式宽度：reader 占满可用容器，水平内边距为 `clamp(20px,4%,64px)`，
-没有固定的桌面最大宽度。Host 报告弹窗以 DSH 会话分析区（排除导航栏和详情栏）的实际宽度为基准，占其 `80%` 并居中；
-随分析区缩放更新，正文占弹窗的比例不变。独立预览没有 Host 分析区时使用 `80vw`。数据源等次级弹窗保持原尺寸。
+没有固定的桌面最大宽度。Host 的默认阅读容器是原生右侧 Tab，分栏、全屏与浮窗由 Harness 管理；
+浏览器容器按 pane 宽度调整间距与字号，阅读状态由 Tab occurrence 保存。编辑及无 Session 阅读仍使用原弹窗，
+占会话分析区的 `80%`；没有分析区时使用 `80vw`。离线 HTML 不依赖 Host 容器。
 Markdown、表格和筛选区跟随完整内容宽度。KPI 按可用空间自动换行，单卡宽度为 `240–480px`，
 容器不足 `240px` 时收至容器宽度；少量卡片靠左排列，行尾留白，不无限拉伸。
 交互图表每行最多两张，按内容容器宽度而非屏幕断点换行；普通图最小卡宽 `560px`，环形图 `720px`，
@@ -137,8 +138,8 @@ Host 数据源概要中的公开语义引用可点击打开同一 Workspace 的�
 未知类型保留其 canonical kind 并照常定位，不以标签表限制导航。
 只链接来源保存的有效引用，不根据指标显示名称或字段猜测映射。每次跳转读取当前 Catalog，清除语义层旧筛选、
 定位目标所在分页；缺失对象或加载失败明确提示，不展示缓存定义作为本次结果。
-语义层显示当前定义，报告保留生成时的数据与来源快照。关闭语义层返回原数据源弹窗及触发按钮，保留筛选、
-探索和未保存编辑；切换会话或 Workspace 时关闭语义层，报告沿用现有内容失效与重新打开提示。该连接只调用 metadata Catalog，
+语义层显示当前定义，报告保留生成时的数据与来源快照。原生阅读页中的语义引用打开独立 Tab，并关闭来源弹窗；
+原报告保留筛选与探索状态。无 Session 路径保留原弹窗交接，Workspace 撤销后旧内容失效。该连接只调用 metadata Catalog，
 不执行分析、查询、重建或保存。portable、打印及无脚本正文保留语义路径文本，不提供宿主跳转。
 验收见[报告语义导航验收](../plan/2026-09-08-presentation-semantic-navigation-acceptance.md)。
 

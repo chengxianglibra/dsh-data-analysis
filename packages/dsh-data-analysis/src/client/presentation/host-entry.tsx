@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
 import type { ReaderEditing } from './editor-controls.tsx'
 import type { ReaderExportActions } from './export-menu.tsx'
-import { PresentationReader } from './reader.tsx'
+import { PresentationReader, type ReaderViewMemory } from './reader.tsx'
 import type { OpenSemanticRef } from './source-facts.ts'
 import { PRESENTATION_STYLES } from './styles.ts'
 
@@ -20,6 +20,8 @@ export function HostPresentationReader({
   onOpenSemanticRef,
   onAskDsh,
   exportActions,
+  viewMemory,
+  closeSourceOnNavigate = false,
 }: {
   document: PresentationDocument
   editing?: ReaderEditing
@@ -27,6 +29,8 @@ export function HostPresentationReader({
   onOpenSemanticRef?: OpenSemanticRef
   onAskDsh?: (context: string) => void
   exportActions?: ReaderExportActions
+  viewMemory?: ReaderViewMemory
+  closeSourceOnNavigate?: boolean
 }) {
   return (
     <div className="pr-host">
@@ -40,6 +44,8 @@ export function HostPresentationReader({
           onOpenSemanticRef={onOpenSemanticRef}
           onAskDsh={onAskDsh}
           exportActions={exportActions}
+          viewMemory={viewMemory}
+          closeSourceOnNavigate={closeSourceOnNavigate}
         />
       </div>
       <div className="pr-host-print">

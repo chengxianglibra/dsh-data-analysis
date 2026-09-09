@@ -125,6 +125,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   }
   modules.get('@deepseek-ai/dsh-client-ui-chat/client').apply(client)
   return {
+    client,
     slots,
     InputTriggerController: modules.get('@deepseek-ai/dsh-client-ui-input-trigger/client')
       .InputTriggerController,

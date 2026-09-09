@@ -21,7 +21,7 @@ import {
 import { PresentationDeliveryModel, reportKey } from './delivery-model.ts'
 import { HostPresentationReader } from './host-entry.tsx'
 
-const deliveryStyles = `
+export const deliveryStyles = `
 .pd-cards{display:grid;gap:10px;margin-top:12px}.pd-card{border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:10px;padding:14px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-module-platform,#f4f7f7)}
 .pd-card h3{margin:0 0 7px;font-size:15px}.pd-card p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}.pd-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pd-actions button{font:inherit;padding:6px 12px;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:6px;background:var(--dsw-alias-bg-base,#fff);color:inherit;cursor:pointer}.pd-actions button:disabled{opacity:.55;cursor:wait}.pd-actions button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#087c71);outline-offset:3px}
 .pd-muted{font-size:12px;color:var(--dsw-alias-label-secondary,#5b7076)}.pd-error{color:var(--dsw-alias-state-warn-label,#805b20);overflow-wrap:anywhere}.pd-dialog{position:fixed;inset:0;width:80vw;height:92vh;max-height:96vh;max-width:none;box-sizing:border-box;padding:0;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:12px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-base,#fff);overflow:auto;pointer-events:auto}.pd-dialog::backdrop{background:#0008}.pd-toolbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5);background:var(--dsw-alias-bg-base,#fff)}.pd-status{padding:12px 20px}.pd-toolbar strong{overflow-wrap:anywhere}.pd-reader{padding:8px}
@@ -421,82 +421,86 @@ export function PresentationOverlay({
   )
 }
 
-export function installPresentation(ctx, rpc, openSemanticObject) {
+export function installPresentation(ctx, rpc, openSemanticObject, options = {}) {
   const model = new PresentationDeliveryModel(rpc)
   const catalog = new ReportCatalogModel(rpc)
   ctx.effect(() => () => catalog.dispose(), 'dsh-data-analysis: report catalog lifecycle')
   ctx.on('connection/reset', () => catalog.reset())
-  ctx.slots.inject('conversation.session.header.actions', () =>
-    ctx.slots.register(
-      { name: 'conversation.session.header.actions', id: 'marivo-reports', order: 115 },
-      function ReportsEntry({ sessionId, useWorkspaces }) {
-        const items = useWorkspaces((s) => s.items)
-        const selected = items.find((w) => w.sessionIds.includes(sessionId))?.workspaceId
-        return (
-          <WorkspaceHeaderAction
-            label="报告"
-            icon="reports"
-            disabled={!selected}
-            onClick={() => {
-              model.close()
-              catalog.show(selected)
-            }}
-          />
-        )
-      },
-    ),
-  )
+  if (options.entries !== false)
+    ctx.slots.inject('conversation.session.header.actions', () =>
+      ctx.slots.register(
+        { name: 'conversation.session.header.actions', id: 'marivo-reports', order: 115 },
+        function ReportsEntry({ sessionId, useWorkspaces }) {
+          const items = useWorkspaces((s) => s.items)
+          const selected = items.find((w) => w.sessionIds.includes(sessionId))?.workspaceId
+          return (
+            <WorkspaceHeaderAction
+              label="报告"
+              icon="reports"
+              disabled={!selected}
+              onClick={() => {
+                model.close()
+                catalog.show(selected)
+              }}
+            />
+          )
+        },
+      ),
+    )
   // A global entry also serves Workspaces without a remaining source Session.
-  ctx.slots.inject('sidebar.footer.action', () =>
-    ctx.slots.register(
-      { name: 'sidebar.footer.action', id: 'marivo-reports' },
-      function ReportsEntry({ useWorkspaces }) {
-        const items = useWorkspaces((s) => s.items)
-        const recent = useWorkspaces((s) => s.recentWorkspaceId)
-        return (
-          <WorkspaceHeaderAction
-            label="报告"
-            icon="reports"
-            disabled={!items.length}
-            onClick={() => {
-              model.close()
-              catalog.show(recent ?? items[0]?.workspaceId)
-            }}
-          />
-        )
-      },
-    ),
-  )
+  if (options.footer ?? options.entries !== false)
+    ctx.slots.inject('sidebar.footer.action', () =>
+      ctx.slots.register(
+        { name: 'sidebar.footer.action', id: 'marivo-reports' },
+        function ReportsEntry({ useWorkspaces }) {
+          const items = useWorkspaces((s) => s.items)
+          const recent = useWorkspaces((s) => s.recentWorkspaceId)
+          return (
+            <WorkspaceHeaderAction
+              label="报告"
+              icon="reports"
+              disabled={!items.length}
+              onClick={() => {
+                model.close()
+                const workspaceId = recent ?? items[0]?.workspaceId
+                if (!options.openWorkspace?.(workspaceId)) catalog.show(workspaceId)
+              }}
+            />
+          )
+        },
+      ),
+    )
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: presentation reader lifecycle')
   ctx.on('connection/reset', () => model.resetConnection())
-  ctx.slots.inject('conversation.chat.node', () => {
-    const disposeCards = ctx.slots.register(
-      { name: 'conversation.chat.node', key: PRESENTATION_TURN_DATA_KEY },
-      function Cards({
-        node,
-        sessionId,
-        useWorkspaces,
-      }: ChatNodeViewProps<typeof PRESENTATION_TURN_DATA_KEY>) {
-        return (
-          <PresentationCards
-            matched={presentationsForNode(node, sessionId)}
-            sessionId={sessionId}
-            workspaces={useWorkspaces((state) => state.items)}
-            model={model}
-          />
-        )
-      },
-    )
-    // A new Definition can immediately replay existing events. Its keyed renderer
-    // must already exist, including when the Host declares this slot after us.
-    const disposeDefinition = ctx.uiConversation.events.register(
-      marivoPresentationDeliveryDefinition,
-    )
-    return () => {
-      disposeDefinition()
-      disposeCards()
-    }
-  })
+  if (options.cards !== false)
+    ctx.slots.inject('conversation.chat.node', () => {
+      const disposeCards = ctx.slots.register(
+        { name: 'conversation.chat.node', key: PRESENTATION_TURN_DATA_KEY },
+        function Cards({
+          node,
+          sessionId,
+          useWorkspaces,
+        }: ChatNodeViewProps<typeof PRESENTATION_TURN_DATA_KEY>) {
+          return (
+            <PresentationCards
+              matched={presentationsForNode(node, sessionId)}
+              sessionId={sessionId}
+              workspaces={useWorkspaces((state) => state.items)}
+              model={model}
+            />
+          )
+        },
+      )
+      // A new Definition can immediately replay existing events. Its keyed renderer
+      // must already exist, including when the Host declares this slot after us.
+      const disposeDefinition = ctx.uiConversation.events.register(
+        marivoPresentationDeliveryDefinition,
+      )
+      return () => {
+        disposeDefinition()
+        disposeCards()
+      }
+    })
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
       { name: 'shell.overlay', id: 'marivo-presentation' },
@@ -533,4 +537,5 @@ export function installPresentation(ctx, rpc, openSemanticObject) {
       },
     ),
   )
+  return model
 }

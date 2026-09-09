@@ -14,7 +14,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": "^22.19.0 || >=24.0.0"
   },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -95,7 +95,8 @@
         "@deepseek-ai/dsh-client-ui-tool",
         "@deepseek-ai/dsh-client-ui-input-trigger",
         "@deepseek-ai/dsh-client-ui-sidebar",
-        "@deepseek-ai/dsh-client-ui-layout"
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
       ],
       "platform": "web"
     },
@@ -146,7 +147,8 @@
     "@deepseek-ai/dsh-session-persistence": "0.1.5-alpha.1",
     "@deepseek-ai/dsh-session-projection": "0.1.5-alpha.1",
     "@deepseek-ai/dsh-client-store": "0.1.5-alpha.1",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-alpha.1"
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.1.5-alpha.1"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
@@ -177,6 +179,7 @@
     "@deepseek-ai/dsh-api-session-controller": "0.1.5-alpha.1",
     "@deepseek-ai/dsh-api-workspace-controller": "0.1.5-alpha.1",
     "@deepseek-ai/dsh-client-ui-chat": "0.1.5-alpha.1",
-    "@deepseek-ai/dsh-util-values": "0.1.5-alpha.1"
+    "@deepseek-ai/dsh-util-values": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.1.5-alpha.1"
   }
 }

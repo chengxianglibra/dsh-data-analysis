@@ -56,7 +56,7 @@ function Icon({ name, size = 18 }) {
     </svg>
   )
 }
-function TestResult({ result, stale = false }) {
+export function TestResult({ result, stale = false }) {
   if (!result) return null
   return (
     <div
@@ -112,7 +112,7 @@ function OperationOutcome({ entry }) {
     </div>
   )
 }
-function DatasourceProperties({ context }) {
+export function DatasourceProperties({ context }) {
   const properties = Object.entries(context.properties ?? {})
   return (
     <section className="mc-properties" aria-label="数据源属性">
@@ -614,7 +614,7 @@ function CredentialPanel({ model, workspaces }) {
     </dialog>
   )
 }
-export function installCredentials(ctx, rpc) {
+export function installCredentials(ctx, rpc, options = {}) {
   let storage: Storage | undefined
   try {
     storage = window.sessionStorage
@@ -625,27 +625,28 @@ export function installCredentials(ctx, rpc) {
   model.recover()
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: credential client lifecycle')
   ctx.on('connection/reset', () => model.reset())
-  ctx.slots.inject('conversation.session.header.actions', () =>
-    ctx.slots.register(
-      { name: 'conversation.session.header.actions', id: 'marivo-credentials', order: 100 },
-      function Entry({ sessionId, useWorkspaces }) {
-        const workspaces = useWorkspaces((state) => state.items)
-        const selected =
-          workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
-        return (
-          <WorkspaceHeaderAction
-            label="数据源与凭证"
-            icon="credentials"
-            disabled={!selected}
-            title={selected ? '数据源与凭证' : '当前会话未绑定工作区，无法打开数据源与凭证'}
-            onClick={() => {
-              if (selected) model.show(selected)
-            }}
-          />
-        )
-      },
-    ),
-  )
+  if (options.entries !== false)
+    ctx.slots.inject('conversation.session.header.actions', () =>
+      ctx.slots.register(
+        { name: 'conversation.session.header.actions', id: 'marivo-credentials', order: 100 },
+        function Entry({ sessionId, useWorkspaces }) {
+          const workspaces = useWorkspaces((state) => state.items)
+          const selected =
+            workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
+          return (
+            <WorkspaceHeaderAction
+              label="数据源与凭证"
+              icon="credentials"
+              disabled={!selected}
+              title={selected ? '数据源与凭证' : '当前会话未绑定工作区，无法打开数据源与凭证'}
+              onClick={() => {
+                if (selected) model.show(selected)
+              }}
+            />
+          )
+        },
+      ),
+    )
   ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
       { name: 'conversation.session.header.actions', id: 'marivo-credential-requests', order: 120 },
@@ -681,4 +682,5 @@ export function installCredentials(ctx, rpc) {
       },
     ),
   )
+  return model
 }

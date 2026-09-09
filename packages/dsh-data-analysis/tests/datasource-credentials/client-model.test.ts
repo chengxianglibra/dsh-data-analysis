@@ -458,3 +458,18 @@ test('a failed prompt operation leaves the pending request available for correct
   await model.cancelRequest(request.id)
   assert.deepEqual(cancellations, [{ requestId: request.id }])
 })
+
+test('datasource Tab handoff preserves the selected datasource in the operation container', async (t) => {
+  const first = datasource('first'),
+    selected = datasource('selected')
+  const model = new CredentialClientModel({
+    call: async () => ({ ok: true, value: { generation: 'test', datasources: [first, selected] } }),
+  })
+  t.after(() => model.dispose())
+  model.show('workspace', selected.token)
+  await nextTurn()
+  assert.equal(model.getSnapshot().selected, selected.token)
+  assert.equal(model.getSnapshot().open, true)
+  model.close()
+  assert.equal(model.getSnapshot().selected, selected.token)
+})

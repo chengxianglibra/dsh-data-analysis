@@ -18,7 +18,7 @@ export async function startPresentationWebHost(
   pythonExecutable: string,
   draftPaths: readonly string[],
   clientOrder: 'native-first' | 'report-first' = 'native-first',
-  options: { askDshProbe?: boolean } = {},
+  options: { askDshProbe?: boolean; rightTabsAcceptance?: boolean } = {},
 ) {
   const home = path.join(outputRoot, 'isolated-dsh-home')
   const profile = path.join(home, 'profiles/web')
@@ -108,14 +108,17 @@ import * as production from '@chengxianglibra/dsh-data-analysis';
 import {registerPluginRpc} from ${JSON.stringify(fileURLToPath(new URL('../../src/rpc.ts', import.meta.url)))};
 import {inspectStoredSession} from ${JSON.stringify(fileURLToPath(new URL('../harness-session.ts', import.meta.url)))};
 import {runPresentationJourneys} from ${JSON.stringify(fileURLToPath(new URL('./host.ts', import.meta.url)))};
+${options.rightTabsAcceptance ? `import {createRightTabsDriver} from ${JSON.stringify(fileURLToPath(new URL('../right-tabs/driver.ts', import.meta.url)))};` : ''}
 export const name='presentation-s4';
 export const inject=[...production.inject,'llm','agentLoop','sessions','sessionPersistence','webServer'];
 export async function apply(ctx){
- await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:'none'});
+ await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:${JSON.stringify(options.rightTabsAcceptance ? 'web' : 'none')}});
  const previous = await readFile(${JSON.stringify(readyFile)},'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT') return undefined; throw error});
  const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(draftPaths)},true);
  const workspace=ctx.workspaceRegistry.get(result.workspaceId);
- const stop=registerPluginRpc(ctx.connection,'/presentation-s4-validation',['events','detach','attach'],async(endpoint,payload)=>{
+ ${options.rightTabsAcceptance ? `const prototypeDriver = await createRightTabsDriver(ctx,workspace,${JSON.stringify(draftPaths)});` : ''}
+ const stop=registerPluginRpc(ctx.connection,'/presentation-s4-validation',['events','detach','attach'${options.rightTabsAcceptance ? ", 'prototype'" : ''}],async(endpoint,payload)=>{
+  ${options.rightTabsAcceptance ? "if(endpoint==='prototype')return prototypeDriver(payload);" : ''}
   if(endpoint==='events'){const stored=await inspectStoredSession(ctx.sessionPersistence,result.sessionId);return {ok:true,value:stored.events.filter(event=>['agent','turn','step','user','request','assistant','tool'].includes(event.type.split('/')[0]))};}
   if(endpoint==='detach'){await workspace.detachSession(result.sessionId);return {ok:true};}
   if(endpoint==='attach'){await workspace.attachSession(result.sessionId);return {ok:true};}
@@ -146,6 +149,7 @@ export async function apply(ctx){
       contents: `
 import * as production from '@chengxianglibra/dsh-data-analysis/client';
 import * as native from '@deepseek-ai/dsh-client-ui-deliverables/client';
+${options.rightTabsAcceptance ? `import {installReadDelayProbe} from ${JSON.stringify(fileURLToPath(new URL('../right-tabs/client-probe.ts', import.meta.url)))};` : ''}
 export const inject=production.inject;
 export async function apply(ctx){
  window.__s4Rpc=(channel,endpoint,payload)=>ctx.get('connection').rpc.call('/api',channel.slice(1)+'/'+endpoint,payload);
@@ -181,7 +185,9 @@ export async function apply(ctx){
  `
      : ''
 }
- ${clientOrder === 'native-first' ? 'await ctx.plugin(native); production.apply(ctx);' : 'production.apply(ctx); await ctx.plugin(native);'}
+ ${clientOrder === 'native-first' ? 'await ctx.plugin(native);' : ''}
+ ${options.rightTabsAcceptance ? 'const delay = installReadDelayProbe(ctx); const prototypeFork = ctx.plugin(production,{diagnostics:true,onInstalled(controller){window.__rightTabs=controller}}); window.__rtHost = { current: () => ctx.sessions.list.getSnapshot().current, delay, history: id => ctx.sessions.binding(id)?.eventSource.getSnapshot().hasMore, loadOlder: id => ctx.sessions.binding(id).session.loadOlder(), reconnect: () => ctx.connection.reconnect(), generation: () => !!ctx.connection.generation.getSnapshot(), unload: () => prototypeFork.dispose(), select: id => ctx.sessions.open(id), sidebar: ctx.sidebarRight, workspaces: ctx.workspaces.list, input: id => ctx.conversation.input.for(ctx.sessions.scope(id)), clear: () => ctx.sessions.clear() };' : 'production.apply(ctx);'}
+ ${clientOrder === 'report-first' ? 'await ctx.plugin(native);' : ''}
  window.__s4ClientOrder=${JSON.stringify(clientOrder)};
 }
 `,
@@ -190,7 +196,14 @@ export async function apply(ctx){
     write: false,
     platform: 'browser',
     format: 'cjs',
+    jsx: 'automatic',
+    loader: { '.wasm': 'binary' },
     external: [
+      '@deepseek-ai/*',
+      'react',
+      'react/*',
+      'react-dom',
+      'react-dom/*',
       '@chengxianglibra/dsh-data-analysis/client',
       '@deepseek-ai/dsh-client-ui-deliverables/client',
     ],

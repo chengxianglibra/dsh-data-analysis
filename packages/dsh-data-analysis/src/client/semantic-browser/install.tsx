@@ -7,35 +7,36 @@ import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { SemanticBrowserModel } from './model.ts'
 import { SemanticBrowserPanel } from './panel.tsx'
 
-export function installSemanticBrowser(ctx, rpc) {
+export function installSemanticBrowser(ctx, rpc, options = {}) {
   const model = new SemanticBrowserModel(rpc)
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: semantic browser lifecycle')
   ctx.on('connection/reset', () => model.resetConnection())
-  ctx.slots.inject('conversation.session.header.actions', () =>
-    ctx.slots.register(
-      {
-        name: 'conversation.session.header.actions',
-        id: 'marivo-semantic-browser',
-        order: 110,
-      },
-      function BrowserEntry({ sessionId, useWorkspaces }) {
-        const workspaces = useWorkspaces((state) => state.items)
-        const selected =
-          workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
-        return (
-          <WorkspaceHeaderAction
-            label="语义层"
-            icon="semantic"
-            disabled={!selected}
-            title={selected ? '语义层' : '当前会话未绑定工作区，无法打开语义层'}
-            onClick={() => {
-              if (selected) model.show(selected)
-            }}
-          />
-        )
-      },
-    ),
-  )
+  if (options.entries !== false)
+    ctx.slots.inject('conversation.session.header.actions', () =>
+      ctx.slots.register(
+        {
+          name: 'conversation.session.header.actions',
+          id: 'marivo-semantic-browser',
+          order: 110,
+        },
+        function BrowserEntry({ sessionId, useWorkspaces }) {
+          const workspaces = useWorkspaces((state) => state.items)
+          const selected =
+            workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
+          return (
+            <WorkspaceHeaderAction
+              label="语义层"
+              icon="semantic"
+              disabled={!selected}
+              title={selected ? '语义层' : '当前会话未绑定工作区，无法打开语义层'}
+              onClick={() => {
+                if (selected) model.show(selected)
+              }}
+            />
+          )
+        },
+      ),
+    )
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
       { name: 'shell.overlay', id: 'marivo-semantic-browser' },

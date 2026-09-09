@@ -269,6 +269,13 @@ function blockGroups(blocks: PresentationBlock[]): PresentationBlock[][] {
   return groups
 }
 
+export interface ReaderViewState {
+  chosen: Record<string, string>
+  tableSorts: Record<string, TableSort | undefined>
+  explorations: Record<string, ChartExploration>
+}
+export type ReaderViewMemory = Map<string, ReaderViewState>
+
 function ReaderContents({
   document: savedDocument,
   mode,
@@ -276,6 +283,8 @@ function ReaderContents({
   onOpenSemanticRef,
   onAskDsh,
   exportActions,
+  viewMemory,
+  closeSourceOnNavigate = false,
 }: {
   document: PresentationDocument
   mode: ReaderMode
@@ -283,6 +292,8 @@ function ReaderContents({
   onOpenSemanticRef?: OpenSemanticRef
   onAskDsh?: (context: string) => void
   exportActions?: ReaderExportActions
+  viewMemory?: ReaderViewMemory
+  closeSourceOnNavigate?: boolean
 }) {
   const document = editing
     ? {
@@ -291,12 +302,16 @@ function ReaderContents({
         interaction: editedInteraction(savedDocument, editing.edits.blocks),
       }
     : savedDocument
+  const memoryKey = `${savedDocument.workspaceId}/${savedDocument.reportId}/${savedDocument.buildId}/${mode}`
+  const restored = viewMemory?.get(memoryKey)
   const readerRoot = useRef<HTMLElement>(null)
-  const [tableSorts, setTableSorts] = useState<Record<string, TableSort | undefined>>({})
+  const [tableSorts, setTableSorts] = useState<Record<string, TableSort | undefined>>(
+    restored?.tableSorts ?? {},
+  )
   const [exportStatus, setExportStatus] = useState<{ error?: boolean; message: string }>()
   const interaction = document.interaction
-  const [chosen, setChosen] = useState<Record<string, string>>(() =>
-    interaction ? defaultSelection(interaction) : {},
+  const [chosen, setChosen] = useState<Record<string, string>>(
+    () => restored?.chosen ?? (interaction ? defaultSelection(interaction) : {}),
   )
   const selection = mode === 'static' && interaction ? defaultSelection(interaction) : chosen
   const rowsFor = (block: PresentationBlock) => interactionRows(interaction, selection, block)
@@ -304,8 +319,13 @@ function ReaderContents({
     interaction?.blockIds.includes(block.id) ? filterSummary(interaction, selection) : undefined
 
   const [sourceCell, setSourceCell] = useState<{ block: PresentationBlock; trigger: HTMLElement }>()
-  const [explorations, setExplorations] = useState<Record<string, ChartExploration>>({})
+  const [explorations, setExplorations] = useState<Record<string, ChartExploration>>(
+    restored?.explorations ?? {},
+  )
   const [explorerCell, setExplorerCell] = useState<{ id: string; trigger: HTMLElement }>()
+  useEffect(() => {
+    viewMemory?.set(memoryKey, { chosen, tableSorts, explorations })
+  }, [viewMemory, memoryKey, chosen, tableSorts, explorations])
   const updateExploration = (id: string, state: ChartExploration) => {
     const saved = document.blocks.find((block) => block.id === id)
     if (saved?.kind !== 'chart') return
@@ -582,7 +602,14 @@ function ReaderContents({
           filterSummary={summaryFor(sourceBlock)}
           restoreFocusTo={sourceCell.trigger}
           onClose={() => setSourceCell(undefined)}
-          onOpenSemanticRef={onOpenSemanticRef}
+          onOpenSemanticRef={
+            onOpenSemanticRef
+              ? (ref) => {
+                  onOpenSemanticRef(ref)
+                  if (closeSourceOnNavigate) setSourceCell(undefined)
+                }
+              : undefined
+          }
         />
       )}
     </article>
@@ -596,6 +623,8 @@ export function PresentationReader({
   onOpenSemanticRef,
   onAskDsh,
   exportActions,
+  viewMemory,
+  closeSourceOnNavigate = false,
 }: {
   document: PresentationDocument
   mode?: ReaderMode
@@ -603,6 +632,8 @@ export function PresentationReader({
   onOpenSemanticRef?: OpenSemanticRef
   onAskDsh?: (context: string) => void
   exportActions?: ReaderExportActions
+  viewMemory?: ReaderViewMemory
+  closeSourceOnNavigate?: boolean
 }) {
   const parsed = useMemo(() => parsePresentationDocument(document), [document])
   return (
@@ -614,6 +645,8 @@ export function PresentationReader({
       onOpenSemanticRef={mode === 'interactive' ? onOpenSemanticRef : undefined}
       onAskDsh={mode === 'interactive' ? onAskDsh : undefined}
       exportActions={exportActions}
+      viewMemory={viewMemory}
+      closeSourceOnNavigate={closeSourceOnNavigate}
     />
   )
 }

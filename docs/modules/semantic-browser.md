@@ -2,12 +2,12 @@
 
 ## 使用方式
 
-在 DSH 会话标题旁点击“语义层”，打开当前页面内的宽幅面板，仅展示该会话所属 Workspace，不提供 Workspace 筛选项。
-切换会话或 Workspace 绑定变化时关闭旧面板。入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
+在 DSH 会话标题旁点击“语义层”，打开原生右侧 Tab，仅展示该会话所属 Workspace，不提供 Workspace 筛选项。
+切换会话保留各 Tab 的状态，Workspace 绑定撤销后使旧页失效。入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
 浏览器不要求 live Agent，不自动创建会话。顶部显示有效项目路径和最近加载时间。
 
-报告数据源中的语义引用也可打开此面板，按报告所属 Workspace 和完整 `kind + path` 选中对象。
-此入口重新读取 Catalog、清空旧筛选和导航历史，展示当前定义及快照边界提示；关闭返回原报告数据源弹窗。
+报告来源中的语义引用打开独立资源 Tab，按报告所属 Workspace 和完整 `kind + path` 定位；关联跳转使用目标自己的地址。
+首次打开重新读取 Catalog，展示当前定义及快照边界提示；原报告保留阅读状态。无活动 Session 的报告保留原语义弹窗。
 入口适用于全部语义对象类型，包括 `entity`；没有指标或维度类型白名单。
 对象已不存在时保留目标引用并明确提示，包括当前 Catalog 为空的情况。
 
@@ -32,7 +32,7 @@
 
 ## 所有权与读取边界
 
-DSH 的 `conversation.session.header.actions` 和 `shell.overlay` 提供入口与容器，入口使用所属会话的
+DSH 的 `conversation.session.header.actions`、`sidebarRightTabs` 与正文 slot 提供入口和容器，入口使用所属会话的
 `workspaceId`，`workspaceRegistry` 提供项目身份。
 插件提供界面、受控读取和展示投影；Marivo Catalog 拥有对象内容与关系语义。
 

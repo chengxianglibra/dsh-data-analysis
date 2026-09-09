@@ -6,11 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
-import { installCredentials } from './client/credentials/install.tsx'
-import { installPresentation } from './client/presentation/install.tsx'
-import { createPluginRpc } from './client/rpc.ts'
-import { installSemanticBrowser } from './client/semantic-browser/install.tsx'
-import { installSemanticReferenceSource } from './client/semantic-reference-source.ts'
+import { inject, installRightTabs } from './client/right-tabs/install.tsx'
 
 export {
   marivoPresentationDeliveryDefinition,
@@ -26,21 +22,15 @@ export {
   PresentationOverlay,
 } from './client/presentation/install.tsx'
 
-export const inject = [
-  'connection',
-  'slots',
-  'locale',
-  'uiConversation',
-  'inputTriggers',
-  'sessions',
-  'workspaces',
-  'conversation',
-]
+export { inject }
 
-export function apply(ctx: Context): void {
-  const rpc = createPluginRpc(ctx.get('connection')!.rpc)
-  installSemanticReferenceSource(ctx, rpc)
-  const openSemanticObject = installSemanticBrowser(ctx, rpc)
-  installCredentials(ctx, rpc)
-  installPresentation(ctx, rpc, openSemanticObject)
+export function apply(
+  ctx: Context,
+  options: {
+    diagnostics?: boolean
+    onInstalled?: (controller: ReturnType<typeof installRightTabs>) => void
+  } = {},
+): void {
+  const controller = installRightTabs(ctx, options)
+  options.onInstalled?.(controller)
 }

@@ -129,6 +129,7 @@ for (const peer of [
   '@deepseek-ai/dsh-workspace',
   '@deepseek-ai/dsh-client-ui-sidebar',
   '@deepseek-ai/dsh-client-ui-layout',
+  '@deepseek-ai/dsh-client-ui-sidebar-right',
 ]) {
   if (peerDependencies[peer] !== dshPeerRange) fail(`semantic browser peer missing: ${peer}`)
   if (peer !== '@deepseek-ai/dsh-workspace' && !sourceManifest.dsh.client.inject.includes(peer))

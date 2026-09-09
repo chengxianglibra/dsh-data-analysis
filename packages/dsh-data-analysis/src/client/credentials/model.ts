@@ -130,9 +130,9 @@ export class CredentialClientModel {
     if (!result.ok) throw new CredentialResponseError(result.error?.message ?? '')
     return result.value
   }
-  show(workspaceId: string): void {
+  show(workspaceId: string, selectedToken?: string): void {
     this.#patch({ open: true, requestId: '' })
-    void this.selectWorkspace(workspaceId)
+    void this.selectWorkspace(workspaceId, selectedToken)
   }
   async authoring(
     workspaceId: string,
@@ -188,12 +188,13 @@ export class CredentialClientModel {
   select(token: string): void {
     this.#patch({ selected: token, requestId: '', error: '' })
   }
-  async selectWorkspace(workspaceId: string): Promise<void> {
+  async selectWorkspace(workspaceId: string, selectedToken?: string): Promise<void> {
     this.#read?.abort()
     this.#refresh?.abort()
     const flight = new AbortController()
     this.#read = flight
-    const selected = this.#state.workspaceId === workspaceId ? this.#state.selected : ''
+    const selected =
+      selectedToken ?? (this.#state.workspaceId === workspaceId ? this.#state.selected : '')
     const activity = new Map(
       [...Object.values(this.#state.outcomes), ...this.#operations.values()].map((entry) => [
         entry.handle.scope,

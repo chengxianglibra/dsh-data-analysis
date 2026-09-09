@@ -31,7 +31,7 @@
 
 ## 验证与交付
 
-使用 Node.js 24+；需要安装依赖时运行 `npm install`。根 `package.json` 定义验证入口：
+Node.js 兼容范围与 DeepSeek Harness 一致，为 `^22.19.0 || >=24.0.0`；本地开发与发布构建使用 22.19.0（见 `.nvmrc`），需要安装依赖时运行 `npm install`。根 `package.json` 定义验证入口：
 
 - 可执行变更运行相关测试及 `npm run check`。
 - exports、client、包元数据或分发内容变化时，运行 `npm run build` 与 `npm run verify:plugin-package`。

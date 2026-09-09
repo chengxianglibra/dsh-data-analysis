@@ -36,7 +36,11 @@ flowchart LR
 ```
 
 当前 DSH 基线为 `0.1.5-alpha.1`，兼容接缝与验证范围见[升级验收](dsh-alpha-compatibility-acceptance.md)。
-[新版重构设计](dsh-alpha-refactor-design.md)描述后续拟议工作，不表示已经启用原生报告 Tab 或新增上传分析入口。
+[新版重构设计](dsh-alpha-refactor-design.md)的第一阶段已接入默认 client：数据源、语义层、报告目录及正文
+使用原生右侧 Tab。页面状态由 Session/Tab occurrence 拥有，导航使用完整 Workspace 与资源身份；
+当前 Session 的新交付独立观察公开 eventSource，卡片不触发自动打开。current 只提示新版本，刷新后切换；
+固定 Build 保持不变。报告编辑、数据源写操作与无匹配 Session 的 Workspace 阅读继续使用原容器。
+实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段上下文优化与上传分析尚未实施。
 
 ## 分层
 
