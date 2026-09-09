@@ -4,16 +4,16 @@
 
 在 DSH 会话标题旁点击“语义层”，打开原生右侧 Tab，仅展示该会话所属 Workspace，不提供 Workspace 筛选项。
 切换会话保留各 Tab 的状态，Workspace 绑定撤销后使旧页失效。入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
-浏览器不要求 live Agent，不自动创建会话。顶部显示有效项目路径和最近加载时间。
+浏览器不要求 live Agent，不自动创建会话。标题右侧显示最近更新时间，页面不展示项目路径和 Catalog fingerprint。
 
-报告来源中的语义引用打开独立资源 Tab，按报告所属 Workspace 和完整 `kind + path` 定位；关联跳转使用目标自己的地址。
-首次打开重新读取 Catalog，展示当前定义及快照边界提示；原报告保留阅读状态。无活动 Session 的报告保留原语义弹窗。
+报告来源中的语义引用打开独立资源 Tab，按报告所属 Workspace 和完整 `kind + path` 定位；页内对象、定义链接与关系图跳转使用当前 Catalog 快照并保留浏览历史；仅显式“在独立标签页打开”创建资源 Tab。
+首次打开重新读取 Catalog，展示当前定义及快照边界提示；原报告保留阅读状态。语义浏览统一使用原生 Tab，不再注册语义弹窗。
 入口适用于全部语义对象类型，包括 `entity`；没有指标或维度类型白名单。
 对象已不存在时保留目标引用并明确提示，包括当前 Catalog 为空的情况。
 
 对象类型导航的“全部对象”及各类型数量按当前业务域统计；选择类型或输入搜索词不改变分类计数，当前业务域下没有对象的类型显示 0。
 
-桌面提供分类、对象列表和详情三栏；窄屏通过“返回列表”切换。可以组合业务域与类型筛选，并搜索名称、
+对象分类横铺于 Tab 顶部，业务域筛选与类型数量始终可见；桌面下方提供对象列表和详情两栏，窄栏通过“返回列表”切换。可以组合业务域与类型筛选，并搜索名称、
 规范引用和完整业务定义。列表每页 40 个对象，详情不沿用输入框候选的 240 字符摘要上限。
 
 详情包含：
@@ -38,7 +38,7 @@ DSH 的 `conversation.session.header.actions`、`sidebarRightTabs` 与正文 slo
 
 现有语义引用 transport 在 Harness `/api` 下注册 `/api/dsh-data-analysis/semantic-browser/catalog` 精确认证路由，请求仅接受
 `{ workspaceId }`。Host 从注册表解析路径，保留 `config.projectRoot`、`DSH_DATA_ANALYSIS_PROJECT_ROOT` 的显式覆盖，
-然后使用 Workspace 路径。页面始终显示实际绑定路径，不接受浏览器传入任意目录。
+然后使用 Workspace 路径。读取使用实际绑定路径，不接受浏览器传入任意目录。
 
 每次加载在一次 checked Python 调用内执行 `ms.load(workspace_dir=...)`，使用 `catalog.items(kind)`、
 `entry.details()` 和公开 Ref 序列化。返回 Workspace identity、Environment fingerprint、Catalog definition
@@ -52,8 +52,8 @@ fingerprint、加载时间、对象摘要、白名单详情字段和关联引用
 
 ## 加入提问
 
-列表详情、独立对象 Tab 和兼容弹层均提供“加入提问”。仅在页面所属 Workspace 与当前 Session 输入归属明确时可用；
-无 Session 浏览仍可用，按钮禁用。操作使用浏览快照的 ref 和 Environment fingerprint，经显式 `prepare` 后在草稿末尾
+列表详情和独立对象 Tab 均提供“加入提问”。仅在页面所属 Workspace 与当前 Session 输入归属明确时可用；
+页面没有可用的所属会话输入时，按钮禁用。操作使用浏览快照的 ref 和 Environment fingerprint，经显式 `prepare` 后在草稿末尾
 插入一个与 `@` 相同的原生 chip，不复制完整定义、不自动发送，也不提前 serialize。引用协议见[语义输入模块](semantic-reference-input.md)。
 
 准备期间禁止重复点击；完成后再次点击表示再次追加。页面关闭、导航、刷新或快照替换、Session 切换、Workspace 撤销与连接
@@ -63,7 +63,7 @@ fingerprint、加载时间、对象摘要、白名单详情字段和关联引用
 
 ## 状态与刷新
 
-从当前会话打开和手动刷新时读取 Catalog；搜索、筛选、详情及关系图操作只使用当前快照。没有后台轮询、文件监听
+标题行右上角仅提供一个“刷新语义层”图标按钮，加载期间禁用。首次打开和手动刷新时读取 Catalog；搜索、筛选、详情及关系图操作只使用当前快照。没有后台轮询、文件监听
 或跨页面持久化。页面内筛选和浏览历史按 Workspace 隔离。
 
 刷新成功时整体替换快照；失败时保留并标明上次成功内容。空项目、空搜索、首次加载失败、所选对象删除和 Workspace
@@ -89,7 +89,7 @@ npm run validate:semantic-browser:web
 可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.4 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
 指定截图及结果记录目录。浏览器工具默认查找可导入的 `playwright`，其 Chromium 必须已安装。
 
-该夹具复用生产入口注册与页面代码，模拟 DSH 的槽位和 Workspace transport；不等同于当前已安装 DSH Profile 的
+该夹具复用生产 Tab 正文与模型，模拟 Workspace transport；不等同于当前已安装 DSH Profile 的
 端到端验收。详见[验收记录](../acceptance/semantic-browser.md)。
 会话标题入口迁移与 Workspace 绑定验证见[入口验收](../acceptance/workspace-header-actions.md)。
 

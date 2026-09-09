@@ -74,9 +74,6 @@ const { connection, channels } = createConnectionFixture()
 const unregister = registerCredentialRpc(connection, service, async () => bridge)
 const handler = channels.get('/dsh-data-analysis-credentials')!
 const installer = fileURLToPath(new URL('../src/client/credentials/install.tsx', import.meta.url))
-const semanticInstaller = fileURLToPath(
-  new URL('../src/client/semantic-browser/install.tsx', import.meta.url),
-)
 const app = await build({
   stdin: {
     resolveDir: process.cwd(),
@@ -84,12 +81,11 @@ const app = await build({
     contents: `
 import React, {useState,useSyncExternalStore} from 'react'; import {createRoot} from 'react-dom/client';
 import {CredentialPanel,installCredentials} from ${JSON.stringify(installer)};
-import {installSemanticBrowser} from ${JSON.stringify(semanticInstaller)};
 import {WorkspaceHeaderAction} from ${JSON.stringify(fileURLToPath(new URL('../src/client/workspace-header-action.tsx', import.meta.url)))};
 const seats=[];
 const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
 const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
-installSemanticBrowser(ctx,rpc);
+ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-semantic',order:110},()=> <WorkspaceHeaderAction label="语义层" icon="semantic" onClick={()=>{}}/>);
 const model=installCredentials(ctx,rpc);
 ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-credentials',order:100},()=> <WorkspaceHeaderAction label="数据源与凭证" icon="credentials" onClick={()=>model.show('workspace')}/>);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']},{workspaceId:'other',name:'其他工作区不应显示',sessionIds:['other-session']}];

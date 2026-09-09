@@ -70,7 +70,7 @@ try {
       { id, workspaceId: server.deliveries[0]!.receipt.workspaceId },
     )
   await navigate()
-  const panel = page.locator('.sb-embedded:visible')
+  const panel = page.locator('.sb-panel:visible')
   await panel.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
   await composer.fill('解释这个对象：')
   await page.locator('input[type="file"]').setInputFiles({

@@ -530,7 +530,7 @@ try {
   await page.getByRole('button', { name: '打开语义层', exact: true }).click()
   await page.locator('[data-rt-kind=semantic] .sb-objects button').first().waitFor()
   await page.setViewportSize({ width: 600, height: 900 })
-  await page.getByRole('combobox', { name: '窄格对象类型', exact: true }).selectOption('metric')
+  await page.locator('.sb-kinds').getByRole('button', { name: /^指标/ }).click()
   const semanticDirectoryTab = await page
     .locator('[data-rt-kind=semantic]')
     .getAttribute('data-rt-tab')
@@ -550,11 +550,17 @@ try {
     return document.querySelector(`[data-rt-tab="${id}"]`) && view && !view.loading
   }, semanticDirectoryTab)
   assert.equal(
-    await page.getByRole('combobox', { name: '窄格对象类型', exact: true }).inputValue(),
-    'metric',
+    await page
+      .locator('.sb-kinds')
+      .getByRole('button', { name: /^指标/ })
+      .getAttribute('aria-pressed'),
+    'true',
   )
   await page.screenshot({ path: path.join(outputRoot, 'semantic-directory.png'), fullPage: true })
-  await page.getByRole('combobox', { name: '窄格对象类型', exact: true }).selectOption('')
+  await page
+    .locator('.sb-kinds')
+    .getByRole('button', { name: /^全部对象/ })
+    .click()
   await page.setViewportSize({ width: 1680, height: 1100 })
   record('semantic narrow-pane filters remain accessible and repeat entry preserves state')
   await page.locator('[data-rt-kind=semantic] .sb-objects button').first().click()
@@ -589,22 +595,51 @@ try {
   const semanticTab = await page.locator('[data-rt-kind=semantic]').getAttribute('data-rt-tab')
   const semanticRef = await page.locator('[data-rt-kind=semantic] .sb-detail > .sb-ref').innerText()
   const another = page.locator('[data-rt-kind=semantic] .sb-relation-list button:enabled').first()
+  await page.evaluate((id) => {
+    const app = (window as any).__rightTabs
+    const owner = [...app.pages.entries()].find(([key]) => JSON.parse(key)[1] === id)[1]
+    ;(window as any).__semanticNavigationProbe = {
+      model: owner.semantic,
+      snapshot: owner.semantic.getSnapshot().views[owner.target.workspaceId].snapshot,
+      opens: app.audit.opens.length,
+    }
+  }, semanticTab)
   await another.click()
-  await page.waitForFunction(
-    (old) => (window as any).__rtHost.sidebar.active().id !== old,
+  assert.equal(
+    await page.locator('[data-rt-kind=semantic]').getAttribute('data-rt-tab'),
     semanticTab,
   )
   assert.notEqual(
     await page.locator('[data-rt-kind=semantic] .sb-detail > .sb-ref').innerText(),
     semanticRef,
   )
-  await page.evaluate((id) => (window as any).__rtHost.sidebar.focus(id), semanticTab)
+  await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
   assert.equal(
     await page.locator('[data-rt-kind=semantic] .sb-detail > .sb-ref').innerText(),
     semanticRef,
   )
+  assert.equal(
+    await page.evaluate(() => {
+      const probe = (window as any).__semanticNavigationProbe
+      const state = probe.model.getSnapshot()
+      const view = state.views[state.workspaceId]
+      return (
+        view.snapshot === probe.snapshot &&
+        !view.loading &&
+        (window as any).__rightTabs.audit.opens.length === probe.opens
+      )
+    }),
+    true,
+  )
+  assert.equal(
+    await page.locator('[data-rt-kind=semantic]').getByRole('button', { name: /刷新/ }).count(),
+    1,
+  )
+  assert.equal(await page.locator('dialog.sb-dialog').count(), 0)
   await page.getByRole('button', { name: '返回列表', exact: true }).click()
-  record('semantic resource navigation preserves original reference and returns to directory')
+  record(
+    'semantic resource browsing keeps the same tab and snapshot, supports history and returns to list',
+  )
   await page.getByRole('button', { name: '打开数据源', exact: true }).click()
   const datasourcePanel = page.locator('[data-rt-kind=datasources]')
   const datasourceButtons = datasourcePanel.getByRole('button', { name: /^选择数据源 / })

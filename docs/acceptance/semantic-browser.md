@@ -133,3 +133,25 @@ Ibis 复制和 390px 布局正常，页面异常为 0。已安装客户端摘要
 Node.js 24.18.0 下专项 12 项测试通过，`npm run check` 共 153 项测试通过，0 失败、0 跳过。
 `npm run build`、`npm run verify:plugin-package` 和 `git diff --check` 通过。
 浏览器使用生产页面和真实 Catalog，Host/slot 为隔离夹具；本次未重装或重启正在使用的 DSH Profile。
+
+## 2026-09-09：统一语义层 Tab
+
+语义层只使用原生 Tab，删除旧的 `shell.overlay` 注册、dialog 生命周期和专用样式。
+分类改为顶部横向排列并保留业务域筛选、类型计数；下方沿用完整对象列表、概览、定义、关系图、复制与加入提问功能。
+标题行仅保留一个刷新图标；标题右侧显示最近更新时间，移除项目路径和 Catalog fingerprint。
+独立对象 Tab 的内部导航与目录 Tab 一致，使用当前快照和浏览历史；仅显式打开独立标签页才导航到资源地址。
+
+验证证据：
+
+- Node.js 22.19.0 下 `npm run check`、`npm run build`、`npm run verify:plugin-package` 通过。
+- 新增目录与对象 `TabPage` 回归测试：对象切换、返回与同 revision 的 Host 重挂载不重读；显式刷新保留搜索、分类和选中对象。
+- `validate:semantic-browser:web` 使用真实 Marivo Catalog 与 Chromium，验证定义、复制、关系图、分类计数、请求次数、刷新失败保留旧快照、宽屏与 390px 布局。
+  标题右侧更新时间、最右侧单一刷新图标、项目路径与 Catalog SHA 缺席均通过 DOM/几何断言。
+  证据目录为 `/var/folders/cx/bmfg_x3j0qsfvgsb2v8s2x5m0000gn/T/dsh-semantic-browser-validation`。
+- `validate:right-tabs:web` 使用打包插件与隔离真实 Harness，验证顶部分类在窄栏可见、重复入口保留筛选、对象关联导航不换 Tab 或 Catalog 快照、历史返回和报告来源导航。
+  证据目录为 `/private/var/folders/cx/bmfg_x3j0qsfvgsb2v8s2x5m0000gn/T/dsh-right-tabs-stage-one-rJGA9M`。
+- `validate:semantic-ask-dsh:web` 通过原生 chip 插入、撤销、附件保留、Session 切换取消、提交边界和 Workspace 重建验证。
+  证据目录为 `/private/var/folders/cx/bmfg_x3j0qsfvgsb2v8s2x5m0000gn/T/dsh-semantic-ask-dsh-pYfIta`。
+
+旧的弹窗叠放与关闭焦点验收随弹窗移除；`validate:presentation-semantic-navigation` 转到原生 Tab 验收入口。
+原生 Host 验收覆盖导航及输入行为；最终标题信息布局另由正文夹具验证。所有环境均隔离，未重装或重启当前使用的 DSH Profile。

@@ -27,7 +27,6 @@ function ObjectDetail({
   view,
   model,
   navigate,
-  onReturnToList,
   onAsk,
   questionPending,
   questionNotice,
@@ -79,7 +78,7 @@ function ObjectDetail({
         <button
           type="button"
           className="sb-back-list"
-          onClick={() => (onReturnToList ? onReturnToList() : model.patch({ selected: '' }))}
+          onClick={() => model.patch({ selected: '' })}
         >
           返回列表
         </button>
@@ -219,15 +218,12 @@ export function SemanticBrowserPanel({
   workspaces,
   workspacePhase = 'ready',
   workspaceError = false,
-  embedded = false,
   onOpenObject,
-  onNavigateKey,
-  onReturnToList,
   onAsk,
 }) {
-  const navigate = onNavigateKey ?? ((key) => model.navigate(key))
+  const navigate = (key) => model.navigate(key)
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
-  const dialog = useRef(null)
+  const panel = useRef(null)
   const view = state.views[state.workspaceId] ?? emptyView()
   const snapshot = view.snapshot
   const objects = useMemo(
@@ -243,7 +239,7 @@ export function SemanticBrowserPanel({
   const selected = objects.get(view.selected)
   useEffect(() => {
     if (state.open && state.fromReport && snapshot && view.selected)
-      dialog.current
+      panel.current
         ?.querySelector('.sb-objects [aria-pressed="true"]')
         ?.scrollIntoView({ block: 'nearest' })
   }, [state.open, state.fromReport, snapshot, view.selected])
@@ -258,16 +254,6 @@ export function SemanticBrowserPanel({
     )
       model.unavailable()
   }, [state.open, state.workspaceId, knownWorkspace, workspacePhase, workspaceError, model])
-  useEffect(() => {
-    if (!state.open || embedded) return undefined
-    const opener = document.activeElement,
-      element = dialog.current
-    element.showModal()
-    return () => {
-      element.close()
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
-    }
-  }, [state.open, embedded])
   const domains = [
     ...new Set((snapshot?.objects ?? []).map((item) => item.domain).filter(Boolean)),
   ].sort()
@@ -275,52 +261,43 @@ export function SemanticBrowserPanel({
     snapshot.objects.some((item) => item.ref.kind === kind),
   )
   if (!state.open) return null
-  const Container = embedded ? 'section' : 'dialog'
   return (
-    <Container
-      ref={dialog}
-      className={embedded ? 'sb-embedded' : 'sb-dialog'}
-      aria-label="语义层对象浏览器"
-      onCancel={(event) => {
-        event.stopPropagation()
-        event.preventDefault()
-        model.close()
-      }}
-    >
+    <section ref={panel} className="sb-panel" aria-label="语义层对象浏览器">
       <style>{browserStyles}</style>
       <div className="sb-shell">
         <header className="sb-header">
           <h1>语义层</h1>
+          {snapshot && (
+            <time className="sb-updated" dateTime={snapshot.loadedAt}>
+              更新于 {new Date(snapshot.loadedAt).toLocaleString()}
+            </time>
+          )}
           <button
+            className="sb-refresh"
             type="button"
+            aria-label="刷新语义层"
+            title="刷新语义层"
             disabled={!state.workspaceId || !knownWorkspace || workspaceError || view.loading}
             onClick={() => void model.refresh()}
           >
-            {view.loading ? '加载中…' : '刷新'}
-          </button>
-          {!embedded && (
-            <button
-              type="button"
-              className="sb-close"
-              aria-label="关闭语义层"
-              onClick={() => model.close()}
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              关闭
-            </button>
-          )}
+              <path d="M20 7v5h-5M4 17v-5h5" />
+              <path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17" />
+            </svg>
+          </button>
         </header>
         {state.fromReport && (
-          <p className="sb-status">
-            此处展示当前语义定义；报告数据与来源仍是生成时的快照。
-            {!embedded && '关闭后返回报告。'}
-          </p>
-        )}
-        {snapshot && (
-          <div className="sb-meta">
-            <span>项目：{snapshot.projectRoot}</span>
-            <span>加载于 {new Date(snapshot.loadedAt).toLocaleString()}</span>
-            <span title={snapshot.fingerprint}>Catalog {snapshot.fingerprint.slice(0, 12)}</span>
-          </div>
+          <p className="sb-status">此处展示当前语义定义；报告数据与来源仍是生成时的快照。</p>
         )}
         {workspaceError && (
           <div role="alert" className="sb-status">
@@ -351,70 +328,41 @@ export function SemanticBrowserPanel({
         ) : (
           <div className={`sb-columns ${view.selected ? 'sb-has-selection' : ''}`}>
             <nav className="sb-nav" aria-label="对象分类">
-              <h2>业务域</h2>
-              <select
-                aria-label="筛选业务域"
-                value={view.domain}
-                onChange={(event) => model.patch({ domain: event.target.value, page: 0 })}
-              >
-                <option value="">全部业务域</option>
-                {domains.map((domain) => (
-                  <option key={domain}>{domain}</option>
-                ))}
-              </select>
-              <h2>对象类型</h2>
-              <button
-                type="button"
-                aria-pressed={!view.kind}
-                onClick={() => model.patch({ kind: '', page: 0 })}
-              >
-                全部对象 <span>{counts.total}</span>
-              </button>
-              {kinds.map((kind) => (
+              <label className="sb-domain">
+                业务域
+                <select
+                  aria-label="筛选业务域"
+                  value={view.domain}
+                  onChange={(event) => model.patch({ domain: event.target.value, page: 0 })}
+                >
+                  <option value="">全部业务域</option>
+                  {domains.map((domain) => (
+                    <option key={domain}>{domain}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="sb-kinds">
                 <button
                   type="button"
-                  key={kind}
-                  aria-pressed={view.kind === kind}
-                  onClick={() => model.patch({ kind, page: 0 })}
+                  aria-pressed={!view.kind}
+                  onClick={() => model.patch({ kind: '', page: 0 })}
                 >
-                  {kindLabels[kind] ?? kind}
-                  <span>{counts.byKind.get(kind) ?? 0}</span>
+                  全部对象 <span>{counts.total}</span>
                 </button>
-              ))}
+                {kinds.map((kind) => (
+                  <button
+                    type="button"
+                    key={kind}
+                    aria-pressed={view.kind === kind}
+                    onClick={() => model.patch({ kind, page: 0 })}
+                  >
+                    {kindLabels[kind] ?? kind}
+                    <span>{counts.byKind.get(kind) ?? 0}</span>
+                  </button>
+                ))}
+              </div>
             </nav>
             <section className="sb-list" aria-label="对象列表">
-              {embedded && (
-                <div className="rt-semantic-filters">
-                  <label>
-                    业务域
-                    <select
-                      aria-label="窄格业务域"
-                      value={view.domain}
-                      onChange={(event) => model.patch({ domain: event.target.value, page: 0 })}
-                    >
-                      <option value="">全部业务域</option>
-                      {domains.map((domain) => (
-                        <option key={domain}>{domain}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    对象类型
-                    <select
-                      aria-label="窄格对象类型"
-                      value={view.kind}
-                      onChange={(event) => model.patch({ kind: event.target.value, page: 0 })}
-                    >
-                      <option value="">全部对象</option>
-                      {kinds.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {kindLabels[kind] ?? kind}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
               <input
                 className="sb-search"
                 aria-label="搜索语义对象"
@@ -483,7 +431,6 @@ export function SemanticBrowserPanel({
                   view={view}
                   model={model}
                   navigate={navigate}
-                  onReturnToList={onReturnToList}
                 />
               ) : (
                 <div className="sb-empty">
@@ -491,12 +438,7 @@ export function SemanticBrowserPanel({
                     <>
                       <p>所选对象已不在当前 Catalog 中，请重新选择。</p>
                       <p>{view.selected}</p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onReturnToList ? onReturnToList() : model.patch({ selected: '' })
-                        }
-                      >
+                      <button type="button" onClick={() => model.patch({ selected: '' })}>
                         返回列表
                       </button>
                     </>
@@ -509,6 +451,6 @@ export function SemanticBrowserPanel({
           </div>
         )}
       </div>
-    </Container>
+    </section>
   )
 }

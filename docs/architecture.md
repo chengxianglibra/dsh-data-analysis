@@ -72,7 +72,7 @@ flowchart LR
 - [展示交付](modules/presentation-delivery.md)
 - [展示 Skill](modules/presentation-skill.md)
 - [语义对象引用输入](modules/semantic-reference-input.md)
-- [只读语义层对象浏览器](modules/semantic-browser.md)
+- [只读语义层对象浏览器](modules/semantic-browser.md)：统一使用原生 Tab，顶部横向分类，页内浏览共享 Catalog 快照；语义弹窗已移除。
 - [展示数据投影](modules/presentation-projection.md)
 - [展示 reader 与离线构建](modules/presentation-reader.md)
 - [插件集成与交付](modules/plugin-integration-delivery.md)

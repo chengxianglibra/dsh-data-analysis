@@ -1,7 +1,6 @@
 // @ts-nocheck -- Host slot hooks are injected by the runtime module table.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { refKey } from '../../semantic-reference/contracts.ts'
 import { CredentialIcon, CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
 import { appendPresentationContext } from '../presentation/ask-dsh.ts'
@@ -276,13 +275,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 </p>
               </>
             )}
-            {page.target.kind === 'semantic' && (
-              <div className="rt-toolbar">
-                <button type="button" onClick={() => void page.refresh()}>
-                  刷新页面
-                </button>
-              </div>
-            )}
             {state.newer && (
               <p role="status" className="rt-notice">
                 已有新版本，当前阅读内容保持不变。
@@ -302,36 +294,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             )}
             {page.target.kind === 'semantic' && (
               <SemanticBrowserPanel
-                embedded
                 model={page.semantic}
                 onAsk={canAsk ? () => page.semantic.addToQuestion(ctx, page.sessionId) : undefined}
                 workspaces={workspaces}
                 onOpenObject={source}
-                onNavigateKey={
-                  'ref' in page.target
-                    ? (key) =>
-                        act(page, () => {
-                          const object = page.semantic
-                            .getSnapshot()
-                            .views[page.target.workspaceId]?.snapshot?.objects.find(
-                              (item) => refKey(item.ref) === key,
-                            )
-                          if (!object) throw new Error('语义对象不在当前 Catalog 中。')
-                          source(object.ref)
-                        })
-                    : undefined
-                }
-                onReturnToList={
-                  'ref' in page.target
-                    ? () =>
-                        act(page, () => {
-                          check(page.sessionId, page.target.workspaceId)
-                          tab.actions.openTab(directoryKind('semantic'), {
-                            params: { workspaceId: page.target.workspaceId },
-                          })
-                        })
-                    : undefined
-                }
               />
             )}
             {page.target.kind === 'datasources' && (

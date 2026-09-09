@@ -73,9 +73,10 @@ const service = new SemanticBrowserService({
     return runner
   },
 })
-const installer = fileURLToPath(
-  new URL('../src/client/semantic-browser/install.tsx', import.meta.url),
+const panelPath = fileURLToPath(
+  new URL('../src/client/semantic-browser/panel.tsx', import.meta.url),
 )
+const modelPath = fileURLToPath(new URL('../src/client/semantic-browser/model.ts', import.meta.url))
 const app = await build({
   stdin: {
     resolveDir: process.cwd(),
@@ -83,21 +84,14 @@ const app = await build({
     contents: `
 import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {installSemanticBrowser} from ${JSON.stringify(installer)};
-const registrations=[], callbacks={};
-const ctx={
- effect(install){ install(); },
- on(event,callback){callbacks[event]=callback;},
- slots:{inject(name,install){install();},register(options,component){registrations.push({options,component});return()=>{};}}
-};
-installSemanticBrowser(ctx,{call:async(channel,endpoint,payload,signal)=>{
+import {SemanticBrowserPanel} from ${JSON.stringify(panelPath)};
+import {SemanticBrowserModel} from ${JSON.stringify(modelPath)};
+const model=new SemanticBrowserModel({call:async(channel,endpoint,payload,signal)=>{
  const response=await fetch('/catalog',{method:'POST',body:JSON.stringify(payload),signal}); return response.json();
 }});
 const workspaces=${JSON.stringify(workspaceList)};
-function App(){ const [sessionId,setSessionId]=useState('sales-session'); window.setFixtureSession=setSessionId;
-const props={sessionId,useWorkspaces:selector=>selector({items:workspaces,state:'idle',phase:'ready'}),useSessions:selector=>selector({current:sessionId})};
-const renderSeat=({options,component:Component})=><Component key={options.name+options.id} {...props}/>;
-return <><h1>DSH Slot 验收夹具</h1><p>真实 Marivo Catalog · 无 live Agent · 仅临时项目</p><header style={{display:'flex',alignItems:'center',gap:10}}><span>销售分析会话</span><nav aria-label="会话标题操作">{registrations.filter(({options})=>options.name==='conversation.session.header.actions').map(renderSeat)}</nav></header>{registrations.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>; }
+function App(){ const [sessionId,setSessionId]=useState('sales-session'); window.setFixtureSession=(id)=>{model.close();setSessionId(id)};
+return <><h1>语义层 Tab 正文验收夹具</h1><p>真实 Marivo Catalog · 无 live Agent · 仅临时项目</p><button onClick={()=>model.show(workspaces.find(w=>w.sessionIds.includes(sessionId)).workspaceId)}>打开语义层</button><div style={{height:'calc(100dvh - 150px)',minWidth:0}}><SemanticBrowserPanel model={model} workspaces={workspaces}/></div></>; }
 createRoot(document.getElementById('app')).render(<App/>);
 `,
   },
@@ -156,16 +150,13 @@ page.on('pageerror', (error: Error) => errors.push(error.message))
 const checks: string[] = []
 try {
   await page.goto(url)
-  await page
-    .getByRole('navigation', { name: '会话标题操作' })
-    .getByRole('button', { name: '打开语义层' })
-    .waitFor()
+  await page.getByRole('button', { name: '打开语义层' }).waitFor()
   assert.equal(requests, 0)
   await page.getByRole('button', { name: '打开语义层' }).click()
   await page.getByRole('button', { name: '下一页' }).waitFor({ timeout: 30000 })
   assert.equal(await page.getByLabel('选择 Workspace').count(), 0)
   assert.equal(requests, 1)
-  checks.push('会话标题入口默认打开所属 Workspace、无 live Agent 真实 Catalog 读取、大目录分页')
+  checks.push('Tab 正文使用指定 Workspace、无 live Agent 真实 Catalog 读取、大目录分页')
   await page.getByLabel('搜索语义对象').fill('metric:sales.quarter_spend')
   await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
   const computation = page.getByRole('region', { name: '指标计算口径' })
@@ -332,36 +323,51 @@ try {
   checks.push(
     '搜索筛选不重读、文本注入隔离、引用复制与定义位置展示、关系图展开/缩放/平移/键盘跳转/返回',
   )
+  assert.equal(await page.getByRole('button', { name: /刷新/ }).count(), 1)
+  const refresh = page.getByRole('button', { name: '刷新语义层' })
+  assert.equal(await refresh.locator('svg').count(), 1)
+  assert.equal(await page.locator('.sb-meta').count(), 0)
+  assert.equal(await page.getByText(/项目：|Catalog sha256:/).count(), 0)
+  const updated = page.locator('.sb-header time')
+  assert.match(await updated.innerText(), /^更新于 /)
+  assert.ok(await updated.getAttribute('datetime'))
+  const titleBox = await page.locator('.sb-header h1').boundingBox()
+  const updatedBox = await updated.boundingBox()
+  assert.ok(updatedBox.x > titleBox.x + titleBox.width)
+  const header = await page.locator('.sb-header').boundingBox()
+  const refreshBox = await refresh.boundingBox()
+  assert.ok(refreshBox.x > header.x + header.width / 2)
+  assert.ok(Math.abs(refreshBox.y + refreshBox.height / 2 - header.y - header.height / 2) < 3)
+  const beforeNavigation = requests
+  await page.getByRole('button', { name: '返回上个对象' }).click()
+  assert.equal(requests, beforeNavigation, 'Object history must use the loaded Catalog')
+  await page.getByLabel('搜索语义对象').fill('revenue')
+  await page.locator('.sb-objects button').filter({ hasText: 'metric:sales.revenue' }).click()
+  assert.equal(requests, beforeNavigation, 'Object selection must not refresh')
   fail = true
-  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await page.getByRole('button', { name: '刷新语义层', exact: true }).click()
   await page.getByRole('alert').filter({ hasText: '当前显示上次成功加载的内容' }).waitFor()
   await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
   fail = false
   await page.evaluate("window.setFixtureSession('empty-session')")
-  await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  await page.locator('.sb-panel').waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: '打开语义层' }).click()
   await page.getByText('当前项目没有语义层对象。').waitFor({ timeout: 30000 })
   await page.evaluate("window.setFixtureSession('sales-session')")
-  await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  await page.locator('.sb-panel').waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: '打开语义层' }).click()
-  await page.getByRole('button', { name: '刷新', exact: true }).waitFor({ timeout: 30000 })
+  await page.getByRole('button', { name: '刷新语义层', exact: true }).waitFor({ timeout: 30000 })
+  await page.waitForFunction(() => !document.querySelector('.sb-refresh')?.hasAttribute('disabled'))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
   await page.screenshot({ path: path.join(output, 'mobile-detail.png') })
-  const bounds = await page.getByRole('dialog').boundingBox()
+  const bounds = await page.locator('.sb-panel').boundingBox()
   assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391)
   await page.getByRole('button', { name: '返回列表', exact: true }).click()
   await page.getByLabel('搜索语义对象').fill('does-not-exist')
   await page.getByText('没有匹配对象，请调整搜索或筛选条件。').waitFor()
-  await page.keyboard.press('Escape')
   assert.equal(await page.getByRole('dialog').count(), 0)
-  assert.equal(
-    await page
-      .getByRole('button', { name: '打开语义层' })
-      .evaluate((el: Element) => el === document.activeElement),
-    true,
-  )
-  checks.push('刷新失败保留旧内容、空项目、Workspace 隔离、窄屏、空搜索、Escape 与焦点恢复')
+  checks.push('刷新失败保留旧内容、空项目、Workspace 隔离、窄屏、空搜索、无语义弹窗')
   assert.deepEqual(errors, [])
   await writeFile(
     path.join(output, 'result.json'),
