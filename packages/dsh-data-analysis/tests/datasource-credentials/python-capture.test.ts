@@ -17,7 +17,10 @@ import test, { after, type TestContext } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { registerMarivoPythonTool } from '../../src/datasource/python.ts'
+import {
+  type MarivoPythonExecutionSummary,
+  registerMarivoPythonTool,
+} from '../../src/datasource/python.ts'
 import {
   type PythonCodeRef,
   readPythonExecution,
@@ -246,6 +249,7 @@ async function tool(t: TestContext) {
         stdout: string
         codeRef?: PythonCodeRef
         codeCaptureError?: string
+        execution: MarivoPythonExecutionSummary
       },
   }
 }
@@ -325,6 +329,9 @@ test('capture failure and post-execution cancellation preserve successful outcom
     assert.equal(result.stdout, 'complete')
     assert.equal(result.codeRef, undefined)
     assert.match(result.codeCaptureError!, /completed successfully.*Do not rerun/)
+    assert.equal(result.execution.phase, 'capturing-code')
+    assert.equal(result.execution.reason, 'succeeded')
+    assert.equal(result.execution.nextAction, result.codeCaptureError)
     assert.doesNotMatch(JSON.stringify(result), /canary-private-4826/)
     assert.equal(p.launches, 1)
   }

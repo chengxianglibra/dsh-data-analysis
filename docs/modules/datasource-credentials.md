@@ -40,7 +40,7 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 ## 工具与自动续接
 
 - `marivo_datasource_test({ name })`：执行真实 `md.test()`，同步管理页的 `lastTest/stale`。
-- `marivo_python({ code, datasources })`：在本次调用内准备全部精确 datasource，再执行一次前台 Python。
+- `marivo_python({ code, datasources, timeoutMs? })`：在本次调用内准备全部精确 datasource，再执行一次前台 Python。
   声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；完全不访问数据源时才传空列表，
   仍安装拒绝未声明凭证请求的 resolver。
 
@@ -66,6 +66,45 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 超时后，原调用结束，晚到的提交不能复活它。`credentialInteraction: 'none'` 与 subagent 返回
 `needs-credentials`，由调用方处理；不等待无人可见的表单。
 
+## 超时与执行反馈
+
+插件 `pythonTimeoutMs` 默认 `120000`、`pythonMaxTimeoutMs` 默认 `600000` 毫秒，两个配置及 Tool 的
+可选 `timeoutMs` 必须是 `1..2147483647` 内的整数，配置默认值不得超过最大值。配置在 Runtime 安装、
+Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 参数 schema 会先拒绝非 JSON 数值及错误类型。
+
+省略 Tool 参数时使用插件默认值。请求先截断到插件上限，再经 `shell.resolve()` 应用 Harness 上限，
+`execution.effectiveTimeoutMs` 取解析后的 `spec.timeoutMs`，不把请求值宣称为最终预算。
+凭据等待在 Shell 计时之前；外层 Code Mode 时限包含等待和其他步骤，仍可能先触发取消。插件不修改 Harness
+超时策略，也不添加覆盖整次凭据交互的独立定时器。
+
+原有成功、进程结果和 datasource 准备结果字段保留，新增 `execution`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `phase` | 最后到达的插件阶段：`preparing`、`executing`、`capturing-code` |
+| `reason` | `not-started`、`succeeded`、`nonzero-exit`、`timed-out`、`cancelled` 或 `unknown` |
+| `requestedTimeoutMs` | 截断前的有效请求或默认值；参数校验失败时为 `null` |
+| `effectiveTimeoutMs` | Shell 解析后的预算；尚未解析时为 `null` |
+| `elapsedMs` | 从 Tool body 开始到反馈生成的单调时钟耗时，包括凭据准备 |
+| `executionElapsedMs` | 从调用 Shell 到其返回或抛错的耗时；未调用 Shell 时为 `null`，不含代码记录时间 |
+| `nextAction` | 失败或代码记录失败后的操作提示；正常成功时为 `null` |
+
+`executing` 只表示交给 Shell，不证明用户代码或 Trino 查询已开始。超时与取消使用 Shell 标志分类，
+不会从 stderr 猜测；无已知退出码且未报告超时/取消时为 `unknown`。
+准备返回 `needs-credentials` 或 datasource 失败时原因是 `not-started`，保留已有 `failure`、`repair`。
+
+输入、Host 服务、准备异常及 Shell 抛错保持错误通道，使用 `MarivoPythonExecutionError`：其 `execution`
+属性和安全 message 中的 JSON 摘要提供阶段与下一步，不透传原始异常或注入值。参数 schema 在 Tool body
+之前拒绝的调用保持 Harness 原生校验错误。准备异常明确尚未启动；交给 Shell 后发生异常只报告结果未确认，
+取消可确认时标记 `cancelled`，不能宣称不存在副作用。
+
+`codeCaptureError` 仍与 Python 成功分离：阶段为 `capturing-code`、原因为 `succeeded`，不得为修复代码记录
+重放分析。`codeRef` 不证明 Artifact 清单或保存状态；超时不证明结果未保存或远端查询已取消，应通过当前
+Runtime Help 检查既有效果及目标 Session。
+
+Harness 拥有外层取消的最终错误分类，可能替换插件结果；本模块不持久化额外执行状态，不在取消后补发消息，
+不承诺已取消的 Code Mode 能收到完整摘要。launcher 仍在 worker 结束后统一脱敏输出，摘要不提供实时进度或部分日志恢复。
+
 ## 单次凭证注入
 
 固定 test bridge 和 `marivo_python` 都通过 stdin 传送 Host snapshot。Python 在任何用户代码执行前进入
@@ -77,7 +116,7 @@ Session 和 reader 应在该 scope 内创建或恢复。固定测试沿用 snaps
 每次 Python 执行先核验 Agent、Workspace、环境 fingerprint 和全部 datasource 定义。缺失配置全部补齐后，
 再取得一次 fresh snapshot；配置齐全不额外测试连接。准备期间取消、凭证轮换、删除或上下文变化会终止
 原调用，不自动使用新状态重试旧代码。启动后失败也不重放；已发生的外部效果不会因取消而回滚。
-不发放跨调用 lease，不保留 TTL、次数额度或 access Tool。Agent 参数仅包含代码和 datasource 名称，
+不发放跨调用 lease，不保留 TTL、次数额度或 access Tool。Agent 参数仅包含代码、datasource 名称和可选超时，
 凭证值不返回 Agent。
 
 Python 通过 DSH Shell 服务继承前台执行、沙箱策略、限制和取消能力；普通 Shell 不获得 datasource 值。
@@ -115,3 +154,4 @@ npm run validate:credentials:web
 
 本次卡片交互调整见[验收记录](../acceptance/workspace-cards.md)。
 新增引用校验与数据源属性展示见[验收记录](../plan/2026-09-08-datasource-creation-properties-acceptance.md)。
+可配置前台预算、终态反馈及真实进程取消验证见[执行验收](../python-execution-budget-acceptance.md)。

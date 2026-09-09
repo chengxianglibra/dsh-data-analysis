@@ -13,6 +13,12 @@ import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
 import { MarivoDatasourceBridge } from './datasource/bridge.ts'
 import { registerMarivoDatasourceTestTool } from './datasource/index.ts'
 import { registerMarivoPythonTool } from './datasource/python.ts'
+import {
+  DEFAULT_PYTHON_MAX_TIMEOUT_MS,
+  DEFAULT_PYTHON_TIMEOUT_MS,
+  type MarivoPythonOptions,
+  resolvePythonOptions,
+} from './datasource/python-options.ts'
 import { registerCredentialRpc } from './datasource/rpc.ts'
 import { type CredentialStore, MarivoCredentialService } from './datasource/service.ts'
 import { registerMarivoRuntimeShellEnvironment } from './datasource/shell-env.ts'
@@ -80,7 +86,7 @@ const PRESENTATION_PROMPT =
   'Answer ordinary factual questions in text. For charts, tables, reports, dashboards or a readable source presentation, load the dsh-data-analysis-presentation skill and deliver through marivo_present. Existing data needs no prior Marivo skill activation; load the Runtime skills and live Help when new analysis or semantic authoring is needed.'
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
-export interface Config {
+export interface Config extends MarivoPythonOptions {
   readonly credentialInteraction?: 'web' | 'none'
 
   /** Explicit project root override; otherwise each Agent uses session.header.cwd. */
@@ -97,6 +103,8 @@ export interface Config {
 
 /** Cordis loader schema. Runtime defaults are resolved in {@link apply}. */
 export const Config: z<Config> = z.object({
+  pythonTimeoutMs: z.number().default(DEFAULT_PYTHON_TIMEOUT_MS),
+  pythonMaxTimeoutMs: z.number().default(DEFAULT_PYTHON_MAX_TIMEOUT_MS),
   credentialInteraction: z.union(['web', 'none']).default('web'),
   projectRoot: z.string(),
   pythonExecutable: z.string(),
@@ -126,15 +134,17 @@ export type MarivoPluginEnvironmentResolver = (
 export function installMarivoPlugin(
   ctx: Context,
   environmentOrResolver: MarivoEnvironment | MarivoPluginEnvironmentResolver,
-  options: MarivoDisclosureOptions & {
-    /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
-    credentials?: CredentialStore
-    credentialService?: MarivoCredentialService
-    credentialInteraction?: 'web' | 'none'
-    /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
-    helpBridgeSource?: MarivoHelpBridgeSource
-  } = {},
+  options: MarivoDisclosureOptions &
+    MarivoPythonOptions & {
+      /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
+      credentials?: CredentialStore
+      credentialService?: MarivoCredentialService
+      credentialInteraction?: 'web' | 'none'
+      /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
+      helpBridgeSource?: MarivoHelpBridgeSource
+    } = {},
 ): () => void {
+  const pythonOptions = resolvePythonOptions(options)
   const installed = new Map<Agent, MarivoDisclosureController>()
   const credentials = options.credentials ?? ctx.credentials
   if (credentials === undefined) {
@@ -180,7 +190,9 @@ export function installMarivoPlugin(
     controller.addDisposer(
       registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
     )
-    controller.addDisposer(registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService))
+    controller.addDisposer(
+      registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService, pythonOptions),
+    )
     controller.addDisposer(() => credentialService.disposeAgent(agent))
     controller.addDisposer(registerMarivoPresentTool(agent.ctx, presentationSource, agent.session))
     controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
@@ -259,6 +271,7 @@ export function resolvePresentationWorkspace(
 
 /** Ensure the shared Runtime once, mount its skills, then bind each Workspace lazily. */
 export async function apply(ctx: Context, config: Config = {}): Promise<() => Promise<void>> {
+  const pythonOptions = resolvePythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
   const uvExecutable = config.uvExecutable ?? process.env.DSH_DATA_ANALYSIS_UV
@@ -312,6 +325,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))
     disposePlugin = installMarivoPlugin(ctx, resolveEnvironment, {
+      ...pythonOptions,
       helpBridgeSource: helpBridge,
       credentialService,
     })

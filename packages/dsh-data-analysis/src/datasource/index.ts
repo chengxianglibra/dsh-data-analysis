@@ -13,7 +13,9 @@ export {
   resolveMarivoDatasourceBridge,
   resolveMarivoDatasourceInventoryBridge,
 } from './bridge.ts'
-export { registerMarivoPythonTool } from './python.ts'
+export type { MarivoPythonExecutionSummary } from './python.ts'
+export { MarivoPythonExecutionError, registerMarivoPythonTool } from './python.ts'
+export type { MarivoPythonOptions } from './python-options.ts'
 export { MarivoCredentialService } from './service.ts'
 export {
   assertMarivoCredentialReferences,

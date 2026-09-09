@@ -36,7 +36,7 @@ DeepSeek Harness 的 Marivo 集成插件。当前包提供：
 ```text
 marivo_help({ targets: string[] })
 marivo_datasource_test({ name: string })
-marivo_python({ code: string, datasources: string[] })
+marivo_python({ code: string, datasources: string[], timeoutMs?: number })
 marivo_present({ draft_path: string, report_id?: string, expected_build_id?: string })
 ```
 
@@ -48,6 +48,24 @@ marivo_present({ draft_path: string, report_id?: string, expected_build_id?: str
 详见[凭证模块](../../docs/modules/datasource-credentials.md)。`md.inspect(...)`、
 Session recovery、Artifact revalidation、Quality、Evidence 读取、Session Graph 与 `to_pandas()` 都直接使用
 Marivo 公共 API，不增加 convenience Tool。
+
+## Python 超时配置
+
+插件配置 `pythonTimeoutMs` 默认 `120000`，`pythonMaxTimeoutMs` 默认 `600000`，单位为毫秒。
+两者必须是 `1..2147483647` 内的整数，默认值不能超过上限；非法配置在 Runtime 安装及 Tool 注册前拒绝。
+单次调用可以请求更长预算，例如：
+
+```ts
+await tools.marivo_python({ code: 'print("ready")', datasources: [], timeoutMs: 300000 })
+```
+
+请求先经过插件上限，再由 Harness Shell 应用自身上限；省略参数时使用插件默认值。
+`execution.requestedTimeoutMs` 保留截断前的请求，`execution.effectiveTimeoutMs` 是解析后的 Shell 预算。
+凭据等待不占该预算；外层 Code Mode 总时限包含等待与其他步骤，仍可能更早取消调用。
+
+执行摘要只描述插件阶段和已知终态，不表示查询进度。失败时遵循 `execution.nextAction` 检查既有效果，
+不要自动重放。`codeRef` 仅表示成功执行的代码记录；代码记录失败仍保留执行成功，超时也不证明没有已保存结果。
+字段与错误通道详见[超时与执行反馈](../../docs/modules/datasource-credentials.md#超时与执行反馈)。
 
 ## 语义层对象浏览器
 

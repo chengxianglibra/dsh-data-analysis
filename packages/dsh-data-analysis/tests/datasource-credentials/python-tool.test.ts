@@ -6,10 +6,15 @@ import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { registerMarivoPythonTool } from '../../src/datasource/python.ts'
+import {
+  MarivoPythonExecutionError,
+  type MarivoPythonExecutionSummary,
+  registerMarivoPythonTool,
+} from '../../src/datasource/python.ts'
+import type { MarivoPythonOptions } from '../../src/datasource/python-options.ts'
 import { fixture, operation, waiting } from './fixtures.ts'
 
-function pythonTool(f: ReturnType<typeof fixture>) {
+function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptions = {}) {
   let definition!: ToolDefinition
   const requests: ShellExecRequest[] = []
   const launches: ShellExecSpec[] = []
@@ -22,7 +27,7 @@ function pythonTool(f: ReturnType<typeof fixture>) {
     stdout: { text: 'complete', truncated: false },
     stderr: { text: '', truncated: false },
   }
-  const hooks = { resolve: () => {}, run: async () => outcome }
+  const hooks = { resolve: () => {}, run: async () => outcome, maxTimeoutMs: Infinity }
   const shell = {
     sandboxMode: undefined as string | undefined,
     resolve(request: ShellExecRequest): ShellExecSpec {
@@ -31,7 +36,7 @@ function pythonTool(f: ReturnType<typeof fixture>) {
       return {
         ...request,
         workdir: request.workdir!,
-        timeoutMs: request.timeoutMs!,
+        timeoutMs: Math.min(request.timeoutMs!, hooks.maxTimeoutMs),
         stdoutMaxBytes: 65536,
         sandboxPolicy: request.sandboxPolicy,
       }
@@ -54,7 +59,7 @@ function pythonTool(f: ReturnType<typeof fixture>) {
     },
     get: (name: string) => services.get(name),
   } as unknown as Context
-  registerMarivoPythonTool(ctx, f.bridge, f.service)
+  registerMarivoPythonTool(ctx, f.bridge, f.service, options)
   return {
     requests,
     launches,
@@ -62,9 +67,9 @@ function pythonTool(f: ReturnType<typeof fixture>) {
     hooks,
     shell,
     services,
-    call: (datasources = ['warehouse'], code = 'print("complete")') =>
+    call: (datasources = ['warehouse'], code = 'print("complete")', timeoutMs?: number) =>
       definition.execute(
-        { code, datasources },
+        { code, datasources, ...(timeoutMs === undefined ? {} : { timeoutMs }) },
         {
           ...f.exec,
           deferContext: () => {},
@@ -97,8 +102,12 @@ test('Python admits configured credentials once, uses stdin, and clears its fres
     if ('status' in result && result.status === 'ready') values = result.values
     return result
   }
-  const { codeRef, ...result } = (await p.call()) as Record<string, unknown>
+  const { codeRef, execution, ...result } = (await p.call()) as Record<string, unknown>
   assert(codeRef)
+  assertSummary(execution, 'capturing-code', 'succeeded')
+  assert.equal(execution.requestedTimeoutMs, 120_000)
+  assert.equal(execution.effectiveTimeoutMs, 120_000)
+  assert.equal(execution.nextAction, null)
   assert.deepEqual(result, {
     exitCode: 0,
     timedOut: false,
@@ -182,7 +191,11 @@ test('headless and subagent missing credentials return bounded needs without a l
     t.after(() => f.service.close())
     if (interaction === 'web') Object.assign(f.agent.session.header, { origin: 'subagent' })
     const p = pythonTool(f)
-    assert.deepEqual(await p.call(), {
+    const { execution, ...result } = (await p.call()) as Record<string, unknown>
+    assertSummary(execution, 'preparing', 'not-started')
+    assert.equal(execution.executionElapsedMs, null)
+    assert.equal(execution.effectiveTimeoutMs, null)
+    assert.deepEqual(result, {
       status: 'needs-credentials',
       name: 'warehouse',
       refs: ['DB_PASSWORD'],
@@ -197,7 +210,13 @@ test('cancelling a credential wait prevents Python and refuses a late submission
   t.after(() => f.service.close())
   const p = pythonTool(f)
   const pending = p.call()
-  const rejected = assert.rejects(pending, /call-ended/)
+  const rejected = assert.rejects(pending, (error: unknown) => {
+    assert(error instanceof MarivoPythonExecutionError)
+    assert.match(error.message, /call-ended/)
+    assertSummary(error.execution, 'preparing', 'cancelled')
+    assert.equal(error.execution.effectiveTimeoutMs, null)
+    return true
+  })
   const request = await waiting(f)
   f.controller.abort()
   await rejected
@@ -222,7 +241,13 @@ test('cancellation or credential rotation in a Shell hook fails before the sole 
       if (reason === 'cancel') f.controller.abort()
       else f.service.invalidate(['DB_PASSWORD'])
     }
-    await assert.rejects(p.call(), /failed or was cancelled/)
+    await assert.rejects(p.call(), (error: unknown) => {
+      assert(error instanceof MarivoPythonExecutionError)
+      assertSummary(error.execution, 'preparing', reason === 'cancel' ? 'cancelled' : 'not-started')
+      assert.equal(error.execution.effectiveTimeoutMs, 120_000)
+      assert.match(error.message, /Python was not started/)
+      return true
+    })
     assert.equal(p.launches.length, 0)
   }
 })
@@ -244,10 +269,135 @@ test('Shell output, thrown errors, and nonzero exits do not leak secrets or repl
   }
   await assert.rejects(p.call(), (error: Error) => {
     assert.doesNotMatch(error.message, /canary-private/)
-    assert.match(error.message, /checking effects/)
+    assert.match(error.message, /Inspect existing effects/)
+    assert(error instanceof MarivoPythonExecutionError)
+    assertSummary(error.execution, 'executing', 'unknown')
     return true
   })
   assert.equal(p.launches.length, 2)
+})
+
+function assertSummary(
+  value: unknown,
+  phase: MarivoPythonExecutionSummary['phase'],
+  reason: MarivoPythonExecutionSummary['reason'],
+): asserts value is MarivoPythonExecutionSummary {
+  assert(value && typeof value === 'object')
+  const execution = value as MarivoPythonExecutionSummary
+  assert.equal(execution.phase, phase)
+  assert.equal(execution.reason, reason)
+  assert(Number.isFinite(execution.elapsedMs) && execution.elapsedMs >= 0)
+  if (phase === 'preparing') assert.equal(execution.executionElapsedMs, null)
+  else {
+    assert(execution.executionElapsedMs !== null)
+    assert(execution.executionElapsedMs >= 0 && execution.executionElapsedMs <= execution.elapsedMs)
+  }
+}
+
+test('Python timeout defaults, per-call override and both caps preserve the requested budget', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f, { pythonTimeoutMs: 240_000, pythonMaxTimeoutMs: 480_000 })
+  p.outcome.exitCode = 7
+  p.hooks.maxTimeoutMs = 420_000
+  for (const [requested, resolved] of [
+    [undefined, 240_000],
+    [300_000, 300_000],
+    [900_000, 420_000],
+  ]) {
+    const result = (await p.call([], 'pass', requested)) as {
+      execution: MarivoPythonExecutionSummary
+    }
+    assertSummary(result.execution, 'executing', 'nonzero-exit')
+    assert.equal(result.execution.requestedTimeoutMs, requested ?? 240_000)
+    assert.equal(result.execution.effectiveTimeoutMs, resolved)
+    assert.equal(p.requests.at(-1)!.timeoutMs, Math.min(requested ?? 240_000, 480_000))
+  }
+  assert.equal(p.launches.length, 3)
+})
+
+test('invalid Python timeout never resolves credentials or starts Shell', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  const p = pythonTool(f)
+  for (const value of [0, -1, 0.5, 2147483648]) {
+    await assert.rejects(p.call(['warehouse'], 'pass', value), (error: unknown) => {
+      assert(error instanceof MarivoPythonExecutionError)
+      assertSummary(error.execution, 'preparing', 'not-started')
+      assert.equal(error.execution.requestedTimeoutMs, null)
+      assert.doesNotMatch(error.message, /private-timeout/)
+      return true
+    })
+  }
+  // The Harness schema rejects non-JSON numbers and wrong types before the body runs.
+  for (const value of [NaN, Infinity, null, 'invalid'])
+    await assert.rejects(p.call(['warehouse'], 'pass', value as number))
+  assert.equal(f.store.calls.resolve, 0)
+  assert.equal(p.requests.length, 0)
+})
+
+test('Shell outcomes are classified from flags, not stderr or an assumed exit code', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  for (const [outcome, reason] of [
+    [{ exitCode: 3, timedOut: false, aborted: false }, 'nonzero-exit'],
+    [{ exitCode: 0, timedOut: true, aborted: false }, 'timed-out'],
+    [{ exitCode: 0, timedOut: false, aborted: true }, 'cancelled'],
+    [{ exitCode: null, timedOut: false, aborted: false }, 'unknown'],
+  ] as const) {
+    Object.assign(p.outcome, outcome)
+    p.outcome.stderr.text = 'timeout cancelled success'
+    const result = (await p.call([])) as {
+      execution: MarivoPythonExecutionSummary
+      codeRef?: unknown
+    }
+    assertSummary(result.execution, 'executing', reason)
+    assert.match(result.execution.nextAction!, /do not automatically replay/)
+    assert.equal(result.codeRef, undefined)
+  }
+  assert.equal(p.launches.length, 4)
+})
+
+test('preparation exceptions carry safe facts without starting Python', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  f.bridge.describe = async () => {
+    throw new Error('private-provider-failure')
+  }
+  await assert.rejects(p.call(), (error: unknown) => {
+    assert(error instanceof MarivoPythonExecutionError)
+    assertSummary(error.execution, 'preparing', 'not-started')
+    assert.doesNotMatch(error.message, /private-provider-failure/)
+    assert.equal(error.execution.effectiveTimeoutMs, null)
+    return true
+  })
+  assert.equal(p.launches.length, 0)
+})
+
+test('credential admission failure retains datasource failure and reports not-started', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  f.service.prepareExecution = async () => ({
+    name: 'warehouse',
+    ok: false,
+    latency_ms: 1,
+    failure: {
+      code: 'connection-failed',
+      exception_type: 'ConnectionError',
+      backend_code: null,
+      backend_name: null,
+      message: 'connection refused',
+    },
+    repair: null,
+  })
+  const result = (await p.call()) as { status: string; execution: MarivoPythonExecutionSummary }
+  assert.equal(result.status, 'failed')
+  assertSummary(result.execution, 'preparing', 'not-started')
+  assert.equal(p.launches.length, 0)
 })
 
 test('missing Host Shell, environment, or sandbox policy fails before reading credentials', async (t) => {

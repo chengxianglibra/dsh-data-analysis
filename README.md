@@ -45,6 +45,16 @@ Agent 修改已有报告时可保留同一 Report 并发布新 Build，版本冲
 两个面板内均可显式切换 Workspace；入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
 参见[凭证模块](docs/modules/datasource-credentials.md)。
 
+## 长查询执行
+
+`marivo_python` 默认前台执行预算为 120 秒。较长步骤可传入 `timeoutMs`；管理员通过插件配置
+`pythonTimeoutMs` 和 `pythonMaxTimeoutMs` 设置默认预算与上限，默认分别为 `120000` 和 `600000` 毫秒。
+Harness Shell 还会应用自己的上限，结果中的 `execution.effectiveTimeoutMs` 表示实际 Shell 预算。
+凭据等待发生在 Shell 计时之前，但外层 Code Mode 总时限与取消仍然生效。
+
+执行摘要提供阶段、结束原因、耗时与失败后的下一步；超时不证明结果未保存或远端查询已取消。
+参见[超时与执行反馈](docs/modules/datasource-credentials.md#超时与执行反馈)。
+
 ## License
 
 本项目采用 [MIT License](packages/dsh-data-analysis/LICENSE)。
