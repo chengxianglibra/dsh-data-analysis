@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { registerMarivoTool } from '../tool-lifecycle.ts'
 import {
   type MarivoHelpBridgePort,
   type MarivoHelpBridgeSource,
@@ -328,12 +329,14 @@ export function createMarivoHelpTool(
     },
     timeoutMs: limits.toolTimeoutMs,
     async execute(args, exec) {
+      exec.signal.throwIfAborted()
       const bridge = await resolveMarivoHelpBridge(bridgeSource)
       const internal = await readMarivoHelpTargets(bridge, args.targets, {
         limits,
         signal: exec.signal,
         resolveDelivery,
       })
+      exec.signal.throwIfAborted()
       const value: MarivoHelpToolValue = {
         environment: { version: internal.environment.version },
         targets: internal.targets,
@@ -353,6 +356,6 @@ export function registerMarivoHelpTool(
   bridgeSource: MarivoHelpBridgeSource,
   limits: Partial<MarivoHelpLimits> = {},
   resolveDelivery?: MarivoHelpDeliveryResolver,
-): () => void {
-  return ctx.tools.register(createMarivoHelpTool(bridgeSource, limits, resolveDelivery))
+): () => Promise<void> {
+  return registerMarivoTool(ctx, createMarivoHelpTool(bridgeSource, limits, resolveDelivery))
 }

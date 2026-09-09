@@ -3,6 +3,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { finishCleanup } from '../lifecycle.ts'
 import type { DatasourceCreateInput } from './authoring.ts'
 import type {
   MarivoDatasourceBridgePort,
@@ -114,6 +115,7 @@ export class MarivoCredentialService {
   readonly #requests = new Map<string, PendingRequest>()
   readonly #operations = new Map<string, CredentialOperationView>()
   readonly #controllers = new Map<string, AbortController>()
+  #closing: Promise<void> | undefined
   readonly #tasks = new Set<Promise<void>>()
   readonly #versions = new Map<string, number>()
   readonly #activeRefs = new Map<string, number>()
@@ -843,9 +845,15 @@ export class MarivoCredentialService {
     this.#tasks.add(tracked)
     return task
   }
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.#closing) return this.#closing
     this.#lifetime.abort()
-    this.#changed()
-    await Promise.allSettled([...this.#tasks])
+    this.#closing = finishCleanup([
+      () => this.#changed(),
+      async () => {
+        while (this.#tasks.size) await Promise.allSettled([...this.#tasks])
+      },
+    ])
+    return this.#closing
   }
 }

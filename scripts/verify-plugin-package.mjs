@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync }
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { assertCompatibleVersion, checkPluginDependencies } from './dependency-policy.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const packageRoot = path.join(root, 'packages/dsh-data-analysis')
@@ -72,6 +73,7 @@ function linkDependency(nodeModules, packageName) {
 }
 
 const sourceManifest = readJson(packageJsonPath)
+checkPluginDependencies(root)
 const pluginVersion = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/.exec(sourceManifest.version)
 if (pluginVersion === null) fail('plugin version must be valid SemVer without build metadata')
 const compatibility = sourceManifest.dshDataAnalysisCompatibility
@@ -94,17 +96,13 @@ for (const [name, range] of dshPeers) {
     fail(`${name} peer range ${range} does not match the declared DSH range ${dshPeerRange}`)
   }
   const actual = installedVersion(name)
-  if (actual !== range) fail(`${name} installed at ${actual}; compatibility requires ${range}`)
+  assertCompatibleVersion(name, actual, range)
 }
 for (const name of Object.keys(sourceManifest.peerDependenciesMeta ?? {})) {
   if (name.startsWith('@deepseek-ai/dsh-')) fail(`${name} must not be an optional DSH peer`)
 }
 const distributionVersion = installedVersion(compatibility.dsh.distribution)
-if (distributionVersion !== dshPeerRange) {
-  fail(
-    `${compatibility.dsh.distribution} installed at ${distributionVersion}; compatibility requires ${dshPeerRange}`,
-  )
-}
+assertCompatibleVersion(compatibility.dsh.distribution, distributionVersion, dshPeerRange)
 if (
   compatibility.marivo?.packageSpec !==
   `marivo[duckdb,trino,clickhouse]==${compatibility.marivo?.version}`

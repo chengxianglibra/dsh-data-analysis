@@ -1,4 +1,5 @@
 import type { MarivoCheckedRunner } from '../environment/types.ts'
+import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { type Projection, parseProjection } from './contracts.ts'
 export const CATALOG_PROGRAM = String.raw`
 import contextlib, io, json, sys
@@ -30,6 +31,8 @@ export class SemanticReferenceBridge {
   readonly #slots = new Map<string, Slot>()
   readonly #clock: () => number
   #disposed = false
+  readonly #tasks = new PendingTasks()
+  #closing: Promise<void> | undefined
   constructor(clock: () => number = Date.now) {
     this.#clock = clock
   }
@@ -56,7 +59,8 @@ export class SemanticReferenceBridge {
         promise: Promise.resolve({ kinds: [], items: [] }),
       }
       current.flight = flight
-      flight.promise = this.#load(runner, controller.signal)
+      flight.promise = this.#tasks
+        .track(this.#load(runner, controller.signal))
         .then((projection) => {
           if (
             !controller.signal.aborted &&
@@ -113,6 +117,11 @@ export class SemanticReferenceBridge {
     signal.throwIfAborted()
     if (result.exitCode !== 0) throw new Error('catalog-load-failed')
     return parseProjection(JSON.parse(result.stdout.toString('utf8')))
+  }
+  close(): Promise<void> {
+    this.dispose()
+    this.#closing ??= finishCleanup([() => this.#tasks.drain()])
+    return this.#closing
   }
   invalidate(key: string): void {
     const slot = this.#slots.get(key)

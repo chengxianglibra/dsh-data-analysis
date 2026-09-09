@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import type { MarivoCredentialService } from './service.ts'
 
@@ -33,8 +34,8 @@ export function registerMarivoDatasourceTestTool(
   ctx: Context,
   source: MarivoDatasourceBridgeSource,
   service: MarivoCredentialService,
-): () => void {
-  return ctx.tools.register(createMarivoDatasourceTestTool(source, service))
+): () => Promise<void> {
+  return registerMarivoTool(ctx, createMarivoDatasourceTestTool(source, service))
 }
 
 /** Preserve the datasource tools' public status family; raw Marivo results stay inside the service. */

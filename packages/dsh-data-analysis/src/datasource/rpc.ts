@@ -101,9 +101,6 @@ export function registerCredentialRpc(
       }
     },
   )
-  return async () => {
-    const draining = unregister()
-    await service.close()
-    await draining
-  }
+  // The profile owns this shared service; withdrawing its Web entry must not close it.
+  return unregister
 }

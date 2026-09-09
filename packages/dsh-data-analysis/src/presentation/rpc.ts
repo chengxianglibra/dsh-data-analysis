@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { applyPresentationEdits } from './contracts/editing.ts'
 import {
@@ -31,6 +32,8 @@ export class MarivoPresentationFileService {
   readonly #resolve: PresentationWorkspaceResolver
   readonly #resolveId?: PresentationWorkspaceResolver
   readonly #abort = new AbortController()
+  readonly #tasks = new PendingTasks()
+  #closing: Promise<void> | undefined
   constructor(resolve: PresentationWorkspaceResolver, resolveId?: PresentationWorkspaceResolver) {
     this.#resolve = resolve
     this.#resolveId = resolveId
@@ -59,12 +62,20 @@ export class MarivoPresentationFileService {
       throw new Error('invalid-request')
     return scope
   }
-  async catalog(
+  catalog(
+    endpoint: 'reports/list' | 'reports/history',
+    payload: unknown,
+    caller = new AbortController().signal,
+  ) {
+    return this.#tasks.track(this.#catalog(endpoint, payload, caller))
+  }
+  async #catalog(
     endpoint: 'reports/list' | 'reports/history',
     payload: unknown,
     caller = new AbortController().signal,
   ) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       throw new Error('invalid-request')
     const input = payload as Record<string, unknown>
@@ -89,15 +100,25 @@ export class MarivoPresentationFileService {
     signal.throwIfAborted()
     return result
   }
-  close() {
+  close(): Promise<void> {
     this.#abort.abort()
+    this.#closing ??= finishCleanup([() => this.#tasks.drain()])
+    return this.#closing
   }
-  async report(
+  report(
+    endpoint: 'reports/resolve' | 'reports/save',
+    payload: unknown,
+    caller = new AbortController().signal,
+  ) {
+    return this.#tasks.track(this.#report(endpoint, payload, caller))
+  }
+  async #report(
     endpoint: 'reports/resolve' | 'reports/save',
     payload: unknown,
     caller = new AbortController().signal,
   ) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       throw new Error('invalid-request')
     const input = payload as Record<string, unknown>
@@ -143,7 +164,10 @@ export class MarivoPresentationFileService {
       { kind: 'reader', sessionId: typeof input.sessionId === 'string' ? input.sessionId : null },
     )
   }
-  async read(payload: unknown, caller = new AbortController().signal) {
+  read(payload: unknown, caller = new AbortController().signal) {
+    return this.#tasks.track(this.#read(payload, caller))
+  }
+  async #read(payload: unknown, caller = new AbortController().signal) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
     signal.throwIfAborted()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
@@ -243,8 +267,6 @@ export function registerMarivoPresentationRpc(
       }
     },
   )
-  return async () => {
-    service.close()
-    await unregister()
-  }
+  let closing: Promise<void> | undefined
+  return () => (closing ??= finishCleanup([unregister, () => service.close()]))
 }

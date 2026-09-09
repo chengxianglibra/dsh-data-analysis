@@ -162,8 +162,21 @@ test('storage unavailable only degrades heat, and lifecycle aborts unresolved En
   await service.handle('semantic-references/selected', { envelope: envelope() }, signal)
   assert.equal(diagnostics, 1)
   await service.close()
-  const waiting = new SemanticReferenceService(() => new Promise(() => {}), usage)
+  let resolve!: (value: typeof fixture.runner) => void
+  const raw = new Promise<typeof fixture.runner>((done) => {
+    resolve = done
+  })
+  const waiting = new SemanticReferenceService(() => raw, usage)
   const pending = waiting.handle('semantic-references/serialize', { envelope: envelope() }, signal)
-  await waiting.close()
-  await assert.rejects(pending, /cancelled/)
+  const rejected = assert.rejects(pending, /cancelled/)
+  let finished = false
+  const closing = waiting.close()
+  void closing.then(() => {
+    finished = true
+  })
+  await rejected
+  await new Promise((done) => setImmediate(done))
+  assert.equal(finished, false, 'caller cancellation must not abandon the actual resolver')
+  resolve(fixture.runner)
+  await closing
 })

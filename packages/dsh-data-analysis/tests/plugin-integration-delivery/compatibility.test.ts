@@ -23,7 +23,7 @@ test('v2 compatibility manifest binds plugin, DSH, Marivo, and project contracts
   assert.equal(PLUGIN_VERSION, '0.1.3-dev.0')
   assert.equal(COMPATIBILITY_SCHEMA, 'dsh-data-analysis-compatibility/v2')
   assert.equal(DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.distribution, '@deepseek-ai/dsh')
-  assert.equal(DSH_PEER_RANGE, '0.1.5-alpha.1')
+  assert.equal(DSH_PEER_RANGE, '^0.1.5-alpha.1')
   assert.equal(MARIVO_VERSION, '0.5.4')
   assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.5.4')
   assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v3')

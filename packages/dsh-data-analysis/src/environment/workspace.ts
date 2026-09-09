@@ -1,5 +1,6 @@
 import { realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { bindMarivoEnvironment, type MarivoEnvironment } from './binding.ts'
 import { MarivoEnvironmentError } from './errors.ts'
 import type { SharedMarivoRuntime } from './types.ts'
@@ -36,6 +37,9 @@ async function canonicalWorkspaceRoot(projectRoot: string): Promise<string> {
 
 /** Cache one zero-init Workspace binding while retaining project-specific doctor state. */
 export class MarivoWorkspaceEnvironmentManager {
+  readonly #tasks = new PendingTasks()
+  #disposed = false
+  #closing: Promise<void> | undefined
   readonly runtime: SharedMarivoRuntime
   #bindings = new Map<string, Promise<MarivoEnvironment>>()
 
@@ -43,8 +47,14 @@ export class MarivoWorkspaceEnvironmentManager {
     this.runtime = runtime
   }
 
-  async resolve(projectRoot: string): Promise<MarivoEnvironment> {
+  resolve(projectRoot: string): Promise<MarivoEnvironment> {
+    return this.#tasks.track(this.#resolve(projectRoot))
+  }
+
+  async #resolve(projectRoot: string): Promise<MarivoEnvironment> {
+    if (this.#disposed) throw new Error('Marivo Workspace manager disposed')
     const canonicalRoot = await canonicalWorkspaceRoot(projectRoot)
+    if (this.#disposed) throw new Error('Marivo Workspace manager disposed')
     let binding = this.#bindings.get(canonicalRoot)
     if (binding === undefined) {
       binding = bindMarivoEnvironment(
@@ -64,7 +74,14 @@ export class MarivoWorkspaceEnvironmentManager {
     return binding
   }
 
+  close(): Promise<void> {
+    this.dispose()
+    this.#closing ??= finishCleanup([() => this.#tasks.drain()])
+    return this.#closing
+  }
+
   dispose(): void {
+    this.#disposed = true
     this.#bindings.clear()
   }
 }

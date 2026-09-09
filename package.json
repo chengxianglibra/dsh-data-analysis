@@ -25,7 +25,7 @@
     "test:environment-execution": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/environment-execution/*.test.ts",
     "test:help-disclosure": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/help-disclosure/*.test.ts",
     "test:datasource-credentials": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/datasource-credentials/*.test.ts",
-    "test:plugin-integration-delivery": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/plugin-integration-delivery/*.test.ts",
+    "test:plugin-integration-delivery": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/plugin-integration-delivery/*.test.ts scripts/dependency-policy.test.mjs",
     "typecheck": "npm run typecheck:source && npm run typecheck:scripts",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "typecheck:source": "tsc -p tsconfig.json",
@@ -57,7 +57,8 @@
     "test:presentation-skill": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-skill/*.test.ts",
     "validate:presentation-agent:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-agent-real.ts",
     "test:right-tabs": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/right-tabs/*.test.ts",
-    "validate:right-tabs:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-right-tabs-web.ts"
+    "validate:right-tabs:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-right-tabs-web.ts",
+    "validate:plugin-lifecycle:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-lifecycle-real.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
@@ -90,6 +91,8 @@
     "@deepseek-ai/dsh-util-workspace-path": "^0.1.5-alpha.1",
     "@deepseek-ai/dsh-jobs": "^0.1.5-alpha.1",
     "@deepseek-ai/dsh-hook-protocol": "^0.1.5-alpha.1",
-    "@deepseek-ai/dsh-sdk-protocol": "^0.1.5-alpha.1"
+    "@deepseek-ai/dsh-sdk-protocol": "^0.1.5-alpha.1",
+    "semver": "^7.8.5",
+    "@types/semver": "^7.7.1"
   }
 }

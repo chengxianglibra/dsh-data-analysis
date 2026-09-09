@@ -96,3 +96,57 @@ test('partial RPC registration failure withdraws prior routes', () => {
   )
   assert.equal(disposed, true)
 })
+
+test('withdrawal refuses new requests, cancels admitted handlers and waits for their cleanup', async () => {
+  const { connection, routes } = createConnectionFixture()
+  let release!: () => void, enter!: () => void
+  const barrier = new Promise<void>((done) => {
+    release = done
+  })
+  const entered = new Promise<void>((done) => {
+    enter = done
+  })
+  let signal!: AbortSignal,
+    calls = 0
+  const close = registerPluginRpc(
+    connection,
+    '/drain',
+    ['read'],
+    async (_endpoint, _payload, caller) => {
+      signal = caller
+      calls++
+      enter()
+      await barrier
+      return { ok: false, error: { code: 'cancelled', message: 'cancelled', details: {} } }
+    },
+  )
+  const route = routes.get('/api/drain/read')!
+  const request = () =>
+    new Request('http://fixture/api/drain/read', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: 'one',
+        method: 'drain/read',
+        payload: {},
+      }),
+    })
+  const response = route.fetch(request())
+  await entered
+  let finished = false
+  const closing = close()
+  assert.equal(close(), closing)
+  void closing.then(() => {
+    finished = true
+  })
+  assert.equal(signal.aborted, true)
+  assert.equal(routes.size, 0)
+  assert.equal((await route.fetch(request())).status, 503)
+  assert.equal(calls, 1)
+  await new Promise((done) => setImmediate(done))
+  assert.equal(finished, false)
+  release()
+  await response
+  await closing
+})

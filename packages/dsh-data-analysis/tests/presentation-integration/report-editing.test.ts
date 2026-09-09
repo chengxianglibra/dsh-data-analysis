@@ -309,3 +309,104 @@ test('failure at the pointer update boundary preserves the previously published 
     false,
   )
 })
+
+function barrier() {
+  let release!: () => void
+  const promise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { promise, release }
+}
+
+test('unload before save admission waits for identity resolution and preserves current', async (t) => {
+  const f = await fixture(t)
+  const entered = barrier(),
+    gate = barrier()
+  const service = new MarivoPresentationFileService(async () => {
+    entered.release()
+    await gate.promise
+    return { id: f.document.workspaceId, path: f.root }
+  })
+  const call = service.report('reports/save', {
+    ...f.request,
+    expectedBuildId: f.receipt.buildId,
+    edits: { title: 'cancelled', blocks: [] },
+  })
+  const rejected = assert.rejects(call)
+  await entered.promise
+  let done = false
+  const closing = service.close()
+  void closing.then(() => {
+    done = true
+  })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(done, false)
+  gate.release()
+  await rejected
+  await closing
+  assert.deepEqual(
+    await resolvePresentation(f.root, f.document.workspaceId, f.document.reportId),
+    f.receipt,
+  )
+})
+
+test('unload after save commit drains lost response without deleting or replaying the saved build', async (t) => {
+  const f = await fixture(t)
+  const { registerPluginRpc } = await import('../../src/rpc.ts')
+  const { createConnectionFixture } = await import('../semantic-reference-input/fixtures.ts')
+  const { connection, routes } = createConnectionFixture()
+  const committed = barrier(),
+    response = barrier()
+  let writes = 0
+  const close = registerPluginRpc(
+    connection,
+    '/save-fixture',
+    ['save'],
+    async (_endpoint, payload, signal) => {
+      writes++
+      const receipt = await f.service.report('reports/save', payload, signal)
+      committed.release()
+      await response.promise
+      throw new Error(`response-lost:${receipt.buildId}`)
+    },
+  )
+  const route = routes.get('/api/save-fixture/save')!
+  const call = route.fetch(
+    new Request('http://fixture' + route.path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: 'save',
+        method: 'save-fixture/save',
+        payload: {
+          ...f.request,
+          expectedBuildId: f.receipt.buildId,
+          edits: { title: 'committed', blocks: [] },
+        },
+      }),
+    }),
+  )
+  const rejected = assert.rejects(call, /response-lost:/)
+  await committed.promise
+  const saved = await resolvePresentation(f.root, f.document.workspaceId, f.document.reportId)
+  assert.notEqual(saved.buildId, f.receipt.buildId)
+  let done = false
+  const closing = close()
+  void closing.then(() => {
+    done = true
+  })
+  await f.service.close()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(done, false)
+  assert.equal(routes.size, 0)
+  response.release()
+  await rejected
+  await closing
+  assert.equal(writes, 1)
+  assert.deepEqual(
+    await resolvePresentation(f.root, f.document.workspaceId, f.document.reportId),
+    saved,
+  )
+  assert.equal((await readFile(saved.files.document.path)).length, saved.files.document.bytes)
+})

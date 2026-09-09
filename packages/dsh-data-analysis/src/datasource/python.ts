@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
+import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import { type MarivoPythonOptions, pythonTimeout, resolvePythonOptions } from './python-options.ts'
 import { PYTHON_LAUNCHER, PYTHON_WORKER } from './resolver-program.ts'
@@ -58,9 +59,10 @@ export function registerMarivoPythonTool(
   source: MarivoDatasourceBridgeSource,
   service: MarivoCredentialService,
   options: MarivoPythonOptions = {},
-): () => void {
+): () => Promise<void> {
   const limits = resolvePythonOptions(options)
-  return ctx.tools.register(
+  return registerMarivoTool(
+    ctx,
     defineTool({
       name: 'marivo_python',
       description:

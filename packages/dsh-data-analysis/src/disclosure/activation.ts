@@ -4,6 +4,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import {
   MARIVO_HELP_TOOL_NAME,
   type MarivoHelpBridgeSource,
@@ -221,7 +222,9 @@ export class MarivoDisclosureController {
   #pendingSkills = new Set<MarivoSkillName>()
   #visibleHelp = new Map<string, VisibleHelp>()
   #lifecycleAbort = new AbortController()
-  #disposers: Array<() => void> = []
+  #disposers: Array<() => unknown> = []
+  readonly #tasks = new PendingTasks()
+  #closing: Promise<void> | undefined
   #disposed = false
   #telemetry: MarivoDisclosureTelemetry = { activations: [], rootHelp: [], failures: [] }
 
@@ -253,7 +256,7 @@ export class MarivoDisclosureController {
     }
   }
 
-  addDisposer(disposer: () => void): void {
+  addDisposer(disposer: () => unknown): void {
     this.#disposers.push(disposer)
   }
 
@@ -293,7 +296,14 @@ export class MarivoDisclosureController {
     return visible === undefined ? 'delivered' : 'replacement'
   }
 
-  async prepareStep(messages: readonly UserMessage[], signal: AbortSignal): Promise<UserMessage[]> {
+  prepareStep(messages: readonly UserMessage[], signal: AbortSignal): Promise<UserMessage[]> {
+    return this.#tasks.track(this.#prepareStep(messages, signal))
+  }
+
+  async #prepareStep(
+    messages: readonly UserMessage[],
+    signal: AbortSignal,
+  ): Promise<UserMessage[]> {
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
     this.#observeExplicitInvocations(messages)
     this.#refreshVisibleHelp(messages)
@@ -383,11 +393,16 @@ export class MarivoDisclosureController {
     if (this.#disposed) return
     this.#disposed = true
     this.#lifecycleAbort.abort(new Error('Marivo disclosure controller disposed'))
-    for (const disposer of this.#disposers.reverse()) disposer()
+    this.#closing = finishCleanup([...this.#disposers.reverse(), () => this.#tasks.drain()])
     this.#disposers = []
     this.#activeSkills.clear()
     this.#pendingSkills.clear()
     this.#visibleHelp.clear()
+  }
+
+  close(): Promise<void> {
+    this.dispose()
+    return this.#closing!
   }
 
   #inheritedSkillToolVisible(): boolean {

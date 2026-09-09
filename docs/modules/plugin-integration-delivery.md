@@ -24,6 +24,18 @@
 7. profile 同时注册只读 presentation RPC；它只依赖当前 Workspace 成员关系和保存文件。
 8. plugin disposal 取消展示读取和在途 present，停止语义引用/Catalog 接线并 drain usage 写入，取消并 drain 凭据准备、测试与 Python 执行；移除自身 Tool、prompt 和事件。
 
+Agent 安装位于 `src/plugin-agents.ts`：已有 Agent 批量安装失败会回滚本批全部安装；后续新 Agent
+失败只清理自身。多步子 installer 在返回 disposer 前失败也负责撤回先前注册，包括 PTC 第二个 hook。
+
+profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 operation，credential RPC 只关闭入口
+与自身请求。独立 `installMarivoPlugin` 自建的 service 由该 installer 关闭。
+
+`dispose()` 保持同步停止；controller 的 `close()` 和 installer 返回的可调用 disposer 返回同一次完成 Promise。
+顶层先同步停止 Agent 安装、撤入口和发送取消，再等待 Help、present、Python、凭据、RPC、Catalog 与 usage
+的实际任务，最后释放 binding manager 与 shell fact。`src/lifecycle.ts` 汇总清理失败，保证其他资源仍被清理；
+`src/tool-lifecycle.ts` 跟踪 Tool 的完整执行。取消调用者等待不等于底层任务已经结束，也不代表远端数据库查询已取消。
+已提交的报告 current、Build 和 receipt 不随卸载删除或重放。
+
 ## Agent scope surface
 
 | Surface | 独有责任 | 删除条件 |
@@ -83,11 +95,12 @@ Web client 只保留：
 
 ## Compatibility 与 package
 
-`dshDataAnalysisCompatibility` 精确声明：
+`dshDataAnalysisCompatibility` 保持 v2 结构，分别声明兼容范围与精确 Runtime 身份：
 
 | 边界 | 当前值 |
 | --- | --- |
-| DSH distribution/peers | `0.1.5-alpha.1` |
+| DSH peers 兼容范围 | `^0.1.5-alpha.1`，npm 默认预发布匹配规则 |
+| DSH 开发 distribution / 实际验收 | `0.1.5-alpha.1`，lockfile 保留实际解析版本 |
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.5.4` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
@@ -97,6 +110,12 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 与内部纯数据 contracts/projection、builder、预构建 portable/static 资产，以及唯一展示 Skill 的 `SKILL.md`、references 和 examples；
 旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
+
+依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受同一 `0.1.5` 的后续预发布
+和 `0.1.x` 稳定版本，不自动接受 `0.1.6-alpha.*`。逐项检查直接消费的 peers 与 Host 实际解析身份，
+不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
+正常 workspace 链接允许，Host client external/metafile 与 portable 自带 React 检查保留。
+具体证据与限制见[第四阶段验收](../dsh-wiring-stage-four-acceptance.md)。
 
 ## npm 发布
 

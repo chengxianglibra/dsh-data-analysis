@@ -1,5 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
+import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { boundedText, closed } from '../semantic-reference/contracts.ts'
 import { semanticEnvironmentFingerprint } from '../semantic-reference/environment.ts'
 import { abortable } from '../semantic-reference/rpc.ts'
@@ -20,6 +21,8 @@ export interface BrowserHost {
 export class SemanticBrowserService {
   readonly #host: BrowserHost
   readonly #lifetime = new AbortController()
+  readonly #tasks = new PendingTasks()
+  #closing: Promise<void> | undefined
   constructor(host: BrowserHost) {
     this.#host = host
   }
@@ -28,7 +31,10 @@ export class SemanticBrowserService {
     if (!current || current.path !== workspacePath || this.#host.projectRoot(current) !== root)
       throw new Error('workspace-changed')
   }
-  async read(payload: unknown, caller: AbortSignal): Promise<CatalogSnapshot> {
+  read(payload: unknown, caller: AbortSignal): Promise<CatalogSnapshot> {
+    return this.#tasks.track(this.#read(payload, caller))
+  }
+  async #read(payload: unknown, caller: AbortSignal): Promise<CatalogSnapshot> {
     const signal = AbortSignal.any([caller, this.#lifetime.signal])
     signal.throwIfAborted()
     const request = closed(payload, ['workspaceId'])
@@ -36,7 +42,7 @@ export class SemanticBrowserService {
     const workspace = this.#host.getWorkspace(id)
     if (!workspace) throw new Error('workspace-unavailable')
     const root = this.#host.projectRoot(workspace)
-    const runner = await abortable(this.#host.resolve(root), signal)
+    const runner = await abortable(this.#tasks.track(this.#host.resolve(root)), signal)
     this.#assertOwner(id, workspace.path, root)
     if (runner.status !== 'ready') throw new Error('environment-failed')
     const result = await runner.runChecked({
@@ -60,6 +66,11 @@ export class SemanticBrowserService {
       environmentFingerprint: semanticEnvironmentFingerprint(id, runner.binding.fingerprint),
       loadedAt: new Date().toISOString(),
     }
+  }
+  close(): Promise<void> {
+    this.dispose()
+    this.#closing ??= finishCleanup([() => this.#tasks.drain()])
+    return this.#closing
   }
   dispose(): void {
     this.#lifetime.abort()

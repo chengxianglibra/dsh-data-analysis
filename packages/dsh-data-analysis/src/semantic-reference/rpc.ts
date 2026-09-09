@@ -1,5 +1,6 @@
 import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
+import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { SemanticReferenceBridge } from './bridge.ts'
 import {
@@ -47,6 +48,8 @@ export class SemanticReferenceService {
   readonly #bridge: SemanticReferenceBridge
   readonly #controller = new AbortController()
   #closed = false
+  readonly #tasks = new PendingTasks()
+  #closing: Promise<void> | undefined
   constructor(
     resolve: EnvironmentResolver,
     usage: SemanticReferenceUsage,
@@ -62,7 +65,10 @@ export class SemanticReferenceService {
     purpose: 'candidates' | 'reference' | 'prepare' = 'reference',
     workspaceId?: string,
   ): Promise<MarivoCheckedRunner> {
-    const runner = await abortable(this.#resolve(sessionId, purpose, workspaceId), signal)
+    const runner = await abortable(
+      this.#tasks.track(this.#resolve(sessionId, purpose, workspaceId)),
+      signal,
+    )
     if (runner.status !== 'ready') {
       this.#bridge.invalidate(runner.binding.fingerprint)
       throw new Error('environment-failed')
@@ -75,7 +81,10 @@ export class SemanticReferenceService {
       throw new Error('environment-mismatch')
     return runner
   }
-  async handle(endpoint: string, payload: unknown, caller: AbortSignal): Promise<unknown> {
+  handle(endpoint: string, payload: unknown, caller: AbortSignal): Promise<unknown> {
+    return this.#tasks.track(this.#handle(endpoint, payload, caller))
+  }
+  async #handle(endpoint: string, payload: unknown, caller: AbortSignal): Promise<unknown> {
     if (this.#closed) throw new Error('disposed')
     const signal = AbortSignal.any([caller, this.#controller.signal])
     signal.throwIfAborted()
@@ -94,7 +103,7 @@ export class SemanticReferenceService {
       const environment = await this.#environment(request.sessionId, signal, 'candidates')
       const projection = await this.#bridge.candidates(environment, signal)
       const scores = await abortable(
-        this.#usage.scores(workspaceKey(environment.binding.projectRoot)),
+        this.#tasks.track(this.#usage.scores(workspaceKey(environment.binding.projectRoot))),
         signal,
       )
       // A live Agent may disappear or change binding while Catalog/storage work awaits.
@@ -128,9 +137,15 @@ export class SemanticReferenceService {
     this.#controller.abort()
     this.#bridge.dispose()
   }
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.#closing) return this.#closing
     this.stop()
-    await this.#usage.close()
+    this.#closing = finishCleanup([
+      () => this.#bridge.close(),
+      () => this.#tasks.drain(),
+      () => this.#usage.close(),
+    ])
+    return this.#closing
   }
 }
 export function registerSemanticReferenceRpc(
@@ -166,12 +181,7 @@ export function registerSemanticReferenceRpc(
       }
     },
   )
-  return async () => {
-    service.stop()
-    try {
-      await unregister()
-    } finally {
-      await service.close()
-    }
-  }
+  let closing: Promise<void> | undefined
+  return () =>
+    (closing ??= finishCleanup([() => service.stop(), unregister, () => service.close()]))
 }

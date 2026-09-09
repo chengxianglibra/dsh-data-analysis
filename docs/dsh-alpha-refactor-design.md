@@ -218,6 +218,10 @@ Tab signal 不替代导航 revision 检查。Ask DSH 第一阶段保留所属 Se
 
 ## 第四阶段：收紧接线与维护成本
 
+调研见[接线与维护成本调研](dsh-wiring-stage-four-research.md)，实施记录见[第四阶段验收](dsh-wiring-stage-four-acceptance.md)。
+已实现单 Agent 与批量安装失败回滚、service 关闭所有权与实际任务等待、依赖兼容范围和生产边界检查；
+按这些职责拆出 Agent installer、Tool lifetime 与 cleanup 小模块。编辑迁移与旧容器删除不纳入本轮。
+
 保持 `plugin.ts` 为 lifecycle 组合入口，按实际职责整理 Runtime binding、Agent 安装与 Web routes 的小模块；
 不先建设通用 adapter 框架。生产代码只依赖所需公开服务；验证工具才持有 SessionPersistence handle。
 
@@ -225,7 +229,7 @@ Tab signal 不替代导航 revision 检查。Ask DSH 第一阶段保留所属 Se
 未来只有上游修复独立 channel 的 plugin-context 生命周期问题，或提供可验证的第三方 typed Remote 扩展路径后，
 才替换这层接缝。不能假定原生 Gateway 自动接受插件的新 Remote，也不能借迁移减少身份校验。
 
-新模块必须说明所有者、注册 disposer、在途请求 drain 和卸载后行为。依赖精确匹配同一 DSH 发布版；
+新模块必须说明所有者、注册 disposer、在途请求 drain 和卸载后行为。DSH peers 使用 `^0.1.5-alpha.1`，逐项满足范围且与 Host 解析身份一致；
 不得私带另一套 Cordis/React/Host singleton 或恢复对邻近源码 checkout 的隐式依赖。
 
 ## 实施顺序与交付门槛
@@ -237,7 +241,8 @@ Tab signal 不替代导航 revision 检查。Ask DSH 第一阶段保留所属 Se
 | 1b，已完成 | 数据源/语义层/报告浏览页与独立正文原生 Tab | 1a 关键接缝通过，资源 identity 与无 Session 行为明确 | 默认包完整检查与 37 项真实 Runtime/Web 断言通过，见[验收记录](dsh-right-tabs-stage-one-acceptance.md) |
 | 2 | 输入接缝复用与事实披露优化 | 第 1 阶段状态边界稳定 | 引用/附件/撤销回归与真实模型对比 |
 | 3 | 单格式上传分析原型 | 公共附件映射已证明 | 所属权、取消、数据读取与执行计数 |
-| 4 | 编辑迁移和旧容器删除、接线整理 | 未保存草稿与关闭行为有可靠方案 | 编辑冲突/恢复/导出、卸载和包验证 |
+| 4，已实现 | 安装回滚、卸载与接线整理、依赖和生产边界检查 | 精确 alpha 基线与各资源 owner 明确；不依赖编辑迁移 | 故障注入、在途任务结束、真实 lifecycle 与包验证，见[第四阶段验收](dsh-wiring-stage-four-acceptance.md) |
+| 独立候选 | 编辑迁移及按职责删除旧容器 | 未保存草稿与全部关闭入口有可靠方案，无 Session 路径有替代 | 编辑冲突/恢复/导出、凭据操作归属与真实 Web 验证 |
 
 每个阶段独立审阅和验收，通过后再进入下一阶段。回退通过切回上一版插件构建完成，不清理 Session、Credentials、
-Workspace 或报告文件。跨 alpha 版本不宣称自动向后兼容，下一次升级仍以精确发布包和真实验收为准。
+Workspace 或报告文件。依赖声明允许同系列兼容升级，已验收版本单独记录；范围匹配 fixture 不代表未来版本已完成真实验收。

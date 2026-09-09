@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { parsePresentationBuildId } from './contracts/index.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
@@ -156,11 +157,6 @@ export function registerMarivoPresentTool(
   ctx: Context,
   source: PresentationBindingSource,
   session: Session,
-): () => void {
-  const controller = new AbortController()
-  const unregister = ctx.tools.register(createMarivoPresentTool(source, session, controller.signal))
-  return () => {
-    controller.abort()
-    unregister()
-  }
+): () => Promise<void> {
+  return registerMarivoTool(ctx, createMarivoPresentTool(source, session))
 }

@@ -76,7 +76,8 @@ flowchart LR
 
 ## Runtime 与 identity
 
-Compatibility manifest 精确固定 DSH peers 与 `marivo[duckdb,trino,clickhouse]==0.5.4`。默认 Runtime 位于
+Compatibility manifest 声明 DSH peers 范围 `^0.1.5-alpha.1`，并精确固定 `marivo[duckdb,trino,clickhouse]==0.5.4`。
+安装回滚、service owner、可等待卸载与范围验收见[第四阶段验收](dsh-wiring-stage-four-acceptance.md)。默认 Runtime 位于
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo/`；管理员也可提供绝对 Python。两种模式都必须让版本、
 package path、解释器和 marker 一致；Runtime 通过 pip 安装已发布的 Marivo package。
 

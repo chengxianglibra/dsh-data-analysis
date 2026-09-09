@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { checkPluginDependencies } from './dependency-policy.mjs'
 
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const result = spawnSync(npmExecutable, ['ls', '--all'], {
@@ -15,4 +17,5 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 
-console.log('verified npm dependency tree')
+const resultPolicy = checkPluginDependencies(fileURLToPath(new URL('../', import.meta.url)))
+console.log('verified npm dependency tree, Host identity and production imports', resultPolicy)

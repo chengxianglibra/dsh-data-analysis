@@ -6,6 +6,7 @@ import {
   domainTable,
 } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
+import { finishCleanup } from '../lifecycle.ts'
 import { parseRef, refKey, type SemanticRef } from './contracts.ts'
 import type { UsageScores } from './search.ts'
 
@@ -88,6 +89,7 @@ export class SemanticReferenceUsage {
   readonly #clock: () => number
   readonly #diagnostic: () => void
   #closed = false
+  #closing: Promise<void> | undefined
   constructor(
     facility: Pick<DomainFacility, 'open'>,
     clock: () => number = Date.now,
@@ -148,9 +150,15 @@ export class SemanticReferenceUsage {
       if (this.#queues.get(key) === job) this.#queues.delete(key)
     }
   }
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.#closing) return this.#closing
     this.#closed = true
-    await Promise.all(this.#queues.values())
-    await (await this.#ready)?.close()
+    this.#closing = finishCleanup([
+      async () => {
+        await Promise.all(this.#queues.values())
+        await (await this.#ready)?.close()
+      },
+    ])
+    return this.#closing
   }
 }
