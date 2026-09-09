@@ -432,7 +432,12 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       disabled: !!report.error || report.loading,
                     }}
                     onOpenSemanticRef={source}
-                    onAskDsh={(context) => ask(page, context)}
+                    onAskDsh={(context) =>
+                      act(page, () => {
+                        ask(page, context)
+                        page.patch({ notice: '' })
+                      })
+                    }
                   />
                 )}
                 {report.downloadError && <p role="alert">{report.downloadError}</p>}

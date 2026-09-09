@@ -184,6 +184,26 @@ async function contextFixture() {
   )
 }
 
+test('context identifies same-title reports by the displayed Workspace, Report, Build and cell', async () => {
+  const base = await contextFixture()
+  const block = base.blocks[0]!
+  const documents = [
+    base,
+    { ...base, reportId: 'another-report' },
+    { ...base, workspaceId: 'another-workspace', buildId: 'another-build' },
+  ]
+  const contexts = documents.map((document) => followUpContext(document, block))
+  assert.equal(new Set(contexts).size, documents.length)
+  for (const [index, document] of documents.entries()) {
+    const lines = contexts[index]!.split('\n')
+    assert.equal(lines[0], base.title)
+    assert.ok(lines.includes(`Workspace: ${document.workspaceId}`))
+    assert.ok(lines.includes(`Report ID: ${document.reportId}`))
+    assert.ok(lines.includes(`Build ID: ${document.buildId}`))
+    assert.ok(lines.includes(`Cell: ${block.id}`))
+  }
+})
+
 test('chart cell context keeps declared bindings and references without copying a selected row', async () => {
   const document = await contextFixture()
   const before = JSON.stringify(document)

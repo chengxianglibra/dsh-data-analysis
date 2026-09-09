@@ -150,9 +150,17 @@ Host 数据源概要中的公开语义引用可点击打开同一 Workspace 的�
 
 `PresentationReader` 和 `HostPresentationReader` 接收可选 `onAskDsh(context: string): void`；
 Host 注入时菜单显示 Ask DSH，无回调时保持复制上下文。回调内容复用 `followUpContext`，包含当前筛选和图表探索状态。
+
+上下文包含 `Workspace / Report ID / Build ID / Cell`，全部来自正在显示的 document。current 页面提示
+新版本但尚未刷新时仍引用旧 Build，刷新后引用新 Build，固定 Build 始终保留自身身份。标题仅用于阅读，
+不代替 Report ID；此约定同时适用于在线追问与离线复制。2a 不改变正文长度、精确值、筛选或来源投影，
+验收见 [2a 验收记录](../dsh-context-stage-two-a-acceptance.md)。
+
 Host adapter 在点击时核验报告、当前 Session 与 Workspace，使用 Harness 公开的 `sessions.scope`、
-`conversation.input.for` 及 `setDraft`，把“【报告上下文】／【报告上下文结束】”包围的文本以两个换行追加到最新草稿。
-保留已有文字、语义引用和图片附件，不自动提交或序列化引用；只有写入成功才关闭报告，沿用原来的焦点恢复。
+`conversation.input.for` 及 `slash/input-insert-text`，按最新 `draftRev` 和原子引用坐标，把
+“【报告上下文】／【报告上下文结束】”包围的文本以两个换行追加到最新草稿。
+保留已有文字、语义引用和图片附件，不自动提交或序列化引用；对话框入口在写入成功后关闭报告并恢复焦点，
+原生 Tab 保持打开，写入失败显示提示，成功重试后清除提示。
 会话或 Workspace 失效、写入失败时保留报告并显示错误，不改投其他会话。编辑模式的 Ask DSH 保持可见与键盘可聚焦，
 但禁用执行并提示“请先保存或取消编辑”。共享 reader 不访问 DSH 服务；打印、无脚本正文不提供此动作。
 验收见 [Ask DSH 接入验收](../plan/2026-09-08-presentation-ask-dsh-acceptance.md)。

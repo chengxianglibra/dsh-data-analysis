@@ -486,9 +486,10 @@ export function installMarivoDisclosure(
           const decision = await next()
           if (decision.kind === 'reject') return decision
           const injections = await controller.prepareStep(decision.messages, signal)
+          signal.throwIfAborted()
           return injections.length === 0
             ? decision
-            : { kind: 'enter', messages: [...decision.messages, ...injections] }
+            : { ...decision, messages: [...decision.messages, ...injections] }
         },
         true,
       ),

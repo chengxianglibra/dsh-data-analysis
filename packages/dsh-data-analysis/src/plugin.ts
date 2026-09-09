@@ -24,6 +24,11 @@ import { type CredentialStore, MarivoCredentialService } from './datasource/serv
 import { registerMarivoRuntimeShellEnvironment } from './datasource/shell-env.ts'
 import { MarivoHelpBridge, type MarivoHelpBridgeSource } from './disclosure/bridge.ts'
 import {
+  installMarivoExecutionGuidance,
+  MARIVO_ANALYSIS_CLOSEOUT_PROMPT,
+  MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
+} from './disclosure/execution-guidance.ts'
+import {
   installMarivoDisclosure,
   type MarivoDisclosureController,
   type MarivoDisclosureOptions,
@@ -50,6 +55,8 @@ import {
   SemanticReferenceUsage,
 } from './semantic-reference/index.ts'
 
+export { MARIVO_DATASOURCE_CREDENTIAL_PROMPT } from './disclosure/execution-guidance.ts'
+
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
 
@@ -65,22 +72,6 @@ export const inject = [
   'systemPrompt',
   'tools',
 ]
-
-export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
-  'DSH Credentials owns Marivo datasource secrets. Never request values in chat, read credential files or ~/.marivo/secrets.toml, or write secrets to scripts, arguments, environment variables, reports or logs.',
-  'Use marivo_datasource_test after datasource changes, credential rotation, connection failures, or explicit user requests. Missing credentials wait for the Web form only while the original call remains alive.',
-  'Execute analysis, metadata inspection and semantic data reads through marivo_python. Declare all exact datasource names this execution may access, including datasources without passwords. Use datasources: [] only when no datasource will be accessed.',
-  'marivo_python waits for all missing credentials and validates the bound Workspace and datasource identities before taking one fresh snapshot and starting user code once. Configured credentials need no extra connection test. Ordinary Shell receives no datasource secret.',
-  'marivo_python installs credential_scope before user code. Create or resume Session/reader objects inside that execution, and close Sessions in finally. Do not replace the resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
-  "Each marivo_python call uses a separate process. Closing releases that process's Session resources; it does not end the analytical question or delete durable Artifacts. Continue the same persistent Session identity across calls.",
-  'Configured credentials do not imply a valid connection or query permissions. Preserve real failures; never automatically replay a script with possible side effects.',
-  'Session lifetime pattern inside one marivo_python call (create/resume using current Runtime Help):\nsession = ...\ntry:\n    ...  # analysis using this Session\nfinally:\n    session.close()',
-].join('\n')
-
-const MARIVO_ANALYSIS_CLOSEOUT_PROMPT = [
-  'Analysis semantics and execution contracts come from the activated Runtime Skill and current Help.',
-  'Before completing any analysis, including a text-only answer, check each user question and each requested comparison scope against its evidence. Keep incomplete branches explicit; preserve comparison sides, direction and denominator. Match conclusion strength to evidence, and reflect limitations in the claims themselves.',
-].join(' ')
 
 const PRESENTATION_PROMPT =
   'Answer ordinary factual questions in text. For charts, tables, reports, dashboards or a readable source presentation, load the dsh-data-analysis-presentation skill and deliver through marivo_present. Existing data needs no prior Marivo skill activation; load the Runtime skills and live Help when new analysis or semantic authoring is needed.'
@@ -187,6 +178,7 @@ export function installMarivoPlugin(
       return { workspaceId: current.id, projection }
     }
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
+    controller.addDisposer(installMarivoExecutionGuidance(agent, controller))
     controller.addDisposer(
       registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
     )

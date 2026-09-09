@@ -122,7 +122,12 @@ function skillCallResponse(): StreamChunk[] {
 
 class ValidationAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
-  #script = [skillCallResponse(), textResponse('validation complete')]
+  #script = [
+    skillCallResponse(),
+    textResponse('validation complete'),
+    textResponse('explicit analysis complete'),
+    textResponse('explicit semantic complete'),
+  ]
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model })
@@ -217,6 +222,39 @@ assert.equal(telemetry.rootHelp[0]?.target, 'analysis')
 assert.ok((telemetry.rootHelp[0]?.helpTextBytes ?? 0) > 0)
 controller.dispose()
 
+const explicitActivations = []
+for (const skill of ['marivo-analysis', 'marivo-semantic'] as const) {
+  const explicitAgent = await activationContext.agentLoop.create(SessionId(`help-only-${skill}`), {
+    provider: 'validation',
+    model: 'validation',
+  })
+  const disclosure = installMarivoDisclosure(activationContext, explicitAgent, helpBridge)
+  try {
+    const before: number = adapter.requests.length
+    explicitAgent.followup(
+      createUserMessage({
+        content: [{ type: 'text', text: `Explicitly activate ${skill}.` }],
+        source: { kind: 'skill-invocation', name: skill, form: 'instructions' },
+      }),
+    )
+    await explicitAgent.whenIdle()
+    assert.equal(adapter.requests.length, before + 1)
+    const request: GenerateOptions = adapter.requests[before]!
+    const tools = request.tools?.map((tool) => tool.name).sort()
+    assert.deepEqual(tools, ['marivo_help', 'ordinary', 'skill'])
+    const messages = JSON.stringify(request.messages)
+    assert.match(messages, /marivo_help_context/)
+    assert.doesNotMatch(
+      messages,
+      /marivo_execution_guidance|DSH Credentials owns|Before completing any analysis/,
+    )
+    assert.deepEqual(disclosure.activeSkills, [skill])
+    explicitActivations.push({ skill, requestCount: 1, tools, executionGuidanceVisible: false })
+  } finally {
+    disclosure.dispose()
+  }
+}
+
 process.stdout.write(
   `${JSON.stringify(
     {
@@ -232,10 +270,11 @@ process.stdout.write(
         invalid: invalid.isError ? 'isError' : 'unexpected-success',
       },
       activation: {
-        requestTools: adapter.requests.map(
-          (request) => request.tools?.map((tool) => tool.name) ?? [],
-        ),
+        requestTools: adapter.requests
+          .slice(0, 2)
+          .map((request) => request.tools?.map((tool) => tool.name) ?? []),
         rootHelp: telemetry.rootHelp.map((item) => item.target),
+        explicitActivations,
       },
     },
     null,

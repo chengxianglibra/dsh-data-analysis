@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { type Browser, chromium, type Page } from 'playwright'
+import { type Browser, chromium, type Locator, type Page } from 'playwright'
 import { presentationEdits } from '../src/presentation/contracts/editing.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
@@ -28,7 +28,7 @@ const server = await startPresentationWebHost(
   python,
   inputs.draftPaths,
   'native-first',
-  { rightTabsAcceptance: true },
+  { rightTabsAcceptance: true, askDshProbe: true },
 )
 let browser: Browser | undefined, page: Page | undefined
 const checks: string[] = [],
@@ -68,6 +68,45 @@ try {
     page!.evaluate(
       () => (window as any).__rightTabs.audit.opens.filter((x: any) => x.automatic).length,
     )
+  const draftSnapshot = () =>
+    page!.evaluate(() => (window as any).__askDshProbe.read('right-tabs-native'))
+  const askCell = async (reader: Locator, cellId = 'bar') => {
+    const cell = reader.locator(`[data-mode=interactive] [data-block-id="${cellId}"]`)
+    await cell.getByRole('button', { name: 'cell 更多操作' }).click()
+    await cell.getByRole('menuitem', { name: 'Ask DSH', exact: true }).click()
+  }
+  const assertAskIdentity = async (
+    reader: Locator,
+    identity: {
+      workspaceId: string
+      reportId: string
+      buildId: string
+    },
+    cellId = 'bar',
+  ) => {
+    const before = await draftSnapshot()
+    const callCount = await page!.evaluate(() => (window as any).__askDshProbe.audit().calls.length)
+    await askCell(reader, cellId)
+    const after = await draftSnapshot()
+    assert.ok(after.draft.startsWith(before.draft), 'preserve existing draft')
+    const lines = after.draft.slice(before.draft.length).split('\n')
+    assert.ok(lines.includes('【报告上下文】'))
+    assert.ok(lines.includes(`Workspace: ${identity.workspaceId}`))
+    assert.ok(lines.includes(`Report ID: ${identity.reportId}`))
+    assert.ok(lines.includes(`Build ID: ${identity.buildId}`))
+    assert.ok(lines.includes(`Cell: ${cellId}`))
+    assert.equal(lines.filter((line: string) => line.startsWith('Build ID: ')).length, 1)
+    assert.deepEqual(after.occurrences, before.occurrences)
+    assert.deepEqual(after.attachmentIds, before.attachmentIds)
+    const calls = await page!.evaluate(
+      (start) => (window as any).__askDshProbe.audit().calls.slice(start),
+      callCount,
+    )
+    assert.equal(
+      calls.some((call: { endpoint: string }) => /submit|send|serialize/i.test(call.endpoint)),
+      false,
+    )
+  }
   await select(server.sessionId)
   await page.locator('[data-presentation-card]').first().waitFor()
   assert.equal(await opens(), 0)
@@ -148,6 +187,8 @@ try {
   await editor.getByRole('button', { name: '关闭分析快照', exact: true }).click()
   await currentPage.getByRole('button', { name: '查看新版本', exact: true }).waitFor()
   assert.equal(await currentPage.getAttribute('data-rt-build'), updated.receipt.buildId)
+  await assertAskIdentity(currentPage, updated.receipt)
+  record('Ask DSH on current with a newer-version hint references the displayed old Build')
   await currentPage.getByRole('button', { name: '查看新版本', exact: true }).click()
   await currentPage.getByRole('heading', { name: '原生 Tab 保存验收', exact: true }).waitFor()
   record('editor save updates directory and announces current; reader changes only after refresh')
@@ -161,6 +202,8 @@ try {
       ).value,
     updated.receipt,
   )
+  await assertAskIdentity(currentPage, saved)
+  record('Ask DSH after current refresh references the new displayed Build')
   await currentPage.getByRole('button', { name: '编辑报告', exact: true }).click()
   await editor.getByRole('textbox', { name: '报告标题', exact: true }).fill('冲突时保留的草稿')
   const savedDocument = JSON.parse(await readFile(saved.files.document.path, 'utf8'))
@@ -221,6 +264,13 @@ try {
   )
   await page.locator(`[data-rt-build="${native.receipt.buildId}"]`).last().waitFor()
   assert.equal(await currentPage.isVisible(), true)
+  const fixedDocument = JSON.parse(await readFile(native.receipt.files.document.path, 'utf8'))
+  await assertAskIdentity(
+    page.locator(`[data-rt-kind=report][data-rt-build="${native.receipt.buildId}"]`).last(),
+    native.receipt,
+    fixedDocument.blocks[0].id,
+  )
+  record('Ask DSH on parallel fixed Build keeps its own Workspace, Report, Build and cell identity')
   await page.screenshot({ path: path.join(outputRoot, 'parallel-builds.png'), fullPage: true })
   record('fixed/current parallel panes; chart exploration survives float/dock remount')
   await page.evaluate((id) => (window as any).__rtHost.sidebar.focus(id), currentTab)
@@ -237,13 +287,20 @@ try {
   await portable.getByRole('heading', { name: saved.title, exact: true }).first().waitFor()
   await offline.close()
   record('download matches displayed Build and works offline')
-  await chart.getByRole('button', { name: 'cell 更多操作' }).click()
-  await chart.getByRole('menuitem', { name: 'Ask DSH', exact: true }).click()
-  const draft = await page.evaluate(
-    () => (window as any).__rtHost.input('right-tabs-native').state.getSnapshot().draft,
+  await assertAskIdentity(currentPage, saved)
+  const draftBeforeFailure = await draftSnapshot()
+  await page.evaluate(() => (window as any).__askDshProbe.failNext('write'))
+  await askCell(currentPage)
+  await currentPage.getByRole('status').filter({ hasText: 'Ask DSH validation:' }).waitFor()
+  assert.deepEqual(await draftSnapshot(), draftBeforeFailure)
+  assert.equal(await currentPage.getAttribute('data-rt-build'), saved.buildId)
+  await assertAskIdentity(currentPage, saved)
+  assert.equal(
+    await currentPage.getByText('Ask DSH validation: draft write failed', { exact: true }).count(),
+    0,
   )
-  assert.match(draft, /报告上下文/)
-  record('Ask DSH appends draft without submitting')
+  record('Ask DSH write failure preserves the native reader and complete draft; retry appends once')
+  record('Ask DSH uses input editing without reference serialization or automatic submission')
   await page.setViewportSize({ width: 430, height: 900 })
   await page.screenshot({ path: path.join(outputRoot, 'narrow-reader.png'), fullPage: true })
   await page.setViewportSize({ width: 1680, height: 1100 })

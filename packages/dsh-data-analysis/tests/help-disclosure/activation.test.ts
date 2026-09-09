@@ -231,6 +231,369 @@ function requestMessages(request: GenerateOptions | undefined): string {
   return JSON.stringify(request?.messages ?? [])
 }
 
+function explicitInvocation(name: 'marivo-analysis' | 'marivo-semantic') {
+  return createUserMessage({
+    content: [{ type: 'text', text: `<skill_content name="${name}">instructions</skill_content>` }],
+    source: { kind: 'skill-invocation', name, form: 'instructions' },
+  })
+}
+
+function installProduction(ctx: Context, environment: MarivoEnvironment) {
+  return installMarivoPlugin(ctx, environment, {
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
+  })
+}
+
+function guidanceMessages(request: GenerateOptions | undefined) {
+  return (
+    request?.messages.filter(
+      (message) =>
+        message.role === 'user' && JSON.stringify(message).includes('<marivo_execution_guidance>'),
+    ) ?? []
+  )
+}
+
+for (const path of ['inbox', 'waterfall'] as const) {
+  for (const skill of ['marivo-analysis', 'marivo-semantic'] as const) {
+    test(`${path} ${skill} keeps the public Help-only installer free of execution rules`, async (t) => {
+      const fixture = await environmentFixture()
+      t.after(fixture.cleanup)
+      const adapter = new MockAdapter([textResponse('ready'), textResponse('continued')])
+      const ctx = await harness(adapter)
+      if (path === 'waterfall') {
+        ctx.on('agent/pre-step', async (_payload, next) => {
+          const decision = await next()
+          return decision.kind === 'enter'
+            ? { ...decision, messages: [...decision.messages, explicitInvocation(skill)] }
+            : decision
+        })
+      }
+      const agent = await createAgent(ctx, `${path}-${skill}-help-only`)
+      const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
+      t.after(() => controller.dispose())
+      if (path === 'inbox') agent.followup(explicitInvocation(skill))
+      else send(agent, '/activate')
+      await agent.whenIdle()
+      send(agent, 'continue')
+      await agent.whenIdle()
+
+      assert.equal(adapter.requests.length, 2)
+      assert.deepEqual(controller.activeSkills, [skill])
+      for (const request of adapter.requests) {
+        assert.deepEqual(requestToolNames(request), ['marivo_help', 'ordinary', 'skill'])
+        assert.match(
+          requestMessages(request),
+          skill === 'marivo-analysis' ? /help-body:analysis/ : /help-body:authoring/,
+        )
+        assert.equal(guidanceMessages(request).length, 0)
+        assert.doesNotMatch(
+          requestMessages(request),
+          /DSH Credentials owns|Before completing any analysis|marivo_python|marivo_datasource_test/,
+        )
+      }
+    })
+
+    test(`${path} ${skill} delivers unchanged execution rules in the first production request`, async (t) => {
+      const fixture = await environmentFixture()
+      t.after(fixture.cleanup)
+      const adapter = new MockAdapter([textResponse('ready'), textResponse('continued')])
+      const ctx = await harness(adapter)
+      if (path === 'waterfall') {
+        ctx.on('agent/pre-step', async ({ messages }, next) => {
+          const decision = await next()
+          return decision.kind === 'enter' &&
+            messages.some((message) =>
+              message.content.some((part) => part.type === 'text' && part.text === '/activate'),
+            )
+            ? { ...decision, messages: [...decision.messages, explicitInvocation(skill)] }
+            : decision
+        })
+      }
+      const agent = await createAgent(ctx, `${path}-${skill}-production`)
+      t.after(installProduction(ctx, fixture.environment))
+      if (path === 'inbox') agent.followup(explicitInvocation(skill))
+      else send(agent, '/activate')
+      await agent.whenIdle()
+
+      assert.equal(adapter.requests.length, 1)
+      const first = requestMessages(adapter.requests[0])
+      assert.match(
+        first,
+        skill === 'marivo-analysis' ? /help-body:analysis/ : /help-body:authoring/,
+      )
+      assert.equal(guidanceMessages(adapter.requests[0]).length, 1)
+      assert.ok(
+        JSON.stringify(guidanceMessages(adapter.requests[0])).includes(
+          JSON.stringify(MARIVO_DATASOURCE_CREDENTIAL_PROMPT).slice(1, -1),
+        ),
+      )
+      assert.equal(first.includes('Before completing any analysis'), skill === 'marivo-analysis')
+
+      send(agent, 'continue')
+      await agent.whenIdle()
+      assert.equal(adapter.requests.length, 2)
+      const system = JSON.stringify(
+        adapter.requests[1]?.messages.filter((message) => message.role === 'system'),
+      )
+      assert.match(system, /DSH Credentials owns/)
+      assert.equal(system.includes('Before completing any analysis'), skill === 'marivo-analysis')
+      assert.equal(
+        guidanceMessages(adapter.requests[1]).length,
+        1,
+        'only the retained first supplement',
+      )
+      assert.deepEqual(requestToolNames(adapter.requests[1]), requestToolNames(adapter.requests[0]))
+    })
+  }
+}
+
+test('explicit dual and incremental activation supplement only newly required rules', async (t) => {
+  for (const together of [true, false]) {
+    const fixture = await environmentFixture()
+    t.after(fixture.cleanup)
+    const adapter = new MockAdapter([
+      textResponse('one'),
+      textResponse('two'),
+      textResponse('three'),
+    ])
+    const ctx = await harness(adapter)
+    const agent = await createAgent(ctx, `explicit-both-${together}`)
+    t.after(installProduction(ctx, fixture.environment))
+    ctx.on('agent/pre-step', async ({ messages }, next) => {
+      const decision = await next()
+      if (decision.kind === 'reject') return decision
+      const text = JSON.stringify(messages)
+      const skills = text.includes('first-activation')
+        ? together
+          ? (['marivo-semantic', 'marivo-analysis'] as const)
+          : (['marivo-semantic'] as const)
+        : (['marivo-analysis'] as const)
+      return { ...decision, messages: [...decision.messages, ...skills.map(explicitInvocation)] }
+    })
+    send(agent, 'first-activation')
+    await agent.whenIdle()
+    send(agent, 'second-activation')
+    await agent.whenIdle()
+    send(agent, 'repeat-activation')
+    await agent.whenIdle()
+    const supplements = JSON.stringify(guidanceMessages(adapter.requests[2]))
+    assert.equal(supplements.match(/DSH Credentials owns/g)?.length, 1)
+    assert.equal(supplements.match(/Before completing any analysis/g)?.length, 1)
+    assert.equal(guidanceMessages(adapter.requests[2]).length, together ? 1 : 2)
+    assert.equal(guidanceMessages(adapter.requests[0]).length, 1)
+    assert.equal(
+      requestMessages(adapter.requests[0]).includes('Before completing any analysis'),
+      together,
+    )
+  }
+})
+
+test('visible focused root Help does not suppress first-activation rules or request-series metadata', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallsResponse([
+      { id: 'focused-root', name: 'marivo_help', args: { targets: ['analysis'] } },
+    ]),
+    textResponse('read'),
+    textResponse('activated'),
+  ])
+  const ctx = await harness(adapter)
+  ctx.on('agent/pre-step', async ({ messages }, next) => {
+    const decision = await next()
+    return decision.kind === 'enter' &&
+      messages.some((message) => message.source.kind === 'skill-invocation')
+      ? { ...decision, startsRequestSeries: true }
+      : decision
+  })
+  const agent = await createAgent(ctx, 'focused-root-then-activate')
+  t.after(installProduction(ctx, fixture.environment))
+  send(agent, 'read root without activating')
+  await agent.whenIdle()
+  assert.doesNotMatch(
+    requestMessages(adapter.requests[1]),
+    /DSH Credentials owns|Before completing any analysis/,
+  )
+  agent.followup(explicitInvocation('marivo-analysis'))
+  await agent.whenIdle()
+  assert.equal(adapter.requests.length, 3)
+  assert.doesNotMatch(requestMessages(adapter.requests[2]), /<marivo_help_context/)
+  assert.equal(requestMessages(adapter.requests[2]).match(/help-body:analysis/g)?.length, 1)
+  assert.equal(guidanceMessages(adapter.requests[2]).length, 1)
+  assert.ok(
+    agent.session
+      .snapshotEvents()
+      .some((event) => event.type === 'request/header' && event.data.reason === 'series'),
+  )
+})
+
+test('rejected invocation leaves ordinary requests unactivated and retry receives its rules', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([textResponse('ordinary'), textResponse('ready')])
+  const ctx = await harness(adapter)
+  let reject = true
+  ctx.on('agent/pre-step', async (_payload, next) => {
+    const decision = await next()
+    return reject ? { kind: 'reject' } : decision
+  })
+  const agent = await createAgent(ctx, 'rejected-explicit')
+  t.after(installProduction(ctx, fixture.environment))
+  agent.followup(explicitInvocation('marivo-analysis'))
+  await agent.whenIdle()
+  assert.equal(adapter.requests.length, 0)
+  await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
+  reject = false
+  send(agent, 'ordinary after rejection')
+  await agent.whenIdle()
+  assert.doesNotMatch(
+    requestMessages(adapter.requests[0]),
+    /DSH Credentials owns|marivo_help_context/,
+  )
+  agent.followup(explicitInvocation('marivo-analysis'))
+  await agent.whenIdle()
+  assert.equal(guidanceMessages(adapter.requests[1]).length, 1)
+})
+
+for (const interruption of ['failure', 'cancel', 'dispose'] as const) {
+  test(`explicit activation ${interruption} admits no partial guidance and can recover`, async (t) => {
+    const fixture = await environmentFixture(
+      interruption === 'failure'
+        ? { failTarget: 'authoring', slowTarget: 'analysis' }
+        : { slowTarget: 'analysis' },
+    )
+    t.after(fixture.cleanup)
+    const adapter = new MockAdapter([textResponse('recovered')])
+    const ctx = await harness(adapter)
+    const agent = await createAgent(ctx, `interrupted-explicit-${interruption}`)
+    let dispose = installProduction(ctx, fixture.environment)
+    t.after(() => dispose())
+    ctx.on('agent/pre-step', async (_payload, next) => {
+      const decision = await next()
+      return decision.kind === 'enter'
+        ? {
+            ...decision,
+            messages: [
+              ...decision.messages,
+              explicitInvocation('marivo-analysis'),
+              explicitInvocation('marivo-semantic'),
+            ],
+          }
+        : decision
+    })
+    send(agent, 'activate both')
+    if (interruption !== 'failure') {
+      const deadline = Date.now() + 5000
+      while (!(await readFile(fixture.recordPath, 'utf8').catch(() => '')).includes('analysis')) {
+        assert.ok(Date.now() < deadline, 'root Help read started')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      if (interruption === 'cancel') agent.cancel({ kind: 'user' })
+      else dispose()
+    }
+    await agent.whenIdle()
+    assert.equal(adapter.requests.length, 0)
+    assert.doesNotMatch(
+      JSON.stringify(agent.session.snapshotEvents()),
+      /<marivo_execution_guidance>|<marivo_help_context/,
+    )
+    await writeFile(
+      fixture.environment.binding.pythonExecutable,
+      FAKE_PYTHON.replace('process.env.FAIL_TARGET === target', 'false').replace(
+        'process.env.SLOW_TARGET === target',
+        'false',
+      ),
+    )
+    if (interruption === 'dispose') dispose = installProduction(ctx, fixture.environment)
+    send(agent, 'retry explicitly')
+    await agent.whenIdle()
+    assert.equal(adapter.requests.length, 1)
+    assert.match(requestMessages(adapter.requests[0]), /DSH Credentials owns/)
+    assert.match(requestMessages(adapter.requests[0]), /Before completing any analysis/)
+    assert.match(requestMessages(adapter.requests[0]), /help-body:analysis/)
+    assert.match(requestMessages(adapter.requests[0]), /help-body:authoring/)
+  })
+}
+
+test('compaction and controller restoration retain system rules without re-appending guidance', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    textResponse('ready'),
+    textResponse('compacted'),
+    textResponse('restored'),
+  ])
+  const ctx = await harness(adapter)
+  const agent = await createAgent(ctx, 'production-guidance-recovery')
+  let dispose = installProduction(ctx, fixture.environment)
+  t.after(() => dispose())
+  agent.followup(explicitInvocation('marivo-analysis'))
+  await agent.whenIdle()
+  for (const event of agent.session.snapshotEvents()) {
+    if (event.type !== 'user/message') continue
+    agent.session.append(
+      'user/message',
+      createUserMessage({
+        content: [{ type: 'text', text: 'compacted summary' }],
+        source: { kind: 'plugin', plugin: 'compaction-fixture' },
+      }),
+      {
+        surfaceOp: { op: 'replace', startSeq: event.seq, endSeq: event.seq },
+        sourceEventSeqs: [event.seq],
+      },
+    )
+  }
+  send(agent, 'continue after compaction')
+  await agent.whenIdle()
+  dispose()
+  dispose = installProduction(ctx, fixture.environment)
+  send(agent, 'continue after restoration')
+  await agent.whenIdle()
+  assert.equal(adapter.requests.length, 3)
+  for (const request of adapter.requests.slice(1)) {
+    assert.equal(guidanceMessages(request).length, 0)
+    assert.match(requestMessages(request), /help-body:analysis/)
+    const system = JSON.stringify(request.messages.filter((message) => message.role === 'system'))
+    assert.match(system, /DSH Credentials owns/)
+    assert.match(system, /Before completing any analysis/)
+  }
+})
+
+test('production ordinary requests and a scope-local skill shadow disclose no execution rules', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    textResponse('ordinary'),
+    toolCallsResponse([
+      { id: 'shadow-activate', name: 'skill', args: { name: 'marivo-analysis' } },
+    ]),
+    textResponse('shadow finished'),
+  ])
+  const ctx = await harness(adapter)
+  const agent = await createAgent(ctx, 'production-shadow')
+  t.after(installProduction(ctx, fixture.environment))
+  agent.ctx.tools.register(fixtureSkillTool())
+  send(agent, 'ordinary question')
+  await agent.whenIdle()
+  send(agent, 'call the local shadow')
+  await agent.whenIdle()
+  assert.equal(adapter.requests.length, 3)
+  for (const request of adapter.requests) {
+    assert.doesNotMatch(
+      requestMessages(request),
+      /DSH Credentials owns|Before completing any analysis|marivo_help_context/,
+    )
+    assert.equal(guidanceMessages(request).length, 0)
+    assert.deepEqual(requestToolNames(request), requestToolNames(adapter.requests[0]))
+  }
+  await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
+})
+
 test('bash and ordinary tools stay visible across user turns without starting Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)

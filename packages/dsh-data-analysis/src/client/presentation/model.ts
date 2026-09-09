@@ -252,6 +252,7 @@ export function followUpContext(
       : savedBlock
   const lines = [
     document.title,
+    `Report ID: ${document.reportId}`,
     `Build ID: ${document.buildId}`,
     `Workspace: ${document.workspaceId}`,
     `Cell: ${block.id}`,

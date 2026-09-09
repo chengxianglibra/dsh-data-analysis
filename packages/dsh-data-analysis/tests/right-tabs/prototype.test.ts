@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import type { SessionEventWindow } from '@deepseek-ai/dsh-api-session-controller/client'
+import { followUpContext } from '../../src/client/presentation/model.ts'
 import { LiveDeliveryObserver } from '../../src/client/right-tabs/live-delivery.ts'
 import {
   canOpenResource,
@@ -234,6 +235,16 @@ test('fixed Build never resolves current; current announces updates until explic
     f.rpc,
   )
   await current.navigate(1)
+  const assertContext = (page: TabPage, buildId: string) => {
+    const document = page.reader.getSnapshot().document!
+    const cell = document.blocks[0]!
+    const lines = followUpContext(document, cell).split('\n')
+    assert.ok(lines.includes(`Workspace: ${base.workspaceId}`))
+    assert.ok(lines.includes(`Report ID: ${base.reportId}`))
+    assert.ok(lines.includes(`Build ID: ${buildId}`))
+    assert.ok(lines.includes(`Cell: ${cell.id}`))
+  }
+  assertContext(current, 'old')
   current.viewMemory.set(`${base.workspaceId}/${base.reportId}/old/interactive`, {
     chosen: { region: 'old-selection' },
     tableSorts: {},
@@ -247,11 +258,15 @@ test('fixed Build never resolves current; current announces updates until explic
   await current.publicationChanged(base.workspaceId, base.reportId)
   assert.equal(current.getSnapshot().newer?.buildId, 'new')
   assert.equal(current.reader.getSnapshot().document?.buildId, 'old')
+  assertContext(current, 'old')
+  assertContext(fixed, 'old')
   assert.equal(current.viewMemory.size, 1, 'a new-version hint preserves the displayed filters')
   await current.refresh()
   assert.equal(current.viewMemory.size, 0, 'switching Build discards old-version filters')
   assert.equal(current.reader.getSnapshot().document?.buildId, 'new')
   assert.equal(fixed.reader.getSnapshot().document?.buildId, 'old')
+  assertContext(current, 'new')
+  assertContext(fixed, 'old')
   current.dispose()
   fixed.dispose()
 })
