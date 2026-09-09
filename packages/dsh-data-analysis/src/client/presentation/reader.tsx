@@ -515,48 +515,50 @@ function ReaderContents({
         </p>
       )}
       <header className="pr-header">
-        {mode === 'interactive' && exportActions && (
-          <ExportMenu
-            actions={exportActions}
-            editing={!!editing}
-            onExport={() => {
-              if (editing || exportActions.disabled || !readerRoot.current) return
-              try {
-                const result = exportCurrentView(readerRoot.current, savedDocument, {
-                  selection,
-                  explorations,
-                  tableSorts,
-                })
-                savePresentationHtml(result.bytes, result.filename)
-                setExportStatus({ message: '已导出当前视图（包含筛选后的全部已保存行）' })
-              } catch (error) {
-                setExportStatus({
-                  error: true,
-                  message: error instanceof Error ? error.message : '导出失败，请重试。',
-                })
-              }
-            }}
-          />
-        )}
+        <div className="pr-title-row">
+          {editing ? (
+            <label className="pr-report-title-editor">
+              报告标题
+              <input
+                aria-label="报告标题"
+                disabled={editing.disabled}
+                value={document.title}
+                onChange={(event) =>
+                  editing.onChange({ ...editing.edits, title: event.target.value })
+                }
+              />
+            </label>
+          ) : (
+            <h1>{document.title}</h1>
+          )}
+          {mode === 'interactive' && exportActions && (
+            <ExportMenu
+              actions={exportActions}
+              editing={!!editing}
+              onExport={() => {
+                if (editing || exportActions.disabled || !readerRoot.current) return
+                try {
+                  const result = exportCurrentView(readerRoot.current, savedDocument, {
+                    selection,
+                    explorations,
+                    tableSorts,
+                  })
+                  savePresentationHtml(result.bytes, result.filename)
+                  setExportStatus({ message: '已导出当前视图（包含筛选后的全部已保存行）' })
+                } catch (error) {
+                  setExportStatus({
+                    error: true,
+                    message: error instanceof Error ? error.message : '导出失败，请重试。',
+                  })
+                }
+              }}
+            />
+          )}
+        </div>
         {exportStatus && (
           <p className="pr-interactive pr-muted" role={exportStatus.error ? 'alert' : 'status'}>
             {exportStatus.message}
           </p>
-        )}
-        {editing ? (
-          <label className="pr-report-title-editor">
-            报告标题
-            <input
-              aria-label="报告标题"
-              disabled={editing.disabled}
-              value={document.title}
-              onChange={(event) =>
-                editing.onChange({ ...editing.edits, title: event.target.value })
-              }
-            />
-          </label>
-        ) : (
-          <h1>{document.title}</h1>
         )}
         <p className="pr-muted">
           生成于 <time dateTime={document.generatedAt}>{snapshotDate(document.generatedAt)}</time>

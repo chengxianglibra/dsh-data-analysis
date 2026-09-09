@@ -63,6 +63,10 @@ export class TabPage {
   async navigate(revision: number, force = false, history = false) {
     if (this.#closed || (this.#revision === revision && !force)) return
     this.#revision = revision
+    if (this.reader.getSnapshot().editing || this.reader.getSnapshot().saving) {
+      this.patch({ notice: '编辑已保留，请先保存或取消编辑。' })
+      return
+    }
     this.#navigation.abort()
     this.#navigation = new AbortController()
     this.#updateRevision++
@@ -92,10 +96,14 @@ export class TabPage {
     else if ('ref' in target) this.semantic.showObject(target.workspaceId, target.ref)
     else this.semantic.show(target.workspaceId)
   }
-  async refresh() {
+  async refresh(
+    confirmDiscard: () => boolean = () => window.confirm('存在未保存的编辑。放弃编辑并刷新报告？'),
+  ) {
     // Incidental refreshes must not undo revocation. Only a checked navigation
     // can reopen an unavailable occurrence.
-    if (this.#state.error) return
+    if (this.#state.error || this.reader.getSnapshot().saving) return
+    if (this.reader.dirty && !confirmDiscard()) return
+    this.reader.cancelEdit()
     await this.navigate(this.#revision, true)
   }
   async publicationChanged(workspaceId: string, reportId?: string) {

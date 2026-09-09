@@ -1,6 +1,6 @@
 # 第一阶段：原生右侧 Tab 实现与验收
 
-此记录保留第一阶段验收证据。后续[报告列表简化](report-catalog-simplification-acceptance.md)已移除侧栏报告入口和目录内历史操作，窄面板保持三列表格；本页对应旧截图与断言不代表调整后的界面。
+此记录保留第一阶段验收证据。报告编辑容器后续迁移至 Tab，见[报告 Tab 优化](report-tab-editing-acceptance.md)。后续[报告列表简化](report-catalog-simplification-acceptance.md)已移除侧栏报告入口和目录内历史操作，窄面板保持三列表格；本页对应旧截图与断言不代表调整后的界面。
 
 ## 交付范围
 

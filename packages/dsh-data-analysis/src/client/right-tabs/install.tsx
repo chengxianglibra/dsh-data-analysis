@@ -13,9 +13,8 @@ import {
 } from '../presentation/delivery.ts'
 import { PresentationDeliveryModel } from '../presentation/delivery-model.ts'
 import { HostPresentationReader } from '../presentation/host-entry.tsx'
-import { deliveryStyles, installPresentation } from '../presentation/install.tsx'
+import { deliveryStyles } from '../presentation/install.tsx'
 import { createPluginRpc } from '../rpc.ts'
-import { installSemanticBrowser } from '../semantic-browser/install.tsx'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
 import { installSemanticReferenceSource } from '../semantic-reference-source.ts'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
@@ -105,43 +104,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     actions.openResource(address, { params })
     if (diagnostics) audit.opens.push({ sessionId, address, automatic })
   }
-  const semantic = (sessionId, workspaceId, ref, actions) =>
-    navigate(sessionId, { kind: 'semantic', workspaceId, ref }, actions)
   installSemanticReferenceSource(ctx, rpc)
-  const fallbackSemantic = installSemanticBrowser(ctx, rpc, { entries: false })
   const credentials = installCredentials(ctx, rpc, { entries: false })
-  const editor = installPresentation(
-    ctx,
-    rpc,
-    (workspaceId, ref) => {
-      const sessionId = ctx.sessions.list.getSnapshot().current
-      if (sessionId && workspaceFor(sessionId) === workspaceId)
-        semantic(sessionId, workspaceId, ref)
-      else fallbackSemantic(workspaceId, ref)
-    },
-    {
-      entries: false,
-      cards: false,
-    },
-  )
-  let savedBuild: string | undefined,
-    wasSaving = false,
-    credentialOpen = false
-  ctx.effect(() =>
-    editor.subscribe(() => {
-      const state = editor.getSnapshot()
-      if (
-        wasSaving &&
-        !state.saving &&
-        !state.editError &&
-        state.document &&
-        state.document.buildId !== savedBuild
-      )
-        changed(state.document.workspaceId, state.document.reportId)
-      wasSaving = !!state.saving
-      savedBuild = state.document?.buildId
-    }),
-  )
+  let credentialOpen = false
   ctx.effect(() =>
     credentials.subscribe(() => {
       const state = credentials.getSnapshot()
@@ -167,19 +132,33 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   )
   const edit = async (page) => {
     check(page.sessionId, page.target.workspaceId, true)
-    if (editor.dirty || editor.getSnapshot().saving) throw new Error('请先保存或取消现有编辑。')
-    await editor.showReport(page.target.workspaceId, page.target.reportId)
+    await page.reader.beginCurrentEdit(() => check(page.sessionId, page.target.workspaceId, true))
+  }
+  const save = async (page, tab) => {
     check(page.sessionId, page.target.workspaceId, true)
-    const state = editor.getSnapshot()
-    if (state.error) throw new Error(state.error)
-    if (state.document?.buildId !== page.reader.getSnapshot().document?.buildId) {
-      editor.close()
-      throw new Error('已有新版本，请刷新 current 后再编辑。')
+    const before = page.reader.getSnapshot().document?.buildId
+    await page.reader.saveEdit()
+    const state = page.reader.getSnapshot()
+    if (state.editError || !state.document || state.document.buildId === before) return
+    check(page.sessionId, page.target.workspaceId)
+    page.patch({ newer: undefined, notice: '' })
+    changed(page.target.workspaceId, page.target.reportId)
+    if (page.target.buildId) {
+      // A Build address remains immutable. Adopt current in the same pane/strip position after save.
+      tab.actions.openResource(
+        resourceAddress({
+          kind: 'report',
+          workspaceId: page.target.workspaceId,
+          reportId: page.target.reportId,
+        }),
+        { replaceTab: tab.id, revealIfOpened: false },
+      )
     }
-    editor.beginEdit()
   }
   const ask = (page, context) => {
     check(page.sessionId, page.target.workspaceId, true)
+    if (page.reader.getSnapshot().editing || page.reader.getSnapshot().saving)
+      throw new Error('请先保存或取消编辑')
     if (!page.reader.getSnapshot().document || page.getSnapshot().error || page.signal.aborted)
       throw new Error('报告已不可用，请重新打开。')
     appendPresentationContext(ctx, page.sessionId, page.target.workspaceId, context)
@@ -250,7 +229,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           kind: 'report',
           workspaceId: page.target.workspaceId,
           reportId: page.target.reportId,
-          ...(buildId ? { buildId } : {}),
+          ...(buildId && buildId !== report.history?.currentBuildId ? { buildId } : {}),
         }),
     }
     const context = data.datasources.find((item) => item.token === data.selected)
@@ -262,6 +241,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         data-rt-kind={page.target.kind}
         data-rt-workspace={page.target.workspaceId}
         data-rt-build={report.document?.buildId}
+        data-rt-current={page.target.kind === 'report' && !page.target.buildId ? 'true' : undefined}
       >
         <style>{catalogStyles + credentialStyles + rightTabStyles}</style>
         {state.error ? (
@@ -288,32 +268,11 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 </p>
               </>
             )}
-            {page.target.kind !== 'reports' && (
+            {page.target.kind !== 'reports' && page.target.kind !== 'report' && (
               <div className="rt-toolbar">
                 <button type="button" onClick={() => void page.refresh()}>
                   刷新页面
                 </button>
-                {page.target.kind === 'report' && (
-                  <>
-                    <strong>
-                      {page.target.buildId
-                        ? `固定版本 · ${page.target.buildId.slice(0, 8)}`
-                        : 'current · 当前版本'}
-                    </strong>
-                    {!page.target.buildId && (
-                      <button
-                        type="button"
-                        disabled={!report.document || report.loading}
-                        onClick={() => act(page, () => edit(page))}
-                      >
-                        编辑报告
-                      </button>
-                    )}
-                    <button type="button" onClick={() => void page.reader.toggleHistory()}>
-                      历史版本
-                    </button>
-                  </>
-                )}
               </div>
             )}
             {state.newer && (
@@ -417,8 +376,53 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             )}
             {page.target.kind === 'report' && (
               <>
+                {report.editing && (
+                  <div className="rt-toolbar" role="toolbar" aria-label="报告编辑操作">
+                    <button
+                      type="button"
+                      disabled={report.saving || !report.editing.undo.length}
+                      onClick={() => page.reader.undoEdit()}
+                    >
+                      撤销
+                    </button>
+                    <button
+                      type="button"
+                      disabled={report.saving || !report.editing.redo.length}
+                      onClick={() => page.reader.redoEdit()}
+                    >
+                      重做
+                    </button>
+                    <button
+                      type="button"
+                      disabled={report.saving}
+                      onClick={() => act(page, () => save(page, tab))}
+                    >
+                      {report.saving ? '正在保存…' : '保存编辑'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={report.saving}
+                      onClick={() => {
+                        if (!page.reader.dirty || window.confirm('存在未保存的编辑。放弃编辑？'))
+                          page.reader.cancelEdit()
+                      }}
+                    >
+                      取消编辑
+                    </button>
+                    <span>{page.reader.dirty ? '有未保存的编辑' : '编辑模式'}</span>
+                  </div>
+                )}
+                {report.editError && <p role="alert">{report.editError}</p>}
+                {report.notice && <p role="status">{report.notice}</p>}
                 {report.loading && <p role="status">正在读取报告…</p>}
-                {report.error && <p role="alert">{report.error}</p>}
+                {report.error && (
+                  <div role="alert">
+                    <p>{report.error}</p>
+                    <button type="button" onClick={() => void page.refresh()}>
+                      重新加载报告
+                    </button>
+                  </div>
+                )}
                 {report.historyOpen && (
                   <ReportHistoryPanel
                     state={report}
@@ -436,7 +440,25 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       downloadFullReport: () => void page.reader.downloadDisplayed(),
                       downloading: report.downloading,
                       disabled: !!report.error || report.loading,
+                      report: {
+                        version: report.document.buildId,
+                        refresh: () => void page.refresh(),
+                        edit: () => act(page, () => edit(page)),
+                        history: () => void page.reader.toggleHistory(),
+                        historical: report.historical || !!state.newer,
+                        historyLoading: report.historyLoading,
+                        busy: report.saving,
+                      },
                     }}
+                    editing={
+                      report.editing
+                        ? {
+                            edits: report.editing.edits,
+                            onChange: (edits) => page.reader.changeEdits(edits),
+                            disabled: report.saving,
+                          }
+                        : undefined
+                    }
                     onOpenSemanticRef={source}
                     onAskDsh={(context) =>
                       act(page, () => {
@@ -542,7 +564,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     return target.kind === 'report' ? (
       <span>
         {report?.document?.title ?? target.reportId.slice(0, 12)} ·{' '}
-        {target.buildId ? target.buildId.slice(0, 8) : 'current'}
+        {report?.document?.buildId.slice(0, 8) ?? target.buildId?.slice(0, 8) ?? '…'}
+        {report?.editing ? ' *' : ''}
       </span>
     ) : (
       <span>{target.ref.path}</span>
@@ -559,7 +582,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         title: (address) => {
           const target = parseResource(address)
           return target.kind === 'report'
-            ? `${target.reportId.slice(0, 12)} · ${target.buildId ? target.buildId.slice(0, 8) : 'current'}`
+            ? `${target.reportId.slice(0, 12)} · ${target.buildId?.slice(0, 8) ?? '…'}`
             : target.ref.path
         },
       }),
@@ -813,5 +836,5 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     indexListeners.clear()
     listeners.clear()
   })
-  return { audit, pages, navigate, changed, editor, credentials, resourceAddress, ask }
+  return { audit, pages, navigate, changed, credentials, resourceAddress, ask }
 }

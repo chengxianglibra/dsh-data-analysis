@@ -56,6 +56,11 @@ test('default client is a valid Cordis effect and registers native resources wit
   const reports = definitions.find((d) => d.kind === 'marivo-report-resource')
   assert.equal(reports.canOpen('dsh-resource://file/workspace/file.txt'), false)
   assert.equal(reports.canOpen('dsh-resource://marivo-report/workspace/report/current'), true)
+  assert.equal(reports.title('dsh-resource://marivo-report/workspace/report/current'), 'report · …')
+  assert.equal(
+    reports.title('dsh-resource://marivo-report/workspace/report/build/123456789'),
+    'report · 12345678',
+  )
   assert.equal(controller.pages.size, 0)
   assert.equal(controller.audit.opens.length, 0)
   assert.equal(controller.audit.changes.length, 0)

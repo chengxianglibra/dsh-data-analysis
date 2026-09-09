@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { ExportIcon } from './icons.tsx'
+import { ExportIcon, MoreIcon } from './icons.tsx'
 
 export interface ReaderExportActions {
   downloadFullReport: () => void
   disabled?: boolean
   downloading?: boolean
+  report?: {
+    version: string
+    refresh: () => void
+    edit: () => void
+    history: () => void
+    historical?: boolean
+    historyLoading?: boolean
+    busy?: boolean
+  }
 }
 
 export function ExportMenu({
@@ -31,7 +40,26 @@ export function ExportMenu({
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [open])
+  const report = actions.report
+  const label = report ? '报告更多操作' : '导出报告'
   const entries = [
+    ...(report
+      ? [
+          { label: '刷新', hint: '', run: report.refresh, disabled: report.busy },
+          {
+            label: '编辑报告',
+            hint: report.historical ? '历史版本只读' : '',
+            run: report.edit,
+            disabled: editing || report.busy || report.historical,
+          },
+          {
+            label: '历史版本',
+            hint: '',
+            run: report.history,
+            disabled: editing || report.busy || report.historyLoading,
+          },
+        ]
+      : []),
     {
       label: '下载完整报告',
       hint: '已保存的 HTML · 默认筛选',
@@ -70,23 +98,28 @@ export function ExportMenu({
             event.key === 'Home'
               ? 0
               : event.key === 'End'
-                ? 1
+                ? entries.length - 1
                 : event.key === 'ArrowUp'
                   ? active <= 0
-                    ? 1
-                    : 0
-                  : (active + 1) % 2
+                    ? entries.length - 1
+                    : active - 1
+                  : (active + 1) % entries.length
           if (!open) setOpen(true)
           else items[focus.current]?.focus()
         }
       }}
     >
+      {report && (
+        <span className="pr-report-version" title={report.version}>
+          {report.version.slice(0, 8)}
+        </span>
+      )}
       <button
         ref={trigger}
         type="button"
         className="pr-icon-button"
-        aria-label="导出报告"
-        title="导出报告"
+        aria-label={label}
+        title={label}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={actions.disabled}
@@ -95,13 +128,14 @@ export function ExportMenu({
           setOpen(!open)
         }}
       >
-        <ExportIcon />
+        {report ? <MoreIcon /> : <ExportIcon />}
       </button>
       {open && (
-        <div className="pr-cell-menu-popup" role="menu" aria-label="导出报告">
-          {entries.map((entry) => (
+        <div className="pr-cell-menu-popup" role="menu" aria-label={label}>
+          {entries.map((entry, index) => (
             <button
               key={entry.label}
+              className={report && index === 3 ? 'pr-menu-divider' : undefined}
               type="button"
               role="menuitem"
               tabIndex={-1}
@@ -115,7 +149,7 @@ export function ExportMenu({
               }}
             >
               {entry.label}
-              <small>{entry.hint}</small>
+              {entry.hint && <small>{entry.hint}</small>}
             </button>
           ))}
         </div>

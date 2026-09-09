@@ -311,3 +311,88 @@ test('history is navigation positioning on a current report, not a second resour
   assert.equal(resourceAddress(page.target as typeof target), resourceAddress(target))
   page.dispose()
 })
+
+test('a fixed address for the current Build is editable, while stale and historical Builds are not', async () => {
+  const f = fixture()
+  const page = new TabPage(
+    's1',
+    {
+      kind: 'report',
+      workspaceId: base.workspaceId,
+      reportId: base.reportId,
+      buildId: 'old',
+    },
+    f.rpc,
+  )
+  await page.navigate(1)
+  assert.equal(page.reader.getSnapshot().historical, false)
+  await page.reader.beginCurrentEdit()
+  assert.ok(page.reader.getSnapshot().editing)
+  page.reader.cancelEdit()
+  f.advance()
+  await assert.rejects(page.reader.beginCurrentEdit(), /已有新版本/)
+  assert.equal(page.reader.getSnapshot().editing, undefined)
+  assert.equal(page.reader.getSnapshot().historical, true)
+  assert.equal(page.reader.getSnapshot().document?.buildId, 'old')
+  await page.refresh()
+  assert.equal(page.reader.getSnapshot().historical, true)
+  page.reader.beginEdit()
+  assert.equal(page.reader.getSnapshot().editing, undefined)
+  page.dispose()
+})
+
+test('tab navigation and rejected refresh preserve draft and undo, accepted refresh discards explicitly', async () => {
+  const f = fixture()
+  const page = new TabPage(
+    's1',
+    {
+      kind: 'report',
+      workspaceId: base.workspaceId,
+      reportId: base.reportId,
+    },
+    f.rpc,
+  )
+  await page.navigate(1)
+  await page.reader.beginCurrentEdit()
+  page.reader.changeEdits({ ...page.reader.getSnapshot().editing!.edits, title: '草稿' })
+  const editing = page.reader.getSnapshot().editing
+  const calls = f.calls.length
+  await page.navigate(2)
+  await page.refresh(() => false)
+  assert.equal(f.calls.length, calls)
+  assert.equal(page.reader.getSnapshot().editing, editing)
+  page.reader.undoEdit()
+  assert.equal(page.reader.dirty, false)
+  page.reader.redoEdit()
+  assert.equal(page.reader.getSnapshot().editing?.edits.title, '草稿')
+  f.advance()
+  await page.refresh(() => true)
+  assert.equal(page.reader.getSnapshot().editing, undefined)
+  assert.equal(page.reader.getSnapshot().document?.buildId, 'new')
+  page.dispose()
+})
+
+test('current pointer check cannot enter editing after foreground validation fails or the tab closes', async () => {
+  const f = fixture()
+  const page = new TabPage(
+    's1',
+    {
+      kind: 'report',
+      workspaceId: base.workspaceId,
+      reportId: base.reportId,
+    },
+    f.rpc,
+  )
+  await page.navigate(1)
+  await assert.rejects(
+    page.reader.beginCurrentEdit(() => {
+      throw new Error('foreground changed')
+    }),
+    /foreground changed/,
+  )
+  assert.equal(page.reader.getSnapshot().editing, undefined)
+  const opening = page.reader.beginCurrentEdit()
+  page.dispose()
+  await opening.catch(() => {})
+  assert.equal(page.reader.getSnapshot().editing, undefined)
+})

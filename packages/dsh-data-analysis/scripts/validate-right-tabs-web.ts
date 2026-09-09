@@ -73,6 +73,10 @@ try {
     page!.evaluate(
       () => (window as any).__rightTabs.audit.opens.filter((x: any) => x.automatic).length,
     )
+  const reportAction = async (reader: Locator, name: string) => {
+    await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
+    await reader.getByRole('menuitem', { name, exact: true }).click()
+  }
   const draftSnapshot = () =>
     page!.evaluate(() => (window as any).__askDshProbe.read('right-tabs-native'))
   const askCell = async (reader: Locator, cellId = 'bar') => {
@@ -228,11 +232,7 @@ try {
   await catalogPage.locator('.pd-report-title').first().waitFor()
   record('report generation Session link navigates to its source conversation')
   await page.locator('[data-rt-kind=reports]').locator('.pd-report-title').first().click()
-  await page
-    .locator('[data-rt-kind=report]')
-    .filter({ hasText: 'current · 当前版本' })
-    .getByRole('button', { name: '历史版本', exact: true })
-    .click()
+  await reportAction(page.locator('[data-rt-kind=report][data-rt-current=true]'), '历史版本')
   await page.locator('[data-rt-kind=report] .pd-history').waitFor()
   record(
     'report title opens the native current page and its history remains available in the reader',
@@ -246,7 +246,7 @@ try {
       }),
     native.receipt,
   )
-  await page.locator('[data-rt-kind=report]').filter({ hasText: 'current · 当前版本' }).waitFor()
+  await page.locator('[data-rt-kind=report][data-rt-current=true]').waitFor()
   const count = await page.evaluate(() => (window as any).__rightTabs.pages.size)
   await page.evaluate(
     ({ workspaceId, reportId }) =>
@@ -272,26 +272,74 @@ try {
   )
   await page
     .locator(`[data-rt-kind=report][data-rt-build="${updated.receipt.buildId}"]`)
-    .filter({ hasText: 'current · 当前版本' })
+    .and(page.locator('[data-rt-current=true]'))
     .waitFor()
   record('explicit reopen current resolves latest Build')
-  const currentPage = page
-    .locator('[data-rt-kind=report]')
-    .filter({ hasText: 'current · 当前版本' })
+  const currentPage = page.locator('[data-rt-kind=report][data-rt-current=true]')
+  const more = currentPage.getByRole('button', { name: '报告更多操作', exact: true })
+  assert.equal(
+    await currentPage.locator('.pr-report-version').innerText(),
+    updated.receipt.buildId.slice(0, 8),
+  )
+  await more.focus()
+  await more.press('ArrowDown')
+  assert.deepEqual(await currentPage.getByRole('menuitem').allTextContents(), [
+    '刷新',
+    '编辑报告',
+    '历史版本',
+    '下载完整报告已保存的 HTML · 默认筛选',
+    '导出当前视图HTML · 保留当前筛选和图形',
+  ])
+  await page.keyboard.press('End')
+  assert.equal(
+    await currentPage
+      .getByRole('menuitem', { name: '导出当前视图', exact: true })
+      .evaluate((el) => el === document.activeElement),
+    true,
+  )
+  await page.keyboard.press('Escape')
+  assert.equal(await more.evaluate((el) => el === document.activeElement), true)
+  await reportAction(currentPage, '历史版本')
+  await currentPage.locator('.pd-version').filter({ hasText: '当前版本' }).click()
+  await currentPage.locator('.pr-report-version').waitFor()
+  await page.screenshot({ path: path.join(outputRoot, 'report-header.png'), fullPage: true })
+  record(
+    'title row has only version and one keyboard-accessible menu; history current selection stays editable',
+  )
   const currentTab = await currentPage.getAttribute('data-rt-tab')
-  await currentPage.getByRole('button', { name: '编辑报告', exact: true }).click()
-  const editor = page.getByRole('dialog', { name: '分析快照', exact: true })
+  await reportAction(currentPage, '编辑报告')
+  const editor = currentPage
+  assert.equal(await page.getByRole('dialog', { name: '分析快照', exact: true }).count(), 0)
   await editor.getByRole('textbox', { name: '报告标题', exact: true }).fill('原生 Tab 保存验收')
+  await page.evaluate((id) => (window as any).__rtHost.sidebar.float(id), currentTab)
+  await editor.getByRole('textbox', { name: '报告标题', exact: true }).waitFor()
+  assert.equal(
+    await editor.getByRole('textbox', { name: '报告标题', exact: true }).inputValue(),
+    '原生 Tab 保存验收',
+  )
+  const editPane = await editor.getAttribute('data-rt-panel')
+  await page.evaluate((id) => (window as any).__rtHost.sidebar.dock(id), editPane)
+  await editor.getByRole('textbox', { name: '报告标题', exact: true }).waitFor()
+  await editor.getByRole('button', { name: '撤销', exact: true }).click()
+  assert.notEqual(
+    await editor.getByRole('textbox', { name: '报告标题', exact: true }).inputValue(),
+    '原生 Tab 保存验收',
+  )
+  await editor.getByRole('button', { name: '重做', exact: true }).click()
+  await page.screenshot({ path: path.join(outputRoot, 'tab-editor.png'), fullPage: true })
+  const rejectRefresh = (dialog: any) => void dialog.dismiss()
+  page.once('dialog', rejectRefresh)
+  await reportAction(editor, '刷新')
+  assert.equal(
+    await editor.getByRole('textbox', { name: '报告标题', exact: true }).inputValue(),
+    '原生 Tab 保存验收',
+  )
   await editor.getByRole('button', { name: '保存编辑', exact: true }).click()
   await editor.getByRole('heading', { name: '原生 Tab 保存验收', exact: true }).waitFor()
-  await editor.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-  await currentPage.getByRole('button', { name: '查看新版本', exact: true }).waitFor()
-  assert.equal(await currentPage.getAttribute('data-rt-build'), updated.receipt.buildId)
-  await assertAskIdentity(currentPage, updated.receipt)
-  record('Ask DSH on current with a newer-version hint references the displayed old Build')
-  await currentPage.getByRole('button', { name: '查看新版本', exact: true }).click()
-  await currentPage.getByRole('heading', { name: '原生 Tab 保存验收', exact: true }).waitFor()
-  record('editor save updates directory and announces current; reader changes only after refresh')
+  assert.equal(await editor.getAttribute('data-rt-tab'), currentTab)
+  record(
+    'editing, undo/redo and refresh protection stay in the tab across float/dock; save displays the new Build',
+  )
   const saved = await page.evaluate(
     async ({ workspaceId, reportId }) =>
       (
@@ -304,7 +352,7 @@ try {
   )
   await assertAskIdentity(currentPage, saved)
   record('Ask DSH after current refresh references the new displayed Build')
-  await currentPage.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(currentPage, '编辑报告')
   await editor.getByRole('textbox', { name: '报告标题', exact: true }).fill('冲突时保留的草稿')
   const savedDocument = JSON.parse(await readFile(saved.files.document.path, 'utf8'))
   const externalEdits = { ...presentationEdits(savedDocument), title: '另一窗口保存' }
@@ -326,8 +374,8 @@ try {
     await editor.getByRole('textbox', { name: '报告标题', exact: true }).inputValue(),
     '冲突时保留的草稿',
   )
+  page.once('dialog', (dialog) => void dialog.accept())
   await editor.getByRole('button', { name: '取消编辑', exact: true }).click()
-  await editor.getByRole('button', { name: '关闭分析快照', exact: true }).click()
   record('save conflict preserves draft; cancel returns to original current reader')
   const chart = currentPage.locator('[data-mode=interactive] [data-block-id=bar]')
   await chart.getByRole('button', { name: 'cell 更多操作' }).click()
@@ -375,7 +423,7 @@ try {
   record('fixed/current parallel panes; chart exploration survives float/dock remount')
   await page.evaluate((id) => (window as any).__rtHost.sidebar.focus(id), currentTab)
   const downloadEvent = page.waitForEvent('download')
-  await currentPage.getByRole('button', { name: '导出报告', exact: true }).click()
+  await currentPage.getByRole('button', { name: '报告更多操作', exact: true }).click()
   await currentPage.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const download = await downloadEvent,
     downloadPath = path.join(outputRoot, 'report.html')
@@ -649,9 +697,7 @@ try {
       }),
     ptc.receipt,
   )
-  const backgroundCurrent = page
-    .locator('[data-rt-kind=report]')
-    .filter({ hasText: 'current · 当前版本' })
+  const backgroundCurrent = page.locator('[data-rt-kind=report][data-rt-current=true]')
   await backgroundCurrent.locator('[data-presentation-reader]').first().waitFor()
   const beforeBackgroundTab = await backgroundCurrent.getAttribute('data-rt-tab')
   const backgroundUpdate = await run('ptc')
@@ -683,6 +729,51 @@ try {
   })
   record(
     'background delivery refreshes Workspace catalog and hints current without switching Build or focus',
+  )
+  await page.evaluate(
+    (receipt) =>
+      (window as any).__rightTabs.navigate('right-tabs-native', {
+        kind: 'report',
+        workspaceId: receipt.workspaceId,
+        reportId: receipt.reportId,
+        buildId: receipt.buildId,
+      }),
+    backgroundUpdate.receipt,
+  )
+  const latestFixed = page.locator(
+    `[data-rt-kind=report][data-rt-build="${backgroundUpdate.receipt.buildId}"]`,
+  )
+  await latestFixed.locator('.pr-report-version').waitFor()
+  await reportAction(latestFixed, '编辑报告')
+  await latestFixed.getByRole('textbox', { name: '报告标题', exact: true }).fill('关闭即丢弃的草稿')
+  const discardedTab = await latestFixed.getAttribute('data-rt-tab')
+  await page.evaluate((id) => (window as any).__rtHost.sidebar.close(id), discardedTab)
+  await page.evaluate(
+    (receipt) =>
+      (window as any).__rightTabs.navigate('right-tabs-native', {
+        kind: 'report',
+        workspaceId: receipt.workspaceId,
+        reportId: receipt.reportId,
+        buildId: receipt.buildId,
+      }),
+    backgroundUpdate.receipt,
+  )
+  await latestFixed.locator('.pr-report-version').waitFor()
+  assert.equal(await latestFixed.getByRole('textbox', { name: '报告标题', exact: true }).count(), 0)
+  const fixedPane = await latestFixed.getAttribute('data-rt-panel')
+  await reportAction(latestFixed, '编辑报告')
+  await latestFixed
+    .getByRole('textbox', { name: '报告标题', exact: true })
+    .fill('固定地址当前版本保存验收')
+  await latestFixed.getByRole('button', { name: '保存编辑', exact: true }).click()
+  const promoted = page
+    .locator('[data-rt-kind=report][data-rt-current=true]')
+    .filter({ has: page.getByRole('heading', { name: '固定地址当前版本保存验收', exact: true }) })
+  await promoted.waitFor()
+  assert.equal(await promoted.getAttribute('data-rt-panel'), fixedPane)
+  assert.equal(await page.getByRole('dialog', { name: '分析快照', exact: true }).count(), 0)
+  record(
+    'closing discards a tab draft; editing a current Build address saves in place and adopts canonical current navigation',
   )
   const cold = await run('cold')
   await page.waitForFunction(

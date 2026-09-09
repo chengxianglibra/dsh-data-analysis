@@ -28,7 +28,7 @@ export const PRESENTATION_STYLES = `
 .pr-reader summary:hover { color:var(--pr-text) }
 .pr-reader details[open]>summary { margin-bottom:8px }
 .pr-muted { color:var(--pr-muted); font-size:13px }
-.pr-export-menu{float:right;position:relative;margin-left:16px;z-index:6}.pr-export-menu small{display:block;font-size:12px;color:var(--pr-muted);margin-top:3px}.pr-export-menu .pr-cell-menu-popup{min-width:240px}.pr-export-menu .pr-icon-button{width:34px;height:34px}
+.pr-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.pr-title-row>h1,.pr-title-row>.pr-report-title-editor{flex:1;min-width:0;margin-top:0}.pr-export-menu{display:flex;align-items:center;gap:8px;position:relative;flex:none;z-index:6}.pr-report-version{font:12px/34px ui-monospace,monospace;color:var(--pr-muted)}.pr-export-menu .pr-menu-divider{border-top:1px solid var(--pr-border);margin-top:4px;padding-top:10px}.pr-export-menu small{display:block;font-size:12px;color:var(--pr-muted);margin-top:3px}.pr-export-menu .pr-cell-menu-popup{min-width:240px}.pr-export-menu .pr-icon-button{width:34px;height:34px}
 .pr-header { padding-bottom:28px; margin-bottom:32px; border-bottom:1px solid var(--pr-border) }
 .pr-blocks { display:flex; flex-direction:column; gap:32px }
 .pr-block { min-width:0; position:relative }

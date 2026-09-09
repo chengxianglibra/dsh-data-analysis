@@ -328,7 +328,7 @@ export class PresentationDeliveryModel {
         version = history.versions.find((item) => item.receipt.buildId === buildId)
         if (!version) throw new Error('report-build-not-found')
         if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-        this.#publish({ history, historical: true })
+        this.#publish({ history, historical: buildId !== history.currentBuildId })
       }
       const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
       const document = await this.#document(target, receipt, flight.signal)
@@ -349,6 +349,27 @@ export class PresentationDeliveryModel {
       JSON.stringify(this.#state.editing.edits) !==
         JSON.stringify(presentationEdits(this.#state.document))
     )
+  }
+  /** Recheck the current pointer without replacing the displayed document or its view state. */
+  async beginCurrentEdit(validate: () => void = () => {}) {
+    const { document, reportTarget, delivery } = this.#state
+    const target = reportTarget ?? delivery
+    if (!document || !target || this.#state.loading || this.#state.editing || this.#state.saving)
+      return
+    const flight = new AbortController(),
+      generation = this.#generation
+    this.#flights.add(flight)
+    try {
+      const current = await this.#resolve(target, flight.signal)
+      if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+      validate()
+      const historical = document.buildId !== current.buildId
+      this.#publish({ historical })
+      if (historical) throw new Error('已有新版本，请打开当前版本后再编辑。')
+      this.beginEdit()
+    } finally {
+      this.#flights.delete(flight)
+    }
   }
   beginEdit() {
     if (

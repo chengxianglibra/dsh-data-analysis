@@ -10,7 +10,7 @@ S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `Presentatio
 [Host entry](../../packages/dsh-data-analysis/src/client/presentation/host-entry.tsx)、
 [portable entry](../../packages/dsh-data-analysis/src/client/presentation/portable-entry.tsx)和
 [内部 builder](../../packages/dsh-data-analysis/src/presentation/build/index.ts)。
-`client` 导出 `HostPresentationReader`；S4 的[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、原生 Tab 打开与下载；编辑及无 Session 阅读保留原容器。
+`client` 导出 `HostPresentationReader`；S4 的[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、原生 Tab 打开与下载；默认 client 的阅读与编辑都在原生 Tab 内，不挂载报告弹出页。
 
 ## 共同的数据解释
 
@@ -77,7 +77,16 @@ Host 提供编辑、保存、取消和保存前的撤销／重做；独立草稿
 source cell 只能移动或删除，引用和来源事实不可编辑。不新增 cell、任意布局或数据编辑。
 
 删除立即更新草稿并可撤销；全部删空可保存，显示空报告提示，底层 datasets、sources、代码和 diagnostics 保留。
-首次 Agent Draft 仍至少一个 block。保存成功清除编辑历史，失败保留草稿；主动关闭有未保存修改时提示放弃或继续。
+首次 Agent Draft 仍至少一个 block。保存成功清除编辑历史，失败保留草稿。
+Tab occurrence 拥有草稿、撤销／重做和保存状态，切换 Tab、Session、浮动／停靠重挂载不丢失草稿；重复打开编辑中的
+资源只聚焦并保留编辑。刷新或取消修改前确认放弃，关闭 Tab 直接丢弃草稿，不拦截 Harness 的原生关闭行为。
+
+报告标题行右侧展示实际 `buildId` 的前八位，完整标识放在 tooltip；三点菜单集中刷新、编辑报告、历史版本、
+下载完整报告和导出当前视图。编辑时直接显示保存、取消、撤销和重做，禁用历史切换、Ask DSH 和当前视图导出。
+历史列表选取当前版本导航到 current；固定 Build 若仍为当前版本也可原位编辑。进入编辑重新核验 current，保存沿用
+`expectedBuildId` 并发检查。current Tab 保存后直接展示新 Build；固定地址 Tab 保存后通过 Harness 的公开
+`replaceTab` 在原面板、原位置接续 current，避免旧 Build 地址展示新 Build。真正历史版本仍只读。
+验收见[报告 Tab 优化](../report-tab-editing-acceptance.md)。
 保存协议和并发边界见[展示交付](presentation-delivery.md#rpc编辑与当前指针)。portable 不包含编辑／宿主保存入口。
 
 ## 可选全局筛选与动态 KPI
