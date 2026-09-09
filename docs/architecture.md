@@ -39,7 +39,7 @@ flowchart LR
 [新版重构设计](dsh-alpha-refactor-design.md)的第一阶段已接入默认 client：数据源、语义层、报告目录及正文
 使用原生右侧 Tab。页面状态由 Session/Tab occurrence 拥有，导航使用完整 Workspace 与资源身份；
 当前 Session 的新交付独立观察公开 eventSource，卡片不触发自动打开。current 只提示新版本，刷新后切换；
-固定 Build 阅读保持不变。报告编辑在所属 Tab 内进行，数据源写操作继续使用原容器。报告列表从 Workspace 头部入口访问，
+固定 Build 阅读保持不变。报告编辑在所属 Tab 内进行，数据源新增、凭证配置和连接测试也在所属 Tab 内进行。报告列表从 Workspace 头部入口访问，
 左下角不再保留报告快捷入口；列表仅显示报告标题、生成对话和更新时间，输入即筛选，固定按最近更新排序。
 列表标题右侧提供唯一刷新入口；报告正文标题右侧只显示短 Build 版本号和三点菜单，集中刷新、编辑、历史和下载。
 当前版本的编辑能力依据实际 current 指针核验，不依据地址是否含 Build；保存后在原位置展示新版本，详情见[报告 Tab 优化验收](report-tab-editing-acceptance.md)。
@@ -142,8 +142,8 @@ spill 前执行 exact-value 脱敏。access Tool 与跨调用 lease 已删除。
 保存代码记录三个阶段及已知终态，不推断查询进度、Artifact 保存状态或远端查询是否取消；代码记录失败不改变
 Python 成功事实。字段与错误边界见[超时与执行反馈](modules/datasource-credentials.md#超时与执行反馈)。
 
-“语义层”和“数据源与凭证”通过 `conversation.session.header.actions` 显示在会话标题旁，以所属会话的
-`workspaceId` 打开 `shell.overlay` 面板，面板内保留显式 Workspace 选择。入口随 Harness 的会话标题显示，
+“语义层”和“数据源”通过 `conversation.session.header.actions` 显示在会话标题旁，以所属会话的
+`workspaceId` 打开原生右侧 Tab。数据源页将列表横排在上方，刷新图标与标题对齐，完整配置直接在 Tab 内完成。入口随 Harness 的会话标题显示，
 无会话或空会话时不显示，侧栏底部不保留入口；管理与浏览均不要求 live Agent。
 
 报告 reader 通过 Host 注入的导航回调将来源中的公开语义引用连接到同一 Workspace 的语义层面板，

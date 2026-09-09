@@ -2,7 +2,7 @@
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
-import { DatasourceProperties, installCredentials, TestResult } from '../credentials/install.tsx'
+import { CredentialIcon, CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
 import { appendPresentationContext } from '../presentation/ask-dsh.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
@@ -105,29 +105,26 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     if (diagnostics) audit.opens.push({ sessionId, address, automatic })
   }
   installSemanticReferenceSource(ctx, rpc)
-  const credentials = installCredentials(ctx, rpc, { entries: false })
-  let credentialOpen = false
+  const credentials = installCredentials(ctx, rpc)
   ctx.effect(() =>
     credentials.subscribe(() => {
       const state = credentials.getSnapshot()
-      if (credentialOpen && !state.open)
-        for (const page of pages.values())
-          if (page.target.kind === 'datasources' && page.target.workspaceId === state.workspaceId)
-            try {
-              if (page.getSnapshot().error || page.signal?.aborted) continue
-              check(page.sessionId, page.target.workspaceId)
-              if (
-                ctx.workspaces.list
-                  .getSnapshot()
-                  .items.find((w) => w.workspaceId === page.target.workspaceId)?.path !==
-                page.workspacePath
-              )
-                throw new Error('workspace-changed')
-              void page.refresh()
-            } catch {
-              page.unavailable('Workspace 已变化或不可用，请重新打开页面。')
-            }
-      credentialOpen = state.open
+      for (const page of pages.values())
+        if (page.target.kind === 'datasources' && !page.getSnapshot().error)
+          page.datasources.syncRequests(page.sessionId, state)
+      if (!state.open || !state.requestId) return
+      const request = state.requests.find((item) => item.id === state.requestId)
+      credentials.close()
+      if (!request) return
+      try {
+        const workspaceId = workspaceFor(request.sessionId)
+        check(request.sessionId, workspaceId, true)
+        ctx.sidebarRight.openTab(directoryKind('datasources'), {
+          params: { workspaceId, requestId: request.id },
+        })
+      } catch (error) {
+        fail(error)
+      }
     }),
   )
   const edit = async (page) => {
@@ -182,7 +179,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       page = undefined
     }
     if (!page) {
-      page = new TabPage(sessionId, target, rpc)
+      page = new TabPage(sessionId, target, rpc, tab.id)
       page.workspacePath = ctx.workspaces.list
         .getSnapshot()
         .items.find((w) => w.workspaceId === target.workspaceId)?.path
@@ -232,7 +229,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           ...(buildId && buildId !== report.history?.currentBuildId ? { buildId } : {}),
         }),
     }
-    const context = data.datasources.find((item) => item.token === data.selected)
     return (
       <section
         className="rt-page"
@@ -252,6 +248,18 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               <>
                 <div className="rt-heading-row">
                   <h2 className="rt-heading">{labels[page.target.kind]}</h2>
+                  {page.target.kind === 'datasources' && (
+                    <button
+                      className="rt-refresh"
+                      type="button"
+                      aria-label="刷新数据源"
+                      title="刷新数据源"
+                      disabled={data.loading}
+                      onClick={() => void page.refresh()}
+                    >
+                      <CredentialIcon name="refresh" size={18} />
+                    </button>
+                  )}
                   {page.target.kind === 'reports' && (
                     <button
                       type="button"
@@ -268,7 +276,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 </p>
               </>
             )}
-            {page.target.kind !== 'reports' && page.target.kind !== 'report' && (
+            {page.target.kind === 'semantic' && (
               <div className="rt-toolbar">
                 <button type="button" onClick={() => void page.refresh()}>
                   刷新页面
@@ -327,52 +335,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               />
             )}
             {page.target.kind === 'datasources' && (
-              <div className="rt-datasource">
-                <p className="rt-caption">
-                  查看连接属性与凭证配置状态。连接测试和配置修改需要显式操作。
-                </p>
-                {data.loading && <p role="status">正在读取数据源…</p>}
-                {data.error && <p role="alert">{data.error}</p>}
-                {!data.loading && !data.error && !data.datasources.length && (
-                  <p role="status">此 Workspace 暂无数据源，请打开配置创建数据源。</p>
-                )}
-                <select
-                  disabled={data.loading || !data.datasources.length}
-                  aria-label="选择数据源"
-                  value={data.selected}
-                  onChange={(e) => page.datasources.select(e.target.value)}
-                >
-                  {data.datasources.map((item) => (
-                    <option key={item.token} value={item.token}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-                {context && (
-                  <>
-                    <DatasourceProperties context={context} />
-                    <p>
-                      凭证配置：
-                      {context.refs.filter((ref) => context.credentials[ref]?.configured).length}/
-                      {context.refs.length}
-                    </p>
-                    {context.lastTest && (
-                      <TestResult result={context.lastTest.result} stale={context.lastTest.stale} />
-                    )}
-                  </>
-                )}
-                <button
-                  type="button"
-                  onClick={() =>
-                    act(page, () => {
-                      check(page.sessionId, page.target.workspaceId, true)
-                      credentials.show(page.target.workspaceId, data.selected)
-                    })
-                  }
-                >
-                  配置数据源与凭证
-                </button>
-              </div>
+              <CredentialPanel model={page.datasources} workspaces={workspaces} />
             )}
             {page.target.kind === 'report' && (
               <>
@@ -494,7 +457,16 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         const owned = acquire(sessionId, tab, target)
         setPage(owned)
         setError('')
-        void owned.navigate(tab.navigation.revision, false, tab.navigation.params?.history === true)
+        void owned
+          .navigate(tab.navigation.revision, false, tab.navigation.params?.history === true)
+          .then(() => {
+            if (target.kind !== 'datasources' || owned.getSnapshot().error || tab.signal.aborted)
+              return
+            owned.datasources.syncRequests(sessionId, credentials.getSnapshot())
+            const requestId = tab.navigation.params?.requestId
+            if (owned.datasources.getSnapshot().requests.some((item) => item.id === requestId))
+              owned.datasources.openRequest(requestId)
+          })
         pageIndex.publish()
       } catch (error) {
         setPage(undefined)

@@ -134,7 +134,12 @@ const bundle = await build({
   jsx: 'automatic',
   write: false,
 })
-const module = { exports: {} as { installCredentials: (ctx: any, rpc: any) => void } }
+const module = {
+  exports: {} as {
+    installCredentials: (ctx: any, rpc: any) => any
+    CredentialPanel: React.ComponentType<any>
+  },
+}
 vm.runInNewContext(bundle.outputFiles[0]!.text, {
   module,
   exports: module.exports,
@@ -154,7 +159,7 @@ vm.runInNewContext(bundle.outputFiles[0]!.text, {
 async function renderManagement(t: TestContext, view: CredentialContextView) {
   const seats: { name: string; id: string; component: (props: any) => React.ReactElement<any> }[] =
     []
-  module.exports.installCredentials(
+  const model = module.exports.installCredentials(
     {
       effect: (install: () => () => void) => t.after(install()),
       on() {},
@@ -173,19 +178,13 @@ async function renderManagement(t: TestContext, view: CredentialContextView) {
       },
     },
   )
-  const props = {
-    sessionId: 'session',
-    useSessions: (select: any) => select({ current: 'session' }),
-    useWorkspaces: (select: any) =>
-      select({ items: [{ workspaceId: 'workspace', sessionIds: ['session'] }] }),
-  }
-  const entry = seats.find(
-    (seat) => seat.id === 'marivo-credentials' && seat.name.endsWith('.actions'),
-  )!
-  entry.component(props).props.onClick()
-  await new Promise<void>((resolve) => setImmediate(resolve))
-  const overlay = seats.find((seat) => seat.name === 'shell.overlay')!
-  return renderToStaticMarkup(React.createElement(overlay.component, props))
+  await model.show('workspace')
+  return renderToStaticMarkup(
+    React.createElement(module.exports.CredentialPanel, {
+      model,
+      workspaces: [{ workspaceId: 'workspace', sessionIds: ['session'] }],
+    }),
+  )
 }
 
 test('installed management UI renders typed properties as read-only text beside credential controls', async (t) => {

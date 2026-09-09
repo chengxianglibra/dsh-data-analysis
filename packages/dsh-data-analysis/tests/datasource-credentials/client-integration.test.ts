@@ -100,7 +100,8 @@ test('bundle installs constant management and pending entries, with no historica
     readFile(new URL('../../lib/client.js', new URL('../', import.meta.url)), 'utf8'),
   )
   assert.match(bundle, /marivo-credential-requests/)
-  assert.match(bundle, /marivo-credentials/)
+  assert.match(bundle, /marivo-credential-observer/)
+  assert.doesNotMatch(bundle, /mc-dialog/)
   assert.doesNotMatch(
     bundle,
     /shouldAutoOpen|CredentialDialogController|MarivoDatasourceCredentialToolView/,

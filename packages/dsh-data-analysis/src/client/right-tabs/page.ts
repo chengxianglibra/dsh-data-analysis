@@ -31,7 +31,7 @@ export class TabPage {
   #state: PageState = {}
   #listeners = new Set<() => void>()
   #closed = false
-  constructor(sessionId: string, target: PageTarget, rpc: PresentationRpc) {
+  constructor(sessionId: string, target: PageTarget, rpc: PresentationRpc, occurrenceId?: string) {
     this.sessionId = sessionId
     this.target = target
     this.#rpc = {
@@ -46,7 +46,22 @@ export class TabPage {
     this.reader = new PresentationDeliveryModel(this.#rpc)
     this.catalog = new ReportCatalogModel(this.#rpc)
     this.semantic = new SemanticBrowserModel(this.#rpc)
-    this.datasources = new CredentialClientModel(this.#rpc)
+    let storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined
+    try {
+      if (occurrenceId) {
+        const saved = window.sessionStorage
+        const key = `marivo-credential-operation:${JSON.stringify([sessionId, occurrenceId])}`
+        storage = {
+          getItem: () => saved.getItem(key),
+          setItem: (_key, value) => saved.setItem(key, value),
+          removeItem: () => saved.removeItem(key),
+        }
+      }
+    } catch {
+      // Host query handles remain recoverable in memory when storage is unavailable.
+    }
+    this.datasources = new CredentialClientModel(this.#rpc, storage)
+    if (target.kind === 'datasources') this.datasources.recover()
   }
   getSnapshot = () => this.#state
   subscribe = (listener: () => void) => {
@@ -67,8 +82,10 @@ export class TabPage {
       this.patch({ notice: '编辑已保留，请先保存或取消编辑。' })
       return
     }
-    this.#navigation.abort()
-    this.#navigation = new AbortController()
+    if (this.target.kind !== 'datasources' || this.#navigation.signal.aborted) {
+      this.#navigation.abort()
+      this.#navigation = new AbortController()
+    }
     this.#updateRevision++
     this.patch({ error: undefined, newer: undefined, notice: undefined })
     const target = this.target
@@ -91,8 +108,7 @@ export class TabPage {
           )
             this.viewMemory.delete(key)
     } else if (target.kind === 'reports') this.catalog.show(target.workspaceId)
-    else if (target.kind === 'datasources')
-      await this.datasources.selectWorkspace(target.workspaceId)
+    else if (target.kind === 'datasources') await this.datasources.show(target.workspaceId)
     else if ('ref' in target) this.semantic.showObject(target.workspaceId, target.ref)
     else this.semantic.show(target.workspaceId)
   }
@@ -146,7 +162,7 @@ export class TabPage {
     this.reader.unavailable(message)
     this.catalog.reset()
     this.semantic.unavailable()
-    this.datasources.close()
+    this.datasources.suspend()
     this.viewMemory.clear()
     this.patch({ error: message, newer: undefined })
   }

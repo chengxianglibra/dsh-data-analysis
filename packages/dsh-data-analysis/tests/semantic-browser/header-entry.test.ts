@@ -94,15 +94,15 @@ function findButton(node) {
   return undefined
 }
 
-test('management entries only occupy the session header and address its Workspace, not global selection', async (t) => {
+test('legacy semantic entry addresses its Session Workspace; credentials install only the pending entry', async (t) => {
   const f = setup(t)
   assert.equal(f.seats.filter((entry) => entry.name === 'sidebar.footer.action').length, 0)
   const header = f.seats.filter((entry) => entry.name === 'conversation.session.header.actions')
   assert.deepEqual(
     header.sort((a, b) => a.order - b.order).map((entry) => entry.id),
-    ['marivo-credentials', 'marivo-semantic-browser', 'marivo-credential-requests'],
+    ['marivo-semantic-browser', 'marivo-credential-requests'],
   )
-  for (const id of ['marivo-semantic-browser', 'marivo-credentials']) {
+  for (const id of ['marivo-semantic-browser']) {
     const button = f.render(id, 'session-b')
     assert.equal(button.props.disabled, false)
     button.props.onClick()
@@ -113,9 +113,9 @@ test('management entries only occupy the session header and address its Workspac
   await new Promise((resolve) => setImmediate(resolve))
 })
 
-test('unbound and removed session Workspaces disable both entries without reading a different project', (t) => {
+test('unbound and removed session Workspaces disable the legacy semantic entry without reading a different project', (t) => {
   const f = setup(t)
-  for (const id of ['marivo-semantic-browser', 'marivo-credentials']) {
+  for (const id of ['marivo-semantic-browser']) {
     for (const button of [f.render(id, 'unbound'), f.render(id, 'session-b', [])]) {
       assert.equal(button.props.disabled, true)
       assert.match(button.props.title, /Workspace|工作区/)

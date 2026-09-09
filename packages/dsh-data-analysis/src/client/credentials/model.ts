@@ -95,6 +95,7 @@ export class CredentialClientModel {
   readonly #storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
   readonly #listeners = new Set<() => void>()
   readonly #lifetime = new AbortController()
+  #suspended = false
   #watch?: AbortController
   #read?: AbortController
   #refresh?: AbortController
@@ -130,9 +131,11 @@ export class CredentialClientModel {
     if (!result.ok) throw new CredentialResponseError(result.error?.message ?? '')
     return result.value
   }
-  show(workspaceId: string, selectedToken?: string): void {
+  async show(workspaceId: string, selectedToken?: string): Promise<void> {
+    this.#suspended = false
     this.#patch({ open: true, requestId: '' })
-    void this.selectWorkspace(workspaceId, selectedToken)
+    for (const entry of this.#operations.values()) void this.#query(entry.handle)
+    await this.selectWorkspace(workspaceId, selectedToken)
   }
   async authoring(
     workspaceId: string,
@@ -179,6 +182,12 @@ export class CredentialClientModel {
     this.#read?.abort()
     this.#refresh?.abort()
     this.#patch({ open: false, loading: false })
+  }
+  suspend(): void {
+    this.#suspended = true
+    for (const controller of this.#polls.values()) controller.abort()
+    this.#polls.clear()
+    this.close()
   }
   openRequest(id: string): void {
     this.#read?.abort()
@@ -232,6 +241,11 @@ export class CredentialClientModel {
           error: error instanceof Error ? error.message : '无法读取凭证状态。',
         })
     }
+  }
+  /** Receive the shared Host watch without sharing a tab's selection or form state. */
+  syncRequests(sessionId: string, state: CredentialClientState): void {
+    const requests = state.requests.filter((request) => request.sessionId === sessionId)
+    this.#patch({ sessionId, requests })
   }
   session(sessionId: string): void {
     if (sessionId === this.#state.sessionId && this.#watch) return
@@ -473,6 +487,7 @@ export class CredentialClientModel {
   async #query(handle: QueryHandle): Promise<void> {
     const entry = this.#operations.get(handle.id)
     if (
+      this.#suspended ||
       !entry ||
       entry.error ||
       this.#polls.has(handle.id) ||

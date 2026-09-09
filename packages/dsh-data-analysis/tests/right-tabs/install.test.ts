@@ -137,40 +137,75 @@ async function installed(t) {
     generation,
   }
 }
-const tick = () => new Promise((resolve) => setImmediate(resolve))
 
-test('closing configuration refreshes valid pages but never revives revoked or disconnected data', async (t) => {
+test('credential requests open the owning native Tab; revoked pages cannot be refreshed', async (t) => {
   const f = await installed(t)
+  const opened = []
+  f.host.client.sidebarRight.openTab = (kind, options) => opened.push({ kind, options })
   const page = new TabPage('a', { kind: 'datasources', workspaceId: 'w' }, f.rpc)
   page.workspacePath = '/w'
   f.controller.pages.set('datasources', page)
+  t.after(() => page.dispose())
   await page.navigate(1)
-  f.controller.credentials.show('w')
-  await tick()
-  const validReads = f.reads.length
-  f.controller.credentials.close()
-  await tick()
-  assert.equal(f.reads.length, validReads + 1)
-  for (const revoke of [
-    () =>
-      f.workspaces.set({
-        ...f.workspaces.getSnapshot(),
-        items: [{ ...f.workspace, sessionIds: ['b'] }],
-      }),
-    () => f.generation.set(undefined),
-  ]) {
-    f.controller.credentials.show('w')
-    await tick()
-    revoke()
-    const error = page.getSnapshot().error
-    assert.ok(error)
-    const before = f.reads.length
-    f.controller.credentials.close()
-    await page.refresh()
-    await tick()
-    assert.equal(f.reads.length, before, 'no automatic read after revocation')
-    assert.equal(page.getSnapshot().error, error)
-  }
+  const state = f.controller.credentials.getSnapshot()
+  f.controller.credentials.syncRequests('a', {
+    ...state,
+    requests: [
+      { id: 'request', sessionId: 'a', context: page.datasources.getSnapshot().datasources[0] },
+    ],
+  })
+  f.controller.credentials.openRequest('request')
+  assert.deepEqual(JSON.parse(JSON.stringify(opened)), [
+    { kind: 'marivo-datasources', options: { params: { workspaceId: 'w', requestId: 'request' } } },
+  ])
+  assert.equal(f.controller.credentials.getSnapshot().open, false)
+  assert.equal(page.datasources.getSnapshot().requests[0].id, 'request')
+  f.workspaces.set({
+    ...f.workspaces.getSnapshot(),
+    items: [{ ...f.workspace, sessionIds: ['b'] }],
+  })
+  const error = page.getSnapshot().error
+  assert.ok(error)
+  const before = f.reads.length
+  await page.refresh()
+  assert.equal(f.reads.length, before)
+  assert.equal(page.getSnapshot().error, error)
+})
+
+test('datasource refresh preserves in-flight operation queries; revocation aborts them', async (t) => {
+  const f = await installed(t)
+  let querySignal: AbortSignal | undefined
+  let finish: (value: unknown) => void
+  const page = new TabPage(
+    'a',
+    { kind: 'datasources', workspaceId: 'w' },
+    {
+      async call(channel, endpoint, payload, signal) {
+        if (endpoint === 'start') return { ok: true, value: null }
+        if (endpoint === 'operation') {
+          querySignal = signal
+          return new Promise((resolve) => {
+            finish = resolve
+          })
+        }
+        return f.rpc.call(channel, endpoint, payload, signal)
+      },
+    },
+  )
+  t.after(() => page.dispose())
+  await page.navigate(1)
+  const context = page.datasources.getSnapshot().datasources[0]
+  const operation = page.datasources.start(context, 'test')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.ok(querySignal)
+  await page.refresh()
+  assert.equal(querySignal.aborted, false)
+  assert.equal(page.datasources.getSnapshot().operations.length, 1)
+  page.unavailable('revoked')
+  assert.equal(querySignal.aborted, true)
+  finish({ ok: true, value: null })
+  await operation
+  assert.equal(page.getSnapshot().error, 'revoked')
 })
 
 function deliveryEntries(id, buildId = 'build') {

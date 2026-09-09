@@ -1,7 +1,8 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 export function CreateDatasource({ model, workspaceId, close }) {
+  const formId = useId()
   const [schema, setSchema] = useState(null)
   const [backend, setBackend] = useState('')
   const [values, setValues] = useState({})
@@ -83,7 +84,7 @@ export function CreateDatasource({ model, workspaceId, close }) {
               <label
                 className="mc-secret-input"
                 key={field.name}
-                htmlFor={`mc-create-${field.name}`}
+                htmlFor={`${formId}-${field.name}`}
               >
                 <span className="mc-input-heading">
                   <span className="mc-input-name">
@@ -101,7 +102,7 @@ export function CreateDatasource({ model, workspaceId, close }) {
                 </span>
                 {field.type === 'boolean' ? (
                   <select
-                    id={`mc-create-${field.name}`}
+                    id={`${formId}-${field.name}`}
                     aria-label={field.name}
                     value={values[field.name] ?? ''}
                     onChange={(event) => setValues({ ...values, [field.name]: event.target.value })}
@@ -114,7 +115,7 @@ export function CreateDatasource({ model, workspaceId, close }) {
                   </select>
                 ) : (
                   <input
-                    id={`mc-create-${field.name}`}
+                    id={`${formId}-${field.name}`}
                     aria-label={field.name}
                     required={field.required}
                     autoComplete="off"

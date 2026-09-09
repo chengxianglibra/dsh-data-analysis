@@ -606,24 +606,47 @@ try {
   await page.getByRole('button', { name: '返回列表', exact: true }).click()
   record('semantic resource navigation preserves original reference and returns to directory')
   await page.getByRole('button', { name: '打开数据源', exact: true }).click()
-  const datasourceSelect = page.getByRole('combobox', { name: '选择数据源' })
-  await datasourceSelect.waitFor()
-  const selectedDatasource = await datasourceSelect.locator('option').last().getAttribute('value')
-  await datasourceSelect.selectOption(selectedDatasource!)
-  await page.getByRole('button', { name: '配置数据源与凭证', exact: true }).click()
-  await page.locator('dialog.mc-dialog[open]').waitFor()
-  await page.waitForFunction(
-    (token) => (window as any).__rightTabs.credentials.getSnapshot().selected === token,
-    selectedDatasource,
+  const datasourcePanel = page.locator('[data-rt-kind=datasources]')
+  const datasourceButtons = datasourcePanel.getByRole('button', { name: /^选择数据源 / })
+  await datasourceButtons.last().click()
+  const selectedDatasource = await datasourceButtons.last().getAttribute('aria-label')
+  assert.equal(await datasourceButtons.last().getAttribute('aria-pressed'), 'true')
+  await datasourcePanel.getByRole('button', { name: '刷新数据源', exact: true }).click()
+  await datasourcePanel.getByRole('button', { name: selectedDatasource!, exact: true }).waitFor()
+  assert.equal(
+    await datasourcePanel
+      .getByRole('button', { name: selectedDatasource!, exact: true })
+      .getAttribute('aria-pressed'),
+    'true',
   )
-  await page.keyboard.press('Escape')
-  await page.waitForFunction(() => {
-    const select = document.querySelector<HTMLSelectElement>('[aria-label="选择数据源"]')
-    return select && !select.disabled
+  assert.equal(await page.locator('dialog.mc-dialog').count(), 0)
+  await datasourcePanel.getByRole('button', { name: '新增数据源', exact: true }).click()
+  await datasourcePanel.getByRole('combobox', { name: '引擎', exact: true }).selectOption('duckdb')
+  await datasourcePanel.getByLabel('name', { exact: true }).fill('tab_created')
+  await datasourcePanel.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  await datasourcePanel.getByRole('heading', { name: 'tab_created', exact: true }).waitFor()
+  await datasourcePanel.getByRole('button', { name: '测试连接', exact: true }).click()
+  await datasourcePanel.getByText('连接测试成功', { exact: true }).waitFor()
+  const layout = await datasourcePanel.evaluate((panel) => {
+    const title = panel.querySelector('.rt-heading')!.getBoundingClientRect()
+    const refresh = panel.querySelector('.rt-refresh')!.getBoundingClientRect()
+    const list = panel.querySelector('.mc-datasources')!.getBoundingClientRect()
+    const detail = panel.querySelector('.mc-form')!.getBoundingClientRect()
+    const selected = panel
+      .querySelector('.mc-datasource[aria-pressed=true]')!
+      .getBoundingClientRect()
+    return {
+      aligned: Math.abs(title.y + title.height / 2 - refresh.y - refresh.height / 2) < 2,
+      above: list.bottom <= detail.top,
+      selectedVisible: selected.left >= list.left - 1 && selected.right <= list.right + 1,
+      overflow: panel.scrollWidth > panel.clientWidth,
+    }
   })
-  assert.equal(await datasourceSelect.inputValue(), selectedDatasource)
+  assert.deepEqual(layout, { aligned: true, above: true, selectedVisible: true, overflow: false })
   await page.screenshot({ path: path.join(outputRoot, 'datasource-directory.png'), fullPage: true })
-  record('semantic detail opens a resource; datasource uses existing configuration dialog')
+  record(
+    'datasource Tab owns top navigation, refresh icon, creation and connection test without a dialog',
+  )
   await page.evaluate(() => {
     ;(window as any).__staleReportPage = [...(window as any).__rightTabs.pages.values()].find(
       (p: any) =>
@@ -649,14 +672,12 @@ try {
   assert.deepEqual(staleAttempt, { rejected: true, unchanged: true })
   record('stale report callback cannot write another Session draft')
   await run('credentials', 'credential-start')
-  await page.locator('dialog.mc-dialog[open]').waitFor()
-  await page.keyboard.press('Escape')
+  await page.locator('[data-rt-kind=datasources] .mc-request-status').waitFor()
   await page.getByRole('button', { name: '等待配置凭证', exact: true }).click()
-  const credentialDialog = page.locator('dialog.mc-dialog[open]')
+  const credentialDialog = page.locator('[data-rt-kind=datasources] .mc-panel')
   await credentialDialog.locator('input[type=password]').fill('isolated-prototype-test-value')
   await credentialDialog.getByRole('button', { name: '提交凭证并继续', exact: true }).click()
   await run('credentials', 'credential-idle')
-  await page.keyboard.press('Escape')
   record('isolated credential input completes the waiting production datasource call')
   await select('right-tabs-native')
   await run('credentials', 'history')
@@ -990,26 +1011,22 @@ try {
   await page.waitForFunction(() => (window as any).__rtHost.delay.held())
   await page.getByRole('button', { name: '打开数据源', exact: true }).click()
   await page
-    .getByRole('combobox', { name: '选择数据源' })
-    .locator('option')
+    .getByRole('button', { name: /^选择数据源 / })
     .first()
-    .waitFor({ state: 'attached' })
-  await page.getByRole('button', { name: '配置数据源与凭证', exact: true }).click()
-  await page.locator('dialog.mc-dialog[open]').waitFor()
-  await page.waitForFunction(() => !(window as any).__rightTabs.credentials.getSnapshot().loading)
+    .waitFor()
   const beforeDetachReads = await page.evaluate(() =>
     (window as any).__rtHost.delay.overviewReads(),
   )
   await run('ptc', 'detach')
   await page.evaluate(() => (window as any).__rtHost.delay.release())
-  await page.locator('dialog.mc-dialog[open]').waitFor({ state: 'detached' })
+  await page.locator('[data-rt-kind=datasources] .mc-panel').waitFor({ state: 'detached' })
   await page.getByText('Workspace 已变化或不可用，请重新打开页面。', { exact: true }).waitFor()
   await page.waitForTimeout(200)
   assert.equal(
     await page.evaluate(() => (window as any).__rtHost.delay.overviewReads()),
     beforeDetachReads,
   )
-  assert.equal(await page.getByRole('combobox', { name: '选择数据源' }).count(), 0)
+  assert.equal(await page.getByRole('button', { name: /^选择数据源 / }).count(), 0)
   await page.screenshot({ path: path.join(outputRoot, 'revoked-datasource.png'), fullPage: true })
   record(
     'Workspace revocation closes configuration without re-reading or reviving its datasource Tab',

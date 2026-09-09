@@ -82,18 +82,21 @@ const app = await build({
     resolveDir: process.cwd(),
     loader: 'tsx',
     contents: `
-import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
-import {installCredentials} from ${JSON.stringify(installer)};
+import React, {useState,useSyncExternalStore} from 'react'; import {createRoot} from 'react-dom/client';
+import {CredentialPanel,installCredentials} from ${JSON.stringify(installer)};
 import {installSemanticBrowser} from ${JSON.stringify(semanticInstaller)};
+import {WorkspaceHeaderAction} from ${JSON.stringify(fileURLToPath(new URL('../src/client/workspace-header-action.tsx', import.meta.url)))};
 const seats=[];
 const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
 const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
 installSemanticBrowser(ctx,rpc);
-installCredentials(ctx,rpc);
+const model=installCredentials(ctx,rpc);
+ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-credentials',order:100},()=> <WorkspaceHeaderAction label="数据源与凭证" icon="credentials" onClick={()=>model.show('workspace')}/>);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']},{workspaceId:'other',name:'其他工作区不应显示',sessionIds:['other-session']}];
 const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
 const renderSeat=({options,component:C})=><C key={options.name+options.id} {...props}/>;
-function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').sort((a,b)=>a.options.order-b.options.order).map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}</>}
+function Panel(){const state=useSyncExternalStore(model.subscribe,model.getSnapshot);return state.open&&<div style={{containerType:'inline-size',padding:16,maxWidth:900}}><button onClick={()=>model.close()}>收起</button><button onClick={()=>model.selectWorkspace('workspace')}>刷新状态</button><CredentialPanel model={model} workspaces={workspaces}/></div>}
+function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').sort((a,b)=>a.options.order-b.options.order).map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}<Panel/></>}
 createRoot(document.getElementById('app')).render(<App/>);
 `,
   },
@@ -170,11 +173,11 @@ async function assertNoCompletedOperations() {
   )
 }
 async function assertNoHorizontalOverflow() {
-  const bounds = await page.getByRole('dialog', { name: '数据源与凭证' }).boundingBox()
+  const bounds = await page.getByRole('region', { name: '数据源与凭证', exact: true }).boundingBox()
   assert(bounds)
   assert(bounds.x >= 0 && bounds.x + bounds.width <= page.viewportSize()!.width + 1)
   const overflows = await page
-    .getByRole('dialog', { name: '数据源与凭证' })
+    .getByRole('region', { name: '数据源与凭证', exact: true })
     .evaluate((dialog: Element) =>
       [document.documentElement, dialog, ...dialog.querySelectorAll('*')]
         .filter(
@@ -187,7 +190,7 @@ async function assertNoHorizontalOverflow() {
         )
         .map((element) => `${element.tagName}.${element.className}`),
     )
-  assert.deepEqual(overflows, [], 'dialog and page must not overflow horizontally')
+  assert.deepEqual(overflows, [], 'panel and page must not overflow horizontally')
 }
 try {
   const initialWatch = page.waitForRequest(

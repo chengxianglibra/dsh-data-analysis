@@ -3,7 +3,6 @@
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
 import { credentialStyles } from './styles.ts'
@@ -17,7 +16,7 @@ const statusLabels = {
   'call-ended': '原调用已结束',
   'context-changed': '上下文已变化',
 }
-function Icon({ name, size = 18 }) {
+export function CredentialIcon({ name, size = 18 }) {
   return (
     <svg
       width={size}
@@ -36,13 +35,6 @@ function Icon({ name, size = 18 }) {
           <path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0" />
         </>
       )}
-      {name === 'lock' && (
-        <>
-          <rect x="4" y="10" width="16" height="11" rx="2" />
-          <path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" />
-        </>
-      )}
-      {name === 'close' && <path d="m6 6 12 12M6 18 18 6" />}
       {name === 'refresh' && (
         <path d="M20 7v5h-5M4 17v-5h5M6.1 6a8 8 0 0 1 13.4 3M4.5 15a8 8 0 0 0 13.4 3" />
       )}
@@ -65,7 +57,7 @@ export function TestResult({ result, stale = false }) {
       role="status"
     >
       <div className="mc-result-title">
-        <Icon name={stale || !result.ok ? 'info' : 'check'} size={16} />
+        <CredentialIcon name={stale || !result.ok ? 'info' : 'check'} size={16} />
         {stale ? '配置已变化，请重新测试' : result.ok ? '连接测试成功' : '连接测试失败'}
       </div>
       {!result.ok && !stale && (
@@ -186,7 +178,7 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
             <h3>{context.name}</h3>
           </div>
           <span className="mc-badge" data-ready={ready}>
-            {ready && <Icon name="check" size={13} />}
+            {ready && <CredentialIcon name="check" size={13} />}
             {context.refs.length === 0
               ? '无需凭证'
               : ready
@@ -376,26 +368,19 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
           <button type="button" onClick={() => model.show(workspaceId)}>
             返回数据源管理
           </button>
-          <button className="mc-quiet" type="button" onClick={() => model.close()}>
-            完成
-          </button>
         </div>
       )}
     </section>
   )
 }
-function CredentialPanel({ model, workspaces }) {
+export function CredentialPanel({ model, workspaces }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
-  const dialog = useRef(null)
   const columns = useRef(null)
+  const navigation = useRef(null)
   const main = useRef(null)
   const [creating, setCreating] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: Switching context discards the creation form.
   useEffect(() => setCreating(false), [state.open, state.workspaceId, state.requestId])
-  useEffect(() => {
-    if (state.open) dialog.current?.showModal()
-    else dialog.current?.close()
-  }, [state.open])
   const request = state.requests.find((item) => item.id === state.requestId)
   const pending = state.requests.filter(
     (item) => item.endedAt === undefined && item.sessionId === state.sessionId,
@@ -404,8 +389,20 @@ function CredentialPanel({ model, workspaces }) {
     request?.context ?? state.datasources.find((item) => item.token === state.selected)
   // biome-ignore lint/correctness/useExhaustiveDependencies: A different detail or creation page starts at the top of its content.
   useEffect(() => {
-    if (main.current) main.current.scrollTop = 0
+    if (main.current) {
+      main.current.scrollTop = 0
+      const page = main.current.closest('.rt-page')
+      if (page) page.scrollTop = 0
+    }
     if (columns.current) columns.current.scrollTop = 0
+    const list = navigation.current
+    const selected = list?.querySelector('[aria-pressed="true"]')
+    if (selected) {
+      const bounds = selected.getBoundingClientRect()
+      const viewport = list.getBoundingClientRect()
+      if (bounds.left < viewport.left) list.scrollLeft += bounds.left - viewport.left
+      else if (bounds.right > viewport.right) list.scrollLeft += bounds.right - viewport.right
+    }
   }, [creating, context?.token])
   const workspaceId = request
     ? (workspaces.find((item) => item.sessionIds.includes(request.sessionId))?.workspaceId ?? '')
@@ -417,35 +414,9 @@ function CredentialPanel({ model, workspaces }) {
   )?.operation
   if (!state.open) return null
   return (
-    <dialog
-      ref={dialog}
-      className="mc-dialog"
-      onCancel={(event) => {
-        event.preventDefault()
-        model.close()
-      }}
-      aria-labelledby="marivo-credentials-title"
-    >
+    <section className="mc-panel" aria-label="数据源与凭证">
       <style>{credentialStyles}</style>
       <div className="mc-shell">
-        <header className="mc-header">
-          <div className="mc-header-mark">
-            <Icon name="lock" size={22} />
-          </div>
-          <div className="mc-header-copy">
-            <h2 id="marivo-credentials-title">数据源与凭证</h2>
-            <p>配置访问凭证，测试数据源连接。</p>
-          </div>
-          <button
-            className="mc-close"
-            type="button"
-            aria-label="收起"
-            title="收起"
-            onClick={() => model.close()}
-          >
-            <Icon name="close" size={20} />
-          </button>
-        </header>
         {pending.length > 0 && (
           <div className="mc-requests">
             <span>本会话待办</span>
@@ -475,18 +446,8 @@ function CredentialPanel({ model, workspaces }) {
             <div>
               <div className="mc-nav-heading">
                 <h3>{request ? '请求的数据源' : `数据源 · ${datasources.length}`}</h3>
-                <button
-                  className="mc-quiet"
-                  type="button"
-                  aria-label="刷新状态"
-                  title="刷新状态"
-                  disabled={state.loading || !workspaceId}
-                  onClick={() => void model.selectWorkspace(workspaceId)}
-                >
-                  <Icon name="refresh" size={16} />
-                </button>
               </div>
-              <ul className="mc-datasources">
+              <ul className="mc-datasources" ref={navigation}>
                 {datasources.map((item) => {
                   const count = item.refs.filter((ref) => item.credentials[ref]?.configured).length
                   const ready = count === item.refs.length
@@ -499,7 +460,7 @@ function CredentialPanel({ model, workspaces }) {
                         className="mc-datasource"
                         type="button"
                         aria-label={`选择数据源 ${item.name}`}
-                        aria-pressed={context?.token === item.token}
+                        aria-pressed={!creating && context?.token === item.token}
                         onClick={() => {
                           if (request) model.openRequest(request.id)
                           else {
@@ -508,7 +469,7 @@ function CredentialPanel({ model, workspaces }) {
                           }
                         }}
                       >
-                        <Icon name="database" />
+                        <CredentialIcon name="database" />
                         <span className="mc-datasource-copy">
                           <span className="mc-datasource-name">{item.name}</span>
                           <span className="mc-datasource-status">
@@ -542,7 +503,7 @@ function CredentialPanel({ model, workspaces }) {
             )}
             {!creating && !state.loading && !context && !state.error && (
               <div className="mc-empty">
-                <Icon name="database" size={32} />
+                <CredentialIcon name="database" size={32} />
                 <h3>
                   {!state.workspaceId
                     ? '当前会话未绑定 Workspace'
@@ -611,10 +572,10 @@ function CredentialPanel({ model, workspaces }) {
           </main>
         </div>
       </div>
-    </dialog>
+    </section>
   )
 }
-export function installCredentials(ctx, rpc, options = {}) {
+export function installCredentials(ctx, rpc) {
   let storage: Storage | undefined
   try {
     storage = window.sessionStorage
@@ -625,28 +586,6 @@ export function installCredentials(ctx, rpc, options = {}) {
   model.recover()
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: credential client lifecycle')
   ctx.on('connection/reset', () => model.reset())
-  if (options.entries !== false)
-    ctx.slots.inject('conversation.session.header.actions', () =>
-      ctx.slots.register(
-        { name: 'conversation.session.header.actions', id: 'marivo-credentials', order: 100 },
-        function Entry({ sessionId, useWorkspaces }) {
-          const workspaces = useWorkspaces((state) => state.items)
-          const selected =
-            workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''
-          return (
-            <WorkspaceHeaderAction
-              label="数据源与凭证"
-              icon="credentials"
-              disabled={!selected}
-              title={selected ? '数据源与凭证' : '当前会话未绑定工作区，无法打开数据源与凭证'}
-              onClick={() => {
-                if (selected) model.show(selected)
-              }}
-            />
-          )
-        },
-      ),
-    )
   ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
       { name: 'conversation.session.header.actions', id: 'marivo-credential-requests', order: 120 },
@@ -669,8 +608,8 @@ export function installCredentials(ctx, rpc, options = {}) {
   )
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
-      { name: 'shell.overlay', id: 'marivo-credentials' },
-      function Overlay({ useSessions, useWorkspaces }) {
+      { name: 'shell.overlay', id: 'marivo-credential-observer' },
+      function Observer({ useSessions, useWorkspaces }) {
         const sessionId = useSessions((state) => state.current) ?? ''
         const workspaces = useWorkspaces((state) => state.items)
         const currentWorkspace =
@@ -678,7 +617,7 @@ export function installCredentials(ctx, rpc, options = {}) {
         useEffect(() => model.session(sessionId), [sessionId])
         // biome-ignore lint/correctness/useExhaustiveDependencies: Workspace reassignment must dismiss old content.
         useEffect(() => model.close(), [currentWorkspace])
-        return <CredentialPanel model={model} workspaces={workspaces} />
+        return null
       },
     ),
   )

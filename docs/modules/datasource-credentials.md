@@ -6,10 +6,13 @@ DSH Credentials 保存、解析和描述凭证；Marivo 定义 datasource、凭�
 Workspace 绑定、管理页面、等待中的调用和单次执行注入。凭证使用遵循 Marivo 公开的
 `md.credential_scope(resolver)` 契约。
 
-在 DSH 会话标题旁点击“数据源与凭证”，仅打开该会话所属 Workspace 的管理面板，不提供 Workspace 筛选项。
-标题入口从左到右依次为“数据源与凭证”“语义层”，等待配置凭证的待办入口排在其后。
-切换会话或 Workspace 绑定变化时关闭旧面板；进行中的操作也仅显示当前 Workspace 的记录。
-入口通过 `conversation.session.header.actions` 使用所属会话的 `workspaceId`，面板复用 `shell.overlay`；
+在 DSH 会话标题旁点击“数据源”，打开该会话所属 Workspace 的原生右侧 Tab，不提供 Workspace 筛选项。
+数据源列表以横向卡片排列在内容上方，展示图标、名称、配置状态与进行中状态；标题右上角提供刷新图标。
+Tab 直接承载新增数据源、属性、凭证配置与连接测试，不再打开数据源弹出页。
+每个 Tab occurrence 拥有独立的选择、表单和操作查询；共享监听器只分发 Host 凭证待办，
+新待办及“等待配置凭证”入口打开所属会话的数据源 Tab。切换会话保留 Host Tab 状态；Workspace 绑定撤销时使旧页面失效。
+刷新不终止已提交操作的状态查询，操作句柄按会话及 occurrence 保存用于页面重载恢复；不保存未提交的输入值。
+入口通过 `conversation.session.header.actions` 使用所属会话的 `workspaceId`；
 无会话或空会话时 Harness 不显示会话标题，侧栏底部不保留入口。管理页不要求 live Agent，显示 datasource、
 引擎、连接属性、字段引用、是否配置、来源、是否可写和最近测试。连接属性只读展示公开 `md.describe()` 的
 `backend_type` 与 `literal_fields`，凭证字段使用 `env_refs` 独立展示；读取属性不解析 Harness 凭据。
