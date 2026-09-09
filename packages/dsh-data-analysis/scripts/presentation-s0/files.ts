@@ -8,6 +8,7 @@ import {
   PRESENTATION_BUDGETS,
   type PresentationAsset,
 } from '../../src/presentation/contracts/types.ts'
+import { registerPluginRpc } from '../../src/rpc.ts'
 
 export const S0_RPC_CHANNEL = '/marivo-presentation-s0'
 export interface S0AssetRequest {
@@ -136,8 +137,10 @@ export class S0FileService {
 }
 
 export function registerS0FileRpc(connection: HostConnectionHandle, service: S0FileService) {
-  return connection.rpc.handle(
+  return registerPluginRpc(
+    connection,
     S0_RPC_CHANNEL,
+    ['files/read'],
     async (endpoint, payload, signal) => {
       try {
         if (endpoint !== 'files/read') throw new Error('unknown-endpoint')
@@ -151,6 +154,5 @@ export function registerS0FileRpc(connection: HostConnectionHandle, service: S0F
         return { ok: false, error: { code: 'internal', message: safe, details: {} } }
       }
     },
-    { authority: 'trusted-host' },
   )
 }

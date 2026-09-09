@@ -5,7 +5,7 @@ import path from 'node:path'
 import process from 'node:process'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
@@ -117,7 +117,7 @@ async function executeHelp(ctx: Context, targets: unknown, signal = new AbortCon
   callSequence++
   return ctx.tools.execute({
     signal,
-    callId: CallId(`marivo-help-${callSequence}`),
+    callId: ToolCallId(`marivo-help-${callSequence}`),
     name: MARIVO_HELP_TOOL_NAME,
     arguments: { targets },
   })
@@ -213,7 +213,7 @@ test('mechanical request bounds fail without target membership validation', asyn
   const ctx = await setupRuntime(fixture.bridge, { maxTargetChars: 5 })
   const missing = await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: CallId('missing-targets'),
+    callId: ToolCallId('missing-targets'),
     name: MARIVO_HELP_TOOL_NAME,
     arguments: {},
   })

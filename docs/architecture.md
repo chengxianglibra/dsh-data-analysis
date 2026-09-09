@@ -35,6 +35,9 @@ flowchart LR
   V --> O[Self-contained HTML]
 ```
 
+当前 DSH 基线为 `0.1.5-alpha.1`，兼容接缝与验证范围见[升级验收](dsh-alpha-compatibility-acceptance.md)。
+[新版重构设计](dsh-alpha-refactor-design.md)描述后续拟议工作，不表示已经启用原生报告 Tab 或新增上传分析入口。
+
 ## 分层
 
 | 层 | 本项目职责 | 不属于本项目 |

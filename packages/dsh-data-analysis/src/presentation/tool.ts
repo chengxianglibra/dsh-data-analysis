@@ -83,7 +83,7 @@ export function createMarivoPresentTool(
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
       const rootCallId = String(exec.rootCallId ?? exec.callId)
-      const call = [...session.events]
+      const call = [...session.snapshotEvents()]
         .reverse()
         .find((event) => event.type === 'tool/call' && String(event.data.callId) === rootCallId)
       if (call?.type !== 'tool/call' || !Number.isSafeInteger(call.data.turn) || call.data.turn < 0)

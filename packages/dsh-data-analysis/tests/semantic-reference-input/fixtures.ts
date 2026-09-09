@@ -1,5 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
+import type {
+  ConnectionFetchRoute,
+  ConnectionRpcHandler,
+  HostConnectionHandle,
+} from '@deepseek-ai/dsh-client-connection'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
@@ -74,20 +78,42 @@ export async function installStorage(ctx: Context, root: string) {
   await ctx.plugin(StorageDomain, { backend: 'json' })
 }
 /** In-process transport fixture for non-Web integration tests, not Web acceptance evidence. */
-export function installConnectionFixture(ctx: Context): Map<string, ConnectionRpcHandler> {
+export function createConnectionFixture() {
   const channels = new Map<string, ConnectionRpcHandler>()
-  ctx.provide('connection', {
-    rpc: {
-      handle(channel, handler) {
-        channels.set(channel, handler)
+  const routes = new Map<string, ConnectionFetchRoute>()
+  const connection = {
+    fetch: {
+      register(route: ConnectionFetchRoute) {
+        if (routes.has(route.path)) throw new Error('duplicate route')
+        routes.set(route.path, route)
+        const channel = '/' + route.path.split('/')[2]!
+        channels.set(channel, async (endpoint, payload, signal) => {
+          const method = channel.slice(1) + '/' + endpoint
+          const target = routes.get('/api/' + method)
+          if (!target) throw new Error('unknown fixture endpoint')
+          const response = await target.fetch(
+            new Request('http://fixture/api/' + method, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ type: 'client-request', rpcId: 'fixture', method, payload }),
+              signal,
+            }),
+          )
+          if (!response.ok) throw new Error('fixture HTTP ' + response.status)
+          return (await response.json()).result
+        })
         return async () => {
-          channels.delete(channel)
+          routes.delete(route.path)
+          if (![...routes.keys()].some((path) => path.startsWith('/api' + channel + '/')))
+            channels.delete(channel)
         }
       },
-      intercept() {
-        throw new Error('unexpected api interceptor')
-      },
     },
-  })
+  } as unknown as HostConnectionHandle
+  return { connection, channels, routes }
+}
+export function installConnectionFixture(ctx: Context): Map<string, ConnectionRpcHandler> {
+  const { connection, channels } = createConnectionFixture()
+  ctx.provide('connection', connection)
   return channels
 }

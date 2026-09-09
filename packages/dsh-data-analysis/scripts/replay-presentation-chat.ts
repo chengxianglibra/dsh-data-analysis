@@ -1,4 +1,4 @@
-/** Read-only JSONL replay through unchanged public Host registries and the built plugin. */
+/** Read-only exported event replay through unchanged public Host registries and the built plugin. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -19,6 +19,7 @@ const [header, ...events] = bytes
   .split('\n')
   .map((line) => JSON.parse(line))
 assert.equal(typeof header.id, 'string')
+// Input is an exported JSONL log; durable Session files must be read through SessionHandle.
 const cases = []
 for (const order of [
   ['native', 'presentation'],
@@ -47,7 +48,7 @@ for (const order of [
       }
     }
     assembler.replaceWindow(
-      events.map((event) => ({ event, view: undefined })),
+      events.map((event) => ({ type: 'event', event })),
       false,
     )
     assembler.flush()
@@ -55,7 +56,7 @@ for (const order of [
     assembler.replaceWindow([], false)
     assembler.flush()
     for (const event of events) {
-      assembler.append({ event, view: undefined })
+      assembler.append({ type: 'event', event })
       assembler.flush()
     }
     assert.deepEqual(selected(), historical)
@@ -63,7 +64,7 @@ for (const order of [
     assembler.flush()
     assert.deepEqual(selected(), historical)
     assembler.replaceWindow(
-      events.map((event) => ({ event, view: undefined })),
+      events.map((event) => ({ type: 'event', event })),
       false,
     )
     assembler.flush()

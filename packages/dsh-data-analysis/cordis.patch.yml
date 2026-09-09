@@ -1,5 +1,5 @@
 # Web-profile Marivo disclosure layer. One profile-owned plugin installation
-# serves every Agent and session Workspace in native, code, or both mode.
+# serves every Agent and session Workspace in native, ptc, or both mode.
 
 - insert:
     - id: dsh-data-analysis

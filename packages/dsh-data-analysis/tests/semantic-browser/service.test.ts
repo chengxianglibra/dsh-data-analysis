@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import type { MarivoCheckedRunRequest } from '../../src/environment/types.ts'
 import { browserFailure, SemanticBrowserService } from '../../src/semantic-browser/service.ts'
@@ -12,7 +11,7 @@ import {
   registerSemanticReferenceRpc,
   type SemanticReferenceService,
 } from '../../src/semantic-reference/rpc.ts'
-import { fakeRunner } from '../semantic-reference-input/fixtures.ts'
+import { fakeRunner, installConnectionFixture } from '../semantic-reference-input/fixtures.ts'
 import { snapshot } from './fixtures.ts'
 
 test('reads registered Workspace without an Agent; deletion, cancellation, overrides and closed input fail safely', async (t) => {
@@ -69,22 +68,10 @@ test('only fixed error messages cross the browser boundary', () => {
   )
 })
 
-test('one trusted-host channel dispatches browser and existing reference endpoints separately', async () => {
+test('one plugin API namespace dispatches browser and existing reference endpoints separately', async () => {
   const ctx = new Context()
-  let handler: ConnectionRpcHandler | undefined
   let stopped = false
-  ctx.provide('connection', {
-    rpc: {
-      handle(channel: string, callback: ConnectionRpcHandler, options: { authority: string }) {
-        assert.equal(channel, '/dsh-data-analysis')
-        assert.equal(options.authority, 'trusted-host')
-        handler = callback
-        return async () => {
-          handler = undefined
-        }
-      },
-    },
-  } as any)
+  const channels = installConnectionFixture(ctx)
   const reference = {
     handle: async () => ({ reference: true }),
     stop() {
@@ -97,16 +84,24 @@ test('one trusted-host channel dispatches browser and existing reference endpoin
     value: { browser: true },
   }))
   assert.deepEqual(
-    await handler!('semantic-browser/catalog', { workspaceId: 'a' }, new AbortController().signal),
+    await channels.get('/dsh-data-analysis')!(
+      'semantic-browser/catalog',
+      { workspaceId: 'a' },
+      new AbortController().signal,
+    ),
     { ok: true, value: { browser: true } },
   )
   assert.deepEqual(
-    await handler!('semantic-references/candidates', {}, new AbortController().signal),
+    await channels.get('/dsh-data-analysis')!(
+      'semantic-references/candidates',
+      {},
+      new AbortController().signal,
+    ),
     { ok: true, value: { reference: true } },
   )
   await dispose()
   assert.equal(stopped, true)
-  assert.equal(handler, undefined)
+  assert.equal(channels.has('/dsh-data-analysis'), false)
 })
 
 test('binding cancellation and Workspace deletion prevent Python admission', async () => {

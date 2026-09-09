@@ -15,6 +15,8 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     'react',
     'react/jsx-runtime',
     'react-dom',
+    'react-dom/client',
+    '@deepseek-ai/dsh-client-store',
   ])
     modules.set(name, await import(require.resolve(name)))
   modules.set(
@@ -58,7 +60,13 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     clearTimeout,
     queueMicrotask,
   })
-  for (const name of ['runtime', 'ui-conversation', 'ui-deliverables']) {
+  for (const name of [
+    'ui-renderer',
+    'ui-conversation',
+    'ui-chat',
+    'ui-deliverables',
+    'ui-input-trigger',
+  ]) {
     const packageJson = require.resolve(`@deepseek-ai/dsh-client-${name}/package.json`)
     const filename = new URL('./lib/client.js', pathToFileURL(packageJson))
     vm.runInContext(await readFile(filename, 'utf8'), context, { filename: filename.pathname })
@@ -67,17 +75,17 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   vm.runInContext(await readFile(filename, 'utf8'), context, { filename: filename.pathname })
 
   const { Context } = modules.get('@deepseek-ai/cordis')
-  const runtime = modules.get('@deepseek-ai/dsh-client-runtime/client')
+  const runtime = modules.get('@deepseek-ai/dsh-client-ui-conversation/client')
   const owner = new Context()
   const events = new runtime.ConversationEventRegistry(owner)
   const views = new runtime.ConversationViewRegistry(owner)
-  const slots = new runtime.SlotRegistry(owner)
+  const slots = new (modules.get('@deepseek-ai/dsh-client-ui-renderer/client').SlotRegistry)(owner)
   slots.register(
     {
       name: 'root',
       children: {
         conversation: { kind: 'single', scope: 'session-maybe' },
-        details: { kind: 'single', scope: 'session' },
+        'conversation.view': { kind: 'single', scope: 'session' },
         'shell.overlay': { kind: 'list', scope: 'global' },
       },
     },
@@ -91,14 +99,16 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     },
   }
   const client = {
-    conversationEvents: events,
-    conversationViews: views,
+    uiConversation: { events, views },
+    uiSession: { provide: () => () => {} },
     slots,
     sessions: { provide: () => () => {} },
     workspaces: {},
     layout: {},
     locale: { register: () => () => {}, bind: () => (key) => key },
-    settingsScope: { bind: () => undefined },
+    settingsScope: {
+      bind: () => ({ subscribe: () => () => {}, getSnapshot: () => ({ value: undefined }) }),
+    },
     effect: owner.effect.bind(owner),
     on: owner.on.bind(owner),
     get: (key) => (key === 'connection' ? connection : undefined),
@@ -113,12 +123,18 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
       modules.get('@deepseek-ai/dsh-client-ui-deliverables/client').apply(client)
     else presentation.installPresentation(client, connection.rpc)
   }
-  modules.get('@deepseek-ai/dsh-client-ui-conversation/client').apply(client)
+  modules.get('@deepseek-ai/dsh-client-ui-chat/client').apply(client)
   return {
     slots,
+    InputTriggerController: modules.get('@deepseek-ai/dsh-client-ui-input-trigger/client')
+      .InputTriggerController,
     events,
     presentation,
-    createAssembler: () => new runtime.ConversationNodeAssembler(events, views),
+    createAssembler: () => {
+      const assembler = new runtime.ConversationNodeAssembler(events, views)
+      assembler.activateTarget('chat')
+      return assembler
+    },
     dispose: () => owner.fiber.dispose(),
   }
 }

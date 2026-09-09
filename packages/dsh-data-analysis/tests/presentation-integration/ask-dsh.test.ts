@@ -24,7 +24,29 @@ function fixture() {
   const host = {
     sessions: {
       list: { getSnapshot: () => ({ current: state.current }) },
-      scope: (sessionId: string) => (state.available ? { sessionId } : undefined),
+      scope: (sessionId: string) =>
+        state.available
+          ? {
+              sessionId,
+              bail(
+                _ctx: unknown,
+                event: string,
+                request: { text: string; span: { start: number; end: number; draftRev: number } },
+              ) {
+                assert.equal(event, 'slash/input-insert-text')
+                if (state.failure) throw new Error('input unavailable')
+                const draft = drafts.get(sessionId)!
+                assert.deepEqual(request.span, {
+                  start: draft.length,
+                  end: draft.length,
+                  draftRev: 1,
+                })
+                drafts.set(sessionId, draft + request.text)
+                writes.push({ sessionId, text: request.text })
+                return true
+              },
+            }
+          : undefined,
     },
     workspaces: {
       list: {
@@ -38,7 +60,9 @@ function fixture() {
     conversation: {
       input: {
         for: ({ sessionId }: { sessionId: string }) => ({
-          state: { getSnapshot: () => ({ draft: drafts.get(sessionId) }) },
+          state: {
+            getSnapshot: () => ({ draft: drafts.get(sessionId), draftRev: 1, occurrences: [] }),
+          },
           setDraft(text: string) {
             if (state.failure) throw new Error('input unavailable')
             writes.push({ sessionId, text })

@@ -10,8 +10,9 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import BashLocal from '@deepseek-ai/dsh-bash-local'
 import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
-import LlmRuntime, { CallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -56,12 +57,13 @@ async function harness(t: TestContext, maxWallMs?: number) {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(TestShellEnv)
   if (maxWallMs !== undefined) await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs })
-  await ctx.plugin(ToolRuntime, { mode: maxWallMs === undefined ? 'native' : 'code' })
+  await ctx.plugin(ToolRuntime, { mode: maxWallMs === undefined ? 'native' : 'ptc' })
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubprocessLocal)
   await ctx.plugin(BashLocal, { maxTimeoutMs: 180_000, maxOutputBytes: 65536 })
-  const agent = ctx.agentLoop.create(
+  const agent = await ctx.agentLoop.create(
     SessionId('python-budget-real'),
     { provider: 'unused', model: 'unused' },
     { cwd: root },
@@ -81,7 +83,7 @@ async function harness(t: TestContext, maxWallMs?: number) {
     agent.ctx.tools.execute({
       agent,
       signal,
-      callId: CallId('python-budget-call'),
+      callId: ToolCallId('python-budget-call'),
       name: 'marivo_python',
       arguments: { code, datasources: [], timeoutMs },
     })
@@ -183,7 +185,7 @@ test('real Code Mode deadline dominates the longer Python budget', { skip }, asy
   const result = await h.agent.ctx.tools.execute({
     agent: h.agent,
     signal: new AbortController().signal,
-    callId: CallId('code-budget'),
+    callId: ToolCallId('code-budget'),
     name: 'run_code',
     arguments: {
       description: 'Validate outer cancellation',

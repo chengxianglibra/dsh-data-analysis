@@ -11,7 +11,7 @@
 ### 环境准备
 
 - Node.js 24 或更高版本。
-- 已安装并配置好 DeepSeek Harness `0.1.1-rc.2`（当前插件要求的版本）。
+- 已安装并配置好 DeepSeek Harness `0.1.5-alpha.1`（当前插件要求的版本）。
 - `pnpm` 可在命令行中使用，供 Harness 安装插件。
 - 已安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)，并可在命令行中运行 `uv`。
 

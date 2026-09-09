@@ -16,9 +16,12 @@ import LlmRuntime, {
 } from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
+import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import {
   bindMarivoEnvironment,
   FixedSubprocessPolicy,
@@ -226,10 +229,7 @@ const credentialFailureEnvironment = await bindMarivoEnvironment({
 const pythonPolicy = new FixedSubprocessPolicy(environment.binding.projectRoot)
 const ctx = new Context()
 installConnectionFixture(ctx)
-await installStorage(
-  ctx,
-  path.join(environment.binding.projectRoot, '..', 'validation-profile-storage'),
-)
+await installStorage(ctx, path.join(validationRoot, 'profile-storage'))
 await ctx.plugin(LlmRuntime)
 await ctx.plugin(LocalCredentialProvider, { watch: false })
 await ctx.plugin(DeepSeek, {
@@ -240,11 +240,14 @@ await ctx.plugin(DeepSeek, {
   models: [{ id: model, contextWindow: 128_000, maxTokens: 1_024 }],
 })
 await ctx.plugin(SessionStore)
+await ctx.plugin(JsonlSessionPersistence, { root: path.join(validationRoot, 'sessions') })
+await ctx.plugin(WorkspaceRegistry)
 await ctx.plugin(SkillRuntime)
 await ctx.plugin(SystemPrompt)
 await ctx.plugin(TestShellEnv)
 await ctx.plugin(ToolRuntime)
 await ctx.plugin(AgentRegistry)
+await ctx.plugin(SessionProjectionRegistry)
 await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 
 ctx.systemPrompt.section({
@@ -325,6 +328,12 @@ const plugin = await ctx.plugin(
     pythonExecutable: environment.binding.pythonExecutable,
   },
 )
+const installedSkills = await ctx.skills.snapshot({ cwd: workspaceRoot })
+for (const expected of ['marivo-analysis', 'marivo-semantic'])
+  assert.ok(
+    installedSkills.skills.some((skill) => skill.name === expected),
+    `Plugin did not install ${expected}`,
+  )
 const validationAgents: Agent[] = []
 
 async function runJourney(
@@ -333,7 +342,7 @@ async function runJourney(
   projectRoot: string = workspaceRoot,
 ): Promise<JourneyResult> {
   const errors: unknown[] = []
-  const agent: Agent = ctx.agentLoop.create(
+  const agent: Agent = await ctx.agentLoop.create(
     SessionId(`plugin-validation-${id}-${Date.now().toString(36)}`),
     {
       provider: 'deepseek-official',
@@ -352,7 +361,7 @@ async function runJourney(
     }),
   )
   await agent.whenIdle()
-  const events = agent.session.events
+  const events = agent.session.snapshotEvents()
   const finalText = finalAssistantText(events)
   const result: JourneyResult = {
     id,
@@ -407,6 +416,11 @@ for (const spec of specs) {
   process.stdout.write(`plugin integration real-model: ${spec.id}\n`)
   journeys.push(await runJourney(spec.id, spec.prompt, spec.projectRoot))
 }
+// Preserve evidence even when a real model does not follow a journey's exact request.
+await mkdir(path.dirname(reportPath), { recursive: true })
+await writeFile(reportPath.replace('.json', '-journeys.json'), JSON.stringify(journeys, null, 2), {
+  mode: 0o600,
+})
 const byId = new Map(journeys.map((result) => [result.id, result]))
 
 const analysis = byId.get('analysis-activation')

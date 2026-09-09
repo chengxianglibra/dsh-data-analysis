@@ -408,7 +408,7 @@ export class MarivoDisclosureController {
   }
 
   #restoreActiveSkills(): void {
-    for (const event of this.agent.session.events) {
+    for (const event of this.agent.session.snapshotEvents()) {
       if (event.type !== 'user/message') continue
       const disclosure = rootHelpSource(event.data.source)
       if (disclosure !== undefined) this.#activeSkills.add(disclosure.skill)
@@ -422,7 +422,7 @@ export class MarivoDisclosureController {
   #refreshVisibleHelp(messages: readonly UserMessage[]): void {
     this.#visibleHelp.clear()
     const visible = new Set(this.agent.session.surface.nodes)
-    for (const event of this.agent.session.events) {
+    for (const event of this.agent.session.snapshotEvents()) {
       if (!visible.has(event.seq)) continue
       if (event.type === 'user/message') {
         const source = rootHelpSource(event.data.source)
@@ -451,10 +451,12 @@ export class MarivoDisclosureController {
   }
 
   #hasHistoricalDisclosure(skill: MarivoSkillName): boolean {
-    return this.agent.session.events.some(
-      (event) =>
-        event.type === 'user/message' && rootHelpSource(event.data.source)?.skill === skill,
-    )
+    return this.agent.session
+      .snapshotEvents()
+      .some(
+        (event) =>
+          event.type === 'user/message' && rootHelpSource(event.data.source)?.skill === skill,
+      )
   }
 }
 

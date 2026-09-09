@@ -10,9 +10,9 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import BashLocal from '@deepseek-ai/dsh-bash-local'
-import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
-import LlmRuntime, { CallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -23,6 +23,7 @@ import { registerCredentialRpc } from '../src/datasource/rpc.ts'
 import { MarivoCredentialService } from '../src/datasource/service.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 import { failed, fixture } from '../tests/datasource-credentials/fixtures.ts'
+import { createConnectionFixture } from '../tests/semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
 
 const { chromium } = await import(process.env.DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE ?? 'playwright')
@@ -52,10 +53,11 @@ await ctx.plugin(SystemPrompt)
 await ctx.plugin(TestShellEnv)
 await ctx.plugin(ToolRuntime)
 await ctx.plugin(AgentRegistry)
+await ctx.plugin(SessionProjectionRegistry)
 await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 await ctx.plugin(SubprocessLocal)
 await ctx.plugin(BashLocal, { timeoutMs: 120_000, maxOutputBytes: 65536 })
-const agent = ctx.agentLoop.create(
+const agent = await ctx.agentLoop.create(
   SessionId('session'),
   { provider: 'fixture', model: 'unused' },
   { cwd: root },
@@ -68,16 +70,9 @@ shell.run = (spec) => {
   starts++
   return originalRun(spec)
 }
-let handler!: ConnectionRpcHandler
-const connection = {
-  rpc: {
-    handle: (_channel: string, callback: ConnectionRpcHandler) => {
-      handler = callback
-      return async () => {}
-    },
-  },
-} as unknown as HostConnectionHandle
+const { connection, channels } = createConnectionFixture()
 const unregister = registerCredentialRpc(connection, service, async () => bridge)
+const handler = channels.get('/dsh-data-analysis-credentials')!
 const installer = fileURLToPath(new URL('../src/client/credentials/install.tsx', import.meta.url))
 const semanticInstaller = fileURLToPath(
   new URL('../src/client/semantic-browser/install.tsx', import.meta.url),
@@ -402,7 +397,7 @@ try {
       datasources: ['warehouse'],
       code: 'import os\nimport marivo.datasource as md\nassert "DB_PASSWORD" not in os.environ\nwith md.connect("warehouse") as backend:\n    assert backend.raw_sql("SELECT 42").fetchall() == [(42,)]\nprint("WEB_EXECUTION_OK")',
     },
-    callId: CallId('web-execution'),
+    callId: ToolCallId('web-execution'),
     signal: f.controller.signal,
   })
   await page

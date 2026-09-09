@@ -21,7 +21,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   t.after(() => rm(root, { recursive: true, force: true }))
   const session = {
     id: 'session',
-    events: [
+    snapshotEvents: () => [
       { type: 'tool/call', data: { callId: 'native', name: 'marivo_present', turn: 1 } },
       { type: 'tool/call', data: { callId: 'code', name: 'run_code', turn: 2 } },
     ],

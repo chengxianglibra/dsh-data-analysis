@@ -7,14 +7,15 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import LlmRuntime, {
-  CallId,
   createUserMessage,
   type GenerateOptions,
   LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
+  ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
 import {
@@ -66,7 +67,7 @@ async function executeFocused(targets: string[]) {
   focusedSequence++
   return focusedContext.tools.execute({
     signal: new AbortController().signal,
-    callId: CallId(`help-disclosure-focused-${String(focusedSequence)}`),
+    callId: ToolCallId(`help-disclosure-focused-${String(focusedSequence)}`),
     name: MARIVO_HELP_TOOL_NAME,
     arguments: { targets },
   })
@@ -105,7 +106,7 @@ function textResponse(text: string): StreamChunk[] {
 
 function skillCallResponse(): StreamChunk[] {
   const args = JSON.stringify({ name: 'marivo-analysis' })
-  const id = CallId('help-disclosure-skill')
+  const id = ToolCallId('help-disclosure-skill')
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
     { type: 'tool-call-delta', index: 0, id, name: 'skill', argumentsDelta: args },
@@ -142,6 +143,7 @@ await activationContext.plugin(SessionStore)
 await activationContext.plugin(SystemPrompt)
 await activationContext.plugin(ToolRuntime)
 await activationContext.plugin(AgentRegistry)
+await activationContext.plugin(SessionProjectionRegistry)
 await activationContext.plugin(AgentLoop, { agents: [] })
 activationContext.llm.registerAdapter(['validation'], adapter)
 activationContext.tools.register(
@@ -182,7 +184,7 @@ activationContext.tools.register(
   }),
 )
 
-const agent: Agent = activationContext.agentLoop.create(SessionId('help-disclosure-real'), {
+const agent: Agent = await activationContext.agentLoop.create(SessionId('help-disclosure-real'), {
   provider: 'validation',
   model: 'validation',
 })

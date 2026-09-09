@@ -15,7 +15,7 @@ export async function verifyEditing(
   page: Page,
   browser: Browser,
   delivery: PresentationDelivery,
-  durablePath: string,
+  durableSessionId: string,
   outputRoot: string,
   processAuditPath: string,
 ) {
@@ -28,7 +28,10 @@ export async function verifyEditing(
   const original = parsePresentationDocument(
     JSON.parse(await readFile(delivery.receipt.files.document.path, 'utf8')),
   )
-  const events = await readFile(durablePath)
+  const events = await page.evaluate(
+    (id) => (window as any).__s4Rpc('/presentation-s4-validation', 'events', { sessionId: id }),
+    durableSessionId,
+  )
   const processEvents = await readFile(processAuditPath)
   assert.match(processEvents.toString(), /spawn|exec/)
   const cardCount = await page.locator('[data-presentation-card]').count()
@@ -192,7 +195,10 @@ export async function verifyEditing(
   await page.setViewportSize({ width: 1440, height: 1100 })
   assert.equal(await page.locator('[data-presentation-card]').count(), cardCount)
   assert.deepEqual(
-    await readFile(durablePath),
+    await page.evaluate(
+      (id) => (window as any).__s4Rpc('/presentation-s4-validation', 'events', { sessionId: id }),
+      durableSessionId,
+    ),
     events,
     'Reader saves must not add Agent/Tool events',
   )

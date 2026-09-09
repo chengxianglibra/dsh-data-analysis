@@ -8,24 +8,23 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
 import LlmRuntime, {
-  CallId,
   type ContentBlock,
   createUserMessage,
   type GenerateOptions,
   LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
+  ToolCallId,
 } from '@deepseek-ai/dsh-llm'
-import SessionStore, {
-  type JsonValue,
-  type SessionEvent,
-  SessionId,
-} from '@deepseek-ai/dsh-session'
+import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { parsePresentationReceipt } from '../../src/presentation/contracts/index.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
+import { inspectStoredSession } from '../harness-session.ts'
 import { S0FileService } from './files.ts'
 
 export const S0_TOOL_NAME = 'marivo_present_s0_probe'
@@ -93,7 +92,7 @@ export function installS0ReceiptProbe(
         const owner = exec.agent
         if (!owner) throw new Error('S0 probe requires an owning Agent')
         const root = String(exec.rootCallId ?? exec.callId)
-        const call = [...owner.session.events]
+        const call = [...owner.session.snapshotEvents()]
           .reverse()
           .find((event) => event.type === 'tool/call' && String(event.data.callId) === root)
         if (call?.type !== 'tool/call') throw new Error('S0 probe requires a live root Tool call')
@@ -130,7 +129,7 @@ export function installS0ReceiptProbe(
     })
   })
   const stopLog = ctx.on(
-    'tools/code-dispatch-log',
+    'tools/ptc-dispatch-log',
     async (dispatch, next) => {
       const content = await next()
       if (dispatch.name !== S0_TOOL_NAME) return content
@@ -175,7 +174,7 @@ export function collectS0Deliveries(
       expectedTurn = call.turn
       raw = event.data.meta
     } else if (
-      event.type === 'tool/code-dispatch' &&
+      event.type === 'tool/ptc-dispatch' &&
       event.data.name === S0_TOOL_NAME &&
       !event.data.isError
     ) {
@@ -223,8 +222,8 @@ export function collectS0Deliveries(
 
 class ScriptedProbeAdapter extends LlmAdapter {
   #step = 0
-  readonly #mode: 'native' | 'code' | 'both'
-  constructor(mode: 'native' | 'code' | 'both') {
+  readonly #mode: 'native' | 'ptc' | 'both'
+  constructor(mode: 'native' | 'ptc' | 'both') {
     super()
     this.#mode = mode
   }
@@ -234,8 +233,8 @@ class ScriptedProbeAdapter extends LlmAdapter {
   async *stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
     const step = this.#step++
     if (step % 2 === 0) {
-      const id = CallId(`s0-call-${step}`)
-      const code = this.#mode === 'code'
+      const id = ToolCallId(`s0-call-${step}`)
+      const code = this.#mode === 'ptc'
       const name = code ? 'run_code' : S0_TOOL_NAME
       // Deliberately discard nested result. The durable receipt must survive without printing it.
       const args = JSON.stringify(
@@ -295,7 +294,7 @@ export async function validateS0Host(
     }
   }
   const modes = []
-  for (const mode of ['native', 'both', 'code'] as const) {
+  for (const mode of ['native', 'both', 'ptc'] as const) {
     const ctx = new Context()
     try {
       await ctx.plugin(LlmRuntime)
@@ -303,12 +302,12 @@ export async function validateS0Host(
       await ctx.plugin(JsonlSessionPersistence, {
         root: path.join(outputRoot, 'sessions', mode),
         compression: 'none',
-        packChunks: false,
       })
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs: 10000 })
       await ctx.plugin(ToolRuntime, { mode })
       await ctx.plugin(AgentRegistry)
+      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       ctx.llm.registerAdapter(['s0-scripted'], new ScriptedProbeAdapter(mode))
       installS0ReceiptProbe(
@@ -319,7 +318,7 @@ export async function validateS0Host(
         ),
       )
       const id = SessionId(`presentation-s0-${mode}`)
-      const agent = ctx.agentLoop.create(
+      const agent = await ctx.agentLoop.create(
         id,
         { provider: 's0-scripted', model: 'deterministic-seam' },
         { cwd: workspaceRoot },
@@ -333,9 +332,12 @@ export async function validateS0Host(
         )
         await agent.whenIdle()
       }
-      assert.equal(await ctx.sessions.flush(agent.session), true)
-      const stored = await ctx.sessionPersistence.load(id)
-      assert.deepEqual(stored.events, agent.session.events)
+      assert.equal(
+        await (ctx.get('sessions') as unknown as SessionStore).flush(agent.session),
+        true,
+      )
+      const stored = await inspectStoredSession(ctx.sessionPersistence, id)
+      assert.deepEqual(stored.events, agent.session.snapshotEvents())
       const deliveries = collectS0Deliveries(stored.events, String(id))
       assert.deepEqual(
         deliveries.map((item) => item.turn),
@@ -349,19 +351,19 @@ export async function validateS0Host(
         deliveries,
       )
       assert.deepEqual(collectS0Deliveries(stored.events, 'wrong-session'), [])
-      const raw = await ctx.sessionPersistence.readRaw(id)
+      const raw = await ctx.sessionPersistence.stat(id)
       assert.ok(raw)
       const text = JSON.stringify(stored.events)
       for (const file of Object.values(receipt.files))
         assert.ok(text.includes(file.path) && text.includes(file.sha256))
-      const dispatches = stored.events.filter((event) => event.type === 'tool/code-dispatch')
-      assert.equal(dispatches.length, mode === 'code' ? 2 : 0)
-      if (mode === 'code') assert.ok(text.includes('S0_DISPATCH_COMPLETED'))
+      const dispatches = stored.events.filter((event) => event.type === 'tool/ptc-dispatch')
+      assert.equal(dispatches.length, mode === 'ptc' ? 2 : 0)
+      if (mode === 'ptc') assert.ok(text.includes('S0_DISPATCH_COMPLETED'))
       modes.push({
         mode,
         sessionId: String(id),
         turns: deliveries.map((item) => item.turn),
-        durablePath: ctx.sessionPersistence.locate(stored.meta)?.path,
+        durableSessionId: String(stored.meta.id),
         eventCount: stored.events.length,
         codeDispatches: dispatches.length,
         receipts: deliveries.length,

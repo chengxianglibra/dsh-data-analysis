@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { DatasourceCreateInput } from './authoring.ts'
 import type {
   MarivoDatasourceBridgePort,

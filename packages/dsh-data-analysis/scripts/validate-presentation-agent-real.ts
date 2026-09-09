@@ -23,6 +23,7 @@ import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as ShellEnv from '@deepseek-ai/dsh-shell-env'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
@@ -37,6 +38,7 @@ import {
   installConnectionFixture,
   installStorage,
 } from '../tests/semantic-reference-input/fixtures.ts'
+import { inspectStoredSession } from './harness-session.ts'
 import {
   type Journey,
   journeys,
@@ -258,7 +260,6 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
     await ctx.plugin(JsonlSessionPersistence, {
       root: path.join(profileRoot, 'sessions'),
       compression: 'none',
-      packChunks: false,
     })
     await ctx.plugin(WorkspaceRegistry)
     await ctx.plugin(SkillRuntime)
@@ -269,6 +270,7 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
     await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
     await ctx.plugin(SkillTool)
     await ctx.plugin(FilesystemTools)
@@ -284,7 +286,7 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
     })
     const workspace = await ctx.workspaceRegistry.create(workspaceRoot, journey.title)
     const sessionId = SessionId(`presentation-${journey.id}-${Date.now().toString(36)}`)
-    const agent = ctx.agentLoop.create(
+    const agent = await ctx.agentLoop.create(
       sessionId,
       { provider: 'deepseek-official', model, maxTokens: 16_384 },
       { cwd: workspace.path },
@@ -330,7 +332,7 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
         agent.cancel({ kind: 'user' }, { keepInbox: true })
       }, turnDeadlineMs)
       const progress = setInterval(() => {
-        const calls = agent.session.events.filter((event) => event.type === 'tool/call')
+        const calls = agent.session.snapshotEvents().filter((event) => event.type === 'tool/call')
         process.stdout.write(
           `${journey.id} turn ${index + 1}: ${Math.round((Date.now() - turnStarted) / 1000)}s, ${calls.length} calls, last=${calls.at(-1)?.data.name ?? 'thinking'}\n`,
         )
@@ -346,9 +348,9 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
       } finally {
         clearTimeout(deadline)
         clearInterval(progress)
-        await ctx.sessions.flush(agent.session)
-        const stored = await ctx.sessionPersistence.load(sessionId)
-        assert.deepEqual(stored.events, agent.session.events)
+        await (ctx.get('sessions') as unknown as SessionStore).flush(agent.session)
+        const stored = await inspectStoredSession(ctx.sessionPersistence, sessionId)
+        assert.deepEqual(stored.events, agent.session.snapshotEvents())
         const turn = {
           prompt,
           started: turnStarted,
@@ -366,12 +368,12 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
       assert.equal(timedOut, false, `Real-model turn ${index + 1} exceeded deadline`)
       if (journey.id === 'semantic-gap-reuse' && index === 0)
         assert.equal(
-          actualDeliveries(agent.session.events, String(sessionId)).length,
+          actualDeliveries(agent.session.snapshotEvents(), String(sessionId)).length,
           0,
           'First turn should retain analysis without a report',
         )
     }
-    const stored = await ctx.sessionPersistence.load(sessionId)
+    const stored = await inspectStoredSession(ctx.sessionPersistence, sessionId)
     assert.ok(
       !JSON.stringify(stored).includes(modelSecret),
       'Model credential leaked into real session evidence',
@@ -520,7 +522,7 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
       model: { id: model, reasoningEffort, credentialSource },
       sessionId,
       workspaceId: workspace.id,
-      durablePath: ctx.sessionPersistence.locate(stored.meta)?.path,
+      durableSessionId: String(stored.meta.id),
       turns,
       calls,
       receipt,

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import { registerPluginRpc } from '../rpc.ts'
 import { applyPresentationEdits } from './contracts/editing.ts'
 import {
   type PresentationAsset,
@@ -212,8 +213,10 @@ export function registerMarivoPresentationRpc(
   connection: HostConnectionHandle,
   service: MarivoPresentationFileService,
 ) {
-  const unregister = connection.rpc.handle(
+  const unregister = registerPluginRpc(
+    connection,
     MARIVO_PRESENTATION_RPC_CHANNEL,
+    ['reports/resolve', 'reports/save', 'reports/list', 'reports/history', 'files/read'],
     async (endpoint, payload, signal) => {
       try {
         if (endpoint === 'reports/resolve' || endpoint === 'reports/save')
@@ -239,7 +242,6 @@ export function registerMarivoPresentationRpc(
         return { ok: false, error: { code: 'internal', message, details: {} } }
       }
     },
-    { authority: 'trusted-host' },
   )
   return async () => {
     service.close()

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { CodeDispatchLog, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import type { PtcDispatchLog, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { installMarivoPresentationCodeDelivery } from '../../src/presentation/delivery.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -56,12 +56,18 @@ function fixture() {
     exec: ToolExecution,
     result: ToolExecutionResult,
   ) => void
-  const log = callbacks.get('tools/code-dispatch-log') as (
-    dispatch: CodeDispatchLog,
+  const log = callbacks.get('tools/ptc-dispatch-log') as (
+    dispatch: PtcDispatchLog,
     next: () => Promise<ContentBlock[]>,
   ) => Promise<ContentBlock[]>
   const agent = {
-    session: { id: 'session', events: [{ type: 'tool/call', data: { callId: 'root', turn: 2 } }] },
+    session: {
+      id: 'session',
+      snapshotEvents() {
+        return this.events
+      },
+      events: [{ type: 'tool/call', data: { callId: 'root', turn: 2 } }],
+    },
   }
   const exec = {
     name: MARIVO_PRESENT_TOOL_NAME,
@@ -76,7 +82,7 @@ function fixture() {
     agent,
     exec: { rootCallId: 'root' },
     isError: false,
-  } as unknown as CodeDispatchLog
+  } as unknown as PtcDispatchLog
   const value = {
     isError: false,
     value: { deliveryJson: JSON.stringify(delivery()) },
@@ -103,10 +109,10 @@ test('Code delivery rejects cross Session, wrong Turn, wrong root and failed dis
     const f = fixture()
     f.result(f.exec, f.value)
     if (variant === 'session') f.agent.session.id = 'other'
-    if (variant === 'turn') f.agent.session.events[0]!.data.turn = 3
+    if (variant === 'turn') f.agent.session.snapshotEvents()[0]!.data.turn = 3
     const dispatch =
       variant === 'root'
-        ? ({ ...f.dispatch, exec: { rootCallId: 'other' } } as unknown as CodeDispatchLog)
+        ? ({ ...f.dispatch, exec: { rootCallId: 'other' } } as unknown as PtcDispatchLog)
         : variant === 'error'
           ? { ...f.dispatch, isError: true }
           : f.dispatch

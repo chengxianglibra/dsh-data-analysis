@@ -3,7 +3,8 @@ import test from 'node:test'
 import type {
   ConversationLocation,
   ConversationMatch,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { type SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session'
 import {
   marivoPresentationDeliveryDefinition as definition,
   parsePresentationDurableContent,
@@ -69,7 +70,7 @@ function native(value = delivery(), seq = 20) {
 function code(value = delivery(), seq = 21) {
   return {
     seq,
-    type: 'tool/code-dispatch',
+    type: 'tool/ptc-dispatch',
     data: {
       name: 'marivo_present',
       isError: false,
@@ -159,7 +160,7 @@ function view(
   end?: { seq: number; turn?: number; reason?: string },
   locationOverride?: ConversationLocation,
 ) {
-  const start = { type: 'turn/start', seq: 1, data: { turn: 3 } } as ConversationMatch['event']
+  const start = { type: 'turn/start', seq: 1, data: { turn: 3 } } as SessionEvent
   const location: ConversationLocation = locationOverride ?? {
     kind: 'turn',
     turn: {
@@ -168,13 +169,17 @@ function view(
       end: end
         ? ({
             type: 'turn/end',
-            seq: end.seq,
-            data: { turn: end.turn ?? 3, reason: end.reason },
+            seq: SessionSeq(end.seq),
+            time: 0,
+            data: { turn: end.turn ?? 3, reason: { kind: end.reason ?? 'completed' } },
           } as ConversationMatch['event'] & { type: 'turn/end' })
         : undefined,
       status: end ? 'closed' : 'open',
       steps: [],
-      data: { get: () => undefined },
+      data: {
+        get: () => undefined,
+        source: () => ({ getSnapshot: () => undefined, subscribe: () => () => {} }),
+      },
     },
   }
   return definition.buildViewNode({
@@ -183,7 +188,7 @@ function view(
     id: '3',
     matches: [],
     current: new Map(),
-    start: { event: start, view: undefined, role: 'start', location },
+    start: { event: start, role: 'start', location },
     state,
   })
 }
@@ -256,7 +261,7 @@ test('completed reports follow final replies despite intervening steps, includin
         .map((key: string) => snapshot.nodes.get(key))
         .filter((node: { kind: string }) => node.kind === definition.kind)
     }
-    for (const input of inputs) assembler.append(input)
+    for (const input of inputs) assembler.append({ type: 'event', ...input })
     assembler.flush()
     const originalKey = reports()[0].key
     assert.equal(reports()[0].anchorSeq, 20)
@@ -270,11 +275,15 @@ test('completed reports follow final replies despite intervening steps, includin
         },
       },
     }
-    assembler.append(end)
+    assembler.append({ type: 'event', ...end })
     assembler.flush()
     for (const replay of [
       () => {},
-      () => assembler.replaceWindow([...inputs, end], false),
+      () =>
+        assembler.replaceWindow(
+          [...inputs, end].map((entry) => ({ type: 'event', ...entry })),
+          false,
+        ),
       () => assembler.rebuildRegistry(),
     ]) {
       replay()
@@ -403,7 +412,13 @@ test('unchanged Host registries keep ProducedFiles and independent report nodes 
         event: {
           seq: 4,
           type: 'tool/call',
-          data: { turn: 3, step: 1, callId: 'write-call', name: 'write', args: '{}' },
+          data: {
+            turn: 3,
+            step: 1,
+            callId: 'write-call',
+            name: 'write',
+            arguments: JSON.stringify({ file_path: '/workspace/draft.json', content: 'draft' }),
+          },
         },
         view: {
           for: 'call',
@@ -436,7 +451,7 @@ test('unchanged Host registries keep ProducedFiles and independent report nodes 
         .filter((node: { kind: string }) => node.kind === definition.kind)
     }
     for (const input of inputs) {
-      assembler.append(input)
+      assembler.append({ type: 'event', ...input })
       assembler.flush()
       if (input.event.seq < 20) assert.equal(reports().length, 0)
       else assert.equal(reports().length, 1, `one report node after receipt seq ${input.event.seq}`)
@@ -445,7 +460,7 @@ test('unchanged Host registries keep ProducedFiles and independent report nodes 
     assert.equal(first.anchorSeq, 20)
     assert.deepEqual(builds(first), ['build-a', 'build-b'])
     const closing = { event: { seq: 30, type: 'turn/end', data: { turn: 3, reason: 'cancelled' } } }
-    assembler.append(closing)
+    assembler.append({ type: 'event', ...closing })
     assembler.flush()
     const snapshot = assembler.snapshot('chat')
     const tails = host.slots.entries('conversation.chat.turnTail')
@@ -475,9 +490,17 @@ test('unchanged Host registries keep ProducedFiles and independent report nodes 
     })
     assert.equal(foreign.props.matched.length, 0)
     for (const replay of [
-      () => assembler.replaceWindow([...inputs, closing], false),
+      () =>
+        assembler.replaceWindow(
+          [...inputs, closing].map((entry) => ({ type: 'event', ...entry })),
+          false,
+        ),
       () => assembler.rebuildRegistry(),
-      () => assembler.replaceWindow([...inputs, closing], false),
+      () =>
+        assembler.replaceWindow(
+          [...inputs, closing].map((entry) => ({ type: 'event', ...entry })),
+          false,
+        ),
     ]) {
       replay()
       assembler.flush()
@@ -487,4 +510,24 @@ test('unchanged Host registries keep ProducedFiles and independent report nodes 
       assert.deepEqual(builds(reports()[0]), ['build-a', 'build-b'])
     }
   }
+})
+
+// Historical plugin receipts remain readable after the Harness event rename.
+test('rc saved Code dispatch receipts retain the same validated presentation and grouping', () => {
+  const current = code()
+  const historical = { ...current, type: 'tool/code-dispatch' }
+  assert.deepEqual(
+    presentationDeliveryFromEvent(historical, calls, 3),
+    presentationDeliveryFromEvent(current, calls, 3),
+  )
+  assert.deepEqual(definition.match(historical), definition.match(current))
+  assert.equal(
+    presentationDeliveryFromEvent(
+      { ...historical, data: { ...historical.data, isError: true } },
+      calls,
+      3,
+    ),
+    null,
+  )
+  assert.equal(presentationDeliveryFromEvent(historical, new Map(), 3), null)
 })

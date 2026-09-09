@@ -14,7 +14,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { BuiltPresentation } from '../../src/presentation/build/index.ts'
@@ -34,6 +33,7 @@ import {
   registerMarivoPresentationRpc,
 } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, registerMarivoPresentTool } from '../../src/presentation/tool.ts'
+import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
 
 async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'presentation-s4-test-')))
@@ -197,7 +197,9 @@ test('production present accepts computed and source-only drafts, uses independe
   const f = await fixture(t)
   const session = {
     id: 'session',
-    events: [{ type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 2 } }],
+    snapshotEvents: () => [
+      { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 2 } },
+    ],
   } as unknown as Session
   let reads = 0
   const runner = {
@@ -363,7 +365,9 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
     )
     const session = {
       id: 'session',
-      events: [{ type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 0 } }],
+      snapshotEvents: () => [
+        { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 0 } },
+      ],
     } as unknown as Session
     const runner = {
       status: 'ready' as 'ready' | 'failed',
@@ -432,20 +436,16 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
 test('production RPC classifies missing files and unavailable Workspaces without exposing provider paths', async (t) => {
   const f = await fixture(t)
   const receipt = await commitPresentation(f.root, f.built, async () => {})
-  let handler: ConnectionRpcHandler | undefined
-  const connection = {
-    rpc: {
-      handle(_channel: string, value: ConnectionRpcHandler) {
-        handler = value
-        return async () => {}
-      },
-    },
-  } as unknown as HostConnectionHandle
+  const { connection, channels } = createConnectionFixture()
   const input = { sessionId: 'session', receipt, asset: 'index.html' }
   const service = new MarivoPresentationFileService(() => ({ id: 'workspace', path: f.root }))
   const stop = registerMarivoPresentationRpc(connection, service)
   await rm(receipt.files.html.path)
-  const missing = await handler!('files/read', input, new AbortController().signal)
+  const missing = await channels.get('/marivo-presentation')!(
+    'files/read',
+    input,
+    new AbortController().signal,
+  )
   assert.deepEqual(missing, {
     ok: false,
     error: { code: 'internal', message: 'asset-missing', details: {} },
@@ -456,7 +456,11 @@ test('production RPC classifies missing files and unavailable Workspaces without
     throw new Error(`Workspace resolver failed: ${f.root}/provider-private`)
   })
   const stopUnavailable = registerMarivoPresentationRpc(connection, unavailable)
-  const result = await handler!('files/read', input, new AbortController().signal)
+  const result = await channels.get('/marivo-presentation')!(
+    'files/read',
+    input,
+    new AbortController().signal,
+  )
   assert.deepEqual(result, {
     ok: false,
     error: { code: 'internal', message: 'workspace-unavailable', details: {} },

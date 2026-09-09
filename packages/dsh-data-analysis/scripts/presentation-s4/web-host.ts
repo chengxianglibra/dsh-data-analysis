@@ -105,6 +105,8 @@ export async function startPresentationWebHost(
       contents: `
 import {readFile,writeFile} from 'node:fs/promises';
 import * as production from '@chengxianglibra/dsh-data-analysis';
+import {registerPluginRpc} from ${JSON.stringify(fileURLToPath(new URL('../../src/rpc.ts', import.meta.url)))};
+import {inspectStoredSession} from ${JSON.stringify(fileURLToPath(new URL('../harness-session.ts', import.meta.url)))};
 import {runPresentationJourneys} from ${JSON.stringify(fileURLToPath(new URL('./host.ts', import.meta.url)))};
 export const name='presentation-s4';
 export const inject=[...production.inject,'llm','agentLoop','sessions','sessionPersistence','webServer'];
@@ -113,14 +115,14 @@ export async function apply(ctx){
  const previous = await readFile(${JSON.stringify(readyFile)},'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT') return undefined; throw error});
  const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(draftPaths)},true);
  const workspace=ctx.workspaceRegistry.get(result.workspaceId);
- const stop=ctx.connection.rpc.handle('/presentation-s4-validation',async(endpoint,payload)=>{
-  if(endpoint==='events'){const stored=await ctx.sessionPersistence.load(result.sessionId);return {ok:true,value:stored.events.filter(event=>['agent','turn','step','user','request','assistant','tool'].includes(event.type.split('/')[0]))};}
+ const stop=registerPluginRpc(ctx.connection,'/presentation-s4-validation',['events','detach','attach'],async(endpoint,payload)=>{
+  if(endpoint==='events'){const stored=await inspectStoredSession(ctx.sessionPersistence,result.sessionId);return {ok:true,value:stored.events.filter(event=>['agent','turn','step','user','request','assistant','tool'].includes(event.type.split('/')[0]))};}
   if(endpoint==='detach'){await workspace.detachSession(result.sessionId);return {ok:true};}
   if(endpoint==='attach'){await workspace.attachSession(result.sessionId);return {ok:true};}
   throw new Error('invalid-validation-request');
- },{authority:'trusted-host'});
+ });
  ctx.on('dispose',stop);
- await writeFile(${JSON.stringify(readyFile)},JSON.stringify({...result,url:'http://127.0.0.1:'+ctx.webServer.port}));
+ await writeFile(${JSON.stringify(readyFile)},JSON.stringify({...result,url:ctx.connection.authenticatedUrl('http://127.0.0.1:'+ctx.webServer.port)}));
 }
 `,
     },
@@ -146,7 +148,7 @@ import * as production from '@chengxianglibra/dsh-data-analysis/client';
 import * as native from '@deepseek-ai/dsh-client-ui-deliverables/client';
 export const inject=production.inject;
 export async function apply(ctx){
- window.__s4Rpc=(channel,endpoint,payload)=>ctx.get('connection').rpc.call(channel,endpoint,payload);
+ window.__s4Rpc=(channel,endpoint,payload)=>ctx.get('connection').rpc.call('/api',channel.slice(1)+'/'+endpoint,payload);
  ${
    options.askDshProbe
      ? `
@@ -156,19 +158,23 @@ export async function apply(ctx){
  const sessions=ctx.sessions, scope=sessions.scope.bind(sessions);
  const resolver=ctx.conversation.input, resolve=resolver.for.bind(resolver);
  let failure, writes=0;
- const wrapped=new WeakMap();
+ const wrapped=new WeakSet();
  sessions.scope=(id)=>{if(failure==='scope'){failure=undefined;throw new Error('Ask DSH validation: session unavailable')}return scope(id)};
  resolver.for=(actx)=>{
-   const input=resolve(actx);
-   let proxy=wrapped.get(input);
-   if(!proxy){proxy=new Proxy(input,{get(target,key){
-     if(key==='setDraft')return text=>{writes++;if(failure==='write'){failure=undefined;throw new Error('Ask DSH validation: draft write failed')}return target.setDraft(text)};
-     const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
-   }});wrapped.set(input,proxy)}
-   return proxy;
+   if(!wrapped.has(actx)){
+     const bail=actx.bail.bind(actx);
+     actx.bail=(...args)=>{if(args[1]==='slash/input-insert-text'){writes++;if(failure==='write'){failure=undefined;throw new Error('Ask DSH validation: draft write failed')}}return bail(...args)};
+     wrapped.add(actx);
+   }
+   return resolve(actx);
  };
  window.__askDshProbe={
    read:id=>structuredClone(resolve(scope(id)).state.getSnapshot()),
+   insertReference:(id,reference)=>{
+     const input=resolve(scope(id)), state=input.state.getSnapshot();
+     const end=state.occurrences.reduce((n,o)=>n-o.length+1,state.draft.length);
+     return input.insertReference(reference,{start:end,end,draftRev:state.draftRev});
+   },
    audit:()=>({writes,calls:structuredClone(calls)}),
    failNext:kind=>{if(!['scope','write'].includes(kind))throw new Error('invalid failure');failure=kind},
  };
@@ -272,8 +278,15 @@ syncBuiltinESMExports();
       } catch {}
       if (ready) {
         try {
-          const response = await fetch(ready.url, { signal: AbortSignal.timeout(2000) })
-          if (response.ok && (await response.text()).includes('__DSH_BOOT__')) return ready
+          const response = await fetch(ready.url, {
+            signal: AbortSignal.timeout(2000),
+            redirect: 'manual',
+          })
+          if (
+            response.status === 303 ||
+            (response.ok && (await response.text()).includes('__DSH_BOOT__'))
+          )
+            return ready
         } catch {
           /* A restart can retain the old ready file while its new port is opening. */
         }

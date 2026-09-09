@@ -36,7 +36,7 @@ DSH 的 `conversation.session.header.actions` 和 `shell.overlay` 提供入口�
 `workspaceId`，`workspaceRegistry` 提供项目身份。
 插件提供界面、受控读取和展示投影；Marivo Catalog 拥有对象内容与关系语义。
 
-现有 `/dsh-data-analysis` 的单个 `trusted-host` handler 增加 `semantic-browser/catalog` 分派，请求仅接受
+现有语义引用 transport 在 Harness `/api` 下注册 `/api/dsh-data-analysis/semantic-browser/catalog` 精确认证路由，请求仅接受
 `{ workspaceId }`。Host 从注册表解析路径，保留 `config.projectRoot`、`DSH_DATA_ANALYSIS_PROJECT_ROOT` 的显式覆盖，
 然后使用 Workspace 路径。页面始终显示实际绑定路径，不接受浏览器传入任意目录。
 

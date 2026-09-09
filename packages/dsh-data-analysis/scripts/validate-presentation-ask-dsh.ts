@@ -43,19 +43,19 @@ try {
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
   await page.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
   assert.equal(await page.locator('[data-presentation-card]').count(), inputs.draftPaths.length)
-  assert.ok(server.durablePath)
+  assert.ok(server.durableSessionId)
   const checks = await verifyAskDsh(
     page,
     browser,
     server.deliveries,
-    server.durablePath,
+    server.durableSessionId,
     outputRoot,
   )
   assert.deepEqual(errors, [])
   const evidence = {
     status: 'passed',
     boundary:
-      'Real installed rc.2 DSH Web composer and packed production plugin; scripted model adapter, not real-model analysis acceptance',
+      'Real installed 0.1.5-alpha.1 DSH Web composer and packed production plugin; scripted model adapter, not real-model analysis acceptance',
     workspaceRoot,
     isolatedProfile: server.profile,
     moduleDigests: server.moduleDigests,

@@ -12,7 +12,7 @@ export function installS0(ctx: any, receipts: PresentationReceipt[]) {
   const rpc = ctx.get('connection').rpc
   const read = async (receipt: PresentationReceipt, html = false) => {
     const file = html ? receipt.files.html : receipt.files.document
-    const result = await rpc.call('/marivo-presentation-s0', 'files/read', {
+    const result = await rpc.call('/api', 'marivo-presentation-s0/files/read', {
       workspaceId: receipt.workspaceId,
       reportId: 'report',
       buildId: receipt.buildId,
@@ -20,6 +20,13 @@ export function installS0(ctx: any, receipts: PresentationReceipt[]) {
       sha256: file.sha256,
     })
     if (!result.ok) throw new Error(result.error.message)
+    if (
+      typeof result.value !== 'object' ||
+      result.value === null ||
+      !('bodyBase64' in result.value) ||
+      typeof result.value.bodyBase64 !== 'string'
+    )
+      throw new Error('Invalid S0 file response')
     return Uint8Array.from(atob(result.value.bodyBase64), (char) => char.charCodeAt(0))
   }
   ctx.slots.inject('sidebar.footer.action', () =>

@@ -10,15 +10,16 @@ import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, {
-  CallId,
   createUserMessage,
   type GenerateOptions,
   LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
+  ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
@@ -34,8 +35,9 @@ import {
   installStorage,
 } from '../../tests/semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../../tests/test-shell-env.ts'
+import { inspectStoredSession } from '../harness-session.ts'
 
-export type PresentationMode = 'native' | 'both' | 'code'
+export type PresentationMode = 'native' | 'both' | 'ptc'
 export interface PresentationJourneyOptions {
   updateExistingReport?: boolean
 }
@@ -84,8 +86,8 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
     if (phase < 3) {
       const draft = this.draftPaths[turnIndex]
       assert.ok(draft, 'Scripted model received an unexpected extra Tool request')
-      const id = CallId(`s4-${this.mode}-${step}`)
-      const codeDispatch = this.mode === 'code' || (this.mode === 'both' && step === 1)
+      const id = ToolCallId(`s4-${this.mode}-${step}`)
+      const codeDispatch = this.mode === 'ptc' || (this.mode === 'both' && step === 1)
       const file = `s4-produced-${this.runId}-${turnIndex}.txt`
       const toolName = phase === 0 ? 'write' : phase === 1 ? 'marivo_present' : 'read'
       let updateTarget: { report_id: string; expected_build_id: string } | undefined
@@ -145,7 +147,7 @@ export function actualDeliveries(
     let raw: unknown
     if (event.type === 'tool/result') raw = event.data.meta
     if (
-      event.type === 'tool/code-dispatch' &&
+      event.type === 'tool/ptc-dispatch' &&
       event.data.name === 'marivo_present' &&
       !event.data.isError
     )
@@ -184,11 +186,11 @@ export async function runPresentationJourneys(
       mode,
       draftPaths,
       options.updateExistingReport
-        ? () => actualDeliveries(agent.session.events, String(sessionId)).at(-1)?.receipt
+        ? () => actualDeliveries(agent.session.snapshotEvents(), String(sessionId)).at(-1)?.receipt
         : undefined,
     ),
   )
-  const agent = ctx.agentLoop.create(
+  const agent = await ctx.agentLoop.create(
     sessionId,
     { provider, model: 'deterministic-seam' },
     { cwd: workspace.path },
@@ -203,7 +205,7 @@ export async function runPresentationJourneys(
       duplicateDispatch &&
       !duplicated &&
       owner.id === agent.session.id &&
-      event.type === 'tool/code-dispatch' &&
+      event.type === 'tool/ptc-dispatch' &&
       event.data.name === 'marivo_present'
     ) {
       duplicated = true
@@ -211,7 +213,7 @@ export async function runPresentationJourneys(
       // original Turn is still active. No file or success payload is invented.
       queueMicrotask(() => {
         try {
-          owner.append('tool/code-dispatch', event.data)
+          owner.append('tool/ptc-dispatch', event.data)
         } catch (error) {
           duplicateError = error
         }
@@ -229,7 +231,7 @@ export async function runPresentationJourneys(
     )
     await agent.whenIdle()
     if (options.updateExistingReport) {
-      const delivery = actualDeliveries(agent.session.events, String(sessionId)).at(-1)
+      const delivery = actualDeliveries(agent.session.snapshotEvents(), String(sessionId)).at(-1)
       assert.ok(delivery, 'Each update must produce an actual Tool receipt')
       assert.equal(delivery.turn, index + 1)
       assert.deepEqual(
@@ -249,9 +251,9 @@ export async function runPresentationJourneys(
       true,
       'The actual Code dispatch event did not reach its Agent-scoped validation observer',
     )
-  assert.equal(await ctx.sessions.flush(agent.session), true)
-  const stored = await ctx.sessionPersistence.load(sessionId)
-  assert.deepEqual(stored.events, agent.session.events)
+  assert.equal(await (ctx.get('sessions') as unknown as SessionStore).flush(agent.session), true)
+  const stored = await inspectStoredSession(ctx.sessionPersistence, sessionId)
+  assert.deepEqual(stored.events, agent.session.snapshotEvents())
   const rawDeliveries = actualDeliveries(stored.events, String(sessionId))
   assert.equal(rawDeliveries.length, draftPaths.length + (duplicateDispatch ? 1 : 0))
   const deliveries = [
@@ -305,15 +307,15 @@ export async function runPresentationJourneys(
     }
   }
   const dispatches = stored.events.filter(
-    (event) => event.type === 'tool/code-dispatch' && event.data.name === 'marivo_present',
+    (event) => event.type === 'tool/ptc-dispatch' && event.data.name === 'marivo_present',
   )
   assert.equal(
     dispatches.length,
-    (mode === 'code' ? draftPaths.length : mode === 'both' ? 1 : 0) + (duplicateDispatch ? 1 : 0),
+    (mode === 'ptc' ? draftPaths.length : mode === 'both' ? 1 : 0) + (duplicateDispatch ? 1 : 0),
   )
   const text = stored.events
     .flatMap((event) => {
-      if (event.type === 'tool/code-dispatch')
+      if (event.type === 'tool/ptc-dispatch')
         return event.data.content.flatMap((item) => (item.type === 'text' ? [item.text] : []))
       if (event.type === 'tool/result')
         return event.data.message.content.flatMap((block) =>
@@ -327,11 +329,11 @@ export async function runPresentationJourneys(
   for (const delivery of deliveries)
     for (const file of Object.values(delivery.receipt.files))
       assert.ok(text.includes(file.path) && text.includes(file.sha256))
-  if (mode === 'code') assert.ok(text.includes('S4_DISPATCH_COMPLETED'))
+  if (mode === 'ptc') assert.ok(text.includes('S4_DISPATCH_COMPLETED'))
   const firstResult = stored.events.find(
     (event) =>
-      event.type === (mode === 'native' ? 'tool/result' : 'tool/code-dispatch') &&
-      (event.type === 'tool/code-dispatch'
+      event.type === (mode === 'native' ? 'tool/result' : 'tool/ptc-dispatch') &&
+      (event.type === 'tool/ptc-dispatch'
         ? event.data.name === 'marivo_present'
         : (event.data.meta as { kind?: string } | undefined)?.kind ===
           'marivo.presentation.delivery'),
@@ -343,7 +345,7 @@ export async function runPresentationJourneys(
       for (const block of event.data.message.content)
         if (block.type === 'tool-result')
           assert.notEqual(block.isError, true, JSON.stringify(block.content))
-    if (event.type === 'tool/code-dispatch') assert.equal(event.data.isError, false)
+    if (event.type === 'tool/ptc-dispatch') assert.equal(event.data.isError, false)
   }
   for (const turn of deliveries.map((delivery) => delivery.turn)) {
     const start = stored.events.find(
@@ -354,7 +356,7 @@ export async function runPresentationJourneys(
     )!
     const tools = stored.events.filter(
       (event) =>
-        event.type === (mode === 'code' ? 'tool/code-dispatch' : 'tool/call') &&
+        event.type === (mode === 'ptc' ? 'tool/ptc-dispatch' : 'tool/call') &&
         event.seq > start.seq &&
         event.seq < end.seq,
     )
@@ -377,7 +379,7 @@ export async function runPresentationJourneys(
     mode,
     sessionId: String(sessionId),
     workspaceId: String(workspace.id),
-    durablePath: ctx.sessionPersistence.locate(stored.meta)?.path,
+    durableSessionId: String(stored.meta.id),
     eventCount: stored.events.length,
     codeDispatches: dispatches.length,
     deliveries,
@@ -401,7 +403,7 @@ export async function validatePresentationHost(
   options: PresentationJourneyOptions = {},
 ) {
   const modes = []
-  for (const mode of ['native', 'both', 'code'] as const) {
+  for (const mode of ['native', 'both', 'ptc'] as const) {
     const ctx = new Context()
     try {
       installConnectionFixture(ctx)
@@ -415,7 +417,6 @@ export async function validatePresentationHost(
       await ctx.plugin(JsonlSessionPersistence, {
         root: path.join(outputRoot, mode, 'sessions'),
         compression: 'none',
-        packChunks: false,
       })
       await ctx.plugin(WorkspaceRegistry)
       await ctx.plugin(SkillRuntime)
@@ -425,6 +426,7 @@ export async function validatePresentationHost(
       await ctx.plugin(ToolRuntime, { mode })
       await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
       await ctx.plugin(AgentRegistry)
+      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(
         { name: 's4-production-plugin', inject, apply },

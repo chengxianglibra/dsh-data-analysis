@@ -1,4 +1,4 @@
-/** Ask DSH through the real rc.2 composer, with read-only state and boundary-failure probes. */
+/** Ask DSH through the real alpha composer, with read-only state and boundary-failure probes. */
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -10,14 +10,14 @@ export async function verifyAskDsh(
   page: Page,
   browser: Browser,
   deliveries: readonly PresentationDelivery[],
-  durablePath: string,
+  durableSessionId: string,
   outputRoot: string,
 ) {
   const precise = deliveries.find((delivery) => delivery.receipt.title === 'S4 精确 computed')!
   const gallery = deliveries.find((delivery) => delivery.receipt.title.includes('图表与探索样例'))!
   assert.ok(precise && gallery, 'Ask DSH validation requires computed and chart gallery reports')
   const sessionId = precise.dshSessionId
-  const composer = page.locator('textarea[data-phase="plain"]:visible')
+  const composer = page.locator('[contenteditable="true"][role="textbox"]:visible')
   const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
   const reader = overlay.locator('[data-presentation-reader][data-mode="interactive"]')
   const cell = (id: string) => reader.locator(`[data-block-id="${id}"]`)
@@ -50,7 +50,10 @@ export async function verifyAskDsh(
       await cell(id).getByRole('menuitem', { name: 'Ask DSH', exact: true }).click()
     }
   }
-  const durableBefore = await readFile(durablePath)
+  const durableBefore = await page.evaluate(
+    (id) => (window as any).__s4Rpc('/presentation-s4-validation', 'events', { sessionId: id }),
+    durableSessionId,
+  )
   const eventsBefore = await events()
   assert.equal(eventsBefore.ok, true)
   const documentBytes = await Promise.all(
@@ -58,11 +61,11 @@ export async function verifyAskDsh(
   )
   const before = await audit()
   await composer.waitFor()
-  assert.equal(await composer.inputValue(), '')
+  assert.equal((await snapshot()).draft, '')
   await open()
   await ask('metric')
   await overlay.waitFor({ state: 'detached' })
-  const first = await composer.inputValue()
+  const first = (await snapshot()).draft
   assert.ok(first.startsWith('【报告上下文】\n'))
   assert.ok(first.endsWith('\n【报告上下文结束】'))
   assert.ok(first.includes(`Build ID: ${precise.receipt.buildId}`))
@@ -73,7 +76,7 @@ export async function verifyAskDsh(
   assert.equal((await snapshot()).draft, first)
 
   await composer.fill('请解释这些指标，保留我的问题。')
-  const typed = await composer.inputValue()
+  const typed = (await snapshot()).draft
   await open(gallery)
   await reader.getByRole('button', { name: /展示范围/ }).click()
   await reader.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
@@ -84,7 +87,7 @@ export async function verifyAskDsh(
     .selectOption('prepared-histogram')
   await ask('gallery-line', true)
   await overlay.waitFor({ state: 'detached' })
-  const filtered = await composer.inputValue()
+  const filtered = (await snapshot()).draft
   assert.ok(filtered.startsWith(`${typed}\n\n【报告上下文】\n`))
   assert.ok(filtered.includes('当前筛选: 展示范围：第二条观测'))
   assert.ok(filtered.includes('Snapshot row indices: [1]'))
@@ -95,7 +98,7 @@ export async function verifyAskDsh(
   await open()
   await ask('metric')
   await overlay.waitFor({ state: 'detached' })
-  const repeated = await composer.inputValue()
+  const repeated = (await snapshot()).draft
   assert.equal(repeated, `${filtered}\n\n${first}`)
   assert.equal((await audit()).writes - before.writes, 3)
 
@@ -140,6 +143,56 @@ export async function verifyAskDsh(
   await overlay.waitFor({ state: 'detached' })
   await page.screenshot({ path: path.join(outputRoot, 'ask-dsh-composer.png') })
 
+  // Exercise alpha's real Lexical chips and browser-owned upload attachments.
+  await composer.fill('保留引用与附件：')
+  const reference = {
+    source: 'marivo-semantic',
+    ref: JSON.stringify({
+      schema: 'dsh-data-analysis-semantic-reference/v1',
+      sessionId,
+      environmentFingerprint: 'acceptance-only',
+      ref: { schema: 'marivo.semantic_ref/v1', kind: 'metric', path: 'sales.revenue' },
+    }),
+    label: '收入',
+    clipboardText: '@metric:sales.revenue',
+  }
+  for (let index = 0; index < 2; index++)
+    assert.equal(
+      await page.evaluate(({ id, ref }) => (window as any).__askDshProbe.insertReference(id, ref), {
+        id: sessionId,
+        ref: reference,
+      }),
+      true,
+    )
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'ask-dsh-attachment.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  await page.waitForFunction(
+    (id) => (window as any).__askDshProbe.read(id).attachmentIds.length === 1,
+    sessionId,
+  )
+  const richBefore = await snapshot()
+  assert.equal(richBefore.occurrences.length, 2)
+  assert.notEqual(richBefore.occurrences[0].occurrenceId, richBefore.occurrences[1].occurrenceId)
+  await open()
+  await ask('metric')
+  await overlay.waitFor({ state: 'detached' })
+  const richAfter = await snapshot()
+  assert.equal(richAfter.draft, richBefore.draft + '\n\n' + first)
+  assert.deepEqual(richAfter.occurrences, richBefore.occurrences)
+  assert.deepEqual(richAfter.attachmentIds, richBefore.attachmentIds)
+  await composer.focus()
+  await page.keyboard.press('Meta+z')
+  const undone = await snapshot()
+  assert.equal(undone.draft, richBefore.draft)
+  assert.deepEqual(undone.occurrences, richBefore.occurrences)
+  assert.deepEqual(undone.attachmentIds, richBefore.attachmentIds)
+
   const offline = await browser.newContext({ offline: true })
   try {
     const portable = await offline.newPage()
@@ -163,7 +216,14 @@ export async function verifyAskDsh(
   }
 
   assert.deepEqual(await events(), eventsBefore, 'Ask DSH must not add user/Agent/Tool events')
-  assert.deepEqual(await readFile(durablePath), durableBefore, 'Ask DSH must not persist a message')
+  assert.deepEqual(
+    await page.evaluate(
+      (id) => (window as any).__s4Rpc('/presentation-s4-validation', 'events', { sessionId: id }),
+      durableSessionId,
+    ),
+    durableBefore,
+    'Ask DSH must not persist a message',
+  )
   for (const [index, delivery] of deliveries.entries())
     assert.deepEqual(await readFile(delivery.receipt.files.document.path), documentBytes[index])
   const after = await audit()
@@ -174,6 +234,9 @@ export async function verifyAskDsh(
     emptyDraft: true,
     existingDraft: true,
     repeatedAppend: true,
+    realLexicalReferencesPreserved: true,
+    uploadedAttachmentPreserved: true,
+    undoRestoresRichDraft: true,
     exactMetricAndSources: true,
     filterAndPreparedView: true,
     keyboard: true,

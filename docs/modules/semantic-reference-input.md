@@ -14,7 +14,7 @@ NFKC、大小写和空白规范化仅影响检索，不修改 ref。热度只在
 
 - DSH 拥有输入状态机、generation/abort、菜单、occurrence、undo 和提交错误提示；插件注册 `marivo-semantic` source。
 - Marivo 拥有 `SemanticKind`、`RefPayloadV1`、Catalog 和执行时领域验证；插件不扫描模型或维护对象 registry。
-- 插件通过 `/dsh-data-analysis` 的 `trusted-host` channel 提供 `semantic-references/candidates`、`selected`、`serialize`。
+- 插件通过 Connection 的 `/api/dsh-data-analysis/` 精确认证路由提供 `semantic-references/candidates`、`selected`、`serialize`。
   三个 endpoint 都使用 closed payload；`selected` 和 `serialize` 请求为 `{ envelope }`。
 - envelope 保存 v1 schema、原 Session ID、Environment fingerprint 与精确 Marivo ref，不保存 Catalog fingerprint。
   模型只收到 `<marivo-semantic-ref>` 内的规范 ref JSON；JSON 中的标记分隔字符使用 Unicode escape。

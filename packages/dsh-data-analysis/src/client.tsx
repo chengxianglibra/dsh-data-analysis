@@ -1,12 +1,14 @@
 // @ts-nocheck -- browser contracts are supplied by the DSH module table at runtime.
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { installCredentials } from './client/credentials/install.tsx'
 import { installPresentation } from './client/presentation/install.tsx'
+import { createPluginRpc } from './client/rpc.ts'
 import { installSemanticBrowser } from './client/semantic-browser/install.tsx'
 import { installSemanticReferenceSource } from './client/semantic-reference-source.ts'
 
@@ -28,7 +30,7 @@ export const inject = [
   'connection',
   'slots',
   'locale',
-  'conversationEvents',
+  'uiConversation',
   'inputTriggers',
   'sessions',
   'workspaces',
@@ -36,9 +38,9 @@ export const inject = [
 ]
 
 export function apply(ctx: Context): void {
-  const connection = ctx.get('connection')
-  installSemanticReferenceSource(ctx, connection.rpc)
-  const openSemanticObject = installSemanticBrowser(ctx, connection.rpc)
-  installCredentials(ctx, connection.rpc)
-  installPresentation(ctx, connection.rpc, openSemanticObject)
+  const rpc = createPluginRpc(ctx.get('connection')!.rpc)
+  installSemanticReferenceSource(ctx, rpc)
+  const openSemanticObject = installSemanticBrowser(ctx, rpc)
+  installCredentials(ctx, rpc)
+  installPresentation(ctx, rpc, openSemanticObject)
 }

@@ -4,8 +4,9 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
-import LlmRuntime, { CallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import ShellExecutor, {
   type ShellExecRequest,
   type ShellExecSpec,
@@ -55,10 +56,14 @@ async function harness(maxWallMs: number) {
   await ctx.plugin(TestShellEnv)
   await ctx.plugin(CountingShell)
   await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs })
-  await ctx.plugin(ToolRuntime, { mode: 'code' })
+  await ctx.plugin(ToolRuntime, { mode: 'ptc' })
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
-  const agent = ctx.agentLoop.create(SessionId('session'), { provider: 'unused', model: 'unused' })
+  const agent = await ctx.agentLoop.create(SessionId('session'), {
+    provider: 'unused',
+    model: 'unused',
+  })
   return { ctx, agent }
 }
 test('real Code Mode resumes the same SDK dispatch within its outer budget', async (t) => {
@@ -72,7 +77,7 @@ test('real Code Mode resumes the same SDK dispatch within its outer budget', asy
   const pending = h.agent.ctx.tools.execute({
     agent: h.agent,
     signal: new AbortController().signal,
-    callId: CallId('code-within'),
+    callId: ToolCallId('code-within'),
     name: 'run_code',
     arguments: {
       description: 'Validate credential waiting',
@@ -103,7 +108,7 @@ test('real Code Mode wall deadline cancels a pending credential call and rejects
   const pending = h.agent.ctx.tools.execute({
     agent: h.agent,
     signal: new AbortController().signal,
-    callId: CallId('code-expired'),
+    callId: ToolCallId('code-expired'),
     name: 'run_code',
     arguments: {
       description: 'Validate credential waiting',

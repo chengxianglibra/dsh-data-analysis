@@ -1,5 +1,7 @@
-import type { ISessions, IWorkspaces, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 export interface AskDshHost {
   sessions: Pick<ISessions, 'list' | 'scope'>
@@ -32,7 +34,16 @@ export function appendPresentationContext(
   const actx = host.sessions.scope(sessionId as SessionId)
   if (!actx) throw new Error('报告所属会话已不可用，请重新打开报告。')
   const input = host.conversation.input.for(actx)
-  const draft = input.state.getSnapshot().draft
+  const { draft, draftRev, occurrences } = input.state.getSnapshot()
   const wrapped = `【报告上下文】\n${context}\n【报告上下文结束】`
-  input.setDraft(draft ? `${draft}\n\n${wrapped}` : wrapped)
+  // Host TokenSpan uses detect coordinates: each atomic reference occupies one character.
+  const end = occurrences.reduce(
+    (length, occurrence) => length - occurrence.length + 1,
+    draft.length,
+  )
+  const applied = actx.bail(actx, 'slash/input-insert-text', {
+    text: draft ? '\n\n' + wrapped : wrapped,
+    span: { start: end, end, draftRev },
+  })
+  if (applied !== true) throw new Error('会话草稿已变化或正在提交，请稍后重试。')
 }

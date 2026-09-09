@@ -1,8 +1,8 @@
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
-  ChatConversationViewNode,
   ConversationNodeContext,
   ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -24,13 +24,13 @@ interface PresentationTurnState extends PresentationTurnData {
   readonly calls: ReadonlyMap<string, string>
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     'marivo-presentation-delivery': PresentationTurnData
   }
 }
 
-declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     'marivo-presentation-delivery': PresentationTurnData
   }
@@ -102,7 +102,7 @@ export function presentationDeliveryFromEvent(
     )
       return null
     delivery = parsedDelivery(data.meta)
-  } else if (event.type === 'tool/code-dispatch') {
+  } else if (event.type === 'tool/ptc-dispatch' || event.type === 'tool/code-dispatch') {
     if (
       data.name !== MARIVO_PRESENT_TOOL_NAME ||
       data.isError !== false ||
@@ -130,7 +130,11 @@ export const marivoPresentationDeliveryDefinition = {
       if (event.type === 'tool/result' && event.surfaceOp !== 'append') return null
       return { id: String(data.turn), role: event.type === 'turn/start' ? 'start' : 'update' }
     }
-    if (event.type !== 'tool/code-dispatch' || data.name !== MARIVO_PRESENT_TOOL_NAME) return null
+    if (
+      !['tool/ptc-dispatch', 'tool/code-dispatch'].includes(event.type) ||
+      data.name !== MARIVO_PRESENT_TOOL_NAME
+    )
+      return null
     const delivery = parsePresentationDurableContent(data.content)
     return delivery ? { id: String(delivery.turn), role: 'update' } : null
   },

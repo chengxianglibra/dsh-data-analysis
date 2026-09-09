@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
+import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
 import { context, finish, fixture } from './fixtures.ts'
 
 test('invalid references reach the creation form as safe actionable errors before any write', async (t) => {
@@ -20,19 +20,9 @@ test('invalid references reach the creation form as safe actionable errors befor
       throw new Error('invalid references must not execute Python')
     },
   } satisfies MarivoCheckedRunner)
-  let handler!: ConnectionRpcHandler
-  const unregister = registerCredentialRpc(
-    {
-      rpc: {
-        handle: (_channel: string, callback: ConnectionRpcHandler) => {
-          handler = callback
-          return async () => {}
-        },
-      },
-    } as unknown as HostConnectionHandle,
-    f.service,
-    async () => bridge,
-  )
+  const { connection, channels } = createConnectionFixture()
+  const unregister = registerCredentialRpc(connection, f.service, async () => bridge)
+  const handler = channels.get('/dsh-data-analysis-credentials')!
   t.after(unregister)
   const model = new CredentialClientModel({
     call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),

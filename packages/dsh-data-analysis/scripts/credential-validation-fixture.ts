@@ -10,9 +10,10 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import BashLocal from '@deepseek-ai/dsh-bash-local'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
-import LlmRuntime, { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -99,10 +100,11 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
     await ctx.plugin(TestShellEnv)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
     await ctx.plugin(SubprocessLocal)
     await ctx.plugin(BashLocal, { timeoutMs: 120_000, maxOutputBytes: 65536 })
-    const agent = ctx.agentLoop.create(
+    const agent = await ctx.agentLoop.create(
       SessionId(`credential-${Date.now()}`),
       {
         provider: 'deepseek-official',
@@ -137,7 +139,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
       acceptedHttpRequests: accepted,
       acceptedDatasources: [...acceptedDatasources].sort(),
       pythonResults,
-      toolCalls: agent.session.events.flatMap((event) =>
+      toolCalls: agent.session.snapshotEvents().flatMap((event) =>
         event.type === 'tool/call'
           ? [
               {
@@ -155,7 +157,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
         agent,
         name,
         arguments: args,
-        callId: CallId(`credential-${++counter}`),
+        callId: ToolCallId(`credential-${++counter}`),
         signal: AbortSignal.timeout(120_000),
       })
     const executionCode = `import os\nimport marivo.datasource as md\nassert "VALIDATION_TOKEN" not in os.environ\nassert "SECOND_VALIDATION_TOKEN" not in os.environ\nfor name, endpoint in [("warehouse", "${scope}data.json"), ("warehouse_two", "${scope}two/data.json")]:\n    with md.connect(name) as backend:\n        assert backend.raw_sql("SELECT sum(amount) FROM read_json_auto('" + endpoint + "')").fetchall() == [(30,)]\nprint("AGGREGATE=30_EACH")\n`
@@ -300,9 +302,9 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
       assert(!pythonResults[0]!.isError)
       assert.equal((pythonResults[0]!.value as { exitCode: number }).exitCode, 0)
       assert.match((pythonResults[0]!.value as { stdout: string }).stdout, /AGGREGATE=30_EACH/)
-      assert.match(JSON.stringify(agent.session.events), /CREDENTIAL_AGENT_OK/)
-      assert.doesNotMatch(JSON.stringify(agent.session.events), new RegExp(secret))
-      assert.doesNotMatch(JSON.stringify(agent.session.events), new RegExp(secondSecret))
+      assert.match(JSON.stringify(agent.session.snapshotEvents()), /CREDENTIAL_AGENT_OK/)
+      assert.doesNotMatch(JSON.stringify(agent.session.snapshotEvents()), new RegExp(secret))
+      assert.doesNotMatch(JSON.stringify(agent.session.snapshotEvents()), new RegExp(secondSecret))
     }
     assert.deepEqual([...acceptedDatasources].sort(), ['warehouse', 'warehouse_two'])
     async function scan(dir: string): Promise<void> {

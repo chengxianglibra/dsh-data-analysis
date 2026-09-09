@@ -12,14 +12,15 @@ import CredentialProvider, {
   type CredentialRef,
 } from '@deepseek-ai/dsh-credentials'
 import LlmRuntime, {
-  CallId,
   createUserMessage,
   type GenerateOptions,
   LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
+  ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import {
   apply as applySkillFilesystem,
@@ -126,7 +127,7 @@ process.exit(2)
 }
 
 function toolCall(id: string): StreamChunk[] {
-  const callId = CallId(id)
+  const callId = ToolCallId(id)
   const argumentsJson = JSON.stringify({ targets: ['analysis'] })
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
@@ -240,11 +241,12 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   )
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   const adapter = new SequentialAdapter()
   ctx.llm.registerAdapter(['mock'], adapter)
 
-  const first = ctx.agentLoop.create(
+  const first = await ctx.agentLoop.create(
     SessionId('web-a'),
     { provider: 'mock', model: 'mock' },
     { cwd: firstRoot },
@@ -256,7 +258,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
       pythonExecutable: python,
     },
   )
-  const second = ctx.agentLoop.create(
+  const second = await ctx.agentLoop.create(
     SessionId('web-b'),
     { provider: 'mock', model: 'mock' },
     { cwd: secondRoot },

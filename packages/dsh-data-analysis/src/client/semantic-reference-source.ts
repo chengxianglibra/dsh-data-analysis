@@ -110,7 +110,6 @@ export function createSemanticReferenceSource(
         return {
           name: `${kind} · ${item.ref.path}`,
           ...(item.businessDefinition ? { description: item.businessDefinition } : {}),
-          icon: Array.from(kind)[0] ?? '·',
           section: item.section === 'kind' ? kind : translate(item.section),
           value: envelopeJson(envelope),
         }

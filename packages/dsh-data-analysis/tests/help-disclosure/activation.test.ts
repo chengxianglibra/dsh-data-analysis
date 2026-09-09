@@ -8,16 +8,17 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime, {
-  CallId,
   createToolResultMessage,
   createUserMessage,
   type GenerateOptions,
   LlmAdapter,
   type LlmResolvedModelInfo,
   type StreamChunk,
+  ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import { bindScopeParent, createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
 import {
@@ -116,7 +117,7 @@ function toolCallsResponse(
 ): StreamChunk[] {
   const chunks: StreamChunk[] = []
   for (const [index, call] of calls.entries()) {
-    const id = CallId(call.id)
+    const id = ToolCallId(call.id)
     const argumentsJson = JSON.stringify(call.args)
     chunks.push(
       { type: 'block-start', index, blockType: 'tool-call' },
@@ -192,6 +193,7 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   await ctx.plugin(TestShellEnv)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], adapter)
   ctx.tools.register(
@@ -208,8 +210,8 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   return ctx
 }
 
-function createAgent(ctx: Context, id: string): Agent {
-  return ctx.agentLoop.create(SessionId(id), { provider: 'mock', model: 'mock' })
+async function createAgent(ctx: Context, id: string): Promise<Agent> {
+  return await ctx.agentLoop.create(SessionId(id), { provider: 'mock', model: 'mock' })
 }
 
 function send(agent: Agent, text: string): void {
@@ -249,7 +251,7 @@ test('bash and ordinary tools stay visible across user turns without starting He
       },
     }),
   )
-  const agent = createAgent(ctx, 'ordinary-turns')
+  const agent = await createAgent(ctx, 'ordinary-turns')
   installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'ordinary one')
@@ -276,7 +278,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
     textResponse('semantic ready'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'semantic-activation')
+  const agent = await createAgent(ctx, 'semantic-activation')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'build semantics')
@@ -300,7 +302,7 @@ test('analysis activation discloses native help without the removed Evidence rou
     textResponse('analysis ready'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'source-prompt-analysis')
+  const agent = await createAgent(ctx, 'source-prompt-analysis')
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
     credentials: {
       resolve: async () => undefined,
@@ -314,10 +316,14 @@ test('analysis activation discloses native help without the removed Evidence rou
   send(agent, 'analyze with exact evidence')
   await agent.whenIdle()
 
-  const initialPrompt = JSON.stringify(adapter.requests[0]?.system ?? '')
+  const initialPrompt = JSON.stringify(
+    adapter.requests[0]?.messages.filter((message) => message.role === 'system') ?? [],
+  )
   assert.doesNotMatch(initialPrompt, /marivo_evidence_sources/)
   assert.doesNotMatch(initialPrompt, /Use dsh-data-analysis-report/)
-  const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
+  const activatedPrompt = JSON.stringify(
+    adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
+  )
   assert.doesNotMatch(activatedPrompt, /marivo_evidence_sources|marivo:evidence-sources/)
   assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
   assert.doesNotMatch(activatedPrompt, /dsh-data-analysis-report|marivo:report/)
@@ -350,7 +356,7 @@ test('an Agent-plane inherited skill Tool activates root help without a legacy r
   const resolvedAgentPlaneCtx = agentPlaneCtx
   assert.ok(resolvedAgentPlaneCtx)
   resolvedAgentPlaneCtx.tools.register(fixtureSkillTool())
-  const agent = createAgent(ctx, 'source-prompt-agent-plane')
+  const agent = await createAgent(ctx, 'source-prompt-agent-plane')
   bindScopeParent(agent, parentScope)
   assert.equal(scopeParentOf(agent), parentScope)
   assert.equal(agent.ctx.tools.get('skill', agent), agent.ctx.tools.get('skill', parentScope))
@@ -367,7 +373,12 @@ test('an Agent-plane inherited skill Tool activates root help without a legacy r
   send(agent, 'analyze with an Agent-plane skill Tool')
   await agent.whenIdle()
 
-  assert.doesNotMatch(JSON.stringify(adapter.requests[1]?.system ?? ''), /marivo_evidence_sources/)
+  assert.doesNotMatch(
+    JSON.stringify(
+      adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
+    ),
+    /marivo_evidence_sources/,
+  )
   assert.match(requestMessages(adapter.requests[1]), /marivo_help_context/)
   assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
 })
@@ -381,7 +392,7 @@ for (const skill of ['marivo-analysis', 'marivo-semantic']) {
       textResponse('semantic ready'),
     ])
     const ctx = await harness(adapter)
-    const agent = createAgent(ctx, `source-prompt-${skill}`)
+    const agent = await createAgent(ctx, `source-prompt-${skill}`)
     const dispose = installMarivoPlugin(ctx, fixture.environment, {
       credentials: {
         resolve: async () => undefined,
@@ -396,10 +407,14 @@ for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     await agent.whenIdle()
 
     assert.doesNotMatch(
-      JSON.stringify(adapter.requests[0]?.system ?? ''),
+      JSON.stringify(
+        adapter.requests[0]?.messages.filter((message) => message.role === 'system') ?? [],
+      ),
       /DSH Credentials owns|Before completing any analysis/,
     )
-    const activatedPrompt = JSON.stringify(adapter.requests[1]?.system ?? '')
+    const activatedPrompt = JSON.stringify(
+      adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
+    )
     assert.match(activatedPrompt, /DSH Credentials owns/)
     assert.match(activatedPrompt, /Never request values in chat/)
     assert.match(activatedPrompt, /marivo_datasource_test/)
@@ -418,7 +433,9 @@ for (const skill of ['marivo-analysis', 'marivo-semantic']) {
       assert.match(activatedPrompt, /Keep incomplete branches explicit/)
     } else assert.doesNotMatch(activatedPrompt, /Before completing any analysis/)
     assert.doesNotMatch(
-      JSON.stringify(adapter.requests[1]?.system ?? ''),
+      JSON.stringify(
+        adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
+      ),
       /marivo_evidence_sources/,
     )
     assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /after datasource changes/)
@@ -429,7 +446,7 @@ test('an explicit user skill invocation activates the matching root help without
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'explicit-invocation')
+  const agent = await createAgent(ctx, 'explicit-invocation')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [
@@ -465,7 +482,7 @@ test('the disclosure listener sees a DSH skill invocation appended by an outer w
     })
     return { kind: 'enter' as const, messages: [...decision.messages, invocation] }
   })
-  const agent = createAgent(ctx, 'outer-skill-invocation')
+  const agent = await createAgent(ctx, 'outer-skill-invocation')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, '/marivo-analysis')
@@ -485,7 +502,7 @@ test('a scope-local Tool shadow named skill cannot activate Marivo disclosure', 
     textResponse('done'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'skill-shadow')
+  const agent = await createAgent(ctx, 'skill-shadow')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   agent.ctx.tools.register(
     defineTool({
@@ -525,7 +542,7 @@ test('loading both Marivo skills injects analysis then authoring help atomically
     textResponse('both ready'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'both-activation')
+  const agent = await createAgent(ctx, 'both-activation')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'author then analyze')
@@ -551,7 +568,7 @@ test('reloading the same skill refreshes live help without duplicating unchanged
     textResponse('done'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'repeat-activation')
+  const agent = await createAgent(ctx, 'repeat-activation')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'load twice')
@@ -582,13 +599,13 @@ test('repeated focused help stays live and renders a receipt instead of duplicat
     textResponse('done'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'focused-repeat')
+  const agent = await createAgent(ctx, 'focused-repeat')
   installMarivoDisclosure(ctx, agent, fixture.bridge)
 
   send(agent, 'read focused help twice')
   await agent.whenIdle()
 
-  const results = agent.session.events.filter((event) => event.type === 'tool/result')
+  const results = agent.session.snapshotEvents().filter((event) => event.type === 'tool/result')
   const first = JSON.stringify(results[0])
   const second = JSON.stringify(results[1])
   assert.match(first, /help-body:analysis\.observe/)
@@ -612,7 +629,7 @@ test('an environment change replaces active root help without a new skill load',
     textResponse('second done'),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'environment-replacement')
+  const agent = await createAgent(ctx, 'environment-replacement')
   const controller = installMarivoDisclosure(ctx, agent, () => Promise.resolve(current))
 
   send(agent, 'activate')
@@ -634,7 +651,7 @@ test('a changed root body with the same environment identity replaces visible he
   t.after(second.cleanup)
   let current = first.bridge
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'body-replacement')
+  const agent = await createAgent(ctx, 'body-replacement')
   const controller = installMarivoDisclosure(ctx, agent, () => Promise.resolve(current))
   const invocation = createUserMessage({
     content: [{ type: 'text', text: 'analysis skill' }],
@@ -659,7 +676,7 @@ test('hidden root disclosure is read live and restored after prompt compaction',
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'compaction-recovery')
+  const agent = await createAgent(ctx, 'compaction-recovery')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [
@@ -689,7 +706,7 @@ test('an already-visible receipt cannot suppress recovery after compaction hides
   const fixture = await environmentFixture({ fingerprint: '4'.repeat(64) })
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'receipt-compaction-recovery')
+  const agent = await createAgent(ctx, 'receipt-compaction-recovery')
   const bodyDigest = marivoHelpBodyDigest('help-body:analysis\n')
   const root = agent.session.append(
     'user/message',
@@ -706,7 +723,7 @@ test('an already-visible receipt cannot suppress recovery after compaction hides
     }),
     { surfaceOp: 'append' },
   )
-  const callId = CallId('root-receipt')
+  const callId = ToolCallId('root-receipt')
   agent.session.append('tool/call', {
     turn: 1,
     step: 1,
@@ -739,7 +756,7 @@ test('an already-visible receipt cannot suppress recovery after compaction hides
       source: { kind: 'plugin', plugin: 'compaction-fixture' },
     }),
     {
-      surfaceOp: { op: 'replace', start: root.seq, end: root.seq },
+      surfaceOp: { op: 'replace', startSeq: root.seq, endSeq: root.seq },
       sourceEventSeqs: [root.seq],
     },
   )
@@ -760,7 +777,7 @@ test('root help failure stops the next step once without hiding ordinary tools o
     toolCallsResponse([{ id: 'semantic', name: 'skill', args: { name: 'marivo-semantic' } }]),
   ])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'root-help-failure')
+  const agent = await createAgent(ctx, 'root-help-failure')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const errors: unknown[] = []
   ctx.on('agent/error', ({ agent: subject, error }) => {
@@ -780,7 +797,7 @@ test('two-skill root help disclosure cancels its sibling and stays atomic when o
   const fixture = await environmentFixture({ failTarget: 'authoring', slowTarget: 'analysis' })
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'atomic-root-help-failure')
+  const agent = await createAgent(ctx, 'atomic-root-help-failure')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocations = [
     createUserMessage({
@@ -809,7 +826,7 @@ test('cancelling a root help read leaves disclosure pending and records no deliv
   const fixture = await environmentFixture({ slowTarget: 'analysis' })
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'root-help-cancel')
+  const agent = await createAgent(ctx, 'root-help-cancel')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [{ type: 'text', text: 'analysis skill' }],
@@ -829,7 +846,7 @@ test('disposing during a root Help read cancels it without late injection or tel
   const fixture = await environmentFixture({ slowTarget: 'analysis' })
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = createAgent(ctx, 'root-help-dispose')
+  const agent = await createAgent(ctx, 'root-help-dispose')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const invocation = createUserMessage({
     content: [{ type: 'text', text: 'analysis skill' }],
@@ -851,7 +868,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([textResponse('installed'), textResponse('disposed')])
   const ctx = await harness(adapter)
-  const agent = createAgent(ctx, 'plugin-adapter')
+  const agent = await createAgent(ctx, 'plugin-adapter')
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
     pythonTimeoutMs: 234_000,
     pythonMaxTimeoutMs: 456_000,
@@ -886,7 +903,7 @@ test('plugin lifecycle never mutates the Host persistence environment', async (t
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  createAgent(ctx, 'persistence-policy')
+  await createAgent(ctx, 'persistence-policy')
   const previous = process.env.MARIVO_PERSIST_CREDENTIALS
   process.env.MARIVO_PERSIST_CREDENTIALS = 'previous-value'
   t.after(() => {

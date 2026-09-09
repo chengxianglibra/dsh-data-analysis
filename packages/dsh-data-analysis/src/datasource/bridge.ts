@@ -1,5 +1,5 @@
 import { isCredentialRefName } from '@deepseek-ai/dsh-credentials'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
 import type { MarivoBridgeSource } from '../environment/source.ts'
 import { resolveMarivoBridgeSource } from '../environment/source.ts'

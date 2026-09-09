@@ -1,5 +1,6 @@
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { z } from 'zod'
+import { registerPluginRpc } from '../rpc.ts'
 import type { MarivoDatasourceBridgePort } from './bridge.ts'
 import { CREDENTIAL_CHANNEL, credentialError, type MarivoCredentialService } from './service.ts'
 
@@ -20,8 +21,19 @@ export function registerCredentialRpc(
   service: MarivoCredentialService,
   workspace: (id: string) => Promise<MarivoDatasourceBridgePort>,
 ): () => Promise<void> {
-  const unregister = connection.rpc.handle(
+  const unregister = registerPluginRpc(
+    connection,
     CREDENTIAL_CHANNEL,
+    [
+      'overview',
+      'authoring',
+      'create-datasource',
+      'watch',
+      'start',
+      'operation',
+      'cancel-operation',
+      'cancel-request',
+    ],
     async (endpoint, payload, signal) => {
       try {
         if (Buffer.byteLength(JSON.stringify(payload) ?? '') > 1_048_576)
@@ -88,7 +100,6 @@ export function registerCredentialRpc(
         }
       }
     },
-    { authority: 'trusted-host' },
   )
   return async () => {
     const draining = unregister()

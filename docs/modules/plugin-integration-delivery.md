@@ -65,13 +65,29 @@ Web client 只保留：
 通过统一 Session/Turn delivery 汇总卡片，加载固定快照并校验下载字节；同一 receipt 的重复事件不重复显示。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
+## DSH alpha 适配
+
+当前基线为 `0.1.5-alpha.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
+和 `dsh-api-workspace-controller`；对话组装由 `ui-conversation` 拥有，chat 节点渲染由 `ui-chat` 拥有。
+新版 Lexical composer 通过 scoped `slash/input-insert-text` 和当前 `draftRev` 追加 Ask DSH 内容，
+采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史。
+
+`src/rpc.ts` 与 `src/client/rpc.ts` 将插件逻辑 endpoint 接入 Connection 的精确 Fetch 路由，
+认证、Host/Origin 检查和请求体传输继续由 Harness `/api` 拥有。插件只解析公开 `clientRequestSchema`
+和自己的 payload；路由撤回与领域操作 drain 仍属于原 plugin lifecycle。
+此接法避开 alpha 的独立 `rpc.handle` 在 Cordis plugin context 中访问 `webServer` 失败的问题，
+不修改 DSH 源码或 profile 的认证策略。
+
+验证工具通过 `snapshotEvents()` 和 SessionPersistence 的 `open/read/close` 读取事件，
+不把底层 JSONL 文件路径当作 Session identity。模型请求校验读取 `messages` 中的 system 消息。
+
 ## Compatibility 与 package
 
 `dshDataAnalysisCompatibility` 精确声明：
 
 | 边界 | 当前值 |
 | --- | --- |
-| DSH distribution/peers | `0.1.1-rc.2` |
+| DSH distribution/peers | `0.1.5-alpha.1` |
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.5.4` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |

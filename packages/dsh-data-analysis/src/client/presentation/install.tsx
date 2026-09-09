@@ -489,7 +489,9 @@ export function installPresentation(ctx, rpc, openSemanticObject) {
     )
     // A new Definition can immediately replay existing events. Its keyed renderer
     // must already exist, including when the Host declares this slot after us.
-    const disposeDefinition = ctx.conversationEvents.register(marivoPresentationDeliveryDefinition)
+    const disposeDefinition = ctx.uiConversation.events.register(
+      marivoPresentationDeliveryDefinition,
+    )
     return () => {
       disposeDefinition()
       disposeCards()

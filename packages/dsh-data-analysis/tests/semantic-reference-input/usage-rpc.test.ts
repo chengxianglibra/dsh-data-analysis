@@ -113,14 +113,8 @@ test('selected and serialize work without Catalog cache; ownership, authority an
   )
   const cancelled = AbortSignal.abort()
   await assert.rejects(service.handle('semantic-references/serialize', selected, cancelled))
-  let authority = ''
-  const original = ctx.connection.rpc.handle
-  ctx.connection.rpc.handle = (channel, handler, options) => {
-    authority = options.authority
-    return original(channel, handler, options)
-  }
   const dispose = registerSemanticReferenceRpc(ctx.connection, service)
-  assert.equal(authority, 'trusted-host')
+  assert.ok(channels.has('/dsh-data-analysis'))
   unknown = true
   const failed = await channels.get('/dsh-data-analysis')!(
     'semantic-references/serialize',

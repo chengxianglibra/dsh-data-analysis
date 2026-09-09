@@ -55,7 +55,7 @@ export async function apply(ctx){
   const workspace=await ctx.workspaceRegistry.create(${JSON.stringify(workspaceRoot)},'Presentation S0');
   const dispose=registerS0FileRpc(ctx.get('connection'),new S0FileService(id=>ctx.workspaceRegistry.get(WorkspaceId(id))));
   ctx.on('dispose',dispose);
-  await writeFile(${JSON.stringify(readyFile)},JSON.stringify({workspaceId:String(workspace.id),workspaceRoot:workspace.path,url:'http://127.0.0.1:'+ctx.webServer.port}));
+  await writeFile(${JSON.stringify(readyFile)},JSON.stringify({workspaceId:String(workspace.id),workspaceRoot:workspace.path,url:ctx.connection.authenticatedUrl('http://127.0.0.1:'+ctx.webServer.port)}));
 }
 `,
     },
@@ -109,8 +109,14 @@ export async function apply(ctx){
             workspaceRoot: string
             url: string
           }
-          const response = await fetch(ready.url, { signal: AbortSignal.timeout(2000) })
-          if (response.ok && (await response.text()).includes('__DSH_BOOT__'))
+          const response = await fetch(ready.url, {
+            signal: AbortSignal.timeout(2000),
+            redirect: 'manual',
+          })
+          if (
+            response.status === 303 ||
+            (response.ok && (await response.text()).includes('__DSH_BOOT__'))
+          )
             return { ...ready, pid: process.pid, stop }
         } catch {
           /* Service activation and the frontend roster settle asynchronously. */

@@ -48,12 +48,13 @@ Tool 在读取 Draft 和投影前 resolve 目标，校验 current、Workspace �
 更新仍通过原有 Native／Code 交付路径生成本轮回执与卡片；历史交付事件不改写，同 Report 的卡片重开时解析同一 current。
 固定 Build 文件和离线 HTML 保留快照，不提供跨窗口实时刷新或自动历史清理。
 
-## Native、Code 与 headless
+## Native、PTC 与 headless
 
 纯 `PresentationDelivery` envelope 使用 `kind: "marivo.presentation.delivery"`、`schemaVersion: 2`、
 `dshSessionId`、`turn` 和同一个 `PresentationReceipt`。Native/both 使用 Tool metadata；Code 子调用通过
-Harness `tools/code-dispatch-log` 写入同一种 durable envelope，即使代码丢弃返回值也保留交付。
-登记只保存有界的临时 dispatch 关联，持久事实仍在 Harness 事件中。
+Harness `tools/ptc-dispatch-log` 写入同一种 durable envelope，即使代码丢弃返回值也保留交付。
+登记只保存有界的临时 dispatch 关联，持久事实仍在 Harness 事件中。新版写入 `tool/ptc-dispatch`；
+读取既有 schemaVersion 2 receipt 时同时识别旧 `tool/code-dispatch` 事件名称，不改写历史。
 
 客户端要求 Native receipt 对应同一 Turn 的实际 `marivo_present` call；Code 对应同一 Turn 的 root call。
 卡片再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文或旧 Evidence metadata。
@@ -79,7 +80,7 @@ scoped slot 提供，Host Turn 边界约束回执归属，缺失 Turn location �
 
 ## RPC、编辑与当前指针
 
-trusted-host channel 为 `/marivo-presentation`，提供：
+逻辑 channel 为 `/marivo-presentation`；实际通过 Connection 注册 `/api/marivo-presentation/<endpoint>` 精确 POST 路由，复用 Harness 的浏览器认证及 Host/Origin 校验。提供：
 
 | Endpoint | 输入 | 作用 |
 | --- | --- | --- |

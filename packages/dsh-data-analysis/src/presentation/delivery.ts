@@ -25,7 +25,7 @@ export function installMarivoPresentationCodeDelivery(ctx: Context): () => void 
     }
   })
   const stopLog = ctx.on(
-    'tools/code-dispatch-log',
+    'tools/ptc-dispatch-log',
     async (dispatch, next) => {
       const content = await next()
       if (dispatch.name !== MARIVO_PRESENT_TOOL_NAME) return content
@@ -39,7 +39,7 @@ export function installMarivoPresentationCodeDelivery(ctx: Context): () => void 
         item.rootCallId !== String(dispatch.exec.rootCallId)
       )
         return content
-      const root = [...(dispatch.agent?.session.events ?? [])]
+      const root = [...(dispatch.agent?.session.snapshotEvents() ?? [])]
         .reverse()
         .find(
           (event) => event.type === 'tool/call' && String(event.data.callId) === item.rootCallId,
