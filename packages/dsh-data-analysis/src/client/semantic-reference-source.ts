@@ -14,6 +14,7 @@ import {
   SOURCE,
 } from '../semantic-reference/contracts.ts'
 import { semanticKindLabels } from '../semantic-reference/labels.ts'
+import { semanticReference } from './semantic-reference.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -111,12 +112,7 @@ export function createSemanticReferenceSource(
         if (!lifetime.aborted) console.warn('Marivo semantic reference usage unavailable')
       })
       return {
-        insert: {
-          source: SOURCE,
-          ref: envelopeJson(envelope),
-          label: refKey(envelope.ref),
-          clipboardText: `@${refKey(envelope.ref)}`,
-        },
+        insert: semanticReference(envelope),
       }
     },
     codec: {

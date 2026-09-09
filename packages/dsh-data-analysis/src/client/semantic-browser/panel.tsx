@@ -21,9 +21,23 @@ function Fields({ fields }) {
   )
 }
 
-function ObjectDetail({ object, objects, view, model, navigate, onReturnToList }) {
+function ObjectDetail({
+  object,
+  objects,
+  view,
+  model,
+  navigate,
+  onReturnToList,
+  onAsk,
+  questionPending,
+  questionNotice,
+}) {
   const [notice, setNotice] = useState('')
   const [graph, setGraph] = useState(false)
+  useEffect(
+    () => setNotice(questionPending ? '' : (questionNotice ?? '')),
+    [questionNotice, questionPending],
+  )
   const key = refKey(object.ref)
   async function copy(text) {
     try {
@@ -74,6 +88,14 @@ function ObjectDetail({ object, objects, view, model, navigate, onReturnToList }
         </button>
         <button type="button" onClick={() => copy(key)}>
           复制引用
+        </button>
+        <button
+          type="button"
+          disabled={!onAsk || questionPending}
+          onClick={onAsk}
+          title={!onAsk ? '当前页面没有可用的所属会话输入框' : undefined}
+        >
+          {questionPending ? '正在加入…' : '加入提问'}
         </button>
         <span role="status" className="sb-muted">
           {notice}
@@ -201,6 +223,7 @@ export function SemanticBrowserPanel({
   onOpenObject,
   onNavigateKey,
   onReturnToList,
+  onAsk,
 }) {
   const navigate = onNavigateKey ?? ((key) => model.navigate(key))
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -452,6 +475,9 @@ export function SemanticBrowserPanel({
               {selected ? (
                 <ObjectDetail
                   key={`${snapshot.fingerprint}/${view.selected}`}
+                  onAsk={!view.loading && !view.error && !workspaceError ? onAsk : undefined}
+                  questionPending={state.questionPending}
+                  questionNotice={state.questionNotice}
                   object={selected}
                   objects={objects}
                   view={view}

@@ -38,6 +38,7 @@
     "validate:plugin-integration-delivery:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-integration-delivery-real.ts",
     "test:semantic-reference-input": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/semantic-reference-input/*.test.ts",
     "test:semantic-browser": "node packages/dsh-data-analysis/scripts/build-client.mjs && node --experimental-strip-types --test packages/dsh-data-analysis/tests/semantic-browser/*.test.ts",
+    "validate:semantic-ask-dsh:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-semantic-ask-dsh.ts",
     "validate:semantic-browser:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-semantic-browser-web.ts",
     "validate:credentials:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-credentials-web.ts",
     "test:presentation-surface": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-surface/*.test.ts",

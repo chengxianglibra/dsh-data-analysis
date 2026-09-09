@@ -10,12 +10,14 @@ import {
   modelMarker,
   parseCandidatesRequest,
   parseEnvelope,
+  parsePrepareRequest,
 } from './contracts.ts'
 import { search } from './search.ts'
 import { type SemanticReferenceUsage, workspaceKey } from './usage.ts'
 export type EnvironmentResolver = (
   sessionId: string,
-  purpose: 'candidates' | 'reference',
+  purpose: 'candidates' | 'reference' | 'prepare',
+  workspaceId?: string,
 ) => Promise<MarivoCheckedRunner>
 /** Abort the caller's wait, without pretending to cancel the shared Environment resolver. */
 export async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -57,9 +59,10 @@ export class SemanticReferenceService {
   async #environment(
     sessionId: string,
     signal: AbortSignal,
-    purpose: 'candidates' | 'reference' = 'reference',
+    purpose: 'candidates' | 'reference' | 'prepare' = 'reference',
+    workspaceId?: string,
   ): Promise<MarivoCheckedRunner> {
-    const runner = await abortable(this.#resolve(sessionId, purpose), signal)
+    const runner = await abortable(this.#resolve(sessionId, purpose, workspaceId), signal)
     if (runner.status !== 'ready') {
       this.#bridge.invalidate(runner.binding.fingerprint)
       throw new Error('environment-failed')
@@ -78,6 +81,14 @@ export class SemanticReferenceService {
     signal.throwIfAborted()
     if (Buffer.byteLength(JSON.stringify(payload) ?? '') > MAX_WIRE_BYTES)
       throw new Error('invalid-request')
+    if (endpoint === 'semantic-references/prepare') {
+      const { workspaceId, envelope } = parsePrepareRequest(payload)
+      const runner = await this.#environment(envelope.sessionId, signal, 'prepare', workspaceId)
+      if (runner.binding.fingerprint !== envelope.environmentFingerprint)
+        throw new Error('environment-mismatch')
+      signal.throwIfAborted()
+      return { envelope }
+    }
     if (endpoint === 'semantic-references/candidates') {
       const request = parseCandidatesRequest(payload)
       const environment = await this.#environment(request.sessionId, signal, 'candidates')
@@ -131,6 +142,7 @@ export function registerSemanticReferenceRpc(
     connection,
     CHANNEL,
     [
+      'semantic-references/prepare',
       'semantic-references/candidates',
       'semantic-references/selected',
       'semantic-references/serialize',

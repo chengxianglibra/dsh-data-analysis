@@ -34,24 +34,48 @@ class CredentialAdapter extends LlmAdapter {
   }
 }
 
+class SemanticQuestionAdapter extends LlmAdapter {
+  readonly requests: { marker: boolean; text: string }[] = []
+  override async resolveModel(provider: string, model: string) {
+    return { provider, id: model, name: model }
+  }
+  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    if (options.purpose !== 'session-title') {
+      const texts: string[] = []
+      const visit = (value: unknown) => {
+        if (typeof value === 'string') texts.push(value)
+        else if (Array.isArray(value)) value.forEach(visit)
+        else if (value && typeof value === 'object') Object.values(value).forEach(visit)
+      }
+      visit(options.messages)
+      const text = texts.find((value) => value.includes('<marivo-semantic-ref>')) ?? ''
+      this.requests.push({ marker: !!text, text })
+    }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+}
+
 export async function createRightTabsDriver(
   ctx: Context,
   workspace: any,
   draftPaths: readonly string[],
 ) {
   const agents = new Map<string, any>()
-  for (const mode of ['native', 'ptc', 'cold', 'credentials'] as const) {
+  const semantic = new SemanticQuestionAdapter()
+  for (const mode of ['native', 'ptc', 'cold', 'credentials', 'semantic'] as const) {
     const id = SessionId(`right-tabs-${mode}`),
       provider = `right-tabs-${mode}`
     ctx.llm.registerAdapter(
       [provider],
-      mode === 'credentials'
-        ? new CredentialAdapter()
-        : new ScriptedPresentationAdapter(
-            mode === 'cold' ? 'native' : mode,
-            Array.from({ length: 12 }, (_, i) => draftPaths[i % draftPaths.length]!),
-            () => actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
-          ),
+      mode === 'semantic'
+        ? semantic
+        : mode === 'credentials'
+          ? new CredentialAdapter()
+          : new ScriptedPresentationAdapter(
+              mode === 'cold' ? 'native' : mode,
+              Array.from({ length: 12 }, (_, i) => draftPaths[i % draftPaths.length]!),
+              () => actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
+            ),
     )
     const agent = await ctx.agentLoop.create(
       id,
@@ -61,8 +85,41 @@ export async function createRightTabsDriver(
     agents.set(mode, agent)
     await agent.ctx.plugin(FilesystemTools)
     await workspace.attachSession(id)
+    if (mode === 'semantic') {
+      agent.followup(
+        createUserMessage({
+          content: [
+            { type: 'text', text: 'Initialize the isolated composer Session; do not use tools.' },
+          ],
+          source: { kind: 'user' },
+        }),
+      )
+      await agent.whenIdle()
+      semantic.requests.length = 0
+    }
   }
   return async (payload: any) => {
+    if (payload.action === 'semantic-recreate-workspace') {
+      const agent = agents.get('semantic')
+      await ctx.workspaceRegistry.delete(workspace.id)
+      const fresh = await ctx.workspaceRegistry.create(
+        workspace.path,
+        'Recreated semantic Workspace',
+      )
+      await fresh.attachSession(agent.session.id)
+      return {
+        ok: true,
+        value: {
+          workspaceId: String(fresh.id),
+          sameAgent:
+            ctx.agents.list().find((item) => item.session.id === agent.session.id) === agent,
+        },
+      }
+    }
+    if (payload.action === 'semantic-requests') {
+      await agents.get('semantic').whenIdle()
+      return { ok: true, value: semantic.requests }
+    }
     if (payload.action === 'reference-read')
       return { ok: true, value: await verifyReferenceRead(ctx, workspace, payload.reference) }
     const agent = agents.get(payload?.mode)

@@ -141,3 +141,17 @@ export function parseCandidatesResponse(value: unknown): CandidatesResponse {
     items,
   }
 }
+
+/** Browser selection identity only; preparation never reloads semantic content. */
+export function parsePrepareRequest(value: unknown): { workspaceId: string; envelope: Envelope } {
+  const r = closed(value, ['sessionId', 'workspaceId', 'environmentFingerprint', 'ref'])
+  return {
+    workspaceId: boundedText(r.workspaceId, 256),
+    envelope: parseEnvelope({
+      schema: 'dsh-data-analysis-semantic-reference/v1',
+      sessionId: r.sessionId,
+      environmentFingerprint: r.environmentFingerprint,
+      ref: r.ref,
+    }),
+  }
+}

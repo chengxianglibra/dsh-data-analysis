@@ -40,7 +40,7 @@ flowchart LR
 使用原生右侧 Tab。页面状态由 Session/Tab occurrence 拥有，导航使用完整 Workspace 与资源身份；
 当前 Session 的新交付独立观察公开 eventSource，卡片不触发自动打开。current 只提示新版本，刷新后切换；
 固定 Build 保持不变。报告编辑、数据源写操作与无匹配 Session 的 Workspace 阅读继续使用原容器。
-实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)；上传分析尚未实施。
+实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)，语义对象加入提问见 [2c 验收记录](dsh-context-stage-two-c-acceptance.md)；上传分析尚未实施。
 
 ## 分层
 
@@ -52,10 +52,13 @@ flowchart LR
 | Presentation Skill | 展示路由、内容组织、图形选择、来源声明与交付流程 | 分析语义、来源有效性判断、布局引擎 |
 | Datasource | DSH Credentials 管理、调用续接、connection test、resolver 注入 | table/source inspection 语义 |
 | Presentation delivery | present 与编辑完整提交、current 指针、durable receipt、RPC 与打开/下载 | 分析计算、长期版本管理、语义正确性 |
-| Semantic reference input | Catalog 文本检索、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
+| Semantic reference input | Catalog 文本检索、显式引用 binding 准备、原子 ref 序列化、Workspace 热度 | composer 状态机、领域成员有效性与分析执行 |
 | Semantic browser | Workspace 对象快照、只读详情与局部关系图 | observe、数据预览、对象编辑、连接配置与凭证读取 |
 | Presentation reader | 五类 block、独立编辑草稿、预计算组合选择、共享静态正文、完整报告与当前视图 HTML | 分析计算、文件提交、receipt/RPC、长期版本管理 |
 | Presentation data | 固定公开 Artifact 读取、typed JSON、声明来源快照与最小 Python writer | computed 转换审计、分析正确性、语义补齐、observe 或 revalidation |
+
+语义浏览与引用以 Workspace ID 和 Runtime fingerprint 共同确定引用身份；同路径的新 Workspace 不能复用旧引用。
+显式选择可建立当前归属，提交只验证已有 binding。详情与 `@` 共用原生可编辑状态，准备操作随输入提交开始取消。
 
 模块文档：
 

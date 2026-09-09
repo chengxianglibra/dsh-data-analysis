@@ -1,3 +1,4 @@
+import { referenceEnvironmentResolver } from './semantic-reference/environment.ts'
 /** Cordis lifecycle adapter for the Web-profile shared Marivo Runtime. */
 
 import process from 'node:process'
@@ -353,25 +354,16 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
         console.warn('dsh-data-analysis semantic-reference usage unavailable')
       }
     })
-    referenceService = new SemanticReferenceService(async (sessionId, purpose) => {
-      const agent = ctx.agents.list().find((item) => item.session.id === sessionId)
-      if (!agent) throw new Error('unknown-session')
-      const bound = bindings.get(agent)
-      if (
-        purpose === 'reference' &&
-        (!bound || bound.root !== configuredProjectRoot(config, agent))
-      )
-        throw new Error('environment-unbound')
-      const environment = await (purpose === 'reference'
-        ? bound!.environment
-        : resolveEnvironment(agent))
-      if (
-        !ctx.agents.list().includes(agent) ||
-        bindings.get(agent)?.root !== configuredProjectRoot(config, agent)
-      )
-        throw new Error('environment-changed')
-      return environment
-    }, usage)
+    referenceService = new SemanticReferenceService(
+      referenceEnvironmentResolver({
+        agent: (sessionId) => ctx.agents.list().find((item) => item.session.id === sessionId),
+        binding: (agent) => bindings.get(agent),
+        projectRoot: (agent) => configuredProjectRoot(config, agent),
+        resolve: resolveEnvironment,
+        workspace: (sessionId) => resolvePresentationWorkspace(ctx, sessionId),
+      }),
+      usage,
+    )
     disposeReferences = registerSemanticReferenceRpc(
       ctx.connection,
       referenceService,

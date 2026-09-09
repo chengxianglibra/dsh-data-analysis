@@ -5,6 +5,8 @@ import {
   type SemanticObjectView,
 } from '../../semantic-browser/contracts.ts'
 import { CHANNEL, refKey, type SemanticRef } from '../../semantic-reference/contracts.ts'
+import type { InputContextHost } from '../input-context.ts'
+import { appendSemanticReference } from './ask-dsh.ts'
 
 export interface BrowserRpc {
   call(channel: string, endpoint: string, payload: unknown, signal: AbortSignal): Promise<unknown>
@@ -24,6 +26,8 @@ export interface BrowserView {
 export interface BrowserState {
   readonly open: boolean
   readonly workspaceId: string
+  readonly questionPending?: boolean
+  readonly questionNotice?: string
   readonly fromReport?: boolean
   readonly views: Readonly<Record<string, BrowserView>>
 }
@@ -76,6 +80,7 @@ export class SemanticBrowserModel {
   readonly #rpc: BrowserRpc
   #state: BrowserState = { open: false, workspaceId: '', views: {} }
   readonly #listeners = new Set<() => void>()
+  #question?: AbortController
   #flight?: AbortController
   #generation = 0
   #disposed = false
@@ -94,6 +99,7 @@ export class SemanticBrowserModel {
     for (const listener of this.#listeners) listener()
   }
   #cancel(): void {
+    this.cancelQuestion()
     this.#generation++
     this.#flight?.abort()
     this.#flight = undefined
@@ -131,6 +137,13 @@ export class SemanticBrowserModel {
     if (workspaceId) void this.refresh()
   }
   patch(change: Partial<BrowserView>): void {
+    const view = this.#state.views[this.#state.workspaceId]
+    if (
+      (change.selected !== undefined && change.selected !== view?.selected) ||
+      (change.snapshot !== undefined && change.snapshot !== view?.snapshot) ||
+      change.loading
+    )
+      this.cancelQuestion()
     const id = this.#state.workspaceId
     if (!id) return
     this.#publish({
@@ -198,6 +211,49 @@ export class SemanticBrowserModel {
     } catch {
       if (!this.#disposed && !flight.signal.aborted && generation === this.#generation)
         this.patch({ loading: false, error: '无法加载语义层，请检查连接后重试。' })
+    }
+  }
+  cancelQuestion(): void {
+    this.#question?.abort()
+    this.#question = undefined
+    if (this.#state.questionPending || this.#state.questionNotice)
+      this.#publish({ ...this.#state, questionPending: false, questionNotice: undefined })
+  }
+  async addToQuestion(host: InputContextHost, sessionId: string): Promise<void> {
+    if (this.#disposed || this.#question) return
+    const state = this.#state
+    const view = state.views[state.workspaceId]
+    const snapshot = view?.snapshot
+    const object = snapshot?.objects.find((item) => refKey(item.ref) === view?.selected)
+    if (!state.open || !snapshot || !object || view?.loading || view?.error) return
+    const controller = new AbortController()
+    this.#question = controller
+    this.#publish({ ...this.#state, questionPending: true, questionNotice: undefined })
+    try {
+      await appendSemanticReference(
+        host,
+        this.#rpc,
+        {
+          sessionId,
+          workspaceId: state.workspaceId,
+          environmentFingerprint: snapshot.environmentFingerprint,
+          ref: object.ref,
+        },
+        controller.signal,
+      )
+      if (this.#question === controller)
+        this.#publish({ ...this.#state, questionNotice: '已加入提问' })
+    } catch {
+      if (this.#question === controller)
+        this.#publish({
+          ...this.#state,
+          questionNotice: '加入提问失败，会话、Workspace 或草稿可能已变化，请检查后重试。',
+        })
+    } finally {
+      if (this.#question === controller) {
+        this.#question = undefined
+        this.#publish({ ...this.#state, questionPending: false })
+      }
     }
   }
   dispose(): void {

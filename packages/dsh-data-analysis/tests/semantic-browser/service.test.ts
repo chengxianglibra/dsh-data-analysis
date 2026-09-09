@@ -7,6 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import type { MarivoCheckedRunRequest } from '../../src/environment/types.ts'
 import { browserFailure, SemanticBrowserService } from '../../src/semantic-browser/service.ts'
+import { semanticEnvironmentFingerprint } from '../../src/semantic-reference/environment.ts'
 import {
   registerSemanticReferenceRpc,
   type SemanticReferenceService,
@@ -45,6 +46,10 @@ test('reads registered Workspace without an Agent; deletion, cancellation, overr
   const signal = new AbortController().signal
   const result = await service.read({ workspaceId: 'registered' }, signal)
   assert.equal(result.projectRoot, root)
+  assert.equal(
+    result.environmentFingerprint,
+    semanticEnvironmentFingerprint('registered', fixture.runner.binding.fingerprint),
+  )
   assert.equal(requests.length, 1)
   assert.deepEqual(requests[0]!.environmentOverlay, {
     MARIVO_TELEMETRY: 'off',

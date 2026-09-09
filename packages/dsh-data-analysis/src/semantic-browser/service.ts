@@ -1,6 +1,7 @@
 import { realpath } from 'node:fs/promises'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { boundedText, closed } from '../semantic-reference/contracts.ts'
+import { semanticEnvironmentFingerprint } from '../semantic-reference/environment.ts'
 import { abortable } from '../semantic-reference/rpc.ts'
 import { CATALOG_MAX_BYTES, type CatalogSnapshot, parseCatalogProjection } from './contracts.ts'
 import { BROWSER_CATALOG_PROGRAM } from './program.ts'
@@ -56,7 +57,7 @@ export class SemanticBrowserService {
       ...projection,
       workspaceId: id,
       projectRoot: runner.binding.projectRoot,
-      environmentFingerprint: runner.binding.fingerprint,
+      environmentFingerprint: semanticEnvironmentFingerprint(id, runner.binding.fingerprint),
       loadedAt: new Date().toISOString(),
     }
   }

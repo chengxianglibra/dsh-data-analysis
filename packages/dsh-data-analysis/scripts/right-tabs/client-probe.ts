@@ -2,12 +2,12 @@
 export function installReadDelayProbe(ctx: any) {
   const rpc = ctx.connection.rpc,
     call = rpc.call.bind(rpc)
-  let armed = false,
+  let armed: string | false = false,
     release: (() => void) | undefined
   let overviewReads = 0
   rpc.call = async (channel: string, endpoint: string, payload: unknown, signal?: AbortSignal) => {
     if (endpoint.endsWith('/overview')) overviewReads++
-    const hold = armed && endpoint.endsWith('/files/read')
+    const hold = armed && endpoint.endsWith(armed)
     if (hold) armed = false
     const result = await call(channel, endpoint, payload, signal)
     if (hold)
@@ -22,8 +22,8 @@ export function installReadDelayProbe(ctx: any) {
   })
   return {
     overviewReads: () => overviewReads,
-    arm: () => {
-      armed = true
+    arm: (endpoint = '/files/read') => {
+      armed = endpoint
     },
     held: () => !!release,
     release: () => {

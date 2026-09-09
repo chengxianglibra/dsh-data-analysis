@@ -17,14 +17,29 @@ NFKC、大小写和空白规范化仅影响检索，不修改 ref。热度只在
 
 - DSH 拥有输入状态机、generation/abort、菜单、occurrence、undo 和提交错误提示；插件注册 `marivo-semantic` source。
 - Marivo 拥有 `SemanticKind`、`RefPayloadV1`、Catalog 和执行时领域验证；插件不扫描模型或维护对象 registry。
-- 插件通过 Connection 的 `/api/dsh-data-analysis/` 精确认证路由提供 `semantic-references/candidates`、`selected`、`serialize`。
-  三个 endpoint 都使用 closed payload；`selected` 和 `serialize` 请求为 `{ envelope }`。
+- 插件通过 Connection 的 `/api/dsh-data-analysis/` 精确认证路由提供 `semantic-references/prepare`、`candidates`、`selected`、`serialize`。
+  四个 endpoint 都使用 closed payload；`selected` 和 `serialize` 请求为 `{ envelope }`。
 - envelope 保存 v1 schema、原 Session ID、Environment fingerprint 与精确 Marivo ref，不保存 Catalog fingerprint。
   模型只收到 `<marivo-semantic-ref>` 内的规范 ref JSON；JSON 中的标记分隔字符使用 Unicode escape。
 
 请求 query 最多 128 code points；Session ID 与 Environment fingerprint 最多 256，kind 最多 128，path/name 最多
 2048，候选描述最多 240。请求序列化总量最多 1 MiB，候选响应不设条数上限。Catalog 子进程限时 30 秒、stdout 最多
 32 MiB、stderr 最多 8 KiB。领域 kind/path 合法性仍由 Marivo 判断；wire parser 不作成员认证。
+
+语义详情的“加入提问”与 `@` 共用同一个 chip 构造函数、source 和提交 codec，展示、复制及模型 marker 完全一致。
+详情先调用 `prepare`，请求为 `{ sessionId, workspaceId, environmentFingerprint, ref }`，返回 `{ envelope }`。
+Host 核验 Session 的唯一 Workspace 归属后建立或核对 Agent binding，完成后再次核验 Agent、Workspace、
+配置路径和 binding identity。Workspace 身份不能以相同路径替代。
+
+`prepare` 只核验身份连续，不加载 Catalog、不核验对象存在性或有效性、不执行分析、不访问凭据。
+身份连续不代表对象仍存在；对象删除或改名由后续 Marivo 读取发现。浏览与引用的 opaque Environment fingerprint
+共同包含 Workspace ID 与底层 Runtime fingerprint，保留 v1 envelope 结构；底层 checked runner 的执行身份不变。
+同路径重新注册的 Workspace 有不同引用身份。显式 `prepare` 或 `@` candidates 可建立当前归属，旧 envelope
+仍因 fingerprint 不匹配而拒绝。旧版未包含 Workspace 身份的草稿引用需重新选择，不做静默迁移。`serialize` 只检查已建立的归属与 binding，不修复或重写旧引用。
+
+详情操作监听原生输入状态：`plain` 和 `claimed` 均可插入；进入 adjudicating/submitting 时取消准备，恢复可编辑后
+迟到结果仍不得写入下一条草稿。普通消息提交保持 `plain` 并清空草稿，因此同时监听从有内容到空草稿的转换
+（含附件和手动清空）来取消旧操作。普通编辑允许继续，成功准备后采用最新 revision，最终由 Host 执行插入守卫。
 
 ## Environment 与 Catalog 生命周期
 
@@ -43,7 +58,7 @@ adapter 使用 `ms.load(workspace_dir=...)` 和 `RefPayloadV1.from_ref(...).to_d
 ## 热度与错误
 
 `dsh_data_analysis_semantic_reference_usage` v0 domain 的 `workspaces` 表按 canonical root 的 SHA-256 隔离。
-每次 onPick 记录一次；序列化、发送和重试不计数。按 Workspace 排队首次 put 和后续原子 update，更新时清理窗口外
+输入候选每次 onPick 记录一次；详情仅在 Host 确认插入成功后记录一次，点击失败不计数。序列化、发送和重试不计数。按 Workspace 排队首次 put 和后续原子 update，更新时清理窗口外
 日桶并对 safe integer 饱和。只有已持久化热度影响下一次候选。
 
 storage 故障只降级为零热度和有界 diagnostic。Catalog/Environment/RPC 错误不会退化为普通文字；候选失败沿用
@@ -55,5 +70,8 @@ DSH 移除对应 source group 的行为，提交失败沿用 composer error 并�
 执行 `npm run test:semantic-reference-input`。确定性测试执行 checked-out DSH 的真实 controller、InputMachine 和
 SessionInputShell；这些是输入管线集成证据，不代替真实 Web 验收。真实 Catalog 测试可通过
 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.4；默认查找本地 DSH shared Runtime，缺失时明确 skip。
+
+真实 Harness composer 的两种入口一致性、撤销及实际模型请求验证使用 `npm run validate:semantic-ask-dsh:web`，
+见 [2c 验收记录](../dsh-context-stage-two-c-acceptance.md)。
 
 参见[设计契约](../plan/semantic-reference-input-mvp-design.md)与[验收记录](../acceptance/semantic-reference-input.md)。

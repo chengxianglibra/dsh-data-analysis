@@ -231,7 +231,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     }
     return page
   }
-  function Contents({ page, tab, panelId, workspaces, sessions }) {
+  function Contents({ page, tab, panelId, workspaces, sessions, currentSession, workspaceReady }) {
+    const owners = workspaces.filter((workspace) => workspace.sessionIds.includes(page.sessionId))
+    const canAsk =
+      currentSession === page.sessionId &&
+      workspaceReady &&
+      owners.length === 1 &&
+      owners[0].workspaceId === page.target.workspaceId
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
     const data = useSyncExternalStore(page.datasources.subscribe, page.datasources.getSnapshot)
@@ -332,6 +338,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               <SemanticBrowserPanel
                 embedded
                 model={page.semantic}
+                onAsk={canAsk ? () => page.semantic.addToQuestion(ctx, page.sessionId) : undefined}
                 workspaces={workspaces}
                 onOpenObject={source}
                 onNavigateKey={
@@ -451,7 +458,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   function Body({ sessionId, useTabInfo, useWorkspaces, useSessions }) {
     const { tab, panel } = useTabInfo()
     const workspaces = useWorkspaces((s) => s.items),
-      sessions = useSessions((s) => s.byId)
+      sessions = useSessions((s) => s.byId),
+      currentSession = useSessions((s) => s.current),
+      workspaceReady = useWorkspaces((s) => s.phase === 'ready' && s.state !== 'error')
     const [page, setPage] = useState(),
       [error, setError] = useState('')
     useEffect(() => {
@@ -480,6 +489,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         panelId={panel.id}
         workspaces={workspaces}
         sessions={sessions}
+        currentSession={currentSession}
+        workspaceReady={workspaceReady}
       />
     ) : null
   }

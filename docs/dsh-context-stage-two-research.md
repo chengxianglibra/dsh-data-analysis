@@ -124,7 +124,11 @@ Agent 先读引用 Build，修改前另读 current 并沿用已有冲突契约�
 
 合理的最小接法是为**显式加入动作**提供一个窄的引用准备操作：校验页面所属 Session/Workspace；复用当前 Runtime 建立或核对该 Agent binding；比较浏览快照与当前身份；返回既有 envelope，再插入一次 chip。提交时继续由现有 codec 核对身份。不要在 serialize 时自动给失效引用换绑定，也不要用匹配路径代替 Workspace 身份。
 
-实现前必须选择并写清：旧浏览快照的对象是只保证身份连续，还是还需重新核验当前 Catalog 对象存在。当前 serialize 只核验 binding 并返回 marker，不能宣称它已有完整语义对象存在性或有效性校验。若补存在性检查，仍由 Marivo Catalog 元数据提供答案，不做插件语义推断。[10]
+**2c 实施决定（2026-09-09）**：采用显式 `semantic-references/prepare`，只核验 Session、Workspace 与
+Runtime binding 身份连续，不重新核验对象存在性。详情与 `@` 共用完整 chip 构造及原提交 codec，
+不改变 v1 envelope；身份变化明确拒绝，不自动修复旧引用。实现及证据见 [2c 验收记录](dsh-context-stage-two-c-acceptance.md)。
+
+原调研待选项：旧浏览快照的对象是只保证身份连续，还是还需重新核验当前 Catalog 对象存在。当前 serialize 只核验 binding 并返回 marker，不能宣称它已有完整语义对象存在性或有效性校验。若补存在性检查，仍由 Marivo Catalog 元数据提供答案，不做插件语义推断。[10]
 
 无 Session 浏览保持可用，“加入提问”只在目标 Session 与当前输入归属明确时启用。关闭页、导航替换、Workspace 撤销、延迟准备操作、提交中与旧 revision 均不得写入新上下文；失败应保留页面与草稿，并允许重试。常用引用计数只应在真实插入成功后更新，不能将点击失败算成成功使用。
 

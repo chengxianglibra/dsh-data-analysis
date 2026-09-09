@@ -1,14 +1,7 @@
-import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { type InputContextHost, inputEnd, ownedInput } from '../input-context.ts'
 import { wrapPresentationContext } from './context-reference.ts'
 
-export interface AskDshHost {
-  sessions: Pick<ISessions, 'list' | 'scope'>
-  workspaces: Pick<IWorkspaces, 'list'>
-  conversation: Pick<IConversation, 'input'>
-}
+export type AskDshHost = InputContextHost
 
 /** Append through the Host's public draft path; never submit or serialize references. */
 export function appendPresentationContext(
@@ -17,34 +10,18 @@ export function appendPresentationContext(
   workspaceId: string,
   context: string,
 ): void {
-  const sessions = host.sessions.list.getSnapshot()
-  const workspaces = host.workspaces.list.getSnapshot()
-  if (
-    !sessionId ||
-    !workspaceId ||
-    sessions.current !== sessionId ||
-    workspaces.phase !== 'ready' ||
-    workspaces.state === 'error' ||
-    !workspaces.items.some(
-      (workspace) =>
-        workspace.workspaceId === workspaceId &&
-        workspace.sessionIds.includes(sessionId as SessionId),
-    )
-  )
+  let owner: ReturnType<typeof ownedInput>
+  try {
+    owner = ownedInput(host, sessionId, workspaceId)
+  } catch {
     throw new Error('报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。')
-  const actx = host.sessions.scope(sessionId as SessionId)
-  if (!actx) throw new Error('报告所属会话已不可用，请重新打开报告。')
-  const input = host.conversation.input.for(actx)
-  const { draft, draftRev, occurrences } = input.state.getSnapshot()
-  const wrapped = wrapPresentationContext(context, draft ? '\n\n' : '')
-  // Host TokenSpan uses detect coordinates: each atomic reference occupies one character.
-  const end = occurrences.reduce(
-    (length, occurrence) => length - occurrence.length + 1,
-    draft.length,
-  )
+  }
+  const { actx, input } = owner
+  const snapshot = input.state.getSnapshot()
+  const wrapped = wrapPresentationContext(context, snapshot.draft ? '\n\n' : '')
   const applied = actx.bail(actx, 'slash/input-insert-text', {
     text: wrapped,
-    span: { start: end, end, draftRev },
+    span: inputEnd(snapshot),
   })
   if (applied !== true) throw new Error('会话草稿已变化或正在提交，请稍后重试。')
 }
