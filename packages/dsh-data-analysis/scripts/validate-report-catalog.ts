@@ -25,6 +25,7 @@ const server = await startPresentationWebHost(
   python,
   inputs.draftPaths,
   'native-first',
+  { retainedPresentation: true },
 )
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 let page: Page | undefined
@@ -41,6 +42,14 @@ try {
   if (await notice.isVisible()) await notice.click()
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
   await page.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
+  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 1)
+  assert.equal(
+    await page
+      .locator('[class*="_footerActions"]')
+      .getByRole('button', { name: '打开报告', exact: true })
+      .count(),
+    0,
+  )
   const receipt = server.deliveries[0]!.receipt
   const original = parsePresentationDocument(
     JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
@@ -65,11 +74,41 @@ try {
   )
   await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Workspace 报告', exact: true })
-  await dialog.getByRole('searchbox').fill('报告列表验收')
+  const search = dialog.getByRole('searchbox', { name: '按标题搜索', exact: true })
+  const refresh = dialog.getByRole('button', { name: '刷新', exact: true })
+  await search.waitFor()
+  assert.equal(await dialog.getByRole('searchbox').count(), 1)
+  assert.equal(await dialog.getByRole('button', { name: /刷新/ }).count(), 1)
+  assert.equal(
+    await dialog.locator('.pd-catalog-controls select, .pd-catalog-controls button').count(),
+    0,
+  )
+  const titleBounds = await dialog.locator('.pd-toolbar > strong').boundingBox()
+  const refreshBounds = await refresh.boundingBox()
+  assert.ok(titleBounds && refreshBounds)
+  assert.ok(refreshBounds.x > titleBounds.x + titleBounds.width)
+  assert.ok(
+    Math.abs(titleBounds.y + titleBounds.height / 2 - refreshBounds.y - refreshBounds.height / 2) <
+      3,
+  )
+  await search.fill('报告列表验收')
   await dialog.getByRole('button', { name: '报告列表验收 · 当前版', exact: true }).waitFor()
   assert.equal(await dialog.locator('tbody tr').count(), 1)
-  await dialog.getByRole('button', { name: '查看历史', exact: true }).click()
+  assert.deepEqual(await dialog.locator('thead th').allTextContents(), [
+    '报告标题',
+    '生成对话',
+    '更新时间',
+  ])
+  assert.equal(await dialog.locator('tbody tr td').count(), 3)
+  assert.equal(await dialog.locator('tbody p').count(), 0)
+  assert.equal(await dialog.getByText(receipt.summary, { exact: true }).count(), 0)
+  assert.equal(await dialog.getByText(/Agent 更新 · |阅读器编辑 · |每行显示一个报告/).count(), 0)
+  await refresh.click()
+  await dialog.getByText('正在读取报告列表…', { exact: true }).waitFor({ state: 'hidden' })
+  assert.equal(await search.inputValue(), '报告列表验收')
+  await dialog.getByRole('button', { name: '报告列表验收 · 当前版', exact: true }).click()
   const reader = page.getByRole('dialog', { name: '分析快照', exact: true })
+  await reader.getByRole('button', { name: '历史版本', exact: true }).click()
   const history = reader.getByRole('complementary', { name: '历史版本' })
   await history.locator('li').nth(1).waitFor()
   assert.equal(await history.locator('li').count(), 2)
@@ -106,6 +145,36 @@ try {
   await dialog.getByRole('searchbox').fill('')
   await page.screenshot({ path: path.join(output, 'catalog-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
+  const mobileTitleBounds = await dialog.locator('.pd-toolbar > strong').boundingBox()
+  const mobileRefreshBounds = await refresh.boundingBox()
+  assert.ok(mobileTitleBounds && mobileRefreshBounds)
+  assert.ok(mobileRefreshBounds.x > mobileTitleBounds.x + mobileTitleBounds.width)
+  assert.ok(
+    Math.abs(
+      mobileTitleBounds.y +
+        mobileTitleBounds.height / 2 -
+        mobileRefreshBounds.y -
+        mobileRefreshBounds.height / 2,
+    ) < 3,
+  )
+  assert.deepEqual(await dialog.locator('thead th').allTextContents(), [
+    '报告标题',
+    '生成对话',
+    '更新时间',
+  ])
+  const rowsStayAligned = await dialog.locator('tbody tr').evaluateAll((rows) =>
+    rows.every((row) => {
+      const cells = Array.from(row.querySelectorAll('td'))
+      return (
+        cells.length === 3 &&
+        cells.every(
+          (cell) =>
+            Math.abs(cell.getBoundingClientRect().y - cells[0]!.getBoundingClientRect().y) < 2,
+        )
+      )
+    }),
+  )
+  assert.ok(rowsStayAligned, 'narrow list retains one table row with three columns per report')
   await page.screenshot({ path: path.join(output, 'catalog-mobile.png'), fullPage: true })
   assert.ok(
     await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 2),
@@ -133,7 +202,10 @@ try {
         boundary:
           'Real installed Harness Web and packed production plugin; scripted initial model and fixture publication, not fresh model analysis',
         checks: [
-          'workspace list/search/empty state',
+          'session header entry without footer shortcut',
+          'single title-aligned refresh and live search without sorting controls',
+          'three-column rows without summary metadata',
+          'workspace list/search/empty state and refresh preserves query',
           'published-only history',
           'historical read-only',
           'exact historical HTML download',

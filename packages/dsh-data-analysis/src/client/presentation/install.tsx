@@ -24,8 +24,8 @@ import { HostPresentationReader } from './host-entry.tsx'
 export const deliveryStyles = `
 .pd-cards{display:grid;gap:10px;margin-top:12px}.pd-card{border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:10px;padding:14px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-module-platform,#f4f7f7)}
 .pd-card h3{margin:0 0 7px;font-size:15px}.pd-card p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}.pd-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pd-actions button{font:inherit;padding:6px 12px;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:6px;background:var(--dsw-alias-bg-base,#fff);color:inherit;cursor:pointer}.pd-actions button:disabled{opacity:.55;cursor:wait}.pd-actions button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#087c71);outline-offset:3px}
-.pd-muted{font-size:12px;color:var(--dsw-alias-label-secondary,#5b7076)}.pd-error{color:var(--dsw-alias-state-warn-label,#805b20);overflow-wrap:anywhere}.pd-dialog{position:fixed;inset:0;width:80vw;height:92vh;max-height:96vh;max-width:none;box-sizing:border-box;padding:0;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:12px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-base,#fff);overflow:auto;pointer-events:auto}.pd-dialog::backdrop{background:#0008}.pd-toolbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5);background:var(--dsw-alias-bg-base,#fff)}.pd-status{padding:12px 20px}.pd-toolbar strong{overflow-wrap:anywhere}.pd-reader{padding:8px}
-@media(max-width:600px){.pd-dialog{height:100dvh;max-height:100dvh;border-radius:0}.pd-toolbar{flex-wrap:wrap}}
+.pd-muted{font-size:12px;color:var(--dsw-alias-label-secondary,#5b7076)}.pd-error{color:var(--dsw-alias-state-warn-label,#805b20);overflow-wrap:anywhere}.pd-dialog{position:fixed;inset:0;width:80vw;height:92vh;max-height:96vh;max-width:none;box-sizing:border-box;padding:0;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:12px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-base,#fff);overflow:auto;pointer-events:auto}.pd-dialog::backdrop{background:#0008}.pd-toolbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5);background:var(--dsw-alias-bg-base,#fff)}.pd-status{padding:12px 20px}.pd-toolbar strong{overflow-wrap:anywhere}.pd-reader{padding:8px}
+@media(max-width:600px){.pd-dialog{height:100dvh;max-height:100dvh;border-radius:0}.pd-toolbar{flex-wrap:wrap}.pd-catalog-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}.pd-catalog-toolbar>.pd-actions{display:contents}.pd-catalog-toolbar>.pd-actions>button:first-child{grid-column:2;grid-row:1}.pd-catalog-toolbar>.pd-actions>label{grid-column:1;grid-row:2}.pd-catalog-toolbar>.pd-actions>button:last-child{grid-column:2;grid-row:2}}
 `
 
 export function PresentationCards({ matched, sessionId, workspaces, model }) {
@@ -199,13 +199,18 @@ export function PresentationOverlay({
       }}
     >
       <style>{deliveryStyles + catalogStyles}</style>
-      <header className="pd-toolbar">
+      <header className={`pd-toolbar${!state.open && library?.open ? ' pd-catalog-toolbar' : ''}`}>
         <strong>
           {state.open
             ? (state.resolvedReceipt?.title ?? delivery?.receipt.title ?? '正在打开报告…')
             : 'Workspace 报告'}
         </strong>
         <div className="pd-actions">
+          {!state.open && library?.open && (
+            <button type="button" disabled={library.loading} onClick={() => void catalog.refresh()}>
+              刷新
+            </button>
+          )}
           {!state.open && library?.open && workspaces && (
             <label>
               Workspace{' '}
@@ -441,29 +446,6 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
               onClick={() => {
                 model.close()
                 catalog.show(selected)
-              }}
-            />
-          )
-        },
-      ),
-    )
-  // A global entry also serves Workspaces without a remaining source Session.
-  if (options.footer ?? options.entries !== false)
-    ctx.slots.inject('sidebar.footer.action', () =>
-      ctx.slots.register(
-        { name: 'sidebar.footer.action', id: 'marivo-reports' },
-        function ReportsEntry({ useWorkspaces }) {
-          const items = useWorkspaces((s) => s.items)
-          const recent = useWorkspaces((s) => s.recentWorkspaceId)
-          return (
-            <WorkspaceHeaderAction
-              label="报告"
-              icon="reports"
-              disabled={!items.length}
-              onClick={() => {
-                model.close()
-                const workspaceId = recent ?? items[0]?.workspaceId
-                if (!options.openWorkspace?.(workspaceId)) catalog.show(workspaceId)
               }}
             />
           )

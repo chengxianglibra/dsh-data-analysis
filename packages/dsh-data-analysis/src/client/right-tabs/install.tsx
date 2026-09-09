@@ -122,14 +122,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     {
       entries: false,
       cards: false,
-      footer: true,
-      openWorkspace: (workspaceId) => {
-        const sessionId = ctx.sessions.list.getSnapshot().current
-        if (!sessionId || workspaceFor(sessionId) !== workspaceId) return false
-        check(sessionId, workspaceId, true)
-        ctx.sidebarRight.openTab(directoryKind('reports'), { params: { workspaceId } })
-        return true
-      },
     },
   )
   let savedBuild: string | undefined,
@@ -240,6 +232,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       owners[0].workspaceId === page.target.workspaceId
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
+    const catalog = useSyncExternalStore(page.catalog.subscribe, page.catalog.getSnapshot)
     const data = useSyncExternalStore(page.datasources.subscribe, page.datasources.getSnapshot)
     const open = (target) => act(page, () => navigate(page.sessionId, target, tab.actions))
     const source = (ref) =>
@@ -250,13 +243,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       )
     const catalogReader = {
       showReport: (workspaceId, reportId) => open({ kind: 'report', workspaceId, reportId }),
-      showHistory: (workspaceId, reportId) =>
-        act(page, () =>
-          navigate(page.sessionId, { kind: 'report', workspaceId, reportId }, tab.actions, false, {
-            history: true,
-          }),
-        ),
-      getSnapshot: () => ({ open: false }),
     }
     const historyModel = {
       selectVersion: (buildId) =>
@@ -284,39 +270,52 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           <>
             {page.target.kind !== 'report' && page.target.kind !== 'semantic' && (
               <>
-                <h2 className="rt-heading">{labels[page.target.kind]}</h2>
+                <div className="rt-heading-row">
+                  <h2 className="rt-heading">{labels[page.target.kind]}</h2>
+                  {page.target.kind === 'reports' && (
+                    <button
+                      type="button"
+                      disabled={catalog.loading}
+                      onClick={() => void page.refresh()}
+                    >
+                      刷新
+                    </button>
+                  )}
+                </div>
                 <p className="rt-caption">
                   {workspaces.find((w) => w.workspaceId === page.target.workspaceId)?.title ??
                     page.target.workspaceId}
                 </p>
               </>
             )}
-            <div className="rt-toolbar">
-              <button type="button" onClick={() => void page.refresh()}>
-                刷新页面
-              </button>
-              {page.target.kind === 'report' && (
-                <>
-                  <strong>
-                    {page.target.buildId
-                      ? `固定版本 · ${page.target.buildId.slice(0, 8)}`
-                      : 'current · 当前版本'}
-                  </strong>
-                  {!page.target.buildId && (
-                    <button
-                      type="button"
-                      disabled={!report.document || report.loading}
-                      onClick={() => act(page, () => edit(page))}
-                    >
-                      编辑报告
+            {page.target.kind !== 'reports' && (
+              <div className="rt-toolbar">
+                <button type="button" onClick={() => void page.refresh()}>
+                  刷新页面
+                </button>
+                {page.target.kind === 'report' && (
+                  <>
+                    <strong>
+                      {page.target.buildId
+                        ? `固定版本 · ${page.target.buildId.slice(0, 8)}`
+                        : 'current · 当前版本'}
+                    </strong>
+                    {!page.target.buildId && (
+                      <button
+                        type="button"
+                        disabled={!report.document || report.loading}
+                        onClick={() => act(page, () => edit(page))}
+                      >
+                        编辑报告
+                      </button>
+                    )}
+                    <button type="button" onClick={() => void page.reader.toggleHistory()}>
+                      历史版本
                     </button>
-                  )}
-                  <button type="button" onClick={() => void page.reader.toggleHistory()}>
-                    历史版本
-                  </button>
-                </>
-              )}
-            </div>
+                  </>
+                )}
+              </div>
+            )}
             {state.newer && (
               <p role="status" className="rt-notice">
                 已有新版本，当前阅读内容保持不变。

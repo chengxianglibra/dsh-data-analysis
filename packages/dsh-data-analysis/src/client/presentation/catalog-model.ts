@@ -6,13 +6,12 @@ export interface CatalogState {
   open: boolean
   workspaceId: string
   query: string
-  sort: 'recent' | 'title'
   loading: boolean
   catalog?: ReportCatalog
   error?: string
 }
 export class ReportCatalogModel {
-  #state: CatalogState = { open: false, workspaceId: '', query: '', sort: 'recent', loading: false }
+  #state: CatalogState = { open: false, workspaceId: '', query: '', loading: false }
   #flight?: AbortController
   #generation = 0
   #disposed = false
@@ -44,7 +43,7 @@ export class ReportCatalogModel {
       workspaceId,
       catalog: undefined,
       error: undefined,
-      ...(workspaceId === this.#state.workspaceId ? {} : { query: '', sort: 'recent' }),
+      ...(workspaceId === this.#state.workspaceId ? {} : { query: '' }),
     })
     void this.refresh()
   }
@@ -99,9 +98,7 @@ export function visibleReports(state: CatalogState) {
     .filter((item) => words.every((word) => normalize(item.receipt.title).includes(word)))
     .sort(
       (a, b) =>
-        (state.sort === 'title'
-          ? a.receipt.title.localeCompare(b.receipt.title, 'zh-CN')
-          : (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')) ||
+        (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') ||
         a.receipt.reportId.localeCompare(b.receipt.reportId),
     )
 }

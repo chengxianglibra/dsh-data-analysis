@@ -1,5 +1,7 @@
 # Workspace 报告列表与历史查看验收
 
+此记录描述第一期验收。2026-09-09 的入口、搜索、排序和三列表格调整见[报告列表简化验收](report-catalog-simplification-acceptance.md)，当前行为以该记录与[展示交付模块](modules/presentation-delivery.md#workspace-报告列表与历史查看)为准。
+
 ## 范围与责任
 
 第一期提供 Workspace 报告入口、标题搜索、最近更新与标题排序、来源会话导航、已发布历史查看和精确版本 HTML 下载。

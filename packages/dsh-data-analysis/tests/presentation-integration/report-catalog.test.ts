@@ -198,9 +198,34 @@ test('catalog searches only titles, sorts deterministically, and suppresses resp
   const model = new ReportCatalogModel(f.rpc)
   model.show(f.document.workspaceId)
   await model.refresh()
+  const catalog = model.getSnapshot().catalog!
+  const version = catalog.reports[0]!
+  const chronological = [
+    { id: 'legacy', title: 'A 最早', publishedAt: null },
+    { id: 'older', title: 'B 较早', publishedAt: '2026-09-08T01:00:00.000Z' },
+    { id: 'newer-b', title: 'C 最新', publishedAt: '2026-09-09T01:00:00.000Z' },
+    { id: 'newer-a', title: 'Z 最新', publishedAt: '2026-09-09T01:00:00.000Z' },
+  ].map(({ id, title, publishedAt }) => ({
+    ...version,
+    receipt: { ...version.receipt, reportId: id, title },
+    publishedAt,
+  }))
+  assert.deepEqual(
+    visibleReports({ ...model.getSnapshot(), catalog: { ...catalog, reports: chronological } }).map(
+      (entry) => entry.receipt.reportId,
+    ),
+    ['newer-a', 'newer-b', 'older', 'legacy'],
+    'always order by latest publication, then Report ID, with unknown times last',
+  )
   model.patch({ query: 'abc 报告' })
   assert.deepEqual(
     visibleReports(model.getSnapshot()).map((v) => v.receipt.reportId),
+    ['second-report'],
+  )
+  await model.refresh()
+  assert.equal(model.getSnapshot().query, 'abc 报告')
+  assert.deepEqual(
+    visibleReports(model.getSnapshot()).map((entry) => entry.receipt.reportId),
     ['second-report'],
   )
   model.patch({ query: '不存在' })

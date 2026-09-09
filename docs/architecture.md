@@ -39,7 +39,9 @@ flowchart LR
 [新版重构设计](dsh-alpha-refactor-design.md)的第一阶段已接入默认 client：数据源、语义层、报告目录及正文
 使用原生右侧 Tab。页面状态由 Session/Tab occurrence 拥有，导航使用完整 Workspace 与资源身份；
 当前 Session 的新交付独立观察公开 eventSource，卡片不触发自动打开。current 只提示新版本，刷新后切换；
-固定 Build 保持不变。报告编辑、数据源写操作与无匹配 Session 的 Workspace 阅读继续使用原容器。
+固定 Build 保持不变。报告编辑与数据源写操作继续使用原容器。报告列表从 Workspace 头部入口访问，
+左下角不再保留报告快捷入口；列表仅显示报告标题、生成对话和更新时间，输入即筛选，固定按最近更新排序。
+列表标题右侧提供唯一刷新入口；历史版本从报告正文打开。
 实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)，语义对象加入提问见 [2c 验收记录](dsh-context-stage-two-c-acceptance.md)；上传分析尚未实施。
 
 ## 分层

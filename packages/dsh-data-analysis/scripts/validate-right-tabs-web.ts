@@ -132,16 +132,111 @@ try {
   assert.deepEqual(await readFile(cardPath), await readFile(native.receipt.files.html.path))
   assert.equal(await page.locator('dialog.pd-dialog[open]').count(), 0)
   record('default client card downloads its fixed Build without opening an overlay')
+  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 1)
+  assert.equal(
+    await page
+      .locator('[class*="_footerActions"]')
+      .getByRole('button', { name: '打开报告', exact: true })
+      .count(),
+    0,
+  )
   await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
-  await page.locator('[data-rt-kind=reports] .pd-report-title').first().waitFor()
+  const catalogPage = page.locator('[data-rt-kind=reports]')
+  await catalogPage.locator('.pd-report-title').first().waitFor()
+  const catalogSearch = catalogPage.getByRole('searchbox', { name: '按标题搜索', exact: true })
+  const catalogRefresh = catalogPage.getByRole('button', { name: '刷新', exact: true })
+  assert.equal(await catalogPage.getByRole('searchbox').count(), 1)
+  assert.equal(await catalogPage.getByRole('button', { name: /刷新/ }).count(), 1)
+  assert.equal(await catalogPage.locator('select, .pd-catalog-controls button').count(), 0)
+  assert.deepEqual(await catalogPage.locator('thead th').allTextContents(), [
+    '报告标题',
+    '生成对话',
+    '更新时间',
+  ])
+  assert.ok(
+    await catalogPage
+      .locator('tbody tr')
+      .evaluateAll((rows) => rows.every((row) => row.querySelectorAll('td').length === 3)),
+  )
+  assert.equal(await catalogPage.locator('tbody p').count(), 0)
+  assert.equal(await catalogPage.getByText(native.receipt.summary, { exact: true }).count(), 0)
+  const catalogHeadingBounds = await catalogPage
+    .getByRole('heading', { name: '报告', exact: true })
+    .boundingBox()
+  const catalogRefreshBounds = await catalogRefresh.boundingBox()
+  assert.ok(catalogHeadingBounds && catalogRefreshBounds)
+  assert.ok(catalogRefreshBounds.x > catalogHeadingBounds.x + catalogHeadingBounds.width)
+  assert.ok(
+    Math.abs(
+      catalogHeadingBounds.y +
+        catalogHeadingBounds.height / 2 -
+        catalogRefreshBounds.y -
+        catalogRefreshBounds.height / 2,
+    ) < 3,
+  )
+  const updateTimes = (await catalogPage.locator('tbody td:nth-child(3)').allTextContents()).map(
+    (value) => Date.parse(value),
+  )
+  assert.ok(
+    updateTimes.every(
+      (value, index) => Number.isFinite(value) && (index === 0 || updateTimes[index - 1]! >= value),
+    ),
+  )
+  await catalogSearch.fill('不会匹配任何报告')
+  await catalogPage.getByText('没有匹配标题的报告。', { exact: true }).waitFor()
+  await catalogRefresh.click()
+  await catalogPage.getByText('正在读取报告列表…', { exact: true }).waitFor({ state: 'hidden' })
+  assert.equal(await catalogSearch.inputValue(), '不会匹配任何报告')
+  await catalogSearch.fill('')
+  await catalogPage.locator('.pd-report-title').first().waitFor()
+  record(
+    'Workspace report entry has no footer shortcut; title-aligned refresh, live search and three-column recent-first rows',
+  )
   await page.screenshot({ path: path.join(outputRoot, 'report-directory.png'), fullPage: true })
+  await page.setViewportSize({ width: 900, height: 900 })
+  assert.ok(
+    await catalogPage.locator('tbody tr').evaluateAll((rows) =>
+      rows.every((row) => {
+        const cells = Array.from(row.querySelectorAll('td'))
+        return (
+          cells.length === 3 &&
+          cells.every(
+            (cell) =>
+              Math.abs(cell.getBoundingClientRect().y - cells[0]!.getBoundingClientRect().y) < 2,
+          )
+        )
+      }),
+    ),
+    'narrow native report pane retains one row with three columns per report',
+  )
+  await page.screenshot({
+    path: path.join(outputRoot, 'report-directory-narrow.png'),
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 1680, height: 1100 })
+  // The newest report was generated in right-tabs-native; its Session link must navigate there.
+  await select(server.sessionId)
+  await page.getByRole('button', { name: '打开报告', exact: true }).click()
   await page
-    .locator('[data-rt-kind=reports]')
-    .getByRole('button', { name: '查看历史', exact: true })
+    .locator('[data-rt-kind=reports] tbody tr')
     .first()
+    .locator('td')
+    .nth(1)
+    .getByRole('button')
+    .click()
+  await page.waitForFunction(() => (window as any).__rtHost.current() === 'right-tabs-native')
+  await catalogPage.locator('.pd-report-title').first().waitFor()
+  record('report generation Session link navigates to its source conversation')
+  await page.locator('[data-rt-kind=reports]').locator('.pd-report-title').first().click()
+  await page
+    .locator('[data-rt-kind=report]')
+    .filter({ hasText: 'current · 当前版本' })
+    .getByRole('button', { name: '历史版本', exact: true })
     .click()
   await page.locator('[data-rt-kind=report] .pd-history').waitFor()
-  record('catalog history action opens the native current page at its history panel')
+  record(
+    'report title opens the native current page and its history remains available in the reader',
+  )
   await page.evaluate(
     ({ workspaceId, reportId }) =>
       (window as any).__rightTabs.navigate('right-tabs-native', {
@@ -878,15 +973,9 @@ try {
   }, ptc.receipt)
   assert.equal(withoutSession, true)
   record('navigation without a foreground Session fails explicitly')
-  await page.getByRole('button', { name: '打开报告', exact: true }).click()
-  const fallback = page.locator('dialog.pd-dialog[open]')
-  await fallback.locator('.pd-report-title').first().waitFor()
-  await fallback.locator('.pd-report-title').first().click()
-  await fallback.locator('[data-presentation-reader][data-mode=interactive]').waitFor()
   assert.equal(await page.evaluate(() => (window as any).__rtHost.current()), undefined)
-  await page.screenshot({ path: path.join(outputRoot, 'no-session-reader.png'), fullPage: true })
-  await fallback.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-  record('Workspace reports remain readable without a Session using the retained fallback')
+  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 0)
+  record('clearing the foreground Session leaves no removed footer report shortcut')
   await page.evaluate(() => (window as any).__rtHost.unload())
   await page.evaluate(() => (window as any).__rtHost.delay.release())
   assert.equal(await page.evaluate(() => (window as any).__rightTabs.pages.size), 0)

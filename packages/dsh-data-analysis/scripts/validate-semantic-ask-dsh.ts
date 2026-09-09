@@ -226,33 +226,8 @@ try {
   record('claimed command draft accepts details and actual @ with identical references')
   await page.evaluate((id) => (window as any).__rtHost.input(id).setDraft(''), id)
   await page.evaluate(() => (window as any).__rtHost.clear())
-  await page.getByRole('button', { name: '打开报告', exact: true }).click()
-  const fallback = page.locator('dialog.pd-dialog[open]')
-  await fallback.locator('.pd-report-title').filter({ hasText: 'S4 真实 Artifact' }).click()
-  await fallback
-    .locator('[data-mode=interactive] [data-block-id]')
-    .first()
-    .getByRole('button', { name: 'cell 更多操作' })
-    .click()
-  await fallback.getByRole('menuitem', { name: '数据源', exact: true }).click()
-  await page.locator('dialog.pr-source-dialog[open] .pr-semantic-link').first().click()
-  const semanticDialog = page.locator('dialog.sb-dialog[open]')
-  await semanticDialog.getByRole('button', { name: '加入提问', exact: true }).waitFor()
-  assert.equal(
-    await semanticDialog.getByRole('button', { name: '加入提问', exact: true }).isDisabled(),
-    true,
-  )
-  assert.equal(
-    await semanticDialog.getByRole('button', { name: '复制引用', exact: true }).isEnabled(),
-    true,
-  )
-  record('no-Session fallback still browses and copies; adding to a question is disabled')
-  await semanticDialog.getByRole('button', { name: '关闭语义层', exact: true }).click()
-  const sourceDialog = page.locator('dialog.pr-source-dialog[open]')
-  if (await sourceDialog.isVisible())
-    await sourceDialog.getByRole('button', { name: '关闭数据源', exact: true }).click()
-  await fallback.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-  await fallback.waitFor({ state: 'hidden' })
+  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 0)
+  record('without a foreground Session, the removed footer report shortcut is absent')
   const recreated = await page.evaluate(() =>
     (window as any).__s4Rpc('/presentation-s4-validation', 'prototype', {
       action: 'semantic-recreate-workspace',
