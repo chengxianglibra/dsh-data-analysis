@@ -14,7 +14,7 @@ export function WorkspaceHeaderAction({
   onClick,
 }: {
   label: string
-  icon: 'semantic' | 'credentials'
+  icon: 'semantic' | 'credentials' | 'reports'
   disabled: boolean
   title?: string
   onClick: () => void
@@ -41,7 +41,9 @@ export function WorkspaceHeaderAction({
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          {icon === 'semantic' ? (
+          {icon === 'reports' ? (
+            <path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7" />
+          ) : icon === 'semantic' ? (
             <path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" />
           ) : (
             <>

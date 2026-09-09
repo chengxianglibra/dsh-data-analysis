@@ -207,3 +207,9 @@ Artifact/source identity、文件预算与包导出。真实 Artifact 恢复与 
 
 KPI 比较沿用 presentation `metric`，将主值、参考值、预计算变化绑定到同一行；插件仅验证和展示，
 不承担同比／环比计算或业务好坏推断。详见 [KPI 比较卡片](modules/presentation-reader.md#kpi-比较卡片)。
+
+### Workspace 报告索引与发布历史
+
+报告列表和版本浏览属于插件的交付接缝，直接以 Harness Workspace 注册表授权读取，复用现有阅读器与文件校验。
+`current.json` 原子发布同时提交当前 receipt 与成功版本记录；Marivo 分析和来源契约保持不变。
+来源 Session 是可用时的追溯信息，报告读取不依赖它存活。参见[展示交付模块](modules/presentation-delivery.md#workspace-报告列表与历史查看)。

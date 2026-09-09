@@ -1,3 +1,8 @@
+import {
+  parseReportHistory,
+  type ReportHistory,
+  type ReportVersion,
+} from '../../presentation/contracts/catalog.ts'
 import { type PresentationEdits, presentationEdits } from '../../presentation/contracts/editing.ts'
 import {
   type PresentationDocument,
@@ -15,7 +20,23 @@ export interface PresentationRpc {
   call(channel: string, endpoint: string, payload: unknown, signal: AbortSignal): Promise<unknown>
 }
 export type PresentationAsset = 'presentation.json' | 'index.html'
+export interface WorkspaceReportTarget {
+  workspaceId: string
+  reportId: string
+}
+type ReportTarget = PresentationDelivery | WorkspaceReportTarget
+const targetScope = (target: ReportTarget) =>
+  'dshSessionId' in target
+    ? { sessionId: target.dshSessionId }
+    : { workspaceId: target.workspaceId }
+const targetIdentity = (target: ReportTarget) => ('receipt' in target ? target.receipt : target)
 export interface PresentationDeliveryState {
+  readonly reportTarget?: WorkspaceReportTarget
+  readonly history?: ReportHistory
+  readonly historyOpen?: boolean
+  readonly historyLoading?: boolean
+  readonly historyError?: string
+  readonly historical?: boolean
   readonly receipts: Readonly<Record<string, PresentationReceipt>>
   readonly resolvedReceipt?: PresentationReceipt
   readonly editing?: {
@@ -91,8 +112,9 @@ export async function verifyPresentationAsset(
   return bytes
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
+  if (/report-history-full/.test(message)) return '报告版本记录已达到容量限制，本次保存未生效。'
   if (/report-save-conflict/.test(message))
     return '报告已被其他窗口保存。你的编辑已保留，请重新打开报告后再编辑。'
   if (/report-save-busy|lock.*timed out/i.test(message))
@@ -189,41 +211,37 @@ export class PresentationDeliveryModel {
     }
     return response.value
   }
-  async #resolve(delivery: PresentationDelivery, signal: AbortSignal) {
+  async #resolve(delivery: ReportTarget, signal: AbortSignal) {
     const receipt = parsePresentationReceipt(
       await this.#call(
         'reports/resolve',
         {
-          sessionId: delivery.dshSessionId,
-          reportId: delivery.receipt.reportId,
+          ...targetScope(delivery),
+          reportId: targetIdentity(delivery).reportId,
         },
         signal,
       ),
     )
     if (
-      receipt.workspaceId !== delivery.receipt.workspaceId ||
-      receipt.reportId !== delivery.receipt.reportId
+      receipt.workspaceId !== targetIdentity(delivery).workspaceId ||
+      receipt.reportId !== targetIdentity(delivery).reportId
     )
       throw new Error('presentation-document-identity-mismatch')
     return receipt
   }
   async #read(
-    delivery: PresentationDelivery,
+    delivery: ReportTarget,
     receipt: PresentationReceipt,
     asset: PresentationAsset,
     signal: AbortSignal,
   ) {
     return verifyPresentationAsset(
-      await this.#call('files/read', { sessionId: delivery.dshSessionId, receipt, asset }, signal),
+      await this.#call('files/read', { ...targetScope(delivery), receipt, asset }, signal),
       receipt,
       asset,
     )
   }
-  async #document(
-    delivery: PresentationDelivery,
-    receipt: PresentationReceipt,
-    signal: AbortSignal,
-  ) {
+  async #document(delivery: ReportTarget, receipt: PresentationReceipt, signal: AbortSignal) {
     const bytes = await this.#read(delivery, receipt, 'presentation.json', signal)
     const document = parsePresentationDocument(
       JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
@@ -267,13 +285,26 @@ export class PresentationDeliveryModel {
       }
       return
     }
+    await this.#openTarget(delivery)
+  }
+  async showReport(workspaceId: string, reportId: string) {
+    if (this.#disposed) return
+    await this.#openTarget({ workspaceId, reportId })
+  }
+  async #openTarget(target: ReportTarget, version?: ReportVersion, preserveHistory = false) {
     this.#cancel()
     const flight = new AbortController(),
       generation = this.#generation
     this.#flights.add(flight)
     this.#publish({
       open: true,
-      delivery,
+      delivery: 'dshSessionId' in target ? target : undefined,
+      reportTarget: 'dshSessionId' in target ? undefined : target,
+      historical: !!version && version.receipt.buildId !== this.#state.history?.currentBuildId,
+      ...(preserveHistory
+        ? {}
+        : { history: undefined, historyOpen: false, historyError: undefined }),
+      historyLoading: false,
       loading: true,
       downloading: false,
       document: undefined,
@@ -286,10 +317,10 @@ export class PresentationDeliveryModel {
       notice: undefined,
     })
     try {
-      const receipt = await this.#resolve(delivery, flight.signal)
-      const document = await this.#document(delivery, receipt, flight.signal)
+      const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
+      const document = await this.#document(target, receipt, flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      this.#remember(receipt)
+      if (!version) this.#remember(receipt)
       this.#publish({ resolvedReceipt: receipt, document, loading: false })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
@@ -307,7 +338,13 @@ export class PresentationDeliveryModel {
     )
   }
   beginEdit() {
-    if (!this.#state.document || this.#state.editing || this.#state.saving) return
+    if (
+      !this.#state.document ||
+      this.#state.editing ||
+      this.#state.saving ||
+      this.#state.historical
+    )
+      return
     this.#publish({
       editing: { edits: presentationEdits(this.#state.document), undo: [], redo: [] },
       editError: undefined,
@@ -354,7 +391,8 @@ export class PresentationDeliveryModel {
     if (!this.#state.saving) this.#publish({ editing: undefined, editError: undefined })
   }
   async saveEdit() {
-    const { editing, document, resolvedReceipt, delivery } = this.#state
+    const { editing, document, resolvedReceipt } = this.#state
+    const delivery = this.#state.reportTarget ?? this.#state.delivery
     if (!editing || !document || !resolvedReceipt || !delivery || this.#state.saving) return
     const flight = new AbortController(),
       generation = this.#generation
@@ -367,7 +405,7 @@ export class PresentationDeliveryModel {
           await this.#call(
             'reports/save',
             {
-              sessionId: delivery.dshSessionId,
+              ...targetScope(delivery),
               reportId: resolvedReceipt.reportId,
               expectedBuildId: resolvedReceipt.buildId,
               edits: editing.edits,
@@ -402,6 +440,8 @@ export class PresentationDeliveryModel {
         editing: undefined,
         saving: false,
         notice: '编辑已保存',
+        history: undefined,
+        historyOpen: false,
         editError: undefined,
       })
     } catch (error) {
@@ -432,7 +472,7 @@ export class PresentationDeliveryModel {
           : await this.#resolve(delivery, flight.signal)
       const bytes = await this.#read(delivery, receipt, 'index.html', flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      this.#remember(receipt)
+      if (!displayed) this.#remember(receipt)
       this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
       this.#publish({ downloading: false, notice: '已下载已保存的 HTML（不包含临时筛选）' })
     } catch (error) {
@@ -442,9 +482,83 @@ export class PresentationDeliveryModel {
       this.#flights.delete(flight)
     }
   }
+  async downloadDisplayed() {
+    const target = this.#state.reportTarget ?? this.#state.delivery
+    const receipt = this.#state.resolvedReceipt
+    if (
+      !target ||
+      !receipt ||
+      !this.#state.document ||
+      this.#state.error ||
+      this.#state.downloading
+    )
+      return
+    const flight = new AbortController(),
+      generation = this.#generation
+    this.#flights.add(flight)
+    this.#publish({ downloading: true, downloadError: undefined })
+    try {
+      const bytes = await this.#read(target, receipt, 'index.html', flight.signal)
+      if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+      this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
+      this.#publish({ downloading: false, notice: '已下载正在查看的已保存版本（不包含临时筛选）' })
+    } catch (error) {
+      if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
+        this.#publish({ downloading: false, downloadError: errorMessage(error) })
+    } finally {
+      this.#flights.delete(flight)
+    }
+  }
+  async toggleHistory(refresh = false) {
+    if (this.#state.historyOpen && !refresh) {
+      this.#publish({ historyOpen: false })
+      return
+    }
+    const target = this.#state.reportTarget ?? this.#state.delivery
+    if (!target) return
+    const flight = new AbortController(),
+      generation = this.#generation
+    this.#flights.add(flight)
+    this.#publish({ historyOpen: true, historyLoading: true, historyError: undefined })
+    try {
+      const identity = targetIdentity(target)
+      const history = parseReportHistory(
+        await this.#call(
+          'reports/history',
+          { ...targetScope(target), reportId: identity.reportId },
+          flight.signal,
+        ),
+      )
+      if (history.workspaceId !== identity.workspaceId || history.reportId !== identity.reportId)
+        throw new Error('presentation-document-identity-mismatch')
+      if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+      this.#publish({
+        history,
+        historyLoading: false,
+        historical: this.#state.resolvedReceipt?.buildId !== history.currentBuildId,
+      })
+    } catch (error) {
+      if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
+        this.#publish({ historyLoading: false, historyError: errorMessage(error) })
+    } finally {
+      this.#flights.delete(flight)
+    }
+  }
+  async selectVersion(buildId?: string) {
+    if (this.#state.editing || this.#state.saving) return
+    const target = this.#state.reportTarget ?? this.#state.delivery
+    if (!target) return
+    const version = buildId
+      ? this.#state.history?.versions.find((v) => v.receipt.buildId === buildId)
+      : undefined
+    if (buildId && !version) return
+    await this.#openTarget(target, version, true)
+    if (!version && this.#state.open && this.#state.historyOpen && this.#state.document)
+      await this.toggleHistory(true)
+  }
   contextChanged(sessionId: string, workspaceId: string) {
     const context = JSON.stringify([sessionId, workspaceId])
-    if (this.#context && this.#context !== context) this.unavailable()
+    if (!this.#state.reportTarget && this.#context && this.#context !== context) this.unavailable()
     this.#context = context
     const delivery = this.#state.delivery
     if (
@@ -457,6 +571,9 @@ export class PresentationDeliveryModel {
     this.#cancel()
     this.#publish({
       receipts: {},
+      history: undefined,
+      historyLoading: false,
+      historyError: undefined,
       document: undefined,
       resolvedReceipt: undefined,
       editing: undefined,
@@ -473,6 +590,11 @@ export class PresentationDeliveryModel {
     this.#cancel()
     this.#publish({
       open: false,
+      reportTarget: undefined,
+      delivery: undefined,
+      history: undefined,
+      historyOpen: false,
+      historyLoading: false,
       loading: false,
       downloading: false,
       document: undefined,

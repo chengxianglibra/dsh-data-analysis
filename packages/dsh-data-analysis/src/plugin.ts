@@ -346,8 +346,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     })
     disposePresentation = registerMarivoPresentationRpc(
       ctx.connection,
-      new MarivoPresentationFileService(async (sessionId) =>
-        resolvePresentationWorkspace(ctx, sessionId),
+      new MarivoPresentationFileService(
+        async (sessionId) => resolvePresentationWorkspace(ctx, sessionId),
+        async (id) => {
+          const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
+          return workspace ? { id: String(workspace.id), path: workspace.path } : undefined
+        },
       ),
     )
     let lastDiagnostic = -Infinity

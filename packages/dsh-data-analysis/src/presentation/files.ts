@@ -72,7 +72,8 @@ export async function readReportFile(
     const before = await file.stat()
     if (!before.isFile()) throw new Error('asset-not-file')
     if (before.size > maximum) throw new Error('asset-too-large')
-    const bytes = Buffer.alloc(maximum + 1)
+    // Allocate for the observed file, retaining one extra byte to detect growth.
+    const bytes = Buffer.alloc(before.size + 1)
     let length = 0
     while (length < bytes.length) {
       signal?.throwIfAborted()

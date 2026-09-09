@@ -10,7 +10,13 @@ import {
 } from './contracts/index.ts'
 import { presentationAssetPath, presentationSha256, readPresentationAsset } from './files.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
-import { publishPresentation, readReceiptDocument, resolvePresentation } from './reports.ts'
+import {
+  listReports,
+  publishPresentation,
+  readReceiptDocument,
+  readReportHistory,
+  resolvePresentation,
+} from './reports.ts'
 
 export interface PresentationWorkspace {
   id: string
@@ -22,16 +28,65 @@ export type PresentationWorkspaceResolver = (
 
 export class MarivoPresentationFileService {
   readonly #resolve: PresentationWorkspaceResolver
+  readonly #resolveId?: PresentationWorkspaceResolver
   readonly #abort = new AbortController()
-  constructor(resolve: PresentationWorkspaceResolver) {
+  constructor(resolve: PresentationWorkspaceResolver, resolveId?: PresentationWorkspaceResolver) {
     this.#resolve = resolve
+    this.#resolveId = resolveId
   }
-  async #workspace(sessionId: string): Promise<PresentationWorkspace | undefined> {
+  async #workspace(input: Record<string, unknown>): Promise<PresentationWorkspace | undefined> {
     try {
-      return await this.#resolve(sessionId)
+      if ('workspaceId' in input) {
+        const workspace = await this.#resolveId?.(input.workspaceId as string)
+        if (workspace && workspace.id !== input.workspaceId)
+          throw new Error('workspace-unavailable')
+        return workspace
+      }
+      return await this.#resolve(input.sessionId as string)
     } catch {
       throw new Error('workspace-unavailable')
     }
+  }
+  #scope(input: Record<string, unknown>): 'workspaceId' | 'sessionId' {
+    const scope = 'workspaceId' in input ? 'workspaceId' : 'sessionId'
+    if (
+      typeof input[scope] !== 'string' ||
+      !input[scope].trim() ||
+      input[scope].length > 512 ||
+      ('workspaceId' in input && 'sessionId' in input)
+    )
+      throw new Error('invalid-request')
+    return scope
+  }
+  async catalog(
+    endpoint: 'reports/list' | 'reports/history',
+    payload: unknown,
+    caller = new AbortController().signal,
+  ) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      throw new Error('invalid-request')
+    const input = payload as Record<string, unknown>
+    const scope = this.#scope(input)
+    const expected = endpoint === 'reports/list' ? scope : ['reportId', scope].sort().join(',')
+    if (Object.keys(input).sort().join(',') !== expected) throw new Error('invalid-request')
+    const workspace = await this.#workspace(input)
+    if (!workspace) throw new Error('workspace-unavailable')
+    const root = path.resolve(workspace.path)
+    const result =
+      endpoint === 'reports/list'
+        ? await listReports(root, workspace.id, signal)
+        : await readReportHistory(
+            root,
+            workspace.id,
+            parsePresentationBuildId(input.reportId),
+            signal,
+          )
+    const current = await this.#workspace(input)
+    if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    return result
   }
   close() {
     this.#abort.abort()
@@ -45,24 +100,22 @@ export class MarivoPresentationFileService {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       throw new Error('invalid-request')
     const input = payload as Record<string, unknown>
-    const expected =
+    const scope = this.#scope(input)
+    const expected = (
       endpoint === 'reports/save'
-        ? 'edits,expectedBuildId,reportId,sessionId'
-        : 'reportId,sessionId'
-    if (
-      Object.keys(input).sort().join(',') !== expected ||
-      typeof input.sessionId !== 'string' ||
-      !input.sessionId.trim() ||
-      input.sessionId.length > 512
+        ? ['edits', 'expectedBuildId', 'reportId', scope]
+        : ['reportId', scope]
     )
-      throw new Error('invalid-request')
+      .sort()
+      .join(',')
+    if (Object.keys(input).sort().join(',') !== expected) throw new Error('invalid-request')
     const reportId = parsePresentationBuildId(input.reportId, '/reportId')
-    const workspace = await this.#workspace(input.sessionId)
+    const workspace = await this.#workspace(input)
     if (!workspace) throw new Error('workspace-unavailable')
     const root = path.resolve(workspace.path)
     const check = async () => {
       signal.throwIfAborted()
-      const current = await this.#workspace(input.sessionId as string)
+      const current = await this.#workspace(input)
       if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
         throw new Error('workspace-changed')
     }
@@ -86,6 +139,7 @@ export class MarivoPresentationFileService {
       expectedBuildId,
       check,
       signal,
+      { kind: 'reader', sessionId: typeof input.sessionId === 'string' ? input.sessionId : null },
     )
   }
   async read(payload: unknown, caller = new AbortController().signal) {
@@ -95,16 +149,14 @@ export class MarivoPresentationFileService {
       throw new Error('invalid-request')
     const input = payload as Record<string, unknown>
     if (
-      Object.keys(input).sort().join(',') !== 'asset,receipt,sessionId' ||
-      typeof input.sessionId !== 'string' ||
-      !input.sessionId.trim() ||
-      input.sessionId.length > 512 ||
+      Object.keys(input).sort().join(',') !==
+        ['asset', 'receipt', this.#scope(input)].sort().join(',') ||
       (input.asset !== 'presentation.json' && input.asset !== 'index.html')
     )
       throw new Error('invalid-request')
     const receipt = structuredClone(parsePresentationReceipt(input.receipt))
     const asset: PresentationAsset = input.asset
-    const workspace = await this.#workspace(input.sessionId)
+    const workspace = await this.#workspace(input)
     if (!workspace || workspace.id !== receipt.workspaceId) throw new Error('workspace-unavailable')
     const root = path.resolve(workspace.path)
     for (const file of Object.values(receipt.files))
@@ -139,7 +191,7 @@ export class MarivoPresentationFileService {
     const file = asset === 'presentation.json' ? receipt.files.document : receipt.files.html
     if (bytes.length !== file.bytes || presentationSha256(bytes) !== file.sha256)
       throw new Error('asset-digest-mismatch')
-    const current = await this.#workspace(input.sessionId)
+    const current = await this.#workspace(input)
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
     signal.throwIfAborted()
@@ -166,6 +218,8 @@ export function registerMarivoPresentationRpc(
       try {
         if (endpoint === 'reports/resolve' || endpoint === 'reports/save')
           return { ok: true, value: await service.report(endpoint, payload, signal) }
+        if (endpoint === 'reports/list' || endpoint === 'reports/history')
+          return { ok: true, value: await service.catalog(endpoint, payload, signal) }
         if (endpoint === 'files/read')
           return { ok: true, value: await service.read(payload, signal) }
         throw new Error('unknown-endpoint')
@@ -175,7 +229,7 @@ export function registerMarivoPresentationRpc(
           : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
             ? 'asset-missing'
             : error instanceof Error &&
-                /^(invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
+                /^(invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
                   error.message,
                 )
               ? error.message

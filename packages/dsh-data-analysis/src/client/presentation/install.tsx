@@ -3,7 +3,15 @@
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { appendPresentationContext } from './ask-dsh.ts'
+import {
+  catalogStyles,
+  publicationTime,
+  ReportCatalogView,
+  ReportHistoryPanel,
+} from './catalog.tsx'
+import { ReportCatalogModel } from './catalog-model.ts'
 import {
   marivoPresentationDeliveryDefinition,
   PRESENTATION_TURN_DATA_KEY,
@@ -90,8 +98,19 @@ export function PresentationOverlay({
   workspaceUnavailable = false,
   openSemanticObject,
   onAskDsh,
+  catalog,
+  sessions,
+  onOpenSession,
+  workspaces,
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
+  const library = useSyncExternalStore(
+    catalog?.subscribe ?? (() => () => {}),
+    catalog?.getSnapshot ?? (() => undefined),
+  )
+  const opened = state.open || library?.open
+  const listScroll = useRef(0)
+  const openedWorkspace = useRef(null)
   const [askError, setAskError] = useState('')
   const dialog = useRef(null)
   useEffect(() => {
@@ -101,6 +120,7 @@ export function PresentationOverlay({
     if (state.saving) return
     if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并关闭报告？')) return
     model.close()
+    catalog?.close()
   }
   useEffect(() => {
     const beforeUnload = (event) => {
@@ -116,19 +136,19 @@ export function PresentationOverlay({
     model.contextChanged(sessionId, workspaceId)
   }, [model, sessionId, workspaceId])
   useEffect(() => {
-    if (workspaceUnavailable) model.unavailable()
+    if (workspaceUnavailable && !model.getSnapshot().reportTarget) model.unavailable()
   }, [model, workspaceUnavailable])
   useEffect(() => {
-    if (!state.open) return undefined
+    if (!opened) return undefined
     const opener = document.activeElement,
       element = dialog.current
     // Measure the Host conversation surface, excluding its navigation and details columns.
     const analysisArea = document.querySelector('[data-conversation-scroll]')
     const updateGeometry = () => {
-      if (!analysisArea) return
-      const bounds = analysisArea.getBoundingClientRect()
-      element.style.width = `${bounds.width * 0.8}px`
-      element.style.left = `${bounds.left + bounds.width * 0.1}px`
+      const bounds = analysisArea?.getBoundingClientRect()
+      const narrow = window.innerWidth <= 850 || (bounds && bounds.width < 600)
+      element.style.width = narrow ? '100vw' : bounds ? `${bounds.width * 0.8}px` : '80vw'
+      element.style.left = narrow ? '0' : bounds ? `${bounds.left + bounds.width * 0.1}px` : '10vw'
       element.style.right = 'auto'
       element.style.marginLeft = '0'
       element.style.marginRight = '0'
@@ -144,30 +164,86 @@ export function PresentationOverlay({
       element.close()
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
-  }, [state.open])
-  if (!state.open || !state.delivery) return null
+  }, [opened])
+  useEffect(() => {
+    if (!workspaces) return
+    const target = state.reportTarget?.workspaceId ?? library?.workspaceId
+    const workspace = workspaces.find((w) => w.workspaceId === target)
+    if (
+      target &&
+      (!workspace ||
+        (openedWorkspace.current?.id === target && openedWorkspace.current.path !== workspace.path))
+    ) {
+      model.unavailable()
+      catalog?.reset()
+      openedWorkspace.current = null
+    } else openedWorkspace.current = workspace ? { id: target, path: workspace.path } : null
+  }, [workspaces, state.reportTarget?.workspaceId, library?.workspaceId, model, catalog])
+  useEffect(() => {
+    if (!dialog.current) return
+    if (state.open) {
+      listScroll.current = dialog.current.scrollTop
+      dialog.current.scrollTop = 0
+    } else if (library?.open) dialog.current.scrollTop = listScroll.current
+  }, [state.open, library?.open])
+  if (!opened) return null
   const delivery = state.delivery
   return (
     <dialog
       ref={dialog}
       className="pd-dialog"
-      aria-label="分析快照"
+      aria-label={state.open ? '分析快照' : 'Workspace 报告'}
       onCancel={(event) => {
         event.preventDefault()
         closeReader()
       }}
     >
-      <style>{deliveryStyles}</style>
+      <style>{deliveryStyles + catalogStyles}</style>
       <header className="pd-toolbar">
-        <strong>{state.resolvedReceipt?.title ?? delivery.receipt.title}</strong>
+        <strong>
+          {state.open
+            ? (state.resolvedReceipt?.title ?? delivery?.receipt.title ?? '正在打开报告…')
+            : 'Workspace 报告'}
+        </strong>
         <div className="pd-actions">
-          <button
-            type="button"
-            disabled={state.downloading || !!state.error}
-            onClick={() => void model.download(delivery, sessionId, workspaceId, true)}
-          >
-            {state.downloading ? '正在下载…' : '下载 HTML'}
-          </button>
+          {!state.open && library?.open && workspaces && (
+            <label>
+              Workspace{' '}
+              <select
+                aria-label="选择报告 Workspace"
+                value={library.workspaceId}
+                onChange={(e) => catalog.show(e.target.value)}
+              >
+                {workspaces.map((w) => (
+                  <option key={w.workspaceId} value={w.workspaceId}>
+                    {w.title || w.path || w.workspaceId}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {state.open && library?.open && (
+            <button
+              type="button"
+              disabled={state.saving}
+              onClick={() => {
+                if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并返回列表？')) return
+                model.close()
+                void catalog.refresh()
+              }}
+            >
+              返回报告列表
+            </button>
+          )}
+          {state.open && (
+            <button
+              type="button"
+              disabled={state.downloading || !!state.error || !state.document}
+              onClick={() => void model.downloadDisplayed()}
+            >
+              {state.downloading ? '正在下载…' : '下载 HTML'}
+            </button>
+          )}
           <button
             type="button"
             aria-label="关闭分析快照"
@@ -178,6 +254,14 @@ export function PresentationOverlay({
           </button>
         </div>
       </header>
+      {!state.open && library?.open && (
+        <ReportCatalogView
+          model={catalog}
+          reader={model}
+          sessions={sessions}
+          onOpenSession={onOpenSession}
+        />
+      )}
       {state.document && (
         <div
           role="toolbar"
@@ -209,13 +293,34 @@ export function PresentationOverlay({
               <span className="pd-muted">{model.dirty ? '有未保存的编辑' : '编辑模式'}</span>
             </>
           ) : (
-            <button type="button" onClick={() => model.beginEdit()}>
-              编辑报告
-            </button>
+            <>
+              {!state.historical && (
+                <button type="button" onClick={() => model.beginEdit()}>
+                  编辑报告
+                </button>
+              )}
+              <span className="pd-muted">
+                {state.historical ? '正在查看历史版本 · 只读' : '当前版本'} ·{' '}
+                {`生成于 ${publicationTime(state.document.generatedAt)}`}
+              </span>
+              {state.historical && (
+                <button type="button" onClick={() => void model.selectVersion()}>
+                  返回当前版本
+                </button>
+              )}
+            </>
           )}
+          <button
+            type="button"
+            disabled={!!state.editing || state.saving || state.historyLoading}
+            aria-expanded={!!state.historyOpen}
+            onClick={() => void model.toggleHistory()}
+          >
+            {state.historyOpen ? '收起历史' : '历史版本'}
+          </button>
         </div>
       )}
-      {state.editError && (
+      {state.open && state.editError && (
         <p className="pd-status pd-error" role="alert">
           {state.editError}
         </p>
@@ -230,85 +335,142 @@ export function PresentationOverlay({
           正在读取已保存的分析快照…
         </p>
       )}
-      {state.error && (
+      {state.open && state.error && (
         <p className="pd-status pd-error" role="alert">
           {state.error}
         </p>
       )}
-      {state.downloadError && state.downloadError !== state.error && (
+      {state.open && state.downloadError && state.downloadError !== state.error && (
         <p className="pd-status pd-error" role="alert">
           {state.downloadError}
         </p>
       )}
-      {state.notice && (
+      {state.open && state.notice && (
         <p className="pd-status pd-muted" role="status">
           {state.notice}
         </p>
       )}
-      {state.document && (
-        <div className="pd-reader">
-          <HostPresentationReader
-            document={state.document}
-            onAskDsh={
-              onAskDsh
-                ? (context) => {
-                    setAskError('')
-                    const current = model.getSnapshot()
-                    if (current.editing || current.saving) {
-                      setAskError('请先保存或取消编辑')
-                      return
-                    }
-                    if (
-                      !current.open ||
-                      current.document !== state.document ||
-                      current.delivery !== delivery ||
-                      current.error ||
-                      workspaceUnavailable ||
-                      sessionId !== delivery.dshSessionId ||
-                      workspaceId !== current.document?.workspaceId
-                    ) {
-                      setAskError('报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。')
-                      return
-                    }
-                    try {
-                      onAskDsh(delivery.dshSessionId, current.document.workspaceId, context)
-                      model.close()
-                    } catch (error) {
-                      setAskError(
-                        error instanceof Error
-                          ? error.message
-                          : '无法写入 DSH 输入草稿，请稍后重试。',
-                      )
-                    }
-                  }
-                : undefined
-            }
-            onOpenSemanticRef={
-              openSemanticObject &&
-              !workspaceUnavailable &&
-              sessionId === delivery.dshSessionId &&
-              workspaceId === state.document.workspaceId
-                ? (ref) => openSemanticObject(state.document.workspaceId, ref)
-                : undefined
-            }
-            editing={
-              state.editing
-                ? {
-                    edits: state.editing.edits,
-                    onChange: (edits) => model.changeEdits(edits),
-                    disabled: state.saving,
-                  }
-                : undefined
-            }
+      <div className="pd-reading-layout">
+        {state.open && state.historyOpen && (
+          <ReportHistoryPanel
+            state={state}
+            model={model}
+            sessions={sessions}
+            onOpenSession={onOpenSession}
           />
-        </div>
-      )}
+        )}
+        {state.document && (
+          <div className="pd-reader">
+            <HostPresentationReader
+              document={state.document}
+              onAskDsh={
+                onAskDsh && delivery
+                  ? (context) => {
+                      setAskError('')
+                      const current = model.getSnapshot()
+                      if (current.editing || current.saving) {
+                        setAskError('请先保存或取消编辑')
+                        return
+                      }
+                      if (
+                        !current.open ||
+                        current.document !== state.document ||
+                        current.delivery !== delivery ||
+                        current.error ||
+                        workspaceUnavailable ||
+                        sessionId !== delivery.dshSessionId ||
+                        workspaceId !== current.document?.workspaceId
+                      ) {
+                        setAskError(
+                          '报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。',
+                        )
+                        return
+                      }
+                      try {
+                        onAskDsh(delivery.dshSessionId, current.document.workspaceId, context)
+                        model.close()
+                      } catch (error) {
+                        setAskError(
+                          error instanceof Error
+                            ? error.message
+                            : '无法写入 DSH 输入草稿，请稍后重试。',
+                        )
+                      }
+                    }
+                  : undefined
+              }
+              onOpenSemanticRef={
+                openSemanticObject &&
+                (state.reportTarget ||
+                  (!workspaceUnavailable &&
+                    sessionId === delivery?.dshSessionId &&
+                    workspaceId === state.document.workspaceId))
+                  ? (ref) => openSemanticObject(state.document.workspaceId, ref)
+                  : undefined
+              }
+              editing={
+                state.editing
+                  ? {
+                      edits: state.editing.edits,
+                      onChange: (edits) => model.changeEdits(edits),
+                      disabled: state.saving,
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        )}
+      </div>
     </dialog>
   )
 }
 
 export function installPresentation(ctx, rpc, openSemanticObject) {
   const model = new PresentationDeliveryModel(rpc)
+  const catalog = new ReportCatalogModel(rpc)
+  ctx.effect(() => () => catalog.dispose(), 'dsh-data-analysis: report catalog lifecycle')
+  ctx.on('connection/reset', () => catalog.reset())
+  ctx.slots.inject('conversation.session.header.actions', () =>
+    ctx.slots.register(
+      { name: 'conversation.session.header.actions', id: 'marivo-reports', order: 115 },
+      function ReportsEntry({ sessionId, useWorkspaces }) {
+        const items = useWorkspaces((s) => s.items)
+        const selected = items.find((w) => w.sessionIds.includes(sessionId))?.workspaceId
+        return (
+          <WorkspaceHeaderAction
+            label="报告"
+            icon="reports"
+            disabled={!selected}
+            onClick={() => {
+              model.close()
+              catalog.show(selected)
+            }}
+          />
+        )
+      },
+    ),
+  )
+  // A global entry also serves Workspaces without a remaining source Session.
+  ctx.slots.inject('sidebar.footer.action', () =>
+    ctx.slots.register(
+      { name: 'sidebar.footer.action', id: 'marivo-reports' },
+      function ReportsEntry({ useWorkspaces }) {
+        const items = useWorkspaces((s) => s.items)
+        const recent = useWorkspaces((s) => s.recentWorkspaceId)
+        return (
+          <WorkspaceHeaderAction
+            label="报告"
+            icon="reports"
+            disabled={!items.length}
+            onClick={() => {
+              model.close()
+              catalog.show(recent ?? items[0]?.workspaceId)
+            }}
+          />
+        )
+      },
+    ),
+  )
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: presentation reader lifecycle')
   ctx.on('connection/reset', () => model.resetConnection())
   ctx.slots.inject('conversation.chat.node', () => {
@@ -343,6 +505,7 @@ export function installPresentation(ctx, rpc, openSemanticObject) {
       function Overlay({ useSessions, useWorkspaces }) {
         const sessionId = useSessions((state) => state.current) ?? ''
         const workspaces = useWorkspaces((state) => state.items)
+        const sessions = useSessions((state) => state.byId)
         const phase = useWorkspaces((state) => state.phase)
         const error = useWorkspaces((state) => state.state === 'error')
         const workspaceId =
@@ -350,6 +513,16 @@ export function installPresentation(ctx, rpc, openSemanticObject) {
         return (
           <PresentationOverlay
             model={model}
+            catalog={catalog}
+            workspaces={workspaces}
+            sessions={sessions}
+            onOpenSession={(id) => {
+              if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并打开来源会话？'))
+                return
+              model.close()
+              catalog.close()
+              ctx.sessions.open(id)
+            }}
             sessionId={sessionId}
             workspaceId={workspaceId}
             workspaceUnavailable={error || (phase === 'ready' && !workspaceId)}

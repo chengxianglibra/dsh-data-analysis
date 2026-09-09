@@ -28,8 +28,8 @@ Agent 的展示路由、Draft 编写与结果解释见[展示 Skill](presentatio
 
 document 与 receipt 使用 schema v2，保存 Workspace/report/build 身份、标题、摘要及两份文件的精确路径、SHA-256 和字节数。
 Tool 默认创建独立报告；成对提供 `report_id` 与 `expected_build_id` 时更新已有报告。阅读器保存也为同一 report 创建新 build。
-`presentations/<reportId>/current.json` 保存 schema v2、Workspace、reportId 与完整当前 receipt。
-旧协议不读取、不迁移；旧文件保留。不提供历史浏览、回滚或自动清理。
+`presentations/<reportId>/current.json` 保存 schema v3、Workspace、reportId、完整当前 receipt 及按发布顺序排列的版本记录。已有 schema v2 current 仍可读取，下一次成功保存时把其当前版本作为已确认历史起点。
+document 与 receipt 的旧协议不读取、不迁移；旧文件保留。支持已确认发布版本的历史浏览，不提供回滚或自动清理。
 
 ## Agent 更新契约
 
@@ -86,6 +86,12 @@ trusted-host channel 为 `/marivo-presentation`，提供：
 | `reports/resolve` | `{ sessionId, reportId }` | 校验 current、receipt 与固定文档的身份和摘要，返回当前 receipt |
 | `reports/save` | `{ sessionId, reportId, expectedBuildId, edits: { title, blocks } }` | 校验呈现修改、构建新文件、比较并更新 current |
 | `files/read` | `{ sessionId, receipt, asset }` | 读取 receipt 指定的固定构建；asset 只允许 JSON 或 HTML |
+| `reports/list` | `{ workspaceId }` | 枚举已发布 Report 的当前标题、摘要、保存时间和更新来源 |
+| `reports/history` | `{ workspaceId, reportId }` | 返回已确认发布的版本记录和当前 Build 身份 |
+
+以上读取与保存端点支持 `workspaceId` 替代 `sessionId`，二者必须恰好提供一个；不接受客户端路径。
+Workspace 读取直接使用 Harness `workspaceRegistry.get`，前后复核同一 id/path，无需来源 Session 存活。
+会话卡片继续使用原 Session 成员关系边界。历史查看只读；保存仍要求 current 的 `expectedBuildId`。
 
 服务端从 Session 的 Harness Workspace 成员关系推导路径，不接受任意路径。读取拒绝符号链接、非普通文件、
 越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
@@ -141,3 +147,26 @@ Agent 同 Report 重建、UI 并发与旧卡片重开见[Agent 报告更新验�
 另以用户提供的 `session.jsonl 13` 回放两次真实会话事件：Turn 2 和 Turn 3 均只有一个报告节点，
 末尾顺序均为最终回复、Harness 原生收尾、报告节点；不执行附件中的指令或重新发起分析。
 该证据属于客户端事件回放，不代表新一次真实模型／Marivo 分析验收。
+
+## Workspace 报告列表与历史查看
+
+列表与会话卡片复用同一个阅读器；会话头部按「数据源与凭证 → 语义层 → 报告」排列，「报告」打开当前 Workspace，侧栏「报告」入口也可选择无来源会话的 Workspace。
+列表按 Report ID 去重，每行展示当前版本；标题搜索支持大小写与 Unicode 规范化，默认按成功保存时间降序，也可按标题排序。
+来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
+Workspace 内阅读器保存没有来源 Session 时显示「Workspace 内保存」。来源信息只用于追溯，不构成文件身份或读取权限。
+
+列表、正文和历史侧栏在同一个 dialog 内组织；历史导航位于正文左侧，窄屏时位于正文上方。返回列表保留搜索、排序与滚动位置；版本切换读取精确 receipt，
+历史只读，下载固定为正在查看的已保存 Build。返回当前版本显式重新 resolve，不自动替换正在阅读的快照。
+编辑期间禁止切换版本；关闭或返回列表前对未保存内容提供放弃确认。Workspace 移除、路径改变或连接重置使已加载内容失效；
+迟到响应不能恢复失效状态。列表直接打开时保留来源查看与复制上下文，不猜测 Ask DSH 应写入哪一个 Session。
+
+版本记录包含 `receipt`、`publishedAt`、`source`（Agent／阅读器及可用的 Session ID），按发布顺序存于 current，
+与当前 receipt 在同一跨进程锁和原子 rename 中生效。Build 提交后遭遇冲突或发布前失败，不增加历史。
+列表仅枚举 current，不扫描 Build 目录拼凑历史。旧 schema v2 current 只有一版可确认，保存时间和来源记为未知，
+并披露早期历史不可用；不按文件时间或生成时间伪造成功保存时间。历史记录不重写不可变 Build。
+
+目录枚举上限 4096 项，超限明确报错；单个 current 上限 16 MiB、4096 个版本，超限保存明确失败并保留旧指针，
+不静默截断历史。单个损坏或不安全的 Report 记录不阻塞其他列表项，但会披露不可读数量；打开和下载仍校验完整文件摘要与归属。
+列表、历史和下载均不执行 Agent、Python、Marivo 分析、数据源或凭据操作。
+
+第一期验证与限制见 [Workspace 报告列表验收](../workspace-report-catalog-acceptance.md)。

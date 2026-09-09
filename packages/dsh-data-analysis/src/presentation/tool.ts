@@ -135,6 +135,7 @@ export function createMarivoPresentTool(
         expectedBuildId,
         check,
         signal,
+        { kind: 'agent', sessionId: String(session.id) },
       )
       return {
         deliveryJson: JSON.stringify(
