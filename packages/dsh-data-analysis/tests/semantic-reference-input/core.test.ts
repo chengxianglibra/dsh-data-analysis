@@ -5,11 +5,14 @@ import {
   envelopeJson,
   modelMarker,
   parseCandidatesRequest,
+  parseCandidatesResponse,
   parseEnvelope,
   parseProjection,
   parseRef,
 } from '../../src/semantic-reference/contracts.ts'
+import { semanticKindLabels } from '../../src/semantic-reference/labels.ts'
 import { dice, normalize, search } from '../../src/semantic-reference/search.ts'
+
 import { candidate, envelope, fakeRunner, output, projection } from './fixtures.ts'
 
 test('closed wire shapes, Unicode bounds and identity independent of display', () => {
@@ -22,10 +25,10 @@ test('closed wire shapes, Unicode bounds and identity independent of display', (
   assert.throws(() =>
     parseProjection({ ...projection(), items: [{ ...candidate('a'), refKey: 'metric:b' }] }),
   )
-  const request = { version: 1, sessionId: 'a', query: '😀'.repeat(128), quoted: true, limit: 40 }
+  const request = { version: 1, sessionId: 'a', query: '😀'.repeat(128), quoted: true }
   assert.equal(parseCandidatesRequest(request).query, request.query)
   assert.throws(() => parseCandidatesRequest({ ...request, query: `${request.query}a` }))
-  assert.throws(() => parseCandidatesRequest({ ...request, limit: 100 }))
+  assert.throws(() => parseCandidatesRequest({ ...request, limit: 101 }))
   assert.equal(
     modelMarker(envelope()),
     '<marivo-semantic-ref>{"schema":"marivo.semantic_ref/v1","kind":"metric","path":"sales.revenue"}</marivo-semantic-ref>',
@@ -60,25 +63,25 @@ test('NFKC, strict tiers, Chinese definitions, typo threshold and short-query ex
   assert.equal(search(data, 'revenue', heat)[0]?.ref.path, 'sales.revenue')
 })
 
-test('fuzzy only supplements fewer than 12 strict matches; all results bounded and stable', () => {
+test('fuzzy only supplements fewer than 12 strict matches; all results are returned in stable order', () => {
   const data = projection([
-    ...Array.from({ length: 60 }, (_, i) => candidate(`sales.revenue_${i}`)),
+    ...Array.from({ length: 120 }, (_, i) => candidate(`sales.revenue_${i}`)),
     candidate('sales.revnue'),
   ])
-  assert.equal(search(data, 'revenue').length, 40)
+  assert.equal(search(data, 'revenue').length, 120)
   assert.ok(search(data, 'revenue').every((row) => row.section !== 'fuzzy'))
   assert.deepEqual(search(data, ''), search({ ...data, items: [...data.items].reverse() }, ''))
 })
 
 test('recent section caps at ten, deduplicates and intersects only current Catalog', () => {
-  const data = projection(Array.from({ length: 55 }, (_, i) => candidate(`sales.item_${i}`)))
+  const data = projection(Array.from({ length: 115 }, (_, i) => candidate(`sales.item_${i}`)))
   const heat = new Map(data.items.map((item, i) => [item.refKey, { count: i + 1, last: i }]))
   heat.set('metric:deleted', { count: 9999, last: 999 })
   const result = search(data, '', heat)
-  assert.equal(result.length, 40)
+  assert.equal(result.length, 115)
   assert.equal(result.filter((row) => row.section === 'recent').length, 10)
-  assert.equal(result[0]?.ref.path, 'sales.item_54')
-  assert.equal(new Set(result.map((row) => row.refKey)).size, 40)
+  assert.equal(result[0]?.ref.path, 'sales.item_114')
+  assert.equal(new Set(result.map((row) => row.refKey)).size, 115)
   assert.ok(result.every((row) => row.ref.path !== 'deleted'))
   const samePath = search(
     projection([candidate('sales.same', 'entity'), candidate('sales.same', 'metric')]),
@@ -173,4 +176,52 @@ test('aborted resolver wait still observes a later rejection', async () => {
   const { abortable } = await import('../../src/semantic-reference/rpc.ts')
   const failed = Promise.reject(new Error('resolver failed after cancellation'))
   await assert.rejects(abortable(failed, AbortSignal.abort()), /cancelled/)
+})
+
+test('all displayed Chinese kind labels are searchable, including mixed text queries', () => {
+  const data = {
+    kinds: [...Object.keys(semanticKindLabels), 'future_kind'],
+    items: [
+      ...Object.keys(semanticKindLabels).map((kind) => candidate(`sales.${kind}`, kind)),
+      candidate('future.object', 'future_kind'),
+    ],
+  }
+  for (const [kind, label] of Object.entries(semanticKindLabels)) {
+    assert.ok(
+      search(data, label).some((row) => row.ref.kind === kind),
+      label,
+    )
+    assert.ok(
+      search(data, `${label} sales`).some((row) => row.ref.kind === kind),
+      label,
+    )
+  }
+  assert.equal(search(data, '指标')[0]?.ref.kind, 'metric')
+  assert.equal(search(data, 'metric')[0]?.ref.kind, 'metric')
+  assert.equal(search(data, 'future_kind')[0]?.ref.kind, 'future_kind')
+})
+
+test('all eligible matches survive search and response parsing beyond former limits', () => {
+  for (const count of [0, 40, 99, 100, 101, 250]) {
+    const data = projection(
+      Array.from({ length: count }, (_, i) => candidate(`sales.revenue_${i}`)),
+    )
+    const heat = new Map(
+      data.items.slice(0, 12).map((item) => [item.refKey, { count: 1, last: 1 }]),
+    )
+    for (const query of ['', 'revenue', 'revnue', '指标']) {
+      const items = search(data, query, heat)
+      assert.equal(items.length, count)
+      assert.equal(new Set(items.map((item) => item.refKey)).size, count)
+      assert.deepEqual(
+        parseCandidatesResponse({ environmentFingerprint: 'fp', items }).items,
+        items,
+      )
+    }
+    assert.deepEqual(search(data, 'absent'), [])
+  }
+  assert.throws(() => parseCandidatesResponse({ environmentFingerprint: 'fp', items: null }))
+  assert.throws(() =>
+    parseCandidatesResponse({ environmentFingerprint: 'fp', items: [], truncated: false }),
+  )
 })

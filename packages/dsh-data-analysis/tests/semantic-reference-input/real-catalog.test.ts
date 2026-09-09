@@ -6,6 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { bindMarivoEnvironment } from '../../src/environment/index.ts'
 import { SemanticReferenceBridge } from '../../src/semantic-reference/bridge.ts'
+import { search } from '../../src/semantic-reference/search.ts'
 import { createSemanticWorkspace } from './workspace.ts'
 
 const python =
@@ -56,6 +57,8 @@ test('real Marivo 0.5.4: empty, large and failed Catalog reads create no Workspa
   now = 30_000
   const catalog = await bridge.candidates(runner, signal)
   assert.ok(catalog.items.length > 100)
+  assert.equal(search(catalog, '').length, catalog.items.length)
+  assert.ok(search(catalog, '指标').some((item) => item.refKey === 'metric:sales.revenue'))
   assert.ok(new Set(catalog.items.map((item) => item.ref.kind)).size >= 4)
   const metric = catalog.items.find((item) => item.refKey === 'metric:sales.revenue')!
   assert.equal(metric.ref.schema, 'marivo.semantic_ref/v1')

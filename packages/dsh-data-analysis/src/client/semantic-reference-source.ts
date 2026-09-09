@@ -7,13 +7,13 @@ import {
   closed,
   type Envelope,
   envelopeJson,
-  LIMIT,
   parseCandidatesResponse,
   parseEnvelope,
   parseJson,
   refKey,
   SOURCE,
 } from '../semantic-reference/contracts.ts'
+import { semanticKindLabels } from '../semantic-reference/labels.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -32,19 +32,7 @@ const zh = {
   recent: '最近 7 天常用',
   strict: '语义对象',
   fuzzy: '相近结果',
-  domain: '领域',
-  datasource: '数据源',
-  entity: '实体',
-  dimension: '维度',
-  measure: '度量',
-  time_dimension: '时间维度',
-  metric: '指标',
-  relationship: '关系',
-  event: '事件',
-  state_model: '状态模型',
-  period_calendar: '周期日历',
-  temporal_set: '时间集合',
-  work_schedule: '工作日程',
+  ...semanticKindLabels,
 }
 const en = {
   recent: 'Frequently selected in the last 7 days',
@@ -94,7 +82,6 @@ export function createSemanticReferenceSource(
             sessionId: session.sessionId,
             query: request.query,
             quoted: request.quoted ?? false,
-            limit: LIMIT,
           },
           signal,
         ),

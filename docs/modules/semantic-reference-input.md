@@ -6,8 +6,11 @@
 `@"monthly revenue"`。菜单与文件、文件夹和 Session 候选并存。选中后显示完整 `kind:path` 原子引用；复制得到
 `@kind:path` 普通文字，重新粘贴不会恢复隐藏引用。
 
-空查询最多返回 40 个对象，其中最近七个 Host 自然日常用对象最多 10 个。非空查询按 exact、prefix、contains、
-fuzzy 分层；strict 不足 12 个时才追加 trigram Dice 不低于 `0.42` 的字符相似结果，短于三个 code points 不做 fuzzy。
+空查询返回当前 Catalog 的全部对象，其中最近七个 Host 自然日常用对象最多 10 个优先展示，其余对象去重后
+按类型排列。非空查询按 exact、prefix、contains、fuzzy 分层；strict 不足 12 个时才追加 trigram Dice 不低于 `0.42` 的字符相似结果，短于三个 code points 不做 fuzzy。
+中文类型名与输入菜单、语义层浏览器共用展示文案，参与检索，例如 `@指标`、`@业务域`，也支持
+`@"指标 revenue"`；英文 kind、对象 name/path/refKey 和业务定义仍可搜索。
+检索返回全部符合匹配规则的对象，不限制候选展示条数，也不显示截断提示。
 NFKC、大小写和空白规范化仅影响检索，不修改 ref。热度只在同等相关度内打破平局；它不表达业务有效性。
 
 ## 所有权与接口
@@ -20,7 +23,7 @@ NFKC、大小写和空白规范化仅影响检索，不修改 ref。热度只在
   模型只收到 `<marivo-semantic-ref>` 内的规范 ref JSON；JSON 中的标记分隔字符使用 Unicode escape。
 
 请求 query 最多 128 code points；Session ID 与 Environment fingerprint 最多 256，kind 最多 128，path/name 最多
-2048，候选描述最多 240。请求序列化总量最多 1 MiB，候选总数最多 40。Catalog 子进程限时 30 秒、stdout 最多
+2048，候选描述最多 240。请求序列化总量最多 1 MiB，候选响应不设条数上限。Catalog 子进程限时 30 秒、stdout 最多
 32 MiB、stderr 最多 8 KiB。领域 kind/path 合法性仍由 Marivo 判断；wire parser 不作成员认证。
 
 ## Environment 与 Catalog 生命周期

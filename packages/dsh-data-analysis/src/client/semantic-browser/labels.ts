@@ -1,18 +1,6 @@
-export const kindLabels: Readonly<Record<string, string>> = {
-  domain: '业务域',
-  datasource: '数据源',
-  entity: '实体',
-  dimension: '维度',
-  measure: '度量',
-  time_dimension: '时间维度',
-  metric: '指标',
-  relationship: '关系',
-  event: '事件',
-  state_model: '状态模型',
-  period_calendar: '周期日历',
-  temporal_set: '时间集合',
-  work_schedule: '工作日程',
-}
+import { semanticKindLabels } from '../../semantic-reference/labels.ts'
+
+export const kindLabels: Readonly<Record<string, string>> = semanticKindLabels
 export const fieldLabels: Readonly<Record<string, string>> = {
   domain: '所属业务域',
   owner: '负责人',

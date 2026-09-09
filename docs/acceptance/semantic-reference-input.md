@@ -51,3 +51,27 @@ Artifact、Evidence 和 telemetry 写入仍由 Marivo 拥有。
 
 测试可移植性：没有 sibling DSH checkout 时，仅私有输入 core 集成测试明确 skip；没有正式 Marivo Python 时，真实
 Catalog 测试明确 skip，可用 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定解释器。这些 skip 不应当作真实验收通过。
+
+
+## 2026-09-09 中文类型名检索与完整候选展示
+
+输入菜单、语义层浏览器和检索共用中文类型文案，例如 `@指标`、`@业务域` 和 `@"指标 revenue"`。
+英文 kind、对象 name/path/refKey 与业务定义检索保持可用。共享文案仅用于展示和文本匹配，Catalog
+对象类型仍由 Marivo 实时提供。
+
+取消候选展示条数上限和截断提示，空查询及关键词查询均返回所有符合匹配规则的对象；常用对象最多
+10 个优先展示，其他对象去重后全部保留。请求移除 `limit`，响应保留 `environmentFingerprint` 和 `items`。
+原有 Catalog 加载保护及请求、字段校验继续生效，不改变 Harness 菜单或 Marivo 语义契约。
+
+验收覆盖全部 13 个中文类型名、混合查询、未知 kind、超过 40/100 条的空查询、关键词与 fuzzy 检索、
+常用项去重、响应解析，以及已安装 Harness 控制器中第 250 个候选的选择与原子引用插入。
+真实 Marivo Catalog 验证完整对象返回、中文指标检索和 Workspace 无额外文件写入。
+
+本次未进行浏览器页面视觉验收，也未重装插件或重启用户 DSH 服务。
+
+
+使用 Node.js 22.19.0、DSH 0.1.5-alpha.1 与 Marivo 0.5.4 验证：
+
+- `npm run test:semantic-reference-input`：19 项全部通过，无跳过。
+- `npm run check`：450 项通过、0 失败，4 项真实进程取消与长时执行测试因未指定所需 Runtime 而跳过。
+- 完整检查内执行的 `npm run build`、`npm run verify:plugin-package` 和 `git diff --check` 通过。

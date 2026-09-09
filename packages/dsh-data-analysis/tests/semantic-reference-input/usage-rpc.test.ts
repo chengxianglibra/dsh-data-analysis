@@ -100,7 +100,7 @@ test('selected and serialize work without Catalog cache; ownership, authority an
   await assert.rejects(
     service.handle(
       'semantic-references/candidates',
-      { version: 1, sessionId: 'a', query: '', quoted: false, limit: 40 },
+      { version: 1, sessionId: 'a', query: '', quoted: false },
       signal,
     ),
   )
@@ -155,7 +155,7 @@ test('storage unavailable only degrades heat, and lifecycle aborts unresolved En
     signal = new AbortController().signal
   const result = await service.handle(
     'semantic-references/candidates',
-    { version: 1, sessionId: 'a', query: '', quoted: false, limit: 40 },
+    { version: 1, sessionId: 'a', query: '', quoted: false },
     signal,
   )
   assert.match(JSON.stringify(result), /sales.revenue/)

@@ -1,7 +1,6 @@
 /** Browser-safe wire contracts. These bounds do not reimplement Marivo's domain grammar. */
 export const CHANNEL = '/dsh-data-analysis'
 export const SOURCE = 'marivo-semantic'
-export const LIMIT = 40
 export const MAX_WIRE_BYTES = 1024 * 1024
 export interface SemanticRef {
   readonly schema: 'marivo.semantic_ref/v1'
@@ -118,20 +117,18 @@ export function parseProjection(value: unknown): Projection {
   return Object.freeze({ kinds: Object.freeze(kinds), items: Object.freeze(items) })
 }
 export function parseCandidatesRequest(value: unknown) {
-  const r = closed(value, ['version', 'sessionId', 'query', 'quoted', 'limit'])
-  if (r.version !== 1 || r.limit !== LIMIT || typeof r.quoted !== 'boolean')
-    throw new Error('invalid-request')
+  const r = closed(value, ['version', 'sessionId', 'query', 'quoted'])
+  if (r.version !== 1 || typeof r.quoted !== 'boolean') throw new Error('invalid-request')
   return {
     version: 1,
     sessionId: boundedText(r.sessionId, 256),
     query: boundedText(r.query, 128, true),
     quoted: r.quoted,
-    limit: LIMIT,
   }
 }
 export function parseCandidatesResponse(value: unknown): CandidatesResponse {
   const r = closed(value, ['environmentFingerprint', 'items'])
-  if (!Array.isArray(r.items) || r.items.length > LIMIT) throw new Error('invalid-response')
+  if (!Array.isArray(r.items)) throw new Error('invalid-response')
   const items = r.items.map((raw): RankedCandidate => {
     const item = closed(raw, ['ref', 'refKey', 'name', 'businessDefinition', 'section'])
     const { section, ...candidate } = item
@@ -139,5 +136,8 @@ export function parseCandidatesResponse(value: unknown): CandidatesResponse {
       throw new Error('invalid-response')
     return { ...parseCandidate(candidate), section }
   })
-  return { environmentFingerprint: boundedText(r.environmentFingerprint, 256), items }
+  return {
+    environmentFingerprint: boundedText(r.environmentFingerprint, 256),
+    items,
+  }
 }

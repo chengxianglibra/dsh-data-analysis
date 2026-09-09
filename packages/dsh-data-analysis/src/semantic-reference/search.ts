@@ -1,4 +1,5 @@
-import { type Candidate, LIMIT, type Projection, type RankedCandidate } from './contracts.ts'
+import type { Candidate, Projection, RankedCandidate } from './contracts.ts'
+import { semanticKindLabels } from './labels.ts'
 export interface UsageScore {
   readonly count: number
   readonly last: number
@@ -37,7 +38,10 @@ function match(item: Candidate, query: string): Match {
     path = normalize(item.ref.path),
     key = normalize(item.refKey)
   const fields = [name, path, key]
-  const all = [...fields, normalize(item.ref.kind)]
+  const label = Object.hasOwn(semanticKindLabels, item.ref.kind)
+    ? semanticKindLabels[item.ref.kind as keyof typeof semanticKindLabels]
+    : ''
+  const all = [...fields, normalize(item.ref.kind), normalize(label)]
   const searchTokens = all.flatMap(tokens)
   if (fields.includes(query)) return { item, tier: 0, score: 1, field: 0 }
   const prefixes = [...fields, ...searchTokens]
@@ -95,7 +99,6 @@ export function search(
       ...projection.items
         .filter((item) => !keys.has(item.refKey))
         .sort(fallback)
-        .slice(0, LIMIT - recent.length)
         .map((item): RankedCandidate => ({ ...item, section: 'kind' })),
     ]
   }
@@ -111,6 +114,5 @@ export function search(
         heat(a.item, b.item) ||
         compareText(a.item.refKey, b.item.refKey),
     )
-    .slice(0, LIMIT)
     .map((m) => ({ ...m.item, section: m.tier === 3 ? 'fuzzy' : 'strict' }))
 }
