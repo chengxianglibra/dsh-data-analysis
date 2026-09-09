@@ -9,6 +9,10 @@ import { type Browser, chromium, type Locator, type Page } from 'playwright'
 import { presentationEdits } from '../src/presentation/contracts/editing.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
+import {
+  prepareContextReferenceInput,
+  verifyNativeContextReference,
+} from './right-tabs/context-reference.ts'
 
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-right-tabs-stage-one-')))
 const workspaceRoot = path.join(outputRoot, 'workspace')
@@ -18,6 +22,7 @@ const python =
 await mkdir(workspaceRoot)
 process.stdout.write(`Right Tabs isolated acceptance: ${outputRoot}\n`)
 const inputs = await preparePresentationInputs(workspaceRoot, python)
+inputs.draftPaths.push(await prepareContextReferenceInput(workspaceRoot))
 await writeFile(
   path.join(workspaceRoot, 'models/datasources/protected.py'),
   'import marivo.datasource as md\nmd.duckdb(name="protected",path=":memory:",http_scope="http://127.0.0.1/",http_bearer_token_env="RIGHT_TABS_TEST_TOKEN")\n',
@@ -91,10 +96,10 @@ try {
     assert.ok(after.draft.startsWith(before.draft), 'preserve existing draft')
     const lines = after.draft.slice(before.draft.length).split('\n')
     assert.ok(lines.includes('【报告上下文】'))
-    assert.ok(lines.includes(`Workspace: ${identity.workspaceId}`))
+    assert.ok(lines.includes(`Workspace: ${JSON.stringify(identity.workspaceId)}`))
     assert.ok(lines.includes(`Report ID: ${identity.reportId}`))
     assert.ok(lines.includes(`Build ID: ${identity.buildId}`))
-    assert.ok(lines.includes(`Cell: ${cellId}`))
+    assert.ok(lines.includes(`Cell: ${JSON.stringify(cellId)}`))
     assert.equal(lines.filter((line: string) => line.startsWith('Build ID: ')).length, 1)
     assert.deepEqual(after.occurrences, before.occurrences)
     assert.deepEqual(after.attachmentIds, before.attachmentIds)
@@ -336,6 +341,30 @@ try {
   const gallery = page.locator(`[data-rt-kind=report][data-rt-build="${galleryReceipt.buildId}"]`)
   await gallery.getByRole('button', { name: /展示范围/ }).click()
   await gallery.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
+  const galleryCell = gallery.locator('[data-mode=interactive] [data-block-id=gallery-line]')
+  await galleryCell.locator('.pr-legend button').first().click()
+  const hiddenBefore = await draftSnapshot()
+  await askCell(gallery, 'gallery-line')
+  assert.match(
+    (await draftSnapshot()).draft.slice(hiddenBefore.draft.length),
+    /Hidden series: \["a"\]/,
+  )
+  record('native chart reference carries hidden series IDs')
+  await galleryCell.getByRole('button', { name: 'cell 更多操作' }).click()
+  await galleryCell.getByRole('menuitem', { name: '探索图表', exact: true }).click()
+  await gallery
+    .getByRole('combobox', { name: '已准备视图', exact: true })
+    .selectOption('prepared-histogram')
+  const preparedBefore = await draftSnapshot()
+  await askCell(gallery, 'gallery-line')
+  const preparedReference = (await draftSnapshot()).draft.slice(preparedBefore.draft.length)
+  assert.match(preparedReference, /Prepared view: "prepared-histogram"/)
+  assert.match(preparedReference, /Filters:/)
+  assert.doesNotMatch(preparedReference, /Current chart view override:|Snapshot row indices:/)
+  await gallery.getByRole('button', { name: '关闭探索图表', exact: true }).click()
+  record(
+    'prepared view reference preserves filter and view identity without repeating its configuration',
+  )
   const galleryTab = await gallery.getAttribute('data-rt-tab')
   await page.evaluate((id) => (window as any).__rtHost.sidebar.float(id), galleryTab)
   await gallery.getByRole('button', { name: /展示范围.*第二条观测/ }).waitFor()
@@ -344,6 +373,16 @@ try {
   await gallery.getByRole('button', { name: /展示范围.*第二条观测/ }).waitFor()
   await page.evaluate((id) => (window as any).__rtHost.sidebar.close(id), galleryTab)
   record('global filter selection survives float/dock with shared reader memory')
+  await verifyNativeContextReference(
+    page,
+    browser,
+    server.deliveries[4]!.receipt,
+    server.deliveries[1]!.receipt,
+    outputRoot,
+  )
+  record(
+    '2b native cell references, public Agent read, rich draft undo, local state, byte ceiling and offline copy passed',
+  )
 
   await page.getByRole('button', { name: '打开语义层', exact: true }).click()
   await page.locator('[data-rt-kind=semantic] .sb-objects button').first().waitFor()

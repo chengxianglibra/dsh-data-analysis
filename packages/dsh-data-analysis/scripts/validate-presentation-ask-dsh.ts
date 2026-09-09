@@ -1,6 +1,6 @@
 /** Focused real DSH Web acceptance; disposable profile, production plugin, scripted model. */
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -24,7 +24,7 @@ const server = await startPresentationWebHost(
   pythonExecutable,
   inputs.draftPaths,
   'native-first',
-  { askDshProbe: true },
+  { askDshProbe: true, retainedPresentation: true },
 )
 let browser: Browser | undefined
 let page: Page | undefined
@@ -55,7 +55,7 @@ try {
   const evidence = {
     status: 'passed',
     boundary:
-      'Real installed 0.1.5-alpha.1 DSH Web composer and packed production plugin; scripted model adapter, not real-model analysis acceptance',
+      'Real installed 0.1.5-alpha.1 DSH Web composer and packed public installPresentation fallback; scripted model adapter, not real-model analysis acceptance',
     workspaceRoot,
     isolatedProfile: server.profile,
     moduleDigests: server.moduleDigests,
@@ -79,4 +79,6 @@ try {
 } finally {
   await browser?.close()
   await server.stop()
+  await rm(workspaceRoot, { recursive: true, force: true })
+  await rm(path.dirname(server.home), { recursive: true, force: true })
 }

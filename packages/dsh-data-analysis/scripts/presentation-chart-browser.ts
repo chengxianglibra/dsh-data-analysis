@@ -104,8 +104,8 @@ export async function verifyChartGallery(page: Page) {
   await line.getByText('已复制', { exact: true }).waitFor()
   const copied = await page.evaluate(() => navigator.clipboard.readText())
   assert.match(copied, /Build ID: chart-gallery/)
-  assert.match(copied, /Saved chart binding: .*"chart":"line"/)
-  assert.match(copied, /Current chart binding: .*"chart":"horizontalBar"/)
+  assert.match(copied, /Report file .*presentation.json/)
+  assert.match(copied, /Current chart view override: .*"chart":"horizontalBar"/)
   assert.match(copied, /"x":"coordinate","y":\["a"\]/)
   assert.doesNotMatch(copied, /Category filters:/)
   assert.match(

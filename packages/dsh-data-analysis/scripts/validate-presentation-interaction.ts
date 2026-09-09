@@ -233,8 +233,8 @@ try {
   await countCell.getByRole('menuitem', { name: '复制上下文', exact: true }).click()
   await countCell.getByText('已复制', { exact: true }).waitFor()
   const copied = await page.evaluate(() => navigator.clipboard.readText())
-  assert.match(copied, /当前筛选: 日期：周一 · 集群：甲集群/)
-  assert.match(copied, /Metric raw value: "150"/)
+  assert.match(copied, /"filterId":"day","optionId":"mon","label":"日期：周一"/)
+  assert.match(copied, /"filterId":"cluster","optionId":"a"/)
   assert.equal(requests.filter((endpoint) => endpoint === 'reports/save').length, 0)
   await overlay.screenshot({ path: path.join(output, 'host-desktop.png') })
   const requestsBeforeExport = requests.length

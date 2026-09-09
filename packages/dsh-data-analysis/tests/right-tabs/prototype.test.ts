@@ -239,10 +239,10 @@ test('fixed Build never resolves current; current announces updates until explic
     const document = page.reader.getSnapshot().document!
     const cell = document.blocks[0]!
     const lines = followUpContext(document, cell).split('\n')
-    assert.ok(lines.includes(`Workspace: ${base.workspaceId}`))
+    assert.ok(lines.includes(`Workspace: ${JSON.stringify(base.workspaceId)}`))
     assert.ok(lines.includes(`Report ID: ${base.reportId}`))
     assert.ok(lines.includes(`Build ID: ${buildId}`))
-    assert.ok(lines.includes(`Cell: ${cell.id}`))
+    assert.ok(lines.includes(`Cell: ${JSON.stringify(cell.id)}`))
   }
   assertContext(current, 'old')
   current.viewMemory.set(`${base.workspaceId}/${base.reportId}/old/interactive`, {

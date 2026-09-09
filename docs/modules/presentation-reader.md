@@ -96,7 +96,7 @@ Agent 按报告需要显式声明 `interaction`，不声明时不生成控件或
 两类内容交界处用细分隔线隔开，前后都有固定内容时分别显示，空区域不产生分隔线；移动端、静态 HTML 与打印采用相同布局。
 固定内容保留提示；区外即使引用同一 dataset 也不受影响。字段名称和选项由 Agent 指定，reader 不推断字段或 dataset 关系。
 ChartExplorer 不再包含局部行过滤；图形切换、系列显隐和表格排序分页保留。切换组合同步更新全区及来源数据预览，
-重置分页；复制上下文附当前筛选条件、原始行索引与精确 KPI，来源 identity 和代码保持不变。
+重置分页；复制上下文附稳定的筛选 ID 与 option ID，Agent 从固定 Build 读取 slice、行索引与精确 KPI。
 
 宿主编辑只允许区域内移动和删除，不开放筛选声明。共享逻辑按删除结果裁剪区域及 dataset 映射，删除最后一个目标时
 移除声明；撤销和重做通过原文档恢复，服务端再次校验。普通筛选选择不标记 dirty，不进入保存请求或浏览器存储；
@@ -145,16 +145,28 @@ Host 数据源概要中的公开语义引用可点击打开同一 Workspace 的�
 
 数据预览保留精确原值、列顺序、排序和分页；chart 预览限制为当前 x/y 及辅助 bindings 绑定列。
 图表正文只保留图形、多系列显隐及必要的截断/近似状态，单系列不显示切换图例。
-“继续分析”、独立复制图标与图表下方“查看数据”入口已移除。上下文限定当前 cell 的原文、字段绑定、指标精确值及其关联引用，
-不附加整份报告或选中数据行；复制失败提供临时手动复制弹窗。
+“继续分析”、独立复制图标与图表下方“查看数据”入口已移除。上下文只提供固定 Build/cell 定位与未保存的显示状态，
+正文、绑定、精确值和来源均由 Agent 按引用读取；剪贴板失败提供临时手动复制弹窗。
 
 `PresentationReader` 和 `HostPresentationReader` 接收可选 `onAskDsh(context: string): void`；
-Host 注入时菜单显示 Ask DSH，无回调时保持复制上下文。回调内容复用 `followUpContext`，包含当前筛选和图表探索状态。
+Host 注入时菜单显示 Ask DSH，无回调时保持复制上下文。回调内容复用 `followUpContext`，包含当前筛选、图表探索和表格排序状态。
 
 上下文包含 `Workspace / Report ID / Build ID / Cell`，全部来自正在显示的 document。current 页面提示
 新版本但尚未刷新时仍引用旧 Build，刷新后引用新 Build，固定 Build 始终保留自身身份。标题仅用于阅读，
-不代替 Report ID；此约定同时适用于在线追问与离线复制。2a 不改变正文长度、精确值、筛选或来源投影，
-验收见 [2a 验收记录](../dsh-context-stage-two-a-acceptance.md)。
+不代替 Report ID；报告标题与已有 cell 标签各最多 80 个 Unicode 码点。引用包含所属 Workspace 下的
+固定 Build `presentation.json` 相对路径，明确按 `blocks[].id` 定位。
+身份字段中的 `Workspace`、`Cell`、`Prepared view` 使用 JSON 字符串编码，读取时先解码再精确匹配；
+标题以 `Report title` 标记，避免合法 ID 中的换行或标题文本被误认成另一个定位字段。筛选仅携带受影响 cell 的有效
+filter ID、option ID 与简短标签，不展开行号。图表默认配置不输出；prepared view 使用 ID，隐藏系列
+使用列 ID，仅偏离 authored/prepared 配置时附一份完整当前 ChartView。表格附排序列和方向，覆盖全部筛选
+结果而非当前页，不携带滚动、悬停或选区。离线复制使用相同格式，文件仍位于原 Workspace。
+
+2b 不制作内容摘要，不复制 Markdown、指标原值、列定义、来源或备选视图全集。单次追加 UTF-8 上限为
+12 KiB，包含包装与分隔符；离线生成同样预留两个换行。定位或临时状态超限时明确失败，不截断有效状态。
+点击时生成引用并捕获失败，避免整个 reader 渲染失败；失败不改草稿或剪贴板，恢复后可重试。
+在线与离线编辑期间均禁止引用未保存内容。Agent 的固定 Build 读取与 current 更新规则见
+[报告读取约定](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/schema.md#从报告-cell-引用继续)。
+验收见 [2a 验收记录](../dsh-context-stage-two-a-acceptance.md)和 [2b 验收记录](../dsh-context-stage-two-b-acceptance.md)。
 
 Host adapter 在点击时核验报告、当前 Session 与 Workspace，使用 Harness 公开的 `sessions.scope`、
 `conversation.input.for` 及 `slash/input-insert-text`，按最新 `draftRev` 和原子引用坐标，把
@@ -240,7 +252,7 @@ S3 的真实 Web 验证只接入 reader，不代表 S4 Tool、receipt/RPC 或 S5
 现有 `metric` 可声明 `description` 和最多四条 `comparisons`，使用同一选中行的数值列展示参考值、
 绝对变化及变化率；见 [KPI 编写契约](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/schema.md#kpi-比较卡片)。
 Marivo／分析作者负责周期、分母、差值、百分比与好坏方向；插件验证引用并格式化，不计算同比／环比。
-比较数据跟随 `rowSelection: "slice"`，复制上下文包含比较列和原值，静态 HTML 保留全部比较。
+比较数据跟随 `rowSelection: "slice"`，复制引用定位对应 cell，由 Agent 读取比较列和原值；静态 HTML 保留全部比较。
 `sentiment` 独立于涨跌符号，默认中性；数值不经过浮点转换，缺失和持平分别显示。
 卡片按内容容器自适应，宽度上限为 `480px`，常规最小宽度为 `240px`；更窄时使用容器全宽。
 主值保持一行，极长精确值可横向滚动。

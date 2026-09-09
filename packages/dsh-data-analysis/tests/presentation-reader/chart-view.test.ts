@@ -193,17 +193,16 @@ test('copy context distinguishes current view, hidden series, filters and saved 
     ...initialChartExploration(block),
     view: { ...initialChartExploration(block).view, datasetId: 'prepared' },
     hidden: ['plan'],
-    preparedViewId: 'ready',
   }
   const copy = followUpContext(document, block, state)
   assert.match(copy, /Build ID: build/)
-  assert.match(copy, /Workspace: workspace/)
-  assert.match(copy, /Saved chart binding:/)
-  assert.match(copy, /Current chart binding:.*"datasetId":"prepared"/)
-  assert.match(copy, /page-local exploration/)
+  assert.match(copy, /Workspace: "workspace"/)
+  assert.doesNotMatch(copy, /Saved chart binding:/)
+  assert.match(copy, /Current chart view override:.*"datasetId":"prepared"/)
+  assert.match(copy, /unsaved page-local display/)
   assert.match(copy, /Hidden series: \["plan"\]/)
-  assert.match(copy, /Saved source original:/)
-  assert.match(copy, /来源 derived:/)
+  assert.doesNotMatch(copy, /Saved source original:/)
+  assert.doesNotMatch(copy, /来源 derived:/)
   assert.doesNotMatch(copy, /9007199254740993/)
 })
 

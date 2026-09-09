@@ -128,7 +128,7 @@ test('Ask DSH exposes a write failure without retrying or changing the other ses
   assert.equal(f.drafts.get('b'), '另一个会话的草稿')
 })
 
-test('Ask DSH carries the selected cell and exact filtered metric, not the complete report', async () => {
+test('Ask DSH carries the selected cell and filter identity, not the complete report', async () => {
   const f = fixture()
   const { document } = await interactionFixture()
   f.state.workspaceId = document.workspaceId
@@ -137,8 +137,22 @@ test('Ask DSH carries the selected cell and exact filtered metric, not the compl
   appendPresentationContext(f.host, 'a', document.workspaceId, context)
   const draft = f.drafts.get('a')!
   assert.ok(draft.includes(context))
-  assert.match(draft, /当前筛选:/)
-  assert.match(draft, /Metric raw value: "150"/)
+  assert.match(draft, /Filters:/)
+  assert.match(draft, /"optionId":"mon"/)
   assert.doesNotMatch(draft, /Metric raw value: "550"/)
   assert.doesNotMatch(draft, /"blocks":|"datasets":/)
+})
+
+test('oversize reference fails before Host editing and never trims an existing draft', () => {
+  const f = fixture()
+  f.drafts.set('a', '用户草稿'.repeat(5000))
+  const before = f.drafts.get('a')
+  assert.throws(
+    () => appendPresentationContext(f.host, 'a', 'workspace', '中'.repeat(4096)),
+    /12 KiB/,
+  )
+  assert.equal(f.drafts.get('a'), before)
+  assert.equal(f.writes.length, 0)
+  appendPresentationContext(f.host, 'a', 'workspace', 'Cell: a')
+  assert.ok(f.drafts.get('a')!.startsWith(before!))
 })

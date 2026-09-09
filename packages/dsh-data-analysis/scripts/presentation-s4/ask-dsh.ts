@@ -69,9 +69,9 @@ export async function verifyAskDsh(
   assert.ok(first.startsWith('【报告上下文】\n'))
   assert.ok(first.endsWith('\n【报告上下文结束】'))
   assert.ok(first.includes(`Build ID: ${precise.receipt.buildId}`))
-  assert.ok(first.includes('Cell: metric'))
-  assert.ok(first.includes('Metric raw value: "9007199254740993"'))
-  assert.ok(first.includes('来源 account:'))
+  assert.ok(first.includes('Cell: "metric"'))
+  assert.ok(first.includes('Report file (relative to this Workspace):'))
+  assert.ok(!first.includes('来源 account:'))
   assert.equal((await audit()).writes - before.writes, 1)
   assert.equal((await snapshot()).draft, first)
 
@@ -89,10 +89,10 @@ export async function verifyAskDsh(
   await overlay.waitFor({ state: 'detached' })
   const filtered = (await snapshot()).draft
   assert.ok(filtered.startsWith(`${typed}\n\n【报告上下文】\n`))
-  assert.ok(filtered.includes('当前筛选: 展示范围：第二条观测'))
-  assert.ok(filtered.includes('Snapshot row indices: [1]'))
-  assert.ok(filtered.includes('Prepared view: prepared-histogram'))
-  assert.ok(filtered.includes('Current chart binding:'))
+  assert.ok(filtered.includes('展示范围：第二条观测'))
+  assert.ok(!filtered.includes('Snapshot row indices:'))
+  assert.ok(filtered.includes('Prepared view: "prepared-histogram"'))
+  assert.ok(!filtered.includes('Current chart view override:'))
   assert.equal((await audit()).writes - before.writes, 2)
 
   await open()
@@ -208,7 +208,7 @@ export async function verifyAskDsh(
     await manual.waitFor()
     assert.ok(
       (await manual.getByRole('textbox', { name: 'cell 上下文' }).inputValue()).includes(
-        'Cell: metric',
+        'Cell: "metric"',
       ),
     )
   } finally {
@@ -237,7 +237,7 @@ export async function verifyAskDsh(
     realLexicalReferencesPreserved: true,
     uploadedAttachmentPreserved: true,
     undoRestoresRichDraft: true,
-    exactMetricAndSources: true,
+    fixedBuildCellReference: true,
     filterAndPreparedView: true,
     keyboard: true,
     editingDisabled: true,

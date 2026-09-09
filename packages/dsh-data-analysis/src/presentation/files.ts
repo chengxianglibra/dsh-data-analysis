@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
 import { lstat, open, realpath } from 'node:fs/promises'
 import path from 'node:path'
+import { presentationAssetRelativePath } from './contracts/asset-path.ts'
 import {
   PRESENTATION_BUDGETS,
   type PresentationAsset,
@@ -18,9 +19,7 @@ export function presentationAssetPath(
   buildId: string,
   asset: PresentationAsset,
 ) {
-  parsePresentationBuildId(buildId)
-  if (asset !== 'presentation.json' && asset !== 'index.html') throw new Error('invalid-asset')
-  return path.join(presentationReportPath(root, reportId), 'builds', buildId, asset)
+  return path.join(root, presentationAssetRelativePath(reportId, buildId, asset))
 }
 export function presentationSha256(bytes: Uint8Array) {
   return createHash('sha256').update(bytes).digest('hex')

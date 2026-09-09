@@ -1,10 +1,5 @@
-import { type ChartView, chartColumns } from '../../presentation/contracts/charts.ts'
+import type { ChartView } from '../../presentation/contracts/charts.ts'
 import { chartNumber, formatCell } from '../../presentation/contracts/index.ts'
-import {
-  defaultSelection,
-  filterSummary,
-  interactionRows,
-} from '../../presentation/contracts/interaction.ts'
 import type {
   Cell,
   DatasetColumn,
@@ -14,7 +9,6 @@ import type {
   SourceSnapshot,
   TypedDataset,
 } from '../../presentation/contracts/types.ts'
-import type { ChartExploration } from './chart-view.ts'
 
 export type ReaderMode = 'interactive' | 'static'
 export type ChartBlock = Extract<PresentationBlock, { kind: 'chart' }>
@@ -240,93 +234,4 @@ export function selectedSources(document: PresentationDocument, ids: string[]): 
   })
 }
 
-export function followUpContext(
-  document: PresentationDocument,
-  savedBlock: PresentationBlock,
-  exploration?: ChartExploration,
-  selection?: Record<string, string>,
-): string {
-  const block =
-    savedBlock.kind === 'chart' && exploration
-      ? { ...exploration.view, id: savedBlock.id, kind: 'chart' as const }
-      : savedBlock
-  const lines = [
-    document.title,
-    `Report ID: ${document.reportId}`,
-    `Build ID: ${document.buildId}`,
-    `Workspace: ${document.workspaceId}`,
-    `Cell: ${block.id}`,
-    `Block kind: ${block.kind}`,
-  ]
-  const chosen = selection ?? (document.interaction ? defaultSelection(document.interaction) : {})
-  const rows = interactionRows(document.interaction, chosen, block)
-  if (rows && document.interaction) {
-    lines.push(
-      `当前筛选: ${filterSummary(document.interaction, chosen)}`,
-      `Snapshot row indices: ${JSON.stringify(rows)}`,
-    )
-  }
-  let sources: SourceSnapshot[] = []
-  if (savedBlock.kind === 'chart') {
-    lines.push(`Saved chart binding: ${JSON.stringify(savedBlock)}`)
-    if (exploration) {
-      lines.push(
-        'Current chart view: page-local exploration (not saved; full-report download retains original chart)',
-        `Current chart binding: ${JSON.stringify(exploration.view)}`,
-        `Hidden series: ${JSON.stringify(exploration.hidden)}`,
-        `Prepared view: ${exploration.preparedViewId ?? 'authored'}`,
-      )
-      if (exploration.view.datasetId !== savedBlock.datasetId) {
-        const original = datasetById(document, savedBlock.datasetId)
-        lines.push(`Saved dataset: ${original.id}`)
-        for (const source of selectedSources(document, original.sourceIds))
-          lines.push(`Saved source ${source.id}: ${JSON.stringify(source.ref)} [${source.status}]`)
-      }
-    } else lines.push('Current chart view: authored snapshot')
-  }
-  if (block.kind === 'markdown') lines.push(`Markdown:\n${block.text}`)
-  else {
-    lines.push(`Block binding: ${JSON.stringify(block)}`)
-    if (block.kind === 'source') sources = selectedSources(document, block.sourceIds)
-  }
-  if ('datasetId' in block) {
-    const dataset = datasetById(document, block.datasetId)
-    const columnIds =
-      block.kind === 'metric'
-        ? [
-            block.columnId,
-            ...(block.comparisons ?? []).flatMap((comparison) =>
-              [
-                comparison.referenceColumnId,
-                comparison.deltaColumnId,
-                comparison.relativeColumnId,
-              ].filter((id): id is string => id !== undefined),
-            ),
-          ]
-        : block.kind === 'chart'
-          ? chartColumns(block)
-          : (block.columns ?? dataset.data.columns.map((column) => column.id))
-    lines.push(
-      `Dataset: ${dataset.id}`,
-      `来源类型: ${dataset.origin}`,
-      datasetScope(dataset.data),
-      `Columns: ${JSON.stringify(columnIds.map((id) => dataset.data.columns[columnIndex(dataset.data, id)]!))}`,
-    )
-    sources = selectedSources(document, dataset.sourceIds)
-    if (block.kind === 'metric') {
-      const metric = selectMetric(dataset.data, block, rows)
-      lines.push(
-        `Metric value: ${valueWithUnit(metric.value, metric.column)}`,
-        `Metric raw value: ${JSON.stringify(metric.value)}`,
-        `Metric comparisons: ${JSON.stringify(metric.comparisons)}`,
-      )
-    }
-  }
-  for (const source of sources) {
-    lines.push(
-      `来源 ${source.id}: ${JSON.stringify(source.ref)} [${source.status}]`,
-      ...(source.status === 'unavailable' ? [`原因: ${source.reason}`] : []),
-    )
-  }
-  return lines.join('\n')
-}
+export { followUpContext } from './context-reference.ts'

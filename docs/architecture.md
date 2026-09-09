@@ -40,7 +40,7 @@ flowchart LR
 使用原生右侧 Tab。页面状态由 Session/Tab occurrence 拥有，导航使用完整 Workspace 与资源身份；
 当前 Session 的新交付独立观察公开 eventSource，卡片不触发自动打开。current 只提示新版本，刷新后切换；
 固定 Build 保持不变。报告编辑、数据源写操作与无匹配 Session 的 Workspace 阅读继续使用原容器。
-实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段上下文优化与上传分析尚未实施。
+实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)；上传分析尚未实施。
 
 ## 分层
 
@@ -192,7 +192,9 @@ Host 的 Ask DSH 通过 reader 回调把当前 cell 上下文追加到报告所�
 原生 Tab 保持打开，失败时在 Tab 内显示错误并保留草稿；
 Harness 继续拥有输入状态、引用、附件及提交行为。编辑模式禁用此操作，portable 保留复制上下文。
 追问与复制携带正在显示的 `Workspace / Report ID / Build ID / Cell`；current 的新版本提示不改变
-这组身份，只有刷新后的 document 才改变 Build。规则与验收见 [reader 模块](modules/presentation-reader.md)。
+这组身份，只有刷新后的 document 才改变 Build。2b 提供共享存储规则生成的固定 Build 相对文件路径，
+附带有效筛选、图表探索和表格排序；正文、数值及来源按需读取，不制作内容摘要。引用上限为 12 KiB，
+包含包装和分隔符，超限明确失败并保留输入；在线与离线都在点击时生成并处理失败。规则与验收见 [reader 模块](modules/presentation-reader.md)。
 数据源的代码页保存 Marivo 生产记录中的 SQL，以及 dataset 显式关联的 Python 执行快照。
 插件在成功 `marivo_python` 后记录本次提交代码并返回 `codeRef`，报告构建核验其 Workspace 与文件摘要；
 Harness 的原生执行与凭据生命周期保持原契约，代码记录失败不改变已有执行结果。

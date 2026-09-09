@@ -727,7 +727,7 @@ async function verifyInteractions(page: Page) {
   })
   const copied =
     clipboard ?? (await followUp.getByLabel('cell 上下文', { exact: true }).inputValue())
-  assert.ok(copied.includes('Cell: line'))
+  assert.ok(copied.includes('Cell: "line"'))
   assert.ok(copied.includes('"x":"name","y":["count","other"]'))
   assert.ok(!copied.includes('保存行索引'))
   assert.ok(!copied.includes('9007199254741016.1000'))

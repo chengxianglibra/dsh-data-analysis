@@ -308,6 +308,7 @@ function ReaderContents({
   const [tableSorts, setTableSorts] = useState<Record<string, TableSort | undefined>>(
     restored?.tableSorts ?? {},
   )
+  const [contextError, setContextError] = useState<string>()
   const [exportStatus, setExportStatus] = useState<{ error?: boolean; message: string }>()
   const interaction = document.interaction
   const [chosen, setChosen] = useState<Record<string, string>>(
@@ -381,7 +382,7 @@ function ReaderContents({
       <CellMenu
         onContext={onContext}
         askDsh={!!onAskDsh}
-        contextDisabled={!!onAskDsh && !!editing}
+        contextDisabled={!!editing}
         onExplore={
           savedBlock.kind === 'chart'
             ? (trigger) => setExplorerCell({ id: savedBlock.id, trigger })
@@ -405,9 +406,37 @@ function ReaderContents({
         {mode === 'interactive' && (
           <div className="pr-cell-toolbar pr-interactive">
             {onAskDsh ? (
-              cellMenu(() => onAskDsh(followUpContext(document, savedBlock, state, selection)))
+              cellMenu(() => {
+                try {
+                  const context = followUpContext(
+                    document,
+                    savedBlock,
+                    state,
+                    selection,
+                    Object.hasOwn(tableSorts, savedBlock.id)
+                      ? tableSorts[savedBlock.id]
+                      : undefined,
+                  )
+                  onAskDsh(context)
+                  setContextError(undefined)
+                } catch (error) {
+                  setContextError(error instanceof Error ? error.message : String(error))
+                }
+              })
             ) : (
-              <CopyContext text={followUpContext(document, savedBlock, state, selection)}>
+              <CopyContext
+                getText={() =>
+                  followUpContext(
+                    document,
+                    savedBlock,
+                    state,
+                    selection,
+                    Object.hasOwn(tableSorts, savedBlock.id)
+                      ? tableSorts[savedBlock.id]
+                      : undefined,
+                  )
+                }
+              >
                 {cellMenu}
               </CopyContext>
             )}
@@ -480,6 +509,11 @@ function ReaderContents({
       data-presentation-reader="true"
       data-mode={mode}
     >
+      {contextError && (
+        <p role="alert" className="pr-notice">
+          {contextError}
+        </p>
+      )}
       <header className="pr-header">
         {mode === 'interactive' && exportActions && (
           <ExportMenu

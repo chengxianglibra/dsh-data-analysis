@@ -16,6 +16,26 @@
 
 `draft_path` 与 computed 的 `path` 均相对于当前绑定 Workspace 根目录，**不是相对于草稿文件目录**。使用根目录内的 JSON 文件；不使用绝对路径、`..`、`.` 路径段、反斜杠、空路径段或通向 Workspace 外的符号链接。不从其他项目、解释器或数据源补齐失败的引用。
 
+## 从报告 cell 引用继续
+
+Ask DSH 与离线复制提供所属 Workspace、Report ID、实际显示的 Build ID、Cell ID，以及
+相对于该 Workspace 的固定 Build `presentation.json` 路径。先用普通文件读取该路径，核对身份，
+再按 `blocks[].id` 定位 cell；正文、数据、单位、精确值、比较和来源限制均从文件读取，不依赖旧对话。
+`Workspace`、`Cell` 和 `Prepared view` 的字段值使用 JSON 字符串编码；先按 JSON 解码再精确匹配，
+保留 ID 中的换行、引号和反斜杠，不取首行、不做 trim。`Report title` 仅为辅助标题，不参与身份匹配。
+文件较长时按读取工具的分页提示继续；单行被截断时使用已有 Workspace 文件能力定向读取 JSON 字段，
+不将截断内容当成完整文档。路径属于原 Workspace，单独分享 HTML 不授予访问原文件的能力。
+
+引用的 Filters 按 filter ID 与 option ID 匹配该 Build 的 `interaction.slices`，从对应 dataset 的
+`rowIndices` 取已有数据。Prepared view 按目标 chart 的 `preparedViews[].id` 读取；若附有
+Current chart view override，则替换显示配置，再应用 Hidden series。Table sort 只改变显示顺序；
+表格引用包含全部筛选结果，不限当前分页。未附覆盖时沿用保存配置。这些均为临时显示状态，不能宣称已保存。
+
+解释时以引用 Build 为准，不能静默换成 current。修改时还需按下面的报告更新契约读取 current，
+比较引用与当前内容，保留已有编辑；有歧义时澄清具体修改目标，不能只替换 expected ID 重试。
+临时探索状态只有在用户要求保存或据此修改时才进入修改范围。目标 Workspace 或文件不可访问时明确说明，
+不猜测其他报告、不通过重新查询或执行分析补齐。
+
 ## 报告更新
 
 新建报告调用 `marivo_present({ draft_path })`。修改已有报告时使用：

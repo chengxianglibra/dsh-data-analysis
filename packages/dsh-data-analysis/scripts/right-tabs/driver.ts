@@ -11,6 +11,7 @@ import {
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
 import { actualDeliveries, ScriptedPresentationAdapter } from '../presentation-s4/host.ts'
+import { verifyReferenceRead } from './reference-read.ts'
 
 class CredentialAdapter extends LlmAdapter {
   #sent = false
@@ -62,6 +63,8 @@ export async function createRightTabsDriver(
     await workspace.attachSession(id)
   }
   return async (payload: any) => {
+    if (payload.action === 'reference-read')
+      return { ok: true, value: await verifyReferenceRead(ctx, workspace, payload.reference) }
     const agent = agents.get(payload?.mode)
     assert.ok(agent, 'Unknown isolated session')
     if (payload.action === 'detach') {

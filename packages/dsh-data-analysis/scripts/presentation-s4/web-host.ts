@@ -18,7 +18,11 @@ export async function startPresentationWebHost(
   pythonExecutable: string,
   draftPaths: readonly string[],
   clientOrder: 'native-first' | 'report-first' = 'native-first',
-  options: { askDshProbe?: boolean; rightTabsAcceptance?: boolean } = {},
+  options: {
+    askDshProbe?: boolean
+    rightTabsAcceptance?: boolean
+    retainedPresentation?: boolean
+  } = {},
 ) {
   const home = path.join(outputRoot, 'isolated-dsh-home')
   const profile = path.join(home, 'profiles/web')
@@ -149,6 +153,12 @@ export async function apply(ctx){
       contents: `
 import * as production from '@chengxianglibra/dsh-data-analysis/client';
 import * as native from '@deepseek-ai/dsh-client-ui-deliverables/client';
+${
+  options.retainedPresentation
+    ? `import {createPluginRpc} from ${JSON.stringify(fileURLToPath(new URL('../../src/client/rpc.ts', import.meta.url)))};
+import {installSemanticReferenceSource} from ${JSON.stringify(fileURLToPath(new URL('../../src/client/semantic-reference-source.ts', import.meta.url)))};`
+    : ''
+}
 ${options.rightTabsAcceptance ? `import {installReadDelayProbe} from ${JSON.stringify(fileURLToPath(new URL('../right-tabs/client-probe.ts', import.meta.url)))};` : ''}
 export const inject=production.inject;
 export async function apply(ctx){
@@ -186,7 +196,7 @@ export async function apply(ctx){
      : ''
 }
  ${clientOrder === 'native-first' ? 'await ctx.plugin(native);' : ''}
- ${options.rightTabsAcceptance ? 'const delay = installReadDelayProbe(ctx); const prototypeFork = ctx.plugin(production,{diagnostics:true,onInstalled(controller){window.__rightTabs=controller}}); window.__rtHost = { current: () => ctx.sessions.list.getSnapshot().current, delay, history: id => ctx.sessions.binding(id)?.eventSource.getSnapshot().hasMore, loadOlder: id => ctx.sessions.binding(id).session.loadOlder(), reconnect: () => ctx.connection.reconnect(), generation: () => !!ctx.connection.generation.getSnapshot(), unload: () => prototypeFork.dispose(), select: id => ctx.sessions.open(id), sidebar: ctx.sidebarRight, workspaces: ctx.workspaces.list, input: id => ctx.conversation.input.for(ctx.sessions.scope(id)), clear: () => ctx.sessions.clear() };' : 'production.apply(ctx);'}
+ ${options.rightTabsAcceptance ? 'const delay = installReadDelayProbe(ctx); const prototypeFork = ctx.plugin(production,{diagnostics:true,onInstalled(controller){window.__rightTabs=controller}}); window.__rtHost = { current: () => ctx.sessions.list.getSnapshot().current, delay, history: id => ctx.sessions.binding(id)?.eventSource.getSnapshot().hasMore, loadOlder: id => ctx.sessions.binding(id).session.loadOlder(), reconnect: () => ctx.connection.reconnect(), generation: () => !!ctx.connection.generation.getSnapshot(), unload: () => prototypeFork.dispose(), select: id => ctx.sessions.open(id), sidebar: ctx.sidebarRight, workspaces: ctx.workspaces.list, input: id => ctx.conversation.input.for(ctx.sessions.scope(id)), clear: () => ctx.sessions.clear() };' : options.retainedPresentation ? 'const presentationRpc = createPluginRpc(ctx.connection.rpc); installSemanticReferenceSource(ctx,presentationRpc); production.installPresentation(ctx,presentationRpc);' : 'production.apply(ctx);'}
  ${clientOrder === 'report-first' ? 'await ctx.plugin(native);' : ''}
  window.__s4ClientOrder=${JSON.stringify(clientOrder)};
 }

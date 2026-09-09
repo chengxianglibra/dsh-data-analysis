@@ -2,12 +2,14 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { CloseIcon } from './icons.tsx'
 
 export function CopyContext({
-  text,
+  getText,
   children,
 }: {
-  text: string
+  getText: () => string
   children: (copy: (restoreFocusTo: HTMLElement) => void) => ReactNode
 }) {
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string>()
   const [status, setStatus] = useState<'idle' | 'copied' | 'manual'>('idle')
   const restoreFocus = useRef<HTMLElement | null>(null)
   const dialog = useRef<HTMLDialogElement>(null)
@@ -24,10 +26,10 @@ export function CopyContext({
     field.current?.focus()
     field.current?.select()
   }, [status])
-  async function writeClipboard() {
+  async function writeClipboard(value: string) {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(value)
       setStatus('copied')
     } catch {
       setStatus('manual')
@@ -36,11 +38,23 @@ export function CopyContext({
   function copy(restoreFocusTo: HTMLElement) {
     restoreFocus.current = restoreFocusTo
     setStatus('idle')
-    void writeClipboard()
+    setError(undefined)
+    try {
+      const value = getText()
+      setText(value)
+      void writeClipboard(value)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure))
+    }
   }
   return (
     <div className="pr-copy pr-interactive">
       {children(copy)}
+      {error && (
+        <p role="alert" className="pr-notice">
+          {error}
+        </p>
+      )}
       <span className="pr-copy-status" aria-live="polite">
         {status === 'copied' ? '已复制' : ''}
       </span>

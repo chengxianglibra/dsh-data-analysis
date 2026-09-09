@@ -33,10 +33,13 @@ test('two fixed filters select complete prepared rows for KPI, charts and tables
   assert.equal(selectMetric(data, metric, [4]).value, '150')
   assert.match(
     followUpContext(document, metric, undefined, selection),
-    /当前筛选: 日期：周一 · 集群：甲集群/,
+    /"filterId":"day","optionId":"mon","label":"日期：周一"/,
   )
-  assert.match(followUpContext(document, metric, undefined, selection), /Metric raw value: "150"/)
-  assert.match(followUpContext(document, metric), /Metric raw value: "550"/)
+  assert.match(
+    followUpContext(document, metric, undefined, selection),
+    /"filterId":"cluster","optionId":"a"/,
+  )
+  assert.match(followUpContext(document, metric), /"optionId":"any"/)
   assert.throws(() => selectedSlice(interaction, { day: 'missing', cluster: 'any' }))
   assert.throws(() => selectMetric(data, metric, []))
   assert.equal(JSON.stringify(document), original)

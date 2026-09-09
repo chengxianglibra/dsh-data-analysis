@@ -196,74 +196,26 @@ test('context identifies same-title reports by the displayed Workspace, Report, 
   assert.equal(new Set(contexts).size, documents.length)
   for (const [index, document] of documents.entries()) {
     const lines = contexts[index]!.split('\n')
-    assert.equal(lines[0], base.title)
-    assert.ok(lines.includes(`Workspace: ${document.workspaceId}`))
+    assert.equal(lines[0], `Report title: ${base.title}`)
+    assert.ok(lines.includes(`Workspace: ${JSON.stringify(document.workspaceId)}`))
     assert.ok(lines.includes(`Report ID: ${document.reportId}`))
     assert.ok(lines.includes(`Build ID: ${document.buildId}`))
-    assert.ok(lines.includes(`Cell: ${block.id}`))
+    assert.ok(lines.includes(`Cell: ${JSON.stringify(block.id)}`))
   }
 })
 
-test('chart cell context keeps declared bindings and references without copying a selected row', async () => {
+test('all cell references omit saved content, bindings and sources', async () => {
   const document = await contextFixture()
   const before = JSON.stringify(document)
-  const block = document.blocks.find((entry) => entry.kind === 'chart')!
-  const context = followUpContext(document, block)
-  assert.match(context, /Build ID: s0-computed/)
-  assert.match(context, /Cell: chart/)
-  assert.match(context, /Block kind: chart/)
-  assert.ok(context.includes(`Block binding: ${JSON.stringify(block)}`))
-  assert.match(context, /"id":"count","label":"数量","type":"float64","nullable":false,"unit":"次"/)
-  assert.doesNotMatch(context, /保存行索引|12345678901234\.5678|9007199254740993|account_id/)
-  assert.match(context, /来源 sales:/)
-  assert.match(context, /来源 accounts:/)
-  assert.match(context, /来源 missing:.*unavailable/)
-  assert.equal(JSON.stringify(document), before)
-})
-
-test('metric cell context keeps only its bound exact value and authored coordinate', async () => {
-  const document = await contextFixture()
-  const block = {
-    id: 'exact-metric',
-    kind: 'metric' as const,
-    datasetId: 'computed',
-    columnId: 'amount',
-    rowIndex: 0,
-    label: '原指标',
+  for (const block of document.blocks) {
+    const context = followUpContext(document, block)
+    assert.ok(context.includes(`Cell: ${JSON.stringify(block.id)}`))
+    assert.ok(context.includes(`Block kind: ${block.kind}`))
+    assert.match(context, /presentation.json/)
+    assert.doesNotMatch(
+      context,
+      /binding:|Metric raw value|Columns:|来源 |Markdown:|Snapshot row indices|12345678901234/,
+    )
   }
-  const context = followUpContext(document, block)
-  assert.ok(context.includes(`Block binding: ${JSON.stringify(block)}`))
-  assert.match(context, /Metric value: 12345678901234\.5678 CNY/)
-  assert.match(context, /Metric raw value: "12345678901234\.5678"/)
-  assert.doesNotMatch(context, /account_id|9007199254740993|保存行索引/)
-  const missing = followUpContext(document, { ...block, rowIndex: 1 })
-  assert.match(missing, /Metric raw value: null/)
-})
-
-test('markdown cell context preserves its exact text and does not acquire unrelated source references', async () => {
-  const document = await contextFixture()
-  const text = '## 原始标题\n\n**原文**与 `query_count`。\n\n[链接](https://example.com)'
-  const context = followUpContext(document, { id: 'text', kind: 'markdown', text })
-  assert.match(context, /Cell: text/)
-  assert.ok(context.endsWith(`Markdown:\n${text}`))
-  assert.doesNotMatch(context, /来源 sales:|来源 accounts:|来源 missing:/)
-})
-
-test('table and source cell context stays within declared column and source selections', async () => {
-  const document = await contextFixture()
-  const table = followUpContext(document, {
-    id: 'table',
-    kind: 'table',
-    datasetId: 'computed',
-    columns: ['count'],
-  })
-  assert.match(table, /"columns":\["count"\]/)
-  assert.doesNotMatch(table, /"id":"amount"|"id":"account_id"|12345678901234\.5678/)
-  const source = followUpContext(document, {
-    id: 'selected-sources',
-    kind: 'source',
-    sourceIds: ['missing'],
-  })
-  assert.match(source, /来源 missing:/)
-  assert.doesNotMatch(source, /来源 sales:|来源 accounts:/)
+  assert.equal(JSON.stringify(document), before)
 })

@@ -85,18 +85,26 @@
 
 这些是受控边界输入的字节测量，不是生产分布或模型 token 测量。复现方法是扩展 fixture 的 detail rows 与每个 slice 的对应 rowIndices 到 5,000；Markdown 则追加独立固定 cell，正文为 `'中'.repeat(32768)`。两种输入都先经过现有 parser，再调用 `followUpContext`。[6][7]
 
-### 推荐范围
+### 经实施讨论修订的 2b 范围
 
-1. 增加完整 `Workspace / Report ID / Build ID / Cell` 身份，并从**实际显示的 document**取值。current 页面提示新版本但尚未刷新时，继续引用旧的显示 Build。
-2. 只保留一份 authored binding；有探索变化时追加一份当前 view 与必要差异，包括 prepared view、dataset 与 hidden series。不要序列化其他备选视图全集。
-3. 筛选同时携带稳定 option ID 与可读标签；小集合可保留全部行号，大集合优先用完整可还原的连续区间。若任意离散集合仍超过预算，应明确数量与省略，不能把一部分行号表示成全部。
-4. Markdown 使用有界原文摘录并标注“摘录”；保持 Build/cell 定位以便按需找回。旧的完整原文保留测试须随新契约调整，不能静默改变后仍声称完全相同行为。
-5. 精确 metric 原值、单位、比较方向、null、来源状态与不可用原因属于必须保留的信息。摘要不能将 `int64/decimal` 转为浮点，也不能删除影响结论的限制。
-6. 定义单次 context 的 UTF-8 总预算及每类可选字段预算。可从 **8–16 KiB 的实验区间**验证可读性；这不是已确定产品值。必须字段单独超限时明确失败；可选正文截断需可见标识。用户已有草稿不由插件裁剪。
+2026-09-09 的实施讨论将目标从内容摘要调整为**精确引用与降低定位成本**。报告按不可变 Build
+保存，Agent 可使用普通 Workspace 文件工具读取；上述边界测量仍描述旧实现，不作为新上下文的内容需求。
 
-固定 Build 资源 URI 可作为回看定位，但还必须验证模型在后续步骤如何通过已存在的公开读取路径找回报告；不能假定浏览器能打开 URI，就等于模型能读取它。没有取回路径时，摘要仍须自足，不能只留一个链接。
+引用提供实际显示 document 的 Workspace、Report ID、Build ID、Cell 和固定 Build `presentation.json`
+相对路径；标题和已有 cell 标签只用于快速理解，各最多 80 个 Unicode 码点。正文、metric 数值、单位、
+比较、列定义、来源与 authored binding 由 Agent 从文件读取，不复制进问题。
 
-重复点击仍表示用户重复追加，不自动去重、替换或删除已有草稿。这既保留现有行为，也避免把不同问题中的同一 cell 错判为冗余。
+文件中未保存的显示状态必须携带：受影响 cell 的有效 filter/option ID 与短标签、prepared view ID、
+hidden series、必要时一份完整当前 ChartView 覆盖，以及表格排序。筛选通过原 Build 的 slices 还原，
+不输出行号；表格引用全部筛选结果，不限定当前分页。不新增行、数据点或文本选区入口。
+
+12 KiB UTF-8 仅作为单次引用异常上限，包含包装与分隔符，不再设计 Markdown 摘录或行号压缩预算。
+定位或临时状态不能完整容纳时明确失败，保留页面与草稿。重复点击仍表示重复追加，不去重或替换已有问题。
+在线与离线复制共用格式与失败处理；单独分享 HTML 不保证另一 Agent 有原 Workspace 文件访问权限。
+
+Agent 先读引用 Build，修改前另读 current 并沿用已有冲突契约；不能悄悄替换用户所指版本。
+验收以真实 Harness 公开文件读取工具把报告内容带回模型请求为准，不把浏览器 URI 可打开当作读取证据。
+详见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)。
 
 ## 语义对象“加入提问”：值得做，但不是一个按钮的工作量
 
@@ -179,7 +187,7 @@ Harness 的 context 贡献最终形成带来源的 user 快照。安装版 `Runt
 | 切片 | 范围和责任 | 完成证据 |
 | --- | --- | --- |
 | 2a：当前请求正确性与报告身份 | 插件 disclosure 激活接缝；纯 reader 的 Report ID 与显示 Build 传递 | 两类显式 invocation 首请求规则齐全；current/固定 Build 追问身份准确；普通问题保持原行为 |
-| 2b：有界报告上下文 | 插件展示投影，复用原输入操作；不改 Marivo Evidence | 边界 fixture 通过；精确值、筛选、来源无损；截断可见；真实 Tab 中 chip、附件、撤销与失败保留 |
+| 2b：报告 cell 精确引用 | 插件提供固定 Build/cell 读取定位及未保存显示状态，复用原输入操作 | 引用可经公开文件工具读取；临时筛选/探索/排序可还原；体积不随正文和行数增长；真实 Tab 中 chip、附件、撤销与失败保留 |
 | 2c：语义对象加入提问 | 插件负责绑定与 chip 交接；Harness 拥有 editor/serialize 生命周期；Marivo 拥有对象元数据 | 未经 `@` candidates 的首次使用可成功；失效与跨 Session 拒绝；提交只经原 codec；浏览不执行分析 |
 | 2d：披露对照与可选优化 | 扩展现有评测；只在证据支持时缩短指导或试小型 context | 请求级基线与对照；compaction、失败和配置抑制覆盖；可明确决定采用或放弃 context |
 
