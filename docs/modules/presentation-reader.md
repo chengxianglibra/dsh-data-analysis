@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `PresentationDocument` 变成可读内容。
+本模块将[展示数据投影](presentation-projection.md)返回的 `PresentationDocument` 变成可读内容。
 插件拥有展示组件、阅读／编辑草稿状态和自包含 HTML；Marivo 继续拥有分析语义与来源事实，Harness 继续拥有 Workspace
 和交付生命周期。reader 只读取文档快照，展开来源不调用 Python、凭据、observe 或 revalidation。
 
@@ -10,7 +10,7 @@ S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `Presentatio
 [Host entry](../../packages/dsh-data-analysis/src/client/presentation/host-entry.tsx)、
 [portable entry](../../packages/dsh-data-analysis/src/client/presentation/portable-entry.tsx)和
 [内部 builder](../../packages/dsh-data-analysis/src/presentation/build/index.ts)。
-`client` 导出 `HostPresentationReader`；S4 的[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、原生 Tab 打开与下载；默认 client 的阅读与编辑都在原生 Tab 内，不挂载报告弹出页。
+`client` 导出 `HostPresentationReader`；[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、原生 Tab 打开与下载；默认 client 的阅读与编辑都在原生 Tab 内，不挂载报告弹出页。
 
 ## 共同的数据解释
 
@@ -67,8 +67,6 @@ SVG 固定导出时的绘图坐标与标签，窄屏在图内滚动；重新打�
 图表尚未完成排版、生成失败或超出既有 HTML 字节预算时明确报错，不下载不完整结果。
 本功能不增加打印、PDF、CSV 或单图下载入口。
 
-验证入口为 `npm run validate:presentation-export`，验收见[当前视图导出验收](../presentation-export-acceptance.md)。
-
 ## 在线编辑与删除
 
 Host 提供编辑、保存、取消和保存前的撤销／重做；独立草稿从已保存文档建立，普通探索不自动成为编辑内容。
@@ -86,7 +84,6 @@ Tab occurrence 拥有草稿、撤销／重做和保存状态，切换 Tab、Sess
 历史列表选取当前版本导航到 current；固定 Build 若仍为当前版本也可原位编辑。进入编辑重新核验 current，保存沿用
 `expectedBuildId` 并发检查。current Tab 保存后直接展示新 Build；固定地址 Tab 保存后通过 Harness 的公开
 `replaceTab` 在原面板、原位置接续 current，避免旧 Build 地址展示新 Build。真正历史版本仍只读。
-验收见[报告 Tab 优化](../report-tab-editing-acceptance.md)。
 保存协议和并发边界见[展示交付](presentation-delivery.md#rpc编辑与当前指针)。portable 不包含编辑／宿主保存入口。
 
 ## 可选全局筛选与动态 KPI
@@ -111,8 +108,6 @@ ChartExplorer 不再包含局部行过滤；图形切换、系列显隐和表格
 移除声明；撤销和重做通过原文档恢复，服务端再次校验。普通筛选选择不标记 dirty，不进入保存请求或浏览器存储；
 重新打开、切换报告/build/Workspace 后恢复全“全部”。保存的声明和所有 slices 包含在 HTML 中，临时选择不进入完整报告下载，可通过“导出当前视图”单独固定。
 完整报告的打印与无脚本阅读只显示默认 slice 和区外正文，不混排所有组合。
-
-验收方法与执行结果见[全局筛选验收](../plan/2026-09-08-global-filter-acceptance.md)。
 
 ## 通用阅读层级
 
@@ -150,7 +145,6 @@ Host 数据源概要中的公开语义引用可点击打开同一 Workspace 的�
 语义层显示当前定义，报告保留生成时的数据与来源快照。原生阅读页中的语义引用打开独立 Tab，并关闭来源弹窗；
 原报告保留筛选与探索状态。无 Session 路径保留原弹窗交接，Workspace 撤销后旧内容失效。该连接只调用 metadata Catalog，
 不执行分析、查询、重建或保存。portable、打印及无脚本正文保留语义路径文本，不提供宿主跳转。
-验收见[报告语义导航验收](../plan/2026-09-08-presentation-semantic-navigation-acceptance.md)。
 
 数据预览保留精确原值、列顺序、排序和分页；chart 预览限制为当前 x/y 及辅助 bindings 绑定列。
 图表正文只保留图形、多系列显隐及必要的截断/近似状态，单系列不显示切换图例。
@@ -170,12 +164,11 @@ filter ID、option ID 与简短标签，不展开行号。图表默认配置不�
 使用列 ID，仅偏离 authored/prepared 配置时附一份完整当前 ChartView。表格附排序列和方向，覆盖全部筛选
 结果而非当前页，不携带滚动、悬停或选区。离线复制使用相同格式，文件仍位于原 Workspace。
 
-2b 不制作内容摘要，不复制 Markdown、指标原值、列定义、来源或备选视图全集。单次追加 UTF-8 上限为
+Cell 引用不制作内容摘要，不复制 Markdown、指标原值、列定义、来源或备选视图全集。单次追加 UTF-8 上限为
 12 KiB，包含包装与分隔符；离线生成同样预留两个换行。定位或临时状态超限时明确失败，不截断有效状态。
 点击时生成引用并捕获失败，避免整个 reader 渲染失败；失败不改草稿或剪贴板，恢复后可重试。
 在线与离线编辑期间均禁止引用未保存内容。Agent 的固定 Build 读取与 current 更新规则见
 [报告读取约定](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/schema.md#从报告-cell-引用继续)。
-验收见 [2a 验收记录](../dsh-context-stage-two-a-acceptance.md)和 [2b 验收记录](../dsh-context-stage-two-b-acceptance.md)。
 
 Host adapter 在点击时核验报告、当前 Session 与 Workspace，使用 Harness 公开的 `sessions.scope`、
 `conversation.input.for` 及 `slash/input-insert-reference`，按最新 `draftRev` 和原子引用坐标追加引用。
@@ -189,7 +182,6 @@ Host adapter 在点击时核验报告、当前 Session 与 Workspace，使用 Ha
 原生 Tab 保持打开，写入失败显示提示，成功重试后清除提示。
 会话或 Workspace 失效、写入失败时保留报告并显示错误，不改投其他会话。编辑模式的 Ask DSH 保持可见与键盘可聚焦，
 但禁用执行并提示“请先保存或取消编辑”。共享 reader 不访问 DSH 服务；打印、无脚本正文不提供此动作。
-验收见 [Ask DSH 接入验收](../plan/2026-09-08-presentation-ask-dsh-acceptance.md)及 [Cell 引用标签验收](../dsh-report-cell-reference-acceptance.md)。
 
 来源通过可展开的 Artifact ID 展示已保存的 Session ID、Finding ID、类型和行数；该入口仅展开保存的详情，不请求或重新执行 Artifact。
 字段以独立表格展示当前 cell 使用的字段 ID、显示名称、类型和单位；计算结果明确标注来源类型，不推断字段与上游指标的映射。
@@ -216,14 +208,11 @@ Markdown 支持基础标题、段落、行内格式、代码块、列表、引�
 
 Host 与 portable 共用 `PresentationReader`、样式和数据模型。Host 外层接收调用方提供的动作；
 portable 从内嵌 JSON 加载，包含自己的 React/Recharts，不依赖 DSH module loader。
-已生成 HTML 内嵌当时的样式与脚本；更新插件不会修改历史文件，需重新生成报告才能获得新布局。
-
-自适应宽度的覆盖范围与证据见[宽屏自适应验收](../plan/2026-09-08-presentation-responsive-acceptance.md)。
-文本、KPI 宽度与图表并排的后续验收见[内容布局验收](../plan/2026-09-08-presentation-layout-acceptance.md)。
+已生成 HTML 内嵌当时的样式与脚本；更新插件不会修改历史文件，新 Build 的按需 HTML 使用当前 renderer；既有 HTML 文件保持原样。
 
 `buildPresentation(document)` 校验并快照输入，显式导出时返回生成文档、JSON 字节和 HTML 字节；发布路径传入 `{ html: false }` 仅构建 JSON。
-builder 不分配 Workspace/report/build identity，不登记文件、不创建目录、不生成 receipt；S4 唯一负责完整目录提交。
-文档及 HTML 受 [S0 字节预算](../plan/marivo-analytics-presentation-s0-contracts.md#预算错误与文件身份)约束，超限明确失败。
+builder 不分配 Workspace/report/build identity，不登记文件、不创建目录、不生成 receipt；[展示交付](presentation-delivery.md)负责完整目录提交。
+文档及 HTML 受 [展示字节预算](presentation-projection.md#预算与错误)约束，超限明确失败。
 
 HTML 同时保存完整文档、共享 reader 生成的静态正文和交互脚本。静态模式用原生 `details` 按需展开来源、保留必要数据行，
 并用精确表格表达图形；代码也可通过原生折叠区展开和选择原文。仅在交互挂载成功后隐藏 fallback。打印显示精简来源概要，隐藏操作控件及长代码。
@@ -252,12 +241,7 @@ npm run validate:presentation-reader:real
 
 聚焦测试检查数字/排序、静态与交互共用数据、安全转义、预算和构建边界；真实浏览器检查实际 Host reader 与
 portable 的数值/来源一致性、局部交互、窄屏/键盘/主题、断网、无脚本和打印。
-S3 的真实 Web 验证只接入 reader，不代表 S4 Tool、receipt/RPC 或 S5 Agent 自动路由已实现。
-代码快照、真实 Python/SQL 与离线阅读的边界见[数据源代码页验收](../plan/2026-09-07-presentation-source-code-acceptance.md)。
-18 类图形、探索、下载和真实 Agent 的证据及限制见[图形与探索验收](../plan/2026-09-07-presentation-charts-acceptance.md)。
-
-在线编辑、全部 18 种 chart 的联动与重启验证见[编辑与联动筛选验收](../plan/2026-09-07-presentation-editing-acceptance.md)。
-
+reader 的真实 Web 验证不代替 Tool、receipt/RPC 或真实 Agent 自动路由验收。
 
 ## KPI 比较卡片
 

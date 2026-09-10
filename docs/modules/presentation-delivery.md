@@ -124,15 +124,8 @@ npm run validate:presentation-integration:real
 
 确定性测试覆盖原子提交、取消、读取预算/路径/摘要、Workspace 变化、统一 receipt 和事件去重；
 通过未改写的已安装 Harness 客户端 bundle 与公开 `apply`、registries、assembler，验证两种插件加载顺序下
-ProducedFiles 与独立报告节点共存、首个回执即时显示、多报告、重复回执、取消后保留及历史重建。
-隔离真实验证覆盖 Native/both/Code、实际 Web 卡片打开/下载与离线文件。实际结果见
-[S4 验收记录](../plan/marivo-analytics-presentation-s4-acceptance.md)。展示 Skill 的真实 Agent 自动路由和最终旅程状态见
-[S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
-独立 Chat 节点、原生 ProducedFiles 共存及只读历史回放见
-[报告交付与质量修复验收](../plan/2026-09-07-presentation-delivery-quality-acceptance.md)。
-
-在线编辑、报告入口重开与全图形筛选的当前结果见[编辑与联动筛选验收](../plan/2026-09-07-presentation-editing-acceptance.md)。
-Agent 同 Report 重建、UI 并发与旧卡片重开见[Agent 报告更新验收](../plan/2026-09-08-agent-report-update-acceptance.md)。
+ProducedFiles 与报告交付事件共存、多报告、重复回执、取消后保留及历史重建。
+隔离真实验证应覆盖 Native/both/Code、原生 Tab 自动打开、历史回放不自动打开、按需下载与离线文件。
 
 ## 全局筛选的保存边界
 
@@ -169,8 +162,6 @@ Workspace 内阅读器保存没有来源 Session 时显示「Workspace 内保存
 目录枚举上限 4096 项，超限明确报错；单个 current 上限 16 MiB、4096 个版本，超限保存明确失败并保留旧指针，
 不静默截断历史。单个损坏或不安全的 Report 记录不阻塞其他列表项，但会披露不可读数量；打开和下载仍校验完整文件摘要与归属。
 列表、历史和下载均不执行 Agent、Python、Marivo 分析、数据源或凭据操作。
-
-第一期验证与限制见 [Workspace 报告列表验收](../workspace-report-catalog-acceptance.md)，当前界面收敛见 [报告列表简化验收](../report-catalog-simplification-acceptance.md)。
 
 ## 可选对象存储交付
 

@@ -91,8 +91,7 @@ npm run validate:semantic-browser:web
 指定截图及结果记录目录。浏览器工具默认查找可导入的 `playwright`，其 Chromium 必须已安装。
 
 该夹具复用生产 Tab 正文与模型，模拟 Workspace transport；不等同于当前已安装 DSH Profile 的
-端到端验收。详见[验收记录](../acceptance/semantic-browser.md)。
-会话标题入口迁移与 Workspace 绑定验证见[入口验收](../acceptance/workspace-header-actions.md)。
+端到端验收。
 
 ## 指标计算口径
 
@@ -110,8 +109,7 @@ Marivo 0.5.5 的 `temporal.effective.status` 直接决定展示：`not_applicabl
 `resolved` 展示精确时间轴和 fold（包括 percentile 的 `q`）。插件不根据可加性或子对象规则推导统一 fold。
 累计节点 `node.over` 的默认轴 `context_required` 仍单独提示需要上下文，与有效折叠规则的状态无关。
 结构化定义必须匹配对象 Ref 和 Catalog fingerprint；插件只接受公开 payload 字段，不解析终端文本或私有 IR。
-此次浏览并未执行 observe、认证日历、编译 SQL 或额外读取源码。
-
+语义浏览不执行 observe、认证日历、编译 SQL 或额外读取源码。
 
 Ibis 叶子表达式使用 Marivo 公共 payload 的 `node.display.text` 直接展示为代码块，右上角提供复制图标，不在插件内遍历表达式树生成文字或代码。
 代码区标注“规范化形式”，显示 `bindings` 中别名对应的 Ref，并按 `redacted_literals` 提示隐藏常量。

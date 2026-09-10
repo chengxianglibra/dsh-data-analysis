@@ -2,8 +2,8 @@
 
 ## 作用
 
-本模块把 profile 级 Marivo Runtime、per-Workspace binding、四个跨边界 Tool、presentation-kit、
-两个 Runtime Skill、唯一展示 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
+本模块把 profile 级 Marivo Runtime、per-Workspace binding、跨边界 Tool、presentation-kit、
+两个 Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
 的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
 实现入口：
@@ -16,7 +16,7 @@
 ## 生命周期
 
 1. `apply()` 确保精确 Marivo 0.5.5 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
-2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`；两个 provider 均只读取各自明确目录。
+2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与 prompt sections。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
@@ -41,9 +41,11 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | Surface | 独有责任 | 删除条件 |
 | --- | --- | --- |
 | `marivo_help` | Native mode 的受控解释器与实时 Help transport | Harness/Marivo 提供等价原生 transport |
+| `marivo_datasource_configure` | 将数据源配置表单绑定到原调用并续接 | DSH 提供等价的领域配置续接 |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
-| `marivo_present` | 一次提交展示文件、统一 receipt 与 Web 打开/下载 | DSH 提供等价的完整快照交付 |
+| `marivo_present` | 保存 JSON、统一 receipt、原生 Tab 打开与按需 HTML 下载 | DSH 提供等价的完整快照交付 |
+| `marivo_publish_report`（可选） | 将固定报告 HTML 上传至配置的 S3 目标 | Harness 提供等价的受控发布 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
 semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。原生 API 已拥有
@@ -71,10 +73,12 @@ Web client 只保留：
 
 - datasource 凭据管理与 `marivo_datasource_test` / `marivo_python` 的等待表单；
 - 语义层对象浏览与 composer 原生引用输入；
-- `marivo_present` Turn 卡片、共享 reader overlay 与离线 HTML 下载。
+- 原生报告目录与正文 Tab、共享 reader、呈现编辑及按需 HTML 下载；
+- 可选[报告发布](report-publishing.md)菜单与独立发布凭据管理。
 
 生产 client bundle 导出 `HostPresentationReader`，与 portable 共用[展示 reader](presentation-reader.md)。
-通过统一 Session/Turn delivery 汇总卡片，加载固定快照并校验下载字节；同一 receipt 的重复事件不重复显示。
+通过统一 Session/Turn delivery 观察新交付，自动打开固定 Build Tab；重复事件去重，历史回放不自动打开。
+成功回执不渲染聊天卡片，打开失败时提供错误反馈；下载前校验固定快照和响应字节。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
 ## DSH alpha 适配
@@ -101,14 +105,14 @@ Web client 只保留：
 | 边界 | 当前值 |
 | --- | --- |
 | DSH peers 兼容范围 | `^0.1.5-alpha.1`，npm 默认预发布匹配规则 |
-| DSH 开发 distribution / 实际验收 | `0.1.5-alpha.1`，lockfile 保留实际解析版本 |
+| DSH 开发 distribution | `0.1.5-alpha.1`，lockfile 保留实际解析版本 |
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.5.5` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.1.0`，typed dataset schemaVersion 1 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
-与内部纯数据 contracts/projection、builder、预构建 portable/static 资产，以及唯一展示 Skill 的 `SKILL.md`、references 和 examples；
+与内部纯数据 contracts/projection、builder、预构建 portable/static 资产，以及展示及文件分析 Skill 的 `SKILL.md`、references 和 examples；
 旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
@@ -116,7 +120,6 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 和 `0.1.x` 稳定版本，不自动接受 `0.1.6-alpha.*`。逐项检查直接消费的 peers 与 Host 实际解析身份，
 不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
 正常 workspace 链接允许，Host client external/metafile 与 portable 自带 React 检查保留。
-具体证据与限制见[第四阶段验收](../dsh-wiring-stage-four-acceptance.md)。
 
 ## npm 发布
 
@@ -138,11 +141,9 @@ npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
 
-原 plugin real-model runner 验证 Help/凭据接缝，需要正式 Marivo 0.5.5 与真实模型。
+plugin real-model runner 验证 Help/凭据接缝，需要正式 Marivo 0.5.5 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch、Host Web 与下载文件验证交付。
-当前可安装包的注册结果、真实 Agent 自动路由及最终旅程状态见[S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
 路径、runner 日志或静态 schema 不替代实际交互证据。
-此前 tarball 内容收窄的记录见 [Package 内容收窄验收](../acceptance/package-content-cleanup.md)。
 
 ## Browser 构建
 

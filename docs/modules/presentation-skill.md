@@ -65,10 +65,7 @@ Agent 将 Draft 保存为 Workspace 相对路径，新建时调用 `marivo_prese
 流程和失败边界见[展示交付](presentation-delivery.md)。
 
 包验证同时检查 Skill 主文件与 references 的实际分发；插件测试检查 provider 接线、短路由和现有
-Runtime Skill 的独立性。可安装包实际注册结果、真实 Agent 路由与 Web/离线旅程的结果及限制见
-[S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
-本次比较范围、证据强度、抵消项与执行收尾的通用修复见
-[报告交付与质量修复验收](../plan/2026-09-07-presentation-delivery-quality-acceptance.md)。
+Runtime Skill 的独立性。
 
 ## 阅读器编辑边界
 

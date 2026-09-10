@@ -142,7 +142,7 @@ packages/dsh-data-analysis/tests/help-disclosure/activation.test.ts
 compaction 恢复、Environment 替换、普通工具持续可见和 controller dispose。
 
 生产安装路径的请求级测试另覆盖两类显式激活首请求、增量/重复激活、已可见 focused root Help、
-`startsRequestSeries` 保留、拒绝、失败、取消及恢复。范围与证据见 [2a 验收记录](../dsh-context-stage-two-a-acceptance.md)。
+`startsRequestSeries` 保留、拒绝、失败、取消及恢复。
 
 `npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding
 上验证实时 inventory、focused Help parity、无效 target 的原子失败，以及 Skill 激活后的根 Help 注入。

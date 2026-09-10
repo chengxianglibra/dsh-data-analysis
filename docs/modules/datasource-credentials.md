@@ -49,8 +49,6 @@ Tab 直接承载新增/编辑数据源、属性、凭证配置与连接测试，
 凭证管理或其原来源处理，不因后续失败恢复已删除的定义。浏览器重载可恢复进行中操作的查询句柄；
 已关闭或已完成并清理的客户端结果不作为持久删除审计。
 
-验证范围与环境限制见[数据源删除验收](../datasource-removal-acceptance.md)。
-
 ## 新增与编辑数据源
 
 表单通过 checked Runtime 读取公开 `md.DatasourceSpec` union 和各 Spec 的 dataclass 字段，展示引擎、必填项、默认值及说明。
@@ -188,27 +186,7 @@ Host 为响应丢失恢复而保留终态和待办 30 分钟，容量有界；Ho
 计数跟踪，不依赖管理页；中途更新会使旧快照或测试结果失效，完成后释放跟踪。provider 错误只投影安全错误码；
 原始值、异常详情不进入 RPC。只读来源由 DSH provider 拒绝写入，页面同时展示不可写状态。
 
-## 验证
-
-```bash
-npm run test:datasource-credentials
-npm run validate:datasource-credentials:real
-npm run validate:datasource-execution:real
-npm run validate:credentials:web
-```
-
-一次执行准入的验收与限制见 [S1 验收记录](../plan/marivo-analytics-presentation-s1-acceptance.md)。
-此前的管理服务背景见 [凭证服务集成验收](../plan/2026-09-07-credential-service-acceptance.md)。
-管理页布局与完成状态清理见 [凭证界面验收](../plan/2026-09-07-credentials-ui-acceptance.md)。
-会话标题入口与独立待办监听验证见[入口验收](../acceptance/workspace-header-actions.md)。
-
-本次卡片交互调整见[验收记录](../acceptance/workspace-cards.md)。
-新增引用校验与数据源属性展示见[验收记录](../plan/2026-09-08-datasource-creation-properties-acceptance.md)。
-可配置前台预算、终态反馈及真实进程取消验证见[执行验收](../python-execution-budget-acceptance.md)。
-
-## 配置编辑与续接验收
-
-### 新建字段默认值
+## 新建字段默认值
 
 Harness profile 中本插件的可选 `datasourceDefaults` 使用 `backend → 字段名 → JSON 值` 映射，
 作用于该插件实例服务的 Workspace；不增加项目侧配置或热更新机制。配置示例见[用户说明](../../README.md)。
@@ -227,6 +205,13 @@ authoring 省略 mode 时沿用 create；编辑表单显式使用 `mode: 'edit'`
 编辑已有数据源只读取已保存配置，选择复用已有数据源不应用默认值。
 提交仍使用原 generation、Runtime fingerprint 与配置保存流程，不在服务端补齐默认值。
 
-测试与真实浏览器证据见[新建默认值验收](../datasource-creation-defaults-acceptance.md)。
+## 验证
 
-完整流程、验证命令及限制见[数据源配置请求与编辑验收](../datasource-configuration-acceptance.md)。
+```bash
+npm run test:datasource-credentials
+npm run validate:datasource-credentials:real
+npm run validate:datasource-execution:real
+npm run validate:credentials:web
+```
+
+配置、新建默认值、定义编辑、删除及模型续接分别验证；完整入口与环境边界见[验证指南](../validation.md)。

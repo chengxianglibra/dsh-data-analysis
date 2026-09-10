@@ -80,7 +80,7 @@ Python 必须支持 `venv`/`ensurepip`；缺失或版本不符时明确失败。
 
 CSV、JSON、Parquet 使用 DuckDB 读取；`.xlsx` 使用 DuckDB 官方 `excel` 扩展，首次使用按
 DuckDB 原生规则下载与加载，不作为 Python extra 或插件启动时的联网安装步骤。
-`.xls` 不在此次支持范围。文件读取验收见 [DuckDB 文件格式](../duckdb-files-acceptance.md)。
+文件流程不承诺支持 `.xls`。
 
 ### 并发与发布
 
@@ -145,6 +145,6 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 `marivo[duckdb,trino,clickhouse]==0.5.5`，不使用 editable checkout。管理员 Python 的修复命令同样通过 pip
 安装该精确版本。普通 npm build/prepack 不会重新打包或构建 Marivo。
 
-S2 的 Python helper 合同由 `tests/runtime-workspace/presentation-kit-contracts.test.ts` 纳入持续检查，
+Python helper 合同由 `tests/runtime-workspace/presentation-kit-contracts.test.ts` 纳入持续检查，
 包括相同 fixtures 的 Python、Node 与 browser 读取。managed 安装失败和 administrator 缺 helper、版本错误、
-同名模块遮蔽均明确失败，不切换解释器；真实验证见 [S2 验收记录](../plan/marivo-analytics-presentation-s2-acceptance.md)。
+同名模块遮蔽均明确失败，不切换解释器。
