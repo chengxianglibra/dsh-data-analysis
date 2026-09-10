@@ -90,7 +90,8 @@ if (options.has('--projection-evidence')) {
 const attack =
   '</script><img src="https://presentation.invalid/xss" onerror="window.__presentationXss=true">'
 const interaction = parsePresentationDocument({
-  schemaVersion: 2,
+  schemaVersion: 3,
+  locale: 'zh-CN',
   workspaceId: 's3-validation-workspace',
   reportId: 'report',
   buildId: 's3-interactions',
@@ -448,7 +449,7 @@ async function verifyDatasetTable(
   const indices = columns.map((id) => dataset.columns.findIndex((column) => column.id === id))
   const rows = dataset.rows.slice(0, staticMode ? undefined : 20)
   const expected = rows.flatMap((row) =>
-    indices.map((index) => cellText(row[index]!, dataset.columns[index]!)),
+    indices.map((index) => cellText('zh-CN', row[index]!, dataset.columns[index]!)),
   )
   const actual = await table.locator('tbody td').allTextContents()
   assert.deepEqual(actual, expected)
@@ -538,10 +539,10 @@ async function verifyReader(
         ]![index]!
       const metric = node.locator('[data-metric-value]')
       assert.equal(await metric.count(), 1, `metric ${block.id} must have one displayed value`)
-      assert.equal(await metric.innerText(), metricText(value, column))
+      assert.equal(await metric.innerText(), metricText('zh-CN', value, column))
       assert.equal(
         await metric.getAttribute('title'),
-        value === null ? '缺失值' : valueWithUnit(value, column),
+        value === null ? '缺失值' : valueWithUnit('zh-CN', value, column),
       )
       snapshot.push({ id: block.id, metric: await metric.innerText() })
     }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { chartRows, followUpContext, selectMetric } from '../../src/client/presentation/model.ts'
 import {
   applyPresentationEdits,
@@ -30,9 +31,9 @@ test('two fixed filters select complete prepared rows for KPI, charts and tables
   assert.equal(metric.kind, 'metric')
   if (metric.kind !== 'metric') return
   const data = document.datasets[0]!.data
-  assert.equal(selectMetric(data, metric, [4]).value, '150')
+  assert.equal(selectMetric('zh-CN', data, metric, [4]).value, '150')
   assert.match(
-    followUpContext(document, metric, undefined, selection),
+    translator('zh-CN')(followUpContext(document, metric, undefined, selection)),
     /"filterId":"day","optionId":"mon","label":"日期：周一"/,
   )
   assert.match(
@@ -41,7 +42,7 @@ test('two fixed filters select complete prepared rows for KPI, charts and tables
   )
   assert.match(followUpContext(document, metric), /"optionId":"any"/)
   assert.throws(() => selectedSlice(interaction, { day: 'missing', cluster: 'any' }))
-  assert.throws(() => selectMetric(data, metric, []))
+  assert.throws(() => selectMetric('zh-CN', data, metric, []))
   assert.equal(JSON.stringify(document), original)
 })
 
@@ -274,9 +275,9 @@ test('chart encoding does not read out-of-slice rows or lose their original iden
   if (chart.kind !== 'chart') return
   const data = document.datasets[1]!.data
   data.rows[0]![1] = '9007199254740993'
-  assert.throws(() => chartRows(data, chart))
+  assert.throws(() => chartRows('zh-CN', data, chart))
   assert.deepEqual(
-    chartRows(data, chart, [8, 9]).map((row) => [row.rowIndex, row.series0]),
+    chartRows('zh-CN', data, chart, [8, 9]).map((row) => [row.rowIndex, row.series0]),
     [
       [8, 100],
       [9, 50],

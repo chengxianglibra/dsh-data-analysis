@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import type { MarivoCheckedRunRequest } from '../../src/environment/types.ts'
 import { CATALOG_ERROR_SCHEMA, type CatalogFailure } from '../../src/semantic-browser/contracts.ts'
@@ -71,9 +72,16 @@ test('reads registered Workspace without an Agent; deletion, cancellation, overr
 })
 test('only fixed error messages cross the browser boundary', () => {
   assert.doesNotMatch(browserFailure(new Error('token=PRIVATE')), /PRIVATE/)
-  assert.match(browserFailure(new MarivoEnvironmentError('subprocess-timeout', 'PRIVATE')), /超时/)
   assert.match(
-    browserFailure(new MarivoEnvironmentError('subprocess-output-limit', 'PRIVATE')),
+    translator('zh-CN')(
+      browserFailure(new MarivoEnvironmentError('subprocess-timeout', 'PRIVATE')),
+    ),
+    /超时/,
+  )
+  assert.match(
+    translator('zh-CN')(
+      browserFailure(new MarivoEnvironmentError('subprocess-output-limit', 'PRIVATE')),
+    ),
     /上限/,
   )
 })

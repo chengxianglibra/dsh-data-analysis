@@ -172,7 +172,8 @@ function example(chart: ChartType): { view: ChartView; dataset: TypedDataset } {
 
 function document(view: ChartView, dataset: TypedDataset): PresentationDocument {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    locale: 'zh-CN',
     workspaceId: 'workspace',
     reportId: 'report',
     buildId: 'chart-contracts',
@@ -595,7 +596,8 @@ test('prepared views validate every referenced dataset in drafts and generated d
   block.preparedViews = [{ id: 'histogram', label: 'Prepared bins', ...histogram.view }]
   assert.doesNotThrow(() => parsePresentationDocument(value))
   const draft = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: value.title,
     sources: [],
     datasets: value.datasets.map((dataset) => ({

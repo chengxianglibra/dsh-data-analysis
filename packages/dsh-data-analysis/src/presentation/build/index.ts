@@ -80,7 +80,7 @@ export async function buildPresentation(
   ].join('; ')
   const htmlBytes = Buffer.from(
     `<!doctype html>
-<html lang="zh-CN">
+<html lang="${escapeHtml(document.locale)}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${escapeHtml(csp)}">

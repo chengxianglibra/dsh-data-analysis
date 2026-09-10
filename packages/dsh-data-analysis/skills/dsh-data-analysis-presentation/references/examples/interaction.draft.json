@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "查询运行概览 · 全局筛选演示",
   "sources": [],
   "datasets": [
@@ -274,5 +274,6 @@
         ]
       }
     ]
-  }
+  },
+  "locale": "zh-CN"
 }

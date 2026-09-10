@@ -361,7 +361,7 @@ try {
     const datasource = await import('@chengxianglibra/dsh-data-analysis/datasource')
     const { buildPresentation } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/presentation/build/index.js')).href)})
     const presentation = await buildPresentation({
-      schemaVersion: 2, workspaceId: 'package-verification', reportId: 'package-verification', buildId: 'package-verification',
+      schemaVersion: 3, locale: 'zh-CN', workspaceId: 'package-verification', reportId: 'package-verification', buildId: 'package-verification',
       title: '离线展示包检查', generatedAt: '2026-09-07T00:00:00Z',
       datasets: [], sources: [], diagnostics: [],
       blocks: [{ id: 'body', kind: 'markdown', text: '已安装包中的 **共享 reader**。' }],
@@ -369,6 +369,8 @@ try {
     if (!Buffer.isBuffer(presentation.htmlBytes) || !Buffer.isBuffer(presentation.documentBytes)) throw new Error('packed presentation builder must return bytes')
     if (!presentation.htmlBytes.toString('utf8').includes('presentation-data')) throw new Error('packed presentation omitted its saved document')
     if (!presentation.htmlBytes.toString('utf8').includes('共享 reader')) throw new Error('packed presentation omitted semantic fallback')
+    assert.ok(presentation.htmlBytes.toString('utf8').includes('<html lang="zh-CN">'))
+    assert.equal(JSON.parse(presentation.documentBytes.toString('utf8')).locale, 'zh-CN')
     if (JSON.parse(presentation.documentBytes.toString('utf8')).buildId !== 'package-verification') throw new Error('packed builder changed document identity')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')

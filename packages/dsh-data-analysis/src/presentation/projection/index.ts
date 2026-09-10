@@ -252,7 +252,8 @@ export class MarivoPresentationProjection {
     }
     this.#assertReady(options.signal)
     return parsePresentationDocument({
-      schemaVersion: 2,
+      schemaVersion: 3,
+      locale: draft.locale,
       reportId: options.reportId,
       workspaceId: options.workspaceId,
       buildId: options.buildId,

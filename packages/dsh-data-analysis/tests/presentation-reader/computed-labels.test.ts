@@ -6,6 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { withChartSeries } from '../../src/client/presentation/chart-view.ts'
 import { sortedRowIndices } from '../../src/client/presentation/model.ts'
 import type { MarivoCheckedRunner, MarivoCheckedRunRequest } from '../../src/environment/types.ts'
@@ -21,7 +22,8 @@ const options = {
 }
 function computedDraft(sourceIds: string[] = []): PresentationDraft {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'computed',
     sources: [],
     datasets: [{ id: 'data', kind: 'computed', path: 'computed.json', sourceIds }],
@@ -112,7 +114,7 @@ test('Python labels survive computed projection, reader controls, tooltip and po
   )
   assert.equal(f.requests.length, 0)
   assert.deepEqual(
-    sortedRowIndices(data, { columnId: 'base_0831', direction: 'ascending' }),
+    sortedRowIndices('zh-CN', data, { columnId: 'base_0831', direction: 'ascending' }),
     [1, 0],
   )
   assert.deepEqual(withChartSeries(chart, ['cur_0907']).y, ['cur_0907'])
@@ -120,7 +122,10 @@ test('Python labels survive computed projection, reader controls, tooltip and po
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
+const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
 import { ChartRenderer } from './src/client/presentation/chart-renderer.tsx';
 import { ExactTooltip } from './src/client/presentation/chart-tooltip.tsx';
 export function render(document, block) {
@@ -141,15 +146,15 @@ export function render(document, block) {
   const { render } = await import(pathToFileURL(outfile).href)
   const [chartHtml, tooltipHtml] = render(document, chart)
   for (const html of [chartHtml, tooltipHtml]) {
-    assert.match(html, /基期（08月31日）/)
-    assert.match(html, /本期（09月07日）/)
+    assert.match(translator('zh-CN')(html), /基期（08月31日）/)
+    assert.match(translator('zh-CN')(html), /本期（09月07日）/)
   }
-  assert.match(chartHtml, /aria-label="显示系列 基期（08月31日）"/)
-  assert.match(tooltipHtml, /<dt>基期（08月31日）<\/dt>/)
+  assert.match(translator('zh-CN')(chartHtml), /aria-label="显示系列 基期（08月31日）"/)
+  assert.match(translator('zh-CN')(tooltipHtml), /<dt>基期（08月31日）<\/dt>/)
   const { htmlBytes } = await buildPresentation(document)
   const fallback = htmlBytes.toString().split('<div id="reader">')[0]!
-  assert.match(fallback, /基期（08月31日）/)
-  assert.match(fallback, /本期（09月07日）/)
+  assert.match(translator('zh-CN')(fallback), /基期（08月31日）/)
+  assert.match(translator('zh-CN')(fallback), /本期（09月07日）/)
   assert.doesNotMatch(fallback, />base_0831<|>cur_0907</)
   assert.match(fallback, /data-column-id="base_0831"/)
 })

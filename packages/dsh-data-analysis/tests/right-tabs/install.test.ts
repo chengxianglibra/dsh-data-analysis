@@ -1,6 +1,8 @@
 // @ts-nocheck -- Run the packaged public client against the registry replay boundary.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { TabPage } from '../../src/client/right-tabs/page.ts'
 import { createHostChatFixture } from '../presentation-integration/host-client-fixture.ts'
 
@@ -44,6 +46,16 @@ test('default client is a valid Cordis effect and registers native resources wit
     },
     inputTriggers: { registerSource: () => () => {} },
   })
+  host.slots.register(
+    {
+      name: 'shell.overlay',
+      id: 'locale-test',
+      children: {
+        'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
+      },
+    },
+    () => null,
+  )
   let controller: any
   const result = host.presentation.apply(host.client, {
     onInstalled(value) {
@@ -51,6 +63,24 @@ test('default client is a valid Cordis effect and registers native resources wit
     },
   })
   assert.equal(result, undefined, 'Cordis rejects arbitrary object effect return values')
+  const directoryTitles = [
+    ['marivo-datasources', '数据源与凭证', 'Datasources and credentials'],
+    ['marivo-semantic', '语义层', 'Semantic layer'],
+    ['marivo-reports', '报告', 'Reports'],
+  ]
+  for (const [kind, zh, en] of directoryTitles) {
+    const definition = definitions.find((entry) => entry.kind === kind)
+    host.client.locale.setLocale('zh')
+    const captured = definition.title()
+    const entry = host.slots
+      .entries('sidebar.right.pane.tab.title')
+      .find((entry) => entry.options.key === definition.id)
+    assert.ok(entry, 'Directory tabs need a title slot; Harness caches the opening title')
+    assert.equal(renderToStaticMarkup(createElement(entry.component)), '<span>' + zh + '</span>')
+    host.client.locale.setLocale('en')
+    assert.equal(renderToStaticMarkup(createElement(entry.component)), '<span>' + en + '</span>')
+    assert.equal(captured, zh, 'The original tab title remains unchanged in Harness state')
+  }
   assert.equal(definitions.length, 5)
   assert.ok(definitions.some((d) => d.kind === 'marivo-reports'))
   const reports = definitions.find((d) => d.kind === 'marivo-report-resource')

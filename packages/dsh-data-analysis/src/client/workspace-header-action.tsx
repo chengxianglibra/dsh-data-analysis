@@ -1,3 +1,5 @@
+import { useCopy } from './i18n/context.tsx'
+
 const styles = `
 .marivo-workspace-header-action{display:inline-flex;flex:none;align-items:center;justify-content:center;gap:5px;height:32px;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:12px;line-height:20px;white-space:nowrap;cursor:pointer}
 .marivo-workspace-header-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#7b899414)}
@@ -19,14 +21,16 @@ export function WorkspaceHeaderAction({
   title?: string
   onClick: () => void
 }) {
+  const t = useCopy()
+
   return (
     <>
       <style>{styles}</style>
       <button
         className="marivo-workspace-header-action"
         type="button"
-        title={title ?? label}
-        aria-label={`打开${label}`}
+        title={t(title ?? label)}
+        aria-label={t('marivo.navigation.open-value', { p0: label })}
         disabled={disabled}
         onClick={onClick}
       >
@@ -52,7 +56,7 @@ export function WorkspaceHeaderAction({
             </>
           )}
         </svg>
-        <span>{label}</span>
+        <span>{t(label)}</span>
       </button>
     </>
   )

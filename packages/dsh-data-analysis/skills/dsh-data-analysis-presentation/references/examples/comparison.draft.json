@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "演示：减少项与其他项抵消后的净变化",
   "datasets": [
     {
@@ -75,5 +75,6 @@
       "datasetId": "full",
       "columns": ["category", "baseline", "current", "delta_current_minus_baseline"]
     }
-  ]
+  ],
+  "locale": "zh-CN"
 }

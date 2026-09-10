@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { chartColumns } from '../../presentation/contracts/charts.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
 import { CloseIcon } from './icons.tsx'
 import { datasetById } from './model.ts'
 import { SourceCode } from './source-code.tsx'
@@ -28,6 +29,8 @@ export function SourceDialog({
   filterSummary?: string
   onOpenSemanticRef?: OpenSemanticRef
 }) {
+  const t = useCopy()
+
   const dialog = useRef<HTMLDialogElement>(null)
   const backdropPointer = useRef(false)
   const [tab, setTab] = useState<SourceTab>('overview')
@@ -73,19 +76,23 @@ export function SourceDialog({
         <header className="pr-source-dialog-header">
           <div>
             <h2 className="pr-source-dialog-title" id={`${id}-title`}>
-              数据源
+              {t('marivo.presentation.datasource')}
             </h2>
           </div>
           <button
             type="button"
             className="pr-source-dialog-close"
-            aria-label="关闭数据源"
+            aria-label={t('marivo.presentation.close-datasource')}
             onClick={onClose}
           >
             <CloseIcon />
           </button>
         </header>
-        <div className="pr-source-tabs" role="tablist" aria-label="数据源视图">
+        <div
+          className="pr-source-tabs"
+          role="tablist"
+          aria-label={t('marivo.presentation.datasource-views')}
+        >
           {tabs.map((item) => (
             <button
               type="button"
@@ -108,13 +115,22 @@ export function SourceDialog({
                   ?.focus()
               }}
             >
-              {item === 'overview' ? '概要' : item === 'preview' ? '数据预览' : '相关查询'}
+              {item === 'overview'
+                ? t('marivo.presentation.overview')
+                : item === 'preview'
+                  ? t('marivo.presentation.data-preview')
+                  : t('marivo.presentation.related-queries')}
             </button>
           ))}
         </div>
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Keep overflowing source details scrollable by keyboard. */}
         <div className="pr-source-dialog-body" tabIndex={0}>
-          {filterSummary && <p className="pr-muted">当前筛选：{filterSummary}</p>}
+          {filterSummary && (
+            <p className="pr-muted">
+              {t('marivo.presentation.current-filter')}
+              {filterSummary}
+            </p>
+          )}
           <div
             id={`${id}-overview`}
             role="tabpanel"
@@ -140,7 +156,7 @@ export function SourceDialog({
                 filterKey={filterKey}
                 columns={columns}
                 mode="interactive"
-                caption="数据预览"
+                caption={t('marivo.presentation.data-preview')}
                 hideCaption
                 showScope={dataset.data.truncated}
               />

@@ -5,6 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import test, { type TestContext } from 'node:test'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { MARIVO_PRESENTATION_READ_PROGRAM } from '../../src/presentation/projection/program.ts'
 import { createSemanticWorkspace } from '../semantic-reference-input/workspace.ts'
 
@@ -167,7 +168,7 @@ test('producer mismatch, reused output and incomplete Runs cannot claim SQL prov
     const { payload, code } = await readFixture(t, value)
     assert.equal(payload.sources[0].status, 'available')
     assert.deepEqual(code.snippets, [])
-    assert.match(code.notices.join(''), /不匹配/)
+    assert.match(translator('zh-CN')(code.notices.join('')), /不匹配/)
   }
 })
 
@@ -185,7 +186,7 @@ test('upstream identity and Workspace mismatches block producer reads on that br
     const { payload, code, audit } = await readFixture(t, value)
     assert.equal(payload.sources[0].status, 'available')
     assert.deepEqual(code.snippets, [])
-    assert.match(code.notices.join(''), /身份或 Workspace 不一致/)
+    assert.match(translator('zh-CN')(code.notices.join('')), /身份或 Workspace 不一致/)
     assert.deepEqual(audit.runs, ['producer'])
   }
 })
@@ -226,7 +227,7 @@ test('blank SQL is omitted without making the available source invalid', async (
       artifactRef: 'artifact',
     },
   ])
-  assert.match(code.notices.join(''), /SQL 为空/)
+  assert.match(translator('zh-CN')(code.notices.join('')), /SQL 为空/)
 })
 
 test('unavailable source has no code snapshot', async (t) => {
@@ -248,14 +249,14 @@ test('SQL budget preserves complete text at the limit and explicitly omits overs
     code.snippets.map((item: { queryId: string }) => item.queryId),
     ['maximum', 'astral-maximum'],
   )
-  assert.match(code.notices.join(''), /32768.*未截断/)
+  assert.match(translator('zh-CN')(code.notices.join('')), /32768.*未截断/)
   value.runs.producer!.queries = Array.from({ length: 35 }, (_, i) => ({
     id: `q${i}`,
     sql: `SELECT ${i}`,
   }))
   const bounded = await readFixture(t, value)
   assert.equal(bounded.code.snippets.length, 32)
-  assert.match(bounded.code.notices.join(''), /32 条/)
+  assert.match(translator('zh-CN')(bounded.code.notices.join('')), /32 条/)
 })
 
 test('SQL ancestry budget reads at most 64 upstream Artifacts', async (t) => {
@@ -271,7 +272,7 @@ test('SQL ancestry budget reads at most 64 upstream Artifacts', async (t) => {
   const { code, audit } = await readFixture(t, value)
   assert.equal(audit.artifacts.length, 65)
   assert.equal(audit.runs.length, 65)
-  assert.match(code.notices.join(''), /64 个/)
+  assert.match(translator('zh-CN')(code.notices.join('')), /64 个/)
 })
 
 test('real persisted Marivo SQL is restored in a fresh process with no analysis execution', async (t) => {

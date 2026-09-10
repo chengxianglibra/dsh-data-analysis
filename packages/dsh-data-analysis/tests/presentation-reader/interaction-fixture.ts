@@ -13,7 +13,8 @@ export async function interactionFixture() {
     JSON.parse(await readFile(new URL('interaction.draft.json', interactionExamples), 'utf8')),
   )
   const document = parsePresentationDocument({
-    schemaVersion: 2,
+    schemaVersion: 3,
+    locale: 'zh-CN',
     workspaceId: 'interaction-test',
     reportId: 'report',
     buildId: 'interaction-test',

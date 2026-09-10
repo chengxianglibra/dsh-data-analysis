@@ -6,27 +6,35 @@ import type {
   DocumentDataset,
   PresentationBlock,
   PresentationDocument,
+  PresentationLocale,
   SourceSnapshot,
   TypedDataset,
 } from '../../presentation/contracts/types.ts'
+import { message, translator } from './../i18n/copy.ts'
 
 export type ReaderMode = 'interactive' | 'static'
 export type ChartBlock = Extract<PresentationBlock, { kind: 'chart' }>
 export type MetricBlock = Extract<PresentationBlock, { kind: 'metric' }>
 export const TABLE_PAGE_SIZE = 20
 
-export function cellText(value: Cell, column: DatasetColumn): string {
-  return value === '' ? '（空字符串）' : formatCell(value, column)
+export function cellText(locale: PresentationLocale, value: Cell, column: DatasetColumn): string {
+  return value === ''
+    ? translator(locale)('marivo.presentation.empty-string-438')
+    : formatCell(value, column)
 }
 
-export function valueWithUnit(value: Cell, column: DatasetColumn): string {
-  const text = cellText(value, column)
+export function valueWithUnit(
+  locale: PresentationLocale,
+  value: Cell,
+  column: DatasetColumn,
+): string {
+  const text = cellText(locale, value, column)
   return column.unit && value !== null && value !== '' ? `${text} ${column.unit}` : text
 }
 
 /** Add grouping separators only; never round, rescale, or convert exact decimal text. */
-export function metricText(value: Cell, column: DatasetColumn): string {
-  const text = cellText(value, column)
+export function metricText(locale: PresentationLocale, value: Cell, column: DatasetColumn): string {
+  const text = cellText(locale, value, column)
   const grouped =
     ['int64', 'decimal', 'float64'].includes(column.type) && /^-?\d+(?:\.\d+)?$/.test(text)
       ? text.replace(/^-?\d+/, (whole) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ','))
@@ -35,9 +43,9 @@ export function metricText(value: Cell, column: DatasetColumn): string {
 }
 
 /** A stable explicit timezone keeps portable and Host metadata equally readable. */
-export function snapshotDate(value: string): string {
+export function snapshotDate(locale: PresentationLocale, value: string): string {
   return (
-    new Intl.DateTimeFormat('zh-CN', {
+    new Intl.DateTimeFormat(locale, {
       timeZone: 'UTC',
       year: 'numeric',
       month: '2-digit',
@@ -58,10 +66,10 @@ export function columnLabel(column: DatasetColumn): string {
 }
 
 /** Axis labels are compact coordinates; tooltips and tables retain exact source text. */
-export function formatAxisTick(value: number): string {
+export function formatAxisTick(locale: PresentationLocale, value: number): string {
   const magnitude = Math.abs(value)
   if (magnitude >= 1e12 || (value !== 0 && magnitude < 0.0001)) return value.toExponential(2)
-  return new Intl.NumberFormat('zh-CN', {
+  return new Intl.NumberFormat(locale, {
     notation: magnitude >= 100_000 ? 'compact' : 'standard',
     maximumFractionDigits:
       magnitude >= 100_000
@@ -90,6 +98,7 @@ export function columnIndex(dataset: TypedDataset, id: string): number {
 }
 
 export function selectMetric(
+  locale: PresentationLocale,
   dataset: TypedDataset,
   block: MetricBlock,
   rowIndices?: readonly number[],
@@ -106,7 +115,11 @@ export function selectMetric(
       const column = dataset.columns[columnIndex(dataset, id)]!
       const value = row[columnIndex(dataset, id)]!
       const sign = value === null ? undefined : decimalParts(String(value)).sign
-      return { value, sign, text: `${signed && sign === 1 ? '+' : ''}${metricText(value, column)}` }
+      return {
+        value,
+        sign,
+        text: `${signed && sign === 1 ? '+' : ''}${metricText(locale, value, column)}`,
+      }
     }
     const reference = read(comparison.referenceColumnId, false)
     const delta = read(comparison.deltaColumnId, true)
@@ -155,7 +168,12 @@ export function compareDecimalText(first: string, second: string): number {
   return comparison * left.sign
 }
 
-function compareValues(first: Cell, second: Cell, column: DatasetColumn): number {
+function compareValues(
+  locale: PresentationLocale,
+  first: Cell,
+  second: Cell,
+  column: DatasetColumn,
+): number {
   if (first === second) return 0
   if (column.type === 'decimal' || column.type === 'int64')
     return compareDecimalText(String(first), String(second))
@@ -171,10 +189,11 @@ function compareValues(first: Cell, second: Cell, column: DatasetColumn): number
     const b = micros(second)
     return a < b ? -1 : a > b ? 1 : 0
   }
-  return String(first).localeCompare(String(second), 'zh-CN')
+  return String(first).localeCompare(String(second), locale)
 }
 
 export function sortedRowIndices(
+  locale: PresentationLocale,
   dataset: TypedDataset,
   sort?: { columnId: string; direction: 'ascending' | 'descending' },
 ): number[] {
@@ -186,15 +205,21 @@ export function sortedRowIndices(
     const b = dataset.rows[second]![column]!
     // Missing values remain last in both directions; ties keep snapshot order.
     if (a === null || b === null) return a === b ? first - second : a === null ? 1 : -1
-    const comparison = compareValues(a, b, dataset.columns[column]!)
+    const comparison = compareValues(locale, a, b, dataset.columns[column]!)
     return (sort.direction === 'ascending' ? comparison : -comparison) || first - second
   })
 }
 
-export function datasetScope(dataset: TypedDataset): string {
-  if (dataset.rowCount === 0) return '暂无数据'
-  if (dataset.truncated) return `显示 ${dataset.rows.length} / ${dataset.rowCount} 行（已截断）`
-  return `${dataset.rowCount} 行`
+export function datasetScope(locale: PresentationLocale, dataset: TypedDataset): string {
+  if (dataset.rowCount === 0) return translator(locale)('marivo.presentation.no-data')
+  if (dataset.truncated)
+    return translator(locale)(
+      message('marivo.presentation.showing-value-value-rows-truncated', {
+        p0: dataset.rows.length,
+        p1: dataset.rowCount,
+      }),
+    )
+  return translator(locale)(message('marivo.presentation.value-rows', { p0: dataset.rowCount }))
 }
 
 export interface ChartRow {
@@ -204,6 +229,7 @@ export interface ChartRow {
 }
 
 export function chartRows(
+  locale: PresentationLocale,
   dataset: TypedDataset,
   block: ChartView,
   rowIndices?: readonly number[],
@@ -212,7 +238,7 @@ export function chartRows(
   const indices = block.y.map((id) => columnIndex(dataset, id))
   return (rowIndices ?? dataset.rows.map((_, i) => i)).map((rowIndex) => {
     const row = dataset.rows[rowIndex]!
-    const result: ChartRow = { rowIndex, xLabel: cellText(row[x]!, dataset.columns[x]!) }
+    const result: ChartRow = { rowIndex, xLabel: cellText(locale, row[x]!, dataset.columns[x]!) }
     indices.forEach((index, series) => {
       result[`series${series}`] = chartNumber(
         row[index]!,
@@ -224,10 +250,14 @@ export function chartRows(
   })
 }
 
-export function chartTitle(dataset: TypedDataset, block: ChartView): string {
+export function chartTitle(
+  locale: PresentationLocale,
+  dataset: TypedDataset,
+  block: ChartView,
+): string {
   const x = dataset.columns[columnIndex(dataset, block.x)]!
   const y = block.y.map((id) => dataset.columns[columnIndex(dataset, id)]!.label)
-  return `${y.join('、')} · ${x.label}`
+  return `${y.join(locale === 'zh-CN' ? '、' : ', ')} · ${x.label}`
 }
 
 export function selectedSources(document: PresentationDocument, ids: string[]): SourceSnapshot[] {

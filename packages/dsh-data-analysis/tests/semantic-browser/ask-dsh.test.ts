@@ -215,7 +215,7 @@ test('model cancels delayed question on close, navigation, refresh, snapshot rep
     f.finish()
     await pending
     assert.equal(f.inserted.length, 0, action)
-    assert.notEqual(model.getSnapshot().questionNotice, '已加入提问')
+    assert.notEqual(model.getSnapshot().questionNotice, 'marivo.semantic.added-to-question')
     model.dispose()
   }
 })
@@ -230,7 +230,7 @@ test('successful insert survives usage failure and allows another explicit appen
     f.finish()
     await pending
     await tick()
-    assert.equal(model.getSnapshot().questionNotice, '已加入提问')
+    assert.equal(model.getSnapshot().questionNotice, 'marivo.semantic.added-to-question')
     assert.equal(model.getSnapshot().questionPending, false)
     assert.equal(f.inserted.length, i + 1)
   }

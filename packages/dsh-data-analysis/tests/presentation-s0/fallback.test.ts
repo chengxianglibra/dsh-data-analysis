@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { assertBrowserInputs, renderS0Fallback } from '../../scripts/presentation-s0/build.ts'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 
 const fixture = (name: string) =>
@@ -24,7 +25,7 @@ test('fallback retains explicit metric cell, label and unit in document block or
     { id: 'end', kind: 'markdown', text: '后读正文' },
   ]
   const html = renderS0Fallback(document)
-  assert.match(html, /<h2>精确金额<\/h2><strong>0\.1000 CNY<\/strong>/)
+  assert.match(translator('zh-CN')(html), /<h2>精确金额<\/h2><strong>0\.1000 CNY<\/strong>/)
   assert.ok(html.indexOf('先读正文') < html.indexOf('<h2>精确金额'))
   assert.ok(html.indexOf('<h2>精确金额') < html.indexOf('后读正文'))
   assert.doesNotMatch(html, /<table/)
@@ -36,11 +37,14 @@ test('fallback table honors selected column order and does not expose omitted co
     { id: 'selected', kind: 'table', datasetId: 'computed', columns: ['account_id', 'amount'] },
   ]
   const html = renderS0Fallback(document)
-  assert.match(html, /<thead><tr><th>大整数标识<\/th><th>精确金额 \(CNY\)<\/th><\/tr><\/thead>/)
+  assert.match(
+    translator('zh-CN')(html),
+    /<thead><tr><th>大整数标识<\/th><th>精确金额 \(CNY\)<\/th><\/tr><\/thead>/,
+  )
   assert.match(html, /<tr><td>9007199254740993<\/td><td>12345678901234\.5678<\/td><\/tr>/)
   assert.match(html, /<tr><td>9223372036854775807<\/td><td>—<\/td><\/tr>/)
-  assert.match(html, /显示 3 \/ 5 行（已截断；不能代表全量汇总）/)
-  assert.doesNotMatch(html, /<th>月份<\/th>|2026-01-01|<td>一月<\/td>/)
+  assert.match(translator('zh-CN')(html), /显示 3 \/ 5 行（已截断；不能代表全量汇总）/)
+  assert.doesNotMatch(translator('zh-CN')(html), /<th>月份<\/th>|2026-01-01|<td>一月<\/td>/)
 })
 
 test('fallback includes exact Finding identity and actual unavailable reason without a fabricated dataset', () => {
@@ -73,7 +77,7 @@ test('chart-only fallback retains exact selected values and identifies approxima
     },
   ]
   const html = renderS0Fallback(document)
-  assert.match(html, /图形使用近似值；下表保留精确值。/)
+  assert.match(translator('zh-CN')(html), /图形使用近似值；下表保留精确值。/)
   assert.match(html, /<td>12345678901234\.5678<\/td>/)
   assert.match(html, /<td>0\.1000<\/td>/)
   assert.doesNotMatch(html, /9007199254740993/)

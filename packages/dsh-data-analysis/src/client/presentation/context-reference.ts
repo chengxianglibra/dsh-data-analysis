@@ -20,7 +20,7 @@ export function presentationCellLabel(block: PresentationBlock): string {
 export function wrapPresentationContext(context: string, separator = ''): string {
   const text = `${separator}【报告上下文】\n${context}\n【报告上下文结束】`
   if (new TextEncoder().encode(text).length > PRESENTATION_CONTEXT_BYTES)
-    throw new Error('报告引用超过 12 KiB，无法完整保留定位和临时视图状态；请简化图表探索后重试。')
+    throw new Error('marivo.presentation.report-reference-exceeds-12-kib-and-cannot-preserve-full')
   return text
 }
 

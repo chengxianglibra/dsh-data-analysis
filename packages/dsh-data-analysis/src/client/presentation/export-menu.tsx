@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useActionCopy } from './../i18n/context.tsx'
 import { ExportIcon, MoreIcon } from './icons.tsx'
 
 export interface ReaderExportActions {
@@ -31,6 +32,8 @@ export function ExportMenu({
   editing: boolean
   onExport: () => void
 }) {
+  const t = useActionCopy()
+
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -47,19 +50,26 @@ export function ExportMenu({
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [open])
   const report = actions.report
-  const label = report ? '报告更多操作' : '导出报告'
+  const label = report
+    ? t('marivo.presentation.more-report-actions')
+    : t('marivo.presentation.export-report')
   const entries = [
     ...(report
       ? [
-          { label: '刷新', hint: '', run: report.refresh, disabled: report.busy },
           {
-            label: '编辑报告',
-            hint: report.historical ? '历史版本只读' : '',
+            label: t('marivo.presentation.refresh'),
+            hint: '',
+            run: report.refresh,
+            disabled: report.busy,
+          },
+          {
+            label: t('marivo.presentation.edit-report'),
+            hint: report.historical ? t('marivo.presentation.historical-version-is-read-only') : '',
             run: report.edit,
             disabled: editing || report.busy || report.historical,
           },
           {
-            label: '历史版本',
+            label: t('marivo.presentation.history'),
             hint: '',
             run: report.history,
             disabled: editing || report.busy || report.historyLoading,
@@ -67,12 +77,14 @@ export function ExportMenu({
         ]
       : []),
     {
-      label: actions.publishing ? `发布 HTML 报告到${actions.publishing.name}` : '下载完整报告',
+      label: actions.publishing
+        ? t('marivo.presentation.publish-report-html-to-value', { p0: actions.publishing.name })
+        : t('marivo.presentation.download-full-report'),
       hint: actions.publishingUnavailable
-        ? '发布配置读取失败，请刷新报告'
+        ? t('marivo.presentation.could-not-load-publishing-configuration-refresh-the-report')
         : editing && actions.publishing
-          ? '请先保存或取消编辑'
-          : '完整报告 HTML · 默认筛选',
+          ? t('marivo.presentation.save-or-cancel-edits-first')
+          : t('marivo.presentation.full-report-html-default-filters'),
       run: actions.publishing?.publish ?? actions.downloadFullReport,
       disabled:
         actions.downloading ||
@@ -80,8 +92,14 @@ export function ExportMenu({
         (!!actions.publishing && (editing || report?.busy)),
     },
     {
-      label: actions.publishing ? `发布当前视图 HTML 到${actions.publishing.name}` : '导出当前视图',
-      hint: editing ? '请先保存或取消编辑' : 'HTML · 保留当前筛选和图形',
+      label: actions.publishing
+        ? t('marivo.presentation.publish-current-view-html-to-value', {
+            p0: actions.publishing.name,
+          })
+        : t('marivo.presentation.export-current-view'),
+      hint: editing
+        ? t('marivo.presentation.save-or-cancel-edits-first')
+        : t('marivo.presentation.html-keep-current-filters-and-charts'),
       run: onExport,
       disabled: editing || actions.downloading || actions.publishingUnavailable,
     },
@@ -126,8 +144,8 @@ export function ExportMenu({
         ref={trigger}
         type="button"
         className="pr-icon-button"
-        aria-label={label}
-        title={label}
+        aria-label={t(label)}
+        title={t(label)}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={actions.disabled}
@@ -139,15 +157,15 @@ export function ExportMenu({
         {report ? <MoreIcon /> : <ExportIcon />}
       </button>
       {open && (
-        <div className="pr-cell-menu-popup" role="menu" aria-label={label}>
+        <div className="pr-cell-menu-popup" role="menu" aria-label={t(label)}>
           {entries.map((entry, index) => (
             <button
-              key={entry.label}
+              key={t(entry.label)}
               className={report && index === 3 ? 'pr-menu-divider' : undefined}
               type="button"
               role="menuitem"
               tabIndex={-1}
-              aria-label={entry.label}
+              aria-label={t(entry.label)}
               aria-disabled={entry.disabled || actions.disabled || undefined}
               onClick={() => {
                 if (entry.disabled || actions.disabled) return
@@ -156,7 +174,7 @@ export function ExportMenu({
                 entry.run()
               }}
             >
-              {entry.label}
+              {t(entry.label)}
               {entry.hint && <small>{entry.hint}</small>}
             </button>
           ))}

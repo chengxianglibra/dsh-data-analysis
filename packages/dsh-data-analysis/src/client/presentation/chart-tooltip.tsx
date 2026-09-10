@@ -1,8 +1,10 @@
 import { chartColumns } from '../../presentation/contracts/charts.ts'
-import type { DocumentDataset } from '../../presentation/contracts/types.ts'
+import type { DocumentDataset, PresentationLocale } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
 import { type ChartBlock, columnIndex, valueWithUnit } from './model.ts'
 
 export function exactChartDescription(
+  locale: PresentationLocale,
   dataset: DocumentDataset,
   block: ChartBlock,
   rowIndex: number,
@@ -16,7 +18,7 @@ export function exactChartDescription(
       return {
         id,
         label: dataset.data.columns[index]!.label,
-        value: valueWithUnit(row[index]!, dataset.data.columns[index]!),
+        value: valueWithUnit(locale, row[index]!, dataset.data.columns[index]!),
       }
     })
 }
@@ -32,15 +34,17 @@ export function ExactTooltip({
   rowIndex: number
   visible?: ReadonlySet<string>
 }) {
+  const t = useCopy()
+
   if (!dataset.data.rows[rowIndex]) return null
-  const fields = exactChartDescription(dataset, block, rowIndex, visible)
+  const fields = exactChartDescription(t.locale, dataset, block, rowIndex, visible)
   return (
     <div className="pr-tooltip" data-chart-tooltip="true" data-source-row-index={rowIndex}>
       <strong>{fields[0]?.value}</strong>
       <dl>
         {fields.slice(1).map((field) => (
           <div key={field.id}>
-            <dt>{field.label}</dt>
+            <dt>{t(field.label)}</dt>
             <dd>{field.value}</dd>
           </div>
         ))}

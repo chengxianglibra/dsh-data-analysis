@@ -15,7 +15,7 @@ export function appendPresentationContext(
   try {
     owner = ownedInput(host, sessionId, workspaceId)
   } catch {
-    throw new Error('报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。')
+    throw new Error('marivo.presentation.the-report-s-session-or-workspace-changed-or-is')
   }
   const { actx, input } = owner
   const snapshot = input.state.getSnapshot()
@@ -24,5 +24,6 @@ export function appendPresentationContext(
     reference,
     span: inputEnd(snapshot),
   })
-  if (applied !== true) throw new Error('会话草稿已变化或正在提交，请稍后重试。')
+  if (applied !== true)
+    throw new Error('marivo.presentation.the-session-draft-changed-or-is-being-submitted-retry')
 }

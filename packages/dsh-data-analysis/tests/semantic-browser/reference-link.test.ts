@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { translator } from './../../src/client/i18n/copy.ts'
 import type { SemanticRef } from '../../src/semantic-reference/contracts.ts'
 
 let directory: string
@@ -20,7 +21,10 @@ before(async () => {
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
+const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
 import { FieldValue } from './src/client/semantic-browser/reference-link.tsx';
 import { refKey } from './src/semantic-reference/contracts.ts';
 export function render(value, refs, available = refs) {
@@ -59,7 +63,7 @@ test('field references preserve mapping labels, repeated refs and exact identiti
 
 test('unavailable references are disabled and untyped text stays text', () => {
   assert.match(render('entity:sales.orders', [ref], []), /disabled=""/)
-  assert.match(render('entity:sales.orders', [ref], []), /当前目录未包含/)
+  assert.match(translator('zh-CN')(render('entity:sales.orders', [ref], [])), /当前目录未包含/)
   assert.equal(render('entity:sales.orders', []), 'entity:sales.orders')
   assert.equal(
     render('<script>entity:sales.orders</script>', []),

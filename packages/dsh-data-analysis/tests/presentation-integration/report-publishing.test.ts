@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { registerPublishingCredentials } from '../../src/report-publishing/adapters.ts'
 import { resolvePublishingConfig } from '../../src/report-publishing/config.ts'
 import {
@@ -149,7 +150,10 @@ test('publication binds saved Build, reads credentials per operation, and isolat
     signal(),
     '<!doctype html><html lang="zh-CN"><head></head><body>filtered</body></html>',
   )
-  assert.match(first.key, /^analysis\/分析空间\/销售-月报\/[a-f0-9]{32}\/index\.html$/)
+  assert.match(
+    translator('zh-CN')(first.key),
+    /^analysis\/分析空间\/销售-月报\/[a-f0-9]{32}\/index\.html$/,
+  )
   assert.equal(decodeURI(first.url), `https://reports.example.test/base/${first.key}`)
   assert.notEqual(view.url, first.url)
   assert.equal(reads.at(-1), 'presentation.json')

@@ -3,6 +3,8 @@
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCopy } from './../i18n/context.tsx'
+import { installCopy, localized } from '../i18n/host.tsx'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { appendPresentationContext } from './ask-dsh.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from './catalog.tsx'
@@ -25,7 +27,9 @@ export const deliveryStyles = `
 `
 
 export function PresentationCards({ matched, sessionId, workspaces, model }) {
-  const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
+  const t = useCopy()
+
+  const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot)
   // The runtime framework supplies sessionId independently of event data.
   const deliveries = useMemo(
     () => matched.filter((delivery) => delivery.dshSessionId === sessionId),
@@ -59,25 +63,29 @@ export function PresentationCards({ matched, sessionId, workspaces, model }) {
                 type="button"
                 onClick={() => void model.show(delivery, sessionId, workspaceId)}
               >
-                打开分析
+                {t('marivo.presentation.open-analysis')}
               </button>
               <button
                 type="button"
                 disabled={selected && state.downloading}
                 onClick={() => void model.download(delivery, sessionId, workspaceId)}
               >
-                {selected && state.downloading ? '正在下载…' : '下载 HTML'}
+                {selected && state.downloading
+                  ? t('marivo.presentation.downloading')
+                  : t('marivo.presentation.download-html')}
               </button>
-              <span className="pd-muted">保存的数据与来源快照 · 可离线阅读</span>
+              <span className="pd-muted">
+                {t('marivo.presentation.saved-data-and-source-snapshots-available-offline')}
+              </span>
             </div>
             {selected && state.downloadError && (
               <p role="alert" className="pd-error">
-                {state.downloadError}
+                {t(state.downloadError)}
               </p>
             )}
             {selected && state.notice && (
               <p role="status" className="pd-muted">
-                {state.notice}
+                {t(state.notice)}
               </p>
             )}
           </section>
@@ -99,7 +107,9 @@ export function PresentationOverlay({
   onOpenSession,
   workspaces,
 }) {
-  const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
+  const t = useCopy()
+
+  const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot)
   const library = useSyncExternalStore(
     catalog?.subscribe ?? (() => () => {}),
     catalog?.getSnapshot ?? (() => undefined),
@@ -114,7 +124,11 @@ export function PresentationOverlay({
   }, [state.document, state.open])
   const closeReader = () => {
     if (state.saving) return
-    if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并关闭报告？')) return
+    if (
+      model.dirty &&
+      !window.confirm(t('marivo.presentation.there-are-unsaved-edits-discard-them-and-close-the'))
+    )
+      return
     model.close()
     catalog?.close()
   }
@@ -188,7 +202,11 @@ export function PresentationOverlay({
     <dialog
       ref={dialog}
       className="pd-dialog"
-      aria-label={state.open ? '分析快照' : 'Workspace 报告'}
+      aria-label={
+        state.open
+          ? t('marivo.presentation.analysis-snapshot')
+          : t('marivo.presentation.workspace-reports')
+      }
       onCancel={(event) => {
         event.preventDefault()
         closeReader()
@@ -198,20 +216,22 @@ export function PresentationOverlay({
       <header className={`pd-toolbar${!state.open && library?.open ? ' pd-catalog-toolbar' : ''}`}>
         <strong>
           {state.open
-            ? (state.resolvedReceipt?.title ?? delivery?.receipt.title ?? '正在打开报告…')
-            : 'Workspace 报告'}
+            ? (state.resolvedReceipt?.title ??
+              delivery?.receipt.title ??
+              t('marivo.presentation.opening-report'))
+            : t('marivo.presentation.workspace-reports')}
         </strong>
         <div className="pd-actions">
           {!state.open && library?.open && (
             <button type="button" disabled={library.loading} onClick={() => void catalog.refresh()}>
-              刷新
+              {t('marivo.presentation.refresh')}
             </button>
           )}
           {!state.open && library?.open && workspaces && (
             <label>
               Workspace{' '}
               <select
-                aria-label="选择报告 Workspace"
+                aria-label={t('marivo.presentation.select-report-workspace')}
                 value={library.workspaceId}
                 onChange={(e) => catalog.show(e.target.value)}
               >
@@ -228,21 +248,27 @@ export function PresentationOverlay({
               type="button"
               disabled={state.saving}
               onClick={() => {
-                if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并返回列表？')) return
+                if (
+                  model.dirty &&
+                  !window.confirm(
+                    t('marivo.presentation.there-are-unsaved-edits-discard-them-and-return-to'),
+                  )
+                )
+                  return
                 model.close()
                 void catalog.refresh()
               }}
             >
-              返回报告列表
+              {t('marivo.presentation.back-to-reports')}
             </button>
           )}
           <button
             type="button"
-            aria-label="关闭分析快照"
+            aria-label={t('marivo.presentation.close-analysis-snapshot')}
             disabled={state.saving}
             onClick={closeReader}
           >
-            关闭
+            {t('marivo.presentation.close')}
           </button>
         </div>
       </header>
@@ -258,7 +284,7 @@ export function PresentationOverlay({
         <div
           role="toolbar"
           className="pd-actions pd-status pr-interactive"
-          aria-label="报告编辑操作"
+          aria-label={t('marivo.presentation.report-editing-actions')}
         >
           {state.editing ? (
             <>
@@ -267,34 +293,44 @@ export function PresentationOverlay({
                 disabled={state.saving || !state.editing.undo.length}
                 onClick={() => model.undoEdit()}
               >
-                撤销
+                {t('marivo.presentation.undo')}
               </button>
               <button
                 type="button"
                 disabled={state.saving || !state.editing.redo.length}
                 onClick={() => model.redoEdit()}
               >
-                重做
+                {t('marivo.presentation.redo')}
               </button>
               <button type="button" disabled={state.saving} onClick={() => void model.saveEdit()}>
-                {state.saving ? '正在保存…' : '保存编辑'}
+                {state.saving
+                  ? t('marivo.presentation.saving')
+                  : t('marivo.presentation.save-edits')}
               </button>
               <button type="button" disabled={state.saving} onClick={() => model.cancelEdit()}>
-                取消编辑
+                {t('marivo.presentation.cancel-edits')}
               </button>
-              <span className="pd-muted">{model.dirty ? '有未保存的编辑' : '编辑模式'}</span>
+              <span className="pd-muted">
+                {model.dirty
+                  ? t('marivo.presentation.unsaved-edits')
+                  : t('marivo.presentation.edit-mode')}
+              </span>
             </>
           ) : (
             <>
               {!state.historical && (
                 <button type="button" onClick={() => model.beginEdit()}>
-                  编辑报告
+                  {t('marivo.presentation.edit-report')}
                 </button>
               )}
-              {state.historical && <span className="pd-muted">正在查看历史版本 · 只读</span>}
+              {state.historical && (
+                <span className="pd-muted">
+                  {t('marivo.presentation.viewing-a-historical-version-read-only')}
+                </span>
+              )}
               {state.historical && (
                 <button type="button" onClick={() => void model.selectVersion()}>
-                  返回当前版本
+                  {t('marivo.presentation.return-to-current-version')}
                 </button>
               )}
             </>
@@ -305,44 +341,46 @@ export function PresentationOverlay({
             aria-expanded={!!state.historyOpen}
             onClick={() => void model.toggleHistory()}
           >
-            {state.historyOpen ? '收起历史' : '历史版本'}
+            {state.historyOpen
+              ? t('marivo.presentation.collapse-history')
+              : t('marivo.presentation.history')}
           </button>
         </div>
       )}
       {state.open && state.editError && (
         <p className="pd-status pd-error" role="alert">
-          {state.editError}
+          {t(state.editError)}
         </p>
       )}
       {askError && (
         <p className="pd-status pd-error" role="alert">
-          {askError}
+          {t(askError)}
         </p>
       )}
       {state.loading && (
         <p className="pd-status" role="status">
-          正在读取已保存的分析快照…
+          {t('marivo.presentation.loading-the-saved-analysis-snapshot')}
         </p>
       )}
       {state.open && state.error && (
         <p className="pd-status pd-error" role="alert">
-          {state.error}
+          {t(state.error)}
         </p>
       )}
       {state.open && state.downloadError && state.downloadError !== state.error && (
         <p className="pd-status pd-error" role="alert">
-          {state.downloadError}
+          {t(state.downloadError)}
         </p>
       )}
       {state.open && state.notice && (
         <p className="pd-status pd-muted" role="status">
-          {state.notice}
+          {t(state.notice)}
         </p>
       )}
       {state.open && state.publicationUrl && (
         <p>
           <a href={state.publicationUrl} target="_blank" rel="noopener noreferrer">
-            打开已发布报告
+            {t('marivo.presentation.open-published-report')}
           </a>
         </p>
       )}
@@ -378,7 +416,7 @@ export function PresentationOverlay({
                       setAskError('')
                       const current = model.getSnapshot()
                       if (current.editing || current.saving) {
-                        setAskError('请先保存或取消编辑')
+                        setAskError('marivo.presentation.save-or-cancel-edits-first')
                         return
                       }
                       if (
@@ -391,7 +429,7 @@ export function PresentationOverlay({
                         workspaceId !== current.document?.workspaceId
                       ) {
                         setAskError(
-                          '报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。',
+                          t('marivo.presentation.the-report-s-session-or-workspace-changed-or-is'),
                         )
                         return
                       }
@@ -402,7 +440,9 @@ export function PresentationOverlay({
                         setAskError(
                           error instanceof Error
                             ? error.message
-                            : '无法写入 DSH 输入草稿，请稍后重试。',
+                            : t(
+                                'marivo.presentation.cannot-write-to-the-dsh-input-draft-retry-later',
+                              ),
                         )
                       }
                     }
@@ -435,6 +475,7 @@ export function PresentationOverlay({
 }
 
 export function installPresentation(ctx, rpc, openSemanticObject, options = {}) {
+  installCopy(ctx)
   installPresentationReferenceSource(ctx)
   const model = new PresentationDeliveryModel(rpc)
   const catalog = new ReportCatalogModel(rpc)
@@ -443,13 +484,20 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
   if (options.entries !== false)
     ctx.slots.inject('conversation.session.header.actions', () =>
       ctx.slots.register(
-        { name: 'conversation.session.header.actions', id: 'marivo-reports', order: 115 },
-        function ReportsEntry({ sessionId, useWorkspaces }) {
+        {
+          locale: 'marivo.navigation',
+          name: 'conversation.session.header.actions',
+          id: 'marivo-reports',
+          order: 115,
+        },
+        localized(ctx, function ReportsEntry({ sessionId, useWorkspaces }) {
+          const t = useCopy()
+
           const items = useWorkspaces((s) => s.items)
           const selected = items.find((w) => w.sessionIds.includes(sessionId))?.workspaceId
           return (
             <WorkspaceHeaderAction
-              label="报告"
+              label={t('marivo.presentation.reports')}
               icon="reports"
               disabled={!selected}
               onClick={() => {
@@ -458,7 +506,7 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
               }}
             />
           )
-        },
+        }),
       ),
     )
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: presentation reader lifecycle')
@@ -466,21 +514,28 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
   if (options.cards !== false)
     ctx.slots.inject('conversation.chat.node', () => {
       const disposeCards = ctx.slots.register(
-        { name: 'conversation.chat.node', key: PRESENTATION_TURN_DATA_KEY },
-        function Cards({
-          node,
-          sessionId,
-          useWorkspaces,
-        }: ChatNodeViewProps<typeof PRESENTATION_TURN_DATA_KEY>) {
-          return (
-            <PresentationCards
-              matched={presentationsForNode(node, sessionId)}
-              sessionId={sessionId}
-              workspaces={useWorkspaces((state) => state.items)}
-              model={model}
-            />
-          )
+        {
+          locale: 'marivo.navigation',
+          name: 'conversation.chat.node',
+          key: PRESENTATION_TURN_DATA_KEY,
         },
+        localized(
+          ctx,
+          function Cards({
+            node,
+            sessionId,
+            useWorkspaces,
+          }: ChatNodeViewProps<typeof PRESENTATION_TURN_DATA_KEY>) {
+            return (
+              <PresentationCards
+                matched={presentationsForNode(node, sessionId)}
+                sessionId={sessionId}
+                workspaces={useWorkspaces((state) => state.items)}
+                model={model}
+              />
+            )
+          },
+        ),
       )
       // A new Definition can immediately replay existing events. Its keyed renderer
       // must already exist, including when the Host declares this slot after us.
@@ -494,8 +549,10 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
     })
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
-      { name: 'shell.overlay', id: 'marivo-presentation' },
-      function Overlay({ useSessions, useWorkspaces }) {
+      { locale: 'marivo.navigation', name: 'shell.overlay', id: 'marivo-presentation' },
+      localized(ctx, function Overlay({ useSessions, useWorkspaces }) {
+        const t = useCopy()
+
         const sessionId = useSessions((state) => state.current) ?? ''
         const workspaces = useWorkspaces((state) => state.items)
         const sessions = useSessions((state) => state.byId)
@@ -510,7 +567,12 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
             workspaces={workspaces}
             sessions={sessions}
             onOpenSession={(id) => {
-              if (model.dirty && !window.confirm('存在未保存的编辑。放弃编辑并打开来源会话？'))
+              if (
+                model.dirty &&
+                !window.confirm(
+                  t('marivo.presentation.there-are-unsaved-edits-discard-them-and-open-the'),
+                )
+              )
                 return
               model.close()
               catalog.close()
@@ -525,7 +587,7 @@ export function installPresentation(ctx, rpc, openSemanticObject, options = {}) 
             }
           />
         )
-      },
+      }),
     ),
   )
   return model

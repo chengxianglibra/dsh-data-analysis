@@ -33,7 +33,7 @@ function parseReference(ref: string): Envelope {
     !value.context ||
     new TextEncoder().encode(value.context).length > PRESENTATION_CONTEXT_BYTES
   )
-    throw new Error('报告 Cell 引用无效，请从报告重新添加。')
+    throw new Error('marivo.presentation.invalid-report-cell-reference-add-it-again-from-the')
   return value
 }
 
@@ -71,7 +71,7 @@ export function createPresentationReferenceSource(
       return []
     },
     onPick() {
-      throw new Error('请从报告 Cell 菜单添加引用。')
+      throw new Error('marivo.presentation.add-references-from-a-report-cell-menu')
     },
     codec: {
       clipboardText(ref) {

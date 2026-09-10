@@ -1,19 +1,25 @@
 // @ts-nocheck -- Host hooks and Session navigation are supplied by the module table.
+
 import { useSyncExternalStore } from 'react'
+import { useCopy } from './../i18n/context.tsx'
 import { visibleReports } from './catalog-model.ts'
 
-export function publicationTime(value: string | null) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '保存时间未记录'
+export function publicationTime(value: string | null, locale: string) {
+  return value
+    ? new Date(value).toLocaleString(locale, { hour12: false })
+    : 'marivo.presentation.save-time-not-recorded'
 }
 export function ReportSource({ version, sessions, onOpenSession, showKind = true }) {
+  const t = useCopy()
+
   const id = version.source?.sessionId
   const session = id && sessions?.[id]
   return (
     <span className="pd-source">
       {showKind && version.source
         ? version.source.kind === 'agent'
-          ? 'Agent 更新 · '
-          : '阅读器编辑 · '
+          ? t('marivo.presentation.agent-update')
+          : t('marivo.presentation.reader-edit')
         : ''}
       {session && onOpenSession ? (
         <button
@@ -25,16 +31,18 @@ export function ReportSource({ version, sessions, onOpenSession, showKind = true
           {session.displayTitle}
         </button>
       ) : id ? (
-        '来源会话不可用'
+        t('marivo.presentation.source-session-unavailable')
       ) : version.source?.kind === 'reader' ? (
-        'Workspace 内保存'
+        t('marivo.presentation.saved-in-workspace')
       ) : (
-        '来源未记录'
+        t('marivo.presentation.source-not-recorded')
       )}
     </span>
   )
 }
 export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
+  const t = useCopy()
+
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const reports = visibleReports(state)
   return (
@@ -42,35 +50,44 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
       <div className="pd-catalog-controls">
         <input
           type="search"
-          aria-label="按标题搜索"
+          aria-label={t('marivo.presentation.search-by-title')}
           value={state.query}
-          placeholder="搜索此 Workspace 的报告"
+          placeholder={t('marivo.presentation.search-reports-in-this-workspace')}
           onChange={(e) => model.patch({ query: e.target.value })}
         />
       </div>
-      {state.loading && <p role="status">正在读取报告列表…</p>}
+      {state.loading && <p role="status">{t('marivo.presentation.loading-reports')}</p>}
       {state.error && (
         <p role="alert" className="pd-error">
-          {state.error}
+          {t(state.error)}
         </p>
       )}
       {!!state.catalog?.unavailable && (
-        <p role="status">{state.catalog.unavailable} 份报告的记录不可读，未列入下方列表。</p>
+        <p role="status">
+          {state.catalog.unavailable}{' '}
+          {t('marivo.presentation.report-records-could-not-be-read-and-are-omitted')}
+        </p>
       )}
       {!state.loading && !state.error && reports.length === 0 && (
         <p className="pd-empty">
-          {state.query ? '没有匹配标题的报告。' : '此 Workspace 暂无已发布的报告。'}
+          {state.query
+            ? t('marivo.presentation.no-reports-match-this-title')
+            : t('marivo.presentation.this-workspace-has-no-published-reports')}
         </p>
       )}
       {reports.length > 0 && (
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: The scroll region needs keyboard access to all three columns in narrow panes.
-        <section className="pd-report-scroll" aria-label="报告列表" tabIndex={0}>
+        <section
+          className="pd-report-scroll"
+          aria-label={t('marivo.presentation.report-list')}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: The scroll region needs keyboard access to all three columns in narrow panes.
+          tabIndex={0}
+        >
           <table className="pd-report-table">
             <thead>
               <tr>
-                <th scope="col">报告标题</th>
-                <th scope="col">生成对话</th>
-                <th scope="col">更新时间</th>
+                <th scope="col">{t('marivo.presentation.report-title')}</th>
+                <th scope="col">{t('marivo.presentation.source-conversation')}</th>
+                <th scope="col">{t('marivo.presentation.updated')}</th>
               </tr>
             </thead>
             <tbody>
@@ -96,7 +113,7 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
                       showKind={false}
                     />
                   </td>
-                  <td>{publicationTime(version.publishedAt)}</td>
+                  <td>{t(publicationTime(version.publishedAt, t.locale))}</td>
                 </tr>
               ))}
             </tbody>
@@ -107,17 +124,23 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
   )
 }
 export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
+  const t = useCopy()
+
   return (
-    <aside className="pd-history" aria-label="历史版本">
-      <h3>历史版本</h3>
-      {state.historyLoading && <p role="status">正在读取历史…</p>}
+    <aside className="pd-history" aria-label={t('marivo.presentation.history')}>
+      <h3>{t('marivo.presentation.history')}</h3>
+      {state.historyLoading && <p role="status">{t('marivo.presentation.loading-history')}</p>}
       {state.historyError && (
         <p role="alert" className="pd-error">
-          {state.historyError}
+          {t(state.historyError)}
         </p>
       )}
       {state.history?.legacyHistoryUnavailable && (
-        <p className="pd-muted">早期版本缺少发布记录，仅展示已确认的版本。</p>
+        <p className="pd-muted">
+          {t(
+            'marivo.presentation.older-versions-have-no-publication-records-only-confirmed-versions',
+          )}
+        </p>
       )}
       <ol>
         {state.history?.versions.map((version) => (
@@ -129,9 +152,11 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
               disabled={state.loading || !!state.editing || state.saving}
               onClick={() => void model.selectVersion(version.receipt.buildId)}
             >
-              <strong>{publicationTime(version.publishedAt)}</strong>
+              <strong>{t(publicationTime(version.publishedAt, t.locale))}</strong>
               <span>
-                {version.receipt.buildId === state.history.currentBuildId ? '当前版本' : '历史版本'}{' '}
+                {version.receipt.buildId === state.history.currentBuildId
+                  ? t('marivo.presentation.current-version')
+                  : t('marivo.presentation.history')}{' '}
                 · {version.receipt.buildId.slice(0, 8)}
               </span>
               <span>{version.receipt.title}</span>

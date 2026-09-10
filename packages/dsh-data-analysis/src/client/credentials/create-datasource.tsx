@@ -1,5 +1,8 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
+
 import { useEffect, useId, useRef, useState } from 'react'
+import { useCopy } from './../i18n/context.tsx'
+import { errorMessage, message } from './../i18n/copy.ts'
 import { credentialReference, prepareCredentials } from './credential-draft.ts'
 import { creationFieldValues } from './defaults.ts'
 import { datasourceDescription } from './descriptions.ts'
@@ -7,10 +10,10 @@ import { datasourceDescription } from './descriptions.ts'
 function credentialLabel(field) {
   return (
     {
-      user_env: '用户名',
-      password_env: '密码',
-      http_bearer_token_env: '访问令牌',
-      http_headers_env: 'Header 凭证值',
+      user_env: 'marivo.credentials.username',
+      password_env: 'marivo.credentials.password',
+      http_bearer_token_env: 'marivo.credentials.access-token',
+      http_headers_env: 'marivo.credentials.header-credential-value',
     }[field] ?? field.replace(/_env$/, '')
   )
 }
@@ -31,6 +34,8 @@ function credentialRows(schema, backend, values = {}) {
 }
 
 export function CreateDatasource({ model, workspaceId, close, name, requestId }) {
+  const t = useCopy()
+
   const formId = useId()
   const active = useRef(false)
   const [schema, setSchema] = useState(null)
@@ -62,7 +67,8 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
         if (!configuration) setValues(creationFieldValues(value, value.backends[0]?.name ?? ''))
         if (configuration) {
           const fields = value.backends.find((item) => item.name === configuration.backend)?.fields
-          if (!fields) throw new Error('当前 Runtime 无法完整编辑该数据源。')
+          if (!fields)
+            throw new Error('marivo.credentials.this-runtime-cannot-fully-edit-this-datasource')
           setValues(
             Object.fromEntries(
               fields
@@ -81,7 +87,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
         }
       })
       .catch((error) => {
-        if (!controller.signal.aborted) setError(error.message)
+        if (!controller.signal.aborted) setError(errorMessage(error))
       })
     return () => {
       active.current = false
@@ -117,7 +123,9 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
       changes = prepared.changes
     } catch (error) {
       setError(
-        error instanceof SyntaxError ? '请检查数字、布尔值或 JSON 字段的格式。' : error.message,
+        error instanceof SyntaxError
+          ? 'marivo.credentials.check-the-format-of-number-boolean-and-json-fields'
+          : errorMessage(error),
       )
       return
     }
@@ -135,30 +143,47 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
       )
       if (active.current) close()
     } catch (error) {
-      if (active.current) setError(`${error.message} 本次凭证输入已清空，请重新填写后提交。`)
+      if (active.current)
+        setError(
+          message('marivo.credentials.value-credential-inputs-have-been-cleared-enter-them-again', {
+            p0: errorMessage(error),
+          }),
+        )
     } finally {
       for (const ref of Object.keys(changes)) delete changes[ref]
       if (active.current) setBusy(false)
     }
   }
   return (
-    <form className="mc-form" aria-label={name ? '编辑数据源' : '新增数据源'} onSubmit={submit}>
+    <form
+      className="mc-form"
+      aria-label={
+        name ? t('marivo.credentials.edit-datasource') : t('marivo.credentials.add-datasource')
+      }
+      onSubmit={submit}
+    >
       <div className="mc-form-body">
         <div className="mc-detail-heading">
-          <h3>{name ? '编辑数据源' : '新增数据源'}</h3>
+          <h3>
+            {name
+              ? t('marivo.credentials.edit-datasource')
+              : t('marivo.credentials.add-datasource')}
+          </h3>
         </div>
         {error && (
           <p role="alert" className="mc-result" data-tone="error">
-            {error}
+            {t(error)}
           </p>
         )}
-        {!schema && !error && <p role="status">正在读取数据源配置字段…</p>}
+        {!schema && !error && (
+          <p role="status">{t('marivo.credentials.loading-datasource-configuration-fields')}</p>
+        )}
         {schema && (
           <fieldset className="mc-field" disabled={busy}>
             <label className="mc-secret-input">
-              引擎
+              {t('marivo.credentials.engine')}
               <select
-                aria-label="引擎"
+                aria-label={t('marivo.credentials.engine')}
                 disabled={!!name}
                 value={backend}
                 onChange={(event) => {
@@ -190,7 +215,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                     </span>
                     {field.description && (
                       <span className="mc-input-description">
-                        {datasourceDescription(field.description)}
+                        {t(datasourceDescription(field.description))}
                       </span>
                     )}
                   </span>
@@ -204,7 +229,8 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                       }
                     >
                       <option value="">
-                        默认{field.default == null ? '' : ` (${field.default})`}
+                        {t('marivo.credentials.default')}
+                        {field.default == null ? '' : ` (${field.default})`}
                       </option>
                       <option value="true">true</option>
                       <option value="false">false</option>
@@ -233,11 +259,16 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                 </label>
               ))}
             {credentialFields.length > 0 && (
-              <section className="mc-inline-credentials" aria-label="连接凭证">
-                <h4>连接凭证</h4>
+              <section
+                className="mc-inline-credentials"
+                aria-label={t('marivo.credentials.connection-credentials')}
+              >
+                <h4>{t('marivo.credentials.connection-credentials')}</h4>
                 <p className="mc-note">
-                  直接填写凭证值，由 Harness 保存。引用名自动生成，可展开确认或修改。
-                  {name ? '留空沿用；填写新值默认使用新的引用。' : ''}
+                  {t(
+                    'marivo.credentials.enter-credential-values-directly-for-harness-to-save-references',
+                  )}
+                  {name ? t('marivo.credentials.leave-blank-to-keep-the-current-value-a-new') : ''}
                 </p>
                 {credentialFields.map((field) => (
                   <div key={field.name} className="mc-credential-group">
@@ -250,9 +281,9 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                           <div key={row.id} className="mc-credential-entry">
                             {row.key !== undefined && (
                               <label className="mc-secret-input">
-                                Header 名称
+                                {t('marivo.credentials.header-name')}
                                 <input
-                                  aria-label="Header 名称"
+                                  aria-label={t('marivo.credentials.header-name')}
                                   value={row.key}
                                   onChange={(event) =>
                                     updateCredential(row.id, { key: event.target.value })
@@ -263,24 +294,32 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                             <label className="mc-secret-input">
                               <span className="mc-input-heading">
                                 <span className="mc-input-name">
-                                  {label}
+                                  {t(label)}
                                   {field.required ? ' *' : ''}
                                 </span>
                                 <span className="mc-input-description">
                                   {row.existing
-                                    ? '已设置引用，留空沿用。'
-                                    : '可直接填写，无需先创建凭证。'}
+                                    ? t(
+                                        'marivo.credentials.a-reference-is-configured-leave-blank-to-keep-it',
+                                      )
+                                    : t(
+                                        'marivo.credentials.enter-the-value-directly-no-need-to-create-a',
+                                      )}
                                 </span>
                               </span>
                               <input
-                                aria-label={label}
+                                aria-label={t(label)}
                                 type="password"
                                 autoComplete="new-password"
                                 maxLength={65536}
                                 required={field.required && !reference}
                                 value={row.value}
                                 placeholder={
-                                  row.existing ? '留空沿用，填写新值以替换' : '填写凭证值'
+                                  row.existing
+                                    ? t(
+                                        'marivo.credentials.leave-blank-to-keep-enter-a-new-value-to',
+                                      )
+                                    : t('marivo.credentials.enter-credential-value')
                                 }
                                 onChange={(event) =>
                                   updateCredential(row.id, { value: event.target.value })
@@ -288,28 +327,34 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                               />
                             </label>
                             <details className="mc-reference-options">
-                              <summary>凭证引用名 · 确认或修改</summary>
+                              <summary>
+                                {t('marivo.credentials.credential-reference-review-or-change')}
+                              </summary>
                               <label className="mc-secret-input">
                                 {field.name}
                                 <input
                                   aria-label={field.name}
                                   autoComplete="off"
                                   value={reference}
-                                  placeholder="填写凭证值后自动生成"
+                                  placeholder={t(
+                                    'marivo.credentials.generated-after-entering-a-credential-value',
+                                  )}
                                   onChange={(event) =>
                                     updateCredential(row.id, { reference: event.target.value })
                                   }
                                 />
                               </label>
                               <p className="mc-note">
-                                可填写已有引用并将凭证值留空，以复用已保存的凭证。已有凭证的值不会被自动覆盖。
+                                {t(
+                                  'marivo.credentials.to-reuse-a-saved-credential-enter-its-reference-and',
+                                )}
                               </p>
                               {row.reference !== undefined && (
                                 <button
                                   type="button"
                                   onClick={() => updateCredential(row.id, { reference: undefined })}
                                 >
-                                  恢复自动引用名
+                                  {t('marivo.credentials.restore-automatic-reference')}
                                 </button>
                               )}
                             </details>
@@ -323,7 +368,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                                   )
                                 }
                               >
-                                移除 Header
+                                {t('marivo.credentials.remove-header')}
                               </button>
                             )}
                           </div>
@@ -339,7 +384,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                           ])
                         }
                       >
-                        添加 Header 凭证
+                        {t('marivo.credentials.add-header-credential')}
                       </button>
                     )}
                   </div>
@@ -351,23 +396,23 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
       </div>
       <p className="mc-note">
         {requestId
-          ? '保存配置和凭证后测试连接，成功后助手继续分析。测试失败可修正重试，已保存的内容不会回滚。'
+          ? t('marivo.credentials.save-configuration-and-credentials-then-test-the-connection-the')
           : name
-            ? '保存后需要重新测试连接。名称和引擎保持不变。'
+            ? t('marivo.credentials.test-the-connection-again-after-saving-name-and-engine')
             : ''}
       </p>
       <div className="mc-form-footer">
         <button className="mc-primary" type="submit" disabled={!backend || busy}>
           {busy
-            ? '正在保存或验证…'
+            ? t('marivo.credentials.saving-or-validating')
             : requestId
-              ? '保存并测试，成功后继续'
+              ? t('marivo.credentials.save-and-test-then-continue')
               : name
-                ? '保存配置'
-                : '确认新增数据源'}
+                ? t('marivo.credentials.save-configuration')
+                : t('marivo.credentials.confirm-new-datasource')}
         </button>
         <button type="button" onClick={close} disabled={busy}>
-          取消
+          {t('marivo.credentials.cancel')}
         </button>
       </div>
     </form>

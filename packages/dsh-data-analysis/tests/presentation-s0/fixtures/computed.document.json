@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "workspaceId": "s0-validation-workspace",
   "buildId": "s0-computed",
   "title": "S0 computed 精确数值样例",
@@ -256,5 +256,6 @@
       "message": "共 5 行，按展示预算写入前 3 行；图表仅包含已写入行，不代表全量总计。"
     }
   ],
-  "reportId": "report"
+  "reportId": "report",
+  "locale": "zh-CN"
 }

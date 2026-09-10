@@ -8,6 +8,7 @@ import {
   chartTransition,
 } from '../../presentation/contracts/charts.ts'
 import type { DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
+import { useActionCopy } from './../i18n/context.tsx'
 import {
   type ChartExploration,
   changeChartView,
@@ -32,20 +33,20 @@ const barTypes = new Set<ChartType>([
   'horizontalStackedBar100',
 ])
 const requirements: Partial<Record<ChartType, string>> = {
-  sparkline: '需要单一数值系列',
-  stackedArea: '需要同单位数值系列',
-  stackedBar: '需要同单位数值系列',
-  horizontalStackedBar: '需要同单位数值系列',
-  stackedBar100: '需要预计算比例列与分母',
-  horizontalStackedBar100: '需要预计算比例列与分母',
-  histogram: '需要预计算区间边界与频数',
-  boxPlot: '需要预计算五数摘要',
-  scatter: '需要数值 X 与单一 Y 系列',
-  heatmap: '需要同单位数值矩阵',
-  pie: '需要预计算数值与占比',
-  funnel: '需要预计算阶段数值与占比',
-  waterfall: '需要预计算起止值、变化量与步骤角色',
-  leaderboard: '需要预计算排名与数值',
+  sparkline: 'marivo.presentation.requires-one-numeric-series',
+  stackedArea: 'marivo.presentation.requires-numeric-series-with-matching-units',
+  stackedBar: 'marivo.presentation.requires-numeric-series-with-matching-units',
+  horizontalStackedBar: 'marivo.presentation.requires-numeric-series-with-matching-units',
+  stackedBar100: 'marivo.presentation.requires-prepared-proportions-and-denominators',
+  horizontalStackedBar100: 'marivo.presentation.requires-prepared-proportions-and-denominators',
+  histogram: 'marivo.presentation.requires-prepared-bin-boundaries-and-frequencies',
+  boxPlot: 'marivo.presentation.requires-a-prepared-five-number-summary',
+  scatter: 'marivo.presentation.requires-numeric-x-and-one-y-series',
+  heatmap: 'marivo.presentation.requires-a-numeric-matrix-with-matching-units',
+  pie: 'marivo.presentation.requires-prepared-values-and-proportions',
+  funnel: 'marivo.presentation.requires-prepared-stage-values-and-proportions',
+  waterfall: 'marivo.presentation.requires-prepared-start-end-values-changes-and-step-roles',
+  leaderboard: 'marivo.presentation.requires-prepared-ranks-and-values',
 }
 
 /** Native fields keep this page-local editor keyboard accessible without hiding the live chart. */
@@ -64,6 +65,8 @@ export function ChartExplorer({
   onClose: () => void
   restoreFocusTo?: HTMLElement
 }) {
+  const t = useActionCopy()
+
   const close = useRef<HTMLButtonElement>(null)
   const view = state.view
   const transitions = CHART_TYPES.map((type) => ({ type, next: chartTransition(view, type, data) }))
@@ -102,21 +105,21 @@ export function ChartExplorer({
   return (
     <section
       className="pr-chart-explorer pr-interactive"
-      aria-label="探索图表"
+      aria-label={t('marivo.presentation.explore-chart')}
       data-chart-explorer={block.id}
     >
       <header className="pr-explorer-header">
         <div>
-          <h3>探索图表</h3>
+          <h3>{t('marivo.presentation.explore-chart')}</h3>
           <p className="pr-muted">
-            仅当前页面生效；导出当前视图可保留，重新打开完整报告仍为原图。统计值与占比分母由作者提供。
+            {t('marivo.presentation.changes-apply-to-this-view-export-the-current-view')}
           </p>
         </div>
         <button
           ref={close}
           type="button"
           className="pr-icon-button"
-          aria-label="关闭探索图表"
+          aria-label={t('marivo.presentation.close-chart-explorer')}
           onClick={dismiss}
         >
           <CloseIcon />
@@ -125,7 +128,7 @@ export function ChartExplorer({
       <div className="pr-explorer-grid">
         {!!block.preparedViews?.length && (
           <label>
-            已准备视图
+            {t('marivo.presentation.prepared-views')}
             <select
               value={state.preparedViewId ?? ''}
               onChange={(event) => {
@@ -139,17 +142,17 @@ export function ChartExplorer({
                 })
               }}
             >
-              <option value="">作者原图</option>
+              <option value="">{t('marivo.presentation.original-chart')}</option>
               {block.preparedViews?.map((prepared) => (
                 <option key={prepared.id} value={prepared.id}>
-                  {prepared.label}
+                  {t(prepared.label)}
                 </option>
               ))}
             </select>
           </label>
         )}
         <label>
-          图形类型
+          {t('marivo.presentation.chart-type')}
           <select
             value={view.chart}
             onChange={(event) => changeType(event.target.value as ChartType)}
@@ -157,20 +160,24 @@ export function ChartExplorer({
             {transitions.map(({ type, next }) => (
               <option key={type} value={type} disabled={!next}>
                 {CHART_LABELS[type]} ({type})
-                {next ? '' : ` — ${requirements[type] ?? '需要适用的数值字段'}；可切换已准备视图`}
+                {next
+                  ? ''
+                  : t('marivo.presentation.value-try-a-prepared-view', {
+                      p0: requirements[type] ?? 'marivo.presentation.applicable-numeric-fields',
+                    })}
               </option>
             ))}
           </select>
         </label>
         <label>
-          X 字段
+          {t('marivo.presentation.x-field')}
           <select value={view.x} onChange={(event) => update(withChartX(view, event.target.value))}>
             {data.columns.map((column) => {
               const reason = chartViewError(withChartX(view, column.id), data)
               return (
-                <option key={column.id} value={column.id} disabled={!!reason} title={reason}>
+                <option key={column.id} value={column.id} disabled={!!reason} title={t(reason)}>
                   {columnLabel(column)}
-                  {reason ? ' — 不适用' : ''}
+                  {reason ? t('marivo.presentation.not-applicable') : ''}
                 </option>
               )
             })}
@@ -179,28 +186,28 @@ export function ChartExplorer({
         {barTypes.has(view.chart) && (
           <>
             <label>
-              方向
+              {t('marivo.presentation.orientation')}
               <select
                 value={horizontal ? 'horizontal' : 'vertical'}
                 onChange={(event) =>
                   changeType(barType(event.target.value === 'horizontal', currentBarMode))
                 }
               >
-                <option value="vertical">纵向</option>
-                <option value="horizontal">横向</option>
+                <option value="vertical">{t('marivo.presentation.vertical')}</option>
+                <option value="horizontal">{t('marivo.presentation.horizontal')}</option>
               </select>
             </label>
             <label>
-              柱形模式
+              {t('marivo.presentation.bar-mode')}
               <select
                 value={currentBarMode}
                 onChange={(event) => changeType(barType(horizontal, event.target.value))}
               >
                 {(
                   [
-                    ['grouped', '并列'],
-                    ['stacked', '堆叠'],
-                    ['percent', '100% 堆叠'],
+                    ['grouped', t('marivo.presentation.grouped')],
+                    ['stacked', t('marivo.presentation.stacked')],
+                    ['percent', t('marivo.presentation.100-stacked')],
                   ] as const
                 ).map(([mode, label]) => (
                   <option
@@ -208,10 +215,10 @@ export function ChartExplorer({
                     value={mode}
                     disabled={!chartTransition(view, barType(horizontal, mode), data)}
                   >
-                    {label}
+                    {t(label)}
                     {chartTransition(view, barType(horizontal, mode), data)
                       ? ''
-                      : ` — ${requirements[barType(horizontal, mode)] ?? '需要适用的数值字段'}`}
+                      : ` — ${t(requirements[barType(horizontal, mode)] ?? 'marivo.presentation.applicable-numeric-fields')}`}
                   </option>
                 ))}
               </select>
@@ -220,7 +227,7 @@ export function ChartExplorer({
         )}
         {trendTypes.has(view.chart) && (
           <label>
-            数据点
+            {t('marivo.presentation.data-points')}
             <select
               value={view.options?.showPoints ?? 'auto'}
               onChange={(event) =>
@@ -233,15 +240,15 @@ export function ChartExplorer({
                 })
               }
             >
-              <option value="auto">自动</option>
-              <option value="always">显示</option>
-              <option value="never">隐藏</option>
+              <option value="auto">{t('marivo.presentation.auto')}</option>
+              <option value="always">{t('marivo.presentation.show')}</option>
+              <option value="never">{t('marivo.presentation.hide')}</option>
             </select>
           </label>
         )}
       </div>
       <fieldset className="pr-explorer-fields">
-        <legend>数值系列</legend>
+        <legend>{t('marivo.presentation.numeric-series')}</legend>
         {data.columns.filter(numeric).map((column) => {
           const selected = view.y.includes(column.id)
           const single = [
@@ -263,7 +270,7 @@ export function ChartExplorer({
           const reason = chartViewError(next, data)
           return (
             <div key={column.id} className="pr-explorer-series">
-              <label title={reason}>
+              <label title={t(reason)}>
                 <input
                   type="checkbox"
                   checked={selected}
@@ -286,13 +293,14 @@ export function ChartExplorer({
                       })
                     }
                   />
-                  显示 {column.label}
+                  {t('marivo.presentation.show')}
+                  {t(column.label)}
                 </label>
               )}
               {selected && trendTypes.has(view.chart) && (
                 <>
                   <select
-                    aria-label={`${column.label} 线型`}
+                    aria-label={t('marivo.presentation.value-line-style', { p0: column.label })}
                     value={view.options?.series?.[column.id]?.lineStyle ?? ''}
                     onChange={(event) =>
                       update(
@@ -307,13 +315,13 @@ export function ChartExplorer({
                       )
                     }
                   >
-                    <option value="">默认／按角色</option>
-                    <option value="solid">实线</option>
-                    <option value="dashed">虚线</option>
-                    <option value="dotted">点线</option>
+                    <option value="">{t('marivo.presentation.default-by-role')}</option>
+                    <option value="solid">{t('marivo.presentation.solid')}</option>
+                    <option value="dashed">{t('marivo.presentation.dashed')}</option>
+                    <option value="dotted">{t('marivo.presentation.dotted')}</option>
                   </select>
                   <select
-                    aria-label={`${column.label} 角色`}
+                    aria-label={t('marivo.presentation.value-role', { p0: column.label })}
                     value={view.options?.series?.[column.id]?.role ?? ''}
                     onChange={(event) =>
                       update(
@@ -328,13 +336,13 @@ export function ChartExplorer({
                       )
                     }
                   >
-                    <option value="">未声明角色</option>
-                    <option value="actual">实际 actual</option>
-                    <option value="baseline">基线 baseline</option>
-                    <option value="target">目标 target</option>
-                    <option value="forecast">预测 forecast</option>
-                    <option value="plan">计划 plan</option>
-                    <option value="comparison">比较 comparison</option>
+                    <option value="">{t('marivo.presentation.no-declared-role')}</option>
+                    <option value="actual">{t('marivo.presentation.actual')}</option>
+                    <option value="baseline">{t('marivo.presentation.baseline')}</option>
+                    <option value="target">{t('marivo.presentation.target')}</option>
+                    <option value="forecast">{t('marivo.presentation.forecast')}</option>
+                    <option value="plan">{t('marivo.presentation.plan')}</option>
+                    <option value="comparison">{t('marivo.presentation.comparison')}</option>
                   </select>
                 </>
               )}
@@ -344,17 +352,17 @@ export function ChartExplorer({
       </fieldset>
       {view.chart === 'scatter' && (
         <fieldset className="pr-explorer-fields">
-          <legend>散点字段</legend>
+          <legend>{t('marivo.presentation.scatter-fields')}</legend>
           <div className="pr-explorer-grid">
             {(
               [
-                ['size', '点大小'],
-                ['color', '分类颜色'],
-                ['label', '点标签'],
+                ['size', t('marivo.presentation.point-size')],
+                ['color', t('marivo.presentation.category-colors')],
+                ['label', t('marivo.presentation.point-label')],
               ] as const
             ).map(([field, label]) => (
               <label key={field}>
-                {label}
+                {t(label)}
                 <select
                   value={view.bindings?.[field] ?? ''}
                   onChange={(event) => {
@@ -364,7 +372,7 @@ export function ChartExplorer({
                     update({ ...view, bindings })
                   }}
                 >
-                  <option value="">未选择</option>
+                  <option value="">{t('marivo.presentation.not-selected')}</option>
                   {data.columns
                     .filter((column) => field !== 'size' || numeric(column))
                     .map((column) => {
@@ -375,7 +383,7 @@ export function ChartExplorer({
                       return (
                         <option key={column.id} value={column.id} disabled={!!reason}>
                           {columnLabel(column)}
-                          {reason ? ' — 不适用' : ''}
+                          {reason ? t('marivo.presentation.not-applicable') : ''}
                         </option>
                       )
                     })}
@@ -392,7 +400,7 @@ export function ChartExplorer({
             onChange(initialChartExploration(block))
           }}
         >
-          恢复原图
+          {t('marivo.presentation.restore-original-chart')}
         </button>
       </footer>
     </section>

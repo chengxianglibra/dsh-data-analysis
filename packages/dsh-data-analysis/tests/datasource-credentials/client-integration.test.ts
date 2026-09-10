@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { context, fixture } from './fixtures.ts'
 
 test('lost submit response queries the preallocated operation ID; secrets never enter storage or state', async (t) => {
@@ -73,7 +74,7 @@ test('unknown generation or operation is reported as unrecoverable, never as an 
   t.after(() => model.dispose())
   await model.selectWorkspace('workspace')
   await model.start(view, 'test')
-  assert.match(model.getSnapshot().error, /保存可能已经发生/)
+  assert.match(translator('zh-CN')(model.getSnapshot().error), /保存可能已经发生/)
   assert.equal(model.getSnapshot().operation, undefined)
 })
 test('closing the page or switching Workspace ignores late overview replies', async (t) => {
@@ -317,10 +318,13 @@ test('an unrecoverable background operation keeps a scoped warning without leavi
     model.getSnapshot().outcomes[entries[0]!.handle.scope]?.operation?.status,
     'succeeded',
   )
-  assert.match(model.getSnapshot().outcomes[entries[1]!.handle.scope]!.error!, /保存可能已经发生/)
+  assert.match(
+    translator('zh-CN')(model.getSnapshot().outcomes[entries[1]!.handle.scope]!.error!),
+    /保存可能已经发生/,
+  )
   model.select(entries[1]!.handle.scope)
   assert.match(
-    model.getSnapshot().outcomes[model.getSnapshot().selected]!.error!,
+    translator('zh-CN')(model.getSnapshot().outcomes[model.getSnapshot().selected]!.error!),
     /保存可能已经发生/,
   )
 })

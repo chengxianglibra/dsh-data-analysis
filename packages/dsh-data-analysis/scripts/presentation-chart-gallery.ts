@@ -15,7 +15,8 @@ export async function chartGallery() {
     JSON.parse(await readFile(new URL('charts.draft.json', root), 'utf8')),
   )
   const document = parsePresentationDocument({
-    schemaVersion: 2,
+    schemaVersion: 3,
+    locale: 'zh-CN',
     workspaceId: 'chart-gallery-workspace',
     reportId: 'report',
     buildId: 'chart-gallery',

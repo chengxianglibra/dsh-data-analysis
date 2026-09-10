@@ -32,17 +32,23 @@ export function prepareCredentials(name: string, drafts: CredentialDraft[]) {
         ref,
       )
     )
-      throw new Error('凭证引用名只允许字母、数字和下划线，不能以数字开头或使用保留名称。')
+      throw new Error(
+        'marivo.credentials.credential-references-may-contain-only-letters-numbers-and-underscores',
+      )
     if (draft.key !== undefined) {
-      if (!draft.key.trim()) throw new Error('请填写凭证对应的 Header 名称。')
+      if (!draft.key.trim())
+        throw new Error('marivo.credentials.enter-the-header-name-for-this-credential')
       fields[draft.field] ??= Object.create(null)
       const mapping = fields[draft.field] as Record<string, string>
-      if (Object.hasOwn(mapping, draft.key)) throw new Error('Header 名称不能重复。')
+      if (Object.hasOwn(mapping, draft.key))
+        throw new Error('marivo.credentials.header-names-must-be-unique')
       mapping[draft.key] = ref
     } else fields[draft.field] = ref
     if (draft.value) {
       if (changes[ref] !== undefined && changes[ref] !== draft.value)
-        throw new Error('同一凭证引用不能填写不同的值。')
+        throw new Error(
+          'marivo.credentials.the-same-credential-reference-cannot-have-different-values',
+        )
       changes[ref] = draft.value
     }
   }

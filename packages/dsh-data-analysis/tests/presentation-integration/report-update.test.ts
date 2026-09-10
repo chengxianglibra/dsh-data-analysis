@@ -53,7 +53,8 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   )
   t.after(async () => service.close())
   const draft = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'Original KPI',
     sources: [],
     datasets: [{ id: 'data', kind: 'computed', path: 'data.json', sourceIds: [] }],

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "演示：computed 的多个声明来源",
   "datasets": [
     {
@@ -20,7 +20,10 @@
     },
     {
       "id": "accounts",
-      "ref": { "sessionId": "example-accounts-session", "artifactRef": "example-accounts-artifact" }
+      "ref": {
+        "sessionId": "example-accounts-session",
+        "artifactRef": "example-accounts-artifact"
+      }
     }
   ],
   "blocks": [
@@ -29,6 +32,11 @@
       "kind": "markdown",
       "text": "演示草稿：来源引用需替换为实际引用。声明多个 Artifact 不表示 computed 计算已经过验证；不可恢复的来源由 reader 如实显示。"
     },
-    { "id": "values", "kind": "table", "datasetId": "quarter" }
-  ]
+    {
+      "id": "values",
+      "kind": "table",
+      "datasetId": "quarter"
+    }
+  ],
+  "locale": "zh-CN"
 }

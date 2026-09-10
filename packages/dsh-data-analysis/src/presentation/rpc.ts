@@ -7,6 +7,7 @@ import { buildPresentation } from './build/index.ts'
 import { applyPresentationEdits } from './contracts/editing.ts'
 import {
   type PresentationAsset,
+  PresentationContractError,
   parsePresentationBuildId,
   parsePresentationDocument,
   parsePresentationReceipt,
@@ -259,16 +260,18 @@ export function registerMarivoPresentationRpc(
       } catch (error) {
         const message = signal.aborted
           ? 'cancelled'
-          : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
-            ? 'asset-missing'
-            : error instanceof Error &&
-                /^(invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
-                  error.message,
-                )
-              ? error.message
-              : error instanceof Error && /lock.*timed out|timed out.*lock/i.test(error.message)
-                ? 'report-save-busy'
-                : 'presentation-operation-failed'
+          : error instanceof PresentationContractError
+            ? error.code
+            : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
+              ? 'asset-missing'
+              : error instanceof Error &&
+                  /^(invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
+                    error.message,
+                  )
+                ? error.message
+                : error instanceof Error && /lock.*timed out|timed out.*lock/i.test(error.message)
+                  ? 'report-save-busy'
+                  : 'presentation-operation-failed'
         return { ok: false, error: { code: 'internal', message, details: {} } }
       }
     },

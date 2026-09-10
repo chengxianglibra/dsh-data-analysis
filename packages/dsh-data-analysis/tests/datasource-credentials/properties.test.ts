@@ -7,6 +7,7 @@ import vm from 'node:vm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { build } from 'esbuild'
 import * as React from 'react'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import {
   MARIVO_DATASOURCE_DESCRIBE_PROGRAM,
@@ -124,9 +125,15 @@ const { renderToStaticMarkup } = require('react-dom/server') as {
   renderToStaticMarkup(node: React.ReactNode): string
 }
 const bundle = await build({
-  entryPoints: [
-    fileURLToPath(new URL('../../src/client/credentials/install.tsx', import.meta.url)),
-  ],
+  stdin: {
+    contents: `import { createElement } from 'react';
+import { CredentialPanel as Panel } from './src/client/credentials/install.tsx';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator } from './src/client/i18n/copy.ts';
+export { installCredentials } from './src/client/credentials/install.tsx';
+export function CredentialPanel(props) { return createElement(CopyProvider, { t: translator('zh-CN') }, createElement(Panel, props)); }`,
+    resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+  },
   bundle: true,
   format: 'cjs',
   platform: 'node',
@@ -195,7 +202,7 @@ test('installed management UI renders typed properties as read-only text beside 
   const html = await renderManagement(t, await context(f))
   const attributes = html.match(/<section class="mc-properties".*?<\/dl><\/section>/s)?.[0]
   assert(attributes)
-  assert.match(attributes, /aria-label="数据源属性"/)
+  assert.match(translator('zh-CN')(attributes), /aria-label="数据源属性"/)
   for (const text of [
     'clickhouse',
     'warehouse.example',
@@ -212,9 +219,9 @@ test('installed management UI renders typed properties as read-only text beside 
     attributes.includes(properties.long_field_name_that_must_wrap_on_a_narrow_screen as string),
   )
   assert.doesNotMatch(attributes, /<input|<button|DB_PASSWORD|<script>/)
-  assert.match(html, />凭证<\/h4>/)
+  assert.match(translator('zh-CN')(html), />凭证<\/h4>/)
   assert.match(html, /DB_PASSWORD/)
-  assert.match(html, />更换<\/button>/)
+  assert.match(translator('zh-CN')(html), />更换<\/button>/)
   assert.doesNotMatch(html, /harness-private-canary/)
 })
 
@@ -230,7 +237,7 @@ test('credential-free datasources retain properties and connection testing', asy
   const html = await renderManagement(t, await context(f))
   assert.match(html, /<dd>duckdb<\/dd>/)
   assert.match(html, /:memory:/)
-  assert.match(html, /该数据源没有凭证引用，可直接测试连接/)
-  assert.match(html, /aria-label="测试连接"/)
+  assert.match(translator('zh-CN')(html), /该数据源没有凭证引用，可直接测试连接/)
+  assert.match(translator('zh-CN')(html), /aria-label="测试连接"/)
   assert.deepEqual(f.store.calls, { resolve: 0, set: 0, unset: 0 })
 })

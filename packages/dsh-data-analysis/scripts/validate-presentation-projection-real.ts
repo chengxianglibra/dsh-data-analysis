@@ -149,7 +149,8 @@ const runner: MarivoCheckedRunner = {
 const projection = new MarivoPresentationProjection(runner)
 const base = { workspaceId: 's2-isolated-validation', generatedAt: new Date().toISOString() }
 const artifactDraft: PresentationDraft = {
-  schemaVersion: 1,
+  schemaVersion: 2,
+  locale: 'zh-CN',
   title: 'S2 real persisted Artifacts',
   sources: sources.slice(0, 2),
   datasets: [
@@ -225,7 +226,8 @@ assert.equal(written.exitCode, 0, written.stderr.toString('utf8'))
 const writerReceipt = JSON.parse(written.stdout.toString('utf8'))
 const computed = await projection.project(
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'S2 computed writer contract example',
     sources,
     datasets: [
@@ -250,7 +252,8 @@ assert.equal(computed.datasets[0]!.data.rows[0]![1], '9007199254740993')
 assert.equal(computed.sources[2]!.status, 'unavailable')
 const sourceOnly = await projection.project(
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'S2 source-only',
     sources,
     datasets: [],
@@ -261,7 +264,8 @@ const sourceOnly = await projection.project(
 assert.deepEqual(sourceOnly.datasets, [])
 const missingFinding = await projection.project(
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'Optional Finding unavailable',
     sources: [
       { id: 'revenue', ref: { ...sources[0]!.ref, findingId: 'fnd_000000000000000000000000' } },

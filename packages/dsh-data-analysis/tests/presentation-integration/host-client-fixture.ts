@@ -44,6 +44,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
       },
     },
     console,
+    navigator: { languages: ['zh-CN'], language: 'zh-CN' },
     Map,
     Set,
     JSON,
@@ -62,6 +63,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   })
   for (const name of [
     'ui-renderer',
+    'locale',
     'ui-conversation',
     'ui-chat',
     'ui-deliverables',
@@ -98,6 +100,8 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
       },
     },
   }
+  const locale = new (modules.get('@deepseek-ai/dsh-client-locale/client').LocaleRuntime)(owner)
+  locale.setLocale('zh')
   const client = {
     inputTriggers: { registerSource: () => () => {} },
     uiConversation: { events, views },
@@ -106,7 +110,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     sessions: { provide: () => () => {} },
     workspaces: {},
     layout: {},
-    locale: { register: () => () => {}, bind: () => (key) => key },
+    locale,
     settingsScope: {
       bind: () => ({ subscribe: () => () => {}, getSnapshot: () => ({ value: undefined }) }),
     },

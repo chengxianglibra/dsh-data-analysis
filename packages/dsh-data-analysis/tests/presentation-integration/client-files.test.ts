@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import test from 'node:test'
+import { translator } from './../../src/client/i18n/copy.ts'
 import {
   PresentationDeliveryModel,
   type PresentationRpc,
@@ -168,7 +169,7 @@ test('Workspace and Session mismatches never issue RPC; mid-flight changes clear
   await model.show(delivery, 'foreign-session', document.workspaceId)
   await model.download(delivery, 'session-a', 'foreign-workspace')
   assert.equal(signals.length, 0)
-  assert.match(model.getSnapshot().error!, /Workspace 或 Session 已变化/)
+  assert.match(translator('zh-CN')(model.getSnapshot().error!), /Workspace 或 Session 已变化/)
   const pending = model.show(delivery, 'session-a', document.workspaceId)
   model.contextChanged('session-a', 'foreign-workspace')
   assert.equal(signals[0]!.aborted, true)
@@ -181,7 +182,7 @@ test('Workspace and Session mismatches never issue RPC; mid-flight changes clear
   resolve(response('index.html'))
   await download
   assert.equal(saves, 0)
-  assert.match(model.getSnapshot().error!, /Host 连接已重置/)
+  assert.match(translator('zh-CN')(model.getSnapshot().error!), /Host 连接已重置/)
 })
 
 test('missing files and corrupt HTML surface explicit errors without saving; closing cancels late reader responses', async () => {
@@ -198,9 +199,9 @@ test('missing files and corrupt HTML surface explicit errors without saving; clo
     },
   )
   await model.show(delivery, 'session-a', document.workspaceId)
-  assert.match(model.getSnapshot().error!, /文件已缺失/)
+  assert.match(translator('zh-CN')(model.getSnapshot().error!), /文件已缺失/)
   await model.download(delivery, 'session-a', document.workspaceId)
-  assert.match(model.getSnapshot().downloadError!, /文件已缺失/)
+  assert.match(translator('zh-CN')(model.getSnapshot().downloadError!), /文件已缺失/)
   assert.equal(saves, 0)
   const corrupted = new PresentationDeliveryModel(
     {
@@ -217,7 +218,10 @@ test('missing files and corrupt HTML surface explicit errors without saving; clo
     },
   )
   await corrupted.download(delivery, 'session-a', document.workspaceId)
-  assert.match(corrupted.getSnapshot().downloadError!, /文件已变化.*摘要不一致/)
+  assert.match(
+    translator('zh-CN')(corrupted.getSnapshot().downloadError!),
+    /文件已变化.*摘要不一致/,
+  )
   assert.equal(saves, 0)
   let resolve!: (value: unknown) => void
   const closing = new PresentationDeliveryModel({
@@ -366,7 +370,7 @@ test('late publication success and failure cannot replace the state of an edited
     await pending
     assert.equal(model.getSnapshot().publicationUrl, undefined, outcome)
     assert.equal(model.getSnapshot().downloadError, undefined, outcome)
-    assert.equal(model.getSnapshot().notice, '编辑已保存', outcome)
+    assert.equal(model.getSnapshot().notice, 'marivo.presentation.edits-saved', outcome)
     assert.equal(model.getSnapshot().downloading, false, outcome)
     model.dispose()
   }

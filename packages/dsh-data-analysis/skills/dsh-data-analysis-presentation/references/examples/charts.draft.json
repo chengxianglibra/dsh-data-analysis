@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "图表与探索样例（全部为合成演示数据）",
   "datasets": [
     {
@@ -388,5 +388,6 @@
       "y": ["amount"],
       "numericMode": "approximate"
     }
-  ]
+  ],
+  "locale": "zh-CN"
 }

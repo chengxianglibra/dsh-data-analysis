@@ -58,7 +58,7 @@ def read(request):
             except Exception:
                 # Only the requested source becomes unavailable. Exception messages may
                 # include credentials, project paths or raw SQL and are never returned.
-                sources.append({**declared, "status": "unavailable", "reason": "The declared Artifact cannot be restored through the bound Workspace public API."})
+                sources.append({**declared, "status": "unavailable", "reason": "marivo.presentation.source-unavailable"})
                 continue
 
             artifacts[declared["id"]], contracts[declared["id"]] = artifact, contract
@@ -85,7 +85,7 @@ def read(request):
                 except ProjectionFailure:
                     raise
                 except Exception:
-                    fact("选择的 Finding unavailable", "The requested Finding cannot be read through the persisted Artifact public API.")
+                    fact("选择的 Finding unavailable", "marivo.presentation.finding-unavailable")
                     diagnostics.append({"code": "finding_unavailable", "path": source_path + "/ref/findingId", "message": "Artifact is available; its requested Finding is unavailable."})
             fact("revalidation", "not_requested")
             sources.append({**declared, "status": "available", "label": text(str(meta.kind) + " " + artifact.ref, 512), "facts": facts, "code": sql_code_snapshot(session, artifact)})

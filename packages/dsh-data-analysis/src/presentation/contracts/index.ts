@@ -304,7 +304,7 @@ export function formatCell(value: Cell, _column: DatasetColumn): string {
   return value === null ? '—' : String(value)
 }
 function common(value: Record<string, unknown>, generated: boolean) {
-  version(value, '', generated ? 2 : 1)
+  version(value, '', generated ? 3 : 2)
   string(value.title, '/title', 512)
   const sources = array(value.sources, '/sources', budgets.sources)
   const sourceIds = sources.map((value, i) => {
@@ -680,20 +680,43 @@ function interaction(
   })
 }
 
+function presentationLanguage(value: Record<string, unknown>, expected: number) {
+  if (value.schemaVersion !== expected)
+    fail(
+      '/schemaVersion',
+      `Only schemaVersion ${expected} is accepted. Regenerate this report with an explicit locale.`,
+      'report-version-unsupported',
+    )
+  if (value.locale !== 'zh-CN' && value.locale !== 'en-US')
+    fail(
+      '/locale',
+      'Report locale must be zh-CN or en-US. Ask DSH to regenerate the report with an explicit language.',
+      'report-locale-invalid',
+    )
+}
+
 export function parsePresentationDraft(value: unknown): PresentationDraft {
   bytes(value, budgets.draftBytes)
   const entry = object(value, '')
-  keys(entry, ['schemaVersion', 'title', 'datasets', 'sources', 'blocks'], ['interaction'], '')
+  presentationLanguage(entry, 2)
+  keys(
+    entry,
+    ['schemaVersion', 'locale', 'title', 'datasets', 'sources', 'blocks'],
+    ['interaction'],
+    '',
+  )
   common(entry, false)
   return entry as unknown as PresentationDraft
 }
 export function parsePresentationDocument(value: unknown): PresentationDocument {
   bytes(value, budgets.documentBytes)
   const entry = object(value, '')
+  presentationLanguage(entry, 3)
   keys(
     entry,
     [
       'schemaVersion',
+      'locale',
       'workspaceId',
       'reportId',
       'buildId',

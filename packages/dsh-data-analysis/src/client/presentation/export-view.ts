@@ -1,6 +1,7 @@
 import { PRESENTATION_BUDGETS } from '../../presentation/contracts/index.ts'
 import { filterSummary, interactionRows } from '../../presentation/contracts/interaction.ts'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
+import { translator } from '../i18n/copy.ts'
 import { type ChartExploration, exploredChartBlock } from './chart-view.ts'
 import {
   cellText,
@@ -43,7 +44,9 @@ export function currentViewBlocks(document: PresentationDocument, state: Current
         ? state.tableSorts[block.id]
         : undefined
     const rowIndices = sort
-      ? sortedRowIndices(dataset.data, sort).filter((index) => !selection || selection.has(index))
+      ? sortedRowIndices(document.locale, dataset.data, sort).filter(
+          (index) => !selection || selection.has(index),
+        )
       : [...(selected ?? dataset.data.rows.map((_, index) => index))]
     return { block, dataset, rowIndices, sort }
   })
@@ -63,6 +66,7 @@ export function exportCurrentView(
   state: CurrentViewState,
   exportedAt = new Date().toISOString(),
 ) {
+  const t = translator(document.locale)
   const owner = root.ownerDocument
   const article = root.cloneNode(true) as HTMLElement
   const appendText = (parent: Element, tag: string, text: string, className?: string) => {
@@ -81,7 +85,7 @@ export function exportCurrentView(
       label.append(...button.childNodes)
       if (button.getAttribute('aria-pressed') === 'false') {
         label.classList.add('pr-export-series-hidden')
-        label.append('（已隐藏）')
+        label.append(t('marivo.presentation.hidden'))
       }
       button.replaceWith(label)
     }
@@ -102,10 +106,14 @@ export function exportCurrentView(
   )
   for (const { block, dataset, rowIndices, sort } of resolved) {
     const section = sections.get(block.id)
-    if (!section) throw new Error('当前视图尚未完整显示，请稍后重试。')
+    if (!section)
+      throw new Error('marivo.presentation.the-current-view-has-not-fully-rendered-retry-shortly')
     if (block.kind === 'table' && dataset && rowIndices) {
       const table = section.querySelector('table')
-      if (!table) throw new Error('当前表格尚未完整显示，请稍后重试。')
+      if (!table)
+        throw new Error(
+          'marivo.presentation.the-current-table-has-not-fully-rendered-retry-shortly',
+        )
       const columns = (block.columns ?? dataset.data.columns.map((column) => column.id)).map((id) =>
         columnIndex(dataset.data, id),
       )
@@ -116,14 +124,14 @@ export function exportCurrentView(
         for (const position of columns) {
           const column = dataset.data.columns[position]!
           const value = dataset.data.rows[index]![position]!
-          const cell = appendText(row, 'td', cellText(value, column))
+          const cell = appendText(row, 'td', cellText(document.locale, value, column))
           cell.dataset.columnId = column.id
           if (['float64', 'int64', 'decimal'].includes(column.type)) cell.className = 'pr-numeric'
           if (value === null) {
             cell.dataset.cellNull = 'true'
-            cell.setAttribute('aria-label', '缺失值')
+            cell.setAttribute('aria-label', t('marivo.presentation.missing-value'))
           }
-          if (value === '') cell.setAttribute('aria-label', '空字符串')
+          if (value === '') cell.setAttribute('aria-label', t('marivo.presentation.empty-string'))
         }
         body.append(row)
       }
@@ -135,7 +143,18 @@ export function exportCurrentView(
       appendText(
         section,
         'p',
-        `当前筛选结果：${rowIndices.length} 行（包含全部分页）${sort ? ` · 按 ${columnLabel(dataset.data.columns[columnIndex(dataset.data, sort.columnId)]!)} ${sort.direction === 'ascending' ? '升序' : '降序'}` : ''}`,
+        t('marivo.presentation.current-filter-result-value-rows-all-pages-value', {
+          p0: rowIndices.length,
+          p1: sort
+            ? t('marivo.presentation.sorted-by', {
+                p0: columnLabel(dataset.data.columns[columnIndex(dataset.data, sort.columnId)]!),
+                p1:
+                  sort.direction === 'ascending'
+                    ? 'marivo.presentation.ascending'
+                    : 'marivo.presentation.descending',
+              })
+            : '',
+        }),
         'pr-muted',
       )
     }
@@ -143,7 +162,10 @@ export function exportCurrentView(
       // Recharts needs measured containers; never silently omit an unfinished unit panel.
       for (const container of section.querySelectorAll('.recharts-responsive-container')) {
         const svg = container.querySelector('svg.recharts-surface')
-        if (!svg) throw new Error('图表仍在排版，请稍后重试导出。')
+        if (!svg)
+          throw new Error(
+            'marivo.presentation.chart-layout-is-still-in-progress-retry-exporting-shortly',
+          )
         const frame = owner.createElement('div')
         frame.className = 'pr-export-chart'
         frame.append(svg)
@@ -156,7 +178,7 @@ export function exportCurrentView(
     if (sourceIds.length) {
       const details = owner.createElement('details')
       details.className = 'pr-source-summary'
-      appendText(details, 'summary', '数据来源')
+      appendText(details, 'summary', t('marivo.presentation.data-sources'))
       for (const id of sourceIds) {
         const source = document.sources.find((entry) => entry.id === id)!
         const facts = sourceOverviewFacts(source)
@@ -169,16 +191,20 @@ export function exportCurrentView(
             ? source.label
             : source.ref.artifactRef,
         )
-        if (source.status === 'unavailable') appendText(card, 'p', source.reason, 'pr-notice')
+        if (source.status === 'unavailable') appendText(card, 'p', t(source.reason), 'pr-notice')
         if (facts.createdAt)
           appendText(
             card,
             'p',
-            `来源创建时间：${Number.isNaN(Date.parse(facts.createdAt)) ? facts.createdAt : snapshotDate(facts.createdAt)}`,
+            t('marivo.presentation.source-created-value', {
+              p0: Number.isNaN(Date.parse(facts.createdAt))
+                ? facts.createdAt
+                : snapshotDate(document.locale, facts.createdAt),
+            }),
             'pr-muted',
           )
         for (const group of facts.semanticGroups)
-          appendText(card, 'p', `${semanticKindLabel(group.kind)}：${group.paths.join('、')}`)
+          appendText(card, 'p', `${t(semanticKindLabel(group.kind))}：${group.paths.join('、')}`)
         for (const issue of facts.issues)
           appendText(
             card,
@@ -186,38 +212,53 @@ export function exportCurrentView(
             `${issue.kind}${issue.severity ? ` · ${issue.severity}` : ''}`,
             'pr-notice',
           )
-        for (const notice of facts.notices) appendText(card, 'p', notice, 'pr-notice')
+        for (const notice of facts.notices) appendText(card, 'p', t(notice), 'pr-notice')
         if (!card.childNodes.length)
-          appendText(card, 'p', '沿用来源 Build 的已保存数据。', 'pr-muted')
+          appendText(
+            card,
+            'p',
+            t('marivo.presentation.uses-saved-data-from-the-source-build'),
+            'pr-muted',
+          )
         details.append(card)
       }
       section.append(details)
     }
   }
   for (const empty of article.querySelectorAll('.pr-empty')) {
-    if (empty.textContent === '所有系列已隐藏，请选择要显示的系列。')
-      empty.textContent = '导出时所有系列均已隐藏。'
+    if (
+      empty.textContent === t('marivo.presentation.all-series-are-hidden-select-a-series-to-show')
+    )
+      empty.textContent = t('marivo.presentation.all-series-were-hidden-when-exported')
   }
   if (!document.blocks.length) {
     const empty = article.querySelector('.pr-empty')
-    if (empty) empty.textContent = '此视图没有展示内容。'
+    if (empty) empty.textContent = t('marivo.presentation.this-view-has-no-content')
   }
   const metadata = owner.createElement('div')
   metadata.className = 'pr-export-metadata pr-muted'
-  appendText(metadata, 'p', '当前视图 · 已固定筛选与展示配置')
   appendText(
     metadata,
     'p',
-    document.interaction ? filterSummary(document.interaction, state.selection) : '筛选条件：无',
+    t('marivo.presentation.current-view-fixed-filters-and-display-settings'),
   )
-  appendText(metadata, 'p', `来源 Build：${document.buildId}`)
-  const time = appendText(metadata, 'p', '导出时间：')
-  const timestamp = appendText(time, 'time', snapshotDate(exportedAt))
+  appendText(
+    metadata,
+    'p',
+    document.interaction
+      ? filterSummary(document.interaction, state.selection)
+      : t('marivo.presentation.filters-none'),
+  )
+  appendText(metadata, 'p', t('marivo.presentation.source-build-value', { p0: document.buildId }))
+  const time = appendText(metadata, 'p', t('marivo.presentation.exported'))
+  const timestamp = appendText(time, 'time', snapshotDate(document.locale, exportedAt))
   timestamp.setAttribute('datetime', exportedAt)
   article.querySelector('.pr-header')!.append(metadata)
   const interactionHelp = article.querySelector('.pr-interaction-header > .pr-muted')
   if (interactionHelp)
-    interactionHelp.textContent = '以下指标、图表与表格已固定为导出时的筛选结果。'
+    interactionHelp.textContent = t(
+      'marivo.presentation.the-following-metrics-charts-and-tables-are-fixed-to',
+    )
   // DOM comes exclusively from the typed reader, still strip all active/host-only surfaces.
   article
     .querySelectorAll(
@@ -242,12 +283,12 @@ export function exportCurrentView(
     }
   }
   article.setAttribute('data-export-view', 'true')
-  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(document.title)} · 当前视图</title><style>${PRESENTATION_STYLES}
+  const html = `<!doctype html><html lang="${document.locale}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(document.title)} · ${escapeHtml(t('marivo.presentation.current-view'))}</title><style>${PRESENTATION_STYLES}
 body{margin:0}.pr-export-chart{max-width:100%;overflow:auto;height:100%}.pr-export-chart svg{display:block;flex-shrink:0}.pr-export-series{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:4px 0}.pr-export-series-hidden{opacity:.5;text-decoration:line-through}.pr-export-metadata{overflow-wrap:anywhere}.pr-reader[data-export-view] .pr-block-table{padding-top:0}
 </style></head><body>${article.outerHTML}</body></html>`
   const bytes = new TextEncoder().encode(html)
   if (bytes.length > PRESENTATION_BUDGETS.htmlBytes)
-    throw new Error('当前视图超过 HTML 导出大小限制，请缩小筛选范围后重试。')
+    throw new Error('marivo.presentation.the-current-view-exceeds-the-html-export-size-limit')
   const safeId = (value: string) => value.replace(/[^\p{L}\p{N}._-]/gu, '_').slice(0, 80)
   return {
     bytes,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import test from 'node:test'
+import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import {
   initialChartExploration,
   savedChartView,
@@ -81,14 +82,17 @@ test('locator matches storage; reference plus fixed document resolves filters an
   if (found.kind !== 'metric') throw new Error('Expected metric')
   const data = document.datasets.find((dataset) => dataset.id === found.datasetId)!.data
   assert.equal(
-    selectMetric(data, found, interactionRows(document.interaction, chosen, found)).value,
+    selectMetric('zh-CN', data, found, interactionRows(document.interaction, chosen, found)).value,
     '150',
   )
   const fixed = document.blocks.find((block) => block.id === 'fixed-count') ?? document.blocks[0]!
   assert.doesNotMatch(followUpContext(document, fixed, undefined, chosen), /Filters:/)
   assert.throws(
     () => followUpContext(document, metric, undefined, { day: 'missing', cluster: 'a' }),
-    /Unknown/,
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /Unknown/)
+      return true
+    },
   )
   assert.throws(() => presentationAssetRelativePath('../report', 'build', 'presentation.json'))
 })
@@ -122,7 +126,10 @@ test('prepared reference reconstructs configuration; only modified views carry o
   assert.equal(followUpContext(document, chart, initial), base)
   assert.throws(
     () => followUpContext(document, chart, { ...state, preparedViewId: 'missing' }),
-    /Unknown prepared/,
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /Unknown prepared/)
+      return true
+    },
   )
 })
 
@@ -182,15 +189,30 @@ test('byte ceiling includes wrappers and separator; locator/state are never trun
     Buffer.byteLength(wrapPresentationContext(exact, '\n\n')),
     PRESENTATION_CONTEXT_BYTES,
   )
-  assert.throws(() => wrapPresentationContext(`${exact}a`, '\n\n'), /12 KiB/)
+  assert.throws(
+    () => wrapPresentationContext(`${exact}a`, '\n\n'),
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /12 KiB/)
+      return true
+    },
+  )
   const { document } = await interactionFixture()
   const chart = document.blocks.find((block) => block.kind === 'chart')!
   if (chart.kind !== 'chart') throw new Error('Expected chart')
   const state = initialChartExploration(chart)
   state.view.options = { referenceLines: [{ axis: 'y', value: 1, label: '中'.repeat(5000) }] }
-  assert.throws(() => followUpContext(document, chart, state), /12 KiB/)
+  assert.throws(
+    () => followUpContext(document, chart, state),
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /12 KiB/)
+      return true
+    },
+  )
   assert.throws(
     () => followUpContext({ ...document, workspaceId: 'w'.repeat(13000) }, chart),
-    /12 KiB/,
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /12 KiB/)
+      return true
+    },
   )
 })

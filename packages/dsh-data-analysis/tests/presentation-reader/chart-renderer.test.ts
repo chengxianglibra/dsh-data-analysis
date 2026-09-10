@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { translator } from './../../src/client/i18n/copy.ts'
 import type { ChartBlock, ReaderMode } from '../../src/client/presentation/model.ts'
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import type { PresentationDocument } from '../../src/presentation/contracts/types.ts'
@@ -18,7 +19,10 @@ before(async () => {
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
+const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
 import { ChartRenderer } from './src/client/presentation/chart-renderer.tsx';
 export function renderChart(document, block, mode = 'interactive') { return renderToStaticMarkup(createElement(ChartRenderer, { dataset: document.datasets[0], block, mode })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -66,31 +70,34 @@ test('interactive chart leaves exact data access to the source card without dupl
   data.truncated = false
   data.rowCount = data.rows.length
   const html = renderChart(document, block)
-  assert.doesNotMatch(html, /<select|<details|<table|复制|pr-coordinate|已保存/)
-  assert.doesNotMatch(html, /aria-label="图表系列"/)
-  assert.match(html, /近似绘图/)
+  assert.doesNotMatch(
+    translator('zh-CN')(html),
+    /<select|<details|<table|复制|pr-coordinate|已保存/,
+  )
+  assert.doesNotMatch(translator('zh-CN')(html), /aria-label="图表系列"/)
+  assert.match(translator('zh-CN')(html), /近似绘图/)
 })
 
 test('interactive truncation and approximation stay visible alongside distinct series controls', async () => {
   const document = await fixture()
   const html = renderChart(document, { ...block, y: ['amount', 'count'] })
-  assert.match(html, /显示 3 \/ 5 行（已截断）/)
-  assert.match(html, /近似绘图/)
+  assert.match(translator('zh-CN')(html), /显示 3 \/ 5 行（已截断）/)
+  assert.match(translator('zh-CN')(html), /近似绘图/)
   assert.equal((html.match(/显示 3 \/ 5 行（已截断）/g) ?? []).length, 1)
-  assert.match(html, /aria-label="图表系列"/)
+  assert.match(translator('zh-CN')(html), /aria-label="图表系列"/)
   assert.match(html, /aria-pressed="true"/)
   assert.match(html, /var\(--pr-chart-1\)/)
   assert.match(html, /var\(--pr-chart-2\)/)
   assert.equal((html.match(/class="pr-chart-group"/g) ?? []).length, 2)
-  assert.doesNotMatch(html, /pr-axis-unit|不同单位分图展示|纵轴：/)
+  assert.doesNotMatch(translator('zh-CN')(html), /pr-axis-unit|不同单位分图展示|纵轴：/)
 })
 
 test('static charts retain every saved exact row and visible data limits without interactive controls', async () => {
   const document = await fixture()
   const html = renderChart(document, block, 'static')
-  assert.doesNotMatch(html, /近似/)
-  assert.match(html, /显示 3 \/ 5 行（已截断）/)
-  assert.match(html, /精确数据/)
+  assert.doesNotMatch(translator('zh-CN')(html), /近似/)
+  assert.match(translator('zh-CN')(html), /显示 3 \/ 5 行（已截断）/)
+  assert.match(translator('zh-CN')(html), /精确数据/)
   assert.match(html, /12345678901234\.5678/)
   assert.match(html, /0\.1000/)
   assert.match(html, /data-cell-null="true"/)

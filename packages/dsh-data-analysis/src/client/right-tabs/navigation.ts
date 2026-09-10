@@ -15,7 +15,7 @@ export function resourceAddress(target: Resource): string {
 }
 export function parseResource(address: string): Resource {
   const match = /^dsh-resource:\/\/marivo-(report|semantic)\/([^?#]+)$/.exec(address)
-  if (!match) throw new Error('未知 Marivo 资源地址')
+  if (!match) throw new Error('marivo.navigation.unknown-marivo-resource-address')
   const parts = match[2]!.split('/').map(decodeURIComponent)
   const workspaceId = boundedText(parts[0], 256)
   let result: Resource
@@ -35,8 +35,9 @@ export function parseResource(address: string): Resource {
       reportId: boundedText(parts[1], 256),
       ...(parts.length === 4 ? { buildId: boundedText(parts[3], 256) } : {}),
     }
-  } else throw new Error('未知 Marivo 资源地址')
-  if (resourceAddress(result) !== address) throw new Error('资源地址不是规范编码')
+  } else throw new Error('marivo.navigation.unknown-marivo-resource-address')
+  if (resourceAddress(result) !== address)
+    throw new Error('marivo.navigation.resource-address-is-not-canonically-encoded')
   return result
 }
 export function canOpenResource(address: string, kind: Resource['kind']): boolean {

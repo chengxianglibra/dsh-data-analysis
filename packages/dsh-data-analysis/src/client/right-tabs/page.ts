@@ -79,7 +79,7 @@ export class TabPage {
     if (this.#closed || (this.#revision === revision && !force)) return
     this.#revision = revision
     if (this.reader.getSnapshot().editing || this.reader.getSnapshot().saving) {
-      this.patch({ notice: '编辑已保留，请先保存或取消编辑。' })
+      this.patch({ notice: 'marivo.navigation.your-edits-are-retained-save-or-cancel-them-first' })
       return
     }
     if (this.target.kind !== 'datasources' || this.#navigation.signal.aborted) {
@@ -113,7 +113,8 @@ export class TabPage {
     else this.semantic.show(target.workspaceId)
   }
   async refresh(
-    confirmDiscard: () => boolean = () => window.confirm('存在未保存的编辑。放弃编辑并刷新报告？'),
+    confirmDiscard: () => boolean = () =>
+      window.confirm('marivo.navigation.there-are-unsaved-edits-discard-them-and-refresh-the'),
   ) {
     // Incidental refreshes must not undo revocation. Only a checked navigation
     // can reopen an unavailable occurrence.
@@ -142,10 +143,13 @@ export class TabPage {
         { workspaceId, reportId: this.target.reportId },
         this.#navigation.signal,
       )) as any
-      if (!response?.ok) throw new Error(response?.error?.message ?? '无法核验新版本')
+      if (!response?.ok)
+        throw new Error(
+          response?.error?.message ?? 'marivo.navigation.cannot-verify-the-new-version',
+        )
       const receipt = parsePresentationReceipt(response.value)
       if (receipt.workspaceId !== workspaceId || receipt.reportId !== this.target.reportId)
-        throw new Error('报告身份已变化')
+        throw new Error('marivo.navigation.report-identity-changed')
       if (generation !== this.#updateRevision || this.#closed) return
       this.patch({
         newer:
@@ -153,7 +157,12 @@ export class TabPage {
       })
     } catch (error) {
       if (generation === this.#updateRevision && !this.#closed && !this.#state.error)
-        this.patch({ notice: error instanceof Error ? error.message : '无法核验新版本' })
+        this.patch({
+          notice:
+            error instanceof Error
+              ? error.message
+              : 'marivo.navigation.cannot-verify-the-new-version',
+        })
     }
   }
   unavailable(message: string) {

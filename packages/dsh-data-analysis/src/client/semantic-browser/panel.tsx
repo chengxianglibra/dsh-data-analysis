@@ -1,6 +1,8 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
+
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
+import { useCopy } from './../i18n/context.tsx'
 import { ComputationCard } from './computation.tsx'
 import { ObjectGraph } from './graph.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
@@ -9,12 +11,14 @@ import { FieldValue } from './reference-link.tsx'
 import { browserStyles } from './styles.ts'
 
 function Fields({ fields, object, objects, navigate }) {
+  const t = useCopy()
+
   return (
     <dl className="sb-fields">
       {fields.map((field, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: Immutable snapshot fields may repeat by calendar level and carry no component state.
         <Fragment key={`${field.name}/${i}`}>
-          <dt title={field.name}>{fieldLabels[field.name] ?? field.name}</dt>
+          <dt title={field.name}>{t(fieldLabels[field.name] ?? field.name)}</dt>
           <dd>
             <FieldValue field={field} object={object} objects={objects} navigate={navigate} />
           </dd>
@@ -34,6 +38,8 @@ function ObjectDetail({
   questionPending,
   questionNotice,
 }) {
+  const t = useCopy()
+
   const [notice, setNotice] = useState('')
   const [graph, setGraph] = useState(false)
   useEffect(
@@ -44,9 +50,9 @@ function ObjectDetail({
   async function copy(text) {
     try {
       await navigator.clipboard.writeText(text)
-      setNotice('已复制')
+      setNotice('marivo.presentation.copied')
     } catch {
-      setNotice('复制失败，请手动选择文字复制。')
+      setNotice('marivo.semantic.copy-failed-select-the-text-to-copy-manually')
     }
   }
   const source = `${object.source.file}${object.source.line ? `:${object.source.line}` : ''}`
@@ -83,34 +89,38 @@ function ObjectDetail({
           className="sb-back-list"
           onClick={() => model.patch({ selected: '' })}
         >
-          返回列表
+          {t('marivo.semantic.back-to-list')}
         </button>
         <button type="button" disabled={!view.history.length} onClick={() => model.back()}>
-          返回上个对象
+          {t('marivo.semantic.back-to-previous-object')}
         </button>
         <button type="button" onClick={() => copy(key)}>
-          复制引用
+          {t('marivo.semantic.copy-reference')}
         </button>
         <button
           type="button"
           disabled={!onAsk || questionPending}
           onClick={onAsk}
-          title={!onAsk ? '当前页面没有可用的所属会话输入框' : undefined}
+          title={
+            !onAsk
+              ? t('marivo.semantic.no-input-is-available-for-the-session-owning-this')
+              : undefined
+          }
         >
-          {questionPending ? '正在加入…' : '加入提问'}
+          {questionPending ? t('marivo.semantic.adding') : t('marivo.semantic.add-to-question')}
         </button>
         <span role="status" className="sb-muted">
-          {notice}
+          {t(notice)}
         </span>
       </div>
-      <span className="sb-badge">{kindLabels[object.ref.kind] ?? object.ref.kind}</span>
+      <span className="sb-badge">{t(kindLabels[object.ref.kind] ?? object.ref.kind)}</span>
       <h2>{object.name}</h2>
       <div className="sb-ref">{key}</div>
-      <nav className="sb-tabs" aria-label="对象详情分类">
+      <nav className="sb-tabs" aria-label={t('marivo.semantic.object-detail-categories')}>
         {[
-          ['overview', '概览'],
-          ['definition', '定义'],
-          ['relations', '关系'],
+          ['overview', t('marivo.semantic.overview')],
+          ['definition', t('marivo.semantic.definition')],
+          ['relations', t('marivo.semantic.relationships-692')],
         ].map(([tab, label]) => (
           <button
             type="button"
@@ -118,20 +128,20 @@ function ObjectDetail({
             aria-pressed={view.tab === tab}
             onClick={() => model.patch({ tab })}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
       </nav>
       {view.tab === 'overview' && (
         <>
-          <h3>业务定义</h3>
-          <p>{object.definition || '未填写业务定义'}</p>
+          <h3>{t('marivo.semantic.business-definition')}</h3>
+          <p>{object.definition || t('marivo.semantic.no-business-definition')}</p>
           <Fields
             object={object}
             objects={objects}
             navigate={navigate}
             fields={[
-              { name: 'domain', value: object.domain ?? '未指定业务域' },
+              { name: 'domain', value: object.domain ?? t('marivo.semantic.no-domain-specified') },
               ...object.fields.filter((field) =>
                 [
                   'unit',
@@ -148,7 +158,7 @@ function ObjectDetail({
           />
           {!!object.guardrails.length && (
             <>
-              <h3>使用约束</h3>
+              <h3>{t('marivo.semantic.usage-constraints')}</h3>
               <ul>
                 {[...new Set(object.guardrails)].map((text) => (
                   <li key={text}>{text}</li>
@@ -164,8 +174,12 @@ function ObjectDetail({
             <ComputationCard object={object} objects={objects} navigate={(key) => navigate(key)} />
           )}
           {!!definitionFields.length && (
-            <section aria-label="补充属性">
-              <h3>{object.computation ? '补充属性' : '语义属性'}</h3>
+            <section aria-label={t('marivo.semantic.additional-properties')}>
+              <h3>
+                {object.computation
+                  ? t('marivo.semantic.additional-properties')
+                  : t('marivo.semantic.semantic-properties')}
+              </h3>
               <Fields
                 fields={definitionFields}
                 object={object}
@@ -174,34 +188,44 @@ function ObjectDetail({
               />
             </section>
           )}
-          <h3>定义位置</h3>
+          <h3>{t('marivo.semantic.definition-location')}</h3>
           <p className="sb-ref">{source}</p>
           <p className="sb-ref">{object.source.symbol}</p>
           {object.ref.kind === 'datasource' && (
-            <p className="sb-muted">此处仅展示数据源类型，不展示连接配置或凭证。</p>
+            <p className="sb-muted">
+              {t('marivo.semantic.only-the-datasource-type-is-shown-here-without-connection')}
+            </p>
           )}
           {object.ref.kind === 'entity' && (
-            <p className="sb-muted">文件来源仅展示类型；文件地址与请求配置不在此页面披露。</p>
+            <p className="sb-muted">
+              {t('marivo.semantic.file-sources-show-only-their-type-file-addresses-and')}
+            </p>
           )}
         </>
       )}
       {view.tab === 'relations' && (
         <>
-          <p className="sb-muted">Catalog 声明的对象关系。候选维度不代表任意查询组合已通过验证。</p>
+          <p className="sb-muted">
+            {t(
+              'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
+            )}
+          </p>
           <button type="button" aria-pressed={graph} onClick={() => setGraph((x) => !x)}>
-            {graph ? '收起关系图' : '查看关系图'}
+            {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
           </button>
           {graph && (
             <ObjectGraph object={object} objects={objects} navigate={(next) => navigate(next)} />
           )}
-          {!object.relations.length && <p>没有声明关联对象。</p>}
+          {!object.relations.length && <p>{t('marivo.semantic.no-relationships-declared')}</p>}
           <ul className="sb-relation-list">
             {object.relations.map((relation) => {
               const target = refKey(relation.ref),
                 related = objects.get(target)
               return (
                 <li key={`${relation.field}/${target}`}>
-                  <span className="sb-muted">{fieldLabels[relation.field] ?? relation.field}</span>
+                  <span className="sb-muted">
+                    {t(fieldLabels[relation.field] ?? relation.field)}
+                  </span>
                   <button
                     type="button"
                     disabled={!related}
@@ -212,7 +236,7 @@ function ObjectDetail({
                   </button>
                   <span className="sb-ref">
                     {target}
-                    {!related ? ' · 当前目录未包含此对象' : ''}
+                    {!related ? t('marivo.semantic.object-not-included-in-this-catalog') : ''}
                   </span>
                 </li>
               )
@@ -232,6 +256,8 @@ export function SemanticBrowserPanel({
   onOpenObject,
   onAsk,
 }) {
+  const t = useCopy()
+
   const navigate = (key) => model.navigate(key)
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const panel = useRef(null)
@@ -241,7 +267,10 @@ export function SemanticBrowserPanel({
     () => new Map((snapshot?.objects ?? []).map((item) => [refKey(item.ref), item])),
     [snapshot],
   )
-  const filtered = useMemo(() => filterObjects(snapshot?.objects ?? [], view), [snapshot, view])
+  const filtered = useMemo(
+    () => filterObjects(snapshot?.objects ?? [], view, t.locale),
+    [snapshot, view, t.locale],
+  )
   const counts = useMemo(
     () => countObjectsByKind(snapshot?.objects ?? [], view.domain),
     [snapshot, view.domain],
@@ -273,21 +302,26 @@ export function SemanticBrowserPanel({
   )
   if (!state.open) return null
   return (
-    <section ref={panel} className="sb-panel" aria-label="语义层对象浏览器">
+    <section
+      ref={panel}
+      className="sb-panel"
+      aria-label={t('marivo.semantic.semantic-object-browser')}
+    >
       <style>{browserStyles}</style>
       <div className="sb-shell">
         <header className="sb-header">
-          <h1>语义层</h1>
+          <h1>{t('marivo.navigation.semantic-layer')}</h1>
           {snapshot && (
             <time className="sb-updated" dateTime={snapshot.loadedAt}>
-              更新于 {new Date(snapshot.loadedAt).toLocaleString()}
+              {t('marivo.semantic.updated')}
+              {new Date(snapshot.loadedAt).toLocaleString(t.locale)}
             </time>
           )}
           <button
             className="sb-refresh"
             type="button"
-            aria-label="刷新语义层"
-            title="刷新语义层"
+            aria-label={t('marivo.semantic.refresh-semantic-layer')}
+            title={t('marivo.semantic.refresh-semantic-layer')}
             disabled={!state.workspaceId || !knownWorkspace || workspaceError || view.loading}
             onClick={() => void model.refresh()}
           >
@@ -308,45 +342,54 @@ export function SemanticBrowserPanel({
           </button>
         </header>
         {state.fromReport && (
-          <p className="sb-status">此处展示当前语义定义；报告数据与来源仍是生成时的快照。</p>
+          <p className="sb-status">
+            {t('marivo.semantic.current-semantic-definitions-are-shown-here-report-data-and')}
+          </p>
         )}
         {workspaceError && (
           <div role="alert" className="sb-status">
-            Workspace 列表暂不可用，请检查 Host 连接。
+            {t('marivo.semantic.workspace-list-unavailable-check-the-host-connection')}
           </div>
         )}
         {view.loading && (
           <div role="status" className="sb-status">
-            正在读取语义层对象…{snapshot ? '当前仍显示上次加载内容。' : ''}
+            {t('marivo.semantic.loading-semantic-objects')}
+            {snapshot ? t('marivo.semantic.previously-loaded-content-is-still-shown') : ''}
           </div>
         )}
         {view.error && (
           <div role="alert" className="sb-status">
-            {view.error}
-            {snapshot ? ' 当前显示上次成功加载的内容。' : ''}
+            {t(view.error)}
+            {snapshot ? t('marivo.semantic.previously-loaded-content-is-still-shown-714') : ''}
           </div>
         )}
         {!state.workspaceId ? (
           <div className="sb-empty">
             {workspacePhase !== 'ready'
-              ? '正在读取 Workspace 列表…'
-              : '当前会话未绑定 Workspace，请返回会话后重试。'}
+              ? t('marivo.semantic.loading-workspaces')
+              : t('marivo.semantic.this-session-has-no-workspace-return-to-the-session')}
           </div>
         ) : !snapshot ? (
-          <div className="sb-empty">{view.loading ? '正在加载对象目录' : '尚未加载对象目录'}</div>
+          <div className="sb-empty">
+            {view.loading
+              ? t('marivo.semantic.loading-object-catalog')
+              : t('marivo.semantic.object-catalog-not-loaded')}
+          </div>
         ) : !snapshot.objects.length && !view.selected ? (
-          <div className="sb-empty">当前项目没有语义层对象。</div>
+          <div className="sb-empty">
+            {t('marivo.semantic.this-project-has-no-semantic-objects')}
+          </div>
         ) : (
           <div className={`sb-columns ${view.selected ? 'sb-has-selection' : ''}`}>
-            <nav className="sb-nav" aria-label="对象分类">
+            <nav className="sb-nav" aria-label={t('marivo.semantic.object-categories')}>
               <label className="sb-domain">
-                业务域
+                {t('marivo.semantic.domain')}
                 <select
-                  aria-label="筛选业务域"
+                  aria-label={t('marivo.semantic.filter-domains')}
                   value={view.domain}
                   onChange={(event) => model.patch({ domain: event.target.value, page: 0 })}
                 >
-                  <option value="">全部业务域</option>
+                  <option value="">{t('marivo.semantic.all-domains')}</option>
                   {domains.map((domain) => (
                     <option key={domain}>{domain}</option>
                   ))}
@@ -358,7 +401,8 @@ export function SemanticBrowserPanel({
                   aria-pressed={!view.kind}
                   onClick={() => model.patch({ kind: '', page: 0 })}
                 >
-                  全部对象 <span>{counts.total}</span>
+                  {t('marivo.semantic.all-objects')}
+                  <span>{counts.total}</span>
                 </button>
                 {kinds.map((kind) => (
                   <button
@@ -367,22 +411,26 @@ export function SemanticBrowserPanel({
                     aria-pressed={view.kind === kind}
                     onClick={() => model.patch({ kind, page: 0 })}
                   >
-                    {kindLabels[kind] ?? kind}
+                    {t(kindLabels[kind] ?? kind)}
                     <span>{counts.byKind.get(kind) ?? 0}</span>
                   </button>
                 ))}
               </div>
             </nav>
-            <section className="sb-list" aria-label="对象列表">
+            <section className="sb-list" aria-label={t('marivo.semantic.object-list')}>
               <input
                 className="sb-search"
-                aria-label="搜索语义对象"
-                placeholder="搜索名称、引用、业务定义"
+                aria-label={t('marivo.semantic.search-semantic-objects')}
+                placeholder={t('marivo.semantic.search-names-references-and-business-definitions')}
                 value={view.query}
                 onChange={(event) => model.patch({ query: event.target.value, page: 0 })}
               />
-              <p className="sb-count">{filtered.length} 个对象</p>
-              {!filtered.length && <p>没有匹配对象，请调整搜索或筛选条件。</p>}
+              <p className="sb-count">
+                {filtered.length} {t('marivo.semantic.objects')}
+              </p>
+              {!filtered.length && (
+                <p>{t('marivo.semantic.no-matching-objects-adjust-the-search-or-filters')}</p>
+              )}
               <ul className="sb-objects">
                 {filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((item) => (
                   <li key={refKey(item.ref)}>
@@ -394,10 +442,12 @@ export function SemanticBrowserPanel({
                       <span className="sb-object-title">
                         <strong>{item.name}</strong>
                         <span className="sb-badge">
-                          {kindLabels[item.ref.kind] ?? item.ref.kind}
+                          {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
                         </span>
                       </span>
-                      <span className="sb-summary">{item.definition || '未填写业务定义'}</span>
+                      <span className="sb-summary">
+                        {item.definition || t('marivo.semantic.no-business-definition')}
+                      </span>
                       <span className="sb-ref">{refKey(item.ref)}</span>
                     </button>
                   </li>
@@ -410,7 +460,7 @@ export function SemanticBrowserPanel({
                     disabled={!page}
                     onClick={() => model.patch({ page: page - 1 })}
                   >
-                    上一页
+                    {t('marivo.presentation.previous-page')}
                   </button>
                   <span>
                     {page + 1} / {Math.ceil(filtered.length / PAGE_SIZE)}
@@ -420,15 +470,15 @@ export function SemanticBrowserPanel({
                     disabled={(page + 1) * PAGE_SIZE >= filtered.length}
                     onClick={() => model.patch({ page: page + 1 })}
                   >
-                    下一页
+                    {t('marivo.presentation.next-page')}
                   </button>
                 </div>
               )}
             </section>
-            <section className="sb-detail" aria-label="对象详情">
+            <section className="sb-detail" aria-label={t('marivo.semantic.object-details')}>
               {selected && onOpenObject && (
                 <button type="button" onClick={() => onOpenObject(selected.ref)}>
-                  在独立标签页打开
+                  {t('marivo.semantic.open-in-a-separate-tab')}
                 </button>
               )}
               {selected ? (
@@ -436,7 +486,7 @@ export function SemanticBrowserPanel({
                   key={`${snapshot.fingerprint}/${view.selected}`}
                   onAsk={!view.loading && !view.error && !workspaceError ? onAsk : undefined}
                   questionPending={state.questionPending}
-                  questionNotice={state.questionNotice}
+                  questionNotice={t(state.questionNotice)}
                   object={selected}
                   objects={objects}
                   view={view}
@@ -447,14 +497,14 @@ export function SemanticBrowserPanel({
                 <div className="sb-empty">
                   {view.selected ? (
                     <>
-                      <p>所选对象已不在当前 Catalog 中，请重新选择。</p>
+                      <p>{t('marivo.semantic.the-selected-object-is-no-longer-in-this-catalog')}</p>
                       <p>{view.selected}</p>
                       <button type="button" onClick={() => model.patch({ selected: '' })}>
-                        返回列表
+                        {t('marivo.semantic.back-to-list')}
                       </button>
                     </>
                   ) : (
-                    '选择一个对象，查看业务定义与关联。'
+                    t('marivo.semantic.select-an-object-to-view-its-business-definition-and')
                   )}
                 </div>
               )}

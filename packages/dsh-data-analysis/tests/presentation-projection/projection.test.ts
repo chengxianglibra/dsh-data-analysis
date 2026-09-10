@@ -58,7 +58,8 @@ after(async () => {
 })
 function artifactDraft(): PresentationDraft {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'Artifact',
     sources: [structuredClone(declared)],
     datasets: [
@@ -69,7 +70,8 @@ function artifactDraft(): PresentationDraft {
 }
 function computedDraft(sourceIds: string[] = []): PresentationDraft {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'computed',
     sources: [],
     datasets: [{ id: 'data', kind: 'computed', path: 'computed.json', sourceIds }],
@@ -245,7 +247,8 @@ test('source-only has no fabricated dataset, and no computed source declaration 
   t.after(f.cleanup)
   const sourceOnly = await f.bridge.project(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      locale: 'zh-CN',
       title: 'Sources',
       sources: [declared],
       datasets: [],
@@ -484,7 +487,8 @@ test('source snapshots reject extra fields and preserve multiple declared source
   await assert.rejects(
     g.bridge.project(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        locale: 'zh-CN',
         title: 'Ordered sources',
         sources: [declared, { id: second.id, ref: second.ref }],
         datasets: [],
@@ -534,4 +538,27 @@ test('computed projection preserves actionable column diagnostics without duplic
     return true
   })
   assert.equal(f.requests.length, 0)
+})
+
+test('projection carries the authored report locale and rejects obsolete drafts before Runtime reads', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    const draft = { ...artifactDraft(), locale }
+    const document = await f.bridge.project(draft, options)
+    assert.equal(document.schemaVersion, 3)
+    assert.equal(document.locale, locale)
+    assert.equal(document.title, draft.title)
+    assert.deepEqual(document.blocks, draft.blocks)
+  }
+  const reads = f.requests.length
+  await assert.rejects(
+    f.bridge.project({ ...artifactDraft(), schemaVersion: 1 }, options),
+    errorAt('report-version-unsupported', '/schemaVersion'),
+  )
+  await assert.rejects(
+    f.bridge.project({ ...artifactDraft(), locale: undefined }, options),
+    errorAt('report-locale-invalid', '/locale'),
+  )
+  assert.equal(f.requests.length, reads)
 })

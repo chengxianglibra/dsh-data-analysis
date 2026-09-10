@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { translator } from './../../src/client/i18n/copy.ts'
 import type { PresentationContext } from '../../src/client/presentation/context-reference.ts'
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import type { PresentationDocument } from '../../src/presentation/contracts/types.ts'
@@ -27,7 +28,10 @@ before(async () => {
     target: 'es2022',
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
+const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
 import { PresentationReader } from './src/client/presentation/reader.tsx';
 import { Markdown } from './src/client/presentation/markdown.tsx';
 import { ChartExplorer } from './src/client/presentation/chart-explorer.tsx';
@@ -86,10 +90,10 @@ test('static reader keeps exact data and saved rows without appending report sou
   assert.match(html, /12345678901234\.5678/)
   assert.match(html, /9007199254740993/)
   assert.match(html, /0\.1000/)
-  assert.match(html, /金额 \(CNY\)/)
+  assert.match(translator('zh-CN')(html), /金额 \(CNY\)/)
   assert.match(html, /data-cell-null="true"/)
   assert.doesNotMatch(html, /The declared Artifact is not available|pr-source-summary/)
-  assert.match(html, /显示 3 \/ 5 行（已截断）/)
+  assert.match(translator('zh-CN')(html), /显示 3 \/ 5 行（已截断）/)
   assert.doesNotMatch(html, /<button|<select|<svg/)
 })
 
@@ -103,8 +107,8 @@ test('source-only reader preserves explicit source cells without appending a sum
 test('explorer exposes all types with unavailable prepared statistics disabled and native keyboard controls', async () => {
   const document = await fixture('computed')
   const html = renderExplorer(document)
-  assert.match(html, /aria-label="探索图表"/)
-  assert.match(html, /aria-label="关闭探索图表"/)
+  assert.match(translator('zh-CN')(html), /aria-label="探索图表"/)
+  assert.match(translator('zh-CN')(html), /aria-label="关闭探索图表"/)
   for (const type of [
     'line',
     'area',
@@ -128,10 +132,10 @@ test('explorer exposes all types with unavailable prepared statistics disabled a
     assert.ok(html.includes(`value="${type}"`), type)
   assert.match(html, /value="histogram" disabled=""/)
   assert.match(html, /value="stackedBar100" disabled=""/)
-  assert.match(html, /数值系列/)
-  assert.match(html, /X 字段/)
-  assert.doesNotMatch(html, /保留分类值|分类过滤|联动筛选|multiple=/)
-  assert.match(html, /恢复原图/)
+  assert.match(translator('zh-CN')(html), /数值系列/)
+  assert.match(translator('zh-CN')(html), /X 字段/)
+  assert.doesNotMatch(translator('zh-CN')(html), /保留分类值|分类过滤|联动筛选|multiple=/)
+  assert.match(translator('zh-CN')(html), /恢复原图/)
   assert.doesNotMatch(html, /<script|fetch\(|localStorage/)
 })
 
@@ -150,12 +154,12 @@ test('Host Ask DSH callback replaces clipboard UI while portable and fallback re
   const document = await fixture('computed')
   const contexts: PresentationContext[] = []
   const html = renderHost(document, (context) => contexts.push(context))
-  assert.match(html, /aria-label="cell 更多操作"/)
+  assert.match(translator('zh-CN')(html), /aria-label="cell 更多操作"/)
   assert.match(html, /class="pr-host-print"><article[^>]+data-mode="static"/)
-  assert.doesNotMatch(html, /手动复制 cell 上下文|aria-label="cell 上下文"/)
+  assert.doesNotMatch(translator('zh-CN')(html), /手动复制 cell 上下文|aria-label="cell 上下文"/)
   assert.deepEqual(contexts, [])
-  assert.match(renderHost(document), /手动复制 cell 上下文/)
-  assert.match(renderDocument(document, 'interactive'), /手动复制 cell 上下文/)
+  assert.match(translator('zh-CN')(renderHost(document)), /手动复制 cell 上下文/)
+  assert.match(translator('zh-CN')(renderDocument(document, 'interactive')), /手动复制 cell 上下文/)
 })
 
 test('cell and filter identifiers matching Object prototype names remain ordinary snapshot identifiers', async () => {
@@ -183,31 +187,37 @@ test('static charts keep exact tables while interactive chart details live behin
     },
   ]
   const html = renderDocument(document)
-  assert.doesNotMatch(html, /图形为近似编码|近似绘图/)
-  assert.match(html, /精确数据/)
+  assert.doesNotMatch(translator('zh-CN')(html), /图形为近似编码|近似绘图/)
+  assert.match(translator('zh-CN')(html), /精确数据/)
   assert.match(html, /12345678901234\.5678/)
   const interactive = renderDocument(document, 'interactive')
   assert.equal((interactive.match(/class="pr-chart-group"/g) ?? []).length, 2)
-  assert.doesNotMatch(interactive, /pr-axis-unit|不同单位分图展示|纵轴：/)
-  assert.match(interactive, /近似绘图/)
-  assert.match(interactive, /aria-label="cell 更多操作"/)
-  assert.doesNotMatch(interactive, /选择图表数据行|查看数据|pr-exact-data|<table/)
+  assert.doesNotMatch(translator('zh-CN')(interactive), /pr-axis-unit|不同单位分图展示|纵轴：/)
+  assert.match(translator('zh-CN')(interactive), /近似绘图/)
+  assert.match(translator('zh-CN')(interactive), /aria-label="cell 更多操作"/)
+  assert.doesNotMatch(
+    translator('zh-CN')(interactive),
+    /选择图表数据行|查看数据|pr-exact-data|<table/,
+  )
 })
 
 test('read-only Markdown renders structure while refusing executable HTML, image requests and unsafe URLs', () => {
   const html = renderMarkdown(
     '# 标题\n\n**重点** 和 *斜体* 与 `代码`\n\n- 项目\n\n> 引用\n\n```js\n<script>evil()</script>\n```\n\n[安全](https://example.com) [坏](javascript:evil) ![图片](https://example.com/image.png)\n\n<img src="https://example.com/raw.png">',
   )
-  assert.match(html, /<h2>标题<\/h2>/)
-  assert.match(renderMarkdown('## 章节\n\n### 子章节'), /<h2>章节<\/h2><h3>子章节<\/h3>/)
-  assert.match(html, /<strong>重点<\/strong>/)
-  assert.match(html, /<em>斜体<\/em>/)
+  assert.match(translator('zh-CN')(html), /<h2>标题<\/h2>/)
+  assert.match(
+    translator('zh-CN')(renderMarkdown('## 章节\n\n### 子章节')),
+    /<h2>章节<\/h2><h3>子章节<\/h3>/,
+  )
+  assert.match(translator('zh-CN')(html), /<strong>重点<\/strong>/)
+  assert.match(translator('zh-CN')(html), /<em>斜体<\/em>/)
   assert.match(html, /<ul>/)
   assert.match(html, /<blockquote>/)
   assert.match(html, /href="https:\/\/example.com"/)
   assert.doesNotMatch(html, /<script|<img|href="javascript:/)
   assert.match(html, /&lt;script&gt;/)
-  assert.match(html, /图片：图片/)
+  assert.match(translator('zh-CN')(html), /图片：图片/)
   assert.match(renderMarkdown('>'.repeat(32_768)), /&gt;/)
 })
 
@@ -250,16 +260,16 @@ test('reader keeps authored cells and document intact while presenting concise c
         (position, index) => position >= 0 && (!index || position > positions[index - 1]!),
       ),
     )
-    assert.match(html, /原始正文：未经任何解释性改写。/)
+    assert.match(translator('zh-CN')(html), /原始正文：未经任何解释性改写。/)
     for (const source of document.sources) {
       assert.equal(html.split(`data-source-id="${source.id}"`).length - 1, 1)
     }
     assert.ok(html.indexOf('保留未知提示') < html.indexOf('data-block-id="first"'))
     assert.doesNotMatch(
-      html,
+      translator('zh-CN')(html),
       /pr-diagnostics-secondary|pr-footer|pr-source-links|继续分析|声明关联|计算已验证|保存数据第/,
     )
-    assert.doesNotMatch(html, /aria-label="复制 cell 上下文"/)
+    assert.doesNotMatch(translator('zh-CN')(html), /aria-label="复制 cell 上下文"/)
     assert.equal(
       html.split('aria-label="cell 更多操作"').length - 1,
       mode === 'interactive' ? document.blocks.length : 0,
@@ -273,13 +283,13 @@ test('declared filters render one region, dynamic default KPI and only default r
   const { document } = await interactionFixture()
   const staticHtml = renderDocument(document)
   assert.match(staticHtml, /pr-interaction-region/)
-  assert.match(staticHtml, /原始快照 · 不随筛选变化/)
+  assert.match(translator('zh-CN')(staticHtml), /原始快照 · 不随筛选变化/)
   assert.match(staticHtml, /550/)
   assert.doesNotMatch(staticHtml, /<button|<select|data-row-index="2"/)
   const interactive = renderDocument(document, 'interactive')
   assert.equal((interactive.match(/aria-label="全局筛选"/g) ?? []).length, 1)
-  assert.doesNotMatch(interactive, /筛选字段|pr-dataset-filters|multiple=/)
-  assert.match(interactive, /重置筛选/)
+  assert.doesNotMatch(translator('zh-CN')(interactive), /筛选字段|pr-dataset-filters|multiple=/)
+  assert.match(translator('zh-CN')(interactive), /重置筛选/)
 })
 
 test('filter boundaries separate only adjacent fixed content and preserve block order', async () => {
@@ -358,20 +368,23 @@ test('KPI comparisons preserve exact prepared values, units, missing values and 
   parsePresentationDocument(document)
   for (const mode of ['static', 'interactive'] as const) {
     const html = renderDocument(document, mode)
-    assert.match(html, /2,630,853 次/)
-    assert.match(html, /参考值 2,805,879 次/)
-    assert.match(html, /变化 -175,026 次/)
-    assert.match(html, /变化率 -6.24 %/)
+    assert.match(translator('zh-CN')(html), /2,630,853 次/)
+    assert.match(translator('zh-CN')(html), /参考值 2,805,879 次/)
+    assert.match(translator('zh-CN')(html), /变化 -175,026 次/)
+    assert.match(translator('zh-CN')(html), /变化率 -6.24 %/)
     assert.match(html, /pr-metric-change-positive/)
     assert.match(html, /pr-metric-change-neutral/)
-    assert.match(html, /↓ 下降/)
+    assert.match(translator('zh-CN')(html), /↓ 下降/)
   }
   data.rows[0]![2] = '0.0000'
   data.rows[0]![3] = null
-  assert.match(renderDocument(document), /持平/)
-  assert.match(renderDocument(document), /变化不可用/)
+  assert.match(translator('zh-CN')(renderDocument(document)), /持平/)
+  assert.match(translator('zh-CN')(renderDocument(document)), /变化不可用/)
   data.rows[0]![2] = '9007199254740993.0001'
-  assert.match(renderDocument(document), /变化 \+9,007,199,254,740,993.0001 次/)
+  assert.match(
+    translator('zh-CN')(renderDocument(document)),
+    /变化 \+9,007,199,254,740,993.0001 次/,
+  )
   assert.match(renderDocument(document), /pr-metric-change-negative/)
   const metric = document.blocks[0]!
   if (metric.kind !== 'metric') throw new Error('Expected metric')

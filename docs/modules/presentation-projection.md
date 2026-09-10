@@ -16,7 +16,7 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
 
 纯展示结构以 [types.ts](../../packages/dsh-data-analysis/src/presentation/contracts/types.ts) 和
 [校验入口](../../packages/dsh-data-analysis/src/presentation/contracts/index.ts)为准，不复制 Marivo 的领域 schema。
-Document 和 Receipt 使用 schemaVersion 2；Draft 与 computed `TypedDataset` 使用 schemaVersion 1。
+Document 使用 schemaVersion 3，Draft 使用 schemaVersion 2，两者均要求 `locale: "zh-CN" | "en-US"`。Receipt 仍使用 schemaVersion 2，computed `TypedDataset` 仍使用 schemaVersion 1。旧报告不自动迁移，需由 DSH 重新生成。
 current 指针与 Host delivery envelope 的版本由[展示交付](presentation-delivery.md)独立定义。
 
 | 结构 | 职责 |

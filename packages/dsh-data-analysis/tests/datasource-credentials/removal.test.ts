@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
 import { marivoCredentialStorageRef } from '../../src/datasource/shell-env.ts'
 import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
@@ -286,5 +287,5 @@ test('authoritative deletion rejection stays actionable instead of becoming an u
     'credentials-changed',
   ])
   assert.equal(model.getSnapshot().datasources[0]?.version, JSON.stringify([['DB_PASSWORD', 1]]))
-  assert.doesNotMatch(model.getSnapshot().error, /不可恢复/)
+  assert.doesNotMatch(translator('zh-CN')(model.getSnapshot().error), /不可恢复/)
 })

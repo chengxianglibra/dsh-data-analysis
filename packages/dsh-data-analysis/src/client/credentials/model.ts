@@ -12,6 +12,7 @@ import type {
   CredentialRequestView,
 } from '../../datasource/service.ts'
 import type { PublishingCredentialView, PublishingField } from '../../report-publishing/service.ts'
+import { CopyError, errorMessage, message, type Notice } from './../i18n/copy.ts'
 import type { BrowserRpc } from '../semantic-browser/model.ts'
 
 const CHANNEL = '/dsh-data-analysis-credentials'
@@ -26,7 +27,7 @@ export interface ClientOperation {
   name: string
   workspaceId?: string
   overviewUpdated?: boolean
-  error?: string
+  error?: Notice
   operation?: CredentialOperationView
 }
 export interface CredentialClientState {
@@ -40,43 +41,61 @@ export interface CredentialClientState {
   requestId: string
   selected: string
   loading: boolean
-  error: string
+  error: Notice
   operations: ClientOperation[]
   outcomes: Record<string, ClientOperation>
   operation?: CredentialOperationView
   handle?: QueryHandle
 }
 const messages: Record<string, string> = {
-  'datasource-remove-unavailable': '当前 Runtime 不支持删除数据源。',
-  'datasource-not-removable': '该数据源不属于可删除的项目本地定义。',
-  'datasource-remove-failed': '未能确认数据源删除结果，请刷新列表检查；对应凭证尚未删除。',
+  'datasource-remove-unavailable':
+    'marivo.credentials.this-runtime-does-not-support-datasource-deletion',
+  'datasource-not-removable':
+    'marivo.credentials.this-datasource-is-not-a-removable-project-local-definition',
+  'datasource-remove-failed':
+    'marivo.credentials.datasource-deletion-is-unconfirmed-refresh-the-list-to-check',
   'credential-delete-failed':
-    '数据源已删除，但部分凭证删除失败；请在 Harness 凭证管理中处理保留项。',
-  'datasource-config-changed': '配置已被修改，请重新打开编辑页面后再保存。',
-  'datasource-identity-fixed': '数据源名称和引擎不能修改。',
-  'context-changed': 'Workspace 或数据源定义已变化，请重新读取后操作。',
-  'credentials-changed': '凭证配置已变化，请重新读取后验证。',
-  'call-ended': '原调用已结束，已保存的值仍保留；请重新发起任务。',
-  'credential-missing': '凭证尚未配齐，请补填后验证。',
-  'credential-save-failed': '部分凭证保存失败；已成功保存的项目保留。',
-  'operation-busy': '该操作正在进行，请等待结果。',
-  'credential-state-unavailable': '暂时无法读取凭证状态，请稍后重试。',
-  'capacity-exceeded': '当前操作数量达到上限，请稍后重试。',
-  'datasource-already-exists': '该数据源已存在，请使用其他名称。',
-  'datasource-definition-invalid': '数据源定义无效，请检查名称、字段类型和凭证引用。',
+    'marivo.credentials.datasource-deleted-but-some-credentials-could-not-be-deleted',
+  'datasource-config-changed':
+    'marivo.credentials.configuration-changed-reopen-the-editor-before-saving',
+  'datasource-identity-fixed': 'marivo.credentials.datasource-name-and-engine-cannot-be-changed',
+  'context-changed':
+    'marivo.credentials.workspace-or-datasource-definition-changed-reload-before-continuing',
+  'credentials-changed':
+    'marivo.credentials.credential-configuration-changed-reload-before-validating',
+  'call-ended': 'marivo.credentials.the-original-call-ended-saved-values-remain-start-the',
+  'credential-missing':
+    'marivo.credentials.some-credentials-are-missing-complete-them-before-validating',
+  'credential-save-failed':
+    'marivo.credentials.some-credentials-could-not-be-saved-successfully-saved-entries',
+  'operation-busy': 'marivo.credentials.this-operation-is-in-progress-wait-for-its-result',
+  'credential-state-unavailable':
+    'marivo.credentials.credential-status-is-temporarily-unavailable-retry-later',
+  'capacity-exceeded': 'marivo.credentials.the-operation-limit-has-been-reached-retry-later',
+  'datasource-already-exists':
+    'marivo.credentials.this-datasource-already-exists-choose-another-name',
+  'datasource-definition-invalid':
+    'marivo.credentials.invalid-datasource-definition-check-the-name-field-types-and',
   'datasource-credential-ref-invalid':
-    '凭证引用名称无效。*_env 字段填写引用名（如 MY_DB_PASSWORD），仅可使用字母、数字和下划线，且不能以数字开头；不能使用 MARIVO_、DSH_DATA_ANALYSIS_ 前缀或 Host 保留名称。实际用户名和密码请在创建后的“新增凭证”中填写。',
-  'datasource-authoring-unavailable': '当前 Runtime 不支持新增数据源。',
+    'marivo.credentials.invalid-credential-reference-in-env-fields-enter-a-reference',
+  'datasource-authoring-unavailable':
+    'marivo.credentials.this-runtime-does-not-support-datasource-creation',
   'datasource-defaults-invalid':
-    'datasourceDefaults 配置格式无效，请使用引擎到字段默认值的 JSON 映射。',
-  'datasource-defaults-backend-invalid': 'datasourceDefaults 包含当前 Runtime 不支持的引擎。',
-  'datasource-defaults-field-invalid': 'datasourceDefaults 包含当前 Runtime 不支持的字段。',
-  'datasource-defaults-type-invalid': 'datasourceDefaults 中的字段值类型与当前 Runtime 不匹配。',
+    'marivo.credentials.invalid-datasourcedefaults-format-use-a-json-mapping-from-engines',
+  'datasource-defaults-backend-invalid':
+    'marivo.credentials.datasourcedefaults-contains-an-engine-unsupported-by-the-current-runtime',
+  'datasource-defaults-field-invalid':
+    'marivo.credentials.datasourcedefaults-contains-a-field-unsupported-by-the-current-runtime',
+  'datasource-defaults-type-invalid':
+    'marivo.credentials.datasourcedefaults-field-types-do-not-match-the-current-runtime',
   'datasource-defaults-credential-forbidden':
-    'datasourceDefaults 不支持凭据引用字段，请通过现有凭据流程配置。',
+    'marivo.credentials.datasourcedefaults-does-not-support-credential-reference-fields-use-the',
 }
 export function credentialMessage(code: string): string {
-  return messages[code] ?? '凭证操作失败，请检查配置后重试。'
+  return (
+    messages[code] ??
+    'marivo.credentials.credential-operation-failed-check-the-configuration-and-retry'
+  )
 }
 class CredentialResponseError extends Error {
   readonly code: string
@@ -215,8 +234,10 @@ export class CredentialClientModel {
         ].includes(error.code)
       )
         throw error
-      throw new Error(
-        `${error instanceof Error ? error.message : '新增数据源失败。'} 如提交结果未确认，请刷新列表核对后再操作。`,
+      throw new CopyError(
+        message('marivo.credentials.value-if-submission-is-unconfirmed-refresh-the-list-to', {
+          p0: error instanceof Error ? errorMessage(error) : 'marivo.credentials.create-failed',
+        }),
       )
     }
     if (!this.#state.open || this.#state.workspaceId !== workspaceId) return
@@ -268,8 +289,10 @@ export class CredentialClientModel {
           ].includes(error.code)
         )
           throw error
-        throw new Error(
-          `${error instanceof Error ? error.message : '保存配置失败。'} 如保存结果未确认，请重新读取配置核对后再操作；不会自动重发。`,
+        throw new CopyError(
+          message('marivo.credentials.value-if-saving-is-unconfirmed-reload-the-configuration-to', {
+            p0: error instanceof Error ? errorMessage(error) : 'marivo.credentials.save-failed',
+          }),
         )
       }
 
@@ -306,7 +329,7 @@ export class CredentialClientModel {
   #checkCredentialWrites(context: CredentialContextView, changes: Record<string, string>) {
     if (Object.keys(changes).some((ref) => context.credentials[ref]?.configured))
       throw new Error(
-        '配置已保存，但引用名已存在。未覆盖已有凭证；请在凭证页确认更新，或编辑配置使用新的引用名。',
+        'marivo.credentials.configuration-saved-but-the-reference-already-exists-existing-credentials',
       )
   }
   #acceptRequest(request: ConfigurationRequestView) {
@@ -388,7 +411,10 @@ export class CredentialClientModel {
       if (!flight.signal.aborted)
         this.#patch({
           loading: false,
-          error: error instanceof Error ? error.message : '无法读取凭证状态。',
+          error:
+            error instanceof Error
+              ? errorMessage(error)
+              : 'marivo.credentials.cannot-read-credential-status',
         })
     }
   }
@@ -467,7 +493,10 @@ export class CredentialClientModel {
         }
       } catch {
         if (!signal.aborted) {
-          this.#patch({ error: '凭证待办连接中断，正在重连；Host 中的等待仍受原调用期限限制。' })
+          this.#patch({
+            error:
+              'marivo.credentials.credential-request-connection-interrupted-reconnecting-host-waits-remain-subject',
+          })
           await delay([1000, 2000, 5000][Math.min(attempt++, 2)]!, signal)
         }
       }
@@ -691,7 +720,10 @@ export class CredentialClientModel {
         return
       }
       if (this.#state.handle?.id === handle.id && this.#visible(handle.scope))
-        this.#patch({ error: '提交响应未确认，正在查询操作状态；不会重新发送秘密值。' })
+        this.#patch({
+          error:
+            'marivo.credentials.submission-response-unconfirmed-checking-operation-status-without-resending-secret',
+        })
     } finally {
       for (const ref of Object.keys(changes)) delete changes[ref]
     }
@@ -722,8 +754,8 @@ export class CredentialClientModel {
           if (!operation) {
             const error =
               entry.operation?.action === 'delete-datasource'
-                ? '删除状态不可恢复，部分删除可能已发生，请刷新数据源并核对 Harness 凭证状态。'
-                : '操作状态不可恢复。保存可能已经发生，请重新读取实际配置后决定下一步。'
+                ? 'marivo.credentials.deletion-status-cannot-be-recovered-some-deletion-may-have'
+                : 'marivo.credentials.operation-status-cannot-be-recovered-saving-may-have-occurred'
             this.#settle({ ...entry, operation: undefined, error })
             return
           }
@@ -738,7 +770,10 @@ export class CredentialClientModel {
             this.#state.handle?.id === handle.id &&
             this.#visible(handle.scope)
           )
-            this.#patch({ error: '正在恢复操作结果；已提交的保存不会自动重发。' })
+            this.#patch({
+              error:
+                'marivo.credentials.recovering-operation-results-submitted-saves-will-not-be-resent',
+            })
         }
         await delay(1000, signal)
       }
@@ -784,7 +819,10 @@ export class CredentialClientModel {
     try {
       await this.#call('cancel-request', { requestId: id })
     } catch (error) {
-      this.#patch({ error: error instanceof Error ? error.message : '调用已结束。' })
+      this.#patch({
+        error:
+          error instanceof Error ? errorMessage(error) : 'marivo.credentials.the-call-has-ended',
+      })
     }
   }
   async cancelOperation(scope?: string): Promise<void> {
@@ -800,7 +838,9 @@ export class CredentialClientModel {
     try {
       await this.#call('cancel-operation', handle)
     } catch {
-      this.#patch({ error: '无法确认取消结果，请继续查询。' })
+      this.#patch({
+        error: 'marivo.credentials.cancellation-is-unconfirmed-continue-checking-status',
+      })
     }
   }
   reset(): void {

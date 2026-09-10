@@ -39,7 +39,8 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'presentation-s4-test-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   const document: PresentationDocument = {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    locale: 'zh-CN',
     workspaceId: 'workspace',
     reportId: 'report',
     buildId: 'build',
@@ -246,7 +247,8 @@ test('production present accepts computed and source-only drafts, uses independe
     signal: new AbortController().signal,
   } as unknown as ToolRunContext
   const draft = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    locale: 'zh-CN',
     title: 'Source only',
     datasets: [],
     sources: [{ id: 'source', ref: { sessionId: 'analysis', artifactRef: 'artifact' } }],
@@ -278,7 +280,8 @@ test('production present accepts computed and source-only drafts, uses independe
   await writeFile(
     path.join(f.root, 'draft.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      locale: 'zh-CN',
       title: 'Computed',
       sources: [],
       datasets: [{ id: 'data', kind: 'computed', path: 'data.json', sourceIds: [] }],
@@ -356,7 +359,8 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
     await writeFile(
       path.join(f.root, 'draft.json'),
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        locale: 'zh-CN',
         title: 'Pending',
         datasets: [],
         sources: [],

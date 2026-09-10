@@ -98,3 +98,7 @@ Ask DSH 将正在显示的 Workspace/Report/Build/Cell 及临时视图定位插�
 已有 Agent 批量安装失败时回滚本批安装，后续 Agent 失败只清理自身。插件关闭先同步撤入口并取消，再等待拥有的 Help、Python、present、RPC、凭据、Catalog、发布和 usage 写入结束，最后释放共享资源。取消等待不证明远端查询或上传已回滚；响应丢失时保留结果未确认状态，不猜测清理。
 
 文件读取按 Host 推导的 Workspace 路径校验真实路径、类型、字节预算与 digest；摘要用于完整性，不能代替授权。共享 Runtime、per-Workspace binding、Agent 操作与浏览器状态分别由各自 owner 释放，已提交报告不随插件卸载删除。
+
+## 语言责任边界
+
+Harness locale 服务拥有插件操作界面的语言设置及持久化；插件仅注册词典并订阅更新。报告展示语言由 DSH 根据用户问题写入 Draft 的 `locale`，由 projection 原样固化到 Document，不读取系统 locale。Reader、打印与 HTML 导出遵循同一报告语言，详见 [报告阅读器](modules/presentation-reader.md#界面语言与报告语言)。

@@ -1,76 +1,94 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
+
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
+import { useCopy } from './../i18n/context.tsx'
+import { message } from './../i18n/copy.ts'
 import { RefLink } from './reference-link.tsx'
 
 const units = {
-  second: '秒',
-  minute: '分钟',
-  hour: '小时',
-  day: '日',
-  week: '周',
-  month: '月',
-  quarter: '季度',
-  year: '年',
+  second: 'marivo.semantic.second',
+  minute: 'marivo.semantic.minute',
+  hour: 'marivo.semantic.hour',
+  day: 'marivo.semantic.day',
+  week: 'marivo.semantic.week',
+  month: 'marivo.semantic.month',
+  quarter: 'marivo.semantic.quarter',
+  year: 'marivo.semantic.year',
 }
 const reasons = {
-  unsupported_syntax: '当前表达式语法尚不支持结构化展示',
-  description_unavailable: '当前定义没有可用的表达式说明',
-  limit_exceeded: '表达式超过描述大小上限',
+  unsupported_syntax: 'marivo.semantic.structured-display-is-not-yet-supported-for-this-expression',
+  description_unavailable:
+    'marivo.semantic.no-expression-description-is-available-for-this-definition',
+  limit_exceeded: 'marivo.semantic.expression-exceeds-the-description-size-limit',
 }
 const kinds = {
-  aggregate: '聚合',
+  aggregate: 'marivo.semantic.aggregation',
   weighted_mean: 'weighted_mean',
-  ratio: '比率',
-  linear: '线性组合',
-  cumulative: '累计',
-  expression: 'Ibis 表达式',
+  ratio: 'marivo.semantic.ratio',
+  linear: 'marivo.semantic.linear-combination',
+  cumulative: 'marivo.semantic.cumulative',
+  expression: 'marivo.semantic.ibis-expression',
 }
 const field = (object, name) => object?.fields.find((x) => x.name === name)?.value
-const op = (operation) =>
-  `${operation?.kind ?? '未声明'}${operation?.q === undefined ? '' : `(q=${operation.q})`}`
-function anchorText(anchor, objects, navigate) {
-  if (anchor?.kind === 'all_history') return '从全部历史起点累计'
+const op = (t, operation) =>
+  `${operation?.kind ?? t('marivo.semantic.not-declared')}${operation?.q === undefined ? '' : `(q=${operation.q})`}`
+function AnchorText({ anchor, objects, navigate }) {
+  const t = useCopy()
+  if (anchor?.kind === 'all_history')
+    return t('marivo.semantic.cumulative-from-the-beginning-of-all-history')
   if (anchor?.kind === 'trailing')
-    return `滚动累计 ${anchor.count} ${units[anchor.unit] ?? anchor.unit}`
+    return t('marivo.semantic.rolling-cumulative-over-value-value', {
+      p0: anchor.count,
+      p1: units[anchor.unit] ?? anchor.unit,
+    })
   if (anchor?.kind === 'grain_to_date') {
     const grain = anchor.grain
     return grain.kind === 'semantic' ? (
       <>
-        从 <RefLink refValue={grain.calendar} objects={objects} navigate={navigate} /> 的{' '}
-        {grain.level} 周期起点累计，每个周期重新开始
+        {t('marivo.semantic.from')}
+        <RefLink refValue={grain.calendar} objects={objects} navigate={navigate} />{' '}
+        {t('marivo.semantic.of')} {grain.level}{' '}
+        {t('marivo.semantic.period-start-resetting-each-period')}
       </>
     ) : (
-      `从当前${units[grain.unit] ?? grain.unit}起点累计，每个周期重新开始`
+      t('marivo.semantic.cumulative-from-the-current-value-resetting-each-period', {
+        p0: units[grain.unit] ?? grain.unit,
+      })
     )
   }
-  return '累计规则暂不支持展示'
+  return t('marivo.semantic.this-cumulative-rule-cannot-be-displayed-yet')
 }
 function ExpressionCode({ node, objects, navigate }) {
+  const t = useCopy()
+
   const [notice, setNotice] = useState('')
   const display = node.display
   if (display?.form !== 'normalized_ibis' || display.language !== 'python')
     return (
       <p className="sb-muted">
-        {reasons[node.reason] ?? '当前 Runtime 未提供可展示的 Ibis 表达式文本。'}
+        {t(
+          reasons[node.reason] ??
+            'marivo.semantic.the-current-runtime-did-not-provide-displayable-ibis-expression',
+        )}
       </p>
     )
   async function copy() {
     try {
       await navigator.clipboard.writeText(display.text)
-      setNotice('表达式已复制')
+      setNotice('marivo.semantic.expression-copied')
     } catch {
-      setNotice('复制失败，请手动选择代码复制。')
+      setNotice('marivo.semantic.copy-failed-select-the-code-to-copy-manually')
     }
   }
   return (
-    <section className="sb-expression" aria-label="Ibis 表达式">
+    <section className="sb-expression" aria-label={t('marivo.semantic.ibis-expression')}>
       <div className="sb-expression-code">
         <button
           type="button"
           className="sb-expression-copy"
-          aria-label="复制 Ibis 表达式"
-          title="复制 Ibis 表达式"
+          aria-label={t('marivo.semantic.copy-ibis-expression')}
+          title={t('marivo.semantic.copy-ibis-expression')}
           onClick={copy}
         >
           <svg
@@ -99,29 +117,34 @@ function ExpressionCode({ node, objects, navigate }) {
           </div>
         ))}
       </div>
-      {display.redacted_literals && <p className="sb-muted">常量值已隐藏为 REDACTED 标记。</p>}
-      <span role="status">{notice}</span>
+      {display.redacted_literals && (
+        <p className="sb-muted">{t('marivo.semantic.constant-values-are-hidden-as-redacted')}</p>
+      )}
+      <span role="status">{t(notice)}</span>
     </section>
   )
 }
 function inputs(node) {
   switch (node.kind) {
     case 'aggregate':
-      return [['聚合目标', node.target]]
+      return [['marivo.semantic.aggregation-target', node.target]]
     case 'weighted_mean':
       return [
-        ['数值', node.value],
-        ['权重', node.weight],
+        ['marivo.semantic.value', node.value],
+        ['marivo.semantic.weight', node.weight],
       ]
     case 'ratio':
       return [
-        ['分子', node.numerator],
-        ['分母', node.denominator],
+        ['marivo.semantic.numerator', node.numerator],
+        ['marivo.semantic.denominator', node.denominator],
       ]
     case 'linear':
-      return node.terms.map((t, i) => [`第 ${i + 1} 项（${t.sign}）`, t.metric])
+      return node.terms.map((t, i) => [
+        message('marivo.semantic.term-value-value', { p0: i + 1, p1: t.sign }),
+        t.metric,
+      ])
     case 'cumulative':
-      return [['基础指标', node.base]]
+      return [['marivo.semantic.base-metric', node.base]]
     default:
       return []
   }
@@ -145,12 +168,14 @@ function referencedDefinitions(object, objects) {
   return { entries, limited: false }
 }
 function Formula({ node, objects, navigate }) {
+  const t = useCopy()
+
   const link = (ref) => <RefLink refValue={ref} objects={objects} navigate={navigate} />
   switch (node.kind) {
     case 'aggregate':
       return (
         <>
-          {op(node.operation)}({link(node.target)})
+          {op(t, node.operation)}({link(node.target)})
         </>
       )
     case 'ratio':
@@ -175,19 +200,27 @@ function Formula({ node, objects, navigate }) {
     case 'cumulative':
       return (
         <>
-          {anchorText(node.anchor, objects, navigate)}
+          <AnchorText anchor={node.anchor} objects={objects} navigate={navigate} />
           <br />
-          基础指标：{link(node.base)}
+          {t('marivo.semantic.base-metric-558')}
+          {link(node.base)}
         </>
       )
     default:
-      return '当前计算类型暂不支持展示'
+      return t('marivo.semantic.this-computation-type-cannot-be-displayed-yet')
   }
 }
 function DefinitionNode({ object, objects, navigate }) {
+  const t = useCopy()
+
   const definition = object.computation,
     node = definition?.node
-  if (!node) return <p className="sb-muted">当前对象没有公开的计算定义。</p>
+  if (!node)
+    return (
+      <p className="sb-muted">
+        {t('marivo.semantic.this-object-has-no-public-computation-definition')}
+      </p>
+    )
   const relationProps = { objects, navigate }
   return (
     <div className="sb-calculation-node">
@@ -200,35 +233,38 @@ function DefinitionNode({ object, objects, navigate }) {
       )}
       {node.kind === 'cumulative' && (
         <dl className="sb-fields">
-          <dt>累计时间轴</dt>
+          <dt>{t('marivo.semantic.cumulative-time-axis')}</dt>
           <dd>
             {node.over.selection === 'explicit' ? (
               <RefLink refValue={node.over.ref} {...relationProps} />
             ) : (
-              '使用默认时间轴，需观察上下文确定'
+              t('marivo.semantic.uses-the-default-time-axis-determined-by-observation-context')
             )}
           </dd>
           {node.over.selection === 'explicit' && (
             <>
-              <dt>时间粒度 / 时区</dt>
+              <dt>{t('marivo.semantic.time-grain-timezone')}</dt>
               <dd>
-                {field(objects.get(refKey(node.over.ref)), 'granularity') ?? '未声明'} /{' '}
-                {field(objects.get(refKey(node.over.ref)), 'timezone') ?? '未声明'}
+                {field(objects.get(refKey(node.over.ref)), 'granularity') ??
+                  t('marivo.semantic.not-declared')}{' '}
+                /{' '}
+                {field(objects.get(refKey(node.over.ref)), 'timezone') ??
+                  t('marivo.semantic.not-declared')}
               </dd>
             </>
           )}
           {node.anchor.kind === 'grain_to_date' && node.anchor.grain.kind === 'semantic' && (
             <>
-              <dt>周期日历</dt>
+              <dt>{t('marivo.semantic.period-calendar')}</dt>
               <dd>
                 <RefLink refValue={node.anchor.grain.calendar} {...relationProps} />
               </dd>
-              <dt>日历层级</dt>
+              <dt>{t('marivo.semantic.calendar-level')}</dt>
               <dd>{node.anchor.grain.level}</dd>
-              <dt>日历边界时区</dt>
+              <dt>{t('marivo.semantic.calendar-boundary-timezone')}</dt>
               <dd>
                 {field(objects.get(refKey(node.anchor.grain.calendar)), 'boundary_timezone') ??
-                  '未声明'}
+                  t('marivo.semantic.not-declared')}
               </dd>
             </>
           )}
@@ -236,12 +272,15 @@ function DefinitionNode({ object, objects, navigate }) {
       )}
       {!!node.filter?.length && (
         <div>
-          <h4>定义内过滤条件</h4>
+          <h4>{t('marivo.semantic.filters-in-definition')}</h4>
           <ul>
             {node.filter.map((f) => (
               <li key={refKey(f.dimension)}>
                 <RefLink refValue={f.dimension} {...relationProps} />{' '}
-                {f.operator === 'in' ? '属于' : '等于'} {JSON.stringify(f.values ?? f.value)}
+                {f.operator === 'in'
+                  ? t('marivo.semantic.belongs-to')
+                  : t('marivo.semantic.equals')}{' '}
+                {JSON.stringify(f.values ?? f.value)}
               </li>
             ))}
           </ul>
@@ -251,6 +290,8 @@ function DefinitionNode({ object, objects, navigate }) {
   )
 }
 function TemporalRules({ temporal, objects, navigate }) {
+  const t = useCopy()
+
   if (
     !temporal ||
     (temporal.declared.status === 'not_declared' &&
@@ -260,46 +301,57 @@ function TemporalRules({ temporal, objects, navigate }) {
     return null
   const row = (label, rule) => (
     <div>
-      <strong>{label}：</strong>
+      <strong>{t(label)}：</strong>
       {rule.over ? (
         <>
-          <RefLink refValue={rule.over} objects={objects} navigate={navigate} /> · {op(rule.fold)}
+          <RefLink refValue={rule.over} objects={objects} navigate={navigate} /> ·{' '}
+          {op(t, rule.fold)}
         </>
       ) : rule.fold ? (
-        op(rule.fold)
+        op(t, rule.fold)
       ) : rule.status === 'component_defined' ? (
-        '由计算公式及组成对象确定'
+        t('marivo.semantic.determined-by-the-formula-and-its-components')
       ) : rule.status === 'not_declared' ? (
-        '未声明'
+        t('marivo.semantic.not-declared')
       ) : rule.status === 'not_applicable' ? (
-        '不适用'
+        t('marivo.semantic.not-applicable')
       ) : (
-        `暂不支持的规则状态：${rule.status}`
+        t('marivo.semantic.unsupported-rule-status-value', { p0: rule.status })
       )}
     </div>
   )
   return (
-    <section className="sb-temporal" aria-label="时间折叠规则">
-      <h4>时间折叠规则</h4>
-      {temporal.declared.status !== 'not_declared' && row('声明规则', temporal.declared)}
-      {temporal.override.status !== 'not_declared' && row('指标覆盖', temporal.override)}
-      {temporal.effective.status !== 'not_applicable' && row('有效规则', temporal.effective)}
+    <section className="sb-temporal" aria-label={t('marivo.semantic.time-fold-rule')}>
+      <h4>{t('marivo.semantic.time-fold-rule')}</h4>
+      {temporal.declared.status !== 'not_declared' &&
+        row(t('marivo.semantic.declared-rule'), temporal.declared)}
+      {temporal.override.status !== 'not_declared' &&
+        row(t('marivo.semantic.metric-override'), temporal.override)}
+      {temporal.effective.status !== 'not_applicable' &&
+        row(t('marivo.semantic.effective-rule'), temporal.effective)}
     </section>
   )
 }
 export function ComputationCard({ object, objects, navigate }) {
+  const t = useCopy()
+
   const node = object.computation?.node
-  if (!node) return <p className="sb-muted">当前对象没有公开的计算定义。</p>
+  if (!node)
+    return (
+      <p className="sb-muted">
+        {t('marivo.semantic.this-object-has-no-public-computation-definition')}
+      </p>
+    )
   const related = referencedDefinitions(object, objects)
   const entityRefs = object.relations
     .filter((r) => r.field === 'effective_entities' || r.field === 'entity')
     .map((r) => r.ref)
   const entityKeys = [...new Set(entityRefs.map(refKey))]
   return (
-    <section className="sb-computation" aria-label="指标计算口径">
+    <section className="sb-computation" aria-label={t('marivo.semantic.metric-computation')}>
       <div className="sb-computation-heading">
-        <h3>计算口径</h3>
-        <span className="sb-badge">{kinds[node.kind] ?? node.kind}</span>
+        <h3>{t('marivo.semantic.computation')}</h3>
+        <span className="sb-badge">{t(kinds[node.kind] ?? node.kind)}</span>
         {field(object, 'unit') && <span>{field(object, 'unit')}</span>}
       </div>
       <DefinitionNode
@@ -310,8 +362,11 @@ export function ComputationCard({ object, objects, navigate }) {
       />
       <TemporalRules temporal={object.computation.temporal} objects={objects} navigate={navigate} />
       {!!related.entries.length && (
-        <section className="sb-referenced-definitions" aria-label="引用对象定义">
-          <h3>引用对象定义</h3>
+        <section
+          className="sb-referenced-definitions"
+          aria-label={t('marivo.semantic.referenced-object-definitions')}
+        >
+          <h3>{t('marivo.semantic.referenced-object-definitions')}</h3>
           {related.entries.map((child) => (
             <section
               className="sb-definition-entry"
@@ -322,7 +377,7 @@ export function ComputationCard({ object, objects, navigate }) {
                 <h4>
                   <RefLink refValue={child.ref} objects={objects} navigate={navigate} />
                 </h4>
-                <span className="sb-badge">{kinds[child.computation.node.kind]}</span>
+                <span className="sb-badge">{t(kinds[child.computation.node.kind])}</span>
               </div>
               <DefinitionNode object={child} objects={objects} navigate={navigate} />
               {!!child.guardrails.length && (
@@ -340,13 +395,18 @@ export function ComputationCard({ object, objects, navigate }) {
             </section>
           ))}
           {related.limited && (
-            <p className="sb-muted">当前展示前 40 个引用对象的定义，点击对象名称可继续查看。</p>
+            <p className="sb-muted">
+              {t('marivo.semantic.showing-the-first-40-referenced-definitions-click-an-object')}
+            </p>
           )}
         </section>
       )}
       {!!entityKeys.length && (
-        <section className="sb-definition-sources" aria-label="数据来源与粒度">
-          <h3>数据来源与粒度</h3>
+        <section
+          className="sb-definition-sources"
+          aria-label={t('marivo.semantic.data-source-and-grain')}
+        >
+          <h3>{t('marivo.semantic.data-source-and-grain')}</h3>
           {entityKeys.map((key) => {
             const entity = objects.get(key)
             return (
@@ -357,7 +417,10 @@ export function ComputationCard({ object, objects, navigate }) {
                   navigate={navigate}
                 />
                 {field(entity, 'primary_key') && (
-                  <span className="sb-muted">主键：{field(entity, 'primary_key')}</span>
+                  <span className="sb-muted">
+                    {t('marivo.semantic.primary-key')}
+                    {field(entity, 'primary_key')}
+                  </span>
                 )}
               </div>
             )

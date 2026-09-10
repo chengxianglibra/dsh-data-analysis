@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { translator } from './../../src/client/i18n/copy.ts'
 import { seriesAppearance } from '../../src/client/presentation/chart-geometry.ts'
 import {
   changeChartView,
@@ -169,7 +170,8 @@ test('exploration switches only compatible prepared geometry, without calculatin
 
 test('copy context distinguishes current view, hidden series, filters and saved identity/source', () => {
   const document: PresentationDocument = {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    locale: 'zh-CN',
     title: '报告',
     workspaceId: 'workspace',
     reportId: 'report',
@@ -202,7 +204,7 @@ test('copy context distinguishes current view, hidden series, filters and saved 
   assert.match(copy, /unsaved page-local display/)
   assert.match(copy, /Hidden series: \["plan"\]/)
   assert.doesNotMatch(copy, /Saved source original:/)
-  assert.doesNotMatch(copy, /来源 derived:/)
+  assert.doesNotMatch(translator('zh-CN')(copy), /来源 derived:/)
   assert.doesNotMatch(copy, /9007199254740993/)
 })
 

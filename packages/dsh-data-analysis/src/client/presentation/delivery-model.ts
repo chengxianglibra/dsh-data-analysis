@@ -1,3 +1,4 @@
+import { zh as copyDictionary } from '../i18n/copy.ts'
 import { savePresentationHtml } from './download.ts'
 
 export { savePresentationHtml } from './download.ts'
@@ -119,28 +120,80 @@ export async function verifyPresentationAsset(
   return bytes
 }
 
+const errorCopy: Readonly<Record<string, string>> = {
+  'report-history-full':
+    'marivo.presentation.report-history-has-reached-its-capacity-this-save-did',
+  'report-save-conflict':
+    'marivo.presentation.another-window-saved-this-report-your-edits-are-retained',
+  'report-save-busy': 'marivo.presentation.the-report-is-being-saved-or-its-write-lock',
+  'lock-timeout': 'marivo.presentation.the-report-is-being-saved-or-its-write-lock',
+  'invalid-report-edits':
+    'marivo.presentation.invalid-edits-check-the-title-content-and-chart-fields',
+  invalid_value: 'marivo.presentation.invalid-edits-check-the-title-content-and-chart-fields',
+  unknown_field: 'marivo.presentation.invalid-edits-check-the-title-content-and-chart-fields',
+  duplicate_id: 'marivo.presentation.invalid-edits-check-the-title-content-and-chart-fields',
+  budget: 'marivo.presentation.invalid-edits-check-the-title-content-and-chart-fields',
+  'workspace-unavailable':
+    'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the',
+  'workspace-changed':
+    'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the',
+  'session-unavailable':
+    'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the',
+  'presentation-workspace-mismatch':
+    'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the',
+  ENOENT: 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
+  'asset-missing': 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
+  'file-missing': 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
+  'report-build-not-found': 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
+  'presentation-file-digest-mismatch':
+    'marivo.presentation.analysis-snapshot-file-changed-and-no-longer-matches-the',
+  'asset-digest-mismatch':
+    'marivo.presentation.analysis-snapshot-file-changed-and-no-longer-matches-the',
+  'asset-changed': 'marivo.presentation.analysis-snapshot-file-changed-and-no-longer-matches-the',
+  'asset-too-large': 'marivo.presentation.analysis-snapshot-size-does-not-match-its-record-or',
+  'presentation-file-size-mismatch':
+    'marivo.presentation.analysis-snapshot-size-does-not-match-its-record-or',
+  'asset-path-mismatch':
+    'marivo.presentation.analysis-snapshot-path-or-ownership-does-not-match-its',
+  'asset-owner-mismatch':
+    'marivo.presentation.analysis-snapshot-path-or-ownership-does-not-match-its',
+  'presentation-file-identity-mismatch':
+    'marivo.presentation.analysis-snapshot-path-or-ownership-does-not-match-its',
+  'presentation-document-identity-mismatch':
+    'marivo.presentation.analysis-snapshot-path-or-ownership-does-not-match-its',
+  'asset-not-file': 'marivo.presentation.analysis-snapshot-path-or-ownership-does-not-match-its',
+  'invalid-presentation-file-response':
+    'marivo.presentation.invalid-analysis-snapshot-content-it-cannot-be-opened',
+  'invalid-report-current':
+    'marivo.presentation.invalid-analysis-snapshot-content-it-cannot-be-opened',
+  'invalid-report-history':
+    'marivo.presentation.invalid-analysis-snapshot-content-it-cannot-be-opened',
+  'report-version-unsupported': 'marivo.presentation.unsupported-report',
+  'report-locale-invalid': 'marivo.presentation.unsupported-report',
+}
+
+class PresentationRequestError extends Error {
+  readonly code: string
+  constructor(code: string, detail: string) {
+    super(detail)
+    this.code = code
+  }
+}
 export function errorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : ''
-  if (/report-history-full/.test(message)) return '报告版本记录已达到容量限制，本次保存未生效。'
-  if (/report-save-conflict/.test(message))
-    return '报告已被其他窗口保存。你的编辑已保留，请重新打开报告后再编辑。'
-  if (/report-save-busy|lock.*timed out/i.test(message))
-    return '报告正在保存或写入锁不可用，请稍后重试。'
-  if (/invalid-report-edits|contract|invalid_value|unknown_field/i.test(message))
-    return '编辑内容无效，请检查标题、正文和图表字段。'
-  if (/workspace|session/i.test(message))
-    return 'Workspace 或 Session 已变化或不可用，请在原项目中重新打开分析快照。'
-  if (/ENOENT|asset-missing|file-missing|not-found/i.test(message))
-    return '分析快照文件已缺失，请重新生成。'
-  if (/digest-mismatch|asset-changed/i.test(message))
-    return '分析快照文件已变化，与交付时的摘要不一致，无法读取或下载。'
-  if (/asset-too-large|size-mismatch/i.test(message))
-    return '分析快照文件大小与交付记录不一致或超出限制，无法读取。'
-  if (/path-mismatch|owner-mismatch|identity-mismatch|asset-not-file/i.test(message))
-    return '分析快照的文件路径或归属与交付记录不一致，无法读取。'
-  if (/SyntaxError|JSON|UTF-8|invalid-presentation|presentation-document/i.test(message))
-    return '分析快照文件内容无效，无法打开。'
-  return '无法读取分析快照，请检查 Host 连接后重新打开。'
+  if (error instanceof Error && Object.hasOwn(errorCopy, error.message))
+    return errorCopy[error.message]!
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    Object.hasOwn(errorCopy, error.code)
+  )
+    return errorCopy[error.code]!
+  if (error instanceof Error && Object.hasOwn(copyDictionary, error.message)) return error.message
+  if (error instanceof SyntaxError)
+    return 'marivo.presentation.invalid-analysis-snapshot-content-it-cannot-be-opened'
+  return 'marivo.presentation.cannot-read-the-analysis-snapshot-check-the-host-connection'
 }
 
 export const reportKey = (receipt: PresentationReceipt) =>
@@ -207,14 +260,15 @@ export class PresentationDeliveryModel {
     }
     signal.throwIfAborted()
     if (response?.ok !== true) {
-      const message = [
-        response?.error?.code,
-        response?.error?.message ?? 'presentation-operation-failed',
-      ]
-        .filter(Boolean)
-        .join(': ')
-      if (/workspace-(unavailable|changed)|session-unavailable/.test(message)) this.unavailable()
-      throw new Error(message)
+      const code =
+        response?.error?.code ?? response?.error?.message ?? 'presentation-operation-failed'
+      const detail = response?.error?.message ?? code
+      if (
+        ['workspace-unavailable', 'workspace-changed', 'session-unavailable'].includes(code) ||
+        ['workspace-unavailable', 'workspace-changed', 'session-unavailable'].includes(detail)
+      )
+        this.unavailable()
+      throw new PresentationRequestError(code, detail)
     }
     return response.value
   }
@@ -417,7 +471,10 @@ export class PresentationDeliveryModel {
       validate()
       const historical = document.buildId !== current.buildId
       this.#publish({ historical })
-      if (historical) throw new Error('已有新版本，请打开当前版本后再编辑。')
+      if (historical)
+        throw new Error(
+          'marivo.presentation.a-newer-version-exists-open-the-current-version-before',
+        )
       this.beginEdit()
     } finally {
       this.#flights.delete(flight)
@@ -525,7 +582,7 @@ export class PresentationDeliveryModel {
         resolvedReceipt: receipt,
         editing: undefined,
         saving: false,
-        notice: '编辑已保存',
+        notice: 'marivo.presentation.edits-saved',
         publicationUrl: undefined,
         history: undefined,
         historyOpen: false,
@@ -561,7 +618,10 @@ export class PresentationDeliveryModel {
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
       if (!displayed) this.#remember(receipt)
       this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
-      this.#publish({ downloading: false, notice: '已下载完整报告 HTML（不包含临时筛选）' })
+      this.#publish({
+        downloading: false,
+        notice: 'marivo.presentation.full-report-html-downloaded-without-temporary-filters',
+      })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ downloading: false, downloadError: errorMessage(error) })
@@ -623,19 +683,24 @@ export class PresentationDeliveryModel {
       }
       if (!result.ok) {
         const messages: Record<string, string> = {
-          'report-publishing-config-changed': '发布配置已变化，请刷新报告后确认发布目标。',
+          'report-publishing-config-changed':
+            'marivo.presentation.publishing-configuration-changed-refresh-the-report-and-confirm-the',
           'report-publishing-credentials-missing':
-            '发布凭证尚未配齐，请在“数据源与凭证 → 报告发布凭证”中配置。',
+            'marivo.presentation.publishing-credentials-are-incomplete-configure-them-under-datasources-and',
           'report-publishing-upload-unconfirmed':
-            '发布结果未确认；对象可能已上传，可重试同一版本。',
-          'report-publishing-build-unavailable': '报告版本不可用，请刷新报告后重试。',
-          'report-publishing-disabled': '报告发布已关闭，请刷新报告。',
-          'report-publishing-view-invalid': '当前视图无效或超过 HTML 大小限制，请缩小范围后重试。',
+            'marivo.presentation.publication-is-unconfirmed-the-object-may-have-uploaded-retry',
+          'report-publishing-build-unavailable':
+            'marivo.presentation.report-version-is-unavailable-refresh-the-report-and-retry',
+          'report-publishing-disabled':
+            'marivo.presentation.report-publishing-is-disabled-refresh-the-report',
+          'report-publishing-view-invalid':
+            'marivo.presentation.the-current-view-is-invalid-or-exceeds-the-html',
         }
         this.#publish({
           downloading: false,
           downloadError:
-            messages[result.error?.message ?? ''] ?? '发布失败，请检查配置和报告后重试。',
+            messages[result.error?.message ?? ''] ??
+            'marivo.presentation.publication-failed-check-the-configuration-and-report-before-retrying',
         })
         return
       }
@@ -647,13 +712,13 @@ export class PresentationDeliveryModel {
         value.buildId !== receipt.buildId ||
         !/^https?:\/\//.test(value.url)
       )
-        throw new Error('发布回执身份不匹配。')
+        throw new Error('marivo.presentation.publishing-receipt-identity-mismatch')
       this.#publish({
         downloading: false,
         publicationUrl: value.url,
         notice: viewBytes
-          ? '当前视图 HTML 已发布（保留当前筛选和图形）。'
-          : 'HTML 报告已发布（不包含临时筛选）。',
+          ? 'marivo.presentation.current-view-html-published-including-current-filters-and-charts'
+          : 'marivo.presentation.report-html-published-without-temporary-filters',
       })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed) {
@@ -664,9 +729,10 @@ export class PresentationDeliveryModel {
         this.#publish({
           downloading: false,
           downloadError:
-            error instanceof Error && error.message === '发布回执身份不匹配。'
+            error instanceof Error &&
+            error.message === 'marivo.presentation.publishing-receipt-identity-mismatch'
               ? error.message
-              : '发布结果未确认，请检查连接后重试。',
+              : 'marivo.presentation.publication-unconfirmed-check-the-connection-and-retry',
         })
       }
     } finally {
@@ -692,7 +758,11 @@ export class PresentationDeliveryModel {
       const bytes = await this.#read(target, receipt, 'index.html', flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
       this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
-      this.#publish({ downloading: false, notice: '已下载正在查看的已保存版本（不包含临时筛选）' })
+      this.#publish({
+        downloading: false,
+        notice:
+          'marivo.presentation.downloaded-the-saved-version-being-viewed-without-temporary-filters',
+      })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ downloading: false, downloadError: errorMessage(error) })
@@ -758,7 +828,9 @@ export class PresentationDeliveryModel {
     )
       this.unavailable()
   }
-  unavailable(message = 'Workspace 或 Session 已变化或不可用，请在原项目中重新打开报告。') {
+  unavailable(
+    message = 'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the-354',
+  ) {
     this.#cancel()
     this.#publish({
       receipts: {},
@@ -804,7 +876,7 @@ export class PresentationDeliveryModel {
     })
   }
   resetConnection() {
-    this.unavailable('Host 连接已重置，请重新打开报告。')
+    this.unavailable('marivo.presentation.host-connection-reset-reopen-the-report')
   }
   dispose() {
     this.#disposed = true

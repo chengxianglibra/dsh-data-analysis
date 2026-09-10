@@ -5,6 +5,8 @@ import type {
   ConversationMatch,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { type SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import {
   marivoPresentationDeliveryDefinition as definition,
   parsePresentationDurableContent,
@@ -474,21 +476,17 @@ test('unchanged Host registries keep ProducedFiles and independent report nodes 
       .entries('conversation.chat.node')
       .find((entry: { options: { key: string } }) => entry.options.key === definition.kind)
     assert.ok(renderer)
-    const element = renderer.component({
-      node: reports()[0],
-      sessionId: 'session-a',
-      useWorkspaces: () => [],
-    })
-    assert.deepEqual(
-      Array.from(element.props.matched, (item: PresentationDelivery) => item.receipt.buildId),
-      ['build-a', 'build-b'],
-    )
-    const foreign = renderer.component({
-      node: reports()[0],
-      sessionId: 'session-b',
-      useWorkspaces: () => [],
-    })
-    assert.equal(foreign.props.matched.length, 0)
+    const render = (sessionId: string) =>
+      renderToStaticMarkup(
+        createElement(renderer.component, {
+          node: reports()[0],
+          sessionId,
+          useWorkspaces: () => [],
+        }),
+      )
+    const html = render('session-a')
+    assert.equal((html.match(/class="pd-card"/g) ?? []).length, 2)
+    assert.equal((render('session-b').match(/class="pd-card"/g) ?? []).length, 0)
     for (const replay of [
       () =>
         assembler.replaceWindow(

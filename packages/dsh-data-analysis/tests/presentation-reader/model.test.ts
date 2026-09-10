@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import test from 'node:test'
+import { translator } from './../../src/client/i18n/copy.ts'
 import type { ChartBlock } from '../../src/client/presentation/model.ts'
 import {
   cellText,
@@ -46,11 +47,11 @@ test('Decimal and int64 sorting retains exact ordering, spelling, stable ties an
   ])
   const before = JSON.stringify(dataset)
   assert.deepEqual(
-    sortedRowIndices(dataset, { columnId: 'value', direction: 'ascending' }),
+    sortedRowIndices('zh-CN', dataset, { columnId: 'value', direction: 'ascending' }),
     [5, 3, 4, 1, 0, 2],
   )
   assert.deepEqual(
-    sortedRowIndices(dataset, { columnId: 'value', direction: 'descending' }),
+    sortedRowIndices('zh-CN', dataset, { columnId: 'value', direction: 'descending' }),
     [0, 1, 3, 4, 5, 2],
   )
   assert.equal(JSON.stringify(dataset), before)
@@ -72,43 +73,46 @@ test('datetime sorts chronological instants with explicit offsets and all six fr
     { ...decimal, type: 'datetime' },
   )
   assert.deepEqual(
-    sortedRowIndices(dataset, { columnId: 'value', direction: 'ascending' }),
+    sortedRowIndices('zh-CN', dataset, { columnId: 'value', direction: 'ascending' }),
     [1, 2, 0, 3],
   )
 })
 
 test('cells distinguish null, empty, exact decimal, zero and units without rescaling', () => {
-  assert.equal(cellText(null, decimal), '—')
-  assert.equal(cellText('', { ...decimal, type: 'string' }), '（空字符串）')
-  assert.equal(valueWithUnit('0.1000', decimal), '0.1000 CNY')
-  assert.equal(valueWithUnit('0', decimal), '0 CNY')
-  assert.equal(cellText('9007199254740993', { ...decimal, type: 'int64' }), '9007199254740993')
+  assert.equal(cellText('zh-CN', null, decimal), '—')
+  assert.equal(cellText('zh-CN', '', { ...decimal, type: 'string' }), '（空字符串）')
+  assert.equal(valueWithUnit('zh-CN', '0.1000', decimal), '0.1000 CNY')
+  assert.equal(valueWithUnit('zh-CN', '0', decimal), '0 CNY')
+  assert.equal(
+    cellText('zh-CN', '9007199254740993', { ...decimal, type: 'int64' }),
+    '9007199254740993',
+  )
 })
 
 test('metric grouping keeps exact significant and fractional digits without rounding or rescaling', () => {
   assert.equal(
-    metricText('9007199254740993', { ...decimal, type: 'int64' }),
+    metricText('zh-CN', '9007199254740993', { ...decimal, type: 'int64' }),
     '9,007,199,254,740,993 CNY',
   )
-  assert.equal(metricText('-1234567.123456700', decimal), '-1,234,567.123456700 CNY')
-  assert.equal(metricText('0.1000', decimal), '0.1000 CNY')
-  assert.equal(metricText('1.234e99', decimal), '1.234e99 CNY')
-  assert.equal(metricText(null, decimal), '—')
-  assert.equal(metricText('1234567', { ...decimal, type: 'string' }), '1234567 CNY')
-  assert.match(snapshotDate('2026-09-07T17:08:22+08:00'), /2026\/09\/07 09:08 UTC/)
+  assert.equal(metricText('zh-CN', '-1234567.123456700', decimal), '-1,234,567.123456700 CNY')
+  assert.equal(metricText('zh-CN', '0.1000', decimal), '0.1000 CNY')
+  assert.equal(metricText('zh-CN', '1.234e99', decimal), '1.234e99 CNY')
+  assert.equal(metricText('zh-CN', null, decimal), '—')
+  assert.equal(metricText('zh-CN', '1234567', { ...decimal, type: 'string' }), '1234567 CNY')
+  assert.match(snapshotDate('zh-CN', '2026-09-07T17:08:22+08:00'), /2026\/09\/07 09:08 UTC/)
 })
 
 test('axis labels keep large/tiny signs and exponents and truncate only presentation text', () => {
-  assert.equal(formatAxisTick(0), '0')
-  assert.equal(formatAxisTick(12.5), '12.5')
-  assert.equal(formatAxisTick(50_000), '50,000')
-  assert.equal(formatAxisTick(150_000), '15万')
-  assert.equal(formatAxisTick(-150_000), '-15万')
-  assert.equal(formatAxisTick(0.00123), '0.00123')
-  assert.equal(formatAxisTick(9007199254740992), '9.01e+15')
-  assert.equal(formatAxisTick(-9007199254740992), '-9.01e+15')
-  assert.equal(formatAxisTick(0.0000000000123), '1.23e-11')
-  assert.equal(formatAxisTick(-0.0000000000123), '-1.23e-11')
+  assert.equal(formatAxisTick('zh-CN', 0), '0')
+  assert.equal(formatAxisTick('zh-CN', 12.5), '12.5')
+  assert.equal(formatAxisTick('zh-CN', 50_000), '50,000')
+  assert.equal(formatAxisTick('zh-CN', 150_000), '15万')
+  assert.equal(formatAxisTick('zh-CN', -150_000), '-15万')
+  assert.equal(formatAxisTick('zh-CN', 0.00123), '0.00123')
+  assert.equal(formatAxisTick('zh-CN', 9007199254740992), '9.01e+15')
+  assert.equal(formatAxisTick('zh-CN', -9007199254740992), '-9.01e+15')
+  assert.equal(formatAxisTick('zh-CN', 0.0000000000123), '1.23e-11')
+  assert.equal(formatAxisTick('zh-CN', -0.0000000000123), '-1.23e-11')
   assert.equal(formatCategoryTick('完整短标签'), '完整短标签')
   assert.equal(formatCategoryTick('长'.repeat(32_768)), `${'长'.repeat(16)}…`)
   assert.equal(formatCategoryTick('😀'.repeat(20)), `${'😀'.repeat(16)}…`)
@@ -124,9 +128,9 @@ test('metric selects only its explicit cell and rejects missing rows', () => {
     rowIndex: 1,
     label: '已有值',
   }
-  assert.equal(selectMetric(dataset, block).value, '15.000')
-  assert.equal(selectMetric(dataset, { ...block, rowIndex: 2 }).value, null)
-  assert.throws(() => selectMetric(dataset, { ...block, rowIndex: 3 }), /existing row/)
+  assert.equal(selectMetric('zh-CN', dataset, block).value, '15.000')
+  assert.equal(selectMetric('zh-CN', dataset, { ...block, rowIndex: 2 }).value, null)
+  assert.throws(() => selectMetric('zh-CN', dataset, { ...block, rowIndex: 3 }), /existing row/)
 })
 
 test('chart coordinates keep duplicate labels, null gaps and original precision', () => {
@@ -152,23 +156,23 @@ test('chart coordinates keep duplicate labels, null gaps and original precision'
     numericMode: 'approximate',
   }
   const before = JSON.stringify(dataset)
-  assert.deepEqual(chartRows(dataset, block), [
+  assert.deepEqual(chartRows('zh-CN', dataset, block), [
     { rowIndex: 0, xLabel: 'A', series0: 9007199254740992 },
     { rowIndex: 1, xLabel: 'A', series0: null },
     { rowIndex: 2, xLabel: '—', series0: 0.1 },
   ])
   assert.equal(JSON.stringify(dataset), before)
   assert.throws(
-    () => chartRows(dataset, { ...block, numericMode: 'exact' }),
+    () => chartRows('zh-CN', dataset, { ...block, numericMode: 'exact' }),
     /Exact chart encoding/,
   )
 })
 
 test('dataset scope reports only empty, complete or truncated row counts', () => {
-  assert.equal(datasetScope(data([])), '暂无数据')
-  assert.equal(datasetScope(data(['1'])), '1 行')
+  assert.equal(datasetScope('zh-CN', data([])), '暂无数据')
+  assert.equal(datasetScope('zh-CN', data(['1'])), '1 行')
   assert.equal(
-    datasetScope({ ...data(['1']), rowCount: 9, truncated: true }),
+    datasetScope('zh-CN', { ...data(['1']), rowCount: 9, truncated: true }),
     '显示 1 / 9 行（已截断）',
   )
 })
@@ -213,7 +217,7 @@ test('all cell references omit saved content, bindings and sources', async () =>
     assert.ok(context.includes(`Block kind: ${block.kind}`))
     assert.match(context, /presentation.json/)
     assert.doesNotMatch(
-      context,
+      translator('zh-CN')(context),
       /binding:|Metric raw value|Columns:|来源 |Markdown:|Snapshot row indices|12345678901234/,
     )
   }

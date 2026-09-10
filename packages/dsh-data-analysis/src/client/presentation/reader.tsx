@@ -7,6 +7,8 @@ import {
   interactionRows,
 } from '../../presentation/contracts/interaction.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
+import { ReportCopyProvider, useActionCopy } from '../i18n/context.tsx'
 import { ChartExplorer } from './chart-explorer.tsx'
 import { ChartRenderer } from './chart-renderer.tsx'
 import { type ChartExploration, exploredChartBlock, initialChartExploration } from './chart-view.ts'
@@ -47,6 +49,8 @@ function CellMenu({
   contextDisabled?: boolean
   onExplore?: (trigger: HTMLElement) => void
 }) {
+  const t = useActionCopy()
+
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -57,9 +61,13 @@ function CellMenu({
     run: (trigger: HTMLElement) => void
     disabled?: boolean
   }[] = [
-    ...(onExplore ? [{ label: '探索图表', run: onExplore }] : []),
-    ...(onSource ? [{ label: '数据源', run: onSource }] : []),
-    { label: askDsh ? 'Ask DSH' : '复制上下文', run: onContext, disabled: contextDisabled },
+    ...(onExplore ? [{ label: t('marivo.presentation.explore-chart'), run: onExplore }] : []),
+    ...(onSource ? [{ label: t('marivo.presentation.datasource'), run: onSource }] : []),
+    {
+      label: askDsh ? 'Ask DSH' : t('marivo.presentation.copy-context'),
+      run: onContext,
+      disabled: contextDisabled,
+    },
   ]
   useEffect(() => {
     if (!open) return
@@ -115,8 +123,8 @@ function CellMenu({
         type="button"
         className="pr-icon-button"
         ref={trigger}
-        aria-label="cell 更多操作"
-        title="更多操作"
+        aria-label={t('marivo.presentation.more-cell-actions')}
+        title={t('marivo.presentation.more-actions')}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => {
@@ -127,14 +135,18 @@ function CellMenu({
         <MoreIcon />
       </button>
       {open && (
-        <div className="pr-cell-menu-popup" role="menu" aria-label="cell 操作">
+        <div
+          className="pr-cell-menu-popup"
+          role="menu"
+          aria-label={t('marivo.presentation.cell-actions')}
+        >
           {actions.map((action) => (
             <button
               type="button"
               role="menuitem"
               tabIndex={-1}
-              key={action.label}
-              aria-label={action.label}
+              key={t(action.label)}
+              aria-label={t(action.label)}
               aria-disabled={action.disabled || undefined}
               aria-describedby={action.disabled ? disabledReasonId : undefined}
               onClick={() => {
@@ -144,8 +156,12 @@ function CellMenu({
                 action.run(trigger.current!)
               }}
             >
-              {action.label}
-              {action.disabled && <small id={disabledReasonId}>请先保存或取消编辑</small>}
+              {t(action.label)}
+              {action.disabled && (
+                <small id={disabledReasonId}>
+                  {t('marivo.presentation.save-or-cancel-edits-first')}
+                </small>
+              )}
             </button>
           ))}
         </div>
@@ -175,53 +191,74 @@ function Block({
   tableSort?: TableSort
   onTableSortChange?: (sort: TableSort) => void
 }) {
+  const t = useCopy()
+
   if (block.kind === 'markdown') return <Markdown text={block.text} />
   if (block.kind === 'source')
     return (
       <>
-        <h2>数据源</h2>
+        <h2>{t('marivo.presentation.datasource')}</h2>
         <SourceList document={document} block={block} />
       </>
     )
   const dataset = datasetById(document, block.datasetId)
-  const metric = block.kind === 'metric' ? selectMetric(dataset.data, block, rowIndices) : undefined
+  const metric =
+    block.kind === 'metric' ? selectMetric(t.locale, dataset.data, block, rowIndices) : undefined
   return (
     <>
       {block.kind === 'metric' && metric ? (
         <>
-          <h2>{block.label}</h2>
+          <h2>{t(block.label)}</h2>
           <p
             className="pr-metric-value"
             data-metric-value="true"
-            title={metric.value === null ? '缺失值' : valueWithUnit(metric.value, metric.column)}
+            title={
+              metric.value === null
+                ? t('marivo.presentation.missing-value')
+                : valueWithUnit(t.locale, metric.value, metric.column)
+            }
           >
-            {metricText(metric.value, metric.column)}
+            {t(metricText(t.locale, metric.value, metric.column))}
           </p>
-          {block.description && <p className="pr-muted">{block.description}</p>}
+          {block.description && <p className="pr-muted">{t(block.description)}</p>}
           {metric.comparisons.length > 0 && (
             <div className="pr-metric-comparisons">
               {metric.comparisons.map((comparison) => (
-                <div className="pr-metric-comparison" key={comparison.label}>
-                  <span className="pr-muted">{comparison.label}</span>
-                  {comparison.reference && <span>参考值 {comparison.reference.text}</span>}
+                <div className="pr-metric-comparison" key={t(comparison.label)}>
+                  <span className="pr-muted">{t(comparison.label)}</span>
+                  {comparison.reference && (
+                    <span>
+                      {t('marivo.presentation.reference-value')} {comparison.reference.text}
+                    </span>
+                  )}
                   {(comparison.delta || comparison.relative) && (
                     <span className={`pr-metric-change pr-metric-change-${comparison.tone}`}>
                       {comparison.sign === undefined
-                        ? '变化不可用'
+                        ? t('marivo.presentation.change-unavailable')
                         : comparison.sign === 0
-                          ? '持平'
+                          ? t('marivo.presentation.unchanged')
                           : comparison.sign === 1
-                            ? '↑ 上升'
-                            : '↓ 下降'}
-                      {comparison.delta && <span>变化 {comparison.delta.text}</span>}
-                      {comparison.relative && <span>变化率 {comparison.relative.text}</span>}
+                            ? t('marivo.presentation.increase')
+                            : t('marivo.presentation.decrease')}
+                      {comparison.delta && (
+                        <span>
+                          {t('marivo.presentation.change')} {comparison.delta.text}
+                        </span>
+                      )}
+                      {comparison.relative && (
+                        <span>
+                          {t('marivo.presentation.relative-change')} {comparison.relative.text}
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
               ))}
             </div>
           )}
-          {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
+          {dataset.data.truncated && (
+            <p className="pr-notice">{t(datasetScope(t.locale, dataset.data))}</p>
+          )}
         </>
       ) : block.kind === 'chart' ? (
         <ChartRenderer
@@ -245,7 +282,7 @@ function Block({
           data={dataset.data}
           columns={block.columns}
           mode={mode}
-          caption="数据表"
+          caption={t('marivo.presentation.data-table')}
           sort={tableSort}
           onSortChange={onTableSortChange}
           filterKey={filterKey}
@@ -296,6 +333,9 @@ function ReaderContents({
   viewMemory?: ReaderViewMemory
   closeSourceOnNavigate?: boolean
 }) {
+  const t = useCopy()
+  const actionCopy = useActionCopy()
+
   const document = editing
     ? {
         ...savedDocument,
@@ -349,7 +389,11 @@ function ReaderContents({
     ...new Set(
       document.diagnostics
         .filter((entry) => !['truncated', 'source_unavailable'].includes(entry.code))
-        .map((entry) => entry.message),
+        .map((entry) =>
+          entry.code === 'finding_unavailable'
+            ? 'marivo.presentation.finding-unavailable'
+            : entry.message,
+        ),
     ),
   ]
   const renderBlock = (savedBlock: PresentationBlock) => {
@@ -478,7 +522,7 @@ function ReaderContents({
           />
         )}
         {blockSources(document, block).some((source) => source.status === 'unavailable') && (
-          <p className="pr-notice">数据源不可用</p>
+          <p className="pr-notice">{t('marivo.presentation.datasource-unavailable')}</p>
         )}
       </section>
     )
@@ -502,6 +546,7 @@ function ReaderContents({
     sourceSaved?.kind === 'chart' ? exploredChartBlock(sourceSaved, sourceState) : sourceSaved
   return (
     <article
+      lang={document.locale}
       ref={readerRoot}
       className="pr-reader"
       data-presentation-reader="true"
@@ -509,16 +554,16 @@ function ReaderContents({
     >
       {contextError && (
         <p role="alert" className="pr-notice">
-          {contextError}
+          {actionCopy(contextError)}
         </p>
       )}
       <header className="pr-header">
         <div className="pr-title-row">
           {editing ? (
             <label className="pr-report-title-editor">
-              报告标题
+              {actionCopy('marivo.presentation.report-title')}
               <input
-                aria-label="报告标题"
+                aria-label={actionCopy('marivo.presentation.report-title')}
                 disabled={editing.disabled}
                 value={document.title}
                 onChange={(event) =>
@@ -546,11 +591,17 @@ function ReaderContents({
                     return
                   }
                   savePresentationHtml(result.bytes, result.filename)
-                  setExportStatus({ message: '已导出当前视图（包含筛选后的全部已保存行）' })
+                  setExportStatus({
+                    message:
+                      'marivo.presentation.current-view-exported-including-all-saved-rows-matching-the',
+                  })
                 } catch (error) {
                   setExportStatus({
                     error: true,
-                    message: error instanceof Error ? error.message : '导出失败，请重试。',
+                    message:
+                      error instanceof Error
+                        ? error.message
+                        : 'marivo.presentation.export-failed-please-retry',
                   })
                 }
               }}
@@ -559,24 +610,30 @@ function ReaderContents({
         </div>
         {exportStatus && (
           <p className="pr-interactive pr-muted" role={exportStatus.error ? 'alert' : 'status'}>
-            {exportStatus.message}
+            {actionCopy(exportStatus.message)}
           </p>
         )}
         <p className="pr-muted">
-          版本号: {document.buildId} · 生成于{' '}
-          <time dateTime={document.generatedAt}>{snapshotDate(document.generatedAt)}</time>
+          {t('marivo.presentation.version')} {document.buildId} {t('marivo.presentation.generated')}{' '}
+          <time dateTime={document.generatedAt}>
+            {t(snapshotDate(t.locale, document.generatedAt))}
+          </time>
         </p>
       </header>
       {diagnostics.length > 0 && (
-        <aside className="pr-diagnostics" aria-label="展示说明">
+        <aside className="pr-diagnostics" aria-label={t('marivo.presentation.presentation-notes')}>
           <ul>
             {diagnostics.map((message) => (
-              <li key={message}>{message}</li>
+              <li key={t(message)}>{t(message)}</li>
             ))}
           </ul>
         </aside>
       )}
-      {!document.blocks.length && <p className="pr-empty">这份报告尚无 cell。数据与来源仍保留。</p>}
+      {!document.blocks.length && (
+        <p className="pr-empty">
+          {t('marivo.presentation.this-report-has-no-cells-its-data-and-sources')}
+        </p>
+      )}
       <div className="pr-blocks">
         {(() => {
           const renderGroups = (blocks: PresentationBlock[]) =>
@@ -597,8 +654,14 @@ function ReaderContents({
           const end = start + interaction.blockIds.length
           const fixed = (blocks: PresentationBlock[], key: string) =>
             blocks.length > 0 && (
-              <section className="pr-fixed-region pr-blocks" key={key} aria-label="固定内容">
-                <p className="pr-region-label">原始快照 · 不随筛选变化</p>
+              <section
+                className="pr-fixed-region pr-blocks"
+                key={key}
+                aria-label={t('marivo.presentation.fixed-content')}
+              >
+                <p className="pr-region-label">
+                  {t('marivo.presentation.original-snapshot-unaffected-by-filters')}
+                </p>
                 {renderGroups(blocks)}
               </section>
             )
@@ -609,7 +672,11 @@ function ReaderContents({
               <section className="pr-interaction-region" aria-label={interaction.title}>
                 <header className="pr-interaction-header">
                   <h2>{interaction.title}</h2>
-                  <p className="pr-muted">以下指标、图表与表格随筛选同步更新</p>
+                  <p className="pr-muted">
+                    {t(
+                      'marivo.presentation.these-metrics-charts-and-tables-update-together-with-the',
+                    )}
+                  </p>
                   {mode === 'interactive' && (
                     <GlobalFilterControls
                       interaction={interaction}
@@ -674,16 +741,18 @@ export function PresentationReader({
 }) {
   const parsed = useMemo(() => parsePresentationDocument(document), [document])
   return (
-    <ReaderContents
-      key={`${parsed.workspaceId}/${parsed.reportId}/${parsed.buildId}/${mode}/${editing ? 'edit' : 'read'}`}
-      document={parsed}
-      mode={mode}
-      editing={editing}
-      onOpenSemanticRef={mode === 'interactive' ? onOpenSemanticRef : undefined}
-      onAskDsh={mode === 'interactive' ? onAskDsh : undefined}
-      exportActions={exportActions}
-      viewMemory={viewMemory}
-      closeSourceOnNavigate={closeSourceOnNavigate}
-    />
+    <ReportCopyProvider locale={parsed.locale}>
+      <ReaderContents
+        key={`${parsed.workspaceId}/${parsed.reportId}/${parsed.buildId}/${mode}/${editing ? 'edit' : 'read'}`}
+        document={parsed}
+        mode={mode}
+        editing={editing}
+        onOpenSemanticRef={mode === 'interactive' ? onOpenSemanticRef : undefined}
+        onAskDsh={mode === 'interactive' ? onAskDsh : undefined}
+        exportActions={exportActions}
+        viewMemory={viewMemory}
+        closeSourceOnNavigate={closeSourceOnNavigate}
+      />
+    </ReportCopyProvider>
   )
 }

@@ -14,10 +14,10 @@ test('comparison bindings follow the selected prepared row and reject non-numeri
   block.comparisons = [{ label: '同一筛选组合', deltaColumnId: block.columnId }]
   parsePresentationDocument(document)
   for (let row = 0; row < data.rows.length; row++) {
-    const metric = selectMetric(data, block, [row])
+    const metric = selectMetric('zh-CN', data, block, [row])
     assert.equal(metric.comparisons[0]!.delta!.value, metric.value)
   }
-  assert.throws(() => selectMetric(data, block, []), /exactly one/)
+  assert.throws(() => selectMetric('zh-CN', data, block, []), /exactly one/)
   const malformed = structuredClone(document)
   const malformedMetric = malformed.blocks.find((entry) => entry.id === block.id)!
   Object.assign(malformedMetric, {

@@ -147,7 +147,7 @@ async function verifyExactTable(
         const field = data.columns.findIndex((column) => column.id === id)
         assert.equal(
           await row.locator(`[data-column-id="${id}"]`).textContent(),
-          cellText(data.rows[index]![field]!, data.columns[field]!),
+          cellText('zh-CN', data.rows[index]![field]!, data.columns[field]!),
           `Exact preview changed ${id} at saved row ${index}`,
         )
       }
@@ -177,10 +177,10 @@ async function verifyReader(target: Page, document: PresentationDocument, static
     const dataset = 'datasetId' in block ? datasetById(document, block.datasetId) : undefined
     const columns = dataset ? selectedColumns(block, dataset.data) : []
     if (block.kind === 'metric' && dataset) {
-      const metric = selectMetric(dataset.data, block)
+      const metric = selectMetric('zh-CN', dataset.data, block)
       assert.equal(
         await node.locator('[data-metric-value]').textContent(),
-        metricText(metric.value, metric.column),
+        metricText('zh-CN', metric.value, metric.column),
       )
     }
     if (dataset && (block.kind === 'table' || (block.kind === 'chart' && staticMode)))
@@ -217,7 +217,7 @@ async function verifyReader(target: Page, document: PresentationDocument, static
           ? [
               Number.isNaN(Date.parse(facts.createdAt))
                 ? facts.createdAt
-                : snapshotDate(facts.createdAt),
+                : snapshotDate('zh-CN', facts.createdAt),
             ]
           : []),
       ]

@@ -55,7 +55,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
                 )
         return { ok: true, value }
       } catch (error) {
-        return { ok: false, error: { message: String(error) } }
+        return {
+          ok: false,
+          error: { message: error instanceof Error ? error.message : String(error) },
+        }
       }
     },
   }

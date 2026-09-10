@@ -3,20 +3,22 @@
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCopy } from './../i18n/context.tsx'
+import { localized } from '../i18n/host.tsx'
 import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
 import { ReportPublishingCredentials } from './report-publishing.tsx'
 import { credentialStyles } from './styles.ts'
 
 const statusLabels = {
-  'awaiting-input': '等待填写',
-  executing: '正在保存或验证',
-  'awaiting-decision': '连接验证失败，等待处理',
-  succeeded: '验证完成，原调用继续',
-  'handed-off': '已交给助手排查',
-  'call-ended': '原调用已结束',
-  cancelled: '已取消配置请求',
-  'context-changed': '上下文已变化',
+  'awaiting-input': 'marivo.credentials.awaiting-input',
+  executing: 'marivo.credentials.saving-or-validating-77',
+  'awaiting-decision': 'marivo.credentials.connection-validation-failed-action-needed',
+  succeeded: 'marivo.credentials.validated-original-call-continues',
+  'handed-off': 'marivo.credentials.handed-to-the-assistant-for-investigation',
+  'call-ended': 'marivo.credentials.original-call-ended',
+  cancelled: 'marivo.credentials.configuration-request-cancelled',
+  'context-changed': 'marivo.credentials.context-changed',
 }
 export function CredentialIcon({ name, size = 18 }) {
   return (
@@ -57,24 +59,30 @@ export function CredentialIcon({ name, size = 18 }) {
   )
 }
 export function TestResult({ result, stale = false }) {
+  const t = useCopy()
+
   if (!result) return null
   return (
     <div
       className="mc-result"
-      data-tone={stale ? 'stale' : result.ok ? 'success' : 'error'}
+      data-tone={t(stale ? 'stale' : result.ok ? 'success' : 'error')}
       role="status"
     >
       <div className="mc-result-title">
         <CredentialIcon name={stale || !result.ok ? 'info' : 'check'} size={16} />
-        {stale ? '配置已变化，请重新测试' : result.ok ? '连接测试成功' : '连接测试失败'}
+        {stale
+          ? t('marivo.credentials.configuration-changed-test-again')
+          : result.ok
+            ? t('marivo.credentials.connection-test-succeeded')
+            : t('marivo.credentials.connection-test-failed')}
       </div>
       {!result.ok && !stale && (
         <>
-          <p>{result.failure?.message}</p>
+          <p>{t(result.failure?.message)}</p>
           {result.repair?.action && <p>{result.repair.action}</p>}
           {result.failure?.code && (
             <details>
-              <summary>查看错误代码</summary>
+              <summary>{t('marivo.credentials.show-error-code')}</summary>
               <pre>{result.failure.code}</pre>
             </details>
           )}
@@ -84,6 +92,8 @@ export function TestResult({ result, stale = false }) {
   )
 }
 function OperationOutcome({ entry }) {
+  const t = useCopy()
+
   if (!entry) return null
   const operation = entry.operation
   const errors = operation?.errors ?? []
@@ -96,20 +106,32 @@ function OperationOutcome({ entry }) {
       >
         <p>
           {operation.datasourceRemoved
-            ? `已删除数据源 ${entry.name}。`
-            : `数据源 ${entry.name} 的删除未确认，请刷新列表检查。`}
+            ? t('marivo.credentials.datasource-value-was-deleted', { p0: entry.name })
+            : t('marivo.credentials.deletion-of-datasource-value-is-unconfirmed-refresh-the-list', {
+                p0: entry.name,
+              })}
         </p>
         {operation.datasourceRemoved && !operation.deleteCredentials && (
-          <p>对应的已保存凭证已保留。</p>
+          <p>{t('marivo.credentials.associated-saved-credentials-were-retained')}</p>
         )}
         {operation.deletedCredentials?.length > 0 && (
-          <p>已删除凭证：{operation.deletedCredentials.join('、')}。</p>
+          <p>
+            {t('marivo.credentials.deleted-credentials')}
+            {operation.deletedCredentials.join('、')}。
+          </p>
         )}
         {operation.credentialDeleteFailures?.length > 0 && (
-          <p>未能删除的凭证：{operation.credentialDeleteFailures.join('、')}。</p>
+          <p>
+            {t('marivo.credentials.credentials-that-could-not-be-deleted')}
+            {operation.credentialDeleteFailures.join('、')}。
+          </p>
         )}
         {operation.status === 'cancelled' && (
-          <p>操作已取消；已完成的删除不会撤销，其余凭证可能仍保留。</p>
+          <p>
+            {t(
+              'marivo.credentials.operation-cancelled-completed-deletions-remain-other-credentials-may-still',
+            )}
+          </p>
         )}
         {errors.length > 0 && <p>{errors.map(credentialMessage).join(' ')}</p>}
       </div>
@@ -123,39 +145,52 @@ function OperationOutcome({ entry }) {
   return (
     <div
       className="mc-operation-note"
-      data-error={Boolean(entry.error || errors.length)}
+      data-error={t(Boolean(entry.error || errors.length))}
       role="status"
     >
-      {entry.error && <p>{entry.error}</p>}
-      {operation?.status === 'cancelled' && <p>本次操作已取消。</p>}
+      {entry.error && <p>{t(entry.error)}</p>}
+      {operation?.status === 'cancelled' && (
+        <p>{t('marivo.credentials.this-operation-was-cancelled')}</p>
+      )}
       {operation?.status === 'succeeded' && operation.action === 'delete' && (
-        <p>已删除保存值，当前配置状态已更新。</p>
+        <p>{t('marivo.credentials.saved-value-deleted-configuration-status-updated')}</p>
       )}
       {errors.length > 0 && <p>{errors.map(credentialMessage).join(' ')}</p>}
       {operation?.status === 'failed' && errors.length === 0 && !operation.result && (
-        <p>操作未完成，请重试。</p>
+        <p>{t('marivo.credentials.operation-incomplete-please-retry')}</p>
       )}
-      {unsuccessful && operation?.saved.length > 0 && <p>已保存：{operation.saved.join('、')}。</p>}
+      {unsuccessful && operation?.saved.length > 0 && (
+        <p>
+          {t('marivo.credentials.saved')}
+          {operation.saved.join('、')}。
+        </p>
+      )}
     </div>
   )
 }
 export function DatasourceProperties({ context }) {
+  const t = useCopy()
+
   const properties = Object.entries(context.properties ?? {})
   return (
-    <section className="mc-properties" aria-label="数据源属性">
-      <h4 className="mc-section-heading">数据源属性</h4>
+    <section className="mc-properties" aria-label={t('marivo.credentials.datasource-properties')}>
+      <h4 className="mc-section-heading">{t('marivo.credentials.datasource-properties')}</h4>
       <dl className="mc-property-list">
         <div className="mc-property">
-          <dt>引擎</dt>
-          <dd>{context.backend || '未提供'}</dd>
+          <dt>{t('marivo.credentials.engine')}</dt>
+          <dd>{context.backend || t('marivo.credentials.not-provided')}</dd>
         </div>
         {properties.map(([field, value]) => (
           <div className="mc-property" key={field}>
             <dt>{field}</dt>
             <dd>
               {value !== null && typeof value === 'object' ? (
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll long JSON values.
-                <section className="mc-property-json" tabIndex={0} aria-label={`${field} 配置值`}>
+                <section
+                  className="mc-property-json"
+                  // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll long JSON values.
+                  tabIndex={0}
+                  aria-label={t('marivo.credentials.value-configuration-value', { p0: field })}
+                >
                   <pre>{JSON.stringify(value, null, 2)}</pre>
                 </section>
               ) : (
@@ -171,6 +206,8 @@ export function DatasourceProperties({ context }) {
   )
 }
 function CredentialForm({ context, request, state, model, workspaceId, onEdit }) {
+  const t = useCopy()
+
   const [values, setValues] = useState({})
   const [editing, setEditing] = useState({})
   const [deleting, setDeleting] = useState('')
@@ -209,27 +246,33 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
     void model.start(context, request ? 'submit' : 'update', changes)
   }
   return (
-    <section className="mc-form" aria-label={`${context.name} 凭证配置`}>
+    <section
+      className="mc-form"
+      aria-label={t('marivo.credentials.value-credential-configuration', { p0: context.name })}
+    >
       <div className="mc-form-body">
         <div className="mc-detail-heading mc-datasource-heading">
-          <p className="mc-eyebrow">数据源配置</p>
+          <p className="mc-eyebrow">{t('marivo.credentials.datasource-configuration')}</p>
           <div className="mc-name-row">
             <h3>{context.name}</h3>
             <div className="mc-heading-actions">
               <span className="mc-badge" data-ready={ready}>
                 {ready && <CredentialIcon name="check" size={13} />}
                 {context.refs.length === 0
-                  ? '无需凭证'
+                  ? t('marivo.credentials.no-credentials-required')
                   : ready
-                    ? '凭证已配齐'
-                    : `${configured} / ${context.refs.length} 项已配置`}
+                    ? t('marivo.credentials.all-credentials-configured')
+                    : t('marivo.credentials.value-value-configured', {
+                        p0: configured,
+                        p1: context.refs.length,
+                      })}
               </span>
               {!ended && (
                 <button
                   className="mc-icon-button"
                   type="button"
-                  title="编辑配置"
-                  aria-label="编辑配置"
+                  title={t('marivo.credentials.edit-configuration')}
+                  aria-label={t('marivo.credentials.edit-configuration')}
                   disabled={busy}
                   onClick={onEdit}
                 >
@@ -240,8 +283,8 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                 <button
                   className="mc-icon-button mc-danger"
                   type="button"
-                  title="删除数据源"
-                  aria-label="删除数据源"
+                  title={t('marivo.credentials.delete-datasource')}
+                  aria-label={t('marivo.credentials.delete-datasource')}
                   disabled={busy || state.loading}
                   onClick={() => setRemovingDatasource(true)}
                 >
@@ -252,10 +295,16 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
           </div>
         </div>
         {removingDatasource && (
-          <fieldset className="mc-confirm" aria-label="确认删除数据源">
+          <fieldset
+            className="mc-confirm"
+            aria-label={t('marivo.credentials.confirm-datasource-deletion')}
+          >
             <p>
-              确认删除数据源 {context.name}？这会移除当前 Workspace
-              的数据源定义，不会删除数据库中的数据；引用它的语义层定义需另行处理。
+              {t('marivo.credentials.confirm-datasource-deletion')}
+              {context.name}
+              {t(
+                'marivo.credentials.this-removes-the-datasource-definition-from-this-workspace-not',
+              )}
             </p>
             {context.refs.length > 0 && (
               <>
@@ -266,11 +315,14 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                     disabled={busy}
                     onChange={(event) => setRemoveCredentials(event.target.checked)}
                   />{' '}
-                  同时删除对应的已保存凭证
+                  {t('marivo.credentials.also-delete-associated-saved-credentials')}
                 </label>
                 <p>
-                  凭证引用：{context.refs.join('、')}。这些凭证可能被其他数据源或 Workspace
-                  共用，删除后也会影响它们。只读来源的凭证需在原来源处理。
+                  {t('marivo.credentials.credential-references')}
+                  {context.refs.join('、')}
+                  {t(
+                    'marivo.credentials.other-datasources-or-workspaces-may-share-these-credentials-and',
+                  )}
                 </p>
               </>
             )}
@@ -283,7 +335,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                 void model.start(context, 'delete-datasource', {}, undefined, removeCredentials)
               }}
             >
-              确认删除数据源
+              {t('marivo.credentials.confirm-datasource-deletion')}
             </button>
             <button
               type="button"
@@ -293,23 +345,27 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                 setRemoveCredentials(false)
               }}
             >
-              取消
+              {t('marivo.credentials.cancel')}
             </button>
           </fieldset>
         )}
         {request && (
           <div className="mc-request-status" role="status">
-            <strong>{statusLabels[request.status]}</strong>
-            {!ended && <p>验证成功后继续当前任务。</p>}
+            <strong>{t(statusLabels[request.status])}</strong>
+            {!ended && (
+              <p>{t('marivo.credentials.continue-the-current-task-after-successful-validation')}</p>
+            )}
             {(request.status === 'call-ended' || request.status === 'context-changed') && (
-              <p>请重新发起任务。</p>
+              <p>{t('marivo.credentials.start-the-task-again')}</p>
             )}
           </div>
         )}
         <DatasourceProperties context={context} />
-        <h4 className="mc-section-heading">凭证</h4>
+        <h4 className="mc-section-heading">{t('marivo.credentials.credentials')}</h4>
         {context.refs.length === 0 && (
-          <p className="mc-note">该数据源没有凭证引用，可直接测试连接。</p>
+          <p className="mc-note">
+            {t('marivo.credentials.this-datasource-has-no-credential-references-you-can-test')}
+          </p>
         )}
         {context.refs.length > 0 && (
           <div className="mc-fields">
@@ -324,25 +380,28 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                     <div className="mc-field-title">
                       <h4>{ref}</h4>
                       <p>
-                        字段：
+                        {t('marivo.credentials.field')}
                         {Object.entries(context.fields)
                           .filter(([, value]) => value === ref)
                           .map(([field]) => field)
                           .join('、')}{' '}
-                        · 来源：{info?.source ?? '无'}
-                        {!info?.writable && ' · 来源只读'}
+                        {t('marivo.credentials.source')}
+                        {info?.source ?? t('marivo.credentials.none')}
+                        {!info?.writable && t('marivo.credentials.read-only-source')}
                       </p>
                     </div>
                     <div className="mc-field-actions">
                       <span className="mc-badge" data-ready={Boolean(info?.configured)}>
-                        {info?.configured ? '已配置' : '未配置'}
+                        {info?.configured
+                          ? t('marivo.credentials.configured')
+                          : t('marivo.credentials.not-configured')}
                       </span>
                       {info?.writable && info.configured && !editing[ref] && (
                         <button
                           type="button"
                           onClick={() => setEditing({ ...editing, [ref]: true })}
                         >
-                          更换
+                          {t('marivo.credentials.replace')}
                         </button>
                       )}
                       {info?.writable && info.configured && editing[ref] && (
@@ -353,7 +412,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                             setEditing({ ...editing, [ref]: false })
                           }}
                         >
-                          取消更换
+                          {t('marivo.credentials.cancel-replacement')}
                         </button>
                       )}
                       {info?.writable && !request && info.configured && (
@@ -362,18 +421,18 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                           type="button"
                           onClick={() => setDeleting(ref)}
                         >
-                          删除已保存值
+                          {t('marivo.credentials.delete-saved-value')}
                         </button>
                       )}
                     </div>
                   </div>
                   {info?.writable && (!info.configured || editing[ref]) && (
                     <label className="mc-secret-input">
-                      新值
+                      {t('marivo.credentials.new-value')}
                       <input
                         type="password"
                         autoComplete="new-password"
-                        placeholder="输入凭证值"
+                        placeholder={t('marivo.credentials.enter-credential-value-127')}
                         value={values[ref] ?? ''}
                         onChange={(event) => setValues({ ...values, [ref]: event.target.value })}
                       />
@@ -384,19 +443,26 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                           disabled={!values[ref]}
                           onClick={() => saveReference(ref)}
                         >
-                          {info.configured ? '确认更换' : '新增凭证'}
+                          {info.configured
+                            ? t('marivo.credentials.confirm-replacement')
+                            : t('marivo.credentials.add-credential')}
                         </button>
                       )}
                     </label>
                   )}
                   {shared.length > 1 && (
                     <p className="mc-field-note">
-                      与 {shared.filter((name) => name !== context.name).join('、')} 共享此引用
+                      {t('marivo.credentials.and')}
+                      {shared.filter((name) => name !== context.name).join('、')}{' '}
+                      {t('marivo.credentials.share-this-reference')}
                     </p>
                   )}
                   {deleting === ref && (
                     <div className="mc-confirm">
-                      <p>确认删除 {ref} 的已保存值？</p>
+                      <p>
+                        {t('marivo.credentials.confirm-deletion-of')}
+                        {ref} {t('marivo.credentials.the-saved-value')}
+                      </p>
                       <button
                         className="mc-danger"
                         type="button"
@@ -405,10 +471,10 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                           void model.start(context, 'delete', {}, ref)
                         }}
                       >
-                        确认删除已保存值
+                        {t('marivo.credentials.confirm-saved-value-deletion')}
                       </button>
                       <button type="button" onClick={() => setDeleting('')}>
-                        保留
+                        {t('marivo.credentials.keep')}
                       </button>
                     </div>
                   )}
@@ -419,19 +485,20 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
         )}
         <div className="mc-test">
           <div className="mc-test-heading">
-            <h4>连接状态</h4>
+            <h4>{t('marivo.credentials.connection-status')}</h4>
             <div className="mc-heading-actions">
               {latestTest?.at !== undefined && (
                 <time dateTime={new Date(latestTest.at).toISOString()}>
-                  上次测试：{new Date(latestTest.at).toLocaleString()}
+                  {t('marivo.credentials.last-test')}
+                  {new Date(latestTest.at).toLocaleString()}
                 </time>
               )}
               {!request && (
                 <button
                   className="mc-icon-button"
                   type="button"
-                  title="测试连接"
-                  aria-label="测试连接"
+                  title={t('marivo.credentials.test-connection')}
+                  aria-label={t('marivo.credentials.test-connection')}
                   disabled={busy}
                   onClick={() => void model.start(context, 'test')}
                 >
@@ -443,7 +510,9 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
           {latestResult ? (
             <TestResult result={latestResult} stale={!request?.failure && latestTest?.stale} />
           ) : (
-            <p className="mc-empty-test">尚未测试连接。</p>
+            <p className="mc-empty-test">
+              {t('marivo.credentials.connection-has-not-been-tested')}
+            </p>
           )}
           {outcome?.operation?.action !== 'delete-datasource' && (
             <OperationOutcome entry={outcome} />
@@ -454,7 +523,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
         <div className="mc-form-footer">
           {request && (
             <button className="mc-primary" type="button" disabled={busy} onClick={submit}>
-              提交凭证并继续
+              {t('marivo.credentials.submit-credentials-and-continue')}
             </button>
           )}
           {request && (
@@ -463,7 +532,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
               disabled={busy}
               onClick={() => void model.start(context, 'submit')}
             >
-              使用已有配置验证并继续
+              {t('marivo.credentials.validate-existing-configuration-and-continue')}
             </button>
           )}
           {request?.failure && (
@@ -472,7 +541,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
               disabled={busy}
               onClick={() => void model.start(context, 'diagnose')}
             >
-              交给助手排查
+              {t('marivo.credentials.ask-the-assistant-to-investigate')}
             </button>
           )}
           {request ? (
@@ -481,7 +550,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
               type="button"
               onClick={() => void model.cancelRequest(request.id)}
             >
-              取消本轮
+              {t('marivo.credentials.cancel-this-round')}
             </button>
           ) : (
             busy && (
@@ -490,7 +559,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                 type="button"
                 onClick={() => void model.cancelOperation(context.token)}
               >
-                取消操作
+                {t('marivo.credentials.cancel-operation')}
               </button>
             )
           )}
@@ -499,7 +568,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
       {ended && (
         <div className="mc-form-footer">
           <button type="button" onClick={() => model.show(workspaceId)}>
-            返回数据源管理
+            {t('marivo.credentials.back-to-datasource-management')}
           </button>
         </div>
       )}
@@ -507,6 +576,8 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
   )
 }
 export function CredentialPanel({ model, workspaces, onRefresh }) {
+  const t = useCopy()
+
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const columns = useRef(null)
   const navigation = useRef(null)
@@ -567,17 +638,17 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
   )?.operation
   if (!state.open) return null
   return (
-    <section className="mc-panel" aria-label="数据源与凭证">
+    <section className="mc-panel" aria-label={t('marivo.credentials.datasources-and-credentials')}>
       <style>{credentialStyles}</style>
       <div className="rt-heading-row">
-        <h2 className="rt-heading">数据源与凭证</h2>
+        <h2 className="rt-heading">{t('marivo.credentials.datasources-and-credentials')}</h2>
         <div className="mc-heading-actions">
           {!request && (
             <button
               className="mc-icon-button"
               type="button"
-              title="新增数据源"
-              aria-label="新增数据源"
+              title={t('marivo.credentials.add-datasource')}
+              aria-label={t('marivo.credentials.add-datasource')}
               disabled={!workspaceId || state.loading}
               onClick={() => {
                 setEditingName('')
@@ -590,8 +661,8 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
           <button
             className="mc-icon-button"
             type="button"
-            title="刷新数据源"
-            aria-label="刷新数据源"
+            title={t('marivo.credentials.refresh-datasources')}
+            aria-label={t('marivo.credentials.refresh-datasources')}
             disabled={state.loading}
             onClick={onRefresh ?? (() => void model.refreshDatasources())}
           >
@@ -605,26 +676,36 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
       <div className="mc-shell">
         {(pending.length > 0 || request) && (
           <div className="mc-requests">
-            <span>{pending.length ? '本会话待办' : '配置结果'}</span>
+            <span>
+              {pending.length
+                ? t('marivo.credentials.requests-in-this-session')
+                : t('marivo.credentials.configuration-result')}
+            </span>
             {pending.map((item) => (
               <button type="button" key={item.id} onClick={() => model.openRequest(item.id)}>
-                {item.context?.name ?? item.configuration?.name ?? '新增数据源'} ·{' '}
-                {statusLabels[item.status]}
+                {item.context?.name ??
+                  item.configuration?.name ??
+                  t('marivo.credentials.add-datasource')}{' '}
+                · {t(statusLabels[item.status])}
               </button>
             ))}
             {request && (
               <button className="mc-quiet" type="button" onClick={() => model.show(workspaceId)}>
-                数据源管理
+                {t('marivo.credentials.datasource-management')}
               </button>
             )}
           </div>
         )}
         <div className="mc-columns" ref={columns}>
           {!request && (
-            <aside className="mc-nav" aria-label="数据源导航">
+            <aside className="mc-nav" aria-label={t('marivo.credentials.datasource-navigation')}>
               <div>
                 <div className="mc-nav-heading">
-                  <h3>{request ? '请求的数据源' : `数据源 · ${datasources.length}`}</h3>
+                  <h3>
+                    {request
+                      ? t('marivo.credentials.requested-datasource')
+                      : t('marivo.credentials.datasource-value', { p0: datasources.length })}
+                  </h3>
                 </div>
                 <ul className="mc-datasources" ref={navigation}>
                   {datasources.map((item) => {
@@ -640,7 +721,9 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                         <button
                           className="mc-datasource"
                           type="button"
-                          aria-label={`选择数据源 ${item.name}`}
+                          aria-label={t('marivo.credentials.select-datasource-value', {
+                            p0: item.name,
+                          })}
                           aria-pressed={!creating && context?.token === item.token}
                           onClick={() => {
                             if (request) model.openRequest(request.id)
@@ -656,12 +739,15 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                             <span className="mc-datasource-status">
                               <span className="mc-dot" data-ready={ready} />
                               {running
-                                ? '正在处理…'
+                                ? t('marivo.credentials.processing')
                                 : item.refs.length === 0
-                                  ? '无需凭证'
+                                  ? t('marivo.credentials.no-credentials-required')
                                   : ready
-                                    ? '凭证已配齐'
-                                    : `${count} / ${item.refs.length} 项已配置`}
+                                    ? t('marivo.credentials.all-credentials-configured')
+                                    : t('marivo.credentials.value-value-configured', {
+                                        p0: count,
+                                        p1: item.refs.length,
+                                      })}
                             </span>
                           </span>
                         </button>
@@ -683,18 +769,18 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                 <div className="mc-request-status" key={entry.handle.id}>
                   <OperationOutcome entry={entry} />
                   <button type="button" onClick={() => model.dismissOutcome(entry.handle.scope)}>
-                    关闭删除结果
+                    {t('marivo.credentials.dismiss-deletion-result')}
                   </button>
                 </div>
               ))}
             {state.error && (
               <p role="alert" className="mc-alert">
-                {state.error}
+                {t(state.error)}
               </p>
             )}
             {state.loading && (
               <p className="mc-loading" role="status">
-                正在读取数据源与凭证状态…
+                {t('marivo.credentials.loading-datasources-and-credential-status')}
               </p>
             )}
             {!request && !creating && !state.loading && !context && !state.error && (
@@ -702,26 +788,31 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                 <CredentialIcon name="database" size={32} />
                 <h3>
                   {!state.workspaceId
-                    ? '当前会话未绑定 Workspace'
+                    ? t('marivo.credentials.this-session-is-not-bound-to-a-workspace')
                     : state.datasources.length === 0
-                      ? '暂无数据源'
-                      : '选择一个数据源'}
+                      ? t('marivo.credentials.no-datasources')
+                      : t('marivo.credentials.select-a-datasource')}
                 </h3>
                 <p>
                   {!state.workspaceId
-                    ? '请返回会话后重试。'
+                    ? t('marivo.credentials.return-to-the-session-and-retry')
                     : state.datasources.length === 0
-                      ? '该 Workspace 没有已定义的数据源。'
-                      : '查看凭证配置与最近一次连接测试。'}
+                      ? t('marivo.credentials.this-workspace-has-no-defined-datasources')
+                      : t(
+                          'marivo.credentials.view-credential-configuration-and-the-latest-connection-test',
+                        )}
                 </p>
               </div>
             )}
             {request?.configuration && (
-              <section className="mc-request-status" aria-label="配置请求">
+              <section
+                className="mc-request-status"
+                aria-label={t('marivo.credentials.configuration-request')}
+              >
                 <div className="mc-request-heading">
-                  <h3>配置数据源以继续</h3>
+                  <h3>{t('marivo.credentials.configure-a-datasource-to-continue')}</h3>
                   <span className="mc-badge" role="status">
-                    {statusLabels[request.status]}
+                    {t(statusLabels[request.status])}
                   </span>
                   {request.endedAt === undefined && (
                     <button
@@ -729,20 +820,23 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                       type="button"
                       onClick={() => void model.cancelRequest(request.id)}
                     >
-                      取消配置请求
+                      {t('marivo.credentials.cancel-configuration-request')}
                     </button>
                   )}
                 </div>
                 <details className="mc-request-reason">
-                  <summary>查看助手请求说明</summary>
-                  <p>{request.configuration.reason}</p>
+                  <summary>{t('marivo.credentials.show-assistant-request-details')}</summary>
+                  <p>{t(request.configuration.reason)}</p>
                 </details>
-                {requestError && <p role="alert">{requestError}</p>}
+                {requestError && <p role="alert">{t(requestError)}</p>}
                 {request.endedAt === undefined && request.status !== 'executing' && (
                   <>
                     {request.configuration.mode === 'create' && !context && (
                       <>
-                        <fieldset className="mc-request-choice" aria-label="配置方式">
+                        <fieldset
+                          className="mc-request-choice"
+                          aria-label={t('marivo.credentials.configuration-method')}
+                        >
                           <button
                             type="button"
                             aria-pressed={requestChoice === 'create'}
@@ -753,7 +847,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                               setRequestError('')
                             }}
                           >
-                            新增数据源
+                            {t('marivo.credentials.add-datasource')}
                           </button>
                           <button
                             type="button"
@@ -765,16 +859,20 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                               setRequestError('')
                             }}
                           >
-                            使用已有数据源
+                            {t('marivo.credentials.use-an-existing-datasource')}
                           </button>
                         </fieldset>
                         {requestChoice === 'existing' && (
                           <div className="mc-existing-source">
-                            <p>如果已有连接可以访问目标表，选择它并验证即可继续，无需重复创建。</p>
+                            <p>
+                              {t(
+                                'marivo.credentials.if-an-existing-connection-can-access-the-target-table',
+                              )}
+                            </p>
                             <label className="mc-secret-input">
-                              选择已有数据源
+                              {t('marivo.credentials.select-an-existing-datasource')}
                               <select
-                                aria-label="选择已有数据源"
+                                aria-label={t('marivo.credentials.select-an-existing-datasource')}
                                 value=""
                                 onChange={async (event) => {
                                   if (!event.target.value) return
@@ -791,7 +889,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                                   }
                                 }}
                               >
-                                <option value="">请选择</option>
+                                <option value="">{t('marivo.credentials.please-select')}</option>
                                 {state.datasources.map((item) => (
                                   <option key={item.name} value={item.name}>
                                     {item.name}
@@ -800,7 +898,11 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                               </select>
                             </label>
                             {state.datasources.length === 0 && (
-                              <p>当前没有可复用的数据源，请切换到“新增数据源”。</p>
+                              <p>
+                                {t(
+                                  'marivo.credentials.no-reusable-datasource-is-available-switch-to-add-datasource',
+                                )}
+                              </p>
                             )}
                           </div>
                         )}
@@ -816,7 +918,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                             setEditingName(request.configuration.name ?? '')
                           }}
                         >
-                          打开配置表单
+                          {t('marivo.credentials.open-configuration-form')}
                         </button>
                       )}
                   </>
@@ -848,8 +950,14 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
               />
             )}
             {operations.length > 0 && (
-              <section className="mc-activity" aria-label="进行中的凭证操作">
-                <p className="mc-activity-heading">进行中 · {operations.length}</p>
+              <section
+                className="mc-activity"
+                aria-label={t('marivo.credentials.credential-operations-in-progress')}
+              >
+                <p className="mc-activity-heading">
+                  {t('marivo.credentials.in-progress')}
+                  {operations.length}
+                </p>
                 <div className="mc-activity-list">
                   {operations.map((entry) => (
                     <button
@@ -858,7 +966,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                       aria-pressed={state.handle?.id === entry.handle.id}
                       onClick={() => model.selectOperation(entry.handle.id)}
                     >
-                      {entry.name} · 处理中
+                      {entry.name} {t('marivo.credentials.processing-177')}
                     </button>
                   ))}
                 </div>
@@ -868,16 +976,19 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                       {state.operations.find((entry) => entry.handle.id === state.handle?.id)?.name}{' '}
                       ·{' '}
                       {activeOperation.phase === 'removing'
-                        ? '正在删除'
+                        ? t('marivo.credentials.deleting')
                         : activeOperation.phase === 'saving'
-                          ? '正在保存'
-                          : '正在验证连接'}
+                          ? t('marivo.credentials.saving')
+                          : t('marivo.credentials.validating-connection')}
                     </p>
                     <button type="button" onClick={() => void model.cancelOperation()}>
-                      取消此操作
+                      {t('marivo.credentials.cancel-this-operation')}
                     </button>
                     {activeOperation.saved.length > 0 && (
-                      <p>已保存：{activeOperation.saved.join('、')}。</p>
+                      <p>
+                        {t('marivo.credentials.saved')}
+                        {activeOperation.saved.join('、')}。
+                      </p>
                     )}
                   </div>
                 )}
@@ -905,8 +1016,15 @@ export function installCredentials(ctx, rpc) {
   ctx.on('connection/reset', () => model.reset())
   ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register(
-      { name: 'conversation.session.header.actions', id: 'marivo-credential-requests', order: 120 },
-      function Pending({ sessionId }) {
+      {
+        locale: 'marivo.navigation',
+        name: 'conversation.session.header.actions',
+        id: 'marivo-credential-requests',
+        order: 120,
+      },
+      localized(ctx, function Pending({ sessionId }) {
+        const t = useCopy()
+
         const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
         const request = state.requests.find(
           (item) => item.sessionId === sessionId && item.endedAt === undefined,
@@ -925,21 +1043,29 @@ export function installCredentials(ctx, rpc) {
               color: 'inherit',
               cursor: 'pointer',
             }}
-            aria-label={request.configuration ? '等待配置数据源' : '等待配置凭证'}
-            title={request.configuration ? '等待配置数据源' : '等待配置凭证'}
+            aria-label={
+              request.configuration
+                ? t('marivo.credentials.awaiting-datasource-configuration')
+                : t('marivo.credentials.awaiting-credentials')
+            }
+            title={
+              request.configuration
+                ? t('marivo.credentials.awaiting-datasource-configuration')
+                : t('marivo.credentials.awaiting-credentials')
+            }
             type="button"
             onClick={() => model.openRequest(request.id)}
           >
-            待配置
+            {t('marivo.credentials.configuration-needed')}
           </button>
         ) : null
-      },
+      }),
     ),
   )
   ctx.slots.inject('shell.overlay', () =>
     ctx.slots.register(
-      { name: 'shell.overlay', id: 'marivo-credential-observer' },
-      function Observer({ useSessions, useWorkspaces }) {
+      { locale: 'marivo.navigation', name: 'shell.overlay', id: 'marivo-credential-observer' },
+      localized(ctx, function Observer({ useSessions, useWorkspaces }) {
         const sessionId = useSessions((state) => state.current) ?? ''
         const workspaces = useWorkspaces((state) => state.items)
         const currentWorkspace =
@@ -948,7 +1074,7 @@ export function installCredentials(ctx, rpc) {
         // biome-ignore lint/correctness/useExhaustiveDependencies: Workspace reassignment must dismiss old content.
         useEffect(() => model.close(), [currentWorkspace])
         return null
-      },
+      }),
     ),
   )
   return model

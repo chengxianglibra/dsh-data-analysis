@@ -23,7 +23,10 @@ before(async () => {
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
+const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
 import { SpecialChart } from './src/client/presentation/chart-specials.tsx';
 export function render(dataset, block) {
   return renderToStaticMarkup(createElement(SpecialChart, {

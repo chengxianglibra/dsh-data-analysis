@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "S0 真实 persisted Artifact 样例",
   "datasets": [
     {
@@ -53,5 +53,6 @@
       "kind": "source",
       "sourceIds": ["sales"]
     }
-  ]
+  ],
+  "locale": "zh-CN"
 }

@@ -38,7 +38,9 @@ export function chartViewError(view: ChartView, dataset: TypedDataset): string |
     validateChartView(view, dataset)
     return undefined
   } catch (error) {
-    return error instanceof Error ? error.message : '字段不满足图形要求'
+    return error instanceof Error
+      ? error.message
+      : 'marivo.presentation.fields-do-not-meet-chart-requirements'
   }
 }
 

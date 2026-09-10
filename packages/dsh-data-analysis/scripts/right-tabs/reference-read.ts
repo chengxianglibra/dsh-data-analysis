@@ -113,7 +113,7 @@ console.log(JSON.stringify({workspaceId:d.workspaceId,reportId:d.reportId,buildI
           ...(data.rows ? { rows: data.rows } : {}),
         }
         if (data.cell.kind === 'metric')
-          verified.exactValue = selectMetric(data.dataset.data, data.cell, data.rows).value
+          verified.exactValue = selectMetric('zh-CN', data.dataset.data, data.cell, data.rows).value
       } catch (error) {
         failure = error
       }

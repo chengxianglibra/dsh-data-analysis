@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import type { SessionEventWindow } from '@deepseek-ai/dsh-api-session-controller/client'
+import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import { followUpContext } from '../../src/client/presentation/model.ts'
 import { LiveDeliveryObserver } from '../../src/client/right-tabs/live-delivery.ts'
 import {
@@ -330,7 +331,10 @@ test('a fixed address for the current Build is editable, while stale and histori
   assert.ok(page.reader.getSnapshot().editing)
   page.reader.cancelEdit()
   f.advance()
-  await assert.rejects(page.reader.beginCurrentEdit(), /已有新版本/)
+  await assert.rejects(page.reader.beginCurrentEdit(), (error: unknown) => {
+    assert.match(translator('zh-CN')(readError(error)), /已有新版本/)
+    return true
+  })
   assert.equal(page.reader.getSnapshot().editing, undefined)
   assert.equal(page.reader.getSnapshot().historical, true)
   assert.equal(page.reader.getSnapshot().document?.buildId, 'old')
@@ -388,7 +392,10 @@ test('current pointer check cannot enter editing after foreground validation fai
     page.reader.beginCurrentEdit(() => {
       throw new Error('foreground changed')
     }),
-    /foreground changed/,
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /foreground changed/)
+      return true
+    },
   )
   assert.equal(page.reader.getSnapshot().editing, undefined)
   const opening = page.reader.beginCurrentEdit()

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "演示：已有 Artifact 表格",
   "datasets": [
     {
@@ -13,7 +13,10 @@
   "sources": [
     {
       "id": "analysis",
-      "ref": { "sessionId": "example-session", "artifactRef": "example-artifact" }
+      "ref": {
+        "sessionId": "example-session",
+        "artifactRef": "example-artifact"
+      }
     }
   ],
   "blocks": [
@@ -22,6 +25,12 @@
       "kind": "markdown",
       "text": "演示草稿：请替换实际来源、列名和分析范围。展示最多 100 行，不据此声称全量总计。"
     },
-    { "id": "values", "kind": "table", "datasetId": "result", "columns": ["region", "revenue"] }
-  ]
+    {
+      "id": "values",
+      "kind": "table",
+      "datasetId": "result",
+      "columns": ["region", "revenue"]
+    }
+  ],
+  "locale": "zh-CN"
 }

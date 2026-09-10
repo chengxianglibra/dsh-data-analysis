@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "演示：季度已有数量与精确金额",
   "datasets": [
     {
@@ -53,5 +53,6 @@
       "datasetId": "quarter",
       "columns": ["month", "count", "amount"]
     }
-  ]
+  ],
+  "locale": "zh-CN"
 }

@@ -48,7 +48,10 @@ test('portable HTML preserves Python and SQL snapshots without a report source f
   assert.equal(embedded.datasets[0].code[0].text, python)
   assert.equal(embedded.sources[0].code.snippets[0].text, sql)
   const fallback = html.split('<div id="reader">')[0]!
-  assert.doesNotMatch(fallback, /<details class="pr-source-summary"|<code class="language-(?:python|sql)"/)
+  assert.doesNotMatch(
+    fallback,
+    /<details class="pr-source-summary"|<code class="language-(?:python|sql)"/,
+  )
   assert.match(html, /&#39;wasm-unsafe-eval&#39;/)
   assert.doesNotMatch(html, /<img src=x|<script[^>]+src=/)
 
@@ -57,5 +60,8 @@ test('portable HTML preserves Python and SQL snapshots without a report source f
   document.datasets[0]!.sourceIds = []
   document.blocks = [{ id: 'python-only', kind: 'table', datasetId: document.datasets[0]!.id }]
   const onlyPython = (await buildPresentation(document)).htmlBytes.toString('utf8')
-  assert.doesNotMatch(onlyPython.split('<div id="reader">')[0]!, /<details class="pr-source-summary"/)
+  assert.doesNotMatch(
+    onlyPython.split('<div id="reader">')[0]!,
+    /<details class="pr-source-summary"/,
+  )
 })

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "S0 computed 精确数值样例",
   "datasets": [
     {
@@ -67,5 +67,6 @@
       "kind": "source",
       "sourceIds": ["sales", "accounts", "missing"]
     }
-  ]
+  ],
+  "locale": "zh-CN"
 }

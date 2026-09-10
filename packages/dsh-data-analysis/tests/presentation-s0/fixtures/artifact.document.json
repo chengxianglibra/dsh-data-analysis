@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "workspaceId": "s0-validation-workspace",
   "buildId": "s0-artifact",
   "title": "S0 真实 persisted Artifact 样例",
@@ -127,5 +127,6 @@
       "message": "共 4 行，按展示预算写入前 3 行；不能从截断数据推算全量总计。"
     }
   ],
-  "reportId": "report"
+  "reportId": "report",
+  "locale": "zh-CN"
 }

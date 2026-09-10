@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { translator } from './../../src/client/i18n/copy.ts'
+import { errorMessage as readError } from '../../src/client/i18n/copy.ts'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
@@ -64,9 +66,12 @@ test('invalid references reach the creation form as safe actionable errors befor
         input,
       ),
       (error: Error) => {
-        assert.match(error.message, /凭证引用名称无效/)
-        assert.match(error.message, /实际用户名和密码/)
-        assert.doesNotMatch(error.message, /9private-canary|提交结果未确认|凭证操作失败/)
+        assert.match(translator('zh-CN')(error.message), /凭证引用名称无效/)
+        assert.match(translator('zh-CN')(error.message), /实际用户名和密码/)
+        assert.doesNotMatch(
+          translator('zh-CN')(error.message),
+          /9private-canary|提交结果未确认|凭证操作失败/,
+        )
         return true
       },
     )
@@ -96,7 +101,13 @@ test('unconfirmed creation is not replayed and still asks the user to refresh', 
         },
         { backend: 'duckdb', fields: { name: 'created' } },
       ),
-      /提交结果未确认.*刷新列表/,
+      (error: unknown) => {
+        assert.match(
+          `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+          /提交结果未确认.*刷新列表/,
+        )
+        return true
+      },
     )
     assert.equal(calls, 1)
   }
@@ -140,8 +151,20 @@ test('datasource creation checks Host and Runtime identity before writing', asyn
   const input = { backend: 'duckdb', fields: { name: 'created' } }
   const create = (generation: string, fingerprint: string) =>
     f.service.createDatasource(generation, fingerprint, input, f.resolve, f.controller.signal)
-  await assert.rejects(create(randomUUID(), f.bridge.binding.fingerprint), /context-changed/)
-  await assert.rejects(create(f.service.generation, 'other-runtime'), /context-changed/)
+  await assert.rejects(create(randomUUID(), f.bridge.binding.fingerprint), (error: unknown) => {
+    assert.match(
+      `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+      /context-changed/,
+    )
+    return true
+  })
+  await assert.rejects(create(f.service.generation, 'other-runtime'), (error: unknown) => {
+    assert.match(
+      `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+      /context-changed/,
+    )
+    return true
+  })
   assert.equal(writes, 0)
   assert.deepEqual(await create(f.service.generation, f.bridge.binding.fingerprint), {
     name: 'created',
@@ -150,7 +173,13 @@ test('datasource creation checks Host and Runtime identity before writing', asyn
   f.bridge.create = async () => ({ error: 'datasource-already-exists' })
   await assert.rejects(
     create(f.service.generation, f.bridge.binding.fingerprint),
-    /datasource-already-exists/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /datasource-already-exists/,
+      )
+      return true
+    },
   )
 })
 

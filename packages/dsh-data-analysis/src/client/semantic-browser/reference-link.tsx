@@ -1,9 +1,13 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
+
 import { Fragment } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
+import { useCopy } from './../i18n/context.tsx'
 
 export function RefLink({ refValue, objects, navigate, children }) {
-  if (!refValue) return <span>未声明</span>
+  const t = useCopy()
+
+  if (!refValue) return <span>{t('marivo.semantic.not-declared')}</span>
   const key = refKey(refValue)
   const object = objects.get(key)
   return (
@@ -15,7 +19,7 @@ export function RefLink({ refValue, objects, navigate, children }) {
       onClick={() => navigate(key)}
     >
       {children ?? refValue.path}
-      {!object ? '（当前目录未包含）' : ''}
+      {!object ? t('marivo.semantic.not-in-this-catalog') : ''}
     </button>
   )
 }

@@ -199,7 +199,7 @@ export async function buildS0Artifacts(root: string, documents: PresentationDocu
   for (const value of documents) {
     const document = parsePresentationDocument(value)
     const json = JSON.stringify(document)
-    const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(document.title)}</title><style>${S0_STYLES}</style><div id="fallback">${renderS0Fallback(document)}</div><div id="reader"></div><script id="presentation-data" type="application/json">${safeJson(document)}</script><script id="third-party-notices" type="application/json">${safeJson(portableNotices)}</script><script>${portable.outputFiles[0]!.text.replaceAll('</script', '<\\/script')}</script></html>`
+    const html = `<!doctype html><html lang="${escapeHtml(document.locale)}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(document.title)}</title><style>${S0_STYLES}</style><div id="fallback">${renderS0Fallback(document)}</div><div id="reader"></div><script id="presentation-data" type="application/json">${safeJson(document)}</script><script id="third-party-notices" type="application/json">${safeJson(portableNotices)}</script><script>${portable.outputFiles[0]!.text.replaceAll('</script', '<\\/script')}</script></html>`
     const documentPath = presentationAssetPath(root, document.buildId, 'presentation.json')
     const htmlPath = presentationAssetPath(root, document.buildId, 'index.html')
     await mkdir(path.dirname(documentPath), { recursive: true })

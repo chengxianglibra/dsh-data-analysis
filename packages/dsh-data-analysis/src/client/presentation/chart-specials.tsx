@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import type { DocumentDataset } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
 import {
   CHART_COLORS,
   chartCoordinate,
@@ -50,6 +51,8 @@ export function SpecialChart({
   visible: ReadonlySet<string>
   title: string
 }) {
+  const t = useCopy()
+
   const [active, setActive] = useState<number | null>(null)
   const { ref, width } = useElementWidth(block.chart === 'pie' ? WIDTH : 520, WIDTH)
   const right = width - 34
@@ -59,9 +62,9 @@ export function SpecialChart({
   const coordinate = (row: number, id: string) => chartCoordinate(data, block, row, id)
   const raw = (row: number, id: string) => data.rows[row]![columnIndex(data, id)]!
   const label = (row: number, id = block.x) =>
-    cellText(raw(row, id), data.columns[columnIndex(data, id)]!)
+    cellText(t.locale, raw(row, id), data.columns[columnIndex(data, id)]!)
   const exact = (row: number, id = field) =>
-    valueWithUnit(raw(row, id), data.columns[columnIndex(data, id)]!)
+    valueWithUnit(t.locale, raw(row, id), data.columns[columnIndex(data, id)]!)
   const color = (row: number) => CHART_COLORS[row % CHART_COLORS.length]!
   const references = block.options?.referenceLines ?? []
   const values = (ids: string[]) =>
@@ -73,7 +76,7 @@ export function SpecialChart({
     'data-source-row-index': row,
     tabIndex: 0,
     role: 'img',
-    'aria-label': exactChartDescription(dataset, block, row, visible)
+    'aria-label': exactChartDescription(t.locale, dataset, block, row, visible)
       .map((entry) => `${entry.label}: ${entry.value}`)
       .join('；'),
     onMouseEnter: () => setActive(row),
@@ -97,18 +100,18 @@ export function SpecialChart({
               stroke="var(--pr-chart-grid)"
             />
             <text className="pr-axis-tick" x={scale(value)} y={y + 18} textAnchor="middle">
-              {formatAxisTick(value)}
+              {formatAxisTick(t.locale, value)}
             </text>
           </g>
         ))}
         <text x={(LEFT + right) / 2} y={y + 42} textAnchor="middle">
-          {formatCategoryTick(caption)}
+          {t(formatCategoryTick(caption))}
         </text>
         {references
           .filter((reference) => reference.axis === 'x')
           .map((reference) => (
             <g
-              key={`${reference.axis}:${reference.value}:${reference.label ?? ''}`}
+              key={t(`${reference.axis}:${reference.value}:${reference.label ?? ''}`)}
               data-reference-line="x"
             >
               <line
@@ -120,7 +123,9 @@ export function SpecialChart({
                 strokeDasharray="5 5"
               />
               <text x={scale(reference.value)} y={TOP - 7} textAnchor="middle">
-                {formatCategoryTick(reference.label ?? formatAxisTick(reference.value))}
+                {t(
+                  formatCategoryTick(reference.label ?? formatAxisTick(t.locale, reference.value)),
+                )}
               </text>
             </g>
           ))}
@@ -141,7 +146,7 @@ export function SpecialChart({
               stroke="var(--pr-chart-grid)"
             />
             <text className="pr-axis-tick" x={LEFT - 10} y={scale(value) + 4} textAnchor="end">
-              {formatAxisTick(value)}
+              {formatAxisTick(t.locale, value)}
             </text>
           </g>
         ))}
@@ -151,13 +156,13 @@ export function SpecialChart({
           transform={`rotate(-90,14,${(TOP + BOTTOM) / 2})`}
           textAnchor="middle"
         >
-          {formatCategoryTick(caption)}
+          {t(formatCategoryTick(caption))}
         </text>
         {references
           .filter((reference) => reference.axis === 'y')
           .map((reference) => (
             <g
-              key={`${reference.axis}:${reference.value}:${reference.label ?? ''}`}
+              key={t(`${reference.axis}:${reference.value}:${reference.label ?? ''}`)}
               data-reference-line="y"
             >
               <line
@@ -169,7 +174,9 @@ export function SpecialChart({
                 strokeDasharray="5 5"
               />
               <text x={right} y={scale(reference.value) - 6} textAnchor="end">
-                {formatCategoryTick(reference.label ?? formatAxisTick(reference.value))}
+                {t(
+                  formatCategoryTick(reference.label ?? formatAxisTick(t.locale, reference.value)),
+                )}
               </text>
             </g>
           ))}
@@ -199,7 +206,7 @@ export function SpecialChart({
             y={BOTTOM + 20}
             textAnchor="middle"
           >
-            {formatAxisTick(value)}
+            {formatAxisTick(t.locale, value)}
           </text>
         ))}
         <text x={(LEFT + right) / 2} y={BOTTOM + 44} textAnchor="middle">
@@ -212,7 +219,7 @@ export function SpecialChart({
           if (a === null || b === null || frequency === null) return null
           return (
             <g key={row} {...mark(row)}>
-              <title>{`${label(row)}: ${exact(row)}`}</title>
+              <title>{t(`${label(row)}: ${exact(row)}`)}</title>
               <rect
                 x={sx(a)}
                 y={Math.min(sy(0), sy(frequency))}
@@ -239,7 +246,7 @@ export function SpecialChart({
           .filter((reference) => reference.axis === 'x')
           .map((reference) => (
             <g
-              key={`${reference.axis}:${reference.value}:${reference.label ?? ''}`}
+              key={t(`${reference.axis}:${reference.value}:${reference.label ?? ''}`)}
               data-reference-line="x"
             >
               <line
@@ -251,7 +258,9 @@ export function SpecialChart({
                 strokeDasharray="5 5"
               />
               <text x={sx(reference.value)} y={TOP - 7} textAnchor="middle">
-                {formatCategoryTick(reference.label ?? formatAxisTick(reference.value))}
+                {t(
+                  formatCategoryTick(reference.label ?? formatAxisTick(t.locale, reference.value)),
+                )}
               </text>
             </g>
           ))}
@@ -272,11 +281,11 @@ export function SpecialChart({
           const y = TOP + index * band + band / 2
           return (
             <g key={row} {...mark(row)}>
-              <title>{`${label(row)}: ${exactChartDescription(dataset, block, row)
+              <title>{`${label(row)}: ${exactChartDescription(t.locale, dataset, block, row)
                 .map((entry) => `${entry.label} ${entry.value}`)
                 .join('；')}`}</title>
               <text x={LEFT - 12} y={y + 4} textAnchor="end">
-                {formatCategoryTick(label(row))}
+                {t(formatCategoryTick(label(row)))}
               </text>
               {points.every((point) => point !== null) && (
                 <>
@@ -368,7 +377,7 @@ export function SpecialChart({
         {rowIndices.map((row, index) => (
           <g key={row}>
             <text x={LEFT - 12} y={TOP + (index + 0.5) * cellHeight + 4} textAnchor="end">
-              {formatCategoryTick(label(row))}
+              {t(formatCategoryTick(label(row)))}
             </text>
             {allVisibleFields.map((id, series) => {
               const value = coordinate(row, id)
@@ -376,7 +385,11 @@ export function SpecialChart({
               const y = TOP + index * cellHeight
               return (
                 <g key={id} {...mark(row, `:${id}`)}>
-                  <title>{`${label(row)} · ${data.columns[columnIndex(data, id)]!.label}: ${exact(row, id)}`}</title>
+                  <title>
+                    {t(
+                      `${label(row)} · ${data.columns[columnIndex(data, id)]!.label}: ${exact(row, id)}`,
+                    )}
+                  </title>
                   <rect
                     x={x + 1}
                     y={y + 1}
@@ -401,7 +414,7 @@ export function SpecialChart({
           </g>
         ))}
         <text className="pr-axis-tick" x={LEFT} y={height - 8}>
-          {formatAxisTick(domain[0])} → {formatAxisTick(domain[1])}
+          {formatAxisTick(t.locale, domain[0])} → {formatAxisTick(t.locale, domain[1])}
         </text>
       </>
     )
@@ -421,7 +434,7 @@ export function SpecialChart({
               data-share-start={interval?.start}
               data-share-end={interval?.end}
             >
-              <title>{`${label(row)}: ${exact(row)} · ${exact(row, bindings.share!)}`}</title>
+              <title>{t(`${label(row)}: ${exact(row)} · ${exact(row, bindings.share!)}`)}</title>
               {interval && value !== null && (
                 <path
                   d={donutPath(interval.start, interval.end, 165, 155)}
@@ -432,7 +445,7 @@ export function SpecialChart({
               )}
               <rect x={314} y={TOP + index * 30} width={10} height={10} rx={2} fill={color(row)} />
               <text x={334} y={TOP + index * 30 + 10}>
-                {formatCategoryTick(label(row))}
+                {t(formatCategoryTick(label(row)))}
                 {valueLabels ? ` · ${formatCategoryTick(exact(row))}` : ''} ·{' '}
                 {formatCategoryTick(exact(row, bindings.share!))}
               </text>
@@ -457,9 +470,9 @@ export function SpecialChart({
       const y = TOP + index * band
       return (
         <g key={row} {...mark(row)}>
-          <title>{`${label(row)}: ${exact(row)} · ${exact(row, bindings.share!)}`}</title>
+          <title>{t(`${label(row)}: ${exact(row)} · ${exact(row, bindings.share!)}`)}</title>
           <text x={LEFT - 12} y={y + 24} textAnchor="end">
-            {formatCategoryTick(label(row))}
+            {t(formatCategoryTick(label(row)))}
           </text>
           {share !== null && value !== null && (
             <path
@@ -509,7 +522,7 @@ export function SpecialChart({
             previousEnd === connectorTarget
           return (
             <g key={row} {...mark(row)} data-waterfall-role={role}>
-              <title>{`${label(row)}: ${exact(row)}`}</title>
+              <title>{t(`${label(row)}: ${exact(row)}`)}</title>
               {start !== null && end !== null && value !== null && role !== null && (
                 <>
                   {connected && (
@@ -549,7 +562,7 @@ export function SpecialChart({
                 </>
               )}
               <text className="pr-axis-tick" x={center} y={BOTTOM + 20} textAnchor="middle">
-                {formatCategoryTick(label(row))}
+                {t(formatCategoryTick(label(row)))}
               </text>
             </g>
           )
@@ -570,9 +583,9 @@ export function SpecialChart({
           const y = TOP + index * band + 5
           return (
             <g key={row} {...mark(row)}>
-              <title>{`${label(row)}: ${exact(row)} · ${exact(row, bindings.rank!)}`}</title>
+              <title>{t(`${label(row)}: ${exact(row)} · ${exact(row, bindings.rank!)}`)}</title>
               <text x={LEFT - 12} y={y + 19} textAnchor="end">
-                {formatCategoryTick(`${label(row, bindings.rank!)}. ${label(row)}`)}
+                {t(formatCategoryTick(`${label(row, bindings.rank!)}. ${label(row)}`))}
               </text>
               {value !== null && (
                 <>

@@ -4,6 +4,7 @@ import type {
   PresentationFilter,
   PresentationInteraction,
 } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
 
 function FilterMenu({
   filter,
@@ -14,6 +15,8 @@ function FilterMenu({
   value: string
   onChange: (value: string) => void
 }) {
+  const t = useCopy()
+
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const container = useRef<HTMLDivElement>(null)
@@ -88,8 +91,8 @@ function FilterMenu({
         aria-controls={open ? id : undefined}
         onClick={() => setOpen(!open)}
       >
-        <span className="pr-filter-label">{filter.label}</span>
-        <span className="pr-filter-value">{selected.label}</span>
+        <span className="pr-filter-label">{t(filter.label)}</span>
+        <span className="pr-filter-value">{t(selected.label)}</span>
         <span aria-hidden="true">⌄</span>
       </button>
       {open && (
@@ -97,12 +100,12 @@ function FilterMenu({
           <input
             ref={input}
             type="search"
-            aria-label={`搜索${filter.label}选项`}
-            placeholder="搜索选项"
+            aria-label={t('marivo.presentation.search-value-options', { p0: filter.label })}
+            placeholder={t('marivo.presentation.search-options')}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <div role="menu" aria-label={filter.label} id={id} className="pr-filter-options">
+          <div role="menu" aria-label={t(filter.label)} id={id} className="pr-filter-options">
             {options.map((option) => (
               <button
                 key={option.id}
@@ -115,14 +118,14 @@ function FilterMenu({
                   close()
                 }}
               >
-                <span>{option.label}</span>
+                <span>{t(option.label)}</span>
                 <span aria-hidden="true">{option.id === value ? '✓' : ''}</span>
               </button>
             ))}
           </div>
           {!options.length && (
             <p className="pr-muted" role="status">
-              没有匹配的选项
+              {t('marivo.presentation.no-matching-options')}
             </p>
           )}
         </div>
@@ -140,11 +143,16 @@ export function GlobalFilterControls({
   selection: Record<string, string>
   onChange: (selection: Record<string, string>) => void
 }) {
+  const t = useCopy()
+
   const isDefault = interaction.filters.every(
     (filter) => selection[filter.id] === filter.allOptionId,
   )
   return (
-    <fieldset className="pr-filter-toolbar pr-interactive" aria-label="全局筛选">
+    <fieldset
+      className="pr-filter-toolbar pr-interactive"
+      aria-label={t('marivo.presentation.global-filters')}
+    >
       {interaction.filters.map((filter) => (
         <FilterMenu
           key={filter.id}
@@ -159,7 +167,7 @@ export function GlobalFilterControls({
         disabled={isDefault}
         onClick={() => onChange(defaultSelection(interaction))}
       >
-        重置筛选
+        {t('marivo.presentation.reset-filters')}
       </button>
     </fieldset>
   )

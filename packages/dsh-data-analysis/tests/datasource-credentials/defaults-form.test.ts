@@ -35,6 +35,8 @@ async function form(edit: boolean, originalSource: string | undefined, defaults 
   let index = 0
   let effect: (() => void) | undefined
   const hooks = {
+    createContext: (value: unknown) => ({ value }),
+    useContext: (context: { value: unknown }) => context.value,
     useId: () => 'form',
     useRef: () => ({ current: true }),
     useEffect: (callback: () => void) => {

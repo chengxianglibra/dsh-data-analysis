@@ -58,5 +58,7 @@ export function sourceOverviewFacts(source: SourceSnapshot) {
 }
 
 export function semanticKindLabel(kind: string): string {
-  return Object.hasOwn(kindLabels, kind) ? kindLabels[kind]! : kind || '语义对象'
+  return Object.hasOwn(kindLabels, kind)
+    ? kindLabels[kind]!
+    : kind || 'marivo.presentation.semantic-objects'
 }

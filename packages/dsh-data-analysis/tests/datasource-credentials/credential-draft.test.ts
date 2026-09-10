@@ -4,6 +4,7 @@ import {
   credentialReference,
   prepareCredentials,
 } from '../../src/client/credentials/credential-draft.ts'
+import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import { marivoCredentialStorageRef } from '../../src/datasource/shell-env.ts'
 
 test('inline credentials produce valid distinct references without including values in configuration', () => {
@@ -36,11 +37,23 @@ test('blank edits preserve references; replacements use new references unless ex
   assert.equal(credentialReference('db', { ...replacement, reference: 'CHOSEN_REF' }), 'CHOSEN_REF')
   assert.throws(
     () => prepareCredentials('db', [{ ...replacement, reference: 'bad-ref' }]),
-    /凭证引用名/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /凭证引用名/,
+      )
+      return true
+    },
   )
   assert.throws(
     () => prepareCredentials('db', [{ ...replacement, reference: 'DSH_HOME' }]),
-    /凭证引用名/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /凭证引用名/,
+      )
+      return true
+    },
   )
 })
 
@@ -48,7 +61,13 @@ test('duplicate header keys and conflicting values for one reference fail before
   const row = { id: crypto.randomUUID(), field: 'http_headers_env', key: 'X-Auth', value: 'one' }
   assert.throws(
     () => prepareCredentials('db', [row, { ...row, id: crypto.randomUUID() }]),
-    /Header 名称不能重复/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /Header 名称不能重复/,
+      )
+      return true
+    },
   )
   assert.throws(
     () =>
@@ -56,6 +75,12 @@ test('duplicate header keys and conflicting values for one reference fail before
         { id: '1', field: 'user_env', reference: 'SHARED', value: 'one' },
         { id: '2', field: 'password_env', reference: 'SHARED', value: 'two' },
       ]),
-    /同一凭证引用/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /同一凭证引用/,
+      )
+      return true
+    },
   )
 })

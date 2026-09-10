@@ -8,7 +8,7 @@
 
 ## 声明
 
-Draft schemaVersion 1、Document schemaVersion 2 均支持以下可选字段：
+Draft schemaVersion 2、Document schemaVersion 3 均支持以下可选字段：
 
 ```typescript
 interaction?: {

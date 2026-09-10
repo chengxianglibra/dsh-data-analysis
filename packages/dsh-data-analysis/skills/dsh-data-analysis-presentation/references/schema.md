@@ -2,9 +2,13 @@
 
 这是插件的 presentation v1 写入契约。所有对象只接受列出的字段；不要把生成文档或 receipt 当作草稿。Marivo 的分析 API 与 semantic schema 以 bound Runtime 的 Skill 和 live Help 为准。
 
+## 报告语言与版本
+
+报告展示语言由 Draft 的 `locale` 决定，Document 使用 `schemaVersion: 3` 并原样保留语言。系统语言仅控制插件操作界面。保存、重开、打印和离线 HTML 均保持报告语言；用户要求改语言时更新完整 Draft，并按既有并发保存契约生成新 Build。旧 Draft v1、Document v2 或缺少语言的报告不受支持，必须重新生成；不修改已有不可变 Build。
+
 ## 顶层与引用
 
-顶层必须有 `schemaVersion: 1`、非空 `title`、`datasets`、`sources`、`blocks`。即使没有 dataset 或来源，也保留空数组；至少一个 block。datasets、sources、blocks 各自的 `id` 不重复，所有引用必须存在。
+顶层必须有 `schemaVersion: 2`、`locale: "zh-CN" | "en-US"`、非空 `title`、`datasets`、`sources`、`blocks`。即使没有 dataset 或来源，也保留空数组；至少一个 block。datasets、sources、blocks 各自的 `id` 不重复，所有引用必须存在。
 
 | 对象 | 必填字段 | 可选字段 |
 | --- | --- | --- |

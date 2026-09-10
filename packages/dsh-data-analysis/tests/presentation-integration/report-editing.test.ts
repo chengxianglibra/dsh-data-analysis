@@ -5,6 +5,7 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { translator } from './../../src/client/i18n/copy.ts'
 import {
   applyPresentationEdits,
   presentationEdits,
@@ -17,7 +18,10 @@ import { presentationReportPath } from '../../src/presentation/files.ts'
 import { publishPresentation, resolvePresentation } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 
-async function fixture(t: { after(fn: () => Promise<void>): void }) {
+async function fixture(
+  t: { after(fn: () => Promise<void>): void },
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'report-editing-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   const document = parsePresentationDocument(
@@ -28,6 +32,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       ),
     ),
   )
+  document.locale = locale
   document.datasets[0]!.code = [
     {
       language: 'python',
@@ -94,7 +99,10 @@ test('edits preserve exact snapshots and code, allow reorder/delete including al
     edits: { title: '空报告', blocks: [] },
   })
   const html = await f.service.read({ sessionId: 'session', receipt: empty, asset: 'index.html' })
-  assert.match(Buffer.from(html.bodyBase64, 'base64').toString(), /这份报告尚无 cell/)
+  assert.match(
+    translator('zh-CN')(Buffer.from(html.bodyBase64, 'base64').toString()),
+    /这份报告尚无 cell/,
+  )
   assert.equal(
     (await readFile(f.receipt.files.document.path)).length,
     f.receipt.files.document.bytes,
@@ -111,7 +119,14 @@ test('edits preserve exact snapshots and code, allow reorder/delete including al
     applyPresentationEdits(f.document, { title: 'x', blocks: [{ ...metric, rowIndex: 1 }] }),
   )
   assert.throws(() =>
-    parsePresentationDraft({ schemaVersion: 1, title: 'x', datasets: [], sources: [], blocks: [] }),
+    parsePresentationDraft({
+      schemaVersion: 2,
+      locale: 'zh-CN',
+      title: 'x',
+      datasets: [],
+      sources: [],
+      blocks: [],
+    }),
   )
   assert.throws(() => parsePresentationDocument({ ...f.document, schemaVersion: 1 }))
 })
@@ -258,7 +273,7 @@ test('editor undo/cancel, conflict drafts and lost-response recovery use the ori
   })
   await model.saveEdit()
   assert.equal(model.getSnapshot().editing!.edits.title, '本窗口草稿')
-  assert.match(model.getSnapshot().editError!, /其他窗口/)
+  assert.match(translator('zh-CN')(model.getSnapshot().editError!), /其他窗口/)
   model.contextChanged('session', 'foreign-workspace')
   assert.equal(model.getSnapshot().document, undefined)
   assert.equal(model.getSnapshot().editing, undefined)
@@ -413,4 +428,41 @@ test('unload after save commit drains lost response without deleting or replayin
     saved,
   )
   assert.equal((await readFile(saved.files.document.path)).length, saved.files.document.bytes)
+})
+
+test('both report languages survive publication, editing, reopening and full HTML export', async (t) => {
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    const f = await fixture(t, locale)
+    const original = await readFile(f.receipt.files.document.path)
+    const edits = presentationEdits(f.document)
+    edits.title = 'User-authored title / 用户标题'
+    const saved = await f.service.report('reports/save', {
+      ...f.request,
+      expectedBuildId: f.receipt.buildId,
+      edits,
+    })
+    assert.notEqual(saved.buildId, f.receipt.buildId)
+    const reopened = await f.service.report('reports/resolve', f.request)
+    const body = await f.service.read({
+      sessionId: 'session',
+      receipt: reopened,
+      asset: 'presentation.json',
+    })
+    const document = parsePresentationDocument(
+      JSON.parse(Buffer.from(body.bodyBase64, 'base64').toString()),
+    )
+    assert.equal(document.locale, locale)
+    assert.equal(document.title, edits.title)
+    const exported = await f.service.read({
+      sessionId: 'session',
+      receipt: reopened,
+      asset: 'index.html',
+    })
+    assert.ok(
+      Buffer.from(exported.bodyBase64, 'base64')
+        .toString()
+        .includes('<html lang="' + locale + '">'),
+    )
+    assert.deepEqual(await readFile(f.receipt.files.document.path), original)
+  }
 })

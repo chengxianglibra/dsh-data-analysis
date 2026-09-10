@@ -19,6 +19,7 @@ import {
 } from 'recharts'
 import { chartColumns } from '../../presentation/contracts/charts.ts'
 import type { DocumentDataset } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
 import {
   CHART_COLORS,
   chartCoordinate,
@@ -66,11 +67,13 @@ export function ChartRenderer({
   onHiddenChange?: (hidden: string[]) => void
   rowIndices?: readonly number[]
 }) {
+  const t = useCopy()
+
   const [localHidden, setLocalHidden] = useState<string[]>([])
   const hidden = new Set(controlledHidden ?? localHidden)
   const originalRows = useMemo(
-    () => chartRows(dataset.data, block, rowIndices),
-    [dataset.data, block, rowIndices],
+    () => chartRows(t.locale, dataset.data, block, rowIndices),
+    [t.locale, dataset.data, block, rowIndices],
   )
   const indices = rowIndices ?? originalRows.map((row) => row.rowIndex)
   const rows: DrawingRow[] = originalRows.map((row) => ({ ...row }))
@@ -97,12 +100,12 @@ export function ChartRenderer({
     for (const entry of series) {
       const value = dataset.data.rows[row.rowIndex]![columnIndex(dataset.data, entry.id)]!
       row[`valueLabel${entry.index}`] =
-        value === null ? null : formatCategoryTick(valueWithUnit(value, entry.column))
+        value === null ? null : formatCategoryTick(valueWithUnit(t.locale, value, entry.column))
       if (stacked && area) row[entry.key] = ranges[entry.index]!
     }
   }
   const rowByIndex = new Map(rows.map((row) => [row.rowIndex, row]))
-  const title = chartTitle(dataset.data, block)
+  const title = chartTitle(t.locale, dataset.data, block)
   const xColumn = dataset.data.columns[columnIndex(dataset.data, block.x)]!
   const labels = showValueLabels(block, rows.length * visible.size)
   // An explicitly declared unit owns one scale. Stacked inputs are validated to share a unit.
@@ -120,7 +123,7 @@ export function ChartRenderer({
           data={dataset.data}
           columns={chartColumns(block)}
           mode={mode}
-          caption={`${title} · 精确数据`}
+          caption={t('marivo.presentation.value-exact-data', { p0: title })}
           rowIndices={indices}
         />
       </>
@@ -160,7 +163,7 @@ export function ChartRenderer({
         stroke="var(--pr-chart-muted)"
         strokeDasharray="5 5"
         label={{
-          value: reference.label ?? formatAxisTick(reference.value),
+          value: reference.label ?? formatAxisTick(t.locale, reference.value),
           fill: 'var(--pr-text)',
           fontSize: 11,
         }}
@@ -205,8 +208,8 @@ export function ChartRenderer({
         : (unit ?? shown.map((entry) => entry.column.label).join('、'))
     const axisStyle = { fill: 'var(--pr-chart-muted)', fontSize: 12 }
     const numericFormatter = normalized
-      ? (value: number) => `${formatAxisTick(value * 100)}%`
-      : (value: number) => formatAxisTick(value * numericAxis.divisor)
+      ? (value: number) => `${formatAxisTick(t.locale, value * 100)}%`
+      : (value: number) => formatAxisTick(t.locale, value * numericAxis.divisor)
     const categoryFormatter = (value: number) =>
       formatCategoryTick(rowByIndex.get(value)?.xLabel ?? '')
     const numericDomain: [number | string, number | string] = normalized
@@ -290,11 +293,13 @@ export function ChartRenderer({
     return (
       <div className="pr-chart-group" key={unit === undefined ? 'no-unit' : `unit:${unit}`}>
         {!numeric ? (
-          <p className="pr-empty">所选系列均为 null，没有可绘制数值。</p>
+          <p className="pr-empty">
+            {t('marivo.presentation.all-selected-series-are-null-there-are-no-values')}
+          </p>
         ) : (
           <figure
             className={`pr-chart${sparkline ? ' pr-chart-sparkline' : ''}`}
-            aria-label={`${title}，${unit ?? '未声明单位'}`}
+            aria-label={`${title}, ${unit ?? t('marivo.presentation.undeclared-unit')}`}
             data-chart-type={block.chart}
           >
             <ResponsiveContainer width="100%" height={sparkline ? 128 : 320} minWidth={0}>
@@ -424,6 +429,7 @@ export function ChartRenderer({
           pointLabel: bindings.label
             ? formatCategoryTick(
                 cellText(
+                  t.locale,
                   dataset.data.rows[row.rowIndex]![columnIndex(dataset.data, bindings.label)]!,
                   dataset.data.columns[columnIndex(dataset.data, bindings.label)]!,
                 ),
@@ -438,7 +444,12 @@ export function ChartRenderer({
           row.sizeCoordinate !== null &&
           (!bindings.size || row.sizeCoordinate !== 0),
       )
-    if (!points.length) return <p className="pr-empty">所选坐标均为 null，没有可绘制数值。</p>
+    if (!points.length)
+      return (
+        <p className="pr-empty">
+          {t('marivo.presentation.all-selected-coordinates-are-null-there-are-no-values')}
+        </p>
+      )
     const axis = (coordinate: string, referenceAxis: 'x' | 'y') =>
       numericDrawingAxis([
         ...points.map((row) => row[coordinate] as number),
@@ -468,7 +479,7 @@ export function ChartRenderer({
                 dataKey="xCoordinate"
                 type="number"
                 name={columnLabel(xColumn)}
-                tickFormatter={(value: number) => formatAxisTick(value * xAxis.divisor)}
+                tickFormatter={(value: number) => formatAxisTick(t.locale, value * xAxis.divisor)}
                 tick={{ fill: 'var(--pr-chart-muted)', fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
@@ -486,7 +497,7 @@ export function ChartRenderer({
                 dataKey={entry.key}
                 type="number"
                 name={columnLabel(entry.column)}
-                tickFormatter={(value: number) => formatAxisTick(value * yAxis.divisor)}
+                tickFormatter={(value: number) => formatAxisTick(t.locale, value * yAxis.divisor)}
                 tick={{ fill: 'var(--pr-chart-muted)', fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
@@ -539,7 +550,7 @@ export function ChartRenderer({
           </ResponsiveContainer>
         </figure>
         {bindings.color && (
-          <section className="pr-color-key" aria-label="分类颜色">
+          <section className="pr-color-key" aria-label={t('marivo.presentation.category-colors')}>
             {categories.map((name, index) => (
               <span key={name}>
                 <i
@@ -547,9 +558,12 @@ export function ChartRenderer({
                   style={{ background: CHART_COLORS[index % CHART_COLORS.length] }}
                   aria-hidden="true"
                 />
-                {cellText(
-                  JSON.parse(name),
-                  dataset.data.columns[columnIndex(dataset.data, bindings.color!)]!,
+                {t(
+                  cellText(
+                    t.locale,
+                    JSON.parse(name),
+                    dataset.data.columns[columnIndex(dataset.data, bindings.color!)]!,
+                  ),
                 )}
               </span>
             ))}
@@ -561,17 +575,26 @@ export function ChartRenderer({
   return (
     <>
       <h2>{title}</h2>
-      {dataset.data.truncated && <p className="pr-notice">{datasetScope(dataset.data)}</p>}
+      {dataset.data.truncated && (
+        <p className="pr-notice">{t(datasetScope(t.locale, dataset.data))}</p>
+      )}
       {rowIndices && dataset.data.truncated && (
         <p className="pr-muted">
-          当前筛选：已保存 {dataset.data.rows.length} 行中命中 {rowIndices.length} 行
+          {t('marivo.presentation.filtered-rows', {
+            p0: dataset.data.rows.length,
+            p1: rowIndices.length,
+          })}
         </p>
       )}
-      {block.numericMode === 'approximate' && <p className="pr-notice">近似绘图</p>}
+      {block.numericMode === 'approximate' && (
+        <p className="pr-notice">{t('marivo.presentation.approximate-plot')}</p>
+      )}
       {!rows.length ? (
-        <p className="pr-empty">暂无可绘制数据。</p>
+        <p className="pr-empty">{t('marivo.presentation.no-data-to-plot')}</p>
       ) : !visible.size ? (
-        <p className="pr-empty">所有系列已隐藏，请选择要显示的系列。</p>
+        <p className="pr-empty">
+          {t('marivo.presentation.all-series-are-hidden-select-a-series-to-show')}
+        </p>
       ) : SPECIAL_CHARTS.has(block.chart) ? (
         <SpecialChart
           dataset={dataset}
@@ -586,12 +609,15 @@ export function ChartRenderer({
         [...groups].map(([unit, entries]) => renderCartesian(entries, unit))
       )}
       {series.length > 1 && (
-        <section className="pr-legend pr-interactive" aria-label="图表系列">
+        <section
+          className="pr-legend pr-interactive"
+          aria-label={t('marivo.presentation.chart-series')}
+        >
           {series.map((entry) => (
             <button
               key={entry.id}
               type="button"
-              aria-label={`显示系列 ${entry.column.label}`}
+              aria-label={t('marivo.presentation.show-series-value', { p0: entry.column.label })}
               aria-pressed={!hidden.has(entry.id)}
               onClick={() => {
                 const next = new Set(hidden)

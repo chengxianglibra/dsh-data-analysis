@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { TestContext } from 'node:test'
 import test from 'node:test'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { translator } from './../../src/client/i18n/copy.ts'
 import type {
   CredentialContextView,
   CredentialOperationView,
@@ -255,12 +256,15 @@ test('an unrecoverable operation after a Workspace switch does not replace the n
   const pending = model.start(context, 'test')
   await model.selectWorkspace('other')
   const error = model.getSnapshot().error
-  assert.match(error, /暂时无法读取凭证状态/)
+  assert.match(translator('zh-CN')(error), /暂时无法读取凭证状态/)
   gate.release()
   await pending
   assert.equal(model.getSnapshot().workspaceId, 'other')
   assert.equal(model.getSnapshot().error, error)
-  assert.match(model.getSnapshot().outcomes[context.token]!.error!, /保存可能已经发生/)
+  assert.match(
+    translator('zh-CN')(model.getSnapshot().outcomes[context.token]!.error!),
+    /保存可能已经发生/,
+  )
   assert.deepEqual(model.getSnapshot().operations, [])
 })
 

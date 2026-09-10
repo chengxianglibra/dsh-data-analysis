@@ -1,9 +1,13 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
+
 import { useId, useMemo, useRef, useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
+import { useCopy } from './../i18n/context.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
 
 export function ObjectGraph({ object, objects, navigate }) {
+  const t = useCopy()
+
   const arrowId = useId().replaceAll(':', '')
   const root = refKey(object.ref)
   const [depth, setDepth] = useState(1)
@@ -67,18 +71,18 @@ export function ObjectGraph({ object, objects, navigate }) {
     <div className="sb-graph">
       <div className="sb-actions">
         <button type="button" onClick={() => setDepth((d) => d + 1)}>
-          再展开一层
+          {t('marivo.semantic.expand-one-more-level')}
         </button>
         <button
           type="button"
-          aria-label="放大关系图"
+          aria-label={t('marivo.semantic.zoom-in')}
           onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.25) }))}
         >
           ＋
         </button>
         <button
           type="button"
-          aria-label="缩小关系图"
+          aria-label={t('marivo.semantic.zoom-out')}
           onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.4, c.scale / 1.25) }))}
         >
           −
@@ -90,14 +94,19 @@ export function ObjectGraph({ object, objects, navigate }) {
             setCamera({ x: 0, y: 0, scale: 1 })
           }}
         >
-          回到中心
+          {t('marivo.semantic.center-graph')}
         </button>
       </div>
-      <p className="sb-muted">对象声明关系 · 第 {depth} 层 · 拖动空白处平移，点击对象查看详情</p>
-      {graph.limited && <p role="status">图中最多显示 60 个对象；完整关联可在关系列表中查看。</p>}
+      <p className="sb-muted">
+        {t('marivo.semantic.declared-relationships-level')}
+        {depth} {t('marivo.semantic.drag-the-background-to-pan-click-an-object-for')}
+      </p>
+      {graph.limited && (
+        <p role="status">{t('marivo.semantic.the-graph-shows-at-most-60-objects-see-the')}</p>
+      )}
       <svg
         viewBox={`0 0 800 ${graph.height}`}
-        aria-label="当前对象的局部关系图"
+        aria-label={t('marivo.semantic.local-relationship-graph')}
         role="img"
         onPointerDown={(event) => {
           if (event.target.closest('[role="button"]')) return
@@ -120,7 +129,11 @@ export function ObjectGraph({ object, objects, navigate }) {
           drag.current = null
         }}
       >
-        <title>对象关系；下方提供同等的可点击关系列表</title>
+        <title>
+          {t(
+            'marivo.semantic.object-relationships-an-equivalent-clickable-list-is-available-below',
+          )}
+        </title>
         <defs>
           <marker
             id={arrowId}
@@ -169,7 +182,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                     stroke="var(--sb-soft)"
                     strokeWidth="3"
                   >
-                    {label}
+                    {t(label)}
                     {edge.fields.length > 1 ? ` +${edge.fields.length - 1}` : ''}
                   </text>
                 )}
@@ -188,7 +201,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                 key={node.key}
                 role="button"
                 tabIndex={0}
-                aria-label={`查看 ${item.name}`}
+                aria-label={t('marivo.semantic.view-value', { p0: item.name })}
                 onClick={() => navigate(node.key)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -223,7 +236,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                   fontSize="10"
                   fill={node.key === root ? '#fff' : 'var(--sb-muted)'}
                 >
-                  {kindLabels[item.ref.kind] ?? item.ref.kind}
+                  {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
                 </text>
               </g>
             )
@@ -231,14 +244,17 @@ export function ObjectGraph({ object, objects, navigate }) {
         </g>
       </svg>
       <details>
-        <summary>图中关系（{graph.edges.length}）</summary>
+        <summary>
+          {t('marivo.semantic.relationships')}
+          {graph.edges.length}）
+        </summary>
         <ul className="sb-relation-list">
           {graph.edges.map((edge) => (
             <li key={`${edge.from}/${edge.field}/${edge.to}`}>
               <button type="button" onClick={() => navigate(edge.from)}>
                 {objects.get(edge.from).name}
               </button>
-              <span>{fieldLabels[edge.field] ?? edge.field} →</span>
+              <span>{t(fieldLabels[edge.field] ?? edge.field)} →</span>
               <button type="button" onClick={() => navigate(edge.to)}>
                 {objects.get(edge.to).name}
               </button>

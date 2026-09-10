@@ -113,7 +113,8 @@ print(json.dumps(dataclasses.asdict(receipt)))
   chartDraft.interaction = (await chartGallery()).interaction
   const drafts: PresentationDraft[] = [
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      locale: 'zh-CN',
       title: 'S4 真实 Artifact',
       sources: sources.slice(0, 2),
       datasets: [
@@ -139,7 +140,8 @@ print(json.dumps(dataclasses.asdict(receipt)))
       ],
     },
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      locale: 'zh-CN',
       title: 'S4 精确 computed',
       sources,
       datasets: [
@@ -183,7 +185,8 @@ print(json.dumps(dataclasses.asdict(receipt)))
       ],
     },
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      locale: 'zh-CN',
       title: 'S4 source-only',
       sources,
       datasets: [],

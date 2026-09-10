@@ -1,6 +1,7 @@
 import type { PresentationEdits } from '../../presentation/contracts/editing.ts'
 import { blockRegion } from '../../presentation/contracts/interaction.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
+import { useActionCopy } from './../i18n/context.tsx'
 
 export interface ReaderEditing {
   edits: PresentationEdits
@@ -17,6 +18,8 @@ export function CellEditor({
   document: PresentationDocument
   editing: ReaderEditing
 }) {
+  const t = useActionCopy()
+
   const index = editing.edits.blocks.findIndex((entry) => entry.id === block.id)
   const replace = (next: PresentationBlock) =>
     editing.onChange({
@@ -44,15 +47,15 @@ export function CellEditor({
     <fieldset
       className="pr-cell-editor pr-interactive"
       disabled={editing.disabled}
-      aria-label={`编辑 cell ${block.id}`}
+      aria-label={t('marivo.presentation.edit-cell-value', { p0: block.id })}
     >
-      <legend>编辑 cell</legend>
+      <legend>{t('marivo.presentation.edit-cell')}</legend>
       <div className="pr-editor-actions">
         <button type="button" disabled={!canMove(-1)} onClick={() => move(-1)}>
-          上移
+          {t('marivo.presentation.move-up')}
         </button>
         <button type="button" disabled={!canMove(1)} onClick={() => move(1)}>
-          下移
+          {t('marivo.presentation.move-down')}
         </button>
         <button
           type="button"
@@ -63,14 +66,14 @@ export function CellEditor({
             })
           }
         >
-          删除 cell
+          {t('marivo.presentation.delete-cell')}
         </button>
       </div>
       {block.kind === 'markdown' && (
         <label>
-          正文
+          {t('marivo.presentation.content')}
           <textarea
-            aria-label={`正文 ${block.id}`}
+            aria-label={t('marivo.presentation.content-value', { p0: block.id })}
             value={block.text}
             onChange={(event) => replace({ ...block, text: event.target.value })}
           />
@@ -78,22 +81,21 @@ export function CellEditor({
       )}
       {block.kind === 'metric' && (
         <label>
-          指标标签
+          {t('marivo.presentation.metric-label')}
           <input
-            value={block.label}
+            value={t(block.label)}
             onChange={(event) => replace({ ...block, label: event.target.value })}
           />
         </label>
       )}
       {block.kind === 'chart' && (
         <p className="pr-muted">
-          通过 cell
-          菜单的图表探索修改图形、字段和样式；编辑模式下这些配置随报告保存，筛选和临时显隐仍不保存。
+          {t('marivo.presentation.use-chart-exploration-in-the-cell-menu-to-change')}
         </p>
       )}
       {block.kind === 'table' && (
         <div>
-          <p>显示列（至少一列）</p>
+          <p>{t('marivo.presentation.visible-columns-at-least-one')}</p>
           {tableColumns.map((column) => (
             <label className="pr-editor-column" key={column.id}>
               <input
@@ -109,7 +111,7 @@ export function CellEditor({
                   })
                 }
               />
-              {column.label}
+              {t(column.label)}
             </label>
           ))}
           <ol>
@@ -119,26 +121,26 @@ export function CellEditor({
                 <button
                   type="button"
                   disabled={order === 0}
-                  aria-label={`左移列 ${id}`}
+                  aria-label={t('marivo.presentation.move-column-value-left', { p0: id })}
                   onClick={() => {
                     const columns = [...selected]
                     ;[columns[order - 1], columns[order]] = [columns[order]!, columns[order - 1]!]
                     replace({ ...block, columns })
                   }}
                 >
-                  前移
+                  {t('marivo.presentation.move-earlier')}
                 </button>
                 <button
                   type="button"
                   disabled={order === selected.length - 1}
-                  aria-label={`右移列 ${id}`}
+                  aria-label={t('marivo.presentation.move-column-value-right', { p0: id })}
                   onClick={() => {
                     const columns = [...selected]
                     ;[columns[order], columns[order + 1]] = [columns[order + 1]!, columns[order]!]
                     replace({ ...block, columns })
                   }}
                 >
-                  后移
+                  {t('marivo.presentation.move-later')}
                 </button>
               </li>
             ))}

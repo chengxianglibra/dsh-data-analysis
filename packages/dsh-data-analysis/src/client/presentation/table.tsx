@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { TypedDataset } from '../../presentation/contracts/types.ts'
+import { useCopy } from './../i18n/context.tsx'
 import type { TableSort } from './export-view.ts'
 import {
   cellText,
@@ -36,6 +37,8 @@ export function DatasetTable({
   sort?: TableSort
   onSortChange?: (sort: TableSort) => void
 }) {
+  const t = useCopy()
+
   const [localSort, setLocalSort] = useState<TableSort>()
   const sort = onSortChange ? controlledSort : localSort
   const setSort = onSortChange ?? setLocalSort
@@ -49,9 +52,9 @@ export function DatasetTable({
   const sorted = useMemo(() => {
     const selected = rowIndices ? new Set(rowIndices) : undefined
     return sort
-      ? sortedRowIndices(data, sort).filter((index) => !selected || selected.has(index))
-      : [...(rowIndices ?? sortedRowIndices(data))]
-  }, [data, sort, rowIndices])
+      ? sortedRowIndices(t.locale, data, sort).filter((index) => !selected || selected.has(index))
+      : [...(rowIndices ?? sortedRowIndices(t.locale, data))]
+  }, [data, sort, rowIndices, t.locale])
   const rowSelectionKey = `${filterKey ?? ''}/${rowIndices?.join(',') ?? ''}`
   useEffect(() => {
     void rowSelectionKey
@@ -66,16 +69,18 @@ export function DatasetTable({
   return (
     <div className="pr-table">
       {showScope && (
-        <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{datasetScope(data)}</p>
+        <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>
+          {t(datasetScope(t.locale, data))}
+        </p>
       )}
       {showSelectionCount && rowIndices && rowIndices.length !== data.rows.length && (
         <p className="pr-muted">
-          当前筛选：已保存 {data.rows.length} 行中命中 {rowIndices.length} 行
+          {t('marivo.presentation.filtered-rows', { p0: data.rows.length, p1: rowIndices.length })}
         </p>
       )}
       <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>
-        <table aria-label={hideCaption ? caption : undefined}>
-          {!hideCaption && <caption>{caption}</caption>}
+        <table aria-label={t(hideCaption ? caption : undefined)}>
+          {!hideCaption && <caption>{t(caption)}</caption>}
           <thead>
             <tr>
               {indices.map((index) => {
@@ -97,7 +102,7 @@ export function DatasetTable({
                     ) : (
                       <button
                         type="button"
-                        aria-label={`按 ${column.label} 排序`}
+                        aria-label={t('marivo.presentation.sort-by-value', { p0: column.label })}
                         onClick={() => {
                           setSort({
                             columnId: column.id,
@@ -136,9 +141,15 @@ export function DatasetTable({
                       data-column-id={column.id}
                       data-cell-null={value === null ? 'true' : undefined}
                       className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
-                      aria-label={value === null ? '缺失值' : value === '' ? '空字符串' : undefined}
+                      aria-label={
+                        value === null
+                          ? t('marivo.presentation.missing-value')
+                          : value === ''
+                            ? t('marivo.presentation.empty-string')
+                            : undefined
+                      }
                     >
-                      {cellText(value, column)}
+                      {t(cellText(t.locale, value, column))}
                     </td>
                   )
                 })}
@@ -150,17 +161,21 @@ export function DatasetTable({
       {mode === 'interactive' && pages > 1 && (
         <div className="pr-pagination pr-interactive">
           <button type="button" disabled={activePage === 0} onClick={() => setPage(activePage - 1)}>
-            上一页
+            {t('marivo.presentation.previous-page')}
           </button>
           <span aria-live="polite">
-            第 {activePage + 1} / {pages} 页 · 每页 {TABLE_PAGE_SIZE} 行
+            {t('marivo.presentation.page-summary', {
+              p0: activePage + 1,
+              p1: pages,
+              p2: TABLE_PAGE_SIZE,
+            })}
           </span>
           <button
             type="button"
             disabled={activePage === pages - 1}
             onClick={() => setPage(activePage + 1)}
           >
-            下一页
+            {t('marivo.presentation.next-page')}
           </button>
         </div>
       )}

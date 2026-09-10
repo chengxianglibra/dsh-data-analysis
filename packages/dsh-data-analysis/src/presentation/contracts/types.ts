@@ -3,7 +3,7 @@ import type { PythonCodeRef, PythonCodeSnippet } from '../../python-execution-co
 
 export type { PythonCodeRef, PythonCodeSnippet } from '../../python-execution-contracts.ts'
 
-export const PRESENTATION_SCHEMA_VERSION = 2 as const
+export const PRESENTATION_SCHEMA_VERSION = 3 as const
 
 export const PRESENTATION_BUDGETS = {
   documentBytes: 4 * 1024 * 1024,
@@ -226,8 +226,11 @@ export interface PresentationInteraction {
   slices: PresentationSlice[]
 }
 
+export type PresentationLocale = 'zh-CN' | 'en-US'
+
 export interface PresentationDraft {
-  schemaVersion: 1
+  schemaVersion: 2
+  locale: PresentationLocale
   title: string
   datasets: DraftDataset[]
   sources: DeclaredSource[]
@@ -240,7 +243,8 @@ export interface PresentationDiagnostic {
   message: string
 }
 export interface PresentationDocument {
-  schemaVersion: 2
+  schemaVersion: 3
+  locale: PresentationLocale
   reportId: string
   workspaceId: string
   buildId: string

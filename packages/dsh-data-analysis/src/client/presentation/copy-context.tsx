@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { useActionCopy } from './../i18n/context.tsx'
 import { CloseIcon } from './icons.tsx'
 
 export function CopyContext({
@@ -8,6 +9,8 @@ export function CopyContext({
   getText: () => string
   children: (copy: (restoreFocusTo: HTMLElement) => void) => ReactNode
 }) {
+  const t = useActionCopy()
+
   const [text, setText] = useState('')
   const [error, setError] = useState<string>()
   const [status, setStatus] = useState<'idle' | 'copied' | 'manual'>('idle')
@@ -52,11 +55,11 @@ export function CopyContext({
       {children(copy)}
       {error && (
         <p role="alert" className="pr-notice">
-          {error}
+          {t(error)}
         </p>
       )}
       <span className="pr-copy-status" aria-live="polite">
-        {status === 'copied' ? '已复制' : ''}
+        {status === 'copied' ? t('marivo.presentation.copied') : ''}
       </span>
       <dialog
         ref={dialog}
@@ -68,19 +71,19 @@ export function CopyContext({
         }}
       >
         <div className="pr-dialog-header">
-          <h2 id={titleId}>手动复制 cell 上下文</h2>
+          <h2 id={titleId}>{t('marivo.presentation.copy-cell-context-manually')}</h2>
           <button
             type="button"
             className="pr-icon-button"
-            aria-label="关闭复制窗口"
+            aria-label={t('marivo.presentation.close-copy-dialog')}
             onClick={() => dialog.current?.close()}
           >
             <CloseIcon />
           </button>
         </div>
-        <p>无法自动复制，请复制以下文本。</p>
+        <p>{t('marivo.presentation.automatic-copying-is-unavailable-copy-the-text-below')}</p>
         <textarea
-          aria-label="cell 上下文"
+          aria-label={t('marivo.presentation.cell-context')}
           ref={field}
           readOnly
           value={text}

@@ -5,8 +5,10 @@ import {
   type SemanticObjectView,
 } from '../../semantic-browser/contracts.ts'
 import { CHANNEL, refKey, type SemanticRef } from '../../semantic-reference/contracts.ts'
+import { translator } from '../i18n/copy.ts'
 import type { InputContextHost } from '../input-context.ts'
 import { appendSemanticReference } from './ask-dsh.ts'
+import { kindLabels } from './labels.ts'
 
 export interface BrowserRpc {
   call(channel: string, endpoint: string, payload: unknown, signal: AbortSignal): Promise<unknown>
@@ -58,6 +60,7 @@ export function countObjectsByKind(objects: readonly SemanticObjectView[], domai
 export function filterObjects(
   objects: readonly SemanticObjectView[],
   view: BrowserView,
+  locale = 'en-US',
 ): SemanticObjectView[] {
   const normalize = (s: string) => s.normalize('NFKC').toLocaleLowerCase()
   const words = normalize(view.query).trim().split(/\s+/).filter(Boolean)
@@ -67,11 +70,13 @@ export function filterObjects(
         (!view.kind || item.ref.kind === view.kind) &&
         (!view.domain || item.domain === view.domain) &&
         words.every((word) =>
-          normalize(`${item.name} ${refKey(item.ref)} ${item.definition ?? ''}`).includes(word),
+          normalize(
+            `${item.name} ${refKey(item.ref)} ${item.definition ?? ''} ${translator('zh-CN')(kindLabels[item.ref.kind] ?? item.ref.kind)} ${translator('en-US')(kindLabels[item.ref.kind] ?? item.ref.kind)}`,
+          ).includes(word),
         ),
     )
     .sort(
-      (a, b) => a.name.localeCompare(b.name, 'zh-CN') || refKey(a.ref).localeCompare(refKey(b.ref)),
+      (a, b) => a.name.localeCompare(b.name, locale) || refKey(a.ref).localeCompare(refKey(b.ref)),
     )
 }
 
@@ -168,7 +173,10 @@ export class SemanticBrowserModel {
   }
   unavailable(): void {
     this.#cancel()
-    this.patch({ snapshot: undefined, error: 'Workspace 已不可用，请重新选择。' })
+    this.patch({
+      snapshot: undefined,
+      error: 'marivo.semantic.workspace-is-unavailable-select-it-again',
+    })
   }
   resetConnection(): void {
     this.#cancel()
@@ -191,7 +199,11 @@ export class SemanticBrowserModel {
       )) as { ok?: boolean; value?: unknown; error?: { message?: string } }
       if (this.#disposed || flight.signal.aborted || generation !== this.#generation) return
       if (!result.ok) {
-        this.patch({ loading: false, error: result.error?.message ?? '无法加载语义层，请重试。' })
+        this.patch({
+          loading: false,
+          error:
+            result.error?.message ?? 'marivo.semantic.cannot-load-the-semantic-layer-please-retry',
+        })
         return
       }
       const snapshot = parseCatalogSnapshot(result.value)
@@ -210,7 +222,10 @@ export class SemanticBrowserModel {
       })
     } catch {
       if (!this.#disposed && !flight.signal.aborted && generation === this.#generation)
-        this.patch({ loading: false, error: '无法加载语义层，请检查连接后重试。' })
+        this.patch({
+          loading: false,
+          error: 'marivo.semantic.cannot-load-the-semantic-layer-check-the-connection-and',
+        })
     }
   }
   cancelQuestion(): void {
@@ -242,12 +257,12 @@ export class SemanticBrowserModel {
         controller.signal,
       )
       if (this.#question === controller)
-        this.#publish({ ...this.#state, questionNotice: '已加入提问' })
+        this.#publish({ ...this.#state, questionNotice: 'marivo.semantic.added-to-question' })
     } catch {
       if (this.#question === controller)
         this.#publish({
           ...this.#state,
-          questionNotice: '加入提问失败，会话、Workspace 或草稿可能已变化，请检查后重试。',
+          questionNotice: 'marivo.semantic.could-not-add-to-the-question-the-session-workspace',
         })
     } finally {
       if (this.#question === controller) {

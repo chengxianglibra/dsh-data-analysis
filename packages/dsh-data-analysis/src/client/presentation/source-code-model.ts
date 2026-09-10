@@ -1,4 +1,5 @@
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
+import { message, type Notice } from './../i18n/copy.ts'
 import { datasetById, selectedSources } from './model.ts'
 
 export type SourceTab = 'overview' | 'preview' | 'code'
@@ -37,11 +38,16 @@ export function sourceCodeFacts(document: PresentationDocument, block?: Presenta
     key: `python-${snippet.executionId}`,
     authorAssociated: true,
   }))
-  const notices: string[] = []
+  const notices: Notice[] = []
   const executions = new Set<string>()
   for (const source of sources) {
     if (source.status === 'unavailable') {
-      notices.push(`来源 ${source.id} 不可用：${source.reason}`)
+      notices.push(
+        message('marivo.presentation.source-value-unavailable-value', {
+          p0: source.id,
+          p1: source.reason,
+        }),
+      )
       continue
     }
     for (const snippet of source.code?.snippets ?? []) {
@@ -51,7 +57,7 @@ export function sourceCodeFacts(document: PresentationDocument, block?: Presenta
       entries.push({ key, language: snippet.language, text: snippet.text, authorAssociated: false })
     }
     for (const notice of source.code?.notices ?? []) {
-      notices.push(`来源 ${source.id}：${notice}`)
+      notices.push(message('marivo.presentation.source-value-value', { p0: source.id, p1: notice }))
     }
   }
   return { entries, notices: [...new Set(notices)] }

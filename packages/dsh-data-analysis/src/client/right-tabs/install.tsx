@@ -4,6 +4,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
+import { useCopy } from './../i18n/context.tsx'
+import { hostCopy, installCopy, localized } from '../i18n/host.tsx'
 import { appendPresentationContext } from '../presentation/ask-dsh.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
 import {
@@ -39,10 +41,15 @@ export const inject = [
   'sidebarRight',
   'sidebarRightTabs',
 ]
-const labels = { datasources: '数据源与凭证', semantic: '语义层', reports: '报告' }
+const labels = {
+  datasources: 'marivo.credentials.datasources-and-credentials',
+  semantic: 'marivo.navigation.semantic-layer',
+  reports: 'marivo.presentation.reports',
+}
 
 /** Default browser integration. Layout belongs to Harness; mutable content belongs to occurrences. */
 export function installRightTabs(ctx, { diagnostics = false } = {}) {
+  installCopy(ctx)
   const rpc = createPluginRpc(ctx.connection.rpc)
   const pages = new Map()
   let indexRevision = 0
@@ -85,7 +92,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       workspaceFor(sessionId) !== workspaceId ||
       (foreground && ctx.sessions.list.getSnapshot().current !== sessionId)
     )
-      throw new Error('所属 Session 或 Workspace 已变化，请回到所属会话重新打开。')
+      throw new Error('marivo.navigation.the-owning-session-or-workspace-changed-return-to-its')
   }
   const changed = (workspaceId, reportId) => {
     for (const page of pages.values()) void page.publicationChanged(workspaceId, reportId)
@@ -154,9 +161,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   const ask = (page, context) => {
     check(page.sessionId, page.target.workspaceId, true)
     if (page.reader.getSnapshot().editing || page.reader.getSnapshot().saving)
-      throw new Error('请先保存或取消编辑')
+      throw new Error('marivo.presentation.save-or-cancel-edits-first')
     if (!page.reader.getSnapshot().document || page.getSnapshot().error || page.signal.aborted)
-      throw new Error('报告已不可用，请重新打开。')
+      throw new Error('marivo.navigation.the-report-is-unavailable-reopen-it')
     appendPresentationContext(ctx, page.sessionId, page.target.workspaceId, context)
   }
   const act = (page, operation) => {
@@ -199,6 +206,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     return page
   }
   function Contents({ page, tab, panelId, workspaces, sessions, currentSession, workspaceReady }) {
+    const t = useCopy()
+
     const owners = workspaces.filter((workspace) => workspace.sessionIds.includes(page.sessionId))
     const canAsk =
       currentSession === page.sessionId &&
@@ -239,20 +248,20 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       >
         <style>{catalogStyles + credentialStyles + rightTabStyles}</style>
         {state.error ? (
-          <p role="alert">{state.error}</p>
+          <p role="alert">{t(state.error)}</p>
         ) : (
           <>
             {page.target.kind === 'reports' && (
               <>
                 <div className="rt-heading-row">
-                  <h2 className="rt-heading">{labels[page.target.kind]}</h2>
+                  <h2 className="rt-heading">{t(labels[page.target.kind])}</h2>
                   {page.target.kind === 'reports' && (
                     <button
                       type="button"
                       disabled={catalog.loading}
                       onClick={() => void page.refresh()}
                     >
-                      刷新
+                      {t('marivo.presentation.refresh')}
                     </button>
                   )}
                 </div>
@@ -264,13 +273,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             )}
             {state.newer && (
               <p role="status" className="rt-notice">
-                已有新版本，当前阅读内容保持不变。
+                {t('marivo.navigation.a-newer-version-exists-the-current-view-is-unchanged')}
                 <button type="button" onClick={() => void page.refresh()}>
-                  查看新版本
+                  {t('marivo.navigation.view-new-version')}
                 </button>
               </p>
             )}
-            {state.notice && <p role="status">{state.notice}</p>}
+            {state.notice && <p role="status">{t(state.notice)}</p>}
             {page.target.kind === 'reports' && (
               <ReportCatalogView
                 model={page.catalog}
@@ -297,56 +306,71 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             {page.target.kind === 'report' && (
               <>
                 {report.editing && (
-                  <div className="rt-toolbar" role="toolbar" aria-label="报告编辑操作">
+                  <div
+                    className="rt-toolbar"
+                    role="toolbar"
+                    aria-label={t('marivo.presentation.report-editing-actions')}
+                  >
                     <button
                       type="button"
                       disabled={report.saving || !report.editing.undo.length}
                       onClick={() => page.reader.undoEdit()}
                     >
-                      撤销
+                      {t('marivo.presentation.undo')}
                     </button>
                     <button
                       type="button"
                       disabled={report.saving || !report.editing.redo.length}
                       onClick={() => page.reader.redoEdit()}
                     >
-                      重做
+                      {t('marivo.presentation.redo')}
                     </button>
                     <button
                       type="button"
                       disabled={report.saving}
                       onClick={() => act(page, () => save(page, tab))}
                     >
-                      {report.saving ? '正在保存…' : '保存编辑'}
+                      {report.saving
+                        ? t('marivo.presentation.saving')
+                        : t('marivo.presentation.save-edits')}
                     </button>
                     <button
                       type="button"
                       disabled={report.saving}
                       onClick={() => {
-                        if (!page.reader.dirty || window.confirm('存在未保存的编辑。放弃编辑？'))
+                        if (
+                          !page.reader.dirty ||
+                          window.confirm(
+                            t('marivo.navigation.there-are-unsaved-edits-discard-them'),
+                          )
+                        )
                           page.reader.cancelEdit()
                       }}
                     >
-                      取消编辑
+                      {t('marivo.presentation.cancel-edits')}
                     </button>
-                    <span>{page.reader.dirty ? '有未保存的编辑' : '编辑模式'}</span>
+                    <span>
+                      {page.reader.dirty
+                        ? t('marivo.presentation.unsaved-edits')
+                        : t('marivo.presentation.edit-mode')}
+                    </span>
                   </div>
                 )}
-                {report.editError && <p role="alert">{report.editError}</p>}
-                {report.notice && <p role="status">{report.notice}</p>}
+                {report.editError && <p role="alert">{t(report.editError)}</p>}
+                {report.notice && <p role="status">{t(report.notice)}</p>}
                 {report.publicationUrl && (
                   <p>
                     <a href={report.publicationUrl} target="_blank" rel="noopener noreferrer">
-                      打开已发布报告
+                      {t('marivo.presentation.open-published-report')}
                     </a>
                   </p>
                 )}
-                {report.loading && <p role="status">正在读取报告…</p>}
+                {report.loading && <p role="status">{t('marivo.navigation.loading-report')}</p>}
                 {report.error && (
                   <div role="alert">
-                    <p>{report.error}</p>
+                    <p>{t(report.error)}</p>
                     <button type="button" onClick={() => void page.refresh()}>
-                      重新加载报告
+                      {t('marivo.navigation.reload-report')}
                     </button>
                   </div>
                 )}
@@ -403,7 +427,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     }
                   />
                 )}
-                {report.downloadError && <p role="alert">{report.downloadError}</p>}
+                {report.downloadError && <p role="alert">{t(report.downloadError)}</p>}
               </>
             )}
           </>
@@ -412,6 +436,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     )
   }
   function Body({ sessionId, useTabInfo, useWorkspaces, useSessions }) {
+    const t = useCopy()
+
     const { tab, panel } = useTabInfo()
     const workspaces = useWorkspaces((s) => s.items),
       sessions = useSessions((s) => s.byId),
@@ -446,7 +472,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }
     }, [sessionId, tab])
     return error ? (
-      <p role="alert">{error}</p>
+      <p role="alert">{t(error)}</p>
     ) : page && page.sessionId === sessionId && page.signal === tab.signal ? (
       <Contents
         page={page}
@@ -462,24 +488,39 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   for (const [page, label] of Object.entries(labels)) {
     const kind = directoryKind(page),
       id = definitionId(kind)
-    ctx.effect(() => ctx.sidebarRightTabs.register({ id, kind, title: () => label }))
+    ctx.effect(() => ctx.sidebarRightTabs.register({ id, kind, title: () => hostCopy(ctx)(label) }))
+    ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+      ctx.slots.register(
+        { locale: 'marivo.navigation', name: 'sidebar.right.pane.tab.title', key: id },
+        localized(ctx, function DirectoryTitle() {
+          const t = useCopy()
+          return <span>{t(label)}</span>
+        }),
+      ),
+    )
     ctx.slots.inject('sidebar.right.pane.tab', () =>
-      ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id }, Body),
+      ctx.slots.register(
+        { locale: 'marivo.navigation', name: 'sidebar.right.pane.tab', key: id },
+        localized(ctx, Body),
+      ),
     )
     ctx.slots.inject('conversation.session.header.actions', () =>
       ctx.slots.register(
         {
+          locale: 'marivo.navigation',
           name: 'conversation.session.header.actions',
           id,
           order: 100 + Object.keys(labels).indexOf(page) * 5,
         },
-        function Entry({ sessionId, useWorkspaces }) {
+        localized(ctx, function Entry({ sessionId, useWorkspaces }) {
+          const t = useCopy()
+
           const workspaceId = useWorkspaces(
             (s) => s.items.find((w) => w.sessionIds.includes(sessionId))?.workspaceId,
           )
           return (
             <WorkspaceHeaderAction
-              label={label}
+              label={t(label)}
               icon={page === 'datasources' ? 'credentials' : page}
               disabled={!workspaceId}
               onClick={() => {
@@ -492,7 +533,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               }}
             />
           )
-        },
+        }),
       ),
     )
   }
@@ -532,19 +573,31 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }),
     )
     ctx.slots.inject('sidebar.right.pane.tab.title', () =>
-      ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: id }, Title),
+      ctx.slots.register(
+        { locale: 'marivo.navigation', name: 'sidebar.right.pane.tab.title', key: id },
+        localized(ctx, Title),
+      ),
     )
     ctx.slots.inject('sidebar.right.pane.tab', () =>
-      ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id }, Body),
+      ctx.slots.register(
+        { locale: 'marivo.navigation', name: 'sidebar.right.pane.tab', key: id },
+        localized(ctx, Body),
+      ),
     )
   }
   ctx.slots.inject('conversation.chat.node', () => {
     const stop = ctx.slots.register(
-      { name: 'conversation.chat.node', key: PRESENTATION_TURN_DATA_KEY },
-      function ReportDeliveryNode() {
-        const error = useSyncExternalStore(notices.subscribe, notices.getSnapshot)
-        return error ? <p role="alert">{error}</p> : null
+      {
+        locale: 'marivo.navigation',
+        name: 'conversation.chat.node',
+        key: PRESENTATION_TURN_DATA_KEY,
       },
+      localized(ctx, function ReportDeliveryNode() {
+        const t = useCopy()
+
+        const error = useSyncExternalStore(notices.subscribe, notices.getSnapshot)
+        return error ? <p role="alert">{t(error)}</p> : null
+      }),
     )
     const definition = ctx.uiConversation.events.register(marivoPresentationDeliveryDefinition)
     return () => {
@@ -680,7 +733,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           )
             throw new Error('workspace-changed')
         } catch {
-          page.unavailable('Workspace 已变化或不可用，请重新打开页面。')
+          page.unavailable('marivo.navigation.workspace-changed-or-is-unavailable-reopen-the-page')
         }
       }
       bind()
@@ -690,11 +743,15 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     ctx.connection.generation.subscribe(() => {
       if (ctx.connection.generation.getSnapshot()) return
       stopFeeds()
-      for (const page of pages.values()) page.unavailable('Host 连接已中断，请重连后重新打开页面。')
+      for (const page of pages.values())
+        page.unavailable(
+          'marivo.navigation.host-connection-interrupted-reconnect-and-reopen-the-page',
+        )
     }),
   )
   ctx.on('connection/reset', () => {
-    for (const page of pages.values()) page.unavailable('Host 连接已重置，请重新打开页面。')
+    for (const page of pages.values())
+      page.unavailable('marivo.navigation.host-connection-reset-reopen-the-page')
     stopFeeds()
     bind()
   })

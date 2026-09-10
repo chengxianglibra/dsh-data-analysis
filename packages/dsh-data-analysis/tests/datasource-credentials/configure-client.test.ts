@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
 import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
 import { fixture } from './fixtures.ts'
@@ -52,7 +53,13 @@ test('unconfirmed configuration writes are not replayed', async (t) => {
       { backend: 'duckdb', fields: { name: 'warehouse' } },
       { name: 'warehouse', backend: 'duckdb', fields: {}, version: 'v1' },
     ),
-    /transport-lost/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /transport-lost/,
+      )
+      return true
+    },
   )
   assert.equal(writes, 1)
 })
@@ -159,7 +166,13 @@ test('manually choosing a configured reference never silently overwrites a share
       undefined,
       changes,
     ),
-    /未覆盖已有凭证/,
+    (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /未覆盖已有凭证/,
+      )
+      return true
+    },
   )
   assert.equal(f.store.calls.set, 0)
   assert.equal(f.tests, 0)

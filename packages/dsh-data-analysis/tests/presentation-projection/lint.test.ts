@@ -46,7 +46,8 @@ test('standalone lint reads computed files, reports failures across datasets, an
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'presentation-lint-')))
   try {
     const draft = {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      locale: 'zh-CN',
       title: 'Lint',
       sources: [],
       blocks: [{ id: 'table', kind: 'table', datasetId: 'data0' }],

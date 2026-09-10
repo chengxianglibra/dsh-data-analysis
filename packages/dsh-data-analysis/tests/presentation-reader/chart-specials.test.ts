@@ -6,6 +6,7 @@ import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chartGallery } from '../../scripts/presentation-chart-gallery.ts'
+import { translator } from './../../src/client/i18n/copy.ts'
 import type { ChartBlock } from '../../src/client/presentation/model.ts'
 import { chartColumns } from '../../src/presentation/contracts/charts.ts'
 import type {
@@ -29,7 +30,10 @@ before(async () => {
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { CopyProvider } from './src/client/i18n/context.tsx';
+import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
+const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
 import { ChartRenderer } from './src/client/presentation/chart-renderer.tsx';
 import { ExactTooltip } from './src/client/presentation/chart-tooltip.tsx';
 export function render(dataset, block, options = {}) { return renderToStaticMarkup(createElement(ChartRenderer, { dataset, block, mode: 'interactive', ...options })); }
@@ -93,8 +97,8 @@ test('histogram uses declared bin widths and original filtered source rows', () 
 test('heatmap visibility controls do not imply categorical colors on a shared value scale', () => {
   const { block, dataset } = fixture('heatmap')
   const html = render(dataset, block)
-  assert.match(html, /aria-label="显示系列 a"/)
-  assert.match(html, /aria-label="显示系列 b"/)
+  assert.match(translator('zh-CN')(html), /aria-label="显示系列 a"/)
+  assert.match(translator('zh-CN')(html), /aria-label="显示系列 b"/)
   assert.doesNotMatch(html, /class="pr-swatch"/)
 })
 
@@ -144,7 +148,7 @@ test('special value labels and reference lines have real SVG output', () => {
     })
     assert.match(html, /class="pr-chart-label"/)
     assert.match(html, new RegExp(`data-reference-line="${axis}"`))
-    assert.match(html, /参考值/)
+    assert.match(translator('zh-CN')(html), /参考值/)
   }
 })
 

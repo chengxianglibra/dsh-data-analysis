@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ReferenceInsert } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import {
   type AskDshHost,
   appendPresentationContext,
@@ -111,7 +112,10 @@ test('Ask DSH rejects stale session/workspace identity and unavailable host befo
     Object.assign(f.state, change)
     assert.throws(
       () => appendPresentationContext(f.host, 'a', 'workspace', { label: 'a', context: 'context' }),
-      /不可用|变化/,
+      (error: unknown) => {
+        assert.match(translator('zh-CN')(readError(error)), /不可用|变化/)
+        return true
+      },
     )
     assert.equal(f.writes.length, 0)
     assert.deepEqual(
@@ -129,7 +133,10 @@ test('Ask DSH exposes a write failure without retrying or changing the other ses
   f.state.failure = true
   assert.throws(
     () => appendPresentationContext(f.host, 'a', 'workspace', { label: 'a', context: 'context' }),
-    /input unavailable/,
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /input unavailable/)
+      return true
+    },
   )
   assert.equal(f.writes.length, 0)
   assert.equal(f.drafts.get('a'), '')
@@ -164,7 +171,10 @@ test('oversize reference fails before Host editing and never trims an existing d
         label: 'a',
         context: '中'.repeat(4096),
       }),
-    /12 KiB/,
+    (error: unknown) => {
+      assert.match(translator('zh-CN')(readError(error)), /12 KiB/)
+      return true
+    },
   )
   assert.equal(f.drafts.get('a'), before)
   assert.equal(f.writes.length, 0)
@@ -191,7 +201,10 @@ test('report reference codec retains full context and refuses stale ownership, i
     Object.assign(owner.state, change)
     await assert.rejects(
       createPresentationReferenceSource(owner.host).codec!.serialize(reference.ref, signal),
-      /input-owner-unavailable/,
+      (error: unknown) => {
+        assert.match(translator('zh-CN')(readError(error)), /input-owner-unavailable/)
+        return true
+      },
     )
   }
   for (const ref of [

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { creationFieldValues } from '../../src/client/credentials/defaults.ts'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
+import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import type { DatasourceAuthoring } from '../../src/datasource/authoring.ts'
 import { type DatasourceDefaults, withDatasourceDefaults } from '../../src/datasource/defaults.ts'
 import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
@@ -126,10 +127,13 @@ test('invalid defaults produce actionable safe RPC and client errors', async (t)
   })
   const model = new CredentialClientModel({ call: async () => response })
   t.after(() => model.dispose())
-  await assert.rejects(
-    model.authoring('workspace', f.controller.signal),
-    /字段值类型与当前 Runtime 不匹配/,
-  )
+  await assert.rejects(model.authoring('workspace', f.controller.signal), (error: unknown) => {
+    assert.match(
+      `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+      /字段值类型与当前 Runtime 不匹配/,
+    )
+    return true
+  })
 })
 
 test('edit authoring ignores invalid creation defaults while create still fails explicitly', async (t) => {
@@ -165,7 +169,13 @@ test('edit authoring ignores invalid creation defaults while create still fails 
     assert.deepEqual(editing, { generation: f.service.generation, ...schema })
     assert.deepEqual(configuration, existing)
     assert.doesNotMatch(JSON.stringify(editing), /private-canary|creationDefaults/)
-    await assert.rejects(model.authoring('workspace', f.controller.signal), /datasourceDefaults/)
+    await assert.rejects(model.authoring('workspace', f.controller.signal), (error: unknown) => {
+      assert.match(
+        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
+        /datasourceDefaults/,
+      )
+      return true
+    })
     const legacy = await handler('authoring', { workspaceId: 'workspace' }, f.controller.signal)
     assert.equal((legacy as { ok: boolean }).ok, false)
   }
