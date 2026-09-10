@@ -29,7 +29,6 @@
       "kind": "markdown",
       "text": "演示草稿：来源引用需替换为实际引用。声明多个 Artifact 不表示 computed 计算已经过验证；不可恢复的来源由 reader 如实显示。"
     },
-    { "id": "values", "kind": "table", "datasetId": "quarter" },
-    { "id": "sources", "kind": "source", "sourceIds": ["sales", "accounts"] }
+    { "id": "values", "kind": "table", "datasetId": "quarter" }
   ]
 }

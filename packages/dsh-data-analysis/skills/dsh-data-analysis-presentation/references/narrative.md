@@ -24,7 +24,7 @@ Top N、过滤或预聚合必须说明选取规则、排序方向与覆盖范围
 
 先给已经得到的主要结论，再放最能支撑它的数据和比较。结论尚未成立时说明现有证据和缺口，不用图形复杂度替代分析。
 
-正文使用 markdown，关键单值用 metric，变化或比较用 line/bar，需要核对原值时用 table。来源面板提供精确 Artifact 和公开事实；只为当前问题读取必要 Finding，不强制遍历整个 SessionGraph。
+正文使用 markdown，关键单值用 metric，变化或比较用 line/bar，需要核对原值时用 table。各图表、表格和指标的数据源入口提供精确 Artifact 和公开事实，报告末尾默认不再添加独立的数据源段落或 `source` block；用户明确要求独立来源面板时再添加。保留 dataset 的来源声明与关联；只为当前问题读取必要 Finding，不强制遍历整个 SessionGraph。
 
 ## 看板
 
