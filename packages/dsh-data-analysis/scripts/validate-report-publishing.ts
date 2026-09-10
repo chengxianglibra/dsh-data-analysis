@@ -160,19 +160,21 @@ const menu = async (name: string) => {
 }
 try {
   await page.goto(base)
-  await page.getByRole('button', { name: '报告发布凭证 · 验收存储' }).click()
+  await page.getByRole('heading', { name: '报告发布凭证 · 验收存储' }).waitFor()
   await menu('发布 HTML 报告到验收存储')
   await page.getByRole('alert').filter({ hasText: '发布凭证尚未配齐' }).waitFor()
-  for (const [field, label, value] of [
-    ['accessKeyId', 'Access Key ID', 'browser-ak'],
-    ['secretAccessKey', 'Secret Access Key', 'browser-sk'],
+  for (const [field, reference, value] of [
+    ['accessKeyId', 'REPORT_AK', 'browser-ak'],
+    ['secretAccessKey', 'REPORT_SK', 'browser-sk'],
   ]) {
     await page.locator(`#report-publishing-${field}`).fill(value!)
-    await page.getByRole('button', { name: `保存 ${label}`, exact: true }).click()
+    await page
+      .getByRole('group', { name: reference, exact: true })
+      .getByRole('button', { name: '新增凭证', exact: true })
+      .click()
     await page.waitForFunction(
       (field) =>
-        globalThis.document.querySelector<HTMLInputElement>('#report-publishing-' + field)
-          ?.value === '',
+        globalThis.document.querySelector<HTMLInputElement>('#report-publishing-' + field) === null,
       field,
     )
   }
@@ -187,12 +189,14 @@ try {
   assert.equal(objects.size, 1)
   await page.getByRole('button', { name: /^日期/ }).click()
   await page.getByRole('menuitemradio', { name: '周一', exact: true }).click()
+  const reportUrl = await page.getByRole('link', { name: '打开已发布报告' }).getAttribute('href')
   await menu('发布当前视图 HTML 到验收存储')
-  await page.waitForFunction(() =>
-    globalThis.document.querySelector<HTMLAnchorElement>('a')?.href.includes('/views/'),
-  )
+  await page.waitForFunction((previous) => {
+    const link = globalThis.document.querySelector<HTMLAnchorElement>('a')
+    return !!link && link.href !== previous
+  }, reportUrl)
   assert.equal(objects.size, 2)
-  const view = [...objects.entries()].find(([key]) => key.includes('/views/'))!
+  const view = [...objects.entries()].at(-1)!
   assert(view[1].toString().includes('周一'))
   assert(!view[1].toString().includes('<script'))
   assert.equal(downloads, 0)
@@ -216,21 +220,25 @@ try {
   )
   await menu('发布 HTML 报告到验收存储')
   await page.getByRole('alert').filter({ hasText: '发布配置已变化' }).waitFor()
+  await page
+    .getByRole('group', { name: 'REPORT_SK', exact: true })
+    .getByRole('button', { name: '更换', exact: true })
+    .click()
   await page.locator('#report-publishing-secretAccessKey').fill('stale-form-value')
-  await page.getByRole('button', { name: '保存 Secret Access Key', exact: true }).click()
+  await page.getByRole('button', { name: '确认更换', exact: true }).click()
   await page.getByRole('status').filter({ hasText: '发布配置已变化，请刷新凭证状态' }).waitFor()
   assert.equal(values.get('REPORT_SK'), 'browser-sk')
   assert.equal(values.has('NEW_REPORT_SK'), false)
   assert.equal(objects.size, 2)
   await page.getByRole('button', { name: '刷新凭证状态', exact: true }).click()
-  await page.getByRole('button', { name: '报告发布凭证 · 更新存储', exact: true }).waitFor()
+  await page.getByRole('heading', { name: '报告发布凭证 · 更新存储', exact: true }).waitFor()
   assert.equal(await page.locator('#report-publishing-secretAccessKey').inputValue(), '')
   await page.locator('#report-publishing-secretAccessKey').fill('fresh-form-value')
-  await page.getByRole('button', { name: '保存 Secret Access Key', exact: true }).click()
+  await page.getByRole('button', { name: '新增凭证', exact: true }).click()
   await page.waitForFunction(
     () =>
-      globalThis.document.querySelector<HTMLInputElement>('#report-publishing-secretAccessKey')
-        ?.value === '',
+      globalThis.document.querySelector<HTMLInputElement>('#report-publishing-secretAccessKey') ===
+      null,
   )
   assert.equal(values.get('NEW_REPORT_SK'), 'fresh-form-value')
   await stopPublishing()

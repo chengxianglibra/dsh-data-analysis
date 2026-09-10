@@ -15,7 +15,8 @@ export function ReportPublishingCredentials({
   workspaceId: string
 }) {
   const [view, setView] = useState<PublishingCredentialView>()
-  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<Partial<Record<PublishingField, boolean>>>({})
+  const [deleting, setDeleting] = useState<PublishingField>()
   const [draft, setDraft] = useState<Partial<Record<PublishingField, string>>>({})
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -49,6 +50,8 @@ export function ReportPublishingCredentials({
       )
       if (lifetime.signal.aborted) return
       setView(next)
+      setEditing((previous) => ({ ...previous, [field]: false }))
+      setDeleting(undefined)
       setDraft((previous) => ({ ...previous, [field]: '' }))
       setMessage(remove ? '已删除保存值，当前状态已刷新。' : '已保存，下次发布使用新凭证。')
     } catch (error) {
@@ -64,88 +67,121 @@ export function ReportPublishingCredentials({
   }
   if (!view?.enabled) return message ? <p role="status">{message}</p> : null
   return (
-    <section className="mc-properties" aria-label="报告发布凭证">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen(!open)
-          setDraft({})
-        }}
-      >
-        报告发布凭证 · {view.name}
-      </button>
-      {open && (
-        <div>
-          <p>
-            Bucket：{view.bucket}。凭证由当前 Harness 共享，适用于使用此发布目标的所有 Workspace。
-          </p>
-          {view.fields.map((item) => (
-            <div className="mc-field" key={item.field}>
-              <label htmlFor={`report-publishing-${item.field}`}>
-                {labels[item.field]}
-                {item.required ? '（必填）' : ''}
-              </label>
-              <p>
-                {item.reference} · {item.configured ? '已配置' : '未配置'}
-                {item.source ? ` · ${item.source}` : ''}
-                {!item.writable ? ' · 只读' : ''}
-              </p>
-              <div className="mc-secret-input">
+    <section className="mc-publishing" aria-label="报告发布凭证">
+      <h3 className="mc-section-heading">报告发布凭证 · {view.name}</h3>
+      <p className="mc-note">
+        Bucket：{view.bucket}。凭证由当前 Harness 共享，适用于使用此发布目标的所有 Workspace。
+      </p>
+      <div className="mc-fields">
+        {view.fields.map((item) => (
+          <fieldset
+            className="mc-field"
+            key={item.field}
+            disabled={busy}
+            aria-label={item.reference}
+          >
+            <div className="mc-field-header">
+              <div className="mc-field-title">
+                <h4>{item.reference}</h4>
+                <p>
+                  字段：{labels[item.field]}
+                  {item.required ? '（必填）' : ''} · 来源：{item.source ?? '无'}
+                  {!item.writable && ' · 来源只读'}
+                </p>
+              </div>
+              <div className="mc-field-actions">
+                <span className="mc-badge" data-ready={item.configured}>
+                  {item.configured ? '已配置' : '未配置'}
+                </span>
+                {item.writable && item.configured && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing({ ...editing, [item.field]: !editing[item.field] })
+                        setDraft({ ...draft, [item.field]: '' })
+                      }}
+                    >
+                      {editing[item.field] ? '取消更换' : '更换'}
+                    </button>
+                    <button
+                      type="button"
+                      className="mc-danger"
+                      onClick={() => setDeleting(item.field)}
+                    >
+                      删除已保存值
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {item.writable && (!item.configured || editing[item.field]) && (
+              <label className="mc-secret-input">
+                新值
                 <input
                   id={`report-publishing-${item.field}`}
                   type="password"
                   autoComplete="new-password"
                   maxLength={65536}
                   value={draft[item.field] ?? ''}
-                  disabled={busy || !item.writable}
-                  placeholder={item.configured ? '输入新值以替换，原值不回显' : '输入凭证值'}
+                  placeholder="输入凭证值"
                   onChange={(event) => setDraft({ ...draft, [item.field]: event.target.value })}
                 />
                 <button
                   type="button"
-                  disabled={busy || !item.writable || !draft[item.field]}
+                  className="mc-primary"
+                  disabled={!draft[item.field]}
                   onClick={() => void change(item.field, false)}
                 >
-                  保存 {labels[item.field]}
+                  {item.configured ? '确认更换' : '新增凭证'}
                 </button>
+              </label>
+            )}
+            {deleting === item.field && (
+              <div className="mc-confirm">
+                <p>确认删除 {item.reference} 的已保存值？</p>
                 <button
                   type="button"
-                  disabled={busy || !item.writable || !item.configured}
+                  className="mc-danger"
                   onClick={() => void change(item.field, true)}
                 >
-                  删除 {labels[item.field]}
+                  确认删除已保存值
+                </button>
+                <button type="button" onClick={() => setDeleting(undefined)}>
+                  保留
                 </button>
               </div>
-            </div>
-          ))}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true)
-              void model
-                .publishingCredentials('describe', workspaceId, {}, lifetime.signal)
-                .then((next) => {
-                  if (!lifetime.signal.aborted) {
-                    setView(next)
-                    setDraft({})
-                    setMessage('状态已刷新。')
-                  }
-                })
-                .catch(() => {
-                  if (!lifetime.signal.aborted) setMessage('刷新失败，请重试。')
-                })
-                .finally(() => {
-                  if (!lifetime.signal.aborted) setBusy(false)
-                })
-            }}
-          >
-            刷新凭证状态
-          </button>
-          {message && <p role="status">{message}</p>}
-        </div>
-      )}
+            )}
+          </fieldset>
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true)
+          void model
+            .publishingCredentials('describe', workspaceId, {}, lifetime.signal)
+            .then((next) => {
+              if (!lifetime.signal.aborted) {
+                setView(next)
+                setDraft({})
+                setEditing({})
+                setDeleting(undefined)
+                setMessage('状态已刷新。')
+              }
+            })
+            .catch(() => {
+              if (!lifetime.signal.aborted) setMessage('刷新失败，请重试。')
+            })
+            .finally(() => {
+              if (!lifetime.signal.aborted) setBusy(false)
+            })
+        }}
+      >
+        刷新凭证状态
+      </button>
+      {message && <p role="status">{message}</p>}
     </section>
   )
 }

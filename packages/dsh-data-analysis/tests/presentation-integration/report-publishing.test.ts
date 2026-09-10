@@ -6,6 +6,7 @@ import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { registerPublishingCredentials } from '../../src/report-publishing/adapters.ts'
 import { resolvePublishingConfig } from '../../src/report-publishing/config.ts'
 import {
+  publishingPathName,
   ReportPublishingService,
   type UploadInput,
   uploadReport,
@@ -34,7 +35,12 @@ function fixture(enabled = true) {
   ])
   const uploaded: UploadInput[] = []
   const reads: string[] = []
-  const receipt: any = { workspaceId: 'workspace', reportId: 'report', buildId: 'build' }
+  const receipt: any = {
+    workspaceId: 'workspace',
+    reportId: 'report',
+    buildId: 'build',
+    title: '销售 / 月报',
+  }
   const service = new ReportPublishingService(
     resolvePublishingConfig(enabled ? configuration : { enabled: false }),
     {
@@ -78,8 +84,9 @@ function fixture(enabled = true) {
     async (input) => {
       uploaded.push({ ...input, credentials: { ...input.credentials } })
     },
+    () => '分析空间',
   )
-  return { service, values, uploaded, reads }
+  return { service, values, uploaded, reads, receipt }
 }
 const signal = () => new AbortController().signal
 
@@ -142,7 +149,8 @@ test('publication binds saved Build, reads credentials per operation, and isolat
     signal(),
     '<!doctype html><html lang="zh-CN"><head></head><body>filtered</body></html>',
   )
-  assert(view.key.includes('/views/'))
+  assert.match(first.key, /^analysis\/分析空间\/销售-月报\/[a-f0-9]{32}\/index\.html$/)
+  assert.equal(decodeURI(first.url), `https://reports.example.test/base/${first.key}`)
   assert.notEqual(view.url, first.url)
   assert.equal(reads.at(-1), 'presentation.json')
   assert(uploaded.at(-1)!.bytes.toString().includes("default-src 'none'"))
@@ -300,7 +308,7 @@ test('reconfigured RPC rejects every stale mutation before touching credentials 
     for (const [endpoint, input] of [
       ['set', { field: 'secretAccessKey', value: 'old-form-value' }],
       ['unset', { field: 'secretAccessKey' }],
-      ['publish', { reportId: 'report', buildId: 'build' }],
+      ['publish', { reportId: 'report', buildId: 'build', title: '销售 / 月报' }],
       [
         'publish',
         {
@@ -354,4 +362,34 @@ test('reconfigured RPC rejects every stale mutation before touching credentials 
   } finally {
     await close()
   }
+})
+
+test('publishing path names normalize unsafe characters and bound readable segments', () => {
+  assert.equal(publishingPathName(' ../季度\\报告 :?#% / ', 'report'), '季度-报告')
+  assert.equal(publishingPathName('...///', 'report'), 'report')
+  assert.equal(publishingPathName('ＡＢＣ  １２３', 'report'), 'ABC-123')
+  assert.equal(Array.from(publishingPathName('报'.repeat(100), 'report')).length, 48)
+})
+
+test('same readable names and bytes remain isolated across Workspace and Build identities', async () => {
+  const { service, receipt } = fixture()
+  const first = await service.publish({ workspaceId: 'workspace' }, 'report', 'build', signal())
+  receipt.workspaceId = 'another-workspace'
+  const otherWorkspace = await service.publish(
+    { workspaceId: 'another-workspace' },
+    'report',
+    'build',
+    signal(),
+  )
+  assert.notEqual(first.key, otherWorkspace.key)
+  receipt.workspaceId = 'workspace'
+  receipt.buildId = 'another-build'
+  const otherBuild = await service.publish(
+    { workspaceId: 'workspace' },
+    'report',
+    'another-build',
+    signal(),
+  )
+  assert.notEqual(first.key, otherBuild.key)
+  assert.equal(first.sha256, otherBuild.sha256)
 })

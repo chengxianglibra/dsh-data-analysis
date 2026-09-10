@@ -5,6 +5,14 @@ import { PRESENTATION_BUDGETS } from '../presentation/contracts/index.ts'
 import type { MarivoPresentationFileService } from '../presentation/rpc.ts'
 import type { EnabledPublishingConfig } from './config.ts'
 
+export function publishingPathName(value: string, fallback: string): string {
+  const name = Array.from(value.normalize('NFKC').replace(/[^\p{L}\p{N}_-]+/gu, '-'))
+    .slice(0, 48)
+    .join('')
+    .replace(/^-+|-+$/g, '')
+  return name || fallback
+}
+
 export type PublishingField = 'accessKeyId' | 'secretAccessKey' | 'sessionToken'
 export interface PublishingCredentialField {
   field: PublishingField
@@ -61,12 +69,15 @@ export class ReportPublishingService {
   readonly store: Store
   readonly files: Pick<MarivoPresentationFileService, 'catalog' | 'read'>
   readonly upload: (input: UploadInput) => Promise<void>
+  readonly workspaceName: (id: string) => string
   constructor(
     config: EnabledPublishingConfig | undefined,
     store: Store,
     files: Pick<MarivoPresentationFileService, 'catalog' | 'read'>,
     upload: (input: UploadInput) => Promise<void> = uploadReport,
+    workspaceName: (id: string) => string = () => 'workspace',
   ) {
+    this.workspaceName = workspaceName
     this.config = config
       ? Object.freeze({ ...config, storage: Object.freeze({ ...config.storage }) })
       : undefined
@@ -163,14 +174,23 @@ export class ReportPublishingService {
         throw new Error('report-publishing-view-invalid')
     }
     const sha256 = createHash('sha256').update(bytes).digest('hex')
-    const workspaceKey = createHash('sha256').update(receipt.workspaceId).digest('hex')
+    const identity = createHash('sha256')
+      .update(
+        JSON.stringify([
+          receipt.workspaceId,
+          reportId,
+          buildId,
+          viewHtml === undefined ? 'report' : 'view',
+          sha256,
+        ]),
+      )
+      .digest('hex')
+      .slice(0, 32)
     const key = [
       config.pathPrefix,
-      workspaceKey,
-      reportId,
-      buildId,
-      ...(viewHtml === undefined ? [] : ['views']),
-      sha256,
+      publishingPathName(this.workspaceName(receipt.workspaceId), 'workspace'),
+      publishingPathName(receipt.title, 'report'),
+      identity,
       'index.html',
     ]
       .filter(Boolean)

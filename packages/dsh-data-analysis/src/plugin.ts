@@ -210,6 +210,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
       publishingConfig,
       ctx.credentials,
       presentationFiles,
+      undefined,
+      (id) => {
+        const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
+        if (!workspace) throw new Error('workspace-unavailable')
+        return workspace.title
+      },
     )
     disposePublishing = registerPublishingCredentials(ctx.connection, reportPublishing, (id) =>
       Boolean(ctx.workspaceRegistry.get(WorkspaceId(id))),

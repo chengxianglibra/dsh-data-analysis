@@ -122,11 +122,6 @@ export function ExportMenu({
         }
       }}
     >
-      {report && (
-        <span className="pr-report-version" title={report.version}>
-          {report.version.slice(0, 8)}
-        </span>
-      )}
       <button
         ref={trigger}
         type="button"

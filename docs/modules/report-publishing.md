@@ -41,20 +41,22 @@ reportPublishing:
 
 两项均不触发本地下载；编辑时先保存或取消，上传中禁止重复触发。成功显示可打开的链接，失败保留阅读状态。上传期间编辑并保存了新 Build 时，旧上传的成功或失败只结束忙碌状态，不覆盖新版本的链接、错误或保存提示。关闭配置保留原下载行为；已存在的独立 HTML 不连接 Host，也不会随插件配置更新。
 
+数据源页面标题为“数据源与凭证”。报告发布凭证在数据源区块下方独立展示，沿用数据源凭证的引用名称、字段与来源、配置状态徽标、新增/更换和确认删除交互；不回显保存值。报告右上角操作菜单不再重复展示 Build 短版本号，正文元信息与历史版本仍保留版本标识。
+
 ## 发布协议与生命周期
 
 `marivo_publish_report({ report_id, build_id })` 只在开启时注册，用户明确要求发布后调用，返回含 URL、对象键、Workspace/Report/Build、HTML SHA-256、大小和时间的回执。Agent 不接收上传凭据或任意目标路径；Tool 只发布保存版本，当前视图通过浏览器入口提交。
 
 认证 RPC channel `/dsh-report-publishing` 提供 `describe/set/unset/publish`，沿用 Harness 精确 POST 路由。`describe` 返回当前服务实例的 `configId`；所有 `set/unset/publish` 请求必须带回该标识，配置重载或服务重建后拒绝旧标识并要求刷新。配置在实例内保持不可变，凭据刷新成功后清空旧输入。`publish` 接收 `workspaceId/configId/reportId/buildId` 和可选 `viewHtml`；服务端验证 Workspace、已确认历史和文档摘要，按配置生成对象键。视图 HTML 是浏览器提供的呈现快照，不作为 Marivo 验证过的分析证据；服务端限制 HTML 字节数，并在内容前强制无脚本、无网络资源的 CSP。完整报告使用已有可信共享 renderer。
 
-完整报告路径为 `{pathPrefix}/{workspaceHash}/{reportId}/{buildId}/{htmlSha256}/index.html`；当前视图在摘要前增加 `views/`。HTML 使用 `text/html; charset=utf-8` 和 `inline`。不同内容不会覆盖；同字节重试写同键。报告保存与上传独立，上传不回写不可变 Build 或 current。回执随 Tool 输出或当前页面返回，不新增发布历史数据库。
+完整报告与当前视图路径统一为 `{pathPrefix}/{workspaceName}/{reportName}/{publicationId}/index.html`。名称分别取 Harness Workspace title 和保存 Build 的报告 title：先做 NFKC 规范化，保留 Unicode 字母、数字、下划线及连字符，其余连续字符替换为 `-`，最多保留 48 个 Unicode 字符，去掉首尾 `-`；空名称回退为 `workspace` / `report`。URL 对每段分别编码。`publicationId` 为 Workspace ID、Report ID、Build ID、发布类型及 HTML SHA-256 的 JSON 数组摘要前 32 位十六进制字符，同名对象仍相互隔离；名称不变时相同发布可重试同键，Workspace 改名后使用新路径，旧链接保留。此规则只作用于后续上传。HTML 使用 `text/html; charset=utf-8` 和 `inline`。不同内容不会覆盖；同字节重试写同键。报告保存与上传独立，上传不回写不可变 Build 或 current。回执随 Tool 输出或当前页面返回，不新增发布历史数据库。
 
 操作设定超时并关联调用方及插件生命周期的取消信号，停止后等待在途操作结束。上传响应丢失或超时报告结果未确认，可能已有对象，不删除或回滚未知结果；可重新发布。关闭功能不撤销已上传对象。
 
 ## 验证
 
-确定性测试覆盖开关、配置校验、单字段读写和脱敏、凭据轮换、历史 Build、当前视图路径、取消，以及真实 AWS SDK 对本地 HTTP fixture 的签名 PUT。该 fixture 验证协议请求，不代表真实 S3 服务的权限、持久性、CDN 或公网验收。
+确定性测试覆盖开关、配置校验、单字段读写和脱敏、凭据轮换、历史 Build、名称规范化与长度上限、同名 Workspace/Build 隔离、发布重试、当前视图路径、取消，以及真实 AWS SDK 对本地 HTTP fixture 的签名 PUT。该 fixture 验证协议请求，不代表真实 S3 服务的权限、持久性、CDN 或公网验收。
 
 运行 `npm run check`、`npm run build`、`npm run verify:plugin-package`；浏览器验收脚本为 `npm run validate:report-publishing`，使用合成报告与本地上传 fixture，不调用模型或真实业务数据。
 
-修复后 `npm run check`：611 通过、4 跳过、0 失败；`npm run validate:report-publishing`、`npm run build`、`npm run verify:plugin-package` 均通过。未连接真实对象存储、重装插件或重启 Harness。
+2026-09-10 路径与凭证界面调整后 `npm run check`：613 通过、4 跳过、0 失败；`npm run validate:report-publishing`、`npm run build`、`npm run verify:plugin-package` 均通过。未连接真实对象存储、重装插件或重启 Harness。

@@ -570,7 +570,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
     <section className="mc-panel" aria-label="数据源与凭证">
       <style>{credentialStyles}</style>
       <div className="rt-heading-row">
-        <h2 className="rt-heading">数据源</h2>
+        <h2 className="rt-heading">数据源与凭证</h2>
         <div className="mc-heading-actions">
           {!request && (
             <button
@@ -602,9 +602,6 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
       <p className="rt-caption">
         {workspaces.find((item) => item.workspaceId === workspaceId)?.title ?? workspaceId}
       </p>
-      {!request && workspaceId && (
-        <ReportPublishingCredentials key={workspaceId} model={model} workspaceId={workspaceId} />
-      )}
       <div className="mc-shell">
         {(pending.length > 0 || request) && (
           <div className="mc-requests">
@@ -889,6 +886,9 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
           </main>
         </div>
       </div>
+      {!request && workspaceId && (
+        <ReportPublishingCredentials key={workspaceId} model={model} workspaceId={workspaceId} />
+      )}
     </section>
   )
 }

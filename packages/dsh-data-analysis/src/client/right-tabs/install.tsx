@@ -39,7 +39,7 @@ export const inject = [
   'sidebarRight',
   'sidebarRightTabs',
 ]
-const labels = { datasources: '数据源', semantic: '语义层', reports: '报告' }
+const labels = { datasources: '数据源与凭证', semantic: '语义层', reports: '报告' }
 
 /** Default browser integration. Layout belongs to Harness; mutable content belongs to occurrences. */
 export function installRightTabs(ctx, { diagnostics = false } = {}) {
