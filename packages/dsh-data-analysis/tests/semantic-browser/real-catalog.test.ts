@@ -147,6 +147,9 @@ mv.session = forbidden
     'raise RuntimeError("PRIVATE")\n',
   )
   const broken = await tree(root)
-  await assert.rejects(service.read({ workspaceId: 'a' }, signal), /catalog-load-failed/)
+  await assert.rejects(
+    service.read({ workspaceId: 'a' }, signal),
+    /\[organization_error\][\s\S]*PRIVATE/,
+  )
   assert.deepEqual(await tree(root), broken)
 })

@@ -167,3 +167,12 @@ Node.js 24.18.0 下专项 12 项测试通过，`npm run check` 共 153 项测试
 
 完整 `npm run check` 通过：552 项通过、0 失败、4 项因未配置对应真实运行环境变量而跳过。
 `npm run build`、`npm run verify:plugin-package`、文档相对链接检查与 `git diff --check` 均通过。
+
+## 2026-09-10：保留 Marivo 语义模型诊断
+
+语义层 Catalog 加载失败时，Marivo 的语义错误类型、正文、引用和提示通过受控 error envelope 展示，
+不再统一包装为“无法加载语义层”；未知异常仍不回传 Python traceback。错误区域保留换行，便于阅读多行引用和修复提示。
+凭据值仍不进入 RPC/UI 结果。
+
+专项 `npm run test:semantic-browser` 验证 Marivo 诊断穿透、未知异常兜底、Workspace 归属和现有只读边界；
+本次未重装或重启正在使用的 DSH Profile。

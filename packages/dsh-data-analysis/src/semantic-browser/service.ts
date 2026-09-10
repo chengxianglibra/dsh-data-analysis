@@ -4,7 +4,12 @@ import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { boundedText, closed } from '../semantic-reference/contracts.ts'
 import { semanticEnvironmentFingerprint } from '../semantic-reference/environment.ts'
 import { abortable } from '../semantic-reference/rpc.ts'
-import { CATALOG_MAX_BYTES, type CatalogSnapshot, parseCatalogProjection } from './contracts.ts'
+import {
+  CATALOG_MAX_BYTES,
+  type CatalogSnapshot,
+  parseCatalogFailure,
+  parseCatalogProjection,
+} from './contracts.ts'
 import { BROWSER_CATALOG_PROGRAM } from './program.ts'
 
 export interface BrowserWorkspace {
@@ -15,6 +20,16 @@ export interface BrowserHost {
   getWorkspace(id: string): BrowserWorkspace | undefined
   projectRoot(workspace: BrowserWorkspace): string
   resolve(root: string): Promise<MarivoCheckedRunner>
+}
+
+export class SemanticCatalogLoadError extends Error {
+  readonly code = 'catalog-load-failed'
+  readonly diagnostic: string
+  constructor(diagnostic: string) {
+    super(diagnostic)
+    this.diagnostic = diagnostic
+    this.name = 'SemanticCatalogLoadError'
+  }
 }
 
 /** Workspace-addressed read service; intentionally has no Agent or credential dependency. */
@@ -56,7 +71,17 @@ export class SemanticBrowserService {
     if ((await realpath(root)) !== runner.binding.projectRoot) throw new Error('workspace-changed')
     this.#assertOwner(id, workspace.path, root)
     signal.throwIfAborted()
-    if (result.exitCode !== 0) throw new Error('catalog-load-failed')
+    if (result.exitCode !== 0) {
+      const failure = (() => {
+        try {
+          return parseCatalogFailure(JSON.parse(result.stdout.toString('utf8')))
+        } catch {
+          return undefined
+        }
+      })()
+      if (failure) throw new SemanticCatalogLoadError(failure.message)
+      throw new Error('catalog-load-failed')
+    }
     if (result.stdout.byteLength > CATALOG_MAX_BYTES) throw new Error('catalog-too-large')
     const projection = parseCatalogProjection(JSON.parse(result.stdout.toString('utf8')))
     return {
@@ -77,9 +102,10 @@ export class SemanticBrowserService {
   }
 }
 
-/** Fixed diagnostics only: Python errors may contain model code or datasource secrets. */
+/** Preserve Marivo semantic diagnostics; keep unknown Python failures behind a fixed fallback. */
 export function browserFailure(error: unknown): string {
   const code = error instanceof Error && 'code' in error ? error.code : undefined
+  if (error instanceof SemanticCatalogLoadError) return `语义层模型加载失败：\n${error.diagnostic}`
   if (code === 'subprocess-timeout') return '语义层加载超时，请检查模型后重试。'
   if (
     code === 'subprocess-output-limit' ||

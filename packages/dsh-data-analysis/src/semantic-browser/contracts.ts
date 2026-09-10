@@ -9,6 +9,8 @@ import { type ComputationDefinition, parseComputation } from './definition.ts'
 
 export const BROWSER_ENDPOINT = 'semantic-browser/catalog'
 export const CATALOG_MAX_BYTES = 32 * 1024 * 1024
+export const CATALOG_ERROR_SCHEMA = 'marivo.semantic_catalog_error/v1'
+const CATALOG_ERROR_MAX_CHARS = 16 * 1024
 export interface DisplayField {
   readonly name: string
   readonly value: string
@@ -32,6 +34,11 @@ export interface CatalogProjection {
   readonly fingerprint: string
   readonly kinds: readonly string[]
   readonly objects: readonly SemanticObjectView[]
+}
+export interface CatalogFailure {
+  readonly schema: typeof CATALOG_ERROR_SCHEMA
+  readonly kind: 'semantic'
+  readonly message: string
 }
 export interface CatalogSnapshot extends CatalogProjection {
   readonly workspaceId: string
@@ -93,6 +100,19 @@ export function parseCatalogProjection(value: unknown): CatalogProjection {
   )
     throw new Error('invalid-catalog')
   return { fingerprint: boundedText(r.fingerprint, 256), kinds, objects }
+}
+export function parseCatalogFailure(value: unknown): CatalogFailure | undefined {
+  try {
+    const r = closed(value, ['schema', 'kind', 'message'])
+    if (r.schema !== CATALOG_ERROR_SCHEMA || r.kind !== 'semantic') return undefined
+    return {
+      schema: CATALOG_ERROR_SCHEMA,
+      kind: 'semantic',
+      message: boundedText(r.message, CATALOG_ERROR_MAX_CHARS),
+    }
+  } catch {
+    return undefined
+  }
 }
 export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   const r = closed(value, [

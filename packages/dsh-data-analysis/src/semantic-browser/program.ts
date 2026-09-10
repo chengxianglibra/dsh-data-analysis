@@ -14,6 +14,7 @@ class DiscardOutput:
 with contextlib.redirect_stdout(DiscardOutput()), contextlib.redirect_stderr(DiscardOutput()):
     import marivo.semantic as ms
     from marivo.refs import Ref, RefPayloadV1, SemanticKind
+    from marivo.semantic.errors import SemanticError, SemanticLoadFailed
 
     FIELDS = {
         "domain": "owner default",
@@ -109,11 +110,20 @@ with contextlib.redirect_stdout(DiscardOutput()), contextlib.redirect_stderr(Dis
             "fields": fields, "relations": list(unique.values()),
         }
 
+try:
     catalog = ms.load(workspace_dir=sys.argv[1])
     result = {
         "fingerprint": catalog.definition_fingerprint,
         "kinds": [kind.value for kind in SemanticKind],
         "objects": [project(entry) for kind in SemanticKind for entry in catalog.items(kind).items],
     }
+except (SemanticLoadFailed, SemanticError) as error:
+    print(json.dumps({
+        "schema": "marivo.semantic_catalog_error/v1",
+        "kind": "semantic",
+        "message": str(error),
+    }, ensure_ascii=True))
+    raise SystemExit(1)
+
 print(json.dumps(result, ensure_ascii=True))
 `.trim()

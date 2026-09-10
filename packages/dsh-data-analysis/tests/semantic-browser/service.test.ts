@@ -6,7 +6,12 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import type { MarivoCheckedRunRequest } from '../../src/environment/types.ts'
-import { browserFailure, SemanticBrowserService } from '../../src/semantic-browser/service.ts'
+import { CATALOG_ERROR_SCHEMA, type CatalogFailure } from '../../src/semantic-browser/contracts.ts'
+import {
+  browserFailure,
+  SemanticBrowserService,
+  SemanticCatalogLoadError,
+} from '../../src/semantic-browser/service.ts'
 import { semanticEnvironmentFingerprint } from '../../src/semantic-reference/environment.ts'
 import {
   registerSemanticReferenceRpc,
@@ -70,6 +75,48 @@ test('only fixed error messages cross the browser boundary', () => {
   assert.match(
     browserFailure(new MarivoEnvironmentError('subprocess-output-limit', 'PRIVATE')),
     /上限/,
+  )
+})
+
+test('Marivo semantic load diagnostics cross the browser boundary without generic wrapping', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'semantic-diagnostic-')),
+    root = await realpath(dir)
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const diagnostic =
+    "[missing_entity_ref] Entity 'trino.query' references unknown datasource 'trino_bilibili'.\n" +
+    '  refs: trino.query, trino_bilibili\n' +
+    '  hint: Reference the declared datasource name.'
+  const fixture = fakeRunner()
+  const service = new SemanticBrowserService({
+    getWorkspace: (id) => ({ id, path: root }),
+    projectRoot: () => root,
+    resolve: async () => ({
+      ...fixture.runner,
+      binding: { ...fixture.runner.binding, projectRoot: root },
+      async runChecked() {
+        const failure: CatalogFailure = {
+          schema: CATALOG_ERROR_SCHEMA,
+          kind: 'semantic',
+          message: diagnostic,
+        }
+        return {
+          exitCode: 1,
+          signal: null,
+          durationMs: 0,
+          stdout: Buffer.from(JSON.stringify(failure)),
+          stderr: Buffer.from('traceback must not cross the browser boundary'),
+        }
+      },
+    }),
+  })
+  t.after(() => service.dispose())
+  await assert.rejects(
+    service.read({ workspaceId: 'a' }, new AbortController().signal),
+    (error) => {
+      assert.ok(error instanceof SemanticCatalogLoadError)
+      assert.equal(browserFailure(error), `语义层模型加载失败：\n${diagnostic}`)
+      return true
+    },
   )
 })
 
