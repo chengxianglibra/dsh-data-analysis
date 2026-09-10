@@ -14,6 +14,7 @@ const statusLabels = {
   succeeded: '验证完成，原调用继续',
   'handed-off': '已交给助手排查',
   'call-ended': '原调用已结束',
+  cancelled: '已取消配置请求',
   'context-changed': '上下文已变化',
 }
 export function CredentialIcon({ name, size = 18 }) {
@@ -37,6 +38,11 @@ export function CredentialIcon({ name, size = 18 }) {
       )}
       {name === 'refresh' && (
         <path d="M20 7v5h-5M4 17v-5h5M6.1 6a8 8 0 0 1 13.4 3M4.5 15a8 8 0 0 0 13.4 3" />
+      )}
+      {name === 'add' && <path d="M12 5v14M5 12h14" />}
+      {name === 'edit' && <path d="m16 3 5 5L9 20l-6 1 1-6L16 3ZM13 6l5 5" />}
+      {name === 'test' && (
+        <path d="M9 3h6M10 3v6l-6 10a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 15h10" />
       )}
       {name === 'check' && <path d="m5 12 4 4L19 6" />}
       {name === 'info' && (
@@ -135,7 +141,7 @@ export function DatasourceProperties({ context }) {
     </section>
   )
 }
-function CredentialForm({ context, request, state, model, workspaceId }) {
+function CredentialForm({ context, request, state, model, workspaceId, onEdit }) {
   const [values, setValues] = useState({})
   const [editing, setEditing] = useState({})
   const [deleting, setDeleting] = useState('')
@@ -172,19 +178,33 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
   return (
     <section className="mc-form" aria-label={`${context.name} 凭证配置`}>
       <div className="mc-form-body">
-        <div className="mc-detail-heading">
-          <div>
-            <p className="mc-eyebrow">数据源配置</p>
+        <div className="mc-detail-heading mc-datasource-heading">
+          <p className="mc-eyebrow">数据源配置</p>
+          <div className="mc-name-row">
             <h3>{context.name}</h3>
+            <div className="mc-heading-actions">
+              <span className="mc-badge" data-ready={ready}>
+                {ready && <CredentialIcon name="check" size={13} />}
+                {context.refs.length === 0
+                  ? '无需凭证'
+                  : ready
+                    ? '凭证已配齐'
+                    : `${configured} / ${context.refs.length} 项已配置`}
+              </span>
+              {!ended && (
+                <button
+                  className="mc-icon-button"
+                  type="button"
+                  title="编辑配置"
+                  aria-label="编辑配置"
+                  disabled={busy}
+                  onClick={onEdit}
+                >
+                  <CredentialIcon name="edit" />
+                </button>
+              )}
+            </div>
           </div>
-          <span className="mc-badge" data-ready={ready}>
-            {ready && <CredentialIcon name="check" size={13} />}
-            {context.refs.length === 0
-              ? '无需凭证'
-              : ready
-                ? '凭证已配齐'
-                : `${configured} / ${context.refs.length} 项已配置`}
-          </span>
         </div>
         {request && (
           <div className="mc-request-status" role="status">
@@ -246,7 +266,11 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
                         </button>
                       )}
                       {info?.writable && !request && info.configured && (
-                        <button className="mc-quiet" type="button" onClick={() => setDeleting(ref)}>
+                        <button
+                          className="mc-danger"
+                          type="button"
+                          onClick={() => setDeleting(ref)}
+                        >
                           删除已保存值
                         </button>
                       )}
@@ -305,11 +329,25 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
         <div className="mc-test">
           <div className="mc-test-heading">
             <h4>连接状态</h4>
-            {latestTest?.at !== undefined && (
-              <time dateTime={new Date(latestTest.at).toISOString()}>
-                上次测试：{new Date(latestTest.at).toLocaleString()}
-              </time>
-            )}
+            <div className="mc-heading-actions">
+              {latestTest?.at !== undefined && (
+                <time dateTime={new Date(latestTest.at).toISOString()}>
+                  上次测试：{new Date(latestTest.at).toLocaleString()}
+                </time>
+              )}
+              {!request && (
+                <button
+                  className="mc-icon-button"
+                  type="button"
+                  title="测试连接"
+                  aria-label="测试连接"
+                  disabled={busy}
+                  onClick={() => void model.start(context, 'test')}
+                >
+                  <CredentialIcon name="test" />
+                </button>
+              )}
+            </div>
           </div>
           {latestResult ? (
             <TestResult result={latestResult} stale={!request?.failure && latestTest?.stale} />
@@ -319,20 +357,22 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
           <OperationOutcome entry={outcome} />
         </div>
       </div>
-      {!ended && (
+      {!ended && (request || busy) && (
         <div className="mc-form-footer">
           {request && (
             <button className="mc-primary" type="button" disabled={busy} onClick={submit}>
               提交凭证并继续
             </button>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void model.start(context, request ? 'submit' : 'test')}
-          >
-            {request ? '使用已有配置验证并继续' : '测试连接'}
-          </button>
+          {request && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void model.start(context, 'submit')}
+            >
+              使用已有配置验证并继续
+            </button>
+          )}
           {request?.failure && (
             <button
               type="button"
@@ -373,20 +413,40 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
     </section>
   )
 }
-export function CredentialPanel({ model, workspaces }) {
+export function CredentialPanel({ model, workspaces, onRefresh }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const columns = useRef(null)
   const navigation = useRef(null)
   const main = useRef(null)
   const [creating, setCreating] = useState(false)
+  const [editingName, setEditingName] = useState('')
+  const [requestError, setRequestError] = useState('')
+  const [requestChoice, setRequestChoice] = useState('create')
   // biome-ignore lint/correctness/useExhaustiveDependencies: Switching context discards the creation form.
-  useEffect(() => setCreating(false), [state.open, state.workspaceId, state.requestId])
+  useEffect(() => {
+    setCreating(false)
+    setEditingName('')
+    setRequestError('')
+    setRequestChoice('create')
+  }, [state.open, state.workspaceId, state.requestId])
   const request = state.requests.find((item) => item.id === state.requestId)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Open the initial form once per request occurrence; live watch updates must preserve user navigation.
+  useEffect(() => {
+    if (!request?.configuration || request.context || request.endedAt !== undefined) return
+    setCreating(true)
+    setEditingName(request.configuration.mode === 'edit' ? request.configuration.name : '')
+  }, [request?.id, state.open])
+  useEffect(() => {
+    if (request?.endedAt === undefined) return
+    setCreating(false)
+    setEditingName('')
+  }, [request?.endedAt])
   const pending = state.requests.filter(
     (item) => item.endedAt === undefined && item.sessionId === state.sessionId,
   )
-  const context =
-    request?.context ?? state.datasources.find((item) => item.token === state.selected)
+  const context = request
+    ? request.context
+    : state.datasources.find((item) => item.token === state.selected)
   // biome-ignore lint/correctness/useExhaustiveDependencies: A different detail or creation page starts at the top of its content.
   useEffect(() => {
     if (main.current) {
@@ -407,7 +467,7 @@ export function CredentialPanel({ model, workspaces }) {
   const workspaceId = request
     ? (workspaces.find((item) => item.sessionIds.includes(request.sessionId))?.workspaceId ?? '')
     : state.workspaceId
-  const datasources = request ? [request.context] : state.datasources
+  const datasources = request ? (request.context ? [request.context] : []) : state.datasources
   const operations = state.operations.filter((entry) => entry.workspaceId === workspaceId)
   const activeOperation = operations.find(
     (entry) => entry.handle.id === state.handle?.id,
@@ -416,13 +476,47 @@ export function CredentialPanel({ model, workspaces }) {
   return (
     <section className="mc-panel" aria-label="数据源与凭证">
       <style>{credentialStyles}</style>
+      <div className="rt-heading-row">
+        <h2 className="rt-heading">数据源</h2>
+        <div className="mc-heading-actions">
+          {!request && (
+            <button
+              className="mc-icon-button"
+              type="button"
+              title="新增数据源"
+              aria-label="新增数据源"
+              disabled={!workspaceId || state.loading}
+              onClick={() => {
+                setEditingName('')
+                setCreating(true)
+              }}
+            >
+              <CredentialIcon name="add" />
+            </button>
+          )}
+          <button
+            className="mc-icon-button"
+            type="button"
+            title="刷新数据源"
+            aria-label="刷新数据源"
+            disabled={state.loading}
+            onClick={onRefresh ?? (() => void model.refreshDatasources())}
+          >
+            <CredentialIcon name="refresh" />
+          </button>
+        </div>
+      </div>
+      <p className="rt-caption">
+        {workspaces.find((item) => item.workspaceId === workspaceId)?.title ?? workspaceId}
+      </p>
       <div className="mc-shell">
-        {pending.length > 0 && (
+        {(pending.length > 0 || request) && (
           <div className="mc-requests">
-            <span>本会话待办</span>
+            <span>{pending.length ? '本会话待办' : '配置结果'}</span>
             {pending.map((item) => (
               <button type="button" key={item.id} onClick={() => model.openRequest(item.id)}>
-                {item.context.name} · {statusLabels[item.status]}
+                {item.context?.name ?? item.configuration?.name ?? '新增数据源'} ·{' '}
+                {statusLabels[item.status]}
               </button>
             ))}
             {request && (
@@ -433,63 +527,58 @@ export function CredentialPanel({ model, workspaces }) {
           </div>
         )}
         <div className="mc-columns" ref={columns}>
-          <aside className="mc-nav" aria-label="数据源导航">
-            {!request && (
-              <button
-                type="button"
-                disabled={!workspaceId || state.loading}
-                onClick={() => setCreating(true)}
-              >
-                新增数据源
-              </button>
-            )}
-            <div>
-              <div className="mc-nav-heading">
-                <h3>{request ? '请求的数据源' : `数据源 · ${datasources.length}`}</h3>
-              </div>
-              <ul className="mc-datasources" ref={navigation}>
-                {datasources.map((item) => {
-                  const count = item.refs.filter((ref) => item.credentials[ref]?.configured).length
-                  const ready = count === item.refs.length
-                  const running = state.operations.some(
-                    (entry) => entry.handle.scope === item.token,
-                  )
-                  return (
-                    <li key={item.token}>
-                      <button
-                        className="mc-datasource"
-                        type="button"
-                        aria-label={`选择数据源 ${item.name}`}
-                        aria-pressed={!creating && context?.token === item.token}
-                        onClick={() => {
-                          if (request) model.openRequest(request.id)
-                          else {
-                            setCreating(false)
-                            model.select(item.token)
-                          }
-                        }}
-                      >
-                        <CredentialIcon name="database" />
-                        <span className="mc-datasource-copy">
-                          <span className="mc-datasource-name">{item.name}</span>
-                          <span className="mc-datasource-status">
-                            <span className="mc-dot" data-ready={ready} />
-                            {running
-                              ? '正在处理…'
-                              : item.refs.length === 0
-                                ? '无需凭证'
-                                : ready
-                                  ? '凭证已配齐'
-                                  : `${count} / ${item.refs.length} 项已配置`}
+          {!request && (
+            <aside className="mc-nav" aria-label="数据源导航">
+              <div>
+                <div className="mc-nav-heading">
+                  <h3>{request ? '请求的数据源' : `数据源 · ${datasources.length}`}</h3>
+                </div>
+                <ul className="mc-datasources" ref={navigation}>
+                  {datasources.map((item) => {
+                    const count = item.refs.filter(
+                      (ref) => item.credentials[ref]?.configured,
+                    ).length
+                    const ready = count === item.refs.length
+                    const running = state.operations.some(
+                      (entry) => entry.handle.scope === item.token,
+                    )
+                    return (
+                      <li key={item.token}>
+                        <button
+                          className="mc-datasource"
+                          type="button"
+                          aria-label={`选择数据源 ${item.name}`}
+                          aria-pressed={!creating && context?.token === item.token}
+                          onClick={() => {
+                            if (request) model.openRequest(request.id)
+                            else {
+                              setCreating(false)
+                              model.select(item.token)
+                            }
+                          }}
+                        >
+                          <CredentialIcon name="database" />
+                          <span className="mc-datasource-copy">
+                            <span className="mc-datasource-name">{item.name}</span>
+                            <span className="mc-datasource-status">
+                              <span className="mc-dot" data-ready={ready} />
+                              {running
+                                ? '正在处理…'
+                                : item.refs.length === 0
+                                  ? '无需凭证'
+                                  : ready
+                                    ? '凭证已配齐'
+                                    : `${count} / ${item.refs.length} 项已配置`}
+                            </span>
                           </span>
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          </aside>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            </aside>
+          )}
           <main className="mc-main" ref={main}>
             {state.error && (
               <p role="alert" className="mc-alert">
@@ -501,7 +590,7 @@ export function CredentialPanel({ model, workspaces }) {
                 正在读取数据源与凭证状态…
               </p>
             )}
-            {!creating && !state.loading && !context && !state.error && (
+            {!request && !creating && !state.loading && !context && !state.error && (
               <div className="mc-empty">
                 <CredentialIcon name="database" size={32} />
                 <h3>
@@ -520,9 +609,118 @@ export function CredentialPanel({ model, workspaces }) {
                 </p>
               </div>
             )}
-            {creating && (
+            {request?.configuration && (
+              <section className="mc-request-status" aria-label="配置请求">
+                <div className="mc-request-heading">
+                  <h3>配置数据源以继续</h3>
+                  <span className="mc-badge" role="status">
+                    {statusLabels[request.status]}
+                  </span>
+                  {request.endedAt === undefined && (
+                    <button
+                      className="mc-quiet"
+                      type="button"
+                      onClick={() => void model.cancelRequest(request.id)}
+                    >
+                      取消配置请求
+                    </button>
+                  )}
+                </div>
+                <details className="mc-request-reason">
+                  <summary>查看助手请求说明</summary>
+                  <p>{request.configuration.reason}</p>
+                </details>
+                {requestError && <p role="alert">{requestError}</p>}
+                {request.endedAt === undefined && request.status !== 'executing' && (
+                  <>
+                    {request.configuration.mode === 'create' && !context && (
+                      <>
+                        <fieldset className="mc-request-choice" aria-label="配置方式">
+                          <button
+                            type="button"
+                            aria-pressed={requestChoice === 'create'}
+                            onClick={() => {
+                              setRequestChoice('create')
+                              setCreating(true)
+                              setEditingName('')
+                              setRequestError('')
+                            }}
+                          >
+                            新增数据源
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={requestChoice === 'existing'}
+                            onClick={() => {
+                              setRequestChoice('existing')
+                              setCreating(false)
+                              setEditingName('')
+                              setRequestError('')
+                            }}
+                          >
+                            使用已有数据源
+                          </button>
+                        </fieldset>
+                        {requestChoice === 'existing' && (
+                          <div className="mc-existing-source">
+                            <p>如果已有连接可以访问目标表，选择它并验证即可继续，无需重复创建。</p>
+                            <label className="mc-secret-input">
+                              选择已有数据源
+                              <select
+                                aria-label="选择已有数据源"
+                                value=""
+                                onChange={async (event) => {
+                                  if (!event.target.value) return
+                                  try {
+                                    await model.selectConfiguration(
+                                      workspaceId,
+                                      request.id,
+                                      event.target.value,
+                                    )
+                                    setCreating(false)
+                                    setEditingName('')
+                                  } catch (error) {
+                                    setRequestError(error.message)
+                                  }
+                                }}
+                              >
+                                <option value="">请选择</option>
+                                {state.datasources.map((item) => (
+                                  <option key={item.name} value={item.name}>
+                                    {item.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            {state.datasources.length === 0 && (
+                              <p>当前没有可复用的数据源，请切换到“新增数据源”。</p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {!creating &&
+                      !context &&
+                      (request.configuration.mode === 'edit' || requestChoice === 'create') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreating(true)
+                            setEditingName(request.configuration.name ?? '')
+                          }}
+                        >
+                          打开配置表单
+                        </button>
+                      )}
+                  </>
+                )}
+              </section>
+            )}
+            {creating && request?.endedAt === undefined && (
               <CreateDatasource
-                key={workspaceId}
+                key={`${workspaceId}/${editingName}/${request?.id ?? ''}`}
+                name={editingName || undefined}
+                requestId={request?.configuration ? request.id : undefined}
                 model={model}
                 workspaceId={workspaceId}
                 close={() => setCreating(false)}
@@ -536,6 +734,10 @@ export function CredentialPanel({ model, workspaces }) {
                 state={state}
                 model={model}
                 workspaceId={workspaceId}
+                onEdit={() => {
+                  setEditingName(context.name)
+                  setCreating(true)
+                }}
               />
             )}
             {operations.length > 0 && (
@@ -597,10 +799,23 @@ export function installCredentials(ctx, rpc) {
         return request ? (
           <button
             className="mc-pending-entry"
+            style={{
+              flex: 'none',
+              whiteSpace: 'nowrap',
+              fontSize: 12,
+              padding: '4px 6px',
+              border: '1px solid currentColor',
+              borderRadius: 7,
+              background: 'transparent',
+              color: 'inherit',
+              cursor: 'pointer',
+            }}
+            aria-label={request.configuration ? '等待配置数据源' : '等待配置凭证'}
+            title={request.configuration ? '等待配置数据源' : '等待配置凭证'}
             type="button"
             onClick={() => model.openRequest(request.id)}
           >
-            等待配置凭证
+            待配置
           </button>
         ) : null
       },

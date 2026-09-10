@@ -19,6 +19,7 @@ export async function startPresentationWebHost(
   draftPaths: readonly string[],
   clientOrder: 'native-first' | 'report-first' = 'native-first',
   options: {
+    productionPackageRoot?: string
     askDshProbe?: boolean
     rightTabsAcceptance?: boolean
     retainedPresentation?: boolean
@@ -43,7 +44,14 @@ export async function startPresentationWebHost(
   await mkdir(productionPackage, { recursive: true })
   const packed = await promisify(execFile)(
     'npm',
-    ['pack', packageRoot, '--ignore-scripts', '--json', '--pack-destination', outputRoot],
+    [
+      'pack',
+      options.productionPackageRoot ?? packageRoot,
+      '--ignore-scripts',
+      '--json',
+      '--pack-destination',
+      outputRoot,
+    ],
     { cwd: repoRoot, maxBuffer: 16 * 1024 * 1024 },
   )
   const manifest = JSON.parse(packed.stdout)[0]

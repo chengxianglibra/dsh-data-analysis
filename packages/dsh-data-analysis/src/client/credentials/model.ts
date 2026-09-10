@@ -1,5 +1,10 @@
-import type { DatasourceAuthoring, DatasourceCreateInput } from '../../datasource/authoring.ts'
 import type {
+  DatasourceAuthoring,
+  DatasourceConfiguration,
+  DatasourceCreateInput,
+} from '../../datasource/authoring.ts'
+import type {
+  ConfigurationRequestView,
   CredentialAction,
   CredentialContextView,
   CredentialOperationView,
@@ -27,8 +32,9 @@ export interface CredentialClientState {
   workspaceId: string
   sessionId: string
   generation: string
+  revision?: string
   datasources: CredentialContextView[]
-  requests: CredentialRequestView[]
+  requests: (CredentialRequestView | ConfigurationRequestView)[]
   requestId: string
   selected: string
   loading: boolean
@@ -39,6 +45,8 @@ export interface CredentialClientState {
   handle?: QueryHandle
 }
 const messages: Record<string, string> = {
+  'datasource-config-changed': '配置已被修改，请重新打开编辑页面后再保存。',
+  'datasource-identity-fixed': '数据源名称和引擎不能修改。',
   'context-changed': 'Workspace 或数据源定义已变化，请重新读取后操作。',
   'credentials-changed': '凭证配置已变化，请重新读取后验证。',
   'call-ended': '原调用已结束，已保存的值仍保留；请重新发起任务。',
@@ -178,6 +186,109 @@ export class CredentialClientModel {
     const created = this.#state.datasources.find((item) => item.name === result.name)
     if (created) this.select(created.token)
   }
+  async configuration(
+    workspaceId: string,
+    name: string,
+    signal: AbortSignal,
+  ): Promise<DatasourceConfiguration> {
+    return (await this.#call(
+      'configuration',
+      { workspaceId, name },
+      signal,
+    )) as DatasourceConfiguration
+  }
+  async saveConfiguration(
+    workspaceId: string,
+    schema: DatasourceAuthoring & { generation: string },
+    input: DatasourceCreateInput,
+    original?: DatasourceConfiguration,
+    requestId?: string,
+    changes: Record<string, string> = {},
+  ): Promise<void> {
+    try {
+      let result: { name: string; request?: ConfigurationRequestView }
+      try {
+        result = (await this.#call(original ? 'update-datasource' : 'create-datasource', {
+          workspaceId,
+          generation: schema.generation,
+          fingerprint: schema.fingerprint,
+          ...input,
+          ...(original ? { name: original.name, version: original.version } : {}),
+          ...(requestId ? { requestId } : {}),
+        })) as { name: string; request?: ConfigurationRequestView }
+      } catch (error) {
+        if (
+          error instanceof CredentialResponseError &&
+          [
+            'datasource-credential-ref-invalid',
+            'datasource-already-exists',
+            'datasource-config-changed',
+            'datasource-identity-fixed',
+            'context-changed',
+            'operation-busy',
+          ].includes(error.code)
+        )
+          throw error
+        throw new Error(
+          `${error instanceof Error ? error.message : '保存配置失败。'} 如保存结果未确认，请重新读取配置核对后再操作；不会自动重发。`,
+        )
+      }
+
+      if (
+        !this.#state.open ||
+        this.#state.workspaceId !== workspaceId ||
+        (requestId && this.#state.requestId !== requestId)
+      )
+        return
+      if (result.request) {
+        this.#acceptRequest(result.request)
+        const context = result.request.context
+        if (context) {
+          this.#checkCredentialWrites(context, changes)
+          const ready = context.refs.every(
+            (ref) => context.credentials[ref]?.configured || changes[ref],
+          )
+          if (ready || Object.keys(changes).length) await this.start(context, 'submit', changes)
+        }
+      } else {
+        await this.selectWorkspace(workspaceId)
+        if (this.#state.workspaceId !== workspaceId) return
+        const selected = this.#state.datasources.find((item) => item.name === result.name)
+        if (selected) {
+          this.select(selected.token)
+          this.#checkCredentialWrites(selected, changes)
+          if (Object.keys(changes).length) await this.start(selected, 'save', changes)
+        }
+      }
+    } finally {
+      for (const ref of Object.keys(changes)) delete changes[ref]
+    }
+  }
+  #checkCredentialWrites(context: CredentialContextView, changes: Record<string, string>) {
+    if (Object.keys(changes).some((ref) => context.credentials[ref]?.configured))
+      throw new Error(
+        '配置已保存，但引用名已存在。未覆盖已有凭证；请在凭证页确认更新，或编辑配置使用新的引用名。',
+      )
+  }
+  #acceptRequest(request: ConfigurationRequestView) {
+    this.#patch({
+      requests: [...this.#state.requests.filter((item) => item.id !== request.id), request],
+    })
+  }
+  async selectConfiguration(workspaceId: string, requestId: string, name: string): Promise<void> {
+    const request = (await this.#call('select-configuration', {
+      workspaceId,
+      requestId,
+      name,
+    })) as ConfigurationRequestView
+    if (
+      this.#state.workspaceId !== workspaceId ||
+      this.#state.requestId !== requestId ||
+      !this.#state.open
+    )
+      return
+    this.#acceptRequest(request)
+  }
   close(): void {
     this.#read?.abort()
     this.#refresh?.abort()
@@ -245,7 +356,40 @@ export class CredentialClientModel {
   /** Receive the shared Host watch without sharing a tab's selection or form state. */
   syncRequests(sessionId: string, state: CredentialClientState): void {
     const requests = state.requests.filter((request) => request.sessionId === sessionId)
-    this.#patch({ sessionId, requests })
+    const changed =
+      JSON.stringify(requests) !== JSON.stringify(this.#state.requests) ||
+      state.generation !== this.#state.generation ||
+      state.revision !== this.#state.revision
+    this.#patch({ sessionId, requests, generation: state.generation, revision: state.revision })
+    if (changed && this.#state.open) void this.refreshDatasources()
+  }
+  async refreshDatasources(): Promise<void> {
+    const workspaceId = this.#state.workspaceId
+    if (!workspaceId || !this.#state.open) return
+    this.#refresh?.abort()
+    const flight = new AbortController()
+    this.#refresh = flight
+    try {
+      const value = (await this.#call('overview', { workspaceId }, flight.signal)) as {
+        generation: string
+        datasources: CredentialContextView[]
+      }
+      if (!flight.signal.aborted && this.#state.open && this.#state.workspaceId === workspaceId) {
+        const name = this.#state.datasources.find(
+          (item) => item.token === this.#state.selected,
+        )?.name
+        this.#patch({
+          datasources: value.datasources,
+          generation: value.generation,
+          selected:
+            value.datasources.find((item) => item.name === name)?.token ??
+            value.datasources[0]?.token ??
+            '',
+        })
+      }
+    } catch {
+      /* Keep the visible form; explicit refresh can surface read failures. */
+    }
   }
   session(sessionId: string): void {
     if (sessionId === this.#state.sessionId && this.#watch) return
@@ -266,14 +410,18 @@ export class CredentialClientModel {
           'watch',
           { sessionId, ...(cursor ? { cursor } : {}) },
           signal,
-        )) as { generation: string; cursor: string; requests: CredentialRequestView[] }
+        )) as {
+          generation: string
+          cursor: string
+          requests: CredentialRequestView[]
+          configurationRequests?: ConfigurationRequestView[]
+        }
         if (signal.aborted) return
         cursor = value.cursor
         attempt = 0
-        this.#patch({ generation: value.generation, requests: value.requests })
-        const request = value.requests.find(
-          (r) => r.endedAt === undefined && !this.#opened.has(r.id),
-        )
+        const requests = [...value.requests, ...(value.configurationRequests ?? [])]
+        this.#patch({ generation: value.generation, revision: value.cursor, requests })
+        const request = requests.find((r) => r.endedAt === undefined && !this.#opened.has(r.id))
         if (request) {
           this.#opened.add(request.id)
           this.openRequest(request.id)
@@ -301,7 +449,7 @@ export class CredentialClientModel {
   }
   #visible(scope: string): boolean {
     const selected = this.#state.requestId
-      ? this.#state.requests.find((request) => request.id === this.#state.requestId)?.context.token
+      ? this.#state.requests.find((request) => request.id === this.#state.requestId)?.context?.token
       : this.#state.selected
     return selected === scope
   }

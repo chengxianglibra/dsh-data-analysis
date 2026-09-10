@@ -14,6 +14,11 @@ import { actualDeliveries, ScriptedPresentationAdapter } from '../presentation-s
 import { verifyReferenceRead } from './reference-read.ts'
 
 class CredentialAdapter extends LlmAdapter {
+  readonly configuration?: 'create' | 'edit'
+  constructor(configuration?: 'create' | 'edit') {
+    super()
+    this.configuration = configuration
+  }
   #sent = false
   override async resolveModel(provider: string, model: string) {
     return { provider, id: model, name: model }
@@ -25,8 +30,16 @@ class CredentialAdapter extends LlmAdapter {
     }
     this.#sent = true
     const id = ToolCallId('right-tabs-credential-test'),
-      name = 'marivo_datasource_test',
-      args = JSON.stringify({ name: 'protected' })
+      name = this.configuration ? 'marivo_datasource_configure' : 'marivo_datasource_test',
+      args = JSON.stringify(
+        this.configuration
+          ? {
+              mode: this.configuration,
+              ...(this.configuration === 'edit' ? { name: 'configured' } : {}),
+              reason: '分析 orders 表，需要可用数据源。',
+            }
+          : { name: 'protected' },
+      )
     yield { type: 'block-start', index: 0, blockType: 'tool-call' }
     yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
     yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }
@@ -66,20 +79,31 @@ export async function createRightTabsDriver(
 ) {
   const agents = new Map<string, any>()
   const semantic = new SemanticQuestionAdapter()
-  for (const mode of ['native', 'ptc', 'cold', 'credentials', 'semantic'] as const) {
+  for (const mode of [
+    'native',
+    'ptc',
+    'cold',
+    'credentials',
+    'semantic',
+    'configure-create',
+    'configure-edit',
+  ] as const) {
     const id = SessionId(`right-tabs-${mode}`),
       provider = `right-tabs-${mode}`
     ctx.llm.registerAdapter(
       [provider],
-      mode === 'semantic'
-        ? semantic
-        : mode === 'credentials'
-          ? new CredentialAdapter()
-          : new ScriptedPresentationAdapter(
-              mode === 'cold' ? 'native' : mode,
-              Array.from({ length: 12 }, (_, i) => draftPaths[i % draftPaths.length]!),
-              () => actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
-            ),
+      mode === 'configure-create' || mode === 'configure-edit'
+        ? new CredentialAdapter(mode === 'configure-create' ? 'create' : 'edit')
+        : mode === 'semantic'
+          ? semantic
+          : mode === 'credentials'
+            ? new CredentialAdapter()
+            : new ScriptedPresentationAdapter(
+                mode === 'cold' ? 'native' : mode,
+                Array.from({ length: 12 }, (_, i) => draftPaths[i % draftPaths.length]!),
+                () =>
+                  actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
+              ),
     )
     const agent = await ctx.agentLoop.create(
       id,
@@ -152,7 +176,10 @@ export async function createRightTabsDriver(
         value: agent.session
           .snapshotEvents()
           .filter((event: any) => event.type === 'tool/result')
-          .map((event: any) => ({ isError: event.data.message.content[0]?.isError })),
+          .map((event: any) => ({
+            isError: event.data.message.content[0]?.isError,
+            content: event.data.message.content,
+          })),
       }
     }
     if (payload.action === 'history') {

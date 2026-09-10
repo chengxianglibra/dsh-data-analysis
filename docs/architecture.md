@@ -20,6 +20,7 @@ flowchart LR
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
+  P --> CFG[marivo_datasource_configure]
   P --> Y[marivo_python]
   P --> E[marivo_present]
   P --> K[dsh-data-analysis-presentation Skill]
@@ -39,7 +40,7 @@ flowchart LR
 [新版重构设计](dsh-alpha-refactor-design.md)的第一阶段已接入默认 client：数据源、语义层、报告目录及正文
 使用原生右侧 Tab。页面状态由 Session/Tab occurrence 拥有，导航使用完整 Workspace 与资源身份；
 当前 Session 的新交付独立观察公开 eventSource，卡片不触发自动打开。current 只提示新版本，刷新后切换；
-固定 Build 阅读保持不变。报告编辑在所属 Tab 内进行，数据源新增、凭证配置和连接测试也在所属 Tab 内进行。报告列表从 Workspace 头部入口访问，
+固定 Build 阅读保持不变。报告编辑在所属 Tab 内进行，数据源新增、固定身份的配置编辑、凭证配置和连接测试也在所属 Tab 内进行。报告列表从 Workspace 头部入口访问，
 左下角不再保留报告快捷入口；列表仅显示报告标题、生成对话和更新时间，输入即筛选，固定按最近更新排序。
 列表标题右侧提供唯一刷新入口；报告正文标题右侧只显示短 Build 版本号和三点菜单，集中刷新、编辑、历史和下载。
 当前版本的编辑能力依据实际 current 指针核验，不依据地址是否含 Build；保存后在原位置展示新版本，详情见[报告 Tab 优化验收](report-tab-editing-acceptance.md)。
@@ -134,6 +135,11 @@ Agent 直接使用 Marivo：
 DSH Credentials 是凭证值权威，Marivo 的公开 description 与 resolver 是字段和使用契约。插件把原始引用
 映射到专属 DSH 地址，通过 stdin snapshot 和 `md.credential_scope` 注入；普通 Shell 不获得凭证值。
 
+`marivo_datasource_configure` 将新增/编辑请求绑定到原工具调用，并打开所属 Session 的右侧表单；
+配置由用户提交，成功测试后返回数据源身份，Agent 重新核验目标表后继续分析。取消、原调用结束或绑定变化不自动恢复。
+数据源配置页允许同页输入凭证并自动生成可确认、修改的引用名；配置 RPC 仅保存引用，值通过 Harness 凭证操作单独提交。请求说明折叠展示，新增与复用已有数据源采用显式切换，详见[数据源与凭证](modules/datasource-credentials.md)。
+配置编辑使用 Marivo 公开读取和 `md.register()`，保留 `ai_context` 与扩展字段，名称和引擎固定；
+保存前校验版本并串行处理插件内写入，不保证与外部编辑器的原子并发写。
 `marivo_datasource_test` 执行连接测试并同步管理页状态；`marivo_python` 在一次调用内等待全部 datasource
 就绪，核验身份并取得 fresh snapshot，再通过 DSH Shell 前台执行服务启动一次代码。配置齐全不附加测试，
 取消、轮换或 Workspace 变化终止旧准备，失败不重放。凭证不进入 Agent 参数、环境或 argv；输出在 Host

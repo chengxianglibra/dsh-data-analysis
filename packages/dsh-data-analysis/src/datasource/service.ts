@@ -4,7 +4,7 @@ import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credent
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { finishCleanup } from '../lifecycle.ts'
-import type { DatasourceCreateInput } from './authoring.ts'
+import type { DatasourceCreateInput, DatasourceUpdateInput } from './authoring.ts'
 import type {
   MarivoDatasourceBridgePort,
   MarivoDatasourceDescription,
@@ -40,9 +40,47 @@ export interface CredentialRequestView {
     | 'succeeded'
     | 'handed-off'
     | 'call-ended'
+    | 'cancelled'
     | 'context-changed'
   failure?: MarivoDatasourceTestResult
   endedAt?: number
+}
+export interface DatasourceConfigureInput {
+  mode: 'create' | 'edit'
+  name?: string
+  reason: string
+}
+export interface ConfigurationRequestView extends Omit<CredentialRequestView, 'context'> {
+  configuration: DatasourceConfigureInput
+  workspaceId: string
+  context?: CredentialContextView
+}
+interface PendingConfiguration {
+  view: ConfigurationRequestView
+  settled: boolean
+  controller: AbortController
+  exec: ToolExecution
+  resolve: () => Promise<MarivoDatasourceBridgePort>
+  fingerprint: string
+  sessionIdentity: string
+  signal: AbortSignal
+  finish: (value: ConfigurationResult) => void
+  stop: () => void
+}
+export interface ConfigurationResult {
+  status: 'ok' | 'failed' | 'cancelled' | 'call-ended' | 'context-changed' | 'needs-configuration'
+  name?: string
+  latency_ms?: number | null
+  failure?: MarivoDatasourceTestResult['failure']
+  repair?: MarivoDatasourceTestResult['repair']
+}
+function sessionIdentity(exec: ToolExecution): string {
+  const session = exec.agent!.session
+  return JSON.stringify([
+    session.id,
+    Reflect.get(session.header, 'workspaceId'),
+    session.header.cwd,
+  ])
 }
 export interface CredentialOperationView {
   id: string
@@ -112,6 +150,7 @@ export class MarivoCredentialService {
   readonly generation = randomUUID()
   readonly #store: CredentialStore
   readonly #contexts = new Map<string, BoundContext>()
+  readonly #configurations = new Map<string, PendingConfiguration>()
   readonly #requests = new Map<string, PendingRequest>()
   readonly #operations = new Map<string, CredentialOperationView>()
   readonly #controllers = new Map<string, AbortController>()
@@ -158,6 +197,9 @@ export class MarivoCredentialService {
     const now = this.now()
     for (const [id, op] of this.#operations)
       if (op.endedAt !== undefined && now - op.endedAt >= RETENTION) this.#operations.delete(id)
+    for (const [id, request] of this.#configurations)
+      if (request.view.endedAt !== undefined && now - request.view.endedAt >= RETENTION)
+        this.#configurations.delete(id)
     for (const [id, request] of this.#requests)
       if (request.view.endedAt !== undefined && now - request.view.endedAt >= RETENTION)
         this.#requests.delete(id)
@@ -237,7 +279,12 @@ export class MarivoCredentialService {
         throw new CredentialServiceError('credential-state-unavailable')
       }
     }
-    const history = this.#history.get(this.#historyKey(context))
+    const historyKey = this.#historyKey(context)
+    const previous = [...this.#history.entries()].reverse().find(([key]) => {
+      const [fingerprint, name] = JSON.parse(key)
+      return fingerprint === context.bridge.binding.fingerprint && name === context.description.name
+    })
+    const history = this.#history.get(historyKey) ?? previous?.[1]
     return {
       token: context.token,
       workspaceId: context.workspaceId,
@@ -253,7 +300,7 @@ export class MarivoCredentialService {
             lastTest: {
               at: history.at,
               result: history.result,
-              stale: history.version !== this.#version(context),
+              stale: !this.#history.has(historyKey) || history.version !== this.#version(context),
             },
           }
         : {}),
@@ -345,8 +392,188 @@ export class MarivoCredentialService {
       signal.throwIfAborted()
       const result = await bridge.create(input, signal)
       assert(!result.error && result.name, result.error ?? 'datasource-definition-invalid')
+      this.#changed()
       return { name: result.name }
     }, signal)
+  }
+  async updateDatasource(
+    generation: string,
+    fingerprint: string,
+    input: DatasourceUpdateInput,
+    resolve: () => Promise<MarivoDatasourceBridgePort>,
+    caller: AbortSignal,
+  ): Promise<{ name: string }> {
+    const signal = AbortSignal.any([caller, this.#lifetime.signal])
+    return this.#locked(async () => {
+      assert(generation === this.generation, 'context-changed')
+      const bridge = await resolve()
+      assert(bridge.binding.fingerprint === fingerprint, 'context-changed')
+      assert(bridge.update, 'datasource-authoring-unavailable')
+      assert(
+        ![...this.#operations.values()].some(
+          (op) =>
+            op.status === 'running' &&
+            this.#contexts.get(op.scope)?.bridge.binding.fingerprint === fingerprint &&
+            this.#contexts.get(op.scope)?.description.name === input.name,
+        ),
+        'operation-busy',
+      )
+      const result = await bridge.update(input, signal)
+      assert(!result.error && result.name, result.error ?? 'datasource-definition-invalid')
+      this.#changed()
+      return { name: result.name }
+    }, signal)
+  }
+  async configure(
+    exec: ToolExecution,
+    resolve: () => Promise<MarivoDatasourceBridgePort>,
+    input: DatasourceConfigureInput,
+  ): Promise<ConfigurationResult> {
+    assert(exec.agent, 'agent-required')
+    assert(
+      (input.mode === 'create' && input.name === undefined) ||
+        (input.mode === 'edit' &&
+          typeof input.name === 'string' &&
+          !!input.name.trim() &&
+          input.name.length <= 256),
+      'invalid-request',
+    )
+    assert(
+      typeof input.reason === 'string' && !!input.reason.trim() && input.reason.length <= 1000,
+      'invalid-request',
+    )
+    const agent = exec.agent
+    if (
+      this.interaction === 'none' ||
+      agent.session.header.origin === 'subagent' ||
+      (agent.session.header.delegationDepth ?? 0) > 0
+    )
+      return { status: 'needs-configuration', ...(input.name ? { name: input.name } : {}) }
+    const controller = new AbortController()
+    const signal = AbortSignal.any([this.executionSignal(exec.signal, agent), controller.signal])
+    const identity = sessionIdentity(exec)
+    const bridge = await resolve()
+    signal.throwIfAborted()
+    assert(identity === sessionIdentity(exec), 'context-changed')
+    this.#prune()
+    assert(this.#configurations.size < CAPACITY / 2, 'capacity-exceeded')
+    return new Promise<ConfigurationResult>((finish) => {
+      const id = randomUUID()
+      const request: PendingConfiguration = {
+        exec,
+        settled: false,
+        controller,
+        resolve,
+        fingerprint: bridge.binding.fingerprint,
+        sessionIdentity: identity,
+        signal,
+        finish,
+        view: {
+          id,
+          sessionId: agent.session.id,
+          workspaceId: String(Reflect.get(agent.session.header, 'workspaceId') ?? ''),
+          configuration: { ...input },
+          status: 'awaiting-input',
+        },
+        stop: () => signal.removeEventListener('abort', abort),
+      }
+      const abort = () => this.#endConfiguration(request, { status: 'call-ended' })
+      this.#configurations.set(id, request)
+      signal.addEventListener('abort', abort, { once: true })
+      if (signal.aborted) abort()
+      this.#changed()
+    })
+  }
+  #endConfiguration(request: PendingConfiguration, result: ConfigurationResult) {
+    if (request.settled) return
+    request.settled = true
+    request.view.endedAt = this.now()
+    request.view.status =
+      result.status === 'ok'
+        ? 'succeeded'
+        : result.status === 'failed'
+          ? 'handed-off'
+          : result.status === 'context-changed'
+            ? 'context-changed'
+            : result.status === 'cancelled'
+              ? 'cancelled'
+              : 'call-ended'
+    request.stop()
+    request.finish(result)
+    this.#changed()
+  }
+  async #configurationCurrent(request: PendingConfiguration, signal: AbortSignal) {
+    assert(request.view.endedAt === undefined && !request.signal.aborted, 'call-ended')
+    signal.throwIfAborted()
+    const bridge = await request.resolve()
+    assert(
+      bridge.binding.fingerprint === request.fingerprint &&
+        sessionIdentity(request.exec) === request.sessionIdentity,
+      'context-changed',
+    )
+    return bridge
+  }
+  async configurationRequest(
+    id: string,
+    workspaceId: string,
+    resolve: () => Promise<MarivoDatasourceBridgePort>,
+    caller: AbortSignal,
+  ): Promise<PendingConfiguration> {
+    const request = this.#configurations.get(id)
+    assert(request, 'call-ended')
+    const bridge = await this.#configurationCurrent(request, caller)
+    assert(
+      (!request.view.workspaceId || request.view.workspaceId === workspaceId) &&
+        (await resolve()).binding.fingerprint === bridge.binding.fingerprint,
+      'context-changed',
+    )
+    assert(request.view.status !== 'executing', 'operation-busy')
+    return request
+  }
+  async selectConfiguration(
+    id: string,
+    workspaceId: string,
+    name: string,
+    resolve: () => Promise<MarivoDatasourceBridgePort>,
+    caller: AbortSignal,
+  ): Promise<ConfigurationRequestView> {
+    const request = await this.configurationRequest(id, workspaceId, resolve, caller)
+    assert(
+      request.view.configuration.mode !== 'edit' || request.view.configuration.name === name,
+      'datasource-identity-fixed',
+    )
+    const signal = AbortSignal.any([caller, request.signal])
+    const context = await this.#bind(workspaceId, request.resolve, name, signal)
+    const view = await this.#view(context)
+    await this.#configurationCurrent(request, signal)
+    assert(request.view.status !== 'executing', 'operation-busy')
+    assert(this.#contexts.size < CAPACITY, 'capacity-exceeded')
+    this.#contexts.set(context.token, context)
+    request.view.context = view
+    request.view.status = 'awaiting-input'
+    delete request.view.failure
+    // Once a datasource is chosen, use the existing credential/test operation lifecycle.
+    const attached: PendingRequest = {
+      view: request.view as CredentialRequestView,
+      context,
+      exec: request.exec,
+      signal: request.signal,
+      stop: () => {},
+      finish: ({ result }) => {
+        this.#endConfiguration(request, {
+          status: result.ok ? 'ok' : 'failed',
+          name: result.name,
+          latency_ms: result.latency_ms,
+          ...(!result.ok ? { failure: result.failure, repair: result.repair } : {}),
+        })
+      },
+      reject: () => {
+        this.#endConfiguration(request, { status: 'context-changed' })
+      },
+    }
+    this.#requests.set(id, attached)
+    this.#changed()
+    return structuredClone(request.view)
   }
   #watchRefs(refs: readonly string[]): () => void {
     const unique = new Set(refs)
@@ -576,14 +803,22 @@ export class MarivoCredentialService {
   watch(
     sessionId: string,
     cursor?: string,
-  ): { generation: string; cursor: string; requests: CredentialRequestView[] } {
+  ): {
+    generation: string
+    cursor: string
+    requests: CredentialRequestView[]
+    configurationRequests: ConfigurationRequestView[]
+  } {
     this.#prune()
     void cursor
     return {
       generation: this.generation,
       cursor: `${this.generation}:${this.#revision}`,
-      requests: [...this.#requests.values()]
+      configurationRequests: [...this.#configurations.values()]
         .filter((r) => r.view.sessionId === sessionId)
+        .map((r) => structuredClone(r.view)),
+      requests: [...this.#requests.values()]
+        .filter((r) => r.view.sessionId === sessionId && !this.#configurations.has(r.view.id))
         .map((r) => structuredClone(r.view)),
     }
   }
@@ -607,6 +842,14 @@ export class MarivoCredentialService {
       })
     }
     signal.throwIfAborted()
+    for (const request of this.#configurations.values()) {
+      if (request.view.sessionId !== sessionId || request.view.endedAt !== undefined) continue
+      try {
+        await this.#configurationCurrent(request, signal)
+      } catch {
+        if (!signal.aborted) this.#endConfiguration(request, { status: 'context-changed' })
+      }
+    }
     for (const request of this.#requests.values()) {
       if (request.view.sessionId !== sessionId || request.view.endedAt !== undefined) continue
       const view = await this.#view(request.context)
@@ -654,7 +897,7 @@ export class MarivoCredentialService {
     assert(
       !input.requestId ||
         (request &&
-          request.context === context &&
+          request.context.token === context.token &&
           request.view.endedAt === undefined &&
           !request.signal.aborted),
       'call-ended',
@@ -739,6 +982,8 @@ export class MarivoCredentialService {
   ): Promise<void> {
     try {
       await this.#current(context, signal)
+      const configuration = request && this.#configurations.get(request.view.id)
+      if (configuration) await this.#configurationCurrent(configuration, signal)
       if (op.action === 'diagnose') {
         assert(request?.view.failure, 'no-test-failure')
         op.result = request.view.failure
@@ -775,6 +1020,8 @@ export class MarivoCredentialService {
           if (request && request.view.endedAt === undefined) {
             request.view.context = await this.#view(context)
             signal.throwIfAborted()
+            await this.#current(context, signal)
+            if (configuration) await this.#configurationCurrent(configuration, signal)
             assert(testedVersion === this.#version(context), 'credentials-changed')
             if (op.result.ok) {
               request.view.status = 'succeeded'
@@ -820,6 +1067,16 @@ export class MarivoCredentialService {
     this.#controllers.get(id)?.abort()
   }
   cancelRequest(id: string): void {
+    const configuration = this.#configurations.get(id)
+    if (configuration) {
+      assert(configuration.view.endedAt === undefined, 'call-ended')
+      for (const op of this.#operations.values())
+        if (op.scope === configuration.view.context?.token && op.status === 'running')
+          this.#controllers.get(op.id)?.abort()
+      this.#endConfiguration(configuration, { status: 'cancelled' })
+      configuration.controller.abort()
+      return
+    }
     const request = this.#requests.get(id)
     assert(request && request.view.endedAt === undefined && !request.signal.aborted, 'call-ended')
     request.exec.agent!.cancel({ kind: 'user' }, { keepInbox: true })

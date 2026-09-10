@@ -7,8 +7,8 @@ Workspace 绑定、管理页面、等待中的调用和单次执行注入。凭�
 `md.credential_scope(resolver)` 契约。
 
 在 DSH 会话标题旁点击“数据源”，打开该会话所属 Workspace 的原生右侧 Tab，不提供 Workspace 筛选项。
-数据源列表以横向卡片排列在内容上方，展示图标、名称、配置状态与进行中状态；标题右上角提供刷新图标。
-Tab 直接承载新增数据源、属性、凭证配置与连接测试，不再打开数据源弹出页。
+数据源列表以横向卡片排列在内容上方，展示图标、名称、配置状态与进行中状态；标题右上角依次提供新增和刷新图标。
+Tab 直接承载新增/编辑数据源、属性、凭证配置与连接测试，不再打开数据源弹出页。
 每个 Tab occurrence 拥有独立的选择、表单和操作查询；共享监听器只分发 Host 凭证待办，
 新待办及“等待配置凭证”入口打开所属会话的数据源 Tab。切换会话保留 Host Tab 状态；Workspace 绑定撤销时使旧页面失效。
 刷新不终止已提交操作的状态查询，操作句柄按会话及 occurrence 保存用于页面重载恢复；不保存未提交的输入值。
@@ -16,6 +16,8 @@ Tab 直接承载新增数据源、属性、凭证配置与连接测试，不再�
 无会话或空会话时 Harness 不显示会话标题，侧栏底部不保留入口。管理页不要求 live Agent，显示 datasource、
 引擎、连接属性、字段引用、是否配置、来源、是否可写和最近测试。连接属性只读展示公开 `md.describe()` 的
 `backend_type` 与 `literal_fields`，凭证字段使用 `env_refs` 独立展示；读取属性不解析 Harness 凭据。
+数据源名称右侧提供编辑配置图标，“连接状态”右侧提供测试连接图标；图标保留中文悬停提示和无障碍名称。
+“删除已保存值”和确认删除按钮使用浅红色背景，深色模式使用对应的深红底色。
 页面支持新增数据源，以及字段旁的“新增凭证”“确认更换”、删除和测试，不回显已保存的凭据值。替换与删除需要明确确认。
 管理页的新增和更换直接保存当前字段，不自动测试尚未配齐的凭证，也没有独立的“保存并验证”按钮；“测试连接”使用已保存值。
 等待中的调用使用“提交凭证并继续”保存整组输入并验证，成功后继续原调用。
@@ -27,21 +29,44 @@ Tab 直接承载新增数据源、属性、凭证配置与连接测试，不再�
 原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，
 不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
 
-## 新增数据源
+## 新增与编辑数据源
 
 表单通过 checked Runtime 读取公开 `md.DatasourceSpec` union 和各 Spec 的 dataclass 字段，展示引擎、必填项、默认值及说明。
-各字段说明与字段名称同行置于输入框上方，长说明和窄屏自然换行。
-插件不维护引擎注册表或连接字段 schema。`ai_context` 不在连接表单中编辑；复杂配置字段接受 JSON，`*_env` 接受引用名称。
-凭证字段标注“凭证引用名”，提供命名示例与实际值的填写入口。非法引用在执行 Python 和写入前拒绝，
+各字段说明与字段名称同行置于输入框上方，长说明和窄屏自然换行。当前 Runtime 的属性说明使用中文，字段标识保持原名；
+翻译仅按完整说明文本匹配，不改变字段契约。Runtime 新增或修改的未知说明保留原文，避免套用过期解释。
+插件不维护引擎注册表或连接字段 schema。`ai_context` 不在连接表单中编辑；复杂配置字段接受 JSON。连接凭证在同一表单直接填写，`*_env` 的引用名称由客户端生成，用户可展开确认或修改；
+JSON 凭证映射提供 Header 名称、值与引用名的逐项输入。值仅保留在当前表单内存。非法引用在执行 Python 和写入前拒绝，
 保留安全错误码 `datasource-credential-ref-invalid`，页面说明引用命名规则且不回显被拒绝的输入。
 点击“确认新增数据源”时 Host 重新解析 Workspace 并核对 generation 与 Runtime fingerprint，在串行写入区间内调用 `md.register(spec)`。
-Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增。表单不接受项目路径、Python 代码或凭证值，引用须符合 DSH 的命名限制。
-新增后刷新当前 Workspace 并选中新数据源，随后可填写凭证。此步骤不执行连接测试。
+Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增。配置 RPC 不接受项目路径、Python 代码或凭证值，引用须符合 DSH 的命名限制。
+普通管理入口保存配置后刷新当前 Workspace，选中新数据源并保存同页填写的凭证，随后可单独测试连接。
 新增请求不自动重放；响应未确认时提示先刷新核对。插件串行化自己的新增操作，同名检查与外部编辑器的同时写入不构成跨进程事务。
 已明确拒绝的非法引用、同名定义和过期上下文只提示修正原因，不附加“提交结果未确认”。
 
+数据源详情中的“编辑配置”回填当前 Runtime 字段，名称与引擎只读。配置快照包含版本；
+保存前重新读取并核对版本，经插件串行写入后调用 `md.register()`。`md.describe()` 的属性和引用、
+公开 Semantic Details 的 `context` 共同用于完整回填，保留 `extra`、HTTP header 引用与 `ai_context`；
+读取不完整时拒绝保存，不直接操作配置文件。修改引用不删除旧的 Harness 共享凭证。
+配置变化刷新打开的管理页并使旧测试失效；其他 Tab 的编辑草稿保留，陈旧提交须重新加载。
+此校验不构成与外部文件修改者之间的原子 compare-and-swap。
+
+配置请求通过同一 watch 通道的 `configurationRequests` 传递，尚未选择数据源时没有 context。
+`configuration`、`update-datasource`、`select-configuration` 补齐私有 RPC；选择或保存后重新绑定 context，
+沿用已有凭证操作及查询句柄。请求的 Workspace、Runtime 与 Session 身份在操作前和完成时核验。
+请求页使用“保存并测试，成功后继续”：先保存配置，再通过已有凭证 `start` 操作保存凭证并测试，失败不回滚；凭证不齐时仍可进入已有凭证表单。
+配置 RPC 始终只接受引用，不携带值；客户端提交后清空凭证输入，失败或离开页面后不重放秘密值。
+自动引用名包含数据源名、字段名与随机标识，不由凭证值派生。编辑时留空保留原引用，填写新值默认生成新引用；
+若用户手动指定已保存值的引用，阻止自动覆盖并引导至已有凭证页确认更新，不删除旧引用。
+请求说明默认折叠；新增流程与“使用已有数据源”通过显式切换区分，下拉框只在复用流程出现。
+只有本次配置与凭证版本的成功测试才能完成一次原调用。取消配置请求返回非成功结果，不创建后续任务。
+切换会话不抢占其他会话；Tab 关闭或重连可重新打开待办，原调用结束和 Host 重启不恢复旧任务。
+
 ## 工具与自动续接
 
+- `marivo_datasource_configure({ mode, name?, reason })`：`create` 打开新增页，也允许选择已有数据源；
+  `edit` 必须提供现有名称并直接打开编辑页。`reason` 为不含凭证的简短说明；工具不接受配置值。
+  Web 根 Agent 保持原调用等待，成功返回 `status: ok`、`name` 和连接耗时，随后核验目标表；
+  `failed`、`cancelled`、`call-ended`、`context-changed`、`needs-configuration` 均不是连接成功。
 - `marivo_datasource_test({ name })`：执行真实 `md.test()`，同步管理页的 `lastTest/stale`。
 - `marivo_python({ code, datasources, timeoutMs? })`：在本次调用内准备全部精确 datasource，再执行一次前台 Python。
   声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；完全不访问数据源时才传空列表，
@@ -158,3 +183,7 @@ npm run validate:credentials:web
 本次卡片交互调整见[验收记录](../acceptance/workspace-cards.md)。
 新增引用校验与数据源属性展示见[验收记录](../plan/2026-09-08-datasource-creation-properties-acceptance.md)。
 可配置前台预算、终态反馈及真实进程取消验证见[执行验收](../python-execution-budget-acceptance.md)。
+
+## 配置编辑与续接验收
+
+完整流程、验证命令及限制见[数据源配置请求与编辑验收](../datasource-configuration-acceptance.md)。

@@ -7,7 +7,9 @@ import type { MarivoCheckedRunner, MarivoEnvironmentBinding } from '../environme
 import {
   DATASOURCE_AUTHORING_PROGRAM,
   type DatasourceAuthoring,
+  type DatasourceConfiguration,
   type DatasourceCreateInput,
+  type DatasourceUpdateInput,
   datasourceAuthoringSchema,
 } from './authoring.ts'
 import {
@@ -103,6 +105,11 @@ export interface MarivoDatasourceBridgePort {
   authoring?(signal?: AbortSignal): Promise<DatasourceAuthoring>
   create?(
     input: DatasourceCreateInput,
+    signal?: AbortSignal,
+  ): Promise<{ name?: string; error?: string }>
+  configuration?(name: string, signal?: AbortSignal): Promise<DatasourceConfiguration>
+  update?(
+    input: DatasourceUpdateInput,
     signal?: AbortSignal,
   ): Promise<{ name?: string; error?: string }>
   describe(name: string, signal?: AbortSignal): Promise<MarivoDatasourceDescription>
@@ -355,8 +362,37 @@ export class MarivoDatasourceBridge {
     })
   }
 
+  async configuration(name: string, signal?: AbortSignal): Promise<DatasourceConfiguration> {
+    const result = await this.#runner.runChecked({
+      program: DATASOURCE_AUTHORING_PROGRAM,
+      stdin: JSON.stringify({ action: 'read', name }),
+      limits: DATASOURCE_LIMITS,
+      signal,
+    })
+    this.#assertSuccess(result, 'inventory')
+    const value = parseJsonObject(result.stdout, 'inventory')
+    if (
+      value.name !== name ||
+      typeof value.backend !== 'string' ||
+      typeof value.version !== 'string' ||
+      !object(value.fields) ||
+      !jsonValue(value.fields)
+    )
+      throw new Error('Datasource configuration cannot be read completely')
+    return value as unknown as DatasourceConfiguration
+  }
+  async update(input: DatasourceUpdateInput, signal?: AbortSignal) {
+    return this.#write(input, 'update', signal)
+  }
   async create(
     input: DatasourceCreateInput,
+    signal?: AbortSignal,
+  ): Promise<{ name?: string; error?: string }> {
+    return this.#write(input, 'create', signal)
+  }
+  async #write(
+    input: DatasourceCreateInput | DatasourceUpdateInput,
+    action: 'create' | 'update',
     signal?: AbortSignal,
   ): Promise<{ name?: string; error?: string }> {
     const refs = Object.entries(input.fields)
@@ -383,7 +419,7 @@ export class MarivoDatasourceBridge {
     }
     const result = await this.#runner.runChecked({
       program: DATASOURCE_AUTHORING_PROGRAM,
-      stdin: JSON.stringify({ action: 'create', ...input, refs }),
+      stdin: JSON.stringify({ action, ...input, refs }),
       limits: DATASOURCE_LIMITS,
       signal,
     })
@@ -391,7 +427,10 @@ export class MarivoDatasourceBridge {
     const value = parseJsonObject(result.stdout, 'inventory')
     if (
       value.error === 'datasource-already-exists' ||
-      value.error === 'datasource-definition-invalid'
+      value.error === 'datasource-definition-invalid' ||
+      value.error === 'datasource-config-changed' ||
+      value.error === 'datasource-identity-fixed' ||
+      value.error === 'context-changed'
     )
       return { error: value.error }
     if (typeof value.name !== 'string') throw new Error('Invalid datasource creation result')

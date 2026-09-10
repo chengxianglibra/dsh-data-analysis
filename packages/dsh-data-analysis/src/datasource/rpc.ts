@@ -28,6 +28,9 @@ export function registerCredentialRpc(
       'overview',
       'authoring',
       'create-datasource',
+      'configuration',
+      'update-datasource',
+      'select-configuration',
       'watch',
       'start',
       'operation',
@@ -54,24 +57,91 @@ export function registerCredentialRpc(
           const bridge = await workspace(input.workspaceId)
           if (!bridge.authoring) throw new Error('authoring-unavailable')
           value = { generation: service.generation, ...(await bridge.authoring(signal)) }
-        } else if (endpoint === 'create-datasource') {
+        } else if (endpoint === 'configuration') {
+          const input = z.object({ workspaceId: text, name: text }).strict().parse(payload)
+          const bridge = await workspace(input.workspaceId)
+          if (!bridge.configuration) throw new Error('authoring-unavailable')
+          value = await bridge.configuration(input.name, signal)
+        } else if (endpoint === 'select-configuration') {
+          const input = z
+            .object({ workspaceId: text, requestId: z.string().uuid(), name: text })
+            .strict()
+            .parse(payload)
+          value = await service.selectConfiguration(
+            input.requestId,
+            input.workspaceId,
+            input.name,
+            () => workspace(input.workspaceId),
+            signal,
+          )
+        } else if (endpoint === 'create-datasource' || endpoint === 'update-datasource') {
           const input = z
             .object({
               workspaceId: text,
               generation: z.string().uuid(),
               fingerprint: z.string().min(1).max(256),
               backend: text,
+              name: text.optional(),
+              version: text.optional(),
+              requestId: z.string().uuid().optional(),
               fields: z.record(text, z.unknown()),
             })
             .strict()
             .parse(payload)
-          value = await service.createDatasource(
-            input.generation,
-            input.fingerprint,
-            input,
-            () => workspace(input.workspaceId),
-            signal,
-          )
+          const request = input.requestId
+            ? await service.configurationRequest(
+                input.requestId,
+                input.workspaceId,
+                () => workspace(input.workspaceId),
+                signal,
+              )
+            : undefined
+          const operationSignal = request ? AbortSignal.any([signal, request.signal]) : signal
+          const resolve = async () => {
+            if (input.requestId)
+              await service.configurationRequest(
+                input.requestId,
+                input.workspaceId,
+                () => workspace(input.workspaceId),
+                operationSignal,
+              )
+            return workspace(input.workspaceId)
+          }
+          if (endpoint === 'update-datasource') {
+            const { name, version } = z.object({ name: text, version: text }).parse(input)
+            if (
+              request?.view.configuration.mode === 'edit' &&
+              request.view.configuration.name !== name
+            )
+              throw new Error('invalid-request')
+            value = await service.updateDatasource(
+              input.generation,
+              input.fingerprint,
+              { backend: input.backend, fields: input.fields, name, version },
+              resolve,
+              operationSignal,
+            )
+          } else {
+            if (input.name || input.version || request?.view.configuration.mode === 'edit')
+              throw new Error('invalid-request')
+            value = await service.createDatasource(
+              input.generation,
+              input.fingerprint,
+              { backend: input.backend, fields: input.fields },
+              resolve,
+              operationSignal,
+            )
+          }
+          if (input.requestId) {
+            const configured = await service.selectConfiguration(
+              input.requestId,
+              input.workspaceId,
+              (value as { name: string }).name,
+              () => workspace(input.workspaceId),
+              operationSignal,
+            )
+            value = { ...(value as { name: string }), request: configured }
+          }
         } else if (endpoint === 'watch') {
           const input = z
             .object({ sessionId: text, cursor: z.string().max(256).optional() })

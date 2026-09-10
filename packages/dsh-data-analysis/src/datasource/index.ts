@@ -1,3 +1,4 @@
+export type { DatasourceConfiguration, DatasourceUpdateInput } from './authoring.ts'
 export type {
   MarivoDatasourceBridgePort,
   MarivoDatasourceBridgeSource,
@@ -13,9 +14,19 @@ export {
   resolveMarivoDatasourceBridge,
   resolveMarivoDatasourceInventoryBridge,
 } from './bridge.ts'
+export {
+  createMarivoDatasourceConfigureTool,
+  MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
+  registerMarivoDatasourceConfigureTool,
+} from './configure.ts'
 export type { MarivoPythonExecutionSummary } from './python.ts'
 export { MarivoPythonExecutionError, registerMarivoPythonTool } from './python.ts'
 export type { MarivoPythonOptions } from './python-options.ts'
+export type {
+  ConfigurationRequestView,
+  ConfigurationResult,
+  DatasourceConfigureInput,
+} from './service.ts'
 export { MarivoCredentialService } from './service.ts'
 export {
   assertMarivoCredentialReferences,

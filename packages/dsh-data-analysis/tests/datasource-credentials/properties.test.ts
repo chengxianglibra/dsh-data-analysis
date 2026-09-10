@@ -231,6 +231,6 @@ test('credential-free datasources retain properties and connection testing', asy
   assert.match(html, /<dd>duckdb<\/dd>/)
   assert.match(html, /:memory:/)
   assert.match(html, /该数据源没有凭证引用，可直接测试连接/)
-  assert.match(html, />测试连接<\/button>/)
+  assert.match(html, /aria-label="测试连接"/)
   assert.deepEqual(f.store.calls, { resolve: 0, set: 0, unset: 0 })
 })

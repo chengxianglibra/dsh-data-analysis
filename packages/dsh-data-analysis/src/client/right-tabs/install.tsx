@@ -2,7 +2,7 @@
 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { CredentialIcon, CredentialPanel, installCredentials } from '../credentials/install.tsx'
+import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
 import { appendPresentationContext } from '../presentation/ask-dsh.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
@@ -208,7 +208,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
     const catalog = useSyncExternalStore(page.catalog.subscribe, page.catalog.getSnapshot)
-    const data = useSyncExternalStore(page.datasources.subscribe, page.datasources.getSnapshot)
     const open = (target) => act(page, () => navigate(page.sessionId, target, tab.actions))
     const source = (ref) =>
       navigate(
@@ -243,22 +242,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           <p role="alert">{state.error}</p>
         ) : (
           <>
-            {page.target.kind !== 'report' && page.target.kind !== 'semantic' && (
+            {page.target.kind === 'reports' && (
               <>
                 <div className="rt-heading-row">
                   <h2 className="rt-heading">{labels[page.target.kind]}</h2>
-                  {page.target.kind === 'datasources' && (
-                    <button
-                      className="rt-refresh"
-                      type="button"
-                      aria-label="刷新数据源"
-                      title="刷新数据源"
-                      disabled={data.loading}
-                      onClick={() => void page.refresh()}
-                    >
-                      <CredentialIcon name="refresh" size={18} />
-                    </button>
-                  )}
                   {page.target.kind === 'reports' && (
                     <button
                       type="button"
@@ -301,7 +288,11 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               />
             )}
             {page.target.kind === 'datasources' && (
-              <CredentialPanel model={page.datasources} workspaces={workspaces} />
+              <CredentialPanel
+                model={page.datasources}
+                workspaces={workspaces}
+                onRefresh={() => void page.refresh()}
+              />
             )}
             {page.target.kind === 'report' && (
               <>

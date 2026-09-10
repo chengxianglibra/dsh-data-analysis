@@ -4,6 +4,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MarivoDisclosureController, MarivoSkillName } from './activation.ts'
 
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
+  'When a requested table has no usable configured datasource, call marivo_datasource_configure with mode=create and a brief reason. For a datasource needing connection configuration repair, use mode=edit and its exact name. The user configures it in the owning Web right tab; do not request secrets in chat or write connection configuration on the user behalf. Only status=ok allows continuing: rediscover the datasource and verify the requested table and read access before analysis. Other statuses are not connection success. A provided local file may be analyzed directly when appropriate; do not invent a remote datasource requirement.',
   'DSH Credentials owns Marivo datasource secrets. Never request values in chat, read credential files or ~/.marivo/secrets.toml, or write secrets to scripts, arguments, environment variables, reports or logs.',
   'Use marivo_datasource_test after datasource changes, credential rotation, connection failures, or explicit user requests. Missing credentials wait for the Web form only while the original call remains alive.',
   'Execute analysis, metadata inspection and semantic data reads through marivo_python. Declare all exact datasource names this execution may access, including datasources without passwords. Use datasources: [] only when no datasource will be accessed.',

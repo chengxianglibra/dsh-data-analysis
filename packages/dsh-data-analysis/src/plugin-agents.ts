@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
+import { registerMarivoDatasourceConfigureTool } from './datasource/configure.ts'
 import { registerMarivoPythonTool } from './datasource/python.ts'
 import { type MarivoPythonOptions, resolvePythonOptions } from './datasource/python-options.ts'
 import { type CredentialStore, MarivoCredentialService } from './datasource/service.ts'
@@ -124,6 +125,9 @@ export function createMarivoAgentInstallation(
       controller.addDisposer(installMarivoExecutionGuidance(agent, controller))
       controller.addDisposer(
         registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
+      )
+      controller.addDisposer(
+        registerMarivoDatasourceConfigureTool(agent.ctx, datasourceSource, credentialService),
       )
       controller.addDisposer(
         registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService, pythonOptions),
