@@ -14,11 +14,11 @@ interface Arguments {
   projectRoot: string
   pythonExecutable?: string
   runtimeRoot?: string
-  uvExecutable?: string
+  bootstrapPythonExecutable?: string
 }
 
 function usage(): string {
-  return `Usage: dsh-data-analysis-env [--project-root PATH] [--python PATH] [--runtime-root PATH] [--uv PATH]
+  return `Usage: dsh-data-analysis-env [--project-root PATH] [--python PATH] [--runtime-root PATH] [--bootstrap-python PATH]
 
 Ensures the shared pinned Marivo and presentation-kit Runtime, initializes the minimal
 Workspace layout, and checks the exact interpreter, import identities, and doctor
@@ -38,7 +38,7 @@ function parseArguments(argv: readonly string[]): Arguments | 'help' {
     process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? process.env.DSH_CWD ?? process.cwd()
   let pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
   let runtimeRoot = process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
-  let uvExecutable = process.env.DSH_DATA_ANALYSIS_UV
+  let bootstrapPythonExecutable = process.env.DSH_DATA_ANALYSIS_BOOTSTRAP_PYTHON
   for (let index = 0; index < argv.length; index++) {
     const option = argv[index]
     if (option === '--help' || option === '-h') return 'help'
@@ -57,8 +57,8 @@ function parseArguments(argv: readonly string[]): Arguments | 'help' {
       index++
       continue
     }
-    if (option === '--uv') {
-      uvExecutable = requireValue(argv, index, option)
+    if (option === '--bootstrap-python') {
+      bootstrapPythonExecutable = requireValue(argv, index, option)
       index++
       continue
     }
@@ -68,7 +68,7 @@ function parseArguments(argv: readonly string[]): Arguments | 'help' {
     projectRoot,
     ...(pythonExecutable === undefined ? {} : { pythonExecutable }),
     ...(runtimeRoot === undefined ? {} : { runtimeRoot }),
-    ...(uvExecutable === undefined ? {} : { uvExecutable }),
+    ...(bootstrapPythonExecutable === undefined ? {} : { bootstrapPythonExecutable }),
   }
 }
 
@@ -88,7 +88,9 @@ async function main(argv: readonly string[]): Promise<number> {
     const runtime = await ensureSharedMarivoRuntime({
       ...(args.pythonExecutable === undefined ? {} : { pythonExecutable: args.pythonExecutable }),
       ...(args.runtimeRoot === undefined ? {} : { runtimeRoot: args.runtimeRoot }),
-      ...(args.uvExecutable === undefined ? {} : { uvExecutable: args.uvExecutable }),
+      ...(args.bootstrapPythonExecutable === undefined
+        ? {}
+        : { bootstrapPythonExecutable: args.bootstrapPythonExecutable }),
     })
     const manager = new MarivoWorkspaceEnvironmentManager(runtime)
     const environment = await manager.resolve(args.projectRoot)

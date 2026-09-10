@@ -8,7 +8,8 @@ export interface MarivoEnvironmentConfig {
 export interface SharedMarivoRuntimeConfig {
   runtimeRoot?: string
   pythonExecutable?: string
-  uvExecutable?: string
+  /** Absolute local Python for venv creation; defaults to python3 (Windows: python). */
+  bootstrapPythonExecutable?: string
   installTimeoutMs?: number
 }
 

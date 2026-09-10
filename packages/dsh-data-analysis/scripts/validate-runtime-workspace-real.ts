@@ -38,7 +38,7 @@ try {
   const administrator = await ensureSharedMarivoRuntime({
     runtimeRoot: path.join(validationRoot, 'administrator-runtime'),
     pythonExecutable: runtime.pythonExecutable,
-    uvExecutable: path.join(validationRoot, 'must-not-run-uv'),
+    bootstrapPythonExecutable: path.join(validationRoot, 'must-not-run-bootstrap-python'),
   })
   assert.equal(administrator.pythonExecutable, runtime.pythonExecutable)
   assert.equal(administrator.presentationKitPackagePath, runtime.presentationKitPackagePath)
@@ -118,7 +118,7 @@ print(json.dumps(asdict(receipt)))
       {
         runtimeRoot: shadowAdministratorRoot,
         pythonExecutable: runtime.pythonExecutable,
-        uvExecutable: path.join(validationRoot, 'must-not-run-uv'),
+        bootstrapPythonExecutable: path.join(validationRoot, 'must-not-run-bootstrap-python'),
       },
       { environment: { ...process.env, PYTHONPATH: firstWorkspace } },
     ),
@@ -142,7 +142,7 @@ print(json.dumps(asdict(receipt)))
         emptyPythonRoot,
         process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
       ),
-      uvExecutable: path.join(validationRoot, 'must-not-run-uv'),
+      bootstrapPythonExecutable: path.join(validationRoot, 'must-not-run-bootstrap-python'),
     }),
     (error: unknown) =>
       error instanceof MarivoEnvironmentError &&

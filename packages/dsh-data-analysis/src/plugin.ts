@@ -74,8 +74,8 @@ export interface Config extends MarivoPythonOptions {
   readonly pythonExecutable?: string
   /** Shared Runtime root; defaults below $DSH_HOME. */
   readonly runtimeRoot?: string
-  /** Local uv executable; an explicit value must be absolute. */
-  readonly uvExecutable?: string
+  /** Local Python used to create the managed venv; an explicit value must be absolute. */
+  readonly bootstrapPythonExecutable?: string
   /** Maximum time for installation and lock acquisition. */
   readonly installTimeoutMs?: number
 }
@@ -88,7 +88,7 @@ export const Config: z<Config> = z.object({
   projectRoot: z.string(),
   pythonExecutable: z.string(),
   runtimeRoot: z.string(),
-  uvExecutable: z.string(),
+  bootstrapPythonExecutable: z.string(),
   installTimeoutMs: z.number().default(DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS),
 })
 
@@ -107,11 +107,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
   const pythonOptions = resolvePythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
-  const uvExecutable = config.uvExecutable ?? process.env.DSH_DATA_ANALYSIS_UV
+  const bootstrapPythonExecutable =
+    config.bootstrapPythonExecutable ?? process.env.DSH_DATA_ANALYSIS_BOOTSTRAP_PYTHON
   const runtime = await ensureSharedMarivoRuntime({
     ...(pythonExecutable === undefined ? {} : { pythonExecutable }),
     ...(runtimeRoot === undefined ? {} : { runtimeRoot }),
-    ...(uvExecutable === undefined ? {} : { uvExecutable }),
+    ...(bootstrapPythonExecutable === undefined ? {} : { bootstrapPythonExecutable }),
     ...(config.installTimeoutMs === undefined ? {} : { installTimeoutMs: config.installTimeoutMs }),
   })
   const disposeRuntimeShellEnvironment = registerMarivoRuntimeShellEnvironment(

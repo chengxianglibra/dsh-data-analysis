@@ -12,46 +12,32 @@ import {
 
 const FIXTURE_MARIVO_VERSION = '0.5.4'
 
-const FAKE_UV = String.raw`#!/usr/bin/env node
-import { appendFileSync, chmodSync, copyFileSync, mkdirSync } from 'node:fs'
-import path from 'node:path'
-import process from 'node:process'
-
-const args = process.argv.slice(2)
-appendFileSync(process.env.UV_RECORD, JSON.stringify(args) + '\n')
-if (args[0] === 'python' && args[1] === 'install') process.exit(0)
-if (args[0] === 'python' && args[1] === 'find') {
-  process.stdout.write(process.env.MANAGED_PYTHON + '\n')
-  process.exit(0)
-}
-if (args[0] === 'venv') {
-  const target = path.resolve(args.at(-1))
-  const executable = path.join(target, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
-  mkdirSync(path.dirname(executable), { recursive: true })
-  copyFileSync(process.env.FAKE_PYTHON_SOURCE, executable)
-  chmodSync(executable, 0o755)
-  process.exit(0)
-}
-if (args[0] === 'pip' && args[1] === 'install') {
-  if (process.env.FAIL_PIP === '1') process.exit(17)
-  process.exit(0)
-}
-process.stderr.write('unsupported uv invocation: ' + JSON.stringify(args))
-process.exit(2)
-`
-
 function fakePython(packagePath: string): string {
   return `#!/usr/bin/env node
 import path from 'node:path'
 import process from 'node:process'
+import { appendFileSync, chmodSync, copyFileSync, mkdirSync } from 'node:fs'
 
 const args = process.argv.slice(2)
+if (args[0] === '-m') {
+  appendFileSync(process.env.PYTHON_RECORD, JSON.stringify(args.slice(1)) + '\\n')
+  if (args[1] === 'venv') {
+    if (process.env.FAIL_VENV === '1') process.exit(18)
+    const executable = path.join(args[2], process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+    mkdirSync(path.dirname(executable), { recursive: true })
+    copyFileSync(process.env.FAKE_PYTHON_SOURCE, executable)
+    chmodSync(executable, 0o755)
+    process.exit(0)
+  }
+  if (args[1] === 'pip' && args[2] === 'install') process.exit(process.env.FAIL_PIP === '1' ? 17 : 0)
+  process.exit(2)
+}
 const script = args[1] ?? ''
 if (args[0] !== '-c') process.exit(2)
 if (script.includes('sys.version_info')) {
   process.stdout.write(JSON.stringify({
     python_executable: path.resolve(process.argv[1]),
-    version: [3, 10, 14],
+    version: JSON.parse(process.env.PYTHON_VERSION ?? '[3, 10, 14]'),
     prefix: path.dirname(path.resolve(process.argv[1])),
   }))
 } else if (script.includes('import marivo')) {
@@ -59,6 +45,10 @@ if (script.includes('sys.version_info')) {
       !script.includes('dsh_data_analysis_presentation.write_dataset') ||
       !script.includes('presentation_distribution.version') ||
       script.includes('dsh_data_analysis_report')) process.exit(29)
+  if (script.includes('import ibis.backends.duckdb') && process.env.DUCKDB_MISSING === '1') {
+    process.stderr.write('No module named duckdb')
+    process.exit(24)
+  }
   if (process.env.PROBE_FAIL === '1') {
     process.stderr.write('fixture import failed')
     process.exit(23)
@@ -87,7 +77,7 @@ interface RuntimeFixture {
   packagePath: string
   runtimeRoot: string
   failedRuntimeRoot: string
-  uv: string
+  bootstrapPython: string
   environment: NodeJS.ProcessEnv
   recordPath: string
   wheel: string
@@ -98,10 +88,9 @@ async function fixture(): Promise<RuntimeFixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-shared-runtime-'))
   const runtimeRoot = path.join(root, 'runtime')
   const failedRuntimeRoot = path.join(root, 'failed-runtime')
-  const uv = path.join(root, 'uv')
   const managedPython = path.join(root, 'managed-python')
   const fakePythonSource = path.join(root, 'fake-python')
-  const recordPath = path.join(root, 'uv.jsonl')
+  const recordPath = path.join(root, 'python.jsonl')
   const packagePath = path.join(root, 'site-packages', 'marivo', '__init__.py')
   const presentationKitPackagePath = path.join(
     root,
@@ -123,10 +112,8 @@ async function fixture(): Promise<RuntimeFixture> {
       `---\nname: ${skill}\ndescription: fixture\n---\n`,
     )
   }
-  await writeFile(uv, FAKE_UV)
   await writeFile(managedPython, fakePython(packagePath))
   await writeFile(fakePythonSource, fakePython(packagePath))
-  await chmod(uv, 0o755)
   await chmod(managedPython, 0o755)
   await chmod(fakePythonSource, 0o755)
   return {
@@ -134,12 +121,12 @@ async function fixture(): Promise<RuntimeFixture> {
     packagePath,
     runtimeRoot,
     failedRuntimeRoot,
-    uv,
+    bootstrapPython: managedPython,
     recordPath,
     wheel,
     environment: {
       PATH: process.env.PATH,
-      UV_RECORD: recordPath,
+      PYTHON_RECORD: recordPath,
       MANAGED_PYTHON: managedPython,
       FAKE_PYTHON_SOURCE: fakePythonSource,
       PRESENTATION_KIT_PACKAGE_PATH: presentationKitPackagePath,
@@ -170,7 +157,11 @@ test('shared Runtime rejects a Marivo Skill whose frontmatter name does not matc
 
   await assert.rejects(
     ensureSharedMarivoRuntime(
-      { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 },
+      {
+        runtimeRoot: item.runtimeRoot,
+        bootstrapPythonExecutable: item.bootstrapPython,
+        installTimeoutMs: 10_000,
+      },
       runtimeOptions(item),
     ),
     (error: unknown) =>
@@ -183,7 +174,11 @@ test('shared Runtime rejects a Marivo Skill whose frontmatter name does not matc
 test('concurrent first starts install one pinned shared Runtime and later reuse its marker', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const config = {
+    runtimeRoot: item.runtimeRoot,
+    bootstrapPythonExecutable: item.bootstrapPython,
+    installTimeoutMs: 10_000,
+  }
   const [first, second] = await Promise.all([
     ensureSharedMarivoRuntime(config, runtimeOptions(item, item.environment, 5)),
     ensureSharedMarivoRuntime(config, runtimeOptions(item, item.environment, 5)),
@@ -223,7 +218,11 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
 test('a managed Runtime on another Marivo version is rebuilt to the pinned version', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const config = {
+    runtimeRoot: item.runtimeRoot,
+    bootstrapPythonExecutable: item.bootstrapPython,
+    installTimeoutMs: 10_000,
+  }
   const initial = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
   const marker = JSON.parse(await readFile(initial.installationPath, 'utf8')) as Record<
     string,
@@ -249,7 +248,11 @@ test('a managed Runtime on another Marivo version is rebuilt to the pinned versi
 test('a managed Runtime with presentation kit 1.0.0 is rebuilt once for the new helper API', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const config = {
+    runtimeRoot: item.runtimeRoot,
+    bootstrapPythonExecutable: item.bootstrapPython,
+    installTimeoutMs: 10_000,
+  }
   const initial = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
   const marker = JSON.parse(await readFile(initial.installationPath, 'utf8')) as Record<
     string,
@@ -284,7 +287,11 @@ test('a managed Runtime with presentation kit 1.0.0 is rebuilt once for the new 
 test('an unsupported marker is discarded instead of migrated or reused', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const config = {
+    runtimeRoot: item.runtimeRoot,
+    bootstrapPythonExecutable: item.bootstrapPython,
+    installTimeoutMs: 10_000,
+  }
   const first = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
   const marker = JSON.parse(await readFile(first.installationPath, 'utf8')) as Record<
     string,
@@ -312,7 +319,11 @@ test('an unsupported marker is discarded instead of migrated or reused', async (
 test('a corrupt v3 marker is rebuilt instead of partially trusted', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 }
+  const config = {
+    runtimeRoot: item.runtimeRoot,
+    bootstrapPythonExecutable: item.bootstrapPython,
+    installTimeoutMs: 10_000,
+  }
   const first = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
   await writeFile(first.installationPath, '{not-json\n')
 
@@ -335,7 +346,11 @@ test('failed installation never publishes installation.json', async (t) => {
   t.after(item.cleanup)
   await assert.rejects(
     ensureSharedMarivoRuntime(
-      { runtimeRoot: item.failedRuntimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 },
+      {
+        runtimeRoot: item.failedRuntimeRoot,
+        bootstrapPythonExecutable: item.bootstrapPython,
+        installTimeoutMs: 10_000,
+      },
       runtimeOptions(item, { ...item.environment, FAIL_PIP: '1' }),
     ),
     (error: unknown) =>
@@ -345,7 +360,11 @@ test('failed installation never publishes installation.json', async (t) => {
     code: 'ENOENT',
   })
   const recovered = await ensureSharedMarivoRuntime(
-    { runtimeRoot: item.failedRuntimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 },
+    {
+      runtimeRoot: item.failedRuntimeRoot,
+      bootstrapPythonExecutable: item.bootstrapPython,
+      installTimeoutMs: 10_000,
+    },
     runtimeOptions(item),
   )
   await stat(recovered.installationPath)
@@ -429,7 +448,11 @@ test('managed Runtime rejects a missing bundled wheel before publishing a marker
   await rm(missing)
   await assert.rejects(
     ensureSharedMarivoRuntime(
-      { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv, installTimeoutMs: 10_000 },
+      {
+        runtimeRoot: item.runtimeRoot,
+        bootstrapPythonExecutable: item.bootstrapPython,
+        installTimeoutMs: 10_000,
+      },
       { ...runtimeOptions(item), presentationKitWheelPath: missing },
     ),
     (error: unknown) =>
@@ -447,7 +470,7 @@ test('managed Runtime rejects a differently named wheel before installing Python
   t.after(item.cleanup)
   await assert.rejects(
     ensureSharedMarivoRuntime(
-      { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv },
+      { runtimeRoot: item.runtimeRoot, bootstrapPythonExecutable: item.bootstrapPython },
       { ...runtimeOptions(item), presentationKitWheelPath: path.join(item.root, 'wrong.whl') },
     ),
     (error: unknown) =>
@@ -477,7 +500,7 @@ for (const [name, override, code] of [
     t.after(item.cleanup)
     await assert.rejects(
       ensureSharedMarivoRuntime(
-        { runtimeRoot: item.runtimeRoot, uvExecutable: item.uv },
+        { runtimeRoot: item.runtimeRoot, bootstrapPythonExecutable: item.bootstrapPython },
         runtimeOptions(item, { ...item.environment, ...override }),
       ),
       (error: unknown) => error instanceof MarivoEnvironmentError && error.code === code,
@@ -488,7 +511,7 @@ for (const [name, override, code] of [
       .map((line) => JSON.parse(line) as string[])
     assert.equal(calls.filter((args) => args[0] === 'venv').length, 1)
     assert.equal(calls.filter((args) => args[0] === 'pip').length, 2)
-    assert.equal(calls.filter((args) => args[0] === 'python' && args[1] === 'find').length, 1)
+    assert.ok(calls.every((args) => args[0] === 'venv' || args[0] === 'pip'))
     await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
       code: 'ENOENT',
     })
@@ -521,5 +544,88 @@ for (const [name, override, code] of [
     await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
       code: 'ENOENT',
     })
+  })
+}
+
+for (const version of [[3, 9, 20], [2, 7, 18], [], [3, '10', 0]]) {
+  test(`bootstrap Python ${JSON.stringify(version)} is rejected before venv or pip`, async (t) => {
+    const item = await fixture()
+    t.after(item.cleanup)
+    await assert.rejects(
+      ensureSharedMarivoRuntime(
+        { runtimeRoot: item.runtimeRoot, bootstrapPythonExecutable: item.bootstrapPython },
+        runtimeOptions(item, { ...item.environment, PYTHON_VERSION: JSON.stringify(version) }),
+      ),
+      /Local Python does not satisfy Marivo >=3.10/,
+    )
+    await assert.rejects(() => stat(item.recordPath), { code: 'ENOENT' })
+    await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
+      code: 'ENOENT',
+    })
+  })
+}
+
+test('missing bootstrap Python gives actionable guidance without fallback', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  await assert.rejects(
+    ensureSharedMarivoRuntime(
+      {
+        runtimeRoot: item.runtimeRoot,
+        bootstrapPythonExecutable: path.join(item.root, 'missing-python'),
+      },
+      runtimeOptions(item),
+    ),
+    /Install Python 3.10\+ with venv\/ensurepip/,
+  )
+  await assert.rejects(() => stat(item.recordPath), { code: 'ENOENT' })
+})
+
+test('missing venv stops before pip and never publishes a marker', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  await assert.rejects(
+    ensureSharedMarivoRuntime(
+      { runtimeRoot: item.runtimeRoot, bootstrapPythonExecutable: item.bootstrapPython },
+      runtimeOptions(item, { ...item.environment, FAIL_VENV: '1' }),
+    ),
+    /requires Python venv\/ensurepip/,
+  )
+  const calls = (await readFile(item.recordPath, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as string[])
+  assert.deepEqual(
+    calls.map((args) => args[0]),
+    ['venv'],
+  )
+  await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
+    code: 'ENOENT',
+  })
+})
+
+for (const administrator of [false, true]) {
+  test(`missing DuckDB backend rejects ${administrator ? 'administrator' : 'managed'} Runtime`, async (t) => {
+    const item = await fixture()
+    t.after(item.cleanup)
+    await assert.rejects(
+      ensureSharedMarivoRuntime(
+        {
+          runtimeRoot: item.runtimeRoot,
+          ...(administrator
+            ? { pythonExecutable: item.bootstrapPython }
+            : { bootstrapPythonExecutable: item.bootstrapPython }),
+        },
+        runtimeOptions(item, { ...item.environment, DUCKDB_MISSING: '1' }),
+      ),
+      (error: unknown) =>
+        error instanceof MarivoEnvironmentError &&
+        error.code ===
+          (administrator ? 'shared-runtime-package-unavailable' : 'shared-runtime-install-failed'),
+    )
+    await assert.rejects(() => stat(path.join(item.runtimeRoot, 'installation.json')), {
+      code: 'ENOENT',
+    })
+    if (administrator) await assert.rejects(() => stat(item.recordPath), { code: 'ENOENT' })
   })
 }

@@ -13,9 +13,9 @@
 - Node.js `^22.19.0 || >=24.0.0`，与 DeepSeek Harness 一致：22.x 需至少 22.19.0，或使用 24.0.0 及以上版本；不支持 23.x。
 - 已安装并配置好 DeepSeek Harness `^0.1.5-alpha.1`（当前实际验收版本为 `0.1.5-alpha.1`）。
 - `pnpm` 可在命令行中使用，供 Harness 安装插件。
-- 已安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)，并可在命令行中运行 `uv`。
+- 已安装 Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 
-默认安装方式会在首次启动时自动准备 Python 和 Marivo，无需单独安装。
+默认安装方式会在首次启动时使用本机 Python 创建独立的虚拟环境，并通过 pip 安装 Marivo，无需预装 Marivo 或 uv。
 首次启动需要联网下载依赖，请等待环境准备完成。
 
 ### 安装并启动
@@ -34,6 +34,17 @@ dsh --profile web
 
 在 Web 界面选择分析使用的工作区（Workspace），新建会话并发送一条消息。
 会话标题旁按顺序显示“数据源”“语义层”“报告”三个入口，浏览页面在原生右侧标签页打开。本文以 Web 界面为例。
+
+### 本地文件分析
+
+默认安装包含 Marivo 的 `duckdb` extra（同时保留 `trino`、`clickhouse`），可用 DuckDB
+读取 CSV、JSON、Parquet 并执行分析。Excel `.xlsx` 通过 DuckDB 的
+[excel 扩展](https://duckdb.org/docs/stable/core_extensions/excel.html)读取；首次使用需要联网下载扩展，
+并允许写入 DuckDB 扩展缓存。它不是额外的 Python 包，无需为此安装 `openpyxl`。
+旧版 `.xls` 不在该扩展支持范围内，需要先转换为 `.xlsx`、CSV 或 Parquet。
+
+CSV、JSON、Parquet 可直接作为 Marivo 文件数据源；Excel 文件可先导入 DuckDB 持久表，
+再通过 Marivo 分析该表。
 
 ## 能力
 

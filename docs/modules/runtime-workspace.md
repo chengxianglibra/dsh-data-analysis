@@ -58,12 +58,29 @@ helper 的 API 或实现变化必须同步提升 Python distribution、模块版
 
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
-| 插件管理 | 未配置 `pythonExecutable` | 使用 `uv` 准备 Python 3.10+、创建 `.venv`，安装精确 Marivo 与随包 presentation-kit wheel |
+| 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 安装精确 Marivo 与随包 presentation-kit wheel |
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、presentation-kit 与 pandas，随后同步 Skill 和发布 marker |
 
 两种模式都要求通过 pip 安装精确的 Marivo 0.5.4；marker 记录版本与 package identity。其他版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
+
+默认使用 PATH 中的 `python3`（Windows 为 `python`），不下载 Python，也不回退到其他解释器。
+可用绝对路径 `bootstrapPythonExecutable`、环境变量 `DSH_DATA_ANALYSIS_BOOTSTRAP_PYTHON`
+或 CLI `--bootstrap-python` 指定创建 venv 的 Python；它不同于只验证的 `pythonExecutable`。
+原 `uvExecutable`、`DSH_DATA_ANALYSIS_UV` 与 `--uv` 配置不再使用。
+Python 必须支持 `venv`/`ensurepip`；缺失或版本不符时明确失败。已有有效 Runtime 继续复用。
+构建 presentation-kit wheel 的开发工具链仍使用 uv，终端用户安装不需要。
+
+### DuckDB 文件依赖
+
+安装规格 `marivo[duckdb,trino,clickhouse]==0.5.4` 显式包含 DuckDB extra，由 Marivo 的
+`ibis-framework[duckdb]` 依赖提供后端。Runtime probe 同时导入 `ibis.backends.duckdb`，
+防止缺少该后端的环境通过复用校验；管理员环境缺失时给出包含 extra 的修复命令，不自动安装。
+
+CSV、JSON、Parquet 使用 DuckDB 读取；`.xlsx` 使用 DuckDB 官方 `excel` 扩展，首次使用按
+DuckDB 原生规则下载与加载，不作为 Python extra 或插件启动时的联网安装步骤。
+`.xls` 不在此次支持范围。文件读取验收见 [DuckDB 文件格式](../duckdb-files-acceptance.md)。
 
 ### 并发与发布
 
@@ -103,7 +120,7 @@ manager 只在进程内缓存 Promise。binding rejection 也保留在该 key �
 
 ## 失败边界
 
-- 非绝对 Runtime、Python 或显式 `uvExecutable` 配置直接拒绝。
+- 非绝对 Runtime、Python 或显式 `bootstrapPythonExecutable` 配置直接拒绝。
 - 无效 marker 被视为不可复用安装，不从不完整字段猜测身份。
 - project root 不存在或显式 manifest 无效只使该 Workspace resolve 失败，不改写已有用户文件。
 - Runtime 级安装或 Skill 校验失败会阻止插件启动，因为所有 Workspace 都依赖同一安装。

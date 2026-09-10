@@ -44,6 +44,7 @@ import os
 import sys
 from importlib.metadata import distribution
 import marivo
+import ibis.backends.duckdb
 from marivo.semantic.definition import SemanticDefinition
 import pandas
 import dsh_data_analysis_presentation
@@ -284,7 +285,7 @@ async function probeRuntime(
   if (administrator && result.exitCode !== 0) {
     throw new MarivoEnvironmentError(
       'shared-runtime-package-unavailable',
-      `Administrator Python must provide Marivo ${PINNED_MARIVO_VERSION}, pandas ${PRESENTATION_KIT_PANDAS_RANGE}, and ${PRESENTATION_KIT_DISTRIBUTION} ${PRESENTATION_KIT_VERSION}. ${repair!.message}`,
+      `Administrator Python must provide Marivo ${PINNED_MARIVO_VERSION} with the duckdb extra, pandas ${PRESENTATION_KIT_PANDAS_RANGE}, and ${PRESENTATION_KIT_DISTRIBUTION} ${PRESENTATION_KIT_VERSION}. ${repair!.message}`,
       {
         pythonExecutable: canonical,
         marivoVersion: PINNED_MARIVO_VERSION,
@@ -625,46 +626,31 @@ async function backupInvalidRuntime(runtimeRoot: string): Promise<void> {
 
 async function installManagedRuntime(
   runtimeRoot: string,
-  uvExecutable: string,
+  bootstrapPythonExecutable: string,
   presentationKitWheel: string,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
 ): Promise<RuntimeProbe> {
   const policy = new FixedSubprocessPolicy(runtimeRoot, environment)
   const limits = { timeoutMs, stdoutMaxBytes: 1_048_576, stderrMaxBytes: 1_048_576 }
-  requireSuccess(
-    'install managed Python',
-    await policy.run({
-      executable: uvExecutable,
-      args: ['python', 'install', SHARED_PYTHON_SPEC],
-      limits,
-    }),
-  )
-  const found = requireSuccess(
-    'resolve managed Python',
-    await policy.run({
-      executable: uvExecutable,
-      args: ['python', 'find', '--managed-python', SHARED_PYTHON_SPEC],
-      limits,
-    }),
-  )
-  const managedPython = found.stdout.toString('utf8').trim()
-  if (!path.isAbsolute(managedPython)) {
+  let version: { version?: unknown; python_executable?: unknown }
+  try {
+    version = parseJsonObject(
+      'validate local Python',
+      await policy.run({
+        executable: bootstrapPythonExecutable,
+        args: ['-c', PYTHON_VERSION_SCRIPT],
+        limits,
+      }),
+    )
+  } catch (error) {
+    if (!(error instanceof MarivoEnvironmentError)) throw error
     throw new MarivoEnvironmentError(
       'shared-runtime-install-failed',
-      'uv returned a non-absolute managed Python path',
-      { managedPython },
+      'Could not validate local Python. Install Python 3.10+ with venv/ensurepip, or set bootstrapPythonExecutable to its absolute path.',
+      { pythonExecutable: bootstrapPythonExecutable, causeCode: error.code },
     )
   }
-  const canonicalManagedPython = await assertExecutable(managedPython)
-  const version = parseJsonObject<{ version?: unknown; python_executable?: unknown }>(
-    'validate managed Python',
-    await policy.run({
-      executable: canonicalManagedPython,
-      args: ['-c', PYTHON_VERSION_SCRIPT],
-      limits,
-    }),
-  )
   if (
     !Array.isArray(version.version) ||
     typeof version.version[0] !== 'number' ||
@@ -674,15 +660,25 @@ async function installManagedRuntime(
   ) {
     throw new MarivoEnvironmentError(
       'shared-runtime-install-failed',
-      'uv managed Python does not satisfy Marivo >=3.10',
-      { version: version.version, pythonExecutable: canonicalManagedPython },
+      `Local Python does not satisfy Marivo >=${SHARED_PYTHON_SPEC}; detected ${Array.isArray(version.version) ? version.version.join('.') : 'unknown'}`,
+      { version: version.version, pythonExecutable: bootstrapPythonExecutable },
     )
   }
+  if (
+    typeof version.python_executable !== 'string' ||
+    !path.isAbsolute(version.python_executable)
+  ) {
+    throw new MarivoEnvironmentError(
+      'shared-runtime-install-failed',
+      'Local Python returned a non-absolute interpreter path',
+    )
+  }
+  const canonicalPython = await assertExecutable(version.python_executable)
   requireSuccess(
-    'create shared virtual environment',
+    'create shared virtual environment (requires Python venv/ensurepip; install python3-venv on Debian/Ubuntu)',
     await policy.run({
-      executable: uvExecutable,
-      args: ['venv', '--python', canonicalManagedPython, '--seed', path.join(runtimeRoot, '.venv')],
+      executable: canonicalPython,
+      args: ['-m', 'venv', path.join(runtimeRoot, '.venv')],
       limits,
     }),
   )
@@ -690,16 +686,16 @@ async function installManagedRuntime(
   requireSuccess(
     `install Marivo ${PINNED_MARIVO_VERSION}`,
     await policy.run({
-      executable: uvExecutable,
-      args: ['pip', 'install', '--python', executable, '--upgrade', SHARED_MARIVO_PACKAGE_SPEC],
+      executable,
+      args: ['-m', 'pip', 'install', '--upgrade', SHARED_MARIVO_PACKAGE_SPEC],
       limits,
     }),
   )
   requireSuccess(
     `install presentation kit ${PRESENTATION_KIT_VERSION}`,
     await policy.run({
-      executable: uvExecutable,
-      args: ['pip', 'install', '--python', executable, '--no-deps', presentationKitWheel],
+      executable,
+      args: ['-m', 'pip', 'install', '--no-deps', presentationKitWheel],
       limits,
     }),
   )
@@ -727,10 +723,12 @@ export async function ensureSharedMarivoRuntime(
     config.pythonExecutable === undefined
       ? undefined
       : normalizeAbsolute('pythonExecutable', config.pythonExecutable)
-  const uvExecutable =
-    config.uvExecutable === undefined
-      ? 'uv'
-      : normalizeAbsolute('uvExecutable', config.uvExecutable)
+  const bootstrapPythonExecutable =
+    config.bootstrapPythonExecutable === undefined
+      ? process.platform === 'win32'
+        ? 'python'
+        : 'python3'
+      : normalizeAbsolute('bootstrapPythonExecutable', config.bootstrapPythonExecutable)
   const timeoutMs = positiveTimeout(config.installTimeoutMs)
   const presentationKitWheel = path.normalize(
     path.resolve(options.presentationKitWheelPath ?? bundledPresentationKitWheel()),
@@ -763,7 +761,7 @@ export async function ensureSharedMarivoRuntime(
       configuredPython === undefined
         ? await installManagedRuntime(
             runtimeRoot,
-            uvExecutable,
+            bootstrapPythonExecutable,
             presentationKitWheel,
             options.environment,
             timeoutMs,

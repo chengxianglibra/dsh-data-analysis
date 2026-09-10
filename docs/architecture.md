@@ -81,7 +81,9 @@ flowchart LR
 
 Compatibility manifest 声明 DSH peers 范围 `^0.1.5-alpha.1`，并精确固定 `marivo[duckdb,trino,clickhouse]==0.5.4`。
 安装回滚、service owner、可等待卸载与范围验收见[第四阶段验收](dsh-wiring-stage-four-acceptance.md)。默认 Runtime 位于
-`$DSH_HOME/dsh-data-analysis/runtimes/marivo/`；管理员也可提供绝对 Python。两种模式都必须让版本、
+`$DSH_HOME/dsh-data-analysis/runtimes/marivo/`。默认先验证本机 Python 3.10+，再使用标准库 `venv`
+与环境内 `pip` 安装，不再依赖 uv 或下载 Python；安装包含 DuckDB extra，Runtime probe
+验证其 Ibis 后端可导入。管理员也可提供绝对 Python。两种模式都必须让版本、
 package path、解释器和 marker 一致；Runtime 通过 pip 安装已发布的 Marivo package。
 
 每个 Workspace 独立解析 project root、最小目录与 doctor admission。`MarivoEnvironment` 冻结 binding
