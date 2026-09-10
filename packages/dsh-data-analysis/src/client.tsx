@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
+import { installPythonTool } from './client/python-tool/install.tsx'
 import { inject, installRightTabs } from './client/right-tabs/install.tsx'
 
 export {
@@ -32,5 +33,6 @@ export function apply(
   } = {},
 ): void {
   const controller = installRightTabs(ctx, options)
+  installPythonTool(ctx)
   options.onInstalled?.(controller)
 }

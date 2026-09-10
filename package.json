@@ -17,7 +17,7 @@
     "pack:plugin": "npm run check && npm run verify:plugin-package && node scripts/pack-plugin.mjs",
     "quality": "biome check .",
     "quality:fix": "biome check --write .",
-    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:presentation-surface && npm run test:plugin-integration-delivery && npm run test:semantic-reference-input && npm run test:semantic-browser && npm run test:presentation-s0 && npm run test:presentation-projection && npm run test:presentation-reader && npm run test:presentation-integration && npm run test:presentation-skill && npm run test:right-tabs",
+    "test": "npm run test:runtime-workspace && npm run test:environment-execution && npm run test:help-disclosure && npm run test:datasource-credentials && npm run test:presentation-surface && npm run test:plugin-integration-delivery && npm run test:semantic-reference-input && npm run test:semantic-browser && npm run test:presentation-s0 && npm run test:presentation-projection && npm run test:presentation-reader && npm run test:presentation-integration && npm run test:presentation-skill && npm run test:right-tabs && npm run test:python-tool",
     "test:presentation-s0": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-s0/*.test.ts",
     "validate:presentation-s0:runtime": "node --experimental-strip-types packages/dsh-data-analysis/scripts/presentation-s0/runtime.ts",
     "validate:presentation-s0:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/presentation-s0/web.ts",
@@ -66,7 +66,9 @@
     "validate:datasource-removal:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-removal-web.ts",
     "validate:report-read-latency": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-report-read-latency.ts",
     "validate:report-publishing": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-report-publishing.ts",
-    "validate:locale": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-locale.ts"
+    "validate:locale": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-locale.ts",
+    "test:python-tool": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/python-tool/*.test.ts",
+    "validate:python-tool:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-tool-web.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

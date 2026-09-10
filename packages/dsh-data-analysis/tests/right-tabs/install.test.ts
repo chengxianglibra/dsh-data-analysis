@@ -61,6 +61,7 @@ test('default client is a valid Cordis effect and registers native resources wit
       id: 'locale-test',
       children: {
         'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
+        'tool.call.toolview': { kind: 'keyed', scope: 'session' },
       },
     },
     () => null,
@@ -72,6 +73,10 @@ test('default client is a valid Cordis effect and registers native resources wit
     },
   })
   assert.equal(result, undefined, 'Cordis rejects arbitrary object effect return values')
+  assert.deepEqual(
+    host.slots.entries('tool.call.toolview').map((entry) => entry.options.key),
+    ['marivo_python'],
+  )
   const directoryTitles = [
     ['marivo-datasources', '数据源与凭证', 'Datasources and credentials'],
     ['marivo-semantic', '语义层', 'Semantic layer'],
@@ -103,6 +108,8 @@ test('default client is a valid Cordis effect and registers native resources wit
   assert.equal(controller.pages.size, 0)
   assert.equal(controller.audit.opens.length, 0)
   assert.equal(controller.audit.changes.length, 0)
+  await host.dispose()
+  assert.equal(host.slots.entries('tool.call.toolview').length, 0)
 })
 
 async function installed(t) {

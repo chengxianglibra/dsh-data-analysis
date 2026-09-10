@@ -2,15 +2,23 @@ import type { PresentationLocale } from '../../presentation/contracts/types.ts'
 import * as credentials from './credentials.ts'
 import * as navigation from './navigation.ts'
 import * as presentation from './presentation.ts'
+import * as python from './python.ts'
 import * as semantic from './semantic.ts'
 
-export const dictionaries = { credentials, navigation, presentation, semantic }
-export const zh = { ...credentials.zh, ...navigation.zh, ...presentation.zh, ...semantic.zh }
+export const dictionaries = { credentials, navigation, presentation, semantic, python }
+export const zh = {
+  ...credentials.zh,
+  ...navigation.zh,
+  ...presentation.zh,
+  ...semantic.zh,
+  ...python.zh,
+}
 export const en: Record<keyof typeof zh, string> = {
   ...credentials.en,
   ...navigation.en,
   ...presentation.en,
   ...semantic.en,
+  ...python.en,
 }
 export type CopyKey = keyof typeof zh
 export interface CopyMessage {

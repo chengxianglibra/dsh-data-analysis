@@ -30,6 +30,19 @@
 
 ## 证据与环境边界
 
+Python 工具卡片：`npm run test:python-tool` 验证原文和状态解析，`test:right-tabs` 验证打包客户端的
+定向注册与卸载；`npm run validate:python-tool:web` 验证安装依赖中的真实 `CodeBlock` 与专用卡片。
+浏览器脚本启动临时 HTTP 服务与 Chromium，保留截图和 `evidence.json`，不启动分析或操作当前 profile。
+该结果只证明生产组件在固定调用数据下的展示，不证明运行中的 DSH 已加载新插件。
+
+2026-09-11 卡片隔离验收通过：Node.js 22.19.0，桌面 1200 px 与窄屏 390 px；Python 高亮、原文复制
+（含无末尾换行、多末尾换行与 CRLF）、输出表格、键盘折叠、查看回调、中英文切换、警告和原文回退
+均通过。长代码区域限高 360 px，窄屏文档宽度仍为 390 px，浏览器无未捕获错误。
+
+同日 review 修复验收覆盖实际 `MarivoPythonExecutionError` 的规范化文本：`not-started` 与 `unknown`
+分别显示“未执行”和“执行结果未确认”，耗时及禁止自动重放的 `nextAction` 可见，原始错误保持完整。
+无效摘要、非错误输出中的相同后缀，以及错误中的成功声明均有回归覆盖。
+
 - 契约与确定性测试证明输入、身份、状态转换和失败处理；模拟 transport 或固定数据不证明真实服务可用。
 - Runtime 验证应记录实际解释器和包身份、隔离 Workspace、生成与恢复过程；跨进程恢复不能以同一进程缓存代替。
 - Web 验证应记录实际加载的 client、Host 接线及用户操作结果。生产组件加 fixture 不等于已安装 profile 验收；HTML 需要覆盖离线、无脚本、打印和数值保真。
