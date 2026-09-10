@@ -1,6 +1,7 @@
 /** Real native Tab/composer and offline reference acceptance, using only isolated fixtures. */
 import assert from 'node:assert/strict'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Browser, Page } from 'playwright'
@@ -11,6 +12,7 @@ import {
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
 import { interactionFixture } from '../../tests/presentation-reader/interaction-fixture.ts'
+import { presentationHtml } from '../presentation-html.ts'
 
 const specialCellId = 'foo\nbar\r\t"\\😀'
 
@@ -237,7 +239,12 @@ export async function verifyNativeContextReference(
         },
       })
     })
-    await portable.goto(pathToFileURL(large.files.html.path).href)
+    const portablePath = path.join(
+      await mkdtemp(path.join(tmpdir(), 'explicit-html-')),
+      'report.html',
+    )
+    await writeFile(portablePath, await presentationHtml(large))
+    await portable.goto(pathToFileURL(portablePath).href)
     const copy = async (id: string) => {
       const cell = portable.locator(`[data-mode=interactive] [data-block-id="${id}"]`)
       await cell.getByRole('button', { name: 'cell 更多操作' }).click()

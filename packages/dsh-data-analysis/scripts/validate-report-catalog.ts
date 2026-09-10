@@ -8,6 +8,7 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { chromium, type Page } from 'playwright'
 import { parsePresentationDocument } from '../src/presentation/contracts/index.ts'
 import { publishPresentation, readReportHistory } from '../src/presentation/reports.ts'
+import { presentationHtml } from './presentation-html.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
 
@@ -123,7 +124,7 @@ try {
   const downloadPath = path.join(output, 'historical.html')
   await download.saveAs(downloadPath)
   assert.ok(download.suggestedFilename().includes(receipt.buildId))
-  assert.deepEqual(await readFile(downloadPath), await readFile(receipt.files.html.path))
+  assert.deepEqual(await readFile(downloadPath), await presentationHtml(receipt))
   await reader.getByRole('button', { name: '导出报告', exact: true }).click()
   const historicalView = page.waitForEvent('download')
   await reader.getByRole('menuitem', { name: '导出当前视图', exact: true }).click()

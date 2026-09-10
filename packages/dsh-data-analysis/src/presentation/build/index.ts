@@ -9,7 +9,7 @@ import {
 export interface BuiltPresentation {
   document: PresentationDocument
   documentBytes: Buffer
-  htmlBytes: Buffer
+  htmlBytes?: Buffer
 }
 
 interface PortableAssets {
@@ -40,11 +40,22 @@ const inlineJson = (value: unknown) =>
  * Render an S2 snapshot without reading source data, generating identity, or writing files.
  * Both renderers are built into the installed package; execution needs no build tooling.
  */
-export async function buildPresentation(value: PresentationDocument): Promise<BuiltPresentation> {
+export function buildPresentation(
+  value: PresentationDocument,
+): Promise<BuiltPresentation & { htmlBytes: Buffer }>
+export function buildPresentation(
+  value: PresentationDocument,
+  options: { html?: boolean },
+): Promise<BuiltPresentation>
+export async function buildPresentation(
+  value: PresentationDocument,
+  options: { html?: boolean } = { html: true },
+): Promise<BuiltPresentation> {
   parsePresentationDocument(value)
   // Freeze this invocation's input before awaiting assets or invoking either renderer.
   const documentBytes = Buffer.from(JSON.stringify(value), 'utf8')
   const document = parsePresentationDocument(JSON.parse(documentBytes.toString('utf8')))
+  if (!options.html) return { document, documentBytes }
   const [portable, staticAssets] = (await Promise.all([
     import(new URL('../../../lib/presentation/assets/portable.js', import.meta.url).href),
     import(new URL('../../../lib/presentation/assets/static.js', import.meta.url).href),

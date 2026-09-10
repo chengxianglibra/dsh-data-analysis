@@ -741,11 +741,12 @@ export function parsePresentationReceipt(value: unknown): PresentationReceipt {
   string(entry.title, '/title', 512)
   string(entry.summary, '/summary', 2048)
   const files = object(entry.files, '/files')
-  keys(files, ['document', 'html'], [], '/files')
+  keys(files, ['document'], ['html'], '/files')
   for (const [key, asset, max] of [
     ['document', 'presentation.json', budgets.documentBytes],
     ['html', 'index.html', budgets.htmlBytes],
   ] as const) {
+    if (key === 'html' && !Object.hasOwn(files, key)) continue
     const path = `/files/${key}`
     const file = object(files[key], path)
     keys(file, ['asset', 'path', 'sha256', 'bytes'], [], path)
@@ -767,8 +768,9 @@ export function parsePresentationReceipt(value: unknown): PresentationReceipt {
     integer(file.bytes, `${path}/bytes`, 1, max)
   }
   const documentPath = String(object(files.document, '/files/document').path)
-  const htmlPath = String(object(files.html, '/files/html').path)
+  const htmlPath = files.html ? String(object(files.html, '/files/html').path) : undefined
   if (
+    htmlPath !== undefined &&
     documentPath.slice(0, -'presentation.json'.length) !== htmlPath.slice(0, -'index.html'.length)
   ) {
     fail('/files/html/path', 'Both files must belong to the same build directory.', 'file_boundary')

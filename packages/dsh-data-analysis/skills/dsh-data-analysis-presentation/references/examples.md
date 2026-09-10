@@ -18,7 +18,7 @@
 {"draft_path":"analysis/presentation.draft.json"}
 ```
 
-一个成功的 `marivo_present` 已完成 reader 与离线 HTML 构建；根据 receipt 交付，不能把示例数据解释成用户的真实业务结论。
+一个成功的 `marivo_present` 已完成 reader 构建；离线 HTML 在用户下载时生成；根据 receipt 交付，不能把示例数据解释成用户的真实业务结论。
 
 ## 比较与抵消项
 

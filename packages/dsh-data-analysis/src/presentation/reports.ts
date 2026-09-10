@@ -188,7 +188,7 @@ export async function publishPresentation(
 ): Promise<PresentationReceipt> {
   await assertOwner()
   signal?.throwIfAborted()
-  const built = await buildPresentation(document)
+  const built = await buildPresentation(document, { html: false })
   await assertOwner()
   const receipt = await commitPresentation(root, built, assertOwner, signal)
   const directory = presentationReportPath(root, document.reportId)

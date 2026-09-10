@@ -9,6 +9,7 @@ import {
 } from '../../presentation/contracts/catalog.ts'
 import { type PresentationEdits, presentationEdits } from '../../presentation/contracts/editing.ts'
 import {
+  PRESENTATION_BUDGETS,
   type PresentationDocument,
   type PresentationReceipt,
   parsePresentationDocument,
@@ -70,7 +71,22 @@ export async function verifyPresentationAsset(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('invalid-presentation-file-response')
   const file = value as Record<string, unknown>
-  const expected = asset === 'presentation.json' ? receipt.files.document : receipt.files.html
+  // New reports export HTML on demand from the server-verified fixed JSON Build.
+  const expected =
+    asset === 'presentation.json'
+      ? receipt.files.document
+      : (receipt.files.html ?? { bytes: file.bytes as number, sha256: file.sha256 as string })
+  if (
+    !Number.isSafeInteger(expected.bytes) ||
+    expected.bytes < 1 ||
+    expected.bytes >
+      (asset === 'presentation.json'
+        ? PRESENTATION_BUDGETS.documentBytes
+        : PRESENTATION_BUDGETS.htmlBytes) ||
+    typeof expected.sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(expected.sha256)
+  )
+    throw new Error('presentation-file-identity-mismatch')
   const mime = asset === 'presentation.json' ? 'application/json' : 'text/html'
   if (
     Object.keys(file).sort().join(',') !==
@@ -508,7 +524,7 @@ export class PresentationDeliveryModel {
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
       if (!displayed) this.#remember(receipt)
       this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
-      this.#publish({ downloading: false, notice: '已下载已保存的 HTML（不包含临时筛选）' })
+      this.#publish({ downloading: false, notice: '已下载完整报告 HTML（不包含临时筛选）' })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ downloading: false, downloadError: errorMessage(error) })

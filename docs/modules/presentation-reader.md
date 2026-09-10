@@ -42,7 +42,7 @@ reader 只校验和绘制，不聚合、分箱、归一化、排序排名或重�
 需要另一种统计结果时切换作者声明的 `preparedViews`。缺少所需字段的类型禁用并说明原因。
 组合切换与显隐保持原始行身份和预计算比例分母；来源预览和复制上下文使用当前绑定及过滤状态，
 并保留原始快照 identity。恢复原图、切换 build 或重新打开恢复作者配置。
-“下载完整报告”提供当前显示构建的已保存 HTML；该文件的打印及无脚本阅读使用已保存正文和精确数据表，不应用临时筛选或未保存草稿。
+“下载完整报告”提供当前显示构建的 HTML：新报告从已校验 JSON 按需生成，历史含 HTML 的构建下载已保存文件；该文件的打印及无脚本阅读使用已保存正文和精确数据表，不应用临时筛选或未保存草稿。
 “导出当前视图”提供固定当前阅读结果的无脚本 HTML，行为见[当前视图导出](#当前视图导出)。
 
 ## 当前视图导出
@@ -221,7 +221,7 @@ portable 从内嵌 JSON 加载，包含自己的 React/Recharts，不依赖 DSH 
 自适应宽度的覆盖范围与证据见[宽屏自适应验收](../plan/2026-09-08-presentation-responsive-acceptance.md)。
 文本、KPI 宽度与图表并排的后续验收见[内容布局验收](../plan/2026-09-08-presentation-layout-acceptance.md)。
 
-`buildPresentation(document)` 校验并快照输入，返回生成文档、JSON 字节和 HTML 字节。
+`buildPresentation(document)` 校验并快照输入，显式导出时返回生成文档、JSON 字节和 HTML 字节；发布路径传入 `{ html: false }` 仅构建 JSON。
 builder 不分配 Workspace/report/build identity，不登记文件、不创建目录、不生成 receipt；S4 唯一负责完整目录提交。
 文档及 HTML 受 [S0 字节预算](../plan/marivo-analytics-presentation-s0-contracts.md#预算错误与文件身份)约束，超限明确失败。
 

@@ -58,7 +58,7 @@ Draft 使用五类 block：Markdown、metric、支持 18 类图形的 chart、ta
 ## 交付与验证
 
 Agent 将 Draft 保存为 Workspace 相对路径，新建时调用 `marivo_present({ draft_path })`，依据实际 receipt
-解释结果和交付位置。Tool 负责生成 JSON/HTML、完整提交与摘要校验；reader 来源展开只读保存快照。
+解释结果和交付位置。Tool 负责生成 JSON、完整提交与摘要校验；HTML 由用户下载时按需生成；reader 来源展开只读保存快照。
 修改已有报告时，在读取当前保存内容并合并需保留编辑后，成对传入 `report_id` 与 `expected_build_id`，
 以完整 Draft 保存为同一 Report 的新 Build；版本冲突后重新核对内容，不仅替换 expected ID 重试。
 流程和失败边界见[展示交付](presentation-delivery.md)。
@@ -71,4 +71,4 @@ Runtime Skill 的独立性。可安装包实际注册结果、真实 Agent 路�
 
 ## 阅读器编辑边界
 
-Host 阅读器的编辑／保存保留底层快照，原卡片重开解析同 report 当前构建。可编辑标题、正文、metric 标签、图表／表格配置，移动或删除 cell（允许删空）；不编辑数据和来源。筛选不保存、不重算。Agent 修改呈现、KPI 或数据时使用完整 Draft 重建入口；是否新建 Report 取决于用户要修改原报告还是另建报告。身份、冲突与固定快照语义见[展示交付](presentation-delivery.md#agent-更新契约)。
+Host 阅读器的编辑／保存保留底层快照，报告重开解析同 report 当前构建。可编辑标题、正文、metric 标签、图表／表格配置，移动或删除 cell（允许删空）；不编辑数据和来源。筛选不保存、不重算。Agent 修改呈现、KPI 或数据时使用完整 Draft 重建入口；是否新建 Report 取决于用户要修改原报告还是另建报告。身份、冲突与固定快照语义见[展示交付](presentation-delivery.md#agent-更新契约)。

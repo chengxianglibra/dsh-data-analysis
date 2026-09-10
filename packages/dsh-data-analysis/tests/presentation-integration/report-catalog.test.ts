@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { presentationHtml } from '../../scripts/presentation-html.ts'
 import { ReportCatalogModel, visibleReports } from '../../src/client/presentation/catalog-model.ts'
-import { PresentationDeliveryModel } from '../../src/client/presentation/delivery-model.ts'
+import {
+  PresentationDeliveryModel,
+  verifyPresentationAsset,
+} from '../../src/client/presentation/delivery-model.ts'
 import { parseReportCatalog, parseReportHistory } from '../../src/presentation/contracts/catalog.ts'
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import { presentationReportPath } from '../../src/presentation/files.ts'
@@ -94,7 +98,8 @@ test('publication history excludes concurrent losers and remains readable withou
     receipt: f.first,
     asset: 'index.html',
   })
-  assert.equal(html.sha256, f.first.files.html.sha256)
+  assert.equal(f.first.files.html, undefined)
+  assert.deepEqual(Buffer.from(html.bodyBase64, 'base64'), await presentationHtml(f.first))
   f.remove()
   await assert.rejects(
     f.service.read({ workspaceId: f.document.workspaceId, receipt: f.first, asset: 'index.html' }),
@@ -168,7 +173,7 @@ test('workspace reader pins history and downloads, forbids historical edits, and
     async () => {},
   )
   await model.downloadDisplayed()
-  assert.deepEqual(Buffer.from(saved[0]!), await readFile(f.first.files.html.path))
+  assert.deepEqual(Buffer.from(saved[0]!), await presentationHtml(f.first))
   assert.equal(
     model.getSnapshot().receipts[`${f.document.workspaceId}/${f.document.reportId}`]?.buildId,
     second.buildId,
@@ -289,4 +294,22 @@ test('failed pointer publication never adds a historical version and scope param
     f.service.catalog('reports/list', { workspaceId: 'wrong' }),
     /workspace-unavailable/,
   )
+})
+
+test('JSON-only publication exports on demand without writing HTML and rejects changed source bytes', async (t) => {
+  const f = await fixture(t)
+  assert.equal(f.first.files.html, undefined)
+  const directory = path.dirname(f.first.files.document.path)
+  assert.deepEqual(await readdir(directory), ['presentation.json'])
+  const input = { workspaceId: f.document.workspaceId, receipt: f.first, asset: 'index.html' }
+  const exported = await f.service.read(input)
+  const bytes = await verifyPresentationAsset(exported, f.first, 'index.html')
+  assert.match(Buffer.from(bytes).toString(), /<!doctype html>/i)
+  assert.deepEqual(await readdir(directory), ['presentation.json'])
+  await assert.rejects(
+    verifyPresentationAsset({ ...exported, bytes: exported.bytes + 1 }, f.first, 'index.html'),
+    /presentation-file-(identity|size)-mismatch/,
+  )
+  await writeFile(f.first.files.document.path, '{}')
+  await assert.rejects(f.service.read(input), /asset-digest-mismatch/)
 })

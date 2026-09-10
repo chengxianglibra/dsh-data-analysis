@@ -144,7 +144,7 @@ try {
     const download = await downloadWait
     const downloadedPath = path.join(outputRoot, download.suggestedFilename())
     await download.saveAs(downloadedPath)
-    assert.equal(sha256(await readFile(downloadedPath)), receipt.files.html.sha256)
+    assert.equal(sha256(await readFile(downloadedPath)), receipt.files.html!.sha256)
 
     const offline = await browser.newContext({
       offline: true,
@@ -178,7 +178,7 @@ try {
     checks.push({
       fixture: fixtureNames[index],
       web: true,
-      actualDownloadSha256: receipt.files.html.sha256,
+      actualDownloadSha256: receipt.files.html!.sha256,
       offline: true,
       offlineNetworkRequests: 0,
       noScript: true,

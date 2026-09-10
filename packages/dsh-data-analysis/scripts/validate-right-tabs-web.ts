@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { type Browser, chromium, type Locator, type Page } from 'playwright'
 import { presentationEdits } from '../src/presentation/contracts/editing.ts'
+import { presentationHtml } from './presentation-html.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
 import {
@@ -127,7 +128,7 @@ try {
     )
   }
   await select(server.sessionId)
-  await page.locator('[data-presentation-card]').first().waitFor()
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   assert.equal(await opens(), 0)
   record('initial persisted deliveries do not automatically open')
   await select('right-tabs-native')
@@ -136,16 +137,17 @@ try {
   assert.equal(await opens(), 1)
   record('live Native delivery opens fixed Build once')
   const cardDownloadEvent = page.waitForEvent('download')
-  await page
-    .locator(`[data-presentation-card="${native.receipt.buildId}"]`)
-    .getByRole('button', { name: '下载 HTML', exact: true })
-    .click()
+  const nativeReader = page.locator(`[data-rt-build="${native.receipt.buildId}"]`)
+  assert.equal(native.receipt.files.html, undefined)
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
+  await nativeReader.getByRole('button', { name: '报告更多操作', exact: true }).click()
+  await nativeReader.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const cardDownload = await cardDownloadEvent
   const cardPath = path.join(outputRoot, 'card-report.html')
   await cardDownload.saveAs(cardPath)
-  assert.deepEqual(await readFile(cardPath), await readFile(native.receipt.files.html.path))
+  assert.deepEqual(await readFile(cardPath), await presentationHtml(native.receipt))
   assert.equal(await page.locator('dialog.pd-dialog[open]').count(), 0)
-  record('default client card downloads its fixed Build without opening an overlay')
+  record('JSON-only report opens in right tab with no chat card; explicit HTML download succeeds')
   assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 1)
   assert.equal(
     await page
@@ -297,7 +299,7 @@ try {
     '刷新',
     '编辑报告',
     '历史版本',
-    '下载完整报告已保存的 HTML · 默认筛选',
+    '下载完整报告完整报告 HTML · 默认筛选',
     '导出当前视图HTML · 保留当前筛选和图形',
   ])
   await page.keyboard.press('End')
@@ -438,7 +440,7 @@ try {
   const download = await downloadEvent,
     downloadPath = path.join(outputRoot, 'report.html')
   await download.saveAs(downloadPath)
-  assert.deepEqual(await readFile(downloadPath), await readFile(saved.files.html.path))
+  assert.deepEqual(await readFile(downloadPath), await presentationHtml(saved))
   const offline = await browser.newContext({ offline: true })
   const portable = await offline.newPage()
   await portable.goto(pathToFileURL(downloadPath).href)
@@ -1048,11 +1050,16 @@ try {
   record('reload reconstructs baseline without auto-opening')
   await select('right-tabs-ptc')
   await page.evaluate(() => (window as any).__rtHost.delay.arm())
-  await page
-    .locator('[data-presentation-card]')
-    .first()
-    .getByRole('button', { name: '打开分析' })
-    .click()
+  await page.evaluate(
+    (receipt) =>
+      (window as any).__rightTabs.navigate('right-tabs-ptc', {
+        kind: 'report',
+        workspaceId: receipt.workspaceId,
+        reportId: receipt.reportId,
+        buildId: receipt.buildId,
+      }),
+    ptc.receipt,
+  )
   await page.waitForFunction(() => (window as any).__rtHost.delay.held())
   await page.getByRole('button', { name: '打开数据源', exact: true }).click()
   await page
@@ -1090,24 +1097,33 @@ try {
     true,
   )
   record('Workspace detachment invalidates old reader and actions')
-  await page
-    .locator('[data-presentation-card]')
-    .first()
-    .getByRole('button', { name: '打开分析' })
-    .click()
-  await page
-    .getByRole('alert')
-    .filter({ hasText: '所属 Session 或 Workspace 已变化' })
-    .first()
-    .waitFor()
-  record('failed opening retains the delivery card with explicit feedback')
+  await assert.rejects(
+    () =>
+      page!.evaluate(
+        (receipt) =>
+          (window as any).__rightTabs.navigate('right-tabs-ptc', {
+            kind: 'report',
+            workspaceId: receipt.workspaceId,
+            reportId: receipt.reportId,
+            buildId: receipt.buildId,
+          }),
+        ptc.receipt,
+      ),
+    /所属 Session 或 Workspace 已变化/,
+  )
+  record('revoked Workspace rejects report navigation')
   await run('ptc', 'attach')
   await page.evaluate(() => (window as any).__rtHost.delay.arm())
-  await page
-    .locator('[data-presentation-card]')
-    .first()
-    .getByRole('button', { name: '打开分析' })
-    .click()
+  await page.evaluate(
+    (receipt) =>
+      (window as any).__rightTabs.navigate('right-tabs-ptc', {
+        kind: 'report',
+        workspaceId: receipt.workspaceId,
+        reportId: receipt.reportId,
+        buildId: receipt.buildId,
+      }),
+    ptc.receipt,
+  )
   await page.waitForFunction(() => (window as any).__rtHost.delay.held())
   const withoutSession = await page.evaluate((receipt) => {
     const host = (window as any).__rtHost

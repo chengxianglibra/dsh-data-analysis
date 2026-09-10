@@ -17,9 +17,9 @@ test('S0 Host and portable bundle the same reader, preserve exact payload and cl
   const built = await buildS0Artifacts(root, [document])
   const receipt = built.receipts[0]!
   const json = await readFile(receipt.files.document.path)
-  const html = await readFile(receipt.files.html.path, 'utf8')
+  const html = await readFile(receipt.files.html!.path, 'utf8')
   assert.equal(sha256(json), receipt.files.document.sha256)
-  assert.equal(sha256(Buffer.from(html)), receipt.files.html.sha256)
+  assert.equal(sha256(Buffer.from(html)), receipt.files.html!.sha256)
   const payload = /<script id="presentation-data" type="application\/json">(.*?)<\/script>/s.exec(
     html,
   )![1]!

@@ -202,7 +202,7 @@ export function collectS0Deliveries(
         receipt.workspaceId,
         receipt.buildId,
         receipt.files.document.sha256,
-        receipt.files.html.sha256,
+        receipt.files.html!.sha256,
       ])
       if (seen.has(key)) continue
       seen.add(key)

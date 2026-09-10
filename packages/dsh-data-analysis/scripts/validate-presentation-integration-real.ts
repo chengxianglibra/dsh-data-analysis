@@ -23,6 +23,7 @@ import {
   parsePresentationDocument,
 } from '../src/presentation/contracts/index.ts'
 import type { PresentationBlock, TypedDataset } from '../src/presentation/contracts/types.ts'
+import { presentationHtml } from './presentation-html.ts'
 import {
   verifyAllChartFilters,
   verifyEditing,
@@ -369,8 +370,8 @@ try {
     const document = parsePresentationDocument(
       JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
     )
-    const originalHtml = await readFile(receipt.files.html.path)
-    assert.equal(sha256(originalHtml), receipt.files.html.sha256)
+    const originalHtml = await presentationHtml(receipt)
+    assert.equal(receipt.files.html, undefined)
     const card = page.locator(`[data-presentation-card="${receipt.buildId}"]`)
     await card.getByRole('button', { name: '打开分析', exact: true }).click()
     const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
@@ -389,7 +390,7 @@ try {
     const downloadPath = path.join(outputRoot, `${index}-${download.suggestedFilename()}`)
     await download.saveAs(downloadPath)
     const downloadedHtml = await readFile(downloadPath)
-    assert.equal(sha256(downloadedHtml), receipt.files.html.sha256)
+    assert.equal(sha256(downloadedHtml), sha256(originalHtml))
     assert.ok(downloadedHtml.equals(originalHtml), 'Exploration changed downloaded HTML bytes')
     await card.getByRole('button', { name: '打开分析', exact: true }).click()
     await verifyReader(page, document)
@@ -436,7 +437,7 @@ try {
       actualTool: true,
       actualWebCard: true,
       open: true,
-      downloadSha256: receipt.files.html.sha256,
+      downloadSha256: sha256(originalHtml),
       downloadedAfterReaderClosed: true,
       originalHtmlBytesRetained: true,
       hostExploration,

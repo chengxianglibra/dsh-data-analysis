@@ -254,9 +254,9 @@ test('receipt binds two fixed assets to one build and never treats a digest as o
   receipt.buildId = '../other'
   invalid(() => parsePresentationReceipt(receipt), '/buildId')
   receipt.buildId = 's0-test'
-  receipt.files.html.path = receipt.files.html.path.replace('/validation/', '/other/')
+  receipt.files.html!.path = receipt.files.html!.path.replace('/validation/', '/other/')
   invalid(() => parsePresentationReceipt(receipt), '/files/html/path', 'file_boundary')
-  receipt.files.html.path = `${dir}/index.html`
-  receipt.files.html.sha256 = 'not-a-digest'
+  receipt.files.html!.path = `${dir}/index.html`
+  receipt.files.html!.sha256 = 'not-a-digest'
   invalid(() => parsePresentationReceipt(receipt), '/files/html/sha256')
 })

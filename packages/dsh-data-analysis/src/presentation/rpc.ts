@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { registerPluginRpc } from '../rpc.ts'
+import { buildPresentation } from './build/index.ts'
 import { applyPresentationEdits } from './contracts/editing.ts'
 import {
   type PresentationAsset,
@@ -212,8 +213,13 @@ export class MarivoPresentationFileService {
     const bytes =
       asset === 'presentation.json'
         ? documentBytes
-        : await readPresentationAsset(root, receipt.reportId, receipt.buildId, asset, signal)
-    const file = asset === 'presentation.json' ? receipt.files.document : receipt.files.html
+        : receipt.files.html
+          ? await readPresentationAsset(root, receipt.reportId, receipt.buildId, asset, signal)
+          : (await buildPresentation(document)).htmlBytes!
+    const file =
+      asset === 'presentation.json'
+        ? receipt.files.document
+        : (receipt.files.html ?? { bytes: bytes.length, sha256: presentationSha256(bytes) })
     if (bytes.length !== file.bytes || presentationSha256(bytes) !== file.sha256)
       throw new Error('asset-digest-mismatch')
     const current = await this.#workspace(input)

@@ -16,8 +16,8 @@ export function installS0(ctx: any, receipts: PresentationReceipt[]) {
       workspaceId: receipt.workspaceId,
       reportId: 'report',
       buildId: receipt.buildId,
-      asset: file.asset,
-      sha256: file.sha256,
+      asset: file!.asset,
+      sha256: file!.sha256,
     })
     if (!result.ok) throw new Error(result.error.message)
     if (

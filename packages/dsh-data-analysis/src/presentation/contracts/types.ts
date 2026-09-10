@@ -271,6 +271,6 @@ export interface PresentationReceipt {
   summary: string
   files: {
     document: PresentationFile<'presentation.json'>
-    html: PresentationFile<'index.html'>
+    html?: PresentationFile<'index.html'>
   }
 }

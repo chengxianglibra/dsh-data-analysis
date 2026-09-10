@@ -113,7 +113,7 @@ test('Native and Code consume the same detached durable receipt, with closed bou
     null,
   )
   const invalid = delivery()
-  invalid.receipt.files.html.path = '/etc/passwd'
+  invalid.receipt.files.html!.path = '/etc/passwd'
   assert.equal(presentationDeliveryFromEvent(native(invalid), calls, 3), null)
 })
 

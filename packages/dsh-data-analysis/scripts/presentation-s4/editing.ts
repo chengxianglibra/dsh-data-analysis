@@ -10,6 +10,7 @@ import {
   parsePresentationReceipt,
 } from '../../src/presentation/contracts/index.ts'
 import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
+import { presentationHtml } from '../presentation-html.ts'
 
 export async function verifyEditing(
   page: Page,
@@ -54,10 +55,7 @@ export async function verifyEditing(
   const download = await downloadPending
   const originalDownload = path.join(outputRoot, 'editing-download.html')
   await download.saveAs(originalDownload)
-  assert.deepEqual(
-    await readFile(originalDownload),
-    await readFile(delivery.receipt.files.html.path),
-  )
+  assert.deepEqual(await readFile(originalDownload), await presentationHtml(delivery.receipt))
   await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
   assert.equal(await cell('table').locator('tbody tr').count(), 2)
   await reader.getByRole('textbox', { name: '报告标题', exact: true }).fill('阅读器保存验收')
@@ -111,7 +109,7 @@ export async function verifyEditing(
   const savedDownload = await savedDownloadPending
   const savedPath = path.join(outputRoot, 'editing-saved.html')
   await savedDownload.saveAs(savedPath)
-  assert.deepEqual(await readFile(savedPath), await readFile(receipt.files.html.path))
+  assert.deepEqual(await readFile(savedPath), await presentationHtml(receipt))
   for (const javaScriptEnabled of [true, false]) {
     const context = await browser.newContext({ offline: true, javaScriptEnabled })
     const portable = await context.newPage()
@@ -170,7 +168,7 @@ export async function verifyEditing(
   const finalDownload = await finalDownloadPending
   const finalPath = path.join(outputRoot, 'editing-empty-saved.html')
   await finalDownload.saveAs(finalPath)
-  assert.deepEqual(await readFile(finalPath), await readFile(empty.files.html.path))
+  assert.deepEqual(await readFile(finalPath), await presentationHtml(empty))
   for (const javaScriptEnabled of [true, false]) {
     const context = await browser.newContext({ offline: true, javaScriptEnabled })
     const portable = await context.newPage()

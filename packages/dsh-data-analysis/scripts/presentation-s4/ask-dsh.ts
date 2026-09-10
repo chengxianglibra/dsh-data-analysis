@@ -1,10 +1,12 @@
 /** Ask DSH through the real alpha composer, with read-only state and boundary-failure probes. */
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
+import { presentationHtml } from '../presentation-html.ts'
 
 export async function verifyAskDsh(
   page: Page,
@@ -216,7 +218,12 @@ export async function verifyAskDsh(
     await portable.addInitScript(() => {
       Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
     })
-    await portable.goto(pathToFileURL(precise.receipt.files.html.path).href)
+    const portablePath = path.join(
+      await mkdtemp(path.join(tmpdir(), 'explicit-html-')),
+      'report.html',
+    )
+    await writeFile(portablePath, await presentationHtml(precise.receipt))
+    await portable.goto(pathToFileURL(portablePath).href)
     const savedCell = portable.locator('[data-mode="interactive"] [data-block-id="metric"]')
     await savedCell.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
     assert.equal(await savedCell.getByRole('menuitem', { name: 'Ask DSH', exact: true }).count(), 0)

@@ -13,6 +13,7 @@ import { MarivoPresentationFileService } from '../src/presentation/rpc.ts'
 import { interactionFixture } from '../tests/presentation-reader/interaction-fixture.ts'
 import { verifyBrowserZoom } from './presentation-browser-zoom.ts'
 import { chartGallery } from './presentation-chart-gallery.ts'
+import { presentationHtml } from './presentation-html.ts'
 import {
   verifyGalleryResizeState,
   verifyResizeState,
@@ -56,7 +57,7 @@ const gallery = await chartGallery()
 gallery.workspaceId = document.workspaceId
 gallery.reportId = 'chart-gallery'
 const galleryReceipt = await publishPresentation(workspace, gallery, null, async () => {})
-const originalHtml = await readFile(receipt.files.html.path)
+const originalHtml = await presentationHtml(receipt)
 const portablePath = path.join(output, 'interaction.html')
 await writeFile(portablePath, originalHtml)
 const delivery = {

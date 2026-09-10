@@ -9,11 +9,8 @@ import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../present
 import {
   marivoPresentationDeliveryDefinition,
   PRESENTATION_TURN_DATA_KEY,
-  presentationsForNode,
 } from '../presentation/delivery.ts'
-import { PresentationDeliveryModel } from '../presentation/delivery-model.ts'
 import { HostPresentationReader } from '../presentation/host-entry.tsx'
-import { deliveryStyles } from '../presentation/install.tsx'
 import { installPresentationReferenceSource } from '../presentation/reference-source.ts'
 import { createPluginRpc } from '../rpc.ts'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
@@ -535,84 +532,12 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id }, Body),
     )
   }
-  function DeliveryCard({ delivery, sessionId }) {
-    const { workspaceId, reportId, buildId } = delivery.receipt
-    const [model] = useState(() => new PresentationDeliveryModel(rpc))
-    const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
-    const [error, setError] = useState('')
-    useEffect(() => () => model.dispose(), [model])
-    const run = async (download = false) => {
-      setError('')
-      try {
-        check(sessionId, workspaceId, true)
-        if (!download) navigate(sessionId, { kind: 'report', workspaceId, reportId, buildId })
-        else {
-          await model.showBuild(workspaceId, reportId, buildId)
-          check(sessionId, workspaceId, true)
-          if (model.getSnapshot().error) throw new Error(model.getSnapshot().error)
-          await model.downloadDisplayed()
-        }
-      } catch (error) {
-        setError(error.message)
-      }
-    }
-    return (
-      <section className="pd-card" data-presentation-card={buildId}>
-        <h3>{delivery.receipt.title}</h3>
-        <p>{delivery.receipt.summary}</p>
-        <div className="pd-actions">
-          <button type="button" onClick={() => void run()}>
-            打开分析
-          </button>
-          <button
-            type="button"
-            disabled={state.loading || state.downloading}
-            onClick={() => void run(true)}
-          >
-            {state.downloading ? '正在下载…' : '下载 HTML'}
-          </button>
-          <span className="pd-muted">保存的数据与来源快照 · 可离线阅读</span>
-        </div>
-        {(error || state.downloadError) && (
-          <p role="alert" className="pd-error">
-            {error || state.downloadError}
-          </p>
-        )}
-        {state.notice && (
-          <p role="status" className="pd-muted">
-            {state.notice}
-          </p>
-        )}
-      </section>
-    )
-  }
   ctx.slots.inject('conversation.chat.node', () => {
     const stop = ctx.slots.register(
       { name: 'conversation.chat.node', key: PRESENTATION_TURN_DATA_KEY },
-      function Cards({ node, sessionId }) {
+      function ReportDeliveryNode() {
         const error = useSyncExternalStore(notices.subscribe, notices.getSnapshot)
-        return (
-          <div className="pd-cards">
-            <style>{deliveryStyles}</style>
-            {presentationsForNode(node, sessionId).map((delivery) => (
-              <DeliveryCard
-                key={JSON.stringify([
-                  sessionId,
-                  delivery.receipt.workspaceId,
-                  delivery.receipt.reportId,
-                  delivery.receipt.buildId,
-                ])}
-                delivery={delivery}
-                sessionId={sessionId}
-              />
-            ))}
-            {error && (
-              <p role="alert" className="pd-error">
-                {error}
-              </p>
-            )}
-          </div>
-        )
+        return error ? <p role="alert">{error}</p> : null
       },
     )
     const definition = ctx.uiConversation.events.register(marivoPresentationDeliveryDefinition)

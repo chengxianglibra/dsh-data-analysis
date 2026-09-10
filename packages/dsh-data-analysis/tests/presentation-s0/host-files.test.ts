@@ -106,7 +106,7 @@ test('fixed asset read rejects out-of-Workspace and same-Workspace symlinks and 
   await symlink(outside, f.files.document.path)
   await assert.rejects(f.service.read(f.input), /asset-path-mismatch/)
   await rm(f.files.document.path)
-  await symlink(f.files.html.path, f.files.document.path)
+  await symlink(f.files.html!.path, f.files.document.path)
   await assert.rejects(f.service.read(f.input), /asset-path-mismatch/)
   await rm(f.files.document.path)
   await writeFile(f.files.document.path, '')

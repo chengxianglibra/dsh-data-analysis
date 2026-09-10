@@ -141,9 +141,9 @@ test('RPC uses current Session Workspace authority and validates fixed paths, id
   )
   const input = { sessionId: 'session', receipt, asset: 'index.html' }
   const value = await service.read(input)
-  assert.equal(Buffer.from(value.bodyBase64, 'base64').equals(f.built.htmlBytes), true)
+  assert.equal(Buffer.from(value.bodyBase64, 'base64').equals(f.built.htmlBytes!), true)
   assert.equal(value.buildId, receipt.buildId)
-  assert.equal(value.sha256, receipt.files.html.sha256)
+  assert.equal(value.sha256, receipt.files.html!.sha256)
   for (const [payload, error] of [
     [{ ...input, path: '/etc/passwd' }, /invalid-request/],
     [{ ...input, asset: '../index.html' }, /invalid-request/],
@@ -165,14 +165,14 @@ test('RPC uses current Session Workspace authority and validates fixed paths, id
     ],
   ] as const)
     await assert.rejects(service.read(payload), error)
-  await writeFile(receipt.files.html.path, 'changed')
+  await writeFile(receipt.files.html!.path, 'changed')
   await assert.rejects(service.read(input), /asset-digest-mismatch/)
-  await truncate(receipt.files.html.path, PRESENTATION_BUDGETS.htmlBytes + 1)
+  await truncate(receipt.files.html!.path, PRESENTATION_BUDGETS.htmlBytes + 1)
   await assert.rejects(service.read(input), /asset-too-large/)
-  await rm(receipt.files.html.path)
-  await symlink(receipt.files.document.path, receipt.files.html.path)
+  await rm(receipt.files.html!.path)
+  await symlink(receipt.files.document.path, receipt.files.html!.path)
   await assert.rejects(service.read(input), /asset-path-mismatch/)
-  await rm(receipt.files.html.path)
+  await rm(receipt.files.html!.path)
   await assert.rejects(service.read(input), /ENOENT/)
 })
 
@@ -262,10 +262,10 @@ test('production present accepts computed and source-only drafts, uses independe
   assert.equal(first.dshSessionId, 'session')
   assert.equal(first.turn, 2)
   assert.equal(reads, 1)
-  assert.equal(
-    (await readFile(first.receipt.files.html.path)).length,
-    first.receipt.files.html.bytes,
-  )
+  assert.equal(first.receipt.files.html, undefined)
+  assert.deepEqual(await readdir(path.dirname(first.receipt.files.document.path)), [
+    'presentation.json',
+  ])
   const dataset = {
     schemaVersion: 1,
     columns: [{ id: 'value', label: 'Value', type: 'int64', nullable: false }],
@@ -339,15 +339,15 @@ test('internal file helpers reject traversal and commit rejects invalid or overs
 test('commit snapshots caller-owned data before asynchronous ownership checks', async (t) => {
   const f = await fixture(t)
   const expected = Buffer.from(f.built.documentBytes)
-  const expectedHtml = Buffer.from(f.built.htmlBytes)
+  const expectedHtml = Buffer.from(f.built.htmlBytes!)
   const receipt = await commitPresentation(f.root, f.built, async () => {
     f.built.document.title = 'Late mutation'
     f.built.documentBytes.fill(0)
-    f.built.htmlBytes.fill(0)
+    f.built.htmlBytes!.fill(0)
   })
   assert.equal(receipt.title, 'Snapshot')
   assert.deepEqual(await readFile(receipt.files.document.path), expected)
-  assert.deepEqual(await readFile(receipt.files.html.path), expectedHtml)
+  assert.deepEqual(await readFile(receipt.files.html!.path), expectedHtml)
 })
 
 test('Tool disposal and Runtime failure abort a pending commit without creating a success value', async (t) => {
@@ -440,7 +440,7 @@ test('production RPC classifies missing files and unavailable Workspaces without
   const input = { sessionId: 'session', receipt, asset: 'index.html' }
   const service = new MarivoPresentationFileService(() => ({ id: 'workspace', path: f.root }))
   const stop = registerMarivoPresentationRpc(connection, service)
-  await rm(receipt.files.html.path)
+  await rm(receipt.files.html!.path)
   const missing = await channels.get('/marivo-presentation')!(
     'files/read',
     input,

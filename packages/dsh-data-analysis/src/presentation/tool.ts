@@ -19,7 +19,7 @@ export interface PresentationBinding {
 }
 export type PresentationBindingSource = () => PresentationBinding | Promise<PresentationBinding>
 
-/** One call projects a draft, builds both assets, commits them, then emits the receipt. */
+/** One call projects a draft, builds the document, commits them, then emits the receipt. */
 export function createMarivoPresentTool(
   source: PresentationBindingSource,
   session: Session,
@@ -28,7 +28,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present a complete Workspace-relative analysis draft as one saved document and self-contained offline HTML. Omit report_id and expected_build_id to create a Report; provide both to replace an existing Report with a new immutable Build based on the version you have read. A report-save-conflict requires reading the current report and reconciling the draft; never retry by only changing expected_build_id. Returns the exact published receipt, file locations, and a reader card. Only saved Artifact and computed snapshots are read; sources are declarations, not verification of calculations.',
+      'Present a complete Workspace-relative analysis draft as one saved document, automatically opened in the right-side report tab. HTML is generated only when the user downloads the report. Omit report_id and expected_build_id to create a Report; provide both to replace an existing Report with a new immutable Build based on the version you have read. A report-save-conflict requires reading the current report and reconciling the draft; never retry by only changing expected_build_id. Returns the exact published receipt, file locations, for the report reader. Only saved Artifact and computed snapshots are read; sources are declarations, not verification of calculations.',
     parameters: {
       draft_path: {
         type: 'string',

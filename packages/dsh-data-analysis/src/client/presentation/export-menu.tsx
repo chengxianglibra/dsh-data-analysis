@@ -62,7 +62,7 @@ export function ExportMenu({
       : []),
     {
       label: '下载完整报告',
-      hint: '已保存的 HTML · 默认筛选',
+      hint: '完整报告 HTML · 默认筛选',
       run: actions.downloadFullReport,
       disabled: actions.downloading,
     },

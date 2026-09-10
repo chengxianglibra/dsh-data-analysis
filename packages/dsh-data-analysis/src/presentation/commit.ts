@@ -34,7 +34,7 @@ async function sameDirectory(filename: string, expected: DirectoryIdentity) {
     throw new Error('presentation-directory-changed')
 }
 
-/** Owns only one newly-created build. A single directory rename publishes both complete files. */
+/** Owns only one newly-created build. A single directory rename publishes all requested complete files. */
 export async function commitPresentation(
   workspaceRoot: string,
   input: BuiltPresentation,
@@ -46,12 +46,12 @@ export async function commitPresentation(
   const built = {
     document,
     documentBytes: Buffer.from(input.documentBytes),
-    htmlBytes: Buffer.from(input.htmlBytes),
+    htmlBytes: input.htmlBytes && Buffer.from(input.htmlBytes),
   }
   if (
     built.documentBytes.length > PRESENTATION_BUDGETS.documentBytes ||
-    built.htmlBytes.length === 0 ||
-    built.htmlBytes.length > PRESENTATION_BUDGETS.htmlBytes
+    (built.htmlBytes !== undefined &&
+      (built.htmlBytes.length === 0 || built.htmlBytes.length > PRESENTATION_BUDGETS.htmlBytes))
   )
     throw new Error('presentation-build-budget')
   if (!built.documentBytes.equals(Buffer.from(JSON.stringify(document))))
@@ -104,6 +104,7 @@ export async function commitPresentation(
       ['presentation.json', built.documentBytes],
       ['index.html', built.htmlBytes],
     ] as const) {
+      if (!bytes) continue
       await sameDirectory(temporary, ownedIdentity)
       signal?.throwIfAborted()
       const file = await open(
@@ -140,14 +141,16 @@ export async function commitPresentation(
       'presentation.json',
       signal,
     )
-    const html = await readPresentationAsset(
-      root,
-      built.document.reportId,
-      built.document.buildId,
-      'index.html',
-      signal,
-    )
-    if (!document.equals(built.documentBytes) || !html.equals(built.htmlBytes))
+    const html =
+      built.htmlBytes &&
+      (await readPresentationAsset(
+        root,
+        built.document.reportId,
+        built.document.buildId,
+        'index.html',
+        signal,
+      ))
+    if (!document.equals(built.documentBytes) || (html && !html.equals(built.htmlBytes!)))
       throw new Error('presentation-build-changed')
     await check()
     return parsePresentationReceipt({
@@ -165,12 +168,16 @@ export async function commitPresentation(
           sha256: presentationSha256(document),
           bytes: document.length,
         },
-        html: {
-          asset: 'index.html',
-          path: path.join(final, 'index.html'),
-          sha256: presentationSha256(html),
-          bytes: html.length,
-        },
+        ...(html
+          ? {
+              html: {
+                asset: 'index.html',
+                path: path.join(final, 'index.html'),
+                sha256: presentationSha256(html),
+                bytes: html.length,
+              },
+            }
+          : {}),
       },
     })
   } catch (error) {
