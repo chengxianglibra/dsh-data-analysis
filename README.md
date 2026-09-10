@@ -2,7 +2,7 @@
 
 在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 中，用自然语言完成数据分析，
 浏览和复用业务指标定义，并将结果整理为可交互、可离线阅读的图表、报告和看板。
-分析能力由 [Marivo](https://github.com/chengxianglibra/marivo) 提供。
+语义分析能力由 [Marivo](https://github.com/chengxianglibra/marivo) 提供；本地文件也可直接使用 pandas 或 DuckDB。
 
 本项目是个人维护的社区插件，并非 DeepSeek 官方发行或维护的软件。
 
@@ -38,20 +38,21 @@ dsh --profile web
 
 ### 本地文件分析
 
-默认安装包含 Marivo 的 `duckdb` extra（同时保留 `trino`、`clickhouse`），可用 DuckDB
-读取 CSV、JSON、Parquet 并执行分析。Excel `.xlsx` 通过 DuckDB 的
+上传文件后直接提问，或指定 Workspace 中已有文件。助手可在插件绑定的 Python 环境中使用 pandas
+或原生 DuckDB 分析 CSV、JSON、Parquet，无需先配置数据源或建立语义模型；需要时可继续生成报告。
+默认安装包含 Marivo 的 `duckdb` extra（同时保留 `trino`、`clickhouse`）。Excel `.xlsx` 通过 DuckDB 的
 [excel 扩展](https://duckdb.org/docs/stable/core_extensions/excel.html)读取；首次使用需要联网下载扩展，
 并允许写入 DuckDB 扩展缓存。它不是额外的 Python 包，无需为此安装 `openpyxl`。
 旧版 `.xls` 不在该扩展支持范围内，需要先转换为 `.xlsx`、CSV 或 Parquet。
 
-CSV、JSON、Parquet 可直接作为 Marivo 文件数据源；Excel 文件可先导入 DuckDB 持久表，
-再通过 Marivo 分析该表。
+纯文件分析无需经过 Marivo `md.raw_sql`。下面的数据源配置流程适用于数据库连接和需要复用的 Marivo 数据源。
 
 ## 能力
 
 | 你想做什么 | 插件提供的能力 |
 | --- | --- |
 | 回答业务问题 | 用自然语言提出问题，分析指标趋势、比较不同时间或业务分组、探索变化原因 |
+| 分析本地文件 | 复用原生附件路径，以 pandas 或 DuckDB 直接计算，并按需交付图表或报告 |
 | 连接数据 | 配置数据源、管理连接凭证并测试连接；默认包含 DuckDB、Trino、ClickHouse 支持 |
 | 统一分析口径 | 与 Agent 一起整理和复用指标、维度等业务定义，浏览语义对象及其关系 |
 | 明确分析对象 | 在输入框通过 `@` 搜索并引用已有语义对象 |

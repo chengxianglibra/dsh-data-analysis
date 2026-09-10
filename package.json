@@ -59,6 +59,7 @@
     "validate:presentation-integration:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-integration-real.ts",
     "test:presentation-skill": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/presentation-skill/*.test.ts",
     "validate:presentation-agent:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-presentation-agent-real.ts",
+    "validate:file-analysis:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-file-analysis-real.ts",
     "test:right-tabs": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/right-tabs/*.test.ts",
     "validate:right-tabs:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-right-tabs-web.ts",
     "validate:plugin-lifecycle:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-lifecycle-real.ts",

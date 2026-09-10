@@ -202,22 +202,24 @@ Tab signal 不替代导航 revision 检查。Ask DSH 第一阶段保留所属 Se
 
 ## 第三阶段：原生文件入口的有界原型
 
-后续调研与范围收敛见 [Session 单文件 SQL 分析调研](dsh-file-stage-three-research.md)：目标调整为
-CSV、JSON、Excel、Parquet 的 Session 内简单 SQL 分析，无需语义建模；以下保留最初原型设想，尚未实施。
+范围收敛见 [Session 文件分析调研](dsh-file-stage-three-research.md)和[文件分析 Skill](modules/file-analysis-skill.md)：
+首个切片支持 CSV、JSON、Excel `.xlsx`、Parquet 的 Session 内单文件分析，直接使用 pandas 或原生 DuckDB。
+两者通过 `marivo_python(datasources: [])` 执行，无需 `md.raw_sql`、注册 datasource 或语义建模。
 
-复用用户的原生附件操作；确实需要插件专用入口时才调用 `ctx.fileUpload.upload(sessionId, body, name, signal, onProgress)`。
-上传的暂存凭证和附件身份由 Harness 拥有，不能直接当作任意本机文件路径，更不能跨 Session 使用。
+复用 Harness 已有附件上传、prompt 准入和模型可见的可读路径。上传凭证、文件身份与 Session 生命周期由
+Harness 拥有；插件不新建上传 Tool、文件暂存服务或持久内存数据库。路径不可用时明确报告，只有真实验收
+证明存在接缝缺口才补相应代码，不猜测 Host 私有缓存路径。
 
-首个原型只处理一种明确格式，例如 CSV：上传后向用户展示文件名和下一步意图，经过既有 prompt 准入与公开附件解析，
-再通过同一 Runtime 的实时 Help 和 `marivo_python` 完成有界检查。解析、类型推断和 datasource 语义交给 Marivo。
-是否将结果保存为复用数据源，需要明确的用户意图和 Marivo authoring 契约；不因上传完成自动写定义。
+新增简短文件分析 Skill 与常驻路由，按任务选择 reader；格式解析交给 pandas／DuckDB。Excel 使用既有
+DuckDB 扩展，首次获取需要联网，不增加 Python reader 依赖或承诺旧 `.xls`。是否将结果保存成复用数据源，
+仍须用户有明确意图并遵守 Marivo authoring 契约。
 
-原型前置门槛是证明“Host 暂存附件 → 当前 Workspace 中可分析对象”的公开、可追踪映射。
-若 API 不提供可用映射，记录阻塞并保留原生附件入口，不读取 Host 私有缓存、不解析内部路径、不自建上传服务。
+结果按需接入现有 computed writer、`marivo_present` 和 `codeRef`；普通问题用文字回答。
+文件名、sheet／字段与样本或全量范围写入正文，不扩展报告 schema，不虚构 Artifact 来源。
 
-验收覆盖取消、失败后重试、同名文件、跨 Session 拒绝、引用寿命、异常/空文件、Workspace 改变及一次执行计数。
-上游当前不支持断点续传；stream 请求体也不能直接重放，因此产品不能承诺恢复中断上传。
-大文件和 Excel 等其他格式在首个原型通过后再定义预算与范围。
+验收从原生上传 receipt 提交真实模型任务，验证四格式、pandas／DuckDB 两条路径、报告、同名文件、
+旧附件追问和 Session 恢复；路径由 Harness 提供，测试不在 prompt 预填。取消与错误不自动重放执行。
+API 或 Tool 合成探针只能证明对应层次，不能替代上传、真实模型和目标 sandbox 的组合验收。
 
 ## 第四阶段：收紧接线与维护成本
 

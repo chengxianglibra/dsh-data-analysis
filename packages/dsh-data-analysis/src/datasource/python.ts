@@ -66,20 +66,20 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Execute foreground Python in the bound Marivo Workspace using Host-injected credentials. This call waits for missing credentials for every listed datasource before starting Python once; configured credentials do not trigger a connection test. Create/resume Sessions and readers inside this execution; close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay. Successful execution saves the exact submitted code and returns codeRef; explicitly associate it with presentation datasets through draft codeRefs. A codeCaptureError does not change the execution outcome and must not trigger replay. The execution summary reports adapter phase, outcome and effective Shell budget, not query progress or saved Artifacts. Credential waiting precedes the Shell budget; outer Code Mode deadlines and cancellation still apply. Timeout does not confirm remote query cancellation or absence of saved results.',
+        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. This call waits for missing credentials for every listed Marivo datasource before starting Python once; configured credentials do not trigger a connection test. When using Marivo Sessions or readers, create/resume them inside this execution and close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay. Successful execution saves the exact submitted code and returns codeRef; explicitly associate it with presentation datasets through draft codeRefs. A codeCaptureError does not change the execution outcome and must not trigger replay. The execution summary reports adapter phase, outcome and effective Shell budget, not query progress or saved Artifacts. Credential waiting precedes the Shell budget; outer Code Mode deadlines and cancellation still apply. Timeout does not confirm remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
           required: true,
           description:
-            'Python code, never credential values. Use try/finally for per-call Session resource cleanup; consult current Runtime Help for Session APIs.',
+            'Python code, never credential values. Close resources within this call. When using Marivo Session APIs, consult current Runtime Help and close Sessions in finally.',
         },
         datasources: {
           type: 'array',
           required: true,
           items: { type: 'string' },
           description:
-            'All exact datasource names this execution may access through data or metadata connections, including inspection and datasources without passwords; pass [] only when no datasource will be accessed. Catalog-only definition reads need no datasource connection.',
+            'All exact Marivo datasource names this execution may access through data or metadata connections, including inspection and datasources without passwords. Pass [] for local pandas or native DuckDB file analysis without Marivo datasource access. Catalog-only definition reads need no datasource connection.',
         },
         timeoutMs: {
           type: 'number',

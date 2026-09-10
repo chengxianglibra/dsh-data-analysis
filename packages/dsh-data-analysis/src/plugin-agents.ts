@@ -30,7 +30,7 @@ import {
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const PRESENTATION_PROMPT =
-  'Answer ordinary factual questions in text. For charts, tables, reports, dashboards or a readable source presentation, load the dsh-data-analysis-presentation skill and deliver through marivo_present. Existing data needs no prior Marivo skill activation; load the Runtime skills and live Help when new analysis or semantic authoring is needed.'
+  'Answer ordinary factual questions in text. For analysis of provided data files, load dsh-data-analysis-files; local pandas or native DuckDB work needs no Marivo semantic setup. For charts, tables, reports, dashboards or a readable source presentation, load dsh-data-analysis-presentation and deliver through marivo_present. Use the Runtime skills and live Help when the task needs Marivo analysis or semantic authoring; existing data can be presented directly.'
 
 export type MarivoPluginEnvironmentResolver = (
   agent: Agent,

@@ -211,6 +211,8 @@ try {
     'lib/presentation/assets/static.js',
     'lib/types/client/presentation/host-entry.d.ts',
     'skills/dsh-data-analysis-presentation/SKILL.md',
+    'skills/dsh-data-analysis-files/SKILL.md',
+    'skills/dsh-data-analysis-files/references/examples.md',
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
@@ -220,7 +222,8 @@ try {
       fail('packed plugin contains removed Evidence protocol ' + filename)
     if (
       (filename.startsWith('skills/') &&
-        !filename.startsWith('skills/dsh-data-analysis-presentation/')) ||
+        !filename.startsWith('skills/dsh-data-analysis-presentation/') &&
+        !filename.startsWith('skills/dsh-data-analysis-files/')) ||
       filename.startsWith('python/report-kit/')
     )
       fail(`packed plugin contains an unexpected Skill or removed helper ${filename}`)
@@ -329,25 +332,27 @@ try {
     })
     const catalog = await skillContext.skills.snapshot()
     assert.equal(catalog.complete, true)
-    assert.deepEqual(catalog.skills.map(skill => skill.name), ['dsh-data-analysis-presentation'])
-    const skill = await skillContext.skills.get('dsh-data-analysis-presentation')
-    assert.ok(skill?.invocation.modelInvocable)
-    assert.equal(skill.resourceBase.kind, 'directory')
-    assert.equal(skill.resourceBase.path, ${JSON.stringify(path.join(installedPlugin, 'skills/dsh-data-analysis-presentation'))})
+    assert.deepEqual(catalog.skills.map(skill => skill.name).sort(), ['dsh-data-analysis-files', 'dsh-data-analysis-presentation'])
     const visited = new Set()
-    async function checkReferences(filename) {
+    async function checkReferences(filename, basePath) {
       if (visited.has(filename)) return
       visited.add(filename)
       const markdown = await readFile(filename, 'utf8')
       for (const match of markdown.matchAll(/\\[[^\\]]*\\]\\(([^)]+)\\)/g)) {
         if (/^(?:https?:|#)/.test(match[1])) continue
         const target = path.resolve(path.dirname(filename), match[1].split('#')[0])
-        assert.ok(target.startsWith(skill.resourceBase.path + path.sep), 'Skill reference must remain inside its installed bundle')
+        assert.ok(target.startsWith(basePath + path.sep), 'Skill reference must remain inside its installed bundle')
         assert.ok((await stat(target)).isFile())
-        if (target.endsWith('.md')) await checkReferences(target)
+        if (target.endsWith('.md')) await checkReferences(target, basePath)
       }
     }
-    await checkReferences(skill.path)
+    for (const name of ['dsh-data-analysis-files', 'dsh-data-analysis-presentation']) {
+      const skill = await skillContext.skills.get(name)
+      assert.ok(skill?.invocation.modelInvocable)
+      assert.equal(skill.resourceBase.kind, 'directory')
+      assert.equal(skill.resourceBase.path, path.join(${JSON.stringify(path.join(installedPlugin, 'skills'))}, name))
+      await checkReferences(skill.path, skill.resourceBase.path)
+    }
     await skillProvider.dispose()
     assert.deepEqual((await skillContext.skills.snapshot()).skills, [])
     const root = await import('@chengxianglibra/dsh-data-analysis')

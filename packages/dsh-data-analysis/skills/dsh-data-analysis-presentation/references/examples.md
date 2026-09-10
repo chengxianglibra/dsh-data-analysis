@@ -10,6 +10,8 @@
 
 使用 [write-computed.py](examples/write-computed.py) 了解 helper 的完整用法。通过 `marivo_python` 在绑定 Runtime 执行改写后的代码；示例本身只有演示数据，可用 `datasources: []`。代码把文件写入 Workspace 的 `presentation-example/computed.dataset.json`，与 [computed.draft.json](examples/computed.draft.json) 中的路径一致。父目录由 Python 示例创建。已有 computed 文件可直接使用，无需重新计算。
 
+文件分析得到的 pandas DataFrame 或原生 DuckDB `.df()` 结果可直接替换示例数据，无需 Marivo datasource 或语义模型。读取指引见 `dsh-data-analysis-files`；草稿正文说明实际文件名、sheet／字段选择及样本或全量范围，`sourceIds` 无 Artifact 时保持空数组，`codeRefs` 关联生成该数据的实际执行引用。
+
 [computed.dataset.json](examples/computed.dataset.json) 是该示例的实际 typed JSON 输出，含精确金额、整数和 null；[computed.draft.json](examples/computed.draft.json) 同时展示单值、趋势、分组、原值表格，未声明来源。需要声明多个 Artifact 来源时参考 [computed-sources.draft.json](examples/computed-sources.draft.json)，只增加声明与关联，不提交转换信息。无法恢复的声明来源由 present 标记 unavailable，不删除声明来隐藏缺失。
 
 将选定草稿写成 `analysis/presentation.draft.json` 后调用：

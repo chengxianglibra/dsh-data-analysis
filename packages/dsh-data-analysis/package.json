@@ -54,6 +54,7 @@
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "skills/dsh-data-analysis-presentation/**",
+    "skills/dsh-data-analysis-files/**",
     "python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.1.0-py3-none-any.whl",
     "cordis.patch.yml",
     "README.md"

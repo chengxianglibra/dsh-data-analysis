@@ -231,7 +231,9 @@ function requestMessages(request: GenerateOptions | undefined): string {
   return JSON.stringify(request?.messages ?? [])
 }
 
-function explicitInvocation(name: 'marivo-analysis' | 'marivo-semantic') {
+function explicitInvocation(
+  name: 'marivo-analysis' | 'marivo-semantic' | 'dsh-data-analysis-files',
+) {
   return createUserMessage({
     content: [{ type: 'text', text: `<skill_content name="${name}">instructions</skill_content>` }],
     source: { kind: 'skill-invocation', name, form: 'instructions' },
@@ -594,6 +596,42 @@ test('production ordinary requests and a scope-local skill shadow disclose no ex
   await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
 })
 
+for (const invocation of ['tool', 'explicit'] as const) {
+  test(`file Skill ${invocation} invocation does not activate Marivo root Help or semantic rules`, async (t) => {
+    const fixture = await environmentFixture()
+    t.after(fixture.cleanup)
+    const adapter = new MockAdapter([
+      ...(invocation === 'tool'
+        ? [
+            toolCallsResponse([
+              { id: 'file-skill', name: 'skill', args: { name: 'dsh-data-analysis-files' } },
+            ]),
+          ]
+        : []),
+      textResponse('file ready'),
+      textResponse('continued'),
+    ])
+    const ctx = await harness(adapter)
+    const agent = await createAgent(ctx, `file-skill-${invocation}`)
+    t.after(installProduction(ctx, fixture.environment))
+    if (invocation === 'explicit') agent.followup(explicitInvocation('dsh-data-analysis-files'))
+    else send(agent, 'analyze the attached file')
+    await agent.whenIdle()
+    send(agent, 'continue with the same file')
+    await agent.whenIdle()
+
+    assert.equal(adapter.requests.length, invocation === 'tool' ? 3 : 2)
+    assert.match(requestMessages(adapter.requests.at(-1)), /dsh-data-analysis-files/)
+    for (const request of adapter.requests) {
+      assert.equal(guidanceMessages(request).length, 0)
+      assert.doesNotMatch(requestMessages(request), /marivo_help_context|DSH Credentials owns/)
+      assert.ok(requestToolNames(request).includes('marivo_python'))
+      assert.deepEqual(requestToolNames(request), requestToolNames(adapter.requests[0]))
+    }
+    await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
+  })
+}
+
 test('bash and ordinary tools stay visible across user turns without starting Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
@@ -778,18 +816,10 @@ for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const activatedPrompt = JSON.stringify(
       adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
     )
-    assert.match(activatedPrompt, /DSH Credentials owns/)
-    assert.match(activatedPrompt, /Never request values in chat/)
-    assert.match(activatedPrompt, /marivo_datasource_test/)
-    assert.match(activatedPrompt, /marivo_python/)
+    assert.ok(
+      activatedPrompt.includes(JSON.stringify(MARIVO_DATASOURCE_CREDENTIAL_PROMPT).slice(1, -1)),
+    )
     assert.doesNotMatch(activatedPrompt, /marivo_datasource_access|\blease\b|64 foreground/)
-    assert.match(activatedPrompt, /marivo_python installs credential_scope/)
-    assert.match(activatedPrompt, /Ordinary Shell receives no datasource secret/)
-    assert.match(activatedPrompt, /Configured credentials need no extra connection test/)
-    assert.match(activatedPrompt, /starting user code once/)
-    assert.match(activatedPrompt, /including datasources without passwords/)
-    assert.match(activatedPrompt, /only when no datasource will be accessed/)
-    assert.ok(activatedPrompt.includes('session.close()'))
     if (skill === 'marivo-analysis') {
       assert.match(activatedPrompt, /contracts come from the activated Runtime Skill/)
       assert.match(activatedPrompt, /text-only answer/)

@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-`dsh-data-analysis-presentation` 是插件唯一自带的 Skill，负责把展示需求组织成可交付的 Draft：选择
+`dsh-data-analysis-presentation` 是插件自带的展示 Skill，负责把展示需求组织成可交付的 Draft：选择
 已有数据、组织结论与图形、声明来源、调用 `marivo_present` 并解释结果。Marivo 拥有分析与来源事实，
 Harness 拥有 Skill 发现和激活，插件的 projection、reader 与 delivery 分别拥有数据快照、阅读和文件交付。
 
@@ -24,7 +24,7 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 - 普通事实问答使用文字。
 - 图表、表格、报告、看板和可读来源展示加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。
-- 已有 Artifact 或 computed 数据无需先激活分析 Skill；需要新分析或语义编写时，按需加载 Runtime Skill 与 live Help。
+- 直接文件分析加载 `dsh-data-analysis-files`，使用 pandas 或原生 DuckDB；已有 Artifact 或 computed 数据无需先激活分析 Skill。涉及 Marivo 分析语义或建模时，按需加载 Runtime Skill 与相关 live Help。
 
 展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。当前可见 Tool 仍为 `marivo_help`、
 `marivo_datasource_test`、`marivo_python` 和 `marivo_present`，没有展示 convenience Tool 或兼容入口。
@@ -34,6 +34,7 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 Agent 按用途选择数据与表达：Artifact dataset 直接恢复持久化结果；computed dataset 读取 Python writer
 生成的 typed JSON；只需解释来源时使用 source-only。来源在 Draft 声明，可为零到多个精确引用。
 computed 不要求转换代码、转换分类或复算信息；可恢复来源只说明快照可读取，不能证明计算正确。
+文件分析结果复用 computed writer 和实际 `codeRef`，正文说明文件名与读取范围，不构造 Marivo Artifact 来源。
 
 Draft 使用五类 block：Markdown、metric、支持 18 类图形的 chart、table 和 source。Agent 决定内容顺序、
 图形类型、字段与标签，reader 负责自适应布局，没有网格配置。报告和看板共用同一数据契约与 reader，

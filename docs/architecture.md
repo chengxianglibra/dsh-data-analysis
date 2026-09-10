@@ -7,8 +7,8 @@ Credentials、profile 和通用文件/Web 生命周期；Marivo 拥有分析语�
 Lineage、revalidation 与 Session runtime；本项目只连接两者，不复制上游契约。
 
 当前开发实现已接通一次 Python 执行准入、typed data projection、最小 Python helper、
-[共享 reader 与离线构建](modules/presentation-reader.md)、稳定报告身份、阅读器在线呈现编辑和Agent 声明的可选全局筛选与动态 KPI，以及唯一
-[展示 Skill](modules/presentation-skill.md)。旧 report-kit、报告 Skill、经典 JS 和 Evidence 协议已删除。
+[共享 reader 与离线构建](modules/presentation-reader.md)、稳定报告身份、阅读器在线呈现编辑和Agent 声明的可选全局筛选与动态 KPI，以及
+[展示 Skill](modules/presentation-skill.md)与[文件分析 Skill](modules/file-analysis-skill.md)。旧 report-kit、报告 Skill、经典 JS 和 Evidence 协议已删除。
 当前仍是未发布开发状态；阶段范围见[实施路线图](plan/marivo-analytics-presentation-roadmap.md)，
 报告编辑、全图形筛选与原卡片重开的验证见[当前验收记录](plan/2026-09-07-presentation-editing-acceptance.md)；
 真实 Agent 路由的历史证据见[S5 验收记录](plan/marivo-analytics-presentation-s5-acceptance.md)。
@@ -24,6 +24,7 @@ flowchart LR
   P --> Y[marivo_python]
   P --> E[marivo_present]
   P --> K[dsh-data-analysis-presentation Skill]
+  P --> F[dsh-data-analysis-files Skill]
   P --> S[Semantic reference input and usage sidecar]
   P --> B[Read-only Workspace semantic browser]
   P --> J[Presentation typed data projection]
@@ -44,7 +45,7 @@ flowchart LR
 左下角不再保留报告快捷入口；列表仅显示报告标题、生成对话和更新时间，输入即筛选，固定按最近更新排序。
 列表标题右侧提供唯一刷新入口；报告正文标题右侧只显示短 Build 版本号和三点菜单，集中刷新、编辑、历史和下载。
 当前版本的编辑能力依据实际 current 指针核验，不依据地址是否含 Build；保存后在原位置展示新版本，详情见[报告 Tab 优化验收](report-tab-editing-acceptance.md)。
-实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)，语义对象加入提问见 [2c 验收记录](dsh-context-stage-two-c-acceptance.md)；上传分析尚未实施。
+实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)，语义对象加入提问见 [2c 验收记录](dsh-context-stage-two-c-acceptance.md)；文件分析已接入 Skill 路由，原生上传与真实模型验收单独记录，见[文件分析](modules/file-analysis-skill.md)。
 
 数据源 Tab 支持确认删除项目定义，并可显式选择删除对应共享凭证。Marivo 拥有定义删除契约，Harness
 拥有凭证删除；插件串联两个操作并展示部分完成结果，不级联删除分析数据或语义定义，见[删除验收](datasource-removal-acceptance.md)。
@@ -56,6 +57,7 @@ flowchart LR
 | Runtime/Workspace | 精确安装、marker、zero-init binding identity | Marivo 项目语义、Session 数据与按需写入 |
 | Environment | checked runner、受限 argv、资源上限、overlay 脱敏 | Artifact/Evidence/Graph schema |
 | Help | 当前 binding 的 live Help transport 与激活披露 | 静态 API registry |
+| File analysis Skill | 附件可读路径与 Python 执行路由、文件结果接入报告 | 文件上传、格式解析器、SQL 引擎、语义建模 |
 | Presentation Skill | 展示路由、内容组织、图形选择、来源声明与交付流程 | 分析语义、来源有效性判断、布局引擎 |
 | Datasource | DSH Credentials 管理、调用续接、connection test、resolver 注入 | table/source inspection 语义 |
 | Presentation delivery | present 与编辑完整提交、current 指针、durable receipt、RPC 与打开/下载 | 分析计算、长期版本管理、语义正确性 |
@@ -75,6 +77,7 @@ flowchart LR
 - [Datasource Credentials](modules/datasource-credentials.md)
 - [展示交付](modules/presentation-delivery.md)
 - [展示 Skill](modules/presentation-skill.md)
+- [文件分析 Skill](modules/file-analysis-skill.md)
 - [语义对象引用输入](modules/semantic-reference-input.md)
 - [只读语义层对象浏览器](modules/semantic-browser.md)：统一使用原生 Tab，顶部横向分类，页内浏览共享 Catalog 快照；语义弹窗已移除。
 - [展示数据投影](modules/presentation-projection.md)
@@ -106,9 +109,12 @@ marivo_present
 ```
 
 Plugin 挂载 Runtime 的 `marivo-analysis` / `marivo-semantic`，另用独立 filesystem provider 挂载插件自带的
-`dsh-data-analysis-presentation`。常驻 prompt 只给出短路由：普通事实问答使用文字；图表、表格、报告、
-看板和可读来源展示加载展示 Skill。已有数据无需先激活分析 Skill；需要新分析或语义编写时才加载
-Runtime Skill 与 live Help。展示 Skill 不新增 Help target，也不改变两个 Runtime Skill 的激活披露。
+`dsh-data-analysis-presentation` 和 `dsh-data-analysis-files`。常驻 prompt 只给出短路由：普通事实问答使用文字；
+直接文件分析加载文件 Skill，使用 pandas 或原生 DuckDB；图表、表格、报告、看板和可读来源展示加载展示 Skill。
+只有涉及 Marivo 分析语义或建模时才加载相应 Runtime Skill；使用 Marivo API 时查询相关 live Help。
+两个插件 Skill 均不新增 Help target，也不触发两个 Runtime Skill 的根 Help 披露。
+纯本地文件执行通过 `marivo_python(datasources: [])` 保留 Runtime/Workspace identity、取消与代码记录；
+不需要 `md.raw_sql`，不自动获得 Artifact、Evidence、质量或 lineage 契约。
 Plugin disposal 只移除自身 scope 的 Tool、prompt 与事件接线。
 
 Runtime 安装 `dsh-data-analysis-presentation-kit==1.1.0`；公开 Python 函数

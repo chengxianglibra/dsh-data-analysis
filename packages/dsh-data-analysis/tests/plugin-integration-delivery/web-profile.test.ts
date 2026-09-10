@@ -301,15 +301,26 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   assert.deepEqual(
     catalog.skills
       .filter((skill) => skill.provider === 'dsh-data-analysis-presentation')
-      .map((skill) => skill.name),
-    ['dsh-data-analysis-presentation'],
+      .map((skill) => skill.name)
+      .sort(),
+    ['dsh-data-analysis-files', 'dsh-data-analysis-presentation'],
   )
-  const presentationSkill = await ctx.skills.get('dsh-data-analysis-presentation', {
-    cwd: firstRoot,
-    scope: first,
-  })
-  assert.ok(presentationSkill?.invocation.modelInvocable)
-  assert.equal(presentationSkill?.resourceBase?.kind, 'directory')
+  for (const name of ['dsh-data-analysis-files', 'dsh-data-analysis-presentation']) {
+    const skill = await ctx.skills.get(name, { cwd: firstRoot, scope: first })
+    assert.ok(skill?.invocation.modelInvocable)
+    assert.ok(skill.invocation.userInvocable)
+    assert.equal(skill.resourceBase?.kind, 'directory')
+    if (skill.resourceBase?.kind !== 'directory') assert.fail('Missing Skill resource directory')
+    assert.equal(path.basename(skill.resourceBase.path), name)
+    assert.equal(skill.path, path.join(skill.resourceBase.path, 'SKILL.md'))
+    assert.ok(skill.description.trim())
+    assert.ok(skill.content.trim())
+    for (const link of skill.content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+      const href = link[1]!.split('#')[0]!
+      if (!href || /^\w+:/.test(href)) continue
+      await stat(path.resolve(skill.resourceBase.path, href))
+    }
+  }
 
   send(first, 'analyze workspace a')
   await first.whenIdle()
@@ -348,6 +359,10 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   assert.equal(
     disposedCatalog.skills.some((skill) => skill.provider.startsWith('dsh-data-analysis-')),
     false,
+  )
+  assert.equal(
+    await ctx.skills.get('dsh-data-analysis-files', { cwd: firstRoot, scope: first }),
+    undefined,
   )
   assert.deepEqual(
     first.ctx.tools.schemas(first).filter((tool) => tool.name.startsWith('marivo_')),
