@@ -134,12 +134,12 @@ Markdown、表格和筛选区跟随完整内容宽度。KPI 按可用空间自�
 
 每个 cell 右上角提供三点菜单，Host 包含“Ask DSH”，离线 HTML 包含“复制上下文”；
 有数据或来源的 cell 同时提供“数据源”选项。“数据源”打开原生 modal，
-按“概要 / 数据预览 / 代码”组织信息。概要仅呈现当前 cell 的指标、数据集、字段、报告生成时间、已有语义路径、
-来源创建时间及实际问题；不会把生成时间当作查询执行时间。没有数据集的 source block 提供概要和代码。
-代码 Tab 展示当前 dataset 关联的 Python 执行快照及所选来源保存的实际 SQL，自动整理换行与缩进并提供语法高亮；
+按“概要 / 数据预览 / 相关查询”组织信息。概要仅呈现当前 cell 的指标、数据集、字段、报告生成时间、已有语义路径、
+来源创建时间及实际问题；不会把生成时间当作查询执行时间。没有数据集的 source block 提供概要和相关查询。
+相关查询 Tab 展示当前 dataset 关联的 Python 执行快照及所选来源保存的实际 SQL，自动整理换行与缩进并提供语法高亮；
 格式化仅生成展示文本，文档快照及复制内容保持执行原文。Python 使用内嵌 Ruff formatter，SQL 使用通用 SQL formatter；
-快照未声明 SQL dialect 时不猜测方言。语法或方言不支持、formatter 不可用时显示原文和明确提示。
-Python 关联由作者声明，界面明确说明这一边界。代码缺失和来源读取限制保留说明；不从当前定义或脚本文件重构历史代码。
+快照未声明 SQL dialect 时不猜测方言。语法或方言不支持、formatter 不可用时显示原文。
+Python 关联由作者声明；界面仅显示语言标题、代码和复制操作。代码缺失和来源读取限制保留说明；不从当前定义或脚本文件重构历史代码。
 概要不解析 SQL 来推断物理表、筛选值或历史定义。
 
 Host 数据源概要中的公开语义引用可点击打开同一 Workspace 的语义层卡片，按 `kind + path` 精确定位。
@@ -157,8 +157,8 @@ Host 数据源概要中的公开语义引用可点击打开同一 Workspace 的�
 “继续分析”、独立复制图标与图表下方“查看数据”入口已移除。上下文只提供固定 Build/cell 定位与未保存的显示状态，
 正文、绑定、精确值和来源均由 Agent 按引用读取；剪贴板失败提供临时手动复制弹窗。
 
-`PresentationReader` 和 `HostPresentationReader` 接收可选 `onAskDsh(context: string): void`；
-Host 注入时菜单显示 Ask DSH，无回调时保持复制上下文。回调内容复用 `followUpContext`，包含当前筛选、图表探索和表格排序状态。
+`PresentationReader` 和 `HostPresentationReader` 接收可选 `onAskDsh(payload: PresentationContext): void`；
+Host 注入时菜单显示 Ask DSH，无回调时保持复制上下文。回调将显示名称 `label` 与完整上下文 `context` 分开；上下文复用 `followUpContext`，包含当前筛选、图表探索和表格排序状态。
 
 上下文包含 `Workspace / Report ID / Build ID / Cell`，全部来自正在显示的 document。current 页面提示
 新版本但尚未刷新时仍引用旧 Build，刷新后引用新 Build，固定 Build 始终保留自身身份。标题仅用于阅读，
@@ -178,20 +178,23 @@ filter ID、option ID 与简短标签，不展开行号。图表默认配置不�
 验收见 [2a 验收记录](../dsh-context-stage-two-a-acceptance.md)和 [2b 验收记录](../dsh-context-stage-two-b-acceptance.md)。
 
 Host adapter 在点击时核验报告、当前 Session 与 Workspace，使用 Harness 公开的 `sessions.scope`、
-`conversation.input.for` 及 `slash/input-insert-text`，按最新 `draftRev` 和原子引用坐标，把
-“【报告上下文】／【报告上下文结束】”包围的文本以两个换行追加到最新草稿。
-保留已有文字、语义引用和图片附件，不自动提交或序列化引用；对话框入口在写入成功后关闭报告并恢复焦点，
+`conversation.input.for` 及 `slash/input-insert-reference`，按最新 `draftRev` 和原子引用坐标追加引用。
+输入框仅显示 `# <cell名称>`；名称使用 Cell 的 `label`，缺失或空白时回退到 Cell ID，空白归一化并限制为 80 个 Unicode 码点。
+插件的 `marivo-report-cell` source 只提供 codec，不提供候选菜单或手动 `#` 搜索。Harness alpha 的通用 chip 默认 `@` 标记，
+通过仅限该 source 的样式隐藏，显示名称自带 `#`；引用编辑、撤销、提交继续由 Harness 拥有。
+撤销沿用原生分组，1 秒内连续插入的引用可能一起撤销，与 `@` 引用一致。
+引用内部冻结点击时的完整上下文；提交时 codec 校验所属 Session/Workspace 与取消状态，再展开
+“【报告上下文】／【报告上下文结束】”包装的内容。复制和纯文本草稿持久化同样保留完整上下文，避免丢失定位。
+保留已有文字、语义引用和图片附件，点击不自动提交或序列化引用；对话框入口在写入成功后关闭报告并恢复焦点，
 原生 Tab 保持打开，写入失败显示提示，成功重试后清除提示。
 会话或 Workspace 失效、写入失败时保留报告并显示错误，不改投其他会话。编辑模式的 Ask DSH 保持可见与键盘可聚焦，
 但禁用执行并提示“请先保存或取消编辑”。共享 reader 不访问 DSH 服务；打印、无脚本正文不提供此动作。
-验收见 [Ask DSH 接入验收](../plan/2026-09-08-presentation-ask-dsh-acceptance.md)。
+验收见 [Ask DSH 接入验收](../plan/2026-09-08-presentation-ask-dsh-acceptance.md)及 [Cell 引用标签验收](../dsh-report-cell-reference-acceptance.md)。
 
-技术 identity、原始 JSON、成功检查、空事实和通用声明不进入阅读界面，完整来源与诊断仍原样保存在内嵌文档。
-`definition_unavailable` 不生成页首阅读提示；投影仅对 `metric_frame` 或公开语义引用包含 `metric` 的来源记录定义限制，
-并在 `/sources` 合并为一条带来源数量的“信息”诊断。每个相关来源的概要显示“指标定义说明”：
-公开契约未提供生成时的定义快照，无法展示当时的指标含义与口径；不影响已保存数据、图表及已有代码的展示，
-正常阅读无需处理，核验历史口径需补充生成时的定义快照。该说明不推断 Artifact 内部没有持久化语义信息，
-也不使用当前定义替代历史定义。旧文档中的逐来源诊断继续隐藏。
+来源通过可展开的 Artifact ID 展示已保存的 Session ID、Finding ID、类型和行数；该入口仅展开保存的详情，不请求或重新执行 Artifact。
+字段以独立表格展示当前 cell 使用的字段 ID、显示名称、类型和单位；计算结果明确标注来源类型，不推断字段与上游指标的映射。
+弹窗不展示自动生成的副标题、重复的数据预览标题或探索状态套话。已有名称末尾包含同一单位时，不重复追加单位。
+投影不检查或生成指标历史定义快照缺失提示，也不保留旧版提示的兼容分支。
 已在关联 cell 显示的截断、来源不可用状态不再重复放到页首。
 其他诊断按 message 去重并保留原文，实际不可用原因和数据问题可以在数据源概要中查看。
 菜单支持方向键、Escape 和外部点击；弹窗支持键盘 tab 切换、Escape 关闭及焦点返回触发按钮。

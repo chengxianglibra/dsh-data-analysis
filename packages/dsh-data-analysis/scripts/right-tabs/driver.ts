@@ -35,7 +35,7 @@ class CredentialAdapter extends LlmAdapter {
 }
 
 class SemanticQuestionAdapter extends LlmAdapter {
-  readonly requests: { marker: boolean; text: string }[] = []
+  readonly requests: { marker: boolean; text: string; reportText: string }[] = []
   override async resolveModel(provider: string, model: string) {
     return { provider, id: model, name: model }
   }
@@ -49,7 +49,11 @@ class SemanticQuestionAdapter extends LlmAdapter {
       }
       visit(options.messages)
       const text = texts.find((value) => value.includes('<marivo-semantic-ref>')) ?? ''
-      this.requests.push({ marker: !!text, text })
+      this.requests.push({
+        marker: !!text,
+        text,
+        reportText: texts.find((value) => value.includes('【报告上下文】')) ?? '',
+      })
     }
     yield { type: 'finish', reason: { kind: 'stop' } }
   }

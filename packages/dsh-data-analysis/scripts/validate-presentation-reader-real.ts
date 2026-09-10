@@ -8,7 +8,6 @@ import { build } from 'esbuild'
 import { type Browser, chromium, type Locator, type Page } from 'playwright'
 import {
   cellText,
-  columnLabel,
   datasetById,
   metricText,
   selectedSources,
@@ -374,12 +373,11 @@ async function verifySourceOverview(
   let expectedCards = 0
   for (const source of sources) {
     const { createdAt, semanticGroups, issues, notices } = sourceOverviewFacts(source)
-    const included =
-      source.status === 'unavailable' ||
-      Boolean(createdAt || semanticGroups.length || issues.length || notices.length)
     const card = overview.locator(`[data-source-id="${source.id}"]`)
-    assert.equal(await card.count(), included ? 1 : 0, `source ${source.id}: unexpected card count`)
-    if (!included) continue
+    assert.equal(await card.count(), 1, `source ${source.id}: unexpected card count`)
+    await card.locator('.pr-artifact-details summary').click()
+    assert.ok((await card.innerText()).includes(source.ref.sessionId))
+    await card.locator('.pr-artifact-details summary').click()
     expectedCards++
     assert.ok(await card.isVisible())
     const text = await card.innerText()
@@ -582,10 +580,8 @@ async function verifyReader(
       if (dataset) {
         const overviewColumns = block.kind === 'metric' ? [block.columnId] : selected
         assert.deepEqual(
-          await overview.locator('.pr-source-fields li').allTextContents(),
-          overviewColumns.map((id) =>
-            columnLabel(dataset.columns.find((column) => column.id === id)!),
-          ),
+          await overview.locator('.pr-source-fields tbody td:first-child').allTextContents(),
+          overviewColumns,
         )
         assert.equal(await dialog.getByRole('tab').count(), sourceTabs(true).length)
         await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()

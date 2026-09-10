@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { chartColumns } from '../../presentation/contracts/charts.ts'
 import type { PresentationBlock, PresentationDocument } from '../../presentation/contracts/types.ts'
 import { CloseIcon } from './icons.tsx'
-import { chartTitle, datasetById } from './model.ts'
+import { datasetById } from './model.ts'
 import { SourceCode } from './source-code.tsx'
 import { type SourceTab, sourceTabForKey, sourceTabs } from './source-code-model.ts'
 import type { OpenSemanticRef } from './source-facts.ts'
@@ -17,7 +17,6 @@ export function SourceDialog({
   rowIndices,
   filterKey,
   filterSummary,
-  explored = false,
   onOpenSemanticRef,
 }: {
   document: PresentationDocument
@@ -27,7 +26,6 @@ export function SourceDialog({
   rowIndices?: readonly number[]
   filterKey?: string
   filterSummary?: string
-  explored?: boolean
   onOpenSemanticRef?: OpenSemanticRef
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -42,14 +40,6 @@ export function SourceDialog({
       : block.kind === 'table'
         ? block.columns
         : undefined
-  const title =
-    block.kind === 'metric'
-      ? block.label
-      : block.kind === 'chart' && dataset
-        ? chartTitle(dataset.data, block)
-        : block.kind === 'table'
-          ? '数据表'
-          : undefined
   useEffect(() => {
     const element = dialog.current
     if (!element) return undefined
@@ -85,7 +75,6 @@ export function SourceDialog({
             <h2 className="pr-source-dialog-title" id={`${id}-title`}>
               数据源
             </h2>
-            {title && <p className="pr-source-dialog-context">{title}</p>}
           </div>
           <button
             type="button"
@@ -119,16 +108,13 @@ export function SourceDialog({
                   ?.focus()
               }}
             >
-              {item === 'overview' ? '概要' : item === 'preview' ? '数据预览' : '代码'}
+              {item === 'overview' ? '概要' : item === 'preview' ? '数据预览' : '相关查询'}
             </button>
           ))}
         </div>
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Keep overflowing source details scrollable by keyboard. */}
         <div className="pr-source-dialog-body" tabIndex={0}>
           {filterSummary && <p className="pr-muted">当前筛选：{filterSummary}</p>}
-          {explored && (
-            <p className="pr-muted">当前探索视图 · 未保存。系列显隐不改变作者提供的占比分母。</p>
-          )}
           <div
             id={`${id}-overview`}
             role="tabpanel"
@@ -154,7 +140,8 @@ export function SourceDialog({
                 filterKey={filterKey}
                 columns={columns}
                 mode="interactive"
-                caption={title ?? '数据预览'}
+                caption="数据预览"
+                hideCaption
                 showScope={dataset.data.truncated}
               />
             </div>

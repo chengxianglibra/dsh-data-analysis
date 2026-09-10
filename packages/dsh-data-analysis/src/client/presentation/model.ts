@@ -50,7 +50,11 @@ export function snapshotDate(value: string): string {
 }
 
 export function columnLabel(column: DatasetColumn): string {
-  return column.unit ? `${column.label} (${column.unit})` : column.label
+  const unit = column.unit?.trim()
+  const label = column.label.trimEnd()
+  return unit && !label.endsWith(`(${unit})`) && !label.endsWith(`（${unit}）`)
+    ? `${column.label} (${unit})`
+    : column.label
 }
 
 /** Axis labels are compact coordinates; tooltips and tables retain exact source text. */

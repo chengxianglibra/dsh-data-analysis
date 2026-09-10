@@ -1,5 +1,6 @@
 import { type InputContextHost, inputEnd, ownedInput } from '../input-context.ts'
-import { wrapPresentationContext } from './context-reference.ts'
+import type { PresentationContext } from './context-reference.ts'
+import { presentationReference } from './reference-source.ts'
 
 export type AskDshHost = InputContextHost
 
@@ -8,7 +9,7 @@ export function appendPresentationContext(
   host: AskDshHost,
   sessionId: string,
   workspaceId: string,
-  context: string,
+  context: PresentationContext,
 ): void {
   let owner: ReturnType<typeof ownedInput>
   try {
@@ -18,9 +19,9 @@ export function appendPresentationContext(
   }
   const { actx, input } = owner
   const snapshot = input.state.getSnapshot()
-  const wrapped = wrapPresentationContext(context, snapshot.draft ? '\n\n' : '')
-  const applied = actx.bail(actx, 'slash/input-insert-text', {
-    text: wrapped,
+  const reference = presentationReference(sessionId, workspaceId, context, !!snapshot.draft)
+  const applied = actx.bail(actx, 'slash/input-insert-reference', {
+    reference,
     span: inputEnd(snapshot),
   })
   if (applied !== true) throw new Error('会话草稿已变化或正在提交，请稍后重试。')

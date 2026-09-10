@@ -5,12 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { appendPresentationContext } from './ask-dsh.ts'
-import {
-  catalogStyles,
-  publicationTime,
-  ReportCatalogView,
-  ReportHistoryPanel,
-} from './catalog.tsx'
+import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from './catalog.tsx'
 import { ReportCatalogModel } from './catalog-model.ts'
 import {
   marivoPresentationDeliveryDefinition,
@@ -20,6 +15,7 @@ import {
 } from './delivery.ts'
 import { PresentationDeliveryModel, reportKey } from './delivery-model.ts'
 import { HostPresentationReader } from './host-entry.tsx'
+import { installPresentationReferenceSource } from './reference-source.ts'
 
 export const deliveryStyles = `
 .pd-cards{display:grid;gap:10px;margin-top:12px}.pd-card{border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:10px;padding:14px;color:var(--dsw-alias-label-primary,#1d3036);background:var(--dsw-alias-bg-module-platform,#f4f7f7)}
@@ -295,10 +291,7 @@ export function PresentationOverlay({
                   编辑报告
                 </button>
               )}
-              <span className="pd-muted">
-                {state.historical ? '正在查看历史版本 · 只读' : '当前版本'} ·{' '}
-                {`生成于 ${publicationTime(state.document.generatedAt)}`}
-              </span>
+              {state.historical && <span className="pd-muted">正在查看历史版本 · 只读</span>}
               {state.historical && (
                 <button type="button" onClick={() => void model.selectVersion()}>
                   返回当前版本
@@ -427,6 +420,7 @@ export function PresentationOverlay({
 }
 
 export function installPresentation(ctx, rpc, openSemanticObject, options = {}) {
+  installPresentationReferenceSource(ctx)
   const model = new PresentationDeliveryModel(rpc)
   const catalog = new ReportCatalogModel(rpc)
   ctx.effect(() => () => catalog.dispose(), 'dsh-data-analysis: report catalog lifecycle')

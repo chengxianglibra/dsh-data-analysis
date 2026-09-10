@@ -177,7 +177,7 @@ export async function apply(ctx){
  resolver.for=(actx)=>{
    if(!wrapped.has(actx)){
      const bail=actx.bail.bind(actx);
-     actx.bail=(...args)=>{if(args[1]==='slash/input-insert-text'){writes++;if(failure==='write'){failure=undefined;throw new Error('Ask DSH validation: draft write failed')}}return bail(...args)};
+     actx.bail=(...args)=>{if(['slash/input-insert-text','slash/input-insert-reference'].includes(args[1])){writes++;if(failure==='write'){failure=undefined;throw new Error('Ask DSH validation: draft write failed')}}return bail(...args)};
      wrapped.add(actx);
    }
    return resolve(actx);
@@ -188,6 +188,10 @@ export async function apply(ctx){
      const input=resolve(scope(id)), state=input.state.getSnapshot();
      const end=state.occurrences.reduce((n,o)=>n-o.length+1,state.draft.length);
      return input.insertReference(reference,{start:end,end,draftRev:state.draftRev});
+   },
+   serializeLast:id=>{
+     const occurrence=resolve(scope(id)).state.getSnapshot().occurrences.at(-1);
+     return ctx.inputTriggers.sessionOf(scope(id)).serializeReference(occurrence.source,occurrence.ref,new AbortController().signal);
    },
    audit:()=>({writes,calls:structuredClone(calls)}),
    failNext:kind=>{if(!['scope','write'].includes(kind))throw new Error('invalid failure');failure=kind},

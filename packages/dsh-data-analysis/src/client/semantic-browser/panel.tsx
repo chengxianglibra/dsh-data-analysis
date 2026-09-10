@@ -5,16 +5,19 @@ import { ComputationCard } from './computation.tsx'
 import { ObjectGraph } from './graph.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
 import { countObjectsByKind, emptyView, filterObjects, PAGE_SIZE } from './model.ts'
+import { FieldValue } from './reference-link.tsx'
 import { browserStyles } from './styles.ts'
 
-function Fields({ fields }) {
+function Fields({ fields, object, objects, navigate }) {
   return (
     <dl className="sb-fields">
       {fields.map((field, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: Immutable snapshot fields may repeat by calendar level and carry no component state.
         <Fragment key={`${field.name}/${i}`}>
           <dt title={field.name}>{fieldLabels[field.name] ?? field.name}</dt>
-          <dd>{field.value || '—'}</dd>
+          <dd>
+            <FieldValue field={field} object={object} objects={objects} navigate={navigate} />
+          </dd>
         </Fragment>
       ))}
     </dl>
@@ -124,6 +127,9 @@ function ObjectDetail({
           <h3>业务定义</h3>
           <p>{object.definition || '未填写业务定义'}</p>
           <Fields
+            object={object}
+            objects={objects}
+            navigate={navigate}
             fields={[
               { name: 'domain', value: object.domain ?? '未指定业务域' },
               ...object.fields.filter((field) =>
@@ -160,7 +166,12 @@ function ObjectDetail({
           {!!definitionFields.length && (
             <section aria-label="补充属性">
               <h3>{object.computation ? '补充属性' : '语义属性'}</h3>
-              <Fields fields={definitionFields} />
+              <Fields
+                fields={definitionFields}
+                object={object}
+                objects={objects}
+                navigate={navigate}
+              />
             </section>
           )}
           <h3>定义位置</h3>

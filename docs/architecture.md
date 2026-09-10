@@ -195,7 +195,9 @@ Host 预览与离线 HTML 共用流式宽度；正文跟随容器，KPI 限制�
 前端探索只选择现有列或显式 `preparedViews`，过滤和显隐不改变统计口径；当前视图用于来源预览与 cell 上下文，
 保存文档、完整报告下载与既有打印仍使用作者快照。当前视图导出同步冻结阅读结果，保留筛选、SVG、排序后的全部已保存表格行及来源概要；
 仅浏览器端下载，不生成新 Build、不改写数据或调用 RPC。详细规则见[reader 模块](modules/presentation-reader.md)。
-Host 的 Ask DSH 通过 reader 回调把当前 cell 上下文追加到报告所属会话的输入草稿；成功后对话框入口关闭报告，
+Host 的 Ask DSH 通过 reader 回调向报告所属会话的草稿追加原生引用，显示 `# <cell名称>`；
+引用 codec 在发送时核验 Session/Workspace 并展开点击时的完整上下文，复制和纯文本持久化也保留定位。
+成功后对话框入口关闭报告，
 原生 Tab 保持打开，失败时在 Tab 内显示错误并保留草稿；
 Harness 继续拥有输入状态、引用、附件及提交行为。编辑模式禁用此操作，portable 保留复制上下文。
 追问与复制携带正在显示的 `Workspace / Report ID / Build ID / Cell`；current 的新版本提示不改变

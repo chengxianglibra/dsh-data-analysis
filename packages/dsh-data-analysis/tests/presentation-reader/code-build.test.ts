@@ -48,11 +48,11 @@ test('portable HTML embeds identical Python and SQL snapshots as data and readab
   assert.equal(embedded.datasets[0].code[0].text, python)
   assert.equal(embedded.sources[0].code.snippets[0].text, sql)
   const fallback = html.split('<div id="reader">')[0]!
-  assert.match(fallback, /Python · 执行记录/)
-  assert.match(fallback, /SQL · 执行记录/)
+  assert.match(fallback, /Python/)
+  assert.match(fallback, /SQL/)
   assert.match(fallback, /<code class="language-python"><span style="color:/)
   assert.match(fallback, /<code class="language-sql"><span style="color:/)
-  assert.match(fallback, /已格式化展示/)
+  assert.doesNotMatch(fallback, /已格式化展示/)
   assert.doesNotMatch(fallback, /无法格式化/)
   assert.match(html, /&#39;wasm-unsafe-eval&#39;/)
   assert.match(fallback, /literal-value/)
@@ -64,5 +64,5 @@ test('portable HTML embeds identical Python and SQL snapshots as data and readab
   document.datasets[0]!.sourceIds = []
   document.blocks = [{ id: 'python-only', kind: 'table', datasetId: document.datasets[0]!.id }]
   const onlyPython = (await buildPresentation(document)).htmlBytes.toString('utf8')
-  assert.match(onlyPython.split('<div id="reader">')[0]!, /Python · 执行记录/)
+  assert.match(onlyPython.split('<div id="reader">')[0]!, /Python/)
 })

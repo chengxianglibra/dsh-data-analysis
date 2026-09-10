@@ -343,7 +343,7 @@ sys.setprofile(audit)
   })
 })
 
-test('historical definition limitation is informational and aggregated across nine metric sources', async (t) => {
+test('metric source projection does not check or emit historical definition limitations', async (t) => {
   const value = fixture()
   value.artifacts.artifact!.kind = 'metric_frame'
   const { payload } = await readFixture(t, value, {
@@ -355,16 +355,13 @@ test('historical definition limitation is informational and aggregated across ni
   })
   assert.equal(payload.ok, true)
   assert.equal(payload.sources.length, 9)
-  assert.equal(payload.diagnostics.length, 1)
-  assert.equal(payload.diagnostics[0].code, 'definition_unavailable')
-  assert.equal(payload.diagnostics[0].path, '/sources')
-  assert.match(payload.diagnostics[0].message, /^信息：9 个指标来源/)
+  assert.deepEqual(payload.diagnostics, [])
   for (const source of payload.sources) {
     assert.equal(source.status, 'available')
-    const notice = source.facts.find((fact: { label: string }) => fact.label === '指标定义说明')
-    assert.match(notice.value, /来源概要无法展示/)
-    assert.match(notice.value, /正常阅读无需处理/)
-    assert.match(notice.value, /核验历史口径需补充生成时的定义快照/)
+    assert.equal(
+      source.facts.some((fact: { label: string }) => fact.label === '指标定义说明'),
+      false,
+    )
   }
 })
 
@@ -378,7 +375,7 @@ test('non-metric sources do not emit historical metric definition limitations', 
   )
 })
 
-test('metric semantic references receive the limitation while unavailable sources do not', async (t) => {
+test('metric semantic references do not emit definition limitations and unavailable sources retain status', async (t) => {
   const value = fixture()
   value.artifacts.artifact!.semantic_kinds = ['metric']
   const { payload } = await readFixture(t, value, {
@@ -390,6 +387,5 @@ test('metric semantic references receive the limitation while unavailable source
   })
   assert.equal(payload.ok, true)
   assert.equal(payload.sources[1].status, 'unavailable')
-  assert.equal(payload.diagnostics.length, 1)
-  assert.match(payload.diagnostics[0].message, /^信息：1 个指标来源/)
+  assert.deepEqual(payload.diagnostics, [])
 })

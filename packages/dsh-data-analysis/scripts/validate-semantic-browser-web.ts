@@ -178,7 +178,10 @@ try {
   await page.keyboard.press('Enter')
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 't1["amount"]')
   await code.getByText('表达式已复制', { exact: true }).waitFor()
-  await computation.getByRole('button', { name: 'sales.fiscal', exact: true }).click()
+  await computation
+    .locator('.sb-formula')
+    .getByRole('button', { name: 'sales.fiscal', exact: true })
+    .click()
   await page
     .getByRole('region', { name: '对象详情' })
     .getByRole('heading', { name: 'fiscal', exact: true })
@@ -243,6 +246,35 @@ try {
   }
   await page.getByLabel('搜索语义对象').fill('')
   checks.push('真实结构化定义：累计与比率；Ibis 代码直接展示、别名与复制；日历跳转返回')
+
+  const detail = page.getByRole('region', { name: '对象详情' })
+  const linkReads = requests
+  for (const [source, tab, target, heading] of [
+    ['dimension:sales.orders.region', '概览', 'entity:sales.orders', 'orders'],
+    ['entity:sales.orders', '概览', 'datasource:warehouse', 'warehouse'],
+    ['entity:sales.orders', '概览', 'sales', 'sales'],
+    ['entity:sales.orders', '定义', 'datasource:warehouse', 'warehouse'],
+    ['event:sales.order_created', '定义', 'entity:sales.orders', 'orders'],
+    ['period_calendar:sales.fiscal', '定义', 'dimension:sales.orders.week', 'week'],
+  ]) {
+    await page.getByLabel('搜索语义对象').fill(source)
+    await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
+    await page.getByRole('button', { name: tab, exact: true }).click()
+    const originalHeading = await detail.locator('h2').innerText()
+    await detail
+      .locator('.sb-fields')
+      .getByRole('button', { name: target, exact: true })
+      .first()
+      .click()
+    await detail.getByRole('heading', { name: heading, exact: true }).waitFor()
+    await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
+    assert.equal(await detail.locator('h2').innerText(), originalHeading)
+  }
+  assert.equal(requests, linkReads)
+  await page.getByLabel('搜索语义对象').fill('')
+  checks.push(
+    '概览与定义属性：业务域、实体、数据源、事件、日历层级精确引用跳转及返回，不额外读取 Catalog',
+  )
 
   const reads = requests
   const classification = page.getByRole('navigation', { name: '对象分类' })

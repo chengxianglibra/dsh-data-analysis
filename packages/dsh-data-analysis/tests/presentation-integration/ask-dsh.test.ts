@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { ReferenceInsert } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   type AskDshHost,
   appendPresentationContext,
 } from '../../src/client/presentation/ask-dsh.ts'
+import { presentationCellLabel } from '../../src/client/presentation/context-reference.ts'
 import { followUpContext } from '../../src/client/presentation/model.ts'
+import {
+  createPresentationReferenceSource,
+  presentationReference,
+} from '../../src/client/presentation/reference-source.ts'
 import { interactionFixture } from '../presentation-reader/interaction-fixture.ts'
 
 function fixture() {
@@ -12,7 +18,8 @@ function fixture() {
     ['a', ''],
     ['b', '另一个会话的草稿'],
   ])
-  const writes: { sessionId: string; text: string }[] = []
+  const writes: { sessionId: string; reference: ReferenceInsert }[] = []
+  const occurrences: { length: number }[] = []
   const state = {
     current: 'a',
     available: true,
@@ -31,18 +38,22 @@ function fixture() {
               bail(
                 _ctx: unknown,
                 event: string,
-                request: { text: string; span: { start: number; end: number; draftRev: number } },
+                request: {
+                  reference: ReferenceInsert
+                  span: { start: number; end: number; draftRev: number }
+                },
               ) {
-                assert.equal(event, 'slash/input-insert-text')
+                assert.equal(event, 'slash/input-insert-reference')
                 if (state.failure) throw new Error('input unavailable')
                 const draft = drafts.get(sessionId)!
                 assert.deepEqual(request.span, {
-                  start: draft.length,
-                  end: draft.length,
+                  start: occurrences.reduce((n, o) => n - o.length + 1, draft.length),
+                  end: occurrences.reduce((n, o) => n - o.length + 1, draft.length),
                   draftRev: 1,
                 })
-                drafts.set(sessionId, draft + request.text)
-                writes.push({ sessionId, text: request.text })
+                drafts.set(sessionId, draft + request.reference.clipboardText + ' ')
+                occurrences.push({ length: request.reference.clipboardText.length })
+                writes.push({ sessionId, reference: request.reference })
                 return true
               },
             }
@@ -61,12 +72,7 @@ function fixture() {
       input: {
         for: ({ sessionId }: { sessionId: string }) => ({
           state: {
-            getSnapshot: () => ({ draft: drafts.get(sessionId), draftRev: 1, occurrences: [] }),
-          },
-          setDraft(text: string) {
-            if (state.failure) throw new Error('input unavailable')
-            writes.push({ sessionId, text })
-            drafts.set(sessionId, text)
+            getSnapshot: () => ({ draft: drafts.get(sessionId), draftRev: 1, occurrences }),
           },
         }),
       },
@@ -75,17 +81,19 @@ function fixture() {
   return { host, state, drafts, writes }
 }
 
-test('Ask DSH wraps one context and appends to the latest draft without trimming or deduplication', () => {
+test('Ask DSH inserts atomic cell references without trimming or deduplication', () => {
   const f = fixture()
-  const context = 'Cell: a\nMetric raw value: "9007199254740993"'
-  const wrapped = `【报告上下文】\n${context}\n【报告上下文结束】`
+  const text = 'Cell: a\nMetric raw value: "9007199254740993"'
+  const context = { label: '收入', context: text }
+  const wrapped = `【报告上下文】\n${text}\n【报告上下文结束】`
   appendPresentationContext(f.host, 'a', 'workspace', context)
-  assert.equal(f.drafts.get('a'), wrapped)
+  assert.equal(f.drafts.get('a'), wrapped + ' ')
+  assert.equal(f.writes[0]!.reference.label, '# 收入')
   f.drafts.set('a', '  用户刚输入的问题\n')
   appendPresentationContext(f.host, 'a', 'workspace', context)
-  assert.equal(f.drafts.get('a'), `  用户刚输入的问题\n\n\n${wrapped}`)
+  assert.equal(f.drafts.get('a'), `  用户刚输入的问题\n\n\n${wrapped} `)
   appendPresentationContext(f.host, 'a', 'workspace', context)
-  assert.equal(f.drafts.get('a'), `  用户刚输入的问题\n\n\n${wrapped}\n\n${wrapped}`)
+  assert.equal(f.drafts.get('a'), `  用户刚输入的问题\n\n\n${wrapped} \n\n${wrapped} `)
   assert.equal(f.writes.length, 3)
   assert.equal(f.drafts.get('b'), '另一个会话的草稿')
 })
@@ -102,7 +110,7 @@ test('Ask DSH rejects stale session/workspace identity and unavailable host befo
     const f = fixture()
     Object.assign(f.state, change)
     assert.throws(
-      () => appendPresentationContext(f.host, 'a', 'workspace', 'context'),
+      () => appendPresentationContext(f.host, 'a', 'workspace', { label: 'a', context: 'context' }),
       /不可用|变化/,
     )
     assert.equal(f.writes.length, 0)
@@ -120,7 +128,7 @@ test('Ask DSH exposes a write failure without retrying or changing the other ses
   const f = fixture()
   f.state.failure = true
   assert.throws(
-    () => appendPresentationContext(f.host, 'a', 'workspace', 'context'),
+    () => appendPresentationContext(f.host, 'a', 'workspace', { label: 'a', context: 'context' }),
     /input unavailable/,
   )
   assert.equal(f.writes.length, 0)
@@ -134,7 +142,10 @@ test('Ask DSH carries the selected cell and filter identity, not the complete re
   f.state.workspaceId = document.workspaceId
   const block = document.blocks.find((entry) => entry.id === 'count')!
   const context = followUpContext(document, block, undefined, { day: 'mon', cluster: 'a' })
-  appendPresentationContext(f.host, 'a', document.workspaceId, context)
+  appendPresentationContext(f.host, 'a', document.workspaceId, {
+    label: presentationCellLabel(block),
+    context,
+  })
   const draft = f.drafts.get('a')!
   assert.ok(draft.includes(context))
   assert.match(draft, /Filters:/)
@@ -148,11 +159,65 @@ test('oversize reference fails before Host editing and never trims an existing d
   f.drafts.set('a', '用户草稿'.repeat(5000))
   const before = f.drafts.get('a')
   assert.throws(
-    () => appendPresentationContext(f.host, 'a', 'workspace', '中'.repeat(4096)),
+    () =>
+      appendPresentationContext(f.host, 'a', 'workspace', {
+        label: 'a',
+        context: '中'.repeat(4096),
+      }),
     /12 KiB/,
   )
   assert.equal(f.drafts.get('a'), before)
   assert.equal(f.writes.length, 0)
-  appendPresentationContext(f.host, 'a', 'workspace', 'Cell: a')
+  appendPresentationContext(f.host, 'a', 'workspace', { label: 'a', context: 'Cell: a' })
   assert.ok(f.drafts.get('a')!.startsWith(before!))
+})
+
+test('report reference codec retains full context and refuses stale ownership, invalid payloads and cancellation', async () => {
+  const f = fixture()
+  const lifetime = new AbortController()
+  const source = createPresentationReferenceSource(f.host, lifetime.signal)
+  const reference = presentationReference(
+    'a',
+    'workspace',
+    { label: '收入', context: 'Cell: "a"\nBuild ID: old' },
+    false,
+  )
+  const signal = new AbortController().signal
+  const codec = source.codec!
+  assert.equal(codec.clipboardText(reference.ref), reference.clipboardText)
+  assert.equal(await codec.serialize(reference.ref, signal), reference.clipboardText)
+  for (const change of [{ current: 'b' }, { workspaceId: 'other' }, { available: false }]) {
+    const owner = fixture()
+    Object.assign(owner.state, change)
+    await assert.rejects(
+      createPresentationReferenceSource(owner.host).codec!.serialize(reference.ref, signal),
+      /input-owner-unavailable/,
+    )
+  }
+  for (const ref of [
+    '{}',
+    'null',
+    JSON.stringify({ ...JSON.parse(reference.ref), context: '中'.repeat(4096 + 1) }),
+    JSON.stringify({ ...JSON.parse(reference.ref), extra: true }),
+  ])
+    await assert.rejects(codec.serialize(ref, signal))
+  await assert.rejects(codec.serialize(reference.ref, AbortSignal.abort()))
+  lifetime.abort()
+  await assert.rejects(codec.serialize(reference.ref, signal))
+  assert.equal(f.writes.length, 0)
+})
+
+test('cell display labels are bounded and fall back to IDs without interpreting report content', () => {
+  assert.equal(
+    presentationCellLabel({ id: 'intro', kind: 'markdown', text: '# 正文不作为引用名称' }),
+    'intro',
+  )
+  assert.equal(
+    presentationCellLabel({ id: 'foo\nbar\t😀', kind: 'table', datasetId: 'd' }),
+    'foo bar 😀',
+  )
+  const metric = { id: 'id', kind: 'metric' as const, datasetId: 'd', columnId: 'v', rowIndex: 0 }
+  assert.equal(presentationCellLabel({ ...metric, label: '  收入\n趋势 ' }), '收入 趋势')
+  assert.equal(presentationCellLabel({ ...metric, label: '  ' }), 'id')
+  assert.equal(Array.from(presentationCellLabel({ ...metric, label: '😀'.repeat(81) })).length, 80)
 })

@@ -105,7 +105,17 @@ try {
     assert.ok(lines.includes(`Build ID: ${identity.buildId}`))
     assert.ok(lines.includes(`Cell: ${JSON.stringify(cellId)}`))
     assert.equal(lines.filter((line: string) => line.startsWith('Build ID: ')).length, 1)
-    assert.deepEqual(after.occurrences, before.occurrences)
+    assert.deepEqual(after.occurrences.slice(0, -1), before.occurrences)
+    assert.equal(after.occurrences.at(-1).source, 'marivo-report-cell')
+    const chip = page!
+      .locator('[contenteditable=true] [data-composer-chip=marivo-report-cell]')
+      .last()
+    assert.match(await chip.innerText(), /^# /)
+    assert.doesNotMatch(await chip.innerText(), /报告上下文|Build ID:/)
+    assert.equal(
+      await page!.evaluate(() => (window as any).__askDshProbe.serializeLast('right-tabs-native')),
+      JSON.parse(after.occurrences.at(-1).ref).context,
+    )
     assert.deepEqual(after.attachmentIds, before.attachmentIds)
     const calls = await page!.evaluate(
       (start) => (window as any).__askDshProbe.audit().calls.slice(start),

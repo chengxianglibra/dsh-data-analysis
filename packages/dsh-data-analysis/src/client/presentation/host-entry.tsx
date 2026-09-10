@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PresentationDocument } from '../../presentation/contracts/types.ts'
+import type { PresentationContext } from './context-reference.ts'
 import type { ReaderEditing } from './editor-controls.tsx'
 import type { ReaderExportActions } from './export-menu.tsx'
 import { PresentationReader, type ReaderViewMemory } from './reader.tsx'
@@ -27,7 +28,7 @@ export function HostPresentationReader({
   editing?: ReaderEditing
   actions?: ReactNode
   onOpenSemanticRef?: OpenSemanticRef
-  onAskDsh?: (context: string) => void
+  onAskDsh?: (context: PresentationContext) => void
   exportActions?: ReaderExportActions
   viewMemory?: ReaderViewMemory
   closeSourceOnNavigate?: boolean

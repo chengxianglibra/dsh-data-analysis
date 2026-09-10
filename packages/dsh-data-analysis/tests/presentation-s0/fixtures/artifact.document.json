@@ -80,10 +80,6 @@
           "value": "Finding id=fnd_dad7ce96e4a20d043c758b99 type=metric_value artifact=art_131d63e9328690a9903ba484\nstatus: observed\ncommitted_at: 2026-09-07T05:50:03.920558+00:00\ncanonical_item_key: typed-coordinate/v1:{\"context\":[{\"name\":\"semantic_kind\",\"type\":\"string\",\"value\":\"segmented\"}],\"coordinates\":[{\"name\":\"region\",\"type\":\"string\",\"value\":\"A\"}],\"namespace\":\"metric_value_row\"}\nsource_artifact: art_131d63e9328690a9903ba484\nsource_fields:\n- region\n- value\nsource_refs:\n- art_131d63e9328690a9903ba484\nretained_digest_items:\n- none\navailable:\n- .show()\n- .value\n- .derivation\n- .source_refs"
         },
         {
-          "label": "历史定义 unavailable",
-          "value": "S0 does not obtain a historical metric definition from the persisted Artifact public contract."
-        },
-        {
           "label": "revalidation",
           "value": "not_requested"
         }
@@ -129,11 +125,6 @@
       "code": "truncated",
       "path": "/datasets/0/data/rows",
       "message": "共 4 行，按展示预算写入前 3 行；不能从截断数据推算全量总计。"
-    },
-    {
-      "code": "definition_unavailable",
-      "path": "/sources/0/facts/9",
-      "message": "persisted Artifact 公开契约未提供历史指标定义；保留 unavailable，未读取当前定义冒充历史口径。"
     }
   ],
   "reportId": "report"

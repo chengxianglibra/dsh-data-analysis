@@ -99,6 +99,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     },
   }
   const client = {
+    inputTriggers: { registerSource: () => () => {} },
     uiConversation: { events, views },
     uiSession: { provide: () => () => {} },
     slots,

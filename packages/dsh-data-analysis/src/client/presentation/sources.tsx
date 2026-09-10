@@ -4,7 +4,7 @@ import type {
   PresentationDocument,
   SourceSnapshot,
 } from '../../presentation/contracts/types.ts'
-import { columnIndex, columnLabel, datasetById, selectedSources, snapshotDate } from './model.ts'
+import { columnIndex, datasetById, selectedSources, snapshotDate } from './model.ts'
 import { SourceCodeSummary } from './source-code.tsx'
 import {
   type OpenSemanticRef,
@@ -41,18 +41,36 @@ function SourceCard({
   onOpenSemanticRef?: OpenSemanticRef
 }) {
   const { createdAt, semanticGroups, issues, notices } = sourceOverviewFacts(source)
-  if (
-    source.status === 'available' &&
-    !createdAt &&
-    !semanticGroups.length &&
-    !issues.length &&
-    !notices.length
-  )
-    return null
   return (
     <section className="pr-source-card" data-source-id={source.id}>
       {number !== undefined && <h3>来源 {number}</h3>}
       {source.status === 'unavailable' && <p className="pr-notice">{source.reason}</p>}
+      <details className="pr-artifact-details">
+        <summary>
+          Artifact <span>{source.ref.artifactRef}</span>
+        </summary>
+        <dl className="pr-source-overview-grid">
+          <div>
+            <dt>Session ID</dt>
+            <dd>{source.ref.sessionId}</dd>
+          </div>
+          {source.ref.findingId && (
+            <div>
+              <dt>Finding ID</dt>
+              <dd>{source.ref.findingId}</dd>
+            </div>
+          )}
+          {source.status === 'available' &&
+            source.facts
+              .filter((fact) => ['Artifact kind', '完整行数'].includes(fact.label))
+              .map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label === 'Artifact kind' ? '类型' : '行数'}</dt>
+                  <dd>{fact.value}</dd>
+                </div>
+              ))}
+        </dl>
+      </details>
       {createdAt && (
         <dl className="pr-source-overview-grid">
           <div>
@@ -146,16 +164,8 @@ export function SourceOverview({
               <dd>{dataset.id}</dd>
             </div>
             <div>
-              <dt>字段</dt>
-              <dd>
-                <ul className="pr-source-fields">
-                  {[...new Set(columnIds)].map((id) => (
-                    <li key={id}>
-                      {columnLabel(dataset.data.columns[columnIndex(dataset.data, id)]!)}
-                    </li>
-                  ))}
-                </ul>
-              </dd>
+              <dt>数据来源</dt>
+              <dd>{dataset.origin === 'artifact' ? 'Artifact' : '计算结果'}</dd>
             </div>
           </>
         )}
@@ -166,6 +176,38 @@ export function SourceOverview({
           </dd>
         </div>
       </dl>
+      {dataset && (
+        <section className="pr-source-field-section">
+          <h3 className="pr-source-overview-label">字段</h3>
+          <div className="pr-table-scroll">
+            <table className="pr-source-fields" aria-label="数据集字段">
+              <thead>
+                <tr>
+                  <th scope="col">字段名</th>
+                  <th scope="col">显示名称</th>
+                  <th scope="col">类型</th>
+                  <th scope="col">单位</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...new Set(columnIds)].map((id) => {
+                  const column = dataset.data.columns[columnIndex(dataset.data, id)]!
+                  return (
+                    <tr key={id}>
+                      <td>
+                        <code>{column.id}</code>
+                      </td>
+                      <td>{column.label}</td>
+                      <td>{column.type}</td>
+                      <td>{column.unit ?? '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       <div className="pr-source-list">
         {sources.map((source, index) => (
           <SourceCard

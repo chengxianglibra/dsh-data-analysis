@@ -65,7 +65,9 @@ export async function verifyNativeContextReference(
     const cell = reader.locator(`[data-mode=interactive] [data-block-id=${escapedId}]`)
     await cell.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
     await cell.getByRole('menuitem', { name: 'Ask DSH', exact: true }).click()
-    return (await snapshot()).draft.slice(before.draft.length).replace(/^\n\n/, '') as string
+    const after = await snapshot()
+    if (after.occurrences.length === before.occurrences.length) return ''
+    return JSON.parse(after.occurrences.at(-1).ref).context.replace(/^\n\n/, '') as string
   }
   await reader.getByRole('button', { name: /^日期/ }).click()
   await reader.getByRole('menuitemradio', { name: '周一', exact: true }).click()
@@ -142,9 +144,12 @@ export async function verifyNativeContextReference(
   const rich = await snapshot()
   assert.equal(rich.occurrences.length, 2)
   assert.notEqual(rich.occurrences[0].occurrenceId, rich.occurrences[1].occurrenceId)
+  // Let the Host's 1000 ms reference-insert history group settle before the next action.
+  await page.waitForTimeout(1100)
   const appended = await ask('count')
   const after = await snapshot()
-  assert.deepEqual(after.occurrences, rich.occurrences)
+  assert.deepEqual(after.occurrences.slice(0, -1), rich.occurrences)
+  assert.equal(after.occurrences.at(-1).source, 'marivo-report-cell')
   assert.deepEqual(after.attachmentIds, rich.attachmentIds)
   await composer.focus()
   await page.keyboard.press('Meta+z')
@@ -152,7 +157,7 @@ export async function verifyNativeContextReference(
   await ask('count')
   const once = (await snapshot()).draft
   await ask('count')
-  assert.equal((await snapshot()).draft, `${once}\n\n${appended}`)
+  assert.equal((await snapshot()).draft, `${once}\n\n${appended} `)
   const beforeFailure = await snapshot()
   await page.evaluate(() => (window as any).__askDshProbe.failNext('write'))
   await ask('count')
@@ -270,12 +275,55 @@ export async function verifyNativeContextReference(
   } finally {
     await offline.close()
   }
+  // Native submit through the real Host; only the model adapter is scripted.
+  await composer.fill('请解释所选指标。')
+  reader = await open(receipt)
+  const submittedFiltered = await ask('count')
+  reader = await open(precise)
+  const submittedExact = await ask('metric')
+  assert.equal(await composer.locator('[data-composer-chip=marivo-report-cell]').count(), 2)
+  assert.doesNotMatch(await composer.innerText(), /报告上下文|Build ID:/)
+  await page.screenshot({ path: path.join(outputRoot, 'report-cell-chips.png'), fullPage: true })
+  await page.evaluate((id) => {
+    const input = (window as any).__rtHost.input(id)
+    for (const attachment of input.state.getSnapshot().attachmentIds)
+      input.removeAttachment(attachment)
+    return (window as any).__rtHost.selectModel(id, {
+      provider: 'right-tabs-semantic',
+      model: 'deterministic-seam',
+    })
+  }, sessionId)
+  await composer.focus()
+  await page.keyboard.press('Enter')
+  await page.waitForFunction((id) => (window as any).__askDshProbe.read(id).draft === '', sessionId)
+  let captured: any
+  const deadline = Date.now() + 25_000
+  do {
+    const result = await page.evaluate(() =>
+      (window as any).__s4Rpc('/presentation-s4-validation', 'prototype', {
+        action: 'semantic-requests',
+      }),
+    )
+    assert.equal(result.ok, true)
+    captured = result.value.find((request: any) => request.reportText)
+    if (!captured) await page.waitForTimeout(100)
+  } while (!captured && Date.now() < deadline)
+  assert.ok(captured, 'Actual model request must receive expanded report references')
+  assert.ok(captured.reportText.includes(submittedFiltered))
+  assert.ok(captured.reportText.includes(submittedExact))
+  assert.ok(captured.reportText.includes('请解释所选指标。'))
+  await writeFile(
+    path.join(outputRoot, 'report-cell-model-request.json'),
+    JSON.stringify(captured, null, 2),
+  )
   const evidence = {
     filteredRead: read,
     exactRead: preciseRead,
     filteredBytes: Buffer.byteLength(filtered),
     markdownBytes: Buffer.byteLength(markdown),
     nativeRichDraftAndUndo: true,
+    compactReportCellChips: true,
+    nativeSubmitExpandsFullContext: true,
     sorting: true,
     repeatedAppend: true,
     specialCharacterIdentityRead: specialRead,

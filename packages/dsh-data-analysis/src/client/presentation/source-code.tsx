@@ -16,20 +16,15 @@ function FormattedCode({
   const display = useMemo(() => formatSource(text, language), [text, language])
   const tokens = useMemo(() => highlightSource(display.text, language), [display.text, language])
   return (
-    <>
-      <p className="pr-source-code-note">
-        {display.formatted ? '已格式化展示；复制代码保留执行原文。' : '无法格式化，显示执行原文。'}
-      </p>
-      <pre tabIndex={interactive ? 0 : undefined}>
-        <code className={`language-${language}`}>
-          {tokens.map((token) => (
-            <span key={token.offset} style={token.color ? { color: token.color } : undefined}>
-              {token.text}
-            </span>
-          ))}
-        </code>
-      </pre>
-    </>
+    <pre tabIndex={interactive ? 0 : undefined}>
+      <code className={`language-${language}`}>
+        {tokens.map((token) => (
+          <span key={token.offset} style={token.color ? { color: token.color } : undefined}>
+            {token.text}
+          </span>
+        ))}
+      </code>
+    </pre>
   )
 }
 
@@ -71,10 +66,9 @@ export function SourceCode({
       {entries.map((entry) => (
         <section className="pr-source-code-snippet" key={entry.key}>
           <header className="pr-source-code-header">
-            <h3>{entry.language === 'python' ? 'Python' : 'SQL'} · 执行记录</h3>
+            <h3>{entry.language === 'python' ? 'Python' : 'SQL'}</h3>
             {interactive && <CopyCode text={entry.text} />}
           </header>
-          {entry.authorAssociated && <p className="pr-muted">该执行记录由作者关联到此数据集。</p>}
           <FormattedCode text={entry.text} language={entry.language} interactive={interactive} />
         </section>
       ))}
@@ -83,7 +77,7 @@ export function SourceCode({
           {notice}
         </p>
       ))}
-      {entries.length === 0 && <p className="pr-muted">未保存生成代码</p>}
+      {entries.length === 0 && <p className="pr-muted">暂无相关查询</p>}
     </div>
   )
 }
@@ -102,14 +96,16 @@ export function SourceCodeSummary({
   if (!blocks.length) {
     return (
       <details className="pr-source-code-summary">
-        <summary>代码</summary>
+        <summary>相关查询</summary>
         <SourceCode document={document} />
       </details>
     )
   }
   return blocks.map((item) => (
     <details className="pr-source-code-summary" key={item.id} data-code-block-id={item.id}>
-      <summary>代码{block ? '' : ` · ${item.kind === 'metric' ? item.label : item.id}`}</summary>
+      <summary>
+        相关查询{block ? '' : ` · ${item.kind === 'metric' ? item.label : item.id}`}
+      </summary>
       <SourceCode document={document} block={item} />
     </details>
   ))

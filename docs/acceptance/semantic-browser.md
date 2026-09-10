@@ -155,3 +155,15 @@ Node.js 24.18.0 下专项 12 项测试通过，`npm run check` 共 153 项测试
 
 旧的弹窗叠放与关闭焦点验收随弹窗移除；`validate:presentation-semantic-navigation` 转到原生 Tab 验收入口。
 原生 Host 验收覆盖导航及输入行为；最终标题信息布局另由正文夹具验证。所有环境均隔离，未重装或重启当前使用的 DSH Profile。
+
+## 2026-09-10：概览与定义属性引用跳转
+
+概览与定义属性复用 Catalog 的字段关联，将完整 Ref 渲染为可跳转链接；所属业务域按当前目录中的 domain 对象定位。
+累计公式中的语义日历名称同样可跳转。独立 Tab 入口保留，用于同时保留多个对象页面及各自的筛选、浏览历史。
+
+`npm run validate:semantic-browser:web` 使用真实 Marivo Catalog 与隔离 Chromium 夹具通过：业务域、实体、数据源、
+事件来源、日历层级和累计公式日历可跳转并返回；跳转前后 Catalog 请求数不变。渲染回归覆盖映射标签、重复引用、
+相似路径不误匹配、缺失对象禁用和普通文字转义。本次没有重装插件或重启正在运行的 DSH Profile。
+
+完整 `npm run check` 通过：552 项通过、0 失败、4 项因未配置对应真实运行环境变量而跳过。
+`npm run build`、`npm run verify:plugin-package`、文档相对链接检查与 `git diff --check` 均通过。

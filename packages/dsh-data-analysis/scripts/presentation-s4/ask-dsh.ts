@@ -65,7 +65,7 @@ export async function verifyAskDsh(
   await open()
   await ask('metric')
   await overlay.waitFor({ state: 'detached' })
-  const first = (await snapshot()).draft
+  const first = (await snapshot()).draft.trimEnd()
   assert.ok(first.startsWith('【报告上下文】\n'))
   assert.ok(first.endsWith('\n【报告上下文结束】'))
   assert.ok(first.includes(`Build ID: ${precise.receipt.buildId}`))
@@ -73,7 +73,15 @@ export async function verifyAskDsh(
   assert.ok(first.includes('Report file (relative to this Workspace):'))
   assert.ok(!first.includes('来源 account:'))
   assert.equal((await audit()).writes - before.writes, 1)
-  assert.equal((await snapshot()).draft, first)
+  assert.equal((await snapshot()).draft, first + ' ')
+  const chip = composer.locator('[data-composer-chip=marivo-report-cell]')
+  assert.equal(await chip.count(), 1)
+  assert.match(await chip.innerText(), /^# /)
+  assert.doesNotMatch(await composer.innerText(), /Build ID:|报告上下文/)
+  assert.equal(
+    await page.evaluate((id) => (window as any).__askDshProbe.serializeLast(id), sessionId),
+    first,
+  )
 
   await composer.fill('请解释这些指标，保留我的问题。')
   const typed = (await snapshot()).draft
@@ -99,7 +107,7 @@ export async function verifyAskDsh(
   await ask('metric')
   await overlay.waitFor({ state: 'detached' })
   const repeated = (await snapshot()).draft
-  assert.equal(repeated, `${filtered}\n\n${first}`)
+  assert.equal(repeated, `${filtered}\n\n${first} `)
   assert.equal((await audit()).writes - before.writes, 3)
 
   await open()
@@ -134,7 +142,13 @@ export async function verifyAskDsh(
     const stateBefore = await snapshot()
     await page.evaluate((failure) => (window as any).__askDshProbe.failNext(failure), kind)
     await ask('metric')
-    await overlay.getByRole('alert').filter({ hasText: 'Ask DSH validation:' }).waitFor()
+    await overlay
+      .getByRole('alert')
+      .filter({
+        hasText:
+          kind === 'scope' ? '报告所属 Session 或 Workspace 已变化或不可用' : 'Ask DSH validation:',
+      })
+      .waitFor()
     assert.equal(await overlay.isVisible(), true)
     assert.deepEqual(await snapshot(), stateBefore)
     await overlay.screenshot({ path: path.join(outputRoot, `ask-dsh-${kind}-failure.png`) })
@@ -179,12 +193,15 @@ export async function verifyAskDsh(
   const richBefore = await snapshot()
   assert.equal(richBefore.occurrences.length, 2)
   assert.notEqual(richBefore.occurrences[0].occurrenceId, richBefore.occurrences[1].occurrenceId)
+  // Let the Host's 1000 ms reference-insert history group settle before the next action.
+  await page.waitForTimeout(1100)
   await open()
   await ask('metric')
   await overlay.waitFor({ state: 'detached' })
   const richAfter = await snapshot()
-  assert.equal(richAfter.draft, richBefore.draft + '\n\n' + first)
-  assert.deepEqual(richAfter.occurrences, richBefore.occurrences)
+  assert.equal(richAfter.draft, richBefore.draft + '\n\n' + first + ' ')
+  assert.deepEqual(richAfter.occurrences.slice(0, -1), richBefore.occurrences)
+  assert.equal(richAfter.occurrences.at(-1).source, 'marivo-report-cell')
   assert.deepEqual(richAfter.attachmentIds, richBefore.attachmentIds)
   await composer.focus()
   await page.keyboard.press('Meta+z')
@@ -232,11 +249,13 @@ export async function verifyAskDsh(
   assert.equal(calls.filter((call) => /submit|send|serialize/i.test(call.endpoint)).length, 0)
   return {
     emptyDraft: true,
+    compactReportCellChip: true,
+    hostCodecPreservesFullContext: true,
     existingDraft: true,
     repeatedAppend: true,
     realLexicalReferencesPreserved: true,
     uploadedAttachmentPreserved: true,
-    undoRestoresRichDraft: true,
+    undoRestoresRichDraftOutsideHostMergeWindow: true,
     fixedBuildCellReference: true,
     filterAndPreparedView: true,
     keyboard: true,

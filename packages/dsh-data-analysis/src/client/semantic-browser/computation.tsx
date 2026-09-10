@@ -1,6 +1,7 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
+import { RefLink } from './reference-link.tsx'
 
 const units = {
   second: '秒',
@@ -28,15 +29,20 @@ const kinds = {
 const field = (object, name) => object?.fields.find((x) => x.name === name)?.value
 const op = (operation) =>
   `${operation?.kind ?? '未声明'}${operation?.q === undefined ? '' : `(q=${operation.q})`}`
-function anchorText(anchor) {
+function anchorText(anchor, objects, navigate) {
   if (anchor?.kind === 'all_history') return '从全部历史起点累计'
   if (anchor?.kind === 'trailing')
     return `滚动累计 ${anchor.count} ${units[anchor.unit] ?? anchor.unit}`
   if (anchor?.kind === 'grain_to_date') {
     const grain = anchor.grain
-    return grain.kind === 'semantic'
-      ? `从 ${grain.calendar.path} 的 ${grain.level} 周期起点累计，每个周期重新开始`
-      : `从当前${units[grain.unit] ?? grain.unit}起点累计，每个周期重新开始`
+    return grain.kind === 'semantic' ? (
+      <>
+        从 <RefLink refValue={grain.calendar} objects={objects} navigate={navigate} /> 的{' '}
+        {grain.level} 周期起点累计，每个周期重新开始
+      </>
+    ) : (
+      `从当前${units[grain.unit] ?? grain.unit}起点累计，每个周期重新开始`
+    )
   }
   return '累计规则暂不支持展示'
 }
@@ -120,23 +126,6 @@ function inputs(node) {
       return []
   }
 }
-function RefLink({ refValue, objects, navigate }) {
-  if (!refValue) return <span>未声明</span>
-  const key = refKey(refValue),
-    object = objects.get(key)
-  return (
-    <button
-      type="button"
-      className="sb-definition-link"
-      disabled={!object}
-      title={key}
-      onClick={() => navigate(key)}
-    >
-      {refValue.path}
-      {!object ? '（当前目录未包含）' : ''}
-    </button>
-  )
-}
 function referencedDefinitions(object, objects) {
   const seen = new Set([refKey(object.ref)])
   const queue = [object]
@@ -186,7 +175,7 @@ function Formula({ node, objects, navigate }) {
     case 'cumulative':
       return (
         <>
-          {anchorText(node.anchor)}
+          {anchorText(node.anchor, objects, navigate)}
           <br />
           基础指标：{link(node.base)}
         </>

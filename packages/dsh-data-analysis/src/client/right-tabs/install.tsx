@@ -1,4 +1,5 @@
 // @ts-nocheck -- Host slot hooks are injected by the runtime module table.
+
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { CredentialIcon, CredentialPanel, installCredentials } from '../credentials/install.tsx'
@@ -13,6 +14,7 @@ import {
 import { PresentationDeliveryModel } from '../presentation/delivery-model.ts'
 import { HostPresentationReader } from '../presentation/host-entry.tsx'
 import { deliveryStyles } from '../presentation/install.tsx'
+import { installPresentationReferenceSource } from '../presentation/reference-source.ts'
 import { createPluginRpc } from '../rpc.ts'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
 import { installSemanticReferenceSource } from '../semantic-reference-source.ts'
@@ -104,6 +106,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     if (diagnostics) audit.opens.push({ sessionId, address, automatic })
   }
   installSemanticReferenceSource(ctx, rpc)
+  installPresentationReferenceSource(ctx)
   const credentials = installCredentials(ctx, rpc)
   ctx.effect(() =>
     credentials.subscribe(() => {

@@ -127,7 +127,13 @@ export const PRESENTATION_STYLES = `
 .pr-source-overview-grid dt { color:var(--pr-muted); font-size:13px; margin:0 0 4px }
 .pr-source-overview-label { color:var(--pr-muted); font-size:13px; font-weight:400; margin:0 0 4px }
 .pr-source-overview dd { margin:0; overflow-wrap:anywhere }
-.pr-source-fields { display:flex; flex-wrap:wrap; gap:4px 10px; list-style:none; padding:0; margin:0 }
+.pr-source-field-section { margin-bottom:24px }
+.pr-source-fields { width:100%; border-collapse:collapse; font-size:13px; text-align:left }
+.pr-source-fields th,.pr-source-fields td { padding:8px 12px; border-bottom:1px solid var(--pr-border); vertical-align:top }
+.pr-source-fields th { color:var(--pr-muted); font-weight:500 }
+.pr-artifact-details { margin-bottom:16px; overflow-wrap:anywhere }
+.pr-artifact-details summary { cursor:pointer; margin-bottom:12px }
+.pr-artifact-details summary span { color:var(--pr-accent); text-decoration:underline }
 .pr-source-list { display:flex; flex-direction:column; gap:24px }
 .pr-source-card { min-width:0 }
 .pr-source-card+.pr-source-card { border-top:1px solid var(--pr-border); padding-top:20px }

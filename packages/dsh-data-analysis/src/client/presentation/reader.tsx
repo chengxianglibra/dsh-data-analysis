@@ -10,6 +10,7 @@ import type { PresentationBlock, PresentationDocument } from '../../presentation
 import { ChartExplorer } from './chart-explorer.tsx'
 import { ChartRenderer } from './chart-renderer.tsx'
 import { type ChartExploration, exploredChartBlock, initialChartExploration } from './chart-view.ts'
+import { type PresentationContext, presentationCellLabel } from './context-reference.ts'
 import { CopyContext } from './copy-context.tsx'
 import { savePresentationHtml } from './download.ts'
 import { CellEditor, type ReaderEditing } from './editor-controls.tsx'
@@ -290,7 +291,7 @@ function ReaderContents({
   mode: ReaderMode
   editing?: ReaderEditing
   onOpenSemanticRef?: OpenSemanticRef
-  onAskDsh?: (context: string) => void
+  onAskDsh?: (context: PresentationContext) => void
   exportActions?: ReaderExportActions
   viewMemory?: ReaderViewMemory
   closeSourceOnNavigate?: boolean
@@ -347,10 +348,7 @@ function ReaderContents({
   const diagnostics = [
     ...new Set(
       document.diagnostics
-        .filter(
-          (entry) =>
-            !['definition_unavailable', 'truncated', 'source_unavailable'].includes(entry.code),
-        )
+        .filter((entry) => !['truncated', 'source_unavailable'].includes(entry.code))
         .map((entry) => entry.message),
     ),
   ]
@@ -417,7 +415,7 @@ function ReaderContents({
                       ? tableSorts[savedBlock.id]
                       : undefined,
                   )
-                  onAskDsh(context)
+                  onAskDsh({ label: presentationCellLabel(savedBlock), context })
                   setContextError(undefined)
                 } catch (error) {
                   setContextError(error instanceof Error ? error.message : String(error))
@@ -561,7 +559,8 @@ function ReaderContents({
           </p>
         )}
         <p className="pr-muted">
-          生成于 <time dateTime={document.generatedAt}>{snapshotDate(document.generatedAt)}</time>
+          版本号: {document.buildId} · 生成于{' '}
+          <time dateTime={document.generatedAt}>{snapshotDate(document.generatedAt)}</time>
         </p>
       </header>
       {diagnostics.length > 0 && (
@@ -632,7 +631,6 @@ function ReaderContents({
           key={sourceCell.block.id}
           document={document}
           block={sourceBlock}
-          explored={!!sourceState}
           rowIndices={rowsFor(sourceBlock)}
           filterKey={summaryFor(sourceBlock)}
           filterSummary={summaryFor(sourceBlock)}
@@ -666,7 +664,7 @@ export function PresentationReader({
   mode?: ReaderMode
   editing?: ReaderEditing
   onOpenSemanticRef?: OpenSemanticRef
-  onAskDsh?: (context: string) => void
+  onAskDsh?: (context: PresentationContext) => void
   exportActions?: ReaderExportActions
   viewMemory?: ReaderViewMemory
   closeSourceOnNavigate?: boolean

@@ -7,6 +7,16 @@ import type { TableSort } from './export-view.ts'
 
 export const PRESENTATION_CONTEXT_BYTES = 12 * 1024
 
+export interface PresentationContext {
+  label: string
+  context: string
+}
+
+/** Display only; the context retains the exact Cell ID, even for duplicate labels. */
+export function presentationCellLabel(block: PresentationBlock): string {
+  return ('label' in block && shortLabel(block.label)) || shortLabel(block.id)
+}
+
 export function wrapPresentationContext(context: string, separator = ''): string {
   const text = `${separator}【报告上下文】\n${context}\n【报告上下文结束】`
   if (new TextEncoder().encode(text).length > PRESENTATION_CONTEXT_BYTES)

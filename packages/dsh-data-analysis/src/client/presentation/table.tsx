@@ -16,6 +16,7 @@ export function DatasetTable({
   columns,
   mode,
   caption,
+  hideCaption = false,
   showScope = true,
   showSelectionCount = true,
   rowIndices,
@@ -27,6 +28,7 @@ export function DatasetTable({
   columns?: string[]
   mode: ReaderMode
   caption: string
+  hideCaption?: boolean
   showScope?: boolean
   showSelectionCount?: boolean
   rowIndices?: readonly number[]
@@ -72,8 +74,8 @@ export function DatasetTable({
         </p>
       )}
       <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>
-        <table>
-          <caption>{caption}</caption>
+        <table aria-label={hideCaption ? caption : undefined}>
+          {!hideCaption && <caption>{caption}</caption>}
           <thead>
             <tr>
               {indices.map((index) => {

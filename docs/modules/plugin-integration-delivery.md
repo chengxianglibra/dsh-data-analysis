@@ -81,8 +81,9 @@ Web client 只保留：
 
 当前基线为 `0.1.5-alpha.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
 和 `dsh-api-workspace-controller`；对话组装由 `ui-conversation` 拥有，chat 节点渲染由 `ui-chat` 拥有。
-新版 Lexical composer 通过 scoped `slash/input-insert-text` 和当前 `draftRev` 追加 Ask DSH 内容，
-采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史。
+新版 Lexical composer 通过 scoped `slash/input-insert-reference` 和当前 `draftRev` 追加 Ask DSH Cell 引用，
+采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史；显示 `# <cell名称>`，
+发送时通过插件 codec 展开固定 Build 定位和临时视图状态，细节见 [reader 模块](presentation-reader.md)。
 
 `src/rpc.ts` 与 `src/client/rpc.ts` 将插件逻辑 endpoint 接入 Connection 的精确 Fetch 路由，
 认证、Host/Origin 检查和请求体传输继续由 Harness `/api` 拥有。插件只解析公开 `clientRequestSchema`

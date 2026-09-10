@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import type { PresentationContext } from '../../src/client/presentation/context-reference.ts'
 import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import type { PresentationDocument } from '../../src/presentation/contracts/types.ts'
 import { interactionFixture } from './interaction-fixture.ts'
@@ -13,7 +14,10 @@ let directory: string
 let renderDocument: (document: PresentationDocument, mode?: 'static' | 'interactive') => string
 let renderMarkdown: (text: string) => string
 let renderExplorer: (document: PresentationDocument) => string
-let renderHost: (document: PresentationDocument, onAskDsh?: (context: string) => void) => string
+let renderHost: (
+  document: PresentationDocument,
+  onAskDsh?: (context: PresentationContext) => void,
+) => string
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-reader-render-'))
@@ -146,7 +150,7 @@ test('Host includes an original full exact snapshot for printing independently o
 
 test('Host Ask DSH callback replaces clipboard UI while portable and fallback readers retain manual copy', async () => {
   const document = await fixture('computed')
-  const contexts: string[] = []
+  const contexts: PresentationContext[] = []
   const html = renderHost(document, (context) => contexts.push(context))
   assert.match(html, /aria-label="cell 更多操作"/)
   assert.match(html, /class="pr-host-print"><article[^>]+data-mode="static"/)
@@ -237,11 +241,7 @@ test('reader keeps authored cells and document intact while presenting concise c
     { ...metric, id: 'fourth' },
     { id: 'sources', kind: 'source', sourceIds: document.sources.map((source) => source.id) },
   ]
-  document.diagnostics = [
-    { code: 'definition_unavailable', message: 'original definition message', path: '/sources/0' },
-    { code: 'definition_unavailable', message: 'original definition message', path: '/sources/1' },
-    { code: 'unknown_warning', message: '保留未知提示', path: '/datasets/0' },
-  ]
+  document.diagnostics = [{ code: 'unknown_warning', message: '保留未知提示', path: '/datasets/0' }]
   const before = structuredClone(document)
   for (const mode of ['static', 'interactive'] as const) {
     const html = renderDocument(document, mode)
@@ -259,7 +259,6 @@ test('reader keeps authored cells and document intact while presenting concise c
         mode === 'static' ? 1 : 0,
       )
     }
-    assert.doesNotMatch(html, /original definition message|\/sources\/0|\/sources\/1/)
     assert.ok(html.indexOf('保留未知提示') < html.indexOf('data-block-id="first"'))
     assert.doesNotMatch(
       html,

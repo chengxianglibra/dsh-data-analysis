@@ -202,6 +202,9 @@ Tab signal 不替代导航 revision 检查。Ask DSH 第一阶段保留所属 Se
 
 ## 第三阶段：原生文件入口的有界原型
 
+后续调研与范围收敛见 [Session 单文件 SQL 分析调研](dsh-file-stage-three-research.md)：目标调整为
+CSV、JSON、Excel、Parquet 的 Session 内简单 SQL 分析，无需语义建模；以下保留最初原型设想，尚未实施。
+
 复用用户的原生附件操作；确实需要插件专用入口时才调用 `ctx.fileUpload.upload(sessionId, body, name, signal, onProgress)`。
 上传的暂存凭证和附件身份由 Harness 拥有，不能直接当作任意本机文件路径，更不能跨 Session 使用。
 

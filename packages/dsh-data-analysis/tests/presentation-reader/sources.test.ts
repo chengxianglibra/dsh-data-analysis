@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { columnLabel } from '../../src/client/presentation/model.ts'
 import {
   sourceCodeFacts,
   sourceTabForKey,
@@ -44,7 +45,7 @@ import { SourceSummary } from './src/client/presentation/sources.tsx';
 import { SourceDialog } from './src/client/presentation/source-dialog.tsx';
 export { formatSource } from './src/client/presentation/source-format.ts';
 export function renderSummary(document, block) { return renderToStaticMarkup(createElement(SourceSummary, { document, block })); }
-export function renderDialog(document, block, rowIndices, navigation) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, rowIndices, onOpenSemanticRef: navigation ? () => {} : undefined, explored: !!rowIndices, onClose() {} })); }`,
+export function renderDialog(document, block, rowIndices, navigation) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, rowIndices, onOpenSemanticRef: navigation ? () => {} : undefined, onClose() {} })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
     outfile,
@@ -195,7 +196,7 @@ test('source overview exposes saved dataset fields, semantic paths and issues wi
   assert.match(html, /null_rate_high · warning/)
   assert.doesNotMatch(
     html,
-    /session_saved|art_saved|hash_saved|读取时间|not_requested|Evidence status|complete|Historical definition|Unknown field|sampleSize|unknownCheck|outputColumn|revenue_internal|dimension_axis|声明关联|原始值|技术详情|未声明来源|Filters|过滤条件|SQL/,
+    /hash_saved|读取时间|not_requested|Evidence status|complete|Historical definition|Unknown field|sampleSize|unknownCheck|outputColumn|revenue_internal|dimension_axis|声明关联|原始值|技术详情|未声明来源|Filters|过滤条件|SQL/,
   )
   assert.deepEqual(document, saved)
 })
@@ -206,7 +207,7 @@ test('data preview is a modal tab with precise saved values and necessary trunca
   assert.equal(html.split('role="tab"').length - 1, 3)
   assert.match(html, /role="tab"[^>]+aria-selected="true"[^>]*>概要<\/button>/)
   assert.match(html, /role="tab"[^>]+aria-selected="false"[^>]*>数据预览<\/button>/)
-  assert.match(html, /role="tab"[^>]+aria-selected="false"[^>]*>代码<\/button>/)
+  assert.match(html, /role="tab"[^>]+aria-selected="false"[^>]*>相关查询<\/button>/)
   assert.match(html, /role="tabpanel"[^>]+hidden=""/)
   assert.match(html, /12345678901234\.5678/)
   assert.match(html, /9007199254740993/)
@@ -236,7 +237,7 @@ test('chart previews use the selected cell columns and source-only dialogs retai
     sourceIds: ['sales'],
   })
   assert.equal(onlySources.split('role="tab"').length - 1, 2)
-  assert.match(onlySources, /role="tab"[^>]*>代码<\/button>/)
+  assert.match(onlySources, /role="tab"[^>]*>相关查询<\/button>/)
   assert.doesNotMatch(onlySources, /数据预览|SQL|暂无数据|未声明来源/)
 })
 
@@ -278,17 +279,17 @@ test('code tab formats and highlights display while preserving execution snapsho
   const document = fixtureWithCode()
   const saved = structuredClone(document)
   const html = renderDialog(document, document.blocks[0]!)
-  assert.match(html, /Python · 执行记录/)
-  assert.match(html, /SQL · 执行记录/)
-  assert.match(html, /该执行记录由作者关联到此数据集。/)
+  assert.match(html, /Python/)
+  assert.match(html, /SQL/)
+  assert.doesNotMatch(html, /该执行记录由作者关联到此数据集。/)
   assert.match(html, /复制代码/)
   assert.match(html, /<pre tabindex="0"><code class="language-python">/)
   assert.match(html, /<code class="language-sql">/)
   assert.match(html, /color:var\(--pr-code-keyword\)/)
-  assert.match(html, /已格式化展示/)
+  assert.doesNotMatch(html, /已格式化展示/)
   assert.match(html, /retain-this-value/)
   assert.match(html, /&lt;script&gt;literal\(\)&lt;\/script&gt;/)
-  assert.doesNotMatch(html, /<script|作者提供|未保存生成代码/)
+  assert.doesNotMatch(html, /<script|作者提供|暂无相关查询/)
   assert.equal(sourceCodeFacts(document, document.blocks[0]!).entries[0]?.text, pythonText)
   assert.equal(sourceCodeFacts(document, document.blocks[0]!).entries[1]?.text, sqlText)
   assert.deepEqual(document, saved)
@@ -309,14 +310,14 @@ test('Python and SQL formatting expands compact code, preserves literals and nev
   assert.match(query.text, /group by\n {2}region/)
 })
 
-test('invalid Python and unsupported SQL retain their original text with a visible notice', () => {
+test('invalid Python and unsupported SQL retain their original text without a formatting notice', () => {
   const python = 'def invalid(:\r\n  print("retain me")\r\n'
   const sql = 'select $$unsupported dollar string$$'
   assert.deepEqual(formatSource(python, 'python'), { text: python, formatted: false })
   assert.deepEqual(formatSource(sql, 'sql'), { text: sql, formatted: false })
   const document = fixtureWithCode()
   document.datasets[0]!.code![0]!.text = python
-  assert.match(renderDialog(document, document.blocks[0]!), /无法格式化，显示执行原文/)
+  assert.doesNotMatch(renderDialog(document, document.blocks[0]!), /无法格式化，显示执行原文/)
 })
 
 test('cell code follows only its selected binding and source-only code follows its source IDs', () => {
@@ -417,22 +418,22 @@ test('native code disclosures stay readable offline and preserve per-cell bindin
   const html = renderSummary(document)
   assert.match(
     html,
-    /<details class="pr-source-code-summary" data-code-block-id="revenue"><summary>代码 · 收入指标原文<\/summary>/,
+    /<details class="pr-source-code-summary" data-code-block-id="revenue"><summary>相关查询 · 收入指标原文<\/summary>/,
   )
   assert.match(html, /<pre><code class="language-python">/)
   assert.match(html, /secret_value/)
-  assert.match(html, /SQL · 执行记录/)
+  assert.match(html, /SQL/)
   assert.match(html, /retain-this-value/)
   assert.doesNotMatch(html, /<button| open=""|<script/)
   document.sources = []
   document.datasets[0]!.sourceIds = []
-  assert.match(renderSummary(document), /Python · 执行记录/)
+  assert.match(renderSummary(document), /Python/)
 })
 
 test('missing code and partial unavailable sources report saved facts explicitly', () => {
   const document = fixture()
-  assert.match(renderDialog(document, document.blocks[0]!), /未保存生成代码/)
-  assert.match(renderSummary(document, document.blocks[0]!), /未保存生成代码/)
+  assert.match(renderDialog(document, document.blocks[0]!), /暂无相关查询/)
+  assert.match(renderSummary(document, document.blocks[0]!), /暂无相关查询/)
   document.sources[0] = {
     ...source,
     code: { snippets: [], notices: ['执行记录未保存 SQL 文本'] },
@@ -447,7 +448,7 @@ test('missing code and partial unavailable sources report saved facts explicitly
   const html = renderDialog(document, document.blocks[0]!)
   assert.match(html, /来源 sales：执行记录未保存 SQL 文本/)
   assert.match(html, /来源 missing 不可用：Artifact 已不可用/)
-  assert.match(html, /未保存生成代码/)
+  assert.match(html, /暂无相关查询/)
 })
 
 test('source tabs support forward, backward, Home and End navigation for both tab sets', () => {
@@ -477,7 +478,7 @@ test('native static summary keeps unavailable reasons and valuable source fields
   assert.equal(html.split('data-source-id="missing"').length - 1, 1)
   assert.match(html, /Original unavailable reason/)
   assert.match(html, /sales.revenue/)
-  assert.doesNotMatch(html, /<button|<dialog|技术详情|原始值|session_missing|art_missing/)
+  assert.doesNotMatch(html, /<button|<dialog|技术详情|原始值/)
 })
 
 test('malformed optional fact structures are not interpreted and displayed strings are escaped', () => {
@@ -498,7 +499,7 @@ test('malformed optional fact structures are not interpreted and displayed strin
     issues: [],
     notices: [],
   })
-  assert.doesNotMatch(renderSummary(document), /数据问题|暂无|没有|成功|failedCheckCount|not JSON/)
+  assert.doesNotMatch(renderSummary(document), /数据问题|没有|成功|failedCheckCount|not JSON/)
   document.sources[0] = {
     ...source,
     facts: [
@@ -525,22 +526,30 @@ test('current chart source includes auxiliary bindings and filters exact preview
     numericMode: 'approximate',
   }
   const html = renderDialog(document, block, [1])
-  assert.match(html, /当前探索视图/)
+  assert.doesNotMatch(html, /当前探索视图|pr-source-dialog-context|<caption>/)
   assert.match(html, /data-column-id="revenue"/)
   assert.match(html, /data-row-index="1"/)
   assert.doesNotMatch(html, /data-row-index="0"|12345678901234\.5678/)
   assert.match(html, /0\.1000/)
   assert.match(html, /当前筛选：已保存 2 行中命中 1 行/)
   const overview = renderSummary(document, block)
-  assert.match(overview, /收入 \(CNY\)/)
+  assert.match(overview, /<td>收入<\/td><td>decimal<\/td><td>CNY<\/td>/)
   assert.match(overview, /数量/)
 })
 
-test('source overview displays the persisted metric definition limitation locally', () => {
+test('field details retain IDs, labels, types and units and avoid repeated label units', () => {
   const document = fixture()
-  const notice = '信息：来源概要无法展示生成时的指标含义与口径；正常阅读无需处理。'
-  const available = document.sources[0] as Extract<SourceSnapshot, { status: 'available' }>
-  available.facts.push({ label: '指标定义说明', value: notice })
-  assert.deepEqual(sourceOverviewFacts(available).notices, [notice])
-  assert.ok(renderSummary(document, document.blocks[0]).includes(notice))
+  const column = document.datasets[0]!.data.columns[1]!
+  column.label = '收入（CNY）'
+  assert.equal(columnLabel(column), '收入（CNY）')
+  assert.equal(columnLabel({ ...column, label: '收入 (CNY)' }), '收入 (CNY)')
+  assert.equal(columnLabel({ ...column, label: '收入' }), '收入 (CNY)')
+  const html = renderDialog(document, document.blocks[0]!)
+  assert.match(
+    html,
+    /<code>revenue<\/code><\/td><td>收入（CNY）<\/td><td>decimal<\/td><td>CNY<\/td>/,
+  )
+  assert.match(html, /<summary>Artifact <span>art_saved<\/span><\/summary>/)
+  assert.match(html, /Session ID<\/dt><dd>session_saved/)
+  assert.doesNotMatch(html, /收入（CNY） \(CNY\)|<caption>|pr-source-dialog-context/)
 })
