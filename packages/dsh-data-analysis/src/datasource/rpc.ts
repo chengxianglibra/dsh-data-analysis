@@ -2,6 +2,7 @@ import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { z } from 'zod'
 import { registerPluginRpc } from '../rpc.ts'
 import type { MarivoDatasourceBridgePort } from './bridge.ts'
+import { type DatasourceDefaults, withDatasourceDefaults } from './defaults.ts'
 import { CREDENTIAL_CHANNEL, credentialError, type MarivoCredentialService } from './service.ts'
 
 const text = z.string().min(1).max(256)
@@ -21,6 +22,7 @@ export function registerCredentialRpc(
   connection: HostConnectionHandle,
   service: MarivoCredentialService,
   workspace: (id: string) => Promise<MarivoDatasourceBridgePort>,
+  datasourceDefaults?: DatasourceDefaults,
 ): () => Promise<void> {
   const unregister = registerPluginRpc(
     connection,
@@ -54,10 +56,19 @@ export function registerCredentialRpc(
             ),
           }
         } else if (endpoint === 'authoring') {
-          const input = z.object({ workspaceId: text }).strict().parse(payload)
+          const input = z
+            .object({ workspaceId: text, mode: z.enum(['create', 'edit']).default('create') })
+            .strict()
+            .parse(payload)
           const bridge = await workspace(input.workspaceId)
           if (!bridge.authoring) throw new Error('authoring-unavailable')
-          value = { generation: service.generation, ...(await bridge.authoring(signal)) }
+          const schema = await bridge.authoring(signal)
+          value = {
+            generation: service.generation,
+            ...(input.mode === 'edit'
+              ? schema
+              : withDatasourceDefaults(schema, datasourceDefaults)),
+          }
         } else if (endpoint === 'configuration') {
           const input = z.object({ workspaceId: text, name: text }).strict().parse(payload)
           const bridge = await workspace(input.workspaceId)

@@ -208,4 +208,25 @@ npm run validate:credentials:web
 
 ## 配置编辑与续接验收
 
+### 新建字段默认值
+
+Harness profile 中本插件的可选 `datasourceDefaults` 使用 `backend → 字段名 → JSON 值` 映射，
+作用于该插件实例服务的 Workspace；不增加项目侧配置或热更新机制。配置示例见[用户说明](../../README.md)。
+配置通过 loader 原样传入，authoring 的 `mode: 'create'` 取得 checked Runtime schema 后校验完整映射，返回独立的 `creationDefaults`；
+不改写 Runtime 字段 `default`、backend 列表或 fingerprint。未配置时响应保持原样。
+authoring 省略 mode 时沿用 create；编辑表单显式使用 `mode: 'edit'`，只读取 Runtime schema，不校验或返回新建默认值，
+因此错误的新建默认值不会阻止已有数据源编辑。
+
+未知 backend、未知字段、错误类型、非 JSON 值及 `*_env` 字段明确失败，错误仅使用固定错误码和中文说明，
+不回显配置值。普通字符串、数字、布尔值按 Runtime 字段类型校验，JSON 字段的具体业务约束仍由 Runtime 保存流程校验。
+此配置仅用于非敏感值，不能用 JSON 字段绕过 Harness 凭据管理存储密钥。
+
+新增表单初始化和切换 backend 时填入配置值；未指定的字段继续显示原占位符或默认选项，不强制写入 Runtime 默认值。
+用户修改或清空后不会在重渲染时补回。`0`、`false` 和 JSON 按原表单格式转换；显式配置的空字符串保留并作为字符串提交，
+其他空字段继续沿用原有省略规则。编辑时保留原配置中的显式空字符串，即使管理员已移除新建默认值，修改其他字段也不会将它省略。
+编辑已有数据源只读取已保存配置，选择复用已有数据源不应用默认值。
+提交仍使用原 generation、Runtime fingerprint 与配置保存流程，不在服务端补齐默认值。
+
+测试与真实浏览器证据见[新建默认值验收](../datasource-creation-defaults-acceptance.md)。
+
 完整流程、验证命令及限制见[数据源配置请求与编辑验收](../datasource-configuration-acceptance.md)。

@@ -23,6 +23,7 @@ export async function startPresentationWebHost(
     askDshProbe?: boolean
     rightTabsAcceptance?: boolean
     retainedPresentation?: boolean
+    datasourceDefaults?: Record<string, Record<string, unknown>>
   } = {},
 ) {
   const home = path.join(outputRoot, 'isolated-dsh-home')
@@ -124,7 +125,7 @@ ${options.rightTabsAcceptance ? `import {createRightTabsDriver} from ${JSON.stri
 export const name='presentation-s4';
 export const inject=[...production.inject,'llm','agentLoop','sessions','sessionPersistence','webServer'];
 export async function apply(ctx){
- await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:${JSON.stringify(options.rightTabsAcceptance ? 'web' : 'none')}});
+ await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:${JSON.stringify(options.rightTabsAcceptance ? 'web' : 'none')},datasourceDefaults:${JSON.stringify(options.datasourceDefaults)}});
  const previous = await readFile(${JSON.stringify(readyFile)},'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT') return undefined; throw error});
  const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(draftPaths)},true);
  const workspace=ctx.workspaceRegistry.get(result.workspaceId);

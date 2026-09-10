@@ -44,7 +44,14 @@ const host = await startPresentationWebHost(
   python,
   inputs.draftPaths,
   'native-first',
-  { rightTabsAcceptance: true, productionPackageRoot: candidatePackage },
+  {
+    rightTabsAcceptance: true,
+    productionPackageRoot: candidatePackage,
+    datasourceDefaults: {
+      duckdb: { path: ':memory:', http_scope: '', read_only: false, extra: {} },
+      trino: { host: 'defaults.example.invalid', port: 0, source: '' },
+    },
+  },
 )
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const checks: string[] = [],
@@ -83,6 +90,32 @@ try {
   let form = page.getByRole('form', { name: '新增数据源' })
   await form.waitFor()
   checks.push('owning Session automatically opens create form in right tab')
+  assert.equal(await form.getByLabel('引擎', { exact: true }).inputValue(), 'duckdb')
+  assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
+  assert.equal(await form.getByLabel('name', { exact: true }).inputValue(), '')
+  assert.equal(await form.getByLabel('read_only', { exact: true }).inputValue(), 'false')
+  assert.equal(await form.getByLabel('extra', { exact: true }).inputValue(), '{}')
+  await form.getByLabel('path', { exact: true }).fill('user-choice.duckdb')
+  await form.getByLabel('name', { exact: true }).fill('draft-name')
+  assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), 'user-choice.duckdb')
+  await form.getByLabel('path', { exact: true }).fill('')
+  await form.getByLabel('name', { exact: true }).fill('another-name')
+  assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), '')
+  await form.getByLabel('引擎', { exact: true }).selectOption('trino')
+  assert.equal(
+    await form.getByLabel('host', { exact: true }).inputValue(),
+    'defaults.example.invalid',
+  )
+  assert.equal(await form.getByLabel('port', { exact: true }).inputValue(), '0')
+  assert.equal(await form.getByLabel('source', { exact: true }).inputValue(), '')
+  await form.getByLabel('引擎', { exact: true }).selectOption('clickhouse')
+  assert.equal(await form.getByLabel('host', { exact: true }).inputValue(), '')
+  await form.getByLabel('引擎', { exact: true }).selectOption('duckdb')
+  assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
+  await page.screenshot({ path: path.join(root, 'creation-defaults.png'), fullPage: true })
+  checks.push(
+    'live schema defaults fill inputs only on creation and backend switch; edits and clearing survive rerender; unconfigured backend stays unchanged',
+  )
   assert.equal(await page.getByLabel('选择已有数据源', { exact: true }).count(), 0)
   const choice = page.getByRole('group', { name: '配置方式' })
   await choice.getByRole('button', { name: '使用已有数据源', exact: true }).click()
@@ -111,7 +144,7 @@ try {
   checks.push('Session switch and reconnect retain the request')
   await form.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await form.getByLabel('name', { exact: true }).fill('configured')
-  await form.getByLabel('path', { exact: true }).fill(':memory:')
+  assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
   await form.getByLabel('http_scope', { exact: true }).fill('https://example.invalid/')
   await form.getByLabel('访问令牌', { exact: true }).fill('inline-web-token-canary')
   await form.getByText('凭证引用名 · 确认或修改', { exact: true }).click()

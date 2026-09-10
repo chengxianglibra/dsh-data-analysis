@@ -1,6 +1,7 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 import { useEffect, useId, useRef, useState } from 'react'
 import { credentialReference, prepareCredentials } from './credential-draft.ts'
+import { creationFieldValues } from './defaults.ts'
 import { datasourceDescription } from './descriptions.ts'
 
 function credentialLabel(field) {
@@ -43,7 +44,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
     const controller = new AbortController()
     active.current = true
     Promise.all([
-      model.authoring(workspaceId, controller.signal),
+      model.authoring(workspaceId, controller.signal, name ? 'edit' : 'create'),
       name ? model.configuration(workspaceId, name, controller.signal) : Promise.resolve(null),
     ])
       .then(([value, configuration]) => {
@@ -58,6 +59,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
             configuration?.fields,
           ),
         )
+        if (!configuration) setValues(creationFieldValues(value, value.backends[0]?.name ?? ''))
         if (configuration) {
           const fields = value.backends.find((item) => item.name === configuration.backend)?.fields
           if (!fields) throw new Error('当前 Runtime 无法完整编辑该数据源。')
@@ -99,7 +101,15 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
     try {
       for (const field of fields.filter((field) => !field.name.endsWith('_env'))) {
         const value = values[field.name]
-        if (value === undefined || value === '') continue
+        if (value === undefined) continue
+        if (
+          value === '' &&
+          (field.type !== 'string' ||
+            (name
+              ? original?.fields[field.name] !== ''
+              : schema.creationDefaults?.[backend]?.[field.name] !== ''))
+        )
+          continue
         input[field.name] = field.type === 'string' ? value : JSON.parse(value)
       }
       const prepared = prepareCredentials(input.name ?? '', credentials)
@@ -153,7 +163,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                 value={backend}
                 onChange={(event) => {
                   setBackend(event.target.value)
-                  setValues({})
+                  setValues(creationFieldValues(schema, event.target.value))
                   setCredentials(credentialRows(schema, event.target.value))
                   setError('')
                 }}

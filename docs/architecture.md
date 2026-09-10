@@ -141,6 +141,8 @@ DSH Credentials 是凭证值权威，Marivo 的公开 description 与 resolver �
 `marivo_datasource_configure` 将新增/编辑请求绑定到原工具调用，并打开所属 Session 的右侧表单；
 配置由用户提交，成功测试后返回数据源身份，Agent 重新核验目标表后继续分析。取消、原调用结束或绑定变化不自动恢复。
 数据源配置页允许同页输入凭证并自动生成可确认、修改的引用名；配置 RPC 仅保存引用，值通过 Harness 凭证操作单独提交。请求说明折叠展示，新增与复用已有数据源采用显式切换，详见[数据源与凭证](modules/datasource-credentials.md)。
+Harness 插件配置的可选 `datasourceDefaults` 按 backend 提供新建字段默认值。插件按当前 Runtime schema 校验后，
+通过 authoring 的独立 `creationDefaults` 返回给表单，不修改 Runtime 默认值、fingerprint 或已有数据源；凭据流程保持独立。
 配置编辑使用 Marivo 公开读取和 `md.register()`，保留 `ai_context` 与扩展字段，名称和引擎固定；
 保存前校验版本并串行处理插件内写入，不保证与外部编辑器的原子并发写。
 `marivo_datasource_test` 执行连接测试并同步管理页状态；`marivo_python` 在一次调用内等待全部 datasource

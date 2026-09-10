@@ -3,6 +3,7 @@ import type {
   DatasourceConfiguration,
   DatasourceCreateInput,
 } from '../../datasource/authoring.ts'
+import type { DatasourceAuthoringView } from '../../datasource/defaults.ts'
 import type {
   ConfigurationRequestView,
   CredentialAction,
@@ -65,6 +66,13 @@ const messages: Record<string, string> = {
   'datasource-credential-ref-invalid':
     '凭证引用名称无效。*_env 字段填写引用名（如 MY_DB_PASSWORD），仅可使用字母、数字和下划线，且不能以数字开头；不能使用 MARIVO_、DSH_DATA_ANALYSIS_ 前缀或 Host 保留名称。实际用户名和密码请在创建后的“新增凭证”中填写。',
   'datasource-authoring-unavailable': '当前 Runtime 不支持新增数据源。',
+  'datasource-defaults-invalid':
+    'datasourceDefaults 配置格式无效，请使用引擎到字段默认值的 JSON 映射。',
+  'datasource-defaults-backend-invalid': 'datasourceDefaults 包含当前 Runtime 不支持的引擎。',
+  'datasource-defaults-field-invalid': 'datasourceDefaults 包含当前 Runtime 不支持的字段。',
+  'datasource-defaults-type-invalid': 'datasourceDefaults 中的字段值类型与当前 Runtime 不匹配。',
+  'datasource-defaults-credential-forbidden':
+    'datasourceDefaults 不支持凭据引用字段，请通过现有凭据流程配置。',
 }
 export function credentialMessage(code: string): string {
   return messages[code] ?? '凭证操作失败，请检查配置后重试。'
@@ -153,8 +161,13 @@ export class CredentialClientModel {
   async authoring(
     workspaceId: string,
     signal: AbortSignal,
-  ): Promise<DatasourceAuthoring & { generation: string }> {
-    return (await this.#call('authoring', { workspaceId }, signal)) as DatasourceAuthoring & {
+    mode: 'create' | 'edit' = 'create',
+  ): Promise<DatasourceAuthoringView & { generation: string }> {
+    return (await this.#call(
+      'authoring',
+      { workspaceId, mode },
+      signal,
+    )) as DatasourceAuthoringView & {
       generation: string
     }
   }
