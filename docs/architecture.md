@@ -33,6 +33,8 @@
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 兼容基线已完成，证据见[验证指南](validation.md#dsh-rc1-基线验收)；S2 文件交付和 S3 引导入口仍待实施。
+
 ## 运行与数据流
 
 ```mermaid

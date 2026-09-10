@@ -209,7 +209,7 @@ export async function apply(ctx){
      : ''
 }
  ${clientOrder === 'native-first' ? 'await ctx.plugin(native);' : ''}
- ${options.rightTabsAcceptance ? 'const delay = installReadDelayProbe(ctx); const prototypeFork = ctx.plugin(production,{diagnostics:true,onInstalled(controller){window.__rightTabs=controller}}); window.__rtHost = { sessions: ctx.sessions.list, current: () => ctx.sessions.list.getSnapshot().current, delay, history: id => ctx.sessions.binding(id)?.eventSource.getSnapshot().hasMore, loadOlder: id => ctx.sessions.binding(id).session.loadOlder(), reconnect: () => ctx.connection.reconnect(), generation: () => !!ctx.connection.generation.getSnapshot(), unload: () => prototypeFork.dispose(), select: id => ctx.sessions.open(id), selectModel: (id, selection) => ctx.get("modelDirectories").directoryFor(id).select(selection), sidebar: ctx.sidebarRight, workspaces: ctx.workspaces.list, input: id => ctx.conversation.input.for(ctx.sessions.scope(id)), clear: () => ctx.sessions.clear() };' : options.retainedPresentation ? 'const presentationRpc = createPluginRpc(ctx.connection.rpc); installSemanticReferenceSource(ctx,presentationRpc); production.installPresentation(ctx,presentationRpc);' : 'production.apply(ctx);'}
+ ${options.rightTabsAcceptance ? 'const delay = installReadDelayProbe(ctx); const prototypeFork = ctx.plugin(production,{diagnostics:true,onInstalled(controller){window.__rightTabs=controller}}); window.__rtHost = { locale: ctx.locale, sessions: ctx.sessions.list, current: () => ctx.sessions.list.getSnapshot().current, delay, history: id => ctx.sessions.binding(id)?.eventSource.getSnapshot().hasMore, loadOlder: id => ctx.sessions.binding(id).session.loadOlder(), reconnect: () => ctx.connection.reconnect(), generation: () => !!ctx.connection.generation.getSnapshot(), unload: () => prototypeFork.dispose(), select: id => ctx.sessions.open(id), selectModel: (id, selection) => ctx.get("modelDirectories").directoryFor(id).select(selection), sidebar: ctx.sidebarRight, workspaces: ctx.workspaces.list, input: id => ctx.conversation.input.for(ctx.sessions.scope(id)), clear: () => ctx.sessions.clear() };' : options.retainedPresentation ? 'const presentationRpc = createPluginRpc(ctx.connection.rpc); installSemanticReferenceSource(ctx,presentationRpc); production.installPresentation(ctx,presentationRpc);' : 'production.apply(ctx);'}
  ${clientOrder === 'report-first' ? 'await ctx.plugin(native);' : ''}
  window.__s4ClientOrder=${JSON.stringify(clientOrder)};
 }
@@ -339,6 +339,7 @@ syncBuiltinESMExports();
       profile,
       logPath,
       moduleDigests,
+      packageIntegrity: manifest.integrity,
       processAuditPath,
       clientOrder,
       pid: child.pid,

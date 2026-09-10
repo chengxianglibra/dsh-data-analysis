@@ -104,7 +104,7 @@ const packageManifest = parsePackageManifest(createRequire(import.meta.url)('../
 export const PLUGIN_VERSION = packageManifest.version
 export const DSH_DATA_ANALYSIS_COMPATIBILITY = packageManifest.dshDataAnalysisCompatibility
 
-/** Every DSH peer is required and must satisfy this bounded compatibility range. */
+/** Every DSH peer is required and must satisfy this declared compatibility range. */
 export const DSH_PEER_RANGE = DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.peerRange
 export const DSH_DISTRIBUTION = DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.distribution
 export const DSH_PEER_DEPENDENCIES = Object.freeze(

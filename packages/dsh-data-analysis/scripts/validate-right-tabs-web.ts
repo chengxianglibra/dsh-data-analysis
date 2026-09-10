@@ -1,6 +1,7 @@
-/** Real alpha Host and browser; isolated profile, real tools, scripted model boundary. */
+/** Real installed Host and browser; isolated profile, real tools, scripted model boundary. */
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -289,9 +290,12 @@ try {
   record('explicit reopen current resolves latest Build')
   const currentPage = page.locator('[data-rt-kind=report][data-rt-current=true]')
   const more = currentPage.getByRole('button', { name: '报告更多操作', exact: true })
-  assert.equal(
-    await currentPage.locator('.pr-report-version').innerText(),
-    updated.receipt.buildId.slice(0, 8),
+  assert.ok(
+    (
+      await currentPage
+        .locator('.pr-reader[data-mode=interactive] > header > p.pr-muted')
+        .innerText()
+    ).includes(updated.receipt.buildId),
   )
   await more.focus()
   await more.press('ArrowDown')
@@ -313,10 +317,10 @@ try {
   assert.equal(await more.evaluate((el) => el === document.activeElement), true)
   await reportAction(currentPage, '历史版本')
   await currentPage.locator('.pd-version').filter({ hasText: '当前版本' }).click()
-  await currentPage.locator('.pr-report-version').waitFor()
+  await currentPage.locator('.pr-reader[data-mode=interactive] > header > p.pr-muted').waitFor()
   await page.screenshot({ path: path.join(outputRoot, 'report-header.png'), fullPage: true })
   record(
-    'title row has only version and one keyboard-accessible menu; history current selection stays editable',
+    'reader shows full version metadata and one keyboard-accessible menu; history current selection stays editable',
   )
   const currentTab = await currentPage.getAttribute('data-rt-tab')
   await reportAction(currentPage, '编辑报告')
@@ -461,11 +465,50 @@ try {
   )
   record('Ask DSH write failure preserves the native reader and complete draft; retry appends once')
   record('Ask DSH uses input editing without reference serialization or automatic submission')
+  const titleBeforeLocale = await currentPage.locator('.pr-reader h1').first().innerText()
+  await page.evaluate(() => (window as any).__rtHost.locale.setLocale('en'))
+  await currentPage.getByRole('button', { name: 'More report actions', exact: true }).waitFor()
+  assert.equal(await currentPage.locator('.pr-reader h1').first().innerText(), titleBeforeLocale)
+  assert.equal(await currentPage.getAttribute('data-rt-build'), saved.buildId)
+  await page.evaluate(() => (window as any).__rtHost.locale.setLocale('zh'))
+  await currentPage.getByRole('button', { name: '报告更多操作', exact: true }).waitFor()
+  record(
+    'real Host locale switch updates reader controls and preserves fixed report content and Build',
+  )
   await page.setViewportSize({ width: 430, height: 900 })
+  await currentPage.getByRole('button', { name: '报告更多操作', exact: true }).click()
+  await currentPage.getByRole('menuitem', { name: '下载完整报告', exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  const scroll = await currentPage.evaluate((node) => {
+    const candidates = [node, ...node.querySelectorAll('*')]
+    const target = candidates.find(
+      (item) =>
+        item instanceof HTMLElement &&
+        item.scrollHeight > item.clientHeight + 10 &&
+        /auto|scroll/.test(getComputedStyle(item).overflowY),
+    ) as HTMLElement | undefined
+    if (!target) return { found: false, moved: false }
+    target.scrollTop = 50
+    const moved = target.scrollTop > 0
+    target.scrollTop = 0
+    return { found: true, moved }
+  })
+  assert.deepEqual(scroll, { found: true, moved: true })
+  record('narrow reader actions remain operable and its scroll container moves')
   await page.screenshot({ path: path.join(outputRoot, 'narrow-reader.png'), fullPage: true })
+  await page.locator('[data-sidebar-right-panel=fullscreen][data-sidebar-right-open]').waitFor()
+  await page.evaluate(() => (window as any).__rtHost.sidebar.toggleExpanded())
+  await currentPage.waitFor({ state: 'hidden' })
+  await page.evaluate(() => (window as any).__rtHost.sidebar.toggleExpanded())
+  await currentPage.getByRole('button', { name: '报告更多操作', exact: true }).click()
+  await currentPage.getByRole('menuitem', { name: '下载完整报告', exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  assert.equal(await currentPage.getAttribute('data-rt-build'), saved.buildId)
   await page.setViewportSize({ width: 1680, height: 1100 })
-  await page.evaluate(() => (window as any).__rtHost.sidebar.toggleExpanded())
-  await page.evaluate(() => (window as any).__rtHost.sidebar.toggleExpanded())
+  await page.getByRole('button', { name: '全屏', exact: true }).click()
+  await page.locator('[data-sidebar-right-panel=fullscreen][data-sidebar-right-open]').waitFor()
+  await page.getByRole('button', { name: '退出全屏', exact: true }).click()
+  await page.locator('[data-sidebar-right-panel=push][data-sidebar-right-open]').waitFor()
   await currentPage.waitFor()
   await page.waitForFunction(() => {
     const svg = document.querySelector(
@@ -576,7 +619,20 @@ try {
   await page.setViewportSize({ width: 1680, height: 1100 })
   record('semantic narrow-pane filters remain accessible and repeat entry preserves state')
   await page.locator('[data-rt-kind=semantic] .sb-objects button').first().click()
-  await page.getByRole('button', { name: '在独立标签页打开', exact: true }).click()
+  assert.equal(await page.getByRole('button', { name: '在独立标签页打开', exact: true }).count(), 0)
+  // Report source navigation uses this resource route; directory details stay in place.
+  await page.evaluate(() => {
+    const app = (window as any).__rightTabs
+    const owner = [...app.pages.values()].find(
+      (p: any) => p.target.kind === 'semantic' && !('ref' in p.target),
+    ) as any
+    const view = owner.semantic.getSnapshot().views[owner.target.workspaceId]
+    app.navigate(owner.sessionId, {
+      kind: 'semantic',
+      workspaceId: owner.target.workspaceId,
+      ref: view.snapshot.objects[0].ref,
+    })
+  })
   await page.waitForFunction(() =>
     [...(window as any).__rightTabs.pages.values()].some(
       (p: any) =>
@@ -652,7 +708,7 @@ try {
   record(
     'semantic resource browsing keeps the same tab and snapshot, supports history and returns to list',
   )
-  await page.getByRole('button', { name: '打开数据源', exact: true }).click()
+  await page.getByRole('button', { name: '打开数据源与凭证', exact: true }).click()
   const datasourcePanel = page.locator('[data-rt-kind=datasources]')
   const datasourceButtons = datasourcePanel.getByRole('button', { name: /^选择数据源 / })
   await datasourceButtons.last().click()
@@ -676,7 +732,7 @@ try {
   await datasourcePanel.getByText('连接测试成功', { exact: true }).waitFor()
   const layout = await datasourcePanel.evaluate((panel) => {
     const title = panel.querySelector('.rt-heading')!.getBoundingClientRect()
-    const refresh = panel.querySelector('.rt-refresh')!.getBoundingClientRect()
+    const refresh = panel.querySelector('[aria-label="刷新数据源"]')!.getBoundingClientRect()
     const list = panel.querySelector('.mc-datasources')!.getBoundingClientRect()
     const detail = panel.querySelector('.mc-form')!.getBoundingClientRect()
     const selected = panel
@@ -811,7 +867,7 @@ try {
   const latestFixed = page.locator(
     `[data-rt-kind=report][data-rt-build="${backgroundUpdate.receipt.buildId}"]`,
   )
-  await latestFixed.locator('.pr-report-version').waitFor()
+  await latestFixed.locator('.pr-reader[data-mode=interactive] > header > p.pr-muted').waitFor()
   await reportAction(latestFixed, '编辑报告')
   await latestFixed.getByRole('textbox', { name: '报告标题', exact: true }).fill('关闭即丢弃的草稿')
   const discardedTab = await latestFixed.getAttribute('data-rt-tab')
@@ -826,7 +882,7 @@ try {
       }),
     backgroundUpdate.receipt,
   )
-  await latestFixed.locator('.pr-report-version').waitFor()
+  await latestFixed.locator('.pr-reader[data-mode=interactive] > header > p.pr-muted').waitFor()
   assert.equal(await latestFixed.getByRole('textbox', { name: '报告标题', exact: true }).count(), 0)
   const fixedPane = await latestFixed.getAttribute('data-rt-panel')
   await reportAction(latestFixed, '编辑报告')
@@ -1004,14 +1060,11 @@ try {
   await page.evaluate(() => (window as any).__rtHost.reconnect())
   await page.waitForTimeout(1200)
   await page.context().setOffline(false)
-  await page.waitForFunction(
-    () =>
-      [...(window as any).__rightTabs.pages.values()].some((p: any) =>
-        p.getSnapshot().error?.includes('连接'),
-      ),
-    {},
-    { timeout: 30_000 },
-  )
+  await page
+    .getByRole('alert')
+    .filter({ hasText: /Host 连接已(?:中断|重置)/ })
+    .first()
+    .waitFor({ timeout: 30_000 })
   await page.waitForFunction(() => (window as any).__rtHost.generation())
   assert.equal(await opens(), beforeReconnect)
   record('actual network disconnect/reconnect invalidates pages without replay auto-open')
@@ -1061,7 +1114,7 @@ try {
     ptc.receipt,
   )
   await page.waitForFunction(() => (window as any).__rtHost.delay.held())
-  await page.getByRole('button', { name: '打开数据源', exact: true }).click()
+  await page.getByRole('button', { name: '打开数据源与凭证', exact: true }).click()
   await page
     .getByRole('button', { name: /^选择数据源 / })
     .first()
@@ -1109,7 +1162,7 @@ try {
           }),
         ptc.receipt,
       ),
-    /所属 Session 或 Workspace 已变化/,
+    /marivo\.navigation\.the-owning-session-or-workspace-changed-return-to-its/,
   )
   record('revoked Workspace rejects report navigation')
   await run('ptc', 'attach')
@@ -1156,17 +1209,31 @@ try {
       {
         status: 'passed',
         boundary:
-          'Real alpha Host, production tools and Runtime; scripted model; packaged default client',
+          'Real installed Host, production tools and Runtime; scripted model; packaged default client',
         checks,
         audit,
         beforePaginationAudit,
         afterReloadAudit: await page.evaluate(() => (window as any).__rightTabs.audit),
         workspaceRoot,
         profile: server.profile,
-        dshVersion: '0.1.5-alpha.1',
+        dshVersion: createRequire(import.meta.url)('@deepseek-ai/dsh/package.json').version,
         nodeVersion: process.version,
         browserVersion: browser.version(),
         productionModuleDigests: server.moduleDigests,
+        packageIntegrity: server.packageIntegrity,
+        modelBoundary: {
+          configuredProviders: [
+            'right-tabs-native',
+            'right-tabs-ptc',
+            'right-tabs-cold',
+            'right-tabs-credentials',
+            'right-tabs-semantic',
+            'right-tabs-configure-create',
+            'right-tabs-configure-edit',
+          ],
+          model: 'deterministic-seam',
+          scripted: true,
+        },
         inputs: inputs.binding,
       },
       null,

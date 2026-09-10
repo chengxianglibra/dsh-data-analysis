@@ -12,18 +12,28 @@ import {
   checkProductionSource,
 } from './dependency-policy.mjs'
 
-const range = '^0.1.5-alpha.1'
-for (const version of ['0.1.5-alpha.1', '0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5', '0.1.6', '0.1.99'])
+const range = '>=0.1.5-rc.1'
+for (const version of [
+  '0.1.5-rc.1',
+  '0.1.5-rc.2',
+  '0.1.5',
+  '0.1.6',
+  '0.1.99',
+  '0.2.0',
+  '1.0.0',
+  '2.0.0',
+])
   test(`compatibility admits ${version} without requiring exact baseline equality`, () => {
     assert.doesNotThrow(() => assertCompatibleVersion('fixture', version, range))
   })
 for (const version of [
   '0.1.2-rc.1',
   '0.1.5-alpha.0',
+  '0.1.5-alpha.1',
+  '0.1.5-alpha.2',
+  '0.1.5-rc.0',
   '0.1.6-alpha.1',
   '0.2.0-alpha.1',
-  '0.2.0',
-  '1.0.0',
   'invalid',
 ])
   test(`compatibility rejects ${version}`, () => {
@@ -144,7 +154,7 @@ test('resolved dependency fixture accepts workspace links and mixed compatible s
     rmSync(path.join(linked, 'cordis'), { recursive: true })
     write(path.join(root, 'node_modules/@deepseek-ai/dsh-tools/package.json'), {
       name: '@deepseek-ai/dsh-tools',
-      version: '0.2.0',
+      version: '0.1.5-rc.0',
     })
     assert.throws(() => checkPluginDependencies(root), /compatibility requires/)
   } finally {

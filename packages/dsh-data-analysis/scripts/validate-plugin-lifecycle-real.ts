@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -26,7 +27,9 @@ import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import { DSH_PEER_RANGE } from '../src/compatibility.ts'
 import { apply, inject } from '../src/plugin.ts'
 import { installStorage } from '../tests/semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
@@ -57,6 +60,7 @@ try {
     '[project]\nname = "lifecycle-validation"\n',
   )
   await ctx.plugin(LocalCredentialProvider, { dshHome: process.env.DSH_HOME, watch: false })
+  await ctx.plugin(TypertRegistry)
   await ctx.plugin(Connection)
   await installStorage(ctx, path.join(root, 'storage'))
   await ctx.plugin(LlmRuntime)
@@ -94,18 +98,27 @@ try {
       .filter((tool) => tool.name.startsWith('marivo_'))
       .map((tool) => tool.name)
       .sort()
+  const expectedTools = [
+    'marivo_datasource_configure',
+    'marivo_datasource_test',
+    'marivo_help',
+    'marivo_present',
+    'marivo_python',
+  ]
   const section = ctx.systemPrompt.section
   ctx.systemPrompt.section = function (input) {
     if (input.name === 'marivo:presentation') throw new Error('injected-real-prompt-registration')
     return section.call(this, input)
   }
+  for (const service of inject)
+    assert.ok(ctx.get(service), `Missing lifecycle prerequisite: ${service}`)
   const failed = ctx.plugin(definition, config)
   await assert.rejects(async () => await failed, /injected-real-prompt-registration/)
   await failed.dispose()
   ctx.systemPrompt.section = section
   assert.deepEqual(toolNames(), [])
   let plugin = await ctx.plugin(definition, config)
-  assert.equal(toolNames().length, 4)
+  assert.deepEqual(toolNames(), expectedTools)
   agent.followup(
     createUserMessage({
       content: [{ type: 'text', text: 'Ordinary lifecycle check' }],
@@ -177,7 +190,7 @@ try {
   assert.deepEqual(toolNames(), [])
   assert.equal((await handler.fetch(request())).status, 404)
   plugin = await ctx.plugin(definition, config)
-  assert.equal(toolNames().length, 4)
+  assert.deepEqual(toolNames(), expectedTools)
   const after = await handler.fetch(request())
   assert.equal(after.status, 200)
   assert.equal((await after.json()).result.ok, true)
@@ -187,8 +200,8 @@ try {
     status: 'passed',
     pythonStateAtUnload: processState,
     node: process.version,
-    baseline: '0.1.5-alpha.1',
-    compatibleRange: '^0.1.5-alpha.1',
+    baseline: createRequire(import.meta.url)('@deepseek-ai/dsh/package.json').version,
+    compatibleRange: DSH_PEER_RANGE,
     checks: [
       'real Cordis failed installation rollback',
       'same Agent reinstall',

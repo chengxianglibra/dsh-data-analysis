@@ -84,7 +84,7 @@ if (compatibility.dsh?.distribution !== '@deepseek-ai/dsh') {
 }
 const dshPeerRange = compatibility.dsh.peerRange
 if (typeof dshPeerRange !== 'string' || dshPeerRange === '' || dshPeerRange.includes('*')) {
-  fail('package compatibility must declare one bounded DSH peer range')
+  fail('package compatibility must declare one valid DSH peer range')
 }
 const peerDependencies = sourceManifest.peerDependencies ?? {}
 const dshPeers = Object.entries(peerDependencies).filter(([name]) =>

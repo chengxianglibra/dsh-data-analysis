@@ -11,7 +11,7 @@
 ### 环境准备
 
 - Node.js `^22.19.0 || >=24.0.0`，与 DeepSeek Harness 一致：22.x 需至少 22.19.0，或使用 24.0.0 及以上版本；不支持 23.x。
-- 已安装并配置好 DeepSeek Harness `^0.1.5-alpha.1`（当前实际验收版本为 `0.1.5-alpha.1`）。
+- 已安装并配置好 DeepSeek Harness `>=0.1.5-rc.1`（rc.1 验收状态见验证指南；范围内未来版本不视为已验收）。
 - `pnpm` 可在命令行中使用，供 Harness 安装插件。
 - 已安装 Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 

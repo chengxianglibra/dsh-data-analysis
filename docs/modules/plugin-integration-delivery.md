@@ -81,9 +81,9 @@ Web client 只保留：
 成功回执不渲染聊天卡片，打开失败时提供错误反馈；下载前校验固定快照和响应字节。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
-## DSH alpha 适配
+## DSH rc.1 适配
 
-当前基线为 `0.1.5-alpha.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
+当前基线为 `0.1.5-rc.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
 和 `dsh-api-workspace-controller`；对话组装由 `ui-conversation` 拥有，chat 节点渲染由 `ui-chat` 拥有。
 新版 Lexical composer 通过 scoped `slash/input-insert-reference` 和当前 `draftRev` 追加“加入提问”的 Cell 引用，
 采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史；显示 `# <cell名称>`，
@@ -104,8 +104,8 @@ Web client 只保留：
 
 | 边界 | 当前值 |
 | --- | --- |
-| DSH peers 兼容范围 | `^0.1.5-alpha.1`，npm 默认预发布匹配规则 |
-| DSH 开发 distribution | `0.1.5-alpha.1`，lockfile 保留实际解析版本 |
+| DSH peers 兼容范围 | `>=0.1.5-rc.1`，npm 默认预发布匹配规则 |
+| DSH 开发 distribution | `0.1.5-rc.1`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.5.5` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |

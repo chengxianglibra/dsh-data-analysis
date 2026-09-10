@@ -1,6 +1,7 @@
 /** Focused real DSH Web acceptance; disposable profile, production plugin, scripted model. */
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -54,8 +55,9 @@ try {
   assert.deepEqual(errors, [])
   const evidence = {
     status: 'passed',
+    dshVersion: createRequire(import.meta.url)('@deepseek-ai/dsh/package.json').version,
     boundary:
-      'Real installed 0.1.5-alpha.1 DSH Web composer and packed public installPresentation fallback; scripted model adapter, not real-model analysis acceptance',
+      'Real installed DSH Web composer and packed public installPresentation fallback; scripted model adapter, not real-model analysis acceptance',
     workspaceRoot,
     isolatedProfile: server.profile,
     moduleDigests: server.moduleDigests,

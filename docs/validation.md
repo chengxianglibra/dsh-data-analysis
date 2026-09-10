@@ -6,6 +6,40 @@
 
 本地构建使用 `.nvmrc` 指定的 Node.js 22.19.0。可执行变更运行相关测试及 `npm run check`；exports、client、包元数据或分发内容变化时，再运行 `npm run build` 与 `npm run verify:plugin-package`。纯文档变更检查相对链接、标题锚点、Markdown 渲染和 `git diff --check`。
 
+## DSH rc.1 基线验收
+
+2026-09-11 完成 [升级设计](designs/dsh-rc-upgrade-ux.md) 的 S1。开发 distribution 与直接 DSH 开发依赖
+固定为 `0.1.5-rc.1`，初次验收时 31 个 DSH peers 与 compatibility 为 `^0.1.5-rc.1`；lockfile 的 234 个 DSH
+条目及实际解析图均为 rc.1，Host 单实例检查通过。范围内未来版本不视为已经验收。
+
+Node.js 22.19.0 下 `npm run check` 通过（648 项通过、4 项默认跳过），`npm run build`、
+`npm run verify:plugin-package` 通过。另设置 `DSH_DATA_ANALYSIS_PYTHON` 和
+`DSH_DATA_ANALYSIS_VALIDATE_LONG_PYTHON=1`，单独运行 `python-execution-real.test.ts`：4 项全部通过，
+覆盖真实超时、调用方取消、PTC 外层截止和超过 120 秒执行后只捕获一次代码。最终验收脚本另通过类型与格式检查。
+
+`validate:right-tabs:web` 使用打包插件、隔离 `web` profile、真实 Harness／Marivo 和 Chrome，49 项断言通过：
+目录去重，Report/Build 新建、保存冲突及重开，Ask DSH 原生引用与完整上下文、附件和撤销，语言切换，
+窄屏滚动与全屏进出，数据源和凭据交互，分页与 PTC 去重，关闭／替换／Session 切换的迟到响应，
+真实断线重连，Workspace 撤销和客户端卸载。`validate:presentation-ask-dsh`、`validate:locale`、
+`validate:plugin-lifecycle:real` 也通过，分别保留独立证据。
+
+验收固定使用 `right-tabs-<scenario>/deterministic-seam` 脚本模型适配器；具体 provider 清单记录于证据。
+这证明真实 Host、工具、Runtime 和浏览器接缝，不代表远端模型自主分析验收。Runtime 为已有 Marivo 0.5.5，
+实际解释器、packagePath、binding fingerprint、profile、固定输入及逐项断言记录在本地
+`artifacts/dsh-rc1-s1/candidate.json` 和 `right-tabs.json`；该目录同时保留日志、截图、候选 diff 与 tarball。
+
+- 候选基于 `d629d514f6a6416a8d46684d18f15b4836dc5fad`；非 Markdown 改动的 `git diff --binary HEAD` SHA-256：
+  `e9d9c452e7b6331bd1bd1244028a57748a42712328203ca2e086480a2243dc93`，具体路径清单见 `candidate.json`。
+- 打包产物 SHA-256：`d45a86001d6ac5203a4ee423f411c41d64c7204872a88b8c16383212f3cf6709`。
+  最终重新打包的 SHA-512 integrity 与真实 Web 使用的包完全一致。
+
+本次仅更新依赖、兼容声明和验收接缝：rc.1 原生 deliverables 的 `produced/presented` 返回结构与新增原生
+`present` 工具视图在测试中按 Host 契约读取；补齐 client-store 验证需要的 Zustand／Immer 开发依赖及
+生命周期 fixture 的 `typert` 前提，并更新当前界面定位和错误 key 断言。生产插件无需更改 slot 或执行协议。
+S2 文件交付与 S3 guide 入口仍待实施；当前用户 profile、运行服务、模型默认值和 Marivo 安装未改动，未发布。
+
+同日按用户要求将对外 DSH peer／compatibility 范围扩大为 `>=0.1.5-rc.1`，允许更高的稳定版本（包括 `0.2.x`、`1.x`），并保持 npm 默认预发布匹配规则。开发与真实 Web 验收版本仍固定为 rc.1。上面的候选和包摘要保留为初次 Web 验收证据，不作为扩大范围后的最终包指纹。 范围调整后重新执行 `npm run check`（649 项通过、4 项跳过）、`npm run build` 和 `npm run verify:plugin-package`，全部通过；兼容性测试明确接受 `0.2.0`、`1.0.0` 和 `2.0.0`，这些版本未作真实 Web 验收。
+
 ## 按模块验证
 
 下表列出常用入口；完整参数、前提和失败边界见对应[模块文档](architecture.md#模块导航)及脚本。

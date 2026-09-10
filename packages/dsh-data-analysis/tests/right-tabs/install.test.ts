@@ -66,6 +66,7 @@ test('default client is a valid Cordis effect and registers native resources wit
     },
     () => null,
   )
+  const nativeToolViews = host.slots.entries('tool.call.toolview').map((entry) => entry.options.key)
   let controller: any
   const result = host.presentation.apply(host.client, {
     onInstalled(value) {
@@ -75,7 +76,7 @@ test('default client is a valid Cordis effect and registers native resources wit
   assert.equal(result, undefined, 'Cordis rejects arbitrary object effect return values')
   assert.deepEqual(
     host.slots.entries('tool.call.toolview').map((entry) => entry.options.key),
-    ['marivo_python'],
+    [...nativeToolViews, 'marivo_python'],
   )
   const directoryTitles = [
     ['marivo-datasources', '数据源与凭证', 'Datasources and credentials'],
