@@ -64,7 +64,7 @@ function CellMenu({
     ...(onExplore ? [{ label: t('marivo.presentation.explore-chart'), run: onExplore }] : []),
     ...(onSource ? [{ label: t('marivo.presentation.datasource'), run: onSource }] : []),
     {
-      label: askDsh ? 'Ask DSH' : t('marivo.presentation.copy-context'),
+      label: t(askDsh ? 'marivo.presentation.add-to-question' : 'marivo.presentation.copy-context'),
       run: onContext,
       disabled: contextDisabled,
     },

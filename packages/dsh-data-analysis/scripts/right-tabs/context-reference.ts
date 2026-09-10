@@ -66,7 +66,7 @@ export async function verifyNativeContextReference(
     const escapedId = await page.evaluate((id) => CSS.escape(id), id)
     const cell = reader.locator(`[data-mode=interactive] [data-block-id=${escapedId}]`)
     await cell.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
-    await cell.getByRole('menuitem', { name: 'Ask DSH', exact: true }).click()
+    await cell.getByRole('menuitem', { name: /^(加入提问|Add to question)$/ }).click()
     const after = await snapshot()
     if (after.occurrences.length === before.occurrences.length) return ''
     return JSON.parse(after.occurrences.at(-1).ref).context.replace(/^\n\n/, '') as string

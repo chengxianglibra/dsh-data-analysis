@@ -253,7 +253,6 @@ export function SemanticBrowserPanel({
   workspaces,
   workspacePhase = 'ready',
   workspaceError = false,
-  onOpenObject,
   onAsk,
 }) {
   const t = useCopy()
@@ -476,11 +475,6 @@ export function SemanticBrowserPanel({
               )}
             </section>
             <section className="sb-detail" aria-label={t('marivo.semantic.object-details')}>
-              {selected && onOpenObject && (
-                <button type="button" onClick={() => onOpenObject(selected.ref)}>
-                  {t('marivo.semantic.open-in-a-separate-tab')}
-                </button>
-              )}
               {selected ? (
                 <ObjectDetail
                   key={`${snapshot.fingerprint}/${view.selected}`}

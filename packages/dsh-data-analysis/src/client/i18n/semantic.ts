@@ -228,7 +228,6 @@ export const zh = {
   'marivo.semantic.no-matching-objects-adjust-the-search-or-filters':
     '没有匹配对象，请调整搜索或筛选条件。',
   'marivo.semantic.object-details': '对象详情',
-  'marivo.semantic.open-in-a-separate-tab': '在独立标签页打开',
   'marivo.semantic.the-selected-object-is-no-longer-in-this-catalog':
     '所选对象已不在当前 Catalog 中，请重新选择。',
   'marivo.semantic.select-an-object-to-view-its-business-definition-and':
@@ -488,7 +487,6 @@ export const en = {
   'marivo.semantic.no-matching-objects-adjust-the-search-or-filters':
     'No matching objects. Adjust the search or filters.',
   'marivo.semantic.object-details': 'Object details',
-  'marivo.semantic.open-in-a-separate-tab': 'Open in a separate tab',
   'marivo.semantic.the-selected-object-is-no-longer-in-this-catalog':
     'The selected object is no longer in this Catalog. Select another.',
   'marivo.semantic.select-an-object-to-view-its-business-definition-and':

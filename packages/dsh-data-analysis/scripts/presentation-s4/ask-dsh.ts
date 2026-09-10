@@ -42,14 +42,16 @@ export async function verifyAskDsh(
       await page.keyboard.press('End')
       assert.equal(
         await cell(id)
-          .getByRole('menuitem', { name: 'Ask DSH', exact: true })
+          .getByRole('menuitem', { name: /^(加入提问|Add to question)$/ })
           .evaluate((element) => element === document.activeElement),
         true,
       )
       await page.keyboard.press('Enter')
     } else {
       await trigger.click()
-      await cell(id).getByRole('menuitem', { name: 'Ask DSH', exact: true }).click()
+      await cell(id)
+        .getByRole('menuitem', { name: /^(加入提问|Add to question)$/ })
+        .click()
     }
   }
   const durableBefore = await page.evaluate(
@@ -115,7 +117,7 @@ export async function verifyAskDsh(
   await open()
   await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
   await cell('metric').getByRole('button', { name: 'cell 更多操作', exact: true }).click()
-  const disabledAsk = cell('metric').getByRole('menuitem', { name: 'Ask DSH', exact: true })
+  const disabledAsk = cell('metric').getByRole('menuitem', { name: /^(加入提问|Add to question)$/ })
   assert.equal(await disabledAsk.isDisabled(), true)
   await cell('metric').getByText('请先保存或取消编辑', { exact: true }).waitFor()
   const editingWrites = (await audit()).writes
@@ -226,7 +228,10 @@ export async function verifyAskDsh(
     await portable.goto(pathToFileURL(portablePath).href)
     const savedCell = portable.locator('[data-mode="interactive"] [data-block-id="metric"]')
     await savedCell.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
-    assert.equal(await savedCell.getByRole('menuitem', { name: 'Ask DSH', exact: true }).count(), 0)
+    assert.equal(
+      await savedCell.getByRole('menuitem', { name: /^(加入提问|Add to question)$/ }).count(),
+      0,
+    )
     await savedCell.getByRole('menuitem', { name: '复制上下文', exact: true }).click()
     const manual = portable.getByRole('dialog', { name: '手动复制 cell 上下文', exact: true })
     await manual.waitFor()

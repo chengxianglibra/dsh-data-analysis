@@ -295,7 +295,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 model={page.semantic}
                 onAsk={canAsk ? () => page.semantic.addToQuestion(ctx, page.sessionId) : undefined}
                 workspaces={workspaces}
-                onOpenObject={source}
               />
             )}
             {page.target.kind === 'datasources' && (

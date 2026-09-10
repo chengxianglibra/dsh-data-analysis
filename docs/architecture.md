@@ -26,7 +26,7 @@
 | 报告 | [展示 Skill](modules/presentation-skill.md) | 内容组织、图形选择、来源声明与 Draft 流程 |
 | 报告 | [展示数据投影](modules/presentation-projection.md) | typed JSON、固定来源读取、Python writer 与数值预算 |
 | 报告 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、current、receipt、RPC 与编辑 |
-| 报告 | [共享 reader 与离线构建](modules/presentation-reader.md) | 五类 block、阅读交互、Ask DSH 与 HTML |
+| 报告 | [共享 reader 与离线构建](modules/presentation-reader.md) | 五类 block、阅读交互、加入提问 与 HTML |
 | 报告 | [报告 HTML 发布](modules/report-publishing.md) | 可选 S3 上传、独立凭据与发布回执 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
 
@@ -89,7 +89,7 @@ Report ID 是稳定报告身份，Build ID 是一次保存的固定身份。新�
 
 完整 HTML 在下载时按固定 Build 校验并生成；当前视图导出冻结已显示的筛选、排序和图形。两者都不修改 Build 或 current。开启 `reportPublishing` 后，在线 HTML 下载入口改为对象存储发布，Agent 也可在用户明确要求发布时调用 Tool。上传使用独立、操作级凭据；写入响应成功不等于公网链接已验证可访问。
 
-Ask DSH 将正在显示的 Workspace/Report/Build/Cell 及临时视图定位插入所属会话草稿，chip 显示友好名称，发送时由 codec 展开完整上下文。current 提示不改变引用身份；实际显示的 document 才决定 Build。
+“加入提问”将正在显示的 Workspace/Report/Build/Cell 及临时视图定位插入所属会话草稿，chip 显示友好名称，发送时由 codec 展开完整上下文。current 提示不改变引用身份；实际显示的 document 才决定 Build。
 
 ## 生命周期与失败原则
 
