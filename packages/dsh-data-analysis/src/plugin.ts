@@ -1,5 +1,8 @@
 import { finishCleanup } from './lifecycle.ts'
 import { createMarivoAgentInstallation } from './plugin-agents.ts'
+import { registerPublishingCredentials } from './report-publishing/adapters.ts'
+import { type ReportPublishingConfig, resolvePublishingConfig } from './report-publishing/config.ts'
+import { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 export { installMarivoPlugin, type MarivoPluginEnvironmentResolver } from './plugin-agents.ts'
@@ -67,6 +70,8 @@ export const inject = [
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config extends MarivoPythonOptions {
+  readonly reportPublishing?: ReportPublishingConfig
+
   /** Non-secret creation defaults by backend; checked against each live Runtime schema. */
   readonly datasourceDefaults?: DatasourceDefaults
   readonly credentialInteraction?: 'web' | 'none'
@@ -87,6 +92,7 @@ export interface Config extends MarivoPythonOptions {
 export const Config: z<Config> = z.object({
   // Defer validation to authoring so loader errors cannot echo configured values.
   datasourceDefaults: z.any(),
+  reportPublishing: z.any(),
   pythonTimeoutMs: z.number().default(DEFAULT_PYTHON_TIMEOUT_MS),
   pythonMaxTimeoutMs: z.number().default(DEFAULT_PYTHON_MAX_TIMEOUT_MS),
   credentialInteraction: z.union(['web', 'none']).default('web'),
@@ -109,6 +115,7 @@ function configuredProjectRoot(config: Config, agent: Agent): string {
 
 /** Ensure the shared Runtime once, mount its skills, then bind each Workspace lazily. */
 export async function apply(ctx: Context, config: Config = {}): Promise<() => Promise<void>> {
+  const publishingConfig = resolvePublishingConfig(config.reportPublishing)
   const pythonOptions = resolvePythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
@@ -138,6 +145,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     ctx.credentials,
     config.credentialInteraction,
   )
+  let disposePublishing: (() => Promise<void>) | undefined
   let disposeCredentials: (() => Promise<void>) | undefined
   let disposeReferences: (() => Promise<void>) | undefined
   let disposePresentation: (() => Promise<void>) | undefined
@@ -155,6 +163,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     closing = finishCleanup([
       () => agentInstallation?.close(),
       () => disposeCredentials?.(),
+      () => disposePublishing?.(),
       () => disposePresentation?.(),
       () => disposeReferences?.(),
       () => browserService.close(),
@@ -189,9 +198,27 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))
+    const presentationFiles = new MarivoPresentationFileService(
+      async (sessionId) => resolvePresentationWorkspace(ctx, sessionId),
+      async (id) => {
+        const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
+        return workspace ? { id: String(workspace.id), path: workspace.path } : undefined
+      },
+    )
+    disposePresentation = registerMarivoPresentationRpc(ctx.connection, presentationFiles)
+    const reportPublishing = new ReportPublishingService(
+      publishingConfig,
+      ctx.credentials,
+      presentationFiles,
+    )
+    disposePublishing = registerPublishingCredentials(ctx.connection, reportPublishing, (id) =>
+      Boolean(ctx.workspaceRegistry.get(WorkspaceId(id))),
+    )
+
     agentInstallation = createMarivoAgentInstallation(ctx, resolveEnvironment, {
       ...pythonOptions,
       helpBridgeSource: helpBridge,
+      ...(publishingConfig ? { reportPublishing } : {}),
       credentialService,
     })
     agentInstallation.install()
@@ -215,16 +242,6 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
         return new MarivoDatasourceBridge(environment)
       },
       config.datasourceDefaults,
-    )
-    disposePresentation = registerMarivoPresentationRpc(
-      ctx.connection,
-      new MarivoPresentationFileService(
-        async (sessionId) => resolvePresentationWorkspace(ctx, sessionId),
-        async (id) => {
-          const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
-          return workspace ? { id: String(workspace.id), path: workspace.path } : undefined
-        },
-      ),
     )
     let lastDiagnostic = -Infinity
     const usage = new SemanticReferenceUsage(ctx.storageDomain, Date.now, () => {

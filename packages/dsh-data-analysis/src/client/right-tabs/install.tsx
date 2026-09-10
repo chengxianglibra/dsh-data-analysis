@@ -334,6 +334,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 )}
                 {report.editError && <p role="alert">{report.editError}</p>}
                 {report.notice && <p role="status">{report.notice}</p>}
+                {report.publicationUrl && (
+                  <p>
+                    <a href={report.publicationUrl} target="_blank" rel="noopener noreferrer">
+                      打开已发布报告
+                    </a>
+                  </p>
+                )}
                 {report.loading && <p role="status">正在读取报告…</p>}
                 {report.error && (
                   <div role="alert">
@@ -358,6 +365,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     viewMemory={page.viewMemory}
                     exportActions={{
                       downloadFullReport: () => void page.reader.downloadDisplayed(),
+                      publishing: report.publishingName
+                        ? {
+                            name: report.publishingName,
+                            publish: () => void page.reader.publishDisplayed(),
+                            publishView: (bytes) => page.reader.publishDisplayed(bytes),
+                          }
+                        : undefined,
+                      publishingUnavailable: report.publishingUnavailable,
                       downloading: report.downloading,
                       disabled: !!report.error || report.loading,
                       report: {

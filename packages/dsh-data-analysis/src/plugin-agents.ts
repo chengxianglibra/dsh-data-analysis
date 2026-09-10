@@ -27,6 +27,8 @@ import {
   installMarivoPresentationCodeDelivery,
   registerMarivoPresentTool,
 } from './presentation/index.ts'
+import { registerReportPublishTool } from './report-publishing/adapters.ts'
+import type { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const PRESENTATION_PROMPT =
@@ -46,6 +48,7 @@ export function createMarivoAgentInstallation(
   options: MarivoDisclosureOptions &
     MarivoPythonOptions & {
       /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
+      reportPublishing?: ReportPublishingService
       credentials?: CredentialStore
       credentialService?: MarivoCredentialService
       credentialInteraction?: 'web' | 'none'
@@ -136,6 +139,10 @@ export function createMarivoAgentInstallation(
       controller.addDisposer(
         registerMarivoPresentTool(agent.ctx, presentationSource, agent.session),
       )
+      if (options.reportPublishing)
+        controller.addDisposer(
+          registerReportPublishTool(agent.ctx, options.reportPublishing, agent.session.id),
+        )
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
       controller.addDisposer(
         agent.ctx.systemPrompt.section({

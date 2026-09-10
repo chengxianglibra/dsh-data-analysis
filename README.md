@@ -147,3 +147,7 @@ datasourceDefaults:
 ## 许可证
 
 本项目采用 [MIT License](packages/dsh-data-analysis/LICENSE)。
+
+## 报告发布到对象存储
+
+通过 `reportPublishing.enabled` 开启 S3 兼容对象存储发布；在“数据源与凭证”管理独立 AK/SK 和可选 Token。开启后报告菜单的完整 HTML 与当前视图下载均替换为发布，成功返回链接。配置示例与边界见[报告 HTML 发布](docs/modules/report-publishing.md)。

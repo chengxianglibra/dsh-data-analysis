@@ -253,7 +253,7 @@ test('fixed Build never resolves current; current announces updates until explic
   f.advance()
   const before = f.calls.length
   await fixed.navigate(1)
-  assert.deepEqual(f.calls.slice(before), ['reports/history', 'files/read'])
+  assert.deepEqual(f.calls.slice(before), ['reports/history', 'files/read', 'describe'])
   assert.equal(fixed.reader.getSnapshot().document?.buildId, 'old')
   await current.publicationChanged(base.workspaceId, base.reportId)
   assert.equal(current.getSnapshot().newer?.buildId, 'new')

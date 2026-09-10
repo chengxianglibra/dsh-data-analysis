@@ -210,6 +210,8 @@ test('editor undo/cancel, conflict drafts and lost-response recovery use the ori
   const model = new PresentationDeliveryModel({
     async call(_channel, endpoint, payload, signal) {
       calls.push(endpoint)
+      if (_channel === '/dsh-report-publishing' && endpoint === 'describe')
+        return { ok: true, value: { enabled: false, fields: [] } }
       try {
         const value =
           endpoint === 'files/read'
@@ -261,7 +263,9 @@ test('editor undo/cancel, conflict drafts and lost-response recovery use the ori
   assert.equal(model.getSnapshot().document, undefined)
   assert.equal(model.getSnapshot().editing, undefined)
   assert(
-    calls.every((endpoint) => ['reports/resolve', 'reports/save', 'files/read'].includes(endpoint)),
+    calls.every((endpoint) =>
+      ['reports/resolve', 'reports/save', 'files/read', 'describe'].includes(endpoint),
+    ),
   )
 })
 

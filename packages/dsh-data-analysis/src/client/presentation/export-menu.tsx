@@ -3,6 +3,12 @@ import { ExportIcon, MoreIcon } from './icons.tsx'
 
 export interface ReaderExportActions {
   downloadFullReport: () => void
+  publishing?: {
+    name: string
+    publish: () => void
+    publishView: (bytes: Uint8Array) => Promise<void>
+  }
+  publishingUnavailable?: boolean
   disabled?: boolean
   downloading?: boolean
   report?: {
@@ -61,16 +67,23 @@ export function ExportMenu({
         ]
       : []),
     {
-      label: '下载完整报告',
-      hint: '完整报告 HTML · 默认筛选',
-      run: actions.downloadFullReport,
-      disabled: actions.downloading,
+      label: actions.publishing ? `发布 HTML 报告到${actions.publishing.name}` : '下载完整报告',
+      hint: actions.publishingUnavailable
+        ? '发布配置读取失败，请刷新报告'
+        : editing && actions.publishing
+          ? '请先保存或取消编辑'
+          : '完整报告 HTML · 默认筛选',
+      run: actions.publishing?.publish ?? actions.downloadFullReport,
+      disabled:
+        actions.downloading ||
+        actions.publishingUnavailable ||
+        (!!actions.publishing && (editing || report?.busy)),
     },
     {
-      label: '导出当前视图',
+      label: actions.publishing ? `发布当前视图 HTML 到${actions.publishing.name}` : '导出当前视图',
       hint: editing ? '请先保存或取消编辑' : 'HTML · 保留当前筛选和图形',
       run: onExport,
-      disabled: editing,
+      disabled: editing || actions.downloading || actions.publishingUnavailable,
     },
   ]
   return (

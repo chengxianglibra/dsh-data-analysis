@@ -254,3 +254,7 @@ KPI 比较沿用 presentation `metric`，将主值、参考值、预计算变化
 报告列表和版本浏览属于插件的交付接缝，直接以 Harness Workspace 注册表授权读取，复用现有阅读器与文件校验。
 `current.json` 原子发布同时提交当前 receipt 与成功版本记录；Marivo 分析和来源契约保持不变。
 来源 Session 是可用时的追溯信息，报告读取不依赖它存活。参见[展示交付模块](modules/presentation-delivery.md#workspace-报告列表与历史查看)。
+
+## 对象存储发布
+
+插件的[报告 HTML 发布](modules/report-publishing.md)扩展既有保存快照与当前视图导出。Harness 单凭证服务管理发布 AK/SK/Token；插件配置控制开关、目标与路径，服务端完成上传。开启时在线报告的两项 HTML 下载均替换为发布，分析、证据与本地 Report current 的责任不变。

@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
+import { ReportPublishingCredentials } from './report-publishing.tsx'
 import { credentialStyles } from './styles.ts'
 
 const statusLabels = {
@@ -601,6 +602,9 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
       <p className="rt-caption">
         {workspaces.find((item) => item.workspaceId === workspaceId)?.title ?? workspaceId}
       </p>
+      {!request && workspaceId && (
+        <ReportPublishingCredentials key={workspaceId} model={model} workspaceId={workspaceId} />
+      )}
       <div className="mc-shell">
         {(pending.length > 0 || request) && (
           <div className="mc-requests">

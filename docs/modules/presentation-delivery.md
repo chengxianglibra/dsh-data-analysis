@@ -171,3 +171,7 @@ Workspace 内阅读器保存没有来源 Session 时显示「Workspace 内保存
 列表、历史和下载均不执行 Agent、Python、Marivo 分析、数据源或凭据操作。
 
 第一期验证与限制见 [Workspace 报告列表验收](../workspace-report-catalog-acceptance.md)，当前界面收敛见 [报告列表简化验收](../report-catalog-simplification-acceptance.md)。
+
+## 可选对象存储交付
+
+启用 `reportPublishing` 后，在线阅读器的完整报告和当前视图 HTML 菜单均改为上传并返回链接，不触发本地下载。默认保存仍只提交 JSON；身份、凭据、路径及失败边界见[报告 HTML 发布](report-publishing.md)。

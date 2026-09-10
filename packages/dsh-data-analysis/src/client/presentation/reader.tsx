@@ -541,6 +541,10 @@ function ReaderContents({
                     explorations,
                     tableSorts,
                   })
+                  if (exportActions.publishing) {
+                    void exportActions.publishing.publishView(result.bytes)
+                    return
+                  }
                   savePresentationHtml(result.bytes, result.filename)
                   setExportStatus({ message: '已导出当前视图（包含筛选后的全部已保存行）' })
                 } catch (error) {

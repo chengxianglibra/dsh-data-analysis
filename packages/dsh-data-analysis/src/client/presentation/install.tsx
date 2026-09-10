@@ -339,6 +339,13 @@ export function PresentationOverlay({
           {state.notice}
         </p>
       )}
+      {state.open && state.publicationUrl && (
+        <p>
+          <a href={state.publicationUrl} target="_blank" rel="noopener noreferrer">
+            打开已发布报告
+          </a>
+        </p>
+      )}
       <div className="pd-reading-layout">
         {state.open && state.historyOpen && (
           <ReportHistoryPanel
@@ -354,6 +361,14 @@ export function PresentationOverlay({
               document={state.document}
               exportActions={{
                 downloadFullReport: () => void model.downloadDisplayed(),
+                publishing: state.publishingName
+                  ? {
+                      name: state.publishingName,
+                      publish: () => void model.publishDisplayed(),
+                      publishView: (bytes) => model.publishDisplayed(bytes),
+                    }
+                  : undefined,
+                publishingUnavailable: state.publishingUnavailable,
                 downloading: state.downloading,
                 disabled: !!state.error || state.loading,
               }}

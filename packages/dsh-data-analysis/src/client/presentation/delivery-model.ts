@@ -36,6 +36,10 @@ const targetScope = (target: ReportTarget) =>
     : { workspaceId: target.workspaceId }
 const targetIdentity = (target: ReportTarget) => ('receipt' in target ? target.receipt : target)
 export interface PresentationDeliveryState {
+  readonly publishingConfigId?: string
+  readonly publishingName?: string
+  readonly publishingUnavailable?: boolean
+  readonly publicationUrl?: string
   readonly reportTarget?: WorkspaceReportTarget
   readonly history?: ReportHistory
   readonly historyOpen?: boolean
@@ -328,6 +332,10 @@ export class PresentationDeliveryModel {
       error: undefined,
       downloadError: undefined,
       notice: undefined,
+      publicationUrl: undefined,
+      publishingName: undefined,
+      publishingConfigId: undefined,
+      publishingUnavailable: true,
     })
     try {
       if (buildId) {
@@ -348,9 +356,37 @@ export class PresentationDeliveryModel {
       }
       const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
       const document = await this.#document(target, receipt, flight.signal)
+      let publishingName: string | undefined
+      let publishingConfigId: string | undefined
+      let publishingUnavailable = false
+      try {
+        const result = (await this.#rpc.call(
+          '/dsh-report-publishing',
+          'describe',
+          { workspaceId: receipt.workspaceId },
+          flight.signal,
+        )) as { ok: boolean; value?: { enabled: boolean; name?: string; configId?: string } }
+        if (!result.ok || !result.value) throw new Error('publishing-unavailable')
+        if (result.value.enabled) {
+          if (!result.value.name || !result.value.configId)
+            throw new Error('publishing-unavailable')
+          publishingName = result.value.name
+          publishingConfigId = result.value.configId
+        }
+      } catch {
+        publishingUnavailable = true
+      }
+
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
       if (!version) this.#remember(receipt)
-      this.#publish({ resolvedReceipt: receipt, document, loading: false })
+      this.#publish({
+        resolvedReceipt: receipt,
+        document,
+        loading: false,
+        publishingName,
+        publishingConfigId,
+        publishingUnavailable,
+      })
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ loading: false, error: errorMessage(error) })
@@ -490,6 +526,7 @@ export class PresentationDeliveryModel {
         editing: undefined,
         saving: false,
         notice: '编辑已保存',
+        publicationUrl: undefined,
         history: undefined,
         historyOpen: false,
         editError: undefined,
@@ -528,6 +565,110 @@ export class PresentationDeliveryModel {
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ downloading: false, downloadError: errorMessage(error) })
+    } finally {
+      this.#flights.delete(flight)
+    }
+  }
+  async publishDisplayed(viewBytes?: Uint8Array) {
+    const receipt = this.#state.resolvedReceipt
+    if (
+      !receipt ||
+      !this.#state.document ||
+      this.#state.editing ||
+      this.#state.saving ||
+      this.#state.error ||
+      this.#state.downloading ||
+      !this.#state.publishingName ||
+      !this.#state.publishingConfigId
+    )
+      return
+    const isCurrentBuild = () => {
+      const current = this.#state.resolvedReceipt
+      return (
+        current?.workspaceId === receipt.workspaceId &&
+        current.reportId === receipt.reportId &&
+        current.buildId === receipt.buildId
+      )
+    }
+    const flight = new AbortController(),
+      generation = this.#generation
+    this.#flights.add(flight)
+    this.#publish({
+      downloading: true,
+      downloadError: undefined,
+      publicationUrl: undefined,
+      notice: undefined,
+    })
+    try {
+      const result = (await this.#rpc.call(
+        '/dsh-report-publishing',
+        'publish',
+        {
+          configId: this.#state.publishingConfigId,
+          workspaceId: receipt.workspaceId,
+          reportId: receipt.reportId,
+          buildId: receipt.buildId,
+          ...(viewBytes ? { viewHtml: new TextDecoder().decode(viewBytes) } : {}),
+        },
+        flight.signal,
+      )) as {
+        ok: boolean
+        value?: { url: string; workspaceId: string; reportId: string; buildId: string }
+        error?: { message?: string }
+      }
+      if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+      if (!isCurrentBuild()) {
+        this.#publish({ downloading: false })
+        return
+      }
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          'report-publishing-config-changed': '发布配置已变化，请刷新报告后确认发布目标。',
+          'report-publishing-credentials-missing':
+            '发布凭证尚未配齐，请在“数据源与凭证 → 报告发布凭证”中配置。',
+          'report-publishing-upload-unconfirmed':
+            '发布结果未确认；对象可能已上传，可重试同一版本。',
+          'report-publishing-build-unavailable': '报告版本不可用，请刷新报告后重试。',
+          'report-publishing-disabled': '报告发布已关闭，请刷新报告。',
+          'report-publishing-view-invalid': '当前视图无效或超过 HTML 大小限制，请缩小范围后重试。',
+        }
+        this.#publish({
+          downloading: false,
+          downloadError:
+            messages[result.error?.message ?? ''] ?? '发布失败，请检查配置和报告后重试。',
+        })
+        return
+      }
+      const value = result.value
+      if (
+        !value ||
+        value.workspaceId !== receipt.workspaceId ||
+        value.reportId !== receipt.reportId ||
+        value.buildId !== receipt.buildId ||
+        !/^https?:\/\//.test(value.url)
+      )
+        throw new Error('发布回执身份不匹配。')
+      this.#publish({
+        downloading: false,
+        publicationUrl: value.url,
+        notice: viewBytes
+          ? '当前视图 HTML 已发布（保留当前筛选和图形）。'
+          : 'HTML 报告已发布（不包含临时筛选）。',
+      })
+    } catch (error) {
+      if (!flight.signal.aborted && generation === this.#generation && !this.#disposed) {
+        if (!isCurrentBuild()) {
+          this.#publish({ downloading: false })
+          return
+        }
+        this.#publish({
+          downloading: false,
+          downloadError:
+            error instanceof Error && error.message === '发布回执身份不匹配。'
+              ? error.message
+              : '发布结果未确认，请检查连接后重试。',
+        })
+      }
     } finally {
       this.#flights.delete(flight)
     }
@@ -634,12 +775,20 @@ export class PresentationDeliveryModel {
       error: message,
       downloadError: message,
       notice: undefined,
+      publicationUrl: undefined,
+      publishingName: undefined,
+      publishingConfigId: undefined,
+      publishingUnavailable: true,
     })
   }
   close() {
     this.#cancel()
     this.#publish({
       open: false,
+      publicationUrl: undefined,
+      publishingName: undefined,
+      publishingConfigId: undefined,
+      publishingUnavailable: true,
       reportTarget: undefined,
       delivery: undefined,
       history: undefined,
