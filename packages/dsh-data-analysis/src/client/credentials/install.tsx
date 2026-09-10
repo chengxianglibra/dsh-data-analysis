@@ -41,6 +41,7 @@ export function CredentialIcon({ name, size = 18 }) {
       )}
       {name === 'add' && <path d="M12 5v14M5 12h14" />}
       {name === 'edit' && <path d="m16 3 5 5L9 20l-6 1 1-6L16 3ZM13 6l5 5" />}
+      {name === 'delete' && <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" />}
       {name === 'test' && (
         <path d="M9 3h6M10 3v6l-6 10a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 15h10" />
       )}
@@ -85,6 +86,33 @@ function OperationOutcome({ entry }) {
   if (!entry) return null
   const operation = entry.operation
   const errors = operation?.errors ?? []
+  if (operation?.action === 'delete-datasource')
+    return (
+      <div
+        className="mc-operation-note"
+        data-error={operation.status !== 'succeeded'}
+        role="status"
+      >
+        <p>
+          {operation.datasourceRemoved
+            ? `已删除数据源 ${entry.name}。`
+            : `数据源 ${entry.name} 的删除未确认，请刷新列表检查。`}
+        </p>
+        {operation.datasourceRemoved && !operation.deleteCredentials && (
+          <p>对应的已保存凭证已保留。</p>
+        )}
+        {operation.deletedCredentials?.length > 0 && (
+          <p>已删除凭证：{operation.deletedCredentials.join('、')}。</p>
+        )}
+        {operation.credentialDeleteFailures?.length > 0 && (
+          <p>未能删除的凭证：{operation.credentialDeleteFailures.join('、')}。</p>
+        )}
+        {operation.status === 'cancelled' && (
+          <p>操作已取消；已完成的删除不会撤销，其余凭证可能仍保留。</p>
+        )}
+        {errors.length > 0 && <p>{errors.map(credentialMessage).join(' ')}</p>}
+      </div>
+    )
   const unsuccessful =
     entry.error ||
     operation?.status === 'cancelled' ||
@@ -145,6 +173,8 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
   const [values, setValues] = useState({})
   const [editing, setEditing] = useState({})
   const [deleting, setDeleting] = useState('')
+  const [removingDatasource, setRemovingDatasource] = useState(false)
+  const [removeCredentials, setRemoveCredentials] = useState(false)
   const busy =
     request?.status === 'executing' ||
     state.operations.some((entry) => entry.handle.scope === context.token)
@@ -162,6 +192,8 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
     setValues({})
     setEditing({})
     setDeleting('')
+    setRemovingDatasource(false)
+    setRemoveCredentials(false)
   }, [context.token, context.version])
   const saveReference = (ref) => {
     const changes = { [ref]: values[ref] }
@@ -203,9 +235,67 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                   <CredentialIcon name="edit" />
                 </button>
               )}
+              {!request && (
+                <button
+                  className="mc-icon-button mc-danger"
+                  type="button"
+                  title="删除数据源"
+                  aria-label="删除数据源"
+                  disabled={busy || state.loading}
+                  onClick={() => setRemovingDatasource(true)}
+                >
+                  <CredentialIcon name="delete" />
+                </button>
+              )}
             </div>
           </div>
         </div>
+        {removingDatasource && (
+          <fieldset className="mc-confirm" aria-label="确认删除数据源">
+            <p>
+              确认删除数据源 {context.name}？这会移除当前 Workspace
+              的数据源定义，不会删除数据库中的数据；引用它的语义层定义需另行处理。
+            </p>
+            {context.refs.length > 0 && (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={removeCredentials}
+                    disabled={busy}
+                    onChange={(event) => setRemoveCredentials(event.target.checked)}
+                  />{' '}
+                  同时删除对应的已保存凭证
+                </label>
+                <p>
+                  凭证引用：{context.refs.join('、')}。这些凭证可能被其他数据源或 Workspace
+                  共用，删除后也会影响它们。只读来源的凭证需在原来源处理。
+                </p>
+              </>
+            )}
+            <button
+              className="mc-danger"
+              type="button"
+              disabled={busy || state.loading}
+              onClick={() => {
+                setRemovingDatasource(false)
+                void model.start(context, 'delete-datasource', {}, undefined, removeCredentials)
+              }}
+            >
+              确认删除数据源
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setRemovingDatasource(false)
+                setRemoveCredentials(false)
+              }}
+            >
+              取消
+            </button>
+          </fieldset>
+        )}
         {request && (
           <div className="mc-request-status" role="status">
             <strong>{statusLabels[request.status]}</strong>
@@ -354,7 +444,9 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
           ) : (
             <p className="mc-empty-test">尚未测试连接。</p>
           )}
-          <OperationOutcome entry={outcome} />
+          {outcome?.operation?.action !== 'delete-datasource' && (
+            <OperationOutcome entry={outcome} />
+          )}
         </div>
       </div>
       {!ended && (request || busy) && (
@@ -580,6 +672,20 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
             </aside>
           )}
           <main className="mc-main" ref={main}>
+            {Object.values(state.outcomes)
+              .filter(
+                (entry) =>
+                  entry.workspaceId === workspaceId &&
+                  entry.operation?.action === 'delete-datasource',
+              )
+              .map((entry) => (
+                <div className="mc-request-status" key={entry.handle.id}>
+                  <OperationOutcome entry={entry} />
+                  <button type="button" onClick={() => model.dismissOutcome(entry.handle.scope)}>
+                    关闭删除结果
+                  </button>
+                </div>
+              ))}
             {state.error && (
               <p role="alert" className="mc-alert">
                 {state.error}
@@ -759,7 +865,12 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                   <div className="mc-progress">
                     <p>
                       {state.operations.find((entry) => entry.handle.id === state.handle?.id)?.name}{' '}
-                      · {activeOperation.phase === 'saving' ? '正在保存' : '正在验证连接'}
+                      ·{' '}
+                      {activeOperation.phase === 'removing'
+                        ? '正在删除'
+                        : activeOperation.phase === 'saving'
+                          ? '正在保存'
+                          : '正在验证连接'}
                     </p>
                     <button type="button" onClick={() => void model.cancelOperation()}>
                       取消此操作

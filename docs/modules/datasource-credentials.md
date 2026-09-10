@@ -29,6 +29,28 @@ Tab 直接承载新增/编辑数据源、属性、凭证配置与连接测试，
 原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，
 不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
 
+## 删除数据源与对应凭证
+
+管理页的数据源名称旁提供“删除数据源”，确认区显示目标及凭证引用。默认保留已保存凭证；
+用户勾选“同时删除对应的已保存凭证”后才一并处理。引用可能跨数据源、跨 Workspace 共享，
+确认区提示删除凭证对共享使用者的影响；现有字段旁的单个凭证删除入口继续保留。
+
+删除定义通过 checked Runtime 的公开 `md.remove(name)` 执行，同一 Python 进程先复核公开
+`md.describe()` 的 definition fingerprint。可删除范围由 Marivo 决定，包括对内置 `default` 的保护；
+插件不直接删除定义文件，不删除远端数据库数据，也不级联修改语义层、Artifact 或 Evidence。
+
+删除沿用 Host generation、context token、credential version 和 operation ID，按数据源与现有写入串行。
+提交后通过 operation 查询结果，不自动重放删除；开始删除时使旧管理上下文、等待中的配置请求及尚未启动的执行失效。
+已启动的执行仍遵循原生命周期，不因删除自动回滚。只有确认定义删除成功后，才按去重引用调用 Harness
+`CredentialProvider.unset()`；凭证值不被解析、回显或传入 Python。未勾选时，不使其他数据源的共享凭证失效。
+
+数据源删除和凭证删除不是跨系统事务。只读来源、provider 失败或取消可能留下部分凭证；结果分别展示
+数据源是否确认删除、已删除引用和删除失败引用，卡片移除后仍保留结果，用户可以关闭。失败凭证可在 Harness
+凭证管理或其原来源处理，不因后续失败恢复已删除的定义。浏览器重载可恢复进行中操作的查询句柄；
+已关闭或已完成并清理的客户端结果不作为持久删除审计。
+
+验证范围与环境限制见[数据源删除验收](../datasource-removal-acceptance.md)。
+
 ## 新增与编辑数据源
 
 表单通过 checked Runtime 读取公开 `md.DatasourceSpec` union 和各 Spec 的 dataclass 字段，展示引擎、必填项、默认值及说明。

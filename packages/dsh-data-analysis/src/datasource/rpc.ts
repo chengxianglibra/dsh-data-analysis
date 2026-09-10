@@ -9,7 +9,8 @@ const handle = { generation: z.string().uuid(), id: z.string().uuid(), scope: z.
 const mutation = z
   .object({
     ...handle,
-    action: z.enum(['save', 'update', 'delete', 'test', 'submit', 'diagnose']),
+    action: z.enum(['save', 'update', 'delete', 'delete-datasource', 'test', 'submit', 'diagnose']),
+    deleteCredentials: z.boolean().optional(),
     version: z.string().max(65536),
     requestId: z.string().uuid().optional(),
     reference: text.optional(),

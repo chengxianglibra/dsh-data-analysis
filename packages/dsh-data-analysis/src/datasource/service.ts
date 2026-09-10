@@ -16,7 +16,14 @@ export const CREDENTIAL_CHANNEL = '/dsh-data-analysis-credentials'
 const RETENTION = 30 * 60_000
 const CAPACITY = 512
 export type CredentialStore = Pick<CredentialProvider, 'describe' | 'resolve' | 'set' | 'unset'>
-export type CredentialAction = 'save' | 'update' | 'delete' | 'test' | 'submit' | 'diagnose'
+export type CredentialAction =
+  | 'save'
+  | 'update'
+  | 'delete'
+  | 'delete-datasource'
+  | 'test'
+  | 'submit'
+  | 'diagnose'
 export interface CredentialContextView {
   token: string
   workspaceId: string
@@ -87,13 +94,18 @@ export interface CredentialOperationView {
   scope: string
   action: CredentialAction
   status: 'running' | 'succeeded' | 'failed' | 'cancelled'
-  phase: 'saving' | 'validating' | 'settled'
+  phase: 'saving' | 'removing' | 'validating' | 'settled'
+  deleteCredentials?: boolean
+  datasourceRemoved?: boolean
+  deletedCredentials?: string[]
+  credentialDeleteFailures?: string[]
   saved: string[]
   errors: string[]
   result?: MarivoDatasourceTestResult
   endedAt?: number
 }
 interface BoundContext {
+  invalidated?: boolean
   token: string
   workspaceId: string
   bridge: MarivoDatasourceBridgePort
@@ -150,6 +162,7 @@ export class MarivoCredentialService {
   readonly generation = randomUUID()
   readonly #store: CredentialStore
   readonly #contexts = new Map<string, BoundContext>()
+  readonly #activeContexts = new Set<BoundContext>()
   readonly #configurations = new Map<string, PendingConfiguration>()
   readonly #requests = new Map<string, PendingRequest>()
   readonly #operations = new Map<string, CredentialOperationView>()
@@ -260,11 +273,13 @@ export class MarivoCredentialService {
     this.#changed()
   }
   async #current(context: BoundContext, signal: AbortSignal): Promise<void> {
+    assert(!context.invalidated, 'context-changed')
     signal.throwIfAborted()
     const bridge = await context.resolve()
     assert(bridge.binding.fingerprint === context.bridge.binding.fingerprint, 'context-changed')
     const described = await bridge.describe(context.description.name, signal)
     assert(described.definition === context.description.definition, 'context-changed')
+    assert(!context.invalidated, 'context-changed')
     signal.throwIfAborted()
     context.touched = this.now()
   }
@@ -357,6 +372,7 @@ export class MarivoCredentialService {
       }
       const old = [...this.#contexts.values()].find(
         (c) =>
+          !c.invalidated &&
           c.workspaceId === workspaceId &&
           c.description.name === context.description.name &&
           c.description.definition === context.description.definition &&
@@ -694,6 +710,7 @@ export class MarivoCredentialService {
     assert(exec.agent, 'agent-required')
     const signal = this.executionSignal(exec.signal, exec.agent)
     const context = await this.#bind('', resolve, name, signal)
+    this.#activeContexts.add(context)
     const stop = this.#watchRefs(context.description.refs)
     try {
       const tested = await this.#awaitCredentials(exec, context, await this.#view(context), signal)
@@ -704,6 +721,7 @@ export class MarivoCredentialService {
         : await this.#test(context, signal)
     } finally {
       stop()
+      this.#activeContexts.delete(context)
     }
   }
   async prepareExecution(
@@ -733,6 +751,7 @@ export class MarivoCredentialService {
       released = true
       for (const ref of Object.keys(values)) delete values[ref]
       for (const stop of stops) stop()
+      for (const context of contexts) this.#activeContexts.delete(context)
     }
     try {
       for (const name of names) {
@@ -743,6 +762,7 @@ export class MarivoCredentialService {
           'context-changed',
         )
         contexts.push(context)
+        this.#activeContexts.add(context)
         stops.push(this.#watchRefs(context.description.refs))
         const view = await this.#view(context)
         if (view.refs.every((ref) => view.credentials[ref]?.configured))
@@ -773,8 +793,10 @@ export class MarivoCredentialService {
           exec.agent?.session === session && currentWorkspace() === workspace,
           'context-changed',
         )
-        for (const context of contexts)
+        for (const context of contexts) {
+          assert(!context.invalidated, 'context-changed')
           assert(versions.get(context) === this.#version(context), 'credentials-changed')
+        }
       }
       assertCurrent()
       values = await this.#snapshot(contexts, signal)
@@ -876,6 +898,7 @@ export class MarivoCredentialService {
     requestId?: string
     changes?: Record<string, string>
     reference?: string
+    deleteCredentials?: boolean
   }): CredentialOperationView {
     this.#prune()
     assert(
@@ -893,6 +916,11 @@ export class MarivoCredentialService {
     assert(this.#operations.size < CAPACITY, 'capacity-exceeded')
     const context = this.#contexts.get(input.scope)
     assert(context, 'context-changed')
+    assert(!context.invalidated, 'context-changed')
+    assert(
+      input.action === 'delete-datasource' || input.deleteCredentials === undefined,
+      'invalid-action',
+    )
     const request = input.requestId ? this.#requests.get(input.requestId) : undefined
     assert(
       !input.requestId ||
@@ -908,7 +936,12 @@ export class MarivoCredentialService {
     )
     assert(
       ![...this.#operations.values()].some(
-        (op) => op.scope === input.scope && op.status === 'running',
+        (op) =>
+          op.status === 'running' &&
+          (op.scope === input.scope ||
+            (this.#contexts.get(op.scope)?.bridge.binding.fingerprint ===
+              context.bridge.binding.fingerprint &&
+              this.#contexts.get(op.scope)?.description.name === context.description.name)),
       ),
       'operation-busy',
     )
@@ -945,6 +978,9 @@ export class MarivoCredentialService {
       phase: 'saving',
       saved: [],
       errors: [],
+      ...(input.action === 'delete-datasource'
+        ? { deleteCredentials: input.deleteCredentials === true }
+        : {}),
     }
     this.#operations.set(op.id, op)
     const controller = new AbortController()
@@ -984,7 +1020,73 @@ export class MarivoCredentialService {
       await this.#current(context, signal)
       const configuration = request && this.#configurations.get(request.view.id)
       if (configuration) await this.#configurationCurrent(configuration, signal)
-      if (op.action === 'diagnose') {
+      if (op.action === 'delete-datasource') {
+        await this.#locked(async () => {
+          await this.#current(context, signal)
+          assert(version === this.#version(context), 'credentials-changed')
+          assert(context.bridge.remove, 'datasource-remove-unavailable')
+          op.phase = 'removing'
+          // Revoke pending uses even if the subprocess result is later lost.
+          for (const bound of new Set([
+            ...this.#contexts.values(),
+            ...this.#activeContexts,
+            ...[...this.#requests.values()].map((pending) => pending.context),
+          ])) {
+            if (
+              bound.bridge.binding.fingerprint !== context.bridge.binding.fingerprint ||
+              bound.description.name !== context.description.name
+            )
+              continue
+            bound.invalidated = true
+          }
+          for (const pending of this.#requests.values()) {
+            if (!pending.context.invalidated || pending.view.endedAt !== undefined) continue
+            pending.view.status = 'context-changed'
+            pending.view.endedAt = this.now()
+            pending.stop()
+            pending.reject(new CredentialServiceError('context-changed'))
+          }
+          for (const pending of this.#configurations.values()) {
+            if (
+              pending.fingerprint === context.bridge.binding.fingerprint &&
+              (pending.view.context?.name === context.description.name ||
+                (pending.view.configuration.mode === 'edit' &&
+                  pending.view.configuration.name === context.description.name))
+            )
+              this.#endConfiguration(pending, { status: 'context-changed' })
+          }
+          this.#changed()
+          const result = await context.bridge.remove(context.description, signal)
+          assert(
+            !result.error && result.name === context.description.name,
+            result.error ?? 'datasource-remove-failed',
+          )
+          op.datasourceRemoved = true
+          for (const key of this.#history.keys()) {
+            const [fingerprint, name] = JSON.parse(key)
+            if (
+              fingerprint === context.bridge.binding.fingerprint &&
+              name === context.description.name
+            )
+              this.#history.delete(key)
+          }
+          if (op.deleteCredentials) {
+            op.deletedCredentials = []
+            op.credentialDeleteFailures = []
+            for (const ref of new Set(context.description.refs)) {
+              signal.throwIfAborted()
+              this.invalidate([ref])
+              try {
+                await this.#store.unset(credentialRef(marivoCredentialStorageRef(ref)))
+                op.deletedCredentials.push(ref)
+              } catch {
+                op.credentialDeleteFailures.push(ref)
+              }
+            }
+            assert(op.credentialDeleteFailures.length === 0, 'credential-delete-failed')
+          }
+        }, signal)
+      } else if (op.action === 'diagnose') {
         assert(request?.view.failure, 'no-test-failure')
         op.result = request.view.failure
         request.view.status = 'handed-off'

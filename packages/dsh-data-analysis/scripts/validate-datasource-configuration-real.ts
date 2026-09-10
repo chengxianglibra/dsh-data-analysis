@@ -76,12 +76,25 @@ print(json.dumps({"business_definition":context.business_definition,"guardrails"
   assert.equal(local.fields.read_only, false)
   const tested = await bridge.test(await bridge.describe('local'), {})
   assert.equal(tested.ok, true)
+  const staleDescription = await bridge.describe('warehouse')
+  await bridge.update({ ...updated, fields: { ...updated.fields, port: 9998 } })
+  assert.deepEqual(await bridge.remove(staleDescription), { error: 'context-changed' })
+  assert.deepEqual(await bridge.remove(await bridge.describe('local')), { name: 'local' })
+  assert(!(await bridge.inventory()).some((item) => item.name === 'local'))
+  assert((await bridge.inventory()).some((item) => item.name === 'warehouse'))
+  assert.equal(
+    (await bridge.remove(await bridge.describe('default'))).error,
+    'datasource-remove-failed',
+  )
   process.stdout.write(
     JSON.stringify({
       passed: true,
       runtime: runner.binding.marivoVersion,
       checks: [
         'create',
+        'remove-local-definition',
+        'reject-stale-removal',
+        'preserve-default',
         'edit-roundtrip',
         'identity-fixed',
         'stale-edit',

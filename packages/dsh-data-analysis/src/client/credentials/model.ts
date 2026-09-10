@@ -45,6 +45,11 @@ export interface CredentialClientState {
   handle?: QueryHandle
 }
 const messages: Record<string, string> = {
+  'datasource-remove-unavailable': '当前 Runtime 不支持删除数据源。',
+  'datasource-not-removable': '该数据源不属于可删除的项目本地定义。',
+  'datasource-remove-failed': '未能确认数据源删除结果，请刷新列表检查；对应凭证尚未删除。',
+  'credential-delete-failed':
+    '数据源已删除，但部分凭证删除失败；请在 Harness 凭证管理中处理保留项。',
   'datasource-config-changed': '配置已被修改，请重新打开编辑页面后再保存。',
   'datasource-identity-fixed': '数据源名称和引擎不能修改。',
   'context-changed': 'Workspace 或数据源定义已变化，请重新读取后操作。',
@@ -465,7 +470,9 @@ export class CredentialClientModel {
         .filter(
           ([scope, entry]) =>
             entry.handle.generation === generation &&
-            (entry.workspaceId !== workspaceId || scopes.has(scope)),
+            (entry.workspaceId !== workspaceId ||
+              scopes.has(scope) ||
+              entry.operation?.action === 'delete-datasource'),
         )
         .map(([scope, entry]) => [
           scope,
@@ -563,11 +570,17 @@ export class CredentialClientModel {
     if (entry)
       this.#patch({ handle: entry.handle, operation: entry.operation, error: entry.error ?? '' })
   }
+  dismissOutcome(scope: string): void {
+    const outcomes = { ...this.#state.outcomes }
+    delete outcomes[scope]
+    this.#patch({ outcomes })
+  }
   async start(
     context: CredentialContextView,
     action: CredentialAction,
     changes: Record<string, string> = {},
     reference?: string,
+    deleteCredentials?: boolean,
   ): Promise<void> {
     if (
       [...this.#operations.values()].some(
@@ -623,8 +636,26 @@ export class CredentialClientModel {
         ...(requestId ? { requestId } : {}),
         changes,
         ...(reference ? { reference } : {}),
+        ...(action === 'delete-datasource'
+          ? { deleteCredentials: deleteCredentials === true }
+          : {}),
       })
-    } catch {
+    } catch (error) {
+      if (action === 'delete-datasource' && error instanceof CredentialResponseError) {
+        const entry = this.#operations.get(handle.id)
+        if (entry)
+          this.#settle({
+            ...entry,
+            operation: {
+              ...operation,
+              status: 'failed',
+              phase: 'settled',
+              errors: [error.code],
+            },
+          })
+        await this.#refreshOverview(handle)
+        return
+      }
       if (this.#state.handle?.id === handle.id && this.#visible(handle.scope))
         this.#patch({ error: '提交响应未确认，正在查询操作状态；不会重新发送秘密值。' })
     } finally {
@@ -655,7 +686,10 @@ export class CredentialClientModel {
           )) as CredentialOperationView | null
           if (signal.aborted) return
           if (!operation) {
-            const error = '操作状态不可恢复。保存可能已经发生，请重新读取实际配置后决定下一步。'
+            const error =
+              entry.operation?.action === 'delete-datasource'
+                ? '删除状态不可恢复，部分删除可能已发生，请刷新数据源并核对 Harness 凭证状态。'
+                : '操作状态不可恢复。保存可能已经发生，请重新读取实际配置后决定下一步。'
             this.#settle({ ...entry, operation: undefined, error })
             return
           }

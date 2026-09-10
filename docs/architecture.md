@@ -46,6 +46,9 @@ flowchart LR
 当前版本的编辑能力依据实际 current 指针核验，不依据地址是否含 Build；保存后在原位置展示新版本，详情见[报告 Tab 优化验收](report-tab-editing-acceptance.md)。
 实现边界与验收见[第一阶段记录](dsh-right-tabs-stage-one-acceptance.md)。第二阶段报告引用见 [2b 验收记录](dsh-context-stage-two-b-acceptance.md)，语义对象加入提问见 [2c 验收记录](dsh-context-stage-two-c-acceptance.md)；上传分析尚未实施。
 
+数据源 Tab 支持确认删除项目定义，并可显式选择删除对应共享凭证。Marivo 拥有定义删除契约，Harness
+拥有凭证删除；插件串联两个操作并展示部分完成结果，不级联删除分析数据或语义定义，见[删除验收](datasource-removal-acceptance.md)。
+
 ## 分层
 
 | 层 | 本项目职责 | 不属于本项目 |

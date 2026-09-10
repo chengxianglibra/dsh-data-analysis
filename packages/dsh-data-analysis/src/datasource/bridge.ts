@@ -15,6 +15,7 @@ import {
 import {
   MARIVO_DATASOURCE_DESCRIBE_PROGRAM,
   MARIVO_DATASOURCE_INVENTORY_PROGRAM,
+  MARIVO_DATASOURCE_REMOVE_PROGRAM,
   MARIVO_DATASOURCE_TEST_PROGRAM,
 } from './bridge-programs.ts'
 import { marivoCredentialStorageRef } from './shell-env.ts'
@@ -102,6 +103,10 @@ export interface MarivoDatasourceTestResult {
 
 export interface MarivoDatasourceBridgePort {
   readonly binding: Readonly<MarivoEnvironmentBinding>
+  remove?(
+    description: Readonly<MarivoDatasourceDescription>,
+    signal?: AbortSignal,
+  ): Promise<{ name?: string; error?: string }>
   authoring?(signal?: AbortSignal): Promise<DatasourceAuthoring>
   create?(
     input: DatasourceCreateInput,
@@ -446,6 +451,25 @@ export class MarivoDatasourceBridge {
     })
     this.#assertSuccess(result, 'describe')
     return parseDescription(parseJsonObject(result.stdout, 'describe'), 'describe')
+  }
+
+  async remove(description: Readonly<MarivoDatasourceDescription>, signal?: AbortSignal) {
+    const result = await this.#runner.runChecked({
+      program: MARIVO_DATASOURCE_REMOVE_PROGRAM,
+      stdin: JSON.stringify({ name: description.name, definition: description.definition }),
+      limits: DATASOURCE_LIMITS,
+      signal,
+    })
+    this.#assertSuccess(result, 'inventory')
+    const value = parseJsonObject(result.stdout, 'inventory')
+    if (
+      value.error === 'context-changed' ||
+      value.error === 'datasource-not-removable' ||
+      value.error === 'datasource-remove-failed'
+    )
+      return { error: value.error }
+    if (value.name !== description.name) throw new Error('Invalid datasource removal result')
+    return { name: description.name }
   }
 
   async inventory(signal?: AbortSignal): Promise<MarivoDatasourceDescription[]> {
