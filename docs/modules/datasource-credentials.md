@@ -29,6 +29,22 @@ Tab 直接承载新增/编辑数据源、属性、凭证配置与连接测试，
 原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，
 不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
 
+## 待办通知与连接生命周期
+
+每个页面共享一个 `dshDataAnalysisCredentials.changes(sessionId, signal)` Remote stream，
+通过 Harness 现有 Gateway WebSocket 多路复用。插件使用公开 Typert contribution 注册同一严格类型描述；
+通知只有 `{ generation, cursor }`，不包含凭据、待办详情或执行参数。首次连接、恢复连接及版本变化后，
+客户端调用旧 `watch` RPC，但不传 cursor，立即读取完整快照。同一订阅最多一个快照请求在途，
+期间的通知合并为后续一次读取；切换 Session、断线和卸载取消旧订阅及读取，旧 generation 的响应不得回写。
+
+连接 generation 丢失或 stream carrier 失败时，客户端立即取消该连接的快照请求，不等待 Harness 重连完成。
+Host 遇到临时 `credential-state-unavailable` 时，在原订阅内以 1、2、5 秒（上限）的可取消退避重试；
+其他契约错误仍终止订阅并明确报错。重试和断线均不重放凭证写入或取消原调用。
+
+Host 继续复用状态变化唤醒与每 25 秒的上下文复核，未变化时不发送通知。HTTP watch 的 cursor 长轮询
+协议保留兼容旧页面；新页面空闲时不占用凭证 HTTP 长轮询连接。断开通知不取消等待中的原调用，
+凭据提交仍继续原调用，不重放写入。Harness 原生 HMR SSE 保持不变。
+
 ## 删除数据源与对应凭证
 
 管理页的数据源名称旁提供“删除数据源”，确认区显示目标及凭证引用。默认保留已保存凭证；

@@ -2,6 +2,7 @@
 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { credentialChanges } from '../credentials/changes.ts'
 import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
 import { useCopy } from './../i18n/context.tsx'
@@ -31,6 +32,7 @@ import { rightTabStyles } from './styles.ts'
 
 export const inject = [
   'connection',
+  'remote',
   'slots',
   'locale',
   'uiConversation',
@@ -111,7 +113,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   }
   installSemanticReferenceSource(ctx, rpc)
   installPresentationReferenceSource(ctx)
-  const credentials = installCredentials(ctx, rpc)
+  const credentials = installCredentials(ctx, rpc, credentialChanges(ctx))
   ctx.effect(() =>
     credentials.subscribe(() => {
       const state = credentials.getSnapshot()
@@ -397,6 +399,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                           }
                         : undefined,
                       publishingUnavailable: report.publishingUnavailable,
+                      publishingLoading: report.publishingLoading,
                       downloading: report.downloading,
                       disabled: !!report.error || report.loading,
                       report: {

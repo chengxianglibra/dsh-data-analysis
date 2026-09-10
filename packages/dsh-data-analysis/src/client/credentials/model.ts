@@ -3,6 +3,7 @@ import type {
   DatasourceConfiguration,
   DatasourceCreateInput,
 } from '../../datasource/authoring.ts'
+import { credentialRevisionSchema } from '../../datasource/changes-contract.ts'
 import type { DatasourceAuthoringView } from '../../datasource/defaults.ts'
 import type {
   ConfigurationRequestView,
@@ -11,9 +12,11 @@ import type {
   CredentialOperationView,
   CredentialRequestView,
 } from '../../datasource/service.ts'
+import { PendingTasks } from '../../lifecycle.ts'
 import type { PublishingCredentialView, PublishingField } from '../../report-publishing/service.ts'
 import { CopyError, errorMessage, message, type Notice } from './../i18n/copy.ts'
 import type { BrowserRpc } from '../semantic-browser/model.ts'
+import type { CredentialChanges } from './changes.ts'
 
 const CHANNEL = '/dsh-data-analysis-credentials'
 const STORAGE_KEY = 'marivo-credential-operation'
@@ -132,6 +135,8 @@ export class CredentialClientModel {
     operations: [],
     outcomes: {},
   }
+  readonly #changes?: CredentialChanges
+  readonly #watchTasks = new PendingTasks()
   readonly #rpc: BrowserRpc
   readonly #storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
   readonly #listeners = new Set<() => void>()
@@ -143,7 +148,12 @@ export class CredentialClientModel {
   readonly #polls = new Map<string, AbortController>()
   readonly #operations = new Map<string, ClientOperation>()
   readonly #opened = new Set<string>()
-  constructor(rpc: BrowserRpc, storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>) {
+  constructor(
+    rpc: BrowserRpc,
+    storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>,
+    changes?: CredentialChanges,
+  ) {
+    this.#changes = changes
     this.#rpc = rpc
     this.#storage = storage
   }
@@ -464,42 +474,109 @@ export class CredentialClientModel {
     const controller = new AbortController()
     this.#watch = controller
     this.#patch({ sessionId, requests: [], requestId: '', open: false })
-    if (sessionId) void this.#watchSession(sessionId, controller.signal)
+    if (sessionId) void this.#watchTasks.track(this.#watchSession(sessionId, controller.signal))
   }
-  async #watchSession(sessionId: string, signal: AbortSignal): Promise<void> {
-    let cursor: string | undefined,
-      attempt = 0
-    while (!signal.aborted && !this.#lifetime.signal.aborted) {
-      try {
-        const value = (await this.#call(
-          'watch',
-          { sessionId, ...(cursor ? { cursor } : {}) },
-          signal,
-        )) as {
-          generation: string
-          cursor: string
-          requests: CredentialRequestView[]
-          configurationRequests?: ConfigurationRequestView[]
+  async #watchSession(sessionId: string, caller: AbortSignal): Promise<void> {
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([caller, lifetime.signal, this.#lifetime.signal])
+    let feed: ReturnType<CredentialChanges> | undefined
+    let reading: Promise<void> | undefined
+    type Item = import('@deepseek-ai/dsh-api-gateway/client').RemoteStreamItem<
+      import('../../datasource/changes-contract.ts').CredentialRevision
+    >
+    let pending: Item | undefined
+    const refresh = async () => {
+      let attempt = 0
+      while (pending && !signal.aborted) {
+        const item = pending
+        const readSignal = AbortSignal.any([signal, item.signal])
+        if (readSignal.aborted) {
+          if (pending === item) pending = undefined
+          continue
         }
-        if (signal.aborted) return
-        cursor = value.cursor
-        attempt = 0
-        const requests = [...value.requests, ...(value.configurationRequests ?? [])]
-        this.#patch({ generation: value.generation, revision: value.cursor, requests })
-        const request = requests.find((r) => r.endedAt === undefined && !this.#opened.has(r.id))
-        if (request) {
-          this.#opened.add(request.id)
-          this.openRequest(request.id)
-        }
-      } catch {
-        if (!signal.aborted) {
+        try {
+          // Never pass a cursor here: this is an immediate snapshot, not a long poll.
+          const value = (await this.#call('watch', { sessionId }, readSignal)) as {
+            generation: string
+            cursor: string
+            requests: CredentialRequestView[]
+            configurationRequests?: ConfigurationRequestView[]
+          }
+          if (readSignal.aborted) continue
+          credentialRevisionSchema.parse({ generation: value.generation, cursor: value.cursor })
+          if (value.generation !== item.value.generation)
+            throw new Error('credential-generation-changed')
+          const requests = [...value.requests, ...(value.configurationRequests ?? [])]
           this.#patch({
-            error:
+            generation: value.generation,
+            revision: value.cursor,
+            requests,
+            ...([
               'marivo.credentials.credential-request-connection-interrupted-reconnecting-host-waits-remain-subject',
+              'marivo.credentials.credential-request-notifications-are-unavailable-check-the-host-connection',
+            ].includes(String(this.#state.error))
+              ? { error: '' }
+              : {}),
           })
-          await delay([1000, 2000, 5000][Math.min(attempt++, 2)]!, signal)
+          item.accept()
+          if (
+            pending === item ||
+            (pending?.signal === item.signal && pending.value.cursor === value.cursor)
+          ) {
+            pending?.accept()
+            pending = undefined
+          }
+          attempt = 0
+          const request = requests.find((r) => r.endedAt === undefined && !this.#opened.has(r.id))
+          if (request) {
+            this.#opened.add(request.id)
+            this.openRequest(request.id)
+          }
+        } catch {
+          if (!readSignal.aborted) {
+            this.#patch({
+              error:
+                'marivo.credentials.credential-request-connection-interrupted-reconnecting-host-waits-remain-subject',
+            })
+            await delay([1000, 2000, 5000][Math.min(attempt++, 2)]!, readSignal)
+          }
         }
       }
+    }
+    const startRead = () => {
+      if (reading || !pending || signal.aborted) return
+      reading = refresh().finally(() => {
+        reading = undefined
+        startRead()
+      })
+    }
+    try {
+      if (!this.#changes) throw new Error('credential-notification-unavailable')
+      feed = this.#changes(sessionId)
+      const stop = () => {
+        void feed?.dispose().catch(() => {})
+      }
+      signal.addEventListener('abort', stop, { once: true })
+      try {
+        for await (const item of feed) {
+          if (signal.aborted) break
+          credentialRevisionSchema.parse(item.value)
+          pending = item
+          startRead()
+        }
+      } finally {
+        signal.removeEventListener('abort', stop)
+      }
+    } catch {
+      if (!signal.aborted)
+        this.#patch({
+          error:
+            'marivo.credentials.credential-request-notifications-are-unavailable-check-the-host-connection',
+        })
+    } finally {
+      lifetime.abort()
+      await feed?.dispose().catch(() => {})
+      await reading
     }
   }
   #persist(): void {
@@ -849,12 +926,13 @@ export class CredentialClientModel {
     this.session(this.#state.sessionId)
     this.recover()
   }
-  dispose(): void {
+  dispose(): Promise<void> {
     this.#lifetime.abort()
     this.#watch?.abort()
     this.#read?.abort()
     this.#refresh?.abort()
     for (const controller of this.#polls.values()) controller.abort()
     this.#listeners.clear()
+    return this.#watchTasks.drain()
   }
 }

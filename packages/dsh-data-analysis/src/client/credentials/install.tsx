@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useCopy } from './../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
+import type { CredentialChanges } from './changes.ts'
 import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
 import { ReportPublishingCredentials } from './report-publishing.tsx'
@@ -1003,14 +1004,14 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
     </section>
   )
 }
-export function installCredentials(ctx, rpc) {
+export function installCredentials(ctx, rpc, changes?: CredentialChanges) {
   let storage: Storage | undefined
   try {
     storage = window.sessionStorage
   } catch {
     /* optional query-handle persistence */
   }
-  const model = new CredentialClientModel(rpc, storage)
+  const model = new CredentialClientModel(rpc, storage, changes)
   model.recover()
   ctx.effect(() => () => model.dispose(), 'dsh-data-analysis: credential client lifecycle')
   ctx.on('connection/reset', () => model.reset())

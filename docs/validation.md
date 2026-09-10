@@ -23,6 +23,7 @@
 | 报告导航与引用 | `test:presentation-integration` | `validate:report-catalog:web`、`validate:presentation-semantic-navigation`、`validate:presentation-ask-dsh` |
 | 展示与文件 Skill | `test:presentation-skill`、`test:plugin-integration-delivery` | `validate:presentation-agent:real`、`validate:file-analysis:real` |
 | 插件交付与关闭 | `test:plugin-integration-delivery`、`test:presentation-surface`、`test:presentation-integration` | `validate:plugin-integration-delivery:real`、`validate:presentation-integration:real`、`validate:plugin-lifecycle:real` |
+| 三页面报告读取与连接排队 | `test:datasource-credentials`、`test:presentation-integration` | `validate:report-read-latency` |
 | 报告对象存储发布 | `test:presentation-integration` | `validate:report-publishing` |
 
 表中名称均通过 `npm run <名称>` 执行。`test:presentation-s0` 是仍由 package.json 使用的历史命令名，负责纯展示契约测试，不表示项目仍处于该阶段。
@@ -36,6 +37,35 @@
 - 对象存储的本地签名 PUT fixture 不证明真实 Bucket 权限、服务商兼容性、持久性、CDN 或公网访问。
 
 真实环境操作按任务授权和前提执行；重装、重启、清理状态、发布或推送不由验证命令的存在自动授权。缺失前提、跳过项和未确认结果须单独报告，不把本地检查写成已发布能力。记录不包含凭据值、完整环境或无关用户数据。
+
+## 三页面报告读取验收
+
+设置 `DSH_DATA_ANALYSIS_PYTHON` 为已安装 Marivo 的解释器绝对路径，使用 Node.js 22.19.0 执行
+`npm run validate:report-read-latency`。脚本创建隔离 Workspace、profile 和打包插件的真实 Harness Web，
+在同一 Chrome context 打开三个页面，并保留原生 HMR SSE。脚本关闭自己启动的浏览器及 Host，
+不重装当前插件或改变当前 Workspace；临时输出保留 `results.json` 和隔离环境证据。
+
+预热后每页五次刷新列表并打开报告，校验样本包含实际 resolve 与文件读取请求。记录 UI 操作到可读状态、
+Resource Timing 的 `requestStart - fetchStart` 及协议；发送前等待 p95 要求小于 250 ms，
+列表和正文可读 p95 要求小于 1 s。另验证首次凭证快照、不传 cursor、25 秒复核期间无额外 HTTP watch、
+重连快照，以及挂起发布配置时正文可读、仅两个 HTML 操作禁用。该验收不覆盖更多页面下 Harness HMR SSE 的连接上限。
+
+2026-09-10 隔离验收通过：Node.js 22.19.0、同一 Chrome context 三页面、保留 3 条 HMR SSE，
+预热后共 30 个可读耗时样本、60 个列表／resolve／文件请求。发送前等待 p95 为 0.8 ms，
+列表可读 p95 为 65.8 ms，正文可读 p95 为 601.8 ms。26 秒空闲期间无新增 HTTP watch，
+重连后取得新快照；发布配置挂起时正文可读且编辑／历史操作可用。
+候选 `lib/client.js` SHA-256 为 `0d4bc2868f2daef848efe9269d2c86f28dc9a888435b8a272e19c9b4b99cd612`；
+测量原始结果与全部模块摘要保留在本次脚本输出目录的 `results.json`、`web/production-module-digests.json`。
+此记录是隔离环境验收，不表示当前运行的 DSH 已重装或升级。
+
+Review 修复后，Node.js 22.19.0 下 `npm run check`（636 项测试）、构建与包验证通过。
+新增回归覆盖临时凭证状态错误恢复、重试等待取消、契约错误终止，以及 Harness 原生 RemoteStream
+等待重连期间的晚到响应隔离。另在真实隔离 Host 就绪后注入 Chrome 启动失败：脚本按预期失败，
+Host 及本次启动的全部子进程均已退出；浏览器启动和关闭异常均位于 Host 清理边界内。
+
+补充运行 `validate:credentials:web` 时，首次待办、并发操作恢复、重载后继续原调用以及 Python 仅启动一次的断言通过。
+完整脚本随后在 `clickhouse_in_card` 的 390 px 窄屏标题区域触发水平溢出断言，未通过全部 UI 布局验收；
+该断言仍保留，布局修复不属于此次报告连接优化范围。
 
 ## 插件界面与报告语言分离验收
 

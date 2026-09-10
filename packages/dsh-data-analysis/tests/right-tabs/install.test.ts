@@ -6,6 +6,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { TabPage } from '../../src/client/right-tabs/page.ts'
 import { createHostChatFixture } from '../presentation-integration/host-client-fixture.ts'
 
+// This registry replay fixture never mounts the global Session overlay.
+const remote = {
+  $mount: async () => () => {},
+  $stream() {
+    throw new Error('Unexpected stream')
+  },
+}
+
 const store = (value) => {
   const listeners = new Set()
   return {
@@ -27,6 +35,7 @@ test('default client is a valid Cordis effect and registers native resources wit
   t.after(() => host.dispose())
   const definitions = []
   Object.assign(host.client, {
+    remote,
     connection: {
       rpc: {
         call() {
@@ -141,6 +150,7 @@ async function installed(t) {
     },
   }
   Object.assign(host.client, {
+    remote,
     connection: { rpc, generation },
     sessions: { list: sessions, binding: (id) => bindings[id] },
     workspaces: { list: workspaces },

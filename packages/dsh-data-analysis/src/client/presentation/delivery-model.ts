@@ -40,6 +40,7 @@ export interface PresentationDeliveryState {
   readonly publishingConfigId?: string
   readonly publishingName?: string
   readonly publishingUnavailable?: boolean
+  readonly publishingLoading?: boolean
   readonly publicationUrl?: string
   readonly reportTarget?: WorkspaceReportTarget
   readonly history?: ReportHistory
@@ -211,6 +212,7 @@ export class PresentationDeliveryModel {
     downloading: false,
   }
   #flights = new Set<AbortController>()
+  #publishingRead?: AbortController
   #previews = new Set<string>()
   #context = ''
   #generation = 0
@@ -389,7 +391,8 @@ export class PresentationDeliveryModel {
       publicationUrl: undefined,
       publishingName: undefined,
       publishingConfigId: undefined,
-      publishingUnavailable: true,
+      publishingUnavailable: false,
+      publishingLoading: true,
     })
     try {
       if (buildId) {
@@ -410,44 +413,53 @@ export class PresentationDeliveryModel {
       }
       const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
       const document = await this.#document(target, receipt, flight.signal)
-      let publishingName: string | undefined
-      let publishingConfigId: string | undefined
-      let publishingUnavailable = false
-      try {
-        const result = (await this.#rpc.call(
-          '/dsh-report-publishing',
-          'describe',
-          { workspaceId: receipt.workspaceId },
-          flight.signal,
-        )) as { ok: boolean; value?: { enabled: boolean; name?: string; configId?: string } }
-        if (!result.ok || !result.value) throw new Error('publishing-unavailable')
-        if (result.value.enabled) {
-          if (!result.value.name || !result.value.configId)
-            throw new Error('publishing-unavailable')
-          publishingName = result.value.name
-          publishingConfigId = result.value.configId
-        }
-      } catch {
-        publishingUnavailable = true
-      }
-
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
       if (!version) this.#remember(receipt)
-      this.#publish({
-        resolvedReceipt: receipt,
-        document,
-        loading: false,
-        publishingName,
-        publishingConfigId,
-        publishingUnavailable,
-      })
+      this.#publish({ resolvedReceipt: receipt, document, loading: false })
+      void this.#describePublishing(receipt.workspaceId, generation)
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
-        this.#publish({ loading: false, error: errorMessage(error) })
+        this.#publish({ loading: false, publishingLoading: false, error: errorMessage(error) })
     } finally {
       this.#flights.delete(flight)
     }
   }
+  async #describePublishing(workspaceId: string, generation: number): Promise<void> {
+    if (generation !== this.#generation || this.#disposed) return
+    this.#publishingRead?.abort()
+    const flight = new AbortController()
+    this.#publishingRead = flight
+    this.#flights.add(flight)
+    let publishingName: string | undefined
+    let publishingConfigId: string | undefined
+    let publishingUnavailable = false
+    try {
+      const result = (await this.#rpc.call(
+        '/dsh-report-publishing',
+        'describe',
+        { workspaceId },
+        flight.signal,
+      )) as { ok: boolean; value?: { enabled: boolean; name?: string; configId?: string } }
+      if (!result.ok || !result.value) throw new Error('publishing-unavailable')
+      if (result.value.enabled) {
+        if (!result.value.name || !result.value.configId) throw new Error('publishing-unavailable')
+        publishingName = result.value.name
+        publishingConfigId = result.value.configId
+      }
+    } catch {
+      publishingUnavailable = true
+    } finally {
+      this.#flights.delete(flight)
+    }
+    if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
+    this.#publish({
+      publishingName,
+      publishingConfigId,
+      publishingUnavailable,
+      publishingLoading: false,
+    })
+  }
+
   get dirty() {
     return (
       !!this.#state.editing &&
@@ -583,11 +595,16 @@ export class PresentationDeliveryModel {
         editing: undefined,
         saving: false,
         notice: 'marivo.presentation.edits-saved',
+        publishingLoading: true,
+        publishingName: undefined,
+        publishingConfigId: undefined,
+        publishingUnavailable: false,
         publicationUrl: undefined,
         history: undefined,
         historyOpen: false,
         editError: undefined,
       })
+      void this.#describePublishing(saved.workspaceId, generation)
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ saving: false, editError: errorMessage(error) })
@@ -833,6 +850,7 @@ export class PresentationDeliveryModel {
   ) {
     this.#cancel()
     this.#publish({
+      publishingLoading: false,
       receipts: {},
       history: undefined,
       historyLoading: false,
@@ -856,6 +874,7 @@ export class PresentationDeliveryModel {
   close() {
     this.#cancel()
     this.#publish({
+      publishingLoading: false,
       open: false,
       publicationUrl: undefined,
       publishingName: undefined,

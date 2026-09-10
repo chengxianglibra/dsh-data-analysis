@@ -50,6 +50,8 @@ async function main() {
   console.log(`Repository: ${repoRoot}`)
   console.log(`Profile: ${profile}`)
   console.log(`Clean workspace: ${cleanupTargets.workspaceRoot}`)
+  console.log(`Clean reports: ${cleanupTargets.presentationsDir}`)
+  console.log(`Clean analysis: ${cleanupTargets.analysisDir}`)
 
   run('npm', ['run', 'pack:plugin'])
 
@@ -108,6 +110,12 @@ async function main() {
   const cleanup = cleanLocalState({ workspaceRoot: cleanWorkspaceRoot, dshHome })
   console.log(
     `Cleaned Marivo state: ${cleanup.marivoStateDir} (${cleanup.marivoEntries} entries)`,
+  )
+  console.log(
+    `Cleaned reports: ${cleanup.presentationsDir} (${cleanup.presentationEntries} entries)`,
+  )
+  console.log(
+    `Cleaned analysis: ${cleanup.analysisDir} (${cleanup.analysisEntries} entries)`,
   )
   console.log(
     `Cleaned DSH sessions: ${cleanup.dshSessionsDir} (${cleanup.dshSessionEntries} entries)`,

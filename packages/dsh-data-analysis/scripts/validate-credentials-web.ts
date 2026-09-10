@@ -18,6 +18,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { build } from 'esbuild'
 import { MarivoDatasourceBridge } from '../src/datasource/bridge.ts'
+import { CredentialChangesService } from '../src/datasource/changes.ts'
 import { registerMarivoPythonTool } from '../src/datasource/python.ts'
 import { registerCredentialRpc } from '../src/datasource/rpc.ts'
 import { MarivoCredentialService } from '../src/datasource/service.ts'
@@ -73,6 +74,7 @@ shell.run = (spec) => {
 const { connection, channels } = createConnectionFixture()
 const unregister = registerCredentialRpc(connection, service, async () => bridge)
 const handler = channels.get('/dsh-data-analysis-credentials')!
+const notifications = new CredentialChangesService(new Context(), service)
 const installer = fileURLToPath(new URL('../src/client/credentials/install.tsx', import.meta.url))
 const app = await build({
   stdin: {
@@ -84,9 +86,18 @@ import {CredentialPanel,installCredentials} from ${JSON.stringify(installer)};
 import {WorkspaceHeaderAction} from ${JSON.stringify(fileURLToPath(new URL('../src/client/workspace-header-action.tsx', import.meta.url)))};
 const seats=[];
 const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
-const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
+const rpc={call:async(channel,endpoint,payload,signal)=>channel==='/dsh-report-publishing'?{ok:true,value:{enabled:false,fields:[]}}:(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
 ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-semantic',order:110},()=> <WorkspaceHeaderAction label="语义层" icon="semantic" onClick={()=>{}}/>);
-const model=installCredentials(ctx,rpc);
+// Fixture-only stream carrier; the production client uses Harness RemoteStream.
+const changes=sessionId=>{
+ const controller=new AbortController();
+ return {async *[Symbol.asyncIterator](){
+  const response=await fetch('/changes?sessionId='+encodeURIComponent(sessionId),{signal:controller.signal});
+  const reader=response.body.pipeThrough(new TextDecoderStream()).getReader();let buffer='';
+  try {while(true){const {done,value}=await reader.read();if(done)break;buffer+=value;let end;while((end=buffer.indexOf('\\n'))>=0){const value=JSON.parse(buffer.slice(0,end));buffer=buffer.slice(end+1);yield {generation:1,value,signal:controller.signal,accept(){}}}}}finally{await reader.cancel().catch(()=>{});reader.releaseLock()}
+ },async dispose(){controller.abort()}}
+};
+const model=installCredentials(ctx,rpc,changes);
 ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-credentials',order:100},()=> <WorkspaceHeaderAction label="数据源与凭证" icon="credentials" onClick={()=>model.show('workspace')}/>);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']},{workspaceId:'other',name:'其他工作区不应显示',sessionIds:['other-session']}];
 const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
@@ -105,6 +116,20 @@ createRoot(document.getElementById('app')).render(<App/>);
 })
 let failOverview = false
 const server = createServer(async (req, res) => {
+  if (req.url?.startsWith('/changes?')) {
+    const controller = new AbortController()
+    res.on('close', () => controller.abort())
+    res.setHeader('Content-Type', 'application/x-ndjson')
+    try {
+      const sessionId = new URL(req.url, 'http://fixture').searchParams.get('sessionId')!
+      for await (const value of notifications.changes(sessionId, controller.signal))
+        res.write(JSON.stringify(value) + '\n')
+    } catch {
+      /* Client cancellation only terminates the fixture subscription. */
+    }
+    res.end()
+    return
+  }
   if (req.url === '/app.js') {
     res.setHeader('Content-Type', 'text/javascript')
     res.end(app.outputFiles[0]!.text)
@@ -147,15 +172,21 @@ const secret = 'browser-private-canary-32457'
 const activeOperations = page.getByRole('region', { name: '进行中的凭证操作' })
 const selectDatasource = (name: string) =>
   page.getByRole('button', { name: `选择数据源 ${name}`, exact: true }).click()
+async function fillReference(name: string, value: string) {
+  const input = page.getByLabel(name, { exact: true })
+  if (!(await input.isVisible()))
+    await page.locator('details').filter({ has: input }).locator('summary').click()
+  await input.fill(value)
+}
 async function assertPendingWorkspace() {
   assert.equal(await page.getByLabel('Workspace', { exact: true }).count(), 0)
   assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
-  const navigation = page.getByRole('complementary', { name: '数据源导航' })
-  await navigation.getByRole('heading', { name: '请求的数据源', exact: true }).waitFor()
+  await page.getByRole('button', { name: '数据源管理', exact: true }).waitFor()
   assert.equal(
-    await navigation.getByRole('button', { name: '选择数据源 warehouse', exact: true }).count(),
+    await page.getByRole('button', { name: 'warehouse · 等待填写', exact: true }).count(),
     1,
   )
+  assert.equal(await page.getByLabel('新值', { exact: true }).count(), 1)
 }
 async function assertNoCompletedOperations() {
   await activeOperations.waitFor({ state: 'hidden', timeout: 30000 })
@@ -337,6 +368,7 @@ try {
   await page
     .getByRole('button', { name: '选择数据源 warehouse_two', exact: true })
     .waitFor({ timeout: 30000 })
+  await selectDatasource('warehouse_two')
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'concurrent-operations.png'), fullPage: true })
   gates.get('warehouse_two')!()
@@ -438,7 +470,11 @@ try {
   assert.equal(await page.getByLabel('Workspace', { exact: true }).count(), 0)
   assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
   const navigation = page.getByRole('complementary', { name: '数据源导航' })
-  assert.equal(await navigation.getByRole('button', { name: /^选择数据源 / }).count(), 2)
+  assert.equal(
+    await navigation.getByRole('button', { name: /^选择数据源 / }).count(),
+    (await bridge.inventory()).length,
+  )
+  await selectDatasource('warehouse')
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor()
   assert.equal(await page.getByRole('button', { name: '返回数据源管理', exact: true }).count(), 0)
   await assertNoHorizontalOverflow()
@@ -470,10 +506,10 @@ try {
   await page.getByLabel('database', { exact: true }).fill('analytics')
   await page.getByLabel('secure', { exact: true }).selectOption('false')
   await page.getByLabel('settings', { exact: true }).fill('{"max_execution_time":30}')
-  await page.getByLabel('user_env', { exact: true }).fill('CLICKHOUSE_TEST_USER')
-  await page.getByLabel('password_env', { exact: true }).fill('9invalid-reference-canary')
+  await fillReference('user_env', 'CLICKHOUSE_TEST_USER')
+  await fillReference('password_env', '9invalid-reference-canary')
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
-  const creationError = page.getByRole('alert').filter({ hasText: '凭证引用名称无效' })
+  const creationError = page.getByRole('alert').filter({ hasText: '凭证引用名' })
   await creationError.waitFor({ timeout: 30000 })
   assert.doesNotMatch(
     await creationError.innerText(),
@@ -484,7 +520,7 @@ try {
     path: path.join(output, 'invalid-credential-reference.png'),
     fullPage: true,
   })
-  await page.getByLabel('password_env', { exact: true }).fill('CLICKHOUSE_TEST_PASSWORD')
+  await fillReference('password_env', 'CLICKHOUSE_TEST_PASSWORD')
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
   await page
     .getByRole('heading', { name: 'clickhouse_in_card', exact: true })
@@ -523,7 +559,7 @@ try {
   await page.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await page.getByLabel('name', { exact: true }).fill('created_in_card')
   await page.getByLabel('http_scope', { exact: true }).fill('http://127.0.0.1/')
-  await page.getByLabel('http_bearer_token_env', { exact: true }).fill('NEW_TOKEN')
+  await fillReference('http_bearer_token_env', 'NEW_TOKEN')
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'create-datasource.png'), fullPage: true })
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
@@ -583,6 +619,7 @@ try {
   throw error
 } finally {
   f.controller.abort()
+  await notifications.close()
   await service.close()
   await ctx.fiber.dispose()
   await unregister()

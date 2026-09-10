@@ -1,3 +1,6 @@
+import type {} from '@deepseek-ai/dsh-typert-registry'
+import { CredentialChangesService } from './datasource/changes.ts'
+import { credentialChangesHost } from './datasource/changes-contract.ts'
 import { finishCleanup } from './lifecycle.ts'
 import { createMarivoAgentInstallation } from './plugin-agents.ts'
 import { registerPublishingCredentials } from './report-publishing/adapters.ts'
@@ -59,6 +62,7 @@ export const name = 'dsh-data-analysis'
 export const inject = [
   'agents',
   'connection',
+  'typert',
   'storageDomain',
   'workspaceRegistry',
   'credentials',
@@ -145,6 +149,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     ctx.credentials,
     config.credentialInteraction,
   )
+  const credentialNotifications = new CredentialChangesService(ctx, credentialService)
+  let unregisterChanges: (() => void | Promise<void>) | undefined
+  const disposeChanges = async () => {
+    await credentialNotifications.close()
+    await unregisterChanges?.()
+  }
   let disposePublishing: (() => Promise<void>) | undefined
   let disposeCredentials: (() => Promise<void>) | undefined
   let disposeReferences: (() => Promise<void>) | undefined
@@ -163,6 +173,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     closing = finishCleanup([
       () => agentInstallation?.close(),
       () => disposeCredentials?.(),
+      disposeChanges,
       () => disposePublishing?.(),
       () => disposePresentation?.(),
       () => disposeReferences?.(),
@@ -185,6 +196,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     return closing
   }
   try {
+    unregisterChanges = ctx.typert.register(credentialChangesHost)
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',
       includeDefaultRoots: false,

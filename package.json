@@ -64,6 +64,7 @@
     "validate:right-tabs:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-right-tabs-web.ts",
     "validate:plugin-lifecycle:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-plugin-lifecycle-real.ts",
     "validate:datasource-removal:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-removal-web.ts",
+    "validate:report-read-latency": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-report-read-latency.ts",
     "validate:report-publishing": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-report-publishing.ts",
     "validate:locale": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-locale.ts"
   },

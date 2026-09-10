@@ -407,6 +407,7 @@ export function PresentationOverlay({
                     }
                   : undefined,
                 publishingUnavailable: state.publishingUnavailable,
+                publishingLoading: state.publishingLoading,
                 downloading: state.downloading,
                 disabled: !!state.error || state.loading,
               }}

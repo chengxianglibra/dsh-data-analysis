@@ -151,3 +151,11 @@ client 使用 esbuild 打包 Browser source、共享 contracts 和 Recharts 等�
 由 DSH module loader 提供；构建检查拒绝第二份 Host React、Node 与 Runtime 模块。
 portable 将 React/Recharts 一并打包且不允许外部模块，静态 renderer 同样预构建，builder 运行不依赖开发工具。
 实际打包依赖保留许可证；不增加公开 npm subpath。
+
+## 凭证通知的连接接入
+
+Host 声明 `typert` 注入，Client 声明 `remote` 与 api-gateway 注入；依赖公开
+`dsh-api-gateway`、`dsh-typert-protocol` 和 `dsh-typert-registry`。插件自有严格 contribution
+在 Host 注册、在 Client 挂载；挂载后通过声明 `remote.dshDataAnalysisCredentials` 注入的子级消费者
+使用动态 namespace，消费者与订阅一同清理。逻辑 stream 使用 Harness 现有 WebSocket 及恢复机制。
+不新建物理 WebSocket，不修改 HMR SSE。通知与快照生命周期见[凭证模块](datasource-credentials.md#待办通知与连接生命周期)。

@@ -7,6 +7,9 @@ export function validateLocalStateTargets({ workspaceRoot, dshHome }) {
   const resolvedWorkspaceRoot = safeBaseDirectory(workspaceRoot, 'workspace root')
   const resolvedDshHome = safeBaseDirectory(dshHome, 'DSH_HOME')
   const marivoStateDir = join(resolvedWorkspaceRoot, '.marivo')
+  const pluginStateDir = join(resolvedWorkspaceRoot, '.dsh-data-analysis')
+  const presentationsDir = join(pluginStateDir, 'presentations')
+  const analysisDir = join(resolvedWorkspaceRoot, 'analysis')
   const dshSessionsDir = join(resolvedDshHome, 'sessions')
   const dshWorkspaceRegistryPath = join(resolvedDshHome, 'storages', 'workspace.json')
   const dshProjectionCachePath = join(resolvedDshHome, 'storages', 'session_projcache.json')
@@ -14,6 +17,9 @@ export function validateLocalStateTargets({ workspaceRoot, dshHome }) {
   assertDirectChild(marivoStateDir, resolvedWorkspaceRoot, '.marivo')
   assertDirectChild(dshSessionsDir, resolvedDshHome, 'sessions')
   assertDirectoryOrAbsent(marivoStateDir)
+  assertDirectoryOrAbsent(pluginStateDir)
+  assertDirectoryOrAbsent(presentationsDir)
+  assertDirectoryOrAbsent(analysisDir)
   assertDirectoryOrAbsent(dshSessionsDir)
   assertFileOrAbsent(dshWorkspaceRegistryPath)
   assertFileOrAbsent(dshProjectionCachePath)
@@ -22,6 +28,8 @@ export function validateLocalStateTargets({ workspaceRoot, dshHome }) {
     workspaceRoot: resolvedWorkspaceRoot,
     dshHome: resolvedDshHome,
     marivoStateDir,
+    presentationsDir,
+    analysisDir,
     dshSessionsDir,
     dshWorkspaceRegistryPath,
     dshProjectionCachePath,
@@ -31,6 +39,8 @@ export function validateLocalStateTargets({ workspaceRoot, dshHome }) {
 export function cleanLocalState(options) {
   const targets = validateLocalStateTargets(options)
   const marivoEntries = emptyDirectory(targets.marivoStateDir)
+  const presentationEntries = emptyDirectory(targets.presentationsDir)
+  const analysisEntries = emptyDirectory(targets.analysisDir)
   const dshSessionEntries = emptyDirectory(targets.dshSessionsDir)
   const workspaceRegistryRemoved = unlinkIfPresent(targets.dshWorkspaceRegistryPath)
   const projectionCacheRemoved = unlinkIfPresent(targets.dshProjectionCachePath)
@@ -38,6 +48,8 @@ export function cleanLocalState(options) {
   return {
     ...targets,
     marivoEntries,
+    presentationEntries,
+    analysisEntries,
     dshSessionEntries,
     workspaceRegistryRemoved,
     projectionCacheRemoved,

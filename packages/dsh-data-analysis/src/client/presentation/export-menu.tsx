@@ -10,6 +10,7 @@ export interface ReaderExportActions {
     publishView: (bytes: Uint8Array) => Promise<void>
   }
   publishingUnavailable?: boolean
+  publishingLoading?: boolean
   disabled?: boolean
   downloading?: boolean
   report?: {
@@ -80,14 +81,17 @@ export function ExportMenu({
       label: actions.publishing
         ? t('marivo.presentation.publish-report-html-to-value', { p0: actions.publishing.name })
         : t('marivo.presentation.download-full-report'),
-      hint: actions.publishingUnavailable
-        ? t('marivo.presentation.could-not-load-publishing-configuration-refresh-the-report')
-        : editing && actions.publishing
-          ? t('marivo.presentation.save-or-cancel-edits-first')
-          : t('marivo.presentation.full-report-html-default-filters'),
+      hint: actions.publishingLoading
+        ? t('marivo.presentation.loading-publishing-configuration')
+        : actions.publishingUnavailable
+          ? t('marivo.presentation.could-not-load-publishing-configuration-refresh-the-report')
+          : editing && actions.publishing
+            ? t('marivo.presentation.save-or-cancel-edits-first')
+            : t('marivo.presentation.full-report-html-default-filters'),
       run: actions.publishing?.publish ?? actions.downloadFullReport,
       disabled:
         actions.downloading ||
+        actions.publishingLoading ||
         actions.publishingUnavailable ||
         (!!actions.publishing && (editing || report?.busy)),
     },
@@ -97,11 +101,17 @@ export function ExportMenu({
             p0: actions.publishing.name,
           })
         : t('marivo.presentation.export-current-view'),
-      hint: editing
-        ? t('marivo.presentation.save-or-cancel-edits-first')
-        : t('marivo.presentation.html-keep-current-filters-and-charts'),
+      hint: actions.publishingLoading
+        ? t('marivo.presentation.loading-publishing-configuration')
+        : editing
+          ? t('marivo.presentation.save-or-cancel-edits-first')
+          : t('marivo.presentation.html-keep-current-filters-and-charts'),
       run: onExport,
-      disabled: editing || actions.downloading || actions.publishingUnavailable,
+      disabled:
+        editing ||
+        actions.downloading ||
+        actions.publishingLoading ||
+        actions.publishingUnavailable,
     },
   ]
   return (

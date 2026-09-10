@@ -9,6 +9,7 @@ import type {
   CredentialOperationView,
   CredentialRequestView,
 } from '../../src/datasource/service.ts'
+import { changesFixture } from './changes-fixture.ts'
 import { barrier } from './fixtures.ts'
 
 function datasource(name: string): CredentialContextView {
@@ -421,35 +422,48 @@ test('a failed prompt operation leaves the pending request available for correct
     cancellations: unknown[] = []
   let watchCount = 0,
     overviewCount = 0
-  const model = new CredentialClientModel({
-    async call(_channel, endpoint, payload, signal) {
-      if (endpoint === 'watch') {
-        if (watchCount++ > 0)
-          await new Promise<void>((resolve) =>
-            signal?.addEventListener('abort', () => resolve(), { once: true }),
-          )
-        return { ok: true, value: { generation, cursor: '1', requests: [request] } }
-      }
-      if (endpoint === 'overview') overviewCount++
-      if (endpoint === 'start') return { ok: true, value: {} }
-      if (endpoint === 'cancel-request') {
-        cancellations.push(payload)
-        return { ok: true, value: {} }
-      }
-      assert.equal(endpoint, 'operation')
-      return {
-        ok: true,
-        value: {
-          ...(payload as { id: string; scope: string }),
-          action: 'submit',
-          status: 'failed',
-          phase: 'settled',
-          saved: [],
-          errors: ['credential-missing'],
-        } satisfies CredentialOperationView,
-      }
+  const model = new CredentialClientModel(
+    {
+      async call(_channel, endpoint, payload, signal) {
+        if (endpoint === 'watch') {
+          if (watchCount++ > 0)
+            await new Promise<void>((resolve) =>
+              signal?.addEventListener('abort', () => resolve(), { once: true }),
+            )
+          return { ok: true, value: { generation, cursor: '1', requests: [request] } }
+        }
+        if (endpoint === 'overview') overviewCount++
+        if (endpoint === 'start') return { ok: true, value: {} }
+        if (endpoint === 'cancel-request') {
+          cancellations.push(payload)
+          return { ok: true, value: {} }
+        }
+        assert.equal(endpoint, 'operation')
+        return {
+          ok: true,
+          value: {
+            ...(payload as { id: string; scope: string }),
+            action: 'submit',
+            status: 'failed',
+            phase: 'settled',
+            saved: [],
+            errors: ['credential-missing'],
+          } satisfies CredentialOperationView,
+        }
+      },
     },
-  })
+    undefined,
+    changesFixture({
+      async waitWatch(_sessionId, cursor, signal) {
+        if (cursor)
+          await new Promise<void>((resolve) =>
+            signal.addEventListener('abort', () => resolve(), { once: true }),
+          )
+        signal.throwIfAborted()
+        return { generation, cursor: '1', requests: [request], configurationRequests: [] }
+      },
+    }),
+  )
   t.after(() => model.dispose())
   model.session('session')
   await nextTurn()

@@ -4,6 +4,7 @@ import { CredentialClientModel } from '../../src/client/credentials/model.ts'
 import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
 import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
+import { changesFixture } from './changes-fixture.ts'
 import { fixture } from './fixtures.ts'
 
 test('configuration watch reaches the tab model and selecting an existing datasource continues through the original tool', async (t) => {
@@ -12,9 +13,13 @@ test('configuration watch reaches the tab model and selecting an existing dataso
   const { connection, channels } = createConnectionFixture()
   t.after(registerCredentialRpc(connection, f.service, f.resolve))
   const handler = channels.get('/dsh-data-analysis-credentials')!
-  const model = new CredentialClientModel({
-    call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
-  })
+  const model = new CredentialClientModel(
+    {
+      call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
+    },
+    undefined,
+    changesFixture(f.service),
+  )
   t.after(() => model.dispose())
   await model.show('workspace')
   const task = f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'need orders' })
@@ -75,9 +80,13 @@ test('one form saves configuration references, then credentials through the exis
   const { connection, channels } = createConnectionFixture()
   t.after(registerCredentialRpc(connection, f.service, f.resolve))
   const handler = channels.get('/dsh-data-analysis-credentials')!
-  const model = new CredentialClientModel({
-    call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
-  })
+  const model = new CredentialClientModel(
+    {
+      call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
+    },
+    undefined,
+    changesFixture(f.service),
+  )
   t.after(() => model.dispose())
   await model.show('workspace')
   const task = f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'need orders' })
@@ -147,9 +156,13 @@ test('manually choosing a configured reference never silently overwrites a share
   const { connection, channels } = createConnectionFixture()
   t.after(registerCredentialRpc(connection, f.service, f.resolve))
   const handler = channels.get('/dsh-data-analysis-credentials')!
-  const model = new CredentialClientModel({
-    call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
-  })
+  const model = new CredentialClientModel(
+    {
+      call: async (_channel, endpoint, payload, signal) => handler(endpoint, payload, signal!),
+    },
+    undefined,
+    changesFixture(f.service),
+  )
   t.after(() => model.dispose())
   await model.show('workspace')
   const changes = { DB_PASSWORD: 'replacement-canary' }

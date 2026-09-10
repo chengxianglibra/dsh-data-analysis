@@ -7,6 +7,7 @@ import type {
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
+import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type { MarivoCheckedRunner, MarivoCheckedRunRequest } from '../../src/environment/types.ts'
 import type { Candidate, Envelope, Projection } from '../../src/semantic-reference/contracts.ts'
 export function candidate(
@@ -113,6 +114,7 @@ export function createConnectionFixture() {
   return { connection, channels, routes }
 }
 export function installConnectionFixture(ctx: Context): Map<string, ConnectionRpcHandler> {
+  if (!ctx.get('typert')) new TypertRegistry(ctx)
   const { connection, channels } = createConnectionFixture()
   ctx.provide('connection', connection)
   return channels

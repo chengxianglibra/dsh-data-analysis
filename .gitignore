@@ -1,4 +1,6 @@
 .marivo/
+# Local internal distribution configuration, credentials, and build outputs.
+/.internal/
 .agents/
 .venv/
 .DS_Store

@@ -375,3 +375,138 @@ test('late publication success and failure cannot replace the state of an edited
     model.dispose()
   }
 })
+
+for (const mode of ['enabled', 'disabled', 'failure', 'transport-error']) {
+  test(`a pending publishing description does not block reading (${mode})`, async (t) => {
+    const f = await fixture()
+    let finish!: () => void
+    const model = new PresentationDeliveryModel({
+      async call(channel, endpoint, payload: any) {
+        if (channel === '/dsh-report-publishing')
+          return new Promise((resolve, reject) => {
+            finish = () =>
+              mode === 'transport-error'
+                ? reject(new Error('offline'))
+                : resolve(
+                    mode === 'failure'
+                      ? { ok: false }
+                      : {
+                          ok: true,
+                          value: {
+                            enabled: mode === 'enabled',
+                            name: 'reports',
+                            configId: 'config',
+                          },
+                        },
+                  )
+          })
+        if (endpoint === 'reports/resolve') return { ok: true, value: f.delivery.receipt }
+        return f.response(payload.asset)
+      },
+    })
+    t.after(() => model.dispose())
+    await model.showReport(f.document.workspaceId, f.document.reportId)
+    assert.deepEqual(model.getSnapshot().document, f.document)
+    assert.equal(model.getSnapshot().loading, false)
+    assert.equal(model.getSnapshot().publishingLoading, true)
+    assert.equal(model.getSnapshot().publishingUnavailable, false)
+    finish()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(model.getSnapshot().publishingLoading, false)
+    assert.equal(
+      model.getSnapshot().publishingUnavailable,
+      mode === 'failure' || mode === 'transport-error',
+    )
+    assert.equal(model.getSnapshot().publishingName, mode === 'enabled' ? 'reports' : undefined)
+    assert.deepEqual(model.getSnapshot().document, f.document)
+    assert.equal(model.getSnapshot().error, undefined)
+  })
+}
+
+for (const action of ['close', 'unavailable', 'resetConnection', 'dispose', 'reopen'] as const) {
+  test(`late publishing description cannot revive state after ${action}`, async () => {
+    const f = await fixture()
+    const pending: Array<{ signal: AbortSignal; finish: (value: unknown) => void }> = []
+    const model = new PresentationDeliveryModel({
+      async call(channel, endpoint, payload: any, signal) {
+        if (channel === '/dsh-report-publishing')
+          return new Promise((finish) => pending.push({ signal, finish }))
+        if (endpoint === 'reports/resolve') return { ok: true, value: f.delivery.receipt }
+        return f.response(payload.asset)
+      },
+    })
+    const target = { workspaceId: f.document.workspaceId, reportId: f.document.reportId }
+    await model.showReport(target.workspaceId, target.reportId)
+    if (action === 'reopen') await model.showReport(target.workspaceId, target.reportId)
+    else model[action]()
+    assert.equal(pending[0]!.signal.aborted, true)
+    const state = model.getSnapshot()
+    pending[0]!.finish({ ok: true, value: { enabled: true, name: 'stale', configId: 'stale' } })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(model.getSnapshot(), state)
+    model.dispose()
+    pending[1]?.finish({ ok: true, value: { enabled: false } })
+  })
+}
+
+test('saving a new Build cancels an old publishing description and fetches a fresh one', async () => {
+  const f = await fixture()
+  let document = f.document,
+    receipt = f.delivery.receipt
+  const pending: Array<{ signal: AbortSignal; finish: (value: unknown) => void }> = []
+  const model = new PresentationDeliveryModel({
+    async call(channel, endpoint, payload: any, signal) {
+      if (channel === '/dsh-report-publishing')
+        return new Promise((finish) => pending.push({ signal, finish }))
+      if (endpoint === 'reports/save') {
+        document = { ...document, title: payload.edits.title, buildId: 'edited-build' }
+        const bytes = Buffer.from(JSON.stringify(document))
+        receipt = {
+          ...receipt,
+          title: document.title,
+          buildId: document.buildId,
+          files: {
+            document: {
+              ...receipt.files.document,
+              path: receipt.files.document.path.replace(
+                `/${receipt.buildId}/`,
+                `/${document.buildId}/`,
+              ),
+              bytes: bytes.length,
+              sha256: createHash('sha256').update(bytes).digest('hex'),
+            },
+          },
+        }
+        return { ok: true, value: receipt }
+      }
+      if (endpoint === 'reports/resolve') return { ok: true, value: receipt }
+      const bytes = Buffer.from(JSON.stringify(document))
+      return {
+        ok: true,
+        value: {
+          ...f.response('presentation.json').value,
+          buildId: document.buildId,
+          bytes: bytes.length,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          bodyBase64: bytes.toString('base64'),
+        },
+      }
+    },
+  })
+  await model.showReport(document.workspaceId, document.reportId)
+  model.beginEdit()
+  model.changeEdits({ ...model.getSnapshot().editing!.edits, title: 'new build' })
+  await model.saveEdit()
+  assert.equal(model.getSnapshot().document?.buildId, 'edited-build')
+  assert.equal(pending.length, 2)
+  assert.equal(pending[0]!.signal.aborted, true)
+  pending[0]!.finish({ ok: true, value: { enabled: true, name: 'old', configId: 'old' } })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(model.getSnapshot().publishingName, undefined)
+  assert.equal(model.getSnapshot().publishingLoading, true)
+  pending[1]!.finish({ ok: true, value: { enabled: true, name: 'new', configId: 'new' } })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(model.getSnapshot().publishingName, 'new')
+  assert.equal(model.getSnapshot().publishingLoading, false)
+  model.dispose()
+})
