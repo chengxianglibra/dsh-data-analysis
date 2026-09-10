@@ -36,7 +36,7 @@ async function fixture() {
     binding: {
       projectRoot: root,
       pythonExecutable: '/selected/python',
-      marivoVersion: '0.5.4',
+      marivoVersion: '0.5.5',
       packagePath: '/selected/marivo/__init__.py',
       subprocessPolicyId: 'policy',
       fingerprint: 'f'.repeat(64),

@@ -22,14 +22,14 @@ async function tree(root: string): Promise<Record<string, string>> {
   }
   return result
 }
-test('real Marivo 0.5.4: all 13 kinds, full definitions and relations; no data operations or project writes', async (t) => {
+test('real Marivo 0.5.5: all 13 kinds, full definitions and relations; no data operations or project writes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.5.4 Python unavailable')
+    t.skip('Marivo 0.5.5 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),
@@ -66,7 +66,10 @@ mv.session = forbidden
   })
   t.after(() => service.dispose())
   const signal = new AbortController().signal
-  assert.deepEqual((await service.read({ workspaceId: 'a' }, signal)).objects, [])
+  assert.deepEqual(
+    (await service.read({ workspaceId: 'a' }, signal)).objects.map((item) => item.ref),
+    [{ schema: 'marivo.semantic_ref/v1', kind: 'datasource', path: 'default' }],
+  )
   assert.deepEqual(await tree(root), {})
   await createBrowserWorkspace(root)
   const before = await tree(root)

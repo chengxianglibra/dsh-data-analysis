@@ -31,7 +31,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     binding: {
       projectRoot: root,
       pythonExecutable: '/bound/python',
-      marivoVersion: '0.5.4',
+      marivoVersion: '0.5.5',
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',

@@ -16,7 +16,7 @@ Lineage、revalidation 与 Session runtime；本项目只连接两者，不复�
 ```mermaid
 flowchart LR
   D[DeepSeek Harness] --> P[dsh-data-analysis]
-  P --> R[Shared Marivo 0.5.4 Runtime]
+  P --> R[Shared Marivo 0.5.5 Runtime]
   P --> W[Per-Workspace binding]
   P --> H[marivo_help]
   P --> T[marivo_datasource_test]
@@ -83,7 +83,7 @@ flowchart LR
 
 ## Runtime 与 identity
 
-Compatibility manifest 声明 DSH peers 范围 `^0.1.5-alpha.1`，并精确固定 `marivo[duckdb,trino,clickhouse]==0.5.4`。
+Compatibility manifest 声明 DSH peers 范围 `^0.1.5-alpha.1`，并精确固定 `marivo[duckdb,trino,clickhouse]==0.5.5`。
 安装回滚、service owner、可等待卸载与范围验收见[第四阶段验收](dsh-wiring-stage-four-acceptance.md)。默认 Runtime 位于
 `$DSH_HOME/dsh-data-analysis/runtimes/marivo/`。默认先验证本机 Python 3.10+，再使用标准库 `venv`
 与环境内 `pip` 安装，不再依赖 uv 或下载 Python；安装包含 DuckDB extra，Runtime probe

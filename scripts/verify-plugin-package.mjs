@@ -367,8 +367,8 @@ try {
     if (JSON.parse(presentation.documentBytes.toString('utf8')).buildId !== 'package-verification') throw new Error('packed builder changed document identity')
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.5.4') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.4') throw new Error('packed Marivo package spec mismatch')
+    if (compatibility.MARIVO_VERSION !== '0.5.5') throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.5.5') throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v2') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['MARIVO_DATASOURCE_ACCESS_TOOL_NAME', 'createMarivoDatasourceAccessTool', 'registerMarivoDatasourceAccessTool']) {

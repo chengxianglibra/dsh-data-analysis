@@ -75,8 +75,8 @@
       "peerRange": "^0.1.5-alpha.1"
     },
     "marivo": {
-      "version": "0.5.4",
-      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.5.4"
+      "version": "0.5.5",
+      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.5.5"
     },
     "contracts": {
       "runtimeInstallation": "dsh-data-analysis-runtime/v3",

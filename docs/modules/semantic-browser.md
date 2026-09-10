@@ -26,7 +26,7 @@
 同一对对象的多个关系合并绘制，标签的 `+N` 表示还有其他关系，可通过悬停或图中关系列表查看。
 这是对象声明关系，不是某次查询的执行血缘；候选维度不代表任意查询组合已通过验证。
 
-覆盖 Marivo 0.5.4 的 13 种对象：业务域、数据源、实体、维度、度量、时间维度、指标、关系、事件、状态模型、
+覆盖 Marivo 0.5.5 的 13 种对象：业务域、数据源、实体、维度、度量、时间维度、指标、关系、事件、状态模型、
 周期日历、时间集合和工作日程。未填写的定义有明确提示，不猜测口径。数据源只展示引擎类型和通用对象信息；
 实体展示来源类型、表身份与版本属性。文件或远程来源地址、请求参数、连接配置、凭证值和原始源码不投影到页面。
 
@@ -87,7 +87,7 @@ DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run validate:semantic-browser:web
 ```
 
-可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.4 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
+可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.5 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
 指定截图及结果记录目录。浏览器工具默认查找可导入的 `playwright`，其 Chromium 必须已安装。
 
 该夹具复用生产 Tab 正文与模型，模拟 Workspace transport；不等同于当前已安装 DSH Profile 的
@@ -105,7 +105,7 @@ npm run validate:semantic-browser:web
 引用定义按精确 Ref 去重后平铺，公式中的重复项和顺序原样保留；引用对象最多展示 40 个，超限明确提示点击对象继续查看。
 不重复附加各引用对象的业务说明；其实际使用约束和声明的时间规则保留在对应对象下，支持点击跳转和返回。
 补充属性省略空值、已由公式展示的计算字段和关系页中的引用列表；时间规则区分声明、覆盖和有效规则。页面不把 `verified` 解释为业务审批或数据可用性。
-Marivo 0.5.4 的 `temporal.effective.status` 直接决定展示：`not_applicable` 且没有声明或覆盖时不显示时间折叠区；
+Marivo 0.5.5 的 `temporal.effective.status` 直接决定展示：`not_applicable` 且没有声明或覆盖时不显示时间折叠区；
 `component_defined` 显示“由计算公式及组成对象确定”，组成对象的规则保留在下方引用定义中；
 `resolved` 展示精确时间轴和 fold（包括 percentile 的 `q`）。插件不根据可加性或子对象规则推导统一 fold。
 累计节点 `node.over` 的默认轴 `context_required` 仍单独提示需要上下文，与有效折叠规则的状态无关。

@@ -233,7 +233,7 @@ try {
   await computation.getByText('使用默认时间轴，需观察上下文确定', { exact: true }).waitFor()
   await computation.getByText('由计算公式及组成对象确定').waitFor()
   checks.push(
-    '0.5.4 时间规则：普通加减无独立折叠、组合定义、继承分位数、末值覆盖；默认累计轴单独保留上下文提示',
+    '0.5.5 时间规则：普通加减无独立折叠、组合定义、继承分位数、末值覆盖；默认累计轴单独保留上下文提示',
   )
   await page.getByLabel('搜索语义对象').fill('metric:sales.cancellation_rate')
   await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()

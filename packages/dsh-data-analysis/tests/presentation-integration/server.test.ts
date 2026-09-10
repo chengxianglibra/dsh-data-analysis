@@ -207,7 +207,7 @@ test('production present accepts computed and source-only drafts, uses independe
     binding: {
       projectRoot: f.root,
       pythonExecutable: '/bound/python',
-      marivoVersion: '0.5.4',
+      marivoVersion: '0.5.5',
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',
@@ -374,7 +374,7 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
       binding: {
         projectRoot: f.root,
         pythonExecutable: '/bound/python',
-        marivoVersion: '0.5.4',
+        marivoVersion: '0.5.5',
         packagePath: '/bound/marivo',
         subprocessPolicyId: 'policy',
         fingerprint: 'fingerprint',

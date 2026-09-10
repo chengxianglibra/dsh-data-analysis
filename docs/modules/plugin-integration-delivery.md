@@ -15,7 +15,7 @@
 
 ## 生命周期
 
-1. `apply()` 确保精确 Marivo 0.5.4 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
+1. `apply()` 确保精确 Marivo 0.5.5 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
 2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与 prompt sections。
@@ -102,7 +102,7 @@ Web client 只保留：
 | --- | --- |
 | DSH peers 兼容范围 | `^0.1.5-alpha.1`，npm 默认预发布匹配规则 |
 | DSH 开发 distribution / 实际验收 | `0.1.5-alpha.1`，lockfile 保留实际解析版本 |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.4` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.5` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.1.0`，typed dataset schemaVersion 1 |
@@ -138,7 +138,7 @@ npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
 
-原 plugin real-model runner 验证 Help/凭据接缝，需要正式 Marivo 0.5.4 与真实模型。
+原 plugin real-model runner 验证 Help/凭据接缝，需要正式 Marivo 0.5.5 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch、Host Web 与下载文件验证交付。
 当前可安装包的注册结果、真实 Agent 自动路由及最终旅程状态见[S5 验收记录](../plan/marivo-analytics-presentation-s5-acceptance.md)。
 路径、runner 日志或静态 schema 不替代实际交互证据。
