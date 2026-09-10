@@ -30,27 +30,6 @@ export const CHART_TYPES = [
   'waterfall',
 ] as const satisfies readonly ChartType[]
 
-export const CHART_LABELS: Record<ChartType, string> = {
-  line: '折线图',
-  area: '面积图',
-  stackedArea: '堆叠面积图',
-  sparkline: '迷你趋势图',
-  bar: '柱状图',
-  horizontalBar: '横向条形图',
-  stackedBar: '堆叠柱状图',
-  stackedBar100: '百分比堆叠柱状图',
-  horizontalStackedBar: '横向堆叠条形图',
-  horizontalStackedBar100: '横向百分比堆叠条形图',
-  histogram: '直方图',
-  boxPlot: '箱线图',
-  scatter: '散点图',
-  heatmap: '热力图',
-  pie: '环形图',
-  leaderboard: '排行榜',
-  funnel: '漏斗图',
-  waterfall: '瀑布图',
-}
-
 const trendTypes: readonly ChartType[] = ['line', 'area', 'stackedArea', 'sparkline']
 const ratioTypes: readonly ChartType[] = ['stackedBar100', 'horizontalStackedBar100']
 const singleSeriesTypes: readonly ChartType[] = [

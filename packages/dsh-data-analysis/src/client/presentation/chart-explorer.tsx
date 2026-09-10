@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import {
-  CHART_LABELS,
   CHART_TYPES,
   type ChartOptions,
   type ChartType,
@@ -159,7 +158,7 @@ export function ChartExplorer({
           >
             {transitions.map(({ type, next }) => (
               <option key={type} value={type} disabled={!next}>
-                {CHART_LABELS[type]} ({type})
+                {t(`marivo.presentation.chart-type-${type}`)}
                 {next
                   ? ''
                   : t('marivo.presentation.value-try-a-prepared-view', {
