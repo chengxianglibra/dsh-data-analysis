@@ -31,7 +31,7 @@ import {
 } from './model.ts'
 import { SourceDialog } from './source-dialog.tsx'
 import type { OpenSemanticRef } from './source-facts.ts'
-import { blockSources, SourceSummary } from './sources.tsx'
+import { blockSources, SourceList, SourceSummary } from './sources.tsx'
 import { DatasetTable } from './table.tsx'
 
 function CellMenu({
@@ -180,7 +180,7 @@ function Block({
     return (
       <>
         <h2>数据源</h2>
-        <p className="pr-muted">{block.sourceIds.length} 个来源</p>
+        <SourceList document={document} block={block} />
       </>
     )
   const dataset = datasetById(document, block.datasetId)

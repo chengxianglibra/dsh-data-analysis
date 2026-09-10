@@ -31,6 +31,50 @@ function SavedTime({ value }: { value: string }) {
   )
 }
 
+/** Reading summary; technical identities and timestamps remain in the source dialog. */
+export function SourceList({
+  document,
+  block,
+}: {
+  document: PresentationDocument
+  block: PresentationBlock
+}) {
+  return (
+    <ul className="pr-source-reading-list" aria-label="数据来源列表">
+      {blockSources(document, block).map((source, index) => {
+        const { semanticGroups, issues, notices } = sourceOverviewFacts(source)
+        const label = source.status === 'available' ? source.label.trim() : ''
+        const name = label && !label.includes(source.ref.artifactRef) ? label : `来源 ${index + 1}`
+        return (
+          <li key={source.id} data-source-id={source.id}>
+            <strong>{name}</strong>
+            {semanticGroups.map((group) => (
+              <p className="pr-muted" key={group.kind}>
+                {semanticKindLabel(group.kind)}：{group.paths.join('、')}
+              </p>
+            ))}
+            {source.status === 'unavailable' && <p className="pr-notice">{source.reason}</p>}
+            {issues.map((issue) => (
+              <p className="pr-notice" key={JSON.stringify([issue.kind, issue.severity])}>
+                {issue.kind}
+                {issue.severity ? ` · ${issue.severity}` : ''}
+              </p>
+            ))}
+            {notices.map((notice) => (
+              <p className="pr-notice" key={notice}>
+                {notice}
+              </p>
+            ))}
+            {source.status === 'available' && !label && !semanticGroups.length && (
+              <p className="pr-muted">已保存的分析结果</p>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function SourceCard({
   source,
   number,
@@ -43,7 +87,12 @@ function SourceCard({
   const { createdAt, semanticGroups, issues, notices } = sourceOverviewFacts(source)
   return (
     <section className="pr-source-card" data-source-id={source.id}>
-      {number !== undefined && <h3>来源 {number}</h3>}
+      <h3>
+        {number !== undefined && `来源 ${number} · `}
+        {source.status === 'available' && source.label.trim()
+          ? source.label
+          : source.ref.artifactRef}
+      </h3>
       {source.status === 'unavailable' && <p className="pr-notice">{source.reason}</p>}
       <details className="pr-artifact-details">
         <summary>

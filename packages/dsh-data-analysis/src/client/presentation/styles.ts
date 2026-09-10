@@ -135,9 +135,13 @@ export const PRESENTATION_STYLES = `
 .pr-artifact-details summary { cursor:pointer; margin-bottom:12px }
 .pr-artifact-details summary span { color:var(--pr-accent); text-decoration:underline }
 .pr-source-list { display:flex; flex-direction:column; gap:24px }
+.pr-source-reading-list { margin:12px 0 0; padding-left:20px; list-style:disc }
+.pr-source-reading-list>li { padding:4px 0; margin:0 0 8px; overflow-wrap:anywhere }
+.pr-source-reading-list>li>strong { font-size:14px; font-weight:500 }
+.pr-reader .pr-source-reading-list p { margin:4px 0 0; font-size:13px }
 .pr-source-card { min-width:0 }
 .pr-source-card+.pr-source-card { border-top:1px solid var(--pr-border); padding-top:20px }
-.pr-source-card h3 { font-size:14px; margin:0 0 12px; font-weight:500 }
+.pr-source-card h3 { font-size:14px; margin:0 0 12px; font-weight:500; overflow-wrap:anywhere }
 .pr-source-semantic-group { margin-top:16px }
 .pr-source-semantic-list { display:flex; flex-wrap:wrap; gap:6px; list-style:none; padding:0; margin:4px 0 16px }
 .pr-source-semantic-list>li { border:1px solid var(--pr-border); border-radius:14px; padding:2px 8px; overflow-wrap:anywhere; max-width:100%; font-size:13px }

@@ -256,7 +256,7 @@ test('reader keeps authored cells and document intact while presenting concise c
     for (const source of document.sources) {
       assert.equal(
         html.split(`data-source-id="${source.id}"`).length - 1,
-        mode === 'static' ? 1 : 0,
+        mode === 'static' ? 2 : 1,
       )
     }
     assert.ok(html.indexOf('保留未知提示') < html.indexOf('data-block-id="first"'))

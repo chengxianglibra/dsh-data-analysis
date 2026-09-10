@@ -53,6 +53,7 @@ try {
     ],
   })
   detail.sourceIds = ['saved-source']
+  document.blocks.push({ id: 'source-list', kind: 'source', sourceIds: ['saved-source'] })
   detail.data.rows[0]![0] = 'UNSELECTED_BUSINESS_SENTINEL'
   detail.data.columns.push({ id: 'private', label: 'private', type: 'string', nullable: false })
   for (const row of detail.data.rows) row.push('UNBOUND_COLUMN_SENTINEL')
@@ -97,6 +98,18 @@ try {
   await page.goto(pathToFileURL(input).href)
   await page.locator('html[data-presentation-ready=true]').waitFor()
   const reader = page.locator('#reader [data-presentation-reader]')
+  const sourceList = reader.locator('[data-block-id="source-list"]')
+  assert.equal(await sourceList.getByText('保存的来源', { exact: true }).isVisible(), true)
+  assert.equal(
+    await sourceList.getByText('实体：business.saved', { exact: true }).isVisible(),
+    true,
+  )
+  assert.equal(await sourceList.getByRole('list', { name: '数据来源列表' }).count(), 1)
+  assert.doesNotMatch(
+    await sourceList.innerText(),
+    /报告生成时间|来源创建时间|Artifact|Session ID|个来源/,
+  )
+  await sourceList.screenshot({ path: path.join(output, 'source-list-desktop.png') })
   await choose('日期', '周一')
   await choose('集群', '甲集群')
   await reader
@@ -167,6 +180,13 @@ try {
   const exported = await offline.newPage()
   await exported.goto(pathToFileURL(file).href)
   const result = exported.locator('[data-export-view]')
+  const exportedSources = result.locator('[data-block-id="source-list"]')
+  assert.equal(await exportedSources.getByText('保存的来源', { exact: true }).isVisible(), true)
+  assert.equal(
+    await exportedSources.getByText('实体：business.saved', { exact: true }).isVisible(),
+    true,
+  )
+  assert.equal(await exportedSources.locator('[data-source-id="saved-source"]').count(), 1)
   assert.equal(
     await result.locator('[data-block-id="count"] [data-metric-value]').innerText(),
     '150',

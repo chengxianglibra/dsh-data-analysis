@@ -22,7 +22,7 @@ S3 将 [S2 展示数据投影](presentation-projection.md)返回的 `Presentatio
 | metric | 通过 dataset、column、rowIndex 唯一定位单元格，保留精确值、单位和 null；不默认取首行或聚合 |
 | chart | 18 类图形及 bar/line 变体只绘制已有数据；统计字段显式绑定，保留 null 与原始精确值；支持当前页面探索 |
 | table | 类型感知排序、分页、列顺序、精确数字和精简行数与截断提示 |
-| source | 通过 cell 菜单查看已有语义对象、来源创建时间及实际问题；unavailable 保留原因 |
+| source | 正文以紧凑列表显示来源名称、已有语义对象及实际问题；技术名称或名称缺失时显示来源序号，unavailable 保留原因；时间、Artifact 身份与相关查询保留在 cell 菜单详情中 |
 
 computed 来源表示作者声明，不能证明转换正确。int64/Decimal 的排序和表格显示不经浮点转换。
 单位只使用文档已有字段，不猜测百分比、缩放倍数或业务口径。普通多系列图按单位分图；堆叠图与 heatmap 拒绝混合单位；

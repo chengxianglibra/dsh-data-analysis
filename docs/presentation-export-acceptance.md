@@ -25,6 +25,14 @@
 
 ## 浏览器与文件检查
 
+2026-09-10 来源展示补充：source 区块正文以紧凑列表显示来源名称、语义对象与实际问题；
+时间与技术身份保留在菜单详情中。当前视图导出保留同一列表，每个来源只显示一份概要。
+`npm run validate:presentation-export` 已验证名称与语义对象无需打开菜单即可见、
+无脚本导出中仍可见、桌面及窄屏布局；使用合成 fixture，未重装或重启运行中的插件。
+紧凑列表验证：108 项 Reader 测试、`npm run typecheck`、`npm run build`、
+`npm run verify:plugin-package` 与本次展示文件的 Biome 检查均通过。
+全仓 `npm run check` 被并行凭据配置改动的格式检查阻塞；这些文件不属于本次展示修改。
+
 - 多字段选择共同作用于动态 KPI、图形和表格；固定正文、固定 KPI 及区域说明保留。
 - 图形类型切换、系列显隐、跨 dataset 的 `preparedViews` 与原始行 identity 在导出后保持一致。
 - 18 类图形在无脚本、断网环境下保留内联 SVG；空 slice 正确显示空结果。

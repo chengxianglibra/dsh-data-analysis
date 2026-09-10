@@ -151,7 +151,8 @@ export function exportCurrentView(
       }
     }
     // Only a compact, saved source overview; execution code and arbitrary raw source payloads stay out.
-    const sourceIds = block.kind === 'source' ? block.sourceIds : (dataset?.sourceIds ?? [])
+    // Source cells already contain the same compact list in their cloned body.
+    const sourceIds = block.kind === 'source' ? [] : (dataset?.sourceIds ?? [])
     if (sourceIds.length) {
       const details = owner.createElement('details')
       details.className = 'pr-source-summary'
@@ -161,6 +162,13 @@ export function exportCurrentView(
         const facts = sourceOverviewFacts(source)
         const card = owner.createElement('section')
         card.dataset.sourceId = id
+        appendText(
+          card,
+          'h3',
+          source.status === 'available' && source.label.trim()
+            ? source.label
+            : source.ref.artifactRef,
+        )
         if (source.status === 'unavailable') appendText(card, 'p', source.reason, 'pr-notice')
         if (facts.createdAt)
           appendText(
