@@ -214,12 +214,13 @@ portable 从内嵌 JSON 加载，包含自己的 React/Recharts，不依赖 DSH 
 builder 不分配 Workspace/report/build identity，不登记文件、不创建目录、不生成 receipt；[展示交付](presentation-delivery.md)负责完整目录提交。
 文档及 HTML 受 [展示字节预算](presentation-projection.md#预算与错误)约束，超限明确失败。
 
-HTML 同时保存完整文档、共享 reader 生成的静态正文和交互脚本。静态模式用原生 `details` 按需展开来源、保留必要数据行，
-并用精确表格表达图形；代码也可通过原生折叠区展开和选择原文。仅在交互挂载成功后隐藏 fallback。打印显示精简来源概要，隐藏操作控件及长代码。
-无脚本、脚本失败和打印均能读取正文、指标、必要表格及来源。完整报告的静态图形仍为精确数据表；当前视图导出单独保留浏览器已绘制的 SVG。
+HTML 同时保存完整文档、共享 reader 生成的静态正文和交互脚本。静态模式保留必要数据行，
+并用精确表格表达图形；不再在报告末尾自动追加整份报告的“数据来源”折叠区，显式 `source` cell 仍按草稿顺序展示。
+仅在交互挂载成功后隐藏 fallback。无脚本、脚本失败和打印均能读取正文、指标、必要表格及显式来源 cell；打印隐藏操作控件。
+交互模式仍通过各 cell 的数据源入口读取保存的来源与代码。完整报告的静态图形仍为精确数据表；当前视图导出单独保留浏览器已绘制的 SVG 及各 cell 的来源概要。
 文本和内嵌 JSON 转义，CSP 禁止网络资源；文件不包含外部样式、字体、图片、模块加载或凭据依赖。
 Python formatter 的 WASM 字节随 reader 内嵌，使用 `wasm-unsafe-eval` 允许本地格式化，不允许 JavaScript `eval`；
-格式化与高亮均不执行来源代码。无脚本 HTML 在构建时生成相同的格式化代码块。
+格式化与高亮均不执行来源代码。
 
 [client 构建](../../packages/dsh-data-analysis/scripts/build-client.mjs)将 Recharts 等非 Host 依赖打包，
 仅将 DSH 和 React/ReactDOM 外部化。输入白名单拒绝 Node、Runtime、projection 和 Host 凭据服务模块，且检查 Host bundle

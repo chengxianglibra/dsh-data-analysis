@@ -68,7 +68,7 @@ async function fixture(name: string) {
   )
 }
 
-test('static reader keeps exact data, null metric units, sources omitted from blocks, diagnostics and every saved row', async () => {
+test('static reader keeps exact data and saved rows without appending report sources', async () => {
   const document = await fixture('computed')
   document.blocks = [
     {
@@ -88,18 +88,16 @@ test('static reader keeps exact data, null metric units, sources omitted from bl
   assert.match(html, /0\.1000/)
   assert.match(html, /金额 \(CNY\)/)
   assert.match(html, /data-cell-null="true"/)
-  assert.match(html, /The declared Artifact is not available/)
+  assert.doesNotMatch(html, /The declared Artifact is not available|pr-source-summary/)
   assert.match(html, /显示 3 \/ 5 行（已截断）/)
   assert.doesNotMatch(html, /<button|<select|<svg/)
-  assert.match(html, /<details/)
 })
 
-test('source-only reader has no synthetic dataset and keeps unreferenced saved sources readable', async () => {
+test('source-only reader preserves explicit source cells without appending a summary', async () => {
   const document = await fixture('source-only')
-  document.blocks = [{ id: 'text', kind: 'markdown', text: '只保留来源。' }]
   const html = renderDocument(document)
   assert.match(html, /The declared Artifact is not available/)
-  assert.doesNotMatch(html, /<table/)
+  assert.doesNotMatch(html, /<table|pr-source-summary/)
 })
 
 test('explorer exposes all types with unavailable prepared statistics disabled and native keyboard controls', async () => {
@@ -254,10 +252,7 @@ test('reader keeps authored cells and document intact while presenting concise c
     )
     assert.match(html, /原始正文：未经任何解释性改写。/)
     for (const source of document.sources) {
-      assert.equal(
-        html.split(`data-source-id="${source.id}"`).length - 1,
-        mode === 'static' ? 2 : 1,
-      )
+      assert.equal(html.split(`data-source-id="${source.id}"`).length - 1, 1)
     }
     assert.ok(html.indexOf('保留未知提示') < html.indexOf('data-block-id="first"'))
     assert.doesNotMatch(

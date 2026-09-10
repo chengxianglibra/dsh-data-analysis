@@ -31,7 +31,7 @@ import {
 } from './model.ts'
 import { SourceDialog } from './source-dialog.tsx'
 import type { OpenSemanticRef } from './source-facts.ts'
-import { blockSources, SourceList, SourceSummary } from './sources.tsx'
+import { blockSources, SourceList } from './sources.tsx'
 import { DatasetTable } from './table.tsx'
 
 function CellMenu({
@@ -629,7 +629,6 @@ function ReaderContents({
           )
         })()}
       </div>
-      {mode === 'static' && <SourceSummary document={document} />}
       {sourceCell && sourceBlock && (
         <SourceDialog
           key={sourceCell.block.id}
