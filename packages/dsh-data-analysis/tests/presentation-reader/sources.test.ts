@@ -569,8 +569,11 @@ test('field details retain IDs, labels, types and units and avoid repeated label
     translator('zh-CN')(html),
     /<code>revenue<\/code><\/td><td>收入（CNY）<\/td><td>decimal<\/td><td>CNY<\/td>/,
   )
-  assert.match(html, /<summary>Artifact <span>art_saved<\/span><\/summary>/)
-  assert.match(html, /Session ID<\/dt><dd>session_saved/)
+  assert.doesNotMatch(
+    html,
+    /art_saved|session_saved|pr-artifact-details|<details|Session ID|Finding ID/,
+  )
+  assert.match(translator('zh-CN')(html), /<h3>来源 1<\/h3>/)
   assert.doesNotMatch(
     translator('zh-CN')(html),
     /收入（CNY） \(CNY\)|<caption>|pr-source-dialog-context/,

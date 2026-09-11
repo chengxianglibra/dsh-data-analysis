@@ -33,7 +33,7 @@ function SavedTime({ value }: { value: string }) {
   )
 }
 
-/** Reading summary; technical identities and timestamps remain in the source dialog. */
+/** Reading summary; saved timestamps remain in the source dialog. */
 export function SourceList({
   document,
   block,
@@ -88,51 +88,21 @@ function SourceCard({
   onOpenSemanticRef,
 }: {
   source: SourceSnapshot
-  number?: number
+  number: number
   onOpenSemanticRef?: OpenSemanticRef
 }) {
   const t = useCopy()
 
   const { createdAt, semanticGroups, issues, notices } = sourceOverviewFacts(source)
+  const label = source.status === 'available' ? source.label.trim() : ''
   return (
     <section className="pr-source-card" data-source-id={source.id}>
       <h3>
-        {number !== undefined && t('marivo.presentation.source-value-485', { p0: number })}
-        {source.status === 'available' && source.label.trim()
-          ? source.label
-          : source.ref.artifactRef}
+        {label && !label.includes(source.ref.artifactRef)
+          ? label
+          : t('marivo.presentation.source-value', { p0: number })}
       </h3>
       {source.status === 'unavailable' && <p className="pr-notice">{t(source.reason)}</p>}
-      <details className="pr-artifact-details">
-        <summary>
-          Artifact <span>{source.ref.artifactRef}</span>
-        </summary>
-        <dl className="pr-source-overview-grid">
-          <div>
-            <dt>Session ID</dt>
-            <dd>{source.ref.sessionId}</dd>
-          </div>
-          {source.ref.findingId && (
-            <div>
-              <dt>Finding ID</dt>
-              <dd>{source.ref.findingId}</dd>
-            </div>
-          )}
-          {source.status === 'available' &&
-            source.facts
-              .filter((fact) => ['Artifact kind', '完整行数'].includes(fact.label))
-              .map((fact) => (
-                <div key={t(fact.label)}>
-                  <dt>
-                    {fact.label === 'Artifact kind'
-                      ? t('marivo.presentation.type')
-                      : t('marivo.presentation.rows-488')}
-                  </dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-        </dl>
-      </details>
       {createdAt && (
         <dl className="pr-source-overview-grid">
           <div>
@@ -285,7 +255,7 @@ export function SourceOverview({
             key={source.id}
             source={source}
             onOpenSemanticRef={onOpenSemanticRef}
-            number={sources.length > 1 ? index + 1 : undefined}
+            number={index + 1}
           />
         ))}
       </div>
