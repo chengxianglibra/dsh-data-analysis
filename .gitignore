@@ -1,4 +1,5 @@
 .marivo/
+.codegraph/
 # Local internal distribution configuration, credentials, and build outputs.
 /.internal/
 .agents/

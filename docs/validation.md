@@ -36,9 +36,70 @@ Node.js 22.19.0 下 `npm run check` 通过（648 项通过、4 项默认跳过�
 本次仅更新依赖、兼容声明和验收接缝：rc.1 原生 deliverables 的 `produced/presented` 返回结构与新增原生
 `present` 工具视图在测试中按 Host 契约读取；补齐 client-store 验证需要的 Zustand／Immer 开发依赖及
 生命周期 fixture 的 `typert` 前提，并更新当前界面定位和错误 key 断言。生产插件无需更改 slot 或执行协议。
-S2 文件交付与 S3 guide 入口仍待实施；当前用户 profile、运行服务、模型默认值和 Marivo 安装未改动，未发布。
+该次 S1 不包含 S2 文件交付与 S3 guide 入口；当前用户 profile、运行服务、模型默认值和 Marivo 安装未改动，未发布。
 
 同日按用户要求将对外 DSH peer／compatibility 范围扩大为 `>=0.1.5-rc.1`，允许更高的稳定版本（包括 `0.2.x`、`1.x`），并保持 npm 默认预发布匹配规则。开发与真实 Web 验收版本仍固定为 rc.1。上面的候选和包摘要保留为初次 Web 验收证据，不作为扩大范围后的最终包指纹。 范围调整后重新执行 `npm run check`（649 项通过、4 项跳过）、`npm run build` 和 `npm run verify:plugin-package`，全部通过；兼容性测试明确接受 `0.2.0`、`1.0.0` 和 `2.0.0`，这些版本未作真实 Web 验收。
+
+## 普通文件原生交付验收
+
+`validate:file-analysis:real` 默认保留报告流程；设置
+`DSH_DATA_ANALYSIS_VALIDATION_SUITE=files` 单独运行 S2 普通文件流程。两者均使用打包插件和隔离 Web。
+普通文件可用 `DSH_DATA_ANALYSIS_VALIDATION_FILE_CASES=delivery|failures|all` 选择验收组（默认 `all`）。
+`delivery` 验证自主生成、预览与恢复；`failures` 验证能力缺失及受控故障，并预置用于补交付的 CSV，
+该预置文件不算模型生成证据。
+
+```sh
+DSH_DATA_ANALYSIS_PYTHON=/absolute/path/to/verified/python \
+DSH_DATA_ANALYSIS_VALIDATION_SUITE=files \
+DSH_DATA_ANALYSIS_VALIDATION_FORMATS=csv \
+npm run validate:file-analysis:real
+```
+
+模型使用 `DSH_DATA_ANALYSIS_VALIDATION_MODEL`（默认 `deepseek-v4-pro`）和
+`DSH_DATA_ANALYSIS_VALIDATION_EFFORT`（默认 `high`）；凭据读取现有 Harness 引用，不记录 secret。
+验证脚本仅管理本次临时目录下的 profile、preset、Workspace 和 Host。
+
+普通文件流程覆盖同名附件 CSV、PNG 原生预览、文字回答、Native／PTC 持久事件与隔离 Host 重启恢复，
+并分别记录缺少 `present` 的自定义 preset、生成失败、声明失败、PTC 外层失败及源文件删除。
+自然文件请求与指定调用方式的受控故障 prompt 分开记录；`delivery-progress.json` 保存逐项完成情况，
+`result.json`、调用记录与截图保存实际证据。人工审阅项必须核对后才能作为完整通过记录。
+
+2026-09-11 S2 验收完成。Node.js 22.19.0、Harness 0.1.5-rc.1、已有 Marivo 0.5.5，
+真实模型固定为 `deepseek-official/deepseek-v4-pro`、`high`。同一打包产物 SHA-256：
+`e7b26573da0d164af702fcecce1ea1ccdbc37b494f7412343aebf91517ad91ed`。
+
+- `delivery`：模型自主加载文件 Skill，通过绑定 Runtime 合并两个同名附件，输出 5 行／总额 371 的 CSV；
+  PTC 生成 PNG 并原生声明；文字回答无新交付；Native／PTC 的 Session、Turn、调用和持久事件对应，重启恢复无重复投递。
+- `failures`：缺少 `present` 时生成正确 JSON、提供准确路径并明确原生交付不可用；生成非零退出、错误路径均无成功声明；
+  正确路径补声明不重跑分析；PTC 内已完成声明不因外层失败撤销；删除源文件后保留卡片并显示 Host 文件不存在错误。
+  生成失败按 Python 返回内容的 `exitCode`／`stderr` 验证，不误用 Tool 协议的 `isError`。
+- 报告回归：首次文件、同名替换、重启后重读首个文件分别得到 3／71、2／300、3／71 的正确报告与实际 `codeRef`，
+  三次快照均没有把报告内部文件声明为普通附件。
+- 已人工核对 CSV／PNG 桌面和 390 px 窄屏预览、缺失能力回复与删除源文件错误截图。
+  这些是固定输入的一次通过记录，不代表所有模型运行均会自动遵循 Skill。
+
+`npm run check` 通过（649 项通过、4 项默认跳过），build、包验证、最终验收脚本类型／格式检查通过；
+CSV／PNG 示例已用实际 Runtime 执行，PNG 签名和各 chunk CRC 校验通过。Skill 资源、相对链接和差异空白检查通过。
+证据保存在本地 `artifacts/dsh-rc1-s2/acceptance.json`、`delivery`／`failures` 的 `candidate.json`、各组 `result.json`、调用记录、截图与 tarball。
+各组保留自身脚本指纹；成功组完成后仅修正失败断言以读取 Python 非零退出，生产 tarball 保持完全相同。最终打包复用验收过的 helper wheel；验证构建重生成 wheel 的 ZIP 容器摘要曾变化，逐成员比较确认内容完全相同，记录见 `wheel-reproducibility.json`。
+
+早期候选中模型绕过绑定 Runtime 或遗漏交付能力说明的尝试未计为通过，已据此强化 Skill 并重新验收。
+本次仅覆盖 S2；S3、发布及用户现有环境的重装／重启不在本次交付内。
+
+### S2 验收脚本 review 修正
+
+CSV 断言现在通过 Harness `fileAddressFor` 定位所属 Session／文件的原生预览，再核对完整内容，
+桌面与窄屏均重新检查。PTC 外层失败通过声明的 `callId` 找到 dispatch 的 `rootCallId`，
+核对同一 `run_code` 的失败结果、Turn／Step 及事件顺序。候选结束检查重新读取 HEAD、变更路径集合、
+内容摘要和文件模式，支持新增路径、删除及带换行／中文的文件名。
+
+`file-delivery-guards.test.ts` 随 `test:plugin-integration-delivery` 运行，覆盖聊天代码块冒充预览、
+错误 Session／文件／内容、窄屏隐藏、无关 PTC 失败和候选漂移。已有真实 PTC 日志已通过新断言回放。
+本次修正未重跑远端模型；原临时 Host 已清理，CSV 本轮使用浏览器正反例验证。
+上述真实模型记录与包摘要仍属于原候选，不作为新脚本的完整真实环境复验记录。
+
+修正后使用 Node.js 22.19.0 完成 `npm run check`（652 项通过、4 项默认跳过）、
+`npm run build`、`npm run verify:plugin-package` 及 `git diff --check`，均通过。
 
 ## 按模块验证
 

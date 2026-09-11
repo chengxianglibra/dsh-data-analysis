@@ -17,6 +17,7 @@ export async function startFileAnalysisWeb(
   workspaces: string[],
   python: string,
   credential: string,
+  options: { missingPresentPreset?: boolean } = {},
 ) {
   const home = path.join(outputRoot, 'dsh-home')
   const modules = path.join(home, 'profiles/web/node_modules')
@@ -27,6 +28,28 @@ export async function startFileAnalysisWeb(
   const redact = (value: string) => value.replaceAll(credential, '[REDACTED]')
   await mkdir(modules, { recursive: true })
   await mkdir(plugin)
+  if (options.missingPresentPreset) {
+    // A disposable user preset proves absence without changing the user's profile.
+    const missingPreset = path.join(home, '.agent-presets/s2-no-present')
+    await mkdir(missingPreset, { recursive: true })
+    const standard = await readFile(
+      path.join(
+        repositoryRoot,
+        'node_modules/@deepseek-ai/dsh-agent-presets/presets/standard/agent.cordis.yml',
+      ),
+      'utf8',
+    )
+    const withoutPresent = standard.replace(
+      /- id: present\n {2}name: '@deepseek-ai\/dsh-tool-present'\n?/,
+      '',
+    )
+    assert.notEqual(withoutPresent, standard)
+    await writeFile(path.join(missingPreset, 'agent.cordis.yml'), withoutPresent)
+    await writeFile(
+      path.join(missingPreset, 'preset.yml'),
+      'name: S2 no present\ndescription: Isolated missing capability acceptance\n',
+    )
+  }
   for (const entry of await readdir(path.join(repositoryRoot, 'node_modules'))) {
     if (['.bin', '.package-lock.json', '@chengxianglibra'].includes(entry)) continue
     await symlink(path.join(repositoryRoot, 'node_modules', entry), path.join(modules, entry))
@@ -100,7 +123,7 @@ export async function apply(ctx){
    if(agent?.status==='idle')await ctx.sessions.flush(agent.session);
    const inspection=await ctx.sessionController.inspect(id);
    const files=inspection.events.flatMap(event=>event.type==='user/message'?event.data.content.filter(block=>block.type==='file').map(block=>({ref:block.attachment,path:ctx.attachments.fileHostPath(block.attachment)})):[]);
-   return Response.json({ok:true,value:{status:agent?.status??'cold',inspection,files}});
+   return Response.json({ok:true,value:{status:agent?.status??'cold',header:agent?.session.header??inspection.header,tools:agent?agent.ctx.tools.schemas(agent).map(tool=>tool.name):[],inspection,files}});
  }});
  ctx.on('dispose',dispose);
  await writeFile(${JSON.stringify(readyPath)},JSON.stringify({workspaceIds,url:ctx.connection.authenticatedUrl('http://127.0.0.1:'+ctx.webServer.port)}));
@@ -119,10 +142,10 @@ export async function apply(ctx){
       resolveDir: repositoryRoot,
       contents: `
 import * as production from '@chengxianglibra/dsh-data-analysis/client';
-export const inject=[...production.inject,'remote.session'];
+export const inject=[...production.inject,'remote.session','sessions'];
 export function apply(ctx){
  production.apply(ctx);
- window.__fileAnalysis={session:(method,value)=>ctx.get('remote.session')[method](value),rpc:async(endpoint,payload)=>{const response=await fetch('/api/file-analysis-validation/'+endpoint+'?'+new URLSearchParams(payload));const text=await response.text();if(!response.ok)throw new Error('snapshot HTTP '+response.status+': '+text);return JSON.parse(text)}};
+ window.__fileAnalysis={hasSession:id=>ctx.sessions.list.getSnapshot().ids.includes(id),select:id=>ctx.sessions.open(id),session:(method,value)=>ctx.get('remote.session')[method](value),rpc:async(endpoint,payload)=>{const response=await fetch('/api/file-analysis-validation/'+endpoint+'?'+new URLSearchParams(payload));const text=await response.text();if(!response.ok)throw new Error('snapshot HTTP '+response.status+': '+text);return JSON.parse(text)}};
 }
 `,
     },

@@ -54,7 +54,9 @@ async function modelCredential() {
   return { value, source: 'read-only-harness-reference' }
 }
 
-interface Snapshot {
+export interface Snapshot {
+  header: { cwd: string; agentPreset: string }
+  tools: string[]
   status: string
   inspection: { events: SessionEvent[] }
   files: { ref: { attachmentId: string; name: string }; path: string }[]
@@ -66,7 +68,7 @@ interface BrowserProbe {
   ): Promise<{ ok: boolean; value?: unknown; error?: unknown }>
   rpc(endpoint: string, value: unknown): Promise<{ ok: boolean; value?: unknown; error?: unknown }>
 }
-async function call(page: Page, kind: 'session' | 'rpc', method: string, value: unknown) {
+export async function call(page: Page, kind: 'session' | 'rpc', method: string, value: unknown) {
   const result = await page.evaluate(
     async ({ kind, method, value }) => {
       const probe = (window as unknown as { __fileAnalysis: BrowserProbe }).__fileAnalysis
@@ -77,13 +79,13 @@ async function call(page: Page, kind: 'session' | 'rpc', method: string, value: 
   assert.equal(result.ok, true, JSON.stringify(result.error))
   return result.value
 }
-async function open(page: Page, url: string) {
+export async function open(page: Page, url: string) {
   await page.goto(url)
   await page.waitForFunction(() =>
     Boolean((window as unknown as { __fileAnalysis?: unknown }).__fileAnalysis),
   )
 }
-function calls(events: SessionEvent[]) {
+export function calls(events: SessionEvent[]) {
   return events.flatMap((event) => {
     if (event.type === 'tool/call')
       return [
@@ -120,17 +122,19 @@ function deliveries(events: SessionEvent[], sessionId: string) {
     return [parsePresentationReceipt(delivery.receipt)]
   })
 }
-async function prompt(
+export async function prompt(
   page: Page,
   sessionId: string,
   label: string,
   text: string,
-  file?: { source: string; name: string },
+  file?: { source: string; name: string } | { source: string; name: string }[],
 ) {
   const before = (await call(page, 'rpc', 'snapshot', { sessionId })) as Snapshot
   const afterSeq = before.inspection.events.at(-1)?.seq ?? -1
   let uploaded: { receiptId: string; file: { attachmentId: string; name: string } } | undefined
-  if (file) {
+  const uploads = []
+  for (const item of file ? (Array.isArray(file) ? file : [file]) : []) {
+    const file = item
     const bytes = await readFile(file.source)
     const response = await page.request.post(
       `${new URL(page.url()).origin}/api/session/uploadFileBinary?${new URLSearchParams({ sessionId, name: file.name })}`,
@@ -143,6 +147,7 @@ async function prompt(
     const result = await response.json()
     assert.equal(result.ok, true, JSON.stringify(result))
     uploaded = result.value
+    uploads.push(result.value as { receiptId: string })
   }
   const requestId = randomUUID()
   await call(page, 'session', 'prompt', {
@@ -151,7 +156,7 @@ async function prompt(
     mode: 'queue',
     content: [
       { type: 'text', text },
-      ...(uploaded ? [{ type: 'file', receiptId: uploaded.receiptId }] : []),
+      ...uploads.map((upload) => ({ type: 'file', receiptId: upload.receiptId })),
     ],
   })
   const deadline = Date.now() + deadlineMs
@@ -324,6 +329,8 @@ try {
   )
   assert.equal(generated.status, 0, generated.stderr)
   await save('fixtures.json', JSON.parse(generated.stdout))
+  const suite = process.env.DSH_DATA_ANALYSIS_VALIDATION_SUITE ?? 'reports'
+  assert.ok(['reports', 'files'].includes(suite), 'Unknown file analysis suite')
   const formats = process.env.DSH_DATA_ANALYSIS_VALIDATION_FORMATS?.split(',') ?? [
     'csv',
     'json',
@@ -339,91 +346,113 @@ try {
   )
   const workspaces = formats.map((format) => path.join(outputRoot, `workspace-${format}`))
   await Promise.all(workspaces.map((root) => mkdir(root)))
-  host = await startFileAnalysisWeb(outputRoot, workspaces, python, secret)
+  host = await startFileAnalysisWeb(outputRoot, workspaces, python, secret, {
+    missingPresentPreset: suite === 'files',
+  })
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   let page = await browser.newPage()
   await open(page, host.url)
-  const results = []
-  let csvSession = ''
-  let csvAttachment = ''
-  let csvPath = ''
-  const task =
-    '请分析刚上传的文件，生成可在右侧报告阅读器打开的简短报告：用一行汇总表展示数据记录数和 amount 总和，并说明文件名、读取范围和采用的解析方式。保留可查看的执行代码。'
-  for (const [index, format] of formats.entries()) {
-    const created = (await call(page, 'session', 'create', {
-      workspaceId: host.workspaceIds[index],
-    })) as { sessionId: string }
-    await call(page, 'session', 'selectModel', {
-      sessionId: created.sessionId,
-      provider: 'deepseek-official',
+  if (suite === 'files') {
+    const { runFileDelivery } = await import('./file-analysis-real/delivery.ts')
+    await runFileDelivery({
+      page,
+      host,
+      outputRoot,
+      fixtureRoot,
+      workspaces,
       model,
-      reasoningEffort: effort,
+      effort,
+      python,
+      call,
+      prompt,
+      calls,
+      open,
+      save,
     })
-    const outcome = await prompt(page, created.sessionId, format, task, {
-      source: path.join(fixtureRoot, `sales.${format}`),
-      name: `sales.${format}`,
-    })
-    assert.ok(
-      calls(outcome.events).some(
-        (call) => call.name === 'skill' && call.args.name === 'dsh-data-analysis-files',
-      ),
-      `${format}: model did not naturally select the file Skill`,
-    )
-    const targetPath = outcome.files.find(
-      (file) => file.ref.attachmentId === outcome.uploaded!.file.attachmentId,
-    )!.path
-    results.push(await verify(outcome.events, created.sessionId, 3, 71, format, targetPath))
-    if (format === 'csv') {
-      csvSession = created.sessionId
-      csvAttachment = outcome.uploaded!.file.attachmentId
-      csvPath = targetPath
+  } else {
+    const results = []
+    let csvSession = ''
+    let csvAttachment = ''
+    let csvPath = ''
+    const task =
+      '请分析刚上传的文件，生成可在右侧报告阅读器打开的简短报告：用一行汇总表展示数据记录数和 amount 总和，并说明文件名、读取范围和采用的解析方式。保留可查看的执行代码。'
+    for (const [index, format] of formats.entries()) {
+      const created = (await call(page, 'session', 'create', {
+        workspaceId: host.workspaceIds[index],
+      })) as { sessionId: string }
+      await call(page, 'session', 'selectModel', {
+        sessionId: created.sessionId,
+        provider: 'deepseek-official',
+        model,
+        reasoningEffort: effort,
+      })
+      const outcome = await prompt(page, created.sessionId, format, task, {
+        source: path.join(fixtureRoot, `sales.${format}`),
+        name: `sales.${format}`,
+      })
+      assert.ok(
+        calls(outcome.events).some(
+          (call) => call.name === 'skill' && call.args.name === 'dsh-data-analysis-files',
+        ),
+        `${format}: model did not naturally select the file Skill`,
+      )
+      const targetPath = outcome.files.find(
+        (file) => file.ref.attachmentId === outcome.uploaded!.file.attachmentId,
+      )!.path
+      results.push(await verify(outcome.events, created.sessionId, 3, 71, format, targetPath))
+      if (format === 'csv') {
+        csvSession = created.sessionId
+        csvAttachment = outcome.uploaded!.file.attachmentId
+        csvPath = targetPath
+      }
+      await assert.rejects(() => stat(path.join(workspaces[index]!, 'models')), { code: 'ENOENT' })
     }
-    await assert.rejects(() => stat(path.join(workspaces[index]!, 'models')), { code: 'ENOENT' })
-  }
-  const replaced = await prompt(page, csvSession, 'same-name', task, {
-    source: path.join(fixtureRoot, 'replacement.csv'),
-    name: 'sales.csv',
-  })
-  assert.notEqual(replaced.uploaded!.file.attachmentId, csvAttachment)
-  results.push(
-    await verify(
-      replaced.events,
+    const replaced = await prompt(page, csvSession, 'same-name', task, {
+      source: path.join(fixtureRoot, 'replacement.csv'),
+      name: 'sales.csv',
+    })
+    assert.notEqual(replaced.uploaded!.file.attachmentId, csvAttachment)
+    results.push(
+      await verify(
+        replaced.events,
+        csvSession,
+        2,
+        300,
+        'same-name',
+        replaced.files.find(
+          (file) => file.ref.attachmentId === replaced.uploaded!.file.attachmentId,
+        )!.path,
+      ),
+    )
+    await page.close()
+    const restarted = await host.restart()
+    page = await browser.newPage()
+    await open(page, restarted.url)
+    const recovered = await prompt(
+      page,
       csvSession,
-      2,
-      300,
-      'same-name',
-      replaced.files.find((file) => file.ref.attachmentId === replaced.uploaded!.file.attachmentId)!
-        .path,
-    ),
-  )
-  await page.close()
-  const restarted = await host.restart()
-  page = await browser.newPage()
-  await open(page, restarted.url)
-  const recovered = await prompt(
-    page,
-    csvSession,
-    'restored-first-file',
-    '请重新读取本会话第一次上传的 sales.csv（不是后来上传的同名文件），再次生成可在右侧报告阅读器打开的简短报告，用一行表格列出记录数与 amount 总和，并保留执行代码。',
-  )
-  results.push(await verify(recovered.events, csvSession, 3, 71, 'restored-first-file', csvPath))
-  await page.screenshot({ path: path.join(outputRoot, 'web.png'), fullPage: true })
-  await save('result.json', {
-    status: 'passed',
-    formats,
-    model,
-    effort,
-    credentialSource: credential.source,
-    python,
-    results,
-    boundaries: [
-      'actual production Web and native HTTP upload',
-      'real model selected Skills from an ordinary file-analysis request',
-      'only the isolated validation Web was restarted',
-      'engine Tool probes are validated separately',
-    ],
-  })
-  console.log(JSON.stringify({ status: 'passed', outputRoot, results }))
+      'restored-first-file',
+      '请重新读取本会话第一次上传的 sales.csv（不是后来上传的同名文件），再次生成可在右侧报告阅读器打开的简短报告，用一行表格列出记录数与 amount 总和，并保留执行代码。',
+    )
+    results.push(await verify(recovered.events, csvSession, 3, 71, 'restored-first-file', csvPath))
+    await page.screenshot({ path: path.join(outputRoot, 'web.png'), fullPage: true })
+    await save('result.json', {
+      status: 'passed',
+      formats,
+      model,
+      effort,
+      credentialSource: credential.source,
+      python,
+      results,
+      boundaries: [
+        'actual production Web and native HTTP upload',
+        'real model selected Skills from an ordinary file-analysis request',
+        'only the isolated validation Web was restarted',
+        'engine Tool probes are validated separately',
+      ],
+    })
+    console.log(JSON.stringify({ status: 'passed', outputRoot, results }))
+  }
 } catch (error) {
   const message = redact(error instanceof Error ? error.message : String(error))
   await save('result.json', {
