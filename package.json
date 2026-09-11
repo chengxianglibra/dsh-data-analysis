@@ -70,7 +70,8 @@
     "validate:locale": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-locale.ts",
     "test:python-tool": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/python-tool/*.test.ts",
     "validate:python-tool:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-tool-web.ts",
-    "validate:html-export": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-html-export.ts"
+    "validate:html-export": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-html-export.ts",
+    "validate:python-settings:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-settings-web.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

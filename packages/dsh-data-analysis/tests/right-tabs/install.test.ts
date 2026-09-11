@@ -62,6 +62,7 @@ test('default client is a valid Cordis effect and registers native resources wit
       children: {
         'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
         'tool.call.toolview': { kind: 'keyed', scope: 'session' },
+        'settings.plugin.item': { kind: 'keyed', scope: 'root' },
       },
     },
     () => null,
@@ -74,6 +75,10 @@ test('default client is a valid Cordis effect and registers native resources wit
     },
   })
   assert.equal(result, undefined, 'Cordis rejects arbitrary object effect return values')
+  assert.deepEqual(
+    host.slots.entries('settings.plugin.item').map((entry) => entry.options.key),
+    ['dsh-data-analysis'],
+  )
   assert.deepEqual(
     host.slots.entries('tool.call.toolview').map((entry) => entry.options.key),
     [...nativeToolViews, 'marivo_python'],

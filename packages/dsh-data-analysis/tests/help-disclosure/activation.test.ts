@@ -1264,7 +1264,6 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   const agent = await createAgent(ctx, 'plugin-adapter')
   const dispose = installMarivoPlugin(ctx, fixture.environment, {
     pythonTimeoutMs: 234_000,
-    pythonMaxTimeoutMs: 456_000,
     credentials: {
       resolve: async () => undefined,
       describe: async () => ({ configured: false, writable: true }),
@@ -1291,7 +1290,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   ])
   assert.deepEqual(requestToolNames(adapter.requests[1]), ['ordinary', 'skill'])
   const python = adapter.requests[0]?.tools?.find((tool) => tool.name === 'marivo_python')
-  assert.match(JSON.stringify(python), /Defaults to 234000; capped at 456000/)
+  assert.match(JSON.stringify(python), /current plugin pythonTimeoutMs setting/)
 })
 
 test('plugin lifecycle never mutates the Host persistence environment', async (t) => {

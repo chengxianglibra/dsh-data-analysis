@@ -6,6 +6,7 @@ import { createMarivoAgentInstallation } from './plugin-agents.ts'
 import { registerPublishingCredentials } from './report-publishing/adapters.ts'
 import { type ReportPublishingConfig, resolvePublishingConfig } from './report-publishing/config.ts'
 import { ReportPublishingService } from './report-publishing/service.ts'
+import { installPythonSettings } from './settings.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 export { installMarivoPlugin, type MarivoPluginEnvironmentResolver } from './plugin-agents.ts'
@@ -26,7 +27,6 @@ import z from '@deepseek-ai/schemastery'
 import { MarivoDatasourceBridge } from './datasource/bridge.ts'
 import type { DatasourceDefaults } from './datasource/defaults.ts'
 import {
-  DEFAULT_PYTHON_MAX_TIMEOUT_MS,
   DEFAULT_PYTHON_TIMEOUT_MS,
   type MarivoPythonOptions,
   resolvePythonOptions,
@@ -98,7 +98,6 @@ export const Config: z<Config> = z.object({
   datasourceDefaults: z.any(),
   reportPublishing: z.any(),
   pythonTimeoutMs: z.number().default(DEFAULT_PYTHON_TIMEOUT_MS),
-  pythonMaxTimeoutMs: z.number().default(DEFAULT_PYTHON_MAX_TIMEOUT_MS),
   credentialInteraction: z.union(['web', 'none']).default('web'),
   projectRoot: z.string(),
   pythonExecutable: z.string(),
@@ -161,6 +160,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
   let disposePresentation: (() => Promise<void>) | undefined
   let referenceService: SemanticReferenceService | undefined
   let agentInstallation: ReturnType<typeof createMarivoAgentInstallation> | undefined
+  let pythonSettings: ReturnType<typeof installPythonSettings> | undefined
   let closing: Promise<void> | undefined
   const browserService = new SemanticBrowserService({
     getWorkspace: (id) => ctx.workspaceRegistry.get(WorkspaceId(id)),
@@ -172,6 +172,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     if (closing) return closing
     closing = finishCleanup([
       () => agentInstallation?.close(),
+      () => pythonSettings?.dispose(),
       () => disposeCredentials?.(),
       disposeChanges,
       () => disposePublishing?.(),
@@ -196,6 +197,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     return closing
   }
   try {
+    pythonSettings = installPythonSettings(ctx, pythonOptions)
     unregisterChanges = ctx.typert.register(credentialChangesHost)
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',
@@ -235,6 +237,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
 
     agentInstallation = createMarivoAgentInstallation(ctx, resolveEnvironment, {
       ...pythonOptions,
+      pythonOptionsSource: pythonSettings.get,
       helpBridgeSource: helpBridge,
       ...(publishingConfig ? { reportPublishing } : {}),
       credentialService,

@@ -7,7 +7,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { installPythonTool } from './client/python-tool/install.tsx'
-import { inject, installRightTabs } from './client/right-tabs/install.tsx'
+import { installRightTabs, inject as rightTabsInject } from './client/right-tabs/install.tsx'
+import { installSettings } from './client/settings/install.tsx'
 
 export {
   marivoPresentationDeliveryDefinition,
@@ -18,7 +19,7 @@ export {
 export { PresentationDeliveryModel } from './client/presentation/delivery-model.ts'
 export { HostPresentationReader } from './client/presentation/host-entry.tsx'
 
-export { inject }
+export const inject = [...rightTabsInject, 'settingsScope']
 
 export function apply(
   ctx: Context,
@@ -29,5 +30,6 @@ export function apply(
 ): void {
   const controller = installRightTabs(ctx, options)
   installPythonTool(ctx)
+  installSettings(ctx)
   options.onInstalled?.(controller)
 }

@@ -11,10 +11,10 @@ import {
   type MarivoPythonExecutionSummary,
   registerMarivoPythonTool,
 } from '../../src/datasource/python.ts'
-import type { MarivoPythonOptions } from '../../src/datasource/python-options.ts'
+import type { MarivoPythonOptionsSource } from '../../src/datasource/python-options.ts'
 import { fixture, operation, waiting } from './fixtures.ts'
 
-function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptions = {}) {
+function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsSource = {}) {
   let definition!: ToolDefinition
   const requests: ShellExecRequest[] = []
   const launches: ShellExecSpec[] = []
@@ -294,10 +294,10 @@ function assertSummary(
   }
 }
 
-test('Python timeout defaults, per-call override and both caps preserve the requested budget', async (t) => {
+test('Python timeout defaults, per-call override and only the Harness cap preserve the requested budget', async (t) => {
   const f = fixture()
   t.after(() => f.service.close())
-  const p = pythonTool(f, { pythonTimeoutMs: 240_000, pythonMaxTimeoutMs: 480_000 })
+  const p = pythonTool(f, { pythonTimeoutMs: 240_000 })
   p.outcome.exitCode = 7
   p.hooks.maxTimeoutMs = 420_000
   for (const [requested, resolved] of [
@@ -311,7 +311,7 @@ test('Python timeout defaults, per-call override and both caps preserve the requ
     assertSummary(result.execution, 'executing', 'nonzero-exit')
     assert.equal(result.execution.requestedTimeoutMs, requested ?? 240_000)
     assert.equal(result.execution.effectiveTimeoutMs, resolved)
-    assert.equal(p.requests.at(-1)!.timeoutMs, Math.min(requested ?? 240_000, 480_000))
+    assert.equal(p.requests.at(-1)!.timeoutMs, requested ?? 240_000)
   }
   assert.equal(p.launches.length, 3)
 })
@@ -335,6 +335,38 @@ test('invalid Python timeout never resolves credentials or starts Shell', async 
     await assert.rejects(p.call(['warehouse'], 'pass', value as number))
   assert.equal(f.store.calls.resolve, 0)
   assert.equal(p.requests.length, 0)
+})
+
+test('saved defaults reach an existing tool while an admitted call retains its budget', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  let pythonTimeoutMs = 120_000
+  const p = pythonTool(f, () => ({ pythonTimeoutMs }))
+  p.outcome.exitCode = 7
+  let finish!: () => void
+  let started!: () => void
+  const entered = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  p.hooks.run = async () => {
+    await new Promise<void>((resolve) => {
+      finish = resolve
+      started()
+    })
+    return p.outcome
+  }
+  const pending = p.call([], 'pass')
+  await entered
+  pythonTimeoutMs = 900_000
+  finish()
+  const first = (await pending) as { execution: MarivoPythonExecutionSummary }
+  assert.equal(first.execution.requestedTimeoutMs, 120_000)
+  assert.equal(first.execution.effectiveTimeoutMs, 120_000)
+  p.hooks.run = async () => p.outcome
+  await p.call([], 'pass')
+  assert.equal(p.requests.at(-1)!.timeoutMs, 900_000)
+  await p.call([], 'pass', 1_200_000)
+  assert.equal(p.requests.at(-1)!.timeoutMs, 1_200_000)
 })
 
 test('Shell outcomes are classified from flags, not stderr or an assumed exit code', async (t) => {

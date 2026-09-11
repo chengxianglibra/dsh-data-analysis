@@ -8,7 +8,11 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
-import { type MarivoPythonOptions, pythonTimeout, resolvePythonOptions } from './python-options.ts'
+import {
+  type MarivoPythonOptionsSource,
+  pythonTimeout,
+  resolvePythonOptions,
+} from './python-options.ts'
 import { PYTHON_LAUNCHER, PYTHON_WORKER } from './resolver-program.ts'
 import {
   CredentialServiceError,
@@ -58,9 +62,10 @@ export function registerMarivoPythonTool(
   ctx: Context,
   source: MarivoDatasourceBridgeSource,
   service: MarivoCredentialService,
-  options: MarivoPythonOptions = {},
+  options: MarivoPythonOptionsSource = {},
 ): () => Promise<void> {
-  const limits = resolvePythonOptions(options)
+  const readOptions = typeof options === 'function' ? options : () => options
+  resolvePythonOptions(readOptions())
   return registerMarivoTool(
     ctx,
     defineTool({
@@ -83,7 +88,8 @@ export function registerMarivoPythonTool(
         },
         timeoutMs: {
           type: 'number',
-          description: `Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to ${limits.pythonTimeoutMs}; capped at ${limits.pythonMaxTimeoutMs} and then by Harness Shell. Outer Code Mode deadlines remain independent.`,
+          description:
+            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. When omitted, uses the current plugin pythonTimeoutMs setting. Harness Shell limits and outer Code Mode deadlines remain independent.',
         },
       },
       output: {
@@ -123,7 +129,9 @@ export function registerMarivoPythonTool(
         try {
           try {
             requestedTimeoutMs = pythonTimeout(
-              args.timeoutMs === undefined ? limits.pythonTimeoutMs : args.timeoutMs,
+              args.timeoutMs === undefined
+                ? resolvePythonOptions(readOptions()).pythonTimeoutMs
+                : args.timeoutMs,
               'timeoutMs',
             )
           } catch {
@@ -160,7 +168,7 @@ export function registerMarivoPythonTool(
           const spec = shell.resolve({
             command: `${process.platform === 'win32' ? '& ' : ''}${quote(binding.pythonExecutable)} -c ${quote(PYTHON_LAUNCHER)}`,
             workdir: binding.projectRoot,
-            timeoutMs: Math.min(requestedTimeoutMs!, limits.pythonMaxTimeoutMs),
+            timeoutMs: requestedTimeoutMs!,
             signal: prepared.signal,
             stdin: JSON.stringify({
               identity: binding,

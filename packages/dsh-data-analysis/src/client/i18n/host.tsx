@@ -11,6 +11,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'marivo.presentation': keyof typeof dictionaries.presentation.zh
     'marivo.semantic': keyof typeof dictionaries.semantic.zh
     'marivo.python': keyof typeof dictionaries.python.zh
+    'marivo.settings': keyof typeof dictionaries.settings.zh
   }
 }
 export function installCopy(ctx: Context) {
@@ -19,6 +20,7 @@ export function installCopy(ctx: Context) {
   ctx.effect(() => ctx.locale.register('marivo.presentation', dictionaries.presentation))
   ctx.effect(() => ctx.locale.register('marivo.semantic', dictionaries.semantic))
   ctx.effect(() => ctx.locale.register('marivo.python', dictionaries.python))
+  ctx.effect(() => ctx.locale.register('marivo.settings', dictionaries.settings))
 }
 export function hostCopy(ctx: Context) {
   const active = ctx.locale.getSnapshot().active

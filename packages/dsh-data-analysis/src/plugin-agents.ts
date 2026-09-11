@@ -53,6 +53,8 @@ export function createMarivoAgentInstallation(
       credentials?: CredentialStore
       credentialService?: MarivoCredentialService
       credentialInteraction?: 'web' | 'none'
+      /** Read once at call admission so saved settings affect existing Agents. */
+      pythonOptionsSource?: () => MarivoPythonOptions
       /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
       helpBridgeSource?: MarivoHelpBridgeSource
     } = {},
@@ -134,7 +136,12 @@ export function createMarivoAgentInstallation(
         registerMarivoDatasourceConfigureTool(agent.ctx, datasourceSource, credentialService),
       )
       controller.addDisposer(
-        registerMarivoPythonTool(agent.ctx, datasourceSource, credentialService, pythonOptions),
+        registerMarivoPythonTool(
+          agent.ctx,
+          datasourceSource,
+          credentialService,
+          options.pythonOptionsSource ?? pythonOptions,
+        ),
       )
       controller.addDisposer(() => credentialService.disposeAgent(agent))
       controller.addDisposer(

@@ -12,13 +12,11 @@ import { fixture } from './fixtures.ts'
 
 test('Python configuration defaults agree with the loader and accept the timer boundary', () => {
   const defaults = resolvePythonOptions({})
-  assert.deepEqual(defaults, { pythonTimeoutMs: 120_000, pythonMaxTimeoutMs: 600_000 })
+  assert.deepEqual(defaults, { pythonTimeoutMs: 120_000 })
   const config = Config({})
   assert.equal(config.pythonTimeoutMs, defaults.pythonTimeoutMs)
-  assert.equal(config.pythonMaxTimeoutMs, defaults.pythonMaxTimeoutMs)
-  assert.deepEqual(resolvePythonOptions({ pythonTimeoutMs: 1, pythonMaxTimeoutMs: 2147483647 }), {
-    pythonTimeoutMs: 1,
-    pythonMaxTimeoutMs: 2147483647,
+  assert.deepEqual(resolvePythonOptions({ pythonTimeoutMs: 2147483647 }), {
+    pythonTimeoutMs: 2147483647,
   })
 })
 
@@ -30,9 +28,9 @@ test('invalid timeout configuration fails before installation, Host access or re
       assert.fail('invalid config accessed Host services')
     },
   })
-  const invalid: MarivoPythonOptions[] = [{ pythonTimeoutMs: 600_001 }]
+  const invalid: MarivoPythonOptions[] = []
   for (const value of [0, -1, 1.5, NaN, Infinity, 2147483648, null, 'unsafe-value']) {
-    invalid.push({ pythonTimeoutMs: value as number }, { pythonMaxTimeoutMs: value as number })
+    invalid.push({ pythonTimeoutMs: value as number })
   }
   for (const options of invalid) {
     assert.throws(() => registerMarivoPythonTool(ctx, f.bridge, f.service, options), /python.*Ms/)

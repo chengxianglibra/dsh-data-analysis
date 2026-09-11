@@ -4,14 +4,16 @@ import * as navigation from './navigation.ts'
 import * as presentation from './presentation.ts'
 import * as python from './python.ts'
 import * as semantic from './semantic.ts'
+import * as settings from './settings.ts'
 
-export const dictionaries = { credentials, navigation, presentation, semantic, python }
+export const dictionaries = { credentials, navigation, presentation, semantic, python, settings }
 export const zh = {
   ...credentials.zh,
   ...navigation.zh,
   ...presentation.zh,
   ...semantic.zh,
   ...python.zh,
+  ...settings.zh,
 }
 export const en: Record<keyof typeof zh, string> = {
   ...credentials.en,
@@ -19,6 +21,7 @@ export const en: Record<keyof typeof zh, string> = {
   ...presentation.en,
   ...semantic.en,
   ...python.en,
+  ...settings.en,
 }
 export type CopyKey = keyof typeof zh
 export interface CopyMessage {

@@ -105,3 +105,7 @@ Report ID 是稳定报告身份，Build ID 是一次保存的固定身份。新�
 ## 语言责任边界
 
 Harness locale 服务拥有插件操作界面的语言设置及持久化；插件仅注册词典并订阅更新。报告展示语言由 DSH 根据用户问题写入 Draft 的 `locale`，由 projection 原样固化到 Document，不读取系统 locale。Reader、打印与 HTML 导出遵循同一报告语言，详见 [报告阅读器](modules/presentation-reader.md#界面语言与报告语言)。
+
+## 插件设置
+
+Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件通过 `dsh-data-analysis` settings namespace 与 `settings.plugin.item` 卡片提供 `pythonTimeoutMs`，在每次 Python 调用入口读取，不重新绑定 Runtime 或 Workspace。界面、继承和生效语义见[超时与执行反馈](modules/datasource-credentials.md#超时与执行反馈)。

@@ -134,11 +134,13 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 
 ## 超时与执行反馈
 
-插件 `pythonTimeoutMs` 默认 `120000`、`pythonMaxTimeoutMs` 默认 `600000` 毫秒，两个配置及 Tool 的
-可选 `timeoutMs` 必须是 `1..2147483647` 内的整数，配置默认值不得超过最大值。配置在 Runtime 安装、
+“设置 → 插件 → 插件配置 → 数据分析”提供 Python 默认执行超时，界面以秒显示，最多三位小数，持久化为 `pythonTimeoutMs` 毫秒。设置由 Harness 的 `dsh-data-analysis` namespace 保存，适用于当前 Host 的所有 Workspace；用户值覆盖插件部署值，恢复继承值后重新使用部署值或默认 120 秒。保存后对下一次调用立即生效，已开始或正在等待凭据的调用保留入口读取的预算。表单保存绑定读取时的 revision，并确认 Harness 回读的生效值和用户覆盖记录；正常结束的保存 Promise 不代表写入成功。冲突或写入拒绝保留草稿，恢复继承值还须确认用户覆盖已移除；只读连接不能保存。无 settings provider 的 headless 部署继续使用插件部署配置。
+
+插件仅提供 `pythonTimeoutMs`，默认 `120000` 毫秒。该配置及 Tool 的
+可选 `timeoutMs` 必须是 `1..2147483647` 内的整数（JavaScript 定时器范围）。配置在 Runtime 安装、
 Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 参数 schema 会先拒绝非 JSON 数值及错误类型。
 
-省略 Tool 参数时使用插件默认值。请求先截断到插件上限，再经 `shell.resolve()` 应用 Harness 上限，
+省略 Tool 参数时，在调用入口读取插件当前默认值；显式 `timeoutMs` 直接传给 Harness。插件不另设超时上限，经 `shell.resolve()` 应用 Harness 上限，
 `execution.effectiveTimeoutMs` 取解析后的 `spec.timeoutMs`，不把请求值宣称为最终预算。
 凭据等待在 Shell 计时之前；外层 Code Mode 时限包含等待和其他步骤，仍可能先触发取消。插件不修改 Harness
 超时策略，也不添加覆盖整次凭据交互的独立定时器。
@@ -233,3 +235,9 @@ npm run validate:credentials:web
 ```
 
 配置、新建默认值、定义编辑、删除及模型续接分别验证；完整入口与环境边界见[验证指南](../validation.md)。
+
+## Python 设置验收记录
+
+2026-09-11：移除插件最大超时配置，仅保留 `pythonTimeoutMs`，接入 Harness 插件配置卡片。`npm run check` 共 667 通过、4 跳过、0 失败；`npm run build`、`npm run verify:plugin-package` 通过。回归覆盖 Host 设置持久化、非法值拒绝、revision 冲突、恢复继承值、namespace 卸载，以及现有 Tool 的默认值更新和在途预算保持；15 分钟默认值与 20 分钟单次覆盖原样传给 Harness。
+
+`npm run validate:python-settings:web` 使用真实 Harness FileSettingsProvider、未修改的原生 settings 客户端 bundle、隔离 HTTP transport 和浏览器验证卡片的保存、刷新回读、非法值、冲突保留草稿、放弃修改、恢复继承值、只读、中英文及窄屏布局。补充数值等于继承值时写入或恢复被拒绝，以及重试保持原写入意图的回归；原生客户端接入后先复现冲突丢失草稿，再验证修复。该入口不替代完整运行中 Harness 设置页验收；本次未重装插件、重启服务或修改用户 profile。

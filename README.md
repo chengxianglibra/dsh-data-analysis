@@ -139,3 +139,7 @@ dsh --profile web
 ## 报告发布到对象存储
 
 通过 `reportPublishing.enabled` 开启 S3 兼容对象存储发布；在“数据源与凭证”管理独立 AK/SK 和可选 Token。开启后报告菜单的完整 HTML 与当前视图下载均替换为发布，成功返回链接。配置示例与边界见[报告 HTML 发布](docs/modules/report-publishing.md)。
+
+## Python 执行设置
+
+在“设置 → 插件 → 插件配置 → 数据分析”配置默认执行超时，默认 120 秒，保存后对下一次 Python 调用生效。插件只保留 `pythonTimeoutMs`，不另设最大超时参数；单次调用可覆盖默认值，最终时限仍由 Harness 执行策略决定。详情见[超时与执行反馈](docs/modules/datasource-credentials.md#超时与执行反馈)。
