@@ -32,9 +32,15 @@ export function valueWithUnit(
   return column.unit && value !== null && value !== '' ? `${text} ${column.unit}` : text
 }
 
-/** Add grouping separators only; never round, rescale, or convert exact decimal text. */
+/** Round floating KPI values for display; preserve exact decimal and integer text. */
 export function metricText(locale: PresentationLocale, value: Cell, column: DatasetColumn): string {
-  const text = cellText(locale, value, column)
+  const text =
+    column.type === 'float64' && typeof value === 'number'
+      ? new Intl.NumberFormat('en-US', {
+          useGrouping: false,
+          maximumFractionDigits: 3,
+        }).format(value)
+      : cellText(locale, value, column)
   const grouped =
     ['int64', 'decimal', 'float64'].includes(column.type) && /^-?\d+(?:\.\d+)?$/.test(text)
       ? text.replace(/^-?\d+/, (whole) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ','))
