@@ -166,6 +166,16 @@ async function installed(t) {
     sidebarRightTabs: { register: () => () => {} },
     inputTriggers: { registerSource: () => () => {} },
   })
+  host.slots.register(
+    {
+      name: 'shell.overlay',
+      id: 'shortcuts-test-owner',
+      children: {
+        'conversation.input.dock': { kind: 'list', scope: 'session' },
+      },
+    },
+    () => null,
+  )
   let controller: any
   host.presentation.apply(host.client, {
     onInstalled: (value) => {
@@ -185,6 +195,44 @@ async function installed(t) {
     generation,
   }
 }
+
+test('homepage shortcuts follow Host phase, workspace readiness and locale without reading data', async (t) => {
+  const f = await installed(t)
+  const entry = f.host.slots
+    .entries('conversation.input.dock')
+    .find((e) => e.options.id === 'marivo-workspace-shortcuts')
+  assert.ok(entry)
+  const blank = { blank: true, running: false, promptAttempted: false, awaitingFirstTurn: true }
+  const conversation = { activeTargets: new Set(), views: {} }
+  const render = (session = blank, currentConversation = conversation, sessionId = 'a') =>
+    renderToStaticMarkup(
+      createElement(entry.component, {
+        sessionId,
+        session,
+        useConversation: (select) => select(currentConversation),
+        useWorkspaces: (select) => select(f.workspaces.getSnapshot()),
+      }),
+    )
+  f.host.client.locale.setLocale('zh')
+  assert.equal((render().match(/<button/g) ?? []).length, 3)
+  assert.match(render(), /语义层/)
+  f.host.client.locale.setLocale('en')
+  assert.match(render(), /Semantic layer/)
+  assert.equal(render({ ...blank, promptAttempted: true }), '')
+  assert.equal(render({ ...blank, running: true }), '')
+  assert.equal(render(blank, { ...conversation, activeTargets: new Set(['chat']) }), '')
+  assert.equal(render(blank, conversation, ''), '')
+  f.generation.set(undefined)
+  assert.equal((render().match(/disabled=""/g) ?? []).length, 3)
+  f.generation.set({})
+  f.workspaces.set({ ...f.workspaces.getSnapshot(), phase: 'loading' })
+  assert.equal((render().match(/disabled=""/g) ?? []).length, 3)
+  f.workspaces.set({ phase: 'ready', state: 'idle', items: [] })
+  assert.equal((render().match(/disabled=""/g) ?? []).length, 3)
+  assert.equal(f.reads.length, 0)
+  await f.host.dispose()
+  assert.equal(f.host.slots.entries('conversation.input.dock').length, 0)
+})
 
 test('credential requests open the owning native Tab; revoked pages cannot be refreshed', async (t) => {
   const f = await installed(t)

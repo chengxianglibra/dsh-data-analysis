@@ -19,6 +19,7 @@ import { createPluginRpc } from '../rpc.ts'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
 import { installSemanticReferenceSource } from '../semantic-reference-source.ts'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
+import { WorkspaceShortcuts, workspaceDirectories } from '../workspace-shortcuts.tsx'
 import { LiveDeliveryObserver } from './live-delivery.ts'
 import {
   canOpenResource,
@@ -43,11 +44,7 @@ export const inject = [
   'sidebarRight',
   'sidebarRightTabs',
 ]
-const labels = {
-  datasources: 'marivo.credentials.datasources-and-credentials',
-  semantic: 'marivo.navigation.semantic-layer',
-  reports: 'marivo.presentation.reports',
-}
+const labels = workspaceDirectories
 
 /** Default browser integration. Layout belongs to Harness; mutable content belongs to occurrences. */
 export function installRightTabs(ctx, { diagnostics = false } = {}) {
@@ -88,6 +85,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   const check = (sessionId, workspaceId, foreground = false) => {
     const state = ctx.workspaces.list.getSnapshot()
     if (
+      !sessionId ||
+      !workspaceId ||
       !ctx.connection.generation.getSnapshot() ||
       state.phase !== 'ready' ||
       state.state === 'error' ||
@@ -98,6 +97,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   }
   const changed = (workspaceId, reportId) => {
     for (const page of pages.values()) void page.publicationChanged(workspaceId, reportId)
+  }
+  const openDirectory = (sessionId, workspaceId, page) => {
+    check(sessionId, workspaceId, true)
+    ctx.sidebarRight.openTab(directoryKind(page), { params: { workspaceId } })
   }
   const navigate = (
     sessionId,
@@ -487,6 +490,45 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       />
     ) : null
   }
+  ctx.slots.inject('conversation.input.dock', () =>
+    ctx.slots.register(
+      {
+        locale: 'marivo.navigation',
+        name: 'conversation.input.dock',
+        id: 'marivo-workspace-shortcuts',
+        order: 100,
+      },
+      localized(
+        ctx,
+        function HomepageShortcuts({ sessionId, session, useConversation, useWorkspaces }) {
+          const conversation = useConversation((value) => value)
+          const workspaces = useWorkspaces((value) => value)
+          const generation = useSyncExternalStore(
+            ctx.connection.generation.subscribe,
+            ctx.connection.generation.getSnapshot,
+            ctx.connection.generation.getSnapshot,
+          )
+          const workspaceId = workspaces.items.find((w) =>
+            w.sessionIds.includes(sessionId),
+          )?.workspaceId
+          const disabled =
+            !generation ||
+            workspaces.phase !== 'ready' ||
+            workspaces.state === 'error' ||
+            !workspaceId
+          return (
+            <WorkspaceShortcuts
+              key={`${sessionId}:${workspaceId}:${!!generation}`}
+              session={sessionId ? session : undefined}
+              conversation={conversation}
+              disabled={disabled}
+              open={(page) => openDirectory(sessionId, workspaceId, page)}
+            />
+          )
+        },
+      ),
+    ),
+  )
   for (const [page, label] of Object.entries(labels)) {
     const kind = directoryKind(page),
       id = definitionId(kind)
@@ -527,8 +569,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               disabled={!workspaceId}
               onClick={() => {
                 try {
-                  check(sessionId, workspaceId, true)
-                  ctx.sidebarRight.openTab(kind, { params: { workspaceId } })
+                  openDirectory(sessionId, workspaceId, page)
                 } catch (error) {
                   fail(error)
                 }

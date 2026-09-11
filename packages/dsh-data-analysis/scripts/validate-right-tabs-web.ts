@@ -15,6 +15,7 @@ import {
   prepareContextReferenceInput,
   verifyNativeContextReference,
 } from './right-tabs/context-reference.ts'
+import { verifyHomepageShortcuts } from './right-tabs/homepage-shortcuts.ts'
 
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-right-tabs-stage-one-')))
 const workspaceRoot = path.join(outputRoot, 'workspace')
@@ -133,7 +134,13 @@ try {
   assert.equal(await opens(), 0)
   record('initial persisted deliveries do not automatically open')
   await select('right-tabs-native')
+  await verifyHomepageShortcuts(page, outputRoot)
+  record(
+    'blank homepage shortcuts open owning directories, deduplicate, localize and preserve rich drafts',
+  )
   const native = await run('native')
+  await page.locator('.marivo-workspace-shortcuts').waitFor({ state: 'hidden' })
+  record('homepage shortcuts disappear after the first conversation turn')
   await page.locator(`[data-rt-build="${native.receipt.buildId}"]`).waitFor({ timeout: 45_000 })
   assert.equal(await opens(), 1)
   record('live Native delivery opens fixed Build once')

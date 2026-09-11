@@ -235,3 +235,15 @@ Review 修复后，Node.js 22.19.0 下 `npm run check` 通过（640 项通过、
 
 提交前另以仅包含语言改动的隔离候选验证，剥离工作区已有凭证通知与读取性能改动：Node.js 22.19.0
 下 `npm run check` 为 621 项通过、4 项跳过，构建、语言矩阵与分发包验证通过。
+
+## 空白首页工作区快捷入口验收
+
+2026-09-11，Node.js 22.19.0 与 Harness 0.1.5-rc.1 下 `npm run check` 通过（653 项通过、4 项因既有 Runtime 前提跳过）。最终布局的 build、包验证、quality 与脚本类型检查通过。
+
+`npm run validate:workspace-shortcuts:web` 使用打包后的插件、真实隔离 Host 和浏览器，验证无 Session 不显示、空白首页显示三个入口、键盘打开目录、重复打开复用 Tab、当前 Session 改变时旧点击被拦截并显示可恢复错误、草稿正文／语义引用／图片附件保持不变、中英文切换，以及 390px 下文字可见且按钮可点击。首轮后入口隐藏，原顶栏继续打开目录；切到另一个空白 Session 后入口重新出现。入口组左对齐，并以内容缩进对齐首页 Workspace 标签。
+
+模型边界为脚本化 adapter，首轮由隔离验收工具驱动；该证据不表示真实模型自主选择，也不表示用户当前 profile 已重装。
+
+最终候选 `lib/client.js` SHA-256：`bf7d8725fb83406cf6f68b83884c7162eca2b89b867eff4770c5218d99791558`。证据目录 `/private/var/folders/cx/bmfg_x3j0qsfvgsb2v8s2x5m0000gn/T/dsh-homepage-shortcuts-cWvPbD` 保留 `results.json`、宽屏／窄屏截图、打包身份与 Runtime binding。
+
+扩展的完整 `validate:right-tabs:web` 曾通过首页与首轮隐藏检查，随后进程以 137 退出，未计作完整回归通过；最终首页验收由上述聚焦脚本独立通过。早期全量检查遇到生成资源缺失，按先构建再测试顺序重跑后通过。未升级依赖、修改 Harness、发布、重装或重启用户当前服务。

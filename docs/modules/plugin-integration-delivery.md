@@ -81,6 +81,15 @@ Web client 只保留：
 成功回执不渲染聊天卡片，打开失败时提供错误反馈；下载前校验固定快照和响应字节。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
+## 空白首页工作区入口
+
+`conversation.input.dock` 中的三个快捷入口与顶栏共用目录打开动作，分别进入数据源、语义层和报告 Tab。
+组件使用公开 `conversationPhase`，仅在已有空白 Session 的 blank 阶段显示；完全无 Session 时不显示，
+不创建额外 Session。输入草稿不会隐藏入口，正式对话使用原顶栏操作。
+
+Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就绪时禁用；点击时再次校验当前身份。
+显示入口不加载目录数据，失败在按钮旁显示。窄屏保留文字并换行，locale 切换不影响输入或报告语言。
+
 ## DSH rc.1 适配
 
 当前基线为 `0.1.5-rc.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
