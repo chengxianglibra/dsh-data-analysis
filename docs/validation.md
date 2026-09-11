@@ -6,6 +6,18 @@
 
 本地构建使用 `.nvmrc` 指定的 Node.js 22.19.0。可执行变更运行相关测试及 `npm run check`；exports、client、包元数据或分发内容变化时，再运行 `npm run build` 与 `npm run verify:plugin-package`。纯文档变更检查相对链接、标题锚点、Markdown 渲染和 `git diff --check`。
 
+## 数据源操作结果白屏修复验收
+
+2026-09-11 在真实 Chrome 捕获数据源右侧 Tab 的 `Cannot read properties of undefined (reading 'replace')`，
+堆栈对应 `OperationOutcome`：`data-error` 布尔值误传入翻译函数。修复该属性与同组件文件中的
+`data-tone` 翻译误用，新增生产面板渲染回归，覆盖保存失败、无详情失败、取消、凭证删除和连接失败。
+Node.js 22.19.0 下 `npm run check`、`npm run build`、`npm run verify:plugin-package` 和 `git diff --check` 通过。
+
+当前已安装前端保留备份后仅应用这两处属性修复，由 Harness 原生 HMR 恢复页面，服务未重启。
+真实页面恢复后显示原先的连接拒绝错误；用户将端口从 `79` 修正为 `80` 后，连接测试成功，
+页面显示“验证完成，原调用继续”，原会话继续执行并成功访问目标表。本次未代填凭证或更改连接配置。
+上述真实验收证明面板恢复和原调用续跑，不代表后续带宽分析结论已验收。
+
 ## 报告旧入口清理验收
 
 2026-09-11 移除 `presentation/install.tsx` 的旧报告卡片、弹窗和安装入口，并将其单元测试及 Web

@@ -7,6 +7,7 @@ import vm from 'node:vm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { build } from 'esbuild'
 import * as React from 'react'
+import type { ClientOperation } from '../../src/client/credentials/model.ts'
 import { translator } from './../../src/client/i18n/copy.ts'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import {
@@ -163,7 +164,11 @@ vm.runInNewContext(bundle.outputFiles[0]!.text, {
   clearTimeout,
 })
 
-async function renderManagement(t: TestContext, view: CredentialContextView) {
+async function renderManagement(
+  t: TestContext,
+  view: CredentialContextView,
+  outcome?: ClientOperation,
+) {
   const seats: { name: string; id: string; component: (props: any) => React.ReactElement<any> }[] =
     []
   const model = module.exports.installCredentials(
@@ -186,13 +191,56 @@ async function renderManagement(t: TestContext, view: CredentialContextView) {
     },
   )
   await model.show('workspace')
+  const snapshot = model.getSnapshot()
   return renderToStaticMarkup(
     React.createElement(module.exports.CredentialPanel, {
-      model,
+      model: outcome
+        ? {
+            subscribe: model.subscribe,
+            getSnapshot: () => ({ ...snapshot, outcomes: { [view.token]: outcome } }),
+          }
+        : model,
       workspaces: [{ workspaceId: 'workspace', sessionIds: ['session'] }],
     }),
   )
 }
+
+test('operation failures, cancellation and credential deletion keep the datasource panel renderable', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f)
+  for (const scenario of [
+    { status: 'failed', errors: ['credential-save-failed'], expected: /data-error="true"/ },
+    { status: 'failed', errors: [], expected: /操作未完成/ },
+    { status: 'cancelled', errors: [], expected: /已取消/ },
+    { status: 'succeeded', action: 'delete', errors: [], expected: /已删除/ },
+    {
+      status: 'failed',
+      errors: [],
+      result: { ok: false, failure: { code: 'connection-failed', message: 'connection refused' } },
+      expected: /connection refused/,
+    },
+  ] as const) {
+    const html = await renderManagement(t, view, {
+      handle: { id: 'operation', scope: view.token, generation: 'fixture' },
+      name: view.name,
+      workspaceId: 'workspace',
+      operation: {
+        id: 'operation',
+        scope: view.token,
+        action: 'action' in scenario ? scenario.action : 'submit',
+        status: scenario.status,
+        phase: 'settled',
+        saved: [],
+        errors: [...scenario.errors],
+        ...('result' in scenario ? { result: scenario.result } : {}),
+      } as ClientOperation['operation'],
+    })
+    assert.match(html, scenario.expected)
+    assert.match(html, /aria-label="测试连接"/)
+    if ('result' in scenario) assert.match(html, /data-tone="error"/)
+  }
+})
 
 test('installed management UI renders typed properties as read-only text beside credential controls', async (t) => {
   const f = fixture()

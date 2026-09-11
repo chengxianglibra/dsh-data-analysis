@@ -66,7 +66,7 @@ export function TestResult({ result, stale = false }) {
   return (
     <div
       className="mc-result"
-      data-tone={t(stale ? 'stale' : result.ok ? 'success' : 'error')}
+      data-tone={stale ? 'stale' : result.ok ? 'success' : 'error'}
       role="status"
     >
       <div className="mc-result-title">
@@ -146,7 +146,7 @@ function OperationOutcome({ entry }) {
   return (
     <div
       className="mc-operation-note"
-      data-error={t(Boolean(entry.error || errors.length))}
+      data-error={Boolean(entry.error || errors.length)}
       role="status"
     >
       {entry.error && <p>{t(entry.error)}</p>}
