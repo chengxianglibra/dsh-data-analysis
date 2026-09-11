@@ -177,10 +177,7 @@ test('workspace reader pins history and downloads, forbids historical edits, and
   )
   await model.downloadDisplayed()
   assert.deepEqual(Buffer.from(saved[0]!), await presentationHtml(f.first))
-  assert.equal(
-    model.getSnapshot().receipts[`${f.document.workspaceId}/${f.document.reportId}`]?.buildId,
-    second.buildId,
-  )
+  assert.equal(model.getSnapshot().resolvedReceipt?.buildId, f.first.buildId)
   await model.selectVersion()
   assert.equal(model.getSnapshot().document?.title, '再次更新')
   model.beginEdit()

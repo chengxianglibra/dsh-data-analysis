@@ -158,8 +158,6 @@ export const PRESENTATION_STYLES = `
 .pr-reader .pr-source-code-note { margin:0 0 8px; font-size:12px; color:var(--pr-muted) }
 .pr-source-code-copy button { font-size:12px }
 .pr-source-code pre { margin:0; padding:14px 16px; border:1px solid var(--pr-border); border-radius:10px; background:var(--pr-soft); max-height:420px; overflow:auto; white-space:pre; tab-size:4; user-select:text; font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
-.pr-source-code-summary { margin-top:20px }
-.pr-source-code-summary>summary { margin-bottom:12px; font-size:14px }
 .pr-copy-dialog { max-width:640px; padding-bottom:24px; overflow:auto }
 .pr-copy-dialog>p,.pr-copy-dialog>label { margin:16px 24px }
 .pr-copy-dialog textarea { display:block; width:calc(100% - 48px); min-height:220px; max-height:50vh; margin:16px 24px 0; padding:12px; background:var(--pr-soft); color:var(--pr-text); border:1px solid var(--pr-border); border-radius:8px; font:13px/1.65 ui-monospace,monospace; resize:vertical }
@@ -218,7 +216,6 @@ html[data-presentation-ready=true] body[data-presentation-portable] #presentatio
   .pr-block-metric>h2,.pr-block-chart>h2,.pr-block-markdown .pr-markdown>:first-child { padding-right:0 }
   .pr-source-summary::details-content { content-visibility:visible }
   .pr-source-summary>* { display:block }
-  .pr-source-code-summary { display:none!important }
   .pr-source-dialog,.pr-dialog { display:none!important }
   .pr-metric-group { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) }
   .pr-metric-group>.pr-block-metric { min-width:0; max-width:none }

@@ -48,7 +48,6 @@ export interface PresentationDeliveryState {
   readonly historyLoading?: boolean
   readonly historyError?: string
   readonly historical?: boolean
-  readonly receipts: Readonly<Record<string, PresentationReceipt>>
   readonly resolvedReceipt?: PresentationReceipt
   readonly editing?: {
     edits: PresentationEdits
@@ -197,24 +196,18 @@ export function errorMessage(error: unknown): string {
   return 'marivo.presentation.cannot-read-the-analysis-snapshot-check-the-host-connection'
 }
 
-export const reportKey = (receipt: PresentationReceipt) =>
-  `${receipt.workspaceId}/${receipt.reportId}`
-
 /** Host file actions and editor state; never an Agent or data-source execution path. */
 export class PresentationDeliveryModel {
   readonly #rpc: PresentationRpc
   readonly #save: SavePresentationHtml
   readonly #listeners = new Set<() => void>()
   #state: PresentationDeliveryState = {
-    receipts: {},
     open: false,
     loading: false,
     downloading: false,
   }
   #flights = new Set<AbortController>()
   #publishingRead?: AbortController
-  #previews = new Set<string>()
-  #context = ''
   #generation = 0
   #disposed = false
   constructor(rpc: PresentationRpc, save: SavePresentationHtml = savePresentationHtml) {
@@ -236,9 +229,6 @@ export class PresentationDeliveryModel {
     this.#generation++
     for (const flight of this.#flights) flight.abort()
     this.#flights.clear()
-  }
-  #remember(receipt: PresentationReceipt) {
-    this.#publish({ receipts: { ...this.#state.receipts, [reportKey(receipt)]: receipt } })
   }
   #valid(delivery: PresentationDelivery, sessionId: string, workspaceId: string) {
     parsePresentationDelivery(delivery)
@@ -318,24 +308,6 @@ export class PresentationDeliveryModel {
       throw new Error('presentation-document-identity-mismatch')
     return document
   }
-  async preview(delivery: PresentationDelivery, sessionId: string, workspaceId: string) {
-    const key = reportKey(delivery.receipt)
-    if (!this.#valid(delivery, sessionId, workspaceId) || this.#previews.has(key)) return
-    const flight = new AbortController(),
-      generation = this.#generation
-    this.#flights.add(flight)
-    this.#previews.add(key)
-    try {
-      const receipt = await this.#resolve(delivery, flight.signal)
-      if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
-        this.#remember(receipt)
-    } catch {
-      /* Opening exposes the exact read error; a failed preview never substitutes another build. */
-    } finally {
-      this.#flights.delete(flight)
-      this.#previews.delete(key)
-    }
-  }
   async show(
     delivery: PresentationDelivery,
     sessionId: string,
@@ -414,7 +386,6 @@ export class PresentationDeliveryModel {
       const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
       const document = await this.#document(target, receipt, flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      if (!version) this.#remember(receipt)
       this.#publish({ resolvedReceipt: receipt, document, loading: false })
       void this.#describePublishing(receipt.workspaceId, generation)
     } catch (error) {
@@ -588,7 +559,6 @@ export class PresentationDeliveryModel {
         throw new Error('presentation-document-identity-mismatch')
       const saved = await this.#document(delivery, receipt, flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      this.#remember(receipt)
       this.#publish({
         document: saved,
         resolvedReceipt: receipt,
@@ -633,7 +603,6 @@ export class PresentationDeliveryModel {
           : await this.#resolve(delivery, flight.signal)
       const bytes = await this.#read(delivery, receipt, 'index.html', flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      if (!displayed) this.#remember(receipt)
       this.#save(bytes, `marivo-${receipt.reportId}-${receipt.buildId}.html`)
       this.#publish({
         downloading: false,
@@ -834,24 +803,12 @@ export class PresentationDeliveryModel {
     if (!version && this.#state.open && this.#state.historyOpen && this.#state.document)
       await this.toggleHistory(true)
   }
-  contextChanged(sessionId: string, workspaceId: string) {
-    const context = JSON.stringify([sessionId, workspaceId])
-    if (!this.#state.reportTarget && this.#context && this.#context !== context) this.unavailable()
-    this.#context = context
-    const delivery = this.#state.delivery
-    if (
-      delivery &&
-      (sessionId !== delivery.dshSessionId || workspaceId !== delivery.receipt.workspaceId)
-    )
-      this.unavailable()
-  }
   unavailable(
     message = 'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the-354',
   ) {
     this.#cancel()
     this.#publish({
       publishingLoading: false,
-      receipts: {},
       history: undefined,
       historyLoading: false,
       historyError: undefined,

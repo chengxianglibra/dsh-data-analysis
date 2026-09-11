@@ -284,7 +284,6 @@ export const zh = {
   'marivo.credentials.configuration-saved-but-the-reference-already-exists-existing-credentials':
     '配置已保存，但引用名已存在。未覆盖已有凭证；请在凭证页确认更新，或编辑配置使用新的引用名。',
   'marivo.credentials.cannot-read-credential-status': '无法读取凭证状态。',
-  'marivo.credentials.credential-requests': '凭证待办',
   'marivo.credentials.credential-request-connection-interrupted-reconnecting-host-waits-remain-subject':
     '凭证待办连接中断，正在重连；Host 中的等待仍受原调用期限限制。',
   'marivo.credentials.credential-request-notifications-are-unavailable-check-the-host-connection':
@@ -626,7 +625,6 @@ export const en = {
   'marivo.credentials.configuration-saved-but-the-reference-already-exists-existing-credentials':
     'Configuration saved, but the reference already exists. Existing credentials were retained. Confirm replacement on the credentials page or use a new reference.',
   'marivo.credentials.cannot-read-credential-status': 'Cannot read credential status.',
-  'marivo.credentials.credential-requests': 'Credential requests',
   'marivo.credentials.credential-request-connection-interrupted-reconnecting-host-waits-remain-subject':
     'Credential request connection interrupted; reconnecting. Host waits remain subject to the original call deadline.',
   'marivo.credentials.credential-request-notifications-are-unavailable-check-the-host-connection':

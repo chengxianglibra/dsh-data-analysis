@@ -5,8 +5,6 @@ import type {
   ConversationMatch,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { type SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import {
   marivoPresentationDeliveryDefinition as definition,
   parsePresentationDurableContent,
@@ -475,17 +473,8 @@ test('Host deliverables keep produced files and independent report nodes in eith
       .entries('conversation.chat.node')
       .find((entry: { options: { key: string } }) => entry.options.key === definition.kind)
     assert.ok(renderer)
-    const render = (sessionId: string) =>
-      renderToStaticMarkup(
-        createElement(renderer.component, {
-          node: reports()[0],
-          sessionId,
-          useWorkspaces: () => [],
-        }),
-      )
-    const html = render('session-a')
-    assert.equal((html.match(/class="pd-card"/g) ?? []).length, 2)
-    assert.equal((render('session-b').match(/class="pd-card"/g) ?? []).length, 0)
+    for (const removed of ['installPresentation', 'PresentationCards', 'PresentationOverlay'])
+      assert.equal(Object.hasOwn(host.presentation, removed), false)
     for (const replay of [
       () =>
         assembler.replaceWindow(

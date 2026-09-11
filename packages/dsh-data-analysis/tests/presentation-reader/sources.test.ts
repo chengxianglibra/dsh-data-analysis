@@ -23,8 +23,9 @@ import type {
   SourceSnapshot,
 } from '../../src/presentation/contracts/types.ts'
 
+let renderStatic: (document: PresentationDocument) => string
 let directory: string
-let renderSummary: (document: PresentationDocument, block?: PresentationBlock) => string
+let renderOverview: (document: PresentationDocument, block?: PresentationBlock) => string
 let renderDialog: (
   document: PresentationDocument,
   block: PresentationBlock,
@@ -45,10 +46,12 @@ import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
 import { CopyProvider } from './src/client/i18n/context.tsx';
 import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
 const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
-import { SourceSummary } from './src/client/presentation/sources.tsx';
+import { SourceOverview } from './src/client/presentation/sources.tsx';
+import { PresentationReader } from './src/client/presentation/reader.tsx';
 import { SourceDialog } from './src/client/presentation/source-dialog.tsx';
 export { formatSource } from './src/client/presentation/source-format.ts';
-export function renderSummary(document, block) { return renderToStaticMarkup(createElement(SourceSummary, { document, block })); }
+export function renderOverview(document, block) { return renderToStaticMarkup(createElement(SourceOverview, { document, block })); }
+export function renderStatic(document) { return renderToStaticMarkup(createElement(PresentationReader, { document, mode: 'static' })); }
 export function renderDialog(document, block, rowIndices, navigation) { return renderToStaticMarkup(createElement(SourceDialog, { document, block, rowIndices, onOpenSemanticRef: navigation ? () => {} : undefined, onClose() {} })); }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
@@ -61,7 +64,9 @@ export function renderDialog(document, block, rowIndices, navigation) { return r
     },
     logLevel: 'silent',
   })
-  ;({ renderSummary, renderDialog, formatSource } = await import(pathToFileURL(outfile).href))
+  ;({ renderOverview, renderDialog, renderStatic, formatSource } = await import(
+    pathToFileURL(outfile).href
+  ))
 })
 
 after(async () => {
@@ -143,7 +148,7 @@ test('only host navigation turns saved semantic references into buttons; offline
   assert.match(html, /class="pr-semantic-link"[^>]*>sales.revenue<\/button>/)
   assert.match(html, /class="pr-semantic-link"[^>]*>sales.region<\/button>/)
   assert.doesNotMatch(renderDialog(document, document.blocks[0]!), /pr-semantic-link/)
-  assert.doesNotMatch(renderSummary(document), /pr-semantic-link/)
+  assert.doesNotMatch(renderOverview(document), /pr-semantic-link/)
   const savedSource = document.sources[0]!
   if (savedSource.status !== 'available') throw new Error('Expected available source')
   savedSource.facts = [
@@ -178,7 +183,7 @@ test('every semantic object kind, including entity and new Catalog kinds, remain
   }
   assert.match(translator('zh-CN')(html), /pr-source-overview-label">实体<\/h4>/)
   assert.equal((html.match(/class="pr-semantic-link"/g) ?? []).length, kinds.length)
-  assert.doesNotMatch(renderSummary(document), /pr-semantic-link/)
+  assert.doesNotMatch(renderOverview(document), /pr-semantic-link/)
 })
 
 test('source overview exposes saved dataset fields, semantic paths and issues without technical facts or inferred filters', () => {
@@ -390,10 +395,9 @@ test('cell code follows only its selected binding and source-only code follows i
       },
     ],
   }
-  for (const html of [renderDialog(document, chart), renderSummary(document, chart)]) {
-    assert.match(html, /retain-this-value/)
-    assert.doesNotMatch(html, /unselected_python|unselected_sql/)
-  }
+  const html = renderDialog(document, chart)
+  assert.match(html, /retain-this-value/)
+  assert.doesNotMatch(html, /unselected_python|unselected_sql/)
   const sourceOnly = renderDialog(document, {
     id: 'source-code',
     kind: 'source',
@@ -430,27 +434,21 @@ test('execution SQL deduplicates by session, run and query, never by text alone'
   assert.equal(entries.filter((entry) => entry.text === sqlText).length, 3)
 })
 
-test('native code disclosures stay readable offline and preserve per-cell bindings without copy buttons', () => {
+test('saved source queries remain readable in the production source dialog', () => {
   const document = fixtureWithCode()
-  const html = renderSummary(document)
-  assert.match(
-    translator('zh-CN')(html),
-    /<details class="pr-source-code-summary" data-code-block-id="revenue"><summary>相关查询 · 收入指标原文<\/summary>/,
-  )
-  assert.match(html, /<pre><code class="language-python">/)
+  const html = renderDialog(document, document.blocks[0]!)
+  assert.match(html, /language-python/)
   assert.match(html, /secret_value/)
   assert.match(html, /SQL/)
   assert.match(html, /retain-this-value/)
-  assert.doesNotMatch(html, /<button| open=""|<script/)
   document.sources = []
   document.datasets[0]!.sourceIds = []
-  assert.match(renderSummary(document), /Python/)
+  assert.match(renderDialog(document, document.blocks[0]!), /Python/)
 })
 
 test('missing code and partial unavailable sources report saved facts explicitly', () => {
   const document = fixture()
   assert.match(translator('zh-CN')(renderDialog(document, document.blocks[0]!)), /暂无相关查询/)
-  assert.match(translator('zh-CN')(renderSummary(document, document.blocks[0]!)), /暂无相关查询/)
   document.sources[0] = {
     ...source,
     code: { snippets: [], notices: ['执行记录未保存 SQL 文本'] },
@@ -481,7 +479,7 @@ test('source tabs support forward, backward, Home and End navigation for both ta
   }
 })
 
-test('native static summary keeps unavailable reasons and valuable source fields without buttons or technical disclosures', () => {
+test('production static reader keeps unavailable reasons and valuable source fields without buttons or technical disclosures', () => {
   const document = fixture()
   document.sources.push({
     id: 'missing',
@@ -489,11 +487,10 @@ test('native static summary keeps unavailable reasons and valuable source fields
     reason: 'Original unavailable reason',
     ref: { sessionId: 'session_missing', artifactRef: 'art_missing' },
   })
-  const html = renderSummary(document)
-  assert.match(
-    translator('zh-CN')(html),
-    /^<details class="pr-source-summary"><summary>数据来源<\/summary>/,
-  )
+  document.blocks = [
+    { id: 'sources', kind: 'source', sourceIds: document.sources.map((source) => source.id) },
+  ]
+  const html = renderStatic(document)
   assert.equal(html.split('data-source-id="sales"').length - 1, 1)
   assert.equal(html.split('data-source-id="missing"').length - 1, 1)
   assert.match(html, /Original unavailable reason/)
@@ -520,7 +517,7 @@ test('malformed optional fact structures are not interpreted and displayed strin
     notices: [],
   })
   assert.doesNotMatch(
-    translator('zh-CN')(renderSummary(document)),
+    translator('zh-CN')(renderOverview(document)),
     /数据问题|没有|成功|failedCheckCount|not JSON/,
   )
   document.sources[0] = {
@@ -530,7 +527,7 @@ test('malformed optional fact structures are not interpreted and displayed strin
       { label: 'Issues', value: '[{"kind":"<img src=x>","severity":"warning"}]' },
     ],
   }
-  const html = renderSummary(document)
+  const html = renderOverview(document)
   assert.doesNotMatch(html, /<script|<img/)
   assert.match(html, /&lt;script&gt;/)
   assert.match(html, /&lt;img src=x&gt;/)
@@ -555,7 +552,7 @@ test('current chart source includes auxiliary bindings and filters exact preview
   assert.doesNotMatch(html, /data-row-index="0"|12345678901234\.5678/)
   assert.match(html, /0\.1000/)
   assert.match(translator('zh-CN')(html), /当前筛选：已保存 2 行中命中 1 行/)
-  const overview = renderSummary(document, block)
+  const overview = renderOverview(document, block)
   assert.match(translator('zh-CN')(overview), /<td>收入<\/td><td>decimal<\/td><td>CNY<\/td>/)
   assert.match(translator('zh-CN')(overview), /数量/)
 })

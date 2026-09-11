@@ -49,7 +49,7 @@ export async function verifyResponsiveGallery(
   page: Page,
   output: string,
   prefix: string,
-  layout: 'portable' | 'overlay' | 'module-loader',
+  layout: 'portable' | 'native-tab' | 'module-loader',
 ) {
   const reader = page.locator('[data-presentation-reader][data-mode="interactive"]')
   const results = []
@@ -65,24 +65,23 @@ export async function verifyResponsiveGallery(
       return {
         x: rect.x,
         width: rect.width,
+        containerWidth: node.parentElement!.getBoundingClientRect().width,
         leftPadding: Number.parseFloat(style.paddingLeft),
         rightPadding: Number.parseFloat(style.paddingRight),
       }
     })
     assert.ok(Math.abs(frame.leftPadding - frame.rightPadding) <= 1)
-    const availableWidth = layout === 'overlay' && width > 850 ? width * 0.8 : width
+    const availableWidth = layout === 'native-tab' ? frame.containerWidth : width
+    if (layout === 'native-tab')
+      assert.ok(
+        Math.abs(frame.width - availableWidth) <= 1,
+        `Reader fills its native pane content width: ${JSON.stringify(frame)}`,
+      )
     if (availableWidth >= 1440) {
       assert.ok(frame.width > 1240, `${prefix}: wide reader retains the old width limit`)
       assert.ok(frame.width - frame.leftPadding - frame.rightPadding > 1100)
     }
-    if (layout === 'overlay') {
-      const overlay = await page
-        .getByRole('dialog', { name: '分析快照', exact: true })
-        .boundingBox()
-      assert.ok(overlay)
-      assert.ok(Math.abs(overlay.x - (width - overlay.width) / 2) <= 1)
-      assert.ok(Math.abs(overlay.width - width * (width <= 850 ? 1 : 0.8)) <= 2)
-    } else if (layout === 'portable') {
+    if (layout === 'portable') {
       assert.ok(Math.abs(frame.x - (pageWidth.viewport - frame.width) / 2) <= 1)
     }
     for (const markdown of await reader.locator('.pr-markdown').all()) {
@@ -189,7 +188,7 @@ export async function verifyResponsiveGallery(
   await hiddenChart.evaluate((node: HTMLElement) => {
     node.style.display = 'none'
   })
-  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.setViewportSize({ width: layout === 'native-tab' ? 390 : 1440, height: 1100 })
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>

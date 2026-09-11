@@ -17,11 +17,6 @@ export {
 } from './client/presentation/delivery.ts'
 export { PresentationDeliveryModel } from './client/presentation/delivery-model.ts'
 export { HostPresentationReader } from './client/presentation/host-entry.tsx'
-export {
-  installPresentation,
-  PresentationCards,
-  PresentationOverlay,
-} from './client/presentation/install.tsx'
 
 export { inject }
 

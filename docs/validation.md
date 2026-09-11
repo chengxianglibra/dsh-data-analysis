@@ -6,6 +6,27 @@
 
 本地构建使用 `.nvmrc` 指定的 Node.js 22.19.0。可执行变更运行相关测试及 `npm run check`；exports、client、包元数据或分发内容变化时，再运行 `npm run build` 与 `npm run verify:plugin-package`。纯文档变更检查相对链接、标题锚点、Markdown 渲染和 `git diff --check`。
 
+## 报告旧入口清理验收
+
+2026-09-11 移除 `presentation/install.tsx` 的旧报告卡片、弹窗和安装入口，并将其单元测试及 Web
+验收迁移至默认 `apply` 安装的原生右侧 Tabs。Host 内报告入口要求已有 Session；离线 HTML 继续独立使用。
+同时清理旧来源摘要组件、图标、样式、翻译及卡片缓存；公开 API 移除清单见
+[报告交付](modules/presentation-delivery.md#客户端旧入口移除)。持久报告和历史事件契约未变化。
+
+Node.js 22.19.0 下 `npm run check` 通过（652 项通过、4 项默认跳过），`npm run build` 和
+`npm run verify:plugin-package` 通过。迁移后的验收脚本另通过类型与格式检查。
+包验证会调用 `prepack` 重建 `lib`，应先完成构建和包验证，再启动 Web 验收，避免打包读取中间产物。
+
+最终生产模块的 Ask DSH（19 项）、报告目录（12 项）、原生 Tabs（49 项）及图表交互／离线 HTML
+验收通过；完整集成 Web 复验也通过，覆盖原生编辑、历史 Build、保存冲突、引用与撤销、
+Session／Workspace 失效、多宽度图表、两种客户端安装顺序及同 profile 重启恢复。
+完整集成复用本次已通过的 Native／both／Code headless 证据，Web 部分以最终打包模块重新执行。
+本地证据保存在 `artifacts/report-tab-cleanup/`，各 Web 证据中的模块摘要均与最终 `lib` 逐项核对。
+客户端 `client.js` SHA-256 为 `7f250aeac7e56e829484b40dafabdb1ffe6076ff49c172b848bf1ddcdcd9434a`。
+
+验收使用独立 profile、真实 Harness／Marivo 和 Chrome，模型边界使用脚本适配器；不代表远端模型自主分析验收。
+未修改用户运行中的 profile 或服务，未重装、提交或发布。
+
 ## DSH rc.1 基线验收
 
 2026-09-11 完成 [升级设计](designs/dsh-rc-upgrade-ux.md) 的 S1。开发 distribution 与直接 DSH 开发依赖

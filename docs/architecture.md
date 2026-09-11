@@ -88,7 +88,7 @@ Agent 将已有 Artifact 或 computed typed JSON 组织成 Draft，由 `marivo_p
 
 Report ID 是稳定报告身份，Build ID 是一次保存的固定身份。新建与更新共用原子提交；更新必须携带 `expected_build_id`，在锁内比较并发布 current 指针。Host 呈现编辑只修改允许的展示字段，Agent 更新使用完整 Draft；两者都不能覆盖并发保存。
 
-默认保存只写 JSON，成功 receipt 通过 Harness 持久事件归属到 Session/Turn。当前会话的新交付自动打开固定 Build 的原生右侧 Tab；成功报告不渲染聊天卡片，历史回放不自动打开。报告目录与重开可解析 current，已打开 reader 继续显示固定快照，直到用户刷新或保存。
+默认保存只写 JSON，成功 receipt 通过 Harness 持久事件归属到 Session/Turn。当前会话的新交付自动打开固定 Build 的原生右侧 Tab；成功报告不渲染聊天卡片，历史回放不自动打开。Host 阅读、编辑和历史入口统一由已有 Session 的原生 Tab 承接，不创建无 Session 容器。报告目录与重开可解析 current，已打开 reader 继续显示固定快照，直到用户刷新或保存。
 
 完整 HTML 在下载时按固定 Build 校验并生成；当前视图导出冻结已显示的筛选、排序和图形。两者都不修改 Build 或 current。开启 `reportPublishing` 后，在线 HTML 下载入口改为对象存储发布，Agent 也可在用户明确要求发布时调用 Tool。上传使用独立、操作级凭据；写入响应成功不等于公网链接已验证可访问。
 

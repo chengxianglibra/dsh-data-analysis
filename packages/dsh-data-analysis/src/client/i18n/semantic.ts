@@ -233,8 +233,6 @@ export const zh = {
   'marivo.semantic.select-an-object-to-view-its-business-definition-and':
     '选择一个对象，查看业务定义与关联。',
   'marivo.semantic.not-in-this-catalog': '（当前目录未包含）',
-  'marivo.semantic.frequently-selected-in-the-last-7-days': '最近 7 天常用',
-  'marivo.semantic.similar-text': '相近结果',
   'marivo.semantic.dimension': '维度',
   'marivo.semantic.measure': '度量',
   'marivo.semantic.time-dimension': '时间维度',
@@ -492,9 +490,6 @@ export const en = {
   'marivo.semantic.select-an-object-to-view-its-business-definition-and':
     'Select an object to view its business definition and relationships.',
   'marivo.semantic.not-in-this-catalog': '(not in this catalog)',
-  'marivo.semantic.frequently-selected-in-the-last-7-days':
-    'Frequently selected in the last 7 days',
-  'marivo.semantic.similar-text': 'Similar text',
   'marivo.semantic.dimension': 'Dimension',
   'marivo.semantic.measure': 'Measure',
   'marivo.semantic.time-dimension': 'Time dimension',

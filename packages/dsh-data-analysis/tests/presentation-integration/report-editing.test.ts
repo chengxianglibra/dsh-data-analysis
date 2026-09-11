@@ -274,7 +274,7 @@ test('editor undo/cancel, conflict drafts and lost-response recovery use the ori
   await model.saveEdit()
   assert.equal(model.getSnapshot().editing!.edits.title, '本窗口草稿')
   assert.match(translator('zh-CN')(model.getSnapshot().editError!), /其他窗口/)
-  model.contextChanged('session', 'foreign-workspace')
+  model.unavailable()
   assert.equal(model.getSnapshot().document, undefined)
   assert.equal(model.getSnapshot().editing, undefined)
   assert(

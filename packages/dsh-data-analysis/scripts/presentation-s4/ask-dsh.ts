@@ -1,4 +1,4 @@
-/** Ask DSH through the real alpha composer, with read-only state and boundary-failure probes. */
+/** Ask DSH through the real Harness composer, with read-only state and boundary-failure probes. */
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
 import { presentationHtml } from '../presentation-html.ts'
+import { closeReport, openReport, reportAction } from '../right-tabs/browser.ts'
 
 export async function verifyAskDsh(
   page: Page,
@@ -20,18 +21,19 @@ export async function verifyAskDsh(
   assert.ok(precise && gallery, 'Ask DSH validation requires computed and chart gallery reports')
   const sessionId = precise.dshSessionId
   const composer = page.locator('[contenteditable="true"][role="textbox"]:visible')
-  const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
-  const reader = overlay.locator('[data-presentation-reader][data-mode="interactive"]')
+  const report = page.locator('[data-rt-kind=report]:visible')
+  const reader = report.locator('[data-presentation-reader][data-mode="interactive"]')
   const cell = (id: string) => reader.locator(`[data-block-id="${id}"]`)
   const snapshot = () => page.evaluate((id) => (window as any).__askDshProbe.read(id), sessionId)
   const audit = () => page.evaluate(() => (window as any).__askDshProbe.audit())
   const events = () =>
     page.evaluate(() => (window as any).__s4Rpc('/presentation-s4-validation', 'events', {}))
   const open = async (delivery = precise) => {
-    await page
-      .locator(`[data-presentation-card="${delivery.receipt.buildId}"]`)
-      .getByRole('button', { name: '打开分析', exact: true })
-      .click()
+    if (await report.count()) await closeReport(page, report)
+    await openReport(page, sessionId, {
+      workspaceId: delivery.receipt.workspaceId,
+      reportId: delivery.receipt.reportId,
+    })
     await reader.getByRole('heading', { name: delivery.receipt.title, exact: true }).waitFor()
   }
   const ask = async (id: string, keyboard = false) => {
@@ -68,7 +70,7 @@ export async function verifyAskDsh(
   assert.equal((await snapshot()).draft, '')
   await open()
   await ask('metric')
-  await overlay.waitFor({ state: 'detached' })
+  await report.waitFor({ state: 'visible' })
   const first = (await snapshot()).draft.trimEnd()
   assert.ok(first.startsWith('【报告上下文】\n'))
   assert.ok(first.endsWith('\n【报告上下文结束】'))
@@ -98,7 +100,7 @@ export async function verifyAskDsh(
     .getByRole('combobox', { name: '已准备视图', exact: true })
     .selectOption('prepared-histogram')
   await ask('gallery-line', true)
-  await overlay.waitFor({ state: 'detached' })
+  await report.waitFor({ state: 'visible' })
   const filtered = (await snapshot()).draft
   assert.ok(filtered.startsWith(`${typed}\n\n【报告上下文】\n`))
   assert.ok(filtered.includes('展示范围：第二条观测'))
@@ -109,23 +111,23 @@ export async function verifyAskDsh(
 
   await open()
   await ask('metric')
-  await overlay.waitFor({ state: 'detached' })
+  await report.waitFor({ state: 'visible' })
   const repeated = (await snapshot()).draft
   assert.equal(repeated, `${filtered}\n\n${first} `)
   assert.equal((await audit()).writes - before.writes, 3)
 
   await open()
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(report, '编辑报告')
   await cell('metric').getByRole('button', { name: 'cell 更多操作', exact: true }).click()
   const disabledAsk = cell('metric').getByRole('menuitem', { name: /^(加入提问|Add to question)$/ })
-  assert.equal(await disabledAsk.isDisabled(), true)
+  assert.equal(await disabledAsk.getAttribute('aria-disabled'), 'true')
   await cell('metric').getByText('请先保存或取消编辑', { exact: true }).waitFor()
   const editingWrites = (await audit()).writes
   await disabledAsk.focus()
   for (const key of ['Enter', 'Space']) {
     await page.keyboard.press(key)
     assert.equal(await disabledAsk.isVisible(), true)
-    assert.equal(await overlay.isVisible(), true)
+    assert.equal(await report.isVisible(), true)
     assert.equal((await snapshot()).draft, repeated)
     assert.equal((await audit()).writes, editingWrites)
   }
@@ -136,32 +138,31 @@ export async function verifyAskDsh(
     buttonBounds.y + buttonBounds.height / 2,
   )
   assert.equal(await disabledAsk.isVisible(), true)
-  assert.equal(await overlay.isVisible(), true)
+  assert.equal(await report.isVisible(), true)
   assert.equal((await snapshot()).draft, repeated)
   assert.equal((await audit()).writes, editingWrites)
   await page.keyboard.press('Escape')
-  await overlay.getByRole('button', { name: '取消编辑', exact: true }).click()
+  await report.getByRole('button', { name: '取消编辑', exact: true }).click()
 
   for (const kind of ['scope', 'write']) {
     const stateBefore = await snapshot()
     await page.evaluate((failure) => (window as any).__askDshProbe.failNext(failure), kind)
     await ask('metric')
-    await overlay
-      .getByRole('alert')
+    await report
+      .getByRole('status')
       .filter({
         hasText:
           kind === 'scope' ? '报告所属 Session 或 Workspace 已变化或不可用' : 'Ask DSH validation:',
       })
       .waitFor()
-    assert.equal(await overlay.isVisible(), true)
+    assert.equal(await report.isVisible(), true)
     assert.deepEqual(await snapshot(), stateBefore)
-    await overlay.screenshot({ path: path.join(outputRoot, `ask-dsh-${kind}-failure.png`) })
+    await report.screenshot({ path: path.join(outputRoot, `ask-dsh-${kind}-failure.png`) })
   }
-  await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-  await overlay.waitFor({ state: 'detached' })
+  await closeReport(page, report)
   await page.screenshot({ path: path.join(outputRoot, 'ask-dsh-composer.png') })
 
-  // Exercise alpha's real Lexical chips and browser-owned upload attachments.
+  // Exercise Harness's real Lexical chips and browser-owned upload attachments.
   await composer.fill('保留引用与附件：')
   const reference = {
     source: 'marivo-semantic',
@@ -201,7 +202,7 @@ export async function verifyAskDsh(
   await page.waitForTimeout(1100)
   await open()
   await ask('metric')
-  await overlay.waitFor({ state: 'detached' })
+  await report.waitFor({ state: 'visible' })
   const richAfter = await snapshot()
   assert.equal(richAfter.draft, richBefore.draft + '\n\n' + first + ' ')
   assert.deepEqual(richAfter.occurrences.slice(0, -1), richBefore.occurrences)

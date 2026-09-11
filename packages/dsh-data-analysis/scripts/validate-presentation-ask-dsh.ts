@@ -25,7 +25,7 @@ const server = await startPresentationWebHost(
   pythonExecutable,
   inputs.draftPaths,
   'native-first',
-  { askDshProbe: true, retainedPresentation: true },
+  { askDshProbe: true, rightTabsAcceptance: true },
 )
 let browser: Browser | undefined
 let page: Page | undefined
@@ -42,8 +42,8 @@ try {
   const modelNotice = page.getByRole('button', { name: '稍后配置', exact: true })
   if (await modelNotice.isVisible()) await modelNotice.click()
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
-  await page.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
-  assert.equal(await page.locator('[data-presentation-card]').count(), inputs.draftPaths.length)
+  await page.waitForFunction(() => !!(window as any).__rightTabs)
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   assert.ok(server.durableSessionId)
   const checks = await verifyAskDsh(
     page,
@@ -57,7 +57,7 @@ try {
     status: 'passed',
     dshVersion: createRequire(import.meta.url)('@deepseek-ai/dsh/package.json').version,
     boundary:
-      'Real installed DSH Web composer and packed public installPresentation fallback; scripted model adapter, not real-model analysis acceptance',
+      'Real installed DSH Web composer and packed production native report Tab; scripted model adapter, not real-model analysis acceptance',
     workspaceRoot,
     isolatedProfile: server.profile,
     moduleDigests: server.moduleDigests,

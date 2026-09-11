@@ -11,6 +11,7 @@ import {
 } from '../../src/presentation/contracts/index.ts'
 import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
 import { presentationHtml } from '../presentation-html.ts'
+import { closeReport, openReport, reportAction } from '../right-tabs/browser.ts'
 
 export async function verifyEditing(
   page: Page,
@@ -35,28 +36,31 @@ export async function verifyEditing(
   )
   const processEvents = await readFile(processAuditPath)
   assert.match(processEvents.toString(), /spawn|exec/)
-  const cardCount = await page.locator('[data-presentation-card]').count()
-  const card = page.locator(`[data-presentation-card="${delivery.receipt.buildId}"]`)
-  const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
-  const reader = overlay.locator('[data-presentation-reader][data-mode="interactive"]')
+  const open = () =>
+    openReport(page, delivery.dshSessionId, {
+      workspaceId: delivery.receipt.workspaceId,
+      reportId: delivery.receipt.reportId,
+    })
+  const report = page.locator('[data-rt-kind=report]:visible')
+  const reader = report.locator('[data-presentation-reader][data-mode="interactive"]')
   const cell = (id: string) => reader.locator(`[data-block-id="${id}"]`)
-  await card.getByRole('button', { name: '打开分析', exact: true }).click()
+  await open()
   await reader.getByRole('heading', { name: original.title, exact: true }).waitFor()
   assert.equal(await reader.getByRole('group', { name: '全局筛选' }).count(), 0)
   await page.emulateMedia({ media: 'print' })
   assert.equal(
-    await overlay.locator('[data-mode="static"] [data-block-id="table"] tbody tr').count(),
+    await report.locator('[data-mode="static"] [data-block-id="table"] tbody tr').count(),
     2,
   )
   await page.emulateMedia({ media: 'screen' })
   const downloadPending = page.waitForEvent('download')
-  await overlay.getByRole('button', { name: '导出报告', exact: true }).click()
-  await overlay.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
+  await report.getByRole('button', { name: '报告更多操作', exact: true }).click()
+  await report.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const download = await downloadPending
   const originalDownload = path.join(outputRoot, 'editing-download.html')
   await download.saveAs(originalDownload)
   assert.deepEqual(await readFile(originalDownload), await presentationHtml(delivery.receipt))
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(report, '编辑报告')
   assert.equal(await cell('table').locator('tbody tr').count(), 2)
   await reader.getByRole('textbox', { name: '报告标题', exact: true }).fill('阅读器保存验收')
   await reader
@@ -78,12 +82,12 @@ export async function verifyEditing(
   )
   await cell('sources').getByRole('button', { name: '删除 cell', exact: true }).click()
   assert.equal(await cell('sources').count(), 0)
-  await overlay.getByRole('button', { name: '撤销', exact: true }).click()
+  await report.getByRole('button', { name: '撤销', exact: true }).click()
   assert.equal(await cell('sources').count(), 1)
-  await overlay.getByRole('button', { name: '重做', exact: true }).click()
+  await report.getByRole('button', { name: '重做', exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })
-  await overlay.screenshot({ path: path.join(outputRoot, 'editing-narrow.png') })
-  await overlay.getByRole('button', { name: '保存编辑', exact: true }).click()
+  await report.screenshot({ path: path.join(outputRoot, 'editing-narrow.png') })
+  await report.getByRole('button', { name: '保存编辑', exact: true }).click()
   await reader.getByRole('heading', { name: '阅读器保存验收', exact: true }).waitFor()
   const resolved = await rpc('reports/resolve', request)
   assert.equal(resolved.ok, true)
@@ -104,8 +108,8 @@ export async function verifyEditing(
     false,
   )
   const savedDownloadPending = page.waitForEvent('download')
-  await overlay.getByRole('button', { name: '导出报告', exact: true }).click()
-  await overlay.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
+  await report.getByRole('button', { name: '报告更多操作', exact: true }).click()
+  await report.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const savedDownload = await savedDownloadPending
   const savedPath = path.join(outputRoot, 'editing-saved.html')
   await savedDownload.saveAs(savedPath)
@@ -131,13 +135,18 @@ export async function verifyEditing(
     })
     await context.close()
   }
-  await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
+  await closeReport(page, report)
   await page.reload()
-  await card.getByRole('heading', { name: saved.title, exact: true }).waitFor()
-  assert.equal(await page.locator('[data-presentation-card]').count(), cardCount)
-  await card.getByRole('button', { name: '打开分析', exact: true }).click()
+  await page.waitForFunction(() => !!(window as any).__rightTabs)
+  await page.waitForFunction(
+    (id) => !!(window as any).__rtHost.sessions.getSnapshot().byId[id],
+    delivery.dshSessionId,
+  )
+  await page.evaluate((id) => (window as any).__rtHost.select(id), delivery.dshSessionId)
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
+  await open()
   await reader.getByRole('heading', { name: saved.title, exact: true }).waitFor()
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(report, '编辑报告')
   await reader.getByRole('textbox', { name: '报告标题' }).fill('冲突草稿')
   const external = await rpc('reports/save', {
     ...request,
@@ -145,26 +154,29 @@ export async function verifyEditing(
     edits: { ...presentationEdits(saved), title: '另一个窗口的保存' },
   })
   assert.equal(external.ok, true)
-  await overlay.getByRole('button', { name: '保存编辑', exact: true }).click()
-  await overlay.getByRole('alert').filter({ hasText: '其他窗口' }).waitFor()
+  await report.getByRole('button', { name: '保存编辑', exact: true }).click()
+  await report.getByRole('alert').filter({ hasText: '其他窗口' }).waitFor()
   assert.equal(await reader.getByRole('textbox', { name: '报告标题' }).inputValue(), '冲突草稿')
   page.once('dialog', (dialog) => dialog.dismiss())
-  await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-  assert.equal(await overlay.isVisible(), true)
-  await overlay.getByRole('button', { name: '取消编辑', exact: true }).click()
-  await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-  await card.getByRole('button', { name: '打开分析', exact: true }).click()
+  await report.getByRole('button', { name: '取消编辑', exact: true }).click()
+  assert.equal(await report.isVisible(), true)
+  page.once('dialog', (dialog) => dialog.accept())
+  await report.getByRole('button', { name: '取消编辑', exact: true }).click()
+  await closeReport(page, report)
+  await open()
   await reader.getByRole('heading', { name: '另一个窗口的保存', exact: true }).waitFor()
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(report, '编辑报告')
   while (await reader.getByRole('button', { name: '删除 cell', exact: true }).count())
     await reader.getByRole('button', { name: '删除 cell', exact: true }).first().click()
   await reader.getByText('这份报告尚无 cell。数据与来源仍保留。', { exact: true }).waitFor()
-  await overlay.getByRole('button', { name: '保存编辑', exact: true }).click()
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).waitFor()
+  await report.getByRole('button', { name: '保存编辑', exact: true }).click()
+  await reader
+    .getByRole('textbox', { name: '报告标题', exact: true })
+    .waitFor({ state: 'detached' })
   const empty = parsePresentationReceipt((await rpc('reports/resolve', request)).value)
   const finalDownloadPending = page.waitForEvent('download')
-  await overlay.getByRole('button', { name: '导出报告', exact: true }).click()
-  await overlay.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
+  await report.getByRole('button', { name: '报告更多操作', exact: true }).click()
+  await report.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
   const finalDownload = await finalDownloadPending
   const finalPath = path.join(outputRoot, 'editing-empty-saved.html')
   await finalDownload.saveAs(finalPath)
@@ -183,15 +195,15 @@ export async function verifyEditing(
     assert.equal(await portable.getByRole('button', { name: '编辑报告', exact: true }).count(), 0)
     await context.close()
   }
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(report, '编辑报告')
   await reader.getByRole('textbox', { name: '报告标题', exact: true }).fill('Workspace 失效草稿')
   await page.evaluate(() => (window as any).__s4Rpc('/presentation-s4-validation', 'detach', {}))
   await reader.waitFor({ state: 'detached' })
-  assert.equal(await overlay.getByRole('textbox', { name: '报告标题', exact: true }).count(), 0)
+  assert.equal(await report.getByRole('textbox', { name: '报告标题', exact: true }).count(), 0)
   await page.evaluate(() => (window as any).__s4Rpc('/presentation-s4-validation', 'attach', {}))
-  await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
+  await closeReport(page, report)
   await page.setViewportSize({ width: 1440, height: 1100 })
-  assert.equal(await page.locator('[data-presentation-card]').count(), cardCount)
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   assert.deepEqual(
     await page.evaluate(
       (id) => (window as any).__s4Rpc('/presentation-s4-validation', 'events', { sessionId: id }),
@@ -215,7 +227,7 @@ export async function verifyEditing(
     undeclaredFiltersAbsent: true,
     downloadUnchanged: true,
     printUnfiltered: true,
-    originalCardReopen: true,
+    nativeCurrentReopen: true,
     conflictRetainsDraft: true,
     cancel: true,
     emptyReport: true,
@@ -228,10 +240,14 @@ export async function verifyEditing(
 }
 
 export async function verifyPreparedFilters(page: Page, delivery: PresentationDelivery) {
-  const card = page.locator(`[data-presentation-card="${delivery.receipt.buildId}"]`)
-  await card.getByRole('button', { name: '打开分析', exact: true }).click()
-  const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
-  const reader = overlay.locator('[data-mode="interactive"]')
+  const open = () =>
+    openReport(page, delivery.dshSessionId, {
+      workspaceId: delivery.receipt.workspaceId,
+      reportId: delivery.receipt.reportId,
+    })
+  await open()
+  const report = page.locator('[data-rt-kind=report]:visible')
+  const reader = report.locator('[data-mode="interactive"]')
   await reader.getByRole('button', { name: /展示范围/ }).click()
   await reader.getByRole('menuitemradio', { name: '第二条观测', exact: true }).click()
   const cell = reader.locator('[data-block-id="gallery-line"]')
@@ -247,6 +263,7 @@ export async function verifyPreparedFilters(page: Page, delivery: PresentationDe
     await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
     assert.deepEqual(
       await dialog
+        .getByRole('tabpanel', { name: '数据预览', exact: true })
         .locator('tbody tr')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['1'],
@@ -256,17 +273,19 @@ export async function verifyPreparedFilters(page: Page, delivery: PresentationDe
   await check('prepared-histogram')
   await check('')
   await check('prepared-scatter')
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).click()
+  await reportAction(report, '编辑报告')
   await cell.getByRole('button', { name: 'cell 更多操作' }).click()
   await cell.getByRole('menuitem', { name: '探索图表', exact: true }).click()
   const picker = explorer.getByRole('combobox', { name: '已准备视图', exact: true })
   await picker.selectOption('prepared-histogram')
-  await overlay.getByRole('button', { name: '撤销', exact: true }).click()
+  await report.getByRole('button', { name: '撤销', exact: true }).click()
   assert.equal(await picker.inputValue(), '')
-  await overlay.getByRole('button', { name: '重做', exact: true }).click()
+  await report.getByRole('button', { name: '重做', exact: true }).click()
   assert.equal(await picker.inputValue(), 'prepared-histogram')
-  await overlay.getByRole('button', { name: '保存编辑', exact: true }).click()
-  await overlay.getByRole('button', { name: '编辑报告', exact: true }).waitFor()
+  await report.getByRole('button', { name: '保存编辑', exact: true }).click()
+  await reader
+    .getByRole('textbox', { name: '报告标题', exact: true })
+    .waitFor({ state: 'detached' })
   const resolved = await page.evaluate(
     ({ sessionId, reportId }) =>
       (window as any).__s4Rpc('/marivo-presentation', 'reports/resolve', { sessionId, reportId }),
@@ -288,7 +307,7 @@ export async function verifyPreparedFilters(page: Page, delivery: PresentationDe
   }
   assert.deepEqual(saved.datasets, original.datasets)
   assert.deepEqual(saved.sources, original.sources)
-  await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
+  await closeReport(page, report)
   return {
     preparedViewUsesActualDataset: true,
     preparedViewSave: true,
@@ -392,6 +411,7 @@ export async function verifyAllChartFilters(
     await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
     assert.deepEqual(
       await dialog
+        .getByRole('tabpanel', { name: '数据预览', exact: true })
         .locator('tbody tr')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['1'],

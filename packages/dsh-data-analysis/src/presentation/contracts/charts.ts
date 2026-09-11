@@ -236,9 +236,6 @@ export function parseChartViewShape(value: unknown, path = ''): asserts value is
 export function chartColumns(view: ChartView): string[] {
   return [...new Set([view.x, ...view.y, ...Object.values(view.bindings ?? {})])]
 }
-export function chartSeriesFields(view: ChartView): string[] {
-  return [...view.y]
-}
 
 /** Verifies supplied values only: never bins, ranks, accumulates, normalizes or sorts. */
 export function validateChartView(

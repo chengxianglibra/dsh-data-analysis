@@ -76,6 +76,7 @@ export async function createRightTabsDriver(
   ctx: Context,
   workspace: any,
   draftPaths: readonly string[],
+  resume = false,
 ) {
   const agents = new Map<string, any>()
   const semantic = new SemanticQuestionAdapter()
@@ -105,15 +106,14 @@ export async function createRightTabsDriver(
                   actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
               ),
     )
-    const agent = await ctx.agentLoop.create(
-      id,
-      { provider, model: 'deterministic-seam' },
-      { cwd: workspace.path },
-    )
+    const agentOptions = { provider, model: 'deterministic-seam' }
+    const agent = resume
+      ? (await ctx.agentLoop.resume(ctx, { resumeSessionId: id, agentOptions })).agent
+      : await ctx.agentLoop.create(id, agentOptions, { cwd: workspace.path })
     agents.set(mode, agent)
     await agent.ctx.plugin(FilesystemTools)
     await workspace.attachSession(id)
-    if (mode === 'semantic') {
+    if (mode === 'semantic' && !resume) {
       agent.followup(
         createUserMessage({
           content: [

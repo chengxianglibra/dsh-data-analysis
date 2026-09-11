@@ -166,3 +166,13 @@ Workspace 内阅读器保存没有来源 Session 时显示「Workspace 内保存
 ## 可选对象存储交付
 
 启用 `reportPublishing` 后，在线阅读器的完整报告和当前视图 HTML 菜单均改为上传并返回链接，不触发本地下载。默认保存仍只提交 JSON；身份、凭据、路径及失败边界见[报告 HTML 发布](report-publishing.md)。
+
+## 客户端旧入口移除
+
+客户端只通过默认 `apply` 安装原生报告 Tab。移除 `installPresentation`、`PresentationCards`、
+`PresentationOverlay` 公开导出及旧弹窗实现，不提供兼容别名。报告事件解析和持久 receipt 契约保持不变。
+移除旧卡片使用的 `PresentationDeliveryModel.preview`、`contextChanged` 和 `receipts` 状态；
+原生 Tab 的上下文撤销通过 `TabPage` 生命周期调用 `unavailable`。
+同时移除无仓库调用方的公开辅助函数 `chartSeriesFields`；调用方直接读取 `ChartView.y`，需要副本时显式复制。
+
+来源概要和查询由当前来源对话框展示；静态 HTML 使用真实 Reader 的 source cell，不保留旧摘要组件。

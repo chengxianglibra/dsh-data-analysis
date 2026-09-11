@@ -6,7 +6,6 @@ import type {
 } from '../../presentation/contracts/types.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { columnIndex, datasetById, selectedSources, snapshotDate } from './model.ts'
-import { SourceCodeSummary } from './source-code.tsx'
 import {
   type OpenSemanticRef,
   semanticKindLabel,
@@ -291,29 +290,5 @@ export function SourceOverview({
         ))}
       </div>
     </div>
-  )
-}
-
-/** Compact native disclosure for reading the saved report without JavaScript. */
-export function SourceSummary({
-  document,
-  block,
-}: {
-  document: PresentationDocument
-  block?: PresentationBlock
-}) {
-  const t = useCopy()
-
-  if (
-    !blockSources(document, block).length &&
-    !(block ? 'datasetId' in block : document.blocks.some((item) => 'datasetId' in item))
-  )
-    return null
-  return (
-    <details className="pr-source-summary">
-      <summary>{t('marivo.presentation.data-sources')}</summary>
-      <SourceOverview document={document} block={block} />
-      <SourceCodeSummary document={document} block={block} />
-    </details>
   )
 }

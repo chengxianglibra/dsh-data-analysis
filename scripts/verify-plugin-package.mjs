@@ -356,6 +356,7 @@ try {
     await skillProvider.dispose()
     assert.deepEqual((await skillContext.skills.snapshot()).skills, [])
     const root = await import('@chengxianglibra/dsh-data-analysis')
+    assert.equal(Object.hasOwn(root, 'chartSeriesFields'), false, 'obsolete chart helper must not be exported')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
     const datasource = await import('@chengxianglibra/dsh-data-analysis/datasource')

@@ -88,35 +88,3 @@ export function SourceCode({
     </div>
   )
 }
-
-/** Native disclosures remain usable in saved HTML with JavaScript disabled. */
-export function SourceCodeSummary({
-  document,
-  block,
-}: {
-  document: PresentationDocument
-  block?: PresentationBlock
-}) {
-  const t = useCopy()
-
-  const blocks = block
-    ? [block]
-    : document.blocks.filter((item) => item.kind === 'source' || 'datasetId' in item)
-  if (!blocks.length) {
-    return (
-      <details className="pr-source-code-summary">
-        <summary>{t('marivo.presentation.related-queries')}</summary>
-        <SourceCode document={document} />
-      </details>
-    )
-  }
-  return blocks.map((item) => (
-    <details className="pr-source-code-summary" key={item.id} data-code-block-id={item.id}>
-      <summary>
-        {t('marivo.presentation.related-queries')}
-        {t(block ? '' : ` · ${item.kind === 'metric' ? item.label : item.id}`)}
-      </summary>
-      <SourceCode document={document} block={item} />
-    </details>
-  ))
-}

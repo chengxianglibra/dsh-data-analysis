@@ -171,7 +171,7 @@ test('Workspace and Session mismatches never issue RPC; mid-flight changes clear
   assert.equal(signals.length, 0)
   assert.match(translator('zh-CN')(model.getSnapshot().error!), /Workspace 或 Session 已变化/)
   const pending = model.show(delivery, 'session-a', document.workspaceId)
-  model.contextChanged('session-a', 'foreign-workspace')
+  model.unavailable()
   assert.equal(signals[0]!.aborted, true)
   resolve(response('presentation.json'))
   await pending

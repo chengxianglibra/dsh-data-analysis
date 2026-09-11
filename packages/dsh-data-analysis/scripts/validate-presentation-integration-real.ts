@@ -7,9 +7,9 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { type Browser, type BrowserContext, chromium, type Locator, type Page } from 'playwright'
+import { translator } from '../src/client/i18n/copy.ts'
 import {
   cellText,
-  columnLabel,
   datasetById,
   metricText,
   selectedSources,
@@ -32,6 +32,7 @@ import {
 import { validatePresentationHost } from './presentation-s4/host.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
+import { closeReport, openReport, reportAction } from './right-tabs/browser.ts'
 
 const arguments_ = process.argv.slice(2)
 assert.ok(
@@ -109,6 +110,8 @@ const server = await startPresentationWebHost(
   await mkdtemp(path.join(outputRoot, 'web-attempt-')),
   pythonExecutable,
   inputs.draftPaths,
+  'native-first',
+  { rightTabsAcceptance: true },
 )
 let browser: Browser | undefined, page: Page | undefined
 const errors: string[] = []
@@ -194,8 +197,15 @@ async function verifyReader(target: Page, document: PresentationDocument, static
     if (dataset) {
       assert.ok((await overview.innerText()).includes(dataset.id))
       assert.deepEqual(
-        await overview.locator('.pr-source-fields li').allTextContents(),
-        columns.map((id) => columnLabel(dataset.data.columns.find((column) => column.id === id)!)),
+        await overview
+          .locator('.pr-source-fields tbody tr')
+          .evaluateAll((rows) =>
+            rows.map((row) => Array.from(row.querySelectorAll('td'), (cell) => cell.textContent)),
+          ),
+        columns.map((id) => {
+          const column = dataset.data.columns.find((column) => column.id === id)!
+          return [column.id, column.label, column.type, column.unit ?? '—']
+        }),
       )
     }
     const sources = selectedSources(
@@ -205,7 +215,7 @@ async function verifyReader(target: Page, document: PresentationDocument, static
     for (const source of sources) {
       const card = overview.locator(`[data-source-id="${source.id}"]`)
       if (source.status === 'unavailable') {
-        assert.ok((await card.innerText()).includes(source.reason))
+        assert.ok((await card.innerText()).includes(translator(document.locale)(source.reason)))
         continue
       }
       const facts = sourceOverviewFacts(source)
@@ -224,7 +234,10 @@ async function verifyReader(target: Page, document: PresentationDocument, static
       if (labels.length) {
         const visible = await card.innerText()
         for (const label of labels)
-          assert.ok(visible.includes(label), `Missing saved source fact ${label}`)
+          assert.ok(
+            visible.includes(translator(document.locale)(label)),
+            `Missing saved source fact ${label}`,
+          )
       }
     }
     if (dataset) {
@@ -242,7 +255,7 @@ async function verifyReader(target: Page, document: PresentationDocument, static
   if (staticMode)
     for (const source of document.sources)
       if (source.status === 'unavailable')
-        assert.ok((await reader.innerText()).includes(source.reason))
+        assert.ok((await reader.innerText()).includes(translator(document.locale)(source.reason)))
   if (!document.datasets.length) assert.equal(await reader.locator('table').count(), 0)
 }
 async function openFirstOrdinaryChart(target: Page, document: PresentationDocument) {
@@ -347,14 +360,16 @@ try {
   await writeFile(path.join(outputRoot, 'initial-dom.txt'), await page.locator('body').innerText())
   await page.screenshot({ path: path.join(outputRoot, 'initial.png') })
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
-  await page.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
-  assert.equal(await page.locator('[data-presentation-card]').count(), inputs.draftPaths.length)
+  await page.waitForFunction(() => !!(window as any).__rightTabs)
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   const producedFiles = page.locator('[data-produced-files-row]')
   assert.equal(await producedFiles.count(), expectedProducedRows)
   assert.ok((await producedFiles.allTextContents()).every((text) => text.includes('s4-produced-')))
   await page.setViewportSize({ width: 1440, height: 1800 })
-  await page.locator('[data-presentation-card]').first().scrollIntoViewIfNeeded()
-  await page.screenshot({ path: path.join(outputRoot, 'cards-overview.png'), fullPage: true })
+  await page.screenshot({
+    path: path.join(outputRoot, 'conversation-overview.png'),
+    fullPage: true,
+  })
   await page.setViewportSize({ width: 1440, height: 1100 })
   const boot = await page.evaluate(() => {
     const value = window as unknown as {
@@ -372,31 +387,36 @@ try {
     )
     const originalHtml = await presentationHtml(receipt)
     assert.equal(receipt.files.html, undefined)
-    const card = page.locator(`[data-presentation-card="${receipt.buildId}"]`)
-    await card.getByRole('button', { name: '打开分析', exact: true }).click()
-    const overlay = page.getByRole('dialog', { name: '分析快照', exact: true })
+    const open = () =>
+      openReport(page!, delivery.dshSessionId, {
+        workspaceId: receipt.workspaceId,
+        reportId: receipt.reportId,
+        buildId: receipt.buildId,
+      })
+    await open()
+    const report = page.locator('[data-rt-kind=report]:visible')
     await verifyReader(page, document)
-    await overlay.evaluate((element) => element.scrollTo({ top: 0 }))
-    await overlay.screenshot({ path: path.join(outputRoot, `${index}-web.png`) })
+    await report.evaluate((element) => element.scrollTo({ top: 0 }))
+    await report.screenshot({ path: path.join(outputRoot, `${index}-web.png`) })
     const hostExploration = await exploreReader(page, document)
     const allChartFilters =
       !agentEvidence && index === 3 ? await verifyAllChartFilters(page, document) : undefined
-    await overlay.screenshot({ path: path.join(outputRoot, `${index}-web-explored.png`) })
-    await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-    await overlay.waitFor({ state: 'detached' })
+    await report.screenshot({ path: path.join(outputRoot, `${index}-web-explored.png`) })
+    await closeReport(page, report)
     const waitDownload = page.waitForEvent('download')
-    await card.getByRole('button', { name: '下载 HTML', exact: true }).click()
+    await open()
+    await reportAction(report, '下载完整报告')
     const download = await waitDownload
     const downloadPath = path.join(outputRoot, `${index}-${download.suggestedFilename()}`)
     await download.saveAs(downloadPath)
     const downloadedHtml = await readFile(downloadPath)
     assert.equal(sha256(downloadedHtml), sha256(originalHtml))
     assert.ok(downloadedHtml.equals(originalHtml), 'Exploration changed downloaded HTML bytes')
-    await card.getByRole('button', { name: '打开分析', exact: true }).click()
+    await closeReport(page, report)
+    await open()
     await verifyReader(page, document)
     const reopenedAuthorConfiguration = await verifyReopenedChart(page, document)
-    await overlay.getByRole('button', { name: '关闭分析快照', exact: true }).click()
-    await overlay.waitFor({ state: 'detached' })
+    await closeReport(page, report)
     const offline: BrowserContext = await browser.newContext({
       offline: true,
       viewport: { width: 1200, height: 1000 },
@@ -438,7 +458,7 @@ try {
       actualWebCard: true,
       open: true,
       downloadSha256: sha256(originalHtml),
-      downloadedAfterReaderClosed: true,
+      downloadedFromNativeTab: true,
       originalHtmlBytesRetained: true,
       hostExploration,
       allChartFilters,
@@ -491,14 +511,14 @@ try {
   assert.equal((await rpc('/marivo-presentation', 'files/read', payload)).ok, true)
   assert.equal(server.duplicatedCodeReceiptEvents, 1)
   await page.reload()
-  await page.locator('[data-presentation-card]').first().waitFor({ timeout: 30_000 })
-  assert.equal(await page.locator('[data-presentation-card]').count(), inputs.draftPaths.length)
+  await page.waitForFunction(() => !!(window as any).__rightTabs)
+  assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   checks.push({
     digestMismatch: digest.error.message,
     changedDocumentBytesRejected: changedBytes.error.message,
     workspaceDetachRejected: workspace.error.message,
     reattachRestoresAccess: true,
-    duplicatePersistedEventCards: inputs.draftPaths.length,
+    replayedDeliveriesDoNotCreateCards: true,
     coexistingProducedFilesRows: await page.locator('[data-produced-files-row]').count(),
     reconnect: true,
   })
@@ -508,6 +528,7 @@ try {
     pythonExecutable,
     inputs.draftPaths,
     'report-first',
+    { rightTabsAcceptance: true },
   )
   try {
     const reversedContext = await browser.newContext()
@@ -518,11 +539,8 @@ try {
     const notice = reversedPage.getByRole('button', { name: '稍后配置', exact: true })
     if (await notice.isVisible()) await notice.click()
     await reversedPage.getByText('S4 production Tool delivery', { exact: true }).first().click()
-    await reversedPage.locator('[data-presentation-card]').first().waitFor({ timeout: 45_000 })
-    assert.equal(
-      await reversedPage.locator('[data-presentation-card]').count(),
-      inputs.draftPaths.length,
-    )
+    await reversedPage.waitForFunction(() => !!(window as any).__rightTabs)
+    assert.equal(await reversedPage.locator('[data-presentation-card]').count(), 0)
     assert.equal(
       await reversedPage.locator('[data-produced-files-row]').count(),
       expectedProducedRows,
@@ -547,7 +565,7 @@ try {
     })
     checks.push({
       clientOrder: reversed.clientOrder,
-      reportCards: inputs.draftPaths.length,
+      reports: inputs.draftPaths.length,
       producedFilesRows: expectedProducedRows,
     })
     await reversedContext.close()
@@ -571,23 +589,18 @@ try {
     const notice = restartPage.getByRole('button', { name: '稍后配置', exact: true })
     if (await notice.isVisible()) await notice.click()
     await restartPage.getByText('S4 production Tool delivery', { exact: true }).first().click()
-    const card = restartPage.locator(
-      `[data-presentation-card="${server.deliveries[1]!.receipt.buildId}"]`,
-    )
-    await card
-      .getByRole('heading', { name: '另一个窗口的保存', exact: true })
-      .waitFor({ timeout: 30_000 })
-    assert.equal(
-      await restartPage.locator('[data-presentation-card]').count(),
-      inputs.draftPaths.length,
-    )
-    await card.getByRole('button', { name: '打开分析', exact: true }).click()
+    await restartPage.waitForFunction(() => !!(window as any).__rightTabs)
+    await openReport(restartPage, server.sessionId, {
+      workspaceId: server.workspaceId,
+      reportId: server.deliveries[1]!.receipt.reportId,
+    })
+    assert.equal(await restartPage.locator('[data-presentation-card]').count(), 0)
     await restartPage
       .locator('[data-mode="interactive"]')
       .getByText('这份报告尚无 cell。数据与来源仍保留。', { exact: true })
       .waitFor()
     await restartPage.screenshot({
-      path: path.join(outputRoot, 'editing-restarted-original-card.png'),
+      path: path.join(outputRoot, 'editing-restarted-current-tab.png'),
     })
     const eventsAfterRestart = await restartPage.evaluate(() =>
       (window as any).__s4Rpc('/presentation-s4-validation', 'events', {}),
@@ -595,8 +608,8 @@ try {
     assert.deepEqual(eventsAfterRestart, eventsBeforeRestart)
     checks.push({
       sameProfileRestart: true,
-      originalCardOpensLatestAfterRestart: true,
-      cardCount: inputs.draftPaths.length,
+      nativeCurrentOpensLatestAfterRestart: true,
+      chatCards: 0,
       workspaceIdentityPreserved: true,
       noNewAgentEvents: true,
     })

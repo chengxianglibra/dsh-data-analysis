@@ -93,7 +93,9 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     },
     () => null,
   )
+  const store = (value) => ({ getSnapshot: () => value, subscribe: () => () => {} })
   const connection = {
+    generation: store({}),
     rpc: {
       call() {
         throw new Error('Replay must not call RPC')
@@ -107,8 +109,21 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     uiConversation: { events, views },
     uiSession: { provide: () => () => {} },
     slots,
-    sessions: { provide: () => () => {} },
-    workspaces: {},
+    sessions: {
+      provide: () => () => {},
+      list: store({ current: undefined }),
+      binding: () => undefined,
+    },
+    workspaces: { list: store({ phase: 'ready', state: 'idle', items: [] }) },
+    connection,
+    remote: {
+      $mount: async () => () => {},
+      $stream() {
+        throw new Error('Replay must not open streams')
+      },
+    },
+    sidebarRight: {},
+    sidebarRightTabs: { register: () => () => {} },
     layout: {},
     locale,
     settingsScope: {
@@ -126,7 +141,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   for (const name of order) {
     if (name === 'native')
       modules.get('@deepseek-ai/dsh-client-ui-deliverables/client').apply(client)
-    else presentation.installPresentation(client, connection.rpc)
+    else presentation.apply(client)
   }
   modules.get('@deepseek-ai/dsh-client-ui-chat/client').apply(client)
   return {
