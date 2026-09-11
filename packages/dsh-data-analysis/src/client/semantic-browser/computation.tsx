@@ -30,6 +30,7 @@ const kinds = {
   cumulative: 'marivo.semantic.cumulative',
   expression: 'marivo.semantic.ibis-expression',
 }
+const filterOperators = { eq: '=', in: 'IN' }
 const field = (object, name) => object?.fields.find((x) => x.name === name)?.value
 const op = (t, operation) =>
   `${operation?.kind ?? t('marivo.semantic.not-declared')}${operation?.q === undefined ? '' : `(q=${operation.q})`}`
@@ -277,10 +278,7 @@ function DefinitionNode({ object, objects, navigate }) {
             {node.filter.map((f) => (
               <li key={refKey(f.dimension)}>
                 <RefLink refValue={f.dimension} {...relationProps} />{' '}
-                {f.operator === 'in'
-                  ? t('marivo.semantic.belongs-to')
-                  : t('marivo.semantic.equals')}{' '}
-                {JSON.stringify(f.values ?? f.value)}
+                {filterOperators[f.operator] ?? f.operator} {JSON.stringify(f.values ?? f.value)}
               </li>
             ))}
           </ul>

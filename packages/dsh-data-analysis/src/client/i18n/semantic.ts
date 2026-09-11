@@ -52,8 +52,6 @@ export const zh = {
   'marivo.semantic.calendar-level': '日历层级',
   'marivo.semantic.calendar-boundary-timezone': '日历边界时区',
   'marivo.semantic.filters-in-definition': '定义内过滤条件',
-  'marivo.semantic.belongs-to': '属于',
-  'marivo.semantic.equals': '等于',
   'marivo.semantic.determined-by-the-formula-and-its-components': '由计算公式及组成对象确定',
   'marivo.semantic.not-applicable': '不适用',
   'marivo.semantic.unsupported-rule-status-value': '暂不支持的规则状态：{p0}',
@@ -302,8 +300,6 @@ export const en = {
   'marivo.semantic.calendar-level': 'Calendar level',
   'marivo.semantic.calendar-boundary-timezone': 'Calendar boundary timezone',
   'marivo.semantic.filters-in-definition': 'Filters in definition',
-  'marivo.semantic.belongs-to': 'belongs to',
-  'marivo.semantic.equals': 'equals',
   'marivo.semantic.determined-by-the-formula-and-its-components':
     'Determined by the formula and its components',
   'marivo.semantic.not-applicable': 'Not applicable',
