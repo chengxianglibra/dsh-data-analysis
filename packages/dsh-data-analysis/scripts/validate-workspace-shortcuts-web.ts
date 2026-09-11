@@ -67,6 +67,7 @@ try {
         checks: [
           'absent Session',
           'blank Session',
+          'desktop workspace, preset and directory controls share one row without overlap',
           'three directory identities and reuse',
           'keyboard activation',
           'foreground Session change at click',

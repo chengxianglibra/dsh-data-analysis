@@ -10,6 +10,26 @@ export async function verifyHomepageShortcuts(page: Page, outputRoot: string) {
   await page.evaluate(() => (window as any).__rtHost.select('right-tabs-native'))
   await shortcuts.waitFor()
   assert.equal(await shortcuts.getByRole('button').count(), 3)
+  const alignment = await shortcuts.evaluate((element) => {
+    const row = element.closest('[data-slot="conversation.input.dock"]')!.previousElementSibling!
+    const workspace = row.querySelector('button')!.getBoundingClientRect()
+    const actions = [...element.querySelectorAll('button')].map((button) => {
+      const rect = button.getBoundingClientRect()
+      return { center: rect.y + rect.height / 2, left: rect.left }
+    })
+    return {
+      center: workspace.y + workspace.height / 2,
+      right: row.getBoundingClientRect().right,
+      actions,
+    }
+  })
+  for (const action of alignment.actions) {
+    assert.ok(Math.abs(action.center - alignment.center) <= 2, 'homepage controls share one row')
+    assert.ok(
+      action.left >= alignment.right,
+      'shortcuts follow workspace and preset without overlap',
+    )
+  }
   const snapshot = () =>
     page.evaluate(() => (window as any).__askDshProbe.read('right-tabs-native'))
   const composer = page.locator('[contenteditable="true"][role="textbox"]:visible')

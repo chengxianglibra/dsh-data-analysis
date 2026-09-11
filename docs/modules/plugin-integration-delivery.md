@@ -87,6 +87,10 @@ Web client 只保留：
 组件使用公开 `conversationPhase`，仅在已有空白 Session 的 blank 阶段显示；完全无 Session 时不显示，
 不创建额外 Session。输入草稿不会隐藏入口，正式对话使用原顶栏操作。
 
+首页入口通过局部 grid 布局与前一组 Workspace / Agent preset 控件并排，空间不足时换行；
+保留原生 slot 树和焦点顺序，不搬移 DOM。布局依赖当前 Harness hero row 紧邻 dock 的结构，
+上游调整该结构时需重跑 `validate:workspace-shortcuts:web` 的同排与窄屏验收。
+
 Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就绪时禁用；点击时再次校验当前身份。
 显示入口不加载目录数据，失败在按钮旁显示。窄屏保留文字并换行，locale 切换不影响输入或报告语言。
 

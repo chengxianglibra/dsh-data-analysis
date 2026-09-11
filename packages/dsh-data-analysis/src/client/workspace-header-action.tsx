@@ -5,11 +5,18 @@ const styles = `
 .marivo-workspace-header-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#7b899414)}
 .marivo-workspace-header-action:focus-visible{outline:2px solid var(--dsw-alias-label-primary,#087b70);outline-offset:2px}
 .marivo-workspace-header-action:disabled{opacity:.45;cursor:default}
-.marivo-workspace-shortcuts{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:6px;margin:0 0 12px;padding-inline:16px}
-.marivo-workspace-shortcuts .marivo-workspace-header-action{width:auto;height:auto;min-height:36px;padding:8px 10px;white-space:normal;text-align:start}
+/* Public slot anchors keep this layout local to the blank homepage. */
+:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts){display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center}
+:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>*,
+:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>[data-slot]>*{grid-column:1 / -1;min-width:0}
+:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>:has(+ [data-slot="conversation.input.dock"]){grid-column:1;padding-inline-end:0}
+:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>[data-slot]>.marivo-workspace-shortcuts{grid-column:2}
+.marivo-workspace-shortcuts{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:2px;margin:4px 0 0;padding-inline:0 16px}
+.marivo-workspace-shortcuts .marivo-workspace-header-action{width:auto;height:auto;min-height:32px;padding:6px 8px;white-space:normal;text-align:start}
 .marivo-workspace-shortcuts .marivo-workspace-header-action span{display:inline}
 .marivo-workspace-shortcuts-error{flex-basis:100%;margin:0;text-align:start;overflow-wrap:anywhere}
 @media(max-width:640px){.marivo-workspace-header-action{width:32px;padding:8px}.marivo-workspace-header-action span{display:none}}
+@media(max-width:640px){:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts){grid-template-columns:minmax(0,1fr)}:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>[data-slot]>.marivo-workspace-shortcuts{grid-column:1 / -1;padding-inline:16px}}
 `
 
 export function WorkspaceHeaderAction({
