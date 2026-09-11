@@ -3,16 +3,14 @@ import path from 'node:path'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { registerPluginRpc } from '../rpc.ts'
-import { buildPresentation } from './build/index.ts'
+import { readReceiptAsset } from './asset.ts'
 import { applyPresentationEdits } from './contracts/editing.ts'
 import {
   type PresentationAsset,
   PresentationContractError,
   parsePresentationBuildId,
-  parsePresentationDocument,
   parsePresentationReceipt,
 } from './contracts/index.ts'
-import { presentationAssetPath, presentationSha256, readPresentationAsset } from './files.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
 import {
   listReports,
@@ -186,43 +184,7 @@ export class MarivoPresentationFileService {
     const workspace = await this.#workspace(input)
     if (!workspace || workspace.id !== receipt.workspaceId) throw new Error('workspace-unavailable')
     const root = path.resolve(workspace.path)
-    for (const file of Object.values(receipt.files))
-      if (file.path !== presentationAssetPath(root, receipt.reportId, receipt.buildId, file.asset))
-        throw new Error('asset-path-mismatch')
-    const documentBytes = await readPresentationAsset(
-      root,
-      receipt.reportId,
-      receipt.buildId,
-      'presentation.json',
-      signal,
-    )
-    if (
-      documentBytes.length !== receipt.files.document.bytes ||
-      presentationSha256(documentBytes) !== receipt.files.document.sha256
-    )
-      throw new Error('asset-digest-mismatch')
-    const document = parsePresentationDocument(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(documentBytes)),
-    )
-    if (
-      document.workspaceId !== workspace.id ||
-      document.reportId !== receipt.reportId ||
-      document.buildId !== receipt.buildId ||
-      document.title !== receipt.title
-    )
-      throw new Error('asset-owner-mismatch')
-    const bytes =
-      asset === 'presentation.json'
-        ? documentBytes
-        : receipt.files.html
-          ? await readPresentationAsset(root, receipt.reportId, receipt.buildId, asset, signal)
-          : (await buildPresentation(document)).htmlBytes!
-    const file =
-      asset === 'presentation.json'
-        ? receipt.files.document
-        : (receipt.files.html ?? { bytes: bytes.length, sha256: presentationSha256(bytes) })
-    if (bytes.length !== file.bytes || presentationSha256(bytes) !== file.sha256)
-      throw new Error('asset-digest-mismatch')
+    const { bytes, sha256 } = await readReceiptAsset(root, workspace.id, receipt, asset, signal)
     const current = await this.#workspace(input)
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
@@ -233,7 +195,7 @@ export class MarivoPresentationFileService {
       buildId: receipt.buildId,
       asset,
       mimeType: asset === 'presentation.json' ? 'application/json' : 'text/html',
-      sha256: file.sha256,
+      sha256,
       bytes: bytes.length,
       bodyBase64: bytes.toString('base64'),
     }

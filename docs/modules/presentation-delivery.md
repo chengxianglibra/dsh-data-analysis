@@ -176,3 +176,13 @@ Workspace 内阅读器保存没有来源 Session 时显示「Workspace 内保存
 同时移除无仓库调用方的公开辅助函数 `chartSeriesFields`；调用方直接读取 `ChartView.y`，需要副本时显式复制。
 
 来源概要和查询由当前来源对话框展示；静态 HTML 使用真实 Reader 的 source cell，不保留旧摘要组件。
+
+## Agent HTML 导出
+
+`marivo_export_html({ report_id, build_id?, output_path })` 将同一 Session Workspace 的完整报告写为自包含 HTML。省略 Build 时一次解析 current 并冻结 receipt；指定 Build 时从已保存历史精确定位，缺失则失败。工具与阅读器共用 receipt 路径、字节摘要及文档身份校验；旧 Build 已有 HTML 时校验并复用，否则使用插件内置 builder。
+
+`output_path` 是新的 Workspace 相对 `.html` 路径，允许创建父目录，拒绝越界、符号链接、内部 `.dsh-data-analysis` 目录及覆盖。临时文件在目标文件系统内的最上层 Workspace 祖先目录暂存，再以不可覆盖的原子方式落盘。取消、归属变更或失败时通过保留的文件句柄清空内容，并按文件身份清理可确认路径；外部移走最终文件时可能保留空文件，但不会按未知位置猜测删除或留下完整报告内容。导出不修改 current、历史或 receipt，不创建 Build，不绑定 Runtime 或访问凭据。
+
+结果含 `workspace_id`、`report_id`、`build_id`、`path`、`mime_type`、`bytes`、`sha256`，不返回 HTML 正文。工具通过 Harness `presentCall.locations` 暴露目标文件位置，结果返回实际绝对路径，不产生报告打开 receipt。导出成功后 Agent 使用返回的实际路径调用原生 `present({ files: [{ path, description }] })`；文件卡片及 `deliverables/presented` Session 记录由 Harness 拥有。导出工具不嵌套调用或伪造 `present`，导出与文件交付分别确认成功。未挂载原生 `present` 时明确报告交付能力缺失。
+
+全量离线交互、报告语言、静态正文与阅读器下载一致；浏览器临时状态不进入此接口。导出与外部发布独立。

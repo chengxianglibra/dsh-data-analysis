@@ -274,6 +274,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
       [
         'marivo_datasource_configure',
         'marivo_datasource_test',
+        'marivo_export_html',
         'marivo_help',
         'marivo_present',
         'marivo_python',

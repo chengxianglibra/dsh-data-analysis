@@ -69,7 +69,8 @@
     "validate:report-publishing": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-report-publishing.ts",
     "validate:locale": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-locale.ts",
     "test:python-tool": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/python-tool/*.test.ts",
-    "validate:python-tool:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-tool-web.ts"
+    "validate:python-tool:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-tool-web.ts",
+    "validate:html-export": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-html-export.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
@@ -104,6 +105,7 @@
     "@deepseek-ai/dsh-hook-protocol": "0.1.5-rc.1",
     "@deepseek-ai/dsh-sdk-protocol": "0.1.5-rc.1",
     "semver": "^7.8.5",
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.7.1",
+    "@deepseek-ai/dsh-tool-present": "0.1.5-rc.1"
   }
 }

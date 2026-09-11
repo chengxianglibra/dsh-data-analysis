@@ -23,6 +23,7 @@ import {
   resolveMarivoEnvironmentSource,
 } from './environment/index.ts'
 import { finishCleanup, PendingTasks } from './lifecycle.ts'
+import { registerMarivoExportHtmlTool } from './presentation/export-html.ts'
 import {
   installMarivoPresentationCodeDelivery,
   registerMarivoPresentTool,
@@ -32,7 +33,7 @@ import type { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const PRESENTATION_PROMPT =
-  'Answer ordinary factual questions in text. For analysis of provided data files, load dsh-data-analysis-files; local pandas or native DuckDB work needs no Marivo semantic setup. For charts, tables, reports, dashboards or a readable source presentation, load dsh-data-analysis-presentation and deliver through marivo_present. Use the Runtime skills and live Help when the task needs Marivo analysis or semantic authoring; existing data can be presented directly.'
+  'Answer ordinary factual questions in text. For analysis of provided data files, load dsh-data-analysis-files; local pandas or native DuckDB work needs no Marivo semantic setup. For charts, tables, reports, dashboards or a readable source presentation, load dsh-data-analysis-presentation and deliver through marivo_present. When the user requests an offline HTML file, export the saved report with marivo_export_html, then call native present with the returned path before the final response. Use the Runtime skills and live Help when the task needs Marivo analysis or semantic authoring; existing data can be presented directly.'
 
 export type MarivoPluginEnvironmentResolver = (
   agent: Agent,
@@ -138,6 +139,13 @@ export function createMarivoAgentInstallation(
       controller.addDisposer(() => credentialService.disposeAgent(agent))
       controller.addDisposer(
         registerMarivoPresentTool(agent.ctx, presentationSource, agent.session),
+      )
+      controller.addDisposer(
+        registerMarivoExportHtmlTool(
+          agent.ctx,
+          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
+          agent.session,
+        ),
       )
       if (options.reportPublishing)
         controller.addDisposer(

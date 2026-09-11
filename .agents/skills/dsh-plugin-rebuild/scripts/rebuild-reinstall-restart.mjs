@@ -18,6 +18,10 @@ const DEFAULT_PROFILE = 'web'
 const DEFAULT_URL = 'http://127.0.0.1:3080'
 const DEFAULT_TIMEOUT_MS = 30_000
 
+if (process.env.DSH_PLUGIN_DISTRIBUTION !== undefined && process.env.DSH_PLUGIN_DISTRIBUTION !== 'community') {
+  throw new Error('This launcher only accepts the community distribution')
+}
+
 const repoRoot = findRepoRoot(process.env.DSH_REPO_ROOT ?? process.cwd())
 const profile = process.env.DSH_PROFILE ?? DEFAULT_PROFILE
 const dshPackage = process.env.DSH_PACKAGE ?? DEFAULT_DSH_PACKAGE

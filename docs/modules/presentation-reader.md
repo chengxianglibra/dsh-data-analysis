@@ -10,6 +10,7 @@
 [Host entry](../../packages/dsh-data-analysis/src/client/presentation/host-entry.tsx)、
 [portable entry](../../packages/dsh-data-analysis/src/client/presentation/portable-entry.tsx)和
 [内部 builder](../../packages/dsh-data-analysis/src/presentation/build/index.ts)。
+`marivo_export_html` 与完整报告下载共用服务端快照校验和 HTML 生成逻辑，见[Agent HTML 导出](presentation-delivery.md#agent-html-导出)。
 `client` 导出 `HostPresentationReader`；[展示交付](presentation-delivery.md)已接通 `marivo_present`、receipt、RPC、原生 Tab 打开与下载；默认 client 的阅读与编辑都在原生 Tab 内，不挂载报告弹出页。
 
 ## 共同的数据解释

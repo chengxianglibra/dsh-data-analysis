@@ -247,3 +247,26 @@ Review 修复后，Node.js 22.19.0 下 `npm run check` 通过（640 项通过、
 最终候选 `lib/client.js` SHA-256：`bf7d8725fb83406cf6f68b83884c7162eca2b89b867eff4770c5218d99791558`。证据目录 `/private/var/folders/cx/bmfg_x3j0qsfvgsb2v8s2x5m0000gn/T/dsh-homepage-shortcuts-cWvPbD` 保留 `results.json`、宽屏／窄屏截图、打包身份与 Runtime binding。
 
 扩展的完整 `validate:right-tabs:web` 曾通过首页与首轮隐藏检查，随后进程以 137 退出，未计作完整回归通过；最终首页验收由上述聚焦脚本独立通过。早期全量检查遇到生成资源缺失，按先构建再测试顺序重跑后通过。未升级依赖、修改 Harness、发布、重装或重启用户当前服务。
+
+## Agent HTML 导出与原生文件交付验收
+
+2026-09-11 新增 `marivo_export_html`。工具与阅读器共用固定 receipt 的 HTML 校验／生成路径，
+仅从已保存快照导出。新增回归覆盖 JSON 构建、历史已存 HTML、current 并发更新后仍保留原 Build、
+历史 Build 精确选择、摘要损坏、路径与符号链接拒绝、拒绝覆盖、字节预算、Workspace 变更、取消及卸载排空。
+
+`npm run validate:html-export` 使用临时 Workspace、真实 Harness AgentLoop／ToolRuntime／WorkspaceRegistry
+及原生 `present`，模型边界使用确定性适配器；不启动 Python、不访问数据源，不代表远端模型自主调用验收。
+已验证导出成功后的实际路径用于 `present`，同一 Session 产生一条 `deliverables/presented` 记录。
+随后 Chromium 断网打开实际导出文件，切换日期与集群并显示图表；禁用脚本时仍可阅读正文与精确数据表。
+两种截图均已检查。命令输出的临时目录保留 `events.json`、`evidence.json`、HTML 及两种浏览器截图。
+此验收不把工具文件位置当成交付完成，不证明用户当前 Web 的文件卡片已经打开。
+
+Node.js 22.19.0 下 `npm run check` 通过（662 项通过、4 项默认跳过），
+`npm run build` 与 `npm run verify:plugin-package` 通过；新增 Skill 参考页已纳入分发验证。
+未修改用户当前 profile，未重装、重启、提交或发布。
+
+Review 修复后，导出暂存文件使用同一文件系统内的最上层 Workspace 祖先目录；失败时保留文件句柄，
+先清空本次 inode 的内容，再清理能够确认身份的路径。新增回归覆盖暂存后／落盘后移动输出目录，
+以及原路径被其他文件替换的情况：替换文件不受影响，暂存文件被清理，移走的最终文件只保留空文件。
+不扫描未知位置删除文件。7 项导出回归和 `validate:html-export` 的真实 Harness／离线浏览器复验通过。
+Node.js 22.19.0 下 `npm run check` 再次通过（663 项通过、4 项默认跳过），构建和包验证通过。

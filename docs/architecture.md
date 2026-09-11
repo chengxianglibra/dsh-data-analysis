@@ -10,7 +10,7 @@
 | Marivo | 分析语义、Catalog、Artifact、Finding、Evidence、Quality、Lineage、revalidation 与分析 Session |
 | 本插件 | Runtime/Workspace binding、受控执行与凭据注入、实时 Help 披露、语义引用及只读投影、报告保存与呈现、可选对象存储发布、打包验证 |
 
-插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。分析、展示保存、HTML 导出和对外发布是独立操作；其中一个成功不能证明其他操作成功。
+插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。`marivo_export_html` 直接从 Session Workspace 的已保存报告导出完整 HTML，与阅读器复用快照校验及渲染，不依赖 Runtime 或发布配置。分析、展示保存、HTML 导出和对外发布是独立操作；其中一个成功不能证明其他操作成功。
 
 ## 模块导航
 

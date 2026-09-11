@@ -107,7 +107,9 @@ dsh --profile web
 
 当前会话交付新报告后，右侧自动打开该次交付的固定版本；后台完成、历史回放和重连不会抢占阅读页面。
 同工作区的后台交付会更新已打开的报告目录，并在 current 页提示新版本，保留正在阅读的内容。
-报告生成后自动在右侧 tab 打开固定版本，主对话不附加报告 block。默认只保存 JSON，点击下载时才生成 HTML。“报告”目录按标题查找并打开 current；可以并排阅读不同报告和版本。
+报告生成后自动在右侧 tab 打开固定版本，主对话不附加报告 block。默认只保存 JSON，点击下载或显式调用导出工具时才生成 HTML。“报告”目录按标题查找并打开 current；可以并排阅读不同报告和版本。
+
+用户要求离线 HTML 文件时，DSH 可直接调用 `marivo_export_html({ report_id, build_id?, output_path })`，例如输出到 `reports/analysis.html`。省略 `build_id` 时固定调用开始时的 current；指定时导出该历史版本。输出是完整、自包含且可交互的报告，不含未保存编辑或临时筛选。路径必须位于当前 Workspace，已有文件不会覆盖；导出不需要 Python、数据源或发布配置。成功返回实际路径、Build ID、字节数和 SHA-256；DSH 随后通过原生 `present({ files: [{ path, description }] })` 交付该文件。
 发现新版本时 current 先提示，点击刷新或重新打开才切换，旧版本筛选随切换重置。
 没有活动会话时，侧栏的“报告”入口仍可阅读 Workspace 中的报告。
 

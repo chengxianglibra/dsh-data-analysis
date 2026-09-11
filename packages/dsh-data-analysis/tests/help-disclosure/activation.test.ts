@@ -1282,6 +1282,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
   assert.deepEqual(requestToolNames(adapter.requests[0]), [
     'marivo_datasource_configure',
     'marivo_datasource_test',
+    'marivo_export_html',
     'marivo_help',
     'marivo_present',
     'marivo_python',

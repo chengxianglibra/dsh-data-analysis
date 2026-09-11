@@ -8,6 +8,7 @@ import {
   MARIVO_DATASOURCE_TEST_TOOL_NAME,
 } from '../../src/datasource/index.ts'
 import { MARIVO_HELP_TOOL_NAME } from '../../src/disclosure/index.ts'
+import { MARIVO_EXPORT_HTML_TOOL_NAME } from '../../src/presentation/export-html.ts'
 import { MARIVO_PRESENT_TOOL_NAME } from '../../src/presentation/receipt.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -25,7 +26,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return result
 }
 
-test('presentation exposes Help, datasource configuration/test, Python and present', () => {
+test('presentation exposes Help, datasource configuration/test, Python, present and HTML export', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
@@ -33,10 +34,12 @@ test('presentation exposes Help, datasource configuration/test, Python and prese
       MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
       'marivo_python',
       MARIVO_PRESENT_TOOL_NAME,
+      MARIVO_EXPORT_HTML_TOOL_NAME,
     ].sort(),
     [
       'marivo_datasource_configure',
       'marivo_datasource_test',
+      'marivo_export_html',
       'marivo_help',
       'marivo_present',
       'marivo_python',

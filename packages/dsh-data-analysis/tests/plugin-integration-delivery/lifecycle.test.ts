@@ -95,6 +95,7 @@ for (const fault of [
   'tool:marivo_datasource_configure',
   'tool:marivo_python',
   'tool:marivo_present',
+  'tool:marivo_export_html',
   'hook:tools/result:1',
   'hook:agent/pre-step:2',
   'hook:agent/pre-step:3',

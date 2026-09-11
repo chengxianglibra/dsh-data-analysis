@@ -1,13 +1,15 @@
 ---
 name: dsh-plugin-rebuild
-description: Build, reinstall, reset local test state, and restart DSH Web when the user requests “发射插件” or this complete local rebuild workflow.
+description: Build, reinstall, reset local test state, and restart DSH Web when the user requests “发射社区插件” or this complete local rebuild workflow.
 ---
 
-# DSH Plugin Rebuild
+# DSH Community Plugin Rebuild
+
+本入口只构建和安装当前仓库的社区包；若设置 `DSH_PLUGIN_DISTRIBUTION`，仅接受 `community`，其他值明确失败。
 
 ## 范围与授权
 
-“发射插件”授权下述完整本地流程，沿用用户已指定的目标；只要求构建、审计或修改此 Skill 时，不执行清理与重启。
+“发射社区插件”授权下述完整本地流程，沿用用户已指定的目标；只要求构建、审计或修改此 Skill 时，不执行清理与重启。
 若用户要求保留会话或状态，不能运行这个始终清理状态的脚本，应按受限请求另行执行对应步骤。
 
 运行前说明实际 profile、`DSH_HOME`、测试 Workspace 和清理范围；目标明确且已授权时直接推进。
