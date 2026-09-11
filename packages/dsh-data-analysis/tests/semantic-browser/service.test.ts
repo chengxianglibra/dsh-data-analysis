@@ -91,8 +91,8 @@ test('Marivo semantic load diagnostics cross the browser boundary without generi
     root = await realpath(dir)
   t.after(() => rm(root, { recursive: true, force: true }))
   const diagnostic =
-    "[missing_entity_ref] Entity 'trino.query' references unknown datasource 'trino_bilibili'.\n" +
-    '  refs: trino.query, trino_bilibili\n' +
+    "[missing_entity_ref] Entity 'trino.query' references unknown datasource 'trino_fixture'.\n" +
+    '  refs: trino.query, trino_fixture\n' +
     '  hint: Reference the declared datasource name.'
   const fixture = fakeRunner()
   const service = new SemanticBrowserService({
