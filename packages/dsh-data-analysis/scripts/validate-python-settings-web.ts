@@ -165,12 +165,11 @@ try {
   assert.equal(settings.get().pythonTimeoutMs, 600_000)
   await page.getByRole('button', { name: '放弃修改' }).click()
   assert.equal(await input.inputValue(), '600')
-  await page.getByRole('button', { name: '恢复继承值' }).click()
+  assert.equal(await page.getByRole('button', { name: '恢复继承值' }).count(), 0)
+  // Clear the override at the provider boundary to exercise a refused set at the base value.
+  await ctx.settings.mutate(PYTHON_SETTINGS_NAMESPACE, [{ op: 'unset', path: ['pythonTimeoutMs'] }])
+  await page.evaluate(() => (window as unknown as { refreshSettings(): void }).refreshSettings())
   assert.equal(await input.inputValue(), '180')
-  await page.getByRole('button', { name: '保存', exact: true }).click()
-  await page.getByText('未保存', { exact: true }).waitFor({ state: 'hidden' })
-  assert.equal(settings.get().pythonTimeoutMs, 180_000)
-  assert.equal(Object.hasOwn(descriptor().user as object, 'pythonTimeoutMs'), false)
 
   // Matching the effective value is insufficient: a refused set must not look saved.
   await input.fill('181')
@@ -184,20 +183,22 @@ try {
   await page.getByText('未保存', { exact: true }).waitFor({ state: 'hidden' })
   assert.equal((descriptor().user as { pythonTimeoutMs: number }).pythonTimeoutMs, 180_000)
 
-  // A refused reset must preserve its unset intent even when value equals base.
-  await page.getByRole('button', { name: '恢复继承值' }).click()
-  rejectNextWrite = true
-  await page.getByRole('button', { name: '保存', exact: true }).click()
-  await page.getByText(/保存失败或设置已被其他页面修改/).waitFor()
+  assert.equal(
+    await page.getByRole('button', { name: '展开设置: 数据分析' }).getAttribute('aria-expanded'),
+    'false',
+  )
+  await page.getByRole('button', { name: '展开设置: 数据分析' }).click()
+  await input.fill('240')
+  await page.getByRole('button', { name: '收起设置: 数据分析' }).click()
   await page.getByText('未保存', { exact: true }).waitFor()
-  assert.equal((descriptor().user as { pythonTimeoutMs: number }).pythonTimeoutMs, 180_000)
-  await page.getByRole('button', { name: '保存', exact: true }).click()
-  await page.getByText('未保存', { exact: true }).waitFor({ state: 'hidden' })
-  assert.equal(Object.hasOwn(descriptor().user as object, 'pythonTimeoutMs'), false)
+  await page.getByRole('button', { name: '展开设置: 数据分析' }).click()
+  assert.equal(await input.inputValue(), '240', 'Collapsing preserves the draft')
+  await page.getByRole('button', { name: '放弃修改' }).click()
   const screenshot = path.join(directory, 'settings-zh.png')
   await page.screenshot({ path: screenshot })
   await page.setViewportSize({ width: 390, height: 700 })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  await page.screenshot({ path: path.join(directory, 'settings-mobile.png') })
   await page.evaluate(() => (window as unknown as { readOnly(): void }).readOnly())
   assert(await input.isDisabled())
   await page.getByText('当前连接的设置只读。').waitFor()
@@ -215,9 +216,10 @@ try {
       'invalid-value',
       'conflict-preserves-draft',
       'discard',
-      'reset-inherits-base',
+      'no-reset-control',
+      'save-collapses-card',
+      'collapse-preserves-draft',
       'refused-set-at-inherited-value',
-      'refused-reset-at-inherited-value',
       'retry-preserves-write-intent',
       'read-only',
       'locale',
