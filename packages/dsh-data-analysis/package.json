@@ -57,7 +57,8 @@
     "skills/dsh-data-analysis-files/**",
     "python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.1.0-py3-none-any.whl",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
