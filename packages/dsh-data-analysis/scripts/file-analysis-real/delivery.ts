@@ -213,7 +213,7 @@ export async function runFileDelivery(o: Options) {
       page,
       comparisonSession,
       'files-comparison',
-      '用一个简短表格告诉我附件中 A、B 两个区域 2025 年 9 月 amount 的同比和环比变化，并解释主要差别。',
+      '以后每月都会按同样口径比较这两个区域，本次先用一个简短表格告诉我附件中 A、B 两个区域 2025 年 9 月 amount 的同比和环比变化，并解释主要差别。',
       { source: comparisonFile, name: 'monthly.csv' },
     )
     assert.equal(presented(comparison.events).length, 0)
@@ -224,6 +224,14 @@ export async function runFileDelivery(o: Options) {
       'A short file comparison stays in chat without report delivery or Marivo Help',
     )
     assert.ok(calls(comparison.events).some((entry) => entry.name === 'marivo_python'))
+    assert.ok(
+      !calls(comparison.events).some(
+        (entry) =>
+          entry.name === 'skill' &&
+          ['marivo-analysis', 'marivo-semantic'].includes(String(entry.args.name)),
+      ),
+      'Future reuse interest does not require semantic activation for this file comparison',
+    )
     await save('comparison-review.json', {
       sessionId: comparisonSession,
       expected: {

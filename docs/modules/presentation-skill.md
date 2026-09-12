@@ -34,7 +34,9 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 [文件 Skill](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)负责文件读取、计算和收尾：
 核对粒度、单位、比较基准、缺失分支与证据强度，文字回答也适用。普通文件生成与原生声明分别确认；
 [交付参考](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/delivery.md)集中说明缺失能力、
-失败恢复、PTC 与跨 Session 文件边界。展示 Skill 接收已有结果，核对表达一致性，缺数据时回到分析流程。
+失败恢复、PTC 与跨 Session 文件边界。文件 Skill 还负责识别可复用语义候选，仅将当前所需或已授权的最小
+缺口交给 `marivo-semantic`；范围外机会只在答复中说明，原问题完成或阻塞明确后停止。具体建模、复用和
+验证仍由 Runtime Skill 拥有。展示 Skill 接收已有结果，核对表达一致性，缺数据时回到分析流程。
 
 ## 内容组织与数据边界
 
