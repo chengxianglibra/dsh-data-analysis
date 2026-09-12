@@ -831,7 +831,6 @@ for (const skill of ['marivo-analysis', 'marivo-semantic']) {
       ),
       /marivo_evidence_sources/,
     )
-    assert.match(MARIVO_DATASOURCE_CREDENTIAL_PROMPT, /after datasource changes/)
   })
 }
 

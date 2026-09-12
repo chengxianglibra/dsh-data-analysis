@@ -1,6 +1,6 @@
 # 草稿 schema 与文件边界
 
-这是插件的 presentation v1 写入契约。所有对象只接受列出的字段；不要把生成文档或 receipt 当作草稿。Marivo 的分析 API 与 semantic schema 以 bound Runtime 的 Skill 和 live Help 为准。
+这是插件的 Draft v2 写入契约。所有对象只接受列出的字段；不要把生成文档或 receipt 当作草稿。Marivo 的分析 API 与 semantic schema 以 bound Runtime 的 Skill 和 live Help 为准。
 
 ## 报告语言与版本
 
@@ -62,6 +62,9 @@ marivo_present({ draft_path, report_id, expected_build_id })
 `report-save-conflict` 表示当前版本已变化：读取 current 及其文档，核对用户编辑并重新形成 Draft，
 再以该已读取版本提交；不能只替换 expected ID 重试。响应丢失时也先读取 current 核对内容，避免重复提交。
 已有 Report 之间不自动合并，历史 Build 不覆盖或清理。
+
+用户可在宿主阅读器编辑呈现并保存同一报告，支持 cell 移动、删除（可删空）及撤销。读取当前保存内容
+后保留用户需要的编辑；固定 Build 链接与离线 HTML 保留原快照。筛选选择只是临时展示，不进入保存或下载。
 
 ## 生成代码
 

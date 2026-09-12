@@ -213,6 +213,7 @@ try {
     'skills/dsh-data-analysis-presentation/SKILL.md',
     'skills/dsh-data-analysis-files/SKILL.md',
     'skills/dsh-data-analysis-files/references/examples.md',
+    'skills/dsh-data-analysis-files/references/delivery.md',
   ]
   for (const filename of required) {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)

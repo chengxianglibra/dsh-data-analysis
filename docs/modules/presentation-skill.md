@@ -11,7 +11,8 @@ Skill 入口是 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-anal
 [图形配置](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/charts.md)、
 [叙事与证据检查](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
 [示例说明](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)放在 references。
-报告、看板和比较型展示必须在写草稿前读取 narrative；其余资源按需读取。
+写草稿前读取 schema；报告、看板和比较型展示还需读取 narrative。更新、筛选、来源追问、导出与发布
+各有明确的 reference 入口，只读取当前操作需要的内容。
 可改写的 Draft、dataset 和 Python 示例随 Skill 一同分发。
 
 ## 发现与路由
@@ -22,12 +23,18 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 每个 Agent 的常驻 prompt 只保留短路由：
 
-- 普通事实问答使用文字。
-- 图表、表格、报告、看板和可读来源展示加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。
+- 普通事实问答与简短比较表格留在聊天中；指定 CSV、JSON、PNG 等文件使用原生 `present`。
+- 交互图表、表格、保存报告、看板、报告更新和来源面板加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。
 - 直接文件分析加载 `dsh-data-analysis-files`，使用 pandas 或原生 DuckDB；已有 Artifact 或 computed 数据无需先激活分析 Skill。涉及 Marivo 分析语义或建模时，按需加载 Runtime Skill 与相关 live Help。
 
-展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。当前可见 Tool 仍为 `marivo_help`、
-`marivo_datasource_test`、`marivo_python` 和 `marivo_present`，没有展示 convenience Tool 或兼容入口。
+展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。工具入口随插件安装，完整清单见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。
+
+## 文件分析与展示的分工
+
+[文件 Skill](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)负责文件读取、计算和收尾：
+核对粒度、单位、比较基准、缺失分支与证据强度，文字回答也适用。普通文件生成与原生声明分别确认；
+[交付参考](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/delivery.md)集中说明缺失能力、
+失败恢复、PTC 与跨 Session 文件边界。展示 Skill 接收已有结果，核对表达一致性，缺数据时回到分析流程。
 
 ## 内容组织与数据边界
 

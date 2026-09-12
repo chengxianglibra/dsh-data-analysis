@@ -151,7 +151,9 @@ export async function runFileDelivery(o: Options) {
     await page.setViewportSize({ width: 1280, height: 900 })
   }
   const fileCases = process.env.DSH_DATA_ANALYSIS_VALIDATION_FILE_CASES ?? 'all'
-  assert.ok(['all', 'delivery', 'failures'].includes(fileCases))
+  assert.ok(['all', 'delivery', 'failures', 'routing'].includes(fileCases))
+  const checkPreview = fileCases !== 'routing'
+  await save('delivery-scope.json', { fileCases, checkPreview })
   let ptc = ''
   await page.setViewportSize({ width: 1280, height: 900 })
   if (fileCases !== 'failures') {
@@ -160,7 +162,7 @@ export async function runFileDelivery(o: Options) {
       page,
       standard,
       'files-csv',
-      '请分析本条消息上传的两个同名 sales.csv，合并统计记录数和 amount 总和，导出 summary.csv 给我。CSV 只有 rows,total 两列和一行汇总数据。不要创建报告。',
+      '请分析本条消息上传的两个同名 sales.csv，合并统计记录数和 amount 总和，导出 summary.csv 给我。CSV 只有 rows,total 两列和一行汇总数据。',
       [
         { source: path.join(o.fixtureRoot, 'sales.csv'), name: 'sales.csv' },
         { source: path.join(o.fixtureRoot, 'replacement.csv'), name: 'sales.csv' },
@@ -180,8 +182,12 @@ export async function runFileDelivery(o: Options) {
       assert.ok(pythonCalls.some((entry) => JSON.stringify(entry.args).includes(file.path)))
     const contents = await readFile(path.join(workspace, 'summary.csv'), 'utf8')
     assert.match(contents.replaceAll('\r', '').trim(), /^rows,total\n5(?:\.0)?,371(?:\.0)?$/)
-    await preview(standard, 'summary.csv', false)
-    await record('same-name CSV and native preview', 'autonomous model', standard)
+    if (checkPreview) await preview(standard, 'summary.csv', false)
+    await record(
+      checkPreview ? 'same-name CSV and native preview' : 'same-name CSV delivery routing',
+      'autonomous model',
+      standard,
+    )
 
     const answer = await prompt(
       page,
@@ -197,12 +203,51 @@ export async function runFileDelivery(o: Options) {
     )
     await record('text-only answer', 'autonomous model', standard)
 
+    const comparisonSession = await create('standard')
+    const comparisonFile = path.join(o.fixtureRoot, 'monthly.csv')
+    await writeFile(
+      comparisonFile,
+      'region,month,amount\nA,2024-09,100\nA,2025-08,200\nA,2025-09,150\nB,2025-08,100\nB,2025-09,120\n',
+    )
+    const comparison = await prompt(
+      page,
+      comparisonSession,
+      'files-comparison',
+      '用一个简短表格告诉我附件中 A、B 两个区域 2025 年 9 月 amount 的同比和环比变化，并解释主要差别。',
+      { source: comparisonFile, name: 'monthly.csv' },
+    )
+    assert.equal(presented(comparison.events).length, 0)
+    assert.ok(
+      !calls(comparison.events).some((entry) =>
+        ['marivo_present', 'present', 'marivo_help'].includes(entry.name),
+      ),
+      'A short file comparison stays in chat without report delivery or Marivo Help',
+    )
+    assert.ok(calls(comparison.events).some((entry) => entry.name === 'marivo_python'))
+    await save('comparison-review.json', {
+      sessionId: comparisonSession,
+      expected: {
+        A: {
+          yearOverYear: { delta: 50, percent: 50 },
+          monthOverMonth: { delta: -50, percent: -25 },
+        },
+        B: { yearOverYear: null, monthOverMonth: { delta: 20, percent: 20 } },
+      },
+      note: 'Routing is asserted automatically. Review the final table for both comparison denominators, directions and the missing B year-over-year baseline; values alone do not prove correct attribution.',
+      events: comparison.events,
+    })
+    await record(
+      'short comparison table routing',
+      'autonomous model; numerical closeout requires review',
+      comparisonSession,
+    )
+
     ptc = await create('ptc')
     const png = await prompt(
       page,
       ptc,
       'files-png',
-      '请分析附件，生成 amount 按 item 顺序的简单蓝色柱形图 amounts.png 给我，宽至少 240 像素。只要 PNG 文件，不要交互报告。不安装依赖，若缺少绘图库可以使用 Python 标准库写 PNG，并在回复说明从左到右的标签和数值。',
+      '请分析附件，生成 amount 按 item 顺序的蓝色柱形图 amounts.png 给我，宽至少 240 像素。',
       { source: path.join(o.fixtureRoot, 'sales.csv'), name: 'sales.csv' },
     )
     assertDelivery(png.events, 'amounts.png', 'ptc')
@@ -222,24 +267,30 @@ export async function runFileDelivery(o: Options) {
       (await readFile(path.join(workspace, 'amounts.png'))).subarray(0, 8),
       Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     )
-    await preview(ptc, 'amounts.png', true)
-    await record('PNG and PTC preview', 'autonomous model', ptc)
+    if (checkPreview) await preview(ptc, 'amounts.png', true)
+    await record(
+      checkPreview ? 'PNG and PTC preview' : 'PNG PTC delivery routing',
+      'autonomous model',
+      ptc,
+    )
 
-    const beforeRestart = [
-      presented((await snapshot(standard)).inspection.events),
-      presented((await snapshot(ptc)).inspection.events),
-    ]
-    const restarted = await o.host.restart()
-    await o.open(page, restarted.url)
-    for (const [index, id] of [standard, ptc].entries()) {
-      await select(id)
-      assert.deepEqual(presented((await snapshot(id)).inspection.events), beforeRestart[index])
+    if (checkPreview) {
+      const beforeRestart = [
+        presented((await snapshot(standard)).inspection.events),
+        presented((await snapshot(ptc)).inspection.events),
+      ]
+      const restarted = await o.host.restart()
+      await o.open(page, restarted.url)
+      for (const [index, id] of [standard, ptc].entries()) {
+        await select(id)
+        assert.deepEqual(presented((await snapshot(id)).inspection.events), beforeRestart[index])
+      }
+      await preview(standard, 'summary.csv', false)
+      await preview(ptc, 'amounts.png', true)
+      await record('persisted declarations after isolated Host restart', 'recovery', ptc)
     }
-    await preview(standard, 'summary.csv', false)
-    await preview(ptc, 'amounts.png', true)
-    await record('persisted declarations after isolated Host restart', 'recovery', ptc)
   }
-  if (fileCases !== 'delivery') {
+  if (fileCases === 'all' || fileCases === 'failures') {
     if (!ptc) {
       ptc = await create('ptc')
       await writeFile(path.join(workspace, 'summary.csv'), 'rows,total\n5,371\n')
@@ -409,11 +460,16 @@ export async function runFileDelivery(o: Options) {
     candidate,
     package: JSON.parse(await readFile(path.join(o.outputRoot, 'package.json'), 'utf8')),
     results,
-    manualReview:
-      fileCases === 'delivery' ? [] : ['missing-capability-review.json', 'deleted-file.png'],
+    manualReview: [
+      ...(fileCases !== 'failures' ? ['comparison-review.json'] : []),
+      ...(fileCases === 'all' || fileCases === 'failures'
+        ? ['missing-capability-review.json', 'deleted-file.png']
+        : []),
+    ],
     boundaries: [
       'No user profile modified',
       'Controlled prompts are not autonomous routing evidence',
+      ...(checkPreview ? [] : ['Routing mode does not validate native previews or Host restart']),
     ],
   })
   console.log(JSON.stringify({ status: 'passed', outputRoot: o.outputRoot, results }))

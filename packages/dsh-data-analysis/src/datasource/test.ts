@@ -12,7 +12,7 @@ export function createMarivoDatasourceTestTool(
   return defineTool({
     name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     description:
-      'Test a Marivo datasource through Host credentials. Missing credentials wait for the Web form while this call remains alive; configured connection failures return directly.',
+      'Test a Marivo datasource through Host credentials after datasource changes, credential rotation, connection failures, or explicit user requests. Normal analysis with configured credentials needs no preliminary test; successful marivo_datasource_configure already tested that configuration. Missing credentials wait for the Web form only while this call remains alive; configured connection failures return directly. Only status=ok proves this connection test succeeded; verify the requested table and read access separately.',
     parameters: {
       name: { type: 'string', required: true, description: 'Configured datasource name.' },
     },

@@ -4,15 +4,12 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MarivoDisclosureController, MarivoSkillName } from './activation.ts'
 
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
-  'When a requested table has no usable configured datasource, call marivo_datasource_configure with mode=create and a brief reason. For a datasource needing connection configuration repair, use mode=edit and its exact name. The user configures it in the owning Web right tab; do not request secrets in chat or write connection configuration on the user behalf. Only status=ok allows continuing: rediscover the datasource and verify the requested table and read access before analysis. Other statuses are not connection success. A provided local file may be analyzed directly when appropriate; do not invent a remote datasource requirement.',
+  'These are Host execution and credential rules; Marivo API and semantic contracts come from the bound Runtime Skill and live Help.',
   'DSH Credentials owns Marivo datasource secrets. Never request values in chat, read credential files or ~/.marivo/secrets.toml, or write secrets to scripts, arguments, environment variables, reports or logs.',
-  'Use marivo_datasource_test after datasource changes, credential rotation, connection failures, or explicit user requests. Missing credentials wait for the Web form only while the original call remains alive.',
-  'Execute analysis, metadata inspection and semantic data reads through marivo_python. Declare all exact Marivo datasource names this execution may access, including datasources without passwords. Local file analysis with pandas or native DuckDB uses datasources: [] when no Marivo datasource is accessed.',
-  'marivo_python waits for all missing credentials and validates the bound Workspace and datasource identities before taking one fresh snapshot and starting user code once. Configured credentials need no extra connection test. Ordinary Shell receives no datasource secret.',
-  'marivo_python installs credential_scope before user code. When using Marivo Session/reader objects, create or resume them inside that execution, and close Sessions in finally. Do not replace the resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
-  "Each marivo_python call uses a separate process. Closing releases that process's Session resources; it does not end the analytical question or delete durable Artifacts. When continuing a persisted Marivo analysis, reuse its Session identity across calls.",
-  'Configured credentials do not imply a valid connection or query permissions. Preserve real failures; never automatically replay a script with possible side effects.',
-  'Session lifetime pattern inside one marivo_python call (create/resume using current Runtime Help):\nsession = ...\ntry:\n    ...  # analysis using this Session\nfinally:\n    session.close()',
+  'Use marivo_datasource_configure for missing datasource setup or connection configuration repair; the user owns configuration in the Web form. Use marivo_datasource_test for connection checks under its tool contract. Configured credentials alone do not prove connection or read access.',
+  'Execute analysis, metadata inspection and semantic data reads through marivo_python in the bound Runtime and Workspace. Declare all exact Marivo datasource names this execution may access, including datasources without passwords; use datasources: [] for local pandas or native DuckDB without Marivo datasource access.',
+  'Each marivo_python call is a separate process. Create/resume Marivo Sessions inside the call, close them in finally, and retain the persisted Session identity when continuing the same analysis. Closing process resources does not delete durable Artifacts. Do not replace the credential resolver, read SecretValue contents, or bypass Host scope with environment/cache configuration.',
+  'Preserve real failures. After uncertain execution, inspect existing effects before retrying; never automatically replay a script with possible side effects.',
 ].join('\n')
 
 export const MARIVO_ANALYSIS_CLOSEOUT_PROMPT = [

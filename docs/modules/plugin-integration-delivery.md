@@ -53,10 +53,18 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 
 ## Prompt 与 Skill 激活
 
-`marivo-semantic` 激活后注入 credential 规则；`marivo-analysis` 激活后披露 Runtime 根 Help。
-插件常驻 prompt 只给出短路由：普通事实问答使用文字；图表、表格、报告、看板和可读来源展示加载唯一
-`dsh-data-analysis-presentation`。已有数据无需先激活分析 Skill；需要新分析或语义编写时，才加载对应
-Runtime Skill 与 live Help。展示 Skill 不增加 Help target，也不触发分析 Skill 的激活状态。
+系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
+文件分析加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 通过原生 `present` 交付；交互展示、保存或
+修改报告及来源面板加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。HTML 导出与发布的
+具体流程在展示 Skill 的 references，按用户目标读取。
+
+`marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
+测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由
+代码校验。首次激活补发与 compaction 恢复保持原机制，见 [Help 披露](help-disclosure.md)。
+
+文件 Skill 拥有文件分析与收尾核对；Runtime Skill 拥有 Marivo 分析、语义与证据有效性；展示 Skill 只核对
+呈现是否忠实于已有结果。系统中的 analysis 收尾提醒暂时保留，移除须另有绑定 Runtime Skill 和真实模型
+覆盖证据。插件不复制上游 API，也不因纯文件或展示任务激活 Runtime Skill。
 
 展示 Skill 由 `dsh-data-analysis-presentation` provider 从包内 `skills/` 挂载；Runtime Skill 仍由
 `dsh-data-analysis-marivo` provider 从当前 Runtime 读取。两者不包含默认 roots，也不监听目录变化。

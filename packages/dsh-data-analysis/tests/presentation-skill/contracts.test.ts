@@ -45,35 +45,46 @@ async function computedExample(relativePath: string) {
   )
 }
 
-test('presentation Skill resources are reachable within the shipped folder and stay bounded', async () => {
-  const entrypoint = path.join(skillRoot, 'SKILL.md')
-  const allFiles = (await files(skillRoot)).sort()
-  const visited = new Set<string>()
-  const pending = [entrypoint]
-  let totalBytes = 0
-  while (pending.length > 0) {
-    const file = pending.pop()!
-    if (visited.has(file)) continue
-    visited.add(file)
-    const actual = await realpath(file)
-    assert.ok(actual.startsWith(`${skillRoot}${path.sep}`), `${file} leaves the shipped Skill`)
-    const content = await readFile(file, 'utf8')
-    const size = Buffer.byteLength(content)
-    totalBytes += size
-    assert.ok(
-      size <= (file === entrypoint ? 6 * 1024 : 16 * 1024),
-      `${file} needs disclosure split`,
-    )
-    if (!file.endsWith('.md')) continue
-    for (const link of content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
-      const href = link[1]!.split('#')[0]!
-      assert.ok(href && !path.isAbsolute(href) && !/^\w+:/.test(href), href)
-      pending.push(path.resolve(path.dirname(file), href))
+for (const skillName of ['dsh-data-analysis-presentation', 'dsh-data-analysis-files']) {
+  test(`${skillName} resources are reachable within the shipped folder and stay bounded`, async () => {
+    const skillRoot = path.join(packageRoot, 'skills', skillName)
+    const entrypoint = path.join(skillRoot, 'SKILL.md')
+    const allFiles = (await files(skillRoot)).sort()
+    const visited = new Set<string>()
+    const pending = [entrypoint]
+    let totalBytes = 0
+    while (pending.length > 0) {
+      const file = pending.pop()!
+      if (visited.has(file)) continue
+      visited.add(file)
+      const actual = await realpath(file)
+      assert.ok(actual.startsWith(`${skillRoot}${path.sep}`), `${file} leaves the shipped Skill`)
+      const content = await readFile(file, 'utf8')
+      const size = Buffer.byteLength(content)
+      totalBytes += size
+      assert.ok(
+        size <= (file === entrypoint ? 6 * 1024 : 16 * 1024),
+        `${file} needs disclosure split`,
+      )
+      if (!file.endsWith('.md')) continue
+      for (const link of content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+        const href = link[1]!.split('#')[0]!
+        if (/^https:\/\//.test(href)) {
+          assert.equal(
+            new URL(href).hostname,
+            'github.com',
+            'Only the upstream Host contract is external',
+          )
+          continue
+        }
+        assert.ok(href && !path.isAbsolute(href) && !/^\w+:/.test(href), href)
+        pending.push(path.resolve(path.dirname(file), href))
+      }
     }
-  }
-  assert.deepEqual([...visited].sort(), allFiles, 'Every shipped resource must be discoverable')
-  assert.ok(totalBytes <= 80 * 1024, 'Keep the complete Skill and 18-chart examples bounded')
-})
+    assert.deepEqual([...visited].sort(), allFiles, 'Every shipped resource must be discoverable')
+    assert.ok(totalBytes <= 80 * 1024, 'Keep the complete Skill and 18-chart examples bounded')
+  })
+}
 
 test('all presentation draft examples validate with production draft and document parsers', async () => {
   const examples = await drafts()

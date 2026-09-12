@@ -71,7 +71,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. This call waits for missing credentials for every listed Marivo datasource before starting Python once; configured credentials do not trigger a connection test. When using Marivo Sessions or readers, create/resume them inside this execution and close Sessions in finally. No background execution or secret environment variables. Nonzero exits are reported without replay. Successful execution saves the exact submitted code and returns codeRef; explicitly associate it with presentation datasets through draft codeRefs. A codeCaptureError does not change the execution outcome and must not trigger replay. The execution summary reports adapter phase, outcome and effective Shell budget, not query progress or saved Artifacts. Credential waiting precedes the Shell budget; outer Code Mode deadlines and cancellation still apply. Timeout does not confirm remote query cancellation or absence of saved results.',
+        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. Waits for missing credentials for every declared datasource before starting code once; no automatic connection test or execution replay. No background execution or secret environment variables. Success returns codeRef for the submitted code; associate it with presentation datasets through draft codeRefs when needed. codeCaptureError leaves the execution outcome unchanged; do not rerun to recover the code record. Inspect execution phase, outcome and nextAction after failure; timeout does not prove remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
@@ -89,7 +89,7 @@ export function registerMarivoPythonTool(
         timeoutMs: {
           type: 'number',
           description:
-            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. When omitted, uses the current plugin pythonTimeoutMs setting. Harness Shell limits and outer Code Mode deadlines remain independent.',
+            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to the current plugin pythonTimeoutMs setting. Credential waiting precedes this budget; Harness Shell limits, outer Code Mode deadlines and cancellation remain independent.',
         },
       },
       output: {

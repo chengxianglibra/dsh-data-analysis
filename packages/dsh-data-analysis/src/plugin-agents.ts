@@ -33,7 +33,7 @@ import type { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const PRESENTATION_PROMPT =
-  'Answer ordinary factual questions in text. For analysis of provided data files, load dsh-data-analysis-files; local pandas or native DuckDB work needs no Marivo semantic setup. For charts, tables, reports, dashboards or a readable source presentation, load dsh-data-analysis-presentation and deliver through marivo_present. When the user requests an offline HTML file, export the saved report with marivo_export_html, then call native present with the returned path before the final response. Use the Runtime skills and live Help when the task needs Marivo analysis or semantic authoring; existing data can be presented directly.'
+  'Match delivery to the user request. Ordinary answers and simple comparison tables can stay in chat. For analysis of attachments or Workspace data files, load dsh-data-analysis-files; requested CSV, JSON or PNG files use native present. For interactive charts or tables, saved reports, dashboards, report updates or visual source panels, load dsh-data-analysis-presentation and use marivo_present; that Skill also covers report export and publication when requested. Existing results can be presented directly. Use the Runtime skills and live Help for Marivo analysis or semantic authoring; local pandas or native DuckDB file analysis needs no Marivo semantic setup.'
 
 export type MarivoPluginEnvironmentResolver = (
   agent: Agent,

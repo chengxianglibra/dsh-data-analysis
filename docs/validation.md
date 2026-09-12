@@ -282,3 +282,48 @@ Review 修复后，导出暂存文件使用同一文件系统内的最上层 Wor
 以及原路径被其他文件替换的情况：替换文件不受影响，暂存文件被清理，移走的最终文件只保留空文件。
 不扫描未知位置删除文件。7 项导出回归和 `validate:html-export` 的真实 Harness／离线浏览器复验通过。
 Node.js 22.19.0 下 `npm run check` 再次通过（663 项通过、4 项默认跳过），构建和包验证通过。
+
+
+## 系统提示与 Skill 分工验收
+
+常驻路由、Host 执行边界与两个插件 Skill 的职责见
+[Prompt 与 Skill 激活](modules/plugin-integration-delivery.md#prompt-与-skill-激活)和
+[文件分析与展示的分工](modules/presentation-skill.md#文件分析与展示的分工)。
+确定性检查覆盖激活首请求、恢复、两个 Skill 的资源可达性、示例契约与实际包分发；它们不证明模型会正确选路。
+
+设置已验证的 `DSH_DATA_ANALYSIS_PYTHON`，通过 `npm run validate:file-analysis:real` 运行隔离模型验收：
+
+- `DSH_DATA_ANALYSIS_VALIDATION_SUITE=files`、`DSH_DATA_ANALYSIS_VALIDATION_FILE_CASES=routing`、
+  `DSH_DATA_ANALYSIS_VALIDATION_FORMATS=csv`：使用自然请求检查 CSV、PNG 的原生交付、文字续问和简短
+  比较表格。CSV/PNG 请求不提示“不要报告”或具体实现方法。路由模式保留计算与交付事件检查，
+  不覆盖原生预览或 Host 重启；完整 `delivery` / `all` 模式继续保留这些检查。
+- 比较题包含 A 区域同比 +50%、环比 -25%，B 区域环比 +20% 且缺同比基准。
+  `comparison-review.json` 保存独立预期与真实事件，需人工核对最终回答中的方向、分母、归属和缺失分支；
+  不以回复出现某个数值或固定措辞代替结论检查。
+- `DSH_DATA_ANALYSIS_VALIDATION_SUITE=reports`、`DSH_DATA_ANALYSIS_VALIDATION_FORMATS=csv`：验证文件分析
+  接入保存报告、同名附件替换与隔离 Host 恢复后的继续分析。
+
+`delivery-scope.json` 和 `result.json` 明确记录模式与边界。模型可用性、Tool receipt、数值复核和浏览器
+预览分别记录，不将局部通过写成完整 UI 验收。
+
+
+2026-09-12 验证记录：Node.js 22.19.0，Harness 0.1.5-rc.1，Marivo 0.5.5，模型
+`deepseek-v4-pro` / `high`。`npm run check` 共 672 项，668 通过、4 项需显式 Runtime 的进程测试按原条件跳过；
+`npm run build`、`npm run verify:plugin-package`、两个 Skill 的 frontmatter 校验通过。最终 Skill 补强后重跑
+5 项 Skill 契约测试与包验证，最终验收脚本通过 typecheck。
+
+- 文件路由模式通过 CSV 原生交付、文字续问、聊天比较表与 PNG PTC 交付。人工复核确认同比／环比的数值、
+  方向、分母与 B 的缺失基准均正确，解释与表格一致；生成的 PNG 经图像检查确认标签和数值可读。
+- 报告模式通过初始 CSV（3 行、71）、同名替换附件（2 行、300）以及隔离 Host 重启后恢复首份附件
+  （3 行、71），每个结果关联本次实际读取原附件完整路径的执行记录。此处通过指保存内容与执行记录，
+  `web.png` 仍显示宿主初始提示，不作为报告阅读器视觉验收证据。
+- 初轮发现比较解释误写同比／环比标签，以及复制附件后读取同名副本未通过原路径追溯检查；据此补强文件
+  Skill 的最终文字核对与直接使用附件完整路径指导，以上通过结果来自补强后的候选。
+- 完整 `delivery` 模式的 CSV 文件内容与原生交付事件通过，但原生 CSV 预览 locator 超时；原因未在本次
+  范围内确认。路由模式不绕过或改写完整模式的预览断言，不能据此宣称完整原生预览验收通过。
+
+证据在本机临时验收目录 `dsh-file-analysis-real-YMZou8`（`result.json`、`comparison-review.json`、
+`comparison-manual-review.json`、`files-png.json`）和 `dsh-file-analysis-real-xVQPam`
+（`result.json`、三个真实回合记录与 `web.png`）；目录由脚本输出绝对路径，各记录保留候选文件摘要与包摘要。
+原生预览失败记录为 `dsh-file-analysis-real-ZC7GQ3`。本次验证未重装当前用户插件、修改用户 profile 或重启
+当前服务；只运行并关闭隔离 Host。模型样例通过不保证所有任务的分析判断均正确。

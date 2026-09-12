@@ -12,7 +12,7 @@ export function createMarivoDatasourceConfigureTool(
   return defineTool({
     name: MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
     description:
-      'Ask the user to create/select or edit a datasource in the owning Web session right tab. Waits until the user saves and tests successfully, cancels, or hands off a failure. Never pass credentials or configuration values. After success, rediscover the datasource and verify the requested table before analysis.',
+      'When a requested remote table has no usable configured datasource, use mode=create to let the user create/select one; repair connection configuration with mode=edit and its exact name. The user configures it in the owning Web session right tab; never write connection configuration on their behalf or pass credentials or configuration values. Waits for successful save and connection test, cancellation or failure. Only status=ok permits continuation: rediscover the datasource and verify the requested table and read access before analysis. Success already includes a connection test; do not repeat it unless configuration or credentials change, a connection fails, or the user requests one. Local files need no remote datasource setup.',
     parameters: {
       mode: {
         type: 'string',
