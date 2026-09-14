@@ -26,7 +26,7 @@ This is an independently maintained community plugin. It is not an official Deep
 ### Prerequisites
 
 - Node.js `^22.19.0 || >=24.0.0`: version 22.19.0 or later in the 22.x series, or version 24.0.0 and above. Version 23.x is not supported.
-- DeepSeek Harness `>=0.1.5-rc.1`, installed and configured.
+- DeepSeek Harness `>=0.1.5-rc.1`, launched with `npx @deepseek-ai/dsh web` and configured.
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
@@ -35,16 +35,18 @@ An internet connection is required to download dependencies; wait for setup to f
 
 ### Install and launch
 
+The commands below run Harness through `npx`; no global installation or `dsh` command on PATH is required.
+
 Install the plugin into the Web Profile:
 
 ```bash
-dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
+npx @deepseek-ai/dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
 ```
 
 Start the Web Profile after installation. If it is already running, exit and restart it:
 
 ```bash
-dsh --profile web
+npx @deepseek-ai/dsh web
 ```
 
 In the Web interface, select a Workspace, create a session, and send a message.

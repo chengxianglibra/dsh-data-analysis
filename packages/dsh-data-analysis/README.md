@@ -26,7 +26,7 @@
 ### 环境准备
 
 - Node.js `^22.19.0 || >=24.0.0`：22.x 需至少 22.19.0，或使用 24.0.0 及以上版本；不支持 23.x。
-- 已安装并配置好 DeepSeek Harness `>=0.1.5-rc.1`。
+- 已通过 `npx @deepseek-ai/dsh web` 启动并配置好 DeepSeek Harness `>=0.1.5-rc.1`。
 - 命令行中可使用 `pnpm`，供 Harness 安装插件。
 - Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 
@@ -34,16 +34,18 @@
 
 ### 安装并启动
 
+以下命令均通过 `npx` 运行 Harness，无需全局安装或将 `dsh` 添加到 PATH。
+
 将插件安装到 Web Profile：
 
 ```bash
-dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
+npx @deepseek-ai/dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
 ```
 
 安装后启动 Web Profile；如果已在运行，请先退出再重新启动：
 
 ```bash
-dsh --profile web
+npx @deepseek-ai/dsh web
 ```
 
 在 Web 界面选择分析使用的工作区（Workspace），新建会话并发送一条消息。
