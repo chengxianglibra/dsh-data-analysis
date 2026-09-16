@@ -4,6 +4,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { parsePresentationBuildId } from './contracts/index.ts'
+import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -63,7 +64,7 @@ export function createMarivoPresentTool(
       ],
       presentationMeta: (_args, value) => JSON.parse(value.deliveryJson),
     },
-    timeoutMs: 120_000,
+    timeoutMs: PRESENTATION_EXECUTION_BUDGETS.toolTimeoutMs,
     async execute(args, exec) {
       const signal = lifecycleSignal ? AbortSignal.any([exec.signal, lifecycleSignal]) : exec.signal
       if (

@@ -1,5 +1,5 @@
 import { MarivoEnvironmentError } from '../../environment/errors.ts'
-import type { MarivoCheckedRunner } from '../../environment/types.ts'
+import type { MarivoCheckedRunner, SubprocessResult } from '../../environment/types.ts'
 import { readPythonExecution } from '../../python-execution.ts'
 import {
   type DocumentDataset,
@@ -12,6 +12,7 @@ import {
   parsePresentationDraft,
   parseTypedDataset,
 } from '../contracts/index.ts'
+import { PRESENTATION_EXECUTION_BUDGETS } from '../execution-policy.ts'
 import { readWorkspaceJson } from './files.ts'
 import { MARIVO_PRESENTATION_READ_PROGRAM } from './program.ts'
 
@@ -111,16 +112,35 @@ export class MarivoPresentationProjection {
     let diagnostics: PresentationDiagnostic[] = []
     const artifactData = new Map<string, unknown>()
     if (draft.sources.length > 0) {
-      const result = await this.#runner.runChecked({
-        program: MARIVO_PRESENTATION_READ_PROGRAM,
-        args: [JSON.stringify({ sources: draft.sources, datasets: artifactSelections })],
-        limits: {
-          timeoutMs: 30_000,
-          stdoutMaxBytes: PRESENTATION_BUDGETS.documentBytes,
-          stderrMaxBytes: 65_536,
-        },
-        signal: options.signal,
-      })
+      const startedAt = performance.now()
+      let result: SubprocessResult
+      try {
+        result = await this.#runner.runChecked({
+          program: MARIVO_PRESENTATION_READ_PROGRAM,
+          args: [JSON.stringify({ sources: draft.sources, datasets: artifactSelections })],
+          limits: {
+            timeoutMs: PRESENTATION_EXECUTION_BUDGETS.sourceReadTimeoutMs,
+            stdoutMaxBytes: PRESENTATION_BUDGETS.documentBytes,
+            stderrMaxBytes: 65_536,
+          },
+          signal: options.signal,
+        })
+      } catch (error) {
+        if (!(error instanceof MarivoEnvironmentError) || error.code !== 'subprocess-timeout')
+          throw error
+        // Construct only safe operation metadata; upstream messages/details may contain secrets.
+        throw new MarivoEnvironmentError(
+          'subprocess-timeout',
+          'Presentation source reading timed out. Source projection did not complete; report submission has not started. Keep the draft and source declarations for retry; do not remove sources or rerun analysis to repair presentation.',
+          {
+            phase: 'presentation-source-read',
+            timeoutMs: PRESENTATION_EXECUTION_BUDGETS.sourceReadTimeoutMs,
+            durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+            sourceCount: draft.sources.length,
+            sessionCount: new Set(draft.sources.map((source) => source.ref.sessionId)).size,
+          },
+        )
+      }
       this.#assertReady(options.signal)
       if (result.exitCode !== 0)
         throw new MarivoEnvironmentError(

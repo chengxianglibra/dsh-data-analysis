@@ -6,11 +6,13 @@ import test from 'node:test'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { PresentationDeliveryModel } from '../../src/client/presentation/delivery-model.ts'
+import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import { presentationEdits } from '../../src/presentation/contracts/editing.ts'
 import {
   type PresentationReceipt,
   parsePresentationDocument,
 } from '../../src/presentation/contracts/index.ts'
+import { PRESENTATION_EXECUTION_BUDGETS } from '../../src/presentation/execution-policy.ts'
 import { MarivoPresentationProjection } from '../../src/presentation/projection/index.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
@@ -26,7 +28,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       { type: 'tool/call', data: { callId: 'code', name: 'run_code', turn: 2 } },
     ],
   } as unknown as Session
-  const projection = new MarivoPresentationProjection({
+  const runner = {
     status: 'ready',
     binding: {
       projectRoot: root,
@@ -40,7 +42,8 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     async runChecked(): Promise<never> {
       throw new Error('Computed report updates must not execute Python')
     },
-  })
+  } as const
+  const projection = new MarivoPresentationProjection(runner)
   let workspaceId = 'workspace'
   const tool = createMarivoPresentTool(() => ({ workspaceId, projection }), session)
   const exec = {
@@ -114,6 +117,8 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   await writeDraft()
   return {
     root,
+    runner,
+    tool,
     projection,
     service,
     draft,
@@ -318,4 +323,42 @@ test('a reader save during Agent projection wins and the Agent receives a confli
   assert.deepEqual(current.datasets, document.datasets)
   assert.deepEqual(await f.document(original.receipt), document)
   assert.equal((await f.entries()).filter((entry) => entry.endsWith('current.json')).length, 1)
+})
+
+test('source projection timeout and cancellation publish no new report or update receipt', async (t) => {
+  const f = await fixture(t)
+  assert.equal(f.tool.timeoutMs, 180_000)
+  assert(f.tool.timeoutMs! > PRESENTATION_EXECUTION_BUDGETS.sourceReadTimeoutMs)
+  const original = await f.present()
+  const entries = await f.entries()
+  const files = entries.filter((entry) => entry.endsWith('.json'))
+  const snapshot = () =>
+    Promise.all(
+      files.map((file) => readFile(path.join(f.root, '.dsh-data-analysis', 'presentations', file))),
+    )
+  const before = await snapshot()
+  await writeFile(
+    path.join(f.root, 'draft.json'),
+    JSON.stringify({
+      ...f.draft,
+      sources: [
+        { id: 'source', ref: { sessionId: 'saved-session', artifactRef: 'saved-artifact' } },
+      ],
+      datasets: [{ ...f.draft.datasets[0], sourceIds: ['source'] }],
+    }),
+  )
+  for (const code of ['subprocess-timeout', 'subprocess-cancelled'] as const) {
+    const call = t.mock.method(f.runner, 'runChecked', async () => {
+      throw new MarivoEnvironmentError(code, 'source read failed')
+    })
+    for (const mode of ['native', 'code'] as const) {
+      for (const destination of [{}, target(original.receipt)]) {
+        await assert.rejects(f.present(destination, mode), { code })
+        assert.deepEqual(await f.entries(), entries)
+        assert.deepEqual(await snapshot(), before)
+      }
+    }
+    assert.equal(call.mock.callCount(), 4)
+    call.mock.restore()
+  }
 })

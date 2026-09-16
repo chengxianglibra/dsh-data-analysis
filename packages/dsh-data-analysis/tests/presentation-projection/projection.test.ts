@@ -6,12 +6,14 @@ import path from 'node:path'
 import process from 'node:process'
 import test, { after, before } from 'node:test'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
+import { FixedSubprocessPolicy } from '../../src/environment/subprocess.ts'
 import type { MarivoCheckedRunner, MarivoCheckedRunRequest } from '../../src/environment/types.ts'
 import {
   PRESENTATION_BUDGETS,
   PresentationContractError,
   type PresentationDraft,
 } from '../../src/presentation/contracts/index.ts'
+import { PRESENTATION_EXECUTION_BUDGETS } from '../../src/presentation/execution-policy.ts'
 import {
   MarivoPresentationProjection,
   readWorkspaceJson,
@@ -561,4 +563,92 @@ test('projection carries the authored report locale and rejects obsolete drafts 
     errorAt('report-locale-invalid', '/locale'),
   )
   assert.equal(f.requests.length, reads)
+})
+
+test('source timeout diagnostics contain only safe operation metadata', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  const draft = computedDraft(['sales', 'second', 'third'])
+  draft.sources = [
+    declared,
+    { id: 'second', ref: { sessionId: declared.ref.sessionId, artifactRef: 'second-secret' } },
+    { id: 'third', ref: { sessionId: 'another-secret-session', artifactRef: 'third-secret' } },
+  ]
+  const upstream = new MarivoEnvironmentError('subprocess-timeout', 'secret SQL /private/path', {
+    secret: 'credential-value',
+  })
+  let now = 100
+  t.mock.method(performance, 'now', () => now)
+  const signal = new AbortController().signal
+  t.mock.method(f.runner, 'runChecked', async (request: MarivoCheckedRunRequest) => {
+    assert.equal(request.signal, signal)
+    assert.deepEqual(request.limits, {
+      timeoutMs: 120_000,
+      stdoutMaxBytes: PRESENTATION_BUDGETS.documentBytes,
+      stderrMaxBytes: 65_536,
+    })
+    now = 120_125
+    throw upstream
+  })
+  await assert.rejects(f.bridge.project(draft, { ...options, signal }), (error: unknown) => {
+    assert(error instanceof MarivoEnvironmentError)
+    assert.equal(error.code, 'subprocess-timeout')
+    assert.deepEqual(error.details, {
+      phase: 'presentation-source-read',
+      timeoutMs: 120_000,
+      durationMs: 120_025,
+      sourceCount: 3,
+      sessionCount: 2,
+    })
+    assert.match(error.message, /report submission has not started/)
+    assert.match(error.message, /Keep the draft and source declarations/)
+    assert.equal(error.cause, undefined)
+    assert.doesNotMatch(JSON.stringify(error), /secret|credential-value|private|SQL/)
+    return true
+  })
+})
+
+test('source projection propagates cancellation and non-timeout failures unchanged', async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  for (const error of [
+    new MarivoEnvironmentError('subprocess-cancelled', 'cancelled'),
+    new MarivoEnvironmentError('binding-identity-mismatch', 'identity'),
+    new MarivoEnvironmentError('subprocess-output-limit', 'output limit'),
+    new Error('ordinary failure'),
+  ]) {
+    const call = t.mock.method(f.runner, 'runChecked', async () => {
+      throw error
+    })
+    await assert.rejects(f.bridge.project(artifactDraft(), options), (actual) => actual === error)
+    assert.equal(call.mock.callCount(), 1)
+    call.mock.restore()
+  }
+})
+
+test('real subprocess source fixture completes beyond the former 30 second budget', {
+  timeout: 150_000,
+}, async (t) => {
+  const f = await fixture()
+  t.after(f.cleanup)
+  const policy = new FixedSubprocessPolicy(f.root)
+  const signal = AbortSignal.timeout(140_000)
+  t.mock.method(f.runner, 'runChecked', async (request: MarivoCheckedRunRequest) => {
+    assert.equal(request.limits?.timeoutMs, PRESENTATION_EXECUTION_BUDGETS.sourceReadTimeoutMs)
+    return policy.run({
+      executable: process.execPath,
+      args: [
+        '-e',
+        'setTimeout(() => process.stdout.write(process.argv[1]), 31_000)',
+        JSON.stringify(success()),
+      ],
+      limits: request.limits,
+      signal: request.signal,
+    })
+  })
+  const startedAt = performance.now()
+  const document = await f.bridge.project(artifactDraft(), { ...options, signal })
+  assert(performance.now() - startedAt > 30_000)
+  assert.equal(document.sources[0]?.status, 'available')
+  assert.deepEqual(document.datasets[0]?.sourceIds, [declared.id])
 })

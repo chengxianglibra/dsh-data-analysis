@@ -77,6 +77,16 @@ Workspace/report/build identity 由 Host 提供，Draft 不允许自行填写生
 每个异步边界检查取消和 runner 状态。错误位置使用 RFC 6901 pointer，关联回 Draft/dataset；
 上游异常原文不进入生成文档，防止路径、SQL 或 secret 混入诊断。
 
+来源读取使用[报告执行预算](../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)中的
+120 秒子进程上限，包含 Runtime identity 检查、导入、Session 恢复与来源快照读取；零来源跳过该子进程。
+`marivo_present` 外层预算为 180 秒，给绑定检查、数据读取和报告提交留出余量；该预算不保证任意数量 Session 均可完成。
+取消、进程树终止、输出限制和 identity 校验保持有效，不自动重试，也不将操作超时转换为来源 `unavailable`。
+
+来源超时保留 `subprocess-timeout`，仅增加 `phase: presentation-source-read`、`timeoutMs`、`durationMs`、
+`sourceCount` 和去重后的 `sessionCount`。耗时覆盖整个来源读取调用，不表示语义加载的单独耗时；不附带来源身份、路径、
+SQL、凭据或上游异常。提示明确本次来源投影未完成、尚未进入报告提交，应保留草稿及来源声明后重试，
+不删除来源或重跑分析。这只说明报告提交边界，不承诺 Runtime 完全没有副作用。
+
 ## 公开来源快照
 
 固定程序通过 `mv.session.resume(..., use_datasources=False)`、`session.artifact`、`artifact.contract`、
@@ -128,6 +138,12 @@ npm run validate:presentation-browser:real
 Python 合同测试随 `npm run check` 持续执行；真实脚本使用隔离目录，保留机器证据。
 Artifact 验证先通过 Marivo 公开分析生成并持久化，再在另一进程恢复；
 该 Chromium 验证只证明 Python/Node/browser 数据解释一致；reader、离线 HTML、Host 交付和真实 Agent 路由需分别验证。
+
+来源预算回归包括超过旧 30 秒上限的真实 Node 子进程夹具、安全超时元数据、非超时错误原样传播，
+以及 Native／Code 新建和更新在来源超时或取消后不发布 receipt、已有报告文件与 current／历史字节保持不变。
+子进程终止由 environment-execution 的短预算超时、取消及后代进程测试覆盖。
+该延迟夹具仅验证插件执行预算，不代表 19 域项目的 Marivo 加载性能或 5／15 来源真实验收；
+原项目 Workspace、草稿及实际 Runtime 未核验前，这项真实验收仍待完成。
 
 ## 草稿静态预检
 

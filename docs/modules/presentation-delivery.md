@@ -98,6 +98,11 @@ Workspace 读取直接使用 Harness `workspaceRegistry.get`，前后复核同�
 数据、来源、代码快照、diagnostics 从当前服务端文档保留，不接受浏览器覆盖。保存不执行 Agent、Python、
 projection、数据源或凭据流程。Tool 与 RPC 共用 builder／提交服务，只有 Tool adapter 发布真实 Turn 交付。
 
+`marivo_present` 的外层执行预算为 180 秒，来源读取子进程为 120 秒，统一由内部报告执行预算定义；
+其他子进程及 HTML 导出预算不变。来源投影成功后才进入提交；来源超时或取消不创建本次报告 Build、
+不更新 current／历史，也不返回成功交付 receipt。超时诊断与保留声明的恢复方式见
+[展示投影](presentation-projection.md#数据流程)。外层取消仍覆盖完整操作，120／180 秒不是保证完成的时限。
+
 完整构建提交后，直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化 current 更新。
 锁内重新校验 `expectedBuildId`，不一致返回 `report-save-conflict`。指针通过临时文件写入、文件同步、rename、
 目录同步提交；rename 是保存生效点。冲突或指针提交前失败保留旧构建，完整但未发布的构建不自动清理。
