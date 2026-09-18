@@ -30,6 +30,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
       },
     ),
   )
+  // Keep the VM's Object intrinsic: its object literals must share Object.prototype.
   const context = vm.createContext({
     window: {
       __ModuleLoader__: {
@@ -48,7 +49,6 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     Map,
     Set,
     JSON,
-    Object,
     Array,
     Number,
     Date,

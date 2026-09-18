@@ -510,3 +510,70 @@ test('saving a new Build cancels an old publishing description and fetches a fre
   assert.equal(model.getSnapshot().publishingLoading, false)
   model.dispose()
 })
+
+test('HTTP clients without Web Crypto read and download verified assets and reject tampering', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')!
+  try {
+    for (const crypto of [{}, undefined]) {
+      Object.defineProperty(globalThis, 'crypto', { configurable: true, value: crypto })
+      const { document, delivery, html, response } = await fixture()
+      const saved: Uint8Array[] = []
+      let tamper = false
+      const model = new PresentationDeliveryModel(
+        {
+          async call(channel, endpoint, payload: any) {
+            if (channel === '/dsh-report-publishing') return { ok: true, value: { enabled: false } }
+            if (endpoint === 'reports/resolve') return { ok: true, value: delivery.receipt }
+            const result = response(payload.asset)
+            if (tamper) {
+              const bytes = Buffer.from(result.value.bodyBase64, 'base64')
+              bytes[0] = bytes[0]! ^ 1
+              result.value.bodyBase64 = bytes.toString('base64')
+            }
+            return result
+          },
+        },
+        (bytes) => saved.push(bytes),
+      )
+      try {
+        await model.show(delivery, 'session-a', document.workspaceId)
+        assert.deepEqual(model.getSnapshot().document, document)
+        await model.download(delivery, 'session-a', document.workspaceId)
+        assert.deepEqual(Buffer.from(saved[0]!), html)
+        tamper = true
+        await model.show(delivery, 'session-a', document.workspaceId)
+        assert.equal(model.getSnapshot().document, undefined)
+        assert.match(translator('zh-CN')(model.getSnapshot().error!), /摘要不一致/)
+        await model.download(delivery, 'session-a', document.workspaceId)
+        assert.match(translator('zh-CN')(model.getSnapshot().downloadError!), /摘要不一致/)
+        assert.equal(saved.length, 1)
+      } finally {
+        model.dispose()
+      }
+      // Exercise SHA-256 padding boundaries and multi-block binary/UTF-8 input.
+      for (const length of [1, 55, 56, 63, 64, 65, 127, 128, 129, 1048576]) {
+        const bytes = Buffer.from(Array.from({ length }, (_, index) => index % 256))
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        const receipt = {
+          ...delivery.receipt,
+          files: {
+            ...delivery.receipt.files,
+            html: { ...delivery.receipt.files.html!, bytes: bytes.length, sha256 },
+          },
+        }
+        const value = {
+          ...response('index.html').value,
+          bytes: bytes.length,
+          sha256,
+          bodyBase64: bytes.toString('base64'),
+        }
+        assert.deepEqual(
+          Buffer.from(await verifyPresentationAsset(value, receipt, 'index.html')),
+          bytes,
+        )
+      }
+    }
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', descriptor)
+  }
+})

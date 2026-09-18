@@ -1,3 +1,5 @@
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 import { zh as copyDictionary } from '../i18n/copy.ts'
 import { savePresentationHtml } from './download.ts'
 
@@ -112,10 +114,8 @@ export async function verifyPresentationAsset(
   const decoded = atob(file.bodyBase64)
   if (decoded.length !== expected.bytes) throw new Error('presentation-file-size-mismatch')
   const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0))
-  const digest = await crypto.subtle.digest('SHA-256', bytes)
-  const actual = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  ).join('')
+  // Intranet HTTP pages lack crypto.subtle; verify the same bytes in every context.
+  const actual = bytesToHex(sha256(bytes))
   if (actual !== expected.sha256) throw new Error('presentation-file-digest-mismatch')
   return bytes
 }

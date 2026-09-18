@@ -113,7 +113,9 @@ projection、数据源或凭据流程。Tool 与 RPC 共用 builder／提交服�
 编辑保存不产生聊天节点；重连从原事件恢复交付状态，再读取 Workspace current。阅读器一次打开绑定一个 resolved receipt，
 内部下载固定为当前显示的已保存构建，保存成功才切换。其他窗口不会覆盖正在编辑的草稿。
 
-客户端验证文件身份、大小和 SHA-256 后才渲染或下载。关闭、Workspace 失效或连接重置取消旧请求，
+客户端验证文件身份、大小和 SHA-256 后才渲染或下载。SHA-256 使用随客户端打包的
+`@noble/hashes` 纯 JavaScript 实现，不依赖安全上下文的 `crypto.subtle`，支持内网 HTTP／代理访问；
+HTTP 与 HTTPS 执行相同校验，摘要不一致仍拒绝读取和下载。关闭、Workspace 失效或连接重置取消旧请求，
 清除已加载文档、编辑及筛选；迟到响应不能恢复旧内容。
 
 ## 验证
@@ -128,6 +130,7 @@ npm run validate:presentation-integration:real
 ```
 
 确定性测试覆盖原子提交、取消、读取预算/路径/摘要、Workspace 变化、统一 receipt 和事件去重；
+无 Web Crypto 环境覆盖报告读取、HTML 下载和同字节长度篡改拒绝，并与 Node.js SHA-256 对照。
 通过未改写的已安装 Harness 客户端 bundle 与公开 `apply`、registries、assembler，验证两种插件加载顺序下
 ProducedFiles 与报告交付事件共存、多报告、重复回执、取消后保留及历史重建。
 隔离真实验证应覆盖 Native/both/Code、原生 Tab 自动打开、历史回放不自动打开、按需下载与离线文件。
