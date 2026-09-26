@@ -9,8 +9,11 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import BashLocal from '@deepseek-ai/dsh-bash-local'
-import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
+import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
+import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
@@ -56,10 +59,17 @@ async function harness(t: TestContext, maxWallMs?: number) {
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(TestShellEnv)
-  if (maxWallMs !== undefined) await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs })
+  if (maxWallMs !== undefined) {
+    await ctx.plugin(LocalFileSystem, { cwd: root })
+    await ctx.plugin(LocalSandbox, {})
+    await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot: root })
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SubprocessLocal)
+    await ctx.plugin(NodePtcRuntime, { timeoutMs: maxWallMs })
+  }
   await ctx.plugin(ToolRuntime, { mode: maxWallMs === undefined ? 'native' : 'ptc' })
   await ctx.plugin(AgentRegistry)
-  await ctx.plugin(SessionProjectionRegistry)
+  if (maxWallMs === undefined) await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubprocessLocal)
   await ctx.plugin(BashLocal, { maxTimeoutMs: 180_000, maxOutputBytes: 65536 })
@@ -70,14 +80,19 @@ async function harness(t: TestContext, maxWallMs?: number) {
   )
   registerMarivoPythonTool(agent.ctx, bridge, service)
   const shell = agent.ctx.get('shell')!
-  const run = shell.run.bind(shell)
+  const execute = shell.execute.bind(shell)
   const outcomes: ShellRunResult[] = []
   let starts = 0
-  shell.run = async (spec) => {
+  shell.execute = async (spec) => {
     starts++
-    const result = await run(spec)
-    outcomes.push(result)
-    return result
+    const execution = await execute(spec)
+    const result = execution.result.bind(execution)
+    execution.result = async () => {
+      const outcome = await result()
+      outcomes.push(outcome)
+      return outcome
+    }
+    return execution
   }
   const call = (code: string, timeoutMs: number, signal = new AbortController().signal) =>
     agent.ctx.tools.execute({

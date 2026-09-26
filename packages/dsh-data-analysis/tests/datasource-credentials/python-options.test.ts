@@ -8,13 +8,14 @@ import {
 } from '../../src/datasource/python-options.ts'
 import type { MarivoEnvironment } from '../../src/environment/index.ts'
 import { apply, Config, installMarivoPlugin } from '../../src/plugin.ts'
+import { currentPythonOptions } from '../../src/settings.ts'
 import { fixture } from './fixtures.ts'
 
 test('Python configuration defaults agree with the loader and accept the timer boundary', () => {
   const defaults = resolvePythonOptions({})
   assert.deepEqual(defaults, { pythonTimeoutMs: 120_000 })
   const config = Config({})
-  assert.equal(config.pythonTimeoutMs, defaults.pythonTimeoutMs)
+  assert.equal(currentPythonOptions(config).pythonTimeoutMs, defaults.pythonTimeoutMs)
   assert.deepEqual(resolvePythonOptions({ pythonTimeoutMs: 2147483647 }), {
     pythonTimeoutMs: 2147483647,
   })

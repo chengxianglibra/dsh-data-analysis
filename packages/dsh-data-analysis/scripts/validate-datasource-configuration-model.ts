@@ -11,7 +11,6 @@ import BashLocal from '@deepseek-ai/dsh-bash-local'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
-import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
@@ -25,6 +24,7 @@ import { MARIVO_DATASOURCE_CREDENTIAL_PROMPT } from '../src/disclosure/execution
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 import { Store } from '../tests/datasource-credentials/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
+import { installDeepSeekValidationProvider } from './deepseek-validation-provider.ts'
 
 const python = process.env.DSH_DATA_ANALYSIS_PYTHON
 if (!python) throw new Error('DSH_DATA_ANALYSIS_PYTHON required')
@@ -48,7 +48,7 @@ try {
       JSON.stringify({ status: 'blocked', reason: 'DSH model credential unavailable' }) + '\n',
     )
   } else {
-    await ctx.plugin(DeepSeek, { thinking: 'disabled' })
+    await installDeepSeekValidationProvider(ctx, { thinking: 'disabled' })
     const runner = await bindMarivoEnvironment({ projectRoot: root, pythonExecutable: python })
     const bridge = new MarivoDatasourceBridge(runner)
     const db = path.join(root, 'orders.duckdb')

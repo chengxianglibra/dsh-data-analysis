@@ -6,7 +6,6 @@ import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, {
@@ -17,10 +16,14 @@ import LlmRuntime, {
   type StreamChunk,
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
+import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
+import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
+import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -318,10 +321,8 @@ export async function runPresentationJourneys(
       if (event.type === 'tool/ptc-dispatch')
         return event.data.content.flatMap((item) => (item.type === 'text' ? [item.text] : []))
       if (event.type === 'tool/result')
-        return event.data.message.content.flatMap((block) =>
-          block.type === 'tool-result'
-            ? block.content.flatMap((item) => (item.type === 'text' ? [item.text] : []))
-            : [],
+        return event.data.message.content.flatMap((item) =>
+          item.type === 'text' ? [item.text] : [],
         )
       return []
     })
@@ -342,9 +343,7 @@ export async function runPresentationJourneys(
   assert.ok(firstResult && firstEnd)
   for (const event of stored.events) {
     if (event.type === 'tool/result')
-      for (const block of event.data.message.content)
-        if (block.type === 'tool-result')
-          assert.notEqual(block.isError, true, JSON.stringify(block.content))
+      assert.notEqual(event.data.message.isError, true, JSON.stringify(event.data.message.content))
     if (event.type === 'tool/ptc-dispatch') assert.equal(event.data.isError, false)
   }
   for (const turn of deliveries.map((delivery) => delivery.turn)) {
@@ -422,11 +421,14 @@ export async function validatePresentationHost(
       await ctx.plugin(SkillRuntime)
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(TestShellEnv)
-      await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs: 120_000 })
-      await ctx.plugin(ToolRuntime, { mode })
       await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
-      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(SubprocessLocal)
+      await ctx.plugin(LocalSandbox, {})
+      await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot })
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(NodePtcRuntime, { timeoutMs: 120_000 })
+      await ctx.plugin(ToolRuntime, { mode })
+      await ctx.plugin(AgentRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(
         { name: 's4-production-plugin', inject, apply },

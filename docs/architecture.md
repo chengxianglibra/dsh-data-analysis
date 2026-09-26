@@ -33,7 +33,7 @@
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 兼容基线已完成，证据见[验证指南](validation.md#dsh-rc1-基线验收)；S2 文件交付和 S3 引导入口仍待实施。
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。当前开发依赖为 `0.1.7-rc.1`，插件 peer 最低为 `0.1.7-rc.1`；本轮文件交付指引接入 Host 原生表格预览，后台长任务保留为后续独立任务。
 
 ## 运行与数据流
 
@@ -75,6 +75,8 @@ Harness Credentials 是秘密值权威；Marivo 的公开 description、Datasour
 `marivo_datasource_configure` 将表单绑定到原调用与所属 Session，用户完成配置后续接；取消或身份变化结束旧操作。`marivo_python` 在一次调用内等待所有声明的数据源就绪，取得 fresh snapshot，通过 stdin 和 `md.credential_scope` 注入，再交给 Harness Shell 前台执行。秘密值不进入 Agent 参数、argv 或环境，输出在 Host spill 前脱敏。
 
 纯文件分析使用 `datasources: []`，仍保留 Runtime/Workspace identity、取消与执行代码记录。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
+
+`marivo_python` 使用 Host `ShellExecutor.execute(spec).result()` 完成前台调用。用户要求交付已有 CSV、TSV、XLSX 等表格文件时，文件分析 Skill 指导 Agent 在确认文件后调用 Harness 原生 `present`；文件卡片、Session 文件声明及只读表格预览由 Harness 拥有。插件的 `marivo_present` 继续承载可筛选、联动的报告表格；原生 `.xls` 预览不扩大 Marivo 的分析格式范围。
 
 ### 语义浏览与输入
 

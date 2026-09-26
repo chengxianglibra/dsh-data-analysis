@@ -26,7 +26,7 @@ This is an independently maintained community plugin. It is not an official Deep
 ### Prerequisites
 
 - Node.js `^22.19.0 || >=24.0.0`: version 22.19.0 or later in the 22.x series, or version 24.0.0 and above. Version 23.x is not supported.
-- DeepSeek Harness `>=0.1.5-rc.1`, launched with `npx @deepseek-ai/dsh web` and configured.
+- DeepSeek Harness `>=0.1.7-rc.1`, launched with `npx @deepseek-ai/dsh web` and configured.
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
@@ -61,6 +61,7 @@ The examples below use the Web interface; Chinese labels are included to help yo
 No data source configuration or business definitions are required first.
 CSV, JSON, Parquet, and Excel `.xlsx` files are supported. Reading `.xlsx` for the first time requires an internet connection to download an extension.
 Convert older `.xls` files to `.xlsx`, CSV, or Parquet first.
+To view or deliver a CSV, TSV, or XLSX file, ask the assistant to use native `present`, then open the read-only DSH spreadsheet preview on the right. Tables with report filtering and linked interactions remain in the report reader. The plugin does not write XLSX or analyze older `.xls` files.
 
 **Databases**: Open Data Sources (数据源) beside the session title to view connections and their configuration status in the current workspace:
 

@@ -1067,7 +1067,8 @@ export function installCredentials(ctx, rpc, changes?: CredentialChanges) {
     ctx.slots.register(
       { locale: 'marivo.navigation', name: 'shell.overlay', id: 'marivo-credential-observer' },
       localized(ctx, function Observer({ useSessions, useWorkspaces }) {
-        const sessionId = useSessions((state) => state.current) ?? ''
+        const sessionId =
+          useSessions((state) => state.ids.find((id) => state.byId[id]?.retainedBy.mainView)) ?? ''
         const workspaces = useWorkspaces((state) => state.items)
         const currentWorkspace =
           workspaces.find((item) => item.sessionIds.includes(sessionId))?.workspaceId ?? ''

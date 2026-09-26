@@ -3,15 +3,20 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
+import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
+import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import ShellExecutor, {
   type ShellExecRequest,
   type ShellExecSpec,
+  type ShellExecution,
   type ShellRunResult,
 } from '@deepseek-ai/dsh-shell'
+import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { registerMarivoPythonTool } from '../../src/datasource/python.ts'
@@ -28,12 +33,13 @@ class CountingShell extends ShellExecutor {
       stdoutMaxBytes: 65536,
       ...request,
       sandboxPolicy: request.sandboxPolicy,
+      onExpiry: request.onExpiry ?? 'kill',
     }
   }
-  async run(spec: ShellExecSpec): Promise<ShellRunResult> {
+  async execute(spec: ShellExecSpec) {
     spec.signal?.throwIfAborted()
     this.starts++
-    return {
+    const result: ShellRunResult = {
       exitCode: 0,
       signal: null,
       timedOut: false,
@@ -42,6 +48,7 @@ class CountingShell extends ShellExecutor {
       stdout: { text: 'PYTHON_ONCE', truncated: false },
       stderr: { text: '', truncated: false },
     }
+    return { result: async () => result } as ShellExecution
   }
   start(): never {
     throw new Error('Foreground execution required')
@@ -55,10 +62,14 @@ async function harness(maxWallMs: number) {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(TestShellEnv)
   await ctx.plugin(CountingShell)
-  await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs })
+  await ctx.plugin(LocalFileSystem, { cwd: process.cwd() })
+  await ctx.plugin(SubprocessLocal)
+  await ctx.plugin(LocalSandbox, {})
+  await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot: process.cwd() })
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(NodePtcRuntime, { timeoutMs: maxWallMs })
   await ctx.plugin(ToolRuntime, { mode: 'ptc' })
   await ctx.plugin(AgentRegistry)
-  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   const agent = await ctx.agentLoop.create(SessionId('session'), {
     provider: 'unused',

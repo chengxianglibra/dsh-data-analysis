@@ -26,14 +26,18 @@ const descriptor: InvocationDescriptor = {
       name: 'sessionId',
       wire: 'sessionId',
       source: 'json',
-      codec: { mode: 'strict', typeSymbol: `${owner}#CredentialSessionId`, schema: sessionId },
+      codec: {
+        mode: 'strict',
+        typeSymbol: `${owner}#CredentialSessionId`,
+        create: () => sessionId,
+      },
     },
   ],
   cancellation: { parameter: 'signal' },
   result: {
     mode: 'strict',
     typeSymbol: `${owner}#CredentialRevision`,
-    schema: credentialRevisionSchema,
+    create: () => credentialRevisionSchema,
   },
 }
 export const credentialChangesHost: TypertContribution = {

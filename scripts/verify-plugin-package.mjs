@@ -320,7 +320,7 @@ try {
   for (const packageName of linkedDependencies) linkDependency(nodeModules, packageName)
   const smokeProgram = `
     const assert = (await import('node:assert/strict')).default
-    const { readFile, stat } = await import('node:fs/promises')
+    const { readFile, realpath, stat } = await import('node:fs/promises')
     const path = (await import('node:path')).default
     const { Context } = await import('@deepseek-ai/cordis')
     const { default: SkillRuntime } = await import('@deepseek-ai/dsh-skill')
@@ -341,8 +341,9 @@ try {
       const markdown = await readFile(filename, 'utf8')
       for (const match of markdown.matchAll(/\\[[^\\]]*\\]\\(([^)]+)\\)/g)) {
         if (/^(?:https?:|#)/.test(match[1])) continue
-        const target = path.resolve(path.dirname(filename), match[1].split('#')[0])
-        assert.ok(target.startsWith(basePath + path.sep), 'Skill reference must remain inside its installed bundle')
+        const target = await realpath(path.resolve(path.dirname(filename), match[1].split('#')[0]))
+        const base = await realpath(basePath)
+        assert.ok(target.startsWith(base + path.sep), 'Skill reference must remain inside its installed bundle')
         assert.ok((await stat(target)).isFile())
         if (target.endsWith('.md')) await checkReferences(target, basePath)
       }

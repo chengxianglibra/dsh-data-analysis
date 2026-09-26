@@ -145,7 +145,7 @@ import * as production from '@chengxianglibra/dsh-data-analysis/client';
 export const inject=[...production.inject,'remote.session','sessions'];
 export function apply(ctx){
  production.apply(ctx);
- window.__fileAnalysis={hasSession:id=>ctx.sessions.list.getSnapshot().ids.includes(id),select:id=>ctx.sessions.open(id),session:(method,value)=>ctx.get('remote.session')[method](value),rpc:async(endpoint,payload)=>{const response=await fetch('/api/file-analysis-validation/'+endpoint+'?'+new URLSearchParams(payload));const text=await response.text();if(!response.ok)throw new Error('snapshot HTTP '+response.status+': '+text);return JSON.parse(text)}};
+ window.__fileAnalysis={hasSession:id=>ctx.sessions.list.getSnapshot().ids.includes(id),select:id=>ctx.uiWorkspace.openSession(id),session:(method,value)=>ctx.get('remote.session')[method](value),rpc:async(endpoint,payload)=>{const response=await fetch('/api/file-analysis-validation/'+endpoint+'?'+new URLSearchParams(payload));const text=await response.text();if(!response.ok)throw new Error('snapshot HTTP '+response.status+': '+text);return JSON.parse(text)}};
 }
 `,
     },

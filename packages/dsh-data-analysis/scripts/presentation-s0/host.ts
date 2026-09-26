@@ -6,7 +6,7 @@ import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import WorkerThreadCodeRuntime from '@deepseek-ai/dsh-code-runtime-worker-thread'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, {
   type ContentBlock,
   createUserMessage,
@@ -16,9 +16,13 @@ import LlmRuntime, {
   type StreamChunk,
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
+import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
+import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -167,9 +171,9 @@ export function collectS0Deliveries(
     let raw: unknown
     let expectedTurn: number | undefined
     if (event.type === 'tool/result') {
-      const block = event.data.message.content.find((block) => block.type === 'tool-result')
-      if (block?.type !== 'tool-result' || block.isError) continue
-      const call = calls.get(String(block.toolCallId))
+      const message = event.data.message
+      if (message.isError) continue
+      const call = calls.get(String(message.toolCallId))
       if (call?.name !== S0_TOOL_NAME) continue
       expectedTurn = call.turn
       raw = event.data.meta
@@ -269,7 +273,7 @@ export async function validateS0Host(
   for (const name of [
     '@deepseek-ai/dsh',
     '@deepseek-ai/dsh-tools',
-    '@deepseek-ai/dsh-code-runtime-worker-thread',
+    '@deepseek-ai/dsh-ptc-runtime-node',
     '@deepseek-ai/dsh-agent-loop',
     '@deepseek-ai/dsh-session-persistence-jsonl',
   ]) {
@@ -304,10 +308,14 @@ export async function validateS0Host(
         compression: 'none',
       })
       await ctx.plugin(SystemPrompt)
-      await ctx.plugin(WorkerThreadCodeRuntime, { maxWallMs: 10000 })
+      await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
+      await ctx.plugin(SubprocessLocal)
+      await ctx.plugin(LocalSandbox, {})
+      await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot })
+      await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(NodePtcRuntime, { timeoutMs: 10000 })
       await ctx.plugin(ToolRuntime, { mode })
       await ctx.plugin(AgentRegistry)
-      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       ctx.llm.registerAdapter(['s0-scripted'], new ScriptedProbeAdapter(mode))
       installS0ReceiptProbe(

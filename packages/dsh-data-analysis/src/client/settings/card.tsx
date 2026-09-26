@@ -1,4 +1,4 @@
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { useCopy } from '../i18n/context.tsx'
 
@@ -13,7 +13,7 @@ export function timeoutMilliseconds(text: string): number | undefined {
   return Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647 ? value : undefined
 }
 
-export function PythonSettingsCard({ scope }: { scope: SettingsScope<PythonSettingsValue> }) {
+export function PythonSettingsCard({ scope }: { scope: ConfigForm<PythonSettingsValue> }) {
   const t = useCopy()
   const subscribe = useCallback((listener: () => void) => scope.subscribe(listener), [scope])
   const getSnapshot = useCallback(() => scope.getSnapshot(), [scope])

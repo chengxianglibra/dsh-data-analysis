@@ -1,6 +1,6 @@
 ---
 name: dsh-data-analysis-files
-description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数据，回答问题或交付 CSV、JSON、PNG 文件。可接续报告展示，无需先建立 Marivo datasource 或语义模型。
+description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数据，回答问题或交付 CSV、TSV、XLSX、JSON、PNG 文件并使用原生表格预览。可接续报告展示，无需先建立 Marivo datasource 或语义模型。
 ---
 
 # 文件分析
@@ -37,8 +37,8 @@ description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数�
 
 ## 按用户目标交付
 
-普通答案和简短比较表格直接在聊天中回答，不额外创建文件。用户要求 CSV、JSON、PNG 等实际文件时，先读[文件交付](references/delivery.md)，通过 `marivo_python` 生成最终文件，优先写入当前绑定 Workspace；确认执行成功、文件存在后，调用实际可用的 Harness 原生 `present`，再回复用户。文件生成和原生声明分别核对，路径或代码块不能替代交付。
+普通答案和简短比较表格直接在聊天中回答，不额外创建文件。用户要查看或交付已有的 CSV、TSV、XLSX 表格文件时，确认当前 Session 可访问该文件后，按[文件交付](references/delivery.md)调用实际可用的 Harness 原生 `present`；交付卡片由 Harness 在右侧打开只读表格预览。用户要求生成 CSV、TSV、JSON、PNG 等实际文件时，通过 `marivo_python` 生成最终文件，优先写入当前绑定 Workspace；确认执行成功、文件存在后再调用 `present`。文件生成和原生声明分别核对，路径或代码块不能替代交付。不承诺插件能写入 XLSX，也不把 Harness 对旧 `.xls` 的预览当作插件可分析 `.xls`。
 
-需要交互图表、表格、报告或看板时加载 `dsh-data-analysis-presentation`，将 DataFrame 交给现有 writer，关联实际返回的 `codeRef`，用 `marivo_present` 保存固定 Build。在正文说明文件名与分析范围，不将文件结果冒充 Marivo Artifact 或 Evidence。普通 `present` 不赋予文件 Report/Build 或 Evidence 身份。
+需要在报告中筛选或联动分析结果的图表、表格、报告或看板时加载 `dsh-data-analysis-presentation`，将 DataFrame 交给现有 writer，关联实际返回的 `codeRef`，用 `marivo_present` 保存固定 Build。在正文说明文件名与分析范围，不将文件结果冒充 Marivo Artifact 或 Evidence。普通 `present` 不赋予文件 Report/Build 或 Evidence 身份。
 
 需要起步代码时读[简短示例](references/examples.md)；其中提供无需额外依赖的 PNG 写入代码，也通过 `marivo_python` 执行。

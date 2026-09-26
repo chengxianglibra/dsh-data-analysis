@@ -3,6 +3,12 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MarivoDisclosureController, MarivoSkillName } from './activation.ts'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    plugin: { kind: 'plugin'; plugin: string }
+  }
+}
+
 export const MARIVO_DATASOURCE_CREDENTIAL_PROMPT = [
   'These are Host execution and credential rules; Marivo API and semantic contracts come from the bound Runtime Skill and live Help.',
   'DSH Credentials owns Marivo datasource secrets. Never request values in chat, read credential files or ~/.marivo/secrets.toml, or write secrets to scripts, arguments, environment variables, reports or logs.',

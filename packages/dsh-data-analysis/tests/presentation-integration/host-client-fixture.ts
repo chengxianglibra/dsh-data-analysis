@@ -25,6 +25,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
       {},
       {
         get(_target, key) {
+          if (typeof key === 'string' && /^Icon[A-Z]/.test(key)) return () => null
           throw new Error(`UI primitive is outside the registry replay fixture: ${String(key)}`)
         },
       },
@@ -106,12 +107,12 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   locale.setLocale('zh')
   const client = {
     inputTriggers: { registerSource: () => () => {} },
-    uiConversation: { events, views },
+    uiConversation: { events, views, groups: { register: () => () => {} } },
     uiSession: { provide: () => () => {} },
     slots,
     sessions: {
       provide: () => () => {},
-      list: store({ current: undefined }),
+      list: store({ ids: [], byId: {}, phase: 'ready' }),
       binding: () => undefined,
     },
     workspaces: { list: store({ phase: 'ready', state: 'idle', items: [] }) },
@@ -123,13 +124,16 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
       },
     },
     sidebarRight: {},
+    uiWorkspace: { openSession: () => {} },
     sidebarRightTabs: { register: () => () => {} },
     layout: {},
     locale,
-    settingsScope: {
-      bind: () => ({ subscribe: () => () => {}, getSnapshot: () => ({ value: undefined }) }),
+    configForms: {
+      get: () => ({ subscribe: () => () => {}, getSnapshot: () => ({ status: 'unavailable' }) }),
+      whileServed: (_names, callback) => callback(),
     },
     effect: owner.effect.bind(owner),
+    inject: (_dependencies, callback) => callback(client),
     on: owner.on.bind(owner),
     get: (key) => (key === 'connection' ? connection : undefined),
     // Input services and prose mentions are not used by registry replay.

@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   ConnectionFetchRoute,
-  ConnectionRpcHandler,
+  ConnectionRpcHandlerResult,
   HostConnectionHandle,
 } from '@deepseek-ai/dsh-client-connection'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -80,7 +80,10 @@ export async function installStorage(ctx: Context, root: string) {
 }
 /** In-process transport fixture for non-Web integration tests, not Web acceptance evidence. */
 export function createConnectionFixture() {
-  const channels = new Map<string, ConnectionRpcHandler>()
+  const channels = new Map<
+    string,
+    (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<ConnectionRpcHandlerResult>
+  >()
   const routes = new Map<string, ConnectionFetchRoute>()
   const connection = {
     fetch: {
@@ -113,7 +116,12 @@ export function createConnectionFixture() {
   } as unknown as HostConnectionHandle
   return { connection, channels, routes }
 }
-export function installConnectionFixture(ctx: Context): Map<string, ConnectionRpcHandler> {
+export function installConnectionFixture(
+  ctx: Context,
+): Map<
+  string,
+  (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<ConnectionRpcHandlerResult>
+> {
   if (!ctx.get('typert')) new TypertRegistry(ctx)
   const { connection, channels } = createConnectionFixture()
   ctx.provide('connection', connection)

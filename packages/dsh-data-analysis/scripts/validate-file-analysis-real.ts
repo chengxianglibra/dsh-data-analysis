@@ -284,10 +284,8 @@ function successfulPython(events: SessionEvent[]) {
     }
   }
   for (const event of events) {
-    if (event.type === 'tool/result')
-      for (const block of event.data.message.content)
-        if (block.type === 'tool-result' && !block.isError)
-          capture(submitted.get(String(block.toolCallId)), block.content)
+    if (event.type === 'tool/result' && !event.data.message.isError)
+      capture(submitted.get(String(event.data.message.toolCallId)), event.data.message.content)
     if (
       event.type === 'tool/ptc-dispatch' &&
       event.data.name === 'marivo_python' &&
@@ -347,7 +345,8 @@ try {
   const workspaces = formats.map((format) => path.join(outputRoot, `workspace-${format}`))
   await Promise.all(workspaces.map((root) => mkdir(root)))
   host = await startFileAnalysisWeb(outputRoot, workspaces, python, secret, {
-    missingPresentPreset: suite === 'files',
+    missingPresentPreset:
+      suite === 'files' && process.env.DSH_DATA_ANALYSIS_VALIDATION_FILE_CASES !== 'delivery',
   })
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   let page = await browser.newPage()

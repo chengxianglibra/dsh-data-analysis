@@ -169,6 +169,7 @@ export function registerMarivoPythonTool(
             command: `${process.platform === 'win32' ? '& ' : ''}${quote(binding.pythonExecutable)} -c ${quote(PYTHON_LAUNCHER)}`,
             workdir: binding.projectRoot,
             timeoutMs: requestedTimeoutMs!,
+            onExpiry: 'kill',
             signal: prepared.signal,
             stdin: JSON.stringify({
               identity: binding,
@@ -188,7 +189,8 @@ export function registerMarivoPythonTool(
           const startedAt = new Date().toISOString()
           phase = 'executing'
           shellStartedAt = performance.now()
-          const result = await service.track(shell.run(spec))
+          const execution = await service.track(shell.execute(spec))
+          const result = await service.track(execution.result())
           executionElapsedMs = performance.now() - shellStartedAt
           const finishedAt = new Date().toISOString()
           const credentialValues = prepared.values

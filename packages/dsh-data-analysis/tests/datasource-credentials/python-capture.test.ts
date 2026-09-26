@@ -202,14 +202,19 @@ async function tool(t: TestContext) {
           ...request,
           workdir: request.workdir!,
           timeoutMs: request.timeoutMs!,
+          onExpiry: request.onExpiry ?? 'kill',
           stdoutMaxBytes: 65536,
           sandboxPolicy: request.sandboxPolicy,
         }
       },
-      async run() {
+      async execute() {
         launches++
-        await hooks.run()
-        return outcome
+        return {
+          result: async () => {
+            await hooks.run()
+            return outcome
+          },
+        }
       },
     },
     shellEnv: { collect: () => ({}) },

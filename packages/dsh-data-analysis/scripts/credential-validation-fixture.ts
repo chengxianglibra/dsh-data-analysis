@@ -11,7 +11,6 @@ import BashLocal from '@deepseek-ai/dsh-bash-local'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import LlmRuntime, { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
-import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
@@ -24,6 +23,7 @@ import { MarivoCredentialService } from '../src/datasource/service.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 import { Store } from '../tests/datasource-credentials/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
+import { installDeepSeekValidationProvider } from './deepseek-validation-provider.ts'
 
 /** Real Python + HTTP authentication + Harness Tool execution. Uses only fixture datasource values. */
 export async function runCredentialValidation(realModel: boolean): Promise<void> {
@@ -122,10 +122,10 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
     })
     let starts = 0
     const shell = agent.ctx.get('shell')!,
-      originalRun = shell.run.bind(shell)
-    shell.run = (spec) => {
+      originalExecute = shell.execute.bind(shell)
+    shell.execute = (spec) => {
       starts++
-      return originalRun(spec)
+      return originalExecute(spec)
     }
     let tests = 0
     const originalTest = bridge.test.bind(bridge)
@@ -237,7 +237,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
         evidence.reason = 'DSH model credential unavailable'
         return
       }
-      await ctx.plugin(DeepSeek, { thinking: 'disabled' })
+      await installDeepSeekValidationProvider(ctx, { thinking: 'disabled' })
       const deadline = setTimeout(
         () => agent.cancel({ kind: 'user' }, { keepInbox: true }),
         180_000,

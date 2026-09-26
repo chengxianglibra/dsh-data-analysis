@@ -47,12 +47,91 @@ export async function assertCsvPreview(
   expected: string,
   timeout = 10_000,
 ) {
+  const source = expected.replace(/^\uFEFF/, '')
+  let firstCell: string
+  if (!source.startsWith('"')) firstCell = source.split(/[,\r\n]/, 1)[0] ?? ''
+  else {
+    let value = ''
+    let closed = false
+    firstCell = ''
+    for (let index = 1; index < source.length; index++) {
+      if (source[index] !== '"') value += source[index]
+      else if (source[index + 1] === '"') {
+        value += '"'
+        index++
+      } else {
+        firstCell = value
+        closed = true
+        break
+      }
+    }
+    if (!closed) throw new Error('Invalid CSV fixture: unterminated first cell')
+  }
+  await assertSpreadsheetPreview(page, sessionId, cwd, filename, firstCell, timeout)
+}
+
+export async function assertSpreadsheetPreview(
+  page: Page,
+  sessionId: string,
+  cwd: string,
+  filename: string,
+  firstCell: string,
+  timeout = 10_000,
+) {
   const address = fileAddressFor(sessionId, cwd, path.join(cwd, filename))
   const preview = page.locator(`[data-textpreview-url=${JSON.stringify(address)}]`)
-  const code = preview.locator('[data-code-preview] pre')
-  await code.waitFor({ state: 'visible', timeout })
-  const normalize = (text: string) => text.replaceAll('\r', '').trim()
-  assert.equal(normalize(await code.innerText()), normalize(expected), 'Native CSV preview content')
+  const workbook = preview.locator('[data-excel-preview]')
+  await workbook.waitFor({ state: 'visible', timeout })
+  await workbook.locator('canvas.fortune-sheet-canvas').waitFor({ state: 'visible', timeout })
+  const selected = workbook.locator('#luckysheet-functionbox-cell')
+  await selected.waitFor({ state: 'attached', timeout })
+  await page.waitForFunction(
+    ({ address, firstCell }) => {
+      const preview = [...document.querySelectorAll<HTMLElement>('[data-textpreview-url]')].find(
+        (item) => item.dataset.textpreviewUrl === address,
+      )
+      return (
+        preview?.querySelector('[data-excel-preview] #luckysheet-functionbox-cell')?.textContent ===
+        firstCell
+      )
+    },
+    { address, firstCell },
+    { timeout },
+  )
+  assert.equal((await selected.textContent())?.trim(), firstCell, 'Native spreadsheet A1 cell')
+  await page.waitForFunction(
+    ({ address }) => {
+      const preview = [...document.querySelectorAll<HTMLElement>('[data-textpreview-url]')].find(
+        (item) => item.dataset.textpreviewUrl === address,
+      )
+      const canvas = preview?.querySelector<HTMLCanvasElement>(
+        '[data-excel-preview] canvas.fortune-sheet-canvas',
+      )
+      if (!canvas) return false
+      const rect = canvas.getBoundingClientRect()
+      if (rect.width < 120 || rect.height < 45) return false
+      const context = canvas.getContext('2d')
+      if (!context) return false
+      // A1's interior starts below the headers; the formula bar alone can show
+      // its value while an incomplete workbook leaves the visible grid blank.
+      const pixels = context.getImageData(
+        Math.round((45 * canvas.width) / rect.width),
+        Math.round((23 * canvas.height) / rect.height),
+        Math.round((70 * canvas.width) / rect.width),
+        Math.round((20 * canvas.height) / rect.height),
+      ).data
+      let ink = 0
+      for (let index = 0; index < pixels.length; index += 4)
+        if (
+          pixels[index + 3]! > 0 &&
+          Math.min(pixels[index]!, pixels[index + 1]!, pixels[index + 2]!) < 160
+        )
+          ink++
+      return ink >= 12
+    },
+    { address },
+    { timeout },
+  )
 }
 
 export function assertPtcOuterFailure(
@@ -81,7 +160,7 @@ export function assertPtcOuterFailure(
       event.type === 'tool/result' && event.data.message.source.callId === dispatch.data.rootCallId,
   )
   assert.ok(
-    result?.type === 'tool/result' && result.data.message.content[0].isError,
+    result?.type === 'tool/result' && result.data.message.isError,
     'The run_code that executed present must fail',
   )
   assert.equal(root.data.turn, declaration.data.turn)

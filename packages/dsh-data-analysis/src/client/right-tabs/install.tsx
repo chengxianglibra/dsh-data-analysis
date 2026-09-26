@@ -1,6 +1,7 @@
 // @ts-nocheck -- Host slot hooks are injected by the runtime module table.
 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { credentialChanges } from '../credentials/changes.ts'
 import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
@@ -43,6 +44,7 @@ export const inject = [
   'conversation',
   'sidebarRight',
   'sidebarRightTabs',
+  'uiWorkspace',
 ]
 const labels = workspaceDirectories
 
@@ -91,7 +93,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       state.phase !== 'ready' ||
       state.state === 'error' ||
       workspaceFor(sessionId) !== workspaceId ||
-      (foreground && ctx.sessions.list.getSnapshot().current !== sessionId)
+      (foreground && !ctx.sessions.list.getSnapshot().byId[sessionId]?.retainedBy.mainView)
     )
       throw new Error('marivo.navigation.the-owning-session-or-workspace-changed-return-to-its')
   }
@@ -290,7 +292,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 model={page.catalog}
                 reader={catalogReader}
                 sessions={sessions}
-                onOpenSession={(id) => ctx.sessions.open(id)}
+                onOpenSession={(id) => ctx.uiWorkspace.openSession(id)}
               />
             )}
             {page.target.kind === 'semantic' && (
@@ -383,7 +385,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     state={report}
                     model={historyModel}
                     sessions={sessions}
-                    onOpenSession={(id) => ctx.sessions.open(id)}
+                    onOpenSession={(id) => ctx.uiWorkspace.openSession(id)}
                   />
                 )}
                 {report.document && (
@@ -446,7 +448,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const { tab, panel } = useTabInfo()
     const workspaces = useWorkspaces((s) => s.items),
       sessions = useSessions((s) => s.byId),
-      currentSession = useSessions((s) => s.current),
+      currentSession = useSessions((s) => s.ids.find((id) => s.byId[id]?.retainedBy.mainView)),
       workspaceReady = useWorkspaces((s) => s.phase === 'ready' && s.state !== 'error')
     const [page, setPage] = useState(),
       [error, setError] = useState('')
@@ -657,7 +659,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   }
   const bind = () => {
     if (!ctx.connection.generation.getSnapshot()) return stopFeeds()
-    const current = ctx.sessions.list.getSnapshot().current
+    const current = ctx.sessions.list
+      .getSnapshot()
+      .ids.find((id) => ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView)
     const workspaces = ctx.workspaces.list.getSnapshot()
     if (workspaces.phase !== 'ready' || workspaces.state === 'error') return stopFeeds()
     // Observe only Workspaces with report readers/catalogs, plus the foreground
@@ -691,13 +695,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         try {
           check(id, workspaceId)
         } catch (error) {
-          if (ctx.sessions.list.getSnapshot().current === id) fail(error)
+          if (ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) fail(error)
           return
         }
         changed(workspaceId, reportId)
         // Publication invalidation is Workspace-wide. Foreground navigation
         // alone is gated, and background deliveries are never queued.
-        if (ctx.sessions.list.getSnapshot().current !== id) return
+        if (!ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) return
         try {
           navigate(id, { kind: 'report', workspaceId, reportId, buildId }, ctx.sidebarRight, true)
         } catch (error) {

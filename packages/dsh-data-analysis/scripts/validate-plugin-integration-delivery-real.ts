@@ -14,7 +14,6 @@ import LlmRuntime, {
   createUserMessage,
   type TokenUsage,
 } from '@deepseek-ai/dsh-llm'
-import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -33,6 +32,7 @@ import {
   installStorage,
 } from '../tests/semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
+import { installDeepSeekValidationProvider } from './deepseek-validation-provider.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workspaceRoot = path.resolve(packageRoot, '../..')
@@ -99,8 +99,7 @@ function summarizeCalls(events: readonly SessionEvent[]): ToolCallSummary[] {
   const results = new Map<string, { isError: boolean; delivery?: string[] }>()
   for (const event of events) {
     if (event.type !== 'tool/result') continue
-    const block = event.data.message.content.find((content) => content.type === 'tool-result')
-    if (block?.type !== 'tool-result') continue
+    const message = event.data.message
     const meta = event.data.meta as { kind?: unknown; targets?: unknown } | undefined
     const delivery =
       meta?.kind === 'marivo-help-disclosure' && Array.isArray(meta.targets)
@@ -112,8 +111,8 @@ function summarizeCalls(events: readonly SessionEvent[]): ToolCallSummary[] {
               : [],
           )
         : undefined
-    results.set(String(block.toolCallId), {
-      isError: Boolean(block.isError),
+    results.set(String(message.toolCallId), {
+      isError: Boolean(message.isError),
       ...(delivery === undefined ? {} : { delivery }),
     })
   }
@@ -232,7 +231,7 @@ installConnectionFixture(ctx)
 await installStorage(ctx, path.join(validationRoot, 'profile-storage'))
 await ctx.plugin(LlmRuntime)
 await ctx.plugin(LocalCredentialProvider, { watch: false })
-await ctx.plugin(DeepSeek, {
+await installDeepSeekValidationProvider(ctx, {
   thinking: 'disabled',
   reasoningEffort: 'off',
   maxTokens: 1_024,

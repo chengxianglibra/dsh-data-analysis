@@ -27,7 +27,7 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
     stdout: { text: 'complete', truncated: false },
     stderr: { text: '', truncated: false },
   }
-  const hooks = { resolve: () => {}, run: async () => outcome, maxTimeoutMs: Infinity }
+  const hooks = { resolve: () => {}, result: async () => outcome, maxTimeoutMs: Infinity }
   const shell = {
     sandboxMode: undefined as string | undefined,
     resolve(request: ShellExecRequest): ShellExecSpec {
@@ -37,13 +37,14 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
         ...request,
         workdir: request.workdir!,
         timeoutMs: Math.min(request.timeoutMs!, hooks.maxTimeoutMs),
+        onExpiry: request.onExpiry ?? 'kill',
         stdoutMaxBytes: 65536,
         sandboxPolicy: request.sandboxPolicy,
       }
     },
-    async run(spec: ShellExecSpec) {
+    async execute(spec: ShellExecSpec) {
       launches.push(spec)
-      return hooks.run()
+      return { result: hooks.result }
     },
   }
   const services = new Map<string, unknown>([
@@ -264,7 +265,7 @@ test('Shell output, thrown errors, and nonzero exits do not leak secrets or repl
   assert.doesNotMatch(JSON.stringify(result), /canary-private/)
   assert.match(JSON.stringify(result), /REDACTED/)
   assert.equal(p.launches.length, 1)
-  p.hooks.run = async () => {
+  p.hooks.result = async () => {
     throw new Error('canary-private-4826')
   }
   await assert.rejects(p.call(), (error: Error) => {
@@ -348,7 +349,7 @@ test('saved defaults reach an existing tool while an admitted call retains its b
   const entered = new Promise<void>((resolve) => {
     started = resolve
   })
-  p.hooks.run = async () => {
+  p.hooks.result = async () => {
     await new Promise<void>((resolve) => {
       finish = resolve
       started()
@@ -362,7 +363,7 @@ test('saved defaults reach an existing tool while an admitted call retains its b
   const first = (await pending) as { execution: MarivoPythonExecutionSummary }
   assert.equal(first.execution.requestedTimeoutMs, 120_000)
   assert.equal(first.execution.effectiveTimeoutMs, 120_000)
-  p.hooks.run = async () => p.outcome
+  p.hooks.result = async () => p.outcome
   await p.call([], 'pass')
   assert.equal(p.requests.at(-1)!.timeoutMs, 900_000)
   await p.call([], 'pass', 1_200_000)

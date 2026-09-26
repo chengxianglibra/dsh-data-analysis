@@ -20,7 +20,6 @@ import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
-import * as DeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -38,6 +37,7 @@ import {
   installConnectionFixture,
   installStorage,
 } from '../tests/semantic-reference-input/fixtures.ts'
+import { installDeepSeekValidationProvider } from './deepseek-validation-provider.ts'
 import { inspectStoredSession } from './harness-session.ts'
 import {
   type Journey,
@@ -172,22 +172,15 @@ function summarizeCalls(events: readonly SessionEvent[]) {
     if (event.type !== 'tool/call') return []
     const result = events.find(
       (candidate) =>
-        candidate.type === 'tool/result' &&
-        candidate.data.message.content.some(
-          (block) => block.type === 'tool-result' && block.toolCallId === event.data.callId,
-        ),
+        candidate.type === 'tool/result' && candidate.data.message.toolCallId === event.data.callId,
     )
-    const block =
-      result?.type === 'tool/result'
-        ? result.data.message.content.find((item) => item.type === 'tool-result')
-        : undefined
     return [
       {
         sequence: event.seq,
         callId: String(event.data.callId),
         name: event.data.name,
         arguments: JSON.parse(event.data.arguments) as Record<string, unknown>,
-        isError: block?.type === 'tool-result' ? Boolean(block.isError) : null,
+        isError: result?.type === 'tool/result' ? Boolean(result.data.message.isError) : null,
       },
     ]
   })
@@ -249,7 +242,7 @@ async function runJourney(journey: Journey, packed: PackedPlugin, credentialSour
       (await ctx.credentials.describe(credentialRef('DEEPSEEK_API_KEY'))).configured,
       true,
     )
-    await ctx.plugin(DeepSeek, {
+    await installDeepSeekValidationProvider(ctx, {
       thinking: reasoningEffort === 'off' ? 'disabled' : 'enabled',
       reasoningEffort,
       maxTokens: 16_384,

@@ -1,7 +1,7 @@
 import {
   CodeBlock,
   DisclosureRow,
-  IconCodeOutline16,
+  IconCodeOutlineRegular,
   writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallOwnerProps } from '@deepseek-ai/dsh-client-ui-tool/client'
@@ -39,7 +39,7 @@ export function PythonToolCard({ block, inspect }: Pick<ToolCallOwnerProps, 'blo
     <div className="mp-tool" data-state={model.state}>
       <style>{styles}</style>
       <DisclosureRow
-        icon={<IconCodeOutline16 />}
+        icon={<IconCodeOutlineRegular size={16} />}
         title="marivo_python"
         open={open}
         expandable

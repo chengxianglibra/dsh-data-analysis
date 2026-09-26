@@ -466,9 +466,12 @@ test('Host deliverables keep produced files and independent report nodes in eith
     const tails = host.slots.entries('conversation.chat.turnTail')
     // Native owns its original exclusive chain; report rendering has its own keyed seat.
     assert.equal(tails.length, 1)
-    const deliverables = tails[0].select({ turn: snapshot.timeline.turns.get(3), seq: 30 })
-    assert.deepEqual(Array.from(deliverables.produced), ['/workspace/draft.json'])
-    assert.deepEqual(Array.from(deliverables.presented), [])
+    const deliverables = snapshot.timeline.turns.get(3).data.get('deliverables')
+    assert.deepEqual(
+      Array.from(deliverables.produced, (file: { path: string }) => file.path),
+      ['/workspace/draft.json'],
+    )
+    assert.deepEqual(Array.from(deliverables.presented ?? []), [])
     const renderer = host.slots
       .entries('conversation.chat.node')
       .find((entry: { options: { key: string } }) => entry.options.key === definition.kind)

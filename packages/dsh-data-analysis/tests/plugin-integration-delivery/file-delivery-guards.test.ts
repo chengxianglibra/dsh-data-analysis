@@ -79,7 +79,12 @@ function ptcEvents(failedRoot = true): SessionEvent[] {
       data: {
         turn: 1,
         step: 1,
-        message: { source: { callId: 'unrelated' }, content: [{ isError: true }] },
+        message: {
+          source: { callId: 'unrelated' },
+          toolCallId: 'unrelated',
+          isError: true,
+          content: [],
+        },
       },
     },
     { type: 'tool/call', seq: 3, data: { turn: 1, step: 2, name: 'run_code', callId: 'root' } },
@@ -105,7 +110,12 @@ function ptcEvents(failedRoot = true): SessionEvent[] {
       data: {
         turn: 1,
         step: 2,
-        message: { source: { callId: 'root' }, content: [{ isError: failedRoot }] },
+        message: {
+          source: { callId: 'root' },
+          toolCallId: 'root',
+          isError: failedRoot,
+          content: [],
+        },
       },
     },
   ] as unknown as SessionEvent[]
@@ -133,15 +143,15 @@ test('PTC guard requires failure of the same enclosing root after declaration', 
   assert.throws(() => assertPtcOuterFailure(otherTurn, declaration(otherTurn)))
 })
 
-test('CSV guard accepts only the named Session file preview, including at narrow width', async (t) => {
+test('CSV guard requires the named Session native spreadsheet and its first cell at narrow width', async (t) => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true })
   t.after(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   const expected = 'rows,total\n5,371'
   const address = (session = 'owner', file = 'summary.csv') =>
     fileAddressFor(session, '/workspace', file)
-  const native = (uri: string, contents = expected) =>
-    `<aside data-textpreview-url="${uri}"><div data-code-preview><pre>${contents}</pre></div></aside>`
+  const native = (uri: string, cell = 'rows') =>
+    `<aside data-textpreview-url="${uri}"><section data-excel-preview><canvas class="fortune-sheet-canvas" width="575" height="764" style="width:575px;height:764px"></canvas><div id="luckysheet-functionbox-cell">${cell}</div></section></aside>`
   const chat = `<main><pre>${expected}</pre></main>`
   const check = () => assertCsvPreview(page, 'owner', '/workspace', 'summary.csv', expected, 200)
   await page.setContent(`${chat}<aside>File preview failed</aside>`)
@@ -150,9 +160,20 @@ test('CSV guard accepts only the named Session file preview, including at narrow
   await assert.rejects(check, /Timeout/)
   await page.setContent(chat + native(address('owner', 'other.csv')))
   await assert.rejects(check, /Timeout/)
-  await page.setContent(chat + native(address(), 'rows,total\n5,999'))
-  await assert.rejects(check, /Native CSV preview content/)
+  await page.setContent(
+    chat +
+      `<aside data-textpreview-url="${address()}"><div data-code-preview><pre>${expected}</pre></div></aside>`,
+  )
+  await assert.rejects(check, /Timeout/)
+  await page.setContent(chat + native(address(), 'wrong'))
+  await assert.rejects(check, /Timeout/)
   await page.setContent(chat + native(address()))
+  await assert.rejects(check, /Timeout/, 'Formula text without drawn grid is insufficient')
+  await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas.fortune-sheet-canvas')!
+    const context = canvas.getContext('2d')!
+    context.fillText('rows', 48, 36)
+  })
   await check()
   await page.setViewportSize({ width: 390, height: 844 })
   await check()

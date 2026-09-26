@@ -12,12 +12,12 @@ import {
   checkProductionSource,
 } from './dependency-policy.mjs'
 
-const range = '>=0.1.5-rc.1'
+const range = '>=0.1.7-rc.1'
 for (const version of [
-  '0.1.5-rc.1',
-  '0.1.5-rc.2',
-  '0.1.5',
-  '0.1.6',
+  '0.1.7-rc.1',
+  '0.1.7-rc.2',
+  '0.1.7',
+  '0.1.8',
   '0.1.99',
   '0.2.0',
   '1.0.0',
@@ -33,6 +33,8 @@ for (const version of [
   '0.1.5-alpha.2',
   '0.1.5-rc.0',
   '0.1.6-alpha.1',
+  '0.1.6',
+  '0.1.7-rc.0',
   '0.2.0-alpha.1',
   'invalid',
 ])
@@ -43,8 +45,8 @@ for (const version of [
     )
   })
 test('different service package versions may both satisfy the contract; duplicate identities cannot', () => {
-  assertCompatibleVersion('service-a', '0.1.5', range)
-  assertCompatibleVersion('service-b', '0.1.6', range)
+  assertCompatibleVersion('service-a', '0.1.7-rc.1', range)
+  assertCompatibleVersion('service-b', '0.1.7-rc.2', range)
   assertHostIdentity(
     '@deepseek-ai/cordis',
     '/host/cordis/package.json',
@@ -118,10 +120,10 @@ test('resolved dependency fixture accepts workspace links and mixed compatible s
     })
     mkdirSync(path.join(plugin, 'src'))
     for (const [name, version] of [
-      ['dsh', '0.1.5'],
+      ['dsh', '0.1.7-rc.1'],
       ['cordis', '4.0.2'],
-      ['dsh-agent', '0.1.5'],
-      ['dsh-tools', '0.1.6'],
+      ['dsh-agent', '0.1.7-rc.1'],
+      ['dsh-tools', '0.1.7-rc.2'],
     ])
       write(path.join(root, 'node_modules/@deepseek-ai', name ?? '', 'package.json'), {
         name: '@deepseek-ai/' + name,

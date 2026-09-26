@@ -66,10 +66,10 @@ const agent = await ctx.agentLoop.create(
 registerMarivoPythonTool(agent.ctx, bridge, service)
 let starts = 0
 const shell = agent.ctx.get('shell')!
-const originalRun = shell.run.bind(shell)
-shell.run = (spec) => {
+const originalExecute = shell.execute.bind(shell)
+shell.execute = (spec) => {
   starts++
-  return originalRun(spec)
+  return originalExecute(spec)
 }
 const { connection, channels } = createConnectionFixture()
 const unregister = registerCredentialRpc(connection, service, async () => bridge)

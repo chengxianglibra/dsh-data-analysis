@@ -15,7 +15,7 @@ export function ownedInput(host: InputContextHost, sessionId: string, workspaceI
   if (
     !sessionId ||
     !workspaceId ||
-    host.sessions.list.getSnapshot().current !== sessionId ||
+    !host.sessions.list.getSnapshot().byId[sessionId as SessionId]?.retainedBy.mainView ||
     workspaces.phase !== 'ready' ||
     workspaces.state === 'error' ||
     owners.length !== 1 ||

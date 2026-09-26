@@ -104,6 +104,7 @@ test('running partial input, missing call, malformed and non-text results preser
   const running = pythonToolModel({
     name: 'marivo_python',
     callId: 'c',
+    phase: 'start',
     argsRaw: partial,
     time: 0,
     turn: 0,

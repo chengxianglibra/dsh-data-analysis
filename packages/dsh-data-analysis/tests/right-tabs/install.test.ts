@@ -30,6 +30,13 @@ const store = (value) => {
   }
 }
 
+const sessionList = (current) => ({
+  ids: ['a', 'b', 'cold'],
+  byId: Object.fromEntries(
+    ['a', 'b', 'cold'].map((id) => [id, { retainedBy: { mainView: id === current } }]),
+  ),
+})
+
 test('default client is a valid Cordis effect and registers native resources without enabling audit', async (t) => {
   const host = await createHostChatFixture(['native'])
   t.after(() => host.dispose())
@@ -44,7 +51,7 @@ test('default client is a valid Cordis effect and registers native resources wit
       },
       generation: store({}),
     },
-    sessions: { list: store({ current: undefined }), binding: () => undefined },
+    sessions: { list: store(sessionList(undefined)), binding: () => undefined },
     workspaces: { list: store({ phase: 'ready', state: 'idle', items: [] }) },
     sidebarRight: {},
     sidebarRightTabs: {
@@ -62,7 +69,7 @@ test('default client is a valid Cordis effect and registers native resources wit
       children: {
         'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
         'tool.call.toolview': { kind: 'keyed', scope: 'session' },
-        'settings.plugin.item': { kind: 'keyed', scope: 'root' },
+        'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
       },
     },
     () => null,
@@ -76,8 +83,8 @@ test('default client is a valid Cordis effect and registers native resources wit
   })
   assert.equal(result, undefined, 'Cordis rejects arbitrary object effect return values')
   assert.deepEqual(
-    host.slots.entries('settings.plugin.item').map((entry) => entry.options.key),
-    ['dsh-data-analysis'],
+    host.slots.entries('plugins.bundle.config').map((entry) => entry.options.key),
+    ['@chengxianglibra/dsh-data-analysis'],
   )
   assert.deepEqual(
     host.slots.entries('tool.call.toolview').map((entry) => entry.options.key),
@@ -123,7 +130,7 @@ async function installed(t) {
   t.after(() => host.dispose())
   const workspace = { workspaceId: 'w', path: '/w', sessionIds: ['a', 'b', 'cold'] }
   const workspaces = store({ phase: 'ready', state: 'idle', items: [workspace] })
-  const sessions = store({ current: 'a' })
+  const sessions = store(sessionList('a'))
   const generation = store({})
   const bindings = Object.fromEntries(
     workspace.sessionIds.map((id) => [
@@ -383,7 +390,7 @@ test('background publication invalidates Workspace pages without opening and dra
   emit('b', 'replace', 'history')
   emit('b', 'prepend', 'history')
   assert.equal(updates.length, 1, 'duplicates and replay cannot publish new delivery')
-  f.sessions.set({ current: 'b' })
+  f.sessions.set(sessionList('b'))
   assert.equal(f.opens.length, 0, 'selection does not queue a background open')
   emit('b', 'append', 'foreground')
   assert.equal(f.opens.length, 1)

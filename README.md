@@ -26,7 +26,7 @@
 ### 环境准备
 
 - Node.js `^22.19.0 || >=24.0.0`：22.x 需至少 22.19.0，或使用 24.0.0 及以上版本；不支持 23.x。
-- 已通过 `npx @deepseek-ai/dsh web` 启动并配置好 DeepSeek Harness `>=0.1.5-rc.1`。
+- 已通过 `npx @deepseek-ai/dsh web` 启动并配置好 DeepSeek Harness `>=0.1.7-rc.1`。
 - 命令行中可使用 `pnpm`，供 Harness 安装插件。
 - Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 
@@ -58,6 +58,7 @@ npx @deepseek-ai/dsh web
 **本地文件**：上传文件后直接提问，或指定工作区中已有文件，无需先配置数据源或建立业务定义。
 支持 CSV、JSON、Parquet 和 Excel `.xlsx`；首次读取 `.xlsx` 需要联网下载扩展。
 旧版 `.xls` 请先转换为 `.xlsx`、CSV 或 Parquet。
+需要查看或交付 CSV、TSV、XLSX 文件时，可让助手通过原生 `present` 交付，随后在右侧打开 DSH 的只读表格预览；报告中可筛选联动的表格仍使用报告阅读器。插件不提供 XLSX 写入或旧 `.xls` 分析。
 
 **数据库**：在会话标题旁打开“数据源”，查看当前工作区的连接与配置状态：
 

@@ -41,7 +41,13 @@ function fixture() {
   }
   const host = {
     sessions: {
-      list: { getSnapshot: () => ({ current: state.current }), subscribe },
+      list: {
+        getSnapshot: () => ({
+          ids: [state.current],
+          byId: { [state.current]: { retainedBy: { mainView: 1 } } },
+        }),
+        subscribe,
+      },
       scope: () => actx,
     },
     workspaces: {

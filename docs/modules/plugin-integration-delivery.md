@@ -54,7 +54,7 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 ## Prompt 与 Skill 激活
 
 系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
-文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 通过原生 `present` 交付；交互展示、保存或
+文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。交互展示、保存或
 修改报告及来源面板加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。HTML 导出与发布的
 具体流程在展示 Skill 的 references，按用户目标读取。
 
@@ -109,7 +109,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 
 ## DSH rc.1 适配
 
-当前基线为 `0.1.5-rc.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
+当前基线为 `0.1.7-rc.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
 和 `dsh-api-workspace-controller`；对话组装由 `ui-conversation` 拥有，chat 节点渲染由 `ui-chat` 拥有。
 新版 Lexical composer 通过 scoped `slash/input-insert-reference` 和当前 `draftRev` 追加“加入提问”的 Cell 引用，
 采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史；显示 `# <cell名称>`，
@@ -130,8 +130,8 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 
 | 边界 | 当前值 |
 | --- | --- |
-| DSH peers 兼容范围 | `>=0.1.5-rc.1`，npm 默认预发布匹配规则 |
-| DSH 开发 distribution | `0.1.5-rc.1`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
+| DSH peers 兼容范围 | `>=0.1.7-rc.1`，npm 默认预发布匹配规则 |
+| DSH 开发 distribution | `0.1.7-rc.1`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.5.5` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
@@ -142,8 +142,8 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
-依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受同一 `0.1.5` 的后续预发布
-和 `0.1.x` 稳定版本，不自动接受 `0.1.6-alpha.*`。逐项检查直接消费的 peers 与 Host 实际解析身份，
+依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受 `0.1.7-rc.1`、`0.1.7-rc.2`
+和之后满足 `>=0.1.7-rc.1` 的稳定版本，不自动接受后续版本的预发布。逐项检查直接消费的 peers 与 Host 实际解析身份，
 不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
 正常 workspace 链接允许，Host client external/metafile 与 portable 自带 React 检查保留。
 

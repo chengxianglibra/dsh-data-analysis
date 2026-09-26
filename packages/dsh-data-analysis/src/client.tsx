@@ -19,7 +19,7 @@ export {
 export { PresentationDeliveryModel } from './client/presentation/delivery-model.ts'
 export { HostPresentationReader } from './client/presentation/host-entry.tsx'
 
-export const inject = [...rightTabsInject, 'settingsScope']
+export const inject = [...rightTabsInject, 'configForms']
 
 export function apply(
   ctx: Context,

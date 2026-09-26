@@ -1,6 +1,6 @@
 /** Dedicated plugin RPC envelopes over Harness-owned authenticated exact Fetch routes. */
 import {
-  type ConnectionRpcHandler,
+  type ConnectionRpcHandlerResult,
   clientRequestSchema,
   type HostConnectionHandle,
 } from '@deepseek-ai/dsh-client-connection'
@@ -10,7 +10,11 @@ export function registerPluginRpc(
   connection: Pick<HostConnectionHandle, 'fetch'>,
   channel: string,
   endpoints: readonly string[],
-  handler: ConnectionRpcHandler,
+  handler: (
+    endpoint: string,
+    payload: unknown,
+    signal: AbortSignal,
+  ) => Promise<ConnectionRpcHandlerResult>,
 ): () => Promise<void> {
   const lifetime = new AbortController()
   const tasks = new PendingTasks()

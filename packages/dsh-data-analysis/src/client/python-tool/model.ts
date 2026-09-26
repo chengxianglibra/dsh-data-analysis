@@ -28,7 +28,8 @@ export type PythonToolState =
 /** Read only the frozen Harness call; never fetch results or infer execution from settlement. */
 export function pythonToolModel(block: ToolCallBlock) {
   const done = 'kind' in block
-  const input = (done ? block.call?.argsRaw : block.argsRaw) ?? ''
+  const input =
+    (done ? block.call?.argsRaw : block.phase === 'start' ? block.argsRaw : undefined) ?? ''
   const args = parse(input)
   const code = typeof args?.code === 'string' ? args.code : undefined
   const output = done

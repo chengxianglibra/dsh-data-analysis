@@ -1,13 +1,18 @@
 /** S2: real-model choices and separately labelled, controlled failure prompts. */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-tool-present/types'
 import type { Page } from 'playwright'
 import type * as runner from '../validate-file-analysis-real.ts'
-import { assertCsvPreview, assertPtcOuterFailure, captureCandidate } from './guards.ts'
+import {
+  assertCsvPreview,
+  assertPtcOuterFailure,
+  assertSpreadsheetPreview,
+  captureCandidate,
+} from './guards.ts'
 import type { startFileAnalysisWeb } from './web-host.ts'
 
 type Presented = Extract<SessionEvent, { type: 'deliverables/presented' }>
@@ -52,9 +57,9 @@ export async function runFileDelivery(o: Options) {
       ).__fileAnalysis.select(id)
     }, sessionId)
   }
-  const create = async (agentPreset: string) => {
+  const create = async (agentPreset: string, workspaceIndex = 0) => {
     const created = (await call(page, 'session', 'create', {
-      workspaceId: o.host.workspaceIds[0],
+      workspaceId: o.host.workspaceIds[workspaceIndex],
       agentPreset,
     })) as { sessionId: string; agentPreset: string }
     assert.equal(created.agentPreset, agentPreset)
@@ -71,7 +76,12 @@ export async function runFileDelivery(o: Options) {
     results.push({ label, evidence, sessionId })
     await save('delivery-progress.json', results)
   }
-  const assertDelivery = (events: SessionEvent[], expected: string, mode: 'native' | 'ptc') => {
+  const assertDelivery = (
+    events: SessionEvent[],
+    expected: string,
+    mode: 'native' | 'ptc',
+    root = workspace,
+  ) => {
     const declarations = presented(events)
     assert.equal(
       declarations.flatMap((event) => event.data.files).length,
@@ -79,9 +89,7 @@ export async function runFileDelivery(o: Options) {
       'Only the requested final file is delivered',
     )
     const matching = declarations.filter((event) =>
-      event.data.files.some(
-        (file) => path.resolve(workspace, file.path) === path.join(workspace, expected),
-      ),
+      event.data.files.some((file) => path.resolve(root, file.path) === path.join(root, expected)),
     )
     assert.equal(matching.length, 1, `${expected}: exactly one declaration required`)
     const event = matching[0]!
@@ -103,7 +111,14 @@ export async function runFileDelivery(o: Options) {
     assert.ok(!calls(events).some((entry) => entry.name === 'marivo_present'))
     return declarations
   }
-  const preview = async (sessionId: string, filename: string, png: boolean) => {
+  const preview = async (
+    sessionId: string,
+    filename: string,
+    png: boolean,
+    root = workspace,
+    firstCell?: string,
+    evidenceName = filename,
+  ) => {
     await select(sessionId)
     const card = page.locator('[data-presented-file]').filter({ hasText: filename })
     await card.last().waitFor({ state: 'visible', timeout: 30_000 })
@@ -115,17 +130,20 @@ export async function runFileDelivery(o: Options) {
         ),
       )
     } else {
-      await assertCsvPreview(
-        page,
-        sessionId,
-        workspace,
-        filename,
-        await readFile(path.join(workspace, filename), 'utf8'),
-      )
+      if (firstCell !== undefined)
+        await assertSpreadsheetPreview(page, sessionId, root, filename, firstCell)
+      else
+        await assertCsvPreview(
+          page,
+          sessionId,
+          root,
+          filename,
+          await readFile(path.join(root, filename), 'utf8'),
+        )
     }
     await page.waitForTimeout(400) // Allow the Host sidebar transition to finish before visual evidence.
     await page.screenshot({
-      path: path.join(o.outputRoot, `${filename}-desktop.png`),
+      path: path.join(o.outputRoot, `${evidenceName}-desktop.png`),
       fullPage: true,
     })
     await page.setViewportSize({ width: 390, height: 844 })
@@ -135,17 +153,19 @@ export async function runFileDelivery(o: Options) {
           (img) => img.complete && img.naturalWidth >= 200 && img.getBoundingClientRect().width > 0,
         ),
       )
+    else if (firstCell !== undefined)
+      await assertSpreadsheetPreview(page, sessionId, root, filename, firstCell)
     else
       await assertCsvPreview(
         page,
         sessionId,
-        workspace,
+        root,
         filename,
-        await readFile(path.join(workspace, filename), 'utf8'),
+        await readFile(path.join(root, filename), 'utf8'),
       )
     await page.waitForTimeout(400)
     await page.screenshot({
-      path: path.join(o.outputRoot, `${filename}-narrow.png`),
+      path: path.join(o.outputRoot, `${evidenceName}-narrow.png`),
       fullPage: true,
     })
     await page.setViewportSize({ width: 1280, height: 900 })
@@ -155,6 +175,13 @@ export async function runFileDelivery(o: Options) {
   const checkPreview = fileCases !== 'routing'
   await save('delivery-scope.json', { fileCases, checkPreview })
   let ptc = ''
+  const additionalPreviews: {
+    sessionId: string
+    filename: string
+    root: string
+    firstCell: string
+    label: string
+  }[] = []
   await page.setViewportSize({ width: 1280, height: 900 })
   if (fileCases !== 'failures') {
     const standard = await create('standard')
@@ -188,6 +215,75 @@ export async function runFileDelivery(o: Options) {
       'autonomous model',
       standard,
     )
+
+    if (checkPreview) {
+      await writeFile(path.join(workspace, 'native-table.tsv'), 'label\tvalue\nA\t71\n')
+      const tsv = await prompt(
+        page,
+        standard,
+        'files-tsv-preview',
+        '当前 Workspace 已有 native-table.tsv。请仅调用原生 present 交付该文件，不要重新生成或修改文件。',
+      )
+      assertDelivery(tsv.events, 'native-table.tsv', 'native')
+      await preview(standard, 'native-table.tsv', false, workspace, 'label')
+      additionalPreviews.push({
+        sessionId: standard,
+        filename: 'native-table.tsv',
+        root: workspace,
+        firstCell: 'label',
+        label: 'native-table.tsv',
+      })
+      await record('TSV native spreadsheet preview', 'existing file and autonomous model', standard)
+
+      await copyFile(
+        path.join(o.fixtureRoot, 'sales.xlsx'),
+        path.join(workspace, 'native-table.xlsx'),
+      )
+      const xlsx = await prompt(
+        page,
+        standard,
+        'files-xlsx-preview',
+        '当前 Workspace 已有 native-table.xlsx。请仅调用原生 present 交付该文件，不要重新生成或修改文件。',
+      )
+      assertDelivery(xlsx.events, 'native-table.xlsx', 'native')
+      await preview(standard, 'native-table.xlsx', false, workspace, 'item')
+      additionalPreviews.push({
+        sessionId: standard,
+        filename: 'native-table.xlsx',
+        root: workspace,
+        firstCell: 'item',
+        label: 'native-table.xlsx',
+      })
+      await record(
+        'XLSX native spreadsheet preview',
+        'existing fixture and autonomous model',
+        standard,
+      )
+
+      if (o.workspaces.length > 1) {
+        const otherRoot = o.workspaces[1]!
+        await writeFile(path.join(otherRoot, 'summary.csv'), 'other,total\n9,999\n')
+        const other = await create('standard', 1)
+        assert.notEqual(other, standard)
+        const sameName = await prompt(
+          page,
+          other,
+          'files-same-name-other-session',
+          '当前 Workspace 已有 summary.csv。请仅调用原生 present 交付该文件，不要重新生成或修改文件。',
+        )
+        assertDelivery(sameName.events, 'summary.csv', 'native', otherRoot)
+        await preview(other, 'summary.csv', false, otherRoot, 'other', 'other-session-summary.csv')
+        await preview(standard, 'summary.csv', false)
+        additionalPreviews.push({
+          sessionId: other,
+          filename: 'summary.csv',
+          root: otherRoot,
+          firstCell: 'other',
+          label: 'other-session-summary.csv',
+        })
+        await record('same-name CSV isolated by Session and Workspace', 'two model sessions', other)
+      }
+    }
 
     const answer = await prompt(
       page,
@@ -283,18 +379,22 @@ export async function runFileDelivery(o: Options) {
     )
 
     if (checkPreview) {
-      const beforeRestart = [
-        presented((await snapshot(standard)).inspection.events),
-        presented((await snapshot(ptc)).inspection.events),
+      const replaySessions = [
+        ...new Set([standard, ptc, ...additionalPreviews.map((item) => item.sessionId)]),
       ]
+      const beforeRestart = await Promise.all(
+        replaySessions.map(async (id) => presented((await snapshot(id)).inspection.events)),
+      )
       const restarted = await o.host.restart()
       await o.open(page, restarted.url)
-      for (const [index, id] of [standard, ptc].entries()) {
+      for (const [index, id] of replaySessions.entries()) {
         await select(id)
         assert.deepEqual(presented((await snapshot(id)).inspection.events), beforeRestart[index])
       }
       await preview(standard, 'summary.csv', false)
       await preview(ptc, 'amounts.png', true)
+      for (const item of additionalPreviews)
+        await preview(item.sessionId, item.filename, false, item.root, item.firstCell, item.label)
       await record('persisted declarations after isolated Host restart', 'recovery', ptc)
     }
   }
@@ -358,7 +458,7 @@ export async function runFileDelivery(o: Options) {
     assert.ok(calls(failed.events).some((entry) => entry.name === 'marivo_python'))
     const failedExecution = failed.events.flatMap((event) =>
       event.type === 'tool/result'
-        ? event.data.message.content[0].content.flatMap((block) => {
+        ? event.data.message.content.flatMap((block) => {
             if (block.type !== 'text') return []
             try {
               return [JSON.parse(block.text) as { exitCode?: number; stderr?: string }]
@@ -385,9 +485,7 @@ export async function runFileDelivery(o: Options) {
     assert.equal(presented(invalid.events).length, 0)
     assert.ok(calls(invalid.events).some((entry) => entry.name === 'present'))
     assert.ok(
-      invalid.events.some(
-        (event) => event.type === 'tool/result' && event.data.message.content[0].isError,
-      ),
+      invalid.events.some((event) => event.type === 'tool/result' && event.data.message.isError),
     )
     await record('generation and missing-path failure', 'controlled model prompts', failures)
     const repaired = await prompt(

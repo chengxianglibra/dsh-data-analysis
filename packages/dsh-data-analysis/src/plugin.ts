@@ -6,7 +6,11 @@ import { createMarivoAgentInstallation } from './plugin-agents.ts'
 import { registerPublishingCredentials } from './report-publishing/adapters.ts'
 import { type ReportPublishingConfig, resolvePublishingConfig } from './report-publishing/config.ts'
 import { ReportPublishingService } from './report-publishing/service.ts'
-import { installPythonSettings } from './settings.ts'
+import {
+  currentPythonOptions,
+  installPythonSettings,
+  type PythonTimeoutConfig,
+} from './settings.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 export { installMarivoPlugin, type MarivoPluginEnvironmentResolver } from './plugin-agents.ts'
@@ -26,11 +30,7 @@ import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { MarivoDatasourceBridge } from './datasource/bridge.ts'
 import type { DatasourceDefaults } from './datasource/defaults.ts'
-import {
-  DEFAULT_PYTHON_TIMEOUT_MS,
-  type MarivoPythonOptions,
-  resolvePythonOptions,
-} from './datasource/python-options.ts'
+import { DEFAULT_PYTHON_TIMEOUT_MS } from './datasource/python-options.ts'
 import { registerCredentialRpc } from './datasource/rpc.ts'
 import { MarivoCredentialService } from './datasource/service.ts'
 import { registerMarivoRuntimeShellEnvironment } from './datasource/shell-env.ts'
@@ -73,7 +73,7 @@ export const inject = [
 ]
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
-export interface Config extends MarivoPythonOptions {
+export interface Config extends PythonTimeoutConfig {
   readonly reportPublishing?: ReportPublishingConfig
 
   /** Non-secret creation defaults by backend; checked against each live Runtime schema. */
@@ -93,11 +93,17 @@ export interface Config extends MarivoPythonOptions {
 }
 
 /** Cordis loader schema. Runtime defaults are resolved in {@link apply}. */
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   // Defer validation to authoring so loader errors cannot echo configured values.
   datasourceDefaults: z.any(),
   reportPublishing: z.any(),
-  pythonTimeoutMs: z.number().default(DEFAULT_PYTHON_TIMEOUT_MS),
+  pythonTimeoutMs: z
+    .number()
+    .min(1)
+    .max(2_147_483_647)
+    .step(1)
+    .default(DEFAULT_PYTHON_TIMEOUT_MS)
+    .volatile(),
   credentialInteraction: z.union(['web', 'none']).default('web'),
   projectRoot: z.string(),
   pythonExecutable: z.string(),
@@ -119,7 +125,7 @@ function configuredProjectRoot(config: Config, agent: Agent): string {
 /** Ensure the shared Runtime once, mount its skills, then bind each Workspace lazily. */
 export async function apply(ctx: Context, config: Config = {}): Promise<() => Promise<void>> {
   const publishingConfig = resolvePublishingConfig(config.reportPublishing)
-  const pythonOptions = resolvePythonOptions(config)
+  const pythonOptions = currentPythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
   const bootstrapPythonExecutable =
@@ -197,7 +203,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     return closing
   }
   try {
-    pythonSettings = installPythonSettings(ctx, pythonOptions)
+    pythonSettings = installPythonSettings(ctx, config)
     unregisterChanges = ctx.typert.register(credentialChangesHost)
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',

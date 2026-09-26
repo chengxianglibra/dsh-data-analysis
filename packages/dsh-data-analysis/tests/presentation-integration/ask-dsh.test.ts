@@ -31,7 +31,12 @@ function fixture() {
   }
   const host = {
     sessions: {
-      list: { getSnapshot: () => ({ current: state.current }) },
+      list: {
+        getSnapshot: () => ({
+          ids: state.current ? [state.current] : [],
+          byId: state.current ? { [state.current]: { retainedBy: { mainView: true } } } : {},
+        }),
+      },
       scope: (sessionId: string) =>
         state.available
           ? {

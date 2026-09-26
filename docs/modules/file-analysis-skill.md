@@ -19,7 +19,7 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 文件流程覆盖 CSV、JSON／JSON Lines、Parquet、Excel `.xlsx`。`.xlsx` 复用 DuckDB 官方扩展，首次获取
 需要联网；不新增 `openpyxl` 依赖，不承诺旧 `.xls`。这不限制 Skill 根据实际可用 reader 处理其他合适文件。
 
-普通答案使用文字；用户要求 CSV、JSON、PNG 等实际文件时，执行成功后调用当前可用的 Harness 原生 `present`。
+普通答案使用文字；用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供；报告中需筛选联动的表格继续使用 `marivo_present`。插件不新增 XLSX 写入器，也不承诺分析旧 `.xls`。
 最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。报告复用[展示 Skill](presentation-skill.md)、computed writer 和实际 `codeRef`。
 正文说明文件与分析范围；没有 Artifact 时 `sourceIds` 为空，不把文件结果声明成 Marivo Evidence。
 
@@ -35,7 +35,7 @@ S2 已完成的真实模型、预览、恢复及受控故障证据见[验证指�
 
 ## 普通文件交付边界
 
-插件不注册通用交付 wrapper，不复制 [Harness present 契约](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.5-rc.1/packages/fs/tool-present/README.md)的 schema、路径授权或事件存储。
+插件不注册通用交付 wrapper 或表格 renderer，不复制 [Harness present 契约](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.7-rc.1/packages/deliverables/tool-present/README.zh.md)的 schema、路径授权或事件存储。
 缺少工具时提供准确路径并说明原生交付不可用；生成失败、声明失败与后续打开失败分别诊断。
 声明失败修复后只补交付；响应不确定先核对调用和事件，避免重复声明。
 

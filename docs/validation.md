@@ -6,6 +6,69 @@
 
 本地构建使用 `.nvmrc` 指定的 Node.js 22.19.0。可执行变更运行相关测试及 `npm run check`；exports、client、包元数据或分发内容变化时，再运行 `npm run build` 与 `npm run verify:plugin-package`。纯文档变更检查相对链接、标题锚点、Markdown 渲染和 `git diff --check`。
 
+## DSH 0.1.7 原生表格预览升级验收
+
+2026-09-26 将开发依赖固定为 `0.1.7-rc.1`，36 个 DSH peer 和插件兼容字段的最低版本设为
+`>=0.1.7-rc.1`。插件版本仍为 `0.2.2-dev.0`。兼容检查使用插件 `package.json` 的
+`peerDependencies`；未新增 `project.json`。rc.2 的验证在独立目录中把直接 DSH 开发依赖改为
+`0.1.7-rc.2` 并重新安装，保留主工作区的 rc.1 锁文件。两组均使用 Node.js 22.19.0。
+
+| 验收层 | `0.1.7-rc.1` | `0.1.7-rc.2` |
+| --- | --- | --- |
+| `npm run check` | 通过，含依赖树、类型及模块测试 | 通过，含相同检查 |
+| `npm run build` / `npm run verify:plugin-package` | 通过，36 个 DSH peers | 通过，36 个 DSH peers |
+| 隔离 Web Host、真实模型及 Chrome 的 `files/delivery` | 通过 | 通过 |
+
+真实模型验证使用已有 Marivo 0.5.5 解释器及 `deepseek-official/deepseek-v4-pro`、`high`，通过
+`DSH_DATA_ANALYSIS_VALIDATION_SUITE=files`、`DSH_DATA_ANALYSIS_VALIDATION_FILE_CASES=delivery`、
+`DSH_DATA_ANALYSIS_VALIDATION_FORMATS=csv,xlsx` 执行 `npm run validate:file-analysis:real`。脚本只启动临时
+DSH Home、profile、Workspace 和 Host，不修改用户现有 profile。每个版本分别核对：
+
+- 模型加载文件 Skill，`marivo_python` 合并两个同名附件生成 `summary.csv`（5 行、总额 371）；原生
+  `present` 产生对应 Session、Turn 和调用的文件声明及卡片。点击后读取该 Session 的文件地址，核对
+  原生表格组件、A1 内容和画布中实际绘出的单元格。
+- 已有 TSV、标准 XLSX 分别经模型调用 `present`，桌面 1280 px 与窄屏 390 px 显示表格单元格；第二个
+  Workspace 的同名 `summary.csv` 在独立 Session 中显示不同的 `other` 表头，原 Session 重开仍显示
+  `rows`。Host 重启后声明保持，卡片可重新打开，文件内容与 Session 归属不串用。
+- 原有 PNG/PTC 文件交付、仅文字回答及简短比较的路由也通过同一 `delivery` 流程。比较回答中的具体
+  同比／环比数值仍标为人工审阅项，不把路由通过视为数值结论验收。
+
+自动化结果由 `result.json`、`delivery-progress.json`、Session 事件、浏览器断言和截图记录；真实 Host／模型
+验收是在打包插件、真实 Tool/Runtime 和 Chrome 中执行，不以测试 fixture 代替。rc.1 及 rc.2 的成功
+记录位于各自命令输出的临时 `outputRoot`，包含 `summary.csv`、`native-table.tsv`、
+`native-table.xlsx`、同名文件的桌面／窄屏截图。已人工复核两个版本的 XLSX 窄屏截图及 rc.1 的 CSV、
+TSV 桌面／窄屏截图。
+
+早期使用极简 XLSX 测试文件时，公式栏已显示 A1，但网格未绘出，不能计为单元格预览通过；现改用标准
+工作簿 fixture，守卫要求画布内有实际像素，并用空网格反例验证。一次 rc.1 重跑在验收期间因本文档
+变更触发候选漂移守卫，未计为通过，完成文档后重新运行。此次只验证 rc.1 与 rc.2 的原生文件预览；
+后台长任务、XLSX 写入、旧 `.xls` 分析，以及更高版本的兼容性均未纳入本次验收。
+
+### 当前社区包的 Desktop 实机验收
+
+2026-09-26 在 macOS 的 DSH Desktop 本地构建 `0.1.7-rc.2-477b4f4` 中，从当前工作区构建并打包
+社区版 `@chengxianglibra/dsh-data-analysis@0.2.2-dev.0`，经 Desktop 插件管理界面安装到
+`desktop` profile 并启用。包 SHA-256 为
+`ed669ef703d87674dde8d14e59aa8d76d8a6dcb3303a569b0d6336679928dd46`；没有替换 `web`
+profile 中已有的内部版插件。上述隔离 Web 验收不能代替此处的 Desktop 证据。
+
+在真实 Desktop UI、正式 DeepSeek-V4-Pro / High 模型和 Marivo Runtime 下，独立 Session
+`091c7e69-6fe6-4d0c-b18b-d5db90c64626` 的 `marivo_python` 读取 `sales.csv`，生成含 A=11、B=23、
+C=37、TOTAL=71 的 `summary.csv`，返回 `exitCode=0` 及 `codeRef`。随后模型调用原生 `present`，
+UI 出现 `summary.csv` 文件卡片；点击后表格网格绘出 A1/B1 表头、明细与 TOTAL=71。模型又对已有
+`sales.tsv` 和标准 `sales.xlsx` 调用 `present`；两个文件卡片均打开实际表格单元格，XLSX 标签关闭后
+重新打开仍显示 A1=`item`、B1=`amount`、A2=`A`、B2=`11`。将右侧预览栏缩至约 600 px 时，
+XLSX 两列和所有数据行仍可见；这是窄**预览栏**检查，不等同于 390 px 整窗验收。
+该 Session 的持久事件含 `marivo_python` 调用和返回、两次 `deliverables/presented`（序号 47、69），
+其文件路径分别为 `summary.csv` 及 `sales.tsv`、`sales.xlsx`，对应 UI 卡片和工作区文件。
+
+默认 Bitto 模型因本机没有 `BITTO_ACCESS_TOKEN` 在工具执行前失败；该失败 Session 保留，改用已配置的
+正式模型在新 Session 重做并通过。安装日志有 peer dependency 警告，但插件已成功加载并执行；警告
+尚未归因。第二 Workspace 同名文件的 Session 隔离和重启后的卡片恢复仍需单独核对；macOS 锁屏曾
+中断 UI 操作，不能把已创建的第二 Workspace 当作通过证据。`rc.1` 的 Desktop 实机验收也未计入本段。
+已另外检出官方 `dsh-v0.1.7-rc.1`（`46a7f68b09`），在 Node.js 22.19.0 下完成锁文件依赖安装和
+完整源码构建；这只证明 rc.1 Desktop 的启动前提，尚未证明该 Host 装载社区包或原生预览。
+
 ## 数据源操作结果白屏修复验收
 
 2026-09-11 在真实 Chrome 捕获数据源右侧 Tab 的 `Cannot read properties of undefined (reading 'replace')`，
