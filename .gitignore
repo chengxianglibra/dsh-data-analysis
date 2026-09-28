@@ -1,6 +1,8 @@
 .marivo/
 .codegraph/
-.agents/
+# Local agent tooling and skills are not part of this repository.
+/.agents/*
+/.agents/skills/
 .venv/
 .DS_Store
 .env
@@ -10,7 +12,9 @@
 node_modules/
 artifacts/
 docs/acceptance/
+docs/articles/
 docs/plan/
+outputs/
 packages/dsh-data-analysis/lib/
 packages/dsh-data-analysis/python/**/build/
 packages/dsh-data-analysis/python/**/dist/
