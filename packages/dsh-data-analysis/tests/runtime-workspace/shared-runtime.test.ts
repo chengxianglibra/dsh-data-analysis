@@ -215,6 +215,29 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
 })
 
+test('existing-only mode verifies without creating a missing Runtime', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const config = {
+    runtimeRoot: item.runtimeRoot,
+    bootstrapPythonExecutable: item.bootstrapPython,
+    installTimeoutMs: 10_000,
+  }
+  await assert.rejects(
+    ensureSharedMarivoRuntime(config, { ...runtimeOptions(item), existingOnly: true }),
+    (error: unknown) =>
+      error instanceof MarivoEnvironmentError &&
+      error.code === 'shared-runtime-installation-required',
+  )
+  await assert.rejects(stat(item.runtimeRoot), { code: 'ENOENT' })
+  const installed = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
+  const verified = await ensureSharedMarivoRuntime(config, {
+    ...runtimeOptions(item),
+    existingOnly: true,
+  })
+  assert.deepEqual(verified, installed)
+})
+
 test('a managed Runtime on another Marivo version is rebuilt to the pinned version', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)

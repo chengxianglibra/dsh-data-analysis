@@ -10,6 +10,7 @@
 
 - `packages/dsh-data-analysis/src/plugin.ts`
 - `packages/dsh-data-analysis/src/client.tsx`
+- `packages/dsh-data-analysis/src/integration.ts`
 - `packages/dsh-data-analysis/src/bridges.ts`
 - `packages/dsh-data-analysis/cordis.patch.yml`
 
@@ -35,6 +36,19 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 的实际任务，最后释放 binding manager 与 shell fact。`src/lifecycle.ts` 汇总清理失败，保证其他资源仍被清理；
 `src/tool-lifecycle.ts` 跟踪 Tool 的完整执行。取消调用者等待不等于底层任务已经结束，也不代表远端数据库查询已取消。
 已提交的报告 current、Build 和 receipt 不随卸载删除或重放。
+
+## 通用组合契约
+
+`./integration` 公开 `dsh-data-analysis-integration/v1`：`applyWithIntegration` 与普通
+`apply` 共享实现；空扩展保持原行为。扩展只可在 Workspace 成功绑定后执行回调，为数据源操作
+提供 Harness 管理的 `CredentialStore`，并提供经该 Workspace 实时 authoring schema 校验的
+受管凭据**引用名**。普通 profile 配置仍拒绝 `*_env` 默认值；扩展引用不携带 secret 值。
+回调失败使该 Workspace 绑定失败并允许下次重试，不将失败 binding 缓存在其他 Workspace。
+
+`ensureSharedMarivoRuntime(..., { existingOnly: true })` 仅验证现有 Runtime，缺失或无效时明确
+报错，不创建目录、锁或安装。 `./client-composition` 导出可组合的浏览器 `apply`、`inject`
+及 RPC helper；普通 `./client` 仍是 Harness 自注册 bundle。组合方只激活自己的客户端行，避免
+重复执行社区客户端。兼容版本在包元数据和 `./compatibility` 中同步声明。
 
 ## Agent scope surface
 

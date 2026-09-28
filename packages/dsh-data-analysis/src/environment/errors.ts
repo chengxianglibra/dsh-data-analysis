@@ -3,6 +3,7 @@ export type EnvironmentFailureCode =
   | 'python-path-relative'
   | 'python-unavailable'
   | 'shared-runtime-config-invalid'
+  | 'shared-runtime-installation-required'
   | 'shared-runtime-lock-timeout'
   | 'shared-runtime-install-failed'
   | 'shared-runtime-identity-mismatch'

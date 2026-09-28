@@ -15,6 +15,7 @@ export interface DshDataAnalysisCompatibility {
   readonly contracts: {
     readonly runtimeInstallation: 'dsh-data-analysis-runtime/v3'
     readonly subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2'
+    readonly integration: 'dsh-data-analysis-integration/v1'
   }
 }
 
@@ -92,6 +93,11 @@ function parsePackageManifest(value: unknown): PackageManifest {
           contracts.subprocessPolicy,
           'direct-argv-inherited-env-snapshot-overlay-v2',
           'package compatibility contracts.subprocessPolicy',
+        ),
+        integration: requiredLiteral(
+          contracts.integration,
+          'dsh-data-analysis-integration/v1',
+          'package compatibility contracts.integration',
         ),
       }),
     }),

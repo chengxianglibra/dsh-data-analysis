@@ -414,3 +414,11 @@ frontmatter 和本地链接检查通过。首轮现有语义目录测试出现�
 复用建议，没有进入语义建模或另建记录文件。CSV、文字续问与 PNG 原生交付回归也通过。
 证据目录为脚本输出的 `dsh-file-analysis-real-H0KuZB`，保留 `result.json`、`comparison-review.json` 和
 人工复核 `semantic-scope-review.json`。本次不覆盖已授权语义对象创建、原生预览或生产服务升级。
+
+## 通用组合契约候选验收（2026-09-28）
+
+社区包增加 `./integration` 与 `./client-composition`，普通入口使用同一空扩展实现。
+Workspace 回调、受管引用与只读 Runtime 模式由针对性测试覆盖；`npm run check`
+为 677 项通过、0 项失败、4 项按原条件跳过；`npm run build`、
+`npm run verify:plugin-package` 通过，317 个分发文件经包验证。
+本地包验证不等同于 registry 发布或外部扩展的真实 Harness 生命周期验收。

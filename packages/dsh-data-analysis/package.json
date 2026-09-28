@@ -31,6 +31,14 @@
       "types": "./lib/types/client.d.ts",
       "default": "./lib/client.js"
     },
+    "./client-composition": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client-composition.js"
+    },
+    "./integration": {
+      "types": "./lib/types/integration.d.ts",
+      "default": "./lib/integration.js"
+    },
     "./environment": {
       "types": "./lib/types/environment/index.d.ts",
       "default": "./lib/environment/index.js"
@@ -82,7 +90,8 @@
     },
     "contracts": {
       "runtimeInstallation": "dsh-data-analysis-runtime/v3",
-      "subprocessPolicy": "direct-argv-inherited-env-snapshot-overlay-v2"
+      "subprocessPolicy": "direct-argv-inherited-env-snapshot-overlay-v2",
+      "integration": "dsh-data-analysis-integration/v1"
     }
   },
   "dsh": {

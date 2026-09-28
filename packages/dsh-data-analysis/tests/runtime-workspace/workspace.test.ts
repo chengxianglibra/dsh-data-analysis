@@ -67,7 +67,10 @@ test('zero-init Workspace bindings share Runtime identity without creating files
     skillsRoot: path.join(root, 'runtime', 'skills'),
     installationPath: path.join(root, 'runtime', 'installation.json'),
   }
-  const manager = new MarivoWorkspaceEnvironmentManager(runtime)
+  const initialized: string[] = []
+  const manager = new MarivoWorkspaceEnvironmentManager(runtime, async (environment) => {
+    initialized.push(environment.binding.projectRoot)
+  })
   const sameA = manager.resolve(firstRoot)
   const sameB = manager.resolve(firstRoot)
   const [first, duplicate, second] = await Promise.all([sameA, sameB, manager.resolve(secondRoot)])
@@ -77,6 +80,10 @@ test('zero-init Workspace bindings share Runtime identity without creating files
   assert.equal(first.binding.packagePath, second.binding.packagePath)
   assert.notEqual(first.binding.projectRoot, second.binding.projectRoot)
   assert.notEqual(first.binding.fingerprint, second.binding.fingerprint)
+  assert.deepEqual(
+    initialized.sort(),
+    [await realpath(firstRoot), await realpath(secondRoot)].sort(),
+  )
   assert.deepEqual(await readdir(firstRoot), [])
   assert.deepEqual(await readdir(secondRoot), [])
 })

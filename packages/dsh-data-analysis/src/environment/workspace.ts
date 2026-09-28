@@ -41,10 +41,15 @@ export class MarivoWorkspaceEnvironmentManager {
   #disposed = false
   #closing: Promise<void> | undefined
   readonly runtime: SharedMarivoRuntime
+  readonly onBound?: (environment: MarivoEnvironment) => Promise<void>
   #bindings = new Map<string, Promise<MarivoEnvironment>>()
 
-  constructor(runtime: SharedMarivoRuntime) {
+  constructor(
+    runtime: SharedMarivoRuntime,
+    onBound?: (environment: MarivoEnvironment) => Promise<void>,
+  ) {
     this.runtime = runtime
+    this.onBound = onBound
   }
 
   resolve(projectRoot: string): Promise<MarivoEnvironment> {
@@ -69,6 +74,15 @@ export class MarivoWorkspaceEnvironmentManager {
           },
         },
       )
+        .then(async (environment) => {
+          if (this.#disposed) throw new Error('Marivo Workspace manager disposed')
+          await this.onBound?.(environment)
+          return environment
+        })
+        .catch((error) => {
+          this.#bindings.delete(canonicalRoot)
+          throw error
+        })
       this.#bindings.set(canonicalRoot, binding)
     }
     return binding

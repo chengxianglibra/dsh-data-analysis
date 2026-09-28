@@ -84,6 +84,27 @@ test('invalid defaults fail without echoing any configured value', () => {
   }
 })
 
+test('managed reference defaults use live fields and cannot enter ordinary config', () => {
+  const view = withDatasourceDefaults(
+    schema,
+    { trino: { host: 'host' } },
+    {
+      trino: { password_env: 'WAREHOUSE_PASSWORD' },
+    },
+  )
+  assert.deepEqual(view.creationDefaults?.trino, {
+    host: 'host',
+    password_env: 'WAREHOUSE_PASSWORD',
+  })
+  assert.throws(() => withDatasourceDefaults(schema, {}, { trino: { password_env: 'DSH_HOME' } }))
+  assert.throws(() =>
+    withDatasourceDefaults(schema, {}, { trino: { missing_env: 'WAREHOUSE_PASSWORD' } }),
+  )
+  assert.throws(() =>
+    withDatasourceDefaults(schema, { trino: { password_env: 'WAREHOUSE_PASSWORD' } }),
+  )
+})
+
 test('authoring RPC and client carry defaults without modifying creation payload or Runtime identity', async (t) => {
   const f = fixture()
   t.after(() => f.service.close())

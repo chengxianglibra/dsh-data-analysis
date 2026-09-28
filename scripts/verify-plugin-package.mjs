@@ -187,6 +187,9 @@ try {
     'cordis.patch.yml',
     'lib/index.js',
     'lib/client.js',
+    'lib/client-composition.js',
+    'lib/integration.js',
+    'lib/types/integration.d.ts',
     'lib/types/client.d.ts',
     'lib/types/index.d.ts',
     'lib/compatibility.js',
@@ -362,6 +365,9 @@ try {
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const environment = await import('@chengxianglibra/dsh-data-analysis/environment')
     const datasource = await import('@chengxianglibra/dsh-data-analysis/datasource')
+    const integration = await import('@chengxianglibra/dsh-data-analysis/integration')
+    if (integration.INTEGRATION_CONTRACT_VERSION !== 'dsh-data-analysis-integration/v1' || typeof integration.applyWithIntegration !== 'function') throw new Error('packed integration contract invalid')
+    if (typeof integration.withDatasourceDefaults !== 'function') throw new Error('packed live defaults validator unavailable')
     const { buildPresentation } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/presentation/build/index.js')).href)})
     const presentation = await buildPresentation({
       schemaVersion: 3, locale: 'zh-CN', workspaceId: 'package-verification', reportId: 'package-verification', buildId: 'package-verification',

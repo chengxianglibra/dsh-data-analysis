@@ -38,4 +38,21 @@ const bundle = [
 ].join('\n')
 await mkdir(new URL('lib/', packageRoot), { recursive: true })
 await writeFile(outputUrl, bundle)
+const composition = await build({
+  entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
+  bundle: true,
+  loader: { '.wasm': 'binary' },
+  external: ['@deepseek-ai/*', 'react', 'react/*', 'react-dom', 'react-dom/*'],
+  platform: 'browser',
+  format: 'esm',
+  target: 'es2022',
+  jsx: 'automatic',
+  write: false,
+  define: { 'process.env.NODE_ENV': '"production"' },
+  minify: true,
+  legalComments: 'eof',
+})
+const compositionOutput = composition.outputFiles[0]
+if (compositionOutput === undefined) throw new Error('client composition build returned no output')
+await writeFile(new URL('lib/client-composition.js', packageRoot), compositionOutput.text)
 await rm(new URL('lib/client.js.map', packageRoot), { force: true })

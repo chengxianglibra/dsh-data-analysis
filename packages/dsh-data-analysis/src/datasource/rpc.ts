@@ -2,7 +2,11 @@ import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { z } from 'zod'
 import { registerPluginRpc } from '../rpc.ts'
 import type { MarivoDatasourceBridgePort } from './bridge.ts'
-import { type DatasourceDefaults, withDatasourceDefaults } from './defaults.ts'
+import {
+  type DatasourceDefaults,
+  type ManagedCredentialDefaults,
+  withDatasourceDefaults,
+} from './defaults.ts'
 import { CREDENTIAL_CHANNEL, credentialError, type MarivoCredentialService } from './service.ts'
 
 const text = z.string().min(1).max(256)
@@ -23,6 +27,7 @@ export function registerCredentialRpc(
   service: MarivoCredentialService,
   workspace: (id: string) => Promise<MarivoDatasourceBridgePort>,
   datasourceDefaults?: DatasourceDefaults,
+  managedCredentialDefaults?: ManagedCredentialDefaults,
 ): () => Promise<void> {
   const unregister = registerPluginRpc(
     connection,
@@ -67,7 +72,7 @@ export function registerCredentialRpc(
             generation: service.generation,
             ...(input.mode === 'edit'
               ? schema
-              : withDatasourceDefaults(schema, datasourceDefaults)),
+              : withDatasourceDefaults(schema, datasourceDefaults, managedCredentialDefaults)),
           }
         } else if (endpoint === 'configuration') {
           const input = z.object({ workspaceId: text, name: text }).strict().parse(payload)

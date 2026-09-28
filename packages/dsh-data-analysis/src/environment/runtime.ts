@@ -105,6 +105,8 @@ interface InstallationRecord {
 }
 
 interface RuntimeInstallOptions {
+  /** Validate an existing installation without creating directories or acquiring an install lock. */
+  existingOnly?: boolean
   environment?: NodeJS.ProcessEnv
   waitIntervalMs?: number
   /** Test/build seam; production always resolves the wheel distributed beside the plugin. */
@@ -741,6 +743,11 @@ export async function ensureSharedMarivoRuntime(
     presentationKitWheel,
   )
   if (existing !== undefined) return existing
+  if (options.existingOnly)
+    throw new MarivoEnvironmentError(
+      'shared-runtime-installation-required',
+      'A valid shared Marivo Runtime installation is required',
+    )
 
   await mkdir(path.dirname(runtimeRoot), { recursive: true })
   const lockPath = `${runtimeRoot}.install-lock`

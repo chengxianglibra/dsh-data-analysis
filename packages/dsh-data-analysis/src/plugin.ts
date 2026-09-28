@@ -42,6 +42,7 @@ import {
   type MarivoEnvironment,
   MarivoWorkspaceEnvironmentManager,
 } from './environment/index.ts'
+import type { MarivoIntegrationV1 } from './integration.ts'
 import {
   MarivoPresentationFileService,
   registerMarivoPresentationRpc,
@@ -124,6 +125,15 @@ function configuredProjectRoot(config: Config, agent: Agent): string {
 
 /** Ensure the shared Runtime once, mount its skills, then bind each Workspace lazily. */
 export async function apply(ctx: Context, config: Config = {}): Promise<() => Promise<void>> {
+  return applyWithIntegration(ctx, config)
+}
+
+/** Compose an extension at the public seam while retaining the ordinary plugin behavior. */
+export async function applyWithIntegration(
+  ctx: Context,
+  config: Config = {},
+  integration: MarivoIntegrationV1 = {},
+): Promise<() => Promise<void>> {
   const publishingConfig = resolvePublishingConfig(config.reportPublishing)
   const pythonOptions = currentPythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
@@ -140,7 +150,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     ctx,
     runtime.pythonExecutable,
   )
-  const manager = new MarivoWorkspaceEnvironmentManager(runtime)
+  const manager = new MarivoWorkspaceEnvironmentManager(runtime, integration.onWorkspaceBound)
   const bindings = new WeakMap<Agent, { root: string; environment: Promise<MarivoEnvironment> }>()
   const resolveEnvironment = (agent: Agent): Promise<MarivoEnvironment> => {
     const root = configuredProjectRoot(config, agent)
@@ -151,7 +161,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
     return environment
   }
   const credentialService = new MarivoCredentialService(
-    ctx.credentials,
+    integration.datasourceCredentials ?? ctx.credentials,
     config.credentialInteraction,
   )
   const credentialNotifications = new CredentialChangesService(ctx, credentialService)
@@ -269,6 +279,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<() => Pr
         return new MarivoDatasourceBridge(environment)
       },
       config.datasourceDefaults,
+      integration.managedCredentialDefaults,
     )
     let lastDiagnostic = -Infinity
     const usage = new SemanticReferenceUsage(ctx.storageDomain, Date.now, () => {

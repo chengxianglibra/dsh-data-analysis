@@ -17,7 +17,7 @@ function credentialLabel(field) {
     }[field] ?? field.replace(/_env$/, '')
   )
 }
-function credentialRows(schema, backend, values = {}) {
+function credentialRows(schema, backend, values = schema.creationDefaults?.[backend] ?? {}) {
   return (schema.backends.find((item) => item.name === backend)?.fields ?? [])
     .filter((field) => field.name.endsWith('_env'))
     .flatMap((field) =>

@@ -112,6 +112,7 @@ test('package cutover removes report exports and pins the native runtime release
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {
     runtimeInstallation: 'dsh-data-analysis-runtime/v3',
     subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2',
+    integration: 'dsh-data-analysis-integration/v1',
   })
 })
 
