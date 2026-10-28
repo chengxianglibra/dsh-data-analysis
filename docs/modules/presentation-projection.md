@@ -89,14 +89,24 @@ SQL、凭据或上游异常。提示明确本次来源投影未完成、尚未�
 
 ## 公开来源快照
 
-固定程序通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)`、
-`frame.to_pandas()`、`frame.evidence_digest()` 和分页 `frame.findings()` 读取已保存 Frame。
-精确核验 Session、Artifact、Workspace 与 Evidence 身份；安装拒绝凭据读取的 resolver，不加载当前模型或重跑分析。
+固定程序通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)` 恢复准确引用，
+再以 `frame.schema`、`frame.read_page()` 和 `page.to_pandas()` 读取有界前缀。
+初次投影在一次 checked execution 内完成；不调用全量 `frame.to_pandas()` 或已移除的 `evidence_digest()`，
+不加载当前模型、重跑分析或取得数据源凭据。schema/layout 重名、身份不符、损坏数据和不支持的类型明确失败。
 
-来源保存读取时间、精确 ID、输出名、Evidence/Quality/Issue digest、Evidence 事实和可选 Finding。
-新版未公开的旧 metadata/contract 属性不补造，也不把 digest 解释为完整质量评估。
-Finding 缺失保留来源并明确诊断；必要数据缺失使直接 Artifact dataset 失败。
-`to_pandas()` 负责验证保存数据完整性；编码保持 Decimal、大整数和 NULL 的公开终端值。
+`MarivoPresentationProjection.readFrames(refs)` 返回插件 `AnalysisSnapshot` v1：共用 typed data、
+读取时间与 coverage；Frame 另保留 input identity、字段角色、实际 layout、公开字段类型与单位、
+完整轴键、逐行坐标和 read_stats。默认至多读取一页，limit 由现有行/列/单元格预算计算，
+坐标也计入单元格预算；不自动续页或把已读前缀标为完整结果。没有 UI 在线续页入口。
+旧 Draft 的 Artifact 投影复用同一 Reader，再按原声明选列；原文档协议不变。
+
+首期支持现有 scalar codec 可表达的值和坐标。calendar/interval 的 start/end、actual_start/actual_end
+按带时区 datetime 编码，保留 NULL；ns dtype 不直接拒绝，只在实际值包含亚微秒精度时返回 numeric_precision，
+不截断时间精度。复合 tuple 展示、duration、naive timestamp 等未适配载体仍明确失败，不把结构字符串化。
+slots 仅保存实际投影的 value/presence 字段和全部轴键；未选中的不支持类型不阻断选列读取，
+被选中字段及完整轴键仍须通过类型检查。完整键按 slot 保存，不能用表格行号代替。
+Evidence、Findings、methods 和 semantics 在新快照中为 not-captured，不扫描审计重建旧 digest。
+旧 Draft 明确指定的 Finding 仍按既有来源路径读取，缺失时保留诊断。
 
 当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口。新来源的 `code` 固定为无 snippets，
 并标明 `sql-capability-unavailable`；不读取私有 Store、日志或重新编译 SQL。
@@ -119,7 +129,7 @@ computed writer 可通过 `labels={列名: 展示名}` 显式设置列 `label`�
 writer 不接收来源或转换说明；来源只写在 Draft。
 行和单元格预算确定实际 limit，超出字节预算明确失败；空结果保留列，未指定的展示标签使用列名。
 
-分发 wheel 为 `dsh_data_analysis_presentation_kit-1.1.0-py3-none-any.whl`，只依赖 pandas。
+分发 wheel 为 `dsh_data_analysis_presentation_kit-1.2.0-py3-none-any.whl`，只依赖 pandas。
 Runtime marker v3 同时检查模块版本、distribution 版本、实际导入位置和公开 writer；
 每次 shared checked execution 再核验 helper，避免 Workspace 同名模块遮蔽。管理员 Python 失败时提供修复信息，
 不自动安装或切换解释器；managed 模式通过唯一新 wheel 安装路径准备环境。
@@ -166,3 +176,28 @@ int64 单元格必须是精确整数字符串，例如 `"42"`；JSON number `42`
 [projection 测试](../../packages/dsh-data-analysis/tests/presentation-projection/projection.test.ts)
 验证 present 使用的投影路径保留列级诊断且不重复拼接 pointer。
 分发检查验证 CLI 声明、可执行权限和安装包内启动。上述验收不代表真实 Agent 或完整报告渲染验收。
+
+## 同次执行的 DataFrame 快照
+
+`capture_dataset(frame, *, row_limit=5000, labels=None)` 只接受 pandas DataFrame，并要求处于
+`marivo_python` worker 的捕获上下文中。RawSqlResult 不作为 helper 输入；转换及原始标量精度由原分析负责，
+插件不能恢复 DataFrame 创建时已经丢失的精度。SQL、datasource、Evidence 和业务覆盖不从 DataFrame 推断。
+
+helper 复用 typed codec，在调用专属 `.dsh-data-analysis/captures/<id>/` 内写快照和结构化 manifest，
+未调用时不创建目录。Host 仅在原执行成功后读取该 manifest，校验文件边界、预算、内容和摘要，
+把 captures 与 registry 中的 Workspace、Session、call/root call 及 codeRef 一并保存到原 Host execution 存储。
+回执的 `snapshots` 按 captureId 返回 snapshotRef；不解析 stdout、扫描目录或新增模型捕获工具。
+
+`readDatasetSnapshot(root, workspaceId, snapshotRef)` 先验证 Host execution 记录，再读取准确文件并校验摘要；
+重开不启动 Python、不连接数据源。捕获失败返回 snapshotCaptureError，不签发 snapshotRef，
+原 Python 执行状态仍据实际退出结果报告，不自动重跑。manifest 写入失败不会覆盖原退出码或原异常；
+worker 通过 launcher 管理的临时状态文件报告捕获状态，launcher 在用户 stderr 前写固定状态头，Host 消费后移除。
+临时状态文件位于独立临时目录并在 launcher 结束时清理；状态缺失或损坏按捕获失败处理，不能视为未调用 helper。
+该状态只标记捕获失败，快照内容和引用仍只来自经过校验的 manifest/文件；不从用户 stdout/stderr 搜索回执。
+helper 调用本身抛出的异常仍由原代码处理；未捕获异常按正常 Python 规则导致非零退出。
+超时、非零退出和取消不签发引用。
+凭据值出现在快照时拒绝捕获，不修改精确单元格来伪装脱敏。
+
+快照覆盖说明区分总行数、捕获行数与 complete；business 固定 unknown。一行截断预览仍为 incomplete。
+这些文件在 P1 中随 Workspace 保存，P2 才将被引用内容纳入不可变 Build 的附件生命周期；
+现有 marivo_present 尚不接受 snapshotRef，新 UI 与双位置交付也未开放。

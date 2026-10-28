@@ -33,7 +33,7 @@
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI P0 将开发依赖与 peer 最低版本提高至 `0.2.1-rc.2`，用于公开 `PartialArguments.textPrefix`、tool view、tab 与 PTC 探针。OpenUI 固定版本和八组件 Catalog 由插件独立维护，领域组件目前只有占位；`marivo_present` 仍使用原 Draft 流程，统一数据读取与交付尚待 P1–P3。详情见[实施计划](designs/unified-analysis-ui-implementation.md)与[验收记录](testing/unified-analysis-ui-p0-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI P0 将开发依赖与 peer 最低版本提高至 `0.2.1-rc.2`，用于公开 `PartialArguments.textPrefix`、tool view、tab 与 PTC 探针。OpenUI 固定版本和八组件 Catalog 由插件独立维护，领域组件目前只有占位；`marivo_present` 仍使用原 Draft 流程，P1 已接通有界 Frame 投影及原执行内 DataFrame 捕获，统一呈现与流式交付尚待 P2–P3。详情见[实施计划](designs/unified-analysis-ui-implementation.md)与[P0 验收记录](testing/unified-analysis-ui-p0-2026-10-28.md)、[P1 验收记录](testing/unified-analysis-ui-p1-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
 
 ## 运行与数据流
 
@@ -74,7 +74,8 @@ Harness Credentials 是秘密值权威；Marivo 的公开 description、Datasour
 
 `marivo_datasource_configure` 将表单绑定到原调用与所属 Session，用户完成配置后续接；取消或身份变化结束旧操作。`marivo_python` 在一次调用内等待所有声明的数据源就绪，取得 fresh snapshot，通过 stdin 和 `md.credential_scope` 注入，再交给 Harness Shell 前台执行。秘密值不进入 Agent 参数、argv 或环境，输出在 Host spill 前脱敏。
 
-纯文件分析使用 `datasources: []`，仍保留 Runtime/Workspace identity、取消与执行代码记录。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
+纯文件分析使用 `datasources: []`，仍保留 Runtime/Workspace identity、取消与执行代码记录。
+需要保留 DataFrame 时可在原 marivo_python 中显式 capture_dataset；Host 校验后将快照绑定准确 Workspace/调用/codeRef，Reader 只读快照。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
 
 `marivo_python` 使用 Host `ShellExecutor.execute(spec).result()` 完成前台调用。用户要求交付已有 CSV、TSV、XLSX 等表格文件时，文件分析 Skill 指导 Agent 在确认文件后调用 Harness 原生 `present`；文件卡片、Session 文件声明及只读表格预览由 Harness 拥有。插件的 `marivo_present` 继续承载可筛选、联动的报告表格；原生 `.xls` 预览不扩大 Marivo 的分析格式范围。
 

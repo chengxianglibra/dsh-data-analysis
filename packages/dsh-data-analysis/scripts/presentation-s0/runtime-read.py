@@ -66,22 +66,21 @@ with md.credential_scope(resolver=DenyCredentials()):
                           "exceptionType": type(exc).__name__, "forbiddenCalls": calls}),
               file=sys.stdout if source_only else sys.stderr)
         raise SystemExit(0 if source_only else 70)
-    frame = artifact.to_pandas()
+    page = artifact.read_page(limit=min(row_limit, 5000))
+    frame = page.to_pandas()
     frame = frame.sort_values(frame.columns[0], kind="stable")
     assert artifact.artifact_id == selection["artifactRef"]
     assert artifact.session_id == session.id == selection["sessionId"]
-    digest = artifact.evidence_digest()
-    assert str(digest.artifact_ref) == artifact.artifact_id
     result = {
         "schema": "dsh-data-analysis-presentation-s0-runtime/v1",
         "readPid": os.getpid(), "readAt": datetime.now(timezone.utc).isoformat(),
         "source": {"sessionId":session.id, "artifactRef":artifact.artifact_id,
-                   "findingCount":digest.finding_count, "evidenceDigest":digest.evidence_digest},
+                   "auditStatus":"not-captured"},
         "columns": [{"name":name, "pandasDtype":str(frame[name].dtype)} for name in frame.columns],
         "rows": [[cell(value) for value in row] for row in frame.head(row_limit).itertuples(index=False, name=None)],
-        "truncation": {"totalRows": len(frame), "writtenRows": min(len(frame), row_limit),
-                       "omittedRows": max(0, len(frame)-row_limit), "rowLimit":row_limit},
-        "readApi": ["mv.session.resume", "session.persisted_frame", "frame.to_pandas", "frame.evidence_digest"],
+        "truncation": {"totalRows": page.total_count, "writtenRows": min(len(frame), row_limit),
+                       "omittedRows": max(0, page.total_count-row_limit), "rowLimit":row_limit},
+        "readApi": ["mv.session.resume", "session.persisted_frame", "frame.schema", "frame.read_page", "page.to_pandas"],
         "forbiddenCalls": calls,
     }
 sys.setprofile(None)

@@ -12,8 +12,7 @@ class Frame:
     artifact_id=config.get("artifact", "artifact")
     session_id=config.get("frameSession", "session")
     output_names=("value",)
-    def evidence_digest(self):
-        return types.SimpleNamespace(artifact_ref=config.get("digest", "artifact"), evidence_digest="digest", quality_summary_digest="quality", typed_issue_digest="issues", finding_count=0, items=())
+    def evidence_digest(self):raise AssertionError("Removed digest API is forbidden")
     def findings(self, **kwargs):
         return types.SimpleNamespace(items=(), next_cursor=None)
     def __getattr__(self,name):raise AssertionError("Unsupported Frame read: "+name)
@@ -29,10 +28,10 @@ mv=types.ModuleType("marivo.analysis")
 mv.session=types.SimpleNamespace(resume=lambda identity:Session())
 md=types.ModuleType("marivo.datasource")
 md.credential_scope=lambda *,resolver:contextlib.nullcontext()
-kit=types.ModuleType("dsh_data_analysis_presentation._dataset")
+kit=types.ModuleType("dsh_data_analysis_presentation._frame")
 def forbidden(*args,**kwargs):raise AssertionError("Source-only read attempted data access")
-kit.encode_dataset=forbidden
-sys.modules.update({"marivo":types.ModuleType("marivo"),"marivo.analysis":mv,"marivo.datasource":md,"dsh_data_analysis_presentation":types.ModuleType("dsh_data_analysis_presentation"),"dsh_data_analysis_presentation._dataset":kit})
+kit.read_frame=forbidden
+sys.modules.update({"marivo":types.ModuleType("marivo"),"marivo.analysis":mv,"marivo.datasource":md,"dsh_data_analysis_presentation":types.ModuleType("dsh_data_analysis_presentation"),"dsh_data_analysis_presentation._frame":kit})
 `
 function read(config: Record<string, unknown> = {}, finding = false, dataset = false) {
   const request = {
@@ -65,17 +64,10 @@ test('new sources explicitly mark SQL unavailable without requesting private or 
     snippets: [],
     notices: ['marivo.presentation.sql-capability-unavailable'],
   })
-  assert.ok(
-    result.sources[0].facts.some((fact: { label: string }) => fact.label === 'Evidence digest'),
-  )
+  assert.ok(result.sources[0].facts.some((fact: { label: string }) => fact.label === 'Evidence'))
 })
 test('persisted source identity and Workspace checks cannot degrade into availability notices', () => {
-  for (const config of [
-    { session: 'other' },
-    { frameSession: 'other' },
-    { artifact: 'other' },
-    { digest: 'other' },
-  ])
+  for (const config of [{ session: 'other' }, { frameSession: 'other' }, { artifact: 'other' }])
     assert.equal(read(config).error.code, 'source_identity_mismatch')
   assert.equal(read({ root: '/wrong-workspace' }).error.code, 'source_workspace_mismatch')
 })

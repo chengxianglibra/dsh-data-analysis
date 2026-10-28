@@ -9,7 +9,7 @@ from pathlib import Path
 
 import marivo.analysis as mv
 import marivo.datasource as md
-from dsh_data_analysis_presentation._dataset import encode_dataset
+from dsh_data_analysis_presentation._frame import read_frame
 
 class ProjectionFailure(Exception):
     def __init__(self, code, path, message):
@@ -44,9 +44,6 @@ def read(request):
             frame = session.persisted_frame(ref["artifactRef"])
             if frame.artifact_id != ref["artifactRef"] or frame.session_id != session.id:
                 raise ProjectionFailure("source_identity_mismatch", source_path + "/ref", "Restored Frame identity differs from the declared source.")
-            digest = frame.evidence_digest()
-            if str(digest.artifact_ref) != frame.artifact_id:
-                raise ProjectionFailure("source_identity_mismatch", source_path + "/ref", "Evidence identity differs from the declared source.")
         except ProjectionFailure:
             raise
         except Exception:
@@ -60,12 +57,8 @@ def read(request):
         fact("Session ID", frame.session_id)
         fact("Artifact ID", frame.artifact_id)
         fact("输出列", frame.output_names)
-        fact("Evidence digest", digest.evidence_digest)
-        fact("Quality digest", digest.quality_summary_digest)
-        fact("Issue digest", digest.typed_issue_digest)
-        fact("Finding count", digest.finding_count)
-        fact("Evidence", [{"kind": item.kind, "summary": item.summary, "values": item.values,
-                           "coordinates": [{"slot": c.slot_id, "value": c.value} for c in item.coordinates]} for item in digest.items])
+        fact("Evidence", "not-captured")
+        fact("Quality", "not-captured")
         if "findingId" in ref:
             try:
                 cursor, seen, finding = None, set(), None
@@ -94,18 +87,18 @@ def read(request):
         if frame is None:
             raise ProjectionFailure("artifact_data_unavailable", dataset_path + "/sourceId", "A direct Artifact dataset requires an available persisted Frame source.")
         try:
-            # Public export validates stored payload integrity and preserves exact terminal values.
-            data = frame.to_pandas()
-            names = selection.get("columns", list(data.columns))
-            if any(name not in data.columns for name in names):
-                raise ProjectionFailure("invalid_reference", dataset_path + "/columns", "A requested column is absent from the public Frame export.")
-            encoded = encode_dataset(data.loc[:, names], row_limit=selection["rowLimit"])
+            snapshot = read_frame(frame, columns=selection.get("columns"), row_limit=selection["rowLimit"])
+            encoded = snapshot["data"]
+            if "columns" in selection:
+                indices = [next(i for i, c in enumerate(encoded["columns"]) if c["id"] == name) for name in selection["columns"]]
+                encoded = {**encoded, "columns": [encoded["columns"][i] for i in indices],
+                           "rows": [[row[i] for i in indices] for row in encoded["rows"]]}
             datasets.append({"id": selection["id"], "data": encoded})
         except ProjectionFailure:
             raise
         except Exception as error:
             code, location = getattr(error, "code", None), getattr(error, "path", None)
-            if code in ("numeric_precision", "budget", "invalid_value") and isinstance(location, str):
+            if code in ("numeric_precision", "budget", "invalid_value", "unsupported_type", "invalid_reference", "duplicate_id", "runtime_incompatible", "source_identity_mismatch") and isinstance(location, str):
                 raise ProjectionFailure(code, dataset_path + "/data" + location, "Public Frame values cannot be encoded within the presentation data contract.") from None
             raise ProjectionFailure("artifact_data_unavailable", dataset_path + "/data", "The persisted Frame does not expose the required typed presentation data.") from None
     return {"ok": True, "sources": sources, "datasets": datasets, "diagnostics": diagnostics}
@@ -113,10 +106,24 @@ def read(request):
 try:
     request = json.loads(sys.argv[1])
     with md.credential_scope(resolver=DenyCredentials()):
-        result = read(request)
+        if "frames" in request:
+            snapshots = []
+            for ref in request["frames"]:
+                session = mv.session.resume(ref["sessionId"])
+                frame = session.persisted_frame(ref["artifactId"])
+                if (session.id != ref["sessionId"] or frame.session_id != session.id or
+                    frame.artifact_id != ref["artifactId"] or Path(session.project_root).resolve() != Path.cwd().resolve()):
+                    raise ProjectionFailure("source_identity_mismatch", "/frames", "Restored Frame identity differs from the requested Workspace/Session/Artifact.")
+                snapshots.append(read_frame(frame, columns=ref.get("columns"), row_limit=ref.get("rowLimit", 5000)))
+            result = {"ok": True, "snapshots": snapshots}
+        else:
+            result = read(request)
 except ProjectionFailure as error:
     result = {"ok": False, "error": {"code": error.code, "path": error.path, "message": error.message}}
-except Exception:
-    result = {"ok": False, "error": {"code": "projection_read_failed", "path": "/sources", "message": "The bound public presentation read failed."}}
+except Exception as error:
+    code = getattr(error, "code", "projection_read_failed")
+    if code not in ("numeric_precision", "budget", "invalid_value", "unsupported_type", "invalid_reference", "duplicate_id", "runtime_incompatible", "source_identity_mismatch"):
+        code = "projection_read_failed"
+    result = {"ok": False, "error": {"code": code, "path": "/sources", "message": "The bound public presentation read failed."}}
 print(json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
 `.trim()

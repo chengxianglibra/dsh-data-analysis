@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import type { Context } from '@deepseek-ai/cordis'
@@ -5,7 +6,9 @@ import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { collectDatasetCaptures, datasetSnapshotRef } from '../presentation/dataset-snapshot.ts'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
+import type { PythonCaptureRecord } from '../python-execution-contracts.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import {
@@ -63,6 +66,7 @@ export function registerMarivoPythonTool(
   source: MarivoDatasourceBridgeSource,
   service: MarivoCredentialService,
   options: MarivoPythonOptionsSource = {},
+  resolveCaptureWorkspace?: () => { workspaceId: string; projectRoot: string },
 ): () => Promise<void> {
   const readOptions = typeof options === 'function' ? options : () => options
   resolvePythonOptions(readOptions())
@@ -71,7 +75,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. Waits for missing credentials for every declared datasource before starting code once; no automatic connection test or execution replay. No background execution or secret environment variables. Success returns codeRef for the submitted code; associate it with presentation datasets through draft codeRefs when needed. codeCaptureError leaves the execution outcome unchanged; do not rerun to recover the code record. Inspect execution phase, outcome and nextAction after failure; timeout does not prove remote query cancellation or absence of saved results.',
+        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. Waits for missing credentials for every declared datasource before starting code once; no automatic execution replay. No background execution or secret environment variables. Success returns codeRef. To retain a pandas DataFrame, call dsh_data_analysis_presentation.capture_dataset(frame) during this execution; success also returns snapshots with captureId and snapshotRef. Capture errors leave the Python execution outcome unchanged; do not rerun to recover snapshots. Inspect execution phase, outcome and nextAction after failure; timeout does not prove remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
@@ -164,6 +168,8 @@ export function registerMarivoPythonTool(
             }
           prepared = admission
           const { binding } = prepared.bridge
+          const captureDirectory = `.dsh-data-analysis/captures/${randomUUID()}`
+          const captureWorkspace = resolveCaptureWorkspace?.()
           const policy = policyService?.resolve(exec.agent ? { session: exec.agent.session } : {})
           const spec = shell.resolve({
             command: `${process.platform === 'win32' ? '& ' : ''}${quote(binding.pythonExecutable)} -c ${quote(PYTHON_LAUNCHER)}`,
@@ -178,6 +184,7 @@ export function registerMarivoPythonTool(
               values: prepared.values,
               code,
               worker: PYTHON_WORKER,
+              captureDirectory,
             }),
             env: { MARIVO_PERSIST_CREDENTIALS: '0' },
             dshEnv: shellEnv.collect(exec),
@@ -193,6 +200,28 @@ export function registerMarivoPythonTool(
           const result = await service.track(execution.result())
           executionElapsedMs = performance.now() - shellStartedAt
           const finishedAt = new Date().toISOString()
+          // The launcher prepends this header itself, outside user-controlled output.
+          // Missing/malformed status must not turn a failed capture into "unused".
+          let captureFailed = true
+          let stderr = result.stderr.text
+          const newline = stderr.indexOf('\n')
+          if (newline >= 0) {
+            try {
+              const status: unknown = JSON.parse(stderr.slice(0, newline))
+              if (
+                status !== null &&
+                typeof status === 'object' &&
+                Object.keys(status).sort().join(',') === 'failed,marivoCaptureStatus' &&
+                Reflect.get(status, 'marivoCaptureStatus') === 1 &&
+                typeof Reflect.get(status, 'failed') === 'boolean'
+              ) {
+                captureFailed = Reflect.get(status, 'failed')
+                stderr = stderr.slice(newline + 1)
+              }
+            } catch {
+              // Preserve process output; report capture failure independently below.
+            }
+          }
           const credentialValues = prepared.values
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
@@ -202,22 +231,73 @@ export function registerMarivoPythonTool(
               .reduce((out, value) => out.split(value).join('[REDACTED]'), text)
           let codeRef: PythonCodeRef | undefined
           let codeCaptureError: string | undefined
+          let snapshotCaptureError: string | undefined
+          let captures: PythonCaptureRecord | undefined
           if (result.exitCode === 0 && !result.timedOut && !result.aborted) {
             phase = 'capturing-code'
             try {
               prepared.assertCurrent()
               if (Object.values(prepared.values).some((value) => value && code.includes(value)))
                 throw new Error('Host credential in submitted code')
+              try {
+                if (captureFailed) throw new Error('dataset-capture-worker-failed')
+                const entries = await service.track(
+                  collectDatasetCaptures(
+                    binding.projectRoot,
+                    captureDirectory,
+                    Object.values(prepared.values),
+                    prepared.signal,
+                  ),
+                )
+                prepared.assertCurrent()
+                if (entries.length) {
+                  const session = exec.agent!.session
+                  const current = resolveCaptureWorkspace?.()
+                  if (
+                    captureWorkspace &&
+                    (current?.workspaceId !== captureWorkspace.workspaceId ||
+                      current.projectRoot !== binding.projectRoot ||
+                      current.projectRoot !== captureWorkspace.projectRoot)
+                  )
+                    throw new Error('capture-workspace-changed')
+                  const workspaceId =
+                    captureWorkspace?.workspaceId ?? Reflect.get(session.header, 'workspaceId')
+                  if (typeof workspaceId !== 'string' || !workspaceId)
+                    throw new Error('capture-owner-unavailable')
+                  captures = {
+                    workspaceId,
+                    sessionId: String(session.id),
+                    callId: String(exec.callId),
+                    rootCallId: String(exec.rootCallId ?? exec.callId),
+                    entries,
+                  }
+                }
+              } catch {
+                captures = undefined
+                snapshotCaptureError =
+                  'Python completed successfully, but dataset capture could not be validated. No snapshotRef was issued. Do not rerun the code to recover this snapshot; inspect its existing effects.'
+              }
               codeRef = await service.track(
                 savePythonExecution(
                   binding.projectRoot,
-                  { text: code, startedAt, finishedAt },
+                  { text: code, startedAt, finishedAt, ...(captures ? { captures } : {}) },
                   prepared.signal,
                 ),
               )
               prepared.assertCurrent()
+              if (captures && captureWorkspace) {
+                const current = resolveCaptureWorkspace?.()
+                if (
+                  current?.workspaceId !== captureWorkspace.workspaceId ||
+                  current.projectRoot !== binding.projectRoot
+                )
+                  throw new Error('capture-workspace-changed')
+              }
             } catch {
               codeRef = undefined
+              if (captures)
+                snapshotCaptureError =
+                  'Python completed successfully, but dataset provenance could not be saved. No snapshotRef was issued. Do not rerun the code to recover this snapshot.'
               codeCaptureError =
                 'Python completed successfully, but its source code could not be saved. Do not rerun the code to recover this snapshot; inspect its existing effects.'
             }
@@ -237,14 +317,25 @@ export function registerMarivoPythonTool(
               timedOut: result.timedOut,
               aborted: result.aborted,
               stdout: redact(result.stdout.text),
-              stderr: redact(result.stderr.text),
+              stderr: redact(stderr),
               truncated: result.stdout.truncated || result.stderr.truncated,
               sandbox: result.sandbox ?? null,
               ...(codeRef ? { codeRef } : {}),
               ...(codeCaptureError ? { codeCaptureError } : {}),
+              ...(codeRef && captures
+                ? {
+                    snapshots: captures.entries.map((entry) => ({
+                      captureId: entry.captureId,
+                      snapshotRef: datasetSnapshotRef(codeRef!, entry.captureId),
+                    })),
+                  }
+                : {}),
+              ...(snapshotCaptureError ? { snapshotCaptureError } : {}),
               execution: summary(
                 reason,
-                codeCaptureError ?? (reason === 'succeeded' ? null : CHECK_EFFECTS),
+                snapshotCaptureError ??
+                  codeCaptureError ??
+                  (reason === 'succeeded' ? null : CHECK_EFFECTS),
               ),
             }),
           )

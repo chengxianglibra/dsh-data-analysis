@@ -9,3 +9,12 @@ export interface PythonCodeSnippet extends PythonCodeRef {
   text: string
   provenance: 'execution'
 }
+
+/** Host-bound attachments from this successful invocation, never Workspace-authored provenance. */
+export interface PythonCaptureRecord {
+  workspaceId: string
+  sessionId: string
+  callId: string
+  rootCallId: string
+  entries: { captureId: string; path: string; sha256: string }[]
+}

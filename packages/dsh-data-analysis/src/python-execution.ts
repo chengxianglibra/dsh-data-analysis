@@ -3,7 +3,11 @@ import { constants, type Stats } from 'node:fs'
 import { link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import type { PythonCodeRef, PythonCodeSnippet } from './python-execution-contracts.ts'
+import type {
+  PythonCaptureRecord,
+  PythonCodeRef,
+  PythonCodeSnippet,
+} from './python-execution-contracts.ts'
 
 export type { PythonCodeRef, PythonCodeSnippet } from './python-execution-contracts.ts'
 
@@ -82,27 +86,51 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
+function validCapture(value: PythonCaptureRecord): boolean {
+  return (
+    !!value &&
+    Object.keys(value).sort().join(',') === 'callId,entries,rootCallId,sessionId,workspaceId' &&
+    [value.workspaceId, value.sessionId, value.callId, value.rootCallId].every(
+      (s) => typeof s === 'string' && s.length > 0 && s.length <= 512,
+    ) &&
+    Array.isArray(value.entries) &&
+    value.entries.length > 0 &&
+    value.entries.length <= 16 &&
+    new Set(value.entries.map((e) => e.captureId)).size === value.entries.length &&
+    value.entries.every(
+      (e) =>
+        Object.keys(e).sort().join(',') === 'captureId,path,sha256' &&
+        EXECUTION_ID.test(e.captureId) &&
+        DIGEST.test(e.sha256) &&
+        /^\.dsh-data-analysis\/captures\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.json$/.test(e.path) &&
+        e.path.endsWith(`/${e.captureId}.json`),
+    )
+  )
+}
+
 /** Publish a complete record once. Its final name never exposes a partial write or overwrites. */
 export async function savePythonExecution(
   workspaceRoot: string,
-  input: { text: string; startedAt: string; finishedAt: string },
+  input: { text: string; startedAt: string; finishedAt: string; captures?: PythonCaptureRecord },
   signal?: AbortSignal,
 ): Promise<PythonCodeRef> {
   try {
     signal?.throwIfAborted()
     const { text, startedAt, finishedAt } = input
+    const captures = input.captures === undefined ? undefined : structuredClone(input.captures)
     if (
       !sourceText(text) ||
       !timestamp(startedAt) ||
       !timestamp(finishedAt) ||
-      finishedAt < startedAt
+      finishedAt < startedAt ||
+      (captures !== undefined && !validCapture(captures))
     )
       invalid()
     const workspace = await directories(workspaceRoot, true, signal)
     const executionId = randomUUID()
     const bytes = Buffer.from(
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: captures === undefined ? 1 : 2,
         executionId,
         projectRoot: workspace.root,
         language: 'python',
@@ -110,6 +138,7 @@ export async function savePythonExecution(
         startedAt,
         finishedAt,
         exitCode: 0,
+        ...(captures ? { captures } : {}),
       }),
     )
     if (bytes.length > RECORD_BYTES) invalid()
@@ -164,11 +193,11 @@ export async function savePythonExecution(
 }
 
 /** Resolve Host-stored execution identities for the bound Workspace. Never executes code. */
-export async function readPythonExecution(
+async function readExecutionRecord(
   workspaceRoot: string,
   ref: PythonCodeRef,
   signal?: AbortSignal,
-): Promise<PythonCodeSnippet> {
+): Promise<PythonCodeSnippet & { captures?: PythonCaptureRecord }> {
   try {
     signal?.throwIfAborted()
     if (!ref || !EXECUTION_ID.test(ref.executionId) || !DIGEST.test(ref.sha256)) invalid()
@@ -215,8 +244,9 @@ export async function readPythonExecution(
         typeof record !== 'object' ||
         Array.isArray(record) ||
         Object.keys(record).sort().join(',') !==
-          'executionId,exitCode,finishedAt,language,projectRoot,schemaVersion,startedAt,text' ||
-        record.schemaVersion !== 1 ||
+          `${record.schemaVersion === 2 ? 'captures,' : ''}executionId,exitCode,finishedAt,language,projectRoot,schemaVersion,startedAt,text` ||
+        ![1, 2].includes(record.schemaVersion) ||
+        (record.schemaVersion === 2 && !validCapture(record.captures)) ||
         record.executionId !== executionId ||
         record.projectRoot !== workspace.root ||
         record.language !== 'python' ||
@@ -234,6 +264,7 @@ export async function readPythonExecution(
         provenance: 'execution',
         executionId,
         sha256: expectedDigest,
+        ...(record.schemaVersion === 2 ? { captures: record.captures } : {}),
       }
     } finally {
       await file.close()
@@ -242,4 +273,23 @@ export async function readPythonExecution(
     signal?.throwIfAborted()
     invalid()
   }
+}
+
+export async function readPythonExecution(
+  workspaceRoot: string,
+  ref: PythonCodeRef,
+  signal?: AbortSignal,
+): Promise<PythonCodeSnippet> {
+  const { captures: _captures, ...snippet } = await readExecutionRecord(workspaceRoot, ref, signal)
+  return snippet
+}
+
+export async function readPythonCaptures(
+  workspaceRoot: string,
+  ref: PythonCodeRef,
+  signal?: AbortSignal,
+): Promise<PythonCaptureRecord> {
+  const record = await readExecutionRecord(workspaceRoot, ref, signal)
+  if (!record.captures) invalid()
+  return record.captures
 }

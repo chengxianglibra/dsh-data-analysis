@@ -11,7 +11,7 @@ import {
 } from '../../src/datasource/resolver-program.ts'
 
 /** A public credential protocol double; bound Marivo acceptance uses the separate real script. */
-function pythonFixture(t: TestContext) {
+function pythonFixture(t: TestContext, pythonExecutable = 'python3') {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'marivo-resolver-contract-')))
   t.after(() => rmSync(root, { recursive: true, force: true }))
   const packageRoot = path.join(root, 'marivo')
@@ -55,7 +55,7 @@ def credential_scope(resolver):
 `,
   )
   const run = (program: string, input = '') =>
-    spawnSync('python3', ['-c', program], {
+    spawnSync(pythonExecutable, ['-c', program], {
       cwd: root,
       encoding: 'utf8',
       input,
@@ -252,4 +252,79 @@ print("CLEANED")
   const result = f.run(wrapper, JSON.stringify(payload))
   assert.equal(result.status, 0, result.stderr || String(result.error))
   assert.equal(result.stdout.trim(), 'CLEANED')
+})
+
+test('real helper finalization reports capture failure separately from original worker outcomes', (t) => {
+  const project = path.resolve('packages/dsh-data-analysis/python/presentation-kit')
+  const discovery = spawnSync(
+    'uv',
+    ['run', '--project', project, '--frozen', 'python', '-c', 'import sys; print(sys.executable)'],
+    { encoding: 'utf8' },
+  )
+  assert.equal(discovery.status, 0, discovery.stderr)
+  const runtimeRoot = realpathSync(mkdtempSync(path.join(tmpdir(), 'marivo-capture-runtime-')))
+  t.after(() => rmSync(runtimeRoot, { recursive: true, force: true }))
+  const runtime = path.join(runtimeRoot, 'venv')
+  const python = path.join(
+    runtime,
+    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
+  )
+  for (const args of [
+    ['venv', '--python', discovery.stdout.trim(), runtime],
+    ['build', '--project', project, '--wheel', '--out-dir', runtimeRoot],
+    [
+      'pip',
+      'install',
+      '--python',
+      python,
+      path.join(runtimeRoot, 'dsh_data_analysis_presentation_kit-1.2.0-py3-none-any.whl'),
+    ],
+  ]) {
+    const setup = spawnSync('uv', args, { encoding: 'utf8', timeout: 120_000 })
+    assert.equal(setup.status, 0, setup.stderr)
+  }
+  const f = pythonFixture(t, python)
+  const kit = JSON.parse(
+    f.run(
+      'import json, dsh_data_analysis_presentation as p; print(json.dumps({"version": p.__version__, "packagePath": p.__file__}))',
+    ).stdout,
+  )
+  for (const mode of ['directory', 'manifest', 'original-error'] as const) {
+    const code = String.raw`
+import sys
+from pathlib import Path
+import pandas as pd
+import dsh_data_analysis_presentation._capture as helper
+from dsh_data_analysis_presentation import capture_dataset
+mode = ${JSON.stringify(mode)}
+if mode == "directory":
+    Path("blocked").write_text("not a directory")
+else:
+    original = helper._write
+    def failing(root, relative, content):
+        if relative.endswith("/manifest.json"):
+            raise OSError("manifest unavailable")
+        return original(root, relative, content)
+    helper._write = failing
+try:
+    capture_dataset(pd.DataFrame({"x": [1]}))
+except OSError:
+    pass
+print("ORIGINAL_OUTPUT")
+print("ORIGINAL_STDERR", file=sys.stderr)
+if mode == "original-error":
+    raise SystemExit(75)
+`
+    const payload = {
+      ...f.payload(code),
+      captureDirectory: mode === 'directory' ? 'blocked/call' : 'captures/' + mode,
+      identity: { ...f.payload(code).identity, presentationKit: kit },
+    }
+    const result = f.run(PYTHON_LAUNCHER, JSON.stringify(payload))
+    assert.equal(result.status, mode === 'original-error' ? 75 : 0, result.stderr)
+    assert.equal(result.stdout, 'ORIGINAL_OUTPUT\n')
+    const [header, ...stderr] = result.stderr.split('\n')
+    assert.deepEqual(JSON.parse(header!), { marivoCaptureStatus: 1, failed: true })
+    assert.equal(stderr.join('\n'), 'ORIGINAL_STDERR\n')
+  }
 })

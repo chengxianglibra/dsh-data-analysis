@@ -21,6 +21,7 @@ import {
   type MarivoPythonExecutionSummary,
   registerMarivoPythonTool,
 } from '../../src/datasource/python.ts'
+import { readDatasetSnapshot } from '../../src/presentation/dataset-snapshot.ts'
 import {
   type PythonCodeRef,
   readPythonExecution,
@@ -192,7 +193,7 @@ async function tool(t: TestContext) {
     stderr: { text: '', truncated: false },
   }
   const requests: ShellExecRequest[] = []
-  const hooks = { run: async () => {} }
+  const hooks = { run: async () => {}, captureFailed: false }
   let launches = 0
   const services = {
     shell: {
@@ -212,7 +213,16 @@ async function tool(t: TestContext) {
         return {
           result: async () => {
             await hooks.run()
-            return outcome
+            return {
+              ...outcome,
+              stderr: {
+                ...outcome.stderr,
+                text:
+                  JSON.stringify({ marivoCaptureStatus: 1, failed: hooks.captureFailed }) +
+                  '\n' +
+                  outcome.stderr.text,
+              },
+            }
           },
         }
       },
@@ -254,6 +264,8 @@ async function tool(t: TestContext) {
         stdout: string
         codeRef?: PythonCodeRef
         codeCaptureError?: string
+        snapshotCaptureError?: string
+        snapshots?: { captureId: string; snapshotRef: string }[]
         execution: MarivoPythonExecutionSummary
       },
   }
@@ -274,6 +286,96 @@ test('registered Python tool captures original code only after one successful ex
   const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, result.codeRef), 'utf8')
   assert.doesNotMatch(record, /canary-private-4826|PYTHON_WORKER|grants|DB_PASSWORD/)
   assert.equal(JSON.parse(p.requests[0]!.stdin!).code, input.text)
+})
+
+async function captured(p: Awaited<ReturnType<typeof tool>>, failed = false) {
+  Reflect.set(p.f.exec.agent!.session.header, 'workspaceId', 'workspace')
+  const files: string[] = []
+  p.hooks.run = async () => {
+    const directory = JSON.parse(p.requests[0]!.stdin!).captureDirectory as string
+    await mkdir(path.join(p.f.bridge.binding.projectRoot, directory), { recursive: true })
+    const entries = []
+    for (let i = 0; i < 2; i++) {
+      const captureId = randomUUID()
+      const relative = `${directory}/${captureId}.json`
+      const data = {
+        schemaVersion: 1,
+        columns: [{ id: 'x', label: 'x', type: 'int64', nullable: true }],
+        rows: [['9007199254740993']],
+        rowCount: 2,
+        limit: 1,
+        truncated: true,
+      }
+      const bytes = Buffer.from(
+        JSON.stringify({
+          schemaVersion: 1,
+          kind: 'dataset',
+          fetchedAt: now,
+          data,
+          coverage: {
+            start: 0,
+            totalRows: 2,
+            capturedRows: 1,
+            complete: false,
+            columns: ['x'],
+            business: 'unknown',
+          },
+          source: { kind: 'dataframe', details: 'not-captured' },
+        }),
+      )
+      const filename = path.join(p.f.bridge.binding.projectRoot, relative)
+      files.push(filename)
+      await writeFile(filename, bytes)
+      entries.push({
+        captureId,
+        path: relative,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      })
+    }
+    await writeFile(
+      path.join(p.f.bridge.binding.projectRoot, directory, 'manifest.json'),
+      JSON.stringify({ schemaVersion: 1, failed, entries }),
+    )
+  }
+  return files
+}
+
+test('same-call captures bind exact Workspace, code and call without replay, then reject tampering', async (t) => {
+  const p = await tool(t)
+  const files = await captured(p)
+  const result = await p.call()
+  assert.equal(p.launches, 1)
+  assert.equal(result.snapshotCaptureError, undefined)
+  assert.equal(result.snapshots?.length, 2)
+  const ref = result.snapshots![0]!.snapshotRef
+  const root = p.f.bridge.binding.projectRoot
+  const restored = await readDatasetSnapshot(root, 'workspace', ref)
+  assert.deepEqual(restored.codeRef, result.codeRef)
+  assert.equal(restored.owner.callId, 'call')
+  assert.equal(restored.snapshot.coverage.complete, false)
+  assert.deepEqual(restored.snapshot.data.rows, [['9007199254740993']])
+  await assert.rejects(readDatasetSnapshot(root, 'other-workspace', ref), /workspace/)
+  await assert.rejects(readDatasetSnapshot(await workspace(t), 'workspace', ref))
+  await assert.rejects(readDatasetSnapshot(root, 'workspace', ref.replace(/.$/, 'z')))
+  await writeFile(files[0]!, '{}')
+  await assert.rejects(readDatasetSnapshot(root, 'workspace', ref), /digest/)
+  assert.equal(p.launches, 1)
+})
+
+test('failed capture and failed executions never issue snapshot references or replay', async (t) => {
+  for (const outcome of [{}, { exitCode: 1 }, { timedOut: true }, { aborted: true }]) {
+    const p = await tool(t)
+    await captured(p, true)
+    Object.assign(p.outcome, outcome)
+    const result = await p.call()
+    assert.equal(result.snapshots, undefined)
+    if (!Object.keys(outcome).length) {
+      assert.equal(result.execution.reason, 'succeeded')
+      assert.match(result.snapshotCaptureError!, /No snapshotRef/)
+      assert.ok(result.codeRef)
+    }
+    assert.equal(p.launches, 1)
+  }
 })
 
 test('Python tool uses one immutable code string for execution and its later snapshot', async (t) => {
@@ -340,4 +442,18 @@ test('capture failure and post-execution cancellation preserve successful outcom
     assert.doesNotMatch(JSON.stringify(result), /canary-private-4826/)
     assert.equal(p.launches, 1)
   }
+})
+
+test('launcher-reported manifest write failure preserves success and codeRef without snapshots', async (t) => {
+  const p = await tool(t)
+  await captured(p)
+  p.hooks.captureFailed = true
+  const result = await p.call()
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.stdout, 'complete')
+  assert.equal(result.execution.reason, 'succeeded')
+  assert.ok(result.codeRef)
+  assert.equal(result.snapshots, undefined)
+  assert.match(result.snapshotCaptureError!, /No snapshotRef/)
+  assert.equal(p.launches, 1)
 })

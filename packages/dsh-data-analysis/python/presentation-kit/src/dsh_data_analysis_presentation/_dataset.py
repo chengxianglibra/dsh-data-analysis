@@ -372,6 +372,34 @@ def encode_dataset(
     return validate_dataset(result)
 
 
+def encode_rows(
+    names: list[str], rows: list[list[object]], *, total_count: int,
+    row_limit: int = MAX_ROWS, columns: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Adapt original scalars without pandas numeric/null inference.
+
+    Explicit object Series only provide the existing inference implementation;
+    cells are encoded directly from the original rows by encode_dataset.
+    """
+    if len(set(names)) != len(names):
+        _fail("/columns", "Duplicate identifiers.", "duplicate_id")
+    if not 1 <= len(names) <= MAX_COLUMNS:
+        _fail("/columns", "Expected 1 to 64 columns.", "budget")
+    if type(row_limit) is not int or not 1 <= row_limit <= MAX_ROWS:
+        _fail("/limit", "Expected a row limit from 1 to 5000.")
+    limit = min(row_limit, MAX_CELLS // len(names))
+    retained = rows[:limit]
+    if any(len(row) != len(names) for row in retained):
+        _fail("/rows", "Row width must equal column count.")
+    frame = pd.DataFrame({
+        name: pd.Series([row[index] for row in retained], dtype=object)
+        for index, name in enumerate(names)
+    })
+    result = encode_dataset(frame, row_limit=limit, columns=columns)
+    result.update(rowCount=total_count, truncated=total_count > len(retained))
+    return validate_dataset(result)
+
+
 def write_dataset(
     frame: pd.DataFrame,
     path: str | os.PathLike[str],

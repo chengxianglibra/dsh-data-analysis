@@ -48,3 +48,20 @@ Python 测试直接读取 [S0 fixtures](../../tests/presentation-s0/fixtures)，
 uv run --project python/presentation-kit --frozen python -m pytest python/presentation-kit/tests
 node scripts/build-presentation-kit.mjs
 ```
+
+## 在原执行中捕获 DataFrame
+
+在 `marivo_python` 原分析代码退出前调用：
+
+```python
+from dsh_data_analysis_presentation import capture_dataset
+receipt = capture_dataset(frame, row_limit=5000, labels={"amount": "金额"})
+```
+
+返回 `DatasetCaptureReceipt(capture_id, row_count, captured_rows, truncated)`；Host 在同次工具成功回执的
+`snapshots` 中按 captureId 关联 snapshotRef。无需打印 receipt；stdout 不是捕获协议。
+helper 只接受 pandas DataFrame，不接受 RawSqlResult，不能恢复此前已丢失的精度。
+捕获复用 writer 的精确值与预算规则；未调用时不写快照。SQL、datasource 与业务覆盖不从 attrs 或列名推断。
+调用异常可由原分析代码捕获；未捕获异常仍按 Python 规则退出。退出时 manifest 写入失败不会覆盖原执行结果，
+Host 返回 snapshotCaptureError 且不签发 snapshotRef；原代码成功时仍保留 codeRef。
+捕获错误不应通过重跑分析修复。P1 的 snapshotRef 供 Host Reader 使用，marivo_present 接线在 P2 完成。

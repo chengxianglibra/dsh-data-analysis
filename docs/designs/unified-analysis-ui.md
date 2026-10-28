@@ -2,9 +2,9 @@
 
 ## 状态与设计决策
 
-实施进展（2026-10-28）：[P0 接缝与最小 Catalog 已验证](../testing/unified-analysis-ui-p0-2026-10-28.md)，领域组件仍为占位，P1–P3 待实施。下文源码审阅与“未实施”说明保留其初稿时点；当前接线范围以实施计划和该验收记录为准。
+实施进展（2026-10-28）：[P0 接缝与最小 Catalog 已验证](../testing/unified-analysis-ui-p0-2026-10-28.md)，领域组件仍为占位，P1 数据入口已实现，P2–P3 待实施。下文源码审阅与“未实施”说明保留其初稿时点；当前接线范围以实施计划和该验收记录为准。
 
-状态：P0 已验证，P1–P3 待实施。创建日期：2026-10-27；更新日期：2026-10-28。
+状态：P0/P1 已验证，P2–P3 待实施。创建日期：2026-10-27；更新日期：2026-10-28。
 
 阶段任务、最小实现方式及验收安排见[分阶段实施计划](unified-analysis-ui-implementation.md)。设计中的 S0/S1 在实施计划中拆为 P0–P3，后续增强不作为首期完成条件。
 
@@ -17,7 +17,7 @@
 1. 本插件采用 OpenUI Lang，使用官方解析器和 Renderer，以一个派生 Catalog 提供 `AnalysisFrameView` 和通用 `DatasetView`，不增加语法或第二套报告 DSL。
 2. 单 Frame 或单个数据集快照展示只需声明准确引用，插件生成默认 Lang；需要自定义时，模型再声明图表类型、字段映射和布局。插件 Host 负责引用绑定、数据读取及可用元数据关联，组件负责确定性的展示。
 3. `AnalysisFrameView` 是一个高层组件。数据表、结构、Evidence、Findings、方法说明及可用来源统一由它组织，初期不向模型暴露大量细粒度 Marivo 组件。
-4. 首期统一持久 Frame、`md.raw_sql` 的类型化结果快照和已有附件快照。RawSqlResult 保留 terminal_only 边界，不伪装成 Frame；后续运行时数据在本插件内按需适配。MCP 工具不自动成为页面能力，连接地址与凭据不进入 Lang。
+4. 首期统一持久 Frame、pandas DataFrame 的类型化快照和已有附件快照。RawSqlResult 不是捕获输入；后续运行时数据在本插件内按需适配。MCP 工具不自动成为页面能力，连接地址与凭据不进入 Lang。
 5. 展示位置、数据读取模式、文档版本和阅读状态分别定义。切换位置不重新分析、不复制文档、不改变数据模式。
 6. 新产出采用统一文档及交付入口。旧格式有明确的独立读取或显式转换边界，不成为新文档的第二条生成路径。
 7. 当前 Marivo 语义对象没有版本控制。语义关联是可选辅助信息，不保证能访问分析时的对象定义，也不作为展示、保存、交付或导出的前置条件；文档和结果快照的固定性不延伸为语义对象的历史版本保证。
@@ -103,7 +103,7 @@ Intelligent UI 中已验证的接入方式可以作为参考；确有价值的�
 | Frame 结构与数据 | 已提交 `schema` 和 `read_page()`；公开精确类型、slot、完整轴键、导出 layout、分页与读取统计 | 新 Reader 直接消费这些公开接口，不再依赖全量导出取得结构 |
 | Frame 审计 | `evidence(limit, cursor)` 与 `findings(limit, cursor)` 分别分页；旧 `evidence_digest()` 已移除 | 当前插件仍调用旧入口，需迁移投影及摘要展示；不得以审计接口失败宣称结果数据不存在 |
 | Frame lineage | 已提交公开 `lineage.values/axes/presence`，每项包含 value/context origins 及 definition identity；尚未确认安装 Runtime 支持 | 可选投影，不成为首期依赖；definition identity 不等于历史定义读取服务 |
-| 直接 SQL | `md.raw_sql` 返回完整、进程内的 RawSqlResult，公开列、值和查询来源；没有 Frame 恢复及分页契约 | 插件在生产进程内捕获类型化快照，经 DatasetView 展示，不复用 Frame 身份或语义证明 |
+| 直接 SQL | `md.raw_sql` 返回完整、进程内的 RawSqlResult，公开列、值和查询来源；没有 Frame 恢复及分页契约 | 仅在原分析显式转成 DataFrame 后捕获其值与范围；不捕获 RawSqlResult 专有元数据，也不复用 Frame 身份 |
 | Harness | 提供 `tool.call.toolview` 与原生右侧 tab 扩展点 | 使用公开接口，验证 Native/PTC 和真实 Host 行为 |
 | 增量传输 | Native ToolCallBlock 保留 PartialArguments；PTC 子调用当前在 dispatch 时提供完整参数 | Native 接真实参数流，PTC 披露粒度限制；两者均支持已完成 patch 的文档更新 |
 
@@ -111,7 +111,7 @@ Intelligent UI 中已验证的接入方式可以作为参考；确有价值的�
 
 ## 能力依赖与交付边界
 
-首期指 S0/S1：支持类型已覆盖、预算明确的持久 Frame、RawSqlResult 捕获快照和已有附件，完成同一 Lang、组件及 Renderer 的 tool view/tab 交付，包含 Native 真实生成流和官方语句增量更新。Marivo 已具备 Frame schema/分页及 RawSqlResult 公开数据，不再将这些列为上游待开发项。此范围的主要工作是插件适配与验收；PTC 子调用生成期参数流不在当前已具备能力中，不能用它宣称与 Native 流式体验等价。这个判断不代表安装 Runtime 或真实 Harness 已完成验收。
+首期指 S0/S1：支持类型已覆盖、预算明确的持久 Frame、DataFrame 捕获快照和已有附件，完成同一 Lang、组件及 Renderer 的 tool view/tab 交付，包含 Native 真实生成流和官方语句增量更新。Marivo 已具备 Frame schema/分页及 RawSqlResult 公开数据，不再将这些列为上游待开发项。此范围的主要工作是插件适配与验收；PTC 子调用生成期参数流不在当前已具备能力中，不能用它宣称与 Native 流式体验等价。这个判断不代表安装 Runtime 或真实 Harness 已完成验收。
 
 ### 分类口径
 
@@ -129,7 +129,7 @@ Intelligent UI 中已验证的接入方式可以作为参考；确有价值的�
 | --- | --- | --- |
 | Marivo | 持久结果身份、准确恢复和固定数据读取 | 使用 `persist()` 返回值、Session/Artifact ID、`session.persisted_frame()`、`read_page()`；保持完整键与行序，不重跑来源，不要求新增 UI 专用 API |
 | Marivo | 公开结构及分析事实的含义 | `schema` 提供类型、nullable、单位、slots、完整轴与 layout；`evidence()`/`findings()` 提供独立审计分页；method facts 和 lineage 按需读取，插件不推导缺失事实 |
-| Marivo | RawSqlResult 的公开数据和查询说明 | 直接消费 columns/types/rows、返回行数和已有来源字段；不要求上游增加 UI、分页、结果持久化或 Frame 转换 API |
+| 插件 | DataFrame 精确快照 | 复用现有 typed codec，保留已捕获值和范围；不适配 RawSqlResult、不推断 SQL 来源 |
 | Harness | Agent/工具生命周期、Session/Workspace、连接、凭据与授权 | 维持已有权威和作用域；不新增 Frame 领域知识，不改 Agent loop，不把凭据传给 Lang 或模型 |
 | Harness | 工具呈现、右侧 tab、参数流、插件通信与附件基础能力 | 复用公开 tool view/tab、Native PartialArguments、工具结果和 PTC 归属、RPC、合法附件回执；容器不承担数据读取、Lang 合并或统一文档存储 |
 | 插件 Host | Frame/附件绑定、类型化展示投影和默认 Lang | 用 `schema → read_page → page.to_pandas()` 改造 Reader，管理选列、游标与预算；迁移旧 Evidence 入口；默认单 Frame 一次 `marivo_present`，不要求模型管理分页或 Provider |
@@ -146,7 +146,7 @@ Intelligent UI 中已验证的接入方式可以作为参考；确有价值的�
 | 安装 Runtime 的公开 Frame 读取 | 插件在绑定 Runtime 中验证 `schema`、`read_page()`、`evidence()`、`findings()` 的真实可用性、准确恢复、精度、完整键、冷恢复续页及损坏数据诊断；Marivo 拥有其公开契约 | 先区分安装/适配问题与上游缺口；缺少新 Reader 必需入口时明确报告不兼容，不静默退回全量导出或私有 Store |
 | 分页范围与实际成本 | 插件验证投影/别名/limit 与游标绑定，记录 `read_stats`，另行观察进程内存、响应字节与耗时；数据和审计分别标记已读范围 | 不将页大小当作 I/O 上限，不将有限页成功当作完整数据或审计校验；按证据确定支持规模 |
 | 固定 OpenUI 的组件扩展 | 插件验证派生 Catalog、父 slot、候选隔离和真实 Renderer；依赖兼容属于插件接入责任 | 修复插件接入或明确记录依赖阻塞，不要求 Harness 新建 Renderer |
-| SQL 快照捕获 | 插件在实际 Runtime 验证 RawSqlResult 精确值、可选 types、来源、原执行内捕获、文件归属、断开数据源后的恢复 | 入口尚未实现时不得声称已支持；不能退化为解析 `.show()`、伪造 Frame 或重新执行 SQL |
+| DataFrame 快照捕获 | 插件在实际 Runtime 验证 DataFrame 精确值、原执行内捕获、文件归属与退出后的恢复 | 入口尚未实现时不得声称已支持；不能退化为解析 `.show()`、伪造 Frame 或重新执行 SQL |
 | 生成流与增量合并 | 插件验证 Native 真实参数前缀、两个位置的逐步呈现、完整 patch 合并、原版本保留及取消/失败恢复；PTC 单独记录实际可见粒度 | Native 只有最终页面不算流式验收；PTC 缺细粒度参数流如需补齐，应单列 Harness 依赖，不私建调用投影 |
 | Harness Native/PTC 双位置交付 | 插件在真实 Host 中验证准确调用归属、持久回执、前台打开、历史不抢焦点、取消和冷重启 | 插件接线问题在插件修复；只有可复现的公开扩展点缺口才提出 Harness 变更 |
 | 统一保存与恢复 | 插件验证快照脱离 Marivo Runtime 后可读、版本冲突、损坏附件、保存后响应丢失和有限的 Client observation | 核对已保存结果或明确未知；不要求 Harness 提供跨文件与 Session 事件的原子事务 |
@@ -197,7 +197,7 @@ flowchart TB
 
 ## Harness 与模型的最小使用路径
 
-先按呈现策略判断是否需要 UI。需要时，分析进程保存待展示结果并输出引用，模型把该引用交给 `marivo_present`：Frame 使用 Session/Artifact ID，RawSqlResult 使用插件捕获后的数据集快照引用。已有持久结果直接复用，不重新分析或复制 rows。只有内存中的 Frame 或 RawSqlResult 不能由 UI 后续恢复，应在生产进程退出前分别 persist 或捕获快照；这属于原分析执行，不新增一次模型取数工具调用。
+先按呈现策略判断是否需要 UI。需要时，分析进程保存待展示结果并输出引用，模型把该引用交给 `marivo_present`：Frame 使用 Session/Artifact ID，DataFrame 使用插件捕获后的数据集快照引用。已有持久结果直接复用，不重新分析或复制 rows。只有内存中的 Frame 或 DataFrame 不能由 UI 后续恢复，应在生产进程退出前分别 persist 或捕获快照；这属于原分析执行，不新增一次模型取数工具调用。
 
 | 场景 | 模型需要提供 | 插件承担 |
 | --- | --- | --- |
@@ -526,7 +526,7 @@ Marivo 已按列与范围分批解码数据，页面脱离完整父数据及 Arr
 
 请求以准确文档版本、ResourceRef、参数和 epoch 绑定。取消、关闭、Workspace 撤销或换代后，迟到成功和迟到失败都不能更新当前视图。去重与缓存保持授权作用域；缓存不使已撤销读取继续被批准。
 
-## DatasetView 与直接 SQL 结果
+## DatasetView 与 DataFrame 快照
 
 ### RawSqlResult 的真实边界
 
@@ -536,7 +536,10 @@ Marivo 已按列与范围分批解码数据，页面脱离完整父数据及 Arr
 
 ### 捕获、引用与数据读取
 
-本插件补充一个生产进程内的快照捕获 helper，直接接受 RawSqlResult，读取上述公开数据与元数据，复用精确值编码并写入插件管理的快照文件。它由原 `marivo_python` 分析程序在退出前调用，工具 Host 在同一次结果回执中绑定 Workspace/调用身份并返回准确 `snapshotRef`；这是插件待实现接缝，不是 Marivo 新 API，也不新增 Agent 捕获工具。其他合法文件/附件可经同一快照规范化接缝进入展示。
+P1 按 2026-10-28 用户决策仅支持 `capture_dataset(DataFrame)`，不支持 RawSqlResult 直接捕获。
+DataFrame 转换由原分析显式完成，原始标量精度必须在转换时保留；helper 不修复 pandas 已造成的舍入，
+也不从 DataFrame 推断 SQL、datasource 或语义来源。helper 在原 marivo_python 中复用 typed codec 写快照，
+Host 在同次成功回执中绑定 Workspace/调用/codeRef 并签发 snapshotRef。SQL 元数据为 not-captured。
 
 模型随后只传引用，不传 SQL 作为 Reader 请求、不复制 rows、不重新执行查询：
 
@@ -551,17 +554,17 @@ Marivo 已按列与范围分批解码数据，页面脱离完整父数据及 Arr
 }
 ```
 
-示例引用必须替换为实际工具回执。Host 校验引用及其文件/附件绑定；任意模型字符串不能签发权限。单资源默认展开为 `root = DatasetView("sql-result")`。尚在内存且未捕获的 RawSqlResult 不能通过 UI 找回，不能以重新查询冒充读取原结果；因此 helper 用法应在首次确需保留 SQL 结果时随分析指导披露，不成为所有 SQL 调用的额外步骤。
+示例引用必须替换为实际工具回执。Host 校验引用及其文件/附件绑定；任意模型字符串不能签发权限。单资源默认展开为 `root = DatasetView("sql-result")`。尚在内存且未捕获的 DataFrame 不能通过 UI 找回，不能以重新查询冒充读取原结果；因此 helper 用法应在首次确需保留 SQL 结果时随分析指导披露，不成为所有 SQL 调用的额外步骤。
 
 | 快照内容 | 契约 |
 | --- | --- |
-| 字段与值 | 保存列序、唯一字段名、公开后端类型标签和精确编码；NULL、大整数、Decimal、日期/时间按支持范围处理。types 可缺失或不完整，不能当成可直接执行的完整 schema；未知或不支持类型给出诊断，重名列要求在原 SQL 中明确别名 |
-| 查询与展示范围 | 区分 `returned_row_count`、已捕获行数和 capture coverage。捕获全部行只证明这条 SQL 返回集完整；含 LIMIT 或聚合时仍不等于全业务数据，business coverage 保持 unknown，除非另有可核验事实 |
-| 来源与说明 | 捕获原 datasource、backend、已执行 SQL、reason、duration、timeout 和 warnings，以及 Host 原调用/代码引用；按现有凭据处理规则移除 secret，不重新生成 SQL 来伪装来源 |
-| 不存在的 Frame 信息 | 不生成 slot/轴键、Evidence、Findings 或语义 lineage；SQL 中出现同名字段不构成语义对象关联。快照行序只能定位该快照中的行，不成为业务主键或证据身份 |
-| 文件与读取 | 保存不可变类型化快照和完整性信息，交付时纳入文档拥有的文件/附件生命周期；Dataset Reader 只读快照，排序/翻页作用于已保存范围，不连接数据源或使用 Frame cursor |
+| 字段与值 | 保存 DataFrame 列序、唯一字段名与现有 scalar codec 的精确编码；重名、不支持或精度已经不安全的值明确诊断 |
+| 数据与展示范围 | 区分 DataFrame 总行数、已捕获行数和 complete；business coverage 为 unknown，捕获全部 DataFrame 不证明覆盖全业务数据 |
+| 来源与说明 | Host 原调用与代码引用准确保存；SQL、datasource、backend、查询 warnings 等不从 DataFrame 推断，标为 not-captured |
+| 不存在的 Frame 信息 | 不生成 slot/轴键、Evidence、Findings 或语义 lineage；快照行号不成为业务主键或证据身份 |
+| 文件与读取 | 保存类型化快照与完整性信息；P2 交付时纳入 Build 生命周期。Dataset Reader 只读快照，不连接数据源或使用 Frame cursor |
 
-预算内优先捕获完整返回集，超预算时明确保存了哪一部分，或返回范围诊断，不静默宣称完整。查询返回零行是有效空表；单行截断预览不能自动变成 metric。语义覆盖未知不妨碍展示真实结果，但不能凭 UI 展示把 raw_sql 结果提升为已验证指标。
+预算内捕获完整 DataFrame，超预算时保存明确前缀或返回诊断。空表保留列定义，单行截断预览不自动变成 metric。
 
 ### DatasetView 参数与共享呈现
 
@@ -578,7 +581,7 @@ Marivo 已按列与范围分批解码数据，页面脱离完整父数据及 Arr
 | Harness 工具结果/附件快照 | 使用 Harness 合法附件回执及本插件文件/资产读取接缝；需要时在本插件补充物化，不调用 Intelligent UI 的 `ui_attach`。不存在按任意 callId 通读所有工具结果的默认新接口 |
 | 文件计算结果 | 通过授权文件读取和 typed encoding 建立快照；明确 producer 来源，不自动获得 Marivo Evidence |
 | Marivo 持久 Frame | 准确 Workspace/Session/Artifact 与 Runtime binding，使用 Frame Reader |
-| `md.raw_sql` 结果 | 原分析进程内捕获 RawSqlResult，返回插件数据集快照引用；Dataset Reader 读取保存内容，不恢复为 Frame、不重跑 SQL |
+| pandas DataFrame | 原分析进程内显式捕获，返回插件数据集快照引用；Dataset Reader 只读保存内容，不恢复为 Frame、不重跑分析 |
 | MCP | 首期由正常 Agent 工具调用取得结果快照；页面 live 调用须新增经验证的 PageCapability 适配，不能直接转发任意 MCP 工具 |
 | HTTP API | 后续在本插件内按需接入可信只读适配器，参考 PageCapability 的身份与预算设计；不要求复刻 `providerPublications` 配置或调用其服务，私有 API 凭据仍归 Harness |
 
@@ -652,7 +655,7 @@ Marivo 持久 Frame 保存数据、冻结坐标、审计及方法说明，不恢
 
 ### 当前缺口
 
-当前 0.6 的 Frame 投影接缝中新 SQL 来源明确为 `sql-capability-unavailable`；这一限制不适用于 RawSqlResult 自身公开的 sql 字段，其已执行 SQL 可随快照捕获。已有 Build 中的 SQL 快照继续可读。Python `codeRefs` 可关联 Host 执行记录，但执行成功与代码对某 dataset 的业务正确性关联是两件事。
+当前 0.6 的 Frame 投影接缝中新 SQL 来源明确为 `sql-capability-unavailable`；RawSqlResult 虽有公开 sql 字段，但当前 helper 仅接受 DataFrame，不采集该查询元数据。已有 Build 中的 SQL 快照继续可读。Python `codeRefs` 可关联 Host 执行记录，但执行成功与代码对某 dataset 的业务正确性关联是两件事。
 
 当前插件的 [投影程序](../../packages/dsh-data-analysis/src/presentation/projection/program.ts) 仍调用 `evidence_digest()` 并展示 digest/quality/issue 摘要，也在 `frame.to_pandas()` 全量读取后才截断。前者与新 Marivo 公开 API 不兼容，后者尚未使用新有界读取。它们是插件接缝迁移任务，不能要求 Marivo 恢复旧入口。迁移时将数据、审计分别读取及报错，删除不再有公开来源的摘要，不把 Evidence 失败扩大成整份 Frame 不可读。
 
@@ -896,8 +899,8 @@ HTML 目标是同一 Catalog、组件及 Renderer，替换为离线快照 Provid
 
 | 阶段 | 范围 | 完成证据 |
 | --- | --- | --- |
-| S0 契约探针 | 本插件独立接入固定 OpenUI，验证 8 组件子集、父 slot、真实参数流、官方合并、候选隔离与双位置接缝；核验 Frame 读取及 RawSqlResult 捕获边界 | 未安装 Intelligent UI 的环境中验证；Native/PTC 粒度分别记录；确认旧 evidence_digest 迁移范围及 SQL 快照新接缝，不将纯函数探针当作真实交付 |
-| S1 统一快照与增量交付 | 完成 Frame/Dataset Reader 与 SQL capture、auto/table/metric、默认引用呈现、Native 流式预览、语句增量保存、双位置交付及按任务披露 | 简单答案不强制 UI；默认呈现无额外目录/分页调用；真实流、patch、失败恢复、Native/PTC、冷重启、精度与范围、窄宽容器分别验证 |
+| S0 契约探针 | 本插件独立接入固定 OpenUI，验证 8 组件子集、父 slot、真实参数流、官方合并、候选隔离与双位置接缝；核验 Frame 读取及 DataFrame 捕获边界 | 未安装 Intelligent UI 的环境中验证；Native/PTC 粒度分别记录；确认旧 evidence_digest 迁移范围及 SQL 快照新接缝，不将纯函数探针当作真实交付 |
+| S1 统一快照与增量交付 | 完成 Frame/Dataset Reader 与 DataFrame capture、auto/table/metric、默认引用呈现、Native 流式预览、语句增量保存、双位置交付及按任务披露 | 简单答案不强制 UI；默认呈现无额外目录/分页调用；真实流、patch、失败恢复、Native/PTC、冷重启、精度与范围、窄宽容器分别验证 |
 | S2 图表与元数据 | 基于现有 Recharts 逐项接入图形、复杂类型、Evidence/Findings/methods、代码/lineage 与当前对象导航；按需启用原 Frame 在线续读 | 每项公开支持范围；精确 tooltip/完整键点选；无可选元数据正常交付；已读证据不冒充全集合检索；真实 Frame 与成本样例 |
 | S3 按需实时增强 | 参考 PageCapability 在本插件接入必要的只读能力；仅按需求增加 MCP/私有 HTTP 适配或动态快照保存，不搬入整套 Provider 发布系统 | 对实际新增来源验证权限、只读性、取消、预算和参数绑定；不作为 S1/S2 前置条件 |
 | S4 独立导出与兼容 | 新格式同 Renderer 离线导出；按实际保留需求转换旧格式 | 断网验证通过才开放导出；保留旧结果读取；不要求先完成全部转换才能在线交付 |
@@ -923,8 +926,8 @@ TanStack Table/Virtual、ECharts 及更多细粒度领域组件均为需求驱�
 | U05 | 未安装 Intelligent UI 时，本插件独立构建、安装、加载和运行，完成 tool view/tab 交付；构建与运行不读取参考仓库的源码、生成文件或服务 |
 | A01 | UI 无帮助的简单答案直接回复；需要 UI 的单 Frame/数据集快照默认只需一次 marivo_present，无额外 Catalog/UI 回读、模型分页或 rows 复制；需要后续改动时允许有依据的增量提交，不强制大纲/分步调用 |
 | A02 | 仅披露 5 个布局组件与本次所需数据组件；核对实际披露量及调用轨迹，无全量目录/函数/示例回灌。更新使用准确 basedOnRecordId 与变化语句，未改内容不重发；源内容已知不强制 ui_read |
-| D01 | 实际 md.raw_sql 返回结果在原执行内捕获并交付 DatasetView；覆盖空表、NULL、Decimal、大整数、缺失 types 与范围限制，执行进程/数据源关闭后仍能读取已保存快照，打开/分页不重跑 SQL |
-| D02 | RawSqlResult 的完整返回集与捕获前缀、业务覆盖分别显示；SQL/来源/warnings 保留，不伪造 Frame、Evidence 或语义关系；单行截断预览不变成 metric，捕获失败不伪装成功 |
+| D01 | 实际 DataFrame 在原执行内捕获并交付 DatasetView；覆盖空表、NULL、Decimal、大整数与范围限制，执行进程结束后仍能读取已保存快照，打开/分页不重跑分析 |
+| D02 | DataFrame 总行数与捕获前缀分别显示；business 为 unknown，SQL/datasource 为 not-captured，不伪造 Frame、Evidence 或语义关系；单行截断预览不变成 metric，捕获失败不伪装成功 |
 | F01 | 对当前声明支持的轴和类型验证；未支持的复合身份、calendar/interval/paired 或 duration 明确拒绝；NULL、presence、大整数、Decimal 不静默丢失 |
 | F02 | 字段重名、缺失、不合法类型、重复图表键、截断占比、缺失配对均按契约处理 |
 | F03 | 保存/恢复同一 Frame，原行序和固定坐标保持；不因展示加载 Catalog 或重跑来源 |
@@ -949,24 +952,24 @@ TanStack Table/Virtual、ECharts 及更多细粒度领域组件均为需求驱�
 
 ## 待验证边界与文档一致性
 
-首期实施前需要验证的接缝是：固定 OpenUI 的 8 组件子集、父 slot 与提示投影、Native 参数流与增量合并交付、Frame schema/分页及类型覆盖、RawSqlResult 捕获与恢复，以及双位置保存/交付行为。PTC 只按其真实可见粒度验收，不把完整 dispatch 参数描述为生成流。更大 Frame、通用 MCP 页面调用、动态 Query 历史快照和离线 Renderer 分属后续能力，不合并成普通展示的前置清单。本文审阅了源码和契约，并运行固定 lang-core 的合并纯函数探针；未运行插件 Runtime、真实 Host 或重新执行上游测试。
+首期实施前需要验证的接缝是：固定 OpenUI 的 8 组件子集、父 slot 与提示投影、Native 参数流与增量合并交付、Frame schema/分页及类型覆盖、DataFrame 捕获与恢复，以及双位置保存/交付行为。PTC 只按其真实可见粒度验收，不把完整 dispatch 参数描述为生成流。更大 Frame、通用 MCP 页面调用、动态 Query 历史快照和离线 Renderer 分属后续能力，不合并成普通展示的前置清单。本文审阅了源码和契约，并运行固定 lang-core 的合并纯函数探针；未运行插件 Runtime、真实 Host 或重新执行上游测试。
 
 语义对象没有版本控制是已接受的设计前提：本次重构不以固定访问历史语义对象为验收条件。必要的结果读取契约与可选的语义辅助信息分别评估。
 
 本设计按当前代码理解以下已发现不一致，未修改相关文件。其中参考仓库的差异仅作事实记录，不属于本插件实施范围：
 
-1. [展示交付文档](../modules/presentation-delivery.md)仍称 document 与 receipt 均为 schema v2；[当前类型](../../packages/dsh-data-analysis/src/presentation/contracts/types.ts)中 Document 为 v3、Receipt 为 v2。
+1. P1 复核：[展示交付文档](../modules/presentation-delivery.md)与[当前类型](../../packages/dsh-data-analysis/src/presentation/contracts/types.ts)已一致为 Document v3、Receipt v2，初稿的差异记录已过时。
 2. [Intelligent UI AGENTS](../../../dsh-intelligent-ui/AGENTS.md)仍描述 `scriptPublications`；[当前 config](../../../dsh-intelligent-ui/packages/dsh-intelligent-ui/src/config.ts)使用 `providerPublications` 并拒绝旧字段。
 3. [live-surface 注释](../../../dsh-intelligent-ui/packages/dsh-intelligent-ui/src/client/live-surface.tsx)仍称右侧 tab 与主区共享跟随；[当前 artifact-tab](../../../dsh-intelligent-ui/packages/dsh-intelligent-ui/src/client/artifact-tab.tsx)只展示迁移提示。
 4. [RawSqlResult.to_pandas 注释](../../../marivo/marivo/datasource/manage.py)和[部分测试名称](../../../marivo/tests/datasource/test_datasource_raw_sql.py)仍使用 bounded 字样；同文件的 raw_sql 入口说明及取数实现明确为完整加载、没有客户端行/字节 cap。本设计按实际入口契约描述，不从这些字样推断 SQL 有界分页；未修改上游文件。
 
-本次新增的跨仓库接口差异是：[当前投影程序](../../packages/dsh-data-analysis/src/presentation/projection/program.ts)仍使用 `evidence_digest()`，而 Marivo `17c29ef9a9` 已移除此入口，改为 `evidence()` 分页且不再公开这些 digest 摘要。同一个 `0.6.0.dev0` 字符串不足以证明兼容；新 Reader 接入时需验证实际安装内容并迁移相关调用。本次只记录和更新设计，没有修复执行代码。
+本次新增的跨仓库接口差异是：[当前投影程序](../../packages/dsh-data-analysis/src/presentation/projection/program.ts)仍使用 `evidence_digest()`，而 Marivo `17c29ef9a9` 已移除此入口，改为 `evidence()` 分页且不再公开这些 digest 摘要。同一个 `0.6.0.dev0` 字符串不足以证明兼容；新 Reader 接入时需验证实际安装内容并迁移相关调用。P1 已迁移执行代码到 schema/read_page，旧 digest 不再是数据读取前置条件。
 
 此外，旧语义展示标签与新 Frame 投影的接线缺口按“元数据关联”章节处理，不把旧代码存在当作当前功能已贯通。
 
-设计与当前实现的接线差距包括：`marivo_ui_read`、DatasetView、SQL capture 是拟议入口；现有 marivo_present 尚无默认引用呈现、Lang 流式/增量保存映射。本插件也尚未接入参考实现的 PageCapability/业务 Query，现有 HTML 导出不使用 OpenUI Renderer。这些是本插件待实施或后续工作，不描述为 Harness 已有功能，也不要求修改 Intelligent UI。Marivo 公开数据存在不能证明插件已接通或 Runtime 已验收；RawSqlResult 的来源读取与 Frame 的 SQL provenance 缺口分别处理。
+设计与当前实现的接线差距包括：`marivo_ui_read`、DatasetView 是拟议入口；P1 已实现 DataFrame capture（RawSqlResult 不在输入范围）；现有 marivo_present 尚无默认引用呈现、Lang 流式/增量保存映射。本插件也尚未接入参考实现的 PageCapability/业务 Query，现有 HTML 导出不使用 OpenUI Renderer。这些是本插件待实施或后续工作，不描述为 Harness 已有功能，也不要求修改 Intelligent UI。Marivo 公开数据存在不能证明插件已接通或 Runtime 已验收；RawSqlResult 的来源读取与 Frame 的 SQL provenance 缺口分别处理。
 
-UI 选型参考已经核对的固定包和代码，不以官方最新网页示例替代本插件安装后的验证。官方 Table 的动态 pluck 示例与参考插件的 render-slot 准入范围不同，属于接入策略差异；`Renderer.Content` 和默认 Renderer 的部分失败行为也须分别判断。首期 8 组件 Catalog、提示投影、纯呈现代码复用与同主题接入仍是本插件设计目标，当前没有生成这些子集或实测其模型效果；本次未修改组件、依赖或生成目录。
+UI 选型参考已经核对的固定包和代码，不以官方最新网页示例替代本插件安装后的验证。官方 Table 的动态 pluck 示例与参考插件的 render-slot 准入范围不同，属于接入策略差异；`Renderer.Content` 和默认 Renderer 的部分失败行为也须分别判断。首期 8 组件 Catalog、提示投影、纯呈现代码复用与同主题接入仍是本插件设计目标，P0 已生成并验证这些子集与真实 Host 接缝，尚未实测真实模型效果；领域组件仍为占位。
 
 ## 参考与源码入口
 

@@ -141,6 +141,10 @@ export function createMarivoAgentInstallation(
           datasourceSource,
           credentialService,
           options.pythonOptionsSource ?? pythonOptions,
+          () => {
+            const workspace = resolvePresentationWorkspace(ctx, String(agent.session.id))
+            return { workspaceId: workspace.id, projectRoot: workspace.path }
+          },
         ),
       )
       controller.addDisposer(() => credentialService.disposeAgent(agent))

@@ -74,6 +74,7 @@
     "validate:python-settings:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-settings-web.ts",
     "generate:analysis-catalog": "node packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs",
     "test:unified-analysis-ui": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/unified-analysis-ui/*.test.ts",
+    "validate:unified-analysis-ui:p1": "node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/runtime-p1.ts",
     "validate:unified-analysis-ui:runtime": "node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/runtime.ts",
     "validate:unified-analysis-ui:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/web.ts"
   },

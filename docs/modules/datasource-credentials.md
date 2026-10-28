@@ -189,7 +189,9 @@ Session 和 reader 应在该 scope 内创建或恢复。固定测试沿用 snaps
 
 Python 通过 DSH Shell 服务继承前台执行、沙箱策略、限制和取消能力；普通 Shell 不获得 datasource 值。
 独立 launcher 在 DSH 输出落盘前捕获 worker 的 stdout/stderr，分别限制到 1 MiB 并执行 exact-value
-脱敏，覆盖原始文件描述符输出和 traceback。快照不进入 argv、环境、日志或结果，结束时清理 Host 引用。
+脱敏，覆盖原始文件描述符输出和 traceback。launcher 在用户 stderr 前添加独立的捕获状态头，
+Host 消费并移除该头；该状态不改变原 worker 退出码，也不从用户输出推断捕获是否成功。
+manifest 写盘失败单独报告 snapshotCaptureError，成功执行仍可保存 codeRef。快照不进入 argv、环境、日志或结果，结束时清理 Host 引用。
 这保护正常执行中的凭证传递与意外输出；允许使用凭证的 Python 本身不是不可读取凭证的隔离边界。
 
 ## 管理操作与并发

@@ -295,11 +295,13 @@ def test_failed_replace_preserves_existing_file_and_cleans_temp(
 def test_public_surface_has_only_writer_and_result_types() -> None:
     import dsh_data_analysis_presentation as package
 
-    assert package.__version__ == "1.1.0"
+    assert package.__version__ == "1.2.0"
     assert package.__all__ == [
         "DatasetWriteReceipt",
         "PresentationDatasetError",
         "write_dataset",
+        "DatasetCaptureReceipt",
+        "capture_dataset",
     ]
     assert not any(
         hasattr(package, name)

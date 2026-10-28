@@ -44,7 +44,18 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
     },
     async execute(spec: ShellExecSpec) {
       launches.push(spec)
-      return { result: hooks.result }
+      return {
+        result: async () => {
+          const result = await hooks.result()
+          return {
+            ...result,
+            stderr: {
+              ...result.stderr,
+              text: '{"marivoCaptureStatus":1,"failed":false}\n' + result.stderr.text,
+            },
+          }
+        },
+      }
     },
   }
   const services = new Map<string, unknown>([
