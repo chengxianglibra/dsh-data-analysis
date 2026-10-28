@@ -1,0 +1,186 @@
+import type { ElementNode } from '@openuidev/lang-core'
+import { z } from 'zod'
+import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
+import { parseAnalysisProgram } from './analysis-program.ts'
+import { parsePresentationBuildId, parsePresentationDocument } from './index.ts'
+import { parseAnalysisSnapshot } from './snapshot.ts'
+import { PRESENTATION_BUDGETS } from './types.ts'
+
+export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v1'
+const id = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
+const text = z.string().min(1).max(512)
+export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('marivo-frame'), sessionId: text, artifactId: text }),
+  z.strictObject({ kind: z.literal('dataset-snapshot'), snapshotRef: z.string().max(512) }),
+  z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
+])
+export const analysisPresentInput = z.strictObject({
+  surface: z.enum(['tool', 'tab']).default('tool'),
+  resources: z.record(id, analysisResourceDeclaration).default({}),
+  title: z.string().min(1).max(256).default('Analysis'),
+  locale: z.enum(['zh-CN', 'en-US']).default('zh-CN'),
+  program: z.string().min(1).max(PRESENTATION_BUDGETS.text).optional(),
+})
+export type AnalysisPresentInput = z.infer<typeof analysisPresentInput>
+export type AnalysisResourceDeclaration = z.infer<typeof analysisResourceDeclaration>
+const resource = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('snapshot'),
+    declaration: analysisResourceDeclaration,
+    snapshot: z.unknown().transform(parseAnalysisSnapshot),
+    binding: z.strictObject({
+      workspaceId: text,
+      runtimeFingerprint: text.optional(),
+      codeRef: z
+        .strictObject({
+          executionId: z.string().uuid(),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .optional(),
+      sessionId: text.optional(),
+      callId: text.optional(),
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal('image'),
+    declaration: z.strictObject({
+      kind: z.literal('image-file'),
+      path: z.string().min(1).max(4096),
+    }),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+    dataUrl: z
+      .string()
+      .max(PRESENTATION_BUDGETS.datasetBytes * 2)
+      .regex(/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+])
+const schema = z.strictObject({
+  schemaVersion: z.literal(ANALYSIS_UI_FORMAT),
+  workspaceId: text,
+  reportId: id,
+  buildId: id,
+  recordId: text,
+  title: z.string().min(1).max(256),
+  locale: z.enum(['zh-CN', 'en-US']),
+  generatedAt: z.string().datetime({ offset: true }),
+  catalog: z.strictObject({
+    id: z.literal(analysisCatalogId),
+    build: z.literal(analysisCatalogBuild),
+  }),
+  program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
+  resources: z.record(id, resource),
+})
+export type AnalysisDocument = z.infer<typeof schema>
+export type AnalysisResource = z.infer<typeof resource>
+export type SavedPresentation = AnalysisDocument | ReturnType<typeof parsePresentationDocument>
+export function analysisRecordId(reportId: string, buildId: string): string {
+  return `marivo-ui:${parsePresentationBuildId(reportId)}:${parsePresentationBuildId(buildId)}`
+}
+export function parseAnalysisRecordId(value: unknown) {
+  if (typeof value !== 'string') throw new Error('invalid-analysis-record-id')
+  const match = /^marivo-ui:([a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)$/.exec(value)
+  if (!match) throw new Error('invalid-analysis-record-id')
+  return {
+    reportId: parsePresentationBuildId(match[1]),
+    buildId: parsePresentationBuildId(match[2]),
+  }
+}
+export function analysisElements(root: ElementNode): ElementNode[] {
+  const nodes: ElementNode[] = []
+  const walk = (node: ElementNode) => {
+    nodes.push(node)
+    if (nodes.length > PRESENTATION_BUDGETS.blocks) throw new Error('analysis-program-budget')
+    for (const value of Object.values(node.props)) {
+      for (const child of Array.isArray(value) ? value : [value]) {
+        if (child && typeof child === 'object' && child.type === 'element') walk(child)
+      }
+    }
+  }
+  walk(root)
+  return nodes
+}
+export function validateAnalysisResources(
+  program: string,
+  resources: AnalysisDocument['resources'],
+) {
+  for (const node of analysisElements(parseAnalysisProgram(program))) {
+    if (node.typeName === 'Image') {
+      if (typeof node.props.src !== 'string' || resources[node.props.src]?.kind !== 'image')
+        throw new Error('analysis-image-resource-invalid')
+    }
+    if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
+    const source = resources[String(node.props.ref)]
+    if (
+      source?.kind !== 'snapshot' ||
+      source.snapshot.kind !== (node.typeName === 'AnalysisFrameView' ? 'frame' : 'dataset')
+    )
+      throw new Error('analysis-data-resource-invalid')
+    const view = node.props.view as
+      | { chart: string; columns?: string[]; encoding?: { value: string } }
+      | undefined
+    const columns = source.snapshot.data.columns.map((c) => c.id)
+    if (
+      view?.chart === 'table' &&
+      view.columns &&
+      (!view.columns.length ||
+        new Set(view.columns).size !== view.columns.length ||
+        view.columns.some((c) => !columns.includes(c)))
+    )
+      throw new Error('analysis-columns-invalid')
+    if (
+      view?.chart === 'metric' &&
+      (!source.snapshot.coverage.complete ||
+        source.snapshot.data.rowCount !== 1 ||
+        !columns.includes(view.encoding?.value ?? ''))
+    )
+      throw new Error('analysis-metric-requires-complete-single-row')
+  }
+}
+export function parseAnalysisDocument(value: unknown): AnalysisDocument {
+  if (new TextEncoder().encode(JSON.stringify(value)).length > PRESENTATION_BUDGETS.documentBytes)
+    throw new Error('analysis-document-budget')
+  const result = schema.parse(value)
+  if (
+    result.recordId !== analysisRecordId(result.reportId, result.buildId) ||
+    Object.keys(result.resources).length > PRESENTATION_BUDGETS.datasets
+  )
+    throw new Error('analysis-document-identity-invalid')
+  for (const item of Object.values(result.resources)) {
+    if (item.kind !== 'snapshot') continue
+    if (item.binding.workspaceId !== result.workspaceId)
+      throw new Error('analysis-resource-owner-invalid')
+    if (item.declaration.kind === 'marivo-frame') {
+      if (
+        item.snapshot.kind !== 'frame' ||
+        !item.binding.runtimeFingerprint ||
+        item.declaration.sessionId !== item.snapshot.source.sessionId ||
+        item.declaration.artifactId !== item.snapshot.source.artifactId
+      )
+        throw new Error('analysis-resource-owner-invalid')
+    } else if (
+      item.declaration.kind !== 'dataset-snapshot' ||
+      item.snapshot.kind !== 'dataset' ||
+      !item.binding.codeRef ||
+      !item.binding.sessionId ||
+      !item.binding.callId
+    )
+      throw new Error('analysis-resource-owner-invalid')
+  }
+  validateAnalysisResources(result.program, result.resources)
+  return result
+}
+export function parseSavedPresentation(value: unknown): SavedPresentation {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'schemaVersion' in value &&
+    value.schemaVersion === ANALYSIS_UI_FORMAT
+  )
+    return parseAnalysisDocument(value)
+  return parsePresentationDocument(value)
+}

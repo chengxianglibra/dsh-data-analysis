@@ -2,7 +2,7 @@
 
 ## 状态、范围与实施原则
 
-状态：P0 接缝与 P1 数据入口已实施，P2–P3 待实施。日期：2026-10-28。依据：[统一分析 UI 重构设计](unified-analysis-ui.md)。
+状态：P0–P2 已实施，P3 待实施。日期：2026-10-28。依据：[统一分析 UI 重构设计](unified-analysis-ui.md)。
 
 先用现有存储、执行和精确数据展示能力完成一个可用的统一快照展示流程，再扩展图表、元数据和实时来源。本文将设计中的 S0/S1 拆成 P0–P3 四个实施阶段；P1/P2 是内部交付节点，P3 完成后才算首期交付，不能把流式更新或直接 SQL 展示推迟后仍宣称首期完成。
 
@@ -12,7 +12,7 @@
 
 - UI 有助于用户理解、比较或检查数据时使用 `marivo_present`；简单答案直接回复。
 - 普通 UI 在 tool view，明确要求的报告/dashboard 在右侧 tab；共用 Lang、Catalog、Renderer 和数据呈现。
-- 支持持久 Frame、DataFrame 捕获快照及受支持的文件/图片快照。单个结果可只传引用，默认一次 `marivo_present`，不增加目录查询、模型分页或成功后回读。
+- 支持持久 Frame、DataFrame 捕获快照及 Workspace 内的图片文件。CSV 等文件数据结果在原分析中读成 DataFrame 后捕获，不另设文件快照类型。单个结果可只传引用，默认一次 `marivo_present`，不增加目录查询、模型分页或成功后回读。
 - 首期 Catalog 固定为 `AnalysisFrameView`、`DatasetView`、`Stack`、`TextContent`、`Card`、`Tabs`、`TabItem`、`Image`。两类数据组件仅支持 auto/table/metric。
 - 支持 Native 真实参数流预览及官方语句增量更新；PTC 按当前真实可见粒度交付，不承诺生成期逐片预览。
 - 保存完整不可变版本并能重新打开。历史语义对象定义、动态业务读取和新格式离线导出不作为首期条件。
@@ -21,21 +21,21 @@
 
 ## 当前代码起点与复用方式
 
-下列为最初源码核对的起点（P0/P1 当前状态见各阶段实施记录），均在本仓库内。新模块名称在实施时可调整，但责任不另起一套。
+下表是实施前的复用起点，均在本仓库内；标注“P1 已完成”的行已由对应阶段落地，当前状态以代码和阶段验收记录为准。新模块名称在实施时可调整，但责任不另起一套。
 
 | 现有位置 | 复用与改造 |
 | --- | --- |
 | [presentation/tool.ts](../../packages/dsh-data-analysis/src/presentation/tool.ts) | 保留 `marivo_present` 名称，替换 Draft 输入和编排；新写入只走 Lang/资源路径 |
-| [projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts)、[program.ts](../../packages/dsh-data-analysis/src/presentation/projection/program.ts) | 保留 bound Runtime 执行接缝，改为公开 schema 与分页读取，移除旧 `evidence_digest()` 依赖 |
-| [presentation-kit](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/__init__.py)、[typed codec](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_dataset.py) | 复用精确编码与现有预算，增加原执行进程内的数据集捕获；不复制一套编码实现 |
-| [datasource/python.ts](../../packages/dsh-data-analysis/src/datasource/python.ts)、[Python 执行记录](../../packages/dsh-data-analysis/src/python-execution.ts) | 在现有成功执行回执处增加快照收据与原调用关联，继续使用原 Shell/凭据/取消边界 |
+| [projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts)、[program.ts](../../packages/dsh-data-analysis/src/presentation/projection/program.ts) | P1 已完成：保留 bound Runtime 执行接缝，改为公开 schema 与分页读取，移除旧 `evidence_digest()` 依赖 |
+| [presentation-kit](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/__init__.py)、[typed codec](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_dataset.py) | P1 已完成：复用精确编码与现有预算，增加原执行进程内的数据集捕获；不复制一套编码实现 |
+| [datasource/python.ts](../../packages/dsh-data-analysis/src/datasource/python.ts)、[Python 执行记录](../../packages/dsh-data-analysis/src/python-execution.ts) | P1 已完成：在现有成功执行回执处增加快照收据与原调用关联，继续使用原 Shell/凭据/取消边界 |
 | [commit.ts](../../packages/dsh-data-analysis/src/presentation/commit.ts)、[reports.ts](../../packages/dsh-data-analysis/src/presentation/reports.ts)、[build](../../packages/dsh-data-analysis/src/presentation/build/index.ts) | 复用 Build 文件、原子提交、历史和 current 条件更新；这些函数目前耦合旧 Document 类型，需要局部适配，不能原样套新 envelope |
 | [files.ts](../../packages/dsh-data-analysis/src/presentation/files.ts)、[rpc.ts](../../packages/dsh-data-analysis/src/presentation/rpc.ts) | 复用 Workspace 文件读取、路径预算和 RPC，增加新文档/快照读取分支，不另建文件服务 |
 | [DatasetTable](../../packages/dsh-data-analysis/src/client/presentation/table.tsx)、[chart-renderer](../../packages/dsh-data-analysis/src/client/presentation/chart-renderer.tsx) | 提取或适配纯呈现、精确格式化代码；首期复用表格，图形在后续按需求接入，不包装整个旧 Reader |
 | [client.tsx](../../packages/dsh-data-analysis/src/client.tsx)、[right-tabs](../../packages/dsh-data-analysis/src/client/right-tabs/install.tsx)、[delivery](../../packages/dsh-data-analysis/src/presentation/delivery.ts) | 增加 marivo_present 的 tool view，改造已有报告 tab；保留持久事件和 PTC 归属接缝 |
 | [plugin-agents.ts](../../packages/dsh-data-analysis/src/plugin-agents.ts)、[presentation Skill](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md) | 更新触发策略、引用呈现、Lang 与 patch 指导，删除新路径的 Draft 必经步骤 |
 
-初稿核对时开发依赖固定 Harness `0.1.7-rc.1`；设计参考过的相邻 Harness 源码不能直接证明该安装基线具备所需接口。另一个 [0.2.0 集成设计](dsh-0.2.0-integration.md)也尚未实施。P0 核实本任务真正需要的公开接缝，必要时调整本插件一致的依赖基线，不把该设计中的其他功能一并纳入。
+Harness 开发依赖与全部 DSH peers 的基线为 `0.2.1-rc.2`（P0 因 `PartialArguments.textPrefix` 提高）。低于该版本的 Host 无法安装新插件，这一兼容性变化需写入发布说明；`0.2.1` 正式版发布后，在首期对外发布前把开发依赖和 peer 下限切换到正式版并重跑包验证，不以 rc 版作为对外最低要求。只调整本任务需要的公开接缝，不把 [0.2.0 集成设计](dsh-0.2.0-integration.md)中的其他功能一并纳入。
 
 ## 阶段总览
 
@@ -46,7 +46,7 @@
 | P2 统一呈现闭环 | 8 组件、新文档保存、默认引用、双位置 | S1 呈现部分 | 同一真实结果能从 marivo_present 保存、展示和重开 |
 | P3 流式、增量与使用指导 | 真实参数流、官方 patch、精简提示、首期验收 | S1 完成 | 首期面向用户的完整路径成立 |
 | P4 按需求增加图表与元数据 | 优先 line/bar 与来源/证据入口 | S2 | 对实际开放的能力逐项证明正确性 |
-| P5 独立增强 | 离线导出、特定实时来源、旧格式转换等 | S3/S4 | 每个被选择的增强独立交付，不拖入首期 |
+| P5 独立增强 | 离线导出、特定实时来源、Frame 在线续页、旧格式转换等 | S3/S4 及设计 S2 中的在线续读 | 每个被选择的增强独立交付，不拖入首期 |
 
 阶段按依赖推进，不为每个阶段建立新的长期功能开关、发布包或文档协议。实施提交可分阶段审阅，首期对用户开放以 P3 的完成条件为准。
 
@@ -76,9 +76,7 @@ P0 留一份简短的版本与探针结果即可，后续复用相同样例。�
 
 **Frame 路径。** 改造现有 projection：恢复准确 Session/Artifact，先读 schema，再按视图需要选列和读取必要页。将实际 layout、完整坐标、精确值、已读范围转换成统一投影。首期复用当前 typed dataset 的规模预算和支持类型，超出时保存明确预览或返回范围诊断，不自动读取所有页。无需模型管理 cursor，也不从私有文件重建分页。
 
-**Dataset 路径。** 按 2026-10-28 用户最新决策，presentation-kit 的 `capture_dataset(frame)` 只接受
-pandas DataFrame，不支持 RawSqlResult。复用现有 scalar codec 与受控文件写入，保留 DataFrame 已有精确值；
-不负责结果转为 DataFrame 时的推断或精度修复，也不推断 SQL/datasource 元数据。
+**Dataset 路径。** 按用户决策，presentation-kit 的 `capture_dataset(frame)` 只接受 pandas DataFrame，不支持 RawSqlResult。复用现有 scalar codec 与受控文件写入，精确保存捕获时 DataFrame 中的值。结果转为 DataFrame 时的类型推断由原分析负责：例如 `RawSqlResult.to_pandas()` 会把含 NULL 的整数列推断为 `float64`，超过 2^53 的整数随之舍入。该损失按用户决策接受，helper 不检测、不修复，也不推断 SQL/datasource 元数据。
 
 **同次执行回执。** helper 在原 Python 执行中写入 Workspace 的受控快照文件。为现有 Python worker 增加一个可选的本次捕获收据回传，Host 在执行成功后读取并绑定文件、Workspace、调用及 codeRef，返回 `snapshotRef`。使用已有文件接缝和明确的结构化清单，不从任意 stdout 或 `.show()` 文本猜结果，不增加模型工具调用或后台扫描服务。未调用捕获 helper 的执行保持原路径。
 
@@ -95,9 +93,7 @@ pandas DataFrame，不支持 RawSqlResult。复用现有 scalar codec 与受控�
 - Review 回归覆盖时间轴边界、ns 时间值的实际精度、未选中不支持类型与完整键检查；不缩窄原 scalar codec 的支持范围。
 - 旧 Evidence 入口不再是新 Frame 数据读取的前置条件。
 
-P1 已落地 `AnalysisSnapshot` v1、有界 Frame Reader、DataFrame capture、Host 执行记录绑定及只读快照恢复。
-helper 已升至 1.2.0；新快照尚未接入 marivo_present/Build/Client。实际版本、检查与支持范围见
-[P1 验收记录](../testing/unified-analysis-ui-p1-2026-10-28.md)。
+P1 已落地 `AnalysisSnapshot` v1、有界 Frame Reader、DataFrame capture、Host 执行记录绑定及只读快照恢复，helper 为 1.2.0。实际版本、检查与支持范围见 [P1 验收记录](../testing/unified-analysis-ui-p1-2026-10-28.md)。
 
 P1 不需要浏览器验收或全数据源矩阵。一个本地真实 Runtime 样例配合 codec/读取测试足够证明该阶段；性能只观察样例是否符合现有预算，不新建 benchmark 项目。
 
@@ -107,22 +103,30 @@ P1 不需要浏览器验收或全数据源矩阵。一个本地真实 Runtime �
 
 **文档与保存。** 在现有 `presentation/contracts` 附近增加新 envelope 的单一类型声明，保存 program、Catalog identity、resources 和实际快照依据。设计中的 documentId 对应现有 reportId，revision 对应 buildId；对模型只提供一个可解析这对身份的 recordId，不新增一套 ID 数据库或全目录检索。
 
-在现有 build/commit/reports 中局部拆开文档解析、序列化与内容格式判断，继续使用现有不可变 Build、current 条件检查和历史服务。新版本保存时将快照内容放入 Build 管理的文件/附件生命周期，不能长期依赖一次执行的临时目录。旧文档按自身版本交给旧只读 Reader；新写入不再生成 block Draft。不建设自动迁移引擎。
+在现有 build/commit/reports 中局部拆开文档解析、序列化与内容格式判断，继续使用现有不可变 Build、current 条件检查和历史服务。旧文档按自身版本交给旧 Reader，保留已有呈现编辑兼容；新写入不再生成 block Draft。不建设自动迁移引擎。
 
-**一套组件。** 完成 P0 的两个占位组件，共用 `DatasetTable` 的精确呈现与一个单值视图。AnalysisFrameView 增加 Frame 结构和来源入口，DatasetView 显示 SQL/文件来源及范围。首期仅实现有用的表格选列、本地排序、翻页、复制和范围提示；图例、点选等随图形阶段接入。对外仍是 8 个组件，内部控件不注册为模型节点。
+**快照存储与生命周期。** 每个 Build 的文档内嵌本版本用到的全部快照和图片，受现有 `documentBytes` 预算约束；不跨 Build 引用文件，删除或损坏旧 Build 不影响新版本。P3 的 patch 复用原快照时，把基版本已内嵌的内容复制进新 Build，不重新读取来源，因此每个版本的存储与资源量成正比。Workspace 中 `.dsh-data-analysis/captures/<id>/` 的捕获文件只是签发引用前的中间产物，新文档不依赖它们。首期不自动清理未被呈现的捕获，也不清理历史 Build；需要回收空间时另行设计显式清理，不在保存路径中隐式删除。
+
+**普通结果与报告目录。** 每次成功的 `marivo_present` 都保存为一个 report/Build，tool view 结果也不例外，这样历史 tool view 才能按准确 recordId 重开。surface 属于 Delivery，记录在交付回执中，不进入文档内容。右侧报告目录按最近一次交付的 surface 区分“报告”和“对话结果”，默认只列出报告，对话结果另设入口查看，避免普通 UI 挤满报告目录。
+
+**一套组件。** 完成 P0 的两个占位组件，共用 `DatasetTable` 的精确呈现与一个单值视图。AnalysisFrameView 增加 Frame 结构和来源入口。DatasetView 显示原调用与 codeRef 来源、总行数/捕获行数及范围；首期不支持 SQL 来源，SQL、datasource、backend 与 warnings 显示为 not-captured。首期仅实现有用的表格选列、本地排序、翻页、复制和范围提示；图例、点选等随图形阶段接入。对外仍是 8 个组件，内部控件不注册为模型节点。
 
 **一个 Surface、两个薄适配器。** 新共享 Surface 只接收文档、运行上下文和已保存资源读取回调；tool view 负责准确调用的挂载，右侧 tab 负责标题、地址与打开。组件不直接访问 Store、MCP 或任意 URL。先用所属视图内的普通 React 状态保存必要阅读状态，位置切换可重挂同一组件；没有 live 写入需求时不做活动实例竞争、跨窗口同步或通用控制器。
 
-**替换 marivo_present 的输入编排。** 默认单 Frame/数据集快照分别展开成 AnalysisFrameView/DatasetView；自定义页面直接接收 Lang。表格 rows 不进入 program。按声明的 surface 保存并交付，默认 tool，明确报告/dashboard 为 tab。保持原结果回执、PTC 归属和 Headless 行为；读取失败不生成成功文档。
+**替换 marivo_present 的输入编排。** 资源声明首期只有三类：`marivo-frame`、`dataset-snapshot` 和 `image-file`（Workspace 内的 PNG/JPEG/GIF/WebP）。图片在准入时校验路径与类型并读入 Build，不接受任意 URL。默认单 Frame/数据集快照/图片分别展开成 AnalysisFrameView/DatasetView/Image；自定义页面直接接收 Lang。表格 rows 不进入 program。按声明的 surface 保存并交付，默认 tool，明确报告/dashboard 为 tab。保持原结果回执、PTC 归属和 Headless 行为；读取失败不生成成功文档。
 
-**最小辅助入口。** 提供一个按准确 recordId 读取 UI 定义与必要 schema 的 `marivo_ui_read`，供基版本上下文缺失时使用，不默认回读。8 组件的紧凑签名由同一 Catalog 生成并放入按需 presentation Skill；首期先不建立通用 Catalog 搜索工具，只有实际出现无法用已有披露覆盖的查询需求时再增加定向 `marivo_ui_catalog`。
+**最小辅助入口。** 提供一个按准确 recordId 读取 UI 定义与必要 schema 的 `marivo_ui_read`，供基版本上下文缺失时使用，不默认回读。8 组件的紧凑签名由同一 Catalog 生成并放入按需 presentation Skill。首期不提供 `marivo_ui_catalog`，提示和 Skill 也不引用它；只有实际出现已有披露无法覆盖的查询需求时，才作为新能力增加。
 
 ### 验收标准
 
 - 两个真实结果各自只传引用即可保存和展示；同一已保存版本在 tool view 与 tab 中数据、精确值和组件一致，切换不重新分析。
 - 一个 Stack/Card/Tabs 组合覆盖两类数据组件与合法图片，窄 tool view 和宽 tab 均可读；未支持组件不能借嵌套 slot 绕过准入。
-- 重开及一次冷重启后可读取保存的快照；原 SQL 连接关闭不影响查看。错误引用或必要数据读取失败不会覆盖旧版本。
+- 重开及一次冷重启后可读取保存的快照；原 SQL 连接关闭、删除 Workspace 捕获目录都不影响查看。错误引用或必要数据读取失败不会覆盖旧版本。
+- tool 结果不出现在默认报告列表中，tab 报告出现；两者都可按 recordId 重开。
 - 新旧文档按明确版本分派，旧文件保留。首期新格式不支持的导出/发布/旧编辑入口应明确不可用，不能传给旧 block Reader 假装兼容。
+
+P2 已落地 `dsh.analysis-ui/v1`、Build 内嵌资源、默认引用、共享 AnalysisSurface、tool/tab 与准确 recordId 读取。
+实际证据及限制见[P2 验收记录](../testing/unified-analysis-ui-p2-2026-10-28.md)。
 
 P2 是新静态呈现闭环，不是首期最终交付。流式生成与 patch 接线继续在 P3 完成；不为中间阶段对用户维护第二条长期创建路径。
 
@@ -130,17 +134,17 @@ P2 是新静态呈现闭环，不是首期最终交付。流式生成与 patch �
 
 ### 阶段任务与实现方式
 
-**真实生成流。** tool view 从所属 Native ToolCallBlock 的公开 PartialArguments 读取 program 前缀，交给同一 Renderer。生成途中仅显示可解析内容、已授权基版本快照和占位，不发起新业务读取。自定义 program 的指导将 surface、basedOnRecordId 和资源声明放在前面，有利于尽早确定目标；元信息未确定时保留准备状态。默认引用模式直接生成短 Lang 并显示真实读取进度，不制造字符动画。
+**真实生成流。** tool view 从所属 Native ToolCallBlock 的公开 PartialArguments 读取 program 前缀，交给同一 Renderer。生成途中仅显示可解析内容、已授权基版本快照和占位，不发起新业务读取。工具 schema 的属性按 `surface`、`basedOnRecordId`、`resources`、`title`、`program` 排列，示例和指导也按这个顺序书写，以便尽早确定目标。顺序只是建议，不能依赖：元信息未确定时保留准备状态；surface 在 program 之后才到达时，tab 在保存成功后打开，不回补生成期预览，也不计为失败。默认引用模式直接生成短 Lang 并显示真实读取进度，不制造字符动画。
 
 报告使用绑定准确 call 的临时候选 tab；保存成功后转为准确 recordId。失败或取消时保留旧成功版本，新建候选明确未保存。tool view 不同时挂载第二份报告 Renderer。PTC 沿用真实 dispatch/结果归属，不解析 run_code 源码或模拟不存在的子调用参数流。
 
 **官方增量。** `basedOnRecordId` 存在时，将完整到达的 patch 用固定版 `mergeStatements` 合并到准确基版本；对合并后的完整文档执行一次正式校验、资源计划和条件保存。相同资源的展示修改复用原快照，不重新启动 Python。半截 patch 不进入正式合并，不覆盖 current；新版本独立可读，不要求历史 patch 回放。现有保存冲突检查继续承担并发保护，不再增加一套锁或自动重试算法。
 
-**简化模型路径。** 同步 Agent 提示、presentation/files Skill 及相关示例：先判断 UI 是否有帮助；默认传引用；自定义时才学习 Lang；更新只提交变化语句。首次确需保留 SQL 结果时在原分析脚本中使用 capture；不为每条 SQL 强制捕获。已知基版本和签名时不查询辅助工具，不要求先大纲后补全，也不要求保存后再读。按实际结果检查一次披露量与调用轨迹即可，不建设提示评测平台。
+**简化模型路径。** 同步 Agent 提示、presentation/files Skill 及相关示例：先判断 UI 是否有帮助；默认传引用；自定义时才学习 Lang；更新只提交变化语句。首次确需保留 SQL 结果时，在原分析脚本中转成 DataFrame 后使用 capture，并说明转换可能改变整数/NULL 列的类型；不为每条 SQL 强制捕获。已知基版本和签名时不查询辅助工具，不要求先大纲后补全，也不要求保存后再读。按实际结果检查一次披露量与调用轨迹即可，不建设提示评测平台。
 
 默认引用用法直接由工具 schema 和简短呈现指导提供，不为单结果呈现强制额外读取 presentation Skill；只有编写自定义 Lang、捕获新的结果类型或修改页面需要更多说明时，才按需加载对应内容。
 
-**完成分发与文档同步。** 新 Python helper 按现有 presentation-kit 构建方式更新 wheel、版本/身份检查和分发清单；OpenUI client 资源进入本插件构建，纯 Host 校验不导入 React。更新架构、相关模块文档、使用说明和验收记录，保证原 Draft 示例不再指向新写入路径。只读旧 Reader 保留在明确的旧格式入口。
+**完成分发与文档同步。** 新 Python helper 按现有 presentation-kit 构建方式更新 wheel、版本/身份检查和分发清单；OpenUI client 资源进入本插件构建，纯 Host 校验不导入 React。更新架构、相关模块文档、使用说明和验收记录，保证原 Draft 示例不再指向新写入路径。旧 Reader 及已有呈现编辑兼容保留在明确的旧格式入口。
 
 ### 验收标准
 
@@ -207,14 +211,10 @@ Frame 元数据按公开接口读取 Evidence/Findings/methods/lineage，界面�
 
 ## 保留的约束与本次不做的设计
 
-最小实现仍需守住四条实际边界：数据精度与范围不造假；只读取所属 Workspace/调用已准入的资源；失败/中断不覆盖已保存版本；来源缺失不伪装成证明。分别在 codec/Reader、Host 资源准入、现有保存服务和组件说明处处理，不在每个组件重复建防护层。
+最小实现仍需守住四条实际边界：数据精度与范围不造假（以捕获时的 Frame/DataFrame 为准，捕获前的类型转换损失见 P1 Dataset 路径）；只读取所属 Workspace/调用已准入的资源；失败/中断不覆盖已保存版本；来源缺失不伪装成证明。分别在 codec/Reader、Host 资源准入、现有保存服务和组件说明处处理，不在每个组件重复建防护层。
 
 首期不实现通用 provenance 图、语义对象版本控制、自动推断业务覆盖、跨窗口状态同步、Exactly-once 交付、任意远程组件、Catalog 自动安装或整套 live Query 平台。预算先复用现有常量；Catalog 只服务已验证的组件，不把未来参数提前塞进模型提示。
 
 ## 文档同步与交付记录
 
-实施过程中，当前行为仍以代码为准，不能因为本文有计划就改写为“已支持”。P3 同步相关模块文档及[验证指南](../validation.md)，按阶段记录完成项、实际证据与剩余工作；P4/P5 只更新实际开放的能力。
-
-已复核：[presentation-delivery](../modules/presentation-delivery.md)与[当前类型](../../packages/dsh-data-analysis/src/presentation/contracts/types.ts)均为 Document v3、Receipt v2；初稿记录的版本差异已过时，不应据此设计新 envelope。其他上游说明差异与来源边界见[设计文档的一致性记录](unified-analysis-ui.md#待验证边界与文档一致性)。
-
-初稿仅产出实施计划与设计索引。后续 P0/P1 已完成各自记录范围；P2/P3 仍按本文完成条件推进。
+实施过程中，当前行为仍以代码为准，不能因为本文有计划就改写为“已支持”。P3 同步相关模块文档及[验证指南](../validation.md)，按阶段记录完成项、实际证据与剩余工作；P4/P5 只更新实际开放的能力。上游说明差异与来源边界见[设计文档的一致性记录](unified-analysis-ui.md#待验证边界与文档一致性)。

@@ -1,5 +1,12 @@
 # 报告 HTML 发布
 
+## 新格式边界
+
+统一分析 UI 的 `dsh.analysis-ui/v1` 暂不支持 HTML 导出和发布。服务端在读取准确 Build 后明确返回
+`analysis-ui-export-unavailable`，不会把新文档交给旧 block renderer；Client 不为该格式加载发布配置或显示发布操作。
+本文下述 HTML/S3 能力仅适用于旧 Document v3。新格式离线支持留在单独增强阶段。
+
+
 插件负责将已保存报告或浏览器当前视图上传到 S3 兼容对象存储；Harness 拥有凭据和 Workspace，Marivo 的分析与 Evidence 契约不变。发布不执行分析、不更新 Report current、不默认生成本地 HTML。
 
 ## 插件配置

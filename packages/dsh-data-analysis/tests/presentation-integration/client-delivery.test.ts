@@ -526,3 +526,31 @@ test('rc saved Code dispatch receipts retain the same validated presentation and
   )
   assert.equal(presentationDeliveryFromEvent(historical, new Map(), 3), null)
 })
+
+test('current Harness tool-role messages preserve surface and require top-level call/outcome correlation', () => {
+  const current = {
+    ...native({ ...delivery(), surface: 'tab' }),
+    data: {
+      ...native().data,
+      meta: { ...delivery(), surface: 'tab' },
+      message: {
+        role: 'tool',
+        source: { kind: 'tool', callId: 'present-call' },
+        toolCallId: 'present-call',
+        isError: false,
+        content: [{ type: 'text', text: 'saved' }],
+      },
+    },
+  }
+  assert.equal(presentationDeliveryFromEvent(current, calls, 3)?.delivery.surface, 'tab')
+  for (const message of [
+    { ...current.data.message, toolCallId: 'different' },
+    { ...current.data.message, isError: true },
+    { ...current.data.message, role: 'assistant' },
+    { ...current.data.message, source: { kind: 'tool', callId: 'foreign' } },
+  ])
+    assert.equal(
+      presentationDeliveryFromEvent({ ...current, data: { ...current.data, message } }, calls, 3),
+      null,
+    )
+})

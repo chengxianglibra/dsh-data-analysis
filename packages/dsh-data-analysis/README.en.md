@@ -3,8 +3,8 @@
 [简体中文](README.md) | English
 
 Analyze data with natural language in [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-Explore and reuse business metric definitions, then turn your findings into interactive charts, reports,
-and dashboards that you can also read offline. Semantic analysis is powered by [Marivo](https://github.com/chengxianglibra/marivo).
+Explore and reuse business metric definitions, then save findings as exact analysis views, reports,
+and dashboards. Semantic analysis is powered by [Marivo](https://github.com/chengxianglibra/marivo).
 
 This is an independently maintained community plugin. It is not an official DeepSeek product.
 
@@ -17,9 +17,9 @@ This is an independently maintained community plugin. It is not an official Deep
 | Connect to data | Configure data sources, manage credentials, and test connections; DuckDB, Trino, and ClickHouse are supported by default |
 | Keep definitions consistent | Work with the assistant to define and reuse metrics and dimensions, and explore their relationships |
 | Specify what to analyze | Search for and reference existing semantic objects with `@` in the chat input |
-| Present findings | Create reports and dashboards with conclusions, metric cards, charts, tables, and source information |
-| Explore further | Filter interactively, adjust the presentation, and reference report content in follow-up questions |
-| Read and share | Save and browse previous versions, and download HTML for offline reading and sharing |
+| Present findings | Save existing Frame/DataFrame results as exact tables or single values |
+| Explore further | Select columns, sort exact values, browse local pages, and copy saved data |
+| Read and share | Save and browse immutable versions; legacy reports retain HTML export |
 
 ## Installation
 
@@ -90,7 +90,7 @@ If you have not yet defined your business metrics, start by asking the assistant
 
 When you need a report, describe its contents:
 
-> Turn this analysis into a report with conclusions, key metrics, trend charts, a channel comparison table, and source information. Provide a downloadable HTML file.
+> Turn this analysis into a report with explanations, key single values, and sortable tables of exact results.
 
 ### 3. Browse and reference business definitions
 
@@ -100,32 +100,18 @@ and inspect their definitions and relationships. Open objects separately to comp
 Type `@` in the chat input to search for and select objects in the current workspace.
 For a multiword search, use `@"monthly revenue"`. Ask questions about the selected objects to keep the analysis aligned with your business definitions.
 
-### 4. Read, edit, and ask follow-up questions about reports
+### 4. Read analysis views and reports
 
-When the current session delivers a new report, it opens automatically on the right.
-Use the Reports (报告) catalog to find reports by title and read different reports or versions side by side.
-The page notifies you when a new version is available, so you can choose when to switch.
-You can also read workspace reports from the Reports sidebar entry without an active session.
+Ordinary results appear under their tool call. Explicit reports and dashboards open in a right-side tab.
+Present an existing Frame or captured DataFrame without repeating the analysis. Use Reports (报告) to reopen saved results and versions.
 
-- **Explore data**: Filter charts and tables, and adjust supported chart types and displayed fields. Interactions use data already saved in the report; ask in chat to fetch fresh data or recalculate results.
-- **Check sources**: Inspect the source information attached to report content to review the basis of the analysis.
-- **Edit the presentation**: On the latest version page, select Edit Report (编辑报告) to change titles, text, metric labels, and chart or table settings. Move or remove content, undo or redo changes, and save your edits.
-- **Ask follow-up questions**: Choose Add to Question (加入提问) from a supported report content menu to insert a reference into the chat input, then add your question and send it.
-- **Browse history**: After saving edits, use the history sidebar to view and download saved versions. Historical versions are read-only.
+- **Inspect data**: Select columns, sort exact values, browse local pages, and copy saved data. Previews disclose their range and cannot become complete single-value metrics.
+- **Check sources**: Frame views show structure and source identity. DataFrame views explicitly mark SQL, datasource and file provenance that was not captured.
+- **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
 
-Page filters do not recalculate metric cards or change the saved report. To preserve the current filtered view, use Export Current View (导出当前视图).
-
-### 5. Download and share
-
-The export menu at the top right of a report offers two options:
-
-| Option | Use it to |
-| --- | --- |
-| Download Full Report (下载完整报告) | Download the complete HTML report for the version you are viewing and read it offline |
-| Export Current View (导出当前视图) | Capture the current filters, charts, and table sorting in HTML, with the source version and export time, to share what you see |
-
-You can also ask the assistant to export a report as an HTML file. Open downloaded files in a browser to read and interact with them offline, without connecting to the original data source.
-If you are editing a report, save or cancel your edits before exporting.
+The unified analysis UI is at the static P2 stage: tables and complete single values are supported.
+Charts, streaming, patches, offline export, publishing and legacy editing are not connected for the new format.
+Existing legacy reports keep their reader, charts, presentation editing and HTML export.
 
 ## Analysis timeout
 

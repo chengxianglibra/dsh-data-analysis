@@ -1,5 +1,23 @@
 # 展示 reader 与离线构建
 
+## P2 统一 AnalysisSurface
+
+新格式 `dsh.analysis-ui/v1` 由
+[AnalysisSurface](../../packages/dsh-data-analysis/src/client/analysis-ui/surface.tsx) 使用固定 Catalog/Renderer 呈现，
+默认 tool view 和报告 tab 只是加载准确保存版本的薄适配器。Surface 接收文档及已保存资源读取回调，
+领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。阅读状态属于所在视图，位置切换可以重挂。
+
+对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image。
+两类数据视图支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，补充选列、
+复制已保存数据与来源/范围详情。metric 要求完整单行；auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，presence 字段不计为值；Dataset 要求完整单行单列，预览不会误判。
+每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
+Frame 保留结构、坐标和 Session/Artifact；DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。
+Evidence、Findings、方法与语义定义尚未接入。图片只显示已保存 image 资源；Markdown 不加载远程图片。
+
+共享 Surface 使用文档 locale，Host 控件沿用 locale 字典。新格式暂不提供图形、离线导出、发布和旧版编辑。
+以下各节描述旧 Document v3 Reader 的兼容能力，不代表新格式已开放这些能力。
+
+
 ## 责任与入口
 
 本模块将[展示数据投影](presentation-projection.md)返回的 `PresentationDocument` 变成可读内容。

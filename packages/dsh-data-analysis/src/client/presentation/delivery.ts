@@ -91,14 +91,20 @@ export function presentationDeliveryFromEvent(
     const message = record(data.message)
     if (!message || !Array.isArray(message.content)) return null
     const blocks = message.content.filter((item: unknown) => record(item)?.type === 'tool-result')
-    if (blocks.length !== 1) return null
-    const block = record(blocks[0])!
+    // Harness 0.2.1 stores tool identity/outcome on the message. Historical
+    // events wrapped them in one tool-result content block. Admit both explicitly.
+    const block = blocks.length === 1 ? record(blocks[0])! : undefined
     const callId = record(message.source)?.callId
     if (
       typeof callId !== 'string' ||
       calls.get(callId) !== MARIVO_PRESENT_TOOL_NAME ||
-      block.toolCallId !== callId ||
-      block.isError === true
+      message.isError === true ||
+      (block
+        ? block.toolCallId !== callId || block.isError === true
+        : blocks.length !== 0 ||
+          message.role !== 'tool' ||
+          record(message.source)?.kind !== 'tool' ||
+          message.toolCallId !== callId)
     )
       return null
     delivery = parsedDelivery(data.meta)

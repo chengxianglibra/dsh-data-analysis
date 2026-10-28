@@ -154,6 +154,7 @@ export class ReportPublishingService {
     const asset = await this.files.read(
       { ...scope, receipt, asset: viewHtml === undefined ? 'index.html' : 'presentation.json' },
       signal,
+      { legacyOnly: true },
     )
     let bytes: Buffer
     if (viewHtml === undefined) bytes = Buffer.from(asset.bodyBase64, 'base64')

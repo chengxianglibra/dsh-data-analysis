@@ -3,6 +3,7 @@ import { type PresentationReceipt, parsePresentationReceipt } from './index.ts'
 export interface PublicationSource {
   kind: 'agent' | 'reader'
   sessionId: string | null
+  surface?: 'tool' | 'tab'
 }
 export interface ReportVersion {
   receipt: PresentationReceipt
@@ -38,7 +39,12 @@ export function parseReportVersion(value: unknown): ReportVersion {
     !(
       entry.source === null ||
       (entry.source &&
-        Object.keys(entry.source).sort().join(',') === 'kind,sessionId' &&
+        ['kind,sessionId', 'kind,sessionId,surface'].includes(
+          Object.keys(entry.source).sort().join(','),
+        ) &&
+        (entry.source.surface === undefined ||
+          entry.source.surface === 'tool' ||
+          entry.source.surface === 'tab') &&
         ['agent', 'reader'].includes(entry.source.kind) &&
         (entry.source.sessionId === null ||
           (typeof entry.source.sessionId === 'string' &&

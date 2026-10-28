@@ -55,7 +55,8 @@ export async function readReportFile(
   if (root !== path.resolve(workspaceRoot) || !filename.startsWith(`${root}${path.sep}`))
     throw new Error('asset-path-mismatch')
   const parents = [root]
-  for (const segment of path.relative(root, path.dirname(filename)).split(path.sep)) {
+  const relativeParent = path.relative(root, path.dirname(filename))
+  for (const segment of relativeParent ? relativeParent.split(path.sep) : []) {
     if (!segment || segment === '..' || segment === '.') throw new Error('asset-path-mismatch')
     parents.push(path.join(parents.at(-1)!, segment))
   }

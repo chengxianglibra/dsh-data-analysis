@@ -1,5 +1,14 @@
 # 项目验证指南
 
+## 统一分析 UI P2
+
+新静态格式使用 `npm run validate:unified-analysis-ui:p2` 和
+`node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/web.ts --p2`，
+复用 P0/P1 的样例与 driver。保存、双位置、精度、冷重启、历史格式及未验收边界见
+[P2 记录](testing/unified-analysis-ui-p2-2026-10-28.md)。下方以 Draft 为输入的历史综合脚本不证明新格式；
+流式、patch 及外部模型使用策略在 P3 验收。
+
+
 ## 统一分析 UI P0
 
 2026-10-28 完成固定 OpenUI 八组件、安装 Runtime schema／分页、RawSqlResult 公开字段、真实 Host Native 参数前缀和 PTC dispatch 探针。开发／peer 最低 Harness 改为 `0.2.1-rc.2`；Marivo 使用用户指定的本地 `dist/pypi` wheel。详见[版本、入口与证据](testing/unified-analysis-ui-p0-2026-10-28.md)。当前统一 UI 数据组件为占位，P1–P3 尚未交付。

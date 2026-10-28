@@ -5,6 +5,7 @@ import path from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { buildPresentation } from './build/index.ts'
 import { commitPresentation } from './commit.ts'
+import { parseSavedPresentation, type SavedPresentation } from './contracts/analysis-document.ts'
 import {
   type PublicationSource,
   parseReportHistory,
@@ -13,12 +14,7 @@ import {
   type ReportCatalog,
   type ReportHistory,
 } from './contracts/catalog.ts'
-import {
-  type PresentationDocument,
-  type PresentationReceipt,
-  parsePresentationDocument,
-  parsePresentationReceipt,
-} from './contracts/index.ts'
+import { type PresentationReceipt, parsePresentationReceipt } from './contracts/index.ts'
 import {
   presentationAssetPath,
   presentationReportPath,
@@ -48,7 +44,7 @@ export async function readReceiptDocument(
     presentationSha256(bytes) !== receipt.files.document.sha256
   )
     throw new Error('asset-digest-mismatch')
-  const document = parsePresentationDocument(
+  const document = parseSavedPresentation(
     JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
   )
   if (
@@ -180,7 +176,7 @@ export async function listReports(
 /** The mutable pointer is the publication boundary; completed builds are never overwritten. */
 export async function publishPresentation(
   root: string,
-  document: PresentationDocument,
+  document: SavedPresentation,
   expectedBuildId: string | null,
   assertOwner: () => Promise<void>,
   signal?: AbortSignal,
@@ -291,4 +287,20 @@ export async function publishPresentation(
     { waitMs: 5000 },
   )
   return receipt
+}
+
+/** Exact published revision lookup; never scans a directory or resolves to newer content. */
+export async function readAnalysisRecord(
+  root: string,
+  workspaceId: string,
+  reportId: string,
+  buildId: string,
+  signal?: AbortSignal,
+) {
+  const history = await readReportHistory(root, workspaceId, reportId, signal)
+  const version = history.versions.find((v) => v.receipt.buildId === buildId)
+  if (!version) throw new Error('report-build-not-found')
+  const document = await readReceiptDocument(root, version.receipt, signal)
+  if (document.schemaVersion === 3) throw new Error('analysis-ui-format-required')
+  return document
 }

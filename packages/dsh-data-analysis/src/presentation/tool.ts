@@ -3,8 +3,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
-import { parsePresentationBuildId } from './contracts/index.ts'
+import { createAnalysisDocument } from './analysis.ts'
+import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
+import { analysisPresentInput, parseAnalysisRecordId } from './contracts/analysis-document.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
+import type { ExportWorkspaceSource } from './export-html.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -12,7 +15,7 @@ import {
   parsePresentationDelivery,
   presentationReceiptText,
 } from './receipt.ts'
-import { publishPresentation, resolvePresentation } from './reports.ts'
+import { publishPresentation, readAnalysisRecord } from './reports.ts'
 
 export interface PresentationBinding {
   workspaceId: string
@@ -20,7 +23,7 @@ export interface PresentationBinding {
 }
 export type PresentationBindingSource = () => PresentationBinding | Promise<PresentationBinding>
 
-/** One call projects a draft, builds the document, commits them, then emits the receipt. */
+/** One call admits resources, commits an immutable document and emits the exact delivery. */
 export function createMarivoPresentTool(
   source: PresentationBindingSource,
   session: Session,
@@ -29,23 +32,29 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present a complete Workspace-relative analysis draft as one saved document, automatically opened in the right-side report tab. HTML is generated only when explicitly exporting or publishing the report. Omit report_id and expected_build_id to create a Report; provide both to replace an existing Report with a new immutable Build based on the version you have read. A report-save-conflict requires reading the current report and reconciling the draft; never retry by only changing expected_build_id. Returns the exact published receipt, file locations, for the report reader. Only saved Artifact and computed snapshots are read; sources are declarations, not verification of calculations.',
+      'Save and present an existing analysis result. For one result provide only resources: {result: {kind: "marivo-frame", sessionId, artifactId}} or {result: {kind: "dataset-snapshot", snapshotRef}}; omit program for the default view. Rows never belong in program. Default surface is tool; use tab for an explicitly requested report/dashboard. Custom pages use the eight-component analysis Catalog and OpenUI Lang. Saves an immutable recordId and exact snapshots; never reruns analysis. Streaming and patch updates are not connected yet. Legacy draft_path is no longer accepted.',
     parameters: {
-      draft_path: {
+      surface: {
         type: 'string',
-        required: true,
-        description:
-          'Workspace-relative path of the complete presentation draft JSON. Updates replace the whole report content; omitted content is not preserved.',
+        enum: ['tool', 'tab'],
+        description: 'Default tool. Use tab for an explicitly requested report/dashboard.',
       },
-      report_id: {
-        type: 'string',
+      resources: {
+        type: 'object',
         description:
-          'Existing Report ID in the current Workspace to update. Must be provided together with expected_build_id; omit both to create a new Report.',
+          'Named resources: {kind:"marivo-frame",sessionId,artifactId}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
+        additionalProperties: true,
       },
-      expected_build_id: {
+      title: { type: 'string', description: 'Short document title.' },
+      locale: {
+        type: 'string',
+        enum: ['zh-CN', 'en-US'],
+        description: 'Document language; defaults to zh-CN.',
+      },
+      program: {
         type: 'string',
         description:
-          'Build ID of the report version you have read and based this complete draft on. Must be provided together with report_id. A stale version fails with report-save-conflict; read and reconcile the current report before retrying.',
+          'Optional complete OpenUI Lang program using AnalysisFrameView, DatasetView, Stack, TextContent, Card, Tabs, TabItem, Image. Omit for a single resource. Image src is a resource name.',
       },
     },
     output: {
@@ -67,21 +76,8 @@ export function createMarivoPresentTool(
     timeoutMs: PRESENTATION_EXECUTION_BUDGETS.toolTimeoutMs,
     async execute(args, exec) {
       const signal = lifecycleSignal ? AbortSignal.any([exec.signal, lifecycleSignal]) : exec.signal
-      if (
-        typeof args.draft_path !== 'string' ||
-        args.draft_path.length === 0 ||
-        args.draft_path.length > 4096
-      )
-        throw new Error('invalid-draft-path')
-      const hasReportId = args.report_id !== undefined
-      const hasExpectedBuildId = args.expected_build_id !== undefined
-      if (hasReportId !== hasExpectedBuildId) throw new Error('invalid-report-update-target')
-      const reportId = hasReportId
-        ? parsePresentationBuildId(args.report_id, '/report_id')
-        : randomUUID()
-      const expectedBuildId = hasExpectedBuildId
-        ? parsePresentationBuildId(args.expected_build_id, '/expected_build_id')
-        : null
+      const input = analysisPresentInput.parse(args)
+      const reportId = randomUUID()
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
       const rootCallId = String(exec.rootCallId ?? exec.callId)
@@ -112,32 +108,24 @@ export function createMarivoPresentTool(
         signal.throwIfAborted()
       }
       await check()
-      if (expectedBuildId !== null) {
-        const current = await resolvePresentation(
-          identity.projectRoot,
-          identity.workspaceId,
+      const document = await createAnalysisDocument(
+        input,
+        binding.projection,
+        {
+          workspaceId: binding.workspaceId,
           reportId,
-          signal,
-        )
-        await check()
-        if (current.buildId !== expectedBuildId) throw new Error('report-save-conflict')
-      }
-      const draft = await binding.projection.readDraft(args.draft_path, signal)
-      await check()
-      const document = await binding.projection.project(draft, {
-        workspaceId: binding.workspaceId,
-        reportId,
-        buildId: randomUUID(),
+          buildId: randomUUID(),
+        },
         signal,
-      })
+      )
       await check()
       const receipt = await publishPresentation(
         identity.projectRoot,
         document,
-        expectedBuildId,
+        null,
         check,
         signal,
-        { kind: 'agent', sessionId: String(session.id) },
+        { kind: 'agent', sessionId: String(session.id), surface: input.surface },
       )
       return {
         deliveryJson: JSON.stringify(
@@ -147,6 +135,7 @@ export function createMarivoPresentTool(
             dshSessionId: String(session.id),
             turn: call.data.turn,
             receipt,
+            surface: input.surface,
           }),
         ),
       }
@@ -160,4 +149,78 @@ export function registerMarivoPresentTool(
   session: Session,
 ): () => Promise<void> {
   return registerMarivoTool(ctx, createMarivoPresentTool(source, session))
+}
+
+/** Optional context recovery for an exact saved record. Never returns rows or starts Python. */
+export function createMarivoUiReadTool(source: ExportWorkspaceSource): ToolDefinition {
+  return defineTool({
+    name: 'marivo_ui_read',
+    description:
+      'Read the UI definition and necessary saved resource schemas for one exact recordId when that context is missing. Do not call after successful presentation by default. Does not query live data or list documents.',
+    parameters: {
+      recordId: {
+        type: 'string',
+        required: true,
+        description: 'Exact marivo-ui recordId from the successful presentation receipt.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { definitionJson: { type: 'string', required: true } },
+      },
+      render: (_args, value) => [{ type: 'text', text: value.definitionJson }],
+    },
+    async execute(args, exec) {
+      const { reportId, buildId } = parseAnalysisRecordId(args.recordId)
+      const binding = await source()
+      const document = await readAnalysisRecord(
+        binding.path,
+        binding.id,
+        reportId,
+        buildId,
+        exec.signal,
+      )
+      const current = await source()
+      if (current.id !== binding.id || current.path !== binding.path)
+        throw new Error('presentation-workspace-changed')
+      exec.signal.throwIfAborted()
+      return {
+        definitionJson: JSON.stringify({
+          recordId: document.recordId,
+          title: document.title,
+          locale: document.locale,
+          catalog: document.catalog,
+          program: document.program,
+          resources: Object.fromEntries(
+            Object.entries(document.resources).map(([name, resource]) => [
+              name,
+              resource.kind === 'image'
+                ? { kind: 'image', mimeType: resource.mimeType }
+                : {
+                    kind: resource.snapshot.kind,
+                    declaration: resource.declaration,
+                    columns: resource.snapshot.data.columns,
+                    coverage: resource.snapshot.coverage,
+                    ...(resource.snapshot.kind === 'frame'
+                      ? {
+                          fields: resource.snapshot.frame.fields,
+                          layout: resource.snapshot.frame.layout,
+                          axes: resource.snapshot.frame.axes,
+                        }
+                      : {}),
+                  },
+            ]),
+          ),
+          signatures: Object.fromEntries(
+            Object.entries(analysisCatalogSpec.components).map(([name, c]) => [name, c.signature]),
+          ),
+        }),
+      }
+    },
+  })
+}
+export function registerMarivoUiReadTool(ctx: Context, source: ExportWorkspaceSource) {
+  return registerMarivoTool(ctx, createMarivoUiReadTool(source))
 }

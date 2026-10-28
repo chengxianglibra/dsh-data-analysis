@@ -194,7 +194,7 @@ test('RPC rejects Workspace changes while reading and cancelled or disposed read
   await assert.rejects(service.read(input), /abort/i)
 })
 
-test('production present accepts computed and source-only drafts, uses independent builds and returns complete headless text', async (t) => {
+test('production present saves independent Lang documents and returns complete headless text', async (t) => {
   const f = await fixture(t)
   const session = {
     id: 'session',
@@ -202,7 +202,6 @@ test('production present accepts computed and source-only drafts, uses independe
       { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 2 } },
     ],
   } as unknown as Session
-  let reads = 0
   const runner = {
     status: 'ready' as const,
     binding: {
@@ -212,31 +211,10 @@ test('production present accepts computed and source-only drafts, uses independe
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',
-      presentationKit: { version: '1.0.0', packagePath: '/bound/presentation' },
+      presentationKit: { version: '1.2.0', packagePath: '/bound/presentation' },
     },
-    async runChecked() {
-      reads++
-      return {
-        exitCode: 0,
-        signal: null,
-        durationMs: 0,
-        stderr: Buffer.alloc(0),
-        stdout: Buffer.from(
-          JSON.stringify({
-            ok: true,
-            sources: [
-              {
-                id: 'source',
-                ref: { sessionId: 'analysis', artifactRef: 'artifact' },
-                status: 'unavailable',
-                reason: 'Artifact unavailable',
-              },
-            ],
-            datasets: [],
-            diagnostics: [],
-          }),
-        ),
-      }
+    async runChecked(): Promise<never> {
+      throw new Error('No analysis expected')
     },
   }
   const projection = new MarivoPresentationProjection(runner)
@@ -246,70 +224,31 @@ test('production present accepts computed and source-only drafts, uses independe
     callId: 'call',
     signal: new AbortController().signal,
   } as unknown as ToolRunContext
-  const draft = {
-    schemaVersion: 2,
-    locale: 'zh-CN',
-    title: 'Source only',
-    datasets: [],
-    sources: [{ id: 'source', ref: { sessionId: 'analysis', artifactRef: 'artifact' } }],
-    blocks: [{ id: 'sources', kind: 'source', sourceIds: ['source'] }],
-  }
-  await writeFile(path.join(f.root, 'draft.json'), JSON.stringify(draft))
-  const first = parsePresentationDelivery(
-    JSON.parse(
-      ((await tool.execute({ draft_path: 'draft.json' }, exec)) as { deliveryJson: string })
-        .deliveryJson,
-    ),
-  )
+  const input = { title: 'Saved view', program: 'root = TextContent("Exact saved content");' }
+  const present = async () =>
+    parsePresentationDelivery(
+      JSON.parse(((await tool.execute(input, exec)) as { deliveryJson: string }).deliveryJson),
+    )
+  const first = await present(),
+    second = await present()
+  assert.equal(first.surface, 'tool')
   assert.equal(first.dshSessionId, 'session')
   assert.equal(first.turn, 2)
-  assert.equal(reads, 1)
+  assert.notEqual(first.receipt.buildId, second.receipt.buildId)
   assert.equal(first.receipt.files.html, undefined)
   assert.deepEqual(await readdir(path.dirname(first.receipt.files.document.path)), [
     'presentation.json',
   ])
-  const dataset = {
-    schemaVersion: 1,
-    columns: [{ id: 'value', label: 'Value', type: 'int64', nullable: false }],
-    rows: [['9007199254740993']],
-    rowCount: 1,
-    limit: 1,
-    truncated: false,
-  }
-  await writeFile(path.join(f.root, 'data.json'), JSON.stringify(dataset))
-  await writeFile(
-    path.join(f.root, 'draft.json'),
-    JSON.stringify({
-      schemaVersion: 2,
-      locale: 'zh-CN',
-      title: 'Computed',
-      sources: [],
-      datasets: [{ id: 'data', kind: 'computed', path: 'data.json', sourceIds: [] }],
-      blocks: [{ id: 'table', kind: 'table', datasetId: 'data' }],
-    }),
-  )
-  const second = parsePresentationDelivery(
-    JSON.parse(
-      ((await tool.execute({ draft_path: 'draft.json' }, exec)) as { deliveryJson: string })
-        .deliveryJson,
-    ),
-  )
-  assert.notEqual(first.receipt.buildId, second.receipt.buildId)
-  assert.equal(reads, 1)
   const text = presentationReceiptText(second.receipt)
-  for (const file of Object.values(second.receipt.files)) {
-    assert(text.includes(file.path))
-    assert(text.includes(file.sha256))
-  }
-  assert(text.includes('Workspace: workspace'))
-  assert.equal((await readdir(path.join(f.root, '.dsh-data-analysis', 'presentations'))).length, 2)
-  await assert.rejects(tool.execute({ draft_path: '../outside.json' }, exec), /Workspace/)
-  const otherSession = {
-    ...exec,
-    agent: { session: { ...session } },
-  } as unknown as ToolRunContext
+  assert(text.includes('Record: marivo-ui:'))
+  assert(text.includes(second.receipt.files.document.sha256))
+  assert(text.includes(second.receipt.files.document.path))
+  await assert.rejects(tool.execute({ draft_path: 'draft.json' }, exec), /Unrecognized key/)
   await assert.rejects(
-    tool.execute({ draft_path: 'draft.json' }, otherSession),
+    tool.execute(input, {
+      ...exec,
+      agent: { session: { ...session } },
+    } as unknown as ToolRunContext),
     /presentation-session-mismatch/,
   )
 })
@@ -405,7 +344,7 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
     const dispose = registerMarivoPresentTool(
       ctx,
       () => {
-        if (++lookups === 7) {
+        if (++lookups === 5) {
           if (failure === 'dispose') dispose()
           else runner.status = 'failed'
         }
@@ -419,7 +358,7 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
       signal: new AbortController().signal,
     } as unknown as ToolRunContext
     await assert.rejects(
-      tool!.execute({ draft_path: 'draft.json' }, exec),
+      tool!.execute({ program: 'root = TextContent("Pending");' }, exec),
       failure === 'dispose' ? /abort/i : /presentation-workspace-changed/,
     )
     const reportRoot = path.join(f.root, '.dsh-data-analysis', 'presentations')

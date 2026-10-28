@@ -88,7 +88,7 @@ test('default client is a valid Cordis effect and registers native resources wit
   )
   assert.deepEqual(
     host.slots.entries('tool.call.toolview').map((entry) => entry.options.key),
-    [...nativeToolViews, 'marivo_python'],
+    [...nativeToolViews, 'marivo_present', 'marivo_python'],
   )
   const directoryTitles = [
     ['marivo-datasources', '数据源与凭证', 'Datasources and credentials'],

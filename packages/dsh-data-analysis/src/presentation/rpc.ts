@@ -148,6 +148,7 @@ export class MarivoPresentationFileService {
     const expectedBuildId = parsePresentationBuildId(input.expectedBuildId)
     if (receipt.buildId !== expectedBuildId) throw new Error('report-save-conflict')
     const base = await readReceiptDocument(root, receipt, signal)
+    if (base.schemaVersion !== 3) throw new Error('analysis-ui-edit-unavailable')
     let edited: ReturnType<typeof applyPresentationEdits>
     try {
       edited = applyPresentationEdits(base, input.edits)
@@ -164,10 +165,18 @@ export class MarivoPresentationFileService {
       { kind: 'reader', sessionId: typeof input.sessionId === 'string' ? input.sessionId : null },
     )
   }
-  read(payload: unknown, caller = new AbortController().signal) {
-    return this.#tasks.track(this.#read(payload, caller))
+  read(
+    payload: unknown,
+    caller = new AbortController().signal,
+    options: { legacyOnly?: boolean } = {},
+  ) {
+    return this.#tasks.track(this.#read(payload, caller, options))
   }
-  async #read(payload: unknown, caller = new AbortController().signal) {
+  async #read(
+    payload: unknown,
+    caller = new AbortController().signal,
+    options: { legacyOnly?: boolean } = {},
+  ) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
     signal.throwIfAborted()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
@@ -184,7 +193,14 @@ export class MarivoPresentationFileService {
     const workspace = await this.#workspace(input)
     if (!workspace || workspace.id !== receipt.workspaceId) throw new Error('workspace-unavailable')
     const root = path.resolve(workspace.path)
-    const { bytes, sha256 } = await readReceiptAsset(root, workspace.id, receipt, asset, signal)
+    const { bytes, sha256 } = await readReceiptAsset(
+      root,
+      workspace.id,
+      receipt,
+      asset,
+      signal,
+      options.legacyOnly,
+    )
     const current = await this.#workspace(input)
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
@@ -227,7 +243,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
+                  /^(analysis-ui-edit-unavailable|analysis-ui-export-unavailable|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
                     error.message,
                   )
                 ? error.message

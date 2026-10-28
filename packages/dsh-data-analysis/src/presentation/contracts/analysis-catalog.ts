@@ -2,7 +2,7 @@
 import type { LibraryJSONSchema, LibrarySpec } from '@openuidev/lang-core'
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
 export const analysisCatalogBuild =
-  '50eac7d6fa221b881157d9ed9ca44c8077645b839e49675a293efb9dfeca6abd'
+  '1a44a0f6d396019deeaa4ed94c8320b98cd70fae0ee0a24883111b085c712fe6'
 export const analysisCatalogVersions = {
   '@openuidev/lang-core': '1.0.1',
   '@openuidev/react-headless': '0.18.1',
@@ -34,7 +34,7 @@ const specData = {
     },
     Image: {
       signature: 'Image(alt: string, src?: string)',
-      description: 'Image with alt text and optional URL',
+      description: 'Saved image; src is an admitted resource name, never a URL.',
     },
     Stack: {
       signature:
@@ -54,12 +54,14 @@ const specData = {
     AnalysisFrameView: {
       signature:
         'AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}}, display?: {height?: number})',
-      description: 'Persisted Frame resource. P0 placeholder; auto/table/metric only.',
+      description:
+        'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
     },
     DatasetView: {
       signature:
         'DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}}, display?: {height?: number})',
-      description: 'Captured SQL/file dataset resource. P0 placeholder; auto/table/metric only.',
+      description:
+        'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
     },
   },
   schema: {
@@ -303,7 +305,7 @@ const specData = {
         },
         required: ['alt'],
         additionalProperties: false,
-        description: 'Image with alt text and optional URL',
+        description: 'Saved image; src is an admitted resource name, never a URL.',
       },
       AnalysisFrameView: {
         type: 'object',
@@ -379,7 +381,8 @@ const specData = {
         },
         required: ['ref'],
         additionalProperties: false,
-        description: 'Persisted Frame resource. P0 placeholder; auto/table/metric only.',
+        description:
+          'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
       },
       DatasetView: {
         type: 'object',
@@ -455,7 +458,8 @@ const specData = {
         },
         required: ['ref'],
         additionalProperties: false,
-        description: 'Captured SQL/file dataset resource. P0 placeholder; auto/table/metric only.',
+        description:
+          'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
       },
     },
   },
@@ -703,7 +707,7 @@ const schemaData = {
       },
       required: ['alt'],
       additionalProperties: false,
-      description: 'Image with alt text and optional URL',
+      description: 'Saved image; src is an admitted resource name, never a URL.',
     },
     AnalysisFrameView: {
       type: 'object',
@@ -779,7 +783,8 @@ const schemaData = {
       },
       required: ['ref'],
       additionalProperties: false,
-      description: 'Persisted Frame resource. P0 placeholder; auto/table/metric only.',
+      description:
+        'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
     },
     DatasetView: {
       type: 'object',
@@ -855,7 +860,8 @@ const schemaData = {
       },
       required: ['ref'],
       additionalProperties: false,
-      description: 'Captured SQL/file dataset resource. P0 placeholder; auto/table/metric only.',
+      description:
+        'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
     },
   },
 }

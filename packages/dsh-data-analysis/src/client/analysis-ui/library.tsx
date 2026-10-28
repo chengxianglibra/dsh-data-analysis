@@ -1,6 +1,11 @@
+import type { ElementNode } from '@openuidev/lang-core'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
+import { useState } from 'react'
 import { z } from 'zod/v4'
+import { Markdown } from '../presentation/markdown.tsx'
+import { useAnalysisResources } from './context.tsx'
+import { AnalysisDataView } from './data-view.tsx'
 
 const viewSchema = z.union([
   z.object({ chart: z.literal('auto') }).strict(),
@@ -18,23 +23,40 @@ const dataProps = z.object({
   display: displaySchema.optional(),
 })
 
-// P0 placeholders deliberately perform no reads. P2 replaces only these renderers.
 export const AnalysisFrameView = defineComponent({
   name: 'AnalysisFrameView',
-  description: 'Persisted Frame resource. P0 placeholder; auto/table/metric only.',
+  description:
+    'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
   props: dataProps.clone(),
   component: ({ props }) => (
-    <p data-analysis-placeholder="frame">Frame: {props.ref ?? '准备中'}（数据阅读器待接入）</p>
+    <AnalysisDataView
+      kind="frame"
+      resourceName={props.ref}
+      view={props.view}
+      display={props.display}
+    />
   ),
 })
 export const DatasetView = defineComponent({
   name: 'DatasetView',
-  description: 'Captured SQL/file dataset resource. P0 placeholder; auto/table/metric only.',
+  description:
+    'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
   props: dataProps.clone(),
   component: ({ props }) => (
-    <p data-analysis-placeholder="dataset">Dataset: {props.ref ?? '准备中'}（快照阅读器待接入）</p>
+    <AnalysisDataView
+      kind="dataset"
+      resourceName={props.ref}
+      view={props.view}
+      display={props.display}
+    />
   ),
 })
+function ResourceImage({ src, alt }: { src?: string; alt?: string }) {
+  const resource = useAnalysisResources().readResource(src ?? '')
+  return resource?.kind === 'image' ? (
+    <img className="au-image" src={resource.dataUrl} alt={alt ?? ''} />
+  ) : null
+}
 
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
 const officialNames = ['Stack', 'TextContent', 'Card', 'Tabs', 'TabItem', 'Image'] as const
@@ -59,15 +81,65 @@ const subset = openuiLibrary.extend({
     remove: Object.keys(openuiLibrary.components).filter(
       (name) => !officialNames.some((item) => item === name),
     ),
-    override: ['Stack', 'Card', 'TabItem'].map((name) => {
-      const original = official[name]!
-      return defineComponent({
-        ...original,
-        props: original.props.extend({
-          [name === 'TabItem' ? 'content' : 'children']: z.array(content),
-        }),
-      })
-    }),
+    override: [
+      ...['Stack', 'Card', 'TabItem'].map((name) => {
+        const original = official[name]!
+        return defineComponent({
+          ...original,
+          props: original.props.extend({
+            [name === 'TabItem' ? 'content' : 'children']: z.array(content),
+          }),
+        })
+      }),
+      defineComponent({
+        ...official.Image!,
+        description: 'Saved image; src is an admitted resource name, never a URL.',
+        component: ({ props }) => <ResourceImage src={props.src} alt={props.alt} />,
+      }),
+      defineComponent({
+        ...official.TextContent!,
+        component: ({ props }) => (
+          <div className="au-text" data-size={props.size}>
+            <Markdown text={props.text ?? ''} />
+          </div>
+        ),
+      }),
+      defineComponent({
+        ...official.Tabs!,
+        component: function AnalysisTabs({ props, renderNode }) {
+          const [active, setActive] = useState<string>()
+          // Element identities and props were checked against the generated TabItem slot schema.
+          const items = (props.items ?? []) as {
+            props: { value: string; trigger: string; content: ElementNode[] }
+          }[]
+          const selected = items.some((item) => item.props.value === active)
+            ? active
+            : items[0]?.props.value
+          return (
+            <div className="au-tabs">
+              <div role="tablist">
+                {items.map((item) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    key={item.props.value}
+                    aria-selected={selected === item.props.value}
+                    onClick={() => setActive(item.props.value)}
+                  >
+                    {item.props.trigger}
+                  </button>
+                ))}
+              </div>
+              {items.map((item) => (
+                <div role="tabpanel" key={item.props.value} hidden={selected !== item.props.value}>
+                  {renderNode(item.props.content)}
+                </div>
+              ))}
+            </div>
+          )
+        },
+      }),
+    ],
   },
 })
 // A domain component may be the root; keep the plugin identity and omit the

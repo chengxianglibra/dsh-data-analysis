@@ -1,9 +1,6 @@
 import { buildPresentation } from './build/index.ts'
-import {
-  type PresentationAsset,
-  type PresentationReceipt,
-  parsePresentationDocument,
-} from './contracts/index.ts'
+import { parseSavedPresentation } from './contracts/analysis-document.ts'
+import type { PresentationAsset, PresentationReceipt } from './contracts/index.ts'
 import { presentationAssetPath, presentationSha256, readPresentationAsset } from './files.ts'
 
 /** Read a fixed, receipt-verified snapshot; never access analysis or current. */
@@ -13,6 +10,7 @@ export async function readReceiptAsset(
   receipt: PresentationReceipt,
   asset: PresentationAsset,
   signal: AbortSignal,
+  legacyOnly = false,
 ) {
   signal.throwIfAborted()
   if (receipt.workspaceId !== workspaceId) throw new Error('asset-owner-mismatch')
@@ -31,7 +29,7 @@ export async function readReceiptAsset(
     presentationSha256(documentBytes) !== receipt.files.document.sha256
   )
     throw new Error('asset-digest-mismatch')
-  const document = parsePresentationDocument(
+  const document = parseSavedPresentation(
     JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(documentBytes)),
   )
   if (
@@ -41,12 +39,14 @@ export async function readReceiptAsset(
     document.title !== receipt.title
   )
     throw new Error('asset-owner-mismatch')
+  if ((legacyOnly || asset === 'index.html') && document.schemaVersion !== 3)
+    throw new Error('analysis-ui-export-unavailable')
   const bytes =
     asset === 'presentation.json'
       ? documentBytes
       : receipt.files.html
         ? await readPresentationAsset(root, receipt.reportId, receipt.buildId, asset, signal)
-        : (await buildPresentation(document)).htmlBytes!
+        : (await buildPresentation(document, { html: true })).htmlBytes!
   const file =
     asset === 'presentation.json'
       ? receipt.files.document

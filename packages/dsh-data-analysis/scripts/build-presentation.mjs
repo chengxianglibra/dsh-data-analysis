@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import {
@@ -61,28 +62,33 @@ export function renderFallback(document) {
       {
         name: 'shared-presentation-contracts',
         setup(context) {
-          context.onResolve({ filter: /^\.\.\/contracts\/index\.ts$/ }, () => ({
-            path: '../contracts/index.js',
-            external: true,
-          }))
+          context.onResolve({ filter: /index\.ts$/ }, (args) => {
+            if (
+              path.resolve(path.dirname(args.importer), args.path) !==
+              fileURLToPath(new URL('src/presentation/contracts/index.ts', packageRoot))
+            )
+              return undefined
+            return { path: '../contracts/index.js', external: true }
+          })
         },
       },
     ],
   }),
 ])
 // absWorkingDir makes esbuild's metafile inputs package-relative. Normalize once.
-for (const result of [portable, staticRenderer, styles]) {
+for (const result of [portable, staticRenderer, styles, builder]) {
   result.metafile.inputs = Object.fromEntries(
     Object.entries(result.metafile.inputs).map(([input, details]) => [
       input === '<stdin>' ? input : fileURLToPath(new URL(input, packageRoot)),
       details,
     ]),
   )
-  assertBrowserInputs(result.metafile, { portable: true })
+  if (result !== builder) assertBrowserInputs(result.metafile, { portable: true })
 }
-const [portableNotices, staticNotices] = await Promise.all([
+const [portableNotices, staticNotices, builderNotices] = await Promise.all([
   thirdPartyNotices(portable.metafile),
   thirdPartyNotices(staticRenderer.metafile),
+  thirdPartyNotices(builder.metafile),
 ])
 const portableOutput = portable.outputFiles[0]
 const staticOutput = staticRenderer.outputFiles[0]
@@ -102,4 +108,7 @@ await writeFile(
   `${noticeComment(portableNotices)}export const script=${JSON.stringify(portableOutput.text)};\nexport const styles=${JSON.stringify(PRESENTATION_STYLES)};\nexport const notices=${JSON.stringify(portableNotices)};\n`,
 )
 await writeFile(new URL('static.js', assetsRoot), noticeComment(staticNotices) + staticOutput.text)
-await writeFile(new URL('lib/presentation/build/index.js', packageRoot), builderOutput.text)
+await writeFile(
+  new URL('lib/presentation/build/index.js', packageRoot),
+  noticeComment(builderNotices) + builderOutput.text,
+)

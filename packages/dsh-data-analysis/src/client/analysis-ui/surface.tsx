@@ -1,0 +1,46 @@
+import { Renderer } from '@openuidev/react-lang'
+import { useMemo } from 'react'
+import type {
+  AnalysisDocument,
+  AnalysisResource,
+} from '../../presentation/contracts/analysis-document.ts'
+import { ReportCopyProvider } from '../i18n/context.tsx'
+import { PRESENTATION_STYLES } from '../presentation/styles.ts'
+import { AnalysisResources } from './context.tsx'
+import { analysisLibrary } from './library.tsx'
+
+const styles = `
+.au-surface{--openui-space-xs:4px;--openui-space-s:8px;--openui-space-m:16px;--openui-space-l:24px;--openui-space-xl:32px;--openui-space-2xl:40px;--pr-bg:var(--dsw-alias-bg-base,#fff);--pr-soft:var(--dsw-alias-bg-module-platform,#f4f7f7);--pr-text:var(--dsw-alias-label-primary,#1d3036);--pr-muted:var(--dsw-alias-label-secondary,#5b7076);--pr-border:var(--dsw-alias-border-l2,#dce5e5);--pr-accent:var(--dsw-alias-state-business-primary,#087c71);--pr-warning:var(--dsw-alias-state-warn-label,#805b20);color:var(--pr-text);background:var(--pr-bg);font:14px/1.6 system-ui;min-width:0;max-width:100%;padding:16px;border-radius:12px;box-sizing:border-box}
+.au-surface *{box-sizing:border-box;min-width:0}.au-surface h1{font-size:22px;line-height:1.35;margin:0 0 20px;overflow-wrap:anywhere}.au-surface p{overflow-wrap:anywhere}.au-data{border:1px solid var(--pr-border);border-radius:10px;padding:12px;background:var(--pr-bg);width:100%}.au-data-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.au-data-heading strong{overflow-wrap:anywhere}.au-surface button{font:inherit;border:1px solid var(--pr-border);border-radius:6px;background:var(--pr-bg);color:inherit;padding:4px 10px;cursor:pointer}.au-surface button:disabled{opacity:.5;cursor:default}.au-columns,.au-source{margin-top:12px;font-size:12px;color:var(--pr-muted)}.au-columns>div{display:flex;flex-wrap:wrap;gap:8px 16px;padding:8px 0}.au-columns label{display:flex;align-items:center;gap:4px}.au-source summary,.au-columns summary{cursor:pointer}.au-source pre{overflow:auto;max-height:240px;font-size:11px}.au-source dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}.au-source dd{margin:0;overflow-wrap:anywhere}.au-metric{display:grid;gap:4px;padding:20px 0}.au-metric strong{font:600 clamp(20px,4vw,32px)/1.3 ui-monospace,monospace;overflow-wrap:anywhere}.au-image{max-width:100%;height:auto;object-fit:contain;border-radius:8px}.au-tabs>[role=tablist]{display:flex;gap:8px;overflow:auto;margin-bottom:16px}.au-tabs [aria-selected=true]{border-color:var(--pr-accent);color:var(--pr-accent)}.au-tabs>[role=tabpanel]>div+div{margin-top:16px}.au-text p:first-child{margin-top:0}.au-text[data-size=small]{font-size:12px}.au-text[data-size=large]{font-size:18px}.au-text[data-size=small-heavy]{font-size:12px;font-weight:600}.au-text[data-size=large-heavy]{font-size:18px;font-weight:600}.au-surface .openui-card{max-width:100%;width:100%;padding:16px;border:1px solid var(--pr-border);border-radius:10px;background:var(--pr-bg)}.au-surface .openui-card-sunk{background:var(--pr-soft)}.au-surface .openui-card-clear{padding:0;border:0;background:transparent}.au-surface table{font-size:12px}.au-surface .pr-table-scroll{max-width:100%;overflow:auto}.au-surface .pr-table{min-width:0}.au-text pre{overflow:auto}.au-surface .pr-numeric{font-variant-numeric:tabular-nums}
+@media(max-width:520px){.au-surface{padding:10px}.au-data{padding:10px}.au-surface h1{font-size:18px}}
+`
+/** Shared static renderer. Adapters supply saved resources; components never perform Host IO. */
+export function AnalysisSurface({
+  document,
+  readResource,
+}: {
+  document: AnalysisDocument
+  readResource?: (name: string) => AnalysisResource | undefined
+}) {
+  const resources = useMemo(
+    () => ({ readResource: readResource ?? ((name: string) => document.resources[name]) }),
+    [document.resources, readResource],
+  )
+  return (
+    <ReportCopyProvider locale={document.locale}>
+      <AnalysisResources.Provider value={resources}>
+        <article className="pr-reader au-surface" data-analysis-record={document.recordId}>
+          <style>{PRESENTATION_STYLES}</style>
+          <style>{styles}</style>
+          <h1>{document.title}</h1>
+          <Renderer
+            library={analysisLibrary}
+            response={document.program}
+            isStreaming={false}
+            publishObservability={false}
+          />
+        </article>
+      </AnalysisResources.Provider>
+    </ReportCopyProvider>
+  )
+}

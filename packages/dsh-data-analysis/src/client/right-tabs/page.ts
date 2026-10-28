@@ -100,7 +100,8 @@ export class TabPage {
         !this.#navigation.signal.aborted
       )
         await this.reader.toggleHistory()
-      const displayed = this.reader.getSnapshot().document
+      const displayed =
+        this.reader.getSnapshot().document ?? this.reader.getSnapshot().analysisDocument
       if (displayed)
         for (const key of this.viewMemory.keys())
           if (
@@ -153,7 +154,11 @@ export class TabPage {
       if (generation !== this.#updateRevision || this.#closed) return
       this.patch({
         newer:
-          receipt.buildId !== this.reader.getSnapshot().document?.buildId ? receipt : undefined,
+          receipt.buildId !==
+          (this.reader.getSnapshot().document ?? this.reader.getSnapshot().analysisDocument)
+            ?.buildId
+            ? receipt
+            : undefined,
       })
     } catch (error) {
       if (generation === this.#updateRevision && !this.#closed && !this.#state.error)

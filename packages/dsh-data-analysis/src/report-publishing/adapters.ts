@@ -128,6 +128,7 @@ export function registerReportPublishTool(
 function publishingError(error: unknown): string {
   return error instanceof Error &&
     [
+      'analysis-ui-export-unavailable',
       'report-publishing-config-changed',
       'report-publishing-disabled',
       'report-publishing-build-unavailable',

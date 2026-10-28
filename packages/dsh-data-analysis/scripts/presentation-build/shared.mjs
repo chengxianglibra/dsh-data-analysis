@@ -87,6 +87,31 @@ export async function thirdPartyNotices(meta) {
         ),
       })
     }
+    // These fixed npm tarballs omit the full license. Keep the upstream texts in the build inputs.
+    /** @type {Record<string, string>} */
+    const omittedLicenses = {
+      'format@0.2.2': 'https://sjs.mit-license.org/',
+      'react-remove-scroll-bar@2.3.8':
+        'https://raw.githubusercontent.com/theKashey/react-remove-scroll-bar/8ca9ba5ea52de03308fe8ced94f7b159a44d28ff/LICENSE',
+      'remark-math@6.0.0':
+        'https://raw.githubusercontent.com/remarkjs/remark-math/d5d0660b150810a535bbb07eac6cc96a4510aa24/license',
+      'rehype-katex@7.0.1':
+        'https://raw.githubusercontent.com/remarkjs/remark-math/rehype-katex%407.0.1/license',
+    }
+    const sourceUrl = omittedLicenses[`${metadata.name}@${metadata.version}`]
+    if (!files.length && sourceUrl) {
+      files.push({
+        file: 'LICENSE.txt',
+        sourceUrl,
+        text: await readFile(
+          new URL(
+            `./third-party/${metadata.name}-${metadata.version}-LICENSE.txt`,
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      })
+    }
     if (!files.length)
       throw new Error(`missing-bundled-license:${metadata.name}@${metadata.version}`)
     const notice = {

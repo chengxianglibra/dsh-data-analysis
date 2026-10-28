@@ -1,5 +1,27 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.presentation.ui-capture-range': '捕获 {p0} / {p1} 行',
+  'marivo.presentation.ui-catalog-results': '对话结果',
+  'marivo.presentation.ui-catalog-reports': '报告',
+  'marivo.presentation.ui-catalog-category': '类型',
+  'marivo.presentation.ui-resource-unavailable': '此版本的数据资源不可用。',
+  'marivo.presentation.ui-copy-data': '复制已保存数据',
+  'marivo.presentation.ui-copy-failed': '复制失败，请重试。',
+  'marivo.presentation.ui-columns': '选择列',
+  'marivo.presentation.ui-complete-single-row': '已保存完整单行结果。',
+  'marivo.presentation.ui-frame-source': 'Frame 结构与来源',
+  'marivo.presentation.ui-dataset-source': '数据来源与范围',
+  'marivo.presentation.ui-captured-at': '快照时间：{p0}',
+  'marivo.presentation.ui-business-unknown': '业务覆盖范围未知；页面只展示已保存范围。',
+  'marivo.presentation.ui-metadata-not-captured': 'Evidence、Findings、方法与语义定义尚未接入。',
+  'marivo.presentation.ui-dataframe-source-not-captured':
+    '来自捕获的 DataFrame。SQL、数据源、backend、warnings 和文件来源未捕获。',
+  'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及旧版呈现编辑。',
+  'marivo.presentation.ui-open-tab': '在报告标签页中打开',
+  'marivo.presentation.ui-loading': '正在读取已保存快照…',
+  'marivo.presentation.ui-preparing': '正在准备分析展示…',
+  'marivo.presentation.ui-failed': '分析展示未保存。',
+  'marivo.presentation.ui-read-failed': '无法读取此版本的已保存快照。',
   'marivo.presentation.the-report-s-session-or-workspace-changed-or-is':
     '报告所属 Session 或 Workspace 已变化或不可用，请重新打开报告。',
   'marivo.presentation.the-session-draft-changed-or-is-being-submitted-retry':
@@ -350,6 +372,31 @@ export const zh = {
     '请求的 Finding 无法通过已保存 Artifact 的公开 API 读取。',
 } as const
 export const en = {
+  'marivo.presentation.ui-capture-range': 'Captured {p0} / {p1} rows',
+  'marivo.presentation.ui-catalog-results': 'Conversation results',
+  'marivo.presentation.ui-catalog-reports': 'Reports',
+  'marivo.presentation.ui-catalog-category': 'Type',
+  'marivo.presentation.ui-resource-unavailable': 'Data resource unavailable for this version.',
+  'marivo.presentation.ui-copy-data': 'Copy saved data',
+  'marivo.presentation.ui-copy-failed': 'Copy failed. Try again.',
+  'marivo.presentation.ui-columns': 'Select columns',
+  'marivo.presentation.ui-complete-single-row': 'Complete single-row result saved.',
+  'marivo.presentation.ui-frame-source': 'Frame structure and source',
+  'marivo.presentation.ui-dataset-source': 'Data source and scope',
+  'marivo.presentation.ui-captured-at': 'Snapshot time: {p0}',
+  'marivo.presentation.ui-business-unknown':
+    'Business coverage is unknown; this page shows only the saved range.',
+  'marivo.presentation.ui-metadata-not-captured':
+    'Evidence, findings, methods and semantic definitions are not connected yet.',
+  'marivo.presentation.ui-dataframe-source-not-captured':
+    'Captured DataFrame. SQL, datasource, backend, warnings and file provenance were not captured.',
+  'marivo.presentation.ui-format-limitations':
+    'Offline export, publishing and legacy presentation editing are unavailable for this format.',
+  'marivo.presentation.ui-open-tab': 'Open in report tab',
+  'marivo.presentation.ui-loading': 'Reading saved snapshot…',
+  'marivo.presentation.ui-preparing': 'Preparing analysis view…',
+  'marivo.presentation.ui-failed': 'Analysis view was not saved.',
+  'marivo.presentation.ui-read-failed': 'Cannot read this saved snapshot version.',
   'marivo.presentation.the-report-s-session-or-workspace-changed-or-is':
     "The report's Session or Workspace changed or is unavailable. Reopen the report.",
   'marivo.presentation.the-session-draft-changed-or-is-being-submitted-retry':

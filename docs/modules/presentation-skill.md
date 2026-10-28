@@ -1,5 +1,15 @@
 # 展示 Skill
 
+## P2 入口与历史说明
+
+当前 presentation Skill 的新建入口使用引用/Lang：单结果直接 marivo_present，只有自定义页面才按需读取
+由同一 Catalog 生成的八组件[签名资源](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)。
+Draft 参考留在明确的历史 Document v3 区域；新格式只支持静态 auto/table/metric。
+主提示已对齐默认 tool、显式 tab 和按需读取，不把 P3 的流式、patch 或最终模型策略验收提前计入。
+文件分析 Skill 的完整引用流程及其他历史示例统一清理仍属 P3。
+以下各节主要保留旧格式的内容组织、历史图形及导出参考；旧 Draft 不再是新写入步骤。
+
+
 ## 责任与入口
 
 `dsh-data-analysis-presentation` 是插件自带的展示 Skill，负责把展示需求组织成可交付的 Draft：选择

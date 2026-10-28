@@ -1,24 +1,44 @@
 ---
 name: dsh-data-analysis-presentation
-description: 将已有分析结果保存为右侧阅读器中的交互图表、表格、报告、看板或来源面板，并支持报告更新、HTML 导出与按需发布。普通文字、简短聊天表格及 CSV、PNG 文件交付无需此 Skill。
+description: 将已有 Frame 或 DataFrame 快照组织为静态分析 UI、报告或看板；自定义时使用八组件 Lang。单个结果可直接 marivo_present。旧格式图形与 HTML 参考单独保留。
 ---
 
 # 分析展示与报告交付
 
-本 Skill 负责把已有结果组织为 JSON Draft，通过 `marivo_present` 保存并打开阅读器。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
+本 Skill 负责用 `marivo_present` 保存已有结果的静态快照，默认在 tool view 展示，明确要求的报告/dashboard 使用右侧 tab。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
 
-## 生成报告
+## 新建静态分析 UI（P2）
 
-1. 确认展示目标与已有结果。报告语言遵循用户要求，否则根据问题和上下文决定，不跟随系统界面语言。已有结果可直接展示；缺少计算时，文件分析交给 `dsh-data-analysis-files`，Marivo 分析或建模交给对应 Runtime Skill 与 live Help。只补所需分支。
-2. 选择数据与来源。可恢复 Artifact 用已持久化 Frame 的实际 `saved.session_id` 和 `saved.artifact_id` 引用，按需加 `findingId`，不重复导出。同一问题需要计算后的 DataFrame 时，通过 `marivo_python` 在绑定 Runtime 使用 `dsh_data_analysis_presentation.write_dataset`；纯本地 pandas／原生 DuckDB 传 `datasources: []`，访问 Marivo datasource 才声明其精确名称。文件结果注明文件名与分析范围，关联实际返回的 `codeRef`，不构造 Marivo Artifact 或 Evidence 身份。
-3. 写草稿前读 [schema 与文件边界](references/schema.md)。使用完整 Draft、Workspace 相对路径和实际来源身份；来源事实与 unavailable 状态由 builder 读取。报告、看板及比较型展示还需读 [叙事与证据检查](references/narrative.md)，核对展示中的数值、范围、方向、分母和文字与已有结果一致。需要图表时读 [图形配置](references/charts.md)，需要起步草稿或 writer 用法时读 [可改写示例](references/examples.md)。
-4. 用普通文件能力在当前 Workspace 写 Draft。手写 computed JSON 时可按 [静态预检](references/schema.md#草稿静态预检)检查结构，再调用 `marivo_present`。成功 receipt 才表示已保存交付；失败按诊断修正草稿或引用，不为修复展示自动重新查询、observe、revalidate 或重放分析。缺失数据交回原分析流程。
-5. 回复主要结论、未完成分支和实质限制，简短说明报告已在右侧 tab 打开；headless 时提供 receipt 的准确路径。保留来源 unavailable、Agent 预筛选与 writer 截断的区别。只声明实际完成的浏览器检查，不把构建成功视为计算或业务结论已验证。
+单个结果直接传准确引用，省略 program；不用先查目录、读取 UI 或编写 Draft：
 
-## 按操作读取
+```json
+{"resources":{"result":{"kind":"marivo-frame","sessionId":"实际 Session ID","artifactId":"实际 Artifact ID"}}}
+```
 
-- **修改、合并或刷新已有报告**：先读 [报告更新](references/schema.md#报告更新)。基于已读取内容修改完整 Draft，保留用户需要的编辑；成对传入实际 `report_id` 与 `expected_build_id`，保存同一 Report 的新 Build。冲突时读取并核对当前版本，不仅替换 expected ID 重试。
-- **筛选与动态指标**：默认不添加全局筛选。需要共同维度交互时，先读 [全局筛选与动态指标](references/interaction.md)，准备所有可选组合所需结果；reader 不重算，缺组合时减少筛选或回到分析流程。
-- **来源与生成代码追问**：简短问题可用 Marivo 公开 Python API 回答；需要来源面板时用 `datasets: []` 与 `source` block。脚本关联方式见 [生成代码](references/schema.md#生成代码)，从报告 cell 继续见 [引用恢复](references/schema.md#从报告-cell-引用继续)。已有快照不证明当前数据新鲜度。
+DataFrame 用成功 `marivo_python` 返回的 `snapshotRef` 声明
+`{"resources":{"result":{"kind":"dataset-snapshot","snapshotRef":"实际引用"}}}`。
+尚未捕获的 DataFrame 需要在原分析进程调用 `capture_dataset(frame)`；该 helper 只接受 pandas DataFrame，
+不从 SQL/文件推断来源，也不修复已有精度损失。不要为呈现重新执行已经结束的分析。
+
+自定义页面时按需读[八组件紧凑签名](references/analysis-catalog.md)，提交完整 OpenUI Lang program，
+例如 `root = Stack([TextContent("结果说明"), DatasetView("result", {chart:"table"})]);`。
+rows 不写入 program。图片资源为 `{"kind":"image-file","path":"workspace-relative.png"}`，
+`Image("说明", "资源名")` 只使用保存的 PNG/JPEG/GIF/WebP，不接任意 URL。
+报告语言使用 locale；按需求选择 `surface:"tool"`（默认）或 `surface:"tab"`。
+
+成功 receipt 中的 recordId 指向不可变版本。只有确实缺少基版本定义时才调用 `marivo_ui_read({recordId})`；
+不要成功后默认回读。新格式暂不支持流式预览、patch 更新、离线导出、发布及旧版编辑。
+读取失败不伪造成功回执，缺失数据交回原分析流程。
+
+## 历史 Document v3 参考
+
+以下 Draft、图形、编辑与导出说明仅用于理解已有旧格式报告；`draft_path`、`report_id`、
+`expected_build_id` 已从 marivo_present 新写入接口移除。新建使用上面的引用/Lang 路径。
+
+### 按旧格式操作读取
+
+- **已有报告编辑**：Document v3 的呈现编辑继续使用旧 Reader 界面。新格式更新尚未接入；不要向 `marivo_present` 传入 Draft 或已删除的更新参数。[历史报告更新](references/schema.md#报告更新)仅说明旧协议，不是当前工具调用流程。
+- **筛选与动态指标**：默认不添加全局筛选。需要共同维度交互时，先读 [全局筛选与动态指标](references/interaction.md)，理解已保存报告的筛选与组合范围；reader 不重算，新建静态 UI 使用上面的引用/Lang 路径。
+- **来源与生成代码追问**：简短问题可用 Marivo 公开 Python API 回答；已有旧报告的来源面板使用历史 `source` block；当前工具不接收 block Draft。脚本关联方式见 [生成代码](references/schema.md#生成代码)，从报告 cell 继续见 [引用恢复](references/schema.md#从报告-cell-引用继续)。已有快照不证明当前数据新鲜度。
 - **离线 HTML 文件**：读 [导出与原生交付](references/export-html.md)，使用保存的 Build 导出，再调用原生 `present`。普通报告交付不额外生成 HTML 或附件。
 - **对象存储链接**：用户要求发布时读 [发布报告](references/publishing.md)，使用实时可用的 `marivo_publish_report`；成功后返回其确认的 URL。

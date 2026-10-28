@@ -51,17 +51,22 @@ function checkSlots(node: ElementNode): void {
     if (value === undefined) continue
     const children = schema.items ? value : [value]
     if (!Array.isArray(children)) throw new Error(`Invalid render slot: ${node.typeName}.${prop}`)
+    const tabValues = new Set<unknown>()
     for (const child of children) {
       if (child?.type !== 'element' || !accepted.includes(child.typeName))
         throw new Error(
           `Invalid render slot: ${node.typeName}.${prop}; expected ${accepted.join(' | ')}`,
         )
+      if (node.typeName === 'Tabs' && prop === 'items') {
+        if (tabValues.has(child.props.value)) throw new Error('analysis-tab-value-duplicate')
+        tabValues.add(child.props.value)
+      }
       checkSlots(child)
     }
   }
 }
 
-/** P0 static Catalog admission. Resource planning and saved-document admission follow in P2. */
+/** Pure Catalog admission; saved resource and view checks belong to analysis-document. */
 export function parseAnalysisProgram(program: string): ElementNode {
   const result = parser.parse(program)
   if (

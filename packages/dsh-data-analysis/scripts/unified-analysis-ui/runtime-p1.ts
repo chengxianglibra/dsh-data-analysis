@@ -1,7 +1,7 @@
 /** P1: real installed Runtime, original worker capture and independent snapshot reads. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -13,6 +13,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import { registerMarivoPythonTool } from '../../src/datasource/python.ts'
@@ -21,8 +22,12 @@ import {
   ensureSharedMarivoRuntime,
   MarivoWorkspaceEnvironmentManager,
 } from '../../src/environment/index.ts'
+import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
 import { readDatasetSnapshot } from '../../src/presentation/dataset-snapshot.ts'
 import { MarivoPresentationProjection } from '../../src/presentation/projection/index.ts'
+import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
+import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
+import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { Store } from '../../tests/datasource-credentials/fixtures.ts'
 import { TestShellEnv } from '../../tests/test-shell-env.ts'
 
@@ -129,9 +134,87 @@ print(json.dumps(result))
   assert.equal(prefix!.coverage.complete, false)
   assert.equal(frame!.frame.axes.length, 1)
   assert.deepEqual(Object.values(frame!.frame.coordinates)[0]!.values, ['A', 'B'])
+  const p2 = []
+  if (process.argv.includes('--p2')) {
+    const present = createMarivoPresentTool(
+      () => ({ workspaceId: 'p1-workspace', projection }),
+      agent.session,
+    )
+    for (const [index, resource] of [
+      { kind: 'marivo-frame', ...generated.frame },
+      { kind: 'dataset-snapshot', snapshotRef: value.snapshots![0]!.snapshotRef },
+    ].entries()) {
+      const callId = ToolCallId(`p2-present-${index}`)
+      const args = {
+        resources: { result: resource },
+        surface: index ? 'tab' : 'tool',
+        title: `P2 real ${index ? 'DataFrame' : 'Frame'}`,
+      }
+      agent.session.append('tool/call', {
+        turn: 0,
+        step: index,
+        callId,
+        name: 'marivo_present',
+        arguments: JSON.stringify(args),
+      })
+      const result = (await present.execute(args, {
+        agent,
+        callId,
+        signal: new AbortController().signal,
+      } as ToolRunContext)) as { deliveryJson: string }
+      p2.push(parsePresentationDelivery(JSON.parse(result.deliveryJson)))
+    }
+    await rm(path.join(workspace, '.dsh-data-analysis/captures'), { recursive: true })
+    // A fresh OS process reads the immutable Build via the production RPC service.
+    const { execFileSync } = await import('node:child_process')
+    const rpcModule = new URL('../../src/presentation/rpc.ts', import.meta.url).href
+    execFileSync(
+      process.execPath,
+      [
+        '--experimental-strip-types',
+        '--input-type=module',
+        '-e',
+        `
+      import assert from 'node:assert/strict';
+      import {MarivoPresentationFileService} from ${JSON.stringify(rpcModule)};
+      const service = new MarivoPresentationFileService(() => ({id:'p1-workspace',path:${JSON.stringify(workspace)}}));
+      try { for (const delivery of ${JSON.stringify(p2)}) {
+        const result = await service.read({sessionId:'unified-ui-p1',receipt:delivery.receipt,asset:'presentation.json'});
+        const document=JSON.parse(Buffer.from(result.bodyBase64,'base64').toString());
+        assert.equal(document.schemaVersion,'dsh.analysis-ui/v1');
+        assert(JSON.stringify(document).includes('12345678901234.5678'));
+        assert(JSON.stringify(document).includes('9007199254740993'));
+      } } finally { await service.close() }
+    `,
+      ],
+      { cwd: workspace, encoding: 'utf8' },
+    )
+    const files = new MarivoPresentationFileService(() => ({ id: 'p1-workspace', path: workspace }))
+    try {
+      for (const delivery of p2) {
+        const data = await files.read({
+          sessionId: String(agent.session.id),
+          receipt: delivery.receipt,
+          asset: 'presentation.json',
+        })
+        parseAnalysisDocument(JSON.parse(Buffer.from(data.bodyBase64, 'base64').toString()))
+      }
+      const read = createMarivoUiReadTool(() => ({ id: 'p1-workspace', path: workspace }))
+      const recordId = `marivo-ui:${p2[0]!.receipt.reportId}:${p2[0]!.receipt.buildId}`
+      const result = (await read.execute({ recordId }, {
+        agent,
+        callId: ToolCallId('p2-read'),
+        signal: new AbortController().signal,
+      } as ToolRunContext)) as { definitionJson: string }
+      assert.equal(JSON.parse(result.definitionJson).recordId, recordId)
+    } finally {
+      await files.close()
+    }
+  }
   const wheel = process.env.DSH_DATA_ANALYSIS_MARIVO_WHEEL
   const evidence = {
     status: 'passed',
+    p2,
     runtime,
     generated,
     snapshots: value.snapshots,

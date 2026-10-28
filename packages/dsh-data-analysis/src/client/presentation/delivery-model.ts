@@ -1,5 +1,9 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
+import {
+  type AnalysisDocument,
+  parseSavedPresentation,
+} from '../../presentation/contracts/analysis-document.ts'
 import { zh as copyDictionary } from '../i18n/copy.ts'
 import { savePresentationHtml } from './download.ts'
 
@@ -15,7 +19,6 @@ import {
   PRESENTATION_BUDGETS,
   type PresentationDocument,
   type PresentationReceipt,
-  parsePresentationDocument,
   parsePresentationReceipt,
 } from '../../presentation/contracts/index.ts'
 import {
@@ -62,6 +65,7 @@ export interface PresentationDeliveryState {
   readonly delivery?: PresentationDelivery
   readonly loading: boolean
   readonly downloading: boolean
+  readonly analysisDocument?: AnalysisDocument
   readonly document?: PresentationDocument
   readonly error?: string
   readonly downloadError?: string
@@ -296,7 +300,7 @@ export class PresentationDeliveryModel {
   }
   async #document(delivery: ReportTarget, receipt: PresentationReceipt, signal: AbortSignal) {
     const bytes = await this.#read(delivery, receipt, 'presentation.json', signal)
-    const document = parsePresentationDocument(
+    const document = parseSavedPresentation(
       JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
     )
     if (
@@ -353,6 +357,7 @@ export class PresentationDeliveryModel {
       loading: true,
       downloading: false,
       document: undefined,
+      analysisDocument: undefined,
       resolvedReceipt: undefined,
       editing: undefined,
       saving: false,
@@ -386,8 +391,19 @@ export class PresentationDeliveryModel {
       const receipt = version?.receipt ?? (await this.#resolve(target, flight.signal))
       const document = await this.#document(target, receipt, flight.signal)
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
-      this.#publish({ resolvedReceipt: receipt, document, loading: false })
-      void this.#describePublishing(receipt.workspaceId, generation)
+      if (document.schemaVersion === 3) {
+        this.#publish({ resolvedReceipt: receipt, document, loading: false })
+        void this.#describePublishing(receipt.workspaceId, generation)
+      } else {
+        this.#publish({
+          resolvedReceipt: receipt,
+          analysisDocument: document,
+          document: undefined,
+          loading: false,
+          publishingLoading: false,
+          publishingUnavailable: true,
+        })
+      }
     } catch (error) {
       if (!flight.signal.aborted && generation === this.#generation && !this.#disposed)
         this.#publish({ loading: false, publishingLoading: false, error: errorMessage(error) })
@@ -546,6 +562,7 @@ export class PresentationDeliveryModel {
         const recovered = await this.#resolve(delivery, flight.signal)
         const saved = await this.#document(delivery, recovered, flight.signal)
         if (
+          saved.schemaVersion !== 3 ||
           recovered.buildId === resolvedReceipt.buildId ||
           JSON.stringify(presentationEdits(saved)) !== JSON.stringify(editing.edits)
         )
@@ -558,6 +575,7 @@ export class PresentationDeliveryModel {
       )
         throw new Error('presentation-document-identity-mismatch')
       const saved = await this.#document(delivery, receipt, flight.signal)
+      if (saved.schemaVersion !== 3) throw new Error('analysis-ui-edit-unavailable')
       if (flight.signal.aborted || generation !== this.#generation || this.#disposed) return
       this.#publish({
         document: saved,
@@ -813,6 +831,7 @@ export class PresentationDeliveryModel {
       historyLoading: false,
       historyError: undefined,
       document: undefined,
+      analysisDocument: undefined,
       resolvedReceipt: undefined,
       editing: undefined,
       saving: false,
@@ -845,6 +864,7 @@ export class PresentationDeliveryModel {
       loading: false,
       downloading: false,
       document: undefined,
+      analysisDocument: undefined,
       resolvedReceipt: undefined,
       editing: undefined,
       saving: false,

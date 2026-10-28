@@ -2,10 +2,10 @@ import { constants } from 'node:fs'
 import { lstat, mkdir, mkdtemp, open, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { BuiltPresentation } from './build/index.ts'
+import { parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
   PRESENTATION_BUDGETS,
   type PresentationReceipt,
-  parsePresentationDocument,
   parsePresentationReceipt,
 } from './contracts/index.ts'
 import { presentationAssetPath, presentationSha256, readPresentationAsset } from './files.ts'
@@ -42,7 +42,7 @@ export async function commitPresentation(
   signal?: AbortSignal,
 ): Promise<PresentationReceipt> {
   signal?.throwIfAborted()
-  const document = parsePresentationDocument(structuredClone(input.document))
+  const document = parseSavedPresentation(structuredClone(input.document))
   const built = {
     document,
     documentBytes: Buffer.from(input.documentBytes),
@@ -160,7 +160,10 @@ export async function commitPresentation(
       workspaceId: built.document.workspaceId,
       buildId: built.document.buildId,
       title: built.document.title,
-      summary: `${built.document.blocks.length} 个区块 · ${built.document.datasets.length} 份数据集 · ${built.document.sources.length} 个声明来源 · ${built.document.diagnostics.length} 条诊断`,
+      summary:
+        built.document.schemaVersion !== 3
+          ? `${Object.keys(built.document.resources).length} resources`
+          : `${built.document.blocks.length} 个区块 · ${built.document.datasets.length} 份数据集 · ${built.document.sources.length} 个声明来源 · ${built.document.diagnostics.length} 条诊断`,
       files: {
         document: {
           asset: 'presentation.json',

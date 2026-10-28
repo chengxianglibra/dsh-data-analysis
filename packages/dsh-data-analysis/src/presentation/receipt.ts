@@ -1,4 +1,5 @@
 /** Pure Host delivery envelope shared by the server and browser. */
+import { analysisRecordId } from './contracts/analysis-document.ts'
 import { type PresentationReceipt, parsePresentationReceipt } from './contracts/index.ts'
 
 export const MARIVO_PRESENT_TOOL_NAME = 'marivo_present'
@@ -11,6 +12,7 @@ export interface PresentationDelivery {
   dshSessionId: string
   turn: number
   receipt: PresentationReceipt
+  surface?: 'tool' | 'tab'
 }
 
 export function parsePresentationDelivery(value: unknown): PresentationDelivery {
@@ -18,7 +20,11 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
     throw new Error('invalid-presentation-delivery')
   const input = value as Record<string, unknown>
   if (
-    Object.keys(input).sort().join(',') !== 'dshSessionId,kind,receipt,schemaVersion,turn' ||
+    ![
+      'dshSessionId,kind,receipt,schemaVersion,turn',
+      'dshSessionId,kind,receipt,schemaVersion,surface,turn',
+    ].includes(Object.keys(input).sort().join(',')) ||
+    (input.surface !== undefined && input.surface !== 'tool' && input.surface !== 'tab') ||
     input.kind !== MARIVO_PRESENTATION_DELIVERY_KIND ||
     input.schemaVersion !== 2 ||
     typeof input.dshSessionId !== 'string' ||
@@ -36,6 +42,7 @@ export function presentationReceiptText(receipt: PresentationReceipt): string {
   return [
     receipt.title,
     receipt.summary,
+    `Record: ${analysisRecordId(receipt.reportId, receipt.buildId)}`,
     `Workspace: ${receipt.workspaceId}`,
     `Report: ${receipt.reportId}`,
     `Build: ${receipt.buildId}`,

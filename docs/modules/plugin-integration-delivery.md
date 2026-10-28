@@ -58,7 +58,8 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | `marivo_datasource_configure` | 将数据源配置表单绑定到原调用并续接 | DSH 提供等价的领域配置续接 |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
-| `marivo_present` | 保存 JSON、统一 receipt、原生 Tab 打开与按需 HTML 下载 | DSH 提供等价的完整快照交付 |
+| `marivo_present` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
+| `marivo_ui_read` | 按准确 recordId 恢复定义与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
 | `marivo_publish_report`（可选） | 将固定报告 HTML 上传至配置的 S3 目标 | Harness 提供等价的受控发布 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
@@ -68,9 +69,9 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 ## Prompt 与 Skill 激活
 
 系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
-文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。交互展示、保存或
-修改报告及来源面板加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。HTML 导出与发布的
-具体流程在展示 Skill 的 references，按用户目标读取。
+文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 marivo_present 传准确引用，不额外读取 Skill/Catalog。自定义 Lang 时按需加载
+dsh-data-analysis-presentation；P2 新格式为静态表格/单值，默认 tool，明确报告为 tab。
+新格式的流式、patch、HTML 导出和发布尚未接入，旧格式参考见该 Skill 的历史区域。
 
 `marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
 测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由

@@ -10,7 +10,7 @@
 | Marivo | 分析语义、Catalog、Artifact、Finding、Evidence、Quality、Lineage、revalidation 与分析 Session |
 | 本插件 | Runtime/Workspace binding、受控执行与凭据注入、实时 Help 披露、语义引用及只读投影、报告保存与呈现、可选对象存储发布、打包验证 |
 
-插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。`marivo_export_html` 直接从 Session Workspace 的已保存报告导出完整 HTML，与阅读器复用快照校验及渲染，不依赖 Runtime 或发布配置。分析、展示保存、HTML 导出和对外发布是独立操作；其中一个成功不能证明其他操作成功。
+插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。`marivo_export_html` 仅从 Session Workspace 的旧格式已保存报告导出完整 HTML，与阅读器复用快照校验及渲染，不依赖 Runtime 或发布配置。分析、展示保存、HTML 导出和对外发布是独立操作；其中一个成功不能证明其他操作成功。
 
 ## 模块导航
 
@@ -24,16 +24,22 @@
 | Agent 接入 | [文件分析 Skill](modules/file-analysis-skill.md) | 原生附件路径、pandas/DuckDB 与结果交付 |
 | 语义交互 | [语义对象引用输入](modules/semantic-reference-input.md) | Catalog 检索、原子引用、提交核验与热度 |
 | 语义交互 | [只读语义浏览器](modules/semantic-browser.md) | Catalog 快照、公开定义与声明关系 |
-| 报告 | [展示 Skill](modules/presentation-skill.md) | 内容组织、图形选择、来源声明与 Draft 流程 |
+| 报告 | [展示 Skill](modules/presentation-skill.md) | 引用呈现、Lang 组合与历史格式参考 |
 | 报告 | [展示数据投影](modules/presentation-projection.md) | typed JSON、固定来源读取、Python writer 与数值预算 |
 | 报告 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、current、receipt、RPC 与编辑 |
-| 报告 | [共享 reader 与离线构建](modules/presentation-reader.md) | 五类 block、阅读交互、加入提问 与 HTML |
+| 报告 | [共享 reader 与离线构建](modules/presentation-reader.md) | 共享 AnalysisSurface；旧 block Reader 与 HTML |
 | 报告 | [报告 HTML 发布](modules/report-publishing.md) | 可选 S3 上传、独立凭据与发布回执 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI P0 将开发依赖与 peer 最低版本提高至 `0.2.1-rc.2`，用于公开 `PartialArguments.textPrefix`、tool view、tab 与 PTC 探针。OpenUI 固定版本和八组件 Catalog 由插件独立维护，领域组件目前只有占位；`marivo_present` 仍使用原 Draft 流程，P1 已接通有界 Frame 投影及原执行内 DataFrame 捕获，统一呈现与流式交付尚待 P2–P3。详情见[实施计划](designs/unified-analysis-ui-implementation.md)与[P0 验收记录](testing/unified-analysis-ui-p0-2026-10-28.md)、[P1 验收记录](testing/unified-analysis-ui-p1-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI 的 P0–P2 已落地：固定 Harness `0.2.1-rc.2` 与八组件 Catalog；新写入通过
+`marivo_present({resources, program?, surface?})` 保存 `dsh.analysis-ui/v1` 文档。单引用默认展开，
+Frame 与原执行内 DataFrame 捕获使用 P1 有界快照；完整内容存入现有不可变 Build JSON。
+共享 AnalysisSurface 同时用于默认 tool view 和显式报告 tab；按准确 recordId 恢复，不重新分析。
+Document v3 按旧 Reader 分派，新格式的离线导出、发布与旧编辑明确不可用。P3 流式、patch 及综合模型验收尚待完成，
+P2 不能视为首期最终交付。见[实施计划](designs/unified-analysis-ui-implementation.md)、
+[P2 验收记录](testing/unified-analysis-ui-p2-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
 
 ## 运行与数据流
 
@@ -46,13 +52,14 @@ flowchart TD
   A[Agent / Skills] --> T[Help / Datasource / Python Tools]
   T --> E
   E --> M[Marivo public contracts]
-  E --> C[Computed typed JSON]
-  M --> P[Presentation projection]
+  E --> C[DataFrame capture receipt]
+  M --> P[Bounded snapshots / admitted resources]
   C --> P
   P --> B[Immutable Report Build JSON]
   B --> U[Current pointer and receipt]
-  U --> V[Native Tab / Shared reader]
-  V --> O[On-demand HTML]
+  U --> V[Tool view / Report tab: AnalysisSurface]
+  U --> L[Legacy Document v3 reader]
+  L --> O[Legacy on-demand HTML]
   O --> S[Optional S3 publishing]
   M --> Q[Read-only Catalog projection]
   Q --> I[Semantic browser / Input reference]

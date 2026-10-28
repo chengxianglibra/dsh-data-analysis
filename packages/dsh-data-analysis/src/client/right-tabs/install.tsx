@@ -3,6 +3,8 @@
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { installAnalysisTool } from '../analysis-ui/install.tsx'
+import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
 import { credentialChanges } from '../credentials/changes.ts'
 import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
@@ -116,6 +118,18 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     actions.openResource(address, { params })
     if (diagnostics) audit.opens.push({ sessionId, address, automatic })
   }
+  installAnalysisTool(
+    ctx,
+    rpc,
+    (sessionId, receipt) =>
+      navigate(sessionId, {
+        kind: 'report',
+        workspaceId: receipt.workspaceId,
+        reportId: receipt.reportId,
+        buildId: receipt.buildId,
+      }),
+    ctx.connection.generation,
+  )
   installSemanticReferenceSource(ctx, rpc)
   installPresentationReferenceSource(ctx)
   const credentials = installCredentials(ctx, rpc, credentialChanges(ctx))
@@ -250,7 +264,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         data-rt-panel={panelId}
         data-rt-kind={page.target.kind}
         data-rt-workspace={page.target.workspaceId}
-        data-rt-build={report.document?.buildId}
+        data-rt-build={(report.document ?? report.analysisDocument)?.buildId}
         data-rt-current={page.target.kind === 'report' && !page.target.buildId ? 'true' : undefined}
       >
         <style>{catalogStyles + credentialStyles + rightTabStyles}</style>
@@ -387,6 +401,20 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     sessions={sessions}
                     onOpenSession={(id) => ctx.uiWorkspace.openSession(id)}
                   />
+                )}
+                {report.analysisDocument && (
+                  <>
+                    <div className="rt-toolbar">
+                      <button type="button" onClick={() => void page.reader.toggleHistory()}>
+                        {t('marivo.presentation.history')}
+                      </button>
+                      <span>{t('marivo.presentation.ui-format-limitations')}</span>
+                    </div>
+                    <SavedAnalysisSurface
+                      key={report.analysisDocument.recordId}
+                      document={report.analysisDocument}
+                    />
+                  </>
                 )}
                 {report.document && (
                   <HostPresentationReader
@@ -593,8 +621,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const target = parseResource(tab.navigation.address)
     return target.kind === 'report' ? (
       <span>
-        {report?.document?.title ?? target.reportId.slice(0, 12)} ·{' '}
-        {report?.document?.buildId.slice(0, 8) ?? target.buildId?.slice(0, 8) ?? '…'}
+        {(report?.document ?? report?.analysisDocument)?.title ?? target.reportId.slice(0, 12)} ·{' '}
+        {(report?.document ?? report?.analysisDocument)?.buildId.slice(0, 8) ??
+          target.buildId?.slice(0, 8) ??
+          '…'}
         {report?.editing ? ' *' : ''}
       </span>
     ) : (
@@ -699,6 +729,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           return
         }
         changed(workspaceId, reportId)
+        if (delivery.surface === 'tool') return
         // Publication invalidation is Workspace-wide. Foreground navigation
         // alone is gated, and background deliveries are never queued.
         if (!ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) return

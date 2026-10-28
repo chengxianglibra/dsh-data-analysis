@@ -1,5 +1,15 @@
 # 展示数据投影
 
+## P2 新写入的数据依据
+
+新 `marivo_present` 使用 P1 的 AnalysisSnapshot v1：Frame 通过 schema/read_page 在一次 checked execution 内有界读取，
+依据声明的 table/metric 选列；DataFrame 用成功原执行的 snapshotRef 读取，不能接受任意 JSON 作为新结果。
+原执行的 Host provenance、Workspace 与摘要检查沿用 dataset-snapshot 接缝。
+所有快照及范围保存在新文档 resources 中，属于 Build 的生命周期，不长期依赖 captures 临时目录。
+不再为新写入创建 block Draft；旧 projection/project/readDraft 只保留给旧格式及其验证入口。
+详见[统一交付](presentation-delivery.md#p2-统一静态写入契约)。下文中的 Draft/writer 为旧格式契约。
+
+
 ## 责任与入口
 
 本模块将已存在的数据和声明来源投影为 reader 可消费的纯数据。Marivo 拥有 Artifact、Finding、字段、Quality、

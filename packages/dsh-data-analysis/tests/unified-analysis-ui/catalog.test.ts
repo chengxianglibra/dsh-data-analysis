@@ -62,3 +62,14 @@ test('official statement merge adds, replaces and removes in one patch', () => {
   const parser = createParser(analysisCatalogSchema)
   assert.equal(parser.parse(merged).meta.errors.length, 0)
 })
+
+test('tab values are unique within each group, including nested groups', () => {
+  const duplicate = 'Tabs([TabItem("same","First",[]),TabItem("same","Second",[])])'
+  for (const root of [duplicate, `Card([${duplicate}])`])
+    assert.throws(() => parseAnalysisProgram(`root = ${root};`), /analysis-tab-value-duplicate/)
+  assert.doesNotThrow(() =>
+    parseAnalysisProgram(
+      'root = Tabs([TabItem("same","Outer",[Tabs([TabItem("same","Inner",[])])]),TabItem("other","Other",[])]);',
+    ),
+  )
+})

@@ -1,5 +1,34 @@
 # 展示交付模块
 
+## P2 统一静态写入契约
+
+当前 `marivo_present` 接受 `resources`、可选完整 `program`、`title`、`locale`、`surface`。
+一个 Frame 或 dataset-snapshot 只需引用，自动生成 AnalysisFrameView/DatasetView；不接收 rows、Draft 路径或旧更新参数。
+默认 `surface:tool` 挂载准确 Native/PTC 调用的 tool view；显式报告/dashboard 使用 `surface:tab`。
+Delivery schema v2 保留既有事件归属，可选 surface 决定位置；历史未声明 surface 的事件沿用 tab。
+已确认发布历史的 source.surface 保存该次交付位置，供目录分类使用，不进入文档内容；默认目录仅列 tab 报告，另选“对话结果”查看 tool 内容。
+成功只表示保存，headless 回执不声称已打开 UI。流式预览及 basedOnRecordId/patch 留在 P3。
+
+新文档格式为 `schemaVersion:"dsh.analysis-ui/v1"`，单一声明在
+[analysis-document.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)。
+recordId 为 `marivo-ui:<reportId>:<buildId>`，无需目录检索或新数据库。
+program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在现有 Build 的 presentation.json 内，
+复用原子目录提交、digest、current 条件检查与历史。关闭原连接、删除捕获文件后可读取；不自动迁移旧文件。
+`marivo_ui_read({recordId})` 只读取准确已发布版本的 program、必要 schema、范围和组件签名，不返回 rows，不执行 Python；
+只在基版本上下文缺失时按需使用，不默认回读。
+
+资源支持 `marivo-frame(sessionId,artifactId)`、`dataset-snapshot(snapshotRef)`、
+`image-file(path)`。Frame 在一次 checked execution 中批量有界读取；Dataset 先校验 Host execution provenance，
+图片仅从所属 Workspace 的普通文件读取 PNG/JPEG/GIF/WebP，按现有预算保存为内嵌 data URL。
+组件不读取任意 URL。错误资源、取消、必要读取失败不发布 current。
+
+服务端和 Client 按明确格式分派；新格式不传入旧 block Reader。
+新格式的 HTML 导出/发布返回 `analysis-ui-export-unavailable`，旧编辑 RPC 返回 `analysis-ui-edit-unavailable`；
+页面同时说明限制。旧 Document v3 的阅读、既有呈现编辑及 HTML 功能仍由原契约拥有。
+
+以下各节保留 **Document v3 历史格式** 的存储、交付及阅读兼容说明；其中 Draft 工具创建/更新参数已退出新写入接口。
+
+
 ## 责任与入口
 
 `marivo_present({ draft_path })` 将一次分析展示保存为一个 `presentation.json` 和一个 receipt，完成后自动在右侧 tab 打开。
