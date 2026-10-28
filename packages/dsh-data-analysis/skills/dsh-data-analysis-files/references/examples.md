@@ -32,7 +32,21 @@ print(result.to_string(index=False))
 
 按文件改用 `read_json_auto(?)`、`read_parquet(?)` 或 `read_xlsx(?)`。`.xlsx` 的指定工作表可用 `read_xlsx(?, sheet = ?)` 并传入路径与 sheet 名；首次加载 `excel` 扩展需要获取官方扩展。参数避免将路径或 sheet 名直接拼入 SQL；reader 支持 glob，含通配符的文件名需先确认只命中目标文件。
 
-原生连接支持同一调用内的多条 SQL 和临时表，无需另建 Marivo datasource。需要交互表格或报告时，使用展示 Skill 的 computed 示例；写入当前 Workspace，`sourceIds` 可为空，dataset 的 `codeRefs` 使用本次成功执行返回的实际引用。
+原生连接支持同一调用内的多条 SQL 和临时表，无需另建 Marivo datasource。需要保留用于 UI 的结果时，在同一次 marivo_python 中调用下方 capture；helper 自动关联本次执行，成功回执给出 snapshotRef。
+
+## 捕获已有 DataFrame
+
+在上面的原分析进程中、result 仍存在时调用：
+
+```python
+from dsh_data_analysis_presentation import capture_dataset
+capture_dataset(result)
+```
+
+helper 只接受 pandas DataFrame。确需保留 Marivo SQL 结果时，先按其公开接口转成 DataFrame 再捕获；
+该转换可能将含 NULL 的整数列推断为浮点并损失大整数精度，helper 不检测或修复捕获前的损失。
+不为每条 SQL 强制捕获，也不为展示重跑已经结束的分析。将成功回执中的实际 snapshotRef 交给 marivo_present；
+单个快照无需另读展示 Skill。
 
 ## 导出 CSV 或 JSON
 

@@ -1,5 +1,8 @@
 # 图形配置与数值表达
 
+> 历史 Document v3 参考：以下 Draft、writer 和旧参数仅解释已有格式，不能用于当前 marivo_present 新写入。新建和更新使用[当前引用/Lang 流程](../SKILL.md)。
+
+
 所有图形共享 `datasetId`、`chart`、`x`、`y`、`numericMode`。字段绑定使用列 ID，名称和单位来自 dataset；图前说明用 markdown。reader 保留输入行顺序，统计计算先在分析阶段完成。
 
 ## 图形选择与字段

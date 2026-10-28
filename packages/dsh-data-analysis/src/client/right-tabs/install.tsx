@@ -3,6 +3,8 @@
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { AnalysisCandidates, candidateKey } from '../analysis-ui/candidate.ts'
+import { CandidateView } from '../analysis-ui/candidate-view.tsx'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
 import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
 import { credentialChanges } from '../credentials/changes.ts'
@@ -55,6 +57,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   installCopy(ctx)
   const rpc = createPluginRpc(ctx.connection.rpc)
   const pages = new Map()
+  const candidates = new AnalysisCandidates()
+  const candidateTabs = new Set()
   let indexRevision = 0
   const indexListeners = new Set<() => void>()
   const pageIndex = {
@@ -129,6 +133,67 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         buildId: receipt.buildId,
       }),
     ctx.connection.generation,
+    candidates,
+  )
+  const candidateKind = 'marivo-analysis-candidate'
+  const candidateId = definitionId(candidateKind)
+  ctx.effect(() =>
+    ctx.sidebarRightTabs.register({
+      id: candidateId,
+      kind: candidateKind,
+      multiple: true,
+      title: () => hostCopy(ctx)('marivo.presentation.ui-generating'),
+    }),
+  )
+  ctx.slots.inject('sidebar.right.pane.tab', () =>
+    ctx.slots.register(
+      { name: 'sidebar.right.pane.tab', key: candidateId, locale: 'marivo.presentation' },
+      localized(ctx, function CandidateTab({ sessionId, useTabInfo }) {
+        const t = useCopy()
+        const { tab } = useTabInfo()
+        const callId = tab.navigation.params?.callId
+        const candidate = useSyncExternalStore(candidates.subscribe, () =>
+          candidates.get(sessionId, tab.navigation.params?.turn, callId),
+        )
+        const generation = useSyncExternalStore(
+          (listener) => ctx.connection.generation.subscribe(listener),
+          () => ctx.connection.generation.getSnapshot(),
+        )
+        const workspaceState = useSyncExternalStore(
+          (listener) => ctx.workspaces.list.subscribe(listener),
+          () => ctx.workspaces.list.getSnapshot(),
+        )
+        const owners = workspaceState.items.filter((w) => w.sessionIds.includes(sessionId))
+        const allowed =
+          candidate &&
+          candidate.sessionId === sessionId &&
+          candidate.generation === generation &&
+          workspaceState.phase === 'ready' &&
+          workspaceState.state !== 'error' &&
+          owners.length === 1 &&
+          owners[0].workspaceId === candidate.workspaceId &&
+          tab.navigation.params?.workspaceId === candidate.workspaceId &&
+          tab.navigation.params?.turn === candidate.turn
+        useEffect(() => {
+          if (!allowed || !candidate.delivery || tab.signal.aborted) return
+          const receipt = candidate.delivery.receipt
+          tab.actions.openResource(
+            resourceAddress({
+              kind: 'report',
+              workspaceId: receipt.workspaceId,
+              reportId: receipt.reportId,
+              buildId: receipt.buildId,
+            }),
+            { replaceTab: tab.id, revealIfOpened: false },
+          )
+        }, [allowed, candidate, tab])
+        return allowed ? (
+          <CandidateView candidate={candidate} rpc={rpc} />
+        ) : (
+          <p role="status">{t('marivo.presentation.ui-preparing')}</p>
+        )
+      }),
+    ),
   )
   installSemanticReferenceSource(ctx, rpc)
   installPresentationReferenceSource(ctx)
@@ -720,7 +785,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       if (feeds.has(id)) continue
       const binding = ctx.sessions.binding(id)
       if (!binding || binding.session.getSnapshot().removed) continue
-      const observer = new LiveDeliveryObserver(id, (delivery) => {
+      let chatBaseline = true
+      let readChat = () => {}
+      const observer = new LiveDeliveryObserver(id, (delivery, callId) => {
+        readChat()
         const { workspaceId, reportId, buildId } = delivery.receipt
         try {
           check(id, workspaceId)
@@ -730,6 +798,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         }
         changed(workspaceId, reportId)
         if (delivery.surface === 'tool') return
+        // The exact call's temporary tab owns handoff, including an explicit user close.
+        if (candidateTabs.has(candidateKey(id, delivery.turn, callId))) return
         // Publication invalidation is Workspace-wide. Foreground navigation
         // alone is gated, and background deliveries are never queued.
         if (!ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) return
@@ -739,6 +809,61 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           fail(error)
         }
       })
+      let stopChat = () => {}
+      if (typeof ctx.uiConversation.binding === 'function') {
+        const chat = ctx.uiConversation.binding(binding)?.target('chat')
+        if (chat) {
+          readChat = () => {
+            const generation = ctx.connection.generation.getSnapshot(),
+              workspaceId = workspaceFor(id)
+            if (!generation || !workspaceId) return
+            const snapshot = chat.getSnapshot()
+            const roots = (snapshot?.nodes.values() ?? []).filter(
+              (node) => node.kind === 'tool-call',
+            )
+
+            const baseline = chatBaseline
+            for (const node of roots)
+              candidates.observe(
+                [node.data.root],
+                id,
+                workspaceId,
+                generation,
+                (candidate) => {
+                  if (
+                    baseline ||
+                    candidate.surface !== 'tab' ||
+                    !candidate.preview ||
+                    !['preparing', 'start'].includes(candidate.phase) ||
+                    !ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView
+                  )
+                    return
+                  const key = candidateKey(id, candidate.turn, candidate.callId)
+                  if (candidateTabs.has(key)) return
+                  try {
+                    check(id, workspaceId, true)
+                    candidateTabs.add(key)
+                    ctx.sidebarRight.openTab(candidateKind, {
+                      params: { callId: candidate.callId, workspaceId, turn: candidate.turn },
+                    })
+                    if (diagnostics)
+                      audit.opens.push({
+                        sessionId: id,
+                        candidate: candidate.callId,
+                        automatic: true,
+                      })
+                  } catch (error) {
+                    fail(error)
+                  }
+                },
+                'turn' in node.location ? node.location.turn.turn : undefined,
+              )
+            if (snapshot) chatBaseline = false
+          }
+          stopChat = chat.subscribe(readChat)
+          readChat()
+        }
+      }
       observer.consume(binding.eventSource.getSnapshot(), true)
       const stopFeed = binding.eventSource.subscribe(() => {
         const state = binding.session.getSnapshot()
@@ -757,6 +882,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         const state = binding.session.getSnapshot()
         const settled = running && !state.running
         running = state.running
+        if (settled) {
+          readChat()
+          candidates.settle(id)
+        }
         if (state.removed) {
           feeds.get(id)?.stop()
           feeds.delete(id)
@@ -778,6 +907,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         stop: () => {
           stopFeed()
           stopLifecycle()
+          stopChat()
+          candidates.revoke(id)
         },
       })
     }

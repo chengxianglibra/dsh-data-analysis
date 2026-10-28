@@ -4,11 +4,17 @@ import {
   ANALYSIS_UI_FORMAT,
   type AnalysisDocument,
   type AnalysisPresentInput,
+  type AnalysisResourceDeclaration,
   analysisElements,
   analysisRecordId,
   parseAnalysisDocument,
+  sameAnalysisDeclaration,
 } from './contracts/analysis-document.ts'
-import { parseAnalysisProgram } from './contracts/analysis-program.ts'
+import {
+  analysisStatements,
+  mergeAnalysisProgram,
+  parseAnalysisProgram,
+} from './contracts/analysis-program.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
@@ -26,18 +32,29 @@ function imageMime(bytes: Buffer) {
 /** Read each admitted resource once; saved bytes never depend on the capture directory. */
 export async function createAnalysisDocument(
   input: AnalysisPresentInput,
-  projection: MarivoPresentationProjection,
+  source: { projectRoot: string; projection: () => Promise<MarivoPresentationProjection> },
   identity: { workspaceId: string; reportId: string; buildId: string },
   signal: AbortSignal,
+  base?: AnalysisDocument,
 ): Promise<AnalysisDocument> {
-  const entries = Object.entries(input.resources)
+  const declarations =
+    input.resources ??
+    Object.fromEntries(
+      Object.entries(base?.resources ?? {}).map(([name, resource]) => [name, resource.declaration]),
+    )
+  const title = input.title ?? base?.title ?? 'Analysis'
+  const entries = Object.entries(declarations)
   if (entries.length > PRESENTATION_BUDGETS.datasets) throw new Error('analysis-resource-budget')
   const single = entries.length === 1 ? entries[0] : undefined
-  const program =
-    input.program ??
-    (single
-      ? `root = ${single[1].kind === 'marivo-frame' ? 'AnalysisFrameView' : single[1].kind === 'dataset-snapshot' ? 'DatasetView' : 'Image'}(${single[1].kind === 'image-file' ? `${JSON.stringify(input.title)}, ` : ''}${JSON.stringify(single[0])});`
-      : '')
+  const program = base
+    ? input.program
+      ? mergeAnalysisProgram(base.program, input.program)
+      : base.program
+    : input.program
+      ? analysisStatements(input.program)
+      : single
+        ? `root = ${single[1].kind === 'marivo-frame' ? 'AnalysisFrameView' : single[1].kind === 'dataset-snapshot' ? 'DatasetView' : 'Image'}(${single[1].kind === 'image-file' ? `${JSON.stringify(title)}, ` : ''}${JSON.stringify(single[0])});`
+        : ''
   const nodes = analysisElements(parseAnalysisProgram(program))
   for (const node of nodes) {
     const ref =
@@ -46,19 +63,23 @@ export async function createAnalysisDocument(
         : ['AnalysisFrameView', 'DatasetView'].includes(node.typeName)
           ? node.props.ref
           : undefined
-    if (ref !== undefined && (typeof ref !== 'string' || !input.resources[ref]))
+    if (ref !== undefined && (typeof ref !== 'string' || !declarations[ref]))
       throw new Error('analysis-resource-missing')
   }
-  const frameEntries = entries.filter(
-    (
-      entry,
-    ): entry is [
-      string,
-      Extract<AnalysisPresentInput['resources'][string], { kind: 'marivo-frame' }>,
-    ] => entry[1].kind === 'marivo-frame',
+  const resources: AnalysisDocument['resources'] = {}
+  const pending = entries.filter(([name, declaration]) => {
+    const saved = base?.resources[name]
+    if (!saved || !sameAnalysisDeclaration(saved.declaration, declaration)) return true
+    resources[name] = structuredClone(saved)
+    return false
+  })
+  const frameEntries = pending.filter(
+    (entry): entry is [string, Extract<AnalysisResourceDeclaration, { kind: 'marivo-frame' }>] =>
+      entry[1].kind === 'marivo-frame',
   )
+  const projection = frameEntries.length ? await source.projection() : undefined
   const frames = frameEntries.length
-    ? await projection.readFrames(
+    ? await projection!.readFrames(
         frameEntries.map(([name, r]) => {
           const views = nodes
             .filter((n) => n.typeName === 'AnalysisFrameView' && n.props.ref === name)
@@ -93,8 +114,7 @@ export async function createAnalysisDocument(
         signal,
       )
     : []
-  const resources: AnalysisDocument['resources'] = {}
-  for (const [name, declaration] of entries) {
+  for (const [name, declaration] of pending) {
     signal.throwIfAborted()
     if (declaration.kind === 'marivo-frame') {
       resources[name] = {
@@ -103,12 +123,12 @@ export async function createAnalysisDocument(
         snapshot: frames[frameEntries.findIndex(([id]) => id === name)]!,
         binding: {
           workspaceId: identity.workspaceId,
-          runtimeFingerprint: projection.binding.fingerprint,
+          runtimeFingerprint: projection!.binding.fingerprint,
         },
       }
     } else if (declaration.kind === 'dataset-snapshot') {
       const { snapshot, codeRef, owner } = await readDatasetSnapshot(
-        projection.binding.projectRoot,
+        source.projectRoot,
         identity.workspaceId,
         declaration.snapshotRef,
         signal,
@@ -131,8 +151,8 @@ export async function createAnalysisDocument(
       )
         throw new Error('analysis-image-path-invalid')
       const bytes = await readReportFile(
-        projection.binding.projectRoot,
-        path.join(projection.binding.projectRoot, declaration.path),
+        source.projectRoot,
+        path.join(source.projectRoot, declaration.path),
         PRESENTATION_BUDGETS.datasetBytes,
         signal,
       )
@@ -150,8 +170,8 @@ export async function createAnalysisDocument(
     schemaVersion: ANALYSIS_UI_FORMAT,
     ...identity,
     recordId: analysisRecordId(identity.reportId, identity.buildId),
-    title: input.title,
-    locale: input.locale,
+    title,
+    locale: input.locale ?? base?.locale ?? 'zh-CN',
     generatedAt: new Date().toISOString(),
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
     program,

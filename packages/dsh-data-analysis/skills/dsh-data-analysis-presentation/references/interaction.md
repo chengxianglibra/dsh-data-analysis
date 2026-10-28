@@ -1,5 +1,8 @@
 # 全局筛选与动态指标
 
+> 历史 Document v3 参考：以下 Draft、writer 和旧参数仅解释已有格式，不能用于当前 marivo_present 新写入。新建和更新使用[当前引用/Lang 流程](../SKILL.md)。
+
+
 ## 何时启用
 
 由 Agent 根据报告问题和数据条件决定；仅有固定结论、单图或不能形成共同筛选范围时省略 `interaction`。reader 不根据 dataset 自动生成筛选，也不推断跨 dataset 的关系。

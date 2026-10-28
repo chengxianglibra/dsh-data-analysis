@@ -10,9 +10,12 @@ export class LiveDeliveryObserver {
   #revision = -1
   #calls = new Map<number, Map<string, string>>()
   #seen = new Set<string>()
-  readonly #onDelivery: (delivery: PresentationDelivery) => void
+  readonly #onDelivery: (delivery: PresentationDelivery, callId: string) => void
   readonly #sessionId: string
-  constructor(sessionId: string, onDelivery: (delivery: PresentationDelivery) => void) {
+  constructor(
+    sessionId: string,
+    onDelivery: (delivery: PresentationDelivery, callId: string) => void,
+  ) {
     this.#sessionId = sessionId
     this.#onDelivery = onDelivery
   }
@@ -53,7 +56,9 @@ export class LiveDeliveryObserver {
         const key = presentationDeliveryIdentity(item.delivery)
         if (this.#seen.has(key)) continue
         this.#seen.add(key)
-        if (live) this.#onDelivery(item.delivery)
+        const callId =
+          event.type === 'tool/result' ? event.data.message?.source?.callId : event.data.subCallId
+        if (live && typeof callId === 'string') this.#onDelivery(item.delivery, callId)
       }
       if (event.type === 'turn/end' && Number.isSafeInteger(turn)) this.#calls.delete(turn)
     }

@@ -1,5 +1,8 @@
 # 可改写的完整示例
 
+> 历史 Document v3 参考：以下 Draft、writer 和旧参数仅解释已有格式，不能用于当前 marivo_present 新写入。新建和更新使用[当前引用/Lang 流程](../SKILL.md)。
+
+
 这些文件都是**演示内容，不是真实业务结果**。先按任务修改，再用普通文件能力写入当前 Workspace；不要在 Skill 安装目录生成分析产物。带 `example-` 的 Session/Artifact 引用仅演示字段位置，使用时替换为当前 Workspace 中实际取得的精确引用。
 
 ## 已有 Artifact
@@ -14,11 +17,7 @@
 
 [computed.dataset.json](examples/computed.dataset.json) 是该示例的实际 typed JSON 输出，含精确金额、整数和 null；[computed.draft.json](examples/computed.draft.json) 同时展示单值、趋势、分组、原值表格，未声明来源。需要声明多个 Artifact 来源时参考 [computed-sources.draft.json](examples/computed-sources.draft.json)，只增加声明与关联，不提交转换信息。无法恢复的声明来源由 present 标记 unavailable，不删除声明来隐藏缺失。
 
-将选定草稿写成 `analysis/presentation.draft.json` 后调用：
-
-```json
-{"draft_path":"analysis/presentation.draft.json"}
-```
+这些 Draft 仅用于已有格式的读取与测试；当前 marivo_present 不接收 draft_path。新建使用主入口中的引用/Lang。
 
 一个成功的 `marivo_present` 已完成 reader 构建；离线 HTML 在用户下载时生成；根据 receipt 交付，不能把示例数据解释成用户的真实业务结论。
 

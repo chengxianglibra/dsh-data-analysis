@@ -22,21 +22,58 @@ export function AnalysisSurface({
   document: AnalysisDocument
   readResource?: (name: string) => AnalysisResource | undefined
 }) {
+  return (
+    <AnalysisRenderer
+      program={document.program}
+      title={document.title}
+      locale={document.locale}
+      resources={document.resources}
+      recordId={document.recordId}
+      readResource={readResource}
+    />
+  )
+}
+export interface AnalysisRendererProps {
+  program: string
+  title: string
+  locale: AnalysisDocument['locale']
+  resources: AnalysisDocument['resources']
+  recordId?: string
+  readResource?: (name: string) => AnalysisResource | undefined
+  isStreaming?: boolean
+  candidate?: boolean
+}
+export function AnalysisRenderer({
+  program,
+  title,
+  locale,
+  resources: saved,
+  recordId,
+  readResource,
+  isStreaming = false,
+  candidate = false,
+}: AnalysisRendererProps) {
   const resources = useMemo(
-    () => ({ readResource: readResource ?? ((name: string) => document.resources[name]) }),
-    [document.resources, readResource],
+    () => ({ readResource: readResource ?? ((name: string) => saved[name]), candidate }),
+    [saved, readResource, candidate],
   )
   return (
-    <ReportCopyProvider locale={document.locale}>
+    <ReportCopyProvider locale={locale}>
       <AnalysisResources.Provider value={resources}>
-        <article className="pr-reader au-surface" data-analysis-record={document.recordId}>
+        <article
+          className="pr-reader au-surface"
+          data-analysis-record={recordId}
+          ref={(node) => {
+            node?.toggleAttribute('inert', candidate)
+          }}
+        >
           <style>{PRESENTATION_STYLES}</style>
           <style>{styles}</style>
-          <h1>{document.title}</h1>
+          <h1>{title}</h1>
           <Renderer
             library={analysisLibrary}
-            response={document.program}
-            isStreaming={false}
+            response={program}
+            isStreaming={isStreaming}
             publishObservability={false}
           />
         </article>

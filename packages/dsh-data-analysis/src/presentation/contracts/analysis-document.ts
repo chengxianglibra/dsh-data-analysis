@@ -20,10 +20,11 @@ export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
 ])
 export const analysisPresentInput = z.strictObject({
   surface: z.enum(['tool', 'tab']).default('tool'),
-  resources: z.record(id, analysisResourceDeclaration).default({}),
-  title: z.string().min(1).max(256).default('Analysis'),
-  locale: z.enum(['zh-CN', 'en-US']).default('zh-CN'),
+  basedOnRecordId: z.string().min(1).max(512).optional(),
+  resources: z.record(id, analysisResourceDeclaration).optional(),
+  title: z.string().min(1).max(256).optional(),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text).optional(),
+  locale: z.enum(['zh-CN', 'en-US']).optional(),
 })
 export type AnalysisPresentInput = z.infer<typeof analysisPresentInput>
 export type AnalysisResourceDeclaration = z.infer<typeof analysisResourceDeclaration>
@@ -183,4 +184,16 @@ export function parseSavedPresentation(value: unknown): SavedPresentation {
   )
     return parseAnalysisDocument(value)
   return parsePresentationDocument(value)
+}
+
+export function sameAnalysisDeclaration(
+  a: AnalysisResourceDeclaration,
+  b: AnalysisResourceDeclaration,
+): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'marivo-frame' && b.kind === 'marivo-frame')
+    return a.sessionId === b.sessionId && a.artifactId === b.artifactId
+  if (a.kind === 'dataset-snapshot' && b.kind === 'dataset-snapshot')
+    return a.snapshotRef === b.snapshotRef
+  return a.kind === 'image-file' && b.kind === 'image-file' && a.path === b.path
 }

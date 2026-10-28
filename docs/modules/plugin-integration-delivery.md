@@ -70,8 +70,8 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 
 系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
 文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 marivo_present 传准确引用，不额外读取 Skill/Catalog。自定义 Lang 时按需加载
-dsh-data-analysis-presentation；P2 新格式为静态表格/单值，默认 tool，明确报告为 tab。
-新格式的流式、patch、HTML 导出和发布尚未接入，旧格式参考见该 Skill 的历史区域。
+dsh-data-analysis-presentation；新格式支持表格/单值、Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
+新格式 HTML 导出和发布尚未接入，旧格式参考见该 Skill 的历史区域。
 
 `marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
 测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由

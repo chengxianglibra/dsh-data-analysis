@@ -10,11 +10,15 @@ import {
   type GenerateOptions,
   LlmAdapter,
   type LlmResolvedModelInfo,
+  ReasoningEffortId,
   type StreamChunk,
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { parsePresentationDurableContent } from '../../src/client/presentation/delivery.ts'
+import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import { registerPluginRpc } from '../../src/rpc.ts'
+import { installDeepSeekValidationProvider } from '../deepseek-validation-provider.ts'
 
 export async function installProbe(ctx: Context, workspaceRoot: string, outputRoot: string) {
   const python = process.env.DSH_DATA_ANALYSIS_PYTHON
@@ -22,7 +26,12 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
   const workspace =
     ctx.workspaceRegistry.list().find((w) => w.path === workspaceRoot) ??
     (await ctx.workspaceRegistry.create(workspaceRoot, '统一分析 UI P2'))
+  const p3 = process.env.DSH_UNIFIED_UI_P3 === '1'
   let request: Record<string, unknown> | undefined
+  let toolName = 'marivo_present'
+  let release: (() => void) | undefined
+  let waiting = false
+
   class ProbeAdapter extends LlmAdapter {
     override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
       return Promise.resolve({ provider, id: model, name: model })
@@ -33,14 +42,27 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
         return
       }
       const args = JSON.stringify(request)
+      const name = toolName
       request = undefined
       const id = ToolCallId(`p2-present-${Date.now()}`)
       yield { type: 'block-start', index: 0, blockType: 'tool-call' }
-      yield { type: 'tool-call-delta', index: 0, id, name: 'marivo_present', argumentsDelta: args }
+      const end =
+        p3 && name === 'marivo_present' && args.includes('P3 streamed')
+          ? args.indexOf('P3 streamed') + 32
+          : args.length
+      yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args.slice(0, end) }
+      if (end < args.length) {
+        waiting = true
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        waiting = false
+        yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args.slice(end) }
+      }
       yield {
         type: 'block-end',
         index: 0,
-        block: { type: 'tool-call', id, name: 'marivo_present', arguments: args },
+        block: { type: 'tool-call', id, name, arguments: args },
       }
       yield { type: 'finish', reason: { kind: 'tool-calls' } }
     }
@@ -51,7 +73,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
   const agent = existsSync(path.join(outputRoot, 'p2-evidence.json'))
     ? (await ctx.agentLoop.resume(ctx, { resumeSessionId: sessionId, agentOptions })).agent
     : await ctx.agentLoop.create(sessionId, agentOptions, { cwd: workspaceRoot })
-  agent.ctx.tools.presentAs('native')
+  let restoreMode = agent.ctx.tools.presentAs('native')
   await workspace.attachSession(sessionId)
   const prepare = async () => {
     const generation = await readFile(new URL('runtime-generate.py', import.meta.url), 'utf8')
@@ -121,35 +143,154 @@ print(json.dumps(result))
   const { value, inputs } = previous ?? (await prepare())
   const save = async () => {
     const events = agent.session.snapshotEvents()
-    const deliveries = events.flatMap((e) =>
-      e.type === 'tool/result' && e.data.meta ? [e.data.meta] : [],
-    )
+    const deliveries = events.flatMap((event) => {
+      try {
+        if (event.type === 'tool/result' && event.data.meta && !event.data.message.isError)
+          return [parsePresentationDelivery(event.data.meta)]
+        if (event.type === 'tool/ptc-dispatch' && !event.data.isError) {
+          const delivery = parsePresentationDurableContent(event.data.content)
+          return delivery ? [delivery] : []
+        }
+      } catch {
+        /* Unrelated tool metadata is not a delivery. */
+      }
+      return []
+    })
     await writeFile(path.join(outputRoot, 'host-events.json'), JSON.stringify(events, null, 2))
     await writeFile(
       path.join(outputRoot, 'p2-evidence.json'),
       JSON.stringify(
-        { inputs, produced: value, deliveries, workspaceId: workspace.id, sessionId },
+        { p3, waiting, inputs, produced: value, deliveries, workspaceId: workspace.id, sessionId },
         null,
         2,
       ),
     )
-    return { deliveries, sessionId, workspaceId: workspace.id }
+    return { waiting, deliveries, sessionId, workspaceId: workspace.id }
+  }
+  let modelAgent: typeof agent | undefined
+  const modelCase = async (endpoint: string) => {
+    if (!modelAgent) {
+      const model = process.env.DSH_DATA_ANALYSIS_VALIDATION_MODEL ?? 'deepseek-v4-pro'
+      if (!ctx.llm.listProviders().some((provider) => provider.id === 'deepseek-official'))
+        await installDeepSeekValidationProvider(ctx, {
+          thinking: 'disabled',
+          maxTokens: 4096,
+          streamIdleTimeoutMs: 180_000,
+          models: [{ id: model, contextWindow: 256_000, maxTokens: 4096 }],
+        })
+      modelAgent = await ctx.agentLoop.create(
+        SessionId(`unified-analysis-ui-p3-model-${Date.now()}`),
+        {
+          provider: 'deepseek-official',
+          model,
+          maxTokens: 4096,
+          reasoningEffort: ReasoningEffortId('low'),
+        },
+        { cwd: workspaceRoot },
+      )
+      modelAgent.ctx.tools.presentAs('native')
+      await workspace.attachSession(modelAgent.session.id)
+    }
+    if (endpoint !== 'model-status') {
+      const events = modelAgent.session.snapshotEvents()
+      const last = [...events]
+        .reverse()
+        .find((e) => e.type === 'tool/result' && e.data.meta && !e.data.message.isError)
+      let prompt = '2 + 2 等于多少？一句话回答。'
+      if (endpoint === 'model-reference')
+        prompt = `请用可以选择列、排序和翻页的表格展示这个已有结果，方便我检查大整数、金额和缺失值。不是报告。已有成功引用：${JSON.stringify(inputs.dataset.resources)}。不需要重新分析。`
+      if (endpoint === 'model-update') {
+        if (last?.type !== 'tool/result') throw new Error('model-base-missing')
+        const meta = last.data.meta as {
+          receipt: { reportId: string; buildId: string; files: { document: { path: string } } }
+        }
+        const saved = JSON.parse(await readFile(meta.receipt.files.document.path, 'utf8'))
+        prompt = `请在刚才页面表格上方增加一句说明“本页仅检查已保存快照”，沿用原数据。准确基版本 ${saved.recordId}，已知 program：${saved.program}。组件签名 root 可为 Stack(children: components[])，TextContent(text: string)，DatasetView(ref: string)。`
+      }
+      modelAgent.followup(
+        createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }),
+      )
+    }
+    const events = modelAgent.session.snapshotEvents()
+    await writeFile(
+      path.join(outputRoot, 'p3-model-events.json'),
+      JSON.stringify(events, null, 2),
+      { mode: 0o600 },
+    )
+    return {
+      sessionId: String(modelAgent.session.id),
+      running: modelAgent.status === 'running',
+      events: events.length,
+    }
   }
   const stop = registerPluginRpc(
     ctx.connection,
     '/unified-ui-p2',
-    ['dataset', 'frame', 'composition', 'status'],
+    [
+      'dataset',
+      'frame',
+      'composition',
+      'status',
+      'stream-tool',
+      'stream-tab',
+      'release',
+      'patch',
+      'failure',
+      'ptc',
+      'model-simple',
+      'model-reference',
+      'model-update',
+      'model-status',
+    ],
     async (endpoint) => {
+      if (endpoint.startsWith('model-')) return { ok: true, value: await modelCase(endpoint) }
+      if (endpoint === 'release') {
+        release?.()
+        await agent.whenIdle()
+        return { ok: true, value: await save() }
+      }
       if (endpoint !== 'status') {
-        if (!(endpoint in inputs)) throw new Error('unknown-p2-case')
-        request = inputs[endpoint as keyof typeof inputs]
+        toolName = 'marivo_present'
+        restoreMode()
+        restoreMode = agent.ctx.tools.presentAs(endpoint === 'ptc' ? 'ptc' : 'native')
+        if (endpoint === 'stream-tool' || endpoint === 'stream-tab')
+          request = {
+            surface: endpoint === 'stream-tab' ? 'tab' : 'tool',
+            resources: inputs.composition.resources,
+            title: 'P3 streaming ' + endpoint,
+            program:
+              'root = Stack([intro, AnalysisFrameView("frame"), DatasetView("data")]);\nintro = TextContent("P3 streamed Native prefix before complete arguments");',
+          }
+        else if (endpoint === 'patch' || endpoint === 'failure') {
+          const events = agent.session.snapshotEvents()
+          const latest = [...events]
+            .reverse()
+            .find((e) => e.type === 'tool/result' && e.data.meta && !e.data.message.isError)
+          if (latest?.type !== 'tool/result') throw new Error('missing-base')
+          const meta = latest.data.meta as { receipt: { reportId: string; buildId: string } }
+          request = {
+            surface: 'tab',
+            basedOnRecordId: `marivo-ui:${meta.receipt.reportId}:${meta.receipt.buildId}`,
+            program:
+              endpoint === 'patch'
+                ? 'intro = TextContent("P3 updated one statement; saved rows reused");'
+                : 'intro = null;',
+          }
+        } else if (endpoint === 'ptc') {
+          toolName = 'run_code'
+          request = {
+            description: 'P3 actual PTC delivery',
+            code: `await tools.marivo_present(${JSON.stringify({ surface: 'tab', resources: inputs.dataset.resources, title: 'P3 PTC' })});`,
+          }
+        } else if (endpoint in inputs) request = inputs[endpoint as keyof typeof inputs]
+        else throw new Error('unknown-p2-case')
         agent.followup(
           createUserMessage({
             content: [{ type: 'text', text: `Show P2 ${endpoint}` }],
             source: { kind: 'user' },
           }),
         )
-        await agent.whenIdle()
+        if (!endpoint.startsWith('stream-')) await agent.whenIdle()
       }
       return { ok: true, value: await save() }
     },

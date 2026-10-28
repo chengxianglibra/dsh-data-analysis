@@ -28,16 +28,22 @@ export function createMarivoPresentTool(
   source: PresentationBindingSource,
   session: Session,
   lifecycleSignal?: AbortSignal,
+  workspaceSource?: ExportWorkspaceSource,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Save and present an existing analysis result. For one result provide only resources: {result: {kind: "marivo-frame", sessionId, artifactId}} or {result: {kind: "dataset-snapshot", snapshotRef}}; omit program for the default view. Rows never belong in program. Default surface is tool; use tab for an explicitly requested report/dashboard. Custom pages use the eight-component analysis Catalog and OpenUI Lang. Saves an immutable recordId and exact snapshots; never reruns analysis. Streaming and patch updates are not connected yet. Legacy draft_path is no longer accepted.',
+      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "marivo-frame", sessionId, artifactId}} or {result: {kind: "dataset-snapshot", snapshotRef}}; omit program for the default view. The default table already provides column selection, exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing. Legacy draft_path is not accepted.',
     parameters: {
       surface: {
         type: 'string',
         enum: ['tool', 'tab'],
         description: 'Default tool. Use tab for an explicitly requested report/dashboard.',
+      },
+      basedOnRecordId: {
+        type: 'string',
+        description:
+          'Exact successful recordId to update. Omit to create. A stale base conflicts; never change only the ID to retry.',
       },
       resources: {
         type: 'object',
@@ -46,15 +52,15 @@ export function createMarivoPresentTool(
         additionalProperties: true,
       },
       title: { type: 'string', description: 'Short document title.' },
-      locale: {
-        type: 'string',
-        enum: ['zh-CN', 'en-US'],
-        description: 'Document language; defaults to zh-CN.',
-      },
       program: {
         type: 'string',
         description:
-          'Optional complete OpenUI Lang program using AnalysisFrameView, DatasetView, Stack, TextContent, Card, Tabs, TabItem, Image. Omit for a single resource. Image src is a resource name.',
+          'Lang calls use positional arguments, e.g. root = Stack([TextContent("note"), DatasetView("result")]); never name:value call arguments. Complete OpenUI Lang for creation; only changed complete named statements for updates, one per line. Components: AnalysisFrameView, DatasetView, Stack, TextContent, Card, Tabs, TabItem, Image. Omit for a single resource or to retain the base program. Image src is a resource name.',
+      },
+      locale: {
+        type: 'string',
+        enum: ['zh-CN', 'en-US'],
+        description: 'Document language; inherits on update, otherwise defaults to zh-CN.',
       },
     },
     output: {
@@ -77,7 +83,6 @@ export function createMarivoPresentTool(
     async execute(args, exec) {
       const signal = lifecycleSignal ? AbortSignal.any([exec.signal, lifecycleSignal]) : exec.signal
       const input = analysisPresentInput.parse(args)
-      const reportId = randomUUID()
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
       const rootCallId = String(exec.rootCallId ?? exec.callId)
@@ -87,42 +92,67 @@ export function createMarivoPresentTool(
       if (call?.type !== 'tool/call' || !Number.isSafeInteger(call.data.turn) || call.data.turn < 0)
         throw new Error('presentation-turn-unavailable')
       signal.throwIfAborted()
-      const binding = await source()
-      const identity = {
-        workspaceId: binding.workspaceId,
-        projectRoot: binding.projection.binding.projectRoot,
-        fingerprint: binding.projection.binding.fingerprint,
+      let binding: PresentationBinding | undefined
+      const workspace = async () => {
+        if (workspaceSource) return workspaceSource()
+        binding ??= await source()
+        return { id: binding.workspaceId, path: binding.projection.binding.projectRoot }
       }
+      const identity = await workspace()
       const check = async () => {
         signal.throwIfAborted()
         if (owner.session !== session) throw new Error('presentation-session-mismatch')
-        const current = await source()
-        if (
-          current.projection.status !== 'ready' ||
-          current.workspaceId !== identity.workspaceId ||
-          current.projection.binding.projectRoot !== identity.projectRoot ||
-          current.projection.binding.fingerprint !== identity.fingerprint ||
-          current.projection.binding !== binding.projection.binding
-        )
+        const current = await workspace()
+        if (current.id !== identity.id || current.path !== identity.path)
           throw new Error('presentation-workspace-changed')
+        if (binding) {
+          const runtime = await source()
+          if (
+            runtime.projection.status !== 'ready' ||
+            runtime.workspaceId !== identity.id ||
+            runtime.projection.binding.projectRoot !== identity.path ||
+            runtime.projection.binding !== binding.projection.binding
+          )
+            throw new Error('presentation-workspace-changed')
+        }
         signal.throwIfAborted()
       }
       await check()
+      const baseId = input.basedOnRecordId
+        ? parseAnalysisRecordId(input.basedOnRecordId)
+        : undefined
+      const base = baseId
+        ? await readAnalysisRecord(
+            identity.path,
+            identity.id,
+            baseId.reportId,
+            baseId.buildId,
+            signal,
+          )
+        : undefined
       const document = await createAnalysisDocument(
         input,
-        binding.projection,
         {
-          workspaceId: binding.workspaceId,
-          reportId,
+          projectRoot: identity.path,
+          projection: async () => {
+            binding ??= await source()
+            await check()
+            return binding.projection
+          },
+        },
+        {
+          workspaceId: identity.id,
+          reportId: base?.reportId ?? randomUUID(),
           buildId: randomUUID(),
         },
         signal,
+        base,
       )
       await check()
       const receipt = await publishPresentation(
-        identity.projectRoot,
+        identity.path,
         document,
-        null,
+        base?.buildId ?? null,
         check,
         signal,
         { kind: 'agent', sessionId: String(session.id), surface: input.surface },
@@ -147,8 +177,12 @@ export function registerMarivoPresentTool(
   ctx: Context,
   source: PresentationBindingSource,
   session: Session,
+  workspaceSource?: ExportWorkspaceSource,
 ): () => Promise<void> {
-  return registerMarivoTool(ctx, createMarivoPresentTool(source, session))
+  return registerMarivoTool(
+    ctx,
+    createMarivoPresentTool(source, session, undefined, workspaceSource),
+  )
 }
 
 /** Optional context recovery for an exact saved record. Never returns rows or starts Python. */

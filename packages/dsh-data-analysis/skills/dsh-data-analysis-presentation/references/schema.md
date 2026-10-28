@@ -1,6 +1,9 @@
 # 草稿 schema 与文件边界
 
-这是插件的 Draft v2 写入契约。所有对象只接受列出的字段；不要把生成文档或 receipt 当作草稿。Marivo 的分析 API 与 semantic schema 以 bound Runtime 的 Skill 和 live Help 为准。
+> 历史 Document v3 参考：以下 Draft、writer 和旧参数仅解释已有格式，不能用于当前 marivo_present 新写入。新建和更新使用[当前引用/Lang 流程](../SKILL.md)。
+
+
+这是历史 Draft v2 / Document v3 契约。所有对象只接受列出的字段；不要把生成文档或 receipt 当作草稿。Marivo 的分析 API 与 semantic schema 以 bound Runtime 的 Skill 和 live Help 为准。
 
 ## 报告语言与版本
 
@@ -42,29 +45,9 @@ Current chart view override，则替换显示配置，再应用 Hidden series。
 
 ## 报告更新
 
-新建报告调用 `marivo_present({ draft_path })`。修改已有报告时使用：
-
-```text
-marivo_present({ draft_path, report_id, expected_build_id })
-```
-
-`report_id` 与 `expected_build_id` 是 Tool 参数，必须成对提供，不能放进 Draft。
-取实际 receipt 的 `reportId`、`buildId`；目标必须属于当前绑定 Workspace。更新前通过普通文件读取
-`.dsh-data-analysis/presentations/<reportId>/current.json` 中的 receipt，再读取该 receipt 指向的
-`presentation.json`，确认修改所基于的内容和 buildId。文件读取不替代 Tool 的身份与摘要校验。
-基于原始 Draft 合并需要保留的已保存编辑；生成文档包含投影快照，不能直接作为 Draft 提交。
-
-这是完整 Draft 重建，会重新读取声明的已有数据和来源、替换报告全部内容；省略的内容不会自动合并。
-更新成功保持 reportId，创建不可变新 buildId 并原子推进 current，返回本次提交的精确 receipt。
-宿主原卡片重开读取 current，已打开阅读器与固定文件链接保持各自快照。
-
-`invalid-report-update-target` 表示两个参数没有成对提供；非法身份、目标缺失或损坏均拒绝更新，不回退新建。
-`report-save-conflict` 表示当前版本已变化：读取 current 及其文档，核对用户编辑并重新形成 Draft，
-再以该已读取版本提交；不能只替换 expected ID 重试。响应丢失时也先读取 current 核对内容，避免重复提交。
-已有 Report 之间不自动合并，历史 Build 不覆盖或清理。
-
-用户可在宿主阅读器编辑呈现并保存同一报告，支持 cell 移动、删除（可删空）及撤销。读取当前保存内容
-后保留用户需要的编辑；固定 Build 链接与离线 HTML 保留原快照。筛选选择只是临时展示，不进入保存或下载。
+旧格式保留 Reader 的呈现编辑和条件保存；已经移除的 draft_path、report_id、expected_build_id 不能再传给 marivo_present。
+新格式更新使用主 Skill 的 basedOnRecordId 与语句 patch，不能将旧 Document 当作新格式提交。
+既有 Build 和离线 HTML 保持各自快照；不自动迁移或重新分析旧报告。
 
 ## 生成代码
 

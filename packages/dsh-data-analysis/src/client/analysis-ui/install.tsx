@@ -3,30 +3,18 @@ import type {
   ConnectionGeneration,
   ConnectionGenerationState,
 } from '@deepseek-ai/dsh-client-connection/client'
-import type { ToolCallOwnerProps, ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
+import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import {
-  type AnalysisDocument,
-  parseSavedPresentation,
-} from '../../presentation/contracts/analysis-document.ts'
+import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
-import { type PresentationDelivery, parsePresentationDelivery } from '../../presentation/receipt.ts'
+import type { PresentationDelivery } from '../../presentation/receipt.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
-import { parsePresentationDurableContent } from '../presentation/delivery.ts'
-import { type PresentationRpc, verifyPresentationAsset } from '../presentation/delivery-model.ts'
+import type { PresentationRpc } from '../presentation/delivery-model.ts'
+import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
+import { CandidateView, readSavedAnalysis } from './candidate-view.tsx'
 import { SavedAnalysisSurface } from './lazy-surface.tsx'
 
-export function analysisToolDelivery(
-  block: ToolCallOwnerProps['block'],
-): PresentationDelivery | undefined {
-  if (!('kind' in block) || block.isError) return undefined
-  try {
-    return parsePresentationDelivery(block.meta)
-  } catch {
-    return parsePresentationDurableContent(block.content) ?? undefined
-  }
-}
 function SavedToolView({
   delivery,
   sessionId,
@@ -53,36 +41,7 @@ function SavedToolView({
     if (!allowed || !generation || delivery.dshSessionId !== sessionId) return
     const abort = new AbortController()
     void (async () => {
-      const response = await rpc.call(
-        '/marivo-presentation',
-        'files/read',
-        { sessionId, receipt: delivery.receipt, asset: 'presentation.json' },
-        abort.signal,
-      )
-      if (
-        !response ||
-        typeof response !== 'object' ||
-        !('ok' in response) ||
-        response.ok !== true ||
-        !('value' in response)
-      )
-        throw new Error('analysis-ui-read-failed')
-      const bytes = await verifyPresentationAsset(
-        response.value,
-        delivery.receipt,
-        'presentation.json',
-      )
-      const document = parseSavedPresentation(
-        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-      )
-      if (
-        document.schemaVersion === 3 ||
-        document.workspaceId !== delivery.receipt.workspaceId ||
-        document.reportId !== delivery.receipt.reportId ||
-        document.buildId !== delivery.receipt.buildId ||
-        document.title !== delivery.receipt.title
-      )
-        throw new Error('analysis-ui-owner-mismatch')
+      const document = await readSavedAnalysis(rpc, sessionId, delivery.receipt, abort.signal)
       if (!abort.signal.aborted) setState({ document, generation })
     })().catch(() => {
       if (!abort.signal.aborted) setState({ error: true, generation })
@@ -114,6 +73,7 @@ export function installAnalysisTool(
   rpc: PresentationRpc,
   open: (sessionId: string, receipt: PresentationReceipt) => void,
   connection: ConnectionGenerationState,
+  candidates: AnalysisCandidates,
 ): void {
   const subscribe = (fn: () => void) => connection.subscribe(fn)
   const getGeneration = () => connection.getSnapshot()
@@ -123,6 +83,11 @@ export function installAnalysisTool(
     const t = useCopy()
     const generation = useSyncExternalStore(subscribe, getGeneration)
     const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
+    const observed = useSyncExternalStore(candidates.subscribe, () =>
+      'turn' in props.block
+        ? candidates.get(props.sessionId, props.block.turn, props.callId)
+        : undefined,
+    )
     const delivery = useMemo(() => analysisToolDelivery(props.block), [props.block])
     const owners = workspaces.items.filter((w) => w.sessionIds.includes(props.sessionId))
     const allowed =
@@ -130,16 +95,29 @@ export function installAnalysisTool(
       workspaces.state !== 'error' &&
       owners.length === 1 &&
       owners[0]?.workspaceId === delivery?.receipt.workspaceId
-    if (!delivery)
-      return (
-        <p role="status">
-          {t(
-            props.phase === 'result'
-              ? 'marivo.presentation.ui-failed'
-              : 'marivo.presentation.ui-preparing',
-          )}
-        </p>
-      )
+    if (!delivery) {
+      const workspaceId =
+        owners.length === 1 && workspaces.phase === 'ready' && workspaces.state !== 'error'
+          ? owners[0]?.workspaceId
+          : undefined
+      if (!generation || !workspaceId)
+        return <p role="status">{t('marivo.presentation.ui-preparing')}</p>
+      const candidate =
+        observed?.generation === generation && observed.workspaceId === workspaceId
+          ? observed
+          : analysisCandidate(props.block, props.sessionId, workspaceId, generation)
+      if (candidate.surface === 'tab')
+        return (
+          <p role="status">
+            {t(
+              candidate.phase === 'failed' || candidate.phase === 'cancelled'
+                ? 'marivo.presentation.ui-failed'
+                : 'marivo.presentation.ui-generating',
+            )}
+          </p>
+        )
+      return <CandidateView candidate={candidate} rpc={rpc} />
+    }
     if (delivery.surface !== 'tool')
       return (
         <button type="button" onClick={() => open(props.sessionId, delivery.receipt)}>

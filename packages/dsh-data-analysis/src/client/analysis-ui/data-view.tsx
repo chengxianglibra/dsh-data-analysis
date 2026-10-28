@@ -20,12 +20,20 @@ export function AnalysisDataView({
   kind,
 }: Omit<AnalysisViewProps, 'ref'> & { resourceName?: string; kind: AnalysisSnapshot['kind'] }) {
   const t = useCopy()
-  const { readResource } = useAnalysisResources()
+  const { readResource, candidate } = useAnalysisResources()
   const resource = resourceName ? readResource(resourceName) : undefined
   const [selected, setSelected] = useState<string[]>()
   const [copy, setCopy] = useState<string>()
   if (resource?.kind !== 'snapshot' || resource.snapshot.kind !== kind)
-    return <p role="alert">{t('marivo.presentation.ui-resource-unavailable')}</p>
+    return (
+      <p role={candidate ? 'status' : 'alert'}>
+        {t(
+          candidate
+            ? 'marivo.presentation.ui-resource-pending'
+            : 'marivo.presentation.ui-resource-unavailable',
+        )}
+      </p>
+    )
   const snapshot = resource.snapshot,
     data = snapshot.data
   const columns =

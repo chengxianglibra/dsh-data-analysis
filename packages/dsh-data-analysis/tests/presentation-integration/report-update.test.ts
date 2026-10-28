@@ -366,3 +366,79 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
   assert.deepEqual(await readFile(original.receipt.files.document.path), bytes)
   assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v1')
 })
+
+test('statement updates reuse embedded snapshots without resolving Runtime and save independent versions', async (t) => {
+  const f = await fixture(t)
+  const original = await f.present({
+    resources: f.resources,
+    title: 'Original',
+    locale: 'en-US',
+    program:
+      'heading = TextContent("Before");\nroot = Stack([heading, AnalysisFrameView("frame"), DatasetView("data")]);',
+  })
+  const base = parseAnalysisDocument(await readReceiptDocument(f.root, original.receipt))
+  const reads = f.reads()
+  await rm(path.join(f.root, f.captureDirectory), { recursive: true })
+  const tool = createMarivoPresentTool(
+    async () => {
+      throw new Error('Runtime must not be resolved')
+    },
+    f.exec.agent!.session,
+    undefined,
+    () => ({ id: 'workspace', path: f.root }),
+  )
+  const update = async (args: Record<string, unknown>) =>
+    parsePresentationDelivery(
+      JSON.parse(((await tool.execute(args, f.exec)) as { deliveryJson: string }).deliveryJson),
+    )
+  const result = await update({
+    basedOnRecordId: base.recordId,
+    program: 'heading = TextContent("After");',
+  })
+  const next = parseAnalysisDocument(await readReceiptDocument(f.root, result.receipt))
+  assert.equal(next.reportId, base.reportId)
+  assert.notEqual(next.buildId, base.buildId)
+  assert.equal(next.title, 'Original')
+  assert.equal(next.locale, 'en-US')
+  assert.match(next.program, /After/)
+  assert.deepEqual(next.resources, base.resources)
+  assert.equal(f.reads(), reads)
+  await assert.rejects(
+    update({ basedOnRecordId: base.recordId, program: 'heading = TextContent("Stale");' }),
+    /report-save-conflict/,
+  )
+  for (const program of [
+    'heading = null;',
+    'bad = TotallyMissing("bad")',
+    'bad = TextContent(42)',
+    'bad = TextContent("unreachable")',
+    'garbage',
+    'heading = TextContent("unterminated',
+    'garbage\nheading = TextContent("valid");',
+  ])
+    await assert.rejects(update({ basedOnRecordId: next.recordId, program }))
+  await assert.rejects(
+    update({ basedOnRecordId: next.recordId, resources: {} }),
+    /resource-missing/,
+  )
+  const retained = await update({
+    basedOnRecordId: next.recordId,
+    resources: f.resources,
+    title: 'Retained',
+  })
+  const latest = parseAnalysisDocument(await readReceiptDocument(f.root, retained.receipt))
+  assert.equal(latest.program, next.program)
+  assert.deepEqual(latest.resources, base.resources)
+  const removed = await update({
+    basedOnRecordId: latest.recordId,
+    resources: {},
+    program: 'root = Stack([note]);\nnote = TextContent("Independent");\nheading = null;',
+  })
+  await rm(path.dirname(original.receipt.files.document.path), { recursive: true })
+  const independent = await readReceiptDocument(f.root, removed.receipt)
+  assert.deepEqual(independent.schemaVersion !== 3 && independent.resources, {})
+  assert.equal(
+    (await resolvePresentation(f.root, 'workspace', base.reportId)).buildId,
+    removed.receipt.buildId,
+  )
+})

@@ -20,6 +20,9 @@ export const zh = {
   'marivo.presentation.ui-open-tab': '在报告标签页中打开',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
   'marivo.presentation.ui-preparing': '正在准备分析展示…',
+  'marivo.presentation.ui-generating': '正在生成展示，尚未保存…',
+  'marivo.presentation.ui-saving': '正在读取资源并保存…',
+  'marivo.presentation.ui-resource-pending': '资源将在校验并保存后显示。',
   'marivo.presentation.ui-failed': '分析展示未保存。',
   'marivo.presentation.ui-read-failed': '无法读取此版本的已保存快照。',
   'marivo.presentation.the-report-s-session-or-workspace-changed-or-is':
@@ -395,6 +398,9 @@ export const en = {
   'marivo.presentation.ui-open-tab': 'Open in report tab',
   'marivo.presentation.ui-loading': 'Reading saved snapshot…',
   'marivo.presentation.ui-preparing': 'Preparing analysis view…',
+  'marivo.presentation.ui-generating': 'Generating view; not saved yet…',
+  'marivo.presentation.ui-saving': 'Reading resources and saving…',
+  'marivo.presentation.ui-resource-pending': 'Resource will appear after validation and saving.',
   'marivo.presentation.ui-failed': 'Analysis view was not saved.',
   'marivo.presentation.ui-read-failed': 'Cannot read this saved snapshot version.',
   'marivo.presentation.the-report-s-session-or-workspace-changed-or-is':

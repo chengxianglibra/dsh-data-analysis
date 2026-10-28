@@ -33,13 +33,13 @@
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI 的 P0–P2 已落地：固定 Harness `0.2.1-rc.2` 与八组件 Catalog；新写入通过
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI 已接入 P3 流式与增量路径：固定 Harness `0.2.1-rc.2` 与八组件 Catalog；新写入通过
 `marivo_present({resources, program?, surface?})` 保存 `dsh.analysis-ui/v1` 文档。单引用默认展开，
 Frame 与原执行内 DataFrame 捕获使用 P1 有界快照；完整内容存入现有不可变 Build JSON。
 共享 AnalysisSurface 同时用于默认 tool view 和显式报告 tab；按准确 recordId 恢复，不重新分析。
-Document v3 按旧 Reader 分派，新格式的离线导出、发布与旧编辑明确不可用。P3 流式、patch 及综合模型验收尚待完成，
-P2 不能视为首期最终交付。见[实施计划](designs/unified-analysis-ui-implementation.md)、
-[P2 验收记录](testing/unified-analysis-ui-p2-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
+Document v3 按旧 Reader 分派，新格式的离线导出、发布与旧编辑明确不可用。Native 参数流形成隔离候选，准确 basedOnRecordId 的完整 patch 经官方合并后条件保存。
+首期完成状态与实际证据以 P3 验收记录为准。见[实施计划](designs/unified-analysis-ui-implementation.md)、
+[P3 验收记录](testing/unified-analysis-ui-p3-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
 
 ## 运行与数据流
 
@@ -94,15 +94,18 @@ Harness Credentials 是秘密值权威；Marivo 的公开 description、Datasour
 
 ### 报告保存、阅读与发布
 
-Agent 将已有 Artifact 或 computed typed JSON 组织成 Draft，由 `marivo_present` 读取来源快照并生成不可变 Build。computed 声明来源只表达作者关联，不证明转换正确；直接 Artifact dataset 不能在必要数据缺失时假成功。reader 只消费保存文档，不重新分析或 revalidate。
+Agent 将持久 Frame、原分析进程内 capture 的 DataFrame 或 Workspace 图片通过资源引用交给 marivo_present。
+自定义布局使用 Lang；未变化快照直接复制到新 Build，不重新分析。Report ID 是稳定身份，Build ID 是不可变版本，
+recordId 编码这对身份。更新传 basedOnRecordId 和变化语句，官方 mergeStatements 合并后校验完整文档，
+再复用既有锁与 current 条件提交；过期基版本失败，不自动覆盖或重试。
 
-Report ID 是稳定报告身份，Build ID 是一次保存的固定身份。新建与更新共用原子提交；更新必须携带 `expected_build_id`，在锁内比较并发布 current 指针。Host 呈现编辑只修改允许的展示字段，Agent 更新使用完整 Draft；两者都不能覆盖并发保存。
+默认 tool view，明确报告/dashboard 使用 tab。Native 的公开 PartialArguments 提供真实 program 前缀；
+候选只展示安全内容、占位与已授权基版本快照，无业务读取或正式保存。报告候选绑定准确调用，成功后转为固定 Build，
+失败或取消保留旧版本。PTC 依实际 dispatch 和结果交付，历史回放不抢焦点，Headless 只确认保存事实。
 
-默认保存只写 JSON，成功 receipt 通过 Harness 持久事件归属到 Session/Turn。当前会话的新交付自动打开固定 Build 的原生右侧 Tab；成功报告不渲染聊天卡片，历史回放不自动打开。Host 阅读、编辑和历史入口统一由已有 Session 的原生 Tab 承接，不创建无 Session 容器。报告目录与重开可解析 current，已打开 reader 继续显示固定快照，直到用户刷新或保存。
-
-完整 HTML 在下载时按固定 Build 校验并生成；当前视图导出冻结已显示的筛选、排序和图形。两者都不修改 Build 或 current。开启 `reportPublishing` 后，在线 HTML 下载入口改为对象存储发布，Agent 也可在用户明确要求发布时调用 Tool。上传使用独立、操作级凭据；写入响应成功不等于公网链接已验证可访问。
-
-“加入提问”将正在显示的 Workspace/Report/Build/Cell 及临时视图定位插入所属会话草稿，chip 显示友好名称，发送时由 codec 展开完整上下文。current 提示不改变引用身份；实际显示的 document 才决定 Build。
+已有 Document v3 保留旧 Reader、呈现编辑与 HTML 下载/发布，相关能力按格式分派；
+新格式尚不支持图形、离线 HTML、发布和旧 Reader 编辑。上传使用 Harness 操作级凭据，
+写入成功不等于公网链接已验证。旧格式 cell 的“加入提问”保留正在显示的 Workspace/Report/Build 身份。
 
 ## 生命周期与失败原则
 
@@ -114,7 +117,7 @@ Report ID 是稳定报告身份，Build ID 是一次保存的固定身份。新�
 
 ## 语言责任边界
 
-Harness locale 服务拥有插件操作界面的语言设置及持久化；插件仅注册词典并订阅更新。报告展示语言由 DSH 根据用户问题写入 Draft 的 `locale`，由 projection 原样固化到 Document，不读取系统 locale。Reader、打印与 HTML 导出遵循同一报告语言，详见 [报告阅读器](modules/presentation-reader.md#界面语言与报告语言)。
+Harness locale 服务拥有插件操作界面的语言设置及持久化；插件仅注册词典并订阅更新。报告展示语言由 marivo_present 的 locale 固化，创建默认 zh-CN，更新省略时继承；旧格式从 Draft 原样固化，不读取系统 locale。Reader、打印与 HTML 导出遵循同一报告语言，详见 [报告阅读器](modules/presentation-reader.md#界面语言与报告语言)。
 
 ## 插件设置
 

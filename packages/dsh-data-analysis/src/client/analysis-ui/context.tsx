@@ -3,6 +3,7 @@ import type { AnalysisResource } from '../../presentation/contracts/analysis-doc
 
 export interface AnalysisResourceContext {
   readResource: (name: string) => AnalysisResource | undefined
+  candidate?: boolean
 }
 export const AnalysisResources = createContext<AnalysisResourceContext>({
   readResource: () => undefined,

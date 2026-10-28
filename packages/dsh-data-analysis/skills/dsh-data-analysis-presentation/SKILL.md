@@ -1,13 +1,13 @@
 ---
 name: dsh-data-analysis-presentation
-description: 将已有 Frame 或 DataFrame 快照组织为静态分析 UI、报告或看板；自定义时使用八组件 Lang。单个结果可直接 marivo_present。旧格式图形与 HTML 参考单独保留。
+description: 将已有 Frame 或 DataFrame 快照组织为分析 UI、报告或看板；自定义时使用八组件 Lang。单个结果可直接 marivo_present。旧格式图形与 HTML 参考单独保留。
 ---
 
 # 分析展示与报告交付
 
-本 Skill 负责用 `marivo_present` 保存已有结果的静态快照，默认在 tool view 展示，明确要求的报告/dashboard 使用右侧 tab。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
+本 Skill 负责用 `marivo_present` 保存已有结果的不可变快照，默认在 tool view 展示，明确要求的报告/dashboard 使用右侧 tab。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
 
-## 新建静态分析 UI（P2）
+## 引用呈现与自定义页面
 
 单个结果直接传准确引用，省略 program；不用先查目录、读取 UI 或编写 Draft：
 
@@ -27,8 +27,14 @@ rows 不写入 program。图片资源为 `{"kind":"image-file","path":"workspace
 报告语言使用 locale；按需求选择 `surface:"tool"`（默认）或 `surface:"tab"`。
 
 成功 receipt 中的 recordId 指向不可变版本。只有确实缺少基版本定义时才调用 `marivo_ui_read({recordId})`；
-不要成功后默认回读。新格式暂不支持流式预览、patch 更新、离线导出、发布及旧版编辑。
+不要成功后默认回读。新格式支持 Native 参数流预览与语句增量保存；离线导出、发布及旧版 Reader 编辑尚未接入。
 读取失败不伪造成功回执，缺失数据交回原分析流程。
+
+自定义、capture 或修改页面时读[Lang、捕获与更新示例](references/analysis-ui.md)。
+更新传准确 `basedOnRecordId` 和变化语句，每行一条；省略 resources 继承快照，提供则替换完整资源表。
+未变化数据不重读，不重发整页，不强制大纲、分步提交或成功后回读。Native 预览来自真实参数前缀；
+PTC 只按实际 dispatch 粒度展示。参数建议按 surface、basedOnRecordId、resources、title、program 排列；
+字段晚到可能只在保存后显示，不能为制造流式效果追加无意义调用。
 
 ## 历史 Document v3 参考
 
@@ -37,7 +43,7 @@ rows 不写入 program。图片资源为 `{"kind":"image-file","path":"workspace
 
 ### 按旧格式操作读取
 
-- **已有报告编辑**：Document v3 的呈现编辑继续使用旧 Reader 界面。新格式更新尚未接入；不要向 `marivo_present` 传入 Draft 或已删除的更新参数。[历史报告更新](references/schema.md#报告更新)仅说明旧协议，不是当前工具调用流程。
+- **已有报告编辑**：Document v3 的呈现编辑继续使用旧 Reader 界面。新格式更新使用准确 recordId 与语句 patch；不要向 `marivo_present` 传入 Draft 或已删除的更新参数。[历史报告更新](references/schema.md#报告更新)仅说明旧协议，不是当前工具调用流程。
 - **筛选与动态指标**：默认不添加全局筛选。需要共同维度交互时，先读 [全局筛选与动态指标](references/interaction.md)，理解已保存报告的筛选与组合范围；reader 不重算，新建静态 UI 使用上面的引用/Lang 路径。
 - **来源与生成代码追问**：简短问题可用 Marivo 公开 Python API 回答；已有旧报告的来源面板使用历史 `source` block；当前工具不接收 block Draft。脚本关联方式见 [生成代码](references/schema.md#生成代码)，从报告 cell 继续见 [引用恢复](references/schema.md#从报告-cell-引用继续)。已有快照不证明当前数据新鲜度。
 - **离线 HTML 文件**：读 [导出与原生交付](references/export-html.md)，使用保存的 Build 导出，再调用原生 `present`。普通报告交付不额外生成 HTML 或附件。

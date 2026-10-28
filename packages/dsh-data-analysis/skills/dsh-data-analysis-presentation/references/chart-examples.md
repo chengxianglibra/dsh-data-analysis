@@ -1,5 +1,8 @@
 # 全部图形的可运行样例
 
+> 历史 Document v3 参考：以下 Draft、writer 和旧参数仅解释已有格式，不能用于当前 marivo_present 新写入。新建和更新使用[当前引用/Lang 流程](../SKILL.md)。
+
+
 全部数据为合成演示，不是真实业务结论。在当前 Workspace 运行 [write-charts.py](examples/write-charts.py)，使用已有 bound Runtime 和 presentation writer，再将[完整草稿](examples/charts.draft.json)写入 Workspace 并调用 marivo_present。
 
 示例包含 18 个类型、bar/line 变体、数据点、参考线和精确小数。line 的 preparedViews 可以切换为已准备的散点、分箱、比例、箱线和瀑布数据；不在浏览器计算统计量。

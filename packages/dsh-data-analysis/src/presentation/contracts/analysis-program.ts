@@ -1,4 +1,12 @@
-import { createParser, type ElementNode } from '@openuidev/lang-core'
+import {
+  autoClose,
+  createParser,
+  type ElementNode,
+  mergeStatements,
+  parseExpression,
+  split,
+  tokenize,
+} from '@openuidev/lang-core'
 import { z } from 'zod/v4'
 import { analysisCatalogSchema, analysisRootComponents } from './analysis-catalog.ts'
 
@@ -21,6 +29,71 @@ const validators = Object.fromEntries(
     } as z.core.JSONSchema.JSONSchema),
   ]),
 )
+
+/** Keep statement boundaries explicit: the fixed merger splits source on newlines.
+ * Validate every fragment before its tolerant parser can silently discard it.
+ */
+export function analysisStatements(source: string): string {
+  if (autoClose(source).wasIncomplete) throw new Error('analysis-program-incomplete')
+  const statements: string[] = []
+  let start = 0
+  let quote = ''
+  let escaped = false
+  const brackets: string[] = []
+  for (let i = 0; i <= source.length; i++) {
+    const c = source[i]
+    if (quote) {
+      if (escaped) escaped = false
+      else if (c === '\\') escaped = true
+      else if (c === quote) quote = ''
+      continue
+    }
+    if (c === '"' || c === "'") quote = c
+    else if (c && '([{'.includes(c)) brackets.push(c)
+    else if (c && ')]}'.includes(c)) {
+      if (brackets.pop() !== '([{'.charAt(')]}'.indexOf(c)))
+        throw new Error('analysis-program-invalid-statement')
+    } else if ((c === ';' || c === '\n' || c === undefined) && !brackets.length) {
+      const raw = source.slice(start, i).trim()
+      start = i + 1
+      if (!raw) continue
+      if (!/^[A-Za-z_][A-Za-z0-9_]*\s*=\s*[^=]/.test(raw))
+        throw new Error('analysis-program-invalid-statement')
+      const parsed = split(tokenize(raw))
+      if (parsed.length !== 1) throw new Error('analysis-program-invalid-statement')
+      parseExpression(parsed[0]!.tokens)
+      // The public expression parser is tolerant of trailing tokens. A grouped
+      // expression must reach this suffix; otherwise some input was ignored.
+      const expression = raw.slice(raw.indexOf('=') + 1)
+      const checked = parseExpression(tokenize(`(${expression}) + __analysis_statement_end`))
+      if (
+        checked.k !== 'BinOp' ||
+        checked.op !== '+' ||
+        checked.right.k !== 'Ref' ||
+        checked.right.n !== '__analysis_statement_end'
+      )
+        throw new Error('analysis-program-invalid-statement')
+      statements.push(raw)
+    }
+  }
+  if (!statements.length) throw new Error('analysis-program-invalid-statement')
+  return statements.join('\n')
+}
+
+export function mergeAnalysisProgram(base: string, patch: string): string {
+  const admitted = analysisStatements(patch)
+  const changes = split(tokenize(admitted))
+  if (new Set(changes.map((statement) => statement.id)).size !== changes.length)
+    throw new Error('analysis-patch-duplicate-statement')
+  const merged = mergeStatements(analysisStatements(base), admitted)
+  const retained = new Set(split(tokenize(merged)).map((statement) => statement.id))
+  // The official merger garbage-collects unreachable statements before Catalog
+  // validation. Reject discarded edits instead of acknowledging a silent no-op.
+  for (const statement of changes)
+    if (parseExpression(statement.tokens).k !== 'Null' && !retained.has(statement.id))
+      throw new Error(`analysis-patch-unreachable-statement: ${statement.id}`)
+  return merged
+}
 
 function propsOnly(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(propsOnly)

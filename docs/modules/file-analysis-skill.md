@@ -20,8 +20,8 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 需要联网；不新增 `openpyxl` 依赖，不承诺旧 `.xls`。这不限制 Skill 根据实际可用 reader 处理其他合适文件。
 
 普通答案使用文字；用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供；报告中需筛选联动的表格继续使用 `marivo_present`。插件不新增 XLSX 写入器，也不承诺分析旧 `.xls`。
-最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。报告复用[展示 Skill](presentation-skill.md)、computed writer 和实际 `codeRef`。
-正文说明文件与分析范围；没有 Artifact 时 `sourceIds` 为空，不把文件结果声明成 Marivo Evidence。
+最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。UI 展示在原分析进程 capture DataFrame，成功 snapshotRef 可直接呈现；自定义才按需读[展示 Skill](presentation-skill.md)。
+正文说明文件与分析范围，执行/codeRef 由 Host 绑定，不把文件结果声明成 Marivo Evidence。
 
 ## 验证边界
 

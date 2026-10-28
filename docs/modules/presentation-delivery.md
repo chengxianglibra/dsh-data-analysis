@@ -1,13 +1,15 @@
 # 展示交付模块
 
-## P2 统一静态写入契约
+## 统一分析 UI 写入与增量契约
 
-当前 `marivo_present` 接受 `resources`、可选完整 `program`、`title`、`locale`、`surface`。
+当前 marivo_present 按 surface、basedOnRecordId、resources、title、program、locale 披露参数。
+创建时 program 为完整 Lang；更新时为变化语句，省略 program 保留基版本，省略 title/locale 继承。
 一个 Frame 或 dataset-snapshot 只需引用，自动生成 AnalysisFrameView/DatasetView；不接收 rows、Draft 路径或旧更新参数。
 默认 `surface:tool` 挂载准确 Native/PTC 调用的 tool view；显式报告/dashboard 使用 `surface:tab`。
 Delivery schema v2 保留既有事件归属，可选 surface 决定位置；历史未声明 surface 的事件沿用 tab。
 已确认发布历史的 source.surface 保存该次交付位置，供目录分类使用，不进入文档内容；默认目录仅列 tab 报告，另选“对话结果”查看 tool 内容。
-成功只表示保存，headless 回执不声称已打开 UI。流式预览及 basedOnRecordId/patch 留在 P3。
+成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成候选；PTC 按实际 dispatch 粒度交付。
+字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
 
 新文档格式为 `schemaVersion:"dsh.analysis-ui/v1"`，单一声明在
 [analysis-document.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)。
@@ -21,6 +23,17 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 `image-file(path)`。Frame 在一次 checked execution 中批量有界读取；Dataset 先校验 Host execution provenance，
 图片仅从所属 Workspace 的普通文件读取 PNG/JPEG/GIF/WebP，按现有预算保存为内嵌 data URL。
 组件不读取任意 URL。错误资源、取消、必要读取失败不发布 current。
+
+更新读取准确 basedOnRecordId，使用固定 mergeStatements 合并完整语句，再校验完整程序与资源计划。
+同一 patch 的语句名不可重复；新增或替换语句必须在合并后仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
+省略 resources 继承；提供则替换完整资源表。同名同声明复制基版本已保存字节，仅新资源执行读取。
+纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
+新版本独立内嵌全部资源；以基版本 buildId 执行现有条件保存，冲突不自动重试，失败不改 current。
+
+候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址，
+tool view 不同时渲染第二份报告。关闭候选后不被片段或成功事件重新打开；历史加载不触发自动导航。
+候选只读已授权基版本，使用现有 reports/history 与 files/read RPC；新业务资源在正式执行时读取。
+默认引用模式显示读取/保存状态，不制造字符动画。取消或失败时基版本保持可读，新建标明未保存。
 
 服务端和 Client 按明确格式分派；新格式不传入旧 block Reader。
 新格式的 HTML 导出/发布返回 `analysis-ui-export-unavailable`，旧编辑 RPC 返回 `analysis-ui-edit-unavailable`；

@@ -4,15 +4,31 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, symlink, writeFile } from 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  CREDENTIALS_FILENAME,
+  parseCredentialsDocument,
+  renderFlatLayoutMigration,
+} from '@deepseek-ai/dsh-credentials-local'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { build } from 'esbuild'
 
 const reuseIndex = process.argv.indexOf('--reuse')
 const reuse = reuseIndex < 0 ? undefined : process.argv[reuseIndex + 1]
-const p2 = process.argv.includes('--p2')
+const p3 = process.argv.includes('--p3')
+const p2 = process.argv.includes('--p2') || p3
 const repository = fileURLToPath(new URL('../../../../', import.meta.url))
 const packageRoot = path.join(repository, 'packages/dsh-data-analysis')
 const python = process.env.DSH_DATA_ANALYSIS_PYTHON
 if (!python) throw new Error('Set DSH_DATA_ANALYSIS_PYTHON')
+let modelKey = process.env.DEEPSEEK_API_KEY
+if (process.argv.includes('--model') && !modelKey) {
+  const filename = path.join(resolveDshHome(), CREDENTIALS_FILENAME)
+  const raw = await readFile(filename, 'utf8')
+  modelKey = parseCredentialsDocument(renderFlatLayoutMigration(raw) ?? raw, filename).refs.get(
+    'DEEPSEEK_API_KEY',
+  )
+  if (!modelKey) throw new Error('Model credential unavailable')
+}
 const output = reuse
   ? await realpath(reuse)
   : await realpath(
@@ -141,6 +157,8 @@ const child = spawn(
       ...process.env,
       DSH_HOME: home,
       DSH_TOOLS_MODE: 'ptc',
+      DSH_UNIFIED_UI_P3: p3 ? '1' : '0',
+      ...(modelKey ? { DEEPSEEK_API_KEY: modelKey } : {}),
       OPENUI_TELEMETRY_DISABLED: '1',
       DO_NOT_TRACK: '1',
     },

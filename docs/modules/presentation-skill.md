@@ -1,29 +1,17 @@
 # 展示 Skill
 
-## P2 入口与历史说明
+## 当前入口与责任
 
-当前 presentation Skill 的新建入口使用引用/Lang：单结果直接 marivo_present，只有自定义页面才按需读取
-由同一 Catalog 生成的八组件[签名资源](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)。
-Draft 参考留在明确的历史 Document v3 区域；新格式只支持静态 auto/table/metric。
-主提示已对齐默认 tool、显式 tab 和按需读取，不把 P3 的流式、patch 或最终模型策略验收提前计入。
-文件分析 Skill 的完整引用流程及其他历史示例统一清理仍属 P3。
-以下各节主要保留旧格式的内容组织、历史图形及导出参考；旧 Draft 不再是新写入步骤。
+presentation Skill 负责已有结果的表达与交付，Marivo 拥有分析事实，Harness 拥有 Skill 生命周期。
+单 Frame/DataFrame 快照直接调用 marivo_present，无需额外 Skill 或回读；自定义布局按需读取同 Catalog 生成的
+[八组件签名](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)及
+[Lang、capture 与更新示例](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-ui.md)。
+Native 自定义 Lang 消费真实参数前缀，更新使用准确 basedOnRecordId 与变化语句。resources 省略继承，
+提供则替换完整表；纯展示修改不重新读取快照。成功不默认回读，不强制先大纲后补全。
 
-
-## 责任与入口
-
-`dsh-data-analysis-presentation` 是插件自带的展示 Skill，负责把展示需求组织成可交付的 Draft：选择
-已有数据、组织结论与图形、声明来源、调用 `marivo_present` 并解释结果。Marivo 拥有分析与来源事实，
-Harness 拥有 Skill 发现和激活，插件的 projection、reader 与 delivery 分别拥有数据快照、阅读和文件交付。
-
-Skill 入口是 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
-主文件只保留完整短流程；[schema](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/schema.md)、
-[图形配置](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/charts.md)、
-[叙事与证据检查](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
-[示例说明](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)放在 references。
-写草稿前读取 schema；报告、看板和比较型展示还需读取 narrative。更新、筛选、来源追问、导出与发布
-各有明确的 reference 入口，只读取当前操作需要的内容。
-可改写的 Draft、dataset 和 Python 示例随 Skill 一同分发。
+入口为 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
+旧 Draft、writer、图形、筛选和导出资源仅说明已有 Document v3，不指向新写入。
+新格式首期只有 auto/table/metric，未开放图形、HTML 导出或发布。
 
 ## 发现与路由
 
@@ -50,16 +38,11 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 ## 内容组织与数据边界
 
-Agent 按用途选择数据与表达：Artifact dataset 直接恢复持久化结果；computed dataset 读取 Python writer
-生成的 typed JSON；只需解释来源时使用 source-only。来源在 Draft 声明，可为零到多个精确引用。
-computed 不要求转换代码、转换分类或复算信息；可恢复来源只说明快照可读取，不能证明计算正确。
-文件分析结果复用 computed writer 和实际 `codeRef`，正文说明文件名与读取范围，不构造 Marivo Artifact 来源。
+Frame 使用准确 Session/Artifact 引用。文件分析及 SQL 结果在原进程转成 DataFrame 后 capture，成功回执返回 snapshotRef，
+执行归属及 codeRef 由 Host 绑定，不要求模型手填。SQL 转换可能改变 NULL/整数类型并损失捕获前精度，helper 不修复。
+不强制每条 SQL 捕获，不为呈现重新执行结束的分析，不给 Dataset 补造 Artifact、Evidence 或来源。
 
-Draft 使用五类 block：Markdown、metric、支持 18 类图形的 chart、table 和 source。Agent 决定内容顺序、
-图形类型、字段与标签，reader 负责自适应布局，没有网格配置。报告和看板共用同一数据契约与 reader，
-不创建新的对象类型、模板协议或长期版本。
-连续 chart 在空间足够时最多并排两列；插入说明、表格或来源块，以及固定／筛选分区边界，会断开图表组。
-作者仍通过 blocks 表达阅读顺序，不用空白块占位，也不依赖屏幕上的固定行列位置。
+新格式使用八组件 Lang 与已保存资源，旧格式 writer 和 Draft 仅服务兼容读取、测试及旧 Reader 编辑。
 
 结论逐项对应用户问题与比较范围，每组比较明确两侧、方向和分母；缺失分支保留在正文，不能由另一组
 成功比较替代。观测、贡献分解、解释和假设使用相应证据强度；边际分布不支持联合关系，原因或排除性
@@ -77,15 +60,9 @@ Draft 使用五类 block：Markdown、metric、支持 18 类图形的 chart、ta
 
 ## 交付与验证
 
-Agent 将 Draft 保存为 Workspace 相对路径，新建时调用 `marivo_present({ draft_path })`，依据实际 receipt
-解释结果和交付位置。Tool 负责生成 JSON、完整提交与摘要校验；HTML 由用户下载时按需生成；reader 来源展开只读保存快照。
-修改已有报告时，在读取当前保存内容并合并需保留编辑后，成对传入 `report_id` 与 `expected_build_id`，
-以完整 Draft 保存为同一 Report 的新 Build；版本冲突后重新核对内容，不仅替换 expected ID 重试。
-流程和失败边界见[展示交付](presentation-delivery.md)。
+默认 tool，明确要求报告/dashboard 用 tab；参数建议先交付位置和基版本，再 resources、title、program。
+半截 patch 不正式合并；保存冲突后核对当前版本与意图，不只替换 ID 重试。缺少准确定义时才 marivo_ui_read。
+已有快照不证明当前数据新鲜度。交付、失败与格式边界见[展示交付](presentation-delivery.md)。
 
-包验证同时检查 Skill 主文件与 references 的实际分发；插件测试检查 provider 接线、短路由和现有
-Runtime Skill 的独立性。
-
-## 阅读器编辑边界
-
-Host 阅读器的编辑／保存保留底层快照，报告重开解析同 report 当前构建。可编辑标题、正文、metric 标签、图表／表格配置，移动或删除 cell（允许删空）；不编辑数据和来源。筛选不保存、不重算。Agent 修改呈现、KPI 或数据时使用完整 Draft 重建入口；是否新建 Report 取决于用户要修改原报告还是另建报告。身份、冲突与固定快照语义见[展示交付](presentation-delivery.md#agent-更新契约)。
+包验证检查 Skill、references 与 examples 分发；模块测试核对解析和契约，真实模型核对路由、披露量和调用轨迹。
+旧 Reader 的呈现编辑及 HTML 路径保留，不能将其 Draft 参数作为当前 marivo_present 协议。

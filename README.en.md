@@ -109,8 +109,9 @@ Present an existing Frame or captured DataFrame without repeating the analysis. 
 - **Check sources**: Frame views show structure and source identity. DataFrame views explicitly mark SQL, datasource and file provenance that was not captured.
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
 
-The unified analysis UI is at the static P2 stage: tables and complete single values are supported.
-Charts, streaming, patches, offline export, publishing and legacy editing are not connected for the new format.
+The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
+Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
+Charts, offline export, publishing and legacy Reader editing are not connected for the new format.
 Existing legacy reports keep their reader, charts, presentation editing and HTML export.
 
 ## Analysis timeout
