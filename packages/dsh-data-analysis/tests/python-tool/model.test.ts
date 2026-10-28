@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { pythonToolModel } from '../../src/client/python-tool/model.ts'
 import { executionFailure, settled, source, successful } from './fixtures.ts'
 
@@ -71,7 +72,7 @@ test('extracts source and output without rewriting escaping, indentation or orig
   assert.deepEqual(model.datasources, ['trino_bili'])
   assert.equal(model.timeoutMs, 1000)
   assert.equal(model.state, 'succeeded')
-  assert.deepEqual(block, snapshot)
+  assert.deepEqual(structuredClone(block), snapshot)
 })
 
 test('execution status does not confuse settlement, credential readiness or code capture with success', () => {
@@ -106,6 +107,7 @@ test('running partial input, missing call, malformed and non-text results preser
     callId: 'c',
     phase: 'start',
     argsRaw: partial,
+    args: PartialArguments.fromText(partial),
     time: 0,
     turn: 0,
     step: 0,

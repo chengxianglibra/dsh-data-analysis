@@ -25,7 +25,7 @@ Agent 的展示路由、Draft 编写与结果解释见[展示 Skill](presentatio
 <workspace>/.dsh-data-analysis/presentations/<reportId>/builds/<buildId>/presentation.json
 ```
 
-document 与 receipt 使用 schema v2，保存 Workspace/report/build 身份、标题、摘要及已保存文件的精确路径、SHA-256 和字节数；`files.html` 可选，兼容历史含 HTML 的 receipt。
+document 使用 schema v3，receipt 使用 schema v2，保存 Workspace/report/build 身份、标题、摘要及已保存文件的精确路径、SHA-256 和字节数；`files.html` 可选，兼容历史含 HTML 的 receipt。
 Tool 默认创建独立报告；成对提供 `report_id` 与 `expected_build_id` 时更新已有报告。阅读器保存也为同一 report 创建新 build。
 `presentations/<reportId>/current.json` 保存 schema v3、Workspace、reportId、完整当前 receipt 及按发布顺序排列的版本记录。已有 schema v2 current 仍可读取，下一次成功保存时把其当前版本作为已确认历史起点。
 document 与 receipt 的旧协议不读取、不迁移；旧文件保留。支持已确认发布版本的历史浏览，不提供回滚或自动清理。
@@ -50,7 +50,7 @@ Tool 在读取 Draft 和投影前 resolve 目标，校验 current、Workspace �
 ## Native、PTC 与 headless
 
 纯 `PresentationDelivery` envelope 使用 `kind: "marivo.presentation.delivery"`、`schemaVersion: 2`、
-`dshSessionId`、`turn` 和同一个 `PresentationReceipt`。Native/both 使用 Tool metadata；Code 子调用通过
+`dshSessionId`、`turn` 和同一个 `PresentationReceipt`。Native 使用 Tool metadata；Code 子调用通过
 Harness `tools/ptc-dispatch-log` 写入同一种 durable envelope，即使代码丢弃返回值也保留交付。
 登记只保存有界的临时 dispatch 关联，持久事实仍在 Harness 事件中。新版写入 `tool/ptc-dispatch`；
 读取既有 schemaVersion 2 receipt 时同时识别旧 `tool/code-dispatch` 事件名称，不改写历史。
@@ -133,7 +133,7 @@ npm run validate:presentation-integration:real
 无 Web Crypto 环境覆盖报告读取、HTML 下载和同字节长度篡改拒绝，并与 Node.js SHA-256 对照。
 通过未改写的已安装 Harness 客户端 bundle 与公开 `apply`、registries、assembler，验证两种插件加载顺序下
 ProducedFiles 与报告交付事件共存、多报告、重复回执、取消后保留及历史重建。
-隔离真实验证应覆盖 Native/both/Code、原生 Tab 自动打开、历史回放不自动打开、按需下载与离线文件。
+隔离真实验证应覆盖 Native/PTC 与模式切换、原生 Tab 自动打开、历史回放不自动打开、按需下载与离线文件。
 
 ## 全局筛选的保存边界
 

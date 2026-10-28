@@ -1,5 +1,9 @@
 # 项目验证指南
 
+## 统一分析 UI P0
+
+2026-10-28 完成固定 OpenUI 八组件、安装 Runtime schema／分页、RawSqlResult 公开字段、真实 Host Native 参数前缀和 PTC dispatch 探针。开发／peer 最低 Harness 改为 `0.2.1-rc.2`；Marivo 使用用户指定的本地 `dist/pypi` wheel。详见[版本、入口与证据](testing/unified-analysis-ui-p0-2026-10-28.md)。当前统一 UI 数据组件为占位，P1–P3 尚未交付。
+
 ## 验证原则
 
 根目录 [package.json](../package.json) 是验证命令入口。模块文档描述应验证的契约；测试通过记录必须绑定实际代码、安装包和环境，不能由设计文档、旧截图或脚本路径推断。

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
+import type { PeerId, PeerScope } from '@deepseek-ai/dsh-typert-protocol'
 import Registry from '@deepseek-ai/dsh-typert-registry'
 import { CredentialClientModel } from '../../src/client/credentials/model.ts'
 import { CredentialChangesService } from '../../src/datasource/changes.ts'
@@ -62,6 +63,15 @@ test('strict Gateway stream yields revisions only and cancellation leaves the wa
   const service = new CredentialChangesService(ctx, f.service)
   const unregister = ctx.typert.register(credentialChangesHost)
   const gateway = new Gateway(ctx, {})
+  const peer: PeerScope = {
+    id: 'test-owner' as PeerId,
+    ctx,
+    principal: { kind: 'owner' },
+    signal: new AbortController().signal,
+    interactions: 'none',
+    dispose: async () => {},
+  }
+
   t.after(async () => {
     await service.close()
     await unregister()
@@ -69,6 +79,7 @@ test('strict Gateway stream yields revisions only and cancellation leaves the wa
   })
   const controller = new AbortController()
   const source = await gateway.stream({
+    peer,
     namespace: 'dshDataAnalysisCredentials',
     method: 'changes',
     args: { sessionId: 'session' },
@@ -91,6 +102,7 @@ test('strict Gateway stream yields revisions only and cancellation leaves the wa
   assert.equal(f.service.watch('session').configurationRequests[0]?.endedAt, undefined)
   await assert.rejects(
     gateway.stream({
+      peer,
       namespace: 'dshDataAnalysisCredentials',
       method: 'changes',
       args: { sessionId: 'session', secret: 'canary' },

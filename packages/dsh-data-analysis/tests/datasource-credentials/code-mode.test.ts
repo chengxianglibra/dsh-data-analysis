@@ -19,6 +19,7 @@ import ShellExecutor, {
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { registerMarivoPythonTool } from '../../src/datasource/python.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 import { fixture, operation, waiting } from './fixtures.ts'
@@ -67,6 +68,7 @@ async function harness(maxWallMs: number) {
   await ctx.plugin(LocalSandbox, {})
   await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot: process.cwd() })
   await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(WorkingDirectory, { defaultDirectory: process.cwd() })
   await ctx.plugin(NodePtcRuntime, { timeoutMs: maxWallMs })
   await ctx.plugin(ToolRuntime, { mode: 'ptc' })
   await ctx.plugin(AgentRegistry)
@@ -95,7 +97,9 @@ test('real Code Mode resumes the same SDK dispatch within its outer budget', asy
       code: 'const result = await tools.marivo_python({code:"print(1)",datasources:["warehouse"]}); console.log(result.stdout);',
     },
   })
-  const request = await waiting(f)
+  const request = await waiting(f).catch(async (error) => {
+    throw new Error(JSON.stringify(await pending), { cause: error })
+  })
   assert.equal((h.ctx.shell as CountingShell).starts, 0)
   await operation(f, request.context, 'submit', {
     requestId: request.id,
@@ -126,7 +130,9 @@ test('real Code Mode wall deadline cancels a pending credential call and rejects
       code: 'await tools.marivo_python({code:"print(1)",datasources:["warehouse"]});',
     },
   })
-  const request = await waiting(f)
+  const request = await waiting(f).catch(async (error) => {
+    throw new Error(JSON.stringify(await pending), { cause: error })
+  })
   const result = await pending
   assert.equal(result.isError, true)
   assert.equal(f.service.watch('session').requests[0]?.status, 'call-ended')

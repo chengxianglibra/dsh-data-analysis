@@ -20,6 +20,7 @@ import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import {
   type MarivoPythonExecutionSummary,
@@ -64,6 +65,7 @@ async function harness(t: TestContext, maxWallMs?: number) {
     await ctx.plugin(LocalSandbox, {})
     await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot: root })
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(WorkingDirectory, { defaultDirectory: root })
     await ctx.plugin(SubprocessLocal)
     await ctx.plugin(NodePtcRuntime, { timeoutMs: maxWallMs })
   }

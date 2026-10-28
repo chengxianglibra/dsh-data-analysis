@@ -270,7 +270,7 @@ syncBuiltinESMExports();
       ],
       {
         cwd: workspaceRoot,
-        env: { ...process.env, DSH_HOME: home, DSH_TOOLS_MODE: 'both' },
+        env: { ...process.env, DSH_HOME: home, DSH_TOOLS_MODE: 'ptc' },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )

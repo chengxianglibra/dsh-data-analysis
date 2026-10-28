@@ -124,9 +124,9 @@ Web client 只保留：
 Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就绪时禁用；点击时再次校验当前身份。
 显示入口不加载目录数据，失败在按钮旁显示。窄屏保留文字并换行，locale 切换不影响输入或报告语言。
 
-## DSH rc.1 适配
+## Harness 接缝
 
-当前基线为 `0.1.7-rc.1`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
+当前开发与验收基线为 `0.2.1-rc.2`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
 和 `dsh-api-workspace-controller`；对话组装由 `ui-conversation` 拥有，chat 节点渲染由 `ui-chat` 拥有。
 新版 Lexical composer 通过 scoped `slash/input-insert-reference` 和当前 `draftRev` 追加“加入提问”的 Cell 引用，
 采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史；显示 `# <cell名称>`，
@@ -147,8 +147,8 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 
 | 边界 | 当前值 |
 | --- | --- |
-| DSH peers 兼容范围 | `>=0.1.7-rc.1`，npm 默认预发布匹配规则 |
-| DSH 开发 distribution | `0.1.7-rc.1`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
+| DSH peers 兼容范围 | `>=0.2.1-rc.2`，npm 默认预发布匹配规则 |
+| DSH 开发 distribution | `0.2.1-rc.2`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.6.0.dev0` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
@@ -159,8 +159,8 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
-依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受 `0.1.7-rc.1`、`0.1.7-rc.2`
-和之后满足 `>=0.1.7-rc.1` 的稳定版本，不自动接受后续版本的预发布。逐项检查直接消费的 peers 与 Host 实际解析身份，
+依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受 `0.2.1-rc.2` 及同一 `0.2.1` 核心版本中后续满足范围的预发布
+和之后满足 `>=0.2.1-rc.2` 的稳定版本，不自动接受其他 core 版本的预发布。逐项检查直接消费的 peers 与 Host 实际解析身份，
 不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
 正常 workspace 链接允许，Host client external/metafile 与 portable 自带 React 检查保留。
 

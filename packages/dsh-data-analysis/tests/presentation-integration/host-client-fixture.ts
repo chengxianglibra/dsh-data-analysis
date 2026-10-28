@@ -16,6 +16,8 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     'react/jsx-runtime',
     'react-dom',
     'react-dom/client',
+    'zod',
+    '@tanstack/react-virtual',
     '@deepseek-ai/dsh-client-store',
   ])
     modules.set(name, await import(require.resolve(name)))

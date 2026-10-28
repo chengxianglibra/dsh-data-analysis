@@ -33,7 +33,7 @@
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。当前开发依赖为 `0.1.7-rc.1`，插件 peer 最低为 `0.1.7-rc.1`；本轮文件交付指引接入 Host 原生表格预览，后台长任务保留为后续独立任务。[DSH 0.2.0 升级与数据分析能力集成设计](designs/dsh-0.2.0-integration.md) 记录 0.2.0 的可用增量、不变量与回归清单；该设计未实施，开发依赖与验收基线不变。
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI P0 将开发依赖与 peer 最低版本提高至 `0.2.1-rc.2`，用于公开 `PartialArguments.textPrefix`、tool view、tab 与 PTC 探针。OpenUI 固定版本和八组件 Catalog 由插件独立维护，领域组件目前只有占位；`marivo_present` 仍使用原 Draft 流程，统一数据读取与交付尚待 P1–P3。详情见[实施计划](designs/unified-analysis-ui-implementation.md)与[验收记录](testing/unified-analysis-ui-p0-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
 
 ## 运行与数据流
 

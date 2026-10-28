@@ -20,13 +20,14 @@ import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
 import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { apply, inject } from '../../src/plugin.ts'
 import { parsePresentationReceipt } from '../../src/presentation/contracts/index.ts'
@@ -201,6 +202,15 @@ export async function runPresentationJourneys(
   // This direct AgentLoop journey does not load a Web agent preset. Install the
   // real filesystem tools in its Agent scope, just as the preset normally does.
   await agent.ctx.plugin(FilesystemTools)
+  if (mode === 'both') {
+    let restoreMode = agent.ctx.tools.presentAs('native')
+    agent.ctx.on('session/event', (owner, event) => {
+      if (owner.id !== agent.session.id || event.type !== 'tool/result') return
+      const code = String(event.data.message.toolCallId).endsWith('-0')
+      restoreMode()
+      restoreMode = agent.ctx.tools.presentAs(code ? 'ptc' : 'native')
+    })
+  }
   let duplicated = false
   let duplicateError: unknown
   const stopDuplicate = agent.ctx.on('session/event', (owner, event) => {
@@ -426,8 +436,9 @@ export async function validatePresentationHost(
       await ctx.plugin(LocalSandbox, {})
       await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot })
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(WorkingDirectory, { defaultDirectory: process.cwd() })
       await ctx.plugin(NodePtcRuntime, { timeoutMs: 120_000 })
-      await ctx.plugin(ToolRuntime, { mode })
+      await ctx.plugin(ToolRuntime, { mode: mode === 'both' ? 'native' : mode })
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(

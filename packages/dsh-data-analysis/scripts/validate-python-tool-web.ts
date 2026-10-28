@@ -70,7 +70,7 @@ try {
   await page.waitForFunction(
     () => typeof (window as unknown as { renderCard: unknown }).renderCard === 'function',
   )
-  const render = async (block = settled(), locale = 'zh-CN') => {
+  const render = async (block: unknown = settled(), locale = 'zh-CN') => {
     await page.evaluate(
       ({ block, locale }) =>
         (window as unknown as { renderCard: (block: unknown, locale: string) => void }).renderCard(

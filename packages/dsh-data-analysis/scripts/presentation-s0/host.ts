@@ -20,12 +20,13 @@ import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
 import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SessionStore, { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { parsePresentationReceipt } from '../../src/presentation/contracts/index.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
 import { inspectStoredSession } from '../harness-session.ts'
@@ -313,8 +314,9 @@ export async function validateS0Host(
       await ctx.plugin(LocalSandbox, {})
       await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot })
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(WorkingDirectory, { defaultDirectory: process.cwd() })
       await ctx.plugin(NodePtcRuntime, { timeoutMs: 10000 })
-      await ctx.plugin(ToolRuntime, { mode })
+      await ctx.plugin(ToolRuntime, { mode: mode === 'both' ? 'native' : mode })
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       ctx.llm.registerAdapter(['s0-scripted'], new ScriptedProbeAdapter(mode))

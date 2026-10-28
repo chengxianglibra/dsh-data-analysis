@@ -1,0 +1,163 @@
+/** Disposable real DSH Web with the packed plugin and a validation-only Tool view. */
+import { execFileSync, spawn } from 'node:child_process'
+import { mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { build } from 'esbuild'
+
+const repository = fileURLToPath(new URL('../../../../', import.meta.url))
+const packageRoot = path.join(repository, 'packages/dsh-data-analysis')
+const python = process.env.DSH_DATA_ANALYSIS_PYTHON
+if (!python) throw new Error('Set DSH_DATA_ANALYSIS_PYTHON')
+const output = await mkdtemp(path.join(tmpdir(), 'dsh-unified-ui-p0-web-'))
+const workspace = path.join(output, 'workspace')
+const home = path.join(output, 'home')
+const modules = path.join(home, 'profiles/web/node_modules')
+const wrapper = path.join(output, 'p0-probe')
+await mkdir(workspace)
+await mkdir(modules, { recursive: true })
+await mkdir(wrapper)
+for (const entry of await readdir(path.join(repository, 'node_modules'))) {
+  if (entry.startsWith('.') || entry === '@chengxianglibra') continue
+  await symlink(path.join(repository, 'node_modules', entry), path.join(modules, entry))
+}
+const installed = path.join(modules, '@chengxianglibra/dsh-data-analysis')
+await mkdir(installed, { recursive: true })
+const packed = JSON.parse(
+  execFileSync(
+    'npm',
+    ['pack', packageRoot, '--ignore-scripts', '--json', '--pack-destination', output],
+    { encoding: 'utf8' },
+  ),
+)[0]
+execFileSync('tar', [
+  '-xzf',
+  path.join(output, packed.filename),
+  '-C',
+  installed,
+  '--strip-components=1',
+])
+await writeFile(path.join(output, 'installed-package.json'), JSON.stringify(packed, null, 2))
+const manifest = JSON.parse(await readFile(path.join(installed, 'package.json'), 'utf8'))
+await symlink(wrapper, path.join(modules, 'dsh-unified-ui-p0'))
+await symlink(modules, path.join(wrapper, 'node_modules'))
+await writeFile(
+  path.join(wrapper, 'package.json'),
+  JSON.stringify({
+    name: 'dsh-unified-ui-p0',
+    version: '0.0.0',
+    type: 'module',
+    main: './index.js',
+    exports: { '.': './index.js', './client': './client.js', './package.json': './package.json' },
+    dsh: { client: manifest.dsh.client },
+  }),
+)
+const ready = path.join(output, 'ready.json')
+await build({
+  stdin: {
+    resolveDir: repository,
+    loader: 'ts',
+    contents: `
+import {writeFile} from 'node:fs/promises';
+import * as production from '@chengxianglibra/dsh-data-analysis';
+import {installProbe} from ${JSON.stringify(fileURLToPath(new URL('host.ts', import.meta.url)))};
+export const inject=[...production.inject,'llm','agentLoop','webServer'];
+export async function apply(ctx){
+ await ctx.plugin(production,{pythonExecutable:${JSON.stringify(python)},runtimeRoot:${JSON.stringify(path.join(output, 'runtime-marker'))},credentialInteraction:'none'});
+ const result=await installProbe(ctx,${JSON.stringify(workspace)},${JSON.stringify(output)});
+ await writeFile(${JSON.stringify(ready)}, JSON.stringify({...result,url:ctx.connection.authenticatedUrl('http://127.0.0.1:'+ctx.webServer.port)}));
+}`,
+  },
+  outfile: path.join(wrapper, 'index.js'),
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  packages: 'external',
+})
+const client = await build({
+  stdin: {
+    resolveDir: repository,
+    loader: 'ts',
+    contents: `
+import * as production from '@chengxianglibra/dsh-data-analysis/client';
+import * as probe from ${JSON.stringify(fileURLToPath(new URL('client.tsx', import.meta.url)))};
+export const inject=[...new Set([...production.inject,...probe.inject])];
+export function apply(ctx){production.apply(ctx);probe.apply(ctx);}
+`,
+  },
+  bundle: true,
+  write: false,
+  platform: 'browser',
+  format: 'cjs',
+  jsx: 'automatic',
+  define: { 'process.env.NODE_ENV': '"production"' },
+  external: [
+    '@deepseek-ai/*',
+    '@chengxianglibra/dsh-data-analysis/client',
+    'react',
+    'react/*',
+    'react-dom',
+    'react-dom/*',
+  ],
+})
+await writeFile(
+  path.join(wrapper, 'client.js'),
+  [
+    await readFile(path.join(installed, 'lib/client.js'), 'utf8'),
+    `window.__ModuleLoader__.load({id:'dsh-unified-ui-p0',factory:(require)=>{var module={exports:{}};var exports=module.exports;${client.outputFiles[0]!.text};return module.exports;}});`,
+  ].join('\n'),
+)
+const patch = path.join(output, 'probe.patch.yml')
+await writeFile(patch, '- insert:\n    - id: unified-ui-p0\n      name: dsh-unified-ui-p0\n')
+const child = spawn(
+  process.execPath,
+  [
+    path.join(repository, 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
+    '--profile',
+    'web',
+    '--patch',
+    patch,
+    '--no-open',
+    '--port',
+    '0',
+  ],
+  {
+    cwd: workspace,
+    env: {
+      ...process.env,
+      DSH_HOME: home,
+      DSH_TOOLS_MODE: 'ptc',
+      OPENUI_TELEMETRY_DISABLED: '1',
+      DO_NOT_TRACK: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  },
+)
+const log = await import('node:fs').then(({ createWriteStream }) =>
+  createWriteStream(path.join(output, 'host.log')),
+)
+child.stdout.pipe(log)
+child.stderr.pipe(log)
+let exited = false
+child.once('exit', () => {
+  exited = true
+})
+process.on('SIGTERM', () => child.kill('SIGTERM'))
+process.on('SIGINT', () => child.kill('SIGTERM'))
+const deadline = Date.now() + 120_000
+while (!exited && Date.now() < deadline) {
+  const state = await readFile(ready, 'utf8')
+    .then(JSON.parse)
+    .catch(() => undefined)
+  if (state) {
+    console.log(JSON.stringify({ output, pid: child.pid, ...state }))
+    break
+  }
+  await new Promise((resolve) => setTimeout(resolve, 100))
+}
+if (exited) throw new Error(`Host exited: ${await readFile(path.join(output, 'host.log'), 'utf8')}`)
+if (Date.now() >= deadline) {
+  child.kill('SIGTERM')
+  throw new Error(`Host readiness timed out: ${output}`)
+}

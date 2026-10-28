@@ -1,4 +1,5 @@
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
+import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import {
   MarivoPythonExecutionError,
   type MarivoPythonExecutionSummary,
@@ -36,6 +37,8 @@ export const successful = {
 export function settled(value: unknown = successful, code = source): ToolResultNode {
   return {
     kind: 'tool-result',
+    name: 'marivo_python',
+    args: PartialArguments.fromObject({ code, datasources: ['trino_bili'], timeoutMs: 1000 }),
     seq: 1,
     time: 1,
     callId: 'python-call',

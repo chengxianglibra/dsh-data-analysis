@@ -21,7 +21,7 @@ import LlmRuntime, {
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
@@ -136,6 +136,7 @@ try {
   assert.equal(help.isError, false)
   const connection = ctx.connection as Connection.HostConnectionService
   const handler = connection.createSharedFetchHandler('/api')
+  const peer = connection.createPeer({ principal: { kind: 'owner' }, interactions: 'none' })
   const request = () =>
     new Request('http://localhost/api/marivo-presentation/reports/list', {
       method: 'POST',
@@ -147,7 +148,7 @@ try {
         payload: { workspaceId: String(workspace.id) },
       }),
     })
-  const before = await handler.fetch(request())
+  const before = await handler.fetch(request(), peer)
   assert.equal(before.status, 200)
   assert.equal((await before.json()).result.ok, true)
   const marker = path.join(workspaceRoot, 'running.pid')
@@ -188,10 +189,10 @@ try {
     if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
   }
   assert.deepEqual(toolNames(), [])
-  assert.equal((await handler.fetch(request())).status, 404)
+  assert.equal((await handler.fetch(request(), peer)).status, 404)
   plugin = await ctx.plugin(definition, config)
   assert.deepEqual(toolNames(), expectedTools)
-  const after = await handler.fetch(request())
+  const after = await handler.fetch(request(), peer)
   assert.equal(after.status, 200)
   assert.equal((await after.json()).result.ok, true)
   await plugin.dispose()

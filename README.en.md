@@ -26,7 +26,7 @@ This is an independently maintained community plugin. It is not an official Deep
 ### Prerequisites
 
 - Node.js `^22.19.0 || >=24.0.0`: version 22.19.0 or later in the 22.x series, or version 24.0.0 and above. Version 23.x is not supported.
-- DeepSeek Harness `>=0.1.7-rc.1`, launched with `npx @deepseek-ai/dsh web` and configured.
+- DeepSeek Harness `>=0.2.1-rc.2`, launched with `npx @deepseek-ai/dsh web` and configured.
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 

@@ -122,7 +122,7 @@ Code Mode 中嵌套 Skill 使用 log-only 的 `tool/ptc-dispatch`，外层 `run_
 ## 工具可见性边界
 
 `marivo_help` 是 Agent scope Tool，但插件不调用 `tools.restrict()`，也不隐藏 `skill`、`run_code`、
-bash 或其他 profile Tool。native、code 和 both 模式保持 Harness 原行为。当前设计只通过 Skill 内容
+bash 或其他 profile Tool。native 与 ptc 模式保持 Harness 原行为（当前基线不再提供 both）。当前设计只通过 Skill 内容
 指导 focused Help 调用，不承诺在任意 bash/Python Marivo 执行前做拦截。
 
 这一区分避免把“实时能力披露”扩大为通用命令解析器或安全沙箱。
