@@ -396,7 +396,7 @@ const specs = [
   {
     id: 'focused-help-dedup',
     projectRoot: workspaceRoot,
-    prompt: `Call skill with {"name":"marivo-analysis"}. After the automatic analysis root help, call marivo_help twice in separate steps with exactly ["analysis.observe"] each time. Confirm that the second result is an already-visible receipt and end with ${markerFor('focused-help-dedup')}.`,
+    prompt: `Call skill with {"name":"marivo-analysis"}. After the automatic analysis root help, call marivo_help twice in separate steps with exactly ["analysis.session.observe"] each time. Confirm that the second result is an already-visible receipt and end with ${markerFor('focused-help-dedup')}.`,
   },
   {
     id: 'dual-skill-same-turn',

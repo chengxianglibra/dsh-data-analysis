@@ -25,15 +25,13 @@ class SnapshotResolver:
 
     def resolve(self, request):
         grant = self.grants.get(request.datasource)
-        if request.cancelled:
-            reason = "timeout"
-        elif Path(request.project_root).resolve() != self.root or grant is None:
+        if Path(request.project_root).resolve() != self.root or grant is None:
             reason = "denied"
         elif any(grant["fields"].get(field) != request.reference for field in request.fields):
             reason = "denied"
         elif not request.fields or request.reference not in grant["fields"].values():
             reason = "denied"
-        elif definition(md.describe(request.datasource)) != grant["definition"]:
+        elif definition(md.load().describe(request.datasource)) != grant["definition"]:
             reason = "denied"
         elif not self.values.get(request.reference):
             reason = "missing"
@@ -58,7 +56,7 @@ sys.stdin = open(os.devnull)
 try:
     with md.credential_scope(resolver=resolver):
         for name, grant in resolver.grants.items():
-            description = md.describe(name)
+            description = md.load().describe(name)
             if grant["name"] != name or description.name != name:
                 raise RuntimeError("Marivo datasource identity changed; execution cancelled")
             if definition(description) != grant["definition"]:

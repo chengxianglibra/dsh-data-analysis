@@ -165,9 +165,9 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.bridge)
   const result = await executeHelp(ctx, [
-    'analysis.observe',
-    'analysis.compare',
-    'analysis.observe',
+    'analysis.session.observe',
+    'analysis.analysis_frame.compare',
+    'analysis.session.observe',
   ])
   assert.equal(result.isError, false)
   if (result.isError) return
@@ -179,31 +179,43 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
       delivery: item.delivery,
     })),
     [
-      { target: 'analysis.observe', body: 'help-body:analysis.observe\n', delivery: 'delivered' },
-      { target: 'analysis.compare', body: 'help-body:analysis.compare\n', delivery: 'delivered' },
+      {
+        target: 'analysis.session.observe',
+        body: 'help-body:analysis.session.observe\n',
+        delivery: 'delivered',
+      },
+      {
+        target: 'analysis.analysis_frame.compare',
+        body: 'help-body:analysis.analysis_frame.compare\n',
+        delivery: 'delivered',
+      },
     ],
   )
   assert.ok(targets.every((item) => /^[0-9a-f]{64}$/.test(item.bodyDigest)))
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
-    'analysis.observe',
-    'analysis.compare',
+    'analysis.session.observe',
+    'analysis.analysis_frame.compare',
   ])
   const text = result.content[0]?.type === 'text' ? result.content[0].text : ''
   assert.match(text, /^Marivo version: /)
   assert.doesNotMatch(text, /Python:|Package:|Fingerprint:|[a-f0-9]{64}/)
-  assert.ok(text.includes('Target: analysis.observe\nhelp-body:analysis.observe\n'))
-  assert.ok(text.includes('Target: analysis.compare\nhelp-body:analysis.compare\n'))
+  assert.ok(text.includes('Target: analysis.session.observe\nhelp-body:analysis.session.observe\n'))
+  assert.ok(
+    text.includes(
+      'Target: analysis.analysis_frame.compare\nhelp-body:analysis.analysis_frame.compare\n',
+    ),
+  )
 })
 
 test('invalid target is a standard isError result and discards earlier batch stdout', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.bridge)
-  const result = await executeHelp(ctx, ['analysis.observe', 'invalid.target'])
+  const result = await executeHelp(ctx, ['analysis.session.observe', 'invalid.target'])
   assert.equal(result.isError, true)
   const text = result.content[0]?.type === 'text' ? result.content[0].text : ''
   assert.match(text, /invalid\.target/)
-  assert.doesNotMatch(text, /help-body:analysis\.observe/)
+  assert.doesNotMatch(text, /help-body:analysis\.session\.observe/)
   assert.equal(fixture.environment.status, 'ready')
 })
 
@@ -271,9 +283,9 @@ test('same-process identity mismatch fails the binding and prevents later help',
   const tool = createMarivoHelpTool(fixture.bridge)
   const ctx = await setupRuntime(fixture.bridge)
   assert.equal(tool.name, MARIVO_HELP_TOOL_NAME)
-  assert.equal((await executeHelp(ctx, ['analysis.observe'])).isError, true)
+  assert.equal((await executeHelp(ctx, ['analysis.session.observe'])).isError, true)
   assert.equal(fixture.environment.status, 'failed')
-  const second = await executeHelp(ctx, ['analysis.compare'])
+  const second = await executeHelp(ctx, ['analysis.analysis_frame.compare'])
   assert.equal(second.isError, true)
-  assert.equal((await readFile(fixture.recordPath, 'utf8')).trim(), 'analysis.observe')
+  assert.equal((await readFile(fixture.recordPath, 'utf8')).trim(), 'analysis.session.observe')
 })

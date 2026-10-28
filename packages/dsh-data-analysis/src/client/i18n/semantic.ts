@@ -1,5 +1,16 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.semantic.reductions': '源聚合',
+  'marivo.semantic.conditions': '定义条件',
+  'marivo.semantic.time-bindings': '时间绑定',
+  'marivo.semantic.null-rules': '空值规则',
+  'marivo.semantic.definition-facts': '定义事实',
+  'marivo.semantic.dependencies': '依赖对象',
+  'marivo.semantic.join-keys': '连接键',
+  'marivo.semantic.cardinality': '关系基数',
+  'marivo.semantic.fields': '字段',
+  'marivo.semantic.members': '成员',
+
   'marivo.semantic.second': '秒',
   'marivo.semantic.minute': '分钟',
   'marivo.semantic.hour': '小时',
@@ -242,6 +253,17 @@ export const zh = {
   'marivo.semantic.entity': '实体',
 } as const
 export const en = {
+  'marivo.semantic.reductions': 'Source reductions',
+  'marivo.semantic.conditions': 'Definition conditions',
+  'marivo.semantic.time-bindings': 'Time bindings',
+  'marivo.semantic.null-rules': 'Null rules',
+  'marivo.semantic.definition-facts': 'Definition facts',
+  'marivo.semantic.dependencies': 'Dependencies',
+  'marivo.semantic.join-keys': 'Join keys',
+  'marivo.semantic.cardinality': 'Cardinality',
+  'marivo.semantic.fields': 'Fields',
+  'marivo.semantic.members': 'Members',
+
   'marivo.semantic.second': 'second',
   'marivo.semantic.minute': 'minute',
   'marivo.semantic.hour': 'hour',

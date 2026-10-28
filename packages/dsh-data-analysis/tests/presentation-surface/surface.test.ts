@@ -106,8 +106,8 @@ test('package cutover removes report exports and pins the native runtime release
     false,
   )
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.marivo, {
-    version: '0.5.5',
-    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.5.5',
+    version: '0.6.0.dev0',
+    packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.0.dev0',
   })
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {
     runtimeInstallation: 'dsh-data-analysis-runtime/v3',

@@ -14,33 +14,6 @@ import { chartGallery } from '../presentation-chart-gallery.ts'
 export async function preparePresentationInputs(workspaceRoot: string, pythonExecutable: string) {
   await mkdir(path.join(workspaceRoot, 'models/datasources'), { recursive: true })
   await mkdir(path.join(workspaceRoot, 'models/semantic/sales'), { recursive: true })
-  const files = {
-    'marivo.toml': '[project]\nname = "presentation-s4-runtime"\n',
-    'models/datasources/warehouse.py':
-      "import marivo.datasource as md\nmd.duckdb(name='warehouse', path=':memory:')\n",
-    'models/semantic/sales/__init__.py': '',
-    'models/semantic/sales/_domain.py':
-      "import marivo.semantic as ms\nms.domain(name='sales', owner='S4 validation')\n",
-    'models/semantic/sales/datasets.py': [
-      'import marivo.datasource as md',
-      'import marivo.semantic as ms',
-      "orders = ms.entity(name='orders', datasource=ms.ref.datasource('warehouse'), source=md.table('orders'))",
-      "region = ms.dimension_column(name='region', entity=orders, column='region')",
-      "@ms.metric(entities=[orders], additivity='additive', name='revenue', unit='USD')",
-      'def revenue(orders): return orders.amount.sum()',
-      "@ms.metric(entities=[orders], additivity='non_additive', name='account_id')",
-      'def account_id(orders): return orders.account_id.max()',
-      "precise_orders = ms.entity(name='precise_orders', datasource=ms.ref.datasource('warehouse'), source=md.table('precise_orders'))",
-      "precise_region = ms.dimension_column(name='region', entity=precise_orders, column='region')",
-      "@ms.metric(entities=[precise_orders], additivity='additive', name='precision_revenue', unit='USD')",
-      'def precision_revenue(precise_orders): return precise_orders.amount.sum()',
-      "@ms.metric(entities=[precise_orders], additivity='non_additive', name='precision_account_id')",
-      'def precision_account_id(precise_orders): return precise_orders.account_id.max()',
-      '',
-    ].join('\n'),
-  }
-  for (const [relative, content] of Object.entries(files))
-    await writeFile(path.join(workspaceRoot, relative), content)
   const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
   const result = await environment.runChecked({
     program: await readFile(

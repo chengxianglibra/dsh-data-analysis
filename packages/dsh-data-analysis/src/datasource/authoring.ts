@@ -67,12 +67,11 @@ def spec_fields(cls):
 
 def configuration(name, cls):
     import marivo.semantic as ms
-    description = md.describe(name)
-    details = ms.load().datasources.get(name).details()
-    if details.backend_type != description.backend_type or dict(details.fields) != description.literal_fields or dict(details.env_refs) != description.env_refs:
+    description = md.load().describe(name)
+    details = ms.load().get("datasource:" + name).to_dict()["definition"]
+    if details["backend_type"] != description.backend_type or dict(details["fields"]) != description.literal_fields or dict(details["env_refs"]) != description.env_refs:
         raise ValueError("context-changed")
-    context = {"business_definition": details.context.business_definition,
-        "guardrails": list(details.context.guardrails)}
+    context = details["context"]
     allowed = {field["name"] for field in spec_fields(cls)}
     fields = {"name": name}
     extra = {}
@@ -95,7 +94,7 @@ try:
         if payload["action"] == "schema":
             result = {"backends": [{"name": key, "fields": spec_fields(cls)} for key, cls in specs.items()]}
         elif payload["action"] == "read":
-            description = md.describe(payload["name"])
+            description = md.load().describe(payload["name"])
             result, _ = configuration(payload["name"], specs[description.backend_type])
         else:
             cls = specs[payload["backend"]]
@@ -103,7 +102,7 @@ try:
             allowed = {field["name"] for field in spec_fields(cls)}
             context = None
             if payload["action"] == "update":
-                current = md.describe(payload["name"])
+                current = md.load().describe(payload["name"])
                 if fields.get("name") != payload["name"] or current.backend_type != payload["backend"]:
                     raise ValueError("datasource-identity-fixed")
                 original, context = configuration(payload["name"], cls)
@@ -112,7 +111,7 @@ try:
             if set(fields) - allowed:
                 raise ValueError("unknown-field")
             spec = cls(**fields)
-            if payload["action"] == "create" and any(item.name == spec.name for item in md.list()):
+            if payload["action"] == "create" and any(item.name == spec.name for item in md.load().list()):
                 result = {"error": "datasource-already-exists"}
             else:
                 if sorted(spec.env_refs.values()) != sorted(payload["refs"]):

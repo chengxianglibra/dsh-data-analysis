@@ -16,7 +16,7 @@ NFKC、大小写和空白规范化仅影响检索，不修改 ref。热度只在
 ## 所有权与接口
 
 - DSH 拥有输入状态机、generation/abort、菜单、occurrence、undo 和提交错误提示；插件注册 `marivo-semantic` source。
-- Marivo 拥有 `SemanticKind`、`RefPayloadV1`、Catalog 和执行时领域验证；插件不扫描模型或维护对象 registry。
+- Marivo 拥有 `SemanticKind`、canonical `kind:path` identity、Catalog 和执行时领域验证；插件不扫描模型或维护对象 registry。
 - 插件通过 Connection 的 `/api/dsh-data-analysis/` 精确认证路由提供 `semantic-references/prepare`、`candidates`、`selected`、`serialize`。
   四个 endpoint 都使用 closed payload；`selected` 和 `serialize` 请求为 `{ envelope }`。
 - envelope 保存 v1 schema、原 Session ID、Environment fingerprint 与精确 Marivo ref，不保存 Catalog fingerprint。
@@ -47,7 +47,7 @@ Host 核验 Session 的唯一 Workspace 归属后建立或核对 Agent binding�
 相同 fingerprint 共享加载，一个 waiter 取消只解除自身等待；最后一个 waiter 取消后旧 flight 不可再共享，也不能
 发布快照或清理后续 flight。没有后台刷新、文件监听或 stale fallback。
 
-adapter 使用 `ms.load(workspace_dir=...)` 和 `RefPayloadV1.from_ref(...).to_dict()`，只投影 ref、key、name 与
+adapter 使用 `ms.load(workspace_dir=...)`、空查询 `catalog.search(limit=100, cursor=...)` 完整分页，按 Entry 的 `id/kind/path` 投影既有 wire ref、key、name 与
 有界 business definition。子进程显式设置 `MARIVO_TELEMETRY=off`、`PYTHONDONTWRITEBYTECODE=1`；checked runner
 仅将这两个精确非秘密控制值排除于 secret 脱敏，其他 overlay 值仍受原有脱敏保护。
 
@@ -69,6 +69,10 @@ DSH 移除对应 source group 的行为，提交失败沿用 composer error 并�
 
 执行 `npm run test:semantic-reference-input`。确定性测试执行 checked-out DSH 的真实 controller、InputMachine 和
 SessionInputShell；这些是输入管线集成证据，不代替真实 Web 验收。真实 Catalog 测试可通过
-`DSH_DATA_ANALYSIS_TEST_PYTHON` 指定正式 Marivo 0.5.5；默认查找本地 DSH shared Runtime，缺失时明确 skip。
+`DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.0.dev0；默认查找本地 DSH shared Runtime，缺失时明确 skip。
 
 `npm run validate:semantic-ask-dsh:web` 验证真实 composer 的两种入口、撤销及模型请求。
+
+Marivo 0.6 的公开搜索会在 `.marivo/semantic/search/results/` 写入分页缓存，空查询也如此。
+插件不读取私有索引、不绕过公共搜索、不删除缓存；验收要求只新增该缓存并保留所有已有文件。
+空查询不调用检索模型，界面搜索仍使用已加载的候选快照。

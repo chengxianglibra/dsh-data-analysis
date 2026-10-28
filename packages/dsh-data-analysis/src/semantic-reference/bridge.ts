@@ -1,18 +1,20 @@
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
+import { CATALOG_READ_HELPERS } from './catalog-program.ts'
 import { type Projection, parseProjection } from './contracts.ts'
 export const CATALOG_PROGRAM = String.raw`
 import contextlib, io, json, sys
 with contextlib.redirect_stdout(io.StringIO()):
     import marivo.semantic as ms
-    from marivo.refs import RefPayloadV1, SemanticKind
+    from marivo.refs import SemanticKind
+${CATALOG_READ_HELPERS}
+with contextlib.redirect_stdout(io.StringIO()):
     catalog = ms.load(workspace_dir=sys.argv[1])
     rows = []
-    for kind in SemanticKind:
-        for entry in catalog.items(kind).items:
-            definition = entry.details().context.business_definition
-            rows.append({"ref": RefPayloadV1.from_ref(entry.ref).to_dict(), "refKey": entry.ref.key,
-                         "name": entry.name, "businessDefinition": definition[:240] if definition else None})
+    for entry in pages(lambda cursor: catalog.search(limit=100, cursor=cursor)):
+        definition = entry.definition.context.business_definition
+        rows.append({"ref": wire_ref(entry), "refKey": entry.id,
+                     "name": entry.name, "businessDefinition": definition[:240] if definition else None})
     result = {"kinds": [kind.value for kind in SemanticKind], "items": rows}
 print(json.dumps(result, ensure_ascii=True))
 `.trim()

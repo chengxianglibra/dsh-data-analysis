@@ -65,6 +65,7 @@ description = types.SimpleNamespace(name=payload["name"], backend_type=payload["
     literal_fields=payload["properties"], env_refs=payload["fields"])
 md.describe = lambda name: description
 md.list = lambda: [description]
+md.load = lambda: md
 sys.modules["marivo"] = marivo
 sys.modules["marivo.datasource"] = md
 sys.argv = ["fixture", description.name]

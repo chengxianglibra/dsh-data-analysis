@@ -60,6 +60,13 @@ marivo-semantic  -> authoring
 只有真实 inherited 全局 `skill` Tool 被观察；若 Agent scope 覆盖了同名 Tool，插件不把其结果当成
 可信 Skill 激活。普通文本、bash 命令和 Python 内容不会被猜测为 Skill 激活。
 
+根 Help 注入前，插件核对实际加载的 Skill 正文与绑定 Runtime 包的同名 Skill 正文。不同 provider
+但正文相同可以通过；正文不一致或来源无法验证时明确拒绝，提示对齐并重新加载。用户显式 invocation
+通过 Harness 公开 Skill registry 与实际消息内容核对；模型调用同时核对最终呈现内容。若冲突正文
+仍在 Session 的 model-visible surface 中，即使重新加载也不能混用，需开启新 Session 或由 Host
+管理上下文后再继续；插件不删除旧记录。插件不更改 Harness 的同名 Skill 优先级，也不修改 Workspace
+Skill。该检查不验证 Skill 附带的其他资源。
+
 激活后，controller 在 `agent/pre-step` 中等待 Harness 先生成原 decision，再为进入模型的消息追加
 根 Help。两个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何
 根 Help，并记录 failure telemetry。
@@ -99,6 +106,18 @@ editable source 即使版本和 package path 未变，重新读取仍能产生�
 
 根 Help message 带结构化 source：Skill、target、Environment fingerprint、body digest 和是否更新。
 Session 恢复时 controller 从已有 events 恢复激活 Skill，但仍按当前 surface 决定是否需要再次披露。
+新产生的披露事件另记录已核验的 Skill 正文 digest；恢复时重新核对当前绑定 Runtime 的正文。
+旧事件缺少 digest、后续成功加载的 Skill 身份未知，或正文已变化时，要求重新加载对应 Skill，
+保留历史 Session；不会将当前 registry 的选择推断为历史加载的正文。
+Harness 的历史 Tool 事件不包含注册身份。没有可信激活记录时，插件不能仅凭名为 `skill` 的历史调用
+推断激活，因为它可能是 Agent 自有的同名 Tool。因而首次 Skill 调用成功后、插件记录核验结果前若中断，
+恢复时无法从旧事件判断该调用来源；此窗口需要 Harness 提供可持久化的 Tool 身份才能彻底消除。
+已有可信激活记录后再次出现无法归因的同名成功调用时，插件保守地要求重新加载；若该调用实际来自
+Agent 自有的同名 Tool，也可能出现一次不必要的重载提示。
+已有可信激活后的 canonical Skill 渲染可按正文检测可见冲突，但被改写为非 canonical 格式、且缺少可信注册身份的
+历史结果无法可靠归因；不能将此校验宣称为对任意历史结果的完整验证。
+Code Mode 中嵌套 Skill 使用 log-only 的 `tool/ptc-dispatch`，外层 `run_code` 可以重新投影结果；
+现有事件不足以恢复哪些正文进入外层消息，也不能完整验证单次 PTC 内多次载入的所有正文。
 
 ## 工具可见性边界
 
@@ -126,6 +145,7 @@ controller dispose 时 abort 未完成读取，注销 Tool 与 hooks，并清空
 - Marivo target、timeout、cancel 或普通子进程错误：`target-failed`；
 - 空 stdout：`empty-help`；批次总输出越界：`combined-output-limit`；
 - Environment identity mismatch：保持原 `MarivoEnvironmentError`，并使 binding fail closed；
+- Skill 正文不匹配或无法确认来源：根 Help 不注入，提示处理冲突或重新加载；
 - 根 Help 批次失败：`MarivoDisclosureError`，不产生部分 prompt 注入。
 
 ## 公共接口与验证

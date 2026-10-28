@@ -131,7 +131,7 @@ try {
     signal: new AbortController().signal,
     callId: ToolCallId('lifecycle-help'),
     name: 'marivo_help',
-    arguments: { targets: ['analysis.observe'] },
+    arguments: { targets: ['analysis.session.observe'] },
   })
   assert.equal(help.isError, false)
   const connection = ctx.connection as Connection.HostConnectionService

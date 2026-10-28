@@ -6,6 +6,99 @@
 
 本地构建使用 `.nvmrc` 指定的 Node.js 22.19.0。可执行变更运行相关测试及 `npm run check`；exports、client、包元数据或分发内容变化时，再运行 `npm run build` 与 `npm run verify:plugin-package`。纯文档变更检查相对链接、标题锚点、Markdown 渲染和 `git diff --check`。
 
+## Marivo 0.6.0.dev0 本地升级验收
+
+2026-10-27 使用本地 `~/source/oss/marivo/dist/pypi/marivo-0.6.0.dev0-py3-none-any.whl`。
+wheel SHA-256 为 `cda3c18a50d6ff3b27f14dd4cd582143abe0f35e5f826d03bf170563971545e9`；
+插件版本保持 `0.2.4-dev.0`，DSH 依赖保持 `0.1.7-rc.1`。安装方式见
+[本地预发布安装](modules/runtime-workspace.md#本地预发布安装)。本次未提交、发布、重装用户插件或重启用户 Host。
+
+调整范围与文档差异：
+
+- Runtime 精确版本及能力探针更新；Datasource 改用 `md.load()`，配置编辑保留公开 context（含 aliases）。
+  删除旧 CredentialRequest cancellation 假设；超时与取消仍由 Host 进程树边界负责。
+- Catalog 改用公开分页 search、captured definition 和 related；按新版 10 类对象展示原生公式与依赖。
+  旧 `SemanticDefinition`/typed collections 和 13 类对象文档已同步更新。
+  旧“Workspace 零写入”假设不适用：公开搜索会新增 `.marivo/semantic/search/results/` 缓存。
+  测试核对原有文件哈希不变，并限制新增路径为该缓存目录。
+- 报告使用 `session.persisted_frame()`、`frame.to_pandas()`、`evidence_digest()` 和 `findings()`。
+  旧 Artifact contract、Run SQL 与 `session.close()` 指引已移除；跨进程结果须显式 `persist()` 并保留准确身份。
+  SQL 新来源明确不可用，不读取 Marivo 私有接口；旧 Build 的 SQL 快照继续支持。
+  Evidence/Quality/Issue digest 不冒充旧版完整质量契约。
+- 原有 Store 与报告文件不迁移、不删除。旧引用不能恢复时明确 unavailable，直接依赖其数据的 dataset 失败；
+  旧 Store 仍需兼容的旧 Runtime 读取/导出。已有架构编辑和 DSH 0.2.0 设计草稿保留。
+
+验证使用独立临时 Workspace/Runtime：CPython 3.12 的管理员解释器和 CPython 3.14 的 managed 安装，
+均实际导入上述 wheel。managed 安装通过继承 `PIP_FIND_LINKS` 获取本地包，npm 包不包含开发机绝对路径。
+
+| 验证 | 结果与边界 |
+| --- | --- |
+| `npm run check` | 通过；671 项中 667 通过、4 项真实执行用例默认跳过并另行启用补测；指定 `DSH_DATA_ANALYSIS_TEST_PYTHON`，含真实 Catalog 分页与定义读取 |
+| `npm run build`、`npm run verify:plugin-package` | 通过；319 个打包文件，36 个 DSH peers，包内精确 Marivo 版本与 helper 合同通过 |
+| `validate:runtime-workspace:real` | 通过 managed 本地 wheel 安装、复用、多 Workspace、缺包与导入遮蔽拒绝；旧日常 Runtime 未替换 |
+| `validate:datasource-configuration:real`、`validate:datasource-credentials:real` | 通过配置往返、aliases/extra/凭据引用保留、陈旧更新拒绝；真实 HTTP 汇总 30，原生 Tool 执行、拒绝漂移与脱敏通过 |
+| `validate:help-disclosure:real` | 通过实时 inventory、Skill 激活和新版 observe/compare Help 路径 |
+| `validate:presentation-s0:runtime`、`validate:presentation-projection:real` | 通过跨进程恢复、精确 Decimal/Int64、缺失来源及 SQL unavailable；移除测试数据库并让模型导入失败后仍可读取持久化结果 |
+| `python-execution-real.test.ts` | 4 项全部通过；真实解释器验证超时、取消、Code Mode 外层 deadline 与 121 秒执行，Python 原文只捕获一次 |
+| Ego 浏览器 + 真实 Catalog 的隔离 Web fixture | 通过 107 个对象分页/搜索、业务域筛选、公式/时间绑定/空值规则、引用跳转返回及复制；桌面与 390px 窄屏无横向溢出，无 Runtime exception |
+
+证据保存在 `/tmp/dsh-marivo-060-audit.stH3va/`，包括各命令日志、`browser-desktop.png` 和
+`browser-mobile.png`；日志内记录各验证的独立 evidence 路径。真实模型对话和用户日常 DSH 安装的端到端验收未执行。
+验证中修复了 Code Mode 测试夹具重复注册 subprocess 及与当前 DSH deadline 文案不符的断言；未改动 Host 行为。
+既有 CSV 预览 guard 的 200ms 检查曾超时，未放宽断言，后续原测试重跑通过。
+
+### Web profile 与 Yellow Taxi 实机补充验证
+
+2026-10-27 将上述社区包安装并启用在 `web` profile，使用本地 wheel 创建独立 managed Runtime；
+保留既有 Session、Workspace、配置及内部版 Runtime。原 profile 包配置和覆盖文件另行备份。
+启动本机 Web 后，真实界面加载 `marivo-yellow-taxi-demo` 的 125 个 Catalog 对象，展示
+`metric:mobility.trip_count` 的定义、时间绑定与依赖；只读 DuckDB `warehouse` 连接测试成功。
+
+真实 DSH 模型会话加载 `marivo-analysis` 和 live Help，经 `marivo_python` 只读分析 2025 年
+1 月纽约上车时间窗口 `[2025-01-01, 2025-02-01)`，得到 3,475,234 条；单独使用目标 wheel
+按支付方式分组并跨进程恢复持久化 Frame，也得到相同总数。模型尝试一次旧 Catalog 接口失败后，
+通过新版 Help 修正并成功运行；旧项目 `AGENTS.md` 的 `.contract()` 指引及已有分析脚本的旧 Catalog
+接口仍与 0.6 不一致。本次未修改语义模型：现有模型可加载，无需调整；历史源码改动与原始数据保留。
+验证会新增本次 DSH 会话、Marivo Session/Artifact 和 Catalog 搜索缓存，不清理旧记录。
+
+### 真实经营问题验收
+
+2026-10-27 在上述 Web profile 的 Yellow Taxi Workspace 创建独立 DSH 会话，问题为比较 2025 年
+2 月与 1 月行程量、计价车费收入和平均车费，考虑月份天数、指标口径及质量限制。真实模型
+`DeepSeek-V4.1-Flash` 调用 Runtime Skill、live Help 和 `marivo_python`；同一 managed Python
+通过公开语义 API 独立核对月度数据。
+
+| 指标 | 2025-01 | 2025-02 | 变化 |
+| --- | ---: | ---: | ---: |
+| 发布行程记录 | 3,475,234 | 3,577,542 | +2.94% |
+| 计价车费收入 | $59,363,303.58 | $59,920,100.91 | +0.94% |
+| 治理平均车费 | $18.3259 | $18.1616 | -0.90% |
+| 日均行程记录 | 112,104 | 127,769 | +13.97% |
+
+月窗口以上车时间的 `America/New_York` 为准；平均车费采用技术合理记录口径，与全部记录的
+收入除以行程量不同。该结果支持日均行程量上升，不证明司机供给、利用率、因果因素或长期趋势。
+
+核心结果与独立核对一致，真实分析功能可用，但体验仍有问题：模型首次使用缺少 `metric:` 的
+Catalog ID 失败，随后自行修正；额外的星期拆分代码两次失败后重试成功。模型识别默认 Session
+时区为 `Asia/Shanghai`，显式改为纽约时区后才获得正确自然月范围。最终用时 7 分 21 秒、24 步，
+界面显示累计 1.2M tokens、96% 缓存命中，不能据此推算费用。最终回答的部分未转义美元符号被
+Markdown 识别为公式，页面金额出现断行或错排；该问题有待单独定位，不将其归因于 Marivo。
+数据读取不修改用户源码或原始数据；本次新增分析 Session 和缓存，不生成报告，不提交。
+
+### 插件 Skill 身份与提示修复验证
+
+2026-10-28 仅修改本插件，未更改 Marivo、Harness、Yellow Taxi 项目或用户配置。真实 Skill 激活
+校验绑定 Runtime 正文与 Harness 交付模型的内容，覆盖相同正文的不同 provider、冲突正文仍在 surface、
+历史恢复、Host compaction、scoped shadow 和最终 Tool 内容被替换；历史事件与 PTC 的来源限制见
+[Help 披露](modules/help-disclosure.md#prompt-可见性与恢复)。已移除不存在的 Session 关闭指引，
+并用分析提示缓解美元与 Markdown 公式歧义；提示不是 Harness 渲染修复。
+
+Node.js 22.19.0 下 `npm run build`、`npm run verify:plugin-package` 和 `npm run check` 通过；
+检查共 687 项，683 项通过、4 项真实运行用例按默认配置跳过。隔离 Python 实际安装本地
+`0.6.0.dev0` wheel：`npm run validate:help-disclosure:real` 使用 DSH 公开 Skill registry、实际加载器及
+临时 Workspace 符号链接，验证冲突拒绝和相同正文通过。额外独立请求级回归确认冲突内容残留、
+Tool value/content 不一致与 scoped shadow 的行为。没有重装插件、重启 DSH 或重跑真实模型分析。
+
 ## DSH 0.1.7 原生表格预览升级验收
 
 2026-09-26 将开发依赖固定为 `0.1.7-rc.1`，36 个 DSH peer 和插件兼容字段的最低版本设为

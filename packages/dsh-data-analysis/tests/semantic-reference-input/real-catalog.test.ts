@@ -30,7 +30,18 @@ async function tree(root: string): Promise<Record<string, string>> {
   await visit(root)
   return result
 }
-test('real Marivo 0.5.5: empty, large and failed Catalog reads create no Workspace files', async (t) => {
+function assertCatalogCacheOnly(before: Record<string, string>, after: Record<string, string>) {
+  for (const [name, hash] of Object.entries(before)) assert.equal(after[name], hash, name)
+  for (const name of Object.keys(after)) {
+    if (name in before) continue
+    assert.match(
+      name,
+      /^\.marivo\/(?:$|semantic\/(?:$|search\/(?:$|results\/(?:$|[a-f0-9]{64}\.json$))))/,
+      name,
+    )
+  }
+}
+test('real Marivo 0.6.0.dev0: empty, large and failed Catalog reads only add public search caches', async (t) => {
   try {
     await access(python)
   } catch {
@@ -46,7 +57,7 @@ test('real Marivo 0.5.5: empty, large and failed Catalog reads create no Workspa
     { projectRoot: root, pythonExecutable: python },
     { environment },
   )
-  assert.equal(runner.binding.marivoVersion, '0.5.5')
+  assert.equal(runner.binding.marivoVersion, '0.6.0.dev0')
   let now = 0
   const bridge = new SemanticReferenceBridge(() => now),
     signal = new AbortController().signal
@@ -54,7 +65,7 @@ test('real Marivo 0.5.5: empty, large and failed Catalog reads create no Workspa
     (await bridge.candidates(runner, signal)).items.map((item) => item.refKey),
     ['datasource:default'],
   )
-  assert.deepEqual(await tree(root), {})
+  assertCatalogCacheOnly({}, await tree(root))
   await createSemanticWorkspace(root)
   const before = await tree(root)
   now = 30_000
@@ -67,7 +78,7 @@ test('real Marivo 0.5.5: empty, large and failed Catalog reads create no Workspa
   assert.equal(metric.ref.schema, 'marivo.semantic_ref/v1')
   assert.equal(Array.from(metric.businessDefinition!).length, 240)
   assert.ok(metric.businessDefinition!.includes('收入'))
-  assert.deepEqual(await tree(root), before)
+  assertCatalogCacheOnly(before, await tree(root))
   await writeFile(
     path.join(root, 'models', 'semantic', 'sales', 'datasets.py'),
     'raise RuntimeError("intentional failed load")\n',

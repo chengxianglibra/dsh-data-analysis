@@ -41,7 +41,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.5.5`；
+4. Marivo 版本严格等于 `0.6.0.dev0`；
 5. presentation-kit 版本、package path、distribution metadata、实际模块位置与公开 `write_dataset` 与 pandas 范围一致；
 6. 两个内置 Skill 的 `SKILL.md` 均存在，frontmatter `name` 与目录名精确一致。
 
@@ -61,7 +61,7 @@ helper 的 API 或实现变化必须同步提升 Python distribution、模块版
 | 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 安装精确 Marivo 与随包 presentation-kit wheel |
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、presentation-kit 与 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都要求通过 pip 安装精确的 Marivo 0.5.5；marker 记录版本与 package identity。其他版本或 schema
+两种模式都要求通过 pip 安装精确的 Marivo 0.6.0.dev0；marker 记录版本与 package identity。其他版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -74,7 +74,7 @@ Python 必须支持 `venv`/`ensurepip`；缺失或版本不符时明确失败。
 
 ### DuckDB 文件依赖
 
-安装规格 `marivo[duckdb,trino,clickhouse]==0.5.5` 显式包含 DuckDB extra，由 Marivo 的
+安装规格 `marivo[duckdb,trino,clickhouse]==0.6.0.dev0` 显式包含 DuckDB extra，由 Marivo 的
 `ibis-framework[duckdb]` 依赖提供后端。Runtime probe 同时导入 `ibis.backends.duckdb`，
 防止缺少该后端的环境通过复用校验；管理员环境缺失时给出包含 extra 的修复命令，不自动安装。
 
@@ -103,7 +103,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
 `marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。缺少 manifest
-时，Marivo 0.5.5 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
+时，Marivo 0.6.0.dev0 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
 写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
@@ -142,9 +142,22 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 ## 当前安装来源
 
 开发包不随包分发 Marivo wheel；Compatibility manifest 的 `packageSpec` 是 pip 安装使用的精确版本约束
-`marivo[duckdb,trino,clickhouse]==0.5.5`，不使用 editable checkout。管理员 Python 的修复命令同样通过 pip
+`marivo[duckdb,trino,clickhouse]==0.6.0.dev0`，不使用 editable checkout。管理员 Python 的修复命令同样通过 pip
 安装该精确版本。普通 npm build/prepack 不会重新打包或构建 Marivo。
 
 Python helper 合同由 `tests/runtime-workspace/presentation-kit-contracts.test.ts` 纳入持续检查，
 包括相同 fixtures 的 Python、Node 与 browser 读取。managed 安装失败和 administrator 缺 helper、版本错误、
 同名模块遮蔽均明确失败，不切换解释器。
+
+## 本地预发布安装
+
+`0.6.0.dev0` 尚未发布。启动 managed Runtime 的进程需设置 `PIP_FIND_LINKS`，指向本地 wheel 目录：
+
+```sh
+export PIP_FIND_LINKS="$HOME/source/oss/marivo/dist/pypi"
+```
+
+安装仍使用精确 `packageSpec` 并校验实际导入身份，不将开发机绝对路径写入 npm 包。
+也可在独立 Python 环境预装该 wheel 与随插件分发的 presentation-kit，再配置 `DSH_DATA_ANALYSIS_PYTHON`。
+验证使用隔离 Runtime，不删除现有安装、Workspace 或旧 Store；旧 Store 应通过兼容的旧 Runtime 读取/导出。
+新版 Marivo 使用独立 generation，不自动迁移历史 Session/Artifact。

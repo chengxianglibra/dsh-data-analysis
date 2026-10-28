@@ -426,7 +426,7 @@ try {
     name: 'marivo_python',
     arguments: {
       datasources: ['warehouse'],
-      code: 'import os\nimport marivo.datasource as md\nassert "DB_PASSWORD" not in os.environ\nwith md.connect("warehouse") as backend:\n    assert backend.raw_sql("SELECT 42").fetchall() == [(42,)]\nprint("WEB_EXECUTION_OK")',
+      code: 'import os\nimport marivo.datasource as md\nassert "DB_PASSWORD" not in os.environ\nimport marivo.semantic as ms\nassert md.raw_sql(ms.ref.datasource("warehouse"), "SELECT 42", reason="Validate fixture execution").to_pandas().iloc[0,0] == 42\nprint("WEB_EXECUTION_OK")',
     },
     callId: ToolCallId('web-execution'),
     signal: f.controller.signal,

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -16,8 +18,11 @@ import LlmRuntime, {
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
+import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
+import { apply as installSkillTool } from '@deepseek-ai/dsh-tool-skill'
+import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import {
   installMarivoDisclosure,
   loadTargetInventory,
@@ -48,7 +53,7 @@ assert.notEqual(secondInventory, '')
 assert.equal(secondInventory, firstInventory)
 
 const directBodies = new Map<string, string>()
-for (const target of ['analysis.observe', 'analysis.compare']) {
+for (const target of ['analysis.session.observe', 'analysis.analysis_frame.compare']) {
   const body = await helpBridge.runTarget(target, {
     timeoutMs: 30_000,
     stdoutMaxBytes: 262_144,
@@ -73,13 +78,17 @@ async function executeFocused(targets: string[]) {
   })
 }
 
-const success = await executeFocused(['analysis.observe', 'analysis.compare', 'analysis.observe'])
+const success = await executeFocused([
+  'analysis.session.observe',
+  'analysis.analysis_frame.compare',
+  'analysis.session.observe',
+])
 assert.equal(success.isError, false)
 if (success.isError) throw new Error('unreachable focused Help result')
 const focusedValue = success.value as unknown as MarivoHelpValue
 assert.deepEqual(
   focusedValue.targets.map((item) => item.target),
-  ['analysis.observe', 'analysis.compare'],
+  ['analysis.session.observe', 'analysis.analysis_frame.compare'],
 )
 for (const result of focusedValue.targets)
   assert.equal(result.body, directBodies.get(result.target))
@@ -88,11 +97,11 @@ const empty = await executeFocused([])
 assert.equal(empty.isError, true)
 const emptyText = empty.content[0]?.type === 'text' ? empty.content[0].text : ''
 assert.match(emptyText, /at least one target/i)
-const invalid = await executeFocused(['analysis.observe', 'definitely.not.a.target'])
+const invalid = await executeFocused(['analysis.session.observe', 'definitely.not.a.target'])
 assert.equal(invalid.isError, true)
 const invalidText = invalid.content[0]?.type === 'text' ? invalid.content[0].text : ''
 assert.match(invalidText, /definitely\.not\.a\.target/)
-assert.ok(!invalidText.includes(directBodies.get('analysis.observe')!))
+assert.ok(!invalidText.includes(directBodies.get('analysis.session.observe')!))
 
 function textResponse(text: string): StreamChunk[] {
   return [
@@ -147,6 +156,14 @@ await activationContext.plugin(LlmRuntime)
 await activationContext.plugin(SessionStore)
 await activationContext.plugin(SystemPrompt)
 await activationContext.plugin(ToolRuntime)
+await activationContext.plugin(SkillRegistry)
+installSkillFilesystem(activationContext, {
+  providerName: 'help-disclosure-real',
+  includeDefaultRoots: false,
+  customSkillDirs: [path.join(path.dirname(environment.binding.packagePath), 'skills')],
+  watch: false,
+})
+installSkillTool(activationContext)
 await activationContext.plugin(AgentRegistry)
 await activationContext.plugin(SessionProjectionRegistry)
 await activationContext.plugin(AgentLoop, { agents: [] })
@@ -158,33 +175,6 @@ activationContext.tools.register(
     parameters: {},
     async execute() {
       return [{ type: 'text', text: 'ordinary' }]
-    },
-  }),
-)
-activationContext.tools.register(
-  defineTool({
-    name: 'skill',
-    description: 'Load one available skill.',
-    parameters: { name: { type: 'string', required: true } },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          name: { type: 'string', required: true },
-          provider: { type: 'string', required: true },
-          content: { type: 'string', required: true },
-        },
-      },
-      render: (_args, value) => [
-        {
-          type: 'text',
-          text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
-        },
-      ],
-    },
-    async execute({ name }) {
-      return { name, provider: 'help-disclosure-real', content: 'analysis instructions' }
     },
   }),
 )
@@ -231,9 +221,14 @@ for (const skill of ['marivo-analysis', 'marivo-semantic'] as const) {
   const disclosure = installMarivoDisclosure(activationContext, explicitAgent, helpBridge)
   try {
     const before: number = adapter.requests.length
+    const selected = await activationContext.skills.get(skill, {
+      cwd: explicitAgent.session.header.cwd,
+      scope: explicitAgent,
+    })
+    assert.ok(selected)
     explicitAgent.followup(
       createUserMessage({
-        content: [{ type: 'text', text: `Explicitly activate ${skill}.` }],
+        content: [{ type: 'text', text: renderSkillContent(selected) }],
         source: { kind: 'skill-invocation', name: skill, form: 'instructions' },
       }),
     )
@@ -253,6 +248,63 @@ for (const skill of ['marivo-analysis', 'marivo-semantic'] as const) {
   } finally {
     disclosure.dispose()
   }
+}
+
+// Exercise the actual DSH project-root precedence with isolated symlinks. Never
+// mutate a user's Workspace skill or override the Host's selection rules.
+const skillConflictRoot = await mkdtemp(path.join(tmpdir(), 'dsh-skill-identity-real-'))
+try {
+  const runtimeSkill = path.join(
+    path.dirname(environment.binding.packagePath),
+    'skills',
+    'marivo-analysis',
+  )
+  const original = await readFile(path.join(runtimeSkill, 'SKILL.md'), 'utf8')
+  const stale = path.join(skillConflictRoot, 'stale-skill')
+  await mkdir(stale)
+  await writeFile(path.join(stale, 'SKILL.md'), `${original}\nConflicting instructions.\n`)
+  installSkillFilesystem(activationContext, {
+    providerName: 'help-disclosure-project-real',
+    includeDefaultRoots: true,
+    dshHome: skillConflictRoot,
+    agentsHome: skillConflictRoot,
+    watch: false,
+  })
+  for (const mode of ['conflicting', 'matching'] as const) {
+    const project = path.join(skillConflictRoot, mode)
+    await mkdir(path.join(project, '.git'), { recursive: true })
+    await mkdir(path.join(project, '.agents', 'skills'), { recursive: true })
+    await symlink(
+      mode === 'matching' ? runtimeSkill : stale,
+      path.join(project, '.agents', 'skills', 'marivo-analysis'),
+      'dir',
+    )
+    const testAgent = await activationContext.agentLoop.create(
+      SessionId(`help-skill-symlink-${mode}`),
+      { provider: 'validation', model: 'validation' },
+      { cwd: project },
+    )
+    const controller = installMarivoDisclosure(activationContext, testAgent, helpBridge)
+    try {
+      const selected = await activationContext.skills.get('marivo-analysis', {
+        cwd: project,
+        scope: testAgent,
+      })
+      assert.ok(selected)
+      assert.equal(selected.provider, 'help-disclosure-project-real')
+      const message = createUserMessage({
+        content: [{ type: 'text', text: renderSkillContent(selected) }],
+        source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },
+      })
+      const pending = controller.prepareStep([message], new AbortController().signal)
+      if (mode === 'conflicting') await assert.rejects(pending, /different instructions/)
+      else assert.equal((await pending).length, 1)
+    } finally {
+      await controller.close()
+    }
+  }
+} finally {
+  await rm(skillConflictRoot, { recursive: true, force: true })
 }
 
 process.stdout.write(
@@ -276,6 +328,7 @@ process.stdout.write(
         rootHelp: telemetry.rootHelp.map((item) => item.target),
         explicitActivations,
       },
+      projectSkillSymlink: { conflicting: 'rejected', matching: 'accepted' },
     },
     null,
     2,

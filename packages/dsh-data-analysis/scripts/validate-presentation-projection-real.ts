@@ -34,38 +34,7 @@ const workspaceRoot = path.join(runRoot, 'workspace')
 const scriptsRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), 'presentation-s0')
 await mkdir(path.join(workspaceRoot, 'models', 'datasources'), { recursive: true })
 await mkdir(path.join(workspaceRoot, 'models', 'semantic', 'sales'), { recursive: true })
-const workspaceFiles = {
-  'marivo.toml': '[project]\nname = "presentation-s2-runtime"\n',
-  'models/datasources/warehouse.py':
-    "import marivo.datasource as md\nmd.duckdb(name='warehouse', path=':memory:')\n",
-  'models/semantic/sales/__init__.py': '',
-  'models/semantic/sales/_domain.py':
-    "import marivo.semantic as ms\nms.domain(name='sales', owner='S2 validation')\n",
-  'models/semantic/sales/datasets.py': [
-    'import marivo.datasource as md',
-    'import marivo.semantic as ms',
-    "orders = ms.entity(name='orders', datasource=ms.ref.datasource('warehouse'), source=md.table('orders'))",
-    "region = ms.dimension_column(name='region', entity=orders, column='region')",
-    "@ms.metric(entities=[orders], additivity='additive', name='revenue', unit='USD')",
-    'def revenue(orders):',
-    '    return orders.amount.sum()',
-    "@ms.metric(entities=[orders], additivity='non_additive', name='account_id')",
-    'def account_id(orders):',
-    '    return orders.account_id.max()',
-    "precise_orders = ms.entity(name='precise_orders', datasource=ms.ref.datasource('warehouse'), source=md.table('precise_orders'))",
-    "precise_region = ms.dimension_column(name='region', entity=precise_orders, column='region')",
-    "@ms.metric(entities=[precise_orders], additivity='additive', name='precision_revenue', unit='USD')",
-    'def precision_revenue(precise_orders):',
-    '    return precise_orders.amount.sum()',
-    "@ms.metric(entities=[precise_orders], additivity='non_additive', name='precision_account_id')",
-    'def precision_account_id(precise_orders):',
-    '    return precise_orders.account_id.max()',
-    '',
-  ].join('\n'),
-}
-for (const [relative, content] of Object.entries(workspaceFiles)) {
-  await writeFile(path.join(workspaceRoot, relative), content)
-}
+
 const runtime = await ensureSharedMarivoRuntime({
   runtimeRoot: path.join(runRoot, 'runtime-marker'),
   pythonExecutable,
@@ -159,14 +128,14 @@ const artifactDraft: PresentationDraft = {
       kind: 'artifact',
       sourceId: 'revenue',
       rowLimit: 3,
-      columns: ['region', 'revenue'],
+      columns: generated.primary.dataColumns,
     },
     {
       id: 'account',
       kind: 'artifact',
       sourceId: 'account',
       rowLimit: 4,
-      columns: ['region', 'account_id'],
+      columns: generated.secondary.dataColumns,
     },
   ],
   blocks: [
@@ -191,10 +160,10 @@ const fullRevenue = await projection.project(
   { ...base, reportId: 'report', buildId: 'real-full-artifact' },
 )
 assert.deepEqual(Object.fromEntries(fullRevenue.datasets[0]!.data.rows), {
-  A: 12.5,
-  B: 8.25,
+  A: '12.5000',
+  B: '8.2500',
   C: null,
-  D: 4,
+  D: '4.0000',
 })
 assert.deepEqual(Object.fromEntries(artifact.datasets[1]!.data.rows), {
   A: '9007199254740993',
@@ -205,7 +174,8 @@ assert.deepEqual(Object.fromEntries(artifact.datasets[1]!.data.rows), {
 assert.ok(
   artifact.sources.every(
     (source) =>
-      source.status === 'available' && source.facts.some((fact) => fact.label === '选择的 Finding'),
+      source.status === 'available' &&
+      source.code?.notices.includes('marivo.presentation.sql-capability-unavailable'),
   ),
 )
 
@@ -294,11 +264,14 @@ const precisionDraft = {
   datasets: [{ id: 'precision', kind: 'artifact' as const, sourceId: 'precision', rowLimit: 4 }],
   blocks: [{ id: 'table', kind: 'table' as const, datasetId: 'precision' }],
 }
-await assert.rejects(
-  projection.project(precisionDraft, { ...base, reportId: 'report', buildId: 'unsafe-float' }),
-  (error: unknown) =>
-    error instanceof PresentationContractError && error.code === 'numeric_precision',
-)
+const precise = await projection.project(precisionDraft, {
+  ...base,
+  reportId: 'report',
+  buildId: 'precise-public-values',
+})
+assert.ok(precise.datasets[0]!.data.rows.some((row) => row.includes('12345678901234.5678')))
+assert.ok(precise.datasets[0]!.data.rows.some((row) => row.includes('9007199254740993')))
+
 const evidence = {
   status: 'passed',
   runtime,
@@ -311,8 +284,8 @@ const evidence = {
   sourceOnly,
   missingFinding,
   directMissingArtifactRejected: true,
-  unsafePublicFloatRejected: true,
-  inputDatabaseWasProcessLocal: true,
+  exactPublicDecimalAndInt64Preserved: true,
+  inputDatabaseRemovedBeforeRead: true,
   profileOrCredentialsModified: false,
   upstreamPublicReadMaterializesFullFrame: true,
 }

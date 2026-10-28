@@ -49,13 +49,13 @@ class FakeCheckedRunner implements MarivoCheckedRunner {
 test('Help bridge owns its Python program, limits, argv, and raw body contract', async () => {
   const runner = new FakeCheckedRunner(result('live help\n'), result('live inventory\n'))
   const bridge = new MarivoHelpBridge(runner)
-  const body = await bridge.runTarget('analysis.observe', {
+  const body = await bridge.runTarget('analysis.session.observe', {
     timeoutMs: 10,
     stdoutMaxBytes: 20,
     stderrMaxBytes: 30,
   })
   assert.equal(body.toString('utf8'), 'live help\n')
-  assert.deepEqual(runner.requests[0]?.args, ['analysis.observe'])
+  assert.deepEqual(runner.requests[0]?.args, ['analysis.session.observe'])
   assert.deepEqual(runner.requests[0]?.limits, {
     timeoutMs: 10,
     stdoutMaxBytes: 20,

@@ -77,7 +77,7 @@ export function registerMarivoPythonTool(
           type: 'string',
           required: true,
           description:
-            'Python code, never credential values. Close resources within this call. When using Marivo Session APIs, consult current Runtime Help and close Sessions in finally.',
+            'Python code, never credential values. Consult current Runtime Help for Marivo Session lifetime and result persistence; release resources according to their public contracts.',
         },
         datasources: {
           type: 'array',

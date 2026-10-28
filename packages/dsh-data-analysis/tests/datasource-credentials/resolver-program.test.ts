@@ -23,6 +23,8 @@ function pythonFixture(t: TestContext) {
 from contextlib import contextmanager
 from types import SimpleNamespace
 CURRENT = None
+def load():
+    return __import__(__name__, fromlist=["*"])
 DESCRIPTION = SimpleNamespace(name="warehouse", backend_type="fixture",
     literal_fields={"host": "fixture"}, env_refs={"password": "DB_PASSWORD"})
 def describe(name):
@@ -31,12 +33,11 @@ def describe(name):
     return DESCRIPTION
 class CredentialRequest:
     def __init__(self, project_root, datasource="warehouse", reference="DB_PASSWORD",
-            fields=("password",), cancelled=False):
+            fields=("password",)):
         self.project_root = project_root
         self.datasource = datasource
         self.reference = reference
         self.fields = fields
-        self.cancelled = cancelled
 class SecretValue:
     def __init__(self, value): self.value = value
 class DatasourceCredentialError(Exception):
@@ -89,7 +90,7 @@ def credential_scope(resolver):
   return { run, root, payload }
 }
 
-test('the resolver enforces exact datasource, project, field, ref, definition, cancellation and empty scope', (t) => {
+test('the resolver enforces exact datasource, project, field, ref, definition and empty scope', (t) => {
   const f = pythonFixture(t)
   const outcome = f.run(
     `${RESOLVER_PROGRAM}\n${String.raw`
@@ -112,7 +113,6 @@ denied(md.CredentialRequest(root, fields=("token",)))
 denied(md.CredentialRequest(root, fields=("password", "token")))
 denied(md.CredentialRequest(root, fields=()))
 denied(md.CredentialRequest(root, reference="OTHER_PASSWORD"))
-denied(md.CredentialRequest(root, cancelled=True), "timeout")
 os.environ["DB_PASSWORD"] = "ambient-must-not-resolve"
 denied(md.CredentialRequest(root), target=SnapshotResolver({"project_root": root, "grants": {}, "values": {}}))
 resolver.values.clear()

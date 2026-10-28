@@ -71,7 +71,7 @@ async function harness(t: TestContext, maxWallMs?: number) {
   await ctx.plugin(AgentRegistry)
   if (maxWallMs === undefined) await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(SubprocessLocal)
+  if (maxWallMs === undefined) await ctx.plugin(SubprocessLocal)
   await ctx.plugin(BashLocal, { maxTimeoutMs: 180_000, maxOutputBytes: 65536 })
   const agent = await ctx.agentLoop.create(
     SessionId('python-budget-real'),
@@ -208,7 +208,7 @@ test('real Code Mode deadline dominates the longer Python budget', { skip }, asy
     },
   })
   assert.equal(result.isError, true)
-  assert.match(JSON.stringify(result), /wall.clock|wall-clock|WALL/)
+  assert.match(JSON.stringify(result), /execution deadline reached \(3000ms\)/)
   assert.equal(h.starts, 1)
   assert.equal(h.outcomes[0]!.aborted, true)
   assert.equal(h.outcomes[0]!.timedOut, false)

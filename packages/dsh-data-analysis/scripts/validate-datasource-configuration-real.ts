@@ -15,7 +15,7 @@ try {
   const seed = await runner.runChecked({
     program: `import marivo.datasource as md
 import marivo.semantic as ms
-md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_catalog",schema="old_schema",user_env="CONFIG_USER",auth_env="CONFIG_AUTH",http_scheme="http",client_tags=("one","two"),extra={"client_info":"kept"},ai_context=ms.ai_context(business_definition="Keep this context",guardrails=["Read only"])))
+md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_catalog",schema="old_schema",user_env="CONFIG_USER",auth_env="CONFIG_AUTH",http_scheme="http",client_tags=("one","two"),extra={"client_info":"kept"},ai_context=ms.ai_context(business_definition="Keep this context",guardrails=["Read only"],aliases=["warehouse alias"])))
 `,
     limits: { timeoutMs: 30000, stdoutMaxBytes: 65536, stderrMaxBytes: 65536 },
   })
@@ -55,8 +55,8 @@ md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_ca
   const context = await runner.runChecked({
     program: `import json
 import marivo.semantic as ms
-context=ms.load().datasources.get("warehouse").details().context
-print(json.dumps({"business_definition":context.business_definition,"guardrails":list(context.guardrails)}))
+context=ms.load().get("datasource:warehouse").definition.context
+print(json.dumps({"business_definition":context.business_definition,"guardrails":list(context.guardrails),"aliases":list(context.aliases)}))
 `,
     limits: { timeoutMs: 30000, stdoutMaxBytes: 65536, stderrMaxBytes: 65536 },
   })
@@ -64,6 +64,7 @@ print(json.dumps({"business_definition":context.business_definition,"guardrails"
   assert.deepEqual(JSON.parse(context.stdout.toString()), {
     business_definition: 'Keep this context',
     guardrails: ['Read only'],
+    aliases: ['warehouse alias'],
   })
   assert.deepEqual(
     await bridge.create({

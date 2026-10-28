@@ -1,8 +1,12 @@
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
+import { renderSkillContent, type SkillResourceBase } from '@deepseek-ai/dsh-skill'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import {
@@ -68,12 +72,21 @@ export interface MarivoDisclosureSource {
   readonly target: MarivoRootHelpTarget
   readonly environmentFingerprint: string
   readonly bodyDigest: string
+  /** Hash of the exact loaded Skill body, checked against the bound Runtime. */
+  readonly skillBodyDigest?: string
   readonly update?: true
+}
+
+interface MarivoSkillIdentitySource {
+  readonly kind: 'marivo-skill-identity'
+  readonly skill: MarivoSkillName
+  readonly skillBodyDigest: string
 }
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'marivo-disclosure': MarivoDisclosureSource
+    'marivo-skill-identity': MarivoSkillIdentitySource
   }
 }
 
@@ -101,6 +114,73 @@ interface PendingRootHelp {
   reason: 'activation' | 'recovery'
   startedAt: number
   value: MarivoHelpValue
+  skillBodyDigest: string
+}
+
+interface LoadedSkill {
+  provider: string
+  content: string
+  resourceBase?: SkillResourceBase
+}
+
+function loadedSkill(value: unknown): LoadedSkill | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const skill = value as { provider?: unknown; content?: unknown; resourceBase?: unknown }
+  if (typeof skill.provider !== 'string' || typeof skill.content !== 'string') return undefined
+  if (skill.resourceBase === undefined) return { provider: skill.provider, content: skill.content }
+  if (typeof skill.resourceBase !== 'object' || skill.resourceBase === null) return undefined
+  const base = skill.resourceBase as {
+    kind?: unknown
+    path?: unknown
+    url?: unknown
+    description?: unknown
+  }
+  let resourceBase: SkillResourceBase
+  if (base.kind === 'directory' && typeof base.path === 'string')
+    resourceBase = { kind: 'directory', path: base.path }
+  else if (base.kind === 'url' && typeof base.url === 'string')
+    resourceBase = { kind: 'url', url: base.url }
+  else if (base.kind === 'opaque' && typeof base.description === 'string')
+    resourceBase = { kind: 'opaque', description: base.description }
+  else return undefined
+  return {
+    provider: skill.provider,
+    content: skill.content,
+    resourceBase,
+  }
+}
+
+interface ObservedSkillResult {
+  skill: MarivoSkillName
+  loaded?: LoadedSkill
+  renderedMatches: boolean
+}
+
+/** Extract only the canonical public DSH rendering; this does not identify its provider. */
+function renderedSkillBody(text: string, skill: MarivoSkillName): string | undefined {
+  // Derive framing from the public DSH renderer rather than copying its format.
+  // Resource hints vary by provider; only the stable name and body boundary
+  // from the renderer's own template are used to inspect historical text.
+  const sentinel = 'dsh-data-analysis-skill-body-sentinel'
+  const template = renderSkillContent({ name: skill, provider: 'fixture', content: sentinel })
+  const position = template.indexOf(sentinel)
+  const firstLine = template.indexOf('\n')
+  const boundary = template.lastIndexOf('\n\n', position)
+  if (position < 0 || firstLine < 0 || boundary <= firstLine) return undefined
+  const prefix = template.slice(0, firstLine + 1)
+  const separator = template.slice(boundary, position)
+  const suffix = template.slice(position + sentinel.length)
+  if (!separator || !suffix) return undefined
+  if (!text.startsWith(prefix) || !text.endsWith(suffix)) return undefined
+  const start = text.indexOf(separator, prefix.length)
+  if (start < 0) return undefined
+  return text.slice(start + separator.length, -suffix.length)
+}
+
+/** Matches the body published by DSH's filesystem Skill provider. */
+function skillBody(source: string): string | undefined {
+  const match = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(source)
+  return match === null ? undefined : source.slice(match[0].length).trim()
 }
 
 function isMarivoSkillName(value: unknown): value is MarivoSkillName {
@@ -179,6 +259,7 @@ function renderRootHelpMessage(
   skill: MarivoSkillName,
   value: MarivoHelpValue,
   update: boolean,
+  skillBodyDigest: string,
 ): UserMessage {
   const target = MARIVO_ROOT_HELP_TARGETS[skill]
   const item = value.targets[0]
@@ -207,6 +288,7 @@ function renderRootHelpMessage(
       target,
       environmentFingerprint: value.environment.fingerprint,
       bodyDigest: item.bodyDigest,
+      skillBodyDigest,
       ...(update ? { update: true as const } : {}),
     },
   })
@@ -220,6 +302,10 @@ export class MarivoDisclosureController {
 
   #activeSkills = new Set<MarivoSkillName>()
   #pendingSkills = new Set<MarivoSkillName>()
+  #loadedSkills = new Map<MarivoSkillName, LoadedSkill>()
+  #observedSkillResults = new Map<string, ObservedSkillResult>()
+  #shadowSkillResults = new Set<string>()
+  #verifiedSkills = new Map<MarivoSkillName, string>()
   #visibleHelp = new Map<string, VisibleHelp>()
   #lifecycleAbort = new AbortController()
   #disposers: Array<() => unknown> = []
@@ -268,9 +354,30 @@ export class MarivoDisclosureController {
 
   observeToolResult(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): void {
     if (exec.agent !== this.agent) return
-    if (exec.name === SKILL_TOOL_NAME && this.#inheritedSkillToolVisible()) {
+    if (exec.name === SKILL_TOOL_NAME && !this.#inheritedSkillToolVisible()) {
+      if (typeof exec.callId === 'string') this.#shadowSkillResults.add(exec.callId)
+      return
+    }
+    if (exec.name === SKILL_TOOL_NAME) {
       const skill = successfulSkillName(result)
-      if (skill !== undefined) this.#activate(skill, 'model')
+      if (skill !== undefined) {
+        const loaded = loadedSkill(result.value)
+        const renderedMatches =
+          loaded !== undefined &&
+          result.content.length === 1 &&
+          result.content[0]?.type === 'text' &&
+          result.content[0].text === renderSkillContent({ name: skill, ...loaded })
+        if (typeof exec.callId === 'string')
+          this.#observedSkillResults.set(exec.callId, {
+            skill,
+            ...(loaded ? { loaded } : {}),
+            renderedMatches,
+          })
+        if (!renderedMatches || loaded === undefined) this.#loadedSkills.delete(skill)
+        else this.#loadedSkills.set(skill, loaded)
+        this.#verifiedSkills.delete(skill)
+        this.#activate(skill, 'model')
+      }
       return
     }
     if (exec.name !== MARIVO_HELP_TOOL_NAME) return
@@ -307,7 +414,13 @@ export class MarivoDisclosureController {
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
     this.#observeExplicitInvocations(messages)
     this.#refreshVisibleHelp(messages)
-    if (this.#activeSkills.size === 0) return []
+    // A historical same-name Tool may be a scoped shadow. Its text is checked
+    // only after a trusted live or previously attested activation.
+    const visibleSkills = this.#visibleSkillContent().filter((item) =>
+      this.#activeSkills.has(item.skill),
+    )
+    const checkedSkills = MARIVO_SKILL_ORDER.filter((skill) => this.#activeSkills.has(skill))
+    if (checkedSkills.length === 0) return []
 
     const bridge = await resolveMarivoHelpBridge(this.bridgeSource)
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
@@ -320,6 +433,100 @@ export class MarivoDisclosureController {
         visible?.environmentFingerprint !== bridge.binding.fingerprint
       )
     })
+    // Explicit invocations carry only the name in their source. The public registry
+    // can identify the selected provider only when its rendering matches the exact
+    // message supplied to this step. Never infer a source from a name alone.
+    const verificationSignal = AbortSignal.any([signal, this.#lifecycleAbort.signal])
+    for (const message of messages) {
+      const source = message.source as { kind?: unknown; name?: unknown; form?: unknown }
+      if (
+        source.kind !== 'skill-invocation' ||
+        source.form !== 'instructions' ||
+        !isMarivoSkillName(source.name)
+      )
+        continue
+      this.#loadedSkills.delete(source.name)
+      this.#verifiedSkills.delete(source.name)
+      const registry = this.agent.ctx.get('skills')
+      if (!registry) continue
+      let selected: Awaited<ReturnType<typeof registry.get>>
+      try {
+        selected = await registry.get(source.name, {
+          cwd: this.agent.session.header.cwd,
+          scope: this.agent,
+          signal: verificationSignal,
+        })
+      } catch {
+        if (this.#disposed) throw this.#lifecycleAbort.signal.reason
+        verificationSignal.throwIfAborted()
+        const error = new MarivoDisclosureError(
+          [source.name],
+          new Error(
+            `Cannot inspect the selected ${source.name} Skill. Reload it after resolving the provider error.`,
+          ),
+        )
+        this.#telemetry.failures.push({ skills: [source.name], message: error.message })
+        throw error
+      }
+      if (this.#disposed) throw this.#lifecycleAbort.signal.reason
+      verificationSignal.throwIfAborted()
+      const loaded = loadedSkill(selected)
+      if (
+        loaded &&
+        message.content.length === 1 &&
+        message.content[0]?.type === 'text' &&
+        message.content[0].text === renderSkillContent(selected!)
+      )
+        this.#loadedSkills.set(source.name, loaded)
+    }
+
+    const identities = new Map<MarivoSkillName, string>()
+    for (const skill of checkedSkills) {
+      try {
+        const selected = this.#loadedSkills.get(skill)
+        const skillFile = path.join(
+          path.dirname(bridge.binding.packagePath),
+          'skills',
+          skill,
+          'SKILL.md',
+        )
+        let raw: string
+        try {
+          raw = await readFile(skillFile, { encoding: 'utf8', signal: verificationSignal })
+        } catch {
+          verificationSignal.throwIfAborted()
+          throw new Error(
+            `Cannot read the bound Runtime Skill ${skill}; repair the Runtime before continuing.`,
+          )
+        }
+        const expected = skillBody(raw)
+        if (expected === undefined) throw new Error(`Cannot verify bound Runtime Skill ${skill}.`)
+        const digest = createHash('sha256').update(expected).digest('hex')
+        for (const visible of visibleSkills.filter((item) => item.skill === skill)) {
+          if (visible.body !== expected)
+            throw new Error(
+              `Conflicting or unverifiable ${skill} instructions remain visible in this Session. Start a new Session or have the Host remove them from the model-visible context before continuing; no history was deleted.`,
+            )
+        }
+        if (selected !== undefined) {
+          if (selected.content !== expected)
+            throw new Error(
+              `Loaded ${skill} has different instructions from the bound Marivo Runtime. Align the selected Skill with the Runtime and reload it before continuing; no Workspace Skill was changed.`,
+            )
+        } else if (this.#activeSkills.has(skill) && this.#verifiedSkills.get(skill) !== digest) {
+          throw new Error(
+            `Cannot verify the loaded ${skill} against the bound Marivo Runtime. Reload this Skill before continuing.`,
+          )
+        }
+        identities.set(skill, digest)
+      } catch (cause) {
+        if (this.#disposed) throw this.#lifecycleAbort.signal.reason
+        verificationSignal.throwIfAborted()
+        const error = new MarivoDisclosureError([skill], cause)
+        this.#telemetry.failures.push({ skills: [skill], message: error.message })
+        throw error
+      }
+    }
     if (requested.length === 0) return []
 
     const batchAbort = new AbortController()
@@ -331,12 +538,13 @@ export class MarivoDisclosureController {
           const target = MARIVO_ROOT_HELP_TARGETS[skill]
           const reason = this.#pendingSkills.has(skill) ? 'activation' : 'recovery'
           const startedAt = performance.now()
+          const skillBodyDigest = identities.get(skill)!
           const value = await readMarivoHelpTargets(bridge, [target], {
             limits: this.options.helpLimits,
             signal: readSignal,
             resolveDelivery: (query) => this.resolveDelivery(query),
           })
-          return { skill, target, reason, startedAt, value }
+          return { skill, target, reason, startedAt, value, skillBodyDigest }
         } catch (cause) {
           primaryCause ??= cause
           batchAbort.abort(cause)
@@ -377,8 +585,27 @@ export class MarivoDisclosureController {
         latencyMs: Math.max(0, Math.round(performance.now() - read.startedAt)),
       })
       this.#pendingSkills.delete(read.skill)
-      if (item.delivery === 'already-visible') continue
-      const message = renderRootHelpMessage(read.skill, read.value, update)
+      this.#verifiedSkills.set(read.skill, read.skillBodyDigest)
+      if (item.delivery === 'already-visible') {
+        // Keep an auditable identity even when the matching Help was already visible.
+        injections.push(
+          createUserMessage({
+            content: [
+              {
+                type: 'text',
+                text: `Loaded ${read.skill} matches the bound Marivo Runtime Skill.`,
+              },
+            ],
+            source: {
+              kind: 'marivo-skill-identity',
+              skill: read.skill,
+              skillBodyDigest: read.skillBodyDigest,
+            },
+          }),
+        )
+        continue
+      }
+      const message = renderRootHelpMessage(read.skill, read.value, update, read.skillBodyDigest)
       injections.push(message)
       this.#visibleHelp.set(read.target, {
         environmentFingerprint: read.value.environment.fingerprint,
@@ -397,6 +624,10 @@ export class MarivoDisclosureController {
     this.#disposers = []
     this.#activeSkills.clear()
     this.#pendingSkills.clear()
+    this.#loadedSkills.clear()
+    this.#observedSkillResults.clear()
+    this.#shadowSkillResults.clear()
+    this.#verifiedSkills.clear()
     this.#visibleHelp.clear()
   }
 
@@ -423,15 +654,129 @@ export class MarivoDisclosureController {
   }
 
   #restoreActiveSkills(): void {
+    const skillCalls = new Map<string, MarivoSkillName>()
     for (const event of this.agent.session.snapshotEvents()) {
+      if (event.type === 'tool/call' && event.data.name === SKILL_TOOL_NAME) {
+        try {
+          const value: unknown =
+            typeof event.data.arguments === 'string'
+              ? JSON.parse(event.data.arguments)
+              : event.data.arguments
+          if (
+            typeof value === 'object' &&
+            value !== null &&
+            isMarivoSkillName((value as { name?: unknown }).name)
+          )
+            skillCalls.set(event.data.callId, (value as { name: MarivoSkillName }).name)
+        } catch {
+          // Invalid historical arguments establish no Skill identity.
+        }
+      }
+      if (event.type === 'tool/result') {
+        const skill = skillCalls.get(event.data.message.toolCallId)
+        if (skill && this.#activeSkills.has(skill) && event.data.message.isError === false) {
+          // The persisted result has no structured provider/registration identity.
+          // Conservatively revoke a prior attestation; the call may also have
+          // been to a scoped shadow and can therefore require an unnecessary reload.
+          // Without prior activation, a same-name Tool alone establishes nothing.
+          this.#verifiedSkills.delete(skill)
+        }
+      }
       if (event.type !== 'user/message') continue
       const disclosure = rootHelpSource(event.data.source)
-      if (disclosure !== undefined) this.#activeSkills.add(disclosure.skill)
+      if (disclosure !== undefined) {
+        this.#activeSkills.add(disclosure.skill)
+        if (
+          typeof disclosure.skillBodyDigest === 'string' &&
+          /^[a-f0-9]{64}$/.test(disclosure.skillBodyDigest)
+        )
+          this.#verifiedSkills.set(disclosure.skill, disclosure.skillBodyDigest)
+        else this.#verifiedSkills.delete(disclosure.skill)
+      }
       const source = event.data.source as { kind?: unknown; name?: unknown }
+      const identity = event.data.source as Partial<MarivoSkillIdentitySource>
+      if (
+        identity.kind === 'marivo-skill-identity' &&
+        isMarivoSkillName(identity.skill) &&
+        typeof identity.skillBodyDigest === 'string' &&
+        /^[a-f0-9]{64}$/.test(identity.skillBodyDigest)
+      ) {
+        this.#activeSkills.add(identity.skill)
+        this.#verifiedSkills.set(identity.skill, identity.skillBodyDigest)
+      }
       if (source.kind === 'skill-invocation' && isMarivoSkillName(source.name)) {
         this.#activeSkills.add(source.name)
+        this.#verifiedSkills.delete(source.name)
       }
     }
+  }
+
+  /** Inspect actual model-visible Skill text without asserting historical provider identity. */
+  #visibleSkillContent(): Array<{ skill: MarivoSkillName; body: string | undefined }> {
+    const events = this.agent.session.snapshotEvents()
+    const visible = new Set(this.agent.session.surface.nodes)
+    const calls = new Map<string, MarivoSkillName>()
+    const result: Array<{ skill: MarivoSkillName; body: string | undefined }> = []
+    for (const event of events) {
+      if (event.type === 'tool/call' && event.data.name === SKILL_TOOL_NAME) {
+        try {
+          const args: unknown =
+            typeof event.data.arguments === 'string'
+              ? JSON.parse(event.data.arguments)
+              : event.data.arguments
+          if (
+            typeof args === 'object' &&
+            args !== null &&
+            isMarivoSkillName((args as { name?: unknown }).name)
+          )
+            calls.set(event.data.callId, (args as { name: MarivoSkillName }).name)
+        } catch {
+          /* Invalid historical arguments do not identify a Skill. */
+        }
+      }
+      if (!visible.has(event.seq)) continue
+      let skill: MarivoSkillName | undefined
+      let observed: ObservedSkillResult | undefined
+      if (event.type === 'tool/result' && event.data.message.isError === false) {
+        const callId = event.data.message.toolCallId
+        if (this.#shadowSkillResults.has(callId)) continue
+        skill = calls.get(callId)
+        observed = this.#observedSkillResults.get(callId)
+      } else if (event.type === 'user/message') {
+        const source = event.data.source as { kind?: unknown; form?: unknown; name?: unknown }
+        if (
+          source.kind === 'skill-invocation' &&
+          source.form === 'instructions' &&
+          isMarivoSkillName(source.name)
+        )
+          skill = source.name
+      }
+      if (skill === undefined) continue
+      const message = this.agent.session.deriveEventMessage(event)
+      if (!message) continue
+      const bodies = message.content.flatMap((part) => {
+        if (part.type !== 'text') return []
+        const body = renderedSkillBody(part.text, skill!)
+        return body === undefined ? [] : [body]
+      })
+      if (observed) {
+        const loaded = observed.loaded
+        const exact =
+          observed.skill === skill &&
+          observed.renderedMatches &&
+          loaded !== undefined &&
+          message.content.length === 1 &&
+          message.content[0]?.type === 'text' &&
+          message.content[0].text === renderSkillContent({ name: skill, ...loaded })
+        result.push({ skill, body: exact ? loaded.content : undefined })
+      } else if (bodies.length > 0) {
+        result.push({
+          skill,
+          body: message.content.length === 1 && bodies.length === 1 ? bodies[0] : undefined,
+        })
+      }
+    }
+    return result
   }
 
   #refreshVisibleHelp(messages: readonly UserMessage[]): void {

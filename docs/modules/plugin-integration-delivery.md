@@ -16,7 +16,7 @@
 
 ## 生命周期
 
-1. `apply()` 确保精确 Marivo 0.5.5 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
+1. `apply()` 确保精确 Marivo 0.6.0.dev0 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
 2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与 prompt sections。
@@ -79,6 +79,9 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 文件 Skill 拥有文件分析与收尾核对；Runtime Skill 拥有 Marivo 分析、语义与证据有效性；展示 Skill 只核对
 呈现是否忠实于已有结果。系统中的 analysis 收尾提醒暂时保留，移除须另有绑定 Runtime Skill 和真实模型
 覆盖证据。插件不复制上游 API，也不因纯文件或展示任务自动激活 Runtime Skill。
+
+分析收尾提示建议用货币代码、名称或转义美元符号，降低与 Markdown 数学定界符的歧义；它只是模型提示，
+不能保证所有回答正确渲染，聊天 Markdown 解析仍由 Harness 拥有。
 
 系统仅增加可复用语义的条件性交接入口：限于当前任务需要或用户已授权的范围，问题已有答案或阻塞已明确
 即停止。文件 Skill 判断候选的用途、依据与范围，进入 `marivo-semantic` 后按上游契约优先复用、补齐最小
@@ -146,7 +149,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | --- | --- |
 | DSH peers 兼容范围 | `>=0.1.7-rc.1`，npm 默认预发布匹配规则 |
 | DSH 开发 distribution | `0.1.7-rc.1`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.5.5` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.6.0.dev0` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.1.0`，typed dataset schemaVersion 1 |
@@ -181,7 +184,7 @@ npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
 
-plugin real-model runner 验证 Help/凭据接缝，需要正式 Marivo 0.5.5 与真实模型。
+plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.0.dev0 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch、Host Web 与下载文件验证交付。
 路径、runner 日志或静态 schema 不替代实际交互证据。
 

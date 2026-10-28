@@ -11,7 +11,6 @@ from numbers import Integral, Real
 import marivo.analysis as mv
 import marivo.datasource as md
 import pandas as pd
-from marivo.analysis.errors import ArtifactNotFoundError
 
 
 selection = json.loads(sys.argv[1])
@@ -57,95 +56,33 @@ def cell(value):
 
 sys.setprofile(prohibit_execution)
 with md.credential_scope(resolver=DenyCredentials()):
-    session = mv.session.resume(selection["sessionId"], use_datasources=False)
+    session = mv.session.resume(selection["sessionId"])
     try:
-        artifact = session.artifact(selection["artifactRef"])
-    except ArtifactNotFoundError as exc:
+        artifact = session.persisted_frame(selection["artifactRef"])
+    except Exception as exc:
         source_only = len(sys.argv) >= 4 and sys.argv[3] == "source-only"
-        session.close()
         sys.setprofile(None)
-        print(json.dumps({
-            "status": "unavailable" if source_only else "error", "ref": selection,
-            "reason": "The declared Artifact is not available in the bound Workspace Session.",
-            "exceptionType": type(exc).__name__, "forbiddenCalls": calls,
-        }), file=sys.stdout if source_only else sys.stderr)
+        print(json.dumps({"status": "unavailable" if source_only else "error", "ref": selection,
+                          "exceptionType": type(exc).__name__, "forbiddenCalls": calls}),
+              file=sys.stdout if source_only else sys.stderr)
         raise SystemExit(0 if source_only else 70)
-    contract = artifact.contract()
-    frame = artifact.to_pandas().sort_values("region", kind="stable")
-    assert artifact.ref == selection["artifactRef"]
-    assert artifact.meta.session_id == session.id == selection["sessionId"]
-    assert contract.ref == artifact.ref
-    assert [column.name for column in contract.artifact_schema.columns] == list(frame.columns)
-    assert artifact.meta.row_count == len(frame)
-    finding = artifact.finding(selection["findingId"])
-    assert finding.artifact_ref == artifact.ref and finding.session_id == session.id
-    meta = artifact.meta
-    quality = meta.quality_summary
-    source = {
-        "sessionId": session.id,
-        "artifactRef": artifact.ref,
-        "kind": meta.kind,
-        "createdAt": meta.created_at.isoformat(),
-        "contentHash": meta.content_hash,
-        "evidenceStatus": meta.evidence_status,
-        "findingCount": meta.finding_count,
-        "semanticInputs": [
-            {
-                "role": item.role,
-                "kind": item.semantic_kind.value,
-                "path": item.semantic_path,
-                "outputColumn": item.output_column,
-            }
-            for item in contract.semantic_inputs
-        ],
-        "quality": None if quality is None else {
-            "coverage": quality.coverage,
-            "nullRate": quality.null_rate,
-            "sampleSize": quality.sample_size,
-            "evaluatedCheckCount": quality.evaluated_check_count,
-            "failedCheckCount": quality.failed_check_count,
-            "warningCheckCount": quality.warning_check_count,
-        },
-        "issues": [
-            {"kind": issue.kind, "severity": issue.severity}
-            for issue in contract.issues
-        ],
-        "finding": {
-            "id": finding.finding_id,
-            "type": finding.finding_type,
-            "sourceRefs": list(finding.source_refs),
-            "excerpt": finding.render(max_output_bytes=4096),
-        },
-        "definition": {
-            "status": "unavailable",
-            "reason": "S0 does not obtain a historical metric definition from the persisted Artifact public contract.",
-        },
-        "revalidation": {"status": "not_requested"},
-    }
+    frame = artifact.to_pandas()
+    frame = frame.sort_values(frame.columns[0], kind="stable")
+    assert artifact.artifact_id == selection["artifactRef"]
+    assert artifact.session_id == session.id == selection["sessionId"]
+    digest = artifact.evidence_digest()
+    assert str(digest.artifact_ref) == artifact.artifact_id
     result = {
         "schema": "dsh-data-analysis-presentation-s0-runtime/v1",
-        "readPid": os.getpid(),
-        "readAt": datetime.now(timezone.utc).isoformat(),
-        "source": source,
-        "columns": [
-            {
-                "name": item.name,
-                "artifactDtype": item.dtype,
-                "pandasDtype": str(frame.dtypes.iloc[index]),
-                "nullable": item.nullable,
-                "role": item.role,
-                "pythonTypes": sorted({type(value).__name__ for value in frame.iloc[:, index]}),
-            }
-            for index, item in enumerate(contract.artifact_schema.columns)
-        ],
+        "readPid": os.getpid(), "readAt": datetime.now(timezone.utc).isoformat(),
+        "source": {"sessionId":session.id, "artifactRef":artifact.artifact_id,
+                   "findingCount":digest.finding_count, "evidenceDigest":digest.evidence_digest},
+        "columns": [{"name":name, "pandasDtype":str(frame[name].dtype)} for name in frame.columns],
         "rows": [[cell(value) for value in row] for row in frame.head(row_limit).itertuples(index=False, name=None)],
-        "truncation": {
-            "totalRows": len(frame), "writtenRows": min(len(frame), row_limit),
-            "omittedRows": max(0, len(frame) - row_limit), "rowLimit": row_limit,
-        },
-        "readApi": ["mv.session.resume(use_datasources=False)", "session.artifact", "artifact.contract", "artifact.to_pandas", "artifact.finding", "finding.render"],
+        "truncation": {"totalRows": len(frame), "writtenRows": min(len(frame), row_limit),
+                       "omittedRows": max(0, len(frame)-row_limit), "rowLimit":row_limit},
+        "readApi": ["mv.session.resume", "session.persisted_frame", "frame.to_pandas", "frame.evidence_digest"],
         "forbiddenCalls": calls,
     }
-    session.close()
 sys.setprofile(None)
 print(json.dumps(result, ensure_ascii=False, allow_nan=False))

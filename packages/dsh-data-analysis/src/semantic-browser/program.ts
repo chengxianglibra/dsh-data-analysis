@@ -1,129 +1,96 @@
-/** Explicit public Details projection. No object dump, source-code read or data operation. */
+import { CATALOG_READ_HELPERS } from '../semantic-reference/catalog-program.ts'
+
+/** Explicit projection of public captured definitions; never reads source rows or credentials. */
 export const BROWSER_CATALOG_PROGRAM = String.raw`
 import contextlib, json, sys
-from datetime import date, datetime
-from enum import Enum
-from collections.abc import Mapping
 
 class DiscardOutput:
-    def write(self, text):
-        return len(text)
-    def flush(self):
-        pass
+    def write(self, text): return len(text)
+    def flush(self): pass
 
 with contextlib.redirect_stdout(DiscardOutput()), contextlib.redirect_stderr(DiscardOutput()):
     import marivo.semantic as ms
-    from marivo.refs import Ref, RefPayloadV1, SemanticKind
+    from marivo.refs import SemanticKind
     from marivo.semantic.errors import SemanticError, SemanticLoadFailed
 
-    FIELDS = {
-        "domain": "owner default",
-        "datasource": "backend_type",
-        "entity": "datasource primary_key",
-        "dimension": "entity",
-        "measure": "entity unit additivity",
-        "time_dimension": "entity parse_kind data_type granularity format timezone is_default sample_interval",
-        "metric": "metric_type entities root_entity aggregation aggregation_target aggregation_target_kind measure unit additivity fold status_time_dimension fanout_policy filter effective_entities candidate_dimensions candidate_time_dimensions measure_lineage weighted_mean_value weighted_mean_weight composition components linear_terms required_relationships parity_status",
-        "relationship": "from_entity to_entity from_keys to_keys",
-        "event": "source_entity identity occurred_at participants predicate_kind definition_fingerprint",
-        "state_model": "subject states inceptions transitions definition_fingerprint",
-        "period_calendar": "date boundary_timezone coverage correspondences snapshot_status snapshot_digest",
-        "temporal_set": "boundary_timezone coverage occurrence_id start end category occurrence_count snapshot_status",
-        "work_schedule": "boundary_timezone coverage date is_working snapshot_status",
-    }
+${CATALOG_READ_HELPERS}
 
-    def ref_payload(value):
-        return RefPayloadV1.from_ref(value).to_dict()
+FIELDS = {
+    "domain": "owner default members",
+    "datasource": "backend_type entities",
+    "entity": "datasource primary_key versioning default_time fields dependencies",
+    "dimension": "entity unit additivity default_time parse sample_interval is_default_time dependencies",
+    "measure": "entity unit additivity default_time parse sample_interval is_default_time dependencies",
+    "time_dimension": "entity unit additivity default_time parse sample_interval is_default_time dependencies",
+    "metric": "roots unit dependencies",
+    "relationship": "from_entity to_entity keys cardinality dependencies",
+    "period_calendar": "date boundary_timezone coverage levels correspondences",
+    "temporal_set": "occurrence_id start end category boundary_timezone coverage",
+}
 
-    # Traversal is restricted to values of the explicitly selected public fields.
-    def display(value, field, relations):
-        if isinstance(value, Ref):
-            relations.append({"field": field, "ref": ref_payload(value)})
-            return value.key
-        if isinstance(value, Enum):
-            return str(value.value)
-        if isinstance(value, (date, datetime)):
-            return value.isoformat()
-        if value is None:
-            return "—"
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (str, int, float)):
-            return str(value)
-        if isinstance(value, (tuple, list)):
-            return "\n".join(display(v, field, relations) for v in value)
-        if isinstance(value, Mapping):
-            return "\n".join(str(k) + ": " + display(v, field, relations) for k, v in value.items())
-        # Public temporal value, not a generic repr of a Python object.
-        if field == "sample_interval":
-            return value.to_token()
-        raise TypeError("unsupported display field: " + field)
+def display(value):
+    if isinstance(value, str): return value
+    return json.dumps(value, ensure_ascii=False, indent=2)
 
-    def project(entry):
-        d = entry.details()
-        relations, fields = [], []
-        def add(name, value):
-            if value is not None:
-                fields.append({"name": name, "value": display(value, name, relations)})
-        for name in FIELDS.get(entry.kind.value, "").split():
-            if hasattr(d, name):
-                add(name, getattr(d, name))
-        for name in ("parents", "children", "dependents"):
-            for ref in getattr(d, name):
-                relations.append({"field": name, "ref": ref_payload(ref)})
-        if entry.kind.value == "entity":
-            source = d.source
-            add("source_kind", source.kind)
-            # Remote file URLs may contain credentials. Only table identity is projected.
-            if source.kind == "table":
-                add("source_table", source.table)
-                add("source_database", source.database)
-            version = d.versioning
-            if version is not None:
-                for name in ("kind", "partition_field", "grain", "timezone", "format", "valid_from", "valid_to", "interval", "open_end"):
-                    if hasattr(version, name):
-                        add("version_" + name, getattr(version, name))
-        if entry.kind.value == "period_calendar":
-            for level in d.levels:
-                add("level", level.name)
-                for name in ("key_ref", "period_count", "direct_finer_levels", "direct_coarser_levels", "rollup_targets"):
-                    add("level_" + name, getattr(level, name))
-        computation = d.definition.to_dict() if entry.kind.value in ("metric", "measure", "dimension", "time_dimension") else None
-        def definition_refs(value, role="definition"):
-            if isinstance(value, dict):
-                if value.get("schema") == "marivo.semantic_ref/v1":
-                    relations.append({"field": role, "ref": value})
-                else:
-                    for key, item in value.items():
-                        definition_refs(item, role + "." + key)
-            elif isinstance(value, list):
-                for item in value:
-                    definition_refs(item, role)
-        if computation is not None:
-            definition_refs(computation["node"])
-            definition_refs(computation["temporal"], "temporal")
-        unique = {(r["field"], r["ref"]["kind"], r["ref"]["path"]): r for r in relations}
-        return {
-            "computation": computation, "ref": ref_payload(entry.ref), "name": entry.name, "domain": d.domain,
-            "definition": d.context.business_definition, "guardrails": list(d.context.guardrails),
-            "source": {"file": d.source_location.file, "line": d.source_location.line, "symbol": d.python_symbol},
-            "fields": fields, "relations": list(unique.values()),
+def project(entry):
+    payload = entry.to_dict()
+    definition, provenance = payload["definition"], payload["provenance"]
+    fields = [{"name": name, "value": display(definition[name])}
+              for name in FIELDS[entry.kind].split() if definition.get(name) is not None]
+    # Project table identity only; file locations may contain signed URLs or credentials.
+    if entry.kind == "entity":
+        source = definition["source"]
+        fields.append({"name": "source_kind", "value": source["kind"]})
+        if source["kind"] == "table":
+            for name in ("table", "database"):
+                if source.get(name) is not None:
+                    fields.append({"name": "source_" + name, "value": display(source[name])})
+    relations = []
+    for relation in ("dependencies", "dependents"):
+        for related in pages(lambda cursor: entry.related(relation, limit=100, cursor=cursor)):
+            relations.append({"field": relation, "ref": wire_ref(related)})
+    # Link exact canonical identities exposed in selected public definition fields.
+    kinds = {kind.value for kind in SemanticKind}
+    def field_refs(value, field):
+        if isinstance(value, str) and value.count(":") == 1 and value.split(":")[0] in kinds:
+            kind, path = value.split(":")
+            relations.append({"field": field, "ref": {"schema": "marivo.semantic_ref/v1", "kind": kind, "path": path}})
+        elif isinstance(value, list):
+            for item in value: field_refs(item, field)
+        elif isinstance(value, dict):
+            for item in value.values(): field_refs(item, field)
+    for name in FIELDS[entry.kind].split():
+        field_refs(definition.get(name), name)
+    relations = list({(r["field"], r["ref"]["kind"], r["ref"]["path"]): r for r in relations}.values())
+    computation = None
+    if entry.kind in ("metric", "measure", "dimension", "time_dimension"):
+        computation = {
+            "schema": "dsh-data-analysis-computation/v1",
+            "ref": wire_ref(entry),
+            "catalog_definition_fingerprint": provenance["definition_fingerprint"],
+            "expression": definition.get("formula", definition.get("expression", "")),
+            "facts": [{"name": name, "value": display(definition[name])}
+                      for name in ("reductions", "conditions", "time_bindings", "null_rules", "facts")
+                      if definition.get(name)],
         }
+    return {
+        "computation": computation, "ref": wire_ref(entry), "name": entry.name, "domain": entry.domain,
+        "definition": definition["context"]["business_definition"],
+        "guardrails": definition["context"]["guardrails"],
+        "source": {"file": provenance["source_file"], "line": provenance["source_line"], "symbol": provenance["python_symbol"]},
+        "fields": fields, "relations": relations,
+    }
 
 try:
-    catalog = ms.load(workspace_dir=sys.argv[1])
-    result = {
-        "fingerprint": catalog.definition_fingerprint,
-        "kinds": [kind.value for kind in SemanticKind],
-        "objects": [project(entry) for kind in SemanticKind for entry in catalog.items(kind).items],
-    }
+    with contextlib.redirect_stdout(DiscardOutput()), contextlib.redirect_stderr(DiscardOutput()):
+        catalog = ms.load(workspace_dir=sys.argv[1])
+        result = {
+            "fingerprint": catalog.definition_fingerprint,
+            "kinds": [kind.value for kind in SemanticKind],
+            "objects": [project(entry) for entry in pages(lambda cursor: catalog.search(limit=100, cursor=cursor))],
+        }
 except (SemanticLoadFailed, SemanticError) as error:
-    print(json.dumps({
-        "schema": "marivo.semantic_catalog_error/v1",
-        "kind": "semantic",
-        "message": str(error),
-    }, ensure_ascii=True))
+    print(json.dumps({"schema": "marivo.semantic_catalog_error/v1", "kind": "semantic", "message": str(error)}, ensure_ascii=True))
     raise SystemExit(1)
-
 print(json.dumps(result, ensure_ascii=True))
 `.trim()

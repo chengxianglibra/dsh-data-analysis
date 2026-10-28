@@ -33,7 +33,7 @@
 
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。当前开发依赖为 `0.1.7-rc.1`，插件 peer 最低为 `0.1.7-rc.1`；本轮文件交付指引接入 Host 原生表格预览，后台长任务保留为后续独立任务。
+[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。当前开发依赖为 `0.1.7-rc.1`，插件 peer 最低为 `0.1.7-rc.1`；本轮文件交付指引接入 Host 原生表格预览，后台长任务保留为后续独立任务。[DSH 0.2.0 升级与数据分析能力集成设计](designs/dsh-0.2.0-integration.md) 记录 0.2.0 的可用增量、不变量与回归清单；该设计未实施，开发依赖与验收基线不变。
 
 ## 运行与数据流
 
@@ -66,7 +66,7 @@ Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 W
 
 每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，展示任务加载 `dsh-data-analysis-presentation`；需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。
 
-默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_configure`、`marivo_datasource_test`、`marivo_python`、`marivo_present`。开启报告发布后增加 `marivo_publish_report`。Artifact inspection、Session resume/graph、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
+默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_configure`、`marivo_datasource_test`、`marivo_python`、`marivo_present`。开启报告发布后增加 `marivo_publish_report`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
 
 ### 配置与执行
 
@@ -111,3 +111,11 @@ Harness locale 服务拥有插件操作界面的语言设置及持久化；插�
 ## 插件设置
 
 Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件通过 `dsh-data-analysis` settings namespace 与 `settings.plugin.item` 卡片提供 `pythonTimeoutMs`，在每次 Python 调用入口读取，不重新绑定 Runtime 或 Workspace。界面、继承和生效语义见[超时与执行反馈](modules/datasource-credentials.md#超时与执行反馈)。
+
+## Marivo 0.6 接缝
+
+当前精确版本为 `0.6.0.dev0`，本地预发布 wheel 来源见 [Runtime 安装](modules/runtime-workspace.md#本地预发布安装)。
+数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
+Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
+报告使用 `session.persisted_frame()` 恢复显式持久化 Frame。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
+Skill 激活使用 Harness 当前选择的正文，并在注入 Runtime Help 前核对绑定包正文；冲突与无法验证的情况见 [Help 披露](modules/help-disclosure.md#skill-激活式根-help)。

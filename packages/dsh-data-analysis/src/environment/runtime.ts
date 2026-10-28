@@ -45,7 +45,11 @@ import sys
 from importlib.metadata import distribution
 import marivo
 import ibis.backends.duckdb
-from marivo.semantic.definition import SemanticDefinition
+from marivo.semantic import SemanticCatalog
+from marivo.datasource import DatasourceCatalog
+from marivo.analysis import AnalysisFrame
+assert callable(SemanticCatalog.search) and callable(DatasourceCatalog.describe)
+assert callable(AnalysisFrame.persist)
 import pandas
 import dsh_data_analysis_presentation
 from packaging.specifiers import SpecifierSet

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -14,7 +14,7 @@ import { parseTypedDataset } from '../src/presentation/contracts/index.ts'
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
 const keepValidation = process.env.DSH_DATA_ANALYSIS_KEEP_VALIDATION === '1'
 
-const validationRoot = await mkdtemp(path.join(tmpdir(), 'dsh-runtime-workspace-'))
+const validationRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-runtime-workspace-')))
 try {
   const runtimeRoot = path.join(validationRoot, 'runtime')
   const firstWorkspace = path.join(validationRoot, 'workspace-a')

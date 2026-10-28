@@ -14,7 +14,7 @@ Tab 直接承载新增/编辑数据源、属性、凭证配置与连接测试，
 刷新不终止已提交操作的状态查询，操作句柄按会话及 occurrence 保存用于页面重载恢复；不保存未提交的输入值。
 入口通过 `conversation.session.header.actions` 使用所属会话的 `workspaceId`；
 无会话或空会话时 Harness 不显示会话标题，侧栏底部不保留入口。管理页不要求 live Agent，显示 datasource、
-引擎、连接属性、字段引用、是否配置、来源、是否可写和最近测试。连接属性只读展示公开 `md.describe()` 的
+引擎、连接属性、字段引用、是否配置、来源、是否可写和最近测试。连接属性只读展示公开 `md.load().describe()` 的
 `backend_type` 与 `literal_fields`，凭证字段使用 `env_refs` 独立展示；读取属性不解析 Harness 凭据。
 数据源名称右侧提供编辑配置图标，“连接状态”右侧提供测试连接图标；图标保留中文悬停提示和无障碍名称。
 “删除已保存值”和确认删除按钮使用浅红色背景，深色模式使用对应的深红底色。
@@ -54,7 +54,7 @@ Host 继续复用状态变化唤醒与每 25 秒的上下文复核，未变化�
 确认区提示删除凭证对共享使用者的影响；现有字段旁的单个凭证删除入口继续保留。
 
 删除定义通过 checked Runtime 的公开 `md.remove(name)` 执行，同一 Python 进程先复核公开
-`md.describe()` 的 definition fingerprint。可删除范围由 Marivo 决定，包括对内置 `default` 的保护；
+`md.load().describe()` 的 definition fingerprint。可删除范围由 Marivo 决定，包括对内置 `default` 的保护；
 插件不直接删除定义文件，不删除远端数据库数据，也不级联修改语义层、Artifact 或 Evidence。
 
 删除沿用 Host generation、context token、credential version 和 operation ID，按数据源与现有写入串行。
@@ -82,7 +82,7 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 已明确拒绝的非法引用、同名定义和过期上下文只提示修正原因，不附加“提交结果未确认”。
 
 数据源详情中的“编辑配置”回填当前 Runtime 字段，名称与引擎只读。配置快照包含版本；
-保存前重新读取并核对版本，经插件串行写入后调用 `md.register()`。`md.describe()` 的属性和引用、
+保存前重新读取并核对版本，经插件串行写入后调用 `md.register()`。`md.load().describe()` 的属性和引用、
 公开 Semantic Details 的 `context` 共同用于完整回填，保留 `extra`、HTTP header 引用与 `ai_context`；
 读取不完整时拒绝保存，不直接操作配置文件。修改引用不删除旧的 Harness 共享凭证。
 配置变化刷新打开的管理页并使旧测试失效；其他 Tab 的编辑草稿保留，陈旧提交须重新加载。
@@ -105,15 +105,15 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
   `edit` 必须提供现有名称并直接打开编辑页。`reason` 为不含凭证的简短说明；工具不接受配置值。
   Web 根 Agent 保持原调用等待，成功返回 `status: ok`、`name` 和连接耗时，随后核验目标表；
   `failed`、`cancelled`、`call-ended`、`context-changed`、`needs-configuration` 均不是连接成功。
-- `marivo_datasource_test({ name })`：执行真实 `md.test()`，同步管理页的 `lastTest/stale`。
+- `marivo_datasource_test({ name })`：执行真实 `md.load().test()`，同步管理页的 `lastTest/stale`。
 - `marivo_python({ code, datasources, timeoutMs? })`：在本次调用内准备全部精确 datasource，再执行一次前台 Python。
-  声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；完全不访问数据源时才传空列表，
+  声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；纯 Catalog 定义读取不连接数据源时可传空列表，
   仍安装拒绝未声明凭证请求的 resolver。
 
-`marivo-analysis` 或 `marivo-semantic` 激活后均披露此执行接缝，提示在一次调用内创建/恢复 Session，
-并在 `try/finally` 中显式 `session.close()`。插件不接管 Session 生命周期，也不拦截 Agent 代码。
-这里关闭的是本次独立 Python 进程中的资源，不是结束分析问题或删除持久 Artifacts；后续调用继续恢复
-同一 Session 身份。未显式关闭属于清理约定偏差，须结合子进程退出边界判断，不能直接推断分析错误或泄漏。
+`marivo-analysis` 或 `marivo-semantic` 激活后均披露此执行接缝，提示在一次调用内创建/恢复 Session。
+Marivo 0.6 没有公共 `session.close()`；需要跨进程保留的 Frame 必须先显式 `persist()`，保存准确的
+`session_id` / `artifact_id`，后续恢复同一 Session 并读取 `persisted_frame()`。插件不接管 Session 生命周期，
+也不拦截 Agent 代码；本次 Python 资源由进程退出边界回收。
 分析激活后另有简短收尾提示，普通文字回答也须逐项回应用户问题与比较范围，保留未完成分支。
 分析语义、执行流程和 Artifact 复用指导仍由当前 Runtime Skill 与 Help 提供，插件不补写这类规则。
 

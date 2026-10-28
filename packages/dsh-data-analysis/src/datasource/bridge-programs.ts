@@ -20,7 +20,7 @@ def project_description(description):
 `.trim()
 
 export const MARIVO_DATASOURCE_DESCRIBE_PROGRAM = `${DATASOURCE_DESCRIPTION_PROGRAM}
-print(json.dumps(project_description(md.describe(sys.argv[1])), sort_keys=True))`
+print(json.dumps(project_description(md.load().describe(sys.argv[1])), sort_keys=True))`
 
 export const MARIVO_DATASOURCE_REMOVE_PROGRAM = `${DATASOURCE_DESCRIPTION_PROGRAM}
 import contextlib
@@ -30,7 +30,7 @@ class Discard:
 try:
     payload = json.load(sys.stdin)
     with contextlib.redirect_stdout(Discard()), contextlib.redirect_stderr(Discard()):
-        current = project_description(md.describe(payload["name"]))
+        current = project_description(md.load().describe(payload["name"]))
         if current["definition"] != payload["definition"]:
             result = {"error": "context-changed"}
         elif md.remove(payload["name"]):
@@ -43,7 +43,7 @@ print(json.dumps(result))`
 
 export const MARIVO_DATASOURCE_INVENTORY_PROGRAM = `${DATASOURCE_DESCRIPTION_PROGRAM}
 print(json.dumps({
-    "datasources": [project_description(md.describe(item.name)) for item in md.list()],
+    "datasources": [project_description(md.load().describe(item.name)) for item in md.load().list()],
 }, sort_keys=True))
 `
 
@@ -64,7 +64,7 @@ captured_stderr = io.StringIO()
 try:
     with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
         with md.credential_scope(resolver=resolver):
-            result = md.test(sys.argv[1])
+            result = md.load().test(sys.argv[1])
 except Exception as exc:
     print(json.dumps({"kind": "datasource-test-failed", "exception_type": type(exc).__name__}), file=sys.stderr)
     raise SystemExit(70)

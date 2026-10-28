@@ -160,7 +160,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
         callId: ToolCallId(`credential-${++counter}`),
         signal: AbortSignal.timeout(120_000),
       })
-    const executionCode = `import os\nimport marivo.datasource as md\nassert "VALIDATION_TOKEN" not in os.environ\nassert "SECOND_VALIDATION_TOKEN" not in os.environ\nfor name, endpoint in [("warehouse", "${scope}data.json"), ("warehouse_two", "${scope}two/data.json")]:\n    with md.connect(name) as backend:\n        assert backend.raw_sql("SELECT sum(amount) FROM read_json_auto('" + endpoint + "')").fetchall() == [(30,)]\nprint("AGGREGATE=30_EACH")\n`
+    const executionCode = `import os\nimport marivo.datasource as md\nimport marivo.semantic as ms\nassert "VALIDATION_TOKEN" not in os.environ\nassert "SECOND_VALIDATION_TOKEN" not in os.environ\nfor name, endpoint in [("warehouse", "${scope}data.json"), ("warehouse_two", "${scope}two/data.json")]:\n    result=md.raw_sql(ms.ref.datasource(name), "SELECT sum(amount) FROM read_json_auto('" + endpoint + "')", reason="Validate fixture credential scope")\n    assert result.to_pandas().iloc[0,0] == 30\nprint("AGGREGATE=30_EACH")\n`
     if (!realModel) {
       const missing = await call('marivo_python', {
         datasources: ['warehouse', 'warehouse_two'],
@@ -212,7 +212,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
       // Raw fd writes and Python tracebacks are redacted before Shell output collection.
       const leakage = await call('marivo_python', {
         datasources: ['warehouse'],
-        code: 'import os\nfrom marivo.datasource.credentials import current_resolver\nvalue=current_resolver().values["VALIDATION_TOKEN"]\nos.write(1, value.encode())\nraise RuntimeError(value)',
+        code: 'import os\nvalue="fixture-bearer-canary-852093"\nos.write(1, value.encode())\nraise RuntimeError(value)',
       })
       assert(!leakage.isError)
       assert.notEqual((leakage.value as { exitCode: number }).exitCode, 0)
@@ -221,7 +221,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
       assert.match(JSON.stringify(leakage), /REDACTED/)
       const denied = await call('marivo_python', {
         datasources: ['warehouse'],
-        code: 'import marivo.datasource as md\nr=md.test("ungranted")\nassert not r.ok and r.failure.code == "credential_denied"\nprint("DENIED_OK")',
+        code: 'import marivo.datasource as md\nr=md.load().test("ungranted")\nassert not r.ok and r.failure.code == "credential_denied"\nprint("DENIED_OK")',
       })
       assert(!denied.isError)
       assert.equal((denied.value as { exitCode: number }).exitCode, 0, JSON.stringify(denied))

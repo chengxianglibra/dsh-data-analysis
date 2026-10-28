@@ -97,7 +97,7 @@ Datasource 连接失败不会污染 binding。
 | Adapter | 所有的 Marivo 操作与投影 |
 | --- | --- |
 | `MarivoHelpBridge` | shared Runtime 上的 `marivo.help()` inventory、`marivo.help(target)` program、raw Help body 与错误映射；不解析 Workspace |
-| `MarivoDatasourceBridge` | `md.describe/list/test` programs、凭证引用与测试结果解析 |
+| `MarivoDatasourceBridge` | `md.load().describe/list/test` programs、凭证引用与测试结果解析 |
 | `MarivoPresentationProjection` | persisted Artifact/Finding 的固定公开读取、computed typed JSON 与声明来源快照；不执行 revalidation |
 
 adapter 分别位于自己的 `disclosure/`、`datasource/`、`presentation/projection/` 目录。组合层按

@@ -19,10 +19,10 @@ export async function createSemanticWorkspace(
   const metrics = Array.from(
     { length: count },
     (_, i) =>
-      `@ms.metric(entities=[orders], additivity="additive", ai_context=ms.ai_context(business_definition="${i === 0 ? '收入 monthly revenue ' + '😀'.repeat(250) : 'Fixture measure'}"))\ndef ${i === 0 ? 'revenue' : `revenue_${i}`}(table):\n    return table.amount.sum()\n`,
+      `@ms.metric(ai_context=ms.ai_context(business_definition="${i === 0 ? '收入 monthly revenue ' + '😀'.repeat(250) : 'Fixture measure'}"))\ndef ${i === 0 ? 'revenue' : `revenue_${i}`}():\n    return amount.sum()\n`,
   ).join('\n')
   await writeFile(
     path.join(root, 'models', 'semantic', domain, 'datasets.py'),
-    `import marivo.datasource as md\nimport marivo.semantic as ms\norders = ms.entity(name="orders", datasource=ms.ref.datasource("warehouse"), source=md.table("orders"))\n@ms.dimension(entity=orders)\ndef region(table):\n    return table.region\n${metrics}`,
+    `import marivo.datasource as md\nimport marivo.semantic as ms\norders = ms.entity(name="orders", datasource=ms.ref.datasource("warehouse"), source=md.table("orders"))\namount = ms.measure_column(name="amount", entity=orders, column="amount", additivity=ms.additive_all())\n@ms.dimension(entity=orders)\ndef region(table):\n    return table.region\n${metrics}`,
   )
 }

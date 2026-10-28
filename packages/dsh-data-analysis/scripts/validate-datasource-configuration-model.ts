@@ -76,7 +76,7 @@ connection.close()
     agent.ctx.systemPrompt.section({
       name: 'configuration-validation',
       order: 100,
-      text: `${MARIVO_DATASOURCE_CREDENTIAL_PROMPT}\nPublic API examples: import marivo.datasource as md; md.list().ids() discovers registered datasource names; with md.connect(name) as backend: print(backend.raw_sql("SELECT SUM(amount) FROM orders").fetchall()). Use only read-only analysis queries.`,
+      text: `${MARIVO_DATASOURCE_CREDENTIAL_PROMPT}\nPublic API examples: import marivo.datasource as md; md.load().list().ids() discovers registered datasource names; import marivo.semantic as ms; print(md.raw_sql(ms.ref.datasource(name), "SELECT SUM(amount) FROM orders", reason="Validate fixture sum").to_pandas()). Use only read-only analysis queries.`,
     })
     const results: { name: string; isError: boolean; value?: unknown }[] = []
     ctx.on('tools/result', (exec, result) => {

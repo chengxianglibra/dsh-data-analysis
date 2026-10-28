@@ -2,29 +2,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseComputation } from '../../src/semantic-browser/definition.ts'
 
-const ref = { schema: 'marivo.semantic_ref/v1' as const, kind: 'metric', path: 'growth.spend' }
+const ref = { schema: 'marivo.semantic_ref/v1' as const, kind: 'metric', path: 'sales.revenue' }
 const payload = {
-  schema: 'marivo.semantic_definition/v1',
+  schema: 'dsh-data-analysis-computation/v1',
   ref,
   catalog_definition_fingerprint: 'catalog',
-  source_location: { file: '/project/model.py', line: 1 },
-  node: {
-    kind: 'cumulative',
-    base: ref,
-    over: { selection: 'default', resolution: 'context_required' },
-    anchor: { kind: 'all_history' },
-  },
-  temporal: {
-    declared: { status: 'not_declared' },
-    override: { status: 'not_declared' },
-    effective: { status: 'component_defined' },
-  },
+  expression: 'amount.sum(time=ordered_at)',
+  facts: [{ name: 'null_rules', value: 'Captured NULL behavior' }],
 }
-test('definition transport preserves default and availability states and validates snapshot identity', () => {
+test('captured definition projection preserves text and enforces identity', () => {
   assert.deepEqual(parseComputation(payload, ref, 'catalog'), payload)
+  assert.equal(parseComputation(null, ref, 'catalog'), null)
   assert.throws(() => parseComputation(payload, ref, 'other'), /identity/)
   assert.throws(
-    () => parseComputation(payload, { ...ref, path: 'growth.other' }, 'catalog'),
+    () => parseComputation(payload, { ...ref, path: 'sales.other' }, 'catalog'),
     /identity/,
   )
   assert.throws(
@@ -32,15 +23,14 @@ test('definition transport preserves default and availability states and validat
     /identity/,
   )
 })
-test('definition transport rejects undeclared fields, executable values and oversized nesting', () => {
-  for (const node of [
-    { ...payload.node, password: 'secret' },
-    { kind: 'expression', expression: () => 1 },
-    { kind: 'aggregate', operation: { kind: 'percentile', q: Infinity } },
+test('projection rejects executable values, undeclared facts and unbounded content', () => {
+  for (const invalid of [
+    { ...payload, expression: () => 1 },
+    { ...payload, expression: 'x'.repeat(1024 * 1024 + 1) },
+    { ...payload, facts: [{ name: 'password', value: 'secret' }] },
+    { ...payload, facts: [...payload.facts, ...payload.facts] },
+    { ...payload, facts: [{ name: 'null_rules', value: { code: 'x' } }] },
+    { ...payload, extra: 'hidden' },
   ])
-    assert.throws(() => parseComputation({ ...payload, node }, ref, 'catalog'))
-  let node: unknown = { kind: 'column', entity: { ...ref, kind: 'entity' }, name: 'spend' }
-  for (let i = 0; i < 70; i++) node = { kind: 'cast', data_type: 'float64', operand: node }
-  assert.throws(() => parseComputation({ ...payload, node }, ref, 'catalog'), /large/)
-  assert.equal(parseComputation(null, ref, 'catalog'), null)
+    assert.throws(() => parseComputation(invalid, ref, 'catalog'))
 })

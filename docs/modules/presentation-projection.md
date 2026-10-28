@@ -89,19 +89,19 @@ SQL、凭据或上游异常。提示明确本次来源投影未完成、尚未�
 
 ## 公开来源快照
 
-固定程序通过 `mv.session.resume(..., use_datasources=False)`、`session.artifact`、`artifact.contract`、
-`artifact.to_pandas` 和可选 `artifact.finding` / `finding.render` 读取持久化事实。
-恢复仍需要有效 Workspace 声明；不执行 `observe`、`revalidate` 或数据源准入，并安装拒绝凭据读取的 resolver。
+固定程序通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)`、
+`frame.to_pandas()`、`frame.evidence_digest()` 和分页 `frame.findings()` 读取已保存 Frame。
+精确核验 Session、Artifact、Workspace 与 Evidence 身份；安装拒绝凭据读取的 resolver，不加载当前模型或重跑分析。
 
-available 来源保存读取时间、Artifact 内容身份、公开语义引用、Quality/issues 及选定 Finding。
-可选 Finding 不可读取时保留 Artifact 来源并明确 Finding unavailable；身份不一致直接失败。
-当前公开契约不能提供历史 metric 定义时明确 unavailable，不用当前定义冒充历史口径。
-来源面板只读取这些快照，不再次执行 Python。
+来源保存读取时间、精确 ID、输出名、Evidence/Quality/Issue digest、Evidence 事实和可选 Finding。
+新版未公开的旧 metadata/contract 属性不补造，也不把 digest 解释为完整质量评估。
+Finding 缺失保留来源并明确诊断；必要数据缺失使直接 Artifact dataset 失败。
+`to_pandas()` 负责验证保存数据完整性；编码保持 Decimal、大整数和 NULL 的公开终端值。
 
-来源 `code` 快照通过公开 `artifact.meta.produced_by_job`、`session.get_run(...)` 与 Run 的
-`input_artifact_refs` 读取当前 Artifact 及其上游的实际 SQL；核验生产记录的输出身份和 Workspace，
-不枚举其他 Run、不重新编译 SQL。每个来源最多读取 64 个上游 Artifact、保存 32 条 SQL，单条最多 32768 UTF-16 code units；
-无查询、缺失记录及超限保留明确说明，不把截断 SQL 当作原文。
+当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口。新来源的 `code` 固定为无 snippets，
+并标明 `sql-capability-unavailable`；不读取私有 Store、日志或重新编译 SQL。
+已有报告 Build 中保存的 SQL 快照继续展示，不改写历史文档。
+旧 Session Store 不自动迁移，无法恢复的旧引用明确 unavailable；原始 Store 留给兼容旧 Runtime 读取/导出。
 
 dataset 可通过 `codeRefs` 引用成功 `marivo_python` 的执行记录。投影只从 Host 管理的执行存储按精确 Workspace、execution ID 和
 完整记录字节的 SHA-256 读取 Python 原文，再保存到 dataset 的 `code`；不接受 Workspace 自报记录。

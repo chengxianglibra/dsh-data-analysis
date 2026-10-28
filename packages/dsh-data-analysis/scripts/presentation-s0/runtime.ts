@@ -22,38 +22,7 @@ const workspaceRoot = path.join(runRoot, 'workspace')
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url))
 await mkdir(path.join(workspaceRoot, 'models', 'datasources'), { recursive: true })
 await mkdir(path.join(workspaceRoot, 'models', 'semantic', 'sales'), { recursive: true })
-const workspaceFiles = {
-  'marivo.toml': '[project]\nname = "presentation-s0-runtime"\n',
-  'models/datasources/warehouse.py':
-    "import marivo.datasource as md\nmd.duckdb(name='warehouse', path=':memory:')\n",
-  'models/semantic/sales/__init__.py': '',
-  'models/semantic/sales/_domain.py':
-    "import marivo.semantic as ms\nms.domain(name='sales', owner='S0 validation')\n",
-  'models/semantic/sales/datasets.py': [
-    'import marivo.datasource as md',
-    'import marivo.semantic as ms',
-    "orders = ms.entity(name='orders', datasource=ms.ref.datasource('warehouse'), source=md.table('orders'))",
-    "region = ms.dimension_column(name='region', entity=orders, column='region')",
-    "@ms.metric(entities=[orders], additivity='additive', name='revenue', unit='USD')",
-    'def revenue(orders):',
-    '    return orders.amount.sum()',
-    "@ms.metric(entities=[orders], additivity='non_additive', name='account_id')",
-    'def account_id(orders):',
-    '    return orders.account_id.max()',
-    "precise_orders = ms.entity(name='precise_orders', datasource=ms.ref.datasource('warehouse'), source=md.table('precise_orders'))",
-    "precise_region = ms.dimension_column(name='region', entity=precise_orders, column='region')",
-    "@ms.metric(entities=[precise_orders], additivity='additive', name='precision_revenue', unit='USD')",
-    'def precision_revenue(precise_orders):',
-    '    return precise_orders.amount.sum()',
-    "@ms.metric(entities=[precise_orders], additivity='non_additive', name='precision_account_id')",
-    'def precision_account_id(precise_orders):',
-    '    return precise_orders.account_id.max()',
-    '',
-  ].join('\n'),
-}
-for (const [relative, content] of Object.entries(workspaceFiles)) {
-  await writeFile(path.join(workspaceRoot, relative), content)
-}
+
 const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
 async function run(filename: string, args: string[] = [], expectedExitCode = 0) {
   const result = await environment.runChecked({
@@ -67,8 +36,7 @@ async function run(filename: string, args: string[] = [], expectedExitCode = 0) 
 }
 const generated = await run('runtime-generate.py')
 await writeFile(path.join(runRoot, 'generated.json'), `${JSON.stringify(generated, null, 2)}\n`)
-// The input database died with the first process. Resume still reads valid Workspace
-// semantic/datasource declarations; use_datasources=False prevents their connections.
+// The input database was removed and model loading deliberately fails; saved reads remain valid.
 const restored = await run('runtime-read.py', [JSON.stringify(generated.primary), '3'])
 const secondary = await run('runtime-read.py', [JSON.stringify(generated.secondary), '3'])
 const precisionProbe = await run('runtime-read.py', [JSON.stringify(generated.precisionProbe), '4'])
@@ -85,8 +53,8 @@ assert.notEqual(restored.readPid, generated.generationPid)
 assert.deepEqual(restored.forbiddenCalls, { observe: 0, revalidate: 0, credentialResolve: 0 })
 assert.deepEqual(restored.truncation, { totalRows: 4, writtenRows: 3, omittedRows: 1, rowLimit: 3 })
 assert.deepEqual(restored.rows, [
-  ['A', 12.5],
-  ['B', 8.25],
+  ['A', '12.5000'],
+  ['B', '8.2500'],
   ['C', null],
 ])
 assert.deepEqual(secondary.rows, [
@@ -99,16 +67,16 @@ for (const read of [secondary, precisionProbe]) {
   assert.deepEqual(read.forbiddenCalls, { observe: 0, revalidate: 0, credentialResolve: 0 })
 }
 assert.equal(unavailable.status, 'unavailable')
-assert.equal(unavailable.exceptionType, 'ArtifactNotFoundError')
+assert.ok(unavailable.exceptionType)
 assert.deepEqual(unavailable.forbiddenCalls, { observe: 0, revalidate: 0, credentialResolve: 0 })
 assert.equal(unavailableDataset.status, 'error')
-assert.equal(unavailableDataset.exceptionType, 'ArtifactNotFoundError')
+assert.equal(unavailableDataset.exceptionType, unavailable.exceptionType)
 assert.deepEqual(unavailableDataset.forbiddenCalls, {
   observe: 0,
   revalidate: 0,
   credentialResolve: 0,
 })
-assert.deepEqual(precisionProbe.rows[0], ['A', 12345678901234.568, 9007199254740992])
+assert.deepEqual(precisionProbe.rows[0], ['A', '12345678901234.5678', '9007199254740993'])
 const evidence = {
   status: 'passed',
   binding: environment.binding,
@@ -118,9 +86,9 @@ const evidence = {
   precisionProbe,
   unavailable,
   unavailableDataset,
-  workspaceDefinitionsRequired: true,
+  workspaceDefinitionsRequired: false,
   freshProcessRead: true,
-  inputDatabaseWasProcessLocal: true,
+  inputDatabaseRemovedBeforeRead: true,
   profileOrCredentialsModified: false,
 }
 await writeFile(

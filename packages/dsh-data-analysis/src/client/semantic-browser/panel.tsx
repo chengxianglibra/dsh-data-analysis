@@ -56,31 +56,7 @@ function ObjectDetail({
     }
   }
   const source = `${object.source.file}${object.source.line ? `:${object.source.line}` : ''}`
-  const representedFields = new Set([
-    'unit',
-    'metric_type',
-    'aggregation',
-    'aggregation_target',
-    'aggregation_target_kind',
-    'measure',
-    'filter',
-    'weighted_mean_value',
-    'weighted_mean_weight',
-    'composition',
-    'components',
-    'linear_terms',
-    'effective_entities',
-    'entity',
-    'fold',
-    'status_time_dimension',
-    'candidate_dimensions',
-    'candidate_time_dimensions',
-    'measure_lineage',
-    'required_relationships',
-  ])
-  const definitionFields = object.fields.filter(
-    (field) => field.value && (!object.computation || !representedFields.has(field.name)),
-  )
+  const definitionFields = object.fields.filter((field) => field.value)
   return (
     <>
       <div className="sb-actions">

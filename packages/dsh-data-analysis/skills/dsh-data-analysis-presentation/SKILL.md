@@ -10,7 +10,7 @@ description: 将已有分析结果保存为右侧阅读器中的交互图表、�
 ## 生成报告
 
 1. 确认展示目标与已有结果。报告语言遵循用户要求，否则根据问题和上下文决定，不跟随系统界面语言。已有结果可直接展示；缺少计算时，文件分析交给 `dsh-data-analysis-files`，Marivo 分析或建模交给对应 Runtime Skill 与 live Help。只补所需分支。
-2. 选择数据与来源。可恢复 Artifact 用实际 `session.id` 和 `artifact.ref` 引用，按需加 `findingId`，不重复导出。同一问题需要计算后的 DataFrame 时，通过 `marivo_python` 在绑定 Runtime 使用 `dsh_data_analysis_presentation.write_dataset`；纯本地 pandas／原生 DuckDB 传 `datasources: []`，访问 Marivo datasource 才声明其精确名称。文件结果注明文件名与分析范围，关联实际返回的 `codeRef`，不构造 Marivo Artifact 或 Evidence 身份。
+2. 选择数据与来源。可恢复 Artifact 用已持久化 Frame 的实际 `saved.session_id` 和 `saved.artifact_id` 引用，按需加 `findingId`，不重复导出。同一问题需要计算后的 DataFrame 时，通过 `marivo_python` 在绑定 Runtime 使用 `dsh_data_analysis_presentation.write_dataset`；纯本地 pandas／原生 DuckDB 传 `datasources: []`，访问 Marivo datasource 才声明其精确名称。文件结果注明文件名与分析范围，关联实际返回的 `codeRef`，不构造 Marivo Artifact 或 Evidence 身份。
 3. 写草稿前读 [schema 与文件边界](references/schema.md)。使用完整 Draft、Workspace 相对路径和实际来源身份；来源事实与 unavailable 状态由 builder 读取。报告、看板及比较型展示还需读 [叙事与证据检查](references/narrative.md)，核对展示中的数值、范围、方向、分母和文字与已有结果一致。需要图表时读 [图形配置](references/charts.md)，需要起步草稿或 writer 用法时读 [可改写示例](references/examples.md)。
 4. 用普通文件能力在当前 Workspace 写 Draft。手写 computed JSON 时可按 [静态预检](references/schema.md#草稿静态预检)检查结构，再调用 `marivo_present`。成功 receipt 才表示已保存交付；失败按诊断修正草稿或引用，不为修复展示自动重新查询、observe、revalidate 或重放分析。缺失数据交回原分析流程。
 5. 回复主要结论、未完成分支和实质限制，简短说明报告已在右侧 tab 打开；headless 时提供 receipt 的准确路径。保留来源 unavailable、Agent 预筛选与 writer 截断的区别。只声明实际完成的浏览器检查，不把构建成功视为计算或业务结论已验证。

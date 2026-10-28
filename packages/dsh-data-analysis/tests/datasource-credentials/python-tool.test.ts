@@ -62,6 +62,7 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
   } as unknown as Context
   registerMarivoPythonTool(ctx, f.bridge, f.service, options)
   return {
+    definition,
     requests,
     launches,
     outcome,
@@ -79,6 +80,20 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
       ),
   }
 }
+
+test('Python tool describes the current Session contract without requiring a removed close API', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const { definition } = pythonTool(f)
+  const properties = definition.parameters.properties as Record<string, { description: string }>
+  assert.match(properties.code!.description, /current Runtime Help/)
+  assert.match(properties.code!.description, /persistence/)
+  assert.doesNotMatch(properties.code!.description, /close Sessions|session\.close/i)
+  assert.match(
+    properties.datasources!.description,
+    /Catalog-only definition reads need no datasource connection/,
+  )
+})
 
 test('Python admits configured credentials once, uses stdin, and clears its fresh snapshot', async (t) => {
   const f = fixture()

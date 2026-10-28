@@ -16,7 +16,7 @@
 | Artifact dataset | `id`, `kind: "artifact"`, `sourceId`, `rowLimit` | `columns: string[]`, `codeRefs` |
 | computed dataset | `id`, `kind: "computed"`, `path`, `sourceIds: string[]` | `codeRefs` |
 
-`sessionId` 使用 Artifact 所属 Marivo Session 的实际 `session.id`，`artifactRef` 使用实际 `artifact.ref`。保存并传递这两个公开属性；`session.name`、显示名称、日志标题和 DSH Session ID 都不能替代持久身份。`sourceId` 和 `sourceIds` 指向草稿 `sources[].id`。computed 可声明零个或多个来源，声明不建立 Marivo lineage，也不验证转换。Artifact dataset 要求可恢复保存数据；computed 的声明来源不可用时仍可展示数据，并标明 unavailable。
+先调用 `saved = frame.persist()`；`sessionId` 使用 `saved.session_id`，`artifactRef` 使用 `saved.artifact_id`。已有保存 Frame 无需重复持久化。跨 Python 调用前必须输出或保存这两个 ID，恢复使用 `mv.session.resume(session_id).persisted_frame(artifact_id)`。保存并传递这两个公开属性；`session.name`、显示名称、日志标题和 DSH Session ID 都不能替代持久身份。`sourceId` 和 `sourceIds` 指向草稿 `sources[].id`。computed 可声明零个或多个来源，声明不建立 Marivo lineage，也不验证转换。Artifact dataset 要求可恢复保存数据；computed 的声明来源不可用时仍可展示数据，并标明 unavailable。
 
 `draft_path` 与 computed 的 `path` 均相对于当前绑定 Workspace 根目录，**不是相对于草稿文件目录**。使用根目录内的 JSON 文件；不使用绝对路径、`..`、`.` 路径段、反斜杠、空路径段或通向 Workspace 外的符号链接。不从其他项目、解释器或数据源补齐失败的引用。
 
@@ -77,7 +77,7 @@ marivo_present({ draft_path, report_id, expected_build_id })
 记录保存失败时，执行结果会带 `codeCaptureError`，已有执行结果仍然有效；省略缺失的引用并说明代码不可用，不为修复展示自动重放分析。
 明确引用的记录丢失、摘要不匹配或属于其他 Workspace 时，报告构建失败；核对引用，不替换成当前脚本文件。
 
-Artifact 的实际执行 SQL 由投影程序从该 Artifact 及其上游生产记录读取，无需在草稿重复提供。
+Marivo 0.6 当前没有公共持久化 SQL 读取接口，新 Artifact 来源明确显示 SQL 不可用，不读取私有 Store 或日志。已有 Build 的 SQL 快照保留。
 没有查询、记录不可读取或超出读取预算时保留明确说明。`md.raw_sql()` 等未持久化为这些 Artifact 生产记录的 SQL 不会自动补出。
 Python / SQL 原文随报告快照保存，不做字面量脱敏；reader 只显示文本，不执行它们。Python 记录的是本次提交代码，导入模块及外部文件的内容不会自动打包。
 

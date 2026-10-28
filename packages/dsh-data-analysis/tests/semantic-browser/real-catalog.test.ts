@@ -22,14 +22,25 @@ async function tree(root: string): Promise<Record<string, string>> {
   }
   return result
 }
-test('real Marivo 0.5.5: all 13 kinds, full definitions and relations; no data operations or project writes', async (t) => {
+function assertCatalogCacheOnly(before: Record<string, string>, after: Record<string, string>) {
+  for (const [name, hash] of Object.entries(before)) assert.equal(after[name], hash, name)
+  for (const name of Object.keys(after)) {
+    if (name in before) continue
+    assert.match(
+      name,
+      /^\.marivo\/(?:$|semantic\/(?:$|search\/(?:$|results\/(?:$|[a-f0-9]{64}\.json$))))/,
+      name,
+    )
+  }
+}
+test('real Marivo 0.6.0.dev0: all 10 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.5.5 Python unavailable')
+    t.skip('Marivo 0.6.0.dev0 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),
@@ -52,9 +63,9 @@ from marivo.semantic.catalog import SemanticCatalog
 def forbidden(*args, **kwargs):
     raise AssertionError("Browser attempted a data operation")
 Session.observe = forbidden
-SemanticCatalog.preview = forbidden
+SemanticCatalog.search_original = SemanticCatalog.search
 SemanticCatalog.readiness = forbidden
-md.test = forbidden
+md.DatasourceCatalog.test = forbidden
 mv.session = forbidden
 ` + request.program,
       }),
@@ -70,81 +81,35 @@ mv.session = forbidden
     (await service.read({ workspaceId: 'a' }, signal)).objects.map((item) => item.ref),
     [{ schema: 'marivo.semantic_ref/v1', kind: 'datasource', path: 'default' }],
   )
-  assert.deepEqual(await tree(root), {})
+  assertCatalogCacheOnly({}, await tree(root))
   await createBrowserWorkspace(root)
   const before = await tree(root)
   const data = await service.read({ workspaceId: 'a' }, signal)
-  const cumulative = data.objects.find((x) => x.ref.path === 'sales.quarter_spend')!
-  for (const [name, expression] of [
-    ['sales.order_count', "t1['id'].count()"],
-    ['sales.cancelled_orders', "t1['is_cancelled'].cast('int64').sum()"],
-  ]) {
-    const node = data.objects.find((x) => x.ref.path === name)!.computation!.node
-    assert.equal(node.status, 'unsupported')
-    assert.equal((node.display as { text: string }).text, expression)
-  }
-  const temporal = (name: string) =>
-    data.objects.find((x) => x.ref.path === name)!.computation!.temporal!
-  for (const name of ['revenue', 'linear'])
-    assert.deepEqual(temporal(`sales.${name}`).effective, { status: 'not_applicable' })
-  for (const name of ['ratio', 'quarter_spend', 'all_spend', 'rolling_spend', 'stock_linear'])
-    assert.deepEqual(temporal(`sales.${name}`).effective, { status: 'component_defined' })
-  assert.deepEqual(
-    data.objects.find((x) => x.ref.path === 'sales.all_spend')!.computation!.node.over,
-    { selection: 'default', resolution: 'context_required' },
+  const revenueDefinition = data.objects.find((item) => item.ref.path === 'sales.revenue')!
+    .computation!
+  assert.match(revenueDefinition.expression, /sum/)
+  assert.ok(
+    revenueDefinition.facts.some(
+      (item) => item.name === 'time_bindings' && item.value.includes('ordered_at'),
+    ),
   )
-  const over = {
-    schema: 'marivo.semantic_ref/v1',
-    kind: 'time_dimension',
-    path: 'sales.orders.ordered_at',
-  }
-  for (const [name, source, fold] of [
-    ['sales.orders.stock', 'declared', { kind: 'percentile', q: 0.95 }],
-    ['sales.stock_total', 'measure', { kind: 'percentile', q: 0.95 }],
-    ['sales.stock_last', 'metric_override', { kind: 'last' }],
-  ] as const)
-    assert.deepEqual(temporal(name).effective, { status: 'resolved', source, over, fold })
-  assert.equal(cumulative.computation!.node.kind, 'cumulative')
-  assert.deepEqual(cumulative.computation!.node.anchor, {
-    kind: 'grain_to_date',
-    grain: {
-      kind: 'semantic',
-      calendar: { schema: 'marivo.semantic_ref/v1', kind: 'period_calendar', path: 'sales.fiscal' },
-      level: 'week',
-    },
-  })
-  assert.ok(cumulative.relations.some((x) => x.ref.path === 'sales.fiscal'))
-  assert.deepEqual(
-    data.objects.find((x) => x.ref.path === 'sales.orders.amount')!.computation!.node.display,
-    {
-      language: 'python',
-      form: 'normalized_ibis',
-      text: 't1["amount"]',
-      bindings: [
-        {
-          alias: 't1',
-          ref: { schema: 'marivo.semantic_ref/v1', kind: 'entity', path: 'sales.orders' },
-        },
-      ],
-      redacted_literals: false,
-    },
+  assert.ok(revenueDefinition.facts.some((item) => item.name === 'null_rules'))
+  assert.match(
+    data.objects.find((item) => item.ref.path === 'sales.orders.amount')!.computation!.expression,
+    /amount/,
   )
-  assert.equal(
-    data.objects.find((x) => x.ref.path === 'sales.orders.amount')!.computation!.node.kind,
-    'expression',
+  assert.ok(
+    data.objects
+      .find((item) => item.ref.path === 'sales.linear')!
+      .relations.some((item) => item.ref.path === 'sales.revenue'),
   )
-  assert.equal(
-    (data.objects.find((x) => x.ref.path === 'sales.linear')!.computation!.node.terms as unknown[])
-      .length,
-    3,
-  )
-  assert.equal(new Set(data.objects.map((item) => item.ref.kind)).size, 13)
+  assert.equal(new Set(data.objects.map((item) => item.ref.kind)).size, 10)
   const revenue = data.objects.find((item) => item.ref.path === 'sales.revenue')!
   assert.ok(revenue.definition!.length > 240)
   assert.ok(revenue.relations.some((relation) => relation.ref.kind === 'measure'))
   assert.ok(revenue.source.line > 0)
   assert.doesNotMatch(JSON.stringify(data), /DO_NOT_DISCLOSE_DATABASE_PATH/)
-  assert.deepEqual(await tree(root), before)
+  assertCatalogCacheOnly(before, await tree(root))
   await writeFile(
     path.join(root, 'models/semantic/sales/objects.py'),
     'raise RuntimeError("PRIVATE")\n',

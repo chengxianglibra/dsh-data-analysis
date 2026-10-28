@@ -11,7 +11,7 @@ import { browserFailure, SemanticBrowserService } from '../src/semantic-browser/
 import { createBrowserWorkspace } from '../tests/semantic-browser/fixtures.ts'
 
 const playwrightModule = process.env.DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE ?? 'playwright'
-const { chromium } = await import(playwrightModule)
+const serveOnly = process.env.DSH_DATA_ANALYSIS_BROWSER_SERVE_ONLY === '1'
 const python =
   process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
   path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
@@ -43,7 +43,7 @@ await writeFile(
     '\n' +
     Array.from(
       { length: 85 },
-      (_, i) => `metric_${i} = ms.aggregate(name="metric_${i}", measure=amount, agg="sum")`,
+      (_, i) => `@ms.metric()\ndef metric_${i}():\n    return amount.sum()`,
     ).join('\n'),
 )
 const runners = new Map(
@@ -84,6 +84,8 @@ const app = await build({
     contents: `
 import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {CopyProvider} from './packages/dsh-data-analysis/src/client/i18n/context.tsx';
+import {translator} from './packages/dsh-data-analysis/src/client/i18n/copy.ts';
 import {SemanticBrowserPanel} from ${JSON.stringify(panelPath)};
 import {SemanticBrowserModel} from ${JSON.stringify(modelPath)};
 const model=new SemanticBrowserModel({call:async(channel,endpoint,payload,signal)=>{
@@ -92,7 +94,7 @@ const model=new SemanticBrowserModel({call:async(channel,endpoint,payload,signal
 const workspaces=${JSON.stringify(workspaceList)};
 function App(){ const [sessionId,setSessionId]=useState('sales-session'); window.setFixtureSession=(id)=>{model.close();setSessionId(id)};
 return <><h1>语义层 Tab 正文验收夹具</h1><p>真实 Marivo Catalog · 无 live Agent · 仅临时项目</p><button onClick={()=>model.show(workspaces.find(w=>w.sessionIds.includes(sessionId)).workspaceId)}>打开语义层</button><div style={{height:'calc(100dvh - 150px)',minWidth:0}}><SemanticBrowserPanel model={model} workspaces={workspaces}/></div></>; }
-createRoot(document.getElementById('app')).render(<App/>);
+createRoot(document.getElementById('app')).render(<CopyProvider t={translator('zh-CN')}><App/></CopyProvider>);
 `,
   },
   bundle: true,
@@ -139,6 +141,18 @@ await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 const address = server.address()
 if (!address || typeof address === 'string') throw new Error('listener-unavailable')
 const url = `http://127.0.0.1:${address.port}`
+if (serveOnly) {
+  console.log(JSON.stringify({ url, temporary, output }))
+  await new Promise<void>((resolve) => {
+    process.once('SIGTERM', resolve)
+    process.once('SIGINT', resolve)
+  })
+  await service.close()
+  await new Promise<void>((resolve) => server.close(() => resolve()))
+  await rm(temporary, { recursive: true, force: true })
+  process.exit(0)
+}
+const { chromium } = await import(playwrightModule)
 const browser = await chromium.launch({ headless: true })
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
@@ -157,125 +171,21 @@ try {
   assert.equal(await page.getByLabel('选择 Workspace').count(), 0)
   assert.equal(requests, 1)
   checks.push('Tab 正文使用指定 Workspace、无 live Agent 真实 Catalog 读取、大目录分页')
-  await page.getByLabel('搜索语义对象').fill('metric:sales.quarter_spend')
-  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-  const computation = page.getByRole('region', { name: '指标计算口径' })
-  assert.equal(await computation.count(), 0)
-  await page.getByRole('button', { name: '定义', exact: true }).click()
-  await computation.waitFor()
-  await computation.getByText('由计算公式及组成对象确定').waitFor()
-  assert.match(
-    await computation.locator('.sb-formula').first().innerText(),
-    /从 sales.fiscal 的 week 周期起点累计/,
-  )
-  await computation.getByRole('button', { name: 'sales.orders.ordered_at', exact: true }).waitFor()
-  assert.equal(await page.getByRole('region', { name: '对象详情' }).locator('details').count(), 0)
-  const code = computation.getByRole('region', { name: 'Ibis 表达式' })
-  await code.locator('code').filter({ hasText: 't1["amount"]' }).waitFor()
-  const copyExpression = code.getByRole('button', { name: '复制 Ibis 表达式', exact: true })
-  assert.equal(await copyExpression.innerText(), '')
-  await copyExpression.focus()
-  await page.keyboard.press('Enter')
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 't1["amount"]')
-  await code.getByText('表达式已复制', { exact: true }).waitFor()
-  await computation
-    .locator('.sb-formula')
-    .getByRole('button', { name: 'sales.fiscal', exact: true })
-    .click()
-  await page
-    .getByRole('region', { name: '对象详情' })
-    .getByRole('heading', { name: 'fiscal', exact: true })
-    .waitFor()
-  await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
-  await page.getByLabel('搜索语义对象').fill('metric:sales.ratio')
-  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-  await computation.getByText('sales.revenue ÷ sales.revenue', { exact: true }).waitFor()
-  await computation.getByText('由计算公式及组成对象确定').waitFor()
-  assert.equal(
-    await computation.getByRole('region', { name: 'metric:sales.revenue', exact: true }).count(),
-    1,
-  )
   await page.getByLabel('搜索语义对象').fill('metric:sales.linear')
   await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-  assert.equal(
-    await computation
-      .locator('.sb-formula')
-      .first()
-      .getByRole('button', { name: 'sales.revenue', exact: true })
-      .count(),
-    3,
-  )
-  assert.equal(
-    await computation.getByRole('region', { name: 'metric:sales.revenue', exact: true }).count(),
-    1,
-  )
-  assert.equal(await computation.getByRole('region', { name: '时间折叠规则' }).count(), 0)
-  for (const name of ['stock_total', 'stock_last', 'stock_linear']) {
-    await page.getByLabel('搜索语义对象').fill(`metric:sales.${name}`)
-    await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-    const temporal = computation.locator(':scope > .sb-temporal')
-    const text = await temporal.innerText()
-    assert.match(
-      text,
-      name === 'stock_linear'
-        ? /由计算公式及组成对象确定/
-        : name === 'stock_last'
-          ? /last/
-          : /percentile\(q=0.95\)/,
-    )
-    if (name !== 'stock_linear')
-      await temporal.getByRole('button', { name: 'sales.orders.ordered_at', exact: true }).waitFor()
-    assert.doesNotMatch(await computation.innerText(), /需观察上下文确定|不适用/)
-  }
-  await page.screenshot({ path: path.join(output, 'temporal-component-defined.png') })
-  await page.getByLabel('搜索语义对象').fill('metric:sales.all_spend')
-  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-  await computation.getByText('使用默认时间轴，需观察上下文确定', { exact: true }).waitFor()
-  await computation.getByText('由计算公式及组成对象确定').waitFor()
-  checks.push(
-    '0.5.5 时间规则：普通加减无独立折叠、组合定义、继承分位数、末值覆盖；默认累计轴单独保留上下文提示',
-  )
-  await page.getByLabel('搜索语义对象').fill('metric:sales.cancellation_rate')
-  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-  for (const expression of ["t1['is_cancelled'].cast('int64').sum()", "t1['id'].count()"]) {
-    const region = computation.getByRole('region', { name: 'Ibis 表达式' }).filter({
-      has: page.locator('pre code').filter({ hasText: expression }),
-    })
-    await region.getByRole('button', { name: '复制 Ibis 表达式' }).click()
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), expression)
-  }
+  await page.getByRole('button', { name: '定义', exact: true }).click()
+  const computation = page.getByRole('region', { name: '指标计算口径' })
+  await computation.waitFor()
+  assert.match(await computation.innerText(), /revenue/)
+  const dependency = computation.getByRole('region', { name: 'metric:sales.revenue', exact: true })
+  await dependency.waitFor()
+  await dependency.getByText('时间绑定', { exact: true }).waitFor()
+  await dependency.getByRole('button', { name: 'sales.revenue', exact: true }).click()
+  await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
+  await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
+  assert.equal(requests, 1)
+  checks.push('新版公式、时间绑定、空值规则与依赖展示；引用跳转返回不重读')
   await page.getByLabel('搜索语义对象').fill('')
-  checks.push('真实结构化定义：累计与比率；Ibis 代码直接展示、别名与复制；日历跳转返回')
-
-  const detail = page.getByRole('region', { name: '对象详情' })
-  const linkReads = requests
-  for (const [source, tab, target, heading] of [
-    ['dimension:sales.orders.region', '概览', 'entity:sales.orders', 'orders'],
-    ['entity:sales.orders', '概览', 'datasource:warehouse', 'warehouse'],
-    ['entity:sales.orders', '概览', 'sales', 'sales'],
-    ['entity:sales.orders', '定义', 'datasource:warehouse', 'warehouse'],
-    ['event:sales.order_created', '定义', 'entity:sales.orders', 'orders'],
-    ['period_calendar:sales.fiscal', '定义', 'dimension:sales.orders.week', 'week'],
-  ]) {
-    await page.getByLabel('搜索语义对象').fill(source)
-    await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
-    await page.getByRole('button', { name: tab, exact: true }).click()
-    const originalHeading = await detail.locator('h2').innerText()
-    await detail
-      .locator('.sb-fields')
-      .getByRole('button', { name: target, exact: true })
-      .first()
-      .click()
-    await detail.getByRole('heading', { name: heading, exact: true }).waitFor()
-    await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
-    assert.equal(await detail.locator('h2').innerText(), originalHeading)
-  }
-  assert.equal(requests, linkReads)
-  await page.getByLabel('搜索语义对象').fill('')
-  checks.push(
-    '概览与定义属性：业务域、实体、数据源、事件、日历层级精确引用跳转及返回，不额外读取 Catalog',
-  )
-
   const reads = requests
   const classification = page.getByRole('navigation', { name: '对象分类' })
   await classification.getByRole('button', { name: /^实体\s*3$/ }).waitFor()

@@ -80,7 +80,7 @@ assert.equal(publicRead.exitCode, 0, publicRead.stderr.toString('utf8'))
 const persistedArtifacts = JSON.parse(publicRead.stdout.toString('utf8')) as {
   sessionId: string
   artifactRef: string
-  createdAt: string
+  createdAt: string | null
   contract: unknown
 }[]
 for (const source of document.sources)
@@ -112,16 +112,19 @@ if (journey.id === 'semantic-gap-reuse') {
     initial,
     recovered: later.filter((item) => item.operation === 'artifact'),
     secondTurnObserveCount: later.filter((item) => item.operation === 'observe').length,
-    sources: document.sources.map((source) => ({
-      ...source.ref,
-      persistedCreatedInFirstTurn: persistedArtifacts.some(
+    sources: document.sources.map((source) => {
+      const persisted = persistedArtifacts.find(
         (item) =>
-          item.sessionId === source.ref.sessionId &&
-          item.artifactRef === source.ref.artifactRef &&
-          Date.parse(item.createdAt) >= turns[0]!.started &&
-          Date.parse(item.createdAt) < boundary,
-      ),
-    })),
+          item.sessionId === source.ref.sessionId && item.artifactRef === source.ref.artifactRef,
+      )
+      return {
+        ...source.ref,
+        persistedCreatedInFirstTurn: persisted?.createdAt
+          ? Date.parse(persisted.createdAt) >= turns[0]!.started &&
+            Date.parse(persisted.createdAt) < boundary
+          : null,
+      }
+    }),
     boundary:
       'Reuse and repeated observation are efficiency observations, not report acceptance gates. Retained identities support review of whether new results were represented as earlier Artifacts.',
   }
@@ -148,7 +151,7 @@ const evidence = {
   originalRunEvidencePreserved: true,
   reviewObligations: journey.reviewObligations,
   boundary:
-    'Only saved report bytes, real transcript, runtime observations and public persisted Artifact metadata/contracts were read with use_datasources=False. No model or business query replay. Numeric bindings do not certify narrative, scope labels or execution obligations.',
+    'Only saved report bytes, real transcript, runtime observations and public persisted Frame identities and Evidence digests were read. Artifact creation times are unavailable in 0.6 and cannot certify first-turn production. No model or business query replay. Numeric bindings do not certify narrative, scope labels or execution obligations.',
 }
 await writeFile(path.join(root, 'recheck-evidence.json'), JSON.stringify(evidence, null, 2), {
   mode: 0o600,
