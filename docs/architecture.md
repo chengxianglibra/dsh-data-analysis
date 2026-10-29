@@ -36,7 +36,7 @@
 [DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI 已接入 P3 流式与增量路径：固定 Harness `0.2.1-rc.2` 与八组件 Catalog；新写入通过
 `marivo_present({resources, program?, surface?})` 保存 `dsh.analysis-ui/v1` 文档。单引用默认展开，
 Frame 与原执行内 DataFrame 捕获使用 P1 有界快照；完整内容存入现有不可变 Build JSON。
-共享 AnalysisSurface 同时用于默认 tool view 和显式报告 tab；按准确 recordId 恢复，不重新分析。
+共享 AnalysisSurface 用于工具调用候选、默认结果的会话节点和显式报告 tab；按准确 recordId 恢复，不重新分析。
 Document v3 按旧 Reader 分派，新格式的离线导出、发布与旧编辑明确不可用。Native 参数流形成隔离候选，准确 basedOnRecordId 的完整 patch 经官方合并后条件保存。
 首期完成状态与实际证据以 P3 验收记录为准。见[实施计划](designs/unified-analysis-ui-implementation.md)、
 [P3 验收记录](testing/unified-analysis-ui-p3-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
@@ -99,7 +99,8 @@ Agent 将持久 Frame、原分析进程内 capture 的 DataFrame 或 Workspace �
 recordId 编码这对身份。更新传 basedOnRecordId 和变化语句，官方 mergeStatements 合并后校验完整文档，
 再复用既有锁与 current 条件提交；过期基版本失败，不自动覆盖或重试。
 
-默认 tool view，明确报告/dashboard 使用 tab。Native 的公开 PartialArguments 提供真实 program 前缀；
+默认工具结果使用会话级 Chat 节点，保持在 Harness 工作步骤折叠区之外；明确报告/dashboard 使用 tab。
+Native 的公开 PartialArguments 提供真实 program 前缀；
 候选只展示安全内容、占位与已授权基版本快照，无业务读取或正式保存。报告候选绑定准确调用，成功后转为固定 Build，
 失败或取消保留旧版本。PTC 依实际 dispatch 和结果交付，历史回放不抢焦点，Headless 只确认保存事实。
 

@@ -2,6 +2,7 @@ import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/c
 import type {
   ConversationNodeContext,
   ConversationNodeDefinition,
+  ConversationViewNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -11,6 +12,7 @@ import {
 } from '../../presentation/receipt.ts'
 
 export const PRESENTATION_TURN_DATA_KEY = 'marivo-presentation-delivery'
+export const ANALYSIS_SURFACE_NODE_KEY = 'marivo-analysis-surface'
 
 export interface PresentationTurnDelivery {
   readonly seq: number
@@ -18,6 +20,10 @@ export interface PresentationTurnDelivery {
 }
 export interface PresentationTurnData {
   readonly deliveries: readonly PresentationTurnDelivery[]
+}
+export interface AnalysisSurfaceData extends PresentationTurnData {
+  readonly turn: number
+  readonly boundary: number | null
 }
 interface PresentationTurnState extends PresentationTurnData {
   readonly turn: number
@@ -33,6 +39,7 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     'marivo-presentation-delivery': PresentationTurnData
+    'marivo-analysis-surface': AnalysisSurfaceData
   }
 }
 
@@ -215,6 +222,148 @@ export const marivoPresentationDeliveryDefinition = {
     } satisfies ChatConversationViewNode
   },
 } satisfies ConversationNodeDefinition<PresentationTurnState>
+
+function isCurrentAnalysisSurface(
+  value: ConversationViewNode | null | undefined,
+): value is ChatConversationViewNode {
+  const node = record(value)
+  return (
+    node?.kind === ANALYSIS_SURFACE_NODE_KEY &&
+    node.target === 'chat' &&
+    Number.isSafeInteger(node.anchorSeq) &&
+    node.anchorSeq >= 0 &&
+    record(node.location)?.kind === 'session' &&
+    (node.visibility === 'visible' || node.visibility === 'hidden')
+  )
+}
+
+/** Saved tool surfaces live outside the Host's foldable Turn process group. */
+export const marivoAnalysisSurfaceDefinition = {
+  kind: ANALYSIS_SURFACE_NODE_KEY,
+  target: 'chat',
+  // A loaded window can start midway through a Turn. The first recognized
+  // event establishes its Turn only; a receipt still requires its own call.
+  match(value: unknown) {
+    const match = marivoPresentationDeliveryDefinition.match(value)
+    return match ? { ...match, role: 'start' as const } : null
+  },
+  start(_context: unknown, match: { event: unknown }): PresentationTurnState {
+    const event = record(match.event)
+    const data = record(event?.data)
+    const turn =
+      event?.type === 'tool/ptc-dispatch' || event?.type === 'tool/code-dispatch'
+        ? parsePresentationDurableContent(data?.content)?.turn
+        : data?.turn
+    if (typeof turn !== 'number' || !Number.isSafeInteger(turn) || turn < 0)
+      throw new Error('presentation-surface-turn-required')
+    const calls = new Map<string, string>()
+    if (
+      event?.type === 'tool/call' &&
+      typeof data?.callId === 'string' &&
+      typeof data?.name === 'string'
+    )
+      calls.set(data.callId, data.name)
+    return { turn, calls, deliveries: [] }
+  },
+  update: marivoPresentationDeliveryDefinition.update,
+  buildViewNode(context: ConversationNodeContext<PresentationTurnState>) {
+    const { state, start } = context
+    const existing = context.current.get('chat')
+    const current =
+      isCurrentAnalysisSurface(existing) &&
+      existing.key === context.key &&
+      existing.id === context.id
+        ? existing
+        : null
+    const location = start?.location
+    if (
+      !state ||
+      !location ||
+      (location.kind !== 'turn' && location.kind !== 'step') ||
+      location.turn.turn !== state.turn
+    )
+      return current
+    const end = location.turn.end
+    if (
+      end !== undefined &&
+      (end.type !== 'turn/end' ||
+        end.data?.turn !== state.turn ||
+        !Number.isSafeInteger(end.seq) ||
+        end.seq < 0)
+    )
+      return current ? { ...current, visibility: 'hidden' as const } : null
+    const boundary = end?.seq ?? null
+    const deliveries = state.deliveries.filter(
+      (item) => item.delivery.surface === 'tool' && (boundary === null || item.seq <= boundary),
+    )
+    if (!deliveries.length) {
+      return end && current ? { ...current, visibility: 'hidden' as const } : current
+    }
+    const latest = deliveries.reduce((seq, item) => Math.max(seq, item.seq), 0)
+    return {
+      key: context.key,
+      id: context.id,
+      kind: ANALYSIS_SURFACE_NODE_KEY,
+      target: 'chat',
+      anchorSeq: end && end.seq >= latest ? end.seq : latest,
+      location: { kind: 'session' },
+      visibility: 'visible',
+      data: Object.freeze({ turn: state.turn, boundary, deliveries: Object.freeze(deliveries) }),
+    } satisfies ChatConversationViewNode
+  },
+} satisfies ConversationNodeDefinition<PresentationTurnState>
+
+/** Resolve only deliveries owned by the session providing this keyed Chat slot. */
+export function analysisSurfacesForNode(
+  node: ChatConversationViewNode,
+  sessionId: string,
+): PresentationDelivery[] {
+  if (
+    node.kind !== ANALYSIS_SURFACE_NODE_KEY ||
+    node.target !== 'chat' ||
+    node.location.kind !== 'session'
+  )
+    return []
+  const data = record(node.data)
+  if (
+    !data ||
+    !Number.isSafeInteger(data.turn) ||
+    data.turn < 0 ||
+    node.id !== String(data.turn) ||
+    !Array.isArray(data.deliveries) ||
+    (data.boundary !== null && (!Number.isSafeInteger(data.boundary) || data.boundary < 0))
+  )
+    return []
+  const seen = new Set<string>()
+  const items: PresentationTurnDelivery[] = []
+  for (const value of data.deliveries) {
+    const item = record(value)
+    if (
+      !item ||
+      typeof item.seq !== 'number' ||
+      !Number.isSafeInteger(item.seq) ||
+      item.seq < 0 ||
+      (data.boundary !== null && item.seq > data.boundary)
+    )
+      continue
+    const delivery = parsedDelivery(item.delivery)
+    if (delivery) items.push({ seq: item.seq, delivery })
+  }
+  items.sort((left, right) => left.seq - right.seq)
+  return items.flatMap((item) => {
+    const { delivery } = item
+    if (
+      delivery.surface !== 'tool' ||
+      delivery.turn !== data.turn ||
+      delivery.dshSessionId !== sessionId
+    )
+      return []
+    const identity = presentationDeliveryIdentity(delivery)
+    if (seen.has(identity)) return []
+    seen.add(identity)
+    return [delivery]
+  })
+}
 
 /** Session identity comes from the Host's keyed Chat slot, never from an event field. */
 export function presentationsForNode(

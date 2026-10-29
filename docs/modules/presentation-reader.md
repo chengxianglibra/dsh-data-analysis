@@ -4,7 +4,7 @@
 
 新格式 `dsh.analysis-ui/v1` 由
 [AnalysisSurface](../../packages/dsh-data-analysis/src/client/analysis-ui/surface.tsx) 使用固定 Catalog/Renderer 呈现，
-默认 tool view 和报告 tab 是准确调用及保存版本的薄适配器。
+工具调用候选、默认结果的会话节点和报告 tab 是准确调用及保存版本的薄适配器。
 候选与已保存文档共用 Renderer；Native 前缀通过 isStreaming 解析，不完整资源显示占位。
 基版本经现有 RPC 核验后可读；patch 完整前不合并，失败保持旧成功版本。候选不执行业务读取、动作或保存。Surface 接收文档及已保存资源读取回调，
 领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。阅读状态属于所在视图，位置切换可以重挂。

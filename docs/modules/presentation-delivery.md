@@ -5,7 +5,8 @@
 当前 marivo_present 按 surface、basedOnRecordId、resources、title、program、locale 披露参数。
 创建时 program 为完整 Lang；更新时为变化语句，省略 program 保留基版本，省略 title/locale 继承。
 一个 Frame 或 dataset-snapshot 只需引用，自动生成 AnalysisFrameView/DatasetView；不接收 rows、Draft 路径或旧更新参数。
-默认 `surface:tool` 挂载准确 Native/PTC 调用的 tool view；显式报告/dashboard 使用 `surface:tab`。
+默认 `surface:tool` 的生成候选挂载准确调用的 tool view；成功保存后，结果由会话级 Chat 节点呈现，
+保持在 Harness 工作步骤折叠区之外。显式报告/dashboard 使用 `surface:tab`。
 Delivery schema v2 保留既有事件归属，可选 surface 决定位置；历史未声明 surface 的事件沿用 tab。
 已确认发布历史的 source.surface 保存该次交付位置，供目录分类使用，不进入文档内容；默认目录仅列 tab 报告，另选“对话结果”查看 tool 内容。
 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成候选；PTC 按实际 dispatch 粒度交付。
@@ -30,8 +31,9 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
 新版本独立内嵌全部资源；以基版本 buildId 执行现有条件保存，冲突不自动重试，失败不改 current。
 
-候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址，
-tool view 不同时渲染第二份报告。关闭候选后不被片段或成功事件重新打开；历史加载不触发自动导航。
+候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址；
+成功的 tool 结果在会话节点中读取准确 Build，工具调用内保留简短入口，避免重复渲染完整结果。
+关闭候选后不被片段或成功事件重新打开；历史加载不触发自动导航。
 候选只读已授权基版本，使用现有 reports/history 与 files/read RPC；新业务资源在正式执行时读取。
 默认引用模式显示读取/保存状态，不制造字符动画。取消或失败时基版本保持可读，新建标明未保存。
 

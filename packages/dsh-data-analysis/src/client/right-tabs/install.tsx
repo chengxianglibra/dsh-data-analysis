@@ -15,6 +15,7 @@ import { hostCopy, installCopy, localized } from '../i18n/host.tsx'
 import { appendPresentationContext } from '../presentation/ask-dsh.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
 import {
+  marivoAnalysisSurfaceDefinition,
   marivoPresentationDeliveryDefinition,
   PRESENTATION_TURN_DATA_KEY,
 } from '../presentation/delivery.ts'
@@ -740,7 +741,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }),
     )
     const definition = ctx.uiConversation.events.register(marivoPresentationDeliveryDefinition)
+    const surfaceDefinition = ctx.uiConversation.events.register(marivoAnalysisSurfaceDefinition)
     return () => {
+      surfaceDefinition()
       definition()
       stop()
     }

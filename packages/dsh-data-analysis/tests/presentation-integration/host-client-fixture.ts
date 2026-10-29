@@ -84,6 +84,19 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   const owner = new Context()
   const events = new runtime.ConversationEventRegistry(owner)
   const views = new runtime.ConversationViewRegistry(owner)
+  // Capture the real Host's grouping definition when ui-chat registers it.
+  // The grouping registry itself is type-only in the public bundle, so expose
+  // the small public registry face needed by the real Conversation assembler.
+  const groupDefinitions = new Map()
+  const groups = {
+    register(definition) {
+      if (groupDefinitions.has(definition.target)) throw new Error('duplicate Host group target')
+      groupDefinitions.set(definition.target, definition)
+      return () => groupDefinitions.delete(definition.target)
+    },
+    entries: () => [...groupDefinitions.values()],
+    forTarget: (target) => groupDefinitions.get(target),
+  }
   const slots = new (modules.get('@deepseek-ai/dsh-client-ui-renderer/client').SlotRegistry)(owner)
   slots.register(
     {
@@ -109,7 +122,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   locale.setLocale('zh')
   const client = {
     inputTriggers: { registerSource: () => () => {} },
-    uiConversation: { events, views, groups: { register: () => () => {} } },
+    uiConversation: { events, views, groups },
     uiSession: { provide: () => () => {} },
     slots,
     sessions: {
@@ -158,7 +171,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     events,
     presentation,
     createAssembler: () => {
-      const assembler = new runtime.ConversationNodeAssembler(events, views)
+      const assembler = new runtime.ConversationNodeAssembler(events, views, groups)
       assembler.activateTarget('chat')
       return assembler
     },

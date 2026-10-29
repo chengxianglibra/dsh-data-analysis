@@ -3,6 +3,7 @@ import type {
   ConnectionGeneration,
   ConnectionGenerationState,
 } from '@deepseek-ai/dsh-client-connection/client'
+import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
@@ -10,6 +11,11 @@ import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { PresentationDelivery } from '../../presentation/receipt.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
+import {
+  ANALYSIS_SURFACE_NODE_KEY,
+  analysisSurfacesForNode,
+  presentationDeliveryIdentity,
+} from '../presentation/delivery.ts'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
 import { CandidateView, readSavedAnalysis } from './candidate-view.tsx'
@@ -124,22 +130,66 @@ export function installAnalysisTool(
           {delivery.receipt.title}
         </button>
       )
+    if (!allowed || !generation || delivery.dshSessionId !== props.sessionId)
+      return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
     return (
-      <SavedToolView
-        key={delivery.receipt.buildId}
-        delivery={delivery}
-        sessionId={props.sessionId}
-        rpc={rpc}
-        onOpen={(receipt) => open(props.sessionId, receipt)}
-        generation={generation}
-        allowed={allowed}
-      />
+      <button type="button" onClick={() => open(props.sessionId, delivery.receipt)}>
+        {t('marivo.presentation.ui-open-tab')}
+      </button>
     )
   })
   ctx.slots.inject('tool.call.toolview', () =>
     ctx.slots.register(
       { name: 'tool.call.toolview', key: 'marivo_present', locale: 'marivo.presentation' },
       (props: ToolCallViewProps) => <LocalizedView {...props} />,
+    ),
+  )
+  const LocalizedSurfaceNode = localized(
+    ctx,
+    function AnalysisSurfaceNode(
+      props: Pick<ChatNodeViewProps<'marivo-analysis-surface'>, 'node' | 'sessionId'>,
+    ) {
+      const generation = useSyncExternalStore(subscribe, getGeneration)
+      const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
+      const deliveries = useMemo(
+        () => analysisSurfacesForNode(props.node, props.sessionId),
+        [props.node, props.sessionId],
+      )
+      const owners = workspaces.items.filter((workspace) =>
+        workspace.sessionIds.includes(props.sessionId),
+      )
+      return (
+        <>
+          {deliveries.map((delivery) => (
+            <SavedToolView
+              key={presentationDeliveryIdentity(delivery)}
+              delivery={delivery}
+              sessionId={props.sessionId}
+              rpc={rpc}
+              onOpen={(receipt) => open(props.sessionId, receipt)}
+              generation={generation}
+              allowed={
+                workspaces.phase === 'ready' &&
+                workspaces.state !== 'error' &&
+                owners.length === 1 &&
+                owners[0]?.workspaceId === delivery.receipt.workspaceId
+              }
+            />
+          ))}
+        </>
+      )
+    },
+  )
+  ctx.slots.inject('conversation.chat.node', () =>
+    ctx.slots.register(
+      {
+        name: 'conversation.chat.node',
+        key: ANALYSIS_SURFACE_NODE_KEY,
+        locale: 'marivo.presentation',
+      },
+      (props: Pick<ChatNodeViewProps<'marivo-analysis-surface'>, 'node' | 'sessionId'>) => (
+        <LocalizedSurfaceNode {...props} />
+      ),
     ),
   )
 }

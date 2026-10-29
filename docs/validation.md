@@ -1,5 +1,16 @@
 # 项目验证指南
 
+## 统一分析 UI 工具结果可见性
+
+2026-10-29 修复默认工具结果被工作步骤折叠的问题。Node.js 22.19.0、Harness 0.2.1-rc.2 下，
+`npm run check` 通过 706 项、按原条件跳过 4 项；并发负载下 Python helper 导入曾超时，
+限制 `OPENBLAS_NUM_THREADS=1` 和 `OMP_NUM_THREADS=1` 后重跑通过。`npm run verify:plugin-package`
+通过，client 构建及 349 文件的插件包校验通过。
+
+真实 Harness assembler 回归覆盖 Native/PTC、完成与取消、多个回执、历史窗口、身份校验和折叠分组。
+隔离 Web Host 的冷重启回放验证了折叠时结果可见、展开后不重复及表格排序；更新用户 web profile 并保留
+会话后，既有 Yellow Taxi Session 的 12 行结果也在折叠步骤外显示。未重新运行真实模型或验证 PTC 浏览器交付。
+
 ## 统一分析 UI P3
 
 P0–P3 首期完成。复用统一 UI Web driver 的 --p3 模式；--model 启用已有凭据的隔离真实模型验收。
