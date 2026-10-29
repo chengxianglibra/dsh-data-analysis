@@ -3,9 +3,6 @@ import { CredentialChangesService } from './datasource/changes.ts'
 import { credentialChangesHost } from './datasource/changes-contract.ts'
 import { finishCleanup } from './lifecycle.ts'
 import { createMarivoAgentInstallation } from './plugin-agents.ts'
-import { registerPublishingCredentials } from './report-publishing/adapters.ts'
-import { type ReportPublishingConfig, resolvePublishingConfig } from './report-publishing/config.ts'
-import { ReportPublishingService } from './report-publishing/service.ts'
 import {
   currentPythonOptions,
   installPythonSettings,
@@ -75,8 +72,6 @@ export const inject = [
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config extends PythonTimeoutConfig {
-  readonly reportPublishing?: ReportPublishingConfig
-
   /** Non-secret creation defaults by backend; checked against each live Runtime schema. */
   readonly datasourceDefaults?: DatasourceDefaults
   readonly credentialInteraction?: 'web' | 'none'
@@ -97,7 +92,6 @@ export interface Config extends PythonTimeoutConfig {
 export const Config = z.object({
   // Defer validation to authoring so loader errors cannot echo configured values.
   datasourceDefaults: z.any(),
-  reportPublishing: z.any(),
   pythonTimeoutMs: z
     .number()
     .min(1)
@@ -134,7 +128,6 @@ export async function applyWithIntegration(
   config: Config = {},
   integration: MarivoIntegrationV1 = {},
 ): Promise<() => Promise<void>> {
-  const publishingConfig = resolvePublishingConfig(config.reportPublishing)
   const pythonOptions = currentPythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
@@ -170,7 +163,6 @@ export async function applyWithIntegration(
     await credentialNotifications.close()
     await unregisterChanges?.()
   }
-  let disposePublishing: (() => Promise<void>) | undefined
   let disposeCredentials: (() => Promise<void>) | undefined
   let disposeReferences: (() => Promise<void>) | undefined
   let disposePresentation: (() => Promise<void>) | undefined
@@ -191,7 +183,6 @@ export async function applyWithIntegration(
       () => pythonSettings?.dispose(),
       () => disposeCredentials?.(),
       disposeChanges,
-      () => disposePublishing?.(),
       () => disposePresentation?.(),
       () => disposeReferences?.(),
       () => browserService.close(),
@@ -236,26 +227,10 @@ export async function applyWithIntegration(
       },
     )
     disposePresentation = registerMarivoPresentationRpc(ctx.connection, presentationFiles)
-    const reportPublishing = new ReportPublishingService(
-      publishingConfig,
-      ctx.credentials,
-      presentationFiles,
-      undefined,
-      (id) => {
-        const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
-        if (!workspace) throw new Error('workspace-unavailable')
-        return workspace.title
-      },
-    )
-    disposePublishing = registerPublishingCredentials(ctx.connection, reportPublishing, (id) =>
-      Boolean(ctx.workspaceRegistry.get(WorkspaceId(id))),
-    )
-
     agentInstallation = createMarivoAgentInstallation(ctx, resolveEnvironment, {
       ...pythonOptions,
       pythonOptionsSource: pythonSettings.get,
       helpBridgeSource: helpBridge,
-      ...(publishingConfig ? { reportPublishing } : {}),
       credentialService,
     })
     agentInstallation.install()

@@ -19,7 +19,7 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 文件流程覆盖 CSV、JSON／JSON Lines、Parquet、Excel `.xlsx`。`.xlsx` 复用 DuckDB 官方扩展，首次获取
 需要联网；不新增 `openpyxl` 依赖，不承诺旧 `.xls`。这不限制 Skill 根据实际可用 reader 处理其他合适文件。
 
-普通答案使用文字；用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供；报告中需筛选联动的表格继续使用 `marivo_present`。插件不新增 XLSX 写入器，也不承诺分析旧 `.xls`。
+普通答案使用文字；用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供；需要在分析 UI 中核对的表格使用 `marivo_present`。插件不新增 XLSX 写入器，也不承诺分析旧 `.xls`。
 最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。UI 展示在原分析进程 capture DataFrame，成功 snapshotRef 可直接呈现；自定义才按需读[展示 Skill](presentation-skill.md)。
 正文说明文件与分析范围，执行/codeRef 由 Host 绑定，不把文件结果声明成 Marivo Evidence。
 
@@ -41,4 +41,4 @@ S2 已完成的真实模型、预览、恢复及受控故障证据见[验证指�
 
 卡片读取当前源文件，修改、移动或删除会影响打开。PTC 外层失败不撤销已完成的声明；
 子 Session 的产物需要父 Agent 确认可访问后自行声明，不自动跨 Session 转投递。
-报告内部 JSON、computed 数据和 receipt 不默认附加；HTML 下载／发布保持原有流程。
+分析 UI 的保存记录、快照和 receipt 不默认附加；分析 UI 不提供 HTML 导出或发布。

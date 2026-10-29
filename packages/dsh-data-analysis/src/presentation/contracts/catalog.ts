@@ -25,6 +25,11 @@ export interface ReportCatalog {
 export const REPORT_HISTORY_BYTES = 16 * 1024 * 1024
 export const REPORT_HISTORY_LIMIT = 4096
 
+/** Only analysis UI saves record a surface; earlier report versions never do. */
+export function isAnalysisVersion(version: ReportVersion): boolean {
+  return version.source?.surface !== undefined
+}
+
 export function parseReportVersion(value: unknown): ReportVersion {
   const entry = value as ReportVersion
   if (

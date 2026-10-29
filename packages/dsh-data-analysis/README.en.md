@@ -13,13 +13,13 @@ This is an independently maintained community plugin. It is not an official Deep
 | What you want to do | What the plugin offers |
 | --- | --- |
 | Answer business questions | Analyze metric trends, compare periods or business segments, and explore reasons for changes using natural language |
-| Analyze local files | Upload files or use files in your workspace to analyze data and create charts and reports |
+| Analyze local files | Upload files or use files in your workspace to analyze data and create analysis views and reports |
 | Connect to data | Configure data sources, manage credentials, and test connections; DuckDB, Trino, and ClickHouse are supported by default |
 | Keep definitions consistent | Work with the assistant to define and reuse metrics and dimensions, and explore their relationships |
 | Specify what to analyze | Search for and reference existing semantic objects with `@` in the chat input |
 | Present findings | Save existing Frame/DataFrame results as exact tables or single values |
 | Explore further | Select columns, sort exact values, browse local pages, and copy saved data |
-| Read and share | Save and browse immutable versions; legacy reports retain HTML export |
+| Read and revisit | Save and browse immutable versions and their history |
 
 ## Installation
 
@@ -61,7 +61,7 @@ The examples below use the Web interface; Chinese labels are included to help yo
 No data source configuration or business definitions are required first.
 CSV, JSON, Parquet, and Excel `.xlsx` files are supported. Reading `.xlsx` for the first time requires an internet connection to download an extension.
 Convert older `.xls` files to `.xlsx`, CSV, or Parquet first.
-To view or deliver a CSV, TSV, or XLSX file, ask the assistant to use native `present`, then open the read-only DSH spreadsheet preview on the right. Tables with report filtering and linked interactions remain in the report reader. The plugin does not write XLSX or analyze older `.xls` files.
+To view or deliver a CSV, TSV, or XLSX file, ask the assistant to use native `present`, then open the read-only DSH spreadsheet preview on the right. Tables you want to inspect in an analysis view use the report reader. The plugin does not write XLSX or analyze older `.xls` files.
 
 **Databases**: Open Data Sources (数据源) beside the session title to view connections and their configuration status in the current workspace:
 
@@ -82,7 +82,7 @@ Describe the data, time range, metric definitions, and results you want. For exa
 
 > Using the order data, analyze revenue and order count for August 2026, compare them with July, break them down by channel, and explain the sources and metric definitions.
 
-> Check query duration over the last seven days. Identify the slowest query types and provide a trend chart and a detailed table.
+> Check query duration over the last seven days. Identify the slowest query types and provide the daily trend and a detailed table.
 
 If you have not yet defined your business metrics, start by asking the assistant to help:
 
@@ -111,8 +111,8 @@ Present an existing Frame or captured DataFrame without repeating the analysis. 
 
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
-Charts, offline export, publishing and legacy Reader editing are not connected for the new format.
-Existing legacy reports keep their reader, charts, presentation editing and HTML export.
+Analysis views do not provide charts, global filters, in-page editing, offline HTML export or publishing.
+Legacy report files stay on disk but no longer appear in Reports (报告); opening an old address shows an unsupported-report error.
 
 ## Analysis timeout
 

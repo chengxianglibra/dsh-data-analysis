@@ -1,47 +1,33 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { TypedDataset } from '../../presentation/contracts/types.ts'
 import { useCopy } from './../i18n/context.tsx'
-import type { TableSort } from './export-view.ts'
 import {
   cellText,
   columnIndex,
   columnLabel,
   datasetScope,
-  type ReaderMode,
   sortedRowIndices,
   TABLE_PAGE_SIZE,
 } from './model.ts'
 
+interface TableSort {
+  columnId: string
+  direction: 'ascending' | 'descending'
+}
+
+/** Exact saved cells with local sorting and pagination; values are never recomputed. */
 export function DatasetTable({
   data,
   columns,
-  mode,
   caption,
-  hideCaption = false,
-  showScope = true,
-  showSelectionCount = true,
-  rowIndices,
-  filterKey,
-  sort: controlledSort,
-  onSortChange,
 }: {
   data: TypedDataset
   columns?: string[]
-  mode: ReaderMode
   caption: string
-  hideCaption?: boolean
-  showScope?: boolean
-  showSelectionCount?: boolean
-  rowIndices?: readonly number[]
-  filterKey?: string
-  sort?: TableSort
-  onSortChange?: (sort: TableSort) => void
 }) {
   const t = useCopy()
 
-  const [localSort, setLocalSort] = useState<TableSort>()
-  const sort = onSortChange ? controlledSort : localSort
-  const setSort = onSortChange ?? setLocalSort
+  const [sort, setSort] = useState<TableSort>()
   const [page, setPage] = useState(0)
   const indices = columns?.map((id) => columnIndex(data, id)) ?? data.columns.map((_, i) => i)
   const numericColumns = new Set(
@@ -49,38 +35,15 @@ export function DatasetTable({
       .filter((column) => ['float64', 'int64', 'decimal'].includes(column.type))
       .map((column) => column.id),
   )
-  const sorted = useMemo(() => {
-    const selected = rowIndices ? new Set(rowIndices) : undefined
-    return sort
-      ? sortedRowIndices(t.locale, data, sort).filter((index) => !selected || selected.has(index))
-      : [...(rowIndices ?? sortedRowIndices(t.locale, data))]
-  }, [data, sort, rowIndices, t.locale])
-  const rowSelectionKey = `${filterKey ?? ''}/${rowIndices?.join(',') ?? ''}`
-  useEffect(() => {
-    void rowSelectionKey
-    setPage(0)
-  }, [rowSelectionKey])
+  const sorted = useMemo(() => sortedRowIndices(t.locale, data, sort), [data, sort, t.locale])
   const pages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE))
   const activePage = Math.min(page, pages - 1)
-  const shown =
-    mode === 'static'
-      ? (rowIndices ?? data.rows.map((_, i) => i))
-      : sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
+  const shown = sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
   return (
     <div className="pr-table">
-      {showScope && (
-        <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>
-          {t(datasetScope(t.locale, data))}
-        </p>
-      )}
-      {showSelectionCount && rowIndices && rowIndices.length !== data.rows.length && (
-        <p className="pr-muted">
-          {t('marivo.presentation.filtered-rows', { p0: data.rows.length, p1: rowIndices.length })}
-        </p>
-      )}
+      <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{t(datasetScope(t.locale, data))}</p>
       <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>
-        <table aria-label={t(hideCaption ? caption : undefined)}>
-          {!hideCaption && <caption>{t(caption)}</caption>}
+        <table aria-label={t(caption)}>
           <thead>
             <tr>
               {indices.map((index) => {
@@ -91,39 +54,31 @@ export function DatasetTable({
                     scope="col"
                     data-column-id={column.id}
                     className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
-                    aria-sort={
-                      mode === 'interactive' && sort?.columnId === column.id
-                        ? sort.direction
-                        : 'none'
-                    }
+                    aria-sort={sort?.columnId === column.id ? sort.direction : 'none'}
                   >
-                    {mode === 'static' ? (
-                      columnLabel(column)
-                    ) : (
-                      <button
-                        type="button"
-                        aria-label={t('marivo.presentation.sort-by-value', { p0: column.label })}
-                        onClick={() => {
-                          setSort({
-                            columnId: column.id,
-                            direction:
-                              sort?.columnId === column.id && sort.direction === 'ascending'
-                                ? 'descending'
-                                : 'ascending',
-                          })
-                          setPage(0)
-                        }}
-                      >
-                        <span className="pr-column-label">{columnLabel(column)}</span>
-                        <span className="pr-sort-indicator" aria-hidden="true">
-                          {sort?.columnId === column.id
-                            ? sort.direction === 'ascending'
-                              ? '↑'
-                              : '↓'
-                            : '↕'}
-                        </span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      aria-label={t('marivo.presentation.sort-by-value', { p0: column.label })}
+                      onClick={() => {
+                        setSort({
+                          columnId: column.id,
+                          direction:
+                            sort?.columnId === column.id && sort.direction === 'ascending'
+                              ? 'descending'
+                              : 'ascending',
+                        })
+                        setPage(0)
+                      }}
+                    >
+                      <span className="pr-column-label">{columnLabel(column)}</span>
+                      <span className="pr-sort-indicator" aria-hidden="true">
+                        {sort?.columnId === column.id
+                          ? sort.direction === 'ascending'
+                            ? '↑'
+                            : '↓'
+                          : '↕'}
+                      </span>
+                    </button>
                   </th>
                 )
               })}
@@ -158,7 +113,7 @@ export function DatasetTable({
           </tbody>
         </table>
       </div>
-      {mode === 'interactive' && pages > 1 && (
+      {pages > 1 && (
         <div className="pr-pagination pr-interactive">
           <button type="button" disabled={activePage === 0} onClick={() => setPage(activePage - 1)}>
             {t('marivo.presentation.previous-page')}

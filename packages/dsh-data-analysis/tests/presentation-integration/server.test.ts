@@ -16,12 +16,17 @@ import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
-import type { BuiltPresentation } from '../../src/presentation/build/index.ts'
-import { commitPresentation } from '../../src/presentation/commit.ts'
+import { type BuiltPresentation, commitPresentation } from '../../src/presentation/commit.ts'
 import {
-  PRESENTATION_BUDGETS,
-  type PresentationDocument,
-} from '../../src/presentation/contracts/index.ts'
+  analysisCatalogBuild,
+  analysisCatalogId,
+} from '../../src/presentation/contracts/analysis-catalog.ts'
+import {
+  ANALYSIS_UI_FORMAT,
+  type AnalysisDocument,
+  analysisRecordId,
+} from '../../src/presentation/contracts/analysis-document.ts'
+import { PRESENTATION_BUDGETS } from '../../src/presentation/contracts/index.ts'
 import { presentationAssetPath, presentationSha256 } from '../../src/presentation/files.ts'
 import { MarivoPresentationProjection } from '../../src/presentation/projection/index.ts'
 import {
@@ -38,23 +43,22 @@ import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts
 async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'presentation-s4-test-')))
   t.after(() => rm(root, { recursive: true, force: true }))
-  const document: PresentationDocument = {
-    schemaVersion: 3,
-    locale: 'zh-CN',
+  const document: AnalysisDocument = {
+    schemaVersion: ANALYSIS_UI_FORMAT,
     workspaceId: 'workspace',
     reportId: 'report',
     buildId: 'build',
+    recordId: analysisRecordId('report', 'build'),
     title: 'Snapshot',
+    locale: 'zh-CN',
     generatedAt: '2026-09-07T00:00:00Z',
-    datasets: [],
-    sources: [],
-    blocks: [{ id: 'body', kind: 'markdown', text: 'Readable snapshot' }],
-    diagnostics: [],
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    program: 'root = TextContent("Readable snapshot");',
+    resources: {},
   }
   const built: BuiltPresentation = {
     document,
     documentBytes: Buffer.from(JSON.stringify(document)),
-    htmlBytes: Buffer.from('<!doctype html><p>Readable snapshot</p>'),
   }
   return {
     root,
@@ -63,17 +67,15 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   }
 }
 
-test('commit publishes exactly two complete files, preserves old builds and returns exact hashes', async (t) => {
+test('commit publishes one complete document, preserves old builds and returns exact hashes', async (t) => {
   const f = await fixture(t)
   let checks = 0
   const receipt = await commitPresentation(f.root, f.built, async () => {
     checks++
   })
   assert(checks >= 4)
-  assert.deepEqual((await readdir(path.dirname(receipt.files.document.path))).sort(), [
-    'index.html',
-    'presentation.json',
-  ])
+  assert.equal(receipt.files.html, undefined)
+  assert.deepEqual(await readdir(path.dirname(receipt.files.document.path)), ['presentation.json'])
   for (const file of Object.values(receipt.files)) {
     const bytes = await readFile(file.path)
     assert.equal(bytes.length, file.bytes)
@@ -114,7 +116,7 @@ test('partial file write failure cleans up only its owned temporary directory', 
     commitPresentation(f.root, f.built, async () => {
       if (++checks === 2) {
         const [temporary] = await readdir(f.parent)
-        await mkdir(path.join(f.parent, temporary!, 'index.html'))
+        await mkdir(path.join(f.parent, temporary!, 'presentation.json'))
       }
     }),
     /EEXIST/,
@@ -134,20 +136,22 @@ test('commit refuses a symbolic output parent without changing its destination',
   assert.deepEqual(await readdir(outside), [])
 })
 
-test('RPC uses current Session Workspace authority and validates fixed paths, identities, both digests and bounds', async (t) => {
+test('RPC uses current Session Workspace authority and validates fixed paths, identities, digest and bounds', async (t) => {
   const f = await fixture(t)
   const receipt = await commitPresentation(f.root, f.built, async () => {})
   const service = new MarivoPresentationFileService((sessionId) =>
     sessionId === 'session' ? { id: 'workspace', path: f.root } : undefined,
   )
-  const input = { sessionId: 'session', receipt, asset: 'index.html' }
+  const input = { sessionId: 'session', receipt, asset: 'presentation.json' }
   const value = await service.read(input)
-  assert.equal(Buffer.from(value.bodyBase64, 'base64').equals(f.built.htmlBytes!), true)
+  assert.equal(Buffer.from(value.bodyBase64, 'base64').equals(f.built.documentBytes), true)
   assert.equal(value.buildId, receipt.buildId)
-  assert.equal(value.sha256, receipt.files.html!.sha256)
+  assert.equal(value.mimeType, 'application/json')
+  assert.equal(value.sha256, receipt.files.document.sha256)
   for (const [payload, error] of [
     [{ ...input, path: '/etc/passwd' }, /invalid-request/],
-    [{ ...input, asset: '../index.html' }, /invalid-request/],
+    [{ ...input, asset: 'index.html' }, /invalid-request/],
+    [{ ...input, asset: '../presentation.json' }, /invalid-request/],
     [{ ...input, sessionId: 'other' }, /workspace-unavailable/],
     [{ ...input, receipt: { ...receipt, workspaceId: 'other' } }, /workspace-unavailable/],
     [{ ...input, receipt: { ...receipt, title: 'other' } }, /asset-owner-mismatch/],
@@ -166,14 +170,18 @@ test('RPC uses current Session Workspace authority and validates fixed paths, id
     ],
   ] as const)
     await assert.rejects(service.read(payload), error)
-  await writeFile(receipt.files.html!.path, 'changed')
+  const document = receipt.files.document.path
+  const original = await readFile(document)
+  await writeFile(document, 'changed')
   await assert.rejects(service.read(input), /asset-digest-mismatch/)
-  await truncate(receipt.files.html!.path, PRESENTATION_BUDGETS.htmlBytes + 1)
+  await truncate(document, PRESENTATION_BUDGETS.documentBytes + 1)
   await assert.rejects(service.read(input), /asset-too-large/)
-  await rm(receipt.files.html!.path)
-  await symlink(receipt.files.document.path, receipt.files.html!.path)
+  await rm(document)
+  const outside = path.join(f.root, 'outside.json')
+  await writeFile(outside, original)
+  await symlink(outside, document)
   await assert.rejects(service.read(input), /asset-path-mismatch/)
-  await rm(receipt.files.html!.path)
+  await rm(document)
   await assert.rejects(service.read(input), /ENOENT/)
 })
 
@@ -211,7 +219,7 @@ test('production present saves independent Lang documents and returns complete h
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',
-      presentationKit: { version: '1.3.0', packagePath: '/bound/presentation' },
+      presentationKit: { version: '1.4.0', packagePath: '/bound/presentation' },
     },
     async runChecked(): Promise<never> {
       throw new Error('No analysis expected')
@@ -256,11 +264,11 @@ test('production present saves independent Lang documents and returns complete h
 test('internal file helpers reject traversal and commit rejects invalid or oversized bytes before creating output', async (t) => {
   const f = await fixture(t)
   assert.throws(
-    () => presentationAssetPath(f.root, 'report', '../outside', 'index.html'),
+    () => presentationAssetPath(f.root, 'report', '../outside', 'presentation.json'),
     /safe build identifier/,
   )
   assert.throws(
-    () => presentationAssetPath(f.root, 'report', 'build', '../outside' as 'index.html'),
+    () => presentationAssetPath(f.root, 'report', 'build', '../outside' as 'presentation.json'),
     /invalid-asset/,
   )
   await assert.rejects(
@@ -270,7 +278,7 @@ test('internal file helpers reject traversal and commit rejects invalid or overs
   await assert.rejects(
     commitPresentation(
       f.root,
-      { ...f.built, htmlBytes: Buffer.alloc(PRESENTATION_BUDGETS.htmlBytes + 1) },
+      { ...f.built, documentBytes: Buffer.alloc(PRESENTATION_BUDGETS.documentBytes + 1) },
       async () => {},
     ),
     /presentation-build-budget/,
@@ -281,31 +289,17 @@ test('internal file helpers reject traversal and commit rejects invalid or overs
 test('commit snapshots caller-owned data before asynchronous ownership checks', async (t) => {
   const f = await fixture(t)
   const expected = Buffer.from(f.built.documentBytes)
-  const expectedHtml = Buffer.from(f.built.htmlBytes!)
   const receipt = await commitPresentation(f.root, f.built, async () => {
     f.built.document.title = 'Late mutation'
     f.built.documentBytes.fill(0)
-    f.built.htmlBytes!.fill(0)
   })
   assert.equal(receipt.title, 'Snapshot')
   assert.deepEqual(await readFile(receipt.files.document.path), expected)
-  assert.deepEqual(await readFile(receipt.files.html!.path), expectedHtml)
 })
 
 test('Tool disposal and Runtime failure abort a pending commit without creating a success value', async (t) => {
   for (const failure of ['dispose', 'runtime'] as const) {
     const f = await fixture(t)
-    await writeFile(
-      path.join(f.root, 'draft.json'),
-      JSON.stringify({
-        schemaVersion: 2,
-        locale: 'zh-CN',
-        title: 'Pending',
-        datasets: [],
-        sources: [],
-        blocks: [{ id: 'body', kind: 'markdown', text: 'Body' }],
-      }),
-    )
     const session = {
       id: 'session',
       snapshotEvents: () => [
@@ -380,10 +374,10 @@ test('production RPC classifies missing files and unavailable Workspaces without
   const f = await fixture(t)
   const receipt = await commitPresentation(f.root, f.built, async () => {})
   const { connection, channels } = createConnectionFixture()
-  const input = { sessionId: 'session', receipt, asset: 'index.html' }
+  const input = { sessionId: 'session', receipt, asset: 'presentation.json' }
   const service = new MarivoPresentationFileService(() => ({ id: 'workspace', path: f.root }))
   const stop = registerMarivoPresentationRpc(connection, service)
-  await rm(receipt.files.html!.path)
+  await rm(receipt.files.document.path)
   const missing = await channels.get('/marivo-presentation')!(
     'files/read',
     input,

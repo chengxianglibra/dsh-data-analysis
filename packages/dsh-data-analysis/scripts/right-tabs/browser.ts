@@ -1,11 +1,14 @@
 /** Operate the production navigation/controller through the isolated Host probe. */
 import type { Locator, Page } from 'playwright'
 
-export async function reportAction(reader: Locator, name: string) {
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
-  await reader.getByRole('menuitem', { name, exact: true }).click()
-  if (name === '编辑报告')
-    await reader.getByRole('textbox', { name: '报告标题', exact: true }).waitFor()
+/** The saved analysis surface rendered inside a report Tab. */
+export function analysisSurface(reader: Locator) {
+  return reader.locator('[data-analysis-record]')
+}
+
+export async function openHistory(reader: Locator) {
+  await reader.locator('.rt-toolbar').getByRole('button', { name: '历史版本', exact: true }).click()
+  await reader.getByRole('complementary', { name: '历史版本' }).waitFor()
 }
 
 export async function closeReport(page: Page, reader: Locator) {
@@ -42,6 +45,6 @@ export async function openReport(
     { sessionId, target },
   )
   const reader = page.locator('[data-rt-kind="report"]:visible')
-  await reader.locator('[data-mode="interactive"]').waitFor()
+  await analysisSurface(reader).waitFor()
   return reader
 }

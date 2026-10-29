@@ -1,4 +1,4 @@
-"""Dataset errors; the writer adds bounded input diagnostics to the message."""
+"""Dataset errors with a stable code and JSON Pointer path."""
 
 
 class PresentationDatasetError(ValueError):

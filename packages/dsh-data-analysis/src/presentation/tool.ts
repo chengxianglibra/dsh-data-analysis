@@ -7,7 +7,6 @@ import { createAnalysisDocument } from './analysis.ts'
 import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
 import { analysisPresentInput, parseAnalysisRecordId } from './contracts/analysis-document.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
-import type { ExportWorkspaceSource } from './export-html.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
@@ -16,6 +15,10 @@ import {
   presentationReceiptText,
 } from './receipt.ts'
 import { publishPresentation, readAnalysisRecord } from './reports.ts'
+
+export type PresentationWorkspaceSource = () =>
+  | { id: string; path: string }
+  | Promise<{ id: string; path: string }>
 
 export interface PresentationBinding {
   workspaceId: string
@@ -28,7 +31,7 @@ export function createMarivoPresentTool(
   source: PresentationBindingSource,
   session: Session,
   lifecycleSignal?: AbortSignal,
-  workspaceSource?: ExportWorkspaceSource,
+  workspaceSource?: PresentationWorkspaceSource,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
@@ -177,7 +180,7 @@ export function registerMarivoPresentTool(
   ctx: Context,
   source: PresentationBindingSource,
   session: Session,
-  workspaceSource?: ExportWorkspaceSource,
+  workspaceSource?: PresentationWorkspaceSource,
 ): () => Promise<void> {
   return registerMarivoTool(
     ctx,
@@ -186,7 +189,7 @@ export function registerMarivoPresentTool(
 }
 
 /** Optional context recovery for an exact saved record. Never returns rows or starts Python. */
-export function createMarivoUiReadTool(source: ExportWorkspaceSource): ToolDefinition {
+export function createMarivoUiReadTool(source: PresentationWorkspaceSource): ToolDefinition {
   return defineTool({
     name: 'marivo_ui_read',
     description:
@@ -255,6 +258,6 @@ export function createMarivoUiReadTool(source: ExportWorkspaceSource): ToolDefin
     },
   })
 }
-export function registerMarivoUiReadTool(ctx: Context, source: ExportWorkspaceSource) {
+export function registerMarivoUiReadTool(ctx: Context, source: PresentationWorkspaceSource) {
   return registerMarivoTool(ctx, createMarivoUiReadTool(source))
 }

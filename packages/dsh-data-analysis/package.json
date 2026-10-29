@@ -19,8 +19,7 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "bin": {
-    "dsh-data-analysis-env": "./lib/bin/environment.js",
-    "dsh-data-analysis-presentation-lint": "./lib/bin/presentation-lint.js"
+    "dsh-data-analysis-env": "./lib/bin/environment.js"
   },
   "exports": {
     ".": {
@@ -63,7 +62,7 @@
     "lib/types/**/*.d.ts",
     "skills/dsh-data-analysis-presentation/**",
     "skills/dsh-data-analysis-files/**",
-    "python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.3.0-py3-none-any.whl",
+    "python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl",
     "cordis.patch.yml",
     "README.md",
     "README.en.md"
@@ -121,7 +120,6 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1129.0",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@noble/hashes": "2.4.0",
     "@openuidev/lang-core": "1.0.1",
@@ -169,21 +167,14 @@
     "@deepseek-ai/dsh-tool-skill": "0.2.1-rc.2",
     "@deepseek-ai/dsh-util-workspace-path": "0.2.1-rc.2",
     "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2",
-    "@shikijs/core": "4.4.3",
-    "@shikijs/engine-javascript": "4.4.3",
-    "@shikijs/langs": "4.4.3",
     "@tanstack/react-virtual": "3.14.10",
     "@types/react": "^18.3.31",
     "@types/react-dom": "18.3.7",
-    "@wasm-fmt/ruff_fmt": "0.15.20",
     "esbuild": "^0.28.2",
     "immer": "10.1.1",
     "playwright": "1.63.0",
     "react": "^18.3.1",
     "react-dom": "18.3.1",
-    "react-is": "18.3.1",
-    "recharts": "3.8.1",
-    "sql-formatter": "15.8.2",
     "typescript": "^6.0.3",
     "zustand": "4.5.7"
   },

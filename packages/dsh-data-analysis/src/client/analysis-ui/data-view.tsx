@@ -118,13 +118,7 @@ export function AnalysisDataView({
             </div>
           </details>
           <div style={{ maxHeight: display?.height ?? 520, overflow: 'auto' }}>
-            <DatasetTable
-              data={data}
-              columns={columns}
-              mode="interactive"
-              caption={resourceName ?? ''}
-              hideCaption
-            />
+            <DatasetTable data={data} columns={columns} caption={resourceName ?? ''} />
           </div>
         </>
       )}

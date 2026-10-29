@@ -23,18 +23,15 @@ import {
   resolveMarivoEnvironmentSource,
 } from './environment/index.ts'
 import { finishCleanup, PendingTasks } from './lifecycle.ts'
-import { registerMarivoExportHtmlTool } from './presentation/export-html.ts'
 import {
   installMarivoPresentationCodeDelivery,
   registerMarivoPresentTool,
   registerMarivoUiReadTool,
 } from './presentation/index.ts'
-import { registerReportPublishTool } from './report-publishing/adapters.ts'
-import type { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const PRESENTATION_PROMPT =
-  'Match delivery to the user request. Ordinary answers and simple comparison tables can stay in chat. For analysis of attachments or Workspace data files, including short chat comparisons, first load dsh-data-analysis-files; requested CSV, JSON or PNG files use native present. When a UI helps understand or inspect an existing result, use marivo_present with its exact Frame or dataset-snapshot reference; default surface is tool, explicit reports/dashboard use tab. Default data views already support column selection, exact sorting and local pagination. Simple reference-only presentation needs no extra Skill, Help, Python or read call; UI signatures belong to this plugin, not Marivo live Help. Load dsh-data-analysis-presentation for custom Lang or format-specific guidance. Native custom Lang previews actual argument prefixes. Update an exact basedOnRecordId with only changed named statements; reuse snapshots and read marivo_ui_read only when base context is missing. New-format offline export and publishing are not connected. Legacy report export keeps its own format boundary. Use the Runtime skills and live Help for Marivo analysis or semantic authoring; local pandas or native DuckDB file analysis needs no Marivo semantic setup. When analysis reveals a reusable business definition or semantic gap, follow the relevant Skill to assess reuse or handoff to marivo-semantic, limited to what the current task needs or the user has authorized; stop when that scope is answered or its blockers are explicit.'
+  'Match delivery to the user request. Ordinary answers and simple comparison tables can stay in chat. For analysis of attachments or Workspace data files, including short chat comparisons, first load dsh-data-analysis-files; requested CSV, JSON or PNG files use native present. When a UI helps understand or inspect an existing result, use marivo_present with its exact Frame or dataset-snapshot reference; default surface is tool, explicit reports/dashboard use tab. Default data views already support column selection, exact sorting and local pagination. Simple reference-only presentation needs no extra Skill, Help, Python or read call; UI signatures belong to this plugin, not Marivo live Help. Load dsh-data-analysis-presentation for custom Lang or format-specific guidance. Native custom Lang previews actual argument prefixes. Update an exact basedOnRecordId with only changed named statements; reuse snapshots and read marivo_ui_read only when base context is missing. Offline export and publishing are not available. Use the Runtime skills and live Help for Marivo analysis or semantic authoring; local pandas or native DuckDB file analysis needs no Marivo semantic setup. When analysis reveals a reusable business definition or semantic gap, follow the relevant Skill to assess reuse or handoff to marivo-semantic, limited to what the current task needs or the user has authorized; stop when that scope is answered or its blockers are explicit.'
 
 export type MarivoPluginEnvironmentResolver = (
   agent: Agent,
@@ -50,7 +47,6 @@ export function createMarivoAgentInstallation(
   options: MarivoDisclosureOptions &
     MarivoPythonOptions & {
       /** Override used by focused tests; normal plugin installation uses ctx.credentials. */
-      reportPublishing?: ReportPublishingService
       credentials?: CredentialStore
       credentialService?: MarivoCredentialService
       credentialInteraction?: 'web' | 'none'
@@ -159,17 +155,6 @@ export function createMarivoAgentInstallation(
           resolvePresentationWorkspace(ctx, String(agent.session.id)),
         ),
       )
-      controller.addDisposer(
-        registerMarivoExportHtmlTool(
-          agent.ctx,
-          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
-          agent.session,
-        ),
-      )
-      if (options.reportPublishing)
-        controller.addDisposer(
-          registerReportPublishTool(agent.ctx, options.reportPublishing, agent.session.id),
-        )
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
       controller.addDisposer(
         agent.ctx.systemPrompt.section({

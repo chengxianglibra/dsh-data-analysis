@@ -1,5 +1,7 @@
 # 统一分析 UI P2 验收
 
+> 后续变更：旧 Document v3 Reader、编辑、HTML 导出与发布已移除，见[验证指南](../validation.md#旧报告管线移除)；本记录保留当时的验收边界。
+
 日期：2026-10-28。范围：[P2 实施任务](../designs/unified-analysis-ui-implementation.md#p2统一保存组件与双位置呈现)。
 仅修改本插件；保留已有 AGENTS.md 修改、未跟踪的 dsh-0.2.0-integration 设计，以及工作期间并行更新的两份 unified-analysis-ui 设计内容。未提交、未推送、未重装或重启用户服务。
 P2 是静态呈现闭环；P3 的真实参数流、patch 和外部模型使用策略验收尚未完成，首期 S1 未标为完成。

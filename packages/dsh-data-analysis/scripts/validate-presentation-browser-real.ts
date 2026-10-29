@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { formatCell, parseTypedDataset } from '../src/presentation/contracts/index.ts'
 
-// S2 data decoding only. This is not the S3 production reader/portable acceptance.
+// Python typed-data decoding in Node and Chromium; not a UI acceptance.
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const projectRoot = path.join(packageRoot, 'python/presentation-kit')
 const outputRoot = await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s2-browser-'))

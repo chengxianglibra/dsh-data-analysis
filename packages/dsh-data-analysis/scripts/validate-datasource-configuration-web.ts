@@ -42,7 +42,7 @@ const host = await startPresentationWebHost(
   workspace,
   path.join(root, 'host'),
   python,
-  inputs.draftPaths,
+  inputs.requests,
   'native-first',
   {
     rightTabsAcceptance: true,

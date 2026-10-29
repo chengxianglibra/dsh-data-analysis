@@ -1,166 +1,134 @@
 # 展示交付模块
 
-## 统一分析 UI 写入与增量契约
-
-当前 marivo_present 按 surface、basedOnRecordId、resources、title、program、locale 披露参数。
-创建时 program 为完整 Lang；更新时为变化语句，省略 program 保留基版本，省略 title/locale 继承。
-一个 Frame 或 dataset-snapshot 只需引用，自动生成 AnalysisFrameView/DatasetView；不接收 rows、Draft 路径或旧更新参数。
-默认 `surface:tool` 的生成候选挂载准确调用的 tool view；成功保存后，结果由会话级 Chat 节点呈现，
-保持在 Harness 工作步骤折叠区之外。显式报告/dashboard 使用 `surface:tab`。
-Delivery schema v2 保留既有事件归属，可选 surface 决定位置；历史未声明 surface 的事件沿用 tab。
-已确认发布历史的 source.surface 保存该次交付位置，供目录分类使用，不进入文档内容；默认目录仅列 tab 报告，另选“对话结果”查看 tool 内容。
-成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成候选；PTC 按实际 dispatch 粒度交付。
-字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
-
-新文档格式为 `schemaVersion:"dsh.analysis-ui/v1"`，单一声明在
-[analysis-document.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)。
-recordId 为 `marivo-ui:<reportId>:<buildId>`，无需目录检索或新数据库。
-program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在现有 Build 的 presentation.json 内，
-复用原子目录提交、digest、current 条件检查与历史。关闭原连接、删除捕获文件后可读取；不自动迁移旧文件。
-`marivo_ui_read({recordId})` 只读取准确已发布版本的 program、必要 schema、范围和组件签名，不返回 rows，不执行 Python；
-只在基版本上下文缺失时按需使用，不默认回读。
-
-资源支持 `marivo-frame(sessionId,artifactId)`、`dataset-snapshot(snapshotRef)`、
-`image-file(path)`。Frame 在一次 checked execution 中批量有界读取；Dataset 先校验 Host execution provenance，
-图片仅从所属 Workspace 的普通文件读取 PNG/JPEG/GIF/WebP，按现有预算保存为内嵌 data URL。
-组件不读取任意 URL。错误资源、取消、必要读取失败不发布 current。
-
-更新读取准确 basedOnRecordId，使用固定 mergeStatements 合并完整语句，再校验完整程序与资源计划。
-同一 patch 的语句名不可重复；新增或替换语句必须在合并后仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
-省略 resources 继承；提供则替换完整资源表。同名同声明复制基版本已保存字节，仅新资源执行读取。
-纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
-新版本独立内嵌全部资源；以基版本 buildId 执行现有条件保存，冲突不自动重试，失败不改 current。
-
-候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址；
-成功的 tool 结果在会话节点中读取准确 Build，工具调用内保留简短入口，避免重复渲染完整结果。
-关闭候选后不被片段或成功事件重新打开；历史加载不触发自动导航。
-候选只读已授权基版本，使用现有 reports/history 与 files/read RPC；新业务资源在正式执行时读取。
-默认引用模式显示读取/保存状态，不制造字符动画。取消或失败时基版本保持可读，新建标明未保存。
-
-服务端和 Client 按明确格式分派；新格式不传入旧 block Reader。
-新格式的 HTML 导出/发布返回 `analysis-ui-export-unavailable`，旧编辑 RPC 返回 `analysis-ui-edit-unavailable`；
-页面同时说明限制。旧 Document v3 的阅读、既有呈现编辑及 HTML 功能仍由原契约拥有。
-
-以下各节保留 **Document v3 历史格式** 的存储、交付及阅读兼容说明；其中 Draft 工具创建/更新参数已退出新写入接口。
-
-
 ## 责任与入口
 
-`marivo_present({ draft_path })` 将一次分析展示保存为一个 `presentation.json` 和一个 receipt，完成后自动在右侧 tab 打开。
-Marivo 拥有分析、Artifact/Finding 与来源事实；Harness 拥有 Session/Turn、Workspace 成员关系和事件存储；
-插件拥有固定快照投影、文件完整提交、receipt、Agent Draft 更新、阅读器呈现编辑保存与打开/下载。
+`marivo_present` 将已有结果保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在所属调用的 tool view 呈现，
+显式报告/dashboard 使用右侧 tab。Marivo 拥有分析、Artifact/Finding 与来源事实；Harness 拥有 Session/Turn、
+Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 
-实现为 `src/presentation/{tool,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
-`bridges.ts` 和 `client.tsx`；客户端使用 `src/client/presentation/` 的共享 reader 与交付 adapter。
-数据契约见[展示投影](presentation-projection.md)，图形和离线行为见[展示 reader](presentation-reader.md)。
-Agent 的展示路由、Draft 编写与结果解释见[展示 Skill](presentation-skill.md)；已有数据可直接进入此交付流程。
+实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
+`bridges.ts` 和 `client.tsx`。快照来源见[展示投影](presentation-projection.md)，阅读呈现见[共享 reader](presentation-reader.md)，
+Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
+
+## 统一分析 UI 写入与增量契约
+
+`marivo_present` 按 `surface`、`basedOnRecordId`、`resources`、`title`、`program`、`locale` 披露参数，
+输入 schema 以 [analysis-document.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)
+的 `analysisPresentInput` 为准。
+
+- 创建时 program 为完整 OpenUI Lang；单个 Frame 或 dataset-snapshot 可省略 program，自动生成 AnalysisFrameView/DatasetView。
+- 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
+- `surface` 默认 `tool`；成功保存后结果由会话级 Chat 节点呈现，保持在 Harness 工作步骤折叠区之外。`tab` 用于明确要求的报告/dashboard。
+- 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
+  字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
+
+资源声明支持三类：
+
+| kind | 字段 | 读取 |
+| --- | --- | --- |
+| `marivo-frame` | `sessionId`、`artifactId` | 在一次 checked execution 中批量有界读取 Frame 快照 |
+| `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_dataset` 签发的快照 |
+| `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
+
+组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。数据视图只有 auto/table/metric；
+metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列。
+
+program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
+recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不可变版本；关闭原连接或删除捕获文件后仍可读取。
+
+更新读取准确的 `basedOnRecordId`，用固定 `mergeStatements` 合并完整命名语句，再校验完整程序与资源计划
+（[analysis-program.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-program.ts)）。
+
+- 同一 patch 的语句名不可重复；新增或替换的语句合并后必须仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
+  `name = null` 删除语句，需先改写父引用。
+- 省略 program 保留基版本布局，省略 title/locale 继承；省略 resources 继承，提供则替换完整资源表。
+  同名同声明复制基版本已保存字节，只有新资源执行读取。
+- 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
+- 新版本独立内嵌全部资源，以基版本 buildId 执行条件保存；冲突不自动重试，失败不改 current。
+
+`marivo_ui_read({recordId})` 只读取准确已发布版本的 title、locale、Catalog、program 及资源的必要 schema 与范围，
+不返回 rows、不查询实时数据、不执行 Python；只在基版本上下文缺失时按需使用，不默认回读。
+
+候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址；
+tool 结果在会话节点中读取准确 Build，工具调用内只保留简短入口。关闭的候选不被片段或成功事件重新打开；
+历史加载不触发自动导航。取消或失败时基版本保持可读，新建标明未保存。
+
+离线 HTML 导出、对象存储发布与 Reader 内编辑已移除，新格式不提供替代入口；见[报告 HTML 发布](report-publishing.md)。
 
 ## 单次调用与文件身份
 
-1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace，核对 bound Runtime 的 project root。
-2. 更新时先校验目标 Report 的 current 与 `expected_build_id`；有界读取 Workspace 相对 Draft，使用同一个 checked Runtime 公开恢复 Artifact 和来源，读取 computed typed JSON。
-3. 新建时生成 report ID，更新时沿用目标 report ID；每次生成新 build ID，调用共享 builder 得到完整 JSON 字节，不默认渲染 HTML。
-4. 在同一 Workspace 的新临时目录写入报告 JSON 并同步，检查归属和目录身份后以一次 rename 提交。
-5. 重读校验完整 JSON 文件，然后在跨进程锁内发布 current 指针，返回 receipt。指针生效前失败不破坏已有构建。
-
-每次交付的路径固定为：
+1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace；需要读取 Frame 时核对 bound Runtime 的 project root。
+2. 更新时先解析 `basedOnRecordId` 并读取目标 Report 的准确版本。
+3. 新建时生成 report ID，更新时沿用；每次生成新 build ID 并构建完整 JSON 字节。
+4. 在同一 Workspace 的新临时目录写入 JSON 并同步，检查归属和目录身份后以一次 rename 提交。
+5. 重读校验完整 JSON 文件，再在跨进程锁内发布 current 指针并返回 receipt。指针生效前失败不破坏已有构建。
 
 ```text
 <workspace>/.dsh-data-analysis/presentations/<reportId>/builds/<buildId>/presentation.json
 ```
 
-document 使用 schema v3，receipt 使用 schema v2，保存 Workspace/report/build 身份、标题、摘要及已保存文件的精确路径、SHA-256 和字节数；`files.html` 可选，兼容历史含 HTML 的 receipt。
-Tool 默认创建独立报告；成对提供 `report_id` 与 `expected_build_id` 时更新已有报告。阅读器保存也为同一 report 创建新 build。
-`presentations/<reportId>/current.json` 保存 schema v3、Workspace、reportId、完整当前 receipt 及按发布顺序排列的版本记录。已有 schema v2 current 仍可读取，下一次成功保存时把其当前版本作为已确认历史起点。
-document 与 receipt 的旧协议不读取、不迁移；旧文件保留。支持已确认发布版本的历史浏览，不提供回滚或自动清理。
+receipt 保存 Workspace/report/build 身份、标题、摘要及已保存 JSON 的精确路径、SHA-256 和字节数。
+`presentations/<reportId>/current.json` 保存当前 receipt 及按发布顺序排列的版本记录。
 
-## Agent 更新契约
-
-`marivo_present({ draft_path, report_id, expected_build_id })` 以完整 Draft 重建已有 Report。
-两个身份参数必须成对提供，复用现有身份解析器；不按标题、Draft 路径或文件时间推测目标。
-Tool 在读取 Draft 和投影前 resolve 目标，校验 current、Workspace 及文档摘要，拒绝已过期的 expected build。
-构建完成后仍在共享发布服务的锁内比较 expected，防止投影期间发生的 UI 或 Agent 保存被覆盖。
-绑定失效、目标不存在、损坏或版本冲突均明确失败，不回退为新 Report。
-
-与 `reports/save` 的受限呈现编辑不同，完整 Draft 可新增／合并 KPI、改变绑定与数据声明；
-投影仍只读取已有保存数据，不自动执行分析。Agent 先读取当前保存内容并合并需要保留的用户编辑，
-未提交的内容不自动保留。`report-save-conflict` 后重新读取 current 和文档再判断，不能只换 expected ID 重试。
-普通文件读取用于准备 Draft，发布时的身份和摘要校验仍由 Tool 负责。
-
-返回 receipt 固定为本次成功发布的 Build，`current.json` 是当前构建的唯一权威；后续保存可继续推进 current。
-更新仍通过原有 Native／Code 交付路径生成本轮回执并自动打开右侧 tab；历史交付事件不改写，同 Report 重开时解析同一 current。
-固定 Build 文件和离线 HTML 保留快照，不提供跨窗口实时刷新或自动历史清理。
+磁盘上已有的旧格式报告（Presentation Document v3 及更早）不删除、不迁移；报告目录不再列出它们，
+打开旧报告地址时显示“不支持的报告”错误。需要相同内容时从实际结果重新 present。
 
 ## Native、PTC 与 headless
 
-纯 `PresentationDelivery` envelope 使用 `kind: "marivo.presentation.delivery"`、`schemaVersion: 2`、
-`dshSessionId`、`turn` 和同一个 `PresentationReceipt`。Native 使用 Tool metadata；Code 子调用通过
-Harness `tools/ptc-dispatch-log` 写入同一种 durable envelope，即使代码丢弃返回值也保留交付。
-登记只保存有界的临时 dispatch 关联，持久事实仍在 Harness 事件中。新版写入 `tool/ptc-dispatch`；
-读取既有 schemaVersion 2 receipt 时同时识别旧 `tool/code-dispatch` 事件名称，不改写历史。
+`PresentationDelivery` envelope 使用 `kind: "marivo.presentation.delivery"`、`schemaVersion: 2`、
+`dshSessionId`、`turn`、可选 `surface` 与同一个 `PresentationReceipt`；未声明 surface 的历史事件按 tab 处理。
+Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-log` 写入同一种 durable envelope，
+即使代码丢弃返回值也保留交付。新版写入 `tool/ptc-dispatch`，读取时同时识别旧 `tool/code-dispatch` 事件名称，不改写历史。
 
-客户端要求 Native receipt 对应同一 Turn 的实际 `marivo_present` call；Code 对应同一 Turn 的 root call。
-客户端再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文或旧 Evidence metadata。
-文本输出始终包含摘要、Workspace/report/build 和已保存文件的路径/digest/大小；headless 可直接取得 JSON 产物。
+客户端要求 Native receipt 对应同一 Turn 的实际 `marivo_present` call，Code 对应同一 Turn 的 root call；
+再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文。文本输出始终包含摘要、
+Workspace/report/build 与已保存文件的路径/digest/大小，headless 可直接取得 JSON 产物。
 
-## 对话回执与右侧 tab
+## RPC 与当前指针
 
-交付 Definition 保留 Harness 的持久事件、Turn 归属与去重契约。默认客户端的
-`conversation.chat.node` renderer 不渲染成功报告卡片；仅在打开失败时提供错误反馈。
-`LiveDeliveryObserver` 继续消费 Native／Code 的成功回执，自动打开固定 Build 的右侧 tab。
-最终回复不额外挂报告 block。历史事件回放不自动打开，报告可从 Workspace 报告目录重新进入。
-
-## 按需 HTML 下载
-
-新建报告及编辑保存默认只提交 JSON，不加载 HTML renderer、不写 `index.html`。
-用户点击“下载完整报告”后，`files/read` 先校验 Workspace 归属、固定 Build 的 JSON digest
-与文档身份，再使用当前安装的共享 renderer 生成自包含 HTML。生成失败或超限时明确报错；
-导出不修改 receipt、current 或不可变 Build，也不读取原始数据或重新执行分析。
-返回的 HTML 使用本次响应的摘要和字节数校验；JSON 仍严格绑定原 receipt。
-历史 receipt 存在 `files.html` 时仍校验并下载已保存文件，不重新生成。
-
-## RPC、编辑与当前指针
-
-逻辑 channel 为 `/marivo-presentation`；实际通过 Connection 注册 `/api/marivo-presentation/<endpoint>` 精确 POST 路由，复用 Harness 的浏览器认证及 Host/Origin 校验。提供：
+逻辑 channel 为 `/marivo-presentation`；通过 Connection 注册 `/api/marivo-presentation/<endpoint>` 精确 POST 路由，
+复用 Harness 的浏览器认证及 Host/Origin 校验。
 
 | Endpoint | 输入 | 作用 |
 | --- | --- | --- |
-| `reports/resolve` | `{ sessionId, reportId }` | 校验 current、receipt 与固定文档的身份和摘要，返回当前 receipt |
-| `reports/save` | `{ sessionId, reportId, expectedBuildId, edits: { title, blocks } }` | 校验呈现修改、构建新文件、比较并更新 current |
-| `files/read` | `{ sessionId, receipt, asset }` | 读取 receipt 指定的固定构建；asset 只允许 JSON 或 HTML |
-| `reports/list` | `{ workspaceId }` | 枚举已发布 Report 的当前标题、摘要、保存时间和更新来源 |
+| `reports/resolve` | `{ sessionId \| workspaceId, reportId }` | 校验 current、receipt 与固定文档的身份和摘要，返回当前 receipt |
+| `files/read` | `{ sessionId \| workspaceId, receipt, asset }` | 读取 receipt 指定的固定 Build JSON |
+| `reports/list` | `{ workspaceId }` | 枚举新格式 Report 的当前标题、摘要、保存时间和来源 |
 | `reports/history` | `{ workspaceId, reportId }` | 返回已确认发布的版本记录和当前 Build 身份 |
 
-以上读取与保存端点支持 `workspaceId` 替代 `sessionId`，二者必须恰好提供一个；不接受客户端路径。
-Workspace 读取直接使用 Harness `workspaceRegistry.get`，前后复核同一 id/path，无需来源 Session 存活。
-会话报告入口继续使用原 Session 成员关系边界。历史查看只读；保存仍要求 current 的 `expectedBuildId`。
+`sessionId` 与 `workspaceId` 必须恰好提供一个；不接受客户端路径。服务端从 Harness Workspace 成员关系推导路径，
+拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
 
-服务端从 Session 的 Harness Workspace 成员关系推导路径，不接受任意路径。读取拒绝符号链接、非普通文件、
-越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
+`marivo_present` 的外层执行预算为 180 秒，Frame 读取子进程为 120 秒，由
+[execution-policy.ts](../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
+超时或取消不创建本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
+[展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，120／180 秒不是保证完成的时限。
 
-保存只允许现有 block ID、原 kind 和可编辑呈现字段；省略 ID 表示删除，允许零 block。
-数据、来源、代码快照、diagnostics 从当前服务端文档保留，不接受浏览器覆盖。保存不执行 Agent、Python、
-projection、数据源或凭据流程。Tool 与 RPC 共用 builder／提交服务，只有 Tool adapter 发布真实 Turn 交付。
+current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化。锁内重新比较基版本 buildId，
+不一致返回 `report-save-conflict`。指针通过临时文件写入、文件同步、rename、目录同步提交；rename 是保存生效点。
+冲突或指针提交前失败保留旧构建，完整但未发布的构建不自动清理。锁等待 5 秒后明确失败，不移除未知所有者的锁。
 
-`marivo_present` 的外层执行预算为 180 秒，来源读取子进程为 120 秒，统一由内部报告执行预算定义；
-其他子进程及 HTML 导出预算不变。来源投影成功后才进入提交；来源超时或取消不创建本次报告 Build、
-不更新 current／历史，也不返回成功交付 receipt。超时诊断与保留声明的恢复方式见
-[展示投影](presentation-projection.md#数据流程)。外层取消仍覆盖完整操作，120／180 秒不是保证完成的时限。
+客户端验证文件身份、大小和 SHA-256 后才渲染。SHA-256 使用随客户端打包的 `@noble/hashes`，
+不依赖安全上下文的 `crypto.subtle`，内网 HTTP／代理访问执行相同校验。关闭、Workspace 失效或连接重置取消旧请求，
+迟到响应不能恢复旧内容。
 
-完整构建提交后，直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化 current 更新。
-锁内重新校验 `expectedBuildId`，不一致返回 `report-save-conflict`。指针通过临时文件写入、文件同步、rename、
-目录同步提交；rename 是保存生效点。冲突或指针提交前失败保留旧构建，完整但未发布的构建不自动清理。
-锁等待 5 秒后明确失败，不移除未知所有者的锁。指针发布后响应丢失由客户端重新 resolve 校验提交内容，
-不回滚指针或删除已生效构建。
+## Workspace 报告列表与历史查看
 
-报告入口保留初次 receipt 和交付事件，挂载、打开及报告下载前通过 reportId 解析当前 receipt 并更新标题摘要。
-编辑保存不产生聊天节点；重连从原事件恢复交付状态，再读取 Workspace current。阅读器一次打开绑定一个 resolved receipt，
-内部下载固定为当前显示的已保存构建，保存成功才切换。其他窗口不会覆盖正在编辑的草稿。
+默认 client 从 Workspace 会话头部的「报告」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
+只显示「报告标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
+同时间以 Report ID 稳定排序。默认只列 surface 为 tab 的报告，另选“对话结果”查看 tool 内容；
+发布历史中的 `source.surface` 只用于分类，不进入文档内容。列表只包含 `dsh.analysis-ui/v1` 记录，旧格式报告被隐藏。
 
-客户端验证文件身份、大小和 SHA-256 后才渲染或下载。SHA-256 使用随客户端打包的
-`@noble/hashes` 纯 JavaScript 实现，不依赖安全上下文的 `crypto.subtle`，支持内网 HTTP／代理访问；
-HTTP 与 HTTPS 执行相同校验，摘要不一致仍拒绝读取和下载。关闭、Workspace 失效或连接重置取消旧请求，
-清除已加载文档、编辑及筛选；迟到响应不能恢复旧内容。
+来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
+历史版本从报告正文的「历史版本」入口打开，版本切换读取精确 receipt，历史只读；返回当前版本显式重新 resolve。
+
+版本记录包含 `receipt`、`publishedAt`、`source`（Agent 及可用的 Session ID 与 surface），按发布顺序存于 current，
+与当前 receipt 在同一锁和原子 rename 中生效；Build 提交后冲突或发布前失败不增加历史。列表仅枚举 current，
+不扫描 Build 目录拼凑历史，也不按文件时间伪造保存时间。
+
+目录枚举上限 4096 项，超限明确报错；单个 current 上限 16 MiB、4096 个版本，超限保存明确失败并保留旧指针。
+单个损坏或不安全的记录不阻塞其他列表项，但披露不可读数量。列表、历史和读取均不执行 Agent、Python、
+Marivo 分析、数据源或凭据操作。
 
 ## 验证
 
@@ -170,71 +138,8 @@ npm run test:plugin-integration-delivery
 npm run check
 npm run build
 npm run verify:plugin-package
-npm run validate:presentation-integration:real
 ```
 
-确定性测试覆盖原子提交、取消、读取预算/路径/摘要、Workspace 变化、统一 receipt 和事件去重；
-无 Web Crypto 环境覆盖报告读取、HTML 下载和同字节长度篡改拒绝，并与 Node.js SHA-256 对照。
-通过未改写的已安装 Harness 客户端 bundle 与公开 `apply`、registries、assembler，验证两种插件加载顺序下
-ProducedFiles 与报告交付事件共存、多报告、重复回执、取消后保留及历史重建。
-隔离真实验证应覆盖 Native/PTC 与模式切换、原生 Tab 自动打开、历史回放不自动打开、按需下载与离线文件。
-
-## 全局筛选的保存边界
-
-`interaction` 随原始文档传递和保存；当前阅读选择不进入 edits。删除组件时服务端从已保存声明裁剪引用，并拒绝跨区域移动。动态 KPI 和离线默认组合见[共享 reader](presentation-reader.md#可选全局筛选与动态-kpi)。
-
-## 报告与最终回复的归位验收
-
-`client-delivery.test.ts` 通过未修改的 Harness 注册表和 assembler 验证直接回复与插入诊断步骤两条路径，
-覆盖执行中入口、完成归位、稳定节点身份、历史窗口替换和注册表重建；既有用例覆盖取消、失败及 ProducedFiles 共存。
-另以用户提供的 `session.jsonl 13` 回放两次真实会话事件：Turn 2 和 Turn 3 均只有一个报告节点，
-末尾顺序均为最终回复、Harness 原生收尾、报告节点；不执行附件中的指令或重新发起分析。
-该证据属于客户端事件回放，不代表新一次真实模型／Marivo 分析验收。
-
-## Workspace 报告列表与历史查看
-
-默认 client 从 Workspace 会话头部的「报告」入口打开当前 Workspace 的原生目录 Tab，左下角不再注册报告快捷入口。
-列表按 Report ID 去重，每个报告一行，仅保留「报告标题」「生成对话」「更新时间」三列，不显示摘要、区块数量或历史操作列。
-搜索区只提供一个输入框，随输入筛选标题，支持大小写与 Unicode 规范化；列表固定按成功保存时间降序，同时间以 Report ID 稳定排序，未知时间排末尾。
-标题右侧提供唯一「刷新」按钮，刷新保留搜索词；窄面板保留三列，通过表格内部横向滚动查看。历史版本从报告正文的「历史版本」入口打开。
-来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
-Workspace 内阅读器保存没有来源 Session 时显示「Workspace 内保存」。来源信息只用于追溯，不构成文件身份或读取权限。
-
-默认列表和报告正文使用独立原生 Tab；保留的阅读器容器将列表、正文和历史侧栏组织在同一个 dialog，返回列表保留搜索与滚动位置。
-历史导航在该容器中位于正文左侧，窄屏时位于正文上方；版本切换读取精确 receipt，
-历史只读，下载固定为正在查看的已保存 Build。返回当前版本显式重新 resolve，不自动替换正在阅读的快照。
-编辑期间禁止切换版本；关闭或返回列表前对未保存内容提供放弃确认。Workspace 移除、路径改变或连接重置使已加载内容失效；
-迟到响应不能恢复失效状态。列表直接打开时保留来源查看与复制上下文，不猜测“加入提问”应写入哪一个 Session。
-
-版本记录包含 `receipt`、`publishedAt`、`source`（Agent／阅读器及可用的 Session ID），按发布顺序存于 current，
-与当前 receipt 在同一跨进程锁和原子 rename 中生效。Build 提交后遭遇冲突或发布前失败，不增加历史。
-列表仅枚举 current，不扫描 Build 目录拼凑历史。旧 schema v2 current 只有一版可确认，保存时间和来源记为未知，
-并披露早期历史不可用；不按文件时间或生成时间伪造成功保存时间。历史记录不重写不可变 Build。
-
-目录枚举上限 4096 项，超限明确报错；单个 current 上限 16 MiB、4096 个版本，超限保存明确失败并保留旧指针，
-不静默截断历史。单个损坏或不安全的 Report 记录不阻塞其他列表项，但会披露不可读数量；打开和下载仍校验完整文件摘要与归属。
-列表、历史和下载均不执行 Agent、Python、Marivo 分析、数据源或凭据操作。
-
-## 可选对象存储交付
-
-启用 `reportPublishing` 后，在线阅读器的完整报告和当前视图 HTML 菜单均改为上传并返回链接，不触发本地下载。默认保存仍只提交 JSON；身份、凭据、路径及失败边界见[报告 HTML 发布](report-publishing.md)。
-
-## 客户端旧入口移除
-
-客户端只通过默认 `apply` 安装原生报告 Tab。移除 `installPresentation`、`PresentationCards`、
-`PresentationOverlay` 公开导出及旧弹窗实现，不提供兼容别名。报告事件解析和持久 receipt 契约保持不变。
-移除旧卡片使用的 `PresentationDeliveryModel.preview`、`contextChanged` 和 `receipts` 状态；
-原生 Tab 的上下文撤销通过 `TabPage` 生命周期调用 `unavailable`。
-同时移除无仓库调用方的公开辅助函数 `chartSeriesFields`；调用方直接读取 `ChartView.y`，需要副本时显式复制。
-
-来源概要和查询由当前来源对话框展示；静态 HTML 使用真实 Reader 的 source cell，不保留旧摘要组件。
-
-## Agent HTML 导出
-
-`marivo_export_html({ report_id, build_id?, output_path })` 将同一 Session Workspace 的完整报告写为自包含 HTML。省略 Build 时一次解析 current 并冻结 receipt；指定 Build 时从已保存历史精确定位，缺失则失败。工具与阅读器共用 receipt 路径、字节摘要及文档身份校验；旧 Build 已有 HTML 时校验并复用，否则使用插件内置 builder。
-
-`output_path` 是新的 Workspace 相对 `.html` 路径，允许创建父目录，拒绝越界、符号链接、内部 `.dsh-data-analysis` 目录及覆盖。临时文件在目标文件系统内的最上层 Workspace 祖先目录暂存，再以不可覆盖的原子方式落盘。取消、归属变更或失败时通过保留的文件句柄清空内容，并按文件身份清理可确认路径；外部移走最终文件时可能保留空文件，但不会按未知位置猜测删除或留下完整报告内容。导出不修改 current、历史或 receipt，不创建 Build，不绑定 Runtime 或访问凭据。
-
-结果含 `workspace_id`、`report_id`、`build_id`、`path`、`mime_type`、`bytes`、`sha256`，不返回 HTML 正文。工具通过 Harness `presentCall.locations` 暴露目标文件位置，结果返回实际绝对路径，不产生报告打开 receipt。导出成功后 Agent 使用返回的实际路径调用原生 `present({ files: [{ path, description }] })`；文件卡片及 `deliverables/presented` Session 记录由 Harness 拥有。导出工具不嵌套调用或伪造 `present`，导出与文件交付分别确认成功。未挂载原生 `present` 时明确报告交付能力缺失。
-
-全量离线交互、报告语言、静态正文与阅读器下载一致；浏览器临时状态不进入此接口。导出与外部发布独立。
+确定性测试覆盖原子提交、取消、读取预算/路径/摘要、Workspace 变化、统一 receipt、事件去重与增量合并；
+客户端测试通过未修改的 Harness 注册表和 assembler 验证交付节点归位与 ProducedFiles 共存。
+真实 Native/PTC、右侧 tab 与模型路由验收需在隔离环境另行执行。

@@ -4,7 +4,6 @@ import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../../presentation/receipt.ts'
 import { CredentialClientModel } from '../credentials/model.ts'
 import { ReportCatalogModel } from '../presentation/catalog-model.ts'
 import { PresentationDeliveryModel, type PresentationRpc } from '../presentation/delivery-model.ts'
-import type { ReaderViewMemory } from '../presentation/reader.tsx'
 import { SemanticBrowserModel } from '../semantic-browser/model.ts'
 import type { Directory, Resource } from './navigation.ts'
 
@@ -22,7 +21,6 @@ export class TabPage {
   readonly catalog: ReportCatalogModel
   readonly semantic: SemanticBrowserModel
   readonly datasources: CredentialClientModel
-  readonly viewMemory: ReaderViewMemory = new Map()
   readonly #rpc: PresentationRpc
   readonly #lifetime = new AbortController()
   #navigation = new AbortController()
@@ -78,10 +76,6 @@ export class TabPage {
   async navigate(revision: number, force = false, history = false) {
     if (this.#closed || (this.#revision === revision && !force)) return
     this.#revision = revision
-    if (this.reader.getSnapshot().editing || this.reader.getSnapshot().saving) {
-      this.patch({ notice: 'marivo.navigation.your-edits-are-retained-save-or-cancel-them-first' })
-      return
-    }
     if (this.target.kind !== 'datasources' || this.#navigation.signal.aborted) {
       this.#navigation.abort()
       this.#navigation = new AbortController()
@@ -100,28 +94,15 @@ export class TabPage {
         !this.#navigation.signal.aborted
       )
         await this.reader.toggleHistory()
-      const displayed =
-        this.reader.getSnapshot().document ?? this.reader.getSnapshot().analysisDocument
-      if (displayed)
-        for (const key of this.viewMemory.keys())
-          if (
-            !key.startsWith(`${displayed.workspaceId}/${displayed.reportId}/${displayed.buildId}/`)
-          )
-            this.viewMemory.delete(key)
     } else if (target.kind === 'reports') this.catalog.show(target.workspaceId)
     else if (target.kind === 'datasources') await this.datasources.show(target.workspaceId)
     else if ('ref' in target) this.semantic.showObject(target.workspaceId, target.ref)
     else this.semantic.show(target.workspaceId)
   }
-  async refresh(
-    confirmDiscard: () => boolean = () =>
-      window.confirm('marivo.navigation.there-are-unsaved-edits-discard-them-and-refresh-the'),
-  ) {
+  async refresh() {
     // Incidental refreshes must not undo revocation. Only a checked navigation
     // can reopen an unavailable occurrence.
-    if (this.#state.error || this.reader.getSnapshot().saving) return
-    if (this.reader.dirty && !confirmDiscard()) return
-    this.reader.cancelEdit()
+    if (this.#state.error) return
     await this.navigate(this.#revision, true)
   }
   async publicationChanged(workspaceId: string, reportId?: string) {
@@ -154,9 +135,7 @@ export class TabPage {
       if (generation !== this.#updateRevision || this.#closed) return
       this.patch({
         newer:
-          receipt.buildId !==
-          (this.reader.getSnapshot().document ?? this.reader.getSnapshot().analysisDocument)
-            ?.buildId
+          receipt.buildId !== this.reader.getSnapshot().analysisDocument?.buildId
             ? receipt
             : undefined,
       })
@@ -177,7 +156,6 @@ export class TabPage {
     this.catalog.reset()
     this.semantic.unavailable()
     this.datasources.suspend()
-    this.viewMemory.clear()
     this.patch({ error: message, newer: undefined })
   }
   dispose() {
@@ -188,7 +166,6 @@ export class TabPage {
     this.catalog.dispose()
     this.semantic.dispose()
     this.datasources.dispose()
-    this.viewMemory.clear()
     this.#listeners.clear()
   }
 }

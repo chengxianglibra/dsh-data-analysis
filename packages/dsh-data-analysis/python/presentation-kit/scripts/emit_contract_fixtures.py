@@ -1,4 +1,4 @@
-"""Encode the same S0 fixture data in Python for Node/browser contract tests."""
+"""Encode the shared typed fixtures in Python for Node contract tests."""
 
 from __future__ import annotations
 
@@ -9,12 +9,9 @@ from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
-from dsh_data_analysis_presentation import write_dataset
 from dsh_data_analysis_presentation._dataset import encode_dataset, encoded_json
 
-FIXTURES = (
-    Path(__file__).resolve().parents[3] / "tests" / "presentation-s0" / "fixtures"
-)
+FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 
 
 def fixture_frame(dataset: dict) -> pd.DataFrame:
@@ -49,9 +46,7 @@ def main() -> None:
     root = Path(sys.argv[1]).resolve()
     root.mkdir(parents=True, exist_ok=True)
     computed = json.loads((FIXTURES / "computed.dataset.json").read_text())
-    artifact = json.loads((FIXTURES / "artifact.document.json").read_text())[
-        "datasets"
-    ][0]["data"]
+    artifact = json.loads((FIXTURES / "artifact.dataset.json").read_text())
     outputs = {}
     for name, fixture in (("computed", computed), ("artifact", artifact)):
         dataset = encode_dataset(
@@ -64,9 +59,6 @@ def main() -> None:
         target = root / f"{name}.dataset.json"
         target.write_bytes(encoded_json(dataset))
         outputs[name] = str(target)
-    writer_path = root / "writer.dataset.json"
-    write_dataset(fixture_frame(computed), writer_path, row_limit=computed["limit"])
-    outputs["writer"] = str(writer_path)
     print(json.dumps(outputs))
 
 

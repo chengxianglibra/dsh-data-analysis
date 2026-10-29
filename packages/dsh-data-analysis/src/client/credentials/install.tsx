@@ -8,7 +8,6 @@ import { localized } from '../i18n/host.tsx'
 import type { CredentialChanges } from './changes.ts'
 import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
-import { ReportPublishingCredentials } from './report-publishing.tsx'
 import { credentialStyles } from './styles.ts'
 
 const statusLabels = {
@@ -998,9 +997,6 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
           </main>
         </div>
       </div>
-      {!request && workspaceId && (
-        <ReportPublishingCredentials key={workspaceId} model={model} workspaceId={workspaceId} />
-      )}
     </section>
   )
 }

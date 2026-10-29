@@ -14,10 +14,8 @@ import {
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { chromium, type Page } from 'playwright'
-import {
-  parsePresentationDocument,
-  parsePresentationReceipt,
-} from '../src/presentation/contracts/index.ts'
+import { parseSavedPresentation } from '../src/presentation/contracts/analysis-document.ts'
+import { parsePresentationReceipt } from '../src/presentation/contracts/index.ts'
 import { startFileAnalysisWeb } from './file-analysis-real/web-host.ts'
 
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-file-analysis-real-')))
@@ -209,20 +207,22 @@ async function verify(
   const reports = deliveries(events, sessionId)
   assert.ok(reports.length, `${label}: no actual report delivery`)
   const receipt = reports.at(-1)!
-  const document = parsePresentationDocument(
+  const document = parseSavedPresentation(
     JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
   )
-  assert.deepEqual(document.sources, [], 'File results must not claim Marivo Artifact sources')
-  const narrative = [
-    document.title,
-    ...document.blocks.flatMap((block) => (block.kind === 'markdown' ? [block.text] : [])),
-  ].join('\n')
+  const snapshots = Object.values(document.resources).flatMap((resource) =>
+    resource.kind === 'snapshot' ? [resource] : [],
+  )
   assert.ok(
-    narrative.includes(path.basename(targetPath)),
+    snapshots.every((resource) => resource.snapshot.kind === 'dataset'),
+    'File results must not claim Marivo Frame sources',
+  )
+  assert.ok(
+    `${document.title}\n${document.program}`.includes(path.basename(targetPath)),
     `${label}: report must identify the input file`,
   )
-  const summaries = document.datasets.filter((dataset) =>
-    dataset.data.rows.some(
+  const summaries = snapshots.filter((resource) =>
+    resource.snapshot.data.rows.some(
       (row) =>
         row.some((cell) => Number(cell) === rows) && row.some((cell) => Number(cell) === total),
     ),
@@ -231,20 +231,19 @@ async function verify(
     summaries.length,
     `${label}: report must contain a summary row with correct count and total`,
   )
-  const snippets = document.datasets.flatMap((dataset) => dataset.code ?? [])
-  assert.ok(snippets.length, `${label}: report is missing execution codeRef snapshots`)
+  const codeRefs = snapshots.flatMap((resource) =>
+    resource.binding.codeRef ? [resource.binding.codeRef] : [],
+  )
+  assert.ok(codeRefs.length, `${label}: report is missing execution codeRef bindings`)
   const successful = successfulPython(events)
   assert.ok(
-    summaries.some((dataset) =>
-      dataset.code?.some((snippet) =>
-        successful.some(
-          (run) =>
-            run.codeRef.executionId === snippet.executionId &&
-            run.codeRef.sha256 === snippet.sha256 &&
-            run.code === snippet.text &&
-            referencesPath(run.code, targetPath) &&
-            /read_csv|read_json|read_parquet|read_xlsx|open\(/.test(run.code),
-        ),
+    summaries.some((resource) =>
+      successful.some(
+        (run) =>
+          run.codeRef.executionId === resource.binding.codeRef?.executionId &&
+          run.codeRef.sha256 === resource.binding.codeRef?.sha256 &&
+          referencesPath(run.code, targetPath) &&
+          /read_csv|read_json|read_parquet|read_xlsx|open\(/.test(run.code),
       ),
     ),
     `${label}: summary must reference this turn's successful Python reading the exact uploaded file`,
@@ -256,7 +255,7 @@ async function verify(
     total,
     reportId: receipt.reportId,
     buildId: receipt.buildId,
-    codeRefs: snippets.map(({ executionId, sha256 }) => ({ executionId, sha256 })),
+    codeRefs,
     targetPath,
   }
 }

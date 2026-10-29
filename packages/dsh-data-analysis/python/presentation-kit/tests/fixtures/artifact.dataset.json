@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "columns": [
+    {
+      "id": "region",
+      "label": "region",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "id": "revenue",
+      "label": "revenue",
+      "type": "float64",
+      "nullable": true
+    }
+  ],
+  "rows": [["A", 12.5], ["B", 8.25], ["C", null]],
+  "rowCount": 4,
+  "limit": 3,
+  "truncated": true
+}

@@ -30,6 +30,8 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { apply, inject } from '../../src/plugin.ts'
+import type { AnalysisPresentInput } from '../../src/presentation/contracts/analysis-document.ts'
+import { analysisRecordId } from '../../src/presentation/contracts/analysis-document.ts'
 import { parsePresentationReceipt } from '../../src/presentation/contracts/index.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
 import { presentationSha256, readPresentationAsset } from '../../src/presentation/files.ts'
@@ -42,6 +44,10 @@ import { TestShellEnv } from '../../tests/test-shell-env.ts'
 import { inspectStoredSession } from '../harness-session.ts'
 
 export type PresentationMode = 'native' | 'both' | 'ptc'
+/** One scripted `marivo_present` creation input; updates add the previous recordId. */
+export type PresentationRequest = Omit<AnalysisPresentInput, 'surface' | 'basedOnRecordId'> & {
+  surface?: AnalysisPresentInput['surface']
+}
 export interface PresentationJourneyOptions {
   updateExistingReport?: boolean
 }
@@ -56,17 +62,17 @@ export interface ActualDelivery {
 export class ScriptedPresentationAdapter extends LlmAdapter {
   #step = 0
   readonly mode: PresentationMode
-  readonly draftPaths: readonly string[]
+  readonly requests: readonly PresentationRequest[]
   readonly previousReceipt?: () => PresentationReceipt | undefined
   readonly runId = randomUUID()
   constructor(
     mode: PresentationMode,
-    draftPaths: readonly string[],
+    requests: readonly PresentationRequest[],
     previousReceipt?: () => PresentationReceipt | undefined,
   ) {
     super()
     this.mode = mode
-    this.draftPaths = draftPaths
+    this.requests = requests
     this.previousReceipt = previousReceipt
   }
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -88,23 +94,23 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
     const phase = step % 4
     const turnIndex = Math.floor(step / 4)
     if (phase < 3) {
-      const draft = this.draftPaths[turnIndex]
-      assert.ok(draft, 'Scripted model received an unexpected extra Tool request')
+      const request = this.requests[turnIndex]
+      assert.ok(request, 'Scripted model received an unexpected extra Tool request')
       const id = ToolCallId(`s4-${this.mode}-${step}`)
       const codeDispatch = this.mode === 'ptc' || (this.mode === 'both' && step === 1)
       const file = `s4-produced-${this.runId}-${turnIndex}.txt`
       const toolName = phase === 0 ? 'write' : phase === 1 ? 'marivo_present' : 'read'
-      let updateTarget: { report_id: string; expected_build_id: string } | undefined
+      let updateTarget: { basedOnRecordId: string } | undefined
       if (phase === 1 && turnIndex > 0 && this.previousReceipt) {
         const receipt = this.previousReceipt()
         assert.ok(receipt, 'An update must use the previous actual Tool delivery')
-        updateTarget = { report_id: receipt.reportId, expected_build_id: receipt.buildId }
+        updateTarget = { basedOnRecordId: analysisRecordId(receipt.reportId, receipt.buildId) }
       }
       const toolArgs =
         phase === 0
           ? { file_path: file, content: 'Ordinary Harness produced file before report delivery.\n' }
           : phase === 1
-            ? { draft_path: draft, ...updateTarget }
+            ? { ...request, ...updateTarget }
             : { file_path: file }
       const name = codeDispatch ? 'run_code' : toolName
       const args = JSON.stringify(
@@ -177,7 +183,7 @@ export async function runPresentationJourneys(
   workspaceRoot: string,
   outputRoot: string,
   mode: PresentationMode,
-  draftPaths: readonly string[],
+  requests: readonly PresentationRequest[],
   duplicateDispatch = false,
   options: PresentationJourneyOptions = {},
 ) {
@@ -188,7 +194,7 @@ export async function runPresentationJourneys(
     [provider],
     new ScriptedPresentationAdapter(
       mode,
-      draftPaths,
+      requests,
       options.updateExistingReport
         ? () => actualDeliveries(agent.session.snapshotEvents(), String(sessionId)).at(-1)?.receipt
         : undefined,
@@ -235,10 +241,10 @@ export async function runPresentationJourneys(
   })
   await workspace.attachSession(sessionId)
   assert.ok(workspace.sessionIds.includes(sessionId))
-  for (const [index, draft] of draftPaths.entries()) {
+  for (const [index, request] of requests.entries()) {
     agent.followup(
       createUserMessage({
-        content: [{ type: 'text', text: `S4 presentation validation: ${draft}` }],
+        content: [{ type: 'text', text: `S4 presentation validation: ${request.title}` }],
         source: { kind: 'user' },
       }),
     )
@@ -252,7 +258,7 @@ export async function runPresentationJourneys(
         delivery.receipt,
         'The published current pointer must equal the receipt returned by this turn',
       )
-      // Read the saved version before the adapter bases its next draft on that Build.
+      // Read the saved version before the adapter bases its next update on that Build.
       await readReceiptDocument(workspaceRoot, delivery.receipt)
     }
   }
@@ -268,7 +274,7 @@ export async function runPresentationJourneys(
   const stored = await inspectStoredSession(ctx.sessionPersistence, sessionId)
   assert.deepEqual(stored.events, agent.session.snapshotEvents())
   const rawDeliveries = actualDeliveries(stored.events, String(sessionId))
-  assert.equal(rawDeliveries.length, draftPaths.length + (duplicateDispatch ? 1 : 0))
+  assert.equal(rawDeliveries.length, requests.length + (duplicateDispatch ? 1 : 0))
   const deliveries = [
     ...new Map(
       rawDeliveries.map((item) => [JSON.stringify([item.turn, item.receipt.buildId]), item]),
@@ -276,14 +282,14 @@ export async function runPresentationJourneys(
   ]
   assert.equal(
     deliveries.length,
-    draftPaths.length,
+    requests.length,
     JSON.stringify(stored.events.filter((event) => event.type === 'tool/result')),
   )
   assert.deepEqual(
     deliveries.map((item) => item.turn),
-    draftPaths.map((_, index) => index + 1),
+    requests.map((_, index) => index + 1),
   )
-  assert.equal(new Set(deliveries.map((item) => item.receipt.buildId)).size, draftPaths.length)
+  assert.equal(new Set(deliveries.map((item) => item.receipt.buildId)).size, requests.length)
   assert.ok(deliveries.every((item) => item.receipt.workspaceId === String(workspace.id)))
   let reportUpdate:
     | {
@@ -324,7 +330,7 @@ export async function runPresentationJourneys(
   )
   assert.equal(
     dispatches.length,
-    (mode === 'ptc' ? draftPaths.length : mode === 'both' ? 1 : 0) + (duplicateDispatch ? 1 : 0),
+    (mode === 'ptc' ? requests.length : mode === 'both' ? 1 : 0) + (duplicateDispatch ? 1 : 0),
   )
   const text = stored.events
     .flatMap((event) => {
@@ -408,7 +414,7 @@ export async function validatePresentationHost(
   workspaceRoot: string,
   outputRoot: string,
   pythonExecutable: string,
-  draftPaths: readonly string[],
+  requests: readonly PresentationRequest[],
   options: PresentationJourneyOptions = {},
 ) {
   const modes = []
@@ -449,14 +455,14 @@ export async function validatePresentationHost(
           credentialInteraction: 'none',
         },
       )
-      // Every invocation creates an immutable Build, including a repeated draft.
+      // Every invocation creates an immutable Build, including a repeated request.
       modes.push(
         await runPresentationJourneys(
           ctx,
           workspaceRoot,
           outputRoot,
           mode,
-          [...draftPaths, draftPaths[0]!],
+          [...requests, requests[0]!],
           false,
           options,
         ),

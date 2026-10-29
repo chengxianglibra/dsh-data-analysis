@@ -13,7 +13,6 @@ import type {
   CredentialRequestView,
 } from '../../datasource/service.ts'
 import { PendingTasks } from '../../lifecycle.ts'
-import type { PublishingCredentialView, PublishingField } from '../../report-publishing/service.ts'
 import { CopyError, errorMessage, message, type Notice } from './../i18n/copy.ts'
 import type { BrowserRpc } from '../semantic-browser/model.ts'
 import type { CredentialChanges } from './changes.ts'
@@ -180,26 +179,6 @@ export class CredentialClientModel {
       error?: { message?: string }
     }
     if (!result.ok) throw new CredentialResponseError(result.error?.message ?? '')
-    return result.value
-  }
-  async publishingCredentials(
-    endpoint: 'describe' | 'set' | 'unset',
-    workspaceId: string,
-    payload: { field?: PublishingField; value?: string; configId?: string },
-    signal: AbortSignal,
-  ): Promise<PublishingCredentialView> {
-    const result = (await this.#rpc.call(
-      '/dsh-report-publishing',
-      endpoint,
-      { workspaceId, ...payload },
-      AbortSignal.any([signal, this.#lifetime.signal]),
-    )) as { ok: boolean; value: PublishingCredentialView; error?: { message?: string } }
-    if (!result.ok)
-      throw new Error(
-        result.error?.message === 'report-publishing-config-changed'
-          ? 'report-publishing-config-changed'
-          : 'report-publishing-credential-operation-failed',
-      )
     return result.value
   }
   async show(workspaceId: string, selectedToken?: string): Promise<void> {

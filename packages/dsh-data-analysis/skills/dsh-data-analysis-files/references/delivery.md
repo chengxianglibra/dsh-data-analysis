@@ -4,7 +4,7 @@
 
 ## 生成与声明
 
-只交付用户要求的最终文件。报告内部的 `presentation.json`、computed 数据和 receipt 不作为默认附件；用户另行要求时，先确认实际文件已经存在且当前 Session 可访问。浏览器内生成的下载不伪装成 Session 文件；报告 HTML 交给展示 Skill 的导出或发布流程。
+只交付用户要求的最终文件。分析 UI 的保存记录、快照和 receipt 不作为默认附件；用户另行要求时，先确认实际文件已经存在且当前 Session 可访问。浏览器内生成的下载不伪装成 Session 文件；分析 UI 不提供 HTML 导出或发布，不以手写 HTML 冒充报告导出。
 
 文件生成成功，或用户要求预览且已有文件确认可访问后，调用 `present`，分别核对生成与声明结果。CSV、TSV、XLSX 由 Harness 原生表格预览读取文件，契约见 `dsh-v0.1.7-rc.1/packages/client/ui-sidebar-documentpreview/README.zh.md`；这是只读文件视图，不是 Marivo Report/Build，也不代表插件支持写入 XLSX 或分析旧 `.xls`。当前缺少 `present` 时，说明文件实际状态和原生交付能力不可用，并提供准确路径；不虚构卡片，不安装工具或改写 profile。
 

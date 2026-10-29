@@ -32,7 +32,7 @@ try {
   assert.deepEqual(reused, runtime)
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
   assert.equal(marker.marivoVersion, runtime.marivoVersion)
-  assert.equal(marker.presentationKitVersion, '1.3.0')
+  assert.equal(marker.presentationKitVersion, '1.4.0')
   assert.equal(marker.presentationKitPackagePath, runtime.presentationKitPackagePath)
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
   const administrator = await ensureSharedMarivoRuntime({
@@ -71,29 +71,24 @@ try {
   const computedPath = path.join(firstWorkspace, 'computed.json')
   const checkedWrite = await first.runChecked({
     program: String.raw`
-from dataclasses import asdict
 from decimal import Decimal
-import json
+from pathlib import Path
 import sys
 import pandas as pd
-from dsh_data_analysis_presentation import write_dataset
+from dsh_data_analysis_presentation._dataset import encode_dataset, encoded_json
 frame = pd.DataFrame({
     "count": pd.Series([9007199254740993, None], dtype="Int64"),
     "amount": [Decimal("12345678901234.5678"), Decimal("0.1000")],
 })
-receipt = write_dataset(frame, sys.argv[1], labels={"count": "数量", "amount": "金额"}, dataset_id="computed")
-print(json.dumps(asdict(receipt)))
+Path(sys.argv[1]).write_bytes(encoded_json(encode_dataset(frame)))
 `,
     args: [computedPath],
   })
   assert.equal(checkedWrite.exitCode, 0, checkedWrite.stderr.toString('utf8'))
   const computed = parseTypedDataset(JSON.parse(await readFile(computedPath, 'utf8')))
   assert.deepEqual(
-    computed.columns.map(({ id, label }) => ({ id, label })),
-    [
-      { id: 'count', label: '数量' },
-      { id: 'amount', label: '金额' },
-    ],
+    computed.columns.map(({ id }) => id),
+    ['count', 'amount'],
   )
   assert.deepEqual(computed.rows, [
     ['9007199254740993', '12345678901234.5678'],
@@ -104,7 +99,7 @@ print(json.dumps(asdict(receipt)))
   await mkdir(shadowRoot)
   await writeFile(
     path.join(shadowRoot, '__init__.py'),
-    '__version__ = "1.3.0"\ndef write_dataset(*args, **kwargs): pass\n',
+    '__version__ = "1.4.0"\ndef capture_dataset(*args, **kwargs): pass\n',
   )
   await assert.rejects(
     first.runChecked({ program: 'raise RuntimeError("user program must never start")' }),
@@ -163,7 +158,7 @@ print(json.dumps(asdict(receipt)))
       workspaces: [first.binding, second.binding],
       runtimeReused: true,
       zeroWorkspaceWrites: true,
-      checkedWriter: { receipt: JSON.parse(checkedWrite.stdout.toString('utf8')), data: computed },
+      checkedEncoding: { data: computed },
       workspaceShadowRejected: true,
       administratorShadowRejectedWithoutFallback: true,
       administratorMissingPackageRejectedWithoutFallback: true,

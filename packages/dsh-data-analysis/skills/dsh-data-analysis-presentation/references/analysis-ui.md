@@ -1,7 +1,7 @@
 # Lang、捕获与增量更新
 
 单 Frame 或成功捕获的 DataFrame 直接传引用，不读本页也能呈现。只有需要自定义布局、捕获或修改时使用以下说明。
-组件签名见[八组件 Catalog](analysis-catalog.md)，首期数据视图为 auto/table/metric；图形与离线导出尚未开放。
+组件签名见[八组件 Catalog](analysis-catalog.md)，数据视图只有 auto/table/metric；不提供图形、离线导出或发布。
 
 ## 自定义页面
 
@@ -46,4 +46,4 @@ capture_dataset(result)  # result is the actual pandas DataFrame in this analysi
 title/locale 省略时继承。更新生成独立完整 Build，不重新分析。需要移除节点时先改写父引用，再用 `name = null` 删除语句。
 
 缺少准确基版本定义时才调用 marivo_ui_read；成功后不默认回读。并发冲突时核对当前版本与修改意图，
-重新形成 patch，不仅替换 basedOnRecordId 盲重试。旧格式操作另见主 Skill 的历史区域。
+重新形成 patch，不仅替换 basedOnRecordId 盲重试。

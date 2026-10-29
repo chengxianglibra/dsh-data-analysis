@@ -1,5 +1,7 @@
 # 统一分析 UI P3 验收
 
+> 后续变更：旧 Document v3 Reader、编辑、HTML 导出与发布已移除，见[验证指南](../validation.md#旧报告管线移除)；本记录保留当时的验收边界。
+
 日期：2026-10-28。范围：[P3 实施任务](../designs/unified-analysis-ui-implementation.md#p3流式增量更新和首期交付)。
 P0–P3 首期范围完成；P4/P5 未开放。只修改本插件，保留原有 AGENTS.md、统一 UI 设计及独立的 DSH 集成设计工作。
 Web 验证只启动和关闭本次隔离 Host。

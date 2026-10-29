@@ -86,7 +86,7 @@ import {CredentialPanel,installCredentials} from ${JSON.stringify(installer)};
 import {WorkspaceHeaderAction} from ${JSON.stringify(fileURLToPath(new URL('../src/client/workspace-header-action.tsx', import.meta.url)))};
 const seats=[];
 const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
-const rpc={call:async(channel,endpoint,payload,signal)=>channel==='/dsh-report-publishing'?{ok:true,value:{enabled:false,fields:[]}}:(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
+const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
 ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-semantic',order:110},()=> <WorkspaceHeaderAction label="语义层" icon="semantic" onClick={()=>{}}/>);
 // Fixture-only stream carrier; the production client uses Harness RemoteStream.
 const changes=sessionId=>{

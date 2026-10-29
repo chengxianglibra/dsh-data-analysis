@@ -44,13 +44,11 @@ export async function readSavedAnalysis(
       ),
     ),
     receipt,
-    'presentation.json',
   )
   const document = parseSavedPresentation(
     JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
   )
   if (
-    document.schemaVersion === 3 ||
     document.workspaceId !== receipt.workspaceId ||
     document.reportId !== receipt.reportId ||
     document.buildId !== receipt.buildId ||

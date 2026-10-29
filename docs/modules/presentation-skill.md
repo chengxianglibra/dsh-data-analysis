@@ -10,8 +10,9 @@ Native 自定义 Lang 消费真实参数前缀，更新使用准确 basedOnRecor
 提供则替换完整表；纯展示修改不重新读取快照。成功不默认回读，不强制先大纲后补全。
 
 入口为 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
-旧 Draft、writer、图形、筛选和导出资源仅说明已有 Document v3，不指向新写入。
-新格式首期只有 auto/table/metric，未开放图形、HTML 导出或发布。
+数据视图只有 auto/table/metric；Skill 不包含图形、全局筛选、Draft、HTML 导出或发布资源。
+[叙事与证据检查](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
+[完整示例](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)按需读取。
 
 ## 发现与路由
 
@@ -22,8 +23,8 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 每个 Agent 的常驻 prompt 只保留短路由：
 
 - 普通事实问答与简短比较表格留在聊天中；指定 CSV、JSON、PNG 等文件使用原生 `present`。
-- 交互图表、表格、保存报告、看板、报告更新和来源面板加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。
-- 直接文件分析加载 `dsh-data-analysis-files`，使用 pandas 或原生 DuckDB；已有 Artifact 或 computed 数据无需先激活分析 Skill。涉及 Marivo 分析语义或建模时，按需加载 Runtime Skill 与相关 live Help。
+- 表格、单值、保存报告、看板和报告更新加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。
+- 直接文件分析加载 `dsh-data-analysis-files`，使用 pandas 或原生 DuckDB；已有 Frame 或已捕获快照无需先激活分析 Skill。涉及 Marivo 分析语义或建模时，按需加载 Runtime Skill 与相关 live Help。
 
 展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。工具入口随插件安装，完整清单见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。
 
@@ -42,20 +43,19 @@ Frame 使用准确 Session/Artifact 引用。文件分析及 SQL 结果在原进
 执行归属及 codeRef 由 Host 绑定，不要求模型手填。SQL 转换可能改变 NULL/整数类型并损失捕获前精度，helper 不修复。
 不强制每条 SQL 捕获，不为呈现重新执行结束的分析，不给 Dataset 补造 Artifact、Evidence 或来源。
 
-新格式使用八组件 Lang 与已保存资源，旧格式 writer 和 Draft 仅服务兼容读取、测试及旧 Reader 编辑。
+展示只使用八组件 Lang 与已保存资源。
 
 结论逐项对应用户问题与比较范围，每组比较明确两侧、方向和分母；缺失分支保留在正文，不能由另一组
 成功比较替代。观测、贡献分解、解释和假设使用相应证据强度；边际分布不支持联合关系，原因或排除性
 结论需要匹配证据。限制须落实到具体结论措辞，不能仅由末尾免责声明承担。
 
-原值、差值、比例、合计和余项需要核对，正文、图和表保持比较方向一致。Agent 预筛选与 writer 截断
-分别披露；Top N 说明规则和范围，全量归因保留全量基准与其他项净贡献。Skill 随附可运行的通用比较
-示例，以 200 → 150、减少项 80 和其他项抵消 30 演示数值关系，并由测试核对 writer 输出与图表绑定。
+原值、差值、比例、合计和余项需要核对，正文与表格保持比较方向一致。Agent 预筛选与 capture 截断
+分别披露；Top N 说明规则和范围，全量归因保留全量基准与其他项净贡献。Skill 随附通用比较
+示例，以 200 → 150、减少项 80 和其他项抵消 30 演示数值关系，并由测试核对数值与 Lang 示例。
 这些是表达和复核引导，不新增结论 schema、业务推理 validator 或审核服务。
 
 来源 Quality/issues 仍属于
-原 Artifact。保留 unavailable 来源，不将 unavailable 写成成功验证；reader 与来源展开只读取保存快照，
-不自动重新分析。
+原 Artifact。reader 只读取保存快照及其捕获的来源与范围，不自动重新分析。
 具体契约见[展示数据投影](presentation-projection.md)与[展示 reader](presentation-reader.md)。
 
 ## 交付与验证
@@ -64,5 +64,5 @@ Frame 使用准确 Session/Artifact 引用。文件分析及 SQL 结果在原进
 半截 patch 不正式合并；保存冲突后核对当前版本与意图，不只替换 ID 重试。缺少准确定义时才 marivo_ui_read。
 已有快照不证明当前数据新鲜度。交付、失败与格式边界见[展示交付](presentation-delivery.md)。
 
-包验证检查 Skill、references 与 examples 分发；模块测试核对解析和契约，真实模型核对路由、披露量和调用轨迹。
-旧 Reader 的呈现编辑及 HTML 路径保留，不能将其 Draft 参数作为当前 marivo_present 协议。
+包验证检查 Skill 与 references 分发；`tests/presentation-skill/` 核对链接、frontmatter、Catalog 签名一致性、
+已移除能力不再出现，以及示例符合当前 `marivo_present` 输入与 Lang 契约；真实模型核对路由、披露量和调用轨迹。

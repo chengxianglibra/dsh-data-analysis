@@ -27,8 +27,6 @@ import {
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { savePythonExecution } from '../../src/python-execution.ts'
-import { resolvePublishingConfig } from '../../src/report-publishing/config.ts'
-import { ReportPublishingService } from '../../src/report-publishing/service.ts'
 import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 
 async function fixture(t: { after(fn: () => Promise<void>): void }) {
@@ -103,7 +101,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',
-      presentationKit: { version: '1.3.0', packagePath: '/bound/helper' },
+      presentationKit: { version: '1.4.0', packagePath: '/bound/helper' },
     },
     async runChecked() {
       reads++
@@ -202,7 +200,7 @@ test('reference-only results save exact resources and survive capture removal an
               ? await cold.read(payload, signal)
               : endpoint === 'reports/history'
                 ? await cold.catalog(endpoint, payload, signal)
-                : await cold.report('reports/resolve', payload, signal),
+                : await cold.report(payload, signal),
         }
       },
     })
@@ -213,64 +211,11 @@ test('reference-only results save exact resources and survive capture removal an
       model.getSnapshot().analysisDocument?.recordId,
       analysisRecordId(receipt.reportId, receipt.buildId),
     )
-    assert.equal(model.getSnapshot().document, undefined)
-    assert.equal(model.getSnapshot().publishingUnavailable, true)
     await assert.rejects(
       cold.read({ workspaceId: 'workspace', receipt, asset: 'index.html' }),
-      /analysis-ui-export-unavailable/,
-    )
-    await assert.rejects(
-      cold.report('reports/save', {
-        workspaceId: 'workspace',
-        reportId: receipt.reportId,
-        expectedBuildId: receipt.buildId,
-        edits: {},
-      }),
-      /analysis-ui-edit-unavailable/,
+      /invalid-request/,
     )
   }
-  let uploads = 0
-  const publishing = new ReportPublishingService(
-    resolvePublishingConfig({
-      enabled: true,
-      storage: {
-        name: 'test',
-        endpoint: 'https://s3.example.test',
-        region: 'us-east-1',
-        bucket: 'reports',
-        accessKeyIdRef: 'TEST_AK',
-        secretAccessKeyRef: 'TEST_SK',
-      },
-      publicBaseUrl: 'https://reports.example.test',
-      pathPrefix: 'test',
-    }),
-    {
-      describe: async () => ({ configured: true, writable: true, source: 'test' }),
-      resolve: async () => ({ value: 'test-only', source: 'test' }),
-      set: async () => {},
-      unset: async () => {},
-    },
-    cold,
-    async () => {
-      uploads++
-    },
-  )
-  for (const view of [
-    undefined,
-    '<!doctype html><html lang="zh-CN"><head></head><body>View</body></html>',
-  ]) {
-    await assert.rejects(
-      publishing.publish(
-        { workspaceId: 'workspace' },
-        data.receipt.reportId,
-        data.receipt.buildId,
-        new AbortController().signal,
-        view,
-      ),
-      /analysis-ui-export-unavailable/,
-    )
-  }
-  assert.equal(uploads, 0)
   assert.equal(f.reads(), 1)
 })
 
@@ -436,7 +381,7 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
   })
   await rm(path.dirname(original.receipt.files.document.path), { recursive: true })
   const independent = await readReceiptDocument(f.root, removed.receipt)
-  assert.deepEqual(independent.schemaVersion !== 3 && independent.resources, {})
+  assert.deepEqual(independent.resources, {})
   assert.equal(
     (await resolvePresentation(f.root, 'workspace', base.reportId)).buildId,
     removed.receipt.buildId,

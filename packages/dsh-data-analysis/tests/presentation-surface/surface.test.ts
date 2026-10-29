@@ -8,7 +8,6 @@ import {
   MARIVO_DATASOURCE_TEST_TOOL_NAME,
 } from '../../src/datasource/index.ts'
 import { MARIVO_HELP_TOOL_NAME } from '../../src/disclosure/index.ts'
-import { MARIVO_EXPORT_HTML_TOOL_NAME } from '../../src/presentation/export-html.ts'
 import { MARIVO_PRESENT_TOOL_NAME } from '../../src/presentation/receipt.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -26,7 +25,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return result
 }
 
-test('presentation exposes Help, datasource configuration/test, Python, present and HTML export', () => {
+test('presentation exposes Help, datasource configuration/test, Python and present', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
@@ -34,12 +33,10 @@ test('presentation exposes Help, datasource configuration/test, Python, present 
       MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
       'marivo_python',
       MARIVO_PRESENT_TOOL_NAME,
-      MARIVO_EXPORT_HTML_TOOL_NAME,
     ].sort(),
     [
       'marivo_datasource_configure',
       'marivo_datasource_test',
-      'marivo_export_html',
       'marivo_help',
       'marivo_present',
       'marivo_python',
@@ -78,6 +75,11 @@ test('removed and rejected convenience surfaces cannot regress into plugin sourc
     'dsh_data_analysis_report',
     'MARIVO_REPORT_PROMPT',
     'dsh-data-analysis-report',
+    'marivo_export_html',
+    'marivo_publish_report',
+    'dsh-report-publishing',
+    'parsePresentationDraft',
+    'HostPresentationReader',
   ]) {
     assert.equal(source.includes(forbidden), false, `${forbidden} must stay absent from source`)
   }
@@ -91,6 +93,10 @@ test('removed and rejected convenience surfaces cannot regress into plugin sourc
   assert.deepEqual(remainingReportFiles, [])
   await assert.rejects(() => stat(path.join(sourceRoot, 'report-check')), { code: 'ENOENT' })
   await assert.rejects(() => stat(path.join(sourceRoot, 'report-disclosure')), { code: 'ENOENT' })
+  await assert.rejects(() => stat(path.join(sourceRoot, 'report-publishing')), { code: 'ENOENT' })
+  await assert.rejects(() => stat(path.join(sourceRoot, 'presentation', 'build')), {
+    code: 'ENOENT',
+  })
 })
 
 test('package cutover removes report exports and pins the native runtime release', async () => {
@@ -134,7 +140,7 @@ test('S2 removes the old helper, report Skill and JavaScript transport together'
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
   assert.ok(
     manifest.files.includes(
-      'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.3.0-py3-none-any.whl',
+      'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl',
     ),
   )
   assert.equal(

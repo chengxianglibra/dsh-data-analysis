@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 import pytest
-from dsh_data_analysis_presentation import PresentationDatasetError, write_dataset
+from dsh_data_analysis_presentation import PresentationDatasetError
 from dsh_data_analysis_presentation._dataset import (
     MAX_BYTES,
     encode_dataset,
@@ -17,7 +16,7 @@ from dsh_data_analysis_presentation._dataset import (
 )
 
 PROJECT = Path(__file__).parents[1]
-FIXTURES = PROJECT.parents[1] / "tests" / "presentation-s0" / "fixtures"
+FIXTURES = PROJECT / "tests" / "fixtures"
 spec = importlib.util.spec_from_file_location(
     "fixture_emitter", PROJECT / "scripts" / "emit_contract_fixtures.py"
 )
@@ -30,10 +29,7 @@ def shared(name: str) -> dict:
 
 
 def test_same_typed_fixtures_as_node_and_browser() -> None:
-    fixtures = [shared("computed.dataset")]
-    for name in ("artifact.document", "computed.document", "source-only.document"):
-        fixtures.extend(entry["data"] for entry in shared(name)["datasets"])
-    for fixture in fixtures:
+    for fixture in (shared("computed.dataset"), shared("artifact.dataset")):
         assert validate_dataset(fixture) == fixture
         assert (
             encode_dataset(
@@ -43,37 +39,6 @@ def test_same_typed_fixtures_as_node_and_browser() -> None:
             )
             == fixture
         )
-
-
-def test_writer_is_atomic_pure_json_with_bounded_receipt(tmp_path: Path) -> None:
-    frame = pd.DataFrame(
-        {"value": [Decimal("0.1000"), None], "id": [2**53 + 1, 2**63 - 1]}
-    )
-    target = tmp_path / "computed.json"
-    receipt = write_dataset(frame, target, row_limit=1)
-    data = validate_dataset(json.loads(target.read_text()))
-    assert data["rows"] == [["0.1000", "9007199254740993"]]
-    assert data["columns"][0]["type"] == "decimal"
-    assert set(data) == {
-        "schemaVersion",
-        "columns",
-        "rows",
-        "rowCount",
-        "limit",
-        "truncated",
-    }
-    assert asdict(receipt) == {
-        "path": str(target),
-        "bytes": target.stat().st_size,
-        "row_count": 2,
-        "written_rows": 1,
-        "limit": 1,
-        "truncated": True,
-    }
-    with pytest.raises(PresentationDatasetError):
-        write_dataset(pd.DataFrame({"bad": [object()]}), target)
-    assert json.loads(target.read_text()) == data
-    assert list(tmp_path.iterdir()) == [target]
 
 
 def test_integer_and_decimal_precision() -> None:
@@ -110,14 +75,9 @@ def test_integer_and_decimal_precision() -> None:
         timedelta(days=1),
     ],
 )
-def test_nonrepresentable_values_fail_without_replacing_target(
-    tmp_path: Path, value: object
-) -> None:
-    target = tmp_path / "data.json"
-    target.write_text("existing")
+def test_nonrepresentable_values_fail(value: object) -> None:
     with pytest.raises(PresentationDatasetError):
-        write_dataset(pd.DataFrame({"x": pd.Series([value], dtype=object)}), target)
-    assert target.read_text() == "existing"
+        encode_dataset(pd.DataFrame({"x": pd.Series([value], dtype=object)}))
 
 
 def test_null_boolean_time_and_empty_text() -> None:
@@ -216,11 +176,10 @@ def test_row_cell_and_column_budgets() -> None:
         encode_dataset(pd.DataFrame({f"c{i}": [1] for i in range(65)}))
 
 
-def test_byte_and_utf16_text_budgets_fail_before_write(tmp_path: Path) -> None:
-    target = tmp_path / "data.json"
+def test_byte_and_utf16_text_budgets_fail() -> None:
     with pytest.raises(PresentationDatasetError) as oversized:
-        write_dataset(pd.DataFrame({"x": ["a" * 32_768] * 65}), target)
-    assert oversized.value.code == "budget" and not target.exists()
+        encode_dataset(pd.DataFrame({"x": ["a" * 32_768] * 65}))
+    assert oversized.value.code == "budget"
     encoded = encode_dataset(pd.DataFrame({"x": ["😀" * 16_384]}))
     assert len(json.dumps(encoded).encode()) < MAX_BYTES
     with pytest.raises(PresentationDatasetError) as text:
@@ -273,200 +232,16 @@ def test_integer_object_mixed_with_float_cannot_lose_precision() -> None:
     assert error.value.code == "numeric_precision"
 
 
-def test_failed_replace_preserves_existing_file_and_cleans_temp(
-    tmp_path: Path, monkeypatch
-) -> None:
-    import os
-
-    target = tmp_path / "data.json"
-    target.write_text("existing")
-
-    def fail_replace(*args):
-        raise OSError("failure")
-
-    monkeypatch.setattr(os, "replace", fail_replace)
-    with pytest.raises(PresentationDatasetError) as error:
-        write_dataset(pd.DataFrame({"x": [1]}), target)
-    assert error.value.code == "write_failed"
-    assert target.read_text() == "existing"
-    assert list(tmp_path.iterdir()) == [target]
-
-
-def test_public_surface_has_only_writer_and_result_types() -> None:
+def test_public_surface_has_only_capture_and_result_types() -> None:
     import dsh_data_analysis_presentation as package
 
-    assert package.__version__ == "1.3.0"
+    assert package.__version__ == "1.4.0"
     assert package.__all__ == [
-        "DatasetWriteReceipt",
         "PresentationDatasetError",
-        "write_dataset",
         "DatasetCaptureReceipt",
         "capture_dataset",
     ]
     assert not any(
         hasattr(package, name)
-        for name in ("emit_dataset", "emit_computed", "emit_session_trace")
+        for name in ("write_dataset", "DatasetWriteReceipt", "emit_dataset", "emit_computed")
     )
-
-
-@pytest.mark.parametrize(
-    "labels",
-    [
-        None,
-        {},
-        {"base_0831": "基期（08月31日）"},
-        {"base_0831": "基期（08月31日）", "cur_0907": "本期（09月07日）"},
-        {"base_0831": "查询量", "cur_0907": "查询量"},
-    ],
-)
-def test_labels_only_change_display_metadata(tmp_path: Path, labels) -> None:
-    from types import MappingProxyType
-
-    frame = pd.DataFrame({"base_0831": [20, 10], "cur_0907": [30, 40]})
-    original = frame.copy(deep=True)
-    target = tmp_path / "computed.json"
-    receipt = write_dataset(
-        frame, target, labels=None if labels is None else MappingProxyType(labels)
-    )
-    data = validate_dataset(json.loads(target.read_text()))
-    expected = encode_dataset(frame)
-    for column in expected["columns"]:
-        column["label"] = (labels or {}).get(column["id"], column["id"])
-    assert data == expected
-    assert receipt.bytes == target.stat().st_size
-    pd.testing.assert_frame_equal(frame, original)
-
-
-@pytest.mark.parametrize(
-    "labels",
-    [
-        [],
-        "中文",
-        {"unknown": "未知"},
-        {1: "数字键"},
-        {"base_0831": None},
-        {"base_0831": 1},
-        {"base_0831": ""},
-        {"base_0831": "x\0y"},
-        {"base_0831": "\ud800"},
-        {"base_0831": "中" * 257},
-        {"base_0831": "😀" * 129},
-    ],
-)
-def test_invalid_labels_preserve_target(tmp_path: Path, labels) -> None:
-    target = tmp_path / "computed.json"
-    target.write_text("existing")
-    with pytest.raises(PresentationDatasetError) as error:
-        write_dataset(pd.DataFrame({"base_0831": [1]}), target, labels=labels)
-    assert error.value.path.startswith("/labels")
-    assert target.read_text() == "existing"
-    assert list(tmp_path.iterdir()) == [target]
-
-
-def test_label_pointer_escaping_and_utf16_boundary(tmp_path: Path) -> None:
-    target = tmp_path / "computed.json"
-    frame = pd.DataFrame({"a~/b": [1]})
-    write_dataset(frame, target, labels={"a~/b": "😀" * 128})
-    with pytest.raises(PresentationDatasetError) as error:
-        write_dataset(frame, target, labels={"a~/b": ""})
-    assert error.value.path == "/labels/a~0~1b"
-    assert json.loads(target.read_text())["columns"][0]["label"] == "😀" * 128
-
-
-def test_label_bytes_count_toward_final_budget(tmp_path: Path, monkeypatch) -> None:
-    from dsh_data_analysis_presentation import _dataset
-
-    frame = pd.DataFrame({"x": [1]})
-    baseline = _dataset.encoded_json(encode_dataset(frame))
-    monkeypatch.setattr(_dataset, "MAX_BYTES", len(baseline))
-    target = tmp_path / "computed.json"
-    write_dataset(frame, target)
-    with pytest.raises(PresentationDatasetError) as error:
-        write_dataset(frame, target, labels={"x": "中文展示名"})
-    assert error.value.code == "budget"
-    assert target.read_bytes() == baseline
-    assert list(tmp_path.iterdir()) == [target]
-
-
-@pytest.mark.parametrize("values", [[None, 1, "unknown"], [1, 1.5, Decimal("2")]])
-def test_writer_locates_first_incompatible_value(tmp_path: Path, values) -> None:
-    frame = pd.DataFrame({"amount": pd.Series(values, dtype=object)})
-    frame.index = [10, 20, 30]
-    target = tmp_path / "summary.json"
-    target.write_text("existing")
-    with pytest.raises(PresentationDatasetError) as original:
-        encode_dataset(frame)
-    with pytest.raises(PresentationDatasetError) as caught:
-        write_dataset(frame, target, dataset_id="summary")
-    error = caught.value
-    assert error.code == original.value.code == "unsupported_type"
-    assert error.path == original.value.path == "/columns/0/type"
-    message = str(error)
-    assert 'dataset="summary"' in message
-    assert f'target="{target}"' in message
-    assert 'column="amount", dtype="object", row_position=2' in message
-    assert f'value_type="{type(values[2]).__name__}"' in message
-    assert f'value="{values[2]}"' in message
-    assert str(original.value) in message
-    assert "target=" not in str(original.value)
-    assert target.read_text() == "existing"
-    assert list(tmp_path.iterdir()) == [target]
-
-
-def test_writer_does_not_format_arbitrary_objects(tmp_path: Path) -> None:
-    class Unprintable:
-        def __repr__(self):
-            raise AssertionError("must not call repr")
-
-        def __str__(self):
-            raise AssertionError("must not call str")
-
-    frame = pd.DataFrame({"bad": [None, Unprintable()]})
-    with pytest.raises(PresentationDatasetError) as caught:
-        write_dataset(frame, tmp_path / "bad.json")
-    message = str(caught.value)
-    assert "dataset=" not in message
-    assert 'column="bad", dtype="object", row_position=1' in message
-    assert 'value=<Unprintable>, value_type="Unprintable"' in message
-
-
-@pytest.mark.parametrize("value", [float("inf"), datetime(2026, 9, 8), "x" * 32769])
-def test_writer_cell_diagnostics(tmp_path: Path, value) -> None:
-    frame = pd.DataFrame({"value": pd.Series([None, value], dtype=object)})
-    with pytest.raises(PresentationDatasetError) as caught:
-        write_dataset(frame, tmp_path / "bad.json")
-    assert caught.value.path == "/rows/1/0"
-    message = str(caught.value)
-    assert 'column="value", dtype="object", row_position=1' in message
-    preview = message.split(", value=", 1)[1].split(", value_type=", 1)[0]
-    assert len(preview) <= 160
-    if isinstance(value, str):
-        assert preview.endswith("...")
-
-
-def test_writer_escapes_diagnostic_text(tmp_path: Path) -> None:
-    frame = pd.DataFrame({"line\nname": pd.Series([1, "bad\n\0value"], dtype=object)})
-    with pytest.raises(PresentationDatasetError) as caught:
-        write_dataset(frame, tmp_path / "bad.json", dataset_id="id\nname")
-    message = str(caught.value)
-    assert "\n" not in message and "\0" not in message
-    assert 'value="bad\\n\\u0000value"' in message
-
-
-def test_writer_context_preserves_silent_success_and_noncolumn_errors(tmp_path: Path, capsys) -> None:
-    frame = pd.DataFrame({"x": [1]})
-    original = frame.copy(deep=True)
-    target = tmp_path / "ok.json"
-    receipt = write_dataset(frame, target)
-    content = target.read_bytes()
-    assert write_dataset(frame, target, dataset_id="diagnostic-only") == receipt
-    assert target.read_bytes() == content
-    assert "dataset_id" not in json.loads(content)
-    pd.testing.assert_frame_equal(frame, original)
-    with pytest.raises(PresentationDatasetError) as caught:
-        write_dataset(frame, target, row_limit=0)
-    assert caught.value.path == "/limit"
-    assert f'target="{target}"' in str(caught.value)
-    assert "column=" not in str(caught.value)
-    assert target.read_bytes() == content
-    assert capsys.readouterr() == ("", "")

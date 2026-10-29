@@ -17,7 +17,6 @@ export {
   presentationsForNode,
 } from './client/presentation/delivery.ts'
 export { PresentationDeliveryModel } from './client/presentation/delivery-model.ts'
-export { HostPresentationReader } from './client/presentation/host-entry.tsx'
 export { createPluginRpc } from './client/rpc.ts'
 
 export const inject = [...rightTabsInject, 'configForms']

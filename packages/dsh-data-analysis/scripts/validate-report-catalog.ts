@@ -1,17 +1,20 @@
 /** Real isolated Harness UI + production package; scripted model, no production profile changes. */
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { chromium, type Page } from 'playwright'
-import { parsePresentationDocument } from '../src/presentation/contracts/index.ts'
-import { publishPresentation, readReportHistory } from '../src/presentation/reports.ts'
-import { presentationHtml } from './presentation-html.ts'
+import { analysisRecordId } from '../src/presentation/contracts/analysis-document.ts'
+import {
+  publishPresentation,
+  readReceiptDocument,
+  readReportHistory,
+} from '../src/presentation/reports.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
-import { closeReport, openReport, reportAction } from './right-tabs/browser.ts'
+import { analysisSurface, closeReport, openHistory, openReport } from './right-tabs/browser.ts'
 
 const output = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-report-catalog-')))
 const workspace = path.join(output, 'workspace')
@@ -25,7 +28,7 @@ const server = await startPresentationWebHost(
   workspace,
   await mkdtemp(path.join(output, 'web-')),
   python,
-  inputs.draftPaths,
+  inputs.requests,
   'native-first',
   { rightTabsAcceptance: true },
 )
@@ -54,24 +57,33 @@ try {
     0,
   )
   const receipt = server.deliveries[0]!.receipt
-  const original = parsePresentationDocument(
-    JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
-  )
+  const original = await readReceiptDocument(workspace, receipt)
+  const version = (title: string) => {
+    const buildId = randomUUID()
+    return {
+      ...original,
+      title,
+      buildId,
+      recordId: analysisRecordId(original.reportId, buildId),
+    }
+  }
   const updated = await publishPresentation(
     workspace,
-    { ...original, title: '报告列表验收 · 当前版', buildId: randomUUID() },
+    version('报告列表验收 · 当前版'),
     receipt.buildId,
     async () => {},
     undefined,
-    { kind: 'agent', sessionId: server.deliveries[0]!.dshSessionId },
+    { kind: 'agent', sessionId: server.deliveries[0]!.dshSessionId, surface: 'tab' },
   )
   // Leave a complete losing Build on disk. It must never appear as history.
   await assert.rejects(
     publishPresentation(
       workspace,
-      { ...original, title: '未发布版本', buildId: randomUUID() },
+      version('未发布版本'),
       receipt.buildId,
       async () => {},
+      undefined,
+      { kind: 'agent', sessionId: server.deliveries[0]!.dshSessionId, surface: 'tab' },
     ),
     /report-save-conflict/,
   )
@@ -82,10 +94,9 @@ try {
   await search.waitFor()
   assert.equal(await dialog.getByRole('searchbox').count(), 1)
   assert.equal(await dialog.getByRole('button', { name: /刷新/ }).count(), 1)
-  assert.equal(
-    await dialog.locator('.pd-catalog-controls select, .pd-catalog-controls button').count(),
-    0,
-  )
+  // The only list control besides search is the report/result category; there is no sorting.
+  assert.equal(await dialog.locator('.pd-catalog-controls select').count(), 1)
+  assert.equal(await dialog.locator('.pd-catalog-controls button').count(), 0)
   const titleBounds = await dialog.locator('.rt-heading').boundingBox()
   const refreshBounds = await refresh.boundingBox()
   assert.ok(titleBounds && refreshBounds)
@@ -111,53 +122,29 @@ try {
   assert.equal(await search.inputValue(), '报告列表验收')
   await dialog.getByRole('button', { name: '报告列表验收 · 当前版', exact: true }).click()
   const reader = page.locator('[data-rt-kind=report]:visible')
-  await reportAction(reader, '历史版本')
+  await analysisSurface(reader).waitFor()
+  await openHistory(reader)
   const history = reader.getByRole('complementary', { name: '历史版本' })
   await history.locator('li').nth(1).waitFor()
   assert.equal(await history.locator('li').count(), 2)
   assert.equal(await history.getByText('未发布版本', { exact: true }).count(), 0)
   await history.locator('li').nth(1).getByRole('button').first().click()
-  await reader.locator(`[data-mode=interactive]`).waitFor()
+  await analysisSurface(reader)
+    .getByRole('heading', { name: original.title, exact: true })
+    .waitFor()
   assert.equal(await reader.getAttribute('data-rt-build'), receipt.buildId)
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
   assert.equal(
-    await reader
-      .getByRole('menuitem', { name: '编辑报告', exact: true })
-      .getAttribute('aria-disabled'),
-    'true',
+    await analysisSurface(reader).getAttribute('data-analysis-record'),
+    original.recordId,
   )
-  await page.keyboard.press('Escape')
-  const downloaded = page.waitForEvent('download')
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
-  await reader.getByRole('menuitem', { name: '下载完整报告', exact: true }).click()
-  const download = await downloaded
-  const downloadPath = path.join(output, 'historical.html')
-  await download.saveAs(downloadPath)
-  assert.ok(download.suggestedFilename().includes(receipt.buildId))
-  assert.deepEqual(await readFile(downloadPath), await presentationHtml(receipt))
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
-  const historicalView = page.waitForEvent('download')
-  await reader.getByRole('menuitem', { name: '导出当前视图', exact: true }).click()
-  const historicalViewPath = path.join(output, 'historical-view.html')
-  await (await historicalView).saveAs(historicalViewPath)
-  assert.ok((await readFile(historicalViewPath, 'utf8')).includes(`来源 Build：${receipt.buildId}`))
   await page.screenshot({ path: path.join(output, 'history-desktop.png'), fullPage: true })
   await closeReport(page, reader)
-  await openReport(page, server.sessionId, {
+  const current = await openReport(page, server.sessionId, {
     workspaceId: receipt.workspaceId,
     reportId: receipt.reportId,
   })
-  await reportAction(reader, '编辑报告')
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
-  assert.equal(
-    await reader
-      .getByRole('menuitem', { name: '历史版本', exact: true })
-      .getAttribute('aria-disabled'),
-    'true',
-  )
-  await page.keyboard.press('Escape')
-  await reader.getByRole('button', { name: '取消编辑', exact: true }).click()
-  await closeReport(page, reader)
+  assert.equal(await current.getAttribute('data-rt-build'), updated.buildId)
+  await closeReport(page, current)
   await page.getByRole('button', { name: '打开报告', exact: true }).click()
   assert.equal(await dialog.getByRole('searchbox').inputValue(), '报告列表验收')
   await dialog.getByRole('searchbox').fill('不会匹配任何报告')
@@ -206,7 +193,7 @@ try {
     workspaceId: receipt.workspaceId,
     reportId: receipt.reportId,
   })
-  await reportAction(reader, '历史版本')
+  await openHistory(reader)
   await history.locator('li').nth(1).waitFor()
   assert.equal(
     (await readReportHistory(workspace, receipt.workspaceId, receipt.reportId)).currentBuildId,
@@ -226,10 +213,8 @@ try {
           'three-column rows without summary metadata',
           'workspace list/search/empty state and refresh preserves query',
           'published-only history',
-          'historical read-only',
-          'exact historical HTML download',
+          'historical Build opens its saved analysis record',
           'return to current',
-          'editing guards',
           'retained list search',
           'mobile fit',
           'native current page history',

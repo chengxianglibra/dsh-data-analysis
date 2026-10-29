@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { assertCompatibleVersion, checkPluginDependencies } from './dependency-policy.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -10,7 +10,7 @@ const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const presentationKitWheelPath =
-  'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.3.0-py3-none-any.whl'
+  'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl'
 const presentationKitVerifier = path.join(
   packageRoot,
   'python',
@@ -169,7 +169,6 @@ try {
     'lib/client/semantic-reference-source.js',
     'lib/types/client/semantic-reference-source.d.ts',
     'lib/types/bin/environment.d.ts',
-    'lib/types/bin/presentation-lint.d.ts',
     'lib/types/datasource/bridge-programs.d.ts',
     'lib/types/datasource/credentials.d.ts',
     'lib/types/disclosure/bridge-program.d.ts',
@@ -204,15 +203,10 @@ try {
     'lib/semantic-reference/usage.js',
     'lib/types/presentation/index.d.ts',
     'lib/bin/environment.js',
-    'lib/bin/presentation-lint.js',
     presentationKitWheelPath,
     'lib/presentation/contracts/index.js',
     'lib/presentation/contracts/types.js',
     'lib/presentation/projection/index.js',
-    'lib/presentation/build/index.js',
-    'lib/presentation/assets/portable.js',
-    'lib/presentation/assets/static.js',
-    'lib/types/client/presentation/host-entry.d.ts',
     'skills/dsh-data-analysis-presentation/SKILL.md',
     'skills/dsh-data-analysis-files/SKILL.md',
     'skills/dsh-data-analysis-files/references/examples.md',
@@ -251,6 +245,19 @@ try {
     if (/^(?:src|tests|scripts)\//.test(filename) || filename.endsWith('tsconfig.build.json')) {
       fail(`packed plugin contains development-only file ${filename}`)
     }
+    if (
+      filename.startsWith('lib/report-publishing/') ||
+      filename.startsWith('lib/types/report-publishing/') ||
+      filename.startsWith('lib/presentation/build/') ||
+      filename.startsWith('lib/presentation/assets/') ||
+      /^lib\/types\/client\/presentation\/(?:reader|host-entry|portable-entry|chart-[a-z-]+)\.d\.ts$/.test(
+        filename,
+      ) ||
+      filename.includes('presentation-lint') ||
+      filename.includes('export-html')
+    ) {
+      fail(`packed plugin contains removed legacy report surface ${filename}`)
+    }
     if (filename.startsWith('lib/report/') || filename.startsWith('lib/types/report/')) {
       fail(`packed plugin contains removed report surface ${filename}`)
     }
@@ -263,10 +270,6 @@ try {
     if (filename.startsWith('report-contracts/')) {
       fail(`packed plugin contains development-only report contract ${filename}`)
     }
-  }
-  const lintBin = files.get('lib/bin/presentation-lint.js')
-  if (lintBin === undefined || (lintBin.mode & 0o111) === 0) {
-    fail('packed presentation lint CLI is not executable')
   }
   const environmentBin = files.get('lib/bin/environment.js')
   if (environmentBin === undefined || (environmentBin.mode & 0o111) === 0) {
@@ -281,12 +284,6 @@ try {
   const installedPlugin = path.join(nodeModules, '@chengxianglibra/dsh-data-analysis')
   mkdirSync(path.dirname(installedPlugin), { recursive: true })
   renameSync(path.join(extracted, 'package'), installedPlugin)
-  const lintHelp = run(process.execPath, [
-    path.join(installedPlugin, 'lib/bin/presentation-lint.js'),
-    '--help',
-  ])
-  if (!lintHelp.includes('dsh-data-analysis-presentation-lint'))
-    fail('packed presentation lint CLI cannot start')
   run(
     'uv',
     [
@@ -308,11 +305,9 @@ try {
   }
   if (
     packedManifest.bin?.['dsh-data-analysis-env'] !== './lib/bin/environment.js' ||
-    packedManifest.bin?.['dsh-data-analysis-presentation-lint'] !==
-      './lib/bin/presentation-lint.js' ||
-    Object.hasOwn(packedManifest.bin ?? {}, 'dsh-data-analysis-report-check')
+    Object.keys(packedManifest.bin ?? {}).length !== 1
   ) {
-    fail('packed CLI manifest must expose the supported environment and presentation lint binaries')
+    fail('packed CLI manifest must expose only the supported environment binary')
   }
   const linkedDependencies = new Set([
     ...Object.keys(peerDependencies),
@@ -368,19 +363,9 @@ try {
     const integration = await import('@chengxianglibra/dsh-data-analysis/integration')
     if (integration.INTEGRATION_CONTRACT_VERSION !== 'dsh-data-analysis-integration/v1' || typeof integration.applyWithIntegration !== 'function') throw new Error('packed integration contract invalid')
     if (typeof integration.withDatasourceDefaults !== 'function') throw new Error('packed live defaults validator unavailable')
-    const { buildPresentation } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/presentation/build/index.js')).href)})
-    const presentation = await buildPresentation({
-      schemaVersion: 3, locale: 'zh-CN', workspaceId: 'package-verification', reportId: 'package-verification', buildId: 'package-verification',
-      title: '离线展示包检查', generatedAt: '2026-09-07T00:00:00Z',
-      datasets: [], sources: [], diagnostics: [],
-      blocks: [{ id: 'body', kind: 'markdown', text: '已安装包中的 **共享 reader**。' }],
-    })
-    if (!Buffer.isBuffer(presentation.htmlBytes) || !Buffer.isBuffer(presentation.documentBytes)) throw new Error('packed presentation builder must return bytes')
-    if (!presentation.htmlBytes.toString('utf8').includes('presentation-data')) throw new Error('packed presentation omitted its saved document')
-    if (!presentation.htmlBytes.toString('utf8').includes('共享 reader')) throw new Error('packed presentation omitted semantic fallback')
-    assert.ok(presentation.htmlBytes.toString('utf8').includes('<html lang="zh-CN">'))
-    assert.equal(JSON.parse(presentation.documentBytes.toString('utf8')).locale, 'zh-CN')
-    if (JSON.parse(presentation.documentBytes.toString('utf8')).buildId !== 'package-verification') throw new Error('packed builder changed document identity')
+    for (const removed of ['buildPresentation', 'parsePresentationDraft', 'parsePresentationDocument', 'lintPresentationDraft', 'registerMarivoExportHtmlTool', 'registerReportPublishTool', 'HostPresentationReader']) {
+      if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed legacy report surface ' + removed)
+    }
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
     if (compatibility.MARIVO_VERSION !== '0.6.0.dev0') throw new Error('packed Marivo version mismatch')
@@ -398,7 +383,7 @@ try {
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed presentation kit, contracts and offline builder passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed presentation kit and contracts passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

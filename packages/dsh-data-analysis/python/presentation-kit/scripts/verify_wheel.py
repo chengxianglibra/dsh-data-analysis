@@ -9,7 +9,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-WHEEL_NAME = "dsh_data_analysis_presentation_kit-1.3.0-py3-none-any.whl"
+WHEEL_NAME = "dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl"
 PACKAGE_FILES = {
     "dsh_data_analysis_presentation/__init__.py",
     "dsh_data_analysis_presentation/_dataset.py",
@@ -29,10 +29,10 @@ def main() -> None:
         else Path(__file__).parents[1] / "dist" / WHEEL_NAME
     ).resolve()
     if wheel.name != WHEEL_NAME or not wheel.is_file():
-        raise SystemExit("expected presentation-kit 1.3.0 wheel is missing")
+        raise SystemExit("expected presentation-kit 1.4.0 wheel is missing")
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
-        prefix = "dsh_data_analysis_presentation_kit-1.3.0.dist-info/"
+        prefix = "dsh_data_analysis_presentation_kit-1.4.0.dist-info/"
         if names != PACKAGE_FILES | {
             prefix + name for name in ("METADATA", "WHEEL", "top_level.txt", "RECORD")
         }:
@@ -40,7 +40,7 @@ def main() -> None:
         metadata = email.message_from_bytes(archive.read(prefix + "METADATA"))
         if (
             metadata["Name"] != "dsh-data-analysis-presentation-kit"
-            or metadata["Version"] != "1.3.0"
+            or metadata["Version"] != "1.4.0"
         ):
             raise SystemExit("wheel distribution identity mismatch")
         if metadata["Requires-Python"] != ">=3.10" or set(
@@ -60,33 +60,22 @@ def main() -> None:
         ):
             del sys.modules[name]
     package = importlib.import_module("dsh_data_analysis_presentation")
-    if package.__version__ != "1.3.0" or not callable(package.write_dataset) or not callable(package.capture_dataset):
-        raise SystemExit("wheel version or writer import mismatch")
-    parameters = inspect.signature(package.write_dataset).parameters
-    for name in ("labels", "dataset_id"):
-        parameter = parameters.get(name)
-        if (
-            parameter is None
-            or parameter.kind != inspect.Parameter.KEYWORD_ONLY
-            or parameter.default is not None
-        ):
-            raise SystemExit(f"wheel writer lacks the optional {name} keyword contract")
+    if package.__version__ != "1.4.0" or not callable(package.capture_dataset):
+        raise SystemExit("wheel version or capture import mismatch")
     capture = inspect.signature(package.capture_dataset).parameters
     if list(capture) != ["frame", "row_limit", "labels"] or any(
         capture[name].kind != inspect.Parameter.KEYWORD_ONLY for name in ("row_limit", "labels")
     ):
         raise SystemExit("wheel capture lacks the DataFrame keyword contract")
     if not str(package.__file__).startswith(str(wheel) + "/"):
-        raise SystemExit("writer was not imported from the checked wheel")
+        raise SystemExit("helper was not imported from the checked wheel")
     if set(package.__all__) != {
-        "DatasetWriteReceipt",
         "PresentationDatasetError",
-        "write_dataset",
         "DatasetCaptureReceipt",
         "capture_dataset",
     }:
         raise SystemExit("unexpected public helper surface")
-    print(f"verified {wheel.name}: exact metadata, package files and writer identity")
+    print(f"verified {wheel.name}: exact metadata, package files and capture identity")
 
 
 if __name__ == "__main__":

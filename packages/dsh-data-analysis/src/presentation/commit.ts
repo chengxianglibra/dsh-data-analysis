@@ -1,14 +1,18 @@
 import { constants } from 'node:fs'
 import { lstat, mkdir, mkdtemp, open, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
-import type { BuiltPresentation } from './build/index.ts'
-import { parseSavedPresentation } from './contracts/analysis-document.ts'
+import { type AnalysisDocument, parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
   PRESENTATION_BUDGETS,
   type PresentationReceipt,
   parsePresentationReceipt,
 } from './contracts/index.ts'
 import { presentationAssetPath, presentationSha256, readPresentationAsset } from './files.ts'
+
+export interface BuiltPresentation {
+  document: AnalysisDocument
+  documentBytes: Buffer
+}
 
 interface DirectoryIdentity {
   dev: number
@@ -43,16 +47,8 @@ export async function commitPresentation(
 ): Promise<PresentationReceipt> {
   signal?.throwIfAborted()
   const document = parseSavedPresentation(structuredClone(input.document))
-  const built = {
-    document,
-    documentBytes: Buffer.from(input.documentBytes),
-    htmlBytes: input.htmlBytes && Buffer.from(input.htmlBytes),
-  }
-  if (
-    built.documentBytes.length > PRESENTATION_BUDGETS.documentBytes ||
-    (built.htmlBytes !== undefined &&
-      (built.htmlBytes.length === 0 || built.htmlBytes.length > PRESENTATION_BUDGETS.htmlBytes))
-  )
+  const built = { document, documentBytes: Buffer.from(input.documentBytes) }
+  if (built.documentBytes.length > PRESENTATION_BUDGETS.documentBytes)
     throw new Error('presentation-build-budget')
   if (!built.documentBytes.equals(Buffer.from(JSON.stringify(document))))
     throw new Error('presentation-build-document-mismatch')
@@ -100,24 +96,18 @@ export async function commitPresentation(
   let owned = temporary
   try {
     await check()
-    for (const [asset, bytes] of [
-      ['presentation.json', built.documentBytes],
-      ['index.html', built.htmlBytes],
-    ] as const) {
-      if (!bytes) continue
-      await sameDirectory(temporary, ownedIdentity)
-      signal?.throwIfAborted()
-      const file = await open(
-        path.join(temporary, asset),
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-        0o600,
-      )
-      try {
-        await file.writeFile(bytes, { signal })
-        await file.sync()
-      } finally {
-        await file.close()
-      }
+    await sameDirectory(temporary, ownedIdentity)
+    signal?.throwIfAborted()
+    const file = await open(
+      path.join(temporary, 'presentation.json'),
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    )
+    try {
+      await file.writeFile(built.documentBytes, { signal })
+      await file.sync()
+    } finally {
+      await file.close()
     }
     await check()
     await sameDirectory(temporary, ownedIdentity)
@@ -141,17 +131,7 @@ export async function commitPresentation(
       'presentation.json',
       signal,
     )
-    const html =
-      built.htmlBytes &&
-      (await readPresentationAsset(
-        root,
-        built.document.reportId,
-        built.document.buildId,
-        'index.html',
-        signal,
-      ))
-    if (!document.equals(built.documentBytes) || (html && !html.equals(built.htmlBytes!)))
-      throw new Error('presentation-build-changed')
+    if (!document.equals(built.documentBytes)) throw new Error('presentation-build-changed')
     await check()
     return parsePresentationReceipt({
       schemaVersion: 2,
@@ -160,10 +140,7 @@ export async function commitPresentation(
       workspaceId: built.document.workspaceId,
       buildId: built.document.buildId,
       title: built.document.title,
-      summary:
-        built.document.schemaVersion !== 3
-          ? `${Object.keys(built.document.resources).length} resources`
-          : `${built.document.blocks.length} 个区块 · ${built.document.datasets.length} 份数据集 · ${built.document.sources.length} 个声明来源 · ${built.document.diagnostics.length} 条诊断`,
+      summary: `${Object.keys(built.document.resources).length} resources`,
       files: {
         document: {
           asset: 'presentation.json',
@@ -171,16 +148,6 @@ export async function commitPresentation(
           sha256: presentationSha256(document),
           bytes: document.length,
         },
-        ...(html
-          ? {
-              html: {
-                asset: 'index.html',
-                path: path.join(final, 'index.html'),
-                sha256: presentationSha256(html),
-                bytes: html.length,
-              },
-            }
-          : {}),
       },
     })
   } catch (error) {

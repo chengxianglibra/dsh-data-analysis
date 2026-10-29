@@ -1,24 +1,15 @@
-import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { readReceiptAsset } from './asset.ts'
-import { applyPresentationEdits } from './contracts/editing.ts'
 import {
-  type PresentationAsset,
   PresentationContractError,
   parsePresentationBuildId,
   parsePresentationReceipt,
 } from './contracts/index.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
-import {
-  listReports,
-  publishPresentation,
-  readReceiptDocument,
-  readReportHistory,
-  resolvePresentation,
-} from './reports.ts'
+import { listReports, readReportHistory, resolvePresentation } from './reports.ts'
 
 export interface PresentationWorkspace {
   id: string
@@ -105,31 +96,17 @@ export class MarivoPresentationFileService {
     this.#closing ??= finishCleanup([() => this.#tasks.drain()])
     return this.#closing
   }
-  report(
-    endpoint: 'reports/resolve' | 'reports/save',
-    payload: unknown,
-    caller = new AbortController().signal,
-  ) {
-    return this.#tasks.track(this.#report(endpoint, payload, caller))
+  report(payload: unknown, caller = new AbortController().signal) {
+    return this.#tasks.track(this.#report(payload, caller))
   }
-  async #report(
-    endpoint: 'reports/resolve' | 'reports/save',
-    payload: unknown,
-    caller = new AbortController().signal,
-  ) {
+  async #report(payload: unknown, caller = new AbortController().signal) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
     signal.throwIfAborted()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       throw new Error('invalid-request')
     const input = payload as Record<string, unknown>
     const scope = this.#scope(input)
-    const expected = (
-      endpoint === 'reports/save'
-        ? ['edits', 'expectedBuildId', 'reportId', scope]
-        : ['reportId', scope]
-    )
-      .sort()
-      .join(',')
+    const expected = ['reportId', scope].sort().join(',')
     if (Object.keys(input).sort().join(',') !== expected) throw new Error('invalid-request')
     const reportId = parsePresentationBuildId(input.reportId, '/reportId')
     const workspace = await this.#workspace(input)
@@ -144,39 +121,12 @@ export class MarivoPresentationFileService {
     await check()
     const receipt = await resolvePresentation(root, workspace.id, reportId, signal)
     await check()
-    if (endpoint === 'reports/resolve') return receipt
-    const expectedBuildId = parsePresentationBuildId(input.expectedBuildId)
-    if (receipt.buildId !== expectedBuildId) throw new Error('report-save-conflict')
-    const base = await readReceiptDocument(root, receipt, signal)
-    if (base.schemaVersion !== 3) throw new Error('analysis-ui-edit-unavailable')
-    let edited: ReturnType<typeof applyPresentationEdits>
-    try {
-      edited = applyPresentationEdits(base, input.edits)
-    } catch {
-      throw new Error('invalid-report-edits')
-    }
-    await check()
-    return publishPresentation(
-      root,
-      { ...edited, buildId: randomUUID(), generatedAt: new Date().toISOString() },
-      expectedBuildId,
-      check,
-      signal,
-      { kind: 'reader', sessionId: typeof input.sessionId === 'string' ? input.sessionId : null },
-    )
+    return receipt
   }
-  read(
-    payload: unknown,
-    caller = new AbortController().signal,
-    options: { legacyOnly?: boolean } = {},
-  ) {
-    return this.#tasks.track(this.#read(payload, caller, options))
+  read(payload: unknown, caller = new AbortController().signal) {
+    return this.#tasks.track(this.#read(payload, caller))
   }
-  async #read(
-    payload: unknown,
-    caller = new AbortController().signal,
-    options: { legacyOnly?: boolean } = {},
-  ) {
+  async #read(payload: unknown, caller = new AbortController().signal) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
     signal.throwIfAborted()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
@@ -185,22 +135,15 @@ export class MarivoPresentationFileService {
     if (
       Object.keys(input).sort().join(',') !==
         ['asset', 'receipt', this.#scope(input)].sort().join(',') ||
-      (input.asset !== 'presentation.json' && input.asset !== 'index.html')
+      input.asset !== 'presentation.json'
     )
       throw new Error('invalid-request')
     const receipt = structuredClone(parsePresentationReceipt(input.receipt))
-    const asset: PresentationAsset = input.asset
+    const asset = input.asset
     const workspace = await this.#workspace(input)
     if (!workspace || workspace.id !== receipt.workspaceId) throw new Error('workspace-unavailable')
     const root = path.resolve(workspace.path)
-    const { bytes, sha256 } = await readReceiptAsset(
-      root,
-      workspace.id,
-      receipt,
-      asset,
-      signal,
-      options.legacyOnly,
-    )
+    const { bytes, sha256 } = await readReceiptAsset(root, workspace.id, receipt, signal)
     const current = await this.#workspace(input)
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
@@ -210,7 +153,7 @@ export class MarivoPresentationFileService {
       reportId: receipt.reportId,
       buildId: receipt.buildId,
       asset,
-      mimeType: asset === 'presentation.json' ? 'application/json' : 'text/html',
+      mimeType: 'application/json',
       sha256,
       bytes: bytes.length,
       bodyBase64: bytes.toString('base64'),
@@ -225,11 +168,11 @@ export function registerMarivoPresentationRpc(
   const unregister = registerPluginRpc(
     connection,
     MARIVO_PRESENTATION_RPC_CHANNEL,
-    ['reports/resolve', 'reports/save', 'reports/list', 'reports/history', 'files/read'],
+    ['reports/resolve', 'reports/list', 'reports/history', 'files/read'],
     async (endpoint, payload, signal) => {
       try {
-        if (endpoint === 'reports/resolve' || endpoint === 'reports/save')
-          return { ok: true, value: await service.report(endpoint, payload, signal) }
+        if (endpoint === 'reports/resolve')
+          return { ok: true, value: await service.report(payload, signal) }
         if (endpoint === 'reports/list' || endpoint === 'reports/history')
           return { ok: true, value: await service.catalog(endpoint, payload, signal) }
         if (endpoint === 'files/read')
@@ -243,13 +186,11 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(analysis-ui-edit-unavailable|analysis-ui-export-unavailable|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|invalid-report-edits|report-save-conflict|presentation-directory-changed)$/.test(
+                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large)$/.test(
                     error.message,
                   )
                 ? error.message
-                : error instanceof Error && /lock.*timed out|timed out.*lock/i.test(error.message)
-                  ? 'report-save-busy'
-                  : 'presentation-operation-failed'
+                : 'presentation-operation-failed'
         return { ok: false, error: { code: 'internal', message, details: {} } }
       }
     },

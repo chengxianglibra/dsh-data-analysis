@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { build } from 'esbuild'
-import type { runPresentationJourneys } from './host.ts'
+import type { PresentationRequest, runPresentationJourneys } from './host.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url))
 const packageRoot = path.join(repoRoot, 'packages/dsh-data-analysis')
@@ -16,7 +16,7 @@ export async function startPresentationWebHost(
   workspaceRoot: string,
   outputRoot: string,
   pythonExecutable: string,
-  draftPaths: readonly string[],
+  requests: readonly PresentationRequest[],
   clientOrder: 'native-first' | 'report-first' = 'native-first',
   options: {
     productionPackageRoot?: string
@@ -126,9 +126,9 @@ export const inject=[...production.inject,'llm','agentLoop','sessions','sessionP
 export async function apply(ctx){
  await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:${JSON.stringify(options.rightTabsAcceptance ? 'web' : 'none')},datasourceDefaults:${JSON.stringify(options.datasourceDefaults)}});
  const previous = await readFile(${JSON.stringify(readyFile)},'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT') return undefined; throw error});
- const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(draftPaths)},true);
+ const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(requests)},true);
  const workspace=ctx.workspaceRegistry.get(result.workspaceId);
- ${options.rightTabsAcceptance ? `const prototypeDriver = await createRightTabsDriver(ctx,workspace,${JSON.stringify(draftPaths)},!!previous);` : ''}
+ ${options.rightTabsAcceptance ? `const prototypeDriver = await createRightTabsDriver(ctx,workspace,${JSON.stringify(requests)},!!previous);` : ''}
  const stop=registerPluginRpc(ctx.connection,'/presentation-s4-validation',['events','detach','attach'${options.rightTabsAcceptance ? ", 'prototype'" : ''}],async(endpoint,payload)=>{
   ${options.rightTabsAcceptance ? "if(endpoint==='prototype')return prototypeDriver(payload);" : ''}
   if(endpoint==='events'){const stored=await inspectStoredSession(ctx.sessionPersistence,result.sessionId);return {ok:true,value:stored.events.filter(event=>['agent','turn','step','user','request','assistant','tool'].includes(event.type.split('/')[0]))};}
@@ -151,7 +151,7 @@ export async function apply(ctx){
   const productionClient = await readFile(path.join(productionPackage, 'lib/client.js'), 'utf8')
   if (
     !productionClient.includes('window.__ModuleLoader__.load') ||
-    !productionClient.includes('marivo-report')
+    !productionClient.includes('marivo-analysis-surface')
   )
     throw new Error('Build the S4 production client before real validation')
   const wrapper = await build({

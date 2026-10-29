@@ -34,14 +34,7 @@ export async function readPresentationAsset(
   signal?: AbortSignal,
 ): Promise<Buffer> {
   const filename = presentationAssetPath(workspaceRoot, reportId, buildId, asset)
-  return readReportFile(
-    workspaceRoot,
-    filename,
-    asset === 'presentation.json'
-      ? PRESENTATION_BUDGETS.documentBytes
-      : PRESENTATION_BUDGETS.htmlBytes,
-    signal,
-  )
+  return readReportFile(workspaceRoot, filename, PRESENTATION_BUDGETS.documentBytes, signal)
 }
 
 export async function readReportFile(

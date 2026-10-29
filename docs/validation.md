@@ -1,5 +1,14 @@
 # 项目验证指南
 
+## 旧报告管线移除
+
+当前展示契约只有 `marivo_present` 的 OpenUI Lang 分析 UI（auto/table/metric 数据视图）、`marivo_ui_read`、
+Python `capture_dataset`、`dsh.analysis-ui/v1` 记录的报告目录与版本历史，以及右侧 Tab 只读视图。
+Draft／Document v3、图形与 chart explorer、全局筛选、reader 编辑、报告 cell 的 Ask DSH、portable/static 离线 HTML、
+`marivo_export_html`、`marivo_publish_report`、发布凭据与 `dsh-data-analysis-presentation-lint` 已移除；
+已有旧格式报告保留在磁盘但不进入目录，打开时显示不支持。下文涉及这些能力的记录只证明当时的候选，
+对应验证入口不再属于当前验证范围。
+
 ## 统一分析 UI 工具结果可见性
 
 2026-10-29 修复默认工具结果被工作步骤折叠的问题。Node.js 22.19.0、Harness 0.2.1-rc.2 下，
@@ -15,20 +24,20 @@
 
 P4 先接通 Frame 元数据：presentation-kit 1.3.0 的 Reader、快照契约、来源详情及语义导航。
 聚焦检查为 presentation-kit `tests/test_frame.py` 与 `npm run test:unified-analysis-ui`；
-真实 Runtime 读取及未覆盖项见 [P4 记录](testing/unified-analysis-ui-p4-2026-10-29.md)。line/bar 图形尚未开放。
+真实 Runtime 读取及未覆盖项见 [P4 记录](testing/unified-analysis-ui-p4-2026-10-29.md)。分析 UI 不提供图形视图。
 
 ## 统一分析 UI P3
 
 P0–P3 首期完成。复用统一 UI Web driver 的 --p3 模式；--model 启用已有凭据的隔离真实模型验收。
 完整入口、准确版本、Native 参数流与模型边界、patch/快照复用、失败恢复、PTC 和冷重开证据见
-[P3 记录](testing/unified-analysis-ui-p3-2026-10-28.md)。新格式图表、扩展元数据和离线导出仍在后续阶段。
+[P3 记录](testing/unified-analysis-ui-p3-2026-10-28.md)。图形与离线导出未进入当前契约，见[旧报告管线移除](#旧报告管线移除)。
 
 ## 统一分析 UI P2
 
 新静态格式使用 `npm run validate:unified-analysis-ui:p2` 和
 `node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/web.ts --p2`，
 复用 P0/P1 的样例与 driver。保存、双位置、精度、冷重启、历史格式及未验收边界见
-[P2 记录](testing/unified-analysis-ui-p2-2026-10-28.md)。下方以 Draft 为输入的历史综合脚本不证明新格式；
+[P2 记录](testing/unified-analysis-ui-p2-2026-10-28.md)。下方以 Draft 为输入的历史记录不证明新格式；
 流式、patch 及外部模型使用策略的最终证据见上方 P3。
 
 
@@ -212,10 +221,12 @@ Node.js 22.19.0 下 `npm run check`、`npm run build`、`npm run verify:plugin-p
 
 ## 报告旧入口清理验收
 
+> 历史记录：其中离线 HTML、图表交互、原生编辑与 Ask DSH 已随旧报告管线移除。
+
 2026-09-11 移除 `presentation/install.tsx` 的旧报告卡片、弹窗和安装入口，并将其单元测试及 Web
 验收迁移至默认 `apply` 安装的原生右侧 Tabs。Host 内报告入口要求已有 Session；离线 HTML 继续独立使用。
-同时清理旧来源摘要组件、图标、样式、翻译及卡片缓存；公开 API 移除清单见
-[报告交付](modules/presentation-delivery.md#客户端旧入口移除)。持久报告和历史事件契约未变化。
+同时清理旧来源摘要组件、图标、样式、翻译及卡片缓存；当时的公开 API 移除清单已不在当前
+[报告交付](modules/presentation-delivery.md)模块文档中。持久报告和历史事件契约未变化。
 
 Node.js 22.19.0 下 `npm run check` 通过（652 项通过、4 项默认跳过），`npm run build` 和
 `npm run verify:plugin-package` 通过。迁移后的验收脚本另通过类型与格式检查。
@@ -338,15 +349,15 @@ CSV 断言现在通过 Harness `fileAddressFor` 定位所属 Session／文件的
 | Datasource/Credentials | `test:datasource-credentials` | `validate:datasource-credentials:real`、`validate:datasource-execution:real`、`validate:credentials:web` |
 | 数据源配置与删除 | `test:datasource-credentials` | `validate:datasource-configuration:real`、`validate:datasource-configuration:web`、`validate:datasource-configuration:model`、`validate:datasource-removal:web` |
 | 语义引用与浏览 | `test:semantic-reference-input`、`test:semantic-browser` | `validate:semantic-ask-dsh:web`、`validate:semantic-browser:web` |
-| 展示契约与投影 | `test:presentation-s0`、`test:presentation-projection` | `validate:presentation-projection:real`、`validate:presentation-browser:real` |
-| reader 与交互 | `test:presentation-reader`、`test:right-tabs` | `validate:presentation-reader:real`、`validate:presentation-interaction`、`validate:presentation-export`、`validate:right-tabs:web` |
-| 报告导航与引用 | `test:presentation-integration` | `validate:report-catalog:web`、`validate:presentation-semantic-navigation`、`validate:presentation-ask-dsh` |
-| 展示与文件 Skill | `test:presentation-skill`、`test:plugin-integration-delivery` | `validate:presentation-agent:real`、`validate:file-analysis:real` |
+| 展示契约与投影 | `test:presentation-projection`、`test:runtime-workspace` | `validate:presentation-browser:real` |
+| 分析 UI 保存、更新与快照 | `test:unified-analysis-ui` | `validate:unified-analysis-ui:runtime`、`validate:unified-analysis-ui:p2`、`validate:unified-analysis-ui:web` |
+| 右侧 Tab reader | `test:right-tabs` | `validate:right-tabs:web` |
+| 报告目录与语义导航 | `test:presentation-integration` | `validate:report-catalog:web`、`validate:presentation-semantic-navigation` |
+| 展示与文件 Skill | `test:presentation-skill`、`test:plugin-integration-delivery` | `validate:file-analysis:real` |
 | 插件交付与关闭 | `test:plugin-integration-delivery`、`test:presentation-surface`、`test:presentation-integration` | `validate:plugin-integration-delivery:real`、`validate:presentation-integration:real`、`validate:plugin-lifecycle:real` |
 | 三页面报告读取与连接排队 | `test:datasource-credentials`、`test:presentation-integration` | `validate:report-read-latency` |
-| 报告对象存储发布 | `test:presentation-integration` | `validate:report-publishing` |
 
-表中名称均通过 `npm run <名称>` 执行。`test:presentation-s0` 是仍由 package.json 使用的历史命令名，负责纯展示契约测试，不表示项目仍处于该阶段。
+表中名称均通过 `npm run <名称>` 执行。
 
 ## 证据与环境边界
 
@@ -365,13 +376,14 @@ Python 工具卡片：`npm run test:python-tool` 验证原文和状态解析，`
 
 - 契约与确定性测试证明输入、身份、状态转换和失败处理；模拟 transport 或固定数据不证明真实服务可用。
 - Runtime 验证应记录实际解释器和包身份、隔离 Workspace、生成与恢复过程；跨进程恢复不能以同一进程缓存代替。
-- Web 验证应记录实际加载的 client、Host 接线及用户操作结果。生产组件加 fixture 不等于已安装 profile 验收；HTML 需要覆盖离线、无脚本、打印和数值保真。
+- Web 验证应记录实际加载的 client、Host 接线及用户操作结果。生产组件加 fixture 不等于已安装 profile 验收。
 - 模型验证应使用真实 Tool/Skill 路由、请求与 Session 事件，区分模型自动选择和脚本强制调用。
-- 对象存储的本地签名 PUT fixture 不证明真实 Bucket 权限、服务商兼容性、持久性、CDN 或公网访问。
 
 真实环境操作按任务授权和前提执行；重装、重启、清理状态、发布或推送不由验证命令的存在自动授权。缺失前提、跳过项和未确认结果须单独报告，不把本地检查写成已发布能力。记录不包含凭据值、完整环境或无关用户数据。
 
 ## 三页面报告读取验收
+
+> 发布已移除，下述“挂起发布配置”检查只属于 2026-09-10 的历史候选。
 
 设置 `DSH_DATA_ANALYSIS_PYTHON` 为已安装 Marivo 的解释器绝对路径，使用 Node.js 22.19.0 执行
 `npm run validate:report-read-latency`。脚本创建隔离 Workspace、profile 和打包插件的真实 Harness Web，
@@ -401,6 +413,8 @@ Host 及本次启动的全部子进程均已退出；浏览器启动和关闭异
 该断言仍保留，布局修复不属于此次报告连接优化范围。
 
 ## 插件界面与报告语言分离验收
+
+> 历史记录：其中 Draft v2／Document v3、静态导出、发布与编辑保存已随旧报告管线移除。
 
 2026-09-10 使用 Node.js 22.19.0 验证破坏性语言契约：Draft v2、Document v3 必须携带
 `zh-CN` 或 `en-US`；Receipt 保持原有结构。旧版本、缺失及非法语言明确拒绝并要求重新生成，
@@ -453,6 +467,8 @@ Review 修复后，Node.js 22.19.0 下 `npm run check` 通过（640 项通过、
 扩展的完整 `validate:right-tabs:web` 曾通过首页与首轮隐藏检查，随后进程以 137 退出，未计作完整回归通过；最终首页验收由上述聚焦脚本独立通过。早期全量检查遇到生成资源缺失，按先构建再测试顺序重跑后通过。未升级依赖、修改 Harness、发布、重装或重启用户当前服务。
 
 ## Agent HTML 导出与原生文件交付验收
+
+> 历史记录：`marivo_export_html` 与 `validate:html-export` 已随旧报告管线移除，分析 UI 不提供 HTML 导出。
 
 2026-09-11 新增 `marivo_export_html`。工具与阅读器共用固定 receipt 的 HTML 校验／生成路径，
 仅从已保存快照导出。新增回归覆盖 JSON 构建、历史已存 HTML、current 并发更新后仍保留原 Build、

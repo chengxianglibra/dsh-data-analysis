@@ -16,11 +16,7 @@ export function ReportSource({ version, sessions, onOpenSession, showKind = true
   const session = id && sessions?.[id]
   return (
     <span className="pd-source">
-      {showKind && version.source
-        ? version.source.kind === 'agent'
-          ? t('marivo.presentation.agent-update')
-          : t('marivo.presentation.reader-edit')
-        : ''}
+      {showKind && version.source?.kind === 'agent' ? t('marivo.presentation.agent-update') : ''}
       {session && onOpenSession ? (
         <button
           type="button"
@@ -32,8 +28,6 @@ export function ReportSource({ version, sessions, onOpenSession, showKind = true
         </button>
       ) : id ? (
         t('marivo.presentation.source-session-unavailable')
-      ) : version.source?.kind === 'reader' ? (
-        t('marivo.presentation.saved-in-workspace')
       ) : (
         t('marivo.presentation.source-not-recorded')
       )}
@@ -146,13 +140,6 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
           {t(state.historyError)}
         </p>
       )}
-      {state.history?.legacyHistoryUnavailable && (
-        <p className="pd-muted">
-          {t(
-            'marivo.presentation.older-versions-have-no-publication-records-only-confirmed-versions',
-          )}
-        </p>
-      )}
       <ol>
         {state.history?.versions.map((version) => (
           <li key={version.receipt.buildId}>
@@ -160,7 +147,7 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
               type="button"
               className="pd-version"
               aria-pressed={state.resolvedReceipt?.buildId === version.receipt.buildId}
-              disabled={state.loading || !!state.editing || state.saving}
+              disabled={state.loading}
               onClick={() => void model.selectVersion(version.receipt.buildId)}
             >
               <strong>{t(publicationTime(version.publishedAt, t.locale))}</strong>

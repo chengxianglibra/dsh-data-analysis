@@ -10,8 +10,11 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
-import { actualDeliveries, ScriptedPresentationAdapter } from '../presentation-s4/host.ts'
-import { verifyReferenceRead } from './reference-read.ts'
+import {
+  actualDeliveries,
+  type PresentationRequest,
+  ScriptedPresentationAdapter,
+} from '../presentation-s4/host.ts'
 
 class CredentialAdapter extends LlmAdapter {
   readonly configuration?: 'create' | 'edit'
@@ -75,7 +78,7 @@ class SemanticQuestionAdapter extends LlmAdapter {
 export async function createRightTabsDriver(
   ctx: Context,
   workspace: any,
-  draftPaths: readonly string[],
+  requests: readonly PresentationRequest[],
   resume = false,
 ) {
   const agents = new Map<string, any>()
@@ -101,7 +104,7 @@ export async function createRightTabsDriver(
             ? new CredentialAdapter()
             : new ScriptedPresentationAdapter(
                 mode === 'cold' ? 'native' : mode,
-                Array.from({ length: 12 }, (_, i) => draftPaths[i % draftPaths.length]!),
+                Array.from({ length: 12 }, (_, i) => requests[i % requests.length]!),
                 () =>
                   actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
               ),
@@ -148,8 +151,6 @@ export async function createRightTabsDriver(
       await agents.get('semantic').whenIdle()
       return { ok: true, value: semantic.requests }
     }
-    if (payload.action === 'reference-read')
-      return { ok: true, value: await verifyReferenceRead(ctx, workspace, payload.reference) }
     const agent = agents.get(payload?.mode)
     assert.ok(agent, 'Unknown isolated session')
     if (payload.action === 'detach') {

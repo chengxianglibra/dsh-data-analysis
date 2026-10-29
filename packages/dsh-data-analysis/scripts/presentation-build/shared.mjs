@@ -7,22 +7,19 @@ const metadata = JSON.parse(await readFile(path.join(packageRoot, 'package.json'
 const hostPackages = Object.keys(metadata.peerDependencies ?? {}).filter((name) =>
   name.startsWith('@deepseek-ai/'),
 )
-const victoryLicenseSource =
-  'https://raw.githubusercontent.com/FormidableLabs/victory/v37.3.6/LICENSE.txt'
 
 /**
  * Fail closed on bundled Host code, a second Host React, and unknown runtime imports.
  * @param {import('esbuild').Metafile} meta
- * @param {{ portable: boolean }} options
  */
-export function assertBrowserInputs(meta, { portable }) {
+export function assertBrowserInputs(meta) {
   for (const input of Object.keys(meta.inputs)) {
     if (input === '<stdin>') continue
     const normalized = input.replaceAll('\\', '/')
     if (/(?:^|\/)node_modules\//.test(normalized)) {
       if (/(?:^|\/)node_modules\/@deepseek-ai\//.test(normalized))
         throw new Error(`host-module-in-browser:${input}`)
-      if (!portable && /(?:^|\/)node_modules\/(?:react|react-dom)\//.test(normalized))
+      if (/(?:^|\/)node_modules\/(?:react|react-dom)\//.test(normalized))
         throw new Error(`duplicate-host-react:${input}`)
       continue
     }
@@ -39,9 +36,8 @@ export function assertBrowserInputs(meta, { portable }) {
     for (const item of output.imports) {
       if (!item.external) continue
       if (
-        !portable &&
-        (/^react(?:-dom)?(?:\/.*)?$/.test(item.path) ||
-          hostPackages.some((name) => item.path === name || item.path.startsWith(`${name}/`)))
+        /^react(?:-dom)?(?:\/.*)?$/.test(item.path) ||
+        hostPackages.some((name) => item.path === name || item.path.startsWith(`${name}/`))
       )
         continue
       throw new Error(`unexpected-browser-external:${item.path}`)
@@ -75,17 +71,6 @@ export async function thirdPartyNotices(meta) {
       if (entry.isFile() && /^(?:licen[cs]e|copying|notice)(?:[._-].*)?$/i.test(entry.name)) {
         files.push({ file: entry.name, text: await readFile(path.join(root, entry.name), 'utf8') })
       }
-    }
-    // The published 37.3.6 package omits its root license. S0 verified this upstream tag.
-    if (!files.length && metadata.name === 'victory-vendor' && metadata.version === '37.3.6') {
-      files.push({
-        file: 'LICENSE.txt',
-        sourceUrl: victoryLicenseSource,
-        text: await readFile(
-          new URL('./third-party/victory-vendor-37.3.6-LICENSE.txt', import.meta.url),
-          'utf8',
-        ),
-      })
     }
     // These fixed npm tarballs omit the full license. Keep the upstream texts in the build inputs.
     /** @type {Record<string, string>} */

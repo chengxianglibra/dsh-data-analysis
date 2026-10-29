@@ -12,15 +12,12 @@ import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { hostCopy, installCopy, localized } from '../i18n/host.tsx'
-import { appendPresentationContext } from '../presentation/ask-dsh.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
 import {
   marivoAnalysisSurfaceDefinition,
   marivoPresentationDeliveryDefinition,
   PRESENTATION_TURN_DATA_KEY,
 } from '../presentation/delivery.ts'
-import { HostPresentationReader } from '../presentation/host-entry.tsx'
-import { installPresentationReferenceSource } from '../presentation/reference-source.ts'
 import { createPluginRpc } from '../rpc.ts'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
 import { installSemanticReferenceSource } from '../semantic-reference-source.ts'
@@ -198,7 +195,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     ),
   )
   installSemanticReferenceSource(ctx, rpc)
-  installPresentationReferenceSource(ctx)
   const credentials = installCredentials(ctx, rpc, credentialChanges(ctx))
   ctx.effect(() =>
     credentials.subscribe(() => {
@@ -221,39 +217,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }
     }),
   )
-  const edit = async (page) => {
-    check(page.sessionId, page.target.workspaceId, true)
-    await page.reader.beginCurrentEdit(() => check(page.sessionId, page.target.workspaceId, true))
-  }
-  const save = async (page, tab) => {
-    check(page.sessionId, page.target.workspaceId, true)
-    const before = page.reader.getSnapshot().document?.buildId
-    await page.reader.saveEdit()
-    const state = page.reader.getSnapshot()
-    if (state.editError || !state.document || state.document.buildId === before) return
-    check(page.sessionId, page.target.workspaceId)
-    page.patch({ newer: undefined, notice: '' })
-    changed(page.target.workspaceId, page.target.reportId)
-    if (page.target.buildId) {
-      // A Build address remains immutable. Adopt current in the same pane/strip position after save.
-      tab.actions.openResource(
-        resourceAddress({
-          kind: 'report',
-          workspaceId: page.target.workspaceId,
-          reportId: page.target.reportId,
-        }),
-        { replaceTab: tab.id, revealIfOpened: false },
-      )
-    }
-  }
-  const ask = (page, context) => {
-    check(page.sessionId, page.target.workspaceId, true)
-    if (page.reader.getSnapshot().editing || page.reader.getSnapshot().saving)
-      throw new Error('marivo.presentation.save-or-cancel-edits-first')
-    if (!page.reader.getSnapshot().document || page.getSnapshot().error || page.signal.aborted)
-      throw new Error('marivo.navigation.the-report-is-unavailable-reopen-it')
-    appendPresentationContext(ctx, page.sessionId, page.target.workspaceId, context)
-  }
   const act = (page, operation) => {
     Promise.resolve()
       .then(operation)
@@ -331,7 +294,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         data-rt-panel={panelId}
         data-rt-kind={page.target.kind}
         data-rt-workspace={page.target.workspaceId}
-        data-rt-build={(report.document ?? report.analysisDocument)?.buildId}
+        data-rt-build={report.analysisDocument?.buildId}
         data-rt-current={page.target.kind === 'report' && !page.target.buildId ? 'true' : undefined}
       >
         <style>{catalogStyles + credentialStyles + rightTabStyles}</style>
@@ -392,66 +355,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             )}
             {page.target.kind === 'report' && (
               <>
-                {report.editing && (
-                  <div
-                    className="rt-toolbar"
-                    role="toolbar"
-                    aria-label={t('marivo.presentation.report-editing-actions')}
-                  >
-                    <button
-                      type="button"
-                      disabled={report.saving || !report.editing.undo.length}
-                      onClick={() => page.reader.undoEdit()}
-                    >
-                      {t('marivo.presentation.undo')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={report.saving || !report.editing.redo.length}
-                      onClick={() => page.reader.redoEdit()}
-                    >
-                      {t('marivo.presentation.redo')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={report.saving}
-                      onClick={() => act(page, () => save(page, tab))}
-                    >
-                      {report.saving
-                        ? t('marivo.presentation.saving')
-                        : t('marivo.presentation.save-edits')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={report.saving}
-                      onClick={() => {
-                        if (
-                          !page.reader.dirty ||
-                          window.confirm(
-                            t('marivo.navigation.there-are-unsaved-edits-discard-them'),
-                          )
-                        )
-                          page.reader.cancelEdit()
-                      }}
-                    >
-                      {t('marivo.presentation.cancel-edits')}
-                    </button>
-                    <span>
-                      {page.reader.dirty
-                        ? t('marivo.presentation.unsaved-edits')
-                        : t('marivo.presentation.edit-mode')}
-                    </span>
-                  </div>
-                )}
-                {report.editError && <p role="alert">{t(report.editError)}</p>}
-                {report.notice && <p role="status">{t(report.notice)}</p>}
-                {report.publicationUrl && (
-                  <p>
-                    <a href={report.publicationUrl} target="_blank" rel="noopener noreferrer">
-                      {t('marivo.presentation.open-published-report')}
-                    </a>
-                  </p>
-                )}
                 {report.loading && <p role="status">{t('marivo.navigation.loading-report')}</p>}
                 {report.error && (
                   <div role="alert">
@@ -484,53 +387,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     />
                   </>
                 )}
-                {report.document && (
-                  <HostPresentationReader
-                    document={report.document}
-                    closeSourceOnNavigate
-                    viewMemory={page.viewMemory}
-                    exportActions={{
-                      downloadFullReport: () => void page.reader.downloadDisplayed(),
-                      publishing: report.publishingName
-                        ? {
-                            name: report.publishingName,
-                            publish: () => void page.reader.publishDisplayed(),
-                            publishView: (bytes) => page.reader.publishDisplayed(bytes),
-                          }
-                        : undefined,
-                      publishingUnavailable: report.publishingUnavailable,
-                      publishingLoading: report.publishingLoading,
-                      downloading: report.downloading,
-                      disabled: !!report.error || report.loading,
-                      report: {
-                        version: report.document.buildId,
-                        refresh: () => void page.refresh(),
-                        edit: () => act(page, () => edit(page)),
-                        history: () => void page.reader.toggleHistory(),
-                        historical: report.historical || !!state.newer,
-                        historyLoading: report.historyLoading,
-                        busy: report.saving,
-                      },
-                    }}
-                    editing={
-                      report.editing
-                        ? {
-                            edits: report.editing.edits,
-                            onChange: (edits) => page.reader.changeEdits(edits),
-                            disabled: report.saving,
-                          }
-                        : undefined
-                    }
-                    onOpenSemanticRef={source}
-                    onAskDsh={(context) =>
-                      act(page, () => {
-                        ask(page, context)
-                        page.patch({ notice: '' })
-                      })
-                    }
-                  />
-                )}
-                {report.downloadError && <p role="alert">{t(report.downloadError)}</p>}
               </>
             )}
           </>
@@ -689,11 +545,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const target = parseResource(tab.navigation.address)
     return target.kind === 'report' ? (
       <span>
-        {(report?.document ?? report?.analysisDocument)?.title ?? target.reportId.slice(0, 12)} ·{' '}
-        {(report?.document ?? report?.analysisDocument)?.buildId.slice(0, 8) ??
-          target.buildId?.slice(0, 8) ??
-          '…'}
-        {report?.editing ? ' *' : ''}
+        {report?.analysisDocument?.title ?? target.reportId.slice(0, 12)} ·{' '}
+        {report?.analysisDocument?.buildId.slice(0, 8) ?? target.buildId?.slice(0, 8) ?? '…'}
       </span>
     ) : (
       <span>{target.ref.path}</span>
@@ -979,5 +832,5 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     indexListeners.clear()
     listeners.clear()
   })
-  return { audit, pages, navigate, changed, credentials, resourceAddress, ask }
+  return { audit, pages, navigate, changed, credentials, resourceAddress }
 }

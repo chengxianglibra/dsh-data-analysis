@@ -24,7 +24,7 @@ const result = await build({
   minify: true,
   legalComments: 'eof',
 })
-assertBrowserInputs(result.metafile, { portable: false })
+assertBrowserInputs(result.metafile)
 const output = result.outputFiles[0]
 if (output === undefined) throw new Error('client build returned no output')
 const id = '@chengxianglibra/dsh-data-analysis'

@@ -60,18 +60,18 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
 | `marivo_present` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
 | `marivo_ui_read` | 按准确 recordId 恢复定义与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
-| `marivo_publish_report`（可选） | 将固定报告 HTML 上传至配置的 S3 目标 | Harness 提供等价的受控发布 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
-semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。原生 API 已拥有
+semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。
+`marivo_export_html` 与 `marivo_publish_report` 已随旧报告管线移除，插件不再注册 HTML 导出或发布 Tool。原生 API 已拥有
 语义时，插件不重新装箱。
 
 ## Prompt 与 Skill 激活
 
 系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
 文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 marivo_present 传准确引用，不额外读取 Skill/Catalog。自定义 Lang 时按需加载
-dsh-data-analysis-presentation；新格式支持表格/单值、Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
-新格式 HTML 导出和发布尚未接入，旧格式参考见该 Skill 的历史区域。
+dsh-data-analysis-presentation；分析 UI 支持 auto/table/metric 数据视图、Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
+不提供图形、离线 HTML 导出或发布。
 
 `marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
 测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由
@@ -92,11 +92,12 @@ dsh-data-analysis-presentation；新格式支持表格/单值、Native 参数流
 展示 Skill 由 `dsh-data-analysis-presentation` provider 从包内 `skills/` 挂载；Runtime Skill 仍由
 `dsh-data-analysis-marivo` provider 从当前 Runtime 读取。两者不包含默认 roots，也不监听目录变化。
 主流程与按需 references 的职责见[展示 Skill](presentation-skill.md)。旧报告 Skill、prompt、三个经典 JS
-资产、emitter 和旧 transport schemas 不再分发，当前包不提供兼容包装。
+资产、emitter、旧 transport schemas 及 Draft/图形示例不再分发，当前包不提供兼容包装。
 
-[展示数据投影](presentation-projection.md)使用相同 bound Workspace/Runtime 的公开读取程序，生成纯数据文档。
-`dsh_data_analysis_presentation.write_dataset(frame, path)` 只写 computed typed JSON 与有界 receipt，
-不接收来源、转换分类或复算要求。声明来源在 Draft，available/unavailable 表示可恢复性，不能证明 computed 正确。
+[展示数据投影](presentation-projection.md)使用相同 bound Workspace/Runtime 的公开读取程序生成快照。
+`dsh_data_analysis_presentation.capture_dataset(frame)` 在原 `marivo_python` 进程中捕获 pandas DataFrame，
+成功回执返回 `snapshotRef` 并关联原调用的 `codeRef`；它不推断 SQL/文件来源，也不证明捕获前的转换正确。
+presentation-kit 只公开 `capture_dataset`，不再提供写出 TypedDataset 文件的 helper。
 
 ## Web client
 
@@ -104,12 +105,13 @@ Web client 只保留：
 
 - datasource 凭据管理与 `marivo_datasource_test` / `marivo_python` 的等待表单；
 - 语义层对象浏览与 composer 原生引用输入；
-- 原生报告目录与正文 Tab、共享 reader、呈现编辑及按需 HTML 下载；
-- 可选[报告发布](report-publishing.md)菜单与独立发布凭据管理。
+- 原生报告目录、版本历史与分析 UI 正文 Tab（只读）。
 
-生产 client bundle 导出 `HostPresentationReader`，与 portable 共用[展示 reader](presentation-reader.md)。
+报告呈现编辑、HTML 下载、[报告发布](report-publishing.md)菜单与发布凭据管理已移除。
+
+生产 client bundle 导出 `HostPresentationReader`，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
 通过统一 Session/Turn delivery 观察新交付，自动打开固定 Build Tab；重复事件去重，历史回放不自动打开。
-成功回执不渲染聊天卡片，打开失败时提供错误反馈；下载前校验固定快照和响应字节。
+成功回执不渲染聊天卡片，打开失败时提供错误反馈。旧格式报告不出现在目录，直接打开时显示不支持。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
 ## 空白首页工作区入口
@@ -129,9 +131,9 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 
 当前开发与验收基线为 `0.2.1-rc.2`。Session/Workspace client API 分别来自 `dsh-api-session-controller`
 和 `dsh-api-workspace-controller`；对话组装由 `ui-conversation` 拥有，chat 节点渲染由 `ui-chat` 拥有。
-新版 Lexical composer 通过 scoped `slash/input-insert-reference` 和当前 `draftRev` 追加“加入提问”的 Cell 引用，
-采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史；显示 `# <cell名称>`，
-发送时通过插件 codec 展开固定 Build 定位和临时视图状态，细节见 [reader 模块](presentation-reader.md)。
+新版 Lexical composer 通过 scoped `slash/input-insert-reference` 和当前 `draftRev` 追加语义对象引用，
+采用 reference 的原子位置坐标，保留现有引用、附件和原生撤销历史，细节见[语义对象引用输入](semantic-reference-input.md)。
+报告 cell 的“加入提问”（`marivo-report-cell`）已随旧 reader 移除。
 
 `src/rpc.ts` 与 `src/client/rpc.ts` 将插件逻辑 endpoint 接入 Connection 的精确 Fetch 路由，
 认证、Host/Origin 检查和请求体传输继续由 Harness `/api` 拥有。插件只解析公开 `clientRequestSchema`
@@ -153,17 +155,18 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.6.0.dev0` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
-| Presentation-kit | `dsh-data-analysis-presentation-kit==1.3.0`，typed dataset schemaVersion 1 |
+| Presentation-kit | `dsh-data-analysis-presentation-kit==1.4.0`，typed dataset schemaVersion 1 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
-与内部纯数据 contracts/projection、builder、预构建 portable/static 资产，以及展示及文件分析 Skill 的 `SKILL.md`、references 和 examples；
-旧 report-kit、报告 Skill、JS registry 和旧 transport schemas 均不分发。
+与内部纯数据 contracts/projection、builder，以及展示及文件分析 Skill 的 `SKILL.md` 和 references；
+旧 report-kit、报告 Skill、JS registry、旧 transport schemas、portable/static 离线资产和
+`dsh-data-analysis-presentation-lint` CLI 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。
 
 依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受 `0.2.1-rc.2` 及同一 `0.2.1` 核心版本中后续满足范围的预发布
 和之后满足 `>=0.2.1-rc.2` 的稳定版本，不自动接受其他 core 版本的预发布。逐项检查直接消费的 peers 与 Host 实际解析身份，
 不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
-正常 workspace 链接允许，Host client external/metafile 与 portable 自带 React 检查保留。
+正常 workspace 链接允许，Host client external/metafile 检查保留。
 
 ## npm 发布
 
@@ -186,15 +189,14 @@ npm run validate:presentation-integration:real
 ```
 
 plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.0.dev0 与真实模型。
-presentation integration runner 使用隔离 Workspace、真实 Tool dispatch、Host Web 与下载文件验证交付。
+presentation integration runner 使用隔离 Workspace、真实 Tool dispatch 与 Host Web 验证交付。
 路径、runner 日志或静态 schema 不替代实际交互证据。
 
 ## Browser 构建
 
-client 使用 esbuild 打包 Browser source、共享 contracts 和 Recharts 等依赖，DSH/React 保持外部依赖，
+client 使用 esbuild 打包 Browser source 与共享 contracts 等依赖，DSH/React 保持外部依赖，
 由 DSH module loader 提供；构建检查拒绝第二份 Host React、Node 与 Runtime 模块。
-portable 将 React/Recharts 一并打包且不允许外部模块，静态 renderer 同样预构建，builder 运行不依赖开发工具。
-实际打包依赖保留许可证；不增加公开 npm subpath。
+不再构建 portable/static 离线 renderer；实际打包依赖保留许可证，不增加公开 npm subpath。
 
 ## 凭证通知的连接接入
 

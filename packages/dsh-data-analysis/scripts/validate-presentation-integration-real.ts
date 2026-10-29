@@ -1,63 +1,29 @@
-/** S4 actual production Tool/Host/Web/portable delivery in a disposable private profile. */
+/** S4 actual production Tool/Host/Web delivery in a disposable private profile. */
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { type Browser, type BrowserContext, chromium, type Locator, type Page } from 'playwright'
-import { translator } from '../src/client/i18n/copy.ts'
-import {
-  cellText,
-  datasetById,
-  metricText,
-  selectedSources,
-  selectMetric,
-  snapshotDate,
-} from '../src/client/presentation/model.ts'
-import { sourceOverviewFacts } from '../src/client/presentation/source-facts.ts'
-import { chartColumns, chartTransition } from '../src/presentation/contracts/charts.ts'
-import {
-  type PresentationDocument,
-  parsePresentationDocument,
-} from '../src/presentation/contracts/index.ts'
-import type { PresentationBlock, TypedDataset } from '../src/presentation/contracts/types.ts'
-import { presentationHtml } from './presentation-html.ts'
-import {
-  verifyAllChartFilters,
-  verifyEditing,
-  verifyPreparedFilters,
-} from './presentation-s4/editing.ts'
+import { type Browser, chromium, type Page } from 'playwright'
+import { readReceiptDocument } from '../src/presentation/reports.ts'
 import { validatePresentationHost } from './presentation-s4/host.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
 import { startPresentationWebHost } from './presentation-s4/web-host.ts'
-import { closeReport, openReport, reportAction } from './right-tabs/browser.ts'
+import { analysisSurface, closeReport, openReport } from './right-tabs/browser.ts'
 
 const arguments_ = process.argv.slice(2)
 assert.ok(
-  arguments_.length === 0 ||
-    (arguments_.length === 2 && ['--resume-web', '--agent'].includes(arguments_[0]!)),
-  'Usage: validate-presentation-integration-real.ts [--resume-web /path/to/host-evidence-root | --agent /path/to/agent-evidence.json]',
+  arguments_.length === 0 || (arguments_.length === 2 && arguments_[0] === '--resume-web'),
+  'Usage: validate-presentation-integration-real.ts [--resume-web /path/to/host-evidence-root]',
 )
 const resume = arguments_[0] === '--resume-web' ? arguments_[1] : undefined
-const agentEvidencePath = arguments_[0] === '--agent' ? path.resolve(arguments_[1]!) : undefined
-const agentEvidence = agentEvidencePath
-  ? JSON.parse(await readFile(agentEvidencePath, 'utf8'))
-  : undefined
-if (agentEvidence)
-  assert.ok(
-    ['passed', 'passed-awaiting-semantic-review'].includes(agentEvidence.status),
-    'Use successful execution evidence; Web validation does not certify semantic conclusions',
-  )
 const outputRoot = await realpath(
   resume ?? (await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s4-real-'))),
 )
 const resumedInputs = resume
   ? JSON.parse(await readFile(path.join(outputRoot, 'runtime-inputs.json'), 'utf8'))
   : undefined
-const workspaceRoot =
-  agentEvidence?.workspaceRoot ?? resumedInputs?.workspaceRoot ?? path.join(outputRoot, 'workspace')
+const workspaceRoot = resumedInputs?.workspaceRoot ?? path.join(outputRoot, 'workspace')
 const pythonExecutable =
   process.env.DSH_DATA_ANALYSIS_PYTHON ??
   path.join(
@@ -69,37 +35,16 @@ await mkdir(workspaceRoot, { recursive: true })
 process.stdout.write(`S4 isolated validation: ${outputRoot}\n`)
 const inputs: Pick<
   Awaited<ReturnType<typeof preparePresentationInputs>>,
-  'binding' | 'draftPaths' | 'generated'
-> = resumedInputs ??
-(agentEvidence
-  ? {
-      binding: agentEvidence.binding,
-      draftPaths: agentEvidence.draftPaths.map((draft: string) => {
-        const relative = path.relative(workspaceRoot, path.resolve(workspaceRoot, draft))
-        assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative))
-        return relative
-      }),
-      generated: { agentEvidencePath, draftSha256: agentEvidence.draftSha256 },
-    }
-  : await preparePresentationInputs(workspaceRoot, pythonExecutable))
+  'binding' | 'requests' | 'generated'
+> = resumedInputs ?? (await preparePresentationInputs(workspaceRoot, pythonExecutable))
 assert.equal(inputs.binding.pythonExecutable, pythonExecutable)
-if (agentEvidence) {
-  assert.equal(inputs.draftPaths.length, 1)
-  assert.equal(
-    createHash('sha256')
-      .update(await readFile(path.join(workspaceRoot, inputs.draftPaths[0]!)))
-      .digest('hex'),
-    agentEvidence.draftSha256,
-    'Real Agent draft changed before Web validation',
-  )
-}
 await writeFile(
   path.join(outputRoot, 'runtime-inputs.json'),
   JSON.stringify({ ...inputs, workspaceRoot }, null, 2),
 )
 const host: Awaited<ReturnType<typeof validatePresentationHost>> = resume
   ? JSON.parse(await readFile(path.join(outputRoot, 'host-evidence.json'), 'utf8'))
-  : await validatePresentationHost(workspaceRoot, outputRoot, pythonExecutable, inputs.draftPaths)
+  : await validatePresentationHost(workspaceRoot, outputRoot, pythonExecutable, inputs.requests)
 assert.equal(host.status, 'passed')
 await writeFile(path.join(outputRoot, 'host-evidence.json'), JSON.stringify(host, null, 2))
 process.stdout.write(
@@ -109,7 +54,7 @@ const server = await startPresentationWebHost(
   workspaceRoot,
   await mkdtemp(path.join(outputRoot, 'web-attempt-')),
   pythonExecutable,
-  inputs.draftPaths,
+  inputs.requests,
   'native-first',
   { rightTabsAcceptance: true },
 )
@@ -118,220 +63,7 @@ const errors: string[] = []
 const checks: Record<string, unknown>[] = []
 // Turn 1 has only pre-tool prose: its native closing boundary precedes the
 // produced file. The report node must appear even though that tail stays empty.
-const expectedProducedRows = Math.max(0, inputs.draftPaths.length - 1)
-const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-function selectedColumns(block: PresentationBlock, data: TypedDataset): string[] {
-  return block.kind === 'chart'
-    ? chartColumns(block)
-    : block.kind === 'metric'
-      ? [block.columnId]
-      : block.kind === 'table' && block.columns
-        ? block.columns
-        : data.columns.map((column) => column.id)
-}
-async function verifyExactTable(
-  node: Locator,
-  data: TypedDataset,
-  columns: string[],
-  staticMode: boolean,
-) {
-  const seen = new Set<number>()
-  for (const id of columns)
-    assert.equal(await node.locator(`thead [data-column-id="${id}"]`).count(), 1)
-  while (true) {
-    for (const row of await node.locator('tbody tr').all()) {
-      const identity = await row.getAttribute('data-row-index')
-      assert.notEqual(identity, null)
-      const index = Number(identity)
-      assert.ok(Number.isSafeInteger(index) && index >= 0 && index < data.rows.length)
-      assert.ok(!seen.has(index), `Snapshot row ${index} appeared twice`)
-      seen.add(index)
-      for (const id of columns) {
-        const field = data.columns.findIndex((column) => column.id === id)
-        assert.equal(
-          await row.locator(`[data-column-id="${id}"]`).textContent(),
-          cellText('zh-CN', data.rows[index]![field]!, data.columns[field]!),
-          `Exact preview changed ${id} at saved row ${index}`,
-        )
-      }
-    }
-    const next = node.getByRole('button', { name: '下一页', exact: true })
-    if (staticMode || !(await next.count()) || (await next.isDisabled())) break
-    await next.click()
-  }
-  assert.equal(
-    seen.size,
-    data.rows.length,
-    'Preview must expose every saved row through pagination',
-  )
-}
-async function verifyReader(target: Page, document: PresentationDocument, staticMode = false) {
-  const reader = target.locator(
-    `[data-presentation-reader][data-mode="${staticMode ? 'static' : 'interactive'}"]`,
-  )
-  await reader.getByRole('heading', { name: document.title, exact: true }).waitFor()
-  if (staticMode)
-    while (await reader.locator('details:not([open])').count())
-      await reader.locator('details:not([open])').first().locator(':scope > summary').click()
-  for (const block of document.blocks) {
-    const node = reader.locator(`[data-block-id="${block.id}"]`)
-    await node.waitFor()
-    if (block.kind === 'markdown') continue
-    const dataset = 'datasetId' in block ? datasetById(document, block.datasetId) : undefined
-    const columns = dataset ? selectedColumns(block, dataset.data) : []
-    if (block.kind === 'metric' && dataset) {
-      const metric = selectMetric('zh-CN', dataset.data, block)
-      assert.equal(
-        await node.locator('[data-metric-value]').textContent(),
-        metricText('zh-CN', metric.value, metric.column),
-      )
-    }
-    if (dataset && (block.kind === 'table' || (block.kind === 'chart' && staticMode)))
-      await verifyExactTable(node, dataset.data, columns, staticMode)
-    if (staticMode) continue
-    await node.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
-    await node.getByRole('menuitem', { name: '数据源', exact: true }).click()
-    const dialog = reader.getByRole('dialog', { name: '数据源', exact: true })
-    await dialog.waitFor()
-    const overview = dialog.locator('.pr-source-overview')
-    if (dataset) {
-      assert.ok((await overview.innerText()).includes(dataset.id))
-      assert.deepEqual(
-        await overview
-          .locator('.pr-source-fields tbody tr')
-          .evaluateAll((rows) =>
-            rows.map((row) => Array.from(row.querySelectorAll('td'), (cell) => cell.textContent)),
-          ),
-        columns.map((id) => {
-          const column = dataset.data.columns.find((column) => column.id === id)!
-          return [column.id, column.label, column.type, column.unit ?? '—']
-        }),
-      )
-    }
-    const sources = selectedSources(
-      document,
-      block.kind === 'source' ? block.sourceIds : dataset!.sourceIds,
-    )
-    for (const source of sources) {
-      const card = overview.locator(`[data-source-id="${source.id}"]`)
-      if (source.status === 'unavailable') {
-        assert.ok((await card.innerText()).includes(translator(document.locale)(source.reason)))
-        continue
-      }
-      const facts = sourceOverviewFacts(source)
-      const labels = [
-        ...facts.semanticGroups.flatMap((group) => group.paths),
-        ...facts.issues.map((issue) => issue.kind),
-        ...facts.notices,
-        ...(facts.createdAt
-          ? [
-              Number.isNaN(Date.parse(facts.createdAt))
-                ? facts.createdAt
-                : snapshotDate('zh-CN', facts.createdAt),
-            ]
-          : []),
-      ]
-      if (labels.length) {
-        const visible = await card.innerText()
-        for (const label of labels)
-          assert.ok(
-            visible.includes(translator(document.locale)(label)),
-            `Missing saved source fact ${label}`,
-          )
-      }
-    }
-    if (dataset) {
-      await dialog.getByRole('tab', { name: '数据预览', exact: true }).click()
-      await verifyExactTable(
-        dialog.getByRole('tabpanel', { name: '数据预览', exact: true }),
-        dataset.data,
-        columns,
-        false,
-      )
-    }
-    await dialog.getByRole('button', { name: '关闭数据源', exact: true }).click()
-    await dialog.waitFor({ state: 'detached' })
-  }
-  if (staticMode)
-    for (const source of document.sources)
-      if (source.status === 'unavailable')
-        assert.ok((await reader.innerText()).includes(translator(document.locale)(source.reason)))
-  if (!document.datasets.length) assert.equal(await reader.locator('table').count(), 0)
-}
-async function openFirstOrdinaryChart(target: Page, document: PresentationDocument) {
-  const block = document.blocks.find(
-    (entry) => entry.kind === 'chart' && (entry.chart === 'line' || entry.chart === 'bar'),
-  )
-  if (block?.kind !== 'chart') return undefined
-  const cell = target.locator(
-    `[data-presentation-reader][data-mode="interactive"] [data-block-id="${block.id}"]`,
-  )
-  await cell.getByRole('button', { name: 'cell 更多操作', exact: true }).click()
-  await cell.getByRole('menuitem', { name: '探索图表', exact: true }).click()
-  const panel = cell.getByRole('region', { name: '探索图表', exact: true })
-  await panel.waitFor()
-  return { block, cell, panel }
-}
-async function exploreReader(target: Page, document: PresentationDocument) {
-  const selected = await openFirstOrdinaryChart(target, document)
-  if (!selected) return { skipped: 'No authored line/bar chart in this document' }
-  const { block, cell, panel } = selected
-  const type = block.chart === 'line' ? 'bar' : 'line'
-  assert.ok(chartTransition(block, type, datasetById(document, block.datasetId).data))
-  const picker = panel.getByRole('combobox', { name: '图形类型', exact: true })
-  assert.equal(await picker.inputValue(), block.chart)
-  await picker.selectOption(type)
-  assert.equal(await picker.inputValue(), type)
-  const retained = panel.getByRole('listbox', { name: '保留分类值', exact: true })
-  let filter: { column: string; value: string } | undefined
-  if ((await retained.count()) && (await retained.locator('option').count())) {
-    const value = (await retained.locator('option').first().getAttribute('value'))!
-    const column = await panel.getByRole('combobox', { name: '过滤字段', exact: true }).inputValue()
-    await retained.selectOption(value)
-    assert.deepEqual(
-      await retained.evaluate((node: HTMLSelectElement) =>
-        [...node.selectedOptions].map((option) => option.value),
-      ),
-      [value],
-    )
-    filter = { column, value }
-  }
-  if (await cell.locator('[data-chart-type]').count())
-    assert.equal(
-      await cell.locator('[data-chart-type]').first().getAttribute('data-chart-type'),
-      type,
-    )
-  return {
-    cellId: block.id,
-    originalType: block.chart,
-    exploredType: type,
-    filter,
-    pageLocalOnly: true,
-  }
-}
-async function verifyReopenedChart(target: Page, document: PresentationDocument) {
-  const selected = await openFirstOrdinaryChart(target, document)
-  if (!selected) return false
-  const { block, panel } = selected
-  assert.equal(
-    await panel.getByRole('combobox', { name: '图形类型', exact: true }).inputValue(),
-    block.chart,
-  )
-  assert.equal(
-    await panel.getByRole('combobox', { name: 'X 字段', exact: true }).inputValue(),
-    block.x,
-  )
-  for (const input of await panel.locator('.pr-explorer-visible input').all())
-    assert.ok(await input.isChecked())
-  const retained = panel.getByRole('listbox', { name: '保留分类值', exact: true })
-  if (await retained.count())
-    assert.equal(
-      await retained.evaluate((node: HTMLSelectElement) => node.selectedOptions.length),
-      await retained.locator('option').count(),
-    )
-  await panel.getByRole('button', { name: '关闭探索图表', exact: true }).click()
-  return true
-}
+const expectedProducedRows = Math.max(0, inputs.requests.length - 1)
 async function rpc(channel: string, endpoint: string, payload: unknown) {
   return page!.evaluate(
     async ({ channel, endpoint, payload }) => {
@@ -345,10 +77,7 @@ async function rpc(channel: string, endpoint: string, payload: unknown) {
 }
 try {
   browser = await chromium.launch({ channel: 'chrome', headless: true })
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1100 },
-    acceptDownloads: true,
-  })
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
   page = await context.newPage()
   page.setDefaultTimeout(20_000)
   page.on('pageerror', (error) => errors.push(error.message))
@@ -382,106 +111,37 @@ try {
   assert.ok(JSON.stringify(boot.boot).includes('dsh-presentation-s4'))
   for (const [index, delivery] of server.deliveries.entries()) {
     const receipt = delivery.receipt
-    const document = parsePresentationDocument(
-      JSON.parse(await readFile(receipt.files.document.path, 'utf8')),
+    assert.equal(receipt.files.html, undefined, 'Saved Builds contain only presentation.json')
+    const document = await readReceiptDocument(workspaceRoot, receipt)
+    const report = await openReport(page, delivery.dshSessionId, {
+      workspaceId: receipt.workspaceId,
+      reportId: receipt.reportId,
+      buildId: receipt.buildId,
+    })
+    const surface = analysisSurface(report)
+    assert.equal(await surface.getAttribute('data-analysis-record'), document.recordId)
+    await surface.getByRole('heading', { name: document.title, exact: true }).waitFor()
+    const resources = Object.keys(document.resources).sort()
+    assert.deepEqual(
+      (
+        await surface
+          .locator('[data-resource]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-resource')))
+      ).sort(),
+      resources,
     )
-    const originalHtml = await presentationHtml(receipt)
-    assert.equal(receipt.files.html, undefined)
-    const open = () =>
-      openReport(page!, delivery.dshSessionId, {
-        workspaceId: receipt.workspaceId,
-        reportId: receipt.reportId,
-        buildId: receipt.buildId,
-      })
-    await open()
-    const report = page.locator('[data-rt-kind=report]:visible')
-    await verifyReader(page, document)
     await report.evaluate((element) => element.scrollTo({ top: 0 }))
     await report.screenshot({ path: path.join(outputRoot, `${index}-web.png`) })
-    const hostExploration = await exploreReader(page, document)
-    const allChartFilters =
-      !agentEvidence && index === 3 ? await verifyAllChartFilters(page, document) : undefined
-    await report.screenshot({ path: path.join(outputRoot, `${index}-web-explored.png`) })
     await closeReport(page, report)
-    const waitDownload = page.waitForEvent('download')
-    await open()
-    await reportAction(report, '下载完整报告')
-    const download = await waitDownload
-    const downloadPath = path.join(outputRoot, `${index}-${download.suggestedFilename()}`)
-    await download.saveAs(downloadPath)
-    const downloadedHtml = await readFile(downloadPath)
-    assert.equal(sha256(downloadedHtml), sha256(originalHtml))
-    assert.ok(downloadedHtml.equals(originalHtml), 'Exploration changed downloaded HTML bytes')
-    await closeReport(page, report)
-    await open()
-    await verifyReader(page, document)
-    const reopenedAuthorConfiguration = await verifyReopenedChart(page, document)
-    await closeReport(page, report)
-    const offline: BrowserContext = await browser.newContext({
-      offline: true,
-      viewport: { width: 1200, height: 1000 },
-    })
-    const offlinePage: Page = await offline.newPage()
-    const network: string[] = []
-    offlinePage.on('request', (request) => {
-      if (!request.url().startsWith('file:')) network.push(request.url())
-    })
-    await offlinePage.goto(pathToFileURL(downloadPath).href)
-    await verifyReader(offlinePage, document)
-    const portableExploration = await exploreReader(offlinePage, document)
-    const portableAllChartFilters =
-      !agentEvidence && index === 3 ? await verifyAllChartFilters(offlinePage, document) : undefined
-    assert.deepEqual(
-      JSON.parse((await offlinePage.locator('#presentation-data').textContent())!),
-      document,
-    )
-    assert.deepEqual(network, [])
-    await offlinePage.screenshot({
-      path: path.join(outputRoot, `${index}-offline.png`),
-      fullPage: true,
-    })
-    await offlinePage.reload()
-    await verifyReader(offlinePage, document)
-    const portableReopenedAuthorConfiguration = await verifyReopenedChart(offlinePage, document)
-    assert.deepEqual(network, [])
-    assert.ok((await readFile(downloadPath)).equals(originalHtml))
-    await offline.close()
-    const noScript = await browser.newContext({ offline: true, javaScriptEnabled: false })
-    const noScriptPage = await noScript.newPage()
-    await noScriptPage.goto(pathToFileURL(downloadPath).href)
-    await verifyReader(noScriptPage, document, true)
-    await noScript.close()
     checks.push({
       title: document.title,
       buildId: receipt.buildId,
+      recordId: document.recordId,
       actualTool: true,
-      actualWebCard: true,
-      open: true,
-      downloadSha256: sha256(originalHtml),
-      downloadedFromNativeTab: true,
-      originalHtmlBytesRetained: true,
-      hostExploration,
-      allChartFilters,
-      portableAllChartFilters,
-      reopenedAuthorConfiguration,
-      portableExploration,
-      portableReopenedAuthorConfiguration,
-      offlineNetworkRequests: 0,
-      noScript: true,
+      jsonOnlyBuild: true,
+      resources,
     })
   }
-  if (!agentEvidence) checks.push(await verifyPreparedFilters(page, server.deliveries[3]!))
-  if (!agentEvidence)
-    checks.push(
-      await verifyEditing(
-        page,
-        browser,
-        server.deliveries[1]!,
-        server.durableSessionId!,
-        outputRoot,
-        server.processAuditPath,
-      ),
-    )
   const receipt = server.deliveries[0]!.receipt
   const payload = { sessionId: server.sessionId, receipt, asset: 'presentation.json' }
   const read = await rpc('/marivo-presentation', 'files/read', payload)
@@ -526,7 +186,7 @@ try {
     workspaceRoot,
     await mkdtemp(path.join(outputRoot, 'web-reversed-')),
     pythonExecutable,
-    inputs.draftPaths,
+    inputs.requests,
     'report-first',
     { rightTabsAcceptance: true },
   )
@@ -545,7 +205,7 @@ try {
       await reversedPage.locator('[data-produced-files-row]').count(),
       expectedProducedRows,
     )
-    if (!agentEvidence) {
+    {
       const previous = server.deliveries[1]!.receipt
       const resolved = await reversedPage.evaluate(
         ({ sessionId, reportId }) =>
@@ -565,14 +225,14 @@ try {
     })
     checks.push({
       clientOrder: reversed.clientOrder,
-      reports: inputs.draftPaths.length,
+      reports: inputs.requests.length,
       producedFilesRows: expectedProducedRows,
     })
     await reversedContext.close()
   } finally {
     await reversed.stop()
   }
-  if (!agentEvidence) {
+  {
     const eventsBeforeRestart = await rpc('/presentation-s4-validation', 'events', {})
     assert.equal(eventsBeforeRestart.ok, true)
     assert.ok(eventsBeforeRestart.value.length > 0)
@@ -590,17 +250,18 @@ try {
     if (await notice.isVisible()) await notice.click()
     await restartPage.getByText('S4 production Tool delivery', { exact: true }).first().click()
     await restartPage.waitForFunction(() => !!(window as any).__rightTabs)
-    await openReport(restartPage, server.sessionId, {
+    const latest = server.deliveries.at(-1)!.receipt
+    const restartedReport = await openReport(restartPage, server.sessionId, {
       workspaceId: server.workspaceId,
-      reportId: server.deliveries[1]!.receipt.reportId,
+      reportId: latest.reportId,
     })
     assert.equal(await restartPage.locator('[data-presentation-card]').count(), 0)
-    await restartPage
-      .locator('[data-mode="interactive"]')
-      .getByText('这份报告尚无 cell。数据与来源仍保留。', { exact: true })
+    assert.equal(await restartedReport.getAttribute('data-rt-build'), latest.buildId)
+    await analysisSurface(restartedReport)
+      .getByRole('heading', { name: latest.title, exact: true })
       .waitFor()
     await restartPage.screenshot({
-      path: path.join(outputRoot, 'editing-restarted-current-tab.png'),
+      path: path.join(outputRoot, 'restarted-current-tab.png'),
     })
     const eventsAfterRestart = await restartPage.evaluate(() =>
       (window as any).__s4Rpc('/presentation-s4-validation', 'events', {}),
@@ -643,7 +304,7 @@ try {
       'This runner uses scripted model dispatch; real-model routing has separate evidence',
     ],
     boundary:
-      'production plugin Tool/receipt/RPC/client on installed Harness with deterministic model adapter; isolated DSH Web CLI and actual downloaded portable bytes',
+      'production plugin Tool/receipt/RPC/client on installed Harness with deterministic model adapter; isolated DSH Web CLI',
   }
   await writeFile(
     path.join(outputRoot, 'integration-evidence.json'),

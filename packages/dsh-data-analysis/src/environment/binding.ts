@@ -64,7 +64,6 @@ try:
         or _dsh_presentation_distribution.version != _dsh_expected_presentation["version"]
         or _dsh_presentation_path != _dsh_os.path.realpath(_dsh_expected_presentation["packagePath"])
         or _dsh_presentation_path != _dsh_os.path.realpath(_dsh_presentation_distribution.locate_file("dsh_data_analysis_presentation/__init__.py"))
-        or not callable(_dsh_presentation.write_dataset)
         or not callable(_dsh_presentation.capture_dataset)
     ):
         raise ValueError("presentation helper identity mismatch")

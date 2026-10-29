@@ -1,43 +1,74 @@
 # 可改写的完整示例
 
-> 历史 Document v3 参考：以下 Draft、writer 和旧参数仅解释已有格式，不能用于当前 marivo_present 新写入。新建和更新使用[当前引用/Lang 流程](../SKILL.md)。
-
-
-这些文件都是**演示内容，不是真实业务结果**。先按任务修改，再用普通文件能力写入当前 Workspace；不要在 Skill 安装目录生成分析产物。带 `example-` 的 Session/Artifact 引用仅演示字段位置，使用时替换为当前 Workspace 中实际取得的精确引用。
-
-## 已有 Artifact
-
-读取 [artifact.draft.json](examples/artifact.draft.json)，替换来源引用、列名和范围。草稿直接选择 Artifact 保存数据，不需要先调用 Python helper。示例使用 table，适用于尚未确认数值列是否适合绘图的已有结果。
-
-## computed 数据
-
-使用 [write-computed.py](examples/write-computed.py) 了解 helper 的完整用法。通过 `marivo_python` 在绑定 Runtime 执行改写后的代码；示例本身只有演示数据，可用 `datasources: []`。代码把文件写入 Workspace 的 `presentation-example/computed.dataset.json`，与 [computed.draft.json](examples/computed.draft.json) 中的路径一致。父目录由 Python 示例创建。已有 computed 文件可直接使用，无需重新计算。
-
-文件分析得到的 pandas DataFrame 或原生 DuckDB `.df()` 结果可直接替换示例数据，无需 Marivo datasource 或语义模型。读取指引见 `dsh-data-analysis-files`；草稿正文说明实际文件名、sheet／字段选择及样本或全量范围，`sourceIds` 无 Artifact 时保持空数组，`codeRefs` 关联生成该数据的实际执行引用。
-
-[computed.dataset.json](examples/computed.dataset.json) 是该示例的实际 typed JSON 输出，含精确金额、整数和 null；[computed.draft.json](examples/computed.draft.json) 同时展示单值、趋势、分组、原值表格，未声明来源。需要声明多个 Artifact 来源时参考 [computed-sources.draft.json](examples/computed-sources.draft.json)，只增加声明与关联，不提交转换信息。无法恢复的声明来源由 present 标记 unavailable，不删除声明来隐藏缺失。
-
-这些 Draft 仅用于已有格式的读取与测试；当前 marivo_present 不接收 draft_path。新建使用主入口中的引用/Lang。
-
-一个成功的 `marivo_present` 已完成 reader 构建；离线 HTML 在用户下载时生成；根据 receipt 交付，不能把示例数据解释成用户的真实业务结论。
+以下内容都是**演示，不是真实业务结果**。`example-`、`实际` 开头的引用仅演示字段位置，使用时替换为当前 Workspace 中实际取得的精确引用。组件签名见[八组件 Catalog](analysis-catalog.md)，捕获与更新规则见[Lang、捕获与增量更新](analysis-ui.md)。
 
 ## 比较与抵消项
 
-[write-comparison.py](examples/write-comparison.py) 使用完整演示数据：baseline `[100, 80, 20]`、current `[50, 50, 50]`。它仅演示已有数据的展示，不是业务分析流程。可用 `datasources: []` 运行；写出路径与[比较草稿](examples/comparison.draft.json)一致。
+在原分析进程中准备并捕获三个 DataFrame：baseline `[100, 80, 20]`、current `[50, 50, 50]`。示例只演示已有数据的展示，不是业务分析流程。
 
-完整[明细](examples/comparison.dataset.json)保留三项原值与 `current - baseline` 的差值 `[-50, -30, +30]`；[Top 2 数据](examples/comparison-selected.dataset.json)按减少量降序预选 A、B，writer 收到两行，因此 `rowCount: 2` 且 `truncated: false`。[汇总](examples/comparison-summary.dataset.json)保留全量、选中项、其他项的两侧原值与净差。
+```python
+import pandas as pd
+from dsh_data_analysis_presentation import capture_dataset
 
-草稿的正文、图和表统一变化方向：全量 200 → 150，净变化 -50（以 baseline 总量 200 为分母，-25%）；两项减少量 80，其他项增加 30，抵消后净减少 50。80 / 50 = 160% 是选中减少量与全量净减少的比值，不能称为覆盖率。示例只证明数值关系，没有原因或联合关系证据。
+full = pd.DataFrame({"category": ["A", "B", "C"], "baseline": [100, 80, 20], "current": [50, 50, 50]})
+full["delta_current_minus_baseline"] = full["current"] - full["baseline"]
+# Agent-side Top 2 selection; the captured range is two rows, not the full scope.
+selected = (full.assign(decrease_baseline_minus_current=-full["delta_current_minus_baseline"])
+            .sort_values("decrease_baseline_minus_current", ascending=False).head(2))
+summary = pd.DataFrame({
+    "scope": ["all", "selected", "other"],
+    "baseline": [200, 180, 20],
+    "current": [150, 100, 50],
+})
+summary["delta_current_minus_baseline"] = summary["current"] - summary["baseline"]
+for frame in (full, selected, summary):
+    capture_dataset(frame)
+```
 
-## 仅展示来源
+成功回执按调用顺序返回三个 snapshotRef，分别声明为 `full`、`selected`、`summary`：
 
-[全部图形样例](chart-examples.md)另提供 18 类图形、bar/line 变体、预计算数据和探索配置。
+```json
+{
+  "surface": "tab",
+  "resources": {
+    "full": {"kind": "dataset-snapshot", "snapshotRef": "实际 full 引用"},
+    "selected": {"kind": "dataset-snapshot", "snapshotRef": "实际 selected 引用"},
+    "summary": {"kind": "dataset-snapshot", "snapshotRef": "实际 summary 引用"}
+  },
+  "title": "比较示例",
+  "program": "root = Stack([lead, kpi, detail]);\nlead = TextContent(\"全量 200 → 150，净变化 -50（-25%）；A、B 减少 80，C 增加 30 抵消。\", \"large\");\nkpi = DatasetView(\"summary\", {chart: \"table\"});\ndetail = Tabs([TabItem(\"selected\", \"Top 2 减少项\", [DatasetView(\"selected\", {chart: \"table\"})]), TabItem(\"full\", \"全量明细\", [DatasetView(\"full\")])]);"
+}
+```
 
-[source-only.draft.json](examples/source-only.draft.json) 的 datasets 为空，直接用 source block。替换精确引用后提交即可；无须生成 computed 文件、图或虚构单值。
+正文与表格统一 `current - baseline` 方向：全量 200 → 150，净变化 -50（以 baseline 总量 200 为分母，-25%）；两项减少量 80，其他项增加 30，抵消后净减少 50。80 / 50 = 160% 是选中减少量与全量净减少的比值，不能称为覆盖率。示例只证明数值关系，没有原因或联合关系证据。
 
-## 可选全局筛选与动态 KPI
+## 单值与 Frame
 
-既有 computed 示例不声明筛选，可直接作为固定报告。需要交互时，参考[全局筛选契约](interaction.md)与[双筛选草稿](examples/interaction.draft.json)。
-[生成脚本](examples/write-interaction.py)使用合成测试数据，在 Python 中准备日期 × 集群的九个组合，每个维度均含“全部”。
-脚本生成[指标数据](examples/interaction-summary.dataset.json)和[类别数据](examples/interaction-detail.dataset.json)，路径与草稿一致。
-完整范围为 550 次查询、15 次失败；周一甲集群为 150 次查询、3 次失败、2.00% 失败率。区域外指标始终为 550，区域内三个 KPI、图表及表格一起切换。
+metric 必须指向完整的单行结果，并用 encoding 指定列。下例把已有 Marivo Frame 与单行汇总放在同一页：
+
+```json
+{
+  "resources": {
+    "total": {"kind": "dataset-snapshot", "snapshotRef": "实际单行汇总引用"},
+    "trend": {"kind": "marivo-frame", "sessionId": "example-session", "artifactId": "example-artifact"}
+  },
+  "program": "root = Card([TextContent(\"本期合计与按日明细\"), DatasetView(\"total\", {chart: \"metric\", encoding: {value: \"current\"}}), AnalysisFrameView(\"trend\", {chart: \"table\"}, {height: 320})]);"
+}
+```
+
+展示层不计算总计、达成率或同比；这些值需要在原分析中先算出并捕获。
+
+## 文件结果与图片
+
+文件分析得到的 pandas DataFrame 或原生 DuckDB `.df()` 结果同样用 `capture_dataset` 捕获，无需 Marivo datasource 或语义模型；读取指引见 `dsh-data-analysis-files`。正文说明实际文件名、sheet／字段选择及样本或全量范围。
+
+已保存在 Workspace 的 PNG/JPEG/GIF/WebP 可作为说明性图片：
+
+```json
+{
+  "resources": {"figure": {"kind": "image-file", "path": "exports/amounts.png"}},
+  "program": "root = Stack([TextContent(\"按类别金额（由原分析生成的图片）\"), Image(\"按类别金额条形图\", \"figure\")]);"
+}
+```
+
+图片不是数据视图，不提供数值核对；需要核对的原值同时用 DatasetView 展示。

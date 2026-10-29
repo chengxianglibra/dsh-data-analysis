@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import type { SessionEventWindow } from '@deepseek-ai/dsh-api-session-controller/client'
-import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
-import { followUpContext } from '../../src/client/presentation/model.ts'
 import { LiveDeliveryObserver } from '../../src/client/right-tabs/live-delivery.ts'
 import {
   canOpenResource,
@@ -13,19 +10,34 @@ import {
   resourceAddress,
 } from '../../src/client/right-tabs/navigation.ts'
 import { TabPage } from '../../src/client/right-tabs/page.ts'
-import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
+import {
+  analysisCatalogBuild,
+  analysisCatalogId,
+} from '../../src/presentation/contracts/analysis-catalog.ts'
+import {
+  ANALYSIS_UI_FORMAT,
+  type AnalysisDocument,
+  analysisRecordId,
+} from '../../src/presentation/contracts/analysis-document.ts'
 import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
 
-const base = parsePresentationDocument(
-  JSON.parse(
-    await readFile(
-      new URL('../presentation-s0/fixtures/computed.document.json', import.meta.url),
-      'utf8',
-    ),
-  ),
-)
+const base = {
+  schemaVersion: ANALYSIS_UI_FORMAT,
+  workspaceId: 'workspace',
+  reportId: 'report',
+  title: 'Saved analysis',
+  locale: 'zh-CN',
+  generatedAt: '2026-10-29T00:00:00Z',
+  catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+  program: 'root = TextContent("Saved analysis");',
+  resources: {},
+} as const
 function fixture() {
-  const documents = ['old', 'new'].map((buildId) => ({ ...base, buildId }))
+  const documents: AnalysisDocument[] = ['old', 'new'].map((buildId) => ({
+    ...base,
+    buildId,
+    recordId: analysisRecordId(base.reportId, buildId),
+  }))
   const receipts = documents.map((doc) => ({
     kind: 'marivo.presentation' as const,
     schemaVersion: 2 as const,
@@ -34,23 +46,14 @@ function fixture() {
     buildId: doc.buildId,
     title: doc.title,
     summary: 'saved',
-    files: Object.fromEntries(
-      [
-        ['document', 'presentation.json'],
-        ['html', 'index.html'],
-      ].map(([key, asset]) => {
-        const body = asset === 'presentation.json' ? JSON.stringify(doc) : '<html>saved</html>'
-        return [
-          key,
-          {
-            asset,
-            path: `/workspace/.dsh-data-analysis/presentations/${doc.reportId}/builds/${doc.buildId}/${asset}`,
-            bytes: Buffer.byteLength(body),
-            sha256: createHash('sha256').update(body).digest('hex'),
-          },
-        ]
-      }),
-    ) as any,
+    files: {
+      document: {
+        asset: 'presentation.json' as const,
+        path: `/workspace/.dsh-data-analysis/presentations/${doc.reportId}/builds/${doc.buildId}/presentation.json`,
+        bytes: Buffer.byteLength(JSON.stringify(doc)),
+        sha256: createHash('sha256').update(JSON.stringify(doc)).digest('hex'),
+      },
+    },
   }))
   let current = 0
   const calls: string[] = []
@@ -236,38 +239,18 @@ test('fixed Build never resolves current; current announces updates until explic
     f.rpc,
   )
   await current.navigate(1)
-  const assertContext = (page: TabPage, buildId: string) => {
-    const document = page.reader.getSnapshot().document!
-    const cell = document.blocks[0]!
-    const lines = followUpContext(document, cell).split('\n')
-    assert.ok(lines.includes(`Workspace: ${JSON.stringify(base.workspaceId)}`))
-    assert.ok(lines.includes(`Report ID: ${base.reportId}`))
-    assert.ok(lines.includes(`Build ID: ${buildId}`))
-    assert.ok(lines.includes(`Cell: ${JSON.stringify(cell.id)}`))
-  }
-  assertContext(current, 'old')
-  current.viewMemory.set(`${base.workspaceId}/${base.reportId}/old/interactive`, {
-    chosen: { region: 'old-selection' },
-    tableSorts: {},
-    explorations: {},
-  })
+  assert.equal(current.reader.getSnapshot().analysisDocument?.buildId, 'old')
   f.advance()
   const before = f.calls.length
   await fixed.navigate(1)
-  assert.deepEqual(f.calls.slice(before), ['reports/history', 'files/read', 'describe'])
-  assert.equal(fixed.reader.getSnapshot().document?.buildId, 'old')
+  assert.deepEqual(f.calls.slice(before), ['reports/history', 'files/read'])
+  assert.equal(fixed.reader.getSnapshot().analysisDocument?.buildId, 'old')
   await current.publicationChanged(base.workspaceId, base.reportId)
   assert.equal(current.getSnapshot().newer?.buildId, 'new')
-  assert.equal(current.reader.getSnapshot().document?.buildId, 'old')
-  assertContext(current, 'old')
-  assertContext(fixed, 'old')
-  assert.equal(current.viewMemory.size, 1, 'a new-version hint preserves the displayed filters')
+  assert.equal(current.reader.getSnapshot().analysisDocument?.buildId, 'old')
   await current.refresh()
-  assert.equal(current.viewMemory.size, 0, 'switching Build discards old-version filters')
-  assert.equal(current.reader.getSnapshot().document?.buildId, 'new')
-  assert.equal(fixed.reader.getSnapshot().document?.buildId, 'old')
-  assertContext(current, 'new')
-  assertContext(fixed, 'old')
+  assert.equal(current.reader.getSnapshot().analysisDocument?.buildId, 'new')
+  assert.equal(fixed.reader.getSnapshot().analysisDocument?.buildId, 'old')
   current.dispose()
   fixed.dispose()
 })
@@ -290,14 +273,14 @@ test('late reads cannot revive revoked, disposed or superseded pages, even when 
   page.unavailable('revoked')
   waiting.shift()!()
   await first
-  assert.equal(page.reader.getSnapshot().document, undefined)
+  assert.equal(page.reader.getSnapshot().analysisDocument, undefined)
   assert.equal(page.getSnapshot().error, 'revoked')
   const second = page.navigate(2)
   await new Promise((r) => setImmediate(r))
   page.dispose()
   waiting.shift()!()
   await second
-  assert.equal(page.reader.getSnapshot().document, undefined)
+  assert.equal(page.reader.getSnapshot().analysisDocument, undefined)
 })
 
 test('history is navigation positioning on a current report, not a second resource identity', async () => {
@@ -306,100 +289,9 @@ test('history is navigation positioning on a current report, not a second resour
   const page = new TabPage('s1', target, f.rpc)
   await page.navigate(1, false, true)
   assert.equal(page.reader.getSnapshot().historyOpen, true)
-  assert.equal(page.reader.getSnapshot().document?.buildId, 'old')
+  assert.equal(page.reader.getSnapshot().analysisDocument?.buildId, 'old')
   await page.navigate(2)
   assert.equal(page.reader.getSnapshot().historyOpen, false)
   assert.equal(resourceAddress(page.target as typeof target), resourceAddress(target))
   page.dispose()
-})
-
-test('a fixed address for the current Build is editable, while stale and historical Builds are not', async () => {
-  const f = fixture()
-  const page = new TabPage(
-    's1',
-    {
-      kind: 'report',
-      workspaceId: base.workspaceId,
-      reportId: base.reportId,
-      buildId: 'old',
-    },
-    f.rpc,
-  )
-  await page.navigate(1)
-  assert.equal(page.reader.getSnapshot().historical, false)
-  await page.reader.beginCurrentEdit()
-  assert.ok(page.reader.getSnapshot().editing)
-  page.reader.cancelEdit()
-  f.advance()
-  await assert.rejects(page.reader.beginCurrentEdit(), (error: unknown) => {
-    assert.match(translator('zh-CN')(readError(error)), /已有新版本/)
-    return true
-  })
-  assert.equal(page.reader.getSnapshot().editing, undefined)
-  assert.equal(page.reader.getSnapshot().historical, true)
-  assert.equal(page.reader.getSnapshot().document?.buildId, 'old')
-  await page.refresh()
-  assert.equal(page.reader.getSnapshot().historical, true)
-  page.reader.beginEdit()
-  assert.equal(page.reader.getSnapshot().editing, undefined)
-  page.dispose()
-})
-
-test('tab navigation and rejected refresh preserve draft and undo, accepted refresh discards explicitly', async () => {
-  const f = fixture()
-  const page = new TabPage(
-    's1',
-    {
-      kind: 'report',
-      workspaceId: base.workspaceId,
-      reportId: base.reportId,
-    },
-    f.rpc,
-  )
-  await page.navigate(1)
-  await page.reader.beginCurrentEdit()
-  page.reader.changeEdits({ ...page.reader.getSnapshot().editing!.edits, title: '草稿' })
-  const editing = page.reader.getSnapshot().editing
-  const calls = f.calls.length
-  await page.navigate(2)
-  await page.refresh(() => false)
-  assert.equal(f.calls.length, calls)
-  assert.equal(page.reader.getSnapshot().editing, editing)
-  page.reader.undoEdit()
-  assert.equal(page.reader.dirty, false)
-  page.reader.redoEdit()
-  assert.equal(page.reader.getSnapshot().editing?.edits.title, '草稿')
-  f.advance()
-  await page.refresh(() => true)
-  assert.equal(page.reader.getSnapshot().editing, undefined)
-  assert.equal(page.reader.getSnapshot().document?.buildId, 'new')
-  page.dispose()
-})
-
-test('current pointer check cannot enter editing after foreground validation fails or the tab closes', async () => {
-  const f = fixture()
-  const page = new TabPage(
-    's1',
-    {
-      kind: 'report',
-      workspaceId: base.workspaceId,
-      reportId: base.reportId,
-    },
-    f.rpc,
-  )
-  await page.navigate(1)
-  await assert.rejects(
-    page.reader.beginCurrentEdit(() => {
-      throw new Error('foreground changed')
-    }),
-    (error: unknown) => {
-      assert.match(translator('zh-CN')(readError(error)), /foreground changed/)
-      return true
-    },
-  )
-  assert.equal(page.reader.getSnapshot().editing, undefined)
-  const opening = page.reader.beginCurrentEdit()
-  page.dispose()
-  await opening.catch(() => {})
-  assert.equal(page.reader.getSnapshot().editing, undefined)
 })

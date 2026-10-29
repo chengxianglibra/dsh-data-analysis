@@ -2,7 +2,7 @@ import type { ElementNode } from '@openuidev/lang-core'
 import { z } from 'zod'
 import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { parseAnalysisProgram } from './analysis-program.ts'
-import { parsePresentationBuildId, parsePresentationDocument } from './index.ts'
+import { parsePresentationBuildId } from './index.ts'
 import { parseAnalysisSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
@@ -78,7 +78,6 @@ const schema = z.strictObject({
 })
 export type AnalysisDocument = z.infer<typeof schema>
 export type AnalysisResource = z.infer<typeof resource>
-export type SavedPresentation = AnalysisDocument | ReturnType<typeof parsePresentationDocument>
 export function analysisRecordId(reportId: string, buildId: string): string {
   return `marivo-ui:${parsePresentationBuildId(reportId)}:${parsePresentationBuildId(buildId)}`
 }
@@ -175,15 +174,16 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
   validateAnalysisResources(result.program, result.resources)
   return result
 }
-export function parseSavedPresentation(value: unknown): SavedPresentation {
+/** Saved Builds use only the analysis UI format; earlier report documents are unsupported. */
+export function parseSavedPresentation(value: unknown): AnalysisDocument {
   if (
-    value &&
-    typeof value === 'object' &&
-    'schemaVersion' in value &&
-    value.schemaVersion === ANALYSIS_UI_FORMAT
+    !value ||
+    typeof value !== 'object' ||
+    !('schemaVersion' in value) ||
+    value.schemaVersion !== ANALYSIS_UI_FORMAT
   )
-    return parseAnalysisDocument(value)
-  return parsePresentationDocument(value)
+    throw new Error('report-version-unsupported')
+  return parseAnalysisDocument(value)
 }
 
 export function sameAnalysisDeclaration(

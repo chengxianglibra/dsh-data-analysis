@@ -299,23 +299,7 @@ export const zh = {
   'marivo.credentials.the-call-has-ended': '调用已结束。',
   'marivo.credentials.cancellation-is-unconfirmed-continue-checking-status':
     '无法确认取消结果，请继续查询。',
-  'marivo.credentials.cannot-read-report-publishing-credential-status-reopen-the-page':
-    '无法读取报告发布凭证状态，请重新打开页面重试。',
-  'marivo.credentials.saved-value-deleted-status-refreshed': '已删除保存值，当前状态已刷新。',
-  'marivo.credentials.saved-the-next-publication-will-use-the-new-credential':
-    '已保存，下次发布使用新凭证。',
-  'marivo.credentials.publishing-configuration-changed-refresh-credential-status-and-enter-values':
-    '发布配置已变化，请刷新凭证状态后重新填写。',
-  'marivo.credentials.credential-operation-unconfirmed-refresh-status-before-retrying-credentials-from':
-    '凭证操作未确认，请刷新状态后重试；启动环境提供的凭证需在启动环境中修改。',
-  'marivo.credentials.report-publishing-credentials': '报告发布凭证',
-  'marivo.credentials.report-publishing-credentials-228': '报告发布凭证 ·',
-  'marivo.credentials.credentials-are-shared-by-the-current-harness-across-all':
-    '。凭证由当前 Harness 共享，适用于使用此发布目标的所有 Workspace。',
   'marivo.credentials.required': '（必填）',
-  'marivo.credentials.status-refreshed': '状态已刷新。',
-  'marivo.credentials.refresh-failed-please-retry': '刷新失败，请重试。',
-  'marivo.credentials.refresh-credential-status': '刷新凭证状态',
   'marivo.credentials.create-failed': '新增数据源失败。',
   'marivo.credentials.save-failed': '保存配置失败。',
 } as const
@@ -640,24 +624,7 @@ export const en = {
   'marivo.credentials.the-call-has-ended': 'The call has ended.',
   'marivo.credentials.cancellation-is-unconfirmed-continue-checking-status':
     'Cancellation is unconfirmed. Continue checking status.',
-  'marivo.credentials.cannot-read-report-publishing-credential-status-reopen-the-page':
-    'Cannot read report publishing credential status. Reopen the page and retry.',
-  'marivo.credentials.saved-value-deleted-status-refreshed':
-    'Saved value deleted; status refreshed.',
-  'marivo.credentials.saved-the-next-publication-will-use-the-new-credential':
-    'Saved. The next publication will use the new credential.',
-  'marivo.credentials.publishing-configuration-changed-refresh-credential-status-and-enter-values':
-    'Publishing configuration changed. Refresh credential status and enter values again.',
-  'marivo.credentials.credential-operation-unconfirmed-refresh-status-before-retrying-credentials-from':
-    'Credential operation unconfirmed. Refresh status before retrying. Credentials from the launch environment must be changed there.',
-  'marivo.credentials.report-publishing-credentials': 'Report publishing credentials',
-  'marivo.credentials.report-publishing-credentials-228': 'Report publishing credentials ·',
-  'marivo.credentials.credentials-are-shared-by-the-current-harness-across-all':
-    '. Credentials are shared by the current Harness across all Workspaces using this publishing destination.',
   'marivo.credentials.required': '(required)',
-  'marivo.credentials.status-refreshed': 'Status refreshed.',
-  'marivo.credentials.refresh-failed-please-retry': 'Refresh failed. Please retry.',
-  'marivo.credentials.refresh-credential-status': 'Refresh credential status',
   'marivo.credentials.create-failed': 'Datasource creation failed.',
   'marivo.credentials.save-failed': 'Configuration could not be saved.',
 } satisfies Record<keyof typeof zh, string>

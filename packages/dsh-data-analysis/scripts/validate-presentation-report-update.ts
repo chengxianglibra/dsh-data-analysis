@@ -30,17 +30,17 @@ const host = await validatePresentationHost(
   workspaceRoot,
   outputRoot,
   pythonExecutable,
-  inputs.draftPaths,
+  inputs.requests,
   { updateExistingReport: true },
 )
 assert.equal(host.status, 'passed')
 assert.deepEqual(
   host.modes.map((mode) => mode.mode),
-  ['native', 'both', 'code'],
+  ['native', 'both', 'ptc'],
 )
 assert.ok(host.modes.every((mode) => mode.reportUpdate))
 const evidencePath = path.join(outputRoot, 'report-update-evidence.json')
 await writeFile(evidencePath, JSON.stringify(host, null, 2), { mode: 0o600 })
 process.stdout.write(
-  `Passed Native/both/Code same-Report updates, durable receipts, current pointers and immutable history. Evidence: ${evidencePath}\n`,
+  `Passed Native/both/PTC same-Report updates, durable receipts, current pointers and immutable history. Evidence: ${evidencePath}\n`,
 )

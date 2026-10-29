@@ -21,7 +21,7 @@ const host = await startPresentationWebHost(
   workspace,
   path.join(outputRoot, 'web'),
   python,
-  inputs.draftPaths,
+  inputs.requests,
   'native-first',
   { rightTabsAcceptance: true, askDshProbe: true },
 )

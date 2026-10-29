@@ -18,12 +18,11 @@ const server = await startPresentationWebHost(
   workspace,
   path.join(output, 'web'),
   python,
-  inputs.draftPaths,
+  inputs.requests,
   'native-first',
   { rightTabsAcceptance: true },
 )
 let browser: Browser | undefined
-let releasePublishing = () => {}
 try {
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   const context = await browser.newContext({ viewport: { width: 1680, height: 1100 } })
@@ -74,7 +73,7 @@ try {
         const listed = await page.evaluate(() => performance.now())
         await catalog.locator('.pd-report-title').first().click()
         const reader = page.locator('[data-rt-kind=report]')
-        await reader.locator('[data-mode=interactive]').waitFor()
+        await reader.locator('[data-analysis-record]').waitFor()
         const opened = await page.evaluate(() => performance.now())
         if (round >= 0)
           timings.push(
@@ -137,38 +136,14 @@ try {
     () => !!(window as any).__rightTabs.credentials.getSnapshot().revision,
   )
   assert.ok(watches.length > beforeReconnect, 'reconnect reloads the credential baseline')
-  // Hold a real publishing request while reading, editing and history remain available.
+  // History stays available on the saved analysis Tab after a fresh read.
   const page = pages[0]!
-  let release!: () => void
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-    releasePublishing = resolve
-  })
-  await page.route('**/dsh-report-publishing/describe', async (route) => {
-    await held
-    await route.continue().catch(() => {})
-  })
   await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
   await page.locator('[data-rt-kind=reports] .pd-report-title').first().click()
   const reader = page.locator('[data-rt-kind=report]')
-  await reader.locator('[data-mode=interactive]').waitFor()
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
-  await reader.getByRole('menuitem', { name: '刷新', exact: true }).click()
-  await reader.locator('[data-mode=interactive]').waitFor()
-  await reader.getByRole('button', { name: '报告更多操作', exact: true }).click()
-  await reader.getByText('正在读取发布配置…', { exact: true }).first().waitFor()
-  assert.equal(await reader.getByRole('menuitem', { name: /下载完整报告/ }).isDisabled(), true)
-  assert.equal(await reader.getByRole('menuitem', { name: /导出当前视图/ }).isDisabled(), true)
-  assert.equal(
-    await reader.getByRole('menuitem', { name: '编辑报告', exact: true }).isEnabled(),
-    true,
-  )
-  assert.equal(
-    await reader.getByRole('menuitem', { name: '历史版本', exact: true }).isEnabled(),
-    true,
-  )
-  release()
-  await reader.getByText('正在读取发布配置…', { exact: true }).first().waitFor({ state: 'hidden' })
+  await reader.locator('[data-analysis-record]').waitFor()
+  await reader.locator('.rt-toolbar').getByRole('button', { name: '历史版本', exact: true }).click()
+  await reader.getByRole('complementary', { name: '历史版本' }).waitFor()
   assert.equal(errors.length, 0, errors.join('\n'))
   await writeFile(
     path.join(output, 'results.json'),
@@ -181,7 +156,6 @@ try {
   assert.ok(metrics.listP95 < 1000)
   assert.ok(metrics.documentP95 < 1000)
 } finally {
-  releasePublishing()
   try {
     await browser?.close()
   } finally {

@@ -1,4 +1,4 @@
-"""TypedDataset v1 encoding shared by the writer and fixed Artifact reader.
+"""TypedDataset v1 encoding shared by DataFrame capture and the Frame reader.
 
 Object columns are inferred from retained values only. Empty/all-null object
 columns use nullable string; the helper does not guess business semantics.
@@ -9,14 +9,9 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
-import tempfile
-from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -41,16 +36,6 @@ DATETIME = re.compile(
     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z",
     re.ASCII,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetWriteReceipt:
-    path: str
-    bytes: int
-    row_count: int
-    written_rows: int
-    limit: int
-    truncated: bool
 
 
 def _fail(path: str, message: str, code: str = "invalid_value") -> Any:
@@ -398,155 +383,3 @@ def encode_rows(
     result = encode_dataset(frame, row_limit=limit, columns=columns)
     result.update(rowCount=total_count, truncated=total_count > len(retained))
     return validate_dataset(result)
-
-
-def write_dataset(
-    frame: pd.DataFrame,
-    path: str | os.PathLike[str],
-    *,
-    row_limit: int = MAX_ROWS,
-    labels: Mapping[str, str] | None = None,
-    dataset_id: str | None = None,
-) -> DatasetWriteReceipt:
-    """Atomically write bounded pure JSON; source references belong in the draft.
-
-    labels maps existing column IDs to display names; omitted columns keep their
-    names. Labels do not change DataFrame columns or draft field bindings.
-    dataset_id is diagnostic context only and is not written into the dataset.
-    """
-    try:
-        return _write_dataset(frame, path, row_limit=row_limit, labels=labels)
-    except PresentationDatasetError as error:
-        context = []
-        if dataset_id is not None:
-            context.append(f"dataset={_diagnostic_value(dataset_id)}")
-        try:
-            target = os.fspath(path)
-        except Exception:
-            # A broken PathLike must not replace the original dataset error.
-            target = path
-        context.append(f"target={_diagnostic_value(target)}")
-        context.extend(_column_diagnostic(frame, error, row_limit))
-        error.args = (f"{', '.join(context)}: {error}",)
-        raise
-
-
-def _diagnostic_value(value: object) -> str:
-    # Never invoke user-defined repr/str for arbitrary objects or subclasses.
-    if type(value) is str:
-        text = json.dumps(value[:160], ensure_ascii=True)
-        shortened = len(value) > 160
-    elif type(value) in (bool, int, float, Decimal, date, datetime, pd.Timestamp):
-        if type(value) is int and value.bit_length() > 512:
-            return "<int: too large to preview>"
-        text = json.dumps(str(value), ensure_ascii=True)
-        shortened = False
-    elif (
-        type(value).__module__ == "numpy"
-        and isinstance(value, np.generic)
-        and value.dtype.kind in "biufcMmSU"
-    ):
-        text = json.dumps(str(value), ensure_ascii=True)
-        shortened = False
-    else:
-        text = json.dumps(f"<{type(value).__name__}>", ensure_ascii=True)[1:-1]
-        shortened = False
-    return text[:157] + "..." if shortened or len(text) > 160 else text
-
-
-def _column_diagnostic(
-    frame: pd.DataFrame, error: PresentationDatasetError, row_limit: int
-) -> list[str]:
-    if not isinstance(frame, pd.DataFrame):
-        return []
-    column_match = re.fullmatch(r"/columns/(\d+)(?:/.*)?", error.path)
-    cell_match = re.fullmatch(r"/rows/(\d+)/(\d+)", error.path)
-    if not column_match and not cell_match:
-        return []
-    index = int(column_match[1] if column_match else cell_match[2])
-    series = frame.iloc[:, index]
-    context = [
-        f"column={_diagnostic_value(frame.columns[index])}",
-        f"dtype={_diagnostic_value(str(series.dtype))}",
-    ]
-    row = int(cell_match[1]) if cell_match else None
-    values = series.iloc[:min(row_limit, MAX_CELLS // len(frame.columns))].tolist()
-    if column_match and error.path.endswith("/type"):
-        observed: set[str] = set()
-        for position, value in enumerate(values):
-            if _missing(value):
-                continue
-            observed.add(_kind(value))
-            if row is None:
-                row = position
-            if "unsupported" in observed or not (
-                len(observed) == 1
-                or observed <= {"int64", "decimal"}
-                or observed <= {"int64", "float64"}
-            ):
-                row = position
-                break
-    if row is not None:
-        value = values[row]
-        context.extend([
-            f"row_position={row}",
-            f"value={_diagnostic_value(value)}",
-            f"value_type={_diagnostic_value(type(value).__name__)}",
-        ])
-    return context
-
-
-def _write_dataset(
-    frame: pd.DataFrame,
-    path: str | os.PathLike[str],
-    *,
-    row_limit: int,
-    labels: Mapping[str, str] | None,
-) -> DatasetWriteReceipt:
-    dataset = encode_dataset(frame, row_limit=row_limit)
-    if labels is not None:
-        if not isinstance(labels, Mapping):
-            _fail("/labels", "Expected a mapping from column identifiers to labels.")
-        columns = {column["id"]: column for column in dataset["columns"]}
-        for name, label in labels.items():
-            if not isinstance(name, str) or name not in columns:
-                _fail("/labels", "Label keys must name existing DataFrame columns.")
-            pointer = "/labels/" + name.replace("~", "~0").replace("/", "~1")
-            columns[name]["label"] = _string(label, pointer, 256)
-    content = encoded_json(dataset)
-    try:
-        raw = os.fspath(path)
-        _string(raw, "/path", 4096)
-        target = Path(raw).absolute()
-    except TypeError:
-        _fail("/path", "Expected a text filesystem path.")
-    if target.suffix != ".json" or not target.parent.is_dir():
-        _fail("/path", "Expected a .json path with an existing parent directory.")
-    _string(str(target), "/path", 4096)
-    temporary: str | None = None
-    try:
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=".presentation-", suffix=".tmp", dir=target.parent
-        )
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-        temporary = None
-    except OSError:
-        _fail("/path", "Failed to atomically write the dataset.", "write_failed")
-    finally:
-        if temporary is not None:
-            try:
-                os.unlink(temporary)
-            except FileNotFoundError:
-                pass
-    return DatasetWriteReceipt(
-        str(target),
-        len(content),
-        dataset["rowCount"],
-        len(dataset["rows"]),
-        dataset["limit"],
-        dataset["truncated"],
-    )

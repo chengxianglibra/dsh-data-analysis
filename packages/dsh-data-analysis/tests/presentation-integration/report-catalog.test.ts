@@ -4,14 +4,21 @@ import { mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'no
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { presentationHtml } from '../../scripts/presentation-html.ts'
 import { ReportCatalogModel, visibleReports } from '../../src/client/presentation/catalog-model.ts'
 import {
   PresentationDeliveryModel,
   verifyPresentationAsset,
 } from '../../src/client/presentation/delivery-model.ts'
+import {
+  analysisCatalogBuild,
+  analysisCatalogId,
+} from '../../src/presentation/contracts/analysis-catalog.ts'
+import {
+  ANALYSIS_UI_FORMAT,
+  type AnalysisDocument,
+  analysisRecordId,
+} from '../../src/presentation/contracts/analysis-document.ts'
 import { parseReportCatalog, parseReportHistory } from '../../src/presentation/contracts/catalog.ts'
-import { parsePresentationDocument } from '../../src/presentation/contracts/index.ts'
 import { presentationReportPath } from '../../src/presentation/files.ts'
 import {
   listReports,
@@ -20,20 +27,37 @@ import {
 } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 
+const tab = { kind: 'agent', sessionId: 'source', surface: 'tab' } as const
+
+function analysisDocument(reportId: string, buildId: string, title: string): AnalysisDocument {
+  return {
+    schemaVersion: ANALYSIS_UI_FORMAT,
+    workspaceId: 'workspace',
+    reportId,
+    buildId,
+    recordId: analysisRecordId(reportId, buildId),
+    title,
+    locale: 'zh-CN',
+    generatedAt: '2026-10-29T00:00:00Z',
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    program: `root = TextContent(${JSON.stringify(title)});`,
+    resources: {},
+  }
+}
+
+/** Published versions keep their own record identity, as marivo_present does. */
+function version(base: AnalysisDocument, title = base.title): AnalysisDocument {
+  return analysisDocument(base.reportId, randomUUID(), title)
+}
+
 async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'report-catalog-')))
   t.after(() => rm(root, { recursive: true, force: true }))
-  const document = parsePresentationDocument(
-    JSON.parse(
-      await readFile(
-        new URL('../presentation-s0/fixtures/computed.document.json', import.meta.url),
-        'utf8',
-      ),
-    ),
-  )
+  const document = analysisDocument('report', 'build', '报告')
   const first = await publishPresentation(root, document, null, async () => {}, undefined, {
     kind: 'agent',
     sessionId: 'source',
+    surface: 'tab',
   })
   let available = true
   const service = new MarivoPresentationFileService(
@@ -48,11 +72,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
             ? await service.read(payload, signal)
             : endpoint === 'reports/history' || endpoint === 'reports/list'
               ? await service.catalog(endpoint, payload, signal)
-              : await service.report(
-                  endpoint as 'reports/resolve' | 'reports/save',
-                  payload,
-                  signal,
-                )
+              : await service.report(payload, signal)
         return { ok: true, value }
       } catch (error) {
         return {
@@ -80,9 +100,11 @@ test('publication history excludes concurrent losers and remains readable withou
     ['B', 'C'].map((title) =>
       publishPresentation(
         f.root,
-        { ...f.document, buildId: randomUUID(), title },
+        version(f.document, title),
         f.first.buildId,
         async () => {},
+        undefined,
+        tab,
       ),
     ),
   )
@@ -96,40 +118,55 @@ test('publication history excludes concurrent losers and remains readable withou
   )
   assert.equal(catalog.reports.length, 1)
   assert.equal(catalog.reports[0]!.receipt.buildId, versions[0]!.receipt.buildId)
-  const html = await f.service.read({
+  const input = {
     workspaceId: f.document.workspaceId,
     receipt: f.first,
-    asset: 'index.html',
-  })
+    asset: 'presentation.json',
+  }
+  const saved = await f.service.read(input)
   assert.equal(f.first.files.html, undefined)
-  assert.deepEqual(Buffer.from(html.bodyBase64, 'base64'), await presentationHtml(f.first))
+  assert.deepEqual(
+    Buffer.from(saved.bodyBase64, 'base64'),
+    await readFile(f.first.files.document.path),
+  )
   f.remove()
+  await assert.rejects(f.service.read(input), /workspace-unavailable/)
+})
+
+test('earlier report versions are hidden from the catalog and cannot be read as analysis records', async (t) => {
+  const f = await fixture(t)
+  const currentPath = path.join(presentationReportPath(f.root, f.document.reportId), 'current.json')
+  // An earlier pointer records no surface; its Build is not an analysis UI document.
+  const legacy = JSON.parse(await readFile(currentPath, 'utf8'))
+  legacy.versions[0].source = { kind: 'agent', sessionId: 'source' }
+  await writeFile(currentPath, JSON.stringify(legacy))
+  const history = await readReportHistory(f.root, f.document.workspaceId, f.document.reportId)
+  assert.equal(history.versions.length, 1)
+  assert.deepEqual(await listReports(f.root, f.document.workspaceId), {
+    workspaceId: f.document.workspaceId,
+    reports: [],
+    unavailable: 0,
+  })
+  await writeFile(
+    f.first.files.document.path,
+    JSON.stringify({ schemaVersion: 3, title: f.document.title }),
+  )
   await assert.rejects(
-    f.service.read({ workspaceId: f.document.workspaceId, receipt: f.first, asset: 'index.html' }),
-    /workspace-unavailable/,
+    f.service.report({ workspaceId: f.document.workspaceId, reportId: f.document.reportId }),
+    /asset-digest-mismatch|report-version-unsupported/,
   )
 })
 
-test('legacy current is the only confirmed old version; damaged and symlinked reports are disclosed', async (t) => {
+test('damaged and symlinked reports are disclosed without hiding valid analysis reports', async (t) => {
   const f = await fixture(t)
   const currentPath = path.join(presentationReportPath(f.root, f.document.reportId), 'current.json')
-  await writeFile(
-    currentPath,
-    JSON.stringify({
-      schemaVersion: 2,
-      workspaceId: f.document.workspaceId,
-      reportId: f.document.reportId,
-      receipt: f.first,
-    }),
-  )
-  const history = await readReportHistory(f.root, f.document.workspaceId, f.document.reportId)
-  assert.equal(history.legacyHistoryUnavailable, true)
-  assert.equal(history.versions[0]!.publishedAt, null)
   await publishPresentation(
     f.root,
-    { ...f.document, buildId: randomUUID() },
+    version(f.document),
     f.first.buildId,
     async () => {},
+    undefined,
+    tab,
   )
   assert.equal(
     (await readReportHistory(f.root, f.document.workspaceId, f.document.reportId)).versions.length,
@@ -152,42 +189,39 @@ test('legacy current is the only confirmed old version; damaged and symlinked re
   )
 })
 
-test('workspace reader pins history and downloads, forbids historical edits, and refreshes current explicitly', async (t) => {
+test('workspace reader pins history versions and returns to current explicitly', async (t) => {
   const f = await fixture(t)
   const second = await publishPresentation(
     f.root,
-    { ...f.document, title: '更新标题', buildId: randomUUID() },
+    version(f.document, '更新标题'),
     f.first.buildId,
     async () => {},
+    undefined,
+    tab,
   )
-  const saved: Uint8Array[] = []
-  const model = new PresentationDeliveryModel(f.rpc, (bytes) => saved.push(bytes))
+  const model = new PresentationDeliveryModel(f.rpc)
   await model.showReport(f.document.workspaceId, f.document.reportId)
   assert.equal(model.getSnapshot().resolvedReceipt?.buildId, second.buildId)
+  assert.equal(model.getSnapshot().analysisDocument?.title, '更新标题')
   await model.toggleHistory()
   await model.selectVersion(f.first.buildId)
   assert.equal(model.getSnapshot().historical, true)
-  model.beginEdit()
-  assert.equal(model.getSnapshot().editing, undefined)
+  assert.equal(model.getSnapshot().analysisDocument?.buildId, f.first.buildId)
   await publishPresentation(
     f.root,
-    { ...f.document, title: '再次更新', buildId: randomUUID() },
+    version(f.document, '再次更新'),
     second.buildId,
     async () => {},
+    undefined,
+    tab,
   )
-  await model.downloadDisplayed()
-  assert.deepEqual(Buffer.from(saved[0]!), await presentationHtml(f.first))
   assert.equal(model.getSnapshot().resolvedReceipt?.buildId, f.first.buildId)
   await model.selectVersion()
-  assert.equal(model.getSnapshot().document?.title, '再次更新')
-  model.beginEdit()
-  assert.ok(model.getSnapshot().editing)
-  await model.selectVersion(f.first.buildId)
-  assert.ok(model.getSnapshot().editing, 'version switching cannot discard an edit')
-  model.cancelEdit()
+  assert.equal(model.getSnapshot().analysisDocument?.title, '再次更新')
+  assert.equal(model.getSnapshot().historical, false)
   f.remove()
-  await model.downloadDisplayed()
-  assert.equal(model.getSnapshot().document, undefined)
+  await model.selectVersion(f.first.buildId)
+  assert.equal(model.getSnapshot().analysisDocument, undefined)
   assert.equal(model.getSnapshot().history, undefined)
   model.dispose()
 })
@@ -196,9 +230,11 @@ test('catalog searches only titles, sorts deterministically, and suppresses resp
   const f = await fixture(t)
   await publishPresentation(
     f.root,
-    { ...f.document, reportId: 'second-report', buildId: randomUUID(), title: 'ＡＢＣ 报告' },
+    analysisDocument('second-report', randomUUID(), 'ＡＢＣ 报告'),
     null,
     async () => {},
+    undefined,
+    tab,
   )
   const model = new ReportCatalogModel(f.rpc)
   model.show(f.document.workspaceId)
@@ -263,22 +299,27 @@ test('failed pointer publication never adds a historical version and scope param
   const before = await readFile(current)
   const buildId = randomUUID()
   await assert.rejects(
-    publishPresentation(f.root, { ...f.document, buildId }, f.first.buildId, async () => {
-      // Once the completed Build is present, abort before current can be replaced.
-      try {
-        await readFile(
-          path.join(
-            presentationReportPath(f.root, f.document.reportId),
-            'builds',
-            buildId,
-            'presentation.json',
-          ),
-        )
-      } catch {
-        return
-      }
-      throw new Error('publication-interrupted')
-    }),
+    publishPresentation(
+      f.root,
+      analysisDocument(f.document.reportId, buildId, f.document.title),
+      f.first.buildId,
+      async () => {
+        // Once the completed Build is present, abort before current can be replaced.
+        try {
+          await readFile(
+            path.join(
+              presentationReportPath(f.root, f.document.reportId),
+              'builds',
+              buildId,
+              'presentation.json',
+            ),
+          )
+        } catch {
+          return
+        }
+        throw new Error('publication-interrupted')
+      },
+    ),
     /publication-interrupted/,
   )
   assert.deepEqual(await readFile(current), before)
@@ -296,18 +337,23 @@ test('failed pointer publication never adds a historical version and scope param
   )
 })
 
-test('JSON-only publication exports on demand without writing HTML and rejects changed source bytes', async (t) => {
+test('JSON-only publication serves only the saved document and rejects changed source bytes', async (t) => {
   const f = await fixture(t)
   assert.equal(f.first.files.html, undefined)
   const directory = path.dirname(f.first.files.document.path)
   assert.deepEqual(await readdir(directory), ['presentation.json'])
-  const input = { workspaceId: f.document.workspaceId, receipt: f.first, asset: 'index.html' }
-  const exported = await f.service.read(input)
-  const bytes = await verifyPresentationAsset(exported, f.first, 'index.html')
-  assert.match(Buffer.from(bytes).toString(), /<!doctype html>/i)
+  const input = {
+    workspaceId: f.document.workspaceId,
+    receipt: f.first,
+    asset: 'presentation.json',
+  }
+  await assert.rejects(f.service.read({ ...input, asset: 'index.html' }), /invalid-request/)
+  const saved = await f.service.read(input)
+  const bytes = await verifyPresentationAsset(saved, f.first)
+  assert.equal(JSON.parse(Buffer.from(bytes).toString()).schemaVersion, ANALYSIS_UI_FORMAT)
   assert.deepEqual(await readdir(directory), ['presentation.json'])
   await assert.rejects(
-    verifyPresentationAsset({ ...exported, bytes: exported.bytes + 1 }, f.first, 'index.html'),
+    verifyPresentationAsset({ ...saved, bytes: saved.bytes + 1 }, f.first),
     /presentation-file-(identity|size)-mismatch/,
   )
   await writeFile(f.first.files.document.path, '{}')

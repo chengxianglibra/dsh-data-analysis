@@ -3,10 +3,10 @@ import { constants } from 'node:fs'
 import { lstat, open, opendir, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
-import { buildPresentation } from './build/index.ts'
 import { commitPresentation } from './commit.ts'
-import { parseSavedPresentation, type SavedPresentation } from './contracts/analysis-document.ts'
+import { type AnalysisDocument, parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
+  isAnalysisVersion,
   type PublicationSource,
   parseReportHistory,
   REPORT_HISTORY_BYTES,
@@ -149,7 +149,8 @@ export async function listReports(
     try {
       if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('asset-not-file')
       const history = await readReportHistory(root, workspaceId, entry.name, signal)
-      reports.push(history.versions[0]!)
+      // Earlier report formats remain on disk but are no longer listed or readable.
+      if (isAnalysisVersion(history.versions[0]!)) reports.push(history.versions[0]!)
     } catch (error) {
       signal?.throwIfAborted()
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unavailable++
@@ -176,7 +177,7 @@ export async function listReports(
 /** The mutable pointer is the publication boundary; completed builds are never overwritten. */
 export async function publishPresentation(
   root: string,
-  document: SavedPresentation,
+  document: AnalysisDocument,
   expectedBuildId: string | null,
   assertOwner: () => Promise<void>,
   signal?: AbortSignal,
@@ -184,7 +185,11 @@ export async function publishPresentation(
 ): Promise<PresentationReceipt> {
   await assertOwner()
   signal?.throwIfAborted()
-  const built = await buildPresentation(document, { html: false })
+  const documentBytes = Buffer.from(JSON.stringify(document), 'utf8')
+  const built = {
+    document: parseSavedPresentation(JSON.parse(documentBytes.toString('utf8'))),
+    documentBytes,
+  }
   await assertOwner()
   const receipt = await commitPresentation(root, built, assertOwner, signal)
   const directory = presentationReportPath(root, document.reportId)
@@ -300,7 +305,5 @@ export async function readAnalysisRecord(
   const history = await readReportHistory(root, workspaceId, reportId, signal)
   const version = history.versions.find((v) => v.receipt.buildId === buildId)
   if (!version) throw new Error('report-build-not-found')
-  const document = await readReceiptDocument(root, version.receipt, signal)
-  if (document.schemaVersion === 3) throw new Error('analysis-ui-format-required')
-  return document
+  return readReceiptDocument(root, version.receipt, signal)
 }

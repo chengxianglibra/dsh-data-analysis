@@ -33,32 +33,19 @@ test('Python presentation helper passes its numerical, temporal, missing-value a
   python(['-m', 'pytest', path.join(projectRoot, 'tests'), '-q'])
 })
 
-test('Python presentation output satisfies the shared Node/browser typed-data contract', async (t) => {
+test('Python presentation output satisfies the shared Node typed-data contract', async (t) => {
   const outputRoot = await mkdtemp(path.join(tmpdir(), 'dsh-presentation-kit-contracts-'))
   t.after(() => rm(outputRoot, { recursive: true, force: true }))
   const output = JSON.parse(
     python([path.join(projectRoot, 'scripts', 'emit_contract_fixtures.py'), outputRoot]),
-  ) as { computed: string; artifact: string; writer: string }
+  ) as { computed: string; artifact: string }
   for (const kind of ['computed', 'artifact'] as const) {
     const actual = parseTypedDataset(JSON.parse(await readFile(output[kind], 'utf8')))
-    const expectedDocument = JSON.parse(
-      await readFile(
-        path.join(packageRoot, 'tests', 'presentation-s0', 'fixtures', `${kind}.document.json`),
-        'utf8',
-      ),
-    ) as { datasets: { data: unknown }[] }
-    assert.deepEqual(actual, parseTypedDataset(expectedDocument.datasets[0]!.data))
+    const expected = JSON.parse(
+      await readFile(path.join(projectRoot, 'tests', 'fixtures', `${kind}.dataset.json`), 'utf8'),
+    )
+    assert.deepEqual(actual, parseTypedDataset(expected))
   }
-  const writer = parseTypedDataset(JSON.parse(await readFile(output.writer, 'utf8')))
-  const computed = parseTypedDataset(JSON.parse(await readFile(output.computed, 'utf8')))
-  assert.deepEqual(writer.rows, computed.rows)
-  assert.equal(writer.rowCount, computed.rowCount)
-  assert.equal(writer.limit, computed.limit)
-  assert.equal(writer.truncated, computed.truncated)
-  assert.deepEqual(
-    writer.columns.map(({ type }) => type),
-    computed.columns.map(({ type }) => type),
-  )
 })
 
 test('shared checked execution rejects a shadowed helper before user code starts', async (t) => {
@@ -82,7 +69,7 @@ test('shared checked execution rejects a shadowed helper before user code starts
     'install',
     '--python',
     executable,
-    path.join(wheels, 'dsh_data_analysis_presentation_kit-1.3.0-py3-none-any.whl'),
+    path.join(wheels, 'dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl'),
   ])
   const identity = JSON.parse(
     run(executable, [
@@ -110,7 +97,7 @@ print(json.dumps({"python": sys.executable, "version": presentation.__version__,
 
   await writeFile(
     path.join(outputRoot, 'dsh_data_analysis_presentation.py'),
-    '__version__ = "1.3.0"\ndef write_dataset(*args, **kwargs): pass\n',
+    '__version__ = "1.4.0"\ndef capture_dataset(*args, **kwargs): pass\n',
   )
   const userOutput = path.join(outputRoot, 'must-not-exist.txt')
   await assert.rejects(
