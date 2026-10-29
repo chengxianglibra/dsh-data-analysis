@@ -4,6 +4,7 @@ import type { AnalysisSnapshot } from '../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
 import { useAnalysisResources } from './context.tsx'
+import { FrameMetadata } from './metadata-view.tsx'
 
 export interface AnalysisViewProps {
   ref?: string
@@ -165,7 +166,7 @@ export function AnalysisDataView({
                 2,
               )}
             </pre>
-            <p>{t('marivo.presentation.ui-metadata-not-captured')}</p>
+            <FrameMetadata sections={snapshot.frame.sections} />
           </>
         ) : (
           <>

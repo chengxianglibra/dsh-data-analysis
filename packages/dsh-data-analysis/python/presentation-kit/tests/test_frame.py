@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, make_dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace as NS
 
@@ -182,3 +183,128 @@ def test_ns_timestamp_fields_and_keys_check_actual_precision(field, fraction):
         if field == "region":
             assert result["frame"]["coordinates"]["key"]["values"] == [stamp.isoformat(), None]
         assert next(s for s in result["frame"]["slots"] if s["slotId"] == source.slot_id)["dtype"]["timeUnit"] == "ns"
+
+
+def metadata_fixture(evidence=(), findings=(), method_facts=(), total=None, has_more=False):
+    frame, calls = fixture()
+    schema = frame.schema
+    origin = NS(kind="metric", path="sales.revenue", definition_id="def-1")
+    column = NS(value_origins=(origin,), context_origins=())
+    frame_lineage = NS(values={"amount": column, "account": NS(value_origins=(), context_origins=())},
+                       presence={}, axes={"region-axis": NS(value_origins=(), context_origins=(origin,))})
+    reads = []
+
+    def page(items):
+        return NS(input_id="input", session_id="session", artifact_ref="artifact", items=tuple(items),
+                  total_count=len(items) if total is None else total, has_more=has_more,
+                  next_cursor="next" if has_more else None)
+
+    class Audited(type(frame)):
+        def evidence(self, *, limit):
+            reads.append(("evidence", limit))
+            return page(evidence)
+
+        def findings(self, *, limit):
+            reads.append(("findings", limit))
+            return page(findings)
+
+        @property
+        def method_facts(self):
+            return tuple(method_facts)
+
+        @property
+        def lineage(self):
+            return frame_lineage
+
+    return Audited(), calls, reads
+
+
+def coordinate(slot_id, value):
+    return NS(slot_id=slot_id, value=value)
+
+
+def test_metadata_reads_one_bounded_page_and_scopes_only_complete_matching_keys():
+    evidence = [
+        NS(kind="read", summary="Actual explicit source read.", values=(("source", "sales.orders"),), coordinates=()),
+        NS(kind="check", summary="Row check.", values=(), coordinates=(coordinate("key", "B"),)),
+        NS(kind="check", summary="Value only.", values=(), coordinates=(coordinate("value", Decimal("1.50")),)),
+        NS(kind="check", summary="Other row.", values=(), coordinates=(coordinate("key", "Z"),)),
+        NS(kind="check", summary="Unknown slot.", values=(), coordinates=(coordinate("ghost", 1),)),
+    ]
+    frame, _, reads = metadata_fixture(evidence=evidence, total=25, has_more=True)
+    result = read_frame(frame, metadata=True)
+    sections = result["frame"]["sections"]
+    assert reads == [("evidence", 20), ("findings", 20)]
+    page = sections["evidence"]
+    assert (page["status"], page["totalCount"], page["hasMore"]) == ("captured", 25, True)
+    assert [item["scope"] for item in page["items"]] == [
+        {"kind": "unscoped"}, {"kind": "row", "rowIndex": 1}, {"kind": "partial"},
+        {"kind": "row-unmatched"}, {"kind": "unresolved"}]
+    assert page["items"][0]["values"] == [{"name": "source", "value": "sales.orders"}]
+    assert page["items"][2]["coordinates"] == [{"slotId": "value", "name": "amount", "value": "1.50"}]
+    assert sections["findings"] == {"status": "captured", "totalCount": 25, "hasMore": True, "items": []}
+    assert sections["methods"] == {"status": "captured", "totalCount": 0, "items": []}
+    semantics = sections["semantics"]["columns"]
+    assert [(c["role"], c["id"]) for c in semantics] == [("axis", "region-axis"), ("value", "amount"), ("value", "account")]
+    assert semantics[1]["valueOrigins"] == [{"kind": "metric", "path": "sales.revenue", "definitionId": "def-1"}]
+    assert semantics[0]["contextOrigins"][0]["path"] == "sales.revenue"
+
+
+def test_row_scope_uses_only_rows_that_were_actually_captured():
+    evidence = [NS(kind="check", summary="Second row.", values=(), coordinates=(coordinate("key", "B"),))]
+    frame, _, _ = metadata_fixture(evidence=evidence)
+    result = read_frame(frame, columns=["amount"], row_limit=1, metadata=True)
+    assert result["frame"]["sections"]["evidence"]["items"][0]["scope"] == {"kind": "row-unmatched"}
+    semantics = result["frame"]["sections"]["semantics"]["columns"]
+    assert [c["id"] for c in semantics] == ["region-axis", "amount"]
+
+
+def test_findings_keep_identity_and_flatten_saved_value_facts():
+    Lag = make_dataclass("Lag", [("kind", str)])
+    Value = make_dataclass("Value", [("method", str), ("coefficient", Decimal), ("lag", Lag)])
+    finding = NS(finding_id="finding-1", finding_type="association", session_id="session",
+                 artifact_ref="artifact", committed_at=datetime(2026, 10, 28, tzinfo=timezone.utc),
+                 value=Value("pearson", Decimal("0.875"), Lag("none")), coordinates=(coordinate("key", "A"),))
+    frame, _, _ = metadata_fixture(findings=[finding])
+    item = read_frame(frame, metadata=True)["frame"]["sections"]["findings"]["items"][0]
+    assert item["findingId"] == "finding-1"
+    assert item["values"] == [{"name": "method", "value": "pearson"}, {"name": "coefficient", "value": "0.875"},
+                              {"name": "lag.kind", "value": "none"}]
+    assert item["scope"] == {"kind": "row", "rowIndex": 0}
+    assert item["committedAt"] == "2026-10-28T00:00:00+00:00"
+
+
+def test_metadata_failures_degrade_one_section_and_never_the_rows():
+    finding = NS(finding_id="f", finding_type="association", session_id="other", artifact_ref="artifact",
+                 committed_at=datetime(2026, 10, 28, tzinfo=timezone.utc), value=None, coordinates=())
+    frame, _, _ = metadata_fixture(findings=[finding],
+                                   evidence=[NS(kind="future", summary="x", values=(), coordinates=())])
+    class Broken(type(frame)):
+        @property
+        def method_facts(self):
+            raise RuntimeError("/private/store/path secret")
+
+    result = read_frame(Broken(), metadata=True)
+    sections = result["frame"]["sections"]
+    assert sections["findings"] == {"status": "unavailable", "reason": "identity-mismatch"}
+    assert sections["evidence"] == {"status": "unavailable", "reason": "runtime-incompatible"}
+    assert sections["methods"] == {"status": "unavailable", "reason": "read-failed"}
+    assert "secret" not in str(result)
+    assert result["data"]["rows"][0][0] == "A"
+    plain, _ = fixture()
+    assert read_frame(plain, metadata=True)["frame"]["sections"]["evidence"] == {
+        "status": "unavailable", "reason": "runtime-incompatible"}
+
+
+def test_long_text_is_clipped_and_marked_but_identities_are_never_shortened():
+    evidence = [NS(kind="read", summary="s" * 5000, values=tuple((f"n{i}", i) for i in range(40)), coordinates=())]
+    frame, _, _ = metadata_fixture(evidence=evidence)
+    item = read_frame(frame, metadata=True)["frame"]["sections"]["evidence"]["items"][0]
+    assert item["truncated"] is True
+    assert len(item["summary"]) == 4096 and item["summary"].endswith("…")
+    assert len(item["values"]) == 32
+    finding = NS(finding_id="f" * 3000, finding_type="association", session_id="session", artifact_ref="artifact",
+                 committed_at=datetime(2026, 10, 28, tzinfo=timezone.utc), value=None, coordinates=())
+    frame, _, _ = metadata_fixture(findings=[finding])
+    assert read_frame(frame, metadata=True)["frame"]["sections"]["findings"] == {
+        "status": "unavailable", "reason": "budget"}

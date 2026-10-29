@@ -11,6 +11,12 @@
 隔离 Web Host 的冷重启回放验证了折叠时结果可见、展开后不重复及表格排序；更新用户 web profile 并保留
 会话后，既有 Yellow Taxi Session 的 12 行结果也在折叠步骤外显示。未重新运行真实模型或验证 PTC 浏览器交付。
 
+## 统一分析 UI P4
+
+P4 先接通 Frame 元数据：presentation-kit 1.3.0 的 Reader、快照契约、来源详情及语义导航。
+聚焦检查为 presentation-kit `tests/test_frame.py` 与 `npm run test:unified-analysis-ui`；
+真实 Runtime 读取及未覆盖项见 [P4 记录](testing/unified-analysis-ui-p4-2026-10-29.md)。line/bar 图形尚未开放。
+
 ## 统一分析 UI P3
 
 P0–P3 首期完成。复用统一 UI Web driver 的 --p3 模式；--model 启用已有凭据的隔离真实模型验收。

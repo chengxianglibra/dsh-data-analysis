@@ -14,7 +14,11 @@
 复制已保存数据与来源/范围详情。metric 要求完整单行；auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，presence 字段不计为值；Dataset 要求完整单行单列，预览不会误判。
 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
 Frame 保留结构、坐标和 Session/Artifact；DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。
-Evidence、Findings、方法与语义定义尚未接入。图片只显示已保存 image 资源；Markdown 不加载远程图片。
+Frame 来源详情另显示快照内保存的 Evidence、Findings、方法说明与语义来源，每项注明已读条数与总数、
+首页之外未检索、省略内容及不可用原因；P4 之前保存的快照显示未捕获。记录只有自身完整坐标精确匹配已保存行时
+才标为该行，部分坐标、无坐标或行外坐标分别说明，不推断点级证明。语义来源为分析时的静态身份，
+在 tool view 和报告 tab 中可经现有语义浏览器打开当前定义，并提示其可能已变化；候选预览不提供导航。
+图片只显示已保存 image 资源；Markdown 不加载远程图片。
 
 共享 Surface 使用文档 locale，Host 控件沿用 locale 字典。新格式暂不提供图形、离线导出、发布和旧版编辑。
 以下各节描述旧 Document v3 Reader 的兼容能力，不代表新格式已开放这些能力。

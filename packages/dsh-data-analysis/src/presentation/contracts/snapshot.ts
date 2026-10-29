@@ -40,6 +40,113 @@ const column = z.strictObject({
   nullable: z.boolean(),
   unit: text.max(128).optional(),
 })
+// Frame metadata mirrors the presentation-kit budgets; every section is optional
+// for the data result and states whether it was captured, missing or unreadable.
+const bounded = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .refine((s) => !s.includes('\0'))
+const identity = bounded(2048).min(1)
+const display = bounded(2000).nullable()
+const fact = z.strictObject({ name: bounded(512), value: display })
+const facts = z.array(fact).max(32)
+const scope = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('row'), rowIndex: count }),
+  z.strictObject({ kind: z.enum(['row-unmatched', 'partial', 'unscoped', 'unresolved']) }),
+])
+const recordCoordinates = z
+  .array(z.strictObject({ slotId: identity, name: bounded(512).nullable(), value: display }))
+  .max(32)
+const truncated = z.literal(true).optional()
+const auditPage = <T extends z.ZodTypeAny>(item: T) =>
+  z.strictObject({
+    status: z.literal('captured'),
+    totalCount: count,
+    hasMore: z.boolean(),
+    items: z.array(item).max(20),
+  })
+const origin = z.strictObject({ kind: identity, path: identity, definitionId: identity })
+const section = <T extends z.ZodTypeAny>(captured: T) =>
+  z.union([
+    // Snapshots saved before P4 recorded every section as not captured.
+    z.literal('not-captured'),
+    z.strictObject({
+      status: z.literal('unavailable'),
+      reason: z.enum(['runtime-incompatible', 'read-failed', 'identity-mismatch', 'budget']),
+    }),
+    captured,
+  ])
+const sections = z.strictObject({
+  evidence: section(
+    auditPage(
+      z.strictObject({
+        kind: z.enum(['declaration', 'read', 'check']),
+        summary: bounded(4096).min(1),
+        values: facts,
+        coordinates: recordCoordinates,
+        scope,
+        truncated,
+      }),
+    ),
+  ),
+  findings: section(
+    auditPage(
+      z.strictObject({
+        findingId: identity,
+        type: identity,
+        committedAt: z.string().datetime({ offset: true }),
+        values: facts,
+        coordinates: recordCoordinates,
+        scope,
+        truncated,
+      }),
+    ),
+  ),
+  methods: section(
+    z.strictObject({
+      status: z.literal('captured'),
+      totalCount: count,
+      items: z
+        .array(
+          z.strictObject({
+            kind: identity,
+            originResultId: identity,
+            targets: z
+              .array(
+                z.strictObject({
+                  path: bounded(512),
+                  kind: z.enum(['level', 'absolute', 'relative']),
+                }),
+              )
+              .max(32),
+            parentCount: count,
+            coordinateCount: count,
+            truncated,
+          }),
+        )
+        .max(20),
+    }),
+  ),
+  semantics: section(
+    z.strictObject({
+      status: z.literal('captured'),
+      columns: z
+        .array(
+          z.strictObject({
+            role: z.enum(['value', 'presence', 'axis']),
+            id: identity,
+            valueOrigins: z.array(origin).max(32),
+            contextOrigins: z.array(origin).max(32),
+            omittedOrigins: count,
+          }),
+        )
+        .max(PRESENTATION_BUDGETS.columns),
+    }),
+  ),
+})
+export type FrameSections = z.infer<typeof sections>
+
 const common = {
   schemaVersion: z.literal(1),
   fetchedAt: z.string().datetime({ offset: true }),
@@ -101,12 +208,7 @@ const schema = z.discriminatedUnion('kind', [
         coordinateRowsRead: count,
         receiptBytesHashed: count,
       }),
-      sections: z.strictObject({
-        evidence: z.literal('not-captured'),
-        findings: z.literal('not-captured'),
-        methods: z.literal('not-captured'),
-        semantics: z.literal('not-captured'),
-      }),
+      sections,
     }),
   }),
 ])
@@ -201,6 +303,14 @@ export function parseAnalysisSnapshot(value: unknown): AnalysisSnapshot {
     }
     if (data.rows.length * (data.columns.length + keys.length) > PRESENTATION_BUDGETS.cells)
       invalid()
+    for (const name of ['evidence', 'findings'] as const) {
+      const section = frame.sections[name]
+      if (typeof section === 'object' && section.status === 'captured') {
+        if (section.items.length > section.totalCount) invalid()
+        for (const item of section.items)
+          if (item.scope.kind === 'row' && item.scope.rowIndex >= data.rows.length) invalid()
+      }
+    }
   }
   return result
 }

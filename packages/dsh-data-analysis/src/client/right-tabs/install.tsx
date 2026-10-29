@@ -135,6 +135,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }),
     ctx.connection.generation,
     candidates,
+    (sessionId, workspaceId, ref) => navigate(sessionId, { kind: 'semantic', workspaceId, ref }),
   )
   const candidateKind = 'marivo-analysis-candidate'
   const candidateId = definitionId(candidateKind)
@@ -479,6 +480,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     <SavedAnalysisSurface
                       key={report.analysisDocument.recordId}
                       document={report.analysisDocument}
+                      openSemanticRef={source}
                     />
                   </>
                 )}

@@ -115,7 +115,13 @@ SQL、凭据或上游异常。提示明确本次来源投影未完成、尚未�
 不截断时间精度。复合 tuple 展示、duration、naive timestamp 等未适配载体仍明确失败，不把结构字符串化。
 slots 仅保存实际投影的 value/presence 字段和全部轴键；未选中的不支持类型不阻断选列读取，
 被选中字段及完整轴键仍须通过类型检查。完整键按 slot 保存，不能用表格行号代替。
-Evidence、Findings、methods 和 semantics 在新快照中为 not-captured，不扫描审计重建旧 digest。
+新快照在同一次 bound 读取中按公开接口保存 Frame 元数据：`evidence(limit=20)`、`findings(limit=20)` 各读首页，
+`method_facts` 保留前 20 项的目标与计数，`lineage` 只保存实际投影列及其轴的静态来源身份。不续页、不扫描审计
+重建旧 digest，也不读取方法载荷、源连接或当前语义定义。记录坐标经 `schema.slots` 解释，只有完整轴键与已捕获
+坐标精确相等才写入 `rowIndex`。每节独立为 `captured` 或带封闭原因的 `unavailable`
+（`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常；文本按展示预算截断并标记，
+身份不截断。单节上限 64 KiB，整份快照仍受 2 MiB 预算，超出时先降级最大的已捕获节，元数据失败不阻断数据结果。
+旧 Draft 的 Artifact 投影不读取元数据，P4 前保存的快照保持 `not-captured` 并可读取。
 旧 Draft 明确指定的 Finding 仍按既有来源路径读取，缺失时保留诊断。
 
 当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口。新来源的 `code` 固定为无 snippets，
@@ -139,7 +145,7 @@ computed writer 可通过 `labels={列名: 展示名}` 显式设置列 `label`�
 writer 不接收来源或转换说明；来源只写在 Draft。
 行和单元格预算确定实际 limit，超出字节预算明确失败；空结果保留列，未指定的展示标签使用列名。
 
-分发 wheel 为 `dsh_data_analysis_presentation_kit-1.2.0-py3-none-any.whl`，只依赖 pandas。
+分发 wheel 为 `dsh_data_analysis_presentation_kit-1.3.0-py3-none-any.whl`，只依赖 pandas。
 Runtime marker v3 同时检查模块版本、distribution 版本、实际导入位置和公开 writer；
 每次 shared checked execution 再核验 helper，避免 Workspace 同名模块遮蔽。管理员 Python 失败时提供修复信息，
 不自动安装或切换解释器；managed 模式通过唯一新 wheel 安装路径准备环境。

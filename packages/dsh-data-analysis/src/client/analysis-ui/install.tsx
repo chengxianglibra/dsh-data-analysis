@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { PresentationDelivery } from '../../presentation/receipt.ts'
+import type { SemanticRef } from '../../semantic-reference/contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
 import {
@@ -17,6 +18,7 @@ import {
   presentationDeliveryIdentity,
 } from '../presentation/delivery.ts'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
+import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
 import { CandidateView, readSavedAnalysis } from './candidate-view.tsx'
 import { SavedAnalysisSurface } from './lazy-surface.tsx'
@@ -26,6 +28,7 @@ function SavedToolView({
   sessionId,
   rpc,
   onOpen,
+  onOpenSemanticRef,
   generation,
   allowed,
 }: {
@@ -33,6 +36,7 @@ function SavedToolView({
   sessionId: string
   rpc: PresentationRpc
   onOpen: (receipt: PresentationReceipt) => void
+  onOpenSemanticRef: OpenSemanticRef
   generation: ConnectionGeneration | undefined
   allowed: boolean
 }) {
@@ -67,7 +71,7 @@ function SavedToolView({
         {t('marivo.presentation.ui-open-tab')}
       </button>
       {state.generation === generation && state.document ? (
-        <SavedAnalysisSurface document={state.document} />
+        <SavedAnalysisSurface document={state.document} openSemanticRef={onOpenSemanticRef} />
       ) : (
         <p role="status">{t('marivo.presentation.ui-loading')}</p>
       )}
@@ -80,6 +84,7 @@ export function installAnalysisTool(
   open: (sessionId: string, receipt: PresentationReceipt) => void,
   connection: ConnectionGenerationState,
   candidates: AnalysisCandidates,
+  openSemantic: (sessionId: string, workspaceId: string, ref: SemanticRef) => void,
 ): void {
   const subscribe = (fn: () => void) => connection.subscribe(fn)
   const getGeneration = () => connection.getSnapshot()
@@ -167,6 +172,9 @@ export function installAnalysisTool(
               sessionId={props.sessionId}
               rpc={rpc}
               onOpen={(receipt) => open(props.sessionId, receipt)}
+              onOpenSemanticRef={(ref) =>
+                openSemantic(props.sessionId, delivery.receipt.workspaceId, ref)
+              }
               generation={generation}
               allowed={
                 workspaces.phase === 'ready' &&

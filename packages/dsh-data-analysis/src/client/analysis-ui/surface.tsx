@@ -5,6 +5,7 @@ import type {
   AnalysisResource,
 } from '../../presentation/contracts/analysis-document.ts'
 import { ReportCopyProvider } from '../i18n/context.tsx'
+import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { PRESENTATION_STYLES } from '../presentation/styles.ts'
 import { AnalysisResources } from './context.tsx'
 import { analysisLibrary } from './library.tsx'
@@ -18,9 +19,11 @@ const styles = `
 export function AnalysisSurface({
   document,
   readResource,
+  openSemanticRef,
 }: {
   document: AnalysisDocument
   readResource?: (name: string) => AnalysisResource | undefined
+  openSemanticRef?: OpenSemanticRef
 }) {
   return (
     <AnalysisRenderer
@@ -30,6 +33,7 @@ export function AnalysisSurface({
       resources={document.resources}
       recordId={document.recordId}
       readResource={readResource}
+      openSemanticRef={openSemanticRef}
     />
   )
 }
@@ -42,6 +46,7 @@ export interface AnalysisRendererProps {
   readResource?: (name: string) => AnalysisResource | undefined
   isStreaming?: boolean
   candidate?: boolean
+  openSemanticRef?: OpenSemanticRef
 }
 export function AnalysisRenderer({
   program,
@@ -52,10 +57,15 @@ export function AnalysisRenderer({
   readResource,
   isStreaming = false,
   candidate = false,
+  openSemanticRef,
 }: AnalysisRendererProps) {
   const resources = useMemo(
-    () => ({ readResource: readResource ?? ((name: string) => saved[name]), candidate }),
-    [saved, readResource, candidate],
+    () => ({
+      readResource: readResource ?? ((name: string) => saved[name]),
+      candidate,
+      openSemanticRef: candidate ? undefined : openSemanticRef,
+    }),
+    [saved, readResource, candidate, openSemanticRef],
   )
   return (
     <ReportCopyProvider locale={locale}>

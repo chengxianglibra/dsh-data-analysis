@@ -13,7 +13,40 @@ export const zh = {
   'marivo.presentation.ui-dataset-source': '数据来源与范围',
   'marivo.presentation.ui-captured-at': '快照时间：{p0}',
   'marivo.presentation.ui-business-unknown': '业务覆盖范围未知；页面只展示已保存范围。',
-  'marivo.presentation.ui-metadata-not-captured': 'Evidence、Findings、方法与语义定义尚未接入。',
+  'marivo.presentation.ui-metadata-not-captured':
+    '此快照保存时未捕获 Evidence、Findings、方法与语义来源。',
+  'marivo.presentation.ui-metadata-unavailable-runtime-incompatible':
+    '当前 Runtime 未提供此项公开接口。',
+  'marivo.presentation.ui-metadata-unavailable-read-failed': '保存时读取失败；数据结果不受影响。',
+  'marivo.presentation.ui-metadata-unavailable-identity-mismatch':
+    '读取到的记录身份与此 Frame 不一致，未保存。',
+  'marivo.presentation.ui-metadata-unavailable-budget': '内容超出快照预算，未保存。',
+  'marivo.presentation.ui-metadata-evidence': 'Evidence',
+  'marivo.presentation.ui-metadata-findings': 'Findings',
+  'marivo.presentation.ui-metadata-methods': '方法说明',
+  'marivo.presentation.ui-metadata-semantics': '语义来源',
+  'marivo.presentation.ui-metadata-read-count': '（已读 {p0} / 共 {p1}）',
+  'marivo.presentation.ui-metadata-first-page': '仅保存首页；未读记录不在此处检索。',
+  'marivo.presentation.ui-metadata-truncated': '部分内容按展示预算省略。',
+  'marivo.presentation.ui-metadata-empty': '无记录。',
+  'marivo.presentation.ui-metadata-evidence-declaration': '声明',
+  'marivo.presentation.ui-metadata-evidence-read': '读取',
+  'marivo.presentation.ui-metadata-evidence-check': '检查',
+  'marivo.presentation.ui-metadata-scope-row': '坐标完整匹配已保存的第 {p0} 行。',
+  'marivo.presentation.ui-metadata-scope-row-unmatched': '坐标完整，但不在已保存的行范围内。',
+  'marivo.presentation.ui-metadata-scope-partial': '仅部分坐标，未关联到具体行。',
+  'marivo.presentation.ui-metadata-scope-unscoped': '无坐标；不表示适用于全部行。',
+  'marivo.presentation.ui-metadata-scope-unresolved': '坐标无法按 Frame 结构解释，未关联到行。',
+  'marivo.presentation.ui-metadata-method-parents': '父级数',
+  'marivo.presentation.ui-metadata-method-coordinates': '坐标快照数',
+  'marivo.presentation.ui-metadata-semantics-note':
+    '分析时记录的静态来源身份，不证明执行过程或单元格取值；点击打开当前定义，可能已与分析时不同。',
+  'marivo.presentation.ui-metadata-role-value': '值',
+  'marivo.presentation.ui-metadata-role-presence': '存在标记',
+  'marivo.presentation.ui-metadata-role-axis': '坐标轴',
+  'marivo.presentation.ui-metadata-value-origins': '值来源',
+  'marivo.presentation.ui-metadata-context-origins': '上下文来源',
+  'marivo.presentation.ui-metadata-omitted-origins': '另有 {p0} 项来源未保存。',
   'marivo.presentation.ui-dataframe-source-not-captured':
     '来自捕获的 DataFrame。SQL、数据源、backend、warnings 和文件来源未捕获。',
   'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及旧版呈现编辑。',
@@ -390,7 +423,45 @@ export const en = {
   'marivo.presentation.ui-business-unknown':
     'Business coverage is unknown; this page shows only the saved range.',
   'marivo.presentation.ui-metadata-not-captured':
-    'Evidence, findings, methods and semantic definitions are not connected yet.',
+    'Evidence, findings, methods and semantic origins were not captured with this snapshot.',
+  'marivo.presentation.ui-metadata-unavailable-runtime-incompatible':
+    'The current Runtime does not provide this public interface.',
+  'marivo.presentation.ui-metadata-unavailable-read-failed':
+    'The read failed when saving; the data result is unaffected.',
+  'marivo.presentation.ui-metadata-unavailable-identity-mismatch':
+    'Records did not match this Frame identity and were not saved.',
+  'marivo.presentation.ui-metadata-unavailable-budget':
+    'The content exceeded the snapshot budget and was not saved.',
+  'marivo.presentation.ui-metadata-evidence': 'Evidence',
+  'marivo.presentation.ui-metadata-findings': 'Findings',
+  'marivo.presentation.ui-metadata-methods': 'Methods',
+  'marivo.presentation.ui-metadata-semantics': 'Semantic origins',
+  'marivo.presentation.ui-metadata-read-count': '({p0} read of {p1})',
+  'marivo.presentation.ui-metadata-first-page':
+    'Only the first page is saved; unread records are not searched here.',
+  'marivo.presentation.ui-metadata-truncated': 'Some content was omitted by the display budget.',
+  'marivo.presentation.ui-metadata-empty': 'No records.',
+  'marivo.presentation.ui-metadata-evidence-declaration': 'Declaration',
+  'marivo.presentation.ui-metadata-evidence-read': 'Read',
+  'marivo.presentation.ui-metadata-evidence-check': 'Check',
+  'marivo.presentation.ui-metadata-scope-row': 'Complete coordinates match saved row {p0}.',
+  'marivo.presentation.ui-metadata-scope-row-unmatched':
+    'Complete coordinates, but outside the saved rows.',
+  'marivo.presentation.ui-metadata-scope-partial': 'Partial coordinates only; not linked to a row.',
+  'marivo.presentation.ui-metadata-scope-unscoped':
+    'No coordinates; this does not mean it applies to every row.',
+  'marivo.presentation.ui-metadata-scope-unresolved':
+    'Coordinates cannot be resolved by the Frame structure; not linked to a row.',
+  'marivo.presentation.ui-metadata-method-parents': 'Parents',
+  'marivo.presentation.ui-metadata-method-coordinates': 'Coordinate snapshots',
+  'marivo.presentation.ui-metadata-semantics-note':
+    'Static origin identities recorded during analysis. They do not prove execution or cell values; links open the current definition, which may differ.',
+  'marivo.presentation.ui-metadata-role-value': 'Value',
+  'marivo.presentation.ui-metadata-role-presence': 'Presence',
+  'marivo.presentation.ui-metadata-role-axis': 'Axis',
+  'marivo.presentation.ui-metadata-value-origins': 'Value origins',
+  'marivo.presentation.ui-metadata-context-origins': 'Context origins',
+  'marivo.presentation.ui-metadata-omitted-origins': '{p0} more origins were not saved.',
   'marivo.presentation.ui-dataframe-source-not-captured':
     'Captured DataFrame. SQL, datasource, backend, warnings and file provenance were not captured.',
   'marivo.presentation.ui-format-limitations':

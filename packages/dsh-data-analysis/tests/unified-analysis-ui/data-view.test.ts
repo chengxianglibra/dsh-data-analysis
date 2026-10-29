@@ -12,7 +12,7 @@ import {
 import { frameSnapshot } from './fixtures.ts'
 
 let directory: string
-let render: (snapshot: AnalysisSnapshot) => string
+let render: (snapshot: AnalysisSnapshot, semantic?: boolean) => string
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'dsh-analysis-data-view-'))
   const outfile = path.join(directory, 'render.mjs')
@@ -22,9 +22,10 @@ before(async () => {
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AnalysisDataView } from './src/client/analysis-ui/data-view.tsx';
 import { AnalysisResources } from './src/client/analysis-ui/context.tsx';
-export function render(snapshot) {
+export function render(snapshot, semantic) {
   return renderToStaticMarkup(createElement(AnalysisResources.Provider,
-    {value: {readResource: () => ({kind: 'snapshot', snapshot, binding: {}})}},
+    {value: {readResource: () => ({kind: 'snapshot', snapshot, binding: {}}),
+             openSemanticRef: semantic ? () => {} : undefined}},
     createElement(AnalysisDataView, {kind: snapshot.kind, resourceName: 'result'})));
 }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -114,4 +115,90 @@ test('auto uses Frame axes and value roles while preserving complete scalar Data
     source: { kind: 'dataframe', details: 'not-captured' },
   })
   assert.match(render(dataset), /class="au-metric"/)
+})
+
+function capturedSections() {
+  return {
+    evidence: {
+      status: 'captured',
+      totalCount: 3,
+      hasMore: true,
+      items: [
+        {
+          kind: 'read',
+          summary: 'Actual explicit source read.',
+          values: [{ name: 'source', value: 'sales.orders' }],
+          coordinates: [],
+          scope: { kind: 'unscoped' },
+        },
+        {
+          kind: 'check',
+          summary: 'Row check.',
+          values: [],
+          coordinates: [{ slotId: 'key', name: 'region', value: 'A' }],
+          scope: { kind: 'row', rowIndex: 0 },
+        },
+      ],
+    },
+    findings: { status: 'unavailable', reason: 'read-failed' },
+    methods: { status: 'captured', totalCount: 0, items: [] },
+    semantics: {
+      status: 'captured',
+      columns: [
+        {
+          role: 'value',
+          id: 'amount',
+          valueOrigins: [{ kind: 'metric', path: 'sales.revenue', definitionId: 'def-1' }],
+          contextOrigins: [],
+          omittedOrigins: 0,
+        },
+      ],
+    },
+  }
+}
+
+test('captured Frame metadata parses with bounded row scope and keeps legacy snapshots readable', () => {
+  const legacy = parseAnalysisSnapshot(frameSnapshot())
+  assert.equal(legacy.kind === 'frame' && legacy.frame.sections.evidence, 'not-captured')
+  const value = frameSnapshot() as Record<string, any>
+  value.frame.sections = capturedSections()
+  const parsed = parseAnalysisSnapshot(value)
+  assert.equal(parsed.kind, 'frame')
+  for (const mutate of [
+    (v: Record<string, any>) => {
+      v.frame.sections.evidence.items[1].scope.rowIndex = 1
+    },
+    (v: Record<string, any>) => {
+      v.frame.sections.evidence.totalCount = 1
+    },
+    (v: Record<string, any>) => {
+      v.frame.sections.findings.reason = 'raw runtime message'
+    },
+    (v: Record<string, any>) => {
+      v.frame.sections.semantics.columns[0].valueOrigins[0].path = ''
+    },
+  ]) {
+    const invalid = structuredClone(value)
+    mutate(invalid)
+    assert.throws(() => parseAnalysisSnapshot(invalid), /Snapshot/)
+  }
+})
+
+test('Frame metadata shows read scope, unavailable sections and semantic links only when navigable', () => {
+  const value = frameSnapshot() as Record<string, any>
+  value.frame.sections = capturedSections()
+  const snapshot = parseAnalysisSnapshot(value)
+  const html = render(snapshot, true)
+  assert.match(html, /data-meta="evidence"/)
+  assert.match(html, /2 read of 3/)
+  assert.match(html, /Only the first page is saved/)
+  assert.match(html, /Complete coordinates match saved row 1/)
+  assert.match(html, /No coordinates; this does not mean it applies to every row/)
+  assert.match(html, /The read failed when saving/)
+  assert.match(html, /<button type="button">Metric: sales.revenue<\/button>/)
+  assert.doesNotMatch(render(snapshot), /<button type="button">Metric/)
+  assert.match(
+    render(parseAnalysisSnapshot(frameSnapshot())),
+    /were not captured with this snapshot/,
+  )
 })

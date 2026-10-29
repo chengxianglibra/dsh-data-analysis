@@ -103,7 +103,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',
-      presentationKit: { version: '1.2.0', packagePath: '/bound/helper' },
+      presentationKit: { version: '1.3.0', packagePath: '/bound/helper' },
     },
     async runChecked() {
       reads++
