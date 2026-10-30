@@ -4,15 +4,17 @@
 
 presentation Skill 负责已有结果的表达与交付，Marivo 拥有分析事实，Harness 拥有 Skill 生命周期。
 单 Frame/DataFrame 快照直接调用 marivo_present，无需额外 Skill 或回读；自定义布局按需读取同 Catalog 生成的
-[八组件签名](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)及
-[Lang、capture 与更新示例](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-ui.md)。
+[八组件签名](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)及
+[Lang、capture 与更新示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-ui.md)。
 Native 自定义 Lang 消费真实参数前缀，更新使用准确 basedOnRecordId 与变化语句。resources 省略继承，
 提供则替换完整表；纯展示修改不重新读取快照。成功不默认回读，不强制先大纲后补全。
 
-入口为 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
-AnalysisFrameView 的图形由结构自动选择，DatasetView 只有 auto/table/metric；Skill 不包含全局筛选、Draft、HTML 导出或发布资源。
-[叙事与证据检查](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
-[完整示例](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)按需读取。
+入口为 [SKILL.md](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
+Frame v2 的 AnalysisFrameView 按结构自动选择视图，也可从已验证的图形类型中显式选择；DatasetView 与旧 Frame v1 只支持
+auto/table/metric。新 Frame 在原分析中由 `capture_frame` 捕获并以 `frame-snapshot` 引用；既有 `marivo-frame`
+Session/Artifact 引用保持兼容，但没有 Python 来源代码。Skill 不包含全局筛选、Draft、HTML 导出或发布资源。
+[叙事与证据检查](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
+[完整示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)按需读取。
 
 ## 发现与路由
 
@@ -30,9 +32,9 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 ## 文件分析与展示的分工
 
-[文件 Skill](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)负责文件读取、计算和收尾：
+[文件 Skill](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)负责文件读取、计算和收尾：
 核对粒度、单位、比较基准、缺失分支与证据强度，文字回答也适用。普通文件生成与原生声明分别确认；
-[交付参考](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/delivery.md)集中说明缺失能力、
+[交付参考](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/delivery.md)集中说明缺失能力、
 失败恢复、PTC 与跨 Session 文件边界。文件 Skill 还负责识别可复用语义候选，仅将当前所需或已授权的最小
 缺口交给 `marivo-semantic`；范围外机会只在答复中说明，原问题完成或阻塞明确后停止。具体建模、复用和
 验证仍由 Runtime Skill 拥有。展示 Skill 接收已有结果，核对表达一致性，缺数据时回到分析流程。

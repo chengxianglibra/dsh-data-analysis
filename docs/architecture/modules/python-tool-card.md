@@ -33,4 +33,4 @@ Harness 拥有调用、结果、取消、轨迹和持久化记录；卡片仅消
 验证高亮、复制、输出、交互和布局，保留截图与 `evidence.json`；不访问运行中的用户 profile。
 
 本模块的浏览器 fixture 验证不等同于真实分析、完整 Host Session 接线或已安装 Web profile 验收。
-执行边界见 [Environment 执行](environment-execution.md)，验收入口见 [验证指南](../validation.md)。
+执行边界见 [Environment 执行](environment-execution.md)；本地验收指南放在 `docs/testing/validation.md`。

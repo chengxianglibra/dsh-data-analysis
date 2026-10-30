@@ -211,7 +211,7 @@ Host 为响应丢失恢复而保留终态和待办 30 分钟，容量有界；Ho
 ## 新建字段默认值
 
 Harness profile 中本插件的可选 `datasourceDefaults` 使用 `backend → 字段名 → JSON 值` 映射，
-作用于该插件实例服务的 Workspace；不增加项目侧配置或热更新机制。配置示例见[用户说明](../../README.md)。
+作用于该插件实例服务的 Workspace；不增加项目侧配置或热更新机制。配置示例见[用户说明](../../../README.md)。
 配置通过 loader 原样传入，authoring 的 `mode: 'create'` 取得 checked Runtime schema 后校验完整映射，返回独立的 `creationDefaults`；
 不改写 Runtime 字段 `default`、backend 列表或 fingerprint。未配置时响应保持原样。
 authoring 省略 mode 时沿用 create；编辑表单显式使用 `mode: 'edit'`，只读取 Runtime schema，不校验或返回新建默认值，
@@ -236,7 +236,7 @@ npm run validate:datasource-execution:real
 npm run validate:credentials:web
 ```
 
-配置、新建默认值、定义编辑、删除及模型续接分别验证；完整入口与环境边界见[验证指南](../validation.md)。
+配置、新建默认值、定义编辑、删除及模型续接分别验证；本地验证指南放在 `docs/testing/validation.md`。
 
 ## Python 设置验收记录
 

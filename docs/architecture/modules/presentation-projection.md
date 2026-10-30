@@ -7,18 +7,18 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
 也不把来源存在解释为计算正确性。
 
 - Frame：原分析进程中的 `capture_frame(frame)` 捕获已完成的 Frame，Host 签发 `marivo-frame:` snapshotRef 并绑定 codeRef；
-  兼容的 `marivo-frame` 声明由 [projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts) 的
+  兼容的 `marivo-frame` 声明由 [projection](../../../packages/dsh-data-analysis/src/presentation/projection/index.ts) 的
   `MarivoPresentationProjection.readFrames(refs)` 在一次 checked execution 内事后恢复，没有脚本来源。
-- DataFrame：原分析进程中的 [capture_dataset](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_capture.py)
-  捕获，Host 签发 snapshotRef，由 [dataset-snapshot.ts](../../packages/dsh-data-analysis/src/presentation/dataset-snapshot.ts) 读取。
+- DataFrame：原分析进程中的 [capture_dataset](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_capture.py)
+  捕获，Host 签发 snapshotRef，由 [dataset-snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/dataset-snapshot.ts) 读取。
 
 快照内嵌于不可变 Build 的 `resources`，属于 Build 的生命周期，不长期依赖 captures 临时目录。
 保存、更新与 recordId 见[展示交付](presentation-delivery.md#统一分析-ui-写入与增量契约)，阅读呈现见[共享 reader](presentation-reader.md)。
 
 ## 展示数据契约
 
-快照的 typed data 使用 [types.ts](../../packages/dsh-data-analysis/src/presentation/contracts/types.ts) 的展示编码，
-文档结构以 [analysis-document.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts) 为准，
+快照的 typed data 使用 [types.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/types.ts) 的展示编码，
+文档结构以 [analysis-document.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts) 为准，
 不复制 Marivo 的领域 schema。快照共用 typed data、读取时间与 coverage；coverage 区分总行数、捕获行数与 complete，
 business 固定 unknown。
 
@@ -52,7 +52,7 @@ business 固定 unknown。
 
 `MarivoPresentationProjection` 只接受 ready、携带 presentation-kit identity 的 bound runner；每个异步边界检查取消和 runner 状态。
 
-Frame 读取使用[报告执行预算](../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)中的
+Frame 读取使用[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)中的
 120 秒子进程上限，包含 Runtime identity 检查、导入、Session 恢复与快照读取；没有 Frame 资源时跳过该子进程。
 `marivo_present` 外层预算为 180 秒，给绑定检查、数据读取和提交留出余量；该预算不保证任意数量 Session 均可完成。
 取消、进程树终止、输出限制和 identity 校验保持有效，不自动重试。
@@ -63,7 +63,7 @@ Frame 读取使用[报告执行预算](../../packages/dsh-data-analysis/src/pres
 
 ## Frame 快照
 
-两条路径共用 [_frame.py](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_frame.py) 的 `read_frame`。
+两条路径共用 [_frame.py](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_frame.py) 的 `read_frame`。
 `capture_frame` 只接受持久或 `compute()` 后的内存 Frame，待执行表达式报 `frame_not_computed`，DataFrame 指向 `capture_dataset`；
 恢复路径通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)` 取得准确引用。
 读取只用 `frame.schema`、`frame.read_page()`、`frame.read_periods()` 与 `page.to_pandas()`，仅在全部视图都是带列表格或 metric 时选列。
@@ -86,7 +86,7 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
-契约与交叉校验见 [snapshot.ts](../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；v1 Frame 快照仍可读，
+契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；v1 Frame 快照仍可读，
 其 Evidence/Findings/方法节不再显示。
 
 当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；

@@ -1,6 +1,6 @@
 ---
 name: dsh-data-analysis-presentation
-description: 将已有 Frame 或 DataFrame 快照组织为分析 UI、报告或看板；自定义时使用八组件 OpenUI Lang。单个结果可直接 marivo_present。
+description: 将已捕获的 Frame 或 DataFrame 快照组织为分析 UI、报告或看板；自定义时使用八组件 OpenUI Lang。单个结果可直接 marivo_present。
 ---
 
 # 分析展示与报告交付
@@ -9,20 +9,25 @@ description: 将已有 Frame 或 DataFrame 快照组织为分析 UI、报告或�
 
 ## 引用呈现与自定义页面
 
-单个结果直接传准确引用，省略 program；不用先查目录或读取 UI：
+单个结果直接传准确引用，省略 program；不用先查目录或读取 UI。Frame 优先使用原 `marivo_python` 执行中
+`capture_frame(frame)` 返回的 `frame-snapshot`；在成功回执的 `snapshots` 中按 `kind` 找到对应的 `snapshotRef`：
 
 ```json
-{"resources":{"result":{"kind":"marivo-frame","sessionId":"实际 Session ID","artifactId":"实际 Artifact ID"}}}
+{"resources":{"result":{"kind":"frame-snapshot","snapshotRef":"成功回执中的 Frame snapshotRef"}}}
 ```
 
-DataFrame 用成功 `marivo_python` 返回的 `snapshotRef` 声明
+已有持久 Frame 仍兼容旧引用 `{kind:"marivo-frame",sessionId,artifactId}`，但该恢复路径没有 Python 来源代码。
+DataFrame 使用成功 `marivo_python` 回执中 `kind:"dataset"` 对应的 `snapshotRef`：
 `{"resources":{"result":{"kind":"dataset-snapshot","snapshotRef":"实际引用"}}}`。
 尚未捕获的 DataFrame 需要在原分析进程调用 `capture_dataset(frame)`；该 helper 只接受 pandas DataFrame，
 不从 SQL/文件推断来源，也不修复已有精度损失。不要为呈现重新执行已经结束的分析。
 
 自定义页面时按需读[八组件紧凑签名](references/analysis-catalog.md)，提交完整 OpenUI Lang program，
 例如 `root = Stack([TextContent("结果说明"), DatasetView("result", {chart:"table"})]);`。
-数据视图只有 auto/table/metric，不提供图形类型、全局筛选或动态指标。
+`DatasetView` 及旧 Frame v1 快照只支持 auto/table/metric。Frame v2 的 `AnalysisFrameView` 按结构自动选择观察、成员、
+比较、分解、对齐、相关或份额视图；需要指定图形时支持 auto、table、metric、line、area、bar、heatmap、comparison 和
+decomposition。字段映射和 display 选项见[八组件紧凑签名](references/analysis-catalog.md)；展示只画快照中已有数据，
+不聚合、不计算指标，也不提供全局筛选或动态指标。
 rows 不写入 program。图片资源为 `{"kind":"image-file","path":"workspace-relative.png"}`，
 `Image("说明", "资源名")` 只使用保存的 PNG/JPEG/GIF/WebP，不接任意 URL。
 报告语言使用 locale；按需求选择 `surface:"tool"`（默认）或 `surface:"tab"`。

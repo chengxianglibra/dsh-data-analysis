@@ -6,8 +6,8 @@
 Harness 拥有附件存储、可读路径、原生 `present` 卡片／预览／持久事件与 Session 生命周期；pandas／DuckDB 拥有格式读取和计算；插件提供
 Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool、文件解析器或语义模型。
 
-入口是 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)，仅保留接入规则；
-[示例](../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/examples.md)分别展示 pandas 和原生 DuckDB。
+入口是 [SKILL.md](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)，仅保留接入规则；
+[示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/examples.md)分别展示 pandas 和原生 DuckDB。
 它随插件自带 Skill provider 分发，加载时不触发 `marivo-analysis`／`marivo-semantic` 根 Help 披露。
 
 ## 执行与结果
@@ -31,7 +31,7 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 
 执行 `npm run validate:file-analysis:real` 验证报告用户旅程；设置 `DSH_DATA_ANALYSIS_VALIDATION_SUITE=files`
 验证普通文件，`DSH_DATA_ANALYSIS_VALIDATION_FILE_CASES` 可选择 `delivery`、`failures` 或默认 `all`。
-S2 已完成的真实模型、预览、恢复及受控故障证据见[验证指南](../validation.md#普通文件原生交付验收)。
+S2 已完成的真实模型、预览、恢复及受控故障证据记录在本地 `docs/testing/validation.md`。
 
 ## 普通文件交付边界
 

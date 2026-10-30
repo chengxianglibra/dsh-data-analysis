@@ -6,7 +6,7 @@
 每个 Agent 所在 Workspace 建立独立的 zero-init binding 与 Environment。它只准备运行条件，不拥有
 Marivo 项目语义和分析状态。
 
-总体关系见[总体架构](../architecture.md)。实现集中在：
+总体关系见[总体架构](../README.md)。实现集中在：
 
 - `packages/dsh-data-analysis/src/environment/runtime.ts`
 - `packages/dsh-data-analysis/src/environment/workspace.ts`

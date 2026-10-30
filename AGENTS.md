@@ -12,8 +12,8 @@
 
 以当前代码及检出的 Marivo、Harness 源码为准；历史 Slice 与计划文档不能证明功能已实现。
 文档与代码不一致时遵循现有代码约定，并在交付中报告差异；涉及行为变更时先明确当前责任契约。
-实现和测试在 `packages/dsh-data-analysis/`；架构见 [docs/architecture.md](docs/architecture.md)
-及 [docs/modules/](docs/modules/)，用户与分发入口分别是根目录和包目录的 README。
+实现和测试在 `packages/dsh-data-analysis/`；项目架构总览与模块契约见
+[docs/architecture/](docs/architecture/)，用户与分发入口分别是根目录和包目录的 README。
 
 ## 工作范围与授权
 
@@ -35,28 +35,30 @@
 
 | 任务 | 优先阅读 |
 | --- | --- |
-| 跨模块责任与数据流 | [总体架构](docs/architecture.md) |
-| Runtime 安装、Workspace binding、解释器与执行 | [Runtime 与 Workspace](docs/modules/runtime-workspace.md)、[Environment 执行](docs/modules/environment-execution.md) |
-| Help、Skill 激活与上下文恢复 | [实时 Help 披露](docs/modules/help-disclosure.md) |
-| 数据源配置、凭据与执行准入 | [数据源与凭证](docs/modules/datasource-credentials.md) |
-| Catalog 浏览与输入引用 | [语义浏览器](docs/modules/semantic-browser.md)、[语义对象引用输入](docs/modules/semantic-reference-input.md) |
-| 报告数据与保存 | [展示数据投影](docs/modules/presentation-projection.md)、[展示交付](docs/modules/presentation-delivery.md) |
-| 报告阅读、目录与版本历史 | [分析文档 reader](docs/modules/presentation-reader.md)；HTML 导出与发布已移除，见[说明](docs/modules/report-publishing.md) |
-| 文件分析与展示流程 | [文件分析 Skill](docs/modules/file-analysis-skill.md)、[展示 Skill](docs/modules/presentation-skill.md)及其引用的随包 Skill |
-| 生命周期、兼容与分发 | [插件集成与交付](docs/modules/plugin-integration-delivery.md)、[验证指南](docs/validation.md) |
+| 跨模块责任与数据流 | [总体架构](docs/architecture/README.md) |
+| Runtime 安装、Workspace binding、解释器与执行 | [Runtime 与 Workspace](docs/architecture/modules/runtime-workspace.md)、[Environment 执行](docs/architecture/modules/environment-execution.md) |
+| Help、Skill 激活与上下文恢复 | [实时 Help 披露](docs/architecture/modules/help-disclosure.md) |
+| 数据源配置、凭据与执行准入 | [数据源与凭证](docs/architecture/modules/datasource-credentials.md) |
+| Catalog 浏览与输入引用 | [语义浏览器](docs/architecture/modules/semantic-browser.md)、[语义对象引用输入](docs/architecture/modules/semantic-reference-input.md) |
+| 报告数据与保存 | [展示数据投影](docs/architecture/modules/presentation-projection.md)、[展示交付](docs/architecture/modules/presentation-delivery.md) |
+| 报告阅读、目录与版本历史 | [分析文档 reader](docs/architecture/modules/presentation-reader.md)；HTML 导出与发布已移除，见[说明](docs/architecture/modules/report-publishing.md) |
+| 文件分析与展示流程 | [文件分析 Skill](docs/architecture/modules/file-analysis-skill.md)、[展示 Skill](docs/architecture/modules/presentation-skill.md)及其引用的随包 Skill |
+| 生命周期、兼容与分发 | [插件集成与交付](docs/architecture/modules/plugin-integration-delivery.md)；本地验证指南放在 `docs/testing/validation.md` |
 
 ## 文档归属
 
 | 内容 | 位置 |
 | --- | --- |
-| 当前架构、模块责任、数据流与长期契约 | `docs/architecture.md`、`docs/modules/` |
-| 设计提案、备选方案与实施计划 | `docs/designs/` |
-| 验证入口与验收记录 | `docs/validation.md`、`docs/testing/` |
-| 用户安装、使用与分发说明 | 根目录及包目录的 README；历史发布说明放在 `docs/releases/` |
-| 临时任务记录与原始运行产物 | Git-ignored 的 `docs/plan/`、`docs/acceptance/`、`artifacts/` 或独立临时目录 |
+| 项目架构总览、模块责任、数据流与长期契约（唯一纳入 Git 的 `docs/` 内容） | `docs/architecture/README.md`、`docs/architecture/modules/` |
+| 设计提案与备选方案（本地工作材料） | `docs/design/`，Git-ignored |
+| 分阶段实施计划（本地工作材料） | `docs/implementation/`，Git-ignored |
+| 验收记录、验证指南与测试说明（本地工作材料） | `docs/testing/`，Git-ignored |
+| 发布记录 | `docs/releases/`，Git-ignored |
+| 文章与分享稿 | `docs/articles/`，Git-ignored |
+| 临时计划、验收材料与原始运行产物 | `docs/plan/`、`docs/acceptance/`、`artifacts/` 或独立临时目录，Git-ignored |
 
 - 当前契约改变时更新所属模块文档；架构文档不以临时计划或验收记录代替规范。
-- `docs/designs/` 与 `docs/testing/` 中的文档可以纳入版本控制；临时记录与原始产物按 `.gitignore` 管理。
+- `.gitignore` 仅放行 `docs/architecture/` 及其模块文档；其他 `docs/` 分类保留在本地并忽略，不将其作为架构文档的必要链接目标。
 - 文档用清晰中文并保留 canonical English identifiers，采用相对链接、描述性 ATX 标题和小写 kebab-case 文件名。
   修改用户文档时同步受影响的中英文版本。
 

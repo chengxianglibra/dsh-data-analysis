@@ -8,7 +8,7 @@
 模块不维护 Help target registry、不解析 Marivo Help 内容、不做 fuzzy replacement，也不通过工具
 门禁强迫 Agent 先请求 Help。target 语义和正文由真实 `marivo.help(target)` 唯一拥有。
 
-总体关系见[总体架构](../architecture.md)。实现集中在：
+总体关系见[总体架构](../README.md)。实现集中在：
 
 - `packages/dsh-data-analysis/src/disclosure/help.ts`
 - `packages/dsh-data-analysis/src/disclosure/bridge.ts`

@@ -8,10 +8,10 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
 
 保存、receipt 与 RPC 见[展示交付](presentation-delivery.md)；快照与文档投影见[展示数据投影](presentation-projection.md)。
-实现入口为 [AnalysisSurface](../../packages/dsh-data-analysis/src/client/analysis-ui/surface.tsx)、
-[组件库](../../packages/dsh-data-analysis/src/client/analysis-ui/library.tsx)、
-[数据视图](../../packages/dsh-data-analysis/src/client/analysis-ui/data-view.tsx)和
-[右侧 tab 接入](../../packages/dsh-data-analysis/src/client/right-tabs/install.tsx)。
+实现入口为 [AnalysisSurface](../../../packages/dsh-data-analysis/src/client/analysis-ui/surface.tsx)、
+[组件库](../../../packages/dsh-data-analysis/src/client/analysis-ui/library.tsx)、
+[数据视图](../../../packages/dsh-data-analysis/src/client/analysis-ui/data-view.tsx)和
+[右侧 tab 接入](../../../packages/dsh-data-analysis/src/client/right-tabs/install.tsx)。
 
 ## 统一 AnalysisSurface 与候选预览
 
@@ -24,16 +24,16 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 ## 组件与数据视图
 
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
-签名由[生成的 Catalog](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
+签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
 
 - DatasetView 与旧 Frame v1 快照只支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
   并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
   auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，Dataset 要求完整单行单列，其余按表格显示。
-- v2 Frame 由 [frame-view.ts](../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
+- v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
-  分类与默认视图规则见 [AnalysisFrameView 设计](../designs/analysis-frame-view.md#各类展示)。
-- Frame 外壳在 [frame/](../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
+  分类与默认视图规则由同一 `resolveFrameView` 实现，保存校验与渲染共用。
+- Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
   头部数字、主视图、可折叠数据表与图标行（覆盖、期间对应、语义来源、Python）。图形为本插件绘制的 SVG；
   NA、缺期、不完整期、presence、restricted 与未捕获完整均以视觉编码表达，不加解释性文字。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
@@ -74,4 +74,4 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 ## 验证边界
 
 聚焦测试覆盖 Catalog 准入、数据视图的精确值与 metric/auto 判定、Frame 分类与视图解析、真实 Marivo Frame 渲染、目录过滤及旧格式拒绝；运行所属测试与 `npm run check`。
-真实浏览器验证见[验证指南](../validation.md)；reader 验证不代替 Tool、receipt/RPC 或真实 Agent 自动路由验收。
+真实浏览器验证记录在本地 `docs/testing/validation.md`；reader 验证不代替 Tool、receipt/RPC 或真实 Agent 自动路由验收。

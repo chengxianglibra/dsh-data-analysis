@@ -31,15 +31,14 @@
 | 报告 | [报告 HTML 导出与发布](modules/report-publishing.md) | 已移除；新格式不可用 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
 
-模块文档承载具体协议和失败边界；本文只描述跨模块关系。[验证指南](validation.md)维护检查入口与证据要求，[发布说明](releases/0.1.2.md)保留已发布版本的历史说明。
+模块文档承载具体协议和失败边界；本文只描述跨模块关系。验证命令以根目录 `package.json` 的 scripts 为准；
+`docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
-[DSH rc.1 升级与分析体验优化设计](designs/dsh-rc-upgrade-ux.md) 的 S1 历史基线见[验证指南](validation.md#dsh-rc1-基线验收)。统一分析 UI 已接入 P3 流式与增量路径：固定 Harness `0.2.1-rc.2` 与八组件 Catalog；新写入通过
-`marivo_present({resources, program?, surface?})` 保存 `dsh.analysis-ui/v1` 文档。单引用默认展开，
-Frame 与原执行内 DataFrame 捕获使用 P1 有界快照；完整内容存入现有不可变 Build JSON。
-共享 AnalysisSurface 用于工具调用候选、默认结果的会话节点和显式报告 tab；按准确 recordId 恢复，不重新分析。
-旧格式报告保留在磁盘但不进入报告目录，打开旧地址显示不支持；新格式不提供离线导出、发布或页面编辑。Native 参数流形成隔离候选，准确 basedOnRecordId 的完整 patch 经官方合并后条件保存。
-首期完成状态与实际证据以 P3 验收记录为准。见[实施计划](designs/unified-analysis-ui-implementation.md)、
-[P3 验收记录](testing/unified-analysis-ui-p3-2026-10-28.md)。[DSH 0.2.0 集成设计](designs/dsh-0.2.0-integration.md)的排程等其他功能仍未实施。
+统一分析 UI 通过 `marivo_present` 保存 `dsh.analysis-ui/v1` 文档。Frame v2 在原 Python 执行中由 `capture_frame`
+捕获，DataFrame 由 `capture_dataset` 捕获；旧持久 Frame 引用仍兼容。快照内嵌不可变 Build，AnalysisSurface
+用于隔离候选、tool view 和显式报告 tab。保存校验与呈现共用 `resolveFrameView`；Frame v2 按结构选择视图，
+并可在 Catalog 范围内显式指定图形。DatasetView 与旧 Frame v1 保留 auto/table/metric。旧格式报告不进入报告目录；
+新格式不提供离线导出、发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
 
 ## 运行与数据流
 
@@ -103,8 +102,9 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 失败或取消保留旧版本。PTC 依实际 dispatch 和结果交付，历史回放不抢焦点，Headless 只确认保存事实。
 
 报告目录与版本历史只列出 `dsh.analysis-ui/v1` 记录。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
-打开旧地址显示不支持的报告错误，不回退到旧 Reader。数据视图只有 auto/table/metric；图形、全局筛选、
-页面编辑、离线 HTML、发布和报告 cell 的“加入提问”均已移除。
+打开旧地址显示不支持的报告错误，不回退到旧 Reader。Frame v2 的 AnalysisFrameView 按 Frame 结构选择观察、成员、比较、
+分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、heatmap、comparison 和 decomposition 视图；
+DatasetView 与旧 Frame v1 快照只支持 auto/table/metric。全局筛选、页面编辑、离线 HTML、发布和报告 cell 的“加入提问”均已移除。
 
 ## 生命周期与失败原则
 

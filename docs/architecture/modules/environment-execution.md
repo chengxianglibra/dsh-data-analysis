@@ -6,7 +6,7 @@
 `MarivoEnvironment`，并为插件自有 Python 调用提供统一的受限子进程策略和同进程 identity prelude。
 它不拥有 Help、Datasource 或 Presentation 的脚本、JSON shape 与解析器。
 
-总体关系见[总体架构](../architecture.md)。实现集中在：
+总体关系见[总体架构](../README.md)。实现集中在：
 
 - `packages/dsh-data-analysis/src/environment/binding.ts`
 - `packages/dsh-data-analysis/src/environment/source.ts`

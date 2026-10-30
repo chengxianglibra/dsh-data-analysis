@@ -13,7 +13,7 @@ Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
 ## 统一分析 UI 写入与增量契约
 
 `marivo_present` 按 `surface`、`basedOnRecordId`、`resources`、`title`、`program`、`locale` 披露参数，
-输入 schema 以 [analysis-document.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)
+输入 schema 以 [analysis-document.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)
 的 `analysisPresentInput` 为准。
 
 - 创建时 program 为完整 OpenUI Lang；单个 Frame 或 dataset-snapshot 可省略 program，自动生成 AnalysisFrameView/DatasetView。
@@ -39,7 +39,7 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不可变版本；关闭原连接或删除捕获文件后仍可读取。
 
 更新读取准确的 `basedOnRecordId`，用固定 `mergeStatements` 合并完整命名语句，再校验完整程序与资源计划
-（[analysis-program.ts](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-program.ts)）。
+（[analysis-program.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-program.ts)）。
 
 - 同一 patch 的语句名不可重复；新增或替换的语句合并后必须仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
   `name = null` 删除语句，需先改写父引用。
@@ -102,7 +102,7 @@ Workspace/report/build 与已保存文件的路径/digest/大小，headless 可�
 拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
 
 `marivo_present` 的外层执行预算为 180 秒，Frame 读取子进程为 120 秒，由
-[execution-policy.ts](../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
+[execution-policy.ts](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
 超时或取消不创建本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
 [展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，120／180 秒不是保证完成的时限。
 
