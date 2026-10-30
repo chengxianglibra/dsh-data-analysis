@@ -2,9 +2,9 @@
 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { AnalysisCandidates, candidateKey } from '../analysis-ui/candidate.ts'
-import { CandidateView } from '../analysis-ui/candidate-view.tsx'
+import { CandidateView, savedCodeReader } from '../analysis-ui/candidate-view.tsx'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
 import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
 import { credentialChanges } from '../credentials/changes.ts'
@@ -267,6 +267,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       owners[0].workspaceId === page.target.workspaceId
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
+    const receipt = report.analysisDocument ? report.resolvedReceipt : undefined
+    const readCode = useMemo(
+      () =>
+        receipt
+          ? savedCodeReader(rpc, { workspaceId: page.target.workspaceId }, receipt)
+          : undefined,
+      [receipt, page.target.workspaceId],
+    )
     const catalog = useSyncExternalStore(page.catalog.subscribe, page.catalog.getSnapshot)
     const open = (target) => act(page, () => navigate(page.sessionId, target, tab.actions))
     const source = (ref) =>
@@ -384,6 +392,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       key={report.analysisDocument.recordId}
                       document={report.analysisDocument}
                       openSemanticRef={source}
+                      readCode={readCode}
                     />
                   </>
                 )}

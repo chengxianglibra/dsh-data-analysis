@@ -35,6 +35,12 @@ test('generated Host schema matches the installed Client library without importi
     assert.match(analysisCatalogSpec.components[name]!.signature, /ref: string, view\?/)
   }
   assert.equal(parseAnalysisProgram(program).typeName, 'Stack')
+  for (const source of [
+    'root = AnalysisFrameView("frame", {chart: "line"});',
+    'root = AnalysisFrameView("frame", {chart: "comparison", style: "delta"}, {density: "compact", dataTable: "visible"});',
+    'root = AnalysisFrameView("frame", {chart: "decomposition", style: "share"});',
+  ])
+    assert.equal(parseAnalysisProgram(source).typeName, 'AnalysisFrameView', source)
 })
 
 test('unsupported nodes and wrong parent slots cannot enter the subset', () => {
@@ -45,7 +51,8 @@ test('unsupported nodes and wrong parent slots cannot enter the subset', () => {
     'root = Tabs([DatasetView("wrong-parent")]);',
     'root = Stack([TabItem("wrong", "wrong", [])]);',
     'root = TabItem("wrong", "wrong", []);',
-    'root = AnalysisFrameView("frame", {chart: "line"});',
+    'root = DatasetView("sql", {chart: "line"});',
+    'root = DatasetView("sql", {}, {density: "compact"});',
     'root = DatasetView("sql", {chart: "metric"});',
   ])
     assert.throws(() => parseAnalysisProgram(source), source)

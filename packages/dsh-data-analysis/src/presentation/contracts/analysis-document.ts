@@ -2,8 +2,9 @@ import type { ElementNode } from '@openuidev/lang-core'
 import { z } from 'zod'
 import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { parseAnalysisProgram } from './analysis-program.ts'
+import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
-import { parseAnalysisSnapshot } from './snapshot.ts'
+import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
 export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v1'
@@ -16,6 +17,7 @@ const text = z.string().min(1).max(512)
 export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('marivo-frame'), sessionId: text, artifactId: text }),
   z.strictObject({ kind: z.literal('dataset-snapshot'), snapshotRef: z.string().max(512) }),
+  z.strictObject({ kind: z.literal('frame-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
 ])
 export const analysisPresentInput = z.strictObject({
@@ -104,6 +106,40 @@ export function analysisElements(root: ElementNode): ElementNode[] {
   walk(root)
   return nodes
 }
+/**
+ * Save-time view rejection returned to the model. The message carries the code, the JSON
+ * path (statement name plus `/view/...`) and a short hint because Tool errors surface as text.
+ */
+export class AnalysisViewError extends Error {
+  readonly code: string
+  readonly path: string
+  constructor(code: string, path: string, hint: string) {
+    super(`${code} at ${path}: ${hint}`)
+    this.name = 'AnalysisViewError'
+    this.code = code
+    this.path = path
+  }
+}
+const viewHints: Record<string, string> = {
+  'analysis-columns-invalid': 'table columns must be distinct column names of this resource.',
+  'analysis-metric-requires-complete-single-row':
+    'metric needs a complete single-row snapshot and an existing value name.',
+  'analysis-view-invalid': 'view or display does not match the component signature.',
+  'analysis-view-name-unknown': 'use a value or axis name from this snapshot.',
+  'analysis-view-dtype-not-drawable': 'choose a numeric value or use chart "table".',
+  'analysis-view-target-ambiguous':
+    'add encoding.value naming an output of exactly one comparison or decomposition.',
+  'analysis-view-role-missing': 'this comparison or decomposition lacks the roles for this chart.',
+  'analysis-view-axis-not-time': 'line/area/bar axis must be a calendar or interval axis.',
+  'analysis-view-requires-complete-snapshot':
+    'this chart reads as the whole population; use chart "table" or "auto" for partial data.',
+  'analysis-view-unsupported-for-snapshot':
+    'this snapshot supports only auto, table and metric; capture a v2 Frame for other charts.',
+}
+function viewError(code: string, statement: string, path: string): AnalysisViewError {
+  const relative = path.startsWith('/view') || path.startsWith('/display') ? path : `/view${path}`
+  return new AnalysisViewError(code, `${statement}${relative}`, viewHints[code] ?? '')
+}
 export function validateAnalysisResources(
   program: string,
   resources: AnalysisDocument['resources'],
@@ -120,25 +156,27 @@ export function validateAnalysisResources(
       source.snapshot.kind !== (node.typeName === 'AnalysisFrameView' ? 'frame' : 'dataset')
     )
       throw new Error('analysis-data-resource-invalid')
-    const view = node.props.view as
-      | { chart: string; columns?: string[]; encoding?: { value: string } }
-      | undefined
-    const columns = source.snapshot.data.columns.map((c) => c.id)
-    if (
-      view?.chart === 'table' &&
-      view.columns &&
-      (!view.columns.length ||
-        new Set(view.columns).size !== view.columns.length ||
-        view.columns.some((c) => !columns.includes(c)))
-    )
-      throw new Error('analysis-columns-invalid')
-    if (
-      view?.chart === 'metric' &&
-      (!source.snapshot.coverage.complete ||
-        source.snapshot.data.rowCount !== 1 ||
-        !columns.includes(view.encoding?.value ?? ''))
-    )
-      throw new Error('analysis-metric-requires-complete-single-row')
+    const statement = node.statementId ?? node.typeName
+    const view = frameViewSchema.optional().safeParse(node.props.view ?? undefined)
+    if (!view.success) throw viewError('analysis-view-invalid', statement, '/view')
+    if (!frameDisplaySchema.optional().safeParse(node.props.display ?? undefined).success)
+      throw viewError('analysis-view-invalid', statement, '/display')
+    const columns = view.data?.chart === 'table' ? view.data.columns : undefined
+    if (columns && new Set(columns).size !== columns.length)
+      throw viewError('analysis-columns-invalid', statement, '/view/columns')
+    const resolved = resolveFrameView(source.snapshot, view.data)
+    if (resolved.ok) continue
+    // Keep the established codes for table columns and metric rows; other failures are new.
+    const chart = view.data?.chart
+    const code =
+      chart === 'table' && resolved.code === 'view-name-unknown'
+        ? 'analysis-columns-invalid'
+        : chart === 'metric' &&
+            (resolved.code === 'view-metric-requires-complete-single-row' ||
+              resolved.code === 'view-name-unknown')
+          ? 'analysis-metric-requires-complete-single-row'
+          : `analysis-view-${resolved.code.replace(/^view-/, '')}`
+    throw viewError(code, statement, resolved.path)
   }
 }
 export function parseAnalysisDocument(value: unknown): AnalysisDocument {
@@ -163,8 +201,10 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
       )
         throw new Error('analysis-resource-owner-invalid')
     } else if (
-      item.declaration.kind !== 'dataset-snapshot' ||
-      item.snapshot.kind !== 'dataset' ||
+      !(
+        (item.declaration.kind === 'dataset-snapshot' && item.snapshot.kind === 'dataset') ||
+        (item.declaration.kind === 'frame-snapshot' && isFrameSnapshotV2(item.snapshot))
+      ) ||
       !item.binding.codeRef ||
       !item.binding.sessionId ||
       !item.binding.callId
@@ -193,7 +233,10 @@ export function sameAnalysisDeclaration(
   if (a.kind !== b.kind) return false
   if (a.kind === 'marivo-frame' && b.kind === 'marivo-frame')
     return a.sessionId === b.sessionId && a.artifactId === b.artifactId
-  if (a.kind === 'dataset-snapshot' && b.kind === 'dataset-snapshot')
+  if (
+    (a.kind === 'dataset-snapshot' && b.kind === 'dataset-snapshot') ||
+    (a.kind === 'frame-snapshot' && b.kind === 'frame-snapshot')
+  )
     return a.snapshotRef === b.snapshotRef
   return a.kind === 'image-file' && b.kind === 'image-file' && a.path === b.path
 }

@@ -1,18 +1,21 @@
 import { useState } from 'react'
+import type { FrameDisplay, FrameView } from '../../presentation/contracts/frame-view.ts'
 import { formatCell } from '../../presentation/contracts/index.ts'
-import type { AnalysisSnapshot } from '../../presentation/contracts/snapshot.ts'
+import {
+  type AnalysisSnapshot,
+  type FrameSections,
+  isFrameSnapshotV2,
+} from '../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
 import { useAnalysisResources } from './context.tsx'
-import { FrameMetadata } from './metadata-view.tsx'
+import { AnalysisFrame } from './frame/view.tsx'
+import { SemanticOrigins } from './metadata-view.tsx'
 
 export interface AnalysisViewProps {
   ref?: string
-  view?:
-    | { chart: 'auto' }
-    | { chart: 'table'; columns?: string[] }
-    | { chart: 'metric'; encoding: { value: string } }
-  display?: { height?: number }
+  view?: FrameView
+  display?: FrameDisplay
 }
 export function AnalysisDataView({
   resourceName,
@@ -23,8 +26,6 @@ export function AnalysisDataView({
   const t = useCopy()
   const { readResource, candidate } = useAnalysisResources()
   const resource = resourceName ? readResource(resourceName) : undefined
-  const [selected, setSelected] = useState<string[]>()
-  const [copy, setCopy] = useState<string>()
   if (resource?.kind !== 'snapshot' || resource.snapshot.kind !== kind)
     return (
       <p role={candidate ? 'status' : 'alert'}>
@@ -35,8 +36,51 @@ export function AnalysisDataView({
         )}
       </p>
     )
-  const snapshot = resource.snapshot,
-    data = snapshot.data
+  const snapshot = resource.snapshot
+  if (isFrameSnapshotV2(snapshot))
+    return (
+      <AnalysisFrame
+        snapshot={snapshot}
+        view={view}
+        display={display}
+        resourceName={resourceName}
+        codeRef={resource.binding.codeRef}
+      />
+    )
+  return (
+    <LegacyDataView
+      resourceName={resourceName}
+      snapshot={snapshot}
+      binding={resource.binding}
+      view={view}
+      height={display?.height}
+    />
+  )
+}
+
+/** v1 Frame and Dataset snapshots: a table plus the complete single-row metric, as before. */
+function LegacyDataView({
+  resourceName,
+  snapshot,
+  binding,
+  view,
+  height,
+}: {
+  resourceName?: string
+  snapshot: AnalysisSnapshot
+  binding: {
+    sessionId?: string
+    callId?: string
+    codeRef?: { executionId: string; sha256: string }
+  }
+  view?: FrameView
+  height?: number
+}) {
+  const t = useCopy()
+  const [selected, setSelected] = useState<string[]>()
+  const [copy, setCopy] = useState<string>()
+  const kind = snapshot.kind
+  const data = snapshot.data
   const columns =
     selected ??
     (view?.chart === 'table' ? view.columns : undefined) ??
@@ -53,7 +97,9 @@ export function AnalysisDataView({
         : undefined
   const metricColumn =
     view?.chart === 'metric'
-      ? data.columns.find((c) => c.id === view.encoding.value)
+      ? view.encoding
+        ? data.columns.find((c) => c.id === view.encoding!.value)
+        : autoColumn
       : (!view || view.chart === 'auto') && snapshot.coverage.complete && data.rowCount === 1
         ? autoColumn
         : undefined
@@ -117,7 +163,7 @@ export function AnalysisDataView({
               ))}
             </div>
           </details>
-          <div style={{ maxHeight: display?.height ?? 520, overflow: 'auto' }}>
+          <div style={{ maxHeight: height ?? 520, overflow: 'auto' }}>
             <DatasetTable data={data} columns={columns} caption={resourceName ?? ''} />
           </div>
         </>
@@ -148,32 +194,20 @@ export function AnalysisDataView({
               <dd>{snapshot.source.artifactId}</dd>
             </dl>
             <p>{snapshot.frame.axes.map((a) => `${a.name} (${a.role})`).join(' · ')}</p>
-            <pre>
-              {JSON.stringify(
-                {
-                  fields: snapshot.frame.fields,
-                  layout: snapshot.frame.layout,
-                  axes: snapshot.frame.axes,
-                  coordinates: snapshot.frame.coordinates,
-                },
-                null,
-                2,
-              )}
-            </pre>
-            <FrameMetadata sections={snapshot.frame.sections} />
+            <SemanticOrigins section={(snapshot.frame.sections as FrameSections).semantics} />
           </>
         ) : (
           <>
             <p>{t('marivo.presentation.ui-dataframe-source-not-captured')}</p>
             <dl>
               <dt>Session</dt>
-              <dd>{resource.binding.sessionId}</dd>
+              <dd>{binding.sessionId}</dd>
               <dt>Call</dt>
-              <dd>{resource.binding.callId}</dd>
+              <dd>{binding.callId}</dd>
               <dt>codeRef.executionId</dt>
-              <dd>{resource.binding.codeRef?.executionId}</dd>
+              <dd>{binding.codeRef?.executionId}</dd>
               <dt>codeRef.sha256</dt>
-              <dd>{resource.binding.codeRef?.sha256}</dd>
+              <dd>{binding.codeRef?.sha256}</dd>
             </dl>
           </>
         )}

@@ -10,7 +10,7 @@ Native 自定义 Lang 消费真实参数前缀，更新使用准确 basedOnRecor
 提供则替换完整表；纯展示修改不重新读取快照。成功不默认回读，不强制先大纲后补全。
 
 入口为 [SKILL.md](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
-数据视图只有 auto/table/metric；Skill 不包含图形、全局筛选、Draft、HTML 导出或发布资源。
+AnalysisFrameView 的图形由结构自动选择，DatasetView 只有 auto/table/metric；Skill 不包含全局筛选、Draft、HTML 导出或发布资源。
 [叙事与证据检查](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
 [完整示例](../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)按需读取。
 

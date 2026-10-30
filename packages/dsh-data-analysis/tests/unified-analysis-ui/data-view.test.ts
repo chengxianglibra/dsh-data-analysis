@@ -117,31 +117,11 @@ test('auto uses Frame axes and value roles while preserving complete scalar Data
   assert.match(render(dataset), /class="au-metric"/)
 })
 
-function capturedSections() {
+function semanticSections() {
   return {
-    evidence: {
-      status: 'captured',
-      totalCount: 3,
-      hasMore: true,
-      items: [
-        {
-          kind: 'read',
-          summary: 'Actual explicit source read.',
-          values: [{ name: 'source', value: 'sales.orders' }],
-          coordinates: [],
-          scope: { kind: 'unscoped' },
-        },
-        {
-          kind: 'check',
-          summary: 'Row check.',
-          values: [],
-          coordinates: [{ slotId: 'key', name: 'region', value: 'A' }],
-          scope: { kind: 'row', rowIndex: 0 },
-        },
-      ],
-    },
-    findings: { status: 'unavailable', reason: 'read-failed' },
-    methods: { status: 'captured', totalCount: 0, items: [] },
+    evidence: 'not-captured',
+    findings: 'not-captured',
+    methods: 'not-captured',
     semantics: {
       status: 'captured',
       columns: [
@@ -157,48 +137,18 @@ function capturedSections() {
   }
 }
 
-test('captured Frame metadata parses with bounded row scope and keeps legacy snapshots readable', () => {
-  const legacy = parseAnalysisSnapshot(frameSnapshot())
-  assert.equal(legacy.kind === 'frame' && legacy.frame.sections.evidence, 'not-captured')
+test('legacy v1 Frame keeps the table, source facts and semantic origins without process metadata', () => {
   const value = frameSnapshot() as Record<string, any>
-  value.frame.sections = capturedSections()
-  const parsed = parseAnalysisSnapshot(value)
-  assert.equal(parsed.kind, 'frame')
-  for (const mutate of [
-    (v: Record<string, any>) => {
-      v.frame.sections.evidence.items[1].scope.rowIndex = 1
-    },
-    (v: Record<string, any>) => {
-      v.frame.sections.evidence.totalCount = 1
-    },
-    (v: Record<string, any>) => {
-      v.frame.sections.findings.reason = 'raw runtime message'
-    },
-    (v: Record<string, any>) => {
-      v.frame.sections.semantics.columns[0].valueOrigins[0].path = ''
-    },
-  ]) {
-    const invalid = structuredClone(value)
-    mutate(invalid)
-    assert.throws(() => parseAnalysisSnapshot(invalid), /Snapshot/)
-  }
-})
-
-test('Frame metadata shows read scope, unavailable sections and semantic links only when navigable', () => {
-  const value = frameSnapshot() as Record<string, any>
-  value.frame.sections = capturedSections()
+  value.frame.sections = semanticSections()
   const snapshot = parseAnalysisSnapshot(value)
   const html = render(snapshot, true)
-  assert.match(html, /data-meta="evidence"/)
-  assert.match(html, /2 read of 3/)
-  assert.match(html, /Only the first page is saved/)
-  assert.match(html, /Complete coordinates match saved row 1/)
-  assert.match(html, /No coordinates; this does not mean it applies to every row/)
-  assert.match(html, /The read failed when saving/)
+  assert.match(html, /<table/)
+  assert.match(html, /data-meta="semantics"/)
   assert.match(html, /<button type="button">Metric: sales.revenue<\/button>/)
   assert.doesNotMatch(render(snapshot), /<button type="button">Metric/)
-  assert.match(
-    render(parseAnalysisSnapshot(frameSnapshot())),
-    /were not captured with this snapshot/,
-  )
+  assert.doesNotMatch(html, /data-meta="(?:evidence|findings|methods)"/)
+  assert.doesNotMatch(html, /Evidence|Findings|Methods/)
+  // The raw fields/layout JSON dump is gone.
+  assert.doesNotMatch(html, /&quot;layout&quot;|"layout":/)
+  assert.match(render(parseAnalysisSnapshot(frameSnapshot())), /Not captured when saved/)
 })

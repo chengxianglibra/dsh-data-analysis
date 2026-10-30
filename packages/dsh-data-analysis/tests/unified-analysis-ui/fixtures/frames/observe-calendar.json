@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "calendar:month.start",
+        "label": "calendar:month.start",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "calendar:month.end",
+        "label": "calendar:month.end",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "revenue",
+        "label": "revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      }
+    ],
+    "rows": [
+      ["2026-07-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00", "250"],
+      ["2026-08-01T00:00:00+00:00", "2026-09-01T00:00:00+00:00", "210"],
+      ["2026-09-01T00:00:00+00:00", "2026-10-01T00:00:00+00:00", "240"]
+    ],
+    "rowCount": 3,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 3,
+    "capturedRows": 3,
+    "complete": true,
+    "columns": ["calendar:month.start", "calendar:month.end", "revenue"],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": "artifact_ccc50aae6b6a407f85d7b103784f5104"
+  },
+  "frame": {
+    "inputId": "stored_e1224abcc4332c79d66c761a8a8f21d97067f8fbd67bdb2333367093b0678b4b",
+    "description": "Q3 monthly revenue",
+    "fields": [
+      {
+        "id": "calendar:month.start",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "calendar:month.end",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "revenue",
+        "role": "value",
+        "slotId": "value.0"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.start",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "start"
+      },
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.end",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "end"
+      },
+      {
+        "kind": "field",
+        "name": "revenue",
+        "slotId": "value.0"
+      }
+    ],
+    "axes": [
+      {
+        "token": "axis.0",
+        "name": "calendar:month",
+        "role": "calendar",
+        "keys": [
+          {
+            "id": "calendar:month",
+            "slotId": "key.0",
+            "dtype": {
+              "type": "datetime",
+              "timeUnit": "us",
+              "timezone": "UTC"
+            },
+            "nullable": false,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "calendar",
+          "timezone": "UTC",
+          "grain": {
+            "kind": "builtin",
+            "unit": "month",
+            "step": 1
+          }
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "revenue",
+        "slotId": "value.0",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "calendar:month",
+        "slotId": "key.0",
+        "dtype": {
+          "type": "datetime",
+          "timeUnit": "us",
+          "timezone": "UTC"
+        },
+        "nullable": false,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "key.0": {
+        "column": {
+          "id": "calendar:month",
+          "label": "calendar:month",
+          "type": "datetime",
+          "nullable": false
+        },
+        "values": [
+          "2026-07-01T00:00:00+00:00",
+          "2026-08-01T00:00:00+00:00",
+          "2026-09-01T00:00:00+00:00"
+        ]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 3,
+      "coordinateRowsRead": 3,
+      "receiptBytesHashed": 5473
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "axis.0",
+            "valueOrigins": [],
+            "contextOrigins": [],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {
+          "revenue": {
+            "kind": "observation",
+            "subject": {
+              "kind": "metric",
+              "path": "sales.revenue",
+              "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+            },
+            "time": {
+              "kind": "axis",
+              "axisToken": "axis.0",
+              "endpoint": "self"
+            },
+            "window": null
+          }
+        },
+        "comparisons": [],
+        "decompositions": [],
+        "alignments": []
+      },
+      "periods": {
+        "status": "captured",
+        "pages": [
+          {
+            "target": {
+              "kind": "axis",
+              "axisToken": "axis.0"
+            },
+            "totalCount": 3,
+            "hasMore": false,
+            "items": [
+              {
+                "kind": "calendar",
+                "key": ["2026-07-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-07-01T00:00:00+00:00",
+                "end": "2026-08-01T00:00:00+00:00",
+                "label": "2026-07-01",
+                "nominalStart": "2026-07-01T00:00:00+00:00",
+                "nominalEnd": "2026-08-01T00:00:00+00:00"
+              },
+              {
+                "kind": "calendar",
+                "key": ["2026-08-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-08-01T00:00:00+00:00",
+                "end": "2026-09-01T00:00:00+00:00",
+                "label": "2026-08-01",
+                "nominalStart": "2026-08-01T00:00:00+00:00",
+                "nominalEnd": "2026-09-01T00:00:00+00:00"
+              },
+              {
+                "kind": "calendar",
+                "key": ["2026-09-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-09-01T00:00:00+00:00",
+                "end": "2026-10-01T00:00:00+00:00",
+                "label": "2026-09-01",
+                "nominalStart": "2026-09-01T00:00:00+00:00",
+                "nominalEnd": "2026-10-01T00:00:00+00:00"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

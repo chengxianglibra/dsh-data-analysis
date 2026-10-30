@@ -92,3 +92,62 @@ def test_manifest_failure_preserves_original_exception(tmp_path, monkeypatch):
             except OSError:
                 pass
             raise RuntimeError("original analysis failure")
+
+
+def _frame(**kwargs):
+    from test_frame import fixture
+    return fixture(**kwargs)[0]
+
+
+@pytest.mark.parametrize("stored", [True, False])
+def test_capture_frame_writes_a_v2_frame_snapshot_and_receipt(tmp_path: Path, stored):
+    from dsh_data_analysis_presentation import FrameCaptureReceipt, capture_frame
+    with _capture_scope(str(tmp_path), "captures/call"):
+        receipt = capture_frame(_frame(stored=stored), row_limit=1)
+    assert isinstance(receipt, FrameCaptureReceipt)
+    assert (receipt.row_count, receipt.captured_rows, receipt.truncated) == (2, 1, True)
+    manifest = json.loads((tmp_path / "captures/call/manifest.json").read_text())
+    assert [e["captureId"] for e in manifest["entries"]] == [receipt.capture_id]
+    snapshot = json.loads((tmp_path / manifest["entries"][0]["path"]).read_text())
+    assert (snapshot["kind"], snapshot["schemaVersion"]) == ("frame", 2)
+    assert snapshot["source"]["artifactId"] == ("artifact" if stored else None)
+
+
+def test_capture_frame_rejects_dataframes_and_pending_expressions(tmp_path: Path):
+    from dsh_data_analysis_presentation import capture_frame
+    from test_frame import Rejection
+    pending = _frame()
+    def read_page(**kwargs):
+        raise Rejection("frame.read_page", "expression")
+    pending.read_page = read_page
+    pending.compute = lambda: pytest.fail("capture must not compute")
+    with _capture_scope(str(tmp_path), "captures/call"):
+        with pytest.raises(PresentationDatasetError, match="capture_dataset") as dataframe:
+            capture_frame(pd.DataFrame({"x": [1]}))
+        with pytest.raises(PresentationDatasetError) as expression:
+            capture_frame(pending)
+    assert dataframe.value.code == "unsupported_type"
+    assert expression.value.code == "frame_not_computed"
+    assert json.loads((tmp_path / "captures/call/manifest.json").read_text())["failed"] is True
+
+
+def test_capture_frame_rejects_credentials_and_requires_the_worker_context(tmp_path: Path):
+    from dsh_data_analysis_presentation import capture_frame
+    with pytest.raises(PresentationDatasetError, match="active marivo_python"):
+        capture_frame(_frame())
+    with _capture_scope(str(tmp_path), "captures/call", ("Monthly revenue",)):
+        with pytest.raises(PresentationDatasetError) as error:
+            capture_frame(_frame())
+    assert error.value.code == "capture_forbidden"
+    assert list((tmp_path / "captures/call").iterdir()) == [tmp_path / "captures/call/manifest.json"]
+
+
+def test_frame_captures_share_the_execution_limit(tmp_path: Path):
+    from dsh_data_analysis_presentation import capture_frame
+    with _capture_scope(str(tmp_path), "captures/call"):
+        for _ in range(8):
+            capture_dataset(pd.DataFrame({"x": [1]}))
+            capture_frame(_frame())
+        with pytest.raises(PresentationDatasetError) as error:
+            capture_frame(_frame())
+    assert error.value.code == "budget"

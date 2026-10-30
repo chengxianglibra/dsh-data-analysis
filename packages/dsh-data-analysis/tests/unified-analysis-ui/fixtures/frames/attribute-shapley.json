@@ -1,0 +1,1138 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "calendar:month.start",
+        "label": "calendar:month.start",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "calendar:month.end",
+        "label": "calendar:month.end",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "channel",
+        "label": "channel",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "id": "contribution.change",
+        "label": "contribution.change",
+        "type": "float64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "total.change",
+        "label": "total.change",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "observed_total.change",
+        "label": "observed_total.change",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "contribution_share.change",
+        "label": "contribution_share.change",
+        "type": "float64",
+        "nullable": true,
+        "unit": "1"
+      },
+      {
+        "id": "contribution_std_error.change",
+        "label": "contribution_std_error.change",
+        "type": "float64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.current.change",
+        "label": "detail.current.change",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.baseline.change",
+        "label": "detail.baseline.change",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.absolute.change",
+        "label": "detail.absolute.change",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.current.present.change",
+        "label": "detail.current.present.change",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "id": "detail.baseline.present.change",
+        "label": "detail.baseline.present.change",
+        "type": "boolean",
+        "nullable": false
+      }
+    ],
+    "rows": [
+      [
+        "2026-09-01T00:00:00+00:00",
+        "2026-10-01T00:00:00+00:00",
+        "app",
+        -45900.0,
+        "13500",
+        "13500",
+        -3.4,
+        3535.1298218230763,
+        "900",
+        "14400",
+        "-13500",
+        true,
+        true
+      ],
+      [
+        "2026-09-01T00:00:00+00:00",
+        "2026-10-01T00:00:00+00:00",
+        "web",
+        59400.0,
+        "13500",
+        "13500",
+        4.4,
+        3535.1298218230763,
+        "44100",
+        "8100",
+        "36000",
+        true,
+        true
+      ]
+    ],
+    "rowCount": 2,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 2,
+    "capturedRows": 2,
+    "complete": true,
+    "columns": [
+      "calendar:month.start",
+      "calendar:month.end",
+      "channel",
+      "contribution.change",
+      "total.change",
+      "observed_total.change",
+      "contribution_share.change",
+      "contribution_std_error.change",
+      "detail.current.change",
+      "detail.baseline.change",
+      "detail.absolute.change",
+      "detail.current.present.change",
+      "detail.baseline.present.change"
+    ],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_699029a1483741b19fbbe314c1223140",
+    "description": null,
+    "fields": [
+      {
+        "id": "calendar:month.start",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "calendar:month.end",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "channel",
+        "role": "coordinate",
+        "axisToken": "attribute.axis.1"
+      },
+      {
+        "id": "contribution.change",
+        "role": "value",
+        "slotId": "attribute.game.0"
+      },
+      {
+        "id": "total.change",
+        "role": "value",
+        "slotId": "attribute.game.1"
+      },
+      {
+        "id": "observed_total.change",
+        "role": "value",
+        "slotId": "attribute.game.2"
+      },
+      {
+        "id": "contribution_share.change",
+        "role": "value",
+        "slotId": "attribute.game.3"
+      },
+      {
+        "id": "contribution_std_error.change",
+        "role": "value",
+        "slotId": "attribute.game.4"
+      },
+      {
+        "id": "detail.current.change",
+        "role": "value",
+        "slotId": "attribute.game.5"
+      },
+      {
+        "id": "detail.baseline.change",
+        "role": "value",
+        "slotId": "attribute.game.6"
+      },
+      {
+        "id": "detail.absolute.change",
+        "role": "value",
+        "slotId": "attribute.game.7"
+      },
+      {
+        "id": "detail.current.present.change",
+        "role": "presence",
+        "slotId": "attribute.presence.0"
+      },
+      {
+        "id": "detail.baseline.present.change",
+        "role": "presence",
+        "slotId": "attribute.presence.1"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.start",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "start"
+      },
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.end",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "end"
+      },
+      {
+        "kind": "coordinate",
+        "name": "channel",
+        "axisToken": "attribute.axis.1",
+        "endpoint": "self",
+        "part": "key"
+      },
+      {
+        "kind": "field",
+        "name": "contribution.change",
+        "slotId": "attribute.game.0"
+      },
+      {
+        "kind": "field",
+        "name": "total.change",
+        "slotId": "attribute.game.1"
+      },
+      {
+        "kind": "field",
+        "name": "observed_total.change",
+        "slotId": "attribute.game.2"
+      },
+      {
+        "kind": "field",
+        "name": "contribution_share.change",
+        "slotId": "attribute.game.3"
+      },
+      {
+        "kind": "field",
+        "name": "contribution_std_error.change",
+        "slotId": "attribute.game.4"
+      },
+      {
+        "kind": "field",
+        "name": "detail.current.change",
+        "slotId": "attribute.game.5"
+      },
+      {
+        "kind": "field",
+        "name": "detail.baseline.change",
+        "slotId": "attribute.game.6"
+      },
+      {
+        "kind": "field",
+        "name": "detail.absolute.change",
+        "slotId": "attribute.game.7"
+      },
+      {
+        "kind": "field",
+        "name": "detail.current.present.change",
+        "slotId": "attribute.presence.0"
+      },
+      {
+        "kind": "field",
+        "name": "detail.baseline.present.change",
+        "slotId": "attribute.presence.1"
+      }
+    ],
+    "axes": [
+      {
+        "token": "axis.0",
+        "name": "calendar:month",
+        "role": "calendar",
+        "keys": [
+          {
+            "id": "calendar:month",
+            "slotId": "key.0",
+            "dtype": {
+              "type": "datetime",
+              "timeUnit": "us",
+              "timezone": "UTC"
+            },
+            "nullable": false,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "calendar",
+          "timezone": "UTC",
+          "grain": {
+            "kind": "builtin",
+            "unit": "month",
+            "step": 1
+          }
+        }
+      },
+      {
+        "token": "attribute.axis.1",
+        "name": "sales.order.channel",
+        "role": "field",
+        "keys": [
+          {
+            "id": "sales.order.channel",
+            "slotId": "attribute.key.1",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": true,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "ordinary"
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "contribution.change",
+        "slotId": "attribute.game.0",
+        "dtype": {
+          "type": "float64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "total.change",
+        "slotId": "attribute.game.1",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "observed_total.change",
+        "slotId": "attribute.game.2",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "contribution_share.change",
+        "slotId": "attribute.game.3",
+        "dtype": {
+          "type": "float64"
+        },
+        "nullable": true,
+        "unit": "1"
+      },
+      {
+        "id": "contribution_std_error.change",
+        "slotId": "attribute.game.4",
+        "dtype": {
+          "type": "float64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.current.change",
+        "slotId": "attribute.game.5",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.baseline.change",
+        "slotId": "attribute.game.6",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.absolute.change",
+        "slotId": "attribute.game.7",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY.CNY"
+      },
+      {
+        "id": "detail.current.present.change",
+        "slotId": "attribute.presence.0",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "detail.baseline.present.change",
+        "slotId": "attribute.presence.1",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "calendar:month",
+        "slotId": "key.0",
+        "dtype": {
+          "type": "datetime",
+          "timeUnit": "us",
+          "timezone": "UTC"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "sales.order.channel",
+        "slotId": "attribute.key.1",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": true,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "key.0": {
+        "column": {
+          "id": "calendar:month",
+          "label": "calendar:month",
+          "type": "datetime",
+          "nullable": false
+        },
+        "values": ["2026-09-01T00:00:00+00:00", "2026-09-01T00:00:00+00:00"]
+      },
+      "attribute.key.1": {
+        "column": {
+          "id": "sales.order.channel",
+          "label": "sales.order.channel",
+          "type": "string",
+          "nullable": true
+        },
+        "values": ["app", "web"]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 2,
+      "coordinateRowsRead": 4,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "axis.0",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "axis",
+            "id": "attribute.axis.1",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "contribution.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "total.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "observed_total.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "contribution_share.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "contribution_std_error.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "detail.current.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "detail.baseline.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "detail.absolute.change",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "detail.current.present.change",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "detail.baseline.present.change",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.channel",
+                "definitionId": "sha256:1b6ea42e98853d939a3bc76555fe3f179aaa49336b8b533073dbb43ce3cf6910"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {},
+        "comparisons": [
+          {
+            "alias": "previous",
+            "groups": [
+              {
+                "name": "q",
+                "values": [],
+                "currentContext": {
+                  "kind": "observation",
+                  "subject": null,
+                  "time": {
+                    "kind": "compared",
+                    "comparison": 0,
+                    "endpoint": "current"
+                  },
+                  "window": null
+                },
+                "baselineContext": {
+                  "kind": "observation",
+                  "subject": null,
+                  "time": {
+                    "kind": "compared",
+                    "comparison": 0,
+                    "endpoint": "baseline"
+                  },
+                  "window": null
+                }
+              }
+            ],
+            "binding": {
+              "kind": "calendar",
+              "axisToken": "axis.0",
+              "endpoint": "self",
+              "baseline": {
+                "kind": "calendar",
+                "name": "calendar:month",
+                "at": null,
+                "timezone": "UTC",
+                "grain": {
+                  "kind": "builtin",
+                  "unit": "month",
+                  "step": 1
+                }
+              }
+            },
+            "presence": null,
+            "currentFixedAxes": [],
+            "baselineFixedAxes": []
+          }
+        ],
+        "decompositions": [
+          {
+            "target": {
+              "kind": "absolute",
+              "comparison": 0,
+              "group": "q"
+            },
+            "groups": [
+              {
+                "kind": "axis",
+                "axisToken": "axis.0"
+              }
+            ],
+            "rowScope": "complete",
+            "outputs": [
+              {
+                "fieldKind": "value",
+                "role": "contribution",
+                "name": "contribution.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "total",
+                "name": "total.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "observed_total",
+                "name": "observed_total.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "share",
+                "name": "contribution_share.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "contribution_std_error",
+                "name": "contribution_std_error.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "current",
+                "name": "detail.current.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "baseline",
+                "name": "detail.baseline.change"
+              },
+              {
+                "fieldKind": "value",
+                "role": "absolute",
+                "name": "detail.absolute.change"
+              },
+              {
+                "fieldKind": "presence",
+                "role": "current_present",
+                "name": "detail.current.present.change"
+              },
+              {
+                "fieldKind": "presence",
+                "role": "baseline_present",
+                "name": "detail.baseline.present.change"
+              }
+            ]
+          }
+        ],
+        "alignments": []
+      },
+      "periods": {
+        "status": "captured",
+        "pages": [
+          {
+            "target": {
+              "kind": "axis",
+              "axisToken": "axis.0"
+            },
+            "totalCount": 1,
+            "hasMore": false,
+            "items": [
+              {
+                "kind": "calendar",
+                "key": ["2026-09-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-09-01T00:00:00+00:00",
+                "end": "2026-10-01T00:00:00+00:00",
+                "label": "2026-09-01",
+                "nominalStart": "2026-09-01T00:00:00+00:00",
+                "nominalEnd": "2026-10-01T00:00:00+00:00"
+              }
+            ]
+          },
+          {
+            "target": {
+              "kind": "comparison",
+              "comparison": 0
+            },
+            "totalCount": 1,
+            "hasMore": false,
+            "items": [
+              {
+                "kind": "comparison",
+                "key": ["2026-09-01T00:00:00+00:00"],
+                "current": {
+                  "kind": "calendar",
+                  "key": ["2026-09-01T00:00:00+00:00"],
+                  "timezone": "UTC",
+                  "start": "2026-09-01T00:00:00+00:00",
+                  "end": "2026-10-01T00:00:00+00:00",
+                  "label": "2026-09-01",
+                  "nominalStart": "2026-09-01T00:00:00+00:00",
+                  "nominalEnd": "2026-10-01T00:00:00+00:00"
+                },
+                "baseline": {
+                  "kind": "calendar",
+                  "key": ["2026-08-01T00:00:00+00:00"],
+                  "timezone": "UTC",
+                  "start": "2026-08-01T00:00:00+00:00",
+                  "end": "2026-09-01T00:00:00+00:00",
+                  "label": "2026-08-01",
+                  "nominalStart": "2026-08-01T00:00:00+00:00",
+                  "nominalEnd": "2026-09-01T00:00:00+00:00"
+                },
+                "absentReason": null
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

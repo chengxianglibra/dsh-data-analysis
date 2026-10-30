@@ -1,0 +1,561 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "region",
+        "label": "region",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "id": "left.revenue",
+        "label": "left.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "right.orders",
+        "label": "right.orders",
+        "type": "int64",
+        "nullable": true,
+        "unit": "1"
+      },
+      {
+        "id": "left_present",
+        "label": "left_present",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "id": "right_present",
+        "label": "right_present",
+        "type": "boolean",
+        "nullable": false
+      }
+    ],
+    "rows": [["east", "610", "6", true, true], ["south", "90", "3", true, true]],
+    "rowCount": 2,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 2,
+    "capturedRows": 2,
+    "complete": true,
+    "columns": ["region", "left.revenue", "right.orders", "left_present", "right_present"],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_2c98b72cd69a4113a9ad95e34ec7c465",
+    "description": null,
+    "fields": [
+      {
+        "id": "region",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "left.revenue",
+        "role": "value",
+        "slotId": "value.0"
+      },
+      {
+        "id": "right.orders",
+        "role": "value",
+        "slotId": "value.1"
+      },
+      {
+        "id": "left_present",
+        "role": "presence",
+        "slotId": "presence.0"
+      },
+      {
+        "id": "right_present",
+        "role": "presence",
+        "slotId": "presence.1"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "region",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "key"
+      },
+      {
+        "kind": "field",
+        "name": "left.revenue",
+        "slotId": "value.0"
+      },
+      {
+        "kind": "field",
+        "name": "right.orders",
+        "slotId": "value.1"
+      },
+      {
+        "kind": "field",
+        "name": "left_present",
+        "slotId": "presence.0"
+      },
+      {
+        "kind": "field",
+        "name": "right_present",
+        "slotId": "presence.1"
+      }
+    ],
+    "axes": [
+      {
+        "token": "axis.0",
+        "name": "sales.customer.region",
+        "role": "field",
+        "keys": [
+          {
+            "id": "sales.customer.region",
+            "slotId": "key.0",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": true,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "ordinary"
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "left.revenue",
+        "slotId": "value.0",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "right.orders",
+        "slotId": "value.1",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "1"
+      },
+      {
+        "id": "left_present",
+        "slotId": "presence.0",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "right_present",
+        "slotId": "presence.1",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "sales.customer.region",
+        "slotId": "key.0",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": true,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "key.0": {
+        "column": {
+          "id": "sales.customer.region",
+          "label": "sales.customer.region",
+          "type": "string",
+          "nullable": true
+        },
+        "values": ["east", "south"]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 2,
+      "coordinateRowsRead": 0,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "axis.0",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "left.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "right.orders",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.order_count",
+                "definitionId": "sha256:8ecb1cb42e3f431561b76011026d53d620c4b7ce19ca94b9fcee8fda8c374fd3"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "left_present",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "right_present",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {
+          "left.revenue": {
+            "kind": "observation",
+            "subject": {
+              "kind": "metric",
+              "path": "sales.revenue",
+              "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+            },
+            "time": null,
+            "window": null
+          },
+          "right.orders": {
+            "kind": "observation",
+            "subject": {
+              "kind": "metric",
+              "path": "sales.order_count",
+              "definitionId": "sha256:8ecb1cb42e3f431561b76011026d53d620c4b7ce19ca94b9fcee8fda8c374fd3"
+            },
+            "time": null,
+            "window": null
+          }
+        },
+        "comparisons": [],
+        "decompositions": [],
+        "alignments": [
+          {
+            "left": {
+              "values": ["left.revenue"],
+              "presence": ["left_present"],
+              "coordinates": [
+                {
+                  "kind": "axis",
+                  "axisToken": "axis.0",
+                  "endpoint": "self"
+                }
+              ]
+            },
+            "right": {
+              "values": ["right.orders"],
+              "presence": ["right_present"],
+              "coordinates": [
+                {
+                  "kind": "axis",
+                  "axisToken": "axis.0",
+                  "endpoint": "self"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "periods": {
+        "status": "captured",
+        "pages": []
+      }
+    }
+  }
+}

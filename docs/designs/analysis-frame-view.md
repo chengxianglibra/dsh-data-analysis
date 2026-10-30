@@ -2,7 +2,7 @@
 
 ## 状态与依据
 
-状态：设计提案，未实施。创建日期：2026-10-30。
+状态：已实施（2026-10-30），实现与本文的差异及验收见[验收记录](../testing/analysis-frame-view-2026-10-30.md)。创建日期：2026-10-30。
 
 本文按 Marivo 不同分析产出的 AnalysisFrame 分类，定义 `AnalysisFrameView` 的 OpenUI Lang 签名、快照契约扩展和各类展示方案，
 细化[统一分析 UI 设计](unified-analysis-ui.md)中的 Frame 部分。当前实现边界见

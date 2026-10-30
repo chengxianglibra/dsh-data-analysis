@@ -3,7 +3,13 @@ import path from 'node:path'
 import { z } from 'zod'
 import { readPythonCaptures } from '../python-execution.ts'
 import type { PythonCaptureRecord, PythonCodeRef } from '../python-execution-contracts.ts'
-import { type DatasetSnapshot, parseAnalysisSnapshot } from './contracts/snapshot.ts'
+import {
+  type AnalysisSnapshot,
+  type DatasetSnapshot,
+  type FrameSnapshotV2,
+  isFrameSnapshotV2,
+  parseAnalysisSnapshot,
+} from './contracts/snapshot.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { presentationSha256, readReportFile } from './files.ts'
 
@@ -22,13 +28,23 @@ const manifestSchema = z.strictObject({
     .max(16),
 })
 
+export type CapturedSnapshotKind = 'dataset' | 'frame'
+export type CapturedSnapshotEntry = PythonCaptureRecord['entries'][number] & {
+  kind: CapturedSnapshotKind
+}
+/** capture_dataset writes Dataset snapshots; capture_frame writes only v2 Frame snapshots. */
+function capturedKind(snapshot: AnalysisSnapshot): CapturedSnapshotKind | undefined {
+  if (snapshot.kind === 'dataset') return 'dataset'
+  return isFrameSnapshotV2(snapshot) ? 'frame' : undefined
+}
+
 /** Read only the exact per-call manifest, without scanning the Workspace or stdout. */
-export async function collectDatasetCaptures(
+export async function collectSnapshotCaptures(
   root: string,
   directory: string,
   secrets: readonly string[],
   signal?: AbortSignal,
-): Promise<PythonCaptureRecord['entries']> {
+): Promise<CapturedSnapshotEntry[]> {
   const filename = path.join(root, directory, 'manifest.json')
   try {
     await lstat(filename)
@@ -49,6 +65,7 @@ export async function collectDatasetCaptures(
     new Set(manifest.entries.map((e) => e.captureId)).size !== manifest.entries.length
   )
     throw new Error('dataset-capture-failed')
+  const entries: CapturedSnapshotEntry[] = []
   for (const entry of manifest.entries) {
     if (entry.path !== `${directory}/${entry.captureId}.json`)
       throw new Error('dataset-capture-path-mismatch')
@@ -63,7 +80,8 @@ export async function collectDatasetCaptures(
     const snapshot = parseAnalysisSnapshot(
       JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
     )
-    if (snapshot.kind !== 'dataset') throw new Error('dataset-capture-kind-mismatch')
+    const kind = capturedKind(snapshot)
+    if (!kind) throw new Error('dataset-capture-kind-mismatch')
     const containsSecret = (value: unknown): boolean => {
       if (typeof value === 'string')
         return secrets.some((secret) => secret && value.includes(secret))
@@ -73,32 +91,68 @@ export async function collectDatasetCaptures(
       return false
     }
     if (containsSecret(snapshot)) throw new Error('dataset-capture-forbidden')
+    entries.push({ ...entry, kind })
   }
-  return manifest.entries
+  return entries
 }
 
+/** Snapshot references carry their kind; reading checks the saved snapshot against it. */
+export function capturedSnapshotRef(
+  kind: CapturedSnapshotKind,
+  code: PythonCodeRef,
+  captureId: string,
+): string {
+  return `marivo-${kind}:${code.executionId}:${code.sha256}:${captureId}`
+}
 export function datasetSnapshotRef(code: PythonCodeRef, captureId: string): string {
-  return `marivo-dataset:${code.executionId}:${code.sha256}:${captureId}`
+  return capturedSnapshotRef('dataset', code, captureId)
+}
+export function frameSnapshotRef(code: PythonCodeRef, captureId: string): string {
+  return capturedSnapshotRef('frame', code, captureId)
 }
 
+interface CapturedSnapshot<T> {
+  snapshot: T
+  codeRef: PythonCodeRef
+  owner: Omit<PythonCaptureRecord, 'entries'>
+}
 /** Resolve Host provenance before reading Workspace bytes. Never starts Python or SQL. */
-export async function readDatasetSnapshot(
+export function readDatasetSnapshot(
   root: string,
   workspaceId: string,
   snapshotRef: string,
   signal?: AbortSignal,
-): Promise<{
-  snapshot: DatasetSnapshot
-  codeRef: PythonCodeRef
-  owner: Omit<PythonCaptureRecord, 'entries'>
-}> {
-  const match = /^marivo-dataset:([a-f0-9-]{36}):([a-f0-9]{64}):([a-f0-9-]{36})$/.exec(snapshotRef)
-  if (!match) throw new Error('dataset-snapshot-reference-invalid')
-  const codeRef = { executionId: match[1]!, sha256: match[2]! }
+): Promise<CapturedSnapshot<DatasetSnapshot>> {
+  return readCapturedSnapshot(root, workspaceId, snapshotRef, 'dataset', signal) as Promise<
+    CapturedSnapshot<DatasetSnapshot>
+  >
+}
+export function readFrameSnapshot(
+  root: string,
+  workspaceId: string,
+  snapshotRef: string,
+  signal?: AbortSignal,
+): Promise<CapturedSnapshot<FrameSnapshotV2>> {
+  return readCapturedSnapshot(root, workspaceId, snapshotRef, 'frame', signal) as Promise<
+    CapturedSnapshot<FrameSnapshotV2>
+  >
+}
+async function readCapturedSnapshot(
+  root: string,
+  workspaceId: string,
+  snapshotRef: string,
+  kind: CapturedSnapshotKind,
+  signal?: AbortSignal,
+): Promise<CapturedSnapshot<AnalysisSnapshot>> {
+  const match = /^marivo-(dataset|frame):([a-f0-9-]{36}):([a-f0-9]{64}):([a-f0-9-]{36})$/.exec(
+    snapshotRef,
+  )
+  if (!match || match[1] !== kind) throw new Error(`${kind}-snapshot-reference-invalid`)
+  const codeRef = { executionId: match[2]!, sha256: match[3]! }
   const { entries, ...owner } = await readPythonCaptures(root, codeRef, signal)
-  if (owner.workspaceId !== workspaceId) throw new Error('dataset-snapshot-workspace-mismatch')
-  const entry = entries.find((e) => e.captureId === match[3])
-  if (!entry) throw new Error('dataset-snapshot-reference-invalid')
+  if (owner.workspaceId !== workspaceId) throw new Error(`${kind}-snapshot-workspace-mismatch`)
+  const entry = entries.find((e) => e.captureId === match[4])
+  if (!entry) throw new Error(`${kind}-snapshot-reference-invalid`)
   const bytes = await readReportFile(
     root,
     path.join(root, entry.path),
@@ -106,10 +160,10 @@ export async function readDatasetSnapshot(
     signal,
   )
   if (presentationSha256(bytes) !== entry.sha256)
-    throw new Error('dataset-snapshot-digest-mismatch')
+    throw new Error(`${kind}-snapshot-digest-mismatch`)
   const snapshot = parseAnalysisSnapshot(
     JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
   )
-  if (snapshot.kind !== 'dataset') throw new Error('dataset-snapshot-kind-mismatch')
+  if (capturedKind(snapshot) !== kind) throw new Error(`${kind}-snapshot-kind-mismatch`)
   return { snapshot, codeRef, owner }
 }

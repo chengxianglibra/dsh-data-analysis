@@ -39,7 +39,7 @@ test('initial Frame projections use one checked execution and reject identity re
       packagePath: '/runtime/marivo/__init__.py',
       fingerprint: 'f'.repeat(64),
       subprocessPolicyId: 'fixture',
-      presentationKit: { version: '1.4.0', packagePath: '/runtime/kit/__init__.py' },
+      presentationKit: { version: '1.5.0', packagePath: '/runtime/kit/__init__.py' },
     },
     async runChecked(request) {
       calls.push(request)

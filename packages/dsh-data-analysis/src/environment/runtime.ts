@@ -29,10 +29,10 @@ export const SHARED_PYTHON_SPEC = '3.10'
 const PINNED_MARIVO_VERSION = MARIVO_VERSION
 export const SHARED_MARIVO_PACKAGE_SPEC = MARIVO_PACKAGE_SPEC
 export const PRESENTATION_KIT_DISTRIBUTION = 'dsh-data-analysis-presentation-kit'
-export const PRESENTATION_KIT_VERSION = '1.4.0'
+export const PRESENTATION_KIT_VERSION = '1.5.0'
 export const PRESENTATION_KIT_PANDAS_RANGE = '>=2.2.0,<3.0.0'
 export const PRESENTATION_KIT_WHEEL_FILENAME =
-  'dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl'
+  'dsh_data_analysis_presentation_kit-1.5.0-py3-none-any.whl'
 export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 
 const INSTALLATION_SCHEMA = RUNTIME_INSTALLATION_VERSION
@@ -69,7 +69,7 @@ print(json.dumps({
     "presentation_kit_import_identity": os.path.realpath(dsh_data_analysis_presentation.__file__ or "") == os.path.realpath(
         presentation_distribution.locate_file("dsh_data_analysis_presentation/__init__.py")
     ),
-    "presentation_kit_public_imports": callable(dsh_data_analysis_presentation.capture_dataset),
+    "presentation_kit_public_imports": callable(dsh_data_analysis_presentation.capture_dataset) and callable(dsh_data_analysis_presentation.capture_frame),
 }, sort_keys=True))
 `.trim()
 const PYTHON_VERSION_SCRIPT = String.raw`

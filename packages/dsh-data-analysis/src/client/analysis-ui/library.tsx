@@ -3,31 +3,37 @@ import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
 import { useState } from 'react'
 import { z } from 'zod/v4'
+import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
 import { Markdown } from '../presentation/markdown.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisDataView } from './data-view.tsx'
 
-const viewSchema = z.union([
+const datasetView = z.union([
   z.object({ chart: z.literal('auto') }).strict(),
   z.object({ chart: z.literal('table'), columns: z.array(z.string()).optional() }).strict(),
   z
     .object({ chart: z.literal('metric'), encoding: z.object({ value: z.string() }).strict() })
     .strict(),
 ])
-const displaySchema = z
+const datasetDisplay = z
   .object({ height: z.number().int().positive().max(1200).optional() })
   .strict()
-const dataProps = z.object({
+const frameProps = z.object({
   ref: z.string().min(1),
-  view: viewSchema.optional(),
-  display: displaySchema.optional(),
+  view: frameViewSchema.optional(),
+  display: frameDisplaySchema.optional(),
+})
+const datasetProps = z.object({
+  ref: z.string().min(1),
+  view: datasetView.optional(),
+  display: datasetDisplay.optional(),
 })
 
 export const AnalysisFrameView = defineComponent({
   name: 'AnalysisFrameView',
   description:
-    'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
-  props: dataProps.clone(),
+    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
+  props: frameProps,
   component: ({ props }) => (
     <AnalysisDataView
       kind="frame"
@@ -41,7 +47,7 @@ export const DatasetView = defineComponent({
   name: 'DatasetView',
   description:
     'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
-  props: dataProps.clone(),
+  props: datasetProps,
   component: ({ props }) => (
     <AnalysisDataView
       kind="dataset"

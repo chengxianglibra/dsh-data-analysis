@@ -63,7 +63,7 @@ if payload.get("captureDirectory") and expected.get("presentationKit"):
     if (presentation.__version__ != expected_kit["version"] or kit.version != expected_kit["version"] or
         os.path.realpath(presentation.__file__) != os.path.realpath(expected_kit["packagePath"]) or
         os.path.realpath(presentation.__file__) != os.path.realpath(kit.locate_file("dsh_data_analysis_presentation/__init__.py")) or
-        not callable(presentation.capture_dataset)):
+        not callable(presentation.capture_dataset) or not callable(presentation.capture_frame)):
         raise RuntimeError("Presentation helper execution identity changed; rebind required")
     from dsh_data_analysis_presentation._capture import _capture_scope
     capture = _capture_scope(payload["project_root"], payload["captureDirectory"], tuple(resolver.values.values()))

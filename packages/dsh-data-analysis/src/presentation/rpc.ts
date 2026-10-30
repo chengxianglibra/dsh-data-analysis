@@ -1,8 +1,10 @@
 import path from 'node:path'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
+import { readPythonExecution } from '../python-execution.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { readReceiptAsset } from './asset.ts'
+import { parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
   PresentationContractError,
   parsePresentationBuildId,
@@ -159,6 +161,72 @@ export class MarivoPresentationFileService {
       bodyBase64: bytes.toString('base64'),
     }
   }
+  code(payload: unknown, caller = new AbortController().signal) {
+    return this.#tasks.track(this.#code(payload, caller))
+  }
+  /**
+   * Python source for a codeRef bound by the Host to a resource of the exact saved document
+   * named by the receipt. Never resolves execution IDs outside that document or Workspace.
+   */
+  async #code(payload: unknown, caller = new AbortController().signal) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      throw new Error('invalid-request')
+    const input = payload as Record<string, unknown>
+    if (
+      Object.keys(input).sort().join(',') !==
+      ['codeRef', 'receipt', this.#scope(input)].sort().join(',')
+    )
+      throw new Error('invalid-request')
+    const raw = input.codeRef
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      Array.isArray(raw) ||
+      Object.keys(raw).sort().join(',') !== 'executionId,sha256'
+    )
+      throw new Error('invalid-request')
+    const { executionId, sha256 } = raw as Record<string, unknown>
+    if (
+      typeof executionId !== 'string' ||
+      !/^[0-9a-f-]{36}$/.test(executionId) ||
+      typeof sha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(sha256)
+    )
+      throw new Error('invalid-request')
+    const receipt = structuredClone(parsePresentationReceipt(input.receipt))
+    const workspace = await this.#workspace(input)
+    if (!workspace || workspace.id !== receipt.workspaceId) throw new Error('workspace-unavailable')
+    const root = path.resolve(workspace.path)
+    const { bytes } = await readReceiptAsset(root, workspace.id, receipt, signal)
+    const document = parseSavedPresentation(
+      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+    )
+    if (
+      !Object.values(document.resources).some(
+        (r) =>
+          r.kind === 'snapshot' &&
+          r.binding.codeRef?.executionId === executionId &&
+          r.binding.codeRef.sha256 === sha256,
+      )
+    )
+      throw new Error('code-not-bound')
+    let snippet: Awaited<ReturnType<typeof readPythonExecution>>
+    try {
+      snippet = await readPythonExecution(root, { executionId, sha256 }, signal)
+    } catch (error) {
+      signal.throwIfAborted()
+      throw error instanceof Error && /^Python execution source/.test(error.message)
+        ? new Error('code-unavailable')
+        : error
+    }
+    const current = await this.#workspace(input)
+    if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    return { text: snippet.text, sha256: snippet.sha256 }
+  }
 }
 
 export function registerMarivoPresentationRpc(
@@ -168,7 +236,7 @@ export function registerMarivoPresentationRpc(
   const unregister = registerPluginRpc(
     connection,
     MARIVO_PRESENTATION_RPC_CHANNEL,
-    ['reports/resolve', 'reports/list', 'reports/history', 'files/read'],
+    ['reports/resolve', 'reports/list', 'reports/history', 'files/read', 'code/read'],
     async (endpoint, payload, signal) => {
       try {
         if (endpoint === 'reports/resolve')
@@ -177,6 +245,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.catalog(endpoint, payload, signal) }
         if (endpoint === 'files/read')
           return { ok: true, value: await service.read(payload, signal) }
+        if (endpoint === 'code/read')
+          return { ok: true, value: await service.code(payload, signal) }
         throw new Error('unknown-endpoint')
       } catch (error) {
         const message = signal.aborted
@@ -186,7 +256,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large)$/.test(
+                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable)$/.test(
                     error.message,
                   )
                 ? error.message

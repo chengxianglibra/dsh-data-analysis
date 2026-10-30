@@ -21,12 +21,14 @@ import {
   type MarivoPythonExecutionSummary,
   registerMarivoPythonTool,
 } from '../../src/datasource/python.ts'
-import { readDatasetSnapshot } from '../../src/presentation/dataset-snapshot.ts'
+import { readDatasetSnapshot, readFrameSnapshot } from '../../src/presentation/dataset-snapshot.ts'
 import {
   type PythonCodeRef,
   readPythonExecution,
   savePythonExecution,
 } from '../../src/python-execution.ts'
+import { frameSnapshotV2 } from '../presentation-integration/frame-v2-fixture.ts'
+import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 import { fixture } from './fixtures.ts'
 
 const now = '2026-09-07T00:00:00.000Z'
@@ -265,7 +267,7 @@ async function tool(t: TestContext) {
         codeRef?: PythonCodeRef
         codeCaptureError?: string
         snapshotCaptureError?: string
-        snapshots?: { captureId: string; snapshotRef: string }[]
+        snapshots?: { kind: 'dataset' | 'frame'; captureId: string; snapshotRef: string }[]
         execution: MarivoPythonExecutionSummary
       },
   }
@@ -288,14 +290,18 @@ test('registered Python tool captures original code only after one successful ex
   assert.equal(JSON.parse(p.requests[0]!.stdin!).code, input.text)
 })
 
-async function captured(p: Awaited<ReturnType<typeof tool>>, failed = false) {
+async function captured(
+  p: Awaited<ReturnType<typeof tool>>,
+  failed = false,
+  kinds: ('dataset' | 'frame' | 'frame-v1')[] = ['dataset', 'dataset'],
+) {
   Reflect.set(p.f.exec.agent!.session.header, 'workspaceId', 'workspace')
   const files: string[] = []
   p.hooks.run = async () => {
     const directory = JSON.parse(p.requests[0]!.stdin!).captureDirectory as string
     await mkdir(path.join(p.f.bridge.binding.projectRoot, directory), { recursive: true })
     const entries = []
-    for (let i = 0; i < 2; i++) {
+    for (const kind of kinds) {
       const captureId = randomUUID()
       const relative = `${directory}/${captureId}.json`
       const data = {
@@ -307,21 +313,27 @@ async function captured(p: Awaited<ReturnType<typeof tool>>, failed = false) {
         truncated: true,
       }
       const bytes = Buffer.from(
-        JSON.stringify({
-          schemaVersion: 1,
-          kind: 'dataset',
-          fetchedAt: now,
-          data,
-          coverage: {
-            start: 0,
-            totalRows: 2,
-            capturedRows: 1,
-            complete: false,
-            columns: ['x'],
-            business: 'unknown',
-          },
-          source: { kind: 'dataframe', details: 'not-captured' },
-        }),
+        JSON.stringify(
+          kind === 'frame'
+            ? frameSnapshotV2()
+            : kind === 'frame-v1'
+              ? frameSnapshot()
+              : {
+                  schemaVersion: 1,
+                  kind: 'dataset',
+                  fetchedAt: now,
+                  data,
+                  coverage: {
+                    start: 0,
+                    totalRows: 2,
+                    capturedRows: 1,
+                    complete: false,
+                    columns: ['x'],
+                    business: 'unknown',
+                  },
+                  source: { kind: 'dataframe', details: 'not-captured' },
+                },
+        ),
       )
       const filename = path.join(p.f.bridge.binding.projectRoot, relative)
       files.push(filename)
@@ -347,6 +359,7 @@ test('same-call captures bind exact Workspace, code and call without replay, the
   assert.equal(p.launches, 1)
   assert.equal(result.snapshotCaptureError, undefined)
   assert.equal(result.snapshots?.length, 2)
+  assert.equal(result.snapshots![0]!.kind, 'dataset')
   const ref = result.snapshots![0]!.snapshotRef
   const root = p.f.bridge.binding.projectRoot
   const restored = await readDatasetSnapshot(root, 'workspace', ref)
@@ -360,6 +373,51 @@ test('same-call captures bind exact Workspace, code and call without replay, the
   await writeFile(files[0]!, '{}')
   await assert.rejects(readDatasetSnapshot(root, 'workspace', ref), /digest/)
   assert.equal(p.launches, 1)
+})
+
+test('capture_frame v2 snapshots issue kind-prefixed refs that read back only as Frames', async (t) => {
+  const p = await tool(t)
+  await captured(p, false, ['dataset', 'frame'])
+  const result = await p.call()
+  assert.equal(result.snapshotCaptureError, undefined)
+  assert.deepEqual(
+    result.snapshots?.map((s) => s.kind),
+    ['dataset', 'frame'],
+  )
+  const [data, frame] = result.snapshots!
+  assert.match(data!.snapshotRef, /^marivo-dataset:/)
+  assert.equal(
+    frame!.snapshotRef,
+    `marivo-frame:${result.codeRef!.executionId}:${result.codeRef!.sha256}:${frame!.captureId}`,
+  )
+  const root = p.f.bridge.binding.projectRoot
+  const restored = await readFrameSnapshot(root, 'workspace', frame!.snapshotRef)
+  assert.deepEqual(restored.codeRef, result.codeRef)
+  assert.equal(restored.snapshot.schemaVersion, 2)
+  assert.equal(restored.snapshot.source.artifactId, null)
+  await assert.rejects(
+    readDatasetSnapshot(root, 'workspace', frame!.snapshotRef),
+    /reference-invalid/,
+  )
+  await assert.rejects(readFrameSnapshot(root, 'workspace', data!.snapshotRef), /reference-invalid/)
+  await assert.rejects(
+    readFrameSnapshot(
+      root,
+      'workspace',
+      data!.snapshotRef.replace(/^marivo-dataset/, 'marivo-frame'),
+    ),
+    /frame-snapshot-kind-mismatch/,
+  )
+  assert.equal(p.launches, 1)
+})
+
+test('legacy v1 Frame captures are rejected without issuing snapshot references', async (t) => {
+  const p = await tool(t)
+  await captured(p, false, ['frame-v1'])
+  const result = await p.call()
+  assert.equal(result.snapshots, undefined)
+  assert.match(result.snapshotCaptureError!, /No snapshotRef/)
+  assert.ok(result.codeRef)
 })
 
 test('failed capture and failed executions never issue snapshot references or replay', async (t) => {

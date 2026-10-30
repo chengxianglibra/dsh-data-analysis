@@ -6,7 +6,11 @@ import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { collectDatasetCaptures, datasetSnapshotRef } from '../presentation/dataset-snapshot.ts'
+import {
+  type CapturedSnapshotKind,
+  capturedSnapshotRef,
+  collectSnapshotCaptures,
+} from '../presentation/dataset-snapshot.ts'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
 import type { PythonCaptureRecord } from '../python-execution-contracts.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
@@ -75,7 +79,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. Waits for missing credentials for every declared datasource before starting code once; no automatic execution replay. No background execution or secret environment variables. Success returns codeRef. To retain a pandas DataFrame, call dsh_data_analysis_presentation.capture_dataset(frame) during this execution; success also returns snapshots with captureId and snapshotRef. Capture errors leave the Python execution outcome unchanged; do not rerun to recover snapshots. Inspect execution phase, outcome and nextAction after failure; timeout does not prove remote query cancellation or absence of saved results.',
+        'Execute foreground Python in the bound Runtime and Workspace, including local pandas and native DuckDB file analysis. Waits for missing credentials for every declared datasource before starting code once; no automatic execution replay. No background execution or secret environment variables. Success returns codeRef. To retain a pandas DataFrame (including one from to_pandas), call dsh_data_analysis_presentation.capture_dataset(df) during this execution; capture_frame(frame) retains a completed AnalysisFrame. Success also returns snapshots with kind, captureId and snapshotRef. Capture errors leave the Python execution outcome unchanged; do not rerun to recover snapshots. Inspect execution phase, outcome and nextAction after failure; timeout does not prove remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
@@ -233,6 +237,7 @@ export function registerMarivoPythonTool(
           let codeCaptureError: string | undefined
           let snapshotCaptureError: string | undefined
           let captures: PythonCaptureRecord | undefined
+          let captureKinds: CapturedSnapshotKind[] = []
           if (result.exitCode === 0 && !result.timedOut && !result.aborted) {
             phase = 'capturing-code'
             try {
@@ -241,8 +246,8 @@ export function registerMarivoPythonTool(
                 throw new Error('Host credential in submitted code')
               try {
                 if (captureFailed) throw new Error('dataset-capture-worker-failed')
-                const entries = await service.track(
-                  collectDatasetCaptures(
+                const collected = await service.track(
+                  collectSnapshotCaptures(
                     binding.projectRoot,
                     captureDirectory,
                     Object.values(prepared.values),
@@ -250,7 +255,7 @@ export function registerMarivoPythonTool(
                   ),
                 )
                 prepared.assertCurrent()
-                if (entries.length) {
+                if (collected.length) {
                   const session = exec.agent!.session
                   const current = resolveCaptureWorkspace?.()
                   if (
@@ -269,8 +274,10 @@ export function registerMarivoPythonTool(
                     sessionId: String(session.id),
                     callId: String(exec.callId),
                     rootCallId: String(exec.rootCallId ?? exec.callId),
-                    entries,
+                    // The saved record keeps the unchanged manifest entry shape.
+                    entries: collected.map(({ kind: _kind, ...entry }) => entry),
                   }
+                  captureKinds = collected.map((entry) => entry.kind)
                 }
               } catch {
                 captures = undefined
@@ -324,9 +331,14 @@ export function registerMarivoPythonTool(
               ...(codeCaptureError ? { codeCaptureError } : {}),
               ...(codeRef && captures
                 ? {
-                    snapshots: captures.entries.map((entry) => ({
+                    snapshots: captures.entries.map((entry, index) => ({
+                      kind: captureKinds[index]!,
                       captureId: entry.captureId,
-                      snapshotRef: datasetSnapshotRef(codeRef!, entry.captureId),
+                      snapshotRef: capturedSnapshotRef(
+                        captureKinds[index]!,
+                        codeRef!,
+                        entry.captureId,
+                      ),
                     })),
                   }
                 : {}),

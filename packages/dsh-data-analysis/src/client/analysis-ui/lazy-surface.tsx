@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import { useCopy } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
+import type { AnalysisResourceContext } from './context.tsx'
 import type { AnalysisRendererProps } from './surface.tsx'
 
 // OpenUI initializes browser-only dependencies. Keep it out of non-rendering Host slot setup.
@@ -22,14 +23,16 @@ export function CandidateAnalysisSurface(props: AnalysisRendererProps) {
 export function SavedAnalysisSurface({
   document,
   openSemanticRef,
+  readCode,
 }: {
   document: AnalysisDocument
   openSemanticRef?: OpenSemanticRef
+  readCode?: AnalysisResourceContext['readCode']
 }) {
   const t = useCopy()
   return (
     <Suspense fallback={<p role="status">{t('marivo.presentation.ui-loading')}</p>}>
-      <Surface document={document} openSemanticRef={openSemanticRef} />
+      <Surface document={document} openSemanticRef={openSemanticRef} readCode={readCode} />
     </Suspense>
   )
 }

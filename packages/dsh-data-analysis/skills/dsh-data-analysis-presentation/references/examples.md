@@ -44,19 +44,36 @@ for frame in (full, selected, summary):
 
 ## 单值与 Frame
 
-metric 必须指向完整的单行结果，并用 encoding 指定列。下例把已有 Marivo Frame 与单行汇总放在同一页：
+metric 必须指向完整的单行结果。下例把原执行中 `capture_frame` 捕获的 Frame 与单行汇总放在同一页：
 
 ```json
 {
   "resources": {
     "total": {"kind": "dataset-snapshot", "snapshotRef": "实际单行汇总引用"},
-    "trend": {"kind": "marivo-frame", "sessionId": "example-session", "artifactId": "example-artifact"}
+    "trend": {"kind": "frame-snapshot", "snapshotRef": "实际 Frame 引用"}
   },
-  "program": "root = Card([TextContent(\"本期合计与按日明细\"), DatasetView(\"total\", {chart: \"metric\", encoding: {value: \"current\"}}), AnalysisFrameView(\"trend\", {chart: \"table\"}, {height: 320})]);"
+  "program": "root = Card([TextContent(\"本期合计与按日明细\"), DatasetView(\"total\", {chart: \"metric\", encoding: {value: \"current\"}}), AnalysisFrameView(\"trend\")]);"
 }
 ```
 
-展示层不计算总计、达成率或同比；这些值需要在原分析中先算出并捕获。
+展示层不计算总计、达成率或同比；这些值需要在原分析中先算出并捕获。AnalysisFrameView 的比较与分解图只画 Frame 已有的
+compare/attribute 输出列，`auto` 已按结构选择默认视图。
+
+## Frame 看板
+
+多个比较结果并排时，用 compact 只保留值名和头部数字；encoding 用其中任一输出列定位所属比较组：
+
+```json
+{
+  "surface": "tab",
+  "resources": {
+    "gmv": {"kind": "frame-snapshot", "snapshotRef": "实际 GMV 比较引用"},
+    "daily": {"kind": "frame-snapshot", "snapshotRef": "实际按日观察引用"},
+    "by_region": {"kind": "frame-snapshot", "snapshotRef": "实际地区分解引用"}
+  },
+  "program": "root = Stack([gmv, trend, bridge]);\ngmv = AnalysisFrameView(\"gmv\", {chart: \"comparison\"}, {density: \"compact\"});\ntrend = AnalysisFrameView(\"daily\");\nbridge = AnalysisFrameView(\"by_region\", {chart: \"decomposition\"});"
+}
+```
 
 ## 文件结果与图片
 

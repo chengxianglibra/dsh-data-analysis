@@ -1,0 +1,1128 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "calendar:month.start",
+        "label": "calendar:month.start",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "calendar:month.end",
+        "label": "calendar:month.end",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "region",
+        "label": "region",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "id": "contribution.revenue",
+        "label": "contribution.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "total.revenue",
+        "label": "total.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "observed_total.revenue",
+        "label": "observed_total.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "contribution_share.revenue",
+        "label": "contribution_share.revenue",
+        "type": "float64",
+        "nullable": true,
+        "unit": "1"
+      },
+      {
+        "id": "detail.value.revenue",
+        "label": "detail.value.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "detail.value.present.revenue",
+        "label": "detail.value.present.revenue",
+        "type": "boolean",
+        "nullable": false
+      }
+    ],
+    "rows": [
+      [
+        "2026-07-01T00:00:00+00:00",
+        "2026-08-01T00:00:00+00:00",
+        "east",
+        "200",
+        "250",
+        "250",
+        0.8,
+        "200",
+        true
+      ],
+      [
+        "2026-07-01T00:00:00+00:00",
+        "2026-08-01T00:00:00+00:00",
+        "south",
+        "50",
+        "250",
+        "250",
+        0.2,
+        "50",
+        true
+      ],
+      [
+        "2026-08-01T00:00:00+00:00",
+        "2026-09-01T00:00:00+00:00",
+        "east",
+        "180",
+        "210",
+        "210",
+        0.8571428571428571,
+        "180",
+        true
+      ],
+      [
+        "2026-08-01T00:00:00+00:00",
+        "2026-09-01T00:00:00+00:00",
+        "south",
+        "30",
+        "210",
+        "210",
+        0.14285714285714285,
+        "30",
+        true
+      ],
+      [
+        "2026-09-01T00:00:00+00:00",
+        "2026-10-01T00:00:00+00:00",
+        "east",
+        "230",
+        "240",
+        "240",
+        0.9583333333333334,
+        "230",
+        true
+      ],
+      [
+        "2026-09-01T00:00:00+00:00",
+        "2026-10-01T00:00:00+00:00",
+        "south",
+        "10",
+        "240",
+        "240",
+        0.041666666666666664,
+        "10",
+        true
+      ]
+    ],
+    "rowCount": 6,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 6,
+    "capturedRows": 6,
+    "complete": true,
+    "columns": [
+      "calendar:month.start",
+      "calendar:month.end",
+      "region",
+      "contribution.revenue",
+      "total.revenue",
+      "observed_total.revenue",
+      "contribution_share.revenue",
+      "detail.value.revenue",
+      "detail.value.present.revenue"
+    ],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_b25f3df5a28f4182be071d3985631e0e",
+    "description": null,
+    "fields": [
+      {
+        "id": "calendar:month.start",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "calendar:month.end",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "region",
+        "role": "coordinate",
+        "axisToken": "attribute.axis.1"
+      },
+      {
+        "id": "contribution.revenue",
+        "role": "value",
+        "slotId": "attribute.report.0"
+      },
+      {
+        "id": "total.revenue",
+        "role": "value",
+        "slotId": "attribute.report.1"
+      },
+      {
+        "id": "observed_total.revenue",
+        "role": "value",
+        "slotId": "attribute.report.2"
+      },
+      {
+        "id": "contribution_share.revenue",
+        "role": "value",
+        "slotId": "attribute.report.3"
+      },
+      {
+        "id": "detail.value.revenue",
+        "role": "value",
+        "slotId": "attribute.report.4"
+      },
+      {
+        "id": "detail.value.present.revenue",
+        "role": "presence",
+        "slotId": "attribute.report.present.0"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.start",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "start"
+      },
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.end",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "end"
+      },
+      {
+        "kind": "coordinate",
+        "name": "region",
+        "axisToken": "attribute.axis.1",
+        "endpoint": "self",
+        "part": "key"
+      },
+      {
+        "kind": "field",
+        "name": "contribution.revenue",
+        "slotId": "attribute.report.0"
+      },
+      {
+        "kind": "field",
+        "name": "total.revenue",
+        "slotId": "attribute.report.1"
+      },
+      {
+        "kind": "field",
+        "name": "observed_total.revenue",
+        "slotId": "attribute.report.2"
+      },
+      {
+        "kind": "field",
+        "name": "contribution_share.revenue",
+        "slotId": "attribute.report.3"
+      },
+      {
+        "kind": "field",
+        "name": "detail.value.revenue",
+        "slotId": "attribute.report.4"
+      },
+      {
+        "kind": "field",
+        "name": "detail.value.present.revenue",
+        "slotId": "attribute.report.present.0"
+      }
+    ],
+    "axes": [
+      {
+        "token": "axis.0",
+        "name": "calendar:month",
+        "role": "calendar",
+        "keys": [
+          {
+            "id": "calendar:month",
+            "slotId": "key.0",
+            "dtype": {
+              "type": "datetime",
+              "timeUnit": "us",
+              "timezone": "UTC"
+            },
+            "nullable": false,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "calendar",
+          "timezone": "UTC",
+          "grain": {
+            "kind": "builtin",
+            "unit": "month",
+            "step": 1
+          }
+        }
+      },
+      {
+        "token": "attribute.axis.1",
+        "name": "sales.customer.region",
+        "role": "field",
+        "keys": [
+          {
+            "id": "sales.customer.region",
+            "slotId": "attribute.key.1",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": true,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "ordinary"
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "contribution.revenue",
+        "slotId": "attribute.report.0",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "total.revenue",
+        "slotId": "attribute.report.1",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "observed_total.revenue",
+        "slotId": "attribute.report.2",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "contribution_share.revenue",
+        "slotId": "attribute.report.3",
+        "dtype": {
+          "type": "float64"
+        },
+        "nullable": true,
+        "unit": "1"
+      },
+      {
+        "id": "detail.value.revenue",
+        "slotId": "attribute.report.4",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "detail.value.present.revenue",
+        "slotId": "attribute.report.present.0",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "calendar:month",
+        "slotId": "key.0",
+        "dtype": {
+          "type": "datetime",
+          "timeUnit": "us",
+          "timezone": "UTC"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "sales.customer.region",
+        "slotId": "attribute.key.1",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": true,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "key.0": {
+        "column": {
+          "id": "calendar:month",
+          "label": "calendar:month",
+          "type": "datetime",
+          "nullable": false
+        },
+        "values": [
+          "2026-07-01T00:00:00+00:00",
+          "2026-07-01T00:00:00+00:00",
+          "2026-08-01T00:00:00+00:00",
+          "2026-08-01T00:00:00+00:00",
+          "2026-09-01T00:00:00+00:00",
+          "2026-09-01T00:00:00+00:00"
+        ]
+      },
+      "attribute.key.1": {
+        "column": {
+          "id": "sales.customer.region",
+          "label": "sales.customer.region",
+          "type": "string",
+          "nullable": true
+        },
+        "values": ["east", "south", "east", "south", "east", "south"]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 6,
+      "coordinateRowsRead": 3,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "axis.0",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "axis",
+            "id": "attribute.axis.1",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "contribution.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "total.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "observed_total.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "contribution_share.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "detail.value.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "detail.value.present.revenue",
+            "valueOrigins": [],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.customer_id",
+                "definitionId": "sha256:475efad71c5c35c1cc77ca4c9ace89ad64f763cb32768757a13197ea159db4b7"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.order.customer_id",
+                "definitionId": "sha256:b725619d0d6840dc2b63e7693d43040e47c4ecf0d87e29bc415e792b5f6c456d"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              },
+              {
+                "kind": "relationship",
+                "path": "sales.order_buyer",
+                "definitionId": "sha256:e8808a5d2bc855548760552c1cbcfe2ad054eb862dedb2714756da6f8875255f"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {},
+        "comparisons": [],
+        "decompositions": [
+          {
+            "target": {
+              "kind": "level",
+              "name": "revenue",
+              "context": {
+                "kind": "observation",
+                "subject": {
+                  "kind": "metric",
+                  "path": "sales.revenue",
+                  "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+                },
+                "time": {
+                  "kind": "axis",
+                  "axisToken": "axis.0",
+                  "endpoint": "self"
+                },
+                "window": null
+              }
+            },
+            "groups": [
+              {
+                "kind": "axis",
+                "axisToken": "axis.0"
+              }
+            ],
+            "rowScope": "restricted",
+            "outputs": [
+              {
+                "fieldKind": "value",
+                "role": "contribution",
+                "name": "contribution.revenue"
+              },
+              {
+                "fieldKind": "value",
+                "role": "total",
+                "name": "total.revenue"
+              },
+              {
+                "fieldKind": "value",
+                "role": "observed_total",
+                "name": "observed_total.revenue"
+              },
+              {
+                "fieldKind": "value",
+                "role": "share",
+                "name": "contribution_share.revenue"
+              },
+              {
+                "fieldKind": "value",
+                "role": "value",
+                "name": "detail.value.revenue"
+              },
+              {
+                "fieldKind": "presence",
+                "role": "value_present",
+                "name": "detail.value.present.revenue"
+              }
+            ]
+          }
+        ],
+        "alignments": []
+      },
+      "periods": {
+        "status": "captured",
+        "pages": [
+          {
+            "target": {
+              "kind": "axis",
+              "axisToken": "axis.0"
+            },
+            "totalCount": 3,
+            "hasMore": false,
+            "items": [
+              {
+                "kind": "calendar",
+                "key": ["2026-07-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-07-01T00:00:00+00:00",
+                "end": "2026-08-01T00:00:00+00:00",
+                "label": "2026-07-01",
+                "nominalStart": "2026-07-01T00:00:00+00:00",
+                "nominalEnd": "2026-08-01T00:00:00+00:00"
+              },
+              {
+                "kind": "calendar",
+                "key": ["2026-08-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-08-01T00:00:00+00:00",
+                "end": "2026-09-01T00:00:00+00:00",
+                "label": "2026-08-01",
+                "nominalStart": "2026-08-01T00:00:00+00:00",
+                "nominalEnd": "2026-09-01T00:00:00+00:00"
+              },
+              {
+                "kind": "calendar",
+                "key": ["2026-09-01T00:00:00+00:00"],
+                "timezone": "UTC",
+                "start": "2026-09-01T00:00:00+00:00",
+                "end": "2026-10-01T00:00:00+00:00",
+                "label": "2026-09-01",
+                "nominalStart": "2026-09-01T00:00:00+00:00",
+                "nominalEnd": "2026-10-01T00:00:00+00:00"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

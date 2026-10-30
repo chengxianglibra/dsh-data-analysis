@@ -2,12 +2,13 @@
 
 ## 责任与入口
 
-本模块把已存在的结果读取为分析 UI 可保存的快照（AnalysisSnapshot v1）。Marivo 拥有 Artifact、Finding、字段、Quality、
+本模块把已存在的结果读取为分析 UI 可保存的快照（Dataset v1、Frame v2；旧 Frame v1 只读）。Marivo 拥有 Artifact、Finding、字段、Quality、
 issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件不审查 DataFrame 的计算过程、不复算，
 也不把来源存在解释为计算正确性。
 
-- Frame：[projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts) 的
-  `MarivoPresentationProjection.readFrames(refs)` 在一次 checked execution 内有界读取。
+- Frame：原分析进程中的 `capture_frame(frame)` 捕获已完成的 Frame，Host 签发 `marivo-frame:` snapshotRef 并绑定 codeRef；
+  兼容的 `marivo-frame` 声明由 [projection](../../packages/dsh-data-analysis/src/presentation/projection/index.ts) 的
+  `MarivoPresentationProjection.readFrames(refs)` 在一次 checked execution 内事后恢复，没有脚本来源。
 - DataFrame：原分析进程中的 [capture_dataset](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_capture.py)
   捕获，Host 签发 snapshotRef，由 [dataset-snapshot.ts](../../packages/dsh-data-analysis/src/presentation/dataset-snapshot.ts) 读取。
 
@@ -62,26 +63,31 @@ Frame 读取使用[报告执行预算](../../packages/dsh-data-analysis/src/pres
 
 ## Frame 快照
 
-固定程序通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)` 恢复准确引用，
-再以 `frame.schema`、`frame.read_page()` 和 `page.to_pandas()` 读取有界前缀，依据声明的 table/metric 选列。
+两条路径共用 [_frame.py](../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_frame.py) 的 `read_frame`。
+`capture_frame` 只接受持久或 `compute()` 后的内存 Frame，待执行表达式报 `frame_not_computed`，DataFrame 指向 `capture_dataset`；
+恢复路径通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)` 取得准确引用。
+读取只用 `frame.schema`、`frame.read_page()`、`frame.read_periods()` 与 `page.to_pandas()`，仅在全部视图都是带列表格或 metric 时选列。
 不调用全量 `frame.to_pandas()`，不加载当前模型、重跑分析或取得数据源凭据。schema/layout 重名、身份不符、
 损坏数据和不支持的类型明确失败。
 
 Frame 快照另保留 input identity、字段角色、实际 layout、公开字段类型与单位、完整轴键、逐行坐标和 read_stats。
 默认至多读取一页，limit 由行/列/单元格预算计算，坐标也计入单元格预算；不自动续页或把已读前缀标为完整结果。
 
-首期支持现有 scalar codec 可表达的值和坐标。calendar/interval 的 start/end、actual_start/actual_end
-按带时区 datetime 编码，保留 NULL；ns dtype 只在实际值包含亚微秒精度时返回 numeric_precision，不截断时间精度。
+首期支持现有 scalar codec 可表达的值和坐标。坐标 part 与 Marivo 一致（key、label、start、end、nominal_start、nominal_end）；
+`.start` 是实际观察起点，名义起点是 `.nominal_start`。时间边界按带时区 datetime 编码，保留 NULL；ns dtype 只在实际值包含亚微秒精度时返回 numeric_precision，不截断时间精度。
 复合 tuple 展示、duration、naive timestamp 等未适配载体明确失败，不把结构字符串化。
 slots 仅保存实际投影的 value/presence 字段和全部轴键；未选中的不支持类型不阻断选列读取，
 被选中字段及完整轴键仍须通过类型检查。完整键按 slot 保存，不能用表格行号代替。
 
-同一次 bound 读取按公开接口保存 Frame 元数据：`evidence(limit=20)`、`findings(limit=20)` 各读首页，
-`method_facts` 保留前 20 项的目标与计数，`lineage` 只保存实际投影列及其轴的静态来源身份。不续页、不扫描审计，
-也不读取方法载荷、源连接或当前语义定义。记录坐标经 `schema.slots` 解释，只有完整轴键与已捕获坐标精确相等才写入 `rowIndex`。
-每节独立为 `captured` 或带封闭原因的 `unavailable`（`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），
-不写入原始异常；文本按展示预算截断并标记，身份不截断。单节上限 64 KiB，整份快照仍受 2 MiB 预算，
-超出时先降级最大的已捕获节，元数据失败不阻断数据结果。P4 前保存的快照保持 `not-captured` 并可读取。
+v2 只保存数据的业务语义，不读取 `evidence()`、`findings()` 或 `method_facts`。`description`、轴变体（timezone、grain、paired 端点）
+随结构保存；三个元数据节为 `semantics`（实际投影列的静态 lineage）、`interpretation`（`fixed_axes`、按当前值名索引的
+observation/statistic/share/pair_statistic context、comparisons、decompositions、alignments）与 `periods`（每个时间轴及时间比较的
+`read_periods` 页，合计不超过 5000 项，`hasMore`/`totalCount` 照实保存）。内部 ID 在捕获时解析为当前值名、轴 token、
+比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
+（`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
+单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
+契约与交叉校验见 [snapshot.ts](../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；v1 Frame 快照仍可读，
+其 Evidence/Findings/方法节不再显示。
 
 当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 不读取私有 Store、日志或重新编译 SQL。无法恢复的旧 Session 引用明确失败。
@@ -109,11 +115,12 @@ helper 调用本身抛出的异常仍由原代码处理；超时、非零退出�
 
 ## Python helper 与 Runtime
 
-分发 wheel 为 `dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl`，只依赖 pandas。
+分发 wheel 为 `dsh_data_analysis_presentation_kit-1.5.0-py3-none-any.whl`，只依赖 pandas。
 Runtime marker v3 同时检查模块版本、distribution 版本、实际导入位置和公开 helper；
 每次 shared checked execution 再核验 helper，避免 Workspace 同名模块遮蔽。管理员 Python 失败时提供修复信息，
 不自动安装或切换解释器；managed 模式通过唯一 wheel 安装路径准备环境。
-kit 只公开 `capture_dataset`、`DatasetCaptureReceipt` 与 `PresentationDatasetError`。
+kit 只公开 `capture_dataset`、`capture_frame`、`DatasetCaptureReceipt`、`FrameCaptureReceipt` 与 `PresentationDatasetError`；
+Runtime marker 与 checked execution 同时核验两个 capture helper。
 
 ## 验证
 

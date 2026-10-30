@@ -20,7 +20,7 @@ import {
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
-import { CandidateView, readSavedAnalysis } from './candidate-view.tsx'
+import { CandidateView, readSavedAnalysis, savedCodeReader } from './candidate-view.tsx'
 import { SavedAnalysisSurface } from './lazy-surface.tsx'
 
 function SavedToolView({
@@ -58,6 +58,10 @@ function SavedToolView({
     })
     return () => abort.abort()
   }, [delivery, sessionId, rpc, generation, allowed])
+  const readCode = useMemo(
+    () => savedCodeReader(rpc, { sessionId }, delivery.receipt),
+    [rpc, sessionId, delivery.receipt],
+  )
   if (
     !allowed ||
     !generation ||
@@ -71,7 +75,11 @@ function SavedToolView({
         {t('marivo.presentation.ui-open-tab')}
       </button>
       {state.generation === generation && state.document ? (
-        <SavedAnalysisSurface document={state.document} openSemanticRef={onOpenSemanticRef} />
+        <SavedAnalysisSurface
+          document={state.document}
+          openSemanticRef={onOpenSemanticRef}
+          readCode={readCode}
+        />
       ) : (
         <p role="status">{t('marivo.presentation.ui-loading')}</p>
       )}

@@ -6,6 +6,7 @@ import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument } from './analysis.ts'
 import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
 import { analysisPresentInput, parseAnalysisRecordId } from './contracts/analysis-document.ts'
+import { type FrameSnapshotV2, isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
@@ -36,7 +37,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "marivo-frame", sessionId, artifactId}} or {result: {kind: "dataset-snapshot", snapshotRef}}; omit program for the default view. The default table already provides column selection, exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing. Legacy draft_path is not accepted.',
+      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "frame-snapshot", snapshotRef}} for an AnalysisFrame retained by capture_frame (preferred over the legacy {kind: "marivo-frame", sessionId, artifactId}, which has no Python source), or {result: {kind: "dataset-snapshot", snapshotRef}} for a DataFrame; omit program for the default view. The default table already provides column selection, exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing. Legacy draft_path is not accepted.',
     parameters: {
       surface: {
         type: 'string',
@@ -51,14 +52,14 @@ export function createMarivoPresentTool(
       resources: {
         type: 'object',
         description:
-          'Named resources: {kind:"marivo-frame",sessionId,artifactId}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
+          'Named resources: {kind:"frame-snapshot",snapshotRef} (preferred for Frames), legacy {kind:"marivo-frame",sessionId,artifactId}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       title: { type: 'string', description: 'Short document title.' },
       program: {
         type: 'string',
         description:
-          'Lang calls use positional arguments, e.g. root = Stack([TextContent("note"), DatasetView("result")]); never name:value call arguments. Complete OpenUI Lang for creation; only changed complete named statements for updates, one per line. Components: AnalysisFrameView, DatasetView, Stack, TextContent, Card, Tabs, TabItem, Image. Omit for a single resource or to retain the base program. Image src is a resource name.',
+          'Lang calls use positional arguments, e.g. root = Stack([TextContent("note"), DatasetView("result")]); never name:value call arguments. Complete OpenUI Lang for creation; only changed complete named statements for updates, one per line. Components: AnalysisFrameView, DatasetView, Stack, TextContent, Card, Tabs, TabItem, Image. AnalysisFrameView(ref, view?, display?): view.chart is auto (default, chosen from Frame structure), table, metric, line/area/bar, heatmap, comparison or decomposition; encoding names only public value/axis names of the snapshot; display {height?, density?: "full"|"compact", dataTable?: "collapsed"|"visible"}. Declare view only to deviate from auto; invalid views are rejected with a code and path. Omit for a single resource or to retain the base program. Image src is a resource name.',
       },
       locale: {
         type: 'string',
@@ -188,6 +189,37 @@ export function registerMarivoPresentTool(
   )
 }
 
+/**
+ * Names the model needs to write AnalysisFrameView `encoding`; never rows, periods or
+ * contexts. Unavailable interpretation is reported by its section state.
+ */
+function frameReadSummary(snapshot: FrameSnapshotV2) {
+  const section = snapshot.frame.sections.interpretation
+  const values = snapshot.frame.fields.filter((f) => f.role === 'value').map((f) => f.id)
+  if (typeof section !== 'object' || section.status !== 'captured')
+    return { description: snapshot.frame.description, values, interpretation: section }
+  return {
+    description: snapshot.frame.description,
+    values,
+    interpretation: {
+      status: section.status,
+      comparisons: section.comparisons.map((c) => ({
+        alias: c.alias,
+        binding: c.binding.kind,
+        groups: c.groups.map((g) => ({ name: g.name, values: g.values })),
+      })),
+      decompositions: section.decompositions.map((d) => ({
+        target: d.target.kind,
+        outputs: d.outputs.map((o) => ({ role: o.role, name: o.name })),
+      })),
+      alignments: section.alignments.map((a) => ({
+        left: a.left.values,
+        right: a.right.values,
+      })),
+    },
+  }
+}
+
 /** Optional context recovery for an exact saved record. Never returns rows or starts Python. */
 export function createMarivoUiReadTool(source: PresentationWorkspaceSource): ToolDefinition {
   return defineTool({
@@ -244,7 +276,11 @@ export function createMarivoUiReadTool(source: PresentationWorkspaceSource): Too
                       ? {
                           fields: resource.snapshot.frame.fields,
                           layout: resource.snapshot.frame.layout,
+                          // v2 axes carry their variant (calendar grain, interval, paired).
                           axes: resource.snapshot.frame.axes,
+                          ...(isFrameSnapshotV2(resource.snapshot)
+                            ? frameReadSummary(resource.snapshot)
+                            : {}),
                         }
                       : {}),
                   },

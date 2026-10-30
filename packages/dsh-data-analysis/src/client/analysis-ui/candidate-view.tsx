@@ -12,6 +12,7 @@ import {
 } from '../../presentation/contracts/analysis-program.ts'
 import { parseReportHistory } from '../../presentation/contracts/catalog.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
+import type { PythonCodeRef } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { type PresentationRpc, verifyPresentationAsset } from '../presentation/delivery-model.ts'
 import type { AnalysisCandidate } from './candidate.ts'
@@ -56,6 +57,41 @@ export async function readSavedAnalysis(
   )
     throw new Error('analysis-ui-owner-mismatch')
   return document
+}
+/**
+ * Host reads Python source only for a codeRef bound to the exact saved receipt document.
+ * Resolves undefined when the execution record is missing or no longer readable.
+ */
+export function savedCodeReader(
+  rpc: PresentationRpc,
+  scope: { sessionId: string } | { workspaceId: string },
+  receipt: PresentationReceipt,
+) {
+  return async (codeRef: PythonCodeRef, signal: AbortSignal) => {
+    const response = await rpc.call(
+      '/marivo-presentation',
+      'code/read',
+      { ...scope, receipt, codeRef: { executionId: codeRef.executionId, sha256: codeRef.sha256 } },
+      signal,
+    )
+    if (
+      response &&
+      typeof response === 'object' &&
+      'ok' in response &&
+      response.ok === false &&
+      'error' in response &&
+      (response.error as { message?: unknown })?.message === 'code-unavailable'
+    )
+      return undefined
+    const value = responseValue(response)
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      typeof (value as { text?: unknown }).text !== 'string'
+    )
+      throw new Error('analysis-ui-read-failed')
+    return { text: (value as { text: string }).text }
+  }
 }
 export function CandidateView({
   candidate,

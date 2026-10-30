@@ -102,7 +102,8 @@ for (const skillName of skillNames) {
       /presentation-lint|write_dataset|writer receipt/,
       /marivo-report-cell|Ask DSH/,
       /references\/(?:charts|chart-examples|schema|interaction|export-html|publishing)\.md/,
-      /\b(?:waterfall|funnel|boxplot|histogram|scatter|heatmap)\b/i,
+      // heatmap is a current AnalysisFrameView chart; the rest belonged to the removed HTML charts.
+      /\b(?:waterfall|funnel|boxplot|histogram|scatter)\b/i,
     ]
     for (const [file, content] of await markdown(skillName))
       for (const pattern of removed)
@@ -165,7 +166,12 @@ test('every Skill marivo_present example uses the current input and Lang contrac
           if (node.typeName === 'DatasetView')
             assert.equal(resources[String(node.props.ref)]?.kind, 'dataset-snapshot', where)
           if (node.typeName === 'AnalysisFrameView')
-            assert.equal(resources[String(node.props.ref)]?.kind, 'marivo-frame', where)
+            assert.ok(
+              ['frame-snapshot', 'marivo-frame'].includes(
+                resources[String(node.props.ref)]?.kind ?? '',
+              ),
+              where,
+            )
         }
       }
       for (const inline of content.matchAll(/`(root = [^`]+)`/g)) {

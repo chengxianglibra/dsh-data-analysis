@@ -69,7 +69,7 @@ test('shared checked execution rejects a shadowed helper before user code starts
     'install',
     '--python',
     executable,
-    path.join(wheels, 'dsh_data_analysis_presentation_kit-1.4.0-py3-none-any.whl'),
+    path.join(wheels, 'dsh_data_analysis_presentation_kit-1.5.0-py3-none-any.whl'),
   ])
   const identity = JSON.parse(
     run(executable, [
@@ -97,7 +97,7 @@ print(json.dumps({"python": sys.executable, "version": presentation.__version__,
 
   await writeFile(
     path.join(outputRoot, 'dsh_data_analysis_presentation.py'),
-    '__version__ = "1.4.0"\ndef capture_dataset(*args, **kwargs): pass\n',
+    '__version__ = "1.5.0"\ndef capture_dataset(*args, **kwargs): pass\ndef capture_frame(*args, **kwargs): pass\n',
   )
   const userOutput = path.join(outputRoot, 'must-not-exist.txt')
   await assert.rejects(

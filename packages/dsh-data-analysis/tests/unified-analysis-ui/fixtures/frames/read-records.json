@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "customer",
+        "label": "customer",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "id": "region",
+        "label": "region",
+        "type": "string",
+        "nullable": true
+      }
+    ],
+    "rows": [["A", "east"], ["B", "east"], ["C", "south"], ["D", "west"]],
+    "rowCount": 4,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 4,
+    "capturedRows": 4,
+    "complete": true,
+    "columns": ["customer", "region"],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_595e639573f74d68b6ab4c6be5686ecd",
+    "description": null,
+    "fields": [
+      {
+        "id": "customer",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      },
+      {
+        "id": "region",
+        "role": "value",
+        "slotId": "value.0"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "customer",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "key"
+      },
+      {
+        "kind": "field",
+        "name": "region",
+        "slotId": "value.0"
+      }
+    ],
+    "axes": [
+      {
+        "token": "axis.0",
+        "name": "sales.customer",
+        "role": "identity",
+        "keys": [
+          {
+            "id": "customer_id",
+            "slotId": "key.0",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": false,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "ordinary"
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "region",
+        "slotId": "value.0",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": true,
+        "unit": null
+      },
+      {
+        "id": "customer_id",
+        "slotId": "key.0",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": false,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "key.0": {
+        "column": {
+          "id": "customer_id",
+          "label": "customer_id",
+          "type": "string",
+          "nullable": false
+        },
+        "values": ["A", "B", "C", "D"]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 4,
+      "coordinateRowsRead": 0,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "axis.0",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "region",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "dimension",
+                "path": "sales.customer.region",
+                "definitionId": "sha256:3f53b7f72923231647188acedd1378302a5d3bdd867b2290d4947a72a62021c1"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {},
+        "comparisons": [],
+        "decompositions": [],
+        "alignments": []
+      },
+      "periods": {
+        "status": "captured",
+        "pages": []
+      }
+    }
+  }
+}

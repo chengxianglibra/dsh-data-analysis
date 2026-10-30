@@ -1,5 +1,5 @@
-from dataclasses import dataclass, make_dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace as NS
 
@@ -7,7 +7,11 @@ import pandas as pd
 import pytest
 
 from dsh_data_analysis_presentation import PresentationDatasetError
-from dsh_data_analysis_presentation._frame import read_frame
+from dsh_data_analysis_presentation._frame import _dependent, _interpretation, _periods, _section, read_frame
+
+UTC = timezone.utc
+T0 = datetime(2026, 8, 1, tzinfo=UTC)
+T1 = datetime(2026, 9, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -20,7 +24,16 @@ class Layout:
     part: str = "key"
 
 
-def fixture(values=None):
+class Rejection(Exception):
+    """Mirrors the public structured fields of a Marivo AnalysisError."""
+
+    def __init__(self, location, received):
+        super().__init__("/private/store/path secret")
+        self.location = location
+        self.received = received
+
+
+def fixture(values=None, *, stored=True):
     values = values or {"region": ["A", "B"], "amount": [Decimal("12345678901234.5678"), None], "account": [2**53 + 1, None]}
     key = NS(name="region", slot_id="key", dtype=NS(name="string"), nullable=False, unit=None)
     amount = NS(name="amount", slot_id="value", dtype=NS(precision=20, scale=4), nullable=True, unit="USD")
@@ -34,16 +47,34 @@ def fixture(values=None):
 
     class Frame:
         session_id = "session"
-        artifact_id = "artifact"
 
         def __init__(self):
             self.schema = schema
 
+        @property
+        def artifact_id(self):
+            if not stored:
+                raise Rejection("frame.artifact_id", "MemoryFrameBacking")
+            return "artifact"
+
+        @property
+        def description(self):
+            if not stored:
+                raise Rejection("frame.description", "MemoryFrameBacking")
+            return "Monthly revenue by region"
+
         def to_pandas(self):
             raise AssertionError("Full Frame export is forbidden")
 
-        def evidence_digest(self):
-            raise AssertionError("Evidence is not a prerequisite")
+        def evidence(self, **kwargs):
+            raise AssertionError("Evidence is not part of v2")
+
+        def findings(self, **kwargs):
+            raise AssertionError("Findings are not part of v2")
+
+        @property
+        def method_facts(self):
+            raise AssertionError("Method facts are not part of v2")
 
         def read_page(self, *, columns, limit):
             calls.append((columns, limit))
@@ -71,13 +102,17 @@ def test_frame_uses_one_bounded_page_and_keeps_coordinates_types_and_preview():
     frame, calls = fixture()
     result = read_frame(frame, columns=["amount"], row_limit=1)
     assert calls == [(("amount",), 1)]
+    assert result["schemaVersion"] == 2
     assert result["data"]["rows"] == [["A", "12345678901234.5678"]]
     assert result["coverage"]["complete"] is False
     assert result["coverage"]["totalRows"] == 2
     assert result["frame"]["coordinates"]["key"]["values"] == ["A"]
     assert {s["slotId"] for s in result["frame"]["slots"]} == {"key", "value"}
     assert result["frame"]["slots"][0]["unit"] is None
-    assert result["frame"]["sections"]["evidence"] == "not-captured"
+    assert result["frame"]["axes"][0]["variant"] == {"kind": "ordinary"}
+    assert result["frame"]["description"] == "Monthly revenue by region"
+    assert result["source"] == {"kind": "frame", "sessionId": "session", "artifactId": "artifact"}
+    assert set(result["frame"]["sections"]) == {"semantics", "interpretation", "periods"}
 
 
 def test_frame_full_small_result_preserves_integer_null_and_coordinate_only_projection():
@@ -88,6 +123,13 @@ def test_frame_full_small_result_preserves_integer_null_and_coordinate_only_proj
     assert read_frame(frame, columns=["region"])["data"]["rows"] == [["A"], ["B"]]
     reordered = read_frame(frame, columns=["account", "amount"])
     assert reordered["data"]["rows"][0] == ["A", "9007199254740993", "12345678901234.5678"]
+
+
+def test_computed_memory_frame_has_no_artifact_or_description():
+    frame, _ = fixture(stored=False)
+    result = read_frame(frame)
+    assert result["source"] == {"kind": "frame", "sessionId": "session", "artifactId": None}
+    assert result["frame"]["description"] is None
 
 
 def test_frame_rejects_unknown_columns_colliding_names_and_page_identity():
@@ -107,6 +149,26 @@ def test_frame_rejects_unknown_columns_colliding_names_and_page_identity():
         read_frame(frame)
 
 
+def test_pending_expression_is_rejected_through_the_public_rejection_and_never_computed():
+    frame, _ = fixture()
+    def pending(**kwargs):
+        raise Rejection("frame.read_page", "expression")
+    frame.read_page = pending
+    frame.compute = lambda: pytest.fail("capture must not compute")
+    with pytest.raises(PresentationDatasetError) as error:
+        read_frame(frame)
+    assert error.value.code == "frame_not_computed"
+    assert "secret" not in str(error.value)
+
+
+def test_unknown_axis_variant_rejects_the_v2_snapshot():
+    frame, _ = fixture()
+    frame.schema.axes[0].role = "future"
+    with pytest.raises(PresentationDatasetError) as error:
+        read_frame(frame)
+    assert error.value.code == "runtime_incompatible"
+
+
 def test_selection_omits_unsupported_unselected_slots_but_keeps_all_keys():
     frame, calls = fixture()
     frame.schema.slots["account"].dtype = NS(name="duration", unit="us")
@@ -121,20 +183,22 @@ def test_selection_omits_unsupported_unselected_slots_but_keeps_all_keys():
         read_frame(frame, columns=["amount"])
 
 
-@pytest.mark.parametrize("part", ["start", "end", "actual_start", "actual_end"])
+@pytest.mark.parametrize("part", ["start", "end", "nominal_start", "nominal_end", "label"])
 @pytest.mark.parametrize("empty", [False, True])
-def test_temporal_coordinate_bounds_keep_instants_and_nulls(part, empty):
+def test_temporal_coordinate_parts_follow_the_marivo_enum(part, empty):
     frame, _ = fixture()
     original = frame.read_page
     bound = Layout("coordinate", "region." + part, axis_token="region-axis", part=part)
     frame.schema.layout = (frame.schema.layout[0], bound, *frame.schema.layout[1:])
-    frame.schema.axes[0].role = "calendar" if part.startswith("actual_") else "interval"
+    axis = frame.schema.axes[0]
+    axis.role, axis.timezone, axis.grain = "calendar", "Asia/Shanghai", NS(kind="builtin", unit="month", step=1)
     stamp = pd.Timestamp("2026-10-28T00:00:00.123456+08:00")
+    cell = "2026-10" if part == "label" else stamp
 
     def read_page(**kwargs):
         page = original(**kwargs)
         rows = page.to_pandas()
-        rows.insert(1, bound.name, [stamp, None][:len(rows)])
+        rows.insert(1, bound.name, [cell, None][:len(rows)])
         page.layout = (page.layout[0], bound, *page.layout[1:])
         if empty:
             rows = rows.iloc[:0]
@@ -153,12 +217,14 @@ def test_temporal_coordinate_bounds_keep_instants_and_nulls(part, empty):
 
     frame.read_page = read_page
     result = read_frame(frame, columns=["amount"])
-    assert result["data"]["columns"][1]["type"] == "datetime"
+    assert result["data"]["columns"][1]["type"] == ("string" if part == "label" else "datetime")
     assert result["frame"]["layout"][1]["part"] == part
+    assert result["frame"]["axes"][0]["variant"] == {
+        "kind": "calendar", "timezone": "Asia/Shanghai", "grain": {"kind": "builtin", "unit": "month", "step": 1}}
     if empty:
         assert result["data"]["rows"] == []
     else:
-        assert result["data"]["rows"][0][1] == stamp.isoformat()
+        assert result["data"]["rows"][0][1] == ("2026-10" if part == "label" else stamp.isoformat())
         assert result["data"]["rows"][1][1] is None
 
 
@@ -185,126 +251,299 @@ def test_ns_timestamp_fields_and_keys_check_actual_precision(field, fraction):
         assert next(s for s in result["frame"]["slots"] if s["slotId"] == source.slot_id)["dtype"]["timeUnit"] == "ns"
 
 
-def metadata_fixture(evidence=(), findings=(), method_facts=(), total=None, has_more=False):
-    frame, calls = fixture()
-    schema = frame.schema
-    origin = NS(kind="metric", path="sales.revenue", definition_id="def-1")
-    column = NS(value_origins=(origin,), context_origins=())
-    frame_lineage = NS(values={"amount": column, "account": NS(value_origins=(), context_origins=())},
-                       presence={}, axes={"region-axis": NS(value_origins=(), context_origins=(origin,))})
-    reads = []
+# Interpretation facts -------------------------------------------------------
 
-    def page(items):
-        return NS(input_id="input", session_id="session", artifact_ref="artifact", items=tuple(items),
-                  total_count=len(items) if total is None else total, has_more=has_more,
-                  next_cursor="next" if has_more else None)
-
-    class Audited(type(frame)):
-        def evidence(self, *, limit):
-            reads.append(("evidence", limit))
-            return page(evidence)
-
-        def findings(self, *, limit):
-            reads.append(("findings", limit))
-            return page(findings)
-
-        @property
-        def method_facts(self):
-            return tuple(method_facts)
-
-        @property
-        def lineage(self):
-            return frame_lineage
-
-    return Audited(), calls, reads
+def origin(path="sales.revenue", kind="metric"):
+    return NS(kind=kind, path=path, definition_id="def:" + path)
 
 
-def coordinate(slot_id, value):
-    return NS(slot_id=slot_id, value=value)
+MONTH = NS(kind="builtin", unit="month", step=1)
+REGION_KEY = NS(name="region", slot_id="region-key", dtype=NS(name="string"), nullable=False, unit=None)
+ACCOUNT_KEY = NS(name="account", slot_id="account-key", dtype=NS(name="int64"), nullable=False, unit=None)
+OPENED_KEY = NS(name="opened", slot_id="opened-key", dtype=NS(timezone="UTC", unit="us"), nullable=True, unit=None)
+MONTH_KEY = NS(name="month", slot_id="month-key", dtype=NS(name="int64"), nullable=False, unit=None)
+REGION_AXIS = NS(token="region-axis", name="sales.customer.region", role="field", keys=(REGION_KEY,))
+MONTH_AXIS = NS(token="month-axis", name="sales.order.ordered_at", role="calendar", keys=(MONTH_KEY,),
+                timezone="UTC", grain=MONTH)
 
 
-def test_metadata_reads_one_bounded_page_and_scopes_only_complete_matching_keys():
-    evidence = [
-        NS(kind="read", summary="Actual explicit source read.", values=(("source", "sales.orders"),), coordinates=()),
-        NS(kind="check", summary="Row check.", values=(), coordinates=(coordinate("key", "B"),)),
-        NS(kind="check", summary="Value only.", values=(), coordinates=(coordinate("value", Decimal("1.50")),)),
-        NS(kind="check", summary="Other row.", values=(), coordinates=(coordinate("key", "Z"),)),
-        NS(kind="check", summary="Unknown slot.", values=(), coordinates=(coordinate("ghost", 1),)),
-    ]
-    frame, _, reads = metadata_fixture(evidence=evidence, total=25, has_more=True)
-    result = read_frame(frame, metadata=True)
-    sections = result["frame"]["sections"]
-    assert reads == [("evidence", 20), ("findings", 20)]
-    page = sections["evidence"]
-    assert (page["status"], page["totalCount"], page["hasMore"]) == ("captured", 25, True)
-    assert [item["scope"] for item in page["items"]] == [
-        {"kind": "unscoped"}, {"kind": "row", "rowIndex": 1}, {"kind": "partial"},
-        {"kind": "row-unmatched"}, {"kind": "unresolved"}]
-    assert page["items"][0]["values"] == [{"name": "source", "value": "sales.orders"}]
-    assert page["items"][2]["coordinates"] == [{"slotId": "value", "name": "amount", "value": "1.50"}]
-    assert sections["findings"] == {"status": "captured", "totalCount": 25, "hasMore": True, "items": []}
-    assert sections["methods"] == {"status": "captured", "totalCount": 0, "items": []}
-    semantics = sections["semantics"]["columns"]
-    assert [(c["role"], c["id"]) for c in semantics] == [("axis", "region-axis"), ("value", "amount"), ("value", "account")]
-    assert semantics[1]["valueOrigins"] == [{"kind": "metric", "path": "sales.revenue", "definitionId": "def-1"}]
-    assert semantics[0]["contextOrigins"][0]["path"] == "sales.revenue"
+def fixed(key=("east",), axis=None):
+    axis = axis or NS(token="fixed-region", name="sales.customer.region", role="field", keys=(REGION_KEY,))
+    return NS(axis=axis, key=key, origins=(origin("sales.customer.region", "dimension"),))
 
 
-def test_row_scope_uses_only_rows_that_were_actually_captured():
-    evidence = [NS(kind="check", summary="Second row.", values=(), coordinates=(coordinate("key", "B"),))]
-    frame, _, _ = metadata_fixture(evidence=evidence)
-    result = read_frame(frame, columns=["amount"], row_limit=1, metadata=True)
-    assert result["frame"]["sections"]["evidence"]["items"][0]["scope"] == {"kind": "row-unmatched"}
-    semantics = result["frame"]["sections"]["semantics"]["columns"]
-    assert [c["id"] for c in semantics] == ["region-axis", "amount"]
+def schema(**facts):
+    values = facts.pop("values", ("revenue", "orders"))
+    presence = facts.pop("presence", ())
+    base = dict(input_id="input", axes=(REGION_AXIS, MONTH_AXIS),
+                values={name: NS(name=name, slot_id="v-" + name) for name in values},
+                presence={name: NS(name=name, slot_id="p-" + name) for name in presence},
+                fixed_axes=(), value_contexts={}, comparisons=(), decompositions=(), alignments=())
+    base.update(facts)
+    return NS(**base)
 
 
-def test_findings_keep_identity_and_flatten_saved_value_facts():
-    Lag = make_dataclass("Lag", [("kind", str)])
-    Value = make_dataclass("Value", [("method", str), ("coefficient", Decimal), ("lag", Lag)])
-    finding = NS(finding_id="finding-1", finding_type="association", session_id="session",
-                 artifact_ref="artifact", committed_at=datetime(2026, 10, 28, tzinfo=timezone.utc),
-                 value=Value("pearson", Decimal("0.875"), Lag("none")), coordinates=(coordinate("key", "A"),))
-    frame, _, _ = metadata_fixture(findings=[finding])
-    item = read_frame(frame, metadata=True)["frame"]["sections"]["findings"]["items"][0]
-    assert item["findingId"] == "finding-1"
-    assert item["values"] == [{"name": "method", "value": "pearson"}, {"name": "coefficient", "value": "0.875"},
-                              {"name": "lag.kind", "value": "none"}]
-    assert item["scope"] == {"kind": "row", "rowIndex": 0}
-    assert item["committedAt"] == "2026-10-28T00:00:00+00:00"
+def observation(time=None, window=None, subject=True):
+    return NS(kind="observation", subject=origin() if subject else None, time=time, window=window)
 
 
-def test_metadata_failures_degrade_one_section_and_never_the_rows():
-    finding = NS(finding_id="f", finding_type="association", session_id="other", artifact_ref="artifact",
-                 committed_at=datetime(2026, 10, 28, tzinfo=timezone.utc), value=None, coordinates=())
-    frame, _, _ = metadata_fixture(findings=[finding],
-                                   evidence=[NS(kind="future", summary="x", values=(), coordinates=())])
-    class Broken(type(frame)):
-        @property
-        def method_facts(self):
-            raise RuntimeError("/private/store/path secret")
+@pytest.mark.parametrize(("time", "expected"), [
+    (None, None),
+    (NS(kind="axis", axis_token="month-axis", endpoint="self"), {"kind": "axis", "axisToken": "month-axis", "endpoint": "self"}),
+    (NS(kind="fixed", start=T0, end=T1, timezone="UTC"),
+     {"kind": "fixed", "start": "2026-08-01T00:00:00+00:00", "end": "2026-09-01T00:00:00+00:00", "timezone": "UTC"}),
+])
+@pytest.mark.parametrize(("window", "projected"), [
+    (None, None),
+    (NS(kind="all_history"), {"kind": "all_history"}),
+    (NS(kind="since", start=T0), {"kind": "since", "start": "2026-08-01T00:00:00+00:00"}),
+    (NS(kind="to_date", grain=NS(kind="named", ref=origin("fiscal.calendar", "calendar"), level="quarter")),
+     {"kind": "to_date", "grain": {"kind": "named", "level": "quarter", "ref": {
+         "kind": "calendar", "path": "fiscal.calendar", "definitionId": "def:fiscal.calendar"}}}),
+    (NS(kind="trailing_duration", duration=timedelta(days=7)), {"kind": "trailing_duration", "seconds": 604800.0}),
+    (NS(kind="trailing_periods", count=30), {"kind": "trailing_periods", "count": 30}),
+])
+def test_observation_context_projects_every_time_and_window_variant(time, expected, window, projected):
+    result = _interpretation(schema(value_contexts={"revenue": observation(time, window)}))
+    assert result["valueContexts"]["revenue"] == {
+        "kind": "observation", "subject": {"kind": "metric", "path": "sales.revenue", "definitionId": "def:sales.revenue"},
+        "time": expected, "window": projected}
 
-    result = read_frame(Broken(), metadata=True)
-    sections = result["frame"]["sections"]
-    assert sections["findings"] == {"status": "unavailable", "reason": "identity-mismatch"}
-    assert sections["evidence"] == {"status": "unavailable", "reason": "runtime-incompatible"}
-    assert sections["methods"] == {"status": "unavailable", "reason": "read-failed"}
-    assert "secret" not in str(result)
-    assert result["data"]["rows"][0][0] == "A"
-    plain, _ = fixture()
-    assert read_frame(plain, metadata=True)["frame"]["sections"]["evidence"] == {
+
+def test_statistic_share_and_pair_contexts_resolve_groups_and_inputs():
+    region = NS(kind="axis", axis_token="region-axis")
+    east = NS(kind="fixed", fixed=fixed())
+    contexts = {
+        "revenue": NS(kind="statistic", statistic="sum", groups=(region, east), row_scope="restricted"),
+        "orders": NS(kind="share", numerator=NS(kind="named", name="revenue", subject=origin()),
+                     groups=(), along=(region,), row_scope="complete"),
+        "coefficient": NS(kind="pair_statistic", statistic="spearman",
+                          x=NS(kind="derived", origins=(origin(), origin("sales.order_count"))),
+                          y=NS(kind="named", name="orders", subject=None), groups=(), row_scope="complete"),
+    }
+    result = _interpretation(schema(values=("revenue", "orders", "coefficient"), value_contexts=contexts))
+    statistic, share, pair = (result["valueContexts"][n] for n in ("revenue", "orders", "coefficient"))
+    assert statistic["groups"][0] == {"kind": "axis", "axisToken": "region-axis"}
+    assert statistic["groups"][1]["fixed"]["key"] == ["east"]
+    assert statistic["rowScope"] == "restricted"
+    assert share == {"kind": "share", "numerator": {"kind": "named", "name": "revenue", "subject": {
+        "kind": "metric", "path": "sales.revenue", "definitionId": "def:sales.revenue"}},
+        "groups": [], "along": [{"kind": "axis", "axisToken": "region-axis"}], "rowScope": "complete"}
+    assert pair["x"]["kind"] == "derived" and [o["path"] for o in pair["x"]["origins"]] == ["sales.revenue", "sales.order_count"]
+    assert pair["y"] == {"kind": "named", "name": "orders", "subject": None}
+
+
+def comparison(**overrides):
+    base = dict(
+        input_id="input", comparison_id="internal.previous", alias="previous",
+        groups=(NS(group_id="internal-group", name="revenue", values=(
+            NS(role="current", name="revenue"), NS(role="baseline", name="previous.baseline.revenue"),
+            NS(role="absolute", name="previous.absolute.revenue"), NS(role="relative", name="previous.relative.revenue")),
+            current_context=observation(NS(kind="compared", comparison_id="internal.previous", endpoint="current")),
+            baseline_context=observation(NS(kind="compared", comparison_id="internal.previous", endpoint="baseline"))),),
+        binding=NS(kind="calendar", current_axis_token="month-axis", current_endpoint="self",
+                   baseline=NS(kind="calendar", name="sales.order.ordered_at", at=None, timezone="UTC", grain=MONTH)),
+        presence=NS(current="current.present", baseline="previous.present", enclosing=()),
+        current_fixed_axes=(fixed(),), baseline_fixed_axes=(fixed(("west",)),))
+    base.update(overrides)
+    return NS(**base)
+
+
+COMPARED_VALUES = ("revenue", "previous.baseline.revenue", "previous.absolute.revenue", "previous.relative.revenue")
+COMPARED_PRESENCE = ("current.present", "previous.present")
+
+
+def test_comparison_and_change_decomposition_replace_internal_ids_with_index_and_group_name():
+    decomposition = NS(target=NS(kind="absolute", comparison_id="internal.previous", group_id="internal-group"),
+                       groups=(NS(kind="axis", axis_token="month-axis"), NS(kind="fixed", fixed=fixed())),
+                       row_scope="complete", outputs=(
+                           NS(field_kind="value", role="contribution", name="revenue"),
+                           NS(field_kind="presence", role="current_present", name="current.present")))
+    result = _interpretation(schema(values=COMPARED_VALUES, presence=COMPARED_PRESENCE,
+                                    comparisons=(comparison(),), decompositions=(decomposition,)))
+    item = result["comparisons"][0]
+    assert item["alias"] == "previous"
+    assert item["binding"] == {"kind": "calendar", "axisToken": "month-axis", "endpoint": "self", "baseline": {
+        "kind": "calendar", "name": "sales.order.ordered_at", "at": None, "timezone": "UTC",
+        "grain": {"kind": "builtin", "unit": "month", "step": 1}}}
+    assert item["groups"][0]["currentContext"]["time"] == {"kind": "compared", "comparison": 0, "endpoint": "current"}
+    assert item["presence"] == {"current": "current.present", "baseline": "previous.present", "enclosing": []}
+    assert [f["key"] for f in item["currentFixedAxes"] + item["baselineFixedAxes"]] == [["east"], ["west"]]
+    assert result["decompositions"][0]["target"] == {"kind": "absolute", "comparison": 0, "group": "revenue"}
+    assert result["decompositions"][0]["outputs"][1] == {"fieldKind": "presence", "role": "current_present",
+                                                         "name": "current.present"}
+    assert "internal" not in str(result)
+
+
+def test_level_decomposition_and_ordinary_comparison():
+    level = NS(target=NS(kind="level", name="revenue", context=observation()), groups=(),
+               row_scope="restricted", outputs=(NS(field_kind="value", role="total", name="revenue"),))
+    ordinary = comparison(binding=NS(kind="ordinary"), alias=None, presence=None)
+    result = _interpretation(schema(values=COMPARED_VALUES, comparisons=(ordinary,), decompositions=(level,)))
+    assert result["comparisons"][0]["binding"] == {"kind": "ordinary"}
+    assert result["comparisons"][0]["alias"] is None
+    assert result["decompositions"][0]["target"]["kind"] == "level"
+    assert result["decompositions"][0]["rowScope"] == "restricted"
+
+
+def test_alignment_sides_keep_axis_endpoints_and_fixed_coordinates():
+    side = lambda prefix, coordinates: NS(values=(prefix + ".revenue",), presence=(prefix + "_present",),
+                                         coordinates=coordinates)
+    alignment = NS(input_id="input", alignment_id="internal-alignment",
+                   left=side("left", (NS(axis_token="month-axis", endpoint="self"),)),
+                   right=side("right", (NS(kind="fixed", fixed=fixed()),)))
+    result = _interpretation(schema(values=("left.revenue", "right.revenue"),
+                                    presence=("left_present", "right_present"), alignments=(alignment,)))
+    left, right = result["alignments"][0]["left"], result["alignments"][0]["right"]
+    assert left == {"values": ["left.revenue"], "presence": ["left_present"],
+                    "coordinates": [{"kind": "axis", "axisToken": "month-axis", "endpoint": "self"}]}
+    assert right["coordinates"][0]["kind"] == "fixed"
+
+
+def test_fixed_axis_keys_use_the_owning_key_codec():
+    axis = NS(token="fixed-account", name="sales.customer", role="identity", keys=(ACCOUNT_KEY, OPENED_KEY))
+    result = _interpretation(schema(fixed_axes=(fixed((2**53 + 1, datetime(2026, 1, 2, tzinfo=UTC)), axis),)))
+    item = result["fixedAxes"][0]
+    assert item["key"] == ["9007199254740993", "2026-01-02T00:00:00+00:00"]
+    assert [k["slotId"] for k in item["keys"]] == ["account-key", "opened-key"]
+    assert item["role"] == "identity"
+
+
+@pytest.mark.parametrize("facts", [
+    {"value_contexts": {"revenue": NS(kind="statistic", statistic="sum", row_scope="complete",
+                                      groups=(NS(kind="axis", axis_token="removed-axis"),))}},
+    {"value_contexts": {"removed": observation()}},
+    {"value_contexts": {"revenue": observation(NS(kind="compared", comparison_id="other", endpoint="current"))}},
+    {"values": COMPARED_VALUES, "comparisons": (comparison(input_id="other-input"),)},
+    {"values": COMPARED_VALUES, "presence": COMPARED_PRESENCE, "comparisons": (comparison(),), "decompositions": (
+        NS(target=NS(kind="relative", comparison_id="internal.previous", group_id="missing"), groups=(),
+           row_scope="complete", outputs=()),)},
+])
+def test_unresolvable_references_are_identity_mismatch(facts):
+    assert _section("interpretation", True, lambda: _interpretation(schema(**facts))) == {
+        "status": "unavailable", "reason": "identity-mismatch"}
+
+
+@pytest.mark.parametrize("facts", [
+    {"value_contexts": {"revenue": NS(kind="future")}},
+    {"value_contexts": {"revenue": observation(window=NS(kind="rolling"))}},
+    {"value_contexts": {"revenue": NS(kind="statistic", statistic="median", groups=(), row_scope="complete")}},
+    {"decompositions": (NS(target=NS(kind="level", name="revenue", context=None), groups=(), row_scope="complete",
+                           outputs=(NS(field_kind="value", role="future_effect", name="revenue"),)),)},
+    {"value_contexts": {"revenue": NS(kind="observation", time=None, window=None)}},
+])
+def test_unknown_upstream_variants_and_missing_members_are_runtime_incompatible(facts):
+    assert _section("interpretation", True, lambda: _interpretation(schema(**facts))) == {
         "status": "unavailable", "reason": "runtime-incompatible"}
 
 
-def test_long_text_is_clipped_and_marked_but_identities_are_never_shortened():
-    evidence = [NS(kind="read", summary="s" * 5000, values=tuple((f"n{i}", i) for i in range(40)), coordinates=())]
-    frame, _, _ = metadata_fixture(evidence=evidence)
-    item = read_frame(frame, metadata=True)["frame"]["sections"]["evidence"]["items"][0]
-    assert item["truncated"] is True
-    assert len(item["summary"]) == 4096 and item["summary"].endswith("…")
-    assert len(item["values"]) == 32
-    finding = NS(finding_id="f" * 3000, finding_type="association", session_id="session", artifact_ref="artifact",
-                 committed_at=datetime(2026, 10, 28, tzinfo=timezone.utc), value=None, coordinates=())
-    frame, _, _ = metadata_fixture(findings=[finding])
-    assert read_frame(frame, metadata=True)["frame"]["sections"]["findings"] == {
-        "status": "unavailable", "reason": "budget"}
+def test_missing_public_members_are_runtime_incompatible_without_other_read_paths():
+    frame, _ = fixture()
+    sections = read_frame(frame)["frame"]["sections"]
+    assert sections == {name: {"status": "unavailable", "reason": "runtime-incompatible"}
+                        for name in ("semantics", "interpretation", "periods")}
+
+
+def test_interpretation_failure_hides_raw_runtime_text():
+    frame, _ = fixture()
+    for name in ("fixed_axes", "comparisons", "decompositions", "alignments"):
+        setattr(frame.schema, name, ())
+    class Exploding:
+        def items(self):
+            raise RuntimeError("/private/store/path secret")
+    frame.schema.value_contexts = Exploding()
+    result = read_frame(frame)
+    assert result["frame"]["sections"]["interpretation"] == {"status": "unavailable", "reason": "read-failed"}
+    assert "secret" not in str(result)
+
+
+# Periods -------------------------------------------------------------------
+
+def calendar(key, label="2026-08", start=T0, end=T1):
+    return NS(kind="calendar", key=key, timezone="UTC", start=start, end=end, label=label, ordinal=7,
+              nominal_ordinal=7, nominal_start=start, nominal_end=end, nominal_start_civil="2026-08-01",
+              nominal_end_civil="2026-09-01", actual_start_civil="2026-08-01", actual_end_civil="2026-09-01")
+
+
+def interval(key):
+    return NS(kind="interval", key=key, timezone="UTC", start=T0, end=T1)
+
+
+def periods_frame(axes, pages, comparisons=()):
+    reads = []
+
+    class Frame:
+        @property
+        def axes(self):
+            return tuple(NS(token=a.token) for a in axes)
+
+        def read_periods(self, target, *, limit):
+            reads.append((getattr(target, "token", None) or target.comparison_id, limit))
+            return pages[getattr(target, "token", None) or target.comparison_id](limit)
+    return Frame(), schema(axes=axes, comparisons=comparisons), reads
+
+
+def page(target, items, total=None, has_more=False):
+    return NS(input_id="input", target=target, items=tuple(items), total_count=len(items) if total is None else total,
+              has_more=has_more, next_cursor="next" if has_more else None)
+
+
+def test_period_pages_cover_time_axes_and_time_comparisons_within_the_shared_budget():
+    interval_key = NS(name="window", slot_id="window-key", dtype=NS(timezone="UTC", unit="us"), nullable=False, unit=None)
+    interval_axis = NS(token="window-axis", name="window", role="interval", keys=(interval_key,), timezone="UTC")
+    paired_axis = NS(token="pair-axis", name="pair", role="paired", keys=(MONTH_KEY, interval_key))
+    previous = comparison()
+    frame, facts, reads = periods_frame((REGION_AXIS, MONTH_AXIS, interval_axis, paired_axis), {
+        "month-axis": lambda limit: page(MONTH_AXIS, [calendar((2**53 + 1,))], total=40, has_more=True),
+        "window-axis": lambda limit: page(interval_axis, [interval((T0,))]),
+        "pair-axis": lambda limit: page(paired_axis, [NS(kind="paired", key=(7, T0), left=calendar((7,)), right=None)]),
+        "internal.previous": lambda limit: page(previous, [NS(kind="comparison", key=(8,), current=calendar((8,)),
+                                                              baseline=None, absent_reason="period_absent")]),
+    }, (previous,))
+    result = _periods(frame, facts)
+    assert [r[1] for r in reads] == [1250] * 4
+    month, window, pair, compared = result["pages"]
+    assert month["target"] == {"kind": "axis", "axisToken": "month-axis"}
+    assert (month["totalCount"], month["hasMore"]) == (40, True)
+    assert month["items"][0] == {"kind": "calendar", "key": ["9007199254740993"], "timezone": "UTC",
+                                 "start": "2026-08-01T00:00:00+00:00", "end": "2026-09-01T00:00:00+00:00",
+                                 "label": "2026-08", "nominalStart": "2026-08-01T00:00:00+00:00",
+                                 "nominalEnd": "2026-09-01T00:00:00+00:00"}
+    assert window["items"][0]["key"] == ["2026-08-01T00:00:00+00:00"]
+    assert pair["items"][0]["key"] == ["7", "2026-08-01T00:00:00+00:00"]
+    assert pair["items"][0]["left"]["key"] == ["7"] and pair["items"][0]["right"] is None
+    assert compared["target"] == {"kind": "comparison", "comparison": 0}
+    assert compared["items"][0]["baseline"] is None and compared["items"][0]["absentReason"] == "period_absent"
+    assert "ordinal" not in str(result) and "civil" not in str(result)
+
+
+def test_ordinary_frames_capture_an_empty_period_section():
+    frame, facts, reads = periods_frame((REGION_AXIS,), {})
+    assert _periods(frame, facts) == {"status": "captured", "pages": []}
+    assert reads == []
+
+
+def test_period_page_identity_and_budget_failures_degrade_only_the_section():
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {"month-axis": lambda limit: page(REGION_AXIS, [])})
+    assert _section("periods", True, lambda: _periods(frame, facts)) == {
+        "status": "unavailable", "reason": "identity-mismatch"}
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {"month-axis": lambda limit: page(MONTH_AXIS, [], total=0, has_more=True)})
+    assert _section("periods", True, lambda: _periods(frame, facts)) == {"status": "unavailable", "reason": "read-failed"}
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {"month-axis": lambda limit: page(MONTH_AXIS, [interval((1,))])})
+    assert _section("periods", True, lambda: _periods(frame, facts)) == {"status": "unavailable", "reason": "read-failed"}
+    big = [calendar((i,), label="x" * 2000) for i in range(5000)]
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {"month-axis": lambda limit: page(MONTH_AXIS, big[:limit])})
+    assert _section("periods", True, lambda: _periods(frame, facts)) == {"status": "unavailable", "reason": "budget"}
+
+
+def test_normal_daily_periods_fit_the_section_cap():
+    days = [calendar((i,), label=f"2026-{i:04d}") for i in range(5000)]
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {"month-axis": lambda limit: page(MONTH_AXIS, days[:limit])})
+    result = _section("periods", True, lambda: _periods(frame, facts))
+    assert result["status"] == "captured" and len(result["pages"][0]["items"]) == 5000
+
+
+def test_comparison_pages_cannot_outlive_their_interpretation():
+    sections = {"semantics": "x", "interpretation": {"status": "unavailable", "reason": "budget"},
+                "periods": {"status": "captured", "pages": [{"target": {"kind": "comparison", "comparison": 0}}]}}
+    assert _dependent(sections)["periods"] == {"status": "unavailable", "reason": "budget"}

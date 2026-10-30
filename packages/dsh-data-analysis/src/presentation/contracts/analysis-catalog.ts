@@ -2,7 +2,7 @@
 import type { LibraryJSONSchema, LibrarySpec } from '@openuidev/lang-core'
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
 export const analysisCatalogBuild =
-  '1a44a0f6d396019deeaa4ed94c8320b98cd70fae0ee0a24883111b085c712fe6'
+  '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
 export const analysisCatalogVersions = {
   '@openuidev/lang-core': '1.0.1',
   '@openuidev/react-headless': '0.18.1',
@@ -53,9 +53,9 @@ const specData = {
     },
     AnalysisFrameView: {
       signature:
-        'AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}}, display?: {height?: number})',
+        'AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible"})',
       description:
-        'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
+        'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
     },
     DatasetView: {
       signature:
@@ -335,9 +335,13 @@ const specData = {
                     const: 'table',
                   },
                   columns: {
+                    minItems: 1,
+                    maxItems: 64,
                     type: 'array',
                     items: {
                       type: 'string',
+                      minLength: 1,
+                      maxLength: 512,
                     },
                   },
                 },
@@ -356,13 +360,131 @@ const specData = {
                     properties: {
                       value: {
                         type: 'string',
+                        minLength: 1,
                       },
                     },
                     required: ['value'],
                     additionalProperties: false,
                   },
                 },
-                required: ['chart', 'encoding'],
+                required: ['chart'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
+                    enum: ['line', 'area', 'bar'],
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      values: {
+                        minItems: 1,
+                        maxItems: 64,
+                        type: 'array',
+                        items: {
+                          type: 'string',
+                          minLength: 1,
+                          maxLength: 512,
+                        },
+                      },
+                      axis: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                      series: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                required: ['chart'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
+                    const: 'heatmap',
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      x: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                      y: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                      value: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                    },
+                    required: ['x', 'y', 'value'],
+                    additionalProperties: false,
+                  },
+                },
+                required: ['chart'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
+                    const: 'comparison',
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      value: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                    },
+                    required: ['value'],
+                    additionalProperties: false,
+                  },
+                  style: {
+                    type: 'string',
+                    enum: ['auto', 'delta'],
+                  },
+                },
+                required: ['chart'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
+                    const: 'decomposition',
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      value: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                    },
+                    required: ['value'],
+                    additionalProperties: false,
+                  },
+                  style: {
+                    type: 'string',
+                    enum: ['auto', 'share'],
+                  },
+                },
+                required: ['chart'],
                 additionalProperties: false,
               },
             ],
@@ -375,6 +497,14 @@ const specData = {
                 exclusiveMinimum: 0,
                 maximum: 1200,
               },
+              density: {
+                type: 'string',
+                enum: ['full', 'compact'],
+              },
+              dataTable: {
+                type: 'string',
+                enum: ['collapsed', 'visible'],
+              },
             },
             additionalProperties: false,
           },
@@ -382,7 +512,7 @@ const specData = {
         required: ['ref'],
         additionalProperties: false,
         description:
-          'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
+          'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
       },
       DatasetView: {
         type: 'object',
@@ -737,9 +867,13 @@ const schemaData = {
                   const: 'table',
                 },
                 columns: {
+                  minItems: 1,
+                  maxItems: 64,
                   type: 'array',
                   items: {
                     type: 'string',
+                    minLength: 1,
+                    maxLength: 512,
                   },
                 },
               },
@@ -758,13 +892,131 @@ const schemaData = {
                   properties: {
                     value: {
                       type: 'string',
+                      minLength: 1,
                     },
                   },
                   required: ['value'],
                   additionalProperties: false,
                 },
               },
-              required: ['chart', 'encoding'],
+              required: ['chart'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
+                  enum: ['line', 'area', 'bar'],
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    values: {
+                      minItems: 1,
+                      maxItems: 64,
+                      type: 'array',
+                      items: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 512,
+                      },
+                    },
+                    axis: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                    series: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              required: ['chart'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
+                  const: 'heatmap',
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    x: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                    y: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                    value: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                  },
+                  required: ['x', 'y', 'value'],
+                  additionalProperties: false,
+                },
+              },
+              required: ['chart'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
+                  const: 'comparison',
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    value: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                  },
+                  required: ['value'],
+                  additionalProperties: false,
+                },
+                style: {
+                  type: 'string',
+                  enum: ['auto', 'delta'],
+                },
+              },
+              required: ['chart'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
+                  const: 'decomposition',
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    value: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                  },
+                  required: ['value'],
+                  additionalProperties: false,
+                },
+                style: {
+                  type: 'string',
+                  enum: ['auto', 'share'],
+                },
+              },
+              required: ['chart'],
               additionalProperties: false,
             },
           ],
@@ -777,6 +1029,14 @@ const schemaData = {
               exclusiveMinimum: 0,
               maximum: 1200,
             },
+            density: {
+              type: 'string',
+              enum: ['full', 'compact'],
+            },
+            dataTable: {
+              type: 'string',
+              enum: ['collapsed', 'visible'],
+            },
           },
           additionalProperties: false,
         },
@@ -784,7 +1044,7 @@ const schemaData = {
       required: ['ref'],
       additionalProperties: false,
       description:
-        'Persisted Frame snapshot; auto/table/metric. Complete coordinates and captured range are preserved.',
+        'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
     },
     DatasetView: {
       type: 'object',

@@ -70,8 +70,8 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 
 系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
 文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 marivo_present 传准确引用，不额外读取 Skill/Catalog。自定义 Lang 时按需加载
-dsh-data-analysis-presentation；分析 UI 支持 auto/table/metric 数据视图、Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
-不提供图形、离线 HTML 导出或发布。
+dsh-data-analysis-presentation；分析 UI 的 AnalysisFrameView 按 Frame 结构选择图形，DatasetView 支持 auto/table/metric；支持 Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
+不提供离线 HTML 导出或发布。
 
 `marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
 测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由
@@ -155,7 +155,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.6.0.dev0` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
-| Presentation-kit | `dsh-data-analysis-presentation-kit==1.4.0`，typed dataset schemaVersion 1 |
+| Presentation-kit | `dsh-data-analysis-presentation-kit==1.5.0`，Dataset schemaVersion 1、Frame schemaVersion 2 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
 与内部纯数据 contracts/projection、builder，以及展示及文件分析 Skill 的 `SKILL.md` 和 references；

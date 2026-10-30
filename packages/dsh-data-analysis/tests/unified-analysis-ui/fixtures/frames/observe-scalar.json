@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "revenue",
+        "label": "revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      }
+    ],
+    "rows": [["700"]],
+    "rowCount": 1,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 1,
+    "capturedRows": 1,
+    "complete": true,
+    "columns": ["revenue"],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_a93f36d773bb40d5b7f90400670c2337",
+    "description": null,
+    "fields": [
+      {
+        "id": "revenue",
+        "role": "value",
+        "slotId": "value.0"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "field",
+        "name": "revenue",
+        "slotId": "value.0"
+      }
+    ],
+    "axes": [],
+    "slots": [
+      {
+        "id": "revenue",
+        "slotId": "value.0",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      }
+    ],
+    "coordinates": {},
+    "readStats": {
+      "dataRowsRead": 1,
+      "coordinateRowsRead": 0,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "value",
+            "id": "revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {
+          "revenue": {
+            "kind": "observation",
+            "subject": {
+              "kind": "metric",
+              "path": "sales.revenue",
+              "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+            },
+            "time": null,
+            "window": null
+          }
+        },
+        "comparisons": [],
+        "decompositions": [],
+        "alignments": []
+      },
+      "periods": {
+        "status": "captured",
+        "pages": []
+      }
+    }
+  }
+}

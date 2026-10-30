@@ -26,22 +26,28 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
 签名由[生成的 Catalog](../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
 
-- 两类数据视图只支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
-  并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。
-- metric 要求完整单行；auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，presence 字段不计为值；
-  Dataset 要求完整单行单列，预览不会误判。其余结果按表格显示。
+- DatasetView 与旧 Frame v1 快照只支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
+  并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
+  auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，Dataset 要求完整单行单列，其余按表格显示。
+- v2 Frame 由 [frame-view.ts](../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
+  `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
+  显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
+  分类与默认视图规则见 [AnalysisFrameView 设计](../designs/analysis-frame-view.md#各类展示)。
+- Frame 外壳在 [frame/](../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
+  头部数字、主视图、可折叠数据表与图标行（覆盖、期间对应、语义来源、Python）。图形为本插件绘制的 SVG；
+  NA、缺期、不完整期、presence、restricted 与未捕获完整均以视觉编码表达，不加解释性文字。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
 - 图片只显示已保存的 image 资源；TextContent 不加载远程图片。
 
-reader 不提供图形类型、图表探索、全局筛选、动态指标、页面内编辑、撤销/重做、来源代码弹窗、
-从报告 cell 加入提问或任何导出入口。展示层不聚合、不计算总计或比例，截断数据不派生全量结论。
+reader 不提供图表探索、全局筛选、动态指标、页面内编辑、撤销/重做、从报告 cell 加入提问或任何导出入口。
+展示层不聚合、不计算总计、Δ 或比例，只画 Frame 已有列；会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
 
 ## 来源与范围详情
 
-Frame 保留结构、坐标和 Session/Artifact；DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。
-Frame 来源详情另显示快照内保存的 Evidence、Findings、方法说明与语义来源，每项注明已读条数与总数、
-首页之外未检索、省略内容及不可用原因；P4 之前保存的快照显示未捕获。记录只有自身完整坐标精确匹配已保存行时
-才标为该行，部分坐标、无坐标或行外坐标分别说明，不推断点级证明。
+DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。Frame 不显示 Evidence、Finding 或计算过程；
+来源固定为 Host 绑定的 codeRef：Python 图标经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef，
+sha256 不一致、记录缺失或 `marivo-frame` 恢复路径（无 codeRef）时图标变灰。section 为 `not-captured`／`unavailable`
+时对应图标变灰，不显示为 0 项；Session/Artifact 只在 Python 详情的开发者区出现。
 
 语义来源为分析时的静态身份，在 tool view 和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
 并提示其可能已变化；候选预览不提供导航。
@@ -67,5 +73,5 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 
 ## 验证边界
 
-聚焦测试覆盖 Catalog 准入、数据视图的精确值与 metric/auto 判定、目录过滤及旧格式拒绝；运行所属测试与 `npm run check`。
+聚焦测试覆盖 Catalog 准入、数据视图的精确值与 metric/auto 判定、Frame 分类与视图解析、真实 Marivo Frame 渲染、目录过滤及旧格式拒绝；运行所属测试与 `npm run check`。
 真实浏览器验证见[验证指南](../validation.md)；reader 验证不代替 Tool、receipt/RPC 或真实 Agent 自动路由验收。

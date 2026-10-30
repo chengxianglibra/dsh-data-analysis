@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "customer",
+        "label": "customer",
+        "type": "string",
+        "nullable": false
+      }
+    ],
+    "rows": [["A"], ["B"], ["C"], ["D"]],
+    "rowCount": 4,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 4,
+    "capturedRows": 4,
+    "complete": true,
+    "columns": ["customer"],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_db9473cd2ec04fc1ae7dedb13e679207",
+    "description": null,
+    "fields": [
+      {
+        "id": "customer",
+        "role": "coordinate",
+        "axisToken": "axis.0"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "customer",
+        "axisToken": "axis.0",
+        "endpoint": "self",
+        "part": "key"
+      }
+    ],
+    "axes": [
+      {
+        "token": "axis.0",
+        "name": "sales.customer",
+        "role": "identity",
+        "keys": [
+          {
+            "id": "customer_id",
+            "slotId": "key.0",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": false,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "ordinary"
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "customer_id",
+        "slotId": "key.0",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": false,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "key.0": {
+        "column": {
+          "id": "customer_id",
+          "label": "customer_id",
+          "type": "string",
+          "nullable": false
+        },
+        "values": ["A", "B", "C", "D"]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 4,
+      "coordinateRowsRead": 0,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "axis.0",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.customer",
+                "definitionId": "sha256:b9bd6fdf44ddf5fe0ff473677c18b21ac2af92507b8fa7e1c5b59b4505eca2ae"
+              }
+            ],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {},
+        "comparisons": [],
+        "decompositions": [],
+        "alignments": []
+      },
+      "periods": {
+        "status": "captured",
+        "pages": []
+      }
+    }
+  }
+}

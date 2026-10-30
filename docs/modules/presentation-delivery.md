@@ -30,8 +30,10 @@ Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
 | `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_dataset` 签发的快照 |
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
 
-组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。数据视图只有 auto/table/metric；
-metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列。
+组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。`frame-snapshot` 声明的 `snapshotRef` 由 `capture_frame` 签发，
+与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前用 `resolveFrameView` 校验每个数据视图：
+metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列，图形 encoding 只引用公开值名与轴名；
+不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
 recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不可变版本；关闭原连接或删除捕获文件后仍可读取。

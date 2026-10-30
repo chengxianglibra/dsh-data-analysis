@@ -7,7 +7,8 @@ import type {
 import { ReportCopyProvider } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { PRESENTATION_STYLES } from '../presentation/styles.ts'
-import { AnalysisResources } from './context.tsx'
+import { type AnalysisResourceContext, AnalysisResources } from './context.tsx'
+import { FRAME_STYLES } from './frame/styles.ts'
 import { analysisLibrary } from './library.tsx'
 
 const styles = `
@@ -20,10 +21,12 @@ export function AnalysisSurface({
   document,
   readResource,
   openSemanticRef,
+  readCode,
 }: {
   document: AnalysisDocument
   readResource?: (name: string) => AnalysisResource | undefined
   openSemanticRef?: OpenSemanticRef
+  readCode?: AnalysisResourceContext['readCode']
 }) {
   return (
     <AnalysisRenderer
@@ -34,6 +37,7 @@ export function AnalysisSurface({
       recordId={document.recordId}
       readResource={readResource}
       openSemanticRef={openSemanticRef}
+      readCode={readCode}
     />
   )
 }
@@ -47,6 +51,8 @@ export interface AnalysisRendererProps {
   isStreaming?: boolean
   candidate?: boolean
   openSemanticRef?: OpenSemanticRef
+  /** Saved Host source reader; candidate previews never read code. */
+  readCode?: AnalysisResourceContext['readCode']
 }
 export function AnalysisRenderer({
   program,
@@ -58,14 +64,16 @@ export function AnalysisRenderer({
   isStreaming = false,
   candidate = false,
   openSemanticRef,
+  readCode,
 }: AnalysisRendererProps) {
   const resources = useMemo(
     () => ({
       readResource: readResource ?? ((name: string) => saved[name]),
       candidate,
       openSemanticRef: candidate ? undefined : openSemanticRef,
+      readCode: candidate ? undefined : readCode,
     }),
-    [saved, readResource, candidate, openSemanticRef],
+    [saved, readResource, candidate, openSemanticRef, readCode],
   )
   return (
     <ReportCopyProvider locale={locale}>
@@ -79,6 +87,7 @@ export function AnalysisRenderer({
         >
           <style>{PRESENTATION_STYLES}</style>
           <style>{styles}</style>
+          <style>{FRAME_STYLES}</style>
           <h1>{title}</h1>
           <Renderer
             library={analysisLibrary}

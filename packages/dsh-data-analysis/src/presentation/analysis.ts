@@ -16,7 +16,7 @@ import {
   parseAnalysisProgram,
 } from './contracts/analysis-program.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
-import { readDatasetSnapshot } from './dataset-snapshot.ts'
+import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 
@@ -28,6 +28,12 @@ function imageMime(bytes: Buffer) {
   if (bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP')
     return 'image/webp'
   throw new Error('analysis-image-format-unsupported')
+}
+const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
+  'marivo-frame': 'AnalysisFrameView',
+  'frame-snapshot': 'AnalysisFrameView',
+  'dataset-snapshot': 'DatasetView',
+  'image-file': 'Image',
 }
 /** Read each admitted resource once; saved bytes never depend on the capture directory. */
 export async function createAnalysisDocument(
@@ -53,7 +59,7 @@ export async function createAnalysisDocument(
     : input.program
       ? analysisStatements(input.program)
       : single
-        ? `root = ${single[1].kind === 'marivo-frame' ? 'AnalysisFrameView' : single[1].kind === 'dataset-snapshot' ? 'DatasetView' : 'Image'}(${single[1].kind === 'image-file' ? `${JSON.stringify(title)}, ` : ''}${JSON.stringify(single[0])});`
+        ? `root = ${defaultComponent[single[1].kind]}(${single[1].kind === 'image-file' ? `${JSON.stringify(title)}, ` : ''}${JSON.stringify(single[0])});`
         : ''
   const nodes = analysisElements(parseAnalysisProgram(program))
   for (const node of nodes) {
@@ -89,9 +95,17 @@ export async function createAnalysisDocument(
                   | { chart: string; columns?: string[]; encoding?: { value: string } }
                   | undefined,
             )
+          // Only explicit table columns and metric values bound the read; every other
+          // chart (comparison, decomposition, time and heatmap views) needs full columns.
           const all =
             !views.length ||
-            views.some((v) => !v || v.chart === 'auto' || (v.chart === 'table' && !v.columns))
+            views.some(
+              (v) =>
+                !v ||
+                (v.chart !== 'table' && v.chart !== 'metric') ||
+                (v.chart === 'table' && !v.columns) ||
+                (v.chart === 'metric' && !v.encoding),
+            )
           const columns = all
             ? undefined
             : [
@@ -126,8 +140,10 @@ export async function createAnalysisDocument(
           runtimeFingerprint: projection!.binding.fingerprint,
         },
       }
-    } else if (declaration.kind === 'dataset-snapshot') {
-      const { snapshot, codeRef, owner } = await readDatasetSnapshot(
+    } else if (declaration.kind === 'dataset-snapshot' || declaration.kind === 'frame-snapshot') {
+      const { snapshot, codeRef, owner } = await (declaration.kind === 'dataset-snapshot'
+        ? readDatasetSnapshot
+        : readFrameSnapshot)(
         source.projectRoot,
         identity.workspaceId,
         declaration.snapshotRef,

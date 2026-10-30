@@ -219,7 +219,7 @@ test('production present saves independent Lang documents and returns complete h
       packagePath: '/bound/marivo',
       subprocessPolicyId: 'policy',
       fingerprint: 'fingerprint',
-      presentationKit: { version: '1.4.0', packagePath: '/bound/presentation' },
+      presentationKit: { version: '1.5.0', packagePath: '/bound/presentation' },
     },
     async runChecked(): Promise<never> {
       throw new Error('No analysis expected')

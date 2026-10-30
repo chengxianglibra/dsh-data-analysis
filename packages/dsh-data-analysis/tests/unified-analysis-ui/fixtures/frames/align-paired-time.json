@@ -1,0 +1,516 @@
+{
+  "schemaVersion": 2,
+  "kind": "frame",
+  "fetchedAt": "2026-10-30T00:00:00+00:00",
+  "data": {
+    "schemaVersion": 1,
+    "columns": [
+      {
+        "id": "calendar:month.left.start",
+        "label": "calendar:month.left.start",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "calendar:month.left.end",
+        "label": "calendar:month.left.end",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "calendar:month.right.start",
+        "label": "calendar:month.right.start",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "calendar:month.right.end",
+        "label": "calendar:month.right.end",
+        "type": "datetime",
+        "nullable": true
+      },
+      {
+        "id": "left.revenue",
+        "label": "left.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "right.revenue",
+        "label": "right.revenue",
+        "type": "int64",
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "left_present",
+        "label": "left_present",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "id": "right_present",
+        "label": "right_present",
+        "type": "boolean",
+        "nullable": false
+      }
+    ],
+    "rows": [
+      [
+        "2026-09-01T00:00:00+00:00",
+        "2026-10-01T00:00:00+00:00",
+        "2026-08-01T00:00:00+00:00",
+        "2026-09-01T00:00:00+00:00",
+        "240",
+        "210",
+        true,
+        true
+      ]
+    ],
+    "rowCount": 1,
+    "limit": 5000,
+    "truncated": false
+  },
+  "coverage": {
+    "start": 0,
+    "totalRows": 1,
+    "capturedRows": 1,
+    "complete": true,
+    "columns": [
+      "calendar:month.left.start",
+      "calendar:month.left.end",
+      "calendar:month.right.start",
+      "calendar:month.right.end",
+      "left.revenue",
+      "right.revenue",
+      "left_present",
+      "right_present"
+    ],
+    "business": "unknown"
+  },
+  "source": {
+    "kind": "frame",
+    "sessionId": "session-fixture",
+    "artifactId": null
+  },
+  "frame": {
+    "inputId": "frame_ac018c5e49c547c396a391a97aa17d4c",
+    "description": null,
+    "fields": [
+      {
+        "id": "calendar:month.left.start",
+        "role": "coordinate",
+        "axisToken": "frame.paired.0"
+      },
+      {
+        "id": "calendar:month.left.end",
+        "role": "coordinate",
+        "axisToken": "frame.paired.0"
+      },
+      {
+        "id": "calendar:month.right.start",
+        "role": "coordinate",
+        "axisToken": "frame.paired.0"
+      },
+      {
+        "id": "calendar:month.right.end",
+        "role": "coordinate",
+        "axisToken": "frame.paired.0"
+      },
+      {
+        "id": "left.revenue",
+        "role": "value",
+        "slotId": "value.0"
+      },
+      {
+        "id": "right.revenue",
+        "role": "value",
+        "slotId": "value.1"
+      },
+      {
+        "id": "left_present",
+        "role": "presence",
+        "slotId": "presence.0"
+      },
+      {
+        "id": "right_present",
+        "role": "presence",
+        "slotId": "presence.1"
+      }
+    ],
+    "layout": [
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.left.start",
+        "axisToken": "frame.paired.0",
+        "endpoint": "left",
+        "part": "start"
+      },
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.left.end",
+        "axisToken": "frame.paired.0",
+        "endpoint": "left",
+        "part": "end"
+      },
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.right.start",
+        "axisToken": "frame.paired.0",
+        "endpoint": "right",
+        "part": "start"
+      },
+      {
+        "kind": "coordinate",
+        "name": "calendar:month.right.end",
+        "axisToken": "frame.paired.0",
+        "endpoint": "right",
+        "part": "end"
+      },
+      {
+        "kind": "field",
+        "name": "left.revenue",
+        "slotId": "value.0"
+      },
+      {
+        "kind": "field",
+        "name": "right.revenue",
+        "slotId": "value.1"
+      },
+      {
+        "kind": "field",
+        "name": "left_present",
+        "slotId": "presence.0"
+      },
+      {
+        "kind": "field",
+        "name": "right_present",
+        "slotId": "presence.1"
+      }
+    ],
+    "axes": [
+      {
+        "token": "frame.paired.0",
+        "name": "calendar:month",
+        "role": "paired",
+        "keys": [
+          {
+            "id": "pair",
+            "slotId": "frame.paired.0.key",
+            "dtype": {
+              "type": "int64"
+            },
+            "nullable": false,
+            "unit": null
+          }
+        ],
+        "variant": {
+          "kind": "paired",
+          "left": {
+            "kind": "calendar",
+            "name": "calendar:month",
+            "at": null,
+            "timezone": "UTC",
+            "grain": {
+              "kind": "builtin",
+              "unit": "month",
+              "step": 1
+            }
+          },
+          "right": {
+            "kind": "calendar",
+            "name": "calendar:month",
+            "at": null,
+            "timezone": "UTC",
+            "grain": {
+              "kind": "builtin",
+              "unit": "month",
+              "step": 1
+            }
+          }
+        }
+      }
+    ],
+    "slots": [
+      {
+        "id": "left.revenue",
+        "slotId": "value.0",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "right.revenue",
+        "slotId": "value.1",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": true,
+        "unit": "CNY"
+      },
+      {
+        "id": "left_present",
+        "slotId": "presence.0",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "right_present",
+        "slotId": "presence.1",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": false,
+        "unit": null
+      },
+      {
+        "id": "pair",
+        "slotId": "frame.paired.0.key",
+        "dtype": {
+          "type": "int64"
+        },
+        "nullable": false,
+        "unit": null
+      }
+    ],
+    "coordinates": {
+      "frame.paired.0.key": {
+        "column": {
+          "id": "pair",
+          "label": "pair",
+          "type": "int64",
+          "nullable": false
+        },
+        "values": ["0"]
+      }
+    },
+    "readStats": {
+      "dataRowsRead": 1,
+      "coordinateRowsRead": 3,
+      "receiptBytesHashed": 0
+    },
+    "sections": {
+      "semantics": {
+        "status": "captured",
+        "columns": [
+          {
+            "role": "axis",
+            "id": "frame.paired.0",
+            "valueOrigins": [],
+            "contextOrigins": [],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "left.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "value",
+            "id": "right.revenue",
+            "valueOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "measure",
+                "path": "sales.order.amount",
+                "definitionId": "sha256:ee03831b68186713cfeb8b005fcb2d75dab8d6cfee969ef5c479d9eb618e0f45"
+              },
+              {
+                "kind": "metric",
+                "path": "sales.revenue",
+                "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+              }
+            ],
+            "contextOrigins": [
+              {
+                "kind": "datasource",
+                "path": "warehouse",
+                "definitionId": "sha256:f3e2b8be66874bf6f8a649631a6405756c421f6cef636513019fa1a3d4cb2cca"
+              },
+              {
+                "kind": "entity",
+                "path": "sales.order",
+                "definitionId": "sha256:76ed98f04a6a864068270716f8bacea6e1659291b96e85996a7f0cffda396c8d"
+              },
+              {
+                "kind": "time_dimension",
+                "path": "sales.order.ordered_at",
+                "definitionId": "sha256:6f1b84376b2843e138a12dd859abd9f43b26d05e933dc3e27a379b8c44467117"
+              }
+            ],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "left_present",
+            "valueOrigins": [],
+            "contextOrigins": [],
+            "omittedOrigins": 0
+          },
+          {
+            "role": "presence",
+            "id": "right_present",
+            "valueOrigins": [],
+            "contextOrigins": [],
+            "omittedOrigins": 0
+          }
+        ]
+      },
+      "interpretation": {
+        "status": "captured",
+        "fixedAxes": [],
+        "valueContexts": {
+          "left.revenue": {
+            "kind": "observation",
+            "subject": {
+              "kind": "metric",
+              "path": "sales.revenue",
+              "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+            },
+            "time": {
+              "kind": "axis",
+              "axisToken": "frame.paired.0",
+              "endpoint": "left"
+            },
+            "window": null
+          },
+          "right.revenue": {
+            "kind": "observation",
+            "subject": {
+              "kind": "metric",
+              "path": "sales.revenue",
+              "definitionId": "sha256:2adaa4ae3db6f319f7d8702cef3bed1c5e0ea858acc5d494e3c9cd7f554551a4"
+            },
+            "time": {
+              "kind": "axis",
+              "axisToken": "frame.paired.0",
+              "endpoint": "right"
+            },
+            "window": null
+          }
+        },
+        "comparisons": [],
+        "decompositions": [],
+        "alignments": [
+          {
+            "left": {
+              "values": ["left.revenue"],
+              "presence": ["left_present"],
+              "coordinates": [
+                {
+                  "kind": "axis",
+                  "axisToken": "frame.paired.0",
+                  "endpoint": "left"
+                }
+              ]
+            },
+            "right": {
+              "values": ["right.revenue"],
+              "presence": ["right_present"],
+              "coordinates": [
+                {
+                  "kind": "axis",
+                  "axisToken": "frame.paired.0",
+                  "endpoint": "right"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "periods": {
+        "status": "captured",
+        "pages": [
+          {
+            "target": {
+              "kind": "axis",
+              "axisToken": "frame.paired.0"
+            },
+            "totalCount": 1,
+            "hasMore": false,
+            "items": [
+              {
+                "kind": "paired",
+                "key": ["0"],
+                "left": {
+                  "kind": "calendar",
+                  "key": ["2026-09-01T00:00:00+00:00"],
+                  "timezone": "UTC",
+                  "start": "2026-09-01T00:00:00+00:00",
+                  "end": "2026-10-01T00:00:00+00:00",
+                  "label": "2026-09-01",
+                  "nominalStart": "2026-09-01T00:00:00+00:00",
+                  "nominalEnd": "2026-10-01T00:00:00+00:00"
+                },
+                "right": {
+                  "kind": "calendar",
+                  "key": ["2026-08-01T00:00:00+00:00"],
+                  "timezone": "UTC",
+                  "start": "2026-08-01T00:00:00+00:00",
+                  "end": "2026-09-01T00:00:00+00:00",
+                  "label": "2026-08-01",
+                  "nominalStart": "2026-08-01T00:00:00+00:00",
+                  "nominalEnd": "2026-09-01T00:00:00+00:00"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

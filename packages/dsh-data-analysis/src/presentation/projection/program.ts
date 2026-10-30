@@ -26,7 +26,7 @@ try:
             if (session.id != ref["sessionId"] or frame.session_id != session.id or
                 frame.artifact_id != ref["artifactId"] or Path(session.project_root).resolve() != Path.cwd().resolve()):
                 raise ProjectionFailure("source_identity_mismatch", "/frames", "Restored Frame identity differs from the requested Workspace/Session/Artifact.")
-            snapshots.append(read_frame(frame, columns=ref.get("columns"), row_limit=ref.get("rowLimit", 5000), metadata=True))
+            snapshots.append(read_frame(frame, columns=ref.get("columns"), row_limit=ref.get("rowLimit", 5000)))
         result = {"ok": True, "snapshots": snapshots}
 except ProjectionFailure as error:
     result = {"ok": False, "error": {"code": error.code, "path": error.path, "message": error.message}}

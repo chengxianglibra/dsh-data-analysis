@@ -20,6 +20,12 @@ Draft／Document v3、图形与 chart explorer、全局筛选、reader 编辑、
 隔离 Web Host 的冷重启回放验证了折叠时结果可见、展开后不重复及表格排序；更新用户 web profile 并保留
 会话后，既有 Yellow Taxi Session 的 12 行结果也在折叠步骤外显示。未重新运行真实模型或验证 PTC 浏览器交付。
 
+## AnalysisFrameView
+
+presentation-kit 1.5.0 的 `capture_frame` 与 Frame schemaVersion 2、`frame-snapshot` 资源、`resolveFrameView` 及 Frame 外壳与各类视图。
+聚焦检查为 presentation-kit pytest 与 `npm run test:unified-analysis-ui`，后者包含 21 个真实 Marivo Frame 夹具；
+真实 Runtime 生成、浏览器渲染及未覆盖项见[验收记录](testing/analysis-frame-view-2026-10-30.md)。
+
 ## 统一分析 UI P4
 
 P4 先接通 Frame 元数据：presentation-kit 1.3.0 的 Reader、快照契约、来源详情及语义导航。
