@@ -12,6 +12,7 @@ import {
 } from '../../src/presentation/contracts/snapshot.ts'
 import { frameSnapshot } from './fixtures.ts'
 import * as f from './frame-fixtures.ts'
+import { comparedSinglePeriodMultiGroup } from './frame-render-fixtures.ts'
 
 function resolved(snapshot: AnalysisSnapshot, view?: FrameView) {
   const result = resolveFrameView(snapshot, view)
@@ -23,6 +24,11 @@ const failure = (snapshot: AnalysisSnapshot, view: FrameView) => {
   const result: FrameViewResolution = resolveFrameView(snapshot, view)
   assert.equal(result.ok, false, JSON.stringify(result))
   return result.ok ? undefined : { code: result.code, path: result.path }
+}
+const ambiguity = (snapshot: AnalysisSnapshot, view: FrameView) => {
+  const result: FrameViewResolution = resolveFrameView(snapshot, view)
+  assert.equal(result.ok, false, JSON.stringify(result))
+  return result.ok ? undefined : result
 }
 const kindOf = (snapshot: AnalysisSnapshot) => {
   const { classification } = resolved(snapshot)
@@ -253,6 +259,53 @@ test('comparison auto follows the shape', () => {
   ])
 })
 
+test('single-row multi-group comparisons resolve to one comparison table', () => {
+  const multi = comparedSinglePeriodMultiGroup()
+  const columns = multi.data.columns.map((column) => column.id)
+  assert.deepEqual(viewOf(multi), { chart: 'table', columns, layout: 'comparison' })
+  assert.deepEqual(viewOf(multi, { chart: 'comparison' }), {
+    chart: 'table',
+    columns,
+    layout: 'comparison',
+  })
+  assert.deepEqual(
+    viewOf(multi, { chart: 'comparison', encoding: { value: 'prior.relative.orders' } }),
+    { chart: 'comparison', comparison: 0, group: 'orders', style: 'numbers' },
+  )
+  assert.deepEqual(
+    viewOf(multi, { chart: 'comparison', encoding: { value: 'sales' }, style: 'delta' }),
+    {
+      chart: 'comparison',
+      comparison: 0,
+      group: 'sales',
+      style: 'delta',
+    },
+  )
+  assert.deepEqual(viewOf(multi, { chart: 'table' }), {
+    chart: 'table',
+    columns,
+    layout: 'comparison',
+  })
+  // An explicit column list is still taken literally, without the comparison layout.
+  assert.deepEqual(viewOf(multi, { chart: 'table', columns: ['sales'] }), {
+    chart: 'table',
+    columns: ['sales'],
+  })
+  // One group on one saved row reads as numbers, not a one-point line.
+  assert.deepEqual(viewOf(f.compareCalendar(1)), {
+    chart: 'comparison',
+    comparison: 0,
+    group: 'sales',
+    style: 'numbers',
+  })
+  assert.deepEqual(viewOf(f.compareCalendar(1), { chart: 'comparison', style: 'delta' }), {
+    chart: 'comparison',
+    comparison: 0,
+    group: 'sales',
+    style: 'delta',
+  })
+})
+
 test('explicit comparison: delta style, target lookup and roles', () => {
   const category = f.compareOrdinary([f.categoryAxis(3)])
   assert.deepEqual(viewOf(category, { chart: 'comparison', style: 'delta' }), {
@@ -288,17 +341,39 @@ test('explicit comparison: delta style, target lookup and roles', () => {
     code: 'view-target-ambiguous',
     path: '/view',
   })
+  const candidates = ambiguity(two, { chart: 'comparison' })?.candidates
+  assert.ok(candidates)
+  assert.ok(candidates.includes('orders'))
+  for (const name of [
+    'sales',
+    'prior.baseline.sales',
+    'prior.absolute.sales',
+    'prior.relative.sales',
+  ])
+    assert.ok(candidates.includes(name), name)
+  assert.ok(candidates.length <= 8)
   const picked = viewOf(two, { chart: 'comparison', encoding: { value: 'prior.relative.orders' } })
   assert.equal(picked.chart === 'comparison' && picked.group, 'orders')
   assert.deepEqual(failure(two, { chart: 'comparison', encoding: { value: 'missing' } }), {
     code: 'view-name-unknown',
     path: '/view/encoding/value',
   })
-  // A data column that belongs to no comparison is not a target.
+  // A data column that belongs to no comparison is not a target, but still lists candidates.
   assert.deepEqual(failure(category, { chart: 'comparison', encoding: { value: 'orders' } }), {
     code: 'view-target-ambiguous',
     path: '/view/encoding/value',
   })
+  const unmatchedCandidates = ambiguity(category, {
+    chart: 'comparison',
+    encoding: { value: 'orders' },
+  })?.candidates
+  assert.ok(unmatchedCandidates)
+  assert.deepEqual(unmatchedCandidates, [
+    'sales',
+    'prior.baseline.sales',
+    'prior.absolute.sales',
+    'prior.relative.sales',
+  ])
   assert.deepEqual(failure(f.observeCategory(3), { chart: 'comparison' }), {
     code: 'view-target-ambiguous',
     path: '/view',

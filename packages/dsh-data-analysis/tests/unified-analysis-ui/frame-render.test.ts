@@ -14,6 +14,7 @@ import {
   axisGroups,
   categoryAxis,
   compareCalendar,
+  comparedIntervalMonth,
   compareOrdinary,
   correlate,
   cycle,
@@ -42,6 +43,7 @@ import {
   comparedCalendarWithPeriods,
   comparedCategories,
   comparedScalar,
+  comparedSinglePeriodMultiGroup,
   comparedTimeCategory,
   monthly,
   type Renderer,
@@ -65,6 +67,8 @@ after(async () => {
 
 const viewOf = (html: string) => /data-frame-view="([^"]+)"/.exec(html)?.[1]
 const count = (html: string, pattern: RegExp) => html.match(new RegExp(pattern, 'g'))?.length ?? 0
+const comparisonTable = (html: string) =>
+  /<div class="pr-table fv-comparison-table"[\s\S]*?<\/table><\/div>/.exec(html)?.[0] ?? ''
 /** Path `d` attributes of drawn lines; each `M` starts a segment. */
 const segments = (html: string) =>
   [...html.matchAll(/<path d="([^"]*)" class="fv-line"/g)].map((m) => count(m[1]!, /M/))
@@ -209,7 +213,7 @@ test('comparison numbers are saved cells with neutral marks and endpoint labels'
   assert.equal(viewOf(html), 'comparison')
   // Δ and Δ% are the saved (deliberately inconsistent) cells, never current − baseline.
   assert.match(html, /▲7</)
-  assert.match(html, /▲50%/)
+  assert.match(html, /▲50\.0%/)
   assert.doesNotMatch(html, /▲20\b|▲20%/)
   assert.match(html, /<dt>west<\/dt>/)
   assert.match(html, /<dt>east<\/dt>/)
@@ -217,8 +221,52 @@ test('comparison numbers are saved cells with neutral marks and endpoint labels'
   assert.match(zero, /data-number="prior.relative.sales"><dd[^>]*>—</)
   const down = r.render(comparedScalar({ current: 1, baseline: 2, absolute: -1, relative: -0.5 }))
   assert.match(down, /▼1</)
-  assert.match(down, /▼50%/)
+  assert.match(down, /▼50\.0%/)
   assert.doesNotMatch(down, /#(?:e34948|008300|ff0000|00ff00)|\bred\b|\bgreen\b/i)
+})
+
+test('a single-row multi-group comparison is one transposed table plus the audit table', () => {
+  const html = r.render(comparedSinglePeriodMultiGroup())
+  assert.equal(viewOf(html), 'table')
+  const block = comparisonTable(html)
+  assert.match(block, /^<div class="pr-table fv-comparison-table" data-table-layout="comparison"/)
+  // metric | current | baseline | Δ | Δ% — endpoints come from the comparison.
+  assert.equal(count(block, /<th scope="col">/), 5)
+  for (const header of ['Metric', 'Current', 'Baseline', 'Δ', 'Δ%'])
+    assert.ok(block.includes(`>${header}</th>`), header)
+  // Two groups on one saved row: two data rows in one tbody, no section headers.
+  assert.equal(count(block, /<tr><th scope="row">/), 2)
+  // Current/baseline/Δ/Δ% are numeric cells for both rows.
+  assert.equal(count(block, /<td class="pr-numeric"/), 8)
+  assert.equal(count(block, /<tbody>/), 1)
+  assert.doesNotMatch(block, /fv-comparison-section/)
+  // Raw role column ids stay in the collapsed audit table, never in the display table.
+  assert.doesNotMatch(block, /prior\.(?:baseline|relative)\./)
+  assert.match(html, /<details class="fv-table">/)
+  assert.match(html, /<h3 class="fv-title">Current ⇄ Baseline<\/h3>/)
+})
+
+test('a frame table shows grouped values and keeps the exact cell in the title', () => {
+  const html = r.render(
+    frame({
+      axes: [categoryAxis(2)],
+      values: [{ name: 'amount', values: [118393545.04998468, 8] }],
+    }),
+    { view: { chart: 'table' } },
+  )
+  assert.match(html, />118,393,545\.05</)
+  assert.match(html, /title="118393545\.04998468"/)
+})
+
+test('interval comparison endpoints name inclusive civil months', () => {
+  const html = r.render(comparedIntervalMonth())
+  assert.equal(viewOf(html), 'table')
+  const block = comparisonTable(html)
+  assert.match(block, /<th scope="col">2025-06<\/th>/)
+  assert.match(block, /<th scope="col">2025-05<\/th>/)
+  assert.match(html, /<h3 class="fv-title">2025-06 ⇄ 2025-05<\/h3>/)
+  assert.doesNotMatch(block, /07-01/)
+  assert.doesNotMatch(block, /06-01 – 07-01/)
 })
 
 test('time comparison draws a solid current line, dashed baseline and a Δ strip', () => {
@@ -335,7 +383,7 @@ test('main views accept a hand-built resolution and never re-derive class or sha
   assert.doesNotMatch(table, /data-column-id="month"/)
 })
 
-test('compact density keeps the name, header numbers or the main view and one icon', () => {
+test('compact density keeps the name, header numbers or the main view and only useful icons', () => {
   const kpi = r.render(
     comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 }),
     {
@@ -344,17 +392,22 @@ test('compact density keeps the name, header numbers or the main view and one ic
   )
   assert.match(kpi, /data-density="compact"/)
   assert.match(kpi, /class="fv-numbers"/)
-  assert.equal(count(kpi, /data-icon="/), 1)
+  assert.equal(count(kpi, /data-icon="/), 0)
   assert.doesNotMatch(kpi, /<details/)
   assert.doesNotMatch(kpi, /fv-chips/)
   const trend = r.render(observeTime(18), { display: { density: 'compact' } })
   assert.match(trend, /class="fv-svg"/)
-  assert.equal(count(trend, /data-icon="/), 1)
+  assert.equal(count(trend, /data-icon="/), 0)
+  const periods = r.render(comparedCalendarWithPeriods(3), { display: { density: 'compact' } })
+  assert.equal(count(periods, /data-icon="/), 1)
+  assert.match(periods, /data-icon="periods"/)
 })
 
 test('icons grey out for missing sections and Python sources, never as zero items', () => {
-  const html = r.render(observeTime(6))
+  const html = r.render(observeCategory(3, 9))
   assert.match(html, /data-icon="coverage"/)
+  assert.match(html, /<span>3\/9<\/span>/)
+  assert.doesNotMatch(html, /data-icon="coverage" data-disabled/)
   assert.match(html, /data-icon="origins" data-disabled="true"/)
   assert.match(html, /Not captured when saved/)
   assert.doesNotMatch(html, /data-icon="origins"[\s\S]*?<span>0<\/span>/)
@@ -362,6 +415,8 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.match(html, /No script source/)
   assert.match(html, /aria-label="Python"/)
   assert.doesNotMatch(html, /data-icon="periods"/)
+  // Complete snapshots show no coverage icon; incomplete ones show the captured fraction.
+  assert.doesNotMatch(r.render(observeTime(6)), /data-icon="coverage"/)
   const s = observeTime(6)
   s.frame.sections.semantics = {
     status: 'captured',

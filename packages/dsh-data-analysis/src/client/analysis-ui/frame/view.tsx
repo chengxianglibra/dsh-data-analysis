@@ -13,7 +13,13 @@ import type { Translator } from '../../i18n/copy.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
 import { useAnalysisResources } from '../context.tsx'
 import { AlignmentView } from './alignment.tsx'
-import { ComparisonView, comparisonRoles, Numbers } from './comparison.tsx'
+import {
+  ComparisonTable,
+  ComparisonView,
+  comparisonRoles,
+  comparisonTableSections,
+  Numbers,
+} from './comparison.tsx'
 import {
   DecompositionView,
   decompositionChips,
@@ -28,6 +34,7 @@ import {
   columnOf,
   compact,
   contextChips,
+  endpointLabels,
   exact,
   interpretationOf,
   type Snapshot,
@@ -126,7 +133,9 @@ export function MainView({
   const common = { snapshot, classification, height }
   switch (view.chart) {
     case 'table':
-      return (
+      return view.layout === 'comparison' ? (
+        <ComparisonTable snapshot={snapshot} classification={classification} />
+      ) : (
         <DataTable
           snapshot={snapshot}
           columns={view.columns}
@@ -160,7 +169,20 @@ export function MainView({
   }
 }
 
-function title(s: Snapshot, c: FrameClassification, view: ResolvedFrameView, fallback?: string) {
+function title(
+  t: Translator,
+  s: Snapshot,
+  c: FrameClassification,
+  view: ResolvedFrameView,
+  fallback?: string,
+) {
+  if (view.chart === 'table' && view.layout === 'comparison') {
+    const section = comparisonTableSections(s).find((item) => item.rows.length)
+    if (section) {
+      const ends = endpointLabels(t, s, section.index)
+      return `${ends.current} ⇄ ${ends.baseline}`
+    }
+  }
   if (view.chart === 'comparison') {
     const roles = comparisonRoles(s, view.comparison, view.group)
     if (roles?.current) return valueName(s, c, roles.current)
@@ -254,7 +276,7 @@ export function FrameShell({
 }: FrameShellProps) {
   const t = useCopy()
   const compactDensity = display?.density === 'compact'
-  const name = title(s, c, view, resourceName)
+  const name = title(t, s, c, view, resourceName)
   const decomposition =
     view.chart === 'decomposition' ? decompositionOf(s, view.decomposition) : undefined
   const chips: Chip[] = [
@@ -266,7 +288,8 @@ export function FrameShell({
   const comparisonNumbers = view.chart === 'comparison' && s.data.rows.length === 1
   const hasNumbers = numbers.length > 0 || comparisonNumbers
   const showMain = !compactDensity || !hasNumbers
-  const tableAsMain = view.chart === 'table' || view.chart === 'members'
+  const tableAsMain =
+    (view.chart === 'table' && view.layout !== 'comparison') || view.chart === 'members'
   const allColumns = s.data.columns.map((col) => col.id)
   return (
     <section

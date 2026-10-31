@@ -247,10 +247,13 @@ test('production present saves independent Lang documents and returns complete h
   assert.deepEqual(await readdir(path.dirname(first.receipt.files.document.path)), [
     'presentation.json',
   ])
-  const text = presentationReceiptText(second.receipt)
+  const text = presentationReceiptText(second.receipt, second.surface)
   assert(text.includes('Record: marivo-ui:'))
-  assert(text.includes(second.receipt.files.document.sha256))
-  assert(text.includes(second.receipt.files.document.path))
+  assert(text.includes('Build: '))
+  assert(text.includes('Surface: tool view'))
+  // Workspace paths and digests stay on disk, out of the model-facing text.
+  assert(!text.includes(second.receipt.files.document.sha256))
+  assert(!text.includes(second.receipt.files.document.path))
   await assert.rejects(tool.execute({ draft_path: 'draft.json' }, exec), /Unrecognized key/)
   await assert.rejects(
     tool.execute(input, {

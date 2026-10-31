@@ -24,6 +24,12 @@ export const analysisPresentInput = z.strictObject({
   surface: z.enum(['tool', 'tab']).default('tool'),
   basedOnRecordId: z.string().min(1).max(512).optional(),
   resources: z.record(id, analysisResourceDeclaration).optional(),
+  labels: z
+    .record(
+      z.string().min(1).max(80),
+      z.record(z.string().min(1).max(256), z.string().trim().min(1).max(256)),
+    )
+    .optional(),
   title: z.string().min(1).max(256).optional(),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text).optional(),
   locale: z.enum(['zh-CN', 'en-US']).optional(),
@@ -128,7 +134,7 @@ const viewHints: Record<string, string> = {
   'analysis-view-name-unknown': 'use a value or axis name from this snapshot.',
   'analysis-view-dtype-not-drawable': 'choose a numeric value or use chart "table".',
   'analysis-view-target-ambiguous':
-    'add encoding.value naming an output of exactly one comparison or decomposition.',
+    'add encoding.value to show one metric, or omit encoding to render every comparison group as one table.',
   'analysis-view-role-missing': 'this comparison or decomposition lacks the roles for this chart.',
   'analysis-view-axis-not-time': 'line/area/bar axis must be a calendar or interval axis.',
   'analysis-view-requires-complete-snapshot':
@@ -136,9 +142,19 @@ const viewHints: Record<string, string> = {
   'analysis-view-unsupported-for-snapshot':
     'this snapshot supports only auto, table and metric; capture a v2 Frame for other charts.',
 }
-function viewError(code: string, statement: string, path: string): AnalysisViewError {
+function viewError(
+  code: string,
+  statement: string,
+  path: string,
+  candidates?: string[],
+): AnalysisViewError {
   const relative = path.startsWith('/view') || path.startsWith('/display') ? path : `/view${path}`
-  return new AnalysisViewError(code, `${statement}${relative}`, viewHints[code] ?? '')
+  const hint = viewHints[code] ?? ''
+  // A candidate list extends the sentence, so a trailing hint period would read as `. ;`.
+  const suffix = candidates?.length
+    ? `${hint.endsWith('.') ? hint.slice(0, -1) : hint}; candidates: ${candidates.join(', ')}`
+    : hint
+  return new AnalysisViewError(code, `${statement}${relative}`, suffix)
 }
 export function validateAnalysisResources(
   program: string,
@@ -176,7 +192,7 @@ export function validateAnalysisResources(
               resolved.code === 'view-name-unknown')
           ? 'analysis-metric-requires-complete-single-row'
           : `analysis-view-${resolved.code.replace(/^view-/, '')}`
-    throw viewError(code, statement, resolved.path)
+    throw viewError(code, statement, resolved.path, resolved.candidates)
   }
 }
 export function parseAnalysisDocument(value: unknown): AnalysisDocument {

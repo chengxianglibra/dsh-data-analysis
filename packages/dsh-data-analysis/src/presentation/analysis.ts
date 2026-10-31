@@ -20,6 +20,54 @@ import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
 import type { MarivoPresentationProjection } from './projection/index.ts'
 
+/** Present-level labels live only in the embedded snapshot; they never become a document field. */
+const LABEL_BYTES = 16 * 1024
+const LABEL_HINT = `at most ${PRESENTATION_BUDGETS.columns} labels per resource and ${LABEL_BYTES} UTF-8 bytes in total.`
+/**
+ * Merge display labels into embedded snapshot columns before the Build is written. A resource
+ * named in `labels` replaces its present-level labels: every column starts from its id again so
+ * stale labels cannot survive an update. Omitted resources keep their inherited labels.
+ */
+export function applyAnalysisLabels(
+  resources: AnalysisDocument['resources'],
+  labels: AnalysisPresentInput['labels'],
+): void {
+  if (!labels) return
+  const entries = Object.entries(labels)
+  for (const [name, map] of entries) {
+    const target = resources[name]
+    if (target?.kind !== 'snapshot')
+      throw new Error(
+        `analysis-label-unknown at /labels/${name}: expected a declared snapshot resource named "${name}".`,
+      )
+    if (Object.keys(map).length > PRESENTATION_BUDGETS.columns)
+      throw new Error(`analysis-label-budget at /labels: ${LABEL_HINT}`)
+    const columns = new Set(target.snapshot.data.columns.map((column) => column.id))
+    for (const column of Object.keys(map))
+      if (!columns.has(column))
+        throw new Error(
+          `analysis-label-unknown at /labels/${name}/${column}: expected a column id of this snapshot.`,
+        )
+  }
+  const bytes = entries.reduce(
+    (total, [, map]) =>
+      total +
+      Object.values(map).reduce((sum, label) => sum + new TextEncoder().encode(label).length, 0),
+    0,
+  )
+  if (bytes > LABEL_BYTES) throw new Error(`analysis-label-budget at /labels: ${LABEL_HINT}`)
+  for (const [name, map] of entries) {
+    const target = resources[name]
+    if (target?.kind !== 'snapshot') continue
+    const snapshot = structuredClone(target.snapshot)
+    snapshot.data.columns = snapshot.data.columns.map((column) => ({
+      ...column,
+      label: map[column.id] ?? column.id,
+    }))
+    target.snapshot = snapshot
+  }
+}
+
 function imageMime(bytes: Buffer) {
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
     return 'image/png'
@@ -182,6 +230,7 @@ export async function createAnalysisDocument(
       }
     }
   }
+  applyAnalysisLabels(resources, input.labels)
   return parseAnalysisDocument({
     schemaVersion: ANALYSIS_UI_FORMAT,
     ...identity,

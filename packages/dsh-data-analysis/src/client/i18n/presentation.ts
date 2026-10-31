@@ -61,6 +61,10 @@ export const zh = {
   'marivo.presentation.ui-frame-developer': '开发者',
   'marivo.presentation.ui-frame-members': '成员',
   'marivo.presentation.ui-frame-data-table': '表',
+  'marivo.presentation.ui-frame-comparison-table': '指标对比',
+  'marivo.presentation.ui-frame-comparison-metric': '指标',
+  'marivo.presentation.ui-frame-comparison-delta': 'Δ',
+  'marivo.presentation.ui-frame-comparison-delta-percent': 'Δ%',
   'marivo.presentation.ui-dataframe-source-not-captured':
     '来自捕获的 DataFrame。SQL、数据源、backend、warnings 和文件来源未捕获。',
   'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及旧版呈现编辑。',
@@ -203,6 +207,10 @@ export const en = {
   'marivo.presentation.ui-frame-developer': 'Developer',
   'marivo.presentation.ui-frame-members': 'Members',
   'marivo.presentation.ui-frame-data-table': 'Table',
+  'marivo.presentation.ui-frame-comparison-table': 'Metric comparison',
+  'marivo.presentation.ui-frame-comparison-metric': 'Metric',
+  'marivo.presentation.ui-frame-comparison-delta': 'Δ',
+  'marivo.presentation.ui-frame-comparison-delta-percent': 'Δ%',
   'marivo.presentation.ui-dataframe-source-not-captured':
     'Captured DataFrame. SQL, datasource, backend, warnings and file provenance were not captured.',
   'marivo.presentation.ui-format-limitations':

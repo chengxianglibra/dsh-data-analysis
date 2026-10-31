@@ -90,9 +90,11 @@ export function signed(locale: PresentationLocale, value: Cell, column?: Dataset
 /** Saved fraction shown ×100 as a percent; `mark` adds ▲/▼ for relative change. */
 export function percent(locale: PresentationLocale, value: number | null, mark: boolean): string {
   if (value === null) return '—'
-  const text = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(
-    Math.abs(value) * 100,
-  )
+  const text = new Intl.NumberFormat(locale, {
+    ...(mark
+      ? { minimumFractionDigits: 1, maximumFractionDigits: 1 }
+      : { maximumFractionDigits: 1 }),
+  }).format(Math.abs(value) * 100)
   if (!mark) return `${value < 0 ? '-' : ''}${text}%`
   return value > 0 ? `▲${text}%` : value < 0 ? `▼${text}%` : `${text}%`
 }
@@ -171,7 +173,7 @@ function dateParts(iso: string, timezone: string) {
 }
 type Unit = Extract<FrameGrain, { kind: 'builtin' }>['unit']
 /** Tick text by grain: day MM-DD, month YYYY-MM; never computed from row positions. */
-export function instantText(iso: string, timezone: string, unit: Unit | 'full'): string {
+export function instantText(iso: string, timezone: string, unit: Unit | 'full' | 'date'): string {
   const p = dateParts(iso, timezone)
   if (!p) return iso
   switch (unit) {
@@ -192,6 +194,8 @@ export function instantText(iso: string, timezone: string, unit: Unit | 'full'):
     }
     case 'day':
       return `${p.m}-${p.d}`
+    case 'date':
+      return `${p.y}-${p.m}-${p.d}`
     case 'full':
       return `${p.y}-${p.m}-${p.d} ${p.h}:${p.mi}`
     default:
@@ -329,12 +333,31 @@ export function contextChips(t: Translator, s: Snapshot, values: string[]): Chip
   return chips
 }
 
+/** Civil date text from a UTC day number, independent of the viewer's local time. */
+function dayText(day: number): string {
+  const date = new Date(day)
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    date.getUTCDate(),
+  ).padStart(2, '0')}`
+}
+function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
+  const start = dateParts(p.start, p.timezone)
+  const end = dateParts(p.end, p.timezone)
+  if (!start || !end) return periodRange(p)
+  // The saved end is exclusive; only civil-midnight endpoints name a calendar span.
+  if (start.h !== '00' || start.mi !== '00' || end.h !== '00' || end.mi !== '00')
+    return `${instantText(p.start, p.timezone, 'full')} – ${instantText(p.end, p.timezone, 'full')}`
+  const startDay = Date.UTC(Number(start.y), Number(start.m) - 1, Number(start.d))
+  const endDay = Date.UTC(Number(end.y), Number(end.m) - 1, Number(end.d))
+  const nextMonth = Date.UTC(Number(start.y), Number(start.m), 1)
+  if (start.d === '01' && endDay === nextMonth) return `${start.y}-${start.m}`
+  if (endDay - startDay === 86_400_000) return `${start.y}-${start.m}-${start.d}`
+  return `${start.y}-${start.m}-${start.d} ~ ${dayText(endDay - 86_400_000)}`
+}
 function periodText(p: Period | null): string {
   if (!p) return '—'
   if (p.kind === 'calendar' && p.label !== null) return String(p.label)
-  return p.kind === 'calendar'
-    ? instantText(p.nominalStart, p.timezone, 'day')
-    : `${instantText(p.start, p.timezone, 'day')} – ${instantText(p.end, p.timezone, 'day')}`
+  return p.kind === 'calendar' ? instantText(p.nominalStart, p.timezone, 'day') : intervalText(p)
 }
 /** What a comparison compares: period labels, differing fixed members, else the alias. */
 export function endpointLabels(t: Translator, s: Snapshot, index: number) {

@@ -37,7 +37,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "frame-snapshot", snapshotRef}} for an AnalysisFrame retained by capture_frame (preferred over the legacy {kind: "marivo-frame", sessionId, artifactId}, which has no Python source), or {result: {kind: "dataset-snapshot", snapshotRef}} for a DataFrame; omit program for the default view. The default table already provides column selection, exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing. Legacy draft_path is not accepted.',
+      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "frame-snapshot", snapshotRef}} for an AnalysisFrame retained by capture_frame (preferred over the legacy {kind: "marivo-frame", sessionId, artifactId}, which has no Python source), or {result: {kind: "dataset-snapshot", snapshotRef}} for a DataFrame; omit program for the default view. A single-row comparison with several groups defaults to one comparison table; omit view to use the structural default. The default table already provides exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. labels can provide display names (resource -> column id -> label). Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing. Legacy draft_path is not accepted.',
     parameters: {
       surface: {
         type: 'string',
@@ -53,6 +53,12 @@ export function createMarivoPresentTool(
         type: 'object',
         description:
           'Named resources: {kind:"frame-snapshot",snapshotRef} (preferred for Frames), legacy {kind:"marivo-frame",sessionId,artifactId}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
+        additionalProperties: true,
+      },
+      labels: {
+        type: 'object',
+        description:
+          'Resource name -> column id -> display label. Display-only: does not change ids, sorting, units or exact values; must name columns of the declared snapshot; replaces previous present-level labels for that resource; omit to inherit.',
         additionalProperties: true,
       },
       title: { type: 'string', description: 'Short document title.' },
@@ -73,14 +79,10 @@ export function createMarivoPresentTool(
         additionalProperties: false,
         properties: { deliveryJson: { type: 'string', required: true } },
       },
-      render: (_args, value) => [
-        {
-          type: 'text',
-          text: presentationReceiptText(
-            parsePresentationDelivery(JSON.parse(value.deliveryJson)).receipt,
-          ),
-        },
-      ],
+      render: (_args, value) => {
+        const delivery = parsePresentationDelivery(JSON.parse(value.deliveryJson))
+        return [{ type: 'text', text: presentationReceiptText(delivery.receipt, delivery.surface) }]
+      },
       presentationMeta: (_args, value) => JSON.parse(value.deliveryJson),
     },
     timeoutMs: PRESENTATION_EXECUTION_BUDGETS.toolTimeoutMs,

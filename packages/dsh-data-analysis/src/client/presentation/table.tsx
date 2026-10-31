@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import type { TypedDataset } from '../../presentation/contracts/types.ts'
+import { formatCell } from '../../presentation/contracts/index.ts'
+import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
 import { useCopy } from './../i18n/context.tsx'
 import {
   cellText,
@@ -20,10 +21,13 @@ export function DatasetTable({
   data,
   columns,
   caption,
+  display,
 }: {
   data: TypedDataset
   columns?: string[]
   caption: string
+  /** Optional readable text; a differing exact value stays reachable via `title`. */
+  display?: (value: Exclude<Cell, null>, column: DatasetColumn) => string
 }) {
   const t = useCopy()
 
@@ -90,12 +94,21 @@ export function DatasetTable({
                 {indices.map((index) => {
                   const value = data.rows[rowIndex]![index]!
                   const column = data.columns[index]!
+                  const exact =
+                    value === null || value === '' ? undefined : formatCell(value, column)
+                  const text =
+                    exact === undefined
+                      ? t(cellText(t.locale, value, column))
+                      : display
+                        ? display(value, column)
+                        : exact
                   return (
                     <td
                       key={column.id}
                       data-column-id={column.id}
                       data-cell-null={value === null ? 'true' : undefined}
                       className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
+                      title={exact !== undefined && text !== exact ? exact : undefined}
                       aria-label={
                         value === null
                           ? t('marivo.presentation.missing-value')
@@ -104,7 +117,7 @@ export function DatasetTable({
                             : undefined
                       }
                     >
-                      {t(cellText(t.locale, value, column))}
+                      {text}
                     </td>
                   )
                 })}

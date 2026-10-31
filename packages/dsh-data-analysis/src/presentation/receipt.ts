@@ -38,17 +38,16 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
   return input as unknown as PresentationDelivery
 }
 
-export function presentationReceiptText(receipt: PresentationReceipt): string {
+/** Model-facing receipt text: identity and delivery surface, without Workspace paths or digests. */
+export function presentationReceiptText(
+  receipt: PresentationReceipt,
+  surface?: 'tool' | 'tab',
+): string {
   return [
     receipt.title,
     receipt.summary,
     `Record: ${analysisRecordId(receipt.reportId, receipt.buildId)}`,
-    `Workspace: ${receipt.workspaceId}`,
-    `Report: ${receipt.reportId}`,
     `Build: ${receipt.buildId}`,
-    ...Object.values(receipt.files).flatMap((file) => [
-      `${file.asset}: ${file.path}`,
-      `sha256: ${file.sha256}; bytes: ${file.bytes}`,
-    ]),
+    `Surface: ${surface === 'tab' ? 'tab' : 'tool view'}`,
   ].join('\n')
 }

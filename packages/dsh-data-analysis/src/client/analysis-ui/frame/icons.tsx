@@ -331,16 +331,20 @@ export function IconRow({
   codeRef?: PythonCodeRef
   compact?: boolean
 }) {
-  if (compact)
+  const periods = timeComparison(snapshot, view)
+  const coverage = !snapshot.coverage.complete
+  if (compact) {
+    if (!coverage && periods === undefined) return null
     return (
       <div className="fv-icons">
-        <CoverageIcon snapshot={snapshot} />
+        {coverage && <CoverageIcon snapshot={snapshot} />}
+        {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
       </div>
     )
-  const periods = timeComparison(snapshot, view)
+  }
   return (
     <div className="fv-icons">
-      <CoverageIcon snapshot={snapshot} />
+      {coverage && <CoverageIcon snapshot={snapshot} />}
       {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
       <OriginsIcon snapshot={snapshot} />
       <PythonIcon snapshot={snapshot} codeRef={codeRef} />

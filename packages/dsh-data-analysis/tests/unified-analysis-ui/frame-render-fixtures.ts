@@ -301,4 +301,5 @@ export function categoryBroadcast() {
     ],
   })
 }
+export { comparedSinglePeriodMultiGroup } from './frame-fixtures.ts'
 export { axisGroups }

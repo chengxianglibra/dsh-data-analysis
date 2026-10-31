@@ -59,9 +59,25 @@ metric 必须指向完整的单行结果。下例把原执行中 `capture_frame`
 展示层不计算总计、达成率或同比；这些值需要在原分析中先算出并捕获。AnalysisFrameView 的比较与分解图只画 Frame 已有的
 compare/attribute 输出列，`auto` 已按结构选择默认视图。
 
+## 单行多指标比较
+
+一个 Frame 只有一行、包含多个比较组时，省略 program 就得到一张对比表（指标 × 本期/基期/Δ/Δ%）；
+需要中文名称时同时给 `labels`：
+
+```json
+{
+  "resources": {"result": {"kind": "frame-snapshot", "snapshotRef": "实际比较引用"}},
+  "labels": {"result": {"total_charged": "乘客支付总额", "distance": "计价器上报里程"}},
+  "title": "5 月 vs 6 月"
+}
+```
+
+只想看其中一个指标时再声明 `AnalysisFrameView("result", {chart:"comparison", encoding:{value:"total_charged"}})`；
+多行、多组也用它定位所属比较组。不要把这类单行结果拆成多张卡，也不要手写全部列。
+
 ## Frame 看板
 
-多个比较结果并排时，用 compact 只保留值名和头部数字；encoding 用其中任一输出列定位所属比较组：
+多个比较结果纵向排列时，用 compact 只保留值名和头部数字；需要并排时给 Stack 显式 `row` 与 `wrap`：
 
 ```json
 {
@@ -71,7 +87,7 @@ compare/attribute 输出列，`auto` 已按结构选择默认视图。
     "daily": {"kind": "frame-snapshot", "snapshotRef": "实际按日观察引用"},
     "by_region": {"kind": "frame-snapshot", "snapshotRef": "实际地区分解引用"}
   },
-  "program": "root = Stack([gmv, trend, bridge]);\ngmv = AnalysisFrameView(\"gmv\", {chart: \"comparison\"}, {density: \"compact\"});\ntrend = AnalysisFrameView(\"daily\");\nbridge = AnalysisFrameView(\"by_region\", {chart: \"decomposition\"});"
+  "program": "root = Stack([gmv, trend, bridge], \"row\", \"m\", \"start\", \"start\", true);\ngmv = AnalysisFrameView(\"gmv\", {chart: \"comparison\"}, {density: \"compact\"});\ntrend = AnalysisFrameView(\"daily\");\nbridge = AnalysisFrameView(\"by_region\", {chart: \"decomposition\"});"
 }
 ```
 

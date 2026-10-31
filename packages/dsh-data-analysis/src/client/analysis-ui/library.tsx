@@ -1,7 +1,7 @@
 import type { ElementNode } from '@openuidev/lang-core'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
-import { useState } from 'react'
+import { type CSSProperties, useState } from 'react'
 import { z } from 'zod/v4'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
 import { Markdown } from '../presentation/markdown.tsx'
@@ -79,6 +79,61 @@ const content = z.union([
   DatasetView.ref,
 ])
 
+// Layout maps copied from @openuidev/react-ui@0.18.1 Stack, whose implementation
+// emits inline styles only. Recheck them when upgrading @openuidev packages.
+const stackGap: Record<string, CSSProperties['gap']> = {
+  none: '0',
+  xs: 'var(--openui-space-xs)',
+  s: 'var(--openui-space-s)',
+  m: 'var(--openui-space-m)',
+  l: 'var(--openui-space-l)',
+  xl: 'var(--openui-space-xl)',
+  '2xl': 'var(--openui-space-2xl)',
+}
+const stackAlign: Record<string, CSSProperties['alignItems']> = {
+  start: 'flex-start',
+  center: 'center',
+  end: 'flex-end',
+  stretch: 'stretch',
+  baseline: 'baseline',
+}
+const stackJustify: Record<string, CSSProperties['justifyContent']> = {
+  start: 'flex-start',
+  center: 'center',
+  end: 'flex-end',
+  between: 'space-between',
+  around: 'space-around',
+  evenly: 'space-evenly',
+}
+
+// Same name, description, schema and ref as the official Stack; only the
+// renderer adds the class/data hooks that relax direct row children.
+const stack = official.Stack!
+const StackLayout = defineComponent({
+  ...stack,
+  props: stack.props.extend({ children: z.array(content) }),
+  component: ({ props, renderNode }) => {
+    const justify = props.wrap && props.justify === 'between' ? 'start' : props.justify
+    return (
+      <div
+        className="au-stack"
+        data-direction={props.direction ?? 'column'}
+        data-wrap={props.wrap ? 'true' : undefined}
+        style={{
+          display: 'flex',
+          flexDirection: props.direction ?? 'column',
+          gap: stackGap[props.gap || 'm'] || stackGap.m,
+          alignItems: stackAlign[props.align],
+          justifyContent: stackJustify[justify],
+          flexWrap: props.wrap ? 'wrap' : undefined,
+        }}
+      >
+        {renderNode(props.children)}
+      </div>
+    )
+  },
+})
+
 // Let the official extension rebind every parent slot and remove unsupported
 // definitions. Its root/id are not configurable by extend in 1.0.1.
 const subset = openuiLibrary.extend({
@@ -88,7 +143,8 @@ const subset = openuiLibrary.extend({
       (name) => !officialNames.some((item) => item === name),
     ),
     override: [
-      ...['Stack', 'Card', 'TabItem'].map((name) => {
+      StackLayout,
+      ...['Card', 'TabItem'].map((name) => {
         const original = official[name]!
         return defineComponent({
           ...original,

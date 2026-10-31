@@ -18,7 +18,9 @@ export function cellText(locale: PresentationLocale, value: Cell, column: Datase
 export function columnLabel(column: DatasetColumn): string {
   const unit = column.unit?.trim()
   const label = column.label.trimEnd()
-  return unit && !label.endsWith(`(${unit})`) && !label.endsWith(`（${unit}）`)
+  // A dimensionless `1` and blank units add nothing; the label's own suffix wins.
+  if (!unit || unit === '1') return column.label
+  return !label.endsWith(`(${unit})`) && !label.endsWith(`（${unit}）`)
     ? `${column.label} (${unit})`
     : column.label
 }

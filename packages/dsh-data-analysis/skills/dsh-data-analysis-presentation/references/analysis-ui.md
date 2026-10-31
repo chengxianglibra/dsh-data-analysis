@@ -1,8 +1,22 @@
 # Lang、捕获与增量更新
 
 单 Frame 或成功捕获的 DataFrame 直接传引用，不读本页也能呈现。只有需要自定义布局、捕获或修改时使用以下说明。
-组件签名见[八组件 Catalog](analysis-catalog.md)。DatasetView 只有 auto/table/metric；AnalysisFrameView 的 auto 按 Frame 结构选择图形，
-需要偏离默认时才写 view，encoding 只引用 marivo_ui_read 或回执中的公开值名、轴名。不提供离线导出或发布。
+组件签名见[八组件 Catalog](analysis-catalog.md)。DatasetView 只有 auto/table/metric；AnalysisFrameView 的 auto 按 Frame 结构决定：
+单行、单个比较组输出数字；单行、多个比较组输出一张"指标 × 本期/基期/Δ/Δ%"对比表；多行时间比较画线，类别比较画哑铃图。
+只有需要偏离默认时才写 view，encoding 只引用 marivo_ui_read 或回执中的公开值名、轴名。
+多行、多组又只想看一个指标时用 `{chart:"comparison", encoding:{value:"某输出列"}}`；
+显式 `{chart:"table", columns:[...]}` 仍按给定列原样输出。不提供离线导出或发布。
+
+## 展示标签
+
+Frame 的列名来自语义指标 id 时，在 present 时用 `labels` 提供展示名称（键必须是该快照的列 id）：
+
+```json
+{"labels": {"result": {"total_charged": "乘客支付总额", "trips": "行程数"}}}
+```
+
+只改显示，不改 id、排序、单位或精确值；同一资源再次提供 `labels` 会整组替换，省略则继承上一版。
+tool view 约 750px 宽：首屏最多放 5 个指标，单表不超过 6 列；更宽或更长的内容用 `surface:"tab"`。
 
 ## 自定义页面
 

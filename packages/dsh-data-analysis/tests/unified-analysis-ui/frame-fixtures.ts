@@ -454,6 +454,65 @@ export const compareCalendar = (periods = 6, roles?: Role[]) =>
       comparisonOf(calendarBinding(), [{ name: 'sales', values: comparedRoles('sales', roles) }]),
     ],
   })
+/** One saved calendar row comparing two metrics: the transposed comparison table. */
+export function comparedSinglePeriodMultiGroup() {
+  return frame({
+    axes: [timeAxis(1)],
+    values: [...comparedValues('sales', 1), ...comparedValues('orders', 1)],
+    comparisons: [
+      comparisonOf(calendarBinding(), [
+        { name: 'sales', values: comparedRoles('sales') },
+        { name: 'orders', values: comparedRoles('orders') },
+      ]),
+    ],
+  })
+}
+
+/** One saved interval row comparing two metrics; endpoints are civil months in New York. */
+export function comparedIntervalMonth() {
+  const timezone = 'America/New_York'
+  const current = {
+    kind: 'interval' as const,
+    key: ['2025-06-01T00:00:00-04:00'],
+    timezone,
+    start: '2025-06-01T00:00:00-04:00',
+    end: '2025-07-01T00:00:00-04:00',
+  }
+  const baseline = {
+    kind: 'interval' as const,
+    key: ['2025-05-01T00:00:00-04:00'],
+    timezone,
+    start: '2025-05-01T00:00:00-04:00',
+    end: '2025-06-01T00:00:00-04:00',
+  }
+  return frame({
+    axes: [{ ...timeAxis(1, { kind: 'interval', timezone }), keys: [current.start] }],
+    values: [...comparedValues('sales', 1), ...comparedValues('orders', 1)],
+    comparisons: [
+      comparisonOf(
+        {
+          kind: 'interval',
+          axisToken: token('month'),
+          endpoint: 'self',
+          baseline: { kind: 'interval', name: 'baseline', at: null, timezone },
+        },
+        [
+          { name: 'sales', values: comparedRoles('sales') },
+          { name: 'orders', values: comparedRoles('orders') },
+        ],
+      ),
+    ],
+    periods: [
+      {
+        target: { kind: 'comparison', comparison: 0 },
+        totalCount: 1,
+        hasMore: false,
+        items: [{ kind: 'comparison', key: current.key, current, baseline, absentReason: null }],
+      },
+    ],
+  })
+}
+
 /** compare two fixed regions by channel (ordinary binding). */
 export const compareOrdinary = (axes: AxisSpec[], roles?: Role[]) => {
   const rows = axes[0]?.keys.length ?? 1

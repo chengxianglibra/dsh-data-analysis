@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { FrameClassification } from '../../../presentation/contracts/frame-view.ts'
 import type { FrameComparison } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
@@ -69,6 +70,110 @@ export function comparisonRoles(
 /** `false` only when the saved presence column says that side is absent. */
 function present(s: Snapshot, row: number, name: string | undefined): boolean {
   return !name || cellOf(s, row, name) !== false
+}
+
+export interface ComparisonTableSection {
+  /** Index into interpretation.comparisons. */
+  index: number
+  rows: ComparisonRoles[]
+}
+/**
+ * One row per comparison group with a current data column, in Frame order.
+ * Groups sharing a current value collapse; multiple comparisons keep their endpoint pair.
+ */
+export function comparisonTableSections(s: Snapshot): ComparisonTableSection[] {
+  const comparisons = interpretationOf(s)?.comparisons ?? []
+  return comparisons.map((comparison, index) => {
+    const rows: ComparisonRoles[] = []
+    for (const group of comparison.groups) {
+      const roles = comparisonRoles(s, index, group.name)
+      if (!roles?.current || !columnOf(s, roles.current)) continue
+      if (rows.some((row) => row.current === roles.current)) continue
+      rows.push(roles)
+    }
+    return { index, rows }
+  })
+}
+
+/** Transposed comparison table: one row per group, reading only the single saved row. */
+export function ComparisonTable({
+  snapshot: s,
+  classification: c,
+}: {
+  snapshot: Snapshot
+  classification: FrameClassification
+}) {
+  const t = useCopy()
+  const sections = comparisonTableSections(s).filter((section) => section.rows.length > 0)
+  const head = sections[0]
+  const ends = endpointLabels(t, s, head?.index ?? 0)
+  const row = 0
+  const side = (name: string | undefined, presence: string | undefined) => {
+    if (!name) return <td className="pr-numeric">—</td>
+    const column = columnOf(s, name)?.column
+    const value = cellOf(s, row, name)
+    if (!present(s, row, presence)) return <td className="pr-numeric">—</td>
+    return (
+      <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
+        {compact(t.locale, value, column)}
+      </td>
+    )
+  }
+  const change = (name: string | undefined, kind: 'delta' | 'percent') => {
+    const column = name ? columnOf(s, name)?.column : undefined
+    const value = name ? cellOf(s, row, name) : null
+    const text =
+      kind === 'delta'
+        ? signed(t.locale, value, column)
+        : percent(t.locale, name ? valueAt(s, row, name) : null, true)
+    return (
+      <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
+        {text}
+      </td>
+    )
+  }
+  const dataRows = (rows: ComparisonRoles[]) =>
+    rows.map((roles) => (
+      <tr key={roles.current}>
+        <th scope="row">{valueName(s, c, roles.current!)}</th>
+        {side(roles.current, roles.comparison.presence?.current)}
+        {side(roles.baseline, roles.comparison.presence?.baseline)}
+        {change(roles.absolute, 'delta')}
+        {change(roles.relative, 'percent')}
+      </tr>
+    ))
+  return (
+    <div className="pr-table fv-comparison-table" data-table-layout="comparison">
+      <table aria-label={t('marivo.presentation.ui-frame-comparison-table')}>
+        <thead>
+          <tr>
+            <th scope="col">{t('marivo.presentation.ui-frame-comparison-metric')}</th>
+            <th scope="col">{ends.current}</th>
+            <th scope="col">{ends.baseline}</th>
+            <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta')}</th>
+            <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta-percent')}</th>
+          </tr>
+        </thead>
+        {sections.length > 1 ? (
+          sections.map((section) => {
+            const sectionEnds = endpointLabels(t, s, section.index)
+            return (
+              <tbody key={section.index}>
+                <tr className="fv-comparison-section">
+                  <th scope="rowgroup" colSpan={5}>
+                    {`${sectionEnds.current} ⇄ ${sectionEnds.baseline}`}
+                  </th>
+                </tr>
+                {dataRows(section.rows)}
+              </tbody>
+            )
+          })
+        ) : (
+          <tbody>{dataRows(sections[0]?.rows ?? [])}</tbody>
+        )}
+      </table>
+    </div>
+  )
 }
 
 /** Header numbers: current, baseline, Δ, Δ% from one saved row; absent roles are omitted. */

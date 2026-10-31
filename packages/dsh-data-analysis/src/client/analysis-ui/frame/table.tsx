@@ -2,7 +2,9 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { formatCell } from '../../../presentation/contracts/index.ts'
 import type { TypedDataset } from '../../../presentation/contracts/types.ts'
 import { useCopy } from '../../i18n/context.tsx'
+import { displayCell } from '../../presentation/display.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
+import type { Snapshot } from './model.ts'
 import { MAX_FROZEN } from './styles.ts'
 
 /** Copies the visible columns' exact saved cells as TSV (unchanged legacy behaviour). */
@@ -63,19 +65,30 @@ export function useFrozenColumns(count: number) {
   return ref
 }
 
-/** Exact saved cells; `frozen` key columns stay visible while scrolling. */
+/** First time-axis timezone in Frame order; Frames without one use UTC. */
+function timezoneOf(snapshot: Snapshot): string {
+  for (const axis of snapshot.frame.axes) {
+    const variant = axis.variant
+    if (variant?.kind === 'calendar' || variant?.kind === 'interval') return variant.timezone
+  }
+  return 'UTC'
+}
+
+/** Readable saved cells; copy and tooltips keep the exact saved spelling. */
 export function DataTable({
   snapshot,
   columns,
   height,
   frozen = 0,
 }: {
-  snapshot: { data: TypedDataset }
+  snapshot: Snapshot
   columns?: string[]
   height?: number
   frozen?: number
 }) {
+  const t = useCopy()
   const data = snapshot.data
+  const timezone = timezoneOf(snapshot)
   const known = (columns ?? data.columns.map((c) => c.id)).filter((id) =>
     data.columns.some((c) => c.id === id),
   )
@@ -88,7 +101,12 @@ export function DataTable({
       data-frozen={frozen ? Math.min(frozen, MAX_FROZEN) : undefined}
       style={{ maxHeight: height ?? 520, overflow: 'auto' }}
     >
-      <DatasetTable data={data} columns={visible} caption="" />
+      <DatasetTable
+        data={data}
+        columns={visible}
+        caption=""
+        display={(value, column) => displayCell(t.locale, value, column, timezone)}
+      />
     </div>
   )
 }

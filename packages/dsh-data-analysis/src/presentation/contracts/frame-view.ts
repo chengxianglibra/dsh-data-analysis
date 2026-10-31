@@ -91,7 +91,8 @@ export interface FrameClassification {
  * Renderers draw only this plan and never re-derive class or shape themselves.
  */
 export type ResolvedFrameView =
-  | { chart: 'table'; columns: string[] }
+  /** `layout: 'comparison'` is a client-only transposed table, never stored in `frameViewSchema`. */
+  | { chart: 'table'; columns: string[]; layout?: 'comparison' }
   | { chart: 'metric'; values: string[] }
   | {
       chart: 'line' | 'area' | 'bar' | 'interval-bar'
@@ -142,9 +143,16 @@ export type FrameViewErrorCode =
   | 'view-axis-not-time'
   | 'view-requires-complete-snapshot'
   | 'view-unsupported-for-snapshot'
+export interface FrameViewFailure {
+  ok: false
+  code: FrameViewErrorCode
+  path: string
+  /** Distinct output value names (at most 8), filled when a target lookup is ambiguous. */
+  candidates?: string[]
+}
 export type FrameViewResolution =
   | { ok: true; classification: FrameClassification; view: ResolvedFrameView }
-  | { ok: false; code: FrameViewErrorCode; path: string }
+  | FrameViewFailure
 
 const DRAWABLE = new Set<ColumnType>(['float64', 'int64', 'decimal'])
 const EFFECT_ROLES = new Set([
@@ -159,10 +167,16 @@ const MAX_SERIES = 8
 const BAR_PERIODS = 12
 const METRIC_VALUES = 4
 const RECORD_VALUES = 6
+const MAX_CANDIDATES = 8
 
 type FrameAxis = FrameSnapshotV2['frame']['axes'][number]
 type Fail = Extract<FrameViewResolution, { ok: false }>
-const fail = (code: FrameViewErrorCode, path: string): Fail => ({ ok: false, code, path })
+const fail = (code: FrameViewErrorCode, path: string, candidates?: string[]): Fail => ({
+  ok: false,
+  code,
+  path,
+  ...(candidates?.length ? { candidates } : {}),
+})
 const failed = (value: unknown): value is Fail =>
   typeof value === 'object' && value !== null && (value as { ok?: unknown }).ok === false
 
@@ -400,6 +414,12 @@ const allColumns = (x: Context): ResolvedFrameView => ({
   chart: 'table',
   columns: x.snapshot.data.columns.map((c) => c.id),
 })
+/** All raw columns kept for CopyData and the collapsed audit table; the client transposes groups. */
+const comparisonTable = (x: Context): ResolvedFrameView => ({
+  chart: 'table',
+  columns: x.snapshot.data.columns.map((c) => c.id),
+  layout: 'comparison',
+})
 function axisNamed(x: Context, name: string) {
   return x.snapshot.frame.axes.find((a) => a.name === name)
 }
@@ -459,6 +479,10 @@ function decompositionTargets(x: Context): DecompositionTarget[] {
       : []
   })
 }
+/** Distinct role output names across targets, in target order; capped for the error text. */
+function candidatesOf<T extends { roles: Map<string, string> }>(targets: T[]): string[] {
+  return [...new Set(targets.flatMap((t) => [...t.roles.values()]))].slice(0, MAX_CANDIDATES)
+}
 /** Exactly one target, located by any of its output value names when `value` is given. */
 function pick<T extends { roles: Map<string, string> }>(
   x: Context,
@@ -466,10 +490,14 @@ function pick<T extends { roles: Map<string, string> }>(
   value: string | undefined,
 ): T | Fail {
   if (value === undefined)
-    return targets.length === 1 ? targets[0]! : fail('view-target-ambiguous', '/view')
+    return targets.length === 1
+      ? targets[0]!
+      : fail('view-target-ambiguous', '/view', candidatesOf(targets))
   if (!x.types.has(value)) return fail('view-name-unknown', '/view/encoding/value')
   const matches = targets.filter((t) => [...t.roles.values()].includes(value))
-  return matches.length === 1 ? matches[0]! : fail('view-target-ambiguous', '/view/encoding/value')
+  return matches.length === 1
+    ? matches[0]!
+    : fail('view-target-ambiguous', '/view/encoding/value', candidatesOf(targets))
 }
 /** Every role present and drawable, otherwise the matching error. */
 function requireRoles(x: Context, roles: Map<string, string>, needed: string[]): Fail | undefined {
@@ -488,6 +516,8 @@ function comparisonStyle(
   style: 'auto' | 'delta',
 ): ComparisonStyle | Fail {
   if (style === 'delta') return requireRoles(x, target.roles, ['absolute']) ?? 'delta'
+  // One saved row has one point per series: numbers read better than a one-point line.
+  if (singleRow(x.snapshot)) return 'numbers'
   const { shape, categoryAxes } = x.classification
   const pair = () => requireRoles(x, target.roles, ['current', 'baseline'])
   switch (shape) {
@@ -539,8 +569,20 @@ function auto(x: Context): ResolvedFrameView {
       return { chart: 'decomposition', decomposition: target.decomposition, style }
     }
     case 'comparison': {
-      const target = comparisonTargets(x)[0]
-      if (!target) return allColumns(x)
+      const targets = comparisonTargets(x)
+      if (!targets.length) return allColumns(x)
+      if (singleRow(snapshot)) {
+        // One card: a single group is numbers, several groups transpose into one table.
+        if (targets.length > 1) return comparisonTable(x)
+        const target = targets[0]!
+        return {
+          chart: 'comparison',
+          comparison: target.comparison,
+          group: target.group,
+          style: 'numbers',
+        }
+      }
+      const target = targets[0]!
       const style = comparisonStyle(x, target, 'auto')
       return {
         chart: 'comparison',
@@ -648,6 +690,13 @@ function explicit(
   const axes = snapshot.frame.axes
   switch (view.chart) {
     case 'table': {
+      if (
+        view.columns === undefined &&
+        c.class === 'comparison' &&
+        singleRow(snapshot) &&
+        comparisonTargets(x).length > 0
+      )
+        return comparisonTable(x)
       const columns = tableColumns(snapshot, view.columns)
       return failed(columns) ? columns : { chart: 'table', columns }
     }
@@ -742,7 +791,16 @@ function explicit(
       return { chart: 'heatmap', x: grid[0]!, y: grid[1]!, value: values[0]! }
     }
     case 'comparison': {
-      const target = pick(x, comparisonTargets(x), view.encoding?.value)
+      const targets = comparisonTargets(x)
+      // Several groups on one saved row are one comparison table, unless a value or style was chosen.
+      if (
+        view.encoding?.value === undefined &&
+        view.style === undefined &&
+        singleRow(snapshot) &&
+        targets.length > 1
+      )
+        return comparisonTable(x)
+      const target = pick(x, targets, view.encoding?.value)
       if (failed(target)) return target
       const style = comparisonStyle(x, target, view.style ?? 'auto')
       if (failed(style)) return style

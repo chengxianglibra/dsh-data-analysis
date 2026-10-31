@@ -59,6 +59,12 @@ export const FRAME_STYLES = `
 .fv-multiples h4,.fv-parent h4{margin:0;font-size:12px;font-weight:500;color:var(--pr-muted)}
 .fv-parent{display:grid;gap:4px}
 .fv-parents{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
+.fv-comparison-table{max-width:100%;overflow:auto}
+.fv-comparison-table table{width:100%}
+.fv-comparison-table :is(th,td){min-width:0}
+.fv-comparison-table thead th{white-space:nowrap}
+.fv-comparison-table td.pr-numeric{white-space:nowrap}
+.fv-comparison-section th{color:var(--pr-muted);font-size:12px;text-align:left}
 .fv-table summary{cursor:pointer;font-size:12px;color:var(--pr-muted)}
 .fv-table-bar{display:flex;justify-content:flex-end;padding:4px 0}
 ${frozen}
