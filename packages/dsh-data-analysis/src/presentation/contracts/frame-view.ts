@@ -1,11 +1,10 @@
 import { z } from 'zod'
-import {
-  type AnalysisSnapshot,
-  type FrameInterpretation,
-  type FrameSnapshot,
-  type FrameSnapshotV2,
-  type FrameValueContext,
-  isFrameSnapshotV2,
+import type {
+  AnalysisSnapshot,
+  DatasetSnapshot,
+  FrameInterpretation,
+  FrameSnapshotV2,
+  FrameValueContext,
 } from './snapshot.ts'
 import type { ColumnType } from './types.ts'
 
@@ -274,18 +273,12 @@ export function classifyFrame(snapshot: FrameSnapshotV2): FrameClassification {
   }
 }
 
-/**
- * Resolve `view` against a saved snapshot. v1 Frame and Dataset snapshots support only
- * auto/table/metric (auto falls back to table or a complete single-row metric). Their
- * classification is minimal: class `observation` (`members` for a value-less Frame), shape
- * `scalar` for a 0-axis Frame and `other` otherwise, primary values are the value columns,
- * and no broadcast values or symbols, because v1 carries no interpretation facts.
- */
+/** Resolve the current Frame or Dataset view against its saved snapshot. */
 export function resolveFrameView(
-  snapshot: AnalysisSnapshot | FrameSnapshot,
+  snapshot: AnalysisSnapshot,
   view?: FrameView,
 ): FrameViewResolution {
-  return isFrameSnapshotV2(snapshot) ? resolveV2(snapshot, view) : resolveLegacy(snapshot, view)
+  return snapshot.kind === 'frame' ? resolveV2(snapshot, view) : resolveDataset(snapshot, view)
 }
 
 function tableColumns(snapshot: AnalysisSnapshot, columns: string[] | undefined): string[] | Fail {
@@ -299,17 +292,13 @@ function tableColumns(snapshot: AnalysisSnapshot, columns: string[] | undefined)
 const singleRow = (snapshot: AnalysisSnapshot) =>
   snapshot.coverage.complete && snapshot.data.rowCount === 1
 
-function resolveLegacy(snapshot: AnalysisSnapshot, view?: FrameView): FrameViewResolution {
+function resolveDataset(snapshot: DatasetSnapshot, view?: FrameView): FrameViewResolution {
   const ids = snapshot.data.columns.map((c) => c.id)
-  const values =
-    snapshot.kind === 'frame'
-      ? snapshot.frame.fields.filter((f) => f.role === 'value').map((f) => f.id)
-      : ids
   const classification: FrameClassification = {
-    class: snapshot.kind === 'frame' && !values.length ? 'members' : 'observation',
-    shape: snapshot.kind === 'frame' && snapshot.frame.axes.length === 0 ? 'scalar' : 'other',
+    class: 'observation',
+    shape: 'other',
     categoryAxes: [],
-    primaryValues: values,
+    primaryValues: ids,
     broadcastValues: [],
     symbols: {},
   }
@@ -318,15 +307,7 @@ function resolveLegacy(snapshot: AnalysisSnapshot, view?: FrameView): FrameViewR
     classification,
     view: resolved,
   })
-  // Today's auto metric: a 0-axis Frame with one value field, or a one-column Dataset.
-  const autoValue =
-    snapshot.kind === 'frame'
-      ? snapshot.frame.axes.length === 0 && values.length === 1 && ids.includes(values[0]!)
-        ? values[0]
-        : undefined
-      : ids.length === 1
-        ? ids[0]
-        : undefined
+  const autoValue = ids.length === 1 ? ids[0] : undefined
   if (!view || view.chart === 'auto')
     return ok(
       autoValue !== undefined && singleRow(snapshot)

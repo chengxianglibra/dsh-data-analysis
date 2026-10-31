@@ -88,7 +88,7 @@ function fixture() {
       related: [],
       coverageComplete: true,
       interpretation: null,
-      periods: 'not-captured',
+      periods: JSON.stringify({ status: 'captured', pages: [] }),
     },
   }
   let finish: ((result: unknown) => void) | undefined

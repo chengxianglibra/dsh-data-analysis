@@ -3,14 +3,13 @@ import type { FrameDisplay, FrameView } from '../../presentation/contracts/frame
 import { formatCell } from '../../presentation/contracts/index.ts'
 import {
   type AnalysisSnapshot,
-  type FrameSections,
+  type DatasetSnapshot,
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
-import { SemanticOrigins } from './metadata-view.tsx'
 
 export interface AnalysisViewProps {
   ref?: string
@@ -48,7 +47,7 @@ export function AnalysisDataView({
       />
     )
   return (
-    <LegacyDataView
+    <DatasetDataView
       resourceName={resourceName}
       snapshot={snapshot}
       binding={resource.binding}
@@ -58,8 +57,8 @@ export function AnalysisDataView({
   )
 }
 
-/** v1 Frame and Dataset snapshots: a table plus the complete single-row metric, as before. */
-function LegacyDataView({
+/** Dataset snapshots: a table or complete single-row metric. */
+function DatasetDataView({
   resourceName,
   snapshot,
   binding,
@@ -67,7 +66,7 @@ function LegacyDataView({
   height,
 }: {
   resourceName?: string
-  snapshot: AnalysisSnapshot
+  snapshot: DatasetSnapshot
   binding: {
     sessionId?: string
     callId?: string
@@ -85,16 +84,7 @@ function LegacyDataView({
     selected ??
     (view?.chart === 'table' ? view.columns : undefined) ??
     data.columns.map((c) => c.id)
-  const valueFields =
-    snapshot.kind === 'frame' ? snapshot.frame.fields.filter((f) => f.role === 'value') : []
-  const autoColumn =
-    snapshot.kind === 'frame'
-      ? snapshot.frame.axes.length === 0 && valueFields.length === 1
-        ? data.columns.find((c) => c.id === valueFields[0]!.id)
-        : undefined
-      : data.columns.length === 1
-        ? data.columns[0]
-        : undefined
+  const autoColumn = data.columns.length === 1 ? data.columns[0] : undefined
   const metricColumn =
     view?.chart === 'metric'
       ? view.encoding
@@ -170,13 +160,7 @@ function LegacyDataView({
       )}
       {metric && <p className="pr-muted">{t('marivo.presentation.ui-complete-single-row')}</p>}
       <details className="au-source">
-        <summary>
-          {t(
-            kind === 'frame'
-              ? 'marivo.presentation.ui-frame-source'
-              : 'marivo.presentation.ui-dataset-source',
-          )}
-        </summary>
+        <summary>{t('marivo.presentation.ui-dataset-source')}</summary>
         <p>{t('marivo.presentation.ui-captured-at', { p0: snapshot.fetchedAt })}</p>
         <p>
           {t('marivo.presentation.ui-capture-range', {
@@ -185,32 +169,17 @@ function LegacyDataView({
           })}
         </p>
         <p>{t('marivo.presentation.ui-business-unknown')}</p>
-        {snapshot.kind === 'frame' ? (
-          <>
-            <dl>
-              <dt>Session</dt>
-              <dd>{snapshot.source.sessionId}</dd>
-              <dt>Artifact</dt>
-              <dd>{snapshot.source.artifactId}</dd>
-            </dl>
-            <p>{snapshot.frame.axes.map((a) => `${a.name} (${a.role})`).join(' · ')}</p>
-            <SemanticOrigins section={(snapshot.frame.sections as FrameSections).semantics} />
-          </>
-        ) : (
-          <>
-            <p>{t('marivo.presentation.ui-dataframe-source-not-captured')}</p>
-            <dl>
-              <dt>Session</dt>
-              <dd>{binding.sessionId}</dd>
-              <dt>Call</dt>
-              <dd>{binding.callId}</dd>
-              <dt>codeRef.executionId</dt>
-              <dd>{binding.codeRef?.executionId}</dd>
-              <dt>codeRef.sha256</dt>
-              <dd>{binding.codeRef?.sha256}</dd>
-            </dl>
-          </>
-        )}
+        <p>{t('marivo.presentation.ui-dataframe-source-not-captured')}</p>
+        <dl>
+          <dt>Session</dt>
+          <dd>{binding.sessionId}</dd>
+          <dt>Call</dt>
+          <dd>{binding.callId}</dd>
+          <dt>codeRef.executionId</dt>
+          <dd>{binding.codeRef?.executionId}</dd>
+          <dt>codeRef.sha256</dt>
+          <dd>{binding.codeRef?.sha256}</dd>
+        </dl>
       </details>
     </section>
   )

@@ -7,7 +7,7 @@ export function frameSnapshot() {
     unit: null,
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'frame',
     fetchedAt: '2026-10-28T00:00:00Z',
     data: {
@@ -32,6 +32,7 @@ export function frameSnapshot() {
     source: { kind: 'frame', sessionId: 'session', artifactId: 'artifact' },
     frame: {
       inputId: 'input',
+      description: null,
       fields: [
         { id: 'region', role: 'coordinate', axisToken: 'axis' },
         { id: 'amount', role: 'value', slotId: 'value' },
@@ -40,7 +41,15 @@ export function frameSnapshot() {
         { kind: 'coordinate', name: 'region', axisToken: 'axis', endpoint: 'self', part: 'key' },
         { kind: 'field', name: 'amount', slotId: 'value' },
       ],
-      axes: [{ token: 'axis', name: 'region', role: 'identity', keys: [key] }],
+      axes: [
+        {
+          token: 'axis',
+          name: 'region',
+          role: 'identity',
+          keys: [key],
+          variant: { kind: 'ordinary' },
+        },
+      ],
       slots: [
         key,
         {
@@ -58,6 +67,30 @@ export function frameSnapshot() {
         },
       },
       readStats: { dataRowsRead: 1, coordinateRowsRead: 1, receiptBytesHashed: 100 },
+      sections: {
+        semantics: { status: 'captured', columns: [] },
+        interpretation: {
+          status: 'captured',
+          fixedAxes: [],
+          valueContexts: {},
+          comparisons: [],
+          decompositions: [],
+          alignments: [],
+        },
+        periods: { status: 'captured', pages: [] },
+      },
+    },
+  }
+}
+
+/** Historical input retained only to verify rejection at current trust boundaries. */
+export function legacyFrameSnapshot() {
+  const snapshot = frameSnapshot()
+  return {
+    ...snapshot,
+    schemaVersion: 1,
+    frame: {
+      ...snapshot.frame,
       sections: {
         evidence: 'not-captured',
         findings: 'not-captured',

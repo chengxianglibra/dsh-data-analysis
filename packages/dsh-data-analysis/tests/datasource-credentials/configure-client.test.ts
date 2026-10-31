@@ -192,3 +192,22 @@ test('manually choosing a configured reference never silently overwrites a share
   assert.deepEqual(changes, {})
   assert.doesNotMatch(JSON.stringify(model.getSnapshot()), /canary/)
 })
+
+test('HTTP watch returns an immediate snapshot and rejects the removed cursor protocol', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  const { connection, channels } = createConnectionFixture()
+  t.after(registerCredentialRpc(connection, f.service, f.resolve))
+  const handler = channels.get('/dsh-data-analysis-credentials')!
+  const snapshot = f.service.watch('session')
+  assert.deepEqual(await handler('watch', { sessionId: 'session' }, new AbortController().signal), {
+    ok: true,
+    value: snapshot,
+  })
+  const rejected = await handler(
+    'watch',
+    { sessionId: 'session', cursor: snapshot.cursor },
+    new AbortController().signal,
+  )
+  assert.equal(Reflect.get(rejected, 'ok'), false)
+})

@@ -822,17 +822,13 @@ export class MarivoCredentialService {
       throw error
     }
   }
-  watch(
-    sessionId: string,
-    cursor?: string,
-  ): {
+  watch(sessionId: string): {
     generation: string
     cursor: string
     requests: CredentialRequestView[]
     configurationRequests: ConfigurationRequestView[]
   } {
     this.#prune()
-    void cursor
     return {
       generation: this.generation,
       cursor: `${this.generation}:${this.#revision}`,

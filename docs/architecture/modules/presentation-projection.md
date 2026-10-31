@@ -2,13 +2,11 @@
 
 ## 责任与入口
 
-本模块把已存在的结果读取为分析 UI 可保存的快照（Dataset v1、Frame v2；旧 Frame v1 只读）。Marivo 拥有 Artifact、Finding、字段、Quality、
+本模块把已存在的结果读取为分析 UI 可保存的快照（Dataset v1、Frame v2）。Marivo 拥有 Artifact、Finding、字段、Quality、
 issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件不审查 DataFrame 的计算过程、不复算，
 也不把来源存在解释为计算正确性。
 
-- Frame：原分析进程中的 `capture_frame(frame)` 捕获已完成的 Frame，Host 签发 `marivo-frame:` snapshotRef 并绑定 codeRef；
-  兼容的 `marivo-frame` 声明由 [projection](../../../packages/dsh-data-analysis/src/presentation/projection/index.ts) 的
-  `MarivoPresentationProjection.readFrames(refs)` 在一次 checked execution 内事后恢复，没有脚本来源。
+- Frame：原分析进程中的 `capture_frame(frame)` 捕获已完成的 Frame，Host 签发 `marivo-frame:` snapshotRef 并绑定 codeRef。只接受 `frame-snapshot` 声明，不提供事后恢复入口。
 - DataFrame：原分析进程中的 [capture_dataset](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_capture.py)
   捕获，Host 签发 snapshotRef，由 [dataset-snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/dataset-snapshot.ts) 读取。
 
@@ -50,23 +48,16 @@ business 固定 unknown。
 
 ## 数据流程
 
-`MarivoPresentationProjection` 只接受 ready、携带 presentation-kit identity 的 bound runner；每个异步边界检查取消和 runner 状态。
-
-Frame 读取使用[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)中的
-120 秒子进程上限，包含 Runtime identity 检查、导入、Session 恢复与快照读取；没有 Frame 资源时跳过该子进程。
-`marivo_present` 外层预算为 180 秒，给绑定检查、数据读取和提交留出余量；该预算不保证任意数量 Session 均可完成。
-取消、进程树终止、输出限制和 identity 校验保持有效，不自动重试。
-
-读取超时保留 `subprocess-timeout`，仅增加 `phase: presentation-source-read`、`timeoutMs`、`durationMs` 及来源与 Session 计数；
-不附带来源身份、路径、SQL、凭据或上游异常。提示说明本次读取未完成、尚未进入提交，可保留资源声明后重试，
-不重跑分析。这只说明提交边界，不承诺 Runtime 完全没有副作用。
+捕获在原 `marivo_python` 执行内使用 checked Runtime 完成。`marivo_present` 仅校验捕获记录、读取快照并提交，
+不绑定 Runtime、不启动 Python，也不恢复 Session；每个异步边界复核 Workspace 归属与取消。
+工具外层执行预算为 180 秒，定义见[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)。
+取消或快照读取失败不发布 current，不自动重跑分析。
 
 ## Frame 快照
 
-两条路径共用 [_frame.py](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_frame.py) 的 `read_frame`。
+捕获使用 [_frame.py](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_frame.py) 的 `read_frame`。
 `capture_frame` 只接受持久或 `compute()` 后的内存 Frame，待执行表达式报 `frame_not_computed`，DataFrame 指向 `capture_dataset`；
-恢复路径通过 `mv.session.resume(session_id)`、`session.persisted_frame(artifact_id)` 取得准确引用。
-读取只用 `frame.schema`、`frame.read_page()`、`frame.read_periods()` 与 `page.to_pandas()`，仅在全部视图都是带列表格或 metric 时选列。
+读取只用 `frame.schema`、`frame.read_page()`、`frame.read_periods()` 与 `page.to_pandas()`，捕获完整字段，不接受 columns 参数。
 不调用全量 `frame.to_pandas()`，不加载当前模型、重跑分析或取得数据源凭据。schema/layout 重名、身份不符、
 损坏数据和不支持的类型明确失败。
 
@@ -87,12 +78,10 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
-契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；符合当前 codec 的 v1 Frame 快照仍可读，
-其 Evidence/Findings/方法节不再显示。更早快照中使用 `actual_start`、`actual_end` 或 `timezone` 坐标 part 的数据不被当前 codec 接受，
-应使用当前 Runtime 从分析结果重新捕获或重新计算生成 v2 快照。
+契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；Frame v1 及旧元数据格式明确拒绝，必须在原分析执行中捕获当前格式。
 
 当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
-不读取私有 Store、日志或重新编译 SQL。无法恢复的旧 Session 引用明确失败。
+不读取私有 Store、日志或重新编译 SQL。
 
 ## 同次执行的 DataFrame 快照
 
@@ -133,6 +122,5 @@ npm run validate:runtime-workspace:real
 ```
 
 Python 合同测试随 `npm run check` 持续执行；真实脚本使用隔离目录，保留机器证据。
-Frame 验证先通过 Marivo 公开分析生成并持久化，再在另一进程恢复。读取预算回归包括超过旧 30 秒上限的真实 Node 子进程夹具、
-安全超时元数据与非超时错误原样传播；子进程终止由 environment-execution 的超时、取消及后代进程测试覆盖。
-这些验收不代表 Host 交付、阅读器或真实 Agent 路由验收。
+Frame 验证在原分析执行中捕获快照，随后移除来源并独立读取；覆盖精确标量、coverage、完整键与身份校验。
+旧 Frame v1 和事后恢复声明须拒绝。真实 Runtime、Host/UI 与模型验收分别记录，模块测试不能替代真实运行。

@@ -34,12 +34,9 @@ function labels(doc: AnalysisDocument) {
   return snapshot(doc).data.columns.map((column) => column.label)
 }
 
-/** All resources are inherited, so resolving the Runtime projection must never happen. */
+/** Updates inherit the immutable snapshots. */
 const source = {
   projectRoot: '/workspace',
-  projection: () => {
-    throw new Error('projection must not be resolved')
-  },
 }
 
 function identity(buildId: string, base?: AnalysisDocument) {

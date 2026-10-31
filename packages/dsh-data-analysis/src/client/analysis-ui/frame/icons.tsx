@@ -17,11 +17,10 @@ import {
 } from './model.ts'
 
 const P = 'marivo.presentation.'
-type Section = 'not-captured' | { status: string; reason?: string }
+type Section = { status: string; reason?: string }
 
-/** Grey state text for a section that was not captured or could not be read; never "0 items". */
+/** Grey state text for an unavailable section; never "0 items". */
 function sectionState(t: ReturnType<typeof useCopy>, section: Section): string | undefined {
-  if (section === 'not-captured') return t(`${P}ui-metadata-not-captured`)
   if (section.status === 'unavailable')
     return t(`${P}ui-metadata-unavailable-${section.reason ?? 'read-failed'}`)
   return undefined

@@ -8,7 +8,6 @@ import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
 import { analysisPresentInput, parseAnalysisRecordId } from './contracts/analysis-document.ts'
 import { type FrameSnapshotV2, isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
-import type { MarivoPresentationProjection } from './projection/index.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -21,23 +20,16 @@ export type PresentationWorkspaceSource = () =>
   | { id: string; path: string }
   | Promise<{ id: string; path: string }>
 
-export interface PresentationBinding {
-  workspaceId: string
-  projection: MarivoPresentationProjection
-}
-export type PresentationBindingSource = () => PresentationBinding | Promise<PresentationBinding>
-
 /** One call admits resources, commits an immutable document and emits the exact delivery. */
 export function createMarivoPresentTool(
-  source: PresentationBindingSource,
+  workspaceSource: PresentationWorkspaceSource,
   session: Session,
   lifecycleSignal?: AbortSignal,
-  workspaceSource?: PresentationWorkspaceSource,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "frame-snapshot", snapshotRef}} for an AnalysisFrame retained by capture_frame (preferred over the legacy {kind: "marivo-frame", sessionId, artifactId}, which has no Python source), or {result: {kind: "dataset-snapshot", snapshotRef}} for a DataFrame; omit program for the default view. A single-row comparison with several groups defaults to one comparison table; omit view to use the structural default. The default table already provides exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. labels can provide display names (resource -> column id -> label). Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing. Legacy draft_path is not accepted.',
+      'Use when a UI helps understand, compare or inspect an existing result; simple answers can stay in chat. For one result provide only resources: {result: {kind: "frame-snapshot", snapshotRef}} for an AnalysisFrame retained by capture_frame, or {result: {kind: "dataset-snapshot", snapshotRef}} for a DataFrame; omit program for the default view. A single-row comparison with several groups defaults to one comparison table; omit view to use the structural default. The default table already provides exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. labels can provide display names (resource -> column id -> label). Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing.',
     parameters: {
       surface: {
         type: 'string',
@@ -52,7 +44,7 @@ export function createMarivoPresentTool(
       resources: {
         type: 'object',
         description:
-          'Named resources: {kind:"frame-snapshot",snapshotRef} (preferred for Frames), legacy {kind:"marivo-frame",sessionId,artifactId}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
+          'Named resources: {kind:"frame-snapshot",snapshotRef}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
@@ -98,12 +90,7 @@ export function createMarivoPresentTool(
       if (call?.type !== 'tool/call' || !Number.isSafeInteger(call.data.turn) || call.data.turn < 0)
         throw new Error('presentation-turn-unavailable')
       signal.throwIfAborted()
-      let binding: PresentationBinding | undefined
-      const workspace = async () => {
-        if (workspaceSource) return workspaceSource()
-        binding ??= await source()
-        return { id: binding.workspaceId, path: binding.projection.binding.projectRoot }
-      }
+      const workspace = workspaceSource
       const identity = await workspace()
       const check = async () => {
         signal.throwIfAborted()
@@ -111,16 +98,6 @@ export function createMarivoPresentTool(
         const current = await workspace()
         if (current.id !== identity.id || current.path !== identity.path)
           throw new Error('presentation-workspace-changed')
-        if (binding) {
-          const runtime = await source()
-          if (
-            runtime.projection.status !== 'ready' ||
-            runtime.workspaceId !== identity.id ||
-            runtime.projection.binding.projectRoot !== identity.path ||
-            runtime.projection.binding !== binding.projection.binding
-          )
-            throw new Error('presentation-workspace-changed')
-        }
         signal.throwIfAborted()
       }
       await check()
@@ -140,11 +117,6 @@ export function createMarivoPresentTool(
         input,
         {
           projectRoot: identity.path,
-          projection: async () => {
-            binding ??= await source()
-            await check()
-            return binding.projection
-          },
         },
         {
           workspaceId: identity.id,
@@ -181,14 +153,10 @@ export function createMarivoPresentTool(
 
 export function registerMarivoPresentTool(
   ctx: Context,
-  source: PresentationBindingSource,
+  workspaceSource: PresentationWorkspaceSource,
   session: Session,
-  workspaceSource?: PresentationWorkspaceSource,
 ): () => Promise<void> {
-  return registerMarivoTool(
-    ctx,
-    createMarivoPresentTool(source, session, undefined, workspaceSource),
-  )
+  return registerMarivoTool(ctx, createMarivoPresentTool(workspaceSource, session))
 }
 
 /**

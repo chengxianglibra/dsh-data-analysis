@@ -23,8 +23,7 @@ import {
   MarivoWorkspaceEnvironmentManager,
 } from '../../src/environment/index.ts'
 import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
-import { readDatasetSnapshot } from '../../src/presentation/dataset-snapshot.ts'
-import { MarivoPresentationProjection } from '../../src/presentation/projection/index.ts'
+import { readDatasetSnapshot, readFrameSnapshot } from '../../src/presentation/dataset-snapshot.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
@@ -76,17 +75,19 @@ try {
   assert.equal(setup.exitCode, 0, setup.stderr.toString())
   const producer = `import importlib.metadata, json, os\nfrom decimal import Decimal\nfrom pathlib import Path\nimport marivo\nimport marivo.analysis as mv\nimport marivo.datasource as md\nimport marivo.semantic as ms\nroot = Path.cwd()\nmodel = root / "models/semantic/sales/metrics.py"\n${generation.slice(split)}`
   const code = producer.replace(
-    'print(json.dumps(result))',
+    '# CAPTURE_BEFORE_SOURCE_REMOVAL',
     String.raw`
 import pandas as pd
-from dsh_data_analysis_presentation import capture_dataset
+from dsh_data_analysis_presentation import capture_dataset, capture_frame
 data = pd.DataFrame({"account": pd.Series([9007199254740993, None], dtype=object),
                      "amount": pd.Series([Decimal("12345678901234.5678"), None], dtype=object)})
+capture_frame(frame)
+capture_frame(frame, row_limit=1)
 capture = capture_dataset(data)
 preview = capture_dataset(data, row_limit=1)
 result["captureId"] = capture.capture_id
 result["previewId"] = preview.capture_id
-print(json.dumps(result))
+
 `,
   )
   const tool = await agent.ctx.tools.execute({
@@ -105,28 +106,33 @@ print(json.dumps(result))
   }
   assert.equal(value.exitCode, 0, JSON.stringify(value))
   assert.equal(value.snapshotCaptureError, undefined)
-  assert.equal(value.snapshots?.length, 2)
+  assert.equal(value.snapshots?.length, 4)
   const generated = JSON.parse(value.stdout)
   const restored = await readDatasetSnapshot(
     workspace,
     'p1-workspace',
-    value.snapshots![0]!.snapshotRef,
+    value.snapshots![2]!.snapshotRef,
   )
   const preview = await readDatasetSnapshot(
     workspace,
     'p1-workspace',
-    value.snapshots![1]!.snapshotRef,
+    value.snapshots![3]!.snapshotRef,
   )
   assert.deepEqual(restored.snapshot.data.rows, [
     ['9007199254740993', '12345678901234.5678'],
     [null, null],
   ])
   assert.equal(preview.snapshot.coverage.complete, false)
-  const projection = new MarivoPresentationProjection(environment)
-  const [frame, prefix] = await projection.readFrames([
-    generated.frame,
-    { ...generated.frame, rowLimit: 1, columns: ['revenue'] },
-  ])
+  const { snapshot: frame } = await readFrameSnapshot(
+    workspace,
+    'p1-workspace',
+    value.snapshots![0]!.snapshotRef,
+  )
+  const { snapshot: prefix } = await readFrameSnapshot(
+    workspace,
+    'p1-workspace',
+    value.snapshots![1]!.snapshotRef,
+  )
   assert.deepEqual(frame!.data.rows, [
     ['A', '12345678901234.5678', '9007199254740993'],
     ['B', null, null],
@@ -137,12 +143,12 @@ print(json.dumps(result))
   const p2 = []
   if (process.argv.includes('--p2')) {
     const present = createMarivoPresentTool(
-      () => ({ workspaceId: 'p1-workspace', projection }),
+      () => ({ id: 'p1-workspace', path: workspace }),
       agent.session,
     )
     for (const [index, resource] of [
-      { kind: 'marivo-frame', ...generated.frame },
-      { kind: 'dataset-snapshot', snapshotRef: value.snapshots![0]!.snapshotRef },
+      { kind: 'frame-snapshot', snapshotRef: value.snapshots![0]!.snapshotRef },
+      { kind: 'dataset-snapshot', snapshotRef: value.snapshots![2]!.snapshotRef },
     ].entries()) {
       const callId = ToolCallId(`p2-present-${index}`)
       const args = {

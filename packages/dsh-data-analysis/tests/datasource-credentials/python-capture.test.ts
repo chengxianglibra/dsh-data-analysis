@@ -28,7 +28,7 @@ import {
   savePythonExecution,
 } from '../../src/python-execution.ts'
 import { frameSnapshotV2 } from '../presentation-integration/frame-v2-fixture.ts'
-import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
+import { legacyFrameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 import { fixture } from './fixtures.ts'
 
 const now = '2026-09-07T00:00:00.000Z'
@@ -317,7 +317,7 @@ async function captured(
           kind === 'frame'
             ? frameSnapshotV2()
             : kind === 'frame-v1'
-              ? frameSnapshot()
+              ? legacyFrameSnapshot()
               : {
                   schemaVersion: 1,
                   kind: 'dataset',

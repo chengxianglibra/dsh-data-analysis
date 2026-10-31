@@ -35,9 +35,9 @@
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
 统一分析 UI 通过 `marivo_present` 保存 `dsh.analysis-ui/v1` 文档。Frame v2 在原 Python 执行中由 `capture_frame`
-捕获，DataFrame 由 `capture_dataset` 捕获；旧持久 Frame 引用仍兼容。快照内嵌不可变 Build，AnalysisSurface
+捕获，DataFrame 由 `capture_dataset` 捕获。快照内嵌不可变 Build，AnalysisSurface
 用于隔离候选、tool view 和显式报告 tab。保存校验与呈现共用 `resolveFrameView`；Frame v2 按结构选择视图，
-并可在 Catalog 范围内显式指定图形。DatasetView 与旧 Frame v1 保留 auto/table/metric。旧格式报告不进入报告目录；
+并可在 Catalog 范围内显式指定图形。DatasetView 保留 auto/table/metric。旧格式报告不进入报告目录；
 新格式不提供离线导出、发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
 
 ## 运行与数据流
@@ -91,7 +91,7 @@ Harness Credentials 是秘密值权威；Marivo 的公开 description、Datasour
 
 ### 报告保存与阅读
 
-Agent 将持久 Frame、原分析进程内 capture 的 DataFrame 或 Workspace 图片通过资源引用交给 marivo_present。
+Agent 将原分析进程内 capture 的 Frame、DataFrame 或 Workspace 图片通过资源引用交给 marivo_present。
 自定义布局使用 Lang；未变化快照直接复制到新 Build，不重新分析。Report ID 是稳定身份，Build ID 是不可变版本，
 recordId 编码这对身份。更新传 basedOnRecordId 和变化语句，官方 mergeStatements 合并后校验完整文档，
 再复用既有锁与 current 条件提交；过期基版本失败，不自动覆盖或重试。
@@ -101,10 +101,10 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 候选只展示安全内容、占位与已授权基版本快照，无业务读取或正式保存。报告候选绑定准确调用，成功后转为固定 Build，
 失败或取消保留旧版本。PTC 依实际 dispatch 和结果交付，历史回放不抢焦点，Headless 只确认保存事实。
 
-报告目录与版本历史只列出 `dsh.analysis-ui/v1` 记录。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
+报告目录与版本历史只读取 current v4 指针及 `dsh.analysis-ui/v1` 记录；current v2/v3 不再读取或更新，文件不删除、不迁移。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
 打开旧地址显示不支持的报告错误，不回退到旧 Reader。Frame v2 的 AnalysisFrameView 按 Frame 结构选择观察、成员、比较、
 分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、heatmap、comparison 和 decomposition 视图；
-DatasetView 与旧 Frame v1 快照只支持 auto/table/metric。全局筛选、页面编辑、离线 HTML、发布和报告 cell 的“加入提问”均已移除。
+DatasetView 只支持 auto/table/metric。全局筛选、页面编辑、离线 HTML、发布和报告 cell 的“加入提问”均已移除。
 
 ## 生命周期与失败原则
 
@@ -127,5 +127,5 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 当前精确版本为 `0.6.0.dev0`，本地预发布 wheel 来源见 [Runtime 安装](modules/runtime-workspace.md#本地预发布安装)。
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
-报告使用 `session.persisted_frame()` 恢复显式持久化 Frame。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
+Frame 展示使用原分析进程中的 `capture_frame()` 快照。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
 Skill 激活使用 Harness 当前选择的正文，并在注入 Runtime Help 前核对绑定包正文；冲突与无法验证的情况见 [Help 披露](modules/help-disclosure.md#skill-激活式根-help)。

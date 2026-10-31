@@ -98,9 +98,8 @@ Datasource 连接失败不会污染 binding。
 | --- | --- |
 | `MarivoHelpBridge` | shared Runtime 上的 `marivo.help()` inventory、`marivo.help(target)` program、raw Help body 与错误映射；不解析 Workspace |
 | `MarivoDatasourceBridge` | `md.load().describe/list/test` programs、凭证引用与测试结果解析 |
-| `MarivoPresentationProjection` | persisted Artifact/Finding 的固定公开读取、computed typed JSON 与声明来源快照；不执行 revalidation |
 
-adapter 分别位于自己的 `disclosure/`、`datasource/`、`presentation/projection/` 目录。组合层按
+adapter 分别位于 `disclosure/` 和 `datasource/` 目录。展示只读取原分析执行中已捕获的快照，不再持有 Runtime adapter。组合层按
 `MarivoEnvironment` 缓存一组 adapter，但 Environment 本身不暴露领域属性或 forwarding methods。
 当前 JSON 是插件 adapter 的私有投影协议，不声称是 Marivo 公共 schema。展示的数据与来源读取边界见
 [展示数据投影](presentation-projection.md)，Tool 的文件提交与只读 RPC 见[展示交付](presentation-delivery.md)。

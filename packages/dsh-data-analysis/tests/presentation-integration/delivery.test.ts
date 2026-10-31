@@ -14,6 +14,7 @@ function delivery() {
   return parsePresentationDelivery({
     kind: MARIVO_PRESENTATION_DELIVERY_KIND,
     schemaVersion: 2,
+    surface: 'tab',
     dshSessionId: 'session',
     turn: 2,
     receipt: {
@@ -30,12 +31,6 @@ function delivery() {
           path: '/workspace/.dsh-data-analysis/presentations/report/builds/build/presentation.json',
           bytes: 10,
           sha256: 'a'.repeat(64),
-        },
-        html: {
-          asset: 'index.html',
-          path: '/workspace/.dsh-data-analysis/presentations/report/builds/build/index.html',
-          bytes: 20,
-          sha256: 'b'.repeat(64),
         },
       },
     },

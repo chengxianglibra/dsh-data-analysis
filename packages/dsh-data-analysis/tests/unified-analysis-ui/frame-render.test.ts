@@ -875,7 +875,6 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.match(html, /<span>3\/9<\/span>/)
   assert.doesNotMatch(html, /data-icon="coverage" data-disabled/)
   assert.match(html, /data-icon="origins" data-disabled="true"/)
-  assert.match(html, /Not captured when saved/)
   assert.doesNotMatch(html, /data-icon="origins"[\s\S]*?<span>0<\/span>/)
   assert.match(html, /data-icon="python" data-disabled="true"/)
   assert.match(html, /No script source/)
@@ -920,7 +919,7 @@ test('chips appear only for saved facts and the data table is collapsible', () =
     /<details class="fv-table" open="">/,
   )
   const bare = observeScalar(1)
-  bare.frame.sections.interpretation = 'not-captured'
+  bare.frame.sections.interpretation = { status: 'unavailable', reason: 'read-failed' }
   assert.doesNotMatch(r.render(bare), /fv-chips/)
 })
 

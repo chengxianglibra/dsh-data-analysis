@@ -32,7 +32,7 @@ export function finishCleanup(actions: readonly (() => unknown)[]): Promise<void
     )
     if (failures.length) throw new AggregateError(failures, 'Marivo cleanup failed')
   })
-  // Legacy synchronous callers may ignore completion; awaiting it still reports failures.
+  // Event-driven disposers may stop waiting; awaiting completion still reports failures.
   void completion.catch(() => {})
   return completion
 }

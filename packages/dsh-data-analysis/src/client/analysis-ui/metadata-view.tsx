@@ -29,8 +29,6 @@ function OriginItem({ origin }: { origin: Origin }) {
 /** Semantic origins per column; links open the semantic browser when navigable. */
 export function SemanticOrigins({ section }: { section: Semantics }) {
   const t = useCopy()
-  if (section === 'not-captured')
-    return <p className="pr-muted">{t('marivo.presentation.ui-metadata-not-captured')}</p>
   if (section.status === 'unavailable')
     return (
       <p className="pr-muted">

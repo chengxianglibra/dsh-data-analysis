@@ -24,7 +24,6 @@ export const zh = {
   'marivo.presentation.ui-dataset-source': '数据来源与范围',
   'marivo.presentation.ui-captured-at': '快照时间：{p0}',
   'marivo.presentation.ui-business-unknown': '业务覆盖范围未知；页面只展示已保存范围。',
-  'marivo.presentation.ui-metadata-not-captured': '保存时未捕获。',
   'marivo.presentation.ui-metadata-unavailable-runtime-incompatible':
     '当前 Runtime 未提供此项公开接口。',
   'marivo.presentation.ui-metadata-unavailable-read-failed': '保存时读取失败；数据结果不受影响。',
@@ -78,7 +77,7 @@ export const zh = {
   'marivo.presentation.ui-frame-comparison-delta-percent': 'Δ%',
   'marivo.presentation.ui-dataframe-source-not-captured':
     '来自捕获的 DataFrame。SQL、数据源、backend、warnings 和文件来源未捕获。',
-  'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及旧版呈现编辑。',
+  'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及页面编辑。',
   'marivo.presentation.ui-open-tab': '在报告标签页中打开',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
   'marivo.presentation.ui-preparing': '正在准备分析展示…',
@@ -87,10 +86,8 @@ export const zh = {
   'marivo.presentation.ui-resource-pending': '资源将在校验并保存后显示。',
   'marivo.presentation.ui-failed': '分析展示未保存。',
   'marivo.presentation.ui-read-failed': '无法读取此版本的已保存快照。',
-  'marivo.presentation.save-time-not-recorded': '保存时间未记录',
   'marivo.presentation.agent-update': 'Agent 更新 · ',
   'marivo.presentation.source-session-unavailable': '来源会话不可用',
-  'marivo.presentation.source-not-recorded': '来源未记录',
   'marivo.presentation.search-by-title': '按标题搜索',
   'marivo.presentation.search-reports-in-this-workspace': '搜索此 Workspace 的报告',
   'marivo.presentation.loading-reports': '正在读取报告列表…',
@@ -180,7 +177,6 @@ export const en = {
   'marivo.presentation.ui-captured-at': 'Snapshot time: {p0}',
   'marivo.presentation.ui-business-unknown':
     'Business coverage is unknown; this page shows only the saved range.',
-  'marivo.presentation.ui-metadata-not-captured': 'Not captured when saved.',
   'marivo.presentation.ui-metadata-unavailable-runtime-incompatible':
     'The current Runtime does not provide this public interface.',
   'marivo.presentation.ui-metadata-unavailable-read-failed':
@@ -237,7 +233,7 @@ export const en = {
   'marivo.presentation.ui-dataframe-source-not-captured':
     'Captured DataFrame. SQL, datasource, backend, warnings and file provenance were not captured.',
   'marivo.presentation.ui-format-limitations':
-    'Offline export, publishing and legacy presentation editing are unavailable for this format.',
+    'Offline export, publishing and page editing are unavailable for this format.',
   'marivo.presentation.ui-open-tab': 'Open in report tab',
   'marivo.presentation.ui-loading': 'Reading saved snapshot…',
   'marivo.presentation.ui-preparing': 'Preparing analysis view…',
@@ -246,10 +242,8 @@ export const en = {
   'marivo.presentation.ui-resource-pending': 'Resource will appear after validation and saving.',
   'marivo.presentation.ui-failed': 'Analysis view was not saved.',
   'marivo.presentation.ui-read-failed': 'Cannot read this saved snapshot version.',
-  'marivo.presentation.save-time-not-recorded': 'Save time not recorded',
   'marivo.presentation.agent-update': 'Agent update · ',
   'marivo.presentation.source-session-unavailable': 'Source session unavailable',
-  'marivo.presentation.source-not-recorded': 'Source not recorded',
   'marivo.presentation.search-by-title': 'Search by title',
   'marivo.presentation.search-reports-in-this-workspace': 'Search reports in this Workspace',
   'marivo.presentation.loading-reports': 'Loading reports…',

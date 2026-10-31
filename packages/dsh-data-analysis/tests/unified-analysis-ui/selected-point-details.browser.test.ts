@@ -21,6 +21,7 @@ import { frame, correlate, members } from './tests/unified-analysis-ui/frame-fix
 const normal = frame({axes:[{name:'pickup_borough',keys:['Bronx']},{name:'payment_type',keys:['Cash']}],
   values:[{name:'trips',type:'int64',values:['9007199254740993']}]});
 normal.frame.description = 'January taxi trips';
+normal.frame.sections.periods = {status:'unavailable',reason:'read-failed'};
 for (const axis of normal.frame.axes) {
   const key = axis.keys[0]; key.id = 'taxi.' + axis.name;
   normal.frame.slots.find(slot => slot.slotId === key.slotId).id = key.id;

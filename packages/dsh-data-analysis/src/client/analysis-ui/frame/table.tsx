@@ -10,7 +10,7 @@ import type { Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 import { MAX_FROZEN } from './styles.ts'
 
-/** Copies the visible columns' exact saved cells as TSV (unchanged legacy behaviour). */
+/** Copies the visible columns' exact saved cells as TSV. */
 export function CopyData({ data, columns }: { data: TypedDataset; columns: string[] }) {
   const t = useCopy()
   const [status, setStatus] = useState<string>()

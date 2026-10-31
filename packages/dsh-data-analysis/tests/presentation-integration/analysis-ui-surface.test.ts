@@ -17,7 +17,7 @@ function delivery(
     schemaVersion: 2,
     dshSessionId: options.sessionId ?? 'session-a',
     turn: options.turn ?? 3,
-    ...(options.surface === undefined ? {} : { surface: options.surface }),
+    surface: options.surface ?? 'tab',
     receipt: {
       kind: 'marivo.presentation',
       schemaVersion: 2,

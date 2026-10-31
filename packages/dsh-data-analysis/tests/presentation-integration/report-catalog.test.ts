@@ -124,7 +124,7 @@ test('publication history excludes concurrent losers and remains readable withou
     asset: 'presentation.json',
   }
   const saved = await f.service.read(input)
-  assert.equal(f.first.files.html, undefined)
+  assert.deepEqual(Object.keys(f.first.files), ['document'])
   assert.deepEqual(
     Buffer.from(saved.bodyBase64, 'base64'),
     await readFile(f.first.files.document.path),
@@ -133,28 +133,35 @@ test('publication history excludes concurrent losers and remains readable withou
   await assert.rejects(f.service.read(input), /workspace-unavailable/)
 })
 
-test('earlier report versions are hidden from the catalog and cannot be read as analysis records', async (t) => {
+test('legacy current pointers and incomplete publication records are rejected without changing files', async (t) => {
   const f = await fixture(t)
   const currentPath = path.join(presentationReportPath(f.root, f.document.reportId), 'current.json')
-  // An earlier pointer records no surface; its Build is not an analysis UI document.
-  const legacy = JSON.parse(await readFile(currentPath, 'utf8'))
-  legacy.versions[0].source = { kind: 'agent', sessionId: 'source' }
-  await writeFile(currentPath, JSON.stringify(legacy))
-  const history = await readReportHistory(f.root, f.document.workspaceId, f.document.reportId)
-  assert.equal(history.versions.length, 1)
-  assert.deepEqual(await listReports(f.root, f.document.workspaceId), {
-    workspaceId: f.document.workspaceId,
-    reports: [],
-    unavailable: 0,
-  })
-  await writeFile(
-    f.first.files.document.path,
-    JSON.stringify({ schemaVersion: 3, title: f.document.title }),
-  )
-  await assert.rejects(
-    f.service.report({ workspaceId: f.document.workspaceId, reportId: f.document.reportId }),
-    /asset-digest-mismatch|report-version-unsupported/,
-  )
+  const pointer = JSON.parse(await readFile(currentPath, 'utf8'))
+  assert.equal(pointer.schemaVersion, 4)
+  const variants = [
+    { ...pointer, schemaVersion: 2, versions: undefined },
+    { ...pointer, schemaVersion: 3, legacyHistoryUnavailable: false },
+    {
+      ...pointer,
+      versions: [{ ...pointer.versions[0], source: { kind: 'agent', sessionId: 'source' } }],
+    },
+    { ...pointer, versions: [{ ...pointer.versions[0], source: null }] },
+    { ...pointer, versions: [{ ...pointer.versions[0], publishedAt: null }] },
+  ]
+  for (const value of variants) {
+    const bytes = JSON.stringify(value)
+    await writeFile(currentPath, bytes)
+    await assert.rejects(
+      readReportHistory(f.root, f.document.workspaceId, f.document.reportId),
+      /invalid-report/,
+    )
+    assert.deepEqual(await listReports(f.root, f.document.workspaceId), {
+      workspaceId: f.document.workspaceId,
+      reports: [],
+      unavailable: 1,
+    })
+    assert.equal(await readFile(currentPath, 'utf8'), bytes)
+  }
 })
 
 test('damaged and symlinked reports are disclosed without hiding valid analysis reports', async (t) => {
@@ -242,7 +249,7 @@ test('catalog searches only titles, sorts deterministically, and suppresses resp
   const catalog = model.getSnapshot().catalog!
   const version = catalog.reports[0]!
   const chronological = [
-    { id: 'legacy', title: 'A 最早', publishedAt: null },
+    { id: 'earliest', title: 'A 最早', publishedAt: '2026-09-07T01:00:00.000Z' },
     { id: 'older', title: 'B 较早', publishedAt: '2026-09-08T01:00:00.000Z' },
     { id: 'newer-b', title: 'C 最新', publishedAt: '2026-09-09T01:00:00.000Z' },
     { id: 'newer-a', title: 'Z 最新', publishedAt: '2026-09-09T01:00:00.000Z' },
@@ -255,8 +262,8 @@ test('catalog searches only titles, sorts deterministically, and suppresses resp
     visibleReports({ ...model.getSnapshot(), catalog: { ...catalog, reports: chronological } }).map(
       (entry) => entry.receipt.reportId,
     ),
-    ['newer-a', 'newer-b', 'older', 'legacy'],
-    'always order by latest publication, then Report ID, with unknown times last',
+    ['newer-a', 'newer-b', 'older', 'earliest'],
+    'always order by latest publication, then Report ID, with deterministic ordering for equal times',
   )
   model.patch({ query: 'abc 报告' })
   assert.deepEqual(
@@ -319,6 +326,8 @@ test('failed pointer publication never adds a historical version and scope param
         }
         throw new Error('publication-interrupted')
       },
+      undefined,
+      tab,
     ),
     /publication-interrupted/,
   )
@@ -339,7 +348,7 @@ test('failed pointer publication never adds a historical version and scope param
 
 test('JSON-only publication serves only the saved document and rejects changed source bytes', async (t) => {
   const f = await fixture(t)
-  assert.equal(f.first.files.html, undefined)
+  assert.deepEqual(Object.keys(f.first.files), ['document'])
   const directory = path.dirname(f.first.files.document.path)
   assert.deepEqual(await readdir(directory), ['presentation.json'])
   const input = {

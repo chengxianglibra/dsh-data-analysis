@@ -8,7 +8,7 @@
 - Harness 拥有 Agent 编排、Session、Tool/Skill 生命周期、凭据和 profile。
 - Marivo 拥有分析语义、Artifacts、Evidence、质量、lineage 及有效性契约。
 - 本项目拥有集成接缝：Runtime/Workspace binding、实时能力披露、凭据安全接入、报告投影、
-  保存与呈现、可选发布，以及打包与验证。
+  保存与呈现，以及打包与验证。
 
 以当前代码及检出的 Marivo、Harness 源码为准；历史 Slice 与计划文档不能证明功能已实现。
 文档与代码不一致时遵循现有代码约定，并在交付中报告差异；涉及行为变更时先明确当前责任契约。

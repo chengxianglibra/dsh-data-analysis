@@ -296,7 +296,7 @@ export function frame(spec: FrameSpec): FrameSnapshotV2 {
       coordinates,
       readStats: { dataRowsRead: rows, coordinateRowsRead: rows, receiptBytesHashed: 0 },
       sections: {
-        semantics: 'not-captured',
+        semantics: { status: 'unavailable', reason: 'read-failed' },
         interpretation: {
           status: 'captured',
           fixedAxes: [],
@@ -305,7 +305,9 @@ export function frame(spec: FrameSpec): FrameSnapshotV2 {
           decompositions: spec.decompositions ?? [],
           alignments: spec.alignments ?? [],
         },
-        periods: spec.periods ? { status: 'captured', pages: spec.periods } : 'not-captured',
+        periods: spec.periods
+          ? { status: 'captured', pages: spec.periods }
+          : { status: 'captured', pages: [] },
       },
     },
   })

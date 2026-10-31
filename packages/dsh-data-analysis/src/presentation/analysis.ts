@@ -18,7 +18,6 @@ import {
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
-import type { MarivoPresentationProjection } from './projection/index.ts'
 
 /** Present-level labels live only in the embedded snapshot; they never become a document field. */
 const LABEL_BYTES = 16 * 1024
@@ -78,7 +77,6 @@ function imageMime(bytes: Buffer) {
   throw new Error('analysis-image-format-unsupported')
 }
 const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
-  'marivo-frame': 'AnalysisFrameView',
   'frame-snapshot': 'AnalysisFrameView',
   'dataset-snapshot': 'DatasetView',
   'image-file': 'Image',
@@ -86,7 +84,7 @@ const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
 /** Read each admitted resource once; saved bytes never depend on the capture directory. */
 export async function createAnalysisDocument(
   input: AnalysisPresentInput,
-  source: { projectRoot: string; projection: () => Promise<MarivoPresentationProjection> },
+  source: { projectRoot: string },
   identity: { workspaceId: string; reportId: string; buildId: string },
   signal: AbortSignal,
   base?: AnalysisDocument,
@@ -127,68 +125,9 @@ export async function createAnalysisDocument(
     resources[name] = structuredClone(saved)
     return false
   })
-  const frameEntries = pending.filter(
-    (entry): entry is [string, Extract<AnalysisResourceDeclaration, { kind: 'marivo-frame' }>] =>
-      entry[1].kind === 'marivo-frame',
-  )
-  const projection = frameEntries.length ? await source.projection() : undefined
-  const frames = frameEntries.length
-    ? await projection!.readFrames(
-        frameEntries.map(([name, r]) => {
-          const views = nodes
-            .filter((n) => n.typeName === 'AnalysisFrameView' && n.props.ref === name)
-            .map(
-              (n) =>
-                n.props.view as
-                  | { chart: string; columns?: string[]; encoding?: { value: string } }
-                  | undefined,
-            )
-          // Only explicit table columns and metric values bound the read; every other
-          // chart (comparison, decomposition, time and heatmap views) needs full columns.
-          const all =
-            !views.length ||
-            views.some(
-              (v) =>
-                !v ||
-                (v.chart !== 'table' && v.chart !== 'metric') ||
-                (v.chart === 'table' && !v.columns) ||
-                (v.chart === 'metric' && !v.encoding),
-            )
-          const columns = all
-            ? undefined
-            : [
-                ...new Set(
-                  views.flatMap((v) =>
-                    v?.chart === 'table'
-                      ? (v.columns ?? [])
-                      : v?.encoding
-                        ? [v.encoding.value]
-                        : [],
-                  ),
-                ),
-              ]
-          return {
-            sessionId: r.sessionId,
-            artifactId: r.artifactId,
-            ...(columns ? { columns } : {}),
-          }
-        }),
-        signal,
-      )
-    : []
   for (const [name, declaration] of pending) {
     signal.throwIfAborted()
-    if (declaration.kind === 'marivo-frame') {
-      resources[name] = {
-        kind: 'snapshot',
-        declaration,
-        snapshot: frames[frameEntries.findIndex(([id]) => id === name)]!,
-        binding: {
-          workspaceId: identity.workspaceId,
-          runtimeFingerprint: projection!.binding.fingerprint,
-        },
-      }
-    } else if (declaration.kind === 'dataset-snapshot' || declaration.kind === 'frame-snapshot') {
+    if (declaration.kind === 'dataset-snapshot' || declaration.kind === 'frame-snapshot') {
       const { snapshot, codeRef, owner } = await (declaration.kind === 'dataset-snapshot'
         ? readDatasetSnapshot
         : readFrameSnapshot)(

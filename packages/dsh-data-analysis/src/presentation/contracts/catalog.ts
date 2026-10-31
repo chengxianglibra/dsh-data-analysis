@@ -1,20 +1,19 @@
 import { type PresentationReceipt, parsePresentationReceipt } from './index.ts'
 
 export interface PublicationSource {
-  kind: 'agent' | 'reader'
-  sessionId: string | null
-  surface?: 'tool' | 'tab'
+  kind: 'agent'
+  sessionId: string
+  surface: 'tool' | 'tab'
 }
 export interface ReportVersion {
   receipt: PresentationReceipt
-  publishedAt: string | null
-  source: PublicationSource | null
+  publishedAt: string
+  source: PublicationSource
 }
 export interface ReportHistory {
   workspaceId: string
   reportId: string
   currentBuildId: string
-  legacyHistoryUnavailable: boolean
   versions: ReportVersion[]
 }
 export interface ReportCatalog {
@@ -25,37 +24,21 @@ export interface ReportCatalog {
 export const REPORT_HISTORY_BYTES = 16 * 1024 * 1024
 export const REPORT_HISTORY_LIMIT = 4096
 
-/** Only analysis UI saves record a surface; earlier report versions never do. */
-export function isAnalysisVersion(version: ReportVersion): boolean {
-  return version.source?.surface !== undefined
-}
-
 export function parseReportVersion(value: unknown): ReportVersion {
   const entry = value as ReportVersion
   if (
     !entry ||
     Object.keys(entry).sort().join(',') !== 'publishedAt,receipt,source' ||
-    !(
-      entry.publishedAt === null ||
-      (typeof entry.publishedAt === 'string' &&
-        Number.isFinite(Date.parse(entry.publishedAt)) &&
-        new Date(entry.publishedAt).toISOString() === entry.publishedAt)
-    ) ||
-    !(
-      entry.source === null ||
-      (entry.source &&
-        ['kind,sessionId', 'kind,sessionId,surface'].includes(
-          Object.keys(entry.source).sort().join(','),
-        ) &&
-        (entry.source.surface === undefined ||
-          entry.source.surface === 'tool' ||
-          entry.source.surface === 'tab') &&
-        ['agent', 'reader'].includes(entry.source.kind) &&
-        (entry.source.sessionId === null ||
-          (typeof entry.source.sessionId === 'string' &&
-            !!entry.source.sessionId.trim() &&
-            entry.source.sessionId.length <= 512)))
-    )
+    typeof entry.publishedAt !== 'string' ||
+    !Number.isFinite(Date.parse(entry.publishedAt)) ||
+    new Date(entry.publishedAt).toISOString() !== entry.publishedAt ||
+    !entry.source ||
+    Object.keys(entry.source).sort().join(',') !== 'kind,sessionId,surface' ||
+    (entry.source.surface !== 'tool' && entry.source.surface !== 'tab') ||
+    entry.source.kind !== 'agent' ||
+    typeof entry.source.sessionId !== 'string' ||
+    !entry.source.sessionId.trim() ||
+    entry.source.sessionId.length > 512
   )
     throw new Error('invalid-report-history')
   parsePresentationReceipt(entry.receipt)
@@ -66,10 +49,10 @@ export function parseReportHistory(value: unknown): ReportHistory {
   const history = value as ReportHistory
   if (
     !history ||
+    Object.keys(history).sort().join(',') !== 'currentBuildId,reportId,versions,workspaceId' ||
     !Array.isArray(history.versions) ||
     !history.versions.length ||
-    history.versions.length > REPORT_HISTORY_LIMIT ||
-    typeof history.legacyHistoryUnavailable !== 'boolean'
+    history.versions.length > REPORT_HISTORY_LIMIT
   )
     throw new Error('invalid-report-history')
   const ids = new Set<string>()

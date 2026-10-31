@@ -22,7 +22,7 @@ import {
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { savePythonExecution } from '../../src/python-execution.ts'
 import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
-import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
+import { legacyFrameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 import { frameSnapshotV2 } from './frame-v2-fixture.ts'
 
 const dataset = {
@@ -90,15 +90,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     ],
   } as unknown as Session
   const workspace = () => ({ id: 'workspace', path: root })
-  // frame-snapshot and dataset-snapshot never resolve the Runtime projection.
-  const tool = createMarivoPresentTool(
-    async () => {
-      throw new Error('Runtime must not be resolved')
-    },
-    session,
-    undefined,
-    workspace,
-  )
+  const tool = createMarivoPresentTool(workspace, session)
   const exec = {
     agent: { session },
     callId: 'native',
@@ -185,25 +177,25 @@ test('document owner checks require a v2 Frame with Host code, Session and call 
         AnalysisDocument['resources'][string],
         { kind: 'snapshot' }
       >
-      delete r.binding.codeRef
+      Reflect.deleteProperty(r.binding, 'codeRef')
     },
     (d) => {
       const r = d.resources.frame as Extract<
         AnalysisDocument['resources'][string],
         { kind: 'snapshot' }
       >
-      delete r.binding.callId
+      Reflect.deleteProperty(r.binding, 'callId')
     },
     (d) => {
       const r = d.resources.frame as Extract<
         AnalysisDocument['resources'][string],
         { kind: 'snapshot' }
       >
-      delete r.binding.sessionId
+      Reflect.deleteProperty(r.binding, 'sessionId')
     },
     (d) => {
       // A legacy v1 Frame has no interpretation facts and cannot back frame-snapshot.
-      Object.assign(d.resources.frame!, { snapshot: frameSnapshot() })
+      Object.assign(d.resources.frame!, { snapshot: legacyFrameSnapshot() })
     },
     (d) => {
       Object.assign(d.resources.frame!, {
@@ -211,7 +203,7 @@ test('document owner checks require a v2 Frame with Host code, Session and call 
       })
     },
     (d) => {
-      // marivo-frame requires an artifact and Runtime fingerprint; a memory capture has neither.
+      // The removed persisted-Frame declaration is rejected.
       Object.assign(d.resources.frame!, {
         declaration: { kind: 'marivo-frame', sessionId: 'session', artifactId: 'artifact' },
       })
@@ -220,7 +212,7 @@ test('document owner checks require a v2 Frame with Host code, Session and call 
   for (const mutate of variants) {
     const value = structuredClone(saved)
     mutate(value)
-    assert.throws(() => parseAnalysisDocument(value), /analysis-resource-owner-invalid/)
+    assert.throws(() => parseAnalysisDocument(value))
   }
   assert.equal(parseAnalysisDocument(structuredClone(saved)).recordId, saved.recordId)
 })

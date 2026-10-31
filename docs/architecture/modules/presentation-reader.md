@@ -26,7 +26,7 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
 签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
 
-- DatasetView 与旧 Frame v1 快照只支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
+- DatasetView 只支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
   并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
   auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，Dataset 要求完整单行单列，其余按表格显示。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
@@ -54,7 +54,7 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 
 DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。Frame 不显示 Evidence、Finding 或计算过程；
 来源固定为 Host 绑定的 codeRef：Python 图标经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef，
-sha256 不一致、记录缺失或 `marivo-frame` 恢复路径（无 codeRef）时图标变灰。section 为 `not-captured`／`unavailable`
+sha256 不一致或执行记录缺失时图标变灰。section 为 `unavailable`
 时对应图标变灰，不显示为 0 项；Session/Artifact 只在 Python 详情的开发者区出现。
 
 语义来源为分析时的静态身份，在 tool view 和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
@@ -67,8 +67,8 @@ sha256 不一致、记录缺失或 `marivo-frame` 恢复路径（无 codeRef）�
 打开时在右侧 tab 中显示对应版本，版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
-旧格式保存记录（Document v3 及更早）留在磁盘上，但不进入报告目录或版本历史；直接打开旧地址显示
-`marivo.presentation.unsupported-report` 错误，不回退到旧 reader，也不修改或删除历史文件。
+只接受 current v4 历史指针和当前快照。current v2/v3、Frame v1 与旧报告内容均明确拒绝，
+文件保留但不可继续读取或更新；目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface。
 需要相同内容时，从实际结果重新 `marivo_present` 新格式。
 
 ## 界面语言与报告语言

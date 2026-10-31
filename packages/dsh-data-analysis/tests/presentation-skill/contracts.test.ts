@@ -167,9 +167,7 @@ test('every Skill marivo_present example uses the current input and Lang contrac
             assert.equal(resources[String(node.props.ref)]?.kind, 'dataset-snapshot', where)
           if (node.typeName === 'AnalysisFrameView')
             assert.ok(
-              ['frame-snapshot', 'marivo-frame'].includes(
-                resources[String(node.props.ref)]?.kind ?? '',
-              ),
+              ['frame-snapshot'].includes(resources[String(node.props.ref)]?.kind ?? ''),
               where,
             )
         }

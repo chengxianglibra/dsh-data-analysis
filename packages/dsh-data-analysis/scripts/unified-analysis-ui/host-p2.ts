@@ -81,13 +81,14 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
     execFileSync(python, ['-c', generation.slice(0, split)], { cwd: workspaceRoot })
     const producer =
       `import importlib.metadata, json, os\nfrom decimal import Decimal\nfrom pathlib import Path\nimport marivo\nimport marivo.analysis as mv\nimport marivo.datasource as md\nimport marivo.semantic as ms\nroot=Path.cwd()\nmodel=root/'models/semantic/sales/metrics.py'\n${generation.slice(split)}`.replace(
-        'print(json.dumps(result))',
+        '# CAPTURE_BEFORE_SOURCE_REMOVAL',
         `
 import pandas as pd
-from dsh_data_analysis_presentation import capture_dataset
+from dsh_data_analysis_presentation import capture_dataset, capture_frame
+capture_frame(frame)
 capture_dataset(pd.DataFrame({"account":pd.Series([9007199254740993]+list(range(1,44))+[None],dtype=object),"amount":pd.Series([Decimal("12345678901234.5678")]+[Decimal("2.3400")]*43+[None],dtype=object)}))
 capture_dataset(pd.DataFrame({"amount":[Decimal("123.4500")]}))
-print(json.dumps(result))
+
 `,
       )
     const produced = await agent.ctx.tools.execute({
@@ -99,12 +100,11 @@ print(json.dumps(result))
     })
     assert.equal(produced.isError, false, JSON.stringify(produced))
     const value = produced.value as { stdout: string; snapshots: { snapshotRef: string }[] }
-    const frame = JSON.parse(value.stdout).frame
-    assert(value.snapshots?.length === 2, JSON.stringify(produced))
+    assert(value.snapshots?.length === 3, JSON.stringify(produced))
     const resources = {
-      frame: { kind: 'marivo-frame', ...frame },
-      data: { kind: 'dataset-snapshot', snapshotRef: value.snapshots[0]!.snapshotRef },
-      metric: { kind: 'dataset-snapshot', snapshotRef: value.snapshots[1]!.snapshotRef },
+      frame: { kind: 'frame-snapshot', snapshotRef: value.snapshots[0]!.snapshotRef },
+      data: { kind: 'dataset-snapshot', snapshotRef: value.snapshots[1]!.snapshotRef },
+      metric: { kind: 'dataset-snapshot', snapshotRef: value.snapshots[2]!.snapshotRef },
       image: { kind: 'image-file', path: 'sample.png' },
     }
     await writeFile(

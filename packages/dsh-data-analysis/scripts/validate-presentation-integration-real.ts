@@ -111,7 +111,11 @@ try {
   assert.ok(JSON.stringify(boot.boot).includes('dsh-presentation-s4'))
   for (const [index, delivery] of server.deliveries.entries()) {
     const receipt = delivery.receipt
-    assert.equal(receipt.files.html, undefined, 'Saved Builds contain only presentation.json')
+    assert.deepEqual(
+      Object.keys(receipt.files),
+      ['document'],
+      'Saved Builds contain only presentation.json',
+    )
     const document = await readReceiptDocument(workspaceRoot, receipt)
     const report = await openReport(page, delivery.dshSessionId, {
       workspaceId: receipt.workspaceId,

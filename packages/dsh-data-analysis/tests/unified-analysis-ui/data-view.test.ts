@@ -73,10 +73,10 @@ function singleFrame(coordinate: boolean) {
 test('auto uses Frame axes and value roles while preserving complete scalar Dataset display', () => {
   const coordinate = singleFrame(true)
   assert.match(render(coordinate), /<table/)
-  assert.doesNotMatch(render(coordinate), /class="au-metric"/)
+  assert.doesNotMatch(render(coordinate), /data-frame-view="metric"/)
 
   const scalar = singleFrame(false)
-  assert.match(render(scalar), /class="au-metric"/)
+  assert.match(render(scalar), /data-frame-view="metric"/)
   const presence = structuredClone(scalar)
   presence.frame.fields[0]!.role = 'presence'
   assert.match(render(parseAnalysisSnapshot(presence)), /<table/)
@@ -99,7 +99,7 @@ test('auto uses Frame axes and value roles while preserving complete scalar Data
     nullable: false,
     unit: null,
   })
-  assert.match(render(parseAnalysisSnapshot(withPresence)), /class="au-metric"/)
+  assert.match(render(parseAnalysisSnapshot(withPresence)), /data-frame-view="metric"/)
 
   scalar.data.rowCount = 2
   scalar.data.truncated = true
@@ -119,9 +119,6 @@ test('auto uses Frame axes and value roles while preserving complete scalar Data
 
 function semanticSections() {
   return {
-    evidence: 'not-captured',
-    findings: 'not-captured',
-    methods: 'not-captured',
     semantics: {
       status: 'captured',
       columns: [
@@ -137,18 +134,16 @@ function semanticSections() {
   }
 }
 
-test('legacy v1 Frame keeps the table, source facts and semantic origins without process metadata', () => {
+test('current Frame keeps its table and semantic origins without process metadata', () => {
   const value = frameSnapshot() as Record<string, any>
-  value.frame.sections = semanticSections()
+  value.frame.sections = { ...value.frame.sections, ...semanticSections() }
   const snapshot = parseAnalysisSnapshot(value)
   const html = render(snapshot, true)
   assert.match(html, /<table/)
-  assert.match(html, /data-meta="semantics"/)
-  assert.match(html, /<button type="button">Metric: sales.revenue<\/button>/)
-  assert.doesNotMatch(render(snapshot), /<button type="button">Metric/)
+  assert.match(html, /data-icon="origins"/)
+  assert.match(html, /sales\.revenue/)
   assert.doesNotMatch(html, /data-meta="(?:evidence|findings|methods)"/)
   assert.doesNotMatch(html, /Evidence|Findings|Methods/)
   // The raw fields/layout JSON dump is gone.
   assert.doesNotMatch(html, /&quot;layout&quot;|"layout":/)
-  assert.match(render(parseAnalysisSnapshot(frameSnapshot())), /Not captured when saved/)
 })

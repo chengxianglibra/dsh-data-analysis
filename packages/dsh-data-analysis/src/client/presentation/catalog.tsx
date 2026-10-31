@@ -4,19 +4,17 @@ import { useSyncExternalStore } from 'react'
 import { useCopy } from './../i18n/context.tsx'
 import { visibleReports } from './catalog-model.ts'
 
-export function publicationTime(value: string | null, locale: string) {
-  return value
-    ? new Date(value).toLocaleString(locale, { hour12: false })
-    : 'marivo.presentation.save-time-not-recorded'
+export function publicationTime(value: string, locale: string) {
+  return new Date(value).toLocaleString(locale, { hour12: false })
 }
 export function ReportSource({ version, sessions, onOpenSession, showKind = true }) {
   const t = useCopy()
 
-  const id = version.source?.sessionId
+  const id = version.source.sessionId
   const session = id && sessions?.[id]
   return (
     <span className="pd-source">
-      {showKind && version.source?.kind === 'agent' ? t('marivo.presentation.agent-update') : ''}
+      {showKind ? t('marivo.presentation.agent-update') : ''}
       {session && onOpenSession ? (
         <button
           type="button"
@@ -26,10 +24,8 @@ export function ReportSource({ version, sessions, onOpenSession, showKind = true
         >
           {session.displayTitle}
         </button>
-      ) : id ? (
-        t('marivo.presentation.source-session-unavailable')
       ) : (
-        t('marivo.presentation.source-not-recorded')
+        t('marivo.presentation.source-session-unavailable')
       )}
     </span>
   )

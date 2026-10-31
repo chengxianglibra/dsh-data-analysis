@@ -97,7 +97,7 @@ dsh-data-analysis-presentation；分析 UI 的 AnalysisFrameView 按 Frame 结�
 [展示数据投影](presentation-projection.md)使用相同 bound Workspace/Runtime 的公开读取程序生成快照。
 `dsh_data_analysis_presentation.capture_dataset(frame)` 在原 `marivo_python` 进程中捕获 pandas DataFrame，
 成功回执返回 `snapshotRef` 并关联原调用的 `codeRef`；它不推断 SQL/文件来源，也不证明捕获前的转换正确。
-presentation-kit 只公开 `capture_dataset`，不再提供写出 TypedDataset 文件的 helper。
+presentation-kit 公开 `capture_dataset`、`capture_frame` 及对应 capture receipt，不再提供写出 TypedDataset 文件的 helper。
 
 ## Web client
 
@@ -109,7 +109,7 @@ Web client 只保留：
 
 报告呈现编辑、HTML 下载、[报告发布](report-publishing.md)菜单与发布凭据管理已移除。
 
-生产 client bundle 导出 `HostPresentationReader`，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
+生产 client bundle 由 `client.tsx` 注册共享 AnalysisSurface，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
 通过统一 Session/Turn delivery 观察新交付，自动打开固定 Build Tab；重复事件去重，历史回放不自动打开。
 成功回执不渲染聊天卡片，打开失败时提供错误反馈。旧格式报告不出现在目录，直接打开时显示不支持。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
@@ -158,7 +158,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.5.0`，Dataset schemaVersion 1、Frame schemaVersion 2 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
-与内部纯数据 contracts/projection、builder，以及展示及文件分析 Skill 的 `SKILL.md` 和 references；
+与内部纯数据 contracts、builder，以及展示及文件分析 Skill 的 `SKILL.md` 和 references；
 旧 report-kit、报告 Skill、JS registry、旧 transport schemas、portable/static 离线资产和
 `dsh-data-analysis-presentation-lint` CLI 均不分发。
 版本、distribution metadata、package path 或解释器不匹配时 fail closed；不维护 compatibility alias。

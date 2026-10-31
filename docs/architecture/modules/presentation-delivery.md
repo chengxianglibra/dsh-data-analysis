@@ -22,11 +22,10 @@ Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
 - 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
   字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
 
-资源声明支持四类：
+资源声明支持三类：
 
 | kind | 字段 | 读取 |
 | --- | --- | --- |
-| `marivo-frame` | `sessionId`、`artifactId` | 在一次 checked execution 中批量有界读取 Frame 快照 |
 | `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_dataset` 签发的快照 |
 | `frame-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_frame` 签发的快照 |
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
@@ -60,7 +59,7 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 
 ## 单次调用与文件身份
 
-1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace；需要读取 Frame 时核对 bound Runtime 的 project root。
+1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace，保存过程不初始化 Runtime。
 2. 更新时先解析 `basedOnRecordId` 并读取目标 Report 的准确版本。
 3. 新建时生成 report ID，更新时沿用；每次生成新 build ID 并构建完整 JSON 字节。
 4. 在同一 Workspace 的新临时目录写入 JSON 并同步，检查归属和目录身份后以一次 rename 提交。
@@ -71,7 +70,9 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 ```
 
 receipt 保存 Workspace/report/build 身份、标题、摘要及已保存 JSON 的精确路径、SHA-256 和字节数。
-`presentations/<reportId>/current.json` 保存当前 receipt 及按发布顺序排列的版本记录。
+`presentations/<reportId>/current.json` 使用 schemaVersion 4，保存当前 receipt 及按发布顺序排列的版本记录；
+每项必须包含有效 publishedAt、Agent Session 和 surface，不包含旧历史缺失标记。
+current v2/v3 均不再接受，包含此前新格式报告的旧指针；不自动迁移或修改磁盘文件。
 
 磁盘上已有的旧格式报告（Presentation Document v3 及更早）不删除、不迁移；报告目录不再列出它们，
 打开旧报告地址时显示“不支持的报告”错误。需要相同内容时从实际结果重新 present。
@@ -79,13 +80,13 @@ receipt 保存 Workspace/report/build 身份、标题、摘要及已保存 JSON 
 ## Native、PTC 与 headless
 
 `PresentationDelivery` envelope 使用 `kind: "marivo.presentation.delivery"`、`schemaVersion: 2`、
-`dshSessionId`、`turn`、可选 `surface` 与同一个 `PresentationReceipt`；未声明 surface 的历史事件按 tab 处理。
+`dshSessionId`、`turn`、必填 `surface` 与同一个 `PresentationReceipt`；缺少 surface 的历史事件拒绝读取。
 Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-log` 写入同一种 durable envelope，
-即使代码丢弃返回值也保留交付。新版写入 `tool/ptc-dispatch`，读取时同时识别旧 `tool/code-dispatch` 事件名称，不改写历史。
+即使代码丢弃返回值也保留交付。新版写入 `tool/ptc-dispatch`，只读取该事件名称；旧 `tool/code-dispatch` 及嵌套 `tool-result` 包装不再接受。
 
 客户端要求 Native receipt 对应同一 Turn 的实际 `marivo_present` call，Code 对应同一 Turn 的 root call；
-再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文。文本输出始终包含摘要、
-Workspace/report/build 与已保存文件的路径/digest/大小，headless 可直接取得 JSON 产物。
+再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文。模型可见文本包含标题、摘要、recordId、buildId 和 surface，不披露 Workspace 路径或摘要。
+结构化 durable envelope 保存完整 receipt，headless 通过该回执取得 JSON 产物。
 
 ## RPC 与当前指针
 
@@ -104,10 +105,10 @@ Workspace/report/build 与已保存文件的路径/digest/大小，headless 可�
 `sessionId` 与 `workspaceId` 必须恰好提供一个；不接受客户端路径。服务端从 Harness Workspace 成员关系推导路径，
 拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
 
-`marivo_present` 的外层执行预算为 180 秒，Frame 读取子进程为 120 秒，由
+`marivo_present` 的外层执行预算为 180 秒，不启动 Frame 读取子进程，由
 [execution-policy.ts](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
 超时或取消不创建本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
-[展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，120／180 秒不是保证完成的时限。
+[展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，180 秒不是保证完成的时限。
 
 current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化。锁内重新比较基版本 buildId，
 不一致返回 `report-save-conflict`。指针通过临时文件写入、文件同步、rename、目录同步提交；rename 是保存生效点。

@@ -6,7 +6,6 @@ import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { commitPresentation } from './commit.ts'
 import { type AnalysisDocument, parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
-  isAnalysisVersion,
   type PublicationSource,
   parseReportHistory,
   REPORT_HISTORY_BYTES,
@@ -77,28 +76,14 @@ export async function readReportHistory(
   if (receipt.workspaceId !== workspaceId || receipt.reportId !== reportId)
     throw new Error('asset-owner-mismatch')
   if (
-    current.schemaVersion === 2 &&
-    Object.keys(current).sort().join(',') === 'receipt,reportId,schemaVersion,workspaceId'
-  ) {
-    return {
-      workspaceId,
-      reportId,
-      currentBuildId: receipt.buildId,
-      legacyHistoryUnavailable: true,
-      versions: [{ receipt, publishedAt: null, source: null }],
-    }
-  }
-  if (
-    current.schemaVersion !== 3 ||
-    Object.keys(current).sort().join(',') !==
-      'legacyHistoryUnavailable,receipt,reportId,schemaVersion,versions,workspaceId'
+    current.schemaVersion !== 4 ||
+    Object.keys(current).sort().join(',') !== 'receipt,reportId,schemaVersion,versions,workspaceId'
   )
     throw new Error('invalid-report-current')
   const history = parseReportHistory({
     workspaceId,
     reportId,
     currentBuildId: receipt.buildId,
-    legacyHistoryUnavailable: current.legacyHistoryUnavailable,
     versions: current.versions,
   })
   if (JSON.stringify(history.versions[0]!.receipt) !== JSON.stringify(receipt))
@@ -149,8 +134,7 @@ export async function listReports(
     try {
       if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('asset-not-file')
       const history = await readReportHistory(root, workspaceId, entry.name, signal)
-      // Earlier report formats remain on disk but are no longer listed or readable.
-      if (isAnalysisVersion(history.versions[0]!)) reports.push(history.versions[0]!)
+      reports.push(history.versions[0]!)
     } catch (error) {
       signal?.throwIfAborted()
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unavailable++
@@ -168,7 +152,7 @@ export async function listReports(
   }
   reports.sort(
     (a, b) =>
-      (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') ||
+      b.publishedAt.localeCompare(a.publishedAt) ||
       a.receipt.reportId.localeCompare(b.receipt.reportId),
   )
   return { workspaceId, reports, unavailable }
@@ -180,8 +164,8 @@ export async function publishPresentation(
   document: AnalysisDocument,
   expectedBuildId: string | null,
   assertOwner: () => Promise<void>,
-  signal?: AbortSignal,
-  source: PublicationSource | null = null,
+  signal: AbortSignal | undefined,
+  source: PublicationSource,
 ): Promise<PresentationReceipt> {
   await assertOwner()
   signal?.throwIfAborted()
@@ -246,16 +230,14 @@ export async function publishPresentation(
         workspaceId: document.workspaceId,
         reportId: document.reportId,
         currentBuildId: receipt.buildId,
-        legacyHistoryUnavailable: history?.legacyHistoryUnavailable ?? false,
         versions,
       })
       const pointer = JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 4,
         workspaceId: document.workspaceId,
         reportId: document.reportId,
         receipt,
         versions,
-        legacyHistoryUnavailable: history?.legacyHistoryUnavailable ?? false,
       })
       if (Buffer.byteLength(pointer) > REPORT_HISTORY_BYTES) throw new Error('report-history-full')
       const temporary = path.join(directory, `.current-${randomUUID()}.tmp`)

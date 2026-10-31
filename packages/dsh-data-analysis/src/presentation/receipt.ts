@@ -12,7 +12,7 @@ export interface PresentationDelivery {
   dshSessionId: string
   turn: number
   receipt: PresentationReceipt
-  surface?: 'tool' | 'tab'
+  surface: 'tool' | 'tab'
 }
 
 export function parsePresentationDelivery(value: unknown): PresentationDelivery {
@@ -20,11 +20,9 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
     throw new Error('invalid-presentation-delivery')
   const input = value as Record<string, unknown>
   if (
-    ![
-      'dshSessionId,kind,receipt,schemaVersion,turn',
-      'dshSessionId,kind,receipt,schemaVersion,surface,turn',
-    ].includes(Object.keys(input).sort().join(',')) ||
-    (input.surface !== undefined && input.surface !== 'tool' && input.surface !== 'tab') ||
+    Object.keys(input).sort().join(',') !==
+      'dshSessionId,kind,receipt,schemaVersion,surface,turn' ||
+    (input.surface !== 'tool' && input.surface !== 'tab') ||
     input.kind !== MARIVO_PRESENTATION_DELIVERY_KIND ||
     input.schemaVersion !== 2 ||
     typeof input.dshSessionId !== 'string' ||
@@ -41,7 +39,7 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
 /** Model-facing receipt text: identity and delivery surface, without Workspace paths or digests. */
 export function presentationReceiptText(
   receipt: PresentationReceipt,
-  surface?: 'tool' | 'tab',
+  surface: 'tool' | 'tab',
 ): string {
   return [
     receipt.title,

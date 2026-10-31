@@ -49,104 +49,31 @@ const bounded = (max: number) =>
     .max(max)
     .refine((s) => !s.includes('\0'))
 const identity = bounded(2048).min(1)
-const display = bounded(2000).nullable()
-const fact = z.strictObject({ name: bounded(512), value: display })
-const facts = z.array(fact).max(32)
-const scope = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('row'), rowIndex: count }),
-  z.strictObject({ kind: z.enum(['row-unmatched', 'partial', 'unscoped', 'unresolved']) }),
-])
-const recordCoordinates = z
-  .array(z.strictObject({ slotId: identity, name: bounded(512).nullable(), value: display }))
-  .max(32)
-const truncated = z.literal(true).optional()
-const auditPage = <T extends z.ZodTypeAny>(item: T) =>
-  z.strictObject({
-    status: z.literal('captured'),
-    totalCount: count,
-    hasMore: z.boolean(),
-    items: z.array(item).max(20),
-  })
 const origin = z.strictObject({ kind: identity, path: identity, definitionId: identity })
 const section = <T extends z.ZodTypeAny>(captured: T) =>
   z.union([
-    // Snapshots saved before P4 recorded every section as not captured.
-    z.literal('not-captured'),
     z.strictObject({
       status: z.literal('unavailable'),
       reason: z.enum(['runtime-incompatible', 'read-failed', 'identity-mismatch', 'budget']),
     }),
     captured,
   ])
-const sections = z.strictObject({
-  evidence: section(
-    auditPage(
-      z.strictObject({
-        kind: z.enum(['declaration', 'read', 'check']),
-        summary: bounded(4096).min(1),
-        values: facts,
-        coordinates: recordCoordinates,
-        scope,
-        truncated,
-      }),
-    ),
-  ),
-  findings: section(
-    auditPage(
-      z.strictObject({
-        findingId: identity,
-        type: identity,
-        committedAt: z.string().datetime({ offset: true }),
-        values: facts,
-        coordinates: recordCoordinates,
-        scope,
-        truncated,
-      }),
-    ),
-  ),
-  methods: section(
-    z.strictObject({
-      status: z.literal('captured'),
-      totalCount: count,
-      items: z
-        .array(
-          z.strictObject({
-            kind: identity,
-            originResultId: identity,
-            targets: z
-              .array(
-                z.strictObject({
-                  path: bounded(512),
-                  kind: z.enum(['level', 'absolute', 'relative']),
-                }),
-              )
-              .max(32),
-            parentCount: count,
-            coordinateCount: count,
-            truncated,
-          }),
-        )
-        .max(20),
-    }),
-  ),
-  semantics: section(
-    z.strictObject({
-      status: z.literal('captured'),
-      columns: z
-        .array(
-          z.strictObject({
-            role: z.enum(['value', 'presence', 'axis']),
-            id: identity,
-            valueOrigins: z.array(origin).max(32),
-            contextOrigins: z.array(origin).max(32),
-            omittedOrigins: count,
-          }),
-        )
-        .max(PRESENTATION_BUDGETS.columns),
-    }),
-  ),
-})
-export type FrameSections = z.infer<typeof sections>
+const semantics = section(
+  z.strictObject({
+    status: z.literal('captured'),
+    columns: z
+      .array(
+        z.strictObject({
+          role: z.enum(['value', 'presence', 'axis']),
+          id: identity,
+          valueOrigins: z.array(origin).max(32),
+          contextOrigins: z.array(origin).max(32),
+          omittedOrigins: count,
+        }),
+      )
+      .max(PRESENTATION_BUDGETS.columns),
+  }),
+)
 
 // schemaVersion 2: bounded projections of public Frame interpretation facts.
 // Internal IDs are resolved at capture time to current names, axis tokens or
@@ -410,15 +337,14 @@ const periods = section(
       .max(PRESENTATION_BUDGETS.columns),
   }),
 )
-// v2 drops Evidence, Findings and method facts; they describe computation, not data meaning.
-const sectionsV2 = z.strictObject({
-  semantics: sections.shape.semantics,
+const sections = z.strictObject({
+  semantics,
   interpretation,
   periods,
 })
-export type FrameSectionsV2 = z.infer<typeof sectionsV2>
-export type FrameInterpretation = Extract<FrameSectionsV2['interpretation'], { status: 'captured' }>
-export type FramePeriods = Extract<FrameSectionsV2['periods'], { status: 'captured' }>
+export type FrameSections = z.infer<typeof sections>
+export type FrameInterpretation = Extract<FrameSections['interpretation'], { status: 'captured' }>
+export type FramePeriods = Extract<FrameSections['periods'], { status: 'captured' }>
 export type FrameValueContext = z.infer<typeof valueContext>
 export type FrameComparison = z.infer<typeof comparison>
 export type FrameDecomposition = z.infer<typeof decomposition>
@@ -448,7 +374,7 @@ const schema = z.discriminatedUnion('kind', [
   }),
   z.strictObject({
     ...common,
-    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    schemaVersion: z.literal(2),
     kind: z.literal('frame'),
     // A capture_frame snapshot of a computed memory Frame has no artifact; its
     // Python source is the Host-bound codeRef, never a field of this snapshot.
@@ -459,7 +385,7 @@ const schema = z.discriminatedUnion('kind', [
     }),
     frame: z.strictObject({
       inputId: text,
-      description: bounded(2000).nullable().optional(),
+      description: bounded(2000).nullable(),
       fields: z
         .array(
           z.strictObject({
@@ -479,7 +405,7 @@ const schema = z.discriminatedUnion('kind', [
             name: text,
             role: text,
             keys: z.array(slot).min(1).max(PRESENTATION_BUDGETS.columns),
-            variant: axisVariant.optional(),
+            variant: axisVariant,
           }),
         )
         .max(PRESENTATION_BUDGETS.columns),
@@ -497,7 +423,7 @@ const schema = z.discriminatedUnion('kind', [
         coordinateRowsRead: count,
         receiptBytesHashed: count,
       }),
-      sections: z.union([sections, sectionsV2]),
+      sections,
     }),
   }),
 ])
@@ -592,38 +518,13 @@ export function parseAnalysisSnapshot(value: unknown): AnalysisSnapshot {
     }
     if (data.rows.length * (data.columns.length + keys.length) > PRESENTATION_BUDGETS.cells)
       invalid()
-    if (result.schemaVersion === 1) {
-      if (!('evidence' in frame.sections) || result.source.artifactId === null) invalid()
-      const legacy = frame.sections as FrameSections
-      for (const name of ['evidence', 'findings'] as const) {
-        const section = legacy[name]
-        if (typeof section === 'object' && section.status === 'captured') {
-          if (section.items.length > section.totalCount) invalid()
-          for (const item of section.items)
-            if (item.scope.kind === 'row' && item.scope.rowIndex >= data.rows.length) invalid()
-        }
-      }
-    } else {
-      if (
-        !('interpretation' in frame.sections) ||
-        frame.description === undefined ||
-        frame.axes.some((a) => a.variant === undefined)
-      )
-        invalid()
-      validateInterpretation(frame as FrameSnapshotV2['frame'], invalid)
-    }
+    validateInterpretation(frame, invalid)
   }
   return result
 }
 
-export type FrameSnapshotV2 = FrameSnapshot & {
-  schemaVersion: 2
-  frame: FrameSnapshot['frame'] & {
-    description: string | null
-    sections: FrameSectionsV2
-  }
-}
-/** Saved v2 snapshots only; legacy v1 Frames have no interpretation facts. */
+export type FrameSnapshotV2 = FrameSnapshot
+/** Narrows the current snapshot union to a captured Frame. */
 export function isFrameSnapshotV2(snapshot: AnalysisSnapshot): snapshot is FrameSnapshotV2 {
   return snapshot.kind === 'frame' && snapshot.schemaVersion === 2
 }

@@ -12,7 +12,7 @@ export function frameSnapshotV2() {
       description: 'Revenue by region',
       axes: value.frame.axes.map((axis) => ({ ...axis, variant: { kind: 'ordinary' } })),
       sections: {
-        semantics: 'not-captured',
+        semantics: { status: 'captured', columns: [] },
         interpretation: {
           status: 'captured',
           fixedAxes: [],
@@ -37,7 +37,7 @@ export function frameSnapshotV2() {
           decompositions: [],
           alignments: [],
         },
-        periods: 'not-captured',
+        periods: { status: 'captured', pages: [] },
       },
     },
   }

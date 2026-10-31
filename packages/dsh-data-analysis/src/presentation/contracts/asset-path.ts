@@ -9,6 +9,6 @@ export function presentationAssetRelativePath(
 ): string {
   parsePresentationBuildId(reportId, '/reportId')
   parsePresentationBuildId(buildId)
-  if (asset !== 'presentation.json' && asset !== 'index.html') throw new Error('invalid-asset')
+  if (asset !== 'presentation.json') throw new Error('invalid-asset')
   return `.dsh-data-analysis/presentations/${reportId}/builds/${buildId}/${asset}`
 }

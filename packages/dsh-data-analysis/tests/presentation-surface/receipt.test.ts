@@ -27,7 +27,6 @@ const receipt: PresentationReceipt = {
 test('model-facing receipt text keeps identity and omits Workspace paths and digests', () => {
   const parsed = parsePresentationReceipt(receipt)
   for (const [surface, label] of [
-    [undefined, 'tool view'],
     ['tool', 'tool view'],
     ['tab', 'tab'],
   ] as const) {
@@ -40,4 +39,20 @@ test('model-facing receipt text keeps identity and omits Workspace paths and dig
     for (const forbidden of ['/', 'sha256', 'Workspace:'])
       assert.ok(!text.includes(forbidden), forbidden)
   }
+})
+
+test('HTML assets are rejected rather than admitted as optional receipt files', () => {
+  assert.throws(() =>
+    parsePresentationReceipt({
+      ...receipt,
+      files: {
+        ...receipt.files,
+        html: {
+          ...receipt.files.document,
+          asset: 'index.html',
+          path: receipt.files.document.path.replace('presentation.json', 'index.html'),
+        },
+      },
+    }),
+  )
 })

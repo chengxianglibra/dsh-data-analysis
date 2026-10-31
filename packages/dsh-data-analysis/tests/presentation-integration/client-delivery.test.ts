@@ -18,6 +18,7 @@ function delivery(buildId = 'build-a', sessionId = 'session-a', turn = 3): Prese
   return {
     kind: 'marivo.presentation.delivery',
     schemaVersion: 2,
+    surface: 'tab',
     dshSessionId: sessionId,
     turn,
     receipt: {
@@ -35,12 +36,6 @@ function delivery(buildId = 'build-a', sessionId = 'session-a', turn = 3): Prese
           bytes: 100,
           sha256: 'a'.repeat(64),
         },
-        html: {
-          asset: 'index.html',
-          path: `/workspace/.dsh-data-analysis/presentations/report/builds/${buildId}/index.html`,
-          bytes: 200,
-          sha256: 'b'.repeat(64),
-        },
       },
     },
   }
@@ -55,14 +50,10 @@ function native(value = delivery(), seq = 20) {
       meta: value,
       message: {
         source: { kind: 'tool', callId: 'present-call' },
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: 'present-call',
-            isError: false,
-            content: [{ type: 'text', text: 'saved' }],
-          },
-        ],
+        role: 'tool',
+        toolCallId: 'present-call',
+        isError: false,
+        content: [{ type: 'text', text: 'saved' }],
       },
     },
   }
@@ -93,7 +84,7 @@ test('Native and Code consume the same detached durable receipt, with closed bou
   const first = presentationDeliveryFromEvent(native(value), calls, 3)!
   const second = presentationDeliveryFromEvent(code(value), calls, 3)!
   assert.deepEqual(first.delivery, second.delivery)
-  assert.equal(Object.isFrozen(first.delivery.receipt.files.html), true)
+  assert.equal(Object.isFrozen(first.delivery.receipt.files.document), true)
   value.receipt.title = 'changed after delivery'
   assert.equal(first.delivery.receipt.title, '分析结果')
   assert.equal(
@@ -113,7 +104,7 @@ test('Native and Code consume the same detached durable receipt, with closed bou
     null,
   )
   const invalid = delivery()
-  invalid.receipt.files.html!.path = '/etc/passwd'
+  invalid.receipt.files.document.path = '/etc/passwd'
   assert.equal(presentationDeliveryFromEvent(native(invalid), calls, 3), null)
 })
 
@@ -130,10 +121,10 @@ test('receipts require successful own-Turn call correlation and cannot cross Nat
   )
   assert.equal(presentationDeliveryFromEvent(native(), calls, 4), null)
   const failed = native()
-  failed.data.message.content[0]!.isError = true
+  failed.data.message.isError = true
   assert.equal(presentationDeliveryFromEvent(failed, calls, 3), null)
   const wrongCall = native()
-  wrongCall.data.message.content[0]!.toolCallId = 'different-call'
+  wrongCall.data.message.toolCallId = 'different-call'
   assert.equal(presentationDeliveryFromEvent(wrongCall, calls, 3), null)
   assert.equal(
     presentationDeliveryFromEvent({ ...native(), surfaceOp: { op: 'replace' } }, calls, 3),
@@ -301,7 +292,7 @@ test('an independent Chat node appears at the first successful receipt before an
   assert.equal(definition.target, 'chat')
   assert.equal(view(state), null)
   const failed = native()
-  failed.data.message.content[0]!.isError = true
+  failed.data.message.isError = true
   state = definition.update({ state }, { event: failed })
   assert.equal(view(state), null)
   state = definition.update({ state }, { event: native(delivery('first'), 20) })
@@ -355,7 +346,7 @@ test('successful Native and discarded Code receipts survive later tool failure, 
     state = definition.update({ state }, { event: code(delivery('code-discarded-return'), 21) })
     const first = view(state)!
     const failed = native(delivery('failed'), 25)
-    failed.data.message.content[0]!.isError = true
+    failed.data.message.isError = true
     state = definition.update({ state }, { event: failed })
     state = definition.update(
       { state },
@@ -404,7 +395,7 @@ test('Host deliverables keep produced files and independent report nodes in eith
     const assembler = host.createAssembler()
     const write = native(undefined, 5)
     write.data.message.source.callId = 'write-call'
-    write.data.message.content[0]!.toolCallId = 'write-call'
+    write.data.message.toolCallId = 'write-call'
     const inputs = [
       { event: { seq: 1, type: 'turn/start', data: { turn: 3 } } },
       { event: { seq: 2, type: 'step/start', data: { turn: 3, step: 1 } } },
@@ -507,24 +498,19 @@ test('Host deliverables keep produced files and independent report nodes in eith
   }
 })
 
-// Historical plugin receipts remain readable after the Harness event rename.
-test('rc saved Code dispatch receipts retain the same validated presentation and grouping', () => {
-  const current = code()
-  const historical = { ...current, type: 'tool/code-dispatch' }
-  assert.deepEqual(
-    presentationDeliveryFromEvent(historical, calls, 3),
-    presentationDeliveryFromEvent(current, calls, 3),
-  )
-  assert.deepEqual(definition.match(historical), definition.match(current))
-  assert.equal(
-    presentationDeliveryFromEvent(
-      { ...historical, data: { ...historical.data, isError: true } },
-      calls,
-      3,
-    ),
-    null,
-  )
-  assert.equal(presentationDeliveryFromEvent(historical, new Map(), 3), null)
+test('historical Code dispatch names, nested tool-result blocks and missing surfaces are rejected', () => {
+  const historical = { ...code(), type: 'tool/code-dispatch' }
+  assert.equal(presentationDeliveryFromEvent(historical, calls, 3), null)
+  assert.equal(definition.match(historical), null)
+  assert.ok(presentationDeliveryFromEvent(code(), calls, 3))
+  const nested = native()
+  Object.assign(nested.data.message, {
+    content: [{ type: 'tool-result', toolCallId: 'present-call', isError: false }],
+  })
+  assert.equal(presentationDeliveryFromEvent(nested, calls, 3), null)
+  const missingSurface = native()
+  Reflect.deleteProperty(missingSurface.data.meta, 'surface')
+  assert.equal(presentationDeliveryFromEvent(missingSurface, calls, 3), null)
 })
 
 test('current Harness tool-role messages preserve surface and require top-level call/outcome correlation', () => {

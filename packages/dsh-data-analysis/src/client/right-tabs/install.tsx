@@ -198,7 +198,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
               reportId: receipt.reportId,
               buildId: receipt.buildId,
             }),
-            { replaceTab: tab.id, revealIfOpened: false },
+            { replaceTab: true, revealIfOpened: false },
           )
         }, [allowed, candidate, tab])
         return allowed ? (

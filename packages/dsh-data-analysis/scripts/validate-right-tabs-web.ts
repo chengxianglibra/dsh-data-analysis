@@ -85,7 +85,7 @@ try {
   await page.locator(`[data-rt-build="${native.receipt.buildId}"]`).waitFor({ timeout: 45_000 })
   assert.equal(await opens(), 1)
   record('live Native delivery opens fixed Build once')
-  assert.equal(native.receipt.files.html, undefined)
+  assert.deepEqual(Object.keys(native.receipt.files), ['document'])
   assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   record('JSON-only report opens in right tab with no chat card')
   assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 1)

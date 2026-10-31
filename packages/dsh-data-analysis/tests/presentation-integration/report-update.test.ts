@@ -14,9 +14,8 @@ import {
   parseAnalysisDocument,
   parseSavedPresentation,
 } from '../../src/presentation/contracts/analysis-document.ts'
-import { datasetSnapshotRef } from '../../src/presentation/dataset-snapshot.ts'
+import { datasetSnapshotRef, frameSnapshotRef } from '../../src/presentation/dataset-snapshot.ts'
 import { presentationSha256 } from '../../src/presentation/files.ts'
-import { MarivoPresentationProjection } from '../../src/presentation/projection/index.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import {
   publishPresentation,
@@ -72,6 +71,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const capturePath = `${captureDirectory}/${captureId}.json`
   const bytes = Buffer.from(JSON.stringify(snapshot))
   await writeFile(path.join(root, capturePath), bytes)
+  const frameId = randomUUID()
+  const framePath = `${captureDirectory}/${frameId}.json`
+  const frameBytes = Buffer.from(JSON.stringify(frameSnapshot()))
+  await writeFile(path.join(root, framePath), frameBytes)
   const codeRef = await savePythonExecution(root, {
     text: 'capture_dataset(df)',
     startedAt: '2026-10-28T00:00:00.000Z',
@@ -81,7 +84,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       sessionId: 'session',
       callId: 'producer',
       rootCallId: 'producer',
-      entries: [{ captureId, path: capturePath, sha256: presentationSha256(bytes) }],
+      entries: [
+        { captureId, path: capturePath, sha256: presentationSha256(bytes) },
+        { captureId: frameId, path: framePath, sha256: presentationSha256(frameBytes) },
+      ],
     },
   })
   const session = {
@@ -91,31 +97,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       { type: 'tool/call', data: { callId: 'code', name: 'run_code', turn: 2 } },
     ],
   } as unknown as Session
-  let reads = 0
-  const runner = {
-    status: 'ready' as const,
-    binding: {
-      projectRoot: root,
-      pythonExecutable: '/bound/python',
-      marivoVersion: '0.6.0.dev0',
-      packagePath: '/bound/marivo',
-      subprocessPolicyId: 'policy',
-      fingerprint: 'fingerprint',
-      presentationKit: { version: '1.5.0', packagePath: '/bound/helper' },
-    },
-    async runChecked() {
-      reads++
-      return {
-        exitCode: 0,
-        signal: null,
-        durationMs: 0,
-        stderr: Buffer.alloc(0),
-        stdout: Buffer.from(JSON.stringify({ ok: true, snapshots: [frameSnapshot()] })),
-      }
-    },
-  }
-  const projection = new MarivoPresentationProjection(runner)
-  const source = () => ({ workspaceId: 'workspace', projection })
+  const source = () => ({ id: 'workspace', path: root })
   const tool = createMarivoPresentTool(source, session)
   const exec = {
     agent: { session },
@@ -129,7 +111,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   t.after(() => service.close())
   const resources = {
     data: { kind: 'dataset-snapshot', snapshotRef: datasetSnapshotRef(codeRef, captureId) },
-    frame: { kind: 'marivo-frame', sessionId: 'session', artifactId: 'artifact' },
+    frame: { kind: 'frame-snapshot', snapshotRef: frameSnapshotRef(codeRef, frameId) },
   }
   const present = async (args: Record<string, unknown>, code = false) =>
     parsePresentationDelivery(
@@ -147,11 +129,9 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     resources,
     present,
     service,
-    projection,
     source,
     exec,
     captureDirectory,
-    reads: () => reads,
   }
 }
 
@@ -162,7 +142,6 @@ test('reference-only results save exact resources and survive capture removal an
   assert.equal(data.surface, 'tool')
   assert.equal(frame.surface, 'tab')
   assert.equal(frame.turn, 2)
-  assert.equal(f.reads(), 1)
   const catalog = await f.service.catalog('reports/list', { workspaceId: 'workspace' })
   assert('reports' in catalog)
   const state = { open: true, workspaceId: 'workspace', query: '', loading: false, catalog }
@@ -216,7 +195,6 @@ test('reference-only results save exact resources and survive capture removal an
       /invalid-request/,
     )
   }
-  assert.equal(f.reads(), 1)
 })
 
 test('eight-component composition admits only saved image resources and exact compatible data views', async (t) => {
@@ -272,7 +250,6 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
     document.resources.data?.kind === 'snapshot' && document.resources.data.snapshot.data.columns,
   )
   assert.equal(definition.resources.data.rows, undefined)
-  assert.equal(f.reads(), 0)
   const nextId = randomUUID()
   const next = {
     ...document,
@@ -280,13 +257,22 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
     recordId: analysisRecordId(document.reportId, nextId),
     title: 'New version',
   }
-  const updated = await publishPresentation(f.root, next, document.buildId, async () => {})
+  const updated = await publishPresentation(
+    f.root,
+    next,
+    document.buildId,
+    async () => {},
+    undefined,
+    { kind: 'agent', sessionId: 'session', surface: 'tool' },
+  )
   await assert.rejects(
     publishPresentation(
       f.root,
       { ...next, buildId: 'stale', recordId: analysisRecordId(document.reportId, 'stale') },
       document.buildId,
       async () => {},
+      undefined,
+      { kind: 'agent', sessionId: 'session', surface: 'tool' },
     ),
     /report-save-conflict/,
   )
@@ -301,7 +287,11 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
   const abort = new AbortController()
   abort.abort()
   await assert.rejects(
-    publishPresentation(f.root, next, updated.buildId, async () => {}, abort.signal),
+    publishPresentation(f.root, next, updated.buildId, async () => {}, abort.signal, {
+      kind: 'agent',
+      sessionId: 'session',
+      surface: 'tool',
+    }),
     /abort/i,
   )
   assert.equal(
@@ -322,16 +312,8 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
       'heading = TextContent("Before");\nroot = Stack([heading, AnalysisFrameView("frame"), DatasetView("data")]);',
   })
   const base = parseAnalysisDocument(await readReceiptDocument(f.root, original.receipt))
-  const reads = f.reads()
   await rm(path.join(f.root, f.captureDirectory), { recursive: true })
-  const tool = createMarivoPresentTool(
-    async () => {
-      throw new Error('Runtime must not be resolved')
-    },
-    f.exec.agent!.session,
-    undefined,
-    () => ({ id: 'workspace', path: f.root }),
-  )
+  const tool = createMarivoPresentTool(f.source, f.exec.agent!.session)
   const update = async (args: Record<string, unknown>) =>
     parsePresentationDelivery(
       JSON.parse(((await tool.execute(args, f.exec)) as { deliveryJson: string }).deliveryJson),
@@ -347,7 +329,6 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
   assert.equal(next.locale, 'en-US')
   assert.match(next.program, /After/)
   assert.deepEqual(next.resources, base.resources)
-  assert.equal(f.reads(), reads)
   await assert.rejects(
     update({ basedOnRecordId: base.recordId, program: 'heading = TextContent("Stale");' }),
     /report-save-conflict/,

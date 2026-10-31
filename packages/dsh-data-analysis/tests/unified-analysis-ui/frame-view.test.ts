@@ -707,28 +707,15 @@ test('heatmaps reject duplicate projected axis keys without aggregating captured
   assert.deepEqual(failure(composite, encoding), expected)
 })
 
-function legacyFrame(scalar: boolean, complete: boolean) {
-  const raw = frameSnapshot()
-  const data = complete ? { ...raw.data, rowCount: 1, truncated: false } : raw.data
-  const coverage = complete ? { ...raw.coverage, totalRows: 1, complete: true } : raw.coverage
-  if (!scalar) return parseAnalysisSnapshot({ ...raw, data, coverage })
-  const pick = <T>(items: T[]) => [items[1]!]
-  return parseAnalysisSnapshot({
-    ...raw,
-    data: { ...data, columns: pick(data.columns), rows: [[data.rows[0]![1]!]] },
-    coverage: { ...coverage, columns: ['amount'] },
-    frame: {
-      ...raw.frame,
-      fields: pick(raw.frame.fields),
-      layout: pick(raw.frame.layout),
-      slots: pick(raw.frame.slots),
-      axes: [],
-      coordinates: {},
-    },
-  })
-}
 function dataset(columns: number, complete: boolean) {
-  const base = legacyFrame(false, complete)
+  const raw = frameSnapshot()
+  const base = complete
+    ? {
+        ...raw,
+        data: { ...raw.data, rowCount: 1, truncated: false },
+        coverage: { ...raw.coverage, totalRows: 1, complete: true },
+      }
+    : raw
   const keep = base.data.columns.slice(0, columns)
   return parseAnalysisSnapshot({
     schemaVersion: 1,
@@ -739,56 +726,6 @@ function dataset(columns: number, complete: boolean) {
     source: { kind: 'dataframe', details: 'not-captured' },
   })
 }
-
-test('v1 Frame snapshots keep auto/table/metric behaviour and reject other charts', () => {
-  const scalar = legacyFrame(true, true)
-  const scalarResult = resolved(scalar)
-  assert.deepEqual(scalarResult.view, { chart: 'metric', values: ['amount'] })
-  assert.deepEqual(scalarResult.classification, {
-    class: 'observation',
-    shape: 'scalar',
-    categoryAxes: [],
-    primaryValues: ['amount'],
-    broadcastValues: [],
-    symbols: {},
-  })
-  assert.equal(viewOf(legacyFrame(true, false)).chart, 'table')
-  // One axis: a table even for a complete single row.
-  const keyed = legacyFrame(false, true)
-  assert.deepEqual(viewOf(keyed), { chart: 'table', columns: ['region', 'amount'] })
-  assert.equal(resolved(keyed).classification.shape, 'other')
-  assert.deepEqual(viewOf(keyed, { chart: 'metric', encoding: { value: 'amount' } }), {
-    chart: 'metric',
-    values: ['amount'],
-  })
-  assert.deepEqual(failure(keyed, { chart: 'metric' }), {
-    code: 'view-name-unknown',
-    path: '/view/encoding/value',
-  })
-  const partial = legacyFrame(false, false)
-  assert.deepEqual(failure(partial, { chart: 'metric', encoding: { value: 'amount' } }), {
-    code: 'view-metric-requires-complete-single-row',
-    path: '/view',
-  })
-  assert.deepEqual(failure(partial, { chart: 'table', columns: ['amount', 'amount'] }), {
-    code: 'view-name-unknown',
-    path: '/view/columns/1',
-  })
-  assert.deepEqual(viewOf(partial, { chart: 'table', columns: ['amount'] }), {
-    chart: 'table',
-    columns: ['amount'],
-  })
-  for (const view of [
-    { chart: 'line' },
-    { chart: 'heatmap' },
-    { chart: 'comparison' },
-    { chart: 'decomposition' },
-  ] as FrameView[])
-    assert.deepEqual(failure(partial, view), {
-      code: 'view-unsupported-for-snapshot',
-      path: '/view/chart',
-    })
-})
 
 test('Dataset snapshots keep auto/table/metric behaviour', () => {
   assert.deepEqual(viewOf(dataset(1, true)), { chart: 'metric', values: ['region'] })

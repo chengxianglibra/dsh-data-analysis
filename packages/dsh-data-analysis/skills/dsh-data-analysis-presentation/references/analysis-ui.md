@@ -42,7 +42,7 @@ capture_dataset(result)   # result is an actual pandas DataFrame in this analysi
 ```
 
 成功 marivo_python 回执按 kind 返回 snapshotRef，helper 自动关联原调用及 codeRef。Frame 声明为
-`{"kind":"frame-snapshot","snapshotRef":"实际引用"}`，优先于 `marivo-frame`；待执行表达式先 compute()，
+`{"kind":"frame-snapshot","snapshotRef":"实际引用"}`；待执行表达式先 compute()，
 `to_pandas()` 之后得到的是 DataFrame，只能用 capture_dataset 与 DatasetView。capture 不接收 RawSqlResult。
 首次确需保存 SQL 结果时，按实时 Help 将其转为 DataFrame 后捕获；含 NULL 的整数列可能变成 float64，
 大整数可能在转换中舍入。helper 不检测或修复捕获前损失，不推断 SQL/datasource 来源。

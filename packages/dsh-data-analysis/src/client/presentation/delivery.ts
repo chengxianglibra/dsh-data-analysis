@@ -54,7 +54,6 @@ function parsedDelivery(value: unknown): PresentationDelivery | null {
     const parsed = parsePresentationDelivery(value)
     const result = JSON.parse(JSON.stringify(parsed)) as PresentationDelivery
     Object.freeze(result.receipt.files.document)
-    Object.freeze(result.receipt.files.html)
     Object.freeze(result.receipt.files)
     Object.freeze(result.receipt)
     return Object.freeze(result)
@@ -97,25 +96,19 @@ export function presentationDeliveryFromEvent(
     if (event.surfaceOp !== 'append' || data.turn !== turn) return null
     const message = record(data.message)
     if (!message || !Array.isArray(message.content)) return null
-    const blocks = message.content.filter((item: unknown) => record(item)?.type === 'tool-result')
-    // Harness 0.2.1 stores tool identity/outcome on the message. Historical
-    // events wrapped them in one tool-result content block. Admit both explicitly.
-    const block = blocks.length === 1 ? record(blocks[0])! : undefined
     const callId = record(message.source)?.callId
     if (
       typeof callId !== 'string' ||
       calls.get(callId) !== MARIVO_PRESENT_TOOL_NAME ||
       message.isError === true ||
-      (block
-        ? block.toolCallId !== callId || block.isError === true
-        : blocks.length !== 0 ||
-          message.role !== 'tool' ||
-          record(message.source)?.kind !== 'tool' ||
-          message.toolCallId !== callId)
+      message.role !== 'tool' ||
+      record(message.source)?.kind !== 'tool' ||
+      message.toolCallId !== callId ||
+      message.content.some((item: unknown) => record(item)?.type === 'tool-result')
     )
       return null
     delivery = parsedDelivery(data.meta)
-  } else if (event.type === 'tool/ptc-dispatch' || event.type === 'tool/code-dispatch') {
+  } else if (event.type === 'tool/ptc-dispatch') {
     if (
       data.name !== MARIVO_PRESENT_TOOL_NAME ||
       data.isError !== false ||
@@ -143,11 +136,7 @@ export const marivoPresentationDeliveryDefinition = {
       if (event.type === 'tool/result' && event.surfaceOp !== 'append') return null
       return { id: String(data.turn), role: event.type === 'turn/start' ? 'start' : 'update' }
     }
-    if (
-      !['tool/ptc-dispatch', 'tool/code-dispatch'].includes(event.type) ||
-      data.name !== MARIVO_PRESENT_TOOL_NAME
-    )
-      return null
+    if (event.type !== 'tool/ptc-dispatch' || data.name !== MARIVO_PRESENT_TOOL_NAME) return null
     const delivery = parsePresentationDurableContent(data.content)
     return delivery ? { id: String(delivery.turn), role: 'update' } : null
   },
@@ -251,7 +240,7 @@ export const marivoAnalysisSurfaceDefinition = {
     const event = record(match.event)
     const data = record(event?.data)
     const turn =
-      event?.type === 'tool/ptc-dispatch' || event?.type === 'tool/code-dispatch'
+      event?.type === 'tool/ptc-dispatch'
         ? parsePresentationDurableContent(data?.content)?.turn
         : data?.turn
     if (typeof turn !== 'number' || !Number.isSafeInteger(turn) || turn < 0)

@@ -44,9 +44,9 @@ assert isinstance(sql.rows[0]["account"], int)
 session = mv.session.get_or_create("unified-ui-p0")
 catalog = session.catalog
 frame = session.observe(metrics={
-    "revenue": catalog.get("metric:sales.revenue").value,
-    "account": catalog.get("metric:sales.account_id").value,
-}, by=(catalog.get("dimension:sales.orders.region").value,)).persist()
+    "revenue": catalog.get("metric:sales.revenue"),
+    "account": catalog.get("metric:sales.account_id"),
+}, by=(catalog.get("dimension:sales.orders.region"),)).persist()
 result = {
     "pid": os.getpid(),
     "package": {"version": importlib.metadata.version("marivo"), "path": marivo.__file__,
@@ -58,6 +58,7 @@ result = {
             "backend_type": sql.backend_type, "sql": sql.sql, "reason": sql.reason,
             "warnings": sql.warnings, "timeout_seconds": sql.timeout_seconds, "duration_ms": sql.duration_ms},
 }
+# CAPTURE_BEFORE_SOURCE_REMOVAL
 (root / "warehouse.duckdb").unlink()
 model.write_text("raise AssertionError('Saved reads must not load source models')\n")
 print(json.dumps(result))

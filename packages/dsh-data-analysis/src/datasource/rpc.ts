@@ -160,11 +160,8 @@ export function registerCredentialRpc(
             value = { ...(value as { name: string }), request: configured }
           }
         } else if (endpoint === 'watch') {
-          const input = z
-            .object({ sessionId: text, cursor: z.string().max(256).optional() })
-            .strict()
-            .parse(payload)
-          value = await service.waitWatch(input.sessionId, input.cursor, signal)
+          const input = z.object({ sessionId: text }).strict().parse(payload)
+          value = await service.waitWatch(input.sessionId, undefined, signal)
         } else if (endpoint === 'start') {
           value = service.start(mutation.parse(payload))
         } else if (endpoint === 'operation') {

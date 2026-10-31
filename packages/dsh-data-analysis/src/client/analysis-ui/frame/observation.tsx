@@ -197,7 +197,7 @@ function FallbackTimeChart(
 ) {
   return (
     <>
-      <LegacyTimeChartPlot {...props} />
+      <SvgTimeChartPlot {...props} />
       <FallbackPointChoices snapshot={props.snapshot} fields={props.view.values} />
     </>
   )
@@ -206,7 +206,7 @@ function FallbackTimeChart(
 function FallbackHBarChart(props: MainViewProps<'hbar'>) {
   return (
     <>
-      <LegacyHBarChartPlot {...props} />
+      <SvgHBarChartPlot {...props} />
       <FallbackPointChoices snapshot={props.snapshot} fields={props.view.values} />
     </>
   )
@@ -215,7 +215,7 @@ function FallbackHBarChart(props: MainViewProps<'hbar'>) {
 export function Heatmap(props: MainViewProps<'heatmap'>) {
   return (
     <>
-      <LegacyHeatmap {...props} />
+      <SvgHeatmap {...props} />
       <FallbackPointChoices snapshot={props.snapshot} fields={[props.view.value]} />
     </>
   )
@@ -224,7 +224,7 @@ export function Heatmap(props: MainViewProps<'heatmap'>) {
 /**
  * The official line/area/bar components convert missing values to zero.  Admit
  * only complete, uniquely indexed series without broadcast or incomplete
- * periods. The previous renderer remains the truthful fallback for others.
+ * periods. The SVG renderer preserves missing values and period widths for other series.
  */
 function TimeChartPlot(
   props: MainViewProps<'line' | 'area' | 'bar' | 'interval-bar'> & { showLegend?: boolean },
@@ -391,7 +391,7 @@ export function TimeChart(props: MainViewProps<'line' | 'area' | 'bar' | 'interv
   )
 }
 
-function LegacyTimeChartPlot({
+function SvgTimeChartPlot({
   snapshot: s,
   classification: c,
   view,
@@ -742,7 +742,7 @@ export function HBarChart(props: MainViewProps<'hbar'>) {
   )
 }
 
-function LegacyHBarChartPlot({ snapshot: s, classification: c, view }: MainViewProps<'hbar'>) {
+function SvgHBarChartPlot({ snapshot: s, classification: c, view }: MainViewProps<'hbar'>) {
   const t = useCopy()
   const axis = axisOf(s, view.axis)
   if (!axis) return null
@@ -924,7 +924,7 @@ function heatmapHeader(label: string, available: number): string[] {
 }
 
 /** Matrix cells; NA and missing combinations are empty dashed cells. */
-function LegacyHeatmap({ snapshot: s, classification: c, view }: MainViewProps<'heatmap'>) {
+function SvgHeatmap({ snapshot: s, classification: c, view }: MainViewProps<'heatmap'>) {
   const t = useCopy()
   const gradientId = `fv-scale-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const xs = members(t, s, view.x)

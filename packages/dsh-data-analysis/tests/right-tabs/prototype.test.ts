@@ -68,11 +68,14 @@ function fixture() {
             workspaceId: base.workspaceId,
             reportId: base.reportId,
             currentBuildId: receipts[current]!.buildId,
-            legacyHistoryUnavailable: false,
             versions: receipts
               .slice(0, current + 1)
               .reverse()
-              .map((receipt) => ({ receipt, publishedAt: null, source: null })),
+              .map((receipt) => ({
+                receipt,
+                publishedAt: '2026-10-31T00:00:00.000Z',
+                source: { kind: 'agent', sessionId: 's1', surface: 'tab' },
+              })),
           },
         }
       if (endpoint === 'files/read') {
@@ -99,6 +102,7 @@ function fixture() {
   const delivery: PresentationDelivery = {
     kind: 'marivo.presentation.delivery',
     schemaVersion: 2,
+    surface: 'tab',
     dshSessionId: 's1',
     turn: 1,
     receipt: receipts[0]!,
@@ -153,8 +157,10 @@ test('only appended canonical deliveries open; replay, settlement, duplicates an
       turn: 1,
       meta: delivery,
       message: {
-        source: { callId: 'call' },
-        content: [{ type: 'tool-result', toolCallId: 'call', isError: false }],
+        role: 'tool',
+        toolCallId: 'call',
+        source: { kind: 'tool', callId: 'call' },
+        content: [{ type: 'text', text: 'saved' }],
       },
     },
   }

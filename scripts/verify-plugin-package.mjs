@@ -206,7 +206,6 @@ try {
     presentationKitWheelPath,
     'lib/presentation/contracts/index.js',
     'lib/presentation/contracts/types.js',
-    'lib/presentation/projection/index.js',
     'skills/dsh-data-analysis-presentation/SKILL.md',
     'skills/dsh-data-analysis-files/SKILL.md',
     'skills/dsh-data-analysis-files/references/examples.md',
@@ -216,6 +215,11 @@ try {
     if (!paths.has(filename)) fail(`packed plugin is missing ${filename}`)
   }
   for (const filename of paths) {
+    if (
+      filename.startsWith('lib/presentation/projection/') ||
+      filename.startsWith('lib/types/presentation/projection/')
+    )
+      fail('packed plugin contains removed Frame projection ' + filename)
     if (filename.startsWith('lib/evidence/') || filename.startsWith('lib/types/evidence/'))
       fail('packed plugin contains removed Evidence protocol ' + filename)
     if (

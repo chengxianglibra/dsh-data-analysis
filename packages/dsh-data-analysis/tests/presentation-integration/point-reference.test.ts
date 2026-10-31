@@ -79,8 +79,16 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
         },
       },
     })
-  await publishPresentation(root, makeDocument('first'), null, async () => {})
-  await publishPresentation(root, makeDocument('second'), 'first', async () => {})
+  await publishPresentation(root, makeDocument('first'), null, async () => {}, undefined, {
+    kind: 'agent',
+    sessionId: 'session',
+    surface: 'tab',
+  })
+  await publishPresentation(root, makeDocument('second'), 'first', async () => {}, undefined, {
+    kind: 'agent',
+    sessionId: 'session',
+    surface: 'tab',
+  })
   return {
     root,
     makeDocument,
@@ -382,7 +390,11 @@ test('correlation requires and serializes the exact same-scope pair count', asyn
   const resource = source.resources.data
   assert(resource?.kind === 'snapshot')
   const document = { ...source, resources: { data: { ...resource, snapshot: correlation } } }
-  await publishPresentation(f.root, document, 'second', async () => {})
+  await publishPresentation(f.root, document, 'second', async () => {}, undefined, {
+    kind: 'agent',
+    sessionId: 'session',
+    surface: 'tab',
+  })
   const service = new MarivoPresentationFileService(() => ({ id: 'workspace', path: f.root }))
   const prepared = await service.point('point/prepare', {
     ...f.request,

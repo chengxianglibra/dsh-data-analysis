@@ -327,10 +327,7 @@ function deliveryEntries(id, buildId = 'build') {
     title: 'Report',
     summary: 'saved',
     files: Object.fromEntries(
-      [
-        ['document', 'presentation.json'],
-        ['html', 'index.html'],
-      ].map(([key, asset]) => [
+      [['document', 'presentation.json']].map(([key, asset]) => [
         key,
         {
           asset,
@@ -352,13 +349,16 @@ function deliveryEntries(id, buildId = 'build') {
         meta: {
           kind: 'marivo.presentation.delivery',
           schemaVersion: 2,
+          surface: 'tab',
           dshSessionId: id,
           turn: 1,
           receipt,
         },
         message: {
-          source: { callId: 'call' },
-          content: [{ type: 'tool-result', toolCallId: 'call', isError: false }],
+          role: 'tool',
+          toolCallId: 'call',
+          source: { kind: 'tool', callId: 'call' },
+          content: [{ type: 'text', text: 'saved' }],
         },
       },
     },

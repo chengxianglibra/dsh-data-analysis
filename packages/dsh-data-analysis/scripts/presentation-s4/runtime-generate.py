@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import ibis
 import marivo.analysis as mv
+from dsh_data_analysis_presentation import capture_frame
 
 root = Path.cwd()
 (root / 'models/datasources').mkdir(parents=True, exist_ok=True)
@@ -41,18 +42,18 @@ connection.raw_sql("INSERT INTO precise_orders VALUES ('A',12345678901234.5678,9
 connection.disconnect()
 session = mv.session.get_or_create('presentation-s0-runtime')
 catalog = session.catalog
-region = catalog.get('dimension:sales.orders.region').value
+region = catalog.get('dimension:sales.orders.region')
 
 def produce(metrics, axis):
-    frame = session.observe(metrics={name: catalog.get('metric:sales.' + name).value for name in metrics}, by=(axis,)).persist()
+    frame = session.observe(metrics={name: catalog.get('metric:sales.' + name) for name in metrics}, by=(axis,)).persist()
     data = frame.to_pandas()
-    return {'sessionId': frame.session_id, 'artifactRef': frame.artifact_id,
+    return {'captureId': capture_frame(frame).capture_id, 'sessionId': frame.session_id, 'artifactRef': frame.artifact_id,
             'persistedRowCount': len(data), 'valueColumns': list(frame.output_names), 'dataColumns': list(data.columns)}
 
 result = {
     'primary': produce(['revenue'], region),
     'secondary': produce(['account_id'], region),
-    'precisionProbe': produce(['precision_revenue','precision_account_id'], catalog.get('dimension:sales.precise_orders.region').value),
+    'precisionProbe': produce(['precision_revenue','precision_account_id'], catalog.get('dimension:sales.precise_orders.region')),
     'generationPid': os.getpid(),
     'generationApi': 'session.observe(...).persist()',
     'precisionInputs': {'decimal':'12345678901234.5678','int64':'9007199254740993'},

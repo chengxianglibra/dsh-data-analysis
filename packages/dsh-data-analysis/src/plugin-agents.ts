@@ -111,18 +111,6 @@ export function createMarivoAgentInstallation(
     }
     const helpSource = options.helpBridgeSource ?? (async () => (await resolveBridgeSet()).help)
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
-    const presentationSource = async () => {
-      const workspace = resolvePresentationWorkspace(ctx, String(agent.session.id))
-      const projection = (await resolveBridgeSet()).presentation
-      const current = resolvePresentationWorkspace(ctx, String(agent.session.id))
-      if (
-        workspace.id !== current.id ||
-        workspace.path !== current.path ||
-        projection.binding.projectRoot !== current.path
-      )
-        throw new Error('Presentation Workspace changed or does not match the bound Runtime')
-      return { workspaceId: current.id, projection }
-    }
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     try {
       controller.addDisposer(installMarivoExecutionGuidance(agent, controller))
@@ -151,8 +139,10 @@ export function createMarivoAgentInstallation(
         ),
       )
       controller.addDisposer(
-        registerMarivoPresentTool(agent.ctx, presentationSource, agent.session, () =>
-          resolvePresentationWorkspace(ctx, String(agent.session.id)),
+        registerMarivoPresentTool(
+          agent.ctx,
+          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
+          agent.session,
         ),
       )
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))

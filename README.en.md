@@ -102,7 +102,7 @@ For a multiword search, use `@"monthly revenue"`. Ask questions about the select
 
 ### 4. Read analysis views and reports
 
-Ordinary results appear under their tool call. Explicit reports and dashboards open in a right-side tab.
+Ordinary results appear as separate chat entries outside folded work steps. Explicit reports and dashboards open in a right-side tab.
 Present an existing Frame or captured DataFrame without repeating the analysis. Use Reports (报告) to reopen saved results and versions.
 
 - **Inspect data**: Select columns, sort exact values, browse local pages, and copy saved data. Previews disclose their range and cannot become complete single-value metrics.
@@ -111,8 +111,8 @@ Present an existing Frame or captured DataFrame without repeating the analysis. 
 
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
-Analysis views do not provide charts, global filters, in-page editing, offline HTML export or publishing.
-Legacy report files stay on disk but no longer appear in Reports (报告); opening an old address shows an unsupported-report error.
+Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing, offline HTML export or publishing.
+Report history requires current v4 pointers. Current v2/v3 pointers (including earlier analysis UI saves) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new report to continue.
 
 ## Analysis timeout
 

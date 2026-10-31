@@ -45,7 +45,7 @@ const withNull = source => {
   copy.frame.slots.find(slot => slot.slotId === field.slotId).nullable = true;
   return copy;
 };
-const legacyHeatmap = withNull(heatmap);
+const nullableHeatmap = withNull(heatmap);
 const emptyHeatmap = frame({
   axes: [timeAxis(0), categoryAxis(0)],
   values: [{ name: 'amount', values: [] }],
@@ -80,7 +80,7 @@ const resources = {
   bad: resource(observeTime(3), ref('0'.repeat(64))),
   records: resource(records),
   heatmap: resource(heatmap),
-  legacyHeatmap: resource(legacyHeatmap),
+  nullableHeatmap: resource(nullableHeatmap),
   empty: resource(emptyHeatmap),
   blank: resource(blankLabels),
   mixed: resource(mixedLabels),
@@ -88,11 +88,11 @@ const resources = {
   comparison: resource(compareOrdinary([categoryAxis(3)])),
   alignment: resource(align(categoryAxis(3))),
   taxiHeatmap: resource(taxiHeatmap),
-  legacyTaxiHeatmap: resource(withNull(taxiHeatmap)),
+  nullableTaxiHeatmap: resource(withNull(taxiHeatmap)),
   sparseTaxiHeatmap: resource(sparseTaxiHeatmap),
   taxiAlignment: resource(taxiAlignment),
 };
-const program = 'root = Stack([good, long, bad, records, heatmap, legacyHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, legacyTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment]);\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nlegacyHeatmap = AnalysisFrameView("legacyHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nlegacyTaxiHeatmap = AnalysisFrameView("legacyTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");';
+const program = 'root = Stack([good, long, bad, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment]);\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");';
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
@@ -283,7 +283,7 @@ test('Taxi heatmap preserves exact cells and supports point selection without ag
       ])
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0)
     }
-    const nullCard = page.locator('[data-resource="legacyTaxiHeatmap"]')
+    const nullCard = page.locator('[data-resource="nullableTaxiHeatmap"]')
     assert.equal(await nullCard.locator('[data-mark="cell"]').count(), 7)
     assert.equal(await nullCard.locator('[data-mark="empty"]').count(), 1)
     const sparseCard = page.locator('[data-resource="sparseTaxiHeatmap"]')
@@ -385,7 +385,7 @@ test('long-series fallback retains legible text and scrolls with the keyboard', 
 })
 
 test('chart regions scroll with arrow keys after expanding the data table', async () => {
-  for (const name of ['long', 'legacyHeatmap', 'effects']) {
+  for (const name of ['long', 'nullableHeatmap', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
     await card.locator('.fv-table summary').click()
     const region = card.locator('.fv-chart section[tabindex="0"]').first()
@@ -398,7 +398,7 @@ test('chart regions scroll with arrow keys after expanding the data table', asyn
 })
 
 test('row labels stay aligned and readable while heatmap, comparison and effects charts scroll', async () => {
-  for (const name of ['legacyHeatmap', 'comparison', 'effects']) {
+  for (const name of ['nullableHeatmap', 'comparison', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
     const region = card.locator('.fv-plot').first()
     const original = region.locator('svg[role="img"] .fv-row-label').first()
@@ -526,7 +526,7 @@ test('taxi heatmap headers fit their columns and alignment values fit the full c
       body.style.width = `${value}px`
       body.style.margin = '0'
     }, width)
-    const heatmap = page.locator('[data-resource="legacyTaxiHeatmap"] svg[role="img"]')
+    const heatmap = page.locator('[data-resource="nullableTaxiHeatmap"] svg[role="img"]')
     const manhattan = heatmap.locator('text[data-heatmap-column="Manhattan"]')
     const staten = heatmap.locator('text[data-heatmap-column="Staten Island"]')
     const brooklyn = heatmap.locator('text[data-heatmap-column="Brooklyn"]')

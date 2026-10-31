@@ -96,11 +96,11 @@ export function visibleReports(state: CatalogState) {
   const normalize = (value: string) => value.normalize('NFKC').toLocaleLowerCase()
   const words = normalize(state.query).trim().split(/\s+/).filter(Boolean)
   return (state.catalog?.reports ?? [])
-    .filter((item) => (item.source?.surface ?? 'tab') === (state.surface ?? 'tab'))
+    .filter((item) => item.source.surface === (state.surface ?? 'tab'))
     .filter((item) => words.every((word) => normalize(item.receipt.title).includes(word)))
     .sort(
       (a, b) =>
-        (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') ||
+        b.publishedAt.localeCompare(a.publishedAt) ||
         a.receipt.reportId.localeCompare(b.receipt.reportId),
     )
 }

@@ -2,7 +2,6 @@
 export const PRESENTATION_BUDGETS = {
   documentBytes: 4 * 1024 * 1024,
   datasetBytes: 2 * 1024 * 1024,
-  htmlBytes: 8 * 1024 * 1024,
   datasets: 16,
   columns: 64,
   rows: 5_000,
@@ -40,7 +39,7 @@ export interface TypedDataset {
 
 export type PresentationLocale = 'zh-CN' | 'en-US'
 
-export type PresentationAsset = 'presentation.json' | 'index.html'
+export type PresentationAsset = 'presentation.json'
 export interface PresentationFile<Asset extends PresentationAsset = PresentationAsset> {
   asset: Asset
   path: string
@@ -58,6 +57,5 @@ export interface PresentationReceipt {
   summary: string
   files: {
     document: PresentationFile<'presentation.json'>
-    html?: PresentationFile<'index.html'>
   }
 }

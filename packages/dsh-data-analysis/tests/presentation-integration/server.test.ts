@@ -28,7 +28,6 @@ import {
 } from '../../src/presentation/contracts/analysis-document.ts'
 import { PRESENTATION_BUDGETS } from '../../src/presentation/contracts/index.ts'
 import { presentationAssetPath, presentationSha256 } from '../../src/presentation/files.ts'
-import { MarivoPresentationProjection } from '../../src/presentation/projection/index.ts'
 import {
   parsePresentationDelivery,
   presentationReceiptText,
@@ -74,7 +73,7 @@ test('commit publishes one complete document, preserves old builds and returns e
     checks++
   })
   assert(checks >= 4)
-  assert.equal(receipt.files.html, undefined)
+  assert.deepEqual(Object.keys(receipt.files), ['document'])
   assert.deepEqual(await readdir(path.dirname(receipt.files.document.path)), ['presentation.json'])
   for (const file of Object.values(receipt.files)) {
     const bytes = await readFile(file.path)
@@ -210,23 +209,7 @@ test('production present saves independent Lang documents and returns complete h
       { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 2 } },
     ],
   } as unknown as Session
-  const runner = {
-    status: 'ready' as const,
-    binding: {
-      projectRoot: f.root,
-      pythonExecutable: '/bound/python',
-      marivoVersion: '0.6.0.dev0',
-      packagePath: '/bound/marivo',
-      subprocessPolicyId: 'policy',
-      fingerprint: 'fingerprint',
-      presentationKit: { version: '1.5.0', packagePath: '/bound/presentation' },
-    },
-    async runChecked(): Promise<never> {
-      throw new Error('No analysis expected')
-    },
-  }
-  const projection = new MarivoPresentationProjection(runner)
-  const tool = createMarivoPresentTool(() => ({ workspaceId: 'workspace', projection }), session)
+  const tool = createMarivoPresentTool(() => ({ id: 'workspace', path: f.root }), session)
   const exec = {
     agent: { session },
     callId: 'call',
@@ -243,7 +226,7 @@ test('production present saves independent Lang documents and returns complete h
   assert.equal(first.dshSessionId, 'session')
   assert.equal(first.turn, 2)
   assert.notEqual(first.receipt.buildId, second.receipt.buildId)
-  assert.equal(first.receipt.files.html, undefined)
+  assert.deepEqual(Object.keys(first.receipt.files), ['document'])
   assert.deepEqual(await readdir(path.dirname(first.receipt.files.document.path)), [
     'presentation.json',
   ])
@@ -300,8 +283,8 @@ test('commit snapshots caller-owned data before asynchronous ownership checks', 
   assert.deepEqual(await readFile(receipt.files.document.path), expected)
 })
 
-test('Tool disposal and Runtime failure abort a pending commit without creating a success value', async (t) => {
-  for (const failure of ['dispose', 'runtime'] as const) {
+test('Tool disposal and Workspace replacement abort a pending commit without creating a success value', async (t) => {
+  for (const failure of ['dispose', 'workspace'] as const) {
     const f = await fixture(t)
     const session = {
       id: 'session',
@@ -309,22 +292,7 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
         { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 0 } },
       ],
     } as unknown as Session
-    const runner = {
-      status: 'ready' as 'ready' | 'failed',
-      binding: {
-        projectRoot: f.root,
-        pythonExecutable: '/bound/python',
-        marivoVersion: '0.6.0.dev0',
-        packagePath: '/bound/marivo',
-        subprocessPolicyId: 'policy',
-        fingerprint: 'fingerprint',
-        presentationKit: { version: '1.0.0', packagePath: '/bound/presentation' },
-      },
-      async runChecked(): Promise<never> {
-        throw new Error('No source execution expected')
-      },
-    }
-    const projection = new MarivoPresentationProjection(runner)
+    let currentRoot = f.root
     let tool: ToolDefinition | undefined
     let unregistered = false
     const ctx = {
@@ -343,9 +311,9 @@ test('Tool disposal and Runtime failure abort a pending commit without creating 
       () => {
         if (++lookups === 5) {
           if (failure === 'dispose') dispose()
-          else runner.status = 'failed'
+          else currentRoot = path.join(f.root, 'other')
         }
-        return { workspaceId: 'workspace', projection }
+        return { id: 'workspace', path: currentRoot }
       },
       session,
     )

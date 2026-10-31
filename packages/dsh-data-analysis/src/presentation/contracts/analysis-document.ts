@@ -15,7 +15,6 @@ const id = z
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
 const text = z.string().min(1).max(512)
 export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('marivo-frame'), sessionId: text, artifactId: text }),
   z.strictObject({ kind: z.literal('dataset-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('frame-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
@@ -43,15 +42,12 @@ const resource = z.discriminatedUnion('kind', [
     snapshot: z.unknown().transform(parseAnalysisSnapshot),
     binding: z.strictObject({
       workspaceId: text,
-      runtimeFingerprint: text.optional(),
-      codeRef: z
-        .strictObject({
-          executionId: z.string().uuid(),
-          sha256: z.string().regex(/^[a-f0-9]{64}$/),
-        })
-        .optional(),
-      sessionId: text.optional(),
-      callId: text.optional(),
+      codeRef: z.strictObject({
+        executionId: z.string().uuid(),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+      sessionId: text,
+      callId: text,
     }),
   }),
   z.strictObject({
@@ -208,15 +204,7 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
     if (item.kind !== 'snapshot') continue
     if (item.binding.workspaceId !== result.workspaceId)
       throw new Error('analysis-resource-owner-invalid')
-    if (item.declaration.kind === 'marivo-frame') {
-      if (
-        item.snapshot.kind !== 'frame' ||
-        !item.binding.runtimeFingerprint ||
-        item.declaration.sessionId !== item.snapshot.source.sessionId ||
-        item.declaration.artifactId !== item.snapshot.source.artifactId
-      )
-        throw new Error('analysis-resource-owner-invalid')
-    } else if (
+    if (
       !(
         (item.declaration.kind === 'dataset-snapshot' && item.snapshot.kind === 'dataset') ||
         (item.declaration.kind === 'frame-snapshot' && isFrameSnapshotV2(item.snapshot))
@@ -247,8 +235,6 @@ export function sameAnalysisDeclaration(
   b: AnalysisResourceDeclaration,
 ): boolean {
   if (a.kind !== b.kind) return false
-  if (a.kind === 'marivo-frame' && b.kind === 'marivo-frame')
-    return a.sessionId === b.sessionId && a.artifactId === b.artifactId
   if (
     (a.kind === 'dataset-snapshot' && b.kind === 'dataset-snapshot') ||
     (a.kind === 'frame-snapshot' && b.kind === 'frame-snapshot')
