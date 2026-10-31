@@ -76,6 +76,7 @@ Frame 快照另保留 input identity、字段角色、实际 layout、公开字�
 首期支持现有 scalar codec 可表达的值和坐标。坐标 part 与 Marivo 一致（key、label、start、end、nominal_start、nominal_end）；
 `.start` 是实际观察起点，名义起点是 `.nominal_start`。时间边界按带时区 datetime 编码，保留 NULL；ns dtype 只在实际值包含亚微秒精度时返回 numeric_precision，不截断时间精度。
 复合 tuple 展示、duration、naive timestamp 等未适配载体明确失败，不把结构字符串化。
+paired 时间轴的 calendar endpoint key 使用带时区 datetime 编码；paired 自身的 ordinal key 仍按其公开槽类型编码。
 slots 仅保存实际投影的 value/presence 字段和全部轴键；未选中的不支持类型不阻断选列读取，
 被选中字段及完整轴键仍须通过类型检查。完整键按 slot 保存，不能用表格行号代替。
 
@@ -86,8 +87,9 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
-契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；v1 Frame 快照仍可读，
-其 Evidence/Findings/方法节不再显示。
+契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；符合当前 codec 的 v1 Frame 快照仍可读，
+其 Evidence/Findings/方法节不再显示。更早快照中使用 `actual_start`、`actual_end` 或 `timezone` 坐标 part 的数据不被当前 codec 接受，
+应使用当前 Runtime 从分析结果重新捕获或重新计算生成 v2 快照。
 
 当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 不读取私有 Store、日志或重新编译 SQL。无法恢复的旧 Session 引用明确失败。

@@ -2,6 +2,12 @@ import type { FrameDecomposition } from '../../../presentation/contracts/snapsho
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
 import {
+  type DomainPoint,
+  DomainPointList,
+  DomainPointMark,
+  uniquelyBound,
+} from './domain-point-selection.tsx'
+import {
   type Chip,
   cellOf,
   columnOf,
@@ -62,6 +68,20 @@ export function decompositionOf(s: Snapshot, index: number) {
   }
 }
 export type DecompositionFacts = NonNullable<ReturnType<typeof decompositionOf>>
+
+function point(
+  s: Snapshot,
+  row: number,
+  field: string | undefined,
+  label: string,
+): DomainPoint | undefined {
+  if (!field || !uniquelyBound(s, field) || cellOf(s, row, field) === null) return undefined
+  return {
+    row,
+    field,
+    label: `${label} · ${valueName(s, undefined, field)}: ${exact(cellOf(s, row, field), columnOf(s, field)?.column)}`,
+  }
+}
 
 /** Target name; change targets are prefixed with Δ. */
 export function decompositionTitle(s: Snapshot, facts: DecompositionFacts): string {
@@ -151,13 +171,20 @@ export function DecompositionView({
                 </h4>
               )}
               {view.style === 'share' && facts.share ? (
-                <ShareTrack
-                  snapshot={s}
-                  classification={c}
-                  values={[facts.share]}
-                  rows={g.rows}
-                  labelOf={labelOf}
-                />
+                <>
+                  <ShareTrack
+                    snapshot={s}
+                    classification={c}
+                    values={[facts.share]}
+                    rows={g.rows}
+                    labelOf={labelOf}
+                  />
+                  <DomainPointList
+                    points={g.rows
+                      .map((row) => point(s, row, facts.share, labelOf(row)))
+                      .filter((p): p is DomainPoint => p !== undefined)}
+                  />
+                </>
               ) : view.style === 'effects' ? (
                 <Effects t={t} s={s} facts={facts} rows={g.rows} labelOf={labelOf} />
               ) : (
@@ -217,7 +244,9 @@ function Waterfall({
   const name = facts.contribution
   if (!name) return null
   const rowH = 24
-  const gap = facts.restricted ? 16 : 0
+  // A missing contribution cannot be treated as zero when connecting the total.
+  const detached = facts.restricted || rows.some((row) => valueAt(s, row, name) === null)
+  const gap = detached ? 16 : 0
   const totalRow = facts.total ? firstCell(s, rows, facts.total) : undefined
   const totalValue = totalRow && facts.total ? valueAt(s, totalRow.row, facts.total) : null
   const height = 4 + rows.length * rowH + (facts.total ? rowH + gap : 0) + 4
@@ -242,88 +271,119 @@ function Waterfall({
       : []),
   ])
   const totalY = 4 + rows.length * rowH + gap
+  const selections = rows
+    .map((row) => point(s, row, name, labelOf(row)))
+    .filter((p): p is DomainPoint => p !== undefined)
   return (
-    <ChartFrame label={label} height={height}>
-      {() => (
-        <>
-          <line x1={x(0)} x2={x(0)} y1={2} y2={height - 2} className="fv-axis" />
-          {rows.map((row, i) => {
-            const sp = spans[i]
-            const y0 = 4 + i * rowH
-            const member = labelOf(row)
-            const next = spans[i + 1]
-            return (
-              <g key={row} data-row={member}>
-                <text x={LABEL_W - 8} y={y0 + 16} textAnchor="end">
-                  {truncate(member)}
-                </text>
-                {sp && (
-                  <>
-                    <Bar
-                      horizontal
-                      at={y0 + 4}
-                      breadth={16}
-                      from={x(sp.from)}
-                      to={x(sp.to)}
-                      fill={color(0)}
-                      title={tip(s, row, member || parent, facts)}
-                    />
-                    <text x={Math.max(x(sp.from), x(sp.to)) + 4} y={y0 + 16} className="fv-strong">
-                      {format(name, row)}
+    <>
+      <ChartFrame
+        label={label}
+        height={height}
+        rowLabels={[
+          ...rows.map((row, i) => ({ label: labelOf(row), y: 4 + i * rowH + 16 })),
+          ...(facts.total && totalRow
+            ? [{ label: valueName(s, undefined, facts.total), y: totalY + 16, strong: true }]
+            : []),
+        ]}
+      >
+        {() => (
+          <>
+            <line x1={x(0)} x2={x(0)} y1={2} y2={height - 2} className="fv-axis" />
+            {rows.map((row, i) => {
+              const sp = spans[i]
+              const y0 = 4 + i * rowH
+              const member = labelOf(row)
+              const next = spans[i + 1]
+              return (
+                <g key={row} data-row={member}>
+                  <text className="fv-row-label" x={LABEL_W - 8} y={y0 + 16} textAnchor="end">
+                    {truncate(member)}
+                  </text>
+                  {sp && (
+                    <>
+                      <DomainPointMark point={point(s, row, name, member)}>
+                        <Bar
+                          horizontal
+                          at={y0 + 4}
+                          breadth={16}
+                          from={x(sp.from)}
+                          to={x(sp.to)}
+                          fill={color(0)}
+                          title={tip(s, row, member || parent, facts)}
+                        />
+                      </DomainPointMark>
+                      <text
+                        x={Math.max(x(sp.from), x(sp.to)) + 4}
+                        y={y0 + 16}
+                        className="fv-strong"
+                      >
+                        {format(name, row)}
+                      </text>
+                    </>
+                  )}
+                  {!sp && (
+                    <text x={W - END_W + 10} y={y0 + 16} className="fv-strong">
+                      —
                     </text>
-                  </>
-                )}
-                {sp && next && (
-                  <line
-                    x1={x(sp.to)}
-                    x2={x(sp.to)}
-                    y1={y0 + 20}
-                    y2={y0 + rowH + 4}
-                    className="fv-connector"
-                    data-mark="connector"
+                  )}
+                  {sp && next && (
+                    <line
+                      x1={x(sp.to)}
+                      x2={x(sp.to)}
+                      y1={y0 + 20}
+                      y2={y0 + rowH + 4}
+                      className="fv-connector"
+                      data-mark="connector"
+                    />
+                  )}
+                  {sp && i === rows.length - 1 && facts.total && !detached && (
+                    <line
+                      x1={x(sp.to)}
+                      x2={x(sp.to)}
+                      y1={y0 + 20}
+                      y2={totalY + 4}
+                      className="fv-connector"
+                      data-mark="connector-total"
+                    />
+                  )}
+                </g>
+              )
+            })}
+            {facts.total && totalRow && (
+              <g data-row="total" data-mark-total={detached ? 'detached' : 'closed'}>
+                <text
+                  x={LABEL_W - 8}
+                  y={totalY + 16}
+                  textAnchor="end"
+                  className="fv-strong fv-row-label"
+                >
+                  {truncate(valueName(s, undefined, facts.total))}
+                </text>
+                {totalValue !== null && (
+                  <Bar
+                    horizontal
+                    at={totalY + 4}
+                    breadth={16}
+                    from={x(0)}
+                    to={x(totalValue)}
+                    fill={NEUTRAL}
+                    title={tip(s, totalRow.row, parent, facts)}
                   />
                 )}
-                {sp && i === rows.length - 1 && facts.total && !facts.restricted && (
-                  <line
-                    x1={x(sp.to)}
-                    x2={x(sp.to)}
-                    y1={y0 + 20}
-                    y2={totalY + 4}
-                    className="fv-connector"
-                    data-mark="connector-total"
-                  />
-                )}
+                <text
+                  x={Math.max(x(0), totalValue === null ? x(0) : x(totalValue)) + 4}
+                  y={totalY + 16}
+                  className="fv-strong"
+                >
+                  {format(facts.total, totalRow.row)}
+                </text>
               </g>
-            )
-          })}
-          {facts.total && totalRow && (
-            <g data-row="total" data-mark-total={facts.restricted ? 'detached' : 'closed'}>
-              <text x={LABEL_W - 8} y={totalY + 16} textAnchor="end" className="fv-strong">
-                {truncate(valueName(s, undefined, facts.total))}
-              </text>
-              {totalValue !== null && (
-                <Bar
-                  horizontal
-                  at={totalY + 4}
-                  breadth={16}
-                  from={x(0)}
-                  to={x(totalValue)}
-                  fill={NEUTRAL}
-                  title={tip(s, totalRow.row, parent, facts)}
-                />
-              )}
-              <text
-                x={Math.max(x(0), totalValue === null ? x(0) : x(totalValue)) + 4}
-                y={totalY + 16}
-                className="fv-strong"
-              >
-                {format(facts.total, totalRow.row)}
-              </text>
-            </g>
-          )}
-        </>
-      )}
-    </ChartFrame>
+            )}
+          </>
+        )}
+      </ChartFrame>
+      <DomainPointList points={selections} />
+    </>
   )
 }
 
@@ -362,45 +422,66 @@ function Effects({ t, s, facts, rows, labelOf }: PartProps) {
         `${labelOf(row)} ${facts.effects.map((e) => fmt(e.name, row)).join(' / ')}${facts.contribution ? ` ◆ ${fmt(facts.contribution, row)}` : ''}`,
     ),
   )
+  const selections = rows
+    .flatMap((row) => [
+      ...facts.effects.map((effect) => point(s, row, effect.name, labelOf(row))),
+      point(s, row, facts.contribution, labelOf(row)),
+    ])
+    .filter((p): p is DomainPoint => p !== undefined)
   return (
-    <ChartFrame label={label} height={height}>
-      {() => (
-        <>
-          <line x1={x(0)} x2={x(0)} y1={2} y2={height - 2} className="fv-axis" />
-          {rows.map((row, i) => {
-            const y0 = 4 + i * rowH
-            const member = labelOf(row)
-            const d = contributions[i] ?? null
-            return (
-              <g key={row} data-row={member}>
-                <title>{tip(s, row, member, facts)}</title>
-                <text x={LABEL_W - 8} y={y0 + 16} textAnchor="end">
-                  {truncate(member)}
-                </text>
-                {stacks[i]!.map((seg, si) =>
-                  seg ? (
-                    <Bar
-                      key={facts.effects[si]!.role}
-                      horizontal
-                      at={y0 + 5}
-                      breadth={14}
-                      from={x(seg.from)}
-                      to={x(seg.to)}
-                      fill={seg.color}
-                    />
-                  ) : null,
-                )}
-                {d !== null && <Diamond x={x(d)} y={y0 + 12} />}
-                {facts.contribution && (
-                  <text x={W - END_W + 10} y={y0 + 16} className="fv-strong">
-                    {fmt(facts.contribution, row)}
+    <>
+      <ChartFrame
+        label={label}
+        height={height}
+        rowLabels={rows.map((row, i) => ({ label: labelOf(row), y: 4 + i * rowH + 16 }))}
+      >
+        {() => (
+          <>
+            <line x1={x(0)} x2={x(0)} y1={2} y2={height - 2} className="fv-axis" />
+            {rows.map((row, i) => {
+              const y0 = 4 + i * rowH
+              const member = labelOf(row)
+              const d = contributions[i] ?? null
+              return (
+                <g key={row} data-row={member}>
+                  <title>{tip(s, row, member, facts)}</title>
+                  <text className="fv-row-label" x={LABEL_W - 8} y={y0 + 16} textAnchor="end">
+                    {truncate(member)}
                   </text>
-                )}
-              </g>
-            )
-          })}
-        </>
-      )}
-    </ChartFrame>
+                  {stacks[i]!.map((seg, si) =>
+                    seg ? (
+                      <DomainPointMark
+                        key={facts.effects[si]!.role}
+                        point={point(s, row, facts.effects[si]!.name, member)}
+                      >
+                        <Bar
+                          horizontal
+                          at={y0 + 5}
+                          breadth={14}
+                          from={x(seg.from)}
+                          to={x(seg.to)}
+                          fill={seg.color}
+                        />
+                      </DomainPointMark>
+                    ) : null,
+                  )}
+                  {d !== null && (
+                    <DomainPointMark point={point(s, row, facts.contribution, member)}>
+                      <Diamond x={x(d)} y={y0 + 12} />
+                    </DomainPointMark>
+                  )}
+                  {facts.contribution && (
+                    <text x={W - END_W + 10} y={y0 + 16} className="fv-strong">
+                      {fmt(facts.contribution, row)}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+          </>
+        )}
+      </ChartFrame>
+      <DomainPointList points={selections} />
+    </>
   )
 }

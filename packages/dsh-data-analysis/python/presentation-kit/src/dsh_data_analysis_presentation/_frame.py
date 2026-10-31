@@ -605,7 +605,12 @@ def read_frame(frame, *, columns=None, row_limit=MAX_ROWS):
             exported.append({"kind": "field", "name": item.name, "slotId": item.slot_id})
         else:
             axis = axes[item.axis_token]
-            if item.part == "key" and len(axis.keys) == 1:
+            # A paired axis's logical key is distinct from its exported endpoint.
+            # Calendar endpoint keys export instants even when the paired key is an ordinal.
+            if (item.part == "key" and axis.role == "paired" and item.endpoint in {"left", "right"}
+                    and getattr(axis, item.endpoint).kind == "calendar"):
+                descriptors.append({"id": item.name, "label": item.name, "type": "datetime", "nullable": True})
+            elif item.part == "key" and len(axis.keys) == 1:
                 descriptors.append(_column(axis.keys[0], item.name))
             else:
                 # Marivo CoordinateExportColumn.part: bounds are timezone-aware

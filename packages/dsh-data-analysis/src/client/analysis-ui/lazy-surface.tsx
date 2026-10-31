@@ -24,15 +24,22 @@ export function SavedAnalysisSurface({
   document,
   openSemanticRef,
   readCode,
+  askPoint,
 }: {
   document: AnalysisDocument
   openSemanticRef?: OpenSemanticRef
   readCode?: AnalysisResourceContext['readCode']
+  askPoint?: AnalysisResourceContext['askPoint']
 }) {
   const t = useCopy()
   return (
     <Suspense fallback={<p role="status">{t('marivo.presentation.ui-loading')}</p>}>
-      <Surface document={document} openSemanticRef={openSemanticRef} readCode={readCode} />
+      <Surface
+        document={document}
+        openSemanticRef={openSemanticRef}
+        readCode={readCode}
+        askPoint={askPoint}
+      />
     </Suspense>
   )
 }

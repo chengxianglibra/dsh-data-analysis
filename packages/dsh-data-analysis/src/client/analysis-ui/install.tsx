@@ -5,8 +5,9 @@ import type {
 } from '@deepseek-ai/dsh-client-connection/client'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
+import { analysisRecordId } from '../../presentation/contracts/analysis-document.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { PresentationDelivery } from '../../presentation/receipt.ts'
 import type { SemanticRef } from '../../semantic-reference/contracts.ts'
@@ -21,6 +22,7 @@ import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
 import { CandidateView, readSavedAnalysis, savedCodeReader } from './candidate-view.tsx'
+import type { AnalysisResourceContext } from './context.tsx'
 import { SavedAnalysisSurface } from './lazy-surface.tsx'
 
 function SavedToolView({
@@ -31,6 +33,7 @@ function SavedToolView({
   onOpenSemanticRef,
   generation,
   allowed,
+  onAskPoint,
 }: {
   delivery: PresentationDelivery
   sessionId: string
@@ -39,8 +42,22 @@ function SavedToolView({
   onOpenSemanticRef: OpenSemanticRef
   generation: ConnectionGeneration | undefined
   allowed: boolean
+  onAskPoint: (
+    selection: Parameters<NonNullable<AnalysisResourceContext['askPoint']>>[0],
+    signal: AbortSignal,
+  ) => Promise<void>
 }) {
   const t = useCopy()
+  const lifetime = useRef<AbortController>()
+  useEffect(() => {
+    if (!allowed || !generation || delivery.dshSessionId !== sessionId) return
+    const controller = new AbortController()
+    lifetime.current = controller
+    return () => {
+      lifetime.current = undefined
+      controller.abort()
+    }
+  }, [delivery, sessionId, generation, allowed])
   const [state, setState] = useState<{
     document?: AnalysisDocument
     error?: boolean
@@ -79,6 +96,12 @@ function SavedToolView({
           document={state.document}
           openSemanticRef={onOpenSemanticRef}
           readCode={readCode}
+          askPoint={(selection) => {
+            const signal = lifetime.current?.signal
+            return signal
+              ? onAskPoint(selection, signal)
+              : Promise.reject(new Error('input-unavailable'))
+          }}
         />
       ) : (
         <p role="status">{t('marivo.presentation.ui-loading')}</p>
@@ -93,6 +116,13 @@ export function installAnalysisTool(
   connection: ConnectionGenerationState,
   candidates: AnalysisCandidates,
   openSemantic: (sessionId: string, workspaceId: string, ref: SemanticRef) => void,
+  askPoint: (
+    sessionId: string,
+    workspaceId: string,
+    recordId: string,
+    selection: Parameters<NonNullable<AnalysisResourceContext['askPoint']>>[0],
+    signal: AbortSignal,
+  ) => Promise<void>,
 ): void {
   const subscribe = (fn: () => void) => connection.subscribe(fn)
   const getGeneration = () => connection.getSnapshot()
@@ -182,6 +212,15 @@ export function installAnalysisTool(
               onOpen={(receipt) => open(props.sessionId, receipt)}
               onOpenSemanticRef={(ref) =>
                 openSemantic(props.sessionId, delivery.receipt.workspaceId, ref)
+              }
+              onAskPoint={(selection, signal) =>
+                askPoint(
+                  props.sessionId,
+                  delivery.receipt.workspaceId,
+                  analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId),
+                  selection,
+                  signal,
+                )
               }
               generation={generation}
               allowed={

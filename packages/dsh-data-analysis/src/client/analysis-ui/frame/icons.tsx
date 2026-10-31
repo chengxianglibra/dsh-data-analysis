@@ -6,6 +6,7 @@ import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import { useAnalysisResources } from '../context.tsx'
 import { SemanticOrigins } from '../metadata-view.tsx'
+import { FrameIcon } from './frame-icon.tsx'
 import {
   comparisonPeriods,
   endpointLabels,
@@ -52,7 +53,7 @@ export function Dialog({
           <header>
             <h3>{title}</h3>
             <button type="button" aria-label={t(`${P}ui-frame-close`)} onClick={onClose}>
-              ×
+              <FrameIcon kind="close" />
             </button>
           </header>
           <div>{children}</div>
@@ -63,7 +64,7 @@ export function Dialog({
 }
 
 /** Focusable icon button; the tooltip appears on hover and focus. */
-function Icon({
+export function FrameIconButton({
   label,
   tip,
   disabled,
@@ -84,7 +85,7 @@ function Icon({
       <button
         type="button"
         aria-label={label}
-        aria-describedby={id}
+        aria-describedby={tip === label ? undefined : id}
         aria-disabled={disabled ? true : undefined}
         onClick={disabled ? undefined : onOpen}
       >
@@ -105,7 +106,7 @@ export function CoverageIcon({ snapshot: s }: { snapshot: Snapshot }) {
   const share = totalRows === 0 ? 1 : capturedRows / totalRows
   const c = 2 * Math.PI * 6
   return (
-    <Icon
+    <FrameIconButton
       kind="coverage"
       label={t(`${P}ui-frame-coverage`)}
       tip={t(`${P}ui-frame-coverage-tip`, { p0: counts, p1: s.fetchedAt })}
@@ -124,7 +125,7 @@ export function CoverageIcon({ snapshot: s }: { snapshot: Snapshot }) {
         />
       </svg>
       <span>{counts}</span>
-    </Icon>
+    </FrameIconButton>
   )
 }
 
@@ -138,7 +139,7 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
   const label = t(`${P}ui-frame-periods`)
   return (
     <>
-      <Icon
+      <FrameIconButton
         kind="periods"
         label={label}
         tip={state ?? `${ends.current} ⇄ ${ends.baseline}`}
@@ -146,7 +147,7 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
         onOpen={() => setOpen(true)}
       >
         <span aria-hidden="true">⇄</span>
-      </Icon>
+      </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         <table>
           <thead>
@@ -197,16 +198,16 @@ function OriginsIcon({ snapshot: s }: { snapshot: Snapshot }) {
   const label = t(`${P}ui-metadata-semantics`)
   return (
     <>
-      <Icon
+      <FrameIconButton
         kind="origins"
         label={label}
         tip={state ?? (paths.slice(0, 6).join('\n') + (paths.length > 6 ? '\n…' : '') || label)}
         disabled={!!state}
         onOpen={() => setOpen(true)}
       >
-        <span aria-hidden="true">◇</span>
+        <FrameIcon kind="source" />
         {!state && <span>{paths.length}</span>}
-      </Icon>
+      </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         <SemanticOrigins section={section} />
       </Dialog>
@@ -266,7 +267,7 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
   }
   return (
     <>
-      <Icon
+      <FrameIconButton
         kind="python"
         label={label}
         tip={state ?? `executionId ${codeRef!.executionId}\nsha256 ${codeRef!.sha256.slice(0, 12)}`}
@@ -274,14 +275,19 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
         onOpen={() => setOpen(true)}
       >
         <span aria-hidden="true">{'</>'}</span>
-      </Icon>
+      </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         {code.kind === 'ok' ? (
           <>
             <div className="fv-table-bar">
-              <button type="button" onClick={() => void copy(code.text)}>
-                {t(`${P}copy-code`)}
-              </button>
+              <FrameIconButton
+                kind="copy-code"
+                label={t(`${P}copy-code`)}
+                tip={t(`${P}copy-code`)}
+                onOpen={() => void copy(code.text)}
+              >
+                <FrameIcon kind="copy" />
+              </FrameIconButton>
               {copied && <span role="status">{t(copied)}</span>}
             </div>
             <pre className="fv-code">

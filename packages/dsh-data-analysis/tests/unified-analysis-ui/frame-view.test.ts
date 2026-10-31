@@ -642,6 +642,71 @@ test('explicit heatmap validates both axes and the value', () => {
   })
 })
 
+test('heatmaps reject duplicate projected axis keys without aggregating captured rows', () => {
+  const encoding = { chart: 'heatmap', encoding: { x: 'a', y: 'b', value: 'v' } } as const
+  const make = (a: (string | null)[], b: (string | null)[], c?: string[], totalRows = a.length) =>
+    f.frame({
+      axes: [
+        { name: 'a', keys: a },
+        { name: 'b', keys: b },
+        ...(c ? [{ name: 'c', keys: c }] : []),
+      ],
+      values: [f.value('v', a.length)],
+      totalRows,
+    })
+  const expected = { code: 'view-target-ambiguous', path: '/view' }
+  const duplicate = make(['one', 'one'], ['two', 'two'], ['first', 'second'])
+  assert.deepEqual(failure(duplicate, encoding), expected)
+  assert.equal(viewOf(duplicate).chart, 'table')
+  assert.deepEqual(
+    failure(duplicate, { chart: 'heatmap', encoding: { ...encoding.encoding, value: 'nope' } }),
+    {
+      code: 'view-name-unknown',
+      path: '/view/encoding/value',
+    },
+  )
+  const textDuplicate = f.frame({
+    axes: [
+      { name: 'a', keys: ['one', 'one'] },
+      { name: 'b', keys: ['two', 'two'] },
+    ],
+    values: [{ name: 'v', type: 'string', values: ['first', 'second'] }],
+  })
+  assert.deepEqual(failure(textDuplicate, encoding), {
+    code: 'view-dtype-not-drawable',
+    path: '/view/encoding/value',
+  })
+  const timeDuplicate = f.observeTimeCategory(9)
+  timeDuplicate.frame.coordinates.k_region!.values[1] =
+    timeDuplicate.frame.coordinates.k_region!.values[0]!
+  timeDuplicate.data.rows[1]![1] = timeDuplicate.data.rows[0]![1]!
+  assert.equal(viewOf(timeDuplicate).chart, 'table')
+  const invalidFullKey = make(['one', 'one'], ['two', 'two'])
+  assert.deepEqual(failure(invalidFullKey, { chart: 'heatmap' }), expected)
+  assert.equal(viewOf(invalidFullKey).chart, 'table')
+  assert.equal(viewOf(make(['one', 'one'], ['two', 'two'], undefined, 3)).chart, 'table')
+  assert.deepEqual(failure(make(['one', 'one'], ['two', 'two'], undefined, 3), encoding), expected)
+  assert.equal(
+    viewOf(make(['one', 'one'], ['two', 'three'], ['first', 'second']), encoding).chart,
+    'heatmap',
+  )
+  assert.equal(viewOf(make([], []), encoding).chart, 'heatmap')
+  // NULL and its visible placeholder have the same label but different raw identities.
+  const nullable = make(['placeholder', '—'], ['two', 'two'])
+  nullable.frame.coordinates.k_a!.values[0] = null
+  nullable.data.rows[0]![0] = null
+  assert.equal(viewOf(nullable, encoding).chart, 'heatmap')
+  nullable.frame.coordinates.k_a!.values[1] = null
+  nullable.data.rows[1]![0] = null
+  assert.deepEqual(failure(nullable, encoding), expected)
+  // A composite key uses every slot, even when its first component repeats.
+  const composite = make(['one', 'one'], ['two', 'two'], ['first', 'second'])
+  composite.frame.axes[0]!.keys.push(composite.frame.axes[2]!.keys[0]!)
+  assert.equal(viewOf(composite, encoding).chart, 'heatmap')
+  composite.frame.coordinates.k_c!.values[1] = 'first'
+  assert.deepEqual(failure(composite, encoding), expected)
+})
+
 function legacyFrame(scalar: boolean, complete: boolean) {
   const raw = frameSnapshot()
   const data = complete ? { ...raw.data, rowCount: 1, truncated: false } : raw.data

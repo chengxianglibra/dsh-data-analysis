@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type FrameClassification,
   type FrameDisplay,
@@ -27,6 +27,7 @@ import {
   decompositionTitle,
   decompositionTotal,
 } from './decomposition.tsx'
+import { FrameIcon } from './frame-icon.tsx'
 import { IconRow } from './icons.tsx'
 import {
   type Chip,
@@ -48,6 +49,7 @@ import {
   ShareView,
   TimeChart,
 } from './observation.tsx'
+import { FrameSelectionContext } from './selection-context.tsx'
 import { CopyData, DataTable, useFrozenColumns } from './table.tsx'
 
 export interface FrameShellProps {
@@ -100,9 +102,44 @@ function MembersTable({ snapshot, height }: { snapshot: Snapshot; height?: numbe
       data-frozen={data.columns.length > 1 ? 1 : undefined}
       style={{ maxHeight: height ?? 520, overflow: 'auto' }}
     >
-      <DatasetTable data={data} caption="" />
+      <DatasetTable
+        data={data}
+        caption=""
+        hideCompleteScope={data.rowCount === snapshot.coverage.totalRows}
+      />
     </div>
   )
+}
+
+/** Only a single, self-key coordinate can be proven to represent this one-slot axis key. */
+function displayedAxisKey(
+  snapshot: Snapshot,
+  row: number,
+  item: Extract<Snapshot['frame']['layout'][number], { kind: 'coordinate' }>,
+) {
+  if (item.endpoint !== 'self' || item.part !== 'key') return undefined
+  const axis = snapshot.frame.axes.find((entry) => entry.token === item.axisToken)
+  if (axis?.keys.length !== 1) return undefined
+  const layouts = snapshot.frame.layout.filter(
+    (entry) =>
+      entry.kind === 'coordinate' &&
+      entry.axisToken === item.axisToken &&
+      entry.endpoint === 'self' &&
+      entry.part === 'key',
+  )
+  if (layouts.length !== 1) return undefined
+  const key = axis.keys[0]!
+  const coordinate = snapshot.frame.coordinates[key.slotId]
+  const column = columnOf(snapshot, item.name)?.column
+  if (
+    !coordinate ||
+    !column ||
+    row >= coordinate.values.length ||
+    column.type !== key.dtype.type ||
+    coordinate.values[row] !== cellOf(snapshot, row, item.name)
+  )
+    return undefined
+  return key
 }
 
 /** Composite member keys, one column per key slot, read from the saved coordinates. */
@@ -141,6 +178,9 @@ export function MainView({
           columns={view.columns}
           height={height}
           frozen={keyColumns(snapshot, classification)}
+          selectionFields={
+            classification.class === 'observation' ? classification.primaryValues : undefined
+          }
         />
       )
     case 'members':
@@ -203,7 +243,19 @@ function title(
     }
   }
   if (c.class === 'members') return s.frame.axes.map((a) => a.name).join(' · ') || fallback
-  const names = c.primaryValues.filter((n) => columnOf(s, n))
+  const displayed =
+    view.chart === 'metric'
+      ? view.values
+      : view.chart === 'heatmap'
+        ? [view.value]
+        : view.chart === 'line' ||
+            view.chart === 'area' ||
+            view.chart === 'bar' ||
+            view.chart === 'interval-bar' ||
+            view.chart === 'hbar'
+          ? [...view.values, ...view.broadcast]
+          : c.primaryValues
+  const names = displayed.filter((n) => columnOf(s, n))
   return names.length
     ? names
         .slice(0, 3)
@@ -275,6 +327,36 @@ export function FrameShell({
   codeRef,
 }: FrameShellProps) {
   const t = useCopy()
+  const { askPoint, candidate } = useAnalysisResources()
+  const [selection, setSelection] = useState<{ snapshot: Snapshot; row: number; field: string }>()
+  const [status, setStatus] = useState<'pending' | 'added' | 'failed'>()
+  const requestRevision = useRef(0)
+  useEffect(
+    () => () => {
+      requestRevision.current++
+    },
+    [],
+  )
+  const selected = selection?.snapshot === s ? selection : undefined
+  const selectedColumn = selected ? columnOf(s, selected.field)?.column : undefined
+  const selectable = useMemo(
+    () =>
+      !candidate && askPoint && resourceName
+        ? {
+            select(row: number, field: string) {
+              if (status === 'pending') return
+              const index = s.data.columns.findIndex((column) => column.id === field)
+              if (!Number.isInteger(row) || row < 0 || row >= s.data.rows.length || index < 0)
+                return
+              if (s.data.rows[row]?.[index] == null) return
+              requestRevision.current++
+              setStatus(undefined)
+              setSelection({ snapshot: s, row, field })
+            },
+          }
+        : undefined,
+    [askPoint, candidate, resourceName, s, status],
+  )
   const compactDensity = display?.density === 'compact'
   const name = title(t, s, c, view, resourceName)
   const decomposition =
@@ -292,56 +374,185 @@ export function FrameShell({
     (view.chart === 'table' && view.layout !== 'comparison') || view.chart === 'members'
   const allColumns = s.data.columns.map((col) => col.id)
   return (
-    <section
-      className="fv au-data"
-      data-resource={resourceName}
-      data-resource-kind="frame"
-      data-frame-class={c.class}
-      data-frame-shape={c.shape}
-      data-frame-view={view.chart}
-      data-density={compactDensity ? 'compact' : 'full'}
-    >
-      <div className="fv-head">
-        <h3 className="fv-title">{name}</h3>
-        {!compactDensity && (
-          <span>
-            <CopyData data={s.data} columns={view.chart === 'table' ? view.columns : allColumns} />
-          </span>
+    <FrameSelectionContext.Provider value={selectable}>
+      <section
+        className="fv au-data"
+        data-resource={resourceName}
+        data-resource-kind="frame"
+        data-frame-class={c.class}
+        data-frame-shape={c.shape}
+        data-frame-view={view.chart}
+        data-density={compactDensity ? 'compact' : 'full'}
+      >
+        <div className="fv-head">
+          <h3 className="fv-title">{name}</h3>
+          {!compactDensity && (
+            <span>
+              <CopyData
+                data={s.data}
+                columns={view.chart === 'table' ? view.columns : allColumns}
+              />
+            </span>
+          )}
+        </div>
+        {!compactDensity && s.frame.description && <p className="fv-desc">{s.frame.description}</p>}
+        {!compactDensity && chips.length > 0 && (
+          <ul className="fv-chips">
+            {chips.map((chip) => (
+              <li key={chip.label} title={chip.title}>
+                {chip.label}
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-      {!compactDensity && s.frame.description && <p className="fv-desc">{s.frame.description}</p>}
-      {!compactDensity && chips.length > 0 && (
-        <ul className="fv-chips">
-          {chips.map((chip) => (
-            <li key={chip.label} title={chip.title}>
-              {chip.label}
-            </li>
-          ))}
-        </ul>
-      )}
-      {numbers.length > 0 && <Numbers items={numbers} />}
-      {view.chart === 'comparison' ? (
-        <ComparisonView
-          snapshot={s}
-          classification={c}
-          view={view}
-          height={display?.height}
-          numbers={comparisonNumbers}
-          body={showMain}
-          control={!compactDensity}
-        />
-      ) : (
-        showMain && (
-          <MainView snapshot={s} classification={c} view={view} height={display?.height} />
-        )
-      )}
-      {!compactDensity && !tableAsMain && (
-        <details className="fv-table" open={display?.dataTable === 'visible'}>
-          <summary>{t('marivo.presentation.ui-frame-data-table')}</summary>
-          <DataTable snapshot={s} frozen={keyColumns(s, c)} />
-        </details>
-      )}
-      <IconRow snapshot={s} view={view} codeRef={codeRef} compact={compactDensity} />
-    </section>
+        {numbers.length > 0 && <Numbers items={numbers} />}
+        {view.chart === 'comparison' ? (
+          <ComparisonView
+            snapshot={s}
+            classification={c}
+            view={view}
+            height={display?.height}
+            numbers={comparisonNumbers}
+            body={showMain}
+            control={!compactDensity}
+          />
+        ) : (
+          showMain && (
+            <MainView snapshot={s} classification={c} view={view} height={display?.height} />
+          )
+        )}
+        {!compactDensity && !tableAsMain && (
+          <details className="fv-table" open={display?.dataTable === 'visible'}>
+            <summary
+              className="fv-table-toggle"
+              aria-label={t('marivo.presentation.ui-frame-data-table')}
+              title={t('marivo.presentation.ui-frame-data-table')}
+            >
+              <FrameIcon kind="table" />
+              <span aria-hidden="true" className="fv-tip">
+                {t('marivo.presentation.ui-frame-data-table')}
+              </span>
+            </summary>
+            <DataTable
+              snapshot={s}
+              frozen={keyColumns(s, c)}
+              selectionFields={c.class === 'observation' ? c.primaryValues : undefined}
+            />
+          </details>
+        )}
+        {selected && (
+          <section
+            className="fv-selection"
+            aria-label={t('marivo.presentation.ui-frame-selected-point')}
+          >
+            <strong>{t('marivo.presentation.ui-frame-selected-point')}</strong>
+            {compactDensity && s.frame.description && (
+              <p>
+                {t('marivo.presentation.ui-frame-point-description')}: {s.frame.description}
+              </p>
+            )}
+            {(typeof s.frame.sections.periods !== 'object' ||
+              s.frame.sections.periods.status !== 'captured') && (
+              <details className="fv-period-unavailable">
+                <summary
+                  aria-label={t('marivo.presentation.ui-frame-point-periods-unavailable')}
+                  title={t('marivo.presentation.ui-frame-point-periods-unavailable')}
+                >
+                  {t('marivo.presentation.ui-frame-point-periods-short')}
+                </summary>
+                <p>{t('marivo.presentation.ui-frame-point-periods-unavailable')}</p>
+              </details>
+            )}
+            <dl>
+              <div>
+                <dt>{selected.field}</dt>
+                <dd>
+                  {exact(
+                    cellOf(s, selected.row, selected.field),
+                    selectedColumn?.unit === '1'
+                      ? { ...selectedColumn, unit: undefined }
+                      : selectedColumn,
+                  )}
+                </dd>
+              </div>
+              {view.chart === 'correlation' && view.counts[selected.field] && (
+                <div>
+                  <dt>{view.counts[selected.field]}</dt>
+                  <dd>
+                    {exact(
+                      cellOf(s, selected.row, view.counts[selected.field]!),
+                      columnOf(s, view.counts[selected.field]!)?.column,
+                    )}
+                  </dd>
+                </div>
+              )}
+              {s.frame.layout.flatMap((item) => {
+                if (item.kind !== 'coordinate') return []
+                const column = columnOf(s, item.name)
+                const key = displayedAxisKey(s, selected.row, item)
+                return column
+                  ? [
+                      <div key={`${item.axisToken}:${item.endpoint}:${item.part}:${item.name}`}>
+                        <dt title={key?.id}>{column.column.label}</dt>
+                        <dd>{exact(cellOf(s, selected.row, item.name), column.column)}</dd>
+                      </div>,
+                    ]
+                  : []
+              })}
+              {s.frame.axes.flatMap((axis) =>
+                axis.keys.flatMap((key) => {
+                  const coordinate = s.frame.coordinates[key.slotId]
+                  const alreadyDisplayed = s.frame.layout.some(
+                    (item) =>
+                      item.kind === 'coordinate' &&
+                      displayedAxisKey(s, selected.row, item)?.slotId === key.slotId,
+                  )
+                  if (alreadyDisplayed) return []
+                  return coordinate
+                    ? [
+                        <div key={key.slotId}>
+                          <dt>{key.id}</dt>
+                          <dd>
+                            {exact(coordinate.values[selected.row] ?? null, coordinate.column)}
+                          </dd>
+                        </div>,
+                      ]
+                    : []
+                }),
+              )}
+            </dl>
+            <button
+              type="button"
+              disabled={status === 'pending'}
+              onClick={() => {
+                if (!askPoint || !resourceName) return
+                const revision = ++requestRevision.current
+                setStatus('pending')
+                void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
+                  () => {
+                    if (requestRevision.current === revision) setStatus('added')
+                  },
+                  () => {
+                    if (requestRevision.current === revision) setStatus('failed')
+                  },
+                )
+              }}
+            >
+              {t('marivo.presentation.ui-frame-ask-point')}
+            </button>
+            {status && status !== 'pending' && (
+              <p role="status">
+                {t(
+                  status === 'added'
+                    ? 'marivo.presentation.ui-frame-ask-added'
+                    : 'marivo.presentation.ui-frame-ask-failed',
+                )}
+              </p>
+            )}
+          </section>
+        )}
+        <IconRow snapshot={s} view={view} codeRef={codeRef} compact={compactDensity} />
+      </section>
+    </FrameSelectionContext.Provider>
   )
 }

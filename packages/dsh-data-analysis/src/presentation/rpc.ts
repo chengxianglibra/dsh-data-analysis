@@ -4,14 +4,25 @@ import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { readPythonExecution } from '../python-execution.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { readReceiptAsset } from './asset.ts'
-import { parseSavedPresentation } from './contracts/analysis-document.ts'
+import { parseAnalysisRecordId, parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
   PresentationContractError,
   parsePresentationBuildId,
   parsePresentationReceipt,
 } from './contracts/index.ts'
+import {
+  type PointRequest,
+  parsePointEnvelope,
+  parsePointRequest,
+} from './contracts/point-reference.ts'
+import { pointFromDocument } from './point-reference.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
-import { listReports, readReportHistory, resolvePresentation } from './reports.ts'
+import {
+  listReports,
+  readAnalysisRecord,
+  readReportHistory,
+  resolvePresentation,
+} from './reports.ts'
 
 export interface PresentationWorkspace {
   id: string
@@ -97,6 +108,62 @@ export class MarivoPresentationFileService {
     this.#abort.abort()
     this.#closing ??= finishCleanup([() => this.#tasks.drain()])
     return this.#closing
+  }
+  point(
+    endpoint: 'point/prepare' | 'point/serialize',
+    payload: unknown,
+    caller = new AbortController().signal,
+  ) {
+    return this.#tasks.track(this.#point(endpoint, payload, caller))
+  }
+  async #point(
+    endpoint: 'point/prepare' | 'point/serialize',
+    payload: unknown,
+    caller: AbortSignal,
+  ) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    let request: PointRequest
+    let supplied: ReturnType<typeof parsePointEnvelope> | undefined
+    if (endpoint === 'point/prepare') {
+      request = parsePointRequest(payload)
+    } else {
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        Array.isArray(payload) ||
+        Object.keys(payload).join(',') !== 'envelope'
+      )
+        throw new Error('invalid-request')
+      supplied = parsePointEnvelope(Reflect.get(payload, 'envelope'))
+      const { sessionId, workspaceId, recordId, resourceName, row, field } = supplied
+      request = { sessionId, workspaceId, recordId, resourceName, row, field }
+    }
+    const workspace = await this.#workspace({ sessionId: request.sessionId })
+    if (!workspace || workspace.id !== request.workspaceId) throw new Error('workspace-unavailable')
+    const root = path.resolve(workspace.path)
+    const { reportId, buildId } = parseAnalysisRecordId(request.recordId)
+    const document = await readAnalysisRecord(root, workspace.id, reportId, buildId, signal)
+    const actual = pointFromDocument(document, request)
+    const current = await this.#workspace({ sessionId: request.sessionId })
+    if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    if (endpoint === 'point/prepare') return { envelope: actual }
+    if (JSON.stringify(supplied) !== JSON.stringify(actual)) throw new Error('point-mismatch')
+    return {
+      text: `AnalysisFrame selected value from a saved snapshot (not a new query). The description is saved explanatory text; unavailable period details are not captured:\n${JSON.stringify(
+        {
+          recordId: actual.recordId,
+          resource: actual.resourceName,
+          row: actual.row,
+          ...actual.point,
+          interpretation:
+            actual.point.interpretation === null ? null : JSON.parse(actual.point.interpretation),
+          periods: JSON.parse(actual.point.periods),
+        },
+      )}`,
+    }
   }
   report(payload: unknown, caller = new AbortController().signal) {
     return this.#tasks.track(this.#report(payload, caller))
@@ -236,7 +303,15 @@ export function registerMarivoPresentationRpc(
   const unregister = registerPluginRpc(
     connection,
     MARIVO_PRESENTATION_RPC_CHANNEL,
-    ['reports/resolve', 'reports/list', 'reports/history', 'files/read', 'code/read'],
+    [
+      'reports/resolve',
+      'reports/list',
+      'reports/history',
+      'files/read',
+      'code/read',
+      'point/prepare',
+      'point/serialize',
+    ],
     async (endpoint, payload, signal) => {
       try {
         if (endpoint === 'reports/resolve')
@@ -247,6 +322,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.read(payload, signal) }
         if (endpoint === 'code/read')
           return { ok: true, value: await service.code(payload, signal) }
+        if (endpoint === 'point/prepare' || endpoint === 'point/serialize')
+          return { ok: true, value: await service.point(endpoint, payload, signal) }
         throw new Error('unknown-endpoint')
       } catch (error) {
         const message = signal.aborted
@@ -256,7 +333,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable)$/.test(
+                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable|point-unavailable|point-mismatch)$/.test(
                     error.message,
                   )
                 ? error.message

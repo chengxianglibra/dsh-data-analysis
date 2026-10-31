@@ -22,12 +22,23 @@ export function DatasetTable({
   columns,
   caption,
   display,
+  scrollDescription,
+  selectCell,
+  selectableColumns,
+  hideCompleteScope = false,
 }: {
   data: TypedDataset
   columns?: string[]
   caption: string
   /** Optional readable text; a differing exact value stays reachable via `title`. */
   display?: (value: Exclude<Cell, null>, column: DatasetColumn) => string
+  /** Optional description of horizontal scrolling in the containing Frame. */
+  scrollDescription?: string
+  /** Select a saved row/field without depending on sorting or pagination order. */
+  selectCell?: (row: number, field: string) => void
+  selectableColumns?: ReadonlySet<string>
+  /** The parent already displays the complete row count. Empty/truncated states remain visible. */
+  hideCompleteScope?: boolean
 }) {
   const t = useCopy()
 
@@ -45,8 +56,16 @@ export function DatasetTable({
   const shown = sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
   return (
     <div className="pr-table">
-      <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>{t(datasetScope(t.locale, data))}</p>
-      <div className="pr-table-scroll" tabIndex={data.rows.length ? 0 : undefined}>
+      {(!hideCompleteScope || data.truncated || data.rowCount === 0) && (
+        <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>
+          {t(datasetScope(t.locale, data))}
+        </p>
+      )}
+      <div
+        className="pr-table-scroll"
+        tabIndex={data.rows.length ? 0 : undefined}
+        aria-describedby={scrollDescription}
+      >
         <table aria-label={t(caption)}>
           <thead>
             <tr>
@@ -117,7 +136,18 @@ export function DatasetTable({
                             : undefined
                       }
                     >
-                      {text}
+                      {selectCell && value !== null && selectableColumns?.has(column.id) ? (
+                        <button
+                          type="button"
+                          className="pr-cell-select"
+                          aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${column.label}, ${text}`}
+                          onClick={() => selectCell(rowIndex, column.id)}
+                        >
+                          {text}
+                        </button>
+                      ) : (
+                        text
+                      )}
                     </td>
                   )
                 })}

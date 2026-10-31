@@ -1,8 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { FrameClassification } from '../../../presentation/contracts/frame-view.ts'
 import type { FrameComparison } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
+import {
+  type DomainPoint,
+  DomainPointList,
+  DomainPointMark,
+  uniquelyBound,
+} from './domain-point-selection.tsx'
 import {
   axisOf,
   cellOf,
@@ -26,6 +32,7 @@ import {
   ChartFrame,
   color,
   Dot,
+  dotsOverlap,
   extent,
   LABEL_W,
   Legend,
@@ -72,6 +79,38 @@ function present(s: Snapshot, row: number, name: string | undefined): boolean {
   return !name || cellOf(s, row, name) !== false
 }
 
+/** Enclosing flags describe outer operations; only this comparison's endpoint flags gate its changes. */
+function bothPresent(s: Snapshot, row: number, roles: ComparisonRoles): boolean {
+  const presence = roles.comparison.presence
+  return present(s, row, presence?.current) && present(s, row, presence?.baseline)
+}
+
+function point(
+  s: Snapshot,
+  row: number | undefined,
+  name: string | undefined,
+  required: (string | undefined)[],
+  label: string,
+): DomainPoint | undefined {
+  if (row === undefined || !name || !uniquelyBound(s, name) || cellOf(s, row, name) === null)
+    return undefined
+  if (required.some((field) => field && cellOf(s, row, field) !== true)) return undefined
+  return {
+    row,
+    field: name,
+    label: `${label} · ${valueName(s, undefined, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}`,
+  }
+}
+
+function visibleCell(s: Snapshot, row: number, roles: ComparisonRoles, name: string) {
+  const presence = roles.comparison.presence
+  if (name === roles.current && !present(s, row, presence?.current)) return null
+  if (name === roles.baseline && !present(s, row, presence?.baseline)) return null
+  if ((name === roles.absolute || name === roles.relative) && !bothPresent(s, row, roles))
+    return null
+  return cellOf(s, row, name)
+}
+
 export interface ComparisonTableSection {
   /** Index into interpretation.comparisons. */
   index: number
@@ -104,6 +143,21 @@ export function ComparisonTable({
   classification: FrameClassification
 }) {
   const t = useCopy()
+  const [showExact, setShowExact] = useState(false)
+  const [scrollable, setScrollable] = useState(false)
+  const scrollRef = useRef<HTMLElement>(null)
+  const hintId = useId()
+  useEffect(() => {
+    const region = scrollRef.current
+    if (!region) return
+    const update = () => setScrollable(region.scrollWidth > region.clientWidth + 1)
+    const observer = new ResizeObserver(update)
+    observer.observe(region)
+    const table = region.querySelector('table')
+    if (table) observer.observe(table)
+    update()
+    return () => observer.disconnect()
+  }, [])
   const sections = comparisonTableSections(s).filter((section) => section.rows.length > 0)
   const head = sections[0]
   const ends = endpointLabels(t, s, head?.index ?? 0)
@@ -115,20 +169,25 @@ export function ComparisonTable({
     if (!present(s, row, presence)) return <td className="pr-numeric">—</td>
     return (
       <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
-        {compact(t.locale, value, column)}
+        {showExact ? exact(value, column) : compact(t.locale, value, column)}
       </td>
     )
   }
-  const change = (name: string | undefined, kind: 'delta' | 'percent') => {
+  const change = (roles: ComparisonRoles, kind: 'delta' | 'percent') => {
+    const name = kind === 'delta' ? roles.absolute : roles.relative
     const column = name ? columnOf(s, name)?.column : undefined
-    const value = name ? cellOf(s, row, name) : null
+    const value = name ? visibleCell(s, row, roles, name) : null
     const text =
       kind === 'delta'
         ? signed(t.locale, value, column)
-        : percent(t.locale, name ? valueAt(s, row, name) : null, true)
+        : percent(t.locale, name && bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
     return (
       <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
-        {text}
+        {showExact && value !== null
+          ? kind === 'percent'
+            ? `${text} (${exact(value, column)} × 100)`
+            : exact(value, column)
+          : text}
       </td>
     )
   }
@@ -138,41 +197,69 @@ export function ComparisonTable({
         <th scope="row">{valueName(s, c, roles.current!)}</th>
         {side(roles.current, roles.comparison.presence?.current)}
         {side(roles.baseline, roles.comparison.presence?.baseline)}
-        {change(roles.absolute, 'delta')}
-        {change(roles.relative, 'percent')}
+        {change(roles, 'delta')}
+        {change(roles, 'percent')}
       </tr>
     ))
   return (
-    <div className="pr-table fv-comparison-table" data-table-layout="comparison">
-      <table aria-label={t('marivo.presentation.ui-frame-comparison-table')}>
-        <thead>
-          <tr>
-            <th scope="col">{t('marivo.presentation.ui-frame-comparison-metric')}</th>
-            <th scope="col">{ends.current}</th>
-            <th scope="col">{ends.baseline}</th>
-            <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta')}</th>
-            <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta-percent')}</th>
-          </tr>
-        </thead>
-        {sections.length > 1 ? (
-          sections.map((section) => {
-            const sectionEnds = endpointLabels(t, s, section.index)
-            return (
-              <tbody key={section.index}>
-                <tr className="fv-comparison-section">
-                  <th scope="rowgroup" colSpan={5}>
-                    {`${sectionEnds.current} ⇄ ${sectionEnds.baseline}`}
-                  </th>
-                </tr>
-                {dataRows(section.rows)}
-              </tbody>
-            )
-          })
-        ) : (
-          <tbody>{dataRows(sections[0]?.rows ?? [])}</tbody>
+    <>
+      <div className="fv-table-bar fv-comparison-toolbar">
+        {scrollable && (
+          <span
+            id={hintId}
+            className="fv-scroll-hint"
+            title={t('marivo.presentation.ui-frame-scroll-hint')}
+          >
+            <span className="fv-sr-only">{t('marivo.presentation.ui-frame-scroll-hint')}</span>
+          </span>
         )}
-      </table>
-    </div>
+        <button
+          type="button"
+          aria-pressed={showExact}
+          onClick={() => setShowExact((value) => !value)}
+        >
+          {t('marivo.presentation.ui-frame-exact-values')}
+        </button>
+      </div>
+      <section
+        ref={scrollRef}
+        className="pr-table fv-comparison-table"
+        data-table-layout="comparison"
+        aria-label={t('marivo.presentation.ui-frame-comparison-table')}
+        aria-describedby={scrollable ? hintId : undefined}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the overflow region.
+        tabIndex={0}
+      >
+        <table aria-label={t('marivo.presentation.ui-frame-comparison-table')}>
+          <thead>
+            <tr>
+              <th scope="col">{t('marivo.presentation.ui-frame-comparison-metric')}</th>
+              <th scope="col">{ends.current}</th>
+              <th scope="col">{ends.baseline}</th>
+              <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta')}</th>
+              <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta-percent')}</th>
+            </tr>
+          </thead>
+          {sections.length > 1 ? (
+            sections.map((section) => {
+              const sectionEnds = endpointLabels(t, s, section.index)
+              return (
+                <tbody key={section.index}>
+                  <tr className="fv-comparison-section">
+                    <th scope="rowgroup" colSpan={5}>
+                      {`${sectionEnds.current} ⇄ ${sectionEnds.baseline}`}
+                    </th>
+                  </tr>
+                  {dataRows(section.rows)}
+                </tbody>
+              )
+            })
+          ) : (
+            <tbody>{dataRows(sections[0]?.rows ?? [])}</tbody>
+          )}
+        </table>
+      </section>
+    </>
   )
 }
 
@@ -195,12 +282,12 @@ export function ComparisonNumbers({
   const add = (name: string | undefined, label: string | undefined, kind: 'v' | 'd' | 'p') => {
     if (!name) return
     const column = columnOf(s, name)?.column
-    const value = cellOf(s, row, name)
+    const value = visibleCell(s, row, roles, name)
     items.push({
       key: name,
       value:
         kind === 'p'
-          ? percent(t.locale, valueAt(s, row, name), true)
+          ? percent(t.locale, bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
           : kind === 'd'
             ? signed(t.locale, value, column)
             : compact(t.locale, value, column),
@@ -396,6 +483,21 @@ function CompareLine({
   const byTick = new Map(rows.map((row) => [tickOf(row), row]))
   const presence = roles.comparison.presence
   const ends = endpointLabels(t, s, index)
+  const counts = new Map<number, number>()
+  for (const row of rows) counts.set(tickOf(row), (counts.get(tickOf(row)) ?? 0) + 1)
+  const selectionAt = (
+    i: number,
+    field: string | undefined,
+    side: 'current' | 'baseline' | 'delta',
+  ) => {
+    if ((counts.get(i) ?? 0) !== 1) return undefined
+    const requirements = [
+      ...(presence?.enclosing ?? []),
+      ...(side !== 'baseline' ? [presence?.current] : []),
+      ...(side !== 'current' ? [presence?.baseline] : []),
+    ]
+    return point(s, byTick.get(i), field, requirements, ticks[i]?.label ?? '')
+  }
   const series = (name: string | undefined, side: string | undefined) =>
     ticks.map((_, i) => {
       const row = byTick.get(i)
@@ -403,7 +505,12 @@ function CompareLine({
     })
   const current = series(roles.current, presence?.current)
   const baseline = series(roles.baseline, presence?.baseline)
-  const delta = series(roles.absolute, undefined)
+  const delta = ticks.map((_, i) => {
+    const row = byTick.get(i)
+    return row === undefined || !roles.absolute || !bothPresent(s, row, roles)
+      ? null
+      : valueAt(s, row, roles.absolute)
+  })
   const strip = roles.absolute ? (small ? 36 : 52) : 0
   const plotBottom = height - strip - 26
   const top = 12
@@ -425,7 +532,9 @@ function CompareLine({
       ticks[i]!.title,
       ...[roles.current, roles.baseline, roles.absolute, roles.relative]
         .filter((n): n is string => !!n)
-        .map((n) => `${valueName(s, undefined, n)}: ${exact(cellOf(s, row, n), col(n))}`),
+        .map(
+          (n) => `${valueName(s, undefined, n)}: ${exact(visibleCell(s, row, roles, n), col(n))}`,
+        ),
     ].join('\n')
   }
   const label = summary(
@@ -434,82 +543,105 @@ function CompareLine({
     ticks.map((tick, i) => {
       const row = byTick.get(i)
       const v = (n?: string) =>
-        row === undefined || !n ? '—' : compact(t.locale, cellOf(s, row, n), col(n))
+        row === undefined || !n ? '—' : compact(t.locale, visibleCell(s, row, roles, n), col(n))
       return `${tick.label} ${v(roles.current)} / ${v(roles.baseline)}`
     }),
   )
+  const selections = ticks
+    .flatMap((_, i) => [
+      selectionAt(i, roles.current, 'current'),
+      selectionAt(i, roles.baseline, 'baseline'),
+      selectionAt(i, roles.absolute, 'delta'),
+    ])
+    .filter((item): item is DomainPoint => item !== undefined)
   return (
-    <ChartFrame
-      label={label}
-      height={height}
-      legend={
-        small ? undefined : (
-          <Legend
-            items={[
-              { label: ends.current, color: color(0), shape: 'line' },
-              { label: ends.baseline, color: color(0), shape: 'dashed' },
-            ]}
-          />
-        )
-      }
-    >
-      {() => (
-        <>
-          <line x1={left} x2={right} y1={plotBottom} y2={plotBottom} className="fv-axis" />
-          <XTicks ticks={ticks} x={x} y={plotBottom} />
-          <path
-            d={linePath(points(baseline))}
-            className="fv-line"
-            data-dashed=""
-            style={{ stroke: color(0) }}
-          />
-          <path d={linePath(points(current))} className="fv-line" style={{ stroke: color(0) }} />
-          {ticks.map((tick, i) => (
-            <g key={tick.key}>
-              {baseline[i] !== null && baseline[i] !== undefined && (
-                <Dot
-                  x={x(i)}
-                  y={y(baseline[i]!)}
-                  fill={color(0)}
-                  hollow
-                  size={2.5}
-                  title={tip(i)}
-                />
-              )}
-              {current[i] !== null && current[i] !== undefined && (
-                <Dot
-                  x={x(i)}
-                  y={y(current[i]!)}
-                  fill={color(0)}
-                  hollow={tick.incomplete}
-                  size={3}
-                  title={tip(i)}
-                />
-              )}
-            </g>
-          ))}
-          {roles.absolute && (
-            <g data-strip="delta">
-              <line x1={left} x2={right} y1={dy(0)} y2={dy(0)} className="fv-axis" />
-              {delta.map((v, i) =>
-                v === null ? null : (
-                  <Bar
-                    // biome-ignore lint/suspicious/noArrayIndexKey: Tick position is the identity.
-                    key={i}
-                    at={x(i) - Math.min(band * 0.3, 6)}
-                    breadth={Math.max(Math.min(band * 0.6, 12), 1)}
-                    from={dy(0)}
-                    to={dy(v)}
-                    fill={NEUTRAL}
-                    title={tip(i)}
-                  />
-                ),
-              )}
-            </g>
-          )}
-        </>
-      )}
-    </ChartFrame>
+    <>
+      <ChartFrame
+        label={label}
+        height={height}
+        legend={
+          small ? undefined : (
+            <Legend
+              items={[
+                { label: ends.current, color: color(0), shape: 'line' },
+                { label: ends.baseline, color: color(0), shape: 'dashed' },
+              ]}
+            />
+          )
+        }
+      >
+        {() => (
+          <>
+            <line x1={left} x2={right} y1={plotBottom} y2={plotBottom} className="fv-axis" />
+            <XTicks ticks={ticks} x={x} y={plotBottom} />
+            <path
+              d={linePath(points(baseline))}
+              className="fv-line"
+              data-dashed=""
+              style={{ stroke: color(0) }}
+            />
+            <path d={linePath(points(current))} className="fv-line" style={{ stroke: color(0) }} />
+            {ticks.map((tick, i) => (
+              <g key={tick.key}>
+                {baseline[i] !== null && baseline[i] !== undefined && (
+                  <DomainPointMark point={selectionAt(i, roles.baseline, 'baseline')}>
+                    <Dot
+                      x={x(i)}
+                      y={y(baseline[i]!)}
+                      fill={color(0)}
+                      hollow
+                      size={
+                        current[i] !== null &&
+                        current[i] !== undefined &&
+                        dotsOverlap(y(baseline[i]!), y(current[i]!))
+                          ? 6.5
+                          : 2.5
+                      }
+                      title={tip(i)}
+                    />
+                  </DomainPointMark>
+                )}
+                {current[i] !== null && current[i] !== undefined && (
+                  <DomainPointMark point={selectionAt(i, roles.current, 'current')}>
+                    <Dot
+                      x={x(i)}
+                      y={y(current[i]!)}
+                      fill={color(0)}
+                      hollow={tick.incomplete}
+                      size={3}
+                      title={tip(i)}
+                    />
+                  </DomainPointMark>
+                )}
+              </g>
+            ))}
+            {roles.absolute && (
+              <g data-strip="delta">
+                <line x1={left} x2={right} y1={dy(0)} y2={dy(0)} className="fv-axis" />
+                {delta.map((v, i) =>
+                  v === null ? null : (
+                    <DomainPointMark
+                      key={ticks[i]!.key}
+                      point={selectionAt(i, roles.absolute, 'delta')}
+                    >
+                      <Bar
+                        at={x(i) - Math.min(band * 0.3, 6)}
+                        breadth={Math.max(Math.min(band * 0.6, 12), 1)}
+                        from={dy(0)}
+                        to={dy(v)}
+                        fill={NEUTRAL}
+                        title={tip(i)}
+                      />
+                    </DomainPointMark>
+                  ),
+                )}
+              </g>
+            )}
+          </>
+        )}
+      </ChartFrame>
+      <DomainPointList points={selections} />
+    </>
   )
 }
 
@@ -533,6 +665,32 @@ function CompareRows({
   const presence = roles.comparison.presence
   const ends = endpointLabels(t, s, index)
   const rowH = 24
+  const selectionAt = (
+    row: number,
+    field: string | undefined,
+    side: 'current' | 'baseline' | 'delta',
+  ) =>
+    point(
+      s,
+      row,
+      field,
+      [
+        ...(presence?.enclosing ?? []),
+        ...(side !== 'baseline' ? [presence?.current] : []),
+        ...(side !== 'current' ? [presence?.baseline] : []),
+      ],
+      membersLabel(s, axes, row),
+    )
+  const selections = rows
+    .flatMap((row) =>
+      delta
+        ? [selectionAt(row, roles.absolute, 'delta')]
+        : [
+            selectionAt(row, roles.current, 'current'),
+            selectionAt(row, roles.baseline, 'baseline'),
+          ],
+    )
+    .filter((item): item is DomainPoint => item !== undefined)
   const top = 4
   const height = top + rows.length * rowH + 4
   const endW = 96
@@ -540,26 +698,30 @@ function CompareRows({
   const get = (row: number, name?: string, side?: string) =>
     name && present(s, row, side) ? valueAt(s, row, name) : null
   const values = delta
-    ? rows.map((row) => get(row, roles.absolute))
+    ? rows.map((row) => (bothPresent(s, row, roles) ? get(row, roles.absolute) : null))
     : rows.flatMap((row) => [
         get(row, roles.current, presence?.current),
         get(row, roles.baseline, presence?.baseline),
       ])
   const x = linear(extent(values, delta), [LABEL_W, W - endW])
   const endText = (row: number) =>
-    roles.relative
-      ? percent(t.locale, valueAt(s, row, roles.relative), true)
-      : signed(
-          t.locale,
-          roles.absolute ? cellOf(s, row, roles.absolute) : null,
-          col(roles.absolute),
-        )
+    !bothPresent(s, row, roles)
+      ? '—'
+      : roles.relative
+        ? percent(t.locale, valueAt(s, row, roles.relative), true)
+        : signed(
+            t.locale,
+            roles.absolute ? cellOf(s, row, roles.absolute) : null,
+            col(roles.absolute),
+          )
   const tip = (row: number) =>
     [membersLabel(s, axes, row)]
       .concat(
         [roles.current, roles.baseline, roles.absolute, roles.relative]
           .filter((n): n is string => !!n)
-          .map((n) => `${valueName(s, undefined, n)}: ${exact(cellOf(s, row, n), col(n))}`),
+          .map(
+            (n) => `${valueName(s, undefined, n)}: ${exact(visibleCell(s, row, roles, n), col(n))}`,
+          ),
       )
       .join('\n')
   const label = summary(
@@ -568,58 +730,89 @@ function CompareRows({
     rows.map((row) => `${membersLabel(s, axes, row)} ${endText(row)}`),
   )
   return (
-    <ChartFrame
-      label={label}
-      height={height}
-      legend={
-        delta ? undefined : (
-          <Legend
-            items={[
-              { label: ends.baseline, color: color(0), shape: 'hollow' },
-              { label: ends.current, color: color(0), shape: 'dot' },
-            ]}
-          />
-        )
-      }
-    >
-      {() => (
-        <>
-          {delta && <line x1={x(0)} x2={x(0)} y1={top} y2={height - 4} className="fv-axis" />}
-          {rows.map((row, ri) => {
-            const cy = top + ri * rowH + rowH / 2
-            const member = membersLabel(s, axes, row)
-            const cur = get(row, roles.current, presence?.current)
-            const base = get(row, roles.baseline, presence?.baseline)
-            const d = get(row, roles.absolute)
-            return (
-              <g key={row} data-row={member}>
-                <title>{tip(row)}</title>
-                <text x={LABEL_W - 8} y={cy + 4} textAnchor="end">
-                  {truncate(member)}
-                </text>
-                {delta ? (
-                  d !== null && (
-                    <Bar horizontal at={cy - 7} breadth={14} from={x(0)} to={x(d)} fill={NEUTRAL} />
-                  )
-                ) : (
-                  <>
-                    {cur !== null && base !== null && (
-                      <line x1={x(base)} x2={x(cur)} y1={cy} y2={cy} className="fv-stem" />
-                    )}
-                    {base !== null && <Dot x={x(base)} y={cy} fill={color(0)} hollow size={4.5} />}
-                    {cur !== null && <Dot x={x(cur)} y={cy} fill={color(0)} size={4.5} />}
-                  </>
-                )}
-                <text x={W - endW + 10} y={cy + 4} className="fv-strong">
-                  {delta && roles.relative
-                    ? `${signed(t.locale, roles.absolute ? cellOf(s, row, roles.absolute) : null, col(roles.absolute))}  ${endText(row)}`
-                    : endText(row)}
-                </text>
-              </g>
-            )
-          })}
-        </>
-      )}
-    </ChartFrame>
+    <>
+      <ChartFrame
+        label={label}
+        height={height}
+        rowLabels={rows.map((row, ri) => ({
+          label: membersLabel(s, axes, row),
+          y: top + ri * rowH + rowH / 2 + 4,
+        }))}
+        legend={
+          delta ? undefined : (
+            <Legend
+              items={[
+                { label: ends.baseline, color: color(0), shape: 'hollow' },
+                { label: ends.current, color: color(0), shape: 'dot' },
+              ]}
+            />
+          )
+        }
+      >
+        {() => (
+          <>
+            {delta && <line x1={x(0)} x2={x(0)} y1={top} y2={height - 4} className="fv-axis" />}
+            {rows.map((row, ri) => {
+              const cy = top + ri * rowH + rowH / 2
+              const member = membersLabel(s, axes, row)
+              const cur = get(row, roles.current, presence?.current)
+              const base = get(row, roles.baseline, presence?.baseline)
+              const d = bothPresent(s, row, roles) ? get(row, roles.absolute) : null
+              const overlap = cur !== null && base !== null && dotsOverlap(x(cur), x(base))
+              return (
+                <g key={row} data-row={member}>
+                  <title>{tip(row)}</title>
+                  <text className="fv-row-label" x={LABEL_W - 8} y={cy + 4} textAnchor="end">
+                    {truncate(member)}
+                  </text>
+                  {delta ? (
+                    d !== null && (
+                      <DomainPointMark point={selectionAt(row, roles.absolute, 'delta')}>
+                        <Bar
+                          horizontal
+                          at={cy - 7}
+                          breadth={14}
+                          from={x(0)}
+                          to={x(d)}
+                          fill={NEUTRAL}
+                        />
+                      </DomainPointMark>
+                    )
+                  ) : (
+                    <>
+                      {cur !== null && base !== null && (
+                        <line x1={x(base)} x2={x(cur)} y1={cy} y2={cy} className="fv-stem" />
+                      )}
+                      {base !== null && (
+                        <DomainPointMark point={selectionAt(row, roles.baseline, 'baseline')}>
+                          <Dot
+                            x={x(base)}
+                            y={cy}
+                            fill={color(0)}
+                            hollow
+                            size={overlap ? 6.5 : 4.5}
+                          />
+                        </DomainPointMark>
+                      )}
+                      {cur !== null && (
+                        <DomainPointMark point={selectionAt(row, roles.current, 'current')}>
+                          <Dot x={x(cur)} y={cy} fill={color(0)} size={overlap ? 3 : 4.5} />
+                        </DomainPointMark>
+                      )}
+                    </>
+                  )}
+                  <text x={W - endW + 10} y={cy + 4} className="fv-strong">
+                    {delta && roles.relative && bothPresent(s, row, roles)
+                      ? `${signed(t.locale, roles.absolute ? cellOf(s, row, roles.absolute) : null, col(roles.absolute))}  ${endText(row)}`
+                      : endText(row)}
+                  </text>
+                </g>
+              )
+            })}
+          </>
+        )}
+      </ChartFrame>
+      <DomainPointList points={selections} />
+    </>
   )
 }

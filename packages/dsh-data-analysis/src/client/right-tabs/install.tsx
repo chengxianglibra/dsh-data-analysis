@@ -2,7 +2,7 @@
 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { AnalysisCandidates, candidateKey } from '../analysis-ui/candidate.ts'
 import { CandidateView, savedCodeReader } from '../analysis-ui/candidate-view.tsx'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
@@ -12,6 +12,7 @@ import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { hostCopy, installCopy, localized } from '../i18n/host.tsx'
+import { appendPointReference, installPointReferenceSource } from '../point-reference.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
 import {
   marivoAnalysisSurfaceDefinition,
@@ -133,6 +134,20 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     ctx.connection.generation,
     candidates,
     (sessionId, workspaceId, ref) => navigate(sessionId, { kind: 'semantic', workspaceId, ref }),
+    (sessionId, workspaceId, recordId, selection, signal) =>
+      appendPointReference(
+        ctx,
+        rpc,
+        {
+          sessionId,
+          workspaceId,
+          recordId,
+          resourceName: selection.resourceName,
+          row: selection.row,
+          field: selection.field,
+        },
+        signal,
+      ),
   )
   const candidateKind = 'marivo-analysis-candidate'
   const candidateId = definitionId(candidateKind)
@@ -195,6 +210,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     ),
   )
   installSemanticReferenceSource(ctx, rpc)
+  installPointReferenceSource(ctx, rpc)
   const credentials = installCredentials(ctx, rpc, credentialChanges(ctx))
   ctx.effect(() =>
     credentials.subscribe(() => {
@@ -267,6 +283,16 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       owners[0].workspaceId === page.target.workspaceId
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
+    const pointLifetime = useRef()
+    useEffect(() => {
+      if (!report.analysisDocument?.recordId || !canAsk || tab.signal.aborted) return
+      const controller = new AbortController()
+      pointLifetime.current = controller
+      return () => {
+        pointLifetime.current = undefined
+        controller.abort()
+      }
+    }, [report.analysisDocument?.recordId, canAsk, tab.signal])
     const receipt = report.analysisDocument ? report.resolvedReceipt : undefined
     const readCode = useMemo(
       () =>
@@ -393,6 +419,26 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       document={report.analysisDocument}
                       openSemanticRef={source}
                       readCode={readCode}
+                      askPoint={
+                        canAsk
+                          ? (selection) =>
+                              pointLifetime.current
+                                ? appendPointReference(
+                                    ctx,
+                                    rpc,
+                                    {
+                                      sessionId: page.sessionId,
+                                      workspaceId: page.target.workspaceId,
+                                      recordId: report.analysisDocument.recordId,
+                                      resourceName: selection.resourceName,
+                                      row: selection.row,
+                                      field: selection.field,
+                                    },
+                                    AbortSignal.any([tab.signal, pointLifetime.current.signal]),
+                                  )
+                                : Promise.reject(new Error('input-unavailable'))
+                          : undefined
+                      }
                     />
                   </>
                 )}

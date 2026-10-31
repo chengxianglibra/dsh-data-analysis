@@ -96,3 +96,38 @@ test('the comparison table keeps the page free of horizontal overflow at 390px',
   // Narrow cards may scroll the table inside the card; the page itself must not.
   assert.equal(await table.evaluate((node) => getComputedStyle(node).overflowX), 'auto')
 })
+
+test('narrow comparison preserves long labels and exposes exact saved values', async () => {
+  await page.setViewportSize({ width: 390, height: 900 })
+  await page.locator('#root').evaluate((node) => {
+    node.style.width = '243px'
+  })
+  const table = page.locator('[data-table-layout="comparison"]')
+  const label = table.locator('tbody th[scope="row"]').first()
+  await label.evaluate((node) => {
+    node.textContent = 'plausible_fare_revenue (USD)'
+  })
+  const measured = await label.evaluate((node) => ({
+    width: node.getBoundingClientRect().width,
+    height: node.getBoundingClientRect().height,
+    whiteSpace: getComputedStyle(node).whiteSpace,
+  }))
+  assert.equal(measured.whiteSpace, 'nowrap')
+  assert.ok(measured.width > 100 && measured.height < 50, JSON.stringify(measured))
+  assert.ok((await overflow()) <= 1)
+  const toolbar = page.locator('.fv-comparison-toolbar').first()
+  const hint = toolbar.locator('.fv-scroll-hint')
+  await hint.waitFor({ state: 'visible' })
+  assert.equal(await hint.getAttribute('title'), 'Scroll horizontally to see more')
+  assert.equal(await table.getAttribute('aria-describedby'), await hint.getAttribute('id'))
+  await table.focus()
+  assert.equal(await table.evaluate((node) => node === document.activeElement), true)
+  const cell = table.locator('td[title]').first()
+  const exact = await cell.getAttribute('title')
+  const toggle = toolbar.getByRole('button', { name: 'Show exact values' })
+  await toggle.click()
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'true')
+  assert.equal(await cell.textContent(), exact)
+  await toggle.click()
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'false')
+})

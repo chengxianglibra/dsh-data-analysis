@@ -13,6 +13,8 @@ export interface AnalysisResourceContext {
    * Resolves undefined when the record is missing; callers compare its sha256 themselves.
    */
   readCode?: (codeRef: PythonCodeRef, signal: AbortSignal) => Promise<{ text: string } | undefined>
+  /** Inserts a saved Frame cell into the current Harness input after host validation. */
+  askPoint?: (selection: { resourceName: string; row: number; field: string }) => Promise<void>
 }
 export const AnalysisResources = createContext<AnalysisResourceContext>({
   readResource: () => undefined,

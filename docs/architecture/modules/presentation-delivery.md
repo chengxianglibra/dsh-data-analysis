@@ -22,12 +22,13 @@ Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
 - 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
   字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
 
-资源声明支持三类：
+资源声明支持四类：
 
 | kind | 字段 | 读取 |
 | --- | --- | --- |
 | `marivo-frame` | `sessionId`、`artifactId` | 在一次 checked execution 中批量有界读取 Frame 快照 |
 | `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_dataset` 签发的快照 |
+| `frame-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_frame` 签发的快照 |
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。`frame-snapshot` 声明的 `snapshotRef` 由 `capture_frame` 签发，
@@ -97,6 +98,8 @@ Workspace/report/build 与已保存文件的路径/digest/大小，headless 可�
 | `files/read` | `{ sessionId \| workspaceId, receipt, asset }` | 读取 receipt 指定的固定 Build JSON |
 | `reports/list` | `{ workspaceId }` | 枚举新格式 Report 的当前标题、摘要、保存时间和来源 |
 | `reports/history` | `{ workspaceId, reportId }` | 返回已确认发布的版本记录和当前 Build 身份 |
+| `point/prepare` | `{ sessionId, workspaceId, recordId, resourceName, row, field }` | 重读固定 Build，生成可用于草稿的 Frame 数据点引用 |
+| `point/serialize` | `{ envelope }` | 以引用中的 Session 重验 Workspace、固定 Build、原始值、轴键、presence 和角色，向模型返回校验后的上下文 |
 
 `sessionId` 与 `workspaceId` 必须恰好提供一个；不接受客户端路径。服务端从 Harness Workspace 成员关系推导路径，
 拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。

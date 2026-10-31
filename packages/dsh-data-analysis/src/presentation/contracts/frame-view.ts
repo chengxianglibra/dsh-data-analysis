@@ -436,6 +436,19 @@ function distinctKeys(x: Context, token: string) {
     seen.add(JSON.stringify(columns.map((c) => c[i])))
   return seen.size
 }
+/** A heatmap must represent each captured row with a distinct pair of full axis keys. */
+function uniqueHeatmapCells(x: Context, xToken: string, yToken: string) {
+  const columns = [xToken, yToken].map((token) =>
+    axisToken(x, token).keys.map((key) => x.snapshot.frame.coordinates[key.slotId]!.values),
+  )
+  const seen = new Set<string>()
+  for (let row = 0; row < x.snapshot.data.rows.length; row++) {
+    const key = JSON.stringify(columns.map((axis) => axis.map((column) => column[row])))
+    if (seen.has(key)) return false
+    seen.add(key)
+  }
+  return true
+}
 /** Periods of a time axis from `read_periods` when captured, so empty periods count too. */
 function periodCount(x: Context, token: string) {
   const periods = x.snapshot.frame.sections.periods
@@ -663,12 +676,12 @@ function auto(x: Context): ResolvedFrameView {
       const series = c.categoryAxes[0]!
       if (distinctKeys(x, series) <= MAX_SERIES)
         return { chart: 'line', axis: c.timeAxis!, series, values, broadcast }
-      return values.length === 1
+      return values.length === 1 && uniqueHeatmapCells(x, c.timeAxis!, series)
         ? { chart: 'heatmap', x: c.timeAxis!, y: series, value: values[0]! }
         : allColumns(x)
     }
     case 'matrix':
-      return values.length === 1
+      return values.length === 1 && uniqueHeatmapCells(x, c.categoryAxes[0]!, c.categoryAxes[1]!)
         ? { chart: 'heatmap', x: c.categoryAxes[0]!, y: c.categoryAxes[1]!, value: values[0]! }
         : allColumns(x)
     default:
@@ -768,14 +781,11 @@ function explicit(
         const yAxis = axisNamed(x, yName)
         if (!yAxis || yAxis.token === xAxis.token)
           return fail('view-name-unknown', '/view/encoding/y')
-        return (
-          drawableValue(x, value, '/view/encoding/value') ?? {
-            chart: 'heatmap',
-            x: xAxis.token,
-            y: yAxis.token,
-            value,
-          }
-        )
+        const error = drawableValue(x, value, '/view/encoding/value')
+        if (error) return error
+        if (!uniqueHeatmapCells(x, xAxis.token, yAxis.token))
+          return fail('view-target-ambiguous', '/view')
+        return { chart: 'heatmap', x: xAxis.token, y: yAxis.token, value }
       }
       const grid =
         c.shape === 'matrix'
@@ -787,7 +797,8 @@ function explicit(
         x,
         c.primaryValues.filter((v) => drawable(x, v)),
       ).values
-      if (!grid || values.length !== 1) return fail('view-target-ambiguous', '/view')
+      if (!grid || values.length !== 1 || !uniqueHeatmapCells(x, grid[0]!, grid[1]!))
+        return fail('view-target-ambiguous', '/view')
       return { chart: 'heatmap', x: grid[0]!, y: grid[1]!, value: values[0]! }
     }
     case 'comparison': {

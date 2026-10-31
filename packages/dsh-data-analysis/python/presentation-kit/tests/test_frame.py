@@ -183,6 +183,41 @@ def test_selection_omits_unsupported_unselected_slots_but_keeps_all_keys():
         read_frame(frame, columns=["amount"])
 
 
+def test_paired_calendar_exports_datetime_endpoints_and_keeps_the_ordinal_key():
+    frame, _ = fixture()
+    schema = frame.schema
+    axis = schema.axes[0]
+    axis.role = "paired"
+    axis.keys[0].dtype = NS(name="int64")
+    endpoint = NS(kind="calendar", name="month", at=None, timezone="UTC",
+                  grain=NS(kind="builtin", unit="month", step=1))
+    axis.left = endpoint
+    axis.right = endpoint
+    left = Layout("coordinate", "month.left", axis_token="region-axis", endpoint="left")
+    right = Layout("coordinate", "month.right", axis_token="region-axis", endpoint="right")
+    schema.layout = (left, right, *schema.layout[1:])
+
+    def read_page(*, columns, limit):
+        rows = pd.DataFrame({"month.left": [T1], "month.right": [T0],
+                             "amount": [Decimal("12345678901234.5678")], "account": [2**53 + 1]})
+        class Page:
+            input_id = "input"
+            layout = schema.layout
+            coordinates = {"key": (1,)}
+            total_count = 1
+            has_more = False
+            next_cursor = None
+            read_stats = NS(data_rows_read=1, coordinate_rows_read=1, receipt_bytes_hashed=100)
+            def __len__(self): return len(rows)
+            def to_pandas(self): return rows.copy()
+        return Page()
+    frame.read_page = read_page
+    result = read_frame(frame)
+    assert [c["type"] for c in result["data"]["columns"][:2]] == ["datetime", "datetime"]
+    assert result["data"]["rows"][0][:2] == [T1.isoformat(), T0.isoformat()]
+    assert result["frame"]["coordinates"]["key"]["values"] == ["1"]
+
+
 @pytest.mark.parametrize("part", ["start", "end", "nominal_start", "nominal_end", "label"])
 @pytest.mark.parametrize("empty", [False, True])
 def test_temporal_coordinate_parts_follow_the_marivo_enum(part, empty):

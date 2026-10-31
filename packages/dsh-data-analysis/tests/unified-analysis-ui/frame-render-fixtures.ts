@@ -38,6 +38,7 @@ export interface RenderOptions {
   semantic?: boolean
   codeRef?: { executionId: string; sha256: string }
   readCode?: boolean
+  askPoint?: boolean
 }
 export interface Renderer {
   /** End to end through AnalysisDataView and the real resolveFrameView. */
@@ -69,7 +70,8 @@ const provide = (options, child) => createElement(AnalysisResources.Provider, {v
   readResource: () => ({kind: 'snapshot', snapshot: options.snapshot,
     binding: options.codeRef ? {codeRef: options.codeRef} : {}}),
   openSemanticRef: options.semantic ? () => {} : undefined,
-  readCode: options.readCode ? async () => ({text: ''}) : undefined}}, child);
+  readCode: options.readCode ? async () => ({text: ''}) : undefined,
+  askPoint: options.askPoint ? async () => true : undefined}}, child);
 export function render(snapshot, options = {}) {
   return renderToStaticMarkup(provide({...options, snapshot},
     createElement(AnalysisDataView, {kind: snapshot.kind, resourceName: 'result',

@@ -134,7 +134,7 @@ const viewHints: Record<string, string> = {
   'analysis-view-name-unknown': 'use a value or axis name from this snapshot.',
   'analysis-view-dtype-not-drawable': 'choose a numeric value or use chart "table".',
   'analysis-view-target-ambiguous':
-    'add encoding.value to show one metric, or omit encoding to render every comparison group as one table.',
+    'choose axes that uniquely identify each row or use chart "table"; for comparisons, add encoding.value to show one metric, or omit encoding to render every comparison group as one table.',
   'analysis-view-role-missing': 'this comparison or decomposition lacks the roles for this chart.',
   'analysis-view-axis-not-time': 'line/area/bar axis must be a calendar or interval axis.',
   'analysis-view-requires-complete-snapshot':
