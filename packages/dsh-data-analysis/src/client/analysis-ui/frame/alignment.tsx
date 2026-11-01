@@ -1,10 +1,5 @@
 import { useCopy } from '../../i18n/context.tsx'
-import {
-  type DomainPoint,
-  DomainPointList,
-  DomainPointMark,
-  uniquelyBound,
-} from './domain-point-selection.tsx'
+import { type DomainPoint, DomainPointMark, uniquelyBound } from './domain-point-selection.tsx'
 import {
   axisOf,
   cellOf,
@@ -130,9 +125,7 @@ export function AlignmentView({
     )
     const selectionAt = (i: number, name: string, side: 'left' | 'right') =>
       counts.get(i) === 1 ? point(byTick.get(i), name, side, ticks[i]?.label ?? '') : undefined
-    const selections = ticks
-      .flatMap((_, i) => series.map((l) => selectionAt(i, l.name, l.side)))
-      .filter((p): p is DomainPoint => p !== undefined)
+
     return (
       <>
         <ChartFrame
@@ -181,7 +174,6 @@ export function AlignmentView({
             </>
           )}
         </ChartFrame>
-        <DomainPointList points={selections} />
       </>
     )
   }
@@ -216,14 +208,7 @@ export function AlignmentView({
         textWidth(`${text(row, p.left, 'left')} · ${text(row, p.right, 'right')}`),
       )
   const chartWidth = Math.max(W, W - END_W + 18 + endWidth)
-  const selections = rows
-    .flatMap((row) =>
-      pairs.flatMap((p) => [
-        point(row, p.left, 'left', membersLabel(s, axes, row)),
-        point(row, p.right, 'right', membersLabel(s, axes, row)),
-      ]),
-    )
-    .filter((p): p is DomainPoint => p !== undefined)
+
   return (
     <>
       <ChartFrame
@@ -296,7 +281,6 @@ export function AlignmentView({
           </>
         )}
       </ChartFrame>
-      <DomainPointList points={selections} />
     </>
   )
 }

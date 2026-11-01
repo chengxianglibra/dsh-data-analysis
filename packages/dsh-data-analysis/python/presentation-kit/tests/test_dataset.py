@@ -235,7 +235,7 @@ def test_integer_object_mixed_with_float_cannot_lose_precision() -> None:
 def test_public_surface_has_only_capture_and_result_types() -> None:
     import dsh_data_analysis_presentation as package
 
-    assert package.__version__ == "1.5.0"
+    assert package.__version__ == "1.5.1"
     assert package.__all__ == [
         "PresentationDatasetError",
         "DatasetCaptureReceipt",

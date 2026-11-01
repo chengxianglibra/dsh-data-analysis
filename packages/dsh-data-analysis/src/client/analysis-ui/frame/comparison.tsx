@@ -3,12 +3,8 @@ import type { FrameClassification } from '../../../presentation/contracts/frame-
 import type { FrameComparison } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
-import {
-  type DomainPoint,
-  DomainPointList,
-  DomainPointMark,
-  uniquelyBound,
-} from './domain-point-selection.tsx'
+import { DatasetTable } from '../../presentation/table.tsx'
+import { type DomainPoint, DomainPointMark, uniquelyBound } from './domain-point-selection.tsx'
 import {
   axisOf,
   cellOf,
@@ -138,12 +134,13 @@ export function comparisonTableSections(s: Snapshot): ComparisonTableSection[] {
 export function ComparisonTable({
   snapshot: s,
   classification: c,
+  exactValues = false,
 }: {
   snapshot: Snapshot
   classification: FrameClassification
+  exactValues?: boolean
 }) {
   const t = useCopy()
-  const [showExact, setShowExact] = useState(false)
   const [scrollable, setScrollable] = useState(false)
   const scrollRef = useRef<HTMLElement>(null)
   const hintId = useId()
@@ -169,7 +166,7 @@ export function ComparisonTable({
     if (!present(s, row, presence)) return <td className="pr-numeric">—</td>
     return (
       <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
-        {showExact ? exact(value, column) : compact(t.locale, value, column)}
+        {exactValues ? exact(value, column) : compact(t.locale, value, column)}
       </td>
     )
   }
@@ -183,7 +180,7 @@ export function ComparisonTable({
         : percent(t.locale, name && bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
     return (
       <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
-        {showExact && value !== null
+        {exactValues && value !== null
           ? kind === 'percent'
             ? `${text} (${exact(value, column)} × 100)`
             : exact(value, column)
@@ -213,13 +210,6 @@ export function ComparisonTable({
             <span className="fv-sr-only">{t('marivo.presentation.ui-frame-scroll-hint')}</span>
           </span>
         )}
-        <button
-          type="button"
-          aria-pressed={showExact}
-          onClick={() => setShowExact((value) => !value)}
-        >
-          {t('marivo.presentation.ui-frame-exact-values')}
-        </button>
       </div>
       <section
         ref={scrollRef}
@@ -234,10 +224,18 @@ export function ComparisonTable({
           <thead>
             <tr>
               <th scope="col">{t('marivo.presentation.ui-frame-comparison-metric')}</th>
-              <th scope="col">{ends.current}</th>
-              <th scope="col">{ends.baseline}</th>
-              <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta')}</th>
-              <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta-percent')}</th>
+              <th scope="col" className="pr-numeric">
+                {ends.current}
+              </th>
+              <th scope="col" className="pr-numeric">
+                {ends.baseline}
+              </th>
+              <th scope="col" className="pr-numeric">
+                {t('marivo.presentation.ui-frame-comparison-delta')}
+              </th>
+              <th scope="col" className="pr-numeric">
+                {t('marivo.presentation.ui-frame-comparison-delta-percent')}
+              </th>
             </tr>
           </thead>
           {sections.length > 1 ? (
@@ -260,6 +258,53 @@ export function ComparisonTable({
         </table>
       </section>
     </>
+  )
+}
+
+/** Saved comparison roles grouped by metric and endpoint, with coordinates retained. */
+export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
+  const t = useCopy()
+  const coordinates = s.frame.layout
+    .filter((item) => item.kind === 'coordinate')
+    .map((item) => item.name)
+  return (
+    <div className="fv-comparison-details">
+      {comparisonTableSections(s).flatMap((section) =>
+        section.rows.map((roles) => {
+          const ends = endpointLabels(t, s, section.index)
+          const fields = [roles.current, roles.baseline, roles.absolute, roles.relative]
+          const labels = [
+            ends.current,
+            ends.baseline,
+            t('marivo.presentation.ui-frame-comparison-delta'),
+            t('marivo.presentation.ui-frame-comparison-delta-percent'),
+          ]
+          const columns = [
+            ...coordinates.flatMap((name) => {
+              const column = columnOf(s, name)?.column
+              return column ? [column] : []
+            }),
+            ...fields.flatMap((name, i) => {
+              const column = name ? columnOf(s, name)?.column : undefined
+              return column ? [{ ...column, label: labels[i]! }] : []
+            }),
+          ]
+          const rows = s.data.rows.map((_, row) =>
+            columns.map((column) =>
+              coordinates.includes(column.id)
+                ? cellOf(s, row, column.id)
+                : visibleCell(s, row, roles, column.id),
+            ),
+          )
+          return (
+            <section key={`${section.index}:${roles.group.name}`}>
+              <h4>{`${valueName(s, undefined, roles.current!)} · ${ends.current} ⇄ ${ends.baseline}`}</h4>
+              <DatasetTable data={{ ...s.data, columns, rows }} caption="" />
+            </section>
+          )
+        }),
+      )}
+    </div>
   )
 }
 
@@ -547,13 +592,7 @@ function CompareLine({
       return `${tick.label} ${v(roles.current)} / ${v(roles.baseline)}`
     }),
   )
-  const selections = ticks
-    .flatMap((_, i) => [
-      selectionAt(i, roles.current, 'current'),
-      selectionAt(i, roles.baseline, 'baseline'),
-      selectionAt(i, roles.absolute, 'delta'),
-    ])
-    .filter((item): item is DomainPoint => item !== undefined)
+
   return (
     <>
       <ChartFrame
@@ -640,7 +679,6 @@ function CompareLine({
           </>
         )}
       </ChartFrame>
-      <DomainPointList points={selections} />
     </>
   )
 }
@@ -681,16 +719,7 @@ function CompareRows({
       ],
       membersLabel(s, axes, row),
     )
-  const selections = rows
-    .flatMap((row) =>
-      delta
-        ? [selectionAt(row, roles.absolute, 'delta')]
-        : [
-            selectionAt(row, roles.current, 'current'),
-            selectionAt(row, roles.baseline, 'baseline'),
-          ],
-    )
-    .filter((item): item is DomainPoint => item !== undefined)
+
   const top = 4
   const height = top + rows.length * rowH + 4
   const endW = 96
@@ -812,7 +841,6 @@ function CompareRows({
           </>
         )}
       </ChartFrame>
-      <DomainPointList points={selections} />
     </>
   )
 }

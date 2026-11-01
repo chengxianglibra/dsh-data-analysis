@@ -10,9 +10,12 @@ export interface AnalysisResourceContext {
   openSemanticRef?: OpenSemanticRef
   /**
    * Reads the saved Python source bound to a snapshot by the Host; absent offline.
-   * Resolves undefined when the record is missing; callers compare its sha256 themselves.
+   * Resolves undefined when the record is missing; sha256 identifies the verified execution record.
    */
-  readCode?: (codeRef: PythonCodeRef, signal: AbortSignal) => Promise<{ text: string } | undefined>
+  readCode?: (
+    codeRef: PythonCodeRef,
+    signal: AbortSignal,
+  ) => Promise<{ text: string; sha256: string } | undefined>
   /** Inserts a saved Frame cell into the current Harness input after host validation. */
   askPoint?: (selection: { resourceName: string; row: number; field: string }) => Promise<void>
 }

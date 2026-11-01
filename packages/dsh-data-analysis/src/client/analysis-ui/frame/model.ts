@@ -209,7 +209,34 @@ export interface Tick {
   title: string
   incomplete: boolean
 }
+/** Describe only saved calendar selection facts; its bounds are not available. */
+export function periodDetail(t: Translator, item: Period | null): string {
+  if (!item) return ''
+  if (item.kind === 'calendar' && 'selection' in item) {
+    const description = t(`${P}ui-frame-selection-${item.selection}`)
+    return item.cutoff ? `${description}: ${item.cutoff}` : description
+  }
+  return periodRange(item)
+}
+
 function periodTick(t: Translator, item: Period, variant?: FrameAxisVariant): Tick {
+  if (item.kind === 'calendar' && 'selection' in item) {
+    const label = item.label === null ? '—' : String(item.label)
+    // Builtin labels are saved civil strings; abbreviate them without timezone conversion.
+    const grain = variant?.kind === 'calendar' ? variant.grain : undefined
+    const abbreviated =
+      grain?.kind === 'builtin' && grain.unit === 'day' && /^\d{4}-\d{2}-\d{2}/.test(label)
+        ? label.slice(5, 10)
+        : grain?.kind === 'builtin' && grain.unit === 'month' && /^\d{4}-\d{2}/.test(label)
+          ? label.slice(0, 7)
+          : label
+    return {
+      key: JSON.stringify(item.key),
+      label: abbreviated,
+      title: `${label} · ${periodDetail(t, item)}`,
+      incomplete: item.selection !== 'full',
+    }
+  }
   const full = (iso: string) => instantText(iso, item.timezone, 'full')
   const range = `${full(item.start)} – ${full(item.end)}`
   if (item.kind === 'interval')
@@ -357,7 +384,11 @@ function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
 function periodText(p: Period | null): string {
   if (!p) return '—'
   if (p.kind === 'calendar' && p.label !== null) return String(p.label)
-  return p.kind === 'calendar' ? instantText(p.nominalStart, p.timezone, 'day') : intervalText(p)
+  return p.kind === 'calendar'
+    ? 'nominalStart' in p
+      ? instantText(p.nominalStart, p.timezone, 'day')
+      : '—'
+    : intervalText(p)
 }
 /** What a comparison compares: period labels, differing fixed members, else the alias. */
 export function endpointLabels(t: Translator, s: Snapshot, index: number) {
@@ -368,6 +399,8 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
   }
   if (!comparison) return fallback
   if (comparison.binding.kind !== 'ordinary') {
+    const page = comparisonPeriodPage(s, index)
+    if (page?.hasMore) return fallback
     const items = comparisonPeriods(s, index)
     const first = items[0]
     const last = items.at(-1)
@@ -391,14 +424,19 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
       }
     : fallback
 }
-export function comparisonPeriods(s: Snapshot, index: number) {
-  const page = periodsOf(s)?.pages.find(
+export function comparisonPeriodPage(s: Snapshot, index: number) {
+  return periodsOf(s)?.pages.find(
     (p) => p.target.kind === 'comparison' && p.target.comparison === index,
   )
-  return (page?.items ?? []).flatMap((item) => (item.kind === 'comparison' ? [item] : []))
+}
+export function comparisonPeriods(s: Snapshot, index: number) {
+  return (comparisonPeriodPage(s, index)?.items ?? []).flatMap((item) =>
+    item.kind === 'comparison' ? [item] : [],
+  )
 }
 export function periodRange(p: Period | null): string {
   if (!p) return '—'
+  if (p.kind === 'calendar' && 'selection' in p) return ''
   return `${instantText(p.start, p.timezone, 'full')} – ${instantText(p.end, p.timezone, 'full')}`
 }
 export function periodLabel(p: Period | null): string {

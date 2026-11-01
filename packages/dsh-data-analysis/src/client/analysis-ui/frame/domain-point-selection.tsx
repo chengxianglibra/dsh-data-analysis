@@ -1,5 +1,4 @@
-import { type ReactNode, useState } from 'react'
-import { useCopy } from '../../i18n/context.tsx'
+import type { ReactNode } from 'react'
 import { interpretationOf, type Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 
@@ -29,7 +28,7 @@ export function DomainPointMark({ point, children }: { point?: DomainPoint; chil
   const selection = useFrameSelection()
   if (!point || !selection) return <>{children}</>
   return (
-    // biome-ignore lint/a11y/useSemanticElements: SVG marks cannot contain an HTML button; equivalent native buttons follow the chart.
+    // biome-ignore lint/a11y/useSemanticElements: SVG marks cannot contain an HTML button; expose keyboard activation directly.
     <g
       role="button"
       tabIndex={0}
@@ -46,53 +45,5 @@ export function DomainPointMark({ point, children }: { point?: DomainPoint; chil
     >
       {children}
     </g>
-  )
-}
-
-/** SVG images are atomic to some assistive technologies; provide equivalent native buttons. */
-export function DomainPointList({ points }: { points: DomainPoint[] }) {
-  const selection = useFrameSelection()
-  const t = useCopy()
-  const [open, setOpen] = useState(false)
-  const [page, setPage] = useState(0)
-  if (!selection || points.length === 0) return null
-  const pages = Math.ceil(points.length / 50)
-  const current = Math.min(page, pages - 1)
-  return (
-    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>{t('marivo.presentation.ui-frame-select-point')}</summary>
-      {open && (
-        <div
-          style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 240, overflow: 'auto' }}
-        >
-          {points.slice(current * 50, (current + 1) * 50).map((point) => (
-            <button
-              key={`${point.row}:${point.field}`}
-              type="button"
-              onClick={() => selection.select(point.row, point.field)}
-            >
-              {point.label}
-            </button>
-          ))}
-          {pages > 1 && (
-            <div>
-              <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>
-                {t('marivo.presentation.previous-page')}
-              </button>
-              <span>
-                {current + 1} / {pages}
-              </span>
-              <button
-                type="button"
-                disabled={current === pages - 1}
-                onClick={() => setPage(current + 1)}
-              >
-                {t('marivo.presentation.next-page')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </details>
   )
 }

@@ -351,11 +351,12 @@ def _interpretation(schema):
 
 def _period(item, fields):
     kind = _closed(item.kind, ("calendar", "interval"))
-    result = {"kind": kind, "key": _key(item.key, fields), "timezone": _text(item.timezone),
-              "start": _instant(item.start), "end": _instant(item.end)}
+    result = {"kind": kind, "key": _key(item.key, fields), "timezone": _text(item.timezone)}
     if kind == "calendar":
-        result.update(label=_label(item.label), nominalStart=_instant(item.nominal_start),
-                      nominalEnd=_instant(item.nominal_end))
+        result.update(label=_label(item.label), selection=_closed(item.selection, ("full", "prefix", "partial", "unavailable")),
+                      cutoff=None if item.cutoff is None else _text(item.cutoff))
+    else:
+        result.update(start=_instant(item.start), end=_instant(item.end))
     return result
 
 

@@ -277,7 +277,7 @@ test('real helper finalization reports capture failure separately from original 
       'install',
       '--python',
       python,
-      path.join(runtimeRoot, 'dsh_data_analysis_presentation_kit-1.5.0-py3-none-any.whl'),
+      path.join(runtimeRoot, 'dsh_data_analysis_presentation_kit-1.5.1-py3-none-any.whl'),
     ],
   ]) {
     const setup = spawnSync('uv', args, { encoding: 'utf8', timeout: 120_000 })

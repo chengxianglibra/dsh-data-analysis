@@ -87,10 +87,11 @@ export function savedCodeReader(
     if (
       !value ||
       typeof value !== 'object' ||
-      typeof (value as { text?: unknown }).text !== 'string'
+      typeof (value as { text?: unknown }).text !== 'string' ||
+      typeof (value as { sha256?: unknown }).sha256 !== 'string'
     )
       throw new Error('analysis-ui-read-failed')
-    return { text: (value as { text: string }).text }
+    return { text: (value as { text: string }).text, sha256: (value as { sha256: string }).sha256 }
   }
 }
 export function CandidateView({

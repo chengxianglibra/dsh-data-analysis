@@ -5,7 +5,10 @@ import type {
   ResolvedFrameView,
 } from '../../src/presentation/contracts/frame-view.ts'
 import { resolveFrameView } from '../../src/presentation/contracts/frame-view.ts'
-import type { FrameSnapshotV2 } from '../../src/presentation/contracts/snapshot.ts'
+import {
+  type FrameSnapshotV2,
+  parseAnalysisSnapshot,
+} from '../../src/presentation/contracts/snapshot.ts'
 import {
   align,
   attributeAdditive,
@@ -173,16 +176,16 @@ test('a legend is hidden only when it repeats the sole displayed metric', () => 
   assert.match(broadcast, /class="fv-legend"/)
 })
 
-test('official points expose original values through a keyboard selection list only in an actionable surface', () => {
+test('official points expose accessible keyboard targets only in an actionable surface', () => {
   const snapshot = observeTime(6)
   const actionable = r.render(snapshot, { askPoint: true })
   assert.match(actionable, /data-chart-engine="openui"/)
-  assert.match(actionable, /Select a data point|选择数据点/)
+  assert.match(actionable, /class="fv-keyboard-points"/)
   const value =
     snapshot.data.rows[0]![snapshot.data.columns.findIndex((column) => column.id === 'm0')]
   assert.match(actionable, new RegExp(String(value)))
   const readOnly = r.render(snapshot)
-  assert.doesNotMatch(readOnly, /Select a data point|选择数据点/)
+  assert.doesNotMatch(readOnly, /class="fv-keyboard-points"/)
 })
 
 test('missing observations use the truthful renderer and offer only present values for selection', () => {
@@ -190,7 +193,7 @@ test('missing observations use the truthful renderer and offer only present valu
   const html = r.render(snapshot, { askPoint: true })
   assert.doesNotMatch(html, /data-chart-engine="openui"/)
   assert.equal(count(html, /data-mark="zero"/), 1)
-  assert.match(html, /Select a data point|选择数据点/)
+  assert.doesNotMatch(html, /Select a data point|选择数据点/)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
 })
 
@@ -229,10 +232,10 @@ test('heatmap leaves NULL cells empty and selects only saved numeric values', ()
 test('correlation and saved shares expose data points without selecting reference tracks', () => {
   const correlation = r.render(correlate(true), { askPoint: true })
   assert.match(correlation, /role="button" tabindex="0"[^>]*aria-label="[^"]*n /)
-  assert.match(correlation, /Select a data point|选择数据点/)
+  assert.doesNotMatch(correlation, /Select a data point|选择数据点/)
   const shares = r.render(shareByRegion(), { askPoint: true })
   assert.ok(count(shares, /role="button" tabindex="0"/) > 0)
-  assert.match(shares, /Select a data point|选择数据点/)
+  assert.doesNotMatch(shares, /Select a data point|选择数据点/)
   assert.doesNotMatch(shares, /class="fv-track"[^>]*role="button"/)
 })
 
@@ -440,6 +443,31 @@ test('an incomplete period draws a hollow point or a hatched bar with both bound
   assert.equal(count(bars, /data-mark="hatched"/), 1)
 })
 
+test('calendar periods use saved labels and selection states without invented bounds', () => {
+  const snapshot = monthly([1, 2, 3, 4])
+  const periods = snapshot.frame.sections.periods
+  assert.equal(periods.status, 'captured')
+  if (periods.status !== 'captured') return
+  const items = periods.pages[0]!.items
+  const selections = ['full', 'prefix', 'partial', 'unavailable'] as const
+  periods.pages[0]!.items = items.map((item, index) => ({
+    kind: 'calendar' as const,
+    key: item.key,
+    timezone: 'Asia/Shanghai',
+    label: `2025-0${index + 1}`,
+    selection: selections[index]!,
+    cutoff: index === 1 ? '2025-02-15T12:00:00.000000' : null,
+  }))
+  const html = r.render(parseAnalysisSnapshot(snapshot))
+  assert.match(html, /data-tick="2025-01"/)
+  assert.match(html, /Full period/)
+  assert.match(html, /Period prefix, local cutoff: 2025-02-15T12:00:00.000000/)
+  assert.match(html, /Partial period/)
+  assert.match(html, /Period selection unavailable/)
+  assert.equal(count(html, /data-mark="hatched"/), 3)
+  assert.doesNotMatch(html, /Nominal |Actual /)
+})
+
 test('presence false draws only the present side', () => {
   const html = r.render(comparedCategories([true, false, true]))
   assert.equal(viewOf(html), 'comparison')
@@ -504,7 +532,7 @@ test('a single-row multi-group comparison is one transposed table plus the audit
     /^<section class="pr-table fv-comparison-table" data-table-layout="comparison"/,
   )
   // metric | current | baseline | Δ | Δ% — endpoints come from the comparison.
-  assert.equal(count(block, /<th scope="col">/), 5)
+  assert.equal(count(block, /<th scope="col"/), 5)
   for (const header of ['Metric', 'Current', 'Baseline', 'Δ', 'Δ%'])
     assert.ok(block.includes(`>${header}</th>`), header)
   // Two groups on one saved row: two data rows in one tbody, no section headers.
@@ -513,7 +541,7 @@ test('a single-row multi-group comparison is one transposed table plus the audit
   assert.equal(count(block, /<td class="pr-numeric"/), 8)
   assert.equal(count(block, /<tbody>/), 1)
   assert.doesNotMatch(block, /fv-comparison-section/)
-  // Raw role column ids stay in the collapsed audit table, never in the display table.
+  // Raw role column ids stay out of the display table.
   assert.doesNotMatch(block, /prior\.(?:baseline|relative)\./)
   assert.match(html, /<details class="fv-table">/)
   assert.match(html, /<h3 class="fv-title">Current ⇄ Baseline<\/h3>/)
@@ -535,8 +563,8 @@ test('interval comparison endpoints name inclusive civil months', () => {
   const html = r.render(comparedIntervalMonth())
   assert.equal(viewOf(html), 'table')
   const block = comparisonTable(html)
-  assert.match(block, /<th scope="col">2025-06<\/th>/)
-  assert.match(block, /<th scope="col">2025-05<\/th>/)
+  assert.match(block, /<th scope="col" class="pr-numeric">2025-06<\/th>/)
+  assert.match(block, /<th scope="col" class="pr-numeric">2025-05<\/th>/)
   assert.match(html, /<h3 class="fv-title">2025-06 ⇄ 2025-05<\/h3>/)
   assert.doesNotMatch(block, /07-01/)
   assert.doesNotMatch(block, /06-01 – 07-01/)
@@ -736,8 +764,10 @@ test('comparison changes require both direct endpoints but ignore enclosing and 
     }
     assert.match(chart, /800001/)
     assert.match(chart, /800005/)
-    // The saved data table remains an audit view, including original cells from absent sides.
-    assert.match(html, /800002/)
+    // Detailed comparison retains endpoint masking for absent sides.
+    const details = r.render(snapshot, { view, display: { dataTable: 'visible' } })
+    assert.match(details, /800001/)
+    assert.doesNotMatch(details, /800002/)
   }
 })
 
@@ -777,7 +807,7 @@ test('comparison numbers and transposed tables mask changes for explicitly absen
   const values = /<dl class="fv-numbers">[\s\S]*?<\/dl>/.exec(numbers)?.[0] ?? ''
   assert.doesNotMatch(values, /432100|432,100|43,210,000/)
   assert.ok(count(values, /—/) >= 2)
-  assert.match(numbers, /432100/)
+  assert.doesNotMatch(numbers, /432100/)
 })
 
 test('nearby comparison marks retain distinct centres and original values', () => {
@@ -864,6 +894,7 @@ test('compact density keeps the name, header numbers or the main view and only u
   const trend = r.render(observeTime(18), { display: { density: 'compact' } })
   assert.match(trend, /class="fv-svg"/)
   assert.equal(count(trend, /data-icon="/), 0)
+  assert.match(trend, /<details class="fv-table">/)
   const periods = r.render(comparedCalendarWithPeriods(3), { display: { density: 'compact' } })
   assert.equal(count(periods, /data-icon="/), 1)
   assert.match(periods, /data-icon="periods"/)
@@ -905,8 +936,6 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.match(origins, /executionId 6f9619ff/)
   // sessionId and artifactId only live in the (closed) developer area of the Python dialog.
   assert.doesNotMatch(origins, /sessionId|artifactId|>session</)
-  assert.ok(r.codeMatches('', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'))
-  assert.ok(!r.codeMatches('x', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'))
 })
 
 test('chips appear only for saved facts and the data table is collapsible', () => {

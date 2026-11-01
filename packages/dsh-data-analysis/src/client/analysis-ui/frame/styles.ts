@@ -77,6 +77,8 @@ body[data-ds-dark-theme] .fv{${dark}}
 .fv-comparison-table thead th{white-space:nowrap}
 .fv-comparison-table td.pr-numeric{white-space:nowrap}
 .fv-comparison-section th{color:var(--pr-muted);font-size:12px;text-align:left}
+.fv-comparison-details{display:grid;gap:12px}
+.fv-comparison-details h4{margin:8px 0 0;font-size:12px}
 .fv .pr-table table{width:max-content;min-width:100%}
 .fv .pr-table thead th{white-space:nowrap;overflow-wrap:normal;max-width:none}
 .fv-table summary{cursor:pointer;font-size:12px;color:var(--pr-muted)}
@@ -94,7 +96,9 @@ ${frozen}
 .fv-tip{position:absolute;left:0;bottom:calc(100% + 4px);z-index:5;display:none;width:max-content;max-width:min(320px,80vw);padding:6px 8px;border-radius:6px;background:var(--pr-text);color:var(--pr-bg);font-size:12px;line-height:1.4;white-space:pre-line;pointer-events:none}
 .fv-icon:hover .fv-tip,.fv-icon:focus-within .fv-tip{display:block}
 .fv-head [data-icon=copy-data] .fv-tip,.fv-dialog [data-icon=copy-code] .fv-tip{left:auto;right:0}
-.fv-table-toggle{position:relative;width:max-content}
+.fv-table-toggle{position:relative;display:flex;align-items:center;width:max-content;padding:2px 6px;list-style:none}
+.fv-table-toggle::-webkit-details-marker{display:none}
+.fv-table-toggle:hover,.fv-table-toggle:focus-visible{outline:1px solid var(--pr-border);border-radius:4px}
 .fv-table-toggle:hover .fv-tip,.fv-table-toggle:focus-visible .fv-tip{display:block}
 .fv-dialog{max-width:min(720px,92vw);width:100%;border:1px solid var(--pr-border);border-radius:10px;padding:0;background:var(--pr-bg);color:var(--pr-text)}
 .fv-dialog::backdrop{background:rgba(0,0,0,.35)}
@@ -109,11 +113,10 @@ ${frozen}
 .fv-dev dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,monospace}
 .fv-origins{margin:0;padding-left:18px;display:grid;gap:4px}
 .fv-origins code{font-size:11px;color:var(--pr-muted)}
-.fv-selection{display:grid;gap:8px;margin-top:12px;padding:12px;border:1px solid var(--pr-border);border-radius:8px;background:var(--pr-soft)}
-.fv-selection dl{display:grid;gap:4px;margin:0;font-size:12px}
-.fv-selection dl>div{display:grid;grid-template-columns:minmax(100px,auto) 1fr;gap:12px}
-.fv-selection dt{color:var(--pr-muted);overflow-wrap:anywhere}.fv-selection dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.fv-selection button{justify-self:start}.fv-selection p{margin:0}
+.fv-keyboard-points{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.fv-keyboard-points:focus-within{position:static;width:auto;height:auto;clip-path:none;display:flex;flex-wrap:wrap;gap:4px;max-height:160px;overflow:auto}
+.fv-point-menu{position:fixed;z-index:1000;display:grid;gap:6px;padding:6px;border:1px solid var(--pr-border);border-radius:8px;background:var(--pr-bg);box-shadow:0 4px 16px #0003}
+.fv-point-menu p{margin:0;font-size:12px;color:var(--pr-muted)}
 .fv .pr-cell-select{display:inline;padding:0;border:0;border-radius:0;background:transparent;color:inherit;text-align:inherit;font:inherit;font-variant-numeric:inherit;text-decoration:underline;text-decoration-color:var(--pr-border);text-underline-offset:2px}
 .fv .pr-cell-select:hover,.fv .pr-cell-select:focus-visible{text-decoration-color:currentColor}
 .fv[data-density=compact]{gap:4px;padding:10px}

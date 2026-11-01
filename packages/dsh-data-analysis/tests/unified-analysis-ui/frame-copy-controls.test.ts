@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -12,7 +11,8 @@ test('Frame copy icons retain locale, keyboard access, feedback and exact saved 
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-frame-copy-'))
   const browser = await chromium.launch()
   const code = 'print("taxi")\n'
-  const sha = createHash('sha256').update(code).digest('hex')
+  // codeRef identifies the verified execution record, not the text alone.
+  const sha = 'a'.repeat(64)
   try {
     await build({
       stdin: {
@@ -25,7 +25,7 @@ const codeRef = {executionId:'6f9619ff-8b86-4d01-b42d-00cf4fc964ff',sha256:${JSO
 const resource = {kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'ref'},snapshot,binding:{workspaceId:'w',codeRef}};
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program:'root = AnalysisFrameView("result", {chart:"table"});',title:'Frame',locale:new URLSearchParams(location.search).get('locale') || 'en-US',
-  resources:{result:resource},readCode:async () => ({text:${JSON.stringify(code)}})
+  resources:{result:resource},readCode:async () => ({text:${JSON.stringify(code)},sha256:${JSON.stringify(sha)}})
 }));`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
       },

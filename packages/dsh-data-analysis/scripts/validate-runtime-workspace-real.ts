@@ -32,7 +32,7 @@ try {
   assert.deepEqual(reused, runtime)
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
   assert.equal(marker.marivoVersion, runtime.marivoVersion)
-  assert.equal(marker.presentationKitVersion, '1.5.0')
+  assert.equal(marker.presentationKitVersion, '1.5.1')
   assert.equal(marker.presentationKitPackagePath, runtime.presentationKitPackagePath)
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
   const administrator = await ensureSharedMarivoRuntime({
@@ -99,7 +99,7 @@ Path(sys.argv[1]).write_bytes(encoded_json(encode_dataset(frame)))
   await mkdir(shadowRoot)
   await writeFile(
     path.join(shadowRoot, '__init__.py'),
-    '__version__ = "1.5.0"\ndef capture_dataset(*args, **kwargs): pass\ndef capture_frame(*args, **kwargs): pass\n',
+    '__version__ = "1.5.1"\ndef capture_dataset(*args, **kwargs): pass\ndef capture_frame(*args, **kwargs): pass\n',
   )
   await assert.rejects(
     first.runChecked({ program: 'raise RuntimeError("user program must never start")' }),

@@ -13,6 +13,7 @@ import { frameSnapshot } from './fixtures.ts'
 
 let directory: string
 let render: (snapshot: AnalysisSnapshot, semantic?: boolean) => string
+let renderOrigins: (section: unknown) => string
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'dsh-analysis-data-view-'))
   const outfile = path.join(directory, 'render.mjs')
@@ -22,6 +23,11 @@ before(async () => {
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AnalysisDataView } from './src/client/analysis-ui/data-view.tsx';
 import { AnalysisResources } from './src/client/analysis-ui/context.tsx';
+import { SemanticOrigins } from './src/client/analysis-ui/metadata-view.tsx';
+export function renderOrigins(section) {
+  return renderToStaticMarkup(createElement(AnalysisResources.Provider,
+    {value: {openSemanticRef: () => {}}}, createElement(SemanticOrigins, {section})));
+}
 export function render(snapshot, semantic) {
   return renderToStaticMarkup(createElement(AnalysisResources.Provider,
     {value: {readResource: () => ({kind: 'snapshot', snapshot, binding: {}}),
@@ -40,7 +46,7 @@ export function render(snapshot, semantic) {
     },
     logLevel: 'silent',
   })
-  ;({ render } = await import(pathToFileURL(outfile).href))
+  ;({ render, renderOrigins } = await import(pathToFileURL(outfile).href))
 })
 after(async () => {
   if (directory) await rm(directory, { recursive: true, force: true })
@@ -146,4 +152,37 @@ test('current Frame keeps its table and semantic origins without process metadat
   assert.doesNotMatch(html, /Evidence|Findings|Methods/)
   // The raw fields/layout JSON dump is gone.
   assert.doesNotMatch(html, /&quot;layout&quot;|"layout":/)
+})
+
+test('semantic origins show distinct concrete objects and exclude datasource and entity', () => {
+  const metric = { kind: 'metric', path: 'sales.revenue', definitionId: 'metric-1' }
+  const dimension = { kind: 'time_dimension', path: 'sales.orders.date', definitionId: 'time-1' }
+  const section = {
+    status: 'captured',
+    columns: [
+      {
+        role: 'value',
+        id: 'revenue',
+        valueOrigins: [
+          { kind: 'datasource', path: 'warehouse', definitionId: 'source-1' },
+          { kind: 'entity', path: 'sales.orders', definitionId: 'entity-1' },
+          metric,
+        ],
+        contextOrigins: [dimension],
+        omittedOrigins: 0,
+      },
+      {
+        role: 'value',
+        id: 'reference.revenue',
+        valueOrigins: [metric],
+        contextOrigins: [dimension],
+        omittedOrigins: 0,
+      },
+    ],
+  }
+  const html = renderOrigins(section)
+  assert.equal((html.match(/sales\.revenue/g) ?? []).length, 1)
+  assert.equal((html.match(/sales\.orders\.date/g) ?? []).length, 1)
+  assert.doesNotMatch(html, /warehouse|entity-1|reference\.revenue/)
+  assert.equal((html.match(/<button/g) ?? []).length, 2)
 })

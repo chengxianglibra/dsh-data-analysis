@@ -155,7 +155,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | Marivo | `marivo[duckdb,trino,clickhouse]==0.6.0.dev0` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
-| Presentation-kit | `dsh-data-analysis-presentation-kit==1.5.0`，Dataset schemaVersion 1、Frame schemaVersion 2 |
+| Presentation-kit | `dsh-data-analysis-presentation-kit==1.5.1`，Dataset schemaVersion 1、Frame schemaVersion 2 |
 
 Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
 与内部纯数据 contracts、builder，以及展示及文件分析 Skill 的 `SKILL.md` 和 references；

@@ -99,7 +99,7 @@ function SelectableMark({ row, field, label, children }: PointChoice & { childre
   const selection = useFrameSelection()
   if (!selection) return <>{children}</>
   return (
-    // biome-ignore lint/a11y/useSemanticElements: SVG has no native button element; a keyboard list is also provided.
+    // biome-ignore lint/a11y/useSemanticElements: SVG has no native button element; expose keyboard activation directly.
     <g
       role="button"
       tabIndex={0}
@@ -117,79 +117,23 @@ function SelectableMark({ row, field, label, children }: PointChoice & { childre
   )
 }
 
-/** Keyboard-accessible alternatives also disambiguate the official charts' row-only clicks. */
-function PointChoices({ points, title }: { points: PointChoice[]; title: string }) {
+/** Native keyboard targets for chart libraries whose SVG marks are not focusable. */
+function KeyboardPoints({ points }: { points: PointChoice[] }) {
   const selection = useFrameSelection()
-  const t = useCopy()
-  const [open, setOpen] = useState(false)
-  const [page, setPage] = useState(0)
-  if (!selection || !points.length) return null
-  const pages = Math.ceil(points.length / 50)
-  const current = Math.min(page, pages - 1)
+  if (!selection) return null
   return (
-    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>{title}</summary>
-      {open && (
-        <div
-          style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 240, overflow: 'auto' }}
+    <div className="fv-keyboard-points">
+      {points.map((point) => (
+        <button
+          key={`${point.row}:${point.field}`}
+          type="button"
+          onClick={() => selection.select(point.row, point.field)}
         >
-          {points.slice(current * 50, (current + 1) * 50).map((point) => (
-            <button
-              key={`${point.row}:${point.field}`}
-              type="button"
-              onClick={() => selection.select(point.row, point.field)}
-            >
-              {point.label}
-            </button>
-          ))}
-          {pages > 1 && (
-            <div>
-              <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>
-                {t('marivo.presentation.previous-page')}
-              </button>
-              <span>
-                {current + 1} / {pages}
-              </span>
-              <button
-                type="button"
-                disabled={current === pages - 1}
-                onClick={() => setPage(current + 1)}
-              >
-                {t('marivo.presentation.next-page')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      <span className="fv-sr-only">{t('marivo.presentation.ui-frame-select-point')}</span>
-    </details>
+          {point.label}
+        </button>
+      ))}
+    </div>
   )
-}
-
-function FallbackPointChoices({
-  snapshot: s,
-  fields,
-  rows = rowsOf(s),
-}: {
-  snapshot: Snapshot
-  fields: string[]
-  rows?: number[]
-}) {
-  const t = useCopy()
-  const points = rows.flatMap((row) =>
-    fields.flatMap((field) =>
-      valueAt(s, row, field) === null
-        ? []
-        : [
-            {
-              row,
-              field,
-              label: `${membersLabel(s, s.frame.axes, row)} · ${field}: ${exact(cellOf(s, row, field), columnOf(s, field)?.column)}`,
-            },
-          ],
-    ),
-  )
-  return <PointChoices points={points} title={t('marivo.presentation.ui-frame-select-point')} />
 }
 
 function FallbackTimeChart(
@@ -198,7 +142,6 @@ function FallbackTimeChart(
   return (
     <>
       <SvgTimeChartPlot {...props} />
-      <FallbackPointChoices snapshot={props.snapshot} fields={props.view.values} />
     </>
   )
 }
@@ -207,7 +150,6 @@ function FallbackHBarChart(props: MainViewProps<'hbar'>) {
   return (
     <>
       <SvgHBarChartPlot {...props} />
-      <FallbackPointChoices snapshot={props.snapshot} fields={props.view.values} />
     </>
   )
 }
@@ -216,7 +158,6 @@ export function Heatmap(props: MainViewProps<'heatmap'>) {
   return (
     <>
       <SvgHeatmap {...props} />
-      <FallbackPointChoices snapshot={props.snapshot} fields={[props.view.value]} />
     </>
   )
 }
@@ -352,10 +293,7 @@ function TimeChartPlot(
               ))}
             </fieldset>
           )}
-          <PointChoices
-            points={points.flat()}
-            title={t('marivo.presentation.ui-frame-select-point')}
-          />
+          <KeyboardPoints points={points.flat()} />
         </>
       )}
     </FrameChartTheme>
@@ -399,6 +337,7 @@ function SvgTimeChartPlot({
   showLegend = true,
 }: MainViewProps<'line' | 'area' | 'bar' | 'interval-bar'> & { showLegend?: boolean }) {
   const t = useCopy()
+  const selection = useFrameSelection()
   const axis = axisOf(s, view.axis)
   if (!axis) return null
   const { ticks, tickOf } = timeTicks(t, s, axis)
@@ -581,7 +520,7 @@ function SvgTimeChartPlot({
                   if (!p) return null
                   const tick = ticks[i]!
                   const isolated = !points[i - 1] && !points[i + 1]
-                  if (
+                  const showDot = !(
                     ticks.length > 40 &&
                     !isolated &&
                     !tick.incomplete &&
@@ -589,7 +528,7 @@ function SvgTimeChartPlot({
                     i !== last &&
                     i % Math.ceil(ticks.length / 10) !== 0
                   )
-                    return null
+                  if (!showDot && !selection) return null
                   const row = line.byTick.get(i)!
                   return (
                     <SelectableMark
@@ -598,15 +537,18 @@ function SvgTimeChartPlot({
                       field={line.name}
                       label={tip(tick, line, cellOf(s, row, line.name))}
                     >
-                      <Dot
-                        x={p.x}
-                        y={p.y}
-                        fill={line.color}
-                        hollow={tick.incomplete}
-                        size={ticks.length > 40 ? 2.5 : 3}
-                        marker={line.marker}
-                        title={tip(tick, line, cellOf(s, row, line.name))}
-                      />
+                      {selection && <circle cx={p.x} cy={p.y} r={7} fill="transparent" />}
+                      {showDot && (
+                        <Dot
+                          x={p.x}
+                          y={p.y}
+                          fill={line.color}
+                          hollow={tick.incomplete}
+                          size={ticks.length > 40 ? 2.5 : 3}
+                          marker={line.marker}
+                          title={tip(tick, line, cellOf(s, row, line.name))}
+                        />
+                      )}
                     </SelectableMark>
                   )
                 })}
@@ -712,10 +654,7 @@ function HBarChartPlot(props: MainViewProps<'hbar'>) {
               ))}
             </fieldset>
           )}
-          <PointChoices
-            points={points.flat()}
-            title={t('marivo.presentation.ui-frame-select-point')}
-          />
+          <KeyboardPoints points={points.flat()} />
         </>
       )}
     </FrameChartTheme>
@@ -1218,7 +1157,6 @@ export function CorrelationPlot({
           </>
         )}
       </ChartFrame>
-      <FallbackPointChoices snapshot={s} fields={view.values} />
     </>
   )
 }
@@ -1342,7 +1280,6 @@ export function ShareTrack({
           </>
         )}
       </ChartFrame>
-      <FallbackPointChoices snapshot={s} fields={values} rows={rows} />
     </>
   )
 }

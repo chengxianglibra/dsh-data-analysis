@@ -71,8 +71,16 @@ test('single-row multi-group comparison renders one transposed table by default'
   const text = await table.innerText()
   assert.doesNotMatch(text, /prior\.(?:baseline|absolute|relative)\./)
   assert.match(await page.locator('section.fv h3').innerText(), /⇄/)
-  // The collapsed audit table stays available below the transposed view.
-  assert.equal(await page.locator('section.fv details.fv-table table').count(), 1)
+  // The data icon opens comparison-shaped saved values, not raw role columns.
+  const details = page.locator('section.fv details.fv-table')
+  assert.equal(await details.locator('table').count(), 0)
+  await details.locator('summary').click()
+  const data = details.locator('table')
+  assert.equal(await data.count(), 1)
+  assert.equal(await data.locator('thead th').count(), 5)
+  assert.doesNotMatch(await data.innerText(), /prior\.(?:baseline|absolute|relative)\./)
+  await details.locator('summary').click()
+  await data.waitFor({ state: 'detached' })
   assert.ok((await overflow()) <= 1)
 })
 
@@ -85,6 +93,9 @@ test('the comparison table fits or scrolls inside the card at 720px', async () =
   assert.ok(measured.scrollWidth <= measured.clientWidth + 1, JSON.stringify(measured))
   const numeric = await page.locator('[data-table-layout="comparison"] td.pr-numeric').first()
   assert.equal(await numeric.evaluate((node) => getComputedStyle(node).whiteSpace), 'nowrap')
+  const header = page.locator('[data-table-layout="comparison"] thead th').nth(1)
+  assert.equal(await header.evaluate((node) => getComputedStyle(node).textAlign), 'right')
+  assert.equal(await numeric.evaluate((node) => getComputedStyle(node).textAlign), 'right')
 })
 
 test('the comparison table keeps the page free of horizontal overflow at 390px', async () => {
@@ -124,10 +135,8 @@ test('narrow comparison preserves long labels and exposes exact saved values', a
   assert.equal(await table.evaluate((node) => node === document.activeElement), true)
   const cell = table.locator('td[title]').first()
   const exact = await cell.getAttribute('title')
-  const toggle = toolbar.getByRole('button', { name: 'Show exact values' })
-  await toggle.click()
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true')
-  assert.equal(await cell.textContent(), exact)
-  await toggle.click()
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'false')
+  assert.equal(await toolbar.getByRole('button', { name: 'Show exact values' }).count(), 0)
+  const details = page.locator('section.fv details.fv-table')
+  await details.locator('summary').click()
+  assert.equal(await details.locator('td[title]').first().textContent(), exact)
 })

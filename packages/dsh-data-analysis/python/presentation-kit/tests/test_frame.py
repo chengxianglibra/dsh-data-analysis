@@ -494,10 +494,9 @@ def test_interpretation_failure_hides_raw_runtime_text():
 
 # Periods -------------------------------------------------------------------
 
-def calendar(key, label="2026-08", start=T0, end=T1):
-    return NS(kind="calendar", key=key, timezone="UTC", start=start, end=end, label=label, ordinal=7,
-              nominal_ordinal=7, nominal_start=start, nominal_end=end, nominal_start_civil="2026-08-01",
-              nominal_end_civil="2026-09-01", actual_start_civil="2026-08-01", actual_end_civil="2026-09-01")
+def calendar(key, label="2026-08", selection="full", cutoff=None):
+    return NS(kind="calendar", key=key, timezone="UTC", label=label, ordinal=7,
+              nominal_ordinal=7, selection=selection, cutoff=cutoff)
 
 
 def interval(key):
@@ -541,9 +540,7 @@ def test_period_pages_cover_time_axes_and_time_comparisons_within_the_shared_bud
     assert month["target"] == {"kind": "axis", "axisToken": "month-axis"}
     assert (month["totalCount"], month["hasMore"]) == (40, True)
     assert month["items"][0] == {"kind": "calendar", "key": ["9007199254740993"], "timezone": "UTC",
-                                 "start": "2026-08-01T00:00:00+00:00", "end": "2026-09-01T00:00:00+00:00",
-                                 "label": "2026-08", "nominalStart": "2026-08-01T00:00:00+00:00",
-                                 "nominalEnd": "2026-09-01T00:00:00+00:00"}
+                                 "label": "2026-08", "selection": "full", "cutoff": None}
     assert window["items"][0]["key"] == ["2026-08-01T00:00:00+00:00"]
     assert pair["items"][0]["key"] == ["7", "2026-08-01T00:00:00+00:00"]
     assert pair["items"][0]["left"]["key"] == ["7"] and pair["items"][0]["right"] is None
@@ -556,6 +553,27 @@ def test_ordinary_frames_capture_an_empty_period_section():
     frame, facts, reads = periods_frame((REGION_AXIS,), {})
     assert _periods(frame, facts) == {"status": "captured", "pages": []}
     assert reads == []
+
+
+def test_calendar_selection_and_cutoff_are_captured_without_inventing_boundaries():
+    periods = [calendar((i,), selection=selection, cutoff=cutoff) for i, (selection, cutoff) in enumerate([
+        ("full", None), ("prefix", "2026-08-17T12:30:00"), ("partial", None), ("unavailable", None),
+    ])]
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {"month-axis": lambda limit: page(MONTH_AXIS, periods)})
+    items = _periods(frame, facts)["pages"][0]["items"]
+    assert [(item["selection"], item["cutoff"]) for item in items] == [
+        ("full", None), ("prefix", "2026-08-17T12:30:00"), ("partial", None), ("unavailable", None),
+    ]
+    assert all(not ({"start", "end", "nominalStart", "nominalEnd"} & item.keys()) for item in items)
+
+
+def test_unknown_calendar_selection_degrades_only_the_period_section():
+    frame, facts, _ = periods_frame((MONTH_AXIS,), {
+        "month-axis": lambda limit: page(MONTH_AXIS, [calendar((1,), selection="future-kind")]),
+    })
+    assert _section("periods", True, lambda: _periods(frame, facts)) == {
+        "status": "unavailable", "reason": "runtime-incompatible",
+    }
 
 
 def test_period_page_identity_and_budget_failures_degrade_only_the_section():

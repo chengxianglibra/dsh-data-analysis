@@ -50,7 +50,6 @@ export interface Renderer {
     view: ResolvedFrameView,
     display?: FrameDisplay,
   ) => string
-  codeMatches: (text: string, digest: string) => boolean
   dispose: () => Promise<void>
 }
 
@@ -65,12 +64,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AnalysisDataView } from './src/client/analysis-ui/data-view.tsx';
 import { AnalysisResources } from './src/client/analysis-ui/context.tsx';
 import { FrameShell } from './src/client/analysis-ui/frame/view.tsx';
-export { codeMatches } from './src/client/analysis-ui/frame/icons.tsx';
 const provide = (options, child) => createElement(AnalysisResources.Provider, {value: {
   readResource: () => ({kind: 'snapshot', snapshot: options.snapshot,
     binding: options.codeRef ? {codeRef: options.codeRef} : {}}),
   openSemanticRef: options.semantic ? () => {} : undefined,
-  readCode: options.readCode ? async () => ({text: ''}) : undefined,
+  readCode: options.readCode ? async () => ({text: '', sha256: options.codeRef.sha256}) : undefined,
   askPoint: options.askPoint ? async () => true : undefined}}, child);
 export function render(snapshot, options = {}) {
   return renderToStaticMarkup(provide({...options, snapshot},
@@ -97,7 +95,6 @@ export function shell(snapshot, classification, view, display) {
   return {
     render: module.render,
     shell: module.shell,
-    codeMatches: module.codeMatches,
     dispose: () => rm(directory, { recursive: true, force: true }),
   }
 }

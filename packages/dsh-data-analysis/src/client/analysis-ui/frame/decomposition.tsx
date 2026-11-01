@@ -1,12 +1,7 @@
 import type { FrameDecomposition } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
-import {
-  type DomainPoint,
-  DomainPointList,
-  DomainPointMark,
-  uniquelyBound,
-} from './domain-point-selection.tsx'
+import { type DomainPoint, DomainPointMark, uniquelyBound } from './domain-point-selection.tsx'
 import {
   type Chip,
   cellOf,
@@ -179,11 +174,6 @@ export function DecompositionView({
                     rows={g.rows}
                     labelOf={labelOf}
                   />
-                  <DomainPointList
-                    points={g.rows
-                      .map((row) => point(s, row, facts.share, labelOf(row)))
-                      .filter((p): p is DomainPoint => p !== undefined)}
-                  />
                 </>
               ) : view.style === 'effects' ? (
                 <Effects t={t} s={s} facts={facts} rows={g.rows} labelOf={labelOf} />
@@ -271,9 +261,7 @@ function Waterfall({
       : []),
   ])
   const totalY = 4 + rows.length * rowH + gap
-  const selections = rows
-    .map((row) => point(s, row, name, labelOf(row)))
-    .filter((p): p is DomainPoint => p !== undefined)
+
   return (
     <>
       <ChartFrame
@@ -382,7 +370,6 @@ function Waterfall({
           </>
         )}
       </ChartFrame>
-      <DomainPointList points={selections} />
     </>
   )
 }
@@ -422,12 +409,7 @@ function Effects({ t, s, facts, rows, labelOf }: PartProps) {
         `${labelOf(row)} ${facts.effects.map((e) => fmt(e.name, row)).join(' / ')}${facts.contribution ? ` ◆ ${fmt(facts.contribution, row)}` : ''}`,
     ),
   )
-  const selections = rows
-    .flatMap((row) => [
-      ...facts.effects.map((effect) => point(s, row, effect.name, labelOf(row))),
-      point(s, row, facts.contribution, labelOf(row)),
-    ])
-    .filter((p): p is DomainPoint => p !== undefined)
+
   return (
     <>
       <ChartFrame
@@ -481,7 +463,6 @@ function Effects({ t, s, facts, rows, labelOf }: PartProps) {
           </>
         )}
       </ChartFrame>
-      <DomainPointList points={selections} />
     </>
   )
 }

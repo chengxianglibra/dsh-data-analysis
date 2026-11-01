@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('selected point details remove only provably duplicate coordinates', async () => {
+test('selected table cell opens the question menu and preserves its saved identity', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-frame-details-'))
   const browser = await chromium.launch()
   try {
@@ -72,89 +72,13 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
 
     const normal = page.locator('[data-resource="normal"]')
     await normal.locator('[data-column-id="trips"] .pr-cell-select').click()
-    const details = normal.getByRole('region', { name: 'Selected data' })
-    assert.equal(await normal.getByText('January taxi trips', { exact: true }).count(), 1)
-    assert.equal(await details.getByText('Bronx', { exact: true }).count(), 1)
-    assert.equal(await details.getByText('Cash', { exact: true }).count(), 1)
-    assert.equal(
-      await details.locator('dt[title="taxi.pickup_borough"]').textContent(),
-      'pickup_borough',
-    )
-    assert.equal(
-      await details.locator('dt[title="taxi.payment_type"]').textContent(),
-      'payment_type',
-    )
-    assert.equal(await details.locator('dl > div').count(), 3)
-    await details.getByText('9007199254740993', { exact: true }).waitFor()
-    const period = details.locator('.fv-period-unavailable summary')
-    assert.equal(await period.textContent(), 'Period unavailable')
-    assert.equal(
-      await period.getAttribute('aria-label'),
-      'Period details were not captured; do not infer missing periods.',
-    )
-    await period.focus()
-    await page.keyboard.press('Enter')
-    await details.locator('.fv-period-unavailable > p').waitFor({ state: 'visible' })
-    await details.getByRole('button', { name: 'Add to question' }).click()
-    await details.getByText('Added to the question draft.').waitFor()
+    const menu = normal.getByRole('menu')
+    await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
+    await menu.getByText('Added to the question draft.').waitFor()
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'requests')), [
       { resourceName: 'normal', row: 0, field: 'trips' },
     ])
-
-    const compact = page.locator('[data-resource="compact"]')
-    await compact.locator('[data-column-id="trips"] .pr-cell-select').click()
-    assert.equal(await compact.locator('.fv-desc').count(), 0)
-    await compact
-      .getByRole('region', { name: 'Selected data' })
-      .getByText('January taxi trips')
-      .waitFor()
-
-    const time = page.locator('[data-resource="time"]')
-    await time.locator('[data-column-id="trips"] .pr-cell-select').click()
-    const timeDetails = time.getByRole('region', { name: 'Selected data' })
-    await timeDetails.getByText('2025-01-01T00:00:00-05:00', { exact: true }).waitFor()
-    await timeDetails.getByText('2025-01-01T05:00:00+00:00', { exact: true }).waitFor()
-
-    const multi = page.locator('[data-resource="multi"]')
-    await multi.locator('[data-column-id="trips"] .pr-cell-select').click()
-    assert.equal(
-      await multi
-        .getByRole('region', { name: 'Selected data' })
-        .getByText('same', { exact: true })
-        .count(),
-      3,
-    )
-
-    const endpoint = page.locator('[data-resource="endpoint"]')
-    await endpoint.locator('[data-column-id="trips"] .pr-cell-select').click()
-    assert.equal(
-      await endpoint
-        .getByRole('region', { name: 'Selected data' })
-        .getByText('2025-02-01T00:00:00+00:00', { exact: true })
-        .count(),
-      2,
-    )
-    const start = page.locator('[data-resource="start"]')
-    await start.locator('[data-column-id="trips"] .pr-cell-select').click()
-    assert.equal(
-      await start
-        .getByRole('region', { name: 'Selected data' })
-        .getByText('2025-03-01T00:00:00+00:00', { exact: true })
-        .count(),
-      2,
-    )
-
-    const correlation = page.locator('[data-resource="corr"]')
-    await correlation.locator('g[role="button"]').first().click()
-    const correlationDetails = correlation.getByRole('region', { name: 'Selected data' })
-    await correlationDetails.getByText('n_pairs', { exact: true }).waitFor()
-    await correlationDetails.getByText('30', { exact: true }).waitFor()
-    const tableToggle = correlation.locator('details.fv-table > summary')
-    assert.equal(await tableToggle.getAttribute('aria-label'), 'Table')
-    assert.equal(await tableToggle.locator('svg[aria-hidden="true"]').count(), 1)
-    await tableToggle.focus()
-    await page.keyboard.press('Enter')
-    assert.equal(await correlation.locator('details.fv-table').getAttribute('open'), '')
+    assert.equal(await normal.getByRole('region', { name: 'Selected data' }).count(), 0)
 
     const fullMembers = page.locator('[data-resource="membersFull"]')
     assert.equal(await fullMembers.getByText('3', { exact: true }).count(), 1)

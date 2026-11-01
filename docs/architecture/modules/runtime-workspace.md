@@ -48,7 +48,7 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。
 
-当前 presentation-kit 精确版本为 `1.5.0`，只公开仅在原 marivo_python 内使用的 `capture_dataset(DataFrame, ...)` 与 `capture_frame(AnalysisFrame, ...)`。
+当前 presentation-kit 精确版本为 `1.5.1`，只公开仅在原 marivo_python 内使用的 `capture_dataset(DataFrame, ...)` 与 `capture_frame(AnalysisFrame, ...)`。
 helper 的 API 或实现变化必须同步提升 Python distribution、模块版本和插件的 Runtime 版本约束，
 并更新随包 wheel 与分发校验；不能用同一个版本号发布不同实现。npm 插件重装与会话状态清理不会
 刷新已通过版本检查的 shared Runtime。旧 `1.0.0` marker 会触发上述重建流程，新版随后直接复用；

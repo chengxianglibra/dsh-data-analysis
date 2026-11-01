@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -14,7 +13,7 @@ let browser: Browser
 let page: Page
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'dsh-frame-browser-'))
-  const sha256 = createHash('sha256').update(CODE).digest('hex')
+  const sha256 = 'a'.repeat(64)
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
@@ -96,7 +95,7 @@ const program = 'root = Stack([good, long, bad, records, heatmap, nullableHeatma
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
-  readCode: async () => ({ text: ${JSON.stringify(CODE)} }),
+  readCode: async () => ({ text: ${JSON.stringify(CODE)}, sha256: ${JSON.stringify(sha256)} }),
   askPoint: async (selection) => { window.pointSelections.push(selection); },
 }));`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -130,7 +129,7 @@ test('the Python icon shows the bound source only when its sha256 matches', asyn
   await page.keyboard.press('Escape')
   await page.locator('[data-resource="bad"] [data-icon="python"] button').click()
   const dialog = page.locator('[data-resource="bad"] dialog[open]')
-  await dialog.getByText('Script does not match sha256').waitFor()
+  await dialog.getByText('Execution record sha256 does not match').waitFor()
   assert.equal(await dialog.locator('pre code').count(), 0)
   await page.keyboard.press('Escape')
   assert.equal(
@@ -237,15 +236,11 @@ test('official chart fits a narrow card and its points are keyboard-selectable',
     cardRight: node.closest('section.fv')!.getBoundingClientRect().right,
   }))
   assert.ok(fit.chartRight <= fit.cardRight + 1, JSON.stringify(fit))
-  const choices = chart.locator('details')
-  await choices.locator('summary').focus()
-  await page.keyboard.press('Enter')
-  const first = choices.locator('button').first()
+  const first = chart.locator('.fv-keyboard-points button').first()
   await first.focus()
   await page.keyboard.press('Enter')
-  const selected = card.getByRole('region', { name: 'Selected data' })
-  await selected.waitFor({ state: 'visible' })
-  await selected.getByRole('button', { name: 'Add to question' }).click()
+  const selected = card.getByRole('menu')
+  await selected.getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
     { resourceName: 'good', row: 0, field: 'm0' },
   ])
@@ -270,14 +265,11 @@ test('Taxi heatmap preserves exact cells and supports point selection without ag
       assert.doesNotMatch(tooltip ?? '', /Row avg|Column avg/i)
       assert.equal(await page.locator('.openui-chart-tooltip:visible').count(), 0)
       await manhattan.click()
-      const selected = card.getByRole('region', { name: 'Selected data' })
-      await selected.getByText('41820207').waitFor({ state: 'visible' })
-      await selected.getByText('Manhattan', { exact: true }).first().waitFor({ state: 'visible' })
-      await selected.getByText('Cash', { exact: true }).first().waitFor({ state: 'visible' })
+      const selected = card.getByRole('menu')
       await page.evaluate(() => {
         Reflect.set(window, 'pointSelections', [])
       })
-      await selected.getByRole('button', { name: 'Add to question' }).click()
+      await selected.getByRole('menuitem', { name: 'Ask about this' }).click()
       assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
         { resourceName: 'taxiHeatmap', row: 3, field: 'trips' },
       ])
@@ -445,6 +437,7 @@ test('a truncated row label remains available in the expanded data table', async
   const card = page.locator('[data-resource="heatmap"]')
   const details = card.locator('.fv-table')
   if ((await details.getAttribute('open')) === null) await details.locator('summary').click()
+  await details.locator('table').waitFor()
   assert.equal(
     await details.getByText('Long_original_category_name_abcdef', { exact: true }).count(),
     3,
@@ -481,16 +474,19 @@ test('blank row labels do not paint an opaque rail, and mixed rows keep their po
   assert.equal(await rail.locator('[data-rail-row="1"] title').textContent(), 'zone')
 })
 
-test('frame table exposes exact saved values through a keyboard operable toggle', async () => {
+test('frame table exposes detailed saved values through a keyboard operable data icon', async () => {
   const frame = page.locator('[data-resource="records"]')
   const cell = frame.locator('td[data-column-id="amount"]').first()
-  const toggle = frame.getByRole('button', { name: 'Show exact values' })
+  const details = frame.locator('details.fv-table')
+  const toggle = details.locator('summary')
   assert.equal(await cell.textContent(), '118,393,545.05')
   await toggle.focus()
   await page.keyboard.press('Enter')
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true')
-  assert.equal(await cell.textContent(), '118393545.04998468')
+  const saved = details.locator('td[data-column-id="amount"]').first()
+  await saved.waitFor()
+  assert.equal(await saved.textContent(), '118393545.04998468')
   await page.keyboard.press('Space')
+  await saved.waitFor({ state: 'detached' })
   assert.equal(await cell.textContent(), '118,393,545.05')
 })
 

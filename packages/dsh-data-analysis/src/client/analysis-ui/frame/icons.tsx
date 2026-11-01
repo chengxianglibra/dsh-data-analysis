@@ -1,18 +1,17 @@
-import { sha256 } from '@noble/hashes/sha2.js'
-import { bytesToHex } from '@noble/hashes/utils.js'
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { ResolvedFrameView } from '../../../presentation/contracts/frame-view.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import { useAnalysisResources } from '../context.tsx'
-import { SemanticOrigins } from '../metadata-view.tsx'
+import { SemanticOrigins, semanticObjects } from '../metadata-view.tsx'
 import { FrameIcon } from './frame-icon.tsx'
 import {
+  comparisonPeriodPage,
   comparisonPeriods,
   endpointLabels,
   interpretationOf,
+  periodDetail,
   periodLabel,
-  periodRange,
   type Snapshot,
 } from './model.ts'
 
@@ -132,7 +131,10 @@ export function CoverageIcon({ snapshot: s }: { snapshot: Snapshot }) {
 function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number }) {
   const t = useCopy()
   const [open, setOpen] = useState(false)
-  const state = sectionState(t, s.frame.sections.periods as Section)
+  const page = comparisonPeriodPage(s, index)
+  const state =
+    sectionState(t, s.frame.sections.periods as Section) ??
+    (page ? undefined : t(`${P}ui-frame-point-periods-unavailable`))
   const items = state ? [] : comparisonPeriods(s, index)
   const ends = endpointLabels(t, s, index)
   const label = t(`${P}ui-frame-periods`)
@@ -148,6 +150,9 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
         <span aria-hidden="true">⇄</span>
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
+        {page?.hasMore && (
+          <p>{t(`${P}ui-frame-periods-captured`, { p0: items.length, p1: page.totalCount })}</p>
+        )}
         <table>
           <thead>
             <tr>
@@ -158,17 +163,17 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
           <tbody>
             {items.map((item) => (
               <tr key={JSON.stringify(item.key)}>
-                <td title={periodRange(item.current)}>
+                <td title={periodDetail(t, item.current)}>
                   {periodLabel(item.current)}
                   <br />
-                  <small>{periodRange(item.current)}</small>
+                  <small>{periodDetail(t, item.current)}</small>
                 </td>
-                <td title={periodRange(item.baseline)}>
+                <td title={periodDetail(t, item.baseline)}>
                   {item.baseline ? (
                     <>
                       {periodLabel(item.baseline)}
                       <br />
-                      <small>{periodRange(item.baseline)}</small>
+                      <small>{periodDetail(t, item.baseline)}</small>
                     </>
                   ) : (
                     t(
@@ -190,10 +195,7 @@ function OriginsIcon({ snapshot: s }: { snapshot: Snapshot }) {
   const [open, setOpen] = useState(false)
   const section = s.frame.sections.semantics
   const state = sectionState(t, section as Section)
-  const paths =
-    typeof section === 'object' && section.status === 'captured'
-      ? [...new Set(section.columns.flatMap((c) => c.valueOrigins.map((o) => o.path)))]
-      : []
+  const paths = semanticObjects(section).map((origin) => origin.path)
   const label = t(`${P}ui-metadata-semantics`)
   return (
     <>
@@ -214,11 +216,6 @@ function OriginsIcon({ snapshot: s }: { snapshot: Snapshot }) {
   )
 }
 
-/** The saved source is shown only when its UTF-8 bytes hash to the bound sha256. */
-export function codeMatches(text: string, digest: string): boolean {
-  return bytesToHex(sha256(new TextEncoder().encode(text))) === digest
-}
-
 type CodeState = { kind: 'idle' | 'loading' | 'failed' | 'mismatch' } | { kind: 'ok'; text: string }
 
 /** Python source bound by the Host; greyed without codeRef, on read failure or sha256 mismatch. */
@@ -237,7 +234,7 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
         if (controller.signal.aborted) return
         if (!record) return setCode({ kind: 'failed' })
         setCode(
-          codeMatches(record.text, codeRef.sha256)
+          record.sha256 === codeRef.sha256
             ? { kind: 'ok', text: record.text }
             : { kind: 'mismatch' },
         )

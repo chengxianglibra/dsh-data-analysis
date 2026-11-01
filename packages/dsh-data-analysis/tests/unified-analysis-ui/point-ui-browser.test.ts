@@ -45,23 +45,37 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await page.getByRole('button', { name: /Sort by amount/ }).click()
     const cell = page.locator('[data-row-index="0"] [data-column-id="amount"] .pr-cell-select')
     await cell.click()
-    const details = page.getByRole('region', { name: 'Selected data' })
-    await details.getByText('9007199254740993').waitFor()
-    await details.getByText('web', { exact: true }).first().waitFor()
-    await details.getByRole('button', { name: 'Add to question' }).click()
-    await details.getByText('Added to the question draft.').waitFor()
+    const menu = page.getByRole('menu')
+    await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
+    await menu.getByText('Added to the question draft.').waitFor()
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointRequests')), [
       { resourceName: 'result', row: 0, field: 'amount' },
     ])
-    const choices = page
-      .locator('[data-resource="large"] details')
-      .filter({ hasText: 'Select a data point' })
-      .first()
-    await choices.locator('summary').click()
-    await choices.locator(':scope > div > button').first().waitFor()
-    assert.equal(await choices.locator(':scope > div > button').count(), 50)
-    await choices.getByRole('button', { name: 'Next page' }).click()
-    assert.equal(await choices.locator(':scope > div > button').count(), 20)
+    await page.locator('body').click({ position: { x: 1, y: 1 } })
+    assert.equal(await menu.count(), 0)
+    const point = page.locator('[data-resource="large"] g[role="button"]').nth(1)
+    assert.equal(await page.locator('[data-resource="large"] g[role="button"]').count(), 70)
+    await point.focus()
+    await page.keyboard.press('Enter')
+    const action = page.getByRole('menuitem', { name: 'Ask about this' })
+    await action.waitFor()
+    assert.equal(await action.evaluate((node) => node === document.activeElement), true)
+    await page.keyboard.press('Escape')
+    assert.equal(await menu.count(), 0)
+    assert.equal(await point.evaluate((node) => node === document.activeElement), true)
+    await point.press('Enter')
+    const box = await page.getByRole('menu').boundingBox()
+    assert.ok(
+      box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1280 && box.y + box.height <= 720,
+    )
+    await page.keyboard.press('Escape')
+    await point.locator('circle[fill="transparent"]').click()
+    await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+    assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'pointRequests'))).at(-1), {
+      resourceName: 'large',
+      row: 1,
+      field: 'm0',
+    })
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

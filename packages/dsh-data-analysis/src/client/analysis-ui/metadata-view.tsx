@@ -7,6 +7,20 @@ import { useAnalysisResources } from './context.tsx'
 type Semantics = FrameSections['semantics']
 type Origin = Extract<Semantics, { status: 'captured' }>['columns'][number]['valueOrigins'][number]
 
+/** Show each concrete semantic object once, excluding its storage and owner containers. */
+export function semanticObjects(section: Semantics): Origin[] {
+  if (section.status !== 'captured') return []
+  const objects = new Map<string, Origin>()
+  for (const column of section.columns) {
+    for (const origin of [...column.valueOrigins, ...column.contextOrigins]) {
+      if (origin.kind === 'datasource' || origin.kind === 'entity') continue
+      const key = JSON.stringify([origin.kind, origin.path, origin.definitionId])
+      if (!objects.has(key)) objects.set(key, origin)
+    }
+  }
+  return [...objects.values()]
+}
+
 function OriginItem({ origin }: { origin: Origin }) {
   const t = useCopy()
   const { openSemanticRef } = useAnalysisResources()
@@ -26,7 +40,7 @@ function OriginItem({ origin }: { origin: Origin }) {
   )
 }
 
-/** Semantic origins per column; links open the semantic browser when navigable. */
+/** Concrete semantic objects; links open the semantic browser when navigable. */
 export function SemanticOrigins({ section }: { section: Semantics }) {
   const t = useCopy()
   if (section.status === 'unavailable')
@@ -37,23 +51,14 @@ export function SemanticOrigins({ section }: { section: Semantics }) {
     )
   return (
     <div className="au-meta" data-meta="semantics">
-      {section.columns.map((column) => {
-        const origins = [...column.valueOrigins, ...column.contextOrigins]
-        if (origins.length === 0) return null
-        return (
-          <section key={`${column.role}-${column.id}`}>
-            <h4>{column.id}</h4>
-            <ul className="fv-origins">
-              {origins.map((origin) => (
-                <OriginItem
-                  key={`${origin.kind}:${origin.path}:${origin.definitionId}`}
-                  origin={origin}
-                />
-              ))}
-            </ul>
-          </section>
-        )
-      })}
+      <ul className="fv-origins">
+        {semanticObjects(section).map((origin) => (
+          <OriginItem
+            key={JSON.stringify([origin.kind, origin.path, origin.definitionId])}
+            origin={origin}
+          />
+        ))}
+      </ul>
     </div>
   )
 }

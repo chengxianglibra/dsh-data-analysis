@@ -281,7 +281,7 @@ const interpretation = section(
     alignments: z.array(z.strictObject({ left: alignmentSide, right: alignmentSide })).max(16),
   }),
 )
-const calendarPeriod = z.strictObject({
+const legacyCalendarPeriod = z.strictObject({
   kind: z.literal('calendar'),
   key,
   timezone: text,
@@ -291,6 +291,14 @@ const calendarPeriod = z.strictObject({
   nominalStart: instant,
   nominalEnd: instant,
 })
+const calendarPeriod = z.strictObject({
+  kind: z.literal('calendar'),
+  key,
+  timezone: text,
+  label: cell,
+  selection: z.enum(['full', 'prefix', 'partial', 'unavailable']),
+  cutoff: text.nullable(),
+})
 const intervalPeriod = z.strictObject({
   kind: z.literal('interval'),
   key,
@@ -298,7 +306,7 @@ const intervalPeriod = z.strictObject({
   start: instant,
   end: instant,
 })
-const period = z.discriminatedUnion('kind', [calendarPeriod, intervalPeriod])
+const period = z.union([legacyCalendarPeriod, calendarPeriod, intervalPeriod])
 const periods = section(
   z.strictObject({
     status: z.literal('captured'),
@@ -313,7 +321,8 @@ const periods = section(
           hasMore: z.boolean(),
           items: z
             .array(
-              z.discriminatedUnion('kind', [
+              z.union([
+                legacyCalendarPeriod,
                 calendarPeriod,
                 intervalPeriod,
                 z.strictObject({
