@@ -178,6 +178,12 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
 正常 workspace 链接允许，Host client external/metafile 检查保留。
 
+DSH profile 使用 `autoInstallPeers: false`；Harness 在 Host 进程中按安装来源解析 DSH peers，
+浏览器使用 Host 的 client module loader 和 React。profile 内单独执行 `pnpm peers check` 不能看到这些
+Host 解析，因此可能报告缺失；不能通过安装第二份 Harness 或 React 消除警告。独立环境 CLI 的路径
+helper 与 Host 入口的区别见[Environment 执行](environment-execution.md#错误与诊断)。实际兼容性需验证
+目标 Host 的插件加载和 client，而不能仅凭包管理器警告或静态检查判断。
+
 ## npm 发布
 
 [`release.yml`](../../../.github/workflows/release.yml) 通过 GitHub Actions 的 `npm` Environment 和 OIDC

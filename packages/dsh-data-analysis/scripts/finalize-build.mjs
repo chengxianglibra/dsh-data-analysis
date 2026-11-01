@@ -1,5 +1,6 @@
 import { chmodSync, rmSync } from 'node:fs'
 import './build-client.mjs'
+import './build-environment-cli.mjs'
 
 // TypeScript emits these implementation-only outputs even though no supported
 // runtime or declaration entrypoint can reach them.

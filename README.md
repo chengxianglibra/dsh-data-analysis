@@ -42,6 +42,11 @@
 npx @deepseek-ai/dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
 ```
 
+若 pnpm 报 `ERR_PNPM_IGNORED_BUILDS`，可在 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`
+（默认位于 `~/.dsh/` 下）的 `allowBuilds` 中将 `@openuidev/lang-core` 设为 `false`，然后重试安装。
+该包的 postinstall 用于安装遥测，插件不依赖它。pnpm 可能报告 Harness peer 缺失；这些依赖由 Host
+运行时提供，不要为消除警告另装一份 Harness 或 React。
+
 安装后启动 Web Profile；如果已在运行，请先退出再重新启动：
 
 ```bash

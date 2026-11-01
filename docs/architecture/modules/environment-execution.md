@@ -114,6 +114,10 @@ adapter 可以将 identity 错误作为 trust-boundary failure，将普通领域
 Runtime/Environment identity、fingerprint 和 status；不输出 doctor diagnostics 或凭证。失败时向
 stderr 输出稳定 error code 和 message，并返回非零状态。
 
+CLI 可在安装后的 profile 中直接运行，不依赖 Harness 的进程内 peer 解析。构建时仅在独立 CLI 中
+打包公开的 `@deepseek-ai/dsh-home-paths` 路径 helper；插件 Host 入口仍从 Harness 解析同一个 peer。
+打包验证在未链接 Host peer 的安装目录中执行 CLI，检查帮助、稳定错误及随包 wheel 的定位。
+
 ## 验证边界
 
 核心确定性测试位于：

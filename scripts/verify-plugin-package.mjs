@@ -313,6 +313,60 @@ try {
   ) {
     fail('packed CLI manifest must expose only the supported environment binary')
   }
+  // A profile does not install Host peers locally. Exercise the packed CLI before
+  // linking any dependencies, so this verifies its actual standalone boundary.
+  const cli = path.join(installedPlugin, 'lib/bin/environment.js')
+  /** @type {NodeJS.ProcessEnv} */
+  const cliEnvironment = { ...process.env, DSH_HOME: path.join(temporaryRoot, 'cli-home') }
+  for (const name of [
+    'DSH_DATA_ANALYSIS_PROJECT_ROOT',
+    'DSH_DATA_ANALYSIS_PYTHON',
+    'DSH_DATA_ANALYSIS_RUNTIME_ROOT',
+    'DSH_DATA_ANALYSIS_BOOTSTRAP_PYTHON',
+    'DSH_CWD',
+    'NODE_OPTIONS',
+    'NODE_PATH',
+  ])
+    delete cliEnvironment[name]
+  const cliHelp = spawnSync(process.execPath, [cli, '--help'], {
+    cwd: temporaryRoot,
+    env: cliEnvironment,
+    encoding: 'utf8',
+  })
+  if (cliHelp.status !== 0 || !cliHelp.stdout?.includes('Usage: dsh-data-analysis-env')) {
+    fail(`packed standalone CLI help failed: ${cliHelp.stderr || cliHelp.error?.message}`)
+  }
+  const cliError = spawnSync(process.execPath, [cli, '--runtime-root', 'relative'], {
+    cwd: temporaryRoot,
+    env: cliEnvironment,
+    encoding: 'utf8',
+  })
+  if (
+    cliError.status !== 1 ||
+    cliError.stdout !== '' ||
+    !cliError.stderr?.includes('dsh-data-analysis-env: shared-runtime-config-invalid:')
+  ) {
+    fail(`packed standalone CLI did not return its stable error: ${cliError.stderr}`)
+  }
+  // Reach the managed-install bootstrap after locating the packed wheel. Node
+  // is deliberately not a Python bootstrap and must produce the install error.
+  const cliBootstrapError = spawnSync(
+    process.execPath,
+    [
+      cli,
+      '--runtime-root',
+      path.join(temporaryRoot, 'cli-runtime'),
+      '--bootstrap-python',
+      process.execPath,
+    ],
+    { cwd: temporaryRoot, env: cliEnvironment, encoding: 'utf8' },
+  )
+  if (
+    cliBootstrapError.status !== 1 ||
+    !cliBootstrapError.stderr?.includes('dsh-data-analysis-env: shared-runtime-install-failed:')
+  ) {
+    fail(`packed standalone CLI did not reach Python bootstrap: ${cliBootstrapError.stderr}`)
+  }
   const linkedDependencies = new Set([
     ...Object.keys(peerDependencies),
     ...Object.keys(sourceManifest.dependencies ?? {}),

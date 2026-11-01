@@ -43,6 +43,12 @@ Install the plugin into the Web Profile:
 npx @deepseek-ai/dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
 ```
 
+If pnpm reports `ERR_PNPM_IGNORED_BUILDS`, set `@openuidev/lang-core` to `false` under `allowBuilds`
+in `$DSH_HOME/profiles/web/pnpm-workspace.yaml` (under `~/.dsh/` by default), then retry the installation.
+That package's postinstall sends installation telemetry and is not required by the plugin. pnpm may report
+missing Harness peers; the Host provides them at runtime, so do not install another copy of Harness or React
+to silence the warning.
+
 Start the Web Profile after installation. If it is already running, exit and restart it:
 
 ```bash

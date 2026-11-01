@@ -20,10 +20,9 @@ interface Arguments {
 function usage(): string {
   return `Usage: dsh-data-analysis-env [--project-root PATH] [--python PATH] [--runtime-root PATH] [--bootstrap-python PATH]
 
-Ensures the shared pinned Marivo and presentation-kit Runtime, initializes the minimal
-Workspace layout, and checks the exact interpreter, import identities, and doctor
-admission used by the DSH plugin. The JSON output contains no credentials or raw
-doctor details.
+Ensures the shared pinned Marivo and presentation-kit Runtime, binds an existing
+Workspace, and checks the exact interpreter, import identities, and doctor admission
+used by the DSH plugin. The JSON output contains no credentials or raw doctor details.
 `
 }
 
