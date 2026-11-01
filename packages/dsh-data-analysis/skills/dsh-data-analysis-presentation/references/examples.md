@@ -77,7 +77,7 @@ compare/attribute 输出列，`auto` 已按结构选择默认视图。
 
 ## Frame 看板
 
-多个比较结果纵向排列时，用 compact 只保留值名和头部数字；需要并排时给 Stack 显式 `row` 与 `wrap`：
+结论和限制用 TextContent 与 Frame 视图放在同一页，不再另外创建说明页面。多个比较结果纵向排列时，用 compact 只保留值名和头部数字；需要并排时给 Stack 显式 `row` 与 `wrap`：
 
 ```json
 {
@@ -87,7 +87,7 @@ compare/attribute 输出列，`auto` 已按结构选择默认视图。
     "daily": {"kind": "frame-snapshot", "snapshotRef": "实际按日观察引用"},
     "by_region": {"kind": "frame-snapshot", "snapshotRef": "实际地区分解引用"}
   },
-  "program": "root = Stack([gmv, trend, bridge], \"row\", \"m\", \"start\", \"start\", true);\ngmv = AnalysisFrameView(\"gmv\", {chart: \"comparison\"}, {density: \"compact\"});\ntrend = AnalysisFrameView(\"daily\");\nbridge = AnalysisFrameView(\"by_region\", {chart: \"decomposition\"});"
+  "program": "root = Stack([lead, charts, scope]);\nlead = TextContent(\"## 分析结果概览\n本页汇集原分析已计算的 GMV 比较、按日观察与地区分解。\");\ncharts = Stack([gmv, trend, bridge], \"row\", \"m\", \"start\", \"start\", true);\nscope = TextContent(\"本页展示捕获时的快照；新范围或刷新需要重新分析，缺失数据不视为零。\");\ngmv = AnalysisFrameView(\"gmv\", {chart: \"comparison\"}, {density: \"compact\"});\ntrend = AnalysisFrameView(\"daily\");\nbridge = AnalysisFrameView(\"by_region\", {chart: \"decomposition\"});"
 }
 ```
 

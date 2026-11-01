@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-`marivo_present` 将已有结果保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在所属调用的 tool view 呈现，
+`marivo_present` 将已有结果保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在会话级 Chat 节点呈现，
 显式报告/dashboard 使用右侧 tab。Marivo 拥有分析、Artifact/Finding 与来源事实；Harness 拥有 Session/Turn、
 Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 

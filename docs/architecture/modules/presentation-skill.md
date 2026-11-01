@@ -23,8 +23,11 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 每个 Agent 的常驻 prompt 只保留短路由：
 
-- 普通事实问答与简短比较表格留在聊天中；指定 CSV、JSON、PNG 等文件使用原生 `present`。
-- 表格、单值、保存报告、看板和报告更新加载 `dsh-data-analysis-presentation`，通过 `marivo_present` 交付。
+- Marivo 分析报告/dashboard 统一使用 `marivo_present`，把结论、解释、限制、建议与数据放在同一份文档中，
+  成功后最终文字尽量只写一句总结。
+- 普通事实问答与简短比较表格可留在聊天中；明确指定的 CSV、JSON、PNG 等文件使用原生 `present`。
+- 已捕获的单个 Frame 或 DataFrame 快照直接通过 `marivo_present` 交付；自定义 Lang 或需要格式指导时加载
+  `dsh-data-analysis-presentation`。Frame 优先使用 `AnalysisFrameView`，通过 `TextContent` 与布局组件组合说明。
 - 直接文件分析加载 `dsh-data-analysis-files`，使用 pandas 或原生 DuckDB；已有 Frame 或已捕获快照无需先激活分析 Skill。涉及 Marivo 分析语义或建模时，按需加载 Runtime Skill 与相关 live Help。
 
 展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。工具入口随插件安装，完整清单见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。

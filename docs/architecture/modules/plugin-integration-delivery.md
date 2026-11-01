@@ -68,10 +68,19 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 
 ## Prompt 与 Skill 激活
 
-系统提示只负责任务入口与宿主接入边界。常驻路由区分聊天回答（含简短表格）、原生文件交付与报告展示：
-文件分析（含简短聊天比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 marivo_present 传准确引用，不额外读取 Skill/Catalog。自定义 Lang 时按需加载
-dsh-data-analysis-presentation；分析 UI 的 AnalysisFrameView 按 Frame 结构选择图形，DatasetView 支持 auto/table/metric；支持 Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
+系统提示负责任务入口与宿主接入边界。当前以 Marivo 分析报告/dashboard 为目标，统一使用
+`marivo_present` 创建和更新：结论、解释、限制及相关后续建议与数据视图放在同一份文档中，成功后最终文字
+尽量只写一句总结。说明和数据共用同一文档、recordId 与保存流程。
+用户明确指定输出格式或展示失败时保留相应文字回答；普通问答与简短比较可留在聊天中。
+这些是模型指导，当前没有为此增加工具执行门禁。
+
+文件分析（含简短比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 `marivo_present` 传准确引用，不额外读取 Skill/Catalog。现有 Marivo Frame 优先在原分析调用中捕获，通过 `AnalysisFrameView` 展示；
+DataFrame 快照使用 `DatasetView`，不为展示虚构 Frame 或重跑已结束分析。文字与数据通过 `TextContent`、`Stack`、`Card` 或 `Tabs` 组织。
+自定义 Lang 时按需加载 `dsh-data-analysis-presentation`；`AnalysisFrameView` 按 Frame 结构选择图形，`DatasetView` 支持 auto/table/metric；支持 Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
 不提供离线 HTML 导出或发布。
+
+报告/dashboard 展示已经完成的分析快照；改变分析范围或重新计算需要回到分析流程，再更新对应文档。
+首期范围限于分析报告和看板，不引入通用表单、页面业务 Query、Provider 发布或动作执行协议。
 
 `marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
 测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由
@@ -110,8 +119,9 @@ Web client 只保留：
 报告呈现编辑、HTML 下载、[报告发布](report-publishing.md)菜单与发布凭据管理已移除。
 
 生产 client bundle 由 `client.tsx` 注册共享 AnalysisSurface，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
-通过统一 Session/Turn delivery 观察新交付，自动打开固定 Build Tab；重复事件去重，历史回放不自动打开。
-成功回执不渲染聊天卡片，打开失败时提供错误反馈。旧格式报告不出现在目录，直接打开时显示不支持。
+通过统一 Session/Turn delivery 观察新交付：默认 tool 结果在会话级 Chat 节点展示，工具调用内保留入口；
+tab 交付自动打开固定 Build Tab。重复事件去重，历史回放不自动打开；打开失败时提供错误反馈。
+旧格式报告不出现在目录，直接打开时显示不支持。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 
 ## 空白首页工作区入口

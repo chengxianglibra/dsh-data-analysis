@@ -75,7 +75,7 @@ print(str(csv_path.resolve()))
 
 ## 导出 PNG
 
-不要假设 Runtime 安装了 matplotlib 或 Pillow。以下标准库示例生成无文字的简单条形缩略图，适用于用户明确要求 PNG；颜色、顺序、数值和分析范围应在回复中说明。需要核对原值时另用 `capture_dataset` 与 `marivo_present` 展示表格；分析 UI 不生成交互图表。
+不要假设 Runtime 安装了 matplotlib 或 Pillow。以下标准库示例生成无文字的简单条形缩略图，适用于用户明确要求 PNG；颜色、顺序、数值和分析范围应在回复中说明。需要核对原值时另用 `capture_dataset` 与 `marivo_present` 展示表格；`DatasetView` 支持 auto/table/metric；已有 Marivo Frame 的图表使用 `AnalysisFrameView`，不为展示虚构 Frame。
 
 ```python
 from pathlib import Path

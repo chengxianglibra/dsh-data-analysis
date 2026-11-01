@@ -5,7 +5,11 @@ description: 将已捕获的 Frame 或 DataFrame 快照组织为分析 UI、报�
 
 # 分析展示与报告交付
 
-本 Skill 负责用 `marivo_present` 保存已有结果的不可变快照，默认在 tool view 展示，明确要求的报告/dashboard 使用右侧 tab。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
+本 Skill 负责用 `marivo_present` 保存已有结果的不可变快照，默认在会话级 Chat 节点展示，明确要求的报告/dashboard 使用右侧 tab。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
+
+分析报告/dashboard 统一通过 `marivo_present` 创建和更新，将结论、解释、限制及相关后续建议与数据放在同一份文档中。
+Frame 数据优先使用 `AnalysisFrameView`，用 `TextContent` 及布局组件组织说明。成功交付后，最终文字尽量只写一句总结，
+不重复报告正文；用户明确指定输出格式时遵循要求，展示失败则说明实际状态并用已有证据回答。
 
 ## 引用呈现与自定义页面
 
@@ -22,7 +26,7 @@ DataFrame 使用成功 `marivo_python` 回执中 `kind:"dataset"` 对应的 `sna
 不从 SQL/文件推断来源，也不修复已有精度损失。不要为呈现重新执行已经结束的分析。
 
 自定义页面时按需读[八组件紧凑签名](references/analysis-catalog.md)，提交完整 OpenUI Lang program，
-例如 `root = Stack([TextContent("结果说明"), DatasetView("result", {chart:"table"})]);`。
+例如 `root = Stack([TextContent("结论与分析范围"), AnalysisFrameView("result")]);`。
 `DatasetView` 只支持 auto/table/metric。Frame v2 的 `AnalysisFrameView` 按结构自动选择观察、成员、
 比较、分解、对齐、相关或份额视图；需要指定图形时支持 auto、table、metric、line、area、bar、heatmap、comparison 和
 decomposition。字段映射和 display 选项见[八组件紧凑签名](references/analysis-catalog.md)；展示只画快照中已有数据，

@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（`dsh.analysis-ui/v1`）呈现在 tool view 与原生右侧 tab 中。
+本模块把已保存的分析文档（`dsh.analysis-ui/v1`）呈现在会话级 Chat 节点与原生右侧 tab 中。
 插件拥有 Catalog/Renderer、阅读状态、报告目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 只读取保存的文档快照，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -58,7 +58,7 @@ DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。
 sha256 标识完整 execution record，由 Host 校验记录，客户端核对返回摘要与绑定摘要；摘要不一致或执行记录缺失时图标变灰。section 为 `unavailable`
 时对应图标变灰，不显示为 0 项；Session/Artifact 只在 Python 详情的开发者区出现。
 
-语义来源为分析时的静态身份，展示去重后的具体对象，不展示 datasource 和 entity；在 tool view 和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
+语义来源为分析时的静态身份，展示去重后的具体对象，不展示 datasource 和 entity；在已保存结果的会话节点和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
 并提示其可能已变化；候选预览不提供导航。
 
 ## 报告目录、版本历史与旧格式

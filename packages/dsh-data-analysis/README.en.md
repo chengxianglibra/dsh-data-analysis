@@ -105,6 +105,9 @@ For a multiword search, use `@"monthly revenue"`. Ask questions about the select
 Ordinary results appear as separate chat entries outside folded work steps. Explicit reports and dashboards open in a right-side tab.
 Present an existing Frame or captured DataFrame without repeating the analysis. Use Reports (报告) to reopen saved results and versions.
 
+Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,
+preferring `AnalysisFrameView` for Frame data. After successful delivery, the assistant aims to reply with one short summary sentence; explicit output-format requests still apply.
+
 - **Inspect data**: Select columns, sort exact values, browse local pages, and copy saved data. Previews disclose their range and cannot become complete single-value metrics.
 - **Check sources**: Frame views show structure and source identity. DataFrame views explicitly mark SQL, datasource and file provenance that was not captured.
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.

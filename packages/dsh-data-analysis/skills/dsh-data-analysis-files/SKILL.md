@@ -41,7 +41,7 @@ description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数�
 
 UI 有助于理解、比较或检查结果时，在原分析进程对实际 DataFrame 调用 `capture_dataset(result)`；
 成功回执提供 `snapshotRef`，直接调用 `marivo_present({resources:{result:{kind:"dataset-snapshot",snapshotRef:"实际引用"}}})`。
-默认 tool，用户明确要求报告/dashboard 时传 `surface:"tab"`。单结果不强制加载展示 Skill、查 Catalog 或回读 UI。
+默认 tool，成功结果在会话级节点展示；用户明确要求报告/dashboard 时传 `surface:"tab"`，把说明和数据放在同一份文档中，成功后最终文字尽量只写一句总结。单结果不强制加载展示 Skill、查 Catalog 或回读 UI。
 只有编写自定义 Lang 或修改页面时按需加载 `dsh-data-analysis-presentation`。在正文说明文件名与分析范围，
 不将文件结果冒充 Marivo Artifact 或 Evidence。普通 `present` 不赋予文件 Report/Build 或 Evidence 身份。
 

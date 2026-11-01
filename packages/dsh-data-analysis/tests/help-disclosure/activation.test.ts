@@ -734,6 +734,37 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
 })
 
+test('Marivo reports combine narrative and Frame data through one presentation entry', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([textResponse('ready')])
+  const ctx = await harness(adapter)
+  const agent = await createAgent(ctx, 'presentation-single-entry')
+  const dispose = installMarivoPlugin(ctx, fixture.environment, {
+    credentials: {
+      resolve: async () => undefined,
+      describe: async () => ({ configured: false, writable: true }),
+      set: async () => {},
+      unset: async () => {},
+    },
+  })
+  t.after(dispose)
+
+  send(agent, 'create a Marivo analysis report')
+  await agent.whenIdle()
+  const prompt = JSON.stringify(
+    adapter.requests[0]?.messages.filter((entry) => entry.role === 'system') ?? [],
+  )
+  assert.match(prompt, /use marivo_present as the single presentation entry/)
+  assert.match(prompt, /alongside the data in the same document/)
+  assert.match(prompt, /one short summary sentence without repeating the document/)
+  assert.match(prompt, /prefer AnalysisFrameView/)
+  assert.match(prompt, /Use DatasetView for dataset-snapshots/)
+  assert.match(prompt, /Honor explicit output-format requests/)
+  assert.match(prompt, /If presentation fails, say so/)
+  assert.match(prompt, /Ordinary answers and simple comparison tables can stay in chat/)
+})
+
 test('analysis activation discloses native help without the removed Evidence route', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
