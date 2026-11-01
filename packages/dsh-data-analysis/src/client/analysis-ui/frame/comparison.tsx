@@ -135,10 +135,12 @@ export function ComparisonTable({
   snapshot: s,
   classification: c,
   exactValues = false,
+  reference = false,
 }: {
   snapshot: Snapshot
   classification: FrameClassification
   exactValues?: boolean
+  reference?: boolean
 }) {
   const t = useCopy()
   const [scrollable, setScrollable] = useState(false)
@@ -200,11 +202,11 @@ export function ComparisonTable({
     ))
   return (
     <>
-      <div className="fv-table-bar fv-comparison-toolbar">
+      <div className={reference ? 'fv-sr-only' : 'fv-table-bar fv-comparison-toolbar'}>
         {scrollable && (
           <span
             id={hintId}
-            className="fv-scroll-hint"
+            className={reference ? undefined : 'fv-scroll-hint'}
             title={t('marivo.presentation.ui-frame-scroll-hint')}
           >
             <span className="fv-sr-only">{t('marivo.presentation.ui-frame-scroll-hint')}</span>
@@ -299,7 +301,7 @@ export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
           return (
             <section key={`${section.index}:${roles.group.name}`}>
               <h4>{`${valueName(s, undefined, roles.current!)} · ${ends.current} ⇄ ${ends.baseline}`}</h4>
-              <DatasetTable data={{ ...s.data, columns, rows }} caption="" />
+              <DatasetTable data={{ ...s.data, columns, rows }} caption="" hideRowCount />
             </section>
           )
         }),

@@ -523,7 +523,7 @@ test('comparison numbers are saved cells with neutral marks and endpoint labels'
   assert.doesNotMatch(down, /#(?:e34948|008300|ff0000|00ff00)|\bred\b|\bgreen\b/i)
 })
 
-test('a single-row multi-group comparison is one transposed table plus the audit table', () => {
+test('a single-row multi-group comparison is one transposed table without duplicate data', () => {
   const html = r.render(comparedSinglePeriodMultiGroup())
   assert.equal(viewOf(html), 'table')
   const block = comparisonTable(html)
@@ -543,7 +543,7 @@ test('a single-row multi-group comparison is one transposed table plus the audit
   assert.doesNotMatch(block, /fv-comparison-section/)
   // Raw role column ids stay out of the display table.
   assert.doesNotMatch(block, /prior\.(?:baseline|relative)\./)
-  assert.match(html, /<details class="fv-table">/)
+  assert.doesNotMatch(html, /data-icon="data"/)
   assert.match(html, /<h3 class="fv-title">Current ⇄ Baseline<\/h3>/)
 })
 
@@ -893,10 +893,10 @@ test('compact density keeps the name, header numbers or the main view and only u
   assert.doesNotMatch(kpi, /fv-chips/)
   const trend = r.render(observeTime(18), { display: { density: 'compact' } })
   assert.match(trend, /class="fv-svg"/)
-  assert.equal(count(trend, /data-icon="/), 0)
-  assert.match(trend, /<details class="fv-table">/)
+  assert.equal(count(trend, /data-icon="/), 1)
+  assert.match(trend, /data-icon="data"/)
   const periods = r.render(comparedCalendarWithPeriods(3), { display: { density: 'compact' } })
-  assert.equal(count(periods, /data-icon="/), 1)
+  assert.equal(count(periods, /data-icon="/), 2)
   assert.match(periods, /data-icon="periods"/)
 })
 
@@ -938,18 +938,51 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.doesNotMatch(origins, /sessionId|artifactId|>session</)
 })
 
-test('chips appear only for saved facts and the data table is collapsible', () => {
+test('chart data shares the icon row and explicit visible data stays inline', () => {
   const html = r.render(observeTime(6))
   assert.match(html, /Last 12 periods/)
   assert.match(html, /month · Asia\/Shanghai/)
-  assert.match(html, /<details class="fv-table">/)
-  assert.match(
-    r.render(observeTime(6), { display: { dataTable: 'visible' } }),
-    /<details class="fv-table" open="">/,
-  )
+  assert.match(html, /<div class="fv-icons"><span class="fv-icon" data-icon="data"/)
+  assert.match(html, /data-icon="data"[\s\S]*aria-haspopup="dialog"/)
+  const visible = r.render(observeTime(6), { display: { dataTable: 'visible' } })
+  assert.match(visible, /data-icon="data"[\s\S]*aria-expanded="true"/)
+  assert.match(visible, /class="fv-data-reference"/)
+  assert.doesNotMatch(visible, />6 rows</)
   const bare = observeScalar(1)
   bare.frame.sections.interpretation = { status: 'unavailable', reason: 'read-failed' }
   assert.doesNotMatch(r.render(bare), /fv-chips/)
+})
+
+test('table-shaped main views do not add a duplicate data reference', () => {
+  for (const snapshot of [records(), members(), comparedSinglePeriodMultiGroup()]) {
+    for (const display of [undefined, { dataTable: 'visible' as const }]) {
+      const html = r.render(snapshot, { display })
+      assert.doesNotMatch(html, /data-icon="data"|class="fv-data-reference"/)
+      assert.match(html, /<table/)
+    }
+  }
+  const comparison = compareOrdinary([categoryAxis(3)])
+  const comparisonResolution = resolved(comparison)
+  assert.equal(comparisonResolution.view.chart, 'comparison')
+  if (comparisonResolution.view.chart === 'comparison') {
+    const html = r.shell(comparison, comparisonResolution.classification, {
+      ...comparisonResolution.view,
+      style: 'table',
+    })
+    assert.match(html, /<table/)
+    assert.doesNotMatch(html, /data-icon="data"/)
+  }
+  const alignment = align(categoryAxis(3))
+  const alignmentResolution = resolved(alignment)
+  assert.equal(alignmentResolution.view.chart, 'alignment')
+  if (alignmentResolution.view.chart === 'alignment') {
+    const html = r.shell(alignment, alignmentResolution.classification, {
+      ...alignmentResolution.view,
+      style: 'table',
+    })
+    assert.match(html, /<table/)
+    assert.doesNotMatch(html, /data-icon="data"/)
+  }
 })
 
 test('no computed numbers: every drawn number is a saved cell', () => {

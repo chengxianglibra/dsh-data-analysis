@@ -76,6 +76,7 @@ export const zh = {
   'marivo.presentation.ui-frame-developer': '开发者',
   'marivo.presentation.ui-frame-members': '成员',
   'marivo.presentation.ui-frame-data-table': '表',
+  'marivo.presentation.ui-frame-data-truncated': '数据已截断',
   'marivo.presentation.ui-frame-comparison-table': '指标对比',
   'marivo.presentation.ui-frame-comparison-metric': '指标',
   'marivo.presentation.ui-frame-comparison-delta': 'Δ',
@@ -154,6 +155,7 @@ export const zh = {
   'marivo.presentation.next-page': '下一页',
   'marivo.presentation.unsupported-report': '此报告使用不再支持的格式，请让 DSH 重新呈现分析结果。',
   'marivo.presentation.page-summary': '第 {p0} / {p1} 页 · 每页 {p2} 行',
+  'marivo.presentation.page-only-summary': '第 {p0} / {p1} 页',
 } as const
 export const en = {
   'marivo.presentation.ui-capture-range': 'Captured {p0} / {p1} rows',
@@ -236,6 +238,7 @@ export const en = {
   'marivo.presentation.ui-frame-developer': 'Developer',
   'marivo.presentation.ui-frame-members': 'Members',
   'marivo.presentation.ui-frame-data-table': 'Table',
+  'marivo.presentation.ui-frame-data-truncated': 'Data truncated',
   'marivo.presentation.ui-frame-comparison-table': 'Metric comparison',
   'marivo.presentation.ui-frame-comparison-metric': 'Metric',
   'marivo.presentation.ui-frame-comparison-delta': 'Δ',
@@ -317,4 +320,5 @@ export const en = {
   'marivo.presentation.unsupported-report':
     'This report uses a format that is no longer supported. Ask DSH to present the analysis again.',
   'marivo.presentation.page-summary': 'Page {p0} / {p1} \u00b7 {p2} rows per page',
+  'marivo.presentation.page-only-summary': 'Page {p0} / {p1}',
 } satisfies Record<keyof typeof zh, string>

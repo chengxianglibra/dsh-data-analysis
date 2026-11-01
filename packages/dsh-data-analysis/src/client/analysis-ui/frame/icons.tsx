@@ -68,6 +68,8 @@ export function FrameIconButton({
   disabled,
   kind,
   onOpen,
+  expanded,
+  hasPopup,
   children,
 }: {
   label: string
@@ -75,6 +77,8 @@ export function FrameIconButton({
   disabled?: boolean
   kind: string
   onOpen?: () => void
+  expanded?: boolean
+  hasPopup?: 'dialog'
   children: ReactNode
 }) {
   const id = `fv-tip-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
@@ -85,6 +89,8 @@ export function FrameIconButton({
         aria-label={label}
         aria-describedby={tip === label ? undefined : id}
         aria-disabled={disabled ? true : undefined}
+        aria-expanded={expanded}
+        aria-haspopup={hasPopup}
         onClick={disabled ? undefined : onOpen}
       >
         {children}
@@ -327,18 +333,21 @@ export function IconRow({
   view,
   codeRef,
   compact,
+  dataControl,
 }: {
   snapshot: Snapshot
   view: ResolvedFrameView
   codeRef?: PythonCodeRef
   compact?: boolean
+  dataControl?: ReactNode
 }) {
   const periods = timeComparison(snapshot, view)
   const coverage = !snapshot.coverage.complete
   if (compact) {
-    if (!coverage && periods === undefined) return null
+    if (!dataControl && !coverage && periods === undefined) return null
     return (
       <div className="fv-icons">
+        {dataControl}
         {coverage && <CoverageIcon snapshot={snapshot} />}
         {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
       </div>
@@ -346,6 +355,7 @@ export function IconRow({
   }
   return (
     <div className="fv-icons">
+      {dataControl}
       {coverage && <CoverageIcon snapshot={snapshot} />}
       {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
       <OriginsIcon snapshot={snapshot} />

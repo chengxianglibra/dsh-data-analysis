@@ -29,6 +29,8 @@ const records = frame({
   values: [{ name: 'note', type: 'string', values: ['a long saved note', 'b', 'c'] },
     { name: 'amount', values: [118393545.04998468, 8, 9] }],
 });
+const precise = frame({axes: [timeAxis(3)], values: [{name: 'amount', values: [118393545.04998468, 8, 9]}]});
+const partial = frame({axes: [timeAxis(3)], values: [{name: 'amount', values: [1, 2, 3]}], totalRows: 5});
 const heatmap = observeTimeCategory(9);
 const longCategory = 'Long_original_category_name_abcdef';
 const regionIndex = heatmap.data.columns.findIndex(column => column.id === 'region');
@@ -75,9 +77,12 @@ for (const [index, value] of [377903, 1767304, 6056, 41820207].entries()) {
 }
 const resources = {
   good: resource(observeTime(3), ref(${JSON.stringify(sha256)})),
-  long: resource(observeTime(18)),
+  long: resource(observeTime(24)),
   bad: resource(observeTime(3), ref('0'.repeat(64))),
   records: resource(records),
+  precise: resource(precise),
+  partial: resource(partial),
+  inline: resource(precise),
   heatmap: resource(heatmap),
   nullableHeatmap: resource(nullableHeatmap),
   empty: resource(emptyHeatmap),
@@ -91,7 +96,7 @@ const resources = {
   sparseTaxiHeatmap: resource(sparseTaxiHeatmap),
   taxiAlignment: resource(taxiAlignment),
 };
-const program = 'root = Stack([good, long, bad, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment]);\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");';
+const program = 'root = Stack([good, long, bad, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline]);\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
@@ -379,7 +384,9 @@ test('long-series fallback retains legible text and scrolls with the keyboard', 
 test('chart regions scroll with arrow keys after expanding the data table', async () => {
   for (const name of ['long', 'nullableHeatmap', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
-    await card.locator('.fv-table summary').click()
+    await card.locator('[data-icon="data"] button').click()
+    await card.locator('dialog[open] table').waitFor()
+    await card.locator('dialog[open] button[aria-label="Close"]').click()
     const region = card.locator('.fv-chart section[tabindex="0"]').first()
     await region.focus()
     await page.keyboard.press('ArrowRight')
@@ -435,13 +442,14 @@ test('row labels stay aligned and readable while heatmap, comparison and effects
 
 test('a truncated row label remains available in the expanded data table', async () => {
   const card = page.locator('[data-resource="heatmap"]')
-  const details = card.locator('.fv-table')
-  if ((await details.getAttribute('open')) === null) await details.locator('summary').click()
+  await card.locator('[data-icon="data"] button').click()
+  const details = card.locator('dialog[open]')
   await details.locator('table').waitFor()
   assert.equal(
     await details.getByText('Long_original_category_name_abcdef', { exact: true }).count(),
     3,
   )
+  await details.getByRole('button', { name: 'Close' }).click()
 })
 
 test('an empty heatmap never paints an opaque row-label rail', async () => {
@@ -474,20 +482,69 @@ test('blank row labels do not paint an opaque rail, and mixed rows keep their po
   assert.equal(await rail.locator('[data-rail-row="1"] title').textContent(), 'zone')
 })
 
-test('frame table exposes detailed saved values through a keyboard operable data icon', async () => {
-  const frame = page.locator('[data-resource="records"]')
-  const cell = frame.locator('td[data-column-id="amount"]').first()
-  const details = frame.locator('details.fv-table')
-  const toggle = details.locator('summary')
-  assert.equal(await cell.textContent(), '118,393,545.05')
+test('chart data uses the icon row and a keyboard operable dialog with exact saved values', async () => {
+  const frame = page.locator('[data-resource="precise"]')
+  const toggle = frame.locator('[data-icon="data"] button')
+  assert.equal(await frame.locator('.fv-icons > [data-icon="data"]').count(), 1)
+  assert.equal(await frame.locator('.fv-icons > [data-icon="origins"]').count(), 1)
+  assert.equal(await frame.locator('.fv-icons > [data-icon="python"]').count(), 1)
+  assert.equal(await toggle.getAttribute('aria-haspopup'), 'dialog')
   await toggle.focus()
   await page.keyboard.press('Enter')
+  const details = frame.locator('dialog[open]')
   const saved = details.locator('td[data-column-id="amount"]').first()
   await saved.waitFor()
   assert.equal(await saved.textContent(), '118393545.04998468')
-  await page.keyboard.press('Space')
+  assert.equal(await details.locator('.fv-scroll-hint, .pr-table > p').count(), 0)
+  await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
+  await saved.getByRole('button').click()
+  const menu = details.getByRole('menu')
+  await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
+    { resourceName: 'precise', row: 0, field: 'amount' },
+  ])
+  await page.keyboard.press('Escape')
+  assert.equal(await details.isVisible(), true)
+  assert.equal(await menu.count(), 0)
+  assert.equal(
+    await saved.getByRole('button').evaluate((element) => element === document.activeElement),
+    true,
+  )
+  await page.keyboard.press('Escape')
   await saved.waitFor({ state: 'detached' })
-  assert.equal(await cell.textContent(), '118,393,545.05')
+  assert.equal(await frame.locator('dialog[open]').count(), 0)
+  assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 0)
+})
+
+test('data references retain pagination and truncation without row counts', async () => {
+  const long = page.locator('[data-resource="long"]')
+  await long.locator('[data-icon="data"] button').click()
+  const dialog = long.locator('dialog[open]')
+  assert.equal(await dialog.locator('.pr-pagination span').textContent(), 'Page 1 / 2')
+  await dialog.getByRole('button', { name: 'Next' }).click()
+  assert.equal(await dialog.locator('.pr-pagination span').textContent(), 'Page 2 / 2')
+  assert.equal(await dialog.locator('tbody tr').count(), 4)
+  await dialog.getByRole('button', { name: 'Close' }).click()
+
+  const partial = page.locator('[data-resource="partial"]')
+  await partial.locator('[data-icon="data"] button').click()
+  const partialDialog = partial.locator('dialog[open]')
+  assert.equal(await partialDialog.locator('.pr-notice').textContent(), 'Data truncated')
+  await partialDialog.getByRole('button', { name: 'Close' }).click()
+})
+
+test('an explicitly visible data reference remains inline and can be toggled', async () => {
+  const frame = page.locator('[data-resource="inline"]')
+  const toggle = frame.locator('[data-icon="data"] button')
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
+  assert.equal(await frame.locator('.fv-data-reference table').count(), 1)
+  await toggle.click()
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
+  assert.equal(await frame.locator('.fv-data-reference').count(), 0)
+  await toggle.click()
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
+  assert.equal(await frame.locator('.fv-data-reference table').count(), 1)
+  assert.equal(await frame.locator('dialog[open]').count(), 0)
 })
 
 test('coincident comparison and alignment marks retain visible rings at wide and narrow widths', async () => {

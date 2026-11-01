@@ -26,6 +26,7 @@ export function DatasetTable({
   selectCell,
   selectableColumns,
   hideCompleteScope = false,
+  hideRowCount = false,
 }: {
   data: TypedDataset
   columns?: string[]
@@ -39,6 +40,8 @@ export function DatasetTable({
   selectableColumns?: ReadonlySet<string>
   /** The parent already displays the complete row count. Empty/truncated states remain visible. */
   hideCompleteScope?: boolean
+  /** Keep empty and truncated states without displaying row counts. */
+  hideRowCount?: boolean
 }) {
   const t = useCopy()
 
@@ -56,9 +59,11 @@ export function DatasetTable({
   const shown = sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
   return (
     <div className="pr-table">
-      {(!hideCompleteScope || data.truncated || data.rowCount === 0) && (
+      {((!hideCompleteScope && !hideRowCount) || data.truncated || data.rowCount === 0) && (
         <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>
-          {t(datasetScope(t.locale, data))}
+          {hideRowCount && data.truncated
+            ? t('marivo.presentation.ui-frame-data-truncated')
+            : t(datasetScope(t.locale, data))}
         </p>
       )}
       <div
@@ -162,11 +167,16 @@ export function DatasetTable({
             {t('marivo.presentation.previous-page')}
           </button>
           <span aria-live="polite">
-            {t('marivo.presentation.page-summary', {
-              p0: activePage + 1,
-              p1: pages,
-              p2: TABLE_PAGE_SIZE,
-            })}
+            {t(
+              hideRowCount
+                ? 'marivo.presentation.page-only-summary'
+                : 'marivo.presentation.page-summary',
+              {
+                p0: activePage + 1,
+                p1: pages,
+                p2: TABLE_PAGE_SIZE,
+              },
+            )}
           </span>
           <button
             type="button"

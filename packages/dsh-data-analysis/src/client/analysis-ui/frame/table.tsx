@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { formatCell } from '../../../presentation/contracts/index.ts'
 import type { TypedDataset } from '../../../presentation/contracts/types.ts'
 import { useCopy } from '../../i18n/context.tsx'
@@ -9,37 +9,6 @@ import { FrameIconButton } from './icons.tsx'
 import type { Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 import { MAX_FROZEN } from './styles.ts'
-
-/** Mount the detailed table only when opened, keeping large snapshots out of the initial view. */
-export function FrameDataDetails({
-  open = false,
-  children,
-}: {
-  open?: boolean
-  children: ReactNode
-}) {
-  const t = useCopy()
-  const [expanded, setExpanded] = useState(open)
-  return (
-    <details
-      className="fv-table"
-      open={open}
-      onToggle={(event) => setExpanded(event.currentTarget.open)}
-    >
-      <summary
-        className="fv-table-toggle"
-        aria-label={t('marivo.presentation.ui-frame-data-table')}
-        title={t('marivo.presentation.ui-frame-data-table')}
-      >
-        <FrameIcon kind="table" />
-        <span aria-hidden="true" className="fv-tip">
-          {t('marivo.presentation.ui-frame-data-table')}
-        </span>
-      </summary>
-      {expanded && children}
-    </details>
-  )
-}
 
 /** Copies the visible columns' exact saved cells as TSV. */
 export function CopyData({ data, columns }: { data: TypedDataset; columns: string[] }) {
@@ -121,6 +90,7 @@ export function DataTable({
   frozen = 0,
   selectionFields,
   exactValues = false,
+  reference = false,
 }: {
   snapshot: Snapshot
   columns?: string[]
@@ -128,6 +98,7 @@ export function DataTable({
   frozen?: number
   selectionFields?: readonly string[]
   exactValues?: boolean
+  reference?: boolean
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
@@ -153,11 +124,11 @@ export function DataTable({
   }, [ref])
   return (
     <>
-      <div className="fv-table-bar fv-comparison-toolbar">
+      <div className={reference ? 'fv-sr-only' : 'fv-table-bar fv-comparison-toolbar'}>
         {scrollable && (
           <span
             id={hintId}
-            className="fv-scroll-hint"
+            className={reference ? undefined : 'fv-scroll-hint'}
             title={t('marivo.presentation.ui-frame-scroll-hint')}
           >
             <span className="fv-sr-only">{t('marivo.presentation.ui-frame-scroll-hint')}</span>
@@ -177,6 +148,7 @@ export function DataTable({
           scrollDescription={scrollable ? hintId : undefined}
           selectCell={selection?.select}
           selectableColumns={selectionFields ? new Set(selectionFields) : undefined}
+          hideRowCount={reference}
           display={
             exactValues
               ? undefined

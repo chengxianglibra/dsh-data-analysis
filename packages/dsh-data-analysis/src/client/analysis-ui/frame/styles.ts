@@ -81,7 +81,6 @@ body[data-ds-dark-theme] .fv{${dark}}
 .fv-comparison-details h4{margin:8px 0 0;font-size:12px}
 .fv .pr-table table{width:max-content;min-width:100%}
 .fv .pr-table thead th{white-space:nowrap;overflow-wrap:normal;max-width:none}
-.fv-table summary{cursor:pointer;font-size:12px;color:var(--pr-muted)}
 .fv-table-bar{display:flex;justify-content:flex-end;padding:4px 0}
 .fv-comparison-toolbar{justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .fv-comparison-toolbar span{font-size:12px;color:var(--pr-muted)}
@@ -96,10 +95,6 @@ ${frozen}
 .fv-tip{position:absolute;left:0;bottom:calc(100% + 4px);z-index:5;display:none;width:max-content;max-width:min(320px,80vw);padding:6px 8px;border-radius:6px;background:var(--pr-text);color:var(--pr-bg);font-size:12px;line-height:1.4;white-space:pre-line;pointer-events:none}
 .fv-icon:hover .fv-tip,.fv-icon:focus-within .fv-tip{display:block}
 .fv-head [data-icon=copy-data] .fv-tip,.fv-dialog [data-icon=copy-code] .fv-tip{left:auto;right:0}
-.fv-table-toggle{position:relative;display:flex;align-items:center;width:max-content;padding:2px 6px;list-style:none}
-.fv-table-toggle::-webkit-details-marker{display:none}
-.fv-table-toggle:hover,.fv-table-toggle:focus-visible{outline:1px solid var(--pr-border);border-radius:4px}
-.fv-table-toggle:hover .fv-tip,.fv-table-toggle:focus-visible .fv-tip{display:block}
 .fv-dialog{max-width:min(720px,92vw);width:100%;border:1px solid var(--pr-border);border-radius:10px;padding:0;background:var(--pr-bg);color:var(--pr-text)}
 .fv-dialog::backdrop{background:rgba(0,0,0,.35)}
 .fv-dialog>header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--pr-border)}

@@ -28,7 +28,8 @@ import {
   decompositionTitle,
   decompositionTotal,
 } from './decomposition.tsx'
-import { IconRow } from './icons.tsx'
+import { FrameIcon } from './frame-icon.tsx'
+import { Dialog, FrameIconButton, IconRow } from './icons.tsx'
 import {
   type Chip,
   cellOf,
@@ -50,7 +51,7 @@ import {
   TimeChart,
 } from './observation.tsx'
 import { FrameSelectionContext } from './selection-context.tsx'
-import { CopyData, DataTable, FrameDataDetails, useFrozenColumns } from './table.tsx'
+import { CopyData, DataTable, useFrozenColumns } from './table.tsx'
 
 export interface FrameShellProps {
   snapshot: Snapshot
@@ -297,6 +298,9 @@ export function FrameShell({
 }: FrameShellProps) {
   const t = useCopy()
   const { askPoint, candidate } = useAnalysisResources()
+  const inlineData = display?.dataTable === 'visible'
+  const [dataState, setDataState] = useState({ inline: inlineData, open: inlineData })
+  const dataOpen = dataState.inline === inlineData ? dataState.open : inlineData
   const [selection, setSelection] = useState<{ snapshot: Snapshot; row: number; field: string }>()
   const [status, setStatus] = useState<'pending' | 'added' | 'failed'>()
   const requestRevision = useRef(0)
@@ -363,6 +367,67 @@ export function FrameShell({
   const hasNumbers = numbers.length > 0 || comparisonNumbers
   const showMain = !compactDensity || !hasNumbers
   const allColumns = s.data.columns.map((col) => col.id)
+  const mainIsTable =
+    view.chart === 'table' ||
+    view.chart === 'members' ||
+    (view.chart === 'comparison' && view.style === 'table') ||
+    (view.chart === 'alignment' && (view.style === 'table' || view.pairs.length === 0))
+  const showData = (!compactDensity || showMain) && !mainIsTable
+  const dataLabel = t('marivo.presentation.ui-frame-data-table')
+  const pointMenu = selected && (
+    <div
+      className="fv-point-menu"
+      ref={menuRef}
+      role="menu"
+      style={{ left: menuPosition.x, top: menuPosition.y }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        disabled={status === 'pending'}
+        onClick={() => {
+          if (!askPoint || !resourceName) return
+          const revision = ++requestRevision.current
+          setStatus('pending')
+          void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
+            () => {
+              if (requestRevision.current === revision) setStatus('added')
+            },
+            () => {
+              if (requestRevision.current === revision) setStatus('failed')
+            },
+          )
+        }}
+      >
+        {t('marivo.presentation.ui-frame-ask-point')}
+      </button>
+      {status && status !== 'pending' && (
+        <p role="status">
+          {t(
+            status === 'added'
+              ? 'marivo.presentation.ui-frame-ask-added'
+              : 'marivo.presentation.ui-frame-ask-failed',
+          )}
+        </p>
+      )}
+    </div>
+  )
+  const dataTable =
+    c.class === 'comparison' ? (
+      s.data.rows.length === 1 ? (
+        <ComparisonTable snapshot={s} classification={c} exactValues reference />
+      ) : (
+        <ComparisonDetail snapshot={s} />
+      )
+    ) : (
+      <DataTable
+        snapshot={s}
+        frozen={keyColumns(s, c)}
+        selectionFields={c.class === 'observation' ? c.primaryValues : undefined}
+        exactValues
+        reference
+      />
+    )
   return (
     <FrameSelectionContext.Provider value={selectable}>
       <section
@@ -389,6 +454,7 @@ export function FrameShell({
         }}
         onKeyDownCapture={(event) => {
           if (event.key === 'Escape' && selected) {
+            event.preventDefault()
             setSelection(undefined)
             originRef.current?.focus()
           }
@@ -438,63 +504,38 @@ export function FrameShell({
             <MainView snapshot={s} classification={c} view={view} height={display?.height} />
           )
         )}
-        {(!compactDensity || showMain) && (
-          <FrameDataDetails open={display?.dataTable === 'visible'}>
-            {c.class === 'comparison' ? (
-              s.data.rows.length === 1 ? (
-                <ComparisonTable snapshot={s} classification={c} exactValues />
-              ) : (
-                <ComparisonDetail snapshot={s} />
-              )
-            ) : (
-              <DataTable
-                snapshot={s}
-                frozen={keyColumns(s, c)}
-                selectionFields={c.class === 'observation' ? c.primaryValues : undefined}
-                exactValues
-              />
-            )}
-          </FrameDataDetails>
-        )}
-        {selected && (
-          <div
-            className="fv-point-menu"
-            ref={menuRef}
-            role="menu"
-            style={{ left: menuPosition.x, top: menuPosition.y }}
+        {!(showData && !inlineData && dataOpen) && pointMenu}
+        <IconRow
+          snapshot={s}
+          view={view}
+          codeRef={codeRef}
+          compact={compactDensity}
+          dataControl={
+            showData ? (
+              <FrameIconButton
+                kind="data"
+                label={dataLabel}
+                tip={dataLabel}
+                expanded={inlineData ? dataOpen : undefined}
+                hasPopup={inlineData ? undefined : 'dialog'}
+                onOpen={() => setDataState({ inline: inlineData, open: !dataOpen })}
+              >
+                <FrameIcon kind="table" />
+              </FrameIconButton>
+            ) : undefined
+          }
+        />
+        {showData && inlineData && dataOpen && <div className="fv-data-reference">{dataTable}</div>}
+        {showData && !inlineData && (
+          <Dialog
+            title={dataLabel}
+            open={dataOpen}
+            onClose={() => setDataState({ inline: false, open: false })}
           >
-            <button
-              type="button"
-              role="menuitem"
-              disabled={status === 'pending'}
-              onClick={() => {
-                if (!askPoint || !resourceName) return
-                const revision = ++requestRevision.current
-                setStatus('pending')
-                void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
-                  () => {
-                    if (requestRevision.current === revision) setStatus('added')
-                  },
-                  () => {
-                    if (requestRevision.current === revision) setStatus('failed')
-                  },
-                )
-              }}
-            >
-              {t('marivo.presentation.ui-frame-ask-point')}
-            </button>
-            {status && status !== 'pending' && (
-              <p role="status">
-                {t(
-                  status === 'added'
-                    ? 'marivo.presentation.ui-frame-ask-added'
-                    : 'marivo.presentation.ui-frame-ask-failed',
-                )}
-              </p>
-            )}
-          </div>
+            <div className="fv-data-reference">{dataTable}</div>
+            {pointMenu}
+          </Dialog>
         )}
-        <IconRow snapshot={s} view={view} codeRef={codeRef} compact={compactDensity} />
       </section>
     </FrameSelectionContext.Provider>
   )
