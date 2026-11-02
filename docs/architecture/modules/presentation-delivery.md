@@ -31,8 +31,9 @@ Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。`frame-snapshot` 声明的 `snapshotRef` 由 `capture_frame` 签发，
-与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前用 `resolveFrameView` 校验每个数据视图：
+与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
 metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列，图形 encoding 只引用公开值名与轴名；
+Dataset 图表编码引用列 ID，要求完整快照、数值列和唯一坐标组合；不推断分析语义。
 不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。

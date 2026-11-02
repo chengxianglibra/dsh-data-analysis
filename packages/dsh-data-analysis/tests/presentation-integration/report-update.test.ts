@@ -14,6 +14,7 @@ import {
   parseAnalysisDocument,
   parseSavedPresentation,
 } from '../../src/presentation/contracts/analysis-document.ts'
+import type { DatasetSnapshot } from '../../src/presentation/contracts/snapshot.ts'
 import { datasetSnapshotRef, frameSnapshotRef } from '../../src/presentation/dataset-snapshot.ts'
 import { presentationSha256 } from '../../src/presentation/files.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
@@ -26,9 +27,10 @@ import {
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { savePythonExecution } from '../../src/python-execution.ts'
+import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 
-async function fixture(t: { after(fn: () => Promise<void>): void }) {
+async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: DatasetSnapshot) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'analysis-ui-p2-')))
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = root
@@ -40,7 +42,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const captureId = randomUUID(),
     captureDirectory = `.dsh-data-analysis/captures/${randomUUID()}`
   await mkdir(path.join(root, captureDirectory), { recursive: true })
-  const snapshot = {
+  const snapshot = dataset ?? {
     schemaVersion: 1,
     kind: 'dataset',
     fetchedAt: '2026-10-28T00:00:00Z',
@@ -367,4 +369,96 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
     (await resolvePresentation(f.root, 'workspace', base.reportId)).buildId,
     removed.receipt.buildId,
   )
+})
+
+test('Dataset chart programs save, reopen and update embedded data after capture removal', async (t) => {
+  const snapshot = datasetSnapshot(
+    [
+      ['A', 'X', '9007199254740993'],
+      ['B', 'X', null],
+      ['A', 'Y', '-2.50'],
+      ['B', 'Y', '0.00'],
+    ],
+    [
+      { id: 'category', label: 'Category', type: 'string', nullable: false },
+      { id: 'series', label: 'Series', type: 'string', nullable: false },
+      { id: 'value', label: 'Value', type: 'decimal', nullable: true },
+    ],
+  )
+  const f = await fixture(t, snapshot)
+  const views = ['line', 'area', 'bar'].map(
+    (chart) =>
+      `DatasetView("data", {chart:"${chart}",encoding:{axis:"category",values:["value"],series:"series"}})`,
+  )
+  views.push(
+    'DatasetView("data", {chart:"heatmap",encoding:{x:"category",y:"series",value:"value"}})',
+  )
+  const program = `root = Stack([${views.join(',')}]);`
+  const delivery = await f.present({ resources: { data: f.resources.data }, program })
+  const saved = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
+  assert.deepEqual(
+    saved.resources.data?.kind === 'snapshot' && saved.resources.data.snapshot.data.rows,
+    snapshot.data.rows,
+  )
+  await assert.rejects(
+    f.present({
+      basedOnRecordId: saved.recordId,
+      program:
+        'root = DatasetView("data", {chart:"line",encoding:{axis:"category",values:["value"]}});',
+    }),
+    /analysis-view-target-ambiguous at root\/view\/encoding/,
+  )
+  assert.equal(
+    (await resolvePresentation(f.root, 'workspace', saved.reportId)).buildId,
+    saved.buildId,
+  )
+  await rm(path.join(f.root, f.captureDirectory), { recursive: true })
+  await f.service.close()
+  const cold = new MarivoPresentationFileService(
+    () => ({ id: 'workspace', path: f.root }),
+    () => ({ id: 'workspace', path: f.root }),
+  )
+  t.after(() => cold.close())
+  const reopened = await readAnalysisRecord(f.root, 'workspace', saved.reportId, saved.buildId)
+  assert.equal(reopened.program, saved.program)
+  assert.deepEqual(reopened.resources, saved.resources)
+  const model = new PresentationDeliveryModel({
+    async call(_channel, endpoint, payload, signal) {
+      return {
+        ok: true,
+        value:
+          endpoint === 'files/read'
+            ? await cold.read(payload, signal)
+            : endpoint === 'reports/history'
+              ? await cold.catalog(endpoint, payload, signal)
+              : await cold.report(payload, signal),
+      }
+    },
+  })
+  t.after(() => model.dispose())
+  await model.showBuild('workspace', saved.reportId, saved.buildId)
+  assert.equal(model.getSnapshot().error, undefined)
+  assert.equal(model.getSnapshot().analysisDocument?.program, saved.program)
+  const updated = await f.present({
+    basedOnRecordId: saved.recordId,
+    program:
+      'root = DatasetView("data", {chart:"bar",encoding:{axis:"category",values:["value"],series:"series"}});',
+  })
+  assert.deepEqual((await readReceiptDocument(f.root, updated.receipt)).resources, saved.resources)
+})
+
+test('additive Dataset Catalog retains preceding Frame and Dataset reports while rejecting unknown builds', async (t) => {
+  const f = await fixture(t)
+  const previous = '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
+  for (const resource of ['frame', 'data'] as const) {
+    const delivery = await f.present({ resources: { [resource]: f.resources[resource] } })
+    const saved = await readReceiptDocument(f.root, delivery.receipt)
+    assert.equal(
+      parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build: previous } }).program,
+      saved.program,
+    )
+    assert.throws(() =>
+      parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build: 'unknown' } }),
+    )
+  }
 })

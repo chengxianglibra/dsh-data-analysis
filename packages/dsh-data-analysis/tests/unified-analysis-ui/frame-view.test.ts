@@ -10,22 +10,24 @@ import {
   type AnalysisSnapshot,
   parseAnalysisSnapshot,
 } from '../../src/presentation/contracts/snapshot.ts'
-import { frameSnapshot } from './fixtures.ts'
 import * as f from './frame-fixtures.ts'
 import { comparedSinglePeriodMultiGroup } from './frame-render-fixtures.ts'
 
 function resolved(snapshot: AnalysisSnapshot, view?: FrameView) {
+  if (snapshot.kind !== 'frame') throw new Error('frame-required')
   const result = resolveFrameView(snapshot, view)
   if (!result.ok) throw new Error(`unexpected ${result.code} at ${result.path}`)
   return result
 }
 const viewOf = (snapshot: AnalysisSnapshot, view?: FrameView) => resolved(snapshot, view).view
 const failure = (snapshot: AnalysisSnapshot, view: FrameView) => {
+  if (snapshot.kind !== 'frame') throw new Error('frame-required')
   const result: FrameViewResolution = resolveFrameView(snapshot, view)
   assert.equal(result.ok, false, JSON.stringify(result))
   return result.ok ? undefined : { code: result.code, path: result.path }
 }
 const ambiguity = (snapshot: AnalysisSnapshot, view: FrameView) => {
+  if (snapshot.kind !== 'frame') throw new Error('frame-required')
   const result: FrameViewResolution = resolveFrameView(snapshot, view)
   assert.equal(result.ok, false, JSON.stringify(result))
   return result.ok ? undefined : result
@@ -705,41 +707,6 @@ test('heatmaps reject duplicate projected axis keys without aggregating captured
   assert.equal(viewOf(composite, encoding).chart, 'heatmap')
   composite.frame.coordinates.k_c!.values[1] = 'first'
   assert.deepEqual(failure(composite, encoding), expected)
-})
-
-function dataset(columns: number, complete: boolean) {
-  const raw = frameSnapshot()
-  const base = complete
-    ? {
-        ...raw,
-        data: { ...raw.data, rowCount: 1, truncated: false },
-        coverage: { ...raw.coverage, totalRows: 1, complete: true },
-      }
-    : raw
-  const keep = base.data.columns.slice(0, columns)
-  return parseAnalysisSnapshot({
-    schemaVersion: 1,
-    kind: 'dataset',
-    fetchedAt: base.fetchedAt,
-    data: { ...base.data, columns: keep, rows: base.data.rows.map((r) => r.slice(0, columns)) },
-    coverage: { ...base.coverage, columns: keep.map((c) => c.id) },
-    source: { kind: 'dataframe', details: 'not-captured' },
-  })
-}
-
-test('Dataset snapshots keep auto/table/metric behaviour', () => {
-  assert.deepEqual(viewOf(dataset(1, true)), { chart: 'metric', values: ['region'] })
-  assert.equal(viewOf(dataset(1, false)).chart, 'table')
-  assert.deepEqual(viewOf(dataset(2, true)), { chart: 'table', columns: ['region', 'amount'] })
-  assert.deepEqual(viewOf(dataset(2, true), { chart: 'metric', encoding: { value: 'amount' } }), {
-    chart: 'metric',
-    values: ['amount'],
-  })
-  assert.deepEqual(failure(dataset(2, false), { chart: 'bar' }), {
-    code: 'view-unsupported-for-snapshot',
-    path: '/view/chart',
-  })
-  assert.equal(resolved(dataset(2, true)).classification.class, 'observation')
 })
 
 const REAL: Record<string, string> = {

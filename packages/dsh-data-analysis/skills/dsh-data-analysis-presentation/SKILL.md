@@ -27,7 +27,7 @@ DataFrame 使用成功 `marivo_python` 回执中 `kind:"dataset"` 对应的 `sna
 
 自定义页面时按需读[八组件紧凑签名](references/analysis-catalog.md)，提交完整 OpenUI Lang program，
 例如 `root = Stack([TextContent("结论与分析范围"), AnalysisFrameView("result")]);`。
-`DatasetView` 只支持 auto/table/metric。Frame v2 的 `AnalysisFrameView` 按结构自动选择观察、成员、
+`DatasetView` 支持 auto/table/metric 以及显式列映射的 line/area/bar/heatmap：趋势与柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。图表要求完整快照、数值列及唯一坐标，按保存行首次出现顺序展示，不聚合、不定义分析语义。Frame v2 的 `AnalysisFrameView` 按结构自动选择观察、成员、
 比较、分解、对齐、相关或份额视图；需要指定图形时支持 auto、table、metric、line、area、bar、heatmap、comparison 和
 decomposition。字段映射和 display 选项见[八组件紧凑签名](references/analysis-catalog.md)；展示只画快照中已有数据，
 不聚合、不计算指标，也不提供全局筛选或动态指标。

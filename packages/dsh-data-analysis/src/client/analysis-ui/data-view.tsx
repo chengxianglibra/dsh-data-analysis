@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { resolveDatasetView } from '../../presentation/contracts/dataset-view.ts'
 import type { FrameDisplay, FrameView } from '../../presentation/contracts/frame-view.ts'
 import { formatCell } from '../../presentation/contracts/index.ts'
 import {
@@ -8,7 +9,11 @@ import {
 } from '../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
+import { datasetChartModel } from './charts/dataset-model.ts'
+import { Heatmap, TimeChart } from './charts/observation.tsx'
 import { useAnalysisResources } from './context.tsx'
+import { FrameIcon } from './frame/frame-icon.tsx'
+import { Dialog, FrameIconButton } from './frame/icons.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
 
 export interface AnalysisViewProps {
@@ -57,7 +62,7 @@ export function AnalysisDataView({
   )
 }
 
-/** Dataset snapshots: a table or complete single-row metric. */
+/** Dataset snapshots use column mappings and the shared plot components. */
 function DatasetDataView({
   resourceName,
   snapshot,
@@ -78,21 +83,36 @@ function DatasetDataView({
   const t = useCopy()
   const [selected, setSelected] = useState<string[]>()
   const [copy, setCopy] = useState<string>()
+  const [dataOpen, setDataOpen] = useState(false)
+  const { candidate } = useAnalysisResources()
+  const resolution = useMemo(() => {
+    const explicit = resolveDatasetView(snapshot, view)
+    return explicit.ok || !candidate ? explicit : resolveDatasetView(snapshot)
+  }, [snapshot, view, candidate])
+  const resolved = resolution.ok ? resolution.view : undefined
+  const chart =
+    resolved && resolved.chart !== 'table' && resolved.chart !== 'metric' ? resolved : undefined
+  const model = useMemo(
+    () =>
+      datasetChartModel(
+        snapshot.data,
+        chart
+          ? chart.chart === 'heatmap'
+            ? [chart.x, chart.y]
+            : [chart.axis, ...(chart.series ? [chart.series] : [])]
+          : [],
+      ),
+    [snapshot, chart],
+  )
+  if (!resolution.ok) return <p role="alert">{t('marivo.presentation.ui-resource-unavailable')}</p>
   const kind = snapshot.kind
   const data = snapshot.data
   const columns =
     selected ??
-    (view?.chart === 'table' ? view.columns : undefined) ??
+    (resolved?.chart === 'table' ? resolved.columns : undefined) ??
     data.columns.map((c) => c.id)
-  const autoColumn = data.columns.length === 1 ? data.columns[0] : undefined
   const metricColumn =
-    view?.chart === 'metric'
-      ? view.encoding
-        ? data.columns.find((c) => c.id === view.encoding!.value)
-        : autoColumn
-      : (!view || view.chart === 'auto') && snapshot.coverage.complete && data.rowCount === 1
-        ? autoColumn
-        : undefined
+    resolved?.chart === 'metric' ? data.columns.find((c) => c.id === resolved.values[0]) : undefined
   const metric = metricColumn && snapshot.coverage.complete && data.rowCount === 1
   const copyRows = async () => {
     const indices = columns.map((id) => data.columns.findIndex((c) => c.id === id))
@@ -111,7 +131,12 @@ function DatasetDataView({
     setCopy(ok ? 'marivo.presentation.copied' : 'marivo.presentation.ui-copy-failed')
   }
   return (
-    <section className="au-data" data-resource={resourceName} data-resource-kind={kind}>
+    <section
+      className={chart ? 'fv au-data' : 'au-data'}
+      data-resource={resourceName}
+      data-resource-kind={kind}
+      data-dataset-view={resolved?.chart}
+    >
       <div className="au-data-heading">
         <strong>{resourceName}</strong>
         <button type="button" onClick={() => void copyRows()}>
@@ -119,7 +144,31 @@ function DatasetDataView({
         </button>
       </div>
       {copy && <p role="status">{t(copy)}</p>}
-      {metric ? (
+      {chart ? (
+        <>
+          {chart.chart === 'heatmap' ? (
+            <Heatmap model={model} view={chart} height={height} />
+          ) : (
+            <TimeChart model={model} view={chart} height={height} />
+          )}
+          <FrameIconButton
+            kind="data"
+            label={t('marivo.presentation.ui-frame-data-table')}
+            tip={t('marivo.presentation.ui-frame-data-table')}
+            hasPopup="dialog"
+            onOpen={() => setDataOpen(true)}
+          >
+            <FrameIcon kind="table" />
+          </FrameIconButton>
+          <Dialog
+            title={t('marivo.presentation.ui-frame-data-table')}
+            open={dataOpen}
+            onClose={() => setDataOpen(false)}
+          >
+            <DatasetTable data={data} caption={resourceName ?? ''} />
+          </Dialog>
+        </>
+      ) : metric ? (
         <div className="au-metric">
           <span>{metricColumn.label}</span>
           <strong>

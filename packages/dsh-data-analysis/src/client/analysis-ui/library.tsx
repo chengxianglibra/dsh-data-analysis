@@ -3,21 +3,15 @@ import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
 import { type CSSProperties, useState } from 'react'
 import { z } from 'zod/v4'
+import {
+  datasetDisplaySchema,
+  datasetViewSchema,
+} from '../../presentation/contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
 import { Markdown } from '../presentation/markdown.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisDataView } from './data-view.tsx'
 
-const datasetView = z.union([
-  z.object({ chart: z.literal('auto') }).strict(),
-  z.object({ chart: z.literal('table'), columns: z.array(z.string()).optional() }).strict(),
-  z
-    .object({ chart: z.literal('metric'), encoding: z.object({ value: z.string() }).strict() })
-    .strict(),
-])
-const datasetDisplay = z
-  .object({ height: z.number().int().positive().max(1200).optional() })
-  .strict()
 const frameProps = z.object({
   ref: z.string().min(1),
   view: frameViewSchema.optional(),
@@ -25,8 +19,8 @@ const frameProps = z.object({
 })
 const datasetProps = z.object({
   ref: z.string().min(1),
-  view: datasetView.optional(),
-  display: datasetDisplay.optional(),
+  view: datasetViewSchema.optional(),
+  display: datasetDisplaySchema.optional(),
 })
 
 export const AnalysisFrameView = defineComponent({
@@ -46,7 +40,7 @@ export const AnalysisFrameView = defineComponent({
 export const DatasetView = defineComponent({
   name: 'DatasetView',
   description:
-    'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
+    'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
   props: datasetProps,
   component: ({ props }) => (
     <AnalysisDataView

@@ -2,7 +2,7 @@
 import type { LibraryJSONSchema, LibrarySpec } from '@openuidev/lang-core'
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
 export const analysisCatalogBuild =
-  '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
+  '5198236580725771332a6e570ce29dd4dfece8fc115eb9d2745a0aaec52dced9'
 export const analysisCatalogVersions = {
   '@openuidev/lang-core': '1.0.1',
   '@openuidev/react-headless': '0.18.1',
@@ -59,9 +59,9 @@ const specData = {
     },
     DatasetView: {
       signature:
-        'DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}}, display?: {height?: number})',
+        'DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number})',
       description:
-        'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
+        'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
     },
   },
   schema: {
@@ -542,9 +542,13 @@ const specData = {
                     const: 'table',
                   },
                   columns: {
+                    minItems: 1,
+                    maxItems: 64,
                     type: 'array',
                     items: {
                       type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
                     },
                   },
                 },
@@ -563,9 +567,82 @@ const specData = {
                     properties: {
                       value: {
                         type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
                       },
                     },
                     required: ['value'],
+                    additionalProperties: false,
+                  },
+                },
+                required: ['chart', 'encoding'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
+                    enum: ['line', 'area', 'bar'],
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      axis: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
+                      },
+                      values: {
+                        minItems: 1,
+                        maxItems: 64,
+                        type: 'array',
+                        items: {
+                          type: 'string',
+                          minLength: 1,
+                          maxLength: 256,
+                        },
+                      },
+                      series: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
+                      },
+                    },
+                    required: ['axis', 'values'],
+                    additionalProperties: false,
+                  },
+                },
+                required: ['chart', 'encoding'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
+                    const: 'heatmap',
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      x: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
+                      },
+                      y: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
+                      },
+                      value: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
+                      },
+                    },
+                    required: ['x', 'y', 'value'],
                     additionalProperties: false,
                   },
                 },
@@ -589,7 +666,7 @@ const specData = {
         required: ['ref'],
         additionalProperties: false,
         description:
-          'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
+          'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
       },
     },
   },
@@ -1074,9 +1151,13 @@ const schemaData = {
                   const: 'table',
                 },
                 columns: {
+                  minItems: 1,
+                  maxItems: 64,
                   type: 'array',
                   items: {
                     type: 'string',
+                    minLength: 1,
+                    maxLength: 256,
                   },
                 },
               },
@@ -1095,9 +1176,82 @@ const schemaData = {
                   properties: {
                     value: {
                       type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
                     },
                   },
                   required: ['value'],
+                  additionalProperties: false,
+                },
+              },
+              required: ['chart', 'encoding'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
+                  enum: ['line', 'area', 'bar'],
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    axis: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
+                    },
+                    values: {
+                      minItems: 1,
+                      maxItems: 64,
+                      type: 'array',
+                      items: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 256,
+                      },
+                    },
+                    series: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
+                    },
+                  },
+                  required: ['axis', 'values'],
+                  additionalProperties: false,
+                },
+              },
+              required: ['chart', 'encoding'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
+                  const: 'heatmap',
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    x: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
+                    },
+                    y: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
+                    },
+                    value: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 256,
+                    },
+                  },
+                  required: ['x', 'y', 'value'],
                   additionalProperties: false,
                 },
               },
@@ -1121,7 +1275,7 @@ const schemaData = {
       required: ['ref'],
       additionalProperties: false,
       description:
-        'Captured DataFrame snapshot; auto/table/metric. SQL/file provenance is shown only when captured.',
+        'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
     },
   },
 }

@@ -10,8 +10,8 @@ Native 自定义 Lang 消费真实参数前缀，更新使用准确 basedOnRecor
 提供则替换完整表；纯展示修改不重新读取快照。成功不默认回读，不强制先大纲后补全。
 
 入口为 [SKILL.md](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
-Frame v2 的 AnalysisFrameView 按结构自动选择视图，也可从已验证的图形类型中显式选择；DatasetView 只支持
-auto/table/metric。Frame 在原分析中由 `capture_frame` 捕获并以 `frame-snapshot` 引用。Skill 不包含全局筛选、Draft、HTML 导出或发布资源。
+Frame v2 的 AnalysisFrameView 按结构自动选择视图，也可从已验证的图形类型中显式选择；DatasetView 支持
+auto/table/metric 及显式列映射的 line/area/bar/heatmap，不定义分析语义。Frame 在原分析中由 `capture_frame` 捕获并以 `frame-snapshot` 引用。Skill 不包含全局筛选、Draft、HTML 导出或发布资源。
 [叙事与证据检查](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
 [完整示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)按需读取。
 

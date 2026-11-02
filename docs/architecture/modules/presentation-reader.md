@@ -26,9 +26,18 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
 签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
 
-- DatasetView 只支持 auto/table/metric，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
+- DatasetView 支持 auto/table/metric/line/area/bar/heatmap，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
   并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
   auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，Dataset 要求完整单行单列，其余按表格显示。
+- Dataset 图表由 [dataset-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/dataset-view.ts) 校验列映射：
+  line/area/bar 必填 `encoding: {axis, values, series?}`，heatmap 必填 `{x, y, value}`，名称均为保存列 ID。
+  数值列必须为 float64/int64/decimal 且可转换为有限绘图坐标，快照必须完整；axis/series 或 x/y 组合须唯一，重复时明确失败，聚合由原分析负责。
+  axis 成员按保存行首次出现顺序排列，日期也仅作为已保存的离散点，不推断期间、缺期、时区或分析语义。
+  最多 8 个 series，heatmap 展开网格最多 100,000 格；超限在保存时拒绝。
+  默认 auto/table/metric 判定不变。图表提供共用的数据图标和详细表格弹窗，支持排序、分页和精确值读取；Dataset 不接入 Frame 的“就此提问”协议。
+- Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
+  只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。
+  Dataset 的 int64/decimal 图形使用 SVG，以精确原值提供 tooltip；绘图位置可近似，详细数据与复制保持精确。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
@@ -70,7 +79,7 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 打开时在右侧 tab 中显示对应版本，版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
-只接受 current v4 历史指针和当前快照。current v2/v3、Frame v1 与旧报告内容均明确拒绝，
+只接受 current v4 历史指针和当前快照。Dataset 图表扩展兼容紧邻上一版 Catalog build，已有 Frame/Dataset 报告继续读取；其他未知 build 仍拒绝。current v2/v3、Frame v1 与旧报告内容均明确拒绝，
 文件保留但不可继续读取或更新；目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface。
 需要相同内容时，从实际结果重新 `marivo_present` 新格式。
 

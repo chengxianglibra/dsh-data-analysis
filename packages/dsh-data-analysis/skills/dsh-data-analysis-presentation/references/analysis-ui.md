@@ -1,9 +1,9 @@
 # Lang、捕获与增量更新
 
 单 Frame 或成功捕获的 DataFrame 直接传引用，不读本页也能呈现。只有需要自定义布局、捕获或修改时使用以下说明。
-组件签名见[八组件 Catalog](analysis-catalog.md)。DatasetView 只有 auto/table/metric；AnalysisFrameView 的 auto 按 Frame 结构决定：
+组件签名见[八组件 Catalog](analysis-catalog.md)。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap；AnalysisFrameView 的 auto 按 Frame 结构决定：
 单行、单个比较组输出数字；单行、多个比较组输出一张"指标 × 本期/基期/Δ/Δ%"对比表；多行时间比较画线，类别比较画哑铃图。
-只有需要偏离默认时才写 view，encoding 只引用 marivo_ui_read 或回执中的公开值名、轴名。
+只有需要偏离默认时才写 view。Frame 的 encoding 引用公开值名、轴名；Dataset 的 encoding 引用保存列 ID，趋势与柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。Dataset 图表要求完整快照、数值列和唯一坐标，按保存行首次出现顺序展示，聚合及所需行序在原 Python 分析中完成，不推断分析语义。
 多行、多组又只想看一个指标时用 `{chart:"comparison", encoding:{value:"某输出列"}}`；
 显式 `{chart:"table", columns:[...]}` 仍按给定列原样输出。不提供离线导出或发布。
 

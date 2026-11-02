@@ -47,7 +47,7 @@ AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns
 ## DatasetView
 
 ```text
-DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}}, display?: {height?: number})
+DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number})
 ```
 
-Image.src 是已准入的 image-file 资源名。数据组件只支持 auto/table/metric；metric 必须为完整单行结果。
+Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。

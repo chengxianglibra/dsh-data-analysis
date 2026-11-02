@@ -41,6 +41,19 @@ test('generated Host schema matches the installed Client library without importi
     'root = AnalysisFrameView("frame", {chart: "decomposition", style: "share"});',
   ])
     assert.equal(parseAnalysisProgram(source).typeName, 'AnalysisFrameView', source)
+  for (const chart of ['line', 'area', 'bar'])
+    assert.equal(
+      parseAnalysisProgram(
+        `root = DatasetView("data", {chart: "${chart}", encoding: {axis: "category", values: ["amount"], series: "region"}});`,
+      ).typeName,
+      'DatasetView',
+    )
+  assert.equal(
+    parseAnalysisProgram(
+      'root = DatasetView("data", {chart: "heatmap", encoding: {x: "x", y: "y", value: "amount"}});',
+    ).typeName,
+    'DatasetView',
+  )
 })
 
 test('unsupported nodes and wrong parent slots cannot enter the subset', () => {

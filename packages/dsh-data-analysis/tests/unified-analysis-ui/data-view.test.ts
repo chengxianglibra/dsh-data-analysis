@@ -5,14 +5,21 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import type { FrameView } from '../../src/presentation/contracts/frame-view.ts'
 import {
   type AnalysisSnapshot,
   parseAnalysisSnapshot,
 } from '../../src/presentation/contracts/snapshot.ts'
+import { datasetSnapshot } from './dataset-fixtures.ts'
 import { frameSnapshot } from './fixtures.ts'
 
 let directory: string
-let render: (snapshot: AnalysisSnapshot, semantic?: boolean) => string
+let render: (
+  snapshot: AnalysisSnapshot,
+  semantic?: boolean,
+  view?: FrameView,
+  candidate?: boolean,
+) => string
 let renderOrigins: (section: unknown) => string
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'dsh-analysis-data-view-'))
@@ -28,11 +35,11 @@ export function renderOrigins(section) {
   return renderToStaticMarkup(createElement(AnalysisResources.Provider,
     {value: {openSemanticRef: () => {}}}, createElement(SemanticOrigins, {section})));
 }
-export function render(snapshot, semantic) {
+export function render(snapshot, semantic, view, candidate) {
   return renderToStaticMarkup(createElement(AnalysisResources.Provider,
-    {value: {readResource: () => ({kind: 'snapshot', snapshot, binding: {}}),
+    {value: {candidate, readResource: () => ({kind: 'snapshot', snapshot, binding: {}}),
              openSemanticRef: semantic ? () => {} : undefined}},
-    createElement(AnalysisDataView, {kind: snapshot.kind, resourceName: 'result'})));
+    createElement(AnalysisDataView, {kind: snapshot.kind, resourceName: 'result', view})));
 }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
@@ -185,4 +192,81 @@ test('semantic origins show distinct concrete objects and exclude datasource and
   assert.equal((html.match(/sales\.orders\.date/g) ?? []).length, 1)
   assert.doesNotMatch(html, /warehouse|entity-1|reference\.revenue/)
   assert.equal((html.match(/<button/g) ?? []).length, 2)
+})
+
+test('Dataset line/area/bar share Frame SVG rendering and keep exact tooltips and null gaps', () => {
+  const snapshot = datasetSnapshot()
+  for (const chart of ['line', 'area', 'bar'] as const) {
+    const html = render(snapshot, false, {
+      chart,
+      encoding: { axis: 'category', values: ['value'] },
+    })
+    assert.match(html, new RegExp(`data-dataset-view="${chart}"`))
+    assert.match(html, /fv-chart/)
+    assert.match(html, /12345678901234\.5678/)
+    assert.doesNotMatch(html, /data-chart-engine="openui"/)
+    assert.doesNotMatch(html, /role="alert"/)
+    assert.match(html, /aria-haspopup="dialog"/)
+  }
+  const area = render(
+    datasetSnapshot([
+      ['A', '1'],
+      ['B', '2'],
+      ['C', null],
+      ['D', '3'],
+      ['E', '4'],
+    ]),
+    false,
+    { chart: 'area', encoding: { axis: 'category', values: ['value'] } },
+  )
+  assert.equal((area.match(/class="fv-area"/g) ?? []).length, 2)
+})
+
+test('Dataset dense float plots use the same OpenUI engine as Frame', () => {
+  const snapshot = datasetSnapshot(
+    [
+      ['A', 1],
+      ['B', 2],
+      ['C', 3],
+    ],
+    [
+      { id: 'category', label: 'Category', type: 'string', nullable: false },
+      { id: 'value', label: 'Value', type: 'float64', nullable: false },
+    ],
+  )
+  for (const chart of ['line', 'area', 'bar'] as const)
+    assert.match(
+      render(snapshot, false, { chart, encoding: { axis: 'category', values: ['value'] } }),
+      /data-chart-engine="openui"/,
+    )
+})
+
+test('Dataset heatmap retains raw large keys, exact values and empty combinations', () => {
+  const snapshot = datasetSnapshot(
+    [
+      ['9007199254740993', 'A', '1.2300'],
+      ['9007199254740992', 'B', null],
+    ],
+    [
+      { id: 'x', label: 'X', type: 'int64', nullable: false },
+      { id: 'y', label: 'Y', type: 'string', nullable: false },
+      { id: 'value', label: 'Value', type: 'decimal', nullable: true },
+    ],
+  )
+  const html = render(snapshot, false, {
+    chart: 'heatmap',
+    encoding: { x: 'x', y: 'y', value: 'value' },
+  })
+  assert.match(html, /data-dataset-view="heatmap"/)
+  assert.match(html, /9007199254740993/)
+  assert.match(html, /9007199254740992/)
+  assert.match(html, /1\.2300/)
+  assert.equal((html.match(/data-mark="empty"/g) ?? []).length, 3)
+})
+
+test('invalid Dataset views fail in saved rendering and fall back only in streaming candidates', () => {
+  const snapshot = datasetSnapshot()
+  const view: FrameView = { chart: 'bar', encoding: { axis: 'missing', values: ['value'] } }
+  assert.match(render(snapshot, false, view), /role="alert"/)
+  assert.match(render(snapshot, false, view, true), /<table/)
 })

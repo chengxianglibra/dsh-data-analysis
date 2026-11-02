@@ -2,6 +2,7 @@ import type { ElementNode } from '@openuidev/lang-core'
 import { z } from 'zod'
 import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { parseAnalysisProgram } from './analysis-program.ts'
+import { resolveDatasetView } from './dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
@@ -75,7 +76,11 @@ const schema = z.strictObject({
   generatedAt: z.string().datetime({ offset: true }),
   catalog: z.strictObject({
     id: z.literal(analysisCatalogId),
-    build: z.literal(analysisCatalogBuild),
+    // The Dataset extension is additive; retain the immediately preceding Catalog.
+    build: z.enum([
+      analysisCatalogBuild,
+      '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053',
+    ]),
   }),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),
@@ -131,12 +136,16 @@ const viewHints: Record<string, string> = {
   'analysis-view-dtype-not-drawable': 'choose a numeric value or use chart "table".',
   'analysis-view-target-ambiguous':
     'choose axes that uniquely identify each row or use chart "table"; for comparisons, add encoding.value to show one metric, or omit encoding to render every comparison group as one table.',
+  'analysis-view-encoding-required':
+    'provide explicit Dataset column mappings: axis/values/series or x/y/value.',
+  'analysis-view-budget':
+    'use at most 8 series and 100,000 heatmap cells; prepare a smaller result in Python.',
   'analysis-view-role-missing': 'this comparison or decomposition lacks the roles for this chart.',
   'analysis-view-axis-not-time': 'line/area/bar axis must be a calendar or interval axis.',
   'analysis-view-requires-complete-snapshot':
     'this chart reads as the whole population; use chart "table" or "auto" for partial data.',
   'analysis-view-unsupported-for-snapshot':
-    'this snapshot supports only auto, table and metric; capture a v2 Frame for other charts.',
+    'Dataset supports auto/table/metric/line/area/bar/heatmap; analysis-specific views require a Frame.',
 }
 function viewError(
   code: string,
@@ -176,7 +185,10 @@ export function validateAnalysisResources(
     const columns = view.data?.chart === 'table' ? view.data.columns : undefined
     if (columns && new Set(columns).size !== columns.length)
       throw viewError('analysis-columns-invalid', statement, '/view/columns')
-    const resolved = resolveFrameView(source.snapshot, view.data)
+    const resolved =
+      source.snapshot.kind === 'dataset'
+        ? resolveDatasetView(source.snapshot, view.data)
+        : resolveFrameView(source.snapshot, view.data)
     if (resolved.ok) continue
     // Keep the established codes for table columns and metric rows; other failures are new.
     const chart = view.data?.chart

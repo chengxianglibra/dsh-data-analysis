@@ -21,6 +21,7 @@ test('every real Marivo Frame renders its auto view without banner text', async 
     const snapshot = parseAnalysisSnapshot(
       JSON.parse(await readFile(new URL(name, directory), 'utf8')),
     )
+    if (snapshot.kind !== 'frame') throw new Error('frame-required')
     const resolution = resolveFrameView(snapshot)
     assert.ok(resolution.ok, name)
     const html = r.render(snapshot).replace(/<style>[\s\S]*?<\/style>/g, '')

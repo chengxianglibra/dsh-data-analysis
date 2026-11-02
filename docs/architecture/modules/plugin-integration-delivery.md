@@ -76,7 +76,7 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 
 文件分析（含简短比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 `marivo_present` 传准确引用，不额外读取 Skill/Catalog。现有 Marivo Frame 优先在原分析调用中捕获，通过 `AnalysisFrameView` 展示；
 DataFrame 快照使用 `DatasetView`，不为展示虚构 Frame 或重跑已结束分析。文字与数据通过 `TextContent`、`Stack`、`Card` 或 `Tabs` 组织。
-自定义 Lang 时按需加载 `dsh-data-analysis-presentation`；`AnalysisFrameView` 按 Frame 结构选择图形，`DatasetView` 支持 auto/table/metric；支持 Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
+自定义 Lang 时按需加载 `dsh-data-analysis-presentation`；`AnalysisFrameView` 按 Frame 结构选择图形，`DatasetView` 支持 auto/table/metric/line/area/bar/heatmap；支持 Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
 不提供离线 HTML 导出或发布。
 
 报告/dashboard 展示已经完成的分析快照；改变分析范围或重新计算需要回到分析流程，再更新对应文档。

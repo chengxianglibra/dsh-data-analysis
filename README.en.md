@@ -17,7 +17,7 @@ This is an independently maintained community plugin. It is not an official Deep
 | Connect to data | Configure data sources, manage credentials, and test connections; DuckDB, Trino, and ClickHouse are supported by default |
 | Keep definitions consistent | Work with the assistant to define and reuse metrics and dimensions, and explore their relationships |
 | Specify what to analyze | Search for and reference existing semantic objects with `@` in the chat input |
-| Present findings | Save existing Frame/DataFrame results as exact tables or single values |
+| Present findings | Save existing Frame/DataFrame results as exact tables, single values or charts |
 | Explore further | Select columns, sort exact values, browse local pages, and copy saved data |
 | Read and revisit | Save and browse immutable versions and their history |
 
@@ -109,7 +109,7 @@ For a multiword search, use `@"monthly revenue"`. Ask questions about the select
 ### 4. Read analysis views and reports
 
 Ordinary results appear as separate chat entries outside folded work steps. Explicit reports and dashboards open in a right-side tab.
-Present an existing Frame or captured DataFrame without repeating the analysis. Use Reports (报告) to reopen saved results and versions.
+Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
 
 Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,
 preferring `AnalysisFrameView` for Frame data. After successful delivery, the assistant aims to reply with one short summary sentence; explicit output-format requests still apply.

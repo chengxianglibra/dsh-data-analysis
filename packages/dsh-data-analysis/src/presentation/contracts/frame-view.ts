@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import type {
   AnalysisSnapshot,
-  DatasetSnapshot,
   FrameInterpretation,
   FrameSnapshotV2,
   FrameValueContext,
@@ -142,6 +141,8 @@ export type FrameViewErrorCode =
   | 'view-axis-not-time'
   | 'view-requires-complete-snapshot'
   | 'view-unsupported-for-snapshot'
+  | 'view-encoding-required'
+  | 'view-budget'
 export interface FrameViewFailure {
   ok: false
   code: FrameViewErrorCode
@@ -273,12 +274,9 @@ export function classifyFrame(snapshot: FrameSnapshotV2): FrameClassification {
   }
 }
 
-/** Resolve the current Frame or Dataset view against its saved snapshot. */
-export function resolveFrameView(
-  snapshot: AnalysisSnapshot,
-  view?: FrameView,
-): FrameViewResolution {
-  return snapshot.kind === 'frame' ? resolveV2(snapshot, view) : resolveDataset(snapshot, view)
+/** Resolve a saved Frame using only its captured structure and analysis facts. */
+export function resolveFrameView(snapshot: FrameSnapshotV2, view?: FrameView): FrameViewResolution {
+  return resolveV2(snapshot, view)
 }
 
 function tableColumns(snapshot: AnalysisSnapshot, columns: string[] | undefined): string[] | Fail {
@@ -291,42 +289,6 @@ function tableColumns(snapshot: AnalysisSnapshot, columns: string[] | undefined)
 }
 const singleRow = (snapshot: AnalysisSnapshot) =>
   snapshot.coverage.complete && snapshot.data.rowCount === 1
-
-function resolveDataset(snapshot: DatasetSnapshot, view?: FrameView): FrameViewResolution {
-  const ids = snapshot.data.columns.map((c) => c.id)
-  const classification: FrameClassification = {
-    class: 'observation',
-    shape: 'other',
-    categoryAxes: [],
-    primaryValues: ids,
-    broadcastValues: [],
-    symbols: {},
-  }
-  const ok = (resolved: ResolvedFrameView): FrameViewResolution => ({
-    ok: true,
-    classification,
-    view: resolved,
-  })
-  const autoValue = ids.length === 1 ? ids[0] : undefined
-  if (!view || view.chart === 'auto')
-    return ok(
-      autoValue !== undefined && singleRow(snapshot)
-        ? { chart: 'metric', values: [autoValue] }
-        : { chart: 'table', columns: ids },
-    )
-  if (view.chart === 'table') {
-    const columns = tableColumns(snapshot, view.columns)
-    return failed(columns) ? columns : ok({ chart: 'table', columns })
-  }
-  if (view.chart === 'metric') {
-    const name = view.encoding?.value ?? autoValue
-    if (name === undefined || !ids.includes(name))
-      return fail('view-name-unknown', '/view/encoding/value')
-    if (!singleRow(snapshot)) return fail('view-metric-requires-complete-single-row', '/view')
-    return ok({ chart: 'metric', values: [name] })
-  }
-  return fail('view-unsupported-for-snapshot', '/view/chart')
-}
 
 interface Context {
   snapshot: FrameSnapshotV2

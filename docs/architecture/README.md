@@ -36,8 +36,8 @@
 
 统一分析 UI 通过 `marivo_present` 保存 `dsh.analysis-ui/v1` 文档。Frame v2 在原 Python 执行中由 `capture_frame`
 捕获，DataFrame 由 `capture_dataset` 捕获。快照内嵌不可变 Build，AnalysisSurface
-用于隔离候选、tool view 和显式报告 tab。保存校验与呈现共用 `resolveFrameView`；Frame v2 按结构选择视图，
-并可在 Catalog 范围内显式指定图形。DatasetView 保留 auto/table/metric。旧格式报告不进入报告目录；
+用于隔离候选、tool view 和显式报告 tab。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
+并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
 新格式不提供离线导出、发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
 
 ## 运行与数据流
@@ -104,7 +104,8 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 报告目录与版本历史只读取 current v4 指针及 `dsh.analysis-ui/v1` 记录；current v2/v3 不再读取或更新，文件不删除、不迁移。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
 打开旧地址显示不支持的报告错误，不回退到旧 Reader。Frame v2 的 AnalysisFrameView 按 Frame 结构选择观察、成员、比较、
 分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、heatmap、comparison 和 decomposition 视图；
-DatasetView 只支持 auto/table/metric。全局筛选、页面编辑、离线 HTML、发布和报告 cell 的“加入提问”均已移除。
+DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 保留已保存图点与支持单元格的“就此提问”入口；Dataset 不接入该协议。
+全局筛选、页面编辑、离线 HTML、发布及旧报告 cell 的“加入提问”接口均已移除。
 
 ## 生命周期与失败原则
 

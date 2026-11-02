@@ -1,5 +1,4 @@
 import type { FrameClassification } from '../../../presentation/contracts/frame-view.ts'
-import { formatCell } from '../../../presentation/contracts/index.ts'
 import type {
   FrameAxisVariant,
   FrameFixedAxis,
@@ -16,6 +15,9 @@ import type {
 } from '../../../presentation/contracts/types.ts'
 import type { Translator } from '../../i18n/copy.ts'
 import { columnLabel } from '../../presentation/model.ts'
+import { compact, numberOf } from '../charts/model.ts'
+
+export { compact, exact, isNumeric, numberOf } from '../charts/model.ts'
 
 // Pure read helpers over saved Frame facts. Nothing here aggregates or derives
 // new numbers; positions and labels only format or select saved column values.
@@ -44,16 +46,6 @@ export function cellOf(s: Snapshot, row: number, name: string): Cell {
   const c = columnOf(s, name)
   return c ? (s.data.rows[row]?.[c.index] ?? null) : null
 }
-const NUMERIC = new Set(['float64', 'int64', 'decimal'])
-export function isNumeric(column?: DatasetColumn): boolean {
-  return !!column && NUMERIC.has(column.type)
-}
-/** Plot position of a saved numeric cell; decimal/int64 approximation affects only geometry. */
-export function numberOf(value: Cell, column?: DatasetColumn): number | null {
-  if (value === null || !isNumeric(column)) return null
-  const n = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(n) ? n : null
-}
 export function valueAt(s: Snapshot, row: number, name: string): number | null {
   return numberOf(cellOf(s, row, name), columnOf(s, name)?.column)
 }
@@ -61,24 +53,6 @@ export function rowsOf(s: Snapshot): number[] {
   return s.data.rows.map((_, i) => i)
 }
 
-export function compact(locale: PresentationLocale, value: Cell, column?: DatasetColumn): string {
-  if (value === null) return '—'
-  const n = numberOf(value, column ?? { id: '', label: '', type: 'float64', nullable: true })
-  if (n === null) return String(value)
-  return Math.abs(n) >= 1000
-    ? new Intl.NumberFormat(locale, {
-        notation: 'compact',
-        minimumSignificantDigits: 3,
-        maximumSignificantDigits: 3,
-      }).format(n)
-    : new Intl.NumberFormat(locale, { maximumSignificantDigits: 4 }).format(n)
-}
-/** Exact saved spelling plus unit, for tooltips and tables. */
-export function exact(value: Cell, column?: DatasetColumn): string {
-  if (!column) return value === null ? '—' : String(value)
-  const text = formatCell(value, column)
-  return value !== null && column.unit ? `${text} ${column.unit}` : text
-}
 /** Δ in a neutral style: ▲/▼ plus the compact magnitude of the saved value. */
 export function signed(locale: PresentationLocale, value: Cell, column?: DatasetColumn): string {
   const n = numberOf(value, column ?? { id: '', label: '', type: 'float64', nullable: true })
