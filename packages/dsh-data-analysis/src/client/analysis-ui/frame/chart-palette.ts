@@ -20,18 +20,3 @@ export const FRAME_CHART_DARK = [
   '#ff9d7c',
   '#72c6e8',
 ] as const
-
-/** Invert OpenUI's midpoint sampling so series retain their declared order. */
-export function paletteForSeries(colors: readonly string[]): string[] {
-  if (!colors.length) return []
-  if (colors.length === 1) return [colors[0]!]
-  if (colors.length === 2) return [colors[0]!, colors[0]!, colors[1]!]
-  const length = colors.length
-  const middle = Math.floor(length / 2)
-  const offset = Math.floor((length - 1) / 2)
-  const palette = Array<string>(length)
-  colors.forEach((color, index) => {
-    palette[(middle + index - offset + length) % length] = color
-  })
-  return palette
-}

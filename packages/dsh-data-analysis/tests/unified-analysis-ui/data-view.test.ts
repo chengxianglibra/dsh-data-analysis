@@ -222,7 +222,7 @@ test('Dataset line/area/bar share Frame SVG rendering and keep exact tooltips an
   assert.equal((area.match(/class="fv-area"/g) ?? []).length, 2)
 })
 
-test('Dataset dense float plots use the same OpenUI engine as Frame', () => {
+test('Dataset dense float plots retain SVG marks and saved tooltips', () => {
   const snapshot = datasetSnapshot(
     [
       ['A', 1],
@@ -234,11 +234,15 @@ test('Dataset dense float plots use the same OpenUI engine as Frame', () => {
       { id: 'value', label: 'Value', type: 'float64', nullable: false },
     ],
   )
-  for (const chart of ['line', 'area', 'bar'] as const)
-    assert.match(
-      render(snapshot, false, { chart, encoding: { axis: 'category', values: ['value'] } }),
-      /data-chart-engine="openui"/,
-    )
+  for (const chart of ['line', 'area', 'bar'] as const) {
+    const html = render(snapshot, false, {
+      chart,
+      encoding: { axis: 'category', values: ['value'] },
+    })
+    assert.match(html, /<svg class="fv-svg"/)
+    assert.match(html, /<title>A\nValue: 1<\/title>/)
+    assert.doesNotMatch(html, /data-chart-engine="openui"/)
+  }
 })
 
 test('Dataset heatmap retains raw large keys, exact values and empty combinations', () => {

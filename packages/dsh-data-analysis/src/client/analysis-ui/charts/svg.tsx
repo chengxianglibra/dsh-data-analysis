@@ -226,8 +226,14 @@ export interface LegendItem {
   shape?: 'line' | 'dashed' | 'dot' | 'hollow' | 'square' | 'diamond'
   marker?: number
 }
-export function Legend({ items }: { items: LegendItem[] }) {
-  if (items.length < 2) return null
+export function Legend({
+  items,
+  showSingle = false,
+}: {
+  items: LegendItem[]
+  showSingle?: boolean
+}) {
+  if (!items.length || (items.length === 1 && !showSingle)) return null
   return (
     <ul className="fv-legend">
       {items.map((item) => (

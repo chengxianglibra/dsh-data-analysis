@@ -25,10 +25,12 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
 签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
+OpenUI Lang、Renderer 与页面布局组件继续负责报告编排；AnalysisFrameView 和 DatasetView 内的图表统一由插件的 React/SVG 组件绘制。
+图表不使用 OpenUI 官方图表组件，也不按期间数、series 数、数值类型或缺失状态切换渲染引擎。
 
 - DatasetView 支持 auto/table/metric/line/area/bar/heatmap，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
   并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
-  auto 对 Frame 要求完整单行、零轴且恰好一个 value 字段，Dataset 要求完整单行单列，其余按表格显示。
+  Dataset 的 auto 要求完整单行单列才显示 metric，其余按表格显示；Frame 的 auto 由下述结构与语义规则决定。
 - Dataset 图表由 [dataset-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/dataset-view.ts) 校验列映射：
   line/area/bar 必填 `encoding: {axis, values, series?}`，heatmap 必填 `{x, y, value}`，名称均为保存列 ID。
   数值列必须为 float64/int64/decimal 且可转换为有限绘图坐标，快照必须完整；axis/series 或 x/y 组合须唯一，重复时明确失败，聚合由原分析负责。
@@ -37,15 +39,15 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
   默认 auto/table/metric 判定不变。图表提供共用的数据图标和详细表格弹窗，支持排序、分页和精确值读取；Dataset 不接入 Frame 的“就此提问”协议。
 - Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
   只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。
-  Dataset 的 int64/decimal 图形使用 SVG，以精确原值提供 tooltip；绘图位置可近似，详细数据与复制保持精确。
+  所有图形通过 SVG title 保留已保存值的精确拼写与单位；int64/decimal 绘图位置可近似，详细数据与复制保持精确。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
   分类与默认视图规则由同一 `resolveFrameView` 实现，保存校验与渲染共用。
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
 - Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
-  头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通稠密趋势和类别柱使用 OpenUI 官方图表；
-  热力图及缺失值、不完整期间、广播参考线和复杂领域语义等官方组件无法准确表达的情况，使用相应领域渲染或表格；
+  头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通折线、面积、柱图、横向柱图及热力图复用共享图表；
+  比较、分解、对齐、相关和占比等领域视图复用插件的 SVG 基础组件，按解析结果绘图或显示表格；
   NA、缺期、不完整期、presence、restricted 与未捕获完整均以视觉编码表达，不加解释性文字。
   非表格主视图的数据图标与来源、Python 共用操作行及弹窗，展示已保存的详细数据；表格主视图不重复提供数据入口。
   显式指定 `display.dataTable: "visible"` 时详细数据默认内联展示，并可用同一图标收起；数据引用不显示行数和横向滚动图标，截断与空数据状态仍可见。
@@ -91,9 +93,9 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 分析文档的 `locale`（`zh-CN` 或 `en-US`）决定 Surface 内容、辅助说明和日期／数字格式；Host 控件使用系统语言。
 业务正文、字段标识、单位、精确数值和原始语义事实不由插件翻译。
 
-Surface 通过 Harness 的 `--dsw-*` token 继承背景、文字和边框；图表色板、网格、图例和提示框遵循与 analysis-ui 一致的视觉规则，
-色板跟随 Host 已解析的明暗主题，脱离 Host 时回退到独立页面的显式主题或系统偏好。OpenUI 的页面级 tooltip 使用图表实例隔离的主题，
-不会改变其他 Host 组件的样式；主题切换不重挂 Frame。
+Surface 通过 Harness 的 `--dsw-*` token 继承背景、文字和边框；图表色板、网格、图例和标签遵循与 analysis-ui 一致的视觉规则，
+色板通过 CSS 变量跟随 Host 已解析的明暗主题，脱离 Host 时回退到独立页面的显式主题或系统偏好。
+精确值提示使用 SVG 原生 title，不注入图表专用的页面级 tooltip 或 OpenUI 图表样式；主题切换不重挂 Frame 或 Dataset 图表。
 
 ## 验证边界
 

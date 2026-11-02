@@ -30,7 +30,6 @@ export interface ChartModel {
   axes: ChartAxis[]
   valueLabels: Record<string, string>
   references: Record<string, ChartGroup[]>
-  exactTooltips?: boolean
 }
 export type ChartView =
   | {

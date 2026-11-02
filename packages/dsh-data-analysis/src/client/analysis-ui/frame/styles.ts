@@ -1,10 +1,10 @@
 import { FRAME_CHART_DARK, FRAME_CHART_LIGHT } from './chart-palette.ts'
 
-// Series colors follow analysis-ui's ordered six-color palette; longer series cycle.
-const chartTheme = (colors: readonly string[], mode: 'light' | 'dark') =>
-  `${Array.from({ length: 8 }, (_, index) => `--fv-s${index + 1}:${colors[index % colors.length]}`).join(';')};--fv-neutral:var(--pr-muted);--fv-grid:var(--pr-border);--fv-chart-mode:${mode}`
-const light = chartTheme(FRAME_CHART_LIGHT, 'light')
-const dark = chartTheme(FRAME_CHART_DARK, 'dark')
+// Series colors follow analysis-ui's ordered eight-color palette.
+const chartTheme = (colors: readonly string[]) =>
+  `${Array.from({ length: 8 }, (_, index) => `--fv-s${index + 1}:${colors[index % colors.length]}`).join(';')};--fv-neutral:var(--pr-muted);--fv-grid:var(--pr-border)`
+const light = chartTheme(FRAME_CHART_LIGHT)
+const dark = chartTheme(FRAME_CHART_DARK)
 
 /** Record key columns kept in view; offsets come from `--fv-k<i>` set by useFrozenColumns. */
 export const MAX_FROZEN = 8
@@ -15,7 +15,7 @@ const frozen = Array.from(
 ).join('\n')
 
 export const FRAME_STYLES = `
-.fv{${light};display:grid;gap:8px;border:1px solid var(--pr-border);border-radius:10px;padding:12px;background:var(--pr-bg);width:100%}
+.fv{${light};display:grid;align-content:start;gap:8px;border:1px solid var(--pr-border);border-radius:10px;padding:12px;background:var(--pr-bg);width:100%}
 @media(prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .fv{${dark}}}
 .dark .fv,[data-theme=dark] .fv{${dark}}
 .light .fv,[data-theme=light] .fv{${light}}
@@ -108,8 +108,6 @@ ${frozen}
 .fv-dev dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,monospace}
 .fv-origins{margin:0;padding-left:18px;display:grid;gap:4px}
 .fv-origins code{font-size:11px;color:var(--pr-muted)}
-.fv-keyboard-points{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.fv-keyboard-points:focus-within{position:static;width:auto;height:auto;clip-path:none;display:flex;flex-wrap:wrap;gap:4px;max-height:160px;overflow:auto}
 .fv-point-menu{position:fixed;z-index:1000;display:grid;gap:6px;padding:6px;border:1px solid var(--pr-border);border-radius:8px;background:var(--pr-bg);box-shadow:0 4px 16px #0003}
 .fv-point-menu p{margin:0;font-size:12px;color:var(--pr-muted)}
 .fv .pr-cell-select{display:inline;padding:0;border:0;border-radius:0;background:transparent;color:inherit;text-align:inherit;font:inherit;font-variant-numeric:inherit;text-decoration:underline;text-decoration-color:var(--pr-border);text-underline-offset:2px}

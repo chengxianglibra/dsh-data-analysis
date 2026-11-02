@@ -18,6 +18,5 @@ export function datasetChartModel(data: TypedDataset, axes: string[]): ChartMode
     }),
     valueLabels: Object.fromEntries(data.columns.map((c) => [c.id, c.label])),
     references: {},
-    exactTooltips: true,
   }
 }

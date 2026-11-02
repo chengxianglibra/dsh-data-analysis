@@ -11,7 +11,7 @@ import {
 } from '../../src/datasource/resolver-program.ts'
 
 /** A public credential protocol double; bound Marivo acceptance uses the separate real script. */
-function pythonFixture(t: TestContext, pythonExecutable = 'python3') {
+function pythonFixture(t: TestContext, pythonExecutable = 'python3', timeoutMs = 15_000) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'marivo-resolver-contract-')))
   t.after(() => rmSync(root, { recursive: true, force: true }))
   const packageRoot = path.join(root, 'marivo')
@@ -60,7 +60,7 @@ def credential_scope(resolver):
       encoding: 'utf8',
       input,
       maxBuffer: 2 * 1024 * 1024,
-      timeout: 15_000,
+      timeout: timeoutMs,
       env: { ...process.env, PYTHONPATH: root },
     })
   const identity = run(
@@ -255,6 +255,8 @@ print("CLEANED")
 })
 
 test('real helper finalization reports capture failure separately from original worker outcomes', (t) => {
+  // A fresh environment imports pandas native extensions; use the real helper suite's budget.
+  const timeoutMs = 120_000
   const project = path.resolve('packages/dsh-data-analysis/python/presentation-kit')
   const discovery = spawnSync(
     'uv',
@@ -280,15 +282,15 @@ test('real helper finalization reports capture failure separately from original 
       path.join(runtimeRoot, 'dsh_data_analysis_presentation_kit-1.5.1-py3-none-any.whl'),
     ],
   ]) {
-    const setup = spawnSync('uv', args, { encoding: 'utf8', timeout: 120_000 })
+    const setup = spawnSync('uv', args, { encoding: 'utf8', timeout: timeoutMs })
     assert.equal(setup.status, 0, setup.stderr)
   }
-  const f = pythonFixture(t, python)
-  const kit = JSON.parse(
-    f.run(
-      'import json, dsh_data_analysis_presentation as p; print(json.dumps({"version": p.__version__, "packagePath": p.__file__}))',
-    ).stdout,
+  const f = pythonFixture(t, python, timeoutMs)
+  const kitImport = f.run(
+    'import json, dsh_data_analysis_presentation as p; print(json.dumps({"version": p.__version__, "packagePath": p.__file__}))',
   )
+  assert.equal(kitImport.status, 0, kitImport.stderr || String(kitImport.error))
+  const kit = JSON.parse(kitImport.stdout)
   for (const mode of ['directory', 'manifest', 'original-error'] as const) {
     const code = String.raw`
 import sys
@@ -321,7 +323,11 @@ if mode == "original-error":
       identity: { ...f.payload(code).identity, presentationKit: kit },
     }
     const result = f.run(PYTHON_LAUNCHER, JSON.stringify(payload))
-    assert.equal(result.status, mode === 'original-error' ? 75 : 0, result.stderr)
+    assert.equal(
+      result.status,
+      mode === 'original-error' ? 75 : 0,
+      result.stderr || String(result.error),
+    )
     assert.equal(result.stdout, 'ORIGINAL_OUTPUT\n')
     const [header, ...stderr] = result.stderr.split('\n')
     assert.deepEqual(JSON.parse(header!), { marivoCaptureStatus: 1, failed: true })

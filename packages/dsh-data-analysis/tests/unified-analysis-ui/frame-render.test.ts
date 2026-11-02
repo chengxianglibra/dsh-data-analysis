@@ -120,28 +120,26 @@ test('every auto view resolves through the real resolveFrameView and renders its
     assert.equal(viewOf(html), chart, name)
     assert.equal(viewOf(html), resolved(snapshot).view.chart, name)
     assert.doesNotMatch(html, BANNERS, name)
+    assert.doesNotMatch(
+      html,
+      /data-chart-engine="openui"|class="openui-(?:line|area|bar|heatmap)-chart/,
+      name,
+    )
     if (!['members', 'table', 'metric'].includes(chart))
-      assert.match(
-        html,
-        /<svg class="fv-svg"[^>]*role="img" aria-label="[^"]+"|data-chart-engine="openui"/,
-        name,
-      )
+      assert.match(html, /<svg class="fv-svg"[^>]*role="img" aria-label="[^"]+"/, name)
   }
 })
 
 test('observation shapes draw lines, areas, bars, heatmaps and frozen record tables', () => {
   const line = r.render(observeTime(18))
   assert.equal(segments(line).length, 1)
-  assert.match(
-    r.render(observeTime(6), { view: { chart: 'area' } }),
-    /class="openui-area-chart-area-path"/,
-  )
-  assert.equal(count(r.render(observeTime(6)), /class="openui-bar-chart-bar"/), 6)
+  assert.match(r.render(observeTime(6), { view: { chart: 'area' } }), /class="fv-area"/)
+  assert.equal(count(r.render(observeTime(6)), /data-mark="bar"/), 6)
   const interval = r.render(observeTime(4, 1, { kind: 'interval', timezone: 'Asia/Shanghai' }))
   assert.doesNotMatch(interval, /class="fv-line"/)
   const series = r.render(observeTimeCategory(3))
-  assert.equal(count(series, /class="openui-line-chart-line"/), 3)
-  assert.match(series, /class="openui-chart-legend"/)
+  assert.equal(count(series, /class="fv-line"/), 3)
+  assert.match(series, /class="fv-legend"/)
   assert.match(r.render(observeMatrix()), /data-mark="cell"/)
   assert.match(r.render(records()), /class="fv-frozen"/)
   // Statistic symbols prefix value names.
@@ -151,23 +149,49 @@ test('observation shapes draw lines, areas, bars, heatmaps and frozen record tab
   assert.match(reduced, /# rows/)
 })
 
+test('time plots keep SVG marks and point identity across period and series counts', () => {
+  for (const periods of [1, 11, 12, 24]) {
+    const html = r.render(observeTime(periods), { view: { chart: 'line' }, askPoint: true })
+    assert.equal(count(html, /class="fv-line"/), 1)
+    assert.equal(count(html, /role="button" tabindex="0"/), periods)
+  }
+  for (const categories of [7, 8]) {
+    const snapshot = observeTimeCategory(categories)
+    const html = r.render(snapshot, { view: { chart: 'line' }, askPoint: true })
+    assert.equal(count(html, /class="fv-line"/), categories)
+    assert.equal(count(html, /role="button" tabindex="0"/), snapshot.data.rows.length)
+    for (let i = 0; i < categories; i++) assert.match(html, new RegExp(`data-marker="${i}"`))
+  }
+})
+
+test('category bars remain horizontal in saved row order', () => {
+  const html = r.render(observeCategory(3))
+  const bars = [
+    ...html.matchAll(/<g data-mark="bar">[\s\S]*?<rect[^>]*width="([\d.]+)" height="([\d.]+)"/g),
+  ]
+  assert.equal(bars.length, 3)
+  for (const bar of bars) assert.ok(Number(bar[1]) > Number(bar[2]))
+  const labels = [...html.matchAll(/data-row="([^"]+)"/g)].map((match) => match[1])
+  assert.deepEqual(labels, ['r0', 'r1', 'r2'])
+})
+
 test('a legend is hidden only when it repeats the sole displayed metric', () => {
   const singleBar = r.render(observeCategory(3))
-  assert.match(singleBar, /data-chart-engine="openui"/)
-  assert.doesNotMatch(singleBar, /class="openui-chart-legend"/)
+  assert.match(singleBar, /<svg class="fv-svg"/)
+  assert.doesNotMatch(singleBar, /class="fv-legend"/)
   const singleTime = r.render(observeTime(6))
-  assert.doesNotMatch(singleTime, /class="openui-chart-legend"/)
+  assert.doesNotMatch(singleTime, /class="fv-legend"/)
   const multiTime = r.render(observeTimeCategory(3))
-  assert.match(multiTime, /class="openui-chart-legend"/)
+  assert.match(multiTime, /class="fv-legend"/)
   const singleGroup = r.render(
     frame({
       axes: [timeAxis(3), { ...categoryAxis(1), keys: ['m0', 'm0', 'm0'] }],
       values: [value('m0', 3, observed())],
     }),
   )
-  assert.match(singleGroup, /class="openui-chart-legend"/)
-  const fallback = r.render(observeTime(18))
-  assert.doesNotMatch(fallback, /class="fv-legend"/)
+  assert.match(singleGroup, /class="fv-legend"/)
+  const long = r.render(observeTime(18))
+  assert.doesNotMatch(long, /class="fv-legend"/)
   const withBroadcast = overBroadcast()
   for (const column of withBroadcast.data.columns) {
     if (column.id === 'revenue' || column.id === 'mean_revenue') column.unit = 'USD'
@@ -176,16 +200,15 @@ test('a legend is hidden only when it repeats the sole displayed metric', () => 
   assert.match(broadcast, /class="fv-legend"/)
 })
 
-test('official points expose accessible keyboard targets only in an actionable surface', () => {
+test('SVG points expose keyboard activation only in an actionable surface', () => {
   const snapshot = observeTime(6)
   const actionable = r.render(snapshot, { askPoint: true })
-  assert.match(actionable, /data-chart-engine="openui"/)
-  assert.match(actionable, /class="fv-keyboard-points"/)
+  assert.equal(count(actionable, /role="button" tabindex="0"/), 6)
   const value =
     snapshot.data.rows[0]![snapshot.data.columns.findIndex((column) => column.id === 'm0')]
   assert.match(actionable, new RegExp(String(value)))
   const readOnly = r.render(snapshot)
-  assert.doesNotMatch(readOnly, /class="fv-keyboard-points"/)
+  assert.doesNotMatch(readOnly, /role="button" tabindex="0"/)
 })
 
 test('missing observations use the truthful renderer and offer only present values for selection', () => {
@@ -378,12 +401,12 @@ test('observation charts use separate scales for different or unknown units', ()
   snapshot.data.columns.find((column) => column.id === 'trips')!.unit = '1'
   snapshot.data.columns.find((column) => column.id === 'fare')!.unit = 'USD'
   const mixed = r.render(snapshot)
-  assert.equal(count(mixed, /data-chart-engine="openui"|class="fv-chart"/), 3)
+  assert.equal(count(mixed, /class="fv-chart"/), 3)
   assert.match(mixed, /trips/)
   assert.match(mixed, /fare \(USD\)/)
   snapshot.data.columns.find((column) => column.id === 'fare')!.unit = '1'
   const shared = r.render(snapshot)
-  assert.equal(count(shared, /data-chart-engine="openui"|class="fv-chart"/), 2)
+  assert.equal(count(shared, /class="fv-chart"/), 2)
 
   const time = frame({
     axes: [timeAxis(3)],
@@ -394,7 +417,7 @@ test('observation charts use separate scales for different or unknown units', ()
   })
   time.data.columns.find((column) => column.id === 'trips')!.unit = '1'
   time.data.columns.find((column) => column.id === 'fare')!.unit = 'USD'
-  assert.equal(count(r.render(time), /data-chart-engine="openui"|class="fv-chart"/), 2)
+  assert.equal(count(r.render(time), /class="fv-chart"/), 2)
 })
 
 test('broadcast values are reference lines labelled with the saved partition value', () => {
@@ -405,7 +428,7 @@ test('broadcast values are reference lines labelled with the saved partition val
   assert.equal(count(bars, /data-mark="reference"/), 1)
   assert.match(bars, /9[,.]?00K|9K/)
   // The broadcast value is not drawn as its own bar series.
-  assert.equal(count(bars, /data-mark="bar"|class="openui-bar-chart-bar"/), 3)
+  assert.equal(count(bars, /data-mark="bar"/), 3)
 })
 
 test('NA draws no mark and breaks the line; 0 is drawn on the baseline', () => {

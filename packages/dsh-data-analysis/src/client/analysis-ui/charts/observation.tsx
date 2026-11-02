@@ -1,9 +1,6 @@
-import { AreaChart, BarChart, LineChart } from '@openuidev/react-ui'
-import { type ReactNode, useId, useState } from 'react'
+import { type ReactNode, useId } from 'react'
 import type { Cell } from '../../../presentation/contracts/types.ts'
 import { useCopy } from '../../i18n/context.tsx'
-import { paletteForSeries } from '../frame/chart-palette.ts'
-import { FrameChartTheme } from '../frame/chart-theme.tsx'
 import {
   axisOf,
   type ChartModel,
@@ -102,185 +99,6 @@ export function SelectableMark({
   )
 }
 
-/** Native keyboard targets for chart libraries whose SVG marks are not focusable. */
-function KeyboardPoints({ points }: { points: PointChoice[] }) {
-  const selection = useChartSelection()
-  if (!selection) return null
-  return (
-    <div className="fv-keyboard-points">
-      {points.map((point) => (
-        <button
-          key={`${point.row}:${point.field}`}
-          type="button"
-          onClick={() => selection.select(point.row, point.field)}
-        >
-          {point.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function FallbackTimeChart(
-  props: ChartProps<'line' | 'area' | 'bar' | 'interval-bar'> & { showLegend?: boolean },
-) {
-  return <SvgTimeChartPlot {...props} />
-}
-
-function FallbackHBarChart(props: ChartProps<'hbar'>) {
-  return <SvgHBarChartPlot {...props} />
-}
-
-export function Heatmap(props: ChartProps<'heatmap'>) {
-  return <SvgHeatmap {...props} />
-}
-
-/**
- * The official line/area/bar components convert missing values to zero.  Admit
- * only complete, uniquely indexed series without broadcast or incomplete
- * periods. The SVG renderer preserves missing values and period widths for other series.
- */
-function TimeChartPlot(
-  props: ChartProps<'line' | 'area' | 'bar' | 'interval-bar'> & { showLegend?: boolean },
-) {
-  const { model: s, view, height, showLegend = true } = props
-  const t = useCopy()
-  const selection = useChartSelection()
-  const [clicked, setClicked] = useState<number>()
-  const axis = axisOf(s, view.axis)
-  if (
-    !axis ||
-    view.chart === 'interval-bar' ||
-    view.broadcast.length ||
-    (s.exactTooltips &&
-      view.values.some((name) =>
-        ['int64', 'decimal'].includes(columnOf(s, name)?.column.type ?? ''),
-      ))
-  )
-    return <FallbackTimeChart {...props} />
-  const { ticks, tickOf } = ticksOf(s, axis)
-  const seriesAxis = axisOf(s, view.series)
-  const groups = seriesAxis ? groupRows(s, [seriesAxis]) : [{ key: '', label: '', rows: rowsOf(s) }]
-  const series = groups.flatMap((group) =>
-    view.values.map((field) => ({
-      field,
-      label: [group.label, view.values.length > 1 || !seriesAxis ? valueName(s, field) : '']
-        .filter(Boolean)
-        .join(' · '),
-      rows: group.rows,
-    })),
-  )
-  const labels = series.map((item) => item.label)
-  const categoryKey = '__frame_period__'
-  if (
-    ticks.length <= 1 ||
-    ticks.length >= 12 ||
-    !series.length ||
-    series.length > 7 ||
-    ticks.some((tick) => tick.incomplete) ||
-    new Set(ticks.map((tick) => tick.label)).size !== ticks.length ||
-    new Set(labels).size !== labels.length ||
-    labels.includes(categoryKey)
-  )
-    return <FallbackTimeChart {...props} />
-  const lookup = series.map((item) => {
-    const map = new Map<number, number>()
-    for (const row of item.rows) {
-      const index = tickOf(row)
-      if (index < 0 || map.has(index)) return undefined
-      map.set(index, row)
-    }
-    return map
-  })
-  if (lookup.some((map) => !map)) return <FallbackTimeChart {...props} />
-  const points: PointChoice[][] = ticks.map((tick, index) =>
-    series.flatMap((item, seriesIndex) => {
-      const row = lookup[seriesIndex]?.get(index)
-      if (row === undefined || valueAt(s, row, item.field) === null) return []
-      return [
-        {
-          row,
-          field: item.field,
-          label: `${tick.title} · ${item.label}: ${exact(cellOf(s, row, item.field), columnOf(s, item.field)?.column)}`,
-        },
-      ]
-    }),
-  )
-  if (points.some((items) => items.length !== series.length))
-    return <FallbackTimeChart {...props} />
-  const data = ticks.map((tick, index) => {
-    const item: Record<string, string | number> = { [categoryKey]: tick.label }
-    series.forEach((line, i) => {
-      item[line.label] = valueAt(s, lookup[i]!.get(index)!, line.field)!
-    })
-    return item
-  })
-  const onClick = selection
-    ? (_row: Record<string, string | number>, index: number) => {
-        const choices = points[index] ?? []
-        if (choices.length === 1) selection.select(choices[0]!.row, choices[0]!.field)
-        else setClicked(index)
-      }
-    : undefined
-  const common = {
-    data,
-    categoryKey,
-    height: height ?? 240,
-    legend:
-      showLegend &&
-      !(
-        view.values.length === 1 &&
-        !view.series &&
-        series.length === 1 &&
-        series[0]?.label === valueName(s, view.values[0]!)
-      ),
-    isAnimationActive: false,
-    onClick,
-  }
-  return (
-    <FrameChartTheme>
-      {(colors) => (
-        <>
-          {view.chart === 'line' ? (
-            <LineChart
-              {...common}
-              customPalette={paletteForSeries(labels.map((_, i) => colors[i % colors.length]!))}
-              variant="linear"
-              showDots
-            />
-          ) : view.chart === 'area' ? (
-            <AreaChart
-              {...common}
-              customPalette={paletteForSeries(labels.map((_, i) => colors[i % colors.length]!))}
-              variant="linear"
-            />
-          ) : (
-            <BarChart
-              {...common}
-              customPalette={paletteForSeries(labels.map((_, i) => colors[i % colors.length]!))}
-            />
-          )}
-          {clicked !== undefined && points[clicked] && points[clicked]!.length > 1 && selection && (
-            <fieldset>
-              <legend>{t('marivo.presentation.ui-frame-select-series')}</legend>
-              {points[clicked]!.map((point) => (
-                <button
-                  key={`${point.row}:${point.field}`}
-                  type="button"
-                  onClick={() => selection.select(point.row, point.field)}
-                >
-                  {point.label}
-                </button>
-              ))}
-            </fieldset>
-          )}
-          <KeyboardPoints points={points.flat()} />
-        </>
-      )}
-    </FrameChartTheme>
-  )
-}
-
 /** line / area / bar / interval-bar over saved periods; gaps and hollow marks are data facts. */
 export function TimeChart(props: ChartProps<'line' | 'area' | 'bar' | 'interval-bar'>) {
   const units = unitGroups(props.model, props.view.values, props.view.broadcast)
@@ -310,7 +128,7 @@ export function TimeChart(props: ChartProps<'line' | 'area' | 'bar' | 'interval-
   )
 }
 
-function SvgTimeChartPlot({
+function TimeChartPlot({
   model: s,
   view,
   height: requestedHeight,
@@ -429,7 +247,7 @@ function SvgTimeChartPlot({
           legend.length === 1 &&
           legend[0]?.label === valueName(s, view.values[0]!)
         ) ? (
-          <Legend items={legend} />
+          <Legend items={legend} showSingle={!!view.series} />
         ) : undefined
       }
     >
@@ -568,79 +386,6 @@ function SvgTimeChartPlot({
   )
 }
 
-function HBarChartPlot(props: ChartProps<'hbar'>) {
-  const { model: s, view } = props
-  const t = useCopy()
-  const selection = useChartSelection()
-  const [clicked, setClicked] = useState<number>()
-  const axis = axisOf(s, view.axis)
-  if (!axis || view.broadcast.length || s.exactTooltips) return <FallbackHBarChart {...props} />
-  const rows = rowsOf(s)
-  const labels = rows.map((row) => memberLabel(s, axis, row))
-  const fields = view.values.map((field) => ({ field, label: valueName(s, field) }))
-  const categoryKey = '__frame_member__'
-  if (
-    !rows.length ||
-    !fields.length ||
-    new Set(labels).size !== labels.length ||
-    new Set(fields.map((field) => field.label)).size !== fields.length ||
-    fields.some((field) => field.label === categoryKey) ||
-    rows.some((row) => fields.some((field) => valueAt(s, row, field.field) === null))
-  )
-    return <FallbackHBarChart {...props} />
-  const data = rows.map((row, index) => {
-    const item: Record<string, string | number> = { [categoryKey]: labels[index]! }
-    for (const field of fields) item[field.label] = valueAt(s, row, field.field)!
-    return item
-  })
-  const points = rows.map((row, index) =>
-    fields.map(({ field, label }) => ({
-      row,
-      field,
-      label: `${labels[index]} · ${label}: ${exact(cellOf(s, row, field), columnOf(s, field)?.column)}`,
-    })),
-  )
-  const onClick = selection
-    ? (_row: Record<string, string | number>, index: number) => {
-        const choices = points[index] ?? []
-        if (choices.length === 1) selection.select(choices[0]!.row, choices[0]!.field)
-        else setClicked(index)
-      }
-    : undefined
-  return (
-    <FrameChartTheme>
-      {(colors) => (
-        <>
-          <BarChart
-            data={data}
-            categoryKey={categoryKey}
-            customPalette={paletteForSeries(fields.map((_, i) => colors[i % colors.length]!))}
-            height={props.height ?? 240}
-            legend={fields.length > 1}
-            isAnimationActive={false}
-            onClick={onClick}
-          />
-          {clicked !== undefined && points[clicked] && points[clicked]!.length > 1 && selection && (
-            <fieldset>
-              <legend>{t('marivo.presentation.ui-frame-select-series')}</legend>
-              {points[clicked]!.map((point) => (
-                <button
-                  key={`${point.row}:${point.field}`}
-                  type="button"
-                  onClick={() => selection.select(point.row, point.field)}
-                >
-                  {point.label}
-                </button>
-              ))}
-            </fieldset>
-          )}
-          <KeyboardPoints points={points.flat()} />
-        </>
-      )}
-    </FrameChartTheme>
-  )
-}
-
 /** Horizontal bars in Frame row order; broadcast values are vertical reference lines. */
 export function HBarChart(props: ChartProps<'hbar'>) {
   const groups = unitGroups(props.model, props.view.values, props.view.broadcast)
@@ -661,7 +406,7 @@ export function HBarChart(props: ChartProps<'hbar'>) {
   )
 }
 
-function SvgHBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
+function HBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
   const t = useCopy()
   const axis = axisOf(s, view.axis)
   if (!axis) return null
@@ -843,7 +588,7 @@ function heatmapHeader(label: string, available: number): string[] {
 }
 
 /** Matrix cells; NA and missing combinations are empty dashed cells. */
-function SvgHeatmap({ model: s, view }: ChartProps<'heatmap'>) {
+export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
   const t = useCopy()
   const gradientId = `fv-scale-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const xs = members(s, view.x)

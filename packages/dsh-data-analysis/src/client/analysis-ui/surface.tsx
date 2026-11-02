@@ -8,7 +8,6 @@ import { ReportCopyProvider } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { PRESENTATION_STYLES } from '../presentation/styles.ts'
 import { type AnalysisResourceContext, AnalysisResources } from './context.tsx'
-import { OPENUI_CHART_STYLES } from './frame/openui-chart-styles.ts'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { analysisLibrary } from './library.tsx'
 
@@ -105,7 +104,6 @@ export function AnalysisRenderer({
           <style>{PRESENTATION_STYLES}</style>
           <style>{styles}</style>
           <style>{FRAME_STYLES}</style>
-          <style>{OPENUI_CHART_STYLES}</style>
           <h1>{title}</h1>
           <Renderer
             library={analysisLibrary}

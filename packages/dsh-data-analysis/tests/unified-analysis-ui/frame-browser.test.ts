@@ -19,10 +19,11 @@ before(async () => {
       contents: `import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AnalysisRenderer } from './src/client/analysis-ui/surface.tsx';
+import { datasetSnapshot } from './tests/unified-analysis-ui/dataset-fixtures.ts';
 import { frame, categoryAxis, timeAxis, observeTime, observeTimeCategory, attributeEffects, compareOrdinary, align } from './tests/unified-analysis-ui/frame-fixtures.ts';
 const ref = (sha256) => ({ executionId: '6f9619ff-8b86-4d01-b42d-00cf4fc964ff', sha256 });
 const resource = (snapshot, codeRef) => ({ kind: 'snapshot',
-  declaration: { kind: 'frame-snapshot', snapshotRef: 'ref' }, snapshot,
+  declaration: { kind: snapshot.kind === 'frame' ? 'frame-snapshot' : 'dataset-snapshot', snapshotRef: 'ref' }, snapshot,
   binding: { workspaceId: 'w', codeRef } });
 const records = frame({
   axes: [categoryAxis(3, 'identity'), { name: 'channel', role: 'identity', keys: ['web', 'app', 'store'] }],
@@ -76,6 +77,7 @@ for (const [index, value] of [377903, 1767304, 6056, 41820207].entries()) {
   }
 }
 const resources = {
+  dataset: resource(datasetSnapshot()),
   good: resource(observeTime(3), ref(${JSON.stringify(sha256)})),
   long: resource(observeTime(24)),
   bad: resource(observeTime(3), ref('0'.repeat(64))),
@@ -96,7 +98,7 @@ const resources = {
   sparseTaxiHeatmap: resource(sparseTaxiHeatmap),
   taxiAlignment: resource(taxiAlignment),
 };
-const program = 'root = Stack([good, long, bad, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline]);\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
+const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
@@ -212,19 +214,11 @@ test('overflowing Frame tables describe the keyboard-scrollable region', async (
   })
 })
 
-test('official chart fits a narrow card and its points are keyboard-selectable', async () => {
+test('plugin charts scroll within a narrow card and their marks are keyboard-selectable', async () => {
   const card = page.locator('[data-resource="good"]')
-  const chart = card.locator('[data-chart-engine="openui"]')
+  const chart = card.locator('svg[role="img"]')
   assert.equal(await chart.count(), 1)
-  const spacing = await chart.evaluate((node) => ({
-    chart: getComputedStyle(node).getPropertyValue('--openui-space-xs').trim(),
-    frame: getComputedStyle(node.closest('.fv')!).getPropertyValue('--openui-space-xs').trim(),
-    surface: getComputedStyle(node.closest('.au-surface')!)
-      .getPropertyValue('--openui-space-xs')
-      .trim(),
-  }))
-  assert.deepEqual(spacing, { chart: '6px', frame: '6px', surface: '4px' })
-  const metrics = await chart.locator('.openui-bar-chart-x-tick').evaluateAll((ticks) =>
+  const metrics = await chart.locator('g[data-tick] text').evaluateAll((ticks) =>
     ticks.map((tick) => ({
       left: tick.getBoundingClientRect().left,
       right: tick.getBoundingClientRect().right,
@@ -236,12 +230,15 @@ test('official chart fits a narrow card and its points are keyboard-selectable',
     assert.ok(tick.size >= 12, JSON.stringify(tick))
     if (i > 0) assert.ok(tick.left >= metrics[i - 1]!.right, JSON.stringify(metrics))
   }
-  const fit = await chart.evaluate((node) => ({
-    chartRight: node.getBoundingClientRect().right,
+  const fit = await card.locator('.fv-plot').evaluate((node) => ({
+    plotRight: node.getBoundingClientRect().right,
     cardRight: node.closest('section.fv')!.getBoundingClientRect().right,
+    clientWidth: node.clientWidth,
+    scrollWidth: node.scrollWidth,
   }))
-  assert.ok(fit.chartRight <= fit.cardRight + 1, JSON.stringify(fit))
-  const first = chart.locator('.fv-keyboard-points button').first()
+  assert.ok(fit.plotRight <= fit.cardRight + 1, JSON.stringify(fit))
+  assert.ok(fit.scrollWidth > fit.clientWidth, JSON.stringify(fit))
+  const first = chart.getByRole('button').first()
   await first.focus()
   await page.keyboard.press('Enter')
   const selected = card.getByRole('menu')
@@ -331,7 +328,7 @@ test('Taxi heatmap orders its sequential colors by value in both Host themes', a
   }
 })
 
-test('long-series fallback retains legible text and scrolls with the keyboard', async () => {
+test('long series retain legible text and scroll with the keyboard', async () => {
   const chart = page.locator('[data-resource="long"] .fv-svg')
   const scroll = chart.locator('..')
   const dimensions = await chart.evaluate((svg) => {
@@ -650,7 +647,6 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
     card.evaluate((node) => {
       const css = getComputedStyle(node)
       return {
-        mode: css.getPropertyValue('--fv-chart-mode').trim(),
         colors: Array.from({ length: 8 }, (_, index) =>
           css.getPropertyValue(`--fv-s${index + 1}`).trim(),
         ),
@@ -659,7 +655,6 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
   const darkPalette = await palette()
   assert.equal(new Set(darkPalette.colors).size, 8)
   assert.deepEqual(darkPalette, {
-    mode: 'dark',
     colors: [
       '#93b4ff',
       '#5dcead',
@@ -671,11 +666,12 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
       '#72c6e8',
     ],
   })
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-resource="good"] .openui-bar-chart-bar')
-        ?.getAttribute('fill') === '#93b4ff',
+  assert.equal(
+    await card
+      .locator('[data-mark="bar"] rect')
+      .first()
+      .evaluate((node) => getComputedStyle(node).fill),
+    'rgb(147, 180, 255)',
   )
 
   await page.evaluate(() => {
@@ -704,7 +700,6 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
   const lightPalette = await palette()
   assert.equal(new Set(lightPalette.colors).size, 8)
   assert.deepEqual(lightPalette, {
-    mode: 'light',
     colors: [
       '#4263d5',
       '#21867a',
@@ -716,11 +711,12 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
       '#3970a0',
     ],
   })
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-resource="good"] .openui-bar-chart-bar')
-        ?.getAttribute('fill') === '#4263d5',
+  assert.equal(
+    await card
+      .locator('[data-mark="bar"] rect')
+      .first()
+      .evaluate((node) => getComputedStyle(node).fill),
+    'rgb(66, 99, 213)',
   )
 
   // Host `system` still publishes the resolved scheme on body; OS preference alone is not the authority.
@@ -780,66 +776,22 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
   await page.evaluate(() => document.body.removeAttribute('data-theme'))
 })
 
-test('official chart tooltip uses a scoped opaque surface in both Host themes', async () => {
-  const bar = page.locator('[data-resource="good"] .openui-bar-chart-bar').first()
-  const tooltip = page.locator('.dsh-frame-chart-portal .openui-chart-tooltip')
-  await page.evaluate(() => {
-    const other = document.createElement('div')
-    other.id = 'unrelated-chart-tooltip'
-    other.className = 'openui-chart-tooltip'
-    other.style.setProperty('--openui-foreground', 'rgb(1, 2, 3)')
-    other.style.setProperty('--openui-popover-background', 'rgb(4, 5, 6)')
-    document.body.append(other)
-  })
-  const setTheme = async (mode: 'light' | 'dark') => {
-    await page.evaluate((next) => {
-      document.documentElement.setAttribute('data-ds-theme-source', next)
-      document.body.toggleAttribute('data-ds-dark-theme', next === 'dark')
-    }, mode)
-    await page.waitForFunction(
-      (color) =>
-        document
-          .querySelector('[data-resource="good"] .openui-bar-chart-bar')
-          ?.getAttribute('fill') === color,
-      mode === 'light' ? '#4263d5' : '#93b4ff',
-    )
-    await bar.hover()
-    await tooltip.waitFor({ state: 'visible' })
-    return tooltip.evaluate((node) => {
-      const style = getComputedStyle(node)
-      return {
-        background: style.backgroundColor,
-        color: style.color,
-        border: style.borderTopStyle,
-        radius: style.borderRadius,
-        shadow: style.boxShadow,
-      }
-    })
-  }
-  try {
-    const light = await setTheme('light')
-    assert.notEqual(light.background, 'rgba(0, 0, 0, 0)')
-    assert.equal(light.border, 'solid')
-    assert.equal(light.radius, '8px')
-    assert.notEqual(light.shadow, 'none')
-    const dark = await setTheme('dark')
-    assert.notEqual(dark.background, 'rgba(0, 0, 0, 0)')
-    assert.notEqual(dark.background, light.background)
-    assert.notEqual(dark.color, light.color)
-    assert.equal(dark.border, 'solid')
-    assert.equal(dark.radius, '8px')
-    assert.notEqual(dark.shadow, 'none')
-    assert.equal(
-      await page
-        .locator('#unrelated-chart-tooltip')
-        .evaluate((node) => getComputedStyle(node).backgroundColor),
-      'rgb(1, 2, 3)',
-    )
-  } finally {
-    await page.evaluate(() => {
-      document.querySelector('#unrelated-chart-tooltip')?.remove()
-      document.documentElement.removeAttribute('data-ds-theme-source')
-      document.body.removeAttribute('data-ds-dark-theme')
-    })
-  }
+test('Dataset SVG charts retain exact titles, local scrolling and the saved data dialog', async () => {
+  const card = page.locator('[data-resource="dataset"]')
+  const chart = card.locator('svg[role="img"]')
+  assert.equal(await chart.count(), 1)
+  assert.equal(await chart.getByRole('button').count(), 0)
+  const titles = await chart.locator('title').allTextContents()
+  assert.ok(titles.some((title) => title.includes('12345678901234.5678')))
+  assert.ok(titles.some((title) => title.includes('-2.5000')))
+  const plot = card.locator('.fv-plot')
+  assert.ok(await plot.evaluate((node) => node.scrollWidth > node.clientWidth))
+  await plot.focus()
+  await page.keyboard.press('ArrowRight')
+  assert.ok(await plot.evaluate((node) => node.scrollLeft > 0))
+  await card.getByRole('button', { name: 'Table', exact: true }).click()
+  const dialog = card.locator('dialog[open]')
+  await dialog.getByText('12345678901234.5678', { exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  assert.equal(await dialog.count(), 0)
 })
