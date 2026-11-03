@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import { useCopy } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
+import { HostOverlayProvider } from '../ui/host-overlays.tsx'
 import type { AnalysisResourceContext } from './context.tsx'
 import type { AnalysisRendererProps } from './surface.tsx'
 
@@ -16,7 +17,9 @@ export function CandidateAnalysisSurface(props: AnalysisRendererProps) {
   const t = useCopy()
   return (
     <Suspense fallback={<p role="status">{t('marivo.presentation.ui-preparing')}</p>}>
-      <CandidateSurface {...props} candidate />
+      <HostOverlayProvider>
+        <CandidateSurface {...props} candidate />
+      </HostOverlayProvider>
     </Suspense>
   )
 }
@@ -34,12 +37,14 @@ export function SavedAnalysisSurface({
   const t = useCopy()
   return (
     <Suspense fallback={<p role="status">{t('marivo.presentation.ui-loading')}</p>}>
-      <Surface
-        document={document}
-        openSemanticRef={openSemanticRef}
-        readCode={readCode}
-        askPoint={askPoint}
-      />
+      <HostOverlayProvider>
+        <Surface
+          document={document}
+          openSemanticRef={openSemanticRef}
+          readCode={readCode}
+          askPoint={askPoint}
+        />
+      </HostOverlayProvider>
     </Suspense>
   )
 }

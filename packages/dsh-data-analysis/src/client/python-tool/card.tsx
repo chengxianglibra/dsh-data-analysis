@@ -7,21 +7,25 @@ import {
 import type { ToolCallOwnerProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { useMemo, useState } from 'react'
 import { useCopy } from '../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
+import { UI_STYLES } from '../ui/theme.ts'
 import { pythonToolModel } from './model.ts'
 
-const styles = `
-.mp-tool{min-width:0;max-width:100%;font-size:12px;color:var(--dsw-alias-label-primary,#1d3036)}
-.mp-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:8px;color:var(--dsw-alias-label-secondary,#5b7076)}
-.mp-body{min-width:0;margin:8px 0 8px 20px;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:8px;padding:12px;display:grid;gap:12px}
-.mp-body section,.mp-body details{min-width:0}.mp-body h4{font-size:12px;margin:0 0 6px}
-.mp-scroll{max-height:360px;overflow:auto;min-width:0}.mp-body pre{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:4;margin:0}
-.mp-code pre{white-space:pre!important;overflow:visible!important;max-height:none!important}
-.mp-code button{display:none}.mp-input-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}.mp-input-heading h4{margin:0}
-.mp-facts{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0}.mp-facts div{display:flex;gap:6px;min-width:0}.mp-facts dd{margin:0;overflow-wrap:anywhere}.mp-facts dt{color:var(--dsw-alias-label-secondary,#5b7076)}
-.mp-notice{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-state-warn-label,#805b20)}
-.mp-body button{font:inherit;cursor:pointer}.mp-body summary{cursor:pointer}.mp-state{font-size:11px;margin-left:8px}
-.mp-inspect{border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:6px;padding:3px 8px;background:var(--dsw-alias-bg-base,#fff);color:inherit}
-.mp-tool[data-state=failed] .mp-state,.mp-tool[data-state=warning] .mp-state,.mp-tool[data-state=timed-out] .mp-state{color:var(--dsw-alias-state-warn-label,#805b20)}
+const styles =
+  UI_STYLES +
+  `
+.mp-tool{min-width:0;max-width:100%;font-size:12px;color:var(--mv-text)}
+.mp-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:8px;color:var(--mv-muted)}
+.mp-body{min-width:0;font:14px/22px system-ui,sans-serif;margin:8px 0 8px 20px;border:1px solid var(--mv-border);border-radius:8px;padding:12px;display:grid;gap:12px}
+.mp-body section,.mp-body details{min-width:0}.mp-body h4{font:600 13px/20px system-ui,sans-serif;margin:0 0 8px}
+.mp-scroll{max-height:360px;overflow:auto;min-width:0}.mp-body pre{font:12px/18px ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:4;margin:0}
+.mp-code{border-radius:6px;overflow:visible}.mp-code pre{white-space:pre!important;overflow:visible!important;max-height:none!important}
+.mp-code button{display:none}.mp-input-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}.mp-input-heading h4{margin:0}.mp-input-heading .mp-inspect{min-width:96px}
+.mp-facts{font-size:12px;line-height:18px;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:6px 16px;margin:0}.mp-facts div{display:flex;gap:6px;min-width:0}.mp-facts dd{margin:0;overflow-wrap:anywhere}.mp-facts dt{color:var(--mv-muted)}
+.mp-notice{font-size:13px;line-height:20px;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mv-warning)}
+.mp-body button{font:inherit;cursor:pointer}.mp-body summary{cursor:pointer}.mp-state{font-size:12px;margin-left:8px}
+.mp-inspect{border:1px solid var(--mv-control-border);border-radius:6px;min-height:32px;padding:5px 10px;background:var(--mv-bg);color:inherit}
+.mp-tool[data-state=failed] .mp-state,.mp-tool[data-state=warning] .mp-state,.mp-tool[data-state=timed-out] .mp-state{color:var(--mv-warning)}
 `
 
 export function PythonToolCard({ block, inspect }: Pick<ToolCallOwnerProps, 'block' | 'inspect'>) {
@@ -36,7 +40,7 @@ export function PythonToolCard({ block, inspect }: Pick<ToolCallOwnerProps, 'blo
     setCopy({ code, ok })
   }
   return (
-    <div className="mp-tool" data-state={model.state}>
+    <div className="mv-ui mp-tool" data-state={model.state}>
       <style>{styles}</style>
       <DisclosureRow
         icon={<IconCodeOutlineRegular size={16} />}
@@ -59,13 +63,13 @@ export function PythonToolCard({ block, inspect }: Pick<ToolCallOwnerProps, 'blo
               <div className="mp-input-heading">
                 <h4>{t('marivo.python.input')}</h4>
                 {model.code !== undefined && (
-                  <button type="button" className="mp-inspect" onClick={() => void copySource()}>
+                  <Button type="button" className="mp-inspect" onClick={() => void copySource()}>
                     {t(
                       copy?.code === model.code && copy.ok
                         ? 'marivo.python.copied'
                         : 'marivo.python.copy',
                     )}
-                  </button>
+                  </Button>
                 )}
               </div>
               {copy && copy.code === model.code && !copy.ok && (
@@ -144,9 +148,9 @@ export function PythonToolCard({ block, inspect }: Pick<ToolCallOwnerProps, 'blo
             </details>
             {inspect && (
               <div>
-                <button type="button" className="mp-inspect" onClick={inspect}>
+                <Button type="button" className="mp-inspect" onClick={inspect}>
                   {t('marivo.python.inspect')}
-                </button>
+                </Button>
               </div>
             )}
           </div>

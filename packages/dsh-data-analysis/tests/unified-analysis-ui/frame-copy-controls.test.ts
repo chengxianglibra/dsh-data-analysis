@@ -72,7 +72,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
 
     await page.evaluate(() => Reflect.set(window, 'copyFailure', false))
     await page.locator('[data-icon="python"] button').click()
-    const dialog = page.locator('dialog[open]')
+    const dialog = page.getByRole('dialog')
     await dialog.locator('pre code').waitFor()
     const copyCode = dialog.getByRole('button', { name: 'Copy code' })
     await copyCode.focus()

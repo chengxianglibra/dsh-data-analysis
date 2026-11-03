@@ -25,7 +25,8 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
 签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
-OpenUI Lang、Renderer 与页面布局组件继续负责报告编排；AnalysisFrameView 和 DatasetView 内的图表统一由插件的 React/SVG 组件绘制。
+OpenUI Lang / Renderer 负责报告编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
+AnalysisFrameView 和 DatasetView 内的图表统一由插件的 React/SVG 组件绘制。
 图表不使用 OpenUI 官方图表组件，也不按期间数、series 数、数值类型或缺失状态切换渲染引擎。
 
 - DatasetView 支持 auto/table/metric/line/area/bar/heatmap，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
@@ -35,7 +36,8 @@ OpenUI Lang、Renderer 与页面布局组件继续负责报告编排；AnalysisF
   line/area/bar 必填 `encoding: {axis, values, series?}`，heatmap 必填 `{x, y, value}`，名称均为保存列 ID。
   数值列必须为 float64/int64/decimal 且可转换为有限绘图坐标，快照必须完整；axis/series 或 x/y 组合须唯一，重复时明确失败，聚合由原分析负责。
   axis 成员按保存行首次出现顺序排列，日期也仅作为已保存的离散点，不推断期间、缺期、时区或分析语义。
-  最多 8 个 series，heatmap 展开网格最多 100,000 格；超限在保存时拒绝。
+  `encoding.series` 列的类别数最多为 8，`encoding.values` 可引用最多 64 列；这不是展开后绘图总序列数的统一上限。
+  heatmap 展开网格最多 100,000 格；对应预算超限在保存时拒绝。高序列颜色索引仍饱和到第 8 色，不静默截断数据。
   默认 auto/table/metric 判定不变。图表提供共用的数据图标和详细表格弹窗，支持排序、分页和精确值读取；Dataset 不接入 Frame 的“就此提问”协议。
 - Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
   只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。
@@ -48,7 +50,8 @@ OpenUI Lang、Renderer 与页面布局组件继续负责报告编排；AnalysisF
 - Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
   头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通折线、面积、柱图、横向柱图及热力图复用共享图表；
   比较、分解、对齐、相关和占比等领域视图复用插件的 SVG 基础组件，按解析结果绘图或显示表格；
-  NA、缺期、不完整期、presence、restricted 与未捕获完整均以视觉编码表达，不加解释性文字。
+  NA、缺期、不完整期、presence、restricted 与未捕获完整采用视觉编码及必要的短状态标签；
+  不增加复述图种或数值的说明段落，compact 也不能隐藏影响解读的限制。
   非表格主视图的数据图标与来源、Python 共用操作行及弹窗，展示已保存的详细数据；表格主视图不重复提供数据入口。
   显式指定 `display.dataTable: "visible"` 时详细数据默认内联展示，并可用同一图标收起；数据引用不显示行数和横向滚动图标，截断与空数据状态仍可见。
   比较结果按指标展示本期、基期及已有差值，而非平铺原始字段。
@@ -56,6 +59,7 @@ OpenUI Lang、Renderer 与页面布局组件继续负责报告编排；AnalysisF
   期间对应展示捕获的两端标签；日历期间显示保存的选择状态和 cutoff，不推断未捕获的时间边界，interval 则显示保存的范围。
   热力图标明已绘制值的色阶范围；时间图和类别图按声明的单位分面，未知单位按字段分面；alignment 的缺席侧不显示保存单元格中的值。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
+  方向键、Home/End 只移动焦点，Enter/Space 激活；tab/panel 通过稳定 ID 关联，隐藏 panel 不可聚焦。
 - 图片只显示已保存的 image 资源；TextContent 不加载远程图片。
 
 已保存 Frame 的可唯一定位图点和支持的单元格点击后显示“就此提问”菜单，选择后插入当前 Harness 会话的提问草稿；图点支持键盘操作。

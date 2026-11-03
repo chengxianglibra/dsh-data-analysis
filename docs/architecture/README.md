@@ -28,6 +28,7 @@
 | 报告 | [展示数据投影](modules/presentation-projection.md) | 有界快照、Frame 读取、DataFrame capture 与数值预算 |
 | 报告 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、语句 patch、current、receipt 与 RPC |
 | 报告 | [分析文档 reader](modules/presentation-reader.md) | 共享 AnalysisSurface、报告目录与版本历史 |
+| 前端 | [插件私有 UI 组件](modules/custom-ui-components.md) | 主题角色、控件、结果外壳、容器布局与 Host 弹层接入 |
 | 报告 | [报告 HTML 导出与发布](modules/report-publishing.md) | 已移除；新格式不可用 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
 
@@ -105,7 +106,8 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 打开旧地址显示不支持的报告错误，不回退到旧 Reader。Frame v2 的 AnalysisFrameView 按 Frame 结构选择观察、成员、比较、
 分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、heatmap、comparison 和 decomposition 视图；
 DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 保留已保存图点与支持单元格的“就此提问”入口；Dataset 不接入该协议。
-两种数据视图的图表统一使用插件自定义 React/SVG 组件；OpenUI Lang、Renderer 与页面布局组件继续负责报告编排。
+两种数据视图使用共用结果外壳与插件 React/SVG 图形；OpenUI Lang / Renderer 负责报告编排，
+八组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。
 全局筛选、页面编辑、离线 HTML、发布及旧报告 cell 的“加入提问”接口均已移除。
 
 ## 生命周期与失败原则

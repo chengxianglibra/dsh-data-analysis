@@ -1,7 +1,10 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import type { ResolvedFrameView } from '../../../presentation/contracts/frame-view.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
+import { IconButton } from '../../ui/controls.tsx'
+import { DetailsDialog } from '../../ui/overlays.tsx'
+import { DataActions } from '../components/result.tsx'
 import { useAnalysisResources } from '../context.tsx'
 import { SemanticOrigins, semanticObjects } from '../metadata-view.tsx'
 import { FrameIcon } from './frame-icon.tsx'
@@ -37,27 +40,16 @@ export function Dialog({
   children: ReactNode
 }) {
   const t = useCopy()
-  const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const dialog = ref.current
-    if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
-  }, [open])
   return (
-    <dialog ref={ref} className="fv-dialog" aria-label={title} onClose={onClose}>
-      {open && (
-        <>
-          <header>
-            <h3>{title}</h3>
-            <button type="button" aria-label={t(`${P}ui-frame-close`)} onClick={onClose}>
-              <FrameIcon kind="close" />
-            </button>
-          </header>
-          <div>{children}</div>
-        </>
-      )}
-    </dialog>
+    <DetailsDialog
+      title={title}
+      open={open}
+      onClose={onClose}
+      closeLabel={t(`${P}ui-frame-close`)}
+      className="fv-dialog"
+    >
+      {children}
+    </DetailsDialog>
   )
 }
 
@@ -81,23 +73,18 @@ export function FrameIconButton({
   hasPopup?: 'dialog'
   children: ReactNode
 }) {
-  const id = `fv-tip-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   return (
     <span className="fv-icon" data-icon={kind} data-disabled={disabled ? 'true' : undefined}>
-      <button
-        type="button"
-        aria-label={label}
-        aria-describedby={tip === label ? undefined : id}
-        aria-disabled={disabled ? true : undefined}
+      <IconButton
+        label={label}
+        tip={tip}
+        unavailable={disabled}
         aria-expanded={expanded}
         aria-haspopup={hasPopup}
         onClick={disabled ? undefined : onOpen}
       >
         {children}
-      </button>
-      <span role="tooltip" id={id} className="fv-tip">
-        {tip}
-      </span>
+      </IconButton>
     </span>
   )
 }
@@ -341,25 +328,37 @@ export function IconRow({
   compact?: boolean
   dataControl?: ReactNode
 }) {
+  const { candidate } = useAnalysisResources()
+  const t = useCopy()
   const periods = timeComparison(snapshot, view)
   const coverage = !snapshot.coverage.complete
   if (compact) {
     if (!dataControl && !coverage && periods === undefined) return null
     return (
-      <div className="fv-icons">
+      <DataActions>
         {dataControl}
         {coverage && <CoverageIcon snapshot={snapshot} />}
         {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
-      </div>
+        {periods !== undefined && !comparisonPeriodPage(snapshot, periods) && (
+          <span className="au-result-status" role="status">
+            {t(`${P}ui-frame-point-periods-unavailable`)}
+          </span>
+        )}
+      </DataActions>
     )
   }
   return (
-    <div className="fv-icons">
+    <DataActions>
       {dataControl}
       {coverage && <CoverageIcon snapshot={snapshot} />}
       {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
-      <OriginsIcon snapshot={snapshot} />
-      <PythonIcon snapshot={snapshot} codeRef={codeRef} />
-    </div>
+      {!candidate && <OriginsIcon snapshot={snapshot} />}
+      {!candidate && <PythonIcon snapshot={snapshot} codeRef={codeRef} />}
+      {periods !== undefined && !comparisonPeriodPage(snapshot, periods) && (
+        <span className="au-result-status" role="status">
+          {t(`${P}ui-frame-point-periods-unavailable`)}
+        </span>
+      )}
+    </DataActions>
   )
 }

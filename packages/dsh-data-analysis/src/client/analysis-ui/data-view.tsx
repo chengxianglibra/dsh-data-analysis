@@ -11,9 +11,11 @@ import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
 import { datasetChartModel } from './charts/dataset-model.ts'
 import { Heatmap, TimeChart } from './charts/observation.tsx'
+import { DataActions, MetricGroup, ResultCard, ResultHeader } from './components/result.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { FrameIcon } from './frame/frame-icon.tsx'
 import { Dialog, FrameIconButton } from './frame/icons.tsx'
+import { CopyData } from './frame/table.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
 
 export interface AnalysisViewProps {
@@ -82,7 +84,6 @@ function DatasetDataView({
 }) {
   const t = useCopy()
   const [selected, setSelected] = useState<string[]>()
-  const [copy, setCopy] = useState<string>()
   const [dataOpen, setDataOpen] = useState(false)
   const { candidate } = useAnalysisResources()
   const resolution = useMemo(() => {
@@ -114,36 +115,24 @@ function DatasetDataView({
   const metricColumn =
     resolved?.chart === 'metric' ? data.columns.find((c) => c.id === resolved.values[0]) : undefined
   const metric = metricColumn && snapshot.coverage.complete && data.rowCount === 1
-  const copyRows = async () => {
-    const indices = columns.map((id) => data.columns.findIndex((c) => c.id === id))
-    const quote = (value: string) =>
-      /[\t\r\n"]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
-    const text = [
-      indices.map((i) => data.columns[i]!.label),
-      ...data.rows.map((row) => indices.map((i) => formatCell(row[i]!, data.columns[i]!))),
-    ]
-      .map((row) => row.map(quote).join('\t'))
-      .join('\n')
-    const ok = await Promise.resolve()
-      .then(() => navigator.clipboard.writeText(text))
-      .then(() => true)
-      .catch(() => false)
-    setCopy(ok ? 'marivo.presentation.copied' : 'marivo.presentation.ui-copy-failed')
-  }
   return (
-    <section
-      className={chart ? 'fv au-data' : 'au-data'}
+    <ResultCard
       data-resource={resourceName}
       data-resource-kind={kind}
       data-dataset-view={resolved?.chart}
     >
-      <div className="au-data-heading">
-        <strong>{resourceName}</strong>
-        <button type="button" onClick={() => void copyRows()}>
-          {t('marivo.presentation.ui-copy-data')}
-        </button>
-      </div>
-      {copy && <p role="status">{t(copy)}</p>}
+      <ResultHeader
+        title={resourceName}
+        actions={!candidate ? <CopyData data={data} columns={columns} /> : undefined}
+      />
+      {!snapshot.coverage.complete && (
+        <p className="au-result-status" role="status">
+          {t('marivo.presentation.ui-capture-range', {
+            p0: snapshot.coverage.capturedRows,
+            p1: snapshot.coverage.totalRows,
+          })}
+        </p>
+      )}
       {chart ? (
         <>
           {chart.chart === 'heatmap' ? (
@@ -151,15 +140,17 @@ function DatasetDataView({
           ) : (
             <TimeChart model={model} view={chart} height={height} />
           )}
-          <FrameIconButton
-            kind="data"
-            label={t('marivo.presentation.ui-frame-data-table')}
-            tip={t('marivo.presentation.ui-frame-data-table')}
-            hasPopup="dialog"
-            onOpen={() => setDataOpen(true)}
-          >
-            <FrameIcon kind="table" />
-          </FrameIconButton>
+          <DataActions>
+            <FrameIconButton
+              kind="data"
+              label={t('marivo.presentation.ui-frame-data-table')}
+              tip={t('marivo.presentation.ui-frame-data-table')}
+              hasPopup="dialog"
+              onOpen={candidate ? undefined : () => setDataOpen(true)}
+            >
+              <FrameIcon kind="table" />
+            </FrameIconButton>
+          </DataActions>
           <Dialog
             title={t('marivo.presentation.ui-frame-data-table')}
             open={dataOpen}
@@ -170,11 +161,16 @@ function DatasetDataView({
         </>
       ) : metric ? (
         <div className="au-metric">
-          <span>{metricColumn.label}</span>
-          <strong>
-            {formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)}
-          </strong>
-          {metricColumn.unit && <span>{metricColumn.unit}</span>}
+          <MetricGroup
+            items={[
+              {
+                key: metricColumn.id,
+                label: metricColumn.label,
+                value: formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn),
+                unit: metricColumn.unit,
+              },
+            ]}
+          />
         </div>
       ) : (
         <>
@@ -207,7 +203,6 @@ function DatasetDataView({
           </div>
         </>
       )}
-      {metric && <p className="pr-muted">{t('marivo.presentation.ui-complete-single-row')}</p>}
       <details className="au-source">
         <summary>{t('marivo.presentation.ui-dataset-source')}</summary>
         <p>{t('marivo.presentation.ui-captured-at', { p0: snapshot.fetchedAt })}</p>
@@ -230,6 +225,6 @@ function DatasetDataView({
           <dd>{binding.codeRef?.sha256}</dd>
         </dl>
       </details>
-    </section>
+    </ResultCard>
   )
 }

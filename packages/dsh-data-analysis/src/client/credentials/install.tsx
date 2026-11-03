@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useCopy } from './../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
+import { Button } from '../ui/controls.tsx'
 import type { CredentialChanges } from './changes.ts'
 import { CreateDatasource } from './create-datasource.tsx'
 import { CredentialClientModel, credentialMessage } from './model.ts'
@@ -20,7 +21,7 @@ const statusLabels = {
   cancelled: 'marivo.credentials.configuration-request-cancelled',
   'context-changed': 'marivo.credentials.context-changed',
 }
-export function CredentialIcon({ name, size = 18 }) {
+export function CredentialIcon({ name, size = 16 }) {
   return (
     <svg
       width={size}
@@ -268,7 +269,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                       })}
               </span>
               {!ended && (
-                <button
+                <Button
                   className="mc-icon-button"
                   type="button"
                   title={t('marivo.credentials.edit-configuration')}
@@ -277,10 +278,10 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                   onClick={onEdit}
                 >
                   <CredentialIcon name="edit" />
-                </button>
+                </Button>
               )}
               {!request && (
-                <button
+                <Button
                   className="mc-icon-button mc-danger"
                   type="button"
                   title={t('marivo.credentials.delete-datasource')}
@@ -289,7 +290,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                   onClick={() => setRemovingDatasource(true)}
                 >
                   <CredentialIcon name="delete" />
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -326,7 +327,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                 </p>
               </>
             )}
-            <button
+            <Button
               className="mc-danger"
               type="button"
               disabled={busy || state.loading}
@@ -336,8 +337,8 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
               }}
             >
               {t('marivo.credentials.confirm-datasource-deletion')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               disabled={busy}
               onClick={() => {
@@ -346,7 +347,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
               }}
             >
               {t('marivo.credentials.cancel')}
-            </button>
+            </Button>
           </fieldset>
         )}
         {request && (
@@ -397,15 +398,15 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                           : t('marivo.credentials.not-configured')}
                       </span>
                       {info?.writable && info.configured && !editing[ref] && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => setEditing({ ...editing, [ref]: true })}
                         >
                           {t('marivo.credentials.replace')}
-                        </button>
+                        </Button>
                       )}
                       {info?.writable && info.configured && editing[ref] && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => {
                             setValues({ ...values, [ref]: '' })
@@ -413,16 +414,16 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                           }}
                         >
                           {t('marivo.credentials.cancel-replacement')}
-                        </button>
+                        </Button>
                       )}
                       {info?.writable && !request && info.configured && (
-                        <button
+                        <Button
                           className="mc-danger"
                           type="button"
                           onClick={() => setDeleting(ref)}
                         >
                           {t('marivo.credentials.delete-saved-value')}
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -437,7 +438,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                         onChange={(event) => setValues({ ...values, [ref]: event.target.value })}
                       />
                       {!request && (
-                        <button
+                        <Button
                           type="button"
                           className="mc-primary"
                           disabled={!values[ref]}
@@ -446,7 +447,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                           {info.configured
                             ? t('marivo.credentials.confirm-replacement')
                             : t('marivo.credentials.add-credential')}
-                        </button>
+                        </Button>
                       )}
                     </label>
                   )}
@@ -463,7 +464,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                         {t('marivo.credentials.confirm-deletion-of')}
                         {ref} {t('marivo.credentials.the-saved-value')}
                       </p>
-                      <button
+                      <Button
                         className="mc-danger"
                         type="button"
                         onClick={() => {
@@ -472,10 +473,10 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                         }}
                       >
                         {t('marivo.credentials.confirm-saved-value-deletion')}
-                      </button>
-                      <button type="button" onClick={() => setDeleting('')}>
+                      </Button>
+                      <Button type="button" onClick={() => setDeleting('')}>
                         {t('marivo.credentials.keep')}
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </fieldset>
@@ -494,7 +495,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                 </time>
               )}
               {!request && (
-                <button
+                <Button
                   className="mc-icon-button"
                   type="button"
                   title={t('marivo.credentials.test-connection')}
@@ -503,7 +504,7 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
                   onClick={() => void model.start(context, 'test')}
                 >
                   <CredentialIcon name="test" />
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -522,54 +523,54 @@ function CredentialForm({ context, request, state, model, workspaceId, onEdit })
       {!ended && (request || busy) && (
         <div className="mc-form-footer">
           {request && (
-            <button className="mc-primary" type="button" disabled={busy} onClick={submit}>
+            <Button className="mc-primary" type="button" disabled={busy} onClick={submit}>
               {t('marivo.credentials.submit-credentials-and-continue')}
-            </button>
+            </Button>
           )}
           {request && (
-            <button
+            <Button
               type="button"
               disabled={busy}
               onClick={() => void model.start(context, 'submit')}
             >
               {t('marivo.credentials.validate-existing-configuration-and-continue')}
-            </button>
+            </Button>
           )}
           {request?.failure && (
-            <button
+            <Button
               type="button"
               disabled={busy}
               onClick={() => void model.start(context, 'diagnose')}
             >
               {t('marivo.credentials.ask-the-assistant-to-investigate')}
-            </button>
+            </Button>
           )}
           {request ? (
-            <button
+            <Button
               className="mc-quiet mc-cancel"
               type="button"
               onClick={() => void model.cancelRequest(request.id)}
             >
               {t('marivo.credentials.cancel-this-round')}
-            </button>
+            </Button>
           ) : (
             busy && (
-              <button
+              <Button
                 className="mc-quiet mc-cancel"
                 type="button"
                 onClick={() => void model.cancelOperation(context.token)}
               >
                 {t('marivo.credentials.cancel-operation')}
-              </button>
+              </Button>
             )
           )}
         </div>
       )}
       {ended && (
         <div className="mc-form-footer">
-          <button type="button" onClick={() => model.show(workspaceId)}>
+          <Button type="button" onClick={() => model.show(workspaceId)}>
             {t('marivo.credentials.back-to-datasource-management')}
-          </button>
+          </Button>
         </div>
       )}
     </section>
@@ -638,13 +639,16 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
   )?.operation
   if (!state.open) return null
   return (
-    <section className="mc-panel" aria-label={t('marivo.credentials.datasources-and-credentials')}>
+    <section
+      className="mv-ui mc-panel"
+      aria-label={t('marivo.credentials.datasources-and-credentials')}
+    >
       <style>{credentialStyles}</style>
       <div className="rt-heading-row">
         <h2 className="rt-heading">{t('marivo.credentials.datasources-and-credentials')}</h2>
         <div className="mc-heading-actions">
           {!request && (
-            <button
+            <Button
               className="mc-icon-button"
               type="button"
               title={t('marivo.credentials.add-datasource')}
@@ -656,9 +660,9 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
               }}
             >
               <CredentialIcon name="add" />
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             className="mc-icon-button"
             type="button"
             title={t('marivo.credentials.refresh-datasources')}
@@ -667,7 +671,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
             onClick={onRefresh ?? (() => void model.refreshDatasources())}
           >
             <CredentialIcon name="refresh" />
-          </button>
+          </Button>
         </div>
       </div>
       <p className="rt-caption">
@@ -682,17 +686,17 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                 : t('marivo.credentials.configuration-result')}
             </span>
             {pending.map((item) => (
-              <button type="button" key={item.id} onClick={() => model.openRequest(item.id)}>
+              <Button type="button" key={item.id} onClick={() => model.openRequest(item.id)}>
                 {item.context?.name ??
                   item.configuration?.name ??
                   t('marivo.credentials.add-datasource')}{' '}
                 · {t(statusLabels[item.status])}
-              </button>
+              </Button>
             ))}
             {request && (
-              <button className="mc-quiet" type="button" onClick={() => model.show(workspaceId)}>
+              <Button className="mc-quiet" type="button" onClick={() => model.show(workspaceId)}>
                 {t('marivo.credentials.datasource-management')}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -718,7 +722,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                     )
                     return (
                       <li key={item.token}>
-                        <button
+                        <Button
                           className="mc-datasource"
                           type="button"
                           aria-label={t('marivo.credentials.select-datasource-value', {
@@ -750,7 +754,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                                       })}
                             </span>
                           </span>
-                        </button>
+                        </Button>
                       </li>
                     )
                   })}
@@ -768,9 +772,9 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
               .map((entry) => (
                 <div className="mc-request-status" key={entry.handle.id}>
                   <OperationOutcome entry={entry} />
-                  <button type="button" onClick={() => model.dismissOutcome(entry.handle.scope)}>
+                  <Button type="button" onClick={() => model.dismissOutcome(entry.handle.scope)}>
                     {t('marivo.credentials.dismiss-deletion-result')}
-                  </button>
+                  </Button>
                 </div>
               ))}
             {state.error && (
@@ -815,13 +819,13 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                     {t(statusLabels[request.status])}
                   </span>
                   {request.endedAt === undefined && (
-                    <button
+                    <Button
                       className="mc-quiet"
                       type="button"
                       onClick={() => void model.cancelRequest(request.id)}
                     >
                       {t('marivo.credentials.cancel-configuration-request')}
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <details className="mc-request-reason">
@@ -837,7 +841,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                           className="mc-request-choice"
                           aria-label={t('marivo.credentials.configuration-method')}
                         >
-                          <button
+                          <Button
                             type="button"
                             aria-pressed={requestChoice === 'create'}
                             onClick={() => {
@@ -848,8 +852,8 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                             }}
                           >
                             {t('marivo.credentials.add-datasource')}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
                             aria-pressed={requestChoice === 'existing'}
                             onClick={() => {
@@ -860,7 +864,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                             }}
                           >
                             {t('marivo.credentials.use-an-existing-datasource')}
-                          </button>
+                          </Button>
                         </fieldset>
                         {requestChoice === 'existing' && (
                           <div className="mc-existing-source">
@@ -911,7 +915,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                     {!creating &&
                       !context &&
                       (request.configuration.mode === 'edit' || requestChoice === 'create') && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => {
                             setCreating(true)
@@ -919,7 +923,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                           }}
                         >
                           {t('marivo.credentials.open-configuration-form')}
-                        </button>
+                        </Button>
                       )}
                   </>
                 )}
@@ -960,14 +964,14 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                 </p>
                 <div className="mc-activity-list">
                   {operations.map((entry) => (
-                    <button
+                    <Button
                       type="button"
                       key={entry.handle.id}
                       aria-pressed={state.handle?.id === entry.handle.id}
                       onClick={() => model.selectOperation(entry.handle.id)}
                     >
                       {entry.name} {t('marivo.credentials.processing-177')}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {activeOperation?.status === 'running' && (
@@ -981,9 +985,9 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                           ? t('marivo.credentials.saving')
                           : t('marivo.credentials.validating-connection')}
                     </p>
-                    <button type="button" onClick={() => void model.cancelOperation()}>
+                    <Button type="button" onClick={() => void model.cancelOperation()}>
                       {t('marivo.credentials.cancel-this-operation')}
-                    </button>
+                    </Button>
                     {activeOperation.saved.length > 0 && (
                       <p>
                         {t('marivo.credentials.saved')}
@@ -1027,34 +1031,26 @@ export function installCredentials(ctx, rpc, changes?: CredentialChanges) {
           (item) => item.sessionId === sessionId && item.endedAt === undefined,
         )
         return request ? (
-          <button
-            className="mc-pending-entry"
-            style={{
-              flex: 'none',
-              whiteSpace: 'nowrap',
-              fontSize: 12,
-              padding: '4px 6px',
-              border: '1px solid currentColor',
-              borderRadius: 7,
-              background: 'transparent',
-              color: 'inherit',
-              cursor: 'pointer',
-            }}
-            aria-label={
-              request.configuration
-                ? t('marivo.credentials.awaiting-datasource-configuration')
-                : t('marivo.credentials.awaiting-credentials')
-            }
-            title={
-              request.configuration
-                ? t('marivo.credentials.awaiting-datasource-configuration')
-                : t('marivo.credentials.awaiting-credentials')
-            }
-            type="button"
-            onClick={() => model.openRequest(request.id)}
-          >
-            {t('marivo.credentials.configuration-needed')}
-          </button>
+          <>
+            <style>{credentialStyles}</style>
+            <Button
+              className="mv-ui mc-pending-entry"
+              aria-label={
+                request.configuration
+                  ? t('marivo.credentials.awaiting-datasource-configuration')
+                  : t('marivo.credentials.awaiting-credentials')
+              }
+              title={
+                request.configuration
+                  ? t('marivo.credentials.awaiting-datasource-configuration')
+                  : t('marivo.credentials.awaiting-credentials')
+              }
+              type="button"
+              onClick={() => model.openRequest(request.id)}
+            >
+              {t('marivo.credentials.configuration-needed')}
+            </Button>
+          </>
         ) : null
       }),
     ),

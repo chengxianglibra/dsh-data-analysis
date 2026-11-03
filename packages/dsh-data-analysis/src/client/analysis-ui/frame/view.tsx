@@ -11,6 +11,7 @@ import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
+import { MetricGroup, ResultCard, ResultHeader } from '../components/result.tsx'
 import { useAnalysisResources } from '../context.tsx'
 import { AlignmentView } from './alignment.tsx'
 import {
@@ -42,14 +43,7 @@ import {
   type Snapshot,
   valueName,
 } from './model.ts'
-import {
-  CorrelationPlot,
-  HBarChart,
-  Heatmap,
-  MetricCards,
-  ShareView,
-  TimeChart,
-} from './observation.tsx'
+import { CorrelationPlot, HBarChart, Heatmap, ShareView, TimeChart } from './observation.tsx'
 import { FrameSelectionContext } from './selection-context.tsx'
 import { CopyData, DataTable, useFrozenColumns } from './table.tsx'
 
@@ -137,6 +131,7 @@ export function MainView({
   view: ResolvedFrameView
   height?: number
 }) {
+  const t = useCopy()
   const common = { snapshot, classification, height }
   switch (view.chart) {
     case 'table':
@@ -156,7 +151,20 @@ export function MainView({
     case 'members':
       return <MembersTable snapshot={snapshot} height={height} />
     case 'metric':
-      return <MetricCards {...common} view={view} />
+      return (
+        <MetricGroup
+          items={view.values.map((name) => {
+            const column = columnOf(snapshot, name)?.column
+            const value = cellOf(snapshot, 0, name)
+            return {
+              key: name,
+              value: compact(t.locale, value, column),
+              title: exact(value, column),
+              label: view.values.length > 1 ? valueName(snapshot, classification, name) : undefined,
+            }
+          })}
+        />
+      )
     case 'line':
     case 'area':
     case 'bar':
@@ -310,7 +318,7 @@ export function FrameShell({
     },
     [],
   )
-  const selected = selection?.snapshot === s ? selection : undefined
+  const selected = !candidate && selection?.snapshot === s ? selection : undefined
   const menuRef = useRef<HTMLDivElement>(null)
   const originRef = useRef<HTMLElement | SVGElement | null>(null)
   useEffect(() => {
@@ -332,6 +340,12 @@ export function FrameShell({
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [selected])
+  useEffect(() => {
+    if (!selected || (status !== 'added' && status !== 'failed')) return
+    const origin = originRef.current
+    if (origin?.isConnected && origin.closest('[role="dialog"], dialog[open]'))
+      menuRef.current?.querySelector('button')?.focus()
+  }, [selected, status])
   const pointPosition = useRef({ x: 0, y: 0 })
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 })
   const selectable = useMemo(
@@ -384,9 +398,10 @@ export function FrameShell({
       <button
         type="button"
         role="menuitem"
-        disabled={status === 'pending'}
+        aria-disabled={status === 'pending' || undefined}
+        aria-busy={status === 'pending' || undefined}
         onClick={() => {
-          if (!askPoint || !resourceName) return
+          if (status === 'pending' || !askPoint || !resourceName) return
           const revision = ++requestRevision.current
           setStatus('pending')
           void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
@@ -430,8 +445,7 @@ export function FrameShell({
     )
   return (
     <FrameSelectionContext.Provider value={selectable}>
-      <section
-        className="fv au-data"
+      <ResultCard
         data-resource={resourceName}
         data-resource-kind="frame"
         data-frame-class={c.class}
@@ -453,12 +467,49 @@ export function FrameShell({
           }
         }}
         onKeyDownCapture={(event) => {
+          if (
+            event.key === 'Tab' &&
+            selected &&
+            event.target instanceof Element &&
+            event.target.closest('.fv-point-menu')
+          ) {
+            event.preventDefault()
+            setSelection(undefined)
+            const origin = originRef.current
+            const scope = origin?.closest('[role="dialog"], dialog[open], .fv')
+            const controls = scope
+              ? [
+                  ...scope.querySelectorAll<HTMLElement | SVGElement>(
+                    'button, a[href], input, select, textarea, [tabindex]',
+                  ),
+                ].filter(
+                  (node) =>
+                    node.tabIndex >= 0 &&
+                    !node.hasAttribute('disabled') &&
+                    !node.closest('[hidden], .fv-point-menu') &&
+                    node.getClientRects().length > 0,
+                )
+              : []
+            const index = origin ? controls.indexOf(origin) : -1
+            const next =
+              index < 0
+                ? event.shiftKey
+                  ? controls.length - 1
+                  : 0
+                : (index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length
+            const target = controls[next] ?? origin
+            target?.focus()
+            return
+          }
           if (event.key === 'Escape' && selected) {
             event.preventDefault()
             setSelection(undefined)
             originRef.current?.focus()
           }
-          if (event.key === 'Enter' || event.key === ' ') {
+          if (
+            (event.key === 'Enter' || event.key === ' ') &&
+            !(event.target instanceof Element && event.target.closest('.fv-point-menu'))
+          ) {
             const target = event.target
             if (target instanceof HTMLElement || target instanceof SVGElement)
               originRef.current = target
@@ -467,17 +518,17 @@ export function FrameShell({
           }
         }}
       >
-        <div className="fv-head">
-          <h3 className="fv-title">{name}</h3>
-          {!compactDensity && (
-            <span>
+        <ResultHeader
+          title={name}
+          actions={
+            !compactDensity && !candidate ? (
               <CopyData
                 data={s.data}
                 columns={view.chart === 'table' ? view.columns : allColumns}
               />
-            </span>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
         {!compactDensity && s.frame.description && <p className="fv-desc">{s.frame.description}</p>}
         {!compactDensity && chips.length > 0 && (
           <ul className="fv-chips">
@@ -487,6 +538,19 @@ export function FrameShell({
               </li>
             ))}
           </ul>
+        )}
+        {compactDensity && decomposition?.restricted && (
+          <p className="au-result-status" role="status">
+            {t('marivo.presentation.ui-frame-restricted-scope')}
+          </p>
+        )}
+        {!s.coverage.complete && (
+          <p className="au-result-status" role="status">
+            {t('marivo.presentation.ui-capture-range', {
+              p0: s.coverage.capturedRows,
+              p1: s.coverage.totalRows,
+            })}
+          </p>
         )}
         {numbers.length > 0 && <Numbers items={numbers} />}
         {view.chart === 'comparison' ? (
@@ -518,7 +582,11 @@ export function FrameShell({
                 tip={dataLabel}
                 expanded={inlineData ? dataOpen : undefined}
                 hasPopup={inlineData ? undefined : 'dialog'}
-                onOpen={() => setDataState({ inline: inlineData, open: !dataOpen })}
+                onOpen={
+                  candidate
+                    ? undefined
+                    : () => setDataState({ inline: inlineData, open: !dataOpen })
+                }
               >
                 <FrameIcon kind="table" />
               </FrameIconButton>
@@ -536,7 +604,7 @@ export function FrameShell({
             {pointMenu}
           </Dialog>
         )}
-      </section>
+      </ResultCard>
     </FrameSelectionContext.Provider>
   )
 }

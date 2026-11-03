@@ -22,6 +22,7 @@ import {
 import { createPluginRpc } from '../rpc.ts'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
 import { installSemanticReferenceSource } from '../semantic-reference-source.ts'
+import { Button } from '../ui/controls.tsx'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { WorkspaceShortcuts, workspaceDirectories } from '../workspace-shortcuts.tsx'
 import { LiveDeliveryObserver } from './live-delivery.ts'
@@ -323,7 +324,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     }
     return (
       <section
-        className="rt-page"
+        className="mv-ui rt-page"
         data-rt-tab={tab.id}
         data-rt-panel={panelId}
         data-rt-kind={page.target.kind}
@@ -341,13 +342,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 <div className="rt-heading-row">
                   <h2 className="rt-heading">{t(labels[page.target.kind])}</h2>
                   {page.target.kind === 'reports' && (
-                    <button
+                    <Button
                       type="button"
                       disabled={catalog.loading}
                       onClick={() => void page.refresh()}
                     >
                       {t('marivo.presentation.refresh')}
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <p className="rt-caption">
@@ -359,9 +360,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             {state.newer && (
               <p role="status" className="rt-notice">
                 {t('marivo.navigation.a-newer-version-exists-the-current-view-is-unchanged')}
-                <button type="button" onClick={() => void page.refresh()}>
+                <Button type="button" onClick={() => void page.refresh()}>
                   {t('marivo.navigation.view-new-version')}
-                </button>
+                </Button>
               </p>
             )}
             {state.notice && <p role="status">{t(state.notice)}</p>}
@@ -393,9 +394,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 {report.error && (
                   <div role="alert">
                     <p>{t(report.error)}</p>
-                    <button type="button" onClick={() => void page.refresh()}>
+                    <Button type="button" onClick={() => void page.refresh()}>
                       {t('marivo.navigation.reload-report')}
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {report.historyOpen && (
@@ -409,9 +410,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 {report.analysisDocument && (
                   <>
                     <div className="rt-toolbar">
-                      <button type="button" onClick={() => void page.reader.toggleHistory()}>
+                      <Button type="button" onClick={() => void page.reader.toggleHistory()}>
                         {t('marivo.presentation.history')}
-                      </button>
+                      </Button>
                       <span>{t('marivo.presentation.ui-format-limitations')}</span>
                     </div>
                     <SavedAnalysisSurface

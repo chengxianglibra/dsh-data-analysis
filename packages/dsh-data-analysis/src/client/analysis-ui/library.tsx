@@ -1,7 +1,6 @@
 import type { ElementNode } from '@openuidev/lang-core'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
-import { type CSSProperties, useState } from 'react'
 import { z } from 'zod/v4'
 import {
   datasetDisplaySchema,
@@ -9,8 +8,10 @@ import {
 } from '../../presentation/contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
 import { Markdown } from '../presentation/markdown.tsx'
+import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisDataView } from './data-view.tsx'
+import { Card, Stack } from './layout.tsx'
 
 const frameProps = z.object({
   ref: z.string().min(1),
@@ -73,59 +74,12 @@ const content = z.union([
   DatasetView.ref,
 ])
 
-// Layout maps copied from @openuidev/react-ui@0.18.1 Stack, whose implementation
-// emits inline styles only. Recheck them when upgrading @openuidev packages.
-const stackGap: Record<string, CSSProperties['gap']> = {
-  none: '0',
-  xs: 'var(--openui-space-xs)',
-  s: 'var(--openui-space-s)',
-  m: 'var(--openui-space-m)',
-  l: 'var(--openui-space-l)',
-  xl: 'var(--openui-space-xl)',
-  '2xl': 'var(--openui-space-2xl)',
-}
-const stackAlign: Record<string, CSSProperties['alignItems']> = {
-  start: 'flex-start',
-  center: 'center',
-  end: 'flex-end',
-  stretch: 'stretch',
-  baseline: 'baseline',
-}
-const stackJustify: Record<string, CSSProperties['justifyContent']> = {
-  start: 'flex-start',
-  center: 'center',
-  end: 'flex-end',
-  between: 'space-between',
-  around: 'space-around',
-  evenly: 'space-evenly',
-}
-
-// Same name, description, schema and ref as the official Stack; only the
-// renderer adds the class/data hooks that relax direct row children.
+// Reuse the fixed public schema and identity; only the private renderer changes.
 const stack = official.Stack!
 const StackLayout = defineComponent({
   ...stack,
   props: stack.props.extend({ children: z.array(content) }),
-  component: ({ props, renderNode }) => {
-    const justify = props.wrap && props.justify === 'between' ? 'start' : props.justify
-    return (
-      <div
-        className="au-stack"
-        data-direction={props.direction ?? 'column'}
-        data-wrap={props.wrap ? 'true' : undefined}
-        style={{
-          display: 'flex',
-          flexDirection: props.direction ?? 'column',
-          gap: stackGap[props.gap || 'm'] || stackGap.m,
-          alignItems: stackAlign[props.align],
-          justifyContent: stackJustify[justify],
-          flexWrap: props.wrap ? 'wrap' : undefined,
-        }}
-      >
-        {renderNode(props.children)}
-      </div>
-    )
-  },
+  component: ({ props, renderNode }) => <Stack {...props}>{renderNode(props.children)}</Stack>,
 })
 
 // Let the official extension rebind every parent slot and remove unsupported
@@ -138,14 +92,14 @@ const subset = openuiLibrary.extend({
     ),
     override: [
       StackLayout,
-      ...['Card', 'TabItem'].map((name) => {
-        const original = official[name]!
-        return defineComponent({
-          ...original,
-          props: original.props.extend({
-            [name === 'TabItem' ? 'content' : 'children']: z.array(content),
-          }),
-        })
+      defineComponent({
+        ...official.Card!,
+        props: official.Card!.props.extend({ children: z.array(content) }),
+        component: ({ props, renderNode }) => <Card {...props}>{renderNode(props.children)}</Card>,
+      }),
+      defineComponent({
+        ...official.TabItem!,
+        props: official.TabItem!.props.extend({ content: z.array(content) }),
       }),
       defineComponent({
         ...official.Image!,
@@ -163,35 +117,18 @@ const subset = openuiLibrary.extend({
       defineComponent({
         ...official.Tabs!,
         component: function AnalysisTabs({ props, renderNode }) {
-          const [active, setActive] = useState<string>()
           // Element identities and props were checked against the generated TabItem slot schema.
           const items = (props.items ?? []) as {
             props: { value: string; trigger: string; content: ElementNode[] }
           }[]
-          const selected = items.some((item) => item.props.value === active)
-            ? active
-            : items[0]?.props.value
           return (
-            <div className="au-tabs">
-              <div role="tablist">
-                {items.map((item) => (
-                  <button
-                    type="button"
-                    role="tab"
-                    key={item.props.value}
-                    aria-selected={selected === item.props.value}
-                    onClick={() => setActive(item.props.value)}
-                  >
-                    {item.props.trigger}
-                  </button>
-                ))}
-              </div>
-              {items.map((item) => (
-                <div role="tabpanel" key={item.props.value} hidden={selected !== item.props.value}>
-                  {renderNode(item.props.content)}
-                </div>
-              ))}
-            </div>
+            <Tabs
+              items={items.map((item) => ({
+                value: item.props.value,
+                trigger: item.props.trigger,
+                content: renderNode(item.props.content),
+              }))}
+            />
           )
         },
       }),

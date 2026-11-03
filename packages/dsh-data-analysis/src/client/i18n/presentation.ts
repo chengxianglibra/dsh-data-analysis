@@ -13,6 +13,7 @@ export const zh = {
   'marivo.presentation.ui-frame-point-description': 'Frame 说明',
   'marivo.presentation.ui-frame-point-periods-unavailable': '期间详情未捕获；请勿推断缺失的期间。',
   'marivo.presentation.ui-frame-point-periods-short': '期间未捕获',
+  'marivo.presentation.ui-frame-restricted-scope': '仅展示受限的成员范围。',
   'marivo.presentation.ui-frame-ask-point': '就此提问',
   'marivo.presentation.ui-frame-ask-failed': '无法将数据点加入提问，请重试。',
   'marivo.presentation.ui-frame-ask-added': '已加入提问草稿。',
@@ -172,6 +173,7 @@ export const en = {
   'marivo.presentation.ui-frame-point-periods-unavailable':
     'Period details were not captured; do not infer missing periods.',
   'marivo.presentation.ui-frame-point-periods-short': 'Period unavailable',
+  'marivo.presentation.ui-frame-restricted-scope': 'Only the restricted member scope is shown.',
   'marivo.presentation.ui-frame-ask-point': 'Ask about this',
   'marivo.presentation.ui-frame-ask-failed': 'Could not add this data point. Please try again.',
   'marivo.presentation.ui-frame-ask-added': 'Added to the question draft.',

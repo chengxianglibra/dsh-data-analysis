@@ -177,7 +177,7 @@ function TimeChartPlot({
   )
   const bars = view.chart === 'bar' || view.chart === 'interval-bar'
   const all = series.flatMap((line) => ticks.map((_, i) => at(line, i)))
-  const domain = extent([...all, ...refs.map((r) => r.y)], bars)
+  const domain = extent([...all, ...refs.map((r) => r.y)], bars || view.chart === 'area')
   const top = 16
   const bottom = height - 26
   const left = 8

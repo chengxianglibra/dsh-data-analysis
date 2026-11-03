@@ -1,9 +1,13 @@
 import { useCopy } from './i18n/context.tsx'
+import { Button } from './ui/controls.tsx'
+import { UI_STYLES } from './ui/theme.ts'
 
-const styles = `
-.marivo-workspace-header-action{display:inline-flex;flex:none;align-items:center;justify-content:center;gap:5px;height:32px;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:12px;line-height:20px;white-space:nowrap;cursor:pointer}
-.marivo-workspace-header-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#7b899414)}
-.marivo-workspace-header-action:focus-visible{outline:2px solid var(--dsw-alias-label-primary,#087b70);outline-offset:2px}
+const styles =
+  UI_STYLES +
+  `
+.marivo-workspace-header-action.mv-ui.mv-button{display:inline-flex;flex:none;align-items:center;justify-content:center;gap:8px;height:32px;min-width:32px;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:12px;line-height:20px;white-space:nowrap;cursor:pointer}
+.marivo-workspace-header-action:hover:not(:disabled){background:var(--mv-soft)}
+.marivo-workspace-header-action:focus-visible{outline:2px solid var(--mv-focus);outline-offset:2px}
 .marivo-workspace-header-action:disabled{opacity:.45;cursor:default}
 /* Public slot anchors keep this layout local to the blank homepage. */
 :has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts){display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center}
@@ -12,10 +16,10 @@ const styles = `
 :has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>:has(+ [data-slot="conversation.input.dock"]){grid-column:1;padding-inline-end:0}
 :has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>[data-slot]>.marivo-workspace-shortcuts{grid-column:2}
 .marivo-workspace-shortcuts{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:2px;margin:4px 0 0;padding-inline:0 16px}
-.marivo-workspace-shortcuts .marivo-workspace-header-action{width:auto;height:auto;min-height:32px;padding:6px 8px;white-space:normal;text-align:start}
+.marivo-workspace-shortcuts .marivo-workspace-header-action.mv-ui.mv-button{width:auto;height:auto;min-height:32px;padding:6px 8px;white-space:normal;text-align:start}
 .marivo-workspace-shortcuts .marivo-workspace-header-action span{display:inline}
-.marivo-workspace-shortcuts-error{flex-basis:100%;margin:0;text-align:start;overflow-wrap:anywhere}
-@media(max-width:640px){.marivo-workspace-header-action{width:32px;padding:8px}.marivo-workspace-header-action span{display:none}}
+.marivo-workspace-shortcuts-error{color:var(--mv-danger);font-size:12px;line-height:18px;flex-basis:100%;margin:0;text-align:start;overflow-wrap:anywhere}
+@media(max-width:640px){.marivo-workspace-header-action.mv-ui.mv-button{width:32px;padding:8px}.marivo-workspace-header-action span{display:none}}
 @media(max-width:640px){:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts){grid-template-columns:minmax(0,1fr)}:has(> [data-slot="conversation.input.dock"] > .marivo-workspace-shortcuts)>[data-slot]>.marivo-workspace-shortcuts{grid-column:1 / -1;padding-inline:16px}}
 `
 
@@ -37,8 +41,9 @@ export function WorkspaceHeaderAction({
   return (
     <>
       <style>{styles}</style>
-      <button
-        className="marivo-workspace-header-action"
+      <Button
+        variant="ghost"
+        className="mv-ui marivo-workspace-header-action"
         type="button"
         title={t(title ?? label)}
         aria-label={t('marivo.navigation.open-value', { p0: label })}
@@ -68,7 +73,7 @@ export function WorkspaceHeaderAction({
           )}
         </svg>
         <span>{t(label)}</span>
-      </button>
+      </Button>
     </>
   )
 }

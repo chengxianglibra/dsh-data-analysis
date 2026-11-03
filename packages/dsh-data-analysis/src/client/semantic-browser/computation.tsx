@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
 import { fieldLabels } from './labels.ts'
 import { RefLink } from './reference-link.tsx'
 
@@ -21,15 +22,15 @@ function DefinitionNode({ object }) {
   return (
     <div className="sb-calculation-node sb-expression">
       <div className="sb-expression-code">
-        <button
+        <Button
           type="button"
           className="sb-expression-copy"
           onClick={copy}
           aria-label={t('marivo.presentation.copy-code')}
         >
           <svg
-            width="18"
-            height="18"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -39,7 +40,7 @@ function DefinitionNode({ object }) {
             <rect x="9" y="9" width="12" height="12" rx="2" />
             <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
           </svg>
-        </button>
+        </Button>
         <pre>
           <code>{definition.expression}</code>
         </pre>

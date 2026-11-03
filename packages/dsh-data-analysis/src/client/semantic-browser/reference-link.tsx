@@ -3,6 +3,7 @@
 import { Fragment } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
 
 export function RefLink({ refValue, objects, navigate, children }) {
   const t = useCopy()
@@ -11,7 +12,7 @@ export function RefLink({ refValue, objects, navigate, children }) {
   const key = refKey(refValue)
   const object = objects.get(key)
   return (
-    <button
+    <Button
       type="button"
       className="sb-definition-link"
       disabled={!object}
@@ -20,7 +21,7 @@ export function RefLink({ refValue, objects, navigate, children }) {
     >
       {children ?? refValue.path}
       {!object ? t('marivo.semantic.not-in-this-catalog') : ''}
-    </button>
+    </Button>
   )
 }
 

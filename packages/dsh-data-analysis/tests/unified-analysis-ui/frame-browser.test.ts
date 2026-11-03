@@ -131,11 +131,11 @@ after(async () => {
 
 test('the Python icon shows the bound source only when its sha256 matches', async () => {
   await page.locator('[data-resource="good"] [data-icon="python"] button').click()
-  const code = page.locator('[data-resource="good"] dialog[open] pre code')
+  const code = page.getByRole('dialog').locator('pre code')
   assert.equal(await code.textContent(), CODE)
   await page.keyboard.press('Escape')
   await page.locator('[data-resource="bad"] [data-icon="python"] button').click()
-  const dialog = page.locator('[data-resource="bad"] dialog[open]')
+  const dialog = page.getByRole('dialog')
   await dialog.getByText('Execution record sha256 does not match').waitFor()
   assert.equal(await dialog.locator('pre code').count(), 0)
   await page.keyboard.press('Escape')
@@ -382,8 +382,8 @@ test('chart regions scroll with arrow keys after expanding the data table', asyn
   for (const name of ['long', 'nullableHeatmap', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
     await card.locator('[data-icon="data"] button').click()
-    await card.locator('dialog[open] table').waitFor()
-    await card.locator('dialog[open] button[aria-label="Close"]').click()
+    await page.getByRole('dialog').locator('table').waitFor()
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
     const region = card.locator('.fv-chart section[tabindex="0"]').first()
     await region.focus()
     await page.keyboard.press('ArrowRight')
@@ -440,7 +440,7 @@ test('row labels stay aligned and readable while heatmap, comparison and effects
 test('a truncated row label remains available in the expanded data table', async () => {
   const card = page.locator('[data-resource="heatmap"]')
   await card.locator('[data-icon="data"] button').click()
-  const details = card.locator('dialog[open]')
+  const details = page.getByRole('dialog')
   await details.locator('table').waitFor()
   assert.equal(
     await details.getByText('Long_original_category_name_abcdef', { exact: true }).count(),
@@ -488,7 +488,7 @@ test('chart data uses the icon row and a keyboard operable dialog with exact sav
   assert.equal(await toggle.getAttribute('aria-haspopup'), 'dialog')
   await toggle.focus()
   await page.keyboard.press('Enter')
-  const details = frame.locator('dialog[open]')
+  const details = page.getByRole('dialog')
   const saved = details.locator('td[data-column-id="amount"]').first()
   await saved.waitFor()
   assert.equal(await saved.textContent(), '118393545.04998468')
@@ -509,14 +509,14 @@ test('chart data uses the icon row and a keyboard operable dialog with exact sav
   )
   await page.keyboard.press('Escape')
   await saved.waitFor({ state: 'detached' })
-  assert.equal(await frame.locator('dialog[open]').count(), 0)
+  assert.equal(await page.getByRole('dialog').count(), 0)
   assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 0)
 })
 
 test('data references retain pagination and truncation without row counts', async () => {
   const long = page.locator('[data-resource="long"]')
   await long.locator('[data-icon="data"] button').click()
-  const dialog = long.locator('dialog[open]')
+  const dialog = page.getByRole('dialog')
   assert.equal(await dialog.locator('.pr-pagination span').textContent(), 'Page 1 / 2')
   await dialog.getByRole('button', { name: 'Next' }).click()
   assert.equal(await dialog.locator('.pr-pagination span').textContent(), 'Page 2 / 2')
@@ -525,7 +525,7 @@ test('data references retain pagination and truncation without row counts', asyn
 
   const partial = page.locator('[data-resource="partial"]')
   await partial.locator('[data-icon="data"] button').click()
-  const partialDialog = partial.locator('dialog[open]')
+  const partialDialog = page.getByRole('dialog')
   assert.equal(await partialDialog.locator('.pr-notice').textContent(), 'Data truncated')
   await partialDialog.getByRole('button', { name: 'Close' }).click()
 })
@@ -541,7 +541,7 @@ test('an explicitly visible data reference remains inline and can be toggled', a
   await toggle.click()
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
   assert.equal(await frame.locator('.fv-data-reference table').count(), 1)
-  assert.equal(await frame.locator('dialog[open]').count(), 0)
+  assert.equal(await page.getByRole('dialog').count(), 0)
 })
 
 test('coincident comparison and alignment marks retain visible rings at wide and narrow widths', async () => {
@@ -790,7 +790,7 @@ test('Dataset SVG charts retain exact titles, local scrolling and the saved data
   await page.keyboard.press('ArrowRight')
   assert.ok(await plot.evaluate((node) => node.scrollLeft > 0))
   await card.getByRole('button', { name: 'Table', exact: true }).click()
-  const dialog = card.locator('dialog[open]')
+  const dialog = page.getByRole('dialog')
   await dialog.getByText('12345678901234.5678', { exact: true }).waitFor()
   await page.keyboard.press('Escape')
   assert.equal(await dialog.count(), 0)

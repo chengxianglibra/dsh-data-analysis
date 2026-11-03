@@ -1,6 +1,8 @@
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { useCopy } from '../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
+import { UI_STYLES } from '../ui/theme.ts'
 
 export interface PythonSettingsValue {
   pythonTimeoutMs: number
@@ -64,9 +66,9 @@ export function PythonSettingsCard({ scope }: { scope: ConfigForm<PythonSettings
     }
   }
   return (
-    <li className={`marivo-settings-card${open ? ' marivo-settings-open' : ''}`}>
+    <li className={`mv-ui marivo-settings-card${open ? ' marivo-settings-open' : ''}`}>
       <style>{styles}</style>
-      <button
+      <Button
         type="button"
         className="marivo-settings-header"
         aria-expanded={open}
@@ -99,7 +101,7 @@ export function PythonSettingsCard({ scope }: { scope: ConfigForm<PythonSettings
             strokeLinejoin="round"
           />
         </svg>
-      </button>
+      </Button>
       {open && (
         <div id="marivo-settings-body" className="marivo-settings-body">
           <div className="marivo-settings-field">
@@ -112,17 +114,21 @@ export function PythonSettingsCard({ scope }: { scope: ConfigForm<PythonSettings
               step="0.001"
               value={text}
               disabled={disabled}
-              aria-describedby="marivo-python-timeout-hint"
+              aria-describedby={`marivo-python-timeout-hint${timeoutMs === undefined ? ' marivo-python-timeout-error' : ''}`}
               aria-invalid={timeoutMs === undefined}
               onChange={(event) => edit(event.target.value)}
             />
             <p id="marivo-python-timeout-hint">{t('marivo.settings.hint')}</p>
-            {timeoutMs === undefined && <p role="alert">{t('marivo.settings.invalid')}</p>}
+            {timeoutMs === undefined && (
+              <p id="marivo-python-timeout-error" role="alert">
+                {t('marivo.settings.invalid')}
+              </p>
+            )}
             {!snapshot.writable && <p role="status">{t('marivo.settings.read-only')}</p>}
             {failed && <p role="alert">{t('marivo.settings.failed')}</p>}
           </div>
           <div className="marivo-settings-actions">
-            <button
+            <Button
               type="button"
               disabled={saving || !draft}
               onClick={() => {
@@ -131,15 +137,16 @@ export function PythonSettingsCard({ scope }: { scope: ConfigForm<PythonSettings
               }}
             >
               {t('marivo.settings.discard')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
               className="marivo-settings-save"
               disabled={disabled || !draft || timeoutMs === undefined}
               onClick={() => void save()}
             >
               {t(saving ? 'marivo.settings.saving' : 'marivo.settings.save')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -147,28 +154,29 @@ export function PythonSettingsCard({ scope }: { scope: ConfigForm<PythonSettings
   )
 }
 
-// Match Harness PluginCard/fields chrome; those components are not public runtime exports.
-const styles = `
-.marivo-settings-card{list-style:none;border:.5px solid var(--dsw-alias-border-l4,#ddd);border-radius:16px;background:var(--dsw-alias-bg-layer-3,#fff);color:var(--dsw-alias-label-primary,#202124);transition:border-color .16s,background .16s}
-.marivo-settings-card:hover,.marivo-settings-open{border-color:var(--dsw-alias-label-dimmed,#ccc)}
-.marivo-settings-open{background:var(--dsw-alias-bg-layer-2,#fff)}
-.marivo-settings-header{box-sizing:border-box;width:100%;appearance:none;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px}
+// Preserve the Host plugin-card frame; style only the plugin-owned form content.
+const styles =
+  UI_STYLES +
+  `
+.marivo-settings-card{list-style:none;border:.5px solid var(--dsw-alias-border-l4,var(--mv-border));border-radius:16px;background:var(--dsw-alias-bg-layer-3,var(--mv-bg));color:var(--mv-text);transition:border-color .16s}
+.marivo-settings-card:hover,.marivo-settings-open{border-color:var(--dsw-alias-label-dimmed,var(--mv-control-border))}
+.marivo-settings-open{background:var(--dsw-alias-bg-layer-2,var(--mv-bg))}
+.marivo-settings-card button.marivo-settings-header{box-sizing:border-box;width:100%;appearance:none;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px}
 .marivo-settings-heading{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.marivo-settings-name{font-size:15px;font-weight:600;line-height:1.4}
-.marivo-settings-description{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary,#888)}
-.marivo-settings-chevron{flex:none;color:var(--dsw-alias-label-tertiary,#888);transition:transform .16s}
+.marivo-settings-name{font-size:15px;font-weight:600;line-height:22px}
+.marivo-settings-description{font-size:13px;line-height:20px;color:var(--mv-muted)}
+.marivo-settings-chevron{flex:none;color:var(--mv-muted);transition:transform .16s}
 .marivo-settings-open .marivo-settings-chevron{transform:rotate(180deg)}
-.marivo-settings-pending{flex:none;font-size:12px;border-radius:4px;padding:0 4px;background:var(--dsw-alias-bg-layer-1,#f5f5f5);color:var(--dsw-alias-label-tertiary,#888)}
-.marivo-settings-body{border-top:.5px solid var(--dsw-alias-border-l2,#eee);margin:0 16px;padding-bottom:8px}
-.marivo-settings-field{display:flex;flex-direction:column;gap:6px;padding:12px 0}
-.marivo-settings-body p{margin:0;font-size:12px;color:var(--dsw-alias-label-tertiary,#888);line-height:1.5}
-.marivo-settings-body p[role=alert]{color:var(--dsw-alias-label-error,#c33)}
-.marivo-settings-body label{font-size:13px;line-height:1.5;font-weight:500}
-.marivo-settings-field input{box-sizing:border-box;width:100%;min-width:0;height:34px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l4,#ddd);border-radius:8px;background:var(--dsw-alias-bg-layer-3,#fff);font:inherit;font-size:13px;line-height:1.5;color:inherit}
-.marivo-settings-field input[aria-invalid=true]{border-color:var(--dsw-alias-label-error,#c33)}
-.marivo-settings-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,#eee)}
-.marivo-settings-actions button{appearance:none;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;cursor:pointer;background:none;color:var(--dsw-alias-label-secondary,#666)}
-.marivo-settings-actions .marivo-settings-save{border-color:transparent;background:var(--dsw-alias-label-primary,#202124);color:var(--dsw-alias-bg-layer-3,#fff)}
-.marivo-settings-card :disabled{opacity:.4;cursor:default}
-.marivo-settings-card :focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4682e9);outline-offset:1px}
+.marivo-settings-pending{flex:none;font-size:12px;line-height:18px;border-radius:4px;padding:1px 8px;background:var(--mv-soft);color:var(--mv-muted)}
+.marivo-settings-body{border-top:.5px solid var(--mv-border);margin:0 16px;padding-bottom:8px}
+.marivo-settings-field{display:flex;flex-direction:column;gap:4px;padding:16px 0}
+.marivo-settings-body p{margin:0;font-size:12px;color:var(--mv-muted);line-height:18px}
+.marivo-settings-body p[role=alert]{color:var(--mv-danger)}
+.marivo-settings-body label{font-size:14px;line-height:22px;font-weight:500}
+.marivo-settings-field input{box-sizing:border-box;width:100%;min-width:0;min-height:36px;padding:6px 10px;border:1px solid var(--mv-control-border);border-radius:6px;background:var(--mv-bg);font:14px/22px system-ui,sans-serif;color:var(--mv-text);font-variant-numeric:tabular-nums}
+.marivo-settings-field input[aria-invalid=true]{border-color:var(--mv-danger)}
+.marivo-settings-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:12px 0 4px;border-top:.5px solid var(--mv-border)}
+.marivo-settings-card :disabled{opacity:.5;cursor:default}
+.marivo-settings-card :focus-visible{outline:2px solid var(--mv-focus);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.marivo-settings-card,.marivo-settings-chevron{transition:none}}
 `

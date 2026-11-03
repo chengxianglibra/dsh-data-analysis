@@ -30,20 +30,22 @@ export const PRESENTATION_STYLES = `
 .pr-markdown pre code { padding:0 }
 .pr-markdown blockquote { border-left:3px solid var(--pr-border); padding-left:18px; margin:16px 0; color:var(--pr-muted) }
 .pr-markdown hr { border:0; border-top:1px solid var(--pr-border); margin:24px 0 }
-.pr-markdown ul,.pr-markdown ol { padding-left:24px }
+.pr-markdown ul,.pr-markdown ol { padding-left:20px }
 .pr-markdown li+li { margin-top:6px }
 .pr-table-scroll { max-width:100%; overflow:auto }
-.pr-table table { border-collapse:collapse; min-width:100%; font-size:13px }
+.pr-table table { border-collapse:collapse; min-width:100%; font-size:12px; line-height:18px }
 .pr-table caption { text-align:left; font-size:12px; color:var(--pr-muted); padding:8px 12px }
-.pr-table th,.pr-table td { padding:12px; text-align:left; border-bottom:1px solid var(--pr-border); vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; min-width:90px; max-width:400px }
+.pr-table th,.pr-table td { padding:7px 12px; height:32px; text-align:left; border-bottom:1px solid var(--pr-border); vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; min-width:90px; max-width:400px }
 .pr-table th { font-weight:500; color:var(--pr-muted) }
-.pr-table th button { position:relative; font-weight:500; padding:0; text-align:inherit; border:0; background:transparent; border-radius:0 }
+.pr-table th button { position:relative; min-width:32px; min-height:28px; font-weight:500; padding:0; text-align:inherit; border:0; background:transparent; border-radius:0 }
 .pr-table th.pr-numeric { text-align:right }
-.pr-sort-indicator { position:absolute; left:calc(100% + 3px); top:0; font-size:11px; line-height:inherit }
+.pr-sort-indicator { position:absolute; left:calc(100% + 3px); top:0; font-size:12px; line-height:inherit }
 .pr-table tbody tr:hover { background:var(--pr-soft) }
 .pr-table td.pr-numeric { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap }
 .pr-table td[data-cell-null=true] { color:var(--pr-muted) }
 .pr-pagination { display:flex; gap:12px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin-top:12px; font-size:12px }
+.mv-ui .pr-pagination button,.mv-ui .fv-comparison-toolbar button:not(.mv-button) { min-height:32px; padding:4px 10px; border:1px solid var(--mv-control-border); border-radius:6px; background:var(--mv-bg); color:var(--mv-text); font:inherit; cursor:pointer }
+.mv-ui .pr-pagination button:disabled { opacity:.5; cursor:default }
 @media(prefers-color-scheme:dark) {
   .pr-reader { --pr-bg:#1c1c1f; --pr-soft:#262629; --pr-text:#ededed; --pr-muted:#aaa; --pr-border:#39393e; --pr-accent:#91b7f3; --pr-warning:#e3bb70; color-scheme:dark }
 }

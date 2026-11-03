@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from 'react'
 import { useCopy } from './../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
+import { UI_STYLES } from '../ui/theme.ts'
 import { visibleReports } from './catalog-model.ts'
 
 export function publicationTime(value: string, locale: string) {
@@ -16,14 +18,14 @@ export function ReportSource({ version, sessions, onOpenSession, showKind = true
     <span className="pd-source">
       {showKind ? t('marivo.presentation.agent-update') : ''}
       {session && onOpenSession ? (
-        <button
+        <Button
           type="button"
           className="pd-link"
           title={session.displayTitle}
           onClick={() => onOpenSession(id)}
         >
           {session.displayTitle}
-        </button>
+        </Button>
       ) : (
         t('marivo.presentation.source-session-unavailable')
       )}
@@ -36,7 +38,7 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const reports = visibleReports(state)
   return (
-    <div className="pd-catalog">
+    <div className="mv-ui pd-catalog">
       <div className="pd-catalog-controls">
         <label className="pd-category">
           {t('marivo.presentation.ui-catalog-category')}
@@ -95,7 +97,7 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
               {reports.map((version) => (
                 <tr key={version.receipt.reportId}>
                   <td>
-                    <button
+                    <Button
                       type="button"
                       className="pd-link pd-report-title"
                       title={version.receipt.title}
@@ -104,7 +106,7 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
                       }
                     >
                       {version.receipt.title}
-                    </button>
+                    </Button>
                   </td>
                   <td>
                     <ReportSource
@@ -114,7 +116,11 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
                       showKind={false}
                     />
                   </td>
-                  <td>{t(publicationTime(version.publishedAt, t.locale))}</td>
+                  <td>
+                    <time dateTime={version.publishedAt}>
+                      {publicationTime(version.publishedAt, t.locale)}
+                    </time>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -128,7 +134,7 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
   const t = useCopy()
 
   return (
-    <aside className="pd-history" aria-label={t('marivo.presentation.history')}>
+    <aside className="mv-ui pd-history" aria-label={t('marivo.presentation.history')}>
       <h3>{t('marivo.presentation.history')}</h3>
       {state.historyLoading && <p role="status">{t('marivo.presentation.loading-history')}</p>}
       {state.historyError && (
@@ -139,14 +145,18 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
       <ol>
         {state.history?.versions.map((version) => (
           <li key={version.receipt.buildId}>
-            <button
+            <Button
               type="button"
               className="pd-version"
               aria-pressed={state.resolvedReceipt?.buildId === version.receipt.buildId}
               disabled={state.loading}
               onClick={() => void model.selectVersion(version.receipt.buildId)}
             >
-              <strong>{t(publicationTime(version.publishedAt, t.locale))}</strong>
+              <strong>
+                <time dateTime={version.publishedAt}>
+                  {publicationTime(version.publishedAt, t.locale)}
+                </time>
+              </strong>
               <span>
                 {version.receipt.buildId === state.history.currentBuildId
                   ? t('marivo.presentation.current-version')
@@ -154,7 +164,7 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
                 · {version.receipt.buildId.slice(0, 8)}
               </span>
               <span>{version.receipt.title}</span>
-            </button>
+            </Button>
             <ReportSource version={version} sessions={sessions} onOpenSession={onOpenSession} />
           </li>
         ))}
@@ -163,9 +173,11 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
   )
 }
 
-export const catalogStyles = `
-.pd-catalog{padding:20px}.pd-catalog-controls{display:flex;align-items:center;gap:12px}.pd-category{display:flex;align-items:center;gap:6px;flex-shrink:0}.pd-category select{font:inherit;color:inherit;padding:9px 6px;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:6px;background:var(--dsw-alias-bg-base,#fff)}.pd-catalog input,.pd-catalog button,.pd-history button{font:inherit;color:inherit}.pd-catalog input{width:100%;min-width:0;padding:9px 12px;border:1px solid var(--dsw-alias-border-l2,#dce5e5);border-radius:6px;background:var(--dsw-alias-bg-base,#fff)}
-.pd-catalog button,.pd-history button{cursor:pointer;background:var(--dsw-alias-bg-base,#fff);border:1px solid var(--dsw-alias-border-l2,#dce5e5);padding:6px 10px;border-radius:6px}.pd-report-scroll{overflow-x:auto;margin-top:16px}.pd-report-table{width:100%;min-width:540px;table-layout:fixed;border-collapse:collapse;font-size:13px}.pd-report-table th{text-align:left;font-weight:500;color:var(--dsw-alias-label-secondary,#5b7076)}.pd-report-table th,.pd-report-table td{padding:14px 10px;vertical-align:middle;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pd-report-table th:first-child{width:48%}.pd-report-table th:last-child{width:180px}.pd-report-table .pd-link,.pd-report-table .pd-source{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pd-link{border:0!important;background:transparent!important;padding:0!important;color:var(--dsw-alias-state-business-primary,#087c71)!important;text-align:left;cursor:pointer;font:inherit;text-decoration:underline;text-underline-offset:3px}.pd-report-title{font-size:14px!important;font-weight:500}.pd-source{font-size:12px;overflow-wrap:anywhere}.pd-empty{padding:64px 0;text-align:center}.pd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.pd-history{position:sticky;top:70px;flex:0 0 270px;box-sizing:border-box;padding:16px;border-right:1px solid var(--dsw-alias-border-l2,#dce5e5);max-height:75vh;overflow:auto}.pd-history h3{margin:0 0 16px;font-size:15px}.pd-history ol{list-style:none;padding:0;margin:0}.pd-history li{margin-bottom:20px}.pd-version{display:grid;gap:7px;width:100%;text-align:left;margin-bottom:7px}.pd-version span{font-size:12px;overflow-wrap:anywhere}.pd-version[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary,#087c71);background:var(--dsw-alias-bg-module-platform,#f4f7f7)}.pd-history button:disabled{opacity:.5;cursor:default}.pd-catalog button:focus-visible,.pd-history button:focus-visible,.pd-link:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#087c71);outline-offset:3px}
-@media(max-width:850px){.pd-catalog-controls{flex-wrap:wrap}.pd-history{position:static;flex:auto;width:100%;max-height:260px;border-right:0;border-bottom:1px solid var(--dsw-alias-border-l2,#dce5e5)}.pd-catalog{padding:12px}}
+export const catalogStyles =
+  UI_STYLES +
+  `
+.pd-catalog{padding:16px;color:var(--mv-text);background:var(--mv-bg);container-type:inline-size}.pd-catalog-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.pd-category{display:flex;align-items:center;gap:6px;flex-shrink:0}.pd-category select{font:inherit;color:inherit;min-height:36px;padding:6px 10px;border:1px solid var(--mv-control-border);border-radius:6px;background:var(--mv-bg)}.pd-catalog input,.pd-catalog button,.pd-history button{font:inherit;color:inherit}.pd-catalog input{flex:1 1 240px;width:100%;min-width:0;min-height:36px;padding:6px 10px;border:1px solid var(--mv-control-border);border-radius:6px;background:var(--mv-bg)}
+.pd-catalog button,.pd-history button{cursor:pointer;background:var(--mv-bg);border:1px solid var(--mv-border);min-height:32px;padding:5px 10px;border-radius:6px}.pd-report-scroll{overflow-x:auto;margin-top:16px}.pd-report-table{font-variant-numeric:tabular-nums;line-height:18px;width:100%;min-width:540px;table-layout:fixed;border-collapse:collapse;font-size:12px}.pd-report-table th{text-align:left;font-weight:500;color:var(--mv-muted)}.pd-report-table th,.pd-report-table td{padding:14px 10px;vertical-align:middle;border-bottom:1px solid var(--mv-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pd-report-table th:first-child{width:48%}.pd-report-table th:last-child{width:180px}.pd-report-table button.pd-link,.pd-report-table .pd-source{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pd-link{display:inline;min-height:24px!important;border:0!important;background:transparent!important;padding:0!important;color:var(--mv-accent)!important;text-align:left;cursor:pointer;font:inherit;text-decoration:underline;text-underline-offset:3px}.pd-report-title{font-size:14px!important;font-weight:500}.pd-source{font-size:12px;line-height:18px;overflow-wrap:anywhere}.pd-empty{padding:64px 0;text-align:center}.pd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.pd-history{position:sticky;top:70px;flex:0 0 270px;box-sizing:border-box;padding:16px;border-right:1px solid var(--mv-border);max-height:75vh;overflow:auto}.pd-history h3{margin:0 0 16px;font-size:15px;line-height:22px;font-weight:600}.pd-history ol{list-style:none;padding:0;margin:0}.pd-history li{margin-bottom:20px}.pd-history button.pd-version{display:grid;justify-content:stretch;align-items:stretch;gap:8px;width:100%;text-align:left;margin-bottom:7px}.pd-version span{font-size:12px;overflow-wrap:anywhere}.pd-version[aria-pressed=true]{border-color:var(--mv-accent);background:var(--mv-soft)}.pd-history button:disabled{opacity:.5;cursor:default}.pd-catalog button:focus-visible,.pd-history button:focus-visible,.pd-link:focus-visible{outline:2px solid var(--mv-focus);outline-offset:3px}
+@container(max-width:650px){.pd-catalog-controls{flex-wrap:wrap}.pd-history{position:static;flex:auto;width:100%;max-height:260px;border-right:0;border-bottom:1px solid var(--mv-border)}.pd-catalog{padding:12px}}
 `

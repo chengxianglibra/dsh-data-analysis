@@ -30,7 +30,7 @@ export function WorkspaceShortcuts({
   const [error, setError] = useState('')
   if (!session || !conversation || conversationPhase(session, conversation) !== 'blank') return null
   return (
-    <div className="marivo-workspace-shortcuts">
+    <div className="mv-ui marivo-workspace-shortcuts">
       {Object.entries(workspaceDirectories).map(([page, label]) => (
         <WorkspaceHeaderAction
           key={page}

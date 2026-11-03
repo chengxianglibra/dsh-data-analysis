@@ -3,6 +3,7 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
 
 export function ObjectGraph({ object, objects, navigate }) {
@@ -70,24 +71,24 @@ export function ObjectGraph({ object, objects, navigate }) {
   return (
     <div className="sb-graph">
       <div className="sb-actions">
-        <button type="button" onClick={() => setDepth((d) => d + 1)}>
+        <Button type="button" onClick={() => setDepth((d) => d + 1)}>
           {t('marivo.semantic.expand-one-more-level')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           aria-label={t('marivo.semantic.zoom-in')}
           onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.25) }))}
         >
           ＋
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           aria-label={t('marivo.semantic.zoom-out')}
           onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.4, c.scale / 1.25) }))}
         >
           −
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => {
             setDepth(1)
@@ -95,7 +96,7 @@ export function ObjectGraph({ object, objects, navigate }) {
           }}
         >
           {t('marivo.semantic.center-graph')}
-        </button>
+        </Button>
       </div>
       <p className="sb-muted">
         {t('marivo.semantic.declared-relationships-level')}
@@ -176,7 +177,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                     x={(a.x + b.x) / 2}
                     y={(a.y + b.y) / 2 - 5}
                     textAnchor="middle"
-                    fontSize="10"
+                    fontSize="12"
                     fill="var(--sb-muted)"
                     paintOrder="stroke"
                     stroke="var(--sb-soft)"
@@ -225,7 +226,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                   y={node.y - 3}
                   textAnchor="middle"
                   fontSize="12"
-                  fill={node.key === root ? '#fff' : 'var(--sb-text)'}
+                  fill={node.key === root ? 'var(--mv-on-accent)' : 'var(--sb-text)'}
                 >
                   {item.name.length > 18 ? `${item.name.slice(0, 17)}…` : item.name}
                 </text>
@@ -233,8 +234,8 @@ export function ObjectGraph({ object, objects, navigate }) {
                   x={node.x}
                   y={node.y + 15}
                   textAnchor="middle"
-                  fontSize="10"
-                  fill={node.key === root ? '#fff' : 'var(--sb-muted)'}
+                  fontSize="12"
+                  fill={node.key === root ? 'var(--mv-on-accent)' : 'var(--sb-muted)'}
                 >
                   {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
                 </text>
@@ -251,13 +252,13 @@ export function ObjectGraph({ object, objects, navigate }) {
         <ul className="sb-relation-list">
           {graph.edges.map((edge) => (
             <li key={`${edge.from}/${edge.field}/${edge.to}`}>
-              <button type="button" onClick={() => navigate(edge.from)}>
+              <Button type="button" onClick={() => navigate(edge.from)}>
                 {objects.get(edge.from).name}
-              </button>
+              </Button>
               <span>{t(fieldLabels[edge.field] ?? edge.field)} →</span>
-              <button type="button" onClick={() => navigate(edge.to)}>
+              <Button type="button" onClick={() => navigate(edge.to)}>
                 {objects.get(edge.to).name}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

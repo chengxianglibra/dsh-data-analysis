@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useCopy } from './../i18n/context.tsx'
 import { errorMessage, message } from './../i18n/copy.ts'
+import { Button } from '../ui/controls.tsx'
 import { credentialReference, prepareCredentials } from './credential-draft.ts'
 import { creationFieldValues } from './defaults.ts'
 import { datasourceDescription } from './descriptions.ts'
@@ -214,7 +215,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                       {field.required ? ' *' : ''}
                     </span>
                     {field.description && (
-                      <span className="mc-input-description">
+                      <span id={`${formId}-${field.name}-help`} className="mc-input-description">
                         {t(datasourceDescription(field.description))}
                       </span>
                     )}
@@ -223,6 +224,9 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                     <select
                       id={`${formId}-${field.name}`}
                       aria-label={field.name}
+                      aria-describedby={
+                        field.description ? `${formId}-${field.name}-help` : undefined
+                      }
                       value={values[field.name] ?? ''}
                       onChange={(event) =>
                         setValues({ ...values, [field.name]: event.target.value })
@@ -239,6 +243,9 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                     <input
                       id={`${formId}-${field.name}`}
                       aria-label={field.name}
+                      aria-describedby={
+                        field.description ? `${formId}-${field.name}-help` : undefined
+                      }
                       required={field.required}
                       disabled={!!name && field.name === 'name'}
                       autoComplete="off"
@@ -350,16 +357,16 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                                 )}
                               </p>
                               {row.reference !== undefined && (
-                                <button
+                                <Button
                                   type="button"
                                   onClick={() => updateCredential(row.id, { reference: undefined })}
                                 >
                                   {t('marivo.credentials.restore-automatic-reference')}
-                                </button>
+                                </Button>
                               )}
                             </details>
                             {row.key !== undefined && (
-                              <button
+                              <Button
                                 type="button"
                                 className="mc-quiet"
                                 onClick={() =>
@@ -369,13 +376,13 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                                 }
                               >
                                 {t('marivo.credentials.remove-header')}
-                              </button>
+                              </Button>
                             )}
                           </div>
                         )
                       })}
                     {field.type === 'json' && (
-                      <button
+                      <Button
                         type="button"
                         onClick={() =>
                           setCredentials((rows) => [
@@ -385,7 +392,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                         }
                       >
                         {t('marivo.credentials.add-header-credential')}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 ))}
@@ -402,7 +409,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
             : ''}
       </p>
       <div className="mc-form-footer">
-        <button className="mc-primary" type="submit" disabled={!backend || busy}>
+        <Button className="mc-primary" type="submit" disabled={!backend || busy}>
           {busy
             ? t('marivo.credentials.saving-or-validating')
             : requestId
@@ -410,10 +417,10 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
               : name
                 ? t('marivo.credentials.save-configuration')
                 : t('marivo.credentials.confirm-new-datasource')}
-        </button>
-        <button type="button" onClick={close} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={close} disabled={busy}>
           {t('marivo.credentials.cancel')}
-        </button>
+        </Button>
       </div>
     </form>
   )

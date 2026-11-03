@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
 import { ComputationCard } from './computation.tsx'
 import { ObjectGraph } from './graph.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
@@ -60,20 +61,20 @@ function ObjectDetail({
   return (
     <>
       <div className="sb-actions">
-        <button
+        <Button
           type="button"
           className="sb-back-list"
           onClick={() => model.patch({ selected: '' })}
         >
           {t('marivo.semantic.back-to-list')}
-        </button>
-        <button type="button" disabled={!view.history.length} onClick={() => model.back()}>
+        </Button>
+        <Button type="button" disabled={!view.history.length} onClick={() => model.back()}>
           {t('marivo.semantic.back-to-previous-object')}
-        </button>
-        <button type="button" onClick={() => copy(key)}>
+        </Button>
+        <Button type="button" onClick={() => copy(key)}>
           {t('marivo.semantic.copy-reference')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={!onAsk || questionPending}
           onClick={onAsk}
@@ -84,7 +85,7 @@ function ObjectDetail({
           }
         >
           {questionPending ? t('marivo.semantic.adding') : t('marivo.semantic.add-to-question')}
-        </button>
+        </Button>
         <span role="status" className="sb-muted">
           {t(notice)}
         </span>
@@ -98,14 +99,14 @@ function ObjectDetail({
           ['definition', t('marivo.semantic.definition')],
           ['relations', t('marivo.semantic.relationships-692')],
         ].map(([tab, label]) => (
-          <button
+          <Button
             type="button"
             key={tab}
             aria-pressed={view.tab === tab}
             onClick={() => model.patch({ tab })}
           >
             {t(label)}
-          </button>
+          </Button>
         ))}
       </nav>
       {view.tab === 'overview' && (
@@ -186,9 +187,9 @@ function ObjectDetail({
               'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
             )}
           </p>
-          <button type="button" aria-pressed={graph} onClick={() => setGraph((x) => !x)}>
+          <Button type="button" aria-pressed={graph} onClick={() => setGraph((x) => !x)}>
             {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
-          </button>
+          </Button>
           {graph && (
             <ObjectGraph object={object} objects={objects} navigate={(next) => navigate(next)} />
           )}
@@ -202,14 +203,14 @@ function ObjectDetail({
                   <span className="sb-muted">
                     {t(fieldLabels[relation.field] ?? relation.field)}
                   </span>
-                  <button
+                  <Button
                     type="button"
                     disabled={!related}
                     title={target}
                     onClick={() => navigate(target)}
                   >
                     {related?.name ?? target}
-                  </button>
+                  </Button>
                   <span className="sb-ref">
                     {target}
                     {!related ? t('marivo.semantic.object-not-included-in-this-catalog') : ''}
@@ -279,7 +280,7 @@ export function SemanticBrowserPanel({
   return (
     <section
       ref={panel}
-      className="sb-panel"
+      className="mv-ui sb-panel"
       aria-label={t('marivo.semantic.semantic-object-browser')}
     >
       <style>{browserStyles}</style>
@@ -292,7 +293,7 @@ export function SemanticBrowserPanel({
               {new Date(snapshot.loadedAt).toLocaleString(t.locale)}
             </time>
           )}
-          <button
+          <Button
             className="sb-refresh"
             type="button"
             aria-label={t('marivo.semantic.refresh-semantic-layer')}
@@ -301,8 +302,8 @@ export function SemanticBrowserPanel({
             onClick={() => void model.refresh()}
           >
             <svg
-              width="18"
-              height="18"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -314,7 +315,7 @@ export function SemanticBrowserPanel({
               <path d="M20 7v5h-5M4 17v-5h5" />
               <path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17" />
             </svg>
-          </button>
+          </Button>
         </header>
         {state.fromReport && (
           <p className="sb-status">
@@ -371,16 +372,16 @@ export function SemanticBrowserPanel({
                 </select>
               </label>
               <div className="sb-kinds">
-                <button
+                <Button
                   type="button"
                   aria-pressed={!view.kind}
                   onClick={() => model.patch({ kind: '', page: 0 })}
                 >
                   {t('marivo.semantic.all-objects')}
                   <span>{counts.total}</span>
-                </button>
+                </Button>
                 {kinds.map((kind) => (
-                  <button
+                  <Button
                     type="button"
                     key={kind}
                     aria-pressed={view.kind === kind}
@@ -388,7 +389,7 @@ export function SemanticBrowserPanel({
                   >
                     {t(kindLabels[kind] ?? kind)}
                     <span>{counts.byKind.get(kind) ?? 0}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </nav>
@@ -409,7 +410,7 @@ export function SemanticBrowserPanel({
               <ul className="sb-objects">
                 {filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((item) => (
                   <li key={refKey(item.ref)}>
-                    <button
+                    <Button
                       type="button"
                       aria-pressed={view.selected === refKey(item.ref)}
                       onClick={() => navigate(refKey(item.ref))}
@@ -424,29 +425,29 @@ export function SemanticBrowserPanel({
                         {item.definition || t('marivo.semantic.no-business-definition')}
                       </span>
                       <span className="sb-ref">{refKey(item.ref)}</span>
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
               {filtered.length > PAGE_SIZE && (
                 <div className="sb-pager">
-                  <button
+                  <Button
                     type="button"
                     disabled={!page}
                     onClick={() => model.patch({ page: page - 1 })}
                   >
                     {t('marivo.presentation.previous-page')}
-                  </button>
+                  </Button>
                   <span>
                     {page + 1} / {Math.ceil(filtered.length / PAGE_SIZE)}
                   </span>
-                  <button
+                  <Button
                     type="button"
                     disabled={(page + 1) * PAGE_SIZE >= filtered.length}
                     onClick={() => model.patch({ page: page + 1 })}
                   >
                     {t('marivo.presentation.next-page')}
-                  </button>
+                  </Button>
                 </div>
               )}
             </section>
@@ -469,9 +470,9 @@ export function SemanticBrowserPanel({
                     <>
                       <p>{t('marivo.semantic.the-selected-object-is-no-longer-in-this-catalog')}</p>
                       <p>{view.selected}</p>
-                      <button type="button" onClick={() => model.patch({ selected: '' })}>
+                      <Button type="button" onClick={() => model.patch({ selected: '' })}>
                         {t('marivo.semantic.back-to-list')}
-                      </button>
+                      </Button>
                     </>
                   ) : (
                     t('marivo.semantic.select-an-object-to-view-its-business-definition-and')

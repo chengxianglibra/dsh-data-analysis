@@ -84,9 +84,9 @@ async function cardBoxes(root: string): Promise<CardBox[]> {
   )
 }
 
-/** Article content width (padding excluded) and padding-box width. */
+/** Surface content owner's width (padding excluded) and padding-box width. */
 async function articleWidths(root: string): Promise<{ content: number; box: number }> {
-  return page.locator(`${root} article.au-surface`).evaluate((node) => {
+  return page.locator(`${root} .au-surface-content`).evaluate((node) => {
     const style = getComputedStyle(node)
     return {
       content:
