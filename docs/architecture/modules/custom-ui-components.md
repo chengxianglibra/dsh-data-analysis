@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-插件拥有内容区域的主题角色、控件、布局和结果阅读部件，Harness 拥有导航、原生 Tab、会话输入、设置外框及服务生命周期。
+插件以官方 shadcn/ui radix-nova 源码组件为内容区域设计、布局与风格基准，拥有其局部适配和结果阅读部件，Harness 拥有导航、原生 Tab、会话输入、设置外框及服务生命周期。
 Marivo 拥有分析语义；组件只展示已保存事实。报告协议、快照与保存流程分别见[分析文档 reader](presentation-reader.md)、
 [展示数据投影](presentation-projection.md)和[展示交付](presentation-delivery.md)。
 
@@ -18,16 +18,16 @@ Marivo 拥有分析语义；组件只展示已保存事实。报告协议、快�
 - Host 接入提供保存文档、资源、语义导航、代码读取和草稿准备能力；负责 Workspace / Build 身份和请求失效。
 - Frame / Dataset 分别消费 `resolveFrameView` / `resolveDatasetView`，不增加另一份自动分类规则。
 - ResultCard、ResultHeader、MetricGroup 和 DataActions 只组织标题、数字、主体与动作，不接收 Runtime、凭据或 RPC。
-- 普通图共用 ChartModel 与 React/SVG；比较、分解、对齐、相关和份额保留领域结构，不变成通用业务计算器。
+- 普通图共用原值/几何/行字段绑定模型，由 Recharts 和 shadcn Chart 呈现；比较、分解、对齐、相关和份额保留领域结构，不变成通用业务计算器。
 
 Dataset 不因共用外壳或图表获得 Frame context、期间推断或数据点提问。精确值使用已有 codec / formatCell / exact 路径，
 浮点近似只用于绘图位置。area 与 bar 的数值域包含零，null 继续断开图形，不补算总计、差值或比例。
 
 ## 主题与容器
 
-[UI_STYLES](../../../packages/dsh-data-analysis/src/client/ui/theme.ts) 在 `.mv-ui` 下集中定义界面、控件、状态和受控 fallback。
-Host 已解析主题优先，独立渲染再使用显式主题或 OS；pr/mc/sb/rt/pd 局部变量桥接同一角色。
-数据色继续由现有 chart-palette 提供，操作 accent、业务状态与数据系列互不替代。
+[UI_STYLES](../../../packages/dsh-data-analysis/src/client/ui/theme.ts) 注册由 [theme.css](../../../packages/dsh-data-analysis/src/client/ui/theme.css) 和组件源码编译的作用域样式，集中定义界面、控件、状态和受控 fallback。
+Host 已解析主题优先，独立渲染再使用显式主题或 OS；报告与业务内容消费同一组 shadcn semantic tokens。
+数据色使用同一组明暗 chart tokens，操作 accent、业务状态与数据系列互不替代。
 
 主题变化通过 CSS 生效，不重挂图表。Surface、Card 和结果拥有明确容器作用域，窄容器重排正文和操作行，
 图表与表格在自己的滚动区保留可读字号；Stack 仍遵守声明的 direction / wrap，不按视口重写 program。
@@ -35,25 +35,21 @@ Host 已解析主题优先，独立渲染再使用显式主题或 OS；pr/mc/sb/
 
 ## 控件与弹层
 
-Button / IconButton 使用插件私有原生控件，普通按钮至少 32px、图标 16px 且命中区 32px，具备可见焦点。
+Button / IconButton 使用加入项目的 shadcn Button 源码及其组合，优先采用官方 variant/size，具备可见焦点。
 普通 disabled 与需要解释的 unavailable 分开；后者保留可聚焦的 aria-disabled 入口和原因，阻止动作。
 通用控件只消费调用者提供的本地化标签，业务状态不由控件推断。
 
-[Tooltip](../../../packages/dsh-data-analysis/src/client/ui/tooltip.tsx) 使用浏览器 Popover API 的 manual 顶层绘制，
-保留原 DOM 祖先与主题继承，不向 body 搬移提示、不创建新的 Host 弹层服务。
-键盘聚焦立即显示，指针悬停延迟显示，触发点与提示之间保留短暂移入宽限；提示自身可悬停。
-位置按视口边界夹取并在上方空间不足时翻转；滚动或尺寸变化时重新定位，触发点离开可视区域或窗口失焦时关闭。
-Escape 先关闭可见提示并保留焦点，随后一次 Escape 仍由原生 dialog 或 Host Modal 处理。
-相同标签不重复加入描述，额外提示与调用方的 `aria-describedby` 合并。
-此实现要求浏览器支持 [Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API)。
+Tooltip、Tabs、Table、Card、表单、反馈和图表配套部件来自 `client/ui/primitives/` 中的官方 shadcn 源码，
+允许为 Host、精确值及可访问性做必要修改。组件结构、标题层级、间距、尺寸、圆角、边框、图标和状态外观遵循同一 radix-nova 基准；
+页面级样式主要负责布局，不恢复旧页面的独立视觉体系。通用交互使用 Radix 公开能力，不维护第二套定位或键盘引擎。Tooltip 在祖先滚动时按基础库行为关闭，避免保留过期定位。
 
 [DetailsDialog](../../../packages/dsh-data-analysis/src/client/ui/overlays.tsx) 统一内容、关闭按钮、尺寸与主题桥接。
-独立 Renderer 使用浏览器原生 dialog；[HostOverlayProvider](../../../packages/dsh-data-analysis/src/client/ui/host-overlays.tsx)
+独立 Renderer 使用 shadcn/Radix Dialog；[HostOverlayProvider](../../../packages/dsh-data-analysis/src/client/ui/host-overlays.tsx)
 只在 [lazy-surface](../../../packages/dsh-data-analysis/src/client/analysis-ui/lazy-surface.tsx) 接入处注入 Harness 的公开 Modal headless 外壳。
-这样纯 Catalog / Renderer 不依赖 Host primitives 的完整运行时入口，Host 内弹层保留原生快捷键和焦点协调。
+纯 Catalog / Renderer 不依赖 Host primitives 的完整运行时入口；Host 内只有一层 modal 生命周期，保留原生快捷键和焦点协调。
 
 Portal 内容从所属阅读作用域取得角色和数据色，随主题变化同步；不依赖 Surface 的 DOM 祖先选择器。
-所有弹层关闭后返回触发点焦点，精确表格与代码在弹层内部滚动。图表数值提示仍使用 SVG title，详细数据提供等价精确值入口。
+所有弹层关闭后返回触发点焦点，精确表格与代码在弹层内部滚动。图表 Tooltip 读取原始保存单元格，SVG title 作为补充；详细数据提供键盘与触摸可达的等价精确值入口。
 
 Coverage 的行数比例保留在图标行，点击或键盘激活后通过同一 DetailsDialog 阅读捕获行数、总行数与快照时间。
 详情明确区分已保存行范围与未知的业务覆盖，只消费当前快照；full / compact 共用入口，候选预览不打开详情。
@@ -64,7 +60,7 @@ CopyData 的反馈绑定当前数据及有序选列。数据或选列变化时�
 ## 报告布局与阅读状态
 
 对外仍只有原有八组件，复用已有 schema、refs、签名与 Catalog build。OpenUI Lang / Renderer 负责声明与编排，
-私有 Stack / Card / Tabs 负责实际布局与交互；不新增 DSL 参数。
+私有 Stack 和 shadcn Card / Tabs 组合负责实际布局与交互；内部基础组件不暴露为任意 DSL props。
 
 Tabs 将焦点项与激活项分开：方向键和 Home/End 移动焦点，Enter/Space 激活，Tab 离开标签组。
 tab / panel 使用稳定 ID 关联；隐藏 panel 不进入焦点序列，切换保留已有阅读状态。

@@ -62,8 +62,8 @@ createRoot(document.getElementById('single')).render(
   browser = await chromium.launch()
   page = await browser.newPage({ viewport: { width: 720, height: 900 } })
   await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
-  await page.locator('#root section.fv').nth(4).waitFor()
-  await page.locator('#single section.fv').waitFor()
+  await page.locator('#root [data-frame-view]').nth(4).waitFor()
+  await page.locator('#single [data-frame-view]').waitFor()
 })
 after(async () => {
   await browser?.close()
@@ -76,12 +76,14 @@ interface CardBox {
 }
 
 async function cardBoxes(root: string): Promise<CardBox[]> {
-  return page.locator(`${root} [data-direction="row"].au-stack > section.fv`).evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const rect = node.getBoundingClientRect()
-      return { top: Math.round(rect.top), width: rect.width }
-    }),
-  )
+  return page
+    .locator(`${root} [data-direction="row"].au-stack > [data-frame-view]`)
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.getBoundingClientRect()
+        return { top: Math.round(rect.top), width: rect.width }
+      }),
+    )
 }
 
 /** Surface content owner's width (padding excluded) and padding-box width. */
@@ -105,7 +107,7 @@ async function horizontalOverflow(): Promise<number> {
 test('five compact frames wrap into rows inside the article at 720px', async () => {
   const stack = page.locator('#root [data-direction="row"].au-stack')
   assert.equal(await stack.count(), 1)
-  assert.equal(await stack.locator(':scope > section.fv').count(), 5)
+  assert.equal(await stack.locator(':scope > [data-frame-view]').count(), 5)
   const cards = await cardBoxes('#root')
   assert.equal(cards.length, 5)
   const rows = new Set(cards.map((card) => card.top))

@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const require = createRequire(path.join(root, 'package.json'))
 process.env.OPENUI_TELEMETRY_DISABLED = '1'
 process.env.DO_NOT_TRACK = '1'
-const directory = await mkdtemp(path.join(root, '../../node_modules/.analysis-catalog-'))
+const directory = await mkdtemp(path.join(root, 'node_modules/.analysis-catalog-'))
 try {
   const filename = path.join(directory, 'library.mjs')
   await build({

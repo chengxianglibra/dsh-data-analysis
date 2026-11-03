@@ -77,10 +77,28 @@ window.renderBuild('build-1');`,
       '9007199254740993.2300',
     )
     assert.equal(await metric.locator('.au-metric-value span').textContent(), 'USD')
+    await metric.getByRole('button', { name: 'Data source and scope', exact: true }).click()
+    const source = page.getByRole('dialog', { name: 'Data source and scope', exact: true })
+    await source.waitFor()
+    assert.match((await source.textContent()) ?? '', /6f9619ff-8b86-4d01-b42d-00cf4fc964ff/)
+    assert.match((await source.textContent()) ?? '', new RegExp('a'.repeat(64)))
+    assert.equal(await page.evaluate(() => Reflect.get(window, 'calls').code), 0)
+    await source.getByRole('button', { name: 'Close', exact: true }).click()
     const table = page.locator('[data-resource="table"]')
     assert.equal(await table.locator('[data-icon="data"]').count(), 0)
-    await table.locator('.au-columns summary').click()
-    await table.getByLabel('Category', { exact: true }).uncheck()
+    await table.getByRole('button', { name: 'Select columns', exact: true }).click()
+    await page
+      .getByRole('dialog', { name: 'Select columns', exact: true })
+      .getByLabel('Category', { exact: true })
+      .uncheck()
+    assert.equal(
+      await page
+        .getByRole('dialog', { name: 'Select columns', exact: true })
+        .getByLabel('Value', { exact: true })
+        .isDisabled(),
+      true,
+    )
+    await page.keyboard.press('Escape')
     await table.getByRole('button', { name: 'Copy saved data' }).click()
     await table.getByRole('status').filter({ hasText: 'Copied' }).waitFor()
     assert.equal(
@@ -118,6 +136,11 @@ window.renderBuild('build-1');`,
     await page.getByRole('menuitem', { name: 'Ask about this', exact: true }).press('Enter')
     await page.waitForFunction(() => Reflect.get(window, 'calls').ask === 1)
     await page.keyboard.press('Escape')
+
+    await page.waitForFunction(
+      (label) => document.activeElement?.getAttribute('aria-label') === label,
+      await point.getAttribute('aria-label'),
+    )
     assert.equal(await point.evaluate((node) => node === document.activeElement), true)
     await frameDialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.locator('[data-resource="full"] [data-icon="python"] button').click()
@@ -155,6 +178,10 @@ window.renderBuild('build-1');`,
     await portalDialog.getByRole('status').filter({ hasText: 'Added to' }).waitFor()
     assert.equal(await action.evaluate((node) => node === document.activeElement), true)
     await page.keyboard.press('Escape')
+    await page.waitForFunction(
+      (label) => document.activeElement?.getAttribute('aria-label') === label,
+      await portalPoint.getAttribute('aria-label'),
+    )
     assert.equal(await portalPoint.evaluate((node) => node === document.activeElement), true)
     assert.equal(await portalDialog.isVisible(), true)
   } finally {

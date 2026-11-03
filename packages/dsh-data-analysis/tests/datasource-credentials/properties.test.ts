@@ -249,7 +249,9 @@ test('installed management UI renders typed properties as read-only text beside 
   Object.assign(f.description, description)
   f.store.put('DB_PASSWORD', 'harness-private-canary')
   const html = await renderManagement(t, await context(f))
-  const attributes = html.match(/<section class="mc-properties".*?<\/dl><\/section>/s)?.[0]
+  const attributes = html.match(
+    /<div(?=[^>]*role="region")(?=[^>]*class="[^"]*\bmc-properties\b)[^>]*>.*?<\/dl>/s,
+  )?.[0]
   assert(attributes)
   assert.match(translator('zh-CN')(attributes), /aria-label="数据源属性"/)
   for (const text of [
@@ -268,7 +270,7 @@ test('installed management UI renders typed properties as read-only text beside 
     attributes.includes(properties.long_field_name_that_must_wrap_on_a_narrow_screen as string),
   )
   assert.doesNotMatch(attributes, /<input|<button|DB_PASSWORD|<script>/)
-  assert.match(translator('zh-CN')(html), />凭证<\/h4>/)
+  assert.match(translator('zh-CN')(html), /data-slot="card-title"[^>]*>凭证<\//)
   assert.match(html, /DB_PASSWORD/)
   assert.match(translator('zh-CN')(html), />更换<\/button>/)
   assert.doesNotMatch(html, /harness-private-canary/)

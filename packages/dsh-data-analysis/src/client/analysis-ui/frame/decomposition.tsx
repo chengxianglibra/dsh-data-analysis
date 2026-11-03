@@ -1,7 +1,8 @@
 import type { FrameDecomposition } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
-import { type DomainPoint, DomainPointMark, uniquelyBound } from './domain-point-selection.tsx'
+import { color, Legend, NEUTRAL, summary } from '../charts/recharts.tsx'
+import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
 import {
   type Chip,
   cellOf,
@@ -19,22 +20,8 @@ import {
   valueName,
 } from './model.ts'
 import { ShareTrack } from './observation.tsx'
-import {
-  Bar,
-  ChartFrame,
-  color,
-  Diamond,
-  END_W,
-  extent,
-  LABEL_W,
-  Legend,
-  linear,
-  type MainViewProps,
-  NEUTRAL,
-  summary,
-  truncate,
-  W,
-} from './svg.tsx'
+import { type SavedBarSeries, SavedRowPlot } from './plots.tsx'
+import type { MainViewProps } from './types.ts'
 
 type Role = FrameDecomposition['outputs'][number]['role']
 const EFFECTS = ['effect_within', 'effect_mix', 'effect_entry_exit', 'effect_additive'] as const
@@ -141,7 +128,7 @@ export function DecompositionView({
               ? [
                   {
                     label: valueName(s, c, facts.contribution),
-                    color: 'var(--pr-text)',
+                    color: 'var(--foreground)',
                     shape: 'diamond' as const,
                   },
                 ]
@@ -166,15 +153,13 @@ export function DecompositionView({
                 </h4>
               )}
               {view.style === 'share' && facts.share ? (
-                <>
-                  <ShareTrack
-                    snapshot={s}
-                    classification={c}
-                    values={[facts.share]}
-                    rows={g.rows}
-                    labelOf={labelOf}
-                  />
-                </>
+                <ShareTrack
+                  snapshot={s}
+                  classification={c}
+                  values={[facts.share]}
+                  rows={g.rows}
+                  labelOf={labelOf}
+                />
               ) : view.style === 'effects' ? (
                 <Effects t={t} s={s} facts={facts} rows={g.rows} labelOf={labelOf} />
               ) : (
@@ -217,11 +202,7 @@ function tip(s: Snapshot, row: number, label: string, facts: DecompositionFacts)
     .join('\n')
 }
 
-/**
- * Floating contributions in Frame row order and the total from 0. Floating
- * offsets are layout only; restricted scope drops the closing connector and
- * leaves a gap before the total.
- */
+/** Floating offsets are geometry only. Every number shown comes from a saved output. */
 function Waterfall({
   t,
   s,
@@ -233,236 +214,120 @@ function Waterfall({
 }: PartProps & { parent: string; format: (name: string, row: number) => string }) {
   const name = facts.contribution
   if (!name) return null
-  const rowH = 24
-  // A missing contribution cannot be treated as zero when connecting the total.
   const detached = facts.restricted || rows.some((row) => valueAt(s, row, name) === null)
-  const gap = detached ? 16 : 0
-  const totalRow = facts.total ? firstCell(s, rows, facts.total) : undefined
-  const totalValue = totalRow && facts.total ? valueAt(s, totalRow.row, facts.total) : null
-  const height = 4 + rows.length * rowH + (facts.total ? rowH + gap : 0) + 4
-  const spans: ({ from: number; to: number } | null)[] = []
+  const total = facts.total ? firstCell(s, rows, facts.total) : undefined
+  const labels = rows.map((row) =>
+    valueAt(s, row, name) === null ? `${labelOf(row)} —` : labelOf(row),
+  )
+  const ranges: ([number, number] | null)[] = []
   let level = 0
   for (const row of rows) {
-    const v = valueAt(s, row, name)
-    if (v === null) spans.push(null)
+    const value = valueAt(s, row, name)
+    if (value === null) ranges.push(null)
     else {
-      spans.push({ from: level, to: level + v })
-      level += v
+      ranges.push([level, level + value])
+      level += value
     }
   }
-  const x = linear(
-    extent([...spans.flatMap((sp) => (sp ? [sp.from, sp.to] : [])), totalValue], true),
-    [LABEL_W, W - END_W],
-  )
+  const totalIndex = labels.length + (detached ? 1 : 0)
+  if (facts.total && total) {
+    if (detached) {
+      labels.push('')
+      ranges.push(null)
+    }
+    labels.push(valueName(s, undefined, facts.total))
+    const value = valueAt(s, total.row, facts.total)
+    ranges.push(value === null ? null : [0, value])
+  }
+  const series: SavedBarSeries[] = [
+    {
+      key: 'contribution',
+      fillAt: (index) => (index === totalIndex ? NEUTRAL : color(0)),
+      label: valueName(s, undefined, name),
+      values: ranges.map((range) => range?.[1] ?? null),
+      ranges,
+      color: color(0),
+      exact: (index) =>
+        index < rows.length
+          ? tip(s, rows[index]!, labelOf(rows[index]!) || parent, facts)
+          : facts.total && total && index === totalIndex
+            ? tip(s, total.row, parent, facts)
+            : '',
+      point: (index) =>
+        index < rows.length ? point(s, rows[index]!, name, labelOf(rows[index]!)) : undefined,
+    },
+  ]
   const label = summary(t, valueName(s, undefined, name), [
     ...rows.map((row) => `${labelOf(row)} ${format(name, row)}`),
-    ...(facts.total && totalRow
-      ? [`${valueName(s, undefined, facts.total)} ${format(facts.total, totalRow.row)}`]
+    ...(facts.total && total
+      ? [`${valueName(s, undefined, facts.total)} ${format(facts.total, total.row)}`]
       : []),
   ])
-  const totalY = 4 + rows.length * rowH + gap
-
   return (
-    <>
-      <ChartFrame
-        label={label}
-        height={height}
-        rowLabels={[
-          ...rows.map((row, i) => ({ label: labelOf(row), y: 4 + i * rowH + 16 })),
-          ...(facts.total && totalRow
-            ? [{ label: valueName(s, undefined, facts.total), y: totalY + 16, strong: true }]
-            : []),
-        ]}
-      >
-        {() => (
-          <>
-            <line x1={x(0)} x2={x(0)} y1={2} y2={height - 2} className="fv-axis" />
-            {rows.map((row, i) => {
-              const sp = spans[i]
-              const y0 = 4 + i * rowH
-              const member = labelOf(row)
-              const next = spans[i + 1]
-              return (
-                <g key={row} data-row={member}>
-                  <text className="fv-row-label" x={LABEL_W - 8} y={y0 + 16} textAnchor="end">
-                    {truncate(member)}
-                  </text>
-                  {sp && (
-                    <>
-                      <DomainPointMark point={point(s, row, name, member)}>
-                        <Bar
-                          horizontal
-                          at={y0 + 4}
-                          breadth={16}
-                          from={x(sp.from)}
-                          to={x(sp.to)}
-                          fill={color(0)}
-                          title={tip(s, row, member || parent, facts)}
-                        />
-                      </DomainPointMark>
-                      <text
-                        x={Math.max(x(sp.from), x(sp.to)) + 4}
-                        y={y0 + 16}
-                        className="fv-strong"
-                      >
-                        {format(name, row)}
-                      </text>
-                    </>
-                  )}
-                  {!sp && (
-                    <text x={W - END_W + 10} y={y0 + 16} className="fv-strong">
-                      —
-                    </text>
-                  )}
-                  {sp && next && (
-                    <line
-                      x1={x(sp.to)}
-                      x2={x(sp.to)}
-                      y1={y0 + 20}
-                      y2={y0 + rowH + 4}
-                      className="fv-connector"
-                      data-mark="connector"
-                    />
-                  )}
-                  {sp && i === rows.length - 1 && facts.total && !detached && (
-                    <line
-                      x1={x(sp.to)}
-                      x2={x(sp.to)}
-                      y1={y0 + 20}
-                      y2={totalY + 4}
-                      className="fv-connector"
-                      data-mark="connector-total"
-                    />
-                  )}
-                </g>
-              )
-            })}
-            {facts.total && totalRow && (
-              <g data-row="total" data-mark-total={detached ? 'detached' : 'closed'}>
-                <text
-                  x={LABEL_W - 8}
-                  y={totalY + 16}
-                  textAnchor="end"
-                  className="fv-strong fv-row-label"
-                >
-                  {truncate(valueName(s, undefined, facts.total))}
-                </text>
-                {totalValue !== null && (
-                  <Bar
-                    horizontal
-                    at={totalY + 4}
-                    breadth={16}
-                    from={x(0)}
-                    to={x(totalValue)}
-                    fill={NEUTRAL}
-                    title={tip(s, totalRow.row, parent, facts)}
-                  />
-                )}
-                <text
-                  x={Math.max(x(0), totalValue === null ? x(0) : x(totalValue)) + 4}
-                  y={totalY + 16}
-                  className="fv-strong"
-                >
-                  {format(facts.total, totalRow.row)}
-                </text>
-              </g>
-            )}
-          </>
-        )}
-      </ChartFrame>
-    </>
+    <SavedRowPlot
+      label={label}
+      labels={labels}
+      series={series}
+      bars
+      connectors={ranges.flatMap((range, index) => {
+        const next = ranges[index + 1]
+        return range && next && index < rows.length && (index + 1 < rows.length || !detached)
+          ? [
+              {
+                from: { x: range[1], y: index },
+                to: { x: range[1], y: index + 1 },
+                total: index + 1 === totalIndex,
+              },
+            ]
+          : []
+      })}
+      totalState={detached ? 'detached' : 'closed'}
+    />
   )
 }
-
-/** One diverging segmented bar per group; ◆ marks the saved contribution. */
+/** Saved effects occupy their geometric diverging spans; saved contribution is the diamond. */
 function Effects({ t, s, facts, rows, labelOf }: PartProps) {
-  const rowH = 24
-  const height = 4 + rows.length * rowH + 4
-  const stacks = rows.map((row) => {
-    let pos = 0
-    let neg = 0
-    return facts.effects.map((e, i) => {
-      const v = valueAt(s, row, e.name)
-      if (v === null) return null
-      const from = v >= 0 ? pos : neg
-      if (v >= 0) pos += v
-      else neg += v
-      return { from, to: from + v, color: color(i) }
+  const spans = rows.map((row) => {
+    let positive = 0
+    let negative = 0
+    return facts.effects.map((effect) => {
+      const value = valueAt(s, row, effect.name)
+      if (value === null) return null
+      const from = value >= 0 ? positive : negative
+      if (value >= 0) positive += value
+      else negative += value
+      return [from, from + value] as [number, number]
     })
   })
-  const contributions = rows.map((row) =>
-    facts.contribution ? valueAt(s, row, facts.contribution) : null,
-  )
-  const x = linear(
-    extent(
-      [...stacks.flat().flatMap((seg) => (seg ? [seg.from, seg.to] : [])), ...contributions],
-      true,
-    ),
-    [LABEL_W, W - END_W],
-  )
+  const series: SavedBarSeries[] = facts.effects.map((effect, index) => ({
+    key: effect.name,
+    label: t(`marivo.presentation.ui-frame-${effect.role.replaceAll('_', '-')}`),
+    values: rows.map((row) => valueAt(s, row, effect.name)),
+    ranges: spans.map((row) => row[index] ?? null),
+    exact: (index) => tip(s, rows[index]!, labelOf(rows[index]!), facts),
+    point: (index) => point(s, rows[index]!, effect.name, labelOf(rows[index]!)),
+    color: color(index),
+  }))
+  if (facts.contribution) {
+    const name = facts.contribution
+    series.push({
+      key: name,
+      label: valueName(s, undefined, name),
+      values: rows.map((row) => valueAt(s, row, name)),
+      exact: (index) => tip(s, rows[index]!, labelOf(rows[index]!), facts),
+      point: (index) => point(s, rows[index]!, name, labelOf(rows[index]!)),
+      diamond: true,
+      color: NEUTRAL,
+    })
+  }
   const fmt = formatter(t, s, facts)
   const label = summary(
     t,
     facts.contribution ? valueName(s, undefined, facts.contribution) : '',
     rows.map(
       (row) =>
-        `${labelOf(row)} ${facts.effects.map((e) => fmt(e.name, row)).join(' / ')}${facts.contribution ? ` ◆ ${fmt(facts.contribution, row)}` : ''}`,
+        `${labelOf(row)} ${facts.effects.map((effect) => fmt(effect.name, row)).join(' / ')}${facts.contribution ? ` ◆ ${fmt(facts.contribution, row)}` : ''}`,
     ),
   )
-
-  return (
-    <>
-      <ChartFrame
-        label={label}
-        height={height}
-        rowLabels={rows.map((row, i) => ({ label: labelOf(row), y: 4 + i * rowH + 16 }))}
-      >
-        {() => (
-          <>
-            <line x1={x(0)} x2={x(0)} y1={2} y2={height - 2} className="fv-axis" />
-            {rows.map((row, i) => {
-              const y0 = 4 + i * rowH
-              const member = labelOf(row)
-              const d = contributions[i] ?? null
-              return (
-                <g key={row} data-row={member}>
-                  <title>{tip(s, row, member, facts)}</title>
-                  <text className="fv-row-label" x={LABEL_W - 8} y={y0 + 16} textAnchor="end">
-                    {truncate(member)}
-                  </text>
-                  {stacks[i]!.map((seg, si) =>
-                    seg ? (
-                      <DomainPointMark
-                        key={facts.effects[si]!.role}
-                        point={point(s, row, facts.effects[si]!.name, member)}
-                      >
-                        <Bar
-                          horizontal
-                          at={y0 + 5}
-                          breadth={14}
-                          from={x(seg.from)}
-                          to={x(seg.to)}
-                          fill={seg.color}
-                        />
-                      </DomainPointMark>
-                    ) : null,
-                  )}
-                  {d !== null && (
-                    <DomainPointMark point={point(s, row, facts.contribution, member)}>
-                      <Diamond x={x(d)} y={y0 + 12} />
-                    </DomainPointMark>
-                  )}
-                  {facts.contribution && (
-                    <text x={W - END_W + 10} y={y0 + 16} className="fv-strong">
-                      {fmt(facts.contribution, row)}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
-          </>
-        )}
-      </ChartFrame>
-    </>
-  )
+  return <SavedRowPlot label={label} labels={rows.map(labelOf)} series={series} bars overlayBars />
 }

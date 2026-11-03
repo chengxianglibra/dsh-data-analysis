@@ -22,6 +22,7 @@ export async function startPresentationWebHost(
     productionPackageRoot?: string
     askDshProbe?: boolean
     rightTabsAcceptance?: boolean
+    nativeOnly?: boolean
     datasourceDefaults?: Record<string, Record<string, unknown>>
   } = {},
 ) {
@@ -126,7 +127,7 @@ export const inject=[...production.inject,'llm','agentLoop','sessions','sessionP
 export async function apply(ctx){
  await ctx.plugin(production,{pythonExecutable:${JSON.stringify(pythonExecutable)},runtimeRoot:${JSON.stringify(path.join(outputRoot, 'web-runtime-marker'))},credentialInteraction:${JSON.stringify(options.rightTabsAcceptance ? 'web' : 'none')},datasourceDefaults:${JSON.stringify(options.datasourceDefaults)}});
  const previous = await readFile(${JSON.stringify(readyFile)},'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT') return undefined; throw error});
- const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},'both',${JSON.stringify(requests)},true);
+ const result=previous ?? await runPresentationJourneys(ctx,${JSON.stringify(workspaceRoot)},${JSON.stringify(outputRoot)},${JSON.stringify(options.nativeOnly ? 'native' : 'both')},${JSON.stringify(requests)},${!options.nativeOnly});
  const workspace=ctx.workspaceRegistry.get(result.workspaceId);
  ${options.rightTabsAcceptance ? `const prototypeDriver = await createRightTabsDriver(ctx,workspace,${JSON.stringify(requests)},!!previous);` : ''}
  const stop=registerPluginRpc(ctx.connection,'/presentation-s4-validation',['events','detach','attach'${options.rightTabsAcceptance ? ", 'prototype'" : ''}],async(endpoint,payload)=>{
@@ -238,7 +239,16 @@ import {appendFileSync} from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 const record = method => appendFileSync(${JSON.stringify(processAuditPath)}, method + "\\n");
 for(const method of ['spawn','spawnSync','exec','execFile','execSync','execFileSync','fork']) {
- const wrap = fn => new Proxy(fn, {apply(target, receiver, args) {record(method);return Reflect.apply(target,receiver,args)},get(target,key,receiver) {const value=Reflect.get(target,key,receiver);return key===Symbol.for('nodejs.util.promisify.custom') && typeof value==='function' ? wrap(value) : value}});
+ const wrappers = new WeakMap();
+ const custom = Symbol.for('nodejs.util.promisify.custom');
+ const wrap = fn => {
+  if(wrappers.has(fn)) return wrappers.get(fn);
+  function audited(...args) {record(method);return Reflect.apply(fn,this,args)}
+  wrappers.set(fn,audited);
+  Object.setPrototypeOf(audited,fn);
+  if(typeof fn[custom]==='function') Object.defineProperty(audited,custom,{value:wrap(fn[custom])});
+  return audited;
+ };
  cp[method]=wrap(cp[method]);
 }
 syncBuiltinESMExports();
@@ -248,8 +258,9 @@ syncBuiltinESMExports();
     spawnError: Error | undefined,
     output = ''
   const record = (chunk: Buffer) => {
-    output = (output + chunk.toString()).slice(-32000)
-    void appendFile(logPath, chunk)
+    const text = chunk.toString().replace(/([?&]token=)[^\s&]+/g, '$1[redacted]')
+    output = (output + text).slice(-32000)
+    void appendFile(logPath, text)
   }
   const launch = () => {
     exited = false
@@ -270,7 +281,11 @@ syncBuiltinESMExports();
       ],
       {
         cwd: workspaceRoot,
-        env: { ...process.env, DSH_HOME: home, DSH_TOOLS_MODE: 'ptc' },
+        env: {
+          ...process.env,
+          DSH_HOME: home,
+          DSH_TOOLS_MODE: options.nativeOnly ? 'native' : 'ptc',
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )

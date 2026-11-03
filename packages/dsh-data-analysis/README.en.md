@@ -121,7 +121,7 @@ preferring `AnalysisFrameView` for Frame data. After successful delivery, the as
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
 Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing, offline HTML export or publishing.
-Report history requires current v4 pointers. Current v2/v3 pointers (including earlier analysis UI saves) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new report to continue.
+Report history requires current v4 pointers and the current Catalog build; earlier Catalog builds have no compatibility reader. Current v2/v3 pointers (including earlier analysis UI saves) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new report to continue.
 
 ## Analysis timeout
 

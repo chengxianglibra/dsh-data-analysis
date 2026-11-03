@@ -3,6 +3,8 @@ import type { AnalysisDocument } from '../../presentation/contracts/analysis-doc
 import { useCopy } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { HostOverlayProvider } from '../ui/host-overlays.tsx'
+import { Skeleton } from '../ui/primitives/skeleton.tsx'
+import { UIStyleSheet } from '../ui/theme.ts'
 import type { AnalysisResourceContext } from './context.tsx'
 import type { AnalysisRendererProps } from './surface.tsx'
 
@@ -16,7 +18,15 @@ const CandidateSurface = lazy(() =>
 export function CandidateAnalysisSurface(props: AnalysisRendererProps) {
   const t = useCopy()
   return (
-    <Suspense fallback={<p role="status">{t('marivo.presentation.ui-preparing')}</p>}>
+    <Suspense
+      fallback={
+        <div className="mv-ui" role="status">
+          <UIStyleSheet />
+          <p>{t('marivo.presentation.ui-preparing')}</p>
+          <Skeleton className="h-24 w-full" />
+        </div>
+      }
+    >
       <HostOverlayProvider>
         <CandidateSurface {...props} candidate />
       </HostOverlayProvider>
@@ -36,7 +46,15 @@ export function SavedAnalysisSurface({
 }) {
   const t = useCopy()
   return (
-    <Suspense fallback={<p role="status">{t('marivo.presentation.ui-loading')}</p>}>
+    <Suspense
+      fallback={
+        <div className="mv-ui" role="status">
+          <UIStyleSheet />
+          <p>{t('marivo.presentation.ui-loading')}</p>
+          <Skeleton className="h-24 w-full" />
+        </div>
+      }
+    >
       <HostOverlayProvider>
         <Surface
           document={document}

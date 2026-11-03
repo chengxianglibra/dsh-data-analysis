@@ -20,10 +20,10 @@ import { frame, categoryAxis, observeTime } from './tests/unified-analysis-ui/fr
 const snapshot = frame({axes: [categoryAxis(2, 'region'), {name:'channel', role:'identity', keys:['web','app']}],
   values: [{name:'amount',type:'int64',values:['9007199254740993','2']}]});
 const resource = snapshot => ({kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'ref'},snapshot,binding:{workspaceId:'w'}});
-const resources = {result: resource(snapshot), large: resource(observeTime(70))};
+const resources = {result: resource(snapshot), large: resource(observeTime(70)), dense:resource(observeTime(2501))};
 window.pointRequests = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
-  program:'root = Stack([table, large]);\\ntable = AnalysisFrameView("result", {chart:"table"});\\nlarge = AnalysisFrameView("large");', title:'Point test', locale:'en-US', resources,
+  program:'root = Stack([table, large, dense]);\\ntable = AnalysisFrameView("result", {chart:"table"});\\nlarge = AnalysisFrameView("large");\\ndense = AnalysisFrameView("dense");', title:'Point test', locale:'en-US', resources,
   askPoint: async point => {window.pointRequests.push(point)}
 }));`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -62,18 +62,46 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     assert.equal(await action.evaluate((node) => node === document.activeElement), true)
     await page.keyboard.press('Escape')
     assert.equal(await menu.count(), 0)
-    assert.equal(await point.evaluate((node) => node === document.activeElement), true)
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute('data-frame-point') === '1:m0',
+    )
     await point.press('Enter')
+    await page.waitForFunction(() => {
+      const box = document.querySelector('[role=menu]')?.getBoundingClientRect()
+      return (
+        !!box && box.x >= 0 && box.y >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
+      )
+    })
     const box = await page.getByRole('menu').boundingBox()
     assert.ok(
       box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1280 && box.y + box.height <= 720,
+      JSON.stringify(box),
     )
     await page.keyboard.press('Escape')
-    await point.locator('circle[fill="transparent"]').click()
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute('data-frame-point') === '1:m0',
+    )
+    await point.click()
     await page.getByRole('menuitem', { name: 'Ask about this' }).click()
     assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'pointRequests'))).at(-1), {
       resourceName: 'large',
       row: 1,
+      field: 'm0',
+    })
+    await page.keyboard.press('Escape')
+    const navigator = page.locator('[data-resource="dense"] [data-chart-navigator]')
+    assert.equal(await navigator.getAttribute('data-point-count'), '2501')
+    assert.equal(await page.locator('[data-resource="dense"] .recharts-line-curve').count(), 1)
+    assert.equal(await page.locator('[data-resource="dense"] g[data-frame-point]').count(), 0)
+    const inspect = navigator.getByRole('button', { name: /Inspect chart point/ })
+    await inspect.focus()
+    await inspect.press('End')
+    await inspect.press('ArrowLeft')
+    await inspect.press('Enter')
+    await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+    assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'pointRequests'))).at(-1), {
+      resourceName: 'dense',
+      row: 2499,
       field: 'm0',
     })
   } finally {

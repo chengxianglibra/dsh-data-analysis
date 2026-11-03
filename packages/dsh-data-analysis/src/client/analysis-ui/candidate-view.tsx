@@ -15,6 +15,8 @@ import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { PythonCodeRef } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { type PresentationRpc, verifyPresentationAsset } from '../presentation/delivery-model.ts'
+import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
+import { UIStyleSheet } from '../ui/theme.ts'
 import type { AnalysisCandidate } from './candidate.ts'
 import { CandidateAnalysisSurface, SavedAnalysisSurface } from './lazy-surface.tsx'
 
@@ -175,20 +177,30 @@ export function CandidateView({
     [document, candidate.resources],
   )
   return (
-    <section data-analysis-candidate={candidate.callId} data-analysis-phase={candidate.phase}>
-      <p role={terminal || failed ? 'alert' : 'status'}>
-        {t(
-          terminal
-            ? 'marivo.presentation.ui-failed'
-            : failed
-              ? 'marivo.presentation.ui-read-failed'
-              : !candidate.surface
-                ? 'marivo.presentation.ui-preparing'
-                : candidate.phase === 'start'
-                  ? 'marivo.presentation.ui-saving'
-                  : 'marivo.presentation.ui-generating',
-        )}
-      </p>
+    <section
+      className="mv-ui"
+      data-analysis-candidate={candidate.callId}
+      data-analysis-phase={candidate.phase}
+    >
+      <UIStyleSheet />
+      <Alert
+        role={terminal || failed ? 'alert' : 'status'}
+        variant={terminal || failed ? 'destructive' : 'default'}
+      >
+        <AlertDescription>
+          {t(
+            terminal
+              ? 'marivo.presentation.ui-failed'
+              : failed
+                ? 'marivo.presentation.ui-read-failed'
+                : !candidate.surface
+                  ? 'marivo.presentation.ui-preparing'
+                  : candidate.phase === 'start'
+                    ? 'marivo.presentation.ui-saving'
+                    : 'marivo.presentation.ui-generating',
+          )}
+        </AlertDescription>
+      </Alert>
       {preview ? (
         <CandidateAnalysisSurface
           program={preview}

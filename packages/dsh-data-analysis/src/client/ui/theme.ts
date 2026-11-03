@@ -1,16 +1,37 @@
-const light =
-  '--mv-fallback-bg:#fff;--mv-fallback-soft:#f4f7f7;--mv-fallback-text:#1d3036;--mv-fallback-muted:#5b7076;--mv-fallback-border:#dce5e5;--mv-fallback-accent:#087c71;--mv-fallback-control:#71858b;--mv-fallback-warning:#805b20;--mv-fallback-warning-soft:#fff5de;--mv-fallback-danger:#a52b35;--mv-fallback-danger-soft:#fff0f1;--mv-fallback-success:#24704c;--mv-fallback-success-soft:#eaf7ef;--mv-fallback-accent-soft:#e5f5f1;--mv-fallback-on-accent:#fff'
-const dark =
-  '--mv-fallback-bg:#1c1c1f;--mv-fallback-soft:#262629;--mv-fallback-text:#ededed;--mv-fallback-muted:#aaa;--mv-fallback-border:#39393e;--mv-fallback-accent:#91b7f3;--mv-fallback-control:#85858e;--mv-fallback-warning:#e3bb70;--mv-fallback-warning-soft:#352d1e;--mv-fallback-danger:#ffa4ab;--mv-fallback-danger-soft:#39262b;--mv-fallback-success:#8ad4aa;--mv-fallback-success-soft:#22372c;--mv-fallback-accent-soft:#28374e;--mv-fallback-on-accent:#152238'
+import { useInsertionEffect } from 'react'
+import { COMPILED_UI_STYLES } from './styles.generated.ts'
 
-/** Private UI roles; Host-resolved theme takes precedence over standalone and OS themes. */
-export const UI_STYLES = `
-.mv-ui{${light};--mv-bg:var(--dsw-alias-bg-base,var(--mv-fallback-bg));--mv-soft:var(--dsw-alias-bg-module-platform,var(--mv-fallback-soft));--mv-text:var(--dsw-alias-label-primary,var(--mv-fallback-text));--mv-muted:var(--dsw-alias-label-secondary,var(--mv-fallback-muted));--mv-border:var(--dsw-alias-border-l2,var(--mv-fallback-border));--mv-accent:var(--dsw-alias-state-business-primary,var(--mv-fallback-accent));--mv-control-border:var(--mv-fallback-control);--mv-focus:var(--mv-accent);--mv-on-accent:var(--mv-fallback-on-accent);--mv-accent-soft:var(--mv-fallback-accent-soft);--mv-warning:var(--dsw-alias-state-warn-label,var(--mv-fallback-warning));--mv-warning-soft:var(--mv-fallback-warning-soft);--mv-danger:var(--mv-fallback-danger);--mv-danger-soft:var(--mv-fallback-danger-soft);--mv-success:var(--mv-fallback-success);--mv-success-soft:var(--mv-fallback-success-soft);--pr-bg:var(--mv-bg);--pr-soft:var(--mv-soft);--pr-text:var(--mv-text);--pr-muted:var(--mv-muted);--pr-border:var(--mv-border);--pr-accent:var(--mv-accent);--pr-warning:var(--mv-warning);color:var(--mv-text);font:14px/22px system-ui,sans-serif;letter-spacing:normal;color-scheme:light;min-width:0;max-width:100%}
-@media(prefers-color-scheme:dark){:root:where(:not([data-ds-theme-source])):where(:not([data-theme=light])) .mv-ui{${dark};color-scheme:dark}}
-.dark .mv-ui,[data-theme=dark] .mv-ui,.mv-ui[data-theme=dark]{${dark};color-scheme:dark}
-.light .mv-ui,[data-theme=light] .mv-ui,.mv-ui[data-theme=light]{${light};color-scheme:light}
-:root[data-ds-theme-source] body:not([data-ds-dark-theme]) .mv-ui{${light};color-scheme:light}
-body[data-ds-dark-theme] .mv-ui{${dark};color-scheme:dark}
-.mv-ui,.mv-ui *{box-sizing:border-box}.mv-ui :where(button,input,select,textarea){font:inherit}.mv-ui :where(button,a,input,select,textarea,[tabindex]):focus-visible{outline:2px solid var(--mv-focus);outline-offset:2px}.mv-ui :where(p,h1,h2,h3,h4,dd){overflow-wrap:anywhere}.mv-ui :where(code,pre){font:12px/18px ui-monospace,monospace}.mv-ui .mv-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;border:1px solid var(--mv-control-border);border-radius:6px;padding:4px 10px;background:var(--mv-bg);color:var(--mv-text);font:14px/22px system-ui,sans-serif;cursor:pointer;white-space:normal}.mv-ui .mv-button:hover{background:var(--mv-soft)}.mv-ui .mv-button[data-variant=primary]{background:var(--mv-accent);border-color:var(--mv-accent);color:var(--mv-on-accent)}.mv-ui .mv-button[data-variant=ghost]{background:transparent;border-color:transparent}.mv-ui .mv-button[data-variant=ghost]:hover{background:var(--mv-soft)}.mv-ui .mv-button:disabled{opacity:.5;cursor:default}.mv-ui .mv-button[aria-disabled=true]{color:var(--mv-muted);cursor:default}.mv-ui .mv-icon-button{width:32px;height:32px;min-width:32px;flex:none;padding:7px}.mv-ui .mv-icon-button>svg{width:16px;height:16px;flex:none}.mv-ui .mv-icon-control{position:relative;display:inline-flex;vertical-align:middle;flex:none}.mv-ui .mv-tooltip{display:none;position:fixed;inset:auto;margin:0;z-index:20;width:max-content;max-width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;padding:6px 8px;border:1px solid var(--mv-border);border-radius:6px;background:var(--mv-bg);color:var(--mv-text);font:12px/18px system-ui,sans-serif;white-space:pre-line;overflow-wrap:anywhere;pointer-events:auto}.mv-ui .mv-tooltip:popover-open{display:block}
-.mv-ui.mv-dialog{width:min(720px,100%);max-width:calc(100vw - 32px);max-height:100%;padding:0;gap:0;background:transparent;border:0;border-radius:8px;box-shadow:0 12px 40px #0003;overflow:visible}.mv-ui .mv-dialog-content{width:100%;max-height:min(70vh,calc(100vh - 48px));display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mv-border);border-radius:8px;background:var(--mv-bg);color:var(--mv-text)}.mv-ui .mv-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--mv-border);flex:none}.mv-ui .mv-dialog-header h3{margin:0;font:600 15px/22px system-ui,sans-serif}.mv-dialog::backdrop{background:#0005;backdrop-filter:none}.mv-ui .mv-dialog-body{overflow:auto;padding:12px 16px;min-width:0}.mv-ui .mv-dialog-body :where(pre,.pr-table-scroll){max-width:100%;overflow:auto}
-`
+/** Shared compiled Tailwind and semantic tokens; also used by standalone render fixtures. */
+export const UI_STYLES = COMPILED_UI_STYLES
+
+const registrations = new WeakMap<Document, { style: HTMLStyleElement; users: number }>()
+
+/** Register once per document; the returned disposer releases this owner's reference. */
+export function installUIStyles(document: Document = globalThis.document): () => void {
+  let registration = registrations.get(document)
+  if (!registration) {
+    const style = document.createElement('style')
+    style.dataset.marivoUi = 'radix-nova'
+    style.textContent = UI_STYLES
+    document.head.append(style)
+    registration = { style, users: 0 }
+    registrations.set(document, registration)
+  }
+  registration.users += 1
+  let disposed = false
+  return () => {
+    if (disposed) return
+    disposed = true
+    registration.users -= 1
+    if (registration.users === 0) {
+      registration.style.remove()
+      registrations.delete(document)
+    }
+  }
+}
+
+/** Standalone roots share the exact stylesheet registered by the Host lifecycle. */
+export function UIStyleSheet() {
+  useInsertionEffect(() => installUIStyles(), [])
+  return null
+}

@@ -26,8 +26,8 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
 签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
 OpenUI Lang / Renderer 负责报告编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
-AnalysisFrameView 和 DatasetView 内的图表统一由插件的 React/SVG 组件绘制。
-图表不使用 OpenUI 官方图表组件，也不按期间数、series 数、数值类型或缺失状态切换渲染引擎。
+AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配合 shadcn Chart 容器、主题与提示；领域视图组合相同组件和局部领域标记。
+图表不使用 OpenUI 官方图表组件，也不保留旧通用 SVG 绘图引擎、兼容分支或按期间数、series 数、数值类型切换的路径。
 
 - DatasetView 支持 auto/table/metric/line/area/bar/heatmap，复用 DatasetTable 的精确格式化、类型感知排序及本地分页，
   并提供选列、复制已保存数据与来源/范围详情。int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
@@ -37,11 +37,11 @@ AnalysisFrameView 和 DatasetView 内的图表统一由插件的 React/SVG 组�
   数值列必须为 float64/int64/decimal 且可转换为有限绘图坐标，快照必须完整；axis/series 或 x/y 组合须唯一，重复时明确失败，聚合由原分析负责。
   axis 成员按保存行首次出现顺序排列，日期也仅作为已保存的离散点，不推断期间、缺期、时区或分析语义。
   `encoding.series` 列的类别数最多为 8，`encoding.values` 可引用最多 64 列；这不是展开后绘图总序列数的统一上限。
-  heatmap 展开网格最多 100,000 格；对应预算超限在保存时拒绝。高序列颜色索引仍饱和到第 8 色，不静默截断数据。
+  heatmap 展开网格最多 100,000 格；对应预算超限在保存时拒绝。展开后的系列仍全部呈现，不因色板长度静默截断数据。
   默认 auto/table/metric 判定不变。图表提供共用的数据图标和详细表格弹窗，支持排序、分页和精确值读取；Dataset 不接入 Frame 的“就此提问”协议。
 - Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
-  只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。
-  所有图形通过 SVG title 保留已保存值的精确拼写与单位；int64/decimal 绘图位置可近似，详细数据与复制保持精确。
+  只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。密集折线/面积保留全部路径点，省略逐点静态 DOM 时通过活动点与 Frame 键盘导航器读取和选择原始行字段；Dataset 继续提供精确数据入口。
+  图表 Tooltip、精确数据和补充 SVG title 读取已保存值的精确拼写与单位；int64/decimal 绘图位置可近似，详细数据与复制保持精确。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
@@ -49,7 +49,7 @@ AnalysisFrameView 和 DatasetView 内的图表统一由插件的 React/SVG 组�
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
 - Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
   头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通折线、面积、柱图、横向柱图及热力图复用共享图表；
-  比较、分解、对齐、相关和占比等领域视图复用插件的 SVG 基础组件，按解析结果绘图或显示表格；
+  比较、分解、对齐、相关和占比等领域视图使用 Recharts 坐标/图形与有限自定义 marks，按解析结果绘图或显示表格；
   NA、缺期、不完整期、presence、restricted 与未捕获完整采用视觉编码及必要的短状态标签；
   不增加复述图种或数值的说明段落，compact 也不能隐藏影响解读的限制。
   非表格主视图的数据图标与来源、Python 共用操作行及弹窗，展示已保存的详细数据；表格主视图不重复提供数据入口。
@@ -85,7 +85,7 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 打开时在右侧 tab 中显示对应版本，版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
-只接受 current v4 历史指针和当前快照。Dataset 图表扩展兼容紧邻上一版 Catalog build，已有 Frame/Dataset 报告继续读取；其他未知 build 仍拒绝。current v2/v3、Frame v1 与旧报告内容均明确拒绝，
+只接受 current v4 历史指针和当前快照。只接纳当前生成的 Catalog build，不再保留历史 build 白名单；其他 build 明确拒绝，不迁移或切换旧 reader。current v2/v3、Frame v1 与旧报告内容均明确拒绝，
 文件保留但不可继续读取或更新；目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface。
 需要相同内容时，从实际结果重新 `marivo_present` 新格式。
 
@@ -99,7 +99,7 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 
 Surface 通过 Harness 的 `--dsw-*` token 继承背景、文字和边框；图表色板、网格、图例和标签遵循与 analysis-ui 一致的视觉规则，
 色板通过 CSS 变量跟随 Host 已解析的明暗主题，脱离 Host 时回退到独立页面的显式主题或系统偏好。
-精确值提示使用 SVG 原生 title，不注入图表专用的页面级 tooltip 或 OpenUI 图表样式；主题切换不重挂 Frame 或 Dataset 图表。
+精确值提示使用基于原值的 shadcn/Recharts Tooltip，补充 SVG title 与详细数据入口；Tooltip 不使用近似坐标数值替代原值。主题切换不重挂 Frame 或 Dataset 图表。
 
 ## 验证边界
 

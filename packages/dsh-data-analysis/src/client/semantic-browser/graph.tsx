@@ -71,24 +71,29 @@ export function ObjectGraph({ object, objects, navigate }) {
   return (
     <div className="sb-graph">
       <div className="sb-actions">
-        <Button type="button" onClick={() => setDepth((d) => d + 1)}>
+        <Button variant="outline" type="button" onClick={() => setDepth((d) => d + 1)}>
           {t('marivo.semantic.expand-one-more-level')}
         </Button>
         <Button
+          variant="outline"
           type="button"
           aria-label={t('marivo.semantic.zoom-in')}
+          size="icon"
           onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.25) }))}
         >
           ＋
         </Button>
         <Button
+          variant="outline"
           type="button"
           aria-label={t('marivo.semantic.zoom-out')}
+          size="icon"
           onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.4, c.scale / 1.25) }))}
         >
           −
         </Button>
         <Button
+          variant="outline"
           type="button"
           onClick={() => {
             setDepth(1)
@@ -145,7 +150,7 @@ export function ObjectGraph({ object, objects, navigate }) {
             markerHeight="6"
             orient="auto-start-reverse"
           >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--sb-muted)" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted-foreground)" />
           </marker>
         </defs>
         <g
@@ -168,7 +173,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                   y1={a.y}
                   x2={b.x - dx * inset}
                   y2={b.y - dy * inset}
-                  stroke="var(--sb-border)"
+                  stroke="var(--border)"
                   strokeWidth="1.5"
                   markerEnd={`url(#${arrowId})`}
                 />
@@ -178,9 +183,9 @@ export function ObjectGraph({ object, objects, navigate }) {
                     y={(a.y + b.y) / 2 - 5}
                     textAnchor="middle"
                     fontSize="12"
-                    fill="var(--sb-muted)"
+                    fill="var(--muted-foreground)"
                     paintOrder="stroke"
-                    stroke="var(--sb-soft)"
+                    stroke="var(--muted)"
                     strokeWidth="3"
                   >
                     {t(label)}
@@ -218,15 +223,15 @@ export function ObjectGraph({ object, objects, navigate }) {
                   width="166"
                   height="52"
                   rx="8"
-                  fill={node.key === root ? 'var(--sb-accent)' : 'var(--sb-bg)'}
-                  stroke="var(--sb-border)"
+                  fill={node.key === root ? 'var(--primary)' : 'var(--background)'}
+                  stroke="var(--border)"
                 />
                 <text
                   x={node.x}
                   y={node.y - 3}
                   textAnchor="middle"
                   fontSize="12"
-                  fill={node.key === root ? 'var(--mv-on-accent)' : 'var(--sb-text)'}
+                  fill={node.key === root ? 'var(--primary-foreground)' : 'var(--foreground)'}
                 >
                   {item.name.length > 18 ? `${item.name.slice(0, 17)}…` : item.name}
                 </text>
@@ -235,7 +240,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                   y={node.y + 15}
                   textAnchor="middle"
                   fontSize="12"
-                  fill={node.key === root ? 'var(--mv-on-accent)' : 'var(--sb-muted)'}
+                  fill={node.key === root ? 'var(--primary-foreground)' : 'var(--muted-foreground)'}
                 >
                   {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
                 </text>
@@ -252,11 +257,11 @@ export function ObjectGraph({ object, objects, navigate }) {
         <ul className="sb-relation-list">
           {graph.edges.map((edge) => (
             <li key={`${edge.from}/${edge.field}/${edge.to}`}>
-              <Button type="button" onClick={() => navigate(edge.from)}>
+              <Button variant="link" type="button" onClick={() => navigate(edge.from)}>
                 {objects.get(edge.from).name}
               </Button>
               <span>{t(fieldLabels[edge.field] ?? edge.field)} →</span>
-              <Button type="button" onClick={() => navigate(edge.to)}>
+              <Button variant="link" type="button" onClick={() => navigate(edge.to)}>
                 {objects.get(edge.to).name}
               </Button>
             </li>

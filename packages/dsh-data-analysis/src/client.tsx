@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { installPythonTool } from './client/python-tool/install.tsx'
 import { installRightTabs, inject as rightTabsInject } from './client/right-tabs/install.tsx'
 import { installSettings } from './client/settings/install.tsx'
+import { installUIStyles } from './client/ui/theme.ts'
 
 export {
   marivoPresentationDeliveryDefinition,
@@ -28,6 +29,7 @@ export function apply(
     onInstalled?: (controller: ReturnType<typeof installRightTabs>) => void
   } = {},
 ): void {
+  ctx.effect(() => installUIStyles())
   const controller = installRightTabs(ctx, options)
   installPythonTool(ctx)
   installSettings(ctx)

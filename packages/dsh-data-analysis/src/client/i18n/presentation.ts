@@ -1,5 +1,12 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.presentation.ui-chart-series': '数据系列',
+  'marivo.presentation.ui-chart-previous-point': '上一个图点',
+  'marivo.presentation.ui-chart-next-point': '下一个图点',
+  'marivo.presentation.ui-chart-inspect-point': '查看图点：{p0}',
+  'marivo.presentation.ui-chart-missing-pairs': '无保存行的坐标组合：{p0}',
+  'marivo.presentation.ui-chart-null-values': '已保存的缺失值：{p0}',
+
   'marivo.presentation.ui-capture-range': '捕获 {p0} / {p1} 行',
   'marivo.presentation.ui-catalog-results': '对话结果',
   'marivo.presentation.ui-catalog-reports': '报告',
@@ -160,6 +167,13 @@ export const zh = {
   'marivo.presentation.page-only-summary': '第 {p0} / {p1} 页',
 } as const
 export const en = {
+  'marivo.presentation.ui-chart-series': 'Data series',
+  'marivo.presentation.ui-chart-previous-point': 'Previous chart point',
+  'marivo.presentation.ui-chart-next-point': 'Next chart point',
+  'marivo.presentation.ui-chart-inspect-point': 'Inspect chart point: {p0}',
+  'marivo.presentation.ui-chart-missing-pairs': 'Coordinate pairs without a saved row: {p0}',
+  'marivo.presentation.ui-chart-null-values': 'Saved null values: {p0}',
+
   'marivo.presentation.ui-capture-range': 'Captured {p0} / {p1} rows',
   'marivo.presentation.ui-catalog-results': 'Conversation results',
   'marivo.presentation.ui-catalog-reports': 'Reports',

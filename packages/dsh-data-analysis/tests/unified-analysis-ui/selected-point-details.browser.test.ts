@@ -68,11 +68,12 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
       '<!doctype html><div id="root"></div><script src="page.js"></script>',
     )
     const page = await browser.newPage()
+    page.setDefaultTimeout(5000)
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
 
     const normal = page.locator('[data-resource="normal"]')
     await normal.locator('[data-column-id="trips"] .pr-cell-select').click()
-    const menu = normal.getByRole('menu')
+    const menu = page.getByRole('menu')
     await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
     await menu.getByText('Added to the question draft.').waitFor()
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'requests')), [
@@ -82,14 +83,14 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
 
     const fullMembers = page.locator('[data-resource="membersFull"]')
     assert.equal(await fullMembers.getByText('3', { exact: true }).count(), 1)
-    assert.equal(await fullMembers.locator('.pr-table > p').count(), 0)
+    assert.equal(await fullMembers.locator('.pr-table > [role="status"]').count(), 0)
     const partialMembers = page.locator('[data-resource="membersPartial"]')
     assert.equal(
-      await partialMembers.locator('.pr-table > p').textContent(),
+      await partialMembers.locator('.pr-table > [role="status"]').textContent(),
       'Showing 2 / 4 rows (truncated)',
     )
     const emptyMembers = page.locator('[data-resource="membersEmpty"]')
-    assert.equal(await emptyMembers.locator('.pr-table > p').textContent(), 'No data')
+    assert.equal(await emptyMembers.locator('.pr-table > [role="status"]').textContent(), 'No data')
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

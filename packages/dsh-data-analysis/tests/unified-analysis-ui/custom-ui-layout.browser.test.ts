@@ -20,10 +20,11 @@ import {Tabs} from './src/client/ui/tabs.tsx';
 import {UI_STYLES} from './src/client/ui/theme.ts';
 import {IconButton} from './src/client/ui/controls.tsx';
 import {DetailsDialog} from './src/client/ui/overlays.tsx';
+import {Card,CardContent} from './src/client/ui/primitives/card.tsx';
 const program = 'root = Stack([tabs,row]);\\ntabs = Tabs([a,b]);\\na = TabItem("a","Alpha",[TextContent("Alpha content")]);\\nb = TabItem("b","Beta",[TextContent("Beta content")]);\\nrow = Stack([Card([TextContent("Long saved business label that wraps across narrow cards")]),Card([TextContent("Second card")])],"row","m","stretch","start",true);';
 function App(){
  const [build,setBuild] = useState('build-1'),[locale,setLocale]=useState('en-US'),[open,setOpen]=useState(false);
- return h('div',{className:'mv-ui'},h('style',null,UI_STYLES),
+ return h('div',{className:'mv-ui'},h('style',null,UI_STYLES),h(Card,{id:'reference-card'},h(CardContent,null,'Official radix-nova Card spacing')),
   h('button',{onClick:()=>setBuild('build-2')},'Next build'),h('button',{onClick:()=>setLocale('zh-CN')},'Switch locale'),
   h('div',{id:'report',style:{width:320,maxWidth:'100%'}},h(AnalysisRenderer,{program,title:'A long saved report title / 已保存的完整分析标题与业务范围',locale,resources:{},recordId:build})),
   h(Tabs,{label:'Reading sections',items:[{value:'a',trigger:'Reading',content:h('input',{'aria-label':'Reading state',defaultValue:'saved'})},{value:'b',trigger:'Other',content:h('p',null,'Other panel')}]}),
@@ -58,11 +59,19 @@ createRoot(document.getElementById('root')).render(h(App));`,
     const beta = report.getByRole('tab', { name: 'Beta' })
     await alpha.focus()
     await page.keyboard.press('ArrowRight')
+    await page.waitForFunction(
+      (id) => document.activeElement?.id === id,
+      await beta.getAttribute('id'),
+    )
     assert.equal(await beta.evaluate((node) => node === document.activeElement), true)
     assert.equal(await alpha.getAttribute('aria-selected'), 'true')
     await page.keyboard.press('Enter')
     assert.equal(await beta.getAttribute('aria-selected'), 'true')
     await page.keyboard.press('Home')
+    await page.waitForFunction(
+      (id) => document.activeElement?.id === id,
+      await alpha.getAttribute('id'),
+    )
     assert.equal(await alpha.evaluate((node) => node === document.activeElement), true)
     assert.equal(await beta.getAttribute('aria-selected'), 'true')
     await page.keyboard.press('Space')
@@ -70,7 +79,7 @@ createRoot(document.getElementById('root')).render(h(App));`,
     const panelId = await alpha.getAttribute('aria-controls')
     assert.ok(panelId)
     assert.equal(
-      await page.locator(`#${panelId}`).getAttribute('aria-labelledby'),
+      await page.locator(`[id="${panelId}"]`).getAttribute('aria-labelledby'),
       await alpha.getAttribute('id'),
     )
     assert.equal(await report.locator('[role=tab][tabindex="0"]').count(), 1)
@@ -86,18 +95,31 @@ createRoot(document.getElementById('root')).render(h(App));`,
       await page.getByRole('textbox', { name: 'Reading state' }).inputValue(),
       'kept across panels',
     )
+    const referencePadding = await page
+      .locator('#reference-card')
+      .evaluate((node) => getComputedStyle(node).padding)
+    const referenceContentPadding = await page
+      .locator('#reference-card [data-slot=card-content]')
+      .evaluate((node) => getComputedStyle(node).padding)
     assert.equal(
       await report
         .locator('.au-card')
         .first()
         .evaluate((node) => getComputedStyle(node).padding),
-      '12px',
+      referencePadding,
+    )
+    assert.equal(
+      await report
+        .locator('.au-card-content')
+        .first()
+        .evaluate((node) => getComputedStyle(node).padding),
+      referenceContentPadding,
     )
     assert.equal(
       await report
         .locator('.au-surface-content')
         .evaluate((node) => getComputedStyle(node).padding),
-      '10px',
+      '16px',
     )
     assert.equal(await report.evaluate((node) => node.scrollWidth <= node.clientWidth), true)
     for (const width of [480, 720, 1360]) {
@@ -130,27 +152,37 @@ createRoot(document.getElementById('root')).render(h(App));`,
     const outsideInput = page.locator('input[aria-label="Reading state"]')
     await outsideInput.evaluate((node) => node.focus())
     assert.equal(await outsideInput.evaluate((node) => node === document.activeElement), false)
+    const lightBackground = await dialog
+      .locator('.mv-dialog-body')
+      .evaluate((node) => getComputedStyle(node.parentElement!).backgroundColor)
     assert.equal(
-      await dialog
-        .locator('.mv-dialog-content')
+      lightBackground,
+      await page
+        .locator('#reference-card')
         .evaluate((node) => getComputedStyle(node).backgroundColor),
-      'rgb(255, 255, 255)',
     )
     await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
     await page.waitForFunction(
-      () =>
-        getComputedStyle(document.querySelector('.mv-dialog-content')!).backgroundColor ===
-        'rgb(28, 28, 31)',
+      (previous) =>
+        getComputedStyle(document.querySelector('.mv-dialog-body')!.parentElement!)
+          .backgroundColor !== previous,
+      lightBackground,
     )
-    assert.equal(
-      await page.getByRole('textbox', { name: 'Reading state' }).inputValue(),
-      'kept across panels',
-    )
+    assert.equal(await outsideInput.inputValue(), 'kept across panels')
+    await dialog.focus()
+    await dialog.getByRole('button', { name: 'Close details', exact: true }).focus()
+    await page.getByRole('tooltip', { name: 'Close details', exact: true }).waitFor()
     await page.keyboard.press('Escape')
-    // The focused close control's tooltip owns the first Escape.
+    // A visible tooltip owns Escape before the surrounding dialog.
     assert.equal(await dialog.isVisible(), true)
+    await page
+      .getByRole('tooltip', { name: 'Close details', exact: true })
+      .waitFor({ state: 'hidden' })
     await page.keyboard.press('Escape')
     await dialog.waitFor({ state: 'hidden' })
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute('aria-label') === 'Open details',
+    )
     assert.equal(await opener.evaluate((node) => node === document.activeElement), true)
     assert.deepEqual(errors, [])
   } finally {

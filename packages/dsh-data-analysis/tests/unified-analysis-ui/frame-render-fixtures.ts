@@ -1,8 +1,9 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { chromium } from 'playwright'
 import type {
   FrameClassification,
   FrameDisplay,
@@ -42,25 +43,26 @@ export interface RenderOptions {
 }
 export interface Renderer {
   /** End to end through AnalysisDataView and the real resolveFrameView. */
-  render: (snapshot: AnalysisSnapshot, options?: RenderOptions) => string
+  render: (snapshot: AnalysisSnapshot, options?: RenderOptions) => Promise<string>
   /** FrameShell with a hand-built classification and resolved view. */
   shell: (
     snapshot: FrameSnapshotV2,
     classification: FrameClassification,
     view: ResolvedFrameView,
     display?: FrameDisplay,
-  ) => string
+  ) => Promise<string>
   dispose: () => Promise<void>
 }
 
-/** Bundles the client components once per test file, as data-view.test.ts does. */
+/** Recharts registers axes in client effects; verify actual browser SVG rather than blank SSR markup. */
 export async function bundleRenderer(): Promise<Renderer> {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-frame-render-'))
-  const outfile = path.join(directory, 'render.mjs')
+  const outfile = path.join(directory, 'render.js')
   await build({
     stdin: {
       contents: `import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import { AnalysisDataView } from './src/client/analysis-ui/data-view.tsx';
 import { AnalysisResources } from './src/client/analysis-ui/context.tsx';
 import { FrameShell } from './src/client/analysis-ui/frame/view.tsx';
@@ -70,32 +72,50 @@ const provide = (options, child) => createElement(AnalysisResources.Provider, {v
   openSemanticRef: options.semantic ? () => {} : undefined,
   readCode: options.readCode ? async () => ({text: '', sha256: options.codeRef.sha256}) : undefined,
   askPoint: options.askPoint ? async () => true : undefined}}, child);
-export function render(snapshot, options = {}) {
-  return renderToStaticMarkup(provide({...options, snapshot},
-    createElement(AnalysisDataView, {kind: snapshot.kind, resourceName: 'result',
-      view: options.view, display: options.display})));
-}
-export function shell(snapshot, classification, view, display) {
-  return renderToStaticMarkup(provide({snapshot},
-    createElement(FrameShell, {snapshot, classification, view, display, resourceName: 'result'})));
-}`,
+let root; let version=0;
+window.renderFixture = async (request) => {
+  root?.unmount(); root=createRoot(document.getElementById('root'));
+  const {snapshot,options={},classification,view,display}=request;
+  const element=request.shell ? createElement(FrameShell,{snapshot,classification,view,display,resourceName:'result'}) : createElement(AnalysisDataView,{kind:snapshot.kind,resourceName:'result',view:options.view,display:options.display});
+  flushSync(()=>root.render(provide({...options,snapshot},element)));
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  return document.getElementById('root').innerHTML;
+};`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
     outfile,
     bundle: true,
-    platform: 'node',
-    format: 'esm',
+    platform: 'browser',
+    format: 'iife',
     jsx: 'automatic',
-    banner: {
-      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
-    },
+    define: { 'process.env.NODE_ENV': '"production"' },
     logLevel: 'silent',
   })
-  const module = await import(pathToFileURL(outfile).href)
+  await writeFile(
+    path.join(directory, 'index.html'),
+    '<!doctype html><meta charset="utf-8"><div id="root" style="width:960px"></div><script src="render.js"></script>',
+  )
+  const browser = await chromium.launch()
+  const page = await browser.newPage({ viewport: { width: 1000, height: 900 } })
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
+  const run = async (request: unknown) => {
+    const result = await page.evaluate(async (input) => {
+      const render = Reflect.get(window, 'renderFixture')
+      return render(input) as Promise<string>
+    }, request)
+    if (errors.length) throw new Error(errors.join('\n'))
+    return result
+  }
   return {
-    render: module.render,
-    shell: module.shell,
-    dispose: () => rm(directory, { recursive: true, force: true }),
+    render: (snapshot, options) => run({ snapshot, options }),
+    shell: (snapshot, classification, view, display) =>
+      run({ snapshot, classification, view, display, shell: true }),
+    dispose: async () => {
+      await browser.close()
+      await rm(directory, { recursive: true, force: true })
+    },
   }
 }
 

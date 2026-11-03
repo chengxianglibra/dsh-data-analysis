@@ -69,7 +69,7 @@ window.renderBusiness();
     define: { 'process.env.NODE_ENV': '"production"' },
     logLevel: 'silent',
   })
-  const html = `<!doctype html><html data-ds-theme-source="user"><head><title>Marivo business UI fixture</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/main.css"><style>body{margin:16px;background:#eee}.fixture-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:1000px;margin:auto}.fixture-grid>section{min-width:0;height:auto}body[data-ds-dark-theme]{background:#141416}</style></head><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>`
+  const html = `<!doctype html><html data-ds-theme-source="user"><head><title>Marivo business UI fixture</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/main.css"><style>body{margin:16px;background:#eee;--dsw-alias-label-primary:#1d3036;--dsw-alias-bg-base:#fff;--dsw-alias-bg-module-platform:#f5f6f7}.fixture-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:1000px;margin:auto}.fixture-grid>section{min-width:0;height:auto}body[data-ds-dark-theme]{background:#141416;--dsw-alias-label-primary:#ededed;--dsw-alias-bg-base:#1c1c1f;--dsw-alias-bg-module-platform:#26262a}</style></head><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>`
   await writeFile(path.join(directory, 'index.html'), html)
   await writeFile(path.join(directory, 'main.css'), '')
   const server = createServer(async (request, response) => {
@@ -109,13 +109,11 @@ window.renderBusiness();
   await page.goto(`http://127.0.0.1:${address.port}`)
   await page.locator('.mc-panel').waitFor()
   assert.equal(await page.title(), 'Marivo business UI fixture')
-  assert.equal(
-    await page.locator('.sb-objects button').evaluate((node) => getComputedStyle(node).display),
-    'block',
-  )
+  assert.equal(await page.locator('.sb-objects button').isVisible(), true)
+  assert.equal(await page.locator('.sb-objects button').getAttribute('data-slot'), 'button')
   assert.equal(
     await page
-      .locator('.marivo-settings-header')
+      .locator('.marivo-settings-card [data-slot="card-header"]')
       .evaluate((node) => getComputedStyle(node).borderWidth),
     '0px',
   )
@@ -132,9 +130,9 @@ window.renderBusiness();
     ),
   )
   await page.getByRole('button', { name: 'Expand settings: Data analysis' }).click()
-  const input = page.locator('#marivo-python-timeout')
+  const input = page.locator('[data-fixture="settings"]').getByRole('spinbutton')
   await input.fill('180.125')
-  assert.equal(await input.evaluate((node) => getComputedStyle(node).minHeight), '36px')
+  assert.equal((await input.boundingBox())?.height, 32)
   await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
   await page.emulateMedia({ colorScheme: 'light' })
   assert(
@@ -154,12 +152,12 @@ window.renderBusiness();
   await input.fill('181')
   await page.evaluate(() => (window as unknown as { fixture: { refuse(): void } }).fixture.refuse())
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await page.locator('.marivo-settings-body [role=alert]').waitFor()
+  await page.locator('[data-fixture="settings"] [role=alert]').waitFor()
   assert.equal(await input.inputValue(), '181')
   await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
   assert.equal(await input.inputValue(), '180.125')
   await page.locator('.sb-objects button').click()
-  await page.getByRole('button', { name: 'Definition', exact: true }).click()
+  await page.getByRole('tab', { name: 'Definition', exact: true }).click()
   assert.equal(await page.locator('.sb-back-list').isVisible(), false)
   assert.equal(await page.locator('.sb-expression-code pre code').textContent(), expression)
   assert.equal(
@@ -182,7 +180,7 @@ window.renderBusiness();
   assert.equal(await input.inputValue(), '180.125')
   assert.equal(
     await page
-      .locator('.marivo-settings-card')
+      .locator('.marivo-settings-card [data-slot="card"]')
       .evaluate((node) => getComputedStyle(node).backgroundColor),
     'rgb(255, 255, 255)',
   )
@@ -203,7 +201,7 @@ window.renderBusiness();
           'ConfigForm save/refusal/discard',
           'invalid field association',
           'exact captured expression copy',
-          '32/36px controls',
+          'official 32px controls',
           'mobile overflow',
           'console',
         ],

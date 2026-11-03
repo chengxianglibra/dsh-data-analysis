@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Button } from '../ui/controls.tsx'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/primitives/card.tsx'
 import { fieldLabels } from './labels.ts'
 import { RefLink } from './reference-link.tsx'
 
@@ -23,8 +24,10 @@ function DefinitionNode({ object }) {
     <div className="sb-calculation-node sb-expression">
       <div className="sb-expression-code">
         <Button
+          variant="ghost"
           type="button"
           className="sb-expression-copy"
+          size="icon"
           onClick={copy}
           aria-label={t('marivo.presentation.copy-code')}
         >
@@ -80,41 +83,49 @@ export function ComputationCard({ object, objects, navigate }) {
     }
   }
   return (
-    <section className="sb-computation" aria-label={t('marivo.semantic.metric-computation')}>
-      <h3>{t('marivo.semantic.computation')}</h3>
-      <DefinitionNode key={refKey(object.ref)} object={object} />
-      {!!related.length && (
-        <section
-          className="sb-referenced-definitions"
-          aria-label={t('marivo.semantic.referenced-object-definitions')}
-        >
-          <h3>{t('marivo.semantic.referenced-object-definitions')}</h3>
-          {related.map((child) => (
-            <section
-              className="sb-definition-entry"
-              key={refKey(child.ref)}
-              aria-label={refKey(child.ref)}
-            >
-              <h4>
-                <RefLink refValue={child.ref} objects={objects} navigate={navigate} />
-              </h4>
-              <DefinitionNode object={child} />
-              {!!child.guardrails.length && (
-                <ul>
-                  {[...new Set(child.guardrails)].map((text) => (
-                    <li key={text}>{text}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
-          {limited && (
-            <p>
-              {t('marivo.semantic.showing-the-first-40-referenced-definitions-click-an-object')}
-            </p>
-          )}
-        </section>
-      )}
-    </section>
+    <Card
+      role="region"
+      className="sb-computation"
+      aria-label={t('marivo.semantic.metric-computation')}
+    >
+      <CardHeader>
+        <CardTitle>{t('marivo.semantic.computation')}</CardTitle>
+      </CardHeader>
+      <CardContent className="sb-computation-content">
+        <DefinitionNode key={refKey(object.ref)} object={object} />
+        {!!related.length && (
+          <section
+            className="sb-referenced-definitions"
+            aria-label={t('marivo.semantic.referenced-object-definitions')}
+          >
+            <h3>{t('marivo.semantic.referenced-object-definitions')}</h3>
+            {related.map((child) => (
+              <section
+                className="sb-definition-entry"
+                key={refKey(child.ref)}
+                aria-label={refKey(child.ref)}
+              >
+                <h4>
+                  <RefLink refValue={child.ref} objects={objects} navigate={navigate} />
+                </h4>
+                <DefinitionNode object={child} />
+                {!!child.guardrails.length && (
+                  <ul>
+                    {[...new Set(child.guardrails)].map((text) => (
+                      <li key={text}>{text}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ))}
+            {limited && (
+              <p>
+                {t('marivo.semantic.showing-the-first-40-referenced-definitions-click-an-object')}
+              </p>
+            )}
+          </section>
+        )}
+      </CardContent>
+    </Card>
   )
 }

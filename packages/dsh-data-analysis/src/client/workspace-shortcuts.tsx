@@ -5,6 +5,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { useState } from 'react'
 import { useCopy } from './i18n/context.tsx'
+import { Alert, AlertDescription } from './ui/primitives/alert.tsx'
 import { WorkspaceHeaderAction } from './workspace-header-action.tsx'
 
 export const workspaceDirectories = {
@@ -48,9 +49,9 @@ export function WorkspaceShortcuts({
         />
       ))}
       {error && (
-        <p className="marivo-workspace-shortcuts-error" role="alert">
-          {t(error)}
-        </p>
+        <Alert variant="destructive" className="marivo-workspace-shortcuts-error">
+          <AlertDescription>{t(error)}</AlertDescription>
+        </Alert>
       )}
     </div>
   )

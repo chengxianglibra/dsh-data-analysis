@@ -1,43 +1,25 @@
-import { type ButtonHTMLAttributes, useId } from 'react'
+import { type ComponentProps, forwardRef, useId } from 'react'
+import { Button } from './primitives/button.tsx'
 import { Tooltip } from './tooltip.tsx'
 
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'neutral' | 'primary' | 'ghost'
-}
+export { Button } from './primitives/button.tsx'
+export type ButtonProps = ComponentProps<typeof Button>
+export type IconButtonProps = ButtonProps & { label: string; tip?: string; unavailable?: boolean }
 
-export function Button({
-  variant = 'neutral',
-  className = '',
-  type = 'button',
-  ...props
-}: ButtonProps) {
-  return (
-    <button {...props} type={type} className={`mv-button ${className}`} data-variant={variant} />
-  )
-}
-
-export type IconButtonProps = ButtonProps & {
-  label: string
-  tip?: string
-  unavailable?: boolean
-}
-
-/** Unavailable metadata stays focusable so its reason can be read. */
-export function IconButton({
-  label,
-  tip,
-  unavailable = false,
-  className = '',
-  onClick,
-  ...props
-}: IconButtonProps) {
+/** An unavailable action stays focusable so its explanation remains accessible. */
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { label, tip, unavailable = false, onClick, ...props },
+  ref,
+) {
   const id = `mv-tip-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const description = tip ?? label
   return (
     <Tooltip id={id} text={description}>
       <Button
+        ref={ref}
+        variant="outline"
+        size="icon"
         {...props}
-        className={`mv-icon-button ${className}`}
         aria-label={label}
         aria-describedby={
           [props['aria-describedby'], description !== label ? id : undefined]
@@ -55,4 +37,4 @@ export function IconButton({
       />
     </Tooltip>
   )
-}
+})

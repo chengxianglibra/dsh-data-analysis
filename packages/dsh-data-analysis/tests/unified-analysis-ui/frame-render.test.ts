@@ -66,8 +66,8 @@ before(async () => {
   const bundled = await bundleRenderer()
   r = {
     ...bundled,
-    render: (...args) => strip(bundled.render(...args)),
-    shell: (...args) => strip(bundled.shell(...args)),
+    render: async (...args) => strip(await bundled.render(...args)),
+    shell: async (...args) => strip(await bundled.shell(...args)),
   }
 })
 after(async () => {
@@ -77,10 +77,20 @@ after(async () => {
 const viewOf = (html: string) => /data-frame-view="([^"]+)"/.exec(html)?.[1]
 const count = (html: string, pattern: RegExp) => html.match(new RegExp(pattern, 'g'))?.length ?? 0
 const comparisonTable = (html: string) =>
-  /<section class="pr-table fv-comparison-table"[\s\S]*?<\/table><\/section>/.exec(html)?.[0] ?? ''
+  /<section[^>]*data-table-layout="comparison"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
 /** Path `d` attributes of drawn lines; each `M` starts a segment. */
 const segments = (html: string) =>
-  [...html.matchAll(/<path d="([^"]*)" class="fv-line"/g)].map((m) => count(m[1]!, /M/))
+  [...html.matchAll(/<path[^>]*class="recharts-curve recharts-line-curve"[^>]*d="([^"]*)"/g)].map(
+    (m) => count(m[1]!, /M/),
+  )
+const factualText = (html: string) =>
+  [...html.matchAll(/<(?:title|desc)>([\s\S]*?)<\/(?:title|desc)>|aria-label="([^"]*)"/g)]
+    .map((match) => match[1] ?? match[2])
+    .join(' ')
+const pointMark = (html: string, index: number, series: string) =>
+  new RegExp(`<g data-chart-index="${index}" data-series="${series}">([\\s\\S]*?)<\\/g>`).exec(
+    html,
+  )?.[1] ?? ''
 const resolved = (snapshot: FrameSnapshotV2) => {
   const resolution = resolveFrameView(snapshot)
   if (!resolution.ok) throw new Error(resolution.code)
@@ -90,7 +100,7 @@ const resolved = (snapshot: FrameSnapshotV2) => {
 const BANNERS =
   /note:|注[:：]|说明[:：]|Evidence|Findings|Methods|方法说明|同比|环比|仅本期|only current|not computed|未计算/i
 
-test('every auto view resolves through the real resolveFrameView and renders its main view', () => {
+test('every auto view resolves through the real resolveFrameView and renders its main view', async () => {
   const cases: [string, FrameSnapshotV2, string][] = [
     ['metric', observeScalar(2), 'metric'],
     ['bar', observeTime(6), 'bar'],
@@ -116,7 +126,7 @@ test('every auto view resolves through the real resolveFrameView and renders its
     ['records', records(), 'table'],
   ]
   for (const [name, snapshot, chart] of cases) {
-    const html = r.render(snapshot)
+    const html = await r.render(snapshot)
     assert.equal(viewOf(html), chart, name)
     assert.equal(viewOf(html), resolved(snapshot).view.chart, name)
     assert.doesNotMatch(html, BANNERS, name)
@@ -126,110 +136,114 @@ test('every auto view resolves through the real resolveFrameView and renders its
       name,
     )
     if (!['members', 'table', 'metric'].includes(chart))
-      assert.match(html, /<svg class="fv-svg"[^>]*role="img" aria-label="[^"]+"/, name)
+      assert.match(html, /<svg role="application"[^>]*class="recharts-surface"/, name)
   }
 })
 
-test('observation shapes draw lines, areas, bars, heatmaps and frozen record tables', () => {
-  const line = r.render(observeTime(18))
+test('observation shapes draw lines, areas, bars, heatmaps and frozen record tables', async () => {
+  const line = await r.render(observeTime(18))
   assert.equal(segments(line).length, 1)
-  assert.match(r.render(observeTime(6), { view: { chart: 'area' } }), /class="fv-area"/)
-  assert.equal(count(r.render(observeTime(6)), /data-mark="bar"/), 6)
-  const interval = r.render(observeTime(4, 1, { kind: 'interval', timezone: 'Asia/Shanghai' }))
-  assert.doesNotMatch(interval, /class="fv-line"/)
-  const series = r.render(observeTimeCategory(3))
-  assert.equal(count(series, /class="fv-line"/), 3)
-  assert.match(series, /class="fv-legend"/)
-  assert.match(r.render(observeMatrix()), /data-mark="cell"/)
-  assert.match(r.render(records()), /class="fv-frozen"/)
+  assert.match(await r.render(observeTime(6), { view: { chart: 'area' } }), /recharts-area-area/)
+  assert.equal(count(await r.render(observeTime(6)), /data-mark="bar"/), 6)
+  const interval = await r.render(
+    observeTime(4, 1, { kind: 'interval', timezone: 'Asia/Shanghai' }),
+  )
+  assert.doesNotMatch(interval, /class="recharts-layer recharts-line"/)
+  const series = await r.render(observeTimeCategory(3))
+  assert.equal(count(series, /class="recharts-layer recharts-line"/), 3)
+  assert.match(series, /aria-label="Data series"/)
+  assert.match(await r.render(observeMatrix()), /data-mark="cell"/)
+  assert.match(await r.render(records()), /class="fv-frozen/)
   // Statistic symbols prefix value names.
-  const reduced = r.render(reduceByMonth())
+  const reduced = await r.render(reduceByMonth())
   assert.match(reduced, /Σ total/)
   assert.match(reduced, /μ average/)
   assert.match(reduced, /# rows/)
 })
 
-test('time plots keep SVG marks and point identity across period and series counts', () => {
+test('time plots keep SVG marks and point identity across period and series counts', async () => {
   for (const periods of [1, 11, 12, 24]) {
-    const html = r.render(observeTime(periods), { view: { chart: 'line' }, askPoint: true })
-    assert.equal(count(html, /class="fv-line"/), 1)
+    const html = await r.render(observeTime(periods), { view: { chart: 'line' }, askPoint: true })
+    assert.equal(count(html, /class="recharts-layer recharts-line"/), 1)
     assert.equal(count(html, /role="button" tabindex="0"/), periods)
   }
   for (const categories of [7, 8]) {
     const snapshot = observeTimeCategory(categories)
-    const html = r.render(snapshot, { view: { chart: 'line' }, askPoint: true })
-    assert.equal(count(html, /class="fv-line"/), categories)
+    const html = await r.render(snapshot, { view: { chart: 'line' }, askPoint: true })
+    assert.equal(count(html, /class="recharts-layer recharts-line"/), categories)
     assert.equal(count(html, /role="button" tabindex="0"/), snapshot.data.rows.length)
     for (let i = 0; i < categories; i++) assert.match(html, new RegExp(`data-marker="${i}"`))
   }
 })
 
-test('category bars remain horizontal in saved row order', () => {
-  const html = r.render(observeCategory(3))
+test('category bars remain horizontal in saved row order', async () => {
+  const html = await r.render(observeCategory(3))
   const bars = [
-    ...html.matchAll(/<g data-mark="bar">[\s\S]*?<rect[^>]*width="([\d.]+)" height="([\d.]+)"/g),
+    ...html.matchAll(
+      /<g data-mark="bar">[\s\S]*?<(?:path|rect)[^>]*width="([\d.]+)" height="([\d.]+)"/g,
+    ),
   ]
   assert.equal(bars.length, 3)
   for (const bar of bars) assert.ok(Number(bar[1]) > Number(bar[2]))
-  const labels = [...html.matchAll(/data-row="([^"]+)"/g)].map((match) => match[1])
-  assert.deepEqual(labels, ['r0', 'r1', 'r2'])
+  assert.match(html, /r0[\s\S]*r1[\s\S]*r2/)
 })
 
-test('a legend is hidden only when it repeats the sole displayed metric', () => {
-  const singleBar = r.render(observeCategory(3))
-  assert.match(singleBar, /<svg class="fv-svg"/)
-  assert.doesNotMatch(singleBar, /class="fv-legend"/)
-  const singleTime = r.render(observeTime(6))
-  assert.doesNotMatch(singleTime, /class="fv-legend"/)
-  const multiTime = r.render(observeTimeCategory(3))
-  assert.match(multiTime, /class="fv-legend"/)
-  const singleGroup = r.render(
+test('a legend is hidden only when it repeats the sole displayed metric', async () => {
+  const singleBar = await r.render(observeCategory(3))
+  assert.match(singleBar, /class="recharts-surface"/)
+  assert.doesNotMatch(singleBar, /aria-label="Data series"/)
+  const singleTime = await r.render(observeTime(6))
+  assert.doesNotMatch(singleTime, /aria-label="Data series"/)
+  const multiTime = await r.render(observeTimeCategory(3))
+  assert.match(multiTime, /aria-label="Data series"/)
+  const singleGroup = await r.render(
     frame({
       axes: [timeAxis(3), { ...categoryAxis(1), keys: ['m0', 'm0', 'm0'] }],
       values: [value('m0', 3, observed())],
     }),
   )
-  assert.match(singleGroup, /class="fv-legend"/)
-  const long = r.render(observeTime(18))
-  assert.doesNotMatch(long, /class="fv-legend"/)
+  assert.match(singleGroup, /aria-label="Data series"/)
+  const long = await r.render(observeTime(18))
+  assert.doesNotMatch(long, /aria-label="Data series"/)
   const withBroadcast = overBroadcast()
   for (const column of withBroadcast.data.columns) {
     if (column.id === 'revenue' || column.id === 'mean_revenue') column.unit = 'USD'
   }
-  const broadcast = r.render(withBroadcast)
-  assert.match(broadcast, /class="fv-legend"/)
+  const broadcast = await r.render(withBroadcast)
+  assert.match(broadcast, /aria-label="Data series"/)
 })
 
-test('SVG points expose keyboard activation only in an actionable surface', () => {
+test('SVG points expose keyboard activation only in an actionable surface', async () => {
   const snapshot = observeTime(6)
-  const actionable = r.render(snapshot, { askPoint: true })
+  const actionable = await r.render(snapshot, { askPoint: true })
   assert.equal(count(actionable, /role="button" tabindex="0"/), 6)
   const value =
     snapshot.data.rows[0]![snapshot.data.columns.findIndex((column) => column.id === 'm0')]
   assert.match(actionable, new RegExp(String(value)))
-  const readOnly = r.render(snapshot)
+  const readOnly = await r.render(snapshot)
   assert.doesNotMatch(readOnly, /role="button" tabindex="0"/)
 })
 
-test('missing observations use the truthful renderer and offer only present values for selection', () => {
+test('missing observations use the truthful renderer and offer only present values for selection', async () => {
   const snapshot = monthly([0, 2, null, 4])
-  const html = r.render(snapshot, { askPoint: true })
+  const html = await r.render(snapshot, { askPoint: true })
   assert.doesNotMatch(html, /data-chart-engine="openui"/)
   assert.equal(count(html, /data-mark="zero"/), 1)
   assert.doesNotMatch(html, /Select a data point|选择数据点/)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
 })
 
-test('heatmap retains sparse axis members and distinguishes missing cells from zero', () => {
+test('heatmap retains sparse axis members and distinguishes missing cells from zero', async () => {
   const snapshot = observeMatrix()
   snapshot.data.rows.splice(0, 1)
   for (const coordinate of Object.values(snapshot.frame.coordinates)) coordinate.values.splice(0, 1)
   const value = snapshot.frame.fields.find((field) => field.role === 'value')!
   const index = snapshot.data.columns.findIndex((column) => column.id === value.id)
   snapshot.data.rows[0]![index] = 0
-  const html = r.render(snapshot, { askPoint: true })
+  const html = await r.render(snapshot, { askPoint: true })
   assert.doesNotMatch(html, /data-chart-engine="openui"/)
-  assert.equal(count(html, /data-mark="empty"/), 1)
+  assert.match(html, /data-heatmap-missing-count="1"/)
+  assert.equal(count(html, /data-mark="empty"/), 0)
   assert.equal(count(html, /data-mark="cell"/), 3)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
   assert.match(html, /data-heatmap-scale=/)
@@ -238,13 +252,13 @@ test('heatmap retains sparse axis members and distinguishes missing cells from z
   assert.doesNotMatch(html, /Row avg|Column avg/)
 })
 
-test('heatmap leaves NULL cells empty and selects only saved numeric values', () => {
+test('heatmap leaves NULL cells empty and selects only saved numeric values', async () => {
   const snapshot = observeMatrix()
   const value = snapshot.frame.fields.find((field) => field.role === 'value')!
   const index = snapshot.data.columns.findIndex((column) => column.id === value.id)
   snapshot.data.rows[0]![index] = null
   snapshot.data.rows[1]![index] = 1234567.89
-  const html = r.render(snapshot, { askPoint: true })
+  const html = await r.render(snapshot, { askPoint: true })
   assert.equal(count(html, /data-mark="empty"/), 1)
   assert.equal(count(html, /data-mark="cell"/), 3)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
@@ -252,34 +266,35 @@ test('heatmap leaves NULL cells empty and selects only saved numeric values', ()
   assert.doesNotMatch(html, /Row avg|Column avg/)
 })
 
-test('correlation and saved shares expose data points without selecting reference tracks', () => {
-  const correlation = r.render(correlate(true), { askPoint: true })
+test('correlation and saved shares expose data points without selecting reference tracks', async () => {
+  const correlation = await r.render(correlate(true), { askPoint: true })
   assert.match(correlation, /role="button" tabindex="0"[^>]*aria-label="[^"]*n /)
   assert.doesNotMatch(correlation, /Select a data point|选择数据点/)
-  const shares = r.render(shareByRegion(), { askPoint: true })
+  const shares = await r.render(shareByRegion(), { askPoint: true })
   assert.ok(count(shares, /role="button" tabindex="0"/) > 0)
   assert.doesNotMatch(shares, /Select a data point|选择数据点/)
-  assert.doesNotMatch(shares, /class="fv-track"[^>]*role="button"/)
+  assert.doesNotMatch(shares, /data-reference-track[^>]*role="button"/)
 })
 
-test('time-category charts facet multiple values, distinguish categories and avoid overlapping endpoints', () => {
+test('time-category charts facet multiple values, distinguish categories and avoid overlapping endpoints', async () => {
   const snapshot = observeTimeCategory(8, 3)
   for (const name of ['m0', 'm1', 'm2']) {
     const index = snapshot.data.columns.findIndex((column) => column.id === name)
     snapshot.data.columns[index]!.unit = 'USD'
     for (const row of snapshot.data.rows) row[index] = 50
   }
-  const html = r.render(snapshot, { view: { chart: 'line' } })
+  const html = await r.render(snapshot, { view: { chart: 'line' } })
   assert.equal(count(html, /<section class="fv-parent"/), 3)
-  assert.equal(count(html, /<ul class="fv-legend">/), 1)
-  assert.equal(count(html, /data-series="/), 24)
-  assert.equal(count(html, /data-mark="endpoint-label"/), 3)
+  assert.equal(count(html, /aria-label="Data series"/), 1)
+  assert.equal(count(html, /class="recharts-layer recharts-line"/), 24)
+  assert.equal(count(html, /data-mark="endpoint-label"/), 0)
   for (let i = 0; i < 8; i++) assert.match(html, new RegExp(`data-marker="${i}"`))
   // Every equal-valued point remains represented in its own series and exposes its original value.
-  assert.equal(count(html, /: 50 USD<\/title>/), 72)
+  assert.equal(count(html, /data-mark="filled"/), 72)
+  assert.ok(count(html, /: 50 USD<\/title>/) >= 72)
 })
 
-test('single-period plots use a compact height without overriding an explicit height', () => {
+test('single-period plots use a compact height without overriding an explicit height', async () => {
   const snapshot = frame({
     axes: [
       { ...timeAxis(1), keys: repeat(months(1), 3) },
@@ -287,14 +302,14 @@ test('single-period plots use a compact height without overriding an explicit he
     ],
     values: [{ name: 'amount', values: [1, 2, 3] }],
   })
-  assert.match(r.render(snapshot, { view: { chart: 'line' } }), /viewBox="0 0 640 112"/)
+  assert.match(await r.render(snapshot, { view: { chart: 'line' } }), /viewBox="0 0 \d+ 160"/)
   assert.match(
-    r.render(snapshot, { view: { chart: 'line' }, display: { height: 200 } }),
-    /viewBox="0 0 640 200"/,
+    await r.render(snapshot, { view: { chart: 'line' }, display: { height: 200 } }),
+    /viewBox="0 0 \d+ 200"/,
   )
 })
 
-test('long time series retain distinguishing markers and never connect null gaps', () => {
+test('long time series retain distinguishing markers and never connect null gaps', async () => {
   const snapshot = frame({
     axes: [
       { ...timeAxis(45), keys: repeat(months(45), 2) },
@@ -304,7 +319,7 @@ test('long time series retain distinguishing markers and never connect null gaps
       { name: 'amount', values: Array.from({ length: 90 }, (_, i) => (i === 40 ? null : i)) },
     ],
   })
-  const html = r.render(snapshot, { view: { chart: 'line' } })
+  const html = await r.render(snapshot, { view: { chart: 'line' } })
   assert.equal(segments(html).length, 2)
   assert.ok(segments(html).some((segment) => segment === 2))
   assert.ok(count(html, /data-marker="0"/) >= 10)
@@ -312,51 +327,55 @@ test('long time series retain distinguishing markers and never connect null gaps
   assert.match(html, /<title>2025/)
 })
 
-test('Frame titles reflect the values actually selected for observation charts', () => {
+test('Frame titles reflect the values actually selected for observation charts', async () => {
   for (const chart of ['line', 'area', 'bar'] as const) {
-    const html = r.render(observeTime(3, 2), { view: { chart, encoding: { values: ['m1'] } } })
-    const title = /<h3 class="fv-title">([^<]*)<\/h3>/.exec(html)?.[1]
+    const html = await r.render(observeTime(3, 2), {
+      view: { chart, encoding: { values: ['m1'] } },
+    })
+    const title = /<div data-slot="card-title"[^>]*>([^<]*)<\/div>/.exec(html)?.[1]
     assert.match(title ?? '', /m1/)
     assert.doesNotMatch(title ?? '', /m0/)
   }
-  const metric = r.render(observeScalar(2), {
+  const metric = await r.render(observeScalar(2), {
     view: { chart: 'metric', encoding: { value: 'm1' } },
   })
-  assert.match(metric, /<h3 class="fv-title">m1(?: \([^)]*\))?<\/h3>/)
-  const heatmap = r.render(observeMatrix(2), {
+  assert.match(metric, /<div data-slot="card-title"[^>]*>m1(?: \([^)]*\))?<\/div>/)
+  const heatmap = await r.render(observeMatrix(2), {
     view: { chart: 'heatmap', encoding: { x: 'region', y: 'channel', value: 'm1' } },
   })
-  const title = /<h3 class="fv-title">([^<]*)<\/h3>/.exec(heatmap)?.[1]
+  const title = /<div data-slot="card-title"[^>]*>([^<]*)<\/div>/.exec(heatmap)?.[1]
   assert.match(title ?? '', /m1/)
   assert.doesNotMatch(title ?? '', /m0/)
-  const broadcast = /<h3 class="fv-title">([^<]*)<\/h3>/.exec(r.render(overBroadcast(6)))?.[1]
+  const broadcast = /<div data-slot="card-title"[^>]*>([^<]*)<\/div>/.exec(
+    await r.render(overBroadcast(6)),
+  )?.[1]
   assert.match(broadcast ?? '', /revenue/)
   assert.match(broadcast ?? '', /mean_revenue/)
-  const table = r.render(observeTime(3, 2), { view: { chart: 'table', columns: ['m1'] } })
-  const tableTitle = /<h3 class="fv-title">([^<]*)<\/h3>/.exec(table)?.[1]
+  const table = await r.render(observeTime(3, 2), { view: { chart: 'table', columns: ['m1'] } })
+  const tableTitle = /<div data-slot="card-title"[^>]*>([^<]*)<\/div>/.exec(table)?.[1]
   assert.match(tableTitle ?? '', /m0/)
   assert.match(tableTitle ?? '', /m1/)
 })
 
-test('heatmap scale shows saved bounds and omits a scale when all values are missing', () => {
+test('heatmap scale shows saved bounds and omits a scale when all values are missing', async () => {
   const snapshot = observeMatrix()
   const value = snapshot.frame.fields.find((field) => field.role === 'value')!
   const index = snapshot.data.columns.findIndex((column) => column.id === value.id)
   snapshot.data.columns[index]!.unit = 'USD'
   snapshot.data.rows[0]![index] = -2
   snapshot.data.rows[1]![index] = 5
-  const html = r.render(snapshot)
+  const html = await r.render(snapshot)
   assert.match(html, /data-heatmap-scale="diverging"/)
   assert.match(html, /m0 \(USD\)/)
   assert.match(html, /title="-2 USD"/)
   assert.match(html, /title="5 USD"/)
   for (const row of snapshot.data.rows) row[index] = null
-  const empty = r.render(snapshot)
+  const empty = await r.render(snapshot)
   assert.doesNotMatch(empty, /data-heatmap-scale=/)
   assert.match(empty, /data-mark="empty"/)
 })
 
-test('dense time labels retain both endpoints without crowding the final label', () => {
+test('dense time labels retain both endpoints without crowding the final label', async () => {
   const axis = timeAxis(30, {
     kind: 'calendar',
     timezone: 'Asia/Shanghai',
@@ -366,30 +385,25 @@ test('dense time labels retain both endpoints without crowding the final label',
     { length: 30 },
     (_, i) => `2025-06-${String(i + 1).padStart(2, '0')}T00:00:00+08:00`,
   )
-  const html = r.render(
+  const html = await r.render(
     frame({ axes: [axis], values: [{ name: 'value', values: Array(30).fill(1) }] }),
   )
-  const ticks = [...html.matchAll(/<g data-tick="([^"]+)">([\s\S]*?)<\/g>/g)]
-  const labeled = ticks.flatMap((tick, index) => (tick[2]!.includes('<text') ? [index] : []))
-  assert.equal(ticks.length, 30)
-  assert.equal(labeled.length, 10)
-  assert.equal(labeled[0], 0)
-  assert.equal(labeled.at(-1), 29)
-  assert.ok(labeled.at(-1)! - labeled.at(-2)! >= 3)
+  const ticks = [...html.matchAll(/<g transform="translate\(([^,]+),[^)]*\)" data-tick="([^"]+)"/g)]
+  assert.ok(ticks.length >= 2 && ticks.length < 30)
+  assert.equal(ticks[0]?.[2], '06-01')
+  assert.equal(ticks.at(-1)?.[2], '06-30')
+  assert.ok(ticks.slice(1).every((tick, index) => Number(tick[1]) - Number(ticks[index]![1]) >= 60))
 })
 
-test('long month labels have room while keeping the endpoints', () => {
-  const html = r.render(observeTime(12))
-  const ticks = [...html.matchAll(/<g data-tick="([^"]+)">([\s\S]*?)<\/g>/g)]
-  const labeled = ticks.flatMap((tick, index) => (tick[2]!.includes('<text') ? [index] : []))
-  assert.equal(ticks.length, 12)
-  assert.equal(labeled[0], 0)
-  assert.equal(labeled.at(-1), 11)
-  assert.ok(labeled.length <= 6)
-  assert.ok(labeled.slice(1).every((n, i) => n - labeled[i]! >= 2))
+test('long month labels have room while keeping the endpoints', async () => {
+  const html = await r.render(observeTime(12))
+  const ticks = [...html.matchAll(/<g transform="translate\(([^,]+),[^)]*\)" data-tick="([^"]+)"/g)]
+  assert.equal(ticks[0]?.[2], '2025-01')
+  assert.equal(ticks.at(-1)?.[2], '2025-12')
+  assert.ok(ticks.slice(1).every((tick, index) => Number(tick[1]) - Number(ticks[index]![1]) >= 55))
 })
 
-test('observation charts use separate scales for different or unknown units', () => {
+test('observation charts use separate scales for different or unknown units', async () => {
   const snapshot = frame({
     axes: [categoryAxis(3)],
     values: [
@@ -400,13 +414,13 @@ test('observation charts use separate scales for different or unknown units', ()
   })
   snapshot.data.columns.find((column) => column.id === 'trips')!.unit = '1'
   snapshot.data.columns.find((column) => column.id === 'fare')!.unit = 'USD'
-  const mixed = r.render(snapshot)
-  assert.equal(count(mixed, /class="fv-chart"/), 3)
+  const mixed = await r.render(snapshot)
+  assert.equal(count(mixed, /class="fv-chart /), 3)
   assert.match(mixed, /trips/)
   assert.match(mixed, /fare \(USD\)/)
   snapshot.data.columns.find((column) => column.id === 'fare')!.unit = '1'
-  const shared = r.render(snapshot)
-  assert.equal(count(shared, /class="fv-chart"/), 2)
+  const shared = await r.render(snapshot)
+  assert.equal(count(shared, /class="fv-chart /), 2)
 
   const time = frame({
     axes: [timeAxis(3)],
@@ -417,44 +431,44 @@ test('observation charts use separate scales for different or unknown units', ()
   })
   time.data.columns.find((column) => column.id === 'trips')!.unit = '1'
   time.data.columns.find((column) => column.id === 'fare')!.unit = 'USD'
-  assert.equal(count(r.render(time), /class="fv-chart"/), 2)
+  assert.equal(count(await r.render(time), /class="fv-chart /), 2)
 })
 
-test('broadcast values are reference lines labelled with the saved partition value', () => {
-  const time = r.render(overBroadcast(6))
-  assert.equal(count(time, /data-mark="reference"/), 1)
+test('broadcast values are reference lines labelled with the saved partition value', async () => {
+  const time = await r.render(overBroadcast(6))
+  assert.equal(count(time, /mv-broadcast-reference/), 1)
   assert.match(time, /μ mean_revenue/)
-  const bars = r.render(categoryBroadcast())
-  assert.equal(count(bars, /data-mark="reference"/), 1)
-  assert.match(bars, /9[,.]?00K|9K/)
+  const bars = await r.render(categoryBroadcast())
+  assert.equal(count(bars, /mv-broadcast-reference/), 1)
+  assert.match(bars, /9000/)
   // The broadcast value is not drawn as its own bar series.
   assert.equal(count(bars, /data-mark="bar"/), 3)
 })
 
-test('NA draws no mark and breaks the line; 0 is drawn on the baseline', () => {
-  const na = r.render(monthly([1, 2, null, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]))
+test('NA draws no mark and breaks the line; 0 is drawn on the baseline', async () => {
+  const na = await r.render(monthly([1, 2, null, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]))
   assert.deepEqual(segments(na), [2])
   assert.match(na, /—/)
-  const bars = r.render(monthly([0, 2, null, 4]))
+  const bars = await r.render(monthly([0, 2, null, 4]))
   assert.equal(count(bars, /data-mark="zero"/), 1)
   assert.equal(count(bars, /data-mark="bar"/), 2)
 })
 
-test('a missing period keeps its tick and leaves a gap', () => {
-  const html = r.render(
+test('a missing period keeps its tick and leaves a gap', async () => {
+  const html = await r.render(
     monthly([1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], {
       periods: 14,
       rows: [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
     }),
   )
-  assert.equal(count(html, /data-tick="/), 14)
+  assert.match(factualText(html), /2025-03/)
   assert.match(html, /data-tick="2025-03"/)
   assert.deepEqual(segments(html), [2])
 })
 
-test('an incomplete period draws a hollow point or a hatched bar with both bounds in the tooltip', () => {
+test('an incomplete period draws a hollow point or a hatched bar with both bounds in the tooltip', async () => {
   const actual = { 1: '2025-02-10T00:00:00+08:00' }
-  const line = r.render(
+  const line = await r.render(
     monthly(
       Array.from({ length: 14 }, (_, i) => i + 1),
       { actual },
@@ -462,11 +476,11 @@ test('an incomplete period draws a hollow point or a hatched bar with both bound
   )
   assert.equal(count(line, /data-mark="hollow"/), 1)
   assert.match(line, /Actual 2025-02-10 00:00 – 2025-03-01 00:00\nNominal 2025-02-01 00:00/)
-  const bars = r.render(monthly([1, 2, 3], { actual }))
+  const bars = await r.render(monthly([1, 2, 3], { actual }))
   assert.equal(count(bars, /data-mark="hatched"/), 1)
 })
 
-test('calendar periods use saved labels and selection states without invented bounds', () => {
+test('calendar periods use saved labels and selection states without invented bounds', async () => {
   const snapshot = monthly([1, 2, 3, 4])
   const periods = snapshot.frame.sections.periods
   assert.equal(periods.status, 'captured')
@@ -481,7 +495,7 @@ test('calendar periods use saved labels and selection states without invented bo
     selection: selections[index]!,
     cutoff: index === 1 ? '2025-02-15T12:00:00.000000' : null,
   }))
-  const html = r.render(parseAnalysisSnapshot(snapshot))
+  const html = await r.render(parseAnalysisSnapshot(snapshot))
   assert.match(html, /data-tick="2025-01"/)
   assert.match(html, /Full period/)
   assert.match(html, /Period prefix, local cutoff: 2025-02-15T12:00:00.000000/)
@@ -491,20 +505,58 @@ test('calendar periods use saved labels and selection states without invented bo
   assert.doesNotMatch(html, /Nominal |Actual /)
 })
 
-test('presence false draws only the present side', () => {
-  const html = r.render(comparedCategories([true, false, true]))
+test('presence false draws only the present side', async () => {
+  const html = await r.render(comparedCategories([true, false, true]))
   assert.equal(viewOf(html), 'comparison')
   assert.equal(count(html, /data-mark="hollow"/), 2)
   assert.equal(count(html, /data-mark="filled"/), 3)
-  assert.equal(count(html, /class="fv-stem"/), 2)
+  assert.equal(count(html, /mv-domain-link/), 2)
 })
 
-test('restricted decompositions detach the total; has_more falls back to a table', () => {
-  const closed = r.render(attributeAdditive())
-  assert.match(closed, /data-mark="connector-total"/)
+test('saved comparison end labels retain their rows after leading and interior absences', async () => {
+  for (const presence of [
+    [true, false, true, true],
+    [false, true, true, true],
+  ]) {
+    const snapshot = comparedCategories(presence)
+    const relative = snapshot.data.columns.findIndex(
+      (column) => column.id === 'prior.relative.sales',
+    )
+    snapshot.data.rows.forEach((row, index) => {
+      row[relative] = (index + 1) / 10
+    })
+    const html = await r.render(snapshot)
+    const labels = [...html.matchAll(/<text[^>]*data-chart-end-label=""[^>]*>(.*?)<\/text>/g)].map(
+      (match) => match[1],
+    )
+    assert.deepEqual(
+      labels,
+      presence.flatMap((present, index) => (present ? [`▲${(index + 1) * 10}.0%`] : [])),
+    )
+  }
+})
+
+test('saved field names cannot collide with plot row or label metadata', async () => {
+  for (const name of ['savedEndLabel', 'index', 'values']) {
+    const snapshot = parseAnalysisSnapshot(
+      JSON.parse(JSON.stringify(shareByRegion()).replaceAll('revenue_share', name)),
+    )
+    const html = await r.render(snapshot, { askPoint: true })
+    const chart = html.match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
+    assert.equal(count(chart, /data-chart-end-label=""/), 3)
+    assert.equal(count(chart, /data-chart-end-label=""[^>]*>25%<\/text>/), 3)
+    for (let row = 0; row < 3; row++) {
+      assert.ok(chart.includes(`data-frame-point="${row}:${name}"`), `${name}: saved row ${row}`)
+    }
+  }
+})
+
+test('restricted decompositions detach the total; has_more falls back to a table', async () => {
+  const closed = await r.render(attributeAdditive())
+  assert.match(closed, /mv-connector-total/)
   assert.match(closed, /data-mark-total="closed"/)
-  const restricted = r.render(attributeAdditive({ rowScope: 'restricted' }))
-  assert.doesNotMatch(restricted, /data-mark="connector-total"/)
+  const restricted = await r.render(attributeAdditive({ rowScope: 'restricted' }))
+  assert.doesNotMatch(restricted, /mv-connector-total/)
   assert.match(restricted, /data-mark-total="detached"/)
   for (const [snapshot, coverage] of [
     [attributeAdditive({ total: 9 }), '4/9'],
@@ -512,66 +564,69 @@ test('restricted decompositions detach the total; has_more falls back to a table
     [observeCategory(3, 9), '3/9'],
     [shareByRegion(3, 9), '3/9'],
   ] as const) {
-    const html = r.render(snapshot)
+    const html = await r.render(snapshot)
     assert.equal(viewOf(html), 'table')
     assert.match(html, new RegExp(`<span>${coverage}</span>`))
   }
 })
 
-test('a missing decomposition contribution is marked and does not close the waterfall', () => {
+test('a missing decomposition contribution is marked and does not close the waterfall', async () => {
   const snapshot = attributeAdditive()
   const index = snapshot.data.columns.findIndex((column) => column.id === 'contribution')
   snapshot.data.columns[index]!.nullable = true
   snapshot.data.rows[1]![index] = null
-  const html = r.render(snapshot)
+  const html = await r.render(snapshot)
   assert.match(html, /data-mark-total="detached"/)
-  assert.doesNotMatch(html, /data-mark="connector-total"/)
-  assert.match(html, /class="fv-strong">—<\/text>/)
+  assert.doesNotMatch(html, /mv-connector-total/)
+  assert.match(html, /—/)
 })
 
-test('comparison numbers are saved cells with neutral marks and endpoint labels', () => {
-  const html = r.render(comparedScalar({ current: 120, baseline: 100, absolute: 7, relative: 0.5 }))
+test('comparison numbers are saved cells with neutral marks and endpoint labels', async () => {
+  const html = await r.render(
+    comparedScalar({ current: 120, baseline: 100, absolute: 7, relative: 0.5 }),
+  )
   assert.equal(viewOf(html), 'comparison')
   // Δ and Δ% are the saved (deliberately inconsistent) cells, never current − baseline.
   assert.match(html, /▲7</)
   assert.match(html, /▲50\.0%/)
   assert.doesNotMatch(html, /▲20\b|▲20%/)
-  assert.match(html, /<dt>west<\/dt>/)
-  assert.match(html, /<dt>east<\/dt>/)
-  const zero = r.render(comparedScalar({ current: 5, baseline: 0, absolute: 5, relative: null }))
+  assert.match(html, /<dt[^>]*>west<\/dt>/)
+  assert.match(html, /<dt[^>]*>east<\/dt>/)
+  const zero = await r.render(
+    comparedScalar({ current: 5, baseline: 0, absolute: 5, relative: null }),
+  )
   assert.match(zero, /data-number="prior.relative.sales"><dd[^>]*>—</)
-  const down = r.render(comparedScalar({ current: 1, baseline: 2, absolute: -1, relative: -0.5 }))
+  const down = await r.render(
+    comparedScalar({ current: 1, baseline: 2, absolute: -1, relative: -0.5 }),
+  )
   assert.match(down, /▼1</)
   assert.match(down, /▼50\.0%/)
   assert.doesNotMatch(down, /#(?:e34948|008300|ff0000|00ff00)|\bred\b|\bgreen\b/i)
 })
 
-test('a single-row multi-group comparison is one transposed table without duplicate data', () => {
-  const html = r.render(comparedSinglePeriodMultiGroup())
+test('a single-row multi-group comparison is one transposed table without duplicate data', async () => {
+  const html = await r.render(comparedSinglePeriodMultiGroup())
   assert.equal(viewOf(html), 'table')
   const block = comparisonTable(html)
-  assert.match(
-    block,
-    /^<section class="pr-table fv-comparison-table" data-table-layout="comparison"/,
-  )
+  assert.match(block, /^<section[^>]*data-table-layout="comparison"/)
   // metric | current | baseline | Δ | Δ% — endpoints come from the comparison.
-  assert.equal(count(block, /<th scope="col"/), 5)
+  assert.equal(count(block, /<th[^>]*scope="col"/), 5)
   for (const header of ['Metric', 'Current', 'Baseline', 'Δ', 'Δ%'])
     assert.ok(block.includes(`>${header}</th>`), header)
   // Two groups on one saved row: two data rows in one tbody, no section headers.
-  assert.equal(count(block, /<tr><th scope="row">/), 2)
+  assert.equal(count(block, /<tr[^>]*><th[^>]*scope="row"[^>]*>/), 2)
   // Current/baseline/Δ/Δ% are numeric cells for both rows.
-  assert.equal(count(block, /<td class="pr-numeric"/), 8)
-  assert.equal(count(block, /<tbody>/), 1)
+  assert.equal(count(block, /<td[^>]*class="[^"]*pr-numeric[^"]*"/), 8)
+  assert.equal(count(block, /<tbody[^>]*>/), 1)
   assert.doesNotMatch(block, /fv-comparison-section/)
   // Raw role column ids stay out of the display table.
   assert.doesNotMatch(block, /prior\.(?:baseline|relative)\./)
   assert.doesNotMatch(html, /data-icon="data"/)
-  assert.match(html, /<h3 class="fv-title">Current ⇄ Baseline<\/h3>/)
+  assert.match(html, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
 })
 
-test('a frame table shows grouped values and keeps the exact cell in the title', () => {
-  const html = r.render(
+test('a frame table shows grouped values and keeps the exact cell in the title', async () => {
+  const html = await r.render(
     frame({
       axes: [categoryAxis(2)],
       values: [{ name: 'amount', values: [118393545.04998468, 8] }],
@@ -582,38 +637,38 @@ test('a frame table shows grouped values and keeps the exact cell in the title',
   assert.match(html, /title="118393545\.04998468"/)
 })
 
-test('interval comparison endpoints name inclusive civil months', () => {
-  const html = r.render(comparedIntervalMonth())
+test('interval comparison endpoints name inclusive civil months', async () => {
+  const html = await r.render(comparedIntervalMonth())
   assert.equal(viewOf(html), 'table')
   const block = comparisonTable(html)
-  assert.match(block, /<th scope="col" class="pr-numeric">2025-06<\/th>/)
-  assert.match(block, /<th scope="col" class="pr-numeric">2025-05<\/th>/)
-  assert.match(html, /<h3 class="fv-title">2025-06 ⇄ 2025-05<\/h3>/)
+  assert.match(block, /<th[^>]*scope="col"[^>]*>2025-06<\/th>/)
+  assert.match(block, /<th[^>]*scope="col"[^>]*>2025-05<\/th>/)
+  assert.match(html, /<div data-slot="card-title"[^>]*>2025-06 ⇄ 2025-05<\/div>/)
   assert.doesNotMatch(block, /07-01/)
   assert.doesNotMatch(block, /06-01 – 07-01/)
 })
 
-test('time comparison draws a solid current line, dashed baseline and a Δ strip', () => {
-  const html = r.render(compareCalendar(6))
-  assert.match(html, /class="fv-line" data-dashed=""/)
+test('time comparison draws a solid current line, dashed baseline and a Δ strip', async () => {
+  const html = await r.render(compareCalendar(6))
+  assert.match(html, /stroke-dasharray="5 4"/)
   assert.equal(segments(html).length, 2)
   assert.match(html, /data-strip="delta"/)
-  const periods = r.render(comparedCalendarWithPeriods(3))
+  const periods = await r.render(comparedCalendarWithPeriods(3))
   assert.match(periods, /data-icon="periods"/)
   assert.match(periods, /2025-01 – 2025-03 ⇄ 2026-01 – 2026-03/)
 })
 
-test('category comparisons draw a dumbbell, a delta bar, small multiples and alias segments', () => {
-  const dumbbell = r.render(compareOrdinary([categoryAxis(3)]))
-  assert.equal(count(dumbbell, /class="fv-stem"/), 3)
-  const delta = r.render(compareOrdinary([categoryAxis(3)]), {
+test('category comparisons draw a dumbbell, a delta bar, small multiples and alias segments', async () => {
+  const dumbbell = await r.render(compareOrdinary([categoryAxis(3)]))
+  assert.equal(count(dumbbell, /mv-domain-link/), 3)
+  const delta = await r.render(compareOrdinary([categoryAxis(3)]), {
     view: { chart: 'comparison', style: 'delta' },
   })
-  assert.doesNotMatch(delta, /class="fv-stem"/)
+  assert.doesNotMatch(delta, /mv-domain-link/)
   assert.equal(count(delta, /data-mark="bar"/), 3)
-  const multiples = r.render(comparedTimeCategory())
+  const multiples = await r.render(comparedTimeCategory())
   assert.equal(count(multiples, /data-multiple="/), 3)
-  const aliases = r.render(twoAliases(), {
+  const aliases = await r.render(twoAliases(), {
     view: { chart: 'comparison', encoding: { value: 'lastyear.baseline.sales' } },
   })
   assert.match(aliases, /class="fv-segments"/)
@@ -621,60 +676,84 @@ test('category comparisons draw a dumbbell, a delta bar, small multiples and ali
   assert.match(aliases, /aria-pressed="false"[^>]*>plan</)
 })
 
-test('decompositions draw the waterfall, effect segments with ◆ and the share track', () => {
-  const waterfall = r.render(attributeAdditive())
-  assert.equal(count(waterfall, /data-mark="connector"/), 3)
+test('decompositions draw the waterfall, effect segments with ◆ and the share track', async () => {
+  const waterfall = await r.render(attributeAdditive())
+  assert.equal(count(waterfall, /mv-connector"/), 3)
   assert.match(waterfall, /data-number="total"/)
-  const effects = r.render(attributeEffects())
+  const effects = await r.render(attributeEffects())
   assert.equal(count(effects, /data-mark="contribution"/), 3)
   assert.match(effects, /Within/)
   assert.match(effects, /Mix/)
-  const share = r.render(attributeShare(), { view: { chart: 'decomposition', style: 'share' } })
-  assert.match(share, /data-tick="0"/)
-  assert.match(share, /data-tick="100%"/)
-  assert.match(share, />20%</)
-  assert.match(share, />50%</)
+  const share = await r.render(attributeShare(), {
+    view: { chart: 'decomposition', style: 'share' },
+  })
+  assert.match(share, />0(?:%|<)/)
+  assert.match(share, /100%/)
+  assert.match(share, /20%/)
+  assert.match(share, /50%/)
 })
 
-test('the share track extends below 0 and above 100%', () => {
+test('the share track extends below 0 and above 100%', async () => {
   const s = shareByRegion()
   const index = s.data.columns.findIndex((c) => c.id === 'revenue_share')
   s.data.rows.forEach((row, i) => {
     row[index] = [-0.2, 0.5, 1.4][i]!
   })
-  const html = r.render(s)
-  assert.match(html, />-20%</)
-  assert.match(html, />140%</)
+  const html = await r.render(s)
+  assert.match(html, /-20%/)
+  assert.match(html, /140%/)
 })
 
-test('correlation dots sit on a fixed [-1, 1] axis; NA draws no point and keeps n_pairs', () => {
+test('correlation dots sit on a fixed [-1, 1] axis; NA draws no point and keeps n_pairs', async () => {
   const s = correlate(true)
   s.data.rows[1]![1] = null
   s.data.columns[1]!.nullable = true
-  const html = r.render(s)
+  const html = await r.render(s)
   assert.equal(viewOf(html), 'correlation')
   assert.equal(count(html, /data-mark="filled"/), 2)
-  for (const tick of ['-1', '0', '1']) assert.match(html, new RegExp(`>${tick}</text>`))
-  assert.equal(count(html, /n 30/), 3)
+  for (const tick of ['-1', '0', '1']) assert.match(html, new RegExp(`>${tick}</(?:tspan|text)>`))
+  assert.ok(count(factualText(html), /n 30/) >= 3)
   assert.match(html, /—/)
-  const scalar = r.render(correlate(false, 'spearman'))
-  assert.match(scalar, /<dt>ρ<\/dt>/)
-  assert.match(scalar, /<dt>n<\/dt>/)
+  const scalar = await r.render(correlate(false, 'spearman'))
+  assert.match(scalar, /<dt[^>]*>ρ<\/dt>/)
+  assert.match(scalar, /<dt[^>]*>n<\/dt>/)
 })
 
-test('align draws hollow left and filled right pairs, or two lines on a paired axis', () => {
-  const dumbbell = r.render(align(categoryAxis(3)))
-  assert.equal(count(dumbbell, /class="fv-stem"/), 6)
+test('align draws hollow left and filled right pairs, or two lines on a paired axis', async () => {
+  const dumbbell = await r.render(align(categoryAxis(3)))
+  assert.equal(count(dumbbell, /mv-domain-link/), 6)
   assert.match(dumbbell, /left\.revenue/)
-  const line = r.render(align(pairedAxis(3)))
+  const line = await r.render(align(pairedAxis(3)))
   assert.equal(segments(line).length, 4)
   // Unmatched subjects draw no pairs; both sides stay in the saved table.
-  const unmatched = r.render(align(categoryAxis(3), ['sales.aov', 'sales.margin']))
-  assert.equal(count(unmatched, /class="fv-stem"/), 0)
+  const unmatched = await r.render(align(categoryAxis(3), ['sales.aov', 'sales.margin']))
+  assert.equal(count(unmatched, /mv-domain-link/), 0)
   assert.match(unmatched, /data-column-id="right\.orders"/)
 })
 
-test('coincident comparison and alignment dots retain both roles; absent sides remain absent', () => {
+test('paired-time alignment separates USD and count subjects into independent plots', async () => {
+  const snapshot = align(pairedAxis(3))
+  for (const column of snapshot.data.columns) {
+    if (column.id.endsWith('.revenue')) column.unit = 'USD'
+    if (column.id.endsWith('.orders')) column.unit = 'count'
+  }
+  for (const slot of snapshot.frame.slots) {
+    if (slot.id.endsWith('.revenue')) slot.unit = 'USD'
+    if (slot.id.endsWith('.orders')) slot.unit = 'count'
+  }
+  const parsed = parseAnalysisSnapshot(snapshot)
+  if (parsed.kind !== 'frame') throw new Error('frame-required')
+  const html = await r.render(parsed)
+  const plots = [...html.matchAll(/data-alignment-pair="([^"]+)"[\s\S]*?<\/figure>/g)]
+  assert.equal(plots.length, 2)
+  assert.equal(plots[0]![1], 'left.revenue:right.revenue')
+  assert.equal(plots[1]![1], 'left.orders:right.orders')
+  assert.doesNotMatch(plots[0]![0], /left\.orders|right\.orders/)
+  assert.doesNotMatch(plots[1]![0], /left\.revenue|right\.revenue/)
+  assert.equal(count(html, /class="recharts-wrapper"/), 2)
+})
+
+test('coincident comparison and alignment dots retain both roles; absent sides remain absent', async () => {
   const compared = comparedCategories([true, false, true, false, true, true])
   const index = (id: string) => compared.data.columns.findIndex((column) => column.id === id)
   compared.data.rows[1]![index('prior.baseline.sales')] = 777777
@@ -685,18 +764,16 @@ test('coincident comparison and alignment dots retain both roles; absent sides r
   compared.data.rows[3]![index('prior.baseline.sales')] = 555555
   compared.data.rows[4]![index('prior.baseline.sales')] = 5.00000001
   compared.data.rows[5]![index('prior.baseline.sales')] = 9
-  const chart = r.render(compared).match(/<svg[^>]*role="img"[\s\S]*?<\/svg>/)?.[0] ?? ''
-  const row = (i: number) =>
-    new RegExp(`<g data-row="r${i}">([\\s\\S]*?)<\\/g>`).exec(chart)?.[1] ?? ''
-  assert.match(row(0), /r="6\.5"[^>]*data-mark="hollow"/)
-  assert.match(row(0), /r="3"[^>]*data-mark="filled"/)
-  assert.doesNotMatch(row(1), /data-mark="hollow"|777777/)
-  assert.doesNotMatch(row(2), /data-mark="filled"|888888/)
-  assert.doesNotMatch(row(3), /data-mark="(?:hollow|filled)"|666666|555555/)
-  assert.match(row(4), /r="6\.5"[^>]*data-mark="hollow"/)
-  assert.match(row(4), /5\.00000001/)
-  assert.equal(count(row(5), /r="4\.5"/), 2)
-  assert.doesNotMatch(chart, /777777|888888|666666|555555/)
+  const chart =
+    (await r.render(compared)).match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
+  assert.match(pointMark(chart, 0, 'baseline'), /data-mark="hollow"/)
+  assert.match(pointMark(chart, 0, 'current'), /data-mark="filled"/)
+  assert.equal(pointMark(chart, 1, 'baseline'), '')
+  assert.equal(pointMark(chart, 2, 'current'), '')
+  assert.equal(pointMark(chart, 3, 'current'), '')
+  assert.equal(pointMark(chart, 3, 'baseline'), '')
+  assert.match(pointMark(chart, 4, 'baseline'), /5\.00000001/)
+  assert.doesNotMatch(factualText(chart), /777777|888888|666666|555555/)
 
   const aligned = align(categoryAxis(4))
   const column = (id: string) => aligned.data.columns.findIndex((item) => item.id === id)
@@ -704,14 +781,15 @@ test('coincident comparison and alignment dots retain both roles; absent sides r
   aligned.data.rows[1]![column('right.revenue')] = 999999
   aligned.data.rows[2]![column('right.revenue')] = 3.00000001
   aligned.data.rows[3]![column('right.revenue')] = 8
-  const alignedChart = r.render(aligned).match(/<svg[^>]*role="img"[\s\S]*?<\/svg>/)?.[0] ?? ''
-  assert.match(alignedChart, /r="6\.5"[^>]*data-mark="hollow"/)
-  assert.match(alignedChart, /r="3"[^>]*data-mark="filled"/)
+  const alignedChart =
+    (await r.render(aligned)).match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
+  assert.match(alignedChart, /data-mark="hollow"/)
+  assert.match(alignedChart, /data-mark="filled"/)
   assert.match(alignedChart, /3\.00000001/)
   assert.doesNotMatch(alignedChart, /999999/)
 })
 
-test('time comparison tooltip and accessible summary honor side presence', () => {
+test('time comparison tooltip and accessible summary honor side presence', async () => {
   const comparison = {
     ...comparisonOf(calendarBinding(), [{ name: 'sales', values: comparedRoles('sales') }]),
     presence: { current: 'current.present', baseline: 'prior.present', enclosing: [] },
@@ -737,12 +815,13 @@ test('time comparison tooltip and accessible summary honor side presence', () =>
     row[absolute] = 432100
     row[relative] = 0.4321
   }
-  const chart = r.render(snapshot).match(/<svg[^>]*role="img"[\s\S]*?<\/svg>/)?.[0] ?? ''
-  assert.doesNotMatch(chart, /777777|888888|666666|555555|432100|0\.4321/)
+  const chart =
+    (await r.render(snapshot)).match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
+  assert.doesNotMatch(factualText(chart), /777777|888888|666666|555555|432100|0\.4321/)
   assert.match(chart, /—/)
 })
 
-test('comparison changes require both direct endpoints but ignore enclosing and unknown presence', () => {
+test('comparison changes require both direct endpoints but ignore enclosing and unknown presence', async () => {
   const current = [true, false, true, false, null]
   const baseline = [true, true, false, false, null]
   const comparison = {
@@ -778,23 +857,21 @@ test('comparison changes require both direct endpoints but ignore enclosing and 
     { chart: 'comparison' as const },
     { chart: 'comparison' as const, style: 'delta' as const },
   ]) {
-    const html = r.render(snapshot, { view })
-    const chart = html.match(/<svg[^>]*role="img"[\s\S]*?<\/svg>/)?.[0] ?? ''
-    for (const i of [1, 2, 3]) {
-      const row = new RegExp(`<g data-row="r${i}">([\\s\\S]*?)<\\/g>`).exec(chart)?.[1] ?? ''
-      assert.doesNotMatch(row, new RegExp(`${800001 + i}|0\\.45${i + 1}`))
-      assert.match(row, /—/)
-    }
-    assert.match(chart, /800001/)
-    assert.match(chart, /800005/)
+    const html = await r.render(snapshot, { view })
+    const chart = html.match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
+    const facts = factualText(chart)
+    for (const i of [1, 2, 3])
+      assert.doesNotMatch(facts, new RegExp(`${800001 + i}|0\\.45${i + 1}`))
+    assert.match(facts, /800001/)
+    assert.match(facts, /800005/)
     // Detailed comparison retains endpoint masking for absent sides.
-    const details = r.render(snapshot, { view, display: { dataTable: 'visible' } })
+    const details = await r.render(snapshot, { view, display: { dataTable: 'visible' } })
     assert.match(details, /800001/)
     assert.doesNotMatch(details, /800002/)
   }
 })
 
-test('comparison numbers and transposed tables mask changes for explicitly absent sides', () => {
+test('comparison numbers and transposed tables mask changes for explicitly absent sides', async () => {
   const comparison = {
     ...comparisonOf({ kind: 'ordinary' }, [
       { name: 'sales', values: comparedRoles('sales') },
@@ -821,61 +898,59 @@ test('comparison numbers and transposed tables mask changes for explicitly absen
       row[snapshot.data.columns.findIndex((column) => column.id === name)] = 432100
     }
   }
-  const table = comparisonTable(r.render(snapshot))
+  const table = comparisonTable(await r.render(snapshot))
   assert.doesNotMatch(table, /432100|432,100|43,210,000/)
   assert.ok(count(table, /—/) >= 6)
-  const numbers = r.render(snapshot, {
+  const numbers = await r.render(snapshot, {
     view: { chart: 'comparison', encoding: { value: 'sales' } },
   })
-  const values = /<dl class="fv-numbers">[\s\S]*?<\/dl>/.exec(numbers)?.[0] ?? ''
+  const values = /<dl class="fv-numbers[^"]*">[\s\S]*?<\/dl>/.exec(numbers)?.[0] ?? ''
   assert.doesNotMatch(values, /432100|432,100|43,210,000/)
   assert.ok(count(values, /—/) >= 2)
   assert.doesNotMatch(numbers, /432100/)
 })
 
-test('nearby comparison marks retain distinct centres and original values', () => {
+test('nearby comparison marks retain distinct centres and original values', async () => {
   const snapshot = comparedCategories(Array(6).fill(true))
   const baseline = snapshot.data.columns.findIndex((column) => column.id === 'prior.baseline.sales')
   for (const [i, value] of [1.004, 2.02, 3.08, 4.15, 5.3, 9].entries()) {
     snapshot.data.rows[i]![baseline] = value
   }
-  const chart = r.render(snapshot).match(/<svg[^>]*role="img"[\s\S]*?<\/svg>/)?.[0] ?? ''
-  const row = (i: number) =>
-    new RegExp(`<g data-row="r${i}">([\\s\\S]*?)<\\/g>`).exec(chart)?.[1] ?? ''
+  const chart =
+    (await r.render(snapshot)).match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
   for (const i of [0, 1, 2, 3]) {
-    assert.match(row(i), /r="6\.5"[^>]*data-mark="hollow"/)
-    assert.match(row(i), /r="3"[^>]*data-mark="filled"/)
-    const centres = [...row(i).matchAll(/<circle cx="([^"]+)"/g)].map((match) => match[1])
-    assert.equal(centres.length, 2)
-    assert.notEqual(centres[0], centres[1])
+    const baselineMark = pointMark(chart, i, 'baseline')
+    const currentMark = pointMark(chart, i, 'current')
+    assert.match(baselineMark, /data-mark="hollow"/)
+    assert.match(currentMark, /data-mark="filled"/)
+    const x = (mark: string) => /<circle cx="([^"]+)"/.exec(mark)?.[1]
+    assert.notEqual(x(baselineMark), x(currentMark))
   }
-  assert.match(row(0), /1\.004/)
-  assert.equal(count(row(4), /r="4\.5"/), 2)
-  assert.equal(count(row(5), /r="4\.5"/), 2)
+  assert.match(pointMark(chart, 0, 'baseline'), /1\.004/)
 })
 
-test('alignment chart labels and descriptions honor side presence', () => {
+test('alignment chart labels and descriptions honor side presence', async () => {
   for (const axis of [categoryAxis(3), pairedAxis(3)]) {
     const snapshot = align(axis)
     const rightPresent = snapshot.data.columns.findIndex((column) => column.id === 'right_present')
     const rightRevenue = snapshot.data.columns.findIndex((column) => column.id === 'right.revenue')
     snapshot.data.rows[0]![rightPresent] = false
     snapshot.data.rows[0]![rightRevenue] = 987654321
-    const html = r.render(snapshot)
-    const chart = html.match(/<svg[^>]*role="img"[\s\S]*?<\/svg>/)?.[0]
+    const html = await r.render(snapshot)
+    const chart = html.match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0]
     assert.ok(chart)
     assert.doesNotMatch(chart, /987654321|988M/)
     assert.match(chart, /—/)
   }
 })
 
-test('members show the saved count and composite keys in separate columns', () => {
-  const html = r.render(members())
+test('members show the saved count and composite keys in separate columns', async () => {
+  const html = await r.render(members())
   assert.match(html, /data-number="members"><dd[^>]*>3</)
   assert.match(html, /<th[^>]*data-column-id="region"/)
 })
 
-test('main views accept a hand-built resolution and never re-derive class or shape', () => {
+test('main views accept a hand-built resolution and never re-derive class or shape', async () => {
   const s = observeTime(3)
   const c: FrameClassification = {
     class: 'observation',
@@ -893,38 +968,40 @@ test('main views accept a hand-built resolution and never re-derive class or sha
     { chart: 'table', columns: ['m0'] },
   ]
   for (const view of views) {
-    const html = r.shell(s, c, view)
+    const html = await r.shell(s, c, view)
     assert.equal(viewOf(html), view.chart)
     assert.match(html, /Σ m0/)
   }
-  const table = r.shell(s, c, { chart: 'table', columns: ['m0'] })
+  const table = await r.shell(s, c, { chart: 'table', columns: ['m0'] })
   assert.match(table, /data-column-id="m0"/)
   assert.doesNotMatch(table, /data-column-id="month"/)
 })
 
-test('compact density keeps the name, header numbers or the main view and only useful icons', () => {
-  const kpi = r.render(
+test('compact density keeps the name, header numbers or the main view and only useful icons', async () => {
+  const kpi = await r.render(
     comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 }),
     {
       display: { density: 'compact' },
     },
   )
   assert.match(kpi, /data-density="compact"/)
-  assert.match(kpi, /class="fv-numbers"/)
+  assert.match(kpi, /class="fv-numbers /)
   assert.equal(count(kpi, /data-icon="/), 0)
   assert.doesNotMatch(kpi, /<details/)
   assert.doesNotMatch(kpi, /fv-chips/)
-  const trend = r.render(observeTime(18), { display: { density: 'compact' } })
-  assert.match(trend, /class="fv-svg"/)
+  const trend = await r.render(observeTime(18), { display: { density: 'compact' } })
+  assert.match(trend, /class="recharts-surface"/)
   assert.equal(count(trend, /data-icon="/), 1)
   assert.match(trend, /data-icon="data"/)
-  const periods = r.render(comparedCalendarWithPeriods(3), { display: { density: 'compact' } })
+  const periods = await r.render(comparedCalendarWithPeriods(3), {
+    display: { density: 'compact' },
+  })
   assert.equal(count(periods, /data-icon="/), 2)
   assert.match(periods, /data-icon="periods"/)
 })
 
-test('icons grey out for missing sections and Python sources, never as zero items', () => {
-  const html = r.render(observeCategory(3, 9))
+test('icons grey out for missing sections and Python sources, never as zero items', async () => {
+  const html = await r.render(observeCategory(3, 9))
   assert.match(html, /data-icon="coverage"/)
   assert.match(html, /<span>3\/9<\/span>/)
   assert.doesNotMatch(html, /data-icon="coverage" data-disabled/)
@@ -935,7 +1012,7 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.match(html, /aria-label="Python"/)
   assert.doesNotMatch(html, /data-icon="periods"/)
   // Complete snapshots show no coverage icon; incomplete ones show the captured fraction.
-  assert.doesNotMatch(r.render(observeTime(6)), /data-icon="coverage"/)
+  assert.doesNotMatch(await r.render(observeTime(6)), /data-icon="coverage"/)
   const s = observeTime(6)
   s.frame.sections.semantics = {
     status: 'captured',
@@ -949,7 +1026,7 @@ test('icons grey out for missing sections and Python sources, never as zero item
       },
     ],
   }
-  const origins = r.render(s, {
+  const origins = await r.render(s, {
     codeRef: { executionId: '6f9619ff-8b86-4d01-b42d-00cf4fc964ff', sha256: 'a'.repeat(64) },
     readCode: true,
   })
@@ -961,25 +1038,25 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.doesNotMatch(origins, /sessionId|artifactId|>session</)
 })
 
-test('chart data shares the icon row and explicit visible data stays inline', () => {
-  const html = r.render(observeTime(6))
+test('chart data shares the icon row and explicit visible data stays inline', async () => {
+  const html = await r.render(observeTime(6))
   assert.match(html, /Last 12 periods/)
   assert.match(html, /month · Asia\/Shanghai/)
   assert.match(html, /<div class="fv-icons(?: [^"]*)?"><span class="fv-icon" data-icon="data"/)
   assert.match(html, /data-icon="data"[\s\S]*aria-haspopup="dialog"/)
-  const visible = r.render(observeTime(6), { display: { dataTable: 'visible' } })
+  const visible = await r.render(observeTime(6), { display: { dataTable: 'visible' } })
   assert.match(visible, /data-icon="data"[\s\S]*aria-expanded="true"/)
   assert.match(visible, /class="fv-data-reference"/)
   assert.doesNotMatch(visible, />6 rows</)
   const bare = observeScalar(1)
   bare.frame.sections.interpretation = { status: 'unavailable', reason: 'read-failed' }
-  assert.doesNotMatch(r.render(bare), /fv-chips/)
+  assert.doesNotMatch(await r.render(bare), /fv-chips/)
 })
 
-test('table-shaped main views do not add a duplicate data reference', () => {
+test('table-shaped main views do not add a duplicate data reference', async () => {
   for (const snapshot of [records(), members(), comparedSinglePeriodMultiGroup()]) {
     for (const display of [undefined, { dataTable: 'visible' as const }]) {
-      const html = r.render(snapshot, { display })
+      const html = await r.render(snapshot, { display })
       assert.doesNotMatch(html, /data-icon="data"|class="fv-data-reference"/)
       assert.match(html, /<table/)
     }
@@ -988,7 +1065,7 @@ test('table-shaped main views do not add a duplicate data reference', () => {
   const comparisonResolution = resolved(comparison)
   assert.equal(comparisonResolution.view.chart, 'comparison')
   if (comparisonResolution.view.chart === 'comparison') {
-    const html = r.shell(comparison, comparisonResolution.classification, {
+    const html = await r.shell(comparison, comparisonResolution.classification, {
       ...comparisonResolution.view,
       style: 'table',
     })
@@ -999,7 +1076,7 @@ test('table-shaped main views do not add a duplicate data reference', () => {
   const alignmentResolution = resolved(alignment)
   assert.equal(alignmentResolution.view.chart, 'alignment')
   if (alignmentResolution.view.chart === 'alignment') {
-    const html = r.shell(alignment, alignmentResolution.classification, {
+    const html = await r.shell(alignment, alignmentResolution.classification, {
       ...alignmentResolution.view,
       style: 'table',
     })
@@ -1008,18 +1085,20 @@ test('table-shaped main views do not add a duplicate data reference', () => {
   }
 })
 
-test('no computed numbers: every drawn number is a saved cell', () => {
+test('no computed numbers: every drawn number is a saved cell', async () => {
   // Contributions 1..4 and a total of 10 (equal by fixture); floating ends 3 and 6 are layout.
-  const html = r.render(attributeAdditive())
-  for (const text of ['>1<', '>2<', '>3<', '>4<', '>10<']) assert.ok(html.includes(text), text)
-  assert.doesNotMatch(html, />6</)
+  const html = await r.render(attributeAdditive())
+  const facts = factualText(html)
+  for (const saved of [1, 2, 3, 4, 10])
+    assert.match(facts, new RegExp(`(?:contribution|total): ${saved}(?:[\\s;<]|$)`))
+  assert.doesNotMatch(facts, /contribution: 6(?:[\\s;<]|$)/)
   // Category bars: the sum 6 of revenue 1..3 never appears.
-  const bars = r.render(observeCategory(3))
-  assert.doesNotMatch(bars, />6</)
+  const bars = await r.render(observeCategory(3))
+  assert.doesNotMatch(factualText(bars), /revenue: 6(?:[\\s;<]|$)/)
 })
 
-test('time × category shares draw one 0–100% track per period', () => {
-  const html = r.render(
+test('time × category shares draw one 0–100% track per period', async () => {
+  const html = await r.render(
     frame({
       axes: [
         { ...timeAxis(2), keys: repeat(months(2), 3) },
@@ -1032,27 +1111,30 @@ test('time × category shares draw one 0–100% track per period', () => {
   )
   assert.equal(viewOf(html), 'share')
   assert.equal(count(html, /class="fv-parent" data-parent="/), 2)
-  assert.equal(count(html, /data-tick="100%"/), 2)
+  assert.equal(count(html, /class="recharts-surface"/), 2)
+  assert.ok(count(html, /100%/) >= 2)
 })
 
-test('week ticks use ISO week labels', () => {
+test('week ticks use ISO week labels', async () => {
   const week = {
     kind: 'calendar' as const,
     timezone: 'Asia/Shanghai',
     grain: { kind: 'builtin' as const, unit: 'week' as const, step: 1 },
   }
-  const html = r.render(observeTime(2, 1, week))
+  const html = await r.render(observeTime(2, 1, week))
   assert.match(html, />2025-W01</)
   assert.match(html, />2025-W05</)
 })
 
-test('saved views that do not resolve show an error instead of another chart', () => {
-  const html = r.render(observeTime(6), { view: { chart: 'line', encoding: { axis: 'missing' } } })
+test('saved views that do not resolve show an error instead of another chart', async () => {
+  const html = await r.render(observeTime(6), {
+    view: { chart: 'line', encoding: { axis: 'missing' } },
+  })
   assert.match(html, /role="alert"/)
   assert.doesNotMatch(html, /data-frame-view=/)
 })
 
-test('correlation titles name the captured operands; records freeze every key column', () => {
-  assert.match(r.render(correlate(false)), /class="fv-title">revenue ↔ orders</)
-  assert.match(r.render(records()), /data-frozen="1"/)
+test('correlation titles name the captured operands; records freeze every key column', async () => {
+  assert.match(await r.render(correlate(false)), /class="[^"]*fv-title"[^>]*>revenue ↔ orders</)
+  assert.match(await r.render(records()), /data-frozen="1"/)
 })

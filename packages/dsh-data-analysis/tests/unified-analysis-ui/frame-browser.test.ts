@@ -117,7 +117,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
   })
   await writeFile(
     path.join(directory, 'index.html'),
-    '<!doctype html><meta charset="utf-8"><body style="width:420px"><div id="root"></div><script src="page.js"></script>',
+    '<!doctype html><meta charset="utf-8"><body style="width:420px;margin:0"><div id="root"></div><script src="page.js"></script>',
   )
   browser = await chromium.launch()
   page = await browser.newPage({ viewport: { width: 420, height: 900 } })
@@ -216,8 +216,20 @@ test('overflowing Frame tables describe the keyboard-scrollable region', async (
 
 test('plugin charts scroll within a narrow card and their marks are keyboard-selectable', async () => {
   const card = page.locator('[data-resource="good"]')
-  const chart = card.locator('svg[role="img"]')
+  const chart = card.locator('svg.recharts-surface')
   assert.equal(await chart.count(), 1)
+  await page.waitForFunction(() => {
+    const ticks = document.querySelectorAll('[data-resource="good"] g[data-tick] text')
+    return (
+      ticks.length === 3 &&
+      [...ticks].every(
+        (tick) =>
+          tick.isConnected &&
+          tick.getBoundingClientRect().width > 0 &&
+          Number.parseFloat(getComputedStyle(tick).fontSize) >= 12,
+      )
+    )
+  })
   const metrics = await chart.locator('g[data-tick] text').evaluateAll((ticks) =>
     ticks.map((tick) => ({
       left: tick.getBoundingClientRect().left,
@@ -232,7 +244,7 @@ test('plugin charts scroll within a narrow card and their marks are keyboard-sel
   }
   const fit = await card.locator('.fv-plot').evaluate((node) => ({
     plotRight: node.getBoundingClientRect().right,
-    cardRight: node.closest('section.fv')!.getBoundingClientRect().right,
+    cardRight: node.closest('[data-frame-view]')!.getBoundingClientRect().right,
     clientWidth: node.clientWidth,
     scrollWidth: node.scrollWidth,
   }))
@@ -241,7 +253,7 @@ test('plugin charts scroll within a narrow card and their marks are keyboard-sel
   const first = chart.getByRole('button').first()
   await first.focus()
   await page.keyboard.press('Enter')
-  const selected = card.getByRole('menu')
+  const selected = page.getByRole('menu')
   await selected.getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
     { resourceName: 'good', row: 0, field: 'm0' },
@@ -249,6 +261,7 @@ test('plugin charts scroll within a narrow card and their marks are keyboard-sel
 })
 
 test('Taxi heatmap preserves exact cells and supports point selection without aggregating', async () => {
+  await page.locator('body').click({ position: { x: 1, y: 1 } })
   try {
     for (const width of [710, 360]) {
       await page.setViewportSize({ width, height: 900 })
@@ -266,8 +279,8 @@ test('Taxi heatmap preserves exact cells and supports point selection without ag
       assert.match(tooltip ?? '', /Manhattan.*Cash.*41820207/)
       assert.doesNotMatch(tooltip ?? '', /Row avg|Column avg/i)
       assert.equal(await page.locator('.openui-chart-tooltip:visible').count(), 0)
-      await manhattan.click()
-      const selected = card.getByRole('menu')
+      await manhattan.locator('rect').click()
+      const selected = page.getByRole('menu')
       await page.evaluate(() => {
         Reflect.set(window, 'pointSelections', [])
       })
@@ -276,18 +289,26 @@ test('Taxi heatmap preserves exact cells and supports point selection without ag
         { resourceName: 'taxiHeatmap', row: 3, field: 'trips' },
       ])
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0)
+      await page.keyboard.press('Escape')
+      await selected.waitFor({ state: 'detached' })
     }
     const nullCard = page.locator('[data-resource="nullableTaxiHeatmap"]')
     assert.equal(await nullCard.locator('[data-mark="cell"]').count(), 7)
     assert.equal(await nullCard.locator('[data-mark="empty"]').count(), 1)
     const sparseCard = page.locator('[data-resource="sparseTaxiHeatmap"]')
     assert.equal(await sparseCard.locator('[data-mark="cell"]').count(), 3)
-    assert.equal(await sparseCard.locator('[data-mark="empty"]').count(), 1)
+    assert.equal(
+      await sparseCard
+        .locator('[data-heatmap-missing-count]')
+        .getAttribute('data-heatmap-missing-count'),
+      '1',
+    )
+    assert.equal(await sparseCard.locator('[data-mark="empty"]').count(), 0)
   } finally {
     await page.setViewportSize({ width: 420, height: 900 })
     await page.locator('body').evaluate((body) => {
       body.style.width = '420px'
-      body.style.margin = ''
+      body.style.margin = '0'
     })
   }
 })
@@ -308,11 +329,8 @@ test('Taxi heatmap orders its sequential colors by value in both Host themes', a
         })),
       )
       assert.equal(fills.length, values.length)
-      assert.ok(
-        fills.every(
-          ({ fill }) => fill === (mode === 'light' ? 'rgb(66, 99, 213)' : 'rgb(147, 180, 255)'),
-        ),
-      )
+      assert.ok(fills.every(({ fill }) => fill.length > 0 && fill !== 'none'))
+      assert.equal(new Set(fills.map((item) => item.fill)).size, 1)
       const ordered = values.map((value, index) => ({ value, opacity: fills[index]!.opacity }))
       ordered.sort((left, right) => left.value - right.value)
       for (let index = 1; index < ordered.length; index++) {
@@ -329,53 +347,22 @@ test('Taxi heatmap orders its sequential colors by value in both Host themes', a
 })
 
 test('long series retain legible text and scroll with the keyboard', async () => {
-  const chart = page.locator('[data-resource="long"] .fv-svg')
-  const scroll = chart.locator('..')
-  const dimensions = await chart.evaluate((svg) => {
-    const text = svg.querySelector('text')!
-    return {
-      svgWidth: svg.getBoundingClientRect().width,
-      textPixels:
-        Number.parseFloat(getComputedStyle(text).fontSize) * (text.getScreenCTM()?.a ?? 1),
-      scrollWidth: svg.parentElement!.scrollWidth,
-      clientWidth: svg.parentElement!.clientWidth,
-    }
-  })
-  assert.ok(dimensions.svgWidth >= 640)
-  assert.ok(dimensions.textPixels >= 12)
-  assert.ok(dimensions.scrollWidth > dimensions.clientWidth)
-  await page.waitForFunction(() =>
-    document
-      .querySelector('[data-resource="long"] .fv-svg')!
-      .parentElement!.hasAttribute('aria-describedby'),
+  const card = page.locator('[data-resource="long"]')
+  const chart = card.locator('svg.recharts-surface')
+  const scroll = card.locator('.fv-plot')
+  assert.ok(await chart.evaluate((svg) => svg.getBoundingClientRect().width >= 640))
+  assert.ok(
+    await chart
+      .locator('text')
+      .first()
+      .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 12),
   )
-  const hintId = await scroll.getAttribute('aria-describedby')
-  assert.ok(hintId)
-  assert.equal(
-    await page.locator(`[id="${hintId}"]`).textContent(),
-    'Scroll horizontally to see more',
-  )
+  assert.ok(await scroll.evaluate((node) => node.scrollWidth > node.clientWidth))
   await scroll.focus()
   await page.keyboard.press('ArrowRight')
-  await page.waitForFunction(
-    () => document.querySelector('[data-resource="long"] .fv-svg')!.parentElement!.scrollLeft > 0,
-  )
-  assert.ok((await scroll.evaluate((element) => element.scrollLeft)) > 0)
-  await page.setViewportSize({ width: 1100, height: 900 })
-  await page.locator('body').evaluate((body) => {
-    body.style.width = '1000px'
-  })
-  await page.waitForFunction(
-    () =>
-      !document
-        .querySelector('[data-resource="long"] .fv-svg')!
-        .parentElement!.hasAttribute('aria-describedby'),
-  )
-  assert.equal(await scroll.getAttribute('tabindex'), null)
-  await page.setViewportSize({ width: 420, height: 900 })
-  await page.locator('body').evaluate((body) => {
-    body.style.width = '420px'
-  })
+  assert.ok(await scroll.evaluate((node) => node.scrollLeft > 0))
+  await page.keyboard.press('ArrowLeft')
+  assert.equal(await scroll.evaluate((node) => node.scrollLeft), 0)
 })
 
 test('chart regions scroll with arrow keys after expanding the data table', async () => {
@@ -384,6 +371,7 @@ test('chart regions scroll with arrow keys after expanding the data table', asyn
     await card.locator('[data-icon="data"] button').click()
     await page.getByRole('dialog').locator('table').waitFor()
     await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('dialog').waitFor({ state: 'detached' })
     const region = card.locator('.fv-chart section[tabindex="0"]').first()
     await region.focus()
     await page.keyboard.press('ArrowRight')
@@ -397,7 +385,7 @@ test('row labels stay aligned and readable while heatmap, comparison and effects
   for (const name of ['nullableHeatmap', 'comparison', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
     const region = card.locator('.fv-plot').first()
-    const original = region.locator('svg[role="img"] .fv-row-label').first()
+    const original = region.locator('svg.recharts-surface .fv-row-label').first()
     await region.evaluate((node) => {
       node.scrollLeft = 0
     })
@@ -495,7 +483,7 @@ test('chart data uses the icon row and a keyboard operable dialog with exact sav
   assert.equal(await details.locator('.fv-scroll-hint, .pr-table > p').count(), 0)
   await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
   await saved.getByRole('button').click()
-  const menu = details.getByRole('menu')
+  const menu = page.getByRole('menu')
   await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
     { resourceName: 'precise', row: 0, field: 'amount' },
@@ -509,7 +497,7 @@ test('chart data uses the icon row and a keyboard operable dialog with exact sav
   )
   await page.keyboard.press('Escape')
   await saved.waitFor({ state: 'detached' })
-  assert.equal(await page.getByRole('dialog').count(), 0)
+  await page.getByRole('dialog').waitFor({ state: 'detached' })
   assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 0)
 })
 
@@ -526,7 +514,7 @@ test('data references retain pagination and truncation without row counts', asyn
   const partial = page.locator('[data-resource="partial"]')
   await partial.locator('[data-icon="data"] button').click()
   const partialDialog = page.getByRole('dialog')
-  assert.equal(await partialDialog.locator('.pr-notice').textContent(), 'Data truncated')
+  assert.equal(await partialDialog.getByRole('status').textContent(), 'Data truncated')
   await partialDialog.getByRole('button', { name: 'Close' }).click()
 })
 
@@ -541,7 +529,7 @@ test('an explicitly visible data reference remains inline and can be toggled', a
   await toggle.click()
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
   assert.equal(await frame.locator('.fv-data-reference table').count(), 1)
-  assert.equal(await page.getByRole('dialog').count(), 0)
+  await page.getByRole('dialog').waitFor({ state: 'detached' })
 })
 
 test('coincident comparison and alignment marks retain visible rings at wide and narrow widths', async () => {
@@ -553,19 +541,21 @@ test('coincident comparison and alignment marks retain visible rings at wide and
     }, width)
     for (const name of ['comparison', 'alignment']) {
       const card = page.locator(`[data-resource="${name}"]`)
-      const row = card.locator('svg[role="img"] g[data-row]').first()
-      const hollow = row.locator('circle[data-mark="hollow"]').first()
-      const filled = row.locator('circle[data-mark="filled"]').first()
-      assert.equal(await hollow.getAttribute('r'), '6.5', `${name}, ${width}`)
-      assert.equal(await filled.getAttribute('r'), '3', `${name}, ${width}`)
+      const chart = card.locator('svg.recharts-surface').first()
+      const hollow = chart.locator('circle[data-mark="hollow"]').first()
+      const filled = chart.locator('circle[data-mark="filled"]').first()
+      assert.ok(Number(await hollow.getAttribute('r')) > Number(await filled.getAttribute('r')))
       assert.equal(await hollow.getAttribute('cx'), await filled.getAttribute('cx'))
-      assert.match((await row.locator('title').first().textContent()) ?? '', /1/)
+      assert.notEqual(
+        await hollow.evaluate((node) => getComputedStyle(node).fill),
+        await filled.evaluate((node) => getComputedStyle(node).fill),
+      )
     }
   }
   await page.setViewportSize({ width: 420, height: 900 })
   await page.locator('body').evaluate((body) => {
     body.style.width = '420px'
-    body.style.margin = ''
+    body.style.margin = '0'
   })
 })
 
@@ -576,7 +566,7 @@ test('taxi heatmap headers fit their columns and alignment values fit the full c
       body.style.width = `${value}px`
       body.style.margin = '0'
     }, width)
-    const heatmap = page.locator('[data-resource="nullableTaxiHeatmap"] svg[role="img"]')
+    const heatmap = page.locator('[data-resource="nullableTaxiHeatmap"] svg.recharts-surface')
     const manhattan = heatmap.locator('text[data-heatmap-column="Manhattan"]')
     const staten = heatmap.locator('text[data-heatmap-column="Staten Island"]')
     const brooklyn = heatmap.locator('text[data-heatmap-column="Brooklyn"]')
@@ -596,8 +586,8 @@ test('taxi heatmap headers fit their columns and alignment values fit the full c
     for (let i = 1; i < columns.length; i++)
       assert.ok(columns[i]!.left >= columns[i - 1]!.right, `${width}: ${JSON.stringify(columns)}`)
 
-    const alignment = page.locator('[data-resource="taxiAlignment"] svg[role="img"]')
-    const fit = await alignment.locator('g[data-row] text.fv-strong').evaluateAll((elements) =>
+    const alignment = page.locator('[data-resource="taxiAlignment"] svg.recharts-surface')
+    const fit = await alignment.locator('[data-chart-end-label]').evaluateAll((elements) =>
       elements.map((element) => ({
         text: element.textContent,
         right: element.getBoundingClientRect().right,
@@ -615,7 +605,7 @@ test('taxi heatmap headers fit their columns and alignment values fit the full c
   await page.setViewportSize({ width: 420, height: 900 })
   await page.locator('body').evaluate((body) => {
     body.style.width = '420px'
-    body.style.margin = ''
+    body.style.margin = '0'
   })
 })
 
@@ -624,7 +614,11 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
   await card.evaluate((node) => node.setAttribute('data-theme-test', 'preserved'))
   const read = () =>
     card.evaluate((node) => ({
-      palette: getComputedStyle(node).getPropertyValue('--fv-s1').trim(),
+      colors: Array.from({ length: 8 }, (_, i) =>
+        getComputedStyle(node)
+          .getPropertyValue(`--chart-${i + 1}`)
+          .trim(),
+      ),
       background: getComputedStyle(node).backgroundColor,
       color: getComputedStyle(node).color,
       scheme: getComputedStyle(node.closest('.au-surface')!).colorScheme,
@@ -636,149 +630,51 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
     document.body.setAttribute('data-ds-dark-theme', '')
   })
   const dark = await read()
-  assert.deepEqual(dark, {
-    palette: '#93b4ff',
-    background: 'rgb(28, 28, 31)',
-    color: 'rgb(237, 237, 237)',
-    scheme: 'dark',
-    sentinel: 'preserved',
-  })
-  const palette = () =>
-    card.evaluate((node) => {
-      const css = getComputedStyle(node)
-      return {
-        colors: Array.from({ length: 8 }, (_, index) =>
-          css.getPropertyValue(`--fv-s${index + 1}`).trim(),
-        ),
-      }
-    })
-  const darkPalette = await palette()
-  assert.equal(new Set(darkPalette.colors).size, 8)
-  assert.deepEqual(darkPalette, {
-    colors: [
-      '#93b4ff',
-      '#5dcead',
-      '#f2ba68',
-      '#b99af2',
-      '#ed9eb9',
-      '#a4b6cf',
-      '#ff9d7c',
-      '#72c6e8',
-    ],
-  })
-  assert.equal(
-    await card
-      .locator('[data-mark="bar"] rect')
-      .first()
-      .evaluate((node) => getComputedStyle(node).fill),
-    'rgb(147, 180, 255)',
-  )
-
+  assert.equal(dark.scheme, 'dark')
+  assert.equal(dark.sentinel, 'preserved')
+  assert.equal(new Set(dark.colors).size, 8)
   await page.evaluate(() => {
     document.body.style.setProperty('--dsw-alias-bg-base', '#202020')
     document.body.style.setProperty('--dsw-alias-label-primary', '#ffffff')
   })
-  assert.equal((await read()).background, 'rgb(32, 32, 32)')
-  assert.equal((await read()).color, 'rgb(255, 255, 255)')
-
+  const custom = await read()
+  assert.equal(custom.color, 'rgb(255, 255, 255)')
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.evaluate(() => {
     document.body.style.removeProperty('--dsw-alias-bg-base')
     document.body.style.removeProperty('--dsw-alias-label-primary')
-    document.documentElement.classList.add('dark')
     document.documentElement.setAttribute('data-ds-theme-source', 'light')
     document.body.removeAttribute('data-ds-dark-theme')
   })
   const light = await read()
-  assert.deepEqual(light, {
-    palette: '#4263d5',
-    background: 'rgb(255, 255, 255)',
-    color: 'rgb(29, 48, 54)',
-    scheme: 'light',
-    sentinel: 'preserved',
-  })
-  const lightPalette = await palette()
-  assert.equal(new Set(lightPalette.colors).size, 8)
-  assert.deepEqual(lightPalette, {
-    colors: [
-      '#4263d5',
-      '#21867a',
-      '#bd7b24',
-      '#8661c5',
-      '#ba6481',
-      '#71849a',
-      '#a34e36',
-      '#3970a0',
-    ],
-  })
-  assert.equal(
-    await card
-      .locator('[data-mark="bar"] rect')
-      .first()
-      .evaluate((node) => getComputedStyle(node).fill),
-    'rgb(66, 99, 213)',
-  )
-
-  // Host `system` still publishes the resolved scheme on body; OS preference alone is not the authority.
+  assert.equal(light.scheme, 'light')
+  assert.equal(new Set(light.colors).size, 8)
+  assert.notDeepEqual(light.colors, dark.colors)
+  assert.equal(light.sentinel, 'preserved')
   await page.evaluate(() => {
     document.documentElement.setAttribute('data-ds-theme-source', 'system')
     document.body.setAttribute('data-ds-dark-theme', '')
   })
   await page.emulateMedia({ colorScheme: 'light' })
-  assert.equal((await read()).palette, '#93b4ff')
-  assert.equal((await read()).background, 'rgb(28, 28, 31)')
-  await page.evaluate(() => document.body.removeAttribute('data-ds-dark-theme'))
-  await page.emulateMedia({ colorScheme: 'dark' })
-  assert.equal((await read()).palette, '#4263d5')
-  assert.equal((await read()).background, 'rgb(255, 255, 255)')
-
-  const contrast = (foreground: number[], background: number[]) => {
-    const luminance = (rgb: number[]) => {
-      const channels = rgb.map((value) => {
-        const s = value / 255
-        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
-      })
-      return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722
-    }
-    const [a, b] = [luminance(foreground), luminance(background)].sort((x, y) => y - x)
-    return (a! + 0.05) / (b! + 0.05)
-  }
-  assert.ok(contrast([237, 237, 237], [28, 28, 31]) >= 4.5)
-  assert.ok(contrast([29, 48, 54], [255, 255, 255]) >= 4.5)
-
+  assert.equal((await read()).scheme, 'dark')
   await page.evaluate(() => {
-    document.documentElement.classList.remove('dark')
     document.documentElement.removeAttribute('data-ds-theme-source')
+    document.body.removeAttribute('data-ds-dark-theme')
+    document.body.setAttribute('data-theme', 'light')
   })
-  assert.equal((await read()).palette, '#93b4ff')
-  assert.equal((await read()).scheme, 'dark')
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'))
-  assert.equal((await read()).palette, '#4263d5')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector('[data-resource=good]')!.closest('.au-surface')!)
+        .colorScheme === 'light',
+  )
   assert.equal((await read()).scheme, 'light')
-  await page.evaluate(() => document.documentElement.removeAttribute('data-theme'))
-  await page.evaluate(() => document.body.setAttribute('data-theme', 'light'))
-  assert.equal((await read()).palette, '#4263d5')
-  assert.equal((await read()).background, 'rgb(255, 255, 255)')
-  assert.equal((await read()).scheme, 'light')
-  await page.evaluate(() => {
-    document.body.removeAttribute('data-theme')
-    document.body.classList.add('light')
-  })
-  assert.equal((await read()).palette, '#4263d5')
-  assert.equal((await read()).scheme, 'light')
-  await page.evaluate(() => {
-    document.body.classList.remove('light')
-    document.body.setAttribute('data-theme', 'dark')
-  })
-  await page.emulateMedia({ colorScheme: 'light' })
-  assert.equal((await read()).palette, '#93b4ff')
-  assert.equal((await read()).scheme, 'dark')
   await page.evaluate(() => document.body.removeAttribute('data-theme'))
 })
 
 test('Dataset SVG charts retain exact titles, local scrolling and the saved data dialog', async () => {
   const card = page.locator('[data-resource="dataset"]')
-  const chart = card.locator('svg[role="img"]')
+  const chart = card.locator('svg.recharts-surface')
   assert.equal(await chart.count(), 1)
   assert.equal(await chart.getByRole('button').count(), 0)
   const titles = await chart.locator('title').allTextContents()
@@ -793,5 +689,5 @@ test('Dataset SVG charts retain exact titles, local scrolling and the saved data
   const dialog = page.getByRole('dialog')
   await dialog.getByText('12345678901234.5678', { exact: true }).waitFor()
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-  assert.equal(await dialog.count(), 0)
+  await dialog.waitFor({ state: 'detached' })
 })

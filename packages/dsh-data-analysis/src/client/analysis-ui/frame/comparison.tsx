@@ -4,7 +4,17 @@ import type { FrameComparison } from '../../../presentation/contracts/snapshot.t
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
-import { type DomainPoint, DomainPointMark, uniquelyBound } from './domain-point-selection.tsx'
+import { Button } from '../../ui/primitives/button.tsx'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../ui/primitives/table.tsx'
+import { color, NEUTRAL, summary } from '../charts/recharts.tsx'
+import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
 import {
   axisOf,
   cellOf,
@@ -23,25 +33,9 @@ import {
   valueAt,
   valueName,
 } from './model.ts'
-import {
-  Bar,
-  ChartFrame,
-  color,
-  Dot,
-  dotsOverlap,
-  extent,
-  LABEL_W,
-  Legend,
-  linear,
-  linePath,
-  type MainViewProps,
-  NEUTRAL,
-  summary,
-  truncate,
-  W,
-  XTicks,
-} from './svg.tsx'
+import { SavedDeltaStrip, SavedLinePlot, SavedRowPlot, type SavedSeries } from './plots.tsx'
 import { DataTable } from './table.tsx'
+import type { MainViewProps } from './types.ts'
 
 type Group = FrameComparison['groups'][number]
 export interface ComparisonRoles {
@@ -162,14 +156,18 @@ export function ComparisonTable({
   const ends = endpointLabels(t, s, head?.index ?? 0)
   const row = 0
   const side = (name: string | undefined, presence: string | undefined) => {
-    if (!name) return <td className="pr-numeric">—</td>
+    if (!name) return <TableCell className="pr-numeric text-right tabular-nums">—</TableCell>
     const column = columnOf(s, name)?.column
     const value = cellOf(s, row, name)
-    if (!present(s, row, presence)) return <td className="pr-numeric">—</td>
+    if (!present(s, row, presence))
+      return <TableCell className="pr-numeric text-right tabular-nums">—</TableCell>
     return (
-      <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
+      <TableCell
+        className="pr-numeric text-right tabular-nums"
+        title={value === null ? undefined : exact(value, column)}
+      >
         {exactValues ? exact(value, column) : compact(t.locale, value, column)}
-      </td>
+      </TableCell>
     )
   }
   const change = (roles: ComparisonRoles, kind: 'delta' | 'percent') => {
@@ -181,24 +179,27 @@ export function ComparisonTable({
         ? signed(t.locale, value, column)
         : percent(t.locale, name && bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
     return (
-      <td className="pr-numeric" title={value === null ? undefined : exact(value, column)}>
+      <TableCell
+        className="pr-numeric text-right tabular-nums"
+        title={value === null ? undefined : exact(value, column)}
+      >
         {exactValues && value !== null
           ? kind === 'percent'
             ? `${text} (${exact(value, column)} × 100)`
             : exact(value, column)
           : text}
-      </td>
+      </TableCell>
     )
   }
   const dataRows = (rows: ComparisonRoles[]) =>
     rows.map((roles) => (
-      <tr key={roles.current}>
-        <th scope="row">{valueName(s, c, roles.current!)}</th>
+      <TableRow key={roles.current}>
+        <TableHead scope="row">{valueName(s, c, roles.current!)}</TableHead>
         {side(roles.current, roles.comparison.presence?.current)}
         {side(roles.baseline, roles.comparison.presence?.baseline)}
         {change(roles, 'delta')}
         {change(roles, 'percent')}
-      </tr>
+      </TableRow>
     ))
   return (
     <>
@@ -222,42 +223,44 @@ export function ComparisonTable({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the overflow region.
         tabIndex={0}
       >
-        <table aria-label={t('marivo.presentation.ui-frame-comparison-table')}>
-          <thead>
-            <tr>
-              <th scope="col">{t('marivo.presentation.ui-frame-comparison-metric')}</th>
-              <th scope="col" className="pr-numeric">
+        <Table aria-label={t('marivo.presentation.ui-frame-comparison-table')}>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">
+                {t('marivo.presentation.ui-frame-comparison-metric')}
+              </TableHead>
+              <TableHead scope="col" className="pr-numeric text-right tabular-nums">
                 {ends.current}
-              </th>
-              <th scope="col" className="pr-numeric">
+              </TableHead>
+              <TableHead scope="col" className="pr-numeric text-right tabular-nums">
                 {ends.baseline}
-              </th>
-              <th scope="col" className="pr-numeric">
+              </TableHead>
+              <TableHead scope="col" className="pr-numeric text-right tabular-nums">
                 {t('marivo.presentation.ui-frame-comparison-delta')}
-              </th>
-              <th scope="col" className="pr-numeric">
+              </TableHead>
+              <TableHead scope="col" className="pr-numeric text-right tabular-nums">
                 {t('marivo.presentation.ui-frame-comparison-delta-percent')}
-              </th>
-            </tr>
-          </thead>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
           {sections.length > 1 ? (
             sections.map((section) => {
               const sectionEnds = endpointLabels(t, s, section.index)
               return (
-                <tbody key={section.index}>
-                  <tr className="fv-comparison-section">
-                    <th scope="rowgroup" colSpan={5}>
+                <TableBody key={section.index}>
+                  <TableRow className="fv-comparison-section">
+                    <TableHead scope="rowgroup" colSpan={5}>
                       {`${sectionEnds.current} ⇄ ${sectionEnds.baseline}`}
-                    </th>
-                  </tr>
+                    </TableHead>
+                  </TableRow>
                   {dataRows(section.rows)}
-                </tbody>
+                </TableBody>
               )
             })
           ) : (
-            <tbody>{dataRows(sections[0]?.rows ?? [])}</tbody>
+            <TableBody>{dataRows(sections[0]?.rows ?? [])}</TableBody>
           )}
-        </table>
+        </Table>
       </section>
     </>
   )
@@ -355,11 +358,13 @@ export function Numbers({
 }) {
   if (items.length === 0) return null
   return (
-    <dl className="fv-numbers">
+    <dl className="fv-numbers flex flex-wrap gap-x-6 gap-y-2">
       {items.map((item) => (
-        <div key={item.key} data-number={item.key}>
-          <dd title={item.title}>{item.value}</dd>
-          <dt>{item.label ?? ' '}</dt>
+        <div className="grid gap-1" key={item.key} data-number={item.key}>
+          <dd className="text-2xl font-semibold tabular-nums" title={item.title}>
+            {item.value}
+          </dd>
+          <dt className="text-xs text-muted-foreground">{item.label ?? ' '}</dt>
         </div>
       ))}
     </dl>
@@ -427,9 +432,15 @@ function AliasControl({
       {items.map((i) => {
         const ends = endpointLabels(t, s, i)
         return (
-          <button type="button" key={i} aria-pressed={i === active} onClick={() => onSelect(i)}>
+          <Button
+            variant={i === active ? 'secondary' : 'outline'}
+            size="sm"
+            key={i}
+            aria-pressed={i === active}
+            onClick={() => onSelect(i)}
+          >
             {ends.baseline}
-          </button>
+          </Button>
         )
       })}
     </fieldset>
@@ -504,7 +515,7 @@ function ComparisonBody({
   }
 }
 
-/** Current solid line, same-hue dashed baseline at current positions, Δ strip below. */
+/** Saved current/baseline trajectories, with an independent saved-Δ strip. */
 function CompareLine({
   s,
   roles,
@@ -528,164 +539,91 @@ function CompareLine({
   if (!axis) return null
   const { ticks, tickOf } = timeTicks(t, s, axis)
   const byTick = new Map(rows.map((row) => [tickOf(row), row]))
-  const presence = roles.comparison.presence
-  const ends = endpointLabels(t, s, index)
   const counts = new Map<number, number>()
   for (const row of rows) counts.set(tickOf(row), (counts.get(tickOf(row)) ?? 0) + 1)
+  const presence = roles.comparison.presence
+  const ends = endpointLabels(t, s, index)
   const selectionAt = (
     i: number,
     field: string | undefined,
     side: 'current' | 'baseline' | 'delta',
-  ) => {
-    if ((counts.get(i) ?? 0) !== 1) return undefined
-    const requirements = [
-      ...(presence?.enclosing ?? []),
-      ...(side !== 'baseline' ? [presence?.current] : []),
-      ...(side !== 'current' ? [presence?.baseline] : []),
-    ]
-    return point(s, byTick.get(i), field, requirements, ticks[i]?.label ?? '')
-  }
-  const series = (name: string | undefined, side: string | undefined) =>
-    ticks.map((_, i) => {
-      const row = byTick.get(i)
-      return row === undefined || !name || !present(s, row, side) ? null : valueAt(s, row, name)
-    })
-  const current = series(roles.current, presence?.current)
-  const baseline = series(roles.baseline, presence?.baseline)
-  const delta = ticks.map((_, i) => {
-    const row = byTick.get(i)
-    return row === undefined || !roles.absolute || !bothPresent(s, row, roles)
-      ? null
-      : valueAt(s, row, roles.absolute)
-  })
-  const strip = roles.absolute ? (small ? 36 : 52) : 0
-  const plotBottom = height - strip - 26
-  const top = 12
-  const left = 8
-  const right = W - (small ? 16 : 70)
-  const band = (right - left) / Math.max(ticks.length, 1)
-  const x = (i: number) => left + band * (i + 0.5)
-  const y = linear(extent([...current, ...baseline]), [plotBottom, top])
-  const dDomain = extent(delta, true)
-  const stripTop = plotBottom + 24
-  const dy = linear(dDomain, [stripTop + strip - 6, stripTop])
-  const points = (values: (number | null)[]) =>
-    values.map((v, i) => (v === null ? null : { x: x(i), y: y(v) }))
-  const col = (name?: string) => (name ? columnOf(s, name)?.column : undefined)
+  ) =>
+    counts.get(i) === 1
+      ? point(
+          s,
+          byTick.get(i),
+          field,
+          [
+            ...(presence?.enclosing ?? []),
+            ...(side !== 'baseline' ? [presence?.current] : []),
+            ...(side !== 'current' ? [presence?.baseline] : []),
+          ],
+          ticks[i]?.label ?? '',
+        )
+      : undefined
   const tip = (i: number) => {
     const row = byTick.get(i)
-    if (row === undefined) return ticks[i]!.title
     return [
-      ticks[i]!.title,
+      ticks[i]?.title ?? '',
       ...[roles.current, roles.baseline, roles.absolute, roles.relative]
-        .filter((n): n is string => !!n)
+        .filter((name): name is string => !!name)
         .map(
-          (n) => `${valueName(s, undefined, n)}: ${exact(visibleCell(s, row, roles, n), col(n))}`,
+          (name) =>
+            `${valueName(s, undefined, name)}: ${exact(row === undefined ? null : visibleCell(s, row, roles, name), columnOf(s, name)?.column)}`,
         ),
     ].join('\n')
   }
+  const make = (
+    name: string | undefined,
+    side: 'current' | 'baseline' | 'delta',
+    label: string,
+  ): SavedSeries => ({
+    key: side,
+    label,
+    color: side === 'delta' ? NEUTRAL : color(0),
+    hollow: side === 'baseline',
+    dashed: side === 'baseline',
+    values: ticks.map((_, i) => {
+      const row = byTick.get(i)
+      if (
+        row === undefined ||
+        !name ||
+        (side === 'delta' ? !bothPresent(s, row, roles) : !present(s, row, presence?.[side]))
+      )
+        return null
+      return valueAt(s, row, name)
+    }),
+    exact: tip,
+    point: (i) => selectionAt(i, name, side),
+  })
   const label = summary(
     t,
     `${ends.current} · ${ends.baseline}`,
-    ticks.map((tick, i) => {
-      const row = byTick.get(i)
-      const v = (n?: string) =>
-        row === undefined || !n ? '—' : compact(t.locale, visibleCell(s, row, roles, n), col(n))
-      return `${tick.label} ${v(roles.current)} / ${v(roles.baseline)}`
-    }),
+    ticks.map((_, i) => tip(i)),
   )
-
   return (
     <>
-      <ChartFrame
+      <SavedLinePlot
         label={label}
-        height={height}
-        legend={
-          small ? undefined : (
-            <Legend
-              items={[
-                { label: ends.current, color: color(0), shape: 'line' },
-                { label: ends.baseline, color: color(0), shape: 'dashed' },
-              ]}
-            />
-          )
-        }
-      >
-        {() => (
-          <>
-            <line x1={left} x2={right} y1={plotBottom} y2={plotBottom} className="fv-axis" />
-            <XTicks ticks={ticks} x={x} y={plotBottom} />
-            <path
-              d={linePath(points(baseline))}
-              className="fv-line"
-              data-dashed=""
-              style={{ stroke: color(0) }}
-            />
-            <path d={linePath(points(current))} className="fv-line" style={{ stroke: color(0) }} />
-            {ticks.map((tick, i) => (
-              <g key={tick.key}>
-                {baseline[i] !== null && baseline[i] !== undefined && (
-                  <DomainPointMark point={selectionAt(i, roles.baseline, 'baseline')}>
-                    <Dot
-                      x={x(i)}
-                      y={y(baseline[i]!)}
-                      fill={color(0)}
-                      hollow
-                      size={
-                        current[i] !== null &&
-                        current[i] !== undefined &&
-                        dotsOverlap(y(baseline[i]!), y(current[i]!))
-                          ? 6.5
-                          : 2.5
-                      }
-                      title={tip(i)}
-                    />
-                  </DomainPointMark>
-                )}
-                {current[i] !== null && current[i] !== undefined && (
-                  <DomainPointMark point={selectionAt(i, roles.current, 'current')}>
-                    <Dot
-                      x={x(i)}
-                      y={y(current[i]!)}
-                      fill={color(0)}
-                      hollow={tick.incomplete}
-                      size={3}
-                      title={tip(i)}
-                    />
-                  </DomainPointMark>
-                )}
-              </g>
-            ))}
-            {roles.absolute && (
-              <g data-strip="delta">
-                <line x1={left} x2={right} y1={dy(0)} y2={dy(0)} className="fv-axis" />
-                {delta.map((v, i) =>
-                  v === null ? null : (
-                    <DomainPointMark
-                      key={ticks[i]!.key}
-                      point={selectionAt(i, roles.absolute, 'delta')}
-                    >
-                      <Bar
-                        at={x(i) - Math.min(band * 0.3, 6)}
-                        breadth={Math.max(Math.min(band * 0.6, 12), 1)}
-                        from={dy(0)}
-                        to={dy(v)}
-                        fill={NEUTRAL}
-                        title={tip(i)}
-                      />
-                    </DomainPointMark>
-                  ),
-                )}
-              </g>
-            )}
-          </>
-        )}
-      </ChartFrame>
+        ticks={ticks}
+        series={[
+          make(roles.current, 'current', ends.current),
+          make(roles.baseline, 'baseline', ends.baseline),
+        ]}
+        height={height - (roles.absolute ? 64 : 0)}
+        legend={!small}
+      />
+      {roles.absolute && (
+        <SavedDeltaStrip
+          label={label}
+          ticks={ticks}
+          series={make(roles.absolute, 'delta', valueName(s, undefined, roles.absolute))}
+        />
+      )}
     </>
   )
 }
-
-/** Dumbbell (hollow baseline → filled current, Δ% at row end) or the Δ diverging bar. */
+/** Saved endpoints connected by Recharts reference segments, or a saved Δ bar. */
 function CompareRows({
   s,
   roles,
@@ -700,42 +638,56 @@ function CompareRows({
   delta: boolean
 }) {
   const t = useCopy()
-  const axes = tokens.map((token) => axisOf(s, token)).filter((a) => a !== undefined)
+  const axes = tokens.map((token) => axisOf(s, token)).filter((axis) => axis !== undefined)
   const rows = rowsOf(s)
+  const labels = rows.map((row) => membersLabel(s, axes, row))
   const presence = roles.comparison.presence
   const ends = endpointLabels(t, s, index)
-  const rowH = 24
-  const selectionAt = (
-    row: number,
-    field: string | undefined,
-    side: 'current' | 'baseline' | 'delta',
-  ) =>
-    point(
-      s,
-      row,
-      field,
-      [
-        ...(presence?.enclosing ?? []),
-        ...(side !== 'baseline' ? [presence?.current] : []),
-        ...(side !== 'current' ? [presence?.baseline] : []),
-      ],
-      membersLabel(s, axes, row),
-    )
-
-  const top = 4
-  const height = top + rows.length * rowH + 4
-  const endW = 96
-  const col = (name?: string) => (name ? columnOf(s, name)?.column : undefined)
   const get = (row: number, name?: string, side?: string) =>
     name && present(s, row, side) ? valueAt(s, row, name) : null
-  const values = delta
-    ? rows.map((row) => (bothPresent(s, row, roles) ? get(row, roles.absolute) : null))
-    : rows.flatMap((row) => [
-        get(row, roles.current, presence?.current),
-        get(row, roles.baseline, presence?.baseline),
-      ])
-  const x = linear(extent(values, delta), [LABEL_W, W - endW])
-  const endText = (row: number) =>
+  const tip = (row: number) =>
+    [
+      labels[row] ?? '',
+      ...[roles.current, roles.baseline, roles.absolute, roles.relative]
+        .filter((name): name is string => !!name)
+        .map(
+          (name) =>
+            `${valueName(s, undefined, name)}: ${exact(visibleCell(s, row, roles, name), columnOf(s, name)?.column)}`,
+        ),
+    ].join('\n')
+  const make = (
+    name: string | undefined,
+    side: 'current' | 'baseline' | 'delta',
+    label: string,
+  ): SavedSeries => ({
+    key: side,
+    label,
+    values: rows.map((row) =>
+      side === 'delta'
+        ? bothPresent(s, row, roles)
+          ? get(row, name)
+          : null
+        : get(row, name, presence?.[side]),
+    ),
+    color: side === 'delta' ? NEUTRAL : color(0),
+    hollow: side === 'baseline',
+    exact: tip,
+    point: (row) =>
+      point(
+        s,
+        row,
+        name,
+        [
+          ...(presence?.enclosing ?? []),
+          ...(side !== 'baseline' ? [presence?.current] : []),
+          ...(side !== 'current' ? [presence?.baseline] : []),
+        ],
+        labels[row] ?? '',
+      ),
+  })
+  const current = make(roles.current, 'current', ends.current)
+  const baseline = make(roles.baseline, 'baseline', ends.baseline)
+  const endLabels = rows.map((row) =>
     !bothPresent(s, row, roles)
       ? '—'
       : roles.relative
@@ -743,106 +695,35 @@ function CompareRows({
         : signed(
             t.locale,
             roles.absolute ? cellOf(s, row, roles.absolute) : null,
-            col(roles.absolute),
-          )
-  const tip = (row: number) =>
-    [membersLabel(s, axes, row)]
-      .concat(
-        [roles.current, roles.baseline, roles.absolute, roles.relative]
-          .filter((n): n is string => !!n)
-          .map(
-            (n) => `${valueName(s, undefined, n)}: ${exact(visibleCell(s, row, roles, n), col(n))}`,
+            roles.absolute ? columnOf(s, roles.absolute)?.column : undefined,
           ),
-      )
-      .join('\n')
-  const label = summary(
-    t,
-    `${ends.current} · ${ends.baseline}`,
-    rows.map((row) => `${membersLabel(s, axes, row)} ${endText(row)}`),
   )
   return (
-    <>
-      <ChartFrame
-        label={label}
-        height={height}
-        rowLabels={rows.map((row, ri) => ({
-          label: membersLabel(s, axes, row),
-          y: top + ri * rowH + rowH / 2 + 4,
-        }))}
-        legend={
-          delta ? undefined : (
-            <Legend
-              items={[
-                { label: ends.baseline, color: color(0), shape: 'hollow' },
-                { label: ends.current, color: color(0), shape: 'dot' },
-              ]}
-            />
-          )
-        }
-      >
-        {() => (
-          <>
-            {delta && <line x1={x(0)} x2={x(0)} y1={top} y2={height - 4} className="fv-axis" />}
-            {rows.map((row, ri) => {
-              const cy = top + ri * rowH + rowH / 2
-              const member = membersLabel(s, axes, row)
-              const cur = get(row, roles.current, presence?.current)
-              const base = get(row, roles.baseline, presence?.baseline)
-              const d = bothPresent(s, row, roles) ? get(row, roles.absolute) : null
-              const overlap = cur !== null && base !== null && dotsOverlap(x(cur), x(base))
-              return (
-                <g key={row} data-row={member}>
-                  <title>{tip(row)}</title>
-                  <text className="fv-row-label" x={LABEL_W - 8} y={cy + 4} textAnchor="end">
-                    {truncate(member)}
-                  </text>
-                  {delta ? (
-                    d !== null && (
-                      <DomainPointMark point={selectionAt(row, roles.absolute, 'delta')}>
-                        <Bar
-                          horizontal
-                          at={cy - 7}
-                          breadth={14}
-                          from={x(0)}
-                          to={x(d)}
-                          fill={NEUTRAL}
-                        />
-                      </DomainPointMark>
-                    )
-                  ) : (
-                    <>
-                      {cur !== null && base !== null && (
-                        <line x1={x(base)} x2={x(cur)} y1={cy} y2={cy} className="fv-stem" />
-                      )}
-                      {base !== null && (
-                        <DomainPointMark point={selectionAt(row, roles.baseline, 'baseline')}>
-                          <Dot
-                            x={x(base)}
-                            y={cy}
-                            fill={color(0)}
-                            hollow
-                            size={overlap ? 6.5 : 4.5}
-                          />
-                        </DomainPointMark>
-                      )}
-                      {cur !== null && (
-                        <DomainPointMark point={selectionAt(row, roles.current, 'current')}>
-                          <Dot x={x(cur)} y={cy} fill={color(0)} size={overlap ? 3 : 4.5} />
-                        </DomainPointMark>
-                      )}
-                    </>
-                  )}
-                  <text x={W - endW + 10} y={cy + 4} className="fv-strong">
-                    {delta && roles.relative && bothPresent(s, row, roles)
-                      ? `${signed(t.locale, roles.absolute ? cellOf(s, row, roles.absolute) : null, col(roles.absolute))}  ${endText(row)}`
-                      : endText(row)}
-                  </text>
-                </g>
-              )
-            })}
-          </>
-        )}
-      </ChartFrame>
-    </>
+    <SavedRowPlot
+      label={summary(t, `${ends.current} · ${ends.baseline}`, rows.map(tip))}
+      labels={labels}
+      series={
+        delta
+          ? [
+              make(
+                roles.absolute,
+                'delta',
+                roles.absolute ? valueName(s, undefined, roles.absolute) : '',
+              ),
+            ]
+          : [baseline, current]
+      }
+      bars={delta}
+      endLabels={endLabels}
+      links={
+        delta
+          ? undefined
+          : rows.flatMap((row) => {
+              const from = baseline.values[row]
+              const to = current.values[row]
+              return from == null || to == null ? [] : [{ from, to, index: row }]
+            })
+      }
+    />
   )
 }

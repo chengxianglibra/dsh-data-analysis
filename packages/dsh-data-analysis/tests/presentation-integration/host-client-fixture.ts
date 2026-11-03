@@ -34,7 +34,25 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     ),
   )
   // Keep the VM's Object intrinsic: its object literals must share Object.prototype.
+  // Registry replay does not mount UI; only model the stylesheet lifecycle here.
+  const styles = new Set()
+  const document = {
+    documentElement: { lang: 'zh-CN' },
+    querySelector: () => null,
+    head: { append: (style) => styles.add(style), appendChild: (style) => styles.add(style) },
+    createElement(name) {
+      if (name !== 'style') throw new Error(`Unexpected registry replay element: ${name}`)
+      return {
+        dataset: {},
+        textContent: '',
+        remove() {
+          styles.delete(this)
+        },
+      }
+    },
+  }
   const context = vm.createContext({
+    document,
     window: {
       __ModuleLoader__: {
         load(entry) {

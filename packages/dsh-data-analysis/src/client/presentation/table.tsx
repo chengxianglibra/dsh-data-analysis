@@ -2,6 +2,16 @@ import { useMemo, useState } from 'react'
 import { formatCell } from '../../presentation/contracts/index.ts'
 import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
 import { useCopy } from './../i18n/context.tsx'
+import { Button } from '../ui/controls.tsx'
+import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/primitives/table.tsx'
 import {
   cellText,
   columnIndex,
@@ -60,31 +70,35 @@ export function DatasetTable({
   return (
     <div className="pr-table">
       {((!hideCompleteScope && !hideRowCount) || data.truncated || data.rowCount === 0) && (
-        <p className={data.truncated ? 'pr-notice' : 'pr-muted'}>
-          {hideRowCount && data.truncated
-            ? t('marivo.presentation.ui-frame-data-truncated')
-            : t(datasetScope(t.locale, data))}
-        </p>
+        <Alert role="status">
+          <AlertDescription>
+            {hideRowCount && data.truncated
+              ? t('marivo.presentation.ui-frame-data-truncated')
+              : t(datasetScope(t.locale, data))}
+          </AlertDescription>
+        </Alert>
       )}
       <div
         className="pr-table-scroll"
         tabIndex={data.rows.length ? 0 : undefined}
         aria-describedby={scrollDescription}
       >
-        <table aria-label={t(caption)}>
-          <thead>
-            <tr>
+        <Table aria-label={t(caption)}>
+          <TableHeader>
+            <TableRow>
               {indices.map((index) => {
                 const column = data.columns[index]!
                 return (
-                  <th
+                  <TableHead
                     key={column.id}
                     scope="col"
                     data-column-id={column.id}
                     className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
                     aria-sort={sort?.columnId === column.id ? sort.direction : 'none'}
                   >
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       type="button"
                       aria-label={t('marivo.presentation.sort-by-value', { p0: column.label })}
                       onClick={() => {
@@ -106,15 +120,15 @@ export function DatasetTable({
                             : '↓'
                           : '↕'}
                       </span>
-                    </button>
-                  </th>
+                    </Button>
+                  </TableHead>
                 )
               })}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {shown.map((rowIndex) => (
-              <tr key={rowIndex} data-row-index={rowIndex}>
+              <TableRow key={rowIndex} data-row-index={rowIndex}>
                 {indices.map((index) => {
                   const value = data.rows[rowIndex]![index]!
                   const column = data.columns[index]!
@@ -127,7 +141,7 @@ export function DatasetTable({
                         ? display(value, column)
                         : exact
                   return (
-                    <td
+                    <TableCell
                       key={column.id}
                       data-column-id={column.id}
                       data-cell-null={value === null ? 'true' : undefined}
@@ -142,30 +156,38 @@ export function DatasetTable({
                       }
                     >
                       {selectCell && value !== null && selectableColumns?.has(column.id) ? (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           className="pr-cell-select"
                           aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${column.label}, ${text}`}
                           onClick={() => selectCell(rowIndex, column.id)}
                         >
                           {text}
-                        </button>
+                        </Button>
                       ) : (
                         text
                       )}
-                    </td>
+                    </TableCell>
                   )
                 })}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       {pages > 1 && (
         <div className="pr-pagination pr-interactive">
-          <button type="button" disabled={activePage === 0} onClick={() => setPage(activePage - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={activePage === 0}
+            onClick={() => setPage(activePage - 1)}
+          >
             {t('marivo.presentation.previous-page')}
-          </button>
+          </Button>
           <span aria-live="polite">
             {t(
               hideRowCount
@@ -178,13 +200,15 @@ export function DatasetTable({
               },
             )}
           </span>
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             type="button"
             disabled={activePage === pages - 1}
             onClick={() => setPage(activePage + 1)}
           >
             {t('marivo.presentation.next-page')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

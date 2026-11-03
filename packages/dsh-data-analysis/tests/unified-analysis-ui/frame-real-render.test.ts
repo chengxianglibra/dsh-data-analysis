@@ -24,7 +24,7 @@ test('every real Marivo Frame renders its auto view without banner text', async 
     if (snapshot.kind !== 'frame') throw new Error('frame-required')
     const resolution = resolveFrameView(snapshot)
     assert.ok(resolution.ok, name)
-    const html = r.render(snapshot).replace(/<style>[\s\S]*?<\/style>/g, '')
+    const html = (await r.render(snapshot)).replace(/<style>[\s\S]*?<\/style>/g, '')
     assert.match(html, new RegExp(`data-frame-view="${resolution.view.chart}"`), name)
     assert.match(html, /data-frame-class="[a-z]+"/, name)
     // Process facts and explanatory notes never reach the Frame view.

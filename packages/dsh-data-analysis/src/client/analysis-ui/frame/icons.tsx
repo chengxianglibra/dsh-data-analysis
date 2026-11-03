@@ -4,6 +4,14 @@ import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import { IconButton } from '../../ui/controls.tsx'
 import { DetailsDialog } from '../../ui/overlays.tsx'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../ui/primitives/table.tsx'
 import { DataActions } from '../components/result.tsx'
 import { useAnalysisResources } from '../context.tsx'
 import { SemanticOrigins, semanticObjects } from '../metadata-view.tsx'
@@ -110,13 +118,13 @@ export function CoverageIcon({ snapshot: s }: { snapshot: Snapshot }) {
         onOpen={candidate ? undefined : () => setOpen(true)}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="6" fill="none" stroke="var(--fv-grid)" strokeWidth="2.5" />
+          <circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" strokeWidth="2.5" />
           <circle
             cx="8"
             cy="8"
             r="6"
             fill="none"
-            stroke="var(--pr-accent)"
+            stroke="var(--primary)"
             strokeWidth="2.5"
             strokeDasharray={`${(share * c).toFixed(2)} ${c.toFixed(2)}`}
             transform="rotate(-90 8 8)"
@@ -153,28 +161,28 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
         disabled={!!state}
         onOpen={() => setOpen(true)}
       >
-        <span aria-hidden="true">⇄</span>
+        <FrameIcon kind="calendar" />
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         {page?.hasMore && (
           <p>{t(`${P}ui-frame-periods-captured`, { p0: items.length, p1: page.totalCount })}</p>
         )}
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">{ends.current}</th>
-              <th scope="col">{ends.baseline}</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">{ends.current}</TableHead>
+              <TableHead scope="col">{ends.baseline}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {items.map((item) => (
-              <tr key={JSON.stringify(item.key)}>
-                <td title={periodDetail(t, item.current)}>
+              <TableRow key={JSON.stringify(item.key)}>
+                <TableCell title={periodDetail(t, item.current)}>
                   {periodLabel(item.current)}
                   <br />
                   <small>{periodDetail(t, item.current)}</small>
-                </td>
-                <td title={periodDetail(t, item.baseline)}>
+                </TableCell>
+                <TableCell title={periodDetail(t, item.baseline)}>
                   {item.baseline ? (
                     <>
                       {periodLabel(item.baseline)}
@@ -186,11 +194,11 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
                       `${P}ui-frame-absent-${(item.absentReason ?? 'unmatched').replaceAll('_', '-')}`,
                     )
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </Dialog>
     </>
   )
@@ -276,7 +284,7 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
         disabled={greyed}
         onOpen={() => setOpen(true)}
       >
-        <span aria-hidden="true">{'</>'}</span>
+        <FrameIcon kind="code" />
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         {code.kind === 'ok' ? (
@@ -292,7 +300,7 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
               </FrameIconButton>
               {copied && <span role="status">{t(copied)}</span>}
             </div>
-            <pre className="fv-code">
+            <pre className="fv-code rounded-lg bg-muted p-3 text-xs">
               <code>{code.text}</code>
             </pre>
           </>

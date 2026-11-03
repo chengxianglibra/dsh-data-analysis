@@ -1,9 +1,25 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 
-import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { Button } from '../ui/controls.tsx'
+import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
+import { Badge } from '../ui/primitives/badge.tsx'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../ui/primitives/card.tsx'
+import { Empty, EmptyDescription } from '../ui/primitives/empty.tsx'
+import { Field, FieldLabel } from '../ui/primitives/field.tsx'
+import { Input } from '../ui/primitives/input.tsx'
+import { NativeSelect } from '../ui/primitives/native-select.tsx'
+import { TabsContent, TabsList, Tabs as TabsRoot, TabsTrigger } from '../ui/primitives/tabs.tsx'
+import { ToggleGroup, ToggleGroupItem } from '../ui/primitives/toggle-group.tsx'
+import { UIStyleSheet } from '../ui/theme.ts'
 import { ComputationCard } from './computation.tsx'
 import { ObjectGraph } from './graph.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
@@ -59,169 +75,205 @@ function ObjectDetail({
   const source = `${object.source.file}${object.source.line ? `:${object.source.line}` : ''}`
   const definitionFields = object.fields.filter((field) => field.value)
   return (
-    <>
-      <div className="sb-actions">
-        <Button
-          type="button"
-          className="sb-back-list"
-          onClick={() => model.patch({ selected: '' })}
-        >
-          {t('marivo.semantic.back-to-list')}
-        </Button>
-        <Button type="button" disabled={!view.history.length} onClick={() => model.back()}>
-          {t('marivo.semantic.back-to-previous-object')}
-        </Button>
-        <Button type="button" onClick={() => copy(key)}>
-          {t('marivo.semantic.copy-reference')}
-        </Button>
-        <Button
-          type="button"
-          disabled={!onAsk || questionPending}
-          onClick={onAsk}
-          title={
-            !onAsk
-              ? t('marivo.semantic.no-input-is-available-for-the-session-owning-this')
-              : undefined
-          }
-        >
-          {questionPending ? t('marivo.semantic.adding') : t('marivo.semantic.add-to-question')}
-        </Button>
-        <span role="status" className="sb-muted">
-          {t(notice)}
-        </span>
-      </div>
-      <span className="sb-badge">{t(kindLabels[object.ref.kind] ?? object.ref.kind)}</span>
-      <h2>{object.name}</h2>
-      <div className="sb-ref">{key}</div>
-      <nav className="sb-tabs" aria-label={t('marivo.semantic.object-detail-categories')}>
-        {[
-          ['overview', t('marivo.semantic.overview')],
-          ['definition', t('marivo.semantic.definition')],
-          ['relations', t('marivo.semantic.relationships-692')],
-        ].map(([tab, label]) => (
+    <Card>
+      <CardContent className="sb-detail-content">
+        <div className="sb-actions">
           <Button
+            variant="outline"
             type="button"
-            key={tab}
-            aria-pressed={view.tab === tab}
-            onClick={() => model.patch({ tab })}
+            className="sb-back-list"
+            onClick={() => model.patch({ selected: '' })}
           >
-            {t(label)}
+            {t('marivo.semantic.back-to-list')}
           </Button>
-        ))}
-      </nav>
-      {view.tab === 'overview' && (
-        <>
-          <h3>{t('marivo.semantic.business-definition')}</h3>
-          <p>{object.definition || t('marivo.semantic.no-business-definition')}</p>
-          <Fields
-            object={object}
-            objects={objects}
-            navigate={navigate}
-            fields={[
-              { name: 'domain', value: object.domain ?? t('marivo.semantic.no-domain-specified') },
-              ...object.fields.filter((field) =>
-                [
-                  'unit',
-                  'metric_type',
-                  'entity',
-                  'datasource',
-                  'backend_type',
-                  'owner',
-                  'granularity',
-                  'additivity',
-                ].includes(field.name),
-              ),
-            ]}
-          />
-          {!!object.guardrails.length && (
-            <>
-              <h3>{t('marivo.semantic.usage-constraints')}</h3>
-              <ul>
-                {[...new Set(object.guardrails)].map((text) => (
-                  <li key={text}>{text}</li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
-      )}
-      {view.tab === 'definition' && (
-        <>
-          {object.computation && (
-            <ComputationCard object={object} objects={objects} navigate={(key) => navigate(key)} />
-          )}
-          {!!definitionFields.length && (
-            <section aria-label={t('marivo.semantic.additional-properties')}>
-              <h3>
-                {object.computation
-                  ? t('marivo.semantic.additional-properties')
-                  : t('marivo.semantic.semantic-properties')}
-              </h3>
-              <Fields
-                fields={definitionFields}
+          <Button
+            variant="outline"
+            type="button"
+            disabled={!view.history.length}
+            onClick={() => model.back()}
+          >
+            {t('marivo.semantic.back-to-previous-object')}
+          </Button>
+          <Button variant="outline" type="button" onClick={() => copy(key)}>
+            {t('marivo.semantic.copy-reference')}
+          </Button>
+          <Button
+            variant="outline"
+            type="button"
+            disabled={!onAsk || questionPending}
+            onClick={onAsk}
+            title={
+              !onAsk
+                ? t('marivo.semantic.no-input-is-available-for-the-session-owning-this')
+                : undefined
+            }
+          >
+            {questionPending ? t('marivo.semantic.adding') : t('marivo.semantic.add-to-question')}
+          </Button>
+          <span role="status" className="sb-muted">
+            {t(notice)}
+          </span>
+        </div>
+        <Badge variant="secondary">{t(kindLabels[object.ref.kind] ?? object.ref.kind)}</Badge>
+        <CardHeader>
+          <CardTitle role="heading" aria-level={2}>
+            {object.name}
+          </CardTitle>
+          <CardDescription className="sb-ref">{key}</CardDescription>
+        </CardHeader>
+        <TabsRoot
+          value={view.tab}
+          onValueChange={(tab) => model.patch({ tab })}
+          activationMode="manual"
+        >
+          <TabsList className="sb-tabs" aria-label={t('marivo.semantic.object-detail-categories')}>
+            {[
+              ['overview', t('marivo.semantic.overview')],
+              ['definition', t('marivo.semantic.definition')],
+              ['relations', t('marivo.semantic.relationships-692')],
+            ].map(([tab, label]) => (
+              <TabsTrigger key={tab} value={tab}>
+                {t(label)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent
+            value="overview"
+            forceMount
+            hidden={view.tab !== 'overview'}
+            tabIndex={view.tab === 'overview' ? 0 : -1}
+          >
+            <h3>{t('marivo.semantic.business-definition')}</h3>
+            <p>{object.definition || t('marivo.semantic.no-business-definition')}</p>
+            <Fields
+              object={object}
+              objects={objects}
+              navigate={navigate}
+              fields={[
+                {
+                  name: 'domain',
+                  value: object.domain ?? t('marivo.semantic.no-domain-specified'),
+                },
+                ...object.fields.filter((field) =>
+                  [
+                    'unit',
+                    'metric_type',
+                    'entity',
+                    'datasource',
+                    'backend_type',
+                    'owner',
+                    'granularity',
+                    'additivity',
+                  ].includes(field.name),
+                ),
+              ]}
+            />
+            {!!object.guardrails.length && (
+              <>
+                <h3>{t('marivo.semantic.usage-constraints')}</h3>
+                <ul>
+                  {[...new Set(object.guardrails)].map((text) => (
+                    <li key={text}>{text}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </TabsContent>
+          <TabsContent
+            value="definition"
+            forceMount
+            hidden={view.tab !== 'definition'}
+            tabIndex={view.tab === 'definition' ? 0 : -1}
+          >
+            {object.computation && (
+              <ComputationCard
                 object={object}
                 objects={objects}
-                navigate={navigate}
+                navigate={(key) => navigate(key)}
               />
-            </section>
-          )}
-          <h3>{t('marivo.semantic.definition-location')}</h3>
-          <p className="sb-ref">{source}</p>
-          <p className="sb-ref">{object.source.symbol}</p>
-          {object.ref.kind === 'datasource' && (
-            <p className="sb-muted">
-              {t('marivo.semantic.only-the-datasource-type-is-shown-here-without-connection')}
-            </p>
-          )}
-          {object.ref.kind === 'entity' && (
-            <p className="sb-muted">
-              {t('marivo.semantic.file-sources-show-only-their-type-file-addresses-and')}
-            </p>
-          )}
-        </>
-      )}
-      {view.tab === 'relations' && (
-        <>
-          <p className="sb-muted">
-            {t(
-              'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
             )}
-          </p>
-          <Button type="button" aria-pressed={graph} onClick={() => setGraph((x) => !x)}>
-            {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
-          </Button>
-          {graph && (
-            <ObjectGraph object={object} objects={objects} navigate={(next) => navigate(next)} />
-          )}
-          {!object.relations.length && <p>{t('marivo.semantic.no-relationships-declared')}</p>}
-          <ul className="sb-relation-list">
-            {object.relations.map((relation) => {
-              const target = refKey(relation.ref),
-                related = objects.get(target)
-              return (
-                <li key={`${relation.field}/${target}`}>
-                  <span className="sb-muted">
-                    {t(fieldLabels[relation.field] ?? relation.field)}
-                  </span>
-                  <Button
-                    type="button"
-                    disabled={!related}
-                    title={target}
-                    onClick={() => navigate(target)}
-                  >
-                    {related?.name ?? target}
-                  </Button>
-                  <span className="sb-ref">
-                    {target}
-                    {!related ? t('marivo.semantic.object-not-included-in-this-catalog') : ''}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </>
-      )}
-    </>
+            {!!definitionFields.length && (
+              <section aria-label={t('marivo.semantic.additional-properties')}>
+                <h3>
+                  {object.computation
+                    ? t('marivo.semantic.additional-properties')
+                    : t('marivo.semantic.semantic-properties')}
+                </h3>
+                <Fields
+                  fields={definitionFields}
+                  object={object}
+                  objects={objects}
+                  navigate={navigate}
+                />
+              </section>
+            )}
+            <h3>{t('marivo.semantic.definition-location')}</h3>
+            <p className="sb-ref">{source}</p>
+            <p className="sb-ref">{object.source.symbol}</p>
+            {object.ref.kind === 'datasource' && (
+              <p className="sb-muted">
+                {t('marivo.semantic.only-the-datasource-type-is-shown-here-without-connection')}
+              </p>
+            )}
+            {object.ref.kind === 'entity' && (
+              <p className="sb-muted">
+                {t('marivo.semantic.file-sources-show-only-their-type-file-addresses-and')}
+              </p>
+            )}
+          </TabsContent>
+          <TabsContent
+            value="relations"
+            forceMount
+            hidden={view.tab !== 'relations'}
+            tabIndex={view.tab === 'relations' ? 0 : -1}
+          >
+            <p className="sb-muted">
+              {t(
+                'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
+              )}
+            </p>
+            <Button
+              variant="outline"
+              type="button"
+              aria-pressed={graph}
+              onClick={() => setGraph((x) => !x)}
+            >
+              {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
+            </Button>
+            {graph && (
+              <ObjectGraph object={object} objects={objects} navigate={(next) => navigate(next)} />
+            )}
+            {!object.relations.length && <p>{t('marivo.semantic.no-relationships-declared')}</p>}
+            <ul className="sb-relation-list">
+              {object.relations.map((relation) => {
+                const target = refKey(relation.ref),
+                  related = objects.get(target)
+                return (
+                  <li key={`${relation.field}/${target}`}>
+                    <span className="sb-muted">
+                      {t(fieldLabels[relation.field] ?? relation.field)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      disabled={!related}
+                      title={target}
+                      onClick={() => navigate(target)}
+                    >
+                      {related?.name ?? target}
+                    </Button>
+                    <span className="sb-ref">
+                      {target}
+                      {!related ? t('marivo.semantic.object-not-included-in-this-catalog') : ''}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </TabsContent>
+        </TabsRoot>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -233,6 +285,7 @@ export function SemanticBrowserPanel({
   onAsk,
 }) {
   const t = useCopy()
+  const domainId = useId()
 
   const navigate = (key) => model.navigate(key)
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -280,13 +333,16 @@ export function SemanticBrowserPanel({
   return (
     <section
       ref={panel}
-      className="mv-ui sb-panel"
+      className="mv-ui sb-panel bg-background"
       aria-label={t('marivo.semantic.semantic-object-browser')}
     >
+      <UIStyleSheet />
       <style>{browserStyles}</style>
       <div className="sb-shell">
-        <header className="sb-header">
-          <h1>{t('marivo.navigation.semantic-layer')}</h1>
+        <CardHeader className="sb-header">
+          <CardTitle role="heading" aria-level={1}>
+            {t('marivo.navigation.semantic-layer')}
+          </CardTitle>
           {snapshot && (
             <time className="sb-updated" dateTime={snapshot.loadedAt}>
               {t('marivo.semantic.updated')}
@@ -294,7 +350,9 @@ export function SemanticBrowserPanel({
             </time>
           )}
           <Button
+            variant="ghost"
             className="sb-refresh"
+            size="icon"
             type="button"
             aria-label={t('marivo.semantic.refresh-semantic-layer')}
             title={t('marivo.semantic.refresh-semantic-layer')}
@@ -316,51 +374,66 @@ export function SemanticBrowserPanel({
               <path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17" />
             </svg>
           </Button>
-        </header>
+        </CardHeader>
         {state.fromReport && (
-          <p className="sb-status">
-            {t('marivo.semantic.current-semantic-definitions-are-shown-here-report-data-and')}
-          </p>
+          <Alert role="status" className="sb-status">
+            <AlertDescription>
+              {t('marivo.semantic.current-semantic-definitions-are-shown-here-report-data-and')}
+            </AlertDescription>
+          </Alert>
         )}
         {workspaceError && (
-          <div role="alert" className="sb-status">
-            {t('marivo.semantic.workspace-list-unavailable-check-the-host-connection')}
-          </div>
+          <Alert variant="destructive" role="alert" className="sb-status">
+            <AlertDescription>
+              {t('marivo.semantic.workspace-list-unavailable-check-the-host-connection')}
+            </AlertDescription>
+          </Alert>
         )}
         {view.loading && (
-          <div role="status" className="sb-status">
-            {t('marivo.semantic.loading-semantic-objects')}
-            {snapshot ? t('marivo.semantic.previously-loaded-content-is-still-shown') : ''}
-          </div>
+          <Alert role="status" className="sb-status">
+            <AlertDescription>
+              {t('marivo.semantic.loading-semantic-objects')}
+              {snapshot ? t('marivo.semantic.previously-loaded-content-is-still-shown') : ''}
+            </AlertDescription>
+          </Alert>
         )}
         {view.error && (
-          <div role="alert" className="sb-status">
-            {t(view.error)}
-            {snapshot ? t('marivo.semantic.previously-loaded-content-is-still-shown-714') : ''}
-          </div>
+          <Alert variant="destructive" role="alert" className="sb-status">
+            <AlertDescription>
+              {t(view.error)}
+              {snapshot ? t('marivo.semantic.previously-loaded-content-is-still-shown-714') : ''}
+            </AlertDescription>
+          </Alert>
         )}
         {!state.workspaceId ? (
-          <div className="sb-empty">
-            {workspacePhase !== 'ready'
-              ? t('marivo.semantic.loading-workspaces')
-              : t('marivo.semantic.this-session-has-no-workspace-return-to-the-session')}
-          </div>
+          <Empty className="sb-empty">
+            <EmptyDescription>
+              {workspacePhase !== 'ready'
+                ? t('marivo.semantic.loading-workspaces')
+                : t('marivo.semantic.this-session-has-no-workspace-return-to-the-session')}
+            </EmptyDescription>
+          </Empty>
         ) : !snapshot ? (
-          <div className="sb-empty">
-            {view.loading
-              ? t('marivo.semantic.loading-object-catalog')
-              : t('marivo.semantic.object-catalog-not-loaded')}
-          </div>
+          <Empty className="sb-empty">
+            <EmptyDescription>
+              {view.loading
+                ? t('marivo.semantic.loading-object-catalog')
+                : t('marivo.semantic.object-catalog-not-loaded')}
+            </EmptyDescription>
+          </Empty>
         ) : !snapshot.objects.length && !view.selected ? (
-          <div className="sb-empty">
-            {t('marivo.semantic.this-project-has-no-semantic-objects')}
-          </div>
+          <Empty className="sb-empty">
+            <EmptyDescription>
+              {t('marivo.semantic.this-project-has-no-semantic-objects')}
+            </EmptyDescription>
+          </Empty>
         ) : (
           <div className={`sb-columns ${view.selected ? 'sb-has-selection' : ''}`}>
             <nav className="sb-nav" aria-label={t('marivo.semantic.object-categories')}>
-              <label className="sb-domain">
-                {t('marivo.semantic.domain')}
-                <select
+              <Field orientation="horizontal" className="sb-domain">
+                <FieldLabel htmlFor={domainId}>{t('marivo.semantic.domain')}</FieldLabel>
+                <NativeSelect
+                  id={domainId}
                   aria-label={t('marivo.semantic.filter-domains')}
                   value={view.domain}
                   onChange={(event) => model.patch({ domain: event.target.value, page: 0 })}
@@ -369,32 +442,31 @@ export function SemanticBrowserPanel({
                   {domains.map((domain) => (
                     <option key={domain}>{domain}</option>
                   ))}
-                </select>
-              </label>
-              <div className="sb-kinds">
-                <Button
-                  type="button"
-                  aria-pressed={!view.kind}
-                  onClick={() => model.patch({ kind: '', page: 0 })}
-                >
+                </NativeSelect>
+              </Field>
+              <ToggleGroup
+                className="sb-kinds"
+                type="single"
+                variant="outline"
+                value={view.kind || 'all'}
+                onValueChange={(kind) => {
+                  if (kind) model.patch({ kind: kind === 'all' ? '' : kind, page: 0 })
+                }}
+              >
+                <ToggleGroupItem value="all">
                   {t('marivo.semantic.all-objects')}
                   <span>{counts.total}</span>
-                </Button>
+                </ToggleGroupItem>
                 {kinds.map((kind) => (
-                  <Button
-                    type="button"
-                    key={kind}
-                    aria-pressed={view.kind === kind}
-                    onClick={() => model.patch({ kind, page: 0 })}
-                  >
+                  <ToggleGroupItem key={kind} value={kind}>
                     {t(kindLabels[kind] ?? kind)}
                     <span>{counts.byKind.get(kind) ?? 0}</span>
-                  </Button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </nav>
             <section className="sb-list" aria-label={t('marivo.semantic.object-list')}>
-              <input
+              <Input
                 className="sb-search"
                 aria-label={t('marivo.semantic.search-semantic-objects')}
                 placeholder={t('marivo.semantic.search-names-references-and-business-definitions')}
@@ -411,15 +483,16 @@ export function SemanticBrowserPanel({
                 {filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((item) => (
                   <li key={refKey(item.ref)}>
                     <Button
+                      variant={view.selected === refKey(item.ref) ? 'secondary' : 'outline'}
                       type="button"
                       aria-pressed={view.selected === refKey(item.ref)}
                       onClick={() => navigate(refKey(item.ref))}
                     >
                       <span className="sb-object-title">
                         <strong>{item.name}</strong>
-                        <span className="sb-badge">
+                        <Badge variant="secondary">
                           {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
-                        </span>
+                        </Badge>
                       </span>
                       <span className="sb-summary">
                         {item.definition || t('marivo.semantic.no-business-definition')}
@@ -432,6 +505,7 @@ export function SemanticBrowserPanel({
               {filtered.length > PAGE_SIZE && (
                 <div className="sb-pager">
                   <Button
+                    variant="outline"
                     type="button"
                     disabled={!page}
                     onClick={() => model.patch({ page: page - 1 })}
@@ -442,6 +516,7 @@ export function SemanticBrowserPanel({
                     {page + 1} / {Math.ceil(filtered.length / PAGE_SIZE)}
                   </span>
                   <Button
+                    variant="outline"
                     type="button"
                     disabled={(page + 1) * PAGE_SIZE >= filtered.length}
                     onClick={() => model.patch({ page: page + 1 })}
@@ -465,19 +540,27 @@ export function SemanticBrowserPanel({
                   navigate={navigate}
                 />
               ) : (
-                <div className="sb-empty">
-                  {view.selected ? (
-                    <>
-                      <p>{t('marivo.semantic.the-selected-object-is-no-longer-in-this-catalog')}</p>
-                      <p>{view.selected}</p>
-                      <Button type="button" onClick={() => model.patch({ selected: '' })}>
-                        {t('marivo.semantic.back-to-list')}
-                      </Button>
-                    </>
-                  ) : (
-                    t('marivo.semantic.select-an-object-to-view-its-business-definition-and')
-                  )}
-                </div>
+                <Empty className="sb-empty">
+                  <EmptyDescription>
+                    {view.selected ? (
+                      <>
+                        <p>
+                          {t('marivo.semantic.the-selected-object-is-no-longer-in-this-catalog')}
+                        </p>
+                        <p>{view.selected}</p>
+                        <Button
+                          variant="outline"
+                          type="button"
+                          onClick={() => model.patch({ selected: '' })}
+                        >
+                          {t('marivo.semantic.back-to-list')}
+                        </Button>
+                      </>
+                    ) : (
+                      t('marivo.semantic.select-an-object-to-view-its-business-definition-and')
+                    )}
+                  </EmptyDescription>
+                </Empty>
               )}
             </section>
           </div>

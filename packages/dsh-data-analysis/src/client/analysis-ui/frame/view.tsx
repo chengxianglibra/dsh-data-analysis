@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type FrameClassification,
   type FrameDisplay,
@@ -11,6 +11,10 @@ import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
+import { Badge } from '../../ui/primitives/badge.tsx'
+import { Button } from '../../ui/primitives/button.tsx'
+import { CardContent } from '../../ui/primitives/card.tsx'
+import { Popover, PopoverAnchor, PopoverContent } from '../../ui/primitives/popover.tsx'
 import { MetricGroup, ResultCard, ResultHeader } from '../components/result.tsx'
 import { useAnalysisResources } from '../context.tsx'
 import { AlignmentView } from './alignment.tsx'
@@ -321,25 +325,33 @@ export function FrameShell({
   const selected = !candidate && selection?.snapshot === s ? selection : undefined
   const menuRef = useRef<HTMLDivElement>(null)
   const originRef = useRef<HTMLElement | SVGElement | null>(null)
-  useEffect(() => {
-    if (!selected) return
-    const menu = menuRef.current
-    if (menu) {
-      const rect = menu.getBoundingClientRect()
-      setMenuPosition((position) => ({
-        x: Math.max(8, Math.min(position.x, window.innerWidth - rect.width - 8)),
-        y: Math.max(8, Math.min(position.y, window.innerHeight - rect.height - 8)),
-      }))
-      menu.querySelector('button')?.focus()
+  const originScopeRef = useRef<Element | null>(null)
+  const modalRequestFocus = useRef(false)
+  const closeReason = useRef<'escape' | 'tab' | 'outside'>('outside')
+  const originPointRef = useRef<{ row: number; field: string }>()
+  const scopeId = useId()
+  const restorePointOrigin = () => {
+    const point = originPointRef.current
+    const scope = originScopeRef.current?.isConnected
+      ? originScopeRef.current
+      : document.querySelector(`[data-frame-scope="${scopeId}"]`)
+    const original = originRef.current
+    if (original?.isConnected) {
+      original.focus()
+      return
     }
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Element && !event.target.closest('.fv-point-menu')) {
-        setSelection(undefined)
-      }
-    }
-    document.addEventListener('pointerdown', dismiss)
-    return () => document.removeEventListener('pointerdown', dismiss)
-  }, [selected])
+    if (!scope || !point) return
+    const target = [
+      ...scope.querySelectorAll<HTMLElement | SVGElement>('[data-frame-point], .pr-cell-select'),
+    ].find(
+      (node) =>
+        node.getAttribute('data-frame-point') === `${point.row}:${point.field}` ||
+        (node.closest('[data-row-index]')?.getAttribute('data-row-index') === String(point.row) &&
+          node.closest('[data-column-id]')?.getAttribute('data-column-id') === point.field),
+    )
+    target?.focus()
+    if (target) originRef.current = target
+  }
   useEffect(() => {
     if (!selected || (status !== 'added' && status !== 'failed')) return
     const origin = originRef.current
@@ -347,7 +359,10 @@ export function FrameShell({
       menuRef.current?.querySelector('button')?.focus()
   }, [selected, status])
   const pointPosition = useRef({ x: 0, y: 0 })
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 })
+  const virtualAnchor = useRef({
+    getBoundingClientRect: () =>
+      new DOMRect(pointPosition.current.x, pointPosition.current.y, 0, 0),
+  })
   const selectable = useMemo(
     () =>
       !candidate && askPoint && resourceName
@@ -358,9 +373,13 @@ export function FrameShell({
               if (!Number.isInteger(row) || row < 0 || row >= s.data.rows.length || index < 0)
                 return
               if (s.data.rows[row]?.[index] == null) return
+              modalRequestFocus.current = false
+              closeReason.current = 'outside'
+              originPointRef.current = { row, field }
+              originScopeRef.current =
+                originRef.current?.closest('[role="dialog"], [data-frame-scope]') ?? null
               requestRevision.current++
               setStatus(undefined)
-              setMenuPosition(pointPosition.current)
               setSelection({ snapshot: s, row, field })
             },
           }
@@ -389,43 +408,92 @@ export function FrameShell({
   const showData = (!compactDensity || showMain) && !mainIsTable
   const dataLabel = t('marivo.presentation.ui-frame-data-table')
   const pointMenu = selected && (
-    <div
-      className="fv-point-menu"
-      ref={menuRef}
-      role="menu"
-      style={{ left: menuPosition.x, top: menuPosition.y }}
+    <Popover
+      open
+      onOpenChange={(open) => {
+        if (!open) setSelection(undefined)
+      }}
     >
-      <button
-        type="button"
-        role="menuitem"
-        aria-disabled={status === 'pending' || undefined}
-        aria-busy={status === 'pending' || undefined}
-        onClick={() => {
-          if (status === 'pending' || !askPoint || !resourceName) return
-          const revision = ++requestRevision.current
-          setStatus('pending')
-          void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
-            () => {
-              if (requestRevision.current === revision) setStatus('added')
-            },
-            () => {
-              if (requestRevision.current === revision) setStatus('failed')
-            },
-          )
+      <PopoverAnchor virtualRef={virtualAnchor} />
+      <PopoverContent
+        className="fv-point-menu w-auto"
+        ref={menuRef}
+        role="menu"
+        align="start"
+        side="bottom"
+        sticky="always"
+        collisionPadding={8}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          if (closeReason.current === 'escape') requestAnimationFrame(restorePointOrigin)
+        }}
+        onFocusOutside={(event) => {
+          const target = event.target
+          const origin = originRef.current
+          if (
+            modalRequestFocus.current ||
+            (target instanceof Element && (target === origin || target === origin?.closest('svg')))
+          ) {
+            event.preventDefault()
+            if (modalRequestFocus.current)
+              requestAnimationFrame(() => menuRef.current?.querySelector('button')?.focus())
+          }
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          menuRef.current?.querySelector('button')?.focus()
+        }}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          closeReason.current = 'escape'
+          setSelection(undefined)
+          restorePointOrigin()
+          requestAnimationFrame(restorePointOrigin)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Tab') {
+            closeReason.current = 'tab'
+            setSelection(undefined)
+            restorePointOrigin()
+          }
         }}
       >
-        {t('marivo.presentation.ui-frame-ask-point')}
-      </button>
-      {status && status !== 'pending' && (
-        <p role="status">
-          {t(
-            status === 'added'
-              ? 'marivo.presentation.ui-frame-ask-added'
-              : 'marivo.presentation.ui-frame-ask-failed',
-          )}
-        </p>
-      )}
-    </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          role="menuitem"
+          aria-disabled={status === 'pending' || undefined}
+          aria-busy={status === 'pending' || undefined}
+          onClick={() => {
+            if (status === 'pending' || !askPoint || !resourceName) return
+            const revision = ++requestRevision.current
+            modalRequestFocus.current = !!originRef.current?.closest('[role="dialog"],dialog[open]')
+            setStatus('pending')
+            void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
+              () => {
+                if (requestRevision.current === revision) setStatus('added')
+              },
+              () => {
+                if (requestRevision.current === revision) setStatus('failed')
+              },
+            )
+          }}
+        >
+          {t('marivo.presentation.ui-frame-ask-point')}
+        </Button>
+        {status && status !== 'pending' && (
+          <p role="status">
+            {t(
+              status === 'added'
+                ? 'marivo.presentation.ui-frame-ask-added'
+                : 'marivo.presentation.ui-frame-ask-failed',
+            )}
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
   )
   const dataTable =
     c.class === 'comparison' ? (
@@ -446,6 +514,7 @@ export function FrameShell({
   return (
     <FrameSelectionContext.Provider value={selectable}>
       <ResultCard
+        data-frame-scope={scopeId}
         data-resource={resourceName}
         data-resource-kind="frame"
         data-frame-class={c.class}
@@ -468,51 +537,13 @@ export function FrameShell({
         }}
         onKeyDownCapture={(event) => {
           if (
-            event.key === 'Tab' &&
-            selected &&
-            event.target instanceof Element &&
-            event.target.closest('.fv-point-menu')
-          ) {
-            event.preventDefault()
-            setSelection(undefined)
-            const origin = originRef.current
-            const scope = origin?.closest('[role="dialog"], dialog[open], .fv')
-            const controls = scope
-              ? [
-                  ...scope.querySelectorAll<HTMLElement | SVGElement>(
-                    'button, a[href], input, select, textarea, [tabindex]',
-                  ),
-                ].filter(
-                  (node) =>
-                    node.tabIndex >= 0 &&
-                    !node.hasAttribute('disabled') &&
-                    !node.closest('[hidden], .fv-point-menu') &&
-                    node.getClientRects().length > 0,
-                )
-              : []
-            const index = origin ? controls.indexOf(origin) : -1
-            const next =
-              index < 0
-                ? event.shiftKey
-                  ? controls.length - 1
-                  : 0
-                : (index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length
-            const target = controls[next] ?? origin
-            target?.focus()
-            return
-          }
-          if (event.key === 'Escape' && selected) {
-            event.preventDefault()
-            setSelection(undefined)
-            originRef.current?.focus()
-          }
-          if (
             (event.key === 'Enter' || event.key === ' ') &&
             !(event.target instanceof Element && event.target.closest('.fv-point-menu'))
           ) {
             const target = event.target
             if (target instanceof HTMLElement || target instanceof SVGElement)
               originRef.current = target
+            ;(target as Element).scrollIntoView({ block: 'nearest', inline: 'nearest' })
             const rect = (target as Element).getBoundingClientRect()
             pointPosition.current = { x: rect.left, y: rect.bottom }
           }
@@ -529,81 +560,89 @@ export function FrameShell({
             ) : undefined
           }
         />
-        {!compactDensity && s.frame.description && <p className="fv-desc">{s.frame.description}</p>}
-        {!compactDensity && chips.length > 0 && (
-          <ul className="fv-chips">
-            {chips.map((chip) => (
-              <li key={chip.label} title={chip.title}>
-                {chip.label}
-              </li>
-            ))}
-          </ul>
-        )}
-        {compactDensity && decomposition?.restricted && (
-          <p className="au-result-status" role="status">
-            {t('marivo.presentation.ui-frame-restricted-scope')}
-          </p>
-        )}
-        {!s.coverage.complete && (
-          <p className="au-result-status" role="status">
-            {t('marivo.presentation.ui-capture-range', {
-              p0: s.coverage.capturedRows,
-              p1: s.coverage.totalRows,
-            })}
-          </p>
-        )}
-        {numbers.length > 0 && <Numbers items={numbers} />}
-        {view.chart === 'comparison' ? (
-          <ComparisonView
+        <CardContent className="space-y-4 min-w-0">
+          {!compactDensity && s.frame.description && (
+            <p className="fv-desc text-sm text-muted-foreground">{s.frame.description}</p>
+          )}
+          {!compactDensity && chips.length > 0 && (
+            <ul className="fv-chips flex flex-wrap gap-2">
+              {chips.map((chip) => (
+                <li key={chip.label}>
+                  <Badge variant="secondary" title={chip.title}>
+                    {chip.label}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+          {compactDensity && decomposition?.restricted && (
+            <p className="au-result-status" role="status">
+              {t('marivo.presentation.ui-frame-restricted-scope')}
+            </p>
+          )}
+          {!s.coverage.complete && (
+            <p className="au-result-status" role="status">
+              {t('marivo.presentation.ui-capture-range', {
+                p0: s.coverage.capturedRows,
+                p1: s.coverage.totalRows,
+              })}
+            </p>
+          )}
+          {numbers.length > 0 && <Numbers items={numbers} />}
+          {view.chart === 'comparison' ? (
+            <ComparisonView
+              snapshot={s}
+              classification={c}
+              view={view}
+              height={display?.height}
+              numbers={comparisonNumbers}
+              body={showMain}
+              control={!compactDensity}
+            />
+          ) : (
+            showMain && (
+              <MainView snapshot={s} classification={c} view={view} height={display?.height} />
+            )
+          )}
+          {!(showData && !inlineData && dataOpen) && pointMenu}
+          <IconRow
             snapshot={s}
-            classification={c}
             view={view}
-            height={display?.height}
-            numbers={comparisonNumbers}
-            body={showMain}
-            control={!compactDensity}
+            codeRef={codeRef}
+            compact={compactDensity}
+            dataControl={
+              showData ? (
+                <FrameIconButton
+                  kind="data"
+                  label={dataLabel}
+                  tip={dataLabel}
+                  expanded={inlineData ? dataOpen : undefined}
+                  hasPopup={inlineData ? undefined : 'dialog'}
+                  onOpen={
+                    candidate
+                      ? undefined
+                      : () => setDataState({ inline: inlineData, open: !dataOpen })
+                  }
+                >
+                  <FrameIcon kind="table" />
+                </FrameIconButton>
+              ) : undefined
+            }
           />
-        ) : (
-          showMain && (
-            <MainView snapshot={s} classification={c} view={view} height={display?.height} />
-          )
-        )}
-        {!(showData && !inlineData && dataOpen) && pointMenu}
-        <IconRow
-          snapshot={s}
-          view={view}
-          codeRef={codeRef}
-          compact={compactDensity}
-          dataControl={
-            showData ? (
-              <FrameIconButton
-                kind="data"
-                label={dataLabel}
-                tip={dataLabel}
-                expanded={inlineData ? dataOpen : undefined}
-                hasPopup={inlineData ? undefined : 'dialog'}
-                onOpen={
-                  candidate
-                    ? undefined
-                    : () => setDataState({ inline: inlineData, open: !dataOpen })
-                }
-              >
-                <FrameIcon kind="table" />
-              </FrameIconButton>
-            ) : undefined
-          }
-        />
-        {showData && inlineData && dataOpen && <div className="fv-data-reference">{dataTable}</div>}
-        {showData && !inlineData && (
-          <Dialog
-            title={dataLabel}
-            open={dataOpen}
-            onClose={() => setDataState({ inline: false, open: false })}
-          >
+          {showData && inlineData && dataOpen && (
             <div className="fv-data-reference">{dataTable}</div>
-            {pointMenu}
-          </Dialog>
-        )}
+          )}
+          {showData && !inlineData && (
+            <Dialog
+              title={dataLabel}
+              open={dataOpen}
+              onClose={() => setDataState({ inline: false, open: false })}
+            >
+              <div className="fv-data-reference">{dataTable}</div>
+              {pointMenu}
+            </Dialog>
+          )}
+        </CardContent>
       </ResultCard>
     </FrameSelectionContext.Provider>
   )

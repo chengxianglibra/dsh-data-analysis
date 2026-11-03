@@ -82,7 +82,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     const fullCard = page.locator('[data-resource="full"]')
     await fullCard.locator('[data-icon="periods"] button').click()
-    const dialog = fullCard.getByRole('dialog')
+    const dialog = page.getByRole('dialog')
     assert.match(
       (await dialog.locator('tbody tr').first().locator('td').nth(0).textContent()) ?? '',
       /2025-01/,
@@ -96,7 +96,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await dialog.getByRole('button', { name: 'Close' }).click()
     const truncatedCard = page.locator('[data-resource="truncated"]')
     await truncatedCard.locator('[data-icon="periods"] button').click()
-    const truncatedDialog = truncatedCard.getByRole('dialog')
+    const truncatedDialog = page.getByRole('dialog')
     await truncatedDialog.getByText('Captured 3 / 4 period correspondences.').waitFor()
     assert.equal((await truncatedDialog.locator('thead').innerText()).trim(), 'Current\tBaseline')
   } finally {

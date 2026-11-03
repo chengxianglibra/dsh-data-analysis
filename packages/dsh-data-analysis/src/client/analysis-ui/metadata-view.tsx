@@ -2,6 +2,7 @@ import type { FrameSections } from '../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { sourceSemanticRef } from '../presentation/source-facts.ts'
 import { kindLabels } from '../semantic-browser/labels.ts'
+import { Button } from '../ui/controls.tsx'
 import { useAnalysisResources } from './context.tsx'
 
 type Semantics = FrameSections['semantics']
@@ -30,9 +31,9 @@ function OriginItem({ origin }: { origin: Origin }) {
   return (
     <li>
       {ref && openSemanticRef ? (
-        <button type="button" onClick={() => openSemanticRef(ref)}>
+        <Button variant="link" type="button" onClick={() => openSemanticRef(ref)}>
           {label}
-        </button>
+        </Button>
       ) : (
         <span>{label}</span>
       )}
@@ -45,7 +46,7 @@ export function SemanticOrigins({ section }: { section: Semantics }) {
   const t = useCopy()
   if (section.status === 'unavailable')
     return (
-      <p className="pr-muted">
+      <p className="text-muted-foreground">
         {t(`marivo.presentation.ui-metadata-unavailable-${section.reason}`)}
       </p>
     )

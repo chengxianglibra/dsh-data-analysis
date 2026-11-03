@@ -447,18 +447,14 @@ test('Dataset chart programs save, reopen and update embedded data after capture
   assert.deepEqual((await readReceiptDocument(f.root, updated.receipt)).resources, saved.resources)
 })
 
-test('additive Dataset Catalog retains preceding Frame and Dataset reports while rejecting unknown builds', async (t) => {
+test('only the current Catalog reads Frame and Dataset reports', async (t) => {
   const f = await fixture(t)
   const previous = '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
   for (const resource of ['frame', 'data'] as const) {
     const delivery = await f.present({ resources: { [resource]: f.resources[resource] } })
     const saved = await readReceiptDocument(f.root, delivery.receipt)
-    assert.equal(
-      parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build: previous } }).program,
-      saved.program,
-    )
-    assert.throws(() =>
-      parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build: 'unknown' } }),
-    )
+    assert.equal(parseAnalysisDocument(saved).program, saved.program)
+    for (const build of [previous, 'unknown'])
+      assert.throws(() => parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build } }))
   }
 })

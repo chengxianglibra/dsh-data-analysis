@@ -1,16 +1,26 @@
+import { CartesianGrid, ReferenceLine, Scatter, ScatterChart, XAxis, YAxis } from 'recharts'
 import { useCopy } from '../../i18n/context.tsx'
 import {
-  SelectableMark,
   HBarChart as SharedHBarChart,
   Heatmap as SharedHeatmap,
   TimeChart as SharedTimeChart,
 } from '../charts/observation.tsx'
+import {
+  ChartFrame,
+  color,
+  coordinates,
+  ExactTooltip,
+  Legend,
+  MemberTick,
+  numericDomain,
+  summary,
+} from '../charts/recharts.tsx'
 import { frameChartModel } from './chart-model.ts'
+import { DomainPointMark } from './domain-point-selection.tsx'
 import {
   axisOf,
   cellOf,
   columnOf,
-  compact,
   exact,
   groupRows,
   memberLabel,
@@ -21,38 +31,8 @@ import {
   valueAt,
   valueName,
 } from './model.ts'
-import {
-  Bar,
-  ChartFrame,
-  color,
-  Dot,
-  END_W,
-  LABEL_W,
-  Legend,
-  linear,
-  type MainViewProps,
-  summary,
-  truncate,
-  W,
-} from './svg.tsx'
-
-export function MetricCards({ snapshot: s, classification: c, view }: MainViewProps<'metric'>) {
-  const t = useCopy()
-  return (
-    <div className="fv-cards">
-      {view.values.map((name) => {
-        const column = columnOf(s, name)?.column
-        const value = cellOf(s, 0, name)
-        return (
-          <div key={name} data-value={name}>
-            {view.values.length > 1 && <span>{valueName(s, c, name)}</span>}
-            <strong title={exact(value, column)}>{compact(t.locale, value, column)}</strong>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+import { SavedRowPlot } from './plots.tsx'
+import type { MainViewProps } from './types.ts'
 
 export function TimeChart(props: MainViewProps<'line' | 'area' | 'bar' | 'interval-bar'>) {
   const t = useCopy()
@@ -84,127 +64,85 @@ export function Heatmap(props: MainViewProps<'heatmap'>) {
     />
   )
 }
-/** Coefficients on a fixed [-1, 1] axis with a zero line; NA draws no point. */
+/** Saved coefficients on a fixed [-1, 1] domain; no fit or statistic is computed here. */
 export function CorrelationPlot({
   snapshot: s,
   classification: c,
   view,
 }: MainViewProps<'correlation'>) {
   const t = useCopy()
-  const axes = s.frame.axes
   const rows = rowsOf(s)
-  const rowH = 26
-  const top = 16
-  const height = top + rows.length * rowH + 18
-  const x = linear([-1, 1], [LABEL_W, W - END_W - 30])
-  const columnFor = (name: string) => columnOf(s, name)?.column
+  const labels = rows.map((row) => membersLabel(s, s.frame.axes, row))
+  const tip = (row: number, name: string) =>
+    `${labels[row] ?? ''} · ${valueName(s, c, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}${view.counts[name] ? ` · n ${exact(cellOf(s, row, view.counts[name]!), columnOf(s, view.counts[name]!)?.column)}` : ''}`
   const label = summary(
     t,
-    view.values.map((n) => valueName(s, c, n)).join(' · '),
-    rows.flatMap((row) =>
-      view.values.map(
-        (name) =>
-          `${axes.length ? `${membersLabel(s, axes, row)} ` : ''}${compact(t.locale, cellOf(s, row, name), columnFor(name))}`,
-      ),
-    ),
+    view.values.map((name) => valueName(s, c, name)).join(' · '),
+    rows.map((row) => view.values.map((name) => tip(row, name)).join(' / ')),
   )
   return (
     <ChartFrame
       label={label}
-      height={height}
-      rowLabels={
-        axes.length
-          ? rows.map((row, ri) => ({
-              label: membersLabel(s, axes, row),
-              y: top + ri * rowH + rowH / 2 + 4,
-            }))
-          : undefined
-      }
+      height={Math.max(160, rows.length * 28 + 48)}
       legend={
         <Legend
-          items={view.values.map((name, i) => ({
+          items={view.values.map((name, index) => ({
             label: valueName(s, c, name),
-            color: color(i),
-            shape: 'dot' as const,
+            color: color(index),
+            shape: 'dot',
           }))}
         />
       }
     >
-      {() => (
-        <>
-          {[-1, 0, 1].map((tick) => (
-            <g key={tick}>
-              <line
-                x1={x(tick)}
-                x2={x(tick)}
-                y1={top - 4}
-                y2={height - 16}
-                className={tick === 0 ? 'fv-axis' : 'fv-grid'}
-              />
-              <text x={x(tick)} y={height - 4} textAnchor="middle">
-                {tick}
-              </text>
-            </g>
-          ))}
-          {rows.map((row, ri) => {
-            const cy = top + ri * rowH + rowH / 2
-            const member = axes.length ? membersLabel(s, axes, row) : ''
-            return (
-              <g key={row} data-row={member}>
-                {member && (
-                  <text className="fv-row-label" x={LABEL_W - 8} y={cy + 4} textAnchor="end">
-                    {truncate(member)}
-                  </text>
-                )}
-                <line x1={x(-1)} x2={x(1)} y1={cy} y2={cy} className="fv-grid" />
-                {view.values.map((name, vi) => {
-                  const v = valueAt(s, row, name)
-                  const value = cellOf(s, row, name)
-                  const n = view.counts[name]
-                  const nValue = n ? cellOf(s, row, n) : undefined
-                  return (
-                    <g key={name}>
-                      {v !== null && (
-                        <SelectableMark
-                          row={row}
-                          field={name}
-                          label={`${member} · ${valueName(s, c, name)}: ${exact(value, columnFor(name))}${nValue === undefined ? '' : ` · n ${nValue === null ? '—' : String(nValue)}`}`}
-                        >
-                          <Dot
-                            x={x(Math.max(-1, Math.min(1, v)))}
-                            y={cy}
-                            fill={color(vi)}
-                            size={5}
-                            title={`${valueName(s, c, name)}: ${exact(value, columnFor(name))}`}
-                          />
-                        </SelectableMark>
-                      )}
-                      {vi === 0 && (
-                        <text x={W - END_W - 16} y={cy + 4} className="fv-strong">
-                          {view.values
-                            .map((m) => compact(t.locale, cellOf(s, row, m), columnFor(m)))
-                            .join(' · ')}
-                          {nValue !== undefined && (
-                            <tspan
-                              className="fv-n"
-                              dx="6"
-                            >{`n ${nValue === null ? '—' : String(nValue)}`}</tspan>
-                          )}
-                        </text>
-                      )}
-                    </g>
-                  )
-                })}
-              </g>
-            )
-          })}
-        </>
-      )}
+      <ScatterChart
+        title={label}
+        desc={label}
+        margin={{ top: 12, right: 32, bottom: 8, left: 8 }}
+        accessibilityLayer
+      >
+        <CartesianGrid horizontal={false} />
+        <XAxis type="number" dataKey="x" domain={[-1, 1]} ticks={[-1, 0, 1]} />
+        <YAxis
+          type="number"
+          dataKey="y"
+          domain={[-0.5, Math.max(0.5, rows.length - 0.5)]}
+          ticks={rows}
+          tick={<MemberTick labels={labels} />}
+          reversed
+          width={140}
+          interval={0}
+        />
+        <ReferenceLine x={0} stroke="var(--border)" />
+        <ExactTooltip textAt={(row) => view.values.map((name) => tip(row, name)).join('\n')} />
+        {view.values.map((name, vi) => (
+          <Scatter
+            key={name}
+            name={valueName(s, c, name)}
+            data={rows.flatMap((index) => {
+              const value = valueAt(s, index, name)
+              return value === null ? [] : [{ index, x: value, y: index }]
+            })}
+            isAnimationActive={false}
+            shape={(input) => {
+              const p = coordinates(input)
+              const row = p?.payload?.index
+              if (!p || typeof row !== 'number') return <g />
+              return (
+                <DomainPointMark point={{ row, field: name, label: tip(row, name) }}>
+                  <g>
+                    <title>{tip(row, name)}</title>
+                    <circle cx={p.cx} cy={p.cy} r={4} fill={color(vi)} data-mark="filled" />
+                  </g>
+                </DomainPointMark>
+              )
+            }}
+          />
+        ))}
+      </ScatterChart>
     </ChartFrame>
   )
 }
-
-/** Shares on a 0–100% track that extends below 0 or above 100% when values do. */
+/** Saved shares use a track from 0 to 100%; values outside that range remain visible. */
 export function ShareTrack({
   snapshot: s,
   classification: c,
@@ -217,106 +155,40 @@ export function ShareTrack({
   labelOf?: (row: number) => string
 }) {
   const t = useCopy()
-  const rowH = 20 * values.length + 8
-  const top = 6
-  const height = top + rows.length * rowH + 18
-  const all = rows.flatMap((row) => values.map((name) => valueAt(s, row, name)))
-  const finite = all.filter((v): v is number => v !== null)
-  const domain: [number, number] = [Math.min(0, ...finite), Math.max(1, ...finite)]
-  const x = linear(domain, [LABEL_W, W - END_W])
-  const label = summary(
-    t,
-    values.map((n) => valueName(s, c, n)).join(' · '),
-    rows.flatMap((row) =>
-      values.map(
-        (name) => `${labelOf?.(row) ?? ''} ${percent(t.locale, valueAt(s, row, name), false)}`,
-      ),
-    ),
-  )
+  const labels = rows.map((row) => labelOf?.(row) ?? '')
+  const series = values.map((name) => ({
+    key: name,
+    label: valueName(s, c, name),
+    values: rows.map((row) => valueAt(s, row, name)),
+    exact: (index: number) =>
+      `${labels[index] ?? ''} · ${valueName(s, c, name)}: ${exact(cellOf(s, rows[index]!, name), columnOf(s, name)?.column)}`,
+    point: (index: number) => ({
+      row: rows[index]!,
+      field: name,
+      label: `${labels[index] ?? ''} · ${valueName(s, c, name)}: ${exact(cellOf(s, rows[index]!, name), columnOf(s, name)?.column)}`,
+    }),
+  }))
+  const domain = numericDomain([0, 1, ...series.flatMap((line) => line.values)])
   return (
-    <ChartFrame
-      label={label}
-      height={height}
-      rowLabels={
-        labelOf
-          ? rows.map((row, ri) => ({
-              label: labelOf(row),
-              y: top + ri * rowH + 4 + rowH / 2,
-            }))
-          : undefined
-      }
-      legend={
-        <Legend
-          items={values.map((name, i) => ({ label: valueName(s, c, name), color: color(i) }))}
-        />
-      }
-    >
-      {() => (
-        <>
-          {[0, 1].map((tick) => (
-            <g key={tick} data-tick={tick === 0 ? '0' : '100%'}>
-              <line x1={x(tick)} x2={x(tick)} y1={top} y2={height - 14} className="fv-axis" />
-              <text x={x(tick)} y={height - 2} textAnchor="middle">
-                {tick === 0 ? '0' : '100%'}
-              </text>
-            </g>
-          ))}
-          {rows.map((row, ri) => {
-            const y0 = top + ri * rowH + 4
-            const member = labelOf?.(row) ?? ''
-            return (
-              <g key={row} data-row={member}>
-                {member && (
-                  <text className="fv-row-label" x={LABEL_W - 8} y={y0 + rowH / 2} textAnchor="end">
-                    {truncate(member)}
-                  </text>
-                )}
-                {values.map((name, vi) => {
-                  const v = valueAt(s, row, name)
-                  const by = y0 + vi * 20
-                  return (
-                    <g key={name}>
-                      <rect
-                        x={x(0)}
-                        y={by + 3}
-                        width={x(1) - x(0)}
-                        height={10}
-                        rx="5"
-                        className="fv-track"
-                      />
-                      {v !== null && (
-                        <SelectableMark
-                          row={row}
-                          field={name}
-                          label={`${member} · ${valueName(s, c, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}`}
-                        >
-                          <Bar
-                            horizontal
-                            at={by + 3}
-                            breadth={10}
-                            from={x(0)}
-                            to={x(v)}
-                            fill={color(vi)}
-                            title={`${member} · ${valueName(s, c, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}`}
-                          />
-                        </SelectableMark>
-                      )}
-                      <text
-                        x={Math.max(x(1), v === null ? 0 : x(v)) + 6}
-                        y={by + 12}
-                        className="fv-strong"
-                      >
-                        {percent(t.locale, v, false)}
-                      </text>
-                    </g>
-                  )
-                })}
-              </g>
-            )
-          })}
-        </>
+    <SavedRowPlot
+      label={summary(
+        t,
+        values.map((name) => valueName(s, c, name)).join(' · '),
+        rows.map(
+          (row, index) =>
+            `${labels[index]} ${values.map((name) => percent(t.locale, valueAt(s, row, name), false)).join(' / ')}`,
+        ),
       )}
-    </ChartFrame>
+      labels={labels}
+      series={series}
+      bars
+      domain={domain}
+      reference={1}
+      tickFormatter={(value) => percent(t.locale, value, false)}
+      endLabels={rows.map((row) =>
+        values.map((name) => percent(t.locale, valueAt(s, row, name), false)).join(' · '),
+      )}
+    />
   )
 }
 

@@ -63,16 +63,16 @@ after(async () => {
 const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
 
 test('single-row multi-group comparison renders one transposed table by default', async () => {
-  assert.equal(await page.locator('section.fv').count(), 1)
-  assert.equal(await page.locator('section.fv').getAttribute('data-frame-view'), 'table')
+  assert.equal(await page.locator('[data-frame-view]').count(), 1)
+  assert.equal(await page.locator('[data-frame-view]').getAttribute('data-frame-view'), 'table')
   const table = page.locator('[data-table-layout="comparison"]')
   assert.equal(await table.locator('thead th').count(), 5)
   assert.equal(await table.locator('tbody tr').count(), 2)
   const text = await table.innerText()
   assert.doesNotMatch(text, /prior\.(?:baseline|absolute|relative)\./)
-  assert.match(await page.locator('section.fv h3').innerText(), /⇄/)
-  assert.equal(await page.locator('section.fv table').count(), 1)
-  assert.equal(await page.locator('section.fv [data-icon="data"]').count(), 0)
+  assert.match(await page.locator('[data-frame-view] [data-slot=card-title]').innerText(), /⇄/)
+  assert.equal(await page.locator('[data-frame-view] table').count(), 1)
+  assert.equal(await page.locator('[data-frame-view] [data-icon="data"]').count(), 0)
   assert.ok((await overflow()) <= 1)
 })
 
@@ -128,5 +128,5 @@ test('narrow comparison preserves long labels and exposes exact saved values', a
   const cell = table.locator('td[title]').first()
   assert.ok(await cell.getAttribute('title'))
   assert.equal(await toolbar.getByRole('button', { name: 'Show exact values' }).count(), 0)
-  assert.equal(await page.locator('section.fv [data-icon="data"]').count(), 0)
+  assert.equal(await page.locator('[data-frame-view] [data-icon="data"]').count(), 0)
 })

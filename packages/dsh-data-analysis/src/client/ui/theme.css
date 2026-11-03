@@ -1,0 +1,211 @@
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css" source(none);
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@source "../";
+@source not "./styles.generated.ts";
+@custom-variant dark (&:is(.mv-ui[data-mv-theme="dark"], .mv-ui[data-mv-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --radius-xs: calc(var(--radius) - 6px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:where(.mv-ui) {
+  --mv-fallback-bg: oklch(1 0 0);
+  --mv-fallback-soft: oklch(0.97 0 0);
+  --mv-fallback-text: oklch(0.145 0 0);
+  --mv-fallback-muted: oklch(0.556 0 0);
+  --mv-fallback-border: oklch(0.922 0 0);
+  --mv-fallback-accent: oklch(0.205 0 0);
+  --mv-fallback-on-accent: oklch(0.985 0 0);
+  --mv-fallback-danger: oklch(0.577 0.245 27.325);
+  --mv-fallback-warning: oklch(0.55 0.14 70);
+  --mv-fallback-success: oklch(0.5 0.13 155);
+  --mv-bg: var(--dsw-alias-bg-base, var(--mv-fallback-bg));
+  --mv-soft: var(--dsw-alias-bg-module-platform, var(--mv-fallback-soft));
+  --mv-text: var(--dsw-alias-label-primary, var(--mv-fallback-text));
+  --mv-muted: var(--dsw-alias-label-secondary, var(--mv-fallback-muted));
+  --mv-border: var(--dsw-alias-border-l2, var(--mv-fallback-border));
+  --mv-accent: var(--dsw-alias-state-business-primary, var(--mv-fallback-accent));
+  --mv-on-accent: var(--mv-fallback-on-accent);
+  --mv-focus: var(--mv-accent);
+  --mv-control-border: var(--mv-border);
+  --mv-accent-soft: color-mix(in oklch, var(--mv-accent) 10%, var(--mv-bg));
+  --mv-warning: var(--dsw-alias-state-warn-label, var(--mv-fallback-warning));
+  --mv-warning-soft: color-mix(in oklch, var(--mv-warning) 10%, var(--mv-bg));
+  --mv-danger: var(--mv-fallback-danger);
+  --mv-danger-soft: color-mix(in oklch, var(--mv-danger) 10%, var(--mv-bg));
+  --mv-success: var(--mv-fallback-success);
+  --mv-success-soft: color-mix(in oklch, var(--mv-success) 10%, var(--mv-bg));
+  --background: var(--mv-bg);
+  --foreground: var(--mv-text);
+  --card: var(--mv-bg);
+  --card-foreground: var(--mv-text);
+  --popover: var(--mv-bg);
+  --popover-foreground: var(--mv-text);
+  --primary: var(--mv-accent);
+  --primary-foreground: var(--mv-on-accent);
+  --secondary: var(--mv-soft);
+  --secondary-foreground: var(--mv-text);
+  --muted: var(--mv-soft);
+  --muted-foreground: var(--mv-muted);
+  --accent: var(--mv-soft);
+  --accent-foreground: var(--mv-text);
+  --destructive: var(--mv-danger);
+  --border: var(--mv-border);
+  --input: var(--mv-border);
+  --ring: var(--mv-focus);
+  --radius: 0.625rem;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --chart-6: oklch(0.55 0.18 305);
+  --chart-7: oklch(0.6 0.2 350);
+  --chart-8: oklch(0.5 0.14 140);
+  color: var(--foreground);
+  font:
+    14px / 1.5 system-ui,
+    sans-serif;
+  letter-spacing: normal;
+  color-scheme: light;
+  min-width: 0;
+  max-width: 100%;
+}
+.mv-ui[data-mv-theme="dark"],
+[data-theme="dark"] .mv-ui,
+.mv-ui[data-theme="dark"],
+body[data-ds-dark-theme] .mv-ui {
+  --mv-fallback-bg: oklch(0.145 0 0);
+  --mv-fallback-soft: oklch(0.269 0 0);
+  --mv-fallback-text: oklch(0.985 0 0);
+  --mv-fallback-muted: oklch(0.708 0 0);
+  --mv-fallback-border: oklch(1 0 0 / 10%);
+  --mv-fallback-accent: oklch(0.922 0 0);
+  --mv-fallback-on-accent: oklch(0.205 0 0);
+  --mv-fallback-danger: oklch(0.704 0.191 22.216);
+  --mv-fallback-warning: oklch(0.8 0.13 85);
+  --mv-fallback-success: oklch(0.75 0.13 155);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --chart-6: oklch(0.75 0.14 210);
+  --chart-7: oklch(0.75 0.1 120);
+  --chart-8: oklch(0.8 0.12 55);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-ds-theme-source]):not([data-theme="light"])
+    .mv-ui:not([data-theme="light"]):not([data-mv-theme="light"]):not(
+      :where([data-theme="light"] *, [data-mv-theme="light"] *)
+    ) {
+    --mv-fallback-bg: oklch(0.145 0 0);
+    --mv-fallback-soft: oklch(0.269 0 0);
+    --mv-fallback-text: oklch(0.985 0 0);
+    --mv-fallback-muted: oklch(0.708 0 0);
+    --mv-fallback-border: oklch(1 0 0 / 10%);
+    --mv-fallback-accent: oklch(0.922 0 0);
+    --mv-fallback-on-accent: oklch(0.205 0 0);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --chart-6: oklch(0.75 0.14 210);
+    --chart-7: oklch(0.75 0.1 120);
+    --chart-8: oklch(0.8 0.12 55);
+    color-scheme: dark;
+  }
+}
+/* A scoped baseline replaces global Preflight; Host elements are never reset. */
+:where(.mv-ui, .mv-ui *, .mv-ui ::before, .mv-ui ::after) {
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 0;
+  border-color: var(--border);
+}
+:where(.mv-ui) :where(button, input, select, textarea) {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background-color: transparent;
+  opacity: 1;
+}
+:where(.mv-ui) :where(button, [role="button"]) {
+  cursor: pointer;
+}
+:where(.mv-ui) :where(button:disabled) {
+  cursor: default;
+}
+:where(.mv-ui) :where(p, h1, h2, h3, h4, h5, h6, figure, blockquote, dd) {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+:where(.mv-ui) :where(table) {
+  border-collapse: collapse;
+}
+:where(.mv-ui) :where(svg) {
+  display: block;
+}
+:where(.mv-ui) :where(code, pre) {
+  font-family: ui-monospace, monospace;
+}
+:where(.mv-ui) :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mv-ui [hidden] {
+  display: none;
+}
+.mv-ui .mv-dialog-body {
+  min-width: 0;
+  max-height: min(70vh, calc(100dvh - 8rem));
+  overflow: auto;
+}
+.mv-ui .mv-dialog-body :where(pre, .pr-table-scroll) {
+  max-width: 100%;
+  overflow: auto;
+}
+.mv-ui.mv-host-dialog {
+  width: min(48rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}

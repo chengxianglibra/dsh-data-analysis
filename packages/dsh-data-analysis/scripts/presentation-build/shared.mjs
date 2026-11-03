@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -60,7 +62,42 @@ export async function thirdPartyNotices(meta) {
     const parts = absolute.slice(index + marker.length).split(path.sep)
     packageRoots.add(prefix + parts.slice(0, parts[0]?.startsWith('@') ? 2 : 1).join(path.sep))
   }
+  if (
+    Object.keys(meta.inputs).some((input) =>
+      input.replaceAll('\\', '/').endsWith('/ui/styles.generated.ts'),
+    )
+  ) {
+    const require = createRequire(path.join(packageRoot, 'package.json'))
+    for (const name of ['tailwindcss', 'tw-animate-css', 'shadcn']) {
+      const root = (require.resolve.paths(name) ?? [])
+        .map((base) => path.join(base, name))
+        .find((candidate) => existsSync(path.join(candidate, 'package.json')))
+      if (!root) throw new Error(`missing-generated-css-source:${name}`)
+      packageRoots.add(root)
+    }
+  }
   const notices = []
+  if (
+    Object.keys(meta.inputs).some((input) =>
+      /src\/client\/ui\/primitives\//.test(input.replaceAll('\\', '/')),
+    )
+  ) {
+    notices.push({
+      package: 'shadcn/ui copied source',
+      version: 'radix-nova (2026-11-03)',
+      license: 'MIT',
+      files: [
+        {
+          file: 'LICENSE.md',
+          sourceUrl: 'https://github.com/shadcn-ui/ui/blob/main/LICENSE.md',
+          text: await readFile(
+            new URL('./third-party/shadcn-ui-LICENSE.txt', import.meta.url),
+            'utf8',
+          ),
+        },
+      ],
+    })
+  }
   const seen = new Set()
   for (const root of [...packageRoots].sort()) {
     const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
@@ -84,6 +121,16 @@ export async function thirdPartyNotices(meta) {
         'https://raw.githubusercontent.com/remarkjs/remark-math/rehype-katex%407.0.1/license',
     }
     const sourceUrl = omittedLicenses[`${metadata.name}@${metadata.version}`]
+    if (!files.length && metadata.name.startsWith('@radix-ui/') && metadata.license === 'MIT') {
+      files.push({
+        file: 'LICENSE',
+        sourceUrl: 'https://github.com/radix-ui/primitives/blob/main/LICENSE',
+        text: await readFile(
+          new URL('./third-party/radix-ui-LICENSE.txt', import.meta.url),
+          'utf8',
+        ),
+      })
+    }
     if (!files.length && sourceUrl) {
       files.push({
         file: 'LICENSE.txt',

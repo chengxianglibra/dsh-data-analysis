@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { type Browser, chromium, type Page } from 'playwright'
 import type { FrameView } from '../../src/presentation/contracts/frame-view.ts'
 import {
   type AnalysisSnapshot,
@@ -14,6 +15,20 @@ import { datasetSnapshot } from './dataset-fixtures.ts'
 import { frameSnapshot } from './fixtures.ts'
 
 let directory: string
+let browser: Browser
+let page: Page
+let chartSequence = 0
+async function renderChart(snapshot: AnalysisSnapshot, view: FrameView) {
+  await page.evaluate(
+    ({ snapshot, view, sequence }) => {
+      Reflect.get(window, 'renderDataset')(snapshot, view, sequence)
+    },
+    { snapshot, view, sequence: ++chartSequence },
+  )
+  await page.locator('.recharts-surface').waitFor()
+  await page.locator('[data-mark]').first().waitFor()
+  return page.locator('#root').innerHTML()
+}
 let render: (
   snapshot: AnalysisSnapshot,
   semantic?: boolean,
@@ -47,6 +62,7 @@ export function render(snapshot, semantic, view, candidate) {
     bundle: true,
     platform: 'node',
     format: 'esm',
+    define: { 'process.env.NODE_ENV': '"production"' },
     jsx: 'automatic',
     banner: {
       js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
@@ -54,8 +70,35 @@ export function render(snapshot, semantic, view, candidate) {
     logLevel: 'silent',
   })
   ;({ render, renderOrigins } = await import(pathToFileURL(outfile).href))
+  const chartFile = path.join(directory, 'chart.js')
+  await build({
+    stdin: {
+      contents: `import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { AnalysisDataView } from './src/client/analysis-ui/data-view.tsx';
+import { AnalysisResources } from './src/client/analysis-ui/context.tsx';
+import { UIStyleSheet } from './src/client/ui/theme.ts';
+const root = createRoot(document.getElementById('root'));
+window.renderDataset = (snapshot, view, sequence) => root.render(createElement('div', {className:'mv-ui'}, createElement(UIStyleSheet), createElement(AnalysisResources.Provider,
+  {key:sequence,value:{candidate:false, readResource:()=>({kind:'snapshot',snapshot,binding:{}})}},
+  createElement(AnalysisDataView,{kind:snapshot.kind,resourceName:'result',view}))));`,
+      resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+    },
+    outfile: chartFile,
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    logLevel: 'silent',
+  })
+  browser = await chromium.launch()
+  page = await browser.newPage({ viewport: { width: 1000, height: 800 } })
+  await page.setContent('<div id="root"></div>')
+  await page.addScriptTag({ path: chartFile })
 })
 after(async () => {
+  await browser?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 })
 
@@ -194,10 +237,10 @@ test('semantic origins show distinct concrete objects and exclude datasource and
   assert.equal((html.match(/<button/g) ?? []).length, 2)
 })
 
-test('Dataset line/area/bar share Frame SVG rendering and keep exact tooltips and null gaps', () => {
+test('Dataset line/area/bar share Recharts rendering and keep exact tooltips and null gaps', async () => {
   const snapshot = datasetSnapshot()
   for (const chart of ['line', 'area', 'bar'] as const) {
-    const html = render(snapshot, false, {
+    const html = await renderChart(snapshot, {
       chart,
       encoding: { axis: 'category', values: ['value'] },
     })
@@ -208,7 +251,7 @@ test('Dataset line/area/bar share Frame SVG rendering and keep exact tooltips an
     assert.doesNotMatch(html, /role="alert"/)
     assert.match(html, /aria-haspopup="dialog"/)
   }
-  const area = render(
+  const area = await renderChart(
     datasetSnapshot([
       ['A', '1'],
       ['B', '2'],
@@ -216,13 +259,14 @@ test('Dataset line/area/bar share Frame SVG rendering and keep exact tooltips an
       ['D', '3'],
       ['E', '4'],
     ]),
-    false,
     { chart: 'area', encoding: { axis: 'category', values: ['value'] } },
   )
-  assert.equal((area.match(/class="fv-area"/g) ?? []).length, 2)
+  assert.match(area, /recharts-area-area/)
+  const areaPath = await page.locator('.recharts-area-area').getAttribute('d')
+  assert.equal((areaPath?.match(/M/g) ?? []).length, 2, 'saved null splits the area into two paths')
 })
 
-test('Dataset dense float plots retain SVG marks and saved tooltips', () => {
+test('Dataset dense float plots retain Recharts marks and saved tooltips', async () => {
   const snapshot = datasetSnapshot(
     [
       ['A', 1],
@@ -235,17 +279,17 @@ test('Dataset dense float plots retain SVG marks and saved tooltips', () => {
     ],
   )
   for (const chart of ['line', 'area', 'bar'] as const) {
-    const html = render(snapshot, false, {
+    const html = await renderChart(snapshot, {
       chart,
       encoding: { axis: 'category', values: ['value'] },
     })
-    assert.match(html, /<svg class="fv-svg"/)
+    assert.match(html, /recharts-surface/)
     assert.match(html, /<title>A\nValue: 1<\/title>/)
     assert.doesNotMatch(html, /data-chart-engine="openui"/)
   }
 })
 
-test('Dataset heatmap retains raw large keys, exact values and empty combinations', () => {
+test('Dataset heatmap retains raw large keys, exact values and empty combinations', async () => {
   const snapshot = datasetSnapshot(
     [
       ['9007199254740993', 'A', '1.2300'],
@@ -257,7 +301,7 @@ test('Dataset heatmap retains raw large keys, exact values and empty combination
       { id: 'value', label: 'Value', type: 'decimal', nullable: true },
     ],
   )
-  const html = render(snapshot, false, {
+  const html = await renderChart(snapshot, {
     chart: 'heatmap',
     encoding: { x: 'x', y: 'y', value: 'value' },
   })
@@ -265,7 +309,14 @@ test('Dataset heatmap retains raw large keys, exact values and empty combination
   assert.match(html, /9007199254740993/)
   assert.match(html, /9007199254740992/)
   assert.match(html, /1\.2300/)
-  assert.equal((html.match(/data-mark="empty"/g) ?? []).length, 3)
+  const grid = page.locator('[data-heatmap-missing-count]')
+  const missing = Number(await grid.getAttribute('data-heatmap-missing-count'))
+  const nulls = Number(await grid.getAttribute('data-heatmap-null-count'))
+  assert.equal(missing, 2)
+  assert.equal(nulls, 1)
+  assert.equal(missing + nulls, 3)
+  assert.equal(await page.locator('[data-mark="cell"]').count(), 1)
+  assert.equal(await page.locator('[data-mark="empty"]').count(), 1)
 })
 
 test('invalid Dataset views fail in saved rendering and fall back only in streaming candidates', () => {

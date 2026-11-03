@@ -212,7 +212,11 @@ presentation integration runner 使用隔离 Workspace、真实 Tool dispatch �
 
 client 使用 esbuild 打包 Browser source 与共享 contracts 等依赖，DSH/React 保持外部依赖，
 由 DSH module loader 提供；构建检查拒绝第二份 Host React、Node 与 Runtime 模块。
-不再构建 portable/static 离线 renderer；实际打包依赖保留许可证，不增加公开 npm subpath。
+UI 基于官方 shadcn/ui radix-nova 源码和 Recharts；Tailwind 在构建期生成限定在插件作用域的样式，
+禁用全局 Preflight。同一 CSS 字符串模块进入 CJS module-loader 与 ESM composition 产物，
+Host lifecycle 与独立阅读根共用按 Document 引用计数的样式注册，最后一个 owner 卸载时清理。
+组件只在明确的 Host 接入边界使用原生 Modal，不引入第二套 modal 服务。
+不再构建 portable/static 离线 renderer；实际打包依赖及复制的 shadcn 源码均保留许可证，不增加公开 npm subpath。
 
 ## 凭证通知的连接接入
 

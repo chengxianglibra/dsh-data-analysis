@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { CardContent, Card as CardPrimitive } from '../ui/primitives/card.tsx'
 
 export interface LayoutProps {
   direction?: 'row' | 'column'
@@ -60,21 +61,31 @@ export function Card({
 }: LayoutProps & { variant?: 'card' | 'sunk' | 'clear' }) {
   return (
     <div className="au-card-scope">
-      <div
-        className={`au-card openui-card openui-card-${variant}`}
+      <CardPrimitive
+        className="au-card"
         data-variant={variant}
         data-direction={props.direction ?? 'column'}
         data-wrap={props.wrap ? 'true' : undefined}
-        style={flexStyle({ ...props, children })}
       >
-        {children}
-      </div>
+        <CardContent className="au-card-content" style={flexStyle({ ...props, children })}>
+          {children}
+        </CardContent>
+      </CardPrimitive>
     </div>
   )
 }
 
 export const LAYOUT_STYLES = `
-.au-surface .au-stack,.au-surface .au-card-scope,.au-surface .au-card,.au-surface .au-tabs{min-width:0;max-width:100%;width:100%}.au-surface .au-card-scope{container:mv-card/inline-size}.au-surface .au-card{padding:16px;border:1px solid var(--mv-border);border-radius:10px;background:var(--mv-bg)}.au-surface .au-card[data-variant=sunk]{background:var(--mv-soft)}.au-surface .au-card[data-variant=clear]{padding:0;border:0;background:transparent}.au-surface .au-stack[data-direction=row]>:is(.fv,.au-data,.au-card-scope,.au-tabs){flex:1 1 260px;width:auto;min-width:0}.au-surface .au-card[data-direction=row]>*{min-width:0}.au-tabs>[role=tablist]{display:flex;gap:8px;overflow-x:auto;max-width:100%;padding:4px;margin-bottom:16px}.au-tabs>[role=tablist]>[role=tab]{flex:none;min-height:32px;padding:4px 10px;border:1px solid transparent;border-bottom:2px solid transparent;border-radius:6px 6px 0 0;background:transparent;color:var(--mv-muted);font:14px/22px system-ui,sans-serif;cursor:pointer}.au-tabs>[role=tablist]>[aria-selected=true]{color:var(--mv-accent);border-bottom-color:var(--mv-accent);font-weight:600}.au-tabs>[role=tablist]>[role=tab]:hover{background:var(--mv-soft)}.au-tabs>[role=tabpanel]{min-width:0}.au-tabs>[role=tabpanel]>div+div{margin-top:16px}.au-tabs>[role=tabpanel][hidden]{display:none}
-@container mv-card (width < 480px){.au-card:not([data-variant=clear]){padding:12px}}
-@container mv-surface (width < 480px){.au-surface-content>h1{font-size:18px;line-height:26px}}
+.au-surface .au-stack,.au-surface .au-card-scope,.au-surface .au-card,.au-surface [data-slot=tabs]{min-width:0;max-width:100%;width:100%}
+.au-surface .au-card-scope{container:mv-card/inline-size}
+.au-surface .au-card-content,.au-surface .au-stack>*{min-width:0}
+.au-surface .au-card[data-variant=clear]{border:0;background:transparent;box-shadow:none;padding-block:0}
+.au-surface .au-card[data-variant=clear]>.au-card-content{padding-inline:0}
+.au-surface .au-card[data-variant=sunk]{background:var(--muted)}
+.au-surface .au-stack[data-direction=row]>:is(.fv,.au-data,.au-card-scope,[data-slot=tabs]){flex:1 1 260px;width:auto;min-width:0}
+.au-surface .au-card[data-direction=row]>.au-card-content>*{min-width:0}
+.au-surface [data-slot=tabs]>[role=tablist]{max-width:100%;overflow-x:auto}
+.au-surface [data-slot=tabs]>[role=tabpanel]{min-width:0}
+.au-surface [data-slot=tabs]>[role=tabpanel]>div+div{margin-top:1rem}
+.au-surface [data-slot=tabs]>[role=tabpanel][hidden]{display:none}
 `

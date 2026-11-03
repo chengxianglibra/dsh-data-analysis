@@ -13,6 +13,7 @@ export function RefLink({ refValue, objects, navigate, children }) {
   const object = objects.get(key)
   return (
     <Button
+      variant="link"
       type="button"
       className="sb-definition-link"
       disabled={!object}

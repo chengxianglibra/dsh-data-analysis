@@ -93,7 +93,13 @@ export function checkPluginDependencies(root) {
   const peers = Object.entries(manifest.peerDependencies).filter(([name]) =>
     name.startsWith('@deepseek-ai/dsh-'),
   )
-  const singletons = ['@deepseek-ai/cordis', ...peers.map(([name]) => name)]
+  const reactPeers = ['react', 'react-dom'].filter((name) => manifest.peerDependencies?.[name])
+  for (const name of reactPeers) {
+    const filename = pluginRequire.resolve(`${name}/package.json`)
+    const installed = JSON.parse(readFileSync(filename, 'utf8'))
+    assertCompatibleVersion(name, installed.version, manifest.peerDependencies[name])
+  }
+  const singletons = ['@deepseek-ai/cordis', ...peers.map(([name]) => name), ...reactPeers]
   const owners = [pluginRequire, hostRequire]
   for (const [name, peerRange] of peers) {
     if (peerRange !== range) throw new Error(`inconsistent-peer-range:${name}`)

@@ -76,11 +76,7 @@ const schema = z.strictObject({
   generatedAt: z.string().datetime({ offset: true }),
   catalog: z.strictObject({
     id: z.literal(analysisCatalogId),
-    // The Dataset extension is additive; retain the immediately preceding Catalog.
-    build: z.enum([
-      analysisCatalogBuild,
-      '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053',
-    ]),
+    build: z.literal(analysisCatalogBuild),
   }),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),

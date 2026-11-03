@@ -59,10 +59,12 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
       '<!doctype html><html lang="en" data-ds-theme-source="host"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Coverage and copy feedback</title></head><body style="margin:0"><div id="root"></div><script src="page.js"></script></body></html>',
     )
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+    page.setDefaultTimeout(5000)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     const url = pathToFileURL(path.join(directory, 'index.html')).href
     await page.goto(url)
+    await page.locator('[data-resource="partial"]').waitFor()
 
     await t.test(
       'full and compact Coverage open saved details with mouse and keyboard',
@@ -73,7 +75,11 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         )
         for (const name of ['partial', 'compact']) {
           const card = page.locator(`[data-resource="${name}"]`)
-          const trigger = card.getByRole('button', { name: 'Coverage', exact: true })
+          const trigger = card.getByRole('button', {
+            name: 'Coverage',
+            exact: true,
+            includeHidden: true,
+          })
           assert.equal(await trigger.getAttribute('aria-haspopup'), 'dialog')
           assert.equal(await trigger.getAttribute('aria-expanded'), 'false')
           if (name === 'partial') await trigger.click()
@@ -88,7 +94,7 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
           assert.match((await dialog.textContent()) ?? '', /Snapshot time: 2026-10-30T00:00:00Z/)
           assert.match((await dialog.textContent()) ?? '', /Business coverage is unknown/)
           await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-          await dialog.waitFor({ state: 'hidden' })
+          await dialog.waitFor({ state: 'detached' })
           assert.equal(await trigger.getAttribute('aria-expanded'), 'false')
           assert.equal(await trigger.evaluate((node) => node === document.activeElement), true)
           assert.match((await card.getByRole('status').first().textContent()) ?? '', /3.*5/)
@@ -106,7 +112,10 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
       async () => {
         await page.goto(`${url}?portal&locale=zh-CN`)
         await page.setViewportSize({ width: 390, height: 844 })
-        await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
+        await page.evaluate(() => {
+          document.body.setAttribute('data-ds-dark-theme', '')
+          document.body.style.setProperty('--dsw-alias-bg-base', '#1c1c1f')
+        })
         const trigger = page
           .locator('[data-resource="partial"]')
           .getByRole('button', { name: '覆盖', exact: true })
@@ -117,8 +126,8 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         assert.match((await dialog.textContent()) ?? '', /业务覆盖范围未知/)
         assert.equal(
           await dialog
-            .locator('.mv-dialog-content')
-            .evaluate((node) => getComputedStyle(node).backgroundColor),
+            .locator('.mv-dialog-body')
+            .evaluate((node) => getComputedStyle(node.parentElement!).backgroundColor),
           'rgb(28, 28, 31)',
         )
         assert.equal(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth), true)
@@ -136,20 +145,25 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         await page.goto(url)
         const table = page.locator('[data-resource="table"]')
         const copy = table.getByRole('button', { name: 'Copy saved data', exact: true })
-        const status = table.getByRole('status')
-        await table.locator('.au-columns summary').click()
-        const category = table.getByLabel('Category', { exact: true })
+        const status = table.locator('[data-slot="card-action"]').getByRole('status')
+        const setCategory = async (checked: boolean) => {
+          await table.getByRole('button', { name: 'Select columns', exact: true }).click()
+          const chooser = page.getByRole('dialog', { name: 'Select columns', exact: true })
+          await chooser.getByLabel('Category', { exact: true }).setChecked(checked)
+          await page.keyboard.press('Escape')
+          await chooser.waitFor({ state: 'hidden' })
+        }
         await copy.click()
         await status.filter({ hasText: 'Copied' }).waitFor()
         assert.equal(
           await page.evaluate(() => Reflect.get(window, 'copiedText')),
           'Category\tValue\nA\t12345678901234.5678\nB\t—\nC\t-2.5000',
         )
-        await category.uncheck()
+        await setCategory(false)
         assert.equal(await status.count(), 0)
-        await category.check()
+        await setCategory(true)
         assert.equal(await status.count(), 0)
-        await category.uncheck()
+        await setCategory(false)
         await copy.click()
         await status.filter({ hasText: 'Copied' }).waitFor()
         assert.equal(
@@ -159,7 +173,7 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         await page.evaluate(() => Reflect.set(window, 'failCopy', true))
         await copy.click()
         await status.filter({ hasText: 'Copy failed. Try again.' }).waitFor()
-        await category.check()
+        await setCategory(true)
         assert.equal(await status.count(), 0)
         await page.evaluate(() => {
           Reflect.set(window, 'failCopy', false)
@@ -168,8 +182,8 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         const completed = await page.evaluate(() => Reflect.get(window, 'completedWrites'))
         await copy.click()
         await page.waitForFunction(() => Reflect.get(window, 'pendingWrites').length === 1)
-        await category.uncheck()
-        await category.check()
+        await setCategory(false)
+        await setCategory(true)
         await page.evaluate(() => Reflect.get(window, 'pendingWrites').shift()())
         await page.waitForFunction(
           (previous) => Reflect.get(window, 'completedWrites') === previous + 1,

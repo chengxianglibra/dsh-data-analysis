@@ -20,6 +20,8 @@ import {
 } from '../presentation/delivery.ts'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
+import { Button } from '../ui/controls.tsx'
+import { UIStyleSheet } from '../ui/theme.ts'
 import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
 import { CandidateView, readSavedAnalysis, savedCodeReader } from './candidate-view.tsx'
 import type { AnalysisResourceContext } from './context.tsx'
@@ -87,10 +89,11 @@ function SavedToolView({
   )
     return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
   return (
-    <div data-analysis-tool-call="saved">
-      <button type="button" onClick={() => onOpen(delivery.receipt)}>
+    <div className="mv-ui" data-analysis-tool-call="saved">
+      <UIStyleSheet />
+      <Button variant="outline" type="button" onClick={() => onOpen(delivery.receipt)}>
         {t('marivo.presentation.ui-open-tab')}
-      </button>
+      </Button>
       {state.generation === generation && state.document ? (
         <SavedAnalysisSurface
           document={state.document}
@@ -169,16 +172,30 @@ export function installAnalysisTool(
     }
     if (delivery.surface !== 'tool')
       return (
-        <button type="button" onClick={() => open(props.sessionId, delivery.receipt)}>
-          {delivery.receipt.title}
-        </button>
+        <span className="mv-ui">
+          <UIStyleSheet />
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => open(props.sessionId, delivery.receipt)}
+          >
+            {delivery.receipt.title}
+          </Button>
+        </span>
       )
     if (!allowed || !generation || delivery.dshSessionId !== props.sessionId)
       return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
     return (
-      <button type="button" onClick={() => open(props.sessionId, delivery.receipt)}>
-        {t('marivo.presentation.ui-open-tab')}
-      </button>
+      <span className="mv-ui">
+        <UIStyleSheet />
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => open(props.sessionId, delivery.receipt)}
+        >
+          {t('marivo.presentation.ui-open-tab')}
+        </Button>
+      </span>
     )
   })
   ctx.slots.inject('tool.call.toolview', () =>

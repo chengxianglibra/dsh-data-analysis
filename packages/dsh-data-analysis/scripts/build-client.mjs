@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { buildUIStyles } from './build-ui-styles.mjs'
 import {
   assertBrowserInputs,
   noticeComment,
@@ -9,8 +10,10 @@ import {
 
 const packageRoot = new URL('../', import.meta.url)
 const outputUrl = new URL('lib/client.js', packageRoot)
+await buildUIStyles()
 const result = await build({
   entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
+  outfile: fileURLToPath(outputUrl),
   bundle: true,
   loader: { '.wasm': 'binary' },
   external: ['@deepseek-ai/*', 'react', 'react/*', 'react-dom', 'react-dom/*'],
@@ -25,7 +28,9 @@ const result = await build({
   legalComments: 'eof',
 })
 assertBrowserInputs(result.metafile)
-const output = result.outputFiles[0]
+if (result.outputFiles.some((file) => !file.path.endsWith('.js')))
+  throw new Error('unexpected-client-build-output')
+const output = result.outputFiles.find((file) => file.path.endsWith('.js'))
 if (output === undefined) throw new Error('client build returned no output')
 const id = '@chengxianglibra/dsh-data-analysis'
 const bundle = [
@@ -40,6 +45,7 @@ await mkdir(new URL('lib/', packageRoot), { recursive: true })
 await writeFile(outputUrl, bundle)
 const composition = await build({
   entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
+  outfile: fileURLToPath(new URL('lib/client-composition.js', packageRoot)),
   bundle: true,
   loader: { '.wasm': 'binary' },
   external: ['@deepseek-ai/*', 'react', 'react/*', 'react-dom', 'react-dom/*'],
@@ -48,11 +54,18 @@ const composition = await build({
   target: 'es2022',
   jsx: 'automatic',
   write: false,
+  metafile: true,
   define: { 'process.env.NODE_ENV': '"production"' },
   minify: true,
   legalComments: 'eof',
 })
-const compositionOutput = composition.outputFiles[0]
+assertBrowserInputs(composition.metafile)
+if (composition.outputFiles.some((file) => !file.path.endsWith('.js')))
+  throw new Error('unexpected-client-composition-build-output')
+const compositionOutput = composition.outputFiles.find((file) => file.path.endsWith('.js'))
 if (compositionOutput === undefined) throw new Error('client composition build returned no output')
-await writeFile(new URL('lib/client-composition.js', packageRoot), compositionOutput.text)
+await writeFile(
+  new URL('lib/client-composition.js', packageRoot),
+  noticeComment(await thirdPartyNotices(composition.metafile)) + compositionOutput.text,
+)
 await rm(new URL('lib/client.js.map', packageRoot), { force: true })
