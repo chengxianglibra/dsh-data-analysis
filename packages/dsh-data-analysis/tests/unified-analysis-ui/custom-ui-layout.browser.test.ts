@@ -26,7 +26,7 @@ function App(){
  return h('div',{className:'mv-ui'},h('style',null,UI_STYLES),
   h('button',{onClick:()=>setBuild('build-2')},'Next build'),h('button',{onClick:()=>setLocale('zh-CN')},'Switch locale'),
   h('div',{id:'report',style:{width:320,maxWidth:'100%'}},h(AnalysisRenderer,{program,title:'A long saved report title / 已保存的完整分析标题与业务范围',locale,resources:{},recordId:build})),
-  h(Tabs,{items:[{value:'a',trigger:'Reading',content:h('input',{'aria-label':'Reading state',defaultValue:'saved'})},{value:'b',trigger:'Other',content:h('p',null,'Other panel')}]}),
+  h(Tabs,{label:'Reading sections',items:[{value:'a',trigger:'Reading',content:h('input',{'aria-label':'Reading state',defaultValue:'saved'})},{value:'b',trigger:'Other',content:h('p',null,'Other panel')}]}),
   h(IconButton,{label:'Unavailable source',tip:'Source was not captured',unavailable:true,onClick:()=>{throw Error('Unavailable executed')}},'i'),
   h(IconButton,{label:'Open details',onClick:()=>setOpen(true)},'i'),
   h(DetailsDialog,{title:'Saved details',open,onClose:()=>setOpen(false),closeLabel:'Close details'},h('p',null,'Saved immutable data')));
@@ -146,6 +146,9 @@ createRoot(document.getElementById('root')).render(h(App));`,
       await page.getByRole('textbox', { name: 'Reading state' }).inputValue(),
       'kept across panels',
     )
+    await page.keyboard.press('Escape')
+    // The focused close control's tooltip owns the first Escape.
+    assert.equal(await dialog.isVisible(), true)
     await page.keyboard.press('Escape')
     await dialog.waitFor({ state: 'hidden' })
     assert.equal(await opener.evaluate((node) => node === document.activeElement), true)

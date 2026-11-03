@@ -7,6 +7,7 @@ import {
   datasetViewSchema,
 } from '../../presentation/contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
+import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
 import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
@@ -117,12 +118,14 @@ const subset = openuiLibrary.extend({
       defineComponent({
         ...official.Tabs!,
         component: function AnalysisTabs({ props, renderNode }) {
+          const t = useCopy()
           // Element identities and props were checked against the generated TabItem slot schema.
           const items = (props.items ?? []) as {
             props: { value: string; trigger: string; content: ElementNode[] }
           }[]
           return (
             <Tabs
+              label={t('marivo.presentation.ui-report-sections')}
               items={items.map((item) => ({
                 value: item.props.value,
                 trigger: item.props.trigger,

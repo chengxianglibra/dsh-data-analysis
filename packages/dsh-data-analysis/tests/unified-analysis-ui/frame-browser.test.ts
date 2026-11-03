@@ -133,12 +133,12 @@ test('the Python icon shows the bound source only when its sha256 matches', asyn
   await page.locator('[data-resource="good"] [data-icon="python"] button').click()
   const code = page.getByRole('dialog').locator('pre code')
   assert.equal(await code.textContent(), CODE)
-  await page.keyboard.press('Escape')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
   await page.locator('[data-resource="bad"] [data-icon="python"] button').click()
   const dialog = page.getByRole('dialog')
   await dialog.getByText('Execution record sha256 does not match').waitFor()
   assert.equal(await dialog.locator('pre code').count(), 0)
-  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   assert.equal(
     await page.locator('[data-resource="bad"] [data-icon="python"]').getAttribute('data-disabled'),
     'true',
@@ -792,6 +792,6 @@ test('Dataset SVG charts retain exact titles, local scrolling and the saved data
   await card.getByRole('button', { name: 'Table', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByText('12345678901234.5678', { exact: true }).waitFor()
-  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   assert.equal(await dialog.count(), 0)
 })

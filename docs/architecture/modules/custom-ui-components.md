@@ -39,6 +39,14 @@ Button / IconButton 使用插件私有原生控件，普通按钮至少 32px、�
 普通 disabled 与需要解释的 unavailable 分开；后者保留可聚焦的 aria-disabled 入口和原因，阻止动作。
 通用控件只消费调用者提供的本地化标签，业务状态不由控件推断。
 
+[Tooltip](../../../packages/dsh-data-analysis/src/client/ui/tooltip.tsx) 使用浏览器 Popover API 的 manual 顶层绘制，
+保留原 DOM 祖先与主题继承，不向 body 搬移提示、不创建新的 Host 弹层服务。
+键盘聚焦立即显示，指针悬停延迟显示，触发点与提示之间保留短暂移入宽限；提示自身可悬停。
+位置按视口边界夹取并在上方空间不足时翻转；滚动或尺寸变化时重新定位，触发点离开可视区域或窗口失焦时关闭。
+Escape 先关闭可见提示并保留焦点，随后一次 Escape 仍由原生 dialog 或 Host Modal 处理。
+相同标签不重复加入描述，额外提示与调用方的 `aria-describedby` 合并。
+此实现要求浏览器支持 [Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API)。
+
 [DetailsDialog](../../../packages/dsh-data-analysis/src/client/ui/overlays.tsx) 统一内容、关闭按钮、尺寸与主题桥接。
 独立 Renderer 使用浏览器原生 dialog；[HostOverlayProvider](../../../packages/dsh-data-analysis/src/client/ui/host-overlays.tsx)
 只在 [lazy-surface](../../../packages/dsh-data-analysis/src/client/analysis-ui/lazy-surface.tsx) 接入处注入 Harness 的公开 Modal headless 外壳。
@@ -54,6 +62,8 @@ Portal 内容从所属阅读作用域取得角色和数据色，随主题变化�
 
 Tabs 将焦点项与激活项分开：方向键和 Home/End 移动焦点，Enter/Space 激活，Tab 离开标签组。
 tab / panel 使用稳定 ID 关联；隐藏 panel 不进入焦点序列，切换保留已有阅读状态。
+激活 panel 提供 Tab 焦点入口，离开标签组后重新进入时聚焦激活项；标签组为焦点环保留边距。
+私有 Tabs 由调用方传入本地化名称；Catalog 适配器使用文档 locale 的报告分区名称，不增加公开参数。
 
 排序、页码、选列、详情和局部滚动属于视图实例；准确 recordId 改变时重置，主题或 locale 变化不重挂。
 表格与图点始终保留原始保存行和字段身份，不以显示顺序生成引用。候选不构造本地复制或 Host 操作入口，

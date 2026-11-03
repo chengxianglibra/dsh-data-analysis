@@ -10,7 +10,7 @@ const itemId = (value: string) =>
   Array.from(value, (character) => character.codePointAt(0)?.toString(16)).join('-') || 'empty'
 
 /** Manual activation keeps keyboard exploration separate from changing the reading panel. */
-export function Tabs({ items }: { items: TabItem[] }) {
+export function Tabs({ items, label }: { items: TabItem[]; label: string }) {
   const [active, setActive] = useState<string>()
   const [focused, setFocused] = useState<string>()
   const buttons = useRef(new Map<string, HTMLButtonElement>())
@@ -20,7 +20,17 @@ export function Tabs({ items }: { items: TabItem[] }) {
   if (!items.length) return null
   return (
     <div className="au-tabs">
-      <div role="tablist">
+      <div
+        role="tablist"
+        aria-label={label}
+        onBlur={(event) => {
+          if (
+            !(event.relatedTarget instanceof Node) ||
+            !event.currentTarget.contains(event.relatedTarget)
+          )
+            setFocused(undefined)
+        }}
+      >
         {items.map((item, index) => (
           <button
             key={item.value}
@@ -63,6 +73,7 @@ export function Tabs({ items }: { items: TabItem[] }) {
           role="tabpanel"
           id={`${prefix}-panel-${itemId(item.value)}`}
           aria-labelledby={`${prefix}-tab-${itemId(item.value)}`}
+          tabIndex={selected === item.value ? 0 : -1}
           hidden={selected !== item.value}
         >
           {item.content}

@@ -96,7 +96,6 @@ ${frozen}
 .fv-icon{position:relative;display:inline-flex}
 .fv-icons .mv-icon-button{width:auto;min-width:32px;min-height:32px;gap:4px;font-size:12px;line-height:18px}
 .fv-icon svg{flex:none}
-.fv-head [data-icon=copy-data] .mv-tooltip,.fv-dialog [data-icon=copy-code] .mv-tooltip{left:auto;right:0;transform:none}
 .fv-dialog table{border-collapse:collapse;font-size:12px}
 .fv-dialog th,.fv-dialog td{padding:4px 8px;border-bottom:1px solid var(--pr-border);text-align:left}
 .fv-code{margin:0;padding:10px;border-radius:6px;background:var(--pr-soft);font:12px/1.5 ui-monospace,monospace;white-space:pre;overflow:auto;max-height:50vh;user-select:text}

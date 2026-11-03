@@ -1,4 +1,5 @@
 import { type ButtonHTMLAttributes, useId } from 'react'
+import { Tooltip } from './tooltip.tsx'
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'neutral' | 'primary' | 'ghost'
@@ -33,12 +34,16 @@ export function IconButton({
   const id = `mv-tip-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const description = tip ?? label
   return (
-    <span className="mv-icon-control">
+    <Tooltip id={id} text={description}>
       <Button
         {...props}
         className={`mv-icon-button ${className}`}
         aria-label={label}
-        aria-describedby={description !== label ? id : props['aria-describedby']}
+        aria-describedby={
+          [props['aria-describedby'], description !== label ? id : undefined]
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
         aria-disabled={unavailable || props['aria-disabled'] || undefined}
         onClick={(event) => {
           if (unavailable) {
@@ -48,9 +53,6 @@ export function IconButton({
           onClick?.(event)
         }}
       />
-      <span role="tooltip" id={id} className="mv-tooltip">
-        {description}
-      </span>
-    </span>
+    </Tooltip>
   )
 }
