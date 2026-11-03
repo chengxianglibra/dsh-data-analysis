@@ -10,11 +10,24 @@ import type { Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 import { MAX_FROZEN } from './styles.ts'
 
+interface CopyFeedback {
+  data: TypedDataset
+  columnsKey: string
+  status?: 'marivo.presentation.copied' | 'marivo.presentation.ui-copy-failed'
+}
+
 /** Copies the visible columns' exact saved cells as TSV. */
 export function CopyData({ data, columns }: { data: TypedDataset; columns: string[] }) {
   const t = useCopy()
-  const [status, setStatus] = useState<string>()
+  const columnsKey = JSON.stringify(columns)
+  const [feedback, setFeedback] = useState<CopyFeedback>({ data, columnsKey })
+  // Invalidate completed feedback and pending clipboard replies before rendering a new selection.
+  if (feedback.data !== data || feedback.columnsKey !== columnsKey) {
+    setFeedback({ data, columnsKey })
+  }
   const copyRows = async () => {
+    const request: CopyFeedback = { data, columnsKey }
+    setFeedback(request)
     const indices = columns
       .map((id) => data.columns.findIndex((c) => c.id === id))
       .filter((i) => i >= 0)
@@ -30,7 +43,14 @@ export function CopyData({ data, columns }: { data: TypedDataset; columns: strin
       .then(() => navigator.clipboard.writeText(text))
       .then(() => true)
       .catch(() => false)
-    setStatus(ok ? 'marivo.presentation.copied' : 'marivo.presentation.ui-copy-failed')
+    setFeedback((current) =>
+      current === request
+        ? {
+            ...current,
+            status: ok ? 'marivo.presentation.copied' : 'marivo.presentation.ui-copy-failed',
+          }
+        : current,
+    )
   }
   return (
     <>
@@ -42,7 +62,7 @@ export function CopyData({ data, columns }: { data: TypedDataset; columns: strin
       >
         <FrameIcon kind="copy" />
       </FrameIconButton>
-      {status && <span role="status">{t(status)}</span>}
+      {feedback.status && <span role="status">{t(feedback.status)}</span>}
     </>
   )
 }

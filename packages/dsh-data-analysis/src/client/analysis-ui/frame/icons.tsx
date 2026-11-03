@@ -92,31 +92,44 @@ export function FrameIconButton({
 /** Ring arc shows the captured fraction; the text is the two saved counts. */
 export function CoverageIcon({ snapshot: s }: { snapshot: Snapshot }) {
   const t = useCopy()
+  const { candidate } = useAnalysisResources()
+  const [open, setOpen] = useState(false)
   const { capturedRows, totalRows } = s.coverage
   const counts = `${capturedRows.toLocaleString(t.locale)}/${totalRows.toLocaleString(t.locale)}`
   const share = totalRows === 0 ? 1 : capturedRows / totalRows
   const c = 2 * Math.PI * 6
+  const label = t(`${P}ui-frame-coverage`)
   return (
-    <FrameIconButton
-      kind="coverage"
-      label={t(`${P}ui-frame-coverage`)}
-      tip={t(`${P}ui-frame-coverage-tip`, { p0: counts, p1: s.fetchedAt })}
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <circle cx="8" cy="8" r="6" fill="none" stroke="var(--fv-grid)" strokeWidth="2.5" />
-        <circle
-          cx="8"
-          cy="8"
-          r="6"
-          fill="none"
-          stroke="var(--pr-accent)"
-          strokeWidth="2.5"
-          strokeDasharray={`${(share * c).toFixed(2)} ${c.toFixed(2)}`}
-          transform="rotate(-90 8 8)"
-        />
-      </svg>
-      <span>{counts}</span>
-    </FrameIconButton>
+    <>
+      <FrameIconButton
+        kind="coverage"
+        label={label}
+        tip={t(`${P}ui-frame-coverage-tip`, { p0: counts, p1: s.fetchedAt })}
+        hasPopup="dialog"
+        expanded={open}
+        onOpen={candidate ? undefined : () => setOpen(true)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6" fill="none" stroke="var(--fv-grid)" strokeWidth="2.5" />
+          <circle
+            cx="8"
+            cy="8"
+            r="6"
+            fill="none"
+            stroke="var(--pr-accent)"
+            strokeWidth="2.5"
+            strokeDasharray={`${(share * c).toFixed(2)} ${c.toFixed(2)}`}
+            transform="rotate(-90 8 8)"
+          />
+        </svg>
+        <span>{counts}</span>
+      </FrameIconButton>
+      <Dialog title={label} open={open} onClose={() => setOpen(false)}>
+        <p>{t(`${P}ui-capture-range`, { p0: capturedRows, p1: totalRows })}</p>
+        <p>{t(`${P}ui-captured-at`, { p0: s.fetchedAt })}</p>
+        <p>{t(`${P}ui-business-unknown`)}</p>
+      </Dialog>
+    </>
   )
 }
 
