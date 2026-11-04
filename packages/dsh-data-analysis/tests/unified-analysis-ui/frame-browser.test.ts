@@ -31,6 +31,14 @@ const records = frame({
     { name: 'amount', values: [118393545.04998468, 8, 9] }],
 });
 const precise = frame({axes: [timeAxis(3)], values: [{name: 'amount', values: [118393545.04998468, 8, 9]}]});
+// Two definition versions of one metric must still list a single semantic origin.
+precise.frame.sections.semantics = {
+  status: 'captured',
+  columns: [{ role: 'value', id: 'amount', valueOrigins: [
+    { kind: 'metric', path: 'sales.revenue', definitionId: 'v1' },
+    { kind: 'metric', path: 'sales.revenue', definitionId: 'v2' },
+  ], contextOrigins: [], omittedOrigins: 0 }],
+};
 const partial = frame({axes: [timeAxis(3)], values: [{name: 'amount', values: [1, 2, 3]}], totalRows: 5});
 const heatmap = observeTimeCategory(9);
 const longCategory = 'Long_original_category_name_abcdef';
@@ -500,6 +508,27 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
   await saved.waitFor({ state: 'detached' })
   await page.getByRole('dialog').waitFor({ state: 'detached' })
   assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 0)
+})
+
+test('chart data and semantic origins are icon-only entries in one action row', async () => {
+  const frame = page.locator('[data-resource="precise"]')
+  const data = frame.locator('.fv-icons > [data-icon="data"]')
+  const origins = frame.locator('.fv-icons > [data-icon="origins"]')
+  assert.equal((await data.innerText()).trim(), '')
+  assert.equal((await origins.innerText()).trim(), '')
+  assert.equal(await data.locator('button > span').count(), 0)
+  assert.equal(await origins.locator('button > span').count(), 0)
+  assert.equal(
+    await data.locator('button svg').evaluate((element) => getComputedStyle(element).display),
+    'block',
+  )
+  assert.equal(await data.evaluate((element) => getComputedStyle(element).order), '0')
+  assert.equal(await data.evaluate((element) => getComputedStyle(element).marginLeft), '0px')
+  await origins.locator('button').click()
+  const dialog = page.getByRole('dialog')
+  assert.equal(await dialog.getByText(/sales\.revenue/).count(), 1)
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await dialog.waitFor({ state: 'detached' })
 })
 
 test('data references retain pagination and truncation without row counts', async () => {

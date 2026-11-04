@@ -642,7 +642,6 @@ export function FrameShell({
                   }
                 >
                   <FrameIcon kind="table" />
-                  <span className="fv-data-label">{dataLabel} ↗</span>
                 </FrameIconButton>
               ) : undefined
             }

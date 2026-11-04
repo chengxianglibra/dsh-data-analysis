@@ -221,7 +221,6 @@ function OriginsIcon({ snapshot: s }: { snapshot: Snapshot }) {
         onOpen={() => setOpen(true)}
       >
         <FrameIcon kind="source" />
-        {!state && <span>{paths.length}</span>}
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         <SemanticOrigins section={section} />

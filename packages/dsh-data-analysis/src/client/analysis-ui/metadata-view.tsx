@@ -8,14 +8,17 @@ import { useAnalysisResources } from './context.tsx'
 type Semantics = FrameSections['semantics']
 type Origin = Extract<Semantics, { status: 'captured' }>['columns'][number]['valueOrigins'][number]
 
-/** Show each concrete semantic object once, excluding its storage and owner containers. */
+/**
+ * Show each semantic object once, excluding its storage and owner containers. Rows are keyed by
+ * kind and path so a versioned definition never lists the same object twice.
+ */
 export function semanticObjects(section: Semantics): Origin[] {
   if (section.status !== 'captured') return []
   const objects = new Map<string, Origin>()
   for (const column of section.columns) {
     for (const origin of [...column.valueOrigins, ...column.contextOrigins]) {
       if (origin.kind === 'datasource' || origin.kind === 'entity') continue
-      const key = JSON.stringify([origin.kind, origin.path, origin.definitionId])
+      const key = JSON.stringify([origin.kind, origin.path])
       if (!objects.has(key)) objects.set(key, origin)
     }
   }
@@ -54,10 +57,7 @@ export function SemanticOrigins({ section }: { section: Semantics }) {
     <div className="au-meta" data-meta="semantics">
       <ul className="fv-origins">
         {semanticObjects(section).map((origin) => (
-          <OriginItem
-            key={JSON.stringify([origin.kind, origin.path, origin.definitionId])}
-            origin={origin}
-          />
+          <OriginItem key={JSON.stringify([origin.kind, origin.path])} origin={origin} />
         ))}
       </ul>
     </div>

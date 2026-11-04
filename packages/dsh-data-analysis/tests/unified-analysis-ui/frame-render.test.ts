@@ -1032,6 +1032,8 @@ test('icons grey out for missing sections and Python sources, never as zero item
   })
   assert.doesNotMatch(origins, /data-icon="origins" data-disabled/)
   assert.match(origins, /sales\.revenue/)
+  // The source icon carries no count badge; the dialog lists the deduplicated objects.
+  assert.doesNotMatch(origins, /<span>1<\/span>/)
   assert.doesNotMatch(origins, /data-icon="python" data-disabled/)
   assert.match(origins, /executionId 6f9619ff/)
   // sessionId and artifactId only live in the (closed) developer area of the Python dialog.
@@ -1044,6 +1046,8 @@ test('chart data shares the icon row and explicit visible data stays inline', as
   assert.match(html, /month · Asia\/Shanghai/)
   assert.match(html, /<div class="fv-icons(?: [^"]*)?"><span class="fv-icon" data-icon="data"/)
   assert.match(html, /data-icon="data"[\s\S]*aria-haspopup="dialog"/)
+  // The chart data entry is an icon like the rest of the row, not a text link.
+  assert.doesNotMatch(html, /fv-data-label|Table ↗/)
   const visible = await r.render(observeTime(6), { display: { dataTable: 'visible' } })
   assert.match(visible, /data-icon="data"[\s\S]*aria-expanded="true"/)
   assert.match(visible, /class="fv-data-reference"/)

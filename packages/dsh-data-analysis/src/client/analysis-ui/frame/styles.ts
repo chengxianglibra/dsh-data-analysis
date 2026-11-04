@@ -46,10 +46,6 @@ ${frozen}
 .fv[data-resource-kind=frame] .fv-icons{border-top:1px solid var(--border);padding-top:10px;margin-top:20px}
 .fv-icon{position:relative;display:inline-flex}
 .fv-icon svg{flex:none}
-.fv-icons>.fv-icon[data-icon=data]{order:1;margin-left:auto}
-.fv-icons>.fv-icon[data-icon=data] button{width:auto;min-width:0;height:30px;padding:4px 8px;border:0;background:transparent;box-shadow:none;color:var(--primary);font-size:12px}
-.fv-icons>.fv-icon[data-icon=data] button svg{display:none}
-.fv-data-label{white-space:nowrap}
 @media(max-width:480px){.fv[data-resource-kind=frame]{--card-spacing:18px}}
 .fv-code{white-space:pre;overflow:auto;max-height:50vh;user-select:text}
 .fv-dev dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
