@@ -639,7 +639,8 @@ test('a single-row multi-group comparison is one headline block per metric', asy
   const text = html.replace(/<[^>]+>/g, ' ')
   assert.doesNotMatch(text, /prior\.(?:baseline|absolute|relative)\./)
   assert.match(html, /data-icon="data"/)
-  assert.match(html, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
+  assert.doesNotMatch(html, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
+  assert.doesNotMatch(html, /role="heading" aria-level="3"[^>]*><\/div>/)
 })
 
 test('a frame table shows grouped values without an exact-value tooltip', async () => {
@@ -662,6 +663,13 @@ test('interval comparison endpoints name inclusive civil months', async () => {
   assert.match(html, /<div data-slot="card-title"[^>]*>2025-06 ⇄ 2025-05<\/div>/)
   assert.doesNotMatch(html, /07-01/)
   assert.doesNotMatch(html, /06-01 – 07-01/)
+})
+
+test('comparison table titles show captured endpoints only when specific', async () => {
+  const generic = await r.render(comparedSinglePeriodMultiGroup(), { view: { chart: 'table' } })
+  assert.doesNotMatch(generic, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
+  const specific = await r.render(comparedIntervalMonth(), { view: { chart: 'table' } })
+  assert.match(specific, /<div data-slot="card-title"[^>]*>2025-06 ⇄ 2025-05<\/div>/)
 })
 
 test('time comparison draws a solid current line, dashed baseline and a Δ strip', async () => {

@@ -428,10 +428,9 @@ test('chart regions scroll with arrow keys after expanding the data table', asyn
   }
 })
 
-test('row labels stay aligned and readable while heatmap, comparison and effects charts scroll', async () => {
-  for (const name of ['nullableHeatmap', 'comparison', 'effects']) {
+test('row labels stay aligned and readable while heatmap and effects charts scroll', async () => {
+  for (const name of ['nullableHeatmap', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
-    if (name === 'comparison') await card.getByRole('button', { name: 'Values' }).click()
     const region = card.locator('.fv-plot').first()
     const original = region.locator('svg.recharts-surface .fv-row-label').first()
     await region.evaluate((node) => {
@@ -602,19 +601,15 @@ test('an explicitly visible data reference remains inline and can be toggled', a
   await page.getByRole('dialog').waitFor({ state: 'detached' })
 })
 
-test('coincident comparison and alignment marks retain visible rings at wide and narrow widths', async () => {
+test('coincident alignment marks retain visible rings at wide and narrow widths', async () => {
   for (const width of [710, 360]) {
     await page.setViewportSize({ width, height: 900 })
     await page.locator('body').evaluate((body, value) => {
       body.style.width = `${value}px`
       body.style.margin = '0'
     }, width)
-    for (const name of ['comparison', 'alignment']) {
+    for (const name of ['alignment']) {
       const card = page.locator(`[data-resource="${name}"]`)
-      if (name === 'comparison') {
-        const values = card.getByRole('button', { name: 'Values' })
-        if ((await values.getAttribute('aria-pressed')) !== 'true') await values.click()
-      }
       const chart = card.locator('svg.recharts-surface').first()
       const hollow = chart.locator('circle[data-mark="hollow"]').first()
       const filled = chart.locator('circle[data-mark="filled"]').first()

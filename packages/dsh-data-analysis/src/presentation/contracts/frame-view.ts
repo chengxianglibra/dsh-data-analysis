@@ -113,7 +113,7 @@ export type ResolvedFrameView =
       /** Index into interpretation.comparisons. */
       comparison: number
       group: string
-      style: 'numbers' | 'line' | 'dumbbell' | 'delta' | 'small-multiples' | 'table'
+      style: 'numbers' | 'line' | 'rows' | 'delta' | 'small-multiples' | 'table'
     }
   | {
       /** One saved row comparing several metrics: one headline block per metric. */
@@ -520,7 +520,7 @@ function comparisonStyle(
     case 'time':
       return pair() ?? 'line'
     case 'category':
-      return pair() ?? 'dumbbell'
+      return pair() ?? 'rows'
     case 'time-category':
       return (
         pair() ?? (distinctKeys(x, categoryAxes[0]!) <= MAX_SERIES ? 'small-multiples' : 'table')

@@ -23,9 +23,11 @@ export function ResultHeader({
 }) {
   return (
     <CardHeader className="fv-head au-result-header">
-      <CardTitle role="heading" aria-level={3} className="fv-title">
-        {title}
-      </CardTitle>
+      {title && (
+        <CardTitle role="heading" aria-level={3} className="fv-title">
+          {title}
+        </CardTitle>
+      )}
       {actions && <CardAction className="au-result-header-actions">{actions}</CardAction>}
       {children && <CardDescription>{children}</CardDescription>}
     </CardHeader>

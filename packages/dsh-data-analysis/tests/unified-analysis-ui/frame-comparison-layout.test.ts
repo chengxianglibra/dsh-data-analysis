@@ -71,7 +71,7 @@ test('single-row multi-group comparison renders one headline block per metric by
   assert.equal(await blocks.count(), 2)
   assert.equal(await blocks.nth(0).locator('h4').innerText(), 'sales')
   assert.equal(await blocks.nth(0).locator('.fv-kpi-values dt').count(), 4)
-  assert.match(await grid().locator('[data-slot=card-title]').innerText(), /⇄/)
+  assert.equal(await grid().locator('[data-slot=card-title]').count(), 0)
   assert.equal(await grid().locator('table').count(), 0)
   // The grid keeps the exact comparison table behind its data icon.
   assert.equal(await grid().locator('[data-icon="data"]').count(), 1)
@@ -100,7 +100,7 @@ test('a small KPI set remains readable without expanding across an ultrawide vie
   }
 })
 
-test('five and seven KPI blocks fill balanced rows without page overflow', async () => {
+test('five and seven KPI blocks keep equal widths and aligned columns without filling the last row', async () => {
   const collection = grid().locator('.fv-comparison-grid')
   for (const count of [5, 7]) {
     await collection.evaluate((node, total) => {
@@ -121,19 +121,25 @@ test('five and seven KPI blocks fill balanced rows without page overflow', async
       const layout = await collection.evaluate((node) => {
         const parent = node.getBoundingClientRect()
         const items = [...node.children].map((child) => child.getBoundingClientRect())
-        const bottom = Math.max(...items.map((item) => item.top))
-        const last = items.filter((item) => Math.abs(item.top - bottom) < 1)
         return {
           parent: { left: parent.left, right: parent.right },
-          last: last.map(({ left, right }) => ({ left, right })),
+          items: items.map(({ left, right, top, width }) => ({ left, right, top, width })),
         }
       })
-      assert.ok(layout.last.length > 1 || width >= 1900, JSON.stringify({ count, width, layout }))
-      assert.ok(Math.abs(layout.last[0]!.left - layout.parent.left) < 2, JSON.stringify(layout))
-      assert.ok(
-        Math.abs(layout.last.at(-1)!.right - layout.parent.right) < 2,
-        JSON.stringify(layout),
+      const firstRow = layout.items.filter((item) => Math.abs(item.top - layout.items[0]!.top) < 1)
+      for (const [index, item] of layout.items.entries()) {
+        assert.ok(Math.abs(item.width - layout.items[0]!.width) < 1, JSON.stringify(layout))
+        assert.ok(
+          Math.abs(item.left - firstRow[index % firstRow.length]!.left) < 1,
+          JSON.stringify(layout),
+        )
+      }
+      const lastRow = layout.items.filter(
+        (item) => Math.abs(item.top - layout.items.at(-1)!.top) < 1,
       )
+      if (lastRow.length < firstRow.length) {
+        assert.ok(lastRow.at(-1)!.right < layout.parent.right - 1, JSON.stringify(layout))
+      }
       assert.ok((await overflow()) <= 1)
       const clipped = await collection
         .locator('.fv-kpi-value, .fv-kpi-reference dd')

@@ -216,7 +216,7 @@ function title(
     const section = comparisonTableSections(s).find((item) => item.rows.length)
     if (section) {
       const ends = endpointLabels(t, s, section.index)
-      return `${ends.current} ⇄ ${ends.baseline}`
+      return ends.specific ? `${ends.current} ⇄ ${ends.baseline}` : undefined
     }
   }
   if (view.chart === 'comparison') {
@@ -225,7 +225,7 @@ function title(
   }
   if (view.chart === 'comparison-grid') {
     const ends = endpointLabels(t, s, view.comparison)
-    return `${ends.current} ⇄ ${ends.baseline}`
+    return ends.specific ? `${ends.current} ⇄ ${ends.baseline}` : undefined
   }
   if (view.chart === 'decomposition') {
     const facts = decompositionOf(s, view.decomposition)

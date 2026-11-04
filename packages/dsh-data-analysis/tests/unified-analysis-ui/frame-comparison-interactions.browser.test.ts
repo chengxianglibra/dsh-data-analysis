@@ -63,10 +63,19 @@ const unavailableDelta = (absolute, current, baselinePresent) => frame({
 const nullDelta = unavailableDelta([null,null], [10,20], [true,true]);
 const maskedDelta = unavailableDelta([2,null], [10,20], [false,true]);
 const missingEndpoint = unavailableDelta([2,null], [null,20], [true,true]);
+const hugeDecimal = frame({
+  axes:[{name:'region', keys:['Larger','Missing','Negative','Smaller']}],
+  values:[
+    {name:'sales', values:[1,1,1,1]},
+    {name:'prior.baseline.sales', values:[1,1,1,1]},
+    {name:'prior.absolute.sales', type:'decimal', values:['2e400',null,'-1e400','1e400']},
+  ],
+  comparisons:[comparisonOf({kind:'ordinary'}, [{name:'sales', values:comparedRoles('sales',['current','baseline','absolute'])}])],
+});
 const resource = snapshot => ({kind:'snapshot', declaration:{kind:'frame-snapshot', snapshotRef:'ref'}, snapshot, binding:{workspaceId:'w'}});
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
-  program:'root = Stack([category, kpi, switching, nullDelta, maskedDelta, missingEndpoint, explicitNullDelta], "column");\\ncategory = AnalysisFrameView("category");\\nkpi = AnalysisFrameView("kpi");\\nswitching = AnalysisFrameView("switching", {chart: "comparison", encoding: {value: "a.baseline.sales"}});\\nnullDelta = AnalysisFrameView("nullDelta");\\nmaskedDelta = AnalysisFrameView("maskedDelta");\\nmissingEndpoint = AnalysisFrameView("missingEndpoint");\\nexplicitNullDelta = AnalysisFrameView("explicitNullDelta", {chart: "comparison", style: "delta"});',
-  title:'Comparison interactions', locale:'en-US', resources:{category:resource(category), kpi:resource(kpi), switching:resource(switching), nullDelta:resource(nullDelta), maskedDelta:resource(maskedDelta), missingEndpoint:resource(missingEndpoint), explicitNullDelta:resource(nullDelta)}, askPoint: async () => {},
+  program:'root = Stack([category, kpi, switching, nullDelta, maskedDelta, missingEndpoint, explicitNullDelta, hugeDecimal], "column");\\ncategory = AnalysisFrameView("category");\\nkpi = AnalysisFrameView("kpi");\\nswitching = AnalysisFrameView("switching", {chart: "comparison", encoding: {value: "a.baseline.sales"}});\\nnullDelta = AnalysisFrameView("nullDelta");\\nmaskedDelta = AnalysisFrameView("maskedDelta");\\nmissingEndpoint = AnalysisFrameView("missingEndpoint");\\nexplicitNullDelta = AnalysisFrameView("explicitNullDelta", {chart: "comparison", style: "delta"});\\nhugeDecimal = AnalysisFrameView("hugeDecimal");',
+  title:'Comparison interactions', locale:'en-US', resources:{category:resource(category), kpi:resource(kpi), switching:resource(switching), nullDelta:resource(nullDelta), maskedDelta:resource(maskedDelta), missingEndpoint:resource(missingEndpoint), explicitNullDelta:resource(nullDelta), hugeDecimal:resource(hugeDecimal)}, askPoint: async () => {},
 }));`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
@@ -121,44 +130,46 @@ test('comparison offers saved deltas with both endpoints and keeps an absent bas
   assert.doesNotMatch(await absent.innerText(), /111|99\.00|99\.00%/)
 })
 
-test('changing sort and view is keyboard accessible and preserves the saved rows', async () => {
+test('column headers sort saved values with keyboard access and missing values last', async () => {
   const view = category()
-  const sorting = view.getByRole('group', { name: 'Sort' })
-  const relative = sorting.getByRole('button', { name: 'Δ%', exact: true })
+  assert.equal(await view.getByRole('group', { name: 'View' }).count(), 0)
+  assert.equal(await view.getByRole('group', { name: 'Sort' }).count(), 0)
+  const relative = view.getByRole('button', { name: 'Sort by Δ%' })
   await relative.focus()
   await page.keyboard.press('Enter')
-  assert.equal(await relative.getAttribute('aria-pressed'), 'true')
-  const ordered = await view.locator('[data-comparison-rows="delta"]').innerText()
-  assert.ok(ordered.indexOf('Queens') < ordered.indexOf('Manhattan'))
-  const display = view.getByRole('group', { name: 'View' })
-  await display.getByRole('button', { name: 'Values' }).click()
-  assert.equal(
-    await display.getByRole('button', { name: 'Values' }).getAttribute('aria-pressed'),
-    'true',
-  )
-  for (const name of ['Manhattan', 'Queens', 'Brooklyn'])
-    assert.ok((await view.innerText()).includes(name))
-})
-
-test('comparison point hover has one tooltip and remains a named keyboard target', async () => {
-  await page.setViewportSize({ width: 1000, height: 900 })
-  const view = category()
-  await view.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Values' }).click()
+  assert.equal(await relative.locator('xpath=..').getAttribute('aria-sort'), 'ascending')
+  let rows = await view.locator('[data-comparison-rows="delta"] tbody tr').allTextContents()
+  assert.match(rows[0] ?? '', /Queens/)
+  assert.match(rows[1] ?? '', /Manhattan/)
+  assert.match(rows[3] ?? '', /Absent/)
+  assert.match(rows[4] ?? '', /Zero baseline/)
+  await page.keyboard.press('Enter')
+  assert.equal(await relative.locator('xpath=..').getAttribute('aria-sort'), 'descending')
+  rows = await view.locator('[data-comparison-rows="delta"] tbody tr').allTextContents()
+  assert.match(rows[0] ?? '', /Brooklyn/)
+  assert.match(rows[3] ?? '', /Absent/)
+  assert.match(rows[4] ?? '', /Zero baseline/)
+  await view.getByRole('button', { name: 'Sort by Baseline' }).click()
+  rows = await view.locator('[data-comparison-rows="delta"] tbody tr').allTextContents()
+  assert.match(rows[0] ?? '', /Zero baseline/)
+  assert.match(rows[4] ?? '', /Absent/)
+  await view.getByRole('button', { name: 'Sort by Metric' }).click()
+  rows = await view.locator('[data-comparison-rows="delta"] tbody tr').allTextContents()
+  assert.match(rows[0] ?? '', /Absent/)
   const point = view.locator('[data-frame-point]').first()
-  await point.waitFor()
   assert.ok(await point.getAttribute('aria-label'))
-  assert.equal(await point.locator('title').count(), 0)
   await point.focus()
   assert.equal(await point.evaluate((node) => node === document.activeElement), true)
-  await point.hover()
-  const tooltip = view.locator('.recharts-tooltip-wrapper:visible')
-  await tooltip.waitFor()
-  assert.equal(await tooltip.count(), 1)
-  const lines = (await tooltip.innerText())
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-  assert.equal(new Set(lines).size, lines.length, lines.join(' | '))
+})
+
+test('sorts saved decimal changes beyond the floating point range exactly', async () => {
+  const view = page.locator('[data-resource="hugeDecimal"]')
+  const sort = view.getByRole('button', { name: 'Sort by Δ', exact: true })
+  const labels = () => view.locator('[data-comparison-rows="delta"] tbody tr th').allTextContents()
+  await sort.click()
+  assert.deepEqual(await labels(), ['Negative', 'Smaller', 'Larger', 'Missing'])
+  await sort.click()
+  assert.deepEqual(await labels(), ['Larger', 'Smaller', 'Negative', 'Missing'])
 })
 
 test('large saved KPI values stay readable without splitting digits on narrow screens', async () => {
@@ -176,43 +187,26 @@ test('large saved KPI values stay readable without splitting digits on narrow sc
   )
 })
 
-test('switching comparison aliases resets unsupported view and sort states', async () => {
+test('switching aliases resets sorting and uses saved row order', async () => {
   await page.setViewportSize({ width: 1000, height: 900 })
   const view = page.locator('[data-resource="switching"]')
   const aliases = view.getByRole('group', { name: 'Compared with' })
-  const display = view.getByRole('group', { name: 'View' })
-  await display.getByRole('button', { name: 'Values' }).click()
+  await view.getByRole('button', { name: 'Sort by Δ%' }).click()
   await aliases.getByRole('button', { name: 'B', exact: true }).click()
-  await view.locator('[data-comparison-rows="delta"]').waitFor()
-  assert.equal(await view.getByRole('group', { name: 'View' }).count(), 0)
-  assert.match(await view.innerText(), /10\.00/)
-
-  await aliases.getByRole('button', { name: 'A', exact: true }).click()
-  const sorting = view.getByRole('group', { name: 'Sort' })
-  await sorting.getByRole('button', { name: 'Δ%', exact: true }).click()
-  assert.equal(
-    await sorting.getByRole('button', { name: 'Δ%' }).getAttribute('aria-pressed'),
-    'true',
-  )
-  await aliases.getByRole('button', { name: 'B', exact: true }).click()
-  const nextSort = view.getByRole('group', { name: 'Sort' })
-  assert.equal(await nextSort.getByRole('button', { name: 'Δ%', exact: true }).count(), 0)
-  assert.equal(
-    await nextSort.getByRole('button', { name: 'Δ', exact: true }).getAttribute('aria-pressed'),
-    'true',
-  )
+  assert.equal(await view.getByRole('button', { name: 'Sort by Δ%' }).count(), 0)
   const rows = await view.locator('[data-comparison-rows="delta"] tbody tr').allTextContents()
-  assert.match(rows[0] ?? '', /Second/)
-  assert.match(rows[1] ?? '', /First/)
+  assert.match(rows[0] ?? '', /First/)
+  assert.match(rows[1] ?? '', /Second/)
 })
 
-test('auto comparison uses endpoints when no saved delta has a present and drawable pair', async () => {
-  for (const name of ['nullDelta', 'maskedDelta', 'missingEndpoint']) {
+test('comparison preserves endpoints and shows no invented bars for unavailable deltas', async () => {
+  for (const name of ['nullDelta', 'maskedDelta', 'missingEndpoint', 'explicitNullDelta']) {
     const view = page.locator(`[data-resource="${name}"]`)
     await view.waitFor()
-    assert.equal(await view.locator('[data-comparison-rows="delta"]').count(), 0, name)
-    assert.ok(await view.locator('[data-series="current"]').count(), name)
+    assert.equal(await view.locator('[data-comparison-rows="delta"]').count(), 1, name)
+    assert.equal(await view.locator('[data-series="current"]').count(), 0, name)
   }
-  const explicit = page.locator('[data-resource="explicitNullDelta"]')
-  assert.equal(await explicit.locator('[data-comparison-rows="delta"]').count(), 1)
+  for (const name of ['nullDelta', 'maskedDelta', 'explicitNullDelta']) {
+    assert.equal(await page.locator(`[data-resource="${name}"] .fv-delta-bar`).count(), 0, name)
+  }
 })

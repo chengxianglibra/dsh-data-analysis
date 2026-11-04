@@ -44,9 +44,6 @@ export const COMPILED_UI_STYLES: string = `/*! tailwindcss v4.3.4 | MIT License 
   container-type: inline-size;
   container-name: field-group;
 }
-:where(.mv-ui, .mv-ui *).\\@container {
-  container-type: inline-size;
-}
 :where(.mv-ui, .mv-ui *).pointer-events-none {
   pointer-events: none;
 }

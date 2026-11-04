@@ -310,7 +310,7 @@ test('comparison auto follows the shape', () => {
   }
   assert.equal(style(f.compareOrdinary([])), 'numbers')
   assert.equal(style(f.compareCalendar()), 'line')
-  assert.equal(style(f.compareOrdinary([f.categoryAxis(3)])), 'dumbbell')
+  assert.equal(style(f.compareOrdinary([f.categoryAxis(3)])), 'rows')
   const grid = (categories: number) =>
     f.compareOrdinary([
       { ...f.timeAxis(2), keys: f.repeat(f.months(2), categories) },
