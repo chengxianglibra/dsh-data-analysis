@@ -110,6 +110,6 @@ test('interval period labels name civil endpoints without an exclusive upper bou
   // Non-midnight boundaries keep the full instants.
   assert.equal(
     periodLabel(interval('2025-06-01T08:30:00-04:00', '2025-06-02T09:45:00-04:00')),
-    '2025-06-01 08:30 – 2025-06-02 09:45',
+    '2025-06-01 08:30 GMT-04:00 – 2025-06-02 09:45 GMT-04:00',
   )
 })

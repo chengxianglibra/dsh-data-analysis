@@ -70,7 +70,7 @@ test('single-row multi-group comparison renders one headline block per metric by
   const blocks = grid().locator('.fv-comparison-grid-item')
   assert.equal(await blocks.count(), 2)
   assert.equal(await blocks.nth(0).locator('h4').innerText(), 'sales')
-  assert.equal(await blocks.nth(0).locator('[data-number]').count(), 4)
+  assert.equal(await blocks.nth(0).locator('.fv-kpi-values dt').count(), 4)
   assert.match(await grid().locator('[data-slot=card-title]').innerText(), /⇄/)
   assert.equal(await grid().locator('table').count(), 0)
   // The grid keeps the exact comparison table behind its data icon.
@@ -89,6 +89,61 @@ test('the grid reflows to one column at 390px without page overflow', async () =
   for (const block of await grid().locator('.fv-comparison-grid-item').all()) {
     const box = await block.boundingBox()
     assert.ok(box && box.width <= 390)
+  }
+})
+
+test('a small KPI set remains readable without expanding across an ultrawide view', async () => {
+  await page.setViewportSize({ width: 1920, height: 900 })
+  for (const block of await grid().locator('.fv-comparison-grid-item').all()) {
+    const box = await block.boundingBox()
+    assert.ok(box && box.width <= 361, JSON.stringify(box))
+  }
+})
+
+test('five and seven KPI blocks fill balanced rows without page overflow', async () => {
+  const collection = grid().locator('.fv-comparison-grid')
+  for (const count of [5, 7]) {
+    await collection.evaluate((node, total) => {
+      const first = node.firstElementChild
+      if (!first) throw new Error('Missing KPI fixture')
+      const value = first.querySelector('.fv-kpi-value')
+      const baseline = first.querySelector('.fv-kpi-reference dd')
+      if (!value || !baseline) throw new Error('Missing KPI values')
+      value.textContent = '118,393,545.05'
+      baseline.textContent = '123,430,419.10 USD'
+      while (node.children.length < total) node.append(first.cloneNode(true))
+      while (node.children.length > total) node.lastElementChild?.remove()
+      node.setAttribute('data-count', String(total))
+      node.setAttribute('style', `max-width:${total * 360}px`)
+    }, count)
+    for (const width of [900, 1200, 1920]) {
+      await page.setViewportSize({ width, height: 900 })
+      const layout = await collection.evaluate((node) => {
+        const parent = node.getBoundingClientRect()
+        const items = [...node.children].map((child) => child.getBoundingClientRect())
+        const bottom = Math.max(...items.map((item) => item.top))
+        const last = items.filter((item) => Math.abs(item.top - bottom) < 1)
+        return {
+          parent: { left: parent.left, right: parent.right },
+          last: last.map(({ left, right }) => ({ left, right })),
+        }
+      })
+      assert.ok(layout.last.length > 1 || width >= 1900, JSON.stringify({ count, width, layout }))
+      assert.ok(Math.abs(layout.last[0]!.left - layout.parent.left) < 2, JSON.stringify(layout))
+      assert.ok(
+        Math.abs(layout.last.at(-1)!.right - layout.parent.right) < 2,
+        JSON.stringify(layout),
+      )
+      assert.ok((await overflow()) <= 1)
+      const clipped = await collection
+        .locator('.fv-kpi-value, .fv-kpi-reference dd')
+        .evaluateAll((nodes) =>
+          nodes
+            .filter((node) => node.scrollWidth > node.clientWidth + 1)
+            .map((node) => node.textContent),
+        )
+      assert.deepEqual(clipped, [], JSON.stringify({ count, width, clipped }))
+    }
   }
 })
 

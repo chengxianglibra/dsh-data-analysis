@@ -242,7 +242,7 @@ function TimeChartPlot({
         }
       >
         <ComposedChart
-          title={label}
+          aria-label={label}
           desc={label}
           data={referenceData}
           margin={{ top: 16, right: 24, bottom: 12, left: 8 }}
@@ -259,7 +259,12 @@ function TimeChartPlot({
             tickFormatter={(index) => ticks[index]?.label ?? ''}
             tick={<PeriodTick ticks={ticks} />}
           />
-          <YAxis domain={domain} tickFormatter={(value) => compact(t.locale, value)} width={64} />
+          <YAxis
+            domain={domain}
+            padding={bars ? undefined : { top: 4, bottom: 4 }}
+            tickFormatter={(value) => compact(t.locale, value)}
+            width={64}
+          />
           <ExactTooltip textAt={tip} />
           {domain[0] <= 0 && domain[1] >= 0 && <ReferenceLine y={0} stroke="var(--border)" />}
           {series.map((line) => {
@@ -281,9 +286,7 @@ function TimeChartPlot({
                     strokeWidth={2}
                     data-mark={ticks[index]?.incomplete ? 'hollow' : 'filled'}
                     data-marker={line.marker}
-                  >
-                    <title>{title}</title>
-                  </circle>
+                  />
                 </SelectableMark>
               )
             }

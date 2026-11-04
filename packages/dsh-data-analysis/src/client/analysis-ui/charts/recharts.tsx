@@ -159,6 +159,7 @@ export function ExactTooltip({ textAt }: { textAt: (index: number) => string }) 
   return (
     <ChartTooltip
       cursor={false}
+      isAnimationActive={false}
       content={({ active, payload }) => {
         if (!active || !payload?.length) return null
         const source: unknown = payload[0]?.payload

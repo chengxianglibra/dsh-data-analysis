@@ -106,7 +106,7 @@ const resources = {
   sparseTaxiHeatmap: resource(sparseTaxiHeatmap),
   taxiAlignment: resource(taxiAlignment),
 };
-const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long");\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
+const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long", {chart: "line"});\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
@@ -135,6 +135,45 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
 after(async () => {
   await browser?.close()
   await rm(directory, { recursive: true, force: true })
+})
+
+test('line points have one hover tooltip and preserve saved keyboard selection', async () => {
+  const card = page.locator('[data-resource="long"]')
+  const point = card.locator('.recharts-line-dots [data-frame-point="0:m0"]').first()
+  await point.waitFor()
+  assert.match((await point.getAttribute('aria-label')) ?? '', /m0: 1\.00/)
+  assert.equal(await card.locator('.recharts-line-dots circle title').count(), 0)
+  await point.focus()
+  assert.equal(await point.evaluate((node) => node === document.activeElement), true)
+  await point.hover({ force: true })
+  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
+  await tooltip.waitFor()
+  assert.equal(await tooltip.count(), 1)
+  assert.match(await tooltip.innerText(), /m0: 1\.00/)
+  const active = card.locator('.recharts-zIndex-layer_1200 [data-frame-point]')
+  assert.equal(await active.count(), 1)
+  assert.equal(await active.getAttribute('data-frame-point'), '0:m0')
+  assert.match((await active.getAttribute('aria-label')) ?? '', /m0: 1\.00/)
+  assert.equal(await active.locator('circle title').count(), 0)
+  await point.focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
+    { resourceName: 'long', row: 0, field: 'm0' },
+  ])
+  await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
+})
+
+test('Dataset line hover preserves exact decimal text without a second native tooltip', async () => {
+  const card = page.locator('[data-resource="dataset"]')
+  const point = card.locator('.recharts-line-dots circle').first()
+  await point.waitFor()
+  assert.equal(await point.locator('title').count(), 0)
+  await point.hover()
+  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
+  await tooltip.waitFor({ timeout: 3000 })
+  assert.equal(await tooltip.count(), 1)
+  assert.match(await tooltip.innerText(), /12345678901234\.5678/)
 })
 
 test('the Python icon shows the bound source only when its sha256 matches', async () => {
@@ -226,25 +265,25 @@ test('plugin charts scroll within a narrow card and their marks are keyboard-sel
   const card = page.locator('[data-resource="good"]')
   const chart = card.locator('svg.recharts-surface')
   assert.equal(await chart.count(), 1)
-  await page.waitForFunction(() => {
+  const measured = await page.waitForFunction(() => {
     const ticks = document.querySelectorAll('[data-resource="good"] g[data-tick] text')
-    return (
-      ticks.length === 3 &&
-      [...ticks].every(
-        (tick) =>
-          tick.isConnected &&
-          tick.getBoundingClientRect().width > 0 &&
-          Number.parseFloat(getComputedStyle(tick).fontSize) >= 12,
-      )
-    )
+    if (ticks.length !== 3) return false
+    const metrics = [...ticks].map((tick) => {
+      const bounds = tick.getBoundingClientRect()
+      return {
+        connected: tick.isConnected,
+        left: bounds.left,
+        right: bounds.right,
+        width: bounds.width,
+        size: Number.parseFloat(getComputedStyle(tick).fontSize),
+      }
+    })
+    return metrics.every((tick) => tick.connected && tick.width > 0 && tick.size >= 12)
+      ? metrics
+      : false
   })
-  const metrics = await chart.locator('g[data-tick] text').evaluateAll((ticks) =>
-    ticks.map((tick) => ({
-      left: tick.getBoundingClientRect().left,
-      right: tick.getBoundingClientRect().right,
-      size: Number.parseFloat(getComputedStyle(tick).fontSize),
-    })),
-  )
+  const metrics = await measured.jsonValue()
+  assert.ok(metrics)
   assert.equal(metrics.length, 3)
   for (const [i, tick] of metrics.entries()) {
     assert.ok(tick.size >= 12, JSON.stringify(tick))
@@ -392,6 +431,7 @@ test('chart regions scroll with arrow keys after expanding the data table', asyn
 test('row labels stay aligned and readable while heatmap, comparison and effects charts scroll', async () => {
   for (const name of ['nullableHeatmap', 'comparison', 'effects']) {
     const card = page.locator(`[data-resource="${name}"]`)
+    if (name === 'comparison') await card.getByRole('button', { name: 'Values' }).click()
     const region = card.locator('.fv-plot').first()
     const original = region.locator('svg.recharts-surface .fv-row-label').first()
     await region.evaluate((node) => {
@@ -571,6 +611,10 @@ test('coincident comparison and alignment marks retain visible rings at wide and
     }, width)
     for (const name of ['comparison', 'alignment']) {
       const card = page.locator(`[data-resource="${name}"]`)
+      if (name === 'comparison') {
+        const values = card.getByRole('button', { name: 'Values' })
+        if ((await values.getAttribute('aria-pressed')) !== 'true') await values.click()
+      }
       const chart = card.locator('svg.recharts-surface').first()
       const hollow = chart.locator('circle[data-mark="hollow"]').first()
       const filled = chart.locator('circle[data-mark="filled"]').first()
@@ -702,15 +746,32 @@ test('Host theme overrides the OS without remounting, while custom tokens remain
   await page.evaluate(() => document.body.removeAttribute('data-theme'))
 })
 
-test('Dataset SVG charts retain exact titles, local scrolling and the saved data dialog', async () => {
+test('Dataset charts retain exact summaries and tooltips, local scrolling and the saved data dialog', async () => {
+  // Earlier responsive, theme and keyboard tests share this page. Reset the fixture
+  // so their final scroll and active-point state does not affect this interaction.
+  await page.reload()
   const card = page.locator('[data-resource="dataset"]')
   const chart = card.locator('svg.recharts-surface')
+  await chart.waitFor()
   assert.equal(await chart.count(), 1)
   assert.equal(await chart.getByRole('button').count(), 0)
-  const titles = await chart.locator('title').allTextContents()
-  assert.ok(titles.some((title) => title.includes('12345678901234.5678')))
-  assert.ok(titles.some((title) => title.includes('-2.5000')))
   const plot = card.locator('.fv-plot')
+  const summary = await plot.getAttribute('aria-label')
+  assert.ok(summary)
+  assert.ok(summary.includes('12345678901234.5678'))
+  assert.ok(summary.includes('-2.5000'))
+  const marks = chart.locator('.recharts-line-dots circle')
+  await marks.first().hover()
+  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
+  await tooltip.waitFor()
+  assert.match(await tooltip.innerText(), /12345678901234\.5678/)
+  await marks.last().hover()
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-resource="dataset"] .recharts-tooltip-wrapper')
+      ?.textContent?.includes('-2.5000'),
+  )
+  assert.match(await tooltip.innerText(), /-2\.5000/)
   assert.ok(await plot.evaluate((node) => node.scrollWidth > node.clientWidth))
   await plot.focus()
   await page.keyboard.press('ArrowRight')

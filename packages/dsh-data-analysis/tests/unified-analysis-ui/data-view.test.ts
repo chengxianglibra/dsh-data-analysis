@@ -284,7 +284,8 @@ test('Dataset dense float plots retain Recharts marks and saved tooltips', async
       encoding: { axis: 'category', values: ['value'] },
     })
     assert.match(html, /recharts-surface/)
-    assert.match(html, /<title>A\nValue: 1<\/title>/)
+    assert.match(html, /aria-label="Value: 3 items\. A\nValue: 1; B\nValue: 2; C\nValue: 3"/)
+    assert.equal((html.match(/data-mark="(?:filled|bar)"/g) ?? []).length, 3)
     assert.doesNotMatch(html, /data-chart-engine="openui"/)
   }
 })

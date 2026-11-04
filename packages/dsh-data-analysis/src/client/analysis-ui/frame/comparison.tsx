@@ -3,6 +3,7 @@ import type { FrameClassification } from '../../../presentation/contracts/frame-
 import type { FrameComparison } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
+import { compareDecimalText } from '../../presentation/model.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import {
@@ -34,6 +35,7 @@ import {
   valueName,
 } from './model.ts'
 import { SavedDeltaStrip, SavedLinePlot, SavedRowPlot, type SavedSeries } from './plots.tsx'
+import { useFrameSelection } from './selection-context.tsx'
 import { DataTable } from './table.tsx'
 import type { MainViewProps } from './types.ts'
 
@@ -272,14 +274,110 @@ export function ComparisonGrid({
     return roles?.current ? [{ group, roles }] : []
   })
   return (
-    <div className="fv-comparison-grid">
+    <div
+      className="fv-comparison-grid"
+      data-count={blocks.length}
+      style={{ maxWidth: `${blocks.length * 360}px` }}
+    >
       {blocks.map(({ group, roles }) => (
         <section className="fv-comparison-grid-item" key={group} data-comparison-group={group}>
-          <h4>{valueName(s, c, roles.current!)}</h4>
-          <ComparisonNumbers snapshot={s} roles={roles} index={view.comparison} labelChanges />
+          <h4>{kpiLabel(s, c, roles.current!)}</h4>
+          <ComparisonKpi snapshot={s} roles={roles} index={view.comparison} />
         </section>
       ))}
     </div>
+  )
+}
+
+/** Keep a declared unit beside the value rather than repeating it in the title. */
+function kpiLabel(s: Snapshot, c: FrameClassification, name: string) {
+  const column = columnOf(s, name)?.column
+  const unit = column?.unit?.trim()
+  const label = valueName(s, c, name)
+  if (!unit || unit === '1') return label
+  for (const suffix of [` (${unit})`, `（${unit}）`, `(${unit})`]) {
+    if (label.endsWith(suffix)) return label.slice(0, -suffix.length).trimEnd()
+  }
+  return label
+}
+
+function ComparisonKpi({
+  snapshot: s,
+  roles,
+  index,
+}: {
+  snapshot: Snapshot
+  roles: ComparisonRoles
+  index: number
+}) {
+  const t = useCopy()
+  const ends = endpointLabels(t, s, index)
+  const asText = (name: string | undefined) => {
+    if (!name) return '—'
+    const source = columnOf(s, name)?.column
+    if (!source) return '—'
+    // A monetary unit is placed beside the value; avoid the currency prefix in its numeric text.
+    return displayFrameCell(
+      s,
+      t.locale,
+      visibleCell(s, 0, roles, name),
+      source.unit === 'USD' ? { ...source, unit: undefined } : source,
+    )
+  }
+  const change = roles.absolute ? visibleCell(s, 0, roles, roles.absolute) : null
+  const changeColumn = roles.absolute ? columnOf(s, roles.absolute)?.column : undefined
+  const delta = signed(
+    t.locale,
+    change,
+    changeColumn?.unit === 'USD' ? { ...changeColumn, unit: undefined } : changeColumn,
+  )
+  const current = asText(roles.current)
+  const baseline = asText(roles.baseline)
+  const unitFor = (name: string | undefined, value: string) => {
+    const unit = name ? columnOf(s, name)?.column.unit?.trim() : undefined
+    return value !== '—' && unit && unit !== '1' && !value.endsWith(unit) ? unit : undefined
+  }
+  const currentUnit = unitFor(roles.current, current)
+  const baselineUnit = unitFor(roles.baseline, baseline)
+  const deltaUnit = unitFor(roles.absolute, delta)
+  const relative =
+    roles.relative && bothPresent(s, 0, roles)
+      ? percent(t.locale, valueAt(s, 0, roles.relative), true)
+      : '—'
+  return (
+    <dl className="fv-kpi-values">
+      <div className="fv-kpi-current">
+        <dt>{ends.current}</dt>
+        <dd>
+          <span className="fv-kpi-value">{current}</span>
+          {currentUnit && <span className="fv-kpi-unit">{currentUnit}</span>}
+        </dd>
+      </div>
+      {roles.relative && (
+        <div className="fv-kpi-relative">
+          <dt>{t('marivo.presentation.ui-frame-comparison-change-rate')}</dt>
+          <dd>{relative}</dd>
+        </div>
+      )}
+      {roles.baseline && (
+        <div className="fv-kpi-reference">
+          <dt>{ends.baseline}</dt>
+          <dd>
+            {baseline}
+            {baselineUnit && <span className="fv-kpi-unit"> {baselineUnit}</span>}
+          </dd>
+        </div>
+      )}
+      {roles.absolute && (
+        <div className="fv-kpi-reference">
+          <dt>{t('marivo.presentation.ui-frame-comparison-change')}</dt>
+          <dd>
+            {delta}
+            {deltaUnit && <span className="fv-kpi-unit"> {deltaUnit}</span>}
+          </dd>
+        </div>
+      )}
+    </dl>
   )
 }
 
@@ -336,55 +434,6 @@ export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
   )
 }
 
-/** Header numbers: current, baseline, Δ, Δ% from one saved row; absent roles are omitted. */
-export function ComparisonNumbers({
-  snapshot: s,
-  roles,
-  index,
-  row = 0,
-  labelChanges = false,
-}: {
-  snapshot: Snapshot
-  roles: ComparisonRoles
-  index: number
-  row?: number
-  /** Spell out Δ and Δ% below the numbers; the single-metric card relies on its endpoint pair only. */
-  labelChanges?: boolean
-}) {
-  const t = useCopy()
-  const ends = endpointLabels(t, s, index)
-  const presence = roles.comparison.presence
-  const items: { key: string; value: string; title: string; label?: string }[] = []
-  const add = (name: string | undefined, label: string | undefined, kind: 'v' | 'd' | 'p') => {
-    if (!name) return
-    const column = columnOf(s, name)?.column
-    const value = visibleCell(s, row, roles, name)
-    items.push({
-      key: name,
-      value:
-        kind === 'p'
-          ? percent(t.locale, bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
-          : kind === 'd'
-            ? signed(t.locale, value, column)
-            : compact(t.locale, value, column),
-      title: valueName(s, undefined, name),
-      label,
-    })
-  }
-  if (present(s, row, presence?.current)) add(roles.current, ends.current, 'v')
-  if (present(s, row, presence?.baseline)) add(roles.baseline, ends.baseline, 'v')
-  add(
-    roles.absolute,
-    labelChanges ? t('marivo.presentation.ui-frame-comparison-delta') : undefined,
-    'd',
-  )
-  add(
-    roles.relative,
-    labelChanges ? t('marivo.presentation.ui-frame-comparison-delta-percent') : undefined,
-    'p',
-  )
-  return <Numbers items={items} />
-}
 export function Numbers({
   items,
 }: {
@@ -443,7 +492,7 @@ export function ComparisonView(
       {control && siblings.length > 1 && (
         <AliasControl t={t} s={s} items={siblings} active={index} onSelect={setSelected} />
       )}
-      {numbers && <ComparisonNumbers snapshot={s} roles={roles} index={index} />}
+      {numbers && <ComparisonKpi snapshot={s} roles={roles} index={index} />}
       {body && <ComparisonBody {...props} roles={roles} index={index} />}
     </div>
   )
@@ -465,6 +514,7 @@ function AliasControl({
     <fieldset className="fv-segments" aria-label={t('marivo.presentation.ui-frame-alias')}>
       {items.map((i) => {
         const ends = endpointLabels(t, s, i)
+        const name = ends.specific ? ends.baseline : interpretationOf(s)?.comparisons[i]?.alias
         return (
           <Button
             variant={i === active ? 'secondary' : 'outline'}
@@ -473,7 +523,7 @@ function AliasControl({
             aria-pressed={i === active}
             onClick={() => onSelect(i)}
           >
-            {ends.baseline}
+            {name || ends.baseline}
           </Button>
         )
       })}
@@ -507,6 +557,7 @@ function ComparisonBody({
     case 'delta':
       return (
         <CompareRows
+          key={index}
           s={s}
           roles={roles}
           index={index}
@@ -658,8 +709,234 @@ function CompareLine({
     </>
   )
 }
+/** Category comparisons use the saved delta as the default view when available. */
+function CompareRows(props: {
+  s: Snapshot
+  roles: ComparisonRoles
+  index: number
+  axes: string[]
+  delta: boolean
+}) {
+  const { s, roles, delta } = props
+  const t = useCopy()
+  const absolute = roles.absolute
+  const column = absolute ? columnOf(s, absolute)?.column : undefined
+  const hasDelta = !!column && ['int64', 'decimal', 'float64'].includes(column.type)
+  const hasPair = !!roles.current && !!roles.baseline
+  const hasDrawableDelta =
+    !!absolute &&
+    hasDelta &&
+    rowsOf(s).some(
+      (row) =>
+        bothPresent(s, row, roles) &&
+        valueAt(s, row, absolute) !== null &&
+        (!roles.current || valueAt(s, row, roles.current) !== null) &&
+        (!roles.baseline || valueAt(s, row, roles.baseline) !== null),
+    )
+  const [mode, setMode] = useState<'delta' | 'values'>(hasDrawableDelta ? 'delta' : 'values')
+  const effective = delta || (hasDelta && !hasPair) ? 'delta' : hasDrawableDelta ? mode : 'values'
+  return (
+    <>
+      {!delta && hasDrawableDelta && hasPair && (
+        <fieldset
+          className="fv-segments fv-compare-controls"
+          aria-label={t('marivo.presentation.ui-frame-comparison-view')}
+        >
+          <Button
+            size="sm"
+            variant={effective === 'delta' ? 'secondary' : 'outline'}
+            aria-pressed={effective === 'delta'}
+            onClick={() => setMode('delta')}
+          >
+            {t('marivo.presentation.ui-frame-comparison-change')}
+          </Button>
+          <Button
+            size="sm"
+            variant={effective === 'values' ? 'secondary' : 'outline'}
+            aria-pressed={effective === 'values'}
+            onClick={() => setMode('values')}
+          >
+            {t('marivo.presentation.ui-frame-comparison-values')}
+          </Button>
+        </fieldset>
+      )}
+      {effective === 'delta' ? (
+        <CompareDelta {...props} />
+      ) : (
+        <CompareDumbbell {...props} delta={false} />
+      )}
+    </>
+  )
+}
+
+function CompareDelta({
+  s,
+  roles,
+  index,
+  axes: tokens,
+}: {
+  s: Snapshot
+  roles: ComparisonRoles
+  index: number
+  axes: string[]
+  delta: boolean
+}) {
+  const t = useCopy()
+  const selection = useFrameSelection()
+  const [order, setOrder] = useState<'original' | 'absolute' | 'relative'>('absolute')
+  const effectiveOrder = order === 'relative' && !roles.relative ? 'absolute' : order
+  const axes = tokens.map((token) => axisOf(s, token)).filter((axis) => axis !== undefined)
+  const ends = endpointLabels(t, s, index)
+  const fields = [roles.current, roles.baseline, roles.absolute, roles.relative]
+  const rows = rowsOf(s)
+  const sortName = effectiveOrder === 'relative' ? roles.relative : roles.absolute
+  if (effectiveOrder !== 'original' && sortName) {
+    rows.sort((a, b) => {
+      const av = visibleCell(s, a, roles, sortName)
+      const bv = visibleCell(s, b, roles, sortName)
+      if (av === null || bv === null) return av === bv ? a - b : av === null ? 1 : -1
+      const an = valueAt(s, a, sortName)
+      const bn = valueAt(s, b, sortName)
+      if (an === null || bn === null) return an === bn ? a - b : an === null ? 1 : -1
+      const comparison = compareDecimalText(String(av), String(bv))
+      return comparison || a - b
+    })
+  }
+  const magnitudes = rows.flatMap((row) => {
+    const value =
+      roles.absolute && bothPresent(s, row, roles) ? valueAt(s, row, roles.absolute) : null
+    return value === null ? [] : [Math.abs(value)]
+  })
+  const max = magnitudes.reduce((a, b) => Math.max(a, b), 0)
+  const text = (row: number, name: string | undefined, kind: 'value' | 'delta' | 'relative') => {
+    if (!name) return '—'
+    const cell = visibleCell(s, row, roles, name)
+    if (kind === 'relative')
+      return cell === null ? '—' : percent(t.locale, valueAt(s, row, name), true)
+    if (kind === 'delta') return signed(t.locale, cell, columnOf(s, name)?.column)
+    return formattedCell(s, t.locale, name, cell)
+  }
+  const selectable = (
+    row: number,
+    name: string | undefined,
+    label: string,
+    side: 'current' | 'baseline' | 'delta',
+  ) => {
+    const presence = roles.comparison.presence
+    const selected = point(
+      s,
+      row,
+      name,
+      [
+        ...(presence?.enclosing ?? []),
+        ...(side !== 'baseline' ? [presence?.current] : []),
+        ...(side !== 'current' ? [presence?.baseline] : []),
+      ],
+      membersLabel(s, axes, row),
+      t.locale,
+    )
+    return selection && selected ? (
+      <button
+        type="button"
+        className="pr-cell-select"
+        data-frame-point={`${row}:${name}`}
+        aria-label={selected.label}
+        onClick={() => selection.select(row, selected.field)}
+      >
+        {label}
+      </button>
+    ) : (
+      label
+    )
+  }
+  return (
+    <div data-comparison-rows="delta">
+      <fieldset
+        className="fv-segments fv-compare-controls"
+        aria-label={t('marivo.presentation.ui-frame-comparison-sort')}
+      >
+        {(['original', 'absolute', 'relative'] as const)
+          .filter((kind) => kind !== 'relative' || roles.relative)
+          .map((kind) => (
+            <Button
+              key={kind}
+              size="sm"
+              variant={effectiveOrder === kind ? 'secondary' : 'outline'}
+              aria-pressed={effectiveOrder === kind}
+              onClick={() => setOrder(kind)}
+            >
+              {kind === 'original'
+                ? t('marivo.presentation.ui-frame-comparison-order-original')
+                : t(
+                    kind === 'absolute'
+                      ? 'marivo.presentation.ui-frame-comparison-delta'
+                      : 'marivo.presentation.ui-frame-comparison-delta-percent',
+                  )}
+            </Button>
+          ))}
+      </fieldset>
+      <section
+        className="fv-delta-scroll"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the overflow region.
+        tabIndex={0}
+        aria-label={t('marivo.presentation.ui-frame-comparison-table')}
+      >
+        <table className="fv-delta-table">
+          <thead>
+            <tr>
+              <th scope="col">{t('marivo.presentation.ui-frame-comparison-metric')}</th>
+              <th scope="col">
+                <span className="fv-delta-axis-label">
+                  <span>← {t('marivo.presentation.ui-frame-comparison-decrease')}</span>
+                  <span>0</span>
+                  <span>{t('marivo.presentation.ui-frame-comparison-increase')} →</span>
+                </span>
+              </th>
+              <th scope="col">{ends.baseline}</th>
+              <th scope="col">{ends.current}</th>
+              <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta')}</th>
+              <th scope="col">{t('marivo.presentation.ui-frame-comparison-delta-percent')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const value =
+                roles.absolute && bothPresent(s, row, roles)
+                  ? valueAt(s, row, roles.absolute)
+                  : null
+              const width = value === null || max === 0 ? 0 : Math.abs(value / max) * 50
+              return (
+                <tr key={row}>
+                  <th scope="row">{membersLabel(s, axes, row)}</th>
+                  <td>
+                    <div className="fv-delta-plot" aria-hidden="true">
+                      <span className="fv-delta-zero" />
+                      <span
+                        className={`fv-delta-bar ${value !== null && value > 0 ? 'fv-delta-positive' : ''}`}
+                        style={
+                          value !== null && value > 0
+                            ? { left: '50%', width: `${width}%` }
+                            : { right: '50%', width: `${width}%` }
+                        }
+                      />
+                    </div>
+                  </td>
+                  <td>{selectable(row, fields[1], text(row, fields[1], 'value'), 'baseline')}</td>
+                  <td>{selectable(row, fields[0], text(row, fields[0], 'value'), 'current')}</td>
+                  <td>{selectable(row, fields[2], text(row, fields[2], 'delta'), 'delta')}</td>
+                  <td>{text(row, fields[3], 'relative')}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  )
+}
+
 /** Saved endpoints connected by Recharts reference segments, or a saved Δ bar. */
-function CompareRows({
+function CompareDumbbell({
   s,
   roles,
   index,

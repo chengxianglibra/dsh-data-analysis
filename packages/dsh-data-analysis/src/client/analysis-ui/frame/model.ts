@@ -176,6 +176,8 @@ function dateParts(iso: string, timezone: string) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'longOffset',
       hourCycle: 'h23',
     }).formatToParts(date)
     const part = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
@@ -185,6 +187,9 @@ function dateParts(iso: string, timezone: string) {
       d: part('day'),
       h: part('hour'),
       mi: part('minute'),
+      sec: part('second'),
+      fraction: /\.(\d+)(?:Z|[+-]\d\d(?::?\d\d)?)$/i.exec(iso)?.[1] ?? '',
+      offset: part('timeZoneName'),
     }
   } catch {
     return undefined
@@ -391,11 +396,19 @@ function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
   const end = dateParts(p.end, p.timezone)
   if (!start || !end) return periodRange(p)
   // The saved end is exclusive; only civil-midnight endpoints name a calendar span.
-  if (start.h !== '00' || start.mi !== '00' || end.h !== '00' || end.mi !== '00')
-    return `${instantText(p.start, p.timezone, 'full')} – ${instantText(p.end, p.timezone, 'full')}`
+  const midnight = (part: typeof start) =>
+    part.h === '00' && part.mi === '00' && part.sec === '00' && !/[1-9]/.test(part.fraction)
+  const precise = (part: typeof start) => {
+    const fraction = /[1-9]/.test(part.fraction) ? `.${part.fraction}` : ''
+    const seconds = part.sec !== '00' || fraction ? `:${part.sec}${fraction}` : ''
+    return `${part.y}-${part.m}-${part.d} ${part.h}:${part.mi}${seconds} ${part.offset}`
+  }
+  if (!midnight(start) || !midnight(end)) return `${precise(start)} – ${precise(end)}`
   const startDay = Date.UTC(Number(start.y), Number(start.m) - 1, Number(start.d))
   const endDay = Date.UTC(Number(end.y), Number(end.m) - 1, Number(end.d))
   const nextMonth = Date.UTC(Number(start.y), Number(start.m), 1)
+  const nextYear = Date.UTC(Number(start.y) + 1, 0, 1)
+  if (start.m === '01' && start.d === '01' && endDay === nextYear) return start.y
   if (start.d === '01' && endDay === nextMonth) return `${start.y}-${start.m}`
   if (endDay - startDay === 86_400_000) return `${start.y}-${start.m}-${start.d}`
   return `${start.y}-${start.m}-${start.d} ~ ${dayText(endDay - 86_400_000)}`
@@ -409,27 +422,43 @@ function periodText(p: Period | null): string {
       : '—'
     : intervalText(p)
 }
-/** What a comparison compares: period labels, differing fixed members, else the alias. */
+/** What a comparison compares: captured pairs of period labels or differing fixed members. */
 export function endpointLabels(t: Translator, s: Snapshot, index: number) {
   const comparison = interpretationOf(s)?.comparisons[index]
   const fallback = {
     current: t(`${P}ui-frame-current`),
-    baseline: comparison?.alias ?? t(`${P}ui-frame-baseline`),
+    baseline: t(`${P}ui-frame-baseline`),
+    specific: false,
   }
   if (!comparison) return fallback
   if (comparison.binding.kind !== 'ordinary') {
     const page = comparisonPeriodPage(s, index)
-    if (page?.hasMore) return fallback
+    if (!page || page.hasMore || page.items.length !== page.totalCount) return fallback
     const items = comparisonPeriods(s, index)
+    if (items.length !== page.items.length || items.some((item) => !item.baseline)) return fallback
     const first = items[0]
     const last = items.at(-1)
     if (!first || !last) return fallback
+    const current = [periodText(first.current), periodText(last.current)]
+    const baseline = [periodText(first.baseline), periodText(last.baseline)]
+    if ([...current, ...baseline].some((label) => !label || label === '—')) return fallback
     const range = (a: string, b: string) => (a === b ? a : `${a} – ${b}`)
     return {
-      current: range(periodText(first.current), periodText(last.current)),
-      baseline: range(periodText(first.baseline), periodText(last.baseline)),
+      current: range(current[0]!, current[1]!),
+      baseline: range(baseline[0]!, baseline[1]!),
+      specific: true,
     }
   }
+  const currentAxes = comparison.currentFixedAxes
+  const baselineAxes = comparison.baselineFixedAxes
+  if (
+    currentAxes.length !== baselineAxes.length ||
+    new Set(currentAxes.map((axis) => axis.token)).size !== currentAxes.length ||
+    new Set(baselineAxes.map((axis) => axis.token)).size !== baselineAxes.length ||
+    currentAxes.some((axis) => !baselineAxes.some((other) => other.token === axis.token)) ||
+    [...currentAxes, ...baselineAxes].some((axis) => axis.key.some((value) => value === null))
+  )
+    return fallback
   const pairs = comparison.currentFixedAxes.flatMap((a) => {
     const b = comparison.baselineFixedAxes.find((x) => x.token === a.token)
     return b && JSON.stringify(a.key) !== JSON.stringify(b.key)
@@ -440,6 +469,7 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
     ? {
         current: pairs.map((p) => p[0]).join(' · '),
         baseline: pairs.map((p) => p[1]).join(' · '),
+        specific: true,
       }
     : fallback
 }

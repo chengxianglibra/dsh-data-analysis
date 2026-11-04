@@ -38,6 +38,24 @@ export interface SavedSeries {
 function seriesColor(series: SavedSeries, index: number) {
   return series.color ?? color(index)
 }
+/** A series can describe the whole row, shared with other series. */
+function tooltipText(label: string, series: string[], endLabel?: string): string {
+  const parts = label ? [label] : []
+  for (const text of new Set(series)) {
+    const value = label && text.startsWith(`${label}\n`) ? text.slice(label.length + 1) : text
+    if (value && value !== label) parts.push(value)
+  }
+  // End labels can also carry a separate summary (e.g. an alignment pair).
+  // Avoid repeating one that is already a complete formatted value.
+  if (
+    endLabel &&
+    !parts.some((part) =>
+      part.split('\n').some((line) => line === endLabel || line.endsWith(`: ${endLabel}`)),
+    )
+  )
+    parts.push(endLabel)
+  return parts.join('\n')
+}
 function SavedDot({
   input,
   series,
@@ -58,7 +76,6 @@ function SavedDot({
     series.values[row] === undefined
   )
     return <g />
-  const title = series.exact(row)
   const fill = seriesColor(series, index)
   const hollow = series.hollow || ticks?.[row]?.incomplete
   const point = series.point?.(row)
@@ -78,7 +95,6 @@ function SavedDot({
   return (
     <DomainPointMark point={point}>
       <g data-chart-index={row} data-series={series.key}>
-        <title>{title}</title>
         {mark}
       </g>
     </DomainPointMark>
@@ -120,7 +136,7 @@ export function SavedLinePlot({
       }
     >
       <ComposedChart
-        title={label}
+        aria-label={label}
         desc={label}
         data={data}
         margin={{ top: 16, right: 24, bottom: 12, left: 8 }}
@@ -145,7 +161,10 @@ export function SavedLinePlot({
         />
         <ExactTooltip
           textAt={(index) =>
-            [ticks[index]?.title ?? '', ...series.map((line) => line.exact(index))].join('\n')
+            tooltipText(
+              ticks[index]?.title ?? '',
+              series.map((line) => line.exact(index)),
+            )
           }
         />
         {series.map((line, index) => (
@@ -238,7 +257,7 @@ export function SavedRowPlot({
         }
       >
         <ComposedChart
-          title={label}
+          aria-label={label}
           desc={label}
           data={data}
           layout="vertical"
@@ -262,13 +281,11 @@ export function SavedRowPlot({
           />
           <ExactTooltip
             textAt={(index) =>
-              [
+              tooltipText(
                 labels[index] ?? '',
-                ...series.map((line) => line.exact(index)),
-                endLabels?.[index] ?? '',
-              ]
-                .filter(Boolean)
-                .join('\n')
+                series.map((line) => line.exact(index)),
+                endLabels?.[index],
+              )
             }
           />
           <ReferenceLine x={0} stroke="var(--border)" />
@@ -310,7 +327,6 @@ export function SavedRowPlot({
                   return (
                     <DomainPointMark point={line.point?.(p.index)}>
                       <g data-mark="bar">
-                        <title>{line.exact(p.index)}</title>
                         <Rectangle
                           x={p.x}
                           y={p.y}
@@ -383,7 +399,7 @@ export function SavedDeltaStrip({
     <div data-strip="delta">
       <ChartFrame label={label} height={64}>
         <ComposedChart
-          title={label}
+          aria-label={label}
           desc={label}
           data={data}
           margin={{ top: 8, right: 24, bottom: 4, left: 72 }}
@@ -409,7 +425,6 @@ export function SavedDeltaStrip({
               return (
                 <DomainPointMark point={series.point?.(p.index)}>
                   <g data-mark="bar">
-                    <title>{series.exact(p.index)}</title>
                     <Rectangle
                       x={p.x}
                       y={p.y}
