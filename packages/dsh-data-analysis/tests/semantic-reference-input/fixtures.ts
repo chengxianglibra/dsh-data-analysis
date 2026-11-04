@@ -43,7 +43,7 @@ export function fakeRunner(fingerprint = 'fp-a') {
       projectRoot: `/work/${fingerprint}`,
       pythonExecutable: '/runtime/python',
       packagePath: '/runtime/marivo',
-      marivoVersion: '0.6.0.dev0',
+      marivoVersion: '0.6.0',
       subprocessPolicyId: 'test',
     },
     status: 'ready',

@@ -128,7 +128,7 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 
 ## Marivo 0.6 接缝
 
-当前精确版本为 `0.6.0.dev0`，本地预发布 wheel 来源见 [Runtime 安装](modules/runtime-workspace.md#本地预发布安装)。
+当前精确版本为 PyPI 正式版 `0.6.0`，安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
 Frame 展示使用原分析进程中的 `capture_frame()` 快照。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。

@@ -30,7 +30,7 @@ This is an independently maintained community plugin. It is not an official Deep
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
-You do not need to install Marivo beforehand. The analysis environment is prepared automatically on first launch.
+You do not need to install Marivo beforehand. The first launch installs the Marivo `0.6.0` release from PyPI and prepares the analysis environment automatically.
 An internet connection is required to download dependencies; wait for setup to finish.
 
 ### Install and launch

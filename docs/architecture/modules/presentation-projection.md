@@ -83,7 +83,7 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 日历期间按当前 Marivo 公共契约保存 civil `label`、`selection` 和可选 `cutoff`；不根据日期标签、键或时区推算未公开的起止边界。
 Interval 期间继续保存上游提供的 start/end；reader 仍可读取既有 Frame v2 中带日历边界的快照。
 
-当前 `0.6.0.dev0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
+当前 `0.6.0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 不读取私有 Store、日志或重新编译 SQL。
 
 ## 同次执行的 DataFrame 快照
