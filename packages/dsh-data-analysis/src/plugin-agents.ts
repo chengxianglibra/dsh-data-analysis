@@ -8,11 +8,6 @@ import { type CredentialStore, MarivoCredentialService } from './datasource/serv
 import { registerMarivoDatasourceTestTool } from './datasource/test.ts'
 import type { MarivoHelpBridgeSource } from './disclosure/bridge.ts'
 import {
-  installMarivoExecutionGuidance,
-  MARIVO_ANALYSIS_CLOSEOUT_PROMPT,
-  MARIVO_DATASOURCE_CREDENTIAL_PROMPT,
-} from './disclosure/execution-guidance.ts'
-import {
   installMarivoDisclosure,
   type MarivoDisclosureController,
   type MarivoDisclosureOptions,
@@ -30,13 +25,12 @@ import {
 } from './presentation/index.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
-const PRESENTATION_PROMPT = [
-  'Match delivery to the user request. Ordinary answers and simple comparison tables can stay in chat. For analysis of attachments or Workspace data files, including short chat comparisons, first load dsh-data-analysis-files; requested CSV, JSON or PNG files use native present.',
-  'For Marivo analysis reports and dashboards, use marivo_present as the single presentation entry. Put conclusions, supporting explanations, limitations and relevant next steps alongside the data in the same document. Compose TextContent and data views with Stack, Card or Tabs as needed. After successful presentation, keep the final text reply to one short summary sentence without repeating the document. Honor explicit output-format requests. If presentation fails, say so and provide the supported answer in text.',
-  'When a UI helps understand or inspect an existing result, use marivo_present with its exact snapshot reference; default surface is tool, explicit reports/dashboard use tab. For an existing Marivo Frame, prefer AnalysisFrameView: capture the Frame in the original analysis call when planning presentation, then pass its exact frame-snapshot reference. Use DatasetView for dataset-snapshots. Do not invent a Frame or rerun completed analysis just for presentation. Default data views already support column selection, exact sorting and local pagination.',
-  'Simple reference-only presentation needs no extra Skill, Help, Python or read call; UI signatures belong to this plugin, not Marivo live Help. Load dsh-data-analysis-presentation for custom Lang or format-specific guidance. Native custom Lang previews actual argument prefixes. Update an exact basedOnRecordId with only changed named statements; reuse snapshots and read marivo_ui_read only when base context is missing. Offline export and publishing are not available.',
-  'Use the Runtime skills and live Help for Marivo analysis or semantic authoring; local pandas or native DuckDB file analysis needs no Marivo semantic setup. When analysis reveals a reusable business definition or semantic gap, follow the relevant Skill to assess reuse or handoff to marivo-semantic, limited to what the current task needs or the user has authorized; stop when that scope is answered or its blockers are explicit.',
-].join(' ')
+const ROUTING_PROMPT = [
+  'For attachment or Workspace data file analysis, first load dsh-data-analysis-files. For governed Marivo analysis, load marivo-analysis. Load marivo-semantic when a shared definition is needed for the task or the user requests authoring. Get Marivo API details from bound Runtime Help.',
+  'Run analysis in the bound Workspace with marivo_python. Handle datasource secrets through Harness credential forms. Never ask for secret values in chat.',
+  'Answer ordinary questions and short comparisons in chat. Create and update analysis reports and dashboards through marivo_present, including requests for a report the user can open. Capture the result in the original calculation, or reuse its existing snapshot. Use the same tool for visual inspection and load dsh-data-analysis-presentation for custom layouts. Use native present only when the user asks for a file deliverable, such as a CSV or PNG. Honor explicitly requested formats.',
+  'In a report, keep conclusions, supporting data and material limitations together. After save succeeds, reply briefly. If delivery fails, say so and answer with the available evidence.',
+].join('\n')
 
 export type MarivoPluginEnvironmentResolver = (
   agent: Agent,
@@ -118,7 +112,6 @@ export function createMarivoAgentInstallation(
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     try {
-      controller.addDisposer(installMarivoExecutionGuidance(agent, controller))
       controller.addDisposer(
         registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
       )
@@ -153,31 +146,9 @@ export function createMarivoAgentInstallation(
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
       controller.addDisposer(
         agent.ctx.systemPrompt.section({
-          name: 'marivo:presentation',
+          name: 'marivo:routing',
           order: 180,
-          text: PRESENTATION_PROMPT,
-        }),
-      )
-      controller.addDisposer(
-        agent.ctx.systemPrompt.section({
-          name: 'marivo:datasource-credentials',
-          order: 170,
-          text: () =>
-            controller.activeSkills.some((skill) =>
-              ['marivo-analysis', 'marivo-semantic'].includes(skill),
-            )
-              ? MARIVO_DATASOURCE_CREDENTIAL_PROMPT
-              : '',
-        }),
-      )
-      controller.addDisposer(
-        agent.ctx.systemPrompt.section({
-          name: 'marivo:analysis-closeout',
-          order: 175,
-          text: () =>
-            controller.activeSkills.includes('marivo-analysis')
-              ? MARIVO_ANALYSIS_CLOSEOUT_PROMPT
-              : '',
+          text: ROUTING_PROMPT,
         }),
       )
       installed.set(agent, controller)

@@ -21,14 +21,7 @@ Plugin 用独立 filesystem provider `dsh-data-analysis-presentation` 读取包�
 不监听目录变化。Runtime 的 `marivo-analysis` 与 `marivo-semantic` 继续由 `dsh-data-analysis-marivo`
 provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新增 live Help target。
 
-每个 Agent 的常驻 prompt 只保留短路由：
-
-- Marivo 分析报告/dashboard 统一使用 `marivo_present`，把结论、解释、限制、建议与数据放在同一份文档中，
-  成功后最终文字尽量只写一句总结。
-- 普通事实问答与简短比较表格可留在聊天中；明确指定的 CSV、JSON、PNG 等文件使用原生 `present`。
-- 已捕获的单个 Frame 或 DataFrame 快照直接通过 `marivo_present` 交付；自定义 Lang 或需要格式指导时加载
-  `dsh-data-analysis-presentation`。Frame 优先使用 `AnalysisFrameView`，通过 `TextContent` 与布局组件组合说明。
-- 直接文件分析加载 `dsh-data-analysis-files`，使用 pandas 或原生 DuckDB；已有 Frame 或已捕获快照无需先激活分析 Skill。涉及 Marivo 分析语义或建模时，按需加载 Runtime Skill 与相关 live Help。
+常驻提示区分普通聊天、实际文件及分析 UI 的交付方式。需要展示时，Agent 在原分析中捕获结果；已有快照可直接交付。自定义页面按需加载本 Skill。Tool 参数说明给出默认视图、展示位置、基版本和 patch 的调用约定，组件签名与图形选择见随包 references。完整[任务路由](plugin-integration-delivery.md#prompt-与-skill-激活)同样适用于展示任务。
 
 展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。工具入口随插件安装，完整清单见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。
 
@@ -43,7 +36,7 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 ## 内容组织与数据边界
 
-Frame 使用准确 Session/Artifact 引用。文件分析及 SQL 结果在原进程转成 DataFrame 后 capture，成功回执返回 snapshotRef，
+Frame 在原分析进程中由 `capture_frame` 捕获，展示使用成功回执中的 `frame-snapshot` 引用。文件分析及 SQL 结果可在原进程转成 DataFrame 后由 `capture_dataset` 捕获，使用 `dataset-snapshot` 引用。两者均由 Host 签发 `snapshotRef`，
 执行归属及 codeRef 由 Host 绑定，不要求模型手填。SQL 转换可能改变 NULL/整数类型并损失捕获前精度，helper 不修复。
 不强制每条 SQL 捕获，不为呈现重新执行结束的分析，不给 Dataset 补造 Artifact、Evidence 或来源。
 

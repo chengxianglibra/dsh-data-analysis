@@ -1,6 +1,6 @@
 /** Isolated actual Cordis/Connection/Runtime lifecycle, no remote model or business database. */
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -86,6 +86,7 @@ try {
     { provider: 'lifecycle-scripted', model: 'fixture' },
     { cwd: workspace.path },
   )
+  await workspace.attachSession(agent.session.id)
   const config = {
     pythonExecutable,
     runtimeRoot: path.join(root, 'runtime'),
@@ -104,10 +105,11 @@ try {
     'marivo_help',
     'marivo_present',
     'marivo_python',
+    'marivo_ui_read',
   ]
   const section = ctx.systemPrompt.section
   ctx.systemPrompt.section = function (input) {
-    if (input.name === 'marivo:presentation') throw new Error('injected-real-prompt-registration')
+    if (input.name === 'marivo:routing') throw new Error('injected-real-prompt-registration')
     return section.call(this, input)
   }
   for (const service of inject)
@@ -177,16 +179,15 @@ try {
   await plugin.dispose()
   const outcome = await call
   assert.ok(outcome.isError || (outcome.value as { aborted?: boolean }).aborted)
-  let processState = 'absent'
-  try {
-    process.kill(pid!, 0)
-    processState = execFileSync('ps', ['-p', String(pid), '-o', 'stat='], {
-      encoding: 'utf8',
-    }).trim()
-    console.log('Python state at unload:', processState)
+  const probe = spawnSync('ps', ['-p', String(pid), '-o', 'stat='], { encoding: 'utf8' })
+  if (probe.error) throw probe.error
+  const processState =
+    probe.status === 1 && !probe.stdout.trim() && !probe.stderr.trim()
+      ? 'absent'
+      : probe.stdout.trim()
+  if (processState !== 'absent') {
+    assert.equal(probe.status, 0, probe.stderr)
     assert.match(processState, /^Z/, 'Python must have exited; only an unreaped zombie may remain')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
   }
   assert.deepEqual(toolNames(), [])
   assert.equal((await handler.fetch(request(), peer)).status, 404)

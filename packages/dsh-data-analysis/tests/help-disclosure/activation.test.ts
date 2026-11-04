@@ -30,7 +30,7 @@ import {
   marivoHelpBodyDigest,
 } from '../../src/disclosure/index.ts'
 import { FixedSubprocessPolicy, MarivoEnvironment } from '../../src/environment/index.ts'
-import { installMarivoPlugin, MARIVO_DATASOURCE_CREDENTIAL_PROMPT } from '../../src/plugin.ts'
+import { installMarivoPlugin } from '../../src/plugin.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 const FAKE_PYTHON = String.raw`#!/usr/bin/env node
@@ -341,7 +341,7 @@ for (const path of ['inbox', 'waterfall'] as const) {
       }
     })
 
-    test(`${path} ${skill} delivers unchanged execution rules in the first production request`, async (t) => {
+    test(`${path} ${skill} delivers root Help with the same production routing on first activation and continuation`, async (t) => {
       const fixture = await environmentFixture()
       t.after(fixture.cleanup)
       const adapter = new MockAdapter([textResponse('ready'), textResponse('continued')])
@@ -369,74 +369,20 @@ for (const path of ['inbox', 'waterfall'] as const) {
         first,
         skill === 'marivo-analysis' ? /help-body:analysis/ : /help-body:authoring/,
       )
-      assert.equal(guidanceMessages(adapter.requests[0]).length, 1)
-      assert.ok(
-        JSON.stringify(guidanceMessages(adapter.requests[0])).includes(
-          JSON.stringify(MARIVO_DATASOURCE_CREDENTIAL_PROMPT).slice(1, -1),
-        ),
-      )
-      assert.equal(first.includes('Before completing any analysis'), skill === 'marivo-analysis')
-
       send(agent, 'continue')
       await agent.whenIdle()
       assert.equal(adapter.requests.length, 2)
-      const system = JSON.stringify(
-        adapter.requests[1]?.messages.filter((message) => message.role === 'system'),
-      )
-      assert.match(system, /DSH Credentials owns/)
-      assert.equal(system.includes('Before completing any analysis'), skill === 'marivo-analysis')
-      assert.equal(
-        guidanceMessages(adapter.requests[1]).length,
-        1,
-        'only the retained first supplement',
-      )
+      for (const request of adapter.requests) {
+        const system = JSON.stringify(request.messages.filter((m) => m.role === 'system'))
+        assert.match(system, /Harness credential forms/)
+        assert.equal(guidanceMessages(request).length, 0)
+      }
       assert.deepEqual(requestToolNames(adapter.requests[1]), requestToolNames(adapter.requests[0]))
     })
   }
 }
 
-test('explicit dual and incremental activation supplement only newly required rules', async (t) => {
-  for (const together of [true, false]) {
-    const fixture = await environmentFixture()
-    t.after(fixture.cleanup)
-    const adapter = new MockAdapter([
-      textResponse('one'),
-      textResponse('two'),
-      textResponse('three'),
-    ])
-    const ctx = await harness(adapter)
-    const agent = await createAgent(ctx, `explicit-both-${together}`)
-    t.after(installProduction(ctx, fixture.environment))
-    ctx.on('agent/pre-step', async ({ messages }, next) => {
-      const decision = await next()
-      if (decision.kind === 'reject') return decision
-      const text = JSON.stringify(messages)
-      const skills = text.includes('first-activation')
-        ? together
-          ? (['marivo-semantic', 'marivo-analysis'] as const)
-          : (['marivo-semantic'] as const)
-        : (['marivo-analysis'] as const)
-      return { ...decision, messages: [...decision.messages, ...skills.map(explicitInvocation)] }
-    })
-    send(agent, 'first-activation')
-    await agent.whenIdle()
-    send(agent, 'second-activation')
-    await agent.whenIdle()
-    send(agent, 'repeat-activation')
-    await agent.whenIdle()
-    const supplements = JSON.stringify(guidanceMessages(adapter.requests[2]))
-    assert.equal(supplements.match(/DSH Credentials owns/g)?.length, 1)
-    assert.equal(supplements.match(/Before completing any analysis/g)?.length, 1)
-    assert.equal(guidanceMessages(adapter.requests[2]).length, together ? 1 : 2)
-    assert.equal(guidanceMessages(adapter.requests[0]).length, 1)
-    assert.equal(
-      requestMessages(adapter.requests[0]).includes('Before completing any analysis'),
-      together,
-    )
-  }
-})
-
-test('visible focused root Help does not suppress first-activation rules or request-series metadata', async (t) => {
+test('visible focused root Help preserves request-series metadata on activation', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -467,7 +413,7 @@ test('visible focused root Help does not suppress first-activation rules or requ
   assert.equal(adapter.requests.length, 3)
   assert.doesNotMatch(requestMessages(adapter.requests[2]), /<marivo_help_context/)
   assert.equal(requestMessages(adapter.requests[2]).match(/help-body:analysis/g)?.length, 1)
-  assert.equal(guidanceMessages(adapter.requests[2]).length, 1)
+  assert.equal(guidanceMessages(adapter.requests[2]).length, 0)
   assert.ok(
     agent.session
       .snapshotEvents()
@@ -475,7 +421,7 @@ test('visible focused root Help does not suppress first-activation rules or requ
   )
 })
 
-test('rejected invocation leaves ordinary requests unactivated and retry receives its rules', async (t) => {
+test('rejected invocation leaves ordinary requests unactivated and retry receives root Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([textResponse('ordinary'), textResponse('ready')])
@@ -500,11 +446,11 @@ test('rejected invocation leaves ordinary requests unactivated and retry receive
   )
   agent.followup(explicitInvocation('marivo-analysis'))
   await agent.whenIdle()
-  assert.equal(guidanceMessages(adapter.requests[1]).length, 1)
+  assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
 })
 
 for (const interruption of ['failure', 'cancel', 'dispose'] as const) {
-  test(`explicit activation ${interruption} admits no partial guidance and can recover`, async (t) => {
+  test(`explicit activation ${interruption} admits no partial root Help and can recover`, async (t) => {
     const fixture = await environmentFixture(
       interruption === 'failure'
         ? { failTarget: 'authoring', slowTarget: 'analysis' }
@@ -556,14 +502,13 @@ for (const interruption of ['failure', 'cancel', 'dispose'] as const) {
     send(agent, 'retry explicitly')
     await agent.whenIdle()
     assert.equal(adapter.requests.length, 1)
-    assert.match(requestMessages(adapter.requests[0]), /DSH Credentials owns/)
-    assert.match(requestMessages(adapter.requests[0]), /Before completing any analysis/)
+    assert.equal(guidanceMessages(adapter.requests[0]).length, 0)
     assert.match(requestMessages(adapter.requests[0]), /help-body:analysis/)
     assert.match(requestMessages(adapter.requests[0]), /help-body:authoring/)
   })
 }
 
-test('compaction and controller restoration retain system rules without re-appending guidance', async (t) => {
+test('compaction and controller restoration recover Help without duplicating routing', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -583,7 +528,7 @@ test('compaction and controller restoration retain system rules without re-appen
       'user/message',
       createUserMessage({
         content: [{ type: 'text', text: 'compacted summary' }],
-        source: { kind: 'plugin', plugin: 'compaction-fixture' },
+        source: { kind: 'user' },
       }),
       {
         surfaceOp: { op: 'replace', startSeq: event.seq, endSeq: event.seq },
@@ -602,12 +547,11 @@ test('compaction and controller restoration retain system rules without re-appen
     assert.equal(guidanceMessages(request).length, 0)
     assert.match(requestMessages(request), /help-body:analysis/)
     const system = JSON.stringify(request.messages.filter((message) => message.role === 'system'))
-    assert.match(system, /DSH Credentials owns/)
-    assert.match(system, /Before completing any analysis/)
+    assert.equal(system.match(/Harness credential forms/g)?.length, 1)
   }
 })
 
-test('production ordinary requests and a scope-local skill shadow disclose no execution rules', async (t) => {
+test('production ordinary requests and a scope-local skill shadow do not activate root Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -755,14 +699,20 @@ test('Marivo reports combine narrative and Frame data through one presentation e
   const prompt = JSON.stringify(
     adapter.requests[0]?.messages.filter((entry) => entry.role === 'system') ?? [],
   )
-  assert.match(prompt, /use marivo_present as the single presentation entry/)
-  assert.match(prompt, /alongside the data in the same document/)
-  assert.match(prompt, /one short summary sentence without repeating the document/)
-  assert.match(prompt, /prefer AnalysisFrameView/)
-  assert.match(prompt, /Use DatasetView for dataset-snapshots/)
-  assert.match(prompt, /Honor explicit output-format requests/)
-  assert.match(prompt, /If presentation fails, say so/)
-  assert.match(prompt, /Ordinary answers and simple comparison tables can stay in chat/)
+  for (const route of [
+    'dsh-data-analysis-files',
+    'marivo-analysis',
+    'marivo-semantic',
+    'marivo_python',
+    'native present',
+    'marivo_present',
+    'dsh-data-analysis-presentation',
+  ])
+    assert.ok(prompt.includes(route))
+  assert.match(prompt, /Capture the result in the original calculation/)
+  assert.match(prompt, /After save succeeds, reply briefly/)
+  assert.match(prompt, /If delivery fails/)
+  assert.doesNotMatch(prompt, /basedOnRecordId|AnalysisFrameView|persisted_frame|pagination/)
 })
 
 test('analysis activation discloses native help without the removed Evidence route', async (t) => {
@@ -855,60 +805,6 @@ test('an Agent-plane inherited skill Tool activates root help without a legacy r
   assert.match(requestMessages(adapter.requests[1]), /marivo_help_context/)
   assert.match(requestMessages(adapter.requests[1]), /help-body:analysis/)
 })
-
-for (const skill of ['marivo-analysis', 'marivo-semantic']) {
-  test(`${skill} activation adds execution guidance only after activation`, async (t) => {
-    const fixture = await environmentFixture()
-    t.after(fixture.cleanup)
-    const adapter = new MockAdapter([
-      toolCallsResponse([{ id: 'activate-no-sources', name: 'skill', args: { name: skill } }]),
-      textResponse('semantic ready'),
-    ])
-    const ctx = await harness(adapter)
-    const agent = await createAgent(ctx, `source-prompt-${skill}`)
-    const dispose = installMarivoPlugin(ctx, fixture.environment, {
-      credentials: {
-        resolve: async () => undefined,
-        describe: async () => ({ configured: false, writable: true }),
-        set: async () => {},
-        unset: async () => {},
-      },
-    })
-    t.after(dispose)
-
-    send(agent, 'author semantics')
-    await agent.whenIdle()
-
-    assert.doesNotMatch(
-      JSON.stringify(
-        adapter.requests[0]?.messages.filter((message) => message.role === 'system') ?? [],
-      ),
-      /DSH Credentials owns|Before completing any analysis/,
-    )
-    const activatedPrompt = JSON.stringify(
-      adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
-    )
-    assert.ok(
-      activatedPrompt.includes(JSON.stringify(MARIVO_DATASOURCE_CREDENTIAL_PROMPT).slice(1, -1)),
-    )
-    assert.doesNotMatch(activatedPrompt, /marivo_datasource_access|\blease\b|64 foreground/)
-    if (skill === 'marivo-analysis') {
-      assert.match(activatedPrompt, /contracts come from the activated Runtime Skill/)
-      assert.match(activatedPrompt, /text-only answer/)
-      assert.match(activatedPrompt, /Keep incomplete branches explicit/)
-      assert.match(activatedPrompt, /currency code or name/)
-    } else {
-      assert.doesNotMatch(activatedPrompt, /Before completing any analysis/)
-      assert.doesNotMatch(activatedPrompt, /currency code or name/)
-    }
-    assert.doesNotMatch(
-      JSON.stringify(
-        adapter.requests[1]?.messages.filter((message) => message.role === 'system') ?? [],
-      ),
-      /marivo_evidence_sources/,
-    )
-  })
-}
 
 test('an explicit user skill invocation activates the matching root help without a skill Tool call', async (t) => {
   const fixture = await environmentFixture()
@@ -1253,7 +1149,7 @@ test('an already-visible receipt cannot suppress recovery after compaction hides
     'user/message',
     createUserMessage({
       content: [{ type: 'text', text: 'compaction summary without the Help body' }],
-      source: { kind: 'plugin', plugin: 'compaction-fixture' },
+      source: { kind: 'user' },
     }),
     {
       surfaceOp: { op: 'replace', startSeq: root.seq, endSeq: root.seq },
@@ -1920,7 +1816,7 @@ test('a verified reload cannot hide an earlier conflicting Skill result still on
           text: 'Host compaction removed the earlier instructions from the current context.',
         },
       ],
-      source: { kind: 'plugin', plugin: 'compaction-fixture' },
+      source: { kind: 'user' },
     }),
     {
       surfaceOp: { op: 'replace', startSeq: conflict.seq, endSeq: conflict.seq },

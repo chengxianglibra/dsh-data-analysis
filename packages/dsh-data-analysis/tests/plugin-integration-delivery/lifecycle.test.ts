@@ -34,8 +34,7 @@ function fixture(count = 1) {
       resources.set(key, value)
       return () => {
         resources.delete(key)
-        if (cleanupFailure && key === 'prompt:marivo:presentation')
-          throw new Error('cleanup-failure')
+        if (cleanupFailure && key === 'prompt:marivo:routing') throw new Error('cleanup-failure')
       }
     }
     let hook = 0
@@ -97,12 +96,9 @@ for (const fault of [
   'tool:marivo_present',
   'hook:tools/result:1',
   'hook:agent/pre-step:2',
-  'hook:agent/pre-step:3',
-  'hook:tools/result:4',
-  'hook:tools/ptc-dispatch-log:5',
-  'prompt:marivo:presentation',
-  'prompt:marivo:datasource-credentials',
-  'prompt:marivo:analysis-closeout',
+  'hook:tools/result:3',
+  'hook:tools/ptc-dispatch-log:4',
+  'prompt:marivo:routing',
 ]) {
   for (const index of [0, 1])
     test(`existing Agent ${index} rolls back ${fault}`, async () => {

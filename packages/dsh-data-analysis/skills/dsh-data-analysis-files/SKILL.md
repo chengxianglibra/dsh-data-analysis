@@ -12,7 +12,7 @@ description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数�
 使用 Harness 提供的当前附件可读路径，或用户指定的 Workspace 文件；同名附件按消息和完整路径区分。路径不可读时报告实际问题，不猜测 Host 缓存位置。
 在实际读取代码中使用该完整路径，使执行记录保留输入身份；不为缩短路径而复制成 Workspace 同名文件，以免覆盖或在后续追问中读到旧副本。
 
-文件读取、计算和最终文件生成均通过 `marivo_python` 在绑定 Runtime 中执行，不改走 Bash 的 `python`／`python3` 或其他解释器。纯本地文件分析可直接使用 pandas 或原生 `duckdb`，传 `datasources: []`；无需 `md.raw_sql`、Marivo 分析 Skill、live Help 或语义建模。只有实际访问 Marivo datasource 时才声明其精确名称并查询相关契约。
+Harness 可用 `read` 预览文本。即使预览看似完整，也要用附件原路径在 `marivo_python` 中读取计算所需数据。计算和最终文件生成均通过 `marivo_python` 在绑定 Runtime 中执行，不改走 Bash 的 `python`／`python3` 或其他解释器。纯本地文件分析可直接使用 pandas 或原生 `duckdb`，传 `datasources: []`；无需 `md.raw_sql`、Marivo 分析 Skill、live Help 或语义建模。只有实际访问 Marivo datasource 时才声明其精确名称并查询相关契约。
 
 使用现有 reader，保留回答所需的 sheet、字段和解析范围；区分样本与全量。Excel `.xlsx` 可用 DuckDB `read_xlsx`，首次使用可能联网获取官方扩展；不承诺旧 `.xls` 或冷缓存离线读取，不临时安装 Python 依赖。
 
@@ -37,11 +37,11 @@ description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数�
 
 ## 按用户目标交付
 
-普通答案和简短比较表格直接在聊天中回答，不额外创建文件。用户要查看或交付已有的 CSV、TSV、XLSX 表格文件时，确认当前 Session 可访问该文件后，按[文件交付](references/delivery.md)调用实际可用的 Harness 原生 `present`；交付卡片由 Harness 在右侧打开只读表格预览。用户要求生成 CSV、TSV、JSON、PNG 等实际文件时，通过 `marivo_python` 生成最终文件，优先写入当前绑定 Workspace；确认执行成功、文件存在后再调用 `present`。文件生成和原生声明分别核对，路径或代码块不能替代交付。不承诺插件能写入 XLSX，也不把 Harness 对旧 `.xls` 的预览当作插件可分析 `.xls`。
+普通答案和简短比较表格直接在聊天中回答。聊天中用 USD 等货币代码或货币名称表示金额，避免美元符号被 Markdown 当作数学定界符。用户要查看或交付已有的 CSV、TSV、XLSX 表格文件时，确认当前 Session 可访问该文件后，按[文件交付](references/delivery.md)调用实际可用的 Harness 原生 `present`；交付卡片由 Harness 在右侧打开只读表格预览。用户要求生成 CSV、TSV、JSON、PNG 等实际文件时，通过 `marivo_python` 生成最终文件，优先写入当前绑定 Workspace；确认执行成功、文件存在后再调用 `present`。文件生成和原生声明分别核对，路径或代码块不能替代交付。不承诺插件能写入 XLSX，也不把 Harness 对旧 `.xls` 的预览当作插件可分析 `.xls`。
 
 UI 有助于理解、比较或检查结果时，在原分析进程对实际 DataFrame 调用 `capture_dataset(result)`；
 成功回执提供 `snapshotRef`，直接调用 `marivo_present({resources:{result:{kind:"dataset-snapshot",snapshotRef:"实际引用"}}})`。
-默认 tool，成功结果在会话级节点展示；用户明确要求报告/dashboard 时传 `surface:"tab"`，把说明和数据放在同一份文档中，成功后最终文字尽量只写一句总结。单结果不强制加载展示 Skill、查 Catalog 或回读 UI。
+用户要生成可打开的分析报告／看板，或要修改已有报告时，使用 `marivo_present` 和 `surface:"tab"`。只有用户明确指定文件交付时才生成相应文件。把说明和数据放在报告中，成功后最终文字尽量只写一句总结。单结果不强制加载展示 Skill、查 Catalog 或回读 UI。
 只有编写自定义 Lang 或修改页面时按需加载 `dsh-data-analysis-presentation`。在正文说明文件名与分析范围，
 不将文件结果冒充 Marivo Artifact 或 Evidence。普通 `present` 不赋予文件 Report/Build 或 Evidence 身份。
 

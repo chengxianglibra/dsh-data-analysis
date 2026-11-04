@@ -7,13 +7,13 @@ description: 将已捕获的 Frame 或 DataFrame 快照组织为分析 UI、报�
 
 本 Skill 负责用 `marivo_present` 保存已有结果的不可变快照，默认在会话级 Chat 节点展示，明确要求的报告/dashboard 使用右侧 tab。分析方法、业务语义、质量与 lineage 由分析流程和 Marivo Runtime 契约拥有；展示不能补造缺失证据。
 
-分析报告/dashboard 统一通过 `marivo_present` 创建和更新，将结论、解释、限制及相关后续建议与数据放在同一份文档中。
+分析报告/dashboard 统一通过 `marivo_present` 创建和更新，将结论、支撑数据及影响解读的限制放在同一份文档中；有依据的下一步建议可随结论给出。
 Frame 数据优先使用 `AnalysisFrameView`，用 `TextContent` 及布局组件组织说明。成功交付后，最终文字尽量只写一句总结，
 不重复报告正文；用户明确指定输出格式时遵循要求，展示失败则说明实际状态并用已有证据回答。
 
 ## 引用呈现与自定义页面
 
-单个结果直接传准确引用，省略 program；不用先查目录或读取 UI。Frame 使用原 `marivo_python` 执行中
+单个结果直接传准确引用，省略 program；默认表格支持精确排序和本地分页。不用先查目录或读取 UI。Frame 使用原 `marivo_python` 执行中
 `capture_frame(frame)` 返回的 `frame-snapshot`；在成功回执的 `snapshots` 中按 `kind` 找到对应的 `snapshotRef`：
 
 ```json
@@ -40,7 +40,7 @@ rows 不写入 program。图片资源为 `{"kind":"image-file","path":"workspace
 
 自定义、capture 或修改页面时读[Lang、捕获与更新示例](references/analysis-ui.md)。
 更新传准确 `basedOnRecordId` 和变化语句，每行一条；省略 resources 继承快照，提供则替换完整资源表。
-未变化数据不重读，不重发整页，不强制大纲、分步提交或成功后回读。Native 预览来自真实参数前缀；
+只改标题时传基版本和新标题，省略 program 与 resources。未变化数据不重读，不重发整页，不强制大纲、分步提交或成功后回读。Native 预览来自真实参数前缀；
 PTC 只按实际 dispatch 粒度展示。参数建议按 surface、basedOnRecordId、resources、title、program 排列；
 字段晚到可能只在保存后显示，不能为制造流式效果追加无意义调用。
 

@@ -29,7 +29,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present Marivo analysis reports and dashboards as one document: combine conclusions, supporting explanations, limitations and relevant next steps with the data views. Use this single entry for the whole deliverable. Also use when a UI helps understand, compare or inspect an existing result. Prefer AnalysisFrameView for Frame data. For one result provide only resources: {result: {kind: "frame-snapshot", snapshotRef}} for an AnalysisFrame retained by capture_frame, or {result: {kind: "dataset-snapshot", snapshotRef}} for a DataFrame; omit program for the default view. A single-row comparison with several groups defaults to one comparison table; omit view to use the structural default. The default table already provides exact sorting, local pagination, copying and source/range details. This schema is sufficient for default presentation; Marivo live Help describes Python analysis APIs, not UI components. No extra Skill/read/Python call is needed. Rows never belong in program. labels can provide display names (resource -> column id -> label). Default surface is tool; use tab for an explicitly requested report/dashboard. Custom OpenUI Lang streams during Native generation. To update, pass the exact basedOnRecordId and only changed named statements (one per line); use name = null to delete after removing references. Omitted resources inherit; supplied resources replace the complete table. Unchanged snapshots are reused. Saves an immutable recordId; never reruns analysis. Read marivo_ui_read only when base context is missing.',
+      'Create or update an analysis report or dashboard, or present a visual result. A successful save returns an immutable recordId. For one snapshot, pass resources only and omit program. Reuse saved snapshots for edits. Read marivo_ui_read only if the base definition is missing. Load dsh-data-analysis-presentation for custom OpenUI Lang.',
     parameters: {
       surface: {
         type: 'string',
@@ -44,7 +44,7 @@ export function createMarivoPresentTool(
       resources: {
         type: 'object',
         description:
-          'Named resources: {kind:"frame-snapshot",snapshotRef}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. No rows or arbitrary URLs.',
+          'Named resources: {kind:"frame-snapshot",snapshotRef}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. Omit to inherit on update; supplying resources replaces the full map. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
@@ -57,7 +57,7 @@ export function createMarivoPresentTool(
       program: {
         type: 'string',
         description:
-          'Lang calls use positional arguments, e.g. root = Stack([TextContent("Conclusion and scope"), AnalysisFrameView("result")]); never name:value call arguments. Complete OpenUI Lang for creation; only changed complete named statements for updates, one per line. Components: AnalysisFrameView, DatasetView, Stack, TextContent, Card, Tabs, TabItem, Image. DatasetView(ref, view?, display?): auto/table/metric or line/area/bar with encoding {axis: columnId, values: columnId[], series?: columnId}, heatmap with encoding {x: columnId, y: columnId, value: columnId}; all charts require complete snapshots, unique axis/series or x/y keys, and numeric values. Dataset axes follow first saved appearance, including dates; prepare aggregation and desired row order in Python. No analysis semantics are inferred. AnalysisFrameView(ref, view?, display?): view.chart is auto (default, chosen from Frame structure), table, metric, line/area/bar, pie, heatmap, comparison or decomposition; encoding names only public value/axis names of the snapshot; display {height?, density?: "full"|"compact", dataTable?: "collapsed"|"visible"}. Declare view only to deviate from auto; invalid views are rejected with a code and path. Omit for a single resource or to retain the base program. Image src is a resource name.',
+          'Complete OpenUI Lang for creation. Call components with positional arguments, e.g. DatasetView("result", {chart: "table"}). Use named resources for data views. For updates, send only changed named statements, one per line; name = null deletes an unreferenced statement. Omit to retain the base program, including for a title-only edit.',
       },
       locale: {
         type: 'string',

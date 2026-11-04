@@ -112,7 +112,7 @@ Ordinary results appear as separate chat entries outside folded work steps. Expl
 Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
 
 Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,
-preferring `AnalysisFrameView` for Frame data. After successful delivery, the assistant aims to reply with one short summary sentence; explicit output-format requests still apply.
+preferring `AnalysisFrameView` for Frame data. After saving the report, the assistant replies briefly in chat. Your requested output format takes precedence.
 
 - **Inspect data**: Select columns, sort exact values, browse local pages, and copy saved data. Previews disclose their range and cannot become complete single-value metrics.
 - **Check sources**: Frame views show structure and source identity. DataFrame views explicitly mark SQL, datasource and file provenance that was not captured.

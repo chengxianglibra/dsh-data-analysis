@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import LlmRuntime, {
   createUserMessage,
@@ -23,6 +24,7 @@ import { apply as installSkillFilesystem } from '@deepseek-ai/dsh-skill-filesyst
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { apply as installSkillTool } from '@deepseek-ai/dsh-tool-skill'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import {
   installMarivoDisclosure,
   loadTargetInventory,
@@ -166,6 +168,8 @@ installSkillFilesystem(activationContext, {
 installSkillTool(activationContext)
 await activationContext.plugin(AgentRegistry)
 await activationContext.plugin(SessionProjectionRegistry)
+await activationContext.plugin(LocalFileSystem, { cwd: workspaceRoot })
+await activationContext.plugin(WorkingDirectory, { defaultDirectory: workspaceRoot })
 await activationContext.plugin(AgentLoop, { agents: [] })
 activationContext.llm.registerAdapter(['validation'], adapter)
 activationContext.tools.register(
@@ -241,7 +245,7 @@ for (const skill of ['marivo-analysis', 'marivo-semantic'] as const) {
     assert.match(messages, /marivo_help_context/)
     assert.doesNotMatch(
       messages,
-      /marivo_execution_guidance|DSH Credentials owns|Before completing any analysis/,
+      /marivo_execution_guidance|marivo_python|Harness credential forms/,
     )
     assert.deepEqual(disclosure.activeSkills, [skill])
     explicitActivations.push({ skill, requestCount: 1, tools, executionGuidanceVisible: false })

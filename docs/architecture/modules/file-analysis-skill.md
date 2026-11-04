@@ -12,7 +12,7 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 
 ## 执行与结果
 
-纯本地文件使用 `marivo_python(datasources: [])`，Agent 按任务选择 pandas、原生 `duckdb` 或两者组合。
+Harness 可预览文本附件。分析按附件原路径读取数据；聊天中的预览不证明计算范围。纯本地文件使用 `marivo_python(datasources: [])`，Agent 按任务选择 pandas、原生 `duckdb` 或两者组合。
 无需先调用 `md.raw_sql` 或查询 Marivo Help；访问 Marivo datasource 时仍须声明精确名称并遵守公开契约。
 原生 DuckDB 连接在一次调用内可执行多条 SQL 和使用临时表；每次 Tool 使用独立 Python 进程，不保留跨调用内存状态。
 

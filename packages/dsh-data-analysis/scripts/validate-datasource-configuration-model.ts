@@ -20,7 +20,6 @@ import { MarivoDatasourceBridge } from '../src/datasource/bridge.ts'
 import { registerMarivoDatasourceConfigureTool } from '../src/datasource/configure.ts'
 import { registerMarivoPythonTool } from '../src/datasource/python.ts'
 import { MarivoCredentialService } from '../src/datasource/service.ts'
-import { MARIVO_DATASOURCE_CREDENTIAL_PROMPT } from '../src/disclosure/execution-guidance.ts'
 import { bindMarivoEnvironment } from '../src/environment/index.ts'
 import { Store } from '../tests/datasource-credentials/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
@@ -76,7 +75,7 @@ connection.close()
     agent.ctx.systemPrompt.section({
       name: 'configuration-validation',
       order: 100,
-      text: `${MARIVO_DATASOURCE_CREDENTIAL_PROMPT}\nPublic API examples: import marivo.datasource as md; md.load().list().ids() discovers registered datasource names; import marivo.semantic as ms; print(md.raw_sql(ms.ref.datasource(name), "SELECT SUM(amount) FROM orders", reason="Validate fixture sum").to_pandas()). Use only read-only analysis queries.`,
+      text: `Public API examples: import marivo.datasource as md; md.load().list().ids() discovers registered datasource names; import marivo.semantic as ms; print(md.raw_sql(ms.ref.datasource(name), "SELECT SUM(amount) FROM orders", reason="Validate fixture sum").to_pandas()). Use only read-only analysis queries.`,
     })
     const results: { name: string; isError: boolean; value?: unknown }[] = []
     ctx.on('tools/result', (exec, result) => {

@@ -19,7 +19,7 @@
 1. `apply()` 确保精确 Marivo 0.6.0 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
 2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
-4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与 prompt sections。
+4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
 6. profile 级 Connection RPC 与 storageDomain 承载[语义对象引用输入](semantic-reference-input.md)，Browser 注册独立 `@` source。
 7. profile 同时注册只读 presentation RPC；它只依赖当前 Workspace 成员关系和保存文件。
@@ -68,35 +68,15 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 
 ## Prompt 与 Skill 激活
 
-系统提示负责任务入口与宿主接入边界。当前以 Marivo 分析报告/dashboard 为目标，统一使用
-`marivo_present` 创建和更新：结论、解释、限制及相关后续建议与数据视图放在同一份文档中，成功后最终文字
-尽量只写一句总结。说明和数据共用同一文档、recordId 与保存流程。
-用户明确指定输出格式或展示失败时保留相应文字回答；普通问答与简短比较可留在聊天中。
-这些是模型指导，当前没有为此增加工具执行门禁。
+完整插件向每个 Agent 注册一个稳定的 `marivo:routing` section。它在第一次工具选择前提供以下信息。
 
-文件分析（含简短比较）先加载 `dsh-data-analysis-files`，指定 CSV、JSON、PNG 等生成文件通过原生 `present` 交付；已有 CSV、TSV、XLSX 表格文件也可通过 `present` 打开 Harness 原生只读预览。已有单结果直接用 `marivo_present` 传准确引用，不额外读取 Skill/Catalog。现有 Marivo Frame 优先在原分析调用中捕获，通过 `AnalysisFrameView` 展示；
-DataFrame 快照使用 `DatasetView`，不为展示虚构 Frame 或重跑已结束分析。文字与数据通过 `TextContent`、`Stack`、`Card` 或 `Tabs` 组织。
-自定义 Lang 时按需加载 `dsh-data-analysis-presentation`；`AnalysisFrameView` 按 Frame 结构选择图形，`DatasetView` 支持 auto/table/metric/line/area/bar/heatmap；支持 Native 参数流和基版本语句更新，默认 tool，明确报告为 tab。
-不提供离线 HTML 导出或发布。
+- 输入决定分析入口。附件和 Workspace 数据文件先加载 `dsh-data-analysis-files`。已有业务语义的分析加载 `marivo-analysis`；当前任务需要共享定义或用户要求建模时加载 `marivo-semantic`。绑定 Runtime 的 live Help 提供 Marivo API。
+- 分析使用绑定 Workspace 的 `marivo_python`，凭据值由用户在 Harness 表单处理。各 Tool 描述给出数据源声明、配置和连接测试的适用条件，回执提供本次执行状态及修复信息。
+- 输出按用户目标选择。普通问答和简短比较可留在聊天中，用户明确索取实际文件时通过原生 `present` 交付。创建或更新可打开的分析报告、看板，以及查看分析 UI 时使用 `marivo_present`；需要计算的展示结果在原分析中捕获，已有快照直接复用。自定义布局加载展示 Skill。
+- 报告把结论、支撑数据和影响解读的限制放在同一份文档中。成功保存后简短回复；交付失败则说明实际状态，回答已有证据支持的部分。
 
-报告/dashboard 展示已经完成的分析快照；改变分析范围或重新计算需要回到分析流程，再更新对应文档。
-首期范围限于分析报告和看板，不引入通用表单、页面业务 Query、Provider 发布或动作执行协议。
-
-`marivo-analysis` / `marivo-semantic` 激活后披露对应 Runtime 根 Help 和 Host 执行、凭据边界；具体配置与
-测试顺序由 `marivo_datasource_configure`、`marivo_datasource_test` 的 Tool 描述指导，凭据、路径与身份由
-代码校验。首次激活补发与 compaction 恢复保持原机制，见 [Help 披露](help-disclosure.md)。
-
-文件 Skill 拥有文件分析与收尾核对；Runtime Skill 拥有 Marivo 分析、语义与证据有效性；展示 Skill 只核对
-呈现是否忠实于已有结果。系统中的 analysis 收尾提醒暂时保留，移除须另有绑定 Runtime Skill 和真实模型
-覆盖证据。插件不复制上游 API，也不因纯文件或展示任务自动激活 Runtime Skill。
-
-分析收尾提示建议用货币代码、名称或转义美元符号，降低与 Markdown 数学定界符的歧义；它只是模型提示，
-不能保证所有回答正确渲染，聊天 Markdown 解析仍由 Harness 拥有。
-
-系统仅增加可复用语义的条件性交接入口：限于当前任务需要或用户已授权的范围，问题已有答案或阻塞已明确
-即停止。文件 Skill 判断候选的用途、依据与范围，进入 `marivo-semantic` 后按上游契约优先复用、补齐最小
-必要定义并验证；返回引用后继续原问题。范围外机会只简要说明，不自动建模、另建记录文件或递归扩展。
-这属于 Agent 工作指导，不增加工具门禁、自动持久化机制或新的语义对象类型；展示 Skill 职责保持不变。
+Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项回答、比较分母、证据强度和未完成分支由文件 Skill 或绑定 Runtime 的分析 Skill 指导。表格交互、图形签名、版式与更新示例由展示层维护，见[展示 Skill](presentation-skill.md)。
+数据源授权、运行身份以及快照和保存结果由代码核验。
 
 展示 Skill 由 `dsh-data-analysis-presentation` provider 从包内 `skills/` 挂载；Runtime Skill 仍由
 `dsh-data-analysis-marivo` provider 从当前 Runtime 读取。两者不包含默认 roots，也不监听目录变化。

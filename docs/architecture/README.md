@@ -69,7 +69,7 @@ profile 共享精确安装的 Marivo Runtime、presentation-kit 和 Runtime Skil
 
 Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 Workspace。涉及数据源、分析和展示来源的操作使用所属 Workspace 的同一 bound Runtime。Workspace ID 与 Runtime fingerprint 共同约束浏览和引用身份；同路径重新注册的 Workspace 不能接收旧引用。
 
-每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，展示任务加载 `dsh-data-analysis-presentation`；需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。
+每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，已有快照可直接展示，自定义布局按需加载 `dsh-data-analysis-presentation`；需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。
 
 默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_configure`、`marivo_datasource_test`、`marivo_python`、`marivo_present`、`marivo_ui_read`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
 
@@ -104,7 +104,7 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 
 报告目录与版本历史只读取 current v4 指针及 `dsh.analysis-ui/v1` 记录；current v2/v3 不再读取或更新，文件不删除、不迁移。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
 打开旧地址显示不支持的报告错误，不回退到旧 Reader。Frame v2 的 AnalysisFrameView 按 Frame 结构选择观察、成员、比较、
-分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、heatmap、comparison 和 decomposition 视图；
+分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、pie、heatmap、comparison 和 decomposition 视图；
 DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 保留已保存图点与支持单元格的“就此提问”入口；Dataset 不接入该协议。
 两种数据视图使用 shadcn/ui 结果外壳与 Recharts 图形，领域层保留事实解释与原始行字段绑定；OpenUI Lang / Renderer 负责报告编排，
 八组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。

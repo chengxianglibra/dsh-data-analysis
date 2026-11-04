@@ -51,8 +51,6 @@ import {
   SemanticReferenceUsage,
 } from './semantic-reference/index.ts'
 
-export { MARIVO_DATASOURCE_CREDENTIAL_PROMPT } from './disclosure/execution-guidance.ts'
-
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
 

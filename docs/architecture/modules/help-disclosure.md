@@ -71,24 +71,7 @@ Skill。该检查不验证 Skill 附带的其他资源。
 根 Help。两个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何
 根 Help，并记录 failure telemetry。
 
-公开的 `installMarivoDisclosure` 保持 Help-only：不安装或假定 `marivo_python`、
-`marivo_datasource_test` 和 Credentials service，也不披露它们的执行规则。完整的 `installMarivoPlugin`
-另行注册内部 `installMarivoExecutionGuidance` hook，由同一个 controller 生命周期负责注销；
-该 hook 在 Help listener 之后以 prepend 方式安装，包围 Help 的成功 decision。没有新增公共配置或 exports。
-
-Harness 在 pre-step 之前组装 system prompt，因此显式 invocation 在当次 waterfall 中激活时，
-条件 section 尚未包含对应规则。完整插件的 guidance hook 在进入 waterfall 前保存 active Skills，在原 decision 允许进入、
-根 Help 整批成功且未取消后，比较激活集合，追加带插件来源的 `marivo_execution_guidance` user message。
-直接 inbox 与下游 producer 生成的结构化 invocation 共用此路径；返回值保留原 decision 的其他字段。
-
-首次激活任一 Marivo Skill 补发凭据执行规则，首次激活 analysis 补发收尾规则；双 Skill 同轮只补一份
-凭据规则，semantic 之后激活 analysis 只补收尾规则。规则与现有 system sections 共用原文定义，
-即使根 Help 是 `already-visible` 也单独判断规则需求，不改变 Help digest 或 delivery 统计。
-
-后续请求仍由原 system sections 提供规则，不继续新增补发消息；保留在历史中的首次补发与后续 section
-存在有限重复。拒绝不激活；失败、取消和 dispose 不交付部分 Help 或规则。重试重新组装 prompt，
-已激活规则由 section 提供；compaction 与恢复继续使用现有激活恢复和实时 Help 可见性机制。
-本接缝不重跑 Host assembly、不访问私有 loop 状态，也不依赖可被关闭的 runtime context。
+公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。Skill 激活只向允许进入模型的 decision 追加实时根 Help，保留原 decision 的其他字段。披露失败、取消及释放均不交付部分 Help。
 
 ## Prompt 可见性与恢复
 
@@ -161,7 +144,7 @@ packages/dsh-data-analysis/tests/help-disclosure/activation.test.ts
 测试重点包括空数组拒绝、重复/multi target、raw stdout parity、无 shadow registry、原子失败、Skill 激活、
 compaction 恢复、Environment 替换、普通工具持续可见和 controller dispose。
 
-生产安装路径的请求级测试另覆盖两类显式激活首请求、增量/重复激活、已可见 focused root Help、
+生产安装路径的请求级测试另覆盖两类显式激活首请求、后续请求的稳定路由、已可见 focused root Help、
 `startsRequestSeries` 保留、拒绝、失败、取消及恢复。
 
 `npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding
