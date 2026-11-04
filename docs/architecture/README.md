@@ -24,7 +24,7 @@
 | Agent 接入 | [文件分析 Skill](modules/file-analysis-skill.md) | 原生附件路径、pandas/DuckDB 与结果交付 |
 | 语义交互 | [语义对象引用输入](modules/semantic-reference-input.md) | Catalog 检索、原子引用、提交核验与热度 |
 | 语义交互 | [只读语义浏览器](modules/semantic-browser.md) | Catalog 快照、公开定义与声明关系 |
-| 报告 | [展示 Skill](modules/presentation-skill.md) | 引用呈现、Lang 组合与叙事检查 |
+| 报告 | [展示 Skill](modules/presentation-skill.md) | 自定义报告和看板的 Lang 组合与叙事检查 |
 | 报告 | [展示数据投影](modules/presentation-projection.md) | 有界快照、Frame 读取、DataFrame capture 与数值预算 |
 | 报告 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、语句 patch、current、receipt 与 RPC |
 | 报告 | [分析文档 reader](modules/presentation-reader.md) | 共享 AnalysisSurface、报告目录与版本历史 |

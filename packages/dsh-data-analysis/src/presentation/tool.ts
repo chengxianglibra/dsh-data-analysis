@@ -29,22 +29,23 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis report or dashboard, or present a visual result. A successful save returns an immutable recordId. For one snapshot, pass resources only and omit program. Reuse saved snapshots for edits. Read marivo_ui_read only if the base definition is missing. Load dsh-data-analysis-presentation for custom OpenUI Lang.',
+      'Present an existing visual result or save a report or dashboard. For a single snapshot or image, pass resources and omit program to use the default view. Load dsh-data-analysis-presentation when composing a custom report or dashboard in OpenUI Lang. Save the requested result in one call. Success returns an immutable recordId. Use marivo_ui_read only when you need a missing base definition for an edit.',
     parameters: {
       surface: {
         type: 'string',
         enum: ['tool', 'tab'],
-        description: 'Default tool. Use tab for an explicitly requested report/dashboard.',
+        description:
+          'Defaults to tool for chat. Use tab for a requested report or dashboard. For native preview, put surface and any basedOnRecordId before the content.',
       },
       basedOnRecordId: {
         type: 'string',
         description:
-          'Exact successful recordId to update. Omit to create. A stale base conflicts; never change only the ID to retry.',
+          'Omit to create. To update, use the exact recordId from the successful save. If the base is stale, review the current version and reapply the intended edit.',
       },
       resources: {
         type: 'object',
         description:
-          'Named resources: {kind:"frame-snapshot",snapshotRef}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use actual successful analysis references. Omit to inherit on update; supplying resources replaces the full map. No rows or arbitrary URLs.',
+          'Map a resource name to {kind:"frame-snapshot",snapshotRef}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use the snapshotRef from the successful marivo_python capture of the Frame or DataFrame. On update, omit to reuse saved resources. Supplying a map replaces the full set. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
@@ -53,11 +54,11 @@ export function createMarivoPresentTool(
           'Resource name -> column id -> display label. Display-only: does not change ids, sorting, units or exact values; must name columns of the declared snapshot; replaces previous present-level labels for that resource; omit to inherit.',
         additionalProperties: true,
       },
-      title: { type: 'string', description: 'Short document title.' },
+      title: { type: 'string', description: 'Short document title. Omit on update to inherit.' },
       program: {
         type: 'string',
         description:
-          'Complete OpenUI Lang for creation. Call components with positional arguments, e.g. DatasetView("result", {chart: "table"}). Use named resources for data views. For updates, send only changed named statements, one per line; name = null deletes an unreferenced statement. Omit to retain the base program, including for a title-only edit.',
+          'For a custom page, supply complete OpenUI Lang rooted at root and refer to resources by name. For a layout edit, send only changed named statements, one per line. Remove parent references before deleting a statement with name = null. Omit to retain the saved layout, including for title-only or label-only edits.',
       },
       locale: {
         type: 'string',

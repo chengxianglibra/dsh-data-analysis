@@ -5,12 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { analysisCatalogSpec } from '../../src/presentation/contracts/analysis-catalog.ts'
 import {
-  analysisElements,
-  analysisPresentInput,
-} from '../../src/presentation/contracts/analysis-document.ts'
-import {
   analysisStatements,
-  mergeAnalysisProgram,
   parseAnalysisProgram,
 } from '../../src/presentation/contracts/analysis-program.ts'
 
@@ -133,75 +128,39 @@ test('analysis catalog reference matches the generated component signatures', as
   )
 })
 
-test('every Skill marivo_present example uses the current input and Lang contract', async () => {
-  let presentInputs = 0
-  let patches = 0
-  let inlinePrograms = 0
-  for (const skillName of skillNames) {
-    for (const [file, content] of await markdown(skillName)) {
-      const where = path.relative(packageRoot, file)
-      for (const block of content.matchAll(/```json\n([\s\S]*?)\n```/g)) {
-        const value = JSON.parse(block[1]!)
-        // Native `present` file delivery examples belong to the Harness contract.
-        if ('files' in value) continue
-        const input = analysisPresentInput.parse(value)
-        presentInputs++
-        if (!input.program) continue
-        if (input.basedOnRecordId) {
-          // Patches are statement fragments; check they admit and merge onto a root.
-          patches++
-          const names = analysisStatements(input.program)
-            .split('\n')
-            .map((statement) => statement.slice(0, statement.indexOf('=')).trim())
-          const base = `root = Stack([${names.join(', ')}]);\n${names
-            .map((name) => `${name} = TextContent("base");`)
-            .join('\n')}`
-          parseAnalysisProgram(mergeAnalysisProgram(base, input.program))
-          continue
-        }
-        const resources = input.resources ?? {}
-        for (const node of analysisElements(parseAnalysisProgram(input.program))) {
-          if (node.typeName === 'Image')
-            assert.equal(resources[String(node.props.src)]?.kind, 'image-file', where)
-          if (node.typeName === 'DatasetView')
-            assert.equal(resources[String(node.props.ref)]?.kind, 'dataset-snapshot', where)
-          if (node.typeName === 'AnalysisFrameView')
-            assert.ok(
-              ['frame-snapshot'].includes(resources[String(node.props.ref)]?.kind ?? ''),
-              where,
-            )
-        }
-      }
-      for (const inline of content.matchAll(/`(root = [^`]+)`/g)) {
-        inlinePrograms++
-        parseAnalysisProgram(inline[1]!)
-      }
-    }
-  }
-  assert.ok(presentInputs >= 5, 'Skill examples cover reference, custom and update inputs')
-  assert.ok(patches >= 1, 'Skill examples cover a statement patch')
-  assert.ok(inlinePrograms >= 1, 'SKILL.md keeps an inline Lang example')
-})
-
-test('the comparison example keeps the documented reconciliation', async () => {
+test('custom page examples use valid OpenUI Lang and Catalog components', async () => {
   const content = await readFile(
     path.join(packageRoot, 'skills/dsh-data-analysis-presentation/references/examples.md'),
     'utf8',
   )
-  for (const fact of [
-    'baseline `[100, 80, 20]`、current `[50, 50, 50]`',
-    '"baseline": [200, 180, 20]',
-    '"current": [150, 100, 50]',
-    '全量 200 → 150，净变化 -50',
-    '两项减少量 80，其他项增加 30',
-  ])
-    assert.ok(content.includes(fact), fact)
-  const baseline = [100, 80, 20]
-  const current = [50, 50, 50]
-  const delta = current.map((value, index) => value - baseline[index]!)
+  const examples = content.split(/^## /m).slice(1)
+  assert.ok(examples.length > 0)
+  for (const example of examples) {
+    const programs = [...example.matchAll(/```openui\n([\s\S]*?)\n```/g)]
+    assert.ok(programs.length > 0, example.split('\n')[0])
+    for (const block of programs) parseAnalysisProgram(analysisStatements(block[1]!))
+  }
+})
+
+test('the comparison example reconciles its headline with the documented rows', async () => {
+  const content = await readFile(
+    path.join(packageRoot, 'skills/dsh-data-analysis-presentation/references/examples.md'),
+    'utf8',
+  )
+  const rows = [...content.matchAll(/^\| [ABC] \| (\d+) \| (\d+) \|$/gm)]
+  assert.equal(rows.length, 3)
   const sum = (numbers: number[]) => numbers.reduce((total, number) => total + number, 0)
-  assert.equal(sum(delta), -50)
-  assert.equal(sum(delta) / sum(baseline), -0.25)
-  assert.equal(-(delta[0]! + delta[1]!), 80)
-  assert.equal(delta[2], 30)
+  const baseline = sum(rows.map((row) => Number(row[1])))
+  const current = sum(rows.map((row) => Number(row[2])))
+  const deltas = rows.map((row) => Number(row[2]) - Number(row[1]))
+  const decrease = -sum(deltas.filter((delta) => delta < 0))
+  const offset = sum(deltas.filter((delta) => delta > 0))
+  const net = baseline - current
+  assert.ok(
+    content.includes(
+      `全量从 ${baseline} 降至 ${current}，净减少 ${net}（${(100 * net) / baseline}%）`,
+    ),
+  )
+  assert.ok(content.includes(`A、B 合计减少 ${decrease}，C 增加 ${offset}`))
+  assert.ok(content.includes(`两项减少量与全量净减少之比是 ${(100 * decrease) / net}%`))
 })

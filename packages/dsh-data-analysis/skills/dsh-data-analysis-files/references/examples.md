@@ -32,7 +32,7 @@ print(result.to_string(index=False))
 
 按文件改用 `read_json_auto(?)`、`read_parquet(?)` 或 `read_xlsx(?)`。`.xlsx` 的指定工作表可用 `read_xlsx(?, sheet = ?)` 并传入路径与 sheet 名；首次加载 `excel` 扩展需要获取官方扩展。参数避免将路径或 sheet 名直接拼入 SQL；reader 支持 glob，含通配符的文件名需先确认只命中目标文件。
 
-原生连接支持同一调用内的多条 SQL 和临时表，无需另建 Marivo datasource。需要保留用于 UI 的结果时，在同一次 marivo_python 中调用下方 capture；helper 自动关联本次执行，成功回执给出 snapshotRef。
+原生连接支持同一调用内的多条 SQL 和临时表，无需另建 Marivo datasource。
 
 ## 捕获已有 DataFrame
 
@@ -45,8 +45,7 @@ capture_dataset(result)
 
 helper 只接受 pandas DataFrame。确需保留 Marivo SQL 结果时，先按其公开接口转成 DataFrame 再捕获；
 该转换可能将含 NULL 的整数列推断为浮点并损失大整数精度，helper 不检测或修复捕获前的损失。
-不为每条 SQL 强制捕获，也不为展示重跑已经结束的分析。将成功回执中的实际 snapshotRef 交给 marivo_present；
-单个快照无需另读展示 Skill。
+只捕获本次需要展示的结果。
 
 ## 导出 CSV 或 JSON
 
@@ -71,11 +70,11 @@ print(str(csv_path.resolve()))
 {"files":[{"path":"/actual/workspace/exports/summary.csv","description":"按类别汇总的金额"}]}
 ```
 
-无需加载展示 Skill 或调用 `marivo_present`。只交付用户要求的文件；当前没有 `present` 时报告已生成文件的准确路径和原生交付能力缺失。
+只交付用户要求的文件；当前没有 `present` 时报告已生成文件的准确路径和原生交付能力缺失。
 
 ## 导出 PNG
 
-不要假设 Runtime 安装了 matplotlib 或 Pillow。以下标准库示例生成无文字的简单条形缩略图，适用于用户明确要求 PNG；颜色、顺序、数值和分析范围应在回复中说明。需要核对原值时另用 `capture_dataset` 与 `marivo_present` 展示表格；`DatasetView` 支持 auto/table/metric；已有 Marivo Frame 的图表使用 `AnalysisFrameView`，不为展示虚构 Frame。
+不要假设 Runtime 安装了 matplotlib 或 Pillow。以下标准库示例生成无文字的简单条形缩略图，适用于用户明确要求 PNG；颜色、顺序、数值和分析范围应在回复中说明。
 
 ```python
 from pathlib import Path

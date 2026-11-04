@@ -21,7 +21,7 @@ Harness 可预览文本附件。分析按附件原路径读取数据；聊天中
 
 普通答案默认使用文字；用户要求分析报告/dashboard 时，通过 `marivo_present` 把说明与已捕获数据组织在同一文档中，
 成功后最终文字尽量只写一句总结。用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供；需要在分析 UI 中核对的表格使用 `marivo_present`。插件不新增 XLSX 写入器，也不承诺分析旧 `.xls`。
-最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。UI 展示在原分析进程 capture DataFrame，成功 snapshotRef 可直接呈现；自定义才按需读[展示 Skill](presentation-skill.md)。
+最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。需要分析 UI 时，在原分析进程捕获 DataFrame，将快照引用交给 `marivo_present`。调用规则见[展示交付](presentation-delivery.md)，自定义页面编写见[展示 Skill](presentation-skill.md)。
 正文说明文件与分析范围，执行/codeRef 由 Host 绑定，不把文件结果声明成 Marivo Evidence。
 
 ## 验证边界

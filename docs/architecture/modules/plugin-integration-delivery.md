@@ -75,7 +75,7 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 - 输出按用户目标选择。普通问答和简短比较可留在聊天中，用户明确索取实际文件时通过原生 `present` 交付。创建或更新可打开的分析报告、看板，以及查看分析 UI 时使用 `marivo_present`；需要计算的展示结果在原分析中捕获，已有快照直接复用。自定义布局加载展示 Skill。
 - 报告把结论、支撑数据和影响解读的限制放在同一份文档中。成功保存后简短回复；交付失败则说明实际状态，回答已有证据支持的部分。
 
-Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项回答、比较分母、证据强度和未完成分支由文件 Skill 或绑定 Runtime 的分析 Skill 指导。表格交互、图形签名、版式与更新示例由展示层维护，见[展示 Skill](presentation-skill.md)。
+Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项回答、比较分母、证据强度和未完成分支由文件 Skill 或绑定 Runtime 的分析 Skill 指导。自定义报告和看板的组件参考、版式与页面示例见[展示 Skill](presentation-skill.md)，调用约定由 `marivo_present` 工具说明披露。
 数据源授权、运行身份以及快照和保存结果由代码核验。
 
 展示 Skill 由 `dsh-data-analysis-presentation` provider 从包内 `skills/` 挂载；Runtime Skill 仍由

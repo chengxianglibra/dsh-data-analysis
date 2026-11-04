@@ -2,26 +2,15 @@
 
 ## 当前入口与责任
 
-presentation Skill 负责已有结果的表达与交付，Marivo 拥有分析事实，Harness 拥有 Skill 生命周期。
-单 Frame/DataFrame 快照直接调用 marivo_present，无需额外 Skill 或回读；自定义布局按需读取同 Catalog 生成的
-[八组件签名](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)及
-[Lang、capture 与更新示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-ui.md)。
-Native 自定义 Lang 消费真实参数前缀，更新使用准确 basedOnRecordId 与变化语句。resources 省略继承，
-提供则替换完整表；纯展示修改不重新读取快照。成功不默认回读，不强制先大纲后补全。
+[展示 Skill](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md) 指导 Agent 基于已有分析结果编写自定义报告和看板。它提供[视图选择](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-ui.md)、由 Catalog 生成的[组件签名](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)、[叙事与证据检查](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)和可直接改写的 [OpenUI Lang 页面示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)。
 
-入口为 [SKILL.md](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md)。
-Frame v2 的 AnalysisFrameView 按结构自动选择视图，也可从已验证的图形类型中显式选择；DatasetView 支持
-auto/table/metric 及显式列映射的 line/area/bar/heatmap，不定义分析语义。Frame 在原分析中由 `capture_frame` 捕获并以 `frame-snapshot` 引用。Skill 不包含全局筛选、Draft、HTML 导出或发布资源。
-[叙事与证据检查](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)与
-[完整示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)按需读取。
+`marivo_present` 的工具说明拥有面向 Agent 的调用规则。直接展示快照、修改标题或列显示名称时，Agent 只需使用工具。需要设计或调整页面内容和布局时，再加载 Skill。资源准入、保存、更新与回执遵循[展示交付契约](presentation-delivery.md)。
 
 ## 发现与路由
 
 Plugin 用独立 filesystem provider `dsh-data-analysis-presentation` 读取包内 `skills/`，不扫描默认 roots，
 不监听目录变化。Runtime 的 `marivo-analysis` 与 `marivo-semantic` 继续由 `dsh-data-analysis-marivo`
 provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新增 live Help target。
-
-常驻提示区分普通聊天、实际文件及分析 UI 的交付方式。需要展示时，Agent 在原分析中捕获结果；已有快照可直接交付。自定义页面按需加载本 Skill。Tool 参数说明给出默认视图、展示位置、基版本和 patch 的调用约定，组件签名与图形选择见随包 references。完整[任务路由](plugin-integration-delivery.md#prompt-与-skill-激活)同样适用于展示任务。
 
 展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。工具入口随插件安装，完整清单见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。
 
@@ -36,11 +25,7 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 ## 内容组织与数据边界
 
-Frame 在原分析进程中由 `capture_frame` 捕获，展示使用成功回执中的 `frame-snapshot` 引用。文件分析及 SQL 结果可在原进程转成 DataFrame 后由 `capture_dataset` 捕获，使用 `dataset-snapshot` 引用。两者均由 Host 签发 `snapshotRef`，
-执行归属及 codeRef 由 Host 绑定，不要求模型手填。SQL 转换可能改变 NULL/整数类型并损失捕获前精度，helper 不修复。
-不强制每条 SQL 捕获，不为呈现重新执行结束的分析，不给 Dataset 补造 Artifact、Evidence 或来源。
-
-展示只使用八组件 Lang 与已保存资源。
+页面引用[展示投影](presentation-projection.md)已捕获的数据，使用八组件 OpenUI Lang 表达结论和布局。
 
 结论逐项对应用户问题与比较范围，每组比较明确两侧、方向和分母；缺失分支保留在正文，不能由另一组
 成功比较替代。观测、贡献分解、解释和假设使用相应证据强度；边际分布不支持联合关系，原因或排除性
@@ -55,11 +40,6 @@ Frame 在原分析进程中由 `capture_frame` 捕获，展示使用成功回执
 原 Artifact。reader 只读取保存快照及其捕获的来源与范围，不自动重新分析。
 具体契约见[展示数据投影](presentation-projection.md)与[展示 reader](presentation-reader.md)。
 
-## 交付与验证
+## 验证
 
-默认 tool，明确要求报告/dashboard 用 tab；参数建议先交付位置和基版本，再 resources、title、program。
-半截 patch 不正式合并；保存冲突后核对当前版本与意图，不只替换 ID 重试。缺少准确定义时才 marivo_ui_read。
-已有快照不证明当前数据新鲜度。交付、失败与格式边界见[展示交付](presentation-delivery.md)。
-
-包验证检查 Skill 与 references 分发；`tests/presentation-skill/` 核对链接、frontmatter、Catalog 签名一致性、
-已移除能力不再出现，以及示例符合当前 `marivo_present` 输入与 Lang 契约；真实模型核对路由、披露量和调用轨迹。
+包验证检查 Skill 与 references 分发。`tests/presentation-skill/` 核对链接、frontmatter、组件签名、示例程序及比较数值。`tests/presentation-integration/` 验证工具保存、更新与标签的实际行为。

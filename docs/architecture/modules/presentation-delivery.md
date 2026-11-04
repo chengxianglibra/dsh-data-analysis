@@ -8,15 +8,15 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
 `bridges.ts` 和 `client.tsx`。快照来源见[展示投影](presentation-projection.md)，阅读呈现见[共享 reader](presentation-reader.md)，
-Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
+自定义报告和看板的编写指导见[展示 Skill](presentation-skill.md)。
 
 ## 统一分析 UI 写入与增量契约
 
-`marivo_present` 按 `surface`、`basedOnRecordId`、`resources`、`title`、`program`、`locale` 披露参数，
+`marivo_present` 按 `surface`、`basedOnRecordId`、`resources`、`labels`、`title`、`program`、`locale` 披露参数，
 输入 schema 以 [analysis-document.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)
 的 `analysisPresentInput` 为准。
 
-- 创建时 program 为完整 OpenUI Lang；单个 Frame 或 dataset-snapshot 可省略 program，自动生成 AnalysisFrameView/DatasetView。
+- 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
 - `surface` 默认 `tool`；成功保存后结果由会话级 Chat 节点呈现，保持在 Harness 工作步骤折叠区之外。`tab` 用于明确要求的报告/dashboard。
 - 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
@@ -29,6 +29,8 @@ Agent 的展示路由与 Lang 编写见[展示 Skill](presentation-skill.md)。
 | `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_dataset` 签发的快照 |
 | `frame-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_frame` 签发的快照 |
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
+
+`labels` 按资源名、快照列 ID 映射到显示名称，例如 `{"result":{"amount":"金额"}}`。标签只影响显示，列 ID、排序、单位与精确值保持原义。更新时复用的快照沿用已保存的标签。指定某个资源的映射会替换该资源整组标签，未列出的列显示其 ID，空映射将该资源所有列重置为 ID。
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。`frame-snapshot` 声明的 `snapshotRef` 由 `capture_frame` 签发，
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
