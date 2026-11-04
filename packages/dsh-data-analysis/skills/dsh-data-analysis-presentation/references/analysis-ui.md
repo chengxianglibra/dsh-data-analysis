@@ -4,6 +4,7 @@
 组件签名见[八组件 Catalog](analysis-catalog.md)。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap；AnalysisFrameView 的 auto 按 Frame 结构决定：
 单行、单个比较组输出数字；单行、多个比较组输出一张"指标 × 本期/基期/Δ/Δ%"对比表；多行时间比较画线，类别比较画哑铃图。
 只有需要偏离默认时才写 view。Frame 的 encoding 引用公开值名、轴名；Dataset 的 encoding 引用保存列 ID，趋势与柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。Dataset 图表要求完整快照、数值列和唯一坐标，按保存行首次出现顺序展示，聚合及所需行序在原 Python 分析中完成，不推断分析语义。
+Frame 显式 `{chart:"pie", encoding:{axis:"轴名", value:"值名"}}` 用于完整的 observation 快照：必须只有一个普通分类轴、类别键唯一，选择一个非广播数值列，所有值非空、有限且非负，并至少有一个正值。轴和值可在目标唯一时省略；不满足条件时选择表格或在原分析中准备数据。
 多行、多组又只想看一个指标时用 `{chart:"comparison", encoding:{value:"某输出列"}}`；
 显式 `{chart:"table", columns:[...]}` 仍按给定列原样输出。不提供离线导出或发布。
 

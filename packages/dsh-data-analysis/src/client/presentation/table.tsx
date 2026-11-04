@@ -37,6 +37,7 @@ export function DatasetTable({
   selectableColumns,
   hideCompleteScope = false,
   hideRowCount = false,
+  hideExactTitle = false,
 }: {
   data: TypedDataset
   columns?: string[]
@@ -52,6 +53,8 @@ export function DatasetTable({
   hideCompleteScope?: boolean
   /** Keep empty and truncated states without displaying row counts. */
   hideRowCount?: boolean
+  /** Frame views use the same readable representation throughout. */
+  hideExactTitle?: boolean
 }) {
   const t = useCopy()
 
@@ -146,7 +149,9 @@ export function DatasetTable({
                       data-column-id={column.id}
                       data-cell-null={value === null ? 'true' : undefined}
                       className={numericColumns.has(column.id) ? 'pr-numeric' : undefined}
-                      title={exact !== undefined && text !== exact ? exact : undefined}
+                      title={
+                        !hideExactTitle && exact !== undefined && text !== exact ? exact : undefined
+                      }
                       aria-label={
                         value === null
                           ? t('marivo.presentation.missing-value')

@@ -5,8 +5,7 @@ import {
   axisOf,
   cellOf,
   columnOf,
-  compact,
-  exact,
+  displayFrameCell,
   interpretationOf,
   membersLabel,
   rowsOf,
@@ -35,6 +34,10 @@ export function AlignmentView({
   const pairs = view.pairs
   if (!item) return null
   const col = (n: string) => columnOf(s, n)?.column
+  const formatted = (row: number, name: string) => {
+    const column = col(name)
+    return column ? displayFrameCell(s, t.locale, cellOf(s, row, name), column) : '—'
+  }
   // Sides without a shared subject are not comparable; show both as saved.
   if (view.style === 'table' || pairs.length === 0)
     return (
@@ -50,9 +53,7 @@ export function AlignmentView({
   const get = (row: number, name: string, side: 'left' | 'right') =>
     present(s, row, item[side].presence) ? valueAt(s, row, name) : null
   const text = (row: number, name: string, side: 'left' | 'right') =>
-    present(s, row, item[side].presence) ? compact(t.locale, cellOf(s, row, name), col(name)) : '—'
-  const tip = (row: number, name: string, side: 'left' | 'right') =>
-    present(s, row, item[side].presence) ? exact(cellOf(s, row, name), col(name)) : '—'
+    present(s, row, item[side].presence) ? formatted(row, name) : '—'
   const point = (
     row: number | undefined,
     name: string,
@@ -70,7 +71,7 @@ export function AlignmentView({
     return {
       row,
       field: name,
-      label: `${label} · ${valueName(s, c, name)}: ${exact(cellOf(s, row, name), col(name))}`,
+      label: `${label} · ${valueName(s, c, name)}: ${formatted(row, name)}`,
     }
   }
   if (view.style === 'line') {
@@ -97,7 +98,7 @@ export function AlignmentView({
             }),
             exact: (i) => {
               const row = byTick.get(i)
-              return `${ticks[i]?.title ?? ''}\n${valueName(s, c, pair[side])}: ${row === undefined ? '—' : tip(row, pair[side], side)}`
+              return `${ticks[i]?.title ?? ''}\n${valueName(s, c, pair[side])}: ${row === undefined ? '—' : text(row, pair[side], side)}`
             },
             point: (i) =>
               counts.get(i) === 1
@@ -139,7 +140,7 @@ export function AlignmentView({
           hollow: side === 'left',
           values: rows.map((row) => get(row, pair[side], side)),
           exact: (i) =>
-            `${labels[i]}\n${valueName(s, c, pair[side])}: ${tip(rows[i]!, pair[side], side)}`,
+            `${labels[i]}\n${valueName(s, c, pair[side])}: ${text(rows[i]!, pair[side], side)}`,
           point: (i) => point(rows[i], pair[side], side, labels[i] ?? ''),
         }))
         return (

@@ -27,6 +27,12 @@ export const frameViewSchema = z.union([
       .optional(),
   }),
   z.strictObject({
+    chart: z.literal('pie'),
+    encoding: z
+      .strictObject({ axis: z.string().min(1).optional(), value: z.string().min(1).optional() })
+      .optional(),
+  }),
+  z.strictObject({
     chart: z.literal('heatmap'),
     encoding: z
       .strictObject({ x: z.string().min(1), y: z.string().min(1), value: z.string().min(1) })
@@ -100,6 +106,7 @@ export type ResolvedFrameView =
       broadcast: string[]
     }
   | { chart: 'hbar'; axis: string; values: string[]; broadcast: string[] }
+  | { chart: 'pie'; axis: string; value: string }
   | { chart: 'heatmap'; x: string; y: string; value: string }
   | {
       chart: 'comparison'
@@ -140,6 +147,7 @@ export type FrameViewErrorCode =
   | 'view-metric-requires-complete-single-row'
   | 'view-axis-not-time'
   | 'view-requires-complete-snapshot'
+  | 'view-pie-invalid-values'
   | 'view-unsupported-for-snapshot'
   | 'view-encoding-required'
   | 'view-budget'
@@ -715,6 +723,45 @@ function explicit(
         ...(series === undefined ? {} : { series }),
         ...split(x, names),
       }
+    }
+    case 'pie': {
+      if (!x.complete) return fail('view-requires-complete-snapshot', '/view')
+      if (c.class !== 'observation') return fail('view-unsupported-for-snapshot', '/view/chart')
+      const axis = view.encoding?.axis
+        ? axisNamed(x, view.encoding.axis)
+        : axes.length === 1
+          ? axes[0]
+          : undefined
+      if (view.encoding?.axis && !axis) return fail('view-name-unknown', '/view/encoding/axis')
+      if (!axis || !isOrdinary(axis) || axes.length !== 1)
+        return fail('view-target-ambiguous', '/view/encoding/axis')
+      if (distinctKeys(x, axis.token) !== snapshot.data.rows.length)
+        return fail('view-target-ambiguous', '/view/encoding/axis')
+      const value = view.encoding?.value
+      if (value !== undefined) {
+        const error = drawableValue(x, value, '/view/encoding/value')
+        if (error) return error
+      }
+      const values =
+        value === undefined
+          ? split(
+              x,
+              c.primaryValues.filter((name) => drawable(x, name)),
+            ).values
+          : [value]
+      if (values.length !== 1) return fail('view-target-ambiguous', '/view/encoding/value')
+      if (c.broadcastValues.includes(values[0]!))
+        return fail('view-target-ambiguous', '/view/encoding/value')
+      const column = snapshot.data.columns.findIndex((item) => item.id === values[0])
+      const cells = snapshot.data.rows.map((row) => row[column])
+      const numbers = cells.map(Number)
+      if (
+        cells.some((cell) => cell == null) ||
+        numbers.some((number) => !Number.isFinite(number) || number < 0) ||
+        !numbers.some((number) => number > 0)
+      )
+        return fail('view-pie-invalid-values', '/view/encoding/value')
+      return { chart: 'pie', axis: axis.token, value: values[0]! }
     }
     case 'heatmap': {
       if (view.encoding) {

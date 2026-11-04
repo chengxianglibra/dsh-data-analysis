@@ -21,7 +21,7 @@ import {
   axisOf,
   cellOf,
   columnOf,
-  exact,
+  displayFrameCell,
   groupRows,
   memberLabel,
   membersLabel,
@@ -64,6 +64,113 @@ export function Heatmap(props: MainViewProps<'heatmap'>) {
     />
   )
 }
+const PIE_COLORS = [
+  '#126c74',
+  '#2c6fa8',
+  '#b58b22',
+  '#6a55a0',
+  '#087c65',
+  '#bb5230',
+  '#567a95',
+  '#8b6c9f',
+]
+
+/** A complete categorical distribution, using saved cells without aggregating rows. */
+export function PieChart({ snapshot: s, classification: c, view }: MainViewProps<'pie'>) {
+  const t = useCopy()
+  const axis = axisOf(s, view.axis)
+  if (!axis) return null
+  const column = columnOf(s, view.value)?.column
+  const rows = rowsOf(s).map((row) => ({
+    row,
+    label: memberLabel(s, axis, row),
+    value: valueAt(s, row, view.value),
+  }))
+  // Scale before summing so finite input values cannot overflow the total.
+  const max = rows.reduce((largest, item) => Math.max(largest, item.value ?? 0), 0)
+  const total = rows.reduce((sum, item) => sum + (item.value ?? 0) / max, 0)
+  if (!(max > 0) || !(total > 0) || rows.some((item) => item.value === null || item.value < 0))
+    return null
+  let angle = -Math.PI / 2
+  const entries = rows.map((item, index) => {
+    const share = item.value === null ? null : item.value / max / total
+    const start = angle
+    angle += (share ?? 0) * 2 * Math.PI
+    const text = `${item.label} · ${column ? displayFrameCell(s, t.locale, cellOf(s, item.row, view.value), column) : '—'} · ${percent(t.locale, share, false)}`
+    return { ...item, index, share, start, end: angle, text }
+  })
+  const point = (a: number) => `${150 + 120 * Math.cos(a)},${150 + 120 * Math.sin(a)}`
+  return (
+    <figure className="fv-chart" data-chart="pie">
+      <div className="fv-pie-layout">
+        <svg viewBox="0 0 300 300" aria-label={valueName(s, c, view.value)} className="fv-pie-svg">
+          {entries.map((item) => {
+            if (!item.share) return null
+            const shape =
+              item.share >= 1 - Number.EPSILON ? (
+                <circle
+                  cx={150}
+                  cy={150}
+                  r={120}
+                  fill={PIE_COLORS[item.index % PIE_COLORS.length]}
+                  stroke="var(--background)"
+                  strokeWidth={2}
+                />
+              ) : (
+                <path
+                  d={`M150,150 L${point(item.start)} A120,120 0 ${item.end - item.start > Math.PI ? 1 : 0} 1 ${point(item.end)} Z`}
+                  fill={PIE_COLORS[item.index % PIE_COLORS.length]}
+                  stroke="var(--background)"
+                  strokeWidth={2}
+                />
+              )
+            return (
+              <DomainPointMark
+                key={item.row}
+                point={{ row: item.row, field: view.value, label: item.text }}
+              >
+                <g data-pie-row={item.row}>
+                  <title>{item.text}</title>
+                  {shape}
+                </g>
+              </DomainPointMark>
+            )
+          })}
+        </svg>
+        <ul className="fv-pie-legend">
+          {entries.map((item) => (
+            <li
+              key={item.row}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '10px 1fr auto',
+                gap: '2px 10px',
+                alignItems: 'center',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: '50%',
+                  background: PIE_COLORS[item.index % PIE_COLORS.length],
+                }}
+              />
+              <span>{item.label}</span>
+              <b className="tabular-nums">{percent(t.locale, item.share, false)}</b>
+              <small style={{ gridColumn: '2 / -1', color: 'var(--muted-foreground)' }}>
+                {column
+                  ? displayFrameCell(s, t.locale, cellOf(s, item.row, view.value), column)
+                  : '—'}
+              </small>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </figure>
+  )
+}
 /** Saved coefficients on a fixed [-1, 1] domain; no fit or statistic is computed here. */
 export function CorrelationPlot({
   snapshot: s,
@@ -73,8 +180,12 @@ export function CorrelationPlot({
   const t = useCopy()
   const rows = rowsOf(s)
   const labels = rows.map((row) => membersLabel(s, s.frame.axes, row))
+  const formatted = (row: number, name: string) => {
+    const column = columnOf(s, name)?.column
+    return column ? displayFrameCell(s, t.locale, cellOf(s, row, name), column) : '—'
+  }
   const tip = (row: number, name: string) =>
-    `${labels[row] ?? ''} · ${valueName(s, c, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}${view.counts[name] ? ` · n ${exact(cellOf(s, row, view.counts[name]!), columnOf(s, view.counts[name]!)?.column)}` : ''}`
+    `${labels[row] ?? ''} · ${valueName(s, c, name)}: ${formatted(row, name)}${view.counts[name] ? ` · n ${formatted(row, view.counts[name]!)}` : ''}`
   const label = summary(
     t,
     view.values.map((name) => valueName(s, c, name)).join(' · '),
@@ -156,16 +267,17 @@ export function ShareTrack({
 }) {
   const t = useCopy()
   const labels = rows.map((row) => labelOf?.(row) ?? '')
+  const text = (index: number, name: string) =>
+    `${labels[index] ?? ''} · ${valueName(s, c, name)}: ${percent(t.locale, valueAt(s, rows[index]!, name), false)}`
   const series = values.map((name) => ({
     key: name,
     label: valueName(s, c, name),
     values: rows.map((row) => valueAt(s, row, name)),
-    exact: (index: number) =>
-      `${labels[index] ?? ''} · ${valueName(s, c, name)}: ${exact(cellOf(s, rows[index]!, name), columnOf(s, name)?.column)}`,
+    exact: (index: number) => text(index, name),
     point: (index: number) => ({
       row: rows[index]!,
       field: name,
-      label: `${labels[index] ?? ''} · ${valueName(s, c, name)}: ${exact(cellOf(s, rows[index]!, name), columnOf(s, name)?.column)}`,
+      label: text(index, name),
     }),
   }))
   const domain = numericDomain([0, 1, ...series.flatMap((line) => line.values)])

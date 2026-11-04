@@ -100,7 +100,7 @@ test('the comparison table keeps the page free of horizontal overflow at 390px',
   assert.equal(await table.evaluate((node) => getComputedStyle(node).overflowX), 'auto')
 })
 
-test('narrow comparison preserves long labels and exposes exact saved values', async () => {
+test('narrow comparison preserves long labels and formatted saved values', async () => {
   await page.setViewportSize({ width: 390, height: 900 })
   await page.locator('#root').evaluate((node) => {
     node.style.width = '243px'
@@ -125,8 +125,9 @@ test('narrow comparison preserves long labels and exposes exact saved values', a
   assert.equal(await table.getAttribute('aria-describedby'), await hint.getAttribute('id'))
   await table.focus()
   assert.equal(await table.evaluate((node) => node === document.activeElement), true)
-  const cell = table.locator('td[title]').first()
-  assert.ok(await cell.getAttribute('title'))
+  const cell = table.locator('tbody td').first()
+  assert.ok((await cell.textContent())?.trim())
+  assert.equal(await cell.getAttribute('title'), null)
   assert.equal(await toolbar.getByRole('button', { name: 'Show exact values' }).count(), 0)
   assert.equal(await page.locator('[data-frame-view] [data-icon="data"]').count(), 0)
 })

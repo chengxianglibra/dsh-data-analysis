@@ -13,15 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from '../../ui/primitives/table.tsx'
-import { color, NEUTRAL, summary } from '../charts/recharts.tsx'
+import { NEUTRAL, summary } from '../charts/recharts.tsx'
 import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
 import {
   axisOf,
   cellOf,
   columnOf,
   compact,
+  displayFrameCell,
   endpointLabels,
-  exact,
   groupRows,
   interpretationOf,
   membersLabel,
@@ -38,6 +38,16 @@ import { DataTable } from './table.tsx'
 import type { MainViewProps } from './types.ts'
 
 type Group = FrameComparison['groups'][number]
+function formattedCell(
+  s: Snapshot,
+  locale: Translator['locale'],
+  name: string,
+  value: ReturnType<typeof cellOf>,
+) {
+  const column = columnOf(s, name)?.column
+  return column ? displayFrameCell(s, locale, value, column) : '—'
+}
+
 export interface ComparisonRoles {
   comparison: FrameComparison
   group: Group
@@ -81,6 +91,7 @@ function point(
   name: string | undefined,
   required: (string | undefined)[],
   label: string,
+  locale: Translator['locale'],
 ): DomainPoint | undefined {
   if (row === undefined || !name || !uniquelyBound(s, name) || cellOf(s, row, name) === null)
     return undefined
@@ -88,7 +99,7 @@ function point(
   return {
     row,
     field: name,
-    label: `${label} · ${valueName(s, undefined, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}`,
+    label: `${label} · ${valueName(s, undefined, name)}: ${formattedCell(s, locale, name, cellOf(s, row, name))}`,
   }
 }
 
@@ -128,12 +139,10 @@ export function comparisonTableSections(s: Snapshot): ComparisonTableSection[] {
 export function ComparisonTable({
   snapshot: s,
   classification: c,
-  exactValues = false,
   reference = false,
 }: {
   snapshot: Snapshot
   classification: FrameClassification
-  exactValues?: boolean
   reference?: boolean
 }) {
   const t = useCopy()
@@ -162,11 +171,8 @@ export function ComparisonTable({
     if (!present(s, row, presence))
       return <TableCell className="pr-numeric text-right tabular-nums">—</TableCell>
     return (
-      <TableCell
-        className="pr-numeric text-right tabular-nums"
-        title={value === null ? undefined : exact(value, column)}
-      >
-        {exactValues ? exact(value, column) : compact(t.locale, value, column)}
+      <TableCell className="pr-numeric text-right tabular-nums">
+        {compact(t.locale, value, column)}
       </TableCell>
     )
   }
@@ -178,18 +184,7 @@ export function ComparisonTable({
       kind === 'delta'
         ? signed(t.locale, value, column)
         : percent(t.locale, name && bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
-    return (
-      <TableCell
-        className="pr-numeric text-right tabular-nums"
-        title={value === null ? undefined : exact(value, column)}
-      >
-        {exactValues && value !== null
-          ? kind === 'percent'
-            ? `${text} (${exact(value, column)} × 100)`
-            : exact(value, column)
-          : text}
-      </TableCell>
-    )
+    return <TableCell className="pr-numeric text-right tabular-nums">{text}</TableCell>
   }
   const dataRows = (rows: ComparisonRoles[]) =>
     rows.map((roles) => (
@@ -304,7 +299,13 @@ export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
           return (
             <section key={`${section.index}:${roles.group.name}`}>
               <h4>{`${valueName(s, undefined, roles.current!)} · ${ends.current} ⇄ ${ends.baseline}`}</h4>
-              <DatasetTable data={{ ...s.data, columns, rows }} caption="" hideRowCount />
+              <DatasetTable
+                data={{ ...s.data, columns, rows }}
+                caption=""
+                hideRowCount
+                hideExactTitle
+                display={(value, column) => displayFrameCell(s, t.locale, value, column)}
+              />
             </section>
           )
         }),
@@ -341,7 +342,7 @@ export function ComparisonNumbers({
           : kind === 'd'
             ? signed(t.locale, value, column)
             : compact(t.locale, value, column),
-      title: `${valueName(s, undefined, name)}: ${exact(value, column)}`,
+      title: valueName(s, undefined, name),
       label,
     })
   }
@@ -559,6 +560,7 @@ function CompareLine({
             ...(side !== 'current' ? [presence?.baseline] : []),
           ],
           ticks[i]?.label ?? '',
+          t.locale,
         )
       : undefined
   const tip = (i: number) => {
@@ -569,7 +571,7 @@ function CompareLine({
         .filter((name): name is string => !!name)
         .map(
           (name) =>
-            `${valueName(s, undefined, name)}: ${exact(row === undefined ? null : visibleCell(s, row, roles, name), columnOf(s, name)?.column)}`,
+            `${valueName(s, undefined, name)}: ${formattedCell(s, t.locale, name, row === undefined ? null : visibleCell(s, row, roles, name))}`,
         ),
     ].join('\n')
   }
@@ -580,7 +582,7 @@ function CompareLine({
   ): SavedSeries => ({
     key: side,
     label,
-    color: side === 'delta' ? NEUTRAL : color(0),
+    color: side === 'delta' ? NEUTRAL : side === 'baseline' ? '#6a55a0' : '#126c74',
     hollow: side === 'baseline',
     dashed: side === 'baseline',
     values: ticks.map((_, i) => {
@@ -652,7 +654,7 @@ function CompareRows({
         .filter((name): name is string => !!name)
         .map(
           (name) =>
-            `${valueName(s, undefined, name)}: ${exact(visibleCell(s, row, roles, name), columnOf(s, name)?.column)}`,
+            `${valueName(s, undefined, name)}: ${formattedCell(s, t.locale, name, visibleCell(s, row, roles, name))}`,
         ),
     ].join('\n')
   const make = (
@@ -669,7 +671,7 @@ function CompareRows({
           : null
         : get(row, name, presence?.[side]),
     ),
-    color: side === 'delta' ? NEUTRAL : color(0),
+    color: side === 'delta' ? NEUTRAL : side === 'baseline' ? '#6a55a0' : '#126c74',
     hollow: side === 'baseline',
     exact: tip,
     point: (row) =>
@@ -683,6 +685,7 @@ function CompareRows({
           ...(side !== 'current' ? [presence?.baseline] : []),
         ],
         labels[row] ?? '',
+        t.locale,
       ),
   })
   const current = make(roles.current, 'current', ends.current)

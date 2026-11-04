@@ -41,7 +41,7 @@ TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | T
 ## AnalysisFrameView
 
 ```text
-AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible"})
+AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible"})
 ```
 
 ## DatasetView

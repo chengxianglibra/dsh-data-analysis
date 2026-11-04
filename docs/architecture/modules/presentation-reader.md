@@ -41,21 +41,21 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   默认 auto/table/metric 判定不变。图表提供共用的数据图标和详细表格弹窗，支持排序、分页和精确值读取；Dataset 不接入 Frame 的“就此提问”协议。
 - Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
   只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。密集折线/面积保留全部路径点，省略逐点静态 DOM 时通过活动点与 Frame 键盘导航器读取和选择原始行字段；Dataset 继续提供精确数据入口。
-  图表 Tooltip、精确数据和补充 SVG title 读取已保存值的精确拼写与单位；int64/decimal 绘图位置可近似，详细数据与复制保持精确。
+  Frame 图表、提示和数据表使用统一的可读数值格式；Dataset 保留精确显示。int64/decimal 绘图位置可近似，复制仍使用保存值。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
   分类与默认视图规则由同一 `resolveFrameView` 实现，保存校验与渲染共用。
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
-- Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、description、上下文 chips、
+- Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、图表类型、上下文摘要、
   头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通折线、面积、柱图、横向柱图及热力图复用共享图表；
-  比较、分解、对齐、相关和占比等领域视图使用 Recharts 坐标/图形与有限自定义 marks，按解析结果绘图或显示表格；
+  比较、分解、对齐、相关和占比等领域视图使用 Recharts 坐标/图形与有限自定义 marks，按解析结果绘图或显示表格；显式 pie 使用完整的单分类轴快照，要求值非负且总量可确定；
   NA、缺期、不完整期、presence、restricted 与未捕获完整采用视觉编码及必要的短状态标签；
   不增加复述图种或数值的说明段落，compact 也不能隐藏影响解读的限制。
   非表格主视图的数据图标与来源、Python 共用操作行及弹窗，展示已保存的详细数据；表格主视图不重复提供数据入口。
   显式指定 `display.dataTable: "visible"` 时详细数据默认内联展示，并可用同一图标收起；数据引用不显示行数和横向滚动图标，截断与空数据状态仍可见。
   比较结果按指标展示本期、基期及已有差值，而非平铺原始字段。
-  主视图使用简洁数值，详细数据保留保存值；窄容器中的图表及比较表在局部横向滚动，滚动区域可通过键盘访问；行式图在右滚时保留可见的行标签轨道。
+  主视图和数据表使用一致的格式，复制保留保存值；窄容器中的图表及比较表在局部横向滚动，滚动区域可通过键盘访问；行式图在右滚时保留可见的行标签轨道。
   期间对应展示捕获的两端标签；日历期间显示保存的选择状态和 cutoff，不推断未捕获的时间边界，interval 则显示保存的范围。
   热力图标明已绘制值的色阶范围；时间图和类别图按声明的单位分面，未知单位按字段分面；alignment 的缺席侧不显示保存单元格中的值。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
@@ -66,7 +66,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 引用绑定固定 Build、资源、行和字段；发送时由服务端重新读取并校验，缺席侧、无法唯一定位的字段及父组总计不能作为明细点引用。
 复制、表格等直观操作使用带键盘焦点提示和本地化无障碍名称的图标；数据范围不完整及期间未捕获仍有明确状态。
 候选预览不提供选点或插入动作。reader 不提供全局筛选、动态指标、页面内编辑、撤销/重做或任何导出入口。
-展示层不聚合、不计算总计、Δ 或比例，只画 Frame 已有列；会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
+展示层直接读取 Frame 已有列中的指标、总计和差值。饼图按完整快照中各类别的保存值分配扇区，并在图例显示各扇区占圆的百分比。会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
 
 ## 来源与范围详情
 
@@ -99,7 +99,7 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 
 Surface 通过 Harness 的 `--dsw-*` token 继承背景、文字和边框；图表色板、网格、图例和标签遵循与 analysis-ui 一致的视觉规则，
 色板通过 CSS 变量跟随 Host 已解析的明暗主题，脱离 Host 时回退到独立页面的显式主题或系统偏好。
-精确值提示使用基于原值的 shadcn/Recharts Tooltip，补充 SVG title 与详细数据入口；Tooltip 不使用近似坐标数值替代原值。主题切换不重挂 Frame 或 Dataset 图表。
+Frame 提示按保存值格式化，Dataset 提示保留精确值；图形坐标的近似值不代替保存值。主题切换不重挂 Frame 或 Dataset 图表。
 
 ## 验证边界
 

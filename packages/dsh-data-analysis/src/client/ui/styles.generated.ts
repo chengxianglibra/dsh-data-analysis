@@ -494,9 +494,6 @@ export const COMPILED_UI_STYLES: string = `/*! tailwindcss v4.3.4 | MIT License 
 :where(.mv-ui, .mv-ui *).overflow-y-auto {
   overflow-y: auto;
 }
-:where(.mv-ui, .mv-ui *).rounded {
-  border-radius: 0.25rem;
-}
 :where(.mv-ui, .mv-ui *).rounded-4xl {
   border-radius: var(--radius-4xl);
 }

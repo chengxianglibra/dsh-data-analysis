@@ -138,6 +138,8 @@ const viewHints: Record<string, string> = {
     'use at most 8 series and 100,000 heatmap cells; prepare a smaller result in Python.',
   'analysis-view-role-missing': 'this comparison or decomposition lacks the roles for this chart.',
   'analysis-view-axis-not-time': 'line/area/bar axis must be a calendar or interval axis.',
+  'analysis-view-pie-invalid-values':
+    'pie needs complete, nonnegative finite values and at least one positive value.',
   'analysis-view-requires-complete-snapshot':
     'this chart reads as the whole population; use chart "table" or "auto" for partial data.',
   'analysis-view-unsupported-for-snapshot':

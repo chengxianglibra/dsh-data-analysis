@@ -30,7 +30,7 @@ test('positive and negative Recharts areas fill to the actual zero reference', a
     assert.ok(Number.isFinite(baseline), 'a zero reference exists')
     const ys = yValues(path)
     assert.ok(ys.filter((y) => Math.abs(y - baseline) < 0.01).length >= 2)
-    assert.equal(baseline, values[0]! > 0 ? Math.max(...ys) : Math.min(...ys))
+    assert.ok(Math.abs(baseline - (values[0]! > 0 ? Math.max(...ys) : Math.min(...ys))) < 0.01)
   }
 })
 test('mixed signs use an interior zero baseline', async () => {

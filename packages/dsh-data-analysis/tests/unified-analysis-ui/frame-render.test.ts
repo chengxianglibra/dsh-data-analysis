@@ -248,7 +248,7 @@ test('heatmap retains sparse axis members and distinguishes missing cells from z
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
   assert.match(html, /data-heatmap-scale=/)
   assert.match(html, /title="0/)
-  assert.match(html, /<title>[^<]*: 0<\/title>/)
+  assert.match(html, /<title>[^<]*: 0\.00<\/title>/)
   assert.doesNotMatch(html, /Row avg|Column avg/)
 })
 
@@ -262,7 +262,7 @@ test('heatmap leaves NULL cells empty and selects only saved numeric values', as
   assert.equal(count(html, /data-mark="empty"/), 1)
   assert.equal(count(html, /data-mark="cell"/), 3)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
-  assert.match(html, /<title>[^<]*: 1234567\.89<\/title>/)
+  assert.match(html, /<title>[^<]*: 1,234,567\.89<\/title>/)
   assert.doesNotMatch(html, /Row avg|Column avg/)
 })
 
@@ -289,9 +289,9 @@ test('time-category charts facet multiple values, distinguish categories and avo
   assert.equal(count(html, /class="recharts-layer recharts-line"/), 24)
   assert.equal(count(html, /data-mark="endpoint-label"/), 0)
   for (let i = 0; i < 8; i++) assert.match(html, new RegExp(`data-marker="${i}"`))
-  // Every equal-valued point remains represented in its own series and exposes its original value.
+  // Every equal-valued point remains represented in its own series and exposes its formatted value.
   assert.equal(count(html, /data-mark="filled"/), 72)
-  assert.ok(count(html, /: 50 USD<\/title>/) >= 72)
+  assert.ok(count(html, /: \$50\.00<\/title>/) >= 72)
 })
 
 test('single-period plots use a compact height without overriding an explicit height', async () => {
@@ -367,8 +367,8 @@ test('heatmap scale shows saved bounds and omits a scale when all values are mis
   const html = await r.render(snapshot)
   assert.match(html, /data-heatmap-scale="diverging"/)
   assert.match(html, /m0 \(USD\)/)
-  assert.match(html, /title="-2 USD"/)
-  assert.match(html, /title="5 USD"/)
+  assert.match(html, /title="-\$2\.00"/)
+  assert.match(html, /title="\$5\.00"/)
   for (const row of snapshot.data.rows) row[index] = null
   const empty = await r.render(snapshot)
   assert.doesNotMatch(empty, /data-heatmap-scale=/)
@@ -440,7 +440,7 @@ test('broadcast values are reference lines labelled with the saved partition val
   assert.match(time, /μ mean_revenue/)
   const bars = await r.render(categoryBroadcast())
   assert.equal(count(bars, /mv-broadcast-reference/), 1)
-  assert.match(bars, /9000/)
+  assert.match(bars, /9,000\.00/)
   // The broadcast value is not drawn as its own bar series.
   assert.equal(count(bars, /data-mark="bar"/), 3)
 })
@@ -531,7 +531,7 @@ test('saved comparison end labels retain their rows after leading and interior a
     )
     assert.deepEqual(
       labels,
-      presence.flatMap((present, index) => (present ? [`▲${(index + 1) * 10}.0%`] : [])),
+      presence.flatMap((present, index) => (present ? [`▲${(index + 1) * 10}.00%`] : [])),
     )
   }
 })
@@ -544,7 +544,7 @@ test('saved field names cannot collide with plot row or label metadata', async (
     const html = await r.render(snapshot, { askPoint: true })
     const chart = html.match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
     assert.equal(count(chart, /data-chart-end-label=""/), 3)
-    assert.equal(count(chart, /data-chart-end-label=""[^>]*>25%<\/text>/), 3)
+    assert.equal(count(chart, /data-chart-end-label=""[^>]*>25\.00%<\/text>/), 3)
     for (let row = 0; row < 3; row++) {
       assert.ok(chart.includes(`data-frame-point="${row}:${name}"`), `${name}: saved row ${row}`)
     }
@@ -587,8 +587,8 @@ test('comparison numbers are saved cells with neutral marks and endpoint labels'
   )
   assert.equal(viewOf(html), 'comparison')
   // Δ and Δ% are the saved (deliberately inconsistent) cells, never current − baseline.
-  assert.match(html, /▲7</)
-  assert.match(html, /▲50\.0%/)
+  assert.match(html, /▲7\.00</)
+  assert.match(html, /▲50\.00%/)
   assert.doesNotMatch(html, /▲20\b|▲20%/)
   assert.match(html, /<dt[^>]*>west<\/dt>/)
   assert.match(html, /<dt[^>]*>east<\/dt>/)
@@ -599,8 +599,8 @@ test('comparison numbers are saved cells with neutral marks and endpoint labels'
   const down = await r.render(
     comparedScalar({ current: 1, baseline: 2, absolute: -1, relative: -0.5 }),
   )
-  assert.match(down, /▼1</)
-  assert.match(down, /▼50\.0%/)
+  assert.match(down, /▼1\.00</)
+  assert.match(down, /▼50\.00%/)
   assert.doesNotMatch(down, /#(?:e34948|008300|ff0000|00ff00)|\bred\b|\bgreen\b/i)
 })
 
@@ -625,7 +625,7 @@ test('a single-row multi-group comparison is one transposed table without duplic
   assert.match(html, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
 })
 
-test('a frame table shows grouped values and keeps the exact cell in the title', async () => {
+test('a frame table shows grouped values without an exact-value tooltip', async () => {
   const html = await r.render(
     frame({
       axes: [categoryAxis(2)],
@@ -634,7 +634,7 @@ test('a frame table shows grouped values and keeps the exact cell in the title',
     { view: { chart: 'table' } },
   )
   assert.match(html, />118,393,545\.05</)
-  assert.match(html, /title="118393545\.04998468"/)
+  assert.doesNotMatch(html, /118393545\.04998468/)
 })
 
 test('interval comparison endpoints name inclusive civil months', async () => {
@@ -687,10 +687,10 @@ test('decompositions draw the waterfall, effect segments with ◆ and the share 
   const share = await r.render(attributeShare(), {
     view: { chart: 'decomposition', style: 'share' },
   })
-  assert.match(share, />0(?:%|<)/)
-  assert.match(share, /100%/)
-  assert.match(share, /20%/)
-  assert.match(share, /50%/)
+  assert.match(share, />0\.00%/)
+  assert.match(share, /100\.00%/)
+  assert.match(share, /20\.00%/)
+  assert.match(share, /50\.00%/)
 })
 
 test('the share track extends below 0 and above 100%', async () => {
@@ -700,8 +700,8 @@ test('the share track extends below 0 and above 100%', async () => {
     row[index] = [-0.2, 0.5, 1.4][i]!
   })
   const html = await r.render(s)
-  assert.match(html, /-20%/)
-  assert.match(html, /140%/)
+  assert.match(html, /-20\.00%/)
+  assert.match(html, /140\.00%/)
 })
 
 test('correlation dots sit on a fixed [-1, 1] axis; NA draws no point and keeps n_pairs', async () => {
@@ -772,8 +772,8 @@ test('coincident comparison and alignment dots retain both roles; absent sides r
   assert.equal(pointMark(chart, 2, 'current'), '')
   assert.equal(pointMark(chart, 3, 'current'), '')
   assert.equal(pointMark(chart, 3, 'baseline'), '')
-  assert.match(pointMark(chart, 4, 'baseline'), /5\.00000001/)
-  assert.doesNotMatch(factualText(chart), /777777|888888|666666|555555/)
+  assert.match(pointMark(chart, 4, 'baseline'), /5\.00/)
+  assert.doesNotMatch(factualText(chart), /777,777|888,888|666,666|555,555/)
 
   const aligned = align(categoryAxis(4))
   const column = (id: string) => aligned.data.columns.findIndex((item) => item.id === id)
@@ -785,8 +785,8 @@ test('coincident comparison and alignment dots retain both roles; absent sides r
     (await r.render(aligned)).match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
   assert.match(alignedChart, /data-mark="hollow"/)
   assert.match(alignedChart, /data-mark="filled"/)
-  assert.match(alignedChart, /3\.00000001/)
-  assert.doesNotMatch(alignedChart, /999999/)
+  assert.match(alignedChart, /3\.00/)
+  assert.doesNotMatch(alignedChart, /999,999/)
 })
 
 test('time comparison tooltip and accessible summary honor side presence', async () => {
@@ -861,13 +861,13 @@ test('comparison changes require both direct endpoints but ignore enclosing and 
     const chart = html.match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
     const facts = factualText(chart)
     for (const i of [1, 2, 3])
-      assert.doesNotMatch(facts, new RegExp(`${800001 + i}|0\\.45${i + 1}`))
-    assert.match(facts, /800001/)
-    assert.match(facts, /800005/)
+      assert.doesNotMatch(facts, new RegExp(`800,00${1 + i}\\.00|45\\.${(1 + i) * 10}%`))
+    assert.match(facts, /800,001\.00/)
+    assert.match(facts, /800,005\.00/)
     // Detailed comparison retains endpoint masking for absent sides.
     const details = await r.render(snapshot, { view, display: { dataTable: 'visible' } })
-    assert.match(details, /800001/)
-    assert.doesNotMatch(details, /800002/)
+    assert.match(details, /800,001\.00/)
+    assert.doesNotMatch(details, /800,002\.00/)
   }
 })
 
@@ -910,7 +910,7 @@ test('comparison numbers and transposed tables mask changes for explicitly absen
   assert.doesNotMatch(numbers, /432100/)
 })
 
-test('nearby comparison marks retain distinct centres and original values', async () => {
+test('nearby comparison marks retain distinct centres with rounded labels', async () => {
   const snapshot = comparedCategories(Array(6).fill(true))
   const baseline = snapshot.data.columns.findIndex((column) => column.id === 'prior.baseline.sales')
   for (const [i, value] of [1.004, 2.02, 3.08, 4.15, 5.3, 9].entries()) {
@@ -926,7 +926,7 @@ test('nearby comparison marks retain distinct centres and original values', asyn
     const x = (mark: string) => /<circle cx="([^"]+)"/.exec(mark)?.[1]
     assert.notEqual(x(baselineMark), x(currentMark))
   }
-  assert.match(pointMark(chart, 0, 'baseline'), /1\.004/)
+  assert.match(pointMark(chart, 0, 'baseline'), /1\.00/)
 })
 
 test('alignment chart labels and descriptions honor side presence', async () => {
@@ -1090,11 +1090,11 @@ test('no computed numbers: every drawn number is a saved cell', async () => {
   const html = await r.render(attributeAdditive())
   const facts = factualText(html)
   for (const saved of [1, 2, 3, 4, 10])
-    assert.match(facts, new RegExp(`(?:contribution|total): ${saved}(?:[\\s;<]|$)`))
-  assert.doesNotMatch(facts, /contribution: 6(?:[\\s;<]|$)/)
+    assert.match(facts, new RegExp(`(?:contribution|total): ${saved}\\.00(?:[\\s;<]|$)`))
+  assert.doesNotMatch(facts, /contribution: 6\.00(?:[\s;<]|$)/)
   // Category bars: the sum 6 of revenue 1..3 never appears.
   const bars = await r.render(observeCategory(3))
-  assert.doesNotMatch(factualText(bars), /revenue: 6(?:[\\s;<]|$)/)
+  assert.doesNotMatch(factualText(bars), /revenue: 6\.00(?:[\s;<]|$)/)
 })
 
 test('time × category shares draw one 0–100% track per period', async () => {

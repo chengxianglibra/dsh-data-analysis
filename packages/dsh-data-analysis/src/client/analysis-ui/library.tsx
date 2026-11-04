@@ -28,7 +28,7 @@ const datasetProps = z.object({
 export const AnalysisFrameView = defineComponent({
   name: 'AnalysisFrameView',
   description:
-    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
+    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
   props: frameProps,
   component: ({ props }) => (
     <AnalysisDataView

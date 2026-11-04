@@ -2,7 +2,7 @@
 import type { LibraryJSONSchema, LibrarySpec } from '@openuidev/lang-core'
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
 export const analysisCatalogBuild =
-  '5198236580725771332a6e570ce29dd4dfece8fc115eb9d2745a0aaec52dced9'
+  'c42feb51cff7113f2de9d48dd61992672a4dc0b13b832b73aef72de7e0b56d0f'
 export const analysisCatalogVersions = {
   '@openuidev/lang-core': '1.0.1',
   '@openuidev/react-headless': '0.18.1',
@@ -53,9 +53,9 @@ const specData = {
     },
     AnalysisFrameView: {
       signature:
-        'AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible"})',
+        'AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible"})',
       description:
-        'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
+        'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
     },
     DatasetView: {
       signature:
@@ -410,6 +410,31 @@ const specData = {
                 properties: {
                   chart: {
                     type: 'string',
+                    const: 'pie',
+                  },
+                  encoding: {
+                    type: 'object',
+                    properties: {
+                      axis: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                      value: {
+                        type: 'string',
+                        minLength: 1,
+                      },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                required: ['chart'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: {
+                  chart: {
+                    type: 'string',
                     const: 'heatmap',
                   },
                   encoding: {
@@ -512,7 +537,7 @@ const specData = {
         required: ['ref'],
         additionalProperties: false,
         description:
-          'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
+          'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
       },
       DatasetView: {
         type: 'object',
@@ -1019,6 +1044,31 @@ const schemaData = {
               properties: {
                 chart: {
                   type: 'string',
+                  const: 'pie',
+                },
+                encoding: {
+                  type: 'object',
+                  properties: {
+                    axis: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                    value: {
+                      type: 'string',
+                      minLength: 1,
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              required: ['chart'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                chart: {
+                  type: 'string',
                   const: 'heatmap',
                 },
                 encoding: {
@@ -1121,7 +1171,7 @@ const schemaData = {
       required: ['ref'],
       additionalProperties: false,
       description:
-        'Persisted Frame snapshot; view auto/table/metric/line/area/bar/heatmap/comparison/decomposition, display height/density/dataTable.',
+        'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
     },
     DatasetView: {
       type: 'object',

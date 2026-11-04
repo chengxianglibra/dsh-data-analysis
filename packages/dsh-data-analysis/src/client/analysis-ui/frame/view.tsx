@@ -10,8 +10,8 @@ import type { TypedDataset } from '../../../presentation/contracts/types.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
+import { displayCell } from '../../presentation/display.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
-import { Badge } from '../../ui/primitives/badge.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import { CardContent } from '../../ui/primitives/card.tsx'
 import { Popover, PopoverAnchor, PopoverContent } from '../../ui/primitives/popover.tsx'
@@ -39,15 +39,22 @@ import {
   type Chip,
   cellOf,
   columnOf,
-  compact,
   contextChips,
+  displayFrameCell,
   endpointLabels,
-  exact,
   interpretationOf,
+  isNumeric,
   type Snapshot,
   valueName,
 } from './model.ts'
-import { CorrelationPlot, HBarChart, Heatmap, ShareView, TimeChart } from './observation.tsx'
+import {
+  CorrelationPlot,
+  HBarChart,
+  Heatmap,
+  PieChart,
+  ShareView,
+  TimeChart,
+} from './observation.tsx'
 import { FrameSelectionContext } from './selection-context.tsx'
 import { CopyData, DataTable, useFrozenColumns } from './table.tsx'
 
@@ -92,6 +99,7 @@ function keyColumns(s: Snapshot, c: FrameClassification): number {
 }
 
 function MembersTable({ snapshot, height }: { snapshot: Snapshot; height?: number }) {
+  const t = useCopy()
   const data = membersData(snapshot)
   const ref = useFrozenColumns(data.columns.length > 1 ? 1 : 0)
   return (
@@ -105,6 +113,8 @@ function MembersTable({ snapshot, height }: { snapshot: Snapshot; height?: numbe
         data={data}
         caption=""
         hideCompleteScope={data.rowCount === snapshot.coverage.totalRows}
+        hideExactTitle
+        display={(value, column) => displayCell(t.locale, value, column)}
       />
     </div>
   )
@@ -162,8 +172,7 @@ export function MainView({
             const value = cellOf(snapshot, 0, name)
             return {
               key: name,
-              value: compact(t.locale, value, column),
-              title: exact(value, column),
+              value: column ? displayFrameCell(snapshot, t.locale, value, column) : String(value),
               label: view.values.length > 1 ? valueName(snapshot, classification, name) : undefined,
             }
           })}
@@ -178,6 +187,8 @@ export function MainView({
       return <HBarChart {...common} view={view} />
     case 'heatmap':
       return <Heatmap {...common} view={view} />
+    case 'pie':
+      return <PieChart {...common} view={view} />
     case 'comparison':
       return <ComparisonView {...common} view={view} />
     case 'decomposition':
@@ -246,6 +257,19 @@ function title(
     : fallback
 }
 
+function chartLabel(t: Translator, s: Snapshot, view: ResolvedFrameView): string {
+  let kind: string = view.chart
+  if (view.chart === 'metric' && view.values.length === 1) {
+    const name = view.values[0]!
+    const column = columnOf(s, name)?.column
+    if (interpretationOf(s)?.valueContexts[name]?.kind === 'share') kind = 'percent'
+    else if (column?.unit === 'USD' && isNumeric(column)) kind = 'currency'
+    else if (isNumeric(column)) kind = 'number'
+  } else if (view.chart === 'members') kind = 'table'
+  else if (view.chart === 'hbar' || view.chart === 'interval-bar') kind = 'bar'
+  return t(`marivo.presentation.ui-chart-kind-${kind}`)
+}
+
 type NumberItem = Parameters<typeof Numbers>[0]['items'][number]
 /** Header numbers per class; every number is a saved cell or saved count. */
 function headerNumbers(
@@ -270,18 +294,19 @@ function headerNumbers(
       const items: NumberItem[] = [
         {
           key: name,
-          value: compact(t.locale, value, column),
-          title: `${name}: ${exact(value, column)}`,
+          value: column ? displayFrameCell(s, t.locale, value, column) : String(value),
+          title: name,
           label: symbol,
         },
       ]
       const count = view.counts[name]
       if (count) {
         const n = cellOf(s, 0, count)
+        const countColumn = columnOf(s, count)?.column
         items.push({
           key: count,
-          value: n === null ? '—' : String(n),
-          title: `${count}: ${exact(n, columnOf(s, count)?.column)}`,
+          value: countColumn ? displayFrameCell(s, t.locale, n, countColumn) : '—',
+          title: count,
           label: 'n',
         })
       }
@@ -498,7 +523,7 @@ export function FrameShell({
   const dataTable =
     c.class === 'comparison' ? (
       s.data.rows.length === 1 ? (
-        <ComparisonTable snapshot={s} classification={c} exactValues reference />
+        <ComparisonTable snapshot={s} classification={c} reference />
       ) : (
         <ComparisonDetail snapshot={s} />
       )
@@ -507,7 +532,6 @@ export function FrameShell({
         snapshot={s}
         frozen={keyColumns(s, c)}
         selectionFields={c.class === 'observation' ? c.primaryValues : undefined}
-        exactValues
         reference
       />
     )
@@ -552,29 +576,22 @@ export function FrameShell({
         <ResultHeader
           title={name}
           actions={
-            !compactDensity && !candidate ? (
-              <CopyData
-                data={s.data}
-                columns={view.chart === 'table' ? view.columns : allColumns}
-              />
-            ) : undefined
+            <div className="fv-header-actions">
+              <span className="fv-chart-tag">{chartLabel(t, s, view)}</span>
+              {!compactDensity && !candidate && (
+                <CopyData
+                  data={s.data}
+                  columns={view.chart === 'table' ? view.columns : allColumns}
+                />
+              )}
+            </div>
           }
-        />
+        >
+          {!compactDensity && chips.length > 0
+            ? chips.map((chip) => chip.label).join(' · ')
+            : undefined}
+        </ResultHeader>
         <CardContent className="space-y-4 min-w-0">
-          {!compactDensity && s.frame.description && (
-            <p className="fv-desc text-sm text-muted-foreground">{s.frame.description}</p>
-          )}
-          {!compactDensity && chips.length > 0 && (
-            <ul className="fv-chips flex flex-wrap gap-2">
-              {chips.map((chip) => (
-                <li key={chip.label}>
-                  <Badge variant="secondary" title={chip.title}>
-                    {chip.label}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
           {compactDensity && decomposition?.restricted && (
             <p className="au-result-status" role="status">
               {t('marivo.presentation.ui-frame-restricted-scope')}
@@ -625,6 +642,7 @@ export function FrameShell({
                   }
                 >
                   <FrameIcon kind="table" />
+                  <span className="fv-data-label">{dataLabel} ↗</span>
                 </FrameIconButton>
               ) : undefined
             }

@@ -14,10 +14,20 @@ import type {
   PresentationLocale,
 } from '../../../presentation/contracts/types.ts'
 import type { Translator } from '../../i18n/copy.ts'
+import { displayCell } from '../../presentation/display.ts'
 import { columnLabel } from '../../presentation/model.ts'
-import { compact, numberOf } from '../charts/model.ts'
+import { numberOf } from '../charts/model.ts'
 
-export { compact, exact, isNumeric, numberOf } from '../charts/model.ts'
+export { exact, isNumeric, numberOf } from '../charts/model.ts'
+
+/** Full, grouped numbers for Frame values; axis tick abbreviations are separate. */
+export function compact(locale: PresentationLocale, value: Cell, column?: DatasetColumn): string {
+  return displayCell(
+    locale,
+    value,
+    column ?? { id: '', label: '', type: 'float64', nullable: true },
+  )
+}
 
 // Pure read helpers over saved Frame facts. Nothing here aggregates or derives
 // new numbers; positions and labels only format or select saved column values.
@@ -65,12 +75,47 @@ export function signed(locale: PresentationLocale, value: Cell, column?: Dataset
 export function percent(locale: PresentationLocale, value: number | null, mark: boolean): string {
   if (value === null) return '—'
   const text = new Intl.NumberFormat(locale, {
-    ...(mark
-      ? { minimumFractionDigits: 1, maximumFractionDigits: 1 }
-      : { maximumFractionDigits: 1 }),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Math.abs(value) * 100)
   if (!mark) return `${value < 0 ? '-' : ''}${text}%`
   return value > 0 ? `▲${text}%` : value < 0 ? `▼${text}%` : `${text}%`
+}
+
+/** Display a Frame cell using the saved semantic role when one is available. */
+export function displayFrameCell(
+  s: Snapshot,
+  locale: PresentationLocale,
+  value: Cell,
+  column: DatasetColumn,
+  timezone = 'UTC',
+): string {
+  if (value === null) return '—'
+  const facts = interpretationOf(s)
+  const context = facts?.valueContexts[column.id]
+  const relative = facts?.comparisons.some((comparison) =>
+    comparison.groups.some((group) =>
+      group.values.some((item) => item.name === column.id && item.role === 'relative'),
+    ),
+  )
+  const share = facts?.decompositions.some((decomposition) =>
+    decomposition.outputs.some((item) => item.name === column.id && item.role === 'share'),
+  )
+  if (context?.kind === 'share' || relative || share)
+    return percent(locale, numberOf(value, column), !!relative)
+  if (
+    context?.kind === 'pair_statistic' &&
+    (context.statistic === 'pearson' || context.statistic === 'spearman')
+  ) {
+    const number = numberOf(value, column)
+    return number === null
+      ? String(value)
+      : new Intl.NumberFormat(locale, {
+          minimumFractionDigits: 3,
+          maximumFractionDigits: 3,
+        }).format(number)
+  }
+  return displayCell(locale, value, column, timezone)
 }
 
 export function valueName(s: Snapshot, c: FrameClassification | undefined, name: string): string {

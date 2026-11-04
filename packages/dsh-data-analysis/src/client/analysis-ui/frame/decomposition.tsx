@@ -7,8 +7,7 @@ import {
   type Chip,
   cellOf,
   columnOf,
-  compact,
-  exact,
+  displayFrameCell,
   firstCell,
   fixedLabel,
   groupRows,
@@ -52,7 +51,9 @@ export function decompositionOf(s: Snapshot, index: number) {
 export type DecompositionFacts = NonNullable<ReturnType<typeof decompositionOf>>
 
 function point(
+  t: Translator,
   s: Snapshot,
+  facts: DecompositionFacts,
   row: number,
   field: string | undefined,
   label: string,
@@ -61,7 +62,7 @@ function point(
   return {
     row,
     field,
-    label: `${label} · ${valueName(s, undefined, field)}: ${exact(cellOf(s, row, field), columnOf(s, field)?.column)}`,
+    label: `${label} · ${valueName(s, undefined, field)}: ${formatter(t, s, facts)(field, row)}`,
   }
 }
 
@@ -85,21 +86,30 @@ export function parentGroups(s: Snapshot, facts: DecompositionFacts) {
 
 /** Saved cell at a row; relative targets are fractions shown ×100. */
 function formatter(t: Translator, s: Snapshot, facts: DecompositionFacts) {
-  return (name: string, row: number) =>
-    facts.relative
-      ? percent(t.locale, valueAt(s, row, name), false)
-      : compact(t.locale, cellOf(s, row, name), columnOf(s, name)?.column)
+  return (name: string, row: number) => {
+    const role = facts.item.outputs.find((output) => output.name === name)?.role
+    if (
+      facts.relative &&
+      (role === 'contribution' ||
+        role === 'total' ||
+        role === 'observed_total' ||
+        EFFECTS.some((effect) => effect === role))
+    )
+      return percent(t.locale, valueAt(s, row, name), false)
+    const column = columnOf(s, name)?.column
+    return column ? displayFrameCell(s, t.locale, cellOf(s, row, name), column) : '—'
+  }
 }
 
 /** Header number: the parent's saved `total` (single parent only). */
 export function decompositionTotal(t: Translator, s: Snapshot, facts: DecompositionFacts) {
   const groups = parentGroups(s, facts)
   if (!facts.total || groups.length !== 1) return undefined
-  const { row, value } = firstCell(s, groups[0]!.rows, facts.total)
+  const { row } = firstCell(s, groups[0]!.rows, facts.total)
   return {
     key: facts.total,
     value: formatter(t, s, facts)(facts.total, row),
-    title: `${valueName(s, undefined, facts.total)}: ${exact(value, columnOf(s, facts.total)?.column)}`,
+    title: valueName(s, undefined, facts.total),
     label: valueName(s, undefined, facts.total),
   }
 }
@@ -145,7 +155,7 @@ export function DecompositionView({
                 <h4>
                   {g.label}
                   {facts.total && total && (
-                    <span title={exact(total.value, columnOf(s, facts.total)?.column)}>
+                    <span>
                       {' · '}
                       {format(facts.total, total.row)}
                     </span>
@@ -188,16 +198,13 @@ interface PartProps {
   rows: number[]
   labelOf: (row: number) => string
 }
-/** Every saved decomposition output of a row, exact; detail-only columns live here. */
-function tip(s: Snapshot, row: number, label: string, facts: DecompositionFacts) {
+/** Every saved decomposition output of a row; detail-only columns live here. */
+function tip(t: Translator, s: Snapshot, row: number, label: string, facts: DecompositionFacts) {
   return [label]
     .concat(
       facts.item.outputs
         .filter((o) => o.fieldKind === 'value')
-        .map(
-          (o) =>
-            `${valueName(s, undefined, o.name)}: ${exact(cellOf(s, row, o.name), columnOf(s, o.name)?.column)}`,
-        ),
+        .map((o) => `${valueName(s, undefined, o.name)}: ${formatter(t, s, facts)(o.name, row)}`),
     )
     .join('\n')
 }
@@ -249,12 +256,14 @@ function Waterfall({
       color: color(0),
       exact: (index) =>
         index < rows.length
-          ? tip(s, rows[index]!, labelOf(rows[index]!) || parent, facts)
+          ? tip(t, s, rows[index]!, labelOf(rows[index]!) || parent, facts)
           : facts.total && total && index === totalIndex
-            ? tip(s, total.row, parent, facts)
+            ? tip(t, s, total.row, parent, facts)
             : '',
       point: (index) =>
-        index < rows.length ? point(s, rows[index]!, name, labelOf(rows[index]!)) : undefined,
+        index < rows.length
+          ? point(t, s, facts, rows[index]!, name, labelOf(rows[index]!))
+          : undefined,
     },
   ]
   const label = summary(t, valueName(s, undefined, name), [
@@ -304,8 +313,8 @@ function Effects({ t, s, facts, rows, labelOf }: PartProps) {
     label: t(`marivo.presentation.ui-frame-${effect.role.replaceAll('_', '-')}`),
     values: rows.map((row) => valueAt(s, row, effect.name)),
     ranges: spans.map((row) => row[index] ?? null),
-    exact: (index) => tip(s, rows[index]!, labelOf(rows[index]!), facts),
-    point: (index) => point(s, rows[index]!, effect.name, labelOf(rows[index]!)),
+    exact: (index) => tip(t, s, rows[index]!, labelOf(rows[index]!), facts),
+    point: (index) => point(t, s, facts, rows[index]!, effect.name, labelOf(rows[index]!)),
     color: color(index),
   }))
   if (facts.contribution) {
@@ -314,8 +323,8 @@ function Effects({ t, s, facts, rows, labelOf }: PartProps) {
       key: name,
       label: valueName(s, undefined, name),
       values: rows.map((row) => valueAt(s, row, name)),
-      exact: (index) => tip(s, rows[index]!, labelOf(rows[index]!), facts),
-      point: (index) => point(s, rows[index]!, name, labelOf(rows[index]!)),
+      exact: (index) => tip(t, s, rows[index]!, labelOf(rows[index]!), facts),
+      point: (index) => point(t, s, facts, rows[index]!, name, labelOf(rows[index]!)),
       diamond: true,
       color: NEUTRAL,
     })

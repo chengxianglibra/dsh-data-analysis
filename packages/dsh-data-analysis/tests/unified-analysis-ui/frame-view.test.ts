@@ -183,6 +183,81 @@ test('observation auto: category hbar up to 30 complete rows', () => {
   assert.equal(viewOf(f.observeCategory(3, 10)).chart, 'table')
 })
 
+test('pie requires a complete unique category and one drawable value', () => {
+  const category = f.observeCategory(3)
+  assert.deepEqual(viewOf(category, { chart: 'pie' }), {
+    chart: 'pie',
+    axis: 't_region',
+    value: 'revenue',
+  })
+  assert.deepEqual(
+    viewOf(category, { chart: 'pie', encoding: { axis: 'region', value: 'revenue' } }),
+    {
+      chart: 'pie',
+      axis: 't_region',
+      value: 'revenue',
+    },
+  )
+  assert.deepEqual(
+    failure(f.frame({ axes: [f.categoryAxis(2)], values: [f.value('v', 2)], totalRows: 3 }), {
+      chart: 'pie',
+    }),
+    {
+      code: 'view-requires-complete-snapshot',
+      path: '/view',
+    },
+  )
+  assert.deepEqual(
+    failure(
+      f.frame({
+        axes: [{ ...f.categoryAxis(2), keys: ['same', 'same'] }],
+        values: [f.value('v', 2)],
+      }),
+      { chart: 'pie' },
+    ),
+    {
+      code: 'view-target-ambiguous',
+      path: '/view/encoding/axis',
+    },
+  )
+  assert.deepEqual(failure(f.observeTime(3), { chart: 'pie' }), {
+    code: 'view-target-ambiguous',
+    path: '/view/encoding/axis',
+  })
+  assert.deepEqual(failure(category, { chart: 'pie', encoding: { value: 'missing' } }), {
+    code: 'view-name-unknown',
+    path: '/view/encoding/value',
+  })
+  assert.deepEqual(failure(f.compareOrdinary([f.categoryAxis(3)]), { chart: 'pie' }), {
+    code: 'view-unsupported-for-snapshot',
+    path: '/view/chart',
+  })
+  const broadcast = f.frame({
+    axes: [f.categoryAxis(2)],
+    values: [f.value('total', 2, f.statistic('sum', []))],
+  })
+  assert.deepEqual(failure(broadcast, { chart: 'pie', encoding: { value: 'total' } }), {
+    code: 'view-target-ambiguous',
+    path: '/view/encoding/value',
+  })
+  for (const values of [
+    [0, 0],
+    [1, -1],
+    [null, null],
+    [null, 2],
+  ]) {
+    assert.deepEqual(
+      failure(f.frame({ axes: [f.categoryAxis(2)], values: [{ name: 'v', values }] }), {
+        chart: 'pie',
+      }),
+      {
+        code: 'view-pie-invalid-values',
+        path: '/view/encoding/value',
+      },
+    )
+  }
+})
+
 test('observation auto: time x category series, heatmap and matrix', () => {
   assert.deepEqual(viewOf(f.observeTimeCategory(8)), {
     chart: 'line',

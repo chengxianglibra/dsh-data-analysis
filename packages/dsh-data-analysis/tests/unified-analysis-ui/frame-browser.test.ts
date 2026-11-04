@@ -260,7 +260,7 @@ test('plugin charts scroll within a narrow card and their marks are keyboard-sel
   ])
 })
 
-test('Taxi heatmap preserves exact cells and supports point selection without aggregating', async () => {
+test('Taxi heatmap formats cells and supports point selection without aggregating', async () => {
   await page.locator('body').click({ position: { x: 1, y: 1 } })
   try {
     for (const width of [710, 360]) {
@@ -276,7 +276,7 @@ test('Taxi heatmap preserves exact cells and supports point selection without ag
       const manhattan = cells.filter({ has: page.locator('title', { hasText: 'Manhattan' }) })
       await manhattan.hover()
       const tooltip = await manhattan.locator('title').textContent()
-      assert.match(tooltip ?? '', /Manhattan.*Cash.*41820207/)
+      assert.match(tooltip ?? '', /Manhattan.*Cash.*41,820,207\.00/)
       assert.doesNotMatch(tooltip ?? '', /Row avg|Column avg/i)
       assert.equal(await page.locator('.openui-chart-tooltip:visible').count(), 0)
       await manhattan.locator('rect').click()
@@ -467,7 +467,7 @@ test('blank row labels do not paint an opaque rail, and mixed rows keep their po
   assert.equal(await rail.locator('[data-rail-row="1"] title').textContent(), 'zone')
 })
 
-test('chart data uses the icon row and a keyboard operable dialog with exact saved values', async () => {
+test('chart data uses the icon row and a keyboard operable dialog with formatted values', async () => {
   const frame = page.locator('[data-resource="precise"]')
   const toggle = frame.locator('[data-icon="data"] button')
   assert.equal(await frame.locator('.fv-icons > [data-icon="data"]').count(), 1)
@@ -479,7 +479,8 @@ test('chart data uses the icon row and a keyboard operable dialog with exact sav
   const details = page.getByRole('dialog')
   const saved = details.locator('td[data-column-id="amount"]').first()
   await saved.waitFor()
-  assert.equal(await saved.textContent(), '118393545.04998468')
+  assert.equal(await saved.textContent(), '118,393,545.05')
+  assert.equal(await saved.getAttribute('title'), null)
   assert.equal(await details.locator('.fv-scroll-hint, .pr-table > p').count(), 0)
   await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
   await saved.getByRole('button').click()

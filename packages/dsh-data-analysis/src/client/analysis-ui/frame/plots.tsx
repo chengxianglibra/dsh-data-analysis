@@ -9,7 +9,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { Tick } from '../charts/model.ts'
+import { useCopy } from '../../i18n/context.tsx'
+import { compact, type Tick } from '../charts/model.ts'
 import { rectangleGeometry } from '../charts/observation.tsx'
 import {
   ChartFrame,
@@ -96,6 +97,7 @@ export function SavedLinePlot({
   height?: number
   legend?: boolean
 }) {
+  const t = useCopy()
   const data = ticks.map((_, index) => ({
     index,
     values: series.map((line) => line.values[index] ?? null),
@@ -138,6 +140,7 @@ export function SavedLinePlot({
         <YAxis
           type="number"
           domain={numericDomain(series.flatMap((line) => line.values))}
+          tickFormatter={(value) => compact(t.locale, value)}
           width={64}
         />
         <ExactTooltip
@@ -203,10 +206,26 @@ export function SavedRowPlot({
   const values = series.flatMap((line) =>
     line.ranges ? line.ranges.flatMap((range) => range ?? []) : line.values,
   )
+  // End labels can contain two full grouped values. Reserve room for them while
+  // keeping a usable plotting area, scrolling locally for exceptionally long text.
+  const endLabelWidth = endLabels
+    ? Math.max(
+        120,
+        ...endLabels.map(
+          (text) =>
+            24 +
+            Array.from(text).reduce(
+              (width, character) => width + (character.codePointAt(0)! > 0xff ? 12 : 8),
+              0,
+            ),
+        ),
+      )
+    : 32
   return (
     <div className="min-w-0 max-w-full" data-mark-total={totalState}>
       <ChartFrame
         label={label}
+        width={Math.max(640, endLabelWidth + 320)}
         height={height ?? Math.max(160, labels.length * 28 + 48)}
         legend={
           <Legend
@@ -225,7 +244,7 @@ export function SavedRowPlot({
           layout="vertical"
           barGap={overlayBars ? -18 : 4}
           barSize={overlayBars ? 18 : undefined}
-          margin={{ top: 12, right: endLabels ? 120 : 32, bottom: 8, left: 8 }}
+          margin={{ top: 12, right: endLabelWidth, bottom: 8, left: 8 }}
           accessibilityLayer
         >
           <CartesianGrid horizontal={false} />
@@ -396,7 +415,7 @@ export function SavedDeltaStrip({
                       y={p.y}
                       width={p.width}
                       height={Math.max(1, p.height)}
-                      fill={series.color ?? 'var(--muted-foreground)'}
+                      fill={(series.values[p.index] ?? 0) < 0 ? '#bb5230' : '#087c65'}
                       radius={2}
                     />
                   </g>

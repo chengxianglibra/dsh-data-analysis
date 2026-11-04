@@ -9,8 +9,19 @@ const frozen = Array.from(
 export const FRAME_STYLES = `
 .au-result{container:mv-result / inline-size}
 .fv{width:100%;min-width:0}
+.fv[data-resource-kind=frame]{--card-spacing:24px}
 .fv-head button{white-space:nowrap}
+.fv-header-actions{display:flex;align-items:flex-start;gap:8px}
+.fv-chart-tag{display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:4px;background:var(--muted);color:var(--muted-foreground);font-size:10px;line-height:1.4;white-space:nowrap}
+.fv[data-resource-kind=frame] .au-metric-group{display:block}
+.fv[data-resource-kind=frame] .au-metric-group>[data-slot=card]{background:transparent;box-shadow:none;padding:0;gap:0}
+.fv[data-resource-kind=frame] .au-metric-group>[data-slot=card]>[data-slot=card-header]{padding:0}
+.fv[data-resource-kind=frame] .au-metric-value{font-size:clamp(28px,3vw,36px);line-height:1.3;letter-spacing:-.025em}
+.fv[data-resource-kind=frame] .au-metric-group:has(>[data-slot=card]:nth-child(2)){display:grid}
 .fv-chart{margin:0;min-width:0}
+.fv-pie-layout{display:flex;flex-wrap:wrap;align-items:center;gap:20px}
+.fv-pie-svg{display:block;flex:0 1 300px;width:100%;max-width:300px;height:auto;min-width:0}
+.fv-pie-legend{display:grid;gap:12px;flex:0 1 340px;min-width:min(180px,100%);max-width:100%;padding:0;list-style:none}
 .fv-plot{max-width:100%;overflow-x:auto}
 .fv-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .fv-plot-scrolled svg.recharts-surface .fv-row-label{visibility:hidden}
@@ -32,8 +43,14 @@ export const FRAME_STYLES = `
 .fv-comparison-toolbar button{margin-left:auto}
 ${frozen}
 .fv-icons{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fv[data-resource-kind=frame] .fv-icons{border-top:1px solid var(--border);padding-top:10px;margin-top:20px}
 .fv-icon{position:relative;display:inline-flex}
 .fv-icon svg{flex:none}
+.fv-icons>.fv-icon[data-icon=data]{order:1;margin-left:auto}
+.fv-icons>.fv-icon[data-icon=data] button{width:auto;min-width:0;height:30px;padding:4px 8px;border:0;background:transparent;box-shadow:none;color:var(--primary);font-size:12px}
+.fv-icons>.fv-icon[data-icon=data] button svg{display:none}
+.fv-data-label{white-space:nowrap}
+@media(max-width:480px){.fv[data-resource-kind=frame]{--card-spacing:18px}}
 .fv-code{white-space:pre;overflow:auto;max-height:50vh;user-select:text}
 .fv-dev dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
 .fv-dev dd{margin:0;overflow-wrap:anywhere}

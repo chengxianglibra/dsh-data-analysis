@@ -30,6 +30,8 @@ export interface ChartModel {
   axes: ChartAxis[]
   valueLabels: Record<string, string>
   references: Record<string, ChartGroup[]>
+  display?: (value: Cell, column?: DatasetColumn) => string
+  frameStyle?: boolean
 }
 export type ChartView =
   | {
@@ -81,6 +83,10 @@ export function exact(value: Cell, column?: DatasetColumn): string {
   if (!column) return value === null ? '—' : String(value)
   const text = formatCell(value, column)
   return value !== null && column.unit ? `${text} ${column.unit}` : text
+}
+
+export function displayed(s: ChartModel, value: Cell, column?: DatasetColumn): string {
+  return s.display ? s.display(value, column) : exact(value, column)
 }
 
 export function valueAt(s: ChartModel, row: number, name: string) {

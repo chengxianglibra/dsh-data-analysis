@@ -4,6 +4,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  LabelList,
   Line,
   Rectangle,
   ReferenceLine,
@@ -21,7 +22,7 @@ import {
   cellOf,
   columnOf,
   compact,
-  exact,
+  displayed,
   firstCell,
   groupRows,
   partitions,
@@ -137,17 +138,27 @@ function TimeChartPlot({
       key: `s${gi}_${vi}`,
       name,
       label: [group.label, valueName(s, name)].filter(Boolean).join(' · '),
-      color: color(seriesAxis ? gi : vi),
+      color: s.frameStyle && (seriesAxis ? gi : vi) === 0 ? '#126c74' : color(seriesAxis ? gi : vi),
       marker: seriesAxis ? gi : undefined,
       rows: new Map(group.rows.map((row) => [tickOf(row), row])),
     })),
   )
+  const showLabels = !!s.frameStyle && ticks.length <= 12 && series.length === 1
+  const bars = view.chart === 'bar' || view.chart === 'interval-bar'
   const data = ticks.map((_, index) =>
     Object.assign(
       { index },
       ...series.map((line) => {
         const row = line.rows.get(index)
-        return { [line.key]: row === undefined ? null : valueAt(s, row, line.name) }
+        const value = row === undefined ? null : valueAt(s, row, line.name)
+        if (!showLabels || bars) return { [line.key]: value }
+        return {
+          [line.key]: value,
+          [`${line.key}Label`]:
+            row === undefined || value === null
+              ? ''
+              : displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column),
+        }
       }),
     ),
   )
@@ -169,18 +180,18 @@ function TimeChartPlot({
     ...item,
     __reference: refs.find((ref) => item.index >= ref.from && item.index <= ref.to)?.y ?? null,
   }))
-  const bars = view.chart === 'bar' || view.chart === 'interval-bar'
   const tip = (index: number) =>
     [
       ticks[index]?.title ?? '',
       ...series.map((line) => {
         const row = line.rows.get(index)
-        return `${line.label}: ${exact(row === undefined ? null : cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
+        return `${line.label}: ${displayed(s, row === undefined ? null : cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
       }),
       ...refs
         .filter((ref) => index >= ref.from && index <= ref.to)
         .map(
-          (ref) => `${valueName(s, ref.name)}: ${exact(ref.value, columnOf(s, ref.name)?.column)}`,
+          (ref) =>
+            `${valueName(s, ref.name)}: ${displayed(s, ref.value, columnOf(s, ref.name)?.column)}`,
         ),
     ].join('\n')
   const label = summary(
@@ -188,7 +199,7 @@ function TimeChartPlot({
     series.map((line) => line.label).join(' · '),
     ticks.map((_, index) => tip(index)),
   )
-  const domain = numericDomain(
+  const baseDomain = numericDomain(
     [
       ...series.flatMap((line) =>
         ticks.map((_, index) => {
@@ -200,6 +211,10 @@ function TimeChartPlot({
     ],
     bars || view.chart === 'area',
   )
+  const padding = (baseDomain[1] - baseDomain[0]) * 0.14
+  const domain: [number, number] = showLabels
+    ? [baseDomain[0] < 0 && bars ? baseDomain[0] - padding : baseDomain[0], baseDomain[1] + padding]
+    : baseDomain
   const dense = !bars && ticks.length * series.length > 2000
   return (
     <>
@@ -254,7 +269,7 @@ function TimeChartPlot({
               if (!point || typeof index !== 'number') return <g />
               const row = line.rows.get(index)
               if (row === undefined || valueAt(s, row, line.name) === null) return <g />
-              const title = `${ticks[index]?.title ?? ''}\n${line.label}: ${exact(cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
+              const title = `${ticks[index]?.title ?? ''}\n${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
               return (
                 <SelectableMark row={row} field={line.name} label={title}>
                   <circle
@@ -280,12 +295,13 @@ function TimeChartPlot({
                   name={line.label}
                   fill={line.color}
                   isAnimationActive={false}
+                  maxBarSize={s.frameStyle ? 44 : undefined}
                   shape={(input) => {
                     const p = rectangleGeometry(input)
                     if (!p) return <g />
                     const row = line.rows.get(p.index)
                     if (row === undefined) return <g />
-                    const title = `${ticks[p.index]?.title ?? ''}\n${line.label}: ${exact(cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
+                    const title = `${ticks[p.index]?.title ?? ''}\n${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
                     return (
                       <SelectableMark row={row} field={line.name} label={title}>
                         <g
@@ -309,6 +325,25 @@ function TimeChartPlot({
                             strokeDasharray={ticks[p.index]?.incomplete ? '3 2' : undefined}
                             radius={2}
                           />
+                          {showLabels && (
+                            <text
+                              x={p.x + p.width / 2}
+                              y={
+                                (valueAt(s, row, line.name) ?? 0) < 0
+                                  ? p.y + p.height + 16
+                                  : p.y - 8
+                              }
+                              textAnchor="middle"
+                              fill="#126c74"
+                              fontSize={12}
+                            >
+                              {displayed(
+                                s,
+                                cellOf(s, row, line.name),
+                                columnOf(s, line.name)?.column,
+                              )}
+                            </text>
+                          )}
                         </g>
                       </SelectableMark>
                     )
@@ -329,7 +364,17 @@ function TimeChartPlot({
                 isAnimationActive={false}
                 dot={ticks.length * series.length > 2000 ? false : dot}
                 activeDot={dot}
-              />
+              >
+                {showLabels && (
+                  <LabelList
+                    dataKey={`${line.key}Label`}
+                    position="top"
+                    offset={12}
+                    fill="#126c74"
+                    fontSize={12}
+                  />
+                )}
+              </Area>
             ) : (
               <Line
                 key={line.key}
@@ -342,7 +387,17 @@ function TimeChartPlot({
                 isAnimationActive={false}
                 dot={ticks.length * series.length > 2000 ? false : dot}
                 activeDot={dot}
-              />
+              >
+                {showLabels && (
+                  <LabelList
+                    dataKey={`${line.key}Label`}
+                    position="top"
+                    offset={12}
+                    fill="#126c74"
+                    fontSize={12}
+                  />
+                )}
+              </Line>
             )
           })}
           {/* A reference-only facet still registers its saved numeric field with Recharts. */}
@@ -367,7 +422,7 @@ function TimeChartPlot({
                 stroke={NEUTRAL}
                 strokeDasharray="4 3"
                 label={{
-                  value: exact(ref.value, columnOf(s, ref.name)?.column),
+                  value: displayed(s, ref.value, columnOf(s, ref.name)?.column),
                   position: 'insideTopRight',
                 }}
               />
@@ -386,7 +441,7 @@ function TimeChartPlot({
                     {
                       row,
                       field: line.name,
-                      label: `${tick.title} · ${line.label}: ${exact(cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`,
+                      label: `${tick.title} · ${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`,
                     },
                   ]
             }),
@@ -469,7 +524,7 @@ function HBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
       axis.labels[row] ?? '',
       ...[...view.values, ...view.broadcast].map(
         (name) =>
-          `${valueName(s, name)}: ${exact(cellOf(s, row, name), columnOf(s, name)?.column)}`,
+          `${valueName(s, name)}: ${displayed(s, cellOf(s, row, name), columnOf(s, name)?.column)}`,
       ),
     ].join('\n')
   const label = summary(t, view.values.map((name) => valueName(s, name)).join(' · '), rows.map(tip))
@@ -525,7 +580,7 @@ function HBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
             shape={(input) => {
               const p = rectangleGeometry(input)
               if (!p) return <g />
-              const title = `${axis.labels[p.index] ?? ''} · ${valueName(s, name)}: ${exact(cellOf(s, p.index, name), columnOf(s, name)?.column)}`
+              const title = `${axis.labels[p.index] ?? ''} · ${valueName(s, name)}: ${displayed(s, cellOf(s, p.index, name), columnOf(s, name)?.column)}`
               return (
                 <SelectableMark row={p.index} field={name} label={title}>
                   <g data-mark="bar">
@@ -557,7 +612,7 @@ function HBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
               ]}
               stroke={NEUTRAL}
               strokeDasharray="4 3"
-              label={{ value: exact(ref.value, columnOf(s, ref.name)?.column) }}
+              label={{ value: displayed(s, ref.value, columnOf(s, ref.name)?.column) }}
             />
           ),
         )}
@@ -708,7 +763,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
   })
   const col = columnOf(s, view.value)?.column
   const tip = (row: number) =>
-    `${xs[xOf.get(row)!]?.label ?? ''} · ${ys[yOf.get(row)!]?.label ?? ''}: ${exact(cellOf(s, row, view.value), col)}`
+    `${xs[xOf.get(row)!]?.label ?? ''} · ${ys[yOf.get(row)!]?.label ?? ''}: ${displayed(s, cellOf(s, row, view.value), col)}`
   const label = summary(t, valueName(s, view.value), rowsOf(s).map(tip))
   const finite = data.filter((point) => point.value !== null)
   const minPoint = finite.reduce<(typeof finite)[number] | undefined>(
@@ -739,12 +794,12 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
             <span>
               {t('marivo.presentation.ui-chart-null-values', { p0: data.length - finite.length })}
             </span>
-            <span title={exact(cellOf(s, minPoint.index, view.value), col)}>
-              {exact(cellOf(s, minPoint.index, view.value), col)}
+            <span title={displayed(s, cellOf(s, minPoint.index, view.value), col)}>
+              {displayed(s, cellOf(s, minPoint.index, view.value), col)}
             </span>
             <span aria-hidden="true">→</span>
-            <span title={exact(cellOf(s, maxPoint.index, view.value), col)}>
-              {exact(cellOf(s, maxPoint.index, view.value), col)}
+            <span title={displayed(s, cellOf(s, maxPoint.index, view.value), col)}>
+              {displayed(s, cellOf(s, maxPoint.index, view.value), col)}
             </span>
           </div>
         ) : undefined

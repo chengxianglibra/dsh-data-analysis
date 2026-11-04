@@ -3,6 +3,7 @@ import type { Translator } from '../../i18n/copy.ts'
 import type { ChartModel } from '../charts/model.ts'
 import {
   axisKey,
+  displayFrameCell,
   memberLabel,
   partitions,
   rowsOf,
@@ -21,6 +22,9 @@ export function frameChartModel(
   const rows = rowsOf(s)
   return {
     data: s.data,
+    frameStyle: true,
+    display: (value, column) =>
+      column ? displayFrameCell(s, t.locale, value, column) : String(value ?? '—'),
     axes: s.frame.axes.map((axis) => {
       const time =
         axis.variant?.kind === 'calendar' || axis.variant?.kind === 'interval'

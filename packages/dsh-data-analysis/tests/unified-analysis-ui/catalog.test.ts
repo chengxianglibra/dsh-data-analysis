@@ -67,8 +67,18 @@ test('unsupported nodes and wrong parent slots cannot enter the subset', () => {
     'root = DatasetView("sql", {chart: "line"});',
     'root = DatasetView("sql", {}, {density: "compact"});',
     'root = DatasetView("sql", {chart: "metric"});',
+    'root = DatasetView("sql", {chart: "pie"});',
   ])
     assert.throws(() => parseAnalysisProgram(source), source)
+})
+
+test('Frame pie is available through the public catalog', () => {
+  assert.equal(
+    parseAnalysisProgram(
+      'root = AnalysisFrameView("frame", {chart: "pie", encoding: {axis: "category", value: "amount"}});',
+    ).typeName,
+    'AnalysisFrameView',
+  )
 })
 
 test('official statement merge adds, replaces and removes in one patch', () => {

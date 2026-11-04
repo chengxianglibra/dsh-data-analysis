@@ -2,11 +2,10 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { formatCell } from '../../../presentation/contracts/index.ts'
 import type { TypedDataset } from '../../../presentation/contracts/types.ts'
 import { useCopy } from '../../i18n/context.tsx'
-import { displayCell } from '../../presentation/display.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
 import { FrameIcon } from './frame-icon.tsx'
 import { FrameIconButton } from './icons.tsx'
-import type { Snapshot } from './model.ts'
+import { displayFrameCell, type Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 import { MAX_FROZEN } from './styles.ts'
 
@@ -102,14 +101,13 @@ function timezoneOf(snapshot: Snapshot): string {
   return 'UTC'
 }
 
-/** Readable saved cells; copy and tooltips keep the exact saved spelling. */
+/** Readable saved cells; copying retains the saved spelling. */
 export function DataTable({
   snapshot,
   columns,
   height,
   frozen = 0,
   selectionFields,
-  exactValues = false,
   reference = false,
 }: {
   snapshot: Snapshot
@@ -117,7 +115,6 @@ export function DataTable({
   height?: number
   frozen?: number
   selectionFields?: readonly string[]
-  exactValues?: boolean
   reference?: boolean
 }) {
   const t = useCopy()
@@ -169,11 +166,8 @@ export function DataTable({
           selectCell={selection?.select}
           selectableColumns={selectionFields ? new Set(selectionFields) : undefined}
           hideRowCount={reference}
-          display={
-            exactValues
-              ? undefined
-              : (value, column) => displayCell(t.locale, value, column, timezone)
-          }
+          hideExactTitle
+          display={(value, column) => displayFrameCell(snapshot, t.locale, value, column, timezone)}
         />
       </div>
     </>

@@ -1,7 +1,6 @@
 import type { Cell, DatasetColumn, PresentationLocale } from '../../presentation/contracts/types.ts'
 
-// Readable display text for Frame tables. Copy and tooltips keep `formatCell`'s
-// exact saved spelling, so grouping and rounding here never change the data.
+// Readable display text for Frame views; the saved cells and copied data are unchanged.
 export const MISSING_DISPLAY = '—'
 
 function datetimeText(text: string, timezone: string): string {
@@ -24,7 +23,7 @@ function datetimeText(text: string, timezone: string): string {
   }
 }
 
-/** Locale display text; exact int64/decimal strings are never rounded or reformatted away. */
+/** Locale display text for saved Frame values. */
 export function displayCell(
   locale: PresentationLocale,
   value: Cell,
@@ -33,22 +32,30 @@ export function displayCell(
 ): string {
   if (value === null) return MISSING_DISPLAY
   switch (column.type) {
-    case 'float64': {
+    case 'float64':
+    case 'decimal': {
       const number = typeof value === 'number' ? value : Number(value)
-      return Number.isFinite(number)
-        ? new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(number)
-        : String(value)
+      if (!Number.isFinite(number)) return String(value)
+      const formatter = new Intl.NumberFormat(locale, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        ...(column.unit === 'USD' ? { style: 'currency', currency: 'USD' } : {}),
+      })
+      // Intl accepts decimal strings without first losing precision to a JS number.
+      const formatted: unknown = Reflect.apply(formatter.format, undefined, [value])
+      return typeof formatted === 'string' ? formatted : String(value)
     }
     case 'int64':
       try {
-        return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
-          BigInt(String(value)),
-        )
+        return new Intl.NumberFormat(
+          locale,
+          column.unit === 'USD'
+            ? { style: 'currency', currency: 'USD' }
+            : { maximumFractionDigits: 0 },
+        ).format(BigInt(String(value)))
       } catch {
         return String(value)
       }
-    case 'decimal':
-      return String(value)
     case 'datetime':
       return datetimeText(String(value), timezone)
     default:

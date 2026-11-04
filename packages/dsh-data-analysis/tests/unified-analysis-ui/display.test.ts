@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { periodLabel } from '../../src/client/analysis-ui/frame/model.ts'
+import { displayFrameCell, periodLabel } from '../../src/client/analysis-ui/frame/model.ts'
 import { displayCell } from '../../src/client/presentation/display.ts'
 import { columnLabel } from '../../src/client/presentation/model.ts'
 import type { DatasetColumn } from '../../src/presentation/contracts/types.ts'
+import { correlate, shareByRegion } from './frame-fixtures.ts'
 
 const column = (type: DatasetColumn['type'], unit?: string): DatasetColumn => ({
   id: 'value',
@@ -13,9 +14,9 @@ const column = (type: DatasetColumn['type'], unit?: string): DatasetColumn => ({
   ...(unit === undefined ? {} : { unit }),
 })
 
-test('displayCell groups floats with at most two fraction digits', () => {
+test('displayCell groups floats with two fraction digits', () => {
   assert.equal(displayCell('en-US', 1234567.891, column('float64')), '1,234,567.89')
-  assert.equal(displayCell('en-US', 1234.5, column('float64')), '1,234.5')
+  assert.equal(displayCell('en-US', 1234.5, column('float64')), '1,234.50')
   assert.equal(displayCell('en-US', -1234.567, column('float64')), '-1,234.57')
 })
 
@@ -27,9 +28,23 @@ test('displayCell groups int64 through BigInt without losing precision', () => {
   assert.equal(displayCell('en-US', '-9007199254740993', column('int64')), '-9,007,199,254,740,993')
 })
 
-test('displayCell keeps decimal strings exact', () => {
-  assert.equal(displayCell('en-US', '0.1000', column('decimal')), '0.1000')
-  assert.equal(displayCell('en-US', '-1.20e3', column('decimal')), '-1.20e3')
+test('displayCell rounds decimal strings without losing integer precision', () => {
+  assert.equal(displayCell('en-US', '0.1000', column('decimal')), '0.10')
+  assert.equal(displayCell('en-US', '-1.20e3', column('decimal')), '-1,200.00')
+  assert.equal(
+    displayCell('en-US', '9007199254740993.125', column('decimal')),
+    '9,007,199,254,740,993.13',
+  )
+})
+
+test('Frame value formatting uses captured share and coefficient semantics', () => {
+  const share = shareByRegion()
+  const shareColumn = share.data.columns.find((item) => item.id === 'revenue_share')!
+  assert.equal(displayFrameCell(share, 'en-US', 0.25, shareColumn), '25.00%')
+  const correlation = correlate(false)
+  const coefficient = correlation.data.columns.find((item) => item.id === 'coefficient')!
+  assert.equal(displayFrameCell(correlation, 'en-US', 0.5, coefficient), '0.500')
+  assert.equal(displayCell('en-US', 1234.5, column('float64', 'USD')), '$1,234.50')
 })
 
 test('displayCell formats datetimes in the supplied timezone and falls back to raw text', () => {
