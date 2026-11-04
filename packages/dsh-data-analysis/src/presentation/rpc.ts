@@ -292,7 +292,11 @@ export class MarivoPresentationFileService {
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
     signal.throwIfAborted()
-    return { text: snippet.text, sha256: snippet.sha256 }
+    return {
+      text: snippet.text,
+      sha256: snippet.sha256,
+      ...(snippet.datasources ? { datasources: snippet.datasources } : {}),
+    }
   }
 }
 

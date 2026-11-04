@@ -82,6 +82,29 @@ test('execution snapshots preserve exact submitted code and digest complete reco
   assert.equal((await readdir(path.dirname(recordPath(root, first)))).length, 2)
 })
 
+test('execution snapshots preserve declared datasource names and backends', async (t) => {
+  const root = await workspace(t)
+  const datasources = [
+    { name: 'files', backend: null },
+    { name: 'warehouse', backend: 'duckdb' },
+  ]
+  const ref = await savePythonExecution(root, { ...input, datasources })
+  const record = JSON.parse(await readFile(recordPath(root, ref), 'utf8'))
+  assert.equal(record.schemaVersion, 3)
+  assert.deepEqual(record.datasources, datasources)
+  assert.deepEqual(await readPythonExecution(root, ref), {
+    language: 'python',
+    text: input.text,
+    provenance: 'execution',
+    datasources,
+    ...ref,
+  })
+  await assert.rejects(
+    savePythonExecution(root, { ...input, datasources: [{ name: '', backend: null }] }),
+    /unavailable or invalid/,
+  )
+})
+
 test('snapshot save and read retain call-entry values across asynchronous file operations', async (t) => {
   const root = await workspace(t)
   const mutableInput = { ...input }
@@ -284,6 +307,10 @@ test('registered Python tool captures original code only after one successful ex
   assert.equal(
     (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).text,
     input.text,
+  )
+  assert.deepEqual(
+    (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).datasources,
+    [{ name: 'warehouse', backend: null }],
   )
   const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, result.codeRef), 'utf8')
   assert.doesNotMatch(record, /canary-private-4826|PYTHON_WORKER|grants|DB_PASSWORD/)

@@ -71,10 +71,12 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     })
   }
   const code = 'capture_frame(frame)\ncapture_dataset(df)'
+  const datasources = [{ name: 'warehouse', backend: 'duckdb' }]
   const codeRef = await savePythonExecution(root, {
     text: code,
     startedAt: '2026-10-28T00:00:00.000Z',
     finishedAt: '2026-10-28T00:00:01.000Z',
+    datasources,
     captures: {
       workspaceId: 'workspace',
       sessionId: 'session',
@@ -109,6 +111,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     root,
     code,
     codeRef,
+    datasources,
     exec,
     present,
     service,
@@ -258,10 +261,18 @@ test('code/read returns bound Python source only for the saved receipt document 
   })
   const receipt = delivery.receipt
   const input = { sessionId: 'session', receipt, codeRef: f.codeRef }
-  assert.deepEqual(await f.service.code(input), { text: f.code, sha256: f.codeRef.sha256 })
+  assert.deepEqual(await f.service.code(input), {
+    text: f.code,
+    sha256: f.codeRef.sha256,
+    datasources: f.datasources,
+  })
   assert.deepEqual(
     await f.service.code({ workspaceId: 'workspace', receipt, codeRef: f.codeRef }),
-    { text: f.code, sha256: f.codeRef.sha256 },
+    {
+      text: f.code,
+      sha256: f.codeRef.sha256,
+      datasources: f.datasources,
+    },
   )
   // A valid record in the same Workspace that the document does not reference.
   const unbound = await savePythonExecution(f.root, {
@@ -285,7 +296,7 @@ test('code/read returns bound Python source only for the saved receipt document 
     channels.get('/marivo-presentation')!('code/read', payload, new AbortController().signal)
   assert.deepEqual(await call(input), {
     ok: true,
-    value: { text: f.code, sha256: f.codeRef.sha256 },
+    value: { text: f.code, sha256: f.codeRef.sha256, datasources: f.datasources },
   })
   const record = path.join(
     f.root,

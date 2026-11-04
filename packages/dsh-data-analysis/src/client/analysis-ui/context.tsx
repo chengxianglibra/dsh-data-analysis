@@ -1,7 +1,13 @@
 import { createContext, useContext } from 'react'
 import type { AnalysisResource } from '../../presentation/contracts/analysis-document.ts'
-import type { PythonCodeRef } from '../../python-execution-contracts.ts'
+import type { PythonCodeRef, PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
+
+export interface PythonCodeReadResult {
+  text: string
+  sha256: string
+  datasources?: PythonExecutionDatasource[]
+}
 
 export interface AnalysisResourceContext {
   readResource: (name: string) => AnalysisResource | undefined
@@ -15,7 +21,7 @@ export interface AnalysisResourceContext {
   readCode?: (
     codeRef: PythonCodeRef,
     signal: AbortSignal,
-  ) => Promise<{ text: string; sha256: string } | undefined>
+  ) => Promise<PythonCodeReadResult | undefined>
   /** Inserts a saved Frame cell into the current Harness input after host validation. */
   askPoint?: (selection: { resourceName: string; row: number; field: string }) => Promise<void>
 }

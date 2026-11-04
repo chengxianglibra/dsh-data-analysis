@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('result shells preserve exact Dataset cells, selected-column copy and candidate operation isolation', async () => {
+test('result shells preserve exact Dataset cells, full-column copy and candidate operation isolation', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-custom-results-'))
   const browser = await chromium.launch()
   try {
@@ -37,7 +37,7 @@ window.calls = {code:0,ask:0,copy:0};
 window.renderBuild = (recordId, candidate = new URLSearchParams(location.search).has('candidate')) => { const surface = createElement(AnalysisRenderer, {
  recordId, resources,title:'Results',locale:'en-US',candidate,
  program:'root = Stack([metric, table, chart, partial, full, restricted]);\\nmetric = DatasetView("metric");\\ntable = DatasetView("table");\\nchart = DatasetView("chart", {chart:"line",encoding:{axis:"category",values:["value"]}});\\npartial = AnalysisFrameView("partial", {chart:"auto"}, {density:"compact"});\\nfull = AnalysisFrameView("full");\\nrestricted = AnalysisFrameView("restricted", {chart:"auto"}, {density:"compact"});',
- readCode:async () => {window.calls.code++;return new Promise(resolve => {window.resolveCode = () => resolve({text:'print("old build")',sha256:'a'.repeat(64)})})},
+ readCode:async () => {window.calls.code++;return new Promise(resolve => {window.resolveCode = () => resolve({text:'print("old build")',sha256:'a'.repeat(64),datasources:[{name:'warehouse',backend:'duckdb'}]})})},
  askPoint:async () => {window.calls.ask++;document.getElementById('background-composer').focus();await new Promise(resolve=>setTimeout(resolve,10));}
 });root.render(portal ? createElement(OverlayProvider,{shell:PortalShell},surface) : surface);};
 window.renderBuild('build-1');`,
@@ -82,28 +82,32 @@ window.renderBuild('build-1');`,
     await source.waitFor()
     assert.match((await source.textContent()) ?? '', /6f9619ff-8b86-4d01-b42d-00cf4fc964ff/)
     assert.match((await source.textContent()) ?? '', new RegExp('a'.repeat(64)))
-    assert.equal(await page.evaluate(() => Reflect.get(window, 'calls').code), 0)
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 1)
+    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
+    await source.locator('pre code').waitFor()
+    const sourceText = (await source.textContent()) ?? ''
+    assert.match(sourceText, /print\("old build"\)/)
+    assert.match(sourceText, /warehouse/)
+    assert.match(sourceText, /duckdb/)
     await source.getByRole('button', { name: 'Close', exact: true }).click()
     const table = page.locator('[data-resource="table"]')
     assert.equal(await table.locator('[data-icon="data"]').count(), 0)
-    await table.getByRole('button', { name: 'Select columns', exact: true }).click()
-    await page
-      .getByRole('dialog', { name: 'Select columns', exact: true })
-      .getByLabel('Category', { exact: true })
-      .uncheck()
     assert.equal(
-      await page
-        .getByRole('dialog', { name: 'Select columns', exact: true })
-        .getByLabel('Value', { exact: true })
-        .isDisabled(),
-      true,
+      await table.getByRole('button', { name: 'Select columns', exact: true }).count(),
+      0,
     )
-    await page.keyboard.press('Escape')
+    assert.equal(
+      await table
+        .getByRole('status')
+        .filter({ hasText: /\d+ rows/ })
+        .count(),
+      0,
+    )
     await table.getByRole('button', { name: 'Copy saved data' }).click()
     await table.getByRole('status').filter({ hasText: 'Copied' }).waitFor()
     assert.equal(
       await page.evaluate(() => Reflect.get(window, 'copiedText')),
-      'Value\n12345678901234.5678\n—\n-2.5000',
+      'Category\tValue\nA\t12345678901234.5678\nB\t—\nC\t-2.5000',
     )
     await page
       .locator('[data-resource="restricted"]')
@@ -144,7 +148,7 @@ window.renderBuild('build-1');`,
     assert.equal(await point.evaluate((node) => node === document.activeElement), true)
     await frameDialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.locator('[data-resource="full"] [data-icon="python"] button').click()
-    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 1)
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 2)
     await page.evaluate(() => Reflect.get(window, 'renderBuild')('build-2'))
     await page.locator('[data-analysis-record="build-2"]').waitFor()
     assert.equal(await page.getByRole('status').filter({ hasText: 'Copied' }).count(), 0)

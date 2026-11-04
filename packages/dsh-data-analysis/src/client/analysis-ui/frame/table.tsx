@@ -165,7 +165,7 @@ export function DataTable({
           scrollDescription={scrollable ? hintId : undefined}
           selectCell={selection?.select}
           selectableColumns={selectionFields ? new Set(selectionFields) : undefined}
-          hideRowCount={reference}
+          hideRowCount
           hideExactTitle
           display={(value, column) => displayFrameCell(snapshot, t.locale, value, column, timezone)}
         />

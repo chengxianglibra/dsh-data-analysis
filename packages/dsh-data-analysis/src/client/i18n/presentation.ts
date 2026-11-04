@@ -26,7 +26,6 @@ export const zh = {
   'marivo.presentation.ui-frame-ask-added': '已加入提问草稿。',
   'marivo.presentation.ui-frame-scroll-hint': '左右滚动查看更多',
   'marivo.presentation.ui-copy-failed': '复制失败，请重试。',
-  'marivo.presentation.ui-columns': '选择列',
   'marivo.presentation.ui-report-sections': '报告分区',
   'marivo.presentation.ui-complete-single-row': '已保存完整单行结果。',
   'marivo.presentation.ui-frame-source': 'Frame 结构与来源',
@@ -105,8 +104,20 @@ export const zh = {
   'marivo.presentation.ui-frame-comparison-metric': '指标',
   'marivo.presentation.ui-frame-comparison-delta': 'Δ',
   'marivo.presentation.ui-frame-comparison-delta-percent': 'Δ%',
-  'marivo.presentation.ui-dataframe-source-not-captured':
-    '来自捕获的 DataFrame。SQL、数据源、backend、warnings 和文件来源未捕获。',
+  'marivo.presentation.ui-dataset-source-python': '执行脚本',
+  'marivo.presentation.ui-dataset-source-python-missing': '无脚本来源。',
+  'marivo.presentation.ui-dataset-source-python-read-failed': '脚本不可读。',
+  'marivo.presentation.ui-dataset-source-python-mismatch': '执行记录的 sha256 不一致。',
+  'marivo.presentation.ui-dataset-source-python-loading': '正在读取脚本…',
+  'marivo.presentation.ui-dataset-source-datasources': '本次执行声明的数据源',
+  'marivo.presentation.ui-dataset-source-datasources-unavailable':
+    '本次执行未保存数据源/backend（旧执行记录或未声明）。',
+  'marivo.presentation.ui-dataset-source-sql-unavailable':
+    'SQL：未单独捕获。DataFrame 不携带 SQL，当前 Runtime 也没有公开的持久化 Run SQL 读取接口；若脚本包含 SQL，可在上方源码中查看。',
+  'marivo.presentation.ui-dataset-source-file-unavailable':
+    '文件来源：不从 DataFrame 推断；若脚本包含文件路径，可在上方源码中查看。',
+  'marivo.presentation.ui-dataset-source-warnings-unavailable':
+    '执行警告：本次未捕获（未保存 warnings）。',
   'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及页面编辑。',
   'marivo.presentation.ui-open-tab': '在报告标签页中打开',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
@@ -209,7 +220,6 @@ export const en = {
   'marivo.presentation.ui-frame-ask-added': 'Added to the question draft.',
   'marivo.presentation.ui-frame-scroll-hint': 'Scroll horizontally to see more',
   'marivo.presentation.ui-copy-failed': 'Copy failed. Try again.',
-  'marivo.presentation.ui-columns': 'Select columns',
   'marivo.presentation.ui-report-sections': 'Report sections',
   'marivo.presentation.ui-complete-single-row': 'Complete single-row result saved.',
   'marivo.presentation.ui-frame-source': 'Frame structure and source',
@@ -291,8 +301,21 @@ export const en = {
   'marivo.presentation.ui-frame-comparison-metric': 'Metric',
   'marivo.presentation.ui-frame-comparison-delta': 'Δ',
   'marivo.presentation.ui-frame-comparison-delta-percent': 'Δ%',
-  'marivo.presentation.ui-dataframe-source-not-captured':
-    'Captured DataFrame. SQL, datasource, backend, warnings and file provenance were not captured.',
+  'marivo.presentation.ui-dataset-source-python': 'Execution script',
+  'marivo.presentation.ui-dataset-source-python-missing': 'No script source.',
+  'marivo.presentation.ui-dataset-source-python-read-failed': 'Script is unreadable.',
+  'marivo.presentation.ui-dataset-source-python-mismatch':
+    'The execution record sha256 does not match.',
+  'marivo.presentation.ui-dataset-source-python-loading': 'Reading script…',
+  'marivo.presentation.ui-dataset-source-datasources': 'Datasources declared by this execution',
+  'marivo.presentation.ui-dataset-source-datasources-unavailable':
+    'No datasource/backend was saved for this execution (older execution record or none declared).',
+  'marivo.presentation.ui-dataset-source-sql-unavailable':
+    'SQL: not captured separately. A DataFrame carries no SQL, and the current Runtime exposes no public persisted Run SQL reader. If the script contains SQL, view it in the source above.',
+  'marivo.presentation.ui-dataset-source-file-unavailable':
+    'File provenance: not inferred from a DataFrame. If the script contains a file path, view it in the source above.',
+  'marivo.presentation.ui-dataset-source-warnings-unavailable':
+    'Execution warnings: not captured in this view (warnings were not saved).',
   'marivo.presentation.ui-format-limitations':
     'Offline export, publishing and page editing are unavailable for this format.',
   'marivo.presentation.ui-open-tab': 'Open in report tab',

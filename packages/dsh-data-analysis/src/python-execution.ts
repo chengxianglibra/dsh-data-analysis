@@ -7,9 +7,14 @@ import type {
   PythonCaptureRecord,
   PythonCodeRef,
   PythonCodeSnippet,
+  PythonExecutionDatasource,
 } from './python-execution-contracts.ts'
 
-export type { PythonCodeRef, PythonCodeSnippet } from './python-execution-contracts.ts'
+export type {
+  PythonCodeRef,
+  PythonCodeSnippet,
+  PythonExecutionDatasource,
+} from './python-execution-contracts.ts'
 
 const CODE_BYTES = 131072
 const RECORD_BYTES = 262144
@@ -108,29 +113,60 @@ function validCapture(value: PythonCaptureRecord): boolean {
   )
 }
 
+function validDatasources(value: PythonExecutionDatasource[]): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= 16 &&
+    new Set(value.map((item) => item.name)).size === value.length &&
+    value.every(
+      (item) =>
+        !!item &&
+        Object.keys(item).sort().join(',') === 'backend,name' &&
+        typeof item.name === 'string' &&
+        item.name.length > 0 &&
+        item.name.length <= 256 &&
+        (item.backend === null ||
+          (typeof item.backend === 'string' &&
+            item.backend.length > 0 &&
+            item.backend.length <= 256)),
+    )
+  )
+}
+
 /** Publish a complete record once. Its final name never exposes a partial write or overwrites. */
 export async function savePythonExecution(
   workspaceRoot: string,
-  input: { text: string; startedAt: string; finishedAt: string; captures?: PythonCaptureRecord },
+  input: {
+    text: string
+    startedAt: string
+    finishedAt: string
+    captures?: PythonCaptureRecord
+    datasources?: PythonExecutionDatasource[]
+  },
   signal?: AbortSignal,
 ): Promise<PythonCodeRef> {
   try {
     signal?.throwIfAborted()
     const { text, startedAt, finishedAt } = input
     const captures = input.captures === undefined ? undefined : structuredClone(input.captures)
+    const datasources =
+      input.datasources === undefined ? undefined : structuredClone(input.datasources)
     if (
       !sourceText(text) ||
       !timestamp(startedAt) ||
       !timestamp(finishedAt) ||
       finishedAt < startedAt ||
-      (captures !== undefined && !validCapture(captures))
+      (captures !== undefined && !validCapture(captures)) ||
+      (datasources !== undefined && !validDatasources(datasources))
     )
       invalid()
     const workspace = await directories(workspaceRoot, true, signal)
     const executionId = randomUUID()
+    const schemaVersion = datasources === undefined ? (captures === undefined ? 1 : 2) : 3
     const bytes = Buffer.from(
       JSON.stringify({
-        schemaVersion: captures === undefined ? 1 : 2,
+        schemaVersion,
         executionId,
         projectRoot: workspace.root,
         language: 'python',
@@ -139,6 +175,7 @@ export async function savePythonExecution(
         finishedAt,
         exitCode: 0,
         ...(captures ? { captures } : {}),
+        ...(datasources ? { datasources } : {}),
       }),
     )
     if (bytes.length > RECORD_BYTES) invalid()
@@ -239,14 +276,32 @@ async function readExecutionRecord(
       const raw = bytes.subarray(0, length)
       if (sha256(raw) !== expectedDigest) invalid()
       const record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw))
+      if (!record || typeof record !== 'object' || Array.isArray(record)) invalid()
+      const version = record.schemaVersion
+      if (version !== 1 && version !== 2 && version !== 3) invalid()
+      const baseKeys = [
+        'executionId',
+        'exitCode',
+        'finishedAt',
+        'language',
+        'projectRoot',
+        'schemaVersion',
+        'startedAt',
+        'text',
+      ]
+      const allowed = new Set([
+        ...baseKeys,
+        ...(version >= 2 ? ['captures'] : []),
+        ...(version >= 3 ? ['datasources'] : []),
+      ])
+      const keys = Object.keys(record)
       if (
-        !record ||
-        typeof record !== 'object' ||
-        Array.isArray(record) ||
-        Object.keys(record).sort().join(',') !==
-          `${record.schemaVersion === 2 ? 'captures,' : ''}executionId,exitCode,finishedAt,language,projectRoot,schemaVersion,startedAt,text` ||
-        ![1, 2].includes(record.schemaVersion) ||
-        (record.schemaVersion === 2 && !validCapture(record.captures)) ||
+        keys.some((key) => !allowed.has(key)) ||
+        baseKeys.some((key) => !keys.includes(key)) ||
+        (version === 2 && !('captures' in record)) ||
+        (version === 3 && !('captures' in record) && !('datasources' in record)) ||
+        ('captures' in record && !validCapture(record.captures)) ||
+        ('datasources' in record && !validDatasources(record.datasources)) ||
         record.executionId !== executionId ||
         record.projectRoot !== workspace.root ||
         record.language !== 'python' ||
@@ -264,7 +319,8 @@ async function readExecutionRecord(
         provenance: 'execution',
         executionId,
         sha256: expectedDigest,
-        ...(record.schemaVersion === 2 ? { captures: record.captures } : {}),
+        ...(record.captures ? { captures: record.captures } : {}),
+        ...(record.datasources ? { datasources: record.datasources } : {}),
       }
     } finally {
       await file.close()

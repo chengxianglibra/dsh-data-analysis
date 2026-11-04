@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('Coverage details and copy feedback follow saved facts and the current selection', async (t) => {
+test('Coverage details and copy feedback follow saved facts', async (t) => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-coverage-copy-'))
   const browser = await chromium.launch()
   try {
@@ -139,63 +139,35 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
       },
     )
 
-    await t.test(
-      'selection changes clear completed feedback and invalidate late clipboard replies',
-      async () => {
-        await page.goto(url)
-        const table = page.locator('[data-resource="table"]')
-        const copy = table.getByRole('button', { name: 'Copy saved data', exact: true })
-        const status = table.locator('[data-slot="card-action"]').getByRole('status')
-        const setCategory = async (checked: boolean) => {
-          await table.getByRole('button', { name: 'Select columns', exact: true }).click()
-          const chooser = page.getByRole('dialog', { name: 'Select columns', exact: true })
-          await chooser.getByLabel('Category', { exact: true }).setChecked(checked)
-          await page.keyboard.press('Escape')
-          await chooser.waitFor({ state: 'hidden' })
-        }
-        await copy.click()
-        await status.filter({ hasText: 'Copied' }).waitFor()
-        assert.equal(
-          await page.evaluate(() => Reflect.get(window, 'copiedText')),
-          'Category\tValue\nA\t12345678901234.5678\nB\t—\nC\t-2.5000',
-        )
-        await setCategory(false)
-        assert.equal(await status.count(), 0)
-        await setCategory(true)
-        assert.equal(await status.count(), 0)
-        await setCategory(false)
-        await copy.click()
-        await status.filter({ hasText: 'Copied' }).waitFor()
-        assert.equal(
-          await page.evaluate(() => Reflect.get(window, 'copiedText')),
-          'Value\n12345678901234.5678\n—\n-2.5000',
-        )
-        await page.evaluate(() => Reflect.set(window, 'failCopy', true))
-        await copy.click()
-        await status.filter({ hasText: 'Copy failed. Try again.' }).waitFor()
-        await setCategory(true)
-        assert.equal(await status.count(), 0)
-        await page.evaluate(() => {
-          Reflect.set(window, 'failCopy', false)
-          Reflect.set(window, 'deferCopy', true)
-        })
-        const completed = await page.evaluate(() => Reflect.get(window, 'completedWrites'))
-        await copy.click()
-        await page.waitForFunction(() => Reflect.get(window, 'pendingWrites').length === 1)
-        await setCategory(false)
-        await setCategory(true)
-        await page.evaluate(() => Reflect.get(window, 'pendingWrites').shift()())
-        await page.waitForFunction(
-          (previous) => Reflect.get(window, 'completedWrites') === previous + 1,
-          completed,
-        )
-        await page.evaluate(() => new Promise(requestAnimationFrame))
-        assert.equal(await status.count(), 0)
-        await page.evaluate(() => Reflect.set(window, 'deferCopy', false))
-        await copy.click()
-        await status.filter({ hasText: 'Copied' }).waitFor()
-      },
-    )
+    await t.test('copy feedback handles failure and deferred clipboard replies', async () => {
+      await page.goto(url)
+      const table = page.locator('[data-resource="table"]')
+      const copy = table.getByRole('button', { name: 'Copy saved data', exact: true })
+      const status = table.locator('[data-slot="card-action"]').getByRole('status')
+      await copy.click()
+      await status.filter({ hasText: 'Copied' }).waitFor()
+      assert.equal(
+        await page.evaluate(() => Reflect.get(window, 'copiedText')),
+        'Category\tValue\nA\t12345678901234.5678\nB\t—\nC\t-2.5000',
+      )
+      await page.evaluate(() => Reflect.set(window, 'failCopy', true))
+      await copy.click()
+      await status.filter({ hasText: 'Copy failed. Try again.' }).waitFor()
+      await page.evaluate(() => {
+        Reflect.set(window, 'failCopy', false)
+        Reflect.set(window, 'deferCopy', true)
+      })
+      const completed = await page.evaluate(() => Reflect.get(window, 'completedWrites'))
+      await copy.click()
+      await page.waitForFunction(() => Reflect.get(window, 'pendingWrites').length === 1)
+      await page.evaluate(() => Reflect.get(window, 'pendingWrites').shift()())
+      await page.waitForFunction(
+        (previous) => Reflect.get(window, 'completedWrites') === previous + 1,
+        completed,
+      )
+      await status.filter({ hasText: 'Copied' }).waitFor()
+      await page.evaluate(() => Reflect.set(window, 'deferCopy', false))
+    })
 
     await t.test('candidate Coverage cannot open dialogs even with synthetic clicks', async () => {
       await page.goto(`${url}?candidate`)

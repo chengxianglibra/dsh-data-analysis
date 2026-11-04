@@ -12,7 +12,7 @@ import {
 } from '../../presentation/contracts/analysis-program.ts'
 import { parseReportHistory } from '../../presentation/contracts/catalog.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
-import type { PythonCodeRef } from '../../python-execution-contracts.ts'
+import type { PythonCodeRef, PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { type PresentationRpc, verifyPresentationAsset } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
@@ -93,7 +93,32 @@ export function savedCodeReader(
       typeof (value as { sha256?: unknown }).sha256 !== 'string'
     )
       throw new Error('analysis-ui-read-failed')
-    return { text: (value as { text: string }).text, sha256: (value as { sha256: string }).sha256 }
+    const rawDatasources = (value as { datasources?: unknown }).datasources
+    if (rawDatasources !== undefined) {
+      if (
+        !Array.isArray(rawDatasources) ||
+        rawDatasources.length > 16 ||
+        rawDatasources.some(
+          (item) =>
+            !item ||
+            typeof item !== 'object' ||
+            Object.keys(item).sort().join(',') !== 'backend,name' ||
+            typeof (item as { name?: unknown }).name !== 'string' ||
+            !(item as { name: string }).name ||
+            !(
+              (item as { backend?: unknown }).backend === null ||
+              (typeof (item as { backend?: unknown }).backend === 'string' &&
+                (item as { backend: string }).backend.length > 0)
+            ),
+        )
+      )
+        throw new Error('analysis-ui-read-failed')
+    }
+    return {
+      text: (value as { text: string }).text,
+      sha256: (value as { sha256: string }).sha256,
+      ...(rawDatasources ? { datasources: rawDatasources as PythonExecutionDatasource[] } : {}),
+    }
   }
 }
 export function CandidateView({

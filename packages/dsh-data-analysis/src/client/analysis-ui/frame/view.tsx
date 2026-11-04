@@ -112,7 +112,7 @@ function MembersTable({ snapshot, height }: { snapshot: Snapshot; height?: numbe
       <DatasetTable
         data={data}
         caption=""
-        hideCompleteScope={data.rowCount === snapshot.coverage.totalRows}
+        hideRowCount
         hideExactTitle
         display={(value, column) => displayCell(t.locale, value, column)}
       />

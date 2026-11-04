@@ -87,7 +87,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     const partialMembers = page.locator('[data-resource="membersPartial"]')
     assert.equal(
       await partialMembers.locator('.pr-table > [role="status"]').textContent(),
-      'Showing 2 / 4 rows (truncated)',
+      'Data truncated',
     )
     const emptyMembers = page.locator('[data-resource="membersEmpty"]')
     assert.equal(await emptyMembers.locator('.pr-table > [role="status"]').textContent(), 'No data')

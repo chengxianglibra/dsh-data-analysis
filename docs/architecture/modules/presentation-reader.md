@@ -70,7 +70,8 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 
 ## 来源与范围详情
 
-DataFrame 明示 SQL、数据源和文件来源未捕获，业务覆盖未知。Frame 不显示 Evidence、Finding 或计算过程；
+DataFrame 来源详情展示已保存的 Python 源码、本次执行声明的数据源与 backend（旧执行记录或未声明时明示不可用），
+SQL 与文件来源不从 DataFrame 推断，warnings 不进入当前快照，业务覆盖未知。Frame 不显示 Evidence、Finding 或计算过程；
 来源固定为 Host 绑定的 codeRef：Python 图标经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef。
 sha256 标识完整 execution record，由 Host 校验记录，客户端核对返回摘要与绑定摘要；摘要不一致或执行记录缺失时图标变灰。section 为 `unavailable`
 时对应图标变灰，不显示为 0 项；Session/Artifact 只在 Python 详情的开发者区出现。

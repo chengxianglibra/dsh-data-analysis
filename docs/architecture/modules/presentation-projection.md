@@ -91,7 +91,8 @@ Interval 期间继续保存上游提供的 start/end；reader 仍可读取既有
 `capture_dataset(frame, *, row_limit=5000, labels=None)` 只接受 pandas DataFrame，并要求处于
 `marivo_python` worker 的捕获上下文中。`labels={列名: 展示名}` 只改变展示标签，不改变列 `id`。
 RawSqlResult 不作为 helper 输入；转换及原始标量精度由原分析负责，插件不能恢复 DataFrame 创建时已经丢失的精度。
-SQL、datasource、Evidence 和业务覆盖不从 DataFrame 推断。
+SQL、datasource、Evidence 和业务覆盖不从 DataFrame 推断；Host execution record 可保存本次执行声明的
+datasource 名称与 backend，供 reader 展示，但不据此断言该 DataFrame 的来源。warnings 不进入当前快照。
 
 helper 复用 typed codec，在调用专属 `.dsh-data-analysis/captures/<id>/` 内写快照和结构化 manifest，
 未调用时不创建目录。Host 仅在原执行成功后读取该 manifest，校验文件边界、预算、内容和摘要，

@@ -233,6 +233,13 @@ export function registerMarivoPythonTool(
               .filter(Boolean)
               .sort((a, b) => b.length - a.length)
               .reduce((out, value) => out.split(value).join('[REDACTED]'), text)
+          // Execution-level declarations are Host-verified names/metadata, never DataFrame inference.
+          const declaredDatasources = Object.values(prepared.grants)
+            .map(({ name, backend }) => ({
+              name,
+              backend: typeof backend === 'string' && backend.trim() ? backend : null,
+            }))
+            .sort((left, right) => left.name.localeCompare(right.name))
           let codeRef: PythonCodeRef | undefined
           let codeCaptureError: string | undefined
           let snapshotCaptureError: string | undefined
@@ -287,7 +294,13 @@ export function registerMarivoPythonTool(
               codeRef = await service.track(
                 savePythonExecution(
                   binding.projectRoot,
-                  { text: code, startedAt, finishedAt, ...(captures ? { captures } : {}) },
+                  {
+                    text: code,
+                    startedAt,
+                    finishedAt,
+                    ...(captures ? { captures } : {}),
+                    ...(declaredDatasources.length ? { datasources: declaredDatasources } : {}),
+                  },
                   prepared.signal,
                 ),
               )

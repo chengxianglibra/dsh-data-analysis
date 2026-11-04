@@ -166,7 +166,8 @@ Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 
 取消可确认时标记 `cancelled`，不能宣称不存在副作用。
 
 `codeCaptureError` 仍与 Python 成功分离：阶段为 `capturing-code`、原因为 `succeeded`，不得为修复代码记录
-重放分析。`codeRef` 不证明 Artifact 清单或保存状态；超时不证明结果未保存或远端查询已取消，应通过当前
+重放分析。成功执行记录同时保存本次执行声明的 datasource 名称与 backend，不保存 warnings；
+`code/read` 仅对文档绑定的 codeRef 返回这些字段。`codeRef` 不证明 Artifact 清单或保存状态；超时不证明结果未保存或远端查询已取消，应通过当前
 Runtime Help 检查既有效果及目标 Session。
 
 Harness 拥有外层取消的最终错误分类，可能替换插件结果；本模块不持久化额外执行状态，不在取消后补发消息，

@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { resolveDatasetView } from '../../presentation/contracts/dataset-view.ts'
 import type { FrameDisplay, FrameView } from '../../presentation/contracts/frame-view.ts'
 import { formatCell } from '../../presentation/contracts/index.ts'
@@ -7,14 +7,12 @@ import {
   type DatasetSnapshot,
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
+import type { PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
 import { Button } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { CardContent } from '../ui/primitives/card.tsx'
-import { Checkbox } from '../ui/primitives/checkbox.tsx'
-import { Field, FieldGroup, FieldLabel } from '../ui/primitives/field.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/primitives/popover.tsx'
 import { Skeleton } from '../ui/primitives/skeleton.tsx'
 import { datasetChartModel } from './charts/dataset-model.ts'
 import { Heatmap, TimeChart } from './charts/observation.tsx'
@@ -30,6 +28,16 @@ export interface AnalysisViewProps {
   view?: FrameView
   display?: FrameDisplay
 }
+
+type CodeState =
+  | { kind: 'idle' | 'loading' | 'failed' | 'mismatch' }
+  | {
+      kind: 'ok'
+      executionId: string
+      text: string
+      datasources?: PythonExecutionDatasource[]
+    }
+
 export function AnalysisDataView({
   resourceName,
   view,
@@ -93,11 +101,39 @@ function DatasetDataView({
   height?: number
 }) {
   const t = useCopy()
-  const columnGroupId = useId()
-  const [selected, setSelected] = useState<string[]>()
   const [dataOpen, setDataOpen] = useState(false)
   const [sourceOpen, setSourceOpen] = useState(false)
-  const { candidate } = useAnalysisResources()
+  const [code, setCode] = useState<CodeState>({ kind: 'idle' })
+  const { candidate, readCode } = useAnalysisResources()
+  const codeRef = binding.codeRef
+  useEffect(() => {
+    if (!sourceOpen || !codeRef || !readCode) return
+    const controller = new AbortController()
+    setCode((current) =>
+      current.kind === 'ok' && current.executionId === codeRef.executionId
+        ? current
+        : { kind: 'loading' },
+    )
+    readCode(codeRef, controller.signal)
+      .then((record) => {
+        if (controller.signal.aborted) return
+        if (!record) return setCode({ kind: 'failed' })
+        setCode(
+          record.sha256 === codeRef.sha256
+            ? {
+                kind: 'ok',
+                executionId: codeRef.executionId,
+                text: record.text,
+                datasources: record.datasources,
+              }
+            : { kind: 'mismatch' },
+        )
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCode({ kind: 'failed' })
+      })
+    return () => controller.abort()
+  }, [sourceOpen, codeRef, readCode])
   const resolution = useMemo(() => {
     const explicit = resolveDatasetView(snapshot, view)
     return explicit.ok || !candidate ? explicit : resolveDatasetView(snapshot)
@@ -126,12 +162,22 @@ function DatasetDataView({
   const kind = snapshot.kind
   const data = snapshot.data
   const columns =
-    selected ??
-    (resolved?.chart === 'table' ? resolved.columns : undefined) ??
-    data.columns.map((c) => c.id)
+    (resolved?.chart === 'table' ? resolved.columns : undefined) ?? data.columns.map((c) => c.id)
   const metricColumn =
     resolved?.chart === 'metric' ? data.columns.find((c) => c.id === resolved.values[0]) : undefined
   const metric = metricColumn && snapshot.coverage.complete && data.rowCount === 1
+  const codeStatus =
+    code.kind === 'ok'
+      ? 'ready'
+      : !codeRef
+        ? 'missing'
+        : !readCode
+          ? 'read-failed'
+          : code.kind === 'mismatch'
+            ? 'mismatch'
+            : code.kind === 'failed'
+              ? 'read-failed'
+              : 'loading'
   return (
     <ResultCard
       data-resource={resourceName}
@@ -176,7 +222,7 @@ function DatasetDataView({
               open={dataOpen}
               onClose={() => setDataOpen(false)}
             >
-              <DatasetTable data={data} caption={resourceName ?? ''} />
+              <DatasetTable data={data} caption={resourceName ?? ''} hideRowCount />
             </Dialog>
           </>
         ) : metric ? (
@@ -196,43 +242,9 @@ function DatasetDataView({
             />
           </div>
         ) : (
-          <>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="au-columns">
-                  {t('marivo.presentation.ui-columns')}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" aria-label={t('marivo.presentation.ui-columns')}>
-                <FieldGroup>
-                  {data.columns.map((column) => (
-                    <Field key={column.id} orientation="horizontal">
-                      <Checkbox
-                        id={`${columnGroupId}-${column.id}`}
-                        checked={columns.includes(column.id)}
-                        disabled={columns.length === 1 && columns.includes(column.id)}
-                        onCheckedChange={(checked) =>
-                          setSelected(
-                            checked === true
-                              ? data.columns
-                                  .filter((c) => c.id === column.id || columns.includes(c.id))
-                                  .map((c) => c.id)
-                              : columns.filter((id) => id !== column.id),
-                          )
-                        }
-                      />
-                      <FieldLabel htmlFor={`${columnGroupId}-${column.id}`}>
-                        {column.label}
-                      </FieldLabel>
-                    </Field>
-                  ))}
-                </FieldGroup>
-              </PopoverContent>
-            </Popover>
-            <div style={{ maxHeight: height ?? 520, overflow: 'auto' }}>
-              <DatasetTable data={data} columns={columns} caption={resourceName ?? ''} />
-            </div>
-          </>
+          <div style={{ maxHeight: height ?? 520, overflow: 'auto' }}>
+            <DatasetTable data={data} columns={columns} caption={resourceName ?? ''} hideRowCount />
+          </div>
         )}
         {!candidate && (
           <Button
@@ -259,7 +271,48 @@ function DatasetDataView({
               })}
             </p>
             <p>{t('marivo.presentation.ui-business-unknown')}</p>
-            <p>{t('marivo.presentation.ui-dataframe-source-not-captured')}</p>
+            <section>
+              <p>
+                <strong>{t('marivo.presentation.ui-dataset-source-python')}</strong>
+              </p>
+              {code.kind === 'ok' ? (
+                <pre>
+                  <code>{code.text}</code>
+                </pre>
+              ) : (
+                <p>
+                  {t(
+                    codeStatus === 'missing'
+                      ? 'marivo.presentation.ui-dataset-source-python-missing'
+                      : codeStatus === 'mismatch'
+                        ? 'marivo.presentation.ui-dataset-source-python-mismatch'
+                        : codeStatus === 'read-failed'
+                          ? 'marivo.presentation.ui-dataset-source-python-read-failed'
+                          : 'marivo.presentation.ui-dataset-source-python-loading',
+                  )}
+                </p>
+              )}
+            </section>
+            <section>
+              <p>
+                <strong>{t('marivo.presentation.ui-dataset-source-datasources')}</strong>
+              </p>
+              {code.kind === 'ok' && code.datasources?.length ? (
+                <ul>
+                  {code.datasources.map((datasource) => (
+                    <li key={datasource.name}>
+                      <code>{datasource.name}</code>
+                      {datasource.backend ? ` · ${datasource.backend}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{t('marivo.presentation.ui-dataset-source-datasources-unavailable')}</p>
+              )}
+            </section>
+            <p>{t('marivo.presentation.ui-dataset-source-sql-unavailable')}</p>
+            <p>{t('marivo.presentation.ui-dataset-source-file-unavailable')}</p>
+            <p>{t('marivo.presentation.ui-dataset-source-warnings-unavailable')}</p>
             <dl>
               <dt>Session</dt>
               <dd>{binding.sessionId}</dd>
