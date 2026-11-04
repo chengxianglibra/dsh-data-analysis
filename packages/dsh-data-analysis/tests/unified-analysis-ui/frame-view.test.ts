@@ -336,14 +336,18 @@ test('comparison auto follows the shape', () => {
   ])
 })
 
-test('single-row multi-group comparisons resolve to one comparison table', () => {
+test('single-row multi-group comparisons resolve to headline blocks', () => {
   const multi = comparedSinglePeriodMultiGroup()
   const columns = multi.data.columns.map((column) => column.id)
-  assert.deepEqual(viewOf(multi), { chart: 'table', columns, layout: 'comparison' })
+  assert.deepEqual(viewOf(multi), {
+    chart: 'comparison-grid',
+    comparison: 0,
+    groups: ['sales', 'orders'],
+  })
   assert.deepEqual(viewOf(multi, { chart: 'comparison' }), {
-    chart: 'table',
-    columns,
-    layout: 'comparison',
+    chart: 'comparison-grid',
+    comparison: 0,
+    groups: ['sales', 'orders'],
   })
   assert.deepEqual(
     viewOf(multi, { chart: 'comparison', encoding: { value: 'prior.relative.orders' } }),
@@ -358,12 +362,12 @@ test('single-row multi-group comparisons resolve to one comparison table', () =>
       style: 'delta',
     },
   )
+  // An explicit table keeps the transposed layout unless columns are named.
   assert.deepEqual(viewOf(multi, { chart: 'table' }), {
     chart: 'table',
     columns,
     layout: 'comparison',
   })
-  // An explicit column list is still taken literally, without the comparison layout.
   assert.deepEqual(viewOf(multi, { chart: 'table', columns: ['sales'] }), {
     chart: 'table',
     columns: ['sales'],
@@ -380,6 +384,25 @@ test('single-row multi-group comparisons resolve to one comparison table', () =>
     comparison: 0,
     group: 'sales',
     style: 'delta',
+  })
+})
+
+test('a long single-row comparison falls back to the transposed table', () => {
+  const names = f.labels('m', 9)
+  const wide = f.frame({
+    axes: [f.timeAxis(1)],
+    values: names.flatMap((name) => f.comparedValues(name, 1)),
+    comparisons: [
+      f.comparisonOf(
+        f.calendarBinding(),
+        names.map((name) => ({ name, values: f.comparedRoles(name) })),
+      ),
+    ],
+  })
+  assert.deepEqual(viewOf(wide), {
+    chart: 'table',
+    columns: wide.data.columns.map((column) => column.id),
+    layout: 'comparison',
   })
 })
 
@@ -643,8 +666,25 @@ test('explicit table, metric and time charts validate names, dtypes and axes', (
     code: 'view-axis-not-time',
     path: '/view/encoding/axis',
   })
-  assert.deepEqual(failure(category, { chart: 'bar', encoding: { axis: 'region' } }), {
+  // Bars read categories directly; continuity charts still need a time axis.
+  assert.deepEqual(viewOf(category, { chart: 'bar', encoding: { axis: 'region' } }), {
+    chart: 'bar',
+    axis: 't_region',
+    values: ['revenue'],
+    broadcast: [],
+  })
+  assert.deepEqual(viewOf(category, { chart: 'bar' }), {
+    chart: 'bar',
+    axis: 't_region',
+    values: ['revenue'],
+    broadcast: [],
+  })
+  assert.deepEqual(failure(category, { chart: 'line', encoding: { axis: 'region' } }), {
     code: 'view-axis-not-time',
+    path: '/view/encoding/axis',
+  })
+  assert.deepEqual(failure(f.observeScalar(), { chart: 'bar' }), {
+    code: 'view-target-ambiguous',
     path: '/view/encoding/axis',
   })
   const grid = f.observeTimeCategory(3, 2)

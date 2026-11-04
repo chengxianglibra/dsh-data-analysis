@@ -20,6 +20,7 @@ import { useAnalysisResources } from '../context.tsx'
 import { AlignmentView } from './alignment.tsx'
 import {
   ComparisonDetail,
+  ComparisonGrid,
   ComparisonTable,
   ComparisonView,
   comparisonRoles,
@@ -191,6 +192,8 @@ export function MainView({
       return <PieChart {...common} view={view} />
     case 'comparison':
       return <ComparisonView {...common} view={view} />
+    case 'comparison-grid':
+      return <ComparisonGrid {...common} view={view} />
     case 'decomposition':
       return <DecompositionView {...common} view={view} />
     case 'correlation':
@@ -219,6 +222,10 @@ function title(
   if (view.chart === 'comparison') {
     const roles = comparisonRoles(s, view.comparison, view.group)
     if (roles?.current) return valueName(s, c, roles.current)
+  }
+  if (view.chart === 'comparison-grid') {
+    const ends = endpointLabels(t, s, view.comparison)
+    return `${ends.current} ⇄ ${ends.baseline}`
   }
   if (view.chart === 'decomposition') {
     const facts = decompositionOf(s, view.decomposition)
@@ -266,6 +273,7 @@ function chartLabel(t: Translator, s: Snapshot, view: ResolvedFrameView): string
     else if (column?.unit === 'USD' && isNumeric(column)) kind = 'currency'
     else if (isNumeric(column)) kind = 'number'
   } else if (view.chart === 'members') kind = 'table'
+  else if (view.chart === 'comparison-grid') kind = 'comparison'
   else if (view.chart === 'hbar' || view.chart === 'interval-bar') kind = 'bar'
   return t(`marivo.presentation.ui-chart-kind-${kind}`)
 }

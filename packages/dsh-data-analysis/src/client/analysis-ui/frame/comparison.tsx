@@ -261,6 +261,28 @@ export function ComparisonTable({
   )
 }
 
+/** Several metrics on one saved row: one headline block per metric, every number a saved cell. */
+export function ComparisonGrid({
+  snapshot: s,
+  classification: c,
+  view,
+}: MainViewProps<'comparison-grid'>) {
+  const blocks = view.groups.flatMap((group) => {
+    const roles = comparisonRoles(s, view.comparison, group)
+    return roles?.current ? [{ group, roles }] : []
+  })
+  return (
+    <div className="fv-comparison-grid">
+      {blocks.map(({ group, roles }) => (
+        <section className="fv-comparison-grid-item" key={group} data-comparison-group={group}>
+          <h4>{valueName(s, c, roles.current!)}</h4>
+          <ComparisonNumbers snapshot={s} roles={roles} index={view.comparison} labelChanges />
+        </section>
+      ))}
+    </div>
+  )
+}
+
 /** Saved comparison roles grouped by metric and endpoint, with coordinates retained. */
 export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
   const t = useCopy()
@@ -320,11 +342,14 @@ export function ComparisonNumbers({
   roles,
   index,
   row = 0,
+  labelChanges = false,
 }: {
   snapshot: Snapshot
   roles: ComparisonRoles
   index: number
   row?: number
+  /** Spell out Δ and Δ% below the numbers; the single-metric card relies on its endpoint pair only. */
+  labelChanges?: boolean
 }) {
   const t = useCopy()
   const ends = endpointLabels(t, s, index)
@@ -348,8 +373,16 @@ export function ComparisonNumbers({
   }
   if (present(s, row, presence?.current)) add(roles.current, ends.current, 'v')
   if (present(s, row, presence?.baseline)) add(roles.baseline, ends.baseline, 'v')
-  add(roles.absolute, undefined, 'd')
-  add(roles.relative, undefined, 'p')
+  add(
+    roles.absolute,
+    labelChanges ? t('marivo.presentation.ui-frame-comparison-delta') : undefined,
+    'd',
+  )
+  add(
+    roles.relative,
+    labelChanges ? t('marivo.presentation.ui-frame-comparison-delta-percent') : undefined,
+    'p',
+  )
   return <Numbers items={items} />
 }
 export function Numbers({

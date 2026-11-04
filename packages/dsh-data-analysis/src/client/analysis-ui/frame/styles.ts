@@ -36,6 +36,15 @@ export const FRAME_STYLES = `
 .fv-comparison-table thead th{white-space:nowrap}
 .fv-comparison-table td.pr-numeric{white-space:nowrap}
 .fv-comparison-details{display:grid;gap:24px}
+.fv-comparison-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px}
+.fv-comparison-grid-item{display:grid;gap:8px;min-width:0;padding:12px 14px;border:1px solid var(--border);border-radius:8px}
+.fv-comparison-grid-item>h4{margin:0;font-size:12px;font-weight:500;line-height:1.4;color:var(--muted-foreground);overflow-wrap:anywhere}
+.fv-comparison-grid-item .fv-numbers{display:grid;grid-template-columns:minmax(0,1fr);gap:2px}
+.fv-comparison-grid-item .fv-numbers>div{display:flex;flex-direction:row-reverse;align-items:baseline;justify-content:space-between;gap:8px}
+.fv-comparison-grid-item .fv-numbers dd{font-size:16px;line-height:1.4;text-align:right;overflow-wrap:anywhere}
+.fv-comparison-grid-item .fv-numbers>div:first-child dd{font-size:20px;font-weight:600}
+.fv-comparison-grid-item .fv-numbers dt{flex:none;font-size:11px}
+@media(max-width:360px){.fv-comparison-grid-item{padding:10px 12px}.fv-comparison-grid-item .fv-numbers dd{font-size:15px}.fv-comparison-grid-item .fv-numbers>div:first-child dd{font-size:18px}}
 :is(.fv,.fv-dialog) .pr-table table{width:max-content;min-width:100%}
 :is(.fv,.fv-dialog) .pr-table thead th{white-space:nowrap;overflow-wrap:normal;max-width:none}
 .fv-table-bar{display:flex;justify-content:flex-end}

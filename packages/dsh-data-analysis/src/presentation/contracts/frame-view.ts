@@ -116,6 +116,14 @@ export type ResolvedFrameView =
       style: 'numbers' | 'line' | 'dumbbell' | 'delta' | 'small-multiples' | 'table'
     }
   | {
+      /** One saved row comparing several metrics: one headline block per metric. */
+      chart: 'comparison-grid'
+      /** Index into interpretation.comparisons. */
+      comparison: number
+      /** Group names in Frame order, one per distinct current value. */
+      groups: string[]
+    }
+  | {
       chart: 'decomposition'
       /** Index into interpretation.decompositions. */
       decomposition: number
@@ -174,6 +182,8 @@ const CATEGORY_ROWS = 30
 const MAX_SERIES = 8
 const BAR_PERIODS = 12
 const METRIC_VALUES = 4
+/** One saved row with at most this many metrics reads as headline blocks; more falls back to the table. */
+const COMPARISON_GRID = 8
 const RECORD_VALUES = 6
 const MAX_CANDIDATES = 8
 
@@ -435,6 +445,26 @@ function comparisonTargets(x: Context): ComparisonTarget[] {
     }),
   )
 }
+/**
+ * One comparison on one saved row with several metrics: headline blocks keep the
+ * per-metric endpoint labels that a transposed table has to spell out as columns.
+ * Several comparisons keep their endpoint sections in the table instead.
+ */
+function comparisonGrid(
+  x: Context,
+): Extract<ResolvedFrameView, { chart: 'comparison-grid' }> | undefined {
+  if ((x.facts?.comparisons ?? []).length !== 1) return undefined
+  const seen = new Set<string>()
+  const groups = comparisonTargets(x).flatMap((target) => {
+    const current = target.roles.get('current')
+    if (!current || seen.has(current)) return []
+    seen.add(current)
+    return [target.group]
+  })
+  return groups.length > 1 && groups.length <= COMPARISON_GRID
+    ? { chart: 'comparison-grid', comparison: 0, groups }
+    : undefined
+}
 function decompositionTargets(x: Context): DecompositionTarget[] {
   return (x.facts?.decompositions ?? []).flatMap((d, decomposition) => {
     const present = d.outputs.filter((o) => o.fieldKind === 'value' && x.values.has(o.name))
@@ -536,7 +566,9 @@ function auto(x: Context): ResolvedFrameView {
       const targets = comparisonTargets(x)
       if (!targets.length) return allColumns(x)
       if (singleRow(snapshot)) {
-        // One card: a single group is numbers, several groups transpose into one table.
+        // One saved row: several metrics read as headline blocks, a long list transposes into one table.
+        const grid = comparisonGrid(x)
+        if (grid) return grid
         if (targets.length > 1) return comparisonTable(x)
         const target = targets[0]!
         return {
@@ -677,19 +709,21 @@ function explicit(
     case 'area':
     case 'bar': {
       const encoding = view.encoding ?? {}
+      // Bars are categorical by nature; only continuity charts need an ordered time axis.
+      const anyAxis = view.chart === 'bar'
       let axis: FrameAxis | undefined
       if (encoding.axis !== undefined) {
         axis = axisNamed(x, encoding.axis)
         if (!axis) return fail('view-name-unknown', '/view/encoding/axis')
-        if (!isTime(axis)) return fail('view-axis-not-time', '/view/encoding/axis')
+        if (!anyAxis && !isTime(axis)) return fail('view-axis-not-time', '/view/encoding/axis')
       } else {
-        const time = axes.filter(isTime)
-        if (time.length !== 1)
+        const candidates = anyAxis ? axes : axes.filter(isTime)
+        if (candidates.length !== 1)
           return fail(
-            time.length ? 'view-target-ambiguous' : 'view-axis-not-time',
+            !anyAxis && !candidates.length ? 'view-axis-not-time' : 'view-target-ambiguous',
             '/view/encoding/axis',
           )
-        axis = time[0]!
+        axis = candidates[0]!
       }
       let series: string | undefined
       if (encoding.series !== undefined) {
@@ -793,14 +827,12 @@ function explicit(
     }
     case 'comparison': {
       const targets = comparisonTargets(x)
-      // Several groups on one saved row are one comparison table, unless a value or style was chosen.
-      if (
-        view.encoding?.value === undefined &&
-        view.style === undefined &&
-        singleRow(snapshot) &&
-        targets.length > 1
-      )
-        return comparisonTable(x)
+      // Several metrics on one saved row are headline blocks, unless a value or style was chosen.
+      if (view.encoding?.value === undefined && view.style === undefined && singleRow(snapshot)) {
+        const grid = comparisonGrid(x)
+        if (grid) return grid
+        if (targets.length > 1) return comparisonTable(x)
+      }
       const target = pick(x, targets, view.encoding?.value)
       if (failed(target)) return target
       const style = comparisonStyle(x, target, view.style ?? 'auto')

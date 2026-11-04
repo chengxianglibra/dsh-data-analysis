@@ -115,6 +115,7 @@ test('every auto view resolves through the real resolveFrameView and renders its
     ['heatmap time-category', observeTimeCategory(9), 'heatmap'],
     ['heatmap matrix', observeMatrix(), 'heatmap'],
     ['comparison line', compareCalendar(6), 'comparison'],
+    ['comparison grid', comparedSinglePeriodMultiGroup(), 'comparison-grid'],
     ['dumbbell', compareOrdinary([categoryAxis(3)]), 'comparison'],
     ['waterfall', attributeAdditive(), 'decomposition'],
     ['effects', attributeEffects(), 'decomposition'],
@@ -135,7 +136,7 @@ test('every auto view resolves through the real resolveFrameView and renders its
       /data-chart-engine="openui"|class="openui-(?:line|area|bar|heatmap)-chart/,
       name,
     )
-    if (!['members', 'table', 'metric'].includes(chart))
+    if (!['members', 'table', 'metric', 'comparison-grid'].includes(chart))
       assert.match(html, /<svg role="application"[^>]*class="recharts-surface"/, name)
   }
 })
@@ -145,6 +146,11 @@ test('observation shapes draw lines, areas, bars, heatmaps and frozen record tab
   assert.equal(segments(line).length, 1)
   assert.match(await r.render(observeTime(6), { view: { chart: 'area' } }), /recharts-area-area/)
   assert.equal(count(await r.render(observeTime(6)), /data-mark="bar"/), 6)
+  // Bars read an ordinary category axis as evenly spaced groups; no continuity is implied.
+  const categoryBar = await r.render(observeCategory(3), { view: { chart: 'bar' } })
+  assert.equal(viewOf(categoryBar), 'bar')
+  assert.equal(count(categoryBar, /data-mark="bar"/), 3)
+  assert.match(categoryBar, /data-tick="r0"/)
   const interval = await r.render(
     observeTime(4, 1, { kind: 'interval', timezone: 'Asia/Shanghai' }),
   )
@@ -604,24 +610,22 @@ test('comparison numbers are saved cells with neutral marks and endpoint labels'
   assert.doesNotMatch(down, /#(?:e34948|008300|ff0000|00ff00)|\bred\b|\bgreen\b/i)
 })
 
-test('a single-row multi-group comparison is one transposed table without duplicate data', async () => {
+test('a single-row multi-group comparison is one headline block per metric', async () => {
   const html = await r.render(comparedSinglePeriodMultiGroup())
-  assert.equal(viewOf(html), 'table')
-  const block = comparisonTable(html)
-  assert.match(block, /^<section[^>]*data-table-layout="comparison"/)
-  // metric | current | baseline | Δ | Δ% — endpoints come from the comparison.
-  assert.equal(count(block, /<th[^>]*scope="col"/), 5)
-  for (const header of ['Metric', 'Current', 'Baseline', 'Δ', 'Δ%'])
-    assert.ok(block.includes(`>${header}</th>`), header)
-  // Two groups on one saved row: two data rows in one tbody, no section headers.
-  assert.equal(count(block, /<tr[^>]*><th[^>]*scope="row"[^>]*>/), 2)
-  // Current/baseline/Δ/Δ% are numeric cells for both rows.
-  assert.equal(count(block, /<td[^>]*class="[^"]*pr-numeric[^"]*"/), 8)
-  assert.equal(count(block, /<tbody[^>]*>/), 1)
-  assert.doesNotMatch(block, /fv-comparison-section/)
-  // Raw role column ids stay out of the display table.
-  assert.doesNotMatch(block, /prior\.(?:baseline|relative)\./)
-  assert.doesNotMatch(html, /data-icon="data"/)
+  assert.equal(viewOf(html), 'comparison-grid')
+  assert.equal(count(html, /<section[^>]*data-comparison-group=/), 2)
+  for (const name of ['sales', 'orders'])
+    assert.match(html, new RegExp(`data-comparison-group="${name}"[\\s\\S]*?<h4[^>]*>${name}</h4>`))
+  // Four saved numbers per metric: current, baseline, Δ, Δ%.
+  const block =
+    /<section[^>]*data-comparison-group="sales"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
+  assert.equal(count(block, /data-number=/), 4)
+  for (const label of ['Current', 'Baseline', 'Δ', 'Δ%'])
+    assert.ok(block.includes(`>${label}</dt>`), label)
+  // Raw role column ids stay out of the visible text; the detailed table is the data entry.
+  const text = html.replace(/<[^>]+>/g, ' ')
+  assert.doesNotMatch(text, /prior\.(?:baseline|absolute|relative)\./)
+  assert.match(html, /data-icon="data"/)
   assert.match(html, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
 })
 
@@ -639,13 +643,12 @@ test('a frame table shows grouped values without an exact-value tooltip', async 
 
 test('interval comparison endpoints name inclusive civil months', async () => {
   const html = await r.render(comparedIntervalMonth())
-  assert.equal(viewOf(html), 'table')
-  const block = comparisonTable(html)
-  assert.match(block, /<th[^>]*scope="col"[^>]*>2025-06<\/th>/)
-  assert.match(block, /<th[^>]*scope="col"[^>]*>2025-05<\/th>/)
+  assert.equal(viewOf(html), 'comparison-grid')
+  assert.match(html, /<dt[^>]*>2025-06<\/dt>/)
+  assert.match(html, /<dt[^>]*>2025-05<\/dt>/)
   assert.match(html, /<div data-slot="card-title"[^>]*>2025-06 ⇄ 2025-05<\/div>/)
-  assert.doesNotMatch(block, /07-01/)
-  assert.doesNotMatch(block, /06-01 – 07-01/)
+  assert.doesNotMatch(html, /07-01/)
+  assert.doesNotMatch(html, /06-01 – 07-01/)
 })
 
 test('time comparison draws a solid current line, dashed baseline and a Δ strip', async () => {
@@ -898,7 +901,12 @@ test('comparison numbers and transposed tables mask changes for explicitly absen
       row[snapshot.data.columns.findIndex((column) => column.id === name)] = 432100
     }
   }
-  const table = comparisonTable(await r.render(snapshot))
+  const grid = await r.render(snapshot)
+  assert.equal(viewOf(grid), 'comparison-grid')
+  assert.doesNotMatch(grid, /432100|432,100|43,210,000/)
+  // Absent baseline roles are omitted from headline blocks; Δ and Δ% stay masked.
+  assert.ok(count(grid, /—/) >= 4)
+  const table = comparisonTable(await r.render(snapshot, { view: { chart: 'table' } }))
   assert.doesNotMatch(table, /432100|432,100|43,210,000/)
   assert.ok(count(table, /—/) >= 6)
   const numbers = await r.render(snapshot, {
@@ -1058,13 +1066,21 @@ test('chart data shares the icon row and explicit visible data stays inline', as
 })
 
 test('table-shaped main views do not add a duplicate data reference', async () => {
-  for (const snapshot of [records(), members(), comparedSinglePeriodMultiGroup()]) {
+  for (const snapshot of [records(), members()]) {
     for (const display of [undefined, { dataTable: 'visible' as const }]) {
       const html = await r.render(snapshot, { display })
       assert.doesNotMatch(html, /data-icon="data"|class="fv-data-reference"/)
       assert.match(html, /<table/)
     }
   }
+  // A single-row comparison defaults to headline blocks and keeps the table behind the data icon;
+  // asserting an explicit table keeps the no-duplicate rule literal.
+  const multi = comparedSinglePeriodMultiGroup()
+  const grid = await r.render(multi, { display: { dataTable: 'visible' } })
+  assert.match(grid, /data-icon="data"[\s\S]*class="fv-data-reference"/)
+  const literal = await r.render(multi, { view: { chart: 'table' } })
+  assert.match(literal, /<table/)
+  assert.doesNotMatch(literal, /data-icon="data"/)
   const comparison = compareOrdinary([categoryAxis(3)])
   const comparisonResolution = resolved(comparison)
   assert.equal(comparisonResolution.view.chart, 'comparison')

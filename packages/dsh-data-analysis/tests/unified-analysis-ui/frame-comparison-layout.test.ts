@@ -27,7 +27,7 @@ const resources = {
     binding: { workspaceId: 'w' },
   },
 };
-const program = 'root = AnalysisFrameView("r");';
+const program = 'root = Stack([auto, literal], "column");\\nauto = AnalysisFrameView("r");\\nliteral = AnalysisFrameView("r", {chart: "table"});';
 createRoot(document.getElementById('root')).render(
   createElement(AnalysisRenderer, {
     program,
@@ -53,6 +53,7 @@ createRoot(document.getElementById('root')).render(
   browser = await chromium.launch()
   page = await browser.newPage({ viewport: { width: 720, height: 900 } })
   await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
+  await page.locator('[data-frame-view="comparison-grid"]').waitFor()
   await page.locator('[data-table-layout="comparison"]').waitFor()
 })
 after(async () => {
@@ -61,31 +62,46 @@ after(async () => {
 })
 
 const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+const grid = () => page.locator('[data-frame-view="comparison-grid"]')
+const table = () => page.locator('[data-frame-view="table"] [data-table-layout="comparison"]')
 
-test('single-row multi-group comparison renders one transposed table by default', async () => {
-  assert.equal(await page.locator('[data-frame-view]').count(), 1)
-  assert.equal(await page.locator('[data-frame-view]').getAttribute('data-frame-view'), 'table')
-  const table = page.locator('[data-table-layout="comparison"]')
-  assert.equal(await table.locator('thead th').count(), 5)
-  assert.equal(await table.locator('tbody tr').count(), 2)
-  const text = await table.innerText()
-  assert.doesNotMatch(text, /prior\.(?:baseline|absolute|relative)\./)
-  assert.match(await page.locator('[data-frame-view] [data-slot=card-title]').innerText(), /⇄/)
-  assert.equal(await page.locator('[data-frame-view] table').count(), 1)
-  assert.equal(await page.locator('[data-frame-view] [data-icon="data"]').count(), 0)
+test('single-row multi-group comparison renders one headline block per metric by default', async () => {
+  assert.equal(await page.locator('[data-frame-view]').count(), 2)
+  const blocks = grid().locator('.fv-comparison-grid-item')
+  assert.equal(await blocks.count(), 2)
+  assert.equal(await blocks.nth(0).locator('h4').innerText(), 'sales')
+  assert.equal(await blocks.nth(0).locator('[data-number]').count(), 4)
+  assert.match(await grid().locator('[data-slot=card-title]').innerText(), /⇄/)
+  assert.equal(await grid().locator('table').count(), 0)
+  // The grid keeps the exact comparison table behind its data icon.
+  assert.equal(await grid().locator('[data-icon="data"]').count(), 1)
+  assert.equal(await page.locator('[data-frame-view="table"] [data-icon="data"]').count(), 0)
   assert.ok((await overflow()) <= 1)
 })
 
-test('the comparison table fits or scrolls inside the card at 720px', async () => {
+test('the grid reflows to one column at 390px without page overflow', async () => {
+  await page.setViewportSize({ width: 390, height: 900 })
+  assert.ok((await overflow()) <= 1)
+  const columns = await grid()
+    .locator('.fv-comparison-grid')
+    .evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length)
+  assert.equal(columns, 1)
+  for (const block of await grid().locator('.fv-comparison-grid-item').all()) {
+    const box = await block.boundingBox()
+    assert.ok(box && box.width <= 390)
+  }
+})
+
+test('the explicit comparison table fits or scrolls inside the card at 720px', async () => {
   await page.setViewportSize({ width: 720, height: 900 })
-  const measured = await page.locator('[data-table-layout="comparison"]').evaluate((node) => ({
+  const measured = await table().evaluate((node) => ({
     clientWidth: node.clientWidth,
     scrollWidth: node.scrollWidth,
   }))
   assert.ok(measured.scrollWidth <= measured.clientWidth + 1, JSON.stringify(measured))
-  const numeric = await page.locator('[data-table-layout="comparison"] td.pr-numeric').first()
+  const numeric = table().locator('td.pr-numeric').first()
   assert.equal(await numeric.evaluate((node) => getComputedStyle(node).whiteSpace), 'nowrap')
-  const header = page.locator('[data-table-layout="comparison"] thead th').nth(1)
+  const header = table().locator('thead th').nth(1)
   assert.equal(await header.evaluate((node) => getComputedStyle(node).textAlign), 'right')
   assert.equal(await numeric.evaluate((node) => getComputedStyle(node).textAlign), 'right')
 })
@@ -93,11 +109,10 @@ test('the comparison table fits or scrolls inside the card at 720px', async () =
 test('the comparison table keeps the page free of horizontal overflow at 390px', async () => {
   await page.setViewportSize({ width: 390, height: 900 })
   assert.ok((await overflow()) <= 1)
-  const table = page.locator('[data-table-layout="comparison"]')
-  const box = await table.boundingBox()
+  const box = await table().boundingBox()
   assert.ok(box && box.width <= 390)
   // Narrow cards may scroll the table inside the card; the page itself must not.
-  assert.equal(await table.evaluate((node) => getComputedStyle(node).overflowX), 'auto')
+  assert.equal(await table().evaluate((node) => getComputedStyle(node).overflowX), 'auto')
 })
 
 test('narrow comparison preserves long labels and formatted saved values', async () => {
@@ -105,8 +120,7 @@ test('narrow comparison preserves long labels and formatted saved values', async
   await page.locator('#root').evaluate((node) => {
     node.style.width = '243px'
   })
-  const table = page.locator('[data-table-layout="comparison"]')
-  const label = table.locator('tbody th[scope="row"]').first()
+  const label = table().locator('tbody th[scope="row"]').first()
   await label.evaluate((node) => {
     node.textContent = 'plausible_fare_revenue (USD)'
   })
@@ -118,16 +132,15 @@ test('narrow comparison preserves long labels and formatted saved values', async
   assert.equal(measured.whiteSpace, 'nowrap')
   assert.ok(measured.width > 100 && measured.height < 50, JSON.stringify(measured))
   assert.ok((await overflow()) <= 1)
-  const toolbar = page.locator('.fv-comparison-toolbar').first()
+  const toolbar = page.locator('[data-frame-view="table"] .fv-comparison-toolbar').first()
   const hint = toolbar.locator('.fv-scroll-hint')
   await hint.waitFor({ state: 'visible' })
   assert.equal(await hint.getAttribute('title'), 'Scroll horizontally to see more')
-  assert.equal(await table.getAttribute('aria-describedby'), await hint.getAttribute('id'))
-  await table.focus()
-  assert.equal(await table.evaluate((node) => node === document.activeElement), true)
-  const cell = table.locator('tbody td').first()
+  assert.equal(await table().getAttribute('aria-describedby'), await hint.getAttribute('id'))
+  await table().focus()
+  assert.equal(await table().evaluate((node) => node === document.activeElement), true)
+  const cell = table().locator('tbody td').first()
   assert.ok((await cell.textContent())?.trim())
   assert.equal(await cell.getAttribute('title'), null)
   assert.equal(await toolbar.getByRole('button', { name: 'Show exact values' }).count(), 0)
-  assert.equal(await page.locator('[data-frame-view] [data-icon="data"]').count(), 0)
 })

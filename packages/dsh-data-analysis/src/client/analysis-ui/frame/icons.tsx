@@ -329,7 +329,7 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
 /** Calendar/interval comparison shown by this view, if any. */
 function timeComparison(s: Snapshot, view: ResolvedFrameView): number | undefined {
   const comparisons = interpretationOf(s)?.comparisons ?? []
-  if (view.chart === 'comparison')
+  if (view.chart === 'comparison' || view.chart === 'comparison-grid')
     return comparisons[view.comparison]?.binding.kind === 'ordinary' ? undefined : view.comparison
   const index = comparisons.findIndex((c) => c.binding.kind !== 'ordinary')
   return index < 0 ? undefined : index
