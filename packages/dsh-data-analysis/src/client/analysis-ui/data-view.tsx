@@ -180,7 +180,7 @@ function DatasetDataView({
   const [sourceOpen, setSourceOpen] = useState(false)
   const [code, setCode] = useState<CodeState>({ kind: 'idle' })
   const [copied, setCopied] = useState<{ key: string; message: string }>()
-  const { candidate, readCode, askDataset, askResource } = useAnalysisResources()
+  const { candidate, offline, readCode, askDataset, askResource } = useAnalysisResources()
   const [selected, setSelected] = useState<{
     snapshot: DatasetSnapshot
     resource: string
@@ -657,13 +657,15 @@ function DatasetDataView({
                 ) : (
                   <p>
                     {t(
-                      codeStatus === 'missing'
-                        ? 'marivo.presentation.ui-dataset-source-python-missing'
-                        : codeStatus === 'mismatch'
-                          ? 'marivo.presentation.ui-dataset-source-python-mismatch'
-                          : codeStatus === 'read-failed'
-                            ? 'marivo.presentation.ui-dataset-source-python-read-failed'
-                            : 'marivo.presentation.ui-dataset-source-python-loading',
+                      offline
+                        ? 'marivo.presentation.ui-dataset-source-python-offline'
+                        : codeStatus === 'missing'
+                          ? 'marivo.presentation.ui-dataset-source-python-missing'
+                          : codeStatus === 'mismatch'
+                            ? 'marivo.presentation.ui-dataset-source-python-mismatch'
+                            : codeStatus === 'read-failed'
+                              ? 'marivo.presentation.ui-dataset-source-python-read-failed'
+                              : 'marivo.presentation.ui-dataset-source-python-loading',
                     )}
                   </p>
                 )}
@@ -682,22 +684,30 @@ function DatasetDataView({
                     ))}
                   </ul>
                 ) : (
-                  <p>{t('marivo.presentation.ui-dataset-source-datasources-unavailable')}</p>
+                  <p>
+                    {t(
+                      offline
+                        ? 'marivo.presentation.ui-dataset-source-datasources-offline'
+                        : 'marivo.presentation.ui-dataset-source-datasources-unavailable',
+                    )}
+                  </p>
                 )}
               </section>
-              <details className="fv-dev">
-                <summary>{t('marivo.presentation.ui-frame-developer')}</summary>
-                <dl>
-                  <dt>Session</dt>
-                  <dd>{binding.sessionId}</dd>
-                  <dt>Call</dt>
-                  <dd>{binding.callId}</dd>
-                  <dt>codeRef.executionId</dt>
-                  <dd>{binding.codeRef?.executionId}</dd>
-                  <dt>codeRef.sha256</dt>
-                  <dd>{binding.codeRef?.sha256 ?? '—'}</dd>
-                </dl>
-              </details>
+              {!offline && (
+                <details className="fv-dev">
+                  <summary>{t('marivo.presentation.ui-frame-developer')}</summary>
+                  <dl>
+                    <dt>Session</dt>
+                    <dd>{binding.sessionId}</dd>
+                    <dt>Call</dt>
+                    <dd>{binding.callId}</dd>
+                    <dt>codeRef.executionId</dt>
+                    <dd>{binding.codeRef?.executionId}</dd>
+                    <dt>codeRef.sha256</dt>
+                    <dd>{binding.codeRef?.sha256 ?? '—'}</dd>
+                  </dl>
+                </details>
+              )}
             </div>
           </Dialog>
           {!dataOpen && pointMenu}

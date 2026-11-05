@@ -31,6 +31,7 @@ import { Button } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { WorkspaceShortcuts, workspaceDirectories } from '../workspace-shortcuts.tsx'
+import { ExportHtml } from './export-html.tsx'
 import { LiveDeliveryObserver } from './live-delivery.ts'
 import {
   canOpenResource,
@@ -437,7 +438,15 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       >
                         {t('marivo.presentation.history')}
                       </Button>
-                      <span>{t('marivo.presentation.ui-format-limitations')}</span>
+                      <ExportHtml
+                        key={report.analysisDocument.recordId}
+                        document={report.analysisDocument}
+                        isCurrent={() =>
+                          !tab.signal.aborted &&
+                          !page.getSnapshot().error &&
+                          page.reader.getSnapshot().analysisDocument === report.analysisDocument
+                        }
+                      />
                     </div>
                     <SavedAnalysisSurface
                       key={report.analysisDocument.recordId}

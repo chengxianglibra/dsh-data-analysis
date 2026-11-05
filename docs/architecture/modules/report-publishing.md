@@ -1,11 +1,9 @@
-# 报告 HTML 导出与发布（已移除）
+# 报告离线 HTML 导出
 
-HTML 导出与对象存储发布已从插件移除，`dsh.analysis-ui/v1` 分析文档不提供任何离线导出或发布能力。
+报告 tab 可将当前显示的已保存 `dsh.analysis-ui/v1` 版本下载为单个 HTML 文件。导出使用已读取并校验的固定 Build，包括历史版本；不重新查询数据源、执行 Python 或更新报告。生成和下载发生在浏览器中，不创建 Workspace 或 Session 文件，也不自动通过 Harness `present` 交付。
 
-已移除的内容包括：
+文件内嵌渲染所需的代码、样式、图片和已保存数据快照，可在支持 JavaScript 的浏览器中离线打开。布局、图表、Tabs、表格及无需 Host 的本地交互复用分析文档 reader；具体视图和数据范围仍以保存的快照为准，已截断的快照不会因导出而变完整。文件包含保存的快照，即使其中某些数据当前未显示，分享前应检查内容。为减少不必要的身份披露，导出投影不保留 Host Workspace、Session、调用及图片路径等绑定身份；它不是对业务数据或语义元数据的脱敏。
 
-- `marivo_export_html` 工具，以及 portable/static 离线 HTML 构建与报告内的导出菜单、当前视图导出；
-- `marivo_publish_report` 工具、报告发布服务、“报告发布凭证”界面、`/dsh-report-publishing` RPC 和插件 `reportPublishing` 配置。
+离线页面不连接 Harness：就此提问、语义定义导航和 Host 侧 Python 源码读取不可用。独立文件不保证访问浏览器的剪贴板权限，实际复制能力取决于浏览器。HTML 依赖 JavaScript；禁止 JavaScript 时显示提示。导出文件为生成时的独立副本，不跟随报告后续更新或插件卸载变化。
 
-已上传的对象和已导出的 HTML 文件不受影响，也不会随插件更新。保存与呈现见[展示交付](presentation-delivery.md)，
-阅读入口见[分析文档 reader](presentation-reader.md)。用户需要实际文件时，按文件分析流程生成 CSV、PNG 等并通过 Harness 原生 `present` 交付。
+对象存储发布、发布凭据及 `marivo_publish_report` 未提供；也不注册 Agent 导出 Tool。保存和读取契约分别见[展示交付](presentation-delivery.md)与[分析文档 reader](presentation-reader.md)。

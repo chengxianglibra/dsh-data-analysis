@@ -124,13 +124,19 @@ export const zh = {
   'marivo.presentation.ui-frame-comparison-order-original': '原顺序',
   'marivo.presentation.ui-dataset-source-python': '执行脚本',
   'marivo.presentation.ui-dataset-source-python-missing': '无脚本来源。',
+  'marivo.presentation.ui-dataset-source-python-offline': '离线报告不包含执行脚本。',
   'marivo.presentation.ui-dataset-source-python-read-failed': '脚本不可读。',
   'marivo.presentation.ui-dataset-source-python-mismatch': '执行记录的 sha256 不一致。',
   'marivo.presentation.ui-dataset-source-python-loading': '正在读取脚本…',
   'marivo.presentation.ui-dataset-source-datasources': '本次执行声明的数据源',
   'marivo.presentation.ui-dataset-source-datasources-unavailable':
     '本次执行未保存数据源/backend（旧执行记录或未声明）。',
-  'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及页面编辑。',
+  'marivo.presentation.ui-dataset-source-datasources-offline': '离线报告不包含执行时数据源信息。',
+  'marivo.presentation.export-html': '导出 HTML',
+  'marivo.presentation.exporting-html': '正在导出…',
+  'marivo.presentation.export-html-failed': '导出失败，请重试。',
+  'marivo.presentation.export-html-scope':
+    '文件包含此版本的已保存快照，包括未在当前视图显示的数据；快照可能不完整。分享前请确认内容。',
   'marivo.presentation.ui-open-tab': '在报告标签页中打开',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
   'marivo.presentation.ui-preparing': '正在准备分析展示…',
@@ -333,6 +339,8 @@ export const en = {
   'marivo.presentation.ui-frame-comparison-order-original': 'Original order',
   'marivo.presentation.ui-dataset-source-python': 'Execution script',
   'marivo.presentation.ui-dataset-source-python-missing': 'No script source.',
+  'marivo.presentation.ui-dataset-source-python-offline':
+    'The execution script is not included in the offline report.',
   'marivo.presentation.ui-dataset-source-python-read-failed': 'Script is unreadable.',
   'marivo.presentation.ui-dataset-source-python-mismatch':
     'The execution record sha256 does not match.',
@@ -340,8 +348,13 @@ export const en = {
   'marivo.presentation.ui-dataset-source-datasources': 'Datasources declared by this execution',
   'marivo.presentation.ui-dataset-source-datasources-unavailable':
     'No datasource/backend was saved for this execution (older execution record or none declared).',
-  'marivo.presentation.ui-format-limitations':
-    'Offline export, publishing and page editing are unavailable for this format.',
+  'marivo.presentation.ui-dataset-source-datasources-offline':
+    'Execution datasource information is not included in the offline report.',
+  'marivo.presentation.export-html': 'Export HTML',
+  'marivo.presentation.exporting-html': 'Exporting…',
+  'marivo.presentation.export-html-failed': 'Export failed. Try again.',
+  'marivo.presentation.export-html-scope':
+    'The file contains this version’s saved snapshots, including data not currently visible. Snapshots may be incomplete. Review the content before sharing.',
   'marivo.presentation.ui-open-tab': 'Open in report tab',
   'marivo.presentation.ui-loading': 'Reading saved snapshot…',
   'marivo.presentation.ui-preparing': 'Preparing analysis view…',

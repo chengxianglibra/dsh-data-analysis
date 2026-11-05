@@ -58,7 +58,7 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 tool 结果在会话节点中读取准确 Build，工具调用内只保留简短入口。关闭的候选不被片段或成功事件重新打开；
 历史加载不触发自动导航。取消或失败时基版本保持可读，新建标明未保存。
 
-离线 HTML 导出、对象存储发布与 Reader 内编辑已移除，新格式不提供替代入口；见[报告 HTML 发布](report-publishing.md)。
+已保存版本可在报告 tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[报告 HTML 导出](report-publishing.md)。
 
 ## 单次调用与文件身份
 

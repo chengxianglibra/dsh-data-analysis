@@ -258,7 +258,8 @@ try {
         filename,
       ) ||
       filename.includes('presentation-lint') ||
-      filename.includes('export-html')
+      filename === 'lib/presentation/export-html.js' ||
+      filename === 'lib/types/presentation/export-html.d.ts'
     ) {
       fail(`packed plugin contains removed legacy report surface ${filename}`)
     }

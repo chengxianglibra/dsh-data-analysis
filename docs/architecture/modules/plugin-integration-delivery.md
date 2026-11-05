@@ -96,7 +96,7 @@ Web client 只保留：
 - 语义层对象浏览与 composer 原生引用输入；
 - 原生报告目录、版本历史与分析 UI 正文 Tab（只读）。
 
-报告呈现编辑、HTML 下载、[报告发布](report-publishing.md)菜单与发布凭据管理已移除。
+报告 tab 可下载已保存版本的[离线 HTML](report-publishing.md)；报告呈现编辑、对象存储发布和发布凭据管理不受支持。
 
 生产 client bundle 由 `client.tsx` 注册共享 AnalysisSurface，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
 通过统一 Session/Turn delivery 观察新交付：默认 tool 结果在会话级 Chat 节点展示，工具调用内保留入口；
@@ -196,7 +196,7 @@ UI 基于官方 shadcn/ui radix-nova 源码和 Recharts；Tailwind 在构建期�
 禁用全局 Preflight。同一 CSS 字符串模块进入 CJS module-loader 与 ESM composition 产物，
 Host lifecycle 与独立阅读根共用按 Document 引用计数的样式注册，最后一个 owner 卸载时清理。
 组件只在明确的 Host 接入边界使用原生 Modal，不引入第二套 modal 服务。
-不再构建 portable/static 离线 renderer；实际打包依赖及复制的 shadcn 源码均保留许可证，不增加公开 npm subpath。
+离线 HTML 使用独立的浏览器 renderer，将渲染依赖与保存快照封装在单文件中；实际打包依赖及复制的 shadcn 源码均保留许可证，不增加公开 npm subpath。
 
 ## 凭证通知的连接接入
 

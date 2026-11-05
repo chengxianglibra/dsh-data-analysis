@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { buildOfflineRuntime } from './build-offline-runtime.mjs'
 import { buildUIStyles } from './build-ui-styles.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -96,6 +97,7 @@ export async function buildAnalysisCatalog(mode = 'build') {
       await writeFile(temporary, formatted)
       await rename(temporary, output)
     }
+    await buildOfflineRuntime()
     return { id: data.id, build: digest, components: Object.keys(data.spec.components) }
   } finally {
     await rm(directory, { recursive: true, force: true })

@@ -45,6 +45,7 @@ export function AnalysisSurface({
   askPoint,
   askDataset,
   askResource,
+  offline,
 }: {
   document: AnalysisDocument
   readResource?: (name: string) => AnalysisResource | undefined
@@ -53,6 +54,7 @@ export function AnalysisSurface({
   askPoint?: AnalysisResourceContext['askPoint']
   askDataset?: AnalysisResourceContext['askDataset']
   askResource?: AnalysisResourceContext['askResource']
+  offline?: boolean
 }) {
   return (
     <AnalysisRenderer
@@ -67,6 +69,7 @@ export function AnalysisSurface({
       askPoint={askPoint}
       askDataset={askDataset}
       askResource={askResource}
+      offline={offline}
     />
   )
 }
@@ -79,6 +82,7 @@ export interface AnalysisRendererProps {
   readResource?: (name: string) => AnalysisResource | undefined
   isStreaming?: boolean
   candidate?: boolean
+  offline?: boolean
   openSemanticRef?: OpenSemanticRef
   /** Saved Host source reader; candidate previews never read code. */
   readCode?: AnalysisResourceContext['readCode']
@@ -95,6 +99,7 @@ export function AnalysisRenderer({
   readResource,
   isStreaming = false,
   candidate = false,
+  offline = false,
   openSemanticRef,
   readCode,
   askPoint,
@@ -105,13 +110,24 @@ export function AnalysisRenderer({
     () => ({
       readResource: readResource ?? ((name: string) => saved[name]),
       candidate,
+      offline,
       openSemanticRef: candidate ? undefined : openSemanticRef,
       readCode: candidate ? undefined : readCode,
       askPoint: candidate ? undefined : askPoint,
       askDataset: candidate ? undefined : askDataset,
       askResource: candidate ? undefined : askResource,
     }),
-    [saved, readResource, candidate, openSemanticRef, readCode, askPoint, askDataset, askResource],
+    [
+      saved,
+      readResource,
+      candidate,
+      offline,
+      openSemanticRef,
+      readCode,
+      askPoint,
+      askDataset,
+      askResource,
+    ],
   )
   return (
     <ReportCopyProvider locale={locale}>

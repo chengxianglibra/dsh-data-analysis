@@ -118,10 +118,11 @@ preferring `AnalysisFrameView` for Frame data. After saving the report, the assi
 - **Check sources**: Frame views show structure and source identity. DataFrame views bring together the captured range, execution script and declared datasources.
 - **Ask a follow-up**: Select a chart point or supported cell in a DataFrame or Frame and add it to the question draft.
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
+- **Export offline**: Download the displayed version as a single HTML file from the report tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
 
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
-Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing, offline HTML export or publishing.
+Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing or object-storage publishing.
 Report history requires current v4 pointers and the current Catalog build; earlier Catalog builds have no compatibility reader. Current v2/v3 pointers (including earlier analysis UI saves) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new report to continue.
 
 ## Analysis timeout

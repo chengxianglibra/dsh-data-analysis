@@ -253,7 +253,7 @@ export function PythonIcon({
   codeRef?: PythonCodeRef
 }) {
   const t = useCopy()
-  const { readCode } = useAnalysisResources()
+  const { readCode, offline } = useAnalysisResources()
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState<CodeState>({ kind: 'idle' })
   const [copied, setCopied] = useState<{ key: string; message: string }>()
@@ -287,13 +287,15 @@ export function PythonIcon({
   const unavailable = !codeRef || !readCode
   const greyed = unavailable || currentCode?.kind === 'failed' || currentCode?.kind === 'mismatch'
   const label = t(`${P}ui-frame-python`)
-  const state = !codeRef
-    ? t(`${P}ui-frame-python-missing`)
-    : !readCode || currentCode?.kind === 'failed'
-      ? t(`${P}ui-frame-python-read-failed`)
-      : currentCode?.kind === 'mismatch'
-        ? t(`${P}ui-frame-python-mismatch`)
-        : undefined
+  const state = offline
+    ? t('marivo.presentation.ui-dataset-source-python-offline')
+    : !codeRef
+      ? t(`${P}ui-frame-python-missing`)
+      : !readCode || currentCode?.kind === 'failed'
+        ? t(`${P}ui-frame-python-read-failed`)
+        : currentCode?.kind === 'mismatch'
+          ? t(`${P}ui-frame-python-mismatch`)
+          : undefined
   const copy = async (text: string, key: string) => {
     const ok = await Promise.resolve()
       .then(() => navigator.clipboard.writeText(text))
