@@ -68,7 +68,7 @@
     "README.en.md"
   ],
   "scripts": {
-    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
+    "build": "npm run clean && node scripts/generate-analysis-catalog.mjs --build && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
     "clean": "node scripts/clean.mjs",
     "prepack": "npm run build:presentation-kit && npm run build",
     "build:presentation-kit": "node scripts/build-presentation-kit.mjs"

@@ -100,7 +100,8 @@ npm run validate:semantic-browser:web
 端到端验收。
 
 如需检查本地 Yellow Taxi 模型，可设置 `DSH_DATA_ANALYSIS_YELLOW_TAXI_ROOT` 与
-`DSH_DATA_ANALYSIS_TEST_PYTHON`，运行 `node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-semantic-browser-yellow-taxi.ts`。
+`DSH_DATA_ANALYSIS_TEST_PYTHON`，先运行 `npm run build:ui-styles`，再运行
+`node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-semantic-browser-yellow-taxi.ts`。
 该验收将配置与模型复制到临时 Workspace，使用真实 Catalog 和 Chromium；不读取业务数据，也不替代已安装 Host 验收。
 
 ## 指标计算口径

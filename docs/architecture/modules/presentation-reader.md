@@ -24,7 +24,7 @@ Surface 接收文档及已保存资源读取回调，领域组件通过普通 Re
 ## 组件与数据视图
 
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
-签名由[生成的 Catalog](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts)定义。
+[Catalog 生成器](../../../packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs)从组件库生成本地 TypeScript Catalog，并校验 Git 中的随包 Skill 签名。
 OpenUI Lang / Renderer 负责报告编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
 AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配合 shadcn Chart 容器、主题与提示；领域视图组合相同组件和局部领域标记。
 图表不使用 OpenUI 官方图表组件，也不保留旧通用 SVG 绘图引擎、兼容分支或按期间数、series 数、数值类型切换的路径。
@@ -46,7 +46,6 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
-  分类与默认视图规则由同一 `resolveFrameView` 实现，保存校验与渲染共用。
   单行多组比较（单一比较、最多 8 个指标）默认按指标渲染本期/基期/Δ/Δ% 的头部数字块，更长或含多个比较时回退为指标 × 本期/基期/Δ/Δ% 转置表；显式 `table` 始终是转置表。
   折线与面积图要求时间轴；柱图可用时间轴或普通类别轴，类别轴按保存行首次出现的顺序等距排布，不推断连续性。
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
@@ -96,7 +95,7 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 打开时在右侧 tab 中显示对应版本，版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
-只接受 current v4 历史指针和当前快照。只接纳当前生成的 Catalog build，不再保留历史 build 白名单；其他 build 明确拒绝，不迁移或切换旧 reader。current v2/v3、Frame v1 与旧报告内容均明确拒绝，
+Reader 接受 current v4 历史指针、当前快照及当前 Catalog build。其他 Catalog build、current v2/v3、Frame v1 与旧报告内容均明确拒绝，
 文件保留但不可继续读取或更新；目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface。
 需要相同内容时，从实际结果重新 `marivo_present` 新格式。
 

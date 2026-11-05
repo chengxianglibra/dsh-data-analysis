@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@tailwindcss/node'
@@ -72,7 +72,17 @@ export async function buildUIStyles({ check = false } = {}) {
   if (check) {
     if ((await readFile(output, 'utf8')) !== module)
       throw new Error('stale-ui-styles:run-build:ui-styles')
-  } else await writeFile(output, module)
+  } else {
+    // Keep temporary files outside the client scan and replace the module in one step.
+    const directory = await mkdtemp(path.join(root, '.ui-styles-'))
+    try {
+      const temporary = path.join(directory, 'styles.generated.ts')
+      await writeFile(temporary, module)
+      await rename(temporary, output)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
   return css
 }
 

@@ -1,4 +1,4 @@
-/** Shared program for Catalog, real Host stream and subsequent implementation phases. */
+/** Program and patch fixtures for the Catalog contract. */
 export const program = `root = Stack([intro, card, tabs]);
 intro = TextContent("P0 Native prefix: 正文已到达");
 card = Card([AnalysisFrameView("frame", {chart: "table"}), DatasetView("sql", {chart: "metric", encoding: {value: "amount"}})]);

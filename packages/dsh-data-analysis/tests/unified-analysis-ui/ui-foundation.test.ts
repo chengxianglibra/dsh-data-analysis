@@ -24,7 +24,7 @@ test('compiled UI CSS scopes all generated selectors, animation names and Tailwi
   assert.match(UI_STYLES, /--chart-8:/)
 })
 
-test('tracked generated styles match the current explicit client sources', () => {
+test('locally generated styles match the current explicit client sources', () => {
   execFileSync(
     process.execPath,
     [fileURLToPath(new URL('../../scripts/build-ui-styles.mjs', import.meta.url)), '--check'],

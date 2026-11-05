@@ -110,7 +110,6 @@ export function ChartFrame({
         }}
       >
         <ChartContainer
-          config={{}}
           initialDimension={{ width, height }}
           style={{ height, width: '100%', minWidth: width, gridArea: '1 / 1' }}
           className="aspect-auto"

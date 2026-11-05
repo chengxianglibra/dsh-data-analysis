@@ -23,12 +23,21 @@ await mkdir(path.dirname(candidatePackage), { recursive: true })
 await cp(sourcePackage, candidatePackage, {
   recursive: true,
   filter: (file) =>
-    !['lib', 'node_modules', '__pycache__', '.pytest_cache'].some((part) =>
-      path.relative(sourcePackage, file).split(path.sep).includes(part),
-    ),
+    ![
+      'lib',
+      'node_modules',
+      '__pycache__',
+      '.pytest_cache',
+      'styles.generated.ts',
+      'analysis-catalog.ts',
+    ].some((part) => path.relative(sourcePackage, file).split(path.sep).includes(part)),
 })
 await cp(path.resolve('tsconfig.json'), path.join(candidate, 'tsconfig.json'))
 await symlink(path.resolve('node_modules'), path.join(candidate, 'node_modules'))
+await promisify(execFile)(process.execPath, ['scripts/generate-analysis-catalog.mjs', '--build'], {
+  cwd: candidatePackage,
+  maxBuffer: 16 * 1024 * 1024,
+})
 await promisify(execFile)(
   process.execPath,
   [path.resolve('node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],

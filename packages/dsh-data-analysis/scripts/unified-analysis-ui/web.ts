@@ -1,4 +1,4 @@
-/** Disposable real DSH Web: P0 seam probe or P2 production Tool/Client acceptance. */
+/** Disposable DSH Web with the packaged plugin and analysis UI acceptance probe. */
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -14,8 +14,6 @@ import { build } from 'esbuild'
 
 const reuseIndex = process.argv.indexOf('--reuse')
 const reuse = reuseIndex < 0 ? undefined : process.argv[reuseIndex + 1]
-const p3 = process.argv.includes('--p3')
-const p2 = process.argv.includes('--p2') || p3
 const repository = fileURLToPath(new URL('../../../../', import.meta.url))
 const packageRoot = path.join(repository, 'packages/dsh-data-analysis')
 const python = process.env.DSH_DATA_ANALYSIS_PYTHON
@@ -31,9 +29,7 @@ if (process.argv.includes('--model') && !modelKey) {
 }
 const output = reuse
   ? await realpath(reuse)
-  : await realpath(
-      await mkdtemp(path.join(tmpdir(), p2 ? 'dsh-unified-ui-p2-web-' : 'dsh-unified-ui-p0-web-')),
-    )
+  : await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-analysis-ui-web-')))
 const workspace = path.join(output, 'workspace')
 const home = path.join(output, 'home')
 const modules = path.join(home, 'profiles/web/node_modules')
@@ -41,11 +37,10 @@ const wrapper = path.join(output, 'p0-probe')
 await mkdir(workspace, { recursive: !!reuse })
 await mkdir(modules, { recursive: true })
 await mkdir(wrapper, { recursive: !!reuse })
-if (p2)
-  await writeFile(
-    path.join(wrapper, 'runtime-generate.py'),
-    await readFile(new URL('runtime-generate.py', import.meta.url)),
-  )
+await writeFile(
+  path.join(wrapper, 'runtime-generate.py'),
+  await readFile(new URL('runtime-generate.py', import.meta.url)),
+)
 for (const entry of await readdir(path.join(repository, 'node_modules'))) {
   if (entry.startsWith('.') || entry === '@chengxianglibra') continue
   if (!reuse) await symlink(path.join(repository, 'node_modules', entry), path.join(modules, entry))
@@ -90,7 +85,7 @@ await build({
     contents: `
 import {writeFile} from 'node:fs/promises';
 import * as production from '@chengxianglibra/dsh-data-analysis';
-import {installProbe} from ${JSON.stringify(fileURLToPath(new URL(p2 ? 'host-p2.ts' : 'host.ts', import.meta.url)))};
+import {installProbe} from ${JSON.stringify(fileURLToPath(new URL('host.ts', import.meta.url)))};
 export const inject=[...production.inject,'llm','agentLoop','webServer'];
 export async function apply(ctx){
  await ctx.plugin(production,{pythonExecutable:${JSON.stringify(python)},runtimeRoot:${JSON.stringify(path.join(output, 'runtime-marker'))},credentialInteraction:'none'});
@@ -110,7 +105,7 @@ const client = await build({
     loader: 'ts',
     contents: `
 import * as production from '@chengxianglibra/dsh-data-analysis/client';
-import * as probe from ${JSON.stringify(fileURLToPath(new URL(p2 ? 'client-p2.tsx' : 'client.tsx', import.meta.url)))};
+import * as probe from ${JSON.stringify(fileURLToPath(new URL('client.tsx', import.meta.url)))};
 export const inject=[...new Set([...production.inject,...probe.inject])];
 export function apply(ctx){production.apply(ctx,{diagnostics:true,onInstalled:(controller)=>window.__p2Tabs=controller});probe.apply(ctx);}
 `,
@@ -157,7 +152,6 @@ const child = spawn(
       ...process.env,
       DSH_HOME: home,
       DSH_TOOLS_MODE: 'ptc',
-      DSH_UNIFIED_UI_P3: p3 ? '1' : '0',
       ...(modelKey ? { DEEPSEEK_API_KEY: modelKey } : {}),
       OPENUI_TELEMETRY_DISABLED: '1',
       DO_NOT_TRACK: '1',

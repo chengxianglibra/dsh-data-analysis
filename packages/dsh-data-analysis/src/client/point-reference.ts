@@ -9,7 +9,7 @@ import {
 } from '../presentation/contracts/point-reference.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../presentation/receipt.ts'
 import { boundedText, closed, parseJson } from '../semantic-reference/contracts.ts'
-import { type InputContextHost, inputEnd, ownedInput } from './input-context.ts'
+import { type InputContextHost, withInputReferenceInsertion } from './input-context.ts'
 
 const SOURCE = 'marivo-analysis-frame-point'
 const MAX_REFERENCE = 524_288
@@ -88,50 +88,13 @@ export function installPointReferenceSource(ctx: Context, rpc: ClientConnectionR
 }
 
 /** Prepare an immutable point before atomically appending it to the owning input. */
-export async function appendPointReference(
+export function appendPointReference(
   host: InputContextHost,
   rpc: ClientConnectionRpc,
   request: PointRequest,
   lifetime: AbortSignal,
 ): Promise<void> {
-  const controller = new AbortController()
-  const signal = AbortSignal.any([lifetime, controller.signal])
-  signal.throwIfAborted()
-  const initial = ownedInput(host, request.sessionId, request.workspaceId)
-  const check = () => {
-    const current = ownedInput(host, request.sessionId, request.workspaceId)
-    if (current.actx !== initial.actx || current.workspace.path !== initial.workspace.path)
-      throw new Error('input-owner-changed')
-    return current
-  }
-  let previous = initial.input.state.getSnapshot()
-  const editable = () => {
-    const current = initial.input.state.getSnapshot()
-    if (current.phase !== 'plain' && current.phase !== 'claimed')
-      throw new Error('input-unavailable')
-    if (
-      (previous.draft.length > 0 || previous.attachmentIds.length > 0) &&
-      current.draft.length === 0 &&
-      current.attachmentIds.length === 0
-    )
-      throw new Error('input-reset')
-    previous = current
-  }
-  editable()
-  const changed = () => {
-    try {
-      check()
-      editable()
-    } catch {
-      controller.abort()
-    }
-  }
-  const stops = [
-    host.sessions.list.subscribe(changed),
-    host.workspaces.list.subscribe(changed),
-    initial.input.state.subscribe(changed),
-  ]
-  try {
+  return withInputReferenceInsertion(host, request, lifetime, async (signal, insert) => {
     const result = await rpc.call(MARIVO_PRESENTATION_RPC_CHANNEL, 'point/prepare', request, signal)
     signal.throwIfAborted()
     if (!result.ok) throw new Error('point-prepare-failed')
@@ -145,16 +108,6 @@ export async function appendPointReference(
       envelope.field !== request.field
     )
       throw new Error('point-reference-mismatch')
-    const { actx, input } = check()
-    const snapshot = input.state.getSnapshot()
-    if (snapshot.phase !== 'plain' && snapshot.phase !== 'claimed')
-      throw new Error('input-unavailable')
-    const applied = actx.bail(actx, 'slash/input-insert-reference', {
-      reference: reference(envelope),
-      span: inputEnd(snapshot),
-    })
-    if (applied !== true) throw new Error('input-unavailable')
-  } finally {
-    for (const stop of stops) stop()
-  }
+    insert(reference(envelope))
+  })
 }

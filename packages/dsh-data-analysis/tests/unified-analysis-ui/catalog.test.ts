@@ -3,12 +3,12 @@ import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { createParser, mergeStatements } from '@openuidev/lang-core'
-import { patch, program } from '../../scripts/unified-analysis-ui/fixture.ts'
 import {
   analysisCatalogSchema,
   analysisCatalogSpec,
 } from '../../src/presentation/contracts/analysis-catalog.ts'
 import { parseAnalysisProgram } from '../../src/presentation/contracts/analysis-program.ts'
+import { patch, program } from './catalog-fixture.ts'
 
 test('generated Host schema matches the installed Client library without importing React into Host', async () => {
   execFileSync(process.execPath, [

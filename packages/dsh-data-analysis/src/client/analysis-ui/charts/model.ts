@@ -48,11 +48,13 @@ export interface ChartProps<K extends ChartView['chart']> {
   view: ChartView & { chart: K }
   height?: number
 }
-export function columnOf(s: ChartModel, name: string) {
+type ChartData = Pick<ChartModel, 'data'>
+
+export function columnOf(s: ChartData, name: string) {
   const index = s.data.columns.findIndex((c) => c.id === name)
   return index < 0 ? undefined : { index, column: s.data.columns[index]! }
 }
-export function cellOf(s: ChartModel, row: number, name: string): Cell {
+export function cellOf(s: ChartData, row: number, name: string): Cell {
   const column = columnOf(s, name)
   return column ? (s.data.rows[row]?.[column.index] ?? null) : null
 }
@@ -89,14 +91,13 @@ export function displayed(s: ChartModel, value: Cell, column?: DatasetColumn): s
   return s.display ? s.display(value, column) : exact(value, column)
 }
 
-export function valueAt(s: ChartModel, row: number, name: string) {
+export function valueAt(s: ChartData, row: number, name: string) {
   return numberOf(cellOf(s, row, name), columnOf(s, name)?.column)
 }
-export const rowsOf = (s: ChartModel) => s.data.rows.map((_, i) => i)
+export const rowsOf = (s: ChartData) => s.data.rows.map((_, i) => i)
 export const valueName = (s: ChartModel, name: string) => s.valueLabels[name] ?? name
 export const axisOf = (s: ChartModel, ref?: string) =>
   s.axes.find((a) => a.id === ref) ?? s.axes.find((a) => a.name === ref)
-export const memberLabel = (_s: ChartModel, axis: ChartAxis, row: number) => axis.labels[row] ?? ''
 export function groupRows(s: ChartModel, axes: ChartAxis[]) {
   const groups = new Map<string, ChartGroup>()
   for (const row of rowsOf(s)) {
@@ -123,8 +124,9 @@ export function ticksOf(s: ChartModel, axis: ChartAxis) {
   }
 }
 export const partitions = (s: ChartModel, name: string) => s.references[name] ?? []
+/** First non-null saved value and its original row within the supplied rows. */
 export function firstCell(
-  s: ChartModel,
+  s: ChartData,
   rows: number[],
   name: string,
 ): { row: number; value: Cell } {

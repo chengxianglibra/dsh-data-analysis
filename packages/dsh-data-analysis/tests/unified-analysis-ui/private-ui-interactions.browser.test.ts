@@ -22,7 +22,6 @@ import {DetailsDialog,OverlayProvider} from './src/client/ui/overlays.tsx';
 import {UIStyleSheet} from './src/client/ui/theme.ts';
 import {Popover,PopoverContent,PopoverTrigger} from './src/client/ui/primitives/popover.tsx';
 import {Checkbox} from './src/client/ui/primitives/checkbox.tsx';
-import {Switch} from './src/client/ui/primitives/switch.tsx';
 import {ToggleGroup,ToggleGroupItem} from './src/client/ui/primitives/toggle-group.tsx';
 import {LAYOUT_STYLES} from './src/client/analysis-ui/layout.tsx';
 const text='Source metadata was not captured in the original analysis.\\nThe saved results remain available.';
@@ -41,7 +40,7 @@ function PortalShell({title,open,onClose,className,children}){
 }
 function App(){
  const [open,setOpen]=useState(false);
- const [checked,setChecked]=useState(false);const [switched,setSwitched]=useState(false);const [choice,setChoice]=useState('one');
+ const [checked,setChecked]=useState(false);const [choice,setChoice]=useState('one');
  return h('main',{className:'mv-ui',style:{padding:16}},h(UIStyleSheet),h(UIStyleSheet),h('style',null,LAYOUT_STYLES),
  h('p',{id:'extra-description',hidden:true},'Saved metadata'),
  h(IconButton,{label:'Tip trigger',tip:text,'aria-describedby':'extra-description'},'i'),
@@ -50,7 +49,7 @@ function App(){
  h(Tabs,{label:'Saved report sections',items:[{value:'a',trigger:'Summary',content:h('p',null,'Saved summary')},{value:'b',trigger:'Details',content:h('p',null,'Saved details')}]}),
  h(Button,{id:'after'},'After sections'),
  h(Button,{onClick:()=>setOpen(true)},'Open details'),
- h('section',{'aria-label':'Stateful controls',className:'flex items-center gap-4'},h(Button,{variant:'ghost'},'Ghost action'),h(Checkbox,{'aria-label':'Saved flag',checked,onCheckedChange:setChecked}),h(Switch,{'aria-label':'Saved switch',checked:switched,onCheckedChange:setSwitched}),h(ToggleGroup,{type:'single',value:choice,onValueChange:setChoice},h(ToggleGroupItem,{value:'one','aria-label':'First mode'},'First'),h(ToggleGroupItem,{value:'two','aria-label':'Second mode'},'Second'))),
+ h('section',{'aria-label':'Stateful controls',className:'flex items-center gap-4'},h(Button,{variant:'ghost'},'Ghost action'),h(Checkbox,{'aria-label':'Saved flag',checked,onCheckedChange:setChecked}),h(ToggleGroup,{type:'single',value:choice,onValueChange:setChoice},h(ToggleGroupItem,{value:'one','aria-label':'First mode'},'First'),h(ToggleGroupItem,{value:'two','aria-label':'Second mode'},'Second'))),
  h(DetailsDialog,{title:'Saved details',closeLabel:'Close details',open,onClose:()=>setOpen(false)},
  h(IconButton,{label:'Dialog metadata',tip:text},'i'),h(Popover,null,h(PopoverTrigger,{asChild:true},h(Button,null,'Open saved action')),h(PopoverContent,{'aria-label':'Saved action',role:'menu'},h(Button,{role:'menuitem'},'Use saved point'))),h('div',{style:{height:600}},'Saved scrollable content')));
 }
@@ -307,14 +306,6 @@ const root=createRoot(document.getElementById('root'));window.unmountUI=()=>root
           await flag.evaluate((node) => getComputedStyle(node).backgroundColor),
           'rgba(0, 0, 0, 0)',
         )
-        const toggle = controls.getByRole('switch', { name: 'Saved switch' })
-        const previous = await toggle.evaluate((node) => getComputedStyle(node).backgroundColor)
-        await toggle.click()
-        assert.equal(await toggle.getAttribute('aria-checked'), 'true')
-        await page.waitForFunction((previous) => {
-          const node = document.querySelector('[role=switch]')
-          return node && getComputedStyle(node).backgroundColor !== previous
-        }, previous)
         const mode = controls.getByRole('radio', { name: 'Second mode' })
         await mode.click()
         assert.equal(await mode.getAttribute('aria-checked'), 'true')

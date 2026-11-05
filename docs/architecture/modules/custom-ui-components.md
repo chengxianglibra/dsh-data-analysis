@@ -26,6 +26,8 @@ Dataset 不因共用外壳或图表获得 Frame context、期间推断或数据�
 ## 主题与容器
 
 [UI_STYLES](../../../packages/dsh-data-analysis/src/client/ui/theme.ts) 注册由 [theme.css](../../../packages/dsh-data-analysis/src/client/ui/theme.css) 和组件源码编译的作用域样式，集中定义界面、控件、状态和受控 fallback。
+构建、依赖和类型检查及依赖样式的测试入口会生成本地 `styles.generated.ts`。该文件由 Git 忽略，浏览器通过客户端 bundle 加载编译后的样式。
+直接运行源码夹具前可执行 `npm run prepare:source` 生成样式和 Catalog，再用 `npm run check:ui-styles` 核对本地样式。
 Host 已解析主题优先，独立渲染再使用显式主题或 OS；报告与业务内容消费同一组 shadcn semantic tokens。
 数据色使用同一组明暗 chart tokens，操作 accent、业务状态与数据系列互不替代。
 
@@ -59,7 +61,8 @@ CopyData 的反馈绑定当前数据及有序选列。数据或选列变化时�
 
 ## 报告布局与阅读状态
 
-对外仍只有原有八组件，复用已有 schema、refs、签名与 Catalog build。OpenUI Lang / Renderer 负责声明与编排，
+对外提供八个组件，组件签名、schema 与 build 由[组件库](../../../packages/dsh-data-analysis/src/client/analysis-ui/library.tsx)生成。
+Frame 的可选展示参数及 build 准入见[分析文档 reader](presentation-reader.md)。OpenUI Lang / Renderer 负责声明与编排，
 私有 Stack 和 shadcn Card / Tabs 组合负责实际布局与交互；内部基础组件不暴露为任意 DSL props。
 
 Tabs 将焦点项与激活项分开：方向键和 Home/End 移动焦点，Enter/Space 激活，Tab 离开标签组。

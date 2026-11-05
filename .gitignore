@@ -16,6 +16,8 @@ artifacts/
 !/docs/architecture/**
 outputs/
 packages/dsh-data-analysis/lib/
+/packages/dsh-data-analysis/src/client/ui/styles.generated.ts
+/packages/dsh-data-analysis/src/presentation/contracts/analysis-catalog.ts
 packages/dsh-data-analysis/python/**/build/
 packages/dsh-data-analysis/python/**/dist/
 packages/dsh-data-analysis/python/**/*.egg-info/

@@ -16,9 +16,18 @@ import type {
 import type { Translator } from '../../i18n/copy.ts'
 import { displayCell } from '../../presentation/display.ts'
 import { columnLabel } from '../../presentation/model.ts'
-import { numberOf } from '../charts/model.ts'
+import { columnOf, numberOf, rowsOf } from '../charts/model.ts'
 
-export { exact, isNumeric, numberOf } from '../charts/model.ts'
+export {
+  cellOf,
+  columnOf,
+  exact,
+  firstCell,
+  isNumeric,
+  numberOf,
+  rowsOf,
+  valueAt,
+} from '../charts/model.ts'
 
 /** Full, grouped numbers for Frame values; axis tick abbreviations are separate. */
 export function compact(locale: PresentationLocale, value: Cell, column?: DatasetColumn): string {
@@ -46,21 +55,6 @@ export function interpretationOf(s: Snapshot): FrameInterpretation | undefined {
 export function periodsOf(s: Snapshot): FramePeriods | undefined {
   const section = s.frame.sections.periods
   return typeof section === 'object' && section.status === 'captured' ? section : undefined
-}
-
-export function columnOf(s: Snapshot, name: string) {
-  const index = s.data.columns.findIndex((c) => c.id === name)
-  return index < 0 ? undefined : { index, column: s.data.columns[index]! }
-}
-export function cellOf(s: Snapshot, row: number, name: string): Cell {
-  const c = columnOf(s, name)
-  return c ? (s.data.rows[row]?.[c.index] ?? null) : null
-}
-export function valueAt(s: Snapshot, row: number, name: string): number | null {
-  return numberOf(cellOf(s, row, name), columnOf(s, name)?.column)
-}
-export function rowsOf(s: Snapshot): number[] {
-  return s.data.rows.map((_, i) => i)
 }
 
 /** Δ in a neutral style: ▲/▼ plus the compact magnitude of the saved value. */
@@ -501,12 +495,4 @@ export function partitions(s: Snapshot, name: string) {
       : []
   const axes = s.frame.axes.filter((a) => tokens.includes(a.token))
   return groupRows(s, axes)
-}
-/** First non-null saved value of a column within rows; broadcast values are equal per partition. */
-export function firstCell(s: Snapshot, rows: number[], name: string): { row: number; value: Cell } {
-  for (const row of rows) {
-    const value = cellOf(s, row, name)
-    if (value !== null) return { row, value }
-  }
-  return { row: rows[0] ?? 0, value: null }
 }

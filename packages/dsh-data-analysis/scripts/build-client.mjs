@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
-import { buildUIStyles } from './build-ui-styles.mjs'
+import { buildAnalysisCatalog } from './generate-analysis-catalog.mjs'
 import {
   assertBrowserInputs,
   noticeComment,
@@ -10,7 +10,7 @@ import {
 
 const packageRoot = new URL('../', import.meta.url)
 const outputUrl = new URL('lib/client.js', packageRoot)
-await buildUIStyles()
+await buildAnalysisCatalog()
 const result = await build({
   entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
   outfile: fileURLToPath(outputUrl),

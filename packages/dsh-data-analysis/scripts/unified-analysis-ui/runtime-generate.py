@@ -1,4 +1,4 @@
-"""Small reusable P0 dataset; source removed before the second process reads."""
+"""Shared Runtime fixture whose source is removed after snapshot capture."""
 import importlib.metadata
 import json
 import os

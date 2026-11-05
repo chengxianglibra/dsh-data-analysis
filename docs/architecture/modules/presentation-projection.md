@@ -78,10 +78,10 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
-契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)；Frame v1 及旧元数据格式明确拒绝，必须在原分析执行中捕获当前格式。
+契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)。新快照须在原分析执行中捕获，Host 只接受 Frame v2。
 
 日历期间按当前 Marivo 公共契约保存 civil `label`、`selection` 和可选 `cutoff`；不根据日期标签、键或时区推算未公开的起止边界。
-Interval 期间继续保存上游提供的 start/end；reader 仍可读取既有 Frame v2 中带日历边界的快照。
+Interval 期间继续保存上游提供的 start/end。历史 Frame v2 中包含实际和名义日历边界的期间记录仍可读取。
 
 当前 `0.6.0` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 不读取私有 Store、日志或重新编译 SQL。
