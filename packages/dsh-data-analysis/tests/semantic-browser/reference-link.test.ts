@@ -9,7 +9,22 @@ import { translator } from './../../src/client/i18n/copy.ts'
 import type { SemanticRef } from '../../src/semantic-reference/contracts.ts'
 
 let directory: string
-let render: (value: string, refs: SemanticRef[], available?: SemanticRef[]) => string
+let render: (
+  value: string,
+  refs: SemanticRef[],
+  available?: SemanticRef[],
+  structured?: boolean,
+  field?: string,
+  kind?: string,
+) => string
+let renderComputation: (
+  expression: string,
+  facts: unknown[],
+  dependencies?: SemanticRef[],
+  available?: SemanticRef[],
+  locale?: 'zh-CN' | 'en-US',
+) => string
+let renderRelated: () => string
 const ref: SemanticRef = {
   schema: 'marivo.semantic_ref/v1',
   kind: 'entity',
@@ -24,15 +39,31 @@ before(async () => {
 import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
 import { CopyProvider } from './src/client/i18n/context.tsx';
 import { translator as fixtureTranslator } from './src/client/i18n/copy.ts';
-const renderToStaticMarkup = node => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator('zh-CN') }, node));
+const renderToStaticMarkup = (node, locale = 'zh-CN') => renderMarkup(createElement(CopyProvider, { t: fixtureTranslator(locale) }, node));
 import { FieldValue } from './src/client/semantic-browser/reference-link.tsx';
+import { ComputationCard } from './src/client/semantic-browser/computation.tsx';
 import { refKey } from './src/semantic-reference/contracts.ts';
-export function render(value, refs, available = refs) {
+export function render(value, refs, available = refs, structured = false, field = 'participants', kind = 'metric') {
   return renderToStaticMarkup(createElement(FieldValue, {
-    field: { name: 'participants', value },
-    object: { relations: refs.map(ref => ({ field: 'participants', ref })) },
+    field: { name: field, value, structured },
+    object: { ref: { kind }, relations: refs.map(ref => ({ field, ref })) },
     objects: new Map(available.map(ref => [refKey(ref), { ref }])), navigate() {},
   }));
+}
+export function renderComputation(expression, facts, dependencies = [], available = dependencies, locale = 'zh-CN') {
+  const ref = { schema: 'marivo.semantic_ref/v1', kind: 'metric', path: 'sales.revenue' };
+  const fields = dependencies.length ? [{ name: 'dependencies', value: JSON.stringify(dependencies.map(refKey)), structured: true }] : [];
+  const relations = dependencies.map(ref => ({ field: 'dependencies', ref }));
+  const object = { ref, computation: { expression, facts }, fields, relations, guardrails: [] };
+  const objects = new Map(available.map(ref => [refKey(ref), { ref, name: ref.path.split('.').at(-1) }]));
+  return renderToStaticMarkup(createElement(ComputationCard, { object, objects, navigate() {} }), locale);
+}
+export function renderRelated() {
+  const ref = { schema: 'marivo.semantic_ref/v1', kind: 'metric', path: 'sales.revenue' };
+  const childRef = { schema: 'marivo.semantic_ref/v1', kind: 'measure', path: 'sales.orders.amount' };
+  const child = { ref: childRef, name:'amount', computation: { expression: 'column(amount)', facts: [] }, relations: [], guardrails: [], definition: 'Amount' };
+  const object = { ref, computation: { expression: 'sum(amount)', facts: [] }, fields: [], relations: [{ field:'dependencies', ref:childRef }], guardrails: [] };
+  return renderToStaticMarkup(createElement(ComputationCard, { object, objects: new Map([[refKey(childRef), child]]), navigate() {} }));
 }`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
@@ -44,7 +75,338 @@ export function render(value, refs, available = refs) {
       js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
     },
   })
-  ;({ render } = await import(pathToFileURL(outfile).href))
+  ;({ render, renderComputation, renderRelated } = await import(pathToFileURL(outfile).href))
+})
+
+test('calendar level pairs retain order, repeated names, and declared reference links', () => {
+  const pairs = JSON.stringify([
+    ['week', 'entity:sales.orders'],
+    ['week', 'entity:sales.orders'],
+  ])
+  const html = render(pairs, [ref], [ref], true, 'levels')
+  assert.match(html, /^<dl class="sb-value-map">/)
+  assert.equal((html.match(/<dt class="sb-value-key">week<\/dt><dd><button/g) ?? []).length, 2)
+  assert.doesNotMatch(html, /<ul/)
+  const mixed = JSON.stringify([['week', 'entity:sales.orders'], ['month']])
+  assert.match(render(mixed, [ref], [ref], true, 'levels'), /^<ul/)
+  assert.match(render(pairs, [ref], [ref], true), /^<ul/)
+})
+
+test('known boolean fields use localized labels without changing ordinary strings', () => {
+  assert.equal(render('true', [], [], false, 'is_default_time'), '是')
+  assert.equal(render('false', [], [], false, 'default'), '否')
+  assert.equal(render('false', [], [], false, 'participants'), 'false')
+  assert.equal(render('unknown', [], [], false, 'default'), 'unknown')
+})
+
+test('structured values show nested lists and mappings without losing repeated references or scalar values', () => {
+  const value = JSON.stringify({
+    buyer: [ref.kind + ':' + ref.path, ref.kind + ':' + ref.path],
+    flags: [false, 0, ''],
+  })
+  const html = render(value, [ref], [ref], true)
+  assert.equal((html.match(/<button/g) ?? []).length, 2)
+  assert.match(html, /<dl class="sb-value-map">/)
+  assert.match(html, /<ul class="sb-value-list">/)
+  assert.match(html, /false/)
+  assert.match(html, />0</)
+  assert.doesNotMatch(html, /&quot;buyer&quot;/)
+  assert.equal(render('["entity:sales.orders"]', []), '[&quot;entity:sales.orders&quot;]')
+})
+
+test('long declared lists expose remaining entries on demand', () => {
+  const html = render(
+    JSON.stringify(Array.from({ length: 12 }, (_, index) => `field_${index}`)),
+    [],
+    [],
+    true,
+  )
+  assert.match(html, /显示其余 4 项/)
+  assert.match(html, /<details>/)
+  assert.match(html, /field_11/)
+})
+
+test('calculation hides empty expression and renders structured facts', () => {
+  assert.equal(renderComputation('', []), '')
+  const html = renderComputation('', [
+    { name: 'null_rules', value: '["ignore", "zero"]', structured: true },
+  ])
+  assert.match(html, /ignore/)
+  assert.match(html, /zero/)
+  assert.doesNotMatch(html, /sb-expression-code/)
+  const pairs = renderComputation('', [
+    { name: 'facts', value: '[["column", "week"], ["column", "month"]]', structured: true },
+  ])
+  assert.match(pairs, /<dt class="sb-value-key">来源列<\/dt><dd>week<\/dd>/)
+  assert.match(pairs, /<dt class="sb-value-key">来源列<\/dt><dd>month<\/dd>/)
+})
+
+test('declared dependencies remain accessible when there is no expression or facts', () => {
+  const measure: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'measure',
+    path: 'sales.orders.amount',
+  }
+  const html = renderComputation('', [], [ref, measure])
+  assert.match(html, /声明依赖/)
+  assert.match(html, /1 实体 · 1 度量/)
+  assert.match(html, /title="entity:sales.orders"/)
+  assert.match(html, /title="measure:sales.orders.amount"/)
+  assert.doesNotMatch(html, /sb-expression-code/)
+})
+
+test('referenced object title is a single direct navigation control', () => {
+  const html = renderRelated()
+  assert.match(
+    html,
+    /<summary>[\s\S]*<button[^>]*class="[^"]*sb-related-name[^>]*title="measure:sales.orders.amount"/,
+  )
+  assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 1)
+  assert.match(html, /<section aria-label="measure:sales.orders.amount">/)
+  assert.match(html, /column\(amount\)/)
+})
+
+test('formula references use short names while retaining exact identities and unknown text', () => {
+  const first: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'metric',
+    path: 'sales.a.total',
+  }
+  const second: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'metric',
+    path: 'sales.b.total',
+  }
+  const expression = 'metric:sales.a.total + metric:sales.b.total + metric:sales.a.total_extra'
+  const html = renderComputation(expression, [], [first, second], [first])
+  assert.match(html, /title="metric:sales.a.total"[^>]*>a.total<\/button>/)
+  assert.match(html, /disabled=""[^>]*title="metric:sales.b.total"[^>]*>b.total/)
+  assert.match(html, /aria-description="metric:sales.a.total"/)
+  assert.match(html, /aria-description="metric:sales.b.total"/)
+  assert.match(html, /metric:sales.a.total_extra/)
+})
+
+test('source aggregation is hidden only when its single value exactly repeats the formula', () => {
+  const reduction = (values: string[]) => [
+    { name: 'reductions', value: JSON.stringify(values), structured: true },
+  ]
+  const single = renderComputation('sum(a)', reduction(['sum(a)']))
+  assert.doesNotMatch(single, /源聚合/)
+  assert.match(single, /<code>sum\(a\)<\/code>/)
+  assert.match(renderComputation('sum(a)', reduction(['sum(b)'])), /源聚合/)
+  assert.match(renderComputation('sum(a)', reduction(['sum(a)', 'sum(b)'])), /源聚合/)
+})
+
+test('condition and source aggregation link only declared references', () => {
+  const measure: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'measure',
+    path: 'sales.orders.amount',
+  }
+  const html = renderComputation(
+    'metric:sales.revenue',
+    [
+      {
+        name: 'conditions',
+        value: JSON.stringify(['measure:sales.orders.amount > 0']),
+        structured: true,
+      },
+      {
+        name: 'reductions',
+        value: JSON.stringify(['sum(measure:sales.orders.amount)']),
+        structured: true,
+      },
+    ],
+    [measure],
+  )
+  assert.match(html, /定义条件/)
+  assert.match(html, /源聚合/)
+  assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 3)
+  assert.match(html, />amount<\/button> &gt; 0/)
+  assert.match(html, /sum\(<button[^>]*title="measure:sales.orders.amount"[^>]*>amount<\/button>\)/)
+})
+
+test('time bindings show each distinct effective time dimension once', () => {
+  const facts = [
+    {
+      name: 'time_bindings',
+      structured: true,
+      value: JSON.stringify([
+        { branch: 'sum(a)', field: 'time_dimension:sales.at', source: 'explicit', path: [] },
+        { branch: 'sum(a)', field: 'time_dimension:sales.at', source: 'explicit', path: [] },
+        { branch: 'sum(b)', field: 'time_dimension:sales.other', source: 'explicit', path: [] },
+      ]),
+    },
+  ]
+  const html = renderComputation('sum(a) + sum(b)', facts)
+  assert.equal((html.match(/sum\(a\)/g) ?? []).length, 1)
+  assert.equal((html.match(/time_dimension:sales.at/g) ?? []).length, 1)
+  assert.match(html, /time_dimension:sales.other/)
+  assert.doesNotMatch(html, /显式指定|查看原始记录/)
+})
+
+test('different or unknown null rules retain their branches', () => {
+  const html = renderComputation('sum(a)', [
+    {
+      name: 'null_rules',
+      structured: true,
+      value: JSON.stringify(['sum(a): ignore NULL', 'sum(b): unchanged']),
+    },
+  ])
+  assert.match(html, />sum\(a\): ignore NULL</)
+  assert.match(html, />sum\(b\): unchanged</)
+  assert.doesNotMatch(html, /查看原始记录/)
+})
+
+test('distinct time dimensions retain exact identities and missing dimensions remain disabled', () => {
+  const pickup: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'time_dimension',
+    path: 'sales.orders.pickup',
+  }
+  const delivery: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'time_dimension',
+    path: 'sales.orders.delivery',
+  }
+  const html = renderComputation(
+    'sum(a) + sum(b)',
+    [
+      {
+        name: 'time_bindings',
+        structured: true,
+        value: JSON.stringify([
+          { branch: 'sum(a)', field: 'time_dimension:sales.orders.pickup', path: [] },
+          { branch: 'sum(b)', field: 'time_dimension:sales.orders.delivery', path: [] },
+        ]),
+      },
+    ],
+    [pickup, delivery],
+    [pickup],
+  )
+  assert.match(html, /title="time_dimension:sales.orders.pickup"[^>]*>pickup<\/button>/)
+  assert.match(html, /disabled=""[^>]*title="time_dimension:sales.orders.delivery"/)
+  assert.match(html, /delivery（当前目录未包含）/)
+})
+
+test('unknown null rules stay readable instead of becoming a guessed policy', () => {
+  const html = renderComputation('sum(a)', [
+    {
+      name: 'null_rules',
+      structured: true,
+      value: JSON.stringify(['vendor-specific null policy']),
+    },
+  ])
+  assert.match(html, /vendor-specific null policy/)
+})
+
+test('different recognized null policies retain the branch associated with each policy', () => {
+  const html = renderComputation('sum(a) + sum(b)', [
+    { name: 'reductions', structured: true, value: JSON.stringify(['sum(a)', 'sum(b)']) },
+    {
+      name: 'null_rules',
+      structured: true,
+      value: JSON.stringify([
+        'sum(a): nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL',
+        'sum(b): nulls=error: assert non-NULL demanded contributions; a demanded NULL raises an error; empty input returns NULL',
+      ]),
+    },
+  ])
+  assert.match(
+    html,
+    /sum\(a\): 计算时忽略 NULL；没有符合条件的记录时返回 0；有记录但参与计算的值全部为 NULL 时返回 NULL/,
+  )
+  assert.match(html, /sum\(b\): 参与计算的值为 NULL 时会报错；没有符合条件的记录时返回 NULL/)
+})
+
+test('identical recognized null rules have one concise explanation', () => {
+  const html = renderComputation('sum(a) + sum(b)', [
+    { name: 'reductions', structured: true, value: JSON.stringify(['sum(a)', 'sum(b)']) },
+    {
+      name: 'null_rules',
+      structured: true,
+      value: JSON.stringify([
+        'sum(a): nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL',
+        'sum(b): nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL',
+      ]),
+    },
+  ])
+  assert.match(
+    html,
+    /计算时忽略 NULL；没有符合条件的记录时返回 0；有记录但参与计算的值全部为 NULL 时返回 NULL/,
+  )
+  assert.equal((html.match(/计算时忽略 NULL/g) ?? []).length, 1)
+  assert.doesNotMatch(html, /查看原始记录|sum\(a\): nulls=ignore/)
+})
+
+test('localized NULL rules distinguish no matching records from all-NULL values', () => {
+  const show = (rule: string, locale: 'zh-CN' | 'en-US' = 'zh-CN') =>
+    renderComputation(
+      'aggregate',
+      [{ name: 'null_rules', structured: true, value: JSON.stringify([`aggregate: ${rule}`]) }],
+      [],
+      [],
+      locale,
+    )
+  const sum =
+    'nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL'
+  assert.match(show(sum), /没有符合条件的记录时返回 0；有记录但参与计算的值全部为 NULL 时返回 NULL/)
+  assert.match(
+    show(sum, 'en-US'),
+    /Return 0 when no records match; return NULL when records exist but all values used are NULL/,
+  )
+  const count =
+    'nulls=ignore: ignore NULL contributions; empty input returns zero; all-NULL input returns zero'
+  assert.match(show(count), /没有符合条件的记录，或有记录但参与计算的值全部为 NULL 时返回 0/)
+  assert.match(
+    show(count, 'en-US'),
+    /no records match, or when records exist but all values used are NULL/,
+  )
+  assert.match(
+    show('count counts source rows; empty input returns zero'),
+    /按源记录计数；没有符合条件的记录时返回 0/,
+  )
+  const weighted =
+    'nulls=ignore: ignore NULL contributions; no valid pairs or zero paired weight sum returns NULL'
+  assert.match(show(weighted), /没有有效配对或有效配对的权重之和为 0 时返回 NULL/)
+  assert.match(show(weighted, 'en-US'), /no valid pairs or their total weight is 0/)
+  const error =
+    'nulls=error: assert non-NULL demanded contributions; a demanded NULL raises an error; empty input returns NULL'
+  assert.match(show(error), /参与计算的值为 NULL 时会报错；没有符合条件的记录时返回 NULL/)
+  assert.match(
+    show(error, 'en-US'),
+    /required for calculation is NULL; Return NULL when no records match/,
+  )
+})
+
+test('calculation summary displays declared time and null rules before expanding details', () => {
+  const html = renderComputation('sum(a)', [
+    {
+      name: 'time_bindings',
+      structured: true,
+      value: JSON.stringify([{ branch: 'sum(a)', field: 'time_dimension:sales.picked_up_at' }]),
+    },
+    { name: 'null_rules', structured: true, value: JSON.stringify(['sum(a): ignore NULL']) },
+  ])
+  assert.match(html, /sb-fact-value[^>]*><span>time_dimension:sales.picked_up_at<\/span>/)
+  assert.match(html, /sum\(a\): ignore NULL/)
+  assert.doesNotMatch(html, /<details class="sb-fact" open/)
+})
+
+test('relationship key pairs retain direction without guessing object links', () => {
+  const html = render(
+    '[["orders.customer_id","customers.id"]]',
+    [],
+    [],
+    true,
+    'keys',
+    'relationship',
+  )
+  assert.match(html, /起始字段<\/dt><dd>orders.customer_id<\/dd>/)
+  assert.match(html, /目标字段<\/dt><dd>customers.id<\/dd>/)
+  assert.doesNotMatch(html, /<button/)
+  assert.equal(render('many_to_one', [], [], false, 'cardinality', 'relationship'), '多对一')
+  assert.equal(render('unknown', [], [], false, 'cardinality', 'relationship'), 'unknown')
 })
 after(async () => {
   if (directory) await rm(directory, { recursive: true, force: true })

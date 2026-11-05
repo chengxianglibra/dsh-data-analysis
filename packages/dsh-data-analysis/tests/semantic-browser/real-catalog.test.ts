@@ -94,6 +94,8 @@ mv.session = forbidden
     ),
   )
   assert.ok(revenueDefinition.facts.some((item) => item.name === 'null_rules'))
+  assert.ok(revenueDefinition.facts.some((item) => item.structured))
+  assert.ok(data.objects.some((item) => item.fields.some((field) => field.structured)))
   assert.match(
     data.objects.find((item) => item.ref.path === 'sales.orders.amount')!.computation!.expression,
     /amount/,
@@ -107,6 +109,12 @@ mv.session = forbidden
   const revenue = data.objects.find((item) => item.ref.path === 'sales.revenue')!
   assert.ok(revenue.definition!.length > 240)
   assert.ok(revenue.relations.some((relation) => relation.ref.kind === 'measure'))
+  assert.ok(
+    revenue.relations.some(
+      (relation) =>
+        relation.field === 'time_bindings' && relation.ref.path === 'sales.orders.ordered_at',
+    ),
+  )
   assert.ok(revenue.source.line > 0)
   assert.doesNotMatch(JSON.stringify(data), /DO_NOT_DISCLOSE_DATABASE_PATH/)
   assertCatalogCacheOnly(before, await tree(root))

@@ -89,6 +89,12 @@ export function createSemanticReferenceSource(
       )
       return response.items.map((item) => {
         const kind = Object.hasOwn(zh, item.ref.kind) ? translate(item.ref.kind) : item.ref.kind
+        const prefix = `${kind} · `
+        const path = item.ref.path
+        // The Catalog name is often already the last path segment. Only use a
+        // separate title when it adds information: the Host renders `name`
+        // alongside a different `label` as an alias.
+        const distinctName = item.name !== path && item.name !== path.split('.').at(-1)
         const envelope: Envelope = {
           schema: 'dsh-data-analysis-semantic-reference/v1',
           sessionId: session.sessionId,
@@ -96,7 +102,8 @@ export function createSemanticReferenceSource(
           ref: item.ref,
         }
         return {
-          name: `${kind} · ${item.ref.path}`,
+          name: `${prefix}${path}`,
+          ...(distinctName ? { label: item.name } : {}),
           ...(item.businessDefinition ? { description: item.businessDefinition } : {}),
           section: item.section === 'kind' ? kind : translate(item.section),
           value: envelopeJson(envelope),

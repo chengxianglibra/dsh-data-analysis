@@ -5,16 +5,20 @@ import {
   refKey,
   type SemanticRef,
 } from '../semantic-reference/contracts.ts'
-import { type ComputationDefinition, parseComputation } from './definition.ts'
+import {
+  type ComputationDefinition,
+  type DisplayField,
+  parseComputation,
+  parseDisplayField,
+} from './definition.ts'
+
+export type { DisplayField } from './definition.ts'
 
 export const BROWSER_ENDPOINT = 'semantic-browser/catalog'
+export const CATALOG_FORMAT_VERSION = 1
 export const CATALOG_MAX_BYTES = 32 * 1024 * 1024
 export const CATALOG_ERROR_SCHEMA = 'marivo.semantic_catalog_error/v1'
 const CATALOG_ERROR_MAX_CHARS = 16 * 1024
-export interface DisplayField {
-  readonly name: string
-  readonly value: string
-}
 export interface ObjectRelation {
   readonly field: string
   readonly ref: SemanticRef
@@ -31,6 +35,7 @@ export interface SemanticObjectView {
   readonly relations: readonly ObjectRelation[]
 }
 export interface CatalogProjection {
+  readonly formatVersion: typeof CATALOG_FORMAT_VERSION
   readonly fingerprint: string
   readonly kinds: readonly string[]
   readonly objects: readonly SemanticObjectView[]
@@ -57,7 +62,8 @@ function nullable(value: unknown): string | null {
   return value === null ? null : text(value)
 }
 export function parseCatalogProjection(value: unknown): CatalogProjection {
-  const r = closed(value, ['fingerprint', 'kinds', 'objects'])
+  requireCatalogFormatVersion(value)
+  const r = closed(value, ['formatVersion', 'fingerprint', 'kinds', 'objects'])
   const kinds = array(r.kinds, 128).map((item) => boundedText(item, 128))
   const objects = array(r.objects, 100_000).map((item): SemanticObjectView => {
     const row = closed(item, [
@@ -84,10 +90,7 @@ export function parseCatalogProjection(value: unknown): CatalogProjection {
       definition: nullable(row.definition),
       guardrails: array(row.guardrails, 100_000).map(text),
       source: { file: text(source.file), line: source.line as number, symbol: text(source.symbol) },
-      fields: array(row.fields, 128).map((value) => {
-        const field = closed(value, ['name', 'value'])
-        return { name: boundedText(field.name, 128), value: text(field.value) }
-      }),
+      fields: array(row.fields, 128).map((value) => parseDisplayField(value, CATALOG_MAX_BYTES)),
       relations: array(row.relations, 100_000).map((value) => {
         const relation = closed(value, ['field', 'ref'])
         return { field: boundedText(relation.field, 128), ref: parseRef(relation.ref) }
@@ -99,7 +102,18 @@ export function parseCatalogProjection(value: unknown): CatalogProjection {
     new Set(objects.map((x) => refKey(x.ref))).size !== objects.length
   )
     throw new Error('invalid-catalog')
-  return { fingerprint: boundedText(r.fingerprint, 256), kinds, objects }
+  return {
+    formatVersion: CATALOG_FORMAT_VERSION,
+    fingerprint: boundedText(r.fingerprint, 256),
+    kinds,
+    objects,
+  }
+}
+function requireCatalogFormatVersion(value: unknown): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new Error('invalid-catalog')
+  if (!('formatVersion' in value) || value.formatVersion !== CATALOG_FORMAT_VERSION)
+    throw new Error('semantic-browser-version-mismatch')
 }
 export function parseCatalogFailure(value: unknown): CatalogFailure | undefined {
   try {
@@ -115,7 +129,9 @@ export function parseCatalogFailure(value: unknown): CatalogFailure | undefined 
   }
 }
 export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
+  requireCatalogFormatVersion(value)
   const r = closed(value, [
+    'formatVersion',
     'workspaceId',
     'projectRoot',
     'environmentFingerprint',
@@ -127,7 +143,12 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   const loadedAt = boundedText(r.loadedAt, 64)
   if (!Number.isFinite(Date.parse(loadedAt))) throw new Error('invalid-catalog')
   return {
-    ...parseCatalogProjection({ fingerprint: r.fingerprint, kinds: r.kinds, objects: r.objects }),
+    ...parseCatalogProjection({
+      formatVersion: r.formatVersion,
+      fingerprint: r.fingerprint,
+      kinds: r.kinds,
+      objects: r.objects,
+    }),
     workspaceId: boundedText(r.workspaceId, 256),
     projectRoot: boundedText(r.projectRoot, 8192),
     environmentFingerprint: boundedText(r.environmentFingerprint, 256),

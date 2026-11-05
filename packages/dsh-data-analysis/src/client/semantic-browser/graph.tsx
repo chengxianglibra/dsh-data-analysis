@@ -1,5 +1,6 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 
+import { CrosshairIcon, PlusIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
 import { useId, useMemo, useRef, useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
@@ -72,6 +73,7 @@ export function ObjectGraph({ object, objects, navigate }) {
     <div className="sb-graph">
       <div className="sb-actions">
         <Button variant="outline" type="button" onClick={() => setDepth((d) => d + 1)}>
+          <PlusIcon data-icon="inline-start" aria-hidden="true" />
           {t('marivo.semantic.expand-one-more-level')}
         </Button>
         <Button
@@ -81,7 +83,7 @@ export function ObjectGraph({ object, objects, navigate }) {
           size="icon"
           onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.25) }))}
         >
-          ＋
+          <ZoomInIcon aria-hidden="true" />
         </Button>
         <Button
           variant="outline"
@@ -90,7 +92,7 @@ export function ObjectGraph({ object, objects, navigate }) {
           size="icon"
           onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.4, c.scale / 1.25) }))}
         >
-          −
+          <ZoomOutIcon aria-hidden="true" />
         </Button>
         <Button
           variant="outline"
@@ -100,6 +102,7 @@ export function ObjectGraph({ object, objects, navigate }) {
             setCamera({ x: 0, y: 0, scale: 1 })
           }}
         >
+          <CrosshairIcon data-icon="inline-start" aria-hidden="true" />
           {t('marivo.semantic.center-graph')}
         </Button>
       </div>
@@ -194,7 +197,8 @@ export function ObjectGraph({ object, objects, navigate }) {
                 )}
                 <title>
                   {edge.from} →{' '}
-                  {edge.fields.map((field) => fieldLabels[field] ?? field).join(' / ')} → {edge.to}
+                  {edge.fields.map((field) => t(fieldLabels[field] ?? field)).join(' / ')} →{' '}
+                  {edge.to}
                 </title>
               </g>
             )
@@ -207,7 +211,7 @@ export function ObjectGraph({ object, objects, navigate }) {
                 key={node.key}
                 role="button"
                 tabIndex={0}
-                aria-label={t('marivo.semantic.view-value', { p0: item.name })}
+                aria-label={t('marivo.semantic.view-value', { p0: node.key })}
                 onClick={() => navigate(node.key)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -250,18 +254,25 @@ export function ObjectGraph({ object, objects, navigate }) {
         </g>
       </svg>
       <details>
-        <summary>
-          {t('marivo.semantic.relationships')}
-          {graph.edges.length}）
-        </summary>
+        <summary>{t('marivo.semantic.relationships', { p0: graph.edges.length })}</summary>
         <ul className="sb-relation-list">
           {graph.edges.map((edge) => (
             <li key={`${edge.from}/${edge.field}/${edge.to}`}>
-              <Button variant="link" type="button" onClick={() => navigate(edge.from)}>
+              <Button
+                variant="link"
+                type="button"
+                title={edge.from}
+                onClick={() => navigate(edge.from)}
+              >
                 {objects.get(edge.from).name}
               </Button>
               <span>{t(fieldLabels[edge.field] ?? edge.field)} →</span>
-              <Button variant="link" type="button" onClick={() => navigate(edge.to)}>
+              <Button
+                variant="link"
+                type="button"
+                title={edge.to}
+                onClick={() => navigate(edge.to)}
+              >
                 {objects.get(edge.to).name}
               </Button>
             </li>

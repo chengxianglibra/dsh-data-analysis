@@ -176,3 +176,48 @@ test('candidate display uses the same Chinese labels as search', async () => {
     assert.ok(rows.some((row) => row.name === `${label} · sales.${kind}`))
   }
 })
+
+test('candidate titles preserve distinct catalog names and full typed paths', async () => {
+  const source = createSemanticReferenceSource({
+    async call() {
+      return {
+        ok: true,
+        value: {
+          environmentFingerprint: 'fp-a',
+          items: [
+            { ...candidate('sales.revenue', 'metric', 'Revenue after refunds'), section: 'kind' },
+            { ...candidate('sales.net', 'metric'), name: 'Net revenue', section: 'strict' },
+            { ...candidate('other.net', 'metric'), name: 'Net revenue', section: 'recent' },
+          ],
+        },
+      }
+    },
+  })
+  const rows = await source.candidates(
+    { sessionId: 'a' },
+    { query: '', signal: new AbortController().signal },
+  )
+  assert.deepEqual(
+    rows.map(({ name, label, description, section }) => ({ name, label, description, section })),
+    [
+      {
+        name: '指标 · sales.revenue',
+        label: undefined,
+        description: 'Revenue after refunds',
+        section: '指标',
+      },
+      {
+        name: '指标 · sales.net',
+        label: 'Net revenue',
+        description: undefined,
+        section: '语义对象',
+      },
+      {
+        name: '指标 · other.net',
+        label: 'Net revenue',
+        description: undefined,
+        section: '最近 7 天常用',
+      },
+    ],
+  )
+})

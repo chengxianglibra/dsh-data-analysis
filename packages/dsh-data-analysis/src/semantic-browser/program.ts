@@ -1,4 +1,5 @@
 import { CATALOG_READ_HELPERS } from '../semantic-reference/catalog-program.ts'
+import { CATALOG_FORMAT_VERSION } from './contracts.ts'
 
 /** Explicit projection of public captured definitions; never reads source rows or credentials. */
 export const BROWSER_CATALOG_PROGRAM = String.raw`
@@ -32,10 +33,15 @@ def display(value):
     if isinstance(value, str): return value
     return json.dumps(value, ensure_ascii=False, indent=2)
 
+def display_field(name, value):
+    result = {"name": name, "value": display(value)}
+    if isinstance(value, (list, dict)): result["structured"] = True
+    return result
+
 def project(entry):
     payload = entry.to_dict()
     definition, provenance = payload["definition"], payload["provenance"]
-    fields = [{"name": name, "value": display(definition[name])}
+    fields = [display_field(name, definition[name])
               for name in FIELDS[entry.kind].split() if definition.get(name) is not None]
     # Project table identity only; file locations may contain signed URLs or credentials.
     if entry.kind == "entity":
@@ -61,6 +67,11 @@ def project(entry):
             for item in value.values(): field_refs(item, field)
     for name in FIELDS[entry.kind].split():
         field_refs(definition.get(name), name)
+    # MetricTimeBinding declares exact refs in field, path and entity_default.
+    if entry.kind == "metric":
+        for binding in definition.get("time_bindings", []):
+            for name in ("field", "path", "entity_default"):
+                field_refs(binding.get(name), "time_bindings")
     relations = list({(r["field"], r["ref"]["kind"], r["ref"]["path"]): r for r in relations}.values())
     computation = None
     if entry.kind in ("metric", "measure", "dimension", "time_dimension"):
@@ -69,7 +80,7 @@ def project(entry):
             "ref": wire_ref(entry),
             "catalog_definition_fingerprint": provenance["definition_fingerprint"],
             "expression": definition.get("formula", definition.get("expression", "")),
-            "facts": [{"name": name, "value": display(definition[name])}
+            "facts": [display_field(name, definition[name])
                       for name in ("reductions", "conditions", "time_bindings", "null_rules", "facts")
                       if definition.get(name)],
         }
@@ -85,6 +96,7 @@ try:
     with contextlib.redirect_stdout(DiscardOutput()), contextlib.redirect_stderr(DiscardOutput()):
         catalog = ms.load(workspace_dir=sys.argv[1])
         result = {
+            "formatVersion": ${CATALOG_FORMAT_VERSION},
             "fingerprint": catalog.definition_fingerprint,
             "kinds": [kind.value for kind in SemanticKind],
             "objects": [project(entry) for entry in pages(lambda cursor: catalog.search(limit=100, cursor=cursor))],

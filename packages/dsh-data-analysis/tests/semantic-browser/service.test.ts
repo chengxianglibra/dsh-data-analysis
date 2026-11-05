@@ -27,7 +27,7 @@ test('reads registered Workspace without an Agent; deletion, cancellation, overr
   t.after(() => rm(root, { recursive: true, force: true }))
   const fixture = fakeRunner(),
     requests: MarivoCheckedRunRequest[] = []
-  const { fingerprint, kinds, objects } = snapshot()
+  const { formatVersion, fingerprint, kinds, objects } = snapshot()
   let present = true,
     removeDuringRead = false
   const service = new SemanticBrowserService({
@@ -43,7 +43,7 @@ test('reads registered Workspace without an Agent; deletion, cancellation, overr
           exitCode: 0,
           signal: null,
           durationMs: 0,
-          stdout: Buffer.from(JSON.stringify({ fingerprint, kinds, objects })),
+          stdout: Buffer.from(JSON.stringify({ formatVersion, fingerprint, kinds, objects })),
           stderr: Buffer.alloc(0),
         }
       },

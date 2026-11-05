@@ -154,6 +154,20 @@ test('failed refresh preserves exact snapshot and navigation; reconnect clears h
   assert.deepEqual(model.getSnapshot().views, {})
   assert.equal(model.getSnapshot().workspaceId, '')
 })
+test('an older host response reports a version mismatch and retains the last good snapshot', async () => {
+  const { calls, model } = setup()
+  model.show('a')
+  calls[0]!.resolve({ ok: true, value: snapshot() })
+  await tick()
+  const previous = model.getSnapshot().views.a!.snapshot
+  const { formatVersion: _formatVersion, ...oldHostSnapshot } = snapshot()
+  void model.refresh()
+  calls[1]!.resolve({ ok: true, value: oldHostSnapshot })
+  await tick()
+  assert.equal(model.getSnapshot().views.a!.snapshot, previous)
+  assert.equal(model.getSnapshot().views.a!.error, 'marivo.semantic.catalog-version-mismatch')
+  model.dispose()
+})
 test('search combines domain/type, unicode and full definitions; no reference collisions', () => {
   const a = object(),
     b = { ...object('revenue', 'measure'), domain: 'ops' }

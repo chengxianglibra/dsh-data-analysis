@@ -6,13 +6,38 @@ import {
   type SemanticRef,
 } from '../semantic-reference/contracts.ts'
 
+/** Retain the original text and identify values serialized from a list or mapping. */
+export interface DisplayField {
+  readonly name: string
+  readonly value: string
+  readonly structured?: true
+}
+
+export function parseDisplayField(input: unknown, max: number): DisplayField {
+  const hasStructure =
+    typeof input === 'object' && input !== null && Object.hasOwn(input, 'structured')
+  const field = closed(input, hasStructure ? ['name', 'value', 'structured'] : ['name', 'value'])
+  const name = boundedText(field.name, 128)
+  const value = boundedText(field.value, max, true)
+  if (!hasStructure) return { name, value }
+  if (field.structured !== true) throw new Error('invalid-display-field')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return { name, value }
+  }
+  if (typeof parsed !== 'object' || parsed === null) return { name, value }
+  return { name, value, structured: true }
+}
+
 /** Plugin display projection of captured public Catalog definitions, never an executable AST. */
 export interface ComputationDefinition {
   readonly schema: 'dsh-data-analysis-computation/v1'
   readonly ref: SemanticRef
   readonly catalog_definition_fingerprint: string
   readonly expression: string
-  readonly facts: readonly { readonly name: string; readonly value: string }[]
+  readonly facts: readonly DisplayField[]
 }
 const factNames = new Set(['reductions', 'conditions', 'time_bindings', 'null_rules', 'facts'])
 export function parseComputation(
@@ -37,10 +62,9 @@ export function parseComputation(
   if (!Array.isArray(r.facts) || r.facts.length > factNames.size)
     throw new Error('invalid-definition')
   const facts = r.facts.map((item) => {
-    const field = closed(item, ['name', 'value'])
-    const name = boundedText(field.name, 128)
-    if (!factNames.has(name)) throw new Error('invalid-definition-field')
-    return { name, value: boundedText(field.value, 1024 * 1024, true) }
+    const field = parseDisplayField(item, 1024 * 1024)
+    if (!factNames.has(field.name)) throw new Error('invalid-definition-field')
+    return field
   })
   if (new Set(facts.map((item) => item.name)).size !== facts.length)
     throw new Error('invalid-definition-field')

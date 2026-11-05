@@ -1,5 +1,29 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 
+import {
+  ArrowLeftIcon,
+  BoxIcon,
+  CalendarDaysIcon,
+  ChevronDownIcon,
+  Clock3Icon,
+  Columns3Icon,
+  CopyIcon,
+  DatabaseIcon,
+  FolderIcon,
+  HashIcon,
+  InfoIcon,
+  KeyRoundIcon,
+  Layers2Icon,
+  Link2Icon,
+  PlusIcon,
+  RulerIcon,
+  SearchIcon,
+  Share2Icon,
+  Table2Icon,
+  TagIcon,
+  TerminalIcon,
+  UserRoundIcon,
+} from 'lucide-react'
 import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
@@ -26,6 +50,93 @@ import { fieldLabels, kindLabels } from './labels.ts'
 import { countObjectsByKind, emptyView, filterObjects, PAGE_SIZE } from './model.ts'
 import { FieldValue } from './reference-link.tsx'
 import { browserStyles } from './styles.ts'
+
+// The overview highlights declared facts needed to understand each kind. The
+// definition tab retains the complete Catalog projection.
+const overviewFields = {
+  domain: ['owner', 'default'],
+  datasource: ['backend_type'],
+  entity: [
+    'datasource',
+    'source_kind',
+    'source_table',
+    'source_database',
+    'primary_key',
+    'default_time',
+    'versioning',
+  ],
+  dimension: ['entity', 'unit', 'additivity', 'default_time', 'parse', 'sample_interval'],
+  measure: ['entity', 'unit', 'additivity', 'default_time', 'parse', 'sample_interval'],
+  time_dimension: ['entity', 'parse', 'is_default_time', 'sample_interval'],
+  metric: ['roots', 'unit'],
+  relationship: ['from_entity', 'to_entity', 'keys', 'cardinality'],
+  period_calendar: ['date', 'boundary_timezone', 'coverage'],
+  temporal_set: ['occurrence_id', 'start', 'end', 'category', 'boundary_timezone', 'coverage'],
+}
+
+const kindIcons = {
+  domain: FolderIcon,
+  datasource: DatabaseIcon,
+  entity: Table2Icon,
+  dimension: Columns3Icon,
+  measure: RulerIcon,
+  time_dimension: Clock3Icon,
+  metric: HashIcon,
+  relationship: Link2Icon,
+  period_calendar: CalendarDaysIcon,
+  temporal_set: CalendarDaysIcon,
+}
+
+const overviewFieldIcons = {
+  domain: Layers2Icon,
+  roots: BoxIcon,
+  entity: BoxIcon,
+  datasource: DatabaseIcon,
+  backend_type: DatabaseIcon,
+  source_kind: DatabaseIcon,
+  source_table: Table2Icon,
+  source_database: DatabaseIcon,
+  primary_key: KeyRoundIcon,
+  owner: UserRoundIcon,
+  unit: TagIcon,
+  default_time: Clock3Icon,
+  is_default_time: Clock3Icon,
+  date: CalendarDaysIcon,
+  boundary_timezone: Clock3Icon,
+  coverage: CalendarDaysIcon,
+  sample_interval: Clock3Icon,
+  from_entity: BoxIcon,
+  to_entity: BoxIcon,
+  keys: KeyRoundIcon,
+  cardinality: Link2Icon,
+  occurrence_id: KeyRoundIcon,
+  start: Clock3Icon,
+  end: Clock3Icon,
+  category: TagIcon,
+}
+
+function OverviewFields({ fields, object, objects, navigate }) {
+  const t = useCopy()
+  return (
+    <dl className="sb-overview-fields">
+      {fields.map((field, index) => {
+        const Icon = overviewFieldIcons[field.name] ?? Layers2Icon
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: Snapshot fields may repeat and do not contain component state.
+          <div className="sb-overview-row" key={`${field.name}/${index}`}>
+            <dt className="sb-overview-key" title={field.name}>
+              <Icon className="sb-overview-icon" aria-hidden="true" />
+              <span>{t(fieldLabels[field.name] ?? field.name)}</span>
+            </dt>
+            <dd className="sb-overview-value">
+              <FieldValue field={field} object={object} objects={objects} navigate={navigate} />
+            </dd>
+          </div>
+        )
+      })}
+    </dl>
+  )
+}
 
 function Fields({ fields, object, objects, navigate }) {
   const t = useCopy()
@@ -73,60 +184,95 @@ function ObjectDetail({
     }
   }
   const source = `${object.source.file}${object.source.line ? `:${object.source.line}` : ''}`
-  const definitionFields = object.fields.filter((field) => field.value)
+  const KindIcon = kindIcons[object.ref.kind] ?? BoxIcon
+  const definitionFields = object.fields.filter(
+    (field) => field.value && !(object.computation && field.name === 'dependencies'),
+  )
+  const overviewNames = overviewFields[object.ref.kind] ?? []
+  const summaryFields = overviewNames.flatMap((name) =>
+    object.fields.filter((field) => field.name === name && field.value),
+  )
+  if (object.ref.kind !== 'domain' && object.ref.kind !== 'datasource') {
+    summaryFields.unshift({
+      name: 'domain',
+      value: object.domain ?? t('marivo.semantic.no-domain-specified'),
+    })
+  }
+  const relationGroups = new Map()
+  for (const relation of object.relations) {
+    const group = relationGroups.get(relation.field) ?? []
+    group.push(relation)
+    relationGroups.set(relation.field, group)
+  }
   return (
     <Card>
       <CardContent className="sb-detail-content">
-        <div className="sb-actions">
+        <div className="sb-detail-navigation">
           <Button
             variant="outline"
             type="button"
             className="sb-back-list"
             onClick={() => model.patch({ selected: '' })}
           >
+            <ArrowLeftIcon data-icon="inline-start" aria-hidden="true" />
             {t('marivo.semantic.back-to-list')}
           </Button>
-          <Button
-            variant="outline"
-            type="button"
-            disabled={!view.history.length}
-            onClick={() => model.back()}
-          >
-            {t('marivo.semantic.back-to-previous-object')}
-          </Button>
-          <Button variant="outline" type="button" onClick={() => copy(key)}>
-            {t('marivo.semantic.copy-reference')}
-          </Button>
-          <Button
-            variant="outline"
-            type="button"
-            disabled={!onAsk || questionPending}
-            onClick={onAsk}
-            title={
-              !onAsk
-                ? t('marivo.semantic.no-input-is-available-for-the-session-owning-this')
-                : undefined
-            }
-          >
-            {questionPending ? t('marivo.semantic.adding') : t('marivo.semantic.add-to-question')}
-          </Button>
-          <span role="status" className="sb-muted">
-            {t(notice)}
-          </span>
+          {!!view.history.length && (
+            <Button variant="ghost" type="button" onClick={() => model.back()}>
+              <ArrowLeftIcon data-icon="inline-start" aria-hidden="true" />
+              {t('marivo.semantic.back-to-previous-object')}
+            </Button>
+          )}
         </div>
-        <Badge variant="secondary">{t(kindLabels[object.ref.kind] ?? object.ref.kind)}</Badge>
-        <CardHeader>
-          <CardTitle role="heading" aria-level={2}>
-            {object.name}
-          </CardTitle>
-          <CardDescription className="sb-ref">{key}</CardDescription>
-        </CardHeader>
+        <div className="sb-detail-top">
+          <div className="sb-detail-identity">
+            <span
+              className="sb-kind-icon"
+              role="img"
+              aria-label={t(kindLabels[object.ref.kind] ?? object.ref.kind)}
+            >
+              <KindIcon aria-hidden="true" />
+            </span>
+            <CardHeader className="sb-identity-text">
+              <CardTitle role="heading" aria-level={2}>
+                {object.name}
+              </CardTitle>
+              <CardDescription className="sb-ref">{key}</CardDescription>
+            </CardHeader>
+          </div>
+          <div className="sb-detail-actions">
+            <Button variant="outline" type="button" onClick={() => copy(key)}>
+              <CopyIcon data-icon="inline-start" aria-hidden="true" />
+              {t('marivo.semantic.copy-reference')}
+            </Button>
+            <Button
+              type="button"
+              disabled={!onAsk || questionPending}
+              onClick={onAsk}
+              title={
+                !onAsk
+                  ? t('marivo.semantic.no-input-is-available-for-the-session-owning-this')
+                  : undefined
+              }
+            >
+              <PlusIcon data-icon="inline-start" aria-hidden="true" />
+              {questionPending ? t('marivo.semantic.adding') : t('marivo.semantic.add-to-question')}
+            </Button>
+          </div>
+        </div>
+        <span role="status" className="sb-muted">
+          {t(notice)}
+        </span>
         <TabsRoot
           value={view.tab}
           onValueChange={(tab) => model.patch({ tab })}
           activationMode="manual"
         >
-          <TabsList className="sb-tabs" aria-label={t('marivo.semantic.object-detail-categories')}>
+          <TabsList
+            variant="line"
+            className="sb-tabs"
+            aria-label={t('marivo.semantic.object-detail-categories')}
+          >
             {[
               ['overview', t('marivo.semantic.overview')],
               ['definition', t('marivo.semantic.definition')],
@@ -143,41 +289,35 @@ function ObjectDetail({
             hidden={view.tab !== 'overview'}
             tabIndex={view.tab === 'overview' ? 0 : -1}
           >
-            <h3>{t('marivo.semantic.business-definition')}</h3>
-            <p>{object.definition || t('marivo.semantic.no-business-definition')}</p>
-            <Fields
-              object={object}
-              objects={objects}
-              navigate={navigate}
-              fields={[
-                {
-                  name: 'domain',
-                  value: object.domain ?? t('marivo.semantic.no-domain-specified'),
-                },
-                ...object.fields.filter((field) =>
-                  [
-                    'unit',
-                    'metric_type',
-                    'entity',
-                    'datasource',
-                    'backend_type',
-                    'owner',
-                    'granularity',
-                    'additivity',
-                  ].includes(field.name),
-                ),
-              ]}
-            />
-            {!!object.guardrails.length && (
-              <>
-                <h3>{t('marivo.semantic.usage-constraints')}</h3>
-                <ul>
-                  {[...new Set(object.guardrails)].map((text) => (
-                    <li key={text}>{text}</li>
-                  ))}
-                </ul>
-              </>
-            )}
+            <div className="sb-overview">
+              <section className="sb-overview-section">
+                <h3>{t('marivo.semantic.business-definition')}</h3>
+                <p className="sb-overview-description">
+                  {object.definition || t('marivo.semantic.no-business-definition')}
+                </p>
+              </section>
+              {!!summaryFields.length && (
+                <section className="sb-overview-section">
+                  <h3>{t('marivo.semantic.core-properties')}</h3>
+                  <OverviewFields
+                    object={object}
+                    objects={objects}
+                    navigate={navigate}
+                    fields={summaryFields}
+                  />
+                </section>
+              )}
+              {!!object.guardrails.length && (
+                <section className="sb-overview-section">
+                  <h3>{t('marivo.semantic.usage-constraints')}</h3>
+                  <ul className="sb-overview-guardrails">
+                    {[...new Set(object.guardrails)].map((text) => (
+                      <li key={text}>{text}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
           </TabsContent>
           <TabsContent
             value="definition"
@@ -192,13 +332,9 @@ function ObjectDetail({
                 navigate={(key) => navigate(key)}
               />
             )}
-            {!!definitionFields.length && (
+            {!object.computation && !!definitionFields.length && (
               <section aria-label={t('marivo.semantic.additional-properties')}>
-                <h3>
-                  {object.computation
-                    ? t('marivo.semantic.additional-properties')
-                    : t('marivo.semantic.semantic-properties')}
-                </h3>
+                <h3>{t('marivo.semantic.semantic-properties')}</h3>
                 <Fields
                   fields={definitionFields}
                   object={object}
@@ -207,9 +343,41 @@ function ObjectDetail({
                 />
               </section>
             )}
-            <h3>{t('marivo.semantic.definition-location')}</h3>
-            <p className="sb-ref">{source}</p>
-            <p className="sb-ref">{object.source.symbol}</p>
+            {(source ||
+              object.source.symbol ||
+              (object.computation && definitionFields.length)) && (
+              <details className="sb-source">
+                <summary>
+                  <TerminalIcon className="sb-fact-icon" aria-hidden="true" />
+                  <span>
+                    {t(
+                      object.computation
+                        ? 'marivo.semantic.properties-and-source'
+                        : 'marivo.semantic.definition-location',
+                    )}
+                  </span>
+                  <ChevronDownIcon className="sb-disclosure-icon" aria-hidden="true" />
+                </summary>
+                <div className="sb-source-content">
+                  {object.computation && !!definitionFields.length && (
+                    <section aria-label={t('marivo.semantic.additional-properties')}>
+                      <h3>{t('marivo.semantic.additional-properties')}</h3>
+                      <Fields
+                        fields={definitionFields}
+                        object={object}
+                        objects={objects}
+                        navigate={navigate}
+                      />
+                    </section>
+                  )}
+                  {(source || object.source.symbol) && object.computation && (
+                    <h3>{t('marivo.semantic.definition-location')}</h3>
+                  )}
+                  {source && <p className="sb-ref">{source}</p>}
+                  {object.source.symbol && <p className="sb-ref">{object.source.symbol}</p>}
+                </div>
+              </details>
+            )}
             {object.ref.kind === 'datasource' && (
               <p className="sb-muted">
                 {t('marivo.semantic.only-the-datasource-type-is-shown-here-without-connection')}
@@ -227,49 +395,98 @@ function ObjectDetail({
             hidden={view.tab !== 'relations'}
             tabIndex={view.tab === 'relations' ? 0 : -1}
           >
-            <p className="sb-muted">
-              {t(
-                'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
+            <div className="sb-relations">
+              <Alert className="sb-relations-note" role="note">
+                <InfoIcon className="sb-relations-note-icon" aria-hidden="true" />
+                <div className="sb-relations-note-copy">
+                  <strong>{t('marivo.semantic.declared-relations-title')}</strong>
+                  <AlertDescription>
+                    {t(
+                      'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
+                    )}
+                  </AlertDescription>
+                </div>
+                {!!object.relations.length && (
+                  <Button
+                    className="sb-relations-graph-action"
+                    variant="outline"
+                    type="button"
+                    aria-pressed={graph}
+                    onClick={() => setGraph((x) => !x)}
+                  >
+                    <Share2Icon data-icon="inline-start" aria-hidden="true" />
+                    {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
+                  </Button>
+                )}
+              </Alert>
+              {!!object.relations.length && graph && (
+                <ObjectGraph
+                  object={object}
+                  objects={objects}
+                  navigate={(next) => navigate(next)}
+                />
               )}
-            </p>
-            <Button
-              variant="outline"
-              type="button"
-              aria-pressed={graph}
-              onClick={() => setGraph((x) => !x)}
-            >
-              {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
-            </Button>
-            {graph && (
-              <ObjectGraph object={object} objects={objects} navigate={(next) => navigate(next)} />
-            )}
-            {!object.relations.length && <p>{t('marivo.semantic.no-relationships-declared')}</p>}
-            <ul className="sb-relation-list">
-              {object.relations.map((relation) => {
-                const target = refKey(relation.ref),
-                  related = objects.get(target)
-                return (
-                  <li key={`${relation.field}/${target}`}>
-                    <span className="sb-muted">
-                      {t(fieldLabels[relation.field] ?? relation.field)}
+              <h3 className="sb-relations-heading">
+                {t('marivo.semantic.relationship-groups-title')}
+              </h3>
+              {!object.relations.length && <p>{t('marivo.semantic.no-relationships-declared')}</p>}
+              {[...relationGroups].map(([field, relations]) => (
+                <details className="sb-relation-group" key={field} open={relations.length <= 6}>
+                  <summary className="sb-relation-group-summary">
+                    <Layers2Icon className="sb-relation-group-icon" aria-hidden="true" />
+                    <span>{t(fieldLabels[field] ?? field)}</span>
+                    <span className="sb-relation-count">
+                      {relations.length} {t('marivo.semantic.objects')}
                     </span>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      disabled={!related}
-                      title={target}
-                      onClick={() => navigate(target)}
-                    >
-                      {related?.name ?? target}
-                    </Button>
-                    <span className="sb-ref">
-                      {target}
-                      {!related ? t('marivo.semantic.object-not-included-in-this-catalog') : ''}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
+                    <ChevronDownIcon className="sb-disclosure-icon" aria-hidden="true" />
+                  </summary>
+                  <ul className="sb-relation-list">
+                    {relations.map((relation) => {
+                      const target = refKey(relation.ref)
+                      const related = objects.get(target)
+                      const RelatedIcon = kindIcons[relation.ref.kind] ?? BoxIcon
+                      return (
+                        <li className="sb-relation-item" key={target}>
+                          <RelatedIcon className="sb-relation-item-icon" aria-hidden="true" />
+                          <div className="sb-relation-item-body">
+                            <Button
+                              className="sb-relation-item-name"
+                              variant="link"
+                              type="button"
+                              disabled={!related}
+                              title={target}
+                              onClick={() => navigate(target)}
+                            >
+                              {related?.name ?? target}
+                            </Button>
+                            {related?.definition && (
+                              <span className="sb-relation-description">{related.definition}</span>
+                            )}
+                            {!related && (
+                              <span className="sb-muted">
+                                {t('marivo.semantic.object-not-included-in-this-catalog')}
+                              </span>
+                            )}
+                          </div>
+                          <span className="sb-relation-item-ref sb-ref">{target}</span>
+                          <Button
+                            className="sb-relation-copy"
+                            variant="ghost"
+                            size="icon"
+                            type="button"
+                            aria-label={`${t('marivo.semantic.copy-reference')}: ${target}`}
+                            title={t('marivo.semantic.copy-reference')}
+                            onClick={() => copy(target)}
+                          >
+                            <CopyIcon aria-hidden="true" />
+                          </Button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </details>
+              ))}
+            </div>
           </TabsContent>
         </TabsRoot>
       </CardContent>
@@ -306,6 +523,10 @@ export function SemanticBrowserPanel({
   )
   const page = Math.min(view.page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1))
   const selected = objects.get(view.selected)
+  useEffect(() => {
+    const detail = panel.current?.querySelector('.sb-detail')
+    if (view.selected && detail) detail.scrollTop = 0
+  }, [view.selected])
   useEffect(() => {
     if (state.open && state.fromReport && snapshot && view.selected)
       panel.current
@@ -444,6 +665,7 @@ export function SemanticBrowserPanel({
                   ))}
                 </NativeSelect>
               </Field>
+              <span className="sb-kind-label">{t('marivo.semantic.kind-filter-label')}</span>
               <ToggleGroup
                 className="sb-kinds"
                 type="single"
@@ -466,15 +688,21 @@ export function SemanticBrowserPanel({
               </ToggleGroup>
             </nav>
             <section className="sb-list" aria-label={t('marivo.semantic.object-list')}>
-              <Input
-                className="sb-search"
-                aria-label={t('marivo.semantic.search-semantic-objects')}
-                placeholder={t('marivo.semantic.search-names-references-and-business-definitions')}
-                value={view.query}
-                onChange={(event) => model.patch({ query: event.target.value, page: 0 })}
-              />
+              <div className="sb-search-wrap">
+                <SearchIcon aria-hidden="true" />
+                <Input
+                  className="sb-search"
+                  aria-label={t('marivo.semantic.search-semantic-objects')}
+                  placeholder={t(
+                    'marivo.semantic.search-names-references-and-business-definitions',
+                  )}
+                  value={view.query}
+                  onChange={(event) => model.patch({ query: event.target.value, page: 0 })}
+                />
+              </div>
               <p className="sb-count">
-                {filtered.length} {t('marivo.semantic.objects')}
+                {filtered.length}{' '}
+                {view.kind ? t(kindLabels[view.kind] ?? view.kind) : t('marivo.semantic.objects')}
               </p>
               {!filtered.length && (
                 <p>{t('marivo.semantic.no-matching-objects-adjust-the-search-or-filters')}</p>
@@ -490,13 +718,13 @@ export function SemanticBrowserPanel({
                     >
                       <span className="sb-object-title">
                         <strong>{item.name}</strong>
-                        <Badge variant="secondary">
-                          {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
-                        </Badge>
+                        {!view.kind && (
+                          <Badge variant="secondary">
+                            {t(kindLabels[item.ref.kind] ?? item.ref.kind)}
+                          </Badge>
+                        )}
                       </span>
-                      <span className="sb-summary">
-                        {item.definition || t('marivo.semantic.no-business-definition')}
-                      </span>
+                      {item.definition && <span className="sb-summary">{item.definition}</span>}
                       <span className="sb-ref">{refKey(item.ref)}</span>
                     </Button>
                   </li>

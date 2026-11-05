@@ -220,11 +220,14 @@ export class SemanticBrowserModel {
         error: undefined,
         ...(index >= 0 ? { page: Math.floor(index / PAGE_SIZE) } : {}),
       })
-    } catch {
+    } catch (error) {
       if (!this.#disposed && !flight.signal.aborted && generation === this.#generation)
         this.patch({
           loading: false,
-          error: 'marivo.semantic.cannot-load-the-semantic-layer-check-the-connection-and',
+          error:
+            error instanceof Error && error.message === 'semantic-browser-version-mismatch'
+              ? 'marivo.semantic.catalog-version-mismatch'
+              : 'marivo.semantic.cannot-load-the-semantic-layer-check-the-connection-and',
         })
     }
   }

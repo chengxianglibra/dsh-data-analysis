@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { parseCatalogProjection } from '../../src/semantic-browser/contracts.ts'
 import { parseComputation } from '../../src/semantic-browser/definition.ts'
+import { snapshot } from './fixtures.ts'
 
 const ref = { schema: 'marivo.semantic_ref/v1' as const, kind: 'metric', path: 'sales.revenue' }
 const payload = {
@@ -33,4 +35,33 @@ test('projection rejects executable values, undeclared facts and unbounded conte
     { ...payload, extra: 'hidden' },
   ])
     assert.throws(() => parseComputation(invalid, ref, 'catalog'))
+})
+
+test('structured facts retain their origin while malformed or scalar JSON remains text', () => {
+  const structured = { name: 'null_rules', value: '[false,0,""]', structured: true }
+  assert.deepEqual(parseComputation({ ...payload, facts: [structured] }, ref, 'catalog')!.facts, [
+    structured,
+  ])
+  for (const value of ['[broken', '123', '"text"']) {
+    assert.deepEqual(
+      parseComputation({ ...payload, facts: [{ ...structured, value }] }, ref, 'catalog')!.facts,
+      [{ name: 'null_rules', value }],
+    )
+  }
+})
+
+test('catalog format marker rejects old and unknown host formats', () => {
+  const { formatVersion, fingerprint, kinds, objects } = snapshot()
+  assert.equal(
+    parseCatalogProjection({ formatVersion, fingerprint, kinds, objects }).formatVersion,
+    1,
+  )
+  assert.throws(
+    () => parseCatalogProjection({ fingerprint, kinds, objects }),
+    /semantic-browser-version-mismatch/,
+  )
+  assert.throws(
+    () => parseCatalogProjection({ formatVersion: 2, fingerprint, kinds, objects }),
+    /semantic-browser-version-mismatch/,
+  )
 })
