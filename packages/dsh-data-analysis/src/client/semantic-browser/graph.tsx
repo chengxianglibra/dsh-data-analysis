@@ -5,6 +5,7 @@ import { useId, useMemo, useRef, useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { Button } from '../ui/controls.tsx'
+import { kindIcon } from './icons.ts'
 import { fieldLabels, kindLabels } from './labels.ts'
 
 export function ObjectGraph({ object, objects, navigate }) {
@@ -105,11 +106,8 @@ export function ObjectGraph({ object, objects, navigate }) {
           <CrosshairIcon data-icon="inline-start" aria-hidden="true" />
           {t('marivo.semantic.center-graph')}
         </Button>
+        <span className="sb-muted">{t('marivo.semantic.graph-depth', { p0: depth })}</span>
       </div>
-      <p className="sb-muted">
-        {t('marivo.semantic.declared-relationships-level')}
-        {depth} {t('marivo.semantic.drag-the-background-to-pan-click-an-object-for')}
-      </p>
       {graph.limited && (
         <p role="status">{t('marivo.semantic.the-graph-shows-at-most-60-objects-see-the')}</p>
       )}
@@ -205,6 +203,7 @@ export function ObjectGraph({ object, objects, navigate }) {
           })}
           {graph.nodes.map((node) => {
             const item = objects.get(node.key)
+            const KindIcon = kindIcon(item.ref.kind)
             return (
               // biome-ignore lint/a11y/useSemanticElements: SVG node with keyboard activation; equivalent HTML buttons are provided below.
               <g
@@ -239,8 +238,16 @@ export function ObjectGraph({ object, objects, navigate }) {
                 >
                   {item.name.length > 18 ? `${item.name.slice(0, 17)}…` : item.name}
                 </text>
+                <KindIcon
+                  x={node.x - 67}
+                  y={node.y + 2}
+                  width="15"
+                  height="15"
+                  color={node.key === root ? 'var(--primary-foreground)' : 'var(--foreground)'}
+                  aria-hidden="true"
+                />
                 <text
-                  x={node.x}
+                  x={node.x + 7}
                   y={node.y + 15}
                   textAnchor="middle"
                   fontSize="12"

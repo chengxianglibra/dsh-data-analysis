@@ -119,9 +119,7 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     const overview = page.getByRole('tabpanel', { name: '概览' })
     assert.equal(await overview.locator('.sb-overview-description').innerText(), airport.definition)
     assert.equal(await overview.locator('dt[title="domain"] + dd').innerText(), airport.domain)
-    await overview
-      .locator('dt[title="roots"] + dd button[title="entity:mobility.yellow_trips"]')
-      .waitFor()
+    assert.equal(await overview.locator('dt[title="roots"]').count(), 0)
     assert.equal(await overview.locator('dt[title="unit"] + dd').innerText(), 'USD')
     const overviewValueStarts: Array<number | null> = await overview
       .locator('.sb-overview-value')
@@ -138,7 +136,7 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
           return range.getBoundingClientRect().left
         }),
       )
-    assert.ok(overviewValueStarts.length >= 3 && overviewValueStarts.every((left) => left !== null))
+    assert.ok(overviewValueStarts.length >= 2 && overviewValueStarts.every((left) => left !== null))
     const starts = overviewValueStarts.filter((left): left is number => left !== null)
     assert.ok(
       Math.max(...starts) - Math.min(...starts) <= 1,
@@ -209,6 +207,19 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     await page.getByRole('tab', { name: '定义', exact: true }).click()
     const averageFare = snapshot?.objects.find((item) => item.ref.path === 'mobility.average_fare')
     assert.ok(averageFare?.computation?.expression)
+    const averageNulls = page
+      .locator('.sb-computation .sb-calculation-node')
+      .first()
+      .locator('.sb-fact-row')
+      .filter({ hasText: '空值规则' })
+    const averageSummary = averageNulls.locator('.sb-null-rule-summary')
+    assert.equal(await averageSummary.locator('li').count(), 2)
+    assert.match(await averageSummary.innerText(), /计算时忽略 NULL/)
+    assert.match(await averageSummary.innerText(), /按源记录计数/)
+    assert.doesNotMatch(await averageSummary.innerText(), /sum\(|count\(|measure:|entity:/)
+    await averageNulls.locator('.sb-null-rule-branches > summary').click()
+    assert.match(await averageNulls.locator('.sb-null-rule-branches').innerText(), /sum\(|count\(/)
+    await page.screenshot({ path: path.join(output, 'average-fare-null-rules.png') })
     const fareFormula = page
       .locator('.sb-computation .sb-calculation-node')
       .first()
@@ -254,32 +265,22 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     const entityGroups = page.locator('.sb-relation-group')
     assert.ok((await entityGroups.count()) > 0)
     await page.screenshot({ path: path.join(output, 'entity-relations.png') })
-    await page.getByRole('tab', { name: '定义', exact: true }).click()
-    await visibleText('source_month')
     const entity = snapshot?.objects.find((item) => item.ref.path === 'mobility.yellow_trips')
     const fields = entity?.fields.find((field) => field.name === 'fields')
     assert.ok(fields?.structured)
     const expectedFields: unknown = JSON.parse(fields.value)
     assert.ok(Array.isArray(expectedFields) && expectedFields.length > 8)
     assert.ok(expectedFields.every((value): value is string => typeof value === 'string'))
-    const fieldList = page.locator('.sb-fields dt[title="fields"] + dd')
-    const moreFields = fieldList.locator(':scope > ul > li.sb-value-more > details')
-    assert.equal(await moreFields.count(), 1)
-    assert.equal(await moreFields.getAttribute('open'), null)
-    assert.equal(await fieldList.locator(':scope > ul > li:not(.sb-value-more) button').count(), 8)
-    await page.screenshot({ path: path.join(output, 'entity-definition.png') })
-    await moreFields.locator('summary').click()
-    const renderedFields = await fieldList
-      .locator('button[title]')
-      .evaluateAll((buttons: Element[]) => buttons.map((button) => button.getAttribute('title')))
-    assert.deepEqual(
-      renderedFields,
-      expectedFields,
-      'expanded field list preserves every reference in order',
-    )
-    await open('time_dimension:mobility.yellow_trips.picked_up_at', 'picked_up_at')
+    const renderedFields = await entityGroups.locator('.sb-relation-item-ref').allTextContents()
+    assert.ok(expectedFields.every((field) => renderedFields.includes(field)))
+    assert.equal(new Set(renderedFields).size, renderedFields.length)
     await page.getByRole('tab', { name: '定义', exact: true }).click()
+    assert.equal(await page.locator('.sb-fields dt[title="fields"]').count(), 0)
+    await page.screenshot({ path: path.join(output, 'entity-definition.png') })
+    await open('time_dimension:mobility.yellow_trips.picked_up_at', 'picked_up_at')
+    await page.getByRole('tab', { name: '概览', exact: true }).click()
     await visibleText('America/New_York')
+    await page.getByRole('tab', { name: '定义', exact: true }).click()
     await page.screenshot({ path: path.join(output, 'time-dimension-definition.png') })
     await open('measure:mobility.yellow_trips.fare_amount', 'fare_amount')
     await page.getByRole('tab', { name: '定义', exact: true }).click()
@@ -324,49 +325,16 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     assert.ok(dependencies?.structured)
     const expectedDependencies: unknown = JSON.parse(dependencies.value)
     assert.ok(Array.isArray(expectedDependencies))
-    const dependencyDetails = page.locator('.sb-computation details.sb-dependencies')
-    assert.equal(await dependencyDetails.getAttribute('open'), null)
-    await dependencyDetails.locator(':scope > summary').click()
-    const actualDependencies = await dependencyDetails
-      .locator('button[title]')
-      .evaluateAll((buttons: Element[]) => buttons.map((button) => button.getAttribute('title')))
-    assert.deepEqual(actualDependencies, expectedDependencies, 'dependency references are complete')
-    await dependencyDetails.locator(':scope > summary').click()
+    assert.ok(expectedDependencies.every((value): value is string => typeof value === 'string'))
+    const actualDependencies = await page.locator('.sb-relation-item-ref').allTextContents()
+    assert.ok(expectedDependencies.every((value) => actualDependencies.includes(value)))
+    assert.equal(await page.locator('.sb-computation details.sb-dependencies').count(), 0)
     const source = page.locator('.sb-detail details.sb-source')
     assert.equal(await source.getAttribute('open'), null)
-    await source.getByText('补充属性与来源', { exact: true }).click()
-    await source.locator('.sb-fields dt[title="unit"]').waitFor()
-    await source.getByText('USD', { exact: true }).waitFor()
-    await source.getByText('Catalog 记录的来源位置', { exact: true }).waitFor()
+    await source.locator(':scope > summary').click()
     assert.ok((await source.locator('.sb-source-content .sb-ref').count()) > 0)
-    const checkSourceAlignment = async () => {
-      const sourceValueStarts: Array<number | null> = await source
-        .locator(':is(dt[title="roots"], dt[title="unit"]) + dd')
-        .evaluateAll((values: Element[]) =>
-          values.map((value) => {
-            const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT)
-            let text = walker.nextNode()
-            while (text && !text.textContent?.trim()) text = walker.nextNode()
-            if (!text?.textContent) return null
-            const start = text.textContent.search(/\S/)
-            const range = document.createRange()
-            range.setStart(text, start)
-            range.setEnd(text, start + 1)
-            return range.getBoundingClientRect().left
-          }),
-        )
-      assert.equal(sourceValueStarts.length, 2)
-      assert.ok(sourceValueStarts.every((left) => left !== null))
-      const sourceStarts = sourceValueStarts.filter((left): left is number => left !== null)
-      assert.ok(
-        Math.max(...sourceStarts) - Math.min(...sourceStarts) <= 1,
-        'supplementary property text shares one left edge',
-      )
-    }
-    await checkSourceAlignment()
     await page.screenshot({ path: path.join(output, 'airport-fees-source-desktop.png') })
     await page.setViewportSize({ width: 390, height: 844 })
-    await checkSourceAlignment()
     await page.screenshot({ path: path.join(output, 'airport-fees-source-mobile.png') })
     await page.setViewportSize({ width: 1613, height: 973 })
     await source.locator(':scope > summary').click()
@@ -383,20 +351,9 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
     await page.getByRole('heading', { name: 'airport_fees', exact: true }).waitFor()
     const referenced = page.locator('.sb-computation section.sb-referenced-definitions')
-    const referencedItem = referenced.locator('.sb-definition-entry').first()
-    const referencedSummary = referencedItem.locator(':scope > summary')
-    assert.equal(await referencedItem.getAttribute('open'), null)
-    await referencedSummary.focus()
-    await page.keyboard.press('Enter')
-    assert.notEqual(await referencedItem.getAttribute('open'), null)
-    assert.ok(await referencedItem.locator('section .sb-calculation-node').isVisible())
+    assert.equal(await referenced.locator('details').count(), 0)
     await page.screenshot({ path: path.join(output, 'airport-fees-definition.png') })
-    await referencedItem.locator('section .sb-calculation-node').scrollIntoViewIfNeeded()
-    await page.screenshot({ path: path.join(output, 'airport-fees-referenced-definition.png') })
-    await referencedSummary.focus()
-    await page.keyboard.press('Enter')
-    assert.equal(await referencedItem.getAttribute('open'), null)
-    await referencedItem
+    await referenced
       .locator('button[title="measure:mobility.yellow_trips.airport_fee_amount"]')
       .click()
     await page.getByRole('heading', { name: 'airport_fee_amount', exact: true }).waitFor()
@@ -432,8 +389,10 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     const renderedRelations = await page.locator('.sb-relation-item-ref').allTextContents()
     assert.deepEqual(
       renderedRelations.slice().sort(),
-      metric.relations.map((relation) => `${relation.ref.kind}:${relation.ref.path}`).sort(),
-      'relation groups retain every Catalog reference',
+      [
+        ...new Set(metric.relations.map((relation) => `${relation.ref.kind}:${relation.ref.path}`)),
+      ].sort(),
+      'relation groups retain each Catalog reference once',
     )
     await page.screenshot({ path: path.join(output, 'metric-relations.png') })
     await page.getByRole('button', { name: '查看关系图' }).click()
@@ -449,11 +408,11 @@ createRoot(document.getElementById('app')).render(<CopyProvider t={translator('z
     await page.screenshot({ path: path.join(output, 'metric-mobile-graph.png') })
     await page.setViewportSize({ width: 1613, height: 973 })
     await open('relationship:mobility.trips_to_pickup_zones', 'trips_to_pickup_zones')
-    await page.getByRole('tab', { name: '定义', exact: true }).click()
+    await page.getByRole('tab', { name: '概览', exact: true }).click()
     await visibleText('pickup_location_id')
     await page.screenshot({ path: path.join(output, 'relationship-definition.png') })
     checks.push(
-      'real Catalog: domain, entity, time dimension, measure, metrics and relationship; airport fees structured facts and referenced definitions, long field list and branches expand completely',
+      'real Catalog: domain, entity, time dimension, measure, metrics and relationship; concise mixed null rules, direct references and complete grouped relationships',
     )
     await page.setViewportSize({ width: 390, height: 844 })
     await page.screenshot({ path: path.join(output, 'relationship-mobile.png') })

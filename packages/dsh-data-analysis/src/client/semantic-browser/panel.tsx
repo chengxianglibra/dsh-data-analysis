@@ -2,27 +2,16 @@
 
 import {
   ArrowLeftIcon,
-  BoxIcon,
-  CalendarDaysIcon,
+  BookOpenTextIcon,
   ChevronDownIcon,
-  Clock3Icon,
-  Columns3Icon,
   CopyIcon,
-  DatabaseIcon,
-  FolderIcon,
-  HashIcon,
-  InfoIcon,
-  KeyRoundIcon,
-  Layers2Icon,
-  Link2Icon,
+  ListFilterIcon,
   PlusIcon,
-  RulerIcon,
   SearchIcon,
   Share2Icon,
-  Table2Icon,
-  TagIcon,
+  ShieldCheckIcon,
+  SlidersHorizontalIcon,
   TerminalIcon,
-  UserRoundIcon,
 } from 'lucide-react'
 import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
@@ -46,81 +35,19 @@ import { ToggleGroup, ToggleGroupItem } from '../ui/primitives/toggle-group.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
 import { ComputationCard, measureDefinitionFields } from './computation.tsx'
 import { ObjectGraph } from './graph.tsx'
+import { fieldIcon, kindIcon } from './icons.ts'
 import { fieldLabels, kindLabels } from './labels.ts'
 import { countObjectsByKind, emptyView, filterObjects, PAGE_SIZE } from './model.ts'
+import { groupRelations, selectObjectFields } from './presentation.ts'
 import { FieldValue } from './reference-link.tsx'
 import { browserStyles } from './styles.ts'
-
-// The overview highlights declared facts needed to understand each kind. The
-// definition tab retains the complete Catalog projection.
-const overviewFields = {
-  domain: ['owner', 'default'],
-  datasource: ['backend_type'],
-  entity: [
-    'datasource',
-    'source_kind',
-    'source_table',
-    'source_database',
-    'primary_key',
-    'default_time',
-    'versioning',
-  ],
-  dimension: ['entity', 'unit', 'additivity', 'default_time', 'parse', 'sample_interval'],
-  measure: ['entity', 'unit', 'additivity', 'default_time', 'parse', 'sample_interval'],
-  time_dimension: ['entity', 'parse', 'is_default_time', 'sample_interval'],
-  metric: ['roots', 'unit'],
-  relationship: ['from_entity', 'to_entity', 'keys', 'cardinality'],
-  period_calendar: ['date', 'boundary_timezone', 'coverage'],
-  temporal_set: ['occurrence_id', 'start', 'end', 'category', 'boundary_timezone', 'coverage'],
-}
-
-const kindIcons = {
-  domain: FolderIcon,
-  datasource: DatabaseIcon,
-  entity: Table2Icon,
-  dimension: Columns3Icon,
-  measure: RulerIcon,
-  time_dimension: Clock3Icon,
-  metric: HashIcon,
-  relationship: Link2Icon,
-  period_calendar: CalendarDaysIcon,
-  temporal_set: CalendarDaysIcon,
-}
-
-const overviewFieldIcons = {
-  domain: Layers2Icon,
-  roots: BoxIcon,
-  entity: BoxIcon,
-  datasource: DatabaseIcon,
-  backend_type: DatabaseIcon,
-  source_kind: DatabaseIcon,
-  source_table: Table2Icon,
-  source_database: DatabaseIcon,
-  primary_key: KeyRoundIcon,
-  owner: UserRoundIcon,
-  unit: TagIcon,
-  default_time: Clock3Icon,
-  is_default_time: Clock3Icon,
-  date: CalendarDaysIcon,
-  boundary_timezone: Clock3Icon,
-  coverage: CalendarDaysIcon,
-  sample_interval: Clock3Icon,
-  from_entity: BoxIcon,
-  to_entity: BoxIcon,
-  keys: KeyRoundIcon,
-  cardinality: Link2Icon,
-  occurrence_id: KeyRoundIcon,
-  start: Clock3Icon,
-  end: Clock3Icon,
-  category: TagIcon,
-}
 
 function OverviewFields({ fields, object, objects, navigate }) {
   const t = useCopy()
   return (
     <dl className="sb-overview-fields">
       {fields.map((field, index) => {
-        const Icon = overviewFieldIcons[field.name] ?? Layers2Icon
+        const Icon = fieldIcon(field.name)
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: Snapshot fields may repeat and do not contain component state.
           <div className="sb-overview-row" key={`${field.name}/${index}`}>
@@ -143,15 +70,21 @@ function Fields({ fields, object, objects, navigate }) {
 
   return (
     <dl className="sb-fields">
-      {fields.map((field, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: Immutable snapshot fields may repeat by calendar level and carry no component state.
-        <Fragment key={`${field.name}/${i}`}>
-          <dt title={field.name}>{t(fieldLabels[field.name] ?? field.name)}</dt>
-          <dd>
-            <FieldValue field={field} object={object} objects={objects} navigate={navigate} />
-          </dd>
-        </Fragment>
-      ))}
+      {fields.map((field, i) => {
+        const Icon = fieldIcon(field.name)
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: Immutable snapshot fields may repeat by calendar level and carry no component state.
+          <Fragment key={`${field.name}/${i}`}>
+            <dt title={field.name}>
+              <Icon className="sb-field-icon" aria-hidden="true" />
+              <span>{t(fieldLabels[field.name] ?? field.name)}</span>
+            </dt>
+            <dd>
+              <FieldValue field={field} object={object} objects={objects} navigate={navigate} />
+            </dd>
+          </Fragment>
+        )
+      })}
     </dl>
   )
 }
@@ -184,30 +117,21 @@ function ObjectDetail({
     }
   }
   const source = `${object.source.file}${object.source.line ? `:${object.source.line}` : ''}`
-  const KindIcon = kindIcons[object.ref.kind] ?? BoxIcon
+  const KindIcon = kindIcon(object.ref.kind)
   const calculationFields = object.computation ? measureDefinitionFields(object) : []
-  const definitionFields = object.fields.filter(
+  const selectedFields = selectObjectFields(object)
+  const definitionFields = selectedFields.definition.filter(
     (field) =>
-      field.value &&
-      !(object.computation && field.name === 'dependencies') &&
-      !calculationFields.includes(field),
+      !(object.computation && field.name === 'dependencies') && !calculationFields.includes(field),
   )
-  const overviewNames = overviewFields[object.ref.kind] ?? []
-  const summaryFields = overviewNames.flatMap((name) =>
-    object.fields.filter((field) => field.name === name && field.value),
-  )
+  const summaryFields = [...selectedFields.overview]
   if (object.ref.kind !== 'domain' && object.ref.kind !== 'datasource') {
     summaryFields.unshift({
       name: 'domain',
       value: object.domain ?? t('marivo.semantic.no-domain-specified'),
     })
   }
-  const relationGroups = new Map()
-  for (const relation of object.relations) {
-    const group = relationGroups.get(relation.field) ?? []
-    group.push(relation)
-    relationGroups.set(relation.field, group)
-  }
+  const relationGroups = groupRelations(object.relations)
   return (
     <Card>
       <CardContent className="sb-detail-content">
@@ -295,14 +219,20 @@ function ObjectDetail({
           >
             <div className="sb-overview">
               <section className="sb-overview-section">
-                <h3>{t('marivo.semantic.business-definition')}</h3>
+                <h3 className="sb-section-heading">
+                  <BookOpenTextIcon aria-hidden="true" />
+                  {t('marivo.semantic.business-definition')}
+                </h3>
                 <p className="sb-overview-description">
                   {object.definition || t('marivo.semantic.no-business-definition')}
                 </p>
               </section>
               {!!summaryFields.length && (
                 <section className="sb-overview-section">
-                  <h3>{t('marivo.semantic.core-properties')}</h3>
+                  <h3 className="sb-section-heading">
+                    <SlidersHorizontalIcon aria-hidden="true" />
+                    {t('marivo.semantic.core-properties')}
+                  </h3>
                   <OverviewFields
                     object={object}
                     objects={objects}
@@ -313,7 +243,10 @@ function ObjectDetail({
               )}
               {!!object.guardrails.length && (
                 <section className="sb-overview-section">
-                  <h3>{t('marivo.semantic.usage-constraints')}</h3>
+                  <h3 className="sb-section-heading">
+                    <ShieldCheckIcon aria-hidden="true" />
+                    {t('marivo.semantic.usage-constraints')}
+                  </h3>
                   <ul className="sb-overview-guardrails">
                     {[...new Set(object.guardrails)].map((text) => (
                       <li key={text}>{text}</li>
@@ -338,7 +271,10 @@ function ObjectDetail({
             )}
             {!object.computation && !!definitionFields.length && (
               <section aria-label={t('marivo.semantic.additional-properties')}>
-                <h3>{t('marivo.semantic.semantic-properties')}</h3>
+                <h3 className="sb-section-heading">
+                  <SlidersHorizontalIcon aria-hidden="true" />
+                  {t('marivo.semantic.semantic-properties')}
+                </h3>
                 <Fields
                   fields={definitionFields}
                   object={object}
@@ -355,8 +291,10 @@ function ObjectDetail({
                   <TerminalIcon className="sb-fact-icon" aria-hidden="true" />
                   <span>
                     {t(
-                      object.computation
-                        ? 'marivo.semantic.properties-and-source'
+                      object.computation && definitionFields.length
+                        ? source || object.source.symbol
+                          ? 'marivo.semantic.properties-and-source'
+                          : 'marivo.semantic.additional-properties'
                         : 'marivo.semantic.definition-location',
                     )}
                   </span>
@@ -365,7 +303,10 @@ function ObjectDetail({
                 <div className="sb-source-content">
                   {object.computation && !!definitionFields.length && (
                     <section aria-label={t('marivo.semantic.additional-properties')}>
-                      <h3>{t('marivo.semantic.additional-properties')}</h3>
+                      <h3 className="sb-section-heading">
+                        <SlidersHorizontalIcon aria-hidden="true" />
+                        {t('marivo.semantic.additional-properties')}
+                      </h3>
                       <Fields
                         fields={definitionFields}
                         object={object}
@@ -374,24 +315,25 @@ function ObjectDetail({
                       />
                     </section>
                   )}
-                  {(source || object.source.symbol) && object.computation && (
-                    <h3>{t('marivo.semantic.definition-location')}</h3>
-                  )}
+                  {(source || object.source.symbol) &&
+                    object.computation &&
+                    !!definitionFields.length && (
+                      <h3 className="sb-section-heading">
+                        <TerminalIcon aria-hidden="true" />
+                        {t('marivo.semantic.definition-location')}
+                      </h3>
+                    )}
                   {source && <p className="sb-ref">{source}</p>}
                   {object.source.symbol && <p className="sb-ref">{object.source.symbol}</p>}
                 </div>
               </details>
             )}
-            {object.ref.kind === 'datasource' && (
-              <p className="sb-muted">
-                {t('marivo.semantic.only-the-datasource-type-is-shown-here-without-connection')}
-              </p>
-            )}
-            {object.ref.kind === 'entity' && (
-              <p className="sb-muted">
-                {t('marivo.semantic.file-sources-show-only-their-type-file-addresses-and')}
-              </p>
-            )}
+            {!object.computation &&
+              !definitionFields.length &&
+              !source &&
+              !object.source.symbol && (
+                <p className="sb-muted">{t('marivo.semantic.not-declared')}</p>
+              )}
           </TabsContent>
           <TabsContent
             value="relations"
@@ -400,19 +342,13 @@ function ObjectDetail({
             tabIndex={view.tab === 'relations' ? 0 : -1}
           >
             <div className="sb-relations">
-              <Alert className="sb-relations-note" role="note">
-                <InfoIcon className="sb-relations-note-icon" aria-hidden="true" />
-                <div className="sb-relations-note-copy">
-                  <strong>{t('marivo.semantic.declared-relations-title')}</strong>
-                  <AlertDescription>
-                    {t(
-                      'marivo.semantic.catalog-declared-relationships-candidate-dimensions-do-not-mean-every',
-                    )}
-                  </AlertDescription>
-                </div>
+              <div className="sb-relations-toolbar">
+                <h3 className="sb-relations-heading sb-section-heading">
+                  <ListFilterIcon aria-hidden="true" />
+                  {t('marivo.semantic.relationship-groups-title')}
+                </h3>
                 {!!object.relations.length && (
                   <Button
-                    className="sb-relations-graph-action"
                     variant="outline"
                     type="button"
                     aria-pressed={graph}
@@ -422,7 +358,7 @@ function ObjectDetail({
                     {graph ? t('marivo.semantic.collapse-graph') : t('marivo.semantic.view-graph')}
                   </Button>
                 )}
-              </Alert>
+              </div>
               {!!object.relations.length && graph && (
                 <ObjectGraph
                   object={object}
@@ -430,66 +366,90 @@ function ObjectDetail({
                   navigate={(next) => navigate(next)}
                 />
               )}
-              <h3 className="sb-relations-heading">
-                {t('marivo.semantic.relationship-groups-title')}
-              </h3>
               {!object.relations.length && <p>{t('marivo.semantic.no-relationships-declared')}</p>}
-              {[...relationGroups].map(([field, relations]) => (
-                <details className="sb-relation-group" key={field} open={relations.length <= 6}>
-                  <summary className="sb-relation-group-summary">
-                    <Layers2Icon className="sb-relation-group-icon" aria-hidden="true" />
-                    <span>{t(fieldLabels[field] ?? field)}</span>
-                    <span className="sb-relation-count">
-                      {relations.length} {t('marivo.semantic.objects')}
-                    </span>
-                    <ChevronDownIcon className="sb-disclosure-icon" aria-hidden="true" />
-                  </summary>
-                  <ul className="sb-relation-list">
-                    {relations.map((relation) => {
-                      const target = refKey(relation.ref)
-                      const related = objects.get(target)
-                      const RelatedIcon = kindIcons[relation.ref.kind] ?? BoxIcon
-                      return (
-                        <li className="sb-relation-item" key={target}>
-                          <RelatedIcon className="sb-relation-item-icon" aria-hidden="true" />
-                          <div className="sb-relation-item-body">
+              {relationGroups.map((group) => {
+                const GroupIcon = fieldIcon(group.field)
+                return (
+                  <details
+                    className="sb-relation-group"
+                    key={group.field}
+                    open={group.items.length <= 6}
+                  >
+                    <summary className="sb-relation-group-summary">
+                      <GroupIcon className="sb-relation-group-icon" aria-hidden="true" />
+                      <span>{t(fieldLabels[group.field] ?? group.field)}</span>
+                      <span className="sb-relation-count">
+                        {group.items.length} {t('marivo.semantic.objects')}
+                      </span>
+                      <ChevronDownIcon className="sb-disclosure-icon" aria-hidden="true" />
+                    </summary>
+                    <ul className="sb-relation-list">
+                      {group.items.map((item) => {
+                        const target = refKey(item.ref)
+                        const related = objects.get(target)
+                        const RelatedIcon = kindIcon(item.ref.kind)
+                        return (
+                          <li className="sb-relation-item" key={target}>
+                            <RelatedIcon className="sb-relation-item-icon" aria-hidden="true" />
+                            <div className="sb-relation-item-body">
+                              <Button
+                                className="sb-relation-item-name"
+                                variant="link"
+                                type="button"
+                                disabled={!related}
+                                title={target}
+                                onClick={() => navigate(target)}
+                              >
+                                {related?.name ?? target}
+                              </Button>
+                              {!!item.roles.length && (
+                                <span className="sb-relation-roles">
+                                  {item.roles.map((role) => (
+                                    <Badge
+                                      variant="secondary"
+                                      key={role.field}
+                                      title={
+                                        role.total > 1
+                                          ? t('marivo.semantic.relation-role-order', {
+                                              p0: t(fieldLabels[role.field] ?? role.field),
+                                              p1: role.positions.join(', '),
+                                              p2: role.total,
+                                            })
+                                          : undefined
+                                      }
+                                    >
+                                      {t(fieldLabels[role.field] ?? role.field)}
+                                      {role.total > 1 &&
+                                        ` ${role.positions.join(',')}/${role.total}`}
+                                    </Badge>
+                                  ))}
+                                </span>
+                              )}
+                              {!related && (
+                                <span className="sb-muted">
+                                  {t('marivo.semantic.object-not-included-in-this-catalog')}
+                                </span>
+                              )}
+                            </div>
+                            <span className="sb-relation-item-ref sb-ref">{target}</span>
                             <Button
-                              className="sb-relation-item-name"
-                              variant="link"
+                              className="sb-relation-copy"
+                              variant="ghost"
+                              size="icon"
                               type="button"
-                              disabled={!related}
-                              title={target}
-                              onClick={() => navigate(target)}
+                              aria-label={`${t('marivo.semantic.copy-reference')}: ${target}`}
+                              title={t('marivo.semantic.copy-reference')}
+                              onClick={() => copy(target)}
                             >
-                              {related?.name ?? target}
+                              <CopyIcon aria-hidden="true" />
                             </Button>
-                            {related?.definition && (
-                              <span className="sb-relation-description">{related.definition}</span>
-                            )}
-                            {!related && (
-                              <span className="sb-muted">
-                                {t('marivo.semantic.object-not-included-in-this-catalog')}
-                              </span>
-                            )}
-                          </div>
-                          <span className="sb-relation-item-ref sb-ref">{target}</span>
-                          <Button
-                            className="sb-relation-copy"
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            aria-label={`${t('marivo.semantic.copy-reference')}: ${target}`}
-                            title={t('marivo.semantic.copy-reference')}
-                            onClick={() => copy(target)}
-                          >
-                            <CopyIcon aria-hidden="true" />
-                          </Button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </details>
-              ))}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </details>
+                )
+              })}
             </div>
           </TabsContent>
         </TabsRoot>

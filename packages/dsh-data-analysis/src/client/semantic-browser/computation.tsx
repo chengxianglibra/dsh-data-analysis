@@ -1,24 +1,14 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 
-import {
-  BanIcon,
-  BracesIcon,
-  CalendarDaysIcon,
-  ChartColumnIcon,
-  ChevronDownIcon,
-  CopyIcon,
-  DatabaseIcon,
-  FilterIcon,
-  Layers2Icon,
-  SigmaIcon,
-  TagIcon,
-} from 'lucide-react'
+import { BracesIcon, ChevronDownIcon, CopyIcon, Layers2Icon, SigmaIcon } from 'lucide-react'
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Button } from '../ui/controls.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/primitives/card.tsx'
+import { fieldIcon, kindIcon } from './icons.ts'
 import { fieldLabels, kindLabels } from './labels.ts'
+import { representedByRelations } from './presentation.ts'
 import { ExpressionText, FieldValue, RefLink, refDisplayName } from './reference-link.tsx'
 
 // Translate only the exact policies emitted by the public Catalog. Unknown rules
@@ -115,20 +105,56 @@ function NullRuleValue({ fact, expression, reductions, object, objects, navigate
     (a, b) => b.length - a.length,
   )
   const rules = value.map((item) => {
-    const branch = branches.find((candidate) => item.startsWith(`${candidate}: `))
+    let branch = branches.find((candidate) => item.startsWith(`${candidate}: `))
+    if (!branch) {
+      // Some snapshots omit a matching reduction. Only split on a known, fully
+      // recognized policy suffix; arbitrary vendor text must remain unchanged.
+      for (const marker of [
+        ': nulls=ignore: ignore NULL contributions; ',
+        ': nulls=error: assert non-NULL demanded contributions; a demanded NULL raises an error; ',
+        ': count counts source rows; empty input returns zero',
+      ]) {
+        const index = item.lastIndexOf(marker)
+        if (index > 0 && readableNullRule(item.slice(index + 2), t) !== null) {
+          branch = item.slice(0, index)
+          break
+        }
+      }
+    }
     const rule = branch ? item.slice(branch.length + 2) : item
-    return { branch, raw: item, text: readableNullRule(rule, t) }
+    return { branch, raw: item, rule, text: readableNullRule(rule, t) }
   })
   if (!rules.length) return t('marivo.semantic.not-declared')
   if (rules.every((rule) => rule.text !== null && rule.text === rules[0].text)) return rules[0].text
-  return [...new Map(rules.map((rule) => [rule.raw, rule])).values()].map((rule) => (
-    <div key={rule.raw}>
-      {rule.text === null ? (
-        <ExpressionText value={rule.raw} object={object} objects={objects} navigate={navigate} />
-      ) : (
-        <>
-          {rules.length > 1 && rule.branch && (
-            <>
+  if (rules.length === 1)
+    return (
+      <ExpressionText value={rules[0].raw} object={object} objects={objects} navigate={navigate} />
+    )
+  const summaries = [...new Map(rules.map((rule) => [rule.text ?? rule.rule, rule])).values()]
+  const branchRules = [
+    ...new Map(rules.filter((rule) => rule.branch).map((rule) => [rule.raw, rule])).values(),
+  ]
+  return (
+    <div className="sb-null-rules">
+      <ul className="sb-null-rule-summary">
+        {summaries.map((rule) => (
+          <li key={rule.text ?? rule.rule}>
+            {rule.text ?? (
+              <ExpressionText
+                value={rule.rule}
+                object={object}
+                objects={objects}
+                navigate={navigate}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+      {!!branchRules.length && (
+        <details className="sb-null-rule-branches">
+          <summary>{t('marivo.semantic.null-rule-branches')}</summary>
+          {branchRules.map((rule) => (
+            <div key={rule.raw}>
               <ExpressionText
                 value={rule.branch}
                 object={object}
@@ -136,24 +162,22 @@ function NullRuleValue({ fact, expression, reductions, object, objects, navigate
                 navigate={navigate}
               />
               :{' '}
-            </>
-          )}
-          {rule.text}
-        </>
+              {rule.text ?? (
+                <ExpressionText
+                  value={rule.rule}
+                  object={object}
+                  objects={objects}
+                  navigate={navigate}
+                />
+              )}
+            </div>
+          ))}
+        </details>
       )}
     </div>
-  ))
+  )
 }
 
-const factIcons = {
-  unit: TagIcon,
-  additivity: SigmaIcon,
-  time_bindings: CalendarDaysIcon,
-  null_rules: BanIcon,
-  conditions: FilterIcon,
-  reductions: SigmaIcon,
-  facts: BracesIcon,
-}
 const factOrder = [
   'unit',
   'additivity',
@@ -170,13 +194,6 @@ export function measureDefinitionFields(object) {
         (field) => (field.name === 'unit' || field.name === 'additivity') && field.value,
       )
     : []
-}
-
-function relatedIcon(kind) {
-  if (kind === 'time_dimension') return CalendarDaysIcon
-  if (kind === 'measure') return ChartColumnIcon
-  if (kind === 'entity' || kind === 'datasource') return DatabaseIcon
-  return Layers2Icon
 }
 
 function repeatsExpression(fact, expression) {
@@ -276,7 +293,7 @@ function DefinitionNode({ object, objects, navigate }) {
         .filter((fact) => !repeatsExpression(fact, definition.expression))
         .sort((a, b) => factOrder.indexOf(a.name) - factOrder.indexOf(b.name))
         .map((fact) => {
-          const Icon = factIcons[fact.name] ?? BracesIcon
+          const Icon = fieldIcon(fact.name)
           if (['unit', 'additivity', 'time_bindings', 'null_rules'].includes(fact.name)) {
             return (
               <div className="sb-fact sb-fact-row" key={fact.name}>
@@ -374,7 +391,10 @@ export function ComputationCard({ object, objects, navigate }) {
     item.computation.facts.length ||
     measureDefinitionFields(item).length
   const visibleRelated = related.filter(hasContent)
-  const dependencies = object.fields?.find((field) => field.name === 'dependencies' && field.value)
+  const dependencies = object.fields?.find(
+    (field) =>
+      field.name === 'dependencies' && field.value && !representedByRelations(field, object),
+  )
   if (!hasContent(object) && !visibleRelated.length && !limited && !dependencies) return null
   return (
     <Card
@@ -383,7 +403,8 @@ export function ComputationCard({ object, objects, navigate }) {
       aria-label={t('marivo.semantic.metric-computation')}
     >
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="sb-section-heading">
+          <SigmaIcon aria-hidden="true" />
           {t(
             object.computation.expression
               ? 'marivo.semantic.formula'
@@ -423,61 +444,39 @@ export function ComputationCard({ object, objects, navigate }) {
             className="sb-referenced-definitions"
             aria-label={t('marivo.semantic.referenced-object-definitions')}
           >
-            <h3>
+            <h3 className="sb-section-heading">
+              <BracesIcon aria-hidden="true" />
               {t('marivo.semantic.referenced-object-definitions')} ({visibleRelated.length}
               {limited ? '+' : ''})
             </h3>
-            <div className="sb-definition-entries">
+            <ul className="sb-definition-entries">
               {visibleRelated.map((child) => {
-                const Icon = relatedIcon(child.ref.kind)
+                const Icon = kindIcon(child.ref.kind)
                 return (
-                  <details className="sb-definition-entry" key={refKey(child.ref)}>
-                    <summary>
-                      <Icon className="sb-related-icon" aria-hidden="true" />
-                      <span className="sb-related-body">
-                        <Button
-                          type="button"
-                          variant="link"
-                          className="sb-related-name"
-                          title={refKey(child.ref)}
-                          aria-description={refKey(child.ref)}
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            navigate(refKey(child.ref))
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
-                          }}
-                        >
-                          {refDisplayName(child.ref, objects)}
-                        </Button>
-                        {child.definition && <span className="sb-muted">{child.definition}</span>}
-                      </span>
-                      <span className="sb-sr-only">
-                        {t(kindLabels[child.ref.kind] ?? child.ref.kind)}
-                      </span>
-                      <ChevronDownIcon className="sb-disclosure-icon" aria-hidden="true" />
-                    </summary>
-                    <section aria-label={refKey(child.ref)}>
-                      <DefinitionNode object={child} objects={objects} navigate={navigate} />
-                      {!!child.guardrails.length && (
-                        <ul>
-                          {[...new Set(child.guardrails)].map((text) => (
-                            <li key={text}>{text}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-                  </details>
+                  <li className="sb-definition-entry" key={refKey(child.ref)}>
+                    <Icon className="sb-related-icon" aria-hidden="true" />
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="sb-related-name"
+                      title={refKey(child.ref)}
+                      aria-description={refKey(child.ref)}
+                      onClick={() => navigate(refKey(child.ref))}
+                    >
+                      {refDisplayName(child.ref, objects)}
+                    </Button>
+                    <span className="sb-sr-only">
+                      {t(kindLabels[child.ref.kind] ?? child.ref.kind)}
+                    </span>
+                  </li>
                 )
               })}
-              {limited && (
-                <p>
-                  {t('marivo.semantic.showing-the-first-40-referenced-definitions-click-an-object')}
-                </p>
-              )}
-            </div>
+            </ul>
+            {limited && (
+              <p>
+                {t('marivo.semantic.showing-the-first-40-referenced-definitions-click-an-object')}
+              </p>
+            )}
           </section>
         )}
       </CardContent>

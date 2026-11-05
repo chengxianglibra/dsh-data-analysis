@@ -202,41 +202,105 @@ try {
   const timeBindings = computation
     .locator('.sb-calculation-node')
     .first()
-    .locator('details.sb-fact')
-    .filter({ has: page.locator(':scope > summary', { hasText: '时间绑定' }) })
-  assert.equal(await timeBindings.getAttribute('open'), null)
-  await timeBindings.locator(':scope > summary').click()
-  const branches = timeBindings.locator('.sb-fact-content .sb-value-map dd > details').first()
-  await branches.locator('summary').click()
-  assert.match(await branches.innerText(), /sum\(measure:sales.orders.amount/)
-  assert.equal(await branches.locator('li').count(), 2)
+    .locator('.sb-fact-row')
+    .filter({ hasText: '时间绑定' })
+  assert.equal(
+    await timeBindings.locator('button[title="time_dimension:sales.orders.ordered_at"]').count(),
+    1,
+  )
   assert.match(await computation.innerText(), /revenue/)
   const relatedRevenue = computation
     .locator('.sb-definition-entry')
-    .filter({ has: page.locator('summary').getByText('metric:sales.revenue', { exact: true }) })
-  const relatedSummary = relatedRevenue.locator(':scope > summary')
-  assert.equal(await relatedRevenue.getAttribute('open'), null)
-  await relatedSummary.focus()
-  await page.keyboard.press('Enter')
-  assert.notEqual(await relatedRevenue.getAttribute('open'), null)
-  const dependency = computation.getByRole('region', { name: 'metric:sales.revenue', exact: true })
-  await dependency.waitFor()
-  await dependency.getByText('时间绑定', { exact: true }).waitFor()
-  await relatedSummary.focus()
-  await page.keyboard.press('Enter')
-  assert.equal(await relatedRevenue.getAttribute('open'), null)
-  await relatedRevenue.getByRole('button', { name: 'metric:sales.revenue', exact: true }).click()
+    .filter({ has: page.locator('button[title="metric:sales.revenue"]') })
+  assert.equal(await relatedRevenue.locator('details, section').count(), 0)
+  await relatedRevenue.locator('button[title="metric:sales.revenue"]').click()
   await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
   await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
   await page.getByRole('heading', { name: 'linear', exact: true }).waitFor()
   for (const key of ['Enter', 'Space']) {
-    const name = page.getByRole('button', { name: 'metric:sales.revenue', exact: true })
+    const name = relatedRevenue.locator('button[title="metric:sales.revenue"]')
     await name.focus()
     await page.keyboard.press(key)
     await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
     await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
     await page.getByRole('heading', { name: 'linear', exact: true }).waitFor()
   }
+  await page.getByLabel('搜索语义对象').fill('metric:sales.ratio')
+  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
+  assert.doesNotMatch((await page.locator('.sb-relations').textContent()) ?? '', /收入 Revenue/)
+  const nullRules = page
+    .locator('.sb-computation .sb-calculation-node')
+    .first()
+    .locator('.sb-fact-row')
+    .filter({ hasText: '空值规则' })
+  const nullSummary = nullRules.locator('.sb-null-rule-summary')
+  assert.equal(await nullSummary.locator('li').count(), 2)
+  assert.match(await nullSummary.innerText(), /计算时忽略 NULL/)
+  assert.doesNotMatch(await nullSummary.innerText(), /measure:sales|sum\(|count\(/)
+  await nullRules.locator('.sb-null-rule-branches > summary').click()
+  assert.match(await nullRules.locator('.sb-null-rule-branches').innerText(), /sum\(|count\(/)
+  const kinds = [
+    ['domain:sales', 'folder'],
+    ['datasource:warehouse', 'database'],
+    ['entity:sales.orders', 'table-2'],
+    ['dimension:sales.orders.region', 'columns-3'],
+    ['measure:sales.orders.amount', 'ruler'],
+    ['time_dimension:sales.orders.ordered_at', 'clock-3'],
+    ['metric:sales.revenue', 'hash'],
+    ['relationship:sales.orders_to_users', 'link-2'],
+    ['period_calendar:sales.fiscal', 'calendar-days'],
+    ['temporal_set:sales.campaigns', 'calendar-days'],
+  ] as const
+  const icons = Object.fromEntries(
+    kinds.map(([reference, icon]) => [reference.split(':')[0], icon]),
+  )
+  for (const [reference, icon] of kinds) {
+    await page.getByLabel('搜索语义对象').fill(reference)
+    await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
+    const detail = page.getByRole('region', { name: '对象详情' })
+    assert.equal(await detail.locator(`.sb-kind-icon svg.lucide-${icon}`).count(), 1, reference)
+    const overlap = await detail.evaluate((node: Element) => {
+      const summary = [...node.querySelectorAll('.sb-overview dt[title]')].map((item) =>
+        item.getAttribute('title'),
+      )
+      return [...node.querySelectorAll('.sb-fields > dt[title]')]
+        .map((item) => item.getAttribute('title'))
+        .filter((name) => summary.includes(name))
+    })
+    assert.deepEqual(overlap, [], `${reference} repeats fields between overview and definition`)
+    const mismatched = await detail.evaluate(
+      (node: Element, kindIcons: Record<string, string>) =>
+        [...node.querySelectorAll('.sb-relation-item')].flatMap((item) => {
+          const reference = item.querySelector('.sb-relation-item-ref')?.textContent ?? ''
+          const icon = kindIcons[reference.split(':')[0] ?? '']
+          return icon && !item.querySelector(`.sb-relation-item-icon.lucide-${icon}`)
+            ? [reference]
+            : []
+        }),
+      icons,
+    )
+    assert.deepEqual(mismatched, [], `${reference} has inconsistent related-object icons`)
+    const relatedReferences = await detail.locator('.sb-relation-item-ref').allTextContents()
+    assert.equal(new Set(relatedReferences).size, relatedReferences.length, reference)
+    assert.doesNotMatch(
+      (await detail.textContent()) ?? '',
+      /此处仅展示数据源类型|文件来源仅展示类型|候选维度不代表任意查询组合|同一对象只列出一次/,
+      `${reference} contains general explanatory copy`,
+    )
+  }
+  await page.getByLabel('搜索语义对象').fill('measure:sales.orders.amount')
+  await page.getByRole('region', { name: '对象列表' }).getByRole('button').first().click()
+  await page.getByRole('tab', { name: '概览', exact: true }).click()
+  assert.equal(
+    await page.getByRole('tabpanel', { name: '概览' }).getByText('单位', { exact: true }).count(),
+    0,
+  )
+  await page.getByRole('tab', { name: '定义', exact: true }).click()
+  assert.equal(
+    await page.getByRole('tabpanel', { name: '定义' }).getByText('单位', { exact: true }).count(),
+    1,
+  )
+  checks.push('十类对象图标、关系对象图标与属性分工一致；度量单位只在定义中展示')
   assert.equal(requests, 1)
   checks.push('新版公式、时间绑定、空值规则与依赖展示；引用跳转返回不重读')
   await page.getByLabel('搜索语义对象').fill('')
@@ -265,16 +329,16 @@ try {
   await overview.getByText('主键', { exact: true }).waitFor()
   await overview.getByText('来源表', { exact: true }).waitFor()
   await page.getByRole('tab', { name: '定义', exact: true }).click()
-  const fields = details.locator('dt[title="fields"] + dd')
-  const moreValues = fields.locator('.sb-value-more')
-  await moreValues.waitFor()
-  assert.equal(
-    await moreValues.evaluate((node: Element) => getComputedStyle(node).listStyleType),
-    'none',
-  )
-  await moreValues.locator('summary').click()
-  assert.ok((await moreValues.locator('li').count()) > 0)
+  const definition = details.getByRole('tabpanel', { name: '定义' })
+  assert.equal(await definition.locator('dt[title="source_table"]').count(), 0)
+  assert.equal(await definition.locator('dt[title="fields"]').count(), 0)
   await page.getByRole('tab', { name: '关系', exact: true }).click()
+  const fields = details.locator('.sb-relation-group').filter({
+    has: page.locator(':scope > summary', { hasText: '字段' }),
+  })
+  assert.equal(await fields.getAttribute('open'), null)
+  await fields.locator('summary').click()
+  assert.ok((await fields.locator('.sb-relation-item').count()) > 8)
   const dependents = details.locator('.sb-relation-group').filter({ hasText: /^引用此对象\s*\d+/ })
   assert.ok((await dependents.count()) === 1)
   assert.equal(await dependents.getAttribute('open'), null)
@@ -321,10 +385,9 @@ try {
   assert.equal(await page.getByRole('button', { name: '复制定义位置' }).count(), 0)
   const source = page.locator('.sb-detail details.sb-source')
   assert.equal(await source.getAttribute('open'), null)
-  await source.getByText('补充属性与来源', { exact: true }).click()
+  await source.locator(':scope > summary').click()
   assert.notEqual(await source.getAttribute('open'), null)
-  await source.getByText('Catalog 记录的来源位置', { exact: true }).waitFor()
-  assert.ok((await source.locator('.sb-fields > dt').count()) > 0)
+  assert.equal(await source.locator('.sb-fields > dt').count(), 0)
   await page.getByText(/objects.py:\d+$/).waitFor()
   assert.equal(await page.getByText(/Marivo 提供的规范化 Ibis 表达式/).count(), 0)
   assert.equal(await page.getByText(/根据当前 Catalog 定义展示/).count(), 0)
@@ -339,7 +402,17 @@ try {
   await amountRow.getByRole('button', { name: '复制引用: measure:sales.orders.amount' }).click()
   assert.equal(await page.evaluate('navigator.clipboard.readText()'), 'measure:sales.orders.amount')
   await page.getByRole('button', { name: '查看关系图' }).click()
+  await page.getByText('第 1 层', { exact: true }).waitFor()
+  assert.equal(
+    await page
+      .getByRole('button', { name: '查看 measure:sales.orders.amount', exact: true })
+      .locator('svg.lucide-ruler')
+      .count(),
+    1,
+  )
+  assert.equal(await page.getByText(/拖动背景/).count(), 0)
   await page.getByRole('button', { name: '再展开一层' }).click()
+  await page.getByText('第 2 层', { exact: true }).waitFor()
   await page.getByRole('button', { name: '放大关系图' }).click()
   const svg = page.getByRole('img', { name: '当前对象的局部关系图' })
   const box = await svg.boundingBox()
@@ -431,6 +504,17 @@ try {
   await page.getByRole('heading', { name: 'revenue', exact: true }).waitFor()
   await page.getByRole('tab', { name: '概览', exact: true }).click()
   await page.screenshot({ path: path.join(output, 'mobile-overview.png') })
+  await page.getByRole('tab', { name: '定义', exact: true }).click()
+  const mobileNullRule = page
+    .locator('.sb-calculation-node')
+    .first()
+    .locator('.sb-fact-row')
+    .filter({ hasText: '空值规则' })
+  const mobileLabel = await mobileNullRule.locator('.sb-fact-label').boundingBox()
+  const mobileValue = await mobileNullRule.locator('.sb-fact-value').boundingBox()
+  assert.ok(mobileLabel && mobileValue && mobileValue.width > 200)
+  assert.ok(mobileValue.y >= mobileLabel.y + mobileLabel.height - 1)
+  await page.screenshot({ path: path.join(output, 'mobile-definition.png') })
   await page.getByRole('tab', { name: '关系', exact: true }).click()
   await page.screenshot({ path: path.join(output, 'mobile-relations.png') })
   await page.getByRole('button', { name: '查看关系图' }).click()

@@ -24,6 +24,7 @@ let renderComputation: (
   available?: SemanticRef[],
   locale?: 'zh-CN' | 'en-US',
   related?: { ref: SemanticRef; dependencies: SemanticRef[] }[],
+  extraDependency?: boolean,
 ) => string
 let renderRelated: () => string
 const ref: SemanticRef = {
@@ -51,9 +52,9 @@ export function render(value, refs, available = refs, structured = false, field 
     objects: new Map(available.map(ref => [refKey(ref), { ref }])), navigate() {},
   }));
 }
-export function renderComputation(expression, facts, dependencies = [], available = dependencies, locale = 'zh-CN', related = []) {
+export function renderComputation(expression, facts, dependencies = [], available = dependencies, locale = 'zh-CN', related = [], extraDependency = false) {
   const ref = { schema: 'marivo.semantic_ref/v1', kind: 'metric', path: 'sales.revenue' };
-  const fields = dependencies.length ? [{ name: 'dependencies', value: JSON.stringify(dependencies.map(refKey)), structured: true }] : [];
+  const fields = dependencies.length ? [{ name: 'dependencies', value: JSON.stringify([...dependencies.map(refKey), ...(extraDependency ? ['unresolved'] : [])]), structured: true }] : [];
   const relations = dependencies.map(ref => ({ field: 'dependencies', ref }));
   const object = { ref, computation: { expression, facts }, fields, relations, guardrails: [] };
   const objects = new Map(available.map(ref => [refKey(ref), { ref, name: ref.path.split('.').at(-1) }]));
@@ -143,29 +144,32 @@ test('calculation hides empty expression and renders structured facts', () => {
   assert.match(pairs, /<dt class="sb-value-key">来源列<\/dt><dd>month<\/dd>/)
 })
 
-test('declared dependencies remain accessible when there is no expression or facts', () => {
+test('dependencies move to relationships only when the grouped links preserve every value', () => {
   const measure: SemanticRef = {
     schema: 'marivo.semantic_ref/v1',
     kind: 'measure',
     path: 'sales.orders.amount',
   }
   const html = renderComputation('', [], [ref, measure])
-  assert.match(html, /声明依赖/)
-  assert.match(html, /1 实体 · 1 度量/)
-  assert.match(html, /title="entity:sales.orders"/)
-  assert.match(html, /title="measure:sales.orders.amount"/)
-  assert.doesNotMatch(html, /sb-expression-code/)
+  assert.equal(html, '')
+  const partial = renderComputation('', [], [ref, measure], [ref, measure], 'zh-CN', [], true)
+  assert.match(partial, /声明依赖/)
+  assert.match(partial, /title="entity:sales.orders"/)
+  assert.match(partial, /title="measure:sales.orders.amount"/)
+  assert.match(partial, /unresolved/)
+  assert.doesNotMatch(partial, /sb-expression-code/)
 })
 
 test('referenced object title is a single direct navigation control', () => {
   const html = renderRelated()
+  assert.match(html, /class="lucide lucide-ruler sb-related-icon"/)
+  assert.doesNotMatch(html, /lucide-chart-column/)
   assert.match(
     html,
-    /<summary>[\s\S]*<button[^>]*class="[^"]*sb-related-name[^>]*title="measure:sales.orders.amount"/,
+    /<li class="sb-definition-entry">[\s\S]*<button[^>]*class="[^"]*sb-related-name[^>]*title="measure:sales.orders.amount"/,
   )
   assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 1)
-  assert.match(html, /<section aria-label="measure:sales.orders.amount">/)
-  assert.match(html, /column\(amount\)/)
+  assert.doesNotMatch(html, /<details class="sb-definition-entry"|column\(amount\)|>Amount</)
 })
 
 test('formula references use short names while retaining exact identities and unknown text', () => {
@@ -223,7 +227,7 @@ test('condition and source aggregation link only declared references', () => {
   )
   assert.match(html, /定义条件/)
   assert.match(html, /源聚合/)
-  assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 3)
+  assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 2)
   assert.match(html, />amount<\/button> &gt; 0/)
   assert.match(html, /sum\(<button[^>]*title="measure:sales.orders.amount"[^>]*>amount<\/button>\)/)
 })
@@ -373,6 +377,30 @@ test('different recognized null policies retain the branch associated with each 
     /sum\(a\): 计算时忽略 NULL；没有符合条件的记录时返回 0；有记录但参与计算的值全部为 NULL 时返回 NULL/,
   )
   assert.match(html, /sum\(b\): 参与计算的值为 NULL 时会报错；没有符合条件的记录时返回 NULL/)
+  const summary = html.split('<details class="sb-null-rule-branches">')[0]!
+  assert.match(summary, /计算时忽略 NULL/)
+  assert.match(summary, /参与计算的值为 NULL 时会报错/)
+  assert.doesNotMatch(summary, /sum\(a\):|sum\(b\):/)
+  assert.match(html, /按计算分支查看/)
+})
+
+test('known null-rule suffixes remain concise when a reduction branch is absent', () => {
+  const html = renderComputation('metric:sales.average', [
+    {
+      name: 'null_rules',
+      structured: true,
+      value: JSON.stringify([
+        'sum(measure:sales.amount): nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL',
+        'count(entity:sales.orders): count counts source rows; empty input returns zero',
+      ]),
+    },
+  ])
+  const summary = html.split('<details class="sb-null-rule-branches">')[0]!
+  assert.match(summary, /计算时忽略 NULL/)
+  assert.match(summary, /按源记录计数/)
+  assert.doesNotMatch(summary, /sum\(measure:|count\(entity:/)
+  assert.match(html, /sum\(measure:sales.amount\): 计算时忽略 NULL/)
+  assert.match(html, /count\(entity:sales.orders\): 按源记录计数/)
 })
 
 test('identical recognized null rules have one concise explanation', () => {
