@@ -27,7 +27,7 @@ detail = Tabs([TabItem("selected", "减少最多的两项", [DatasetView("select
 `total` 是完整的单行 DataFrame，`current` 是原分析已计算的数值。`daily` 是按日观察的 Marivo Frame。读者先看合计，再看日间波动。
 
 ```openui
-root = Card([heading, total, trend]);
+root = Stack([heading, total, trend]);
 heading = TextContent("本期合计与按日明细");
 total = DatasetView("total", {chart: "metric", encoding: {value: "current"}});
 trend = AnalysisFrameView("daily");
@@ -49,10 +49,10 @@ scope = TextContent("地区分解使用与 GMV 比较相同的期间。");
 
 ## 图片与明细
 
-`figure` 是原分析绘制的分类金额图，`amounts` 是同范围的 DataFrame。把图和原值并排放置，方便读者核对。
+`figure` 是已有的资金流向图，所需的桑基图不属于数据视图支持的图形；`flows` 是同范围的 DataFrame 明细。把图和原值并排放置，方便读者核对。
 
 ```openui
-root = Stack([figure, amounts], "row", "m", "start", "start", true);
-figure = Image("各类别的金额对比", "figure");
-amounts = DatasetView("amounts", {chart: "table", columns: ["category", "amount"]});
+root = Stack([figure, flows], "row", "m", "start", "start", true);
+figure = Image("资金在各环节间的流向", "figure");
+flows = DatasetView("flows", {chart: "table", columns: ["source", "target", "amount"]});
 ```

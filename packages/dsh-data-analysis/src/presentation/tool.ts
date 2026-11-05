@@ -29,7 +29,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present an existing visual result or save a report or dashboard. For a single snapshot or image, pass resources and omit program to use the default view. Load dsh-data-analysis-presentation when composing a custom report or dashboard in OpenUI Lang. Save the requested result in one call. Success returns an immutable recordId. Use marivo_ui_read only when you need a missing base definition for an edit.',
+      'Present an existing visual result or save a report or dashboard. For a single snapshot or image, pass resources and omit program to use the default view. In custom pages, use AnalysisFrameView for Frame snapshots and DatasetView for DataFrame snapshots; Image supports existing image resources. Load dsh-data-analysis-presentation when composing a custom report or dashboard in OpenUI Lang. Save the requested result in one call. Success returns an immutable recordId. Use marivo_ui_read only when you need a missing base definition for an edit.',
     parameters: {
       surface: {
         type: 'string',
