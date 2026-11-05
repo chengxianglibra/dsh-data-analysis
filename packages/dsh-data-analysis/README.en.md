@@ -18,7 +18,7 @@ This is an independently maintained community plugin. It is not an official Deep
 | Keep definitions consistent | Work with the assistant to define and reuse metrics and dimensions, and explore their relationships |
 | Specify what to analyze | Search for and reference existing semantic objects with `@` in the chat input |
 | Present findings | Save existing Frame/DataFrame results as exact tables, single values or charts |
-| Explore further | Select columns, sort exact values, browse local pages, and copy saved data |
+| Explore further | Sort exact values, browse local pages, and copy saved data from displayed columns |
 | Read and revisit | Save and browse immutable versions and their history |
 
 ## Installation
@@ -114,7 +114,7 @@ Present an existing Frame or captured DataFrame without repeating the analysis. 
 Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,
 preferring `AnalysisFrameView` for Frame data. After saving the report, the assistant replies briefly in chat. Your requested output format takes precedence.
 
-- **Inspect data**: Select columns, sort exact values, browse local pages, and copy saved data. Previews disclose their range and cannot become complete single-value metrics.
+- **Inspect data**: Sort exact values, browse local pages, and copy saved data from displayed columns. Previews disclose their range and cannot become complete single-value metrics.
 - **Check sources**: Frame views show structure and source identity. DataFrame views explicitly mark SQL, datasource and file provenance that was not captured.
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
 
