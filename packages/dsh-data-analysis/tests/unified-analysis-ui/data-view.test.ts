@@ -128,7 +128,7 @@ function singleFrame(coordinate: boolean) {
 
 test('auto uses Frame axes and value roles while preserving complete scalar Dataset display', () => {
   const coordinate = singleFrame(true)
-  assert.match(render(coordinate), /<table/)
+  assert.match(render(coordinate), /class="fv-members-preview"/)
   assert.doesNotMatch(render(coordinate), /data-frame-view="metric"/)
 
   const scalar = singleFrame(false)
@@ -170,7 +170,7 @@ test('auto uses Frame axes and value roles while preserving complete scalar Data
     coverage: coordinate.coverage,
     source: { kind: 'dataframe', details: 'not-captured' },
   })
-  assert.match(render(dataset), /class="au-metric"/)
+  assert.match(render(dataset), /au-metric-group/)
 })
 
 function semanticSections() {

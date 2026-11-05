@@ -181,13 +181,23 @@ test('large saved KPI values stay readable without splitting digits on narrow sc
   assert.match(await block.innerText(), /5,036,874\.05/)
   assert.match(await block.innerText(), /4\.08%/)
   const value = current.locator('.fv-kpi-value')
-  assert.equal(await value.evaluate((node) => getComputedStyle(node).whiteSpace), 'nowrap')
+  const visible = await value.evaluate((node) => {
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const rects = [...range.getClientRects()].filter((rect) => rect.width > 0)
+    const bounds = node.closest('.fv-comparison-grid-item')!.getBoundingClientRect()
+    return {
+      lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+      fits: rects.every((rect) => rect.left >= bounds.left && rect.right <= bounds.right),
+    }
+  })
+  assert.deepEqual(visible, { lines: 1, fits: true })
   assert.ok(
     (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1,
   )
 })
 
-test('switching aliases resets sorting and uses saved row order', async () => {
+test('switching aliases resets sorting and orders by saved absolute change', async () => {
   await page.setViewportSize({ width: 1000, height: 900 })
   const view = page.locator('[data-resource="switching"]')
   const aliases = view.getByRole('group', { name: 'Compared with' })
@@ -195,8 +205,8 @@ test('switching aliases resets sorting and uses saved row order', async () => {
   await aliases.getByRole('button', { name: 'B', exact: true }).click()
   assert.equal(await view.getByRole('button', { name: 'Sort by Δ%' }).count(), 0)
   const rows = await view.locator('[data-comparison-rows="delta"] tbody tr').allTextContents()
-  assert.match(rows[0] ?? '', /First/)
-  assert.match(rows[1] ?? '', /Second/)
+  assert.match(rows[0] ?? '', /Second/)
+  assert.match(rows[1] ?? '', /First/)
 })
 
 test('comparison preserves endpoints and shows no invented bars for unavailable deltas', async () => {

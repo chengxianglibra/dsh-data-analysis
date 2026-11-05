@@ -1,4 +1,8 @@
+import { useState } from 'react'
 import { useCopy } from '../../i18n/context.tsx'
+import { compareDecimalText } from '../../presentation/model.ts'
+import { Button } from '../../ui/primitives/button.tsx'
+import { compact } from '../charts/model.ts'
 import { color, summary } from '../charts/recharts.tsx'
 import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
 import {
@@ -32,6 +36,7 @@ export function AlignmentView({
   const t = useCopy()
   const item = interpretationOf(s)?.alignments[view.alignment]
   const pairs = view.pairs
+  const [activePair, setActivePair] = useState<string>()
   if (!item) return null
   const col = (n: string) => columnOf(s, n)?.column
   const formatted = (row: number, name: string) => {
@@ -89,7 +94,7 @@ export function AlignmentView({
           const series: SavedSeries[] = (['left', 'right'] as const).map((side) => ({
             key: `${pi}-${side}`,
             label: valueName(s, c, pair[side]),
-            color: color(pi * 2 + (side === 'left' ? 0 : 1)),
+            color: color(side === 'left' ? 0 : 1),
             hollow: side === 'left',
             dashed: side === 'left',
             values: ticks.map((_, i) => {
@@ -128,35 +133,93 @@ export function AlignmentView({
   }
 
   const axes = c.categoryAxes.map((token) => axisOf(s, token)).filter((axis) => axis !== undefined)
-  const rows = rowsOf(s)
+  const pairKey = (pair: (typeof pairs)[number]) => JSON.stringify([pair.left, pair.right])
+  const selected = pairs.find((pair) => pairKey(pair) === activePair) ?? pairs[0]!
+  const rowValue = (row: number): string | undefined => {
+    const values = (['left', 'right'] as const).flatMap((side) => {
+      const name = selected[side]
+      const value = cellOf(s, row, name)
+      return get(row, name, side) !== null && value !== null ? [String(value)] : []
+    })
+    return values.sort((a, b) => compareDecimalText(b, a))[0]
+  }
+  const rows = rowsOf(s).sort((a, b) => {
+    const av = rowValue(a)
+    const bv = rowValue(b)
+    if (av === undefined || bv === undefined) return av === bv ? a - b : av === undefined ? 1 : -1
+    return compareDecimalText(bv, av) || a - b
+  })
+  const magnitude = (row: number) =>
+    Math.max(...(['left', 'right'] as const).map((side) => get(row, selected[side], side) ?? 0))
+  const allNonNegative = rows.every((row) =>
+    (['left', 'right'] as const).every((side) => (get(row, selected[side], side) ?? 0) >= 0),
+  )
+  // Keep exceptionally large categories legible without changing values; every
+  // facet has its own visible zero-based axis. No category name is special.
+  const separateLargest =
+    allNonNegative &&
+    rows.length >= 4 &&
+    magnitude(rows[0]!) > 0 &&
+    magnitude(rows[0]!) >= 5 * magnitude(rows[1]!)
+  const facets = separateLargest ? [rows.slice(0, 1), rows.slice(1)] : [rows]
   return (
-    <div className="fv-parents">
-      {pairs.map((pair, pi) => {
-        const labels = rows.map((row) => membersLabel(s, axes, row))
+    <div className="fv-alignment-facets">
+      {pairs.length > 1 && (
+        <fieldset
+          className="fv-alignment-controls"
+          aria-label={t('marivo.presentation.ui-frame-comparison-metric')}
+          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        >
+          {pairs.map((pair) => (
+            <Button
+              key={pairKey(pair)}
+              type="button"
+              size="xs"
+              variant="outline"
+              aria-pressed={pair === selected}
+              onClick={() => setActivePair(pairKey(pair))}
+            >
+              {valueName(s, c, pair.left)}
+            </Button>
+          ))}
+        </fieldset>
+      )}
+      {facets.length > 1 && <p>{t('marivo.presentation.ui-frame-alignment-independent-scales')}</p>}
+      {facets.map((facet) => {
+        const pair = selected
+        const labels = facet.map((row) => membersLabel(s, axes, row))
         const series: SavedSeries[] = (['left', 'right'] as const).map((side) => ({
           key: side,
           label: valueName(s, c, pair[side]),
-          color: color(pi),
+          color: color(side === 'left' ? 0 : 1),
           hollow: side === 'left',
-          values: rows.map((row) => get(row, pair[side], side)),
+          values: facet.map((row) => get(row, pair[side], side)),
           exact: (i) =>
-            `${labels[i]}\n${valueName(s, c, pair[side])}: ${text(rows[i]!, pair[side], side)}`,
-          point: (i) => point(rows[i], pair[side], side, labels[i] ?? ''),
+            `${labels[i]}\n${valueName(s, c, pair[side])}: ${text(facet[i]!, pair[side], side)}`,
+          point: (i) => point(facet[i], pair[side], side, labels[i] ?? ''),
         }))
+        const max = Math.max(
+          ...series.flatMap((line) => line.values).filter((v): v is number => v !== null),
+          0,
+        )
         return (
           <SavedRowPlot
-            key={`${pair.left}:${pair.right}`}
+            key={`${pairKey(pair)}:${facet.join(',')}`}
             label={summary(
               t,
               series.map((line) => line.label).join(' · '),
-              rows.map((_, i) => series.map((line) => line.exact(i)).join(' / ')),
+              facet.map((_, i) => series.map((line) => line.exact(i)).join(' / ')),
             )}
             labels={labels}
             series={series}
-            endLabels={rows.map(
-              (row) => `${text(row, pair.left, 'left')} · ${text(row, pair.right, 'right')}`,
+            domain={allNonNegative ? [0, max || 1] : undefined}
+            endLabelRail
+            tickFormatter={(value) => compact(t.locale, value)}
+            endLabels={facet.map(
+              (row) =>
+                `${valueName(s, c, pair.left)}: ${text(row, pair.left, 'left')} · ${valueName(s, c, pair.right)}: ${text(row, pair.right, 'right')}`,
             )}
-            links={rows.flatMap((_, i) => {
+            links={facet.flatMap((_, i) => {
               const from = series[0]!.values[i]
               const to = series[1]!.values[i]
               return from == null || to == null ? [] : [{ from, to, index: i }]

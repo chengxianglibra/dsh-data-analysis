@@ -2,6 +2,11 @@ import type { Cell, DatasetColumn, PresentationLocale } from '../../presentation
 
 // Readable display text for Frame views; the saved cells and copied data are unchanged.
 export const MISSING_DISPLAY = '—'
+const USD_CURRENCY = {
+  style: 'currency',
+  currency: 'USD',
+  currencyDisplay: 'narrowSymbol',
+} as const
 
 function datetimeText(text: string, timezone: string): string {
   const date = new Date(text)
@@ -39,7 +44,7 @@ export function displayCell(
       const formatter = new Intl.NumberFormat(locale, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-        ...(column.unit === 'USD' ? { style: 'currency', currency: 'USD' } : {}),
+        ...(column.unit === 'USD' ? USD_CURRENCY : {}),
       })
       // Intl accepts decimal strings without first losing precision to a JS number.
       const formatted: unknown = Reflect.apply(formatter.format, undefined, [value])
@@ -49,9 +54,7 @@ export function displayCell(
       try {
         return new Intl.NumberFormat(
           locale,
-          column.unit === 'USD'
-            ? { style: 'currency', currency: 'USD' }
-            : { maximumFractionDigits: 0 },
+          column.unit === 'USD' ? USD_CURRENCY : { maximumFractionDigits: 0 },
         ).format(BigInt(String(value)))
       } catch {
         return String(value)

@@ -17,7 +17,7 @@ export interface ChartAxis {
   name: string
   keys: string[]
   labels: string[]
-  ticks?: { ticks: Tick[]; indices: number[] }
+  ticks?: { ticks: Tick[]; indices: number[]; captured?: boolean[] }
 }
 export interface ChartGroup {
   key: string
@@ -32,6 +32,8 @@ export interface ChartModel {
   references: Record<string, ChartGroup[]>
   display?: (value: Cell, column?: DatasetColumn) => string
   frameStyle?: boolean
+  highlight?: { axis: string; key: string }
+  rowLimit?: number
 }
 export type ChartView =
   | {

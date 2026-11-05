@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { validateFrameDisplay } from '../../../presentation/contracts/frame-display.ts'
 import {
   type FrameClassification,
   type FrameDisplay,
@@ -11,6 +12,7 @@ import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
 import { displayCell } from '../../presentation/display.ts'
+import { compareDecimalText } from '../../presentation/model.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import { CardContent } from '../../ui/primitives/card.tsx'
@@ -31,6 +33,7 @@ import {
   DecompositionView,
   decompositionChips,
   decompositionOf,
+  decompositionRelativeTotal,
   decompositionTitle,
   decompositionTotal,
 } from './decomposition.tsx'
@@ -49,6 +52,7 @@ import {
   valueName,
 } from './model.ts'
 import {
+  CategoricalComposition,
   CorrelationPlot,
   HBarChart,
   Heatmap,
@@ -56,6 +60,7 @@ import {
   ShareView,
   TimeChart,
 } from './observation.tsx'
+import { RecordsPreview } from './records.tsx'
 import { FrameSelectionContext } from './selection-context.tsx'
 import { CopyData, DataTable, useFrozenColumns } from './table.tsx'
 
@@ -72,6 +77,7 @@ export interface FrameShellProps {
 export function AnalysisFrame({
   snapshot,
   view,
+  display,
   ...rest
 }: Omit<FrameShellProps, 'classification' | 'view'> & { view?: FrameViewSpec }) {
   const t = useCopy()
@@ -87,6 +93,9 @@ export function AnalysisFrame({
       snapshot={snapshot}
       classification={resolution.classification}
       view={resolution.view}
+      display={
+        candidate && validateFrameDisplay(snapshot, resolution.view, display) ? undefined : display
+      }
       {...rest}
     />
   )
@@ -135,6 +144,42 @@ function membersData(s: Snapshot): TypedDataset {
   }
 }
 
+/** A compact preview of one-dimensional keys; the table action retains all saved rows. */
+function MembersPreview({ snapshot, height }: { snapshot: Snapshot; height?: number }) {
+  const t = useCopy()
+  const data = membersData(snapshot)
+  if (data.columns.length !== 1 || !snapshot.coverage.complete || data.rows.length === 0)
+    return <MembersTable snapshot={snapshot} height={height} />
+  const column = data.columns[0]!
+  const rows = data.rows.slice(0, 40)
+  const occurrences = new Map<string, number>()
+  return (
+    <div>
+      <div className="fv-members-preview">
+        {rows.map((row) => {
+          const value = row[0] ?? null
+          const identity = JSON.stringify(value)
+          const occurrence = occurrences.get(identity) ?? 0
+          occurrences.set(identity, occurrence + 1)
+          return (
+            <span className="fv-members-key" key={`${identity}:${occurrence}`}>
+              {displayCell(t.locale, value, column)}
+            </span>
+          )
+        })}
+      </div>
+      {data.rows.length > rows.length && (
+        <p className="fv-members-more">
+          {t('marivo.presentation.ui-frame-members-preview', {
+            shown: rows.length.toLocaleString(t.locale),
+            total: data.rows.length.toLocaleString(t.locale),
+          })}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function MainView({
   snapshot,
   classification,
@@ -150,7 +195,14 @@ export function MainView({
   const common = { snapshot, classification, height }
   switch (view.chart) {
     case 'table':
-      return view.layout === 'comparison' ? (
+      return snapshot.frameDisplay?.recordPreview ? (
+        <RecordsPreview
+          snapshot={snapshot}
+          classification={classification}
+          preview={snapshot.frameDisplay.recordPreview}
+          height={height}
+        />
+      ) : view.layout === 'comparison' ? (
         <ComparisonTable snapshot={snapshot} classification={classification} />
       ) : (
         <DataTable
@@ -164,7 +216,7 @@ export function MainView({
         />
       )
     case 'members':
-      return <MembersTable snapshot={snapshot} height={height} />
+      return <MembersPreview snapshot={snapshot} height={height} />
     case 'metric':
       return (
         <MetricGroup
@@ -189,7 +241,11 @@ export function MainView({
     case 'heatmap':
       return <Heatmap {...common} view={view} />
     case 'pie':
-      return <PieChart {...common} view={view} />
+      return view.style === 'stacked' ? (
+        <CategoricalComposition {...common} view={view} />
+      ) : (
+        <PieChart {...common} view={view} />
+      )
     case 'comparison':
       return <ComparisonView {...common} view={view} />
     case 'comparison-grid':
@@ -273,6 +329,7 @@ function chartLabel(t: Translator, s: Snapshot, view: ResolvedFrameView): string
     else if (column?.unit === 'USD' && isNumeric(column)) kind = 'currency'
     else if (isNumeric(column)) kind = 'number'
   } else if (view.chart === 'members') kind = 'table'
+  else if (view.chart === 'pie' && view.style === 'stacked') kind = 'composition'
   else if (view.chart === 'comparison-grid') kind = 'comparison'
   else if (view.chart === 'hbar' || view.chart === 'interval-bar') kind = 'bar'
   return t(`marivo.presentation.ui-chart-kind-${kind}`)
@@ -289,7 +346,28 @@ function headerNumbers(
   if (view.chart === 'decomposition') {
     const facts = decompositionOf(s, view.decomposition)
     const total = facts && decompositionTotal(t, s, facts)
-    return total ? [total] : []
+    const relative = facts && decompositionRelativeTotal(t, s, facts)
+    const binding = s.frameDisplay?.decompositionTotals
+    const level = (name: string, label: string): NumberItem | undefined => {
+      const column = columnOf(s, name)?.column
+      const cells = s.data.rows.map((_, row) => cellOf(s, row, name))
+      const first = cells[0]
+      if (
+        !column ||
+        first == null ||
+        cells.some((cell) => cell === null || compareDecimalText(String(cell), String(first)) !== 0)
+      )
+        return undefined
+      return { key: name, value: displayFrameCell(s, t.locale, first, column), title: name, label }
+    }
+    const baseline = binding && level(binding.baseline, binding.baselineLabel)
+    const current = binding && level(binding.current, binding.currentLabel)
+    return [
+      ...(baseline ? [baseline] : []),
+      ...(current ? [current] : []),
+      ...(total ? [total] : []),
+      ...(relative ? [relative] : []),
+    ]
   }
   if (view.chart === 'correlation' && s.frame.axes.length === 0 && s.data.rows.length === 1) {
     const contexts = interpretationOf(s)?.valueContexts ?? {}
@@ -334,13 +412,21 @@ function headerNumbers(
 }
 
 export function FrameShell({
-  snapshot: s,
+  snapshot,
   classification: c,
   view,
   display,
   resourceName,
   codeRef,
 }: FrameShellProps) {
+  const s = useMemo<Snapshot>(
+    () => (display ? { ...snapshot, frameDisplay: display } : snapshot),
+    [snapshot, display],
+  )
+  const referenceSnapshot = useMemo<Snapshot>(
+    () => (display ? { ...snapshot, frameDisplay: { ...display, formats: undefined } } : snapshot),
+    [snapshot, display],
+  )
   const t = useCopy()
   const { askPoint, candidate } = useAnalysisResources()
   const inlineData = display?.dataTable === 'visible'
@@ -420,7 +506,7 @@ export function FrameShell({
     [askPoint, candidate, resourceName, s, status],
   )
   const compactDensity = display?.density === 'compact'
-  const name = title(t, s, c, view, resourceName)
+  const name = display?.title ?? title(t, s, c, view, resourceName)
   const decomposition =
     view.chart === 'decomposition' ? decompositionOf(s, view.decomposition) : undefined
   const chips: Chip[] = [
@@ -433,12 +519,7 @@ export function FrameShell({
   const hasNumbers = numbers.length > 0 || comparisonNumbers
   const showMain = !compactDensity || !hasNumbers
   const allColumns = s.data.columns.map((col) => col.id)
-  const mainIsTable =
-    view.chart === 'table' ||
-    view.chart === 'members' ||
-    (view.chart === 'comparison' && view.style === 'table') ||
-    (view.chart === 'alignment' && (view.style === 'table' || view.pairs.length === 0))
-  const showData = (!compactDensity || showMain) && !mainIsTable
+  const showData = true
   const dataLabel = t('marivo.presentation.ui-frame-data-table')
   const pointMenu = selected && (
     <Popover
@@ -529,15 +610,17 @@ export function FrameShell({
     </Popover>
   )
   const dataTable =
-    c.class === 'comparison' ? (
+    view.chart === 'members' ? (
+      <MembersTable snapshot={referenceSnapshot} />
+    ) : c.class === 'comparison' ? (
       s.data.rows.length === 1 ? (
-        <ComparisonTable snapshot={s} classification={c} reference />
+        <ComparisonTable snapshot={referenceSnapshot} classification={c} reference />
       ) : (
-        <ComparisonDetail snapshot={s} />
+        <ComparisonDetail snapshot={referenceSnapshot} />
       )
     ) : (
       <DataTable
-        snapshot={s}
+        snapshot={referenceSnapshot}
         frozen={keyColumns(s, c)}
         selectionFields={c.class === 'observation' ? c.primaryValues : undefined}
         reference
@@ -595,12 +678,12 @@ export function FrameShell({
             </div>
           }
         >
-          {!compactDensity && chips.length > 0
-            ? chips.map((chip) => chip.label).join(' · ')
-            : undefined}
+          {[display?.subtitle, ...(!compactDensity ? chips.map((chip) => chip.label) : [])]
+            .filter(Boolean)
+            .join(' · ') || undefined}
         </ResultHeader>
         <CardContent className="space-y-4 min-w-0">
-          {compactDensity && decomposition?.restricted && (
+          {decomposition?.restricted && (
             <p className="au-result-status" role="status">
               {t('marivo.presentation.ui-frame-restricted-scope')}
             </p>

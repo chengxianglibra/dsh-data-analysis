@@ -83,6 +83,13 @@ export const zh = {
   'marivo.presentation.ui-frame-python-loading': '正在读取脚本…',
   'marivo.presentation.ui-frame-developer': '开发者',
   'marivo.presentation.ui-frame-members': '成员',
+  'marivo.presentation.ui-frame-calculated-share': '所示值占比',
+  'marivo.presentation.ui-frame-records-preview':
+    '显示前 {shown} 条，共保存 {total} 条；完整结果见表。',
+  'marivo.presentation.ui-frame-members-preview': '显示前 {shown} 项，共保存 {total} 项',
+  'marivo.presentation.ui-frame-alignment-independent-scales': '分面使用独立尺度',
+  'marivo.presentation.ui-frame-attribution-share-note':
+    '贡献占比以净变化为分母；反向贡献会抵消净变化。',
   'marivo.presentation.ui-frame-data-table': '表',
   'marivo.presentation.ui-chart-kind-number': '数值',
   'marivo.presentation.ui-chart-kind-currency': '金额',
@@ -93,6 +100,7 @@ export const zh = {
   'marivo.presentation.ui-chart-kind-area': '面积图',
   'marivo.presentation.ui-chart-kind-bar': '柱状图',
   'marivo.presentation.ui-chart-kind-pie': '饼图',
+  'marivo.presentation.ui-chart-kind-composition': '构成',
   'marivo.presentation.ui-chart-kind-heatmap': '热力图',
   'marivo.presentation.ui-chart-kind-comparison': '比较',
   'marivo.presentation.ui-chart-kind-decomposition': '分解',
@@ -288,6 +296,13 @@ export const en = {
   'marivo.presentation.ui-frame-python-loading': 'Reading script…',
   'marivo.presentation.ui-frame-developer': 'Developer',
   'marivo.presentation.ui-frame-members': 'Members',
+  'marivo.presentation.ui-frame-calculated-share': 'Share of shown values',
+  'marivo.presentation.ui-frame-records-preview':
+    'Showing first {shown} of {total} saved rows; open the table for the full result.',
+  'marivo.presentation.ui-frame-members-preview': 'Showing first {shown} of {total} saved members',
+  'marivo.presentation.ui-frame-alignment-independent-scales': 'Panels use independent scales',
+  'marivo.presentation.ui-frame-attribution-share-note':
+    'Contribution shares use the net change as the denominator; opposite-signed contributions offset it.',
   'marivo.presentation.ui-frame-data-table': 'Table',
   'marivo.presentation.ui-chart-kind-number': 'Number',
   'marivo.presentation.ui-chart-kind-currency': 'Currency',
@@ -298,6 +313,7 @@ export const en = {
   'marivo.presentation.ui-chart-kind-area': 'Area',
   'marivo.presentation.ui-chart-kind-bar': 'Bar',
   'marivo.presentation.ui-chart-kind-pie': 'Pie',
+  'marivo.presentation.ui-chart-kind-composition': 'Composition',
   'marivo.presentation.ui-chart-kind-heatmap': 'Heatmap',
   'marivo.presentation.ui-chart-kind-comparison': 'Comparison',
   'marivo.presentation.ui-chart-kind-decomposition': 'Decomposition',

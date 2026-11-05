@@ -2,7 +2,8 @@ import type { ElementNode } from '@openuidev/lang-core'
 import { z } from 'zod'
 import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { parseAnalysisProgram } from './analysis-program.ts'
-import { resolveDatasetView } from './dataset-view.ts'
+import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
+import { validateFrameDisplay } from './frame-display.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
@@ -76,7 +77,7 @@ const schema = z.strictObject({
   generatedAt: z.string().datetime({ offset: true }),
   catalog: z.strictObject({
     id: z.literal(analysisCatalogId),
-    build: z.literal(analysisCatalogBuild),
+    build: z.string().refine((build) => build === analysisCatalogBuild),
   }),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),
@@ -178,7 +179,12 @@ export function validateAnalysisResources(
     const statement = node.statementId ?? node.typeName
     const view = frameViewSchema.optional().safeParse(node.props.view ?? undefined)
     if (!view.success) throw viewError('analysis-view-invalid', statement, '/view')
-    if (!frameDisplaySchema.optional().safeParse(node.props.display ?? undefined).success)
+    const display = frameDisplaySchema.optional().safeParse(node.props.display ?? undefined)
+    if (
+      !display.success ||
+      (source.snapshot.kind === 'dataset' &&
+        !datasetDisplaySchema.optional().safeParse(node.props.display ?? undefined).success)
+    )
       throw viewError('analysis-view-invalid', statement, '/display')
     const columns = view.data?.chart === 'table' ? view.data.columns : undefined
     if (columns && new Set(columns).size !== columns.length)
@@ -187,7 +193,13 @@ export function validateAnalysisResources(
       source.snapshot.kind === 'dataset'
         ? resolveDatasetView(source.snapshot, view.data)
         : resolveFrameView(source.snapshot, view.data)
-    if (resolved.ok) continue
+    if (resolved.ok) {
+      if (source.snapshot.kind === 'frame') {
+        const error = validateFrameDisplay(source.snapshot, resolved.view, display.data)
+        if (error) throw viewError('analysis-view-invalid', statement, error)
+      }
+      continue
+    }
     // Keep the established codes for table columns and metric rows; other failures are new.
     const chart = view.data?.chart
     const code =

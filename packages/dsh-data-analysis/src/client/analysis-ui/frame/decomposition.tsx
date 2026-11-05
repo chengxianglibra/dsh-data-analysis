@@ -1,13 +1,17 @@
+import { useEffect, useId, useRef, useState } from 'react'
 import type { FrameDecomposition } from '../../../presentation/contracts/snapshot.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
+import { compareDecimalText } from '../../presentation/model.ts'
 import { color, Legend, NEUTRAL, summary } from '../charts/recharts.tsx'
 import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
+import { compareMagnitude, divergingScale } from './magnitude.ts'
 import {
   type Chip,
   cellOf,
   columnOf,
   displayFrameCell,
+  endpointLabels,
   firstCell,
   fixedLabel,
   groupRows,
@@ -20,6 +24,7 @@ import {
 } from './model.ts'
 import { ShareTrack } from './observation.tsx'
 import { type SavedBarSeries, SavedRowPlot } from './plots.tsx'
+import { useFrameSelection } from './selection-context.tsx'
 import type { MainViewProps } from './types.ts'
 
 type Role = FrameDecomposition['outputs'][number]['role']
@@ -37,6 +42,14 @@ export function decompositionOf(s: Snapshot, index: number) {
     contribution: role('contribution'),
     total: role('total'),
     share: role('share'),
+    current: role('current'),
+    baseline: role('baseline'),
+    currentPresence: item.outputs
+      .filter((o) => o.fieldKind === 'presence' && o.role === 'current_present')
+      .map((o) => o.name),
+    baselinePresence: item.outputs
+      .filter((o) => o.fieldKind === 'presence' && o.role === 'baseline_present')
+      .map((o) => o.name),
     effects: EFFECTS.flatMap((r) => {
       const name = role(r)
       return name ? [{ role: r, name }] : []
@@ -95,7 +108,7 @@ function formatter(t: Translator, s: Snapshot, facts: DecompositionFacts) {
         role === 'observed_total' ||
         EFFECTS.some((effect) => effect === role))
     )
-      return percent(t.locale, valueAt(s, row, name), false)
+      return percent(t.locale, valueAt(s, row, name), false, cellOf(s, row, name))
     const column = columnOf(s, name)?.column
     return column ? displayFrameCell(s, t.locale, cellOf(s, row, name), column) : '—'
   }
@@ -111,6 +124,44 @@ export function decompositionTotal(t: Translator, s: Snapshot, facts: Decomposit
     value: formatter(t, s, facts)(facts.total, row),
     title: valueName(s, undefined, facts.total),
     label: valueName(s, undefined, facts.total),
+  }
+}
+
+/** A relative total belongs to this change only when the saved decomposition identity is unique. */
+export function decompositionRelativeTotal(t: Translator, s: Snapshot, facts: DecompositionFacts) {
+  const target = facts.item.target
+  if (target.kind !== 'absolute') return undefined
+  const matching = (interpretationOf(s)?.decompositions ?? []).filter(
+    (item) =>
+      item.target.kind === 'relative' &&
+      item.target.comparison === target.comparison &&
+      item.target.group === target.group &&
+      item.rowScope === facts.item.rowScope &&
+      JSON.stringify(item.groups) === JSON.stringify(facts.item.groups),
+  )
+  if (matching.length !== 1) return undefined
+  const item = matching[0]!
+  const totals = item.outputs.filter(
+    (output) => output.fieldKind === 'value' && output.role === 'total',
+  )
+  if (totals.length !== 1) return undefined
+  const name = totals[0]!.name
+  const groups = parentGroups(s, facts)
+  if (groups.length !== 1 || groups[0]!.rows.length === 0) return undefined
+  const values = groups[0]!.rows.map((row) => cellOf(s, row, name))
+  const first = values[0]
+  if (
+    first == null ||
+    values.some((value) => value === null || compareDecimalText(String(value), String(first)) !== 0)
+  )
+    return undefined
+  const numeric = valueAt(s, groups[0]!.rows[0]!, name)
+  if (numeric === null) return undefined
+  return {
+    key: name,
+    value: percent(t.locale, numeric, false, first),
+    title: valueName(s, undefined, name),
+    label: t('marivo.presentation.ui-frame-comparison-change-rate'),
   }
 }
 
@@ -172,6 +223,8 @@ export function DecompositionView({
                 />
               ) : view.style === 'effects' ? (
                 <Effects t={t} s={s} facts={facts} rows={g.rows} labelOf={labelOf} />
+              ) : facts.change && facts.contribution && facts.current && facts.baseline ? (
+                <AttributionRows t={t} s={s} facts={facts} rows={g.rows} labelOf={labelOf} />
               ) : (
                 <Waterfall
                   t={t}
@@ -197,6 +250,158 @@ interface PartProps {
   facts: DecompositionFacts
   rows: number[]
   labelOf: (row: number) => string
+}
+
+/** A saved change and its endpoints: visual geometry never supplies a displayed value. */
+function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
+  const selection = useFrameSelection()
+  const region = useRef<HTMLElement>(null)
+  const [scrollable, setScrollable] = useState(false)
+  const hintId = useId()
+  const contribution = facts.contribution!
+  const current = facts.current!
+  const baseline = facts.baseline!
+  const ends =
+    facts.item.target.kind === 'level'
+      ? undefined
+      : endpointLabels(t, s, facts.item.target.comparison)
+  const sorted = [...rows].sort(
+    (a, b) => compareMagnitude(cellOf(s, a, contribution), cellOf(s, b, contribution)) || a - b,
+  )
+  const scale = divergingScale(rows.map((row) => valueAt(s, row, contribution)))
+  const format = formatter(t, s, facts)
+  useEffect(() => {
+    const element = region.current
+    if (!element) return
+    const update = () => setScrollable(element.scrollWidth > element.clientWidth + 1)
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    const table = element.querySelector('table')
+    if (table) observer.observe(table)
+    update()
+    return () => observer.disconnect()
+  }, [])
+  const shown = (row: number, name: string, presence?: string[]) => {
+    if (presence?.some((field) => cellOf(s, row, field) === false)) return '—'
+    const cell = cellOf(s, row, name)
+    const isContribution = name === contribution
+    const positive = isContribution && cell !== null && compareDecimalText(String(cell), '0') > 0
+    const value = `${positive ? '+' : ''}${format(name, row)}`
+    const selected =
+      selection && (!presence || (presence.length === 1 && cellOf(s, row, presence[0]!) === true))
+        ? point(t, s, facts, row, name, labelOf(row))
+        : undefined
+    return selected ? (
+      <button
+        type="button"
+        className="pr-cell-select"
+        data-frame-point={`${row}:${name}`}
+        aria-label={`${labelOf(row)} · ${valueName(s, undefined, name)}: ${value}`}
+        onClick={() => selection!.select(row, name)}
+      >
+        {value}
+      </button>
+    ) : (
+      value
+    )
+  }
+  return (
+    <section
+      ref={region}
+      className="fv-decomposition-details"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: The detailed rows can scroll horizontally.
+      tabIndex={0}
+      aria-label={decompositionTitle(s, facts)}
+      aria-describedby={scrollable ? hintId : undefined}
+      data-decomposition-rows="attribution"
+    >
+      <table className="fv-decomposition-table">
+        <thead>
+          <tr>
+            <th scope="col">{facts.details.map((axis) => axis.name).join(' · ')}</th>
+            <th scope="col">{ends?.baseline ?? valueName(s, undefined, baseline)}</th>
+            <th scope="col">{ends?.current ?? valueName(s, undefined, current)}</th>
+            <th scope="col">{valueName(s, undefined, contribution)}</th>
+            {facts.share && <th scope="col">{valueName(s, undefined, facts.share)}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => {
+            const numeric = valueAt(s, row, contribution)
+            const width = numeric === null ? 0 : scale.width(numeric)
+            return (
+              <tr key={row}>
+                <th scope="row">{labelOf(row)}</th>
+                <td>
+                  <span className="fv-decomposition-field-label" aria-hidden="true">
+                    {ends?.baseline ?? valueName(s, undefined, baseline)}
+                  </span>
+                  {shown(row, baseline, facts.baselinePresence)}
+                </td>
+                <td>
+                  <span className="fv-decomposition-field-label" aria-hidden="true">
+                    {ends?.current ?? valueName(s, undefined, current)}
+                  </span>
+                  {shown(row, current, facts.currentPresence)}
+                </td>
+                <td
+                  data-contribution-sign={
+                    numeric === null
+                      ? 'missing'
+                      : numeric < 0
+                        ? 'negative'
+                        : numeric > 0
+                          ? 'positive'
+                          : 'zero'
+                  }
+                >
+                  <span className="fv-decomposition-field-label" aria-hidden="true">
+                    {valueName(s, undefined, contribution)}
+                  </span>
+                  <span className="fv-decomposition-contribution">
+                    <span className="fv-decomposition-track" aria-hidden="true">
+                      <span className="fv-decomposition-zero" style={{ left: `${scale.zero}%` }} />
+                      {numeric !== null && (
+                        <span
+                          className={
+                            numeric < 0 ? 'fv-decomposition-negative' : 'fv-decomposition-positive'
+                          }
+                          style={
+                            numeric < 0
+                              ? { right: `${100 - scale.zero}%`, width: `${width}%` }
+                              : { left: `${scale.zero}%`, width: `${width}%` }
+                          }
+                        />
+                      )}
+                    </span>
+                    {shown(row, contribution)}
+                  </span>
+                </td>
+                {facts.share && (
+                  <td>
+                    <span className="fv-decomposition-field-label" aria-hidden="true">
+                      {valueName(s, undefined, facts.share)}
+                    </span>
+                    {shown(row, facts.share)}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {scrollable && (
+        <p className="fv-decomposition-scroll-hint" id={hintId}>
+          ↔ {t('marivo.presentation.ui-frame-scroll-hint')}
+        </p>
+      )}
+      {facts.share && (
+        <p className="fv-decomposition-note">
+          {t('marivo.presentation.ui-frame-attribution-share-note')}
+        </p>
+      )}
+    </section>
+  )
 }
 /** Every saved decomposition output of a row; detail-only columns live here. */
 function tip(t: Translator, s: Snapshot, row: number, label: string, facts: DecompositionFacts) {

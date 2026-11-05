@@ -84,6 +84,17 @@ for (const [index, value] of [377903, 1767304, 6056, 41820207].entries()) {
     taxiAlignment.data.rows[index][taxiAlignment.data.columns.findIndex(column => column.id === name)] = value;
   }
 }
+// Keep one surviving endpoint visible even when the other side is absent.
+taxiAlignment.data.rows[2][taxiAlignment.data.columns.findIndex(column => column.id === 'left_present')] = false;
+const longPeriod = observeTimeCategory(9);
+longPeriod.frame.sections.periods = { status: 'captured', pages: [{
+  target: { kind: 'axis', axisToken: 't_month' }, totalCount: 3, hasMore: false,
+  items: [0, 9, 18].map((row, index) => ({
+    kind: 'calendar', key: [longPeriod.frame.coordinates.k_month.values[row]],
+    timezone: 'Asia/Shanghai', label: index === 1 ? 'A deliberately long saved period with many separate words' : 'Month ' + index,
+    selection: index === 1 ? 'partial' : 'full', cutoff: null,
+  })),
+}] };
 const resources = {
   dataset: resource(datasetSnapshot()),
   good: resource(observeTime(3), ref(${JSON.stringify(sha256)})),
@@ -105,8 +116,10 @@ const resources = {
   nullableTaxiHeatmap: resource(withNull(taxiHeatmap)),
   sparseTaxiHeatmap: resource(sparseTaxiHeatmap),
   taxiAlignment: resource(taxiAlignment),
+  longPeriodX: resource(longPeriod),
+  longPeriodY: resource(longPeriod),
 };
-const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long", {chart: "line"});\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
+const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline, longPeriodX, longPeriodY]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long", {chart: "line"});\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});\\nlongPeriodX = AnalysisFrameView("longPeriodX", {chart: "heatmap", encoding: {x: "month", y: "region", value: "m0"}});\\nlongPeriodY = AnalysisFrameView("longPeriodY", {chart: "heatmap", encoding: {x: "region", y: "month", value: "m0"}});';
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
@@ -261,7 +274,7 @@ test('overflowing Frame tables describe the keyboard-scrollable region', async (
   })
 })
 
-test('plugin charts scroll within a narrow card and their marks are keyboard-selectable', async () => {
+test('short plugin charts fit a narrow card and their marks are keyboard-selectable', async () => {
   const card = page.locator('[data-resource="good"]')
   const chart = card.locator('svg.recharts-surface')
   assert.equal(await chart.count(), 1)
@@ -296,7 +309,7 @@ test('plugin charts scroll within a narrow card and their marks are keyboard-sel
     scrollWidth: node.scrollWidth,
   }))
   assert.ok(fit.plotRight <= fit.cardRight + 1, JSON.stringify(fit))
-  assert.ok(fit.scrollWidth > fit.clientWidth, JSON.stringify(fit))
+  assert.ok(fit.scrollWidth <= fit.clientWidth + 1, JSON.stringify(fit))
   const first = chart.getByRole('button').first()
   await first.focus()
   await page.keyboard.press('Enter')
@@ -546,17 +559,18 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
   await page.keyboard.press('Escape')
   await saved.waitFor({ state: 'detached' })
   await page.getByRole('dialog').waitFor({ state: 'detached' })
-  assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 0)
+  assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 1)
 })
 
-test('chart data and semantic origins are icon-only entries in one action row', async () => {
+test('chart data and semantic origins have visible labels in one action row', async () => {
   const frame = page.locator('[data-resource="precise"]')
   const data = frame.locator('.fv-icons > [data-icon="data"]')
   const origins = frame.locator('.fv-icons > [data-icon="origins"]')
-  assert.equal((await data.innerText()).trim(), '')
-  assert.equal((await origins.innerText()).trim(), '')
-  assert.equal(await data.locator('button > span').count(), 0)
-  assert.equal(await origins.locator('button > span').count(), 0)
+  for (const entry of [data, origins]) {
+    const button = entry.locator('button')
+    assert.equal((await entry.innerText()).trim(), await button.getAttribute('aria-label'))
+    assert.equal(await button.locator('.fv-icon-label').isVisible(), true)
+  }
   assert.equal(
     await data.locator('button svg').evaluate((element) => getComputedStyle(element).display),
     'block',
@@ -656,16 +670,33 @@ test('taxi heatmap headers fit their columns and alignment values fit the full c
       assert.ok(columns[i]!.left >= columns[i - 1]!.right, `${width}: ${JSON.stringify(columns)}`)
 
     const alignment = page.locator('[data-resource="taxiAlignment"] svg.recharts-surface')
-    const fit = await alignment.locator('[data-chart-end-label]').evaluateAll((elements) =>
-      elements.map((element) => ({
-        text: element.textContent,
-        right: element.getBoundingClientRect().right,
-        svgRight: element.closest('svg')!.getBoundingClientRect().right,
-      })),
+    const fit = await alignment.evaluateAll((svgs) =>
+      svgs.flatMap((svg) => {
+        const axis = svg.querySelector('.recharts-xAxis .recharts-cartesian-axis-line')!
+        const marks = [...svg.querySelectorAll('[data-mark="filled"], [data-mark="hollow"]')]
+        const axisBox = axis.getBoundingClientRect()
+        const markRight = Math.max(...marks.map((mark) => mark.getBoundingClientRect().right))
+        return [...svg.querySelectorAll('[data-chart-end-label]')].map((element) => {
+          const box = element.getBoundingClientRect()
+          return {
+            text: element.textContent,
+            left: box.left,
+            right: box.right,
+            bottom: box.bottom,
+            axisTop: axisBox.top,
+            markRight,
+            svgRight: svg.getBoundingClientRect().right,
+          }
+        })
+      }),
     )
-    assert.ok(fit.length > 0)
-    for (const item of fit)
+    assert.equal(fit.length, 4)
+    assert.ok(fit.some((item) => item.text?.includes('—') && item.text.includes('6,056')))
+    for (const item of fit) {
+      assert.ok(item.left > item.markRight, `${width}: ${JSON.stringify(item)}`)
       assert.ok(item.right <= item.svgRight, `${width}: ${JSON.stringify(item)}`)
+      assert.ok(item.bottom < item.axisTop, `${width}: ${JSON.stringify(item)}`)
+    }
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
       0,
@@ -776,4 +807,69 @@ test('Dataset charts retain exact summaries and tooltips, local scrolling and th
   await dialog.getByText('12345678901234.5678', { exact: true }).waitFor()
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await dialog.waitFor({ state: 'detached' })
+})
+
+test('long partial period labels retain their marker within the header and frozen rail', async () => {
+  const label = 'A deliberately long saved period with many separate words'
+  for (const width of [710, 360]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.locator('body').evaluate((body, value) => {
+      body.style.width = `${value}px`
+      body.style.margin = '0'
+    }, width)
+    const column = page.locator('[data-resource="longPeriodX"] text[data-heatmap-column]').filter({
+      has: page.locator('title', { hasText: label }),
+    })
+    assert.equal(await column.count(), 1)
+    assert.match((await column.locator('title').textContent()) ?? '', /Partial period/)
+    const lines = await column.locator('tspan').allTextContents()
+    assert.ok(lines.length <= 2, JSON.stringify(lines))
+    assert.match(lines.join(' '), /◌/)
+    const lineWidths = await column
+      .locator('tspan')
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width))
+    assert.ok(
+      lineWidths.every((lineWidth) => lineWidth < 88),
+      JSON.stringify(lineWidths),
+    )
+
+    const region = page.locator('[data-resource="longPeriodY"] .fv-plot')
+    const overflowing = await region.evaluate(
+      (element) => element.scrollWidth > element.clientWidth + 1,
+    )
+    if (!overflowing) {
+      const labels = await region.locator('[data-row-label]').evaluateAll((rows) =>
+        rows.map((row) => ({
+          title: row.querySelector('title')?.textContent,
+          label: row.querySelector('text')?.textContent,
+        })),
+      )
+      const entry = labels.find((item) => item.title?.includes(label))
+      assert.ok(entry, JSON.stringify(labels))
+      assert.match(entry.title ?? '', /Partial period/)
+      assert.match(entry.label ?? '', /◌/)
+      continue
+    }
+    await region.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+      element.dispatchEvent(new Event('scroll'))
+    })
+    const rail = region.locator('[data-frame-rail]')
+    await rail.waitFor({ state: 'visible' })
+    const entries = await rail.locator('[data-rail-row]').evaluateAll((rows) =>
+      rows.map((row) => ({
+        title: row.querySelector('title')?.textContent,
+        label: row.querySelector('text')?.textContent,
+      })),
+    )
+    const entry = entries.find((item) => item.title?.includes(label))
+    assert.ok(entry, JSON.stringify(entries))
+    assert.match(entry.title ?? '', /Partial period/)
+    assert.match(entry.label ?? '', /◌/)
+  }
+  await page.setViewportSize({ width: 420, height: 900 })
+  await page.locator('body').evaluate((body) => {
+    body.style.width = '420px'
+    body.style.margin = '0'
+  })
 })

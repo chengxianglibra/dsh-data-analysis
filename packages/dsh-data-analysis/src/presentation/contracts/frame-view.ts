@@ -28,6 +28,7 @@ export const frameViewSchema = z.union([
   }),
   z.strictObject({
     chart: z.literal('pie'),
+    style: z.literal('stacked').optional(),
     encoding: z
       .strictObject({ axis: z.string().min(1).optional(), value: z.string().min(1).optional() })
       .optional(),
@@ -53,6 +54,54 @@ export const frameDisplaySchema = z.strictObject({
   height: z.number().int().positive().max(1200).optional(),
   density: z.enum(['full', 'compact']).optional(),
   dataTable: z.enum(['collapsed', 'visible']).optional(),
+  rowLimit: z.number().int().min(1).max(100).optional(),
+  title: z.string().trim().min(1).max(512).optional(),
+  subtitle: z.string().trim().min(1).max(1024).optional(),
+  formats: z
+    .array(
+      z.strictObject({
+        value: z.string().min(1).max(512),
+        format: z.enum(['percent', 'number', 'currency']),
+        decimals: z.number().int().min(0).max(6).optional(),
+      }),
+    )
+    .max(64)
+    .optional(),
+  comparisonLabels: z
+    .array(
+      z.strictObject({
+        alias: z.string().min(1).max(512),
+        current: z.string().trim().min(1).max(512),
+        baseline: z.string().trim().min(1).max(512),
+      }),
+    )
+    .max(64)
+    .optional(),
+  highlight: z
+    .strictObject({
+      axis: z.string().min(1).max(512),
+      key: z
+        .array(z.union([z.string(), z.number(), z.boolean()]))
+        .min(1)
+        .max(16),
+    })
+    .optional(),
+  decompositionTotals: z
+    .strictObject({
+      current: z.string().min(1).max(512),
+      baseline: z.string().min(1).max(512),
+      currentLabel: z.string().trim().min(1).max(512),
+      baselineLabel: z.string().trim().min(1).max(512),
+    })
+    .optional(),
+  recordPreview: z
+    .strictObject({
+      coordinates: z.array(z.string().min(1).max(512)).min(2).max(4),
+      values: z.array(z.string().min(1).max(512)).min(1).max(8),
+      limit: z.number().int().min(1).max(20),
+      label: z.string().trim().min(1).max(512),
+    })
+    .optional(),
 })
 export type FrameView = z.infer<typeof frameViewSchema>
 export type FrameDisplay = z.infer<typeof frameDisplaySchema>
@@ -106,7 +155,7 @@ export type ResolvedFrameView =
       broadcast: string[]
     }
   | { chart: 'hbar'; axis: string; values: string[]; broadcast: string[] }
-  | { chart: 'pie'; axis: string; value: string }
+  | { chart: 'pie'; axis: string; value: string; style?: 'stacked' }
   | { chart: 'heatmap'; x: string; y: string; value: string }
   | {
       chart: 'comparison'
@@ -788,14 +837,26 @@ function explicit(
         return fail('view-target-ambiguous', '/view/encoding/value')
       const column = snapshot.data.columns.findIndex((item) => item.id === values[0])
       const cells = snapshot.data.rows.map((row) => row[column])
-      const numbers = cells.map(Number)
+      const nonzero = (cell: unknown) =>
+        typeof cell === 'number'
+          ? cell !== 0
+          : typeof cell === 'string' && /[1-9]/.test(cell.split(/[eE]/)[0] ?? '')
       if (
         cells.some((cell) => cell == null) ||
-        numbers.some((number) => !Number.isFinite(number) || number < 0) ||
-        !numbers.some((number) => number > 0)
+        cells.some((cell) =>
+          typeof cell === 'number'
+            ? !Number.isFinite(cell) || cell < 0
+            : typeof cell !== 'string' || (cell.startsWith('-') && nonzero(cell)),
+        ) ||
+        !cells.some(nonzero)
       )
         return fail('view-pie-invalid-values', '/view/encoding/value')
-      return { chart: 'pie', axis: axis.token, value: values[0]! }
+      return {
+        chart: 'pie',
+        axis: axis.token,
+        value: values[0]!,
+        ...(view.style ? { style: view.style } : {}),
+      }
     }
     case 'heatmap': {
       if (view.encoding) {

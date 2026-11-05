@@ -450,11 +450,12 @@ test('Dataset chart programs save, reopen and update embedded data after capture
 test('only the current Catalog reads Frame and Dataset reports', async (t) => {
   const f = await fixture(t)
   const previous = '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
+  const predecessor = 'c42feb51cff7113f2de9d48dd61992672a4dc0b13b832b73aef72de7e0b56d0f'
   for (const resource of ['frame', 'data'] as const) {
     const delivery = await f.present({ resources: { [resource]: f.resources[resource] } })
     const saved = await readReceiptDocument(f.root, delivery.receipt)
     assert.equal(parseAnalysisDocument(saved).program, saved.program)
-    for (const build of [previous, 'unknown'])
+    for (const build of [predecessor, previous, 'unknown'])
       assert.throws(() => parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build } }))
   }
 })

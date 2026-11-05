@@ -1,4 +1,4 @@
-import { type ReactNode, useId } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import {
   Area,
   Bar,
@@ -15,8 +15,11 @@ import {
   YAxis,
 } from 'recharts'
 import { useCopy } from '../../i18n/context.tsx'
+import { Button } from '../../ui/primitives/button.tsx'
 import {
   axisOf,
+  type ChartAxis,
+  type ChartGroup,
   type ChartModel,
   type ChartProps,
   cellOf,
@@ -138,13 +141,15 @@ function TimeChartPlot({
       key: `s${gi}_${vi}`,
       name,
       label: [group.label, valueName(s, name)].filter(Boolean).join(' · '),
-      color: s.frameStyle && (seriesAxis ? gi : vi) === 0 ? '#126c74' : color(seriesAxis ? gi : vi),
+      color: color(seriesAxis ? gi : vi),
       marker: seriesAxis ? gi : undefined,
       rows: new Map(group.rows.map((row) => [tickOf(row), row])),
     })),
   )
-  const showLabels = !!s.frameStyle && ticks.length <= 12 && series.length === 1
   const bars = view.chart === 'bar' || view.chart === 'interval-bar'
+  const highlightedKey = s.highlight?.axis === axis.id ? s.highlight.key : undefined
+  const showLabels =
+    !!s.frameStyle && ticks.length <= 12 && series.length === 1 && !(bars && highlightedKey)
   const data = ticks.map((_, index) =>
     Object.assign(
       { index },
@@ -221,6 +226,9 @@ function TimeChartPlot({
       <ChartFrame
         label={label}
         height={height}
+        width={
+          s.frameStyle && bars ? Math.max(300, Math.min(640, ticks.length * 18 + 90)) : undefined
+        }
         legend={
           showLegend && (
             <Legend
@@ -304,6 +312,8 @@ function TimeChartPlot({
                     if (!p) return <g />
                     const row = line.rows.get(p.index)
                     if (row === undefined) return <g />
+                    const highlighted =
+                      highlightedKey !== undefined && axis.keys[row] === highlightedKey
                     const title = `${ticks[p.index]?.title ?? ''}\n${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
                     return (
                       <SelectableMark row={row} field={line.name} label={title}>
@@ -315,6 +325,7 @@ function TimeChartPlot({
                                 ? 'zero'
                                 : 'bar'
                           }
+                          data-highlighted={highlighted || undefined}
                         >
                           <title>{title}</title>
                           <Rectangle
@@ -322,7 +333,7 @@ function TimeChartPlot({
                             y={p.y}
                             width={p.width}
                             height={Math.max(p.height, 1)}
-                            fill={line.color}
+                            fill={highlighted ? color(3) : line.color}
                             fillOpacity={ticks[p.index]?.incomplete ? 0.45 : 1}
                             stroke={ticks[p.index]?.incomplete ? line.color : undefined}
                             strokeDasharray={ticks[p.index]?.incomplete ? '3 2' : undefined}
@@ -337,7 +348,7 @@ function TimeChartPlot({
                                   : p.y - 8
                               }
                               textAnchor="middle"
-                              fill="#126c74"
+                              fill={line.color}
                               fontSize={12}
                             >
                               {displayed(
@@ -373,7 +384,7 @@ function TimeChartPlot({
                     dataKey={`${line.key}Label`}
                     position="top"
                     offset={12}
-                    fill="#126c74"
+                    fill={line.color}
                     fontSize={12}
                   />
                 )}
@@ -396,7 +407,7 @@ function TimeChartPlot({
                     dataKey={`${line.key}Label`}
                     position="top"
                     offset={12}
-                    fill="#126c74"
+                    fill={line.color}
                     fontSize={12}
                   />
                 )}
@@ -478,8 +489,51 @@ export function rectangleGeometry(
   }
 }
 export function HBarChart(props: ChartProps<'hbar'>) {
-  const groups = unitGroups(props.model, props.view.values, props.view.broadcast)
+  const t = useCopy()
+  const [selectedGroup, setSelectedGroup] = useState<string>()
+  const groups = unitGroups(props.model, props.view.values, props.view.broadcast).flatMap(
+    (group) =>
+      props.model.frameStyle && group.values.length > 1
+        ? group.values.map((name) => ({ values: [name], broadcast: group.broadcast }))
+        : [group],
+  )
   if (groups.length <= 1) return <HBarChartPlot {...props} />
+  if (props.model.frameStyle) {
+    const metrics = groups.filter((group) => group.values.length > 0)
+    const references = groups.filter((group) => group.values.length === 0)
+    const key = (group: (typeof groups)[number]) => JSON.stringify(group)
+    const selected = metrics.find((group) => key(group) === selectedGroup) ?? metrics[0]
+    return (
+      <div className="fv-parents">
+        {metrics.length > 1 && (
+          <fieldset
+            className="fv-hbar-controls"
+            aria-label={t('marivo.presentation.ui-frame-comparison-metric')}
+            style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+          >
+            {metrics.map((group) => (
+              <Button
+                key={key(group)}
+                variant="outline"
+                size="xs"
+                aria-pressed={group === selected}
+                onClick={() => setSelectedGroup(key(group))}
+              >
+                {group.values.map((name) => valueName(props.model, name)).join(' · ')}
+              </Button>
+            ))}
+          </fieldset>
+        )}
+        {selected && <HBarChartPlot {...props} view={{ ...props.view, ...selected }} />}
+        {references.map((group) => (
+          <section className="fv-parent" key={key(group)}>
+            <h4>{group.broadcast.map((name) => valueName(props.model, name)).join(' · ')}</h4>
+            <HBarChartPlot {...props} view={{ ...props.view, ...group }} />
+          </section>
+        ))}
+      </div>
+    )
+  }
   return (
     <div className="fv-parents">
       {groups.map((group) => (
@@ -495,15 +549,58 @@ export function HBarChart(props: ChartProps<'hbar'>) {
     </div>
   )
 }
-function HBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
+/** Category labels have a real width budget; long values retain their full title. */
+function HBarMemberTick({
+  x = 0,
+  y = 0,
+  payload,
+  labels,
+  maxCharacters,
+}: {
+  x?: number
+  y?: number
+  payload?: { value: number }
+  labels: string[]
+  maxCharacters: number
+}) {
+  const index = payload?.value ?? -1
+  const label = labels[index] ?? ''
+  const text = label.length > maxCharacters ? `${label.slice(0, maxCharacters - 1)}…` : label
+  return (
+    <g transform={`translate(${x},${y})`} data-row-label={label} data-row-index={index}>
+      <title>{label}</title>
+      <text className="fv-row-label" textAnchor="end" dy={4} fill="currentColor">
+        {text}
+      </text>
+    </g>
+  )
+}
+function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'hbar'>) {
   const t = useCopy()
+  const regionRef = useRef<HTMLElement>(null)
+  const [availableWidth, setAvailableWidth] = useState(0)
   const axis = axisOf(s, view.axis)
+  useEffect(() => {
+    const element = regionRef.current
+    if (!element || !s.frameStyle || !axis) return
+    const update = () => setAvailableWidth(element.clientWidth)
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    update()
+    return () => observer.disconnect()
+  }, [s.frameStyle, axis])
   if (!axis) return null
-  const rows = rowsOf(s)
+  const rows = rowsOf(s).slice(0, s.rowLimit)
   const data = rows.map((index) =>
     Object.assign(
       { index },
-      ...view.values.map((name, vi) => ({ [`v${vi}`]: valueAt(s, index, name) })),
+      ...view.values.map((name, vi) => ({
+        [`v${vi}`]: valueAt(s, index, name),
+        [`v${vi}Label`]:
+          valueAt(s, index, name) === null
+            ? ''
+            : displayed(s, cellOf(s, index, name), columnOf(s, name)?.column),
+      })),
     ),
   )
   const refs = view.broadcast.flatMap((name) =>
@@ -531,96 +628,144 @@ function HBarChartPlot({ model: s, view }: ChartProps<'hbar'>) {
       ),
     ].join('\n')
   const label = summary(t, view.values.map((name) => valueName(s, name)).join(' · '), rows.map(tip))
+  const showLabels = !!s.frameStyle && view.values.length === 1
+  const valueWidth = showLabels
+    ? Math.min(
+        1000,
+        Math.max(60, ...data.map((item) => String(item.v0Label ?? '').length * 8 + 16)),
+      )
+    : 32
+  const naturalAxisWidth = Math.min(
+    200,
+    Math.max(140, ...axis.labels.map((text) => Math.min(text.length, 42) * 8 + 16)),
+  )
+  const axisWidth = s.frameStyle
+    ? Math.min(
+        naturalAxisWidth,
+        availableWidth ? Math.max(90, availableWidth - valueWidth - 80) : naturalAxisWidth,
+      )
+    : 140
+  const chartHeight = Math.max(140, rows.length * (22 * view.values.length + 8) + 48)
   return (
-    <ChartFrame
-      label={label}
-      height={Math.max(140, rows.length * (22 * view.values.length + 8) + 48)}
-      legend={
-        <Legend
-          items={view.values.map((name, vi) => ({ label: valueName(s, name), color: color(vi) }))}
-        />
+    <section
+      ref={regionRef}
+      aria-label={label}
+      style={
+        requestedHeight && chartHeight > requestedHeight
+          ? { maxHeight: requestedHeight, overflowY: 'auto' }
+          : undefined
       }
+      tabIndex={requestedHeight && chartHeight > requestedHeight ? 0 : undefined}
     >
-      <ComposedChart
-        title={label}
-        desc={label}
-        data={referenceData}
-        layout="vertical"
-        margin={{ top: 12, right: 32, bottom: 8, left: 8 }}
-        accessibilityLayer
+      <ChartFrame
+        label={label}
+        width={s.frameStyle ? Math.max(250, axisWidth + valueWidth + 80) : undefined}
+        height={chartHeight}
+        legend={
+          <Legend
+            items={view.values.map((name, vi) => ({ label: valueName(s, name), color: color(vi) }))}
+          />
+        }
       >
-        <CartesianGrid horizontal={false} />
-        <XAxis
-          dataKey="__reference"
-          allowDataOverflow
-          type="number"
-          domain={numericDomain(
-            [
-              ...rows.flatMap((row) => view.values.map((name) => valueAt(s, row, name))),
-              ...refs.map((ref) => ref.x),
-            ],
-            true,
-          )}
-          tickFormatter={(value) => compact(t.locale, value)}
-        />
-        <YAxis
-          allowDataOverflow
-          type="category"
-          dataKey="index"
-          tick={<MemberTick labels={axis.labels} />}
-          width={140}
-          interval={0}
-        />
-        <ExactTooltip textAt={tip} />
-        <ReferenceLine x={0} stroke="var(--border)" />
-        {view.values.map((name, vi) => (
-          <Bar
-            key={name}
-            dataKey={`v${vi}`}
-            name={valueName(s, name)}
-            fill={color(vi)}
-            isAnimationActive={false}
-            shape={(input) => {
-              const p = rectangleGeometry(input)
-              if (!p) return <g />
-              const title = `${axis.labels[p.index] ?? ''} · ${valueName(s, name)}: ${displayed(s, cellOf(s, p.index, name), columnOf(s, name)?.column)}`
-              return (
-                <SelectableMark row={p.index} field={name} label={title}>
-                  <g data-mark="bar">
-                    <title>{title}</title>
-                    <Rectangle {...p} width={Math.max(p.width, 1)} radius={2} fill={color(vi)} />
-                  </g>
-                </SelectableMark>
-              )
-            }}
-          />
-        ))}
-        {view.values.length === 0 && (
-          <Line
+        <ComposedChart
+          title={label}
+          desc={label}
+          data={referenceData}
+          layout="vertical"
+          margin={{ top: 12, right: valueWidth, bottom: 8, left: 8 }}
+          accessibilityLayer
+        >
+          <CartesianGrid horizontal={false} />
+          <XAxis
             dataKey="__reference"
-            stroke="none"
-            dot={false}
-            activeDot={false}
-            isAnimationActive={false}
+            allowDataOverflow
+            type="number"
+            domain={numericDomain(
+              [
+                ...rows.flatMap((row) => view.values.map((name) => valueAt(s, row, name))),
+                ...refs.map((ref) => ref.x),
+              ],
+              true,
+            )}
+            tickFormatter={(value) => compact(t.locale, value)}
           />
-        )}
-        {refs.map((ref) =>
-          ref.x === null ? null : (
-            <ReferenceLine
-              key={`${ref.name}:${ref.from}:${ref.to}`}
-              className="mv-broadcast-reference"
-              segment={[
-                { x: ref.x, y: ref.from },
-                { x: ref.x, y: ref.to },
-              ]}
-              stroke={NEUTRAL}
-              strokeDasharray="4 3"
-              label={{ value: displayed(s, ref.value, columnOf(s, ref.name)?.column) }}
+          <YAxis
+            allowDataOverflow
+            type="category"
+            dataKey="index"
+            tick={
+              s.frameStyle ? (
+                <HBarMemberTick
+                  labels={axis.labels}
+                  maxCharacters={Math.floor((axisWidth - 16) / 8)}
+                />
+              ) : (
+                <MemberTick labels={axis.labels} />
+              )
+            }
+            width={axisWidth}
+            interval={0}
+          />
+          <ExactTooltip textAt={tip} />
+          <ReferenceLine x={0} stroke="var(--border)" />
+          {view.values.map((name, vi) => (
+            <Bar
+              key={name}
+              dataKey={`v${vi}`}
+              name={valueName(s, name)}
+              fill={color(vi)}
+              isAnimationActive={false}
+              shape={(input) => {
+                const p = rectangleGeometry(input)
+                if (!p) return <g />
+                const title = `${axis.labels[p.index] ?? ''} · ${valueName(s, name)}: ${displayed(s, cellOf(s, p.index, name), columnOf(s, name)?.column)}`
+                return (
+                  <SelectableMark row={p.index} field={name} label={title}>
+                    <g data-mark="bar">
+                      <title>{title}</title>
+                      <Rectangle {...p} width={Math.max(p.width, 1)} radius={2} fill={color(vi)} />
+                    </g>
+                  </SelectableMark>
+                )
+              }}
+            >
+              {showLabels && (
+                <LabelList
+                  dataKey={`v${vi}Label`}
+                  position="right"
+                  fill="currentColor"
+                  fontSize={12}
+                />
+              )}
+            </Bar>
+          ))}
+          {view.values.length === 0 && (
+            <Line
+              dataKey="__reference"
+              stroke="none"
+              dot={false}
+              activeDot={false}
+              isAnimationActive={false}
             />
-          ),
-        )}
-      </ComposedChart>
-    </ChartFrame>
+          )}
+          {refs.map((ref) =>
+            ref.x === null ? null : (
+              <ReferenceLine
+                key={`${ref.name}:${ref.from}:${ref.to}`}
+                className="mv-broadcast-reference"
+                segment={[
+                  { x: ref.x, y: ref.from },
+                  { x: ref.x, y: ref.to },
+                ]}
+                stroke={NEUTRAL}
+                strokeDasharray="4 3"
+                label={{ value: displayed(s, ref.value, columnOf(s, ref.name)?.column) }}
+              />
+            ),
+          )}
+        </ComposedChart>
+      </ChartFrame>
+    </section>
   )
 }
 /** The grid is one SVG pattern; sparse layouts do not allocate a mark for each missing pair. */
@@ -700,6 +845,47 @@ function HeatCell({
     </g>
   )
 }
+interface HeatmapLabel {
+  label: string
+  title: string
+  incomplete: boolean
+  period?: boolean
+}
+
+/** Resolve display labels from captured period facts while retaining the original grouping key. */
+function heatmapLabel(axis: ChartAxis, group: ChartGroup): HeatmapLabel {
+  const row = group.rows[0]
+  const index = row === undefined ? undefined : axis.ticks?.indices[row]
+  const tick = index === undefined ? undefined : axis.ticks?.ticks[index]
+  return tick && index !== undefined && axis.ticks?.captured?.[index]
+    ? { ...tick, period: true }
+    : { label: group.label, title: group.label, incomplete: false }
+}
+
+/** Captured period labels are bounded to the fixed two-line header; full text stays in title. */
+function periodLines(item: HeatmapLabel): string[] {
+  const take = (text: string, limit: number) => {
+    let width = 0
+    const chars = Array.from(text)
+    let end = 0
+    for (const char of chars) {
+      const next = (char.codePointAt(0) ?? 0) > 0xff ? 2 : 1
+      if (width + next > limit) break
+      width += next
+      end++
+    }
+    return [chars.slice(0, end).join('').trim(), chars.slice(end).join('').trim()] as const
+  }
+  const [first, remainder] = take(item.label, 11)
+  if (!remainder) {
+    if (!item.incomplete) return [first]
+    const [, overflow] = take(first, 9)
+    return overflow ? [first, '◌'] : [`${first} ◌`]
+  }
+  const [second, rest] = take(remainder, item.incomplete ? 8 : 10)
+  return [first, `${second}${rest ? '…' : ''}${item.incomplete ? ' ◌' : ''}`]
+}
+
 function HeatmapColumnTick({
   x = 0,
   y = 0,
@@ -709,21 +895,58 @@ function HeatmapColumnTick({
   x?: number
   y?: number
   payload?: { value: number }
-  labels: string[]
+  labels: HeatmapLabel[]
 }) {
-  const label = labels[payload?.value ?? -1] ?? ''
-  const words = label.split(' ')
-  const lines = words.length > 1 ? words : (label.match(/.{1,11}/gu) ?? [''])
+  const item = labels[payload?.value ?? -1]
+  const label = item?.label ?? ''
+  const text = `${label}${item?.incomplete ? ' ◌' : ''}`
+  const words = text.split(' ')
+  const lines = item?.period
+    ? periodLines(item)
+    : words.length > 1
+      ? words
+      : (text.match(/.{1,11}/gu) ?? [''])
   return (
     <g transform={`translate(${x},${y})`}>
       <text data-heatmap-column={label} textAnchor="middle" fill="currentColor">
-        <title>{label}</title>
+        <title>{item?.title ?? label}</title>
         {lines.map((line, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: Wrapped label lines have fixed physical positions, including repeated words.
           <tspan key={`${index}:${line}`} x={0} y={-8 - (lines.length - 1 - index) * 12}>
             {line}
           </tspan>
         ))}
+      </text>
+    </g>
+  )
+}
+function HeatmapRowTick({
+  x = 0,
+  y = 0,
+  payload,
+  labels,
+}: {
+  x?: number
+  y?: number
+  payload?: { value: number }
+  labels: HeatmapLabel[]
+}) {
+  const index = payload?.value ?? -1
+  const item = labels[index]
+  const label = `${item?.label ?? ''}${item?.incomplete ? ' ◌' : ''}`
+  const visible =
+    item && item.label.length > 18 ? `${item.label.slice(0, 17)}…` : (item?.label ?? '')
+  return (
+    <g
+      transform={`translate(${x},${y})`}
+      data-row-label={item?.label ?? ''}
+      data-row-incomplete={item?.incomplete || undefined}
+      data-row-index={index}
+    >
+      <title>{item?.title ?? label}</title>
+      <text className="fv-row-label" textAnchor="end" dy={4} fill="currentColor">
+        {visible}
+        {item?.incomplete ? ' ◌' : ''}
       </text>
     </g>
   )
@@ -735,6 +958,12 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
   if (!xAxis || !yAxis) return null
   const xs = groupRows(s, [xAxis])
   const ys = groupRows(s, [yAxis])
+  const xLabels = xs.map((group) => heatmapLabel(xAxis, group))
+  const yLabels = ys.map((group) => heatmapLabel(yAxis, group))
+  const columnWidth = Math.max(
+    24,
+    ...xLabels.map((item) => Math.min(11, item.label.length) * 8 + 8),
+  )
   const xOf = new Map<number, number>()
   const yOf = new Map<number, number>()
   xs.forEach((group, index) => {
@@ -766,7 +995,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
   })
   const col = columnOf(s, view.value)?.column
   const tip = (row: number) =>
-    `${xs[xOf.get(row)!]?.label ?? ''} · ${ys[yOf.get(row)!]?.label ?? ''}: ${displayed(s, cellOf(s, row, view.value), col)}`
+    `${xLabels[xOf.get(row)!]?.title ?? ''} · ${yLabels[yOf.get(row)!]?.title ?? ''}: ${displayed(s, cellOf(s, row, view.value), col)}`
   const label = summary(t, valueName(s, view.value), rowsOf(s).map(tip))
   const finite = data.filter((point) => point.value !== null)
   const minPoint = finite.reduce<(typeof finite)[number] | undefined>(
@@ -780,7 +1009,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
   return (
     <ChartFrame
       label={label}
-      width={Math.max(640, xs.length * 88 + 170)}
+      width={Math.max(640, xs.length * columnWidth + 170)}
       height={Math.max(180, ys.length * 28 + 80)}
       legend={
         minPoint && maxPoint ? (
@@ -822,7 +1051,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
           domain={[-0.5, Math.max(0.5, xs.length - 0.5)]}
           ticks={xs.map((_, index) => index)}
           height={48}
-          tick={<HeatmapColumnTick labels={xs.map((group) => group.label)} />}
+          tick={<HeatmapColumnTick labels={xLabels} />}
           interval={0}
         />
         <YAxis
@@ -831,7 +1060,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
           dataKey="y"
           domain={[-0.5, Math.max(0.5, ys.length - 0.5)]}
           ticks={ys.map((_, index) => index)}
-          tick={<MemberTick labels={ys.map((group) => group.label)} />}
+          tick={<HeatmapRowTick labels={yLabels} />}
           reversed
           width={140}
           interval={0}

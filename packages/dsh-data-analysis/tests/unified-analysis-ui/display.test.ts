@@ -47,6 +47,39 @@ test('Frame value formatting uses captured share and coefficient semantics', () 
   assert.equal(displayCell('en-US', 1234.5, column('float64', 'USD')), '$1,234.50')
 })
 
+test('USD displays $ in both locales without losing decimal or integer precision', () => {
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    assert.equal(displayCell(locale, 1234.5, column('float64', 'USD')), '$1,234.50')
+    assert.equal(
+      displayCell(locale, '-9007199254740993.125', column('decimal', 'USD')),
+      '-$9,007,199,254,740,993.13',
+    )
+    assert.equal(
+      displayCell(locale, '9007199254740993', column('int64', 'USD')),
+      '$9,007,199,254,740,993.00',
+    )
+  }
+})
+
+test('explicit currency formatting uses $ only for USD', () => {
+  const snapshot = shareByRegion()
+  const value = snapshot.data.columns.find((item) => item.id === 'revenue')!
+  const withCurrency = {
+    ...snapshot,
+    frameDisplay: { formats: [{ value: value.id, format: 'currency' as const, decimals: 2 }] },
+  }
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    assert.equal(
+      displayFrameCell(withCurrency, locale, -1234.5, { ...value, unit: 'USD' }),
+      '-$1,234.50',
+    )
+    const cad = new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(
+      -1234.5,
+    )
+    assert.equal(displayFrameCell(withCurrency, locale, -1234.5, { ...value, unit: 'CAD' }), cad)
+  }
+})
+
 test('displayCell formats datetimes in the supplied timezone and falls back to raw text', () => {
   assert.equal(
     displayCell('en-US', '2025-06-01T00:00:00-04:00', column('datetime'), 'America/New_York'),

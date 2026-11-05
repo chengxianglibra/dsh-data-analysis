@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { ResolvedFrameView } from '../../../presentation/contracts/frame-view.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
@@ -101,7 +101,11 @@ export function FrameIconButton({
 }
 
 /** Ring arc shows the captured fraction; the text is the two saved counts. */
-export function CoverageIcon({ snapshot: s }: { snapshot: Snapshot }) {
+export function CoverageIcon({
+  snapshot: s,
+}: {
+  snapshot: Pick<Snapshot, 'coverage' | 'fetchedAt'>
+}) {
   const t = useCopy()
   const { candidate } = useAnalysisResources()
   const [open, setOpen] = useState(false)
@@ -232,50 +236,68 @@ function OriginsIcon({ snapshot: s }: { snapshot: Snapshot }) {
   )
 }
 
-type CodeState = { kind: 'idle' | 'loading' | 'failed' | 'mismatch' } | { kind: 'ok'; text: string }
+type CodeState =
+  | { kind: 'idle' }
+  | { kind: 'loading' | 'failed' | 'mismatch'; key: string }
+  | { kind: 'ok'; key: string; text: string }
 
 /** Python source bound by the Host; greyed without codeRef, on read failure or sha256 mismatch. */
-function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: PythonCodeRef }) {
+export function PythonIcon({
+  snapshot: s,
+  codeRef,
+}: {
+  snapshot: { source: { sessionId?: string; artifactId?: string | null } }
+  codeRef?: PythonCodeRef
+}) {
   const t = useCopy()
   const { readCode } = useAnalysisResources()
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState<CodeState>({ kind: 'idle' })
-  const [copied, setCopied] = useState<string>()
+  const [copied, setCopied] = useState<{ key: string; message: string }>()
+  const codeKey = codeRef ? JSON.stringify([codeRef.executionId, codeRef.sha256]) : undefined
+  const currentKey = useRef(codeKey)
+  currentKey.current = codeKey
+  const currentCode = code.kind !== 'idle' && code.key === codeKey ? code : undefined
   useEffect(() => {
-    if (!open || !codeRef || !readCode) return
+    if (!open || !codeRef || !codeKey || !readCode) return
     const controller = new AbortController()
-    setCode((current) => (current.kind === 'ok' ? current : { kind: 'loading' }))
+    setCode((current) =>
+      current.kind === 'ok' && current.key === codeKey
+        ? current
+        : { kind: 'loading', key: codeKey },
+    )
     readCode(codeRef, controller.signal)
       .then((record) => {
         if (controller.signal.aborted) return
-        if (!record) return setCode({ kind: 'failed' })
+        if (!record) return setCode({ kind: 'failed', key: codeKey })
         setCode(
           record.sha256 === codeRef.sha256
-            ? { kind: 'ok', text: record.text }
-            : { kind: 'mismatch' },
+            ? { kind: 'ok', key: codeKey, text: record.text }
+            : { kind: 'mismatch', key: codeKey },
         )
       })
       .catch(() => {
-        if (!controller.signal.aborted) setCode({ kind: 'failed' })
+        if (!controller.signal.aborted) setCode({ kind: 'failed', key: codeKey })
       })
     return () => controller.abort()
-  }, [open, codeRef, readCode])
+  }, [open, codeRef, codeKey, readCode])
   const unavailable = !codeRef || !readCode
-  const greyed = unavailable || code.kind === 'failed' || code.kind === 'mismatch'
+  const greyed = unavailable || currentCode?.kind === 'failed' || currentCode?.kind === 'mismatch'
   const label = t(`${P}ui-frame-python`)
   const state = !codeRef
     ? t(`${P}ui-frame-python-missing`)
-    : !readCode || code.kind === 'failed'
+    : !readCode || currentCode?.kind === 'failed'
       ? t(`${P}ui-frame-python-read-failed`)
-      : code.kind === 'mismatch'
+      : currentCode?.kind === 'mismatch'
         ? t(`${P}ui-frame-python-mismatch`)
         : undefined
-  const copy = async (text: string) => {
+  const copy = async (text: string, key: string) => {
     const ok = await Promise.resolve()
       .then(() => navigator.clipboard.writeText(text))
       .then(() => true)
       .catch(() => false)
-    setCopied(ok ? `${P}copied` : `${P}ui-copy-failed`)
+    if (currentKey.current === key)
+      setCopied({ key, message: ok ? `${P}copied` : `${P}ui-copy-failed` })
   }
   return (
     <>
@@ -289,21 +311,21 @@ function PythonIcon({ snapshot: s, codeRef }: { snapshot: Snapshot; codeRef?: Py
         <FrameIcon kind="code" />
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
-        {code.kind === 'ok' ? (
+        {currentCode?.kind === 'ok' ? (
           <>
             <div className="fv-table-bar">
               <FrameIconButton
                 kind="copy-code"
                 label={t(`${P}copy-code`)}
                 tip={t(`${P}copy-code`)}
-                onOpen={() => void copy(code.text)}
+                onOpen={() => void copy(currentCode.text, currentCode.key)}
               >
                 <FrameIcon kind="copy" />
               </FrameIconButton>
-              {copied && <span role="status">{t(copied)}</span>}
+              {copied && copied.key === codeKey && <span role="status">{t(copied.message)}</span>}
             </div>
             <pre className="fv-code rounded-lg bg-muted p-3 text-xs">
-              <code>{code.text}</code>
+              <code>{currentCode.text}</code>
             </pre>
           </>
         ) : (

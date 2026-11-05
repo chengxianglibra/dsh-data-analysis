@@ -73,6 +73,6 @@ test('Frame time charts show formatted labels on both positive and negative bars
     const markup = await renderer.render(snapshot, { view: { chart } })
     assert.match(markup, /1,234\.50/)
     assert.match(markup, /-2,500\.25/)
-    assert.match(markup, /#126c74/)
+    assert.match(markup, /var\(--chart-1\)/)
   }
 })

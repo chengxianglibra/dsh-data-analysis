@@ -414,7 +414,7 @@ test('long month labels have room while keeping the endpoints', async () => {
   assert.ok(ticks.slice(1).every((tick, index) => Number(tick[1]) - Number(ticks[index]![1]) >= 55))
 })
 
-test('observation charts use separate scales for different or unknown units', async () => {
+test('category charts switch measures while time charts use separate scales', async () => {
   const snapshot = frame({
     axes: [categoryAxis(3)],
     values: [
@@ -426,12 +426,12 @@ test('observation charts use separate scales for different or unknown units', as
   snapshot.data.columns.find((column) => column.id === 'trips')!.unit = '1'
   snapshot.data.columns.find((column) => column.id === 'fare')!.unit = 'USD'
   const mixed = await r.render(snapshot)
-  assert.equal(count(mixed, /class="fv-chart /), 3)
+  assert.equal(count(mixed, /class="fv-chart /), 1)
   assert.match(mixed, /trips/)
   assert.match(mixed, /fare \(USD\)/)
   snapshot.data.columns.find((column) => column.id === 'fare')!.unit = '1'
   const shared = await r.render(snapshot)
-  assert.equal(count(shared, /class="fv-chart /), 2)
+  assert.equal(count(shared, /class="fv-chart /), 1)
 
   const time = frame({
     axes: [timeAxis(3)],
@@ -615,12 +615,12 @@ test('comparison numbers label saved changes and keep direction marks', async ()
     comparedScalar({ current: 1, baseline: 1, absolute: -0.00001, relative: -0.000001 }),
   )
   assert.match(tiny, /▼0\.00</)
-  assert.match(tiny, /▼0\.00%/)
+  assert.match(tiny, /▼&lt;0\.01%/)
   const tinyUp = await r.render(
     comparedScalar({ current: 1, baseline: 1, absolute: 0.00001, relative: 0.000001 }),
   )
   assert.match(tinyUp, /▲0\.00</)
-  assert.match(tinyUp, /▲0\.00%/)
+  assert.match(tinyUp, /▲&lt;0\.01%/)
 })
 
 test('a single-row multi-group comparison is one headline block per metric', async () => {
@@ -632,9 +632,15 @@ test('a single-row multi-group comparison is one headline block per metric', asy
   // Four saved numbers per metric: current, baseline, Δ, Δ%.
   const block =
     /<section[^>]*data-comparison-group="sales"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
-  assert.equal(count(block, /<dt>/), 4)
+  assert.equal(count(block, /<dt(?:\s[^>]*)?>/), 4)
   for (const label of ['Current', 'Baseline', 'Change', 'Change rate'])
     assert.ok(block.includes(`>${label}</dt>`), label)
+  // Each endpoint label precedes its saved value; the baseline and changes follow the current value.
+  const currentLabel = block.indexOf('>Current</dt>')
+  const baselineLabel = block.indexOf('>Baseline</dt>')
+  const deltaLabel = block.indexOf('>Change</dt>')
+  const rateLabel = block.indexOf('>Change rate</dt>')
+  assert.ok(currentLabel < baselineLabel && baselineLabel < deltaLabel && deltaLabel < rateLabel)
   // Raw role column ids stay out of the visible text; the detailed table is the data entry.
   const text = html.replace(/<[^>]+>/g, ' ')
   assert.doesNotMatch(text, /prior\.(?:baseline|absolute|relative)\./)
@@ -761,7 +767,8 @@ test('correlation dots sit on a fixed [-1, 1] axis; NA draws no point and keeps 
 
 test('align draws hollow left and filled right pairs, or two lines on a paired axis', async () => {
   const dumbbell = await r.render(align(categoryAxis(3)))
-  assert.equal(count(dumbbell, /mv-domain-link/), 6)
+  assert.equal(count(dumbbell, /mv-domain-link/), 3)
+  assert.match(dumbbell, /aria-pressed="true"/)
   assert.match(dumbbell, /left\.revenue/)
   const line = await r.render(align(pairedAxis(3)))
   assert.equal(segments(line).length, 4)
@@ -974,10 +981,21 @@ test('alignment chart labels and descriptions honor side presence', async () => 
   }
 })
 
-test('members show the saved count and composite keys in separate columns', async () => {
+test('members show the saved count and a compact key preview', async () => {
   const html = await r.render(members())
   assert.match(html, /data-number="members"><dd[^>]*>3</)
-  assert.match(html, /<th[^>]*data-column-id="region"/)
+  assert.match(html, /class="fv-members-key"/)
+  assert.match(html, /data-icon="data"/)
+})
+
+test('composite member keys retain the requested table height', async () => {
+  const snapshot = frame({
+    axes: [categoryAxis(3, 'identity'), { ...categoryAxis(3, 'identity'), name: 'district' }],
+  })
+  const html = await r.render(snapshot, { display: { height: 150 } })
+  assert.match(html, /max-height:\s*150px/)
+  assert.match(html, /data-column-id="region"/)
+  assert.match(html, /data-column-id="district"/)
 })
 
 test('main views accept a hand-built resolution and never re-derive class or shape', async () => {
@@ -1016,7 +1034,8 @@ test('compact density keeps the name, header numbers or the main view and only u
   )
   assert.match(kpi, /data-density="compact"/)
   assert.match(kpi, /class="fv-kpi-values"/)
-  assert.equal(count(kpi, /data-icon="/), 0)
+  assert.equal(count(kpi, /data-icon="/), 1)
+  assert.match(kpi, /data-icon="data"/)
   assert.doesNotMatch(kpi, /<details/)
   assert.doesNotMatch(kpi, /fv-chips/)
   const trend = await r.render(observeTime(18), { display: { density: 'compact' } })
@@ -1087,22 +1106,21 @@ test('chart data shares the icon row and explicit visible data stays inline', as
   assert.doesNotMatch(await r.render(bare), /fv-chips/)
 })
 
-test('table-shaped main views do not add a duplicate data reference', async () => {
+test('table-shaped main views retain the data entry', async () => {
   for (const snapshot of [records(), members()]) {
     for (const display of [undefined, { dataTable: 'visible' as const }]) {
       const html = await r.render(snapshot, { display })
-      assert.doesNotMatch(html, /data-icon="data"|class="fv-data-reference"/)
-      assert.match(html, /<table/)
+      assert.match(html, /data-icon="data"/)
+      if (display) assert.match(html, /class="fv-data-reference"/)
     }
   }
-  // A single-row comparison defaults to headline blocks and keeps the table behind the data icon;
-  // asserting an explicit table keeps the no-duplicate rule literal.
+  // A single-row comparison defaults to headline blocks and keeps the table behind the data icon.
   const multi = comparedSinglePeriodMultiGroup()
   const grid = await r.render(multi, { display: { dataTable: 'visible' } })
   assert.match(grid, /data-icon="data"[\s\S]*class="fv-data-reference"/)
   const literal = await r.render(multi, { view: { chart: 'table' } })
   assert.match(literal, /<table/)
-  assert.doesNotMatch(literal, /data-icon="data"/)
+  assert.match(literal, /data-icon="data"/)
   const comparison = compareOrdinary([categoryAxis(3)])
   const comparisonResolution = resolved(comparison)
   assert.equal(comparisonResolution.view.chart, 'comparison')
@@ -1112,7 +1130,7 @@ test('table-shaped main views do not add a duplicate data reference', async () =
       style: 'table',
     })
     assert.match(html, /<table/)
-    assert.doesNotMatch(html, /data-icon="data"/)
+    assert.match(html, /data-icon="data"/)
   }
   const alignment = align(categoryAxis(3))
   const alignmentResolution = resolved(alignment)
@@ -1123,7 +1141,7 @@ test('table-shaped main views do not add a duplicate data reference', async () =
       style: 'table',
     })
     assert.match(html, /<table/)
-    assert.doesNotMatch(html, /data-icon="data"/)
+    assert.match(html, /data-icon="data"/)
   }
 })
 

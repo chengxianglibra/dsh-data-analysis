@@ -16,6 +16,7 @@ test('result shells preserve exact Dataset cells, full-column copy and candidate
         contents: `import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
+import { flushSync } from 'react-dom';
 import { AnalysisRenderer } from './src/client/analysis-ui/surface.tsx';
 import { OverlayProvider } from './src/client/ui/overlays.tsx';
 import { datasetSnapshot } from './tests/unified-analysis-ui/dataset-fixtures.ts';
@@ -35,11 +36,16 @@ const portal = new URLSearchParams(location.search).has('portal');
 const PortalShell = ({open,title,className,children}) => open ? createPortal(createElement('div',{role:'dialog','aria-label':title,className},children),document.body) : null;
 window.calls = {code:0,ask:0,copy:0};
 window.renderBuild = (recordId, candidate = new URLSearchParams(location.search).has('candidate')) => { const surface = createElement(AnalysisRenderer, {
- recordId, resources,title:'Results',locale:'en-US',candidate,
+ recordId, resources:{...resources},title:'Results',locale:'en-US',candidate,
  program:'root = Stack([metric, table, chart, partial, full, restricted]);\\nmetric = DatasetView("metric");\\ntable = DatasetView("table");\\nchart = DatasetView("chart", {chart:"line",encoding:{axis:"category",values:["value"]}});\\npartial = AnalysisFrameView("partial", {chart:"auto"}, {density:"compact"});\\nfull = AnalysisFrameView("full");\\nrestricted = AnalysisFrameView("restricted", {chart:"auto"}, {density:"compact"});',
- readCode:async () => {window.calls.code++;return new Promise(resolve => {window.resolveCode = () => resolve({text:'print("old build")',sha256:'a'.repeat(64),datasources:[{name:'warehouse',backend:'duckdb'}]})})},
+ readCode:async () => {window.calls.code++;return new Promise(resolve => {window.resolveCode = () => resolve({text:'print("old build")',sha256:(window.mismatch ? 'b' : 'a').repeat(64),datasources:[{name:'warehouse',backend:'duckdb'}]})})},
  askPoint:async () => {window.calls.ask++;document.getElementById('background-composer').focus();await new Promise(resolve=>setTimeout(resolve,10));}
 });root.render(portal ? createElement(OverlayProvider,{shell:PortalShell},surface) : surface);};
+window.setMetricSha = (sha) => {
+ resources.metric = {...resources.metric,binding:{...resources.metric.binding,codeRef:{...resources.metric.binding.codeRef,sha256:sha.repeat(64)}}};
+ flushSync(() => window.renderBuild('build-1'));
+ return document.querySelector('[role="dialog"]')?.textContent ?? '';
+};
 window.renderBuild('build-1');`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
       },
@@ -89,9 +95,48 @@ window.renderBuild('build-1');`,
     assert.match(sourceText, /print\("old build"\)/)
     assert.match(sourceText, /warehouse/)
     assert.match(sourceText, /duckdb/)
+    const switchedSource = await page.evaluate(() => Reflect.get(window, 'setMetricSha')('b'))
+    assert.doesNotMatch(switchedSource, /print\("old build"\)/)
+    assert.doesNotMatch(switchedSource, /warehouse|duckdb/)
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 2)
+    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
+    await source.getByText('The execution record sha256 does not match.').waitFor()
+    assert.equal(await source.locator('pre code').count(), 0)
+    assert.doesNotMatch((await source.textContent()) ?? '', /warehouse|duckdb/)
     await source.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.evaluate(() => Reflect.get(window, 'setMetricSha')('a'))
+    await metric.locator('[data-icon="python"] button').click()
+    const python = page.getByRole('dialog', { name: 'Python', exact: true })
+    await python.waitFor()
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 3)
+    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
+    assert.equal(await python.locator('pre code').textContent(), 'print("old build")')
+    await python.locator('[data-icon="copy-code"] button').click()
+    await python.getByRole('status').filter({ hasText: 'Copied' }).waitFor()
+    assert.equal(await page.evaluate(() => Reflect.get(window, 'copiedText')), 'print("old build")')
+    const switchedPython = await page.evaluate(() => Reflect.get(window, 'setMetricSha')('b'))
+    assert.doesNotMatch(switchedPython, /print\("old build"\)/)
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 4)
+    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
+    await python.getByRole('status').filter({ hasText: 'sha256 does not match' }).waitFor()
+    assert.equal(await python.locator('pre code').count(), 0)
+    await python.getByRole('button', { name: 'Close', exact: true }).click()
+    await python.waitFor({ state: 'hidden' })
     const table = page.locator('[data-resource="table"]')
-    assert.equal(await table.locator('[data-icon="data"]').count(), 0)
+    await table.getByRole('table', { name: 'table', exact: true }).waitFor()
+    await table.locator('[data-icon="data"] button').click()
+    const tableDialog = page.getByRole('dialog')
+    await tableDialog.getByRole('table', { name: 'table', exact: true }).waitFor()
+    await tableDialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.evaluate(() => Reflect.set(window, 'mismatch', true))
+    await table.locator('[data-icon="python"] button').click()
+    const mismatch = page.getByRole('dialog', { name: 'Python', exact: true })
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 5)
+    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
+    await mismatch.getByRole('status').filter({ hasText: 'sha256 does not match' }).waitFor()
+    assert.equal(await mismatch.locator('pre code').count(), 0)
+    await mismatch.getByRole('button', { name: 'Close', exact: true }).click()
+    assert.equal(await table.locator('[data-icon="data"]').count(), 1)
     assert.equal(
       await table.getByRole('button', { name: 'Select columns', exact: true }).count(),
       0,
@@ -148,7 +193,7 @@ window.renderBuild('build-1');`,
     assert.equal(await point.evaluate((node) => node === document.activeElement), true)
     await frameDialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.locator('[data-resource="full"] [data-icon="python"] button').click()
-    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 2)
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 6)
     await page.evaluate(() => Reflect.get(window, 'renderBuild')('build-2'))
     await page.locator('[data-analysis-record="build-2"]').waitFor()
     assert.equal(await page.getByRole('status').filter({ hasText: 'Copied' }).count(), 0)

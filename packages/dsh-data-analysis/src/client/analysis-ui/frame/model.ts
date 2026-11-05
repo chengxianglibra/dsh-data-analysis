@@ -1,4 +1,7 @@
-import type { FrameClassification } from '../../../presentation/contracts/frame-view.ts'
+import type {
+  FrameClassification,
+  FrameDisplay,
+} from '../../../presentation/contracts/frame-view.ts'
 import type {
   FrameAxisVariant,
   FrameFixedAxis,
@@ -15,7 +18,7 @@ import type {
 } from '../../../presentation/contracts/types.ts'
 import type { Translator } from '../../i18n/copy.ts'
 import { displayCell } from '../../presentation/display.ts'
-import { columnLabel } from '../../presentation/model.ts'
+import { columnLabel, compareDecimalText } from '../../presentation/model.ts'
 import { columnOf, numberOf, rowsOf } from '../charts/model.ts'
 
 export {
@@ -41,7 +44,8 @@ export function compact(locale: PresentationLocale, value: Cell, column?: Datase
 // Pure read helpers over saved Frame facts. Nothing here aggregates or derives
 // new numbers; positions and labels only format or select saved column values.
 
-export type Snapshot = FrameSnapshotV2
+/** Display metadata is scoped to this rendering and never written into the saved snapshot. */
+export type Snapshot = FrameSnapshotV2 & { readonly frameDisplay?: FrameDisplay }
 export type FrameAxis = Snapshot['frame']['axes'][number]
 type PeriodItem = FramePeriods['pages'][number]['items'][number]
 type Period = Extract<PeriodItem, { kind: 'calendar' | 'interval' }>
@@ -66,14 +70,61 @@ export function signed(locale: PresentationLocale, value: Cell, column?: Dataset
   return n > 0 ? `▲${text}` : n < 0 ? `▼${text}` : text
 }
 /** Saved fraction shown ×100 as a percent; `mark` adds ▲/▼ for relative change. */
-export function percent(locale: PresentationLocale, value: number | null, mark: boolean): string {
+export function percent(
+  locale: PresentationLocale,
+  value: number | null,
+  mark: boolean,
+  exact?: Cell,
+  decimals = 2,
+): string {
+  // Multiplying a large fraction by 100 can overflow or lose integer precision.
+  // Keep its saved spelling and make the percent conversion explicit instead.
+  const raw =
+    typeof exact === 'string' || typeof exact === 'number'
+      ? String(exact)
+      : value === null
+        ? undefined
+        : String(value)
+  const numericText = raw && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw)
+  const scaled = value === null ? null : Math.abs(value) * 100
+  if (
+    raw &&
+    numericText &&
+    ((value === null && !Number.isFinite(Number(raw))) ||
+      (scaled !== null && (!Number.isFinite(scaled) || scaled > Number.MAX_SAFE_INTEGER)))
+  ) {
+    const negative = raw.startsWith('-')
+    const text = mark ? raw.replace(/^[+-]/, '') : raw
+    return `${mark ? (negative ? '▼' : '▲') : ''}${text} × 100%`
+  }
   if (value === null) return '—'
-  const text = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(value) * 100)
-  if (!mark) return `${value < 0 ? '-' : ''}${text}%`
-  return value > 0 ? `▲${text}%` : value < 0 ? `▼${text}%` : `${text}%`
+  // Decimal strings can be nonzero even when their Number approximation underflows to zero.
+  const sign =
+    value === 0 && typeof exact === 'string' && /[1-9]/.test(exact.split(/[eE]/)[0] ?? '')
+      ? exact.startsWith('-')
+        ? -1
+        : 1
+      : Math.sign(value)
+  const unit = 10 ** -decimals
+  const magnitude = raw && numericText ? raw.replace(/^[+-]/, '') : String(Math.abs(value))
+  if (sign !== 0 && compareDecimalText(magnitude, `5e-${decimals + 3}`) < 0) {
+    const bound = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(unit)
+    if (mark) return `${sign < 0 ? '▼' : '▲'}<${bound}%`
+    return sign < 0 ? `>-${bound}%` : `<${bound}%`
+  }
+  const formatter = new Intl.NumberFormat(locale, {
+    style: 'percent',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })
+  // NumberFormat consumes decimal strings with their original precision in supported runtimes.
+  const formatted: unknown = Reflect.apply(formatter.format, undefined, [magnitude])
+  const text = typeof formatted === 'string' ? formatted : `${magnitude} × 100%`
+  if (!mark) return `${sign < 0 ? '-' : ''}${text}`
+  return sign > 0 ? `▲${text}` : sign < 0 ? `▼${text}` : text
 }
 
 /** Display a Frame cell using the saved semantic role when one is available. */
@@ -85,6 +136,32 @@ export function displayFrameCell(
   timezone = 'UTC',
 ): string {
   if (value === null) return '—'
+  const format = s.frameDisplay?.formats?.find((item) => item.value === column.id)
+  if (format?.format === 'percent')
+    return percent(locale, numberOf(value, column), false, value, format.decimals ?? 2)
+  if (format) {
+    if (format.format === 'currency' && !/^[A-Z]{3}$/.test(column.unit ?? ''))
+      return displayCell(locale, value, column, timezone)
+    if (numberOf(value, column) === null)
+      return column.unit && column.unit !== '1' ? `${String(value)} ${column.unit}` : String(value)
+    const decimals = format.decimals ?? 2
+    const formatter = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+      ...(format.format === 'currency' && column.unit
+        ? {
+            style: 'currency',
+            currency: column.unit,
+            ...(column.unit === 'USD' ? { currencyDisplay: 'narrowSymbol' } : {}),
+          }
+        : {}),
+    })
+    const result: unknown = Reflect.apply(formatter.format, undefined, [value])
+    if (typeof result !== 'string') return String(value)
+    return format.format === 'number' && column.unit && column.unit !== '1'
+      ? `${result} ${column.unit}`
+      : result
+  }
   const facts = interpretationOf(s)
   const context = facts?.valueContexts[column.id]
   const relative = facts?.comparisons.some((comparison) =>
@@ -96,7 +173,7 @@ export function displayFrameCell(
     decomposition.outputs.some((item) => item.name === column.id && item.role === 'share'),
   )
   if (context?.kind === 'share' || relative || share)
-    return percent(locale, numberOf(value, column), !!relative)
+    return percent(locale, numberOf(value, column), !!relative, value)
   if (
     context?.kind === 'pair_statistic' &&
     (context.statistic === 'pearson' || context.statistic === 'spearman')
@@ -291,13 +368,20 @@ function periodTick(t: Translator, item: Period, variant?: FrameAxisVariant): Ti
  * including those without a data row, so missing periods leave a gap.
  */
 export function timeTicks(t: Translator, s: Snapshot, axis: FrameAxis) {
-  const page = periodsOf(s)?.pages.find(
+  const pages = periodsOf(s)?.pages.filter(
     (p) => p.target.kind === 'axis' && p.target.axisToken === axis.token,
   )
+  const items = (pages ?? []).flatMap((page) =>
+    page.items.filter((item) => item.kind === 'calendar' || item.kind === 'interval'),
+  )
+  const counts = new Map<string, number>()
+  for (const item of items) {
+    const key = JSON.stringify(item.key)
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
   const ticks: Tick[] = []
-  for (const item of page?.items ?? [])
-    if (item.kind === 'calendar' || item.kind === 'interval')
-      ticks.push(periodTick(t, item, axis.variant))
+  for (const item of items)
+    if (counts.get(JSON.stringify(item.key)) === 1) ticks.push(periodTick(t, item, axis.variant))
   const index = new Map(ticks.map((tick, i) => [tick.key, i]))
   const variant = axis.variant
   const timezone = variant && 'timezone' in variant ? variant.timezone : 'UTC'
@@ -425,6 +509,8 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
     specific: false,
   }
   if (!comparison) return fallback
+  const explicit = s.frameDisplay?.comparisonLabels?.find((item) => item.alias === comparison.alias)
+  if (explicit) return { current: explicit.current, baseline: explicit.baseline, specific: true }
   if (comparison.binding.kind !== 'ordinary') {
     const page = comparisonPeriodPage(s, index)
     if (!page || page.hasMore || page.items.length !== page.totalCount) return fallback

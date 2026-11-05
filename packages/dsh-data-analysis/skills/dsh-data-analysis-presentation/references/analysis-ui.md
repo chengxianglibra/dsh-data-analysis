@@ -6,6 +6,16 @@
 
 饼图适合观察型 Frame 的构成比较。快照须完整，只有一个分类轴，类别键唯一。选择一个非广播数值列，值须非空、有限、非负且至少有一个正值。用 `{chart:"pie", encoding:{axis:"轴名", value:"值名"}}` 指定字段，目标唯一时可省略映射。
 
+需要堆叠构成条时，可在同一个 pie 声明中指定 `style:"stacked"`；比例按已展示的完整分类值计算，并标记为计算值。原始数值和点选仍对应保存行，未指定 style 的饼图保持不变。
+
+`display` 的标题、格式和范围必须由报告作者根据已核验口径明确声明：
+
+- `title`、`subtitle` 用于说明图表；`formats:[{value:"已保存值名",format:"percent"|"number"|"currency",decimals:1}]` 只改变主视图显示，不改变原始值、复制或数据详情。百分比按保存比例乘以 100；currency 必须有三字母货币单位。
+- 比较端点确有明确名称时，可用 `comparisonLabels:[{alias:"比较别名",current:"本期名称",baseline:"基期名称"}]`；名称由作者负责核实，不能从字段名称或数值猜测。
+- 时间柱图可用 `highlight:{axis:"轴名",key:[已保存的完整原始键]}` 强调特定期间；键必须逐项匹配快照。横向分类条可用 `rowLimit` 预览前 N 条保存行，完整结果仍在数据入口。
+- 表格可用 `recordPreview:{coordinates:["坐标列1","坐标列2"],values:["数值列"],limit:6,label:"组合坐标标题"}` 将坐标按声明顺序连接，数值和点选仍指向原行；完整结果见数据入口。
+- 已核实分解的两期 level total 与所选变化属于同一分组和范围时，可用 `decompositionTotals:{current:"本期总量列",baseline:"基期总量列",currentLabel:"本期标题",baselineLabel:"基期标题"}` 展示保存总量。仅在每个总量在保存行中一致且非空时显示；不要自行求和替代缺失总量。
+
 ## DataFrame
 
 `DatasetView` 按保存的列 ID 映射字段。表格可用 `{chart:"table", columns:["category", "amount"]}` 选择读者需要核对的列。指标卡使用完整单行结果中的一个数值。折线图、面积图和柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。这些图要求完整快照、数值列和唯一坐标组合，按快照中首次出现的顺序展示。趋势图应使用原分析已经按时间排好的数据。

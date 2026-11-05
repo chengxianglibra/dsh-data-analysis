@@ -1,4 +1,4 @@
-import { type ReactElement, type ReactNode, useRef, useState } from 'react'
+import { type ReactElement, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
 import { Button } from '../../ui/primitives/button.tsx'
@@ -68,9 +68,40 @@ export function ChartFrame({
   legend?: ReactNode
   children: ReactElement
 }) {
+  const t = useCopy()
   const regionRef = useRef<HTMLElement>(null)
-  const [rail, setRail] = useState<{ label: string; y: number; index: string }[]>([])
+  const hintId = useId()
+  const [scrollable, setScrollable] = useState(false)
+  const [rail, setRail] = useState<
+    { label: string; title: string; incomplete: boolean; y: number; index: string }[]
+  >([])
   const [railWidth, setRailWidth] = useState(0)
+  useEffect(() => {
+    const region = regionRef.current
+    if (!region) return
+    const update = () =>
+      setScrollable(region.scrollWidth > region.clientWidth + 1 || width > region.clientWidth + 1)
+    const observer = new ResizeObserver(update)
+    observer.observe(region)
+    const chart = region.firstElementChild
+    if (chart) observer.observe(chart)
+    const mutation = new MutationObserver(update)
+    mutation.observe(region, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ['style', 'transform', 'x', 'y', 'width', 'height'],
+    })
+    update()
+    // The grid's min track and its SVG are committed in the same render; measure
+    // again after layout so a shrinking chart clears a previously needed hint.
+    const frame = requestAnimationFrame(update)
+    return () => {
+      cancelAnimationFrame(frame)
+      mutation.disconnect()
+      observer.disconnect()
+    }
+  }, [width])
   const updateRail = () => {
     const region = regionRef.current
     if (!region || region.scrollLeft < 1) {
@@ -81,6 +112,8 @@ export function ChartFrame({
       ...region.querySelectorAll<SVGGElement>('svg.recharts-surface [data-row-label]'),
     ].map((node) => ({
       label: node.dataset.rowLabel ?? '',
+      title: node.querySelector('title')?.textContent ?? node.dataset.rowLabel ?? '',
+      incomplete: node.dataset.rowIncomplete === 'true',
       y: node.transform.baseVal.consolidate()?.matrix.f ?? 0,
       index: node.dataset.rowIndex ?? '',
     }))
@@ -95,6 +128,7 @@ export function ChartFrame({
           rail.length ? 'fv-plot fv-plot-scrolled overflow-x-auto' : 'fv-plot overflow-x-auto'
         }
         aria-label={label}
+        aria-describedby={scrollable ? hintId : undefined}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: This local overflow region supports keyboard scrolling.
         tabIndex={0}
         style={{ display: 'grid', gridTemplateColumns: `minmax(${width}px,1fr)` }}
@@ -139,9 +173,10 @@ export function ChartFrame({
             >
               {rail.map((item) => (
                 <g key={item.index} data-rail-row={item.index}>
-                  <title>{item.label}</title>
+                  <title>{item.title}</title>
                   <text x={railWidth - 8} y={item.y} dy={4} textAnchor="end">
                     {item.label.length > 18 ? `${item.label.slice(0, 17)}…` : item.label}
+                    {item.incomplete ? ' ◌' : ''}
                   </text>
                 </g>
               ))}
@@ -149,6 +184,11 @@ export function ChartFrame({
           </div>
         )}
       </section>
+      {scrollable && (
+        <p className="fv-chart-scroll-hint" id={hintId}>
+          ↔ {t('marivo.presentation.ui-frame-scroll-hint')}
+        </p>
+      )}
       {legend}
     </figure>
   )

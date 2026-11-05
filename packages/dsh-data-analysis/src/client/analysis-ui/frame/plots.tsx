@@ -200,6 +200,7 @@ export function SavedRowPlot({
   totalState,
   reference,
   endLabels,
+  endLabelRail = false,
   connectors,
   overlayBars = false,
   tickFormatter,
@@ -214,6 +215,8 @@ export function SavedRowPlot({
   totalState?: 'closed' | 'detached'
   reference?: number
   endLabels?: string[]
+  /** Align detailed values in a separate right-hand column instead of beside a mark. */
+  endLabelRail?: boolean
   connectors?: { from: { x: number; y: number }; to: { x: number; y: number }; total?: boolean }[]
   overlayBars?: boolean
   tickFormatter?: (value: number) => string
@@ -225,6 +228,7 @@ export function SavedRowPlot({
   const values = series.flatMap((line) =>
     line.ranges ? line.ranges.flatMap((range) => range ?? []) : line.values,
   )
+  const plotDomain = domain ?? numericDomain(values, bars)
   // End labels can contain two full grouped values. Reserve room for them while
   // keeping a usable plotting area, scrolling locally for exceptionally long text.
   const endLabelWidth = endLabels
@@ -267,17 +271,14 @@ export function SavedRowPlot({
           accessibilityLayer
         >
           <CartesianGrid horizontal={false} />
-          <XAxis
-            type="number"
-            domain={domain ?? numericDomain(values, bars)}
-            tickFormatter={tickFormatter}
-          />
+          <XAxis type="number" domain={plotDomain} tickFormatter={tickFormatter} />
           <YAxis
             type="category"
             dataKey="index"
             tick={<MemberTick labels={labels} />}
             width={140}
             interval={0}
+            padding={endLabelRail ? { top: 10, bottom: 10 } : undefined}
           />
           <ExactTooltip
             textAt={(index) =>
@@ -353,7 +354,11 @@ export function SavedRowPlot({
           )}
           {endLabels && (
             <Line
-              dataKey={(row: (typeof data)[number]) => row.values[0]}
+              dataKey={(row: (typeof data)[number]) =>
+                endLabelRail
+                  ? (row.values.find((value) => typeof value === 'number') ?? plotDomain[0])
+                  : row.values[0]
+              }
               stroke="none"
               dot={false}
               isAnimationActive={false}
@@ -365,8 +370,10 @@ export function SavedRowPlot({
                   return p && typeof input.value === 'string' ? (
                     <text
                       data-chart-end-label=""
-                      x={p.cx + 12}
+                      x={endLabelRail ? '100%' : p.cx + 12}
+                      dx={endLabelRail ? -8 : undefined}
                       y={p.cy + 4}
+                      textAnchor={endLabelRail ? 'end' : undefined}
                       fill="currentColor"
                       fontSize={12}
                     >

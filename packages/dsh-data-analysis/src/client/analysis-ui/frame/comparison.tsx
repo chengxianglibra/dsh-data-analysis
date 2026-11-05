@@ -16,6 +16,7 @@ import {
 } from '../../ui/primitives/table.tsx'
 import { NEUTRAL, summary } from '../charts/recharts.tsx'
 import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
+import { compareMagnitude, divergingScale } from './magnitude.ts'
 import {
   axisOf,
   cellOf,
@@ -48,6 +49,23 @@ function formattedCell(
 ) {
   const column = columnOf(s, name)?.column
   return column ? displayFrameCell(s, locale, value, column) : '—'
+}
+
+/** Apply an explicit display format to a saved signed change without changing its magnitude. */
+function formattedChange(
+  s: Snapshot,
+  locale: Translator['locale'],
+  name: string,
+  value: ReturnType<typeof cellOf>,
+) {
+  const column = columnOf(s, name)?.column
+  if (!s.frameDisplay?.formats?.some((item) => item.value === name))
+    return signed(locale, value, column)
+  if (value === null || !column) return '—'
+  const sign = compareDecimalText(String(value), '0')
+  const magnitude = typeof value === 'string' ? value.replace(/^-/, '') : Math.abs(Number(value))
+  const text = displayFrameCell(s, locale, magnitude, column)
+  return sign > 0 ? `▲${text}` : sign < 0 ? `▼${text}` : text
 }
 
 export interface ComparisonRoles {
@@ -174,7 +192,9 @@ export function ComparisonTable({
       return <TableCell className="pr-numeric text-right tabular-nums">—</TableCell>
     return (
       <TableCell className="pr-numeric text-right tabular-nums">
-        {compact(t.locale, value, column)}
+        {s.frameDisplay?.formats?.some((item) => item.value === name)
+          ? formattedCell(s, t.locale, name, value)
+          : compact(t.locale, value, column)}
       </TableCell>
     )
   }
@@ -184,8 +204,17 @@ export function ComparisonTable({
     const value = name ? visibleCell(s, row, roles, name) : null
     const text =
       kind === 'delta'
-        ? signed(t.locale, value, column)
-        : percent(t.locale, name && bothPresent(s, row, roles) ? valueAt(s, row, name) : null, true)
+        ? name
+          ? formattedChange(s, t.locale, name, value)
+          : signed(t.locale, value, column)
+        : name && s.frameDisplay?.formats?.some((item) => item.value === name)
+          ? formattedChange(s, t.locale, name, value)
+          : percent(
+              t.locale,
+              name && bothPresent(s, row, roles) ? valueAt(s, row, name) : null,
+              true,
+              value,
+            )
     return <TableCell className="pr-numeric text-right tabular-nums">{text}</TableCell>
   }
   const dataRows = (rows: ComparisonRoles[]) =>
@@ -269,6 +298,8 @@ export function ComparisonGrid({
   classification: c,
   view,
 }: MainViewProps<'comparison-grid'>) {
+  const t = useCopy()
+  const ends = endpointLabels(t, s, view.comparison)
   const blocks = view.groups.flatMap((group) => {
     const roles = comparisonRoles(s, view.comparison, group)
     return roles?.current ? [{ group, roles }] : []
@@ -281,8 +312,14 @@ export function ComparisonGrid({
     >
       {blocks.map(({ group, roles }) => (
         <section className="fv-comparison-grid-item" key={group} data-comparison-group={group}>
-          <h4>{kpiLabel(s, c, roles.current!)}</h4>
-          <ComparisonKpi snapshot={s} roles={roles} index={view.comparison} />
+          <h4>{`${kpiLabel(s, c, roles.current!)}${ends.specific ? ` · ${ends.current}` : ''}`}</h4>
+          <ComparisonKpi
+            snapshot={s}
+            roles={roles}
+            index={view.comparison}
+            currentInTitle={ends.specific}
+            compact
+          />
         </section>
       ))}
     </div>
@@ -305,10 +342,14 @@ function ComparisonKpi({
   snapshot: s,
   roles,
   index,
+  currentInTitle = false,
+  compact = false,
 }: {
   snapshot: Snapshot
   roles: ComparisonRoles
   index: number
+  currentInTitle?: boolean
+  compact?: boolean
 }) {
   const t = useCopy()
   const ends = endpointLabels(t, s, index)
@@ -321,20 +362,28 @@ function ComparisonKpi({
       s,
       t.locale,
       visibleCell(s, 0, roles, name),
-      source.unit === 'USD' ? { ...source, unit: undefined } : source,
+      source.unit === 'USD' &&
+        !s.frameDisplay?.formats?.some((item) => item.value === name && item.format === 'currency')
+        ? { ...source, unit: undefined }
+        : source,
     )
   }
   const change = roles.absolute ? visibleCell(s, 0, roles, roles.absolute) : null
   const changeColumn = roles.absolute ? columnOf(s, roles.absolute)?.column : undefined
-  const delta = signed(
-    t.locale,
-    change,
-    changeColumn?.unit === 'USD' ? { ...changeColumn, unit: undefined } : changeColumn,
-  )
+  const delta =
+    roles.absolute && s.frameDisplay?.formats?.some((item) => item.value === roles.absolute)
+      ? formattedChange(s, t.locale, roles.absolute, change)
+      : signed(
+          t.locale,
+          change,
+          changeColumn?.unit === 'USD' ? { ...changeColumn, unit: undefined } : changeColumn,
+        )
   const current = asText(roles.current)
   const baseline = asText(roles.baseline)
   const unitFor = (name: string | undefined, value: string) => {
     const unit = name ? columnOf(s, name)?.column.unit?.trim() : undefined
+    const format = s.frameDisplay?.formats?.find((item) => item.value === name)
+    if (format?.format === 'currency' && unit && /^[A-Z]{3}$/.test(unit)) return undefined
     return value !== '—' && unit && unit !== '1' && !value.endsWith(unit) ? unit : undefined
   }
   const currentUnit = unitFor(roles.current, current)
@@ -342,23 +391,25 @@ function ComparisonKpi({
   const deltaUnit = unitFor(roles.absolute, delta)
   const relative =
     roles.relative && bothPresent(s, 0, roles)
-      ? percent(t.locale, valueAt(s, 0, roles.relative), true)
+      ? s.frameDisplay?.formats?.some((item) => item.value === roles.relative)
+        ? formattedChange(s, t.locale, roles.relative, cellOf(s, 0, roles.relative))
+        : percent(t.locale, valueAt(s, 0, roles.relative), true, cellOf(s, 0, roles.relative))
       : '—'
+  const compactSign = (text: string) =>
+    compact ? text.replace(/^▲/, '+').replace(/^▼/, '−') : text
+  const direction = (value: ReturnType<typeof cellOf>) => {
+    const sign = value === null ? 0 : compareDecimalText(String(value), '0')
+    return sign < 0 ? 'negative' : sign > 0 ? 'positive' : undefined
+  }
   return (
     <dl className="fv-kpi-values">
       <div className="fv-kpi-current">
-        <dt>{ends.current}</dt>
+        <dt className={currentInTitle ? 'fv-sr-only' : undefined}>{ends.current}</dt>
         <dd>
           <span className="fv-kpi-value">{current}</span>
           {currentUnit && <span className="fv-kpi-unit">{currentUnit}</span>}
         </dd>
       </div>
-      {roles.relative && (
-        <div className="fv-kpi-relative">
-          <dt>{t('marivo.presentation.ui-frame-comparison-change-rate')}</dt>
-          <dd>{relative}</dd>
-        </div>
-      )}
       {roles.baseline && (
         <div className="fv-kpi-reference">
           <dt>{ends.baseline}</dt>
@@ -368,13 +419,34 @@ function ComparisonKpi({
           </dd>
         </div>
       )}
-      {roles.absolute && (
-        <div className="fv-kpi-reference">
-          <dt>{t('marivo.presentation.ui-frame-comparison-change')}</dt>
-          <dd>
-            {delta}
-            {deltaUnit && <span className="fv-kpi-unit"> {deltaUnit}</span>}
-          </dd>
+      {(roles.absolute || roles.relative) && (
+        <div className="fv-kpi-changes">
+          {roles.absolute && (
+            <>
+              <dt className={compact ? 'fv-sr-only' : undefined}>
+                {t('marivo.presentation.ui-frame-comparison-change')}
+              </dt>
+              <dd data-sign={compact ? direction(change) : undefined}>
+                {compactSign(delta)}
+                {deltaUnit && <span className="fv-kpi-unit"> {deltaUnit}</span>}
+              </dd>
+            </>
+          )}
+          {roles.relative && (
+            <>
+              {compact && roles.absolute && <span aria-hidden="true"> · </span>}
+              <dt className={compact ? 'fv-sr-only' : undefined}>
+                {t('marivo.presentation.ui-frame-comparison-change-rate')}
+              </dt>
+              <dd
+                data-sign={
+                  compact ? direction(visibleCell(s, 0, roles, roles.relative)) : undefined
+                }
+              >
+                {compactSign(relative)}
+              </dd>
+            </>
+          )}
         </div>
       )}
     </dl>
@@ -739,19 +811,30 @@ function CompareDelta({
       const comparison = compareDecimalText(String(av), String(bv))
       return (sort.direction === 'ascending' ? comparison : -comparison) || a - b
     })
+  } else if (roles.absolute) {
+    const absolute = roles.absolute
+    rows.sort(
+      (a, b) =>
+        compareMagnitude(visibleCell(s, a, roles, absolute), visibleCell(s, b, roles, absolute)) ||
+        a - b,
+    )
   }
-  const magnitudes = rows.flatMap((row) => {
+  const values = rows.map((row) => {
     const value =
       roles.absolute && bothPresent(s, row, roles) ? valueAt(s, row, roles.absolute) : null
-    return value === null ? [] : [Math.abs(value)]
+    return value
   })
-  const max = magnitudes.reduce((a, b) => Math.max(a, b), 0)
+  const scale = divergingScale(values)
   const text = (row: number, name: string | undefined, kind: 'value' | 'delta' | 'relative') => {
     if (!name) return '—'
     const cell = visibleCell(s, row, roles, name)
     if (kind === 'relative')
-      return cell === null ? '—' : percent(t.locale, valueAt(s, row, name), true)
-    if (kind === 'delta') return signed(t.locale, cell, columnOf(s, name)?.column)
+      return s.frameDisplay?.formats?.some((item) => item.value === name)
+        ? formattedChange(s, t.locale, name, cell)
+        : cell === null
+          ? '—'
+          : percent(t.locale, valueAt(s, row, name), true, cell)
+    if (kind === 'delta') return formattedChange(s, t.locale, name, cell)
     return formattedCell(s, t.locale, name, cell)
   }
   const selectable = (
@@ -792,7 +875,16 @@ function CompareDelta({
     label: string,
     available = true,
   ) => (
-    <th scope="col" aria-sort={sort?.key === key ? sort.direction : 'none'}>
+    <th
+      scope="col"
+      aria-sort={
+        sort?.key === key
+          ? sort.direction
+          : !sort && key === 'absolute' && roles.absolute
+            ? 'other'
+            : 'none'
+      }
+    >
       {available ? (
         <Button
           variant="ghost"
@@ -831,15 +923,19 @@ function CompareDelta({
           <thead>
             <tr>
               {header('metric', t('marivo.presentation.ui-frame-comparison-metric'))}
-              <th scope="col">
-                <span className="fv-delta-axis-label">
-                  <span>← {t('marivo.presentation.ui-frame-comparison-decrease')}</span>
-                  <span>0</span>
-                  <span>{t('marivo.presentation.ui-frame-comparison-increase')} →</span>
-                </span>
-              </th>
               {header('baseline', ends.baseline, !!roles.baseline)}
               {header('current', ends.current, !!roles.current)}
+              <th scope="col">
+                <span className="fv-delta-axis-label">
+                  <span style={{ left: 0 }}>
+                    ← {t('marivo.presentation.ui-frame-comparison-decrease')}
+                  </span>
+                  <span style={{ left: `${scale.zero}%`, transform: 'translateX(-50%)' }}>0</span>
+                  <span style={{ right: 0 }}>
+                    {t('marivo.presentation.ui-frame-comparison-increase')} →
+                  </span>
+                </span>
+              </th>
               {header(
                 'absolute',
                 t('marivo.presentation.ui-frame-comparison-delta'),
@@ -858,27 +954,27 @@ function CompareDelta({
                 roles.absolute && bothPresent(s, row, roles)
                   ? valueAt(s, row, roles.absolute)
                   : null
-              const width = value === null || max === 0 ? 0 : Math.abs(value / max) * 50
+              const width = value === null ? 0 : scale.width(value)
               return (
                 <tr key={row}>
                   <th scope="row">{membersLabel(s, axes, row)}</th>
+                  <td>{selectable(row, fields[1], text(row, fields[1], 'value'), 'baseline')}</td>
+                  <td>{selectable(row, fields[0], text(row, fields[0], 'value'), 'current')}</td>
                   <td>
                     <div className="fv-delta-plot" aria-hidden="true">
-                      <span className="fv-delta-zero" />
+                      <span className="fv-delta-zero" style={{ left: `${scale.zero}%` }} />
                       {value !== null && (
                         <span
                           className={`fv-delta-bar ${value !== null && value > 0 ? 'fv-delta-positive' : ''}`}
                           style={
                             value !== null && value > 0
-                              ? { left: '50%', width: `${width}%` }
-                              : { right: '50%', width: `${width}%` }
+                              ? { left: `${scale.zero}%`, width: `${width}%` }
+                              : { right: `${100 - scale.zero}%`, width: `${width}%` }
                           }
                         />
                       )}
                     </div>
                   </td>
-                  <td>{selectable(row, fields[1], text(row, fields[1], 'value'), 'baseline')}</td>
-                  <td>{selectable(row, fields[0], text(row, fields[0], 'value'), 'current')}</td>
                   <td>{selectable(row, fields[2], text(row, fields[2], 'delta'), 'delta')}</td>
                   <td>{text(row, fields[3], 'relative')}</td>
                 </tr>

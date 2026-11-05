@@ -6,6 +6,7 @@ import type { ChartModel } from './model.ts'
 export function datasetChartModel(data: TypedDataset, axes: string[]): ChartModel {
   return {
     data,
+    frameStyle: true,
     axes: [...new Set(axes)].map((id) => {
       const index = data.columns.findIndex((c) => c.id === id)
       const column = data.columns[index]!

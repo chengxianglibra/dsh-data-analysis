@@ -75,21 +75,29 @@ test('single-row multi-group comparison renders one headline block per metric by
   assert.equal(await grid().locator('table').count(), 0)
   // The grid keeps the exact comparison table behind its data icon.
   assert.equal(await grid().locator('[data-icon="data"]').count(), 1)
-  assert.equal(await page.locator('[data-frame-view="table"] [data-icon="data"]').count(), 0)
+  assert.equal(await page.locator('[data-frame-view="table"] [data-icon="data"]').count(), 1)
   assert.ok((await overflow()) <= 1)
 })
 
-test('the grid reflows to one column at 390px without page overflow', async () => {
+test('the grid reflows at narrow widths without page overflow', async () => {
   await page.setViewportSize({ width: 390, height: 900 })
   assert.ok((await overflow()) <= 1)
   const columns = await grid()
     .locator('.fv-comparison-grid')
     .evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length)
-  assert.equal(columns, 1)
+  assert.equal(columns, 2)
   for (const block of await grid().locator('.fv-comparison-grid-item').all()) {
     const box = await block.boundingBox()
     assert.ok(box && box.width <= 390)
   }
+  await page.setViewportSize({ width: 320, height: 900 })
+  assert.equal(
+    await grid()
+      .locator('.fv-comparison-grid')
+      .evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length),
+    1,
+  )
+  assert.ok((await overflow()) <= 1)
 })
 
 test('a small KPI set remains readable without expanding across an ultrawide view', async () => {
