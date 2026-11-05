@@ -23,7 +23,10 @@ import {
   statistic,
 } from '../unified-analysis-ui/frame-fixtures.ts'
 
-async function fixture(t: { after(fn: () => Promise<void>): void }) {
+async function fixture(
+  t: { after(fn: () => Promise<void>): void },
+  artifactId: string | null = 'marivo-artifact',
+) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'frame-point-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   const snapshot = frame({
@@ -49,7 +52,9 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       },
     ],
   })
-  snapshot.frame.description = 'January 2025 saved analysis'
+  snapshot.source.sessionId = 'marivo-session'
+  snapshot.source.artifactId = artifactId
+  snapshot.frame.description = artifactId === null ? null : 'January 2025 saved analysis'
   const makeDocument = (buildId: string) =>
     parseAnalysisDocument({
       schemaVersion: ANALYSIS_UI_FORMAT,
@@ -66,7 +71,17 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
         data: {
           kind: 'snapshot',
           declaration: { kind: 'frame-snapshot', snapshotRef: 'test' },
-          snapshot,
+          snapshot:
+            buildId === 'second'
+              ? {
+                  ...snapshot,
+                  source: {
+                    ...snapshot.source,
+                    sessionId: 'other-marivo-session',
+                    artifactId: 'other-marivo-artifact',
+                  },
+                }
+              : snapshot,
           binding: {
             workspaceId: 'workspace',
             sessionId: 'session',
@@ -126,6 +141,32 @@ test('point references bind exact published build, raw typed keys and precise va
   assert.match(serialized.text, /9007199254740993/)
   assert.match(serialized.text, /January 2025 saved analysis/)
   assert.match(serialized.text, /marivo-ui:report:first/)
+  const serializedPoint = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
+  assert.deepEqual(serializedPoint.marivoFrame, {
+    sessionId: 'marivo-session',
+    artifactId: 'marivo-artifact',
+  })
+  assert.match(serialized.text, /persisted_frame/)
+  const current = await service.point('point/prepare', {
+    ...f.request,
+    recordId: analysisRecordId('report', 'second'),
+  })
+  if (!('envelope' in current) || !current.envelope) throw new Error('expected-envelope')
+  const serializedCurrent = await service.point('point/serialize', { envelope: current.envelope })
+  if (!('text' in serializedCurrent) || !serializedCurrent.text) throw new Error('expected-text')
+  const currentPoint = JSON.parse(
+    serializedCurrent.text.slice(serializedCurrent.text.indexOf('\n') + 1),
+  )
+  assert.deepEqual(currentPoint.marivoFrame, {
+    sessionId: 'other-marivo-session',
+    artifactId: 'other-marivo-artifact',
+  })
+  await assert.rejects(
+    service.point('point/serialize', {
+      envelope: { ...envelope, marivoFrame: { sessionId: 'other', artifactId: 'other' } },
+    }),
+    /invalid-request/,
+  )
   await assert.rejects(
     service.point('point/serialize', {
       envelope: { ...envelope, point: { ...envelope.point, value: '5' } },
@@ -175,6 +216,22 @@ test('point references bind exact published build, raw typed keys and precise va
     service.point('point/prepare', { ...f.request, sessionId: 'other' }),
     /workspace-unavailable/,
   )
+  await service.close()
+})
+
+test('point serialization reports an in-memory Frame without an artifact', async (t) => {
+  const f = await fixture(t, null)
+  const service = new MarivoPresentationFileService((id) =>
+    id === 'session' ? { id: 'workspace', path: f.root } : undefined,
+  )
+  const result = await service.point('point/prepare', f.request)
+  if (!('envelope' in result) || !result.envelope) throw new Error('expected-envelope')
+  const serialized = await service.point('point/serialize', { envelope: result.envelope })
+  if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
+  const serializedPoint = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
+  assert.deepEqual(serializedPoint.marivoFrame, { sessionId: 'marivo-session', artifactId: null })
+  assert.match(serialized.text, /memory|in-memory/i)
+  assert.match(serialized.text, /cannot|not.*recover/i)
   await service.close()
 })
 

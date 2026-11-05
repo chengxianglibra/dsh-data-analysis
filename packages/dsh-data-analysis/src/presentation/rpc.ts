@@ -16,6 +16,7 @@ import {
   parsePointEnvelope,
   parsePointRequest,
 } from './contracts/point-reference.ts'
+import { isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { datasetContext, datasetFromDocument, datasetPointContext } from './dataset-reference.ts'
 import { pointFromDocument } from './point-reference.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
@@ -153,12 +154,23 @@ export class MarivoPresentationFileService {
     signal.throwIfAborted()
     if (endpoint === 'point/prepare') return { envelope: actual }
     if (JSON.stringify(supplied) !== JSON.stringify(actual)) throw new Error('point-mismatch')
+    // The Frame identity comes from the validated Build, not the client reference.
+    // Keeping it out of the envelope also preserves references prepared before it
+    // was included in model context.
+    const resource = document.resources[request.resourceName]
+    if (resource?.kind !== 'snapshot' || !isFrameSnapshotV2(resource.snapshot))
+      throw new Error('point-unavailable')
+    const { sessionId, artifactId } = resource.snapshot.source
+    const recovery = artifactId
+      ? 'The Marivo Frame is persisted. If its original Runtime/project and stored artifact are available, resume the exact Marivo session with mv.session.resume(session_id), then open session.persisted_frame(artifact_id). Recovery is not guaranteed; report any recovery failure.'
+      : 'The Marivo Frame was captured in memory without a persisted artifact. The original Frame cannot be recovered across processes from this identity; use the saved point context or independently verify another available source before further analysis.'
     return {
-      text: `AnalysisFrame selected value from a saved snapshot (not a new query). The description is saved explanatory text; unavailable period details are not captured:\n${JSON.stringify(
+      text: `AnalysisFrame selected value from a saved snapshot (not a new query). The description is saved explanatory text; unavailable period details are not captured. marivoFrame contains Marivo identity, not the Harness session. ${recovery}\n${JSON.stringify(
         {
           recordId: actual.recordId,
           resource: actual.resourceName,
           row: actual.row,
+          marivoFrame: { sessionId, artifactId },
           ...actual.point,
           interpretation:
             actual.point.interpretation === null ? null : JSON.parse(actual.point.interpretation),

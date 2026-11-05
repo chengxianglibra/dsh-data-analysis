@@ -3,8 +3,8 @@
 `dsh_data_analysis_presentation` 只公开 `capture_dataset`、`DatasetCaptureReceipt`、
 `capture_frame`、`FrameCaptureReceipt` 与 `PresentationDatasetError`。`capture_frame` 只接受已完成的
 AnalysisFrame（持久，或 `compute()` 后的内存 Frame），写入 schemaVersion 2 的 Frame 快照；待执行表达式以
-`frame_not_computed` 拒绝且不隐式 compute，pandas DataFrame 请改用 `capture_dataset`。捕获结果是 `TypedDataset` v1 快照，Host 签发 snapshotRef 后供
-`marivo_present` 引用；helper 不读取 Marivo、不推断来源、不生成 HTML、不注册全局变量。
+`frame_not_computed` 拒绝且不隐式 compute，pandas DataFrame 请改用 `capture_dataset`。后者生成 `TypedDataset` v1 快照；Frame 捕获通过 Marivo 公开 API 读取已完成结果及其身份。Host 签发 snapshotRef 后供
+`marivo_present` 引用；helper 不推断来源、不生成 HTML、不注册全局变量。
 
 数值和预算以 [共享数据契约](../../src/presentation/contracts/types.ts) 为准：整数使用精确
 `int64` 字符串，超过有符号 int64 的整数使用 `decimal` 字符串；`Decimal` 保留精度和尾零。

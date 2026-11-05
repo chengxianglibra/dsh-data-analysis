@@ -82,6 +82,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 
 已保存 Dataset 和 Frame 的可唯一定位图点及支持的单元格点击后显示“就此提问”菜单，选择后插入当前 Harness 会话的提问草稿；图点支持键盘操作。
 Frame 点引用绑定固定 Build、资源、行和字段；发送时由服务端重新读取并校验，缺席侧、无法唯一定位的字段及父组总计不能作为明细点引用。
+发送给模型的上下文包含快照保存的 Marivo Session ID 和可空 Artifact ID，并区分 Harness Session。持久 Frame 可在原 Runtime 和项目及 Artifact 仍可用时通过 Marivo 公开 API 尝试恢复；内存 Frame 没有 Artifact ID，不能据此跨进程恢复原 Frame。快照数据仍是捕获时的结果，不代表实时查询或恢复成功。
 复制、表格等直观操作使用带键盘焦点提示和本地化无障碍名称的图标；数据范围不完整及期间未捕获仍有明确状态。
 Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原始行和字段，独立于 Frame 的选点协议；准备和发送时由服务端读取保存快照并校验身份与内容摘要，发送所选精确值及有界同行上下文并标明截断，不执行新查询。候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑、撤销/重做或任何导出入口。
 展示层直接读取 Frame 已有列中的指标、总计和差值。饼图按完整快照中各类别的保存值分配扇区，并在图例显示各扇区占圆的百分比。会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
@@ -92,7 +93,7 @@ DataFrame 的“数据来源与范围”入口集中展示捕获时间、行数�
 Session、Call 和 codeRef 放在可展开的开发者区域。旧执行记录或未声明数据源时明示不可用，源码缺失、读取失败或摘要不一致时显示状态。Frame 不显示 Evidence、Finding 或计算过程；
 来源固定为 Host 绑定的 codeRef：来源详情经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef。
 sha256 标识完整 execution record，由 Host 校验记录，客户端核对返回摘要与绑定摘要。Frame 的摘要不一致或执行记录缺失时 Python 图标变灰；section 为 `unavailable`
-时对应图标变灰，不显示为 0 项；Session/Artifact 只在 Frame Python 详情的开发者区出现。
+时对应图标变灰，不显示为 0 项；在阅读界面中，Session/Artifact 只在 Frame Python 详情的开发者区出现。
 
 语义来源为分析时的静态身份，展示去重后的具体对象，不展示 datasource 和 entity；在已保存结果的会话节点和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
 并提示其可能已变化；候选预览不提供导航。
