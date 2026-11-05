@@ -5,6 +5,7 @@ import { readPythonExecution } from '../python-execution.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { readReceiptAsset } from './asset.ts'
 import { parseAnalysisRecordId, parseSavedPresentation } from './contracts/analysis-document.ts'
+import { parseDatasetEnvelope, parseDatasetRequest } from './contracts/dataset-reference.ts'
 import {
   PresentationContractError,
   parsePresentationBuildId,
@@ -15,6 +16,7 @@ import {
   parsePointEnvelope,
   parsePointRequest,
 } from './contracts/point-reference.ts'
+import { datasetContext, datasetFromDocument, datasetPointContext } from './dataset-reference.ts'
 import { pointFromDocument } from './point-reference.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
 import {
@@ -163,6 +165,66 @@ export class MarivoPresentationFileService {
           periods: JSON.parse(actual.point.periods),
         },
       )}`,
+    }
+  }
+  dataset(
+    endpoint: 'dataset/prepare' | 'dataset/serialize',
+    payload: unknown,
+    caller = new AbortController().signal,
+  ) {
+    return this.#tasks.track(this.#dataset(endpoint, payload, caller))
+  }
+  async #dataset(
+    endpoint: 'dataset/prepare' | 'dataset/serialize',
+    payload: unknown,
+    caller: AbortSignal,
+  ) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    let request: ReturnType<typeof parseDatasetRequest>
+    let supplied: ReturnType<typeof parseDatasetEnvelope> | undefined
+    if (endpoint === 'dataset/prepare') {
+      request = parseDatasetRequest(payload)
+    } else {
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        Array.isArray(payload) ||
+        Object.keys(payload).join(',') !== 'envelope'
+      )
+        throw new Error('invalid-request')
+      supplied = parseDatasetEnvelope(Reflect.get(payload, 'envelope'))
+      const { sessionId, workspaceId, recordId, resourceName } = supplied
+      request =
+        supplied.schema === 'dsh-data-analysis-dataset-point/v1'
+          ? {
+              sessionId,
+              workspaceId,
+              recordId,
+              resourceName,
+              row: supplied.row,
+              field: supplied.field,
+            }
+          : { sessionId, workspaceId, recordId, resourceName }
+    }
+    const workspace = await this.#workspace({ sessionId: request.sessionId })
+    if (!workspace || workspace.id !== request.workspaceId) throw new Error('workspace-unavailable')
+    const root = path.resolve(workspace.path)
+    const { reportId, buildId } = parseAnalysisRecordId(request.recordId)
+    const document = await readAnalysisRecord(root, workspace.id, reportId, buildId, signal)
+    const { envelope, snapshot } = datasetFromDocument(document, request)
+    const current = await this.#workspace({ sessionId: request.sessionId })
+    if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    if (endpoint === 'dataset/prepare') return { envelope }
+    if (JSON.stringify(supplied) !== JSON.stringify(envelope)) throw new Error('dataset-mismatch')
+    if ('row' in request)
+      return {
+        text: `DataFrame selected value from a saved snapshot (not a new query). Same-row context is bounded; consult coverage and rowContextTruncated before drawing conclusions:\n${JSON.stringify({ recordId: request.recordId, resource: request.resourceName, ...datasetPointContext(snapshot, request.row, request.field) })}`,
+      }
+    return {
+      text: `DataFrame from a saved snapshot (not a new query). Columns and rows are bounded previews; consult coverage, columnsTruncated and previewTruncated before drawing conclusions:\n${JSON.stringify({ recordId: request.recordId, resource: request.resourceName, ...datasetContext(snapshot) })}`,
     }
   }
   report(payload: unknown, caller = new AbortController().signal) {
@@ -315,6 +377,8 @@ export function registerMarivoPresentationRpc(
       'code/read',
       'point/prepare',
       'point/serialize',
+      'dataset/prepare',
+      'dataset/serialize',
     ],
     async (endpoint, payload, signal) => {
       try {
@@ -326,6 +390,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.read(payload, signal) }
         if (endpoint === 'code/read')
           return { ok: true, value: await service.code(payload, signal) }
+        if (endpoint === 'dataset/prepare' || endpoint === 'dataset/serialize')
+          return { ok: true, value: await service.dataset(endpoint, payload, signal) }
         if (endpoint === 'point/prepare' || endpoint === 'point/serialize')
           return { ok: true, value: await service.point(endpoint, payload, signal) }
         throw new Error('unknown-endpoint')
@@ -337,7 +403,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable|point-unavailable|point-mismatch)$/.test(
+                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch)$/.test(
                     error.message,
                   )
                 ? error.message

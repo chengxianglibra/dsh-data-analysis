@@ -12,14 +12,17 @@ import type { PythonExecutionDatasource } from '../../python-execution-contracts
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
+import { Button } from '../ui/primitives/button.tsx'
 import { CardContent } from '../ui/primitives/card.tsx'
+import { Popover, PopoverAnchor, PopoverContent } from '../ui/primitives/popover.tsx'
 import { Skeleton } from '../ui/primitives/skeleton.tsx'
 import { datasetChartModel } from './charts/dataset-model.ts'
 import { Heatmap, TimeChart } from './charts/observation.tsx'
+import { ChartSelectionContext, useChartSelection } from './charts/selection-context.tsx'
 import { DataActions, MetricGroup, ResultCard, ResultHeader } from './components/result.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { FrameIcon } from './frame/frame-icon.tsx'
-import { CoverageIcon, Dialog, FrameIconButton, PythonIcon } from './frame/icons.tsx'
+import { CoverageIcon, Dialog, FrameIconButton } from './frame/icons.tsx'
 import { CopyData } from './frame/table.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
 
@@ -54,6 +57,7 @@ function DatasetDisplayTable({
   reference?: boolean
 }) {
   const t = useCopy()
+  const selection = useChartSelection()
   const ref = useRef<HTMLDivElement>(null)
   const [scrollable, setScrollable] = useState(false)
   const hintId = useId()
@@ -88,6 +92,10 @@ function DatasetDisplayTable({
           caption={caption}
           scrollDescription={scrollable ? hintId : undefined}
           hideRowCount
+          selectCell={selection?.select}
+          selectableColumns={
+            selection ? new Set(columns ?? data.columns.map((c) => c.id)) : undefined
+          }
         />
       </div>
     </>
@@ -160,10 +168,112 @@ function DatasetDataView({
   const [dataOpen, setDataOpen] = useState(false)
   const [sourceOpen, setSourceOpen] = useState(false)
   const [code, setCode] = useState<CodeState>({ kind: 'idle' })
-  const { candidate, readCode } = useAnalysisResources()
+  const [copied, setCopied] = useState<{ key: string; message: string }>()
+  const { candidate, readCode, askDataset } = useAnalysisResources()
+  const [selected, setSelected] = useState<{
+    snapshot: DatasetSnapshot
+    resource: string
+    row: number
+    field: string
+  }>()
+  const [askStatus, setAskStatus] = useState<'pending' | 'added' | 'failed'>()
+  const revision = useRef(0)
+  const identity = useRef({ snapshot, resourceName })
+  if (identity.current.snapshot !== snapshot || identity.current.resourceName !== resourceName) {
+    revision.current++
+    identity.current = { snapshot, resourceName }
+  }
+  const originRef = useRef<HTMLElement | SVGElement | null>(null)
+  const originScope = useRef<Element | null>(null)
+  const originPoint = useRef<{ row: number; field: string }>()
+  const menuRef = useRef<HTMLDivElement>(null)
+  const modalRequestFocus = useRef(false)
+  const closeReason = useRef<'escape' | 'tab' | 'outside'>('outside')
+  const scopeId = useId()
+  const position = useRef({ x: 0, y: 0 })
+  const virtualAnchor = useRef({
+    getBoundingClientRect: () => new DOMRect(position.current.x, position.current.y, 0, 0),
+  })
+  const activeSelection =
+    !candidate && selected?.snapshot === snapshot && selected.resource === resourceName
+      ? selected
+      : undefined
+  useEffect(
+    () => () => {
+      revision.current++
+    },
+    [],
+  )
+  const restoreOrigin = () => {
+    const point = originPoint.current
+    const scope = originScope.current?.isConnected
+      ? originScope.current
+      : document.querySelector(`[data-dataset-scope="${scopeId}"]`)
+    if (originRef.current?.isConnected) return originRef.current.focus()
+    if (!scope || !point) return
+    const target = [
+      ...scope.querySelectorAll<HTMLElement | SVGElement>('[data-frame-point], .pr-cell-select'),
+    ].find(
+      (node) =>
+        node.getAttribute('data-frame-point') === `${point.row}:${point.field}` ||
+        (node.closest('[data-row-index]')?.getAttribute('data-row-index') === String(point.row) &&
+          node.closest('[data-column-id]')?.getAttribute('data-column-id') === point.field),
+    )
+    target?.focus()
+    if (target) originRef.current = target
+  }
+  useEffect(() => {
+    if (!activeSelection || (askStatus !== 'added' && askStatus !== 'failed')) return
+    if (
+      originRef.current?.isConnected &&
+      originRef.current.closest('[role="dialog"], dialog[open]')
+    )
+      menuRef.current?.querySelector('button')?.focus()
+  }, [activeSelection, askStatus])
+  const selectable = useMemo(
+    () =>
+      !candidate && askDataset && resourceName
+        ? {
+            select(row: number, field: string) {
+              if (askStatus === 'pending') return
+              const index = snapshot.data.columns.findIndex((column) => column.id === field)
+              if (
+                !Number.isInteger(row) ||
+                row < 0 ||
+                row >= snapshot.data.rows.length ||
+                index < 0 ||
+                snapshot.data.rows[row]?.[index] == null
+              )
+                return
+              modalRequestFocus.current = false
+              closeReason.current = 'outside'
+              originPoint.current = { row, field }
+              originScope.current =
+                originRef.current?.closest('[role="dialog"], [data-dataset-scope]') ?? null
+              revision.current++
+              setAskStatus(undefined)
+              setSelected({ snapshot, resource: resourceName, row, field })
+            },
+          }
+        : undefined,
+    [askDataset, candidate, resourceName, snapshot, askStatus],
+  )
   const codeRef = binding.codeRef
   const codeKey = codeRef ? JSON.stringify([codeRef.executionId, codeRef.sha256]) : undefined
+  const currentKey = useRef(codeKey)
+  currentKey.current = codeKey
   const currentCode = code.kind !== 'idle' && code.key === codeKey ? code : undefined
+  const copyCode = async (text: string, key: string) => {
+    const ok = await Promise.resolve()
+      .then(() => navigator.clipboard.writeText(text))
+      .then(() => true)
+      .catch(() => false)
+    if (currentKey.current === key)
+      setCopied({
+        key,
+        message: ok ? 'marivo.presentation.copied' : 'marivo.presentation.ui-copy-failed',
+      })
+  }
   useEffect(() => {
     if (!sourceOpen || !codeRef || !codeKey || !readCode) return
     const controller = new AbortController()
@@ -259,69 +369,203 @@ function DatasetDataView({
             : currentCode?.kind === 'failed'
               ? 'read-failed'
               : 'loading'
-  return (
-    <ResultCard
-      data-resource={resourceName}
-      data-resource-kind={kind}
-      data-dataset-view={resolved?.chart}
+  const pointMenu = activeSelection && (
+    <Popover
+      open
+      onOpenChange={(open) => {
+        if (!open) setSelected(undefined)
+      }}
     >
-      <ResultHeader
-        title={title}
-        actions={
-          <div className="fv-header-actions">
-            <span className="fv-chart-tag">
-              {t(`marivo.presentation.ui-chart-kind-${chartKind}`)}
-            </span>
-            {!candidate && <CopyData data={data} columns={columns} />}
-          </div>
-        }
-      />
-      <CardContent className="space-y-4 min-w-0">
-        {!snapshot.coverage.complete && (
-          <p className="au-result-status" role="status">
-            {t('marivo.presentation.ui-capture-range', {
-              p0: snapshot.coverage.capturedRows,
-              p1: snapshot.coverage.totalRows,
-            })}
+      <PopoverAnchor virtualRef={virtualAnchor} />
+      <PopoverContent
+        className="fv-point-menu w-auto"
+        ref={menuRef}
+        role="menu"
+        align="start"
+        side="bottom"
+        sticky="always"
+        collisionPadding={8}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          if (closeReason.current === 'escape') requestAnimationFrame(restoreOrigin)
+        }}
+        onFocusOutside={(event) => {
+          const target = event.target
+          const origin = originRef.current
+          if (
+            modalRequestFocus.current ||
+            (target instanceof Element && (target === origin || target === origin?.closest('svg')))
+          ) {
+            event.preventDefault()
+            if (modalRequestFocus.current)
+              requestAnimationFrame(() => menuRef.current?.querySelector('button')?.focus())
+          }
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          menuRef.current?.querySelector('button')?.focus()
+        }}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          closeReason.current = 'escape'
+          setSelected(undefined)
+          restoreOrigin()
+          requestAnimationFrame(restoreOrigin)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Tab') {
+            closeReason.current = 'tab'
+            setSelected(undefined)
+            restoreOrigin()
+          }
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          role="menuitem"
+          aria-disabled={askStatus === 'pending' || undefined}
+          aria-busy={askStatus === 'pending' || undefined}
+          onClick={() => {
+            if (askStatus === 'pending' || !askDataset || !resourceName) return
+            const request = ++revision.current
+            modalRequestFocus.current = !!originRef.current?.closest('[role="dialog"],dialog[open]')
+            setAskStatus('pending')
+            void askDataset({
+              resourceName,
+              row: activeSelection.row,
+              field: activeSelection.field,
+            }).then(
+              () => {
+                if (revision.current === request) setAskStatus('added')
+              },
+              () => {
+                if (revision.current === request) setAskStatus('failed')
+              },
+            )
+          }}
+        >
+          {t('marivo.presentation.ui-frame-ask-point')}
+        </Button>
+        {askStatus && askStatus !== 'pending' && (
+          <p role="status">
+            {t(
+              askStatus === 'added'
+                ? 'marivo.presentation.ui-frame-ask-added'
+                : 'marivo.presentation.ui-dataset-ask-failed',
+            )}
           </p>
         )}
-        {chart ? (
-          chart.chart === 'heatmap' ? (
-            <Heatmap model={model} view={chart} height={height} />
+      </PopoverContent>
+    </Popover>
+  )
+  return (
+    <ChartSelectionContext.Provider value={selectable}>
+      <ResultCard
+        data-dataset-scope={scopeId}
+        data-resource={resourceName}
+        data-resource-kind={kind}
+        data-dataset-view={resolved?.chart}
+        onClickCapture={(event) => {
+          if ((event.target as Element).closest('.fv-point-menu')) return
+          const target = event.target as Element
+          const origin = target.closest('button, [role=button]')
+          if (origin instanceof HTMLElement || origin instanceof SVGElement)
+            originRef.current = origin
+          const rect = target.getBoundingClientRect()
+          position.current = {
+            x: Math.max(8, Math.min(event.clientX || rect.left, window.innerWidth - 180)),
+            y: Math.max(8, Math.min(event.clientY || rect.bottom, window.innerHeight - 100)),
+          }
+        }}
+        onKeyDownCapture={(event) => {
+          if (
+            (event.key === 'Enter' || event.key === ' ') &&
+            !(event.target instanceof Element && event.target.closest('.fv-point-menu'))
+          ) {
+            const target = event.target
+            if (target instanceof HTMLElement || target instanceof SVGElement)
+              originRef.current = target
+            ;(target as Element).scrollIntoView({ block: 'nearest', inline: 'nearest' })
+            const rect = (target as Element).getBoundingClientRect()
+            position.current = { x: rect.left, y: rect.bottom }
+          }
+        }}
+      >
+        <ResultHeader
+          title={title}
+          actions={
+            <div className="fv-header-actions">
+              <span className="fv-chart-tag">
+                {t(`marivo.presentation.ui-chart-kind-${chartKind}`)}
+              </span>
+              {!candidate && <CopyData data={data} columns={columns} />}
+            </div>
+          }
+        />
+        <CardContent className="space-y-4 min-w-0">
+          {!snapshot.coverage.complete && (
+            <p className="au-result-status" role="status">
+              {t('marivo.presentation.ui-capture-range', {
+                p0: snapshot.coverage.capturedRows,
+                p1: snapshot.coverage.totalRows,
+              })}
+            </p>
+          )}
+          {chart ? (
+            chart.chart === 'heatmap' ? (
+              <Heatmap model={model} view={chart} height={height} />
+            ) : (
+              <TimeChart model={model} view={chart} height={height} />
+            )
+          ) : metric ? (
+            <MetricGroup
+              items={[
+                {
+                  key: metricColumn.id,
+                  value:
+                    selectable && data.rows[0]![data.columns.indexOf(metricColumn)] != null ? (
+                      <button
+                        type="button"
+                        className="pr-cell-select"
+                        data-frame-point={`0:${metricColumn.id}`}
+                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${metricColumn.label}, ${formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)}`}
+                        onClick={() => selectable.select(0, metricColumn.id)}
+                      >
+                        {formatCell(
+                          data.rows[0]![data.columns.indexOf(metricColumn)]!,
+                          metricColumn,
+                        )}
+                      </button>
+                    ) : (
+                      formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)
+                    ),
+                  unit: metricColumn.unit,
+                },
+              ]}
+            />
           ) : (
-            <TimeChart model={model} view={chart} height={height} />
-          )
-        ) : metric ? (
-          <MetricGroup
-            items={[
-              {
-                key: metricColumn.id,
-                value: formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn),
-                unit: metricColumn.unit,
-              },
-            ]}
-          />
-        ) : (
-          <DatasetDisplayTable
-            data={data}
-            columns={columns}
-            height={height}
-            caption={resourceName ?? ''}
-          />
-        )}
-        <DataActions>
-          <FrameIconButton
-            kind="data"
-            label={t('marivo.presentation.ui-frame-data-table')}
-            tip={t('marivo.presentation.ui-frame-data-table')}
-            hasPopup="dialog"
-            onOpen={candidate ? undefined : () => setDataOpen(true)}
-          >
-            <FrameIcon kind="table" />
-          </FrameIconButton>
-          {!snapshot.coverage.complete && <CoverageIcon snapshot={snapshot} />}
-          {!candidate && (
-            <>
+            <DatasetDisplayTable
+              data={data}
+              columns={columns}
+              height={height}
+              caption={resourceName ?? ''}
+            />
+          )}
+          <DataActions>
+            <FrameIconButton
+              kind="data"
+              label={t('marivo.presentation.ui-frame-data-table')}
+              tip={t('marivo.presentation.ui-frame-data-table')}
+              hasPopup="dialog"
+              onOpen={candidate ? undefined : () => setDataOpen(true)}
+            >
+              <FrameIcon kind="table" />
+            </FrameIconButton>
+            {!snapshot.coverage.complete && <CoverageIcon snapshot={snapshot} />}
+            {!candidate && (
               <FrameIconButton
                 kind="source"
                 label={t('marivo.presentation.ui-dataset-source')}
@@ -331,91 +575,103 @@ function DatasetDataView({
               >
                 <FrameIcon kind="source" />
               </FrameIconButton>
-              <PythonIcon
-                snapshot={{ source: { sessionId: binding.sessionId } }}
-                codeRef={codeRef}
-              />
-            </>
-          )}
-        </DataActions>
-        <Dialog
-          title={t('marivo.presentation.ui-frame-data-table')}
-          open={dataOpen}
-          onClose={() => setDataOpen(false)}
-        >
-          <div className="fv-data-reference">
-            <DatasetDisplayTable data={data} caption={resourceName ?? ''} reference />
-          </div>
-        </Dialog>
-        <Dialog
-          title={t('marivo.presentation.ui-dataset-source')}
-          open={sourceOpen}
-          onClose={() => setSourceOpen(false)}
-        >
-          <div className="au-source">
-            <p>{t('marivo.presentation.ui-captured-at', { p0: snapshot.fetchedAt })}</p>
-            <p>
-              {t('marivo.presentation.ui-capture-range', {
-                p0: snapshot.coverage.capturedRows,
-                p1: snapshot.coverage.totalRows,
-              })}
-            </p>
-            <p>{t('marivo.presentation.ui-business-unknown')}</p>
-            <section>
+            )}
+          </DataActions>
+          <Dialog
+            title={t('marivo.presentation.ui-frame-data-table')}
+            open={dataOpen}
+            onClose={() => setDataOpen(false)}
+          >
+            <div className="fv-data-reference">
+              <DatasetDisplayTable data={data} caption={resourceName ?? ''} reference />
+            </div>
+            {pointMenu}
+          </Dialog>
+          <Dialog
+            title={t('marivo.presentation.ui-dataset-source')}
+            open={sourceOpen}
+            onClose={() => setSourceOpen(false)}
+          >
+            <div className="au-source">
+              <p>{t('marivo.presentation.ui-captured-at', { p0: snapshot.fetchedAt })}</p>
               <p>
-                <strong>{t('marivo.presentation.ui-dataset-source-python')}</strong>
+                {t('marivo.presentation.ui-capture-range', {
+                  p0: snapshot.coverage.capturedRows,
+                  p1: snapshot.coverage.totalRows,
+                })}
               </p>
-              {currentCode?.kind === 'ok' ? (
-                <pre>
-                  <code>{currentCode.text}</code>
-                </pre>
-              ) : (
+              <section>
                 <p>
-                  {t(
-                    codeStatus === 'missing'
-                      ? 'marivo.presentation.ui-dataset-source-python-missing'
-                      : codeStatus === 'mismatch'
-                        ? 'marivo.presentation.ui-dataset-source-python-mismatch'
-                        : codeStatus === 'read-failed'
-                          ? 'marivo.presentation.ui-dataset-source-python-read-failed'
-                          : 'marivo.presentation.ui-dataset-source-python-loading',
-                  )}
+                  <strong>{t('marivo.presentation.ui-dataset-source-python')}</strong>
                 </p>
-              )}
-            </section>
-            <section>
-              <p>
-                <strong>{t('marivo.presentation.ui-dataset-source-datasources')}</strong>
-              </p>
-              {currentCode?.kind === 'ok' && currentCode.datasources?.length ? (
-                <ul>
-                  {currentCode.datasources.map((datasource) => (
-                    <li key={datasource.name}>
-                      <code>{datasource.name}</code>
-                      {datasource.backend ? ` · ${datasource.backend}` : ''}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>{t('marivo.presentation.ui-dataset-source-datasources-unavailable')}</p>
-              )}
-            </section>
-            <p>{t('marivo.presentation.ui-dataset-source-sql-unavailable')}</p>
-            <p>{t('marivo.presentation.ui-dataset-source-file-unavailable')}</p>
-            <p>{t('marivo.presentation.ui-dataset-source-warnings-unavailable')}</p>
-            <dl>
-              <dt>Session</dt>
-              <dd>{binding.sessionId}</dd>
-              <dt>Call</dt>
-              <dd>{binding.callId}</dd>
-              <dt>codeRef.executionId</dt>
-              <dd>{binding.codeRef?.executionId}</dd>
-              <dt>codeRef.sha256</dt>
-              <dd>{binding.codeRef?.sha256}</dd>
-            </dl>
-          </div>
-        </Dialog>
-      </CardContent>
-    </ResultCard>
+                {currentCode?.kind === 'ok' ? (
+                  <>
+                    <div className="fv-table-bar">
+                      <FrameIconButton
+                        kind="copy-code"
+                        label={t('marivo.presentation.copy-code')}
+                        tip={t('marivo.presentation.copy-code')}
+                        onOpen={() => void copyCode(currentCode.text, currentCode.key)}
+                      >
+                        <FrameIcon kind="copy" />
+                      </FrameIconButton>
+                      {copied && copied.key === codeKey && (
+                        <span role="status">{t(copied.message)}</span>
+                      )}
+                    </div>
+                    <pre className="fv-code rounded-lg bg-muted p-3 text-xs">
+                      <code>{currentCode.text}</code>
+                    </pre>
+                  </>
+                ) : (
+                  <p>
+                    {t(
+                      codeStatus === 'missing'
+                        ? 'marivo.presentation.ui-dataset-source-python-missing'
+                        : codeStatus === 'mismatch'
+                          ? 'marivo.presentation.ui-dataset-source-python-mismatch'
+                          : codeStatus === 'read-failed'
+                            ? 'marivo.presentation.ui-dataset-source-python-read-failed'
+                            : 'marivo.presentation.ui-dataset-source-python-loading',
+                    )}
+                  </p>
+                )}
+              </section>
+              <section>
+                <p>
+                  <strong>{t('marivo.presentation.ui-dataset-source-datasources')}</strong>
+                </p>
+                {currentCode?.kind === 'ok' && currentCode.datasources?.length ? (
+                  <ul>
+                    {currentCode.datasources.map((datasource) => (
+                      <li key={datasource.name}>
+                        <code>{datasource.name}</code>
+                        {datasource.backend ? ` · ${datasource.backend}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{t('marivo.presentation.ui-dataset-source-datasources-unavailable')}</p>
+                )}
+              </section>
+              <details className="fv-dev">
+                <summary>{t('marivo.presentation.ui-frame-developer')}</summary>
+                <dl>
+                  <dt>Session</dt>
+                  <dd>{binding.sessionId}</dd>
+                  <dt>Call</dt>
+                  <dd>{binding.callId}</dd>
+                  <dt>codeRef.executionId</dt>
+                  <dd>{binding.codeRef?.executionId}</dd>
+                  <dt>codeRef.sha256</dt>
+                  <dd>{binding.codeRef?.sha256 ?? '—'}</dd>
+                </dl>
+              </details>
+            </div>
+          </Dialog>
+          {!dataOpen && pointMenu}
+        </CardContent>
+      </ResultCard>
+    </ChartSelectionContext.Provider>
   )
 }

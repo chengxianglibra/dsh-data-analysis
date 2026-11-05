@@ -36,6 +36,7 @@ function SavedToolView({
   generation,
   allowed,
   onAskPoint,
+  onAskDataset,
 }: {
   delivery: PresentationDelivery
   sessionId: string
@@ -44,6 +45,10 @@ function SavedToolView({
   onOpenSemanticRef: OpenSemanticRef
   generation: ConnectionGeneration | undefined
   allowed: boolean
+  onAskDataset: (
+    selection: Parameters<NonNullable<AnalysisResourceContext['askDataset']>>[0],
+    signal: AbortSignal,
+  ) => Promise<void>
   onAskPoint: (
     selection: Parameters<NonNullable<AnalysisResourceContext['askPoint']>>[0],
     signal: AbortSignal,
@@ -99,6 +104,12 @@ function SavedToolView({
           document={state.document}
           openSemanticRef={onOpenSemanticRef}
           readCode={readCode}
+          askDataset={(selection) => {
+            const signal = lifetime.current?.signal
+            return signal
+              ? onAskDataset(selection, signal)
+              : Promise.reject(new Error('input-unavailable'))
+          }}
           askPoint={(selection) => {
             const signal = lifetime.current?.signal
             return signal
@@ -119,6 +130,13 @@ export function installAnalysisTool(
   connection: ConnectionGenerationState,
   candidates: AnalysisCandidates,
   openSemantic: (sessionId: string, workspaceId: string, ref: SemanticRef) => void,
+  askDataset: (
+    sessionId: string,
+    workspaceId: string,
+    recordId: string,
+    selection: Parameters<NonNullable<AnalysisResourceContext['askDataset']>>[0],
+    signal: AbortSignal,
+  ) => Promise<void>,
   askPoint: (
     sessionId: string,
     workspaceId: string,
@@ -229,6 +247,15 @@ export function installAnalysisTool(
               onOpen={(receipt) => open(props.sessionId, receipt)}
               onOpenSemanticRef={(ref) =>
                 openSemantic(props.sessionId, delivery.receipt.workspaceId, ref)
+              }
+              onAskDataset={(selection, signal) =>
+                askDataset(
+                  props.sessionId,
+                  delivery.receipt.workspaceId,
+                  analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId),
+                  selection,
+                  signal,
+                )
               }
               onAskPoint={(selection, signal) =>
                 askPoint(

@@ -23,6 +23,7 @@ export const zh = {
   'marivo.presentation.ui-frame-restricted-scope': '仅展示受限的成员范围。',
   'marivo.presentation.ui-frame-ask-point': '就此提问',
   'marivo.presentation.ui-frame-ask-failed': '无法将数据点加入提问，请重试。',
+  'marivo.presentation.ui-dataset-ask-failed': '无法将数据加入提问，请重试。',
   'marivo.presentation.ui-frame-ask-added': '已加入提问草稿。',
   'marivo.presentation.ui-frame-scroll-hint': '左右滚动查看更多',
   'marivo.presentation.ui-copy-failed': '复制失败，请重试。',
@@ -128,12 +129,6 @@ export const zh = {
   'marivo.presentation.ui-dataset-source-datasources': '本次执行声明的数据源',
   'marivo.presentation.ui-dataset-source-datasources-unavailable':
     '本次执行未保存数据源/backend（旧执行记录或未声明）。',
-  'marivo.presentation.ui-dataset-source-sql-unavailable':
-    'SQL：未单独捕获。DataFrame 不携带 SQL，当前 Runtime 也没有公开的持久化 Run SQL 读取接口；若脚本包含 SQL，可在上方源码中查看。',
-  'marivo.presentation.ui-dataset-source-file-unavailable':
-    '文件来源：不从 DataFrame 推断；若脚本包含文件路径，可在上方源码中查看。',
-  'marivo.presentation.ui-dataset-source-warnings-unavailable':
-    '执行警告：本次未捕获（未保存 warnings）。',
   'marivo.presentation.ui-format-limitations': '此格式暂不支持离线导出、发布及页面编辑。',
   'marivo.presentation.ui-open-tab': '在报告标签页中打开',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
@@ -233,6 +228,7 @@ export const en = {
   'marivo.presentation.ui-frame-restricted-scope': 'Only the restricted member scope is shown.',
   'marivo.presentation.ui-frame-ask-point': 'Ask about this',
   'marivo.presentation.ui-frame-ask-failed': 'Could not add this data point. Please try again.',
+  'marivo.presentation.ui-dataset-ask-failed': 'Could not add this data. Please try again.',
   'marivo.presentation.ui-frame-ask-added': 'Added to the question draft.',
   'marivo.presentation.ui-frame-scroll-hint': 'Scroll horizontally to see more',
   'marivo.presentation.ui-copy-failed': 'Copy failed. Try again.',
@@ -342,12 +338,6 @@ export const en = {
   'marivo.presentation.ui-dataset-source-datasources': 'Datasources declared by this execution',
   'marivo.presentation.ui-dataset-source-datasources-unavailable':
     'No datasource/backend was saved for this execution (older execution record or none declared).',
-  'marivo.presentation.ui-dataset-source-sql-unavailable':
-    'SQL: not captured separately. A DataFrame carries no SQL, and the current Runtime exposes no public persisted Run SQL reader. If the script contains SQL, view it in the source above.',
-  'marivo.presentation.ui-dataset-source-file-unavailable':
-    'File provenance: not inferred from a DataFrame. If the script contains a file path, view it in the source above.',
-  'marivo.presentation.ui-dataset-source-warnings-unavailable':
-    'Execution warnings: not captured in this view (warnings were not saved).',
   'marivo.presentation.ui-format-limitations':
     'Offline export, publishing and page editing are unavailable for this format.',
   'marivo.presentation.ui-open-tab': 'Open in report tab',

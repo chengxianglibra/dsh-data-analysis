@@ -22,6 +22,8 @@ export interface AnalysisResourceContext {
     codeRef: PythonCodeRef,
     signal: AbortSignal,
   ) => Promise<PythonCodeReadResult | undefined>
+  /** Inserts a saved DataFrame cell into the current Harness input after host validation. */
+  askDataset?: (selection: { resourceName: string; row: number; field: string }) => Promise<void>
   /** Inserts a saved Frame cell into the current Harness input after host validation. */
   askPoint?: (selection: { resourceName: string; row: number; field: string }) => Promise<void>
 }

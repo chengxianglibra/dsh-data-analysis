@@ -10,6 +10,7 @@ import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
 import { credentialChanges } from '../credentials/changes.ts'
 import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
+import { appendDatasetReference, installDatasetReferenceSource } from '../dataset-reference.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { hostCopy, installCopy, localized } from '../i18n/host.tsx'
 import { appendPointReference, installPointReferenceSource } from '../point-reference.ts'
@@ -137,6 +138,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     candidates,
     (sessionId, workspaceId, ref) => navigate(sessionId, { kind: 'semantic', workspaceId, ref }),
     (sessionId, workspaceId, recordId, selection, signal) =>
+      appendDatasetReference(ctx, rpc, { sessionId, workspaceId, recordId, ...selection }, signal),
+    (sessionId, workspaceId, recordId, selection, signal) =>
       appendPointReference(
         ctx,
         rpc,
@@ -213,6 +216,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   )
   installSemanticReferenceSource(ctx, rpc)
   installPointReferenceSource(ctx, rpc)
+  installDatasetReferenceSource(ctx, rpc)
   const credentials = installCredentials(ctx, rpc, credentialChanges(ctx))
   ctx.effect(() =>
     credentials.subscribe(() => {
@@ -428,6 +432,24 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       document={report.analysisDocument}
                       openSemanticRef={source}
                       readCode={readCode}
+                      askDataset={
+                        canAsk
+                          ? (selection) =>
+                              pointLifetime.current
+                                ? appendDatasetReference(
+                                    ctx,
+                                    rpc,
+                                    {
+                                      sessionId: page.sessionId,
+                                      workspaceId: page.target.workspaceId,
+                                      recordId: report.analysisDocument.recordId,
+                                      ...selection,
+                                    },
+                                    AbortSignal.any([tab.signal, pointLifetime.current.signal]),
+                                  )
+                                : Promise.reject(new Error('input-unavailable'))
+                          : undefined
+                      }
                       askPoint={
                         canAsk
                           ? (selection) =>

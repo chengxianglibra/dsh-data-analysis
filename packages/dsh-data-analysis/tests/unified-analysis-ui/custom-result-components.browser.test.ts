@@ -34,12 +34,13 @@ const resources = {
 const root = createRoot(document.getElementById('root'));
 const portal = new URLSearchParams(location.search).has('portal');
 const PortalShell = ({open,title,className,children}) => open ? createPortal(createElement('div',{role:'dialog','aria-label':title,className},children),document.body) : null;
-window.calls = {code:0,ask:0,copy:0};
+window.calls = {code:0,ask:0,copy:0}; window.datasetRequests = [];
 window.renderBuild = (recordId, candidate = new URLSearchParams(location.search).has('candidate')) => { const surface = createElement(AnalysisRenderer, {
  recordId, resources:{...resources},title:'Results',locale:'en-US',candidate,
  program:'root = Stack([metric, table, chart, partial, full, restricted]);\\nmetric = DatasetView("metric");\\ntable = DatasetView("table");\\nchart = DatasetView("chart", {chart:"line",encoding:{axis:"category",values:["value"]}});\\npartial = AnalysisFrameView("partial", {chart:"auto"}, {density:"compact"});\\nfull = AnalysisFrameView("full");\\nrestricted = AnalysisFrameView("restricted", {chart:"auto"}, {density:"compact"});',
  readCode:async () => {window.calls.code++;return new Promise(resolve => {window.resolveCode = () => resolve({text:'print("old build")',sha256:(window.mismatch ? 'b' : 'a').repeat(64),datasources:[{name:'warehouse',backend:'duckdb'}]})})},
- askPoint:async () => {window.calls.ask++;document.getElementById('background-composer').focus();await new Promise(resolve=>setTimeout(resolve,10));}
+ askPoint:async () => {window.calls.ask++;document.getElementById('background-composer').focus();await new Promise(resolve=>setTimeout(resolve,10));},
+ askDataset:async selection => {window.datasetRequests.push(selection); await new Promise((resolve, reject) => {window.resolveAskDataset = resolve; window.rejectAskDataset = reject})}
 });root.render(portal ? createElement(OverlayProvider,{shell:PortalShell},surface) : surface);};
 window.setMetricSha = (sha) => {
  resources.metric = {...resources.metric,binding:{...resources.metric.binding,codeRef:{...resources.metric.binding.codeRef,sha256:sha.repeat(64)}}};
@@ -83,6 +84,26 @@ window.renderBuild('build-1');`,
       '9007199254740993.2300',
     )
     assert.equal(await metric.locator('.au-metric-value span').textContent(), 'USD')
+    assert.equal(
+      await metric.getByRole('button', { name: 'Ask about this', exact: true }).count(),
+      0,
+    )
+    const metricPoint = metric.getByRole('button', { name: /Select a data point: Value/ })
+    await metricPoint.focus()
+    await metricPoint.press('Enter')
+    const askDataset = page.getByRole('menuitem', { name: 'Ask about this', exact: true })
+    await askDataset.click()
+    assert.equal(await askDataset.getAttribute('aria-disabled'), 'true')
+    assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'datasetRequests')), [
+      { resourceName: 'metric', row: 0, field: 'value' },
+    ])
+    await page.evaluate(() => Reflect.get(window, 'resolveAskDataset')())
+    await page.getByRole('status').filter({ hasText: 'Added to the question draft.' }).waitFor()
+    await askDataset.click()
+    await page.evaluate(() => Reflect.get(window, 'rejectAskDataset')(new Error('unavailable')))
+    await page.getByRole('status').filter({ hasText: 'Could not add this data.' }).waitFor()
+    await page.keyboard.press('Escape')
+    assert.equal(await metricPoint.evaluate((node) => node === document.activeElement), true)
     await metric.getByRole('button', { name: 'Data source and scope', exact: true }).click()
     const source = page.getByRole('dialog', { name: 'Data source and scope', exact: true })
     await source.waitFor()
@@ -95,6 +116,11 @@ window.renderBuild('build-1');`,
     assert.match(sourceText, /print\("old build"\)/)
     assert.match(sourceText, /warehouse/)
     assert.match(sourceText, /duckdb/)
+    assert.doesNotMatch(sourceText, /SQL:|File provenance:|Execution warnings:/)
+    assert.equal(await metric.locator('[data-icon="python"]').count(), 0)
+    await source.locator('[data-icon="copy-code"] button').click()
+    await source.getByRole('status').filter({ hasText: 'Copied' }).waitFor()
+    assert.equal(await page.evaluate(() => Reflect.get(window, 'copiedText')), 'print("old build")')
     const switchedSource = await page.evaluate(() => Reflect.get(window, 'setMetricSha')('b'))
     assert.doesNotMatch(switchedSource, /print\("old build"\)/)
     assert.doesNotMatch(switchedSource, /warehouse|duckdb/)
@@ -104,36 +130,46 @@ window.renderBuild('build-1');`,
     assert.equal(await source.locator('pre code').count(), 0)
     assert.doesNotMatch((await source.textContent()) ?? '', /warehouse|duckdb/)
     await source.getByRole('button', { name: 'Close', exact: true }).click()
-    await page.evaluate(() => Reflect.get(window, 'setMetricSha')('a'))
-    await metric.locator('[data-icon="python"] button').click()
-    const python = page.getByRole('dialog', { name: 'Python', exact: true })
-    await python.waitFor()
-    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 3)
-    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
-    assert.equal(await python.locator('pre code').textContent(), 'print("old build")')
-    await python.locator('[data-icon="copy-code"] button').click()
-    await python.getByRole('status').filter({ hasText: 'Copied' }).waitFor()
-    assert.equal(await page.evaluate(() => Reflect.get(window, 'copiedText')), 'print("old build")')
-    const switchedPython = await page.evaluate(() => Reflect.get(window, 'setMetricSha')('b'))
-    assert.doesNotMatch(switchedPython, /print\("old build"\)/)
-    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 4)
-    await page.evaluate(() => Reflect.get(window, 'resolveCode')())
-    await python.getByRole('status').filter({ hasText: 'sha256 does not match' }).waitFor()
-    assert.equal(await python.locator('pre code').count(), 0)
-    await python.getByRole('button', { name: 'Close', exact: true }).click()
-    await python.waitFor({ state: 'hidden' })
     const table = page.locator('[data-resource="table"]')
     await table.getByRole('table', { name: 'table', exact: true }).waitFor()
+    await table.getByRole('button', { name: 'Sort by Value' }).click()
+    const tablePoint = table.locator(
+      '[data-row-index="2"] [data-column-id="value"] .pr-cell-select',
+    )
+    await tablePoint.click()
+    await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+    assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'datasetRequests'))).at(-1), {
+      resourceName: 'table',
+      row: 2,
+      field: 'value',
+    })
+    await page.evaluate(() => Reflect.get(window, 'resolveAskDataset')())
+    await page.getByRole('status').filter({ hasText: 'Added to the question draft.' }).waitFor()
+    await page.keyboard.press('Escape')
     await table.locator('[data-icon="data"] button').click()
     const tableDialog = page.getByRole('dialog')
     await tableDialog.getByRole('table', { name: 'table', exact: true }).waitFor()
+    const dialogPoint = tableDialog.locator(
+      '[data-row-index="0"] [data-column-id="value"] .pr-cell-select',
+    )
+    await dialogPoint.click()
+    await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+    assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'datasetRequests'))).at(-1), {
+      resourceName: 'table',
+      row: 0,
+      field: 'value',
+    })
+    await page.evaluate(() => Reflect.get(window, 'resolveAskDataset')())
+    await page.getByRole('status').filter({ hasText: 'Added to the question draft.' }).waitFor()
+    await page.keyboard.press('Escape')
+    assert.equal(await dialogPoint.evaluate((node) => node === document.activeElement), true)
     await tableDialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.evaluate(() => Reflect.set(window, 'mismatch', true))
-    await table.locator('[data-icon="python"] button').click()
-    const mismatch = page.getByRole('dialog', { name: 'Python', exact: true })
-    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 5)
+    await table.locator('[data-icon="source"] button').click()
+    const mismatch = page.getByRole('dialog', { name: 'Data source and scope', exact: true })
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 3)
     await page.evaluate(() => Reflect.get(window, 'resolveCode')())
-    await mismatch.getByRole('status').filter({ hasText: 'sha256 does not match' }).waitFor()
+    await mismatch.getByText('The execution record sha256 does not match.').waitFor()
     assert.equal(await mismatch.locator('pre code').count(), 0)
     await mismatch.getByRole('button', { name: 'Close', exact: true }).click()
     assert.equal(await table.locator('[data-icon="data"]').count(), 1)
@@ -163,6 +199,18 @@ window.renderBuild('build-1');`,
     assert.equal(await partial.getAttribute('data-density'), 'compact')
     assert.match((await partial.getByRole('status').first().textContent()) ?? '', /3.*5/)
     const chart = page.locator('[data-resource="chart"]')
+    const chartPoint = chart.locator('g[data-frame-point="0:value"]').first()
+    await chartPoint.focus()
+    await chartPoint.press('Enter')
+    await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+    assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'datasetRequests'))).at(-1), {
+      resourceName: 'chart',
+      row: 0,
+      field: 'value',
+    })
+    await page.evaluate(() => Reflect.get(window, 'resolveAskDataset')())
+    await page.getByRole('status').filter({ hasText: 'Added to the question draft.' }).waitFor()
+    await page.keyboard.press('Escape')
     await chart.locator('[data-icon="data"] button').click()
     const dialog = page.getByRole('dialog')
     await dialog.waitFor()
@@ -193,7 +241,7 @@ window.renderBuild('build-1');`,
     assert.equal(await point.evaluate((node) => node === document.activeElement), true)
     await frameDialog.getByRole('button', { name: 'Close', exact: true }).click()
     await page.locator('[data-resource="full"] [data-icon="python"] button').click()
-    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 6)
+    await page.waitForFunction(() => Reflect.get(window, 'calls').code === 4)
     await page.evaluate(() => Reflect.get(window, 'renderBuild')('build-2'))
     await page.locator('[data-analysis-record="build-2"]').waitFor()
     assert.equal(await page.getByRole('status').filter({ hasText: 'Copied' }).count(), 0)
@@ -202,6 +250,7 @@ window.renderBuild('build-1');`,
     assert.equal(await page.locator('pre code').count(), 0)
     await page.goto(`${url}?candidate`)
     await page.locator('.au-result').first().waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Ask about this', exact: true }).count(), 0)
     assert.equal(
       await page
         .locator('[data-icon="copy-data"], [data-icon="python"], [data-icon="origins"]')

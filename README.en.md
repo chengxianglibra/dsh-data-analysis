@@ -115,7 +115,8 @@ Analysis reports and dashboards use `marivo_present` to combine conclusions, exp
 preferring `AnalysisFrameView` for Frame data. After saving the report, the assistant replies briefly in chat. Your requested output format takes precedence.
 
 - **Inspect data**: Sort exact values, browse local pages, and copy saved data from displayed columns. Previews disclose their range and cannot become complete single-value metrics.
-- **Check sources**: Frame views show structure and source identity. DataFrame views explicitly mark SQL, datasource and file provenance that was not captured.
+- **Check sources**: Frame views show structure and source identity. DataFrame views bring together the captured range, execution script and declared datasources.
+- **Ask a follow-up**: Select a chart point or supported cell in a DataFrame or Frame and add it to the question draft.
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
 
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.

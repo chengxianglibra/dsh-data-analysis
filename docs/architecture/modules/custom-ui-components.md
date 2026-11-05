@@ -20,7 +20,7 @@ Marivo 拥有分析语义；组件只展示已保存事实。报告协议、快�
 - ResultCard、ResultHeader、MetricGroup 和 DataActions 只组织标题、数字、主体与动作，不接收 Runtime、凭据或 RPC。
 - 普通图共用原值/几何/行字段绑定模型，由 Recharts 和 shadcn Chart 呈现；比较、分解、对齐、相关和份额保留领域结构，不变成通用业务计算器。
 
-Dataset 不因共用外壳或图表获得 Frame context、期间推断或数据点提问。精确值使用已有 codec / formatCell / exact 路径，
+Dataset 不因共用外壳或图表获得 Frame context 或期间推断；数据点提问使用 Dataset 自己保存的行与字段。精确值使用已有 codec / formatCell / exact 路径，
 浮点近似只用于绘图位置。area 与 bar 的数值域包含零，null 继续断开图形，不补算总计、差值或比例。
 
 ## 主题与容器

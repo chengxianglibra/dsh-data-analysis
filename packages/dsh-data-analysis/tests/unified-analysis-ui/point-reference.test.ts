@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client'
+import {
+  appendDatasetReference,
+  createDatasetReferenceSource,
+} from '../../src/client/dataset-reference.ts'
 import type { InputContextHost } from '../../src/client/input-context.ts'
 import {
   appendPointReference,
@@ -94,10 +98,12 @@ function fixture() {
   let finish: ((result: unknown) => void) | undefined
   const rpc = {
     call: async (_channel: string, endpoint: string) => {
-      if (endpoint === 'point/prepare')
+      if (endpoint === 'point/prepare' || endpoint === 'dataset/prepare')
         return new Promise((resolve) => {
           finish = resolve
         })
+      if (endpoint === 'dataset/serialize')
+        return { ok: true, value: { text: 'verified DataFrame' } }
       if (endpoint === 'point/serialize')
         return { ok: true, value: { text: 'verified precise value: 9007199254740993' } }
       throw new Error('unexpected endpoint')
@@ -185,6 +191,42 @@ test('point prepare refuses stale ownership, reset, cancellation and mismatched 
     )
     await rejected
     assert.equal(f.inserted.length, 0, failure)
+    assert.equal(f.listeners.size, 0)
+    assert.equal(f.inputListeners.size, 0)
+  }
+})
+
+test('DataFrame references append to the live draft and reject stale ownership or mismatches', async () => {
+  for (const failure of ['none', 'workspace', 'cancel', 'reply']) {
+    const f = fixture()
+    const lifetime = new AbortController()
+    const request = f.request
+    const envelope = {
+      ...request,
+      schema: 'dsh-data-analysis-dataset-point/v1',
+      digest: 'a'.repeat(64),
+    }
+    const pending = appendDatasetReference(f.host, f.rpc, request, lifetime.signal)
+    const rejected = failure === 'none' ? undefined : assert.rejects(pending)
+    if (failure === 'workspace') f.change({ workspaceId: 'other' })
+    if (failure === 'cancel') lifetime.abort()
+    f.finish({
+      ok: true,
+      value: { envelope: failure === 'reply' ? { ...envelope, resourceName: 'other' } : envelope },
+    })
+    if (rejected) {
+      await rejected
+      assert.equal(f.inserted.length, 0)
+    } else {
+      await pending
+      assert.equal(f.inserted[0]?.reference.clipboardText, '@trips · count · 1')
+      const codec = createDatasetReferenceSource(f.rpc, lifetime.signal).codec
+      assert.ok(codec)
+      assert.equal(
+        await codec.serialize(f.inserted[0]!.reference.ref, lifetime.signal),
+        'verified DataFrame',
+      )
+    }
     assert.equal(f.listeners.size, 0)
     assert.equal(f.inputListeners.size, 0)
   }

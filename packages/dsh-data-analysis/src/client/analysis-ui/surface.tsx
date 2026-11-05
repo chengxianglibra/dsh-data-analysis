@@ -43,12 +43,14 @@ export function AnalysisSurface({
   openSemanticRef,
   readCode,
   askPoint,
+  askDataset,
 }: {
   document: AnalysisDocument
   readResource?: (name: string) => AnalysisResource | undefined
   openSemanticRef?: OpenSemanticRef
   readCode?: AnalysisResourceContext['readCode']
   askPoint?: AnalysisResourceContext['askPoint']
+  askDataset?: AnalysisResourceContext['askDataset']
 }) {
   return (
     <AnalysisRenderer
@@ -61,6 +63,7 @@ export function AnalysisSurface({
       openSemanticRef={openSemanticRef}
       readCode={readCode}
       askPoint={askPoint}
+      askDataset={askDataset}
     />
   )
 }
@@ -77,6 +80,7 @@ export interface AnalysisRendererProps {
   /** Saved Host source reader; candidate previews never read code. */
   readCode?: AnalysisResourceContext['readCode']
   askPoint?: AnalysisResourceContext['askPoint']
+  askDataset?: AnalysisResourceContext['askDataset']
 }
 export function AnalysisRenderer({
   program,
@@ -90,6 +94,7 @@ export function AnalysisRenderer({
   openSemanticRef,
   readCode,
   askPoint,
+  askDataset,
 }: AnalysisRendererProps) {
   const resources = useMemo(
     () => ({
@@ -98,8 +103,9 @@ export function AnalysisRenderer({
       openSemanticRef: candidate ? undefined : openSemanticRef,
       readCode: candidate ? undefined : readCode,
       askPoint: candidate ? undefined : askPoint,
+      askDataset: candidate ? undefined : askDataset,
     }),
-    [saved, readResource, candidate, openSemanticRef, readCode, askPoint],
+    [saved, readResource, candidate, openSemanticRef, readCode, askPoint, askDataset],
   )
   return (
     <ReportCopyProvider locale={locale}>

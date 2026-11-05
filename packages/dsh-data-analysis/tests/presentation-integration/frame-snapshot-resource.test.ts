@@ -33,15 +33,15 @@ const dataset = {
   data: {
     schemaVersion: 1,
     columns: [{ id: 'amount', label: 'Amount', type: 'decimal', nullable: true }],
-    rows: [['1.5']],
-    rowCount: 1,
+    rows: [['1.5'], ['2.5']],
+    rowCount: 2,
     limit: 5000,
     truncated: false,
   },
   coverage: {
     start: 0,
-    totalRows: 1,
-    capturedRows: 1,
+    totalRows: 2,
+    capturedRows: 2,
     complete: true,
     columns: ['amount'],
     business: 'unknown',
@@ -346,4 +346,65 @@ test('save-time view validation returns structured codes with statement-scoped p
     program: program('{chart:"table",columns:["amount"]}'),
   })
   assert.ok(saved.receipt.reportId)
+})
+
+test('DataFrame references revalidate the fixed saved build and snapshot identity', async (t) => {
+  const f = await fixture(t)
+  const delivery = await f.present({
+    resources: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } },
+    program: 'root = DatasetView("data");',
+  })
+  const request = {
+    sessionId: 'session',
+    workspaceId: 'workspace',
+    recordId: `marivo-ui:${delivery.receipt.reportId}:${delivery.receipt.buildId}`,
+    resourceName: 'data',
+  }
+  const prepared = await f.service.dataset('dataset/prepare', request)
+  if (!('envelope' in prepared) || !prepared.envelope) throw new Error('expected-envelope')
+  const envelope = prepared.envelope
+  assert.equal(envelope.recordId, request.recordId)
+  const serialized = await f.service.dataset('dataset/serialize', { envelope })
+  if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
+  assert.match(serialized.text, /"rows":\[\["1.5"\],\["2.5"\]\]/)
+  assert.match(serialized.text, /"previewTruncated":false/)
+  await assert.rejects(
+    f.service.dataset('dataset/serialize', { envelope: { ...envelope, digest: '0'.repeat(64) } }),
+    /dataset-mismatch/,
+  )
+  await assert.rejects(
+    f.service.dataset('dataset/prepare', { ...request, sessionId: 'other' }),
+    /workspace-unavailable/,
+  )
+  await assert.rejects(
+    f.service.dataset('dataset/prepare', { ...request, resourceName: 'missing' }),
+    /dataset-unavailable/,
+  )
+  await assert.rejects(
+    f.service.dataset('dataset/serialize', { envelope, extra: true }),
+    /invalid-request/,
+  )
+  const selected = { ...request, row: 0, field: 'amount' }
+  const selectedResult = await f.service.dataset('dataset/prepare', selected)
+  if (!('envelope' in selectedResult) || !selectedResult.envelope)
+    throw new Error('expected-envelope')
+  assert.equal(selectedResult.envelope.schema, 'dsh-data-analysis-dataset-point/v1')
+  const selectedText = await f.service.dataset('dataset/serialize', {
+    envelope: selectedResult.envelope,
+  })
+  if (!('text' in selectedText) || !selectedText.text) throw new Error('expected-text')
+  assert.match(selectedText.text, /"value":"1\.5"/)
+  assert.match(selectedText.text, /"rowContextTruncated":false/)
+  await assert.rejects(
+    f.service.dataset('dataset/prepare', { ...selected, row: 2 }),
+    /dataset-unavailable/,
+  )
+  await assert.rejects(
+    f.service.dataset('dataset/prepare', { ...selected, field: 'missing' }),
+    /dataset-unavailable/,
+  )
+  await assert.rejects(
+    f.service.dataset('dataset/serialize', { envelope: { ...selectedResult.envelope, row: 1 } }),
+    /dataset-mismatch/,
+  )
 })
