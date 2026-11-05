@@ -35,6 +35,7 @@ export function DatasetTable({
   scrollDescription,
   selectCell,
   selectableColumns,
+  selectableCell,
   hideCompleteScope = false,
   hideRowCount = false,
   hideExactTitle = false,
@@ -49,6 +50,7 @@ export function DatasetTable({
   /** Select a saved row/field without depending on sorting or pagination order. */
   selectCell?: (row: number, field: string) => void
   selectableColumns?: ReadonlySet<string>
+  selectableCell?: (row: number, field: string) => boolean
   /** The parent already displays the complete row count. Empty/truncated states remain visible. */
   hideCompleteScope?: boolean
   /** Keep empty and truncated states without displaying row counts. */
@@ -160,7 +162,10 @@ export function DatasetTable({
                             : undefined
                       }
                     >
-                      {selectCell && value !== null && selectableColumns?.has(column.id) ? (
+                      {selectCell &&
+                      value !== null &&
+                      selectableColumns?.has(column.id) &&
+                      (!selectableCell || selectableCell(rowIndex, column.id)) ? (
                         <Button
                           variant="ghost"
                           size="sm"

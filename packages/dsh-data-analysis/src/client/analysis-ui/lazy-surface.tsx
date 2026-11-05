@@ -39,12 +39,14 @@ export function SavedAnalysisSurface({
   readCode,
   askPoint,
   askDataset,
+  askResource,
 }: {
   document: AnalysisDocument
   openSemanticRef?: OpenSemanticRef
   readCode?: AnalysisResourceContext['readCode']
   askPoint?: AnalysisResourceContext['askPoint']
   askDataset?: AnalysisResourceContext['askDataset']
+  askResource?: AnalysisResourceContext['askResource']
 }) {
   const t = useCopy()
   return (
@@ -64,6 +66,7 @@ export function SavedAnalysisSurface({
           readCode={readCode}
           askPoint={askPoint}
           askDataset={askDataset}
+          askResource={askResource}
         />
       </HostOverlayProvider>
     </Suspense>

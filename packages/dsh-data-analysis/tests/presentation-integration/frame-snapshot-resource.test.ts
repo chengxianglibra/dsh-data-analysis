@@ -408,3 +408,36 @@ test('DataFrame references revalidate the fixed saved build and snapshot identit
     /dataset-mismatch/,
   )
 })
+
+test('Dataset component reference validates the saved view and sends bounded snapshot context', async (t) => {
+  const f = await fixture(t)
+  const delivery = await f.present({
+    resources: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } },
+    program: 'root = DatasetView("data", {chart:"table"});',
+  })
+  const request = {
+    sessionId: 'session',
+    workspaceId: 'workspace',
+    recordId: `marivo-ui:${delivery.receipt.reportId}:${delivery.receipt.buildId}`,
+    resourceName: 'data',
+    component: { kind: 'dataset', statementId: 'root', view: { chart: 'table' } },
+  }
+  const prepared = await f.service.component('component/prepare', request)
+  if (!('envelope' in prepared) || !prepared.envelope) throw new Error('expected-envelope')
+  const serialized = await f.service.component('component/serialize', {
+    envelope: prepared.envelope,
+  })
+  if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
+  const context = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
+  assert.deepEqual(context.rows, [['1.5'], ['2.5']])
+  assert.deepEqual(context.component.view, { chart: 'table' })
+  assert.equal(context.coverage.complete, true)
+  assert.equal(context.report.program, 'root = DatasetView("data", {chart:"table"})')
+  await assert.rejects(
+    f.service.component('component/prepare', {
+      ...request,
+      component: { ...request.component, view: { chart: 'auto' } },
+    }),
+    /component-unavailable/,
+  )
+})

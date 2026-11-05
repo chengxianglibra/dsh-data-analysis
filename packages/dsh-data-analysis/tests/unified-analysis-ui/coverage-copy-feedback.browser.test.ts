@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('Coverage details and copy feedback follow saved facts', async (t) => {
+test('Coverage details follow saved facts', async (t) => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-coverage-copy-'))
   const browser = await chromium.launch()
   try {
@@ -138,36 +138,6 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         assert.equal(await trigger.evaluate((node) => node === document.activeElement), true)
       },
     )
-
-    await t.test('copy feedback handles failure and deferred clipboard replies', async () => {
-      await page.goto(url)
-      const table = page.locator('[data-resource="table"]')
-      const copy = table.getByRole('button', { name: 'Copy saved data', exact: true })
-      const status = table.locator('[data-slot="card-action"]').getByRole('status')
-      await copy.click()
-      await status.filter({ hasText: 'Copied' }).waitFor()
-      assert.equal(
-        await page.evaluate(() => Reflect.get(window, 'copiedText')),
-        'Category\tValue\nA\t12345678901234.5678\nB\t—\nC\t-2.5000',
-      )
-      await page.evaluate(() => Reflect.set(window, 'failCopy', true))
-      await copy.click()
-      await status.filter({ hasText: 'Copy failed. Try again.' }).waitFor()
-      await page.evaluate(() => {
-        Reflect.set(window, 'failCopy', false)
-        Reflect.set(window, 'deferCopy', true)
-      })
-      const completed = await page.evaluate(() => Reflect.get(window, 'completedWrites'))
-      await copy.click()
-      await page.waitForFunction(() => Reflect.get(window, 'pendingWrites').length === 1)
-      await page.evaluate(() => Reflect.get(window, 'pendingWrites').shift()())
-      await page.waitForFunction(
-        (previous) => Reflect.get(window, 'completedWrites') === previous + 1,
-        completed,
-      )
-      await status.filter({ hasText: 'Copied' }).waitFor()
-      await page.evaluate(() => Reflect.set(window, 'deferCopy', false))
-    })
 
     await t.test('candidate Coverage cannot open dialogs even with synthetic clicks', async () => {
       await page.goto(`${url}?candidate`)

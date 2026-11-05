@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client'
 import {
+  appendComponentReference,
+  createComponentReferenceSource,
+} from '../../src/client/component-reference.ts'
+import {
   appendDatasetReference,
   createDatasetReferenceSource,
 } from '../../src/client/dataset-reference.ts'
@@ -15,7 +19,14 @@ import type { PointEnvelope } from '../../src/presentation/contracts/point-refer
 function fixture() {
   const listeners = new Set<() => void>()
   const inputListeners = new Set<() => void>()
-  const state = { active: true, workspaceId: 'w', path: '/w', phase: 'plain', reject: false }
+  const state = {
+    active: true,
+    workspaceId: 'w',
+    path: '/w',
+    phase: 'plain',
+    reject: false,
+    focusCount: 0,
+  }
   let draft = {
     draft: '问题 @旧引用',
     draftRev: 3,
@@ -59,6 +70,7 @@ function fixture() {
     conversation: {
       input: {
         for: () => ({
+          focus: () => state.focusCount++,
           state: {
             getSnapshot: () => ({ ...draft, phase: state.phase }),
             subscribe: (fn: () => void) => {
@@ -98,10 +110,16 @@ function fixture() {
   let finish: ((result: unknown) => void) | undefined
   const rpc = {
     call: async (_channel: string, endpoint: string) => {
-      if (endpoint === 'point/prepare' || endpoint === 'dataset/prepare')
+      if (
+        endpoint === 'point/prepare' ||
+        endpoint === 'dataset/prepare' ||
+        endpoint === 'component/prepare'
+      )
         return new Promise((resolve) => {
           finish = resolve
         })
+      if (endpoint === 'component/serialize')
+        return { ok: true, value: { text: 'verified component' } }
       if (endpoint === 'dataset/serialize')
         return { ok: true, value: { text: 'verified DataFrame' } }
       if (endpoint === 'point/serialize')
@@ -157,6 +175,22 @@ test('point insertion preserves edited draft and serializes the validated refere
   )
   assert.equal(f.listeners.size, 0)
   assert.equal(f.inputListeners.size, 0)
+})
+
+test('point focus callback respects current input ownership and lifetime', async () => {
+  for (const mode of ['active', 'session', 'workspace', 'cancel']) {
+    const f = fixture()
+    const lifetime = new AbortController()
+    const pending = appendPointReference(f.host, f.rpc, f.request, lifetime.signal)
+    f.finish()
+    const focus = await pending
+    assert.equal(f.state.focusCount, 0)
+    if (mode === 'session') f.change({ active: false })
+    if (mode === 'workspace') f.change({ workspaceId: 'other' })
+    if (mode === 'cancel') lifetime.abort()
+    focus()
+    assert.equal(f.state.focusCount, mode === 'active' ? 1 : 0, mode)
+  }
 })
 
 test('point prepare refuses stale ownership, reset, cancellation and mismatched replies', async () => {
@@ -225,6 +259,49 @@ test('DataFrame references append to the live draft and reject stale ownership o
       assert.equal(
         await codec.serialize(f.inserted[0]!.reference.ref, lifetime.signal),
         'verified DataFrame',
+      )
+    }
+    assert.equal(f.listeners.size, 0)
+    assert.equal(f.inputListeners.size, 0)
+  }
+})
+
+test('component references preserve the draft and cancel stale preparation', async () => {
+  for (const failure of ['none', 'cancel', 'workspace', 'reply']) {
+    const f = fixture()
+    const lifetime = new AbortController()
+    const { row: _row, field: _field, ...identity } = f.request
+    const request = { ...identity, component: { kind: 'frame' as const, view: { chart: 'table' } } }
+    const envelope = {
+      ...request,
+      schema: 'dsh-data-analysis-component/v1',
+      digest: 'a'.repeat(64),
+    }
+    const pending = appendComponentReference(f.host, f.rpc, request, lifetime.signal)
+    const rejected = failure === 'none' ? undefined : assert.rejects(pending)
+    if (failure === 'workspace') f.change({ workspaceId: 'other' })
+    if (failure === 'cancel') lifetime.abort()
+    f.finish({
+      ok: true,
+      value: {
+        envelope: failure === 'reply' ? { ...envelope, component: { kind: 'dataset' } } : envelope,
+      },
+    })
+    if (rejected) {
+      await rejected
+      assert.equal(f.inserted.length, 0)
+    } else {
+      const focus = await pending
+      assert.equal(f.inserted[0]?.reference.clipboardText, '@trips')
+      assert.deepEqual(f.inserted[0]?.span, { start: 4, end: 4, draftRev: 3 })
+      assert.equal(f.state.focusCount, 0)
+      focus()
+      assert.equal(f.state.focusCount, 1)
+      const codec = createComponentReferenceSource(f.rpc, lifetime.signal).codec
+      assert.ok(codec)
+      assert.equal(
+        await codec.serialize(f.inserted[0]!.reference.ref, lifetime.signal),
+        'verified component',
       )
     }
     assert.equal(f.listeners.size, 0)

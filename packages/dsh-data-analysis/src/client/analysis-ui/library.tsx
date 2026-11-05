@@ -30,9 +30,10 @@ export const AnalysisFrameView = defineComponent({
   description:
     'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
   props: frameProps,
-  component: ({ props }) => (
+  component: ({ props, statementId }) => (
     <AnalysisDataView
       kind="frame"
+      component={{ kind: 'frame', statementId, view: props.view, display: props.display }}
       resourceName={props.ref}
       view={props.view}
       display={props.display}
@@ -44,9 +45,10 @@ export const DatasetView = defineComponent({
   description:
     'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
   props: datasetProps,
-  component: ({ props }) => (
+  component: ({ props, statementId }) => (
     <AnalysisDataView
       kind="dataset"
+      component={{ kind: 'dataset', statementId, view: props.view, display: props.display }}
       resourceName={props.ref}
       view={props.view}
       display={props.display}

@@ -31,6 +31,20 @@ const category = frame({
     {name:'baseline.present', type:'boolean', values:[true,true,true,false,true], presence:true},
   ], comparisons:[comparison],
 });
+const scalar = frame({axes:[], values:[{name:'amount', values:[42]}]});
+const table = frame({axes:[{name:'region', keys:['East','West']}], values:[{name:'amount', values:[42,17]}, {name:'other', values:[5,6]}]});
+const enclosed = frame({
+  axes:[{name:'region',keys:['Hidden','Visible']}],
+  values:[
+    {name:'sales',values:[10,20]},
+    {name:'prior.baseline.sales',values:[8,15]},
+    {name:'prior.absolute.sales',values:[2,5]},
+    {name:'current.present',type:'boolean',values:[true,true],presence:true},
+    {name:'baseline.present',type:'boolean',values:[true,true],presence:true},
+    {name:'outer.present',type:'boolean',values:[false,true],presence:true},
+  ],
+  comparisons:[{...comparisonOf({kind:'ordinary'}, [{name:'sales',values:comparedRoles('sales',['current','baseline','absolute'])}]), presence:{current:'current.present',baseline:'baseline.present',enclosing:['outer.present']}}],
+});
 const kpi = comparedSinglePeriodMultiGroup();
 for (const [name, val] of Object.entries({'sales':118393545.05, 'prior.baseline.sales':123430419.10, 'prior.absolute.sales':-5036874.05, 'prior.relative.sales':-.0408})) {
   kpi.data.rows[0][kpi.data.columns.findIndex(column => column.id === name)] = val;
@@ -72,10 +86,11 @@ const hugeDecimal = frame({
   ],
   comparisons:[comparisonOf({kind:'ordinary'}, [{name:'sales', values:comparedRoles('sales',['current','baseline','absolute'])}])],
 });
+window.pointSelections = [];
 const resource = snapshot => ({kind:'snapshot', declaration:{kind:'frame-snapshot', snapshotRef:'ref'}, snapshot, binding:{workspaceId:'w'}});
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
-  program:'root = Stack([category, kpi, switching, nullDelta, maskedDelta, missingEndpoint, explicitNullDelta, hugeDecimal], "column");\\ncategory = AnalysisFrameView("category");\\nkpi = AnalysisFrameView("kpi");\\nswitching = AnalysisFrameView("switching", {chart: "comparison", encoding: {value: "a.baseline.sales"}});\\nnullDelta = AnalysisFrameView("nullDelta");\\nmaskedDelta = AnalysisFrameView("maskedDelta");\\nmissingEndpoint = AnalysisFrameView("missingEndpoint");\\nexplicitNullDelta = AnalysisFrameView("explicitNullDelta", {chart: "comparison", style: "delta"});\\nhugeDecimal = AnalysisFrameView("hugeDecimal");',
-  title:'Comparison interactions', locale:'en-US', resources:{category:resource(category), kpi:resource(kpi), switching:resource(switching), nullDelta:resource(nullDelta), maskedDelta:resource(maskedDelta), missingEndpoint:resource(missingEndpoint), explicitNullDelta:resource(nullDelta), hugeDecimal:resource(hugeDecimal)}, askPoint: async () => {},
+  program:'root = Stack([category, kpi, kpiTable, scalar, plainTable, enclosed, switching, nullDelta, maskedDelta, missingEndpoint, explicitNullDelta, hugeDecimal], "column");\\ncategory = AnalysisFrameView("category");\\nkpi = AnalysisFrameView("kpi");\\nkpiTable = AnalysisFrameView("kpiTable", {chart: "table"});\\nscalar = AnalysisFrameView("scalar");\\nplainTable = AnalysisFrameView("plainTable", {chart: "table"});\\nenclosed = AnalysisFrameView("enclosed", {chart: "table"});\\nswitching = AnalysisFrameView("switching", {chart: "comparison", encoding: {value: "a.baseline.sales"}});\\nnullDelta = AnalysisFrameView("nullDelta");\\nmaskedDelta = AnalysisFrameView("maskedDelta");\\nmissingEndpoint = AnalysisFrameView("missingEndpoint");\\nexplicitNullDelta = AnalysisFrameView("explicitNullDelta", {chart: "comparison", style: "delta"});\\nhugeDecimal = AnalysisFrameView("hugeDecimal");',
+  title:'Comparison interactions', locale:'en-US', resources:{category:resource(category), kpi:resource(kpi), kpiTable:resource(kpi), scalar:resource(scalar), plainTable:resource(table), enclosed:resource(enclosed), switching:resource(switching), nullDelta:resource(nullDelta), maskedDelta:resource(maskedDelta), missingEndpoint:resource(missingEndpoint), explicitNullDelta:resource(nullDelta), hugeDecimal:resource(hugeDecimal)}, askPoint: async selection => { window.pointSelections.push(selection); return () => document.getElementById('composer').focus(); },
 }));`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
     },
@@ -89,7 +104,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
   })
   await writeFile(
     path.join(directory, 'index.html'),
-    '<!doctype html><meta charset="utf-8"><style>body{margin:0}</style><body><div id="root"></div><script src="page.js"></script>',
+    '<!doctype html><meta charset="utf-8"><style>body{margin:0}</style><body><div id="root"></div><input id="composer" aria-label="Composer" style="position:fixed;bottom:0"><script src="page.js"></script>',
   )
   browser = await chromium.launch()
   page = await browser.newPage({ viewport: { width: 1000, height: 900 } })
@@ -219,4 +234,106 @@ test('comparison preserves endpoints and shows no invented bars for unavailable 
   for (const name of ['nullDelta', 'maskedDelta', 'explicitNullDelta']) {
     assert.equal(await page.locator(`[data-resource="${name}"] .fv-delta-bar`).count(), 0, name)
   }
+})
+
+test('saved KPI values and comparison table cells select their own row and field', async () => {
+  await page.setViewportSize({ width: 1000, height: 900 })
+  const block = kpi().locator('[data-comparison-group="sales"]')
+  for (const field of [
+    'sales',
+    'prior.baseline.sales',
+    'prior.absolute.sales',
+    'prior.relative.sales',
+  ]) {
+    const button = block.locator(`[data-frame-point="0:${field}"]`)
+    assert.equal(await button.count(), 1, field)
+    assert.ok(await button.getAttribute('aria-label'))
+    await button.focus()
+    await page.keyboard.press('Enter')
+    await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+    await page.waitForFunction(() => document.activeElement?.id === 'composer')
+  }
+  const selections = await page.evaluate(() => Reflect.get(window, 'pointSelections'))
+  assert.deepEqual(
+    selections.slice(-4),
+    ['sales', 'prior.baseline.sales', 'prior.absolute.sales', 'prior.relative.sales'].map(
+      (field) => ({ resourceName: 'kpi', row: 0, field }),
+    ),
+  )
+
+  const view = category().locator('[data-comparison-rows="delta"]')
+  const absent = view.getByText('Absent', { exact: true }).locator('xpath=ancestor::tr')
+  assert.equal(await absent.locator('[data-frame-point="3:prior.relative.sales"]').count(), 0)
+  const brooklyn = view.getByText('Brooklyn', { exact: true }).locator('xpath=ancestor::tr')
+  const percent = brooklyn.locator('[data-frame-point="2:prior.relative.sales"]')
+  await percent.click()
+  await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+  const selected = await page.evaluate(() => Reflect.get(window, 'pointSelections').at(-1))
+  assert.deepEqual(selected, { resourceName: 'category', row: 2, field: 'prior.relative.sales' })
+})
+
+test('plain metric and tables expose only valid saved cells', async () => {
+  const metric = page.locator('[data-resource="scalar"] [data-frame-point="0:amount"]')
+  assert.equal(await metric.count(), 1)
+  await metric.click()
+  await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections').at(-1)), {
+    resourceName: 'scalar',
+    row: 0,
+    field: 'amount',
+  })
+
+  const table = page.locator('[data-resource="plainTable"]')
+  await table.getByRole('button', { name: 'Sort by amount' }).click()
+  const row = table.locator('tr[data-row-index="1"]')
+  await row.locator('[data-column-id="other"] button').click()
+  await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections').at(-1)), {
+    resourceName: 'plainTable',
+    row: 1,
+    field: 'other',
+  })
+
+  const compared = page.locator('[data-resource="kpiTable"]')
+  for (const field of [
+    'sales',
+    'prior.baseline.sales',
+    'prior.absolute.sales',
+    'prior.relative.sales',
+  ])
+    assert.equal(await compared.locator(`[data-frame-point="0:${field}"]`).count(), 1, field)
+
+  const enclosed = page.locator('[data-resource="enclosed"]')
+  assert.equal(
+    await enclosed.locator('tr[data-row-index="0"] [data-column-id="sales"] button').count(),
+    0,
+  )
+  assert.equal(
+    await enclosed.locator('tr[data-row-index="1"] [data-column-id="sales"] button').count(),
+    1,
+  )
+})
+
+test('comparison detail modal selects the original saved row after sorting', async () => {
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await category().locator('[data-icon="data"] button').click()
+  const dialog = page.getByRole('dialog')
+  await dialog.waitFor()
+  await dialog.getByRole('button', { name: 'Sort by Current' }).click()
+  const absent = dialog.locator('tr[data-row-index="3"]')
+  assert.equal(await absent.locator('[data-column-id="prior.baseline.sales"] button').count(), 0)
+  const saved = dialog.locator(
+    'tr[data-row-index="2"] [data-column-id="prior.relative.sales"] button',
+  )
+  await saved.click()
+  await page.getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections').at(-1)), {
+    resourceName: 'category',
+    row: 2,
+    field: 'prior.relative.sales',
+  })
+  await dialog.waitFor({ state: 'hidden' })
+  await page.getByRole('textbox', { name: 'Composer' }).waitFor()
+  await page.waitForFunction(() => document.activeElement?.id === 'composer')
+  assert.equal(await page.getByRole('menu').count(), 0)
 })

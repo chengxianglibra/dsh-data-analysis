@@ -1,9 +1,14 @@
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { OverlayProvider, type OverlayShellProps } from './overlays.tsx'
 import { cn } from './utils.ts'
 
-function HostDialogShell(props: OverlayShellProps) {
+function HostDialogShell({ onAfterClose, ...props }: OverlayShellProps) {
+  const wasOpen = useRef(props.open)
+  useEffect(() => {
+    if (wasOpen.current && !props.open) onAfterClose?.()
+    wasOpen.current = props.open
+  }, [props.open, onAfterClose])
   return (
     <Modal
       {...props}

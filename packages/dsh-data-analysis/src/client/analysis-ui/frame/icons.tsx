@@ -40,11 +40,13 @@ export function Dialog({
   title,
   open,
   onClose,
+  onAfterClose,
   children,
 }: {
   title: string
   open: boolean
   onClose: () => void
+  onAfterClose?: () => boolean
   children: ReactNode
 }) {
   const t = useCopy()
@@ -53,6 +55,7 @@ export function Dialog({
       title={title}
       open={open}
       onClose={onClose}
+      onAfterClose={onAfterClose}
       closeLabel={t(`${P}ui-frame-close`)}
       className="fv-dialog"
     >

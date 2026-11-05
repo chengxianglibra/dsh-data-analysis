@@ -9,7 +9,11 @@ import {
 } from '../presentation/contracts/dataset-reference.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../presentation/receipt.ts'
 import { boundedText, closed, parseJson } from '../semantic-reference/contracts.ts'
-import { type InputContextHost, withInputReferenceInsertion } from './input-context.ts'
+import {
+  focusOwnedInput,
+  type InputContextHost,
+  withInputReferenceInsertion,
+} from './input-context.ts'
 
 const SOURCE = 'marivo-analysis-dataset'
 const label = (envelope: DatasetEnvelope) =>
@@ -78,7 +82,7 @@ export function appendDatasetReference(
   rpc: ClientConnectionRpc,
   request: DatasetRequest,
   lifetime: AbortSignal,
-): Promise<void> {
+): Promise<() => void> {
   return withInputReferenceInsertion(host, request, lifetime, async (signal, insert) => {
     const result = await rpc.call(
       MARIVO_PRESENTATION_RPC_CHANNEL,
@@ -100,5 +104,5 @@ export function appendDatasetReference(
     )
       throw new Error('dataset-reference-mismatch')
     insert(reference(envelope))
-  })
+  }).then(() => () => focusOwnedInput(host, request, lifetime))
 }

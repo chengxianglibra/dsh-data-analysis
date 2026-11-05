@@ -18,7 +18,10 @@ export const PRESENTATION_STYLES = `
 .pr-table th.pr-numeric button{margin-left:auto}
 .pr-column-label{white-space:normal;overflow-wrap:anywhere}
 .pr-sort-indicator{flex:none}
-.pr-cell-select{max-width:100%;white-space:normal}
+.pr-cell-select{max-width:100%;white-space:normal;cursor:pointer}
+button.pr-cell-select{background:transparent;border:0;padding:0;color:inherit}
+.pr-cell-select:hover{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.pr-cell-select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 .pr-pagination{display:flex;gap:.75rem;align-items:center;justify-content:flex-end;flex-wrap:wrap}
 .pr-pagination>span{color:var(--muted-foreground);font-size:.875rem}
 @media print{.pr-table-scroll{overflow:visible}.pr-table table{table-layout:fixed;width:100%;font-size:8pt}.pr-table :is(th,td){min-width:0;white-space:pre-wrap!important;overflow-wrap:anywhere}.pr-table tr{break-inside:avoid}.pr-table thead{display:table-header-group}.pr-reader pre{white-space:pre-wrap}}

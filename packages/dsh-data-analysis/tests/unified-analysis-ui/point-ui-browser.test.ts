@@ -46,8 +46,9 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     const cell = page.locator('[data-row-index="0"] [data-column-id="amount"] .pr-cell-select')
     await cell.click()
     const menu = page.getByRole('menu')
+    assert.equal(await menu.locator('svg[aria-hidden="true"]').count(), 1)
     await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
-    await menu.getByText('Added to the question draft.').waitFor()
+    await menu.waitFor({ state: 'hidden' })
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointRequests')), [
       { resourceName: 'result', row: 0, field: 'amount' },
     ])
@@ -59,6 +60,11 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await page.keyboard.press('Enter')
     const action = page.getByRole('menuitem', { name: 'Ask about this' })
     await action.waitFor()
+    const pointBox = await point.boundingBox()
+    const menuBox = await menu.boundingBox()
+    assert.ok(pointBox && menuBox)
+    assert.ok(menuBox.x >= pointBox.x + pointBox.width - 1, JSON.stringify({ pointBox, menuBox }))
+    assert.ok(menuBox.y + menuBox.height <= pointBox.y + 1, JSON.stringify({ pointBox, menuBox }))
     assert.equal(await action.evaluate((node) => node === document.activeElement), true)
     await page.keyboard.press('Escape')
     assert.equal(await menu.count(), 0)

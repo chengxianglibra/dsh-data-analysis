@@ -37,6 +37,7 @@ function SavedToolView({
   allowed,
   onAskPoint,
   onAskDataset,
+  onAskResource,
 }: {
   delivery: PresentationDelivery
   sessionId: string
@@ -45,14 +46,18 @@ function SavedToolView({
   onOpenSemanticRef: OpenSemanticRef
   generation: ConnectionGeneration | undefined
   allowed: boolean
+  onAskResource: (
+    selection: Parameters<NonNullable<AnalysisResourceContext['askResource']>>[0],
+    signal: AbortSignal,
+  ) => Promise<undefined | (() => void)>
   onAskDataset: (
     selection: Parameters<NonNullable<AnalysisResourceContext['askDataset']>>[0],
     signal: AbortSignal,
-  ) => Promise<void>
+  ) => Promise<undefined | (() => void)>
   onAskPoint: (
     selection: Parameters<NonNullable<AnalysisResourceContext['askPoint']>>[0],
     signal: AbortSignal,
-  ) => Promise<void>
+  ) => Promise<undefined | (() => void)>
 }) {
   const t = useCopy()
   const lifetime = useRef<AbortController>()
@@ -104,6 +109,12 @@ function SavedToolView({
           document={state.document}
           openSemanticRef={onOpenSemanticRef}
           readCode={readCode}
+          askResource={(selection, requestSignal) => {
+            const signal = lifetime.current?.signal
+            return signal
+              ? onAskResource(selection, AbortSignal.any([signal, requestSignal]))
+              : Promise.reject(new Error('input-unavailable'))
+          }}
           askDataset={(selection) => {
             const signal = lifetime.current?.signal
             return signal
@@ -136,14 +147,21 @@ export function installAnalysisTool(
     recordId: string,
     selection: Parameters<NonNullable<AnalysisResourceContext['askDataset']>>[0],
     signal: AbortSignal,
-  ) => Promise<void>,
+  ) => Promise<undefined | (() => void)>,
   askPoint: (
     sessionId: string,
     workspaceId: string,
     recordId: string,
     selection: Parameters<NonNullable<AnalysisResourceContext['askPoint']>>[0],
     signal: AbortSignal,
-  ) => Promise<void>,
+  ) => Promise<undefined | (() => void)>,
+  askResource: (
+    sessionId: string,
+    workspaceId: string,
+    recordId: string,
+    selection: Parameters<NonNullable<AnalysisResourceContext['askResource']>>[0],
+    signal: AbortSignal,
+  ) => Promise<undefined | (() => void)>,
 ): void {
   const subscribe = (fn: () => void) => connection.subscribe(fn)
   const getGeneration = () => connection.getSnapshot()
@@ -247,6 +265,15 @@ export function installAnalysisTool(
               onOpen={(receipt) => open(props.sessionId, receipt)}
               onOpenSemanticRef={(ref) =>
                 openSemantic(props.sessionId, delivery.receipt.workspaceId, ref)
+              }
+              onAskResource={(selection, signal) =>
+                askResource(
+                  props.sessionId,
+                  delivery.receipt.workspaceId,
+                  analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId),
+                  selection,
+                  signal,
+                )
               }
               onAskDataset={(selection, signal) =>
                 askDataset(

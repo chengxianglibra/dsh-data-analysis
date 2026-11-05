@@ -102,8 +102,11 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 | `files/read` | `{ sessionId \| workspaceId, receipt, asset }` | 读取 receipt 指定的固定 Build JSON |
 | `reports/list` | `{ workspaceId }` | 枚举新格式 Report 的当前标题、摘要、保存时间和来源 |
 | `reports/history` | `{ workspaceId, reportId }` | 返回已确认发布的版本记录和当前 Build 身份 |
+| `code/read` | `{ sessionId \| workspaceId, receipt, codeRef }` | 读取固定文档资源绑定的执行记录 |
 | `point/prepare` | `{ sessionId, workspaceId, recordId, resourceName, row, field }` | 重读固定 Build，生成可用于草稿的 Frame 数据点引用 |
 | `point/serialize` | `{ envelope }` | 以引用中的 Harness Session 重验 Workspace、固定 Build、原始值、轴键、presence 和角色，从已保存快照向模型返回点上下文及 Marivo Frame 身份 |
+| `dataset/prepare`、`dataset/serialize` | 请求或 `{ envelope }` | 准备并重验 Dataset 资源或单元格引用，返回有界快照上下文 |
+| `component/prepare`、`component/serialize` | 组件配置请求或 `{ envelope }` | 核对固定 Build 的组件配置及资源摘要，返回有界的视图、数据和语义上下文 |
 
 `reports/resolve` 和 `files/read` 的 `sessionId` 与 `workspaceId` 必须恰好提供一个；`point/prepare` 同时要求二者，并通过 Session 核验 Workspace。不接受客户端路径。服务端从 Harness Workspace 成员关系推导路径，
 拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。

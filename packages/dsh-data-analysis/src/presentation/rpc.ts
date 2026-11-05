@@ -4,7 +4,9 @@ import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { readPythonExecution } from '../python-execution.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { readReceiptAsset } from './asset.ts'
+import { componentFromDocument, componentModelText } from './component-reference.ts'
 import { parseAnalysisRecordId, parseSavedPresentation } from './contracts/analysis-document.ts'
+import { parseComponentEnvelope, parseComponentRequest } from './contracts/component-reference.ts'
 import { parseDatasetEnvelope, parseDatasetRequest } from './contracts/dataset-reference.ts'
 import {
   PresentationContractError,
@@ -178,6 +180,49 @@ export class MarivoPresentationFileService {
         },
       )}`,
     }
+  }
+  component(
+    endpoint: 'component/prepare' | 'component/serialize',
+    payload: unknown,
+    caller = new AbortController().signal,
+  ) {
+    return this.#tasks.track(this.#component(endpoint, payload, caller))
+  }
+  async #component(
+    endpoint: 'component/prepare' | 'component/serialize',
+    payload: unknown,
+    caller: AbortSignal,
+  ) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    let request: ReturnType<typeof parseComponentRequest>
+    let supplied: ReturnType<typeof parseComponentEnvelope> | undefined
+    if (endpoint === 'component/prepare') request = parseComponentRequest(payload)
+    else {
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        Array.isArray(payload) ||
+        Object.keys(payload).join(',') !== 'envelope'
+      )
+        throw new Error('invalid-request')
+      supplied = parseComponentEnvelope(Reflect.get(payload, 'envelope'))
+      const { sessionId, workspaceId, recordId, resourceName, component } = supplied
+      request = { sessionId, workspaceId, recordId, resourceName, component }
+    }
+    const workspace = await this.#workspace({ sessionId: request.sessionId })
+    if (!workspace || workspace.id !== request.workspaceId) throw new Error('workspace-unavailable')
+    const root = path.resolve(workspace.path)
+    const { reportId, buildId } = parseAnalysisRecordId(request.recordId)
+    const document = await readAnalysisRecord(root, workspace.id, reportId, buildId, signal)
+    const { envelope, snapshot, view, display } = componentFromDocument(document, request)
+    const current = await this.#workspace({ sessionId: request.sessionId })
+    if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    if (endpoint === 'component/prepare') return { envelope }
+    if (JSON.stringify(supplied) !== JSON.stringify(envelope)) throw new Error('component-mismatch')
+    return { text: componentModelText(document, request, snapshot, view, display) }
   }
   dataset(
     endpoint: 'dataset/prepare' | 'dataset/serialize',
@@ -389,6 +434,8 @@ export function registerMarivoPresentationRpc(
       'code/read',
       'point/prepare',
       'point/serialize',
+      'component/prepare',
+      'component/serialize',
       'dataset/prepare',
       'dataset/serialize',
     ],
@@ -404,6 +451,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.code(payload, signal) }
         if (endpoint === 'dataset/prepare' || endpoint === 'dataset/serialize')
           return { ok: true, value: await service.dataset(endpoint, payload, signal) }
+        if (endpoint === 'component/prepare' || endpoint === 'component/serialize')
+          return { ok: true, value: await service.component(endpoint, payload, signal) }
         if (endpoint === 'point/prepare' || endpoint === 'point/serialize')
           return { ok: true, value: await service.point(endpoint, payload, signal) }
         throw new Error('unknown-endpoint')
@@ -415,7 +464,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch)$/.test(
+                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
                     error.message,
                   )
                 ? error.message

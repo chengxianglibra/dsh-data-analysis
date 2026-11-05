@@ -75,7 +75,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await normal.locator('[data-column-id="trips"] .pr-cell-select').click()
     const menu = page.getByRole('menu')
     await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
-    await menu.getByText('Added to the question draft.').waitFor()
+    await menu.waitFor({ state: 'hidden' })
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'requests')), [
       { resourceName: 'normal', row: 0, field: 'trips' },
     ])

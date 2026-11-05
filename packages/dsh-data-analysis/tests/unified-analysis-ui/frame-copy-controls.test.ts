@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('Frame copy icons retain locale, keyboard access, feedback and exact saved data', async () => {
+test('Frame resource questions preserve component identity, focus and Python copy', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-frame-copy-'))
   const browser = await chromium.launch()
   const code = 'print("taxi")\n'
@@ -23,10 +23,12 @@ import { frame, categoryAxis } from './tests/unified-analysis-ui/frame-fixtures.
 const snapshot = frame({axes:[categoryAxis(2,'region')], values:[{name:'trips',type:'int64',values:['9007199254740993','2']}]});
 const codeRef = {executionId:'6f9619ff-8b86-4d01-b42d-00cf4fc964ff',sha256:${JSON.stringify(sha)}};
 const resource = {kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'ref'},snapshot,binding:{workspaceId:'w',codeRef}};
-createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
-  program:'root = AnalysisFrameView("result", {chart:"table"});',title:'Frame',locale:new URLSearchParams(location.search).get('locale') || 'en-US',
-  resources:{result:resource},readCode:async () => ({text:${JSON.stringify(code)},sha256:${JSON.stringify(sha)}})
-}));`,
+const root=createRoot(document.getElementById('root')); window.requests=[];window.aborts=0;window.commits=0;
+window.renderView = view => root.render(createElement(AnalysisRenderer, {
+  program:'root = AnalysisFrameView("result", {chart:"'+view+'"});',title:'Frame',locale:new URLSearchParams(location.search).get('locale') || 'en-US',
+  resources:{result:resource},readCode:async () => ({text:${JSON.stringify(code)},sha256:${JSON.stringify(sha)}}),
+  askResource: (request,signal) => { window.requests.push(request); signal.addEventListener('abort',()=>window.aborts++);return new Promise((resolve,reject)=>{window.resolveAsk=()=>{if(!signal.aborted){window.commits++;resolve(()=>document.getElementById('composer').focus())}else reject(Error('aborted'))};window.rejectAsk=()=>reject(Error('failed'))}) }
+}));window.renderView('table');`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
       },
       outfile: path.join(directory, 'page.js'),
@@ -39,7 +41,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     })
     await writeFile(
       path.join(directory, 'index.html'),
-      '<!doctype html><div id="root"></div><script src="page.js"></script>',
+      '<!doctype html><button id="composer">Composer</button><div id="root"></div><script src="page.js"></script>',
     )
     const page = await browser.newPage()
     await page.addInitScript(() => {
@@ -54,24 +56,31 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     })
     const url = pathToFileURL(path.join(directory, 'index.html')).href
     await page.goto(`${url}?locale=en-US`)
-    const button = page.getByRole('button', { name: 'Copy saved data' })
+    const button = page.getByRole('button', { name: 'Ask about this data' })
     assert.equal(await button.locator('svg[aria-hidden="true"]').count(), 1)
     assert.equal((await button.textContent())?.trim(), '')
     const tooltip = page.locator('[data-slot=tooltip-content]')
-    assert.equal(await button.getAttribute('aria-describedby'), null)
     await button.focus()
     await tooltip.waitFor({ state: 'visible' })
     await page.keyboard.press('Enter')
-    await page.getByRole('status').filter({ hasText: 'Copied' }).waitFor()
-    assert.match(
-      String(await page.evaluate(() => Reflect.get(window, 'copiedText'))),
-      /9007199254740993/,
-    )
-    await page.evaluate(() => Reflect.set(window, 'copyFailure', true))
+    assert.equal(await button.getAttribute('aria-busy'), 'true')
+    const request = (await page.evaluate(() => Reflect.get(window, 'requests')))[0]
+    assert.equal(request.resourceName, 'result')
+    assert.deepEqual(request.component.view, { chart: 'table' })
+    assert.equal(request.component.kind, 'frame')
+    await page.evaluate(() => Reflect.get(window, 'resolveAsk')())
+    await page.waitForFunction(() => document.activeElement?.id === 'composer')
     await button.click()
-    await page.getByRole('status').filter({ hasText: 'Copy failed. Try again.' }).waitFor()
+    await page.evaluate(() => Reflect.get(window, 'rejectAsk')())
+    await page.getByRole('status').filter({ hasText: 'Could not add this data.' }).waitFor()
+    await button.click()
+    await page.evaluate(() => Reflect.get(window, 'renderView')('auto'))
+    await page.waitForFunction(() => Reflect.get(window, 'aborts') === 1)
+    await page.evaluate(() => Reflect.get(window, 'resolveAsk')())
+    assert.equal(await page.evaluate(() => Reflect.get(window, 'commits')), 1)
+    await button.waitFor()
+    assert.equal(await button.getAttribute('aria-busy'), null)
 
-    await page.evaluate(() => Reflect.set(window, 'copyFailure', false))
     await page.locator('[data-icon="python"] button').click()
     const dialog = page.getByRole('dialog')
     await dialog.locator('pre code').waitFor()
@@ -85,13 +94,13 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await close.click()
 
     await page.goto(`${url}?locale=zh-CN`)
-    const chinese = page.getByRole('button', { name: '复制已保存数据' })
+    const chinese = page.getByRole('button', { name: '就此数据提问' })
     await chinese.waitFor()
     assert.equal((await chinese.textContent())?.trim(), '')
     const chineseTip = page.locator('[data-slot=tooltip-content]')
     await chinese.focus()
     await chineseTip.waitFor({ state: 'visible' })
-    assert.match((await chineseTip.textContent()) ?? '', /复制已保存数据/)
+    assert.match((await chineseTip.textContent()) ?? '', /就此数据提问/)
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

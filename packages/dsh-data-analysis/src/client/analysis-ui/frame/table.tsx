@@ -1,71 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { formatCell } from '../../../presentation/contracts/index.ts'
-import type { TypedDataset } from '../../../presentation/contracts/types.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import { DatasetTable } from '../../presentation/table.tsx'
-import { FrameIcon } from './frame-icon.tsx'
-import { FrameIconButton } from './icons.tsx'
+import { useSelectableFramePoint } from './domain-point-selection.tsx'
 import { displayFrameCell, type Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 import { MAX_FROZEN } from './styles.ts'
-
-interface CopyFeedback {
-  data: TypedDataset
-  columnsKey: string
-  status?: 'marivo.presentation.copied' | 'marivo.presentation.ui-copy-failed'
-}
-
-/** Copies the visible columns' exact saved cells as TSV. */
-export function CopyData({ data, columns }: { data: TypedDataset; columns: string[] }) {
-  const t = useCopy()
-  const columnsKey = JSON.stringify(columns)
-  const [feedback, setFeedback] = useState<CopyFeedback>({ data, columnsKey })
-  // Invalidate completed feedback and pending clipboard replies before rendering a new selection.
-  if (feedback.data !== data || feedback.columnsKey !== columnsKey) {
-    setFeedback({ data, columnsKey })
-  }
-  const copyRows = async () => {
-    const request: CopyFeedback = { data, columnsKey }
-    setFeedback(request)
-    const indices = columns
-      .map((id) => data.columns.findIndex((c) => c.id === id))
-      .filter((i) => i >= 0)
-    const quote = (value: string) =>
-      /[\t\r\n"]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
-    const text = [
-      indices.map((i) => data.columns[i]!.label),
-      ...data.rows.map((row) => indices.map((i) => formatCell(row[i]!, data.columns[i]!))),
-    ]
-      .map((row) => row.map(quote).join('\t'))
-      .join('\n')
-    const ok = await Promise.resolve()
-      .then(() => navigator.clipboard.writeText(text))
-      .then(() => true)
-      .catch(() => false)
-    setFeedback((current) =>
-      current === request
-        ? {
-            ...current,
-            status: ok ? 'marivo.presentation.copied' : 'marivo.presentation.ui-copy-failed',
-          }
-        : current,
-    )
-  }
-  return (
-    <>
-      <FrameIconButton
-        kind="copy-data"
-        label={t('marivo.presentation.ui-copy-data')}
-        tip={t('marivo.presentation.ui-copy-data')}
-        iconOnly
-        onOpen={() => void copyRows()}
-      >
-        <FrameIcon kind="copy" />
-      </FrameIconButton>
-      {feedback.status && <span role="status">{t(feedback.status)}</span>}
-    </>
-  )
-}
 
 /**
  * Keeps the leading `count` columns visible while scrolling. Offsets are CSS variables
@@ -120,6 +59,7 @@ export function DataTable({
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
+  const selectablePoint = useSelectableFramePoint(snapshot)
   const [scrollable, setScrollable] = useState(false)
   const hintId = useId()
   const data = snapshot.data
@@ -165,7 +105,15 @@ export function DataTable({
           caption=""
           scrollDescription={scrollable ? hintId : undefined}
           selectCell={selection?.select}
-          selectableColumns={selectionFields ? new Set(selectionFields) : undefined}
+          selectableColumns={
+            new Set(
+              selectionFields ??
+                snapshot.frame.fields
+                  .filter((field) => field.role === 'value')
+                  .map((field) => field.id),
+            )
+          }
+          selectableCell={selectablePoint}
           hideRowCount
           hideExactTitle
           display={(value, column) => displayFrameCell(snapshot, t.locale, value, column, timezone)}

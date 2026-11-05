@@ -11,6 +11,7 @@ import type { TypedDataset } from '../../presentation/contracts/types.ts'
 import type { PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { DatasetTable } from '../presentation/table.tsx'
+import { FishLogo } from '../ui/fish-logo.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { Button } from '../ui/primitives/button.tsx'
 import { CardContent } from '../ui/primitives/card.tsx'
@@ -20,11 +21,12 @@ import { datasetChartModel } from './charts/dataset-model.ts'
 import { Heatmap, TimeChart } from './charts/observation.tsx'
 import { ChartSelectionContext, useChartSelection } from './charts/selection-context.tsx'
 import { DataActions, MetricGroup, ResultCard, ResultHeader } from './components/result.tsx'
-import { useAnalysisResources } from './context.tsx'
+import { type ComponentIdentity, useAnalysisResources } from './context.tsx'
+import { useFocusAfterAsk } from './focus-after-ask.ts'
 import { FrameIcon } from './frame/frame-icon.tsx'
 import { CoverageIcon, Dialog, FrameIconButton } from './frame/icons.tsx'
-import { CopyData } from './frame/table.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
+import { ResourceAskButton } from './resource-ask-button.tsx'
 
 export interface AnalysisViewProps {
   ref?: string
@@ -107,7 +109,12 @@ export function AnalysisDataView({
   view,
   display,
   kind,
-}: Omit<AnalysisViewProps, 'ref'> & { resourceName?: string; kind: AnalysisSnapshot['kind'] }) {
+  component,
+}: Omit<AnalysisViewProps, 'ref'> & {
+  resourceName?: string
+  kind: AnalysisSnapshot['kind']
+  component?: ComponentIdentity
+}) {
   const t = useCopy()
   const { readResource, candidate } = useAnalysisResources()
   const resource = resourceName ? readResource(resourceName) : undefined
@@ -129,6 +136,7 @@ export function AnalysisDataView({
     return (
       <AnalysisFrame
         snapshot={snapshot}
+        component={component}
         view={view}
         display={display}
         resourceName={resourceName}
@@ -138,6 +146,7 @@ export function AnalysisDataView({
   return (
     <DatasetDataView
       resourceName={resourceName}
+      component={component}
       snapshot={snapshot}
       binding={resource.binding}
       view={view}
@@ -149,12 +158,14 @@ export function AnalysisDataView({
 /** Dataset snapshots use column mappings and the shared plot components. */
 function DatasetDataView({
   resourceName,
+  component,
   snapshot,
   binding,
   view,
   height,
 }: {
   resourceName?: string
+  component?: ComponentIdentity
   snapshot: DatasetSnapshot
   binding: {
     sessionId?: string
@@ -169,20 +180,27 @@ function DatasetDataView({
   const [sourceOpen, setSourceOpen] = useState(false)
   const [code, setCode] = useState<CodeState>({ kind: 'idle' })
   const [copied, setCopied] = useState<{ key: string; message: string }>()
-  const { candidate, readCode, askDataset } = useAnalysisResources()
+  const { candidate, readCode, askDataset, askResource } = useAnalysisResources()
   const [selected, setSelected] = useState<{
     snapshot: DatasetSnapshot
     resource: string
     row: number
     field: string
   }>()
-  const [askStatus, setAskStatus] = useState<'pending' | 'added' | 'failed'>()
+  const [askStatus, setAskStatus] = useState<'pending' | 'failed'>()
+  const focusAfterAsk = useFocusAfterAsk()
   const revision = useRef(0)
   const identity = useRef({ snapshot, resourceName })
   if (identity.current.snapshot !== snapshot || identity.current.resourceName !== resourceName) {
     revision.current++
     identity.current = { snapshot, resourceName }
   }
+  useEffect(() => {
+    if (identity.current.snapshot !== snapshot || identity.current.resourceName !== resourceName)
+      return
+    setSelected(undefined)
+    setAskStatus(undefined)
+  }, [snapshot, resourceName])
   const originRef = useRef<HTMLElement | SVGElement | null>(null)
   const originScope = useRef<Element | null>(null)
   const originPoint = useRef<{ row: number; field: string }>()
@@ -223,7 +241,7 @@ function DatasetDataView({
     if (target) originRef.current = target
   }
   useEffect(() => {
-    if (!activeSelection || (askStatus !== 'added' && askStatus !== 'failed')) return
+    if (!activeSelection || askStatus !== 'failed') return
     if (
       originRef.current?.isConnected &&
       originRef.current.closest('[role="dialog"], dialog[open]')
@@ -378,11 +396,11 @@ function DatasetDataView({
     >
       <PopoverAnchor virtualRef={virtualAnchor} />
       <PopoverContent
-        className="fv-point-menu w-auto"
+        className="fv-point-menu w-auto !gap-0 !bg-transparent !p-0 !shadow-none !ring-0"
         ref={menuRef}
         role="menu"
         align="start"
-        side="bottom"
+        side="top"
         sticky="always"
         collisionPadding={8}
         onCloseAutoFocus={(event) => {
@@ -422,8 +440,8 @@ function DatasetDataView({
         }}
       >
         <Button
-          variant="ghost"
-          size="sm"
+          variant="outline"
+          size="default"
           type="button"
           role="menuitem"
           aria-disabled={askStatus === 'pending' || undefined}
@@ -438,8 +456,18 @@ function DatasetDataView({
               row: activeSelection.row,
               field: activeSelection.field,
             }).then(
-              () => {
-                if (revision.current === request) setAskStatus('added')
+              (focus) => {
+                if (revision.current !== request) return
+                setAskStatus(undefined)
+                if (!menuRef.current) return
+                focusAfterAsk.prepare(
+                  focus ?? undefined,
+                  menuRef.current.contains(document.activeElement),
+                )
+                modalRequestFocus.current = false
+                setSelected(undefined)
+                if (dataOpen) setDataOpen(false)
+                else requestAnimationFrame(focusAfterAsk.finish)
               },
               () => {
                 if (revision.current === request) setAskStatus('failed')
@@ -448,15 +476,10 @@ function DatasetDataView({
           }}
         >
           {t('marivo.presentation.ui-frame-ask-point')}
+          <FishLogo size={18} />
         </Button>
         {askStatus && askStatus !== 'pending' && (
-          <p role="status">
-            {t(
-              askStatus === 'added'
-                ? 'marivo.presentation.ui-frame-ask-added'
-                : 'marivo.presentation.ui-dataset-ask-failed',
-            )}
-          </p>
+          <p role="status">{t('marivo.presentation.ui-dataset-ask-failed')}</p>
         )}
       </PopoverContent>
     </Popover>
@@ -476,8 +499,8 @@ function DatasetDataView({
             originRef.current = origin
           const rect = target.getBoundingClientRect()
           position.current = {
-            x: Math.max(8, Math.min(event.clientX || rect.left, window.innerWidth - 180)),
-            y: Math.max(8, Math.min(event.clientY || rect.bottom, window.innerHeight - 100)),
+            x: Math.max(0, Math.min(event.clientX || rect.right, window.innerWidth)),
+            y: Math.max(0, Math.min(event.clientY || rect.top, window.innerHeight)),
           }
         }}
         onKeyDownCapture={(event) => {
@@ -490,7 +513,7 @@ function DatasetDataView({
               originRef.current = target
             ;(target as Element).scrollIntoView({ block: 'nearest', inline: 'nearest' })
             const rect = (target as Element).getBoundingClientRect()
-            position.current = { x: rect.left, y: rect.bottom }
+            position.current = { x: rect.right, y: rect.top }
           }
         }}
       >
@@ -501,7 +524,14 @@ function DatasetDataView({
               <span className="fv-chart-tag">
                 {t(`marivo.presentation.ui-chart-kind-${chartKind}`)}
               </span>
-              {!candidate && <CopyData data={data} columns={columns} />}
+              {!candidate && askResource && resourceName && component && (
+                <ResourceAskButton
+                  component={component}
+                  resourceName={resourceName}
+                  snapshot={snapshot}
+                  ask={askResource}
+                />
+              )}
             </div>
           }
         />
@@ -581,6 +611,7 @@ function DatasetDataView({
             title={t('marivo.presentation.ui-frame-data-table')}
             open={dataOpen}
             onClose={() => setDataOpen(false)}
+            onAfterClose={focusAfterAsk.finish}
           >
             <div className="fv-data-reference">
               <DatasetDisplayTable data={data} caption={resourceName ?? ''} reference />

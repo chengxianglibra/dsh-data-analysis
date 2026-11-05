@@ -44,6 +44,7 @@ export function AnalysisSurface({
   readCode,
   askPoint,
   askDataset,
+  askResource,
 }: {
   document: AnalysisDocument
   readResource?: (name: string) => AnalysisResource | undefined
@@ -51,6 +52,7 @@ export function AnalysisSurface({
   readCode?: AnalysisResourceContext['readCode']
   askPoint?: AnalysisResourceContext['askPoint']
   askDataset?: AnalysisResourceContext['askDataset']
+  askResource?: AnalysisResourceContext['askResource']
 }) {
   return (
     <AnalysisRenderer
@@ -64,6 +66,7 @@ export function AnalysisSurface({
       readCode={readCode}
       askPoint={askPoint}
       askDataset={askDataset}
+      askResource={askResource}
     />
   )
 }
@@ -81,6 +84,7 @@ export interface AnalysisRendererProps {
   readCode?: AnalysisResourceContext['readCode']
   askPoint?: AnalysisResourceContext['askPoint']
   askDataset?: AnalysisResourceContext['askDataset']
+  askResource?: AnalysisResourceContext['askResource']
 }
 export function AnalysisRenderer({
   program,
@@ -95,6 +99,7 @@ export function AnalysisRenderer({
   readCode,
   askPoint,
   askDataset,
+  askResource,
 }: AnalysisRendererProps) {
   const resources = useMemo(
     () => ({
@@ -104,8 +109,9 @@ export function AnalysisRenderer({
       readCode: candidate ? undefined : readCode,
       askPoint: candidate ? undefined : askPoint,
       askDataset: candidate ? undefined : askDataset,
+      askResource: candidate ? undefined : askResource,
     }),
-    [saved, readResource, candidate, openSemanticRef, readCode, askPoint, askDataset],
+    [saved, readResource, candidate, openSemanticRef, readCode, askPoint, askDataset, askResource],
   )
   return (
     <ReportCopyProvider locale={locale}>

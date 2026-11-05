@@ -9,7 +9,11 @@ import {
 } from '../presentation/contracts/point-reference.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../presentation/receipt.ts'
 import { boundedText, closed, parseJson } from '../semantic-reference/contracts.ts'
-import { type InputContextHost, withInputReferenceInsertion } from './input-context.ts'
+import {
+  focusOwnedInput,
+  type InputContextHost,
+  withInputReferenceInsertion,
+} from './input-context.ts'
 
 const SOURCE = 'marivo-analysis-frame-point'
 const MAX_REFERENCE = 524_288
@@ -93,7 +97,7 @@ export function appendPointReference(
   rpc: ClientConnectionRpc,
   request: PointRequest,
   lifetime: AbortSignal,
-): Promise<void> {
+): Promise<() => void> {
   return withInputReferenceInsertion(host, request, lifetime, async (signal, insert) => {
     const result = await rpc.call(MARIVO_PRESENTATION_RPC_CHANNEL, 'point/prepare', request, signal)
     signal.throwIfAborted()
@@ -109,5 +113,5 @@ export function appendPointReference(
     )
       throw new Error('point-reference-mismatch')
     insert(reference(envelope))
-  })
+  }).then(() => () => focusOwnedInput(host, request, lifetime))
 }

@@ -101,3 +101,17 @@ export async function withInputReferenceInsertion(
     for (const stop of stops) stop()
   }
 }
+
+/** Focus only while the original session still owns the visible input. */
+export function focusOwnedInput(
+  host: InputContextHost,
+  owner: { sessionId: string; workspaceId: string },
+  lifetime: AbortSignal,
+): void {
+  if (lifetime.aborted) return
+  try {
+    ownedInput(host, owner.sessionId, owner.workspaceId).input.focus()
+  } catch {
+    // The input may disappear after insertion, e.g. while switching sessions.
+  }
+}

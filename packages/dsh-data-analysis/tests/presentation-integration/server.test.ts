@@ -376,3 +376,27 @@ test('production RPC classifies missing files and unavailable Workspaces without
   assert.equal(JSON.stringify(result).includes('provider-private'), false)
   await stopUnavailable()
 })
+
+test('component RPC reports admitted availability and mismatch errors', async () => {
+  const { connection, channels } = createConnectionFixture()
+  const service = new MarivoPresentationFileService(() => undefined)
+  const original = service.component.bind(service)
+  service.component = ((endpoint: 'component/prepare' | 'component/serialize') => {
+    throw new Error(
+      endpoint === 'component/prepare' ? 'component-unavailable' : 'component-mismatch',
+    )
+  }) as typeof original
+  const stop = registerMarivoPresentationRpc(connection, service)
+  for (const [endpoint, message] of [
+    ['component/prepare', 'component-unavailable'],
+    ['component/serialize', 'component-mismatch'],
+  ] as const) {
+    const result = await channels.get('/marivo-presentation')!(
+      endpoint,
+      {},
+      new AbortController().signal,
+    )
+    assert.deepEqual(result, { ok: false, error: { code: 'internal', message, details: {} } })
+  }
+  await stop()
+})

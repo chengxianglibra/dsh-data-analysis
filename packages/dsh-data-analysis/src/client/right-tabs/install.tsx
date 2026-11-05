@@ -7,6 +7,10 @@ import { AnalysisCandidates, candidateKey } from '../analysis-ui/candidate.ts'
 import { CandidateView, savedCodeReader } from '../analysis-ui/candidate-view.tsx'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
 import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
+import {
+  appendComponentReference,
+  installComponentReferenceSource,
+} from '../component-reference.ts'
 import { credentialChanges } from '../credentials/changes.ts'
 import { CredentialPanel, installCredentials } from '../credentials/install.tsx'
 import { credentialStyles } from '../credentials/styles.ts'
@@ -153,6 +157,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         },
         signal,
       ),
+    (sessionId, workspaceId, recordId, selection, signal) =>
+      appendComponentReference(
+        ctx,
+        rpc,
+        { sessionId, workspaceId, recordId, ...selection },
+        signal,
+      ),
   )
   const candidateKind = 'marivo-analysis-candidate'
   const candidateId = definitionId(candidateKind)
@@ -216,6 +227,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   )
   installSemanticReferenceSource(ctx, rpc)
   installPointReferenceSource(ctx, rpc)
+  installComponentReferenceSource(ctx, rpc)
   installDatasetReferenceSource(ctx, rpc)
   const credentials = installCredentials(ctx, rpc, credentialChanges(ctx))
   ctx.effect(() =>
@@ -432,6 +444,28 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                       document={report.analysisDocument}
                       openSemanticRef={source}
                       readCode={readCode}
+                      askResource={
+                        canAsk
+                          ? (selection, requestSignal) =>
+                              pointLifetime.current
+                                ? appendComponentReference(
+                                    ctx,
+                                    rpc,
+                                    {
+                                      sessionId: page.sessionId,
+                                      workspaceId: page.target.workspaceId,
+                                      recordId: report.analysisDocument.recordId,
+                                      ...selection,
+                                    },
+                                    AbortSignal.any([
+                                      tab.signal,
+                                      pointLifetime.current.signal,
+                                      requestSignal,
+                                    ]),
+                                  )
+                                : Promise.reject(new Error('input-unavailable'))
+                          : undefined
+                      }
                       askDataset={
                         canAsk
                           ? (selection) =>

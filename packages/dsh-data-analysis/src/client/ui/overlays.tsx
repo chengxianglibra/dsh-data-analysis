@@ -18,12 +18,20 @@ export interface OverlayShellProps {
   title: string
   open: boolean
   onClose: () => void
+  onAfterClose?: () => boolean
   className: string
   children: ReactNode
 }
 
 /** Standalone readers use the same Radix Dialog source without importing Host services. */
-function StandaloneDialogShell({ title, open, onClose, className, children }: OverlayShellProps) {
+function StandaloneDialogShell({
+  title,
+  open,
+  onClose,
+  onAfterClose,
+  className,
+  children,
+}: OverlayShellProps) {
   const previous = useRef<HTMLElement | null>(null)
   useLayoutEffect(() => {
     if (open && document.activeElement instanceof HTMLElement)
@@ -42,7 +50,7 @@ function StandaloneDialogShell({ title, open, onClose, className, children }: Ov
         aria-describedby={undefined}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          previous.current?.focus()
+          if (!onAfterClose?.()) previous.current?.focus()
         }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
@@ -105,6 +113,7 @@ export function DetailsDialog({
   title,
   open,
   onClose,
+  onAfterClose,
   children,
   closeLabel = title,
   className,
@@ -112,6 +121,7 @@ export function DetailsDialog({
   title: string
   open: boolean
   onClose: () => void
+  onAfterClose?: () => boolean
   children: ReactNode
   closeLabel?: string
   className?: string
@@ -121,7 +131,13 @@ export function DetailsDialog({
   return (
     <>
       <span ref={source} hidden />
-      <Shell open={open} onClose={onClose} title={title} className={cn('mv-ui', className)}>
+      <Shell
+        open={open}
+        onClose={onClose}
+        onAfterClose={onAfterClose}
+        title={title}
+        className={cn('mv-ui', className)}
+      >
         {open ? (
           <DetailsContent title={title} onClose={onClose} closeLabel={closeLabel} source={source}>
             {children}

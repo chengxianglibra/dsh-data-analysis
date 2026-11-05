@@ -14,11 +14,14 @@ import type { Translator } from '../../i18n/copy.ts'
 import { displayCell } from '../../presentation/display.ts'
 import { compareDecimalText } from '../../presentation/model.ts'
 import { DatasetTable } from '../../presentation/table.tsx'
+import { FishLogo } from '../../ui/fish-logo.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import { CardContent } from '../../ui/primitives/card.tsx'
 import { Popover, PopoverAnchor, PopoverContent } from '../../ui/primitives/popover.tsx'
 import { MetricGroup, ResultCard, ResultHeader } from '../components/result.tsx'
-import { useAnalysisResources } from '../context.tsx'
+import { type ComponentIdentity, useAnalysisResources } from '../context.tsx'
+import { useFocusAfterAsk } from '../focus-after-ask.ts'
+import { ResourceAskButton } from '../resource-ask-button.tsx'
 import { AlignmentView } from './alignment.tsx'
 import {
   ComparisonDetail,
@@ -37,6 +40,7 @@ import {
   decompositionTitle,
   decompositionTotal,
 } from './decomposition.tsx'
+import { SelectableFrameValue } from './domain-point-selection.tsx'
 import { FrameIcon } from './frame-icon.tsx'
 import { Dialog, FrameIconButton, IconRow } from './icons.tsx'
 import {
@@ -62,10 +66,11 @@ import {
 } from './observation.tsx'
 import { RecordsPreview } from './records.tsx'
 import { FrameSelectionContext } from './selection-context.tsx'
-import { CopyData, DataTable, useFrozenColumns } from './table.tsx'
+import { DataTable, useFrozenColumns } from './table.tsx'
 
 export interface FrameShellProps {
   snapshot: Snapshot
+  component?: ComponentIdentity
   classification: FrameClassification
   view: ResolvedFrameView
   display?: FrameDisplay
@@ -210,9 +215,6 @@ export function MainView({
           columns={view.columns}
           height={height}
           frozen={keyColumns(snapshot, classification)}
-          selectionFields={
-            classification.class === 'observation' ? classification.primaryValues : undefined
-          }
         />
       )
     case 'members':
@@ -225,7 +227,16 @@ export function MainView({
             const value = cellOf(snapshot, 0, name)
             return {
               key: name,
-              value: column ? displayFrameCell(snapshot, t.locale, value, column) : String(value),
+              value: (
+                <SelectableFrameValue
+                  snapshot={snapshot}
+                  row={0}
+                  field={name}
+                  label={`${valueName(snapshot, classification, name)}: ${column ? displayFrameCell(snapshot, t.locale, value, column) : String(value)}`}
+                >
+                  {column ? displayFrameCell(snapshot, t.locale, value, column) : String(value)}
+                </SelectableFrameValue>
+              ),
               label: view.values.length > 1 ? valueName(snapshot, classification, name) : undefined,
             }
           })}
@@ -383,6 +394,7 @@ function headerNumbers(
           value: column ? displayFrameCell(s, t.locale, value, column) : String(value),
           title: name,
           label: symbol,
+          point: { row: 0, field: name },
         },
       ]
       const count = view.counts[name]
@@ -394,6 +406,7 @@ function headerNumbers(
           value: countColumn ? displayFrameCell(s, t.locale, n, countColumn) : '—',
           title: count,
           label: 'n',
+          point: { row: 0, field: count },
         })
       }
       return items
@@ -412,6 +425,7 @@ function headerNumbers(
 }
 
 export function FrameShell({
+  component,
   snapshot,
   classification: c,
   view,
@@ -428,13 +442,24 @@ export function FrameShell({
     [snapshot, display],
   )
   const t = useCopy()
-  const { askPoint, candidate } = useAnalysisResources()
+  const { askPoint, askResource, candidate } = useAnalysisResources()
   const inlineData = display?.dataTable === 'visible'
   const [dataState, setDataState] = useState({ inline: inlineData, open: inlineData })
   const dataOpen = dataState.inline === inlineData ? dataState.open : inlineData
   const [selection, setSelection] = useState<{ snapshot: Snapshot; row: number; field: string }>()
-  const [status, setStatus] = useState<'pending' | 'added' | 'failed'>()
+  const [status, setStatus] = useState<'pending' | 'failed'>()
+  const focusAfterAsk = useFocusAfterAsk()
   const requestRevision = useRef(0)
+  const identity = useRef({ snapshot: s, resourceName })
+  if (identity.current.snapshot !== s || identity.current.resourceName !== resourceName) {
+    requestRevision.current++
+    identity.current = { snapshot: s, resourceName }
+  }
+  useEffect(() => {
+    if (identity.current.snapshot !== s || identity.current.resourceName !== resourceName) return
+    setSelection(undefined)
+    setStatus(undefined)
+  }, [s, resourceName])
   useEffect(
     () => () => {
       requestRevision.current++
@@ -472,7 +497,7 @@ export function FrameShell({
     if (target) originRef.current = target
   }
   useEffect(() => {
-    if (!selected || (status !== 'added' && status !== 'failed')) return
+    if (!selected || status !== 'failed') return
     const origin = originRef.current
     if (origin?.isConnected && origin.closest('[role="dialog"], dialog[open]'))
       menuRef.current?.querySelector('button')?.focus()
@@ -518,7 +543,6 @@ export function FrameShell({
   const comparisonNumbers = view.chart === 'comparison' && s.data.rows.length === 1
   const hasNumbers = numbers.length > 0 || comparisonNumbers
   const showMain = !compactDensity || !hasNumbers
-  const allColumns = s.data.columns.map((col) => col.id)
   const showData = true
   const dataLabel = t('marivo.presentation.ui-frame-data-table')
   const pointMenu = selected && (
@@ -530,11 +554,11 @@ export function FrameShell({
     >
       <PopoverAnchor virtualRef={virtualAnchor} />
       <PopoverContent
-        className="fv-point-menu w-auto"
+        className="fv-point-menu w-auto !gap-0 !bg-transparent !p-0 !shadow-none !ring-0"
         ref={menuRef}
         role="menu"
         align="start"
-        side="bottom"
+        side="top"
         sticky="always"
         collisionPadding={8}
         onCloseAutoFocus={(event) => {
@@ -574,8 +598,8 @@ export function FrameShell({
         }}
       >
         <Button
-          variant="ghost"
-          size="sm"
+          variant="outline"
+          size="default"
           type="button"
           role="menuitem"
           aria-disabled={status === 'pending' || undefined}
@@ -586,8 +610,18 @@ export function FrameShell({
             modalRequestFocus.current = !!originRef.current?.closest('[role="dialog"],dialog[open]')
             setStatus('pending')
             void askPoint({ resourceName, row: selected.row, field: selected.field }).then(
-              () => {
-                if (requestRevision.current === revision) setStatus('added')
+              (focus) => {
+                if (requestRevision.current !== revision) return
+                setStatus(undefined)
+                if (!menuRef.current) return
+                focusAfterAsk.prepare(
+                  focus ?? undefined,
+                  menuRef.current.contains(document.activeElement),
+                )
+                modalRequestFocus.current = false
+                setSelection(undefined)
+                if (!inlineData && dataOpen) setDataState({ inline: inlineData, open: false })
+                else requestAnimationFrame(focusAfterAsk.finish)
               },
               () => {
                 if (requestRevision.current === revision) setStatus('failed')
@@ -596,15 +630,10 @@ export function FrameShell({
           }}
         >
           {t('marivo.presentation.ui-frame-ask-point')}
+          <FishLogo size={18} />
         </Button>
         {status && status !== 'pending' && (
-          <p role="status">
-            {t(
-              status === 'added'
-                ? 'marivo.presentation.ui-frame-ask-added'
-                : 'marivo.presentation.ui-frame-ask-failed',
-            )}
-          </p>
+          <p role="status">{t('marivo.presentation.ui-frame-ask-failed')}</p>
         )}
       </PopoverContent>
     </Popover>
@@ -619,12 +648,7 @@ export function FrameShell({
         <ComparisonDetail snapshot={referenceSnapshot} />
       )
     ) : (
-      <DataTable
-        snapshot={referenceSnapshot}
-        frozen={keyColumns(s, c)}
-        selectionFields={c.class === 'observation' ? c.primaryValues : undefined}
-        reference
-      />
+      <DataTable snapshot={referenceSnapshot} frozen={keyColumns(s, c)} reference />
     )
   return (
     <FrameSelectionContext.Provider value={selectable}>
@@ -643,11 +667,11 @@ export function FrameShell({
           if (origin instanceof HTMLElement || origin instanceof SVGElement)
             originRef.current = origin
           const rect = target.getBoundingClientRect()
-          const x = event.clientX || rect.left
-          const y = event.clientY || rect.bottom
+          const x = event.clientX || rect.right
+          const y = event.clientY || rect.top
           pointPosition.current = {
-            x: Math.max(8, Math.min(x, window.innerWidth - 180)),
-            y: Math.max(8, Math.min(y, window.innerHeight - 100)),
+            x: Math.max(0, Math.min(x, window.innerWidth)),
+            y: Math.max(0, Math.min(y, window.innerHeight)),
           }
         }}
         onKeyDownCapture={(event) => {
@@ -660,7 +684,7 @@ export function FrameShell({
               originRef.current = target
             ;(target as Element).scrollIntoView({ block: 'nearest', inline: 'nearest' })
             const rect = (target as Element).getBoundingClientRect()
-            pointPosition.current = { x: rect.left, y: rect.bottom }
+            pointPosition.current = { x: rect.right, y: rect.top }
           }
         }}
       >
@@ -669,10 +693,12 @@ export function FrameShell({
           actions={
             <div className="fv-header-actions">
               <span className="fv-chart-tag">{chartLabel(t, s, view)}</span>
-              {!compactDensity && !candidate && (
-                <CopyData
-                  data={s.data}
-                  columns={view.chart === 'table' ? view.columns : allColumns}
+              {!candidate && askResource && resourceName && component && (
+                <ResourceAskButton
+                  component={component}
+                  resourceName={resourceName}
+                  snapshot={s}
+                  ask={askResource}
                 />
               )}
             </div>
@@ -696,7 +722,7 @@ export function FrameShell({
               })}
             </p>
           )}
-          {numbers.length > 0 && <Numbers items={numbers} />}
+          {numbers.length > 0 && <Numbers items={numbers} snapshot={s} />}
           {view.chart === 'comparison' ? (
             <ComparisonView
               snapshot={s}
@@ -745,6 +771,7 @@ export function FrameShell({
               title={dataLabel}
               open={dataOpen}
               onClose={() => setDataState({ inline: false, open: false })}
+              onAfterClose={focusAfterAsk.finish}
             >
               <div className="fv-data-reference">{dataTable}</div>
               {pointMenu}

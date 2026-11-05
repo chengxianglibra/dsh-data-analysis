@@ -76,7 +76,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await card.locator('[data-frame-point="2:revenue"]').click()
     const menu = page.getByRole('menu')
     await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
-    await menu.getByText('Added to the question draft.').waitFor()
+    await menu.waitFor({ state: 'hidden' })
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'requests')), [
       { resourceName: 'bars', row: 2, field: 'revenue' },
     ])

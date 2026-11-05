@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../ui/primitives/table.tsx'
+import { useSelectableFramePoint } from './domain-point-selection.tsx'
 import { cellOf, columnOf, displayFrameCell, type Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 
@@ -35,6 +36,7 @@ export function RecordsPreview({
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
+  const selectablePoint = useSelectableFramePoint(s)
   const coordinates = preview.coordinates.map((name) => columnOf(s, name)?.column)
   const values = preview.values.map((name) => columnOf(s, name)?.column)
   // The report contract validates these references; this also keeps a streamed
@@ -105,9 +107,7 @@ export function RecordsPreview({
                           value === null ? t('marivo.presentation.missing-value') : undefined
                         }
                       >
-                        {selection &&
-                        value !== null &&
-                        classification.primaryValues.includes(name) ? (
+                        {selection && value !== null && selectablePoint(rowIndex, name) ? (
                           <Button
                             variant="ghost"
                             size="sm"

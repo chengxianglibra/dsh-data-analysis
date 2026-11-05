@@ -30,7 +30,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 图表不使用 OpenUI 官方图表组件，也不保留旧通用 SVG 绘图引擎、兼容分支或按期间数、series 数、数值类型切换的路径。
 
 - DatasetView 支持 auto/table/metric/line/area/bar/heatmap，与 Frame 共用结果卡片、图表样式和数据操作布局，
-  复用 DatasetTable 的精确格式化、类型感知排序及本地分页，并提供选列、复制已保存数据与来源/范围详情。
+  复用 DatasetTable 的精确格式化、类型感知排序及本地分页，并提供选列与来源/范围详情。
   int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
   Dataset 的 auto 要求完整单行单列才显示 metric，其余按表格显示；Frame 的 auto 由下述结构与语义规则决定。
 - Dataset 图表由 [dataset-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/dataset-view.ts) 校验列映射：
@@ -42,7 +42,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   默认 auto/table/metric 判定不变。各视图提供共用的数据图标和详细表格弹窗，支持排序、分页和精确值读取。
 - Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
   只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。密集折线/面积保留全部路径点，省略逐点静态 DOM 时通过活动点与 Frame 键盘导航器读取和选择原始行字段；Dataset 继续提供精确数据入口。
-  Frame 图表和提示使用可读数值格式，详细数据按默认字段语义呈现；Dataset 保留精确显示。int64/decimal 绘图位置可近似，复制仍使用保存值。
+  Frame 图表和提示使用可读数值格式，详细数据按默认字段语义呈现；Dataset 保留精确显示。int64/decimal 绘图位置可近似，引用仍使用保存值。
   折线图悬停使用单一数据提示并直接定位，不叠加浏览器原生图表摘要提示或位移动画；图表摘要仍可由辅助技术读取。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
@@ -75,16 +75,16 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   restricted 范围在完整和 compact 视图均明确提示，不能把父总计理解为所示明细的合计。
   占比的语义元数据确认单一分类轴构成完整整体、保存份额可构成全体且分类不超过八项时，以堆叠条及明细展示；其余情况保留原占比视图。
   报告可显式为符合 pie 完整性条件的分类值选择 `style: "stacked"`；其占比标识为基于所示值的计算结果，选点仍绑定保存值。
-  Frame 的可选 display 可声明标题、字段格式、比较端点名称、柱图的原始轴键高亮、分类条预览行数、记录坐标预览，以及归因的两期 level-total 字段；保存时按所引用的 Frame 校验。`display.formats` 用于主视图，详细数据采用默认格式，复制保留保存值。
+  Frame 的可选 display 可声明标题、字段格式、比较端点名称、柱图的原始轴键高亮、分类条预览行数、记录坐标预览，以及归因的两期 level-total 字段；保存时按所引用的 Frame 校验。`display.formats` 用于主视图，详细数据采用默认格式，引用保留保存值。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
   方向键、Home/End 只移动焦点，Enter/Space 激活；tab/panel 通过稳定 ID 关联，隐藏 panel 不可聚焦。
 - 图片只显示已保存的 image 资源；TextContent 不加载远程图片。
 
-已保存 Dataset 和 Frame 的可唯一定位图点及支持的单元格点击后显示“就此提问”菜单，选择后插入当前 Harness 会话的提问草稿；图点支持键盘操作。
+已保存 Dataset 和 Frame 的可唯一定位图点、KPI 数字及支持的单元格可通过鼠标或键盘选择；选择后在选点右上方显示带 DSH 图标的“就此提问”操作，空间不足时允许避让。结果组件右上角的 DSH 图标直接引用整个组件，不再提供数据复制按钮。成功时引用追加到所属 Harness 会话的提问草稿，关闭相关浮层并把焦点交回输入框；失败时保留操作并提示，用户已切换焦点或会话时不抢焦点。比较结果的本期、基期、差值和变化率各自引用对应的已保存字段；空值、缺席侧及不能唯一绑定的值不可选。
 Frame 点引用绑定固定 Build、资源、行和字段；发送时由服务端重新读取并校验，缺席侧、无法唯一定位的字段及父组总计不能作为明细点引用。
 发送给模型的上下文包含快照保存的 Marivo Session ID 和可空 Artifact ID，并区分 Harness Session。持久 Frame 可在原 Runtime 和项目及 Artifact 仍可用时通过 Marivo 公开 API 尝试恢复；内存 Frame 没有 Artifact ID，不能据此跨进程恢复原 Frame。快照数据仍是捕获时的结果，不代表实时查询或恢复成功。
 复制、表格等直观操作使用带键盘焦点提示和本地化无障碍名称的图标；数据范围不完整及期间未捕获仍有明确状态。
-Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原始行和字段，独立于 Frame 的选点协议；准备和发送时由服务端读取保存快照并校验身份与内容摘要，发送所选精确值及有界同行上下文并标明截断，不执行新查询。候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑、撤销/重做或任何导出入口。
+Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原始行和字段，独立于 Frame 的选点协议；准备和发送时由服务端读取保存快照并校验身份与内容摘要，发送所选精确值及有界同行上下文并标明截断，不执行新查询。组件引用绑定相同会话与固定 Build，并校验保存 program 中匹配的组件类型、资源和原始视图配置；发送有界数据、报告与语义上下文及截断标记。同一配置可在多个位置复用，引用不声称唯一页面位置。候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑、撤销/重做或任何导出入口。
 展示层直接读取 Frame 已有列中的指标、总计和差值。饼图按完整快照中各类别的保存值分配扇区，并在图例显示各扇区占圆的百分比。会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
 
 ## 来源与范围详情

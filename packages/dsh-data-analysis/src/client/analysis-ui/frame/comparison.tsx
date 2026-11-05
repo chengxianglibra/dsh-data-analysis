@@ -15,7 +15,12 @@ import {
   TableRow,
 } from '../../ui/primitives/table.tsx'
 import { NEUTRAL, summary } from '../charts/recharts.tsx'
-import { type DomainPoint, uniquelyBound } from './domain-point-selection.tsx'
+import {
+  type DomainPoint,
+  SelectableFrameValue,
+  uniquelyBound,
+  useSelectableFramePoint,
+} from './domain-point-selection.tsx'
 import { compareMagnitude, divergingScale } from './magnitude.ts'
 import {
   axisOf,
@@ -184,7 +189,12 @@ export function ComparisonTable({
   const head = sections[0]
   const ends = endpointLabels(t, s, head?.index ?? 0)
   const row = 0
-  const side = (name: string | undefined, presence: string | undefined) => {
+  const side = (
+    roles: ComparisonRoles,
+    name: string | undefined,
+    presence: string | undefined,
+    endpoint: string,
+  ) => {
     if (!name) return <TableCell className="pr-numeric text-right tabular-nums">—</TableCell>
     const column = columnOf(s, name)?.column
     const value = cellOf(s, row, name)
@@ -192,9 +202,16 @@ export function ComparisonTable({
       return <TableCell className="pr-numeric text-right tabular-nums">—</TableCell>
     return (
       <TableCell className="pr-numeric text-right tabular-nums">
-        {s.frameDisplay?.formats?.some((item) => item.value === name)
-          ? formattedCell(s, t.locale, name, value)
-          : compact(t.locale, value, column)}
+        <SelectableFrameValue
+          snapshot={s}
+          row={row}
+          field={name}
+          label={`${valueName(s, c, roles.current!)} · ${endpoint}: ${formattedCell(s, t.locale, name, value)}`}
+        >
+          {s.frameDisplay?.formats?.some((item) => item.value === name)
+            ? formattedCell(s, t.locale, name, value)
+            : compact(t.locale, value, column)}
+        </SelectableFrameValue>
       </TableCell>
     )
   }
@@ -215,14 +232,25 @@ export function ComparisonTable({
               true,
               value,
             )
-    return <TableCell className="pr-numeric text-right tabular-nums">{text}</TableCell>
+    return (
+      <TableCell className="pr-numeric text-right tabular-nums">
+        <SelectableFrameValue
+          snapshot={s}
+          row={row}
+          field={name}
+          label={`${valueName(s, c, roles.current!)} · ${kind === 'delta' ? t('marivo.presentation.ui-frame-comparison-change') : t('marivo.presentation.ui-frame-comparison-change-rate')}: ${text}`}
+        >
+          {text}
+        </SelectableFrameValue>
+      </TableCell>
+    )
   }
-  const dataRows = (rows: ComparisonRoles[]) =>
+  const dataRows = (rows: ComparisonRoles[], labels: typeof ends) =>
     rows.map((roles) => (
       <TableRow key={roles.current}>
         <TableHead scope="row">{valueName(s, c, roles.current!)}</TableHead>
-        {side(roles.current, roles.comparison.presence?.current)}
-        {side(roles.baseline, roles.comparison.presence?.baseline)}
+        {side(roles, roles.current, roles.comparison.presence?.current, labels.current)}
+        {side(roles, roles.baseline, roles.comparison.presence?.baseline, labels.baseline)}
         {change(roles, 'delta')}
         {change(roles, 'percent')}
       </TableRow>
@@ -279,12 +307,12 @@ export function ComparisonTable({
                       {`${sectionEnds.current} ⇄ ${sectionEnds.baseline}`}
                     </TableHead>
                   </TableRow>
-                  {dataRows(section.rows)}
+                  {dataRows(section.rows, sectionEnds)}
                 </TableBody>
               )
             })
           ) : (
-            <TableBody>{dataRows(sections[0]?.rows ?? [])}</TableBody>
+            <TableBody>{dataRows(sections[0]?.rows ?? [], ends)}</TableBody>
           )}
         </Table>
       </section>
@@ -406,7 +434,14 @@ function ComparisonKpi({
       <div className="fv-kpi-current">
         <dt className={currentInTitle ? 'fv-sr-only' : undefined}>{ends.current}</dt>
         <dd>
-          <span className="fv-kpi-value">{current}</span>
+          <SelectableFrameValue
+            snapshot={s}
+            row={0}
+            field={roles.current}
+            label={`${roles.group.name} · ${ends.current}: ${current}${currentUnit ? ` ${currentUnit}` : ''}`}
+          >
+            <span className="fv-kpi-value">{current}</span>
+          </SelectableFrameValue>
           {currentUnit && <span className="fv-kpi-unit">{currentUnit}</span>}
         </dd>
       </div>
@@ -414,7 +449,14 @@ function ComparisonKpi({
         <div className="fv-kpi-reference">
           <dt>{ends.baseline}</dt>
           <dd>
-            {baseline}
+            <SelectableFrameValue
+              snapshot={s}
+              row={0}
+              field={roles.baseline}
+              label={`${roles.group.name} · ${ends.baseline}: ${baseline}${baselineUnit ? ` ${baselineUnit}` : ''}`}
+            >
+              {baseline}
+            </SelectableFrameValue>
             {baselineUnit && <span className="fv-kpi-unit"> {baselineUnit}</span>}
           </dd>
         </div>
@@ -427,7 +469,14 @@ function ComparisonKpi({
                 {t('marivo.presentation.ui-frame-comparison-change')}
               </dt>
               <dd data-sign={compact ? direction(change) : undefined}>
-                {compactSign(delta)}
+                <SelectableFrameValue
+                  snapshot={s}
+                  row={0}
+                  field={roles.absolute}
+                  label={`${roles.group.name} · ${t('marivo.presentation.ui-frame-comparison-change')}: ${delta}${deltaUnit ? ` ${deltaUnit}` : ''}`}
+                >
+                  {compactSign(delta)}
+                </SelectableFrameValue>
                 {deltaUnit && <span className="fv-kpi-unit"> {deltaUnit}</span>}
               </dd>
             </>
@@ -443,7 +492,14 @@ function ComparisonKpi({
                   compact ? direction(visibleCell(s, 0, roles, roles.relative)) : undefined
                 }
               >
-                {compactSign(relative)}
+                <SelectableFrameValue
+                  snapshot={s}
+                  row={0}
+                  field={roles.relative}
+                  label={`${roles.group.name} · ${t('marivo.presentation.ui-frame-comparison-change-rate')}: ${relative}`}
+                >
+                  {compactSign(relative)}
+                </SelectableFrameValue>
               </dd>
             </>
           )}
@@ -456,6 +512,8 @@ function ComparisonKpi({
 /** Saved comparison roles grouped by metric and endpoint, with coordinates retained. */
 export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
   const t = useCopy()
+  const selection = useFrameSelection()
+  const selectablePoint = useSelectableFramePoint(s)
   const coordinates = s.frame.layout
     .filter((item) => item.kind === 'coordinate')
     .map((item) => item.name)
@@ -494,6 +552,9 @@ export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
               <DatasetTable
                 data={{ ...s.data, columns, rows }}
                 caption=""
+                selectCell={selection?.select}
+                selectableColumns={new Set(fields.filter((field): field is string => !!field))}
+                selectableCell={selectablePoint}
                 hideRowCount
                 hideExactTitle
                 display={(value, column) => displayFrameCell(s, t.locale, value, column)}
@@ -508,8 +569,16 @@ export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
 
 export function Numbers({
   items,
+  snapshot,
 }: {
-  items: { key: string; value: string; title: string; label?: string }[]
+  items: {
+    key: string
+    value: string
+    title: string
+    label?: string
+    point?: { row: number; field: string }
+  }[]
+  snapshot: Snapshot
 }) {
   if (items.length === 0) return null
   return (
@@ -517,7 +586,18 @@ export function Numbers({
       {items.map((item) => (
         <div className="grid gap-1" key={item.key} data-number={item.key}>
           <dd className="text-2xl font-semibold tabular-nums" title={item.title}>
-            {item.value}
+            {item.point ? (
+              <SelectableFrameValue
+                snapshot={snapshot}
+                row={item.point.row}
+                field={item.point.field}
+                label={`${item.title}: ${item.value}`}
+              >
+                {item.value}
+              </SelectableFrameValue>
+            ) : (
+              item.value
+            )}
           </dd>
           <dt className="text-xs text-muted-foreground">{item.label ?? ' '}</dt>
         </div>
@@ -786,6 +866,7 @@ function CompareDelta({
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
+  const selectablePoint = useSelectableFramePoint(s)
   const [sort, setSort] = useState<{
     key: 'metric' | 'baseline' | 'current' | 'absolute' | 'relative'
     direction: 'ascending' | 'descending'
@@ -856,7 +937,7 @@ function CompareDelta({
       membersLabel(s, axes, row),
       t.locale,
     )
-    return selection && selected ? (
+    return selection && selected && selectablePoint(row, selected.field) ? (
       <button
         type="button"
         className="pr-cell-select"
@@ -976,7 +1057,7 @@ function CompareDelta({
                     </div>
                   </td>
                   <td>{selectable(row, fields[2], text(row, fields[2], 'delta'), 'delta')}</td>
-                  <td>{text(row, fields[3], 'relative')}</td>
+                  <td>{selectable(row, fields[3], text(row, fields[3], 'relative'), 'delta')}</td>
                 </tr>
               )
             })}

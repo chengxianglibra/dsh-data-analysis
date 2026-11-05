@@ -545,10 +545,6 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
   await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
   await saved.getByRole('button').click()
   const menu = page.getByRole('menu')
-  await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
-  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
-    { resourceName: 'precise', row: 0, field: 'amount' },
-  ])
   await page.keyboard.press('Escape')
   assert.equal(await details.isVisible(), true)
   assert.equal(await menu.count(), 0)
@@ -556,9 +552,14 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
     await saved.getByRole('button').evaluate((element) => element === document.activeElement),
     true,
   )
-  await page.keyboard.press('Escape')
+  await saved.getByRole('button').click()
+  await menu.getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
+    { resourceName: 'precise', row: 0, field: 'amount' },
+  ])
   await saved.waitFor({ state: 'detached' })
   await page.getByRole('dialog').waitFor({ state: 'detached' })
+  assert.equal(await menu.count(), 0)
   assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 1)
 })
 
