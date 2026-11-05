@@ -70,6 +70,7 @@ export function FrameIconButton({
   onOpen,
   expanded,
   hasPopup,
+  iconOnly,
   children,
 }: {
   label: string
@@ -79,6 +80,7 @@ export function FrameIconButton({
   onOpen?: () => void
   expanded?: boolean
   hasPopup?: 'dialog'
+  iconOnly?: boolean
   children: ReactNode
 }) {
   return (
@@ -92,6 +94,7 @@ export function FrameIconButton({
         onClick={disabled ? undefined : onOpen}
       >
         {children}
+        {!iconOnly && <span className="fv-icon-label">{label}</span>}
       </IconButton>
     </span>
   )

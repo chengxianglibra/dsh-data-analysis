@@ -57,6 +57,7 @@ export function CopyData({ data, columns }: { data: TypedDataset; columns: strin
         kind="copy-data"
         label={t('marivo.presentation.ui-copy-data')}
         tip={t('marivo.presentation.ui-copy-data')}
+        iconOnly
         onOpen={() => void copyRows()}
       >
         <FrameIcon kind="copy" />

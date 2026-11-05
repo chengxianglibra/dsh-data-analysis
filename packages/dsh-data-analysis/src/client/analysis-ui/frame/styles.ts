@@ -28,7 +28,7 @@ export const FRAME_STYLES = `
 .fv-scroll-hint::before{content:'↔'}
 .fv-multiples{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,640px),1fr));gap:24px}
 .fv-parent{display:grid;gap:12px;min-width:0}
-.fv-parents{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,640px),1fr));gap:24px}
+.fv-parents{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,640px),1fr));gap:24px}
 .fv-comparison-table{max-width:100%;overflow:auto}
 .fv-comparison-table [data-slot=table-container]{overflow:visible}
 .fv-comparison-table table{width:max-content;min-width:100%}
