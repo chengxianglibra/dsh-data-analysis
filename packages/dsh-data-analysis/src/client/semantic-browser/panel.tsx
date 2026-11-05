@@ -44,7 +44,7 @@ import { NativeSelect } from '../ui/primitives/native-select.tsx'
 import { TabsContent, TabsList, Tabs as TabsRoot, TabsTrigger } from '../ui/primitives/tabs.tsx'
 import { ToggleGroup, ToggleGroupItem } from '../ui/primitives/toggle-group.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
-import { ComputationCard } from './computation.tsx'
+import { ComputationCard, measureDefinitionFields } from './computation.tsx'
 import { ObjectGraph } from './graph.tsx'
 import { fieldLabels, kindLabels } from './labels.ts'
 import { countObjectsByKind, emptyView, filterObjects, PAGE_SIZE } from './model.ts'
@@ -185,8 +185,12 @@ function ObjectDetail({
   }
   const source = `${object.source.file}${object.source.line ? `:${object.source.line}` : ''}`
   const KindIcon = kindIcons[object.ref.kind] ?? BoxIcon
+  const calculationFields = object.computation ? measureDefinitionFields(object) : []
   const definitionFields = object.fields.filter(
-    (field) => field.value && !(object.computation && field.name === 'dependencies'),
+    (field) =>
+      field.value &&
+      !(object.computation && field.name === 'dependencies') &&
+      !calculationFields.includes(field),
   )
   const overviewNames = overviewFields[object.ref.kind] ?? []
   const summaryFields = overviewNames.flatMap((name) =>

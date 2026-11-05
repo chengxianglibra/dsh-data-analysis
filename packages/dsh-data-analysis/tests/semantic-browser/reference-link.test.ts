@@ -23,6 +23,7 @@ let renderComputation: (
   dependencies?: SemanticRef[],
   available?: SemanticRef[],
   locale?: 'zh-CN' | 'en-US',
+  related?: { ref: SemanticRef; dependencies: SemanticRef[] }[],
 ) => string
 let renderRelated: () => string
 const ref: SemanticRef = {
@@ -50,12 +51,13 @@ export function render(value, refs, available = refs, structured = false, field 
     objects: new Map(available.map(ref => [refKey(ref), { ref }])), navigate() {},
   }));
 }
-export function renderComputation(expression, facts, dependencies = [], available = dependencies, locale = 'zh-CN') {
+export function renderComputation(expression, facts, dependencies = [], available = dependencies, locale = 'zh-CN', related = []) {
   const ref = { schema: 'marivo.semantic_ref/v1', kind: 'metric', path: 'sales.revenue' };
   const fields = dependencies.length ? [{ name: 'dependencies', value: JSON.stringify(dependencies.map(refKey)), structured: true }] : [];
   const relations = dependencies.map(ref => ({ field: 'dependencies', ref }));
   const object = { ref, computation: { expression, facts }, fields, relations, guardrails: [] };
   const objects = new Map(available.map(ref => [refKey(ref), { ref, name: ref.path.split('.').at(-1) }]));
+  for (const item of related) objects.set(refKey(item.ref), { ref: item.ref, relations: item.dependencies.map(ref => ({ field: 'dependencies', ref })) });
   return renderToStaticMarkup(createElement(ComputationCard, { object, objects, navigate() {} }), locale);
 }
 export function renderRelated() {
@@ -224,6 +226,60 @@ test('condition and source aggregation link only declared references', () => {
   assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 3)
   assert.match(html, />amount<\/button> &gt; 0/)
   assert.match(html, /sum\(<button[^>]*title="measure:sales.orders.amount"[^>]*>amount<\/button>\)/)
+})
+
+test('calculation facts link transitive dependencies without guessing unrelated catalog references', () => {
+  const metric: SemanticRef = { ...ref, kind: 'metric', path: 'sales.filtered_revenue' }
+  const measure: SemanticRef = { ...ref, kind: 'measure', path: 'sales.orders.amount' }
+  const missing: SemanticRef = { ...ref, kind: 'dimension', path: 'sales.orders.valid' }
+  const unrelated: SemanticRef = { ...ref, kind: 'measure', path: 'sales.other.amount' }
+  const reduction = 'sum(measure:sales.orders.amount)'
+  const html = renderComputation(
+    'metric:sales.filtered_revenue / count(entity:sales.orders)',
+    [
+      { name: 'reductions', structured: true, value: JSON.stringify([reduction]) },
+      {
+        name: 'null_rules',
+        structured: true,
+        value: JSON.stringify([
+          `${reduction}: nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL`,
+          'count(entity:sales.orders): count counts source rows; empty input returns zero',
+        ]),
+      },
+      {
+        name: 'conditions',
+        structured: true,
+        value: JSON.stringify([
+          'dimension:sales.orders.valid == True',
+          'measure:sales.other.amount > measure:sales.orders.amount_extra',
+        ]),
+      },
+    ],
+    [metric, ref],
+    [metric, ref, measure, unrelated],
+    'zh-CN',
+    [
+      { ref: metric, dependencies: [measure] },
+      { ref: measure, dependencies: [missing, metric] },
+    ],
+  )
+  assert.equal((html.match(/title="measure:sales.orders.amount"/g) ?? []).length, 2)
+  assert.match(html, /sum\(<button[^>]*>orders.amount<\/button>\): 计算时忽略 NULL/)
+  assert.match(html, /disabled=""[^>]*title="dimension:sales.orders.valid"/)
+  assert.match(html, /valid（当前目录未包含）/)
+  assert.match(html, /measure:sales.other.amount &gt; measure:sales.orders.amount_extra/)
+  assert.doesNotMatch(html, /title="measure:sales.other.amount"/)
+})
+
+test('definition conditions remove exact duplicates while preserving distinct text and first-seen order', () => {
+  const conditions = ['valid == True', 'amount > 0', 'valid == True', 'amount >= 0', 'amount > 0']
+  const html = renderComputation('', [
+    { name: 'conditions', structured: true, value: JSON.stringify(conditions) },
+  ])
+  assert.match(
+    html,
+    /<ul class="sb-value-list"><li>valid == True<\/li><li>amount &gt; 0<\/li><li>amount &gt;= 0<\/li><\/ul>/,
+  )
 })
 
 test('time bindings show each distinct effective time dimension once', () => {

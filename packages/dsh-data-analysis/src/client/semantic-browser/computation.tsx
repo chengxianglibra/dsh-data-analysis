@@ -11,6 +11,7 @@ import {
   FilterIcon,
   Layers2Icon,
   SigmaIcon,
+  TagIcon,
 } from 'lucide-react'
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
@@ -145,13 +146,31 @@ function NullRuleValue({ fact, expression, reductions, object, objects, navigate
 }
 
 const factIcons = {
+  unit: TagIcon,
+  additivity: SigmaIcon,
   time_bindings: CalendarDaysIcon,
   null_rules: BanIcon,
   conditions: FilterIcon,
   reductions: SigmaIcon,
   facts: BracesIcon,
 }
-const factOrder = ['time_bindings', 'null_rules', 'conditions', 'reductions', 'facts']
+const factOrder = [
+  'unit',
+  'additivity',
+  'time_bindings',
+  'null_rules',
+  'conditions',
+  'reductions',
+  'facts',
+]
+
+export function measureDefinitionFields(object) {
+  return object.ref.kind === 'measure'
+    ? (object.fields ?? []).filter(
+        (field) => (field.name === 'unit' || field.name === 'additivity') && field.value,
+      )
+    : []
+}
 
 function relatedIcon(kind) {
   if (kind === 'time_dimension') return CalendarDaysIcon
@@ -184,10 +203,37 @@ function dependencyPreview(field, object, t) {
   return [...counts].map(([kind, count]) => `${count} ${t(kindLabels[kind] ?? kind)}`).join(' · ')
 }
 
+// Captured calculation facts include references from transitive dependencies.
+// Follow only Catalog-declared dependency edges, retaining missing targets as links.
+function computationReferences(object, objects) {
+  const seen = new Set([refKey(object.ref)])
+  const queue = [object]
+  const relations = new Map()
+  for (let index = 0; index < queue.length; index++) {
+    for (const relation of queue[index].relations ?? []) {
+      const key = refKey(relation.ref)
+      relations.set(key, relation)
+      if (relation.field !== 'dependencies' || seen.has(key)) continue
+      seen.add(key)
+      const dependency = objects.get(key)
+      if (dependency) queue.push(dependency)
+    }
+  }
+  return { ...object, relations: [...relations.values()] }
+}
+
+function distinctConditions(fact) {
+  if (fact.name !== 'conditions' || !fact.structured) return fact
+  const value = JSON.parse(fact.value)
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return fact
+  return { ...fact, value: JSON.stringify([...new Set(value)]) }
+}
+
 function DefinitionNode({ object, objects, navigate }) {
   const t = useCopy()
   const [notice, setNotice] = useState('')
   const definition = object.computation
+  const linkedObject = computationReferences(object, objects)
   const reductionsFact = definition.facts.find((fact) => fact.name === 'reductions')
   const reductions = reductionsFact?.structured ? JSON.parse(reductionsFact.value) : []
   async function copy() {
@@ -217,7 +263,7 @@ function DefinitionNode({ object, objects, navigate }) {
             <code>
               <ExpressionText
                 value={definition.expression}
-                object={object}
+                object={linkedObject}
                 objects={objects}
                 navigate={navigate}
               />
@@ -226,12 +272,12 @@ function DefinitionNode({ object, objects, navigate }) {
         </div>
       )}
       <span role="status">{t(notice)}</span>
-      {[...definition.facts]
+      {[...measureDefinitionFields(object), ...definition.facts]
         .filter((fact) => !repeatsExpression(fact, definition.expression))
         .sort((a, b) => factOrder.indexOf(a.name) - factOrder.indexOf(b.name))
         .map((fact) => {
           const Icon = factIcons[fact.name] ?? BracesIcon
-          if (fact.name === 'time_bindings' || fact.name === 'null_rules') {
+          if (['unit', 'additivity', 'time_bindings', 'null_rules'].includes(fact.name)) {
             return (
               <div className="sb-fact sb-fact-row" key={fact.name}>
                 <Icon className="sb-fact-icon" aria-hidden="true" />
@@ -240,11 +286,11 @@ function DefinitionNode({ object, objects, navigate }) {
                   {fact.name === 'time_bindings' ? (
                     <TimeBindingValue
                       fact={fact}
-                      object={object}
+                      object={linkedObject}
                       objects={objects}
                       navigate={navigate}
                     />
-                  ) : (
+                  ) : fact.name === 'null_rules' ? (
                     <NullRuleValue
                       fact={fact}
                       expression={definition.expression}
@@ -253,6 +299,13 @@ function DefinitionNode({ object, objects, navigate }) {
                           ? reductions.filter((item) => typeof item === 'string')
                           : []
                       }
+                      object={linkedObject}
+                      objects={objects}
+                      navigate={navigate}
+                    />
+                  ) : (
+                    <FieldValue
+                      field={fact}
                       object={object}
                       objects={objects}
                       navigate={navigate}
@@ -265,8 +318,11 @@ function DefinitionNode({ object, objects, navigate }) {
           // Calculation strings may refer to any declared dependency, not only
           // the time-binding field. Never create links for undeclared text.
           const factObject = {
-            ...object,
-            relations: object.relations.map((relation) => ({ ...relation, field: fact.name })),
+            ...linkedObject,
+            relations: linkedObject.relations.map((relation) => ({
+              ...relation,
+              field: fact.name,
+            })),
           }
           return (
             <details className="sb-fact" key={fact.name}>
@@ -277,7 +333,7 @@ function DefinitionNode({ object, objects, navigate }) {
               </summary>
               <div className="sb-fact-content">
                 <FieldValue
-                  field={fact}
+                  field={distinctConditions(fact)}
                   object={factObject}
                   objects={objects}
                   navigate={navigate}
@@ -313,7 +369,10 @@ export function ComputationCard({ object, objects, navigate }) {
       queue.push(child)
     }
   }
-  const hasContent = (item) => item.computation.expression || item.computation.facts.length
+  const hasContent = (item) =>
+    item.computation.expression ||
+    item.computation.facts.length ||
+    measureDefinitionFields(item).length
   const visibleRelated = related.filter(hasContent)
   const dependencies = object.fields?.find((field) => field.name === 'dependencies' && field.value)
   if (!hasContent(object) && !visibleRelated.length && !limited && !dependencies) return null
