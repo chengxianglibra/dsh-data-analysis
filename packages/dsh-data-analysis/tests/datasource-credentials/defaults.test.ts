@@ -59,6 +59,34 @@ test('creation defaults are separate from the untouched Runtime schema and prese
   assert.deepEqual(creationFieldValues(result, 'duckdb'), {})
 })
 
+test('new datasource timezone defaults to the browser only when the live field exists and no administrator default is set', () => {
+  const timezoneSchema = structuredClone(schema)
+  timezoneSchema.backends[0]!.fields.push({
+    name: 'wall_clock_timezone',
+    type: 'string',
+    required: false,
+    description: '',
+  })
+  assert.equal(
+    creationFieldValues(timezoneSchema, 'trino', 'Asia/Shanghai').wall_clock_timezone,
+    'Asia/Shanghai',
+  )
+  assert.equal(
+    creationFieldValues(timezoneSchema, 'duckdb', 'Asia/Shanghai').wall_clock_timezone,
+    undefined,
+  )
+  for (const configured of ['', 'America/New_York']) {
+    const view = withDatasourceDefaults(timezoneSchema, {
+      trino: { wall_clock_timezone: configured },
+    })
+    assert.equal(
+      creationFieldValues(view, 'trino', 'Asia/Shanghai').wall_clock_timezone,
+      configured,
+    )
+  }
+  assert.equal(creationFieldValues(timezoneSchema, 'trino', '').wall_clock_timezone, undefined)
+})
+
 test('invalid defaults fail without echoing any configured value', () => {
   const cases: [unknown, string][] = [
     [null, 'invalid'],

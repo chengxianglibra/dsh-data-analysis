@@ -19,6 +19,18 @@ import type { CredentialChanges } from './changes.ts'
 
 const CHANNEL = '/dsh-data-analysis-credentials'
 const STORAGE_KEY = 'marivo-credential-operation'
+// These are service.start precondition failures, raised before an operation is registered.
+const START_REJECTIONS = new Set([
+  'context-changed',
+  'operation-scope-mismatch',
+  'capacity-exceeded',
+  'invalid-action',
+  'call-ended',
+  'operation-busy',
+  'credentials-changed',
+  'invalid-changes',
+  'invalid-reference',
+])
 interface QueryHandle {
   generation: string
   id: string
@@ -146,6 +158,7 @@ export class CredentialClientModel {
   #refresh?: AbortController
   readonly #polls = new Map<string, AbortController>()
   readonly #operations = new Map<string, ClientOperation>()
+  readonly #settling = new Map<string, Promise<boolean>>()
   readonly #opened = new Set<string>()
   constructor(
     rpc: BrowserRpc,
@@ -418,27 +431,51 @@ export class CredentialClientModel {
     if (changed && this.#state.open) void this.refreshDatasources()
   }
   async refreshDatasources(): Promise<void> {
-    const workspaceId = this.#state.workspaceId
+    const { workspaceId, sessionId, generation } = this.#state
     if (!workspaceId || !this.#state.open) return
+    // A watch notification can arrive as an operation settles. Let its
+    // authoritative post-operation read finish before starting another read.
+    await Promise.all(this.#settling.values())
+    if (
+      !this.#state.open ||
+      this.#state.workspaceId !== workspaceId ||
+      this.#state.sessionId !== sessionId ||
+      this.#state.generation !== generation
+    )
+      return
     this.#refresh?.abort()
     const flight = new AbortController()
+    const activity = new Map(
+      this.#state.datasources.map((context) => [context.token, this.#activity(context.token)]),
+    )
     this.#refresh = flight
     try {
       const value = (await this.#call('overview', { workspaceId }, flight.signal)) as {
         generation: string
         datasources: CredentialContextView[]
       }
-      if (!flight.signal.aborted && this.#state.open && this.#state.workspaceId === workspaceId) {
+      if (
+        !flight.signal.aborted &&
+        this.#state.open &&
+        this.#state.workspaceId === workspaceId &&
+        this.#state.sessionId === sessionId &&
+        this.#state.generation === generation &&
+        value.generation === generation
+      ) {
         const name = this.#state.datasources.find(
           (item) => item.token === this.#state.selected,
         )?.name
+        const current = new Map(this.#state.datasources.map((context) => [context.token, context]))
+        const updated = value.datasources.map((context) =>
+          current.has(context.token) &&
+          activity.get(context.token) !== this.#activity(context.token)
+            ? current.get(context.token)!
+            : context,
+        )
         this.#patch({
-          datasources: value.datasources,
-          generation: value.generation,
-          selected:
-            value.datasources.find((item) => item.name === name)?.token ??
-            value.datasources[0]?.token ??
-            '',
+          datasources: updated,
+          outcomes: this.#currentOutcomes(workspaceId, generation, updated, activity),
+          selected: updated.find((item) => item.name === name)?.token ?? updated[0]?.token ?? '',
         })
       }
     } catch {
@@ -607,7 +644,7 @@ export class CredentialClientModel {
       this.#state.outcomes[scope]?.handle.id
     )
   }
-  async #refreshOverview(handle: QueryHandle): Promise<void> {
+  async #refreshOverview(handle: QueryHandle): Promise<boolean> {
     const { workspaceId, generation, datasources, open, requestId } = this.#state
     if (
       !open ||
@@ -615,7 +652,7 @@ export class CredentialClientModel {
       handle.generation !== generation ||
       !datasources.some((context) => context.token === handle.scope)
     )
-      return
+      return false
     this.#refresh?.abort()
     const flight = new AbortController(),
       read = this.#read,
@@ -635,7 +672,7 @@ export class CredentialClientModel {
         generation !== this.#state.generation ||
         value.generation !== generation
       )
-        return
+        return false
       const current = new Map(this.#state.datasources.map((context) => [context.token, context]))
       const updated = value.datasources.map((context) =>
         current.has(context.token) && activity.get(context.token) !== this.#activity(context.token)
@@ -649,8 +686,10 @@ export class CredentialClientModel {
           ? this.#state.selected
           : (updated[0]?.token ?? ''),
       })
+      return true
     } catch {
       // Keep the last authoritative overview and scoped outcome if a passive refresh fails.
+      return false
     }
   }
   #publish(handle: QueryHandle, operation: CredentialOperationView): void {
@@ -701,6 +740,35 @@ export class CredentialClientModel {
     reference?: string,
     deleteCredentials?: boolean,
   ): Promise<void> {
+    const settling = this.#settling.get(context.token)
+    if (settling) {
+      const generation = this.#state.generation
+      const selected = this.#state.selected
+      const requestId = this.#state.requestId
+      const refreshedOverview = await settling
+      const refreshed = this.#state.datasources.find((item) => item.token === context.token)
+      if (
+        this.#lifetime.signal.aborted ||
+        this.#state.workspaceId !== context.workspaceId ||
+        this.#state.generation !== generation ||
+        this.#state.selected !== selected ||
+        this.#state.requestId !== requestId ||
+        this.#suspended ||
+        !refreshedOverview ||
+        !refreshed
+      ) {
+        for (const ref of Object.keys(changes)) delete changes[ref]
+        this.#patch({ error: credentialMessage('credentials-changed') })
+        return
+      }
+      context = refreshed
+    }
+    const outcome = this.#state.outcomes[context.token]
+    if (!this.#state.requestId && outcome?.operation && !outcome.overviewUpdated) {
+      for (const ref of Object.keys(changes)) delete changes[ref]
+      this.#patch({ error: credentialMessage('credentials-changed') })
+      return
+    }
     if (
       [...this.#operations.values()].some(
         (entry) =>
@@ -760,9 +828,11 @@ export class CredentialClientModel {
           : {}),
       })
     } catch (error) {
-      if (action === 'delete-datasource' && error instanceof CredentialResponseError) {
+      if (error instanceof CredentialResponseError && START_REJECTIONS.has(error.code)) {
         const entry = this.#operations.get(handle.id)
-        if (entry)
+        if (entry) {
+          const refresh = this.#refreshOverview(handle)
+          this.#settling.set(handle.scope, refresh)
           this.#settle({
             ...entry,
             operation: {
@@ -772,7 +842,12 @@ export class CredentialClientModel {
               errors: [error.code],
             },
           })
-        await this.#refreshOverview(handle)
+          try {
+            await refresh
+          } finally {
+            if (this.#settling.get(handle.scope) === refresh) this.#settling.delete(handle.scope)
+          }
+        }
         return
       }
       if (this.#state.handle?.id === handle.id && this.#visible(handle.scope))
@@ -815,11 +890,18 @@ export class CredentialClientModel {
             this.#settle({ ...entry, operation: undefined, error })
             return
           }
-          this.#publish(handle, operation)
           if (operation.status !== 'running') {
-            await this.#refreshOverview(handle)
+            const refresh = this.#refreshOverview(handle)
+            this.#settling.set(handle.scope, refresh)
+            this.#publish(handle, operation)
+            try {
+              await refresh
+            } finally {
+              if (this.#settling.get(handle.scope) === refresh) this.#settling.delete(handle.scope)
+            }
             return
           }
+          this.#publish(handle, operation)
         } catch {
           if (
             !signal.aborted &&

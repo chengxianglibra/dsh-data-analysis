@@ -84,8 +84,11 @@ const app = await build({
 import React, {useState,useSyncExternalStore} from 'react'; import {createRoot} from 'react-dom/client';
 import {CredentialPanel,installCredentials} from ${JSON.stringify(installer)};
 import {WorkspaceHeaderAction} from ${JSON.stringify(fileURLToPath(new URL('../src/client/workspace-header-action.tsx', import.meta.url)))};
+import {HostCopyProvider} from ${JSON.stringify(fileURLToPath(new URL('../src/client/i18n/context.tsx', import.meta.url)))};
+import {translator,zh} from ${JSON.stringify(fileURLToPath(new URL('../src/client/i18n/copy.ts', import.meta.url)))};
 const seats=[];
-const ctx={effect(fn){fn()},on(){},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
+const localeSnapshot={active:'zh'};
+const ctx={effect(fn){fn()},on(){},locale:{subscribe(){return()=>{}},getSnapshot(){return localeSnapshot},bind(){return key=>zh[key]}},slots:{inject(n,fn){fn()},register(options,component){seats.push({options,component});return()=>{}}}};
 const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
 ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-semantic',order:110},()=> <WorkspaceHeaderAction label="语义层" icon="semantic" onClick={()=>{}}/>);
 // Fixture-only stream carrier; the production client uses Harness RemoteStream.
@@ -100,10 +103,10 @@ const changes=sessionId=>{
 const model=installCredentials(ctx,rpc,changes);
 ctx.slots.register({name:'conversation.session.header.actions',id:'fixture-credentials',order:100},()=> <WorkspaceHeaderAction label="数据源与凭证" icon="credentials" onClick={()=>model.show('workspace')}/>);
 const workspaces=[{workspaceId:'workspace',name:'验收项目',sessionIds:['session']},{workspaceId:'other',name:'其他工作区不应显示',sessionIds:['other-session']}];
-const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({current:'session'})};
+const props={sessionId:'session',useWorkspaces:fn=>fn({items:workspaces,state:'idle',phase:'ready'}),useSessions:fn=>fn({ids:['session'],byId:{session:{retainedBy:{mainView:true}}}})};
 const renderSeat=({options,component:C})=><C key={options.name+options.id} {...props}/>;
 function Panel(){const state=useSyncExternalStore(model.subscribe,model.getSnapshot);return state.open&&<div style={{containerType:'inline-size',padding:16,maxWidth:900}}><button onClick={()=>model.close()}>收起</button><button onClick={()=>model.selectWorkspace('workspace')}>刷新状态</button><CredentialPanel model={model} workspaces={workspaces}/></div>}
-function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').sort((a,b)=>a.options.order-b.options.order).map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}<Panel/></>}
+function App(){const [headerVisible,setHeaderVisible]=useState(false);window.setFixtureHeaderVisible=setHeaderVisible;return <HostCopyProvider t={translator('zh-CN')}><h1>凭证集成验收夹具</h1>{headerVisible&&<header style={{display:'flex',alignItems:'center',gap:10}}><span>数据源分析会话</span><nav aria-label="会话标题操作" style={{display:'flex',gap:8}}>{seats.filter(({options})=>options.name==='conversation.session.header.actions').sort((a,b)=>a.options.order-b.options.order).map(renderSeat)}</nav></header>}{seats.filter(({options})=>options.name==='shell.overlay').map(renderSeat)}<Panel/></HostCopyProvider>}
 createRoot(document.getElementById('app')).render(<App/>);
 `,
   },
@@ -213,11 +216,49 @@ async function assertNoHorizontalOverflow() {
         // The narrow-screen datasource navigation is an intentional horizontal scroller.
         .filter(
           (element) =>
+            !element.matches('.mc-visually-hidden') &&
             !(element.matches('.mc-datasources') && getComputedStyle(element).overflowX === 'auto'),
         )
         .map((element) => `${element.tagName}.${element.className}`),
     )
   assert.deepEqual(overflows, [], 'panel and page must not overflow horizontally')
+}
+async function assertCredentialStatusBesideName() {
+  const bounds = await page.locator('.mc-identity-title').evaluate((row: Element) => {
+    const title = row.querySelector('[data-slot="card-title"]')!.getBoundingClientRect()
+    const status = row.querySelector('[data-slot="badge"]')!.getBoundingClientRect()
+    return {
+      titleRight: title.right,
+      titleTop: title.top,
+      titleBottom: title.bottom,
+      statusLeft: status.left,
+      statusTop: status.top,
+      statusBottom: status.bottom,
+    }
+  })
+  assert(bounds.statusLeft >= bounds.titleRight)
+  assert(bounds.statusTop < bounds.titleBottom && bounds.statusBottom > bounds.titleTop)
+}
+async function assertDatasourceDot(name: string, ready: boolean, description: string) {
+  const button = page.getByRole('button', { name: `选择数据源 ${name}`, exact: true })
+  const state = await button.evaluate((element: Element) => {
+    const title = element.querySelector('.mc-datasource-name')!.getBoundingClientRect()
+    const dot = element.querySelector('.mc-dot')!
+    const dotBounds = dot.getBoundingClientRect()
+    const descriptionId = element.getAttribute('aria-describedby')!
+    return {
+      text: element.querySelector('.mc-datasource-copy')!.textContent,
+      ready: dot.getAttribute('data-ready'),
+      description: document.getElementById(descriptionId)?.textContent,
+      dotRightOfName: dotBounds.left >= title.right,
+    }
+  })
+  assert.deepEqual(state, {
+    text: name,
+    ready: String(ready),
+    description,
+    dotRightOfName: true,
+  })
 }
 try {
   const initialWatch = page.waitForRequest(
@@ -276,10 +317,10 @@ try {
         }
       }),
     )
-  assert.deepEqual(compactEntries, [
-    { width: 32, height: 32, label: 'none' },
-    { width: 32, height: 32, label: 'none' },
-  ])
+  assert.equal(compactEntries.length, 2)
+  assert.deepEqual(compactEntries[0], compactEntries[1])
+  assert.equal(compactEntries[0]!.label, 'none')
+  assert(compactEntries[0]!.width <= 40 && compactEntries[0]!.height <= 40)
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
   await page.screenshot({ path: path.join(output, 'header-entries-mobile.png'), fullPage: true })
   await page.setViewportSize({ width: 1200, height: 900 })
@@ -288,17 +329,37 @@ try {
   assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
   await selectDatasource('warehouse')
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor({ timeout: 30000 })
+  await assertDatasourceDot('default', true, '无需凭证')
+  await assertDatasourceDot('warehouse', false, '0 / 1 项已配置')
+  const selectedDatasource = page.getByRole('button', { name: '选择数据源 warehouse', exact: true })
+  await selectedDatasource.focus()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Shift+Tab')
+  assert.equal(
+    await selectedDatasource.evaluate((button: Element) => {
+      const style = getComputedStyle(button)
+      return (
+        button.matches(':focus-visible') &&
+        style.outlineStyle !== 'none' &&
+        style.outlineWidth !== '0px'
+      )
+    }),
+    true,
+  )
   await page.getByLabel('新值').fill(secret)
   await page.getByRole('button', { name: '新增凭证', exact: true }).click()
   await page.getByRole('button', { name: '更换', exact: true }).waitFor({ timeout: 30000 })
   await page.getByRole('button', { name: '测试连接', exact: true }).click()
   await page.getByText('连接测试成功', { exact: true }).waitFor()
+  await assertDatasourceDot('warehouse', true, '凭证已配齐')
+  await assertCredentialStatusBesideName()
   assert(!(await page.locator('body').innerText()).includes(secret))
   assert(!(await page.evaluate(() => JSON.stringify(sessionStorage))).includes(secret))
   await assertNoCompletedOperations()
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'management.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
+  await assertCredentialStatusBesideName()
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'management-mobile.png'), fullPage: true })
   await page.setViewportSize({ width: 1200, height: 900 })
@@ -309,6 +370,10 @@ try {
   // Hold two actual bridge validations so navigation and reload happen while both are live.
   const originalTest = bridge.test.bind(bridge)
   const gates = new Map<string, () => void>()
+  let enteredFirst!: () => void
+  const firstEntered = new Promise<void>((resolve) => {
+    enteredFirst = resolve
+  })
   let enteredBoth!: () => void
   const bothEntered = new Promise<void>((resolve) => {
     enteredBoth = resolve
@@ -321,15 +386,26 @@ try {
         signal?.removeEventListener('abort', abort)
         resolve()
       })
+      if (description.name === 'warehouse') enteredFirst()
       if (gates.size === 2) enteredBoth()
       if (signal?.aborted) abort()
     })
     return originalTest(description, values, signal)
   }
   await page.getByRole('button', { name: '测试连接', exact: true }).click()
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('First bridge test did not start')), 30000)
+    void firstEntered.then(() => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
   await selectDatasource('warehouse_two')
   await page.getByRole('button', { name: '测试连接', exact: true }).click()
   await page.getByRole('button', { name: 'warehouse_two · 处理中', exact: true }).waitFor()
+  await page.waitForFunction(
+    () => JSON.parse(sessionStorage.getItem('marivo-credential-operation') ?? '[]').length === 2,
+  )
   assert.equal(
     await page.evaluate(
       () => JSON.parse(sessionStorage.getItem('marivo-credential-operation') ?? '[]').length,
@@ -485,17 +561,47 @@ try {
   await page.setViewportSize({ width: 1200, height: 900 })
   await page.getByRole('button', { name: '新增数据源', exact: true }).click()
   await page.getByLabel('引擎', { exact: true }).selectOption('clickhouse')
+  await page.getByText('高级设置', { exact: true }).click()
+  const browserTimezone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  )
+  const timezone = page.getByLabel('wall_clock_timezone', { exact: true })
+  assert.equal(await timezone.inputValue(), browserTimezone)
+  await page.getByRole('button', { name: '选择时区', exact: true }).click()
+  const timezoneSelector = page.getByRole('listbox', { name: '选择时区', exact: true })
+  const timezoneOptions = await timezoneSelector.evaluate((select: HTMLSelectElement) =>
+    Array.from(select.options, (option) => option.value),
+  )
+  for (const zone of [
+    browserTimezone,
+    'UTC',
+    'America/New_York',
+    'Europe/London',
+    'Asia/Tokyo',
+    'Australia/Sydney',
+  ])
+    assert(timezoneOptions.includes(zone), `Missing timezone option: ${zone}`)
+  await page.getByLabel('搜索时区', { exact: true }).fill('New_York')
+  await timezoneSelector.selectOption('America/New_York')
+  await timezoneSelector.press('Enter')
+  assert.equal(await timezone.inputValue(), 'America/New_York')
+  await timezone.fill('+05:45')
+  assert.equal(await timezone.inputValue(), '+05:45')
+  await timezone.fill('')
+  assert.equal(await timezone.inputValue(), '')
+  await timezone.fill(browserTimezone)
   const fieldLayout = await page.getByLabel('host', { exact: true }).evaluate((input: Element) => {
-    const label = input.closest('label')!
-    const name = label.querySelector('.mc-input-name')!.getBoundingClientRect()
-    const description = label.querySelector('.mc-input-description')!.getBoundingClientRect()
+    const field = input.closest('[data-slot="field"]')!
+    const name = field.querySelector('[data-slot="field-label"]')!.getBoundingClientRect()
+    const descriptionElement = field.querySelector('[data-slot="field-description"]')!
+    const description = descriptionElement.getBoundingClientRect()
     const control = input.getBoundingClientRect()
     return {
       above: name.bottom <= control.top && description.bottom <= control.top,
-      sameRow: Math.abs(name.top - description.top) < 6,
+      describedBy: input.getAttribute('aria-describedby') === descriptionElement.id,
     }
   })
-  assert.deepEqual(fieldLayout, { above: true, sameRow: true })
+  assert.deepEqual(fieldLayout, { above: true, describedBy: true })
   await page.screenshot({
     path: path.join(output, 'create-field-descriptions.png'),
     fullPage: true,
@@ -546,6 +652,10 @@ try {
   }
   assert.doesNotMatch(await properties.innerText(), /CLICKHOUSE_TEST_PASSWORD|CLICKHOUSE_TEST_USER/)
   assert.equal((await bridge.describe('clickhouse_in_card')).properties?.host, 'example.invalid')
+  assert.equal(
+    (await bridge.configuration('clickhouse_in_card')).fields.wall_clock_timezone,
+    browserTimezone,
+  )
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'clickhouse-properties.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -558,9 +668,12 @@ try {
   await page.getByRole('button', { name: '新增数据源', exact: true }).click()
   await page.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await page.getByLabel('name', { exact: true }).fill('created_in_card')
-  await page
-    .getByLabel('secrets', { exact: true })
-    .fill(JSON.stringify([{ type: 'http_bearer', scope: 'http://127.0.0.1/', token: 'NEW_TOKEN' }]))
+  await page.getByRole('button', { name: '添加 HTTP Bearer 凭证', exact: true }).click()
+  const bearer = page.getByRole('group', { name: 'HTTP Bearer 凭证 1', exact: true })
+  await bearer.getByLabel('scope', { exact: true }).fill('http://127.0.0.1/')
+  const bearerRef = bearer.getByLabel('Bearer Token · 凭证引用', { exact: true })
+  await bearer.getByText('凭证引用 · 查看或复用', { exact: true }).click()
+  await bearerRef.fill('NEW_TOKEN')
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'create-datasource.png'), fullPage: true })
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
@@ -575,6 +688,70 @@ try {
   await page.getByText('连接测试成功', { exact: true }).waitFor({ timeout: 30000 })
   assert((await bridge.inventory()).some((item) => item.name === 'created_in_card'))
   await page.screenshot({ path: path.join(output, 'created-datasource.png'), fullPage: true })
+
+  // A real Marivo 0.6.2 S3 definition: values are saved separately by the credential service.
+  await page.getByRole('button', { name: '新增数据源', exact: true }).click()
+  await page.getByLabel('name', { exact: true }).fill('s3_in_card')
+  await page.getByRole('button', { name: '添加 S3 凭证', exact: true }).click()
+  let s3 = page.getByRole('group', { name: 'S3 凭证 1', exact: true })
+  await s3.getByLabel('scope', { exact: true }).fill('s3://sample-bucket/')
+  await s3.getByLabel('region', { exact: true }).fill('us-east-1')
+  await s3.getByLabel('Access Key ID', { exact: true }).fill('s3-access-canary')
+  await s3.getByLabel('Secret Access Key', { exact: true }).fill('s3-secret-canary')
+  await s3.getByLabel('Session Token', { exact: true }).fill('s3-session-canary')
+  await s3.getByText('S3 连接选项', { exact: true }).click()
+  await s3.getByLabel('endpoint', { exact: true }).fill('localhost:9000')
+  await s3.getByLabel('url_style', { exact: true }).selectOption('path')
+  await s3.getByLabel('use_ssl', { exact: true }).selectOption('false')
+  await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  await page.getByRole('heading', { name: 's3_in_card', exact: true }).waitFor({ timeout: 30000 })
+  await assertNoCompletedOperations()
+  const s3Created = await bridge.configuration('s3_in_card')
+  const s3Secret = (s3Created.fields.secrets as Record<string, unknown>[])[0]!
+  assert.deepEqual(
+    {
+      type: s3Secret.type,
+      scope: s3Secret.scope,
+      region: s3Secret.region,
+      endpoint: s3Secret.endpoint,
+      url_style: s3Secret.url_style,
+      use_ssl: s3Secret.use_ssl,
+    },
+    {
+      type: 's3',
+      scope: 's3://sample-bucket/',
+      region: 'us-east-1',
+      endpoint: 'localhost:9000',
+      url_style: 'path',
+      use_ssl: false,
+    },
+  )
+  assert.doesNotMatch(JSON.stringify(s3Created), /s3-(access|secret|session)-canary/)
+  for (const value of ['s3-access-canary', 's3-secret-canary', 's3-session-canary'])
+    assert([...f.store.values.values()].includes(value))
+
+  await page.getByRole('button', { name: '编辑配置', exact: true }).click()
+  s3 = page.getByRole('group', { name: 'S3 凭证 1', exact: true })
+  const previousRef = s3Secret.key_id
+  assert.equal(await s3.getByLabel('Access Key ID', { exact: true }).inputValue(), '')
+  await s3.getByLabel('Access Key ID', { exact: true }).fill('s3-new-access-canary')
+  await page.getByRole('button', { name: '保存配置', exact: true }).click()
+  await page.getByRole('heading', { name: 's3_in_card', exact: true }).waitFor({ timeout: 30000 })
+  await assertNoCompletedOperations()
+  const s3Updated = await bridge.configuration('s3_in_card')
+  const newS3Secret = (s3Updated.fields.secrets as Record<string, unknown>[])[0]!
+  assert.notEqual(newS3Secret.key_id, previousRef)
+  assert.equal(newS3Secret.secret, s3Secret.secret)
+  assert.equal(newS3Secret.session_token, s3Secret.session_token)
+  assert([...f.store.values.values()].includes('s3-access-canary'))
+  assert([...f.store.values.values()].includes('s3-new-access-canary'))
+  assert.doesNotMatch(JSON.stringify(s3Updated), /s3-(access|secret|session|new-access)-canary/)
+  assert.doesNotMatch(
+    await page.locator('body').innerText(),
+    /s3-(access|secret|session|new-access)-canary/,
+  )
+  await page.screenshot({ path: path.join(output, 's3-configured.png'), fullPage: true })
+
   await page.getByRole('button', { name: '新增数据源', exact: true }).click()
   await page.getByLabel('name', { exact: true }).fill('created_in_card')
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
@@ -587,7 +764,10 @@ try {
     createDatasourceAndCredential: 'passed',
     invalidCredentialReferenceRejectedBeforeWrite: 'passed',
     clickhouseCreationAndProperties: 'passed',
-    descriptionsAboveInputsBesideNames: 'passed',
+    browserTimezoneDefaultAndOptions: 'passed',
+    structuredScopedCredentialReference: 'passed',
+    structuredS3ConfigurationAndReplacement: 'passed',
+    accessibleDescriptionsAboveInputs: 'passed',
     createdDatasourceScrollsToProperties: 'passed',
     duplicateDatasourceRejected: 'passed',
     workspaceSelectorsRemoved: 'passed',

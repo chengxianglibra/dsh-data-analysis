@@ -15,7 +15,7 @@ try {
   const seed = await runner.runChecked({
     program: `import marivo.datasource as md
 import marivo.semantic as ms
-md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_catalog",schema="old_schema",user=md.env("CONFIG_USER"),auth=md.env("CONFIG_AUTH"),http_scheme="http",client_tags=("one","two"),extra={"client_info":"kept"},ai_context=ms.ai_context(business_definition="Keep this context",guardrails=["Read only"],aliases=["warehouse alias"])))
+md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_catalog",schema="old_schema",user=md.env("CONFIG_USER"),auth=md.env("CONFIG_AUTH"),http_scheme="http",wall_clock_timezone="Asia/Shanghai",client_tags=("one","two"),extra={"client_info":"kept"},ai_context=ms.ai_context(business_definition="Keep this context",guardrails=["Read only"],aliases=["warehouse alias"])))
 `,
     limits: { timeoutMs: 30000, stdoutMaxBytes: 65536, stderrMaxBytes: 65536 },
   })
@@ -24,6 +24,7 @@ md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_ca
   assert.ok(schema.backends.some((item) => item.name === 'trino'))
   const original = await bridge.configuration('warehouse')
   assert.equal(original.fields.user, 'CONFIG_USER')
+  assert.equal(original.fields.wall_clock_timezone, 'Asia/Shanghai')
   assert.deepEqual(original.fields.client_tags, ['one', 'two'])
   assert.deepEqual(original.fields.extra, { client_info: 'kept' })
   const fields = {
@@ -47,6 +48,7 @@ md.register(md.trino(name="warehouse",host="localhost",port=8080,catalog="old_ca
   assert.equal(updated.fields.schema, undefined)
   assert.deepEqual(updated.fields.client_tags, [])
   assert.equal(updated.fields.auth, 'CONFIG_NEW_AUTH')
+  assert.equal(updated.fields.wall_clock_timezone, 'Asia/Shanghai')
   assert.deepEqual(updated.fields.extra, { client_info: 'kept' })
   assert.notEqual(updated.version, original.version)
   assert.deepEqual(await bridge.update({ ...original, fields }), {
@@ -73,6 +75,34 @@ print(json.dumps({"business_definition":context.business_definition,"guardrails"
     }),
     { name: 'local' },
   )
+  assert.deepEqual(
+    await bridge.create({
+      backend: 'duckdb',
+      fields: { name: 'timezone', path: ':memory:', wall_clock_timezone: 'Asia/Shanghai' },
+    }),
+    { name: 'timezone' },
+  )
+  const timezoneBefore = await bridge.configuration('timezone')
+  assert.equal(timezoneBefore.fields.wall_clock_timezone, 'Asia/Shanghai')
+  const externallyChangedTimezone = await runner.runChecked({
+    program: `import marivo.datasource as md
+md.register(md.duckdb(name="timezone", path=":memory:", wall_clock_timezone="America/New_York"))
+`,
+    limits: { timeoutMs: 30000, stdoutMaxBytes: 65536, stderrMaxBytes: 65536 },
+  })
+  assert.equal(externallyChangedTimezone.exitCode, 0, externallyChangedTimezone.stderr.toString())
+  const timezoneAfter = await bridge.configuration('timezone')
+  assert.equal(timezoneAfter.fields.wall_clock_timezone, 'America/New_York')
+  assert.notEqual(timezoneAfter.version, timezoneBefore.version)
+  assert.deepEqual(await bridge.update(timezoneBefore), { error: 'datasource-config-changed' })
+  assert.deepEqual(
+    await bridge.update({
+      ...timezoneAfter,
+      fields: { ...timezoneAfter.fields, wall_clock_timezone: null },
+    }),
+    { name: 'timezone' },
+  )
+  assert.equal((await bridge.configuration('timezone')).fields.wall_clock_timezone, undefined)
   const scoped = [
     {
       type: 's3',
@@ -140,6 +170,7 @@ print(json.dumps({"business_definition":context.business_definition,"guardrails"
         'edit-roundtrip',
         'identity-fixed',
         'stale-edit',
+        'timezone-roundtrip-external-change-conflict-and-clear',
         'ai-context',
         'extra',
         'credential-refs',

@@ -18,6 +18,13 @@ import { NativeSelect } from '../ui/primitives/native-select.tsx'
 import { credentialReference, prepareCredentials } from './credential-draft.ts'
 import { creationFieldValues } from './defaults.ts'
 import { datasourceDescription } from './descriptions.ts'
+import {
+  groupDatasourceFields,
+  hasUnsupportedAutocommit,
+  isRestrictedAutocommit,
+} from './field-presentation.ts'
+import { ScopedSecrets, supportsScopedSecrets } from './scoped-secrets.tsx'
+import { TimezoneInput } from './timezone-input.tsx'
 
 function credentialLabel(field) {
   return (
@@ -70,6 +77,8 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
   const [scopedValues, setScopedValues] = useState(() => Object.create(null))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [scopedError, setScopedError] = useState('')
+  const [pendingBackend, setPendingBackend] = useState('')
   useEffect(() => {
     const controller = new AbortController()
     active.current = true
@@ -120,13 +129,45 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
     }
   }, [model, workspaceId, name])
   const fields = schema?.backends.find((item) => item.name === backend)?.fields ?? []
-  const credentialFields = fields.filter((field) => field.type === 'credential')
+  const groups = groupDatasourceFields(fields, backend)
+  const credentialFields = groups.credential
   const updateCredential = (id, change) =>
     setCredentials((rows) => rows.map((row) => (row.id === id ? { ...row, ...change } : row)))
+  function switchBackend(next) {
+    setScopedValues(Object.create(null))
+    setScopedError('')
+    setBackend(next)
+    setValues(creationFieldValues(schema, next))
+    setCredentials(credentialRows(schema, next))
+    setError('')
+    setPendingBackend('')
+  }
+  function requestBackend(next) {
+    if (next === backend) return
+    const defaults = creationFieldValues(schema, backend)
+    const changed =
+      Object.keys({ ...defaults, ...values }).some((field) => values[field] !== defaults[field]) ||
+      credentials.some((row) => row.value || row.reference !== undefined) ||
+      Object.keys(scopedValues).length > 0
+    if (changed) setPendingBackend(next)
+    else switchBackend(next)
+  }
   async function submit(event) {
     event.preventDefault()
-    if (busy) return
+    if (busy || pendingBackend) return
     setError('')
+    if (credentials.some((row) => row.reference !== undefined && row.value)) {
+      setError('marivo.credentials.manual-reference-with-value')
+      return
+    }
+    if (hasUnsupportedAutocommit(backend, fields, values)) {
+      setError('marivo.credentials.autocommit-required')
+      return
+    }
+    if (scopedError || (groups.secrets.length && !supportsScopedSecrets(values.secrets))) {
+      setError(scopedError || 'marivo.credentials.scoped-unsupported')
+      return
+    }
     const input = {}
     let changes = {}
     try {
@@ -189,6 +230,80 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
       if (active.current) setBusy(false)
     }
   }
+  function renderField(field) {
+    return (
+      <Field key={field.name} data-disabled={busy || (!!name && field.name === 'name')}>
+        <FieldLabel htmlFor={`${formId}-${field.name}`}>
+          {field.name}
+          {field.required ? ' *' : ''}
+        </FieldLabel>
+        {(field.description || field.name === 'wall_clock_timezone') && (
+          <FieldDescription id={`${formId}-${field.name}-help`}>
+            {field.name === 'wall_clock_timezone'
+              ? t('marivo.credentials.source-timezone-help')
+              : t(datasourceDescription(field.description))}
+          </FieldDescription>
+        )}
+        {field.name === 'wall_clock_timezone' ? (
+          <TimezoneInput
+            id={`${formId}-${field.name}`}
+            descriptionId={`${formId}-${field.name}-help`}
+            required={field.required}
+            disabled={busy}
+            value={values[field.name] ?? ''}
+            onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
+            t={t}
+          />
+        ) : field.type === 'boolean' ? (
+          <NativeSelect
+            id={`${formId}-${field.name}`}
+            aria-label={field.name}
+            aria-describedby={
+              field.description || field.name === 'wall_clock_timezone'
+                ? `${formId}-${field.name}-help`
+                : undefined
+            }
+            value={values[field.name] ?? ''}
+            onChange={(event) => setValues({ ...values, [field.name]: event.target.value })}
+          >
+            <option value="">
+              {t('marivo.credentials.default')}
+              {field.default == null ? '' : ` (${field.default})`}
+            </option>
+            <option value="true">true</option>
+            {isRestrictedAutocommit(backend, field) ? (
+              values[field.name] === 'false' && (
+                <option value="false" disabled>
+                  {t('marivo.credentials.unsupported-value')} (false)
+                </option>
+              )
+            ) : (
+              <option value="false">false</option>
+            )}
+          </NativeSelect>
+        ) : (
+          <Input
+            id={`${formId}-${field.name}`}
+            aria-label={field.name}
+            aria-describedby={
+              field.description || field.name === 'wall_clock_timezone'
+                ? `${formId}-${field.name}-help`
+                : undefined
+            }
+            required={field.required}
+            disabled={!!name && field.name === 'name'}
+            autoComplete="off"
+            type={field.type === 'number' ? 'number' : 'text'}
+            placeholder={
+              field.default == null ? (field.type === 'json' ? 'JSON' : '') : String(field.default)
+            }
+            value={values[field.name] ?? ''}
+            onChange={(event) => setValues({ ...values, [field.name]: event.target.value })}
+          />
+        )}
+      </Field>
+    )
+  }
   return (
     <form
       className="mc-form"
@@ -226,13 +341,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                     aria-label={t('marivo.credentials.engine')}
                     disabled={!!name}
                     value={backend}
-                    onChange={(event) => {
-                      setScopedValues(Object.create(null))
-                      setBackend(event.target.value)
-                      setValues(creationFieldValues(schema, event.target.value))
-                      setCredentials(credentialRows(schema, event.target.value))
-                      setError('')
-                    }}
+                    onChange={(event) => requestBackend(event.target.value)}
                   >
                     {schema.backends.map((item) => (
                       <option key={item.name} value={item.name}>
@@ -240,110 +349,45 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                       </option>
                     ))}
                   </NativeSelect>
+                  {pendingBackend && (
+                    <Alert className="mc-engine-confirm" role="alert">
+                      <AlertDescription>
+                        {t('marivo.credentials.switch-engine-warning')}
+                        <div className="mc-scoped-actions">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => switchBackend(pendingBackend)}
+                          >
+                            {t('marivo.credentials.switch-engine-confirm')}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setPendingBackend('')}
+                          >
+                            {t('marivo.credentials.cancel')}
+                          </Button>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </Field>
-                {fields
-                  .filter((field) => field.type !== 'credential')
-                  .map((field) => (
-                    <Field
-                      key={field.name}
-                      data-disabled={busy || (!!name && field.name === 'name')}
-                    >
-                      <FieldLabel htmlFor={`${formId}-${field.name}`}>
-                        {field.name}
-                        {field.required ? ' *' : ''}
-                      </FieldLabel>
-                      {(field.description || field.type === 'secrets') && (
-                        <FieldDescription id={`${formId}-${field.name}-help`}>
-                          {field.type === 'secrets'
-                            ? t('marivo.credentials.scoped-secrets-reference-json')
-                            : t(datasourceDescription(field.description))}
-                        </FieldDescription>
-                      )}
-                      {field.type === 'boolean' ? (
-                        <NativeSelect
-                          id={`${formId}-${field.name}`}
-                          aria-label={field.name}
-                          aria-describedby={
-                            field.description || field.type === 'secrets'
-                              ? `${formId}-${field.name}-help`
-                              : undefined
-                          }
-                          value={values[field.name] ?? ''}
-                          onChange={(event) =>
-                            setValues({ ...values, [field.name]: event.target.value })
-                          }
-                        >
-                          <option value="">
-                            {t('marivo.credentials.default')}
-                            {field.default == null ? '' : ` (${field.default})`}
-                          </option>
-                          <option value="true">true</option>
-                          <option value="false">false</option>
-                        </NativeSelect>
-                      ) : (
-                        <Input
-                          id={`${formId}-${field.name}`}
-                          aria-label={field.name}
-                          aria-describedby={
-                            field.description || field.type === 'secrets'
-                              ? `${formId}-${field.name}-help`
-                              : undefined
-                          }
-                          required={field.required}
-                          disabled={!!name && field.name === 'name'}
-                          autoComplete="off"
-                          type={field.type === 'number' ? 'number' : 'text'}
-                          placeholder={
-                            field.default == null
-                              ? field.type === 'json' || field.type === 'secrets'
-                                ? 'JSON'
-                                : ''
-                              : String(field.default)
-                          }
-                          value={values[field.name] ?? ''}
-                          onChange={(event) => {
-                            const value = event.target.value
-                            if (field.type === 'secrets') {
-                              const refs = new Set(scopedReferences(value))
-                              setScopedValues((current) =>
-                                Object.assign(
-                                  Object.create(null),
-                                  Object.fromEntries(
-                                    Object.entries(current).filter(([ref]) => refs.has(ref)),
-                                  ),
-                                ),
-                              )
-                            }
-                            setValues({ ...values, [field.name]: value })
-                          }}
-                        />
-                      )}
-                    </Field>
-                  ))}
-                {scopedReferences(values.secrets).map((ref) => (
-                  <Field key={ref} data-disabled={busy}>
-                    <FieldLabel htmlFor={`${formId}-scoped-${ref}`}>
-                      {t('marivo.credentials.header-credential-value')} · {ref}
-                    </FieldLabel>
-                    <FieldDescription>
-                      {t('marivo.credentials.scoped-secret-value-help')}
-                    </FieldDescription>
-                    <Input
-                      id={`${formId}-scoped-${ref}`}
-                      aria-label={`${t('marivo.credentials.header-credential-value')} · ${ref}`}
-                      type="password"
-                      autoComplete="new-password"
-                      maxLength={65536}
-                      value={scopedValues[ref] ?? ''}
-                      onChange={(event) =>
-                        setScopedValues(
-                          Object.assign(Object.create(null), scopedValues, {
-                            [ref]: event.target.value,
-                          }),
-                        )
-                      }
-                    />
-                  </Field>
+                {groups.basic.map(renderField)}
+                {groups.secrets.map((field) => (
+                  <ScopedSecrets
+                    key={`${workspaceId}-${name ?? ''}-${original?.version ?? ''}-${backend}-${field.name}`}
+                    value={values[field.name]}
+                    name={values.name ?? ''}
+                    formId={formId}
+                    t={t}
+                    secretValues={scopedValues}
+                    setSecretValues={setScopedValues}
+                    onError={setScopedError}
+                    onChange={(value) =>
+                      setValues((current) => ({ ...current, [field.name]: value }))
+                    }
+                  />
                 ))}
                 {credentialFields.length > 0 && (
                   <section
@@ -492,6 +536,15 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                     ))}
                   </section>
                 )}
+                {groups.advanced.length > 0 && (
+                  <details
+                    className="mc-reference-options"
+                    open={hasUnsupportedAutocommit(backend, fields, values) || undefined}
+                  >
+                    <summary>{t('marivo.credentials.advanced-settings')}</summary>
+                    <FieldGroup>{groups.advanced.map(renderField)}</FieldGroup>
+                  </details>
+                )}
               </FieldGroup>
             </FieldSet>
           )}
@@ -506,7 +559,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
               : ''}
         </p>
         <CardFooter className="mc-form-footer">
-          <Button variant="default" type="submit" disabled={!backend || busy}>
+          <Button variant="default" type="submit" disabled={!backend || busy || !!pendingBackend}>
             {busy
               ? t('marivo.credentials.saving-or-validating')
               : requestId

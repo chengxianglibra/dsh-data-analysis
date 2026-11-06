@@ -15,6 +15,9 @@ const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-datasource-co
 const workspace = path.join(root, 'workspace')
 await mkdir(workspace)
 const inputs = await preparePresentationInputs(workspace, python)
+// The presentation fixture poisons its semantic model to prove saved snapshots
+// do not reload it. Datasource editing legitimately reads the live Catalog.
+await writeFile(path.join(workspace, 'models/semantic/sales/datasets.py'), '')
 // Other local tasks may rebuild lib/. Build this acceptance candidate from an isolated source copy.
 const candidate = path.join(root, 'candidate')
 const candidatePackage = path.join(candidate, 'packages/dsh-data-analysis')
@@ -56,6 +59,7 @@ const host = await startPresentationWebHost(
   'native-first',
   {
     rightTabsAcceptance: true,
+    nativeOnly: true,
     productionPackageRoot: candidatePackage,
     datasourceDefaults: {
       duckdb: { path: ':memory:', read_only: false, extra: {} },
@@ -65,14 +69,22 @@ const host = await startPresentationWebHost(
 )
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const checks: string[] = [],
-  errors: string[] = []
+  errors: string[] = [],
+  consoleErrors: string[] = []
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
   page.setDefaultTimeout(30000)
   page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
   const credentialRoutes: string[] = []
   page.on('request', (request) => {
-    if (/inline-web-(token|header)-canary/.test(request.postData() ?? ''))
+    if (
+      /inline-web-(token|header|replacement|restored|s3key|s3secret|s3session|multi1|multi2)-canary/.test(
+        request.postData() ?? '',
+      )
+    )
       credentialRoutes.push(new URL(request.url()).pathname)
   })
   await page.goto(host.url)
@@ -99,11 +111,21 @@ try {
   await run('configure-create', 'credential-start')
   let form = page.getByRole('form', { name: '新增数据源' })
   await form.waitFor()
+  const browserTimezone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  )
+  const changedTimezone =
+    browserTimezone === 'America/New_York' ? 'Asia/Shanghai' : 'America/New_York'
+  assert.equal(
+    await form.getByLabel('wall_clock_timezone', { exact: true }).inputValue(),
+    browserTimezone,
+  )
   checks.push('owning Session automatically opens create form in right tab')
   assert.equal(await form.getByLabel('引擎', { exact: true }).inputValue(), 'duckdb')
   assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
   assert.equal(await form.getByLabel('name', { exact: true }).inputValue(), '')
-  assert.equal(await form.getByLabel('read_only', { exact: true }).inputValue(), 'false')
+  assert.equal(await form.getByLabel('read_only', { exact: true }).count(), 0)
+  await form.getByText('高级设置', { exact: true }).click()
   assert.equal(await form.getByLabel('extra', { exact: true }).inputValue(), '{}')
   await form.getByLabel('path', { exact: true }).fill('user-choice.duckdb')
   await form.getByLabel('name', { exact: true }).fill('draft-name')
@@ -112,6 +134,12 @@ try {
   await form.getByLabel('name', { exact: true }).fill('another-name')
   assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), '')
   await form.getByLabel('引擎', { exact: true }).selectOption('trino')
+  const switchWarning = form.getByRole('alert').filter({ hasText: '切换引擎将清空' })
+  await switchWarning.getByRole('button', { name: '取消', exact: true }).click()
+  assert.equal(await form.getByLabel('引擎', { exact: true }).inputValue(), 'duckdb')
+  assert.equal(await form.getByLabel('name', { exact: true }).inputValue(), 'another-name')
+  await form.getByLabel('引擎', { exact: true }).selectOption('trino')
+  await switchWarning.getByRole('button', { name: '清空并切换', exact: true }).click()
   assert.equal(
     await form.getByLabel('host', { exact: true }).inputValue(),
     'defaults.example.invalid',
@@ -128,10 +156,10 @@ try {
   )
   assert.equal(await page.getByLabel('选择已有数据源', { exact: true }).count(), 0)
   const choice = page.getByRole('group', { name: '配置方式' })
-  await choice.getByRole('button', { name: '使用已有数据源', exact: true }).click()
+  await choice.getByRole('radio', { name: '使用已有数据源', exact: true }).click()
   await page.getByLabel('选择已有数据源', { exact: true }).waitFor()
   assert.equal(await form.count(), 0)
-  await choice.getByRole('button', { name: '新增数据源', exact: true }).click()
+  await choice.getByRole('radio', { name: '新增数据源', exact: true }).click()
   await form.waitFor()
   assert.equal(await page.locator('.mc-request-reason').getAttribute('open'), null)
   await page
@@ -155,59 +183,52 @@ try {
   await form.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await form.getByLabel('name', { exact: true }).fill('configured')
   assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
-  const bearer = {
-    type: 'http_bearer',
-    scope: 'https://example.invalid/',
-    token: 'WEB_CONFIG_TOKEN',
-  }
-  const header = {
-    type: 'http_headers',
-    scope: 'https://example.invalid/',
-    headers: { 'X-Test-Auth': 'WEB_HEADER' },
-  }
-  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
-  await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).fill('discarded-draft')
-  await form.getByLabel('secrets', { exact: true }).fill('[]')
-  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
-  assert.equal(
-    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
-    '',
-  )
-  await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).fill('discarded-draft')
+  await form.getByRole('button', { name: '添加 HTTP Bearer 凭证', exact: true }).click()
+  let bearer = form.getByRole('group', { name: 'HTTP Bearer 凭证 1', exact: true })
+  await bearer.getByLabel('scope', { exact: true }).fill('https://example.invalid/')
+  await bearer.getByLabel('Bearer Token', { exact: true }).fill('discarded-draft')
+  await bearer.getByRole('button', { name: '移除凭证', exact: true }).click()
+  await form.getByRole('button', { name: '添加 HTTP Bearer 凭证', exact: true }).click()
+  bearer = form.getByRole('group', { name: 'HTTP Bearer 凭证 1', exact: true })
+  assert.equal(await bearer.getByLabel('Bearer Token', { exact: true }).inputValue(), '')
+  await bearer.getByLabel('scope', { exact: true }).fill('https://example.invalid/')
+  await bearer.getByLabel('Bearer Token', { exact: true }).fill('discarded-draft')
   await form.getByLabel('引擎', { exact: true }).selectOption('trino')
+  await switchWarning.getByRole('button', { name: '取消', exact: true }).click()
+  assert.equal(
+    await bearer.getByLabel('Bearer Token', { exact: true }).inputValue(),
+    'discarded-draft',
+  )
+  await form.getByLabel('引擎', { exact: true }).selectOption('trino')
+  await switchWarning.getByRole('button', { name: '清空并切换', exact: true }).click()
   await form.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await form.getByLabel('name', { exact: true }).fill('configured')
-  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
-  assert.equal(
-    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
-    '',
-  )
-  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer, header]))
-  await form
-    .getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true })
-    .fill('inline-web-token-canary')
-  await form
-    .getByLabel('Header 凭证值 · WEB_HEADER', { exact: true })
-    .fill('inline-web-header-canary')
+  await form.getByRole('button', { name: '添加 HTTP Bearer 凭证', exact: true }).click()
+  bearer = form.getByRole('group', { name: 'HTTP Bearer 凭证 1', exact: true })
+  assert.equal(await bearer.getByLabel('Bearer Token', { exact: true }).inputValue(), '')
+  await bearer.getByLabel('scope', { exact: true }).fill('https://example.invalid/')
+  await bearer.getByLabel('Bearer Token', { exact: true }).fill('inline-web-token-canary')
+  await form.getByRole('button', { name: '添加 HTTP Header 凭证', exact: true }).click()
+  const duplicate = form.getByRole('group', { name: 'HTTP Header 凭证 2', exact: true })
+  await duplicate.getByLabel('scope', { exact: true }).fill('https://example.invalid/')
+  await duplicate.getByLabel('Header 名称', { exact: true }).fill('X-Test-Auth')
+  await duplicate.getByLabel('Header 凭证值', { exact: true }).fill('inline-web-header-canary')
   await page.screenshot({ path: path.join(root, 'inline-credentials.png'), fullPage: true })
   await form.getByRole('button', { name: '保存并测试，成功后继续', exact: true }).click()
   await form.getByRole('alert').waitFor()
   assert.equal(
-    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
-    '',
+    await bearer.getByLabel('Bearer Token', { exact: true }).inputValue(),
+    'inline-web-token-canary',
   )
   assert.equal(
-    await form.getByLabel('Header 凭证值 · WEB_HEADER', { exact: true }).inputValue(),
-    '',
+    await duplicate.getByLabel('Header 凭证值', { exact: true }).inputValue(),
+    'inline-web-header-canary',
   )
-  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
-  await form
-    .getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true })
-    .fill('inline-web-token-canary')
+  await duplicate.getByRole('button', { name: '移除凭证', exact: true }).click()
+  await bearer.getByText('凭证引用 · 查看或复用', { exact: true }).click()
+  const bearerRef = await bearer.getByLabel('Bearer Token · 凭证引用', { exact: true }).inputValue()
   await form.getByRole('button', { name: '保存并测试，成功后继续', exact: true }).click()
-  checks.push(
-    'Runtime rejects duplicate scoped credentials; form stays open and submitted values are cleared',
-  )
+  checks.push('duplicate scoped credentials are rejected before submission; draft remains editable')
   await page.getByText('连接测试成功', { exact: true }).waitFor()
   const created = await run('configure-create', 'credential-idle')
   assert.ok(
@@ -225,16 +246,24 @@ try {
   await run('configure-edit', 'credential-start')
   form = page.getByRole('form', { name: '编辑数据源' })
   await form.waitFor()
+  assert.equal(
+    await form.getByLabel('wall_clock_timezone', { exact: true }).inputValue(),
+    browserTimezone,
+  )
   assert.equal(await form.getByLabel('name', { exact: true }).isDisabled(), true)
   assert.equal(await form.getByLabel('引擎', { exact: true }).isDisabled(), true)
   assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
+  const editedBearer = form.getByRole('group', { name: 'HTTP Bearer 凭证 1', exact: true })
   assert.equal(
-    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
-    '',
+    await editedBearer.getByLabel('scope', { exact: true }).inputValue(),
+    'https://example.invalid/',
   )
-  assert.deepEqual(JSON.parse(await form.getByLabel('secrets', { exact: true }).inputValue()), [
-    bearer,
-  ])
+  assert.equal(await editedBearer.getByLabel('Bearer Token', { exact: true }).inputValue(), '')
+  await editedBearer.getByText('凭证引用 · 查看或复用', { exact: true }).click()
+  assert.equal(
+    await editedBearer.getByLabel('Bearer Token · 凭证引用', { exact: true }).inputValue(),
+    bearerRef,
+  )
   checks.push('editing preserves credential references without echoing stored values')
   assert.deepEqual(credentialRoutes, ['/api/dsh-data-analysis-credentials/start'])
   const persisted = await page.evaluate(() =>
@@ -271,7 +300,7 @@ try {
   assert.equal(await add.innerText(), '')
   assert.equal(await add.locator('svg').count(), 1)
   const titleBounds = (await heading
-    .getByRole('heading', { name: '数据源', exact: true })
+    .getByRole('heading', { name: '数据源与凭证', exact: true })
     .boundingBox())!
   const addBounds = (await add.boundingBox())!
   const refreshBounds = (await refresh.boundingBox())!
@@ -302,9 +331,10 @@ try {
     ),
   )
   const remove = page.getByRole('button', { name: '删除已保存值', exact: true })
-  assert.equal(
+  assert.equal(await remove.getAttribute('data-variant'), 'destructive')
+  assert.notEqual(
     await remove.evaluate((button) => getComputedStyle(button).backgroundColor),
-    'rgb(254, 242, 242)',
+    'rgba(0, 0, 0, 0)',
   )
   await page.locator('.mc-panel').screenshot({ path: path.join(root, 'datasource-main.png') })
   checks.push(
@@ -312,36 +342,153 @@ try {
   )
   await page.getByRole('button', { name: '编辑配置', exact: true }).click()
   await form.waitFor()
-  await form.getByLabel('read_only', { exact: true }).selectOption('true')
+  await form.getByLabel('path', { exact: true }).fill('configured.duckdb')
+  await form.getByLabel('wall_clock_timezone', { exact: true }).fill(changedTimezone)
+  assert.equal(await form.getByLabel('read_only', { exact: true }).count(), 0)
   await form.getByRole('button', { name: '保存配置', exact: true }).click()
   await page.getByRole('button', { name: '编辑配置', exact: true }).click()
   await form.waitFor()
-  assert.equal(await form.getByLabel('read_only', { exact: true }).inputValue(), 'true')
-  checks.push('independent configuration editing saves and reads back typed values')
-  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([header]))
-  await form
-    .getByLabel('Header 凭证值 · WEB_HEADER', { exact: true })
-    .fill('inline-web-header-canary')
-  await form.getByRole('button', { name: '保存配置', exact: true }).click()
-  await page.getByRole('button', { name: '编辑配置', exact: true }).click()
-  await form.waitFor()
-  assert.deepEqual(JSON.parse(await form.getByLabel('secrets', { exact: true }).inputValue()), [
-    header,
-  ])
+  assert.equal(await form.getByLabel('read_only', { exact: true }).count(), 0)
   assert.equal(
-    await form.getByLabel('Header 凭证值 · WEB_HEADER', { exact: true }).inputValue(),
-    '',
+    await form.getByLabel('wall_clock_timezone', { exact: true }).inputValue(),
+    changedTimezone,
+  )
+  checks.push('independent configuration editing saves and reads back typed values')
+  checks.push('source timezone defaults to the browser zone and persists an edited IANA timezone')
+  await form
+    .getByRole('group', { name: 'HTTP Bearer 凭证 1', exact: true })
+    .getByRole('button', { name: '移除凭证', exact: true })
+    .click()
+  await form.getByRole('button', { name: '添加 HTTP Header 凭证', exact: true }).click()
+  let header = form.getByRole('group', { name: 'HTTP Header 凭证 1', exact: true })
+  await header.getByLabel('scope', { exact: true }).fill('https://example.invalid/')
+  await header.getByLabel('Header 名称', { exact: true }).fill('X-Test-Auth')
+  await header.getByLabel('Header 凭证值', { exact: true }).fill('inline-web-header-canary')
+  await header.getByText('凭证引用 · 查看或复用', { exact: true }).click()
+  const headerRef = await header
+    .getByLabel('Header 凭证值 · 凭证引用', { exact: true })
+    .inputValue()
+  await form.getByRole('button', { name: '保存配置', exact: true }).click()
+  await page.getByRole('button', { name: '编辑配置', exact: true }).click()
+  await form.waitFor()
+  header = form.getByRole('group', { name: 'HTTP Header 凭证 1', exact: true })
+  assert.equal(await header.getByLabel('Header 名称', { exact: true }).inputValue(), 'X-Test-Auth')
+  assert.equal(await header.getByLabel('Header 凭证值', { exact: true }).inputValue(), '')
+  await header.getByText('凭证引用 · 查看或复用', { exact: true }).click()
+  assert.equal(
+    await header.getByLabel('Header 凭证值 · 凭证引用', { exact: true }).inputValue(),
+    headerRef,
   )
   assert.deepEqual(credentialRoutes, [
     '/api/dsh-data-analysis-credentials/start',
     '/api/dsh-data-analysis-credentials/start',
   ])
   checks.push('scoped Header credentials save separately and preserve references on readback')
+  await form.getByRole('button', { name: '取消', exact: true }).click()
+  const credential = page.getByRole('group', { name: headerRef, exact: true })
+  await credential.getByRole('button', { name: '更换', exact: true }).click()
+  await credential.getByLabel('新值', { exact: true }).fill('inline-web-replacement-canary')
+  await credential.getByRole('button', { name: '确认更换', exact: true }).click()
+  await credential.getByRole('button', { name: '更换', exact: true }).waitFor()
+  await credential.getByRole('button', { name: '删除已保存值', exact: true }).click()
+  await credential.getByRole('button', { name: '确认删除已保存值', exact: true }).click()
+  await credential.getByText('未配置', { exact: true }).waitFor()
+  await credential.getByLabel('新值', { exact: true }).fill('inline-web-restored-canary')
+  await credential.getByRole('button', { name: '新增凭证', exact: true }).click()
+  await credential.getByText('已配置', { exact: true }).waitFor()
+  assert.deepEqual(credentialRoutes, [
+    '/api/dsh-data-analysis-credentials/start',
+    '/api/dsh-data-analysis-credentials/start',
+    '/api/dsh-data-analysis-credentials/start',
+    '/api/dsh-data-analysis-credentials/start',
+  ])
+  assert.doesNotMatch(
+    await page.evaluate(() =>
+      JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }),
+    ),
+    /inline-web-(token|header|replacement|restored|s3key|s3secret|s3session|multi1|multi2)-canary/,
+  )
+  checks.push('real Host credential management replaces, deletes and restores a scoped value')
+  // A second datasource exercises real S3 options and multiple HTTP headers in the Host.
+  await page.getByRole('button', { name: '新增数据源', exact: true }).click()
+  const s3Form = page.getByRole('form', { name: '新增数据源', exact: true })
+  await s3Form.waitFor()
+  await s3Form.getByLabel('name', { exact: true }).fill('structured_remote')
+  await s3Form.getByRole('button', { name: '添加 S3 凭证', exact: true }).click()
+  const s3 = s3Form.getByRole('group', { name: 'S3 凭证 1', exact: true })
+  await s3.getByLabel('scope', { exact: true }).fill('s3://fixture-bucket/data/')
+  await s3.getByLabel('region', { exact: true }).fill('us-east-1')
+  await s3.getByLabel('Access Key ID', { exact: true }).fill('inline-web-s3key-canary')
+  await s3.getByLabel('Secret Access Key', { exact: true }).fill('inline-web-s3secret-canary')
+  await s3.getByLabel('Session Token', { exact: true }).fill('inline-web-s3session-canary')
+  await s3.getByText('S3 连接选项', { exact: true }).click()
+  await s3.getByLabel('endpoint', { exact: true }).fill('s3.example.invalid:9000')
+  await s3.getByLabel('url_style', { exact: true }).selectOption('path')
+  await s3.getByLabel('use_ssl', { exact: true }).selectOption('false')
+  await s3.screenshot({ path: path.join(root, 's3-fields.png') })
+  await s3Form.getByRole('button', { name: '添加 HTTP Header 凭证', exact: true }).click()
+  const multi = s3Form.getByRole('group', { name: 'HTTP Header 凭证 2', exact: true })
+  await multi.getByLabel('scope', { exact: true }).fill('https://headers.example.invalid/')
+  await multi.getByLabel('Header 名称', { exact: true }).first().fill('X-First')
+  await multi.getByLabel('Header 凭证值', { exact: true }).first().fill('inline-web-multi1-canary')
+  await multi.getByRole('button', { name: '添加 Header', exact: true }).click()
+  await multi.getByLabel('Header 名称', { exact: true }).nth(1).fill('X-Second')
+  await multi.getByLabel('Header 凭证值', { exact: true }).nth(1).fill('inline-web-multi2-canary')
+  await s3Form.screenshot({ path: path.join(root, 'structured-credentials.png') })
+  await s3Form.getByRole('button', { name: '确认新增数据源', exact: true }).click()
+  await page.getByRole('button', { name: '编辑配置', exact: true }).waitFor()
+  await page.getByRole('button', { name: '编辑配置', exact: true }).click()
+  const s3EditForm = page.getByRole('form', { name: '编辑数据源', exact: true })
+  await s3EditForm.waitFor()
+  const s3Edit = s3EditForm.getByRole('group', { name: /^S3 凭证/ })
+  assert.equal(
+    await s3Edit.getByLabel('scope', { exact: true }).inputValue(),
+    's3://fixture-bucket/data/',
+  )
+  assert.equal(await s3Edit.getByLabel('region', { exact: true }).inputValue(), 'us-east-1')
+  assert.equal(await s3Edit.getByLabel('Session Token', { exact: true }).inputValue(), '')
+  await s3Edit.getByText('S3 连接选项', { exact: true }).click()
+  assert.equal(
+    await s3Edit.getByLabel('endpoint', { exact: true }).inputValue(),
+    's3.example.invalid:9000',
+  )
+  assert.equal(await s3Edit.getByLabel('url_style', { exact: true }).inputValue(), 'path')
+  assert.equal(await s3Edit.getByLabel('use_ssl', { exact: true }).inputValue(), 'false')
+  const multiEdit = s3EditForm.getByRole('group', { name: /^HTTP Header 凭证/ })
+  assert.deepEqual(
+    await multiEdit
+      .getByLabel('Header 名称', { exact: true })
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+    ['X-First', 'X-Second'],
+  )
+  assert.deepEqual(
+    await multiEdit
+      .getByLabel('Header 凭证值', { exact: true })
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+    ['', ''],
+  )
+  assert.equal(credentialRoutes.length, 5)
+  assert(credentialRoutes.every((route) => route === '/api/dsh-data-analysis-credentials/start'))
+  assert.doesNotMatch(
+    await page.evaluate(() =>
+      JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }),
+    ),
+    /inline-web-(s3key|s3secret|s3session|multi1|multi2)-canary/,
+  )
+  await s3EditForm.getByRole('button', { name: '取消', exact: true }).click()
+  checks.push(
+    'S3 optional settings and multiple Header credentials survive Host save and edit without disclosing values',
+  )
+  await page.setViewportSize({ width: 390, height: 844 })
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  await page.screenshot({ path: path.join(root, 'mobile.png'), fullPage: true })
+  checks.push('Host credential management fits a 390px viewport')
   assert.deepEqual(errors, [])
+  assert.deepEqual(consoleErrors, [])
   await page.screenshot({ path: path.join(root, 'configuration.png'), fullPage: true })
   await writeFile(
     path.join(root, 'evidence.json'),
-    JSON.stringify({ checks, errors, moduleDigests: host.moduleDigests }, null, 2),
+    JSON.stringify({ checks, errors, consoleErrors, moduleDigests: host.moduleDigests }, null, 2),
   )
   process.stdout.write(JSON.stringify({ passed: true, root, checks }) + '\n')
 } catch (error) {

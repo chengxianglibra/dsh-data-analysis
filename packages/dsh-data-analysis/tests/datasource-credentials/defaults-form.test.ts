@@ -17,7 +17,13 @@ const compiled = await build({
 })
 
 /** Exercise the production form's effects and submit handler without a simulated serializer. */
-async function form(edit: boolean, originalSource: string | undefined, defaults = true) {
+async function form(
+  edit: boolean,
+  originalSource: string | undefined,
+  defaults = true,
+  timezone?: { original?: string; clear?: boolean },
+  duckdbReadOnly?: boolean,
+) {
   const saved: Record<string, unknown>[] = []
   const modes: string[] = []
   const schema = {
@@ -25,11 +31,19 @@ async function form(edit: boolean, originalSource: string | undefined, defaults 
     fingerprint: 'runtime',
     backends: [
       {
-        name: 'trino',
-        fields: ['name', 'host', 'source'].map((name) => ({ name, type: 'string' })),
+        name: duckdbReadOnly === undefined ? 'trino' : 'duckdb',
+        fields: [
+          'name',
+          'host',
+          'source',
+          ...(timezone ? ['wall_clock_timezone'] : []),
+          ...(duckdbReadOnly === undefined ? [] : ['read_only']),
+        ].map((name) => ({ name, type: name === 'read_only' ? 'boolean' : 'string' })),
       },
     ],
-    ...(defaults ? { creationDefaults: { trino: { source: '' } } } : {}),
+    ...(defaults
+      ? { creationDefaults: { trino: { source: '' }, duckdb: { read_only: true } } }
+      : {}),
   }
   const state: unknown[] = []
   let index = 0
@@ -80,11 +94,13 @@ async function form(edit: boolean, originalSource: string | undefined, defaults 
       async configuration() {
         return {
           name: 'db',
-          backend: 'trino',
+          backend: duckdbReadOnly === undefined ? 'trino' : 'duckdb',
           fields: {
             name: 'db',
             host: 'old',
             ...(originalSource === undefined ? {} : { source: originalSource }),
+            ...(timezone?.original === undefined ? {} : { wall_clock_timezone: timezone.original }),
+            ...(duckdbReadOnly === undefined ? {} : { read_only: duckdbReadOnly }),
           },
           version: 'v1',
         }
@@ -103,7 +119,13 @@ async function form(edit: boolean, originalSource: string | undefined, defaults 
   await new Promise<void>((resolve) => setImmediate(resolve))
   assert.equal(state[7], '')
   // Simulate changing host, keeping source untouched (or clearing a nonempty source).
-  state[3] = { ...(state[3] as object), name: 'db', host: 'new', source: '' }
+  state[3] = {
+    ...(state[3] as object),
+    name: 'db',
+    host: 'new',
+    source: '',
+    ...(timezone?.clear ? { wall_clock_timezone: '' } : {}),
+  }
   index = 0
   const tree = module.exports.CreateDatasource(props)
   await tree.props.onSubmit({ preventDefault() {} })
@@ -120,10 +142,36 @@ test('new empty defaults survive editing unrelated fields even after defaults ar
   assert.deepEqual(edited.modes, ['edit'])
 })
 
+test('DuckDB creation uses Runtime read_only default and editing preserves existing values', async () => {
+  assert.equal(
+    Object.hasOwn((await form(false, undefined, true, undefined, true)).fields, 'read_only'),
+    false,
+  )
+  for (const value of [true, false]) {
+    assert.equal((await form(true, undefined, true, undefined, value)).fields.read_only, value)
+  }
+})
+
 test('ordinary empty inputs retain omission semantics and edit never applies new defaults', async () => {
   for (const initial of [undefined, 'previous']) {
     const edited = await form(true, initial)
     assert.equal(Object.hasOwn(edited.fields, 'source'), false)
   }
   assert.equal(Object.hasOwn((await form(false, undefined, false)).fields, 'source'), false)
+})
+
+test('browser timezone is submitted on creation; edits preserve or explicitly clear the source timezone', async () => {
+  const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const created = await form(false, undefined, false, {})
+  assert.equal(created.fields.wall_clock_timezone, localZone)
+  for (const initial of ['Asia/Shanghai', '+08:00', '']) {
+    const edited = await form(true, undefined, false, { original: initial })
+    assert.equal(edited.fields.wall_clock_timezone, initial)
+  }
+  assert.equal((await form(true, undefined, false, {})).fields.wall_clock_timezone, undefined)
+  assert.equal(
+    (await form(true, undefined, false, { original: 'Asia/Shanghai', clear: true })).fields
+      .wall_clock_timezone,
+    undefined,
+  )
 })

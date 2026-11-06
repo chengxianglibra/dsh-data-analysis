@@ -69,11 +69,14 @@ def configuration(name, cls):
     import marivo.semantic as ms
     description = md.load().describe(name)
     details = ms.load().get("datasource:" + name).to_dict()["definition"]
-    if details["backend_type"] != description.backend_type or dict(details["fields"]) != description.literal_fields or dict(details["env_refs"]) != description.env_refs:
+    if details["backend_type"] != description.backend_type or details["wall_clock_timezone"] != description.wall_clock_timezone or dict(details["fields"]) != description.literal_fields or dict(details["env_refs"]) != description.env_refs:
         raise ValueError("context-changed")
     context = details["context"]
     allowed = {field["name"] for field in spec_fields(cls)}
     fields = {"name": name}
+    if description.wall_clock_timezone is not None:
+        if "wall_clock_timezone" not in allowed: raise ValueError("datasource-definition-invalid")
+        fields["wall_clock_timezone"] = description.wall_clock_timezone
     extra = {}
     for key, value in description.literal_fields.items():
         if key in allowed and key != "extra": fields[key] = value

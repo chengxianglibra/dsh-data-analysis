@@ -52,6 +52,7 @@ async function refreshFixture(t: TestContext) {
     scope: string
     finish: () => void
   }> = []
+  const starts: Array<{ version: string }> = []
   const model = new CredentialClientModel({
     async call(_channel, endpoint, payload, signal) {
       if (endpoint === 'overview') {
@@ -63,7 +64,10 @@ async function refreshFixture(t: TestContext) {
         })
         return { ok: true, value: await response.promise }
       }
-      if (endpoint === 'start') return { ok: true, value: {} }
+      if (endpoint === 'start') {
+        starts.push(payload as { version: string })
+        return { ok: true, value: {} }
+      }
       assert.equal(endpoint, 'operation')
       const handle = payload as { id: string; scope: string },
         gate = barrier()
@@ -87,7 +91,7 @@ async function refreshFixture(t: TestContext) {
   model.show('workspace')
   reads[0]!.response.resolve({ generation, datasources: [a, b] })
   await nextTurn()
-  return { a, b, generation, model, reads, operations }
+  return { a, b, generation, model, reads, operations, starts }
 }
 
 function tested(context: CredentialContextView, at: number): CredentialContextView {
@@ -296,19 +300,20 @@ test('background completion refreshes datasource results without clearing or cha
   )
 })
 
-test('a passive overview cannot replace a datasource after a newer operation starts', async (t) => {
+test('a newer operation waits until the preceding datasource overview is applied', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
   const first = model.start(b, 'test')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
+  model.select(b.token)
   const second = model.start(b, 'test')
   await nextTurn()
-  model.select(b.token)
   reads[1]!.response.resolve({ generation, datasources: [a, tested(b, 1000)] })
   await first
+  await nextTurn()
   assert.equal(model.getSnapshot().selected, b.token)
-  assert.equal(model.getSnapshot().datasources[1]?.lastTest, undefined)
+  assert.equal(model.getSnapshot().datasources[1]?.lastTest?.at, 1000)
   assert.equal(model.getSnapshot().operations.length, 1)
   operations[1]!.finish()
   await nextTurn()
@@ -395,6 +400,139 @@ test('a failed passive refresh leaves the operation result unconfirmed until a l
   await refresh
   assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, true)
   assert.equal(model.getSnapshot().datasources[1]?.lastTest?.at, 2000)
+})
+
+test('a consecutive credential action waits for the previous refresh and uses its current version', async (t) => {
+  const { a, b, generation, model, reads, operations, starts } = await refreshFixture(t)
+  const first = model.start(b, 'test')
+  await nextTurn()
+  operations[0]!.finish()
+  await nextTurn()
+  const second = model.start(b, 'delete', {}, 'DB_PASSWORD')
+  await nextTurn()
+  assert.deepEqual(
+    starts.map((item) => item.version),
+    ['before'],
+  )
+  reads[1]!.response.resolve({ generation, datasources: [a, { ...b, version: 'after' }] })
+  await first
+  await nextTurn()
+  assert.deepEqual(
+    starts.map((item) => item.version),
+    ['before', 'after'],
+  )
+  operations[1]!.finish()
+  await nextTurn()
+  reads[2]!.response.resolve({ generation, datasources: [a, { ...b, version: 'after' }] })
+  await second
+})
+
+test('a consecutive action fails closed if the previous overview cannot be refreshed', async (t) => {
+  const { b, model, reads, operations, starts } = await refreshFixture(t)
+  const first = model.start(b, 'test')
+  await nextTurn()
+  operations[0]!.finish()
+  await nextTurn()
+  const changes = { DB_PASSWORD: 'sensitive-input' }
+  const second = model.start(b, 'save', changes)
+  reads[1]!.response.reject(new Error('offline'))
+  await Promise.all([first, second])
+  assert.equal(starts.length, 1)
+  assert.deepEqual(changes, {})
+  assert.match(translator('zh-CN')(model.getSnapshot().error), /凭证.*变化/)
+  const retryChanges = { DB_PASSWORD: 'later-sensitive-input' }
+  await model.start(b, 'save', retryChanges)
+  assert.equal(starts.length, 1)
+  assert.deepEqual(retryChanges, {})
+})
+
+test('a Host notification does not cancel the post-operation authoritative refresh', async (t) => {
+  const { a, b, generation, model, reads, operations } = await refreshFixture(t)
+  const first = model.start(b, 'test')
+  await nextTurn()
+  operations[0]!.finish()
+  await nextTurn()
+  const notification = model.refreshDatasources()
+  await nextTurn()
+  assert.equal(reads[1]!.signal?.aborted, false)
+  assert.equal(reads.length, 2)
+  reads[1]!.response.resolve({ generation, datasources: [a, { ...b, version: 'after' }] })
+  await first
+  await nextTurn()
+  reads[2]!.response.resolve({ generation, datasources: [a, { ...b, version: 'after' }] })
+  await notification
+  assert.equal(model.getSnapshot().datasources[1]?.version, 'after')
+  assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, true)
+})
+
+test('a notification overview can recover an earlier failed post-operation refresh', async (t) => {
+  const { a, b, generation, model, reads, operations } = await refreshFixture(t)
+  const first = model.start(b, 'test')
+  await nextTurn()
+  operations[0]!.finish()
+  await nextTurn()
+  reads[1]!.response.reject(new Error('offline'))
+  await first
+  assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, undefined)
+  const notification = model.refreshDatasources()
+  await nextTurn()
+  reads[2]!.response.resolve({ generation, datasources: [a, { ...b, version: 'after' }] })
+  await notification
+  assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, true)
+  assert.equal(model.getSnapshot().datasources[1]?.version, 'after')
+})
+
+test('a notification overview cannot restore an old Host generation after reconnect', async (t) => {
+  const { a, b, generation, model, reads } = await refreshFixture(t)
+  model.syncRequests('session', model.getSnapshot())
+  const old = model.refreshDatasources()
+  await nextTurn()
+  const nextGeneration = randomUUID()
+  model.syncRequests('session', { ...model.getSnapshot(), generation: nextGeneration })
+  await nextTurn()
+  assert.equal(reads[1]!.signal?.aborted, true)
+  reads[2]!.response.resolve({ generation: nextGeneration, datasources: [a, b] })
+  reads[1]!.response.resolve({ generation, datasources: [tested(a, 1000), b] })
+  await old
+  await nextTurn()
+  assert.equal(model.getSnapshot().generation, nextGeneration)
+  assert.equal(model.getSnapshot().datasources[0]?.lastTest, undefined)
+})
+
+test('a refresh superseded by another datasource cannot authorize a consecutive write', async (t) => {
+  const { a, b, generation, model, reads, operations, starts } = await refreshFixture(t)
+  const first = model.start(b, 'test')
+  await nextTurn()
+  operations[0]!.finish()
+  await nextTurn()
+  const changes = { DB_PASSWORD: 'sensitive-input' }
+  const second = model.start(b, 'save', changes)
+  const other = model.start(a, 'test')
+  await nextTurn()
+  operations[1]!.finish()
+  await nextTurn()
+  assert.equal(reads[1]!.signal?.aborted, true)
+  reads[1]!.response.resolve({ generation, datasources: [a, b] })
+  reads[2]!.response.resolve({ generation, datasources: [a, b] })
+  await Promise.all([first, second, other])
+  assert.equal(starts.length, 2)
+  assert.deepEqual(changes, {})
+})
+
+test('switching request during the overview refresh cannot redirect pending credentials', async (t) => {
+  const { a, b, generation, model, reads, operations, starts } = await refreshFixture(t)
+  const first = model.start(b, 'test')
+  await nextTurn()
+  operations[0]!.finish()
+  await nextTurn()
+  const changes = { DB_PASSWORD: 'sensitive-input' }
+  const second = model.start(b, 'save', changes)
+  model.openRequest('other-request')
+  reads[1]!.response.resolve({ generation, datasources: [a, b] })
+  await Promise.all([first, second])
+  assert.equal(starts.length, 1)
+  assert.deepEqual(changes, {})
+  assert.equal(model.getSnapshot().requestId, 'other-request')
 })
 
 test('an overview begun before operation completion cannot confirm that later result', async (t) => {

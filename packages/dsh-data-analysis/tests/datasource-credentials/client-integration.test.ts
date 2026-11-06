@@ -77,6 +77,61 @@ test('unknown generation or operation is reported as unrecoverable, never as an 
   assert.match(translator('zh-CN')(model.getSnapshot().error), /保存可能已经发生/)
   assert.equal(model.getSnapshot().operation, undefined)
 })
+test('a rejected start reports the Host conflict without querying an unknown operation', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = { ...(await context(f)), workspaceId: 'workspace' }
+  const generation = randomUUID(),
+    calls: string[] = []
+  const model = new CredentialClientModel({
+    async call(_channel, endpoint) {
+      calls.push(endpoint)
+      if (endpoint === 'overview') return { ok: true, value: { generation, datasources: [view] } }
+      assert.equal(endpoint, 'start')
+      return { ok: false, error: { message: 'credentials-changed' } }
+    },
+  })
+  t.after(() => model.dispose())
+  await model.show('workspace')
+  await model.start(view, 'delete', {}, 'DB_PASSWORD')
+  assert.equal(calls.filter((name) => name === 'operation').length, 0)
+  assert.deepEqual(model.getSnapshot().outcomes[view.token]?.operation?.errors, [
+    'credentials-changed',
+  ])
+})
+test('a generic Host error still queries the preallocated operation instead of replaying', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const view = await context(f)
+  const calls: string[] = []
+  const model = new CredentialClientModel({
+    async call(_channel, endpoint, payload) {
+      calls.push(endpoint)
+      if (endpoint === 'overview')
+        return { ok: true, value: { generation: f.service.generation, datasources: [view] } }
+      if (endpoint === 'start')
+        return { ok: false, error: { message: 'credential-operation-failed' } }
+      assert.equal(endpoint, 'operation')
+      return {
+        ok: true,
+        value: {
+          ...(payload as object),
+          action: 'save',
+          status: 'succeeded',
+          phase: 'settled',
+          saved: ['DB_PASSWORD'],
+          errors: [],
+        },
+      }
+    },
+  })
+  t.after(() => model.dispose())
+  await model.show(view.workspaceId)
+  await model.start(view, 'save', { DB_PASSWORD: 'private-value' })
+  assert.equal(calls.filter((name) => name === 'start').length, 1)
+  assert.equal(calls.filter((name) => name === 'operation').length, 1)
+  assert.equal(model.getSnapshot().outcomes[view.token]?.operation?.status, 'succeeded')
+})
 test('closing the page or switching Workspace ignores late overview replies', async (t) => {
   const f = fixture()
   t.after(() => f.service.close())

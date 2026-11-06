@@ -1,9 +1,48 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
-  'marivo.credentials.scoped-secrets-reference-json':
-    '填写 JSON 数组，仅填写已保存的凭证引用名，不填写秘密值。例如：[ {"type":"http_bearer","scope":"https://example.com/","token":"API_TOKEN"} ]。S3 使用 type、scope、region、key_id、secret 和可选 session_token；HTTP Header 使用 type=http_headers、scope 和 headers 引用映射。可在下方填写引用对应的值，留空则使用已保存的值。',
-  'marivo.credentials.scoped-secret-value-help':
-    '留空使用已保存的凭证；新值会通过凭证管理安全保存。',
+  'marivo.credentials.basic-settings': '基本配置',
+  'marivo.credentials.advanced-settings': '高级设置',
+  'marivo.credentials.autocommit-required':
+    'MySQL 和 PostgreSQL 仅支持默认或启用自动提交；请选择默认或 true。',
+  'marivo.credentials.unsupported-value': '不支持的值',
+  'marivo.credentials.datasource-name-rule':
+    '数据源名称以小写字母开头，仅含小写字母、数字和下划线。',
+  'marivo.credentials.duckdb-path-current': 'DuckDB 数据库文件路径，或 :memory:。',
+  'marivo.credentials.duckdb-read-only-current': '以原生只读模式打开 DuckDB 数据库文件。',
+  'marivo.credentials.autocommit-current': '使用 true 或留空，以启用自动提交。',
+  'marivo.credentials.scoped-credentials': '远程访问凭证',
+  'marivo.credentials.scoped-add-s3': '添加 S3 凭证',
+  'marivo.credentials.scoped-add-bearer': '添加 HTTP Bearer 凭证',
+  'marivo.credentials.scoped-add-headers': '添加 HTTP Header 凭证',
+  'marivo.credentials.scoped-s3': 'S3 凭证',
+  'marivo.credentials.scoped-bearer': 'HTTP Bearer 凭证',
+  'marivo.credentials.scoped-headers': 'HTTP Header 凭证',
+  'marivo.credentials.scoped-remove': '移除凭证',
+  'marivo.credentials.scoped-add-header': '添加 Header',
+  'marivo.credentials.scoped-remove-header': '移除 Header',
+  'marivo.credentials.scoped-header-name': 'Header 名称',
+  'marivo.credentials.scoped-header-value': 'Header 凭证值',
+  'marivo.credentials.scoped-access-key': 'Access Key ID',
+  'marivo.credentials.scoped-secret-key': 'Secret Access Key',
+  'marivo.credentials.scoped-session-token': 'Session Token',
+  'marivo.credentials.scoped-bearer-token': 'Bearer Token',
+  'marivo.credentials.scoped-reference': '凭证引用',
+  'marivo.credentials.scoped-reference-options': '凭证引用 · 查看或复用',
+  'marivo.credentials.scoped-value-help':
+    '填写新值会创建新引用；如需更换共享的已保存凭证，请在凭证管理中确认。',
+  'marivo.credentials.scoped-scope-help': '凭证仅用于匹配此范围的地址。',
+  'marivo.credentials.scoped-unsupported': '当前 Runtime 的凭证格式无法安全编辑。',
+  'marivo.credentials.scoped-duplicate-headers': 'Header 名称不能为空或重复。',
+  'marivo.credentials.scoped-duplicate-scope':
+    '同一范围不能重复配置；HTTP Bearer 和 Header 凭证也不能共用相同范围。',
+  'marivo.credentials.scoped-empty-reference': '请填写凭证值或已有凭证引用。',
+  'marivo.credentials.scoped-name-required': '请先填写数据源名称，再填写凭证值。',
+  'marivo.credentials.manual-reference-with-value':
+    '手动引用仅用于复用已保存的凭证；填写新值请恢复自动引用，或在凭证管理中确认更换。',
+  'marivo.credentials.scoped-s3-options': 'S3 连接选项',
+  'marivo.credentials.scoped-default': '默认',
+  'marivo.credentials.scoped-enabled': '启用',
+  'marivo.credentials.scoped-disabled': '禁用',
   'marivo.credentials.username': '用户名',
   'marivo.credentials.password': '密码',
   'marivo.credentials.access-token': '访问令牌',
@@ -18,6 +57,8 @@ export const zh = {
   'marivo.credentials.add-datasource': '新增数据源',
   'marivo.credentials.loading-datasource-configuration-fields': '正在读取数据源配置字段…',
   'marivo.credentials.engine': '引擎',
+  'marivo.credentials.switch-engine-warning': '切换引擎将清空当前未保存的配置和凭证输入。',
+  'marivo.credentials.switch-engine-confirm': '清空并切换',
   'marivo.credentials.default': '默认',
   'marivo.credentials.connection-credentials': '连接凭证',
   'marivo.credentials.enter-credential-values-directly-for-harness-to-save-references':
@@ -80,6 +121,12 @@ export const zh = {
   'marivo.credentials.optional-client-application-or-request-source-identifier':
     '可选，标识客户端应用或请求来源。',
   'marivo.credentials.optional-database-session-timezone': '可选，数据库会话使用的时区。',
+  'marivo.credentials.source-timezone-help':
+    '用于解释没有时区的时间和业务日期，不改变数据库连接或实际时间点。可选择时区、输入固定偏移，或留空不声明。',
+  'marivo.credentials.choose-timezone': '选择时区',
+  'marivo.credentials.search-timezone': '搜索时区',
+  'marivo.credentials.use-timezone': '使用所选时区',
+  'marivo.credentials.timezone-no-matches': '没有匹配的时区；也可保留手动输入的值。',
   'marivo.credentials.enter-https-to-enable-tls-encryption': '填写 https 以启用 TLS 加密连接。',
   'marivo.credentials.optional-trino-client-tags-as-a-json-array':
     '可选，Trino 客户端标签，使用 JSON 数组填写。',
@@ -308,10 +355,53 @@ export const zh = {
   'marivo.credentials.save-failed': '保存配置失败。',
 } as const
 export const en = {
-  'marivo.credentials.scoped-secrets-reference-json':
-    'Enter a JSON array containing saved credential references only, never secret values. Example: [{"type":"http_bearer","scope":"https://example.com/","token":"API_TOKEN"}]. S3 uses type, scope, region, key_id, secret, and optional session_token; HTTP headers use type=http_headers, scope, and a headers reference map. Enter each value below or leave it blank to use a saved value.',
-  'marivo.credentials.scoped-secret-value-help':
-    'Leave blank to use a saved credential; new values are saved through credential management.',
+  'marivo.credentials.basic-settings': 'Basic configuration',
+  'marivo.credentials.advanced-settings': 'Advanced settings',
+  'marivo.credentials.autocommit-required':
+    'MySQL and PostgreSQL only support the default or enabled autocommit; choose default or true.',
+  'marivo.credentials.unsupported-value': 'Unsupported value',
+  'marivo.credentials.datasource-name-rule':
+    'Datasource names must start with a lowercase letter and contain only lowercase letters, digits, and underscores.',
+  'marivo.credentials.duckdb-path-current': 'DuckDB database file path or :memory:.',
+  'marivo.credentials.duckdb-read-only-current':
+    'Open a DuckDB database file in native read-only mode.',
+  'marivo.credentials.autocommit-current': 'Use true or omit this option to enable autocommit.',
+  'marivo.credentials.scoped-credentials': 'Remote access credentials',
+  'marivo.credentials.scoped-add-s3': 'Add S3 credential',
+  'marivo.credentials.scoped-add-bearer': 'Add HTTP Bearer credential',
+  'marivo.credentials.scoped-add-headers': 'Add HTTP Header credential',
+  'marivo.credentials.scoped-s3': 'S3 credential',
+  'marivo.credentials.scoped-bearer': 'HTTP Bearer credential',
+  'marivo.credentials.scoped-headers': 'HTTP Header credential',
+  'marivo.credentials.scoped-remove': 'Remove credential',
+  'marivo.credentials.scoped-add-header': 'Add Header',
+  'marivo.credentials.scoped-remove-header': 'Remove Header',
+  'marivo.credentials.scoped-header-name': 'Header name',
+  'marivo.credentials.scoped-header-value': 'Header credential value',
+  'marivo.credentials.scoped-access-key': 'Access Key ID',
+  'marivo.credentials.scoped-secret-key': 'Secret Access Key',
+  'marivo.credentials.scoped-session-token': 'Session Token',
+  'marivo.credentials.scoped-bearer-token': 'Bearer Token',
+  'marivo.credentials.scoped-reference': 'Credential reference',
+  'marivo.credentials.scoped-reference-options': 'Credential reference · view or reuse',
+  'marivo.credentials.scoped-value-help':
+    'A new value creates a new reference. To replace a shared saved credential, confirm it in credential management.',
+  'marivo.credentials.scoped-scope-help':
+    'The credential applies only to addresses within this scope.',
+  'marivo.credentials.scoped-unsupported':
+    'This Runtime credential format cannot be edited safely.',
+  'marivo.credentials.scoped-duplicate-headers': 'Header names must not be empty or duplicated.',
+  'marivo.credentials.scoped-duplicate-scope':
+    'A scope may only be configured once; HTTP Bearer and Header credentials cannot share it.',
+  'marivo.credentials.scoped-empty-reference': 'Enter a credential value or an existing reference.',
+  'marivo.credentials.scoped-name-required':
+    'Enter the datasource name before entering a credential value.',
+  'marivo.credentials.manual-reference-with-value':
+    'Manual references only reuse saved credentials. Restore the automatic reference for a new value, or confirm the replacement in credential management.',
+  'marivo.credentials.scoped-s3-options': 'S3 connection options',
+  'marivo.credentials.scoped-default': 'Default',
+  'marivo.credentials.scoped-enabled': 'Enabled',
+  'marivo.credentials.scoped-disabled': 'Disabled',
   'marivo.credentials.username': 'Username',
   'marivo.credentials.password': 'Password',
   'marivo.credentials.access-token': 'Access token',
@@ -327,6 +417,9 @@ export const en = {
   'marivo.credentials.loading-datasource-configuration-fields':
     'Loading datasource configuration fields…',
   'marivo.credentials.engine': 'Engine',
+  'marivo.credentials.switch-engine-warning':
+    'Switching engines clears the unsaved configuration and credential inputs.',
+  'marivo.credentials.switch-engine-confirm': 'Clear and switch',
   'marivo.credentials.default': 'Default',
   'marivo.credentials.connection-credentials': 'Connection credentials',
   'marivo.credentials.enter-credential-values-directly-for-harness-to-save-references':
@@ -396,6 +489,13 @@ export const en = {
   'marivo.credentials.optional-client-application-or-request-source-identifier':
     'Optional client application or request source identifier.',
   'marivo.credentials.optional-database-session-timezone': 'Optional database session timezone.',
+  'marivo.credentials.source-timezone-help':
+    'Interprets timestamps without a timezone and business dates; does not change the connection or actual instants. Choose a timezone, enter a fixed offset, or leave blank to omit it.',
+  'marivo.credentials.choose-timezone': 'Choose timezone',
+  'marivo.credentials.search-timezone': 'Search timezones',
+  'marivo.credentials.use-timezone': 'Use selected timezone',
+  'marivo.credentials.timezone-no-matches':
+    'No matching timezones; you can keep the value you entered.',
   'marivo.credentials.enter-https-to-enable-tls-encryption':
     'Enter https to enable TLS encryption.',
   'marivo.credentials.optional-trino-client-tags-as-a-json-array':

@@ -270,7 +270,7 @@ test('installed management UI renders typed properties as read-only text beside 
     attributes.includes(properties.long_field_name_that_must_wrap_on_a_narrow_screen as string),
   )
   assert.doesNotMatch(attributes, /<input|<button|DB_PASSWORD|<script>/)
-  assert.match(translator('zh-CN')(html), /data-slot="card-title"[^>]*>凭证<\//)
+  assert.match(translator('zh-CN')(html), /aria-level="4"[^>]*>.*?<\/svg>凭证<\/div>/s)
   assert.match(html, /DB_PASSWORD/)
   assert.match(translator('zh-CN')(html), />更换<\/button>/)
   assert.doesNotMatch(html, /harness-private-canary/)

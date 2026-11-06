@@ -1,16 +1,20 @@
 // Presentation-only translations of public Runtime descriptions, not a field schema.
 // Match the complete source text so changed or newly added descriptions retain their meaning.
 const descriptions: Record<string, string> = {
+  'Global datasource name; must match [a-z][a-z0-9_]*.': 'marivo.credentials.datasource-name-rule',
   'Global datasource name; letters, digits, underscores, and hyphens only.':
     'marivo.credentials.global-datasource-name-use-only-letters-numbers-underscores-and',
   'Rare JSON-safe ibis keyword arguments not modeled by the typed class.':
     'marivo.credentials.additional-connection-parameters-for-ibis-options-not-listed-in',
   'DuckDB database path; defaults to in-memory.':
     'marivo.credentials.duckdb-database-file-path-defaults-to-an-in-memory',
+  'DuckDB database path or :memory:.': 'marivo.credentials.duckdb-path-current',
   'SQLite database path; defaults to in-memory.':
     'marivo.credentials.sqlite-database-file-path-defaults-to-an-in-memory',
   'Open the DuckDB database in read-only mode.':
     'marivo.credentials.open-the-duckdb-database-in-read-only-mode',
+  'Open a DuckDB database file in native read-only mode.':
+    'marivo.credentials.duckdb-read-only-current',
   'Open the SQLite database in query-only mode.':
     'marivo.credentials.open-the-sqlite-database-in-query-only-mode',
   'Optional mapping from declared SQLite type names to Ibis type strings.':
@@ -26,6 +30,8 @@ const descriptions: Record<string, string> = {
     'marivo.credentials.trino-catalog-name-mapped-to-the-ibis-database-parameter',
   'Required environment variable for the Trino user.':
     'marivo.credentials.required-credential-reference-for-the-trino-username',
+  'Required EnvRef from md.env for the Trino user.':
+    'marivo.credentials.required-credential-reference-for-the-trino-username',
   'Trino port; ibis default is 8080.': 'marivo.credentials.trino-port-ibis-defaults-to-8080',
   'Optional default schema.': 'marivo.credentials.optional-default-schema-name',
   'Optional client application/source tag.':
@@ -37,14 +43,21 @@ const descriptions: Record<string, string> = {
     'marivo.credentials.optional-trino-session-properties-as-a-json-object',
   'Environment variable for Trino auth token or password.':
     'marivo.credentials.credential-reference-for-the-trino-token-or-password',
+  'EnvRef from md.env for Trino auth token or password.':
+    'marivo.credentials.credential-reference-for-the-trino-token-or-password',
   'MySQL host.': 'marivo.credentials.mysql-server-host-address',
   'MySQL database name.': 'marivo.credentials.mysql-database-name',
   'MySQL port; ibis default is 3306.': 'marivo.credentials.mysql-port-ibis-defaults-to-3306',
   'Optional autocommit override.':
     'marivo.credentials.optional-setting-for-automatic-transaction-commits',
+  'Use True or omit this option to use autocommit.': 'marivo.credentials.autocommit-current',
   'Environment variable for MySQL user.':
     'marivo.credentials.credential-reference-for-the-mysql-username',
+  'EnvRef from md.env for MySQL user.':
+    'marivo.credentials.credential-reference-for-the-mysql-username',
   'Environment variable for MySQL password.':
+    'marivo.credentials.credential-reference-for-the-mysql-password',
+  'EnvRef from md.env for MySQL password.':
     'marivo.credentials.credential-reference-for-the-mysql-password',
   'Postgres host.': 'marivo.credentials.postgresql-server-host-address',
   'Postgres database name.': 'marivo.credentials.postgresql-database-name',
@@ -52,7 +65,11 @@ const descriptions: Record<string, string> = {
     'marivo.credentials.postgresql-port-ibis-defaults-to-5432',
   'Environment variable for Postgres user.':
     'marivo.credentials.credential-reference-for-the-postgresql-username',
+  'EnvRef from md.env for Postgres user.':
+    'marivo.credentials.credential-reference-for-the-postgresql-username',
   'Environment variable for Postgres password.':
+    'marivo.credentials.credential-reference-for-the-postgresql-password',
+  'EnvRef from md.env for Postgres password.':
     'marivo.credentials.credential-reference-for-the-postgresql-password',
   'ClickHouse host.': 'marivo.credentials.clickhouse-server-host-address',
   'ClickHouse port; native default is 9000, secure default is 9440.':
@@ -64,7 +81,11 @@ const descriptions: Record<string, string> = {
     'marivo.credentials.optional-clickhouse-settings-as-a-json-object',
   'Environment variable for ClickHouse user.':
     'marivo.credentials.credential-reference-for-the-clickhouse-username',
+  'EnvRef from md.env for ClickHouse user.':
+    'marivo.credentials.credential-reference-for-the-clickhouse-username',
   'Environment variable for ClickHouse password.':
+    'marivo.credentials.credential-reference-for-the-clickhouse-password',
+  'EnvRef from md.env for ClickHouse password.':
     'marivo.credentials.credential-reference-for-the-clickhouse-password',
 }
 
