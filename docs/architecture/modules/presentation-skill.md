@@ -4,7 +4,7 @@
 
 [展示 Skill](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/SKILL.md) 指导 Agent 基于已有分析结果编写自定义报告和看板。它提供[视图选择](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-ui.md)、由 Catalog 生成的[组件签名](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/analysis-catalog.md)、[叙事与证据检查](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/narrative.md)和可直接改写的 [OpenUI Lang 页面示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)。
 
-`marivo_present` 的工具说明拥有面向 Agent 的调用规则。直接展示快照、修改标题或列显示名称时，Agent 只需使用工具。需要设计或调整页面内容和布局时，再加载 Skill。资源准入、保存、更新与回执遵循[展示交付契约](presentation-delivery.md)。
+`marivo_present` 的工具说明拥有面向 Agent 的调用契约。直接展示快照、修改标题或列显示名称时，Agent 只需使用工具。需要设计或调整页面内容和布局时，再加载 Skill。资源准入、保存、更新与回执遵循[展示交付契约](presentation-delivery.md)。
 
 ## 发现与路由
 
@@ -26,6 +26,8 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 ## 内容组织与数据边界
 
 页面引用[展示投影](presentation-projection.md)已捕获的数据，使用八组件 OpenUI Lang 表达结论和布局。
+
+自定义页面由 Agent 在 Harness 中为每个数据视图准备独立的 DataFrame 或 AnalysisFrame 快照。首个组件就绪后保存首版，后续每个组件就绪后以上次保存回执为基版本，提交 OpenUI Lang 命名语句的增量更新。资源变化时传入完整资源映射。该工作顺序由 Skill 指导，工具继续按展示交付契约校验每次保存。
 
 Frame 和 DataFrame 的数据展示优先使用对应的数据视图，由其自身结果外壳呈现；布局避免仅为单个
 视图增加装饰性外框，也不以组件类型或数据形状的说明替代业务解读。影响解读的范围、分母和缺失信息

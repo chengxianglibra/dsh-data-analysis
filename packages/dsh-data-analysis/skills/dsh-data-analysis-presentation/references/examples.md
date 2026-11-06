@@ -26,6 +26,8 @@ detail = Tabs([TabItem("selected", "减少最多的两项", [DatasetView("select
 
 `total` 是完整的单行 DataFrame，`current` 是原分析已计算的数值。`daily` 是按日观察的 Marivo Frame。读者先看合计，再看日间波动。
 
+`total` 快照先就绪时，首版提交 `root = Stack([heading, total]);`、显示“本期合计”的 `heading` 语句和下方的 `total` 语句。`daily` 就绪后，以上次保存的 `recordId` 为 `basedOnRecordId`，传入 `total` 和 `daily` 的完整资源映射。在 `program` 中提交下方的 `root`、`heading` 和 `trend` 语句，保留已保存的 `total` 语句。下方是合并后的完整页面。
+
 ```openui
 root = Stack([heading, total, trend]);
 heading = TextContent("本期合计与按日明细");
