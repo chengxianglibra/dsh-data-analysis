@@ -59,7 +59,7 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
 | `marivo_present` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
-| `marivo_ui_read` | 按准确 recordId 恢复定义与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
+| `marivo_ui_read` | 恢复准确/当前正式版本或当前 Turn 草稿的定义、资源声明与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
 semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。

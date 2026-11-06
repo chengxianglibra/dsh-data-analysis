@@ -47,6 +47,8 @@ helper 只接受 pandas DataFrame。确需保留 Marivo SQL 结果时，先按�
 该转换可能将含 NULL 的整数列推断为浮点并损失大整数精度，helper 不检测或修复捕获前的损失。
 只捕获本次需要展示的结果。
 
+从工具回执核对 `snapshots` 的 schema/coverage；类型与预算条件按展示 Skill 的捕获参考处理。未捕获的 helper 异常会使 Python 失败，同次任一捕获失败会使全部快照失效；不要为补快照重放原分析。
+
 ## 导出 CSV 或 JSON
 
 仅在用户要求实际文件时执行；`result` 是本次调用内已计算的 DataFrame。使用当前绑定 Workspace 的实际路径，不把附件路径当输出目录。

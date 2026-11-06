@@ -110,6 +110,10 @@ helper 调用本身抛出的异常仍由原代码处理；超时、非零退出�
 
 ## Python helper 与 Runtime
 
+`marivo_python.snapshots` 在已验证引用旁提供 schema 与 coverage 摘要，不返回数据行：每份最多 16 个列描述、整次最多 64 个，超出时设置 `columnsTruncated`；摘要省略字段不改变捕获内容。coverage 含 totalRows/capturedRows/complete/business，完整捕获不等于业务全量。
+`capture.status` 区分 available、unused、failed、not-collected；已知的 Host 捕获失败标记 worker、validation 或 provenance 阶段。非成功执行不收集引用；不能据此断言计算没有效果。helper 异常未经捕获会使 Python 失败，且任一捕获异常使同次 manifest 整体失败，即使原代码处理了该异常。
+公开条件的 Agent 入口见[捕获参考](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/capture.md)。
+
 分发 wheel 为 `dsh_data_analysis_presentation_kit-1.5.1-py3-none-any.whl`，只依赖 pandas。
 Runtime marker v3 同时检查模块版本、distribution 版本、实际导入位置和公开 helper；
 每次 shared checked execution 再核验 helper，避免 Workspace 同名模块遮蔽。管理员 Python 失败时提供修复信息，

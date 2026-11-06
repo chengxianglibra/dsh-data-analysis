@@ -39,6 +39,6 @@ Harness 可用 `read` 预览文本。即使预览看似完整，也要用附件�
 
 普通答案和简短比较表格直接在聊天中回答。聊天中用 USD 等货币代码或货币名称表示金额，避免美元符号被 Markdown 当作数学定界符。用户要查看或交付已有的 CSV、TSV、XLSX 表格文件时，确认当前 Session 可访问该文件后，按[文件交付](references/delivery.md)调用实际可用的 Harness 原生 `present`；交付卡片由 Harness 在右侧打开只读表格预览。用户要求生成 CSV、TSV、JSON、PNG 等实际文件时，通过 `marivo_python` 生成最终文件，优先写入当前绑定 Workspace；确认执行成功、文件存在后再调用 `present`。文件生成和原生声明分别核对，路径或代码块不能替代交付。不承诺插件能写入 XLSX，也不把 Harness 对旧 `.xls` 的预览当作插件可分析 `.xls`。
 
-需要可视化结果、报告或看板时，在原分析进程对 DataFrame 调用 `capture_dataset(result)`，将成功回执中的 `snapshotRef` 交给 `marivo_present`。编写自定义页面时加载 `dsh-data-analysis-presentation`。在报告正文中写明作为数据来源的文件名和本次分析范围。
+需要可视化结果、报告或看板时，首次捕获先加载 `dsh-data-analysis-presentation` 并按需阅读其捕获参考；在原分析进程对 DataFrame 调用 `capture_dataset(result)`，核对回执的 schema/coverage，将 `snapshotRef` 交给 `marivo_present`。编写自定义页面沿用展示 Skill。在报告正文中写明作为数据来源的文件名和本次分析范围。
 
 需要起步代码时读[简短示例](references/examples.md)；其中提供无需额外依赖的 PNG 写入代码，也通过 `marivo_python` 执行。

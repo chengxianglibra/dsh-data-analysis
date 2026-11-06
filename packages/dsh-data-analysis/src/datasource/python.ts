@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
+  type CapturedSnapshotEntry,
   type CapturedSnapshotKind,
   capturedSnapshotRef,
   collectSnapshotCaptures,
@@ -79,7 +80,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Run one foreground Python process in the bound Runtime and Workspace. In-memory variables expire when the call ends. Waits for missing credentials for every declared datasource before starting code once; no automatic execution replay. Use the Host credential resolver; never read secret files or SecretValue contents, or pass secrets through code, environment, output or logs. Success returns codeRef. To retain a pandas DataFrame (including one from to_pandas), call dsh_data_analysis_presentation.capture_dataset(df) during this execution; capture_frame(frame) retains a completed AnalysisFrame. Success also returns snapshots with kind, captureId and snapshotRef. Capture errors leave the Python execution outcome unchanged; do not rerun to recover snapshots. Follow phase, outcome and nextAction after failure. Check existing effects before retrying; timeout does not prove remote query cancellation or absence of saved results.',
+        'Run one foreground Python process in the bound Runtime and Workspace; memory expires at call end. Declared datasource credentials are prepared before code starts once. Missing interactive capability returns handoff guidance. Never read or pass secret values through code, environment, output or logs. Capture results in this process with dsh_data_analysis_presentation.capture_dataset(df) or capture_frame(completed_frame); read the capture reference in dsh-data-analysis-presentation before first use. Returns codeRef when saved, and snapshots with snapshotRef, bounded schema and coverage when capture succeeds. Uncaught helper errors fail Python; any capture failure invalidates all captures in this call. Host capture failures do not change the completed Python outcome. Inspect execution.reason, capture and nextAction; do not replay analysis to recover snapshots. Timeout does not prove remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
@@ -167,7 +168,9 @@ export function registerMarivoPythonTool(
               ...datasourceToolValue(admission),
               execution: summary(
                 'not-started',
-                'Resolve the datasource credential requirement or reported connection failure before retrying.',
+                'handoff' in admission && admission.handoff
+                  ? admission.handoff.nextAction
+                  : 'Resolve the datasource credential requirement or reported connection failure before retrying.',
               ),
             }
           prepared = admission
@@ -245,6 +248,8 @@ export function registerMarivoPythonTool(
           let snapshotCaptureError: string | undefined
           let captures: PythonCaptureRecord | undefined
           let captureKinds: CapturedSnapshotKind[] = []
+          let captureSummaries: CapturedSnapshotEntry['summary'][] = []
+          let captureFailureStage: 'worker' | 'validation' | 'provenance' | undefined
           if (result.exitCode === 0 && !result.timedOut && !result.aborted) {
             phase = 'capturing-code'
             try {
@@ -282,12 +287,14 @@ export function registerMarivoPythonTool(
                     callId: String(exec.callId),
                     rootCallId: String(exec.rootCallId ?? exec.callId),
                     // The saved record keeps the unchanged manifest entry shape.
-                    entries: collected.map(({ kind: _kind, ...entry }) => entry),
+                    entries: collected.map(({ kind: _kind, summary: _summary, ...entry }) => entry),
                   }
                   captureKinds = collected.map((entry) => entry.kind)
+                  captureSummaries = collected.map((entry) => entry.summary)
                 }
               } catch {
                 captures = undefined
+                captureFailureStage = captureFailed ? 'worker' : 'validation'
                 snapshotCaptureError =
                   'Python completed successfully, but dataset capture could not be validated. No snapshotRef was issued. Do not rerun the code to recover this snapshot; inspect its existing effects.'
               }
@@ -315,6 +322,7 @@ export function registerMarivoPythonTool(
               }
             } catch {
               codeRef = undefined
+              captureFailureStage = 'provenance'
               if (captures)
                 snapshotCaptureError =
                   'Python completed successfully, but dataset provenance could not be saved. No snapshotRef was issued. Do not rerun the code to recover this snapshot.'
@@ -352,10 +360,22 @@ export function registerMarivoPythonTool(
                         codeRef!,
                         entry.captureId,
                       ),
+                      ...captureSummaries[index],
                     })),
                   }
                 : {}),
               ...(snapshotCaptureError ? { snapshotCaptureError } : {}),
+              capture: {
+                status:
+                  codeRef && captures
+                    ? 'available'
+                    : snapshotCaptureError
+                      ? 'failed'
+                      : reason === 'succeeded' && !codeCaptureError
+                        ? 'unused'
+                        : 'not-collected',
+                ...(captureFailureStage ? { failureStage: captureFailureStage } : {}),
+              },
               execution: summary(
                 reason,
                 snapshotCaptureError ??

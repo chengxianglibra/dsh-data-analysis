@@ -101,12 +101,35 @@ result["previewId"] = preview.capture_id
   const value = tool.value as {
     stdout: string
     exitCode: number
-    snapshots?: { captureId: string; snapshotRef: string }[]
+    snapshots?: {
+      captureId: string
+      snapshotRef: string
+      schema: {
+        columns: { id: string; type: string }[]
+        columnCount: number
+        columnsTruncated: boolean
+      }
+      coverage: { totalRows: number; capturedRows: number; complete: boolean; business: string }
+    }[]
+    capture: { status: string }
     snapshotCaptureError?: string
   }
   assert.equal(value.exitCode, 0, JSON.stringify(value))
   assert.equal(value.snapshotCaptureError, undefined)
   assert.equal(value.snapshots?.length, 4)
+  assert.equal(value.capture.status, 'available')
+  assert.deepEqual(
+    value.snapshots![2]!.schema.columns.map(({ id }) => id),
+    ['account', 'amount'],
+  )
+  assert.equal(value.snapshots![2]!.schema.columnCount, 2)
+  assert.equal(value.snapshots![2]!.schema.columnsTruncated, false)
+  assert.deepEqual(value.snapshots![3]!.coverage, {
+    totalRows: 2,
+    capturedRows: 1,
+    complete: false,
+    business: 'unknown',
+  })
   const generated = JSON.parse(value.stdout)
   const restored = await readDatasetSnapshot(
     workspace,
@@ -166,7 +189,9 @@ result["previewId"] = preview.capture_id
       agent,
       callId,
       signal: new AbortController().signal,
-    } as ToolRunContext)) as { deliveryJson: string }
+    } as ToolRunContext)) as { stage: string; recordId: string; deliveryJson: string }
+    assert.equal(result.stage, 'save')
+    assert.match(result.recordId, /^marivo-ui:/)
     deliveries.push(parsePresentationDelivery(JSON.parse(result.deliveryJson)))
   }
   await rm(path.join(workspace, '.dsh-data-analysis/captures'), { recursive: true })

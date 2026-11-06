@@ -54,10 +54,15 @@ test('noninteractive and subagent executions report missing refs without resolvi
     if (origin === 'subagent') Object.assign(f.agent.session.header, { origin: 'subagent' })
     if (origin === 'delegated') Object.assign(f.agent.session.header, { delegationDepth: 1 })
     f.store.put('DB_PASSWORD')
-    assert.deepEqual(
-      await f.service.prepareExecution(f.exec, f.resolve, ['warehouse', 'catalog']),
-      { status: 'needs-credentials', name: 'catalog', refs: ['CATALOG_PASSWORD'] },
+    const result = await f.service.prepareExecution(f.exec, f.resolve, ['warehouse', 'catalog'])
+    assert('status' in result && result.status === 'needs-credentials')
+    assert.equal(result.name, 'catalog')
+    assert.deepEqual(result.refs, ['CATALOG_PASSWORD'])
+    assert.equal(
+      result.handoff.reason,
+      origin === 'headless' ? 'web-interaction-disabled' : 'parent-agent-required',
     )
+    assert.match(result.handoff.nextAction, /No Web form was opened/)
     assert.equal(f.store.calls.resolve, 0)
     assert.equal(f.service.watch('session').requests.length, 0)
   }

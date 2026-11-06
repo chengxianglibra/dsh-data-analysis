@@ -1,6 +1,6 @@
 # 自定义页面示例
 
-以下 OpenUI Lang 使用示例资源名。编写实际页面时，用本次分析的资源名、列 ID 和结论替换。
+以下 OpenUI Lang 使用示例资源名。编写实际页面时，用本次分析的资源名、列 ID 和结论替换。Native 和 Code Mode 都直接使用 preview 结果的 `draftId/draftRevision` 继续，使用 save 结果的 `recordId` 标识正式版本；不从 `deliveryJson` 拼装身份。
 
 ## 比较与抵消项
 

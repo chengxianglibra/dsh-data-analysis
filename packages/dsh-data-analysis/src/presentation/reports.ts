@@ -4,7 +4,11 @@ import { lstat, open, opendir, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { commitPresentation } from './commit.ts'
-import { type AnalysisDocument, parseSavedPresentation } from './contracts/analysis-document.ts'
+import {
+  type AnalysisDocument,
+  analysisRecordId,
+  parseSavedPresentation,
+} from './contracts/analysis-document.ts'
 import {
   type PublicationSource,
   parseReportHistory,
@@ -21,6 +25,7 @@ import {
   readPresentationAsset,
   readReportFile,
 } from './files.ts'
+import { PresentationRecoveryError } from './recovery.ts'
 
 export async function readReceiptDocument(
   root: string,
@@ -220,7 +225,12 @@ export async function publishPresentation(
           if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing
         }
       }
-      if ((current?.buildId ?? null) !== expectedBuildId) throw new Error('report-save-conflict')
+      if ((current?.buildId ?? null) !== expectedBuildId)
+        throw new PresentationRecoveryError(
+          'report-save-conflict',
+          'Read currentRecordId with marivo_ui_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit rebaseOnRecordId with the merged patch and full resources before saving. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
+          current ? { currentRecordId: analysisRecordId(current.reportId, current.buildId) } : {},
+        )
       const versions = [
         { receipt, publishedAt: new Date().toISOString(), source },
         ...(history?.versions ?? []),

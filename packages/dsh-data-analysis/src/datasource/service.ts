@@ -80,6 +80,34 @@ export interface ConfigurationResult {
   latency_ms?: number | null
   failure?: MarivoDatasourceTestResult['failure']
   repair?: MarivoDatasourceTestResult['repair']
+  handoff?: CredentialHandoff
+}
+
+interface CredentialHandoff {
+  reason: 'parent-agent-required' | 'web-interaction-disabled'
+  nextAction: string
+}
+
+function credentialHandoff(
+  interaction: 'web' | 'none',
+  exec: ToolExecution,
+): CredentialHandoff | undefined {
+  if (interaction === 'none')
+    return {
+      reason: 'web-interaction-disabled',
+      nextAction:
+        'No Web form was opened. Ask the user to configure the datasource or credential references in a credential-capable Host, then retry after the state changes. Never request secret values in chat.',
+    }
+  if (
+    exec.agent?.session.header.origin === 'subagent' ||
+    (exec.agent?.session.header.delegationDepth ?? 0) > 0
+  )
+    return {
+      reason: 'parent-agent-required',
+      nextAction:
+        'No Web form was opened. Return the datasource name, non-secret requirement and blocked work to the parent Agent. The parent must handle Host configuration or credentials, then resume the affected work; do not retry unchanged or request secret values.',
+    }
+  return undefined
 }
 function sessionIdentity(exec: ToolExecution): string {
   const session = exec.agent!.session
@@ -130,6 +158,7 @@ export interface CredentialNeedsInput {
   status: 'needs-credentials'
   name: string
   refs: string[]
+  handoff: CredentialHandoff
 }
 export interface PreparedCredentialExecution {
   status: 'ready'
@@ -459,12 +488,9 @@ export class MarivoCredentialService {
       'invalid-request',
     )
     const agent = exec.agent
-    if (
-      this.interaction === 'none' ||
-      agent.session.header.origin === 'subagent' ||
-      (agent.session.header.delegationDepth ?? 0) > 0
-    )
-      return { status: 'needs-configuration', ...(input.name ? { name: input.name } : {}) }
+    const handoff = credentialHandoff(this.interaction, exec)
+    if (handoff)
+      return { status: 'needs-configuration', ...(input.name ? { name: input.name } : {}), handoff }
     const controller = new AbortController()
     const signal = AbortSignal.any([this.executionSignal(exec.signal, agent), controller.signal])
     const identity = sessionIdentity(exec)
@@ -666,12 +692,9 @@ export class MarivoCredentialService {
     const agent = exec.agent!
     const missing = view.refs.filter((ref) => !view.credentials[ref]?.configured)
     if (missing.length === 0) return undefined
-    if (
-      this.interaction === 'none' ||
-      agent.session.header.origin === 'subagent' ||
-      (agent.session.header.delegationDepth ?? 0) > 0
-    )
-      return { status: 'needs-credentials', name: context.description.name, refs: missing }
+    const handoff = credentialHandoff(this.interaction, exec)
+    if (handoff)
+      return { status: 'needs-credentials', name: context.description.name, refs: missing, handoff }
     this.#prune()
     assert(this.#requests.size < CAPACITY / 2, 'capacity-exceeded')
     assert(this.#contexts.size < CAPACITY, 'capacity-exceeded')

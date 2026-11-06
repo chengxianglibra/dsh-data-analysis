@@ -88,6 +88,7 @@ export async function createAnalysisDocument(
   identity: { workspaceId: string; reportId: string; buildId: string },
   signal: AbortSignal,
   base?: AnalysisDocument,
+  retainedResources?: AnalysisDocument['resources'],
 ): Promise<AnalysisDocument> {
   const declarations =
     input.resources ??
@@ -120,8 +121,10 @@ export async function createAnalysisDocument(
   }
   const resources: AnalysisDocument['resources'] = {}
   const pending = entries.filter(([name, declaration]) => {
-    const saved = base?.resources[name]
-    if (!saved || !sameAnalysisDeclaration(saved.declaration, declaration)) return true
+    const saved = [base?.resources[name], retainedResources?.[name]].find(
+      (resource) => resource && sameAnalysisDeclaration(resource.declaration, declaration),
+    )
+    if (!saved) return true
     resources[name] = structuredClone(saved)
     return false
   })

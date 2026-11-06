@@ -6,6 +6,10 @@
 
 `marivo_present` 的工具说明拥有面向 Agent 的调用契约。直接展示快照、修改标题或列显示名称时，Agent 只需使用工具。需要设计或调整页面内容和布局时，再加载 Skill。资源准入、保存、更新与回执遵循[展示交付契约](presentation-delivery.md)。
 
+插件自有捕获 API 通过按需[捕获参考](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/capture.md)披露类型、预算与失败语义；首次捕获时加载展示 Skill 定位该参考，不从 Marivo live Help 获取插件 API。
+上下文缺失或失败时读取[恢复参考](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/recovery.md)，正常调用不例行回读。常驻路由只保留职责和入口，工具说明保留调用契约，状态与下一步由实际回执提供。
+Skill 入口不超过 6 KiB、单份参考不超过 16 KiB、每个 Skill 全部资源不超过 48 KiB，由随包契约测试检查；这些是披露体积上限，不等同于模型 token 数。捕获回执的字段摘要另受[展示数据投影](presentation-projection.md)中的每份与整次预算限制。
+
 ## 发现与路由
 
 Plugin 用独立 filesystem provider `dsh-data-analysis-presentation` 读取包内 `skills/`，不扫描默认 roots，

@@ -290,7 +290,18 @@ async function tool(t: TestContext) {
         codeRef?: PythonCodeRef
         codeCaptureError?: string
         snapshotCaptureError?: string
-        snapshots?: { kind: 'dataset' | 'frame'; captureId: string; snapshotRef: string }[]
+        capture: { status: string; failureStage?: string }
+        snapshots?: {
+          kind: 'dataset' | 'frame'
+          captureId: string
+          snapshotRef: string
+          schema: {
+            columns: { id: string; type: string; nullable: boolean }[]
+            columnCount: number
+            columnsTruncated: boolean
+          }
+          coverage: { totalRows: number; capturedRows: number; complete: boolean; business: string }
+        }[]
         execution: MarivoPythonExecutionSummary
       },
   }
@@ -321,6 +332,7 @@ async function captured(
   p: Awaited<ReturnType<typeof tool>>,
   failed = false,
   kinds: ('dataset' | 'frame' | 'frame-v1')[] = ['dataset', 'dataset'],
+  width = 1,
 ) {
   Reflect.set(p.f.exec.agent!.session.header, 'workspaceId', 'workspace')
   const files: string[] = []
@@ -333,8 +345,13 @@ async function captured(
       const relative = `${directory}/${captureId}.json`
       const data = {
         schemaVersion: 1,
-        columns: [{ id: 'x', label: 'x', type: 'int64', nullable: true }],
-        rows: [['9007199254740993']],
+        columns: Array.from({ length: width }, (_, i) => ({
+          id: i === 0 ? 'x' : `x${i}`,
+          label: `Column ${i}`,
+          type: 'int64',
+          nullable: true,
+        })),
+        rows: [Array.from({ length: width }, () => '9007199254740993')],
         rowCount: 2,
         limit: 1,
         truncated: true,
@@ -355,7 +372,7 @@ async function captured(
                     totalRows: 2,
                     capturedRows: 1,
                     complete: false,
-                    columns: ['x'],
+                    columns: data.columns.map((column) => column.id),
                     business: 'unknown',
                   },
                   source: { kind: 'dataframe', details: 'not-captured' },
@@ -387,6 +404,14 @@ test('same-call captures bind exact Workspace, code and call without replay, the
   assert.equal(result.snapshotCaptureError, undefined)
   assert.equal(result.snapshots?.length, 2)
   assert.equal(result.snapshots![0]!.kind, 'dataset')
+  assert.equal(result.capture.status, 'available')
+  assert.deepEqual(
+    result.snapshots![0]!.schema.columns.map((column) => column.id),
+    ['x'],
+  )
+  assert.equal(result.snapshots![0]!.schema.columnsTruncated, false)
+  assert.equal(result.snapshots![0]!.coverage.complete, false)
+  assert.equal(result.snapshots![0]!.coverage.capturedRows, 1)
   const ref = result.snapshots![0]!.snapshotRef
   const root = p.f.bridge.binding.projectRoot
   const restored = await readDatasetSnapshot(root, 'workspace', ref)
@@ -438,12 +463,40 @@ test('capture_frame v2 snapshots issue kind-prefixed refs that read back only as
   assert.equal(p.launches, 1)
 })
 
+test('capture schema summaries bound model context without reducing retained snapshot columns', async (t) => {
+  const p = await tool(t)
+  await captured(
+    p,
+    false,
+    Array.from({ length: 5 }, () => 'dataset'),
+    32,
+  )
+  const result = await p.call()
+  assert.deepEqual(
+    result.snapshots!.map((snapshot) => snapshot.schema.columns.length),
+    [16, 16, 16, 16, 0],
+  )
+  for (const snapshot of result.snapshots!) {
+    assert.equal(snapshot.schema.columnCount, 32)
+    assert.equal(snapshot.schema.columnsTruncated, true)
+    assert.equal(snapshot.coverage.totalRows, 2)
+    assert.equal(snapshot.coverage.capturedRows, 1)
+    const retained = await readDatasetSnapshot(
+      p.f.bridge.binding.projectRoot,
+      'workspace',
+      snapshot.snapshotRef,
+    )
+    assert.equal(retained.snapshot.data.columns.length, 32)
+  }
+})
+
 test('legacy v1 Frame captures are rejected without issuing snapshot references', async (t) => {
   const p = await tool(t)
   await captured(p, false, ['frame-v1'])
   const result = await p.call()
   assert.equal(result.snapshots, undefined)
   assert.match(result.snapshotCaptureError!, /No snapshotRef/)
+  assert.deepEqual(result.capture, { status: 'failed', failureStage: 'validation' })
   assert.ok(result.codeRef)
 })
 
@@ -539,6 +592,7 @@ test('launcher-reported manifest write failure preserves success and codeRef wit
   assert.equal(result.execution.reason, 'succeeded')
   assert.ok(result.codeRef)
   assert.equal(result.snapshots, undefined)
+  assert.deepEqual(result.capture, { status: 'failed', failureStage: 'worker' })
   assert.match(result.snapshotCaptureError!, /No snapshotRef/)
   assert.equal(p.launches, 1)
 })

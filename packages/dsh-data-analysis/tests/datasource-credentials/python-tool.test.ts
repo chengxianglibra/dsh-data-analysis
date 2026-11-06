@@ -143,6 +143,7 @@ test('Python admits configured credentials once, uses stdin, and clears its fres
     stderr: '',
     truncated: false,
     sandbox: null,
+    capture: { status: 'unused' },
   })
   assert.equal(p.launches.length, 1)
   assert.equal(f.tests, 0)
@@ -218,10 +219,16 @@ test('headless and subagent missing credentials return bounded needs without a l
     t.after(() => f.service.close())
     if (interaction === 'web') Object.assign(f.agent.session.header, { origin: 'subagent' })
     const p = pythonTool(f)
-    const { execution, ...result } = (await p.call()) as Record<string, unknown>
+    const { execution, handoff, ...result } = (await p.call()) as Record<string, unknown>
     assertSummary(execution, 'preparing', 'not-started')
     assert.equal(execution.executionElapsedMs, null)
     assert.equal(execution.effectiveTimeoutMs, null)
+    assert(handoff && typeof handoff === 'object')
+    assert.equal(
+      Reflect.get(handoff, 'reason'),
+      interaction === 'none' ? 'web-interaction-disabled' : 'parent-agent-required',
+    )
+    assert.equal(execution.nextAction, Reflect.get(handoff, 'nextAction'))
     assert.deepEqual(result, {
       status: 'needs-credentials',
       name: 'warehouse',

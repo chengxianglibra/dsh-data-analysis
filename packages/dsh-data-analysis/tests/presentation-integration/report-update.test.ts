@@ -4,9 +4,20 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { Session } from '@deepseek-ai/dsh-session'
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
+import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
+import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
+import SessionStore, { type Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime, { type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { visibleReports } from '../../src/client/presentation/catalog-model.ts'
 import { PresentationDeliveryModel } from '../../src/client/presentation/delivery-model.ts'
 import {
@@ -29,6 +40,7 @@ import {
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { savePythonExecution } from '../../src/python-execution.ts'
+import { TestShellEnv } from '../test-shell-env.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 
@@ -119,15 +131,19 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
     data: { kind: 'dataset-snapshot', snapshotRef: datasetSnapshotRef(codeRef, captureId) },
     frame: { kind: 'frame-snapshot', snapshotRef: frameSnapshotRef(codeRef, frameId) },
   }
+  const raw = async (args: Record<string, unknown>, code = false) =>
+    (await tool.execute(
+      args,
+      code ? { ...exec, callId: ToolCallId('child'), rootCallId: ToolCallId('code') } : exec,
+    )) as {
+      stage: 'preview' | 'save'
+      draftId?: string
+      draftRevision?: string
+      recordId?: string
+      deliveryJson: string
+    }
   const execute = async (args: Record<string, unknown>, code = false): Promise<unknown> =>
-    JSON.parse(
-      (
-        (await tool.execute(
-          args,
-          code ? { ...exec, callId: ToolCallId('child'), rootCallId: ToolCallId('code') } : exec,
-        )) as { deliveryJson: string }
-      ).deliveryJson,
-    )
+    JSON.parse((await raw(args, code)).deliveryJson)
   const present = async (args: Record<string, unknown>, code = false) =>
     parsePresentationDelivery(await execute(args, code))
   return {
@@ -135,6 +151,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
     resources,
     present,
     execute,
+    raw,
     drafts,
     service,
     source,
@@ -211,6 +228,215 @@ test('preview revisions add data views without publishing until the draft is sav
     f.execute(draft('save', updated.draftRevision)),
     /analysis-draft-unavailable/,
   )
+})
+
+test('real Harness PTC composes preview, recovery and save using public identifiers', async (t) => {
+  const f = await fixture(t)
+  const ctx = new Context()
+  try {
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(TestShellEnv)
+    await ctx.plugin(LocalFileSystem, { cwd: f.root })
+    await ctx.plugin(SubprocessLocal)
+    await ctx.plugin(LocalSandbox, {})
+    await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access', workspaceRoot: f.root })
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(WorkingDirectory, { defaultDirectory: f.root })
+    await ctx.plugin(NodePtcRuntime, { timeoutMs: 10000 })
+    await ctx.plugin(ToolRuntime, { mode: 'ptc' })
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    const agent = await ctx.agentLoop.create(SessionId('ptc-report'), {
+      provider: 'unused',
+      model: 'unused',
+    })
+    agent.ctx.tools.register(createMarivoPresentTool(f.source, agent.session, undefined, f.drafts))
+    agent.ctx.tools.register(createMarivoUiReadTool(f.source, f.drafts))
+    const callId = ToolCallId('ptc-report-edit')
+    agent.session.append('tool/call', {
+      turn: 0,
+      step: 0,
+      callId,
+      name: 'run_code',
+      arguments: '{}',
+    })
+    const result = await agent.ctx.tools.execute({
+      agent,
+      callId,
+      signal: new AbortController().signal,
+      name: 'run_code',
+      arguments: {
+        description: 'Compose and recover the report draft',
+        code: `
+          const first = await tools.marivo_present({stage:'preview', resources:${JSON.stringify({ data: f.resources.data })}});
+          if (first.stage !== 'preview' || !first.draftId || !first.draftRevision || first.recordId) throw new Error('preview-identity');
+          const recovered = JSON.parse((await tools.marivo_ui_read({draft:true})).definitionJson);
+          if (recovered.draftId !== first.draftId || recovered.draftRevision !== first.draftRevision) throw new Error('draft-read-identity');
+          const second = await tools.marivo_present({stage:'preview', draftId:first.draftId, draftRevision:first.draftRevision, title:'PTC reviewed'});
+          if (second.draftRevision === first.draftRevision) throw new Error('revision-not-advanced');
+          const saved = await tools.marivo_present({stage:'save', draftId:second.draftId, draftRevision:second.draftRevision});
+          if (saved.stage !== 'save' || !saved.recordId) throw new Error('save-identity');
+          const current = JSON.parse((await tools.marivo_ui_read({recordId:saved.recordId,current:true})).definitionJson);
+          if (current.recordId !== saved.recordId || current.title !== 'PTC reviewed') throw new Error('saved-read-identity');
+          console.log('PTC_PUBLIC_IDENTIFIERS_VERIFIED');
+        `,
+      },
+    })
+    assert.equal(result.isError, false, JSON.stringify(result))
+    assert.match(JSON.stringify(result), /PTC_PUBLIC_IDENTIFIERS_VERIFIED/)
+    assert.equal(f.drafts.get(String(agent.session.id)), undefined)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+for (const code of [false, true]) {
+  test(`${code ? 'Code' : 'Native'} callers compose previews and saves from public result identifiers`, async (t) => {
+    const f = await fixture(t)
+    const first = await f.raw({ stage: 'preview', resources: { data: f.resources.data } }, code)
+    assert.equal(first.stage, 'preview')
+    assert.equal(first.recordId, undefined)
+    assert.ok(first.draftId)
+    assert.ok(first.draftRevision)
+    const second = await f.raw(
+      {
+        stage: 'preview',
+        draftId: first.draftId,
+        draftRevision: first.draftRevision,
+        title: 'Reviewed',
+      },
+      code,
+    )
+    assert.equal(second.draftId, first.draftId)
+    assert.notEqual(second.draftRevision, first.draftRevision)
+    const saved = await f.raw(
+      { stage: 'save', draftId: second.draftId, draftRevision: second.draftRevision },
+      code,
+    )
+    assert.equal(saved.stage, 'save')
+    assert.match(saved.recordId!, /^marivo-ui:/)
+    const { reportId, buildId } = parseAnalysisDocument(
+      await readReceiptDocument(
+        f.root,
+        parsePresentationDelivery(JSON.parse(saved.deliveryJson)).receipt,
+      ),
+    )
+    assert.equal(saved.recordId, analysisRecordId(reportId, buildId))
+    assert.equal((await readReportHistory(f.root, 'workspace', reportId)).versions.length, 1)
+  })
+}
+
+test('conflict recovery reads current and draft context, then explicitly rebases retained resources', async (t) => {
+  const f = await fixture(t)
+  const base = await f.raw({ resources: { data: f.resources.data } })
+  const otherReport = await f.raw({ resources: { data: f.resources.data } }, true)
+  const draft = await f.raw({
+    stage: 'preview',
+    basedOnRecordId: base.recordId,
+    program: 'root = Stack([DatasetView("data"), AnalysisFrameView("frame")]);',
+    resources: f.resources,
+  })
+  const concurrent = await f.raw(
+    { basedOnRecordId: base.recordId, title: 'Concurrent title' },
+    true,
+  )
+  await assert.rejects(
+    f.raw({ stage: 'save', draftId: draft.draftId, draftRevision: draft.draftRevision }),
+    (error: Error) => {
+      assert.match(error.message, /report-save-conflict/)
+      assert.ok(error.message.includes(concurrent.recordId!))
+      return true
+    },
+  )
+  const reader = createMarivoUiReadTool(f.source, f.drafts)
+  const read = async (args: Record<string, unknown>) =>
+    JSON.parse(((await reader.execute(args, f.exec)) as { definitionJson: string }).definitionJson)
+  assert.equal((await read({ recordId: base.recordId })).recordId, base.recordId)
+  const latest = await read({ recordId: base.recordId, current: true })
+  assert.equal(latest.recordId, concurrent.recordId)
+  const working = await read({ draft: true })
+  assert.equal(working.draftId, draft.draftId)
+  assert.equal(working.recordId, undefined, 'an unsaved document has no published record identity')
+  assert.equal(working.basedOnRecordId, base.recordId)
+  assert.equal(working.resources.frame.rows, undefined)
+  await rm(path.join(f.root, f.captureDirectory), { recursive: true })
+  const request = {
+    stage: 'preview',
+    draftId: working.draftId,
+    draftRevision: working.draftRevision,
+    rebaseOnRecordId: latest.recordId,
+    program: working.program,
+    resources: {
+      data: latest.resources.data.declaration,
+      frame: working.resources.frame.declaration,
+    },
+  }
+  await assert.rejects(
+    f.raw({ ...request, rebaseOnRecordId: base.recordId }),
+    /report-save-conflict/,
+  )
+  await assert.rejects(
+    f.raw({ ...request, rebaseOnRecordId: otherReport.recordId }),
+    /analysis-draft-invalid-request/,
+  )
+  const { resources: _resources, ...missingResources } = request
+  await assert.rejects(f.raw(missingResources), /analysis-draft-invalid-request/)
+  assert.equal((await read({ draft: true })).draftRevision, draft.draftRevision)
+  const rebased = await f.raw(request)
+  assert.equal((await read({ draft: true })).title, 'Concurrent title')
+  const saved = await f.raw({
+    stage: 'save',
+    draftId: rebased.draftId,
+    draftRevision: rebased.draftRevision,
+  })
+  const final = await read({ recordId: saved.recordId })
+  assert.equal(final.title, 'Concurrent title')
+  assert.deepEqual(Object.keys(final.resources).sort(), ['data', 'frame'])
+  await assert.rejects(read({ draft: true }), /analysis-draft-unavailable/)
+})
+
+test('draft recovery is isolated by Session, Turn and Workspace and rejects expired drafts', async (t) => {
+  const f = await fixture(t)
+  await f.raw({ stage: 'preview', resources: { data: f.resources.data } })
+  const reader = createMarivoUiReadTool(f.source, f.drafts)
+  const otherSession = {
+    ...f.exec,
+    agent: { session: { ...f.exec.agent!.session, id: 'other-session' } },
+  } as unknown as ToolRunContext
+  for (const exec of [otherSession, { ...f.exec, callId: ToolCallId('code') }])
+    await assert.rejects(reader.execute({ draft: true }, exec), /analysis-draft-unavailable/)
+  const otherWorkspace = createMarivoUiReadTool(
+    () => ({ id: 'other-workspace', path: f.root }),
+    f.drafts,
+  )
+  await assert.rejects(
+    otherWorkspace.execute({ draft: true }, f.exec),
+    /analysis-draft-unavailable/,
+  )
+  f.drafts.clear('session')
+  await assert.rejects(reader.execute({ draft: true }, f.exec), /analysis-draft-unavailable/)
+})
+
+test('recovered image declarations support adding resources after the image file is removed', async (t) => {
+  const f = await fixture(t)
+  const image = { kind: 'image-file', path: 'image.png' }
+  await writeFile(path.join(f.root, image.path), Buffer.from('89504e470d0a1a0a', 'hex'))
+  const base = await f.raw({ resources: { image } })
+  const reader = createMarivoUiReadTool(f.source)
+  const restored = JSON.parse(
+    ((await reader.execute({ recordId: base.recordId }, f.exec)) as { definitionJson: string })
+      .definitionJson,
+  )
+  assert.deepEqual(restored.resources.image.declaration, image)
+  await rm(path.join(f.root, image.path))
+  const saved = await f.raw({
+    basedOnRecordId: base.recordId,
+    resources: { image: restored.resources.image.declaration, data: f.resources.data },
+    program: 'root = Stack([Image("Existing image", "image"), DatasetView("data")]);',
+  })
+  assert.ok(saved.recordId)
 })
 
 test('draft edits preserve the saved base and reject concurrent publication', async (t) => {

@@ -28,7 +28,7 @@ import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const ROUTING_PROMPT = [
   'For attachment or Workspace data file analysis, first load dsh-data-analysis-files. For governed Marivo analysis, load marivo-analysis. Load marivo-semantic when a shared definition is needed for the task or the user requests authoring. Get Marivo API details from bound Runtime Help.',
-  'Run analysis in the bound Workspace with marivo_python. Handle datasource secrets through Harness credential forms. Never ask for secret values in chat.',
+  'Run analysis in the bound Workspace with marivo_python. In this Host, connection setup and repair use marivo_datasource_configure instead of agent-authored datasource configuration; marivo-semantic still owns business definitions. Handle secrets through Harness credential forms, never chat.',
   'Answer ordinary questions and short comparisons in chat. Create and update analysis reports and dashboards through marivo_present, including requests for a report the user can open. Capture the result in the original calculation, or reuse its existing snapshot. Use the same tool for visual inspection and load dsh-data-analysis-presentation for custom layouts. Use native present only when the user asks for a file deliverable, such as a CSV or PNG. Honor explicitly requested formats.',
   'In a report, keep conclusions, supporting data and material limitations together. After save succeeds, reply briefly. If delivery fails, say so and answer with the available evidence.',
 ].join('\n')
@@ -135,8 +135,10 @@ export function createMarivoAgentInstallation(
       )
       controller.addDisposer(() => credentialService.disposeAgent(agent))
       controller.addDisposer(
-        registerMarivoUiReadTool(agent.ctx, () =>
-          resolvePresentationWorkspace(ctx, String(agent.session.id)),
+        registerMarivoUiReadTool(
+          agent.ctx,
+          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
+          presentationDrafts,
         ),
       )
       controller.addDisposer(

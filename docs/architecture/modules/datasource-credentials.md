@@ -100,6 +100,9 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 
 ## 工具与自动续接
 
+在 Harness 中连接配置由 Host 表单拥有；Runtime `marivo-semantic` 中通用 datasource authoring 指引不授予 Agent 代写连接配置的权限，业务语义建模仍由该 Skill 指导。常驻路由明确此适配边界。
+子 Agent/委派调用缺配置或凭据时不打开表单，返回 `handoff.reason: parent-agent-required` 和 `nextAction`，由父 Agent 完成 Host 交互后续接受阻工作。`credentialInteraction: none` 返回 `web-interaction-disabled`，要求在可交互 Host 处理后再执行。回执仅携带名称、引用和非秘密修复信息，不重复请求秘密值；`marivo_python` 准备失败摘要沿用相同 nextAction。
+
 - `marivo_datasource_configure({ mode, name?, reason })`：`create` 打开新增页，也允许选择已有数据源；
   `edit` 必须提供现有名称并直接打开编辑页。`reason` 为不含凭证的简短说明；工具不接受配置值。
   Web 根 Agent 保持原调用等待，成功返回 `status: ok`、`name` 和连接耗时，随后核验目标表；

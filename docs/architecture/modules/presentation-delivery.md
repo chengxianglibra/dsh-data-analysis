@@ -3,7 +3,7 @@
 ## 责任与入口
 
 `marivo_present` 将已有结果保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在会话级 Chat 节点呈现，
-显式报告/dashboard 使用右侧 tab。Marivo 拥有分析、Artifact/Finding 与来源事实；Harness 拥有 Session/Turn、
+显式报告/dashboard 使用右侧 tab。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
 Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 
 实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
@@ -49,8 +49,11 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 - 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
 - 新版本独立内嵌全部资源，以基版本 buildId 执行条件保存；冲突不自动重试，失败不改 current。
 
-`marivo_ui_read({recordId})` 只读取准确已发布版本的 title、locale、Catalog、program 及资源的必要 schema 与范围，
-不返回 rows、不查询实时数据、不执行 Python；只在基版本上下文缺失时按需使用，不默认回读。
+`marivo_ui_read({recordId})` 读取准确已发布版本；加 `current: true` 则显式读取该报告当前版本。
+`marivo_ui_read({draft: true})` 按调用 Session/Turn 和 Workspace 核验并读取当前草稿，两类输入互斥。
+结果 `definitionJson` 包含相应版本/草稿身份、title、locale、Catalog、program、全部资源声明（包括图片）及必要 schema/coverage。
+草稿只返回 draftId/draftRevision 和可用的 basedOnRecordId，不把临时 document ID 声称为已发布 record。
+不返回 rows、不查询实时数据、不执行 Python；只在编辑上下文缺失或冲突时按需使用，不默认回读。
 
 候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址；
 tool 结果在会话节点中读取准确 Build，工具调用内只保留简短入口。关闭的候选不被片段或成功事件重新打开；
@@ -60,10 +63,14 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 
 ## 报告草稿与正式保存
 
-- `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，返回 `draftId` 与 `draftRevision`。
+- `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage`、`draftId` 与 `draftRevision`。
 - 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序。提供 `resources` 时仍替换完整映射。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
 - Native 和 PTC 的预览通知只携带草稿身份。浏览器通过 Session 绑定的 `draft/read` 读取确切的预览数据，在同一个报告草稿标签页中更新内容。
 - `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本。若正式基版本已变化，保存失败并保留当前草稿。成功后，草稿 tab 原位切换到正式报告。
+- save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
+- 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
+- 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId`、相对新基版本的累计 program patch 与完整 resources 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
+- 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
 
 ## 单次调用与文件身份
 

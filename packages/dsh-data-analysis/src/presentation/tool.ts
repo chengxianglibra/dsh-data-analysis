@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument } from './analysis.ts'
 import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
-import { analysisPresentInput, parseAnalysisRecordId } from './contracts/analysis-document.ts'
+import {
+  type AnalysisDocument,
+  analysisPresentInput,
+  analysisRecordId,
+  parseAnalysisRecordId,
+} from './contracts/analysis-document.ts'
 import { type FrameSnapshotV2, isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { type AnalysisDraftLease, AnalysisDrafts } from './drafts.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
@@ -18,7 +23,8 @@ import {
   parsePresentationToolDelivery,
   presentationReceiptText,
 } from './receipt.ts'
-import { publishPresentation, readAnalysisRecord } from './reports.ts'
+import { PresentationRecoveryError, unavailableDraft } from './recovery.ts'
+import { publishPresentation, readAnalysisRecord, resolvePresentation } from './reports.ts'
 
 export type PresentationWorkspaceSource = () =>
   | { id: string; path: string }
@@ -28,7 +34,18 @@ const presentationToolInput = analysisPresentInput.extend({
   stage: z.enum(['preview', 'save']).default('save'),
   draftId: z.string().uuid().optional(),
   draftRevision: z.string().uuid().optional(),
+  rebaseOnRecordId: z.string().min(1).max(512).optional(),
 })
+
+function presentationTurn(session: Session, exec: ToolRunContext): number {
+  const rootCallId = String(exec.rootCallId ?? exec.callId)
+  const call = [...session.snapshotEvents()]
+    .reverse()
+    .find((event) => event.type === 'tool/call' && String(event.data.callId) === rootCallId)
+  if (call?.type !== 'tool/call' || !Number.isSafeInteger(call.data.turn) || call.data.turn < 0)
+    throw new Error('presentation-turn-unavailable')
+  return call.data.turn
+}
 
 /** Preview validated working revisions, or publish an immutable report version. */
 export function createMarivoPresentTool(
@@ -40,7 +57,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present a result or compose a report or dashboard. For custom pages, load dsh-data-analysis-presentation and call stage=preview as each view becomes ready. The same report tab updates and history is unchanged. Once complete, call stage=save with the latest draftId and draftRevision to create one immutable report version. Single results can be saved directly with resources and no program. Use marivo_ui_read only when the saved base definition is missing.',
+      'Present a result or compose a report. For custom pages, load dsh-data-analysis-presentation and use stage=preview as views become ready, then stage=save once complete. One in-memory draft per Session Turn; it expires at Turn end or Host restart. Preview returns draftId/draftRevision; save returns recordId. Calls must be sequential. Single results can save directly with resources and no program. Use marivo_ui_read only for missing editing context or conflict recovery; deliveryJson is the Host delivery envelope.',
     parameters: {
       surface: {
         type: 'string',
@@ -65,6 +82,11 @@ export function createMarivoPresentTool(
         type: 'string',
         description:
           'For a direct save or the first preview, use the exact saved recordId to edit an existing report. Omit when creating or continuing a draft. If the saved base is stale, review the current version and reapply the intended edit.',
+      },
+      rebaseOnRecordId: {
+        type: 'string',
+        description:
+          'Explicit conflict repair only: with stage=preview and the latest draftId/draftRevision, name the reviewed current saved version of the same report. Supply the cumulative program patch against that version and full resources, plus intended title/locale/labels changes. Does not merge changes automatically.',
       },
       resources: {
         type: 'object',
@@ -94,7 +116,13 @@ export function createMarivoPresentTool(
       schema: {
         type: 'object',
         additionalProperties: false,
-        properties: { deliveryJson: { type: 'string', required: true } },
+        properties: {
+          stage: { type: 'string', required: true, enum: ['preview', 'save'] },
+          draftId: { type: 'string' },
+          draftRevision: { type: 'string' },
+          recordId: { type: 'string' },
+          deliveryJson: { type: 'string', required: true },
+        },
       },
       render: (_args, value) => {
         const delivery = parsePresentationToolDelivery(JSON.parse(value.deliveryJson))
@@ -115,17 +143,17 @@ export function createMarivoPresentTool(
       const input = presentationToolInput.parse(args)
       if (
         Boolean(input.draftId) !== Boolean(input.draftRevision) ||
-        (input.draftId && input.basedOnRecordId)
+        (input.draftId && input.basedOnRecordId) ||
+        (input.rebaseOnRecordId &&
+          (input.stage !== 'preview' || !input.draftId || !input.program || !input.resources))
       )
-        throw new Error('analysis-draft-invalid-request')
+        throw new PresentationRecoveryError(
+          'analysis-draft-invalid-request',
+          'Pair draftId with draftRevision. Use basedOnRecordId only before a draft exists. Explicit rebase requires stage=preview, both draft identifiers, rebaseOnRecordId, a reviewed program patch and the full resources map.',
+        )
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
-      const rootCallId = String(exec.rootCallId ?? exec.callId)
-      const call = [...session.snapshotEvents()]
-        .reverse()
-        .find((event) => event.type === 'tool/call' && String(event.data.callId) === rootCallId)
-      if (call?.type !== 'tool/call' || !Number.isSafeInteger(call.data.turn) || call.data.turn < 0)
-        throw new Error('presentation-turn-unavailable')
+      const turn = presentationTurn(session, exec)
       signal.throwIfAborted()
       const workspace = workspaceSource
       const identity = await workspace()
@@ -138,7 +166,6 @@ export function createMarivoPresentTool(
         signal.throwIfAborted()
       }
       const sessionId = String(session.id)
-      const turn = call.data.turn
       const perform = async (lease?: AnalysisDraftLease) => {
         const check = async () => {
           await checkWorkspace()
@@ -148,20 +175,47 @@ export function createMarivoPresentTool(
         const current = lease ? drafts.get(sessionId) : undefined
         const active = current?.delivery.turn === turn ? current : undefined
         if (
+          active &&
+          (active.workspacePath !== identity.path || active.document.workspaceId !== identity.id)
+        )
+          throw unavailableDraft()
+        if (
           input.draftId &&
           (!active ||
             active.delivery.draftId !== input.draftId ||
             active.workspacePath !== identity.path ||
             active.document.workspaceId !== identity.id)
         )
-          throw new Error('analysis-draft-unavailable')
+          throw unavailableDraft()
         if (active && active.delivery.draftRevision !== input.draftRevision)
-          throw new Error('analysis-draft-conflict: use the latest draft ID and revision')
-        const baseId = input.basedOnRecordId
-          ? parseAnalysisRecordId(input.basedOnRecordId)
-          : undefined
+          throw new PresentationRecoveryError(
+            'analysis-draft-conflict',
+            'Read marivo_ui_read({draft:true}) and reconcile the intended edit with the latest draft before using its identifiers. Do not blindly replay a stale patch.',
+            { draftId: active.delivery.draftId, draftRevision: active.delivery.draftRevision },
+          )
+        const savedBaseId = input.rebaseOnRecordId ?? input.basedOnRecordId
+        const baseId = savedBaseId ? parseAnalysisRecordId(savedBaseId) : undefined
+        if (input.rebaseOnRecordId && active && baseId) {
+          if (baseId.reportId !== active.document.reportId)
+            throw new PresentationRecoveryError(
+              'analysis-draft-invalid-request',
+              'Rebase only onto a saved version of this draft report. Read the current report and draft before selecting the base.',
+            )
+          const latest = await resolvePresentation(
+            identity.path,
+            identity.id,
+            baseId.reportId,
+            signal,
+          )
+          if (latest.buildId !== baseId.buildId)
+            throw new PresentationRecoveryError(
+              'report-save-conflict',
+              'The proposed rebase version is stale. Read currentRecordId and the active draft, reconcile the changes, then preview the rebase again.',
+              { currentRecordId: analysisRecordId(latest.reportId, latest.buildId) },
+            )
+        }
         const base =
-          active?.document ??
+          (input.rebaseOnRecordId ? undefined : active?.document) ??
           (baseId
             ? await readAnalysisRecord(
                 identity.path,
@@ -183,9 +237,11 @@ export function createMarivoPresentTool(
           },
           signal,
           base,
+          input.rebaseOnRecordId ? active?.document.resources : undefined,
         )
         await check()
-        const baseBuildId = active ? active.baseBuildId : (base?.buildId ?? null)
+        const baseBuildId =
+          active && !input.rebaseOnRecordId ? active.baseBuildId : (base?.buildId ?? null)
         if (input.stage === 'preview' && lease) {
           const delivery = {
             kind: MARIVO_DRAFT_DELIVERY_KIND,
@@ -196,7 +252,12 @@ export function createMarivoPresentTool(
             draftRevision: document.buildId,
           } as const
           lease.write({ delivery, workspacePath: identity.path, baseBuildId, document })
-          return { deliveryJson: JSON.stringify(delivery) }
+          return {
+            stage: 'preview' as const,
+            draftId: delivery.draftId,
+            draftRevision: delivery.draftRevision,
+            deliveryJson: JSON.stringify(delivery),
+          }
         }
         const surface = active ? 'tab' : input.surface
         const receipt = await publishPresentation(
@@ -209,6 +270,8 @@ export function createMarivoPresentTool(
         )
         if (active) drafts.clear(sessionId, turn)
         return {
+          stage: 'save' as const,
+          recordId: document.recordId,
           deliveryJson: JSON.stringify(
             parsePresentationDelivery({
               kind: MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -272,17 +335,34 @@ function frameReadSummary(snapshot: FrameSnapshotV2) {
   }
 }
 
-/** Optional context recovery for an exact saved record. Never returns rows or starts Python. */
-export function createMarivoUiReadTool(source: PresentationWorkspaceSource): ToolDefinition {
+const uiReadInput = z.union([
+  z.strictObject({ recordId: z.string().min(1).max(512), current: z.boolean().optional() }),
+  z.strictObject({ draft: z.literal(true) }),
+])
+
+/** Editing context only: exact/current saved version or the caller's active Turn draft. */
+export function createMarivoUiReadTool(
+  source: PresentationWorkspaceSource,
+  drafts?: AnalysisDrafts,
+): ToolDefinition {
   return defineTool({
     name: 'marivo_ui_read',
     description:
-      'Read the UI definition and necessary saved resource schemas for one exact recordId when that context is missing. Do not call after successful presentation by default. Does not query live data or list documents.',
+      'Recover missing editing context without querying data: recordId reads that exact saved version; current=true resolves its report to the current saved version; draft=true reads the latest draft in the calling Session Turn. Choose saved or draft input, not both. Returns definitionJson with identifiers, program, reusable resource declarations and bounded schemas, never rows. Do not read back after success by default.',
     parameters: {
       recordId: {
         type: 'string',
-        required: true,
         description: 'Exact marivo-ui recordId from the successful presentation receipt.',
+      },
+      current: {
+        type: 'boolean',
+        description:
+          'With recordId, read the current saved version of that report instead of the exact version.',
+      },
+      draft: {
+        type: 'boolean',
+        description:
+          'Set true without recordId/current to recover this Session Turn draft and its latest identifiers.',
       },
     },
     output: {
@@ -294,22 +374,62 @@ export function createMarivoUiReadTool(source: PresentationWorkspaceSource): Too
       render: (_args, value) => [{ type: 'text', text: value.definitionJson }],
     },
     async execute(args, exec) {
-      const { reportId, buildId } = parseAnalysisRecordId(args.recordId)
+      const input = uiReadInput.parse(args)
       const binding = await source()
-      const document = await readAnalysisRecord(
-        binding.path,
-        binding.id,
-        reportId,
-        buildId,
-        exec.signal,
-      )
+      let document: AnalysisDocument
+      let identifiers: {
+        recordId?: string
+        draftId?: string
+        draftRevision?: string
+        basedOnRecordId?: string
+      }
+      let checkDraft = () => {}
+      if ('draft' in input) {
+        const session = exec.agent?.session
+        if (!session) throw unavailableDraft()
+        const turn = presentationTurn(session, exec)
+        const draft = drafts?.get(String(session.id))
+        if (
+          !draft ||
+          draft.delivery.turn !== turn ||
+          draft.workspacePath !== binding.path ||
+          draft.document.workspaceId !== binding.id
+        )
+          throw unavailableDraft()
+        document = draft.document
+        identifiers = {
+          draftId: draft.delivery.draftId,
+          draftRevision: draft.delivery.draftRevision,
+          ...(draft.baseBuildId
+            ? { basedOnRecordId: analysisRecordId(document.reportId, draft.baseBuildId) }
+            : {}),
+        }
+        checkDraft = () => {
+          if (exec.agent?.session !== session || drafts?.get(String(session.id)) !== draft)
+            throw unavailableDraft()
+        }
+      } else {
+        const { reportId, buildId } = parseAnalysisRecordId(input.recordId)
+        const selected = input.current
+          ? (await resolvePresentation(binding.path, binding.id, reportId, exec.signal)).buildId
+          : buildId
+        document = await readAnalysisRecord(
+          binding.path,
+          binding.id,
+          reportId,
+          selected,
+          exec.signal,
+        )
+        identifiers = { recordId: document.recordId }
+      }
       const current = await source()
       if (current.id !== binding.id || current.path !== binding.path)
         throw new Error('presentation-workspace-changed')
       exec.signal.throwIfAborted()
+      checkDraft()
       return {
         definitionJson: JSON.stringify({
-          recordId: document.recordId,
+          ...identifiers,
           title: document.title,
           locale: document.locale,
           catalog: document.catalog,
@@ -318,7 +438,7 @@ export function createMarivoUiReadTool(source: PresentationWorkspaceSource): Too
             Object.entries(document.resources).map(([name, resource]) => [
               name,
               resource.kind === 'image'
-                ? { kind: 'image', mimeType: resource.mimeType }
+                ? { kind: 'image', mimeType: resource.mimeType, declaration: resource.declaration }
                 : {
                     kind: resource.snapshot.kind,
                     declaration: resource.declaration,
@@ -346,6 +466,10 @@ export function createMarivoUiReadTool(source: PresentationWorkspaceSource): Too
     },
   })
 }
-export function registerMarivoUiReadTool(ctx: Context, source: PresentationWorkspaceSource) {
-  return registerMarivoTool(ctx, createMarivoUiReadTool(source))
+export function registerMarivoUiReadTool(
+  ctx: Context,
+  source: PresentationWorkspaceSource,
+  drafts?: AnalysisDrafts,
+) {
+  return registerMarivoTool(ctx, createMarivoUiReadTool(source, drafts))
 }

@@ -41,8 +41,8 @@ marivo-semantic  -> authoring
 5. 检查单 target timeout、stdout/stderr 上限、空 stdout 和批次总输出上限。
 6. 计算正文 SHA-256 digest，并结合当前 prompt 可见性标记 `delivered`、`already-visible` 或
    `replacement`。
-7. 整批成功后只向模型正文返回 Runtime 版本、target、Help body 与有界失败/截断；绝对路径和完整
-   fingerprint 只用于 Host presentation metadata，不进入模型正文。
+7. 整批成功后向模型正文返回 Runtime 版本、target 与原样 Help body。插件附加的完整 fingerprint
+   只用于 Host presentation metadata；Marivo 自身 Help 正文可能包含 Python/Package 绝对路径，透传层不删除或改写这些正文事实。
 
 多 target 读取是 all-or-nothing：任何 target 失败都使 Tool call 失败，不返回其他 target 的部分正文。
 模块不把 invalid target 替换成相近名称；Marivo 的真实错误经稳定 `target-failed` 边界返回。

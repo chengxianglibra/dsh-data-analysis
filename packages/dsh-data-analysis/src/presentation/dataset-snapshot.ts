@@ -10,7 +10,7 @@ import {
   isFrameSnapshotV2,
   parseAnalysisSnapshot,
 } from './contracts/snapshot.ts'
-import { PRESENTATION_BUDGETS } from './contracts/types.ts'
+import { type DatasetColumn, PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { presentationSha256, readReportFile } from './files.ts'
 
 const uuid = z.string().uuid()
@@ -31,6 +31,17 @@ const manifestSchema = z.strictObject({
 export type CapturedSnapshotKind = 'dataset' | 'frame'
 export type CapturedSnapshotEntry = PythonCaptureRecord['entries'][number] & {
   kind: CapturedSnapshotKind
+  summary: {
+    schema: {
+      columns: Pick<DatasetColumn, 'id' | 'type' | 'nullable'>[]
+      columnCount: number
+      columnsTruncated: boolean
+    }
+    coverage: Pick<
+      AnalysisSnapshot['coverage'],
+      'totalRows' | 'capturedRows' | 'complete' | 'business'
+    >
+  }
 }
 /** capture_dataset writes Dataset snapshots; capture_frame writes only v2 Frame snapshots. */
 function capturedKind(snapshot: AnalysisSnapshot): CapturedSnapshotKind | undefined {
@@ -66,6 +77,8 @@ export async function collectSnapshotCaptures(
   )
     throw new Error('dataset-capture-failed')
   const entries: CapturedSnapshotEntry[] = []
+  // Bound model context across all captures, separately from snapshot storage budgets.
+  let remainingColumns = 64
   for (const entry of manifest.entries) {
     if (entry.path !== `${directory}/${entry.captureId}.json`)
       throw new Error('dataset-capture-path-mismatch')
@@ -91,7 +104,21 @@ export async function collectSnapshotCaptures(
       return false
     }
     if (containsSecret(snapshot)) throw new Error('dataset-capture-forbidden')
-    entries.push({ ...entry, kind })
+    const columns = snapshot.data.columns.slice(0, Math.min(16, remainingColumns))
+    remainingColumns -= columns.length
+    const { totalRows, capturedRows, complete, business } = snapshot.coverage
+    entries.push({
+      ...entry,
+      kind,
+      summary: {
+        schema: {
+          columns: columns.map(({ id, type, nullable }) => ({ id, type, nullable })),
+          columnCount: snapshot.data.columns.length,
+          columnsTruncated: columns.length < snapshot.data.columns.length,
+        },
+        coverage: { totalRows, capturedRows, complete, business },
+      },
+    })
   }
   return entries
 }

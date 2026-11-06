@@ -44,3 +44,5 @@ helper 只接受 pandas DataFrame，不接受 RawSqlResult，不能恢复此前�
 调用异常可由原分析代码捕获；未捕获异常仍按 Python 规则退出。退出时 manifest 写入失败不会覆盖原执行结果，
 Host 返回 snapshotCaptureError 且不签发 snapshotRef；原代码成功时仍保留 codeRef。
 捕获错误不应通过重跑分析修复。snapshotRef 作为 `marivo_present` 的 `dataset-snapshot` 资源使用。
+
+任一 helper 捕获异常会将同次 manifest 标记为失败，即使原代码捕获异常也不签发该次任何 snapshotRef。Host 回执另有 capture.status/failureStage，并在成功快照旁返回有界 schema/coverage 摘要。Agent 按需入口为随包展示 Skill 的 references/capture.md。

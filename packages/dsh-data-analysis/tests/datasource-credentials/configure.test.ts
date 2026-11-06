@@ -89,20 +89,24 @@ test('cancellation and headless/subagent configuration do not resume as success'
     /call-ended/,
   )
   Reflect.set(f.agent.session.header, 'origin', 'subagent')
-  assert.deepEqual(
-    await f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'missing source' }),
-    { status: 'needs-configuration' },
-  )
+  const delegated = await f.service.configure(f.exec, f.resolve, {
+    mode: 'create',
+    reason: 'missing source',
+  })
+  assert.equal(delegated.status, 'needs-configuration')
+  assert.equal(delegated.handoff?.reason, 'parent-agent-required')
+  assert.match(delegated.handoff!.nextAction, /parent Agent/)
   const headless = fixture()
   t.after(() => headless.service.close())
-  assert.deepEqual(
-    await headless.service.configure(headless.exec, headless.resolve, {
-      mode: 'edit',
-      name: 'warehouse',
-      reason: 'repair',
-    }),
-    { status: 'needs-configuration', name: 'warehouse' },
-  )
+  const unavailable = await headless.service.configure(headless.exec, headless.resolve, {
+    mode: 'edit',
+    name: 'warehouse',
+    reason: 'repair',
+  })
+  assert.equal(unavailable.status, 'needs-configuration')
+  assert.equal(unavailable.name, 'warehouse')
+  assert.equal(unavailable.handoff?.reason, 'web-interaction-disabled')
+  assert.match(unavailable.handoff!.nextAction, /No Web form was opened/)
 })
 
 test('edit requests cannot change targets; selecting after update rebinds to fresh definition and credentials', async (t) => {
