@@ -1,8 +1,9 @@
 // @ts-nocheck -- Host hooks and Session navigation are supplied by the module table.
 
+import { XIcon } from 'lucide-react'
 import { useId, useSyncExternalStore } from 'react'
 import { useCopy } from './../i18n/context.tsx'
-import { Button } from '../ui/controls.tsx'
+import { Button, IconButton } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/primitives/card.tsx'
 import { Empty, EmptyDescription, EmptyHeader } from '../ui/primitives/empty.tsx'
@@ -169,17 +170,25 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
     </div>
   )
 }
-export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
+export function ReportHistoryPanel({ state, model, sessions, onOpenSession, onClose }) {
   const t = useCopy()
 
   return (
     <aside className="mv-ui pd-history" aria-label={t('marivo.presentation.history')}>
       <UIStyleSheet />
       <Card>
-        <CardHeader>
+        <CardHeader className="pd-history-header">
           <CardTitle role="heading" aria-level={3}>
             {t('marivo.presentation.history')}
           </CardTitle>
+          <IconButton
+            type="button"
+            variant="ghost"
+            label={t('marivo.presentation.close-history')}
+            onClick={onClose}
+          >
+            <XIcon />
+          </IconButton>
         </CardHeader>
         <CardContent className="pd-history-body">
           {state.historyLoading && <p role="status">{t('marivo.presentation.loading-history')}</p>}
@@ -190,31 +199,40 @@ export function ReportHistoryPanel({ state, model, sessions, onOpenSession }) {
           )}
           <ol>
             {state.history?.versions.map((version) => (
-              <li key={version.receipt.buildId}>
+              <li
+                key={version.receipt.buildId}
+                className={
+                  state.resolvedReceipt?.buildId === version.receipt.buildId
+                    ? 'is-selected'
+                    : undefined
+                }
+              >
                 <Button
                   type="button"
                   className="pd-version"
-                  variant={
-                    state.resolvedReceipt?.buildId === version.receipt.buildId
-                      ? 'secondary'
-                      : 'outline'
-                  }
+                  variant="ghost"
                   aria-pressed={state.resolvedReceipt?.buildId === version.receipt.buildId}
                   disabled={state.loading}
                   onClick={() => void model.selectVersion(version.receipt.buildId)}
                 >
-                  <strong>
+                  <span className="pd-version-heading">
                     <time dateTime={version.publishedAt}>
                       {publicationTime(version.publishedAt, t.locale)}
                     </time>
-                  </strong>
-                  <span>
-                    {version.receipt.buildId === state.history.currentBuildId
-                      ? t('marivo.presentation.current-version')
-                      : t('marivo.presentation.history')}{' '}
-                    · {version.receipt.buildId.slice(0, 8)}
+                    <span className="pd-version-labels">
+                      {version.receipt.buildId === state.history.currentBuildId && (
+                        <span className="pd-version-badge">
+                          {t('marivo.presentation.current-version')}
+                        </span>
+                      )}
+                      {state.resolvedReceipt?.buildId === version.receipt.buildId && (
+                        <span className="pd-version-viewing">
+                          {t('marivo.presentation.viewing-version')}
+                        </span>
+                      )}
+                    </span>
                   </span>
-                  <span>{version.receipt.title}</span>
+                  <span className="pd-version-title">{version.receipt.title}</span>
                 </Button>
                 <ReportSource version={version} sessions={sessions} onOpenSession={onOpenSession} />
               </li>
@@ -242,9 +260,17 @@ export const catalogStyles = `
 .pd-link{justify-content:flex-start;height:auto;white-space:normal;text-align:left}
 .pd-source{color:var(--muted-foreground);font-size:.875rem;overflow-wrap:anywhere}
 .pd-history{min-width:0;max-height:75vh;overflow:auto}
-.pd-history ol{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:1rem}
-.pd-history li{display:flex;flex-direction:column;gap:.5rem}
-.pd-version{display:flex;flex-direction:column;align-items:stretch;gap:.5rem;width:100%;height:auto;white-space:normal;text-align:left}
-.pd-version span{overflow-wrap:anywhere}
+.pd-history-header{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+.pd-history-header button{flex:none}
+.pd-history ol{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.5rem}
+.pd-history li{min-width:0;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.pd-history li.is-selected{border-color:var(--ring);background:var(--accent)}
+.pd-version{display:flex;flex-direction:column;align-items:stretch;gap:.35rem;width:100%;height:auto;padding:.75rem .875rem .35rem;white-space:normal;text-align:left}
+.pd-version-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.35rem .75rem;font-weight:600;font-variant-numeric:tabular-nums}
+.pd-version-labels{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;font-size:.75rem;font-weight:500}
+.pd-version-badge{padding:.1rem .45rem;border-radius:999px;background:var(--secondary);color:var(--secondary-foreground)}
+.pd-version-viewing{color:var(--muted-foreground)}
+.pd-version-title{font-weight:400;overflow-wrap:anywhere}
+.pd-history li>.pd-source{display:block;padding:0 .875rem .75rem}
 .pd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 `

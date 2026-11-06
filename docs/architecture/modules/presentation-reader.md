@@ -102,7 +102,7 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 
 报告目录按 Workspace 列出新格式记录，支持标题搜索，并按 surface 区分 tool 与 tab 结果。
 报告地址为 `dsh-resource://marivo-report/<workspace>/<report>/current` 或 `.../build/<build>`；
-打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
+打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
 Reader 接受 current v4 历史指针、当前快照及当前 Catalog build。其他 Catalog build、current v2/v3、Frame v1 与旧报告内容均明确拒绝，

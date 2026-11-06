@@ -426,6 +426,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     model={historyModel}
                     sessions={sessions}
                     onOpenSession={(id) => ctx.uiWorkspace.openSession(id)}
+                    onClose={() => void page.reader.toggleHistory()}
                   />
                 )}
                 {report.analysisDocument && (

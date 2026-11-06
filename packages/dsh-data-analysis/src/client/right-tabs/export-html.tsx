@@ -9,7 +9,7 @@ export function useExportHtml({
   document: AnalysisDocument
   isCurrent: () => boolean
 }) {
-  const [status, setStatus] = useState<'working' | 'failed'>()
+  const [status, setStatus] = useState<'working' | 'success' | 'failed'>()
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -17,6 +17,11 @@ export function useExportHtml({
       mounted.current = false
     }
   }, [])
+  useEffect(() => {
+    if (status !== 'success') return
+    const timer = window.setTimeout(() => setStatus(undefined), 5_000)
+    return () => window.clearTimeout(timer)
+  }, [status])
   async function download() {
     setStatus('working')
     try {
@@ -30,16 +35,17 @@ export function useExportHtml({
         anchor.href = url
         anchor.download = `report-${report.reportId}-${report.buildId}.html`
         anchor.click()
+        if (mounted.current && isCurrent()) setStatus('success')
       } finally {
         // Give the browser time to begin consuming the object URL.
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
       }
     } catch {
-      if (mounted.current) setStatus('failed')
+      if (mounted.current && isCurrent()) setStatus('failed')
       return
     } finally {
       if (mounted.current) setStatus((current) => (current === 'working' ? undefined : current))
     }
   }
-  return { status, download }
+  return { status, download, dismiss: () => setStatus(undefined) }
 }

@@ -89,6 +89,9 @@ window.renderExport('current');
   const historical = await first
   assert.equal(historical.suggestedFilename(), 'report-r-historical.html')
   assert.equal(await readFile(await historical.path(), 'utf8'), 'build:historical')
+  await page.getByRole('status').getByText('HTML download started.').waitFor()
+  assert.equal(await button.count(), 0)
+  await page.getByRole('status').waitFor({ state: 'detached', timeout: 7_000 })
   await page.evaluate(() => (window as any).renderExport('current'))
   await menu.click()
   const second = page.waitForEvent('download')
@@ -100,5 +103,8 @@ window.renderExport('current');
   await menu.click()
   await button.click()
   await page.getByRole('alert').getByText('Export failed. Try again.').waitFor()
+  assert.equal(await button.count(), 0)
+  await page.getByRole('button', { name: 'Dismiss export notification' }).click()
+  assert.equal(await page.getByRole('alert').count(), 0)
   assert.equal(await page.evaluate(() => (window as any).anchorClicks), 2)
 })
