@@ -17,10 +17,11 @@ import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {CopyProvider} from './src/client/i18n/context.tsx';
 import {translator} from './src/client/i18n/copy.ts';
-import {ExportHtml} from './src/client/right-tabs/export-html.tsx';
+import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
 const root=createRoot(document.getElementById('root'));
 let current=true;
-window.renderExport=(buildId)=>root.render(<CopyProvider t={translator('en-US')}><ExportHtml key={buildId} document={{reportId:'r',buildId}} isCurrent={()=>current}/></CopyProvider>);
+window.historyClicks=0;
+window.renderExport=(buildId)=>root.render(<CopyProvider t={translator('en-US')}><ReportActions key={buildId} document={{reportId:'r',buildId}} isCurrent={()=>current} onHistory={()=>window.historyClicks++}/></CopyProvider>);
 window.setCurrent=(value)=>{current=value};
 window.anchorClicks=0;
 const originalClick=HTMLAnchorElement.prototype.click;
@@ -64,7 +65,12 @@ window.renderExport('current');
   })
   await page.setContent('<div id="root"></div>')
   await page.addScriptTag({ content: bundle.outputFiles[0]?.text })
-  const button = page.getByRole('button', { name: 'Export HTML' })
+  const menu = page.getByRole('button', { name: 'Report actions' })
+  const button = page.getByRole('menuitem', { name: 'Export HTML' })
+  await menu.click()
+  await page.getByRole('menuitem', { name: 'History' }).click()
+  assert.equal(await page.evaluate(() => (window as any).historyClicks), 1)
+  await menu.click()
   await page.getByText(/including data not currently visible/).waitFor()
   // Change version while the first module request is pending.
   await button.click()
@@ -74,7 +80,8 @@ window.renderExport('current');
     ;(window as any).renderExport('historical')
   })
   releaseModule?.()
-  await page.getByRole('button', { name: 'Export HTML' }).waitFor()
+  await menu.click()
+  await button.waitFor()
   assert.equal(await page.evaluate(() => (window as any).anchorClicks), 0)
   await page.evaluate(() => (window as any).setCurrent(true))
   const first = page.waitForEvent('download')
@@ -83,12 +90,14 @@ window.renderExport('current');
   assert.equal(historical.suggestedFilename(), 'report-r-historical.html')
   assert.equal(await readFile(await historical.path(), 'utf8'), 'build:historical')
   await page.evaluate(() => (window as any).renderExport('current'))
+  await menu.click()
   const second = page.waitForEvent('download')
   await button.click()
   const current = await second
   assert.equal(current.suggestedFilename(), 'report-r-current.html')
   assert.equal(await readFile(await current.path(), 'utf8'), 'build:current')
   await page.evaluate(() => (window as any).renderExport('failure'))
+  await menu.click()
   await button.click()
   await page.getByRole('alert').getByText('Export failed. Try again.').waitFor()
   assert.equal(await page.evaluate(() => (window as any).anchorClicks), 2)

@@ -14,7 +14,6 @@ export const FRAME_STYLES = `
 .fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .fv-head [data-slot=card-description]{font-size:12px;line-height:1.5}
 .fv-head button{white-space:nowrap}
 .fv-header-actions{display:flex;align-items:flex-start;gap:8px}
-.fv-chart-tag{display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:4px;background:var(--muted);color:var(--muted-foreground);font-size:10px;line-height:1.4;white-space:nowrap}
 .fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .au-metric-group{display:block}
 .fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .au-metric-group>[data-slot=card]{background:transparent;box-shadow:none;padding:0;gap:0}
 .fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .au-metric-group>[data-slot=card]>[data-slot=card-header]{padding:0}

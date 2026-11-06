@@ -50,7 +50,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   单行多组比较（单一比较、最多 8 个指标）默认按指标渲染本期/基期/Δ/Δ% 的头部数字块，更长或含多个比较时回退为指标 × 本期/基期/Δ/Δ% 转置表；显式 `table` 始终是转置表。
   折线与面积图要求时间轴；柱图可用时间轴或普通类别轴，类别轴按保存行首次出现的顺序等距排布，不推断连续性。
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
-- Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、图表类型、上下文摘要、
+- Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、上下文摘要、
   头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通折线、面积、柱图、横向柱图及热力图复用共享图表；
   比较、分解、对齐、相关和占比等领域视图使用 Recharts 坐标/图形与有限自定义 marks，按解析结果绘图或显示表格；显式 pie 使用完整的单分类轴快照，要求值非负且总量可确定；
   NA、缺期、不完整期、presence、restricted 与未捕获完整采用视觉编码及必要的短状态标签；
@@ -89,7 +89,7 @@ Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原�
 
 ## 来源与范围详情
 
-DataFrame 的“数据来源与范围”入口集中展示捕获时间、行数、本次执行声明的数据源与 backend，以及已保存的 Python 源码；
+DataFrame 的“数据来源与范围”入口集中展示捕获时间、本次执行声明的数据源与 backend，以及已保存的 Python 源码；
 Session、Call 和 codeRef 放在可展开的开发者区域。旧执行记录或未声明数据源时明示不可用，源码缺失、读取失败或摘要不一致时显示状态。Frame 不显示 Evidence、Finding 或计算过程；
 来源固定为 Host 绑定的 codeRef：来源详情经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef。
 sha256 标识完整 execution record，由 Host 校验记录，客户端核对返回摘要与绑定摘要。Frame 的摘要不一致或执行记录缺失时 Python 图标变灰；section 为 `unavailable`
@@ -102,7 +102,7 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 
 报告目录按 Workspace 列出新格式记录，支持标题搜索，并按 surface 区分 tool 与 tab 结果。
 报告地址为 `dsh-resource://marivo-report/<workspace>/<report>/current` 或 `.../build/<build>`；
-打开时在右侧 tab 中显示对应版本，版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
+打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，可切换到历史版本或回到 current。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
 Reader 接受 current v4 历史指针、当前快照及当前 Catalog build。其他 Catalog build、current v2/v3、Frame v1 与旧报告内容均明确拒绝，

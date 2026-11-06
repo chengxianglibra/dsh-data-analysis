@@ -76,15 +76,12 @@ root.render(createElement(AnalysisRenderer,{resources,title:'Alignment',locale:'
       ]) {
         const a = page.locator(`[data-resource="${dataset}"]`)
         const b = page.locator(`[data-resource="${frame}"]`)
-        for (const selector of [
-          '.fv-head',
-          '.fv-header-actions',
-          '.fv-chart-tag',
-          '[data-icon="data"]',
-        ]) {
+        for (const selector of ['.fv-head', '.fv-header-actions', '[data-icon="data"]']) {
           assert.equal(await a.locator(selector).count(), 1, `${dataset} ${selector}`)
           assert.equal(await b.locator(selector).count(), 1, `${frame} ${selector}`)
         }
+        assert.equal(await a.locator('.fv-chart-tag').count(), 0, `${dataset} chart type label`)
+        assert.equal(await b.locator('.fv-chart-tag').count(), 0, `${frame} chart type label`)
         const structure = (selector: string) =>
           page.locator(selector).evaluate((node) => {
             const header = node.querySelector('.fv-head')!

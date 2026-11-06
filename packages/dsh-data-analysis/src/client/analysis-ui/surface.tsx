@@ -20,7 +20,7 @@ const styles = `
 .au-surface p{overflow-wrap:anywhere}
 .au-data{width:100%;min-width:0}
 .au-source{min-width:0;display:grid;gap:.75rem}.au-source section{display:grid;gap:.5rem}.au-source ul{margin:0;padding-left:1.25rem}.au-source-trigger{align-self:flex-start}
-.au-source pre{overflow:auto;max-height:240px}
+.au-source-code{position:relative;min-width:0}.au-source-code pre{height:min(20rem,45vh);max-height:none;margin:0;padding-right:3rem;overflow:auto}.au-source-copy{position:absolute;top:.25rem;right:.25rem}
 .au-source dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.5rem 1rem}
 .au-source dd{margin:0;overflow-wrap:anywhere}
 .au-metric{display:grid;gap:1rem}

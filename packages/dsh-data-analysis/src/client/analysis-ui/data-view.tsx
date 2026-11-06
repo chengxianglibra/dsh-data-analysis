@@ -367,14 +367,6 @@ function DatasetDataView({
   const title = titleNames.length
     ? titleNames.slice(0, 3).join(' · ') + (titleNames.length > 3 ? ' …' : '')
     : resourceName
-  const chartKind =
-    resolved?.chart === 'metric' && metricColumn
-      ? metricColumn.unit === 'USD' && ['float64', 'int64', 'decimal'].includes(metricColumn.type)
-        ? 'currency'
-        : ['float64', 'int64', 'decimal'].includes(metricColumn.type)
-          ? 'number'
-          : 'metric'
-      : resolved?.chart
   const codeStatus =
     currentCode?.kind === 'ok'
       ? 'ready'
@@ -521,9 +513,6 @@ function DatasetDataView({
           title={title}
           actions={
             <div className="fv-header-actions">
-              <span className="fv-chart-tag">
-                {t(`marivo.presentation.ui-chart-kind-${chartKind}`)}
-              </span>
               {!candidate && askResource && resourceName && component && (
                 <ResourceAskButton
                   component={component}
@@ -625,34 +614,31 @@ function DatasetDataView({
           >
             <div className="au-source">
               <p>{t('marivo.presentation.ui-captured-at', { p0: snapshot.fetchedAt })}</p>
-              <p>
-                {t('marivo.presentation.ui-capture-range', {
-                  p0: snapshot.coverage.capturedRows,
-                  p1: snapshot.coverage.totalRows,
-                })}
-              </p>
               <section>
                 <p>
                   <strong>{t('marivo.presentation.ui-dataset-source-python')}</strong>
                 </p>
                 {currentCode?.kind === 'ok' ? (
                   <>
-                    <div className="fv-table-bar">
-                      <FrameIconButton
-                        kind="copy-code"
-                        label={t('marivo.presentation.copy-code')}
-                        tip={t('marivo.presentation.copy-code')}
-                        onOpen={() => void copyCode(currentCode.text, currentCode.key)}
-                      >
-                        <FrameIcon kind="copy" />
-                      </FrameIconButton>
-                      {copied && copied.key === codeKey && (
-                        <span role="status">{t(copied.message)}</span>
-                      )}
+                    <div className="au-source-code">
+                      <pre className="fv-code rounded-lg bg-muted p-3 text-xs">
+                        <code>{currentCode.text}</code>
+                      </pre>
+                      <div className="au-source-copy">
+                        <FrameIconButton
+                          kind="copy-code"
+                          label={t('marivo.presentation.copy-code')}
+                          tip={t('marivo.presentation.copy-code')}
+                          iconOnly
+                          onOpen={() => void copyCode(currentCode.text, currentCode.key)}
+                        >
+                          <FrameIcon kind="copy" />
+                        </FrameIconButton>
+                      </div>
                     </div>
-                    <pre className="fv-code rounded-lg bg-muted p-3 text-xs">
-                      <code>{currentCode.text}</code>
-                    </pre>
+                    {copied && copied.key === codeKey && (
+                      <span role="status">{t(copied.message)}</span>
+                    )}
                   </>
                 ) : (
                   <p>

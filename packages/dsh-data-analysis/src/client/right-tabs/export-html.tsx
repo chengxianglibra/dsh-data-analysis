@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
-import { useCopy } from '../i18n/context.tsx'
-import { Button } from '../ui/controls.tsx'
 
 /** Downloads the exact already-verified Build displayed by the report reader. */
-export function ExportHtml({
+export function useExportHtml({
   document: report,
   isCurrent,
 }: {
   document: AnalysisDocument
   isCurrent: () => boolean
 }) {
-  const t = useCopy()
   const [status, setStatus] = useState<'working' | 'failed'>()
   const mounted = useRef(true)
   useEffect(() => {
@@ -44,19 +41,5 @@ export function ExportHtml({
       if (mounted.current) setStatus((current) => (current === 'working' ? undefined : current))
     }
   }
-  return (
-    <>
-      <Button type="button" variant="outline" disabled={status === 'working'} onClick={download}>
-        {t(
-          status === 'working'
-            ? 'marivo.presentation.exporting-html'
-            : 'marivo.presentation.export-html',
-        )}
-      </Button>
-      <span>{t('marivo.presentation.export-html-scope')}</span>
-      {status === 'failed' && (
-        <span role="alert">{t('marivo.presentation.export-html-failed')}</span>
-      )}
-    </>
-  )
+  return { status, download }
 }

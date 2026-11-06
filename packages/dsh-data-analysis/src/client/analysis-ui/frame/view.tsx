@@ -51,7 +51,6 @@ import {
   displayFrameCell,
   endpointLabels,
   interpretationOf,
-  isNumeric,
   type Snapshot,
   valueName,
 } from './model.ts'
@@ -329,21 +328,6 @@ function title(
         .map((n) => valueName(s, c, n))
         .join(' · ') + (names.length > 3 ? ' …' : '')
     : fallback
-}
-
-function chartLabel(t: Translator, s: Snapshot, view: ResolvedFrameView): string {
-  let kind: string = view.chart
-  if (view.chart === 'metric' && view.values.length === 1) {
-    const name = view.values[0]!
-    const column = columnOf(s, name)?.column
-    if (interpretationOf(s)?.valueContexts[name]?.kind === 'share') kind = 'percent'
-    else if (column?.unit === 'USD' && isNumeric(column)) kind = 'currency'
-    else if (isNumeric(column)) kind = 'number'
-  } else if (view.chart === 'members') kind = 'table'
-  else if (view.chart === 'pie' && view.style === 'stacked') kind = 'composition'
-  else if (view.chart === 'comparison-grid') kind = 'comparison'
-  else if (view.chart === 'hbar' || view.chart === 'interval-bar') kind = 'bar'
-  return t(`marivo.presentation.ui-chart-kind-${kind}`)
 }
 
 type NumberItem = Parameters<typeof Numbers>[0]['items'][number]
@@ -692,7 +676,6 @@ export function FrameShell({
           title={name}
           actions={
             <div className="fv-header-actions">
-              <span className="fv-chart-tag">{chartLabel(t, s, view)}</span>
               {!candidate && askResource && resourceName && component && (
                 <ResourceAskButton
                   component={component}

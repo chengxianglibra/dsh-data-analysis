@@ -265,9 +265,7 @@ try {
   record('fixed/current parallel panes; the current reader survives float/dock remount')
   await page.evaluate((id) => (window as any).__rtHost.sidebar.focus(id), currentTab)
   const history = (locale: 'zh' | 'en') =>
-    currentPage
-      .locator('.rt-toolbar')
-      .getByRole('button', { name: locale === 'zh' ? '历史版本' : 'History', exact: true })
+    currentPage.getByRole('button', { name: locale === 'zh' ? '报告操作' : 'Report actions' })
   const titleBeforeLocale = await currentPage.locator('.pr-reader h1').first().innerText()
   await page.evaluate(() => (window as any).__rtHost.locale.setLocale('en'))
   await history('en').waitFor()

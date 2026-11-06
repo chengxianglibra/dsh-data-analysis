@@ -31,7 +31,6 @@ import { Button } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { WorkspaceShortcuts, workspaceDirectories } from '../workspace-shortcuts.tsx'
-import { ExportHtml } from './export-html.tsx'
 import { LiveDeliveryObserver } from './live-delivery.ts'
 import {
   canOpenResource,
@@ -41,6 +40,7 @@ import {
   resourceAddress,
 } from './navigation.ts'
 import { TabPage } from './page.ts'
+import { ReportActions } from './report-actions.tsx'
 import { rightTabStyles } from './styles.ts'
 
 export const inject = [
@@ -429,18 +429,12 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                   />
                 )}
                 {report.analysisDocument && (
-                  <>
+                  <div className="rt-report-surface">
                     <div className="rt-toolbar">
-                      <Button
-                        variant="outline"
-                        type="button"
-                        onClick={() => void page.reader.toggleHistory()}
-                      >
-                        {t('marivo.presentation.history')}
-                      </Button>
-                      <ExportHtml
+                      <ReportActions
                         key={report.analysisDocument.recordId}
                         document={report.analysisDocument}
+                        onHistory={() => void page.reader.toggleHistory()}
                         isCurrent={() =>
                           !tab.signal.aborted &&
                           !page.getSnapshot().error &&
@@ -514,7 +508,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                           : undefined
                       }
                     />
-                  </>
+                  </div>
                 )}
               </>
             )}

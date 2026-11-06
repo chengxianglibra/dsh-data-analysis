@@ -142,7 +142,8 @@ try {
   await page.locator('[data-rt-kind=reports] .pd-report-title').first().click()
   const reader = page.locator('[data-rt-kind=report]')
   await reader.locator('[data-analysis-record]').waitFor()
-  await reader.locator('.rt-toolbar').getByRole('button', { name: '历史版本', exact: true }).click()
+  await reader.getByRole('button', { name: '报告操作' }).click()
+  await page.getByRole('menuitem', { name: '历史版本', exact: true }).click()
   await reader.getByRole('complementary', { name: '历史版本' }).waitFor()
   assert.equal(errors.length, 0, errors.join('\n'))
   await writeFile(
