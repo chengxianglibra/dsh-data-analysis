@@ -276,7 +276,8 @@ try {
   record(
     'real Host locale switch updates reader controls and preserves fixed report content and Build',
   )
-  await page.setViewportSize({ width: 430, height: 900 })
+  // Keep this viewport shorter than the compact report so scrolling is testable.
+  await page.setViewportSize({ width: 430, height: 600 })
   await history('zh').waitFor()
   const scroll = await currentPage.evaluate((node) => {
     const candidates = [node, ...node.querySelectorAll('*')]
@@ -312,7 +313,7 @@ try {
   await page.getByRole('button', { name: '打开语义层', exact: true }).click()
   await page.locator('[data-rt-kind=semantic] .sb-objects button').first().waitFor()
   await page.setViewportSize({ width: 600, height: 900 })
-  await page.locator('.sb-kinds').getByRole('button', { name: /^指标/ }).click()
+  await page.locator('.sb-kinds').getByRole('radio', { name: /^指标/ }).click()
   const semanticDirectoryTab = await page
     .locator('[data-rt-kind=semantic]')
     .getAttribute('data-rt-tab')
@@ -334,14 +335,14 @@ try {
   assert.equal(
     await page
       .locator('.sb-kinds')
-      .getByRole('button', { name: /^指标/ })
-      .getAttribute('aria-pressed'),
+      .getByRole('radio', { name: /^指标/ })
+      .getAttribute('aria-checked'),
     'true',
   )
   await page.screenshot({ path: path.join(outputRoot, 'semantic-directory.png'), fullPage: true })
   await page
     .locator('.sb-kinds')
-    .getByRole('button', { name: /^全部对象/ })
+    .getByRole('radio', { name: /^全部对象/ })
     .click()
   await page.setViewportSize({ width: 1680, height: 1100 })
   record('semantic narrow-pane filters remain accessible and repeat entry preserves state')
@@ -386,9 +387,11 @@ try {
       ref: object.ref,
     })
   })
-  await page.getByRole('button', { name: '关系', exact: true }).click()
+  await page.getByRole('tab', { name: '关系', exact: true }).click()
   const semanticTab = await page.locator('[data-rt-kind=semantic]').getAttribute('data-rt-tab')
-  const semanticRef = await page.locator('[data-rt-kind=semantic] .sb-detail > .sb-ref').innerText()
+  const semanticRef = await page
+    .locator('[data-rt-kind=semantic] .sb-detail .sb-identity-text .sb-ref')
+    .innerText()
   const another = page.locator('[data-rt-kind=semantic] .sb-relation-list button:enabled').first()
   await page.evaluate((id) => {
     const app = (window as any).__rightTabs
@@ -405,12 +408,12 @@ try {
     semanticTab,
   )
   assert.notEqual(
-    await page.locator('[data-rt-kind=semantic] .sb-detail > .sb-ref').innerText(),
+    await page.locator('[data-rt-kind=semantic] .sb-detail .sb-identity-text .sb-ref').innerText(),
     semanticRef,
   )
   await page.getByRole('button', { name: '返回上个对象', exact: true }).click()
   assert.equal(
-    await page.locator('[data-rt-kind=semantic] .sb-detail > .sb-ref').innerText(),
+    await page.locator('[data-rt-kind=semantic] .sb-detail .sb-identity-text .sb-ref').innerText(),
     semanticRef,
   )
   assert.equal(
@@ -437,16 +440,16 @@ try {
   )
   await page.getByRole('button', { name: '打开数据源与凭证', exact: true }).click()
   const datasourcePanel = page.locator('[data-rt-kind=datasources]')
-  const datasourceButtons = datasourcePanel.getByRole('button', { name: /^选择数据源 / })
+  const datasourceButtons = datasourcePanel.getByRole('tab', { name: /^选择数据源 / })
   await datasourceButtons.last().click()
   const selectedDatasource = await datasourceButtons.last().getAttribute('aria-label')
-  assert.equal(await datasourceButtons.last().getAttribute('aria-pressed'), 'true')
+  assert.equal(await datasourceButtons.last().getAttribute('aria-selected'), 'true')
   await datasourcePanel.getByRole('button', { name: '刷新数据源', exact: true }).click()
-  await datasourcePanel.getByRole('button', { name: selectedDatasource!, exact: true }).waitFor()
+  await datasourcePanel.getByRole('tab', { name: selectedDatasource!, exact: true }).waitFor()
   assert.equal(
     await datasourcePanel
-      .getByRole('button', { name: selectedDatasource!, exact: true })
-      .getAttribute('aria-pressed'),
+      .getByRole('tab', { name: selectedDatasource!, exact: true })
+      .getAttribute('aria-selected'),
     'true',
   )
   assert.equal(await page.locator('dialog.mc-dialog').count(), 0)
@@ -463,7 +466,7 @@ try {
     const list = panel.querySelector('.mc-datasources')!.getBoundingClientRect()
     const detail = panel.querySelector('.mc-form')!.getBoundingClientRect()
     const selected = panel
-      .querySelector('.mc-datasource[aria-pressed=true]')!
+      .querySelector('.mc-datasource[aria-selected=true]')!
       .getBoundingClientRect()
     return {
       aligned: Math.abs(title.y + title.height / 2 - refresh.y - refresh.height / 2) < 2,
@@ -507,12 +510,12 @@ try {
   )
   record('real history pagination publishes prepend without auto-open')
   await select('right-tabs-ptc')
+  const beforePtc = await opens()
   const ptc = await run('ptc')
   await page.locator(`[data-rt-build="${ptc.receipt.buildId}"]`).waitFor()
-  const beforeDuplicate = await opens()
-  await run('ptc', 'duplicate')
   await page.waitForTimeout(300)
-  assert.equal(await opens(), beforeDuplicate)
+  assert.equal(await opens(), beforePtc + 1)
+  const beforeBackground = await opens()
   await select('right-tabs-native')
   await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
   await page.locator('[data-rt-kind=reports] .pd-report-title').first().waitFor()
@@ -550,7 +553,7 @@ try {
     await page.evaluate(() => (window as any).__rtHost.sidebar.active().id),
     beforeBackgroundTab,
   )
-  assert.equal(await opens(), beforeDuplicate)
+  assert.equal(await opens(), beforeBackground)
   await page.screenshot({
     path: path.join(outputRoot, 'background-current-hint.png'),
     fullPage: true,
@@ -572,7 +575,20 @@ try {
     `[data-rt-kind=report][data-rt-build="${backgroundUpdate.receipt.buildId}"]`,
   )
   await analysisSurface(latestFixed).waitFor()
-  assert.equal(await backgroundCurrent.getAttribute('data-rt-build'), ptc.receipt.buildId)
+  assert.equal(
+    await page.evaluate(
+      ({ reportId, buildId }) =>
+        [...(window as any).__rightTabs.pages.values()].some(
+          (p: any) =>
+            p.target.kind === 'report' &&
+            p.target.reportId === reportId &&
+            !p.target.buildId &&
+            p.reader.getSnapshot().analysisDocument?.buildId === buildId,
+        ),
+      ptc.receipt,
+    ),
+    true,
+  )
   record('explicit fixed address opens the background Build without moving the current reader')
   const cold = await run('cold')
   await page.waitForFunction(
@@ -584,7 +600,7 @@ try {
       ),
     cold.receipt,
   )
-  assert.equal(await opens(), beforeDuplicate)
+  assert.equal(await opens(), beforeBackground)
   assert.equal(
     await page.evaluate(() =>
       (window as any).__rightTabs.audit.changes.some((x: any) => x.sessionId === 'right-tabs-cold'),
@@ -596,8 +612,8 @@ try {
   )
   await select('right-tabs-ptc')
   await page.waitForTimeout(300)
-  assert.equal(await opens(), beforeDuplicate)
-  record('PTC opens once; duplicate and background delivery do not reopen')
+  assert.equal(await opens(), beforeBackground)
+  record('PTC opens once; background delivery does not reopen')
   const rejectsUnknown = await page.evaluate(() => {
     try {
       ;(window as any).__rtHost.sidebar.openResource('dsh-resource://marivo-report/malformed')
@@ -607,7 +623,18 @@ try {
     }
   })
   assert.equal(rejectsUnknown, true)
-  const fileLink = page.getByText(/s4-produced-.*\.txt/).first()
+  await page
+    .getByRole('button', { name: /^已完成，用时/ })
+    .first()
+    .click()
+  await page
+    .getByRole('button', { name: /运行了代码/ })
+    .first()
+    .click()
+  const fileLink = page
+    .locator('span:visible')
+    .filter({ hasText: /s4-produced-.*\.txt/ })
+    .first()
   await fileLink.click()
   assert.notEqual(
     await page.evaluate(() => (window as any).__rtHost.sidebar.active()?.kind),
@@ -776,7 +803,7 @@ try {
   await page.waitForFunction(() => (window as any).__rtHost.delay.held())
   await page.getByRole('button', { name: '打开数据源与凭证', exact: true }).click()
   await page
-    .getByRole('button', { name: /^选择数据源 / })
+    .getByRole('tab', { name: /^选择数据源 / })
     .first()
     .waitFor()
   const beforeDetachReads = await page.evaluate(() =>
@@ -791,7 +818,7 @@ try {
     await page.evaluate(() => (window as any).__rtHost.delay.overviewReads()),
     beforeDetachReads,
   )
-  assert.equal(await page.getByRole('button', { name: /^选择数据源 / }).count(), 0)
+  assert.equal(await page.getByRole('tab', { name: /^选择数据源 / }).count(), 0)
   await page.screenshot({ path: path.join(outputRoot, 'revoked-datasource.png'), fullPage: true })
   record(
     'Workspace revocation closes configuration without re-reading or reviving its datasource Tab',
@@ -838,9 +865,9 @@ try {
     ptc.receipt,
   )
   await page.waitForFunction(() => (window as any).__rtHost.delay.held())
-  const withoutSession = await page.evaluate((receipt) => {
+  const withoutSession = await page.evaluate(async (receipt) => {
     const host = (window as any).__rtHost
-    host.clear()
+    await host.clear()
     try {
       ;(window as any).__rightTabs.navigate('right-tabs-ptc', {
         kind: 'report',

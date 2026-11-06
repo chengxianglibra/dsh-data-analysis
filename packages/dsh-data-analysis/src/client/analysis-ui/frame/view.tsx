@@ -480,6 +480,12 @@ export function FrameShell({
     target?.focus()
     if (target) originRef.current = target
   }
+  const restorePointOriginLater = () => {
+    const revision = requestRevision.current
+    requestAnimationFrame(() => {
+      if (requestRevision.current === revision) restorePointOrigin()
+    })
+  }
   useEffect(() => {
     if (!selected || status !== 'failed') return
     const origin = originRef.current
@@ -547,7 +553,7 @@ export function FrameShell({
         collisionPadding={8}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          if (closeReason.current === 'escape') requestAnimationFrame(restorePointOrigin)
+          if (closeReason.current === 'escape') restorePointOriginLater()
         }}
         onFocusOutside={(event) => {
           const target = event.target
@@ -571,7 +577,7 @@ export function FrameShell({
           closeReason.current = 'escape'
           setSelection(undefined)
           restorePointOrigin()
-          requestAnimationFrame(restorePointOrigin)
+          restorePointOriginLater()
         }}
         onKeyDown={(event) => {
           if (event.key === 'Tab') {

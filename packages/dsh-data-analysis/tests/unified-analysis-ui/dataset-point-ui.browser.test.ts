@@ -56,6 +56,14 @@ window.render(false);`,
       const box = await mark.boundingBox()
       assert.ok(box)
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+      if (resourceName === 'area') {
+        await page.getByRole('menuitem', { name: 'Ask about this' }).waitFor()
+        await page.keyboard.press('Escape')
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('data-frame-point') === '2:value',
+        )
+        await mark.press('Enter')
+      }
       await page.getByRole('menuitem', { name: 'Ask about this' }).click()
       assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'requests'))).at(-1), {
         resourceName,

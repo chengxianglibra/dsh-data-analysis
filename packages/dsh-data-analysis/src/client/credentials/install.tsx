@@ -26,6 +26,7 @@ import { Empty, EmptyDescription } from '../ui/primitives/empty.tsx'
 import { Field, FieldGroup, FieldLabel, FieldSet } from '../ui/primitives/field.tsx'
 import { Input } from '../ui/primitives/input.tsx'
 import { NativeSelect } from '../ui/primitives/native-select.tsx'
+import { TabsContent, TabsList, Tabs as TabsRoot, TabsTrigger } from '../ui/primitives/tabs.tsx'
 import { ToggleGroup, ToggleGroupItem } from '../ui/primitives/toggle-group.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
 import type { CredentialChanges } from './changes.ts'
@@ -691,7 +692,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
     }
     if (columns.current) columns.current.scrollTop = 0
     const list = navigation.current
-    const selected = list?.querySelector('[aria-pressed="true"]')
+    const selected = list?.querySelector('[aria-selected="true"]')
     if (selected) {
       const bounds = selected.getBoundingClientRect()
       const viewport = list.getBoundingClientRect()
@@ -708,6 +709,20 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
     (entry) => entry.handle.id === state.handle?.id,
   )?.operation
   if (!state.open) return null
+  const credentialForm = !creating && context && (
+    <CredentialForm
+      key={context.token}
+      context={context}
+      request={request}
+      state={state}
+      model={model}
+      workspaceId={workspaceId}
+      onEdit={() => {
+        setEditingName(context.name)
+        setCreating(true)
+      }}
+    />
+  )
   return (
     <section
       className="mv-ui mc-panel"
@@ -778,7 +793,16 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
             )}
           </div>
         )}
-        <div className="mc-columns" ref={columns}>
+        <TabsRoot
+          className="mc-columns"
+          ref={columns}
+          value={!request && !creating ? (context?.token ?? '') : ''}
+          activationMode="manual"
+          onValueChange={(token) => {
+            setCreating(false)
+            model.select(token)
+          }}
+        >
           {!request && (
             <aside className="mc-nav" aria-label={t('marivo.credentials.datasource-navigation')}>
               <div>
@@ -789,7 +813,12 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                       : t('marivo.credentials.datasource-value', { p0: datasources.length })}
                   </h3>
                 </div>
-                <ul className="mc-datasources" ref={navigation}>
+                <TabsList
+                  variant="line"
+                  className="mc-datasources"
+                  ref={navigation}
+                  aria-label={t('marivo.credentials.datasource-navigation')}
+                >
                   {datasources.map((item, index) => {
                     const count = item.refs.filter(
                       (ref) => item.credentials[ref]?.configured,
@@ -812,44 +841,34 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                       : status
                     const statusId = `${formId}-datasource-status-${index}`
                     return (
-                      <li key={item.token}>
-                        <Button
-                          variant={
-                            !creating && context?.token === item.token ? 'secondary' : 'outline'
-                          }
-                          className="mc-datasource"
-                          type="button"
-                          aria-label={t('marivo.credentials.select-datasource-value', {
-                            p0: item.name,
-                          })}
-                          aria-describedby={statusId}
-                          aria-pressed={!creating && context?.token === item.token}
-                          onClick={() => {
-                            if (request) model.openRequest(request.id)
-                            else {
-                              setCreating(false)
-                              model.select(item.token)
-                            }
-                          }}
-                        >
-                          <CredentialIcon name="database" />
-                          <span className="mc-datasource-copy">
-                            <span className="mc-datasource-name">{item.name}</span>
-                            <span
-                              className="mc-dot"
-                              data-ready={ready}
-                              title={description}
-                              aria-hidden="true"
-                            />
-                          </span>
-                          <span id={statusId} className="mc-visually-hidden">
-                            {description}
-                          </span>
-                        </Button>
-                      </li>
+                      <TabsTrigger
+                        key={item.token}
+                        value={item.token}
+                        className="mc-datasource"
+                        type="button"
+                        title={item.name}
+                        aria-label={t('marivo.credentials.select-datasource-value', {
+                          p0: item.name,
+                        })}
+                        aria-describedby={statusId}
+                      >
+                        <CredentialIcon name="database" />
+                        <span className="mc-datasource-copy">
+                          <span className="mc-datasource-name">{item.name}</span>
+                          <span
+                            className="mc-dot"
+                            data-ready={ready}
+                            title={description}
+                            aria-hidden="true"
+                          />
+                        </span>
+                        <span id={statusId} className="mc-visually-hidden">
+                          {description}
+                        </span>
+                      </TabsTrigger>
                     )
                   })}
-                </ul>
+                </TabsList>
               </div>
             </aside>
           )}
@@ -1039,20 +1058,10 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
                 close={() => setCreating(false)}
               />
             )}
-            {!creating && context && (
-              <CredentialForm
-                key={context.token}
-                context={context}
-                request={request}
-                state={state}
-                model={model}
-                workspaceId={workspaceId}
-                onEdit={() => {
-                  setEditingName(context.name)
-                  setCreating(true)
-                }}
-              />
-            )}
+            {request
+              ? credentialForm
+              : context &&
+                !creating && <TabsContent value={context.token}>{credentialForm}</TabsContent>}
             {operations.length > 0 && (
               <section
                 className="mc-activity"
@@ -1104,7 +1113,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
               </section>
             )}
           </main>
-        </div>
+        </TabsRoot>
       </div>
     </section>
   )

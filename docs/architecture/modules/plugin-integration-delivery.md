@@ -101,6 +101,8 @@ Web client 只保留：
 生产 client bundle 由 `client.tsx` 注册共享 AnalysisSurface，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
 通过统一 Session/Turn delivery 观察新交付：默认 tool 结果在会话级 Chat 节点展示，工具调用内保留入口；
 tab 交付自动打开固定 Build Tab。重复事件去重，历史回放不自动打开；打开失败时提供错误反馈。
+已打开报告目录或阅读页的 Workspace 中，后台 Session 若没有存活的 client binding，插件以 Harness
+Session 列表的运行结束状态提示页面重新读取已保存的发布信息；不为此保留 Session 或打开历史，也不自动导航。
 旧格式报告不出现在目录，直接打开时显示不支持。
 文件所有权、只读 RPC 和取消边界见[展示交付](presentation-delivery.md)。
 

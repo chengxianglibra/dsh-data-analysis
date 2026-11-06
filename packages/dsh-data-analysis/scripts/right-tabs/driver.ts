@@ -198,6 +198,7 @@ export async function createRightTabsDriver(
       : await ctx.agentLoop.create(id, agentOptions, { cwd: workspace.path })
     agents.set(mode, agent)
     await agent.ctx.plugin(FilesystemTools)
+    agent.ctx.tools.presentAs(mode === 'ptc' ? 'ptc' : 'native')
     await workspace.attachSession(id)
     if (mode === 'semantic' && !resume) {
       agent.followup(
@@ -303,17 +304,6 @@ export async function createRightTabsDriver(
       const deliveries = actualDeliveries(agent.session.snapshotEvents(), agent.session.id)
       assert.ok(deliveries.length, 'Production tool must deliver a report')
       return { ok: true, value: deliveries.at(-1) }
-    }
-    if (payload.action === 'duplicate') {
-      const event = agent.session
-        .snapshotEvents()
-        .findLast(
-          (event: any) =>
-            event.type === 'tool/ptc-dispatch' && event.data.name === 'marivo_present',
-        )
-      assert.ok(event)
-      agent.session.append('tool/ptc-dispatch', event.data)
-      return { ok: true }
     }
     if (payload.action === 'status')
       return {

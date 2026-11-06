@@ -41,6 +41,13 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
       '<!doctype html><div id="root"></div><script src="page.js"></script>',
     )
     const page = await browser.newPage()
+    const waitForMenuPosition = () =>
+      page.waitForFunction(() => {
+        const menu = document.querySelector('[role="menu"]')
+        if (!menu || getComputedStyle(menu).transform !== 'none') return false
+        const box = menu.getBoundingClientRect()
+        return box.x >= 0 && box.y >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
+      })
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     await page.getByRole('button', { name: /Sort by amount/ }).click()
     const cell = page.locator('[data-row-index="0"] [data-column-id="amount"] .pr-cell-select')
@@ -60,6 +67,8 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     await page.keyboard.press('Enter')
     const action = page.getByRole('menuitem', { name: 'Ask about this' })
     await action.waitFor()
+    // Radix positions and animates the menu after it becomes visible. Measure its final geometry.
+    await waitForMenuPosition()
     const pointBox = await point.boundingBox()
     const menuBox = await menu.boundingBox()
     assert.ok(pointBox && menuBox)
@@ -72,12 +81,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
       () => document.activeElement?.getAttribute('data-frame-point') === '1:m0',
     )
     await point.press('Enter')
-    await page.waitForFunction(() => {
-      const box = document.querySelector('[role=menu]')?.getBoundingClientRect()
-      return (
-        !!box && box.x >= 0 && box.y >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
-      )
-    })
+    await waitForMenuPosition()
     const box = await page.getByRole('menu').boundingBox()
     assert.ok(
       box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1280 && box.y + box.height <= 720,

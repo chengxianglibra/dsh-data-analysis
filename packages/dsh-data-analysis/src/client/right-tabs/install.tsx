@@ -797,17 +797,18 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     }
   })
   const feeds = new Map()
+  let runningSessions = new Map()
   let selected: string | undefined
   const stopFeeds = () => {
     for (const feed of feeds.values()) feed.stop()
     feeds.clear()
+    runningSessions.clear()
     selected = undefined
   }
   const bind = () => {
     if (!ctx.connection.generation.getSnapshot()) return stopFeeds()
-    const current = ctx.sessions.list
-      .getSnapshot()
-      .ids.find((id) => ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView)
+    const sessions = ctx.sessions.list.getSnapshot()
+    const current = sessions.ids.find((id) => sessions.byId[id]?.retainedBy.mainView)
     const workspaces = ctx.workspaces.list.getSnapshot()
     if (workspaces.phase !== 'ready' || workspaces.state === 'error') return stopFeeds()
     // Observe only Workspaces with report readers/catalogs, plus the foreground
@@ -819,6 +820,28 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         )
         .map((page) => page.target.workspaceId),
     )
+    // A Session binding is borrowed and may retire when its last owner leaves.
+    // The public list still reports Host run transitions without opening history.
+    const nextRunningSessions = new Map()
+    const settled = []
+    const listedSessions = new Set(sessions.ids)
+    for (const workspace of workspaces.items) {
+      if (!watchedWorkspaces.has(workspace.workspaceId)) continue
+      for (const id of workspace.sessionIds) {
+        const row = listedSessions.has(id) ? sessions.byId[id] : undefined
+        if (!row) continue
+        const previous = runningSessions.get(id)
+        nextRunningSessions.set(id, { workspaceId: workspace.workspaceId, running: row.running })
+        if (
+          previous?.workspaceId === workspace.workspaceId &&
+          previous.running &&
+          !row.running &&
+          !ctx.sessions.binding(id)
+        )
+          settled.push({ id, workspaceId: workspace.workspaceId })
+      }
+    }
+    runningSessions = nextRunningSessions
     const ids = new Set(
       workspaces.items.flatMap((w) => (watchedWorkspaces.has(w.workspaceId) ? w.sessionIds : [])),
     )
@@ -992,6 +1015,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           setDraftTab(id, undefined)
         },
       })
+    }
+    for (const { id, workspaceId } of settled) {
+      try {
+        check(id, workspaceId)
+        changed(workspaceId)
+      } catch {
+        /* Revoked context has no publication consumers. */
+      }
     }
     if (current !== selected) {
       selected = current

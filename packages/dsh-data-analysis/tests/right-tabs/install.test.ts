@@ -424,3 +424,44 @@ test('background publication invalidates Workspace pages without opening and dra
     assert.equal(binding.session.listenerCount(), 0)
   }
 })
+
+test('a background run invalidates watched publications after its binding retires', async (t) => {
+  const f = await installed(t),
+    updates = []
+  f.controller.pages.set('catalog', {
+    target: { kind: 'reports', workspaceId: 'w' },
+    sessionId: 'a',
+    workspacePath: '/w',
+    getSnapshot: () => ({}),
+    publicationChanged: (...args) => updates.push(args),
+    unavailable() {},
+    dispose() {},
+  })
+  f.workspaces.set(f.workspaces.getSnapshot())
+  const retired = f.bindings.cold
+  delete f.bindings.cold
+  f.sessions.set(f.sessions.getSnapshot())
+  assert.equal(retired.session.listenerCount(), 0)
+  assert.equal(retired.eventSource.listenerCount(), 0)
+  const running = (value) => {
+    const snapshot = f.sessions.getSnapshot()
+    f.sessions.set({
+      ...snapshot,
+      byId: { ...snapshot.byId, cold: { ...snapshot.byId.cold, running: value } },
+    })
+  }
+  running(true)
+  assert.equal(updates.length, 0)
+  running(false)
+  assert.deepEqual(updates, [['w', undefined]])
+  assert.equal(f.bindings.cold, undefined, 'refresh must not create or retain a binding')
+  assert.equal(f.opens.length, 0, 'background settlement must not open a tab')
+  running(false)
+  assert.equal(updates.length, 1, 'unchanged list snapshots do not refresh again')
+  running(true)
+  f.generation.set(undefined)
+  f.generation.set({})
+  running(false)
+  assert.equal(updates.length, 2, 'a run observed after reconnect is refreshed on settlement')
+  await f.host.dispose()
+})

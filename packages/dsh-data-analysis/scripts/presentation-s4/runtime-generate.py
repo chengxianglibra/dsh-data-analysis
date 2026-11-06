@@ -60,5 +60,8 @@ result = {
 }
 # Restored reads must succeed with the business datasource and authored model unavailable.
 (root / 'warehouse.duckdb').unlink()
+(root / '.dsh-data-analysis/presentation-validation-semantic.py').write_text(
+    (root / 'models/semantic/sales/datasets.py').read_text()
+)
 (root / 'models/semantic/sales/datasets.py').write_text('raise AssertionError("Persisted read must not load semantic models")\n')
 print(json.dumps(result))

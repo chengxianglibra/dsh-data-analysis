@@ -174,7 +174,7 @@ page.on('pageerror', (error: Error) => errors.push(error.message))
 const secret = 'browser-private-canary-32457'
 const activeOperations = page.getByRole('region', { name: '进行中的凭证操作' })
 const selectDatasource = (name: string) =>
-  page.getByRole('button', { name: `选择数据源 ${name}`, exact: true }).click()
+  page.getByRole('tab', { name: `选择数据源 ${name}`, exact: true }).click()
 async function fillReference(name: string, value: string) {
   const input = page.getByLabel(name, { exact: true })
   if (!(await input.isVisible()))
@@ -240,7 +240,7 @@ async function assertCredentialStatusBesideName() {
   assert(bounds.statusTop < bounds.titleBottom && bounds.statusBottom > bounds.titleTop)
 }
 async function assertDatasourceDot(name: string, ready: boolean, description: string) {
-  const button = page.getByRole('button', { name: `选择数据源 ${name}`, exact: true })
+  const button = page.getByRole('tab', { name: `选择数据源 ${name}`, exact: true })
   const state = await button.evaluate((element: Element) => {
     const title = element.querySelector('.mc-datasource-name')!.getBoundingClientRect()
     const dot = element.querySelector('.mc-dot')!
@@ -327,11 +327,31 @@ try {
   await page.getByRole('button', { name: '打开数据源与凭证' }).click()
   assert.equal(await page.getByLabel('Workspace', { exact: true }).count(), 0)
   assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
+  const datasourceTabs = page.getByRole('tab', { name: /^选择数据源 / })
+  await datasourceTabs.first().waitFor({ timeout: 30000 })
+  assert((await datasourceTabs.count()) >= 2)
+  await datasourceTabs.first().click()
+  await datasourceTabs.first().focus()
+  await page.keyboard.press('ArrowRight')
+  assert.equal(
+    await datasourceTabs.nth(1).evaluate((tab: Element) => tab === document.activeElement),
+    true,
+  )
+  assert.equal(await datasourceTabs.first().getAttribute('aria-selected'), 'true')
+  assert.equal(await datasourceTabs.nth(1).getAttribute('aria-selected'), 'false')
+  await page.keyboard.press('Enter')
+  assert.equal(await datasourceTabs.nth(1).getAttribute('aria-selected'), 'true')
+  const selectedTabId = await datasourceTabs.nth(1).getAttribute('id')
+  const selectedPanelId = await datasourceTabs.nth(1).getAttribute('aria-controls')
+  const selectedPanel = page.getByRole('tabpanel')
+  await selectedPanel.waitFor()
+  assert.equal(await selectedPanel.getAttribute('id'), selectedPanelId)
+  assert.equal(await selectedPanel.getAttribute('aria-labelledby'), selectedTabId)
   await selectDatasource('warehouse')
   await page.getByRole('heading', { name: 'warehouse', exact: true }).waitFor({ timeout: 30000 })
   await assertDatasourceDot('default', true, '无需凭证')
   await assertDatasourceDot('warehouse', false, '0 / 1 项已配置')
-  const selectedDatasource = page.getByRole('button', { name: '选择数据源 warehouse', exact: true })
+  const selectedDatasource = page.getByRole('tab', { name: '选择数据源 warehouse', exact: true })
   await selectedDatasource.focus()
   await page.keyboard.press('Tab')
   await page.keyboard.press('Shift+Tab')
@@ -442,7 +462,7 @@ try {
   )
   await page.getByRole('button', { name: 'warehouse_two · 处理中', exact: true }).click()
   await page
-    .getByRole('button', { name: '选择数据源 warehouse_two', exact: true })
+    .getByRole('tab', { name: '选择数据源 warehouse_two', exact: true })
     .waitFor({ timeout: 30000 })
   await selectDatasource('warehouse_two')
   await assertNoHorizontalOverflow()
@@ -547,7 +567,7 @@ try {
   assert.equal(await page.getByText('其他工作区不应显示', { exact: true }).count(), 0)
   const navigation = page.getByRole('complementary', { name: '数据源导航' })
   assert.equal(
-    await navigation.getByRole('button', { name: /^选择数据源 / }).count(),
+    await navigation.getByRole('tab', { name: /^选择数据源 / }).count(),
     (await bridge.inventory()).length,
   )
   await selectDatasource('warehouse')
@@ -559,6 +579,13 @@ try {
     fullPage: true,
   })
   await page.setViewportSize({ width: 1200, height: 900 })
+  await page.getByRole('button', { name: '新增数据源', exact: true }).click()
+  assert.equal(await page.locator('.mc-datasource[aria-selected="true"]').count(), 0)
+  const tabStop = page.locator('.mc-datasource[tabindex="0"]')
+  assert.equal(await tabStop.count(), 1)
+  await tabStop.focus()
+  await page.keyboard.press('Enter')
+  assert.equal(await page.locator('.mc-datasource[aria-selected="true"]').count(), 1)
   await page.getByRole('button', { name: '新增数据源', exact: true }).click()
   await page.getByLabel('引擎', { exact: true }).selectOption('clickhouse')
   await page.getByText('高级设置', { exact: true }).click()

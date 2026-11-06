@@ -96,7 +96,7 @@ createRoot(document.getElementById('app')).render(<App/>);`,
   page.on('pageerror', (error: Error) => errors.push(error.message))
   await page.goto(`http://127.0.0.1:${address.port}`)
   const select = async (name: string) => {
-    await page.getByRole('button', { name: `选择数据源 ${name}`, exact: true }).click()
+    await page.getByRole('tab', { name: `选择数据源 ${name}`, exact: true }).click()
     await page.getByRole('heading', { name, exact: true }).waitFor()
     await page.getByRole('button', { name: '删除数据源', exact: true }).click()
   }
@@ -115,6 +115,7 @@ createRoot(document.getElementById('app')).render(<App/>);`,
       .filter((element) => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1)
       .filter(
         (element) =>
+          !element.matches('.mc-visually-hidden') &&
           !(element.matches('.mc-datasources') && getComputedStyle(element).overflowX === 'auto') &&
           element.getAttribute('role') !== 'checkbox',
       )
@@ -127,7 +128,7 @@ createRoot(document.getElementById('app')).render(<App/>);`,
   await confirm()
   await page.getByText('已删除数据源 delete_first。', { exact: true }).waitFor({ timeout: 30000 })
   await page
-    .getByRole('button', { name: '选择数据源 delete_first', exact: true })
+    .getByRole('tab', { name: '选择数据源 delete_first', exact: true })
     .waitFor({ state: 'detached', timeout: 30000 })
   assert(f.store.values.has(marivoCredentialStorageRef('SHARED_TOKEN')))
   await select('delete_shared')
@@ -143,7 +144,7 @@ createRoot(document.getElementById('app')).render(<App/>);`,
   )
   await page.getByRole('button', { name: '刷新数据源', exact: true }).click()
   await refreshed
-  await page.getByRole('button', { name: '选择数据源 delete_readonly', exact: true }).click()
+  await page.getByRole('tab', { name: '选择数据源 delete_readonly', exact: true }).click()
   await page.getByText(/来源只读/).waitFor()
   await select('delete_readonly')
   await confirmation.getByRole('checkbox').check()

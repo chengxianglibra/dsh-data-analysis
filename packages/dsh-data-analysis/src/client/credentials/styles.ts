@@ -1,6 +1,6 @@
 /** Datasource arrangement and saved-property reading; controls use shadcn primitives. */
 export const credentialStyles = `
-.mc-panel{min-width:0;width:100%;container-type:inline-size;--mc-accent:var(--dsw-alias-state-business-primary,#075bea);--mc-accent-soft:color-mix(in srgb,var(--mc-accent) 11%,var(--background))}
+.mc-panel{min-width:0;width:100%;container-type:inline-size;--mc-accent:var(--dsw-alias-state-business-primary,#075bea)}
 .mc-shell,.mc-columns,.mc-main,.mc-form{display:flex;flex-direction:column;min-width:0}
 .mc-shell,.mc-columns,.mc-form-body{gap:1.5rem}
 .mc-form{gap:1rem;flex:1}
@@ -21,14 +21,15 @@ export const credentialStyles = `
 .mc-nav{min-width:0}
 .mc-nav-heading{margin-bottom:.75rem;color:var(--muted-foreground);font-size:.875rem}
 .mc-nav-heading h3{font:inherit;margin:0}
-.mc-datasources{list-style:none;margin:0;padding:.25rem;display:flex;gap:.5rem;overflow-x:auto}
-.mc-datasources li{flex:0 0 220px;max-width:260px}
-.mc-datasource{width:100%;height:auto;align-items:center;justify-content:flex-start;white-space:normal;text-align:left}
-.mc-datasource[aria-pressed=true]{background:var(--mc-accent-soft);border-color:transparent;box-shadow:inset 3px 0 0 var(--mc-accent)}
-.mc-datasource[aria-pressed=true]:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.mc-datasources{width:100%;max-width:100%;height:auto;justify-content:flex-start;overflow-x:auto;border-bottom:1px solid var(--border);border-radius:0;padding:0;gap:.25rem}
+.mc-datasources .mc-datasource{min-width:0;max-width:min(16rem,100%);flex:0 0 auto;border-radius:0;padding:.75rem 1.25rem;font-size:.9375rem;background:transparent;color:var(--muted-foreground);box-shadow:none;transition:none}
+.mc-datasources .mc-datasource[aria-selected=true]{color:var(--mc-accent)}
+.mc-datasources .mc-datasource::after{background:var(--mc-accent);bottom:0;opacity:0;transition:none}
+.mc-datasources .mc-datasource[aria-selected=true]::after{opacity:1}
+.mc-datasources .mc-datasource:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
 .mc-datasource>svg{flex:none}
 .mc-datasource-copy{min-width:0;display:flex;align-items:center;gap:.375rem}
-.mc-datasource-name{min-width:0;overflow-wrap:anywhere}
+.mc-datasource-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mc-visually-hidden{position:absolute;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .mc-dot{width:6px;height:6px;background:var(--muted-foreground);border-radius:50%;flex:none}
 .mc-dot[data-ready=true]{background:var(--mv-success)}

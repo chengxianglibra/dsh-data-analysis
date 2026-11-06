@@ -281,11 +281,20 @@ export async function runPresentationJourneys(
       event.data.name === 'marivo_present'
     ) {
       duplicated = true
-      // Replay one actual receipt as a second durable transport event while its
-      // original Turn is still active. No file or success payload is invented.
+      // Replay the receipt under a distinct sub-call, with a matching start,
+      // while the original Turn is active. Harness persists one settlement per start.
       queueMicrotask(() => {
         try {
-          owner.append('tool/ptc-dispatch', event.data)
+          const { rootCallId, parentCallId, name, arguments: args } = event.data
+          const subCallId = ToolCallId(`${event.data.subCallId}:fixture-replay`)
+          owner.append('tool/ptc-dispatch-start', {
+            rootCallId,
+            parentCallId,
+            subCallId,
+            name,
+            arguments: args,
+          })
+          owner.append('tool/ptc-dispatch', { ...event.data, subCallId })
         } catch (error) {
           duplicateError = error
         }
@@ -447,6 +456,7 @@ export async function runPresentationJourneys(
   )
   const result = {
     mode,
+    requests,
     sessionId: String(sessionId),
     workspaceId: String(workspace.id),
     durableSessionId: String(stored.meta.id),

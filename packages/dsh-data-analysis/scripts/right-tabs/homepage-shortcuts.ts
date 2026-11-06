@@ -104,7 +104,20 @@ export async function verifyHomepageShortcuts(page: Page, outputRoot: string) {
     host.restoreSessionRead = () => {
       host.sessions.getSnapshot = original
     }
-    host.sessions.getSnapshot = () => ({ ...original(), current: 'right-tabs-ptc' })
+    host.sessions.getSnapshot = () => {
+      const snapshot = original()
+      const current = snapshot.byId['right-tabs-native']
+      return {
+        ...snapshot,
+        byId: {
+          ...snapshot.byId,
+          'right-tabs-native': {
+            ...current,
+            retainedBy: { ...current.retainedBy, mainView: false },
+          },
+        },
+      }
+    }
   })
   try {
     await shortcuts.getByRole('button', { name: '打开报告', exact: true }).click()

@@ -240,6 +240,12 @@ function DatasetDataView({
     target?.focus()
     if (target) originRef.current = target
   }
+  const restoreOriginLater = () => {
+    const current = revision.current
+    requestAnimationFrame(() => {
+      if (revision.current === current) restoreOrigin()
+    })
+  }
   useEffect(() => {
     if (!activeSelection || askStatus !== 'failed') return
     if (
@@ -397,7 +403,7 @@ function DatasetDataView({
         collisionPadding={8}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          if (closeReason.current === 'escape') requestAnimationFrame(restoreOrigin)
+          if (closeReason.current === 'escape') restoreOriginLater()
         }}
         onFocusOutside={(event) => {
           const target = event.target
@@ -421,7 +427,7 @@ function DatasetDataView({
           closeReason.current = 'escape'
           setSelected(undefined)
           restoreOrigin()
-          requestAnimationFrame(restoreOrigin)
+          restoreOriginLater()
         }}
         onKeyDown={(event) => {
           if (event.key === 'Tab') {
