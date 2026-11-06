@@ -1,5 +1,9 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.credentials.scoped-secrets-reference-json':
+    '填写 JSON 数组，仅填写已保存的凭证引用名，不填写秘密值。例如：[ {"type":"http_bearer","scope":"https://example.com/","token":"API_TOKEN"} ]。S3 使用 type、scope、region、key_id、secret 和可选 session_token；HTTP Header 使用 type=http_headers、scope 和 headers 引用映射。可在下方填写引用对应的值，留空则使用已保存的值。',
+  'marivo.credentials.scoped-secret-value-help':
+    '留空使用已保存的凭证；新值会通过凭证管理安全保存。',
   'marivo.credentials.username': '用户名',
   'marivo.credentials.password': '密码',
   'marivo.credentials.access-token': '访问令牌',
@@ -262,7 +266,7 @@ export const zh = {
   'marivo.credentials.invalid-datasource-definition-check-the-name-field-types-and':
     '数据源定义无效，请检查名称、字段类型和凭证引用。',
   'marivo.credentials.invalid-credential-reference-in-env-fields-enter-a-reference':
-    '凭证引用名称无效。*_env 字段填写引用名（如 MY_DB_PASSWORD），仅可使用字母、数字和下划线，且不能以数字开头；不能使用 MARIVO_、DSH_DATA_ANALYSIS_ 前缀或 Host 保留名称。实际用户名和密码请在创建后的“新增凭证”中填写。',
+    '凭证引用名称无效。凭证字段填写引用名（如 MY_DB_PASSWORD），仅可使用字母、数字和下划线，且不能以数字开头；不能使用 MARIVO_、DSH_DATA_ANALYSIS_ 前缀或 Host 保留名称。实际用户名和密码请在创建后的“新增凭证”中填写。',
   'marivo.credentials.this-runtime-does-not-support-datasource-creation':
     '当前 Runtime 不支持新增数据源。',
   'marivo.credentials.invalid-datasourcedefaults-format-use-a-json-mapping-from-engines':
@@ -304,6 +308,10 @@ export const zh = {
   'marivo.credentials.save-failed': '保存配置失败。',
 } as const
 export const en = {
+  'marivo.credentials.scoped-secrets-reference-json':
+    'Enter a JSON array containing saved credential references only, never secret values. Example: [{"type":"http_bearer","scope":"https://example.com/","token":"API_TOKEN"}]. S3 uses type, scope, region, key_id, secret, and optional session_token; HTTP headers use type=http_headers, scope, and a headers reference map. Enter each value below or leave it blank to use a saved value.',
+  'marivo.credentials.scoped-secret-value-help':
+    'Leave blank to use a saved credential; new values are saved through credential management.',
   'marivo.credentials.username': 'Username',
   'marivo.credentials.password': 'Password',
   'marivo.credentials.access-token': 'Access token',
@@ -587,7 +595,7 @@ export const en = {
   'marivo.credentials.invalid-datasource-definition-check-the-name-field-types-and':
     'Invalid datasource definition. Check the name, field types and credential references.',
   'marivo.credentials.invalid-credential-reference-in-env-fields-enter-a-reference':
-    'Invalid credential reference. In *_env fields, enter a reference such as MY_DB_PASSWORD using letters, numbers and underscores, without a leading number, MARIVO_ or DSH_DATA_ANALYSIS_ prefix, or Host reserved name. Enter actual usernames and passwords through Add credential after creation.',
+    'Invalid credential reference. In credential fields, enter a reference such as MY_DB_PASSWORD using letters, numbers and underscores, without a leading number, MARIVO_ or DSH_DATA_ANALYSIS_ prefix, or Host reserved name. Enter actual usernames and passwords through Add credential after creation.',
   'marivo.credentials.this-runtime-does-not-support-datasource-creation':
     'This Runtime does not support datasource creation.',
   'marivo.credentials.invalid-datasourcedefaults-format-use-a-json-mapping-from-engines':

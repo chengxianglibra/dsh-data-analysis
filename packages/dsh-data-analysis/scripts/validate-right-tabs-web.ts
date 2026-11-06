@@ -22,7 +22,7 @@ process.stdout.write(`Right Tabs isolated acceptance: ${outputRoot}\n`)
 const inputs = await preparePresentationInputs(workspaceRoot, python)
 await writeFile(
   path.join(workspaceRoot, 'models/datasources/protected.py'),
-  'import marivo.datasource as md\nmd.duckdb(name="protected",path=":memory:",http_scope="http://127.0.0.1/",http_bearer_token_env="RIGHT_TABS_TEST_TOKEN")\n',
+  'import marivo.datasource as md\nmd.duckdb(name="protected",path=":memory:",secrets=[md.http_bearer_secret(scope="http://127.0.0.1/",token=md.env("RIGHT_TABS_TEST_TOKEN"))])\n',
 )
 const server = await startPresentationWebHost(
   workspaceRoot,

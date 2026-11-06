@@ -9,8 +9,8 @@ import { marivoCredentialStorageRef } from '../../src/datasource/shell-env.ts'
 
 test('inline credentials produce valid distinct references without including values in configuration', () => {
   const drafts = [
-    { id: crypto.randomUUID(), field: 'user_env', value: 'user-canary' },
-    { id: crypto.randomUUID(), field: 'password_env', value: 'password-canary' },
+    { id: crypto.randomUUID(), field: 'user', value: 'user-canary' },
+    { id: crypto.randomUUID(), field: 'password', value: 'password-canary' },
     { id: crypto.randomUUID(), field: 'http_headers_env', key: 'X-Auth', value: 'header-canary' },
   ]
   const { fields, changes } = prepareCredentials('中文/my-db', drafts)
@@ -26,11 +26,11 @@ test('inline credentials produce valid distinct references without including val
 test('blank edits preserve references; replacements use new references unless explicitly changed', () => {
   const row = {
     id: crypto.randomUUID(),
-    field: 'password_env',
+    field: 'password',
     existing: 'SHARED_PASSWORD',
     value: '',
   }
-  assert.equal(prepareCredentials('db', [row]).fields.password_env, 'SHARED_PASSWORD')
+  assert.equal(prepareCredentials('db', [row]).fields.password, 'SHARED_PASSWORD')
   assert.deepEqual(Object.keys(prepareCredentials('db', [row]).changes), [])
   const replacement = { ...row, value: 'new-canary' }
   assert.notEqual(credentialReference('db', replacement), 'SHARED_PASSWORD')
@@ -72,8 +72,8 @@ test('duplicate header keys and conflicting values for one reference fail before
   assert.throws(
     () =>
       prepareCredentials('db', [
-        { id: '1', field: 'user_env', reference: 'SHARED', value: 'one' },
-        { id: '2', field: 'password_env', reference: 'SHARED', value: 'two' },
+        { id: '1', field: 'user', reference: 'SHARED', value: 'one' },
+        { id: '2', field: 'password', reference: 'SHARED', value: 'two' },
       ]),
     (error: unknown) => {
       assert.match(

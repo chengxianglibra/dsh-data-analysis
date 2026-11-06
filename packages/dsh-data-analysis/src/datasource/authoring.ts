@@ -8,7 +8,7 @@ export const datasourceAuthoringSchema = z.object({
       fields: z.array(
         z.object({
           name: z.string(),
-          type: z.enum(['string', 'number', 'boolean', 'json']),
+          type: z.enum(['string', 'number', 'boolean', 'json', 'credential', 'secrets']),
           required: z.boolean(),
           description: z.string(),
           default: z.unknown().optional(),
@@ -56,7 +56,7 @@ def spec_fields(cls):
             continue
         annotation = hints[field.name]
         types = set(typing.get_args(annotation) or [annotation]) - {type(None)}
-        kind = "string" if types == {str} else "boolean" if types == {bool} else "number" if types <= {int, float} else "json"
+        kind = "credential" if types == {md.EnvRef} else "secrets" if field.name == "secrets" else "string" if types == {str} else "boolean" if types == {bool} else "number" if types <= {int, float} else "json"
         item = {"name": field.name, "type": kind,
             "required": field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING,
             "description": field.metadata.get("description", "")}
@@ -79,11 +79,31 @@ def configuration(name, cls):
         if key in allowed and key != "extra": fields[key] = value
         else: extra[key] = value
     if extra: fields["extra"] = extra
-    for key, value in description.env_refs.items():
-        if key.startswith("http_header:"):
-            fields.setdefault("http_headers_env", {})[key.removeprefix("http_header:")] = value
-        elif key + "_env" in allowed: fields[key + "_env"] = value
-        else: raise ValueError("datasource-definition-invalid")
+    refs = dict(description.env_refs)
+    for key in ("user", "password", "auth"):
+        if key in refs and key in allowed:
+            fields[key] = refs.pop(key)
+    if "secrets" in fields:
+        secrets = []
+        for metadata in fields["secrets"]:
+            item = dict(metadata)
+            kind, scope = item.pop("type"), item["scope"]
+            prefix = kind + "@" + scope + "."
+            if kind == "s3":
+                has_token = item.pop("session_token")
+                for key in ("key_id", "secret") + (("session_token",) if has_token else ()):
+                    item[key] = refs.pop(prefix + key)
+                item["type"] = "s3"
+            elif kind == "http" and "headers" in item:
+                item["headers"] = {key: refs.pop(prefix + "header:" + key) for key in item["headers"]}
+                item["type"] = "http_headers"
+            elif kind == "http":
+                item["token"] = refs.pop(prefix + "token")
+                item["type"] = "http_bearer"
+            else: raise ValueError("datasource-definition-invalid")
+            secrets.append(item)
+        fields["secrets"] = secrets
+    if refs: raise ValueError("datasource-definition-invalid")
     version = hashlib.sha256(json.dumps([description.backend_type, fields, context], sort_keys=True).encode()).hexdigest()
     return {"name": name, "backend": description.backend_type, "fields": fields, "version": version}, context
 
@@ -110,6 +130,29 @@ try:
                     raise ValueError("datasource-config-changed")
             if set(fields) - allowed:
                 raise ValueError("unknown-field")
+            fields = dict(fields)
+            hints = typing.get_type_hints(cls)
+            for key, value in fields.items():
+                types = set(typing.get_args(hints[key]) or [hints[key]]) - {type(None)}
+                if types == {md.EnvRef} and value is not None:
+                    fields[key] = md.env(value)
+            if "secrets" in fields:
+                secrets = []
+                for raw in fields["secrets"]:
+                    item = dict(raw)
+                    kind = item.pop("type")
+                    if kind == "s3":
+                        for key in ("key_id", "secret", "session_token"):
+                            if item.get(key) is not None: item[key] = md.env(item[key])
+                        secrets.append(md.s3_secret(**item))
+                    elif kind == "http_bearer":
+                        item["token"] = md.env(item["token"])
+                        secrets.append(md.http_bearer_secret(**item))
+                    elif kind == "http_headers":
+                        item["headers"] = {key: md.env(value) for key, value in item["headers"].items()}
+                        secrets.append(md.http_headers_secret(**item))
+                    else: raise ValueError("datasource-definition-invalid")
+                fields["secrets"] = secrets
             spec = cls(**fields)
             if payload["action"] == "create" and any(item.name == spec.name for item in md.load().list()):
                 result = {"error": "datasource-already-exists"}

@@ -75,11 +75,11 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
     for (const name of ['warehouse', 'ungranted'])
       await writeFile(
         path.join(ds, `${name}.py`),
-        `import marivo.datasource as md\nmd.duckdb(name=${JSON.stringify(name)}, path=":memory:", http_scope=${JSON.stringify(scope)}, http_bearer_token_env="VALIDATION_TOKEN")\n`,
+        `import marivo.datasource as md\nmd.duckdb(name=${JSON.stringify(name)}, path=":memory:", secrets=[md.http_bearer_secret(scope=${JSON.stringify(scope)}, token=md.env("VALIDATION_TOKEN"))])\n`,
       )
     await writeFile(
       path.join(ds, 'warehouse_two.py'),
-      `import marivo.datasource as md\nmd.duckdb(name="warehouse_two", path=":memory:", http_scope=${JSON.stringify(`${scope}two/`)}, http_bearer_token_env="SECOND_VALIDATION_TOKEN")\n`,
+      `import marivo.datasource as md\nmd.duckdb(name="warehouse_two", path=":memory:", secrets=[md.http_bearer_secret(scope=${JSON.stringify(`${scope}two/`)}, token=md.env("SECOND_VALIDATION_TOKEN"))])\n`,
     )
     const environment = await bindMarivoEnvironment(
       { projectRoot: root, pythonExecutable: python },

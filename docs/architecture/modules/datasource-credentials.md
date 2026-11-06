@@ -71,8 +71,8 @@ Host 继续复用状态变化唤醒与每 25 秒的上下文复核，未变化�
 表单通过 checked Runtime 读取公开 `md.DatasourceSpec` union 和各 Spec 的 dataclass 字段，展示引擎、必填项、默认值及说明。
 各字段说明与字段名称同行置于输入框上方，长说明和窄屏自然换行。当前 Runtime 的属性说明使用中文，字段标识保持原名；
 翻译仅按完整说明文本匹配，不改变字段契约。Runtime 新增或修改的未知说明保留原文，避免套用过期解释。
-插件不维护引擎注册表或连接字段 schema。`ai_context` 不在连接表单中编辑；复杂配置字段接受 JSON。连接凭证在同一表单直接填写，`*_env` 的引用名称由客户端生成，用户可展开确认或修改；
-JSON 凭证映射提供 Header 名称、值与引用名的逐项输入。值仅保留在当前表单内存。非法引用在执行 Python 和写入前拒绝，
+插件不维护引擎注册表或连接字段 schema。`ai_context` 不在连接表单中编辑；复杂配置字段接受 JSON。关系型连接凭证在同一表单直接填写，引用名称由客户端生成，用户可展开确认或修改；
+DuckDB `secrets` 使用引用专用 JSON 声明 scoped S3、HTTP bearer 或 HTTP Header，表单为引用提供独立的密码输入，留空复用已保存凭证。插件按 Runtime 的 `EnvRef` 字段构造 `md.env()`，按引用 JSON 构造公开 secret 对象。值仅保留在当前表单内存。非法引用在执行 Python 和写入前拒绝，
 保留安全错误码 `datasource-credential-ref-invalid`，页面说明引用命名规则且不回显被拒绝的输入。
 点击“确认新增数据源”时 Host 重新解析 Workspace 并核对 generation 与 Runtime fingerprint，在串行写入区间内调用 `md.register(spec)`。
 Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增。配置 RPC 不接受项目路径、Python 代码或凭证值，引用须符合 DSH 的命名限制。
@@ -82,7 +82,7 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 
 数据源详情中的“编辑配置”回填当前 Runtime 字段，名称与引擎只读。配置快照包含版本；
 保存前重新读取并核对版本，经插件串行写入后调用 `md.register()`。`md.load().describe()` 的属性和引用、
-公开 Semantic Details 的 `context` 共同用于完整回填，保留 `extra`、HTTP header 引用与 `ai_context`；
+公开 Semantic Details 的 `context` 共同用于完整回填，保留 `extra`、scoped secret 引用与 `ai_context`；
 读取不完整时拒绝保存，不直接操作配置文件。修改引用不删除旧的 Harness 共享凭证。
 配置变化刷新打开的管理页并使旧测试失效；其他 Tab 的编辑草稿保留，陈旧提交须重新加载。
 此校验不构成与外部文件修改者之间的原子 compare-and-swap。
@@ -215,7 +215,7 @@ Harness profile 中本插件的可选 `datasourceDefaults` 使用 `backend → �
 authoring 省略 mode 时沿用 create；编辑表单显式使用 `mode: 'edit'`，只读取 Runtime schema，不校验或返回新建默认值，
 因此错误的新建默认值不会阻止已有数据源编辑。
 
-未知 backend、未知字段、错误类型、非 JSON 值及 `*_env` 字段明确失败，错误仅使用固定错误码和中文说明，
+未知 backend、未知字段、错误类型、非 JSON 值及凭证引用或 scoped secret 字段明确失败，错误仅使用固定错误码和中文说明，
 不回显配置值。普通字符串、数字、布尔值按 Runtime 字段类型校验，JSON 字段的具体业务约束仍由 Runtime 保存流程校验。
 此配置仅用于非敏感值，不能用 JSON 字段绕过 Harness 凭据管理存储密钥。
 

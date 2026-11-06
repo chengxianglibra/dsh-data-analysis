@@ -39,11 +39,11 @@ const directory = path.join(root, 'models', 'datasources')
 await mkdir(directory, { recursive: true })
 await writeFile(
   path.join(directory, 'warehouse.py'),
-  'import marivo.datasource as md\nmd.duckdb(name="warehouse",path=":memory:",http_scope="http://127.0.0.1/",http_bearer_token_env="DB_PASSWORD")\n',
+  'import marivo.datasource as md\nmd.duckdb(name="warehouse",path=":memory:",secrets=[md.http_bearer_secret(scope="http://127.0.0.1/",token=md.env("DB_PASSWORD"))])\n',
 )
 await writeFile(
   path.join(directory, 'warehouse_two.py'),
-  'import marivo.datasource as md\nmd.duckdb(name="warehouse_two",path=":memory:",http_scope="http://127.0.0.1/",http_bearer_token_env="DB_PASSWORD")\n',
+  'import marivo.datasource as md\nmd.duckdb(name="warehouse_two",path=":memory:",secrets=[md.http_bearer_secret(scope="http://127.0.0.1/",token=md.env("DB_PASSWORD"))])\n',
 )
 const runner = await bindMarivoEnvironment({ projectRoot: root, pythonExecutable: python })
 const bridge = new MarivoDatasourceBridge(runner)
@@ -506,8 +506,8 @@ try {
   await page.getByLabel('database', { exact: true }).fill('analytics')
   await page.getByLabel('secure', { exact: true }).selectOption('false')
   await page.getByLabel('settings', { exact: true }).fill('{"max_execution_time":30}')
-  await fillReference('user_env', 'CLICKHOUSE_TEST_USER')
-  await fillReference('password_env', '9invalid-reference-canary')
+  await fillReference('user', 'CLICKHOUSE_TEST_USER')
+  await fillReference('password', '9invalid-reference-canary')
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
   const creationError = page.getByRole('alert').filter({ hasText: '凭证引用名' })
   await creationError.waitFor({ timeout: 30000 })
@@ -520,7 +520,7 @@ try {
     path: path.join(output, 'invalid-credential-reference.png'),
     fullPage: true,
   })
-  await fillReference('password_env', 'CLICKHOUSE_TEST_PASSWORD')
+  await fillReference('password', 'CLICKHOUSE_TEST_PASSWORD')
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()
   await page
     .getByRole('heading', { name: 'clickhouse_in_card', exact: true })
@@ -558,8 +558,9 @@ try {
   await page.getByRole('button', { name: '新增数据源', exact: true }).click()
   await page.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await page.getByLabel('name', { exact: true }).fill('created_in_card')
-  await page.getByLabel('http_scope', { exact: true }).fill('http://127.0.0.1/')
-  await fillReference('http_bearer_token_env', 'NEW_TOKEN')
+  await page
+    .getByLabel('secrets', { exact: true })
+    .fill(JSON.stringify([{ type: 'http_bearer', scope: 'http://127.0.0.1/', token: 'NEW_TOKEN' }]))
   await assertNoHorizontalOverflow()
   await page.screenshot({ path: path.join(output, 'create-datasource.png'), fullPage: true })
   await page.getByRole('button', { name: '确认新增数据源', exact: true }).click()

@@ -56,6 +56,7 @@ const fieldIcons: Readonly<Record<string, LucideIcon>> = {
   start: Clock3Icon,
   end: Clock3Icon,
   time_bindings: Clock3Icon,
+  time_parameters: Clock3Icon,
   boundary_timezone: Clock3Icon,
   sample_interval: Clock3Icon,
   occurrence_id: Columns3Icon,

@@ -16,7 +16,7 @@
 
 ## 生命周期
 
-1. `apply()` 确保精确 Marivo 0.6.0 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
+1. `apply()` 确保精确 Marivo 0.6.2 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
 2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
@@ -83,7 +83,7 @@ Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项�
 主流程与按需 references 的职责见[展示 Skill](presentation-skill.md)。旧报告 Skill、prompt、三个经典 JS
 资产、emitter、旧 transport schemas 及 Draft/图形示例不再分发，当前包不提供兼容包装。
 
-[展示数据投影](presentation-projection.md)使用相同 bound Workspace/Runtime 的公开读取程序生成快照。
+[展示数据投影](presentation-projection.md)在原分析进程中使用公开读取接口生成快照。
 `dsh_data_analysis_presentation.capture_dataset(frame)` 在原 `marivo_python` 进程中捕获 pandas DataFrame，
 成功回执返回 `snapshotRef` 并关联原调用的 `codeRef`；它不推断 SQL/文件来源，也不证明捕获前的转换正确。
 presentation-kit 公开 `capture_dataset`、`capture_frame` 及对应 capture receipt，不再提供写出 TypedDataset 文件的 helper。
@@ -142,7 +142,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | --- | --- |
 | DSH peers 兼容范围 | `>=0.2.1-rc.2`，npm 默认预发布匹配规则 |
 | DSH 开发 distribution | `0.2.1-rc.2`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.6.0` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.6.2` |
 | Runtime marker | `dsh-data-analysis-runtime/v3` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
 | Presentation-kit | `dsh-data-analysis-presentation-kit==1.5.1`，Dataset schemaVersion 1、Frame schemaVersion 2 |
@@ -184,7 +184,7 @@ npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
 
-plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.0 与真实模型。
+plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.2 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch 与 Host Web 验证交付。
 路径、runner 日志或静态 schema 不替代实际交互证据。
 

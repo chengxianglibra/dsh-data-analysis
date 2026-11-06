@@ -19,11 +19,11 @@ ${CATALOG_READ_HELPERS}
 FIELDS = {
     "domain": "owner default members",
     "datasource": "backend_type entities",
-    "entity": "datasource primary_key versioning default_time fields dependencies",
-    "dimension": "entity unit additivity default_time parse sample_interval is_default_time dependencies",
-    "measure": "entity unit additivity default_time parse sample_interval is_default_time dependencies",
-    "time_dimension": "entity unit additivity default_time parse sample_interval is_default_time dependencies",
-    "metric": "roots unit dependencies",
+    "entity": "datasource primary_key versioning fields dependencies",
+    "dimension": "entity unit additivity parse sample_interval dependencies",
+    "measure": "entity unit additivity parse sample_interval dependencies",
+    "time_dimension": "entity unit additivity parse sample_interval dependencies",
+    "metric": "roots unit time_parameters dependencies",
     "relationship": "from_entity to_entity keys cardinality dependencies",
     "period_calendar": "date boundary_timezone coverage levels correspondences",
     "temporal_set": "occurrence_id start end category boundary_timezone coverage",
@@ -42,7 +42,7 @@ def project(entry):
     payload = entry.to_dict()
     definition, provenance = payload["definition"], payload["provenance"]
     fields = [display_field(name, definition[name])
-              for name in FIELDS[entry.kind].split() if definition.get(name) is not None]
+              for name in FIELDS[entry.kind].split() if definition.get(name) is not None and (name != "time_parameters" or definition[name])]
     # Project table identity only; file locations may contain signed URLs or credentials.
     if entry.kind == "entity":
         source = definition["source"]
@@ -67,10 +67,10 @@ def project(entry):
             for item in value.values(): field_refs(item, field)
     for name in FIELDS[entry.kind].split():
         field_refs(definition.get(name), name)
-    # MetricTimeBinding declares exact refs in field, path and entity_default.
+    # A concrete MetricTimeBinding declares exact refs in field and path.
     if entry.kind == "metric":
         for binding in definition.get("time_bindings", []):
-            for name in ("field", "path", "entity_default"):
+            for name in ("field", "path"):
                 field_refs(binding.get(name), "time_bindings")
     relations = list({(r["field"], r["ref"]["kind"], r["ref"]["path"]): r for r in relations}.values())
     computation = None

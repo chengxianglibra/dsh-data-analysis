@@ -305,6 +305,22 @@ test('time bindings show each distinct effective time dimension once', () => {
   assert.doesNotMatch(html, /显式指定|查看原始记录/)
 })
 
+test('parameter and absent contribution time bindings remain visible', () => {
+  const html = renderComputation('sum(a) + sum(b)', [
+    {
+      name: 'time_bindings',
+      structured: true,
+      value: JSON.stringify([
+        { branch: 'sum(a)', parameter: 'event', source: 'parameter' },
+        { branch: 'sum(b)', source: 'none' },
+      ]),
+    },
+  ])
+  assert.match(html, /event/)
+  assert.match(html, /时间参数/)
+  assert.match(html, /未指定/)
+})
+
 test('different or unknown null rules retain their branches', () => {
   const html = renderComputation('sum(a)', [
     {

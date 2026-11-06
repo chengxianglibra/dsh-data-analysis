@@ -114,7 +114,7 @@ test('each supported kind places overview facts, definition details and direct r
     },
     {
       kind: 'time_dimension',
-      summary: value('is_default_time', 'true'),
+      summary: value('parse', 'timestamp'),
       detail: value('other', 'x'),
       reference: value('entity', 'entity:sales.orders'),
       target: entity,

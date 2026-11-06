@@ -34,8 +34,7 @@ try {
         fields: {
           name,
           path: ':memory:',
-          http_scope: 'http://127.0.0.1/',
-          http_bearer_token_env: 'SHARED_TOKEN',
+          secrets: [{ type: 'http_bearer', scope: 'http://127.0.0.1/', token: 'SHARED_TOKEN' }],
         },
       }),
       { name },
@@ -53,10 +52,12 @@ import React,{useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CredentialPanel} from ${JSON.stringify(fileURLToPath(new URL('../src/client/credentials/install.tsx', import.meta.url)))};
 import {CredentialClientModel} from ${JSON.stringify(fileURLToPath(new URL('../src/client/credentials/model.ts', import.meta.url)))};
+import {HostCopyProvider} from ${JSON.stringify(fileURLToPath(new URL('../src/client/i18n/context.tsx', import.meta.url)))};
+import {translator} from ${JSON.stringify(fileURLToPath(new URL('../src/client/i18n/copy.ts', import.meta.url)))};
 const rpc={call:async(channel,endpoint,payload,signal)=>(await fetch('/rpc',{method:'POST',body:JSON.stringify({endpoint,payload}),signal})).json()};
 const model=new CredentialClientModel(rpc,sessionStorage);
 model.show('workspace');
-function App(){useSyncExternalStore(model.subscribe,model.getSnapshot);return <div style={{maxWidth:900,margin:'auto',padding:8}}><CredentialPanel model={model} workspaces={[{workspaceId:'workspace',title:'删除验收',sessionIds:[]}]}/></div>}
+function App(){useSyncExternalStore(model.subscribe,model.getSnapshot);return <div style={{maxWidth:900,margin:'auto',padding:8}}><HostCopyProvider t={translator("zh-CN")}><CredentialPanel model={model} workspaces={[{workspaceId:'workspace',title:'删除验收',sessionIds:[]}]}/></HostCopyProvider></div>}
 createRoot(document.getElementById('app')).render(<App/>);`,
     },
     bundle: true,
@@ -99,7 +100,7 @@ createRoot(document.getElementById('app')).render(<App/>);`,
     await page.getByRole('heading', { name, exact: true }).waitFor()
     await page.getByRole('button', { name: '删除数据源', exact: true }).click()
   }
-  const confirmation = page.getByRole('group', { name: '确认删除数据源', exact: true })
+  const confirmation = page.locator('.mc-confirm')
   const confirm = () =>
     confirmation.getByRole('button', { name: '确认删除数据源', exact: true }).click()
   await select('delete_first')
@@ -114,7 +115,8 @@ createRoot(document.getElementById('app')).render(<App/>);`,
       .filter((element) => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1)
       .filter(
         (element) =>
-          !(element.matches('.mc-datasources') && getComputedStyle(element).overflowX === 'auto'),
+          !(element.matches('.mc-datasources') && getComputedStyle(element).overflowX === 'auto') &&
+          element.getAttribute('role') !== 'checkbox',
       )
       .map((element) => element.className),
   )

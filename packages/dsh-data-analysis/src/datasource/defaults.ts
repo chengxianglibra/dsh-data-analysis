@@ -25,7 +25,7 @@ export function withDatasourceDefaults(
     if (!definition) throw new CredentialServiceError('datasource-defaults-backend-invalid')
     for (const [name, value] of Object.entries(values)) {
       const field = definition.fields.find((item) => item.name === name)
-      if (name.endsWith('_env'))
+      if (field?.type === 'credential' || field?.type === 'secrets')
         throw new CredentialServiceError('datasource-defaults-credential-forbidden')
       if (!field) throw new CredentialServiceError('datasource-defaults-field-invalid')
       if (field.type !== 'json' && typeof value !== field.type)
@@ -42,7 +42,7 @@ export function withDatasourceDefaults(
       const definition = schema.backends.find((item) => item.name === backend)
       if (!definition) throw new CredentialServiceError('datasource-defaults-backend-invalid')
       for (const [name, reference] of Object.entries(fields)) {
-        if (!name.endsWith('_env') || !definition.fields.some((field) => field.name === name))
+        if (!definition.fields.some((field) => field.name === name && field.type === 'credential'))
           throw new CredentialServiceError('datasource-defaults-field-invalid')
         marivoCredentialStorageRef(reference)
         if (Object.hasOwn(combined[backend] ?? {}, name))

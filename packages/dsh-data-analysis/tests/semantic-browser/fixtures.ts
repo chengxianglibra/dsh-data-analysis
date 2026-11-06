@@ -51,7 +51,7 @@ order_id = ms.dimension_column(name="order_id", entity=orders, column="id")
 user_id = ms.dimension_column(name="user_id", entity=users, column="id")
 region = ms.dimension_column(name="region", entity=orders, column="region")
 week = ms.dimension_column(name="week", entity=orders, column="week")
-ordered_at = ms.time_dimension_column(name="ordered_at", entity=orders, column="ordered_at", parse=ms.timestamp(timezone="UTC"), is_default=True)
+ordered_at = ms.time_dimension_column(name="ordered_at", entity=orders, column="ordered_at", parse=ms.timestamp(timezone="UTC"))
 calendar_date = ms.time_dimension_column(name="calendar_date", entity=orders, column="calendar_date", parse=ms.date(timezone="UTC"))
 ends = ms.time_dimension_column(name="ends", entity=orders, column="ends", parse=ms.timestamp(timezone="UTC"))
 amount = ms.measure_column(name="amount", entity=orders, column="amount", additivity=ms.additive_all(), unit="CNY")
@@ -61,6 +61,9 @@ campaigns = ms.temporal_set(name="campaigns", occurrence_id=order_id, start=orde
 @ms.metric(ai_context=ms.ai_context(business_definition="收入 Revenue <script>window.secret = true</script> " + "长定义😀" * 90, guardrails=("排除退款",)))
 def revenue():
     return amount.sum(time=ordered_at)
+@ms.metric()
+def revenue_at(*, event: ms.TimeParameter):
+    return amount.sum(time=event)
 @ms.metric()
 def order_count():
     return amount.count()

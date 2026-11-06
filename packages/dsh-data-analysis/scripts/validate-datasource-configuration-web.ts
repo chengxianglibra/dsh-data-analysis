@@ -34,6 +34,7 @@ await cp(sourcePackage, candidatePackage, {
 })
 await cp(path.resolve('tsconfig.json'), path.join(candidate, 'tsconfig.json'))
 await symlink(path.resolve('node_modules'), path.join(candidate, 'node_modules'))
+await symlink(path.join(sourcePackage, 'node_modules'), path.join(candidatePackage, 'node_modules'))
 await promisify(execFile)(process.execPath, ['scripts/generate-analysis-catalog.mjs', '--build'], {
   cwd: candidatePackage,
   maxBuffer: 16 * 1024 * 1024,
@@ -57,7 +58,7 @@ const host = await startPresentationWebHost(
     rightTabsAcceptance: true,
     productionPackageRoot: candidatePackage,
     datasourceDefaults: {
-      duckdb: { path: ':memory:', http_scope: '', read_only: false, extra: {} },
+      duckdb: { path: ':memory:', read_only: false, extra: {} },
       trino: { host: 'defaults.example.invalid', port: 0, source: '' },
     },
   },
@@ -154,26 +155,58 @@ try {
   await form.getByLabel('引擎', { exact: true }).selectOption('duckdb')
   await form.getByLabel('name', { exact: true }).fill('configured')
   assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
-  await form.getByLabel('http_scope', { exact: true }).fill('https://example.invalid/')
-  await form.getByLabel('访问令牌', { exact: true }).fill('inline-web-token-canary')
-  await form.getByText('凭证引用名 · 确认或修改', { exact: true }).click()
-  const autoRef = await form.getByLabel('http_bearer_token_env', { exact: true }).inputValue()
-  assert.match(autoRef, /^DS_CONFIGURED_HTTP_BEARER_TOKEN_/)
-  await form.getByLabel('http_bearer_token_env', { exact: true }).fill('WEB_CONFIG_TOKEN')
-  await form.getByRole('button', { name: '添加 Header 凭证', exact: true }).click()
-  await form.getByLabel('Header 名称', { exact: true }).fill('X-Test-Auth')
-  await form.getByLabel('Header 凭证值', { exact: true }).fill('inline-web-header-canary')
+  const bearer = {
+    type: 'http_bearer',
+    scope: 'https://example.invalid/',
+    token: 'WEB_CONFIG_TOKEN',
+  }
+  const header = {
+    type: 'http_headers',
+    scope: 'https://example.invalid/',
+    headers: { 'X-Test-Auth': 'WEB_HEADER' },
+  }
+  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
+  await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).fill('discarded-draft')
+  await form.getByLabel('secrets', { exact: true }).fill('[]')
+  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
+  assert.equal(
+    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
+    '',
+  )
+  await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).fill('discarded-draft')
+  await form.getByLabel('引擎', { exact: true }).selectOption('trino')
+  await form.getByLabel('引擎', { exact: true }).selectOption('duckdb')
+  await form.getByLabel('name', { exact: true }).fill('configured')
+  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
+  assert.equal(
+    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
+    '',
+  )
+  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer, header]))
+  await form
+    .getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true })
+    .fill('inline-web-token-canary')
+  await form
+    .getByLabel('Header 凭证值 · WEB_HEADER', { exact: true })
+    .fill('inline-web-header-canary')
   await page.screenshot({ path: path.join(root, 'inline-credentials.png'), fullPage: true })
   await form.getByRole('button', { name: '保存并测试，成功后继续', exact: true }).click()
-  // The real DuckDB spec rejects combining bearer and Header auth. The form must remain editable.
   await form.getByRole('alert').waitFor()
-  assert.equal(await form.getByLabel('访问令牌', { exact: true }).inputValue(), '')
-  assert.equal(await form.getByLabel('Header 凭证值', { exact: true }).inputValue(), '')
-  await form.getByRole('button', { name: '移除 Header', exact: true }).click()
-  await form.getByLabel('访问令牌', { exact: true }).fill('inline-web-token-canary')
+  assert.equal(
+    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
+    '',
+  )
+  assert.equal(
+    await form.getByLabel('Header 凭证值 · WEB_HEADER', { exact: true }).inputValue(),
+    '',
+  )
+  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([bearer]))
+  await form
+    .getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true })
+    .fill('inline-web-token-canary')
   await form.getByRole('button', { name: '保存并测试，成功后继续', exact: true }).click()
   checks.push(
-    'Runtime rejects incompatible auth configuration; form stays open and submitted values are cleared',
+    'Runtime rejects duplicate scoped credentials; form stays open and submitted values are cleared',
   )
   await page.getByText('连接测试成功', { exact: true }).waitFor()
   const created = await run('configure-create', 'credential-idle')
@@ -195,12 +228,13 @@ try {
   assert.equal(await form.getByLabel('name', { exact: true }).isDisabled(), true)
   assert.equal(await form.getByLabel('引擎', { exact: true }).isDisabled(), true)
   assert.equal(await form.getByLabel('path', { exact: true }).inputValue(), ':memory:')
-  assert.equal(await form.getByLabel('访问令牌', { exact: true }).inputValue(), '')
-  assert.equal(await form.getByLabel('Header 凭证值', { exact: true }).count(), 0)
   assert.equal(
-    await form.getByLabel('http_bearer_token_env', { exact: true }).inputValue(),
-    'WEB_CONFIG_TOKEN',
+    await form.getByLabel('Header 凭证值 · WEB_CONFIG_TOKEN', { exact: true }).inputValue(),
+    '',
   )
+  assert.deepEqual(JSON.parse(await form.getByLabel('secrets', { exact: true }).inputValue()), [
+    bearer,
+  ])
   checks.push('editing preserves credential references without echoing stored values')
   assert.deepEqual(credentialRoutes, ['/api/dsh-data-analysis-credentials/start'])
   const persisted = await page.evaluate(() =>
@@ -284,28 +318,25 @@ try {
   await form.waitFor()
   assert.equal(await form.getByLabel('read_only', { exact: true }).inputValue(), 'true')
   checks.push('independent configuration editing saves and reads back typed values')
-  await form.getByText('凭证引用名 · 确认或修改', { exact: true }).click()
-  await form.getByLabel('http_bearer_token_env', { exact: true }).fill('')
-  await form.getByRole('button', { name: '添加 Header 凭证', exact: true }).click()
-  await form.getByLabel('Header 名称', { exact: true }).fill('X-Test-Auth')
-  await form.getByLabel('Header 凭证值', { exact: true }).fill('inline-web-header-canary')
+  await form.getByLabel('secrets', { exact: true }).fill(JSON.stringify([header]))
+  await form
+    .getByLabel('Header 凭证值 · WEB_HEADER', { exact: true })
+    .fill('inline-web-header-canary')
   await form.getByRole('button', { name: '保存配置', exact: true }).click()
   await page.getByRole('button', { name: '编辑配置', exact: true }).click()
   await form.waitFor()
-  assert.equal(await form.getByLabel('http_bearer_token_env', { exact: true }).inputValue(), '')
-  assert.equal(await form.getByLabel('Header 名称', { exact: true }).inputValue(), 'X-Test-Auth')
-  assert.equal(await form.getByLabel('Header 凭证值', { exact: true }).inputValue(), '')
-  assert.match(
-    await form.getByLabel('http_headers_env', { exact: true }).inputValue(),
-    /^DS_CONFIGURED_X_TEST_AUTH_/,
+  assert.deepEqual(JSON.parse(await form.getByLabel('secrets', { exact: true }).inputValue()), [
+    header,
+  ])
+  assert.equal(
+    await form.getByLabel('Header 凭证值 · WEB_HEADER', { exact: true }).inputValue(),
+    '',
   )
   assert.deepEqual(credentialRoutes, [
     '/api/dsh-data-analysis-credentials/start',
     '/api/dsh-data-analysis-credentials/start',
   ])
-  checks.push(
-    'Header credential map saves in one form and preserves its generated reference on readback',
-  )
+  checks.push('scoped Header credentials save separately and preserve references on readback')
   assert.deepEqual(errors, [])
   await page.screenshot({ path: path.join(root, 'configuration.png'), fullPage: true })
   await writeFile(

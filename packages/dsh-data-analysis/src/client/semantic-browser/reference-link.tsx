@@ -128,7 +128,7 @@ function StructuredValue({ value, refs, objects, navigate, context }) {
             <dd>
               {context === 'time_bindings' &&
               key === 'source' &&
-              ['entity_default', 'explicit', 'none'].includes(item) ? (
+              ['entity_default', 'explicit', 'none', 'parameter'].includes(item) ? (
                 t(`marivo.semantic.binding-source-${item}`)
               ) : context === 'time_bindings' &&
                 key === 'branch' &&

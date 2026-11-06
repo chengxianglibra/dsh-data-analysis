@@ -34,7 +34,7 @@
 同一对对象的多个关系合并绘制，标签的 `+N` 表示还有其他关系，可通过悬停或图中关系列表查看。
 这是对象声明关系，不是某次查询的执行血缘；候选维度不代表任意查询组合已通过验证。
 
-覆盖 Marivo 0.6.0 的 10 种对象：业务域、数据源、实体、维度、度量、时间维度、指标、关系、周期日历和时间集合。未填写的定义有明确提示，不猜测口径。数据源只展示引擎类型和通用对象信息；
+覆盖 Marivo 0.6.2 的 10 种对象：业务域、数据源、实体、维度、度量、时间维度、指标、关系、周期日历和时间集合。未填写的定义有明确提示，不猜测口径。数据源只展示引擎类型和通用对象信息；
 实体展示来源类型、表身份与版本属性。文件或远程来源地址、请求参数、连接配置、凭证值和原始源码不投影到页面。
 
 ## 所有权与读取边界
@@ -96,7 +96,7 @@ DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run validate:semantic-browser:web
 ```
 
-可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.0 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
+可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.2 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
 指定截图及结果记录目录。浏览器工具默认查找可导入的 `playwright`，其 Chromium 必须已安装。
 
 该夹具复用生产 Tab 正文与模型，模拟 Workspace transport；不等同于当前已安装 DSH Profile 的
@@ -115,7 +115,7 @@ npm run validate:semantic-browser:web
 
 引用对象列表沿公开 `dependencies` 关系递归收集有可展示计算信息的对象，最多 40 个，超限提示继续点击对象；对象项直接跳转，不在当前页展开重复定义。无法识别的空值规则保留原文，不推测其语义；多种规则的简要展示保留按分支查看的对应关系。
 唯一源聚合与已展示公式完全相同时不重复展示；其他源聚合和定义条件可展开查看。定义条件仅在展示时按原文完全匹配去重，保留首次出现顺序，不改写 Catalog 快照或合并语义相似的条件。
-补充属性保留新版的源实体、时间默认值、解析与采样间隔等声明。投影必须匹配对象身份和 Catalog fingerprint。
+补充属性保留源实体、解析与采样间隔等声明。Metric 的 `time_parameters` 展示未绑定时间参数及其约束；`time_bindings` 区分显式字段、参数与无贡献时间。Marivo 0.6.2 不再提供实体默认时间，浏览器不推断默认值。投影必须匹配对象身份和 Catalog fingerprint。
 
 ## 搜索缓存边界
 

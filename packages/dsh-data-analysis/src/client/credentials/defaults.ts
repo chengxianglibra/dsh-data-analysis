@@ -7,7 +7,12 @@ export function creationFieldValues(
   const defaults = schema.creationDefaults?.[backend] ?? {}
   return Object.fromEntries(
     (schema.backends.find((item) => item.name === backend)?.fields ?? [])
-      .filter((field) => !field.name.endsWith('_env') && Object.hasOwn(defaults, field.name))
+      .filter(
+        (field) =>
+          field.type !== 'credential' &&
+          field.type !== 'secrets' &&
+          Object.hasOwn(defaults, field.name),
+      )
       .map((field) => [
         field.name,
         field.type === 'string'

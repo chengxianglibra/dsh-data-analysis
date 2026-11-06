@@ -101,7 +101,7 @@ async function form(edit: boolean, originalSource: string | undefined, defaults 
   module.exports.CreateDatasource(props)
   effect!()
   await new Promise<void>((resolve) => setImmediate(resolve))
-  assert.equal(state[6], '')
+  assert.equal(state[7], '')
   // Simulate changing host, keeping source untouched (or clearing a nonempty source).
   state[3] = { ...(state[3] as object), name: 'db', host: 'new', source: '' }
   index = 0

@@ -400,15 +400,25 @@ export class MarivoDatasourceBridge {
     action: 'create' | 'update',
     signal?: AbortSignal,
   ): Promise<{ name?: string; error?: string }> {
-    const refs = Object.entries(input.fields)
-      .filter(([key]) => key.endsWith('_env'))
-      .flatMap(([, value]) =>
-        typeof value === 'string'
-          ? [value]
-          : value && typeof value === 'object' && !Array.isArray(value)
-            ? Object.values(value)
-            : [],
-      )
+    // These are wire-level reference locations, not credential values. Python verifies the
+    // resulting refs against the live Runtime's constructed DatasourceSpec before writing.
+    const refs: unknown[] = ['user', 'password', 'auth']
+      .filter((key) => input.fields[key] != null)
+      .map((key) => input.fields[key])
+    const secrets = input.fields.secrets
+    if (secrets !== undefined) {
+      if (!Array.isArray(secrets)) return { error: 'datasource-definition-invalid' }
+      for (const secret of secrets) {
+        if (!object(secret)) return { error: 'datasource-definition-invalid' }
+        if (secret.type === 's3') {
+          refs.push(secret.key_id, secret.secret)
+          if (secret.session_token != null) refs.push(secret.session_token)
+        } else if (secret.type === 'http_bearer') refs.push(secret.token)
+        else if (secret.type === 'http_headers' && object(secret.headers))
+          refs.push(...Object.values(secret.headers))
+        else return { error: 'datasource-definition-invalid' }
+      }
+    }
     for (const ref of refs) {
       if (typeof ref !== 'string') return { error: 'datasource-credential-ref-invalid' }
       try {

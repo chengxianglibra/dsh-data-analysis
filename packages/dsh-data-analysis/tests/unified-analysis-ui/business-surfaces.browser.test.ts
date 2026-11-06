@@ -26,7 +26,7 @@ import {emptyView} from './src/client/semantic-browser/model.ts';
 import {PythonSettingsCard} from './src/client/settings/card.tsx';
 import {UIStyleSheet} from './src/client/ui/theme.ts';
 const store = value => {let current=value;const listeners=new Set();return {getSnapshot:()=>current,subscribe:listener=>{listeners.add(listener);return ()=>listeners.delete(listener)},update:fn=>{current=fn(current);listeners.forEach(fn=>fn())},patch(change){this.update(value=>({...value,...change}))}}};
-const schema={backends:[{name:'postgres',fields:[{name:'name',type:'string',required:true},{name:'host',type:'string',required:true},{name:'password_env',type:'string'}]}]};
+const schema={backends:[{name:'postgres',fields:[{name:'name',type:'string',required:true},{name:'host',type:'string',required:true},{name:'password',type:'credential'}]}]};
 window.saved={};
 const datasource={authoring:async()=>schema,saveConfiguration:async(_workspace,_schema,input,_original,_request,changes)=>{window.saved.datasource={fields:input.fields,credentialCount:Object.keys(changes).length};await new Promise(resolve=>{window.finishSave=resolve})}};
 const report=title=>({receipt:{reportId:title,title},source:{sessionId:'session',surface:title==='Tool result'?'tool':'tab'},publishedAt:'2026-11-03T00:00:00Z'});

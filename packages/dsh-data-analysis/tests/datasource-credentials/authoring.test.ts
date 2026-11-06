@@ -39,7 +39,7 @@ test('invalid references reach the creation form as safe actionable errors befor
   ]) {
     const input = {
       backend: 'clickhouse',
-      fields: { name: 'warehouse', host: 'localhost', password_env: reference },
+      fields: { name: 'warehouse', host: 'localhost', password: reference },
     }
     const response = await handler(
       'create-datasource',

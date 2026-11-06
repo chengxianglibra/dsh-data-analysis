@@ -19,7 +19,7 @@ const schema: DatasourceAuthoring = {
       { name: 'port', type: 'number', default: 8080 },
       { name: 'secure', type: 'boolean' },
       { name: 'extra', type: 'json' },
-      { name: 'password_env', type: 'string' },
+      { name: 'password', type: 'credential' },
     ].map((field) => ({
       required: false,
       description: '',
@@ -69,8 +69,8 @@ test('invalid defaults fail without echoing any configured value', () => {
     [{ trino: { host: null } }, 'type-invalid'],
     [{ trino: { secure: 0 } }, 'type-invalid'],
     [{ trino: { extra: { bad: Number.POSITIVE_INFINITY } } }, 'invalid'],
-    [{ trino: { password_env: 'private-canary' } }, 'credential-forbidden'],
-    [{ trino: { password: 'private-canary' } }, 'field-invalid'],
+    [{ trino: { password: 'private-canary' } }, 'credential-forbidden'],
+    [{ trino: { password_env: 'private-canary' } }, 'field-invalid'],
   ]
   for (const [value, suffix] of cases) {
     assert.throws(
@@ -89,20 +89,18 @@ test('managed reference defaults use live fields and cannot enter ordinary confi
     schema,
     { trino: { host: 'host' } },
     {
-      trino: { password_env: 'WAREHOUSE_PASSWORD' },
+      trino: { password: 'WAREHOUSE_PASSWORD' },
     },
   )
   assert.deepEqual(view.creationDefaults?.trino, {
     host: 'host',
-    password_env: 'WAREHOUSE_PASSWORD',
+    password: 'WAREHOUSE_PASSWORD',
   })
-  assert.throws(() => withDatasourceDefaults(schema, {}, { trino: { password_env: 'DSH_HOME' } }))
+  assert.throws(() => withDatasourceDefaults(schema, {}, { trino: { password: 'DSH_HOME' } }))
   assert.throws(() =>
     withDatasourceDefaults(schema, {}, { trino: { missing_env: 'WAREHOUSE_PASSWORD' } }),
   )
-  assert.throws(() =>
-    withDatasourceDefaults(schema, { trino: { password_env: 'WAREHOUSE_PASSWORD' } }),
-  )
+  assert.throws(() => withDatasourceDefaults(schema, { trino: { password: 'WAREHOUSE_PASSWORD' } }))
 })
 
 test('authoring RPC and client carry defaults without modifying creation payload or Runtime identity', async (t) => {
@@ -162,7 +160,7 @@ test('edit authoring ignores invalid creation defaults while create still fails 
     { unknown: { host: 'private-canary' } },
     { trino: { unknown: 'private-canary' } },
     { trino: { port: 'private-canary' } },
-    { trino: { password_env: 'private-canary' } },
+    { trino: { password: 'private-canary' } },
   ]
   for (const defaults of invalid) {
     const f = fixture()

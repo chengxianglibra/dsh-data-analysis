@@ -33,14 +33,14 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.0: all 10 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
+test('real Marivo 0.6.2: all 10 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.6.0 Python unavailable')
+    t.skip('Marivo 0.6.2 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),
@@ -94,6 +94,22 @@ mv.session = forbidden
     ),
   )
   assert.ok(revenueDefinition.facts.some((item) => item.name === 'null_rules'))
+  const template = data.objects.find((item) => item.ref.path === 'sales.revenue_at')!
+  const parameters = template.fields.find((field) => field.name === 'time_parameters')!
+  assert.equal(parameters.structured, true)
+  const parsedParameters = JSON.parse(parameters.value)
+  assert.equal(parsedParameters[0].name, 'event')
+  assert.equal(parsedParameters[0].constraints[0].use, 'contribution')
+  assert.ok(
+    template.relations.some(
+      (item) => item.field === 'time_parameters' && item.ref.path === 'sales.orders',
+    ),
+  )
+  assert.ok(
+    template.computation!.facts.some(
+      (item) => item.name === 'time_bindings' && item.value.includes('parameter'),
+    ),
+  )
   assert.ok(revenueDefinition.facts.some((item) => item.structured))
   assert.ok(data.objects.some((item) => item.fields.some((field) => field.structured)))
   assert.match(

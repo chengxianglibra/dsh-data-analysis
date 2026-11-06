@@ -22,27 +22,39 @@ import { datasourceDescription } from './descriptions.ts'
 function credentialLabel(field) {
   return (
     {
-      user_env: 'marivo.credentials.username',
-      password_env: 'marivo.credentials.password',
-      http_bearer_token_env: 'marivo.credentials.access-token',
-      http_headers_env: 'marivo.credentials.header-credential-value',
-    }[field] ?? field.replace(/_env$/, '')
+      user: 'marivo.credentials.username',
+      password: 'marivo.credentials.password',
+      auth: 'marivo.credentials.access-token',
+    }[field] ?? field
   )
 }
 function credentialRows(schema, backend, values = schema.creationDefaults?.[backend] ?? {}) {
   return (schema.backends.find((item) => item.name === backend)?.fields ?? [])
-    .filter((field) => field.name.endsWith('_env'))
-    .flatMap((field) =>
-      field.type === 'json'
-        ? Object.entries(values[field.name] ?? {}).map(([key, existing]) => ({
-            id: crypto.randomUUID(),
-            field: field.name,
-            key,
-            existing,
-            value: '',
-          }))
-        : [{ id: crypto.randomUUID(), field: field.name, existing: values[field.name], value: '' }],
-    )
+    .filter((field) => field.type === 'credential')
+    .map((field) => ({
+      id: crypto.randomUUID(),
+      field: field.name,
+      existing: values[field.name],
+      value: '',
+    }))
+}
+
+function scopedReferences(value) {
+  try {
+    const entries = JSON.parse(value || '[]')
+    if (!Array.isArray(entries)) return []
+    const refs = entries.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return []
+      if (entry.type === 's3') return [entry.key_id, entry.secret, entry.session_token]
+      if (entry.type === 'http_bearer') return [entry.token]
+      if (entry.type === 'http_headers' && entry.headers && typeof entry.headers === 'object')
+        return Object.values(entry.headers)
+      return []
+    })
+    return [...new Set(refs.filter((ref) => typeof ref === 'string' && ref.length > 0))]
+  } catch {
+    return []
+  }
 }
 
 export function CreateDatasource({ model, workspaceId, close, name, requestId }) {
@@ -55,6 +67,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
   const [backend, setBackend] = useState('')
   const [values, setValues] = useState({})
   const [credentials, setCredentials] = useState([])
+  const [scopedValues, setScopedValues] = useState(() => Object.create(null))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -86,7 +99,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
               fields
                 .filter(
                   (field) =>
-                    !field.name.endsWith('_env') && configuration.fields[field.name] !== undefined,
+                    field.type !== 'credential' && configuration.fields[field.name] !== undefined,
                 )
                 .map((field) => [
                   field.name,
@@ -107,7 +120,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
     }
   }, [model, workspaceId, name])
   const fields = schema?.backends.find((item) => item.name === backend)?.fields ?? []
-  const credentialFields = fields.filter((field) => field.name.endsWith('_env'))
+  const credentialFields = fields.filter((field) => field.type === 'credential')
   const updateCredential = (id, change) =>
     setCredentials((rows) => rows.map((row) => (row.id === id ? { ...row, ...change } : row)))
   async function submit(event) {
@@ -117,7 +130,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
     const input = {}
     let changes = {}
     try {
-      for (const field of fields.filter((field) => !field.name.endsWith('_env'))) {
+      for (const field of fields.filter((field) => field.type !== 'credential')) {
         const value = values[field.name]
         if (value === undefined) continue
         if (
@@ -133,6 +146,15 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
       const prepared = prepareCredentials(input.name ?? '', credentials)
       Object.assign(input, prepared.fields)
       changes = prepared.changes
+      for (const ref of scopedReferences(values.secrets)) {
+        if (Object.hasOwn(scopedValues, ref) && scopedValues[ref]) {
+          if (changes[ref] !== undefined && changes[ref] !== scopedValues[ref])
+            throw new Error(
+              'marivo.credentials.the-same-credential-reference-cannot-have-different-values',
+            )
+          changes[ref] = scopedValues[ref]
+        }
+      }
     } catch (error) {
       setError(
         error instanceof SyntaxError
@@ -144,6 +166,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
     setBusy(true)
     // Remove secrets from mounted inputs as soon as the explicit submission begins.
     setCredentials((rows) => rows.map((row) => ({ ...row, value: '' })))
+    setScopedValues(Object.create(null))
     try {
       await model.saveConfiguration(
         workspaceId,
@@ -204,6 +227,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                     disabled={!!name}
                     value={backend}
                     onChange={(event) => {
+                      setScopedValues(Object.create(null))
                       setBackend(event.target.value)
                       setValues(creationFieldValues(schema, event.target.value))
                       setCredentials(credentialRows(schema, event.target.value))
@@ -218,7 +242,7 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                   </NativeSelect>
                 </Field>
                 {fields
-                  .filter((field) => !field.name.endsWith('_env'))
+                  .filter((field) => field.type !== 'credential')
                   .map((field) => (
                     <Field
                       key={field.name}
@@ -228,9 +252,11 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                         {field.name}
                         {field.required ? ' *' : ''}
                       </FieldLabel>
-                      {field.description && (
+                      {(field.description || field.type === 'secrets') && (
                         <FieldDescription id={`${formId}-${field.name}-help`}>
-                          {t(datasourceDescription(field.description))}
+                          {field.type === 'secrets'
+                            ? t('marivo.credentials.scoped-secrets-reference-json')
+                            : t(datasourceDescription(field.description))}
                         </FieldDescription>
                       )}
                       {field.type === 'boolean' ? (
@@ -238,7 +264,9 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                           id={`${formId}-${field.name}`}
                           aria-label={field.name}
                           aria-describedby={
-                            field.description ? `${formId}-${field.name}-help` : undefined
+                            field.description || field.type === 'secrets'
+                              ? `${formId}-${field.name}-help`
+                              : undefined
                           }
                           value={values[field.name] ?? ''}
                           onChange={(event) =>
@@ -257,7 +285,9 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                           id={`${formId}-${field.name}`}
                           aria-label={field.name}
                           aria-describedby={
-                            field.description ? `${formId}-${field.name}-help` : undefined
+                            field.description || field.type === 'secrets'
+                              ? `${formId}-${field.name}-help`
+                              : undefined
                           }
                           required={field.required}
                           disabled={!!name && field.name === 'name'}
@@ -265,19 +295,56 @@ export function CreateDatasource({ model, workspaceId, close, name, requestId })
                           type={field.type === 'number' ? 'number' : 'text'}
                           placeholder={
                             field.default == null
-                              ? field.type === 'json'
+                              ? field.type === 'json' || field.type === 'secrets'
                                 ? 'JSON'
                                 : ''
                               : String(field.default)
                           }
                           value={values[field.name] ?? ''}
-                          onChange={(event) =>
-                            setValues({ ...values, [field.name]: event.target.value })
-                          }
+                          onChange={(event) => {
+                            const value = event.target.value
+                            if (field.type === 'secrets') {
+                              const refs = new Set(scopedReferences(value))
+                              setScopedValues((current) =>
+                                Object.assign(
+                                  Object.create(null),
+                                  Object.fromEntries(
+                                    Object.entries(current).filter(([ref]) => refs.has(ref)),
+                                  ),
+                                ),
+                              )
+                            }
+                            setValues({ ...values, [field.name]: value })
+                          }}
                         />
                       )}
                     </Field>
                   ))}
+                {scopedReferences(values.secrets).map((ref) => (
+                  <Field key={ref} data-disabled={busy}>
+                    <FieldLabel htmlFor={`${formId}-scoped-${ref}`}>
+                      {t('marivo.credentials.header-credential-value')} · {ref}
+                    </FieldLabel>
+                    <FieldDescription>
+                      {t('marivo.credentials.scoped-secret-value-help')}
+                    </FieldDescription>
+                    <Input
+                      id={`${formId}-scoped-${ref}`}
+                      aria-label={`${t('marivo.credentials.header-credential-value')} · ${ref}`}
+                      type="password"
+                      autoComplete="new-password"
+                      maxLength={65536}
+                      value={scopedValues[ref] ?? ''}
+                      onChange={(event) =>
+                        setScopedValues(
+                          Object.assign(Object.create(null), scopedValues, {
+                            [ref]: event.target.value,
+                          }),
+                        )
+                      }
+                    />
+                  </Field>
+                ))}
                 {credentialFields.length > 0 && (
                   <section
                     className="mc-inline-credentials"
