@@ -1,6 +1,7 @@
 import type { SessionEventWindow } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { PresentationDelivery } from '../../presentation/receipt.ts'
+import type { DraftDelivery, PresentationDelivery } from '../../presentation/receipt.ts'
 import {
+  draftDeliveryFromEvent,
   presentationDeliveryFromEvent,
   presentationDeliveryIdentity,
 } from '../presentation/delivery.ts'
@@ -11,13 +12,16 @@ export class LiveDeliveryObserver {
   #calls = new Map<number, Map<string, string>>()
   #seen = new Set<string>()
   readonly #onDelivery: (delivery: PresentationDelivery, callId: string) => void
+  readonly #onDraft?: (draft: DraftDelivery) => void
   readonly #sessionId: string
   constructor(
     sessionId: string,
     onDelivery: (delivery: PresentationDelivery, callId: string) => void,
+    onDraft?: (draft: DraftDelivery) => void,
   ) {
     this.#sessionId = sessionId
     this.#onDelivery = onDelivery
+    this.#onDraft = onDraft
   }
   consume(window: SessionEventWindow, baseline = false): void {
     if (window.revision === this.#revision && !baseline) return
@@ -52,6 +56,13 @@ export class LiveDeliveryObserver {
       // Code dispatch has the canonical Turn in its durable envelope, not necessarily data.turn.
       for (const [ownerTurn, calls] of this.#calls) {
         const item = presentationDeliveryFromEvent(event, calls, ownerTurn)
+        if (!item && live && this.#onDraft) {
+          const draft = draftDeliveryFromEvent(event, calls, ownerTurn)?.delivery
+          if (draft?.dshSessionId === this.#sessionId && !this.#seen.has(draft.draftRevision)) {
+            this.#seen.add(draft.draftRevision)
+            this.#onDraft(draft)
+          }
+        }
         if (!item || item.delivery.dshSessionId !== this.#sessionId) continue
         const key = presentationDeliveryIdentity(item.delivery)
         if (this.#seen.has(key)) continue

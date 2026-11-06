@@ -40,6 +40,7 @@ import {
   MarivoWorkspaceEnvironmentManager,
 } from './environment/index.ts'
 import type { MarivoIntegrationV1 } from './integration.ts'
+import { AnalysisDrafts } from './presentation/drafts.ts'
 import {
   MarivoPresentationFileService,
   registerMarivoPresentationRpc,
@@ -217,12 +218,14 @@ export async function applyWithIntegration(
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))
+    const presentationDrafts = new AnalysisDrafts()
     const presentationFiles = new MarivoPresentationFileService(
       async (sessionId) => resolvePresentationWorkspace(ctx, sessionId),
       async (id) => {
         const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
         return workspace ? { id: String(workspace.id), path: workspace.path } : undefined
       },
+      presentationDrafts,
     )
     disposePresentation = registerMarivoPresentationRpc(ctx.connection, presentationFiles)
     agentInstallation = createMarivoAgentInstallation(ctx, resolveEnvironment, {
@@ -230,6 +233,7 @@ export async function applyWithIntegration(
       pythonOptionsSource: pythonSettings.get,
       helpBridgeSource: helpBridge,
       credentialService,
+      presentationDrafts,
     })
     agentInstallation.install()
     disposeCredentials = registerCredentialRpc(

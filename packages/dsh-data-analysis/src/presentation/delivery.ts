@@ -2,24 +2,27 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import {
+  type DraftDelivery,
   MARIVO_PRESENT_TOOL_NAME,
-  MARIVO_PRESENTATION_DELIVERY_KIND,
   type PresentationDelivery,
-  parsePresentationDelivery,
+  parsePresentationToolDelivery,
 } from './receipt.ts'
 
 /** Persist the same envelope on nested Code dispatch even when code discards the return value. */
 export function installMarivoPresentationCodeDelivery(ctx: Context): () => Promise<void> {
   const tasks = new PendingTasks()
   let active = true
-  const pending = new Map<string, { rootCallId: string; delivery: PresentationDelivery }>()
+  const pending = new Map<
+    string,
+    { rootCallId: string; delivery: PresentationDelivery | DraftDelivery }
+  >()
   const stopResult = ctx.on('tools/result', (exec, result) => {
     if (!active) return
     if (exec.name !== MARIVO_PRESENT_TOOL_NAME || exec.parent === undefined || result.isError)
       return
     try {
       const value = result.value as { deliveryJson: string }
-      const delivery = parsePresentationDelivery(JSON.parse(value.deliveryJson))
+      const delivery = parsePresentationToolDelivery(JSON.parse(value.deliveryJson))
       if (delivery.dshSessionId !== String(exec.agent?.session.id)) return
       pending.set(String(exec.callId), { rootCallId: String(exec.rootCallId), delivery })
       // Bounded transient dispatch rendezvous; receipts remain in Host events, never this map.
@@ -58,7 +61,7 @@ export function installMarivoPresentationCodeDelivery(ctx: Context): () => Promi
             return [
               ...content,
               {
-                type: MARIVO_PRESENTATION_DELIVERY_KIND,
+                type: item.delivery.kind,
                 delivery: item.delivery,
               } as unknown as ContentBlock,
             ]

@@ -18,6 +18,7 @@ import {
   resolveMarivoEnvironmentSource,
 } from './environment/index.ts'
 import { finishCleanup, PendingTasks } from './lifecycle.ts'
+import { AnalysisDrafts } from './presentation/drafts.ts'
 import {
   installMarivoPresentationCodeDelivery,
   registerMarivoPresentTool,
@@ -53,9 +54,11 @@ export function createMarivoAgentInstallation(
       pythonOptionsSource?: () => MarivoPythonOptions
       /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
       helpBridgeSource?: MarivoHelpBridgeSource
+      presentationDrafts?: AnalysisDrafts
     } = {},
 ) {
   const pythonOptions = resolvePythonOptions(options)
+  const presentationDrafts = options.presentationDrafts ?? new AnalysisDrafts()
   const installed = new Map<Agent, MarivoDisclosureController>()
   const credentials = options.credentials ?? ctx.credentials
   if (credentials === undefined) {
@@ -141,9 +144,11 @@ export function createMarivoAgentInstallation(
           agent.ctx,
           () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
           agent.session,
+          presentationDrafts,
         ),
       )
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
+      controller.addDisposer(() => presentationDrafts.clear(String(agent.session.id)))
       controller.addDisposer(
         agent.ctx.systemPrompt.section({
           name: 'marivo:routing',
@@ -169,6 +174,10 @@ export function createMarivoAgentInstallation(
         )
         for (const agent of ctx.agents.list()) install(agent)
         stops.push(
+          ctx.on('session/event', (session, event) => {
+            if (event.type === 'turn/end')
+              presentationDrafts.clear(String(session.id), event.data.turn)
+          }),
           ctx.on('agent/created', ({ agent }) => {
             install(agent)
           }),

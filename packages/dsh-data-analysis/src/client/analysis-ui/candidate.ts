@@ -85,6 +85,8 @@ export function analysisCandidate(
     surface: surface === 'tool' || surface === 'tab' ? surface : undefined,
     preview:
       earlySurface &&
+      !keys.includes('draftId') &&
+      args.text('stage') !== 'preview' &&
       (!keys.includes('basedOnRecordId') || args.complete('basedOnRecordId')) &&
       !args.invalid &&
       !args.stringExceeds('program', PRESENTATION_BUDGETS.text),

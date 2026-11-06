@@ -31,6 +31,7 @@ import { Button } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { WorkspaceShortcuts, workspaceDirectories } from '../workspace-shortcuts.tsx'
+import { DraftReportView } from './draft-report.tsx'
 import { LiveDeliveryObserver } from './live-delivery.ts'
 import {
   canOpenResource,
@@ -66,6 +67,17 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   const pages = new Map()
   const candidates = new AnalysisCandidates()
   const candidateTabs = new Set()
+  const draftTabs = new Map()
+  const draftListeners = new Set<() => void>()
+  const subscribeDrafts = (listener: () => void) => {
+    draftListeners.add(listener)
+    return () => draftListeners.delete(listener)
+  }
+  const setDraftTab = (sessionId, draft) => {
+    if (draft) draftTabs.set(sessionId, draft)
+    else draftTabs.delete(sessionId)
+    for (const listener of draftListeners) listener()
+  }
   let indexRevision = 0
   const indexListeners = new Set<() => void>()
   const pageIndex = {
@@ -167,6 +179,63 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       ),
   )
   const candidateKind = 'marivo-analysis-candidate'
+  const draftKind = 'marivo-analysis-draft'
+  const draftTabId = definitionId(draftKind)
+  ctx.effect(() =>
+    ctx.sidebarRightTabs.register({
+      id: draftTabId,
+      kind: draftKind,
+      multiple: true,
+      title: () => hostCopy(ctx)('marivo.presentation.ui-draft-tab'),
+    }),
+  )
+  ctx.slots.inject('sidebar.right.pane.tab', () =>
+    ctx.slots.register(
+      { name: 'sidebar.right.pane.tab', key: draftTabId, locale: 'marivo.presentation' },
+      localized(ctx, function DraftTab({ sessionId, useTabInfo }) {
+        const t = useCopy()
+        const { tab } = useTabInfo()
+        const draft = useSyncExternalStore(subscribeDrafts, () => draftTabs.get(sessionId))
+        const generation = useSyncExternalStore(
+          (listener) => ctx.connection.generation.subscribe(listener),
+          () => ctx.connection.generation.getSnapshot(),
+        )
+        const workspaces = useSyncExternalStore(
+          (listener) => ctx.workspaces.list.subscribe(listener),
+          () => ctx.workspaces.list.getSnapshot(),
+        )
+        const owners = workspaces.items.filter((workspace) =>
+          workspace.sessionIds.includes(sessionId),
+        )
+        const allowed =
+          draft &&
+          generation &&
+          draft.generation === generation &&
+          workspaces.phase === 'ready' &&
+          workspaces.state !== 'error' &&
+          owners.length === 1 &&
+          owners[0].workspaceId === draft.delivery.workspaceId &&
+          owners[0].path === draft.workspacePath &&
+          tab.navigation.params?.draftId === draft.delivery.draftId
+        useEffect(() => {
+          if (!allowed || !draft.receipt || tab.signal.aborted) return
+          const { workspaceId, reportId, buildId } = draft.receipt
+          tab.actions.openResource(
+            resourceAddress({ kind: 'report', workspaceId, reportId, buildId }),
+            {
+              replaceTab: true,
+              revealIfOpened: false,
+            },
+          )
+        }, [allowed, draft, tab])
+        return allowed ? (
+          <DraftReportView key={draft.delivery.draftId} delivery={draft.delivery} rpc={rpc} />
+        ) : (
+          <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
+        )
+      }),
+    ),
+  )
   const candidateId = definitionId(candidateKind)
   ctx.effect(() =>
     ctx.sidebarRightTabs.register({
@@ -769,28 +838,57 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       if (!binding || binding.session.getSnapshot().removed) continue
       let chatBaseline = true
       let readChat = () => {}
-      const observer = new LiveDeliveryObserver(id, (delivery, callId) => {
-        readChat()
-        const { workspaceId, reportId, buildId } = delivery.receipt
-        try {
-          check(id, workspaceId)
-        } catch (error) {
-          if (ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) fail(error)
-          return
-        }
-        changed(workspaceId, reportId)
-        if (delivery.surface === 'tool') return
-        // The exact call's temporary tab owns handoff, including an explicit user close.
-        if (candidateTabs.has(candidateKey(id, delivery.turn, callId))) return
-        // Publication invalidation is Workspace-wide. Foreground navigation
-        // alone is gated, and background deliveries are never queued.
-        if (!ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) return
-        try {
-          navigate(id, { kind: 'report', workspaceId, reportId, buildId }, ctx.sidebarRight, true)
-        } catch (error) {
-          fail(error)
-        }
-      })
+      const observer = new LiveDeliveryObserver(
+        id,
+        (delivery, callId) => {
+          readChat()
+          const { workspaceId, reportId, buildId } = delivery.receipt
+          try {
+            check(id, workspaceId)
+          } catch (error) {
+            if (ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) fail(error)
+            return
+          }
+          changed(workspaceId, reportId)
+          const draft = draftTabs.get(id)
+          if (delivery.draftId && draft?.delivery.draftId === delivery.draftId) {
+            setDraftTab(id, { ...draft, receipt: delivery.receipt })
+            return
+          }
+          if (delivery.surface === 'tool') return
+          // The exact call's temporary tab owns handoff, including an explicit user close.
+          if (candidateTabs.has(candidateKey(id, delivery.turn, callId))) return
+          // Publication invalidation is Workspace-wide. Foreground navigation
+          // alone is gated, and background deliveries are never queued.
+          if (!ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) return
+          try {
+            navigate(id, { kind: 'report', workspaceId, reportId, buildId }, ctx.sidebarRight, true)
+          } catch (error) {
+            fail(error)
+          }
+        },
+        (delivery) => {
+          const generation = ctx.connection.generation.getSnapshot()
+          const workspace = ctx.workspaces.list
+            .getSnapshot()
+            .items.find((w) => w.workspaceId === delivery.workspaceId)
+          const previous = draftTabs.get(id)
+          if (!generation || !workspace) return
+          const sameDraft =
+            previous?.delivery.draftId === delivery.draftId && previous.generation === generation
+          try {
+            check(id, delivery.workspaceId, !sameDraft)
+            setDraftTab(id, { delivery, generation, workspacePath: workspace.path })
+            if (!sameDraft) {
+              ctx.sidebarRight.openTab(draftKind, { params: { draftId: delivery.draftId } })
+              if (diagnostics)
+                audit.opens.push({ sessionId: id, draftId: delivery.draftId, automatic: true })
+            }
+          } catch (error) {
+            if (ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) fail(error)
+          }
+        },
+      )
       let stopChat = () => {}
       if (typeof ctx.uiConversation.binding === 'function') {
         const chat = ctx.uiConversation.binding(binding)?.target('chat')
@@ -891,6 +989,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           stopLifecycle()
           stopChat()
           candidates.revoke(id)
+          setDraftTab(id, undefined)
         },
       })
     }

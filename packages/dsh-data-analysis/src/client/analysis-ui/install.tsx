@@ -16,6 +16,8 @@ import { localized } from '../i18n/host.tsx'
 import {
   ANALYSIS_SURFACE_NODE_KEY,
   analysisSurfacesForNode,
+  parseDraftDelivery,
+  parseDraftDurableContent,
   presentationDeliveryIdentity,
 } from '../presentation/delivery.ts'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
@@ -177,12 +179,18 @@ export function installAnalysisTool(
         : undefined,
     )
     const delivery = useMemo(() => analysisToolDelivery(props.block), [props.block])
+    const draft =
+      'kind' in props.block && !props.block.isError
+        ? (parseDraftDelivery(props.block.meta) ?? parseDraftDurableContent(props.block.content))
+        : null
     const owners = workspaces.items.filter((w) => w.sessionIds.includes(props.sessionId))
     const allowed =
       workspaces.phase === 'ready' &&
       workspaces.state !== 'error' &&
       owners.length === 1 &&
       owners[0]?.workspaceId === delivery?.receipt.workspaceId
+    if (draft?.dshSessionId === props.sessionId)
+      return <p role="status">{t('marivo.presentation.ui-draft-updated')}</p>
     if (!delivery) {
       const workspaceId =
         owners.length === 1 && workspaces.phase === 'ready' && workspaces.state !== 'error'

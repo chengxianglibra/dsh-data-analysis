@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
 import type { SessionEventWindow } from '@deepseek-ai/dsh-api-session-controller/client'
 import { LiveDeliveryObserver } from '../../src/client/right-tabs/live-delivery.ts'
@@ -19,7 +19,11 @@ import {
   type AnalysisDocument,
   analysisRecordId,
 } from '../../src/presentation/contracts/analysis-document.ts'
-import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
+import {
+  type DraftDelivery,
+  MARIVO_DRAFT_DELIVERY_KIND,
+  type PresentationDelivery,
+} from '../../src/presentation/receipt.ts'
 
 const base = {
   schemaVersion: ANALYSIS_UI_FORMAT,
@@ -232,6 +236,71 @@ test('only appended canonical deliveries open; replay, settlement, duplicates an
   ])
   assert.equal(opened.length, 2)
 })
+test('live Native and Code previews deliver successive revisions of the same draft without saved delivery', () => {
+  const drafts: DraftDelivery[] = []
+  const saved: PresentationDelivery[] = []
+  const observer = new LiveDeliveryObserver(
+    's1',
+    (value) => saved.push(value),
+    (value) => drafts.push(value),
+  )
+  let revision = 0
+  const append = (...events: object[]) => {
+    const entries = events.map((event) => ({ type: 'event', event }))
+    observer.consume({
+      revision: ++revision,
+      entries,
+      hasMore: false,
+      change: { kind: 'append', entries },
+    } as SessionEventWindow)
+  }
+  append()
+  const draft: DraftDelivery = {
+    kind: MARIVO_DRAFT_DELIVERY_KIND,
+    dshSessionId: 's1',
+    workspaceId: 'workspace',
+    turn: 1,
+    draftId: randomUUID(),
+    draftRevision: randomUUID(),
+  }
+  const call = (callId: string, name: string, seq: number) => ({
+    type: 'tool/call',
+    seq,
+    data: { turn: 1, callId, name },
+  })
+  const native = {
+    type: 'tool/result',
+    seq: 2,
+    surfaceOp: 'append',
+    data: {
+      turn: 1,
+      meta: draft,
+      message: {
+        role: 'tool',
+        toolCallId: 'native',
+        source: { kind: 'tool', callId: 'native' },
+        content: [],
+      },
+    },
+  }
+  append(call('native', 'marivo_present', 1), native)
+  append(native)
+  const updated = { ...draft, draftRevision: randomUUID() }
+  append(call('root', 'run_code', 3), {
+    type: 'tool/ptc-dispatch',
+    seq: 4,
+    data: {
+      rootCallId: 'root',
+      subCallId: 'sub',
+      name: 'marivo_present',
+      isError: false,
+      content: [{ type: draft.kind, delivery: updated }],
+    },
+  })
+  assert.deepEqual(drafts, [draft, updated])
+  assert.deepEqual(saved, [])
+})
+
 test('fixed Build never resolves current; current announces updates until explicit refresh', async () => {
   const f = fixture()
   const current = new TabPage(

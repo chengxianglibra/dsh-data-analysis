@@ -108,8 +108,9 @@ test('default client is a valid Cordis effect and registers native resources wit
     assert.equal(renderToStaticMarkup(createElement(entry.component)), '<span>' + en + '</span>')
     assert.equal(captured, zh, 'The original tab title remains unchanged in Harness state')
   }
-  assert.equal(definitions.length, 6)
+  assert.equal(definitions.length, 7)
   assert.ok(definitions.some((d) => d.kind === 'marivo-analysis-candidate'))
+  assert.ok(definitions.some((d) => d.kind === 'marivo-analysis-draft'))
   assert.ok(definitions.some((d) => d.kind === 'marivo-reports'))
   const reports = definitions.find((d) => d.kind === 'marivo-report-resource')
   assert.equal(reports.canOpen('dsh-resource://file/workspace/file.txt'), false)

@@ -12,9 +12,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 ## 统一分析 UI 写入与增量契约
 
-`marivo_present` 按 `surface`、`basedOnRecordId`、`resources`、`labels`、`title`、`program`、`locale` 披露参数，
-输入 schema 以 [analysis-document.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)
-的 `analysisPresentInput` 为准。
+`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。直接交付时，`stage` 默认 `save`，并使用 `surface`、`basedOnRecordId`、`resources`、`labels`、`title`、`program` 和 `locale` 构造正式版本。
 
 - 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
@@ -59,6 +57,13 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 历史加载不触发自动导航。取消或失败时基版本保持可读，新建标明未保存。
 
 已保存版本可在报告 tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[报告 HTML 导出](report-publishing.md)。
+
+## 报告草稿与正式保存
+
+- `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，返回 `draftId` 与 `draftRevision`。
+- 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序。提供 `resources` 时仍替换完整映射。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
+- Native 和 PTC 的预览通知只携带草稿身份。浏览器通过 Session 绑定的 `draft/read` 读取确切的预览数据，在同一个报告草稿标签页中更新内容。
+- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本。若正式基版本已变化，保存失败并保留当前草稿。成功后，草稿 tab 原位切换到正式报告。
 
 ## 单次调用与文件身份
 

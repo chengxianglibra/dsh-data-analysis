@@ -20,8 +20,9 @@ import {
 } from './contracts/point-reference.ts'
 import { isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { datasetContext, datasetFromDocument, datasetPointContext } from './dataset-reference.ts'
+import type { AnalysisDrafts } from './drafts.ts'
 import { pointFromDocument } from './point-reference.ts'
-import { MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
+import { draftDeliverySchema, MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
 import {
   listReports,
   readAnalysisRecord,
@@ -40,12 +41,18 @@ export type PresentationWorkspaceResolver = (
 export class MarivoPresentationFileService {
   readonly #resolve: PresentationWorkspaceResolver
   readonly #resolveId?: PresentationWorkspaceResolver
+  readonly #drafts?: AnalysisDrafts
   readonly #abort = new AbortController()
   readonly #tasks = new PendingTasks()
   #closing: Promise<void> | undefined
-  constructor(resolve: PresentationWorkspaceResolver, resolveId?: PresentationWorkspaceResolver) {
+  constructor(
+    resolve: PresentationWorkspaceResolver,
+    resolveId?: PresentationWorkspaceResolver,
+    drafts?: AnalysisDrafts,
+  ) {
     this.#resolve = resolve
     this.#resolveId = resolveId
+    this.#drafts = drafts
   }
   async #workspace(input: Record<string, unknown>): Promise<PresentationWorkspace | undefined> {
     try {
@@ -287,6 +294,31 @@ export class MarivoPresentationFileService {
   report(payload: unknown, caller = new AbortController().signal) {
     return this.#tasks.track(this.#report(payload, caller))
   }
+  draft(payload: unknown, caller: AbortSignal) {
+    return this.#tasks.track(this.#readDraft(payload, caller))
+  }
+  async #readDraft(payload: unknown, caller: AbortSignal) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    const parsed = draftDeliverySchema.safeParse(payload)
+    if (!parsed.success) throw new Error('invalid-request')
+    const request = parsed.data
+    const workspace = await this.#workspace({ sessionId: request.dshSessionId })
+    signal.throwIfAborted()
+    const draft = this.#drafts?.get(request.dshSessionId)
+    if (
+      !draft ||
+      !workspace ||
+      draft.workspacePath !== workspace.path ||
+      workspace.id !== request.workspaceId ||
+      draft.delivery.workspaceId !== request.workspaceId ||
+      draft.delivery.turn !== request.turn ||
+      draft.delivery.draftId !== request.draftId ||
+      draft.delivery.draftRevision !== request.draftRevision
+    )
+      throw new Error('analysis-draft-unavailable')
+    return draft.document
+  }
   async #report(payload: unknown, caller = new AbortController().signal) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
     signal.throwIfAborted()
@@ -430,6 +462,7 @@ export function registerMarivoPresentationRpc(
       'reports/resolve',
       'reports/list',
       'reports/history',
+      'draft/read',
       'files/read',
       'code/read',
       'point/prepare',
@@ -447,6 +480,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.catalog(endpoint, payload, signal) }
         if (endpoint === 'files/read')
           return { ok: true, value: await service.read(payload, signal) }
+        if (endpoint === 'draft/read')
+          return { ok: true, value: await service.draft(payload, signal) }
         if (endpoint === 'code/read')
           return { ok: true, value: await service.code(payload, signal) }
         if (endpoint === 'dataset/prepare' || endpoint === 'dataset/serialize')
@@ -464,7 +499,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
+                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-history-full|report-catalog-too-large|analysis-draft-unavailable|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
                     error.message,
                   )
                 ? error.message

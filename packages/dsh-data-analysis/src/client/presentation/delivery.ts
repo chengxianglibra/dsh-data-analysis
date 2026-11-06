@@ -5,6 +5,9 @@ import type {
   ConversationViewNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
+  type DraftDelivery,
+  draftDeliverySchema,
+  MARIVO_DRAFT_DELIVERY_KIND,
   MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
   type PresentationDelivery,
@@ -73,25 +76,56 @@ export function presentationDeliveryIdentity(delivery: PresentationDelivery): st
 
 /** Code Mode carries the same envelope as Native metadata, inside one durable block. */
 export function parsePresentationDurableContent(value: unknown): PresentationDelivery | null {
+  return parsedDelivery(durableDelivery(value, MARIVO_PRESENTATION_DELIVERY_KIND))
+}
+
+function durableDelivery(value: unknown, kind: string): unknown {
   if (!Array.isArray(value)) return null
-  const blocks = value.filter((item) => record(item)?.type === MARIVO_PRESENTATION_DELIVERY_KIND)
+  const blocks = value.filter((item) => record(item)?.type === kind)
   if (blocks.length !== 1) return null
   const block = record(blocks[0])!
   if (Object.keys(block).sort().join(',') !== 'delivery,type') return null
-  return parsedDelivery(block.delivery)
+  return block.delivery
 }
 
-/** Calls are collected only from this Harness-owned Turn, including the Code root call. */
+export function parseDraftDelivery(value: unknown): DraftDelivery | null {
+  const parsed = draftDeliverySchema.safeParse(value)
+  return parsed.success ? Object.freeze(parsed.data) : null
+}
+
+export function parseDraftDurableContent(value: unknown): DraftDelivery | null {
+  return parseDraftDelivery(durableDelivery(value, MARIVO_DRAFT_DELIVERY_KIND))
+}
+
 export function presentationDeliveryFromEvent(
   value: unknown,
   calls: ReadonlyMap<string, string>,
   turn: number,
 ): PresentationTurnDelivery | null {
+  return toolDeliveryFromEvent(value, calls, turn, parsedDelivery, parsePresentationDurableContent)
+}
+
+export function draftDeliveryFromEvent(
+  value: unknown,
+  calls: ReadonlyMap<string, string>,
+  turn: number,
+) {
+  return toolDeliveryFromEvent(value, calls, turn, parseDraftDelivery, parseDraftDurableContent)
+}
+
+/** Calls are collected only from this Harness-owned Turn, including the Code root call. */
+function toolDeliveryFromEvent<T extends { turn: number }>(
+  value: unknown,
+  calls: ReadonlyMap<string, string>,
+  turn: number,
+  parseMeta: (meta: unknown) => T | null,
+  parseContent: (content: unknown) => T | null,
+): { readonly seq: number; readonly delivery: T } | null {
   const event = record(value)
   if (!event || !Number.isSafeInteger(event.seq) || event.seq < 0) return null
   const data = record(event.data)
   if (!data) return null
-  let delivery: PresentationDelivery | null
+  let delivery: T | null
   if (event.type === 'tool/result') {
     if (event.surfaceOp !== 'append' || data.turn !== turn) return null
     const message = record(data.message)
@@ -107,7 +141,7 @@ export function presentationDeliveryFromEvent(
       message.content.some((item: unknown) => record(item)?.type === 'tool-result')
     )
       return null
-    delivery = parsedDelivery(data.meta)
+    delivery = parseMeta(data.meta)
   } else if (event.type === 'tool/ptc-dispatch') {
     if (
       data.name !== MARIVO_PRESENT_TOOL_NAME ||
@@ -118,7 +152,7 @@ export function presentationDeliveryFromEvent(
       !data.subCallId
     )
       return null
-    delivery = parsePresentationDurableContent(data.content)
+    delivery = parseContent(data.content)
   } else return null
   if (!delivery || delivery.turn !== turn) return null
   return Object.freeze({ seq: event.seq, delivery })

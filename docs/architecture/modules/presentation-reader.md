@@ -21,6 +21,8 @@ AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；工�
 Surface 接收文档及已保存资源读取回调，领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。
 阅读状态属于所在视图，位置切换可以重挂。
 
+报告草稿页使用同一 Renderer 读取已校验的临时文档和快照。新修订在同一页替换内容，已显示的快照在读取下一次修订期间保持可见。草稿标明尚未保存，正式版本成功保存后原位切换到报告 reader。历史、导出和「就此提问」使用正式版本的固定 Build。
+
 ## 组件与数据视图
 
 对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；

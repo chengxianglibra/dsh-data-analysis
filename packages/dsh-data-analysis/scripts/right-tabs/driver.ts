@@ -1,5 +1,6 @@
 /** Isolated production Agent/Tool driver. Only the model boundary is scripted. */
 import assert from 'node:assert/strict'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   createUserMessage,
@@ -10,6 +11,8 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
+import { type DraftDelivery, draftDeliverySchema } from '../../src/presentation/receipt.ts'
+import { listReports, readReceiptDocument } from '../../src/presentation/reports.ts'
 import {
   actualDeliveries,
   type PresentationRequest,
@@ -75,6 +78,64 @@ class SemanticQuestionAdapter extends LlmAdapter {
   }
 }
 
+class ReportDraftAdapter extends LlmAdapter {
+  #step = 0
+  #permitted = 0
+  readonly #resources: () => Promise<NonNullable<PresentationRequest['resources']>>
+  readonly #latestDraft: () => DraftDelivery | undefined
+  constructor(
+    resources: () => Promise<NonNullable<PresentationRequest['resources']>>,
+    latestDraft: () => DraftDelivery | undefined,
+  ) {
+    super()
+    this.#resources = resources
+    this.#latestDraft = latestDraft
+  }
+  advance() {
+    this.#permitted++
+  }
+  override async resolveModel(provider: string, model: string) {
+    return { provider, id: model, name: model }
+  }
+  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    if (options.purpose === 'session-title' || this.#step === 3) {
+      yield { type: 'finish', reason: { kind: 'stop' } }
+      return
+    }
+    const step = this.#step++
+    while (this.#permitted < step) await delay(100, undefined, { signal: options.signal })
+    const draft = step ? this.#latestDraft() : undefined
+    assert.ok(!step || draft, 'An actual preview must return a draft identity')
+    const resources = await this.#resources()
+    const [first, second] = Object.keys(resources)
+    assert.ok(first && second)
+    const identity = draft ? { draftId: draft.draftId, draftRevision: draft.draftRevision } : {}
+    const args = JSON.stringify(
+      step === 0
+        ? {
+            stage: 'preview',
+            title: '逐步更新验收',
+            resources: { [first]: resources[first] },
+            program: `root = Stack([TextContent("首个指标已就绪"), AnalysisFrameView("${first}")]);`,
+          }
+        : step === 1
+          ? {
+              stage: 'preview',
+              ...identity,
+              resources,
+              program: `root = Stack([TextContent("两个指标已就绪"), AnalysisFrameView("${first}"), AnalysisFrameView("${second}")]);`,
+            }
+          : { stage: 'save', ...identity },
+    )
+    const id = ToolCallId(`report-draft-${step}`)
+    const name = 'marivo_present'
+    yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+    yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
+    yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }
+    yield { type: 'finish', reason: { kind: 'tool-calls' } }
+  }
+}
+
 export async function createRightTabsDriver(
   ctx: Context,
   workspace: any,
@@ -83,6 +144,25 @@ export async function createRightTabsDriver(
 ) {
   const agents = new Map<string, any>()
   const semantic = new SemanticQuestionAdapter()
+  const reportDraft = new ReportDraftAdapter(
+    async () => {
+      const { reports } = await listReports(workspace.path, String(workspace.id))
+      const seed = reports.find(({ receipt }) => receipt.title === requests[0]?.title)
+      assert.ok(seed, 'The isolated report seed must already be saved')
+      const document = await readReceiptDocument(workspace.path, seed.receipt)
+      return Object.fromEntries(
+        Object.entries(document.resources).map(([name, resource]) => [name, resource.declaration]),
+      )
+    },
+    () => {
+      for (const event of [...agents.get('draft').session.snapshotEvents()].reverse()) {
+        if (event.type !== 'tool/result') continue
+        const parsed = draftDeliverySchema.safeParse(event.data.meta)
+        if (parsed.success) return parsed.data
+      }
+      return undefined
+    },
+  )
   for (const mode of [
     'native',
     'ptc',
@@ -91,6 +171,7 @@ export async function createRightTabsDriver(
     'semantic',
     'configure-create',
     'configure-edit',
+    'draft',
   ] as const) {
     const id = SessionId(`right-tabs-${mode}`),
       provider = `right-tabs-${mode}`
@@ -98,16 +179,18 @@ export async function createRightTabsDriver(
       [provider],
       mode === 'configure-create' || mode === 'configure-edit'
         ? new CredentialAdapter(mode === 'configure-create' ? 'create' : 'edit')
-        : mode === 'semantic'
-          ? semantic
-          : mode === 'credentials'
-            ? new CredentialAdapter()
-            : new ScriptedPresentationAdapter(
-                mode === 'cold' ? 'native' : mode,
-                Array.from({ length: 12 }, (_, i) => requests[i % requests.length]!),
-                () =>
-                  actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
-              ),
+        : mode === 'draft'
+          ? reportDraft
+          : mode === 'semantic'
+            ? semantic
+            : mode === 'credentials'
+              ? new CredentialAdapter()
+              : new ScriptedPresentationAdapter(
+                  mode === 'cold' ? 'native' : mode,
+                  Array.from({ length: 12 }, (_, i) => requests[i % requests.length]!),
+                  () =>
+                    actualDeliveries(agents.get(mode).session.snapshotEvents(), id).at(-1)?.receipt,
+                ),
     )
     const agentOptions = { provider, model: 'deterministic-seam' }
     const agent = resume
@@ -153,6 +236,19 @@ export async function createRightTabsDriver(
     }
     const agent = agents.get(payload?.mode)
     assert.ok(agent, 'Unknown isolated session')
+    if (payload.mode === 'draft' && payload.action === 'start-draft') {
+      agent.followup(
+        createUserMessage({
+          content: [{ type: 'text', text: '在一个报告草稿里逐步展示两个数据视图，然后保存。' }],
+          source: { kind: 'user' },
+        }),
+      )
+      return { ok: true }
+    }
+    if (payload.mode === 'draft' && payload.action === 'advance-draft') {
+      reportDraft.advance()
+      return { ok: true }
+    }
     if (payload.action === 'detach') {
       await workspace.detachSession(agent.session.id)
       return { ok: true }

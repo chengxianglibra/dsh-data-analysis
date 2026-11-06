@@ -16,12 +16,14 @@ import {
 } from '../../src/presentation/contracts/analysis-document.ts'
 import type { DatasetSnapshot } from '../../src/presentation/contracts/snapshot.ts'
 import { datasetSnapshotRef, frameSnapshotRef } from '../../src/presentation/dataset-snapshot.ts'
+import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import { presentationSha256 } from '../../src/presentation/files.ts'
-import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
+import { draftDeliverySchema, parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import {
   publishPresentation,
   readAnalysisRecord,
   readReceiptDocument,
+  readReportHistory,
   resolvePresentation,
 } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
@@ -100,7 +102,8 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
     ],
   } as unknown as Session
   const source = () => ({ id: 'workspace', path: root })
-  const tool = createMarivoPresentTool(source, session)
+  const drafts = new AnalysisDrafts()
+  const tool = createMarivoPresentTool(source, session, undefined, drafts)
   const exec = {
     agent: { session },
     callId: 'native',
@@ -109,33 +112,133 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
   const service = new MarivoPresentationFileService(
     () => ({ id: 'workspace', path: root }),
     (id) => (id === 'workspace' ? { id, path: root } : undefined),
+    drafts,
   )
   t.after(() => service.close())
   const resources = {
     data: { kind: 'dataset-snapshot', snapshotRef: datasetSnapshotRef(codeRef, captureId) },
     frame: { kind: 'frame-snapshot', snapshotRef: frameSnapshotRef(codeRef, frameId) },
   }
-  const present = async (args: Record<string, unknown>, code = false) =>
-    parsePresentationDelivery(
-      JSON.parse(
-        (
-          (await tool.execute(
-            args,
-            code ? { ...exec, callId: ToolCallId('child'), rootCallId: ToolCallId('code') } : exec,
-          )) as { deliveryJson: string }
-        ).deliveryJson,
-      ),
+  const execute = async (args: Record<string, unknown>, code = false): Promise<unknown> =>
+    JSON.parse(
+      (
+        (await tool.execute(
+          args,
+          code ? { ...exec, callId: ToolCallId('child'), rootCallId: ToolCallId('code') } : exec,
+        )) as { deliveryJson: string }
+      ).deliveryJson,
     )
+  const present = async (args: Record<string, unknown>, code = false) =>
+    parsePresentationDelivery(await execute(args, code))
   return {
     root,
     resources,
     present,
+    execute,
+    drafts,
     service,
     source,
     exec,
     captureDirectory,
   }
 }
+
+test('preview revisions add data views without publishing until the draft is saved', async (t) => {
+  const f = await fixture(t)
+  const start = draftDeliverySchema.parse(
+    await f.execute({
+      stage: 'preview',
+      program: 'root = Stack([DatasetView("data")]);',
+      resources: { data: f.resources.data },
+    }),
+  )
+  const first = await f.service.draft(start, f.exec.signal)
+  assert.deepEqual(Object.keys(first.resources), ['data'])
+  const catalog = await f.service.catalog('reports/list', { workspaceId: 'workspace' })
+  assert.deepEqual('reports' in catalog && catalog.reports, [])
+  const draft = (stage: 'preview' | 'save', revision = start.draftRevision) => ({
+    stage,
+    draftId: start.draftId,
+    draftRevision: revision,
+  })
+  await assert.rejects(f.execute(draft('save'), true), /analysis-draft-unavailable/)
+  await assert.rejects(
+    f.service.draft({ ...start, workspaceId: 'elsewhere' }, f.exec.signal),
+    /analysis-draft-unavailable/,
+  )
+  await assert.rejects(
+    f.execute({ ...draft('preview'), program: 'root = Image("Missing", "missing");' }),
+    /analysis-resource-missing/,
+  )
+  assert.deepEqual(await f.service.draft(start, f.exec.signal), first)
+  const results = await Promise.allSettled(
+    Array.from({ length: 2 }, () =>
+      f.execute({
+        ...draft('preview'),
+        program: 'root = Stack([DatasetView("data"), trend]);\ntrend = AnalysisFrameView("frame");',
+        resources: f.resources,
+      }),
+    ),
+  )
+  assert.equal(results.filter(({ status }) => status === 'fulfilled').length, 1)
+  const updated = draftDeliverySchema.parse(
+    results.find((result) => result.status === 'fulfilled')?.value,
+  )
+  assert.equal(updated.draftId, start.draftId)
+  assert.notEqual(updated.draftRevision, start.draftRevision)
+  const preview = await f.service.draft(updated, f.exec.signal)
+  assert.deepEqual(Object.keys(preview.resources).sort(), ['data', 'frame'])
+  await assert.rejects(f.execute(draft('save')), /analysis-draft-conflict/)
+  const saved = await f.present(draft('save', updated.draftRevision))
+  assert.equal(saved.draftId, updated.draftId)
+  assert.equal(saved.surface, 'tab')
+  const final = await readAnalysisRecord(
+    f.root,
+    'workspace',
+    saved.receipt.reportId,
+    saved.receipt.buildId,
+  )
+  assert.equal(final.program, preview.program)
+  assert.deepEqual(final.resources, preview.resources)
+  assert.notEqual(final.buildId, updated.draftRevision)
+  const history = await readReportHistory(f.root, 'workspace', saved.receipt.reportId)
+  assert.deepEqual(
+    history.versions.map(({ receipt }) => receipt.buildId),
+    [saved.receipt.buildId],
+  )
+  await assert.rejects(f.service.draft(updated, f.exec.signal), /analysis-draft-unavailable/)
+  await assert.rejects(
+    f.execute(draft('save', updated.draftRevision)),
+    /analysis-draft-unavailable/,
+  )
+})
+
+test('draft edits preserve the saved base and reject concurrent publication', async (t) => {
+  const f = await fixture(t)
+  const base = await f.present({ resources: { data: f.resources.data } })
+  const recordId = analysisRecordId(base.receipt.reportId, base.receipt.buildId)
+  const preview = draftDeliverySchema.parse(
+    await f.execute({
+      stage: 'preview',
+      basedOnRecordId: recordId,
+      title: 'Working title',
+    }),
+  )
+  const history = () => readReportHistory(f.root, 'workspace', base.receipt.reportId)
+  assert.equal((await history()).versions.length, 1)
+  const concurrent = await f.present(
+    { basedOnRecordId: recordId, title: 'Other publication' },
+    true,
+  )
+  await assert.rejects(
+    f.execute({ stage: 'save', draftId: preview.draftId, draftRevision: preview.draftRevision }),
+    /report-save-conflict/,
+  )
+  assert.equal((await history()).currentBuildId, concurrent.receipt.buildId)
+  assert.equal((await f.service.draft(preview, f.exec.signal)).title, 'Working title')
+  f.drafts.clear('session', preview.turn)
+  await assert.rejects(f.service.draft(preview, f.exec.signal), /analysis-draft-unavailable/)
+})
 
 test('reference-only results save exact resources and survive capture removal and cold service reopen', async (t) => {
   const f = await fixture(t)

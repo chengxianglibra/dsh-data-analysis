@@ -2,16 +2,20 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { z } from 'zod'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument } from './analysis.ts'
 import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
 import { analysisPresentInput, parseAnalysisRecordId } from './contracts/analysis-document.ts'
 import { type FrameSnapshotV2, isFrameSnapshotV2 } from './contracts/snapshot.ts'
+import { type AnalysisDraftLease, AnalysisDrafts } from './drafts.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
 import {
+  MARIVO_DRAFT_DELIVERY_KIND,
   MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
   parsePresentationDelivery,
+  parsePresentationToolDelivery,
   presentationReceiptText,
 } from './receipt.ts'
 import { publishPresentation, readAnalysisRecord } from './reports.ts'
@@ -20,16 +24,23 @@ export type PresentationWorkspaceSource = () =>
   | { id: string; path: string }
   | Promise<{ id: string; path: string }>
 
-/** One call admits resources, commits an immutable document and emits the exact delivery. */
+const presentationToolInput = analysisPresentInput.extend({
+  stage: z.enum(['preview', 'save']).default('save'),
+  draftId: z.string().uuid().optional(),
+  draftRevision: z.string().uuid().optional(),
+})
+
+/** Preview validated working revisions, or publish an immutable report version. */
 export function createMarivoPresentTool(
   workspaceSource: PresentationWorkspaceSource,
   session: Session,
   lifecycleSignal?: AbortSignal,
+  drafts = new AnalysisDrafts(),
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present an existing visual result or save a report or dashboard. For a single snapshot or image, pass resources and omit program to use the default view. In custom pages, use AnalysisFrameView for Frame snapshots and DatasetView for DataFrame snapshots; Image supports existing image resources. Load dsh-data-analysis-presentation when composing a custom report or dashboard in OpenUI Lang, and save incrementally as each data view snapshot becomes ready. Each successful save returns an immutable recordId. Use marivo_ui_read only when you need a missing base definition for an edit.',
+      'Present a result or compose a report or dashboard. For custom pages, load dsh-data-analysis-presentation and call stage=preview as each view becomes ready. The same report tab updates and history is unchanged. Once complete, call stage=save with the latest draftId and draftRevision to create one immutable report version. Single results can be saved directly with resources and no program. Use marivo_ui_read only when the saved base definition is missing.',
     parameters: {
       surface: {
         type: 'string',
@@ -37,10 +48,23 @@ export function createMarivoPresentTool(
         description:
           'Defaults to tool for chat. Use tab for a requested report or dashboard. For native preview, put surface and any basedOnRecordId before the content.',
       },
+      stage: {
+        type: 'string',
+        enum: ['preview', 'save'],
+        description: 'Defaults to save. Set preview first to update the unsaved report tab.',
+      },
+      draftId: {
+        type: 'string',
+        description: 'Use the returned draft ID to continue or save the current Turn draft.',
+      },
+      draftRevision: {
+        type: 'string',
+        description: 'Required with draftId. Use the revision from the last successful preview.',
+      },
       basedOnRecordId: {
         type: 'string',
         description:
-          'Omit to create. To update, use the exact recordId from the successful save. If the base is stale, review the current version and reapply the intended edit.',
+          'For a direct save or the first preview, use the exact saved recordId to edit an existing report. Omit when creating or continuing a draft. If the saved base is stale, review the current version and reapply the intended edit.',
       },
       resources: {
         type: 'object',
@@ -73,7 +97,14 @@ export function createMarivoPresentTool(
         properties: { deliveryJson: { type: 'string', required: true } },
       },
       render: (_args, value) => {
-        const delivery = parsePresentationDelivery(JSON.parse(value.deliveryJson))
+        const delivery = parsePresentationToolDelivery(JSON.parse(value.deliveryJson))
+        if (delivery.kind === MARIVO_DRAFT_DELIVERY_KIND)
+          return [
+            {
+              type: 'text',
+              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}`,
+            },
+          ]
         return [{ type: 'text', text: presentationReceiptText(delivery.receipt, delivery.surface) }]
       },
       presentationMeta: (_args, value) => JSON.parse(value.deliveryJson),
@@ -81,7 +112,12 @@ export function createMarivoPresentTool(
     timeoutMs: PRESENTATION_EXECUTION_BUDGETS.toolTimeoutMs,
     async execute(args, exec) {
       const signal = lifecycleSignal ? AbortSignal.any([exec.signal, lifecycleSignal]) : exec.signal
-      const input = analysisPresentInput.parse(args)
+      const input = presentationToolInput.parse(args)
+      if (
+        Boolean(input.draftId) !== Boolean(input.draftRevision) ||
+        (input.draftId && input.basedOnRecordId)
+      )
+        throw new Error('analysis-draft-invalid-request')
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
       const rootCallId = String(exec.rootCallId ?? exec.callId)
@@ -93,7 +129,7 @@ export function createMarivoPresentTool(
       signal.throwIfAborted()
       const workspace = workspaceSource
       const identity = await workspace()
-      const check = async () => {
+      const checkWorkspace = async () => {
         signal.throwIfAborted()
         if (owner.session !== session) throw new Error('presentation-session-mismatch')
         const current = await workspace()
@@ -101,53 +137,94 @@ export function createMarivoPresentTool(
           throw new Error('presentation-workspace-changed')
         signal.throwIfAborted()
       }
-      await check()
-      const baseId = input.basedOnRecordId
-        ? parseAnalysisRecordId(input.basedOnRecordId)
-        : undefined
-      const base = baseId
-        ? await readAnalysisRecord(
-            identity.path,
-            identity.id,
-            baseId.reportId,
-            baseId.buildId,
-            signal,
-          )
-        : undefined
-      const document = await createAnalysisDocument(
-        input,
-        {
-          projectRoot: identity.path,
-        },
-        {
-          workspaceId: identity.id,
-          reportId: base?.reportId ?? randomUUID(),
-          buildId: randomUUID(),
-        },
-        signal,
-        base,
-      )
-      await check()
-      const receipt = await publishPresentation(
-        identity.path,
-        document,
-        base?.buildId ?? null,
-        check,
-        signal,
-        { kind: 'agent', sessionId: String(session.id), surface: input.surface },
-      )
-      return {
-        deliveryJson: JSON.stringify(
-          parsePresentationDelivery({
-            kind: MARIVO_PRESENTATION_DELIVERY_KIND,
-            schemaVersion: 2,
-            dshSessionId: String(session.id),
-            turn: call.data.turn,
-            receipt,
-            surface: input.surface,
-          }),
-        ),
+      const sessionId = String(session.id)
+      const turn = call.data.turn
+      const perform = async (lease?: AnalysisDraftLease) => {
+        const check = async () => {
+          await checkWorkspace()
+          lease?.check()
+        }
+        await check()
+        const current = lease ? drafts.get(sessionId) : undefined
+        const active = current?.delivery.turn === turn ? current : undefined
+        if (
+          input.draftId &&
+          (!active ||
+            active.delivery.draftId !== input.draftId ||
+            active.workspacePath !== identity.path ||
+            active.document.workspaceId !== identity.id)
+        )
+          throw new Error('analysis-draft-unavailable')
+        if (active && active.delivery.draftRevision !== input.draftRevision)
+          throw new Error('analysis-draft-conflict: use the latest draft ID and revision')
+        const baseId = input.basedOnRecordId
+          ? parseAnalysisRecordId(input.basedOnRecordId)
+          : undefined
+        const base =
+          active?.document ??
+          (baseId
+            ? await readAnalysisRecord(
+                identity.path,
+                identity.id,
+                baseId.reportId,
+                baseId.buildId,
+                signal,
+              )
+            : undefined)
+        const document = await createAnalysisDocument(
+          input,
+          {
+            projectRoot: identity.path,
+          },
+          {
+            workspaceId: identity.id,
+            reportId: base?.reportId ?? randomUUID(),
+            buildId: randomUUID(),
+          },
+          signal,
+          base,
+        )
+        await check()
+        const baseBuildId = active ? active.baseBuildId : (base?.buildId ?? null)
+        if (input.stage === 'preview' && lease) {
+          const delivery = {
+            kind: MARIVO_DRAFT_DELIVERY_KIND,
+            dshSessionId: sessionId,
+            workspaceId: identity.id,
+            turn,
+            draftId: active?.delivery.draftId ?? randomUUID(),
+            draftRevision: document.buildId,
+          } as const
+          lease.write({ delivery, workspacePath: identity.path, baseBuildId, document })
+          return { deliveryJson: JSON.stringify(delivery) }
+        }
+        const surface = active ? 'tab' : input.surface
+        const receipt = await publishPresentation(
+          identity.path,
+          document,
+          baseBuildId,
+          check,
+          signal,
+          { kind: 'agent', sessionId, surface },
+        )
+        if (active) drafts.clear(sessionId, turn)
+        return {
+          deliveryJson: JSON.stringify(
+            parsePresentationDelivery({
+              kind: MARIVO_PRESENTATION_DELIVERY_KIND,
+              schemaVersion: 2,
+              dshSessionId: sessionId,
+              turn,
+              receipt,
+              surface,
+              ...(active ? { draftId: active.delivery.draftId } : {}),
+            }),
+          ),
+        }
       }
+      return input.stage === 'preview' || input.draftId
+        ? drafts.run(sessionId, turn, perform)
+        : perform()
     },
   })
 }
@@ -156,8 +233,12 @@ export function registerMarivoPresentTool(
   ctx: Context,
   workspaceSource: PresentationWorkspaceSource,
   session: Session,
+  drafts?: AnalysisDrafts,
 ): () => Promise<void> {
-  return registerMarivoTool(ctx, createMarivoPresentTool(workspaceSource, session))
+  return registerMarivoTool(
+    ctx,
+    createMarivoPresentTool(workspaceSource, session, undefined, drafts),
+  )
 }
 
 /**
