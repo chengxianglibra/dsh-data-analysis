@@ -27,12 +27,17 @@ const SKILL_TOOL_NAME = 'skill'
 export const MARIVO_ROOT_HELP_TARGETS = Object.freeze({
   'marivo-analysis': 'analysis',
   'marivo-semantic': 'authoring',
+  'marivo-service': 'analysis',
 } as const)
 
 export type MarivoSkillName = keyof typeof MARIVO_ROOT_HELP_TARGETS
 export type MarivoRootHelpTarget = (typeof MARIVO_ROOT_HELP_TARGETS)[MarivoSkillName]
 
-const MARIVO_SKILL_ORDER: readonly MarivoSkillName[] = ['marivo-analysis', 'marivo-semantic']
+const MARIVO_SKILL_ORDER: readonly MarivoSkillName[] = [
+  'marivo-analysis',
+  'marivo-semantic',
+  'marivo-service',
+]
 
 export interface MarivoDisclosureOptions {
   helpLimits?: Partial<MarivoHelpLimits>
@@ -573,20 +578,26 @@ export class MarivoDisclosureController {
         this.#telemetry.failures.push({ skills: [read.skill], message: error.message })
         throw error
       }
-      const update = this.#visibleHelp.has(read.target) || this.#hasHistoricalDisclosure(read.skill)
+      const visible = this.#visibleHelp.get(read.target)
+      const delivery =
+        visible?.environmentFingerprint === read.value.environment.fingerprint &&
+        visible.bodyDigest === item.bodyDigest
+          ? 'already-visible'
+          : item.delivery
+      const update = visible !== undefined || this.#hasHistoricalDisclosure(read.skill)
       this.#telemetry.rootHelp.push({
         skill: read.skill,
         target: read.target,
         environmentFingerprint: read.value.environment.fingerprint,
         bodyDigest: item.bodyDigest,
-        delivery: item.delivery,
+        delivery,
         reason: read.reason,
         helpTextBytes: Buffer.byteLength(item.body),
         latencyMs: Math.max(0, Math.round(performance.now() - read.startedAt)),
       })
       this.#pendingSkills.delete(read.skill)
       this.#verifiedSkills.set(read.skill, read.skillBodyDigest)
-      if (item.delivery === 'already-visible') {
+      if (delivery === 'already-visible') {
         // Keep an auditable identity even when the matching Help was already visible.
         injections.push(
           createUserMessage({

@@ -3,7 +3,7 @@
 ## 作用
 
 本模块把 profile 级 Marivo Runtime、per-Workspace binding、跨边界 Tool、presentation-kit、
-两个 Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
+Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
 的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
 实现入口：
@@ -17,7 +17,7 @@
 ## 生命周期
 
 1. `apply()` 确保精确 Marivo 0.6.2 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
-2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic` 与插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
+2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic`、可用时的 `marivo-service`，以及插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
@@ -71,6 +71,7 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 完整插件向每个 Agent 注册一个稳定的 `marivo:routing` section。它在第一次工具选择前提供以下信息。
 
 - 输入决定分析入口。附件和 Workspace 数据文件先加载 `dsh-data-analysis-files`。已有业务语义的分析加载 `marivo-analysis`；当前任务需要共享定义或用户要求建模时加载 `marivo-semantic`。绑定 Runtime 的 live Help 提供 Marivo API。
+- 项目 HTTP 服务或脚本端点任务在绑定 Runtime 提供 `marivo-service` 时加载该 Skill，并从同一 Runtime 的 Help 获取服务契约。
 - 分析使用绑定 Workspace 的 `marivo_python`，凭据值由用户在 Harness 表单处理。各 Tool 描述给出数据源声明、配置和连接测试的适用条件，回执提供本次执行状态及修复信息。
 - 输出按用户目标选择。普通问答和简短比较可留在聊天中，用户明确索取实际文件时通过原生 `present` 交付。创建或更新可打开的分析报告、看板，以及查看分析 UI 时使用 `marivo_present`；需要计算的展示结果在原分析中捕获，已有快照直接复用。自定义布局加载展示 Skill。
 - 报告把结论、支撑数据和影响解读的限制放在同一份文档中。成功保存后简短回复；交付失败则说明实际状态，回答已有证据支持的部分。

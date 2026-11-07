@@ -3,7 +3,7 @@
 ## 作用
 
 本模块让 Agent 从当前绑定的 Marivo 安装获取实时、可归因的 API Help。它同时提供显式 focused
-`marivo_help` Tool，以及由 `marivo-analysis` / `marivo-semantic` Skill 激活的根 Help 注入。
+`marivo_help` Tool，以及由绑定 Runtime 提供的 Marivo Skill 激活的根 Help 注入。
 
 模块不维护 Help target registry、不解析 Marivo Help 内容、不做 fuzzy replacement，也不通过工具
 门禁强迫 Agent 先请求 Help。target 语义和正文由真实 `marivo.help(target)` 唯一拥有。
@@ -27,9 +27,12 @@ Skill 与根 target 的映射是插件拥有的唯一小型映射：
 ```text
 marivo-analysis  -> analysis
 marivo-semantic  -> authoring
+marivo-service   -> analysis
 ```
 
 这只是集成触发点，不是 target inventory。完整 inventory 始终通过实时 `marivo.help()` 获取。
+`marivo-service` 仅在绑定 Runtime 提供该 Skill 时可用。若它与 `marivo-analysis` 同时激活，
+两者分别保留可核验的 Skill 身份，共用一个当前可见的 `analysis` 根 Help 正文。
 
 ## `marivo_help` 读取流程
 
@@ -68,7 +71,7 @@ marivo-semantic  -> authoring
 Skill。该检查不验证 Skill 附带的其他资源。
 
 激活后，controller 在 `agent/pre-step` 中等待 Harness 先生成原 decision，再为进入模型的消息追加
-根 Help。两个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何
+根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何
 根 Help，并记录 failure telemetry。
 
 公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。Skill 激活只向允许进入模型的 decision 追加实时根 Help，保留原 decision 的其他字段。披露失败、取消及释放均不交付部分 Help。

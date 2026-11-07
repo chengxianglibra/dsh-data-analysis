@@ -76,7 +76,7 @@ async function environmentFixture(
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-disclosure-')))
   const executable = path.join(root, 'fixture-python')
   const recordPath = path.join(root, 'targets.log')
-  for (const name of ['marivo-analysis', 'marivo-semantic']) {
+  for (const name of ['marivo-analysis', 'marivo-semantic', 'marivo-service']) {
     const dir = path.join(root, 'fake-marivo', 'skills', name)
     await mkdir(dir, { recursive: true })
     await writeFile(
@@ -208,7 +208,12 @@ function fixtureSkillTool(): ReturnType<typeof defineTool> {
 async function harness(adapter: MockAdapter): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SkillRegistry)
-  for (const name of ['marivo-analysis', 'marivo-semantic', 'dsh-data-analysis-files']) {
+  for (const name of [
+    'marivo-analysis',
+    'marivo-semantic',
+    'marivo-service',
+    'dsh-data-analysis-files',
+  ]) {
     ctx.skills.register({
       name,
       description: 'fixture skill',
@@ -263,7 +268,7 @@ function requestMessages(request: GenerateOptions | undefined): string {
 }
 
 function explicitInvocation(
-  name: 'marivo-analysis' | 'marivo-semantic' | 'dsh-data-analysis-files',
+  name: 'marivo-analysis' | 'marivo-semantic' | 'marivo-service' | 'dsh-data-analysis-files',
 ) {
   return createUserMessage({
     content: [
@@ -934,6 +939,38 @@ test('loading both Marivo skills injects analysis then authoring help atomically
     controller.telemetry().rootHelp.map((item) => item.target),
     ['analysis', 'authoring'],
   )
+})
+
+test('analysis and service activation share one visible root while retaining both identities', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const adapter = new MockAdapter([
+    toolCallsResponse([
+      { id: 'service', name: 'skill', args: { name: 'marivo-service' } },
+      { id: 'analysis', name: 'skill', args: { name: 'marivo-analysis' } },
+    ]),
+    textResponse('ready'),
+    textResponse('continued'),
+  ])
+  const ctx = await harness(adapter)
+  const agent = await createAgent(ctx, 'service-and-analysis')
+  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
+  t.after(() => controller.dispose())
+
+  send(agent, 'serve an analysis')
+  await agent.whenIdle()
+  assert.equal(requestMessages(adapter.requests[1]).split('help-body:analysis').length - 1, 1)
+  assert.deepEqual(controller.activeSkills, ['marivo-analysis', 'marivo-service'])
+  assert.deepEqual(
+    controller.telemetry().rootHelp.map((item) => [item.skill, item.target, item.delivery]),
+    [
+      ['marivo-analysis', 'analysis', 'delivered'],
+      ['marivo-service', 'analysis', 'already-visible'],
+    ],
+  )
+  send(agent, 'continue')
+  await agent.whenIdle()
+  assert.equal(requestMessages(adapter.requests[2]).split('help-body:analysis').length - 1, 1)
 })
 
 test('reloading the same skill refreshes live help without duplicating unchanged prompt content', async (t) => {

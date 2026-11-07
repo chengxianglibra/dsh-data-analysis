@@ -29,7 +29,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 ├── .venv/
 ├── skills/
 │   ├── marivo-analysis/
-│   └── marivo-semantic/
+│   ├── marivo-semantic/
+│   └── marivo-service/  # only when supplied by the bound package
 └── installation.json
 ```
 
@@ -43,7 +44,8 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 3. `marivo.__file__` 与记录的 package path 一致；
 4. Marivo 版本严格等于 `0.6.2`；
 5. presentation-kit 版本、package path、distribution metadata、实际模块位置与公开 `capture_dataset` 与 pandas 范围一致；
-6. 两个内置 Skill 的 `SKILL.md` 均存在，frontmatter `name` 与目录名精确一致。
+6. `marivo-analysis` 和 `marivo-semantic` 的 `SKILL.md` 均存在；若绑定包提供
+   `marivo-service`，也同步并验证它。每个 Skill 的 frontmatter `name` 与目录名精确一致。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。

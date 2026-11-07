@@ -213,6 +213,52 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
   assert.equal('capabilities' in marker, false)
   await stat(path.join(first.skillsRoot, 'marivo-analysis', 'SKILL.md'))
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
+  await assert.rejects(stat(path.join(first.skillsRoot, 'marivo-service', 'SKILL.md')), {
+    code: 'ENOENT',
+  })
+})
+
+test('shared Runtime copies and verifies the service Skill when the package provides it', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const source = path.join(path.dirname(item.packagePath), 'skills', 'marivo-service')
+  await mkdir(source, { recursive: true })
+  const body = '---\nname: marivo-service\ndescription: fixture\n---\nservice workflow\n'
+  await writeFile(path.join(source, 'SKILL.md'), body)
+  const installed = await ensureSharedMarivoRuntime(
+    {
+      runtimeRoot: item.runtimeRoot,
+      bootstrapPythonExecutable: item.bootstrapPython,
+      installTimeoutMs: 10_000,
+    },
+    runtimeOptions(item),
+  )
+  assert.equal(
+    await readFile(path.join(installed.skillsRoot, 'marivo-service', 'SKILL.md'), 'utf8'),
+    body,
+  )
+})
+
+test('shared Runtime rejects a malformed service Skill when the package provides it', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const source = path.join(path.dirname(item.packagePath), 'skills', 'marivo-service')
+  await mkdir(source, { recursive: true })
+  await writeFile(path.join(source, 'SKILL.md'), '---\nname: wrong\ndescription: fixture\n---\n')
+  await assert.rejects(
+    ensureSharedMarivoRuntime(
+      {
+        runtimeRoot: item.runtimeRoot,
+        bootstrapPythonExecutable: item.bootstrapPython,
+        installTimeoutMs: 10_000,
+      },
+      runtimeOptions(item),
+    ),
+    (error: unknown) =>
+      error instanceof MarivoEnvironmentError &&
+      error.code === 'shared-runtime-skills-invalid' &&
+      error.details.skill === 'marivo-service',
+  )
 })
 
 test('existing-only mode verifies without creating a missing Runtime', async (t) => {

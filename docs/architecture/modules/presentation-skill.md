@@ -13,7 +13,7 @@ Skill 入口不超过 6 KiB、单份参考不超过 16 KiB、每个 Skill 全部
 ## 发现与路由
 
 Plugin 用独立 filesystem provider `dsh-data-analysis-presentation` 读取包内 `skills/`，不扫描默认 roots，
-不监听目录变化。Runtime 的 `marivo-analysis` 与 `marivo-semantic` 继续由 `dsh-data-analysis-marivo`
+不监听目录变化。Runtime 的 `marivo-analysis`、`marivo-semantic` 和可用时的 `marivo-service` 继续由 `dsh-data-analysis-marivo`
 provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新增 live Help target。
 
 展示 Skill 的激活不改变 Runtime Skill 的 Help 披露状态。工具入口随插件安装，完整清单见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。

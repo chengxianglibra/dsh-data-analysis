@@ -8,7 +8,7 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 
 入口是 [SKILL.md](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)，仅保留接入规则；
 [示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/examples.md)分别展示 pandas 和原生 DuckDB。
-它随插件自带 Skill provider 分发，加载时不触发 `marivo-analysis`／`marivo-semantic` 根 Help 披露。
+它随插件自带 Skill provider 分发，加载时不触发任何 Marivo Runtime Skill 的根 Help 披露。
 
 ## 执行与结果
 

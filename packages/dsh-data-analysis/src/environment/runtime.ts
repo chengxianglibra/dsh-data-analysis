@@ -4,6 +4,7 @@ import {
   access,
   chmod,
   cp,
+  lstat,
   mkdir,
   readFile,
   realpath,
@@ -38,6 +39,7 @@ export const DEFAULT_SHARED_RUNTIME_INSTALL_TIMEOUT_MS = 600_000
 const INSTALLATION_SCHEMA = RUNTIME_INSTALLATION_VERSION
 const INSTALLATION_FILENAME = 'installation.json'
 const SKILL_NAMES = ['marivo-analysis', 'marivo-semantic'] as const
+const SERVICE_SKILL = 'marivo-service'
 const PROBE_SCRIPT = String.raw`
 import json
 import os
@@ -397,8 +399,18 @@ async function probeRuntime(
   }
 }
 
-async function validateSkills(skillsRoot: string): Promise<void> {
-  for (const skill of SKILL_NAMES) {
+async function availableSkills(skillsRoot: string): Promise<readonly string[]> {
+  try {
+    await lstat(path.join(skillsRoot, SERVICE_SKILL))
+    return [...SKILL_NAMES, SERVICE_SKILL]
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return SKILL_NAMES
+    throw error
+  }
+}
+
+async function validateSkills(skillsRoot: string, skills: readonly string[]): Promise<void> {
+  for (const skill of skills) {
     const skillFile = path.join(skillsRoot, skill, 'SKILL.md')
     try {
       if (!(await stat(skillFile)).isFile()) throw new Error('not a file')
@@ -426,16 +438,17 @@ async function validateSkills(skillsRoot: string): Promise<void> {
 
 async function syncSkills(runtimeRoot: string, packagePath: string): Promise<string> {
   const sourceRoot = path.join(path.dirname(packagePath), 'skills')
-  await validateSkills(sourceRoot)
+  const skills = await availableSkills(sourceRoot)
+  await validateSkills(sourceRoot, skills)
   const skillsRoot = path.join(runtimeRoot, 'skills')
   const staging = path.join(runtimeRoot, `.skills-staging-${randomUUID()}`)
   const previous = path.join(runtimeRoot, `.skills-previous-${randomUUID()}`)
   await mkdir(staging, { recursive: true })
   try {
-    for (const skill of SKILL_NAMES) {
+    for (const skill of skills) {
       await cp(path.join(sourceRoot, skill), path.join(staging, skill), { recursive: true })
     }
-    await validateSkills(staging)
+    await validateSkills(staging, skills)
     let hadPrevious = false
     try {
       await rename(skillsRoot, previous)
@@ -543,7 +556,8 @@ async function validatedExisting(
       path.normalize(record.presentationKitPackagePath)
     )
       return undefined
-    await validateSkills(record.skillsRoot)
+    const sourceRoot = path.join(path.dirname(probe.package_path), 'skills')
+    await validateSkills(record.skillsRoot, await availableSkills(sourceRoot))
     return {
       runtimeRoot,
       pythonExecutable: probe.python_executable,

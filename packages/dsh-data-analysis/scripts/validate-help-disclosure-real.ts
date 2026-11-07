@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -49,6 +49,18 @@ const pythonExecutable =
 
 const environment = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable })
 const helpBridge = new MarivoHelpBridge(environment)
+const serviceSkillFile = path.join(
+  path.dirname(environment.binding.packagePath),
+  'skills',
+  'marivo-service',
+  'SKILL.md',
+)
+let serviceAvailable = false
+try {
+  serviceAvailable = (await stat(serviceSkillFile)).isFile()
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+}
 const firstInventory = await loadTargetInventory(helpBridge)
 const secondInventory = await loadTargetInventory(helpBridge)
 assert.notEqual(secondInventory, '')
@@ -95,6 +107,18 @@ assert.deepEqual(
 for (const result of focusedValue.targets)
   assert.equal(result.body, directBodies.get(result.target))
 
+if (serviceAvailable) {
+  const service = await executeFocused([
+    'analysis.results.service.scripts',
+    'analysis.results.service.http',
+  ])
+  assert.equal(service.isError, false)
+  if (service.isError) throw new Error('unreachable service Help result')
+  const value = service.value as unknown as MarivoHelpValue
+  assert.match(value.targets[0]!.body, /main\(session: mv.Session\)/)
+  assert.match(value.targets[1]!.body, /refresh=true/)
+}
+
 const empty = await executeFocused([])
 assert.equal(empty.isError, true)
 const emptyText = empty.content[0]?.type === 'text' ? empty.content[0].text : ''
@@ -138,6 +162,7 @@ class ValidationAdapter extends LlmAdapter {
     textResponse('validation complete'),
     textResponse('explicit analysis complete'),
     textResponse('explicit semantic complete'),
+    textResponse('explicit service complete'),
   ]
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -217,7 +242,12 @@ assert.ok((telemetry.rootHelp[0]?.helpTextBytes ?? 0) > 0)
 controller.dispose()
 
 const explicitActivations = []
-for (const skill of ['marivo-analysis', 'marivo-semantic'] as const) {
+const explicitSkills: Array<'marivo-analysis' | 'marivo-semantic' | 'marivo-service'> = [
+  'marivo-analysis',
+  'marivo-semantic',
+]
+if (serviceAvailable) explicitSkills.push('marivo-service')
+for (const skill of explicitSkills) {
   const explicitAgent = await activationContext.agentLoop.create(SessionId(`help-only-${skill}`), {
     provider: 'validation',
     model: 'validation',
@@ -315,6 +345,7 @@ process.stdout.write(
   `${JSON.stringify(
     {
       status: 'ok',
+      serviceAvailable,
       binding: environment.binding,
       inventoryStdoutBytes: Buffer.byteLength(firstInventory),
       focusedStdoutBytes: Object.fromEntries(
