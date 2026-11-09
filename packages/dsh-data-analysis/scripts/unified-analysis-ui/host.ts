@@ -83,10 +83,9 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
         '# CAPTURE_BEFORE_SOURCE_REMOVAL',
         `
 import pandas as pd
-from dsh_data_analysis_presentation import capture_dataset, capture_frame
-capture_frame(frame)
-capture_dataset(pd.DataFrame({"account":pd.Series([9007199254740993]+list(range(1,44))+[None],dtype=object),"amount":pd.Series([Decimal("12345678901234.5678")]+[Decimal("2.3400")]*43+[None],dtype=object)}))
-capture_dataset(pd.DataFrame({"amount":[Decimal("123.4500")]}))
+result["frameRef"] = frame.ref.to_dict()
+result["dataRef"] = mv.persist_dataframe(pd.DataFrame({"account":pd.Series([9007199254740993]+list(range(1,44))+[None],dtype=object),"amount":pd.Series([Decimal("12345678901234.5678")]+[Decimal("2.3400")]*43+[None],dtype=object)})).to_dict()
+result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.4500")]})).to_dict()
 
 `,
       )
@@ -98,12 +97,13 @@ capture_dataset(pd.DataFrame({"amount":[Decimal("123.4500")]}))
       arguments: { code: producer, datasources: ['warehouse'], timeoutMs: 120_000 },
     })
     assert.equal(produced.isError, false, JSON.stringify(produced))
-    const value = produced.value as { stdout: string; snapshots: { snapshotRef: string }[] }
-    assert(value.snapshots?.length === 3, JSON.stringify(produced))
+    const value = produced.value as { stdout: string; exitCode: number }
+    assert.equal(value.exitCode, 0, JSON.stringify(produced))
+    const refs = JSON.parse(value.stdout)
     const resources = {
-      frame: { kind: 'frame-snapshot', snapshotRef: value.snapshots[0]!.snapshotRef },
-      data: { kind: 'dataset-snapshot', snapshotRef: value.snapshots[1]!.snapshotRef },
-      metric: { kind: 'dataset-snapshot', snapshotRef: value.snapshots[2]!.snapshotRef },
+      frame: { kind: 'analysis-frame', ref: refs.frameRef },
+      data: { kind: 'dataframe', ref: refs.dataRef },
+      metric: { kind: 'dataframe', ref: refs.metricRef },
       image: { kind: 'image-file', path: 'sample.png' },
     }
     await writeFile(

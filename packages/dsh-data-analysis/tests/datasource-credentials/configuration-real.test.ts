@@ -22,6 +22,6 @@ test('real datasource editing preserves source timezone and rejects an externall
   )
   const result = JSON.parse(stdout)
   assert.equal(result.passed, true)
-  assert.equal(result.runtime, '0.6.3')
+  assert.equal(result.runtime, '0.6.4.dev0')
   assert(result.checks.includes('timezone-roundtrip-external-change-conflict-and-clear'))
 })

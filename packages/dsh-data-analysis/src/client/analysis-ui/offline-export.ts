@@ -21,7 +21,7 @@ function offlineResource(resource: AnalysisResource): AnalysisResource {
   return {
     ...resource,
     declaration: {
-      kind: resource.declaration.kind === 'frame-snapshot' ? 'frame-snapshot' : 'dataset-snapshot',
+      kind: resource.snapshot.kind === 'frame' ? 'frame-snapshot' : 'dataset-snapshot',
       snapshotRef: 'offline',
     },
     snapshot,

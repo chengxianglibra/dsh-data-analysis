@@ -51,7 +51,7 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
             ...result,
             stderr: {
               ...result.stderr,
-              text: '{"marivoCaptureStatus":1,"failed":false}\n' + result.stderr.text,
+              text: result.stderr.text,
             },
           }
         },
@@ -143,7 +143,6 @@ test('Python admits configured credentials once, uses stdin, and clears its fres
     stderr: '',
     truncated: false,
     sandbox: null,
-    capture: { status: 'unused' },
   })
   assert.equal(p.launches.length, 1)
   assert.equal(f.tests, 0)

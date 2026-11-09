@@ -34,20 +34,19 @@ print(result.to_string(index=False))
 
 原生连接支持同一调用内的多条 SQL 和临时表，无需另建 Marivo datasource。
 
-## 捕获已有 DataFrame
-
-在上面的原分析进程中、result 仍存在时调用：
+## 保存已有 DataFrame 并交付引用
 
 ```python
-from dsh_data_analysis_presentation import capture_dataset
-capture_dataset(result)
+import json
+import marivo.analysis as mv
+
+reference = mv.persist_dataframe(result)
+print(json.dumps(reference.to_dict()))
 ```
 
-helper 只接受 pandas DataFrame。确需保留 Marivo SQL 结果时，先按其公开接口转成 DataFrame 再捕获；
-该转换可能将含 NULL 的整数列推断为浮点并损失大整数精度，helper 不检测或修复捕获前的损失。
-只捕获本次需要展示的结果。
-
-从工具回执核对 `snapshots` 的 schema/coverage；类型与预算条件按展示 Skill 的捕获参考处理。未捕获的 helper 异常会使 Python 失败，同次任一捕获失败会使全部快照失效；不要为补快照重放原分析。
+将完整字典作为 `marivo_present` 的 `{ "kind": "dataframe", "ref": ... }` 资源。
+持久化的输入约束与原值精度以 Marivo live Help 为准；需要保留的业务 index 先显式变成列。
+结果由绑定 Python Runtime 读取，无需 HTTP 服务；展示不会自动重跑原分析。
 
 ## 导出 CSV 或 JSON
 

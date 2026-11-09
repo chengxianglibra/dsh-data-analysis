@@ -158,7 +158,7 @@ function validateCell(value: unknown, column: DatasetColumn, path: string) {
           'invalid_value',
           path,
           'Expected an exact integer string for signed int64; JSON numbers are not accepted. Write 42 as "42".',
-          'Encode the original exact integer as a JSON string (for example, "42"). Do not stringify an already rounded number; capture the original DataFrame with capture_dataset.',
+          'Encode the original exact integer as a JSON string (for example, "42"). Do not stringify an already rounded number; persist the original exact DataFrame with Marivo persist_dataframe.',
         )
       }
       const text = string(value, path, 21)

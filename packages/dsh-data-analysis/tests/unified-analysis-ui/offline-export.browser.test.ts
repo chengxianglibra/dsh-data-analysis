@@ -39,7 +39,14 @@ test('exported report opens offline, renders data and charts, and keeps local in
     resources: {
       result: {
         kind: 'snapshot',
-        declaration: { kind: 'dataset-snapshot', snapshotRef: 'private_snapshot_reference' },
+        declaration: {
+          kind: 'dataframe',
+          ref: {
+            schema: 'marivo.dataframe_ref/v2',
+            project_root: '/private_workspace_identity',
+            result_id: `df_${'a'.repeat(32)}`,
+          },
+        },
         snapshot,
         binding: {
           workspaceId: 'private_workspace_identity',

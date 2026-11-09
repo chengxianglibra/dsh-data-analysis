@@ -30,7 +30,7 @@
 - 命令行中可使用 `pnpm`，供 Harness 安装插件。
 - Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 
-无需预装 Marivo。首次启动会从 PyPI 安装正式版 Marivo `0.6.3` 并自动准备分析环境，需要联网下载依赖，请等待准备完成。
+无需预装 Marivo。首次启动会安装插件随附的 Marivo `0.6.4.dev0` wheel（构建时取自隔壁 `marivo/dist/pypi` 最新产物） 并自动准备分析环境，需要联网下载依赖，请等待准备完成。
 
 ### 安装并启动
 
@@ -108,6 +108,8 @@ DataFrame 可直接展示，无需重新分析。`DatasetView` 支持表格、�
 
 分析报告和看板通过 `marivo_present` 在同一份文档中呈现结论、说明、限制与数据，Frame 数据优先使用
 `AnalysisFrameView`。报告保存成功后，助手在聊天中简短确认。你指定的输出格式优先。
+
+AnalysisFrame 显式 `persist()` 后，将 `saved.ref.to_dict()` 作为 `analysis-frame` 资源提交；插件通过绑定 Python Runtime 读取，无需 HTTP 服务。DataFrame 使用 `mv.persist_dataframe(table).to_dict()`，将完整字典作为 `dataframe` 资源提交；引用须属于当前 Workspace。
 
 - **检查数据**：精确排序、本地翻页，并就数据点或整个结果继续提问。截断预览注明范围，不作为完整单值展示。
 - **查看依据**：Frame 显示结构与来源身份；DataFrame 集中展示捕获范围、执行脚本和已声明的数据源。

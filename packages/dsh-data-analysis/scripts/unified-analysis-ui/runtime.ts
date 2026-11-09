@@ -23,8 +23,10 @@ import {
   MarivoWorkspaceEnvironmentManager,
 } from '../../src/environment/index.ts'
 import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
-import { readDatasetSnapshot, readFrameSnapshot } from '../../src/presentation/dataset-snapshot.ts'
+import { resultReference } from '../../src/presentation/contracts/result-reference.ts'
+import { isFrameSnapshotV2 } from '../../src/presentation/contracts/snapshot.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
+import { readMarivoResult } from '../../src/presentation/result-reader.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { Store } from '../../tests/datasource-credentials/fixtures.ts'
@@ -62,10 +64,7 @@ try {
     { provider: 'unused', model: 'unused' },
     { cwd: workspace },
   )
-  registerMarivoPythonTool(agent.ctx, new MarivoDatasourceBridge(environment), service, {}, () => ({
-    workspaceId: 'analysis-ui-workspace',
-    projectRoot: workspace,
-  }))
+  registerMarivoPythonTool(agent.ctx, new MarivoDatasourceBridge(environment), service)
   const generation = await readFile(new URL('runtime-generate.py', import.meta.url), 'utf8')
   const split = generation.indexOf('sql = md.raw_sql')
   const setup = await environment.runChecked({
@@ -78,15 +77,10 @@ try {
     '# CAPTURE_BEFORE_SOURCE_REMOVAL',
     String.raw`
 import pandas as pd
-from dsh_data_analysis_presentation import capture_dataset, capture_frame
 data = pd.DataFrame({"account": pd.Series([9007199254740993, None], dtype=object),
                      "amount": pd.Series([Decimal("12345678901234.5678"), None], dtype=object)})
-capture_frame(frame)
-capture_frame(frame, row_limit=1)
-capture = capture_dataset(data)
-preview = capture_dataset(data, row_limit=1)
-result["captureId"] = capture.capture_id
-result["previewId"] = preview.capture_id
+result["frameRef"] = frame.ref.to_dict()
+result["dataRef"] = mv.persist_dataframe(data).to_dict()
 
 `,
   )
@@ -98,79 +92,42 @@ result["previewId"] = preview.capture_id
     arguments: { code, datasources: ['warehouse'], timeoutMs: 120_000 },
   })
   assert.equal(tool.isError, false, JSON.stringify(tool))
-  const value = tool.value as {
-    stdout: string
-    exitCode: number
-    snapshots?: {
-      captureId: string
-      snapshotRef: string
-      schema: {
-        columns: { id: string; type: string }[]
-        columnCount: number
-        columnsTruncated: boolean
-      }
-      coverage: { totalRows: number; capturedRows: number; complete: boolean; business: string }
-    }[]
-    capture: { status: string }
-    snapshotCaptureError?: string
-  }
+  const value = tool.value as { stdout: string; exitCode: number }
   assert.equal(value.exitCode, 0, JSON.stringify(value))
-  assert.equal(value.snapshotCaptureError, undefined)
-  assert.equal(value.snapshots?.length, 4)
-  assert.equal(value.capture.status, 'available')
-  assert.deepEqual(
-    value.snapshots![2]!.schema.columns.map(({ id }) => id),
-    ['account', 'amount'],
-  )
-  assert.equal(value.snapshots![2]!.schema.columnCount, 2)
-  assert.equal(value.snapshots![2]!.schema.columnsTruncated, false)
-  assert.deepEqual(value.snapshots![3]!.coverage, {
-    totalRows: 2,
-    capturedRows: 1,
-    complete: false,
-    business: 'unknown',
-  })
   const generated = JSON.parse(value.stdout)
-  const restored = await readDatasetSnapshot(
-    workspace,
-    'analysis-ui-workspace',
-    value.snapshots![2]!.snapshotRef,
+  const signal = new AbortController().signal
+  const frame = await readMarivoResult(
+    environment,
+    resultReference.parse(generated.frameRef),
+    signal,
   )
-  const preview = await readDatasetSnapshot(
-    workspace,
-    'analysis-ui-workspace',
-    value.snapshots![3]!.snapshotRef,
+  const restored = await readMarivoResult(
+    environment,
+    resultReference.parse(generated.dataRef),
+    signal,
   )
-  assert.deepEqual(restored.snapshot.data.rows, [
+  assert(isFrameSnapshotV2(frame))
+  assert.deepEqual(restored.data.rows, [
     ['9007199254740993', '12345678901234.5678'],
     [null, null],
   ])
-  assert.equal(preview.snapshot.coverage.complete, false)
-  const { snapshot: frame } = await readFrameSnapshot(
-    workspace,
-    'analysis-ui-workspace',
-    value.snapshots![0]!.snapshotRef,
-  )
-  const { snapshot: prefix } = await readFrameSnapshot(
-    workspace,
-    'analysis-ui-workspace',
-    value.snapshots![1]!.snapshotRef,
-  )
-  assert.deepEqual(frame!.data.rows, [
+  assert.deepEqual(frame.data.rows, [
     ['A', '12345678901234.5678', '9007199254740993'],
     ['B', null, null],
   ])
-  assert.equal(prefix!.coverage.complete, false)
-  assert.equal(frame!.frame.axes.length, 1)
-  assert.deepEqual(Object.values(frame!.frame.coordinates)[0]!.values, ['A', 'B'])
+  assert.equal(frame.frame.axes.length, 1)
+  assert.deepEqual(Object.values(frame.frame.coordinates)[0]!.values, ['A', 'B'])
   const deliveries = []
   const present = createMarivoPresentTool(
     () => ({ id: 'analysis-ui-workspace', path: workspace }),
     agent.session,
+    undefined,
+    undefined,
+    async () => environment,
   )
   for (const [index, resource] of [
-    { kind: 'frame-snapshot', snapshotRef: value.snapshots![0]!.snapshotRef },
-    { kind: 'dataset-snapshot', snapshotRef: value.snapshots![2]!.snapshotRef },
+    { kind: 'analysis-frame', ref: generated.frameRef },
+    { kind: 'dataframe', ref: generated.dataRef },
   ].entries()) {
     const callId = ToolCallId(`analysis-ui-present-${index}`)
     const args = {
@@ -194,7 +151,7 @@ result["previewId"] = preview.capture_id
     assert.match(result.recordId, /^marivo-ui:/)
     deliveries.push(parsePresentationDelivery(JSON.parse(result.deliveryJson)))
   }
-  await rm(path.join(workspace, '.dsh-data-analysis/captures'), { recursive: true })
+  await rm(path.join(workspace, '.marivo'), { recursive: true })
   // A fresh OS process reads the immutable Build via the production RPC service.
   const { execFileSync } = await import('node:child_process')
   const rpcModule = new URL('../../src/presentation/rpc.ts', import.meta.url).href
@@ -249,11 +206,8 @@ result["previewId"] = preview.capture_id
     deliveries,
     runtime,
     generated,
-    snapshots: value.snapshots,
     restored,
-    preview,
     frame,
-    prefix,
     marivoWheel: wheel
       ? {
           path: wheel,

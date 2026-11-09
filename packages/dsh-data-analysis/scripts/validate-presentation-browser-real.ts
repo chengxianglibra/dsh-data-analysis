@@ -10,7 +10,7 @@ import { formatCell, parseTypedDataset } from '../src/presentation/contracts/ind
 
 // Python typed-data decoding in Node and Chromium; not a UI acceptance.
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
-const projectRoot = path.join(packageRoot, 'python/presentation-kit')
+const projectRoot = path.join(packageRoot, 'python/presentation')
 const outputRoot = await mkdtemp(path.join(tmpdir(), 'dsh-presentation-s2-browser-'))
 const emitted = spawnSync(
   'uv',

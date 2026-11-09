@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import type { Context } from '@deepseek-ai/cordis'
@@ -6,14 +5,7 @@ import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import {
-  type CapturedSnapshotEntry,
-  type CapturedSnapshotKind,
-  capturedSnapshotRef,
-  collectSnapshotCaptures,
-} from '../presentation/dataset-snapshot.ts'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
-import type { PythonCaptureRecord } from '../python-execution-contracts.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import {
@@ -71,7 +63,6 @@ export function registerMarivoPythonTool(
   source: MarivoDatasourceBridgeSource,
   service: MarivoCredentialService,
   options: MarivoPythonOptionsSource = {},
-  resolveCaptureWorkspace?: () => { workspaceId: string; projectRoot: string },
 ): () => Promise<void> {
   const readOptions = typeof options === 'function' ? options : () => options
   resolvePythonOptions(readOptions())
@@ -80,7 +71,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Run one foreground Python process in the bound Runtime and Workspace; memory expires at call end. Declared datasource credentials are prepared before code starts once. Missing interactive capability returns handoff guidance. Never read or pass secret values through code, environment, output or logs. Capture results in this process with dsh_data_analysis_presentation.capture_dataset(df) or capture_frame(completed_frame); read the capture reference in dsh-data-analysis-presentation before first use. Returns codeRef when saved, and snapshots with snapshotRef, bounded schema and coverage when capture succeeds. Uncaught helper errors fail Python; any capture failure invalidates all captures in this call. Host capture failures do not change the completed Python outcome. Inspect execution.reason, capture and nextAction; do not replay analysis to recover snapshots. Timeout does not prove remote query cancellation or absence of saved results.',
+        'Run one foreground Python process in the bound Runtime and Workspace; memory expires at call end. Declared datasource credentials are prepared before code starts once. Missing interactive capability returns handoff guidance. Never read or pass secret values through code, environment, output or logs. Persist results with Marivo public APIs: saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(); print the exact reference for marivo_present. Returns codeRef when source code is saved. Read bound Runtime Help for persistence constraints. Do not replay analysis to recover references. Timeout does not prove remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
@@ -175,8 +166,6 @@ export function registerMarivoPythonTool(
             }
           prepared = admission
           const { binding } = prepared.bridge
-          const captureDirectory = `.dsh-data-analysis/captures/${randomUUID()}`
-          const captureWorkspace = resolveCaptureWorkspace?.()
           const policy = policyService?.resolve(exec.agent ? { session: exec.agent.session } : {})
           const spec = shell.resolve({
             command: `${process.platform === 'win32' ? '& ' : ''}${quote(binding.pythonExecutable)} -c ${quote(PYTHON_LAUNCHER)}`,
@@ -191,7 +180,6 @@ export function registerMarivoPythonTool(
               values: prepared.values,
               code,
               worker: PYTHON_WORKER,
-              captureDirectory,
             }),
             env: { MARIVO_PERSIST_CREDENTIALS: '0' },
             dshEnv: shellEnv.collect(exec),
@@ -207,28 +195,7 @@ export function registerMarivoPythonTool(
           const result = await service.track(execution.result())
           executionElapsedMs = performance.now() - shellStartedAt
           const finishedAt = new Date().toISOString()
-          // The launcher prepends this header itself, outside user-controlled output.
-          // Missing/malformed status must not turn a failed capture into "unused".
-          let captureFailed = true
-          let stderr = result.stderr.text
-          const newline = stderr.indexOf('\n')
-          if (newline >= 0) {
-            try {
-              const status: unknown = JSON.parse(stderr.slice(0, newline))
-              if (
-                status !== null &&
-                typeof status === 'object' &&
-                Object.keys(status).sort().join(',') === 'failed,marivoCaptureStatus' &&
-                Reflect.get(status, 'marivoCaptureStatus') === 1 &&
-                typeof Reflect.get(status, 'failed') === 'boolean'
-              ) {
-                captureFailed = Reflect.get(status, 'failed')
-                stderr = stderr.slice(newline + 1)
-              }
-            } catch {
-              // Preserve process output; report capture failure independently below.
-            }
-          }
+          const stderr = result.stderr.text
           const credentialValues = prepared.values
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
@@ -245,59 +212,12 @@ export function registerMarivoPythonTool(
             .sort((left, right) => left.name.localeCompare(right.name))
           let codeRef: PythonCodeRef | undefined
           let codeCaptureError: string | undefined
-          let snapshotCaptureError: string | undefined
-          let captures: PythonCaptureRecord | undefined
-          let captureKinds: CapturedSnapshotKind[] = []
-          let captureSummaries: CapturedSnapshotEntry['summary'][] = []
-          let captureFailureStage: 'worker' | 'validation' | 'provenance' | undefined
           if (result.exitCode === 0 && !result.timedOut && !result.aborted) {
             phase = 'capturing-code'
             try {
               prepared.assertCurrent()
               if (Object.values(prepared.values).some((value) => value && code.includes(value)))
                 throw new Error('Host credential in submitted code')
-              try {
-                if (captureFailed) throw new Error('dataset-capture-worker-failed')
-                const collected = await service.track(
-                  collectSnapshotCaptures(
-                    binding.projectRoot,
-                    captureDirectory,
-                    Object.values(prepared.values),
-                    prepared.signal,
-                  ),
-                )
-                prepared.assertCurrent()
-                if (collected.length) {
-                  const session = exec.agent!.session
-                  const current = resolveCaptureWorkspace?.()
-                  if (
-                    captureWorkspace &&
-                    (current?.workspaceId !== captureWorkspace.workspaceId ||
-                      current.projectRoot !== binding.projectRoot ||
-                      current.projectRoot !== captureWorkspace.projectRoot)
-                  )
-                    throw new Error('capture-workspace-changed')
-                  const workspaceId =
-                    captureWorkspace?.workspaceId ?? Reflect.get(session.header, 'workspaceId')
-                  if (typeof workspaceId !== 'string' || !workspaceId)
-                    throw new Error('capture-owner-unavailable')
-                  captures = {
-                    workspaceId,
-                    sessionId: String(session.id),
-                    callId: String(exec.callId),
-                    rootCallId: String(exec.rootCallId ?? exec.callId),
-                    // The saved record keeps the unchanged manifest entry shape.
-                    entries: collected.map(({ kind: _kind, summary: _summary, ...entry }) => entry),
-                  }
-                  captureKinds = collected.map((entry) => entry.kind)
-                  captureSummaries = collected.map((entry) => entry.summary)
-                }
-              } catch {
-                captures = undefined
-                captureFailureStage = captureFailed ? 'worker' : 'validation'
-                snapshotCaptureError =
-                  'Python completed successfully, but dataset capture could not be validated. No snapshotRef was issued. Do not rerun the code to recover this snapshot; inspect its existing effects.'
-              }
               codeRef = await service.track(
                 savePythonExecution(
                   binding.projectRoot,
@@ -305,27 +225,14 @@ export function registerMarivoPythonTool(
                     text: code,
                     startedAt,
                     finishedAt,
-                    ...(captures ? { captures } : {}),
                     ...(declaredDatasources.length ? { datasources: declaredDatasources } : {}),
                   },
                   prepared.signal,
                 ),
               )
               prepared.assertCurrent()
-              if (captures && captureWorkspace) {
-                const current = resolveCaptureWorkspace?.()
-                if (
-                  current?.workspaceId !== captureWorkspace.workspaceId ||
-                  current.projectRoot !== binding.projectRoot
-                )
-                  throw new Error('capture-workspace-changed')
-              }
             } catch {
               codeRef = undefined
-              captureFailureStage = 'provenance'
-              if (captures)
-                snapshotCaptureError =
-                  'Python completed successfully, but dataset provenance could not be saved. No snapshotRef was issued. Do not rerun the code to recover this snapshot.'
               codeCaptureError =
                 'Python completed successfully, but its source code could not be saved. Do not rerun the code to recover this snapshot; inspect its existing effects.'
             }
@@ -350,37 +257,9 @@ export function registerMarivoPythonTool(
               sandbox: result.sandbox ?? null,
               ...(codeRef ? { codeRef } : {}),
               ...(codeCaptureError ? { codeCaptureError } : {}),
-              ...(codeRef && captures
-                ? {
-                    snapshots: captures.entries.map((entry, index) => ({
-                      kind: captureKinds[index]!,
-                      captureId: entry.captureId,
-                      snapshotRef: capturedSnapshotRef(
-                        captureKinds[index]!,
-                        codeRef!,
-                        entry.captureId,
-                      ),
-                      ...captureSummaries[index],
-                    })),
-                  }
-                : {}),
-              ...(snapshotCaptureError ? { snapshotCaptureError } : {}),
-              capture: {
-                status:
-                  codeRef && captures
-                    ? 'available'
-                    : snapshotCaptureError
-                      ? 'failed'
-                      : reason === 'succeeded' && !codeCaptureError
-                        ? 'unused'
-                        : 'not-collected',
-                ...(captureFailureStage ? { failureStage: captureFailureStage } : {}),
-              },
               execution: summary(
                 reason,
-                snapshotCaptureError ??
-                  codeCaptureError ??
-                  (reason === 'succeeded' ? null : CHECK_EFFECTS),
+                codeCaptureError ?? (reason === 'succeeded' ? null : CHECK_EFFECTS),
               ),
             }),
           )

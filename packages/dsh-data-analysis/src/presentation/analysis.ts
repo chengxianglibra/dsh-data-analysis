@@ -1,4 +1,5 @@
 import path from 'node:path'
+import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { analysisCatalogBuild, analysisCatalogId } from './contracts/analysis-catalog.ts'
 import {
   ANALYSIS_UI_FORMAT,
@@ -18,6 +19,7 @@ import {
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
+import { readMarivoResult } from './result-reader.ts'
 
 /** Present-level labels live only in the embedded snapshot; they never become a document field. */
 const LABEL_BYTES = 16 * 1024
@@ -77,6 +79,8 @@ function imageMime(bytes: Buffer) {
   throw new Error('analysis-image-format-unsupported')
 }
 const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
+  'analysis-frame': 'AnalysisFrameView',
+  dataframe: 'DatasetView',
   'frame-snapshot': 'AnalysisFrameView',
   'dataset-snapshot': 'DatasetView',
   'image-file': 'Image',
@@ -84,7 +88,7 @@ const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
 /** Read each admitted resource once; saved bytes never depend on the capture directory. */
 export async function createAnalysisDocument(
   input: AnalysisPresentInput,
-  source: { projectRoot: string },
+  source: { projectRoot: string; runner?: () => Promise<MarivoCheckedRunner> },
   identity: { workspaceId: string; reportId: string; buildId: string },
   signal: AbortSignal,
   base?: AnalysisDocument,
@@ -130,7 +134,19 @@ export async function createAnalysisDocument(
   })
   for (const [name, declaration] of pending) {
     signal.throwIfAborted()
-    if (declaration.kind === 'dataset-snapshot' || declaration.kind === 'frame-snapshot') {
+    if (declaration.kind === 'analysis-frame' || declaration.kind === 'dataframe') {
+      if (!source.runner) throw new Error('result-runtime-required')
+      const runner = await source.runner()
+      if (runner.binding.projectRoot !== source.projectRoot)
+        throw new Error('result-workspace-mismatch')
+      const snapshot = await readMarivoResult(runner, declaration.ref, signal)
+      resources[name] = {
+        kind: 'snapshot',
+        declaration,
+        snapshot,
+        binding: { workspaceId: identity.workspaceId },
+      }
+    } else if (declaration.kind === 'dataset-snapshot' || declaration.kind === 'frame-snapshot') {
       const { snapshot, codeRef, owner } = await (declaration.kind === 'dataset-snapshot'
         ? readDatasetSnapshot
         : readFrameSnapshot)(

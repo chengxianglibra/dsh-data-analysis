@@ -4,6 +4,7 @@ import { access, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'nod
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { MARIVO_VERSION } from '../../src/compatibility.ts'
 import { bindMarivoEnvironment } from '../../src/environment/index.ts'
 import { SemanticBrowserService } from '../../src/semantic-browser/service.ts'
 import { createBrowserWorkspace } from './fixtures.ts'
@@ -33,20 +34,30 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.3: all 8 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
+test('real Marivo 0.6.4.dev0: all 8 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.6.3 Python unavailable')
+    t.skip('Marivo 0.6.4.dev0 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),
     root = await realpath(temp)
   t.after(() => rm(root, { recursive: true, force: true }))
   const runner = await bindMarivoEnvironment({ projectRoot: root, pythonExecutable: python })
+  if (
+    runner.binding.marivoVersion !== MARIVO_VERSION &&
+    !process.env.DSH_DATA_ANALYSIS_TEST_PYTHON
+  ) {
+    t.skip(
+      `Default Runtime is ${runner.binding.marivoVersion}; set DSH_DATA_ANALYSIS_TEST_PYTHON to ${MARIVO_VERSION}`,
+    )
+    return
+  }
+  assert.equal(runner.binding.marivoVersion, MARIVO_VERSION)
   const guarded = {
     ...runner,
     binding: runner.binding,

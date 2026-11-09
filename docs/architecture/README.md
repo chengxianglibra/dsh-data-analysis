@@ -35,8 +35,7 @@
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。验证命令以根目录 `package.json` 的 scripts 为准；
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
-统一分析 UI 通过 `marivo_present` 保存 `dsh.analysis-ui/v1` 文档。Frame v2 在原 Python 执行中由 `capture_frame`
-捕获，DataFrame 由 `capture_dataset` 捕获。快照内嵌不可变 Build，AnalysisSurface
+统一分析 UI 通过 `marivo_present` 保存 `dsh.analysis-ui/v1` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
 用于隔离候选、tool view 和显式报告 tab。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
 并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
 新格式支持离线 HTML 导出，不提供对象存储发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
@@ -65,7 +64,7 @@ flowchart TD
 
 ### Runtime、Workspace 与 Agent
 
-profile 共享精确安装的 Marivo Runtime、presentation-kit 和 Runtime Skill。Workspace 惰性解析 project root 与 binding，绑定过程不创建项目文件；使用领域能力时由 Marivo 执行相应准入。每次 checked execution 在实际子进程中复核解释器、包位置、版本和 marker，身份不匹配明确失败。
+profile 共享精确安装的 Marivo Runtime 和 Runtime Skill。Workspace 惰性解析 project root 与 binding，绑定过程不创建项目文件；使用领域能力时由 Marivo 执行相应准入。安装来源摘要在 Runtime 复用时核验；每次 checked execution 在实际子进程中复核解释器、包位置和版本，身份不匹配明确失败。
 
 Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 Workspace。涉及数据源、分析和展示来源的操作使用所属 Workspace 的同一 bound Runtime。Workspace ID 与 Runtime fingerprint 共同约束浏览和引用身份；同路径重新注册的 Workspace 不能接收旧引用。
 
@@ -80,7 +79,7 @@ Harness Credentials 是秘密值权威；Marivo 的公开 description、Datasour
 `marivo_datasource_configure` 将表单绑定到原调用与所属 Session，用户完成配置后续接；取消或身份变化结束旧操作。`marivo_python` 在一次调用内等待所有声明的数据源就绪，取得 fresh snapshot，通过 stdin 和 `md.credential_scope` 注入，再交给 Harness Shell 前台执行。秘密值不进入 Agent 参数、argv 或环境，输出在 Host spill 前脱敏。
 
 纯文件分析使用 `datasources: []`，仍保留 Runtime/Workspace identity、取消与执行代码记录。
-需要保留 DataFrame 时可在原 marivo_python 中显式 capture_dataset；Host 校验后将快照绑定准确 Workspace/调用/codeRef，Reader 只读快照。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
+需要保留 DataFrame 时显式使用 `mv.persist_dataframe`，再将完整引用交给 `marivo_present`；Host 只读取当前 Workspace 的固定结果，Reader 使用内嵌投影。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
 
 `marivo_python` 使用 Host `ShellExecutor.execute(spec).result()` 完成前台调用。用户要求交付已有 CSV、TSV、XLSX 等表格文件时，文件分析 Skill 指导 Agent 在确认文件后调用 Harness 原生 `present`；文件卡片、Session 文件声明及只读表格预览由 Harness 拥有。插件的 `marivo_present` 承载需要在分析 UI 中核对的表格；原生 `.xls` 预览不扩大 Marivo 的分析格式范围。
 
@@ -128,8 +127,8 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 
 ## Marivo 0.6 接缝
 
-当前精确版本为 PyPI 正式版 `0.6.3`，安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
+当前安装产物为隔壁 `dist/pypi` 最新 wheel（`0.6.4.dev0`），安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
-Frame 展示使用原分析进程中的 `capture_frame()` 快照。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
+Frame/DataFrame 展示使用准确持久引用和 Python 公开读取 API。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
 Skill 激活使用 Harness 当前选择的正文，并在注入 Runtime Help 前核对绑定包正文；冲突与无法验证的情况见 [Help 披露](modules/help-disclosure.md#skill-激活式根-help)。

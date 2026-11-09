@@ -41,7 +41,7 @@ const column = z.strictObject({
   nullable: z.boolean(),
   unit: text.max(128).optional(),
 })
-// Frame metadata mirrors the presentation-kit budgets; every section is optional
+// Frame metadata follows the private projection budgets; every section is optional
 // for the data result and states whether it was captured, missing or unreadable.
 const bounded = (max: number) =>
   z
@@ -385,7 +385,7 @@ const schema = z.discriminatedUnion('kind', [
     ...common,
     schemaVersion: z.literal(2),
     kind: z.literal('frame'),
-    // A capture_frame snapshot of a computed memory Frame has no artifact; its
+    // A legacy capture of a computed memory Frame has no artifact; its
     // Python source is the Host-bound codeRef, never a field of this snapshot.
     source: z.strictObject({
       kind: z.literal('frame'),

@@ -28,6 +28,7 @@ import {
 } from '@deepseek-ai/dsh-skill-filesystem'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { MARIVO_WHEEL_SHA256 } from '../../src/compatibility.ts'
 import { apply, inject, resolvePresentationWorkspace } from '../../src/plugin.ts'
 import { installConnectionFixture, installStorage } from '../semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
@@ -65,11 +66,7 @@ class TestCredentials extends CredentialProvider {
   }
 }
 
-function runtimePython(
-  packagePath: string,
-  presentationKitPackagePath: string,
-  recordPath: string,
-): string {
+function runtimePython(packagePath: string, recordPath: string): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from 'node:fs'
 import path from 'node:path'
@@ -82,7 +79,7 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
   appendFileSync(${JSON.stringify(recordPath)}, projectRoot + '\\n')
   process.stdout.write(JSON.stringify({
     status: 'ok', project_root: projectRoot, python_executable: executable,
-    marivo: { version: '0.6.3', package_path: ${JSON.stringify(packagePath)} },
+    marivo: { version: '0.6.4.dev0', package_path: ${JSON.stringify(packagePath)} },
     sections: [
       { id: 'installation', status: 'ok', checks: [
         { id: 'installation.python', status: 'ok', summary: 'shared Python' },
@@ -98,15 +95,11 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
 if (args[0] === '-c' && args.length === 2) {
   process.stdout.write(JSON.stringify({
     python_executable: executable,
-    marivo_version: '0.6.3',
+    marivo_distribution_version: '0.6.4.dev0',
+    marivo_archive_sha256: ${JSON.stringify(MARIVO_WHEEL_SHA256)},
+    marivo_import_identity: true,
+    marivo_version: '0.6.4.dev0',
     package_path: ${JSON.stringify(packagePath)},
-    pandas_version: '2.3.3',
-    pandas_supported: true,
-    presentation_kit_version: '1.5.1',
-    presentation_kit_distribution_version: '1.5.1',
-    presentation_kit_import_identity: true,
-    presentation_kit_package_path: ${JSON.stringify(presentationKitPackagePath)},
-    presentation_kit_public_imports: true,
   }))
   process.exit(0)
 }
@@ -190,20 +183,12 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   const secondRoot = path.join(root, 'workspace-b')
   const runtimeRoot = path.join(root, 'dsh-home-runtime')
   const packagePath = path.join(root, 'site-packages', 'marivo', '__init__.py')
-  const presentationKitPackagePath = path.join(
-    root,
-    'site-packages',
-    'dsh_data_analysis_presentation',
-    '__init__.py',
-  )
   const python = path.join(root, 'shared-python')
   const doctorRecord = path.join(root, 'doctor-roots.txt')
   await mkdir(firstRoot)
   await mkdir(secondRoot)
   await mkdir(path.dirname(packagePath), { recursive: true })
-  await mkdir(path.dirname(presentationKitPackagePath), { recursive: true })
-  await writeFile(packagePath, '__version__ = "0.6.3"\n')
-  await writeFile(presentationKitPackagePath, '__version__ = "1.5.1"\n')
+  await writeFile(packagePath, '__version__ = "0.6.4.dev0"\n')
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
@@ -218,7 +203,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     path.join(projectSkill, 'SKILL.md'),
     '---\nname: marivo-analysis\ndescription: project override\n---\nproject body\n',
   )
-  await writeFile(python, runtimePython(packagePath, presentationKitPackagePath, doctorRecord))
+  await writeFile(python, runtimePython(packagePath, doctorRecord))
   await chmod(python, 0o755)
 
   const ctx = new Context()
@@ -351,9 +336,8 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   const marker = JSON.parse(
     await readFile(path.join(runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
-  assert.equal(marker.presentationKitVersion, '1.5.1')
-  assert.equal(marker.presentationKitPackagePath, presentationKitPackagePath)
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v4')
+  assert.equal(marker.marivoArchiveSha256, MARIVO_WHEEL_SHA256)
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()
   const disposedCatalog = await ctx.skills.snapshot({ cwd: firstRoot, scope: first })

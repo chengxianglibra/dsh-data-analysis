@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
+import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument } from './analysis.ts'
 import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
@@ -53,6 +54,7 @@ export function createMarivoPresentTool(
   session: Session,
   lifecycleSignal?: AbortSignal,
   drafts = new AnalysisDrafts(),
+  runner?: () => Promise<MarivoCheckedRunner>,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
@@ -91,7 +93,7 @@ export function createMarivoPresentTool(
       resources: {
         type: 'object',
         description:
-          'Map a resource name to {kind:"frame-snapshot",snapshotRef}, {kind:"dataset-snapshot",snapshotRef}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use the snapshotRef from the successful marivo_python capture of the Frame or DataFrame. On update, omit to reuse saved resources. Supplying a map replaces the full set. No rows or arbitrary URLs.',
+          'Map a resource name to {kind:"analysis-frame",ref}, {kind:"dataframe",ref}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). For AnalysisFrame, pass the exact saved_frame.ref.to_dict() dictionary; the Host reads its saved data through the bound Python Runtime. For DataFrame, pass mv.persist_dataframe(df).to_dict(); its captured project_root must match this Workspace. On update, omit to reuse saved resources. Supplying a map replaces the full set. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
@@ -229,6 +231,7 @@ export function createMarivoPresentTool(
           input,
           {
             projectRoot: identity.path,
+            runner,
           },
           {
             workspaceId: identity.id,
@@ -297,10 +300,11 @@ export function registerMarivoPresentTool(
   workspaceSource: PresentationWorkspaceSource,
   session: Session,
   drafts?: AnalysisDrafts,
+  runner?: () => Promise<MarivoCheckedRunner>,
 ): () => Promise<void> {
   return registerMarivoTool(
     ctx,
-    createMarivoPresentTool(workspaceSource, session, undefined, drafts),
+    createMarivoPresentTool(workspaceSource, session, undefined, drafts, runner),
   )
 }
 

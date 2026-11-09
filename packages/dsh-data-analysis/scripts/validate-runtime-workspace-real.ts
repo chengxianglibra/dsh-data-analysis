@@ -3,12 +3,14 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { MARIVO_WHEEL_SHA256 } from '../src/compatibility.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoEnvironmentError,
   MarivoWorkspaceEnvironmentManager,
 } from '../src/environment/index.ts'
-import { parseTypedDataset } from '../src/presentation/contracts/index.ts'
+import { resultReference } from '../src/presentation/contracts/result-reference.ts'
+import { readMarivoResult } from '../src/presentation/result-reader.ts'
 
 // By default install into a fresh, disposable Runtime. An explicit Python is only probed.
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
@@ -32,16 +34,13 @@ try {
   assert.deepEqual(reused, runtime)
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
   assert.equal(marker.marivoVersion, runtime.marivoVersion)
-  assert.equal(marker.presentationKitVersion, '1.5.1')
-  assert.equal(marker.presentationKitPackagePath, runtime.presentationKitPackagePath)
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v3')
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v4')
   const administrator = await ensureSharedMarivoRuntime({
     runtimeRoot: path.join(validationRoot, 'administrator-runtime'),
     pythonExecutable: runtime.pythonExecutable,
     bootstrapPythonExecutable: path.join(validationRoot, 'must-not-run-bootstrap-python'),
   })
   assert.equal(administrator.pythonExecutable, runtime.pythonExecutable)
-  assert.equal(administrator.presentationKitPackagePath, runtime.presentationKitPackagePath)
   for (const skill of ['marivo-analysis', 'marivo-semantic']) {
     assert.ok((await stat(path.join(runtime.skillsRoot, skill, 'SKILL.md'))).isFile())
   }
@@ -63,29 +62,30 @@ try {
   for (const workspace of [firstWorkspace, secondWorkspace]) {
     assert.deepEqual(await readdir(workspace), before.get(workspace))
   }
-  assert.deepEqual(first.binding.presentationKit, {
-    version: runtime.presentationKitVersion,
-    packagePath: runtime.presentationKitPackagePath,
-  })
-
-  const computedPath = path.join(firstWorkspace, 'computed.json')
   const checkedWrite = await first.runChecked({
     program: String.raw`
 from decimal import Decimal
 from pathlib import Path
 import sys
 import pandas as pd
-from dsh_data_analysis_presentation._dataset import encode_dataset, encoded_json
+import json
+import marivo.analysis as mv
 frame = pd.DataFrame({
     "count": pd.Series([9007199254740993, None], dtype="Int64"),
     "amount": [Decimal("12345678901234.5678"), Decimal("0.1000")],
 })
-Path(sys.argv[1]).write_bytes(encoded_json(encode_dataset(frame)))
+print(json.dumps(mv.persist_dataframe(frame).to_dict()))
 `,
-    args: [computedPath],
   })
   assert.equal(checkedWrite.exitCode, 0, checkedWrite.stderr.toString('utf8'))
-  const computed = parseTypedDataset(JSON.parse(await readFile(computedPath, 'utf8')))
+  const computed = (
+    await readMarivoResult(
+      first,
+      resultReference.parse(JSON.parse(checkedWrite.stdout.toString())),
+      new AbortController().signal,
+    )
+  ).data
+  assert.equal(runtime.marivoArchiveSha256, MARIVO_WHEEL_SHA256)
   assert.deepEqual(
     computed.columns.map(({ id }) => id),
     ['count', 'amount'],
@@ -95,12 +95,9 @@ Path(sys.argv[1]).write_bytes(encoded_json(encode_dataset(frame)))
     [null, '0.1000'],
   ])
 
-  const shadowRoot = path.join(firstWorkspace, 'dsh_data_analysis_presentation')
+  const shadowRoot = path.join(firstWorkspace, 'marivo')
   await mkdir(shadowRoot)
-  await writeFile(
-    path.join(shadowRoot, '__init__.py'),
-    '__version__ = "1.5.1"\ndef capture_dataset(*args, **kwargs): pass\ndef capture_frame(*args, **kwargs): pass\n',
-  )
+  await writeFile(path.join(shadowRoot, '__init__.py'), '__version__ = "0.6.4.dev0"\n')
   await assert.rejects(
     first.runChecked({ program: 'raise RuntimeError("user program must never start")' }),
     (error: unknown) =>
@@ -118,7 +115,10 @@ Path(sys.argv[1]).write_bytes(encoded_json(encode_dataset(frame)))
       { environment: { ...process.env, PYTHONPATH: firstWorkspace } },
     ),
     (error: unknown) =>
-      error instanceof MarivoEnvironmentError && error.code === 'shared-runtime-identity-mismatch',
+      error instanceof MarivoEnvironmentError &&
+      ['shared-runtime-identity-mismatch', 'shared-runtime-package-unavailable'].includes(
+        error.code,
+      ),
   )
   await assert.rejects(() => stat(path.join(shadowAdministratorRoot, 'installation.json')), {
     code: 'ENOENT',

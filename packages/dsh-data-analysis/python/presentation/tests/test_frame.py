@@ -6,8 +6,8 @@ from types import SimpleNamespace as NS
 import pandas as pd
 import pytest
 
-from dsh_data_analysis_presentation import PresentationDatasetError
-from dsh_data_analysis_presentation._frame import _dependent, _interpretation, _periods, _section, read_frame
+from presentation import PresentationDatasetError
+from presentation._frame import _dependent, _interpretation, _periods, _section, read_frame
 
 UTC = timezone.utc
 T0 = datetime(2026, 8, 1, tzinfo=UTC)

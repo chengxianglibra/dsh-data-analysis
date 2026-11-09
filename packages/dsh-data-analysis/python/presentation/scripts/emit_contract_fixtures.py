@@ -9,7 +9,9 @@ from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
-from dsh_data_analysis_presentation._dataset import encode_dataset, encoded_json
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from presentation._dataset import encode_dataset, encoded_json
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 

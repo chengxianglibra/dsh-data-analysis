@@ -24,13 +24,15 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 | kind | 字段 | 读取 |
 | --- | --- | --- |
-| `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_dataset` 签发的快照 |
-| `frame-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取 `capture_frame` 签发的快照 |
+| `dataframe` | Marivo `DataFrameReference.to_dict()` | 核验当前 Workspace 后，在 checked Python 中读取固定结果 |
+| `dataset-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取旧捕获链路签发的快照 |
+| `analysis-frame` | Marivo `FrameReference.to_dict()` | 在当前 Workspace 的 checked Python 中恢复固定身份并读取；不计算、不使用 HTTP |
+| `frame-snapshot` | `snapshotRef` | 先校验 Host execution provenance，再读取旧 Frame 捕获快照 |
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
 
 `labels` 按资源名、快照列 ID 映射到显示名称，例如 `{"result":{"amount":"金额"}}`。标签只影响显示，列 ID、排序、单位与精确值保持原义。更新时复用的快照沿用已保存的标签。指定某个资源的映射会替换该资源整组标签，未列出的列显示其 ID，空映射将该资源所有列重置为 ID。
 
-组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。`frame-snapshot` 声明的 `snapshotRef` 由 `capture_frame` 签发，
+组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。新资源使用 `analysis-frame` / `dataframe` 和 Marivo 固定引用；历史 snapshot 声明保留原 Host provenance，
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
 metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列，图形 encoding 只引用公开值名与轴名；
 Dataset 图表编码引用列 ID，要求完整快照、数值列和唯一坐标组合；不推断分析语义。

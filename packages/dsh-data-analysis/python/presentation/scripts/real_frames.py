@@ -221,14 +221,15 @@ def main(work: str, output: str) -> int:
     import marivo
     import marivo.analysis as mv
     import marivo.semantic as ms
-    import dsh_data_analysis_presentation as kit
-    from dsh_data_analysis_presentation._frame import read_frame
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    import presentation as kit
+    from presentation._frame import read_frame
 
     ms.load(workspace_dir=root)
     session = mv.session.get_or_create("frame-fixtures", timezone="UTC")
     target = Path(output).resolve()
     target.mkdir(parents=True, exist_ok=True)
-    index = {"marivo": marivo.__version__, "presentationKit": kit.__version__, "python": sys.version.split()[0],
+    index = {"marivo": marivo.__version__,  "python": sys.version.split()[0],
              "fixtures": []}
     for name, operation, frame in frames(session, mv):
         snapshot = stable(read_frame(frame))

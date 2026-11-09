@@ -30,7 +30,7 @@ This is an independently maintained community plugin. It is not an official Deep
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
-You do not need to install Marivo beforehand. The first launch installs the Marivo `0.6.3` release from PyPI and prepares the analysis environment automatically.
+You do not need to install Marivo beforehand. The first launch installs the bundled Marivo `0.6.4.dev0` wheel, selected at build time from the latest sibling `marivo/dist/pypi` artifact and prepares the analysis environment automatically.
 An internet connection is required to download dependencies; wait for setup to finish.
 
 ### Install and launch
@@ -109,6 +109,9 @@ For a multiword search, use `@"monthly revenue"`. Ask questions about the select
 ### 4. Read analysis views and reports
 
 Ordinary results appear as separate chat entries outside folded work steps. Explicit reports and dashboards open in a right-side tab.
+
+For AnalysisFrame, explicitly call `persist()` and pass `saved.ref.to_dict()` as an `analysis-frame` resource. The plugin reads it through the bound Python Runtime without an HTTP service. For DataFrame, pass `mv.persist_dataframe(table).to_dict()` as a `dataframe` resource; its captured project must match the current Workspace.
+
 Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
 
 Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,

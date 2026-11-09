@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from dsh_data_analysis_presentation import PresentationDatasetError
-from dsh_data_analysis_presentation._dataset import (
+from presentation import PresentationDatasetError
+from presentation._dataset import (
     MAX_BYTES,
     encode_dataset,
     validate_dataset,
@@ -230,20 +230,3 @@ def test_integer_object_mixed_with_float_cannot_lose_precision() -> None:
     with pytest.raises(PresentationDatasetError) as error:
         encode_dataset(pd.DataFrame({"x": pd.Series([2**53 + 1, 0.5], dtype=object)}))
     assert error.value.code == "numeric_precision"
-
-
-def test_public_surface_has_only_capture_and_result_types() -> None:
-    import dsh_data_analysis_presentation as package
-
-    assert package.__version__ == "1.5.1"
-    assert package.__all__ == [
-        "PresentationDatasetError",
-        "DatasetCaptureReceipt",
-        "FrameCaptureReceipt",
-        "capture_dataset",
-        "capture_frame",
-    ]
-    assert not any(
-        hasattr(package, name)
-        for name in ("write_dataset", "DatasetWriteReceipt", "emit_dataset", "emit_computed")
-    )

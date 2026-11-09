@@ -4,6 +4,7 @@ import { access, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promi
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { MARIVO_VERSION } from '../../src/compatibility.ts'
 import { bindMarivoEnvironment } from '../../src/environment/index.ts'
 import { SemanticReferenceBridge } from '../../src/semantic-reference/bridge.ts'
 import { search } from '../../src/semantic-reference/search.ts'
@@ -41,7 +42,7 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.3: empty, large and failed Catalog reads only add public search caches', async (t) => {
+test('real Marivo 0.6.4.dev0: empty, large and failed Catalog reads only add public search caches', async (t) => {
   try {
     await access(python)
   } catch {
@@ -57,7 +58,17 @@ test('real Marivo 0.6.3: empty, large and failed Catalog reads only add public s
     { projectRoot: root, pythonExecutable: python },
     { environment },
   )
-  assert.equal(runner.binding.marivoVersion, '0.6.3')
+  if (
+    runner.binding.marivoVersion !== MARIVO_VERSION &&
+    !process.env.DSH_DATA_ANALYSIS_TEST_PYTHON
+  ) {
+    t.skip(
+      `Default Runtime is ${runner.binding.marivoVersion}; set DSH_DATA_ANALYSIS_TEST_PYTHON to ${MARIVO_VERSION}`,
+    )
+    return
+  }
+  assert.equal(runner.binding.marivoVersion, MARIVO_VERSION)
+
   let now = 0
   const bridge = new SemanticReferenceBridge(() => now),
     signal = new AbortController().signal

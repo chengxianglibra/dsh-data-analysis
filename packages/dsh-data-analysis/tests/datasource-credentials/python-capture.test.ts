@@ -21,14 +21,11 @@ import {
   type MarivoPythonExecutionSummary,
   registerMarivoPythonTool,
 } from '../../src/datasource/python.ts'
-import { readDatasetSnapshot, readFrameSnapshot } from '../../src/presentation/dataset-snapshot.ts'
 import {
   type PythonCodeRef,
   readPythonExecution,
   savePythonExecution,
 } from '../../src/python-execution.ts'
-import { frameSnapshotV2 } from '../presentation-integration/frame-v2-fixture.ts'
-import { legacyFrameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 import { fixture } from './fixtures.ts'
 
 const now = '2026-09-07T00:00:00.000Z'
@@ -218,7 +215,7 @@ async function tool(t: TestContext) {
     stderr: { text: '', truncated: false },
   }
   const requests: ShellExecRequest[] = []
-  const hooks = { run: async () => {}, captureFailed: false }
+  const hooks = { run: async () => {} }
   let launches = 0
   const services = {
     shell: {
@@ -238,16 +235,7 @@ async function tool(t: TestContext) {
         return {
           result: async () => {
             await hooks.run()
-            return {
-              ...outcome,
-              stderr: {
-                ...outcome.stderr,
-                text:
-                  JSON.stringify({ marivoCaptureStatus: 1, failed: hooks.captureFailed }) +
-                  '\n' +
-                  outcome.stderr.text,
-              },
-            }
+            return { ...outcome }
           },
         }
       },
@@ -289,19 +277,6 @@ async function tool(t: TestContext) {
         stdout: string
         codeRef?: PythonCodeRef
         codeCaptureError?: string
-        snapshotCaptureError?: string
-        capture: { status: string; failureStage?: string }
-        snapshots?: {
-          kind: 'dataset' | 'frame'
-          captureId: string
-          snapshotRef: string
-          schema: {
-            columns: { id: string; type: string; nullable: boolean }[]
-            columnCount: number
-            columnsTruncated: boolean
-          }
-          coverage: { totalRows: number; capturedRows: number; complete: boolean; business: string }
-        }[]
         execution: MarivoPythonExecutionSummary
       },
   }
@@ -326,194 +301,6 @@ test('registered Python tool captures original code only after one successful ex
   const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, result.codeRef), 'utf8')
   assert.doesNotMatch(record, /canary-private-4826|PYTHON_WORKER|grants|DB_PASSWORD/)
   assert.equal(JSON.parse(p.requests[0]!.stdin!).code, input.text)
-})
-
-async function captured(
-  p: Awaited<ReturnType<typeof tool>>,
-  failed = false,
-  kinds: ('dataset' | 'frame' | 'frame-v1')[] = ['dataset', 'dataset'],
-  width = 1,
-) {
-  Reflect.set(p.f.exec.agent!.session.header, 'workspaceId', 'workspace')
-  const files: string[] = []
-  p.hooks.run = async () => {
-    const directory = JSON.parse(p.requests[0]!.stdin!).captureDirectory as string
-    await mkdir(path.join(p.f.bridge.binding.projectRoot, directory), { recursive: true })
-    const entries = []
-    for (const kind of kinds) {
-      const captureId = randomUUID()
-      const relative = `${directory}/${captureId}.json`
-      const data = {
-        schemaVersion: 1,
-        columns: Array.from({ length: width }, (_, i) => ({
-          id: i === 0 ? 'x' : `x${i}`,
-          label: `Column ${i}`,
-          type: 'int64',
-          nullable: true,
-        })),
-        rows: [Array.from({ length: width }, () => '9007199254740993')],
-        rowCount: 2,
-        limit: 1,
-        truncated: true,
-      }
-      const bytes = Buffer.from(
-        JSON.stringify(
-          kind === 'frame'
-            ? frameSnapshotV2()
-            : kind === 'frame-v1'
-              ? legacyFrameSnapshot()
-              : {
-                  schemaVersion: 1,
-                  kind: 'dataset',
-                  fetchedAt: now,
-                  data,
-                  coverage: {
-                    start: 0,
-                    totalRows: 2,
-                    capturedRows: 1,
-                    complete: false,
-                    columns: data.columns.map((column) => column.id),
-                    business: 'unknown',
-                  },
-                  source: { kind: 'dataframe', details: 'not-captured' },
-                },
-        ),
-      )
-      const filename = path.join(p.f.bridge.binding.projectRoot, relative)
-      files.push(filename)
-      await writeFile(filename, bytes)
-      entries.push({
-        captureId,
-        path: relative,
-        sha256: createHash('sha256').update(bytes).digest('hex'),
-      })
-    }
-    await writeFile(
-      path.join(p.f.bridge.binding.projectRoot, directory, 'manifest.json'),
-      JSON.stringify({ schemaVersion: 1, failed, entries }),
-    )
-  }
-  return files
-}
-
-test('same-call captures bind exact Workspace, code and call without replay, then reject tampering', async (t) => {
-  const p = await tool(t)
-  const files = await captured(p)
-  const result = await p.call()
-  assert.equal(p.launches, 1)
-  assert.equal(result.snapshotCaptureError, undefined)
-  assert.equal(result.snapshots?.length, 2)
-  assert.equal(result.snapshots![0]!.kind, 'dataset')
-  assert.equal(result.capture.status, 'available')
-  assert.deepEqual(
-    result.snapshots![0]!.schema.columns.map((column) => column.id),
-    ['x'],
-  )
-  assert.equal(result.snapshots![0]!.schema.columnsTruncated, false)
-  assert.equal(result.snapshots![0]!.coverage.complete, false)
-  assert.equal(result.snapshots![0]!.coverage.capturedRows, 1)
-  const ref = result.snapshots![0]!.snapshotRef
-  const root = p.f.bridge.binding.projectRoot
-  const restored = await readDatasetSnapshot(root, 'workspace', ref)
-  assert.deepEqual(restored.codeRef, result.codeRef)
-  assert.equal(restored.owner.callId, 'call')
-  assert.equal(restored.snapshot.coverage.complete, false)
-  assert.deepEqual(restored.snapshot.data.rows, [['9007199254740993']])
-  await assert.rejects(readDatasetSnapshot(root, 'other-workspace', ref), /workspace/)
-  await assert.rejects(readDatasetSnapshot(await workspace(t), 'workspace', ref))
-  await assert.rejects(readDatasetSnapshot(root, 'workspace', ref.replace(/.$/, 'z')))
-  await writeFile(files[0]!, '{}')
-  await assert.rejects(readDatasetSnapshot(root, 'workspace', ref), /digest/)
-  assert.equal(p.launches, 1)
-})
-
-test('capture_frame v2 snapshots issue kind-prefixed refs that read back only as Frames', async (t) => {
-  const p = await tool(t)
-  await captured(p, false, ['dataset', 'frame'])
-  const result = await p.call()
-  assert.equal(result.snapshotCaptureError, undefined)
-  assert.deepEqual(
-    result.snapshots?.map((s) => s.kind),
-    ['dataset', 'frame'],
-  )
-  const [data, frame] = result.snapshots!
-  assert.match(data!.snapshotRef, /^marivo-dataset:/)
-  assert.equal(
-    frame!.snapshotRef,
-    `marivo-frame:${result.codeRef!.executionId}:${result.codeRef!.sha256}:${frame!.captureId}`,
-  )
-  const root = p.f.bridge.binding.projectRoot
-  const restored = await readFrameSnapshot(root, 'workspace', frame!.snapshotRef)
-  assert.deepEqual(restored.codeRef, result.codeRef)
-  assert.equal(restored.snapshot.schemaVersion, 2)
-  assert.equal(restored.snapshot.source.artifactId, null)
-  await assert.rejects(
-    readDatasetSnapshot(root, 'workspace', frame!.snapshotRef),
-    /reference-invalid/,
-  )
-  await assert.rejects(readFrameSnapshot(root, 'workspace', data!.snapshotRef), /reference-invalid/)
-  await assert.rejects(
-    readFrameSnapshot(
-      root,
-      'workspace',
-      data!.snapshotRef.replace(/^marivo-dataset/, 'marivo-frame'),
-    ),
-    /frame-snapshot-kind-mismatch/,
-  )
-  assert.equal(p.launches, 1)
-})
-
-test('capture schema summaries bound model context without reducing retained snapshot columns', async (t) => {
-  const p = await tool(t)
-  await captured(
-    p,
-    false,
-    Array.from({ length: 5 }, () => 'dataset'),
-    32,
-  )
-  const result = await p.call()
-  assert.deepEqual(
-    result.snapshots!.map((snapshot) => snapshot.schema.columns.length),
-    [16, 16, 16, 16, 0],
-  )
-  for (const snapshot of result.snapshots!) {
-    assert.equal(snapshot.schema.columnCount, 32)
-    assert.equal(snapshot.schema.columnsTruncated, true)
-    assert.equal(snapshot.coverage.totalRows, 2)
-    assert.equal(snapshot.coverage.capturedRows, 1)
-    const retained = await readDatasetSnapshot(
-      p.f.bridge.binding.projectRoot,
-      'workspace',
-      snapshot.snapshotRef,
-    )
-    assert.equal(retained.snapshot.data.columns.length, 32)
-  }
-})
-
-test('legacy v1 Frame captures are rejected without issuing snapshot references', async (t) => {
-  const p = await tool(t)
-  await captured(p, false, ['frame-v1'])
-  const result = await p.call()
-  assert.equal(result.snapshots, undefined)
-  assert.match(result.snapshotCaptureError!, /No snapshotRef/)
-  assert.deepEqual(result.capture, { status: 'failed', failureStage: 'validation' })
-  assert.ok(result.codeRef)
-})
-
-test('failed capture and failed executions never issue snapshot references or replay', async (t) => {
-  for (const outcome of [{}, { exitCode: 1 }, { timedOut: true }, { aborted: true }]) {
-    const p = await tool(t)
-    await captured(p, true)
-    Object.assign(p.outcome, outcome)
-    const result = await p.call()
-    assert.equal(result.snapshots, undefined)
-    if (!Object.keys(outcome).length) {
-      assert.equal(result.execution.reason, 'succeeded')
-      assert.match(result.snapshotCaptureError!, /No snapshotRef/)
-      assert.ok(result.codeRef)
-    }
-    assert.equal(p.launches, 1)
-  }
 })
 
 test('Python tool uses one immutable code string for execution and its later snapshot', async (t) => {
@@ -548,51 +335,4 @@ test('nonzero, timeout and aborted Python results never issue code references or
     assert.equal(p.launches, 1)
     assert.deepEqual(await readdir(p.f.bridge.binding.projectRoot), [])
   }
-})
-
-test('capture failure and post-execution cancellation preserve successful outcome without replay', async (t) => {
-  for (const failure of ['storage', 'cancel', 'credential', 'serialized-budget']) {
-    const p = await tool(t)
-    let code = input.text
-    if (failure === 'storage') {
-      await mkdir(path.dirname(storageDirectory(p.f.bridge.binding.projectRoot)), {
-        recursive: true,
-      })
-      await writeFile(storageDirectory(p.f.bridge.binding.projectRoot), 'occupied')
-    }
-    if (failure === 'cancel')
-      p.hooks.run = async () => {
-        p.f.controller.abort()
-      }
-    if (failure === 'credential') {
-      p.f.store.put('DB_PASSWORD')
-      code = 'print("canary-private-4826")'
-    }
-    if (failure === 'serialized-budget') code = `#${'\n'.repeat(131071)}`
-    const result = await p.call(code, failure === 'credential' ? ['warehouse'] : [])
-    assert.equal(result.exitCode, 0)
-    assert.equal(result.stdout, 'complete')
-    assert.equal(result.codeRef, undefined)
-    assert.match(result.codeCaptureError!, /completed successfully.*Do not rerun/)
-    assert.equal(result.execution.phase, 'capturing-code')
-    assert.equal(result.execution.reason, 'succeeded')
-    assert.equal(result.execution.nextAction, result.codeCaptureError)
-    assert.doesNotMatch(JSON.stringify(result), /canary-private-4826/)
-    assert.equal(p.launches, 1)
-  }
-})
-
-test('launcher-reported manifest write failure preserves success and codeRef without snapshots', async (t) => {
-  const p = await tool(t)
-  await captured(p)
-  p.hooks.captureFailed = true
-  const result = await p.call()
-  assert.equal(result.exitCode, 0)
-  assert.equal(result.stdout, 'complete')
-  assert.equal(result.execution.reason, 'succeeded')
-  assert.ok(result.codeRef)
-  assert.equal(result.snapshots, undefined)
-  assert.deepEqual(result.capture, { status: 'failed', failureStage: 'worker' })
-  assert.match(result.snapshotCaptureError!, /No snapshotRef/)
-  assert.equal(p.launches, 1)
 })

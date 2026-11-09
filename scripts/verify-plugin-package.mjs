@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -9,16 +10,16 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const presentationKitWheelPath =
-  'python/presentation-kit/dist/dsh_data_analysis_presentation_kit-1.5.1-py3-none-any.whl'
-const presentationKitVerifier = path.join(
-  packageRoot,
-  'python',
-  'presentation-kit',
-  'scripts',
-  'verify_wheel.py',
-)
-
+const runtimeMetadata = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
+  .dshDataAnalysisCompatibility.marivo
+const marivoWheelPath = `python/marivo/dist/${runtimeMetadata.wheelFilename}`
+const projectionAssets = [
+  '__init__.py',
+  '_dataset.py',
+  '_frame.py',
+  'errors.py',
+  'read_result.py',
+].map((name) => `python/presentation/${name}`)
 /**
  * @param {string} message
  * @returns {never}
@@ -203,7 +204,8 @@ try {
     'lib/semantic-reference/usage.js',
     'lib/types/presentation/index.d.ts',
     'lib/bin/environment.js',
-    presentationKitWheelPath,
+    marivoWheelPath,
+    ...projectionAssets,
     'lib/presentation/contracts/index.js',
     'lib/presentation/contracts/types.js',
     'skills/dsh-data-analysis-presentation/SKILL.md',
@@ -229,7 +231,11 @@ try {
       filename.startsWith('python/report-kit/')
     )
       fail(`packed plugin contains an unexpected Skill or removed helper ${filename}`)
-    if (filename.startsWith('python/') && filename !== presentationKitWheelPath)
+    if (
+      filename.startsWith('python/') &&
+      filename !== marivoWheelPath &&
+      !projectionAssets.includes(filename)
+    )
       fail(`packed plugin contains an unexpected Python asset ${filename}`)
 
     if (filename === 'lib/datasource/access.js' || filename === 'lib/types/datasource/access.d.ts')
@@ -289,19 +295,12 @@ try {
   const installedPlugin = path.join(nodeModules, '@chengxianglibra/dsh-data-analysis')
   mkdirSync(path.dirname(installedPlugin), { recursive: true })
   renameSync(path.join(extracted, 'package'), installedPlugin)
-  run(
-    'uv',
-    [
-      'run',
-      '--project',
-      path.join(packageRoot, 'python', 'presentation-kit'),
-      '--frozen',
-      'python',
-      presentationKitVerifier,
-      path.join(installedPlugin, presentationKitWheelPath),
-    ],
-    { cwd: packageRoot },
+  if (
+    createHash('sha256')
+      .update(readFileSync(path.join(installedPlugin, marivoWheelPath)))
+      .digest('hex') !== runtimeMetadata.wheelSha256
   )
+    fail('packed Marivo archive identity mismatch')
   const packedManifest = readJson(path.join(installedPlugin, 'package.json'))
   if (
     JSON.stringify(packedManifest.dshDataAnalysisCompatibility) !== JSON.stringify(compatibility)
@@ -427,8 +426,8 @@ try {
     }
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
-    if (compatibility.MARIVO_VERSION !== '0.6.3') throw new Error('packed Marivo version mismatch')
-    if (compatibility.MARIVO_PACKAGE_SPEC !== 'marivo[duckdb,trino,clickhouse]==0.6.3') throw new Error('packed Marivo package spec mismatch')
+    if (compatibility.MARIVO_VERSION !== ${JSON.stringify(compatibility.marivo.version)}) throw new Error('packed Marivo version mismatch')
+    if (compatibility.MARIVO_PACKAGE_SPEC !== ${JSON.stringify(compatibility.marivo.packageSpec)}) throw new Error('packed Marivo package spec mismatch')
     if (environment.SUBPROCESS_POLICY_ID !== 'direct-argv-inherited-env-snapshot-overlay-v2') throw new Error('packed subprocess policy mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
     for (const removed of ['MARIVO_DATASOURCE_ACCESS_TOOL_NAME', 'createMarivoDatasourceAccessTool', 'registerMarivoDatasourceAccessTool']) {
@@ -442,7 +441,7 @@ try {
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed presentation kit and contracts passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed Marivo wheel, private projection and contracts passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

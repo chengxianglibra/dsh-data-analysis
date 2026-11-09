@@ -4,8 +4,10 @@ import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { parseAnalysisProgram } from './analysis-program.ts'
 import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
 import { validateFrameDisplay } from './frame-display.ts'
+import { frameResultReference } from './frame-result-reference.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
+import { dataframeResultReference } from './result-reference.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
@@ -17,6 +19,8 @@ const id = z
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
 const text = z.string().min(1).max(512)
 export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('analysis-frame'), ref: frameResultReference }),
+  z.strictObject({ kind: z.literal('dataframe'), ref: dataframeResultReference }),
   z.strictObject({ kind: z.literal('dataset-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('frame-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
@@ -44,12 +48,14 @@ const resource = z.discriminatedUnion('kind', [
     snapshot: z.unknown().transform(parseAnalysisSnapshot),
     binding: z.strictObject({
       workspaceId: text,
-      codeRef: z.strictObject({
-        executionId: z.string().uuid(),
-        sha256: z.string().regex(/^[a-f0-9]{64}$/),
-      }),
-      sessionId: text,
-      callId: text,
+      codeRef: z
+        .strictObject({
+          executionId: z.string().uuid(),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .optional(),
+      sessionId: text.optional(),
+      callId: text.optional(),
     }),
   }),
   z.strictObject({
@@ -228,14 +234,22 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
       throw new Error('analysis-resource-owner-invalid')
     if (
       !(
-        (item.declaration.kind === 'dataset-snapshot' && item.snapshot.kind === 'dataset') ||
-        (item.declaration.kind === 'frame-snapshot' && isFrameSnapshotV2(item.snapshot))
+        (['dataset-snapshot', 'dataframe'].includes(item.declaration.kind) &&
+          item.snapshot.kind === 'dataset') ||
+        (['frame-snapshot', 'analysis-frame'].includes(item.declaration.kind) &&
+          isFrameSnapshotV2(item.snapshot))
       ) ||
-      !item.binding.codeRef ||
-      !item.binding.sessionId ||
-      !item.binding.callId
+      (!['analysis-frame', 'dataframe'].includes(item.declaration.kind) &&
+        (!item.binding.codeRef || !item.binding.sessionId || !item.binding.callId))
     )
       throw new Error('analysis-resource-owner-invalid')
+    if (
+      item.declaration.kind === 'analysis-frame' &&
+      (item.snapshot.kind !== 'frame' ||
+        item.snapshot.source.sessionId !== item.declaration.ref.session_id ||
+        item.snapshot.source.artifactId !== item.declaration.ref.artifact_id)
+    )
+      throw new Error('analysis-resource-result-identity-invalid')
   }
   validateAnalysisResources(result.program, result.resources)
   return result
@@ -262,5 +276,13 @@ export function sameAnalysisDeclaration(
     (a.kind === 'frame-snapshot' && b.kind === 'frame-snapshot')
   )
     return a.snapshotRef === b.snapshotRef
+  if (a.kind === 'dataframe' && b.kind === 'dataframe')
+    return a.ref.project_root === b.ref.project_root && a.ref.result_id === b.ref.result_id
+  if (a.kind === 'analysis-frame' && b.kind === 'analysis-frame')
+    return (
+      a.ref.store_id === b.ref.store_id &&
+      a.ref.session_id === b.ref.session_id &&
+      a.ref.artifact_id === b.ref.artifact_id
+    )
   return a.kind === 'image-file' && b.kind === 'image-file' && a.path === b.path
 }

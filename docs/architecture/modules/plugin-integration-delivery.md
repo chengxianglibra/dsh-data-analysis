@@ -2,7 +2,7 @@
 
 ## 作用
 
-本模块把 profile 级 Marivo Runtime、per-Workspace binding、跨边界 Tool、presentation-kit、
+本模块把 profile 级 Marivo Runtime、per-Workspace binding、跨边界 Tool、内部展示投影、
 Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
 的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
 
@@ -16,7 +16,7 @@ Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装�
 
 ## 生命周期
 
-1. `apply()` 确保精确 Marivo 0.6.3 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
+1. `apply()` 确保精确 Marivo 0.6.4.dev0 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
 2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic`、可用时的 `marivo-service`，以及插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
@@ -84,10 +84,9 @@ Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项�
 主流程与按需 references 的职责见[展示 Skill](presentation-skill.md)。旧报告 Skill、prompt、三个经典 JS
 资产、emitter、旧 transport schemas 及 Draft/图形示例不再分发，当前包不提供兼容包装。
 
-[展示数据投影](presentation-projection.md)在原分析进程中使用公开读取接口生成快照。
-`dsh_data_analysis_presentation.capture_dataset(frame)` 在原 `marivo_python` 进程中捕获 pandas DataFrame，
-成功回执返回 `snapshotRef` 并关联原调用的 `codeRef`；它不推断 SQL/文件来源，也不证明捕获前的转换正确。
-presentation-kit 公开 `capture_dataset`、`capture_frame` 及对应 capture receipt，不再提供写出 TypedDataset 文件的 helper。
+[展示数据投影](presentation-projection.md)使用 Marivo 的准确持久引用在绑定 Python Runtime 中读取 Frame/DataFrame。
+新执行不再捕获快照或签发 snapshotRef。Host 保存报告所需的 typed data，不推断来源、codeRef 或计算正确性。
+内部 `python/presentation/*.py` 只负责展示编码，独立 presentation-kit wheel 已移除。
 
 ## Web client
 
@@ -145,12 +144,12 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 | --- | --- |
 | DSH peers 兼容范围 | `>=0.2.1-rc.2`，npm 默认预发布匹配规则 |
 | DSH 开发 distribution | `0.2.1-rc.2`，直接开发依赖精确固定，lockfile 保留全部 DSH 包的实际解析版本 |
-| Marivo | `marivo[duckdb,trino,clickhouse]==0.6.3` |
-| Runtime marker | `dsh-data-analysis-runtime/v3` |
+| Marivo | `marivo[duckdb,trino,clickhouse]==0.6.4.dev0` |
+| Runtime marker | `dsh-data-analysis-runtime/v4` |
 | Subprocess policy | `direct-argv-inherited-env-snapshot-overlay-v2` |
-| Presentation-kit | `dsh-data-analysis-presentation-kit==1.5.1`，Dataset schemaVersion 1、Frame schemaVersion 2 |
+| 展示投影 | Host 内部适配器；Dataset schemaVersion 1、Frame schemaVersion 2 |
 
-Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含唯一的 presentation-kit wheel
+Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露报告 Checker CLI。tarball 包含从隔壁 `dist/pypi` 选取的 Marivo wheel 与 SHA-256 身份清单
 与内部纯数据 contracts、builder，以及展示及文件分析 Skill 的 `SKILL.md` 和 references；
 旧 report-kit、报告 Skill、JS registry、旧 transport schemas、portable/static 离线资产和
 `dsh-data-analysis-presentation-lint` CLI 均不分发。
@@ -159,7 +158,7 @@ Package 不导出 `./evidence`、`./report` 或 `./report-check`，也不暴露�
 依赖检查直接使用 `semver.satisfies`，不启用 `includePrerelease`：接受 `0.2.1-rc.2` 及同一 `0.2.1` 核心版本中后续满足范围的预发布
 和之后满足 `>=0.2.1-rc.2` 的稳定版本，不自动接受其他 core 版本的预发布。逐项检查直接消费的 peers 与 Host 实际解析身份，
 不要求不同名称的包版本字符串相同。生产源码禁止引入 SessionPersistence、验证脚本和邻近 checkout；
-正常 workspace 链接允许，Host client external/metafile 检查保留。
+构建脚本允许从明确的邻近 `dist/pypi` 取得安装产物；生产运行不读取邻近 checkout。正常 workspace 链接允许，Host client external/metafile 检查保留。
 
 DSH profile 使用 `autoInstallPeers: false`；Harness 在 Host 进程中按安装来源解析 DSH peers，
 浏览器使用 Host 的 client module loader 和 React。profile 内单独执行 `pnpm peers check` 不能看到这些
@@ -187,7 +186,7 @@ npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
 
-plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.3 与真实模型。
+plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.4.dev0 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch 与 Host Web 验证交付。
 路径、runner 日志或静态 schema 不替代实际交互证据。
 

@@ -19,8 +19,7 @@ export interface SharedMarivoRuntime {
   pythonExecutable: string
   marivoVersion: string
   packagePath: string
-  presentationKitVersion: string
-  presentationKitPackagePath: string
+  marivoArchiveSha256: string
   skillsRoot: string
   installationPath: string
 }
@@ -58,8 +57,6 @@ export interface MarivoEnvironmentBinding {
   pythonExecutable: string
   marivoVersion: string
   packagePath: string
-  /** Present only for bindings admitted through the shared presentation Runtime. */
-  presentationKit?: Readonly<{ version: string; packagePath: string }>
   subprocessPolicyId: string
   fingerprint: string
 }

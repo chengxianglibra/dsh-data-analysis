@@ -17,7 +17,7 @@ Marivo 项目语义和分析状态。
 | 组件 | 职责 |
 | --- | --- |
 | `ensureSharedMarivoRuntime()` | 验证、复用或安装一套 profile 级 Runtime |
-| `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、presentation-kit、package 与 Skill 身份 |
+| `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、package 与 Skill 身份 |
 | `MarivoWorkspaceEnvironmentManager` | 按 canonical project root 缓存 binding Promise，不创建 Workspace 文件 |
 
 ## 共享 Runtime 生命周期
@@ -34,36 +34,33 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-`installation.json` 使用 `dsh-data-analysis-runtime/v3`，记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`presentationKitVersion`、
-`presentationKitPackagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
+`installation.json` 使用 `dsh-data-analysis-runtime/v4`，记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`marivoArchiveSha256` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
 启动时先读取 marker 并验证：
 
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.6.3`；
-5. presentation-kit 版本、package path、distribution metadata、实际模块位置与公开 `capture_dataset` 与 pandas 范围一致；
+4. Marivo 版本严格等于 `0.6.4.dev0`；
+5. Marivo distribution 版本、实际导入位置、安装来源的 archive SHA-256，以及公开 `persist_dataframe` / `read_dataframe` / Frame ref 能力一致；
 6. `marivo-analysis` 和 `marivo-semantic` 的 `SKILL.md` 均存在；若绑定包提供
    `marivo-service`，也同步并验证它。每个 Skill 的 frontmatter `name` 与目录名精确一致。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。
 
-当前 presentation-kit 精确版本为 `1.5.1`，只公开仅在原 marivo_python 内使用的 `capture_dataset(DataFrame, ...)` 与 `capture_frame(AnalysisFrame, ...)`。
-helper 的 API 或实现变化必须同步提升 Python distribution、模块版本和插件的 Runtime 版本约束，
-并更新随包 wheel 与分发校验；不能用同一个版本号发布不同实现。npm 插件重装与会话状态清理不会
-刷新已通过版本检查的 shared Runtime。旧 `1.0.0` marker 会触发上述重建流程，新版随后直接复用；
-管理员解释器的旧 helper 则返回明确的版本错误与修复命令，不自动修改解释器。
+安装产物身份由 compatibility manifest 的 `wheelFilename` 与 `wheelSha256` 定义。
+同版本的 wheel 内容变化同样使旧 marker 失效并触发保留诊断备份后的重新安装。
+插件不再安装独立 presentation-kit。
 
 ### 安装模式
 
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
-| 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 安装精确 Marivo 与随包 presentation-kit wheel |
-| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo、presentation-kit 与 pandas，随后同步 Skill 和发布 marker |
+| 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 安装随包的 Marivo wheel 及 duckdb/trino/clickhouse extras |
+| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo 与 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都要求通过 pip 安装精确的 Marivo 0.6.3；marker 记录版本与 package identity。其他版本或 schema
+两种模式都要求通过 pip 安装精确的 Marivo 0.6.4.dev0；marker 记录版本与 package identity。其他版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -72,11 +69,11 @@ helper 的 API 或实现变化必须同步提升 Python distribution、模块版
 或 CLI `--bootstrap-python` 指定创建 venv 的 Python；它不同于只验证的 `pythonExecutable`。
 原 `uvExecutable`、`DSH_DATA_ANALYSIS_UV` 与 `--uv` 配置不再使用。
 Python 必须支持 `venv`/`ensurepip`；缺失或版本不符时明确失败。已有有效 Runtime 继续复用。
-构建 presentation-kit wheel 的开发工具链仍使用 uv，终端用户安装不需要。
+开发时的内部 Python 展示适配器验证使用 uv；终端用户安装不需要。
 
 ### DuckDB 文件依赖
 
-安装规格 `marivo[duckdb,trino,clickhouse]==0.6.3` 显式包含 DuckDB extra，由 Marivo 的
+安装规格 `marivo[duckdb,trino,clickhouse]==0.6.4.dev0` 显式包含 DuckDB extra，由 Marivo 的
 `ibis-framework[duckdb]` 依赖提供后端。Runtime probe 同时导入 `ibis.backends.duckdb`，
 防止缺少该后端的环境通过复用校验；管理员环境缺失时给出包含 extra 的修复命令，不自动安装。
 
@@ -105,7 +102,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
 `marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。缺少 manifest
-时，Marivo 0.6.3 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
+时，Marivo 0.6.4.dev0 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
 写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
@@ -113,7 +110,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 | 范围 | 共享内容 | 隔离内容 |
 | --- | --- | --- |
-| Web profile | Python、Marivo package、presentation-kit、内置 Skill 副本 | — |
+| Web profile | Python、Marivo package、内置 Skill 副本 | — |
 | Workspace | 共享 Runtime 引用 | project root、manifest、models、state、doctor admission、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 
@@ -143,19 +140,20 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 
 ## 当前安装来源
 
-插件从 PyPI 安装正式版 Marivo，不随包分发 Marivo wheel；Compatibility manifest 的 `packageSpec` 是 pip 安装使用的精确版本约束
-`marivo[duckdb,trino,clickhouse]==0.6.3`，不使用 editable checkout。管理员 Python 的修复命令同样通过 pip
-安装该精确版本。普通 npm build/prepack 不会重新打包或构建 Marivo。
+`npm run prepare:marivo` 和包 build/prepack 从隔壁 `marivo/dist/pypi/` 选择修改时间最新的
+`marivo-*-py3-none-any.whl`，复制到插件 `python/marivo/dist/`，并更新 compatibility manifest 的版本、
+文件名和 SHA-256。当前是 `marivo-0.6.4.dev0-py3-none-any.whl`。生产安装只读随包 wheel，不访问邻近 checkout。
 
-Python helper 合同由 `tests/runtime-workspace/presentation-kit-contracts.test.ts` 纳入持续检查，
-包括相同 fixtures 的 Python、Node 与 browser 读取。managed 安装失败和 administrator 缺 helper、版本错误、
-同名模块遮蔽均明确失败，不切换解释器。
+managed Runtime 通过所选 Python 的 `-m pip install <wheel>[duckdb,trino,clickhouse]` 安装；
+不从 PyPI 重新选择 Marivo，不退回 editable checkout，依赖仍按 pip 正常安装。
+probe 核验 distribution/module 版本、实际 import path 和 pip `direct_url.json` 的 archive SHA-256；
+marker v4 记录该摘要。版本、产物或能力不符明确失败。
+管理员 Python 只验证，不自动修改；修复命令指向同一随包 wheel。
 
 ## 正式版安装与升级
 
-managed Runtime 通过 pip 从 PyPI 安装 `marivo[duckdb,trino,clickhouse]==0.6.3`，无需本地 Marivo
-安装包或 `PIP_FIND_LINKS`。已有 managed Runtime 版本不匹配时，保留旧目录并重新安装固定版本。
-也可在独立 Python 环境从 PyPI 安装该精确版本与随插件分发的 presentation-kit，再配置
-`DSH_DATA_ANALYSIS_PYTHON`；管理员指定解释器的版本不匹配时明确报错，不自动修改该环境。
-验证使用隔离 Runtime，不删除现有安装、Workspace 或旧 Store；旧 Store 应通过兼容的旧 Runtime 读取/导出。
-新版 Marivo 使用独立 generation，不自动迁移历史 Session/Artifact。
+启动复用同一版本和产物的有效 marker；不匹配时 managed 模式保留旧目录并从随包 wheel 重建，
+管理员模式报错并给出明确修复命令。测试使用隔离 Runtime，不删除用户安装、Workspace 或旧 Store。
+新版本使用所属 Store generation，不自动迁移历史 Session/Artifact。
+内部展示 codec 合同由 `tests/runtime-workspace/projection-contracts.test.ts` 纳入持续检查，
+不构建或分发单独的 Python helper wheel。

@@ -1,34 +1,56 @@
-# 捕获展示数据
+# 引用已持久化的分析结果
 
-本页属于插件契约；Marivo live Help 负责分析 API。仅在首次捕获或遇到捕获问题时读取。
+本页属于插件的展示交付契约；持久化、读取、标量类型与修复操作以绑定 Marivo live Help 为准。
 
-## 在原计算中捕获
+## AnalysisFrame 与 DataFrame
 
 ```python
-from dsh_data_analysis_presentation import capture_dataset, capture_frame
+import json
+import marivo.analysis as mv
 
-# result 是本次执行已计算的 pandas DataFrame。
-receipt = capture_dataset(result, row_limit=5000, labels={"amount": "金额"})
-# 已完成的 AnalysisFrame 可改用 capture_frame(completed_frame, row_limit=5000)。
+# frame 与 table 是本次分析已有结果；持久化是显式操作。
+saved = frame.persist(description="本次分析结果")
+print(json.dumps({"frame": saved.ref.to_dict()}))
+reference = mv.persist_dataframe(table)
+print(json.dumps({"table": reference.to_dict()}))
 ```
 
-`capture_dataset` 只接受 pandas DataFrame；`capture_frame` 接受 compute 返回的完整内存 Frame 或持久 Frame，不能隐式执行待计算表达式。Frame 的执行、持久化与恢复遵循实时 Help。
+`marivo_present.resources` 的每个资源使用准确的引用字典：
 
-Python receipt 含 `capture_id/row_count/captured_rows/truncated`。同次工具成功回执的 `snapshots` 用 `captureId` 关联 `snapshotRef`，后者交给 `marivo_present`。多个结果需要建立名称映射时，可打印结果名和 `receipt.capture_id`；不要从捕获文件路径或 stdout 拼造引用。
+- AnalysisFrame：`{ "kind": "analysis-frame", "ref": <saved.ref.to_dict()> }`。
+- DataFrame：`{ "kind": "dataframe", "ref": <reference.to_dict()> }`。
+- 图片继续使用 `{ "kind": "image-file", "path": "Workspace相对路径" }`。
 
-## 类型、预算与范围
+Frame 引用含 `schema: "marivo.frame_ref/v2"`、`store_id`、`session_id`、`artifact_id`。
+DataFrame 引用含 `schema: "marivo.dataframe_ref/v2"`、`project_root`、`result_id`。
+不得拼造、补写或改换引用中的身份；DataFrame 的 `project_root` 必须属于当前 Workspace。
+多个结果可以按名称打印引用映射。stdout 只是原代码输出，不是 Host 捕获协议。
 
-- 每次执行最多 16 次捕获；每份快照最多 64 列、5000 行、100000 个单元格、2 MiB。`row_limit` 为 1–5000 的整数，实际行预算还受单元格预算限制。列数、单元格文本或字节超限会失败；行数超限明确标记截断。
-- DataFrame 列名须为唯一、非空字符串。index 和 attrs 不进入快照；需要展示的 index 应先作为实际列准备。
-- 整数与 Decimal 保留精度；输入已经舍入时不能恢复。浮点正负无穷和不安全的整数浮点值被拒绝；包括 NaN 在内的缺失值写为 null。混合或不支持的 object 值可能失败。
-- datetime 必须有明确时区，精度不超过微秒。按真实业务含义处理时间，不为通过捕获猜时区或静默丢弃精度。
+Host 在绑定 Python Runtime 中使用 Marivo 公开 API 恢复固定结果并生成展示投影；
+不需要 HTTP 服务、原分析进程、当前模型或数据源凭据。展示不会隐式 compute/persist。
+持久引用可以在后续调用中复用；已有报告更新优先复用资源，不重新查询数据。
+报告保存后内嵌展示快照，布局与文字更新不依赖原 Store。
+引用不提供 Harness 脚本或调用身份，不据此声称 codeRef 或执行来源。
 
-工具返回每个快照的 `coverage` 和 `schema`：字段摘要每份最多 16 列、整次最多 64 列，`columnsTruncated` 表示摘要省略字段；它与数据行截断不同。`coverage.complete` 只证明输入结果完整捕获，不证明业务范围全量。读取预算、筛选和 Top N 仍需由分析说明。图表要求完整快照时，不用部分数据伪装全量；选择表格或回到已保留结果准备合适视图。
+## 展示预算与覆盖范围
+
+每份投影最多 64 列、5000 行、100000 个单元格、2 MiB。行数超限保留总行数并明确标记截断；
+列数、单元格文本、字节或不支持的展示类型超限会失败，不改变原持久结果。
+DataFrame 读取 API 会完整读取保存结果，展示预算只限制投影，不限制其内存或文件 I/O。
+
+整数与 Decimal 保留精度；datetime 需要明确时区且精度不超过微秒。duration、复合值等
+当前展示 codec 不支持的值明确失败，不为通过展示猜时区、截掉精度或转换成文本。
+列展示名通过 `marivo_present.labels` 设置；不改写值或列身份。
+
+`coverage.complete` 只证明输入结果被完整展示，不证明业务全量。过滤、Top N 和业务范围须在分析中说明；
+不要把截断数据用于全量总计、完整单值或要求 complete 的图表。
 
 ## 失败处理
 
-先看 `execution.reason`，再看 `capture.status/failureStage`、错误和 `execution.nextAction`。`available` 表示已签发引用；`unused` 表示成功执行未捕获结果；`failed` 表示成功执行后的捕获失败；`not-collected` 表示执行失败或代码来源未保存，不能据此断言计算没有产生效果。
+Frame 或 DataFrame 的展示读取失败，以 `marivo_present` 错误为准。核对完整引用、当前 Workspace、
+Runtime 和保存结果的可访问性。缺失或损坏不授权重跑分析；优先使用已有报告内嵌的资源。
+确需重新计算时，将其作为明确的新执行，遵守原授权、范围和预算。
 
-helper 调用异常遵循普通 Python 规则，未捕获会使执行失败。任一捕获失败会使同次执行的全部快照失效，即使异常已捕获；不要在该进程继续重试捕获。worker/退出收尾、Host validation、provenance 保存失败需分别核对，Host 收集失败不改写 Python 的实际退出结果。
-
-捕获失败不授权重跑原分析。先检查已有文件、已持久化 Frame 和其他已确认结果；仅从仍可读取的既有结果恢复展示。内存已消失且无保留结果时，说明展示缺口；如确需重新计算，将其作为明确的新执行处理，遵守原授权、范围和预算。
+`marivo_python` 的 `execution.reason` 描述原 Python 的真实退出结果，`codeRef` 仅在脚本来源成功保存时返回。
+超时、取消和非零退出不能证明没有保存结果或其他效果；按实际状态检查，避免自动重放。
+插件不再提供 `capture_dataset`、`capture_frame` 或捕获回执协议。

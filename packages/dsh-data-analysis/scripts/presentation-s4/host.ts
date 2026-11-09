@@ -1,7 +1,7 @@
 /** Production plugin on actual Harness services; deterministic adapter stops at the model boundary. */
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { readFile, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -33,17 +33,12 @@ import { apply, inject } from '../../src/plugin.ts'
 import type { AnalysisPresentInput } from '../../src/presentation/contracts/analysis-document.ts'
 import { analysisRecordId } from '../../src/presentation/contracts/analysis-document.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
-import {
-  collectSnapshotCaptures,
-  frameSnapshotRef,
-} from '../../src/presentation/dataset-snapshot.ts'
 import { presentationSha256, readPresentationAsset } from '../../src/presentation/files.ts'
 import {
   type PresentationDelivery,
   parsePresentationDelivery,
 } from '../../src/presentation/receipt.ts'
 import { readReceiptDocument, resolvePresentation } from '../../src/presentation/reports.ts'
-import { savePythonExecution } from '../../src/python-execution.ts'
 import {
   installConnectionFixture,
   installStorage,
@@ -193,57 +188,6 @@ export async function runPresentationJourneys(
   options: PresentationJourneyOptions = {},
 ) {
   const workspace = await ctx.workspaceRegistry.create(workspaceRoot, 'S4 presentation validation')
-  if (
-    requests.some((request) =>
-      Object.values(request.resources ?? {}).some(
-        (resource) =>
-          resource.kind === 'frame-snapshot' && resource.snapshotRef.startsWith('fixture-capture:'),
-      ),
-    )
-  ) {
-    const capture = JSON.parse(
-      await readFile(
-        path.join(workspaceRoot, '.dsh-data-analysis/presentation-validation-capture.json'),
-        'utf8',
-      ),
-    ) as {
-      code: string
-      captureDirectory: string
-      startedAt: string
-      finishedAt: string
-    }
-    const entries = await collectSnapshotCaptures(workspaceRoot, capture.captureDirectory, [])
-    const codeRef = await savePythonExecution(workspaceRoot, {
-      text: capture.code,
-      startedAt: capture.startedAt,
-      finishedAt: capture.finishedAt,
-      captures: {
-        workspaceId: String(workspace.id),
-        sessionId: `presentation-s4-${mode}`,
-        callId: 'fixture-producer',
-        rootCallId: 'fixture-producer',
-        entries: entries.map(({ captureId, path, sha256 }) => ({ captureId, path, sha256 })),
-      },
-    })
-    requests = requests.map((request) => ({
-      ...request,
-      resources: Object.fromEntries(
-        Object.entries(request.resources ?? {}).map(([name, resource]) => {
-          if (
-            resource.kind !== 'frame-snapshot' ||
-            !resource.snapshotRef.startsWith('fixture-capture:')
-          )
-            return [name, resource]
-          const captureId = resource.snapshotRef.slice('fixture-capture:'.length)
-          assert(entries.some((entry) => entry.kind === 'frame' && entry.captureId === captureId))
-          return [
-            name,
-            { kind: 'frame-snapshot', snapshotRef: frameSnapshotRef(codeRef, captureId) },
-          ]
-        }),
-      ),
-    }))
-  }
   const provider = `s4-scripted-${mode}`
   const sessionId = SessionId(`presentation-s4-${mode}`)
   ctx.llm.registerAdapter(

@@ -714,7 +714,11 @@ test('Marivo reports combine narrative and Frame data through one presentation e
     'dsh-data-analysis-presentation',
   ])
     assert.ok(prompt.includes(route))
-  assert.match(prompt, /Capture the result in the original calculation/)
+  assert.match(
+    prompt,
+    /For AnalysisFrame, persist explicitly and pass saved_frame\.ref\.to_dict\(\)/,
+  )
+  assert.match(prompt, /for DataFrame, persist with mv\.persist_dataframe\(df\)/)
   assert.match(prompt, /After save succeeds, reply briefly/)
   assert.match(prompt, /If delivery fails/)
   assert.doesNotMatch(prompt, /visual inspection|visual verification/)

@@ -62,18 +62,10 @@ export class MarivoWorkspaceEnvironmentManager {
     if (this.#disposed) throw new Error('Marivo Workspace manager disposed')
     let binding = this.#bindings.get(canonicalRoot)
     if (binding === undefined) {
-      binding = bindMarivoEnvironment(
-        {
-          projectRoot: canonicalRoot,
-          pythonExecutable: this.runtime.pythonExecutable,
-        },
-        {
-          presentationKit: {
-            version: this.runtime.presentationKitVersion,
-            packagePath: this.runtime.presentationKitPackagePath,
-          },
-        },
-      )
+      binding = bindMarivoEnvironment({
+        projectRoot: canonicalRoot,
+        pythonExecutable: this.runtime.pythonExecutable,
+      })
         .then(async (environment) => {
           if (this.#disposed) throw new Error('Marivo Workspace manager disposed')
           await this.onBound?.(environment)

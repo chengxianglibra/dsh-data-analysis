@@ -6,9 +6,12 @@
 issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件不审查 DataFrame 的计算过程、不复算，
 也不把来源存在解释为计算正确性。
 
-- Frame：原分析进程中的 `capture_frame(frame)` 捕获已完成的 Frame，Host 签发 `marivo-frame:` snapshotRef 并绑定 codeRef。只接受 `frame-snapshot` 声明，不提供事后恢复入口。
-- DataFrame：原分析进程中的 [capture_dataset](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_capture.py)
-  捕获，Host 签发 snapshotRef，由 [dataset-snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/dataset-snapshot.ts) 读取。
+- Frame：`analysis-frame` 声明接收 `saved.ref.to_dict()`。Host 在当前 Workspace 的绑定 Runtime 中通过
+  `mv.session.resume(...).persisted_frame(...)` 恢复，核对 Store、Session、Artifact 身份后读取。
+- DataFrame：`dataframe` 声明接收 `mv.persist_dataframe(table).to_dict()`。Host 先核验引用中的
+  `project_root` 属于当前 Workspace，再调用 `mv.read_dataframe(ref)` 与结果的 `to_pandas()`。
+- 两者均不启动 HTTP 服务，不加载当前模型或连接来源，不计算、不持久化、不重放生产代码。
+  旧 `frame-snapshot` / `dataset-snapshot` 声明继续按保存的 Host provenance 读取历史快照。
 
 快照内嵌于不可变 Build 的 `resources`，属于 Build 的生命周期，不长期依赖 captures 临时目录。
 保存、更新与 recordId 见[展示交付](presentation-delivery.md#统一分析-ui-写入与增量契约)，阅读呈现见[共享 reader](presentation-reader.md)。
@@ -48,18 +51,21 @@ business 固定 unknown。
 
 ## 数据流程
 
-捕获在原 `marivo_python` 执行内使用 checked Runtime 完成。`marivo_present` 仅校验捕获记录、读取快照并提交，
-不绑定 Runtime、不启动 Python，也不恢复 Session；每个异步边界复核 Workspace 归属与取消。
+新增引用由 [result-reader.ts](../../../packages/dsh-data-analysis/src/presentation/result-reader.ts) 在 checked Python 中读取。
+内部 [read_result.py](../../../packages/dsh-data-analysis/python/presentation/read_result.py) 只适配公开结果和展示格式，
+不拥有持久化、引用签发或来源语义。Runtime identity 与 Workspace 在异步边界复核。
+已有报告的相同声明复用内嵌快照，不解析 Runtime 或启动 Python。
 工具外层执行预算为 180 秒，定义见[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)。
 取消或快照读取失败不发布 current，不自动重跑分析。
 
 ## Frame 快照
 
-捕获使用 [_frame.py](../../../packages/dsh-data-analysis/python/presentation-kit/src/dsh_data_analysis_presentation/_frame.py) 的 `read_frame`。
-`capture_frame` 只接受持久或 `compute()` 后的内存 Frame，待执行表达式报 `frame_not_computed`，DataFrame 指向 `capture_dataset`；
+Frame 展示格式投影复用 [_frame.py](../../../packages/dsh-data-analysis/python/presentation/_frame.py) 的 `read_frame`。
 读取只用 `frame.schema`、`frame.read_page()`、`frame.read_periods()` 与 `page.to_pandas()`，捕获完整字段，不接受 columns 参数。
 不调用全量 `frame.to_pandas()`，不加载当前模型、重跑分析或取得数据源凭据。schema/layout 重名、身份不符、
 损坏数据和不支持的类型明确失败。
+
+公开 `persist()`、`ref`、Session 恢复与读取约束以绑定 Marivo live Help 为准。新 Frame 引用的 binding 只记录 Workspace；不能从持久引用推断 Harness `codeRef`、Session 或 call。报告内嵌快照保留引用与数据，后续展示更新不依赖原 Store。
 
 Frame 快照另保留 input identity、字段角色、实际 layout、公开字段类型与单位、完整轴键、逐行坐标和 read_stats。
 默认至多读取一页，limit 由行/列/单元格预算计算，坐标也计入单元格预算；不自动续页或把已读前缀标为完整结果。
@@ -78,8 +84,8 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
-Marivo 0.6.3 的 `Frame.schema.value_time_semantics` 当前不纳入快照，因此报告不能展示该字段中的值时间语义。
-契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)。新快照须在原分析执行中捕获，Host 只接受 Frame v2。
+Marivo 0.6.4.dev0 的 `Frame.schema.value_time_semantics` 当前不纳入快照，因此报告不能展示该字段中的值时间语义。
+契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)。新 `analysis-frame` 资源通过 [result-reader.ts](../../../packages/dsh-data-analysis/src/presentation/result-reader.ts) 读取固定身份，Host 只接受 Frame v2。
 
 日历期间按当前 Marivo 公共契约保存 civil `label`、`selection` 和可选 `cutoff`；不根据日期标签、键或时区推算未公开的起止边界。
 Interval 期间继续保存上游提供的 start/end。历史 Frame v2 中包含实际和名义日历边界的期间记录仍可读取。
@@ -87,49 +93,33 @@ Interval 期间继续保存上游提供的 start/end。历史 Frame v2 中包含
 Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 不读取私有 Store、日志或重新编译 SQL。
 
-## 同次执行的 DataFrame 快照
+## DataFrame 结果投影
 
-`capture_dataset(frame, *, row_limit=5000, labels=None)` 只接受 pandas DataFrame，并要求处于
-`marivo_python` worker 的捕获上下文中。`labels={列名: 展示名}` 只改变展示标签，不改变列 `id`。
-RawSqlResult 不作为 helper 输入；转换及原始标量精度由原分析负责，插件不能恢复 DataFrame 创建时已经丢失的精度。
-SQL、datasource、Evidence 和业务覆盖不从 DataFrame 推断；Host execution record 可保存本次执行声明的
-datasource 名称与 backend，供 reader 展示，但不据此断言该 DataFrame 的来源。warnings 不进入当前快照。
+引用以 Marivo `marivo.dataframe_ref/v2` 为准，包含捕获的绝对 `project_root` 和 `result_id`。
+插件只允许读取当前 Workspace 的结果；不接受裸 ID、其他项目或旧版引用，不替换其位置。
+`read_dataframe` 返回完整且独立的 `DataFrameResult`；按公开 Arrow schema 选择展示 codec，
+保留空列的物理类型与精确标量。读取会加载全量数据，内存和文件 I/O 不受展示行数预算约束。
 
-helper 复用 typed codec，在调用专属 `.dsh-data-analysis/captures/<id>/` 内写快照和结构化 manifest，
-未调用时不创建目录。Host 仅在原执行成功后读取该 manifest，校验文件边界、预算、内容和摘要，
-把 captures 与 registry 中的 Workspace、Session、call/root call 及 codeRef 一并保存到原 Host execution 存储。
-回执的 `snapshots` 按 captureId 返回 snapshotRef；不解析 stdout、扫描目录或新增模型捕获工具。
+投影仍使用 Dataset v1，记录原总行数、保留行数和 complete；不从 attrs、列名或来源存在推断
+SQL、datasource、lineage、业务覆盖或转换正确性。展示标签通过 `marivo_present.labels` 设置。
+新 Frame/DataFrame 资源的 binding 只记录 Workspace；不伪造 Harness codeRef、Session 或 call。
+旧 capture record 仅用于历史快照读取，新 Python 执行不再创建 manifest、capture 目录或回执。
 
-`readDatasetSnapshot(root, workspaceId, snapshotRef)` 先验证 Host execution 记录，再读取准确文件并校验摘要；
-重开不启动 Python、不连接数据源。捕获失败返回 snapshotCaptureError，不签发 snapshotRef，
-原 Python 执行状态仍据实际退出结果报告，不自动重跑。manifest 写入失败不会覆盖原退出码或原异常；
-worker 通过 launcher 管理的临时状态文件报告捕获状态，launcher 在用户 stderr 前写固定状态头，Host 消费后移除。
-临时状态文件位于独立临时目录并在 launcher 结束时清理；状态缺失或损坏按捕获失败处理，不能视为未调用 helper。
-快照内容和引用只来自经过校验的 manifest/文件；不从用户 stdout/stderr 搜索回执。
-helper 调用本身抛出的异常仍由原代码处理；超时、非零退出和取消不签发引用。
-凭据值出现在快照时拒绝捕获，不修改精确单元格来伪装脱敏。
+## 内部展示适配器
 
-## Python helper 与 Runtime
-
-`marivo_python.snapshots` 在已验证引用旁提供 schema 与 coverage 摘要，不返回数据行：每份最多 16 个列描述、整次最多 64 个，超出时设置 `columnsTruncated`；摘要省略字段不改变捕获内容。coverage 含 totalRows/capturedRows/complete/business，完整捕获不等于业务全量。
-`capture.status` 区分 available、unused、failed、not-collected；已知的 Host 捕获失败标记 worker、validation 或 provenance 阶段。非成功执行不收集引用；不能据此断言计算没有效果。helper 异常未经捕获会使 Python 失败，且任一捕获异常使同次 manifest 整体失败，即使原代码处理了该异常。
-公开条件的 Agent 入口见[捕获参考](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/capture.md)。
-
-分发 wheel 为 `dsh_data_analysis_presentation_kit-1.5.1-py3-none-any.whl`，只依赖 pandas。
-Runtime marker v3 同时检查模块版本、distribution 版本、实际导入位置和公开 helper；
-每次 shared checked execution 再核验 helper，避免 Workspace 同名模块遮蔽。管理员 Python 失败时提供修复信息，
-不自动安装或切换解释器；managed 模式通过唯一 wheel 安装路径准备环境。
-kit 只公开 `capture_dataset`、`capture_frame`、`DatasetCaptureReceipt`、`FrameCaptureReceipt` 与 `PresentationDatasetError`；
-Runtime marker 与 checked execution 同时核验两个 capture helper。
+插件不分发或安装 `dsh-data-analysis-presentation-kit`。内部 `python/presentation/*.py` 随插件交付，
+由 Host 按准确安装路径加载；Workspace 的同名模块不能覆盖它。
+它保留插件拥有的 bounded typed JSON 展示编码与 Frame 元数据投影，不复制 Marivo 的持久化或语义实现。
 
 ## 验证
 
 ```sh
 npm run test:presentation-projection
 npm run test:runtime-workspace
+npm run validate:result-references:real
 npm run validate:runtime-workspace:real
 ```
 
-Python 合同测试随 `npm run check` 持续执行；真实脚本使用隔离目录，保留机器证据。
-Frame 验证在原分析执行中捕获快照，随后移除来源并独立读取；覆盖精确标量、coverage、完整键与身份校验。
-旧 Frame v1 和事后恢复声明须拒绝。真实 Runtime、Host/UI 与模型验收分别记录，模块测试不能替代真实运行。
+Python codec 测试复用原共享 fixtures，与 Node 合同共同检查。真实验证使用最新 wheel 的隔离 Runtime，
+覆盖 Frame/DataFrame 跨进程读取、精确值、空类型、截断、错误 Store/Workspace、已嵌入资源的独立复用。
+模块测试不代替真实 Host、浏览器和模型验收。

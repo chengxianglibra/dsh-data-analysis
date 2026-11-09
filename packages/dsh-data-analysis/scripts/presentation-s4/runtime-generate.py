@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import ibis
 import marivo.analysis as mv
-from dsh_data_analysis_presentation import capture_frame
 
 root = Path.cwd()
 (root / 'models/datasources').mkdir(parents=True, exist_ok=True)
@@ -47,7 +46,7 @@ region = catalog.get('dimension:sales.orders.region')
 def produce(metrics, axis):
     frame = session.observe(metrics={name: catalog.get('metric:sales.' + name) for name in metrics}, by=(axis,)).persist()
     data = frame.to_pandas()
-    return {'captureId': capture_frame(frame).capture_id, 'sessionId': frame.session_id, 'artifactRef': frame.artifact_id,
+    return {'ref': frame.ref.to_dict(), 'sessionId': frame.session_id, 'artifactRef': frame.artifact_id,
             'persistedRowCount': len(data), 'valueColumns': list(frame.output_names), 'dataColumns': list(data.columns)}
 
 result = {
