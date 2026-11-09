@@ -17,11 +17,19 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 
 AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；工具调用候选、默认结果的会话节点和报告 tab
 是准确调用及保存版本的薄适配器。候选与已保存文档共用 Renderer；Native 前缀通过 isStreaming 解析，不完整资源显示占位。
-基版本经现有 RPC 核验后可读；生成期 patch 前缀只合并为候选；完整校验成功后才更新草稿或保存，失败保持旧成功版本。候选不执行业务读取、动作或保存。
+基版本经现有 RPC 核验后可读；生成期 patch 前缀只合并为候选；完整校验成功后才更新草稿或保存，失败保持旧成功版本。
+候选保留 Tabs、展开、已准入快照表格的排序/分页与本地图表浏览；不调用业务读取、源码读取、语义导航、提问、导出、刷新或保存。
+TextContent 的 Markdown 链接在候选中仅显示标签，正式 reader 才提供导航，不使用整页 `inert` 阻止阅读。
 Surface 接收文档及已保存资源读取回调，领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。
 阅读状态属于所在视图，位置切换可以重挂。
 
 tool 与右侧 tab 的报告草稿使用同一 Renderer 和 Session/Turn 草稿状态。Native program 前缀在生成期间基于上一成功草稿合并为临时候选，已复用快照继续显示，新资源尚未读取时显示占位。候选与已校验修订分开；成功修订在同一视图更新，失败或取消保留最后成功内容。草稿标明尚未保存，正式版本成功保存后在所选位置原位切换到 reader。历史、导出和「就此提问」使用正式版本的固定 Build。
+
+资源参数区分 omitted、incomplete、complete：省略时继承基版本；完整映射按 full-map replacement，仅复用同名且声明完全一致的准入资源；
+映射未闭合时不把旧资源配给候选范围，暂时隐藏相关数据与图片，文字和布局继续可读。此状态仅属于调用参数，不新增持久化 schema。
+命名语句仍通过既有合并器合并；原始 program 前缀的未闭合语句身份补充 autoClose 丢失的状态，所属 Frame/Dataset 配置局部等待。
+等待只作用于正在生成的具名数据语句及尚未闭合的 inline 资源调用。候选适配层沿用已有引号/分隔符扫描，在 autoClose 前暂隐未闭合的 inline Frame、Dataset 或 Image 调用，避免把合法值前缀误当成最终 ref/view/display；不隐藏此前完整闭合的兄弟调用，也不等待外围容器闭合。完整调用的局部无效配置显示错误，Host 提交仍执行完整校验。
+显式 view/display 未形成或无效时不回退 auto，合法省略 view 的默认行为保留。组件局部错误不遮蔽有效兄弟，明确删除的语句不恢复。
 
 ## 组件与数据视图
 
@@ -83,6 +91,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   Frame 的可选 display 可声明标题、字段格式、比较端点名称、柱图的原始轴键高亮、分类条预览行数、记录坐标预览，以及归因的两期 level-total 字段；保存时按所引用的 Frame 校验。`display.formats` 用于主视图，详细数据采用默认格式，引用保留保存值。
   单位与展示格式由 Harness 基于 Marivo 分析结果决定，插件不额外校验格式与单位是否匹配。浏览器能表达的 currency 使用本地化货币格式；其他单位（如 `USD/mile`）按指定小数位显示数值并保留原单位，不改写保存值或单位。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
+  候选仅接入真实 TabItem 节点、非空 value/trigger 和已形成的 content 数组；错误 slot 类型及重复 value 局部忽略，保留稳定 value 的当前有效选择。
   方向键、Home/End 只移动焦点，Enter/Space 激活；tab/panel 通过稳定 ID 关联，隐藏 panel 不可聚焦。
 - 图片只显示已保存的 image 资源；TextContent 不加载远程图片。
 

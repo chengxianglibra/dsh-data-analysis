@@ -106,6 +106,7 @@ export class MarivoHelpBridge {
       }
       return result.stdout
     } catch (cause) {
+      signal?.throwIfAborted()
       if (cause instanceof MarivoHelpError) throw cause
       if (
         cause instanceof MarivoEnvironmentError &&

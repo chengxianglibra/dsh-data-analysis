@@ -108,7 +108,6 @@ export function CoverageIcon({
   snapshot: Pick<Snapshot, 'coverage' | 'fetchedAt'>
 }) {
   const t = useCopy()
-  const { candidate } = useAnalysisResources()
   const [open, setOpen] = useState(false)
   const { capturedRows, totalRows } = s.coverage
   const counts = `${capturedRows.toLocaleString(t.locale)}/${totalRows.toLocaleString(t.locale)}`
@@ -123,7 +122,7 @@ export function CoverageIcon({
         tip={t(`${P}ui-frame-coverage-tip`, { p0: counts, p1: s.fetchedAt })}
         hasPopup="dialog"
         expanded={open}
-        onOpen={candidate ? undefined : () => setOpen(true)}
+        onOpen={() => setOpen(true)}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" strokeWidth="2.5" />

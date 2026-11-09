@@ -12,6 +12,7 @@ import { type AnalysisResourceContext, AnalysisResources } from './context.tsx'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
+import { pendingAnalysisStatement, readableAnalysisPrefix } from './streaming-program.ts'
 
 const styles = `
 .pr-reader.au-surface{container:mv-surface/inline-size;min-width:0;max-width:100%;padding:0}
@@ -81,6 +82,7 @@ export interface AnalysisRendererProps {
   recordId?: string
   readResource?: (name: string) => AnalysisResource | undefined
   isStreaming?: boolean
+  candidateProgram?: string
   candidate?: boolean
   offline?: boolean
   openSemanticRef?: OpenSemanticRef
@@ -98,6 +100,7 @@ export function AnalysisRenderer({
   recordId,
   readResource,
   isStreaming = false,
+  candidateProgram,
   candidate = false,
   offline = false,
   openSemanticRef,
@@ -110,6 +113,11 @@ export function AnalysisRenderer({
     () => ({
       readResource: readResource ?? ((name: string) => saved[name]),
       candidate,
+      isStreaming,
+      pendingStatementId:
+        candidate && isStreaming
+          ? pendingAnalysisStatement(candidateProgram ?? program)
+          : undefined,
       offline,
       openSemanticRef: candidate ? undefined : openSemanticRef,
       readCode: candidate ? undefined : readCode,
@@ -121,6 +129,9 @@ export function AnalysisRenderer({
       saved,
       readResource,
       candidate,
+      isStreaming,
+      candidateProgram,
+      program,
       offline,
       openSemanticRef,
       readCode,
@@ -136,9 +147,6 @@ export function AnalysisRenderer({
           className="mv-ui pr-reader au-surface bg-background"
           lang={locale}
           data-analysis-record={recordId}
-          ref={(node) => {
-            node?.toggleAttribute('inert', candidate)
-          }}
         >
           <style>{PRESENTATION_STYLES}</style>
           <UIStyleSheet />
@@ -149,7 +157,7 @@ export function AnalysisRenderer({
             <h1 className="au-surface-title">{title}</h1>
             <Renderer
               library={analysisLibrary}
-              response={program}
+              response={candidate && isStreaming ? readableAnalysisPrefix(program) : program}
               isStreaming={isStreaming}
               publishObservability={false}
             />

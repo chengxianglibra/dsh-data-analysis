@@ -4,7 +4,6 @@ import {
   type AnalysisDocument,
   parseAnalysisRecordId,
   parseSavedPresentation,
-  sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
 import { parseReportHistory } from '../../presentation/contracts/catalog.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
@@ -13,7 +12,7 @@ import { useCopy } from '../i18n/context.tsx'
 import { type PresentationRpc, verifyPresentationAsset } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
-import type { AnalysisCandidate } from './candidate.ts'
+import { type AnalysisCandidate, candidateResources } from './candidate.ts'
 import { CandidateAnalysisSurface, SavedAnalysisSurface } from './lazy-surface.tsx'
 import { streamingAnalysisProgram } from './streaming-program.ts'
 
@@ -173,18 +172,7 @@ export function CandidateView({
     if (!document) return basedOnRecordId ? undefined : candidate.program
     return streamingAnalysisProgram(document.program, candidate.program)
   }, [candidate.preview, candidate.program, document, basedOnRecordId, terminal])
-  const resources = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(document?.resources ?? {}).filter(
-          ([name, resource]) =>
-            candidate.resources === undefined ||
-            (candidate.resources[name] &&
-              sameAnalysisDeclaration(resource.declaration, candidate.resources[name]!)),
-        ),
-      ),
-    [document, candidate.resources],
-  )
+  const resources = candidateResources(document, candidate)
   return (
     <section
       className="mv-ui"
@@ -216,7 +204,8 @@ export function CandidateView({
           title={candidate.title ?? document?.title ?? 'Analysis'}
           locale={candidate.locale ?? document?.locale ?? 'zh-CN'}
           resources={resources}
-          isStreaming={!candidate.complete}
+          isStreaming={candidate.phase === 'preparing' || candidate.phase === 'start'}
+          candidateProgram={candidate.program}
         />
       ) : retained ? (
         <SavedAnalysisSurface document={retained} />

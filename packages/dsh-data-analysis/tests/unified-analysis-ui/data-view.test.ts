@@ -320,9 +320,9 @@ test('Dataset heatmap retains raw large keys, exact values and empty combination
   assert.equal(await page.locator('[data-mark="empty"]').count(), 1)
 })
 
-test('invalid Dataset views fail in saved rendering and fall back only in streaming candidates', () => {
+test('invalid Dataset views fail locally in saved and candidate rendering', () => {
   const snapshot = datasetSnapshot()
   const view: FrameView = { chart: 'bar', encoding: { axis: 'missing', values: ['value'] } }
   assert.match(render(snapshot, false, view), /role="alert"/)
-  assert.match(render(snapshot, false, view, true), /<table/)
+  assert.match(render(snapshot, false, view, true), /role="alert"/)
 })

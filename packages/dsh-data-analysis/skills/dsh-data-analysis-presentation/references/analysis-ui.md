@@ -2,7 +2,7 @@
 
 ## 选择数据来源与刷新契约
 
-适用的 governed 分析优先保留持久化 AnalysisFrame 并使用 AnalysisFrameView；文件或合法外部计算的 DataFrame 使用 DatasetView。每个数据视图有自己的独立脚本、资源和命名语句，不把同一结果挂到多个独立组件，也不把多个组件的计算合成一次调用。
+适用的 governed 分析优先保留持久化 AnalysisFrame 并使用 AnalysisFrameView；文件或合法外部计算的 DataFrame 使用 DatasetView。每个数据视图使用独立命名语句；多个视图可以共享同一准确固定资源或引用并保留原生产 codeRef，不为不同展示重复计算。派生结果显式读取准确固定输入、保存新输出，代码记录不冒充完整依赖图。
 
 新建可刷新报告时，按已核验的字段尽量显式选择 chart 和 encoding；table 可明确 columns，避免列随数据变化。auto 适合探索草稿或只能由 Frame 结构判定的视图，不承诺刷新后的呈现形态固定。部分 comparison/decomposition 视图也会按结构调整内部布局。保持分析粒度、角色和字段契约，并核对形态；不能通过新增空值、伪造行或改变业务口径维持外观。
 

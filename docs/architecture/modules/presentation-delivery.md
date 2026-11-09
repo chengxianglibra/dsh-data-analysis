@@ -12,7 +12,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 ## 统一分析 UI 写入与增量契约
 
-`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。直接交付时，`stage` 默认 `save`，并使用 `surface`、`basedOnRecordId`、`resources`、`labels`、`title`、`program` 和 `locale` 构造正式版本。
+`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。独立新结果直接交付时，`stage` 默认 `save`，并使用 `surface`、`basedOnRecordId`、`resources`、`labels`、`title`、`program` 和 `locale` 构造正式版本。携带 `draftId` 或 `draftRevision` 必须显式提供 `stage`，省略返回 `analysis-draft-stage-required`，不套用直接保存默认值。
 
 报告工作流要求显式选择 stage：数据准备前尽早 preview，组件由独立 Python 调用完成后及时更新同一草稿，不等全部计算完成，最终 save 一次。独立计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，resources 为空。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
 
@@ -78,7 +78,7 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 - `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本。若正式基版本已变化，保存失败并保留当前草稿。成功后，所选 surface 的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
 - 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
-- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位，沿用的快照继续显示。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，surface、stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
+- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位。资源参数省略时继承已准入快照；完整映射按 full-map replacement 比对同名同声明；未闭合映射不继承旧资源，保留文字与布局并局部等待，避免旧数据配上新范围。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，surface、stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
 - 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId`、相对新基版本的累计 program patch 与完整 resources 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
 - 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。现有 rebase 接口要求 program，此时传准确、未改动的当前正式程序，省略 title/locale/labels，不重放旧草稿布局；无法判断资源或业务冲突时明确阻塞。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。

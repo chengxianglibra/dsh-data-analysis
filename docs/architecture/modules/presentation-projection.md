@@ -54,11 +54,17 @@ business 固定 unknown。
 新增引用由 [result-reader.ts](../../../packages/dsh-data-analysis/src/presentation/result-reader.ts) 在 checked Python 中读取。
 内部 [read_result.py](../../../packages/dsh-data-analysis/python/presentation/read_result.py) 只适配公开结果和展示格式，
 不拥有持久化、引用签发或来源语义。Runtime identity 与 Workspace 在异步边界复核。
-已有报告的相同声明（包括 codeRef）复用内嵌快照，不解析 Runtime 或启动 Python。
+已有报告的相同声明（包括 codeRef）复用内嵌快照，不解析 Runtime 或启动 Python。同一次准入中多个资源名的准确相同声明也只读取一次，复制快照后分别应用标签；同一资源可由多个视图使用，保留原生产绑定。
 新 `dataframe` / `analysis-frame` 声明可携带同次 `marivo_python` 回执的 codeRef；Host 读取当前 Workspace 的执行记录，核验其中登记了准确的 Marivo 引用，再绑定原 Harness Session/call。绑定失败明确报错，不降级为无来源。
 该关联证明该次执行返回过引用，不推断原始计算或完整依赖；只有读取已有结果的代码不能被称为最初的生成脚本。
 工具外层执行预算为 180 秒，定义见[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)。
 取消或快照读取失败不发布 current，不自动重跑分析。
+
+## 首次结果元数据
+
+marivo_python 导出准确引用时在同一受核验进程中附 resultMetadata。Frame 通过公开 Session 恢复和 persisted_frame 取得准确身份，只读取 schema 的列、值及轴名；不读行，totalRows 为 null。DataFrame 使用公开 read_dataframe 返回的 schema 与 row_count；该 API 完整读取固定结果，元数据摘要不调用 to_pandas，也不访问业务来源。每结果摘要最多 4 KiB、64 个各类配置名，总控制帧保持 32 KiB；元数据不可读或超预算单独标为 unavailable，不能让有效引用丢失。
+
+成功 marivo_present 回执及模型文本附 resultMetadataJson，直接从本次已准入快照复用列类型、轴、值和 coverage，不额外读取。展示配置错误携带相同摘要和解析器候选名供直接修复，不把身份、Runtime 或存储失败改写成配置错误。多资源摘要超过 16 KiB 时整体明确 unavailable/budget，不静默丢掉名称。coverage.business 保持 unknown，不把固定行数或捕获完整性称为业务覆盖。
 
 ## Frame 快照
 

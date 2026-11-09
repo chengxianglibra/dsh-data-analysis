@@ -20,6 +20,8 @@ export interface ComponentIdentity {
 export interface AnalysisResourceContext {
   readResource: (name: string) => AnalysisResource | undefined
   candidate?: boolean
+  isStreaming?: boolean
+  pendingStatementId?: string
   offline?: boolean
   /** Opens the current definition through the existing semantic browser; absent offline. */
   openSemanticRef?: OpenSemanticRef

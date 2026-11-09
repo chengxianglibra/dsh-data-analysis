@@ -25,9 +25,9 @@ print(f"Workspace project: {root}")
 
 使用绑定解释器，不运行 PATH 或 Workspace .venv 中的其他 Marivo。初始化成功后再执行组件脚本，核对生成引用仍指向当前 Workspace。已有无效 manifest 按实际错误处理；不使用 `--force`，不覆盖原项目或手写 manifest 规避校验。`marivo init` 创建项目脚手架，包含 models、状态目录及上游 Skill 链接；它不建立 datasource 或业务语义。普通文件预览无需初始化。
 
-## 单个组件的持久化出口
+## 新计算的持久化出口
 
-每个报告数据组件单独调用 `marivo_python`，脚本包含输入读取、计算和以下一种持久化出口。下面两段是不同组件类型的出口示意，不是把多个组件放进同一调用的模板；具体分析代码按当前 Runtime Help 编写。
+新的分析计算通过自包含的 `marivo_python` 调用读取明确输入、计算和持久化，下面是两种结果出口。相同准确结果可供多个视图使用，无需为每个视图重复生产；单次计算也可导出多个所需结果。具体 API 按当前 Runtime Help 编写。
 
 优先保留 governed 分析得到的 AnalysisFrame：
 
@@ -39,7 +39,7 @@ saved = frame.persist(description="本次分析结果")
 frame_ref = saved.ref.to_dict()
 ```
 
-该调用传 `resultVariables:{"overview":"frame_ref"}`。纯文件或合法外部计算得到 DataFrame 时，使用另一份独立脚本：
+该调用传 `resultVariables:{"overview":"frame_ref"}`。纯文件或合法外部计算得到 DataFrame 时：
 
 ```python
 import marivo.analysis as mv
@@ -59,18 +59,22 @@ table_ref = mv.persist_dataframe(table).to_dict()
 Frame 引用含 `schema: "marivo.frame_ref/v2"`、`store_id`、`session_id`、`artifact_id`。
 DataFrame 引用含 `schema: "marivo.dataframe_ref/v2"`、`project_root`、`result_id`。
 不得拼造、补写或改换引用中的身份；DataFrame 的 `project_root` 必须属于当前 Workspace。
-从返回的 resultRefs 按名称取准确引用，并同时保留 codeRef。工具容量是至多 16 个输出、32 KiB 结构化导出；报告流程每次只导出目标组件的结果。变量缺失、非法引用或导出失败时返回 resultCaptureError，原执行成功状态保持不变，不重放代码来补导出。
+从返回的 resultRefs 按名称取准确引用，并同时保留 codeRef。工具容量是至多 16 个输出、32 KiB 结构化导出；按实际计算导出所需结果，不按视图数量重复导出或计算。变量缺失、非法引用或导出失败时返回 resultCaptureError，原执行成功状态保持不变，不重放代码来补导出。
 提供 `codeRef` 时，Host 核验同一 Workspace 的执行记录确实登记了该引用；无关或不可读的记录明确失败。
 
 Host 在绑定 Python Runtime 中使用 Marivo 公开 API 恢复固定结果并生成展示投影；
 不需要 HTTP 服务、原分析进程、当前模型或数据源凭据。展示不会隐式 compute/persist。
-持久引用可以在后续调用中复用；页面编辑复用未变化资源，用户要求刷新数据时则独立重算指定组件，不能用旧引用冒充刷新。
+持久引用可以在后续调用中复用；页面编辑复用未变化资源，用户要求刷新数据时则显式重算指定结果并更新依赖它的视图，不能用旧引用冒充刷新。
 报告保存后内嵌展示快照，布局与文字更新不依赖原 Store。
 Marivo 引用自身不提供 Harness 脚本身份。脚本和 `codeRef` 来自 Host 执行回执，不能拼造，也不能拿其他调用的 codeRef 关联。
 已有外部结果或脚本记录失败时可省略 codeRef，但须说明无法追溯脚本，不为补记录重跑分析。
-关联证明该次执行导出过引用；若代码只读取已有结果，不能把它称为最初的计算脚本。新组件脚本将读取输入、计算、持久化放在同次调用中，并用 resultVariables 声明该组件的引用变量。
+关联证明该次执行导出过引用；若代码只读取已有结果，不能把它称为最初的计算脚本。派生脚本显式读取准确固定输入、计算并持久化新输出，使用自己的 codeRef；记录中未表达的完整依赖不可声称已捕获。没有新计算时直接复用原引用和生产 codeRef，不用读取调用的 codeRef 替换原生产记录。
 
 分析生成的图片使用自己的完整脚本，成功后交付 image-file 路径；目前图片声明不支持 codeRef。刷新图片时使用新路径，同路径声明会复用原内嵌图片。已有外部图片按实际来源使用，不补造生成脚本。
+
+脚本成功回执中的 `resultMetadata` 提供有界配置名：Frame 的列、值、轴来自公开 `schema`，不读业务来源；schema 不能证明行数，`totalRows` 为 null。DataFrame 的列和已保存行数来自公开 `read_dataframe`，该 API 会读取完整固定结果，但不查询来源。元数据失败或超预算独立标为 unavailable，不使已成功导出的引用失效。
+
+`marivo_present.resultMetadataJson` 从本次准入快照复用列类型、轴、值和完整 coverage，不额外启动 Python；配置错误也带实际候选元数据。先依据它修复视图，不为查询列名重跑分析。
 
 ## 展示预算与覆盖范围
 

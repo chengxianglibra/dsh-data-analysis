@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -27,6 +27,7 @@ import {
   parseDoctorReport,
 } from '../src/environment/index.ts'
 import { apply, inject } from '../src/plugin.ts'
+import { removeSkillBuildFixture } from '../tests/plugin-integration-delivery/skill-build-fixture.ts'
 import {
   installConnectionFixture,
   installStorage,
@@ -490,7 +491,7 @@ for (const agent of validationAgents) {
   assert.equal(agent.ctx.tools.get('marivo_help', agent), undefined)
   assert.equal(agent.ctx.tools.get('marivo_datasource_test', agent), undefined)
 }
-await rm(validationRoot, { recursive: true, force: true })
+await removeSkillBuildFixture(validationRoot)
 process.stdout.write(
   `${JSON.stringify(
     {

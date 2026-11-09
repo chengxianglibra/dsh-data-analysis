@@ -3,6 +3,7 @@ export class PresentationRecoveryError extends Error {
   constructor(
     code:
       | 'analysis-draft-invalid-request'
+      | 'analysis-draft-stage-required'
       | 'analysis-draft-unavailable'
       | 'analysis-draft-conflict'
       | 'analysis-draft-busy'

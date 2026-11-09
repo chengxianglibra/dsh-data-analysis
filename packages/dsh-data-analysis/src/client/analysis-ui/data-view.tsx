@@ -1,6 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { resolveDatasetView } from '../../presentation/contracts/dataset-view.ts'
-import type { FrameDisplay, FrameView } from '../../presentation/contracts/frame-view.ts'
+import { validateFrameDisplay } from '../../presentation/contracts/frame-display.ts'
+import {
+  type FrameDisplay,
+  type FrameView,
+  resolveFrameView,
+} from '../../presentation/contracts/frame-view.ts'
 import { formatCell } from '../../presentation/contracts/index.ts'
 import {
   type AnalysisSnapshot,
@@ -100,25 +105,51 @@ export function AnalysisDataView({
   display,
   kind,
   component,
+  configuration,
 }: Omit<AnalysisViewProps, 'ref'> & {
   resourceName?: string
   kind: AnalysisSnapshot['kind']
   component?: ComponentIdentity
+  configuration?: 'pending' | 'invalid'
 }) {
   const t = useCopy()
-  const { readResource, candidate } = useAnalysisResources()
+  const { readResource, candidate, isStreaming, pendingStatementId } = useAnalysisResources()
   const resource = resourceName ? readResource(resourceName) : undefined
-  if (resource?.kind !== 'snapshot' || resource.snapshot.kind !== kind)
+  let incompleteInlineConfiguration = false
+  if (
+    candidate &&
+    isStreaming &&
+    pendingStatementId &&
+    !component?.statementId &&
+    resource?.kind === 'snapshot'
+  ) {
+    const resolution = isFrameSnapshotV2(resource.snapshot)
+      ? resolveFrameView(resource.snapshot, view)
+      : resolveDatasetView(resource.snapshot, view)
+    incompleteInlineConfiguration =
+      !resolution.ok ||
+      (isFrameSnapshotV2(resource.snapshot) &&
+        resolution.ok &&
+        Boolean(validateFrameDisplay(resource.snapshot, resolution.view, display)))
+  }
+  const pending =
+    configuration === 'pending' || (candidate && isStreaming && configuration !== 'invalid')
+  if (
+    configuration ||
+    incompleteInlineConfiguration ||
+    resource?.kind !== 'snapshot' ||
+    resource.snapshot.kind !== kind
+  )
     return (
-      <Alert role={candidate ? 'status' : 'alert'} variant={candidate ? 'default' : 'destructive'}>
+      <Alert role={pending ? 'status' : 'alert'} variant={pending ? 'default' : 'destructive'}>
         <AlertDescription>
           {t(
-            candidate
+            pending
               ? 'marivo.presentation.ui-resource-pending'
               : 'marivo.presentation.ui-resource-unavailable',
           )}
         </AlertDescription>
-        {candidate && <Skeleton className="h-24 w-full" />}
+        {pending && <Skeleton className="h-24 w-full" />}
       </Alert>
     )
   const snapshot = resource.snapshot
@@ -316,10 +347,7 @@ function DatasetDataView({
       })
     return () => controller.abort()
   }, [sourceOpen, codeRef, codeKey, readCode])
-  const resolution = useMemo(() => {
-    const explicit = resolveDatasetView(snapshot, view)
-    return explicit.ok || !candidate ? explicit : resolveDatasetView(snapshot)
-  }, [snapshot, view, candidate])
+  const resolution = useMemo(() => resolveDatasetView(snapshot, view), [snapshot, view])
   const resolved = resolution.ok ? resolution.view : undefined
   const chart =
     resolved && resolved.chart !== 'table' && resolved.chart !== 'metric' ? resolved : undefined
@@ -337,7 +365,7 @@ function DatasetDataView({
   )
   if (!resolution.ok)
     return (
-      <Alert variant="destructive">
+      <Alert role="alert" variant="destructive">
         <AlertDescription>{t('marivo.presentation.ui-resource-unavailable')}</AlertDescription>
       </Alert>
     )
@@ -576,7 +604,7 @@ function DatasetDataView({
                 label={t('marivo.presentation.ui-frame-data-table')}
                 tip={t('marivo.presentation.ui-frame-data-table')}
                 hasPopup="dialog"
-                onOpen={candidate ? undefined : () => setDataOpen(true)}
+                onOpen={() => setDataOpen(true)}
               >
                 <FrameIcon kind="table" />
               </FrameIconButton>

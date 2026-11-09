@@ -31,6 +31,7 @@ import {
 } from './receipt.ts'
 import { PresentationRecoveryError, unavailableDraft } from './recovery.ts'
 import { publishPresentation, readAnalysisRecord, resolvePresentation } from './reports.ts'
+import { analysisResultSummary } from './result-summary.ts'
 
 export type PresentationWorkspaceSource = () =>
   | { id: string; path: string }
@@ -65,7 +66,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis result, draft or saved report. For reports and dashboards, load dsh-data-analysis-presentation before preparing data, preview early, update the same draft after each independently prepared component becomes ready, then save once. A saved-report data refresh preserves the page definition and replaces only same-name resources. Serialize mutations to the same draft; independent calculations need not wait for them. Preview returns draftId/draftRevision after validating and updating the in-memory draft, without waiting for browser rendering or user confirmation; save returns recordId. One draft per Session Turn expires at Turn end or Host restart. Standalone results outside a report workflow can save directly. Use marivo_ui_read to establish refresh context or recover missing context and conflicts; deliveryJson belongs to Host delivery.',
+      'Create or update an analysis result, draft or saved report. For reports and dashboards, load dsh-data-analysis-presentation before preparing data, preview confirmed scope with resources={} before data preparation or complete page planning, update the same draft promptly as results become ready (already-ready related views may be batched), then explicitly save once. A saved-report data refresh preserves the page definition and replaces only same-name resources. Python calls and draft writes currently use Harness exclusive scheduling. Always specify stage with draft identity. Preview returns draftId/draftRevision after validating and updating the in-memory draft, without waiting for browser rendering or user confirmation; save returns recordId. One draft per Session Turn expires at Turn end or Host restart. Standalone results outside a report workflow can save directly. Use marivo_ui_read to establish refresh context or recover missing context and conflicts; resultMetadataJson contains bounded column/axis/value names and coverage from admitted snapshots, without rows or new reads. Use it and configuration error candidates to repair views without rerunning analysis; deliveryJson belongs to Host delivery.',
     parameters: {
       surface: {
         type: 'string',
@@ -77,7 +78,7 @@ export function createMarivoPresentTool(
         type: 'string',
         enum: ['preview', 'save'],
         description:
-          'Defaults to save; report workflows must select preview or save explicitly. Preview updates the same unsaved draft without adding history, including a text-only starting page. Native program prefixes stream as candidates; new resources appear after validation. Save the latest draft once the requested report work is complete.',
+          'Defaults to save only for a standalone request without draft identity. Requests with draftId or draftRevision require an explicit preview or save stage. Preview updates the same unsaved draft without adding history, including a text-only starting page. Native program prefixes stream as candidates; new resources appear after validation. Save the latest draft once the requested report work is complete.',
       },
       draftId: {
         type: 'string',
@@ -100,7 +101,7 @@ export function createMarivoPresentTool(
       resources: {
         type: 'object',
         description:
-          'Map names to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use exact public persisted references from this Workspace. New report data components use independent names, results and producer calls; attach each call\'s matching codeRef from resultVariables export. Omit resources to inherit; providing a map replaces the full set, not a patch. During a saved-report data refresh, keep all resource names and replace only the refreshed declarations; normally omit program/title/locale/labels. New data must satisfy the unchanged views. Identical declarations reuse old embedded content, including same-path images, and do not refresh it. No rows or arbitrary URLs.',
+          'Map names to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use exact public persisted references from this Workspace. Multiple components may use the same exact fixed result or resource; preserve its original producer codeRef from resultVariables export. Explicit derivations create new outputs and use their own codeRef; codeRef does not prove the full dependency graph. Omit resources to inherit; providing a map replaces the full set, not a patch. During a saved-report data refresh, keep all resource names and replace only the refreshed declarations; normally omit program/title/locale/labels. New data must satisfy the unchanged views. Identical declarations reuse old embedded content, including same-path images, and do not refresh it. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
@@ -135,6 +136,7 @@ export function createMarivoPresentTool(
           draftRevision: { type: 'string' },
           recordId: { type: 'string' },
           deliveryJson: { type: 'string', required: true },
+          resultMetadataJson: { type: 'string', required: true },
         },
       },
       render: (_args, value) => {
@@ -143,16 +145,29 @@ export function createMarivoPresentTool(
           return [
             {
               type: 'text',
-              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}\nSurface: ${delivery.surface}`,
+              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}\nSurface: ${delivery.surface}\nResult metadata: ${value.resultMetadataJson}`,
             },
           ]
-        return [{ type: 'text', text: presentationReceiptText(delivery.receipt, delivery.surface) }]
+        return [
+          {
+            type: 'text',
+            text: `${presentationReceiptText(delivery.receipt, delivery.surface)}\nResult metadata: ${value.resultMetadataJson}`,
+          },
+        ]
       },
       presentationMeta: (_args, value) => JSON.parse(value.deliveryJson),
     },
     timeoutMs: PRESENTATION_EXECUTION_BUDGETS.toolTimeoutMs,
     async execute(args, exec) {
       const signal = lifecycleSignal ? AbortSignal.any([exec.signal, lifecycleSignal]) : exec.signal
+      if (
+        args.stage === undefined &&
+        (args.draftId !== undefined || args.draftRevision !== undefined)
+      )
+        throw new PresentationRecoveryError(
+          'analysis-draft-stage-required',
+          'Select stage=preview to update the draft or stage=save to publish it. Continuing a draft never defaults to save; reuse its latest successful draftId/draftRevision.',
+        )
       const input = presentationToolInput.parse(args)
       if (
         Boolean(input.draftId) !== Boolean(input.draftRevision) ||
@@ -273,6 +288,7 @@ export function createMarivoPresentTool(
             draftId: delivery.draftId,
             draftRevision: delivery.draftRevision,
             deliveryJson: JSON.stringify(delivery),
+            resultMetadataJson: JSON.stringify(analysisResultSummary(document.resources)),
           }
         }
         const receipt = await publishPresentation(
@@ -287,6 +303,7 @@ export function createMarivoPresentTool(
         return {
           stage: 'save' as const,
           recordId: document.recordId,
+          resultMetadataJson: JSON.stringify(analysisResultSummary(document.resources)),
           deliveryJson: JSON.stringify(
             parsePresentationDelivery({
               kind: MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -368,7 +385,7 @@ export function createMarivoUiReadTool(
   return defineTool({
     name: 'marivo_ui_read',
     description:
-      "Read an exact/current saved report or the active Turn draft without querying data or executing scripts. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. recordId selects an exact version; current=true selects its report's current version; draft=true selects the calling Session Turn draft. Choose saved or draft input, not both. definitionJson contains identifiers, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare each component independently, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.",
+      "Read an exact/current saved report or the active Turn draft without querying data or executing scripts. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. recordId selects an exact version; current=true selects its report's current version; draft=true selects the calling Session Turn draft. Choose saved or draft input, not both. definitionJson contains identifiers, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare explicit new fixed results, reuse shared results across their dependent views, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.",
     parameters: {
       recordId: {
         type: 'string',

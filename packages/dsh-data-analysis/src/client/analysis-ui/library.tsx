@@ -25,19 +25,82 @@ const datasetProps = z.object({
   display: datasetDisplaySchema.optional(),
 })
 
+type AnalysisTabItem = ElementNode & {
+  props: { value: string; trigger: string; content: unknown[] }
+}
+function isAnalysisTabItem(item: unknown): item is AnalysisTabItem {
+  if (
+    !item ||
+    typeof item !== 'object' ||
+    !('type' in item) ||
+    item.type !== 'element' ||
+    !('typeName' in item) ||
+    item.typeName !== 'TabItem' ||
+    !('props' in item) ||
+    !item.props ||
+    typeof item.props !== 'object'
+  )
+    return false
+  const props = item.props
+  return (
+    'value' in props &&
+    typeof props.value === 'string' &&
+    Boolean(props.value.trim()) &&
+    'trigger' in props &&
+    typeof props.trigger === 'string' &&
+    Boolean(props.trigger.trim()) &&
+    'content' in props &&
+    Array.isArray(props.content)
+  )
+}
+
+function usePendingStatement(statementId?: string) {
+  const context = useAnalysisResources()
+  return Boolean(
+    context.candidate &&
+      context.isStreaming &&
+      statementId !== undefined &&
+      context.pendingStatementId === statementId,
+  )
+}
+
+function ResourceView({
+  kind,
+  props,
+  statementId,
+}: {
+  kind: 'frame' | 'dataset'
+  props: z.infer<typeof frameProps>
+  statementId?: string
+}) {
+  const context = useAnalysisResources()
+  const namedPending = usePendingStatement(statementId)
+  const valid = (kind === 'frame' ? frameProps : datasetProps).safeParse(props)
+  const pending =
+    namedPending ||
+    (!valid.success &&
+      context.candidate &&
+      context.isStreaming &&
+      context.pendingStatementId !== undefined)
+  return (
+    <AnalysisDataView
+      kind={kind}
+      component={{ kind, statementId, view: props.view, display: props.display }}
+      resourceName={props.ref}
+      view={props.view}
+      display={props.display}
+      configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
+    />
+  )
+}
+
 export const AnalysisFrameView = defineComponent({
   name: 'AnalysisFrameView',
   description:
     'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
   props: frameProps,
   component: ({ props, statementId }) => (
-    <AnalysisDataView
-      kind="frame"
-      component={{ kind: 'frame', statementId, view: props.view, display: props.display }}
-      resourceName={props.ref}
-      view={props.view}
-      display={props.display}
-    />
+    <ResourceView kind="frame" props={props} statementId={statementId} />
   ),
 })
 export const DatasetView = defineComponent({
@@ -46,18 +109,21 @@ export const DatasetView = defineComponent({
     'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
   props: datasetProps,
   component: ({ props, statementId }) => (
-    <AnalysisDataView
-      kind="dataset"
-      component={{ kind: 'dataset', statementId, view: props.view, display: props.display }}
-      resourceName={props.ref}
-      view={props.view}
-      display={props.display}
-    />
+    <ResourceView kind="dataset" props={props} statementId={statementId} />
   ),
 })
-function ResourceImage({ src, alt }: { src?: string; alt?: string }) {
+function ResourceImage({
+  src,
+  alt,
+  statementId,
+}: {
+  src?: string
+  alt?: string
+  statementId?: string
+}) {
+  const pending = usePendingStatement(statementId)
   const resource = useAnalysisResources().readResource(src ?? '')
-  return resource?.kind === 'image' ? (
+  return !pending && resource?.kind === 'image' ? (
     <img className="au-image" src={resource.dataUrl} alt={alt ?? ''} />
   ) : null
 }
@@ -107,24 +173,32 @@ const subset = openuiLibrary.extend({
       defineComponent({
         ...official.Image!,
         description: 'Saved image; src is an admitted resource name, never a URL.',
-        component: ({ props }) => <ResourceImage src={props.src} alt={props.alt} />,
+        component: ({ props, statementId }) => (
+          <ResourceImage src={props.src} alt={props.alt} statementId={statementId} />
+        ),
       }),
       defineComponent({
         ...official.TextContent!,
-        component: ({ props }) => (
-          <div className="au-text" data-size={props.size}>
-            <Markdown text={props.text ?? ''} />
-          </div>
-        ),
+        component: function AnalysisText({ props }) {
+          const { candidate } = useAnalysisResources()
+          return (
+            <div className="au-text" data-size={props.size}>
+              <Markdown text={props.text ?? ''} links={!candidate} />
+            </div>
+          )
+        },
       }),
       defineComponent({
         ...official.Tabs!,
         component: function AnalysisTabs({ props, renderNode }) {
           const t = useCopy()
-          // Element identities and props were checked against the generated TabItem slot schema.
-          const items = (props.items ?? []) as {
-            props: { value: string; trigger: string; content: ElementNode[] }
-          }[]
+          const values = new Set<string>()
+          const candidates: unknown[] = Array.isArray(props.items) ? props.items : []
+          const items = candidates.filter((item): item is AnalysisTabItem => {
+            if (!isAnalysisTabItem(item) || values.has(item.props.value)) return false
+            values.add(item.props.value)
+            return true
+          })
           return (
             <Tabs
               label={t('marivo.presentation.ui-report-sections')}

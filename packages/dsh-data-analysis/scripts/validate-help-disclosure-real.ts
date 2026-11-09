@@ -123,11 +123,24 @@ const empty = await executeFocused([])
 assert.equal(empty.isError, true)
 const emptyText = empty.content[0]?.type === 'text' ? empty.content[0].text : ''
 assert.match(emptyText, /at least one target/i)
-const invalid = await executeFocused(['analysis.session.observe', 'definitely.not.a.target'])
-assert.equal(invalid.isError, true)
+const invalid = await executeFocused([
+  'analysis.session.observe',
+  'definitely.not.a.target',
+  'analysis.analysis_frame.compare',
+])
+assert.equal(invalid.isError, false)
+if (invalid.isError) throw new Error('mixed targets must return per-target outcomes')
+const mixed = invalid.value as unknown as MarivoHelpValue
+assert.deepEqual(
+  mixed.targets.map((item) => item.target),
+  ['analysis.session.observe', 'analysis.analysis_frame.compare'],
+)
+assert.equal(mixed.errors?.[0]?.target, 'definitely.not.a.target')
+assert.equal(mixed.errors?.[0]?.code, 'target-failed')
 const invalidText = invalid.content[0]?.type === 'text' ? invalid.content[0].text : ''
 assert.match(invalidText, /definitely\.not\.a\.target/)
-assert.ok(!invalidText.includes(directBodies.get('analysis.session.observe')!))
+assert.ok(invalidText.includes(directBodies.get('analysis.session.observe')!))
+assert.ok(invalidText.includes(directBodies.get('analysis.analysis_frame.compare')!))
 
 function textResponse(text: string): StreamChunk[] {
   return [
@@ -354,7 +367,7 @@ process.stdout.write(
       focusedResults: {
         empty: empty.isError ? 'error' : 'success',
         multipleDeduplicated: focusedValue.targets.length,
-        invalid: invalid.isError ? 'isError' : 'unexpected-success',
+        invalid: 'per-target-error-with-successful-help',
       },
       activation: {
         requestTools: adapter.requests

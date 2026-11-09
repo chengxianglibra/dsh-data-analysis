@@ -29,9 +29,9 @@ Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路
 
 ## 报告组件数据
 
-遵循展示 Skill 的流程：每个数据组件用独立完整脚本，从准确输入路径读取、计算并持久化；数据就绪后及时更新同一草稿，不等全部计算完成。Harness 可按依赖、能力和资源预算并发安排独立计算；同一草稿的修改串行执行，单组件展示失败不阻塞其他无依赖计算。纯文件结果可使用 DatasetView，无需为 FrameView 强行建模；已有合适的 governed 分析时优先保留 AnalysisFrame。
+遵循展示 Skill：先展示已知问题与范围，再准备数据。相同固定结果可供多个视图使用，保留生产 codeRef；确需派生时显式读取准确固定输入并持久化新结果。新计算使用完整脚本，不依赖前次内存。结果就绪后及时更新同一草稿，同批已就绪内容可连贯提交，不等全部计算完成。任意 Python 和草稿写入当前由 Harness 串行调度，单组件展示失败保留已有草稿并继续其他可做工作。纯文件结果可使用 DatasetView，无需为 FrameView 强行建模；已有合适的 governed 分析时优先保留 AnalysisFrame。
 
-在同次调用中将 `mv.persist_dataframe(result).to_dict()` 赋给变量，通过 `resultVariables` 导出该组件的引用。从结构化 resultRefs 取得完整字典，连同同次 codeRef 交给 marivo_present；project_root 必须属于当前 Workspace。stdout 不用于发现引用。读取、计算和持久化必须包含在该组件脚本内，后续调用不能访问前次 result 变量。已有外部结果缺少脚本时明确说明，不为补记录重跑。
+在同次调用中将 `mv.persist_dataframe(result).to_dict()` 赋给变量，通过 `resultVariables` 导出该组件的引用。从结构化 resultRefs 取得完整字典，连同同次 codeRef 交给 marivo_present；project_root 必须属于当前 Workspace。stdout 不用于发现引用。新计算的读取、计算和持久化放在同次调用，后续调用通过公开固定结果 API 读取准确引用，不能访问前次 result 变量。单纯重复展示保留原引用和 codeRef，无需再调用 Python。已有外部结果缺少脚本时明确说明，不为补记录重跑。
 
 首次持久化和交付时按展示 Skill 读取其结果引用参考，持久化约束以 Marivo live Help 为准。在报告中说明输入文件与分析范围。刷新已保存报告时遵循展示 Skill 的仅资源替换流程，保持原布局和正文。
 

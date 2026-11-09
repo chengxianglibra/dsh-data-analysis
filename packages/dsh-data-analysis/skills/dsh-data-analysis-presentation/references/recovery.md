@@ -34,3 +34,5 @@ rebase 成功后仍须核对并 save。只换基版本或 revision 不等于解�
 失败保留最后一次成功草稿仅限当前 Turn。`analysis-draft-unavailable` 时，从已保存版本、保留的 program 和已有持久资源声明重建预览；缺少这些内容时说明缺口，不为补预览重跑查询。数据刷新重建时仍保留正式版本程序。图片及同声明快照可复用保存版本或当前草稿内嵌的内容，不要求原捕获文件仍存在。
 
 Native streaming 画面是尚未校验的候选，不能从画面推断新的 draftRevision 或保存成功；只使用成功回执中的标识继续。失败或取消后保留最后成功草稿，候选不进入版本历史。PTC 以实际工具 dispatch 为更新边界。
+
+携带 draftId 或 draftRevision 时省略 stage 返回 `analysis-draft-stage-required`，草稿与正式历史保持不变。明确选择 preview 继续或 save 完成，并使用最新成功修订；不要靠默认值保存。

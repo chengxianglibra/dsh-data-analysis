@@ -12,12 +12,14 @@ Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装�
 - `packages/dsh-data-analysis/src/client.tsx`
 - `packages/dsh-data-analysis/src/integration.ts`
 - `packages/dsh-data-analysis/src/bridges.ts`
+- `packages/dsh-data-analysis/src/skill-build.ts`
+- `packages/dsh-data-analysis/scripts/generate-skill-build.mjs`
 - `packages/dsh-data-analysis/cordis.patch.yml`
 
 ## 生命周期
 
 1. `apply()` 确保精确 Marivo 0.6.4 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
-2. 通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic`、可用时的 `marivo-service`，以及插件自带的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`；两个 provider 均只读取各自明确目录。
+2. 验证随包 Skill 的嵌入构建摘要并准备不可变资源快照；通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic`、可用时的 `marivo-service`，以及快照中的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`。两个 provider 均只读取各自明确目录。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
@@ -79,10 +81,27 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项回答、比较分母、证据强度和未完成分支由文件 Skill 或绑定 Runtime 的分析 Skill 指导。自定义报告和看板的组件参考、版式与页面示例见[展示 Skill](presentation-skill.md)，调用约定由 `marivo_present` 工具说明披露。
 数据源授权、运行身份以及快照和保存结果由代码核验。
 
-展示 Skill 由 `dsh-data-analysis-presentation` provider 从包内 `skills/` 挂载；Runtime Skill 仍由
-`dsh-data-analysis-marivo` provider 从当前 Runtime 读取。两者不包含默认 roots，也不监听目录变化。
+展示与文件分析 Skill 由 `dsh-data-analysis-presentation` provider 从已验证的内容寻址快照挂载；Runtime Skill 仍由
+`dsh-data-analysis-marivo` provider 从当前 Runtime 读取，保持独立的 Runtime identity。两者不包含默认 roots，也不监听目录变化。
 主流程与按需 references 的职责见[展示 Skill](presentation-skill.md)。旧报告 Skill、prompt、三个经典 JS
 资产、emitter、旧 transport schemas 及 Draft/图形示例不再分发，当前包不提供兼容包装。
+
+### 随包 Skill 构建身份
+
+`generate-skill-build.mjs` 按包 `files` 声明扫描随包 Skill 的完整目录树，覆盖 `SKILL.md`、嵌套 references
+以及其他实际支持文件；只接受普通文件与目录，不跟随符号链接。它把每个文件的相对路径和 SHA-256、
+完整清单的 SHA-256 编入 `skill-build.generated.ts`。`npm run prepare:source` 显式生成源码开发身份，
+包构建在 TypeScript 编译前生成同一身份；运行时不从可变目录临时采纳新摘要，包版本号不参与替代校验。
+
+激活时即使已有快照，也先核对当前分发资源与工具构建内嵌清单。通过后使用已验证的原始字节在
+`<runtimeRoot>/plugin-skills/<digest>/` 原子准备只读快照，并把该目录交给现有 filesystem provider；
+Skill 正文路径与 `resourceBase` 都落在同一快照。现有快照内容或只读权限不符时明确失败，不覆盖修复。
+重建产生新摘要，已运行 Host 继续读取原快照；旧工具构建再次激活新资源时会报错并要求重建/重装及重启 Host。
+错误包含构建摘要、资源路径与期望/实际摘要。Runtime Skill 不纳入插件随包资源摘要。
+
+快照不在 plugin disposal 时删除，也不自动回收其他摘要，避免使活动 Skill 的引用资源失效。清理受损或不再使用的
+快照前须关闭所有引用该目录的 Host。隔离测试与安装包验证只在自身 Host 关闭后解锁并删除其专有临时目录。
+文件只读权限遵循平台文件系统能力；该机制约束插件构建与读取生命周期，不替代操作系统的文件访问控制。
 
 [展示数据投影](presentation-projection.md)使用 Marivo 的准确持久引用在绑定 Python Runtime 中读取 Frame/DataFrame。
 新执行不再捕获快照或签发 snapshotRef。Host 保存报告所需的 typed data，不推断来源、codeRef 或计算正确性。
@@ -138,7 +157,7 @@ Workspace 从所属 Session 的成员关系确定，连接或 Workspace 未就�
 
 ## Compatibility 与 package
 
-`dshDataAnalysisCompatibility` 保持 v2 结构，分别声明兼容范围与精确 Runtime 身份：
+`dshDataAnalysisCompatibility` 使用 v3 结构，分别声明兼容范围与精确 Runtime 身份：
 
 | 边界 | 当前值 |
 | --- | --- |

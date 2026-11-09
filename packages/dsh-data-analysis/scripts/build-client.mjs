@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { buildAnalysisCatalog } from './generate-analysis-catalog.mjs'
+import { generateSkillBuild } from './generate-skill-build.mjs'
 import {
   assertBrowserInputs,
   noticeComment,
@@ -11,6 +12,7 @@ import {
 const packageRoot = new URL('../', import.meta.url)
 const outputUrl = new URL('lib/client.js', packageRoot)
 await buildAnalysisCatalog()
+await generateSkillBuild()
 const result = await build({
   entryPoints: [fileURLToPath(new URL('src/client.tsx', packageRoot))],
   outfile: fileURLToPath(outputUrl),

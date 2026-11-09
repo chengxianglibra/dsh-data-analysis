@@ -8,13 +8,13 @@
 
 先以该 recordId 为 basedOnRecordId 调用 `marivo_present(surface:"tab", stage:"preview")`，省略 program 和 resources，展示原报告的草稿副本。后续使用返回的 draftId/draftRevision。刷新进度在聊天中说明，不向报告增添进度组件。
 
-## 按组件独立刷新
+## 按固定结果显式刷新
 
-sources 按 codeRef 去重，这是存储形式，不是批量执行指令。核对目标组件的计算脚本、输入文件、datasource 声明、范围、时间参数和 Runtime Session 生命周期。脚本记录不包含导入模块或输入文件。缺少 codeRef、脚本 unavailable 或输入失效时，明确缺口；可以使用已有可核验的计算定义，不猜造查询或 datasource 范围。
+sources 按 codeRef 去重，不是重放指令。先识别哪些原有视图共享准确固定结果，刷新一次新结果后更新这些视图的同名资源。核对目标组件的计算脚本、输入文件、datasource 声明、范围、时间参数和 Runtime Session 生命周期。脚本记录不包含导入模块或输入文件。缺少 codeRef、脚本 unavailable 或输入失效时，明确缺口；可以使用已有可核验的计算定义，不猜造查询或 datasource 范围。
 
-每个组件分别运行完整 `marivo_python` 脚本，在同次调用内读取输入、计算、持久化并导出一个结果。使用记录的 code.datasources 中的精确 name 和该组件的 resultVariables；空 datasource 数组表示无需 Marivo datasource，旧记录缺字段表示未知。历史脚本若生成多个组件，先按目标组件拆分成独立可运行脚本，保留口径和范围；不能无审阅重放其中其他操作。无法安全拆分时报告该组件阻塞。
+对请求刷新的结果运行已审阅、完整的 `marivo_python` 脚本，在同次调用内读取输入、计算、持久化并导出准确新结果。使用记录的 code.datasources 中的精确 name 和该组件的 resultVariables；空 datasource 数组表示无需 Marivo datasource，旧记录缺字段表示未知。历史脚本包含其他操作时先审阅范围与副作用；仅执行已授权的刷新，不能无审阅重放。共享同一固定结果的视图无需重复生产。
 
-成功后取得结构化 resultRefs 和该次 codeRef，及时 preview 同名资源替换，不等待其他组件全部完成。独立计算可按 Harness 能力、依赖和资源预算并发安排；同一草稿的 preview/save 必须串行。提交完整 resources 映射：当前已刷新的资源保留新声明，未刷新项和图片保留原声明。省略 program/title/locale/labels，使用上一成功预览的 draftId/draftRevision。相同引用会复用旧快照，不能当作刷新；图片需要独立生成到新路径后替换原资源名下的 path。
+成功后取得结构化 resultRefs 和该次 codeRef，及时 preview 同名资源替换，不等待其他组件全部完成。同批已就绪内容可合并 preview；当前 Python 和草稿写入均按 Harness exclusive 调度，不承诺并发。提交完整 resources 映射：当前已刷新的资源保留新声明，未刷新项和图片保留原声明。省略 program/title/locale/labels，使用上一成功预览的 draftId/draftRevision。相同引用会复用旧快照，不能当作刷新；图片需要独立生成到新路径后替换原资源名下的 path。
 
 ## 完成与不兼容
 

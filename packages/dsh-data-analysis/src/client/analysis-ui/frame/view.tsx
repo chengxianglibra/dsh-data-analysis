@@ -85,21 +85,15 @@ export function AnalysisFrame({
   ...rest
 }: Omit<FrameShellProps, 'classification' | 'view'> & { view?: FrameViewSpec }) {
   const t = useCopy()
-  const { candidate } = useAnalysisResources()
-  const resolution = useMemo(() => {
-    const explicit = resolveFrameView(snapshot, view)
-    // Saved views were validated before saving; only a streaming candidate may fall back to auto.
-    return explicit.ok || !candidate ? explicit : resolveFrameView(snapshot)
-  }, [snapshot, view, candidate])
-  if (!resolution.ok) return <p role="alert">{t('marivo.presentation.ui-resource-unavailable')}</p>
+  const resolution = useMemo(() => resolveFrameView(snapshot, view), [snapshot, view])
+  if (!resolution.ok || validateFrameDisplay(snapshot, resolution.view, display))
+    return <p role="alert">{t('marivo.presentation.ui-resource-unavailable')}</p>
   return (
     <FrameShell
       snapshot={snapshot}
       classification={resolution.classification}
       view={resolution.view}
-      display={
-        candidate && validateFrameDisplay(snapshot, resolution.view, display) ? undefined : display
-      }
+      display={display}
       {...rest}
     />
   )
@@ -744,11 +738,7 @@ export function FrameShell({
                   tip={dataLabel}
                   expanded={inlineData ? dataOpen : undefined}
                   hasPopup={inlineData ? undefined : 'dialog'}
-                  onOpen={
-                    candidate
-                      ? undefined
-                      : () => setDataState({ inline: inlineData, open: !dataOpen })
-                  }
+                  onOpen={() => setDataState({ inline: inlineData, open: !dataOpen })}
                 >
                   <FrameIcon kind="table" />
                 </FrameIconButton>

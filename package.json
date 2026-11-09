@@ -59,7 +59,7 @@
     "test:python-tool": "node --experimental-strip-types --test packages/dsh-data-analysis/tests/python-tool/*.test.ts",
     "validate:python-tool:web": "npm run build:ui-styles && node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-tool-web.ts",
     "validate:python-settings:web": "npm run build:ui-styles && node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-python-settings-web.ts",
-    "prepare:source": "node packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs --build",
+    "prepare:source": "node packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs --build && node packages/dsh-data-analysis/scripts/generate-skill-build.mjs",
     "generate:analysis-catalog": "node packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs",
     "test:unified-analysis-ui": "npm run prepare:source && node --experimental-strip-types --test packages/dsh-data-analysis/tests/unified-analysis-ui/*.test.ts",
     "validate:unified-analysis-ui:runtime": "npm run prepare:source && node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/runtime.ts",

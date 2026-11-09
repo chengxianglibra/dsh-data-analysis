@@ -22,6 +22,7 @@ import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
 import { readMarivoResult } from './result-reader.ts'
+import { analysisResultSummary } from './result-summary.ts'
 
 /** Present-level labels live only in the embedded snapshot; they never become a document field. */
 const LABEL_BYTES = 16 * 1024
@@ -136,6 +137,14 @@ export async function createAnalysisDocument(
   })
   for (const [name, declaration] of pending) {
     signal.throwIfAborted()
+    // Exact immutable inputs can serve multiple views. Keep their original producer binding.
+    const shared = Object.values(resources).find((resource) =>
+      sameAnalysisDeclaration(resource.declaration, declaration),
+    )
+    if (shared) {
+      resources[name] = structuredClone(shared)
+      continue
+    }
     if (declaration.kind === 'analysis-frame' || declaration.kind === 'dataframe') {
       let producer: Awaited<ReturnType<typeof readPythonResults>> | undefined
       if (declaration.codeRef) {
@@ -225,16 +234,25 @@ export async function createAnalysisDocument(
       label: labels.get(column.id) ?? column.label,
     }))
   }
-  applyAnalysisLabels(resources, input.labels)
-  return parseAnalysisDocument({
-    schemaVersion: ANALYSIS_UI_FORMAT,
-    ...identity,
-    recordId: analysisRecordId(identity.reportId, identity.buildId),
-    title,
-    locale: input.locale ?? base?.locale ?? 'zh-CN',
-    generatedAt: new Date().toISOString(),
-    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
-    program,
-    resources,
-  })
+  try {
+    applyAnalysisLabels(resources, input.labels)
+    return parseAnalysisDocument({
+      schemaVersion: ANALYSIS_UI_FORMAT,
+      ...identity,
+      recordId: analysisRecordId(identity.reportId, identity.buildId),
+      title,
+      locale: input.locale ?? base?.locale ?? 'zh-CN',
+      generatedAt: new Date().toISOString(),
+      catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+      program,
+      resources,
+    })
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /^(analysis-view-|analysis-columns-|analysis-metric-|analysis-label-)/.test(error.message)
+    )
+      error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(resources))}. Correct the presentation configuration using these exact names; do not rerun analysis to recover metadata.`
+    throw error
+  }
 }

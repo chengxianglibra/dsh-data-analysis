@@ -245,6 +245,24 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
   const resultVariables = { frame: 'frame_ref', data: 'data_ref' }
   const producer = await invoke('marivo_python', { code, datasources: [], resultVariables })
   assert(producer.codeRef)
+  assert.deepEqual(producer.resultMetadata, {
+    frame: {
+      status: 'captured',
+      kind: 'frame',
+      columns: ['amount'],
+      values: ['amount'],
+      axes: [],
+      coverage: { totalRows: null, business: 'unknown' },
+    },
+    data: {
+      status: 'captured',
+      kind: 'dataset',
+      columns: ['amount'],
+      values: [],
+      axes: [],
+      coverage: { totalRows: 1, business: 'unknown' },
+    },
+  })
   const refs = z.record(z.string(), resultReference).parse(producer.resultRefs)
   assert.match(String(producer.stdout), /Arbitrary report log/)
   assert.equal(producer.stderr, '__DSH_MARIVO_RESULTS_V1__:user text\n')

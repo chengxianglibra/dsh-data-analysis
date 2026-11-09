@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-shell'
@@ -72,13 +73,13 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        "Run one foreground Python process in the bound Runtime and Workspace. Before Marivo analysis or persistence, if this Workspace root lacks marivo.toml, initialize it through subprocess.run([sys.executable, '-m', 'marivo', 'init', '--project-root', str(Path.cwd())], check=True), with datasources=[] and no --force; import subprocess, sys and pathlib.Path. For reports, read, compute and persist one component per self-contained call. Send each ready result to the draft promptly without waiting for all calculations. Independent calculations may overlap within Harness capabilities and resource budgets; only mutations to the same draft must be serialized. Prefer AnalysisFrame for supported governed analysis. Export through resultVariables and pair resultRefs with this call's codeRef. Memory ends with the call; stdout is not a reference channel. Declared datasource credentials are prepared before execution; follow returned handoff information and never read or pass secret values through code, environment, output or logs. Inspect execution and resultCaptureError separately. Do not replay analysis to recover references; timeout does not prove remote query cancellation or absence of saved results.",
+        "Run one foreground Python process in the bound Runtime and Workspace. Before Marivo analysis or persistence, if this Workspace root lacks marivo.toml, initialize it through subprocess.run([sys.executable, '-m', 'marivo', 'init', '--project-root', str(Path.cwd())], check=True), with datasources=[] and no --force; import subprocess, sys and pathlib.Path. For reports, preview confirmed scope before preparing data. Reuse exact immutable results across compatible views with the original producer codeRef. New computations must be self-contained; derived computations explicitly read fixed inputs and persist new outputs. Send ready results to the same draft promptly, combining already-ready views when useful. This tool uses Harness exclusive scheduling; Python calls and draft writes are serialized. Prefer AnalysisFrame for supported governed analysis. Export through resultVariables and pair resultRefs with this call's codeRef. Memory ends with the call; stdout is not a reference channel. Declared datasource credentials are prepared before execution; follow returned handoff information and never read or pass secret values through code, environment, output or logs. Inspect execution and resultCaptureError separately. Do not replay analysis to recover references; timeout does not prove remote query cancellation or absence of saved results.",
       parameters: {
         code: {
           type: 'string',
           required: true,
           description:
-            "Python code, never credential values. A report component script must run independently in a fresh process and include its input reads, computation and persistence; do not depend on another component's variables, temporary tables or execution order. Shared source files and governed definitions can be reused. Consult current Runtime Help for Session lifetime and persistence, and release resources according to their public contracts.",
+            "Python code, never credential values. A new computation must run in a fresh process and include its explicit input reads, computation and persistence; do not depend on another call's variables or temporary tables. Shared source files, governed definitions and exact saved results can be reused. Fixed-result reads do not refresh data; retain the original producer codeRef when only displaying an existing result. Consult current Runtime Help for Session lifetime and persistence, and release resources according to their public contracts.",
         },
         datasources: {
           type: 'array',
@@ -96,7 +97,7 @@ export function registerMarivoPythonTool(
           type: 'object',
           additionalProperties: true,
           description:
-            "Optional resource name -> Python variable name; the tool supports up to 16 outputs. In report workflows, export only the target component's result per call. Each variable must hold an exact persisted reference dictionary, such as saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns resultRefs independently of stdout. Omit for scripts without persisted report results.",
+            'Optional resource name -> Python variable name; the tool supports up to 16 outputs. Export the exact results needed by this computation; one result may support multiple views. Each variable must hold an exact persisted reference dictionary, such as saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns resultRefs and bounded resultMetadata (configuration names and known coverage) independently of stdout; metadata failure does not invalidate reference export. Metadata reads fixed saved results only and does not replay analysis. Omit for scripts without persisted report results.',
         },
       },
       output: {
@@ -196,6 +197,13 @@ export function registerMarivoPythonTool(
               values: prepared.values,
               code,
               ...(resultVariables ? { result_variables: resultVariables } : {}),
+              ...(resultVariables
+                ? {
+                    projection_root: fileURLToPath(
+                      new URL('../../python/presentation/', import.meta.url),
+                    ),
+                  }
+                : {}),
               worker: PYTHON_WORKER,
             }),
             env: { MARIVO_PERSIST_CREDENTIALS: '0' },
@@ -214,7 +222,12 @@ export function registerMarivoPythonTool(
           const finishedAt = new Date().toISOString()
           const exported = resultVariables
             ? readPythonResultOutput(result.stderr.text, resultVariables)
-            : { stderr: result.stderr.text, resultRefs: undefined, resultCaptureError: undefined }
+            : {
+                stderr: result.stderr.text,
+                resultRefs: undefined,
+                resultCaptureError: undefined,
+                resultMetadata: undefined,
+              }
           const stderr = exported.stderr
           const succeeded = result.exitCode === 0 && !result.timedOut && !result.aborted
           const resultCaptureError = succeeded ? exported.resultCaptureError : undefined
@@ -293,6 +306,9 @@ export function registerMarivoPythonTool(
               ...(codeRef ? { codeRef } : {}),
               ...(codeCaptureError ? { codeCaptureError } : {}),
               ...(exported.resultRefs && succeeded ? { resultRefs: exported.resultRefs } : {}),
+              ...(exported.resultMetadata && succeeded
+                ? { resultMetadata: exported.resultMetadata }
+                : {}),
               ...(resultCaptureError ? { resultCaptureError } : {}),
               execution: summary(
                 reason,

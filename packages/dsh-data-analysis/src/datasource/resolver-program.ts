@@ -68,7 +68,18 @@ try:
         if payload.get("result_variables"):
             try:
                 references = {name: namespace[variable] for name, variable in payload["result_variables"].items()}
-                text = json.dumps({"status": "ok", "references": references}, allow_nan=False)
+                output = {"status": "ok", "references": references}
+                try:
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("_dsh_result_metadata", str(Path(payload["projection_root"]) / "result_metadata.py"))
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    output["metadata"] = {name: module.result_metadata(ref) for name, ref in references.items()}
+                    if len(json.dumps(output).encode()) > 32768:
+                        output["metadata"] = {name: {"status": "unavailable", "reason": "budget"} for name in references}
+                except Exception:
+                    output["metadata"] = {name: {"status": "unavailable", "reason": "read-failed"} for name in references}
+                text = json.dumps(output, allow_nan=False)
                 for value in resolver.values.values():
                     if value:
                         text = text.replace(value, "[REDACTED]")

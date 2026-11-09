@@ -1,8 +1,17 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assertCompatibleVersion, checkPluginDependencies } from './dependency-policy.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -15,6 +24,7 @@ const projectionAssets = [
   '_frame.py',
   'errors.py',
   'read_result.py',
+  'result_metadata.py',
 ].map((name) => `python/presentation/${name}`)
 /**
  * @param {string} message
@@ -189,6 +199,8 @@ try {
     'lib/types/client.d.ts',
     'lib/types/index.d.ts',
     'lib/compatibility.js',
+    'lib/skill-build.js',
+    'lib/skill-build.generated.js',
     'lib/types/compatibility.d.ts',
     'lib/presentation/index.js',
     'lib/presentation/tool.js',
@@ -361,16 +373,22 @@ try {
   for (const packageName of linkedDependencies) linkDependency(nodeModules, packageName)
   const smokeProgram = `
     const assert = (await import('node:assert/strict')).default
-    const { readFile, realpath, stat } = await import('node:fs/promises')
+    const { readFile, realpath, stat, writeFile } = await import('node:fs/promises')
     const path = (await import('node:path')).default
     const { Context } = await import('@deepseek-ai/cordis')
     const { default: SkillRuntime } = await import('@deepseek-ai/dsh-skill')
     const skillFilesystem = await import('@deepseek-ai/dsh-skill-filesystem')
+    const { preparePackagedSkillSnapshot, PackagedSkillBuildError } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/skill-build.js')).href)})
+    const { packagedSkillBuild } = await import(${JSON.stringify(pathToFileURL(path.join(installedPlugin, 'lib/skill-build.generated.js')).href)})
+    const snapshotsRoot = ${JSON.stringify(path.join(temporaryRoot, 'skill-snapshots'))}
+    const snapshot = await preparePackagedSkillSnapshot(snapshotsRoot)
+    assert.equal(path.basename(snapshot), packagedSkillBuild.digest)
+    assert.deepEqual(packagedSkillBuild.files.map(file => 'skills/' + file.path).sort(), ${JSON.stringify([...paths].filter((filename) => filename.startsWith('skills/')).sort())})
     const skillContext = new Context()
     await skillContext.plugin(SkillRuntime)
     const skillProvider = await skillContext.plugin(skillFilesystem, {
       providerName: 'packed-presentation', includeDefaultRoots: false, watch: false,
-      customSkillDirs: [${JSON.stringify(path.join(installedPlugin, 'skills'))}],
+      customSkillDirs: [snapshot],
     })
     const catalog = await skillContext.skills.snapshot()
     assert.equal(catalog.complete, true)
@@ -393,10 +411,17 @@ try {
       const skill = await skillContext.skills.get(name)
       assert.ok(skill?.invocation.modelInvocable)
       assert.equal(skill.resourceBase.kind, 'directory')
-      assert.equal(skill.resourceBase.path, path.join(${JSON.stringify(path.join(installedPlugin, 'skills'))}, name))
+      assert.equal(skill.resourceBase.path, path.join(snapshot, name))
       await checkReferences(skill.path, skill.resourceBase.path)
     }
+    const reference = 'dsh-data-analysis-presentation/references/analysis-ui.md'
+    const originalReference = await readFile(path.join(snapshot, reference), 'utf8')
+    await writeFile(path.join(${JSON.stringify(path.join(installedPlugin, 'skills'))}, reference), 'same-version changed reference')
+    await assert.rejects(preparePackagedSkillSnapshot(snapshotsRoot), PackagedSkillBuildError)
+    const retained = await skillContext.skills.get('dsh-data-analysis-presentation')
+    assert.equal(await readFile(path.join(retained.resourceBase.path, 'references/analysis-ui.md'), 'utf8'), originalReference)
     await skillProvider.dispose()
+    assert.equal(await readFile(path.join(snapshot, reference), 'utf8'), originalReference)
     assert.deepEqual((await skillContext.skills.snapshot()).skills, [])
     const root = await import('@chengxianglibra/dsh-data-analysis')
     assert.equal(Object.hasOwn(root, 'chartSeriesFields'), false, 'obsolete chart helper must not be exported')
@@ -429,5 +454,13 @@ try {
     `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; private projection and contracts passed\n`,
   )
 } finally {
+  /** @param {string} directory */
+  function unlockFixture(directory) {
+    chmodSync(directory, 0o755)
+    for (const entry of readdirSync(directory, { withFileTypes: true }))
+      if (entry.isDirectory()) unlockFixture(path.join(directory, entry.name))
+  }
+  // These snapshots belong only to the now-closed packed verification Host.
+  unlockFixture(temporaryRoot)
   rmSync(temporaryRoot, { recursive: true, force: true })
 }

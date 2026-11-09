@@ -68,7 +68,7 @@
     "python/presentation/*.py"
   ],
   "scripts": {
-    "build": "npm run clean && node scripts/generate-analysis-catalog.mjs --build && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
+    "build": "npm run clean && node scripts/generate-analysis-catalog.mjs --build && node scripts/generate-skill-build.mjs && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
     "clean": "node scripts/clean.mjs",
     "prepack": "npm run build"
   },

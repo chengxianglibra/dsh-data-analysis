@@ -3,7 +3,13 @@ import test from 'node:test'
 import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/client'
 import type { PreparingToolCall } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { PartialArguments } from '@deepseek-ai/dsh-util-values'
-import { AnalysisCandidates, analysisCandidate } from '../../src/client/analysis-ui/candidate.ts'
+import {
+  AnalysisCandidates,
+  analysisCandidate,
+  candidateResources,
+} from '../../src/client/analysis-ui/candidate.ts'
+import { pendingAnalysisStatement } from '../../src/client/analysis-ui/streaming-program.ts'
+import type { AnalysisResource } from '../../src/presentation/contracts/analysis-document.ts'
 import {
   analysisStatements,
   mergeAnalysisProgram,
@@ -23,6 +29,70 @@ function call(args: PartialArguments, callId = 'call'): PreparingToolCall {
     subCalls: [],
   }
 }
+
+test('resource argument state never treats an unfinished replacement map as inheritance', () => {
+  const image: AnalysisResource = {
+    kind: 'image',
+    declaration: { kind: 'image-file', path: 'old.png' },
+    mimeType: 'image/png',
+    dataUrl: 'data:image/png;base64,AA==',
+    sha256: 'a'.repeat(64),
+  }
+  const document = { resources: { image } }
+  const args = new PartialArguments()
+  args.append('{"surface":"tool","program":"root = Image(\\"image\\");"')
+  const omitted = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(omitted.resourcesInput, 'omitted')
+  assert.equal(candidateResources(document, omitted).image, image)
+  args.append(',"resources":{"image":{"kind":"image-file","path":"new')
+  const incomplete = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(incomplete.resourcesInput, 'incomplete')
+  assert.deepEqual(candidateResources(document, incomplete), {})
+  args.append('.png"}}}')
+  const replaced = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(replaced.resourcesInput, 'complete')
+  assert.deepEqual(candidateResources(document, replaced), {})
+  const same = analysisCandidate(
+    call(PartialArguments.fromObject({ resources: { image: image.declaration } })),
+    's',
+    'w',
+    generation,
+  )
+  assert.equal(candidateResources(document, same).image, image)
+  const removed = analysisCandidate(
+    call(PartialArguments.fromObject({ resources: {} })),
+    's',
+    'w',
+    generation,
+  )
+  assert.deepEqual(candidateResources(document, removed), {})
+})
+
+test('raw prefixes preserve incomplete statement ownership after candidate auto-closing', () => {
+  assert.equal(
+    pendingAnalysisStatement(
+      'root = Stack([ready, plot]);\nplot = DatasetView("data", {chart:"bar", encoding:{axis:"cat',
+    ),
+    'plot',
+  )
+  assert.equal(pendingAnalysisStatement('root = DatasetView("data", {chart:"table"})'), undefined)
+  assert.equal(
+    pendingAnalysisStatement(
+      'root = DatasetView("data", {chart:"table"});\nnote=TextContent("open',
+    ),
+    'note',
+  )
+})
+
+test('draft identifiers without an explicit stage never project a save action', () => {
+  const candidate = analysisCandidate(
+    call(PartialArguments.fromObject({ draftId: 'draft', draftRevision: 'revision' })),
+    's',
+    'w',
+    generation,
+  )
+  assert.equal(candidate.stage, undefined)
+})
 test('Native prefixes are reread in place, and late or incomplete surface metadata never enables preview', () => {
   const args = new PartialArguments()
   args.append('{"surface":"to')

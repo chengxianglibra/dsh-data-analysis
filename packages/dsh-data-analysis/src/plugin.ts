@@ -14,10 +14,11 @@ export { installMarivoPlugin, type MarivoPluginEnvironmentResolver } from './plu
 export { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 import { referenceEnvironmentResolver } from './semantic-reference/environment.ts'
+
 /** Cordis lifecycle adapter for the Web-profile shared Marivo Runtime. */
 
+import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -51,6 +52,7 @@ import {
   SemanticReferenceService,
   SemanticReferenceUsage,
 } from './semantic-reference/index.ts'
+import { preparePackagedSkillSnapshot } from './skill-build.ts'
 
 /** Cordis plugin name used by loader diagnostics and lifecycle logs. */
 export const name = 'dsh-data-analysis'
@@ -138,6 +140,9 @@ export async function applyWithIntegration(
     ...(bootstrapPythonExecutable === undefined ? {} : { bootstrapPythonExecutable }),
     ...(config.installTimeoutMs === undefined ? {} : { installTimeoutMs: config.installTimeoutMs }),
   })
+  const packagedSkillsRoot = await preparePackagedSkillSnapshot(
+    path.join(runtime.runtimeRoot, 'plugin-skills'),
+  )
   const disposeRuntimeShellEnvironment = registerMarivoRuntimeShellEnvironment(
     ctx,
     runtime.pythonExecutable,
@@ -214,7 +219,7 @@ export async function applyWithIntegration(
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-presentation',
       includeDefaultRoots: false,
-      customSkillDirs: [fileURLToPath(new URL('../skills/', import.meta.url))],
+      customSkillDirs: [packagedSkillsRoot],
       watch: false,
     })
     const helpBridge = new MarivoHelpBridge(createSharedMarivoRuntimeRunner(runtime))

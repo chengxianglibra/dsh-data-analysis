@@ -39,16 +39,17 @@ marivo-service   -> analysis
 1. 使用插件启动时已验证的 shared Runtime `MarivoHelpBridge`，不解析或初始化 Workspace。
 2. 对 `targets` 只做机械边界校验：必须是数组、数量/单项长度/总长度受限。
 3. 按首次出现顺序去重；空数组在启动子进程前失败。
-4. 对每个 target 调用 Help adapter；adapter 拥有 Python program，并通过 Environment 通用 checked runner
+4. 将 targets 拆成单个 target，按顺序依次调用 Help adapter；adapter 拥有 Python program，并通过 Environment 通用 checked runner
    在同一进程核对 import identity 后执行真实 `marivo.help(target)`。
 5. 检查单 target timeout、stdout/stderr 上限、空 stdout 和批次总输出上限。
 6. 计算正文 SHA-256 digest，并结合当前 prompt 可见性标记 `delivered`、`already-visible` 或
    `replacement`。
-7. 整批成功后向模型正文返回 Runtime 版本、target 与原样 Help body。插件附加的完整 fingerprint
+7. 向模型正文返回 Runtime 版本、成功 target 与原样 Help body，以及失败 target 的有界 errors。插件附加的完整 fingerprint
    只用于 Host presentation metadata；Marivo 自身 Help 正文可能包含 Python/Package 绝对路径，透传层不删除或改写这些正文事实。
 
-多 target 读取是 all-or-nothing：任何 target 失败都使 Tool call 失败，不返回其他 target 的部分正文。
-模块不把 invalid target 替换成相近名称；Marivo 的真实错误经稳定 `target-failed` 边界返回。
+已完成的单 target 非零退出或空正文分别作为 `target-failed`、`empty-help` 写入 `errors`，继续执行后续 target；其他成功正文保留在 `targets`。即使全部 target 失败，也返回明确的逐项 errors，不能将错误正文当作 Help。模块不猜测错误是否为 unknown-target，也不替换为相近名称；错误保留真实 Marivo 修复信息，无需导入其私有错误类型。
+
+请求非法、Runtime/解释器身份或环境失败、取消、超时、输出预算失败仍整体终止，不交付部分 Help。仅成功 target 计算 digest、参与可见性去重并写入 presentation metadata；失败项不标记为已披露。Skill 激活的根 Help 仍采用严格读取，失败不能激活成已披露状态。
 
 默认资源边界由 `DEFAULT_MARIVO_HELP_LIMITS` 统一定义。调用方可以缩小或调整正整数限制，但不能
 关闭超时、输出上限或 Tool 总 timeout。
@@ -150,11 +151,11 @@ packages/dsh-data-analysis/tests/help-disclosure/help-tool.test.ts
 packages/dsh-data-analysis/tests/help-disclosure/activation.test.ts
 ```
 
-测试重点包括空数组拒绝、重复/multi target、raw stdout parity、无 shadow registry、原子失败、Skill 激活、
+测试重点包括空数组拒绝、重复/multi target、raw stdout parity、无 shadow registry、逐项错误保留与调用级失败、Skill 激活、
 compaction 恢复、Environment 替换、普通工具持续可见和 controller dispose。
 
 生产安装路径的请求级测试另覆盖两类显式激活首请求、后续请求的稳定路由、已可见 focused root Help、
 `startsRequestSeries` 保留、拒绝、失败、取消及恢复。
 
 `npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding
-上验证实时 inventory、focused Help parity、无效 target 的原子失败，以及 Skill 激活后的根 Help 注入。
+上验证实时 inventory、focused Help parity、混合有效/无效 target 的独立结果，以及 Skill 激活后的根 Help 注入。

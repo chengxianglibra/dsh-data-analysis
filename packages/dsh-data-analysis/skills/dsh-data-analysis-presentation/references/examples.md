@@ -1,10 +1,10 @@
 # 报告编写示例
 
-示例资源名、输入路径、列 ID 和结论须按实际任务替换。报告数据组件各有独立脚本和结果；以下纯文件示例使用 DatasetView，适用的 governed 分析优先使用后面的 Frame 组件。
+示例资源名、输入路径、列 ID 和结论须按实际任务替换。各视图使用准确固定结果，可以共享同一结果及生产 codeRef；以下纯文件示例使用 DatasetView，适用的 governed 分析优先使用后面的 Frame 组件。
 
 ## 从初始草稿到一次正式保存
 
-用户要查看 sales.csv 的类别汇总与原始明细。两个组件分别从同一准确路径读取，互不依赖内存或对方输出。先展示问题和范围，组件就绪后及时 preview。下面是简单的顺序执行示例，适用于 Code Mode 和 Native；它不要求所有任务都串行计算。Harness 能并发安排独立计算时，按就绪情况增量交付，草稿写入仍逐次使用最新 revision，不等待整批计算结束才更新。
+用户要查看 sales.csv 的类别汇总与原始明细。两个组件分别从同一准确路径读取，互不依赖内存或对方输出。先展示问题和范围，组件就绪后及时 preview。下面适用于 Code Mode 和 Native。当前任意 Python 与草稿写入按 Harness exclusive 调度；按就绪情况增量交付，同批已就绪相关视图可一并 preview，草稿写入使用最新 revision，不等待完整分析。
 
 ```javascript
 let draft = await tools.marivo_present({
@@ -77,7 +77,7 @@ preview 校验并更新内存草稿，返回 draftId/draftRevision，前端自�
 | B | 80 | 50 |
 | C | 20 | 50 |
 
-summary 汇总全量、减少最多的两项及其余项，selected 和 full 分别是两项与全量的 DataFrame 明细。三个资源由三份独立脚本从同一原始输入计算，每个完成后就加入草稿。下方只展示最终页面；有对应 governed 比较结果时使用独立 AnalysisFrame 与 AnalysisFrameView。
+summary 汇总全量、减少最多的两项及其余项，selected 和 full 分别是两项与全量的 DataFrame 明细。这些资源按实际依赖准备；selected 可通过公开 API 从准确 full 固定输入派生为新结果，而多个相同范围的视图可直接共享一个资源。保留原生产 codeRef；派生输出使用新代码记录，不声称它是完整依赖图。下方只展示最终页面；有对应 governed 比较结果时使用独立 AnalysisFrame 与 AnalysisFrameView。
 
 ```openui
 root = Stack([lead, summary, detail]);
@@ -112,4 +112,14 @@ figure 为数据视图不支持的资金流向图，flows 为同范围明细。�
 root = Stack([figure, flows], "row", "m", "start", "start", true);
 figure = Image("资金在各环节间的流向", "figure");
 flows = DatasetView("flows", {chart:"table", columns:["source", "target", "amount"]});
+```
+
+## 同一固定结果支持多个视图
+
+已取得 by_category 的准确引用和生产 codeRef 后，表格与柱状图共享该资源，不启动新的 Python，不重新读取来源。以下程序可作为同一草稿的命名语句 patch；resources 保留完整映射及原声明。仅改变展示配置使用同一数据，不称为刷新。
+
+```openui
+root = Stack([bars, table]);
+bars = DatasetView("by_category", {chart:"bar", encoding:{axis:"category", values:["value"]}});
+table = DatasetView("by_category", {chart:"table", columns:["category", "value"]});
 ```

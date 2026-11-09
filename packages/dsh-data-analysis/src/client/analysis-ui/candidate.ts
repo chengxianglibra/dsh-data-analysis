@@ -1,8 +1,10 @@
 import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/client'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
+  type AnalysisDocument,
   type AnalysisResourceDeclaration,
   analysisResourceDeclaration,
+  sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
 import { PRESENTATION_BUDGETS } from '../../presentation/contracts/types.ts'
 import type { DraftDelivery } from '../../presentation/receipt.ts'
@@ -41,6 +43,7 @@ export interface AnalysisCandidate {
   title?: string
   locale?: 'zh-CN' | 'en-US'
   resources?: Record<string, AnalysisResourceDeclaration>
+  resourcesInput: 'omitted' | 'incomplete' | 'complete'
   delivery?: PresentationDelivery
 }
 export const candidateKey = (sessionId: string, turn: number, callId: string) =>
@@ -97,7 +100,14 @@ export function analysisCandidate(
     turn: 'turn' in block ? block.turn : (ownerTurn ?? delivery?.turn ?? previous?.turn ?? -1),
     phase: 'kind' in block ? (delivery ? 'saved' : draft ? 'previewed' : 'failed') : block.phase,
     surface: surface === 'tool' || surface === 'tab' ? surface : undefined,
-    stage: args.text('stage') === 'preview' ? 'preview' : 'save',
+    stage:
+      args.complete('stage') && args.text('stage') === 'preview'
+        ? 'preview'
+        : args.complete('stage') && args.text('stage') === 'save'
+          ? 'save'
+          : keys.includes('draftId') || keys.includes('draftRevision') || keys.includes('stage')
+            ? undefined
+            : 'save',
     draftId: args.complete('draftId') ? args.text('draftId') : undefined,
     draftRevision: args.complete('draftRevision') ? args.text('draftRevision') : undefined,
     rebaseOnRecordId: args.complete('rebaseOnRecordId') ? args.text('rebaseOnRecordId') : undefined,
@@ -116,8 +126,29 @@ export function analysisCandidate(
     title: args.complete('title') ? args.text('title') : undefined,
     locale: locale === 'en-US' || locale === 'zh-CN' ? locale : undefined,
     resources,
+    resourcesInput: !args.has('resources')
+      ? 'omitted'
+      : args.complete('resources')
+        ? 'complete'
+        : 'incomplete',
     delivery,
   }
+}
+
+/** A candidate can reuse admitted bytes only when its declaration is known unchanged. */
+export function candidateResources(
+  document: Pick<AnalysisDocument, 'resources'> | undefined,
+  candidate: Pick<AnalysisCandidate, 'resources' | 'resourcesInput'>,
+): AnalysisDocument['resources'] {
+  if (candidate.resourcesInput === 'omitted') return document?.resources ?? {}
+  if (candidate.resourcesInput === 'incomplete') return {}
+  return Object.fromEntries(
+    Object.entries(document?.resources ?? {}).filter(
+      ([name, resource]) =>
+        candidate.resources?.[name] &&
+        sameAnalysisDeclaration(resource.declaration, candidate.resources[name]),
+    ),
+  )
 }
 
 /** Installation-local call projection shared only by the tool and candidate tab adapters. */

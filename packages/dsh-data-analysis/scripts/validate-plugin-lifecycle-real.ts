@@ -1,7 +1,7 @@
 /** Isolated actual Cordis/Connection/Runtime lifecycle, no remote model or business database. */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -31,6 +31,7 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { DSH_PEER_RANGE } from '../src/compatibility.ts'
 import { apply, inject } from '../src/plugin.ts'
+import { removeSkillBuildFixture } from '../tests/plugin-integration-delivery/skill-build-fixture.ts'
 import { installStorage } from '../tests/semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../tests/test-shell-env.ts'
 
@@ -226,5 +227,5 @@ try {
   await ctx.fiber.dispose()
   if (previousHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = previousHome
-  await rm(root, { recursive: true, force: true })
+  await removeSkillBuildFixture(root)
 }

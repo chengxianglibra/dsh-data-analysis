@@ -49,6 +49,12 @@ export interface MarivoHelpTargetResult {
   delivery: MarivoHelpDelivery
 }
 
+export interface MarivoHelpTargetFailure {
+  target: string
+  code: 'target-failed' | 'empty-help'
+  message: string
+}
+
 export type MarivoHelpDelivery = 'delivered' | 'already-visible' | 'replacement'
 
 export interface MarivoHelpDeliveryQuery {
@@ -67,6 +73,7 @@ export interface MarivoHelpValue {
     fingerprint: string
   }
   targets: MarivoHelpTargetResult[]
+  errors?: MarivoHelpTargetFailure[]
 }
 
 export interface MarivoHelpToolValue {
@@ -74,6 +81,7 @@ export interface MarivoHelpToolValue {
     version: string
   }
   targets: MarivoHelpTargetResult[]
+  errors?: MarivoHelpTargetFailure[]
 }
 
 function positiveInteger(name: keyof MarivoHelpLimits, value: number): number {
@@ -190,6 +198,9 @@ export function renderMarivoHelpValue(value: MarivoHelpToolValue): string {
       }
       return `Target: ${item.target}\n${item.body}`
     }),
+    ...(value.errors ?? []).map(
+      (item) => `Target: ${item.target}\nHelp unavailable (${item.code}): ${item.message}`,
+    ),
   ].join('\n\n')
 }
 
@@ -197,10 +208,11 @@ function helpPresentationKey(value: MarivoHelpToolValue): string {
   return JSON.stringify([
     value.environment.version,
     value.targets.map((item) => [item.target, item.bodyDigest, item.delivery]),
+    value.errors ?? [],
   ])
 }
 
-/** Read one all-or-nothing batch from the bound live Marivo help surface. */
+/** Read targets sequentially; optional per-target failures never become visible Help. */
 export async function readMarivoHelpTargets(
   bridge: MarivoHelpBridgePort,
   rawTargets: unknown,
@@ -208,6 +220,7 @@ export async function readMarivoHelpTargets(
     limits?: Partial<MarivoHelpLimits>
     signal?: AbortSignal
     resolveDelivery?: MarivoHelpDeliveryResolver
+    allowTargetFailures?: boolean
   } = {},
 ): Promise<MarivoHelpValue> {
   const limits = resolveMarivoHelpLimits(options.limits)
@@ -218,17 +231,45 @@ export async function readMarivoHelpTargets(
   }
 
   const results: MarivoHelpTargetResult[] = []
+  const errors: MarivoHelpTargetFailure[] = []
   let combinedBytes = 0
   for (const target of targets) {
-    const stdout = await bridge.runTarget(
-      target,
-      {
-        timeoutMs: limits.targetTimeoutMs,
-        stdoutMaxBytes: limits.focusedStdoutMaxBytes,
-        stderrMaxBytes: limits.stderrMaxBytes,
-      },
-      options.signal,
-    )
+    options.signal?.throwIfAborted()
+    let stdout: Buffer
+    try {
+      stdout = await bridge.runTarget(
+        target,
+        {
+          timeoutMs: limits.targetTimeoutMs,
+          stdoutMaxBytes: limits.focusedStdoutMaxBytes,
+          stderrMaxBytes: limits.stderrMaxBytes,
+        },
+        options.signal,
+      )
+    } catch (error) {
+      options.signal?.throwIfAborted()
+      // Only completed target executions can fail locally. Environment, identity,
+      // cancellation, timeout and output-budget failures remain call-level errors.
+      if (
+        !options.allowTargetFailures ||
+        !(error instanceof MarivoHelpError) ||
+        !(
+          error.code === 'empty-help' ||
+          (error.code === 'target-failed' && typeof error.details.exitCode === 'number')
+        )
+      )
+        throw error
+      const message = error.message.slice(0, 4_096)
+      combinedBytes += Buffer.byteLength(message)
+      if (combinedBytes > limits.combinedStdoutMaxBytes)
+        throw new MarivoHelpError(
+          'combined-output-limit',
+          'marivo_help combined output limit exceeded',
+        )
+      errors.push({ target, code: error.code, message })
+      continue
+    }
+    options.signal?.throwIfAborted()
     combinedBytes += stdout.byteLength
     if (combinedBytes > limits.combinedStdoutMaxBytes) {
       throw new MarivoHelpError(
@@ -251,7 +292,11 @@ export async function readMarivoHelpTargets(
         }) ?? 'delivered',
     })
   }
-  return { environment: environmentIdentity, targets: results }
+  return {
+    environment: environmentIdentity,
+    targets: results,
+    ...(errors.length ? { errors } : {}),
+  }
 }
 
 /** Build the native Harness ToolDefinition without registering Agent activation behavior. */
@@ -265,7 +310,7 @@ export function createMarivoHelpTool(
   return defineTool({
     name: MARIVO_HELP_TOOL_NAME,
     description:
-      'Read current Marivo API contracts from the verified shared Runtime. Request canonical targets for the current information gap; returned Help owns signatures and constraints, while plugin Skills own report workflows. A failed batch returns no partial Help. Use this tool for upstream marivo help examples without switching installations.',
+      'Read current Marivo API contracts from the verified shared Runtime. Targets run individually in order; completed target failures are returned in errors while successful Help remains available. Identity, cancellation and resource-limit failures abort the call. Returned Help owns signatures and constraints, while plugin Skills own report workflows. Use this tool for upstream marivo help examples without switching installations.',
     parameters: {
       targets: {
         type: 'array',
@@ -305,6 +350,18 @@ export function createMarivoHelpTool(
               },
             },
           },
+          errors: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                target: { type: 'string', required: true },
+                code: { type: 'string', required: true, enum: ['target-failed', 'empty-help'] },
+                message: { type: 'string', required: true },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{ type: 'text', text: renderMarivoHelpValue(value) }],
@@ -335,11 +392,13 @@ export function createMarivoHelpTool(
         limits,
         signal: exec.signal,
         resolveDelivery,
+        allowTargetFailures: true,
       })
       exec.signal.throwIfAborted()
       const value: MarivoHelpToolValue = {
         environment: { version: internal.environment.version },
         targets: internal.targets,
+        ...(internal.errors ? { errors: internal.errors } : {}),
       }
       const key = helpPresentationKey(value)
       const pending = presentations.get(key) ?? []

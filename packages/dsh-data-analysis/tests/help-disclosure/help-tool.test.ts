@@ -207,15 +207,33 @@ test('multiple targets deduplicate in first-seen order and preserve each raw std
   )
 })
 
-test('invalid target is a standard isError result and discards earlier batch stdout', async (t) => {
+test('failed targets retain earlier and later Help and are absent from disclosure metadata', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.bridge)
-  const result = await executeHelp(ctx, ['analysis.session.observe', 'invalid.target'])
-  assert.equal(result.isError, true)
+  const result = await executeHelp(ctx, ['analysis.session.observe', 'invalid.target', 'analysis'])
+  assert.equal(result.isError, false)
+  if (result.isError) return
+  const value = result.value as unknown as MarivoHelpValue
+  assert.deepEqual(
+    value.targets.map((item) => item.target),
+    ['analysis.session.observe', 'analysis'],
+  )
+  assert.equal(value.errors?.[0]?.target, 'invalid.target')
+  assert.equal(value.errors?.[0]?.code, 'target-failed')
   const text = result.content[0]?.type === 'text' ? result.content[0].text : ''
   assert.match(text, /invalid\.target/)
-  assert.doesNotMatch(text, /help-body:analysis\.session\.observe/)
+  assert.match(text, /help-body:analysis\.session\.observe/)
+  assert.match(text, /help-body:analysis\n/)
+  assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), [
+    'analysis.session.observe',
+    'invalid.target',
+    'analysis',
+  ])
+  assert.deepEqual(
+    (result.meta as { targets: { target: string }[] }).targets.map((item) => item.target),
+    ['analysis.session.observe', 'analysis'],
+  )
   assert.equal(fixture.environment.status, 'ready')
 })
 
@@ -237,11 +255,17 @@ test('mechanical request bounds fail without target membership validation', asyn
   ])
 })
 
-test('empty, per-target size, and combined size failures never return partial help', async (t) => {
+test('empty output is a target failure while output budgets abort the call', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)
   const emptyCtx = await setupRuntime(fixture.bridge)
-  assert.equal((await executeHelp(emptyCtx, ['empty.target'])).isError, true)
+  const empty = await executeHelp(emptyCtx, ['empty.target'])
+  assert.equal(empty.isError, false)
+  if (!empty.isError) {
+    const value = empty.value as unknown as MarivoHelpValue
+    assert.deepEqual(value.targets, [])
+    assert.equal(value.errors?.[0]?.code, 'empty-help')
+  }
 
   const targetLimitCtx = await setupRuntime(fixture.bridge, { focusedStdoutMaxBytes: 100 })
   assert.equal((await executeHelp(targetLimitCtx, ['large.target'])).isError, true)

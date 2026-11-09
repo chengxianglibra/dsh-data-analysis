@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -29,8 +29,10 @@ import {
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { apply, inject, resolvePresentationWorkspace } from '../../src/plugin.ts'
+import { packagedSkillBuild } from '../../src/skill-build.generated.ts'
 import { installConnectionFixture, installStorage } from '../semantic-reference-input/fixtures.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
+import { removeSkillBuildFixture } from './skill-build-fixture.ts'
 
 class TestCredentials extends CredentialProvider {
   resolve(_ref: CredentialRef) {
@@ -177,7 +179,7 @@ async function absent(target: string): Promise<void> {
 
 test('Web-profile plugin exposes Runtime Help and skills without writing either Workspace', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'dsh-web-profile-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  t.after(() => removeSkillBuildFixture(root))
   const firstRoot = path.join(root, 'workspace-a')
   const secondRoot = path.join(root, 'workspace-b')
   const runtimeRoot = path.join(root, 'dsh-home-runtime')
@@ -297,6 +299,10 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     assert.equal(skill.resourceBase?.kind, 'directory')
     if (skill.resourceBase?.kind !== 'directory') assert.fail('Missing Skill resource directory')
     assert.equal(path.basename(skill.resourceBase.path), name)
+    assert.equal(
+      skill.resourceBase.path,
+      await realpath(path.join(runtimeRoot, 'plugin-skills', packagedSkillBuild.digest, name)),
+    )
     assert.equal(skill.path, path.join(skill.resourceBase.path, 'SKILL.md'))
     assert.ok(skill.description.trim())
     assert.ok(skill.content.trim())

@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import {
   type AnalysisDocument,
   parseAnalysisDocument,
-  sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../../presentation/receipt.ts'
 import { useCopy } from '../i18n/context.tsx'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
+import { candidateResources } from './candidate.ts'
 import { CandidateView } from './candidate-view.tsx'
 import type { AnalysisDraftView } from './drafts.ts'
 import { CandidateAnalysisSurface } from './lazy-surface.tsx'
@@ -87,15 +87,7 @@ export function DraftReportView({ view, rpc }: { view: AnalysisDraftView; rpc: P
       ? streamingAnalysisProgram(document.program, candidate.program)
       : document?.program
   const resources =
-    streaming && candidate.resources && document
-      ? Object.fromEntries(
-          Object.entries(document.resources).filter(([name, resource]) =>
-            candidate.resources?.[name]
-              ? sameAnalysisDeclaration(resource.declaration, candidate.resources[name])
-              : false,
-          ),
-        )
-      : document?.resources
+    streaming && document ? candidateResources(document, candidate) : document?.resources
   return (
     <section className="mv-ui" data-analysis-draft={delivery?.draftId ?? view.turn}>
       <UIStyleSheet />
@@ -110,7 +102,8 @@ export function DraftReportView({ view, rpc }: { view: AnalysisDraftView; rpc: P
           title={(streaming && candidate.title) || document.title}
           locale={(streaming && candidate.locale) || document.locale}
           resources={resources ?? {}}
-          isStreaming={Boolean(streaming && !candidate.complete)}
+          isStreaming={Boolean(streaming)}
+          candidateProgram={streaming ? candidate.program : undefined}
         />
       )}
     </section>

@@ -23,6 +23,7 @@ export type {
   MarivoHelpDeliveryResolver,
   MarivoHelpFailureCode,
   MarivoHelpLimits,
+  MarivoHelpTargetFailure,
   MarivoHelpTargetResult,
   MarivoHelpValue,
 } from './help.ts'
