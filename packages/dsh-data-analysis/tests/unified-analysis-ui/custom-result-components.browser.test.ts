@@ -196,16 +196,16 @@ window.renderBuild('build-1');`,
     await page.evaluate(() => Reflect.get(window, 'resolveAskDataset')())
     await page.getByRole('menu').waitFor({ state: 'hidden' })
     await page.keyboard.press('Escape')
-    await table.locator('[data-icon="data"] button').click()
+    await metric.locator('[data-icon="data"] button').click()
     const tableDialog = page.getByRole('dialog')
-    await tableDialog.getByRole('table', { name: 'table', exact: true }).waitFor()
+    await tableDialog.getByRole('table', { name: 'metric', exact: true }).waitFor()
     const dialogPoint = tableDialog.locator(
       '[data-row-index="0"] [data-column-id="value"] .pr-cell-select',
     )
     await dialogPoint.click()
     await page.getByRole('menuitem', { name: 'Ask about this' }).click()
     assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'datasetRequests'))).at(-1), {
-      resourceName: 'table',
+      resourceName: 'metric',
       row: 0,
       field: 'value',
     })
@@ -221,7 +221,7 @@ window.renderBuild('build-1');`,
     await mismatch.getByText('The execution record sha256 does not match.').waitFor()
     assert.equal(await mismatch.locator('pre code').count(), 0)
     await mismatch.getByRole('button', { name: 'Close', exact: true }).click()
-    assert.equal(await table.locator('[data-icon="data"]').count(), 1)
+    assert.equal(await table.locator('[data-icon="data"]').count(), 0)
     assert.equal(
       await table.getByRole('button', { name: 'Select columns', exact: true }).count(),
       0,

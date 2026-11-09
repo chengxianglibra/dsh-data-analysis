@@ -44,19 +44,17 @@ type CodeState =
       datasources?: PythonExecutionDatasource[]
     }
 
-/** Keep the same scroll affordance as Frame tables while retaining Dataset formatting. */
+/** Retain exact Dataset formatting and an accessible description of local overflow. */
 function DatasetDisplayTable({
   data,
   columns,
   height,
   caption,
-  reference = false,
 }: {
   data: TypedDataset
   columns?: string[]
   height?: number
   caption: string
-  reference?: boolean
 }) {
   const t = useCopy()
   const selection = useChartSelection()
@@ -76,16 +74,8 @@ function DatasetDisplayTable({
   }, [])
   return (
     <>
-      <div className={reference ? 'fv-sr-only' : 'fv-table-bar fv-comparison-toolbar'}>
-        {scrollable && (
-          <span
-            id={hintId}
-            className={reference ? undefined : 'fv-scroll-hint'}
-            title={t('marivo.presentation.ui-frame-scroll-hint')}
-          >
-            <span className="fv-sr-only">{t('marivo.presentation.ui-frame-scroll-hint')}</span>
-          </span>
-        )}
+      <div className="fv-sr-only">
+        {scrollable && <span id={hintId}>{t('marivo.presentation.ui-frame-scroll-hint')}</span>}
       </div>
       <div ref={ref} style={{ maxHeight: height ?? 520, overflow: 'auto' }}>
         <DatasetTable
@@ -580,15 +570,17 @@ function DatasetDataView({
             />
           )}
           <DataActions>
-            <FrameIconButton
-              kind="data"
-              label={t('marivo.presentation.ui-frame-data-table')}
-              tip={t('marivo.presentation.ui-frame-data-table')}
-              hasPopup="dialog"
-              onOpen={candidate ? undefined : () => setDataOpen(true)}
-            >
-              <FrameIcon kind="table" />
-            </FrameIconButton>
+            {(chart || metric) && (
+              <FrameIconButton
+                kind="data"
+                label={t('marivo.presentation.ui-frame-data-table')}
+                tip={t('marivo.presentation.ui-frame-data-table')}
+                hasPopup="dialog"
+                onOpen={candidate ? undefined : () => setDataOpen(true)}
+              >
+                <FrameIcon kind="table" />
+              </FrameIconButton>
+            )}
             {!snapshot.coverage.complete && <CoverageIcon snapshot={snapshot} />}
             {!candidate && (
               <FrameIconButton
@@ -609,7 +601,7 @@ function DatasetDataView({
             onAfterClose={focusAfterAsk.finish}
           >
             <div className="fv-data-reference">
-              <DatasetDisplayTable data={data} caption={resourceName ?? ''} reference />
+              <DatasetDisplayTable data={data} caption={resourceName ?? ''} />
             </div>
             {pointMenu}
           </Dialog>
@@ -635,7 +627,6 @@ function DatasetDataView({
                           kind="copy-code"
                           label={t('marivo.presentation.copy-code')}
                           tip={t('marivo.presentation.copy-code')}
-                          iconOnly
                           onOpen={() => void copyCode(currentCode.text, currentCode.key)}
                         >
                           <FrameIcon kind="copy" />

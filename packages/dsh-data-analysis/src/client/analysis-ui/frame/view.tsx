@@ -728,6 +728,9 @@ export function FrameShell({
             )
           )}
           {!(showData && !inlineData && dataOpen) && pointMenu}
+          {showData && inlineData && dataOpen && (
+            <div className="fv-data-reference">{dataTable}</div>
+          )}
           <IconRow
             snapshot={s}
             view={view}
@@ -752,9 +755,6 @@ export function FrameShell({
               ) : undefined
             }
           />
-          {showData && inlineData && dataOpen && (
-            <div className="fv-data-reference">{dataTable}</div>
-          )}
           {showData && !inlineData && (
             <Dialog
               title={dataLabel}

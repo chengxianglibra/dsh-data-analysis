@@ -76,17 +76,38 @@ root.render(createElement(AnalysisRenderer,{resources,title:'Alignment',locale:'
       ]) {
         const a = page.locator(`[data-resource="${dataset}"]`)
         const b = page.locator(`[data-resource="${frame}"]`)
-        for (const selector of ['.fv-head', '.fv-header-actions', '[data-icon="data"]']) {
+        for (const selector of ['.fv-head', '.fv-header-actions', '.fv-icons']) {
           assert.equal(await a.locator(selector).count(), 1, `${dataset} ${selector}`)
           assert.equal(await b.locator(selector).count(), 1, `${frame} ${selector}`)
         }
         assert.equal(await a.locator('.fv-chart-tag').count(), 0, `${dataset} chart type label`)
         assert.equal(await b.locator('.fv-chart-tag').count(), 0, `${frame} chart type label`)
+        for (const card of [a, b]) {
+          assert.equal(
+            await card
+              .locator('.fv-icons button')
+              .evaluateAll((buttons) =>
+                buttons.every(
+                  (button) =>
+                    button.textContent === '' &&
+                    button.getAttribute('aria-label') &&
+                    button.getBoundingClientRect().width === 24,
+                ),
+              ),
+            true,
+          )
+          assert.equal(
+            await card
+              .locator('.fv-icons')
+              .evaluate((node) => getComputedStyle(node).borderTopWidth),
+            '0px',
+          )
+        }
         const structure = (selector: string) =>
           page.locator(selector).evaluate((node) => {
             const header = node.querySelector('.fv-head')!
             const content = header.nextElementSibling!
-            const actions = node.querySelector('[data-icon="data"]')!.closest('.fv-icons')!
+            const actions = node.querySelector('.fv-icons')!
             return {
               header: header.className,
               content: content.className,
@@ -97,6 +118,11 @@ root.render(createElement(AnalysisRenderer,{resources,title:'Alignment',locale:'
           await structure(`[data-resource="${dataset}"]`),
           await structure(`[data-resource="${frame}"]`),
         )
+        if (dataset === 'datasetTable') {
+          assert.equal(await a.locator('[data-icon="data"]').count(), 0)
+          assert.equal(await a.locator('.fv-scroll-hint').count(), 0)
+          continue
+        }
         await a.locator('[data-icon="data"] button').click()
         const dialog = page.getByRole('dialog')
         await dialog.waitFor()

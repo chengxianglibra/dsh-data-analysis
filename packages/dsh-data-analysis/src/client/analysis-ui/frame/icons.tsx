@@ -73,7 +73,6 @@ export function FrameIconButton({
   onOpen,
   expanded,
   hasPopup,
-  iconOnly,
   children,
 }: {
   label: string
@@ -83,12 +82,12 @@ export function FrameIconButton({
   onOpen?: () => void
   expanded?: boolean
   hasPopup?: 'dialog'
-  iconOnly?: boolean
   children: ReactNode
 }) {
   return (
     <span className="fv-icon" data-icon={kind} data-disabled={disabled ? 'true' : undefined}>
       <IconButton
+        size="icon-xs"
         label={label}
         tip={tip}
         unavailable={disabled}
@@ -97,13 +96,12 @@ export function FrameIconButton({
         onClick={disabled ? undefined : onOpen}
       >
         {children}
-        {!iconOnly && <span className="fv-icon-label">{label}</span>}
       </IconButton>
     </span>
   )
 }
 
-/** Ring arc shows the captured fraction; the text is the two saved counts. */
+/** Ring arc shows the captured fraction; the tooltip retains both saved counts. */
 export function CoverageIcon({
   snapshot: s,
 }: {
@@ -140,7 +138,6 @@ export function CoverageIcon({
             transform="rotate(-90 8 8)"
           />
         </svg>
-        <span>{counts}</span>
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
         <p>{t(`${P}ui-capture-range`, { p0: capturedRows, p1: totalRows })}</p>

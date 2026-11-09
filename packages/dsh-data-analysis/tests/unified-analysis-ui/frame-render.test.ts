@@ -570,7 +570,9 @@ test('restricted decompositions detach the total; has_more falls back to a table
   ] as const) {
     const html = await r.render(snapshot)
     assert.equal(viewOf(html), 'table')
-    assert.match(html, new RegExp(`<span>${coverage}</span>`))
+    assert.match(html, /data-icon="coverage"/)
+    assert.match(html, new RegExp(coverage))
+    assert.doesNotMatch(html, new RegExp(`<span>${coverage}</span>`))
   }
 })
 
@@ -1052,7 +1054,8 @@ test('compact density keeps the name, header numbers or the main view and only u
 test('icons grey out for missing sections and Python sources, never as zero items', async () => {
   const html = await r.render(observeCategory(3, 9))
   assert.match(html, /data-icon="coverage"/)
-  assert.match(html, /<span>3\/9<\/span>/)
+  assert.match(html, /3\/9/)
+  assert.doesNotMatch(html, /<span>3\/9<\/span>/)
   assert.doesNotMatch(html, /data-icon="coverage" data-disabled/)
   assert.match(html, /data-icon="origins" data-disabled="true"/)
   assert.doesNotMatch(html, /data-icon="origins"[\s\S]*?<span>0<\/span>/)
@@ -1117,7 +1120,7 @@ test('table-shaped main views retain the data entry', async () => {
   // A single-row comparison defaults to headline blocks and keeps the table behind the data icon.
   const multi = comparedSinglePeriodMultiGroup()
   const grid = await r.render(multi, { display: { dataTable: 'visible' } })
-  assert.match(grid, /data-icon="data"[\s\S]*class="fv-data-reference"/)
+  assert.match(grid, /class="fv-data-reference"[\s\S]*data-icon="data"/)
   const literal = await r.render(multi, { view: { chart: 'table' } })
   assert.match(literal, /<table/)
   assert.match(literal, /data-icon="data"/)

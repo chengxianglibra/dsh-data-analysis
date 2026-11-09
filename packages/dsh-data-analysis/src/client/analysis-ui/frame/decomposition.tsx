@@ -391,8 +391,8 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
         </tbody>
       </table>
       {scrollable && (
-        <p className="fv-decomposition-scroll-hint" id={hintId}>
-          ↔ {t('marivo.presentation.ui-frame-scroll-hint')}
+        <p className="fv-sr-only" id={hintId}>
+          {t('marivo.presentation.ui-frame-scroll-hint')}
         </p>
       )}
       {facts.share && (

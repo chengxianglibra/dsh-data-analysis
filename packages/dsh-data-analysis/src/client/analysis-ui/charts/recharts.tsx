@@ -185,8 +185,8 @@ export function ChartFrame({
         )}
       </section>
       {scrollable && (
-        <p className="fv-chart-scroll-hint" id={hintId}>
-          ↔ {t('marivo.presentation.ui-frame-scroll-hint')}
+        <p className="fv-sr-only" id={hintId}>
+          {t('marivo.presentation.ui-frame-scroll-hint')}
         </p>
       )}
       {legend}

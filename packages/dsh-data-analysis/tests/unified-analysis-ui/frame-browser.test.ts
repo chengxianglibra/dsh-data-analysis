@@ -563,15 +563,22 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
   assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 1)
 })
 
-test('chart data and semantic origins have visible labels in one action row', async () => {
+test('chart metadata uses small accessible icons in one undivided action row', async () => {
   const frame = page.locator('[data-resource="precise"]')
   const data = frame.locator('.fv-icons > [data-icon="data"]')
   const origins = frame.locator('.fv-icons > [data-icon="origins"]')
   for (const entry of [data, origins]) {
     const button = entry.locator('button')
-    assert.equal((await entry.innerText()).trim(), await button.getAttribute('aria-label'))
-    assert.equal(await button.locator('.fv-icon-label').isVisible(), true)
+    assert.equal((await entry.innerText()).trim(), '')
+    assert.ok(await button.getAttribute('aria-label'))
+    assert.equal(await button.getAttribute('data-size'), 'icon-xs')
   }
+  assert.equal(
+    await frame
+      .locator('.fv-icons')
+      .evaluate((element) => getComputedStyle(element).borderTopWidth),
+    '0px',
+  )
   assert.equal(
     await data.locator('button svg').evaluate((element) => getComputedStyle(element).display),
     'block',

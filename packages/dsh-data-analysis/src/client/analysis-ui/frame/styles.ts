@@ -46,7 +46,6 @@ export const FRAME_STYLES = `
 .fv-share-values>span{min-width:0;overflow-wrap:anywhere}
 @container mv-result (max-width:480px){.fv-share-row{grid-template-columns:9px minmax(0,1fr)}.fv-share-values{grid-column:2}}
 .fv-plot{max-width:100%;overflow-x:auto}
-.fv-chart-scroll-hint{margin:4px 0 0;color:var(--muted-foreground);font-size:12px}
 .fv-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .fv-plot-scrolled svg.recharts-surface .fv-row-label{visibility:hidden}
 .fv-scroll-hint::before{content:'↔'}
@@ -116,7 +115,6 @@ export const FRAME_STYLES = `
 .fv-decomposition-zero{position:absolute;top:0;bottom:0;border-left:1px solid var(--border)}
 .fv-decomposition-note{margin:8px 0 0;color:var(--muted-foreground);font-size:12px;line-height:1.5}
 .fv-decomposition-field-label{display:none}
-.fv-decomposition-scroll-hint{position:sticky;left:0;width:max-content;max-width:100%;margin:8px 0 0;color:var(--muted-foreground);font-size:12px}
 .fv-decomposition-negative,.fv-decomposition-positive{position:absolute;top:2px;height:8px;border-radius:2px}
 .fv-decomposition-negative{background:var(--fv-negative)}
 .fv-decomposition-positive{background:var(--chart-1)}
@@ -139,14 +137,10 @@ export const FRAME_STYLES = `
 .fv-comparison-toolbar{justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .fv-comparison-toolbar button{margin-left:auto}
 ${frozen}
-.fv-icons{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .fv-icons{border-top:1px solid var(--border);padding-top:10px;margin-top:20px}
+.fv-icons{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-start}
+.fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .fv-icons{margin-top:12px}
 .fv-icon{position:relative;display:inline-flex}
 .fv-icon svg{flex:none}
-.fv-icon button{width:auto;min-width:32px;height:auto;min-height:30px;padding:5px 8px;gap:5px;font-size:12px}
-.fv[data-density=compact] .fv-icon button{width:32px;height:32px;padding:0}
-.fv[data-density=compact] .fv-icon[data-icon=coverage] button{width:auto;padding:0 6px}
-.fv[data-density=compact] .fv-icon-label{display:none}
 @media(max-width:480px){.fv:is([data-resource-kind=frame],[data-resource-kind=dataset]){--card-spacing:18px}}
 .fv-code{white-space:pre;overflow:auto;max-height:50vh;user-select:text}
 .fv-dev dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
