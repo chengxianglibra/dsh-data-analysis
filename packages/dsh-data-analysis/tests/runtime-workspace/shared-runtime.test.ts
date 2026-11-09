@@ -10,7 +10,7 @@ import {
   SHARED_MARIVO_PACKAGE_SPEC,
 } from '../../src/environment/index.ts'
 
-const FIXTURE_MARIVO_VERSION = '0.6.2'
+const FIXTURE_MARIVO_VERSION = '0.6.3'
 
 function fakePython(packagePath: string): string {
   return `#!/usr/bin/env node
@@ -194,7 +194,7 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
     .split('\n')
     .map((line) => JSON.parse(line) as string[])
   assert.equal(calls.filter((args) => args[0] === 'pip' && args[1] === 'install').length, 2)
-  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.2')
+  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.3')
   assert.ok(calls.some((args) => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC))
   assert.ok(
     calls.some(
@@ -297,11 +297,11 @@ test('a managed Runtime on another Marivo version is rebuilt to the pinned versi
     string,
     unknown
   >
-  marker.marivoVersion = '0.6.2.dev0'
+  marker.marivoVersion = '0.6.3.dev0'
   await writeFile(initial.installationPath, `${JSON.stringify(marker)}\n`)
 
   const current = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  assert.equal(current.marivoVersion, '0.6.2')
+  assert.equal(current.marivoVersion, '0.6.3')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')

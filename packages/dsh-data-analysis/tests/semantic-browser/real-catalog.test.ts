@@ -33,14 +33,14 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.2: all 10 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
+test('real Marivo 0.6.3: all 8 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.6.2 Python unavailable')
+    t.skip('Marivo 0.6.3 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),
@@ -95,19 +95,9 @@ mv.session = forbidden
   )
   assert.ok(revenueDefinition.facts.some((item) => item.name === 'null_rules'))
   const template = data.objects.find((item) => item.ref.path === 'sales.revenue_at')!
-  const parameters = template.fields.find((field) => field.name === 'time_parameters')!
-  assert.equal(parameters.structured, true)
-  const parsedParameters = JSON.parse(parameters.value)
-  assert.equal(parsedParameters[0].name, 'event')
-  assert.equal(parsedParameters[0].constraints[0].use, 'contribution')
-  assert.ok(
-    template.relations.some(
-      (item) => item.field === 'time_parameters' && item.ref.path === 'sales.orders',
-    ),
-  )
   assert.ok(
     template.computation!.facts.some(
-      (item) => item.name === 'time_bindings' && item.value.includes('parameter'),
+      (item) => item.name === 'time_bindings' && item.value.includes('entity_default'),
     ),
   )
   assert.ok(revenueDefinition.facts.some((item) => item.structured))
@@ -121,7 +111,17 @@ mv.session = forbidden
       .find((item) => item.ref.path === 'sales.linear')!
       .relations.some((item) => item.ref.path === 'sales.revenue'),
   )
-  assert.equal(new Set(data.objects.map((item) => item.ref.kind)).size, 10)
+  assert.equal(new Set(data.objects.map((item) => item.ref.kind)).size, 8)
+  const orders = data.objects.find((item) => item.ref.path === 'sales.orders')!
+  assert.equal(
+    orders.fields.find((field) => field.name === 'default_time')?.value,
+    'time_dimension:sales.orders.ordered_at',
+  )
+  assert.ok(
+    orders.relations.some(
+      (item) => item.field === 'default_time' && item.ref.path === 'sales.orders.ordered_at',
+    ),
+  )
   const revenue = data.objects.find((item) => item.ref.path === 'sales.revenue')!
   assert.ok(revenue.definition!.length > 240)
   assert.ok(revenue.relations.some((relation) => relation.ref.kind === 'measure'))

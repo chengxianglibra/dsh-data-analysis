@@ -62,8 +62,37 @@ let browser: Browser | undefined, page: Page | undefined
 const errors: string[] = []
 const checks: Record<string, unknown>[] = []
 // Turn 1 has only pre-tool prose: its native closing boundary precedes the
-// produced file. The report node must appear even though that tail stays empty.
-const expectedProducedRows = Math.max(0, inputs.requests.length - 1)
+// produced file. Later closing prose names its actual produced file, allowing
+// the Harness inline file-mention service to expose its native preview.
+const expectedProducedMentions = Math.max(0, inputs.requests.length - 1)
+async function verifyProducedMentions(target: Page, openPreview = false) {
+  const mentions = target.locator('code button').filter({ hasText: /^s4-produced-.*\.txt$/ })
+  await target.waitForFunction(
+    (expected) =>
+      [...document.querySelectorAll('code button')].filter((button) =>
+        /^s4-produced-.*\.txt$/.test(button.textContent?.trim() ?? ''),
+      ).length === expected,
+    expectedProducedMentions,
+  )
+  const names = await mentions.allTextContents()
+  assert.equal(names.length, expectedProducedMentions)
+  for (const [index, name] of names.entries()) {
+    assert.match(name, new RegExp(`^s4-produced-[a-f0-9-]+-${index + 1}\\.txt$`))
+    assert.ok((await mentions.nth(index).getAttribute('title'))?.endsWith(name))
+    assert.equal(
+      await readFile(path.join(workspaceRoot, name), 'utf8'),
+      'Ordinary Harness produced file before report delivery.\n',
+    )
+  }
+  if (openPreview && names.length > 0) {
+    await mentions.last().click()
+    await target
+      .locator('[data-rightbar-col] [data-document-preview]')
+      .getByText('Ordinary Harness produced file before report delivery.', { exact: true })
+      .waitFor()
+  }
+  return names
+}
 async function rpc(channel: string, endpoint: string, payload: unknown) {
   return page!.evaluate(
     async ({ channel, endpoint, payload }) => {
@@ -91,9 +120,7 @@ try {
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
   await page.waitForFunction(() => !!(window as any).__rightTabs)
   assert.equal(await page.locator('[data-presentation-card]').count(), 0)
-  const producedFiles = page.locator('[data-produced-files-row]')
-  assert.equal(await producedFiles.count(), expectedProducedRows)
-  assert.ok((await producedFiles.allTextContents()).every((text) => text.includes('s4-produced-')))
+  const producedFiles = await verifyProducedMentions(page, true)
   await page.setViewportSize({ width: 1440, height: 1800 })
   await page.screenshot({
     path: path.join(outputRoot, 'conversation-overview.png'),
@@ -175,15 +202,19 @@ try {
   assert.equal((await rpc('/marivo-presentation', 'files/read', payload)).ok, true)
   assert.equal(server.duplicatedCodeReceiptEvents, 1)
   await page.reload()
+  await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
   await page.waitForFunction(() => !!(window as any).__rightTabs)
   assert.equal(await page.locator('[data-presentation-card]').count(), 0)
+  const reconnectedFiles = await verifyProducedMentions(page, true)
+  assert.deepEqual(reconnectedFiles, producedFiles)
   checks.push({
     digestMismatch: digest.error.message,
     changedDocumentBytesRejected: changedBytes.error.message,
     workspaceDetachRejected: workspace.error.message,
     reattachRestoresAccess: true,
     replayedDeliveriesDoNotCreateCards: true,
-    coexistingProducedFilesRows: await page.locator('[data-produced-files-row]').count(),
+    coexistingProducedFileMentions: reconnectedFiles,
+    producedFilePreviewOpened: true,
     reconnect: true,
   })
   const reversed = await startPresentationWebHost(
@@ -205,10 +236,7 @@ try {
     await reversedPage.getByText('S4 production Tool delivery', { exact: true }).first().click()
     await reversedPage.waitForFunction(() => !!(window as any).__rightTabs)
     assert.equal(await reversedPage.locator('[data-presentation-card]').count(), 0)
-    assert.equal(
-      await reversedPage.locator('[data-produced-files-row]').count(),
-      expectedProducedRows,
-    )
+    const reversedFiles = await verifyProducedMentions(reversedPage, true)
     {
       const previous = server.deliveries[1]!.receipt
       const resolved = await reversedPage.evaluate(
@@ -230,7 +258,8 @@ try {
     checks.push({
       clientOrder: reversed.clientOrder,
       reports: inputs.requests.length,
-      producedFilesRows: expectedProducedRows,
+      producedFileMentions: reversedFiles,
+      producedFilePreviewOpened: true,
     })
     await reversedContext.close()
   } finally {

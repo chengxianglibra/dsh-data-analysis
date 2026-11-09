@@ -42,10 +42,9 @@ export async function createBrowserWorkspace(root: string): Promise<void> {
   await writeFile(
     path.join(root, 'models/semantic/sales/objects.py'),
     String.raw`
-from datetime import date
 import marivo.datasource as md
 import marivo.semantic as ms
-orders = ms.entity(name="orders", datasource=ms.ref.datasource("warehouse"), source=md.table("orders"), primary_key=["id"])
+orders = ms.entity(name="orders", datasource=ms.ref.datasource("warehouse"), source=md.table("orders"), primary_key=["id"], default_time=ms.ref.time_dimension("sales.orders.ordered_at"))
 users = ms.entity(name="users", datasource=ms.ref.datasource("warehouse"), source=md.table("users"))
 order_id = ms.dimension_column(name="order_id", entity=orders, column="id")
 user_id = ms.dimension_column(name="user_id", entity=users, column="id")
@@ -56,14 +55,12 @@ calendar_date = ms.time_dimension_column(name="calendar_date", entity=orders, co
 ends = ms.time_dimension_column(name="ends", entity=orders, column="ends", parse=ms.timestamp(timezone="UTC"))
 amount = ms.measure_column(name="amount", entity=orders, column="amount", additivity=ms.additive_all(), unit="CNY")
 orders_to_users = ms.relationship(name="orders_to_users", from_entity=orders, to_entity=users, keys=[ms.join_on(order_id, user_id)])
-fiscal = ms.period_calendar(name="fiscal", date=calendar_date, coverage=(date(2026, 1, 1), date(2027, 1, 1)), levels={"week": week})
-campaigns = ms.temporal_set(name="campaigns", occurrence_id=order_id, start=ordered_at, end=ends, category=region, boundary_timezone="UTC", coverage=(date(2026, 1, 1), date(2027, 1, 1)))
 @ms.metric(ai_context=ms.ai_context(business_definition="收入 Revenue <script>window.secret = true</script> " + "长定义😀" * 90, guardrails=("排除退款",)))
 def revenue():
     return amount.sum(time=ordered_at)
 @ms.metric()
-def revenue_at(*, event: ms.TimeParameter):
-    return amount.sum(time=event)
+def revenue_at():
+    return amount.sum()
 @ms.metric()
 def order_count():
     return amount.count()

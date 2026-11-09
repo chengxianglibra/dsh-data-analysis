@@ -71,19 +71,20 @@ paired 时间轴的 calendar endpoint key 使用带时区 datetime 编码；pair
 slots 仅保存实际投影的 value/presence 字段和全部轴键；未选中的不支持类型不阻断选列读取，
 被选中字段及完整轴键仍须通过类型检查。完整键按 slot 保存，不能用表格行号代替。
 
-v2 只保存数据的业务语义，不读取 `evidence()`、`findings()` 或 `method_facts`。`description`、轴变体（timezone、grain、paired 端点）
+v2 保存下列已支持的数据业务语义，不读取 `evidence()`、`findings()` 或 `method_facts`。`description`、轴变体（timezone、grain、paired 端点）
 随结构保存；三个元数据节为 `semantics`（实际投影列的静态 lineage）、`interpretation`（`fixed_axes`、按当前值名索引的
 observation/statistic/share/pair_statistic context、comparisons、decompositions、alignments）与 `periods`（每个时间轴及时间比较的
 `read_periods` 页，合计不超过 5000 项，`hasMore`/`totalCount` 照实保存）。内部 ID 在捕获时解析为当前值名、轴 token、
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
+Marivo 0.6.3 的 `Frame.schema.value_time_semantics` 当前不纳入快照，因此报告不能展示该字段中的值时间语义。
 契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)。新快照须在原分析执行中捕获，Host 只接受 Frame v2。
 
 日历期间按当前 Marivo 公共契约保存 civil `label`、`selection` 和可选 `cutoff`；不根据日期标签、键或时区推算未公开的起止边界。
 Interval 期间继续保存上游提供的 start/end。历史 Frame v2 中包含实际和名义日历边界的期间记录仍可读取。
 
-当前 `0.6.2` 没有公共持久化 Run SQL 读取接口，Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
+Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 不读取私有 Store、日志或重新编译 SQL。
 
 ## 同次执行的 DataFrame 快照

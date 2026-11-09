@@ -299,10 +299,11 @@ test('time bindings show each distinct effective time dimension once', () => {
     },
   ]
   const html = renderComputation('sum(a) + sum(b)', facts)
-  assert.equal((html.match(/sum\(a\)/g) ?? []).length, 1)
-  assert.equal((html.match(/time_dimension:sales.at/g) ?? []).length, 1)
-  assert.match(html, /time_dimension:sales.other/)
-  assert.doesNotMatch(html, /显式指定|查看原始记录/)
+  const summary = html.split('<details>')[0]!
+  assert.equal((summary.match(/time_dimension:sales.at/g) ?? []).length, 1)
+  assert.match(summary, /time_dimension:sales.other/)
+  assert.doesNotMatch(summary, /显式指定/)
+  assert.match(html, /显式指定/)
 })
 
 test('parameter and absent contribution time bindings remain visible', () => {
@@ -318,6 +319,29 @@ test('parameter and absent contribution time bindings remain visible', () => {
   ])
   assert.match(html, /event/)
   assert.match(html, /时间参数/)
+  assert.match(html, /未指定/)
+})
+
+test('report-independent time bindings preserve root and reason alongside timed branches', () => {
+  const html = renderComputation('sum(a) + sum(b)', [
+    {
+      name: 'time_bindings',
+      structured: true,
+      value: JSON.stringify([
+        {
+          branch: 'sum(a)',
+          field: 'time_dimension:sales.at',
+          path: [],
+          source: 'explicit',
+          anchor: null,
+        },
+        { branch: 'sum(b)', root: 'entity:sales.orders', reason: 'explicit_none', source: 'none' },
+      ]),
+    },
+  ])
+  assert.match(html, /time_dimension:sales.at/)
+  assert.match(html, /entity:sales.orders/)
+  assert.match(html, /explicit_none/)
   assert.match(html, /未指定/)
 })
 
@@ -484,11 +508,15 @@ test('calculation summary displays declared time and null rules before expanding
     {
       name: 'time_bindings',
       structured: true,
-      value: JSON.stringify([{ branch: 'sum(a)', field: 'time_dimension:sales.picked_up_at' }]),
+      value: JSON.stringify([
+        { branch: 'sum(a)', field: 'time_dimension:sales.picked_up_at', source: 'entity_default' },
+      ]),
     },
     { name: 'null_rules', structured: true, value: JSON.stringify(['sum(a): ignore NULL']) },
   ])
-  assert.match(html, /sb-fact-value[^>]*><span>time_dimension:sales.picked_up_at<\/span>/)
+  assert.match(html, /<span>time_dimension:sales.picked_up_at<\/span>/)
+  assert.match(html, /查看时间绑定详情/)
+  assert.match(html, /实体默认时间/)
   assert.match(html, /sum\(a\): ignore NULL/)
   assert.doesNotMatch(html, /<details class="sb-fact" open/)
 })

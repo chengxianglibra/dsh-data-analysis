@@ -248,8 +248,6 @@ try {
     ['time_dimension:sales.orders.ordered_at', 'clock-3'],
     ['metric:sales.revenue', 'hash'],
     ['relationship:sales.orders_to_users', 'link-2'],
-    ['period_calendar:sales.fiscal', 'calendar-days'],
-    ['temporal_set:sales.campaigns', 'calendar-days'],
   ] as const
   const icons = Object.fromEntries(
     kinds.map(([reference, icon]) => [reference.split(':')[0], icon]),

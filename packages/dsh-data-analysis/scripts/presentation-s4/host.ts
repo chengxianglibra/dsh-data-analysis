@@ -140,7 +140,10 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
         yield { type: 'finish', reason: { kind: 'stop' } }
         return
       }
-      const text = 'S4 deterministic model boundary complete.'
+      // Harness links produced files when closing prose mentions their path in
+      // inline code. Keep the first turn without a closing text boundary.
+      const file = `s4-produced-${this.runId}-${turnIndex}.txt`
+      const text = `S4 deterministic model boundary complete. Created \`${file}\`.`
       yield { type: 'block-start', index: 0, blockType: 'text' }
       yield { type: 'text-delta', index: 0, text }
       yield { type: 'block-end', index: 0, block: { type: 'text', text } }

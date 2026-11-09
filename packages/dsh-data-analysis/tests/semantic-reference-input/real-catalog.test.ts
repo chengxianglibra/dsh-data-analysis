@@ -41,7 +41,7 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.2: empty, large and failed Catalog reads only add public search caches', async (t) => {
+test('real Marivo 0.6.3: empty, large and failed Catalog reads only add public search caches', async (t) => {
   try {
     await access(python)
   } catch {
@@ -57,7 +57,7 @@ test('real Marivo 0.6.2: empty, large and failed Catalog reads only add public s
     { projectRoot: root, pythonExecutable: python },
     { environment },
   )
-  assert.equal(runner.binding.marivoVersion, '0.6.2')
+  assert.equal(runner.binding.marivoVersion, '0.6.3')
   let now = 0
   const bridge = new SemanticReferenceBridge(() => now),
     signal = new AbortController().signal

@@ -71,7 +71,7 @@ function TimeBindingValue({ fact, object, objects, navigate }) {
   }
   const fields = [...new Set(value.map((item) => item.field))]
   if (!fields.length) return t('marivo.semantic.not-declared')
-  return fields.map((field, index) => {
+  const summary = fields.map((field, index) => {
     const relation = object.relations.find(
       (item) => item.ref.kind === 'time_dimension' && refKey(item.ref) === field,
     )
@@ -94,6 +94,15 @@ function TimeBindingValue({ fact, object, objects, navigate }) {
       </span>
     )
   })
+  return (
+    <div>
+      {summary}
+      <details>
+        <summary>{t('marivo.semantic.time-binding-details')}</summary>
+        <FieldValue field={fact} object={object} objects={objects} navigate={navigate} />
+      </details>
+    </div>
+  )
 }
 
 function NullRuleValue({ fact, expression, reductions, object, objects, navigate }) {
