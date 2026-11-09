@@ -76,6 +76,12 @@ Skill。该检查不验证 Skill 附带的其他资源。
 
 公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。Skill 激活只向允许进入模型的 decision 追加实时根 Help，保留原 decision 的其他字段。披露失败、取消及释放均不交付部分 Help。
 
+常驻 Host 提示要求 Marivo API Help 只通过 `marivo_help` 获取，并将 Skill 或 Help 中的
+`marivo help TARGET` 示例映射为 `marivo_help({"targets":["TARGET"]})`。不通过 Workspace 的
+`.venv/bin/marivo`、PATH 中的 `marivo`、`python -m marivo` 或其他解释器读取 Help，避免使用另一份
+Marivo 安装。Tool 不可用或失败时报告具体错误，不切换安装。该映射只规定 Host 调用入口，不改写
+上游 Skill 或实时 Help 正文。
+
 ## Prompt 可见性与恢复
 
 controller 不把“历史上曾经发送”当成“当前模型可见”。每个 pre-step 都从 DSH Session surface
@@ -108,8 +114,8 @@ Code Mode 中嵌套 Skill 使用 log-only 的 `tool/ptc-dispatch`，外层 `run_
 ## 工具可见性边界
 
 `marivo_help` 是 Agent scope Tool，但插件不调用 `tools.restrict()`，也不隐藏 `skill`、`run_code`、
-bash 或其他 profile Tool。native 与 ptc 模式保持 Harness 原行为（当前基线不再提供 both）。当前设计只通过 Skill 内容
-指导 focused Help 调用，不承诺在任意 bash/Python Marivo 执行前做拦截。
+bash 或其他 profile Tool。native 与 ptc 模式保持 Harness 原行为（当前基线不再提供 both）。插件通过常驻 Host 提示
+明确 Help 调用入口，Skill 负责流程指导；提示不构成执行拦截，不承诺在任意 bash/Python Marivo 执行前做拦截。
 
 这一区分避免把“实时能力披露”扩大为通用命令解析器或安全沙箱。
 
