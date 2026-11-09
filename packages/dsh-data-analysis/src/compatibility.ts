@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 
-export const COMPATIBILITY_SCHEMA = 'dsh-data-analysis-compatibility/v2' as const
+export const COMPATIBILITY_SCHEMA = 'dsh-data-analysis-compatibility/v3' as const
 
 export interface DshDataAnalysisCompatibility {
   readonly schema: typeof COMPATIBILITY_SCHEMA
@@ -11,11 +11,9 @@ export interface DshDataAnalysisCompatibility {
   readonly marivo: {
     readonly version: string
     readonly packageSpec: string
-    readonly wheelFilename: string
-    readonly wheelSha256: string
   }
   readonly contracts: {
-    readonly runtimeInstallation: 'dsh-data-analysis-runtime/v4'
+    readonly runtimeInstallation: 'dsh-data-analysis-runtime/v5'
     readonly subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2'
     readonly integration: 'dsh-data-analysis-integration/v1'
   }
@@ -84,13 +82,11 @@ function parsePackageManifest(value: unknown): PackageManifest {
       marivo: Object.freeze({
         version: requiredString(marivo.version, 'package compatibility marivo.version'),
         packageSpec: requiredString(marivo.packageSpec, 'package compatibility marivo.packageSpec'),
-        wheelFilename: requiredString(marivo.wheelFilename, 'Marivo wheel filename'),
-        wheelSha256: requiredString(marivo.wheelSha256, 'Marivo wheel sha256'),
       }),
       contracts: Object.freeze({
         runtimeInstallation: requiredLiteral(
           contracts.runtimeInstallation,
-          'dsh-data-analysis-runtime/v4',
+          'dsh-data-analysis-runtime/v5',
           'package compatibility contracts.runtimeInstallation',
         ),
         subprocessPolicy: requiredLiteral(
@@ -131,6 +127,3 @@ export const MARIVO_PACKAGE_SPEC = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.packag
 export const RUNTIME_INSTALLATION_VERSION =
   DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.runtimeInstallation
 export const SUBPROCESS_POLICY_VERSION = DSH_DATA_ANALYSIS_COMPATIBILITY.contracts.subprocessPolicy
-
-export const MARIVO_WHEEL_FILENAME = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.wheelFilename
-export const MARIVO_WHEEL_SHA256 = DSH_DATA_ANALYSIS_COMPATIBILITY.marivo.wheelSha256

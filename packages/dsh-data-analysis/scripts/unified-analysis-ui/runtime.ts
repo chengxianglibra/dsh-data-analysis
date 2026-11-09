@@ -1,6 +1,5 @@
 /** Real Runtime capture, report save and independent Build reads. */
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -200,7 +199,6 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
   } finally {
     await files.close()
   }
-  const wheel = process.env.DSH_DATA_ANALYSIS_MARIVO_WHEEL
   const evidence = {
     status: 'passed',
     deliveries,
@@ -208,14 +206,6 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
     generated,
     restored,
     frame,
-    marivoWheel: wheel
-      ? {
-          path: wheel,
-          sha256: createHash('sha256')
-            .update(await readFile(wheel))
-            .digest('hex'),
-        }
-      : null,
     boundary:
       'Real Harness tool/Shell/worker and installed Runtime. Source database deleted before restored reads. No UI or model acceptance.',
   }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { MARIVO_VERSION, MARIVO_WHEEL_SHA256 } from '../src/compatibility.ts'
+import { MARIVO_VERSION } from '../src/compatibility.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoWorkspaceEnvironmentManager,
@@ -24,7 +24,6 @@ try {
       : {}),
   })
   assert.equal(runtime.marivoVersion, MARIVO_VERSION)
-  assert.equal(runtime.marivoArchiveSha256, MARIVO_WHEEL_SHA256)
   assert.deepEqual(
     await ensureSharedMarivoRuntime({
       runtimeRoot: runtime.runtimeRoot,
@@ -136,7 +135,7 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
   )
   assert.deepEqual(updated.resources, document.resources)
   process.stdout.write(
-    `${JSON.stringify({ status: 'ok', marivoVersion: runtime.marivoVersion, wheelSha256: runtime.marivoArchiveSha256, coldReads: ['AnalysisFrame', 'DataFrame'], exactValues: true, emptyDecimalType: true, boundedPreview: true, wrongStoreRejected: true, foreignWorkspaceRejected: true, savedResourcesIndependent: true, helperLibraryInstalled: false, httpService: false }, null, 2)}\n`,
+    `${JSON.stringify({ status: 'ok', marivoVersion: runtime.marivoVersion, coldReads: ['AnalysisFrame', 'DataFrame'], exactValues: true, emptyDecimalType: true, boundedPreview: true, wrongStoreRejected: true, foreignWorkspaceRejected: true, savedResourcesIndependent: true, helperLibraryInstalled: false, httpService: false }, null, 2)}\n`,
   )
 } finally {
   manager?.dispose()

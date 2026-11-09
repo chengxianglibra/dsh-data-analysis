@@ -99,7 +99,7 @@ test('removed and rejected convenience surfaces cannot regress into plugin sourc
   })
 })
 
-test('package cutover removes report exports and pins the bundled Runtime artifact', async () => {
+test('package cutover removes report exports and pins the Runtime dependency', async () => {
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
   assert.equal(Object.hasOwn(manifest.exports, './evidence'), false)
   assert.equal(Object.hasOwn(manifest.exports, './report'), false)
@@ -109,21 +109,18 @@ test('package cutover removes report exports and pins the bundled Runtime artifa
   assert.equal(manifest.files.includes('report-contracts/*.json'), false)
   assert.equal(
     manifest.files.some((filename: string) => filename.startsWith('python/marivo/')),
-    true,
+    false,
   )
-  const { version, packageSpec, wheelFilename, wheelSha256 } =
-    manifest.dshDataAnalysisCompatibility.marivo
-  assert.equal(wheelFilename, `marivo-${version}-py3-none-any.whl`)
-  assert.match(wheelSha256, /^[a-f0-9]{64}$/)
+  const { version, packageSpec } = manifest.dshDataAnalysisCompatibility.marivo
   assert.deepEqual(
     { version, packageSpec },
     {
-      version: '0.6.4.dev0',
-      packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.4.dev0',
+      version: '0.6.4',
+      packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.4',
     },
   )
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {
-    runtimeInstallation: 'dsh-data-analysis-runtime/v4',
+    runtimeInstallation: 'dsh-data-analysis-runtime/v5',
     subprocessPolicy: 'direct-argv-inherited-env-snapshot-overlay-v2',
     integration: 'dsh-data-analysis-integration/v1',
   })
@@ -145,11 +142,6 @@ test('S2 removes the old helper, report Skill and JavaScript transport together'
   ])
     await assert.rejects(() => stat(removed), { code: 'ENOENT' })
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
-  assert.ok(
-    manifest.files.includes(
-      `python/marivo/dist/${manifest.dshDataAnalysisCompatibility.marivo.wheelFilename}`,
-    ),
-  )
   assert.equal(
     manifest.files.some((item: string) => /report-kit|dsh-data-analysis-report/.test(item)),
     false,

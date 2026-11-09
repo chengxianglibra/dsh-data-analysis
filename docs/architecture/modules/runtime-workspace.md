@@ -34,33 +34,32 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 └── installation.json
 ```
 
-`installation.json` 使用 `dsh-data-analysis-runtime/v4`，记录实际 `marivoVersion`、`pythonExecutable`、`packagePath`、`marivoArchiveSha256` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
+`installation.json` 使用 `dsh-data-analysis-runtime/v5`，记录实际 `marivoVersion`、`pythonExecutable`、`packagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
 启动时先读取 marker 并验证：
 
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.6.4.dev0`；
-5. Marivo distribution 版本、实际导入位置、安装来源的 archive SHA-256，以及公开 `persist_dataframe` / `read_dataframe` / Frame ref 能力一致；
+4. Marivo 版本严格等于 `0.6.4`；
+5. Marivo distribution 版本、实际导入位置以及公开 `persist_dataframe` / `read_dataframe` / Frame ref 能力一致，且 distribution 没有 pip direct URL 安装记录；
 6. `marivo-analysis` 和 `marivo-semantic` 的 `SKILL.md` 均存在；若绑定包提供
    `marivo-service`，也同步并验证它。每个 Skill 的 frontmatter `name` 与目录名精确一致。
 
 验证通过则直接复用，不在每次启动时联网升级。验证失败后进入安装锁，在锁内再次检查以避免并发
 重复安装；仍无有效 Runtime 时，将旧目录移动为 `.invalid-*` 诊断备份并创建新安装。
 
-安装产物身份由 compatibility manifest 的 `wheelFilename` 与 `wheelSha256` 定义。
-同版本的 wheel 内容变化同样使旧 marker 失效并触发保留诊断备份后的重新安装。
+compatibility manifest 固定版本和 pip 安装规格；Runtime 验证版本与导入身份，不记录或校验下载文件的摘要。
 插件不再安装独立 presentation-kit。
 
 ### 安装模式
 
 | 模式 | 输入 | 行为 |
 | --- | --- | --- |
-| 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 安装随包的 Marivo wheel 及 duckdb/trino/clickhouse extras |
-| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证该解释器已提供精确 Marivo 与 pandas，随后同步 Skill 和发布 marker |
+| 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 从配置的包索引安装固定版本及 duckdb/trino/clickhouse extras |
+| 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证精确版本、导入身份、没有 direct URL 安装记录及 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都要求通过 pip 安装精确的 Marivo 0.6.4.dev0；marker 记录版本与 package identity。其他版本或 schema
+两种模式都要求通过 pip 安装精确的 Marivo 0.6.4；marker 记录版本与 package identity。其他版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -73,7 +72,7 @@ Python 必须支持 `venv`/`ensurepip`；缺失或版本不符时明确失败。
 
 ### DuckDB 文件依赖
 
-安装规格 `marivo[duckdb,trino,clickhouse]==0.6.4.dev0` 显式包含 DuckDB extra，由 Marivo 的
+安装规格 `marivo[duckdb,trino,clickhouse]==0.6.4` 显式包含 DuckDB extra，由 Marivo 的
 `ibis-framework[duckdb]` 依赖提供后端。Runtime probe 同时导入 `ibis.backends.duckdb`，
 防止缺少该后端的环境通过复用校验；管理员环境缺失时给出包含 extra 的修复命令，不自动安装。
 
@@ -102,7 +101,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
 `marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。缺少 manifest
-时，Marivo 0.6.4.dev0 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
+时，Marivo 0.6.4 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
 写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
@@ -142,19 +141,15 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 
 ## 当前安装来源
 
-`npm run prepare:marivo` 和包 build/prepack 从隔壁 `marivo/dist/pypi/` 选择修改时间最新的
-`marivo-*-py3-none-any.whl`，复制到插件 `python/marivo/dist/`，并更新 compatibility manifest 的版本、
-文件名和 SHA-256。当前是 `marivo-0.6.4.dev0-py3-none-any.whl`。生产安装只读随包 wheel，不访问邻近 checkout。
-
-managed Runtime 通过所选 Python 的 `-m pip install <wheel>[duckdb,trino,clickhouse]` 安装；
-不从 PyPI 重新选择 Marivo，不退回 editable checkout，依赖仍按 pip 正常安装。
-probe 核验 distribution/module 版本、实际 import path 和 pip `direct_url.json` 的 archive SHA-256；
-marker v4 记录该摘要。版本、产物或能力不符明确失败。
-管理员 Python 只验证，不自动修改；修复命令指向同一随包 wheel。
+managed Runtime 通过所选 Python 执行 `-m pip install --force-reinstall 'marivo[duckdb,trino,clickhouse]==0.6.4'`。
+pip 默认使用 PyPI，也遵循本机配置的包索引；构建和安装均不读取邻近 checkout。probe 核验
+distribution/module 版本、实际 import path、公开能力和 pip `direct_url.json` 不存在，以拒绝带 direct URL
+记录的 URL、本地 wheel 或 editable 安装。该检查不证明具体包索引或下载文件摘要。版本或能力不符明确失败；
+管理员 Python 只验证，不自动修改，修复命令使用相同的 pip 安装规格。
 
 ## 正式版安装与升级
 
-启动复用同一版本和产物的有效 marker；不匹配时 managed 模式保留旧目录并从随包 wheel 重建，
+启动复用同一版本的有效 marker；不匹配时 managed 模式保留旧目录并通过 pip 重建，
 管理员模式报错并给出明确修复命令。测试使用隔离 Runtime，不删除用户安装、Workspace 或旧 Store。
 新版本使用所属 Store generation，不自动迁移历史 Session/Artifact。
 内部展示 codec 合同由 `tests/runtime-workspace/projection-contracts.test.ts` 纳入持续检查，

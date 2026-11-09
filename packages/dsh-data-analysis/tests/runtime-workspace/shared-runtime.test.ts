@@ -4,11 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import test from 'node:test'
-import {
-  MARIVO_VERSION,
-  MARIVO_WHEEL_FILENAME,
-  MARIVO_WHEEL_SHA256,
-} from '../../src/compatibility.ts'
+import { MARIVO_VERSION } from '../../src/compatibility.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoEnvironmentError,
@@ -56,8 +52,8 @@ if (script.includes('sys.version_info')) {
     process.exit(23)
   }
   process.stdout.write(JSON.stringify({
-    marivo_archive_sha256: process.env.ARCHIVE_SHA ?? ${JSON.stringify(MARIVO_WHEEL_SHA256)},
-    marivo_distribution_version: process.env.MARIVO_VERSION ?? "0.6.4.dev0",
+    marivo_index_install: process.env.DIRECT_INSTALL !== '1',
+    marivo_distribution_version: process.env.MARIVO_VERSION ?? "0.6.4",
     marivo_import_identity: true,
     python_executable: path.resolve(process.argv[1]),
     marivo_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
@@ -177,19 +173,17 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
     .split('\n')
     .map((line) => JSON.parse(line) as string[])
   assert.equal(calls.filter((args) => args[0] === 'pip' && args[1] === 'install').length, 1)
-  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.4.dev0')
-  assert.ok(
-    calls.some((args) =>
-      args.at(-1)?.endsWith(`${MARIVO_WHEEL_FILENAME}[duckdb,trino,clickhouse]`),
-    ),
+  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.4')
+  assert.deepEqual(
+    calls.find((args) => args[0] === 'pip'),
+    ['pip', 'install', '--force-reinstall', 'marivo[duckdb,trino,clickhouse]==0.6.4'],
   )
   const marker = JSON.parse(
     await readFile(path.join(item.runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.marivoVersion, FIXTURE_MARIVO_VERSION)
-  assert.equal(marker.marivoArchiveSha256, MARIVO_WHEEL_SHA256)
   assert.equal('reportAdapterKind' in marker, false)
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v4')
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v5')
   assert.equal('capabilities' in marker, false)
   await stat(path.join(first.skillsRoot, 'marivo-analysis', 'SKILL.md'))
   await stat(path.join(first.skillsRoot, 'marivo-semantic', 'SKILL.md'))
@@ -281,19 +275,14 @@ test('a managed Runtime on another Marivo version is rebuilt to the pinned versi
   await writeFile(initial.installationPath, `${JSON.stringify(marker)}\n`)
 
   const current = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  assert.equal(current.marivoVersion, '0.6.4.dev0')
+  assert.equal(current.marivoVersion, '0.6.4')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line) as string[])
   const installCalls = calls.filter((args) => args[0] === 'pip' && args[1] === 'install')
   assert.equal(installCalls.length, 2)
-  assert.equal(
-    installCalls.filter((args) =>
-      args.at(-1)?.endsWith(`${MARIVO_WHEEL_FILENAME}[duckdb,trino,clickhouse]`),
-    ).length,
-    2,
-  )
+  assert.equal(installCalls.filter((args) => args.at(-1) === SHARED_MARIVO_PACKAGE_SPEC).length, 2)
   const siblings = await import('node:fs/promises').then((fs) => fs.readdir(item.root))
   assert.ok(siblings.some((name) => name.startsWith('runtime.invalid-')))
 })
@@ -310,7 +299,8 @@ test('an unsupported marker is discarded instead of migrated or reused', async (
     string,
     unknown
   >
-  marker.schema = 'dsh-data-analysis-runtime/v2'
+  marker.schema = 'dsh-data-analysis-runtime/v4'
+  marker.marivoArchiveSha256 = 'previous-wheel-hash'
   await writeFile(first.installationPath, `${JSON.stringify(marker)}\n`)
 
   const rebuilt = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
@@ -323,13 +313,13 @@ test('an unsupported marker is discarded instead of migrated or reused', async (
     string,
     unknown
   >
-  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v4')
+  assert.equal(rebuiltMarker.schema, 'dsh-data-analysis-runtime/v5')
   assert.equal('capabilities' in rebuiltMarker, false)
   const siblings = await import('node:fs/promises').then((fs) => fs.readdir(item.root))
   assert.ok(siblings.some((name) => name.startsWith('runtime.invalid-')))
 })
 
-test('a corrupt v3 marker is rebuilt instead of partially trusted', async (t) => {
+test('a corrupt marker is rebuilt instead of partially trusted', async (t) => {
   const item = await fixture()
   t.after(item.cleanup)
   const config = {
@@ -345,7 +335,7 @@ test('a corrupt v3 marker is rebuilt instead of partially trusted', async (t) =>
     string,
     unknown
   >
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v4')
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v5')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')
@@ -412,7 +402,7 @@ test('administrator Python missing a package receives the Marivo package repair 
     (error: unknown) =>
       error instanceof MarivoEnvironmentError &&
       error.code === 'shared-runtime-package-unavailable' &&
-      error.message.includes(MARIVO_WHEEL_FILENAME) &&
+      error.message.includes(SHARED_MARIVO_PACKAGE_SPEC) &&
       Array.isArray(error.details.repairCommands) &&
       error.details.repairCommands.length === 1,
   )
@@ -502,47 +492,25 @@ for (const administrator of [false, true]) {
   })
 }
 
-test('same-version archive changes invalidate an existing installation marker', async (t) => {
-  const item = await fixture()
-  t.after(item.cleanup)
-  const config = { runtimeRoot: item.runtimeRoot, bootstrapPythonExecutable: item.bootstrapPython }
-  const initial = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  const marker = JSON.parse(await readFile(initial.installationPath, 'utf8'))
-  marker.marivoArchiveSha256 = '0'.repeat(64)
-  await writeFile(initial.installationPath, JSON.stringify(marker))
-  const current = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  assert.equal(current.marivoArchiveSha256, MARIVO_WHEEL_SHA256)
-  const calls = (await readFile(item.recordPath, 'utf8'))
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line))
-  assert.equal(calls.filter((args) => args[0] === 'pip').length, 2)
-})
-
-test('a modified Marivo wheel is rejected before Runtime installation', async (t) => {
-  const item = await fixture()
-  t.after(item.cleanup)
-  const wheel = path.join(item.root, MARIVO_WHEEL_FILENAME)
-  await writeFile(wheel, 'tampered archive')
-  await assert.rejects(
-    ensureSharedMarivoRuntime(
-      { runtimeRoot: item.runtimeRoot, bootstrapPythonExecutable: item.bootstrapPython },
-      { ...runtimeOptions(item), marivoWheelPath: wheel },
-    ),
-    /wheel identity mismatch/,
-  )
-  await assert.rejects(stat(item.recordPath), { code: 'ENOENT' })
-})
-
-test('administrator Python must originate from the selected Marivo archive', async (t) => {
-  const item = await fixture()
-  t.after(item.cleanup)
-  await assert.rejects(
-    ensureSharedMarivoRuntime(
-      { runtimeRoot: item.runtimeRoot, pythonExecutable: item.bootstrapPython },
-      runtimeOptions(item, { ...item.environment, ARCHIVE_SHA: '0'.repeat(64) }),
-    ),
-    (error) =>
-      error instanceof MarivoEnvironmentError && error.code === 'shared-runtime-identity-mismatch',
-  )
-})
+for (const administrator of [false, true]) {
+  test(`direct URL installation is rejected for ${administrator ? 'administrator' : 'managed'} Runtime`, async (t) => {
+    const item = await fixture()
+    t.after(item.cleanup)
+    await assert.rejects(
+      ensureSharedMarivoRuntime(
+        {
+          runtimeRoot: item.runtimeRoot,
+          ...(administrator
+            ? { pythonExecutable: item.bootstrapPython }
+            : { bootstrapPythonExecutable: item.bootstrapPython }),
+        },
+        runtimeOptions(item, { ...item.environment, DIRECT_INSTALL: '1' }),
+      ),
+      (error: unknown) =>
+        error instanceof MarivoEnvironmentError &&
+        error.code === 'shared-runtime-identity-mismatch' &&
+        error.message.includes('pip package index'),
+    )
+    await assert.rejects(stat(path.join(item.runtimeRoot, 'installation.json')), { code: 'ENOENT' })
+  })
+}

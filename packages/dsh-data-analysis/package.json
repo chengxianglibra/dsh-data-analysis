@@ -65,11 +65,10 @@
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
-    "python/marivo/dist/marivo-0.6.4.dev0-py3-none-any.whl",
     "python/presentation/*.py"
   ],
   "scripts": {
-    "build": "npm run clean && node scripts/prepare-marivo.mjs && node scripts/generate-analysis-catalog.mjs --build && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
+    "build": "npm run clean && node scripts/generate-analysis-catalog.mjs --build && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
     "clean": "node scripts/clean.mjs",
     "prepack": "npm run build"
   },
@@ -78,19 +77,17 @@
     "registry": "https://registry.npmjs.org/"
   },
   "dshDataAnalysisCompatibility": {
-    "schema": "dsh-data-analysis-compatibility/v2",
+    "schema": "dsh-data-analysis-compatibility/v3",
     "dsh": {
       "distribution": "@deepseek-ai/dsh",
       "peerRange": ">=0.2.1-rc.2"
     },
     "marivo": {
-      "version": "0.6.4.dev0",
-      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.6.4.dev0",
-      "wheelFilename": "marivo-0.6.4.dev0-py3-none-any.whl",
-      "wheelSha256": "74ebbe5bef4355654beebb9e84931052b1bd07402b9a4040fda6244d5c21a893"
+      "version": "0.6.4",
+      "packageSpec": "marivo[duckdb,trino,clickhouse]==0.6.4"
     },
     "contracts": {
-      "runtimeInstallation": "dsh-data-analysis-runtime/v4",
+      "runtimeInstallation": "dsh-data-analysis-runtime/v5",
       "subprocessPolicy": "direct-argv-inherited-env-snapshot-overlay-v2",
       "integration": "dsh-data-analysis-integration/v1"
     }

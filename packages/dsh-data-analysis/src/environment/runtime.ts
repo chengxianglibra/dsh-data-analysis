@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import {
   access,
@@ -15,13 +15,10 @@ import {
 } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import {
   MARIVO_PACKAGE_SPEC,
   MARIVO_VERSION,
-  MARIVO_WHEEL_FILENAME,
-  MARIVO_WHEEL_SHA256,
   RUNTIME_INSTALLATION_VERSION,
 } from '../compatibility.ts'
 import { MarivoEnvironmentError } from './errors.ts'
@@ -50,12 +47,9 @@ from marivo.analysis import AnalysisFrame, persist_dataframe, read_dataframe
 assert callable(SemanticCatalog.search) and callable(DatasourceCatalog.describe)
 assert callable(AnalysisFrame.persist) and callable(persist_dataframe) and callable(read_dataframe) and hasattr(AnalysisFrame, "ref")
 dist = distribution("marivo")
-origin = json.loads(dist.read_text("direct_url.json") or "{}")
-archive = origin.get("archive_info", {})
-archive_sha = archive.get("hashes", {}).get("sha256") or archive.get("hash", "").removeprefix("sha256=")
 print(json.dumps({
     "marivo_distribution_version": dist.version,
-    "marivo_archive_sha256": archive_sha,
+    "marivo_index_install": dist.read_text("direct_url.json") is None,
     "marivo_import_identity": os.path.realpath(marivo.__file__) == os.path.realpath(dist.locate_file("marivo/__init__.py")),
     "python_executable": os.path.abspath(sys.executable),
     "marivo_version": marivo.__version__,
@@ -75,8 +69,8 @@ print(json.dumps({
 `.trim()
 
 interface RuntimeProbe {
-  marivo_archive_sha256: string
   marivo_distribution_version: string
+  marivo_index_install: boolean
   marivo_import_identity: boolean
   python_executable: string
   marivo_version: string
@@ -84,7 +78,6 @@ interface RuntimeProbe {
 }
 
 interface InstallationRecord {
-  marivoArchiveSha256: string
   schema: typeof INSTALLATION_SCHEMA
   marivoVersion: string
   pythonExecutable: string
@@ -94,7 +87,6 @@ interface InstallationRecord {
 
 interface RuntimeInstallOptions {
   /** Validate an existing installation without creating directories or acquiring an install lock. */
-  marivoWheelPath?: string
   existingOnly?: boolean
   environment?: NodeJS.ProcessEnv
   waitIntervalMs?: number
@@ -108,11 +100,11 @@ interface AdministratorRepair {
   }[]
 }
 
-function administratorRepair(executable: string, wheel: string): AdministratorRepair {
+function administratorRepair(executable: string): AdministratorRepair {
   const commands = [
     {
       executable,
-      args: ['-m', 'pip', 'install', '--force-reinstall', `${wheel}[duckdb,trino,clickhouse]`],
+      args: ['-m', 'pip', 'install', '--force-reinstall', SHARED_MARIVO_PACKAGE_SPEC],
     },
   ]
   return {
@@ -214,7 +206,6 @@ async function probeRuntime(
   executable: string,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
-  wheel: string,
   administrator: boolean,
   expectedMarivoVersion?: string,
 ): Promise<RuntimeProbe> {
@@ -225,11 +216,11 @@ async function probeRuntime(
     args: ['-c', PROBE_SCRIPT],
     limits: { timeoutMs, stdoutMaxBytes: 16_384, stderrMaxBytes: 16_384 },
   })
-  const repair = administrator ? administratorRepair(canonical, wheel) : undefined
+  const repair = administrator ? administratorRepair(canonical) : undefined
   if (administrator && result.exitCode !== 0) {
     throw new MarivoEnvironmentError(
       'shared-runtime-package-unavailable',
-      `Administrator Python must provide Marivo ${PINNED_MARIVO_VERSION} from the bundled wheel with the duckdb extra. ${repair!.message}`,
+      `Administrator Python must provide Marivo ${PINNED_MARIVO_VERSION} from a pip package index with the duckdb extra. ${repair!.message}`,
       {
         pythonExecutable: canonical,
         marivoVersion: PINNED_MARIVO_VERSION,
@@ -240,8 +231,14 @@ async function probeRuntime(
     )
   }
   const probe = parseJsonObject<RuntimeProbe>('probe Runtime package identity', result)
+  if (probe.marivo_index_install !== true) {
+    throw new MarivoEnvironmentError(
+      'shared-runtime-identity-mismatch',
+      'Shared Runtime Marivo must be installed from a pip package index',
+      { probe, ...(repair === undefined ? {} : { repairCommands: repair.commands }) },
+    )
+  }
   if (
-    probe.marivo_archive_sha256 !== MARIVO_WHEEL_SHA256 ||
     probe.marivo_distribution_version !== probe.marivo_version ||
     probe.marivo_import_identity !== true ||
     typeof probe.python_executable !== 'string' ||
@@ -282,8 +279,8 @@ async function probeRuntime(
     )
   }
   return {
-    marivo_archive_sha256: probe.marivo_archive_sha256,
     marivo_distribution_version: probe.marivo_distribution_version,
+    marivo_index_install: true,
     marivo_import_identity: true,
     python_executable: canonical,
     marivo_version: probe.marivo_version,
@@ -371,7 +368,6 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
     const fields = Object.keys(record).sort()
     const expectedFields = [
       'marivoVersion',
-      'marivoArchiveSha256',
       'packagePath',
       'pythonExecutable',
       'schema',
@@ -381,7 +377,6 @@ async function readInstallation(runtimeRoot: string): Promise<InstallationRecord
       fields.length !== expectedFields.length ||
       fields.some((field, index) => field !== expectedFields[index]) ||
       record.schema !== INSTALLATION_SCHEMA ||
-      record.marivoArchiveSha256 !== MARIVO_WHEEL_SHA256 ||
       typeof record.marivoVersion !== 'string' ||
       record.marivoVersion.length === 0 ||
       typeof record.pythonExecutable !== 'string' ||
@@ -415,7 +410,6 @@ async function validatedExisting(
   configuredPython: string | undefined,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
-  wheel: string,
 ): Promise<SharedMarivoRuntime | undefined> {
   const record = await readInstallation(runtimeRoot)
   if (record === undefined) return undefined
@@ -431,7 +425,6 @@ async function validatedExisting(
       selectedPython,
       environment,
       timeoutMs,
-      wheel,
       configuredPython !== undefined,
       record.marivoVersion,
     )
@@ -442,7 +435,6 @@ async function validatedExisting(
       runtimeRoot,
       pythonExecutable: probe.python_executable,
       marivoVersion: probe.marivo_version,
-      marivoArchiveSha256: probe.marivo_archive_sha256,
       packagePath: probe.package_path,
       skillsRoot: record.skillsRoot,
       installationPath: path.join(runtimeRoot, INSTALLATION_FILENAME),
@@ -526,7 +518,6 @@ async function backupInvalidRuntime(runtimeRoot: string): Promise<void> {
 async function installManagedRuntime(
   runtimeRoot: string,
   bootstrapPythonExecutable: string,
-  wheel: string,
   environment: NodeJS.ProcessEnv | undefined,
   timeoutMs: number,
 ): Promise<RuntimeProbe> {
@@ -586,19 +577,11 @@ async function installManagedRuntime(
     `install Marivo ${PINNED_MARIVO_VERSION}`,
     await policy.run({
       executable,
-      args: ['-m', 'pip', 'install', '--force-reinstall', `${wheel}[duckdb,trino,clickhouse]`],
+      args: ['-m', 'pip', 'install', '--force-reinstall', SHARED_MARIVO_PACKAGE_SPEC],
       limits,
     }),
   )
-  return probeRuntime(
-    runtimeRoot,
-    executable,
-    environment,
-    timeoutMs,
-    wheel,
-    false,
-    PINNED_MARIVO_VERSION,
-  )
+  return probeRuntime(runtimeRoot, executable, environment, timeoutMs, false, PINNED_MARIVO_VERSION)
 }
 
 /** Ensure and validate the one DSH-home-owned Marivo installation. */
@@ -621,26 +604,11 @@ export async function ensureSharedMarivoRuntime(
         : 'python3'
       : normalizeAbsolute('bootstrapPythonExecutable', config.bootstrapPythonExecutable)
   const timeoutMs = positiveTimeout(config.installTimeoutMs)
-  const wheel = path.resolve(
-    options.marivoWheelPath ??
-      fileURLToPath(new URL(`../../python/marivo/dist/${MARIVO_WHEEL_FILENAME}`, import.meta.url)),
-  )
-  const bytes = await readFile(wheel)
-  if (
-    path.basename(wheel) !== MARIVO_WHEEL_FILENAME ||
-    createHash('sha256').update(bytes).digest('hex') !== MARIVO_WHEEL_SHA256
-  )
-    throw new MarivoEnvironmentError(
-      'shared-runtime-identity-mismatch',
-      'Bundled Marivo wheel identity mismatch',
-      { wheel },
-    )
   const existing = await validatedExisting(
     runtimeRoot,
     configuredPython,
     options.environment,
     timeoutMs,
-    wheel,
   )
   if (existing !== undefined) return existing
   if (options.existingOnly)
@@ -658,7 +626,6 @@ export async function ensureSharedMarivoRuntime(
       configuredPython,
       options.environment,
       timeoutMs,
-      wheel,
     )
     if (afterLock !== undefined) return afterLock
     await backupInvalidRuntime(runtimeRoot)
@@ -668,7 +635,6 @@ export async function ensureSharedMarivoRuntime(
         ? await installManagedRuntime(
             runtimeRoot,
             bootstrapPythonExecutable,
-            wheel,
             options.environment,
             timeoutMs,
           )
@@ -677,7 +643,6 @@ export async function ensureSharedMarivoRuntime(
             configuredPython,
             options.environment,
             timeoutMs,
-            wheel,
             true,
             PINNED_MARIVO_VERSION,
           )
@@ -685,7 +650,6 @@ export async function ensureSharedMarivoRuntime(
     const record: InstallationRecord = {
       schema: INSTALLATION_SCHEMA,
       marivoVersion: probe.marivo_version,
-      marivoArchiveSha256: probe.marivo_archive_sha256,
       pythonExecutable: probe.python_executable,
       packagePath: probe.package_path,
       skillsRoot,
@@ -695,7 +659,6 @@ export async function ensureSharedMarivoRuntime(
       runtimeRoot,
       pythonExecutable: probe.python_executable,
       marivoVersion: probe.marivo_version,
-      marivoArchiveSha256: probe.marivo_archive_sha256,
       packagePath: probe.package_path,
       skillsRoot,
       installationPath,

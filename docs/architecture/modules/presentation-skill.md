@@ -20,7 +20,7 @@ Skill 入口不超过 6 KiB、单份参考不超过 16 KiB、每个 Skill 全部
 
 ## 发现与责任边界
 
-Plugin 用独立 filesystem provider `dsh-data-analysis-presentation` 读取包内 `skills/`，不扫描默认 roots，不监听目录变化。Runtime Skill 由 `dsh-data-analysis-marivo` provider 挂载，插件不改写其正文，也不新增报告 live Help target。当前 wheel 提供 marivo-analysis 与 marivo-semantic；Runtime 的可选 service Skill 支持仍由安装和披露模块拥有，常驻提示仅在绑定 Runtime 提供 marivo-service 时引导加载。
+Plugin 用独立 filesystem provider `dsh-data-analysis-presentation` 读取包内 `skills/`，不扫描默认 roots，不监听目录变化。Runtime Skill 由 `dsh-data-analysis-marivo` provider 挂载，插件不改写其正文，也不新增报告 live Help target。当前 Marivo 包提供 marivo-analysis 与 marivo-semantic；Runtime 的可选 service Skill 支持仍由安装和披露模块拥有，常驻提示仅在绑定 Runtime 提供 marivo-service 时引导加载。
 
 展示 Skill 激活不改变 Runtime Skill 的 Help 披露状态。工具入口见 [Agent scope surface](plugin-integration-delivery.md#agent-scope-surface)。
 

@@ -66,8 +66,7 @@
     "validate:unified-analysis-ui:web": "node --experimental-strip-types packages/dsh-data-analysis/scripts/unified-analysis-ui/web.ts",
     "build:ui-styles": "node packages/dsh-data-analysis/scripts/build-ui-styles.mjs",
     "check:ui-styles": "node packages/dsh-data-analysis/scripts/build-ui-styles.mjs --check",
-    "validate:result-references:real": "npm run prepare:source && node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-result-references-real.ts",
-    "prepare:marivo": "node packages/dsh-data-analysis/scripts/prepare-marivo.mjs"
+    "validate:result-references:real": "npm run prepare:source && node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-result-references-real.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

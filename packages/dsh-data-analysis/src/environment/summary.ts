@@ -14,7 +14,6 @@ export function environmentPayload(
     pythonExecutable: environment.binding.pythonExecutable,
     marivo: {
       version: environment.binding.marivoVersion,
-      archiveSha256: runtime.marivoArchiveSha256,
       packagePath: environment.binding.packagePath,
     },
     fingerprint: environment.binding.fingerprint,

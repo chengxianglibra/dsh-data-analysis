@@ -53,7 +53,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       projectRoot: root,
       pythonExecutable: '/python',
       packagePath: '/marivo',
-      marivoVersion: '0.6.4.dev0',
+      marivoVersion: '0.6.4',
       fingerprint: 'identity',
       subprocessPolicyId: 'policy',
     },

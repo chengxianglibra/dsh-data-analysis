@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -10,9 +9,6 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const packageRoot = path.join(root, 'packages/dsh-data-analysis')
 const packageJsonPath = path.join(packageRoot, 'package.json')
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const runtimeMetadata = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
-  .dshDataAnalysisCompatibility.marivo
-const marivoWheelPath = `python/marivo/dist/${runtimeMetadata.wheelFilename}`
 const projectionAssets = [
   '__init__.py',
   '_dataset.py',
@@ -204,7 +200,6 @@ try {
     'lib/semantic-reference/usage.js',
     'lib/types/presentation/index.d.ts',
     'lib/bin/environment.js',
-    marivoWheelPath,
     ...projectionAssets,
     'lib/presentation/contracts/index.js',
     'lib/presentation/contracts/types.js',
@@ -231,11 +226,7 @@ try {
       filename.startsWith('python/report-kit/')
     )
       fail(`packed plugin contains an unexpected Skill or removed helper ${filename}`)
-    if (
-      filename.startsWith('python/') &&
-      filename !== marivoWheelPath &&
-      !projectionAssets.includes(filename)
-    )
+    if (filename.startsWith('python/') && !projectionAssets.includes(filename))
       fail(`packed plugin contains an unexpected Python asset ${filename}`)
 
     if (filename === 'lib/datasource/access.js' || filename === 'lib/types/datasource/access.d.ts')
@@ -295,12 +286,6 @@ try {
   const installedPlugin = path.join(nodeModules, '@chengxianglibra/dsh-data-analysis')
   mkdirSync(path.dirname(installedPlugin), { recursive: true })
   renameSync(path.join(extracted, 'package'), installedPlugin)
-  if (
-    createHash('sha256')
-      .update(readFileSync(path.join(installedPlugin, marivoWheelPath)))
-      .digest('hex') !== runtimeMetadata.wheelSha256
-  )
-    fail('packed Marivo archive identity mismatch')
   const packedManifest = readJson(path.join(installedPlugin, 'package.json'))
   if (
     JSON.stringify(packedManifest.dshDataAnalysisCompatibility) !== JSON.stringify(compatibility)
@@ -348,7 +333,7 @@ try {
   ) {
     fail(`packed standalone CLI did not return its stable error: ${cliError.stderr}`)
   }
-  // Reach the managed-install bootstrap after locating the packed wheel. Node
+  // Reach the managed-install bootstrap. Node
   // is deliberately not a Python bootstrap and must produce the install error.
   const cliBootstrapError = spawnSync(
     process.execPath,
@@ -441,7 +426,7 @@ try {
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 
   process.stdout.write(
-    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; packed Marivo wheel, private projection and contracts passed\n`,
+    `verified ${manifest.id}: ${manifest.entryCount} files, ${manifest.unpackedSize} unpacked bytes; ${dshPeers.length} DSH peers at ${dshPeerRange}; Marivo ${compatibility.marivo.version}; private projection and contracts passed\n`,
   )
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true })

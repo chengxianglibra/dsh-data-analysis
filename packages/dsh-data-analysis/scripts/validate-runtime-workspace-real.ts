@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import { MARIVO_WHEEL_SHA256 } from '../src/compatibility.ts'
+import { MARIVO_VERSION } from '../src/compatibility.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoEnvironmentError,
@@ -34,7 +34,8 @@ try {
   assert.deepEqual(reused, runtime)
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
   assert.equal(marker.marivoVersion, runtime.marivoVersion)
-  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v4')
+  assert.equal(marker.schema, 'dsh-data-analysis-runtime/v5')
+  assert.equal(runtime.marivoVersion, MARIVO_VERSION)
   const administrator = await ensureSharedMarivoRuntime({
     runtimeRoot: path.join(validationRoot, 'administrator-runtime'),
     pythonExecutable: runtime.pythonExecutable,
@@ -85,7 +86,6 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
       new AbortController().signal,
     )
   ).data
-  assert.equal(runtime.marivoArchiveSha256, MARIVO_WHEEL_SHA256)
   assert.deepEqual(
     computed.columns.map(({ id }) => id),
     ['count', 'amount'],
@@ -97,7 +97,7 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
 
   const shadowRoot = path.join(firstWorkspace, 'marivo')
   await mkdir(shadowRoot)
-  await writeFile(path.join(shadowRoot, '__init__.py'), '__version__ = "0.6.4.dev0"\n')
+  await writeFile(path.join(shadowRoot, '__init__.py'), '__version__ = "0.6.4"\n')
   await assert.rejects(
     first.runChecked({ program: 'raise RuntimeError("user program must never start")' }),
     (error: unknown) =>

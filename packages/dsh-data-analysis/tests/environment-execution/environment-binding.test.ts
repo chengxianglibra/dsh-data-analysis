@@ -203,7 +203,6 @@ test('environment CLI payload exposes stable admission identity without a doctor
       pythonExecutable: environment.binding.pythonExecutable,
       marivoVersion: environment.binding.marivoVersion,
       packagePath: environment.binding.packagePath,
-      marivoArchiveSha256: 'fixture',
       skillsRoot: path.join(fixture.root, 'runtime', 'skills'),
       installationPath: path.join(fixture.root, 'runtime', 'installation.json'),
     },

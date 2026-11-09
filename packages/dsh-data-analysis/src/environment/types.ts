@@ -19,7 +19,6 @@ export interface SharedMarivoRuntime {
   pythonExecutable: string
   marivoVersion: string
   packagePath: string
-  marivoArchiveSha256: string
   skillsRoot: string
   installationPath: string
 }

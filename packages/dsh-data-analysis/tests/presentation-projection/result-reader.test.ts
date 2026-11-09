@@ -33,7 +33,7 @@ function fixture() {
       projectRoot: '/workspace',
       pythonExecutable: '/python',
       packagePath: '/marivo/__init__.py',
-      marivoVersion: '0.6.4.dev0',
+      marivoVersion: '0.6.4',
       fingerprint: 'identity',
       subprocessPolicyId: 'policy',
     },

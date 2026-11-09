@@ -57,7 +57,6 @@ test('zero-init Workspace bindings share Runtime identity without creating files
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
-    marivoArchiveSha256: 'fixture',
     skillsRoot: path.join(root, 'runtime', 'skills'),
     installationPath: path.join(root, 'runtime', 'installation.json'),
   }
@@ -101,7 +100,6 @@ test('one invalid Workspace fails closed without poisoning another Workspace', a
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
-    marivoArchiveSha256: 'fixture',
     skillsRoot: path.join(root, 'runtime', 'skills'),
     installationPath: path.join(root, 'runtime', 'installation.json'),
   })
