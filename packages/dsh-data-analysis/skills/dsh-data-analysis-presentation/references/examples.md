@@ -2,6 +2,8 @@
 
 以下 OpenUI Lang 使用示例资源名。编写实际页面时，用本次分析的资源名、列 ID 和结论替换。Native 和 Code Mode 都直接使用 preview 结果的 `draftId/draftRevision` 继续，使用 save 结果的 `recordId` 标识正式版本；不从 `deliveryJson` 拼装身份。
 
+`stage` 与 `surface` 独立：聊天中的草稿用 `surface: "tool"`，右侧报告/看板用 `surface: "tab"`。Native 调用把 surface、stage、草稿和基版本标识放在 program 前，使 Lang 前缀在生成期间就能更新同一草稿。后续调用省略 surface 会继承上次成功修订的位置；全部完成后只 save 一次。
+
 ## 比较与抵消项
 
 以下是示例的全量明细。
@@ -26,7 +28,7 @@ detail = Tabs([TabItem("selected", "减少最多的两项", [DatasetView("select
 
 `total` 是完整的单行 DataFrame，`current` 是原分析已计算的数值。`daily` 是按日观察的 Marivo Frame。读者先看合计，再看日间波动。
 
-`total` 快照先就绪时，用 `stage: "preview"` 提交 `root = Stack([heading, total]);`、显示“本期合计”的 `heading` 语句和下方的 `total` 语句。`daily` 就绪后，使用上次返回的 `draftId` 和 `draftRevision` 继续预览，提交下面的 `root`、`heading` 和 `trend` 语句，以及 `total`、`daily` 两份资源。读者可在同一标签页看到趋势加入。核对后用 `stage: "save"` 与最新的草稿标识生成一个正式版本。下方是合并后的完整页面。
+`total` 快照先就绪时，用 `stage: "preview"` 提交 `root = Stack([heading, total]);`、显示“本期合计”的 `heading` 语句和下方的 `total` 语句。`daily` 就绪后，使用上次返回的 `draftId` 和 `draftRevision` 继续预览，提交下面的 `root`、`heading` 和 `trend` 语句，以及 `total`、`daily` 两份资源。读者可在同一草稿视图看到趋势加入。核对后用 `stage: "save"` 与最新的草稿标识生成一个正式版本。下方是合并后的完整页面。
 
 ```openui
 root = Stack([heading, total, trend]);

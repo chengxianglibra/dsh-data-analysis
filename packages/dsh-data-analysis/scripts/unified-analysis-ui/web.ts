@@ -85,7 +85,7 @@ await build({
     contents: `
 import {writeFile} from 'node:fs/promises';
 import * as production from '@chengxianglibra/dsh-data-analysis';
-import {installProbe} from ${JSON.stringify(fileURLToPath(new URL('host.ts', import.meta.url)))};
+import {installProbe} from ${JSON.stringify(fileURLToPath(new URL(process.argv.includes('--drafts') ? 'draft-host.ts' : 'host.ts', import.meta.url)))};
 export const inject=[...production.inject,'llm','agentLoop','webServer'];
 export async function apply(ctx){
  await ctx.plugin(production,{pythonExecutable:${JSON.stringify(python)},runtimeRoot:${JSON.stringify(path.join(output, 'runtime-marker'))},credentialInteraction:'none'});

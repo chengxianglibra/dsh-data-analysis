@@ -260,6 +260,7 @@ test('live Native and Code previews deliver successive revisions of the same dra
     dshSessionId: 's1',
     workspaceId: 'workspace',
     turn: 1,
+    surface: 'tab',
     draftId: randomUUID(),
     draftRevision: randomUUID(),
   }

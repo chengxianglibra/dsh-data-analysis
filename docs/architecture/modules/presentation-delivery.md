@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-`marivo_present` 将已有结果保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在会话级 Chat 节点呈现，
+`marivo_present` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在会话级 Chat 节点呈现，
 显式报告/dashboard 使用右侧 tab。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
 Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 
@@ -16,9 +16,9 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 - 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
-- `surface` 默认 `tool`；成功保存后结果由会话级 Chat 节点呈现，保持在 Harness 工作步骤折叠区之外。`tab` 用于明确要求的报告/dashboard。
+- `stage` 与 `surface` 独立：preview 与 save 均支持 `tool` 和 `tab`。新建时 `surface` 默认 `tool`；继续或保存草稿时省略则继承上次成功修订的位置，显式提供可切换位置。tool 在会话级 Chat 节点呈现，保持在 Harness 工作步骤折叠区之外；`tab` 用于明确要求的报告/dashboard。
 - 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
-  字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
+  字段顺序仅是建议，surface 晚到时在调用成功后打开，不回补本次生成期预览。
 
 资源声明如下：
 
@@ -72,10 +72,11 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 
 - `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage`、`draftId` 与 `draftRevision`。
 - 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序。提供 `resources` 时仍替换完整映射。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
-- Native 和 PTC 的预览通知只携带草稿身份。浏览器通过 Session 绑定的 `draft/read` 读取确切的预览数据，在同一个报告草稿标签页中更新内容。
-- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本。若正式基版本已变化，保存失败并保留当前草稿。成功后，草稿 tab 原位切换到正式报告。
+- Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；tool 的会话节点与右侧 tab 共用同一草稿状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
+- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本。若正式基版本已变化，保存失败并保留当前草稿。成功后，所选 surface 的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
 - 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
+- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位，沿用的快照继续显示。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，surface、stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
 - 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId`、相对新基版本的累计 program patch 与完整 resources 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
 

@@ -24,6 +24,7 @@ export const draftDeliverySchema = z.strictObject({
   dshSessionId: z.string().min(1).max(512),
   workspaceId: z.string().min(1).max(512),
   turn: z.number().int().nonnegative(),
+  surface: z.enum(['tool', 'tab']),
   draftId: draftIdSchema,
   draftRevision: draftIdSchema,
 })
@@ -45,8 +46,7 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
       .filter((key) => key !== 'draftId')
       .sort()
       .join(',') !== 'dshSessionId,kind,receipt,schemaVersion,surface,turn' ||
-    ('draftId' in input &&
-      (input.surface !== 'tab' || !draftIdSchema.safeParse(input.draftId).success)) ||
+    ('draftId' in input && !draftIdSchema.safeParse(input.draftId).success) ||
     (input.surface !== 'tool' && input.surface !== 'tab') ||
     input.kind !== MARIVO_PRESENTATION_DELIVERY_KIND ||
     input.schemaVersion !== 2 ||

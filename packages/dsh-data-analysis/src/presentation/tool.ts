@@ -37,6 +37,7 @@ export type PresentationWorkspaceSource = () =>
   | Promise<{ id: string; path: string }>
 
 const presentationToolInput = analysisPresentInput.extend({
+  surface: z.enum(['tool', 'tab']).optional(),
   stage: z.enum(['preview', 'save']).default('save'),
   draftId: z.string().uuid().optional(),
   draftRevision: z.string().uuid().optional(),
@@ -70,12 +71,13 @@ export function createMarivoPresentTool(
         type: 'string',
         enum: ['tool', 'tab'],
         description:
-          'Defaults to tool for chat. Use tab for a requested report or dashboard. For native preview, put surface and any basedOnRecordId before the content.',
+          'Independent of stage: tool previews in chat, tab previews in the right pane. Defaults to tool for a new result; continuing or saving a draft inherits its last surface unless explicitly changed. Use tab for a requested report or dashboard. For Native streaming, put surface, stage, draftId/draftRevision and any base identifiers before program.',
       },
       stage: {
         type: 'string',
         enum: ['preview', 'save'],
-        description: 'Defaults to save. Set preview first to update the unsaved report tab.',
+        description:
+          'Defaults to save. Preview updates the same unsaved draft on either surface without adding history. Native program prefixes stream into that draft; new resources appear after validation. Save the latest draft once the content is complete.',
       },
       draftId: {
         type: 'string',
@@ -137,7 +139,7 @@ export function createMarivoPresentTool(
           return [
             {
               type: 'text',
-              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}`,
+              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}\nSurface: ${delivery.surface}`,
             },
           ]
         return [{ type: 'text', text: presentationReceiptText(delivery.receipt, delivery.surface) }]
@@ -232,8 +234,9 @@ export function createMarivoPresentTool(
                 signal,
               )
             : undefined)
+        const surface = input.surface ?? active?.delivery.surface ?? 'tool'
         const document = await createAnalysisDocument(
-          input,
+          { ...input, surface },
           {
             projectRoot: identity.path,
             runner,
@@ -256,6 +259,7 @@ export function createMarivoPresentTool(
             dshSessionId: sessionId,
             workspaceId: identity.id,
             turn,
+            surface,
             draftId: active?.delivery.draftId ?? randomUUID(),
             draftRevision: document.buildId,
           } as const
@@ -267,7 +271,6 @@ export function createMarivoPresentTool(
             deliveryJson: JSON.stringify(delivery),
           }
         }
-        const surface = active ? 'tab' : input.surface
         const receipt = await publishPresentation(
           identity.path,
           document,
@@ -399,6 +402,7 @@ export function createMarivoUiReadTool(
         recordId?: string
         draftId?: string
         draftRevision?: string
+        surface?: 'tool' | 'tab'
         basedOnRecordId?: string
       }
       let checkDraft = () => {}
@@ -418,6 +422,7 @@ export function createMarivoUiReadTool(
         identifiers = {
           draftId: draft.delivery.draftId,
           draftRevision: draft.delivery.draftRevision,
+          surface: draft.delivery.surface,
           ...(draft.baseBuildId
             ? { basedOnRecordId: analysisRecordId(document.reportId, draft.baseBuildId) }
             : {}),

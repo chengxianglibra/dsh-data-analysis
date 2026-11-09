@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import {
   ANALYSIS_SURFACE_NODE_KEY,
+  analysisDraftForNode,
   analysisSurfacesForNode,
   marivoAnalysisSurfaceDefinition,
 } from '../../src/client/presentation/delivery.ts'
-import type { PresentationDelivery } from '../../src/presentation/receipt.ts'
+import type { DraftDelivery, PresentationDelivery } from '../../src/presentation/receipt.ts'
 import { createHostChatFixture } from './host-client-fixture.ts'
 
 function delivery(
@@ -47,7 +49,12 @@ function call(seq: number, name: string, callId: string, turn = 3) {
 }
 
 // The current Harness writes identity and outcome on the tool-role message.
-function native(seq: number, value: PresentationDelivery, callId = 'present-call', failed = false) {
+function native(
+  seq: number,
+  value: PresentationDelivery | DraftDelivery,
+  callId = 'present-call',
+  failed = false,
+) {
   return {
     seq,
     type: 'tool/result',
@@ -150,6 +157,50 @@ function assertOutsideHostProcessGroup(
     )
   }
 }
+
+test('tool draft revisions update one Host chat node and save replaces it in place', async (t) => {
+  const host = await createHostChatFixture()
+  t.after(() => host.dispose())
+  const assembler = host.createAssembler()
+  const draft: DraftDelivery = {
+    kind: 'marivo.presentation.draft',
+    dshSessionId: 'session-a',
+    workspaceId: 'workspace-a',
+    turn: 3,
+    surface: 'tool',
+    draftId: randomUUID(),
+    draftRevision: randomUUID(),
+  }
+  for (const event of [
+    start(3),
+    step(3),
+    call(3, 'marivo_present', 'first'),
+    native(4, draft, 'first'),
+  ])
+    append(assembler, event)
+  const first = surfaces(assembler)[0]
+  assert.ok(first)
+  assert.equal(analysisDraftForNode(first, 'session-a')?.draftRevision, draft.draftRevision)
+  assert.equal(analysisDraftForNode(first, 'session-b'), undefined)
+  const next = { ...draft, draftRevision: randomUUID() }
+  append(assembler, call(5, 'marivo_present', 'second'))
+  append(assembler, native(6, next, 'second'))
+  assert.equal(surfaces(assembler).length, 1)
+  assert.equal(surfaces(assembler)[0].key, first.key)
+  assert.equal(
+    analysisDraftForNode(surfaces(assembler)[0], 'session-a')?.draftRevision,
+    next.draftRevision,
+  )
+  const saved = { ...delivery('only-build', { surface: 'tool' }), draftId: draft.draftId }
+  append(assembler, call(7, 'marivo_present', 'save'))
+  append(assembler, native(8, saved, 'save'))
+  const final = surfaces(assembler)[0]
+  assert.equal(final.key, first.key)
+  assert.equal(analysisDraftForNode(final, 'session-a'), undefined)
+  assert.deepEqual(buildIds(final), ['only-build'])
+  append(assembler, end(3, 9))
+  assert.deepEqual(buildIds(surfaces(assembler)[0]), ['only-build'])
+})
 
 test('Native and PTC saved tool surfaces stay outside actual Host process groups through close and replay', async (t) => {
   for (const reason of ['completed', 'cancelled']) {

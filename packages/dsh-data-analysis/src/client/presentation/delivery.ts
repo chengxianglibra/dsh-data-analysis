@@ -2,7 +2,6 @@ import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/c
 import type {
   ConversationNodeContext,
   ConversationNodeDefinition,
-  ConversationViewNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   type DraftDelivery,
@@ -23,6 +22,7 @@ export interface PresentationTurnDelivery {
 }
 export interface PresentationTurnData {
   readonly deliveries: readonly PresentationTurnDelivery[]
+  readonly drafts?: readonly { readonly seq: number; readonly delivery: DraftDelivery }[]
 }
 export interface AnalysisSurfaceData extends PresentationTurnData {
   readonly turn: number
@@ -171,7 +171,8 @@ export const marivoPresentationDeliveryDefinition = {
       return { id: String(data.turn), role: event.type === 'turn/start' ? 'start' : 'update' }
     }
     if (event.type !== 'tool/ptc-dispatch' || data.name !== MARIVO_PRESENT_TOOL_NAME) return null
-    const delivery = parsePresentationDurableContent(data.content)
+    const delivery =
+      parsePresentationDurableContent(data.content) ?? parseDraftDurableContent(data.content)
     return delivery ? { id: String(delivery.turn), role: 'update' } : null
   },
   start(_context: unknown, match: { event: any }): PresentationTurnState {
@@ -193,6 +194,22 @@ export const marivoPresentationDeliveryDefinition = {
       return { ...state, calls }
     }
     const item = presentationDeliveryFromEvent(event, state.calls, state.turn)
+    const draft = draftDeliveryFromEvent(event, state.calls, state.turn)
+    if (draft) {
+      if (
+        state.drafts?.some((item) => item.delivery.draftRevision === draft.delivery.draftRevision)
+      )
+        return state
+      return {
+        ...state,
+        drafts: Object.freeze([
+          ...(state.drafts ?? []).filter(
+            (item) => item.delivery.draftId !== draft.delivery.draftId,
+          ),
+          draft,
+        ]),
+      }
+    }
     if (
       !item ||
       state.deliveries.some(
@@ -246,9 +263,7 @@ export const marivoPresentationDeliveryDefinition = {
   },
 } satisfies ConversationNodeDefinition<PresentationTurnState>
 
-function isCurrentAnalysisSurface(
-  value: ConversationViewNode | null | undefined,
-): value is ChatConversationViewNode {
+function isCurrentAnalysisSurface(value: unknown): value is ChatConversationViewNode {
   const node = record(value)
   return (
     node?.kind === ANALYSIS_SURFACE_NODE_KEY &&
@@ -275,7 +290,10 @@ export const marivoAnalysisSurfaceDefinition = {
     const data = record(event?.data)
     const turn =
       event?.type === 'tool/ptc-dispatch'
-        ? parsePresentationDurableContent(data?.content)?.turn
+        ? (
+            parsePresentationDurableContent(data?.content) ??
+            parseDraftDurableContent(data?.content)
+          )?.turn
         : data?.turn
     if (typeof turn !== 'number' || !Number.isSafeInteger(turn) || turn < 0)
       throw new Error('presentation-surface-turn-required')
@@ -319,10 +337,19 @@ export const marivoAnalysisSurfaceDefinition = {
     const deliveries = state.deliveries.filter(
       (item) => item.delivery.surface === 'tool' && (boundary === null || item.seq <= boundary),
     )
-    if (!deliveries.length) {
-      return end && current ? { ...current, visibility: 'hidden' as const } : current
+    const drafts = end
+      ? []
+      : (state.drafts ?? []).filter(
+          (item) =>
+            item.delivery.surface === 'tool' &&
+            !state.deliveries.some((saved) => saved.delivery.draftId === item.delivery.draftId),
+        )
+    if (!deliveries.length && !drafts.length) {
+      return (end || state.drafts?.length) && current
+        ? { ...current, visibility: 'hidden' as const }
+        : current
     }
-    const latest = deliveries.reduce((seq, item) => Math.max(seq, item.seq), 0)
+    const latest = [...deliveries, ...drafts].reduce((seq, item) => Math.max(seq, item.seq), 0)
     return {
       key: context.key,
       id: context.id,
@@ -331,10 +358,29 @@ export const marivoAnalysisSurfaceDefinition = {
       anchorSeq: end && end.seq >= latest ? end.seq : latest,
       location: { kind: 'session' },
       visibility: 'visible',
-      data: Object.freeze({ turn: state.turn, boundary, deliveries: Object.freeze(deliveries) }),
+      data: Object.freeze({
+        turn: state.turn,
+        boundary,
+        deliveries: Object.freeze(deliveries),
+        ...(drafts.length ? { drafts: Object.freeze(drafts) } : {}),
+      }),
     } satisfies ChatConversationViewNode
   },
 } satisfies ConversationNodeDefinition<PresentationTurnState>
+
+/** Ephemeral revisions never render from completed history or another Session. */
+export function analysisDraftForNode(node: unknown, sessionId: string): DraftDelivery | undefined {
+  if (!isCurrentAnalysisSurface(node)) return undefined
+  const data = record(record(node)?.data)
+  if (!data || data.boundary !== null || !Array.isArray(data.drafts)) return undefined
+  const item = data.drafts.at(-1)
+  const delivery = parseDraftDelivery(record(item)?.delivery)
+  return delivery?.dshSessionId === sessionId &&
+    delivery.turn === data.turn &&
+    delivery.surface === 'tool'
+    ? delivery
+    : undefined
+}
 
 /** Resolve only deliveries owned by the session providing this keyed Chat slot. */
 export function analysisSurfacesForNode(

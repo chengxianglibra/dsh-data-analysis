@@ -125,6 +125,8 @@ preferring `AnalysisFrameView` for Frame data. After saving the report, the assi
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
 - **Export offline**: Download the displayed version as a single HTML file from the report tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
 
+Draft previews work in both chat and the right report tab. Native generation updates the same draft as it streams; once complete, a single save publishes one version. Failures and cancellation preserve the last successful content.
+
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
 Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing or object-storage publishing.

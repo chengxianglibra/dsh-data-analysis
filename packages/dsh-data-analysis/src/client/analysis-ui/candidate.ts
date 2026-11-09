@@ -5,8 +5,13 @@ import {
   analysisResourceDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
 import { PRESENTATION_BUDGETS } from '../../presentation/contracts/types.ts'
+import type { DraftDelivery } from '../../presentation/receipt.ts'
 import { type PresentationDelivery, parsePresentationDelivery } from '../../presentation/receipt.ts'
-import { parsePresentationDurableContent } from '../presentation/delivery.ts'
+import {
+  parseDraftDelivery,
+  parseDraftDurableContent,
+  parsePresentationDurableContent,
+} from '../presentation/delivery.ts'
 
 export function analysisToolDelivery(block: ToolCallBlock): PresentationDelivery | undefined {
   if (!('kind' in block) || block.isError) return undefined
@@ -22,8 +27,13 @@ export interface AnalysisCandidate {
   generation: ConnectionGeneration
   callId: string
   turn: number
-  phase: 'preparing' | 'start' | 'saved' | 'failed' | 'cancelled'
+  phase: 'preparing' | 'start' | 'previewed' | 'saved' | 'failed' | 'cancelled'
   surface?: 'tool' | 'tab'
+  stage?: 'preview' | 'save'
+  draftId?: string
+  draftRevision?: string
+  rebaseOnRecordId?: string
+  draft?: DraftDelivery
   preview: boolean
   program: string
   complete: boolean
@@ -49,7 +59,7 @@ export function analysisCandidate(
   const program = args.textPrefix('program', PRESENTATION_BUDGETS.text) ?? ''
   const surface = args.complete('surface')
     ? args.text('surface')
-    : args.closed()
+    : args.closed() && !args.text('draftId')
       ? 'tool'
       : undefined
   const keys = args.keys()
@@ -57,6 +67,10 @@ export function analysisCandidate(
     keys.includes('surface') &&
     (!keys.includes('program') || keys.indexOf('surface') < keys.indexOf('program'))
   const result = analysisToolDelivery(block)
+  const draft =
+    'kind' in block && !block.isError
+      ? (parseDraftDelivery(block.meta) ?? parseDraftDurableContent(block.content))
+      : undefined
   const delivery =
     result?.dshSessionId === sessionId &&
     result.receipt.workspaceId === workspaceId &&
@@ -81,12 +95,18 @@ export function analysisCandidate(
     generation,
     callId: block.callId,
     turn: 'turn' in block ? block.turn : (ownerTurn ?? delivery?.turn ?? previous?.turn ?? -1),
-    phase: 'kind' in block ? (delivery ? 'saved' : 'failed') : block.phase,
+    phase: 'kind' in block ? (delivery ? 'saved' : draft ? 'previewed' : 'failed') : block.phase,
     surface: surface === 'tool' || surface === 'tab' ? surface : undefined,
+    stage: args.text('stage') === 'preview' ? 'preview' : 'save',
+    draftId: args.complete('draftId') ? args.text('draftId') : undefined,
+    draftRevision: args.complete('draftRevision') ? args.text('draftRevision') : undefined,
+    rebaseOnRecordId: args.complete('rebaseOnRecordId') ? args.text('rebaseOnRecordId') : undefined,
+    ...(draft?.dshSessionId === sessionId && draft.workspaceId === workspaceId ? { draft } : {}),
     preview:
-      earlySurface &&
-      !keys.includes('draftId') &&
-      args.text('stage') !== 'preview' &&
+      (earlySurface || keys.includes('draftId')) &&
+      (!keys.includes('draftId') || (args.complete('draftId') && args.complete('draftRevision'))) &&
+      (!keys.includes('stage') || args.complete('stage')) &&
+      (!keys.includes('rebaseOnRecordId') || args.complete('rebaseOnRecordId')) &&
       (!keys.includes('basedOnRecordId') || args.complete('basedOnRecordId')) &&
       !args.invalid &&
       !args.stringExceeds('program', PRESENTATION_BUDGETS.text),

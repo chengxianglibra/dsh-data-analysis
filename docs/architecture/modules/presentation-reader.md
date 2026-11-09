@@ -4,7 +4,7 @@
 
 本模块把已保存的分析文档（`dsh.analysis-ui/v1`）呈现在会话级 Chat 节点与原生右侧 tab 中。
 插件拥有 Catalog/Renderer、阅读状态、报告目录与版本历史视图；Marivo 拥有分析语义与来源事实，
-Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 只读取保存的文档快照，
+Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
 
 保存、receipt 与 RPC 见[展示交付](presentation-delivery.md)；快照与文档投影见[展示数据投影](presentation-projection.md)。
@@ -17,11 +17,11 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 
 AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；工具调用候选、默认结果的会话节点和报告 tab
 是准确调用及保存版本的薄适配器。候选与已保存文档共用 Renderer；Native 前缀通过 isStreaming 解析，不完整资源显示占位。
-基版本经现有 RPC 核验后可读；patch 完整前不合并，失败保持旧成功版本。候选不执行业务读取、动作或保存。
+基版本经现有 RPC 核验后可读；生成期 patch 前缀只合并为候选；完整校验成功后才更新草稿或保存，失败保持旧成功版本。候选不执行业务读取、动作或保存。
 Surface 接收文档及已保存资源读取回调，领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。
 阅读状态属于所在视图，位置切换可以重挂。
 
-报告草稿页使用同一 Renderer 读取已校验的临时文档和快照。新修订在同一页替换内容，已显示的快照在读取下一次修订期间保持可见。草稿标明尚未保存，正式版本成功保存后原位切换到报告 reader。历史、导出和「就此提问」使用正式版本的固定 Build。
+tool 与右侧 tab 的报告草稿使用同一 Renderer 和 Session/Turn 草稿状态。Native program 前缀在生成期间基于上一成功草稿合并为临时候选，已复用快照继续显示，新资源尚未读取时显示占位。候选与已校验修订分开；成功修订在同一视图更新，失败或取消保留最后成功内容。草稿标明尚未保存，正式版本成功保存后在所选位置原位切换到 reader。历史、导出和「就此提问」使用正式版本的固定 Build。
 
 ## 组件与数据视图
 

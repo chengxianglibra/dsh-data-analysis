@@ -5,6 +5,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { AnalysisCandidates, candidateKey } from '../analysis-ui/candidate.ts'
 import { CandidateView, savedCodeReader } from '../analysis-ui/candidate-view.tsx'
+import { DraftReportView } from '../analysis-ui/draft-view.tsx'
+import { AnalysisDraftViews } from '../analysis-ui/drafts.ts'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
 import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
 import {
@@ -31,7 +33,6 @@ import { Button } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { WorkspaceHeaderAction } from '../workspace-header-action.tsx'
 import { WorkspaceShortcuts, workspaceDirectories } from '../workspace-shortcuts.tsx'
-import { DraftReportView } from './draft-report.tsx'
 import { LiveDeliveryObserver } from './live-delivery.ts'
 import {
   canOpenResource,
@@ -67,17 +68,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   const pages = new Map()
   const candidates = new AnalysisCandidates()
   const candidateTabs = new Set()
-  const draftTabs = new Map()
-  const draftListeners = new Set<() => void>()
-  const subscribeDrafts = (listener: () => void) => {
-    draftListeners.add(listener)
-    return () => draftListeners.delete(listener)
-  }
-  const setDraftTab = (sessionId, draft) => {
-    if (draft) draftTabs.set(sessionId, draft)
-    else draftTabs.delete(sessionId)
-    for (const listener of draftListeners) listener()
-  }
+  const draftViews = new AnalysisDraftViews()
+  const draftTabs = new Set()
   let indexRevision = 0
   const indexListeners = new Set<() => void>()
   const pageIndex = {
@@ -153,6 +145,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }),
     ctx.connection.generation,
     candidates,
+    draftViews,
     (sessionId, workspaceId, ref) => navigate(sessionId, { kind: 'semantic', workspaceId, ref }),
     (sessionId, workspaceId, recordId, selection, signal) =>
       appendDatasetReference(ctx, rpc, { sessionId, workspaceId, recordId, ...selection }, signal),
@@ -195,7 +188,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       localized(ctx, function DraftTab({ sessionId, useTabInfo }) {
         const t = useCopy()
         const { tab } = useTabInfo()
-        const draft = useSyncExternalStore(subscribeDrafts, () => draftTabs.get(sessionId))
+        const draft = useSyncExternalStore(draftViews.subscribe, () =>
+          draftViews.get(sessionId, tab.navigation.params?.turn),
+        )
         const generation = useSyncExternalStore(
           (listener) => ctx.connection.generation.subscribe(listener),
           () => ctx.connection.generation.getSnapshot(),
@@ -214,12 +209,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           workspaces.phase === 'ready' &&
           workspaces.state !== 'error' &&
           owners.length === 1 &&
-          owners[0].workspaceId === draft.delivery.workspaceId &&
+          owners[0].workspaceId === draft.workspaceId &&
           owners[0].path === draft.workspacePath &&
-          tab.navigation.params?.draftId === draft.delivery.draftId
+          tab.navigation.params?.workspaceId === draft.workspaceId &&
+          tab.navigation.params?.turn === draft.turn
         useEffect(() => {
-          if (!allowed || !draft.receipt || tab.signal.aborted) return
-          const { workspaceId, reportId, buildId } = draft.receipt
+          if (!allowed || !draft.saved || tab.signal.aborted) return
+          const { workspaceId, reportId, buildId } = draft.saved.receipt
           tab.actions.openResource(
             resourceAddress({ kind: 'report', workspaceId, reportId, buildId }),
             {
@@ -229,7 +225,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           )
         }, [allowed, draft, tab])
         return allowed ? (
-          <DraftReportView key={draft.delivery.draftId} delivery={draft.delivery} rpc={rpc} />
+          <DraftReportView key={draft.turn} view={draft} rpc={rpc} />
         ) : (
           <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
         )
@@ -255,6 +251,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         const candidate = useSyncExternalStore(candidates.subscribe, () =>
           candidates.get(sessionId, tab.navigation.params?.turn, callId),
         )
+        const draft = useSyncExternalStore(draftViews.subscribe, () =>
+          draftViews.get(sessionId, tab.navigation.params?.turn),
+        )
         const generation = useSyncExternalStore(
           (listener) => ctx.connection.generation.subscribe(listener),
           () => ctx.connection.generation.getSnapshot(),
@@ -275,8 +274,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           tab.navigation.params?.workspaceId === candidate.workspaceId &&
           tab.navigation.params?.turn === candidate.turn
         useEffect(() => {
-          if (!allowed || !candidate.delivery || tab.signal.aborted) return
-          const receipt = candidate.delivery.receipt
+          const receipt = candidate?.delivery?.receipt ?? draft?.saved?.receipt
+          if (!allowed || !receipt || tab.signal.aborted) return
           tab.actions.openResource(
             resourceAddress({
               kind: 'report',
@@ -286,9 +285,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             }),
             { replaceTab: true, revealIfOpened: false },
           )
-        }, [allowed, candidate, tab])
+        }, [allowed, candidate, draft, tab])
         return allowed ? (
-          <CandidateView candidate={candidate} rpc={rpc} />
+          draft && (candidate.stage === 'preview' || candidate.draftId) ? (
+            <DraftReportView view={draft} rpc={rpc} />
+          ) : (
+            <CandidateView candidate={candidate} rpc={rpc} />
+          )
         ) : (
           <p role="status">{t('marivo.presentation.ui-preparing')}</p>
         )
@@ -873,11 +876,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             return
           }
           changed(workspaceId, reportId)
-          const draft = draftTabs.get(id)
-          if (delivery.draftId && draft?.delivery.draftId === delivery.draftId) {
-            setDraftTab(id, { ...draft, receipt: delivery.receipt })
-            return
-          }
+          draftViews.save(delivery, ctx.connection.generation.getSnapshot())
+          if (delivery.draftId && draftTabs.has(candidateKey(id, delivery.turn, 'draft'))) return
           if (delivery.surface === 'tool') return
           // The exact call's temporary tab owns handoff, including an explicit user close.
           if (candidateTabs.has(candidateKey(id, delivery.turn, callId))) return
@@ -895,15 +895,18 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           const workspace = ctx.workspaces.list
             .getSnapshot()
             .items.find((w) => w.workspaceId === delivery.workspaceId)
-          const previous = draftTabs.get(id)
           if (!generation || !workspace) return
-          const sameDraft =
-            previous?.delivery.draftId === delivery.draftId && previous.generation === generation
+          const key = candidateKey(id, delivery.turn, 'draft')
+          const opened = draftTabs.has(key)
           try {
-            check(id, delivery.workspaceId, !sameDraft)
-            setDraftTab(id, { delivery, generation, workspacePath: workspace.path })
-            if (!sameDraft) {
-              ctx.sidebarRight.openTab(draftKind, { params: { draftId: delivery.draftId } })
+            check(id, delivery.workspaceId)
+            draftViews.preview(delivery, generation, workspace.path)
+            if (delivery.surface === 'tab' && !opened) {
+              check(id, delivery.workspaceId, true)
+              draftTabs.add(key)
+              ctx.sidebarRight.openTab(draftKind, {
+                params: { turn: delivery.turn, workspaceId: delivery.workspaceId },
+              })
               if (diagnostics)
                 audit.opens.push({ sessionId: id, draftId: delivery.draftId, automatic: true })
             }
@@ -933,6 +936,34 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 workspaceId,
                 generation,
                 (candidate) => {
+                  if (!baseline && (candidate.stage === 'preview' || candidate.draftId)) {
+                    draftViews.observe(
+                      candidate,
+                      workspaces.items.find((w) => w.workspaceId === workspaceId)?.path,
+                    )
+                    const view = draftViews.get(id, candidate.turn)
+                    const key = candidateKey(id, candidate.turn, 'draft')
+                    if (candidateTabs.has(candidateKey(id, candidate.turn, candidate.callId)))
+                      draftTabs.add(key)
+                    if (
+                      view?.candidate?.surface === 'tab' &&
+                      candidate.preview &&
+                      ['preparing', 'start'].includes(candidate.phase) &&
+                      !draftTabs.has(key) &&
+                      ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView
+                    ) {
+                      try {
+                        check(id, workspaceId, true)
+                        draftTabs.add(key)
+                        ctx.sidebarRight.openTab(draftKind, {
+                          params: { turn: candidate.turn, workspaceId },
+                        })
+                      } catch (error) {
+                        fail(error)
+                      }
+                    }
+                    return
+                  }
                   if (
                     baseline ||
                     candidate.surface !== 'tab' ||
@@ -988,6 +1019,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         if (settled) {
           readChat()
           candidates.settle(id)
+          draftViews.settle(id)
         }
         if (state.removed) {
           feeds.get(id)?.stop()
@@ -1012,7 +1044,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           stopLifecycle()
           stopChat()
           candidates.revoke(id)
-          setDraftTab(id, undefined)
+          draftViews.revoke(id)
+          for (const key of draftTabs) if (JSON.parse(key)[0] === id) draftTabs.delete(key)
         },
       })
     }

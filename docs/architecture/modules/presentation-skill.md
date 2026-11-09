@@ -31,7 +31,7 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 页面引用[展示投影](presentation-projection.md)已捕获的数据，使用八组件 OpenUI Lang 表达结论和布局。
 
-自定义页面由 Agent 在 Harness 中为每个数据视图准备独立的 DataFrame 或 AnalysisFrame 快照。每个组件就绪后用 `marivo_present` 的 `stage: "preview"` 更新同一右侧草稿页。全部内容完成后用 `stage: "save"` 提交最新草稿，生成一个正式版本。草稿的 Session/Turn 绑定、并发及交付契约见[展示交付](presentation-delivery.md#报告草稿与正式保存)。
+自定义页面由 Agent 在 Harness 中为每个数据视图准备独立的 DataFrame 或 AnalysisFrame 快照。每个组件就绪后用 `marivo_present` 的 `stage: "preview"` 更新同一草稿，surface 独立选择 tool 或右侧 tab。Native Lang 前缀在生成期间实时展示为候选，调用成功后才成为可继续编辑的草稿修订。全部内容完成后用 `stage: "save"` 提交最新草稿，生成一个正式版本。草稿的 Session/Turn 绑定、并发及交付契约见[展示交付](presentation-delivery.md#报告草稿与正式保存)。
 
 preview 用于向用户展示已校验的草稿，成功回执只表示草稿修订已更新；展示流程不包含 Agent 视觉验收，也不以 `marivo_ui_read` 回读定义代替渲染检查。
 

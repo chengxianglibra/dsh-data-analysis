@@ -313,6 +313,7 @@ export class MarivoPresentationFileService {
       workspace.id !== request.workspaceId ||
       draft.delivery.workspaceId !== request.workspaceId ||
       draft.delivery.turn !== request.turn ||
+      draft.delivery.surface !== request.surface ||
       draft.delivery.draftId !== request.draftId ||
       draft.delivery.draftRevision !== request.draftRevision
     )

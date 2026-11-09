@@ -208,7 +208,7 @@ test('preview revisions add data views without publishing until the draft is sav
   await assert.rejects(f.execute(draft('save')), /analysis-draft-conflict/)
   const saved = await f.present(draft('save', updated.draftRevision))
   assert.equal(saved.draftId, updated.draftId)
-  assert.equal(saved.surface, 'tab')
+  assert.equal(saved.surface, 'tool')
   const final = await readAnalysisRecord(
     f.root,
     'workspace',
@@ -229,6 +229,53 @@ test('preview revisions add data views without publishing until the draft is sav
     /analysis-draft-unavailable/,
   )
 })
+
+for (const surface of ['tool', 'tab'] as const) {
+  test(`drafts inherit ${surface}, can change surface, and publish exactly one version`, async (t) => {
+    const f = await fixture(t)
+    const first = draftDeliverySchema.parse(
+      await f.execute({
+        stage: 'preview',
+        surface,
+        program: 'root = TextContent("First");',
+        resources: {},
+      }),
+    )
+    assert.equal(first.surface, surface)
+    const next = draftDeliverySchema.parse(
+      await f.execute({
+        stage: 'preview',
+        draftId: first.draftId,
+        draftRevision: first.draftRevision,
+        program: 'root = TextContent("Second");',
+      }),
+    )
+    assert.equal(next.surface, surface)
+    const changedSurface = surface === 'tool' ? 'tab' : 'tool'
+    const changed = draftDeliverySchema.parse(
+      await f.execute({
+        stage: 'preview',
+        surface: changedSurface,
+        draftId: next.draftId,
+        draftRevision: next.draftRevision,
+        program: 'root = TextContent("Complete");',
+      }),
+    )
+    assert.equal(changed.surface, changedSurface)
+    assert.equal(changed.draftId, first.draftId)
+    const before = await f.service.catalog('reports/list', { workspaceId: 'workspace' })
+    assert.deepEqual('reports' in before && before.reports, [])
+    const saved = await f.present({
+      stage: 'save',
+      draftId: changed.draftId,
+      draftRevision: changed.draftRevision,
+    })
+    assert.equal(saved.surface, changedSurface)
+    const history = await readReportHistory(f.root, 'workspace', saved.receipt.reportId)
+    assert.equal(history.versions.length, 1)
+    assert.equal(history.versions[0]?.source.surface, changedSurface)
+  })
+}
 
 test('real Harness PTC composes preview, recovery and save using public identifiers', async (t) => {
   const f = await fixture(t)

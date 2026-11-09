@@ -15,6 +15,7 @@ import { useCopy } from '../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
 import {
   ANALYSIS_SURFACE_NODE_KEY,
+  analysisDraftForNode,
   analysisSurfacesForNode,
   parseDraftDelivery,
   parseDraftDurableContent,
@@ -27,6 +28,8 @@ import { UIStyleSheet } from '../ui/theme.ts'
 import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
 import { CandidateView, readSavedAnalysis, savedCodeReader } from './candidate-view.tsx'
 import type { AnalysisResourceContext } from './context.tsx'
+import { DraftReportView } from './draft-view.tsx'
+import type { AnalysisDraftViews } from './drafts.ts'
 import { SavedAnalysisSurface } from './lazy-surface.tsx'
 
 function SavedToolView({
@@ -142,6 +145,7 @@ export function installAnalysisTool(
   open: (sessionId: string, receipt: PresentationReceipt) => void,
   connection: ConnectionGenerationState,
   candidates: AnalysisCandidates,
+  draftViews: AnalysisDraftViews,
   openSemantic: (sessionId: string, workspaceId: string, ref: SemanticRef) => void,
   askDataset: (
     sessionId: string,
@@ -183,7 +187,20 @@ export function installAnalysisTool(
       'kind' in props.block && !props.block.isError
         ? (parseDraftDelivery(props.block.meta) ?? parseDraftDurableContent(props.block.content))
         : null
+    const turn =
+      'turn' in props.block ? props.block.turn : (draft?.turn ?? delivery?.turn ?? observed?.turn)
+    const storedWorking = useSyncExternalStore(draftViews.subscribe, () =>
+      turn === undefined ? undefined : draftViews.get(props.sessionId, turn),
+    )
     const owners = workspaces.items.filter((w) => w.sessionIds.includes(props.sessionId))
+    const working =
+      storedWorking &&
+      storedWorking.generation === generation &&
+      owners.length === 1 &&
+      storedWorking.workspaceId === owners[0]?.workspaceId &&
+      storedWorking.workspacePath === owners[0]?.path
+        ? storedWorking
+        : undefined
     const allowed =
       workspaces.phase === 'ready' &&
       workspaces.state !== 'error' &&
@@ -202,7 +219,7 @@ export function installAnalysisTool(
         observed?.generation === generation && observed.workspaceId === workspaceId
           ? observed
           : analysisCandidate(props.block, props.sessionId, workspaceId, generation)
-      if (candidate.surface === 'tab')
+      if ((working?.candidate?.surface ?? candidate.surface) === 'tab')
         return (
           <p role="status">
             {t(
@@ -212,6 +229,25 @@ export function installAnalysisTool(
             )}
           </p>
         )
+      if (candidate.stage === 'preview' || candidate.draftId) {
+        if (working?.delivery)
+          return <p role="status">{t('marivo.presentation.ui-draft-updated')}</p>
+        return (
+          <DraftReportView
+            view={
+              working ?? {
+                sessionId: props.sessionId,
+                turn: candidate.turn,
+                workspaceId,
+                generation,
+                workspacePath: owners[0]?.path,
+                candidate,
+              }
+            }
+            rpc={rpc}
+          />
+        )
+      }
       return <CandidateView candidate={candidate} rpc={rpc} />
     }
     if (delivery.surface !== 'tool')
@@ -259,11 +295,43 @@ export function installAnalysisTool(
         () => analysisSurfacesForNode(props.node, props.sessionId),
         [props.node, props.sessionId],
       )
+      const draft = useMemo(
+        () => analysisDraftForNode(props.node, props.sessionId),
+        [props.node, props.sessionId],
+      )
+      const working = useSyncExternalStore(draftViews.subscribe, () =>
+        draft ? draftViews.get(props.sessionId, draft.turn) : undefined,
+      )
       const owners = workspaces.items.filter((workspace) =>
         workspace.sessionIds.includes(props.sessionId),
       )
       return (
         <>
+          {draft &&
+            generation &&
+            workspaces.phase === 'ready' &&
+            workspaces.state !== 'error' &&
+            owners.length === 1 &&
+            owners[0]?.workspaceId === draft.workspaceId && (
+              <DraftReportView
+                key={`draft:${draft.turn}`}
+                view={
+                  working?.generation === generation &&
+                  working.workspaceId === draft.workspaceId &&
+                  working.workspacePath === owners[0]?.path
+                    ? { ...working, delivery: working.delivery ?? draft }
+                    : {
+                        sessionId: props.sessionId,
+                        turn: draft.turn,
+                        workspaceId: draft.workspaceId,
+                        generation,
+                        workspacePath: owners[0]?.path,
+                        delivery: draft,
+                      }
+                }
+                rpc={rpc}
+              />
+            )}
           {deliveries.map((delivery) => (
             <SavedToolView
               key={presentationDeliveryIdentity(delivery)}

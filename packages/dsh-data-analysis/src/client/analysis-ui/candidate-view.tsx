@@ -6,10 +6,6 @@ import {
   parseSavedPresentation,
   sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
-import {
-  mergeAnalysisProgram,
-  parseAnalysisProgram,
-} from '../../presentation/contracts/analysis-program.ts'
 import { parseReportHistory } from '../../presentation/contracts/catalog.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { PythonCodeRef, PythonExecutionDatasource } from '../../python-execution-contracts.ts'
@@ -19,6 +15,7 @@ import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
 import type { AnalysisCandidate } from './candidate.ts'
 import { CandidateAnalysisSurface, SavedAnalysisSurface } from './lazy-surface.tsx'
+import { streamingAnalysisProgram } from './streaming-program.ts'
 
 function responseValue(response: unknown): unknown {
   if (
@@ -124,9 +121,11 @@ export function savedCodeReader(
 export function CandidateView({
   candidate,
   rpc,
+  fallbackDocument,
 }: {
   candidate: AnalysisCandidate
   rpc: PresentationRpc
+  fallbackDocument?: AnalysisDocument
 }) {
   const t = useCopy()
   const [base, setBase] = useState<{
@@ -168,27 +167,12 @@ export function CandidateView({
       ? base.document
       : undefined
   const terminal = candidate.phase === 'failed' || candidate.phase === 'cancelled'
+  const retained = terminal ? (fallbackDocument ?? document) : (document ?? fallbackDocument)
   const preview = useMemo(() => {
     if (!candidate.preview || terminal) return undefined
     if (!document) return basedOnRecordId ? undefined : candidate.program
-    if (!candidate.complete) return undefined
-    try {
-      const merged = candidate.program
-        ? mergeAnalysisProgram(document.program, candidate.program)
-        : document.program
-      parseAnalysisProgram(merged)
-      return merged
-    } catch {
-      return undefined
-    }
-  }, [
-    candidate.preview,
-    candidate.program,
-    candidate.complete,
-    document,
-    basedOnRecordId,
-    terminal,
-  ])
+    return streamingAnalysisProgram(document.program, candidate.program)
+  }, [candidate.preview, candidate.program, document, basedOnRecordId, terminal])
   const resources = useMemo(
     () =>
       Object.fromEntries(
@@ -234,8 +218,8 @@ export function CandidateView({
           resources={resources}
           isStreaming={!candidate.complete}
         />
-      ) : document ? (
-        <SavedAnalysisSurface document={document} />
+      ) : retained ? (
+        <SavedAnalysisSurface document={retained} />
       ) : null}
     </section>
   )
