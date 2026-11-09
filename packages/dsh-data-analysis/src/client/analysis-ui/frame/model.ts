@@ -140,25 +140,33 @@ export function displayFrameCell(
   if (format?.format === 'percent')
     return percent(locale, numberOf(value, column), false, value, format.decimals ?? 2)
   if (format) {
-    if (format.format === 'currency' && !/^[A-Z]{3}$/.test(column.unit ?? ''))
-      return displayCell(locale, value, column, timezone)
     if (numberOf(value, column) === null)
       return column.unit && column.unit !== '1' ? `${String(value)} ${column.unit}` : String(value)
     const decimals = format.decimals ?? 2
-    const formatter = new Intl.NumberFormat(locale, {
+    const options = {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
-      ...(format.format === 'currency' && column.unit
-        ? {
-            style: 'currency',
-            currency: column.unit,
-            ...(column.unit === 'USD' ? { currencyDisplay: 'narrowSymbol' } : {}),
-          }
-        : {}),
-    })
+    }
+    let formatter: Intl.NumberFormat
+    try {
+      formatter = new Intl.NumberFormat(locale, {
+        ...options,
+        ...(format.format === 'currency' && column.unit
+          ? {
+              style: 'currency',
+              currency: column.unit,
+              ...(column.unit === 'USD' ? { currencyDisplay: 'narrowSymbol' } : {}),
+            }
+          : {}),
+      })
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error
+      // Intl cannot format compound units as currency; preserve the saved unit verbatim.
+      formatter = new Intl.NumberFormat(locale, options)
+    }
     const result: unknown = Reflect.apply(formatter.format, undefined, [value])
     if (typeof result !== 'string') return String(value)
-    return format.format === 'number' && column.unit && column.unit !== '1'
+    return formatter.resolvedOptions().style !== 'currency' && column.unit && column.unit !== '1'
       ? `${result} ${column.unit}`
       : result
   }

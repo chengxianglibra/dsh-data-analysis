@@ -78,6 +78,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   占比的语义元数据确认单一分类轴构成完整整体、保存份额可构成全体且分类不超过八项时，以堆叠条及明细展示；其余情况保留原占比视图。
   报告可显式为符合 pie 完整性条件的分类值选择 `style: "stacked"`；其占比标识为基于所示值的计算结果，选点仍绑定保存值。
   Frame 的可选 display 可声明标题、字段格式、比较端点名称、柱图的原始轴键高亮、分类条预览行数、记录坐标预览，以及归因的两期 level-total 字段；保存时按所引用的 Frame 校验。`display.formats` 用于主视图，详细数据采用默认格式，引用保留保存值。
+  单位与展示格式由 Harness 基于 Marivo 分析结果决定，插件不额外校验格式与单位是否匹配。浏览器能表达的 currency 使用本地化货币格式；其他单位（如 `USD/mile`）按指定小数位显示数值并保留原单位，不改写保存值或单位。
 - 每组 Tabs 的 TabItem.value 必须唯一，Host 在保存前拒绝重复值；不同组可以复用相同值。
   方向键、Home/End 只移动焦点，Enter/Space 激活；tab/panel 通过稳定 ID 关联，隐藏 panel 不可聚焦。
 - 图片只显示已保存的 image 资源；TextContent 不加载远程图片。

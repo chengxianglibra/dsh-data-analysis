@@ -33,6 +33,8 @@ provider 读取当前 Runtime；展示 Skill 不复制这些内容，也不新�
 
 自定义页面由 Agent 在 Harness 中为每个数据视图准备独立的 DataFrame 或 AnalysisFrame 快照。每个组件就绪后用 `marivo_present` 的 `stage: "preview"` 更新同一右侧草稿页。全部内容完成后用 `stage: "save"` 提交最新草稿，生成一个正式版本。草稿的 Session/Turn 绑定、并发及交付契约见[展示交付](presentation-delivery.md#报告草稿与正式保存)。
 
+preview 用于向用户展示已校验的草稿，成功回执只表示草稿修订已更新；展示流程不包含 Agent 视觉验收，也不以 `marivo_ui_read` 回读定义代替渲染检查。
+
 Frame 和 DataFrame 的数据展示优先使用对应的数据视图，由其自身结果外壳呈现；布局避免仅为单个
 视图增加装饰性外框，也不以组件类型或数据形状的说明替代业务解读。影响解读的范围、分母和缺失信息
 仍放在相关内容附近。图片资源及数据视图不支持的图形可以使用 Image，需要核对原值时配数据视图。

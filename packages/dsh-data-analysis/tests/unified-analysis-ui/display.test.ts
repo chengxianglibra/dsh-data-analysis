@@ -80,6 +80,28 @@ test('explicit currency formatting uses $ only for USD', () => {
   }
 })
 
+test('explicit currency formatting retains arbitrary saved units and requested decimals', () => {
+  const snapshot = shareByRegion()
+  const value = snapshot.data.columns.find((item) => item.id === 'revenue')!
+  const withCurrency = {
+    ...snapshot,
+    frameDisplay: { formats: [{ value: value.id, format: 'currency' as const, decimals: 1 }] },
+  }
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    for (const unit of ['USD/mile', '人/小时', undefined, '1']) {
+      const suffix = unit && unit !== '1' ? ` ${unit}` : ''
+      assert.equal(
+        displayFrameCell(withCurrency, locale, '9007199254740993.125', {
+          ...value,
+          type: 'decimal',
+          unit,
+        }),
+        `9,007,199,254,740,993.1${suffix}`,
+      )
+    }
+  }
+})
+
 test('displayCell formats datetimes in the supplied timezone and falls back to raw text', () => {
   assert.equal(
     displayCell('en-US', '2025-06-01T00:00:00-04:00', column('datetime'), 'America/New_York'),

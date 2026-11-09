@@ -15,12 +15,7 @@ export function validateFrameDisplay(
     )
   const formats = display.formats ?? []
   if (new Set(formats.map((item) => item.value)).size !== formats.length) return '/display/formats'
-  for (const item of formats) {
-    const column = snapshot.data.columns.find((entry) => entry.id === item.value)
-    if (!numericValue(item.value)) return '/display/formats'
-    if (item.format === 'currency' && !/^[A-Z]{3}$/.test(column?.unit ?? ''))
-      return '/display/formats'
-  }
+  for (const item of formats) if (!numericValue(item.value)) return '/display/formats'
   const section = snapshot.frame.sections.interpretation
   const facts = section.status === 'captured' ? section : undefined
   const labels = display.comparisonLabels ?? []

@@ -717,6 +717,7 @@ test('Marivo reports combine narrative and Frame data through one presentation e
   assert.match(prompt, /Capture the result in the original calculation/)
   assert.match(prompt, /After save succeeds, reply briefly/)
   assert.match(prompt, /If delivery fails/)
+  assert.doesNotMatch(prompt, /visual inspection|visual verification/)
   assert.doesNotMatch(prompt, /basedOnRecordId|AnalysisFrameView|persisted_frame|pagination/)
 })
 

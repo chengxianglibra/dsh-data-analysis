@@ -69,6 +69,25 @@ test('comparison endpoint labels bind to a saved alias and preserve the endpoint
   )
 })
 
+test('currency display accepts a compound saved unit and preserves its precision and label', async () => {
+  const snapshot = frame({
+    values: [{ name: 'efficiency', type: 'decimal', values: ['9007199254740993.125'] }],
+  })
+  snapshot.data.columns[0]!.unit = 'USD/mile'
+  const original = JSON.stringify(snapshot)
+  const display = {
+    formats: [{ value: 'efficiency', format: 'currency' as const, decimals: 1 }],
+  }
+  const view = { chart: 'metric' as const }
+  const resolved = resolveFrameView(snapshot, view)
+  assert.equal(resolved.ok, true)
+  if (!resolved.ok) return
+  assert.equal(validateFrameDisplay(snapshot, resolved.view, display), undefined)
+  const html = await renderer.render(snapshot, { view, display })
+  assert.match(html, /9,007,199,254,740,993\.1 USD\/mile/)
+  assert.equal(JSON.stringify(snapshot), original)
+})
+
 test('bar focus uses the exact saved axis key while preserving data point identity', async () => {
   const snapshot = frame({
     axes: [timeAxis(3)],
@@ -111,7 +130,7 @@ test('display references reject invalid formats, aliases and previews', () => {
     validateFrameDisplay(snapshot, resolved.view, {
       formats: [{ value: 'v', format: 'currency' }],
     }),
-    '/display/formats',
+    undefined,
   )
   assert.equal(
     validateFrameDisplay(snapshot, resolved.view, {
