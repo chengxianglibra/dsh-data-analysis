@@ -34,15 +34,21 @@ print(result.to_string(index=False))
 
 原生连接支持同一调用内的多条 SQL 和临时表，无需另建 Marivo datasource。
 
-## 保存已有 DataFrame 并交付引用
+## 单个报告组件的完整脚本
+
+报告任务先按展示 Skill 创建草稿。下面是一个类别汇总组件的完整调用代码；其他组件分别从准确输入读取，不依赖它的 source/result 变量。
 
 ```python
 import marivo.analysis as mv
+import pandas as pd
 
+path = "/actual/readable/file.csv"
+source = pd.read_csv(path)
+result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).reset_index()
 result_ref = mv.persist_dataframe(result).to_dict()
 ```
 
-执行时传 `resultVariables:{"result":"result_ref"}`，从回执 resultRefs.result 取得完整字典，与同次 codeRef 一起作为 marivo_present 的 `{ "kind": "dataframe", "ref": ..., "codeRef": ... }` 资源。上面的持久化代码需接在同次调用的读取和计算代码后，使记录包含生成逻辑；后续调用无法访问上次的 result 变量。不从 stdout 解析引用。
+通过独立 `marivo_python` 调用执行，传 `datasources:[]` 和 `resultVariables:{"result":"result_ref"}`。从 resultRefs.result 取得完整字典，与同次 codeRef 一起作为 marivo_present 的 `{ "kind": "dataframe", "ref": ..., "codeRef": ... }` 资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。适用的 governed 分析优先用独立 AnalysisFrame，不从文件示例推断需要先建模。
 持久化的输入约束与原值精度以 Marivo live Help 为准；需要保留的业务 index 先显式变成列。
 结果由绑定 Python Runtime 读取，无需 HTTP 服务；展示不会自动重跑原分析。
 

@@ -146,7 +146,6 @@ test('point references bind exact published build, raw typed keys and precise va
     sessionId: 'marivo-session',
     artifactId: 'marivo-artifact',
   })
-  assert.match(serialized.text, /persisted_frame/)
   const current = await service.point('point/prepare', {
     ...f.request,
     recordId: analysisRecordId('report', 'second'),

@@ -65,7 +65,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present a result or compose a report. For custom pages, load dsh-data-analysis-presentation and use stage=preview as views become ready, then stage=save once complete. One in-memory draft per Session Turn; it expires at Turn end or Host restart. Preview returns draftId/draftRevision; save returns recordId. Calls must be sequential. Single results can save directly with resources and no program. Use marivo_ui_read only for missing editing context or conflict recovery; deliveryJson is the Host delivery envelope.',
+      'Create or update an analysis result, draft or saved report. For reports and dashboards, load dsh-data-analysis-presentation before preparing data, preview early, update the same draft after each independently prepared component becomes ready, then save once. A saved-report data refresh preserves the page definition and replaces only same-name resources. Serialize mutations to the same draft; independent calculations need not wait for them. Preview returns draftId/draftRevision after validating and updating the in-memory draft, without waiting for browser rendering or user confirmation; save returns recordId. One draft per Session Turn expires at Turn end or Host restart. Standalone results outside a report workflow can save directly. Use marivo_ui_read to establish refresh context or recover missing context and conflicts; deliveryJson belongs to Host delivery.',
     parameters: {
       surface: {
         type: 'string',
@@ -77,7 +77,7 @@ export function createMarivoPresentTool(
         type: 'string',
         enum: ['preview', 'save'],
         description:
-          'Defaults to save. Preview updates the same unsaved draft on either surface without adding history. Native program prefixes stream into that draft; new resources appear after validation. Save the latest draft once the content is complete.',
+          'Defaults to save; report workflows must select preview or save explicitly. Preview updates the same unsaved draft without adding history, including a text-only starting page. Native program prefixes stream as candidates; new resources appear after validation. Save the latest draft once the requested report work is complete.',
       },
       draftId: {
         type: 'string',
@@ -95,30 +95,34 @@ export function createMarivoPresentTool(
       rebaseOnRecordId: {
         type: 'string',
         description:
-          'Explicit conflict repair only: with stage=preview and the latest draftId/draftRevision, name the reviewed current saved version of the same report. Supply the cumulative program patch against that version and full resources, plus intended title/locale/labels changes. Does not merge changes automatically.',
+          "Explicit conflict repair only: with stage=preview and the latest draftId/draftRevision, name the reviewed current saved version of the same report. Requires program and full resources. For a data refresh, pass that reviewed version's exact unchanged program, merge only compatible resource replacements, and omit title/locale/labels. For an explicitly requested page edit, supply its cumulative program patch and intended metadata changes. Does not merge changes automatically.",
       },
       resources: {
         type: 'object',
         description:
-          'Map a resource name to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Pass exact saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(); the project must match this Workspace. Add codeRef from the successful marivo_python call that exported that reference through resultVariables; the Host verifies this association. On update, omit to reuse saved resources; a map replaces the full set. To update only data, keep resource names, supply new refs with their new codeRefs and omit program/title/locale/labels; layout, body and existing column labels are retained. The same ref reuses the old snapshot. No rows or arbitrary URLs.',
+          'Map names to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use exact public persisted references from this Workspace. New report data components use independent names, results and producer calls; attach each call\'s matching codeRef from resultVariables export. Omit resources to inherit; providing a map replaces the full set, not a patch. During a saved-report data refresh, keep all resource names and replace only the refreshed declarations; normally omit program/title/locale/labels. New data must satisfy the unchanged views. Identical declarations reuse old embedded content, including same-path images, and do not refresh it. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
         type: 'object',
         description:
-          'Resource name -> column id -> display label. Display-only: does not change ids, sorting, units or exact values; must name columns of the declared snapshot; replaces previous present-level labels for that resource; omit to inherit.',
+          "Resource name -> column id -> display label. Display-only: does not change ids, sorting, units or exact values; must name declared columns. Replaces the resource's previous present-level labels. Omit during data refresh to preserve existing labels.",
         additionalProperties: true,
       },
-      title: { type: 'string', description: 'Short document title. Omit on update to inherit.' },
+      title: {
+        type: 'string',
+        description: 'Short document title. Omit to inherit; leave unchanged during data refresh.',
+      },
       program: {
         type: 'string',
         description:
-          'For a custom page, supply complete OpenUI Lang rooted at root and refer to resources by name. For a layout edit, send only changed named statements, one per line. Remove parent references before deleting a statement with name = null. Omit to retain the saved layout, including for title-only or label-only edits.',
+          "Start a report with complete OpenUI Lang rooted at root, optionally just confirmed title/scope text. Add each ready component through changed named statements, one per line, keeping it reachable from root. For an authorized page edit, remove parent references before deleting a statement with name = null. During saved-report data refresh, omit program to preserve all content, layout and component settings; explicit conflict rebase requires the reviewed base's exact unchanged program.",
       },
       locale: {
         type: 'string',
         enum: ['zh-CN', 'en-US'],
-        description: 'Document language; inherits on update, otherwise defaults to zh-CN.',
+        description:
+          'Document language; inherits on update, otherwise defaults to zh-CN. Omit during data refresh.',
       },
     },
     output: {
@@ -364,7 +368,7 @@ export function createMarivoUiReadTool(
   return defineTool({
     name: 'marivo_ui_read',
     description:
-      'Recover editing or data-update context without querying data: recordId reads that exact saved version; current=true resolves its report to the current saved version; draft=true reads the latest draft in the calling Session Turn. Choose saved or draft input, not both. Returns definitionJson with identifiers, program, reusable resource declarations, codeRefs and bounded schemas, never rows. Set includeCode=true to read the bound scripts and declared datasources in deduplicated sources; unavailable source is explicit. This does not execute code. For an authorized data update, review the script and inputs before executing it through marivo_python, then present new refs under the same resource names without program/title/locale/labels. Do not read back after success by default.',
+      "Read an exact/current saved report or the active Turn draft without querying data or executing scripts. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. recordId selects an exact version; current=true selects its report's current version; draft=true selects the calling Session Turn draft. Choose saved or draft input, not both. definitionJson contains identifiers, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare each component independently, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.",
     parameters: {
       recordId: {
         type: 'string',

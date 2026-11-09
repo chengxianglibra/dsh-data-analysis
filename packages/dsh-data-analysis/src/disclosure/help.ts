@@ -265,7 +265,7 @@ export function createMarivoHelpTool(
   return defineTool({
     name: MARIVO_HELP_TOOL_NAME,
     description:
-      'Request current live Marivo API help for one or more canonical string targets from the exact shared Runtime.',
+      'Read current Marivo API contracts from the verified shared Runtime. Request canonical targets for the current information gap; returned Help owns signatures and constraints, while plugin Skills own report workflows. A failed batch returns no partial Help. Use this tool for upstream marivo help examples without switching installations.',
     parameters: {
       targets: {
         type: 'array',

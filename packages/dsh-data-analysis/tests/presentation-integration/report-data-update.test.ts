@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { runInNewContext } from 'node:vm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
@@ -190,6 +191,102 @@ test('new Frame and DataFrame resources expose verified scripts to the reader an
     definition.sources[0].code.text,
   )
   assert.equal(f.reads, 2)
+})
+
+test('documented report examples preview independent components and refresh only resources', async (t) => {
+  const f = await fixture(t)
+  const events: string[] = []
+  const previews: string[][] = []
+  let executions = 0
+  const tools = {
+    async marivo_python(args: {
+      code: string
+      datasources: string[]
+      resultVariables: Record<string, string>
+    }) {
+      events.push('python')
+      assert.deepEqual(Array.from(args.datasources), [])
+      const names = Object.keys(args.resultVariables)
+      assert.equal(names.length, 1)
+      const name = names[0]!
+      const ref = f.declarations(undefined, String(++executions)).data.ref
+      // Model execution receipts; the presentation tools and persistence are real.
+      const codeRef = await savePythonExecution(f.root, {
+        text: args.code,
+        startedAt: '2026-11-09T00:00:00.000Z',
+        finishedAt: '2026-11-09T00:00:01.000Z',
+        results: {
+          sessionId: 'producer-session',
+          callId: `component-${executions}`,
+          rootCallId: 'example',
+          variables: args.resultVariables,
+          references: [ref],
+        },
+      })
+      return { execution: { reason: 'succeeded' }, resultRefs: { [name]: ref }, codeRef }
+    },
+    async marivo_present(args: Record<string, unknown>) {
+      events.push(String(args.stage))
+      const result = await f.tool.execute(args, f.exec)
+      if (args.stage === 'preview') {
+        const definition = await f.read({ draft: true })
+        previews.push(Object.keys(definition.resources).sort())
+      }
+      return result
+    },
+    async marivo_ui_read(args: Record<string, unknown>) {
+      events.push('read')
+      return { definitionJson: JSON.stringify(await f.read(args)) }
+    },
+  }
+  const example = async (name: string, context: Record<string, unknown> = {}) => {
+    const markdown = await readFile(
+      new URL(`../../skills/dsh-data-analysis-presentation/references/${name}.md`, import.meta.url),
+      'utf8',
+    )
+    const code = /```javascript\n([\s\S]*?)\n```/.exec(markdown)?.[1]
+    assert.ok(code)
+    const result: unknown = await runInNewContext(`(async () => { ${code}\nreturn saved; })()`, {
+      tools,
+      ...context,
+    })
+    assert.ok(result && typeof result === 'object')
+    return parsePresentationDelivery(JSON.parse(String(Reflect.get(result, 'deliveryJson'))))
+  }
+  const created = await example('examples')
+  assert.deepEqual(events, ['preview', 'python', 'preview', 'python', 'preview', 'save'])
+  assert.deepEqual(previews, [[], ['by_category'], ['by_category', 'detail']])
+  const original = await readReceiptDocument(f.root, created.receipt)
+  const definition = await f.read({ recordId: original.recordId, includeCode: true })
+  assert.equal(definition.sources.length, 2)
+  const category = original.resources.by_category
+  assert.ok(category?.kind === 'snapshot')
+  const producer = definition.sources.find(
+    (source: { codeRef: PythonCodeRef }) =>
+      source.codeRef.executionId === category.binding.codeRef?.executionId,
+  )
+  assert.ok(producer)
+  events.length = 0
+  previews.length = 0
+  const refreshed = await example('data-update', {
+    recordId: original.recordId,
+    reviewedCode: producer.code.text,
+    declaredDatasources: [],
+    outputVariable: producer.code.resultVariables.by_category,
+    resourceName: 'by_category',
+  })
+  assert.deepEqual(events, ['read', 'preview', 'python', 'preview', 'save'])
+  assert.deepEqual(previews, [
+    ['by_category', 'detail'],
+    ['by_category', 'detail'],
+  ])
+  const updated = await readReceiptDocument(f.root, refreshed.receipt)
+  assert.equal(updated.program, original.program)
+  assert.equal(updated.title, original.title)
+  assert.equal(updated.locale, original.locale)
+  assert.deepEqual(updated.resources.detail, original.resources.detail)
+  assert.notDeepEqual(updated.resources.by_category, original.resources.by_category)
+  assert.equal((await readReportHistory(f.root, 'workspace', updated.reportId)).versions.length, 2)
 })
 
 test('data-only saves replace snapshots and scripts while preserving page text, layout and column labels', async (t) => {

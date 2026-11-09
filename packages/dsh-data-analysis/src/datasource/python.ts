@@ -72,13 +72,13 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Run one foreground Python process in the bound Runtime and Workspace; memory expires at call end. Declared datasource credentials are prepared before code starts once. Missing interactive capability returns handoff guidance. Never read or pass secret values through code, environment, output or logs. Persist results with Marivo public APIs. For traceable report resources, assign exact saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict() dictionaries to variables and select them with resultVariables. The Host returns structured resultRefs and codeRef through a separate result-export channel; stdout is arbitrary text and never parsed for references. Pass the matching ref and codeRef to marivo_present. Read bound Runtime Help for persistence constraints. Do not replay analysis to recover references. Timeout does not prove remote query cancellation or absence of saved results.',
+        "Run one foreground Python process in the bound Runtime and Workspace. Before Marivo analysis or persistence, if this Workspace root lacks marivo.toml, initialize it through subprocess.run([sys.executable, '-m', 'marivo', 'init', '--project-root', str(Path.cwd())], check=True), with datasources=[] and no --force; import subprocess, sys and pathlib.Path. For reports, read, compute and persist one component per self-contained call. Send each ready result to the draft promptly without waiting for all calculations. Independent calculations may overlap within Harness capabilities and resource budgets; only mutations to the same draft must be serialized. Prefer AnalysisFrame for supported governed analysis. Export through resultVariables and pair resultRefs with this call's codeRef. Memory ends with the call; stdout is not a reference channel. Declared datasource credentials are prepared before execution; follow returned handoff information and never read or pass secret values through code, environment, output or logs. Inspect execution and resultCaptureError separately. Do not replay analysis to recover references; timeout does not prove remote query cancellation or absence of saved results.",
       parameters: {
         code: {
           type: 'string',
           required: true,
           description:
-            'Python code, never credential values. Consult current Runtime Help for Marivo Session lifetime and result persistence; release resources according to their public contracts.',
+            "Python code, never credential values. A report component script must run independently in a fresh process and include its input reads, computation and persistence; do not depend on another component's variables, temporary tables or execution order. Shared source files and governed definitions can be reused. Consult current Runtime Help for Session lifetime and persistence, and release resources according to their public contracts.",
         },
         datasources: {
           type: 'array',
@@ -96,7 +96,7 @@ export function registerMarivoPythonTool(
           type: 'object',
           additionalProperties: true,
           description:
-            'Optional resource name -> Python variable name, up to 16. Each selected variable must hold an exact persisted Marivo reference dictionary after code finishes, e.g. sales_ref = mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns resultRefs by resource name independently of stdout. Omit for scripts without report results.',
+            "Optional resource name -> Python variable name; the tool supports up to 16 outputs. In report workflows, export only the target component's result per call. Each variable must hold an exact persisted reference dictionary, such as saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns resultRefs independently of stdout. Omit for scripts without persisted report results.",
         },
       },
       output: {

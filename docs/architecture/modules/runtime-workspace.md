@@ -106,6 +106,8 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
+Agent 的分析流程另有初始化前置步骤：首次 Marivo 分析或结果持久化前检查绑定 Workspace 根目录本身的 `marivo.toml`；缺少时通过 `marivo_python` 使用同一解释器执行 `-m marivo init --project-root <Workspace>`，不用 `--force`。这由 Agent 明确调用上游 CLI 完成，不改为插件启动时隐式初始化。CLI 创建项目脚手架与上游 Skill 链接；已有无效项目仍需修复，普通文件预览无需初始化。显式指定当前 Workspace 可避免 Marivo 默认项目发现向父目录查找而与 Host binding 不一致。
+
 ## 隔离模型
 
 | 范围 | 共享内容 | 隔离内容 |

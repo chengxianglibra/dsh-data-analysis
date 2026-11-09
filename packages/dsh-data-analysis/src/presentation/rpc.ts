@@ -171,7 +171,7 @@ export class MarivoPresentationFileService {
       throw new Error('point-unavailable')
     const { sessionId, artifactId } = resource.snapshot.source
     const recovery = artifactId
-      ? 'The Marivo Frame is persisted. If its original Runtime/project and stored artifact are available, resume the exact Marivo session with mv.session.resume(session_id), then open session.persisted_frame(artifact_id). Recovery is not guaranteed; report any recovery failure.'
+      ? 'The Marivo Frame is persisted. Recovery requires its original Runtime/project and stored artifact; use current marivo_help for the public recovery contract and preserve these exact identities. Recovery is not a data refresh; report any recovery failure.'
       : 'The Marivo Frame was captured in memory without a persisted artifact. The original Frame cannot be recovered across processes from this identity; use the saved point context or independently verify another available source before further analysis.'
     return {
       text: `AnalysisFrame selected value from a saved snapshot (not a new query). The description is saved explanatory text; unavailable period details are not captured. marivoFrame contains Marivo identity, not the Harness session. ${recovery}\n${JSON.stringify(

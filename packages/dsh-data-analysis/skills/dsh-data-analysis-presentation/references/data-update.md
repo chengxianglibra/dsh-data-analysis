@@ -1,24 +1,63 @@
-# 只更新报告数据
+# 只刷新报告数据
 
-仅在用户要求更新数据时执行。先调用 `marivo_ui_read({recordId, current:true, includeCode:true})`，解析 `definitionJson`，保留返回的准确 recordId、program、资源声明和列标签。sources 按 codeRef 去重，一次执行可能为多个资源生成结果。
+用户要求刷新已保存报告的数据时使用本流程。保持页面程序、组件数量/类型/顺序/嵌套、资源名、view/display、正文、标题、语言和列标签；只替换指定组件的数据资源及其执行来源。更改页面或正文须有明确的编辑请求。
 
-核对可用脚本、输入文件、datasource 声明、过滤范围、时间参数和当前 Runtime 的 Session 生命周期。脚本是当次提交的代码，不会打包导入模块或输入文件。资源无 codeRef、脚本 unavailable 或输入失效时，说明缺口，先使用已有可核验的计算定义；不得猜造原查询。历史执行未保存 datasource 声明时，也不得猜测访问范围。
+## 读取基版本并展示草稿
 
-将需要刷新的一组资源对应的脚本通过 `marivo_python` 执行，使用 `code.datasources` 中的精确名称和 `code.resultVariables` 中保存的输出变量声明；新记录的空 datasource 数组表示无需 Marivo datasource。遵守当前授权和范围，不因为同份脚本包含其他操作而无审阅重放。读取输入、计算、持久化在同次调用完成。成功后从结构化 resultRefs 取得新引用，与该次 codeRef 逐一对应原资源名；不从 stdout 猜引用。旧脚本缺少输出声明时需显式补齐对应引用变量的导出声明，不推测局部变量。相同引用会复用旧快照，不能当作刷新成功。
+调用 `marivo_ui_read({recordId, current:true, includeCode:true})`，解析 definitionJson，保留其准确 recordId、program、资源 declaration 和字段契约。用户明确指定历史版本时读取该准确版本；它若不是 current，不能直接覆盖当前版本，按恢复参考审阅冲突。
 
-以读取的 recordId 为 `basedOnRecordId`，保持资源名，提交完整 resources 映射：刷新项使用新 ref 和新 codeRef，未刷新项保留原 declaration，图片也保留。省略 program、title、locale 和 labels，保留原布局、正文、语言、标题及同 ID 列的显示标签；资源字段、类型、轴及完整性须继续满足原视图。明确要求的报告使用 `surface:"tab"`。可直接 save，也可 preview 后统一 save。新版本不会覆盖历史；冲突时按恢复参考处理，不自动覆盖其他修改。
+先以该 recordId 为 basedOnRecordId 调用 `marivo_present(surface:"tab", stage:"preview")`，省略 program 和 resources，展示原报告的草稿副本。后续使用返回的 draftId/draftRevision。刷新进度在聊天中说明，不向报告增添进度组件。
+
+## 按组件独立刷新
+
+sources 按 codeRef 去重，这是存储形式，不是批量执行指令。核对目标组件的计算脚本、输入文件、datasource 声明、范围、时间参数和 Runtime Session 生命周期。脚本记录不包含导入模块或输入文件。缺少 codeRef、脚本 unavailable 或输入失效时，明确缺口；可以使用已有可核验的计算定义，不猜造查询或 datasource 范围。
+
+每个组件分别运行完整 `marivo_python` 脚本，在同次调用内读取输入、计算、持久化并导出一个结果。使用记录的 code.datasources 中的精确 name 和该组件的 resultVariables；空 datasource 数组表示无需 Marivo datasource，旧记录缺字段表示未知。历史脚本若生成多个组件，先按目标组件拆分成独立可运行脚本，保留口径和范围；不能无审阅重放其中其他操作。无法安全拆分时报告该组件阻塞。
+
+成功后取得结构化 resultRefs 和该次 codeRef，及时 preview 同名资源替换，不等待其他组件全部完成。独立计算可按 Harness 能力、依赖和资源预算并发安排；同一草稿的 preview/save 必须串行。提交完整 resources 映射：当前已刷新的资源保留新声明，未刷新项和图片保留原声明。省略 program/title/locale/labels，使用上一成功预览的 draftId/draftRevision。相同引用会复用旧快照，不能当作刷新；图片需要独立生成到新路径后替换原资源名下的 path。
+
+## 完成与不兼容
+
+新结果必须继续满足原视图的字段身份、类型、语义角色、粒度和完整性。不能通过改图形、删组件、换口径或填造数据来通过校验。旧脚本缺输出声明时，审阅并明确导出目标引用变量，不从 stdout 猜引用。
+
+program 不变并不保证 auto 的呈现形态不变。既有 auto 或其他自适应视图须核对新数据能否保留原视图形态；不能确定时说明限制，不承诺视觉锁定。新报告可按视图参考显式选择稳定的 chart/encoding，但数据刷新时不修改旧声明。
+
+正文静态数字和结论不会自动更新。核对可能受影响的表述，不声称重新验证过原结论；发现与新数据明显冲突时说明问题，不能偷偷改正文或把不一致报告作为完成品交付。需要正文编辑时另按明确请求处理。
+
+所有请求的组件已刷新并核对后，以最新草稿标识调用一次 stage:"save"。单组件展示失败不阻塞其他无依赖计算；保留已有草稿，处理或说明该组件问题。部分失败时说明哪些仍是旧数据，不以保留旧快照冒充刷新完成。冲突、草稿失效与不确定结果按[恢复参考](recovery.md)处理；结束 Turn 前明确是否保存，草稿不能跨 Turn 接续。
+
+## 调用时序
+
+以下为一个组件刷新成功的调用示例。先审阅 definition 和目标组件脚本，再运行其独立调用；替换脚本与 resourceName 为实际内容。保持完整资源映射，后续组件继续同一循环。
 
 ```javascript
-// definition 来自 marivo_ui_read 的 definitionJson；newRef/newCodeRef 来自新的成功执行。
+const definition = JSON.parse((await tools.marivo_ui_read({
+  recordId, current: true, includeCode: true,
+})).definitionJson);
 const resources = Object.fromEntries(
   Object.entries(definition.resources).map(([name, resource]) => [name, resource.declaration]),
 );
-resources.sales = { kind: "dataframe", ref: newRef, codeRef: newCodeRef };
-await tools.marivo_present({
-  surface: "tab",
-  basedOnRecordId: definition.recordId,
-  resources,
+let draft = await tools.marivo_present({
+  surface: "tab", stage: "preview", basedOnRecordId: definition.recordId,
+});
+// reviewedCode/declaredDatasources/outputVariable are reviewed for this component only.
+const result = await tools.marivo_python({
+  code: reviewedCode,
+  datasources: declaredDatasources,
+  resultVariables: { [resourceName]: outputVariable },
+});
+if (result.execution.reason !== "succeeded" || result.resultCaptureError || !result.resultRefs?.[resourceName] || !result.codeRef) {
+  throw new Error("Inspect execution and capture status before continuing; do not replay blindly.");
+}
+resources[resourceName] = {
+  kind: resources[resourceName].kind,
+  ref: result.resultRefs[resourceName], codeRef: result.codeRef,
+};
+draft = await tools.marivo_present({
+  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision, resources,
+});
+// Save once after all requested components have been refreshed and checked.
+const saved = await tools.marivo_present({
+  stage: "save", draftId: draft.draftId, draftRevision: draft.draftRevision,
 });
 ```
-
-正文中的静态数字和结论保持原文，不会自动按新数据改写；需要调整结论时另按用户要求编辑。auto 视图可能随数据形状改变。完成后说明已更新的数据范围与保留正文的事实，不声称重新验证过原结论。

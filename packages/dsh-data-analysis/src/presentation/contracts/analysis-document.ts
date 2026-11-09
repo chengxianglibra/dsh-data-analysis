@@ -143,9 +143,9 @@ const viewHints: Record<string, string> = {
     'metric needs a complete single-row snapshot and an existing value name.',
   'analysis-view-invalid': 'view or display does not match the component signature.',
   'analysis-view-name-unknown': 'use a value or axis name from this snapshot.',
-  'analysis-view-dtype-not-drawable': 'choose a numeric value or use chart "table".',
+  'analysis-view-dtype-not-drawable': 'this chart requires a drawable numeric value.',
   'analysis-view-target-ambiguous':
-    'choose axes that uniquely identify each row or use chart "table"; for comparisons, add encoding.value to show one metric, or omit encoding to render every comparison group as one table.',
+    'the selected axes or values do not identify an unambiguous chart target; comparisons need a uniquely selected metric group or a compatible multi-group view.',
   'analysis-view-encoding-required':
     'provide explicit Dataset column mappings: axis/values/series or x/y/value.',
   'analysis-view-budget':
@@ -155,7 +155,7 @@ const viewHints: Record<string, string> = {
   'analysis-view-pie-invalid-values':
     'pie needs complete, nonnegative finite values and at least one positive value.',
   'analysis-view-requires-complete-snapshot':
-    'this chart reads as the whole population; use chart "table" or "auto" for partial data.',
+    'this chart requires a complete saved result; the current snapshot is partial.',
   'analysis-view-unsupported-for-snapshot':
     'Dataset supports auto/table/metric/line/area/bar/heatmap; analysis-specific views require a Frame.',
 }
@@ -171,7 +171,11 @@ function viewError(
   const suffix = candidates?.length
     ? `${hint.endsWith('.') ? hint.slice(0, -1) : hint}; candidates: ${candidates.join(', ')}`
     : hint
-  return new AnalysisViewError(code, `${statement}${relative}`, suffix)
+  return new AnalysisViewError(
+    code,
+    `${statement}${relative}`,
+    `${suffix} For a saved-report data refresh, preserve the existing view and repair its data input or report the blocker. Change the view only when creating a page or explicitly asked to edit it.`,
+  )
 }
 export function validateAnalysisResources(
   program: string,

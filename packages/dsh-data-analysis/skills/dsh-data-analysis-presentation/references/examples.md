@@ -1,12 +1,75 @@
-# 自定义页面示例
+# 报告编写示例
 
-以下 OpenUI Lang 使用示例资源名。编写实际页面时，用本次分析的资源名、列 ID 和结论替换。Native 和 Code Mode 都直接使用 preview 结果的 `draftId/draftRevision` 继续，使用 save 结果的 `recordId` 标识正式版本；不从 `deliveryJson` 拼装身份。
+示例资源名、输入路径、列 ID 和结论须按实际任务替换。报告数据组件各有独立脚本和结果；以下纯文件示例使用 DatasetView，适用的 governed 分析优先使用后面的 Frame 组件。
 
-`stage` 与 `surface` 独立：聊天中的草稿用 `surface: "tool"`，右侧报告/看板用 `surface: "tab"`。Native 调用把 surface、stage、草稿和基版本标识放在 program 前，使 Lang 前缀在生成期间就能更新同一草稿。后续调用省略 surface 会继承上次成功修订的位置；全部完成后只 save 一次。
+## 从初始草稿到一次正式保存
+
+用户要查看 sales.csv 的类别汇总与原始明细。两个组件分别从同一准确路径读取，互不依赖内存或对方输出。先展示问题和范围，组件就绪后及时 preview。下面是简单的顺序执行示例，适用于 Code Mode 和 Native；它不要求所有任务都串行计算。Harness 能并发安排独立计算时，按就绪情况增量交付，草稿写入仍逐次使用最新 revision，不等待整批计算结束才更新。
+
+```javascript
+let draft = await tools.marivo_present({
+  surface: "tab", stage: "preview", title: "销售文件分析",
+  resources: {},
+  program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别汇总与原始明细");\nstatus = TextContent("正在准备类别汇总，尚未形成结论。");',
+});
+function dataResource(result, name) {
+  if (result.execution.reason !== "succeeded" || result.resultCaptureError || !result.resultRefs?.[name] || !result.codeRef) {
+    throw new Error("Inspect execution and capture status; do not replay blindly.");
+  }
+  return { kind: "dataframe", ref: result.resultRefs[name], codeRef: result.codeRef };
+}
+const categoryResult = await tools.marivo_python({
+  datasources: [], resultVariables: { by_category: "category_ref" },
+  code: `import pandas as pd
+import marivo.analysis as mv
+path = "/actual/readable/sales.csv"
+source = pd.read_csv(path)
+result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).reset_index()
+result = result.rename(columns={"amount": "value"})
+category_ref = mv.persist_dataframe(result).to_dict()`,
+});
+const resources = { by_category: dataResource(categoryResult, "by_category") };
+draft = await tools.marivo_present({
+  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
+  resources,
+  program: 'root = Stack([heading, categories, status]);\ncategories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});\nstatus = TextContent("类别汇总已准备，正在准备原始明细。");',
+});
+const detailResult = await tools.marivo_python({
+  datasources: [], resultVariables: { detail: "detail_ref" },
+  code: `import pandas as pd
+import marivo.analysis as mv
+path = "/actual/readable/sales.csv"
+source = pd.read_csv(path)
+result = source[["category", "amount"]].rename(columns={"amount": "value"})
+detail_ref = mv.persist_dataframe(result).to_dict()`,
+});
+resources.detail = dataResource(detailResult, "detail");
+draft = await tools.marivo_present({
+  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
+  resources,
+  program: 'root = Stack([heading, categories, detail, scope]);\ndetail = DatasetView("detail", {chart:"table", columns:["category", "value"]});\nscope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");\nstatus = null;',
+});
+// Inspect the actual results and answer coverage before this final save.
+const saved = await tools.marivo_present({
+  stage: "save", draftId: draft.draftId, draftRevision: draft.draftRevision,
+});
+```
+
+合并后的页面如下。计算结果需要解释时，在保存前补上已经证实的结论和实质限制；示例不从工具成功推断业务结论。
+
+```openui
+root = Stack([heading, categories, detail, scope]);
+heading = TextContent("sales.csv：类别汇总与原始明细");
+categories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});
+detail = DatasetView("detail", {chart:"table", columns:["category", "value"]});
+scope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");
+```
+
+preview 校验并更新内存草稿，返回 draftId/draftRevision，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 recordId；不从 deliveryJson 拼装身份。明确报告用 tab，聊天工作稿可用 tool。Native 把 surface、stage 和身份放在 program 前；后续省略 surface 继承最近成功修订的位置。
 
 ## 比较与抵消项
 
-以下是示例的全量明细。
+以下为示例的全量明细。
 
 | 类别 | 基期 | 本期 |
 | --- | ---: | ---: |
@@ -14,49 +77,39 @@
 | B | 80 | 50 |
 | C | 20 | 50 |
 
-`summary` 汇总全量、减少最多的两项及其余项，`selected` 和 `full` 分别是这两项与全量的 DataFrame 明细。
+summary 汇总全量、减少最多的两项及其余项，selected 和 full 分别是两项与全量的 DataFrame 明细。三个资源由三份独立脚本从同一原始输入计算，每个完成后就加入草稿。下方只展示最终页面；有对应 governed 比较结果时使用独立 AnalysisFrame 与 AnalysisFrameView。
 
 ```openui
-root = Stack([lead, DatasetView("summary"), detail]);
+root = Stack([lead, summary, detail]);
 lead = TextContent("全量从 200 降至 150，净减少 50（25%）。A、B 合计减少 80，C 增加 30，抵消了部分降幅。", "large");
-detail = Tabs([TabItem("selected", "减少最多的两项", [DatasetView("selected")]), TabItem("full", "全量明细", [DatasetView("full")])]);
+summary = DatasetView("summary", {chart:"table"});
+selected = DatasetView("selected", {chart:"table"});
+full = DatasetView("full", {chart:"table"});
+detail = Tabs([TabItem("selected", "减少最多的两项", [selected]), TabItem("full", "全量明细", [full])]);
 ```
 
-变化率以基期总量 200 为分母。两项减少量与全量净减少之比是 160%，将其标为“覆盖率”会掩盖 C 的抵消作用。
-
-## 单值与趋势
-
-`total` 是完整的单行 DataFrame，`current` 是原分析已计算的数值。`daily` 是按日观察的 Marivo Frame。读者先看合计，再看日间波动。
-
-`total` 快照先就绪时，用 `stage: "preview"` 提交 `root = Stack([heading, total]);`、显示“本期合计”的 `heading` 语句和下方的 `total` 语句。`daily` 就绪后，使用上次返回的 `draftId` 和 `draftRevision` 继续预览，提交下面的 `root`、`heading` 和 `trend` 语句，以及 `total`、`daily` 两份资源。读者可在同一草稿视图看到趋势加入。核对后用 `stage: "save"` 与最新的草稿标识生成一个正式版本。下方是合并后的完整页面。
-
-```openui
-root = Stack([heading, total, trend]);
-heading = TextContent("本期合计与按日明细");
-total = DatasetView("total", {chart: "metric", encoding: {value: "current"}});
-trend = AnalysisFrameView("daily");
-```
+变化率以基期总量 200 为分母。两项减少量与全量净减少之比是 160%，不能标为“覆盖率”。这种静态结论不会随资源刷新；更新数据时发现结论失效须说明，不能自行重写正文。
 
 ## Frame 看板
 
-已有三个 Frame，分别给出 GMV 的期间比较、按日趋势与地区分解。比较卡使用紧凑视图，趋势与分解放在同一可换行的布局中。
+三个组件分别回答 GMV 期间比较、按日趋势与地区分解，三个独立脚本各自读取 governed 输入并计算、持久化 Frame。按 live Help 构造分析，不在展示参考中复制计算 API。示例 daily 的时间轴名为 day，数值名为 gmv；按实际公开字段替换。每个结果就绪就 preview，下方为最终程序。
 
 ```openui
 root = Stack([heading, charts, scope]);
 heading = TextContent("GMV 的变化集中在哪些地区？", "large");
 charts = Stack([gmv, trend, regions], "row", "m", "start", "start", true);
-gmv = AnalysisFrameView("gmv", {chart: "comparison"}, {density: "compact"});
-trend = AnalysisFrameView("daily");
-regions = AnalysisFrameView("by_region", {chart: "decomposition"});
+gmv = AnalysisFrameView("gmv", {chart:"comparison"}, {density:"compact"});
+trend = AnalysisFrameView("daily", {chart:"line", encoding:{axis:"day", values:["gmv"]}});
+regions = AnalysisFrameView("by_region", {chart:"decomposition"});
 scope = TextContent("地区分解使用与 GMV 比较相同的期间。");
 ```
 
 ## 图片与明细
 
-`figure` 是已有的资金流向图，所需的桑基图不属于数据视图支持的图形；`flows` 是同范围的 DataFrame 明细。把图和原值并排放置，方便读者核对。
+figure 为数据视图不支持的资金流向图，flows 为同范围明细。分析生成的图片和明细分别通过独立脚本读取输入、准备结果；已有外部图片则保留其真实来源。图片没有数据视图的 codeRef 绑定，不承诺相同的脚本追溯。逐个加入草稿，核对后保存。
 
 ```openui
 root = Stack([figure, flows], "row", "m", "start", "start", true);
 figure = Image("资金在各环节间的流向", "figure");
-flows = DatasetView("flows", {chart: "table", columns: ["source", "target", "amount"]});
+flows = DatasetView("flows", {chart:"table", columns:["source", "target", "amount"]});
 ```

@@ -683,7 +683,7 @@ test('loading marivo-semantic injects live authoring help before the next model 
   assert.equal(controller.telemetry().rootHelp[0]?.target, 'authoring')
 })
 
-test('Marivo reports combine narrative and Frame data through one presentation entry', async (t) => {
+test('report tasks receive plugin routes in the system prompt', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([textResponse('ready')])
@@ -714,15 +714,6 @@ test('Marivo reports combine narrative and Frame data through one presentation e
     'dsh-data-analysis-presentation',
   ])
     assert.ok(prompt.includes(route))
-  assert.match(
-    prompt,
-    /For AnalysisFrame, persist explicitly and pass saved_frame\.ref\.to_dict\(\)/,
-  )
-  assert.match(prompt, /for DataFrame, persist with mv\.persist_dataframe\(df\)/)
-  assert.match(prompt, /After save succeeds, reply briefly/)
-  assert.match(prompt, /If delivery fails/)
-  assert.doesNotMatch(prompt, /visual inspection|visual verification/)
-  assert.doesNotMatch(prompt, /basedOnRecordId|AnalysisFrameView|persisted_frame|pagination/)
 })
 
 test('analysis activation discloses native help without the removed Evidence route', async (t) => {

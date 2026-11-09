@@ -39,7 +39,7 @@ doctor report 顶层 status 可以反映 Datasource 凭证、模型或其他项�
 - report 的 `project_root` 与期望 project root 相同；
 - report 的 `python_executable` 与选定 Python 相同；
 - Marivo version 非空，package path 为绝对路径；
-- `installation.python`、`installation.marivo`、`project.marivo_toml` 三项存在且为 `ok`。
+- `installation.python`、`installation.marivo` 两项存在且为 `ok`；`project.marivo_toml` 存在且为 `ok` 或 `info`，允许没有 manifest 的 zero-init Workspace。
 
 doctor 即使以非零 exit code 返回，只要 stdout 是完整报告，仍按上述字段决定准入。JSON 无效、字段
 缺失或身份不一致时明确失败；原始 doctor report 不进入长期缓存和 operator summary。

@@ -16,12 +16,14 @@ Harness 可预览文本附件。分析按附件原路径读取数据；聊天中
 无需先调用 `md.raw_sql` 或查询 Marivo Help；访问 Marivo datasource 时仍须声明精确名称并遵守公开契约。
 原生 DuckDB 连接在一次调用内可执行多条 SQL 和使用临时表；每次 Tool 使用独立 Python 进程，不保留跨调用内存状态。
 
+普通文件预览不要求项目初始化；首次 Marivo 分析或结果持久化前，Agent 检查当前 Workspace 根目录的 manifest，缺少时按[Workspace 契约](runtime-workspace.md#workspace-解析与-zero-init-binding)用绑定 Runtime 执行不带 force 的 init。无需因此建立 datasource 或业务语义。
+
 文件流程覆盖 CSV、JSON／JSON Lines、Parquet、Excel `.xlsx`。`.xlsx` 复用 DuckDB 官方扩展，首次获取
 需要联网；不新增 `openpyxl` 依赖，不承诺旧 `.xls`。这不限制 Skill 根据实际可用 reader 处理其他合适文件。
 
-普通答案默认使用文字；用户要求分析报告/dashboard 时，通过 `marivo_present` 把说明与已捕获数据组织在同一文档中，
+普通答案默认使用文字；用户要求分析报告/dashboard 时，在数据准备前加载展示 Skill，先展示有意义的草稿，再为每个数据组件独立调用 Python 完成读取、计算和持久化，结果一就绪就 preview 更新同一文档，最后统一保存。通过 `marivo_present` 把说明与已捕获数据组织在同一文档中，
 成功后最终文字尽量只写一句总结。用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供；需要在分析 UI 中核对的表格使用 `marivo_present`。插件不新增 XLSX 写入器，也不承诺分析旧 `.xls`。
-最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。需要分析 UI 时，在原分析进程捕获 DataFrame，将快照引用交给 `marivo_present`。调用规则见[展示交付](presentation-delivery.md)，自定义页面编写见[展示 Skill](presentation-skill.md)。
+最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。报告组件在各自调用内持久化 DataFrame，经 resultVariables 导出引用并携带同次 codeRef 交给 `marivo_present`。纯文件计算无需强行建模；适用的 governed 分析优先保留 AnalysisFrame。刷新已保存报告只更新同名资源，保留布局与正文。调用规则见[展示交付](presentation-delivery.md)，报告流程见[展示 Skill](presentation-skill.md)。
 正文说明文件与分析范围，执行/codeRef 由 Host 绑定，不把文件结果声明成 Marivo Evidence。
 
 ## 验证边界

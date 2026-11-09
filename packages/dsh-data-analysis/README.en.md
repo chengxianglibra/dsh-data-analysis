@@ -30,7 +30,7 @@ This is an independently maintained community plugin. It is not an official Deep
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
-You do not need to install Marivo beforehand. The first launch installs the bundled Marivo `0.6.4.dev0` wheel, selected at build time from the latest sibling `marivo/dist/pypi` artifact and prepares the analysis environment automatically.
+You do not need to install Marivo beforehand. The first launch installs the bundled Marivo `0.6.4.dev0` wheel, with its version and checksum fixed by the package manifest, and prepares the analysis environment automatically. Before the first Marivo analysis or result persistence, the assistant checks the current Workspace and runs `marivo init` through the same Runtime if the project is missing. Existing projects are preserved; ordinary file inspection needs no initialization.
 An internet connection is required to download dependencies; wait for setup to finish.
 
 ### Install and launch
@@ -125,7 +125,7 @@ preferring `AnalysisFrameView` for Frame data. After saving the report, the assi
 - **Switch location**: Open in report tab reads the same saved version. Closing the original connection does not prevent reading.
 - **Export offline**: Download the displayed version as a single HTML file from the report tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
 
-Draft previews work in both chat and the right report tab. Native generation updates the same draft as it streams; once complete, a single save publishes one version. Failures and cancellation preserve the last successful content.
+Draft previews work in both chat and the right report tab. The report workflow shows a draft early, prepares each data component independently, updates the same draft as each result becomes ready, and saves one version at completion. Native generation also displays program candidates. Failures and cancellation preserve the last successful content. When refreshing a saved report, the assistant retains its layout, components and body while replacing component data sources. Static text is not rewritten automatically, and auto views may still adapt to the new data shape.
 
 The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.

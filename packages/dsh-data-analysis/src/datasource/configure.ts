@@ -12,7 +12,7 @@ export function createMarivoDatasourceConfigureTool(
   return defineTool({
     name: MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
     description:
-      "Request Host connection setup: mode=create lets the user create/select a datasource; mode=edit repairs its exact name. Never author connection configuration on the user's behalf or pass configuration/credential values. A Web root Agent waits for save and connection test; delegated or noninteractive calls return needs-configuration with handoff guidance and open no form. Only status=ok permits continuation: rediscover the datasource and verify the requested table and read access. Success already tested the connection; repeat only after changes, failures or an explicit request. Local files need no remote setup.",
+      'Open Host-managed datasource setup or repair. Use create to create/select a datasource and edit for an existing exact name. Supply a non-secret reason, never connection configuration or credential values. A Web root Agent waits for save and connection test; delegated or noninteractive calls return needs-configuration without opening a form. Follow the returned handoff. Continue only after status=ok, then rediscover the datasource and verify required table and read access. Success already includes a connection test. Local files need no remote setup.',
     parameters: {
       mode: {
         type: 'string',

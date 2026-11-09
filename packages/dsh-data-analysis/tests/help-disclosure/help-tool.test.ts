@@ -128,10 +128,10 @@ test('registered tool exposes only the native targets schema and keeps timeout h
   t.after(fixture.cleanup)
   const ctx = await setupRuntime(fixture.bridge)
   const schema = ctx.tools.schemas().find((item) => item.name === MARIVO_HELP_TOOL_NAME)
-  assert.deepEqual(schema, {
+  assert.ok(schema)
+  const { description: _description, ...contract } = schema
+  assert.deepEqual(contract, {
     name: MARIVO_HELP_TOOL_NAME,
-    description:
-      'Request current live Marivo API help for one or more canonical string targets from the exact shared Runtime.',
     parameters: {
       type: 'object',
       properties: {

@@ -74,7 +74,7 @@ Skill。该检查不验证 Skill 附带的其他资源。
 根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何
 根 Help，并记录 failure telemetry。
 
-公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。Skill 激活只向允许进入模型的 decision 追加实时根 Help，保留原 decision 的其他字段。披露失败、取消及释放均不交付部分 Help。
+公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。路由在报告数据准备前指向展示 Skill，并保留独立组件脚本、早期草稿、逐组件 preview、最终一次 save 和数据刷新保持页面的核心规则；具体流程见[展示 Skill](presentation-skill.md)。这些提示不增加工具门禁，也不改写 Runtime Skill 的分析方法。Skill 激活只向允许进入模型的 decision 追加实时根 Help，保留原 decision 的其他字段。披露失败、取消及释放均不交付部分 Help。
 
 常驻 Host 提示要求 Marivo API Help 只通过 `marivo_help` 获取，并将 Skill 或 Help 中的
 `marivo help TARGET` 示例映射为 `marivo_help({"targets":["TARGET"]})`。不通过 Workspace 的

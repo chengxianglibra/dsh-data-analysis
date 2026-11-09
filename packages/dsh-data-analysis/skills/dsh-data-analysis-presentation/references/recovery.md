@@ -1,6 +1,6 @@
 # 草稿与编辑恢复
 
-仅在上下文缺失或失败时读取。正常 preview 后直接使用回执继续，不例行回读。
+仅在上下文缺失或失败时读取。正常 preview 后直接使用回执继续，不例行回读。恢复保持原任务边界：数据刷新只替换资源，明确的页面编辑才修改程序。
 
 ## 身份与生命周期
 
@@ -24,8 +24,13 @@ Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview �
 
 `analysis-draft-busy`：等待正在执行的调用结束，再读取草稿核对，不能并发重试。`analysis-draft-conflict`：读取最新草稿，审阅并调整本次改动后使用新的标识，不能只换 revision 盲目重放旧 patch。
 
-`report-save-conflict` 返回 `currentRecordId`。先读当前正式版本，审阅并保留其他已确认修改。直接 save 没有草稿时，以当前版本为 `basedOnRecordId` 提交调整后的修改。有草稿时再读 `{draft:true}` 比较差异，用 `stage:"preview"`、最新草稿标识和 `rebaseOnRecordId`，提交相对新正式版本的累计 program patch 与完整 resources；需要保留的标题、语言及标签改动也明确提交。此操作只接受同一报告，成功后仍须核对并 save，不自动合并或覆盖。若业务内容冲突无法判断，保留已支持的答案并明确阻塞。
+`report-save-conflict` 返回 `currentRecordId`。先读当前正式版本和 `{draft:true}`，审阅并保留其他已确认修改。使用 `stage:"preview"`、最新草稿标识和 `rebaseOnRecordId` 显式合并，只接受同一报告当前版本，不自动覆盖。
 
-失败保留最后一次成功草稿仅限当前 Turn。`analysis-draft-unavailable` 时，从已保存版本、保留的 program 和已有 snapshotRefs 重建预览；缺少这些内容时说明缺口，不为补预览重跑查询。图片及同声明快照可复用保存版本或当前草稿内嵌的内容，不要求原捕获文件仍存在。
+- 数据刷新：核对待替换组件在当前正式版本中的身份、配置和口径仍匹配，再基于当前版本的完整 resources 合并兼容的新引用。当前接口要求 rebase 携带 program，因此传入所读当前正式版本的准确、未改动 program，省略 title/locale/labels；不重放旧草稿的布局。组件或数据发生无法判断的冲突时说明阻塞。
+- 明确的页面编辑：提交相对当前正式版本的累计 program patch、完整 resources 及明确要保留的标题/语言/标签变更。普通结果直接 save 没有草稿时，以审阅后的当前版本为 basedOnRecordId 提交调整后的变更。
+
+rebase 成功后仍须核对并 save。只换基版本或 revision 不等于解决冲突，不为了合并重跑已经完成的组件计算。
+
+失败保留最后一次成功草稿仅限当前 Turn。`analysis-draft-unavailable` 时，从已保存版本、保留的 program 和已有持久资源声明重建预览；缺少这些内容时说明缺口，不为补预览重跑查询。数据刷新重建时仍保留正式版本程序。图片及同声明快照可复用保存版本或当前草稿内嵌的内容，不要求原捕获文件仍存在。
 
 Native streaming 画面是尚未校验的候选，不能从画面推断新的 draftRevision 或保存成功；只使用成功回执中的标识继续。失败或取消后保留最后成功草稿，候选不进入版本历史。PTC 以实际工具 dispatch 为更新边界。
