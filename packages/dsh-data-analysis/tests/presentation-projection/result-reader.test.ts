@@ -95,7 +95,7 @@ test('Frame resources embed bounded snapshots without claiming producer code pro
   const f = fixture()
   const input = {
     surface: 'tab' as const,
-    resources: { revenue: { kind: 'analysis-frame' as const, ref } },
+    resourcePatch: { put: { revenue: { kind: 'analysis-frame' as const, ref } } },
   }
   const identity = { workspaceId: 'workspace', reportId: 'report', buildId: 'build' }
   const document = await createAnalysisDocument(
@@ -126,7 +126,7 @@ test('Frame resource admission rejects a different Workspace and cancellation', 
   const f = fixture()
   await assert.rejects(
     createAnalysisDocument(
-      { surface: 'tool', resources: { result: { kind: 'analysis-frame', ref } } },
+      { surface: 'tool', resourcePatch: { put: { result: { kind: 'analysis-frame', ref } } } },
       { projectRoot: '/other', runner: async () => f.runner },
       { workspaceId: 'workspace', reportId: 'report', buildId: 'build' },
       signal,
@@ -200,7 +200,7 @@ test('DataFrame fixed references admit only this Workspace and retain Dataset vi
   )
   assert.equal(f.requests.length, 0)
   const document = await createAnalysisDocument(
-    { surface: 'tool', resources: { data: { kind: 'dataframe', ref } } },
+    { surface: 'tool', resourcePatch: { put: { data: { kind: 'dataframe', ref } } } },
     { projectRoot: '/workspace', runner: async () => f.runner },
     { workspaceId: 'workspace', reportId: 'report', buildId: 'build' },
     signal,

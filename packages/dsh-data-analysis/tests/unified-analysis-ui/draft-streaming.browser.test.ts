@@ -19,6 +19,7 @@ declare global {
       save(): void
       savedBase(): void
       replaceResources(): void
+      lateResources(): void
     }
   }
 }
@@ -38,7 +39,7 @@ test('drafts on both surfaces render new text during the argument stream and rol
     const document = await createAnalysisDocument(
       {
         surface: 'tool',
-        resources: { image: { kind: 'image-file', path: 'image.png' } },
+        resourcePatch: { put: { image: { kind: 'image-file', path: 'image.png' } } },
         locale: 'en-US',
         title: 'Streaming draft',
         program:
@@ -100,11 +101,12 @@ function observe(){views.observe(analysisCandidate({phase:'preparing',args,callI
 window.draftTest={
 start(nextSurface){views.revoke('session');surface=nextSurface;published=false;savedMode=false;callId='first';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',program:'root = TextContent("First streamed text'}).slice(0,-2));observe();},
 preview(){views.preview({kind:'marivo.presentation.draft',dshSessionId:'session',workspaceId:'workspace',turn:1,surface,draftId,draftRevision:documentValue.buildId},generation,'/workspace');},
-stream(text){callId='next';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',draftId,draftRevision:documentValue.buildId,program:'intro = TextContent("'+text}).slice(0,-2));observe();},
+stream(text){callId='next';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',draftId,draftRevision:documentValue.buildId,resourcePatch:{},program:'intro = TextContent("'+text}).slice(0,-2));observe();},
 fail(){const view=views.get('session',1);views.observe({...view.candidate,phase:'failed'},'/workspace');},
 save(){published=true;root.render(h(App));},
-savedBase(){views.revoke('session');savedMode=true;callId='base';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',basedOnRecordId:documentValue.recordId,program:'intro = TextContent("Saved base prefix'}).slice(0,-2));observe();},
-replaceResources(){callId='resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resources":{"image":{"kind":"image-file","path":"new');observe();}
+savedBase(){views.revoke('session');savedMode=true;callId='base';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',basedOnRecordId:documentValue.recordId,resourcePatch:{},program:'intro = TextContent("Saved base prefix'}).slice(0,-2));observe();},
+lateResources(){callId='late-resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("Pending resource scope");'}).slice(0,-1));observe();},
+replaceResources(){callId='resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resourcePatch":{"put":{"image":{"kind":"image-file","path":"new');observe();}
 };
 root.render(h(App));`,
       },
@@ -149,6 +151,10 @@ root.render(h(App));`,
       await page.getByText('Live replacement', { exact: true }).waitFor()
       assert.equal(await page.getByText('Retained section', { exact: true }).isVisible(), true)
       assert.equal(await page.locator('[data-analysis-draft]').count(), 1)
+      assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
+      await page.evaluate(() => window.draftTest.lateResources())
+      await page.getByText('Pending resource scope', { exact: true }).waitFor()
+      assert.equal(await page.locator('.au-image').count(), 0)
       await page.evaluate(() => window.draftTest.replaceResources())
       await page.getByText('New resource scope', { exact: true }).waitFor()
       assert.equal(await page.locator('.au-image').count(), 0)
@@ -163,6 +169,9 @@ root.render(h(App));`,
       await page.getByText('Saved base prefix', { exact: true }).waitFor()
       assert.equal(await page.getByText('Retained section', { exact: true }).isVisible(), true)
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
+      await page.evaluate(() => window.draftTest.lateResources())
+      await page.getByText('Pending resource scope', { exact: true }).waitFor()
+      assert.equal(await page.locator('.au-image').count(), 0)
       await page.evaluate(() => window.draftTest.replaceResources())
       await page.getByText('New resource scope', { exact: true }).waitFor()
       assert.equal(await page.locator('.au-image').count(), 0)

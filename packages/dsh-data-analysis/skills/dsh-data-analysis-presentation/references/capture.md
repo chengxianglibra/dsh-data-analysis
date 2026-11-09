@@ -50,7 +50,7 @@ table_ref = mv.persist_dataframe(table).to_dict()
 
 该调用传 `resultVariables:{"detail":"table_ref"}`。脚本结束后包装层返回结构化 `resultRefs`，取得引用后立即更新对应组件的草稿。stdout 可以是任意日志，不用于发现引用。变量必须是准确的持久引用字典，不是表达式、内存 DataFrame 或未持久化 Frame。未声明 resultVariables 的普通脚本照常执行。
 
-`marivo_present.resources` 的每个资源使用准确的引用字典：
+`marivo_present.resourcePatch.put` 中的每个资源使用准确的引用字典：
 
 - AnalysisFrame：`{ "kind": "analysis-frame", "ref": <saved.ref.to_dict()>, "codeRef": <同次 marivo_python 回执中的 codeRef> }`。
 - DataFrame：`{ "kind": "dataframe", "ref": <reference.to_dict()>, "codeRef": <同次 marivo_python 回执中的 codeRef> }`。
@@ -74,7 +74,7 @@ Marivo 引用自身不提供 Harness 脚本身份。脚本和 `codeRef` 来自 H
 
 脚本成功回执中的 `resultMetadata` 提供有界配置名：Frame 的列、值、轴来自公开 `schema`，不读业务来源；schema 不能证明行数，`totalRows` 为 null。DataFrame 的列和已保存行数来自公开 `read_dataframe`，该 API 会读取完整固定结果，但不查询来源。元数据失败或超预算独立标为 unavailable，不使已成功导出的引用失效。
 
-`marivo_present.resultMetadataJson` 从本次准入快照复用列类型、轴、值和完整 coverage，不额外启动 Python；配置错误也带实际候选元数据。先依据它修复视图，不为查询列名重跑分析。
+`marivo_present.resultMetadataJson` 从本次变更并准入的快照复用列类型、轴、值和完整 coverage，不额外启动 Python；没有变更资源时 resources 为空。配置错误也带实际候选元数据。先依据它修复视图，不为查询列名重跑分析。
 
 ## 展示预算与覆盖范围
 

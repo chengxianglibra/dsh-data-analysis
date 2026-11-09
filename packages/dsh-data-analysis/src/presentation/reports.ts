@@ -228,7 +228,7 @@ export async function publishPresentation(
       if ((current?.buildId ?? null) !== expectedBuildId)
         throw new PresentationRecoveryError(
           'report-save-conflict',
-          'Read currentRecordId with marivo_ui_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit rebaseOnRecordId with the merged patch and full resources before saving. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
+          'Read currentRecordId with marivo_ui_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit rebaseOnRecordId with cumulative program and resourcePatch changes relative to the reviewed current version. For a data refresh, omit program and metadata and replace only compatible same-name resources. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
           current ? { currentRecordId: analysisRecordId(current.reportId, current.buildId) } : {},
         )
       const versions = [

@@ -114,12 +114,12 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
       ),
     )
     const inputs = {
-      dataset: { title: 'P2 精确数据快照', resources: { data: resources.data } },
-      frame: { title: 'P2 Frame 快照', resources: { frame: resources.frame } },
+      dataset: { title: 'P2 精确数据快照', resourcePatch: { put: { data: resources.data } } },
+      frame: { title: 'P2 Frame 快照', resourcePatch: { put: { frame: resources.frame } } },
       composition: {
         title: 'P2 统一分析报告',
         surface: 'tab',
-        resources,
+        resourcePatch: { put: resources },
         program:
           'root = Stack([TextContent("## 已保存的精确结果\\n同一静态快照，切换位置无需重新分析。"), Card([AnalysisFrameView("frame", {chart:"table"})]), Tabs([TabItem("data","数据",[DatasetView("data")]),TabItem("details","指标与图片",[DatasetView("metric",{chart:"metric",encoding:{value:"amount"}}),Image("已保存图片","image")])])]);',
       },
@@ -197,7 +197,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
         .find((e) => e.type === 'tool/result' && e.data.meta && !e.data.message.isError)
       let prompt = '2 + 2 等于多少？一句话回答。'
       if (endpoint === 'model-reference')
-        prompt = `请用可以选择列、排序和翻页的表格展示这个已有结果，方便我检查大整数、金额和缺失值。不是报告。已有成功引用：${JSON.stringify(inputs.dataset.resources)}。不需要重新分析。`
+        prompt = `请用可以选择列、排序和翻页的表格展示这个已有结果，方便我检查大整数、金额和缺失值。不是报告。已有成功引用：${JSON.stringify(inputs.dataset.resourcePatch.put)}。不需要重新分析。`
       if (endpoint === 'model-update') {
         if (last?.type !== 'tool/result') throw new Error('model-base-missing')
         const meta = last.data.meta as {
@@ -255,7 +255,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
         if (endpoint === 'stream-tool' || endpoint === 'stream-tab')
           request = {
             surface: endpoint === 'stream-tab' ? 'tab' : 'tool',
-            resources: inputs.composition.resources,
+            resourcePatch: inputs.composition.resourcePatch,
             title: 'P3 streaming ' + endpoint,
             program:
               'root = Stack([intro, AnalysisFrameView("frame"), DatasetView("data")]);\nintro = TextContent("P3 streamed Native prefix before complete arguments");',
@@ -279,7 +279,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
           toolName = 'run_code'
           request = {
             description: 'P3 actual PTC delivery',
-            code: `await tools.marivo_present(${JSON.stringify({ surface: 'tab', resources: inputs.dataset.resources, title: 'P3 PTC' })});`,
+            code: `await tools.marivo_present(${JSON.stringify({ surface: 'tab', resourcePatch: inputs.dataset.resourcePatch, title: 'P3 PTC' })});`,
           }
         } else if (endpoint in inputs) request = inputs[endpoint as keyof typeof inputs]
         else throw new Error('unknown-p2-case')

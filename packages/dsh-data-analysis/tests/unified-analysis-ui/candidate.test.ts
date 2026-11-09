@@ -30,42 +30,59 @@ function call(args: PartialArguments, callId = 'call'): PreparingToolCall {
   }
 }
 
-test('resource argument state never treats an unfinished replacement map as inheritance', () => {
-  const image: AnalysisResource = {
+test('resource patch previews retain only unchanged admitted resources', () => {
+  const image = (path: string): AnalysisResource => ({
     kind: 'image',
-    declaration: { kind: 'image-file', path: 'old.png' },
+    declaration: { kind: 'image-file', path },
     mimeType: 'image/png',
     dataUrl: 'data:image/png;base64,AA==',
     sha256: 'a'.repeat(64),
-  }
-  const document = { resources: { image } }
-  const args = new PartialArguments()
-  args.append('{"surface":"tool","program":"root = Image(\\"image\\");"')
-  const omitted = analysisCandidate(call(args), 's', 'w', generation)
-  assert.equal(omitted.resourcesInput, 'omitted')
-  assert.equal(candidateResources(document, omitted).image, image)
-  args.append(',"resources":{"image":{"kind":"image-file","path":"new')
-  const incomplete = analysisCandidate(call(args), 's', 'w', generation)
-  assert.equal(incomplete.resourcesInput, 'incomplete')
-  assert.deepEqual(candidateResources(document, incomplete), {})
-  args.append('.png"}}}')
-  const replaced = analysisCandidate(call(args), 's', 'w', generation)
-  assert.equal(replaced.resourcesInput, 'complete')
-  assert.deepEqual(candidateResources(document, replaced), {})
-  const same = analysisCandidate(
-    call(PartialArguments.fromObject({ resources: { image: image.declaration } })),
-    's',
-    'w',
-    generation,
+  })
+  const old = image('old.png')
+  const kept = image('kept.png')
+  const document = { resources: { old, kept } }
+  const project = (args: PartialArguments) =>
+    candidateResources(document, analysisCandidate(call(args), 's', 'w', generation))
+  assert.deepEqual(project(PartialArguments.fromObject({})), { old, kept })
+  const latePatch = new PartialArguments()
+  latePatch.append('{"surface":"tool","program":"root = Image(\\"New scope\\", \\"old\\");"')
+  assert.deepEqual(project(latePatch), {})
+  latePatch.append(',"resourcePatch":{"put":{"old":{"kind":"image-file","path":"new.png"}}}}')
+  assert.deepEqual(project(latePatch), { kept })
+  const textOnly = new PartialArguments()
+  textOnly.append('{"surface":"tool","program":"root = TextContent(\\"Updated\\");"')
+  assert.deepEqual(project(textOnly), {})
+  textOnly.append('}')
+  assert.deepEqual(project(textOnly), { old, kept })
+  const prefix = new PartialArguments()
+  prefix.append('{"resourcePatch":{"put":{"old":{"kind":"image-file","path":"new')
+  assert.deepEqual(project(prefix), {})
+  assert.deepEqual(
+    project(
+      PartialArguments.fromObject({
+        resourcePatch: { put: { old: image('new.png').declaration } },
+      }),
+    ),
+    { kept },
   )
-  assert.equal(candidateResources(document, same).image, image)
-  const removed = analysisCandidate(
-    call(PartialArguments.fromObject({ resources: {} })),
-    's',
-    'w',
-    generation,
+  assert.deepEqual(
+    project(PartialArguments.fromObject({ resourcePatch: { put: { old: old.declaration } } })),
+    { old, kept },
   )
-  assert.deepEqual(candidateResources(document, removed), {})
+  assert.deepEqual(project(PartialArguments.fromObject({ resourcePatch: { remove: ['old'] } })), {
+    kept,
+  })
+  for (const resourcePatch of [
+    { put: { old: old.declaration }, remove: ['old'] },
+    { remove: ['old', 'old'] },
+    { remove: ['missing'] },
+    { put: { old: { kind: 'image-file' } } },
+  ])
+    assert.deepEqual(project(PartialArguments.fromObject({ resourcePatch })), {})
+  assert.deepEqual(
+    project(PartialArguments.fromObject({ resources: {}, resourcePatch: { put: {} } })),
+    {},
+  )
 })
 
 test('raw prefixes preserve incomplete statement ownership after candidate auto-closing', () => {

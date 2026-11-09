@@ -37,10 +37,14 @@ export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('frame-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
 ])
+export const analysisResourcePatch = z.strictObject({
+  put: z.record(id, analysisResourceDeclaration).optional(),
+  remove: z.array(id).optional(),
+})
 export const analysisPresentInput = z.strictObject({
   surface: z.enum(['tool', 'tab']).default('tool'),
   basedOnRecordId: z.string().min(1).max(512).optional(),
-  resources: z.record(id, analysisResourceDeclaration).optional(),
+  resourcePatch: analysisResourcePatch.optional(),
   labels: z
     .record(
       z.string().min(1).max(80),
@@ -130,11 +134,13 @@ export function analysisElements(root: ElementNode): ElementNode[] {
 export class AnalysisViewError extends Error {
   readonly code: string
   readonly path: string
-  constructor(code: string, path: string, hint: string) {
+  readonly resourceName: string
+  constructor(code: string, path: string, hint: string, resourceName: string) {
     super(`${code} at ${path}: ${hint}`)
     this.name = 'AnalysisViewError'
     this.code = code
     this.path = path
+    this.resourceName = resourceName
   }
 }
 const viewHints: Record<string, string> = {
@@ -161,7 +167,7 @@ const viewHints: Record<string, string> = {
 }
 function viewError(
   code: string,
-  statement: string,
+  node: ElementNode,
   path: string,
   candidates?: string[],
 ): AnalysisViewError {
@@ -173,8 +179,9 @@ function viewError(
     : hint
   return new AnalysisViewError(
     code,
-    `${statement}${relative}`,
+    `${node.statementId ?? node.typeName}${relative}`,
     `${suffix} For a saved-report data refresh, preserve the existing view and repair its data input or report the blocker. Change the view only when creating a page or explicitly asked to edit it.`,
+    String(node.props.ref),
   )
 }
 export function validateAnalysisResources(
@@ -193,19 +200,18 @@ export function validateAnalysisResources(
       source.snapshot.kind !== (node.typeName === 'AnalysisFrameView' ? 'frame' : 'dataset')
     )
       throw new Error('analysis-data-resource-invalid')
-    const statement = node.statementId ?? node.typeName
     const view = frameViewSchema.optional().safeParse(node.props.view ?? undefined)
-    if (!view.success) throw viewError('analysis-view-invalid', statement, '/view')
+    if (!view.success) throw viewError('analysis-view-invalid', node, '/view')
     const display = frameDisplaySchema.optional().safeParse(node.props.display ?? undefined)
     if (
       !display.success ||
       (source.snapshot.kind === 'dataset' &&
         !datasetDisplaySchema.optional().safeParse(node.props.display ?? undefined).success)
     )
-      throw viewError('analysis-view-invalid', statement, '/display')
+      throw viewError('analysis-view-invalid', node, '/display')
     const columns = view.data?.chart === 'table' ? view.data.columns : undefined
     if (columns && new Set(columns).size !== columns.length)
-      throw viewError('analysis-columns-invalid', statement, '/view/columns')
+      throw viewError('analysis-columns-invalid', node, '/view/columns')
     const resolved =
       source.snapshot.kind === 'dataset'
         ? resolveDatasetView(source.snapshot, view.data)
@@ -213,7 +219,7 @@ export function validateAnalysisResources(
     if (resolved.ok) {
       if (source.snapshot.kind === 'frame') {
         const error = validateFrameDisplay(source.snapshot, resolved.view, display.data)
-        if (error) throw viewError('analysis-view-invalid', statement, error)
+        if (error) throw viewError('analysis-view-invalid', node, error)
       }
       continue
     }
@@ -227,7 +233,7 @@ export function validateAnalysisResources(
               resolved.code === 'view-name-unknown')
           ? 'analysis-metric-requires-complete-single-row'
           : `analysis-view-${resolved.code.replace(/^view-/, '')}`
-    throw viewError(code, statement, resolved.path, resolved.candidates)
+    throw viewError(code, node, resolved.path, resolved.candidates)
   }
 }
 export function parseAnalysisDocument(value: unknown): AnalysisDocument {

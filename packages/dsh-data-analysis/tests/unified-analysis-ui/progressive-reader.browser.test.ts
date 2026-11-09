@@ -42,7 +42,7 @@ const root=createRoot(document.getElementById('root'));
 window.requests=[];
 window.progressive={update(patch='',resourcePrefix,streaming=true,candidate=true){
  const args=new PartialArguments();
- args.append(JSON.stringify({surface:'tool',stage:'preview',program:patch}).slice(0,-1)+(resourcePrefix===undefined?'}':',"resources":'+resourcePrefix));
+ args.append(JSON.stringify({surface:'tool',stage:'preview',program:patch}).slice(0,-1)+(resourcePrefix===undefined?'}':',"resourcePatch":'+resourcePrefix));
  const value=analysisCandidate({phase:streaming?'preparing':'start',args,callId:'candidate',name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'s','w',{});
  root.render(h(AnalysisRenderer,{program:streamingAnalysisProgram(base,value.program,streaming),candidateProgram:value.program,title:'Progressive reader',locale:'en-US',resources:candidateResources({resources},value),candidate,isStreaming:streaming,
  readCode:async()=>{window.requests.push('code');},openSemanticRef:()=>window.requests.push('semantic'),askPoint:async()=>window.requests.push('point'),askDataset:async()=>window.requests.push('dataset'),askResource:async()=>window.requests.push('resource')}));
@@ -166,11 +166,11 @@ window.progressive.update();`,
     assert.equal(await page.locator('.au-image').count(), 0)
     assert.equal(await page.locator('[data-resource="frame"]').isVisible(), true)
 
-    // Once a replacement map starts, old snapshots and images are no longer inherited.
+    // An incomplete patch cannot reuse old snapshots and images before its changes are known.
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update(
         'intro = TextContent("New scope")',
-        '{"frame":{"kind":"frame-snapshot","snapshotRef":"new',
+        '{"put":{"frame":{"kind":"frame-snapshot","snapshotRef":"new',
       ),
     )
     await page.getByText('New scope', { exact: true }).waitFor()
@@ -179,7 +179,10 @@ window.progressive.update();`,
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update(
         '',
-        JSON.stringify({ frame: { kind: 'frame-snapshot', snapshotRef: 'frame-ref' } }),
+        JSON.stringify({
+          put: { frame: { kind: 'frame-snapshot', snapshotRef: 'frame-ref' } },
+          remove: ['dataset', 'image'],
+        }),
       ),
     )
     await page.locator('[data-resource="frame"]').waitFor()

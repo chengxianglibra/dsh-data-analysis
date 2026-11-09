@@ -11,12 +11,12 @@ import {
 } from '../python-execution.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument } from './analysis.ts'
-import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
 import {
   type AnalysisDocument,
   analysisPresentInput,
   analysisRecordId,
   parseAnalysisRecordId,
+  sameAnalysisDeclaration,
 } from './contracts/analysis-document.ts'
 import { type FrameSnapshotV2, isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { type AnalysisDraftLease, AnalysisDrafts } from './drafts.ts'
@@ -66,7 +66,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis result, draft or saved report. For reports and dashboards, load dsh-data-analysis-presentation before preparing data, preview confirmed scope with resources={} before data preparation or complete page planning, update the same draft promptly as results become ready (already-ready related views may be batched), then explicitly save once. A saved-report data refresh preserves the page definition and replaces only same-name resources. Python calls and draft writes currently use Harness exclusive scheduling. Always specify stage with draft identity. Preview returns draftId/draftRevision after validating and updating the in-memory draft, without waiting for browser rendering or user confirmation; save returns recordId. One draft per Session Turn expires at Turn end or Host restart. Standalone results outside a report workflow can save directly. Use marivo_ui_read to establish refresh context or recover missing context and conflicts; resultMetadataJson contains bounded column/axis/value names and coverage from admitted snapshots, without rows or new reads. Use it and configuration error candidates to repair views without rerunning analysis; deliveryJson belongs to Host delivery.',
+      'Present an existing result or update an analysis document. For reports requiring analysis, preview early, update the same draft as results become ready, and save once. Already-ready changes can save directly. Send only changed resources and named program statements. Preview returns draftId/draftRevision; save returns recordId and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_ui_read to recover missing context or review conflicts. deliveryJson is for Host delivery.',
     parameters: {
       surface: {
         type: 'string',
@@ -96,13 +96,17 @@ export function createMarivoPresentTool(
       rebaseOnRecordId: {
         type: 'string',
         description:
-          "Explicit conflict repair only: with stage=preview and the latest draftId/draftRevision, name the reviewed current saved version of the same report. Requires program and full resources. For a data refresh, pass that reviewed version's exact unchanged program, merge only compatible resource replacements, and omit title/locale/labels. For an explicitly requested page edit, supply its cumulative program patch and intended metadata changes. Does not merge changes automatically.",
+          'Conflict repair only: with stage=preview and the latest draft identity, name the reviewed current saved version. Apply cumulative changes against that version. For data refresh, omit program and metadata and replace only compatible same-name resources.',
       },
-      resources: {
+      resourcePatch: {
         type: 'object',
         description:
-          'Map names to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Use exact public persisted references from this Workspace. Multiple components may use the same exact fixed result or resource; preserve its original producer codeRef from resultVariables export. Explicit derivations create new outputs and use their own codeRef; codeRef does not prove the full dependency graph. Omit resources to inherit; providing a map replaces the full set, not a patch. During a saved-report data refresh, keep all resource names and replace only the refreshed declarations; normally omit program/title/locale/labels. New data must satisfy the unchanged views. Identical declarations reuse old embedded content, including same-path images, and do not refresh it. No rows or arbitrary URLs.',
-        additionalProperties: true,
+          'Changes only: put maps names to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path}; remove names resources to delete. Omitted names remain. Send before program to retain unchanged resources during streaming; {} means no changes. Use exact fixed references and their producer codeRef. For a data refresh replace only existing names and omit program/title/locale/labels. Identical declarations reuse the saved snapshot; same-path images do not refresh. No rows or arbitrary URLs.',
+        additionalProperties: false,
+        properties: {
+          put: { type: 'object', additionalProperties: true },
+          remove: { type: 'array', items: { type: 'string' } },
+        },
       },
       labels: {
         type: 'object',
@@ -117,7 +121,7 @@ export function createMarivoPresentTool(
       program: {
         type: 'string',
         description:
-          "Start a report with complete OpenUI Lang rooted at root, optionally just confirmed title/scope text. Add each ready component through changed named statements, one per line, keeping it reachable from root. For an authorized page edit, remove parent references before deleting a statement with name = null. During saved-report data refresh, omit program to preserve all content, layout and component settings; explicit conflict rebase requires the reviewed base's exact unchanged program.",
+          'Complete OpenUI Lang for a new page; changed named statements for an update. Keep changes reachable from root. Remove parent references before deleting a statement with name = null. Omit during a saved-report data refresh, including conflict rebase.',
       },
       locale: {
         type: 'string',
@@ -136,7 +140,12 @@ export function createMarivoPresentTool(
           draftRevision: { type: 'string' },
           recordId: { type: 'string' },
           deliveryJson: { type: 'string', required: true },
-          resultMetadataJson: { type: 'string', required: true },
+          resultMetadataJson: {
+            type: 'string',
+            required: true,
+            description:
+              'JSON metadata for newly added or replaced resources: columns, axes, values and coverage; no business rows.',
+          },
         },
       },
       render: (_args, value) => {
@@ -172,12 +181,11 @@ export function createMarivoPresentTool(
       if (
         Boolean(input.draftId) !== Boolean(input.draftRevision) ||
         (input.draftId && input.basedOnRecordId) ||
-        (input.rebaseOnRecordId &&
-          (input.stage !== 'preview' || !input.draftId || !input.program || !input.resources))
+        (input.rebaseOnRecordId && (input.stage !== 'preview' || !input.draftId))
       )
         throw new PresentationRecoveryError(
           'analysis-draft-invalid-request',
-          'Pair draftId with draftRevision. Use basedOnRecordId only before a draft exists. Explicit rebase requires stage=preview, both draft identifiers, rebaseOnRecordId, a reviewed program patch and the full resources map.',
+          'Pair draftId with draftRevision. Use basedOnRecordId only before a draft exists. Explicit rebase requires stage=preview, both draft identifiers and the reviewed current recordId.',
         )
       const owner = exec.agent
       if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
@@ -254,6 +262,12 @@ export function createMarivoPresentTool(
               )
             : undefined)
         const surface = input.surface ?? active?.delivery.surface ?? 'tool'
+        const changedNames = Object.entries(input.resourcePatch?.put ?? {})
+          .filter(([name, declaration]) => {
+            const previous = base?.resources[name]
+            return !previous || !sameAnalysisDeclaration(previous.declaration, declaration)
+          })
+          .map(([name]) => name)
         const document = await createAnalysisDocument(
           { ...input, surface },
           {
@@ -270,6 +284,11 @@ export function createMarivoPresentTool(
           input.rebaseOnRecordId ? active?.document.resources : undefined,
         )
         await check()
+        const changedResources = Object.fromEntries(
+          changedNames.flatMap((name) =>
+            document.resources[name] ? [[name, document.resources[name]]] : [],
+          ),
+        )
         const baseBuildId =
           active && !input.rebaseOnRecordId ? active.baseBuildId : (base?.buildId ?? null)
         if (input.stage === 'preview' && lease) {
@@ -288,7 +307,7 @@ export function createMarivoPresentTool(
             draftId: delivery.draftId,
             draftRevision: delivery.draftRevision,
             deliveryJson: JSON.stringify(delivery),
-            resultMetadataJson: JSON.stringify(analysisResultSummary(document.resources)),
+            resultMetadataJson: JSON.stringify(analysisResultSummary(changedResources)),
           }
         }
         const receipt = await publishPresentation(
@@ -303,7 +322,7 @@ export function createMarivoPresentTool(
         return {
           stage: 'save' as const,
           recordId: document.recordId,
-          resultMetadataJson: JSON.stringify(analysisResultSummary(document.resources)),
+          resultMetadataJson: JSON.stringify(analysisResultSummary(changedResources)),
           deliveryJson: JSON.stringify(
             parsePresentationDelivery({
               kind: MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -523,9 +542,6 @@ export function createMarivoUiReadTool(
             ]),
           ),
           ...(input.includeCode ? { sources } : {}),
-          signatures: Object.fromEntries(
-            Object.entries(analysisCatalogSpec.components).map(([name, c]) => [name, c.signature]),
-          ),
         }),
       }
     },

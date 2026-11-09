@@ -162,7 +162,7 @@ test('new Frame and DataFrame resources expose verified scripts to the reader an
   const codeRef = await f.saveCode()
   const delivery = await f.present({
     surface: 'tab',
-    resources: f.declarations(codeRef),
+    resourcePatch: { put: f.declarations(codeRef) },
     program: 'root = Stack([AnalysisFrameView("frame"), DatasetView("data")]);',
   })
   const document = await readReceiptDocument(f.root, delivery.receipt)
@@ -295,7 +295,7 @@ test('data-only saves replace snapshots and scripts while preserving page text, 
   const resources = f.declarations(codeRef)
   const delivery = await f.present({
     surface: 'tab',
-    resources,
+    resourcePatch: { put: resources },
     title: 'Keep title',
     locale: 'en-US',
     labels: { data: { value: 'Revenue' } },
@@ -307,7 +307,7 @@ test('data-only saves replace snapshots and scripts while preserving page text, 
   const updated = await f.present({
     surface: 'tab',
     basedOnRecordId: base.recordId,
-    resources: f.declarations(refreshedCode, '2'),
+    resourcePatch: { put: f.declarations(refreshedCode, '2') },
   })
   const next = await readReceiptDocument(f.root, updated.receipt)
   assert.equal(next.reportId, base.reportId)
@@ -334,7 +334,7 @@ test('data-only saves replace snapshots and scripts while preserving page text, 
   )
   assert.equal((await readReportHistory(f.root, 'workspace', next.reportId)).versions.length, 2)
   await assert.rejects(
-    f.present({ basedOnRecordId: base.recordId, resources }),
+    f.present({ basedOnRecordId: base.recordId, resourcePatch: { put: resources } }),
     /report-save-conflict/,
   )
   assert.equal(
@@ -350,7 +350,7 @@ test('unrelated, foreign and mismatched script bindings are rejected before resu
   const f = await fixture(t)
   const codeRef = await f.saveCode('2')
   await assert.rejects(
-    f.present({ resources: { data: f.declarations(codeRef).data } }),
+    f.present({ resourcePatch: { put: { data: f.declarations(codeRef).data } } }),
     /code-not-bound/,
   )
   assert.equal(f.reads, 0)
@@ -358,17 +358,17 @@ test('unrelated, foreign and mismatched script bindings are rejected before resu
   t.after(() => rm(foreign, { recursive: true, force: true }))
   const foreignCode = await f.saveCode('1', undefined, foreign)
   await assert.rejects(
-    f.present({ resources: { data: f.declarations(foreignCode).data } }),
+    f.present({ resourcePatch: { put: { data: f.declarations(foreignCode).data } } }),
     /unavailable/,
   )
   assert.equal(f.reads, 0)
   const valid = await f.saveCode()
-  const delivery = await f.present({ resources: { data: f.declarations(valid).data } })
+  const delivery = await f.present({ resourcePatch: { put: { data: f.declarations(valid).data } } })
   const original = await readReceiptDocument(f.root, delivery.receipt)
   await assert.rejects(
     f.present({
       basedOnRecordId: original.recordId,
-      resources: { data: f.declarations(codeRef).data },
+      resourcePatch: { put: { data: f.declarations(codeRef).data } },
     }),
     /code-not-bound/,
   )
@@ -382,7 +382,9 @@ test('unrelated, foreign and mismatched script bindings are rejected before resu
 test('missing scripts remain explicit while saved resources stay readable and reusable', async (t) => {
   const f = await fixture(t)
   const codeRef = await f.saveCode()
-  const delivery = await f.present({ resources: { data: f.declarations(codeRef).data } })
+  const delivery = await f.present({
+    resourcePatch: { put: { data: f.declarations(codeRef).data } },
+  })
   const filename = path.join(
     f.root,
     'dsh-data-analysis',

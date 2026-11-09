@@ -272,7 +272,7 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
   }
   const saved = await invoke('marivo_present', {
     surface: 'tab',
-    resources,
+    resourcePatch: { put: resources },
     title: 'Stable report',
     labels: { data: { amount: 'Revenue' } },
     program:
@@ -308,9 +308,11 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
   const update = await invoke('marivo_present', {
     surface: 'tab',
     basedOnRecordId: definition.recordId,
-    resources: {
-      frame: { kind: 'analysis-frame', ref: newRefs.frame, codeRef: refreshed.codeRef },
-      data: { kind: 'dataframe', ref: newRefs.data, codeRef: refreshed.codeRef },
+    resourcePatch: {
+      put: {
+        frame: { kind: 'analysis-frame', ref: newRefs.frame, codeRef: refreshed.codeRef },
+        data: { kind: 'dataframe', ref: newRefs.data, codeRef: refreshed.codeRef },
+      },
     },
   })
   const nextId = String(update.recordId).split(':')

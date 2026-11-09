@@ -9,7 +9,6 @@
 ```javascript
 let draft = await tools.marivo_present({
   surface: "tab", stage: "preview", title: "销售文件分析",
-  resources: {},
   program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别汇总与原始明细");\nstatus = TextContent("正在准备类别汇总，尚未形成结论。");',
 });
 function dataResource(result, name) {
@@ -28,10 +27,9 @@ result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).res
 result = result.rename(columns={"amount": "value"})
 category_ref = mv.persist_dataframe(result).to_dict()`,
 });
-const resources = { by_category: dataResource(categoryResult, "by_category") };
 draft = await tools.marivo_present({
   stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
-  resources,
+  resourcePatch: { put: { by_category: dataResource(categoryResult, "by_category") } },
   program: 'root = Stack([heading, categories, status]);\ncategories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});\nstatus = TextContent("类别汇总已准备，正在准备原始明细。");',
 });
 const detailResult = await tools.marivo_python({
@@ -43,10 +41,9 @@ source = pd.read_csv(path)
 result = source[["category", "amount"]].rename(columns={"amount": "value"})
 detail_ref = mv.persist_dataframe(result).to_dict()`,
 });
-resources.detail = dataResource(detailResult, "detail");
 draft = await tools.marivo_present({
   stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
-  resources,
+  resourcePatch: { put: { detail: dataResource(detailResult, "detail") } },
   program: 'root = Stack([heading, categories, detail, scope]);\ndetail = DatasetView("detail", {chart:"table", columns:["category", "value"]});\nscope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");\nstatus = null;',
 });
 // Inspect the actual results and answer coverage before this final save.
@@ -116,7 +113,7 @@ flows = DatasetView("flows", {chart:"table", columns:["source", "target", "amoun
 
 ## 同一固定结果支持多个视图
 
-已取得 by_category 的准确引用和生产 codeRef 后，表格与柱状图共享该资源，不启动新的 Python，不重新读取来源。以下程序可作为同一草稿的命名语句 patch；resources 保留完整映射及原声明。仅改变展示配置使用同一数据，不称为刷新。
+已取得 by_category 的准确引用和生产 codeRef 后，表格与柱状图共享该资源，不启动新的 Python，不重新读取来源。以下程序可作为同一草稿的命名语句 patch；省略 resourcePatch 以继承原资源声明。仅改变展示配置使用同一数据，不称为刷新。
 
 ```openui
 root = Stack([bars, table]);

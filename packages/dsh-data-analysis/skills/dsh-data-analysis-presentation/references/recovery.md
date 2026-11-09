@@ -8,7 +8,7 @@ Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview �
 
 草稿只属于当前 Harness Session/Turn，每个 Session 同时一个；preview 和 save 串行调用。Turn 结束或 Host 重启后草稿失效，浏览器里的旧预览不证明仍可保存。结束 Turn 前完成保存，或明确说明未保存和阻塞原因；不要承诺下轮仍能接续该草稿。
 
-`program` 更新使用完整命名语句作为 patch。`resources` 省略则继承，提供则替换完整映射；它不是资源 patch。修改或追加组件时保留仍在使用的全部资源声明。
+`program` 更新使用完整命名语句作为 patch。`resourcePatch.put` 只包含新增或替换的资源；`resourcePatch.remove` 显式删除资源，未提及的资源继承。删除资源和移除其所有页面引用可在同次调用完成。
 
 ## 按缺口读取
 
@@ -16,7 +16,7 @@ Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview �
 - 需要该报告当前正式版本：`marivo_ui_read({recordId, current:true})`。
 - 缺少当前 Turn 草稿或最新 revision：`marivo_ui_read({draft:true})`。
 
-结果的 `definitionJson` 包含 program、全部资源声明及必要 schema/coverage，不返回业务行。草稿结果提供 `draftId/draftRevision`、surface 和可用的 `basedOnRecordId`，不把草稿当作已保存的 record。
+结果的 `definitionJson` 包含 program、全部资源声明及必要 schema/coverage，不返回业务行或组件签名；组件签名按需读取[生成的组件签名](analysis-catalog.md)。草稿结果提供 `draftId/draftRevision`、surface 和可用的 `basedOnRecordId`，不把草稿当作已保存的 record。
 
 需要核对来源脚本或用户已授权更新数据时，加 `includeCode:true`。资源返回绑定的 `codeRef`，顶层 `sources` 按执行记录去重，包含 `status` 和可用的 `code.text`、`code.datasources`、`code.resultVariables`；`unavailable` 明确表示记录不可读，不以新查询补齐。缺少 codeRef 的资源不出现在 sources 中。读取不会执行脚本。更新步骤见[只更新报告数据](data-update.md)。
 
@@ -26,8 +26,8 @@ Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview �
 
 `report-save-conflict` 返回 `currentRecordId`。先读当前正式版本和 `{draft:true}`，审阅并保留其他已确认修改。使用 `stage:"preview"`、最新草稿标识和 `rebaseOnRecordId` 显式合并，只接受同一报告当前版本，不自动覆盖。
 
-- 数据刷新：核对待替换组件在当前正式版本中的身份、配置和口径仍匹配，再基于当前版本的完整 resources 合并兼容的新引用。当前接口要求 rebase 携带 program，因此传入所读当前正式版本的准确、未改动 program，省略 title/locale/labels；不重放旧草稿的布局。组件或数据发生无法判断的冲突时说明阻塞。
-- 明确的页面编辑：提交相对当前正式版本的累计 program patch、完整 resources 及明确要保留的标题/语言/标签变更。普通结果直接 save 没有草稿时，以审阅后的当前版本为 basedOnRecordId 提交调整后的变更。
+- 数据刷新：核对待替换组件在当前正式版本中的身份、配置和口径仍匹配，只用 `resourcePatch.put` 合并兼容的同名新引用，省略 program/title/locale/labels；不重放旧草稿的布局。组件或数据发生无法判断的冲突时说明阻塞。
+- 明确的页面编辑：提交相对当前正式版本的累计 program patch、resourcePatch 及明确要保留的标题/语言/标签变更。普通结果直接 save 没有草稿时，以审阅后的当前版本为 basedOnRecordId 提交调整后的变更。
 
 rebase 成功后仍须核对并 save。只换基版本或 revision 不等于解决冲突，不为了合并重跑已经完成的组件计算。
 

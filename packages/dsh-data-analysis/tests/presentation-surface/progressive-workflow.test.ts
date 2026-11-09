@@ -68,7 +68,7 @@ test('empty-resource scope preview survives missing stage and saves once with th
       {
         stage: 'preview',
         surface: 'tab',
-        resources: {},
+        resourcePatch: { put: {} },
         program: 'root = TextContent("Question and confirmed scope");',
       },
       exec,
@@ -155,7 +155,7 @@ test('shared exact result is admitted once, preserves its producer and repairs v
   const first = await createAnalysisDocument(
     {
       surface: 'tab',
-      resources: { chart: declaration, table: declaration },
+      resourcePatch: { put: { chart: declaration, table: declaration } },
       labels: { chart: { value: 'Chart label' }, table: { value: 'Table label' } },
       program:
         'root = Stack([DatasetView("chart", {chart:"bar", encoding:{axis:"category", values:["value"]}}), DatasetView("table", {chart:"table"})]);',
@@ -190,6 +190,30 @@ test('shared exact result is admitted once, preserves its producer and repairs v
       return true
     },
   )
+  for (const program of [
+    'root = Stack([DatasetView("chart"), DatasetView("table", {chart:"table", columns:["missing"]})]);',
+    'root = Stack([chartView, tableView]); chartView = DatasetView("chart"); tableView = DatasetView("table", {chart:"table", columns:["missing"]});',
+  ]) {
+    await assert.rejects(
+      createAnalysisDocument(
+        { surface: 'tab', program },
+        { projectRoot: root },
+        { ...identity, buildId: 'invalid-nested' },
+        signal,
+        first,
+      ),
+      (error: unknown) => {
+        assert(error instanceof Error)
+        assert.match(error.message, /analysis-columns-invalid/)
+        const metadata = JSON.parse(
+          error.message.split('Result metadata: ')[1]!.split('. Correct')[0]!,
+        )
+        assert.deepEqual(Object.keys(metadata.resources), ['table'])
+        assert.match(error.message, /category.*value.*coverage/)
+        return true
+      },
+    )
+  }
   const repaired = await createAnalysisDocument(
     {
       surface: 'tab',
@@ -209,7 +233,7 @@ test('shared exact result is admitted once, preserves its producer and repairs v
     codeRef: undefined,
   }
   const mixed = await createAnalysisDocument(
-    { surface: 'tab', resources: { chart: declaration, table: refreshed } },
+    { surface: 'tab', resourcePatch: { put: { chart: declaration, table: refreshed } } },
     { projectRoot: root, runner: async () => runner },
     { ...identity, buildId: 'mixed' },
     signal,

@@ -141,6 +141,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
       draftRevision?: string
       recordId?: string
       deliveryJson: string
+      resultMetadataJson: string
     }
   const execute = async (args: Record<string, unknown>, code = false): Promise<unknown> =>
     JSON.parse((await raw(args, code)).deliveryJson)
@@ -166,7 +167,7 @@ test('preview revisions add data views without publishing until the draft is sav
     await f.execute({
       stage: 'preview',
       program: 'root = Stack([DatasetView("data")]);',
-      resources: { data: f.resources.data },
+      resourcePatch: { put: { data: f.resources.data } },
     }),
   )
   const first = await f.service.draft(start, f.exec.signal)
@@ -193,7 +194,7 @@ test('preview revisions add data views without publishing until the draft is sav
       f.execute({
         ...draft('preview'),
         program: 'root = Stack([DatasetView("data"), trend]);\ntrend = AnalysisFrameView("frame");',
-        resources: f.resources,
+        resourcePatch: { put: { frame: f.resources.frame } },
       }),
     ),
   )
@@ -206,7 +207,7 @@ test('preview revisions add data views without publishing until the draft is sav
   const preview = await f.service.draft(updated, f.exec.signal)
   assert.deepEqual(Object.keys(preview.resources).sort(), ['data', 'frame'])
   await assert.rejects(f.execute(draft('save')), /analysis-draft-conflict/)
-  const saved = await f.present(draft('save', updated.draftRevision))
+  const saved = await f.present({ ...draft('save', updated.draftRevision), title: 'Final title' })
   assert.equal(saved.draftId, updated.draftId)
   assert.equal(saved.surface, 'tool')
   const final = await readAnalysisRecord(
@@ -217,6 +218,7 @@ test('preview revisions add data views without publishing until the draft is sav
   )
   assert.equal(final.program, preview.program)
   assert.deepEqual(final.resources, preview.resources)
+  assert.equal(final.title, 'Final title')
   assert.notEqual(final.buildId, updated.draftRevision)
   const history = await readReportHistory(f.root, 'workspace', saved.receipt.reportId)
   assert.deepEqual(
@@ -230,6 +232,74 @@ test('preview revisions add data views without publishing until the draft is sav
   )
 })
 
+test('resource patches preserve unmentioned resources and reject invalid removals atomically', async (t) => {
+  const f = await fixture(t)
+  const first = await f.raw({
+    stage: 'preview',
+    resourcePatch: { put: f.resources },
+    program: 'root = Stack([DatasetView("data"), AnalysisFrameView("frame")]);',
+  })
+  const identity = { stage: 'preview', draftId: first.draftId, draftRevision: first.draftRevision }
+  const before = f.drafts.get('session')!.document
+  for (const resourcePatch of [
+    { remove: ['missing'] },
+    { remove: ['data', 'data'] },
+    { put: { data: f.resources.data }, remove: ['data'] },
+    { remove: ['data'] },
+  ]) {
+    await assert.rejects(f.raw({ ...identity, resourcePatch }))
+    assert.deepEqual(f.drafts.get('session')!.document, before)
+  }
+  await assert.rejects(f.raw({ ...identity, resources: f.resources }))
+  assert.deepEqual(f.drafts.get('session')!.document, before)
+  const saved = await f.raw({
+    ...identity,
+    stage: 'save',
+    resourcePatch: { remove: ['frame'] },
+    program: 'root = DatasetView("data");',
+    title: 'Final',
+  })
+  const [reportId, buildId] = saved.recordId!.split(':').slice(1)
+  const document = await readAnalysisRecord(f.root, 'workspace', reportId!, buildId!)
+  assert.deepEqual(Object.keys(document.resources), ['data'])
+  assert.deepEqual(document.resources.data, before.resources.data)
+  assert.equal(document.title, 'Final')
+  assert.deepEqual(JSON.parse(saved.resultMetadataJson).resources, {})
+  assert.equal((await readReportHistory(f.root, 'workspace', reportId!)).versions.length, 1)
+})
+
+test('resource metadata only describes changed admitted resources', async (t) => {
+  const f = await fixture(t)
+  const first = await f.raw({
+    stage: 'preview',
+    resourcePatch: { put: { data: f.resources.data } },
+  })
+  assert.deepEqual(Object.keys(JSON.parse(first.resultMetadataJson).resources), ['data'])
+  const second = await f.raw({
+    stage: 'preview',
+    draftId: first.draftId,
+    draftRevision: first.draftRevision,
+    resourcePatch: { put: f.resources },
+    program: 'root = Stack([DatasetView("data"), AnalysisFrameView("frame")]);',
+  })
+  assert.deepEqual(Object.keys(JSON.parse(second.resultMetadataJson).resources), ['frame'])
+  const third = await f.raw({
+    stage: 'preview',
+    draftId: second.draftId,
+    draftRevision: second.draftRevision,
+    resourcePatch: { put: {} },
+  })
+  assert.deepEqual(JSON.parse(third.resultMetadataJson).resources, {})
+  const current = f.drafts.get('session')!.document
+  assert.deepEqual(Object.keys(current.resources).sort(), ['data', 'frame'])
+  const saved = await f.raw({
+    stage: 'save',
+    draftId: third.draftId,
+    draftRevision: third.draftRevision,
+  })
+  assert.deepEqual(JSON.parse(saved.resultMetadataJson).resources, {})
+})
+
 for (const surface of ['tool', 'tab'] as const) {
   test(`drafts inherit ${surface}, can change surface, and publish exactly one version`, async (t) => {
     const f = await fixture(t)
@@ -238,7 +308,7 @@ for (const surface of ['tool', 'tab'] as const) {
         stage: 'preview',
         surface,
         program: 'root = TextContent("First");',
-        resources: {},
+        resourcePatch: { put: {} },
       }),
     )
     assert.equal(first.surface, surface)
@@ -317,7 +387,7 @@ test('real Harness PTC composes preview, recovery and save using public identifi
       arguments: {
         description: 'Compose and recover the report draft',
         code: `
-          const first = await tools.marivo_present({stage:'preview', resources:${JSON.stringify({ data: f.resources.data })}});
+          const first = await tools.marivo_present({stage:'preview', resourcePatch:{put:${JSON.stringify({ data: f.resources.data })}}});
           if (first.stage !== 'preview' || !first.draftId || !first.draftRevision || first.recordId) throw new Error('preview-identity');
           const recovered = JSON.parse((await tools.marivo_ui_read({draft:true})).definitionJson);
           if (recovered.draftId !== first.draftId || recovered.draftRevision !== first.draftRevision) throw new Error('draft-read-identity');
@@ -342,7 +412,10 @@ test('real Harness PTC composes preview, recovery and save using public identifi
 for (const code of [false, true]) {
   test(`${code ? 'Code' : 'Native'} callers compose previews and saves from public result identifiers`, async (t) => {
     const f = await fixture(t)
-    const first = await f.raw({ stage: 'preview', resources: { data: f.resources.data } }, code)
+    const first = await f.raw(
+      { stage: 'preview', resourcePatch: { put: { data: f.resources.data } } },
+      code,
+    )
     assert.equal(first.stage, 'preview')
     assert.equal(first.recordId, undefined)
     assert.ok(first.draftId)
@@ -377,13 +450,13 @@ for (const code of [false, true]) {
 
 test('conflict recovery reads current and draft context, then explicitly rebases retained resources', async (t) => {
   const f = await fixture(t)
-  const base = await f.raw({ resources: { data: f.resources.data } })
-  const otherReport = await f.raw({ resources: { data: f.resources.data } }, true)
+  const base = await f.raw({ resourcePatch: { put: { data: f.resources.data } } })
+  const otherReport = await f.raw({ resourcePatch: { put: { data: f.resources.data } } }, true)
   const draft = await f.raw({
     stage: 'preview',
     basedOnRecordId: base.recordId,
     program: 'root = Stack([DatasetView("data"), AnalysisFrameView("frame")]);',
-    resources: f.resources,
+    resourcePatch: { put: f.resources },
   })
   const concurrent = await f.raw(
     { basedOnRecordId: base.recordId, title: 'Concurrent title' },
@@ -415,10 +488,7 @@ test('conflict recovery reads current and draft context, then explicitly rebases
     draftRevision: working.draftRevision,
     rebaseOnRecordId: latest.recordId,
     program: working.program,
-    resources: {
-      data: latest.resources.data.declaration,
-      frame: working.resources.frame.declaration,
-    },
+    resourcePatch: { put: { frame: working.resources.frame.declaration } },
   }
   await assert.rejects(
     f.raw({ ...request, rebaseOnRecordId: base.recordId }),
@@ -428,8 +498,8 @@ test('conflict recovery reads current and draft context, then explicitly rebases
     f.raw({ ...request, rebaseOnRecordId: otherReport.recordId }),
     /analysis-draft-invalid-request/,
   )
-  const { resources: _resources, ...missingResources } = request
-  await assert.rejects(f.raw(missingResources), /analysis-draft-invalid-request/)
+  const { draftRevision: _draftRevision, ...withoutRevision } = request
+  await assert.rejects(f.raw(withoutRevision), /analysis-draft-invalid-request/)
   assert.equal((await read({ draft: true })).draftRevision, draft.draftRevision)
   const rebased = await f.raw(request)
   assert.equal((await read({ draft: true })).title, 'Concurrent title')
@@ -446,7 +516,7 @@ test('conflict recovery reads current and draft context, then explicitly rebases
 
 test('draft recovery is isolated by Session, Turn and Workspace and rejects expired drafts', async (t) => {
   const f = await fixture(t)
-  await f.raw({ stage: 'preview', resources: { data: f.resources.data } })
+  await f.raw({ stage: 'preview', resourcePatch: { put: { data: f.resources.data } } })
   const reader = createMarivoUiReadTool(f.source, f.drafts)
   const otherSession = {
     ...f.exec,
@@ -466,11 +536,50 @@ test('draft recovery is isolated by Session, Turn and Workspace and rejects expi
   await assert.rejects(reader.execute({ draft: true }, f.exec), /analysis-draft-unavailable/)
 })
 
+test('a reviewed data-only rebase inherits the latest saved program without resubmitting it', async (t) => {
+  const f = await fixture(t)
+  await writeFile(path.join(f.root, 'old.png'), Buffer.from('89504e470d0a1a0a01', 'hex'))
+  await writeFile(path.join(f.root, 'new.png'), Buffer.from('89504e470d0a1a0a02', 'hex'))
+  const base = await f.raw({
+    resourcePatch: { put: { image: { kind: 'image-file', path: 'old.png' } } },
+  })
+  const draft = await f.raw({ stage: 'preview', basedOnRecordId: base.recordId })
+  const currentProgram = 'root = Stack([Image("Image", "image"), TextContent("Latest body")]);'
+  const concurrent = await f.raw(
+    { basedOnRecordId: base.recordId, title: 'Latest title', program: currentProgram },
+    true,
+  )
+  const [currentReportId, currentBuildId] = concurrent.recordId!.split(':').slice(1)
+  const current = await readAnalysisRecord(f.root, 'workspace', currentReportId!, currentBuildId!)
+  const rebased = await f.raw({
+    stage: 'preview',
+    draftId: draft.draftId,
+    draftRevision: draft.draftRevision,
+    rebaseOnRecordId: concurrent.recordId,
+    resourcePatch: { put: { image: { kind: 'image-file', path: 'new.png' } } },
+  })
+  const saved = await f.raw({
+    stage: 'save',
+    draftId: rebased.draftId,
+    draftRevision: rebased.draftRevision,
+  })
+  const [reportId, buildId] = saved.recordId!.split(':').slice(1)
+  const document = await readAnalysisRecord(f.root, 'workspace', reportId!, buildId!)
+  assert.equal(document.title, 'Latest title')
+  assert.equal(document.program, current.program)
+  assert.equal(document.resources.image?.declaration.kind, 'image-file')
+  assert.equal(
+    document.resources.image?.declaration.kind === 'image-file' &&
+      document.resources.image.declaration.path,
+    'new.png',
+  )
+})
+
 test('recovered image declarations support adding resources after the image file is removed', async (t) => {
   const f = await fixture(t)
   const image = { kind: 'image-file', path: 'image.png' }
   await writeFile(path.join(f.root, image.path), Buffer.from('89504e470d0a1a0a', 'hex'))
-  const base = await f.raw({ resources: { image } })
+  const base = await f.raw({ resourcePatch: { put: { image } } })
   const reader = createMarivoUiReadTool(f.source)
   const restored = JSON.parse(
     ((await reader.execute({ recordId: base.recordId }, f.exec)) as { definitionJson: string })
@@ -480,7 +589,7 @@ test('recovered image declarations support adding resources after the image file
   await rm(path.join(f.root, image.path))
   const saved = await f.raw({
     basedOnRecordId: base.recordId,
-    resources: { image: restored.resources.image.declaration, data: f.resources.data },
+    resourcePatch: { put: { image: restored.resources.image.declaration, data: f.resources.data } },
     program: 'root = Stack([Image("Existing image", "image"), DatasetView("data")]);',
   })
   assert.ok(saved.recordId)
@@ -488,7 +597,7 @@ test('recovered image declarations support adding resources after the image file
 
 test('draft edits preserve the saved base and reject concurrent publication', async (t) => {
   const f = await fixture(t)
-  const base = await f.present({ resources: { data: f.resources.data } })
+  const base = await f.present({ resourcePatch: { put: { data: f.resources.data } } })
   const recordId = analysisRecordId(base.receipt.reportId, base.receipt.buildId)
   const preview = draftDeliverySchema.parse(
     await f.execute({
@@ -515,8 +624,11 @@ test('draft edits preserve the saved base and reject concurrent publication', as
 
 test('reference-only results save exact resources and survive capture removal and cold service reopen', async (t) => {
   const f = await fixture(t)
-  const data = await f.present({ resources: { data: f.resources.data } })
-  const frame = await f.present({ resources: { frame: f.resources.frame }, surface: 'tab' }, true)
+  const data = await f.present({ resourcePatch: { put: { data: f.resources.data } } })
+  const frame = await f.present(
+    { resourcePatch: { put: { frame: f.resources.frame } }, surface: 'tab' },
+    true,
+  )
   assert.equal(data.surface, 'tool')
   assert.equal(frame.surface, 'tab')
   assert.equal(frame.turn, 2)
@@ -585,7 +697,7 @@ test('eight-component composition admits only saved image resources and exact co
   const resources = { ...f.resources, picture: { kind: 'image-file', path: 'image.png' } }
   const program =
     'root = Stack([Card([TextContent("Saved data"), AnalysisFrameView("frame", {chart:"table"})]), Tabs([TabItem("data","Data",[DatasetView("data")]),TabItem("image","Image",[Image("Saved image","picture")])])]);'
-  const delivery = await f.present({ resources, program })
+  const delivery = await f.present({ resourcePatch: { put: resources }, program })
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
   assert.equal(document.resources.picture?.kind, 'image')
   for (const bad of [
@@ -605,16 +717,18 @@ test('eight-component composition admits only saved image resources and exact co
     ),
     program.replace('TextContent("Saved data")', 'Stack([Button("unsupported")])'),
   ])
-    await assert.rejects(f.present({ resources, program: bad }))
+    await assert.rejects(f.present({ resourcePatch: { put: resources }, program: bad }))
   await assert.rejects(
-    f.present({ resources: { image: { kind: 'image-file', path: '../outside.png' } } }),
+    f.present({
+      resourcePatch: { put: { image: { kind: 'image-file', path: '../outside.png' } } },
+    }),
     /image-path-invalid/,
   )
 })
 
 test('record reads omit rows; failed resource reads, cancellation and stale saves preserve published current', async (t) => {
   const f = await fixture(t)
-  const original = await f.present({ resources: { data: f.resources.data } })
+  const original = await f.present({ resourcePatch: { put: { data: f.resources.data } } })
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, original.receipt))
   const bytes = await readFile(original.receipt.files.document.path)
   const read = createMarivoUiReadTool(() => ({ id: 'workspace', path: f.root }))
@@ -623,6 +737,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
   }
   const definition = JSON.parse(response.definitionJson)
   assert.equal(definition.program, document.program)
+  assert.equal(definition.signatures, undefined)
   assert.deepEqual(
     definition.resources.data.columns,
     document.resources.data?.kind === 'snapshot' && document.resources.data.snapshot.data.columns,
@@ -661,7 +776,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
   await assert.rejects(readAnalysisRecord(f.root, 'other', document.reportId, document.buildId))
   await assert.rejects(read.execute({ recordId: 'invalid' }, f.exec), /record-id/)
   await rm(path.join(f.root, f.captureDirectory), { recursive: true })
-  await assert.rejects(f.present({ resources: { data: f.resources.data } }))
+  await assert.rejects(f.present({ resourcePatch: { put: { data: f.resources.data } } }))
   const abort = new AbortController()
   abort.abort()
   await assert.rejects(
@@ -683,7 +798,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
 test('statement updates reuse embedded snapshots without resolving Runtime and save independent versions', async (t) => {
   const f = await fixture(t)
   const original = await f.present({
-    resources: f.resources,
+    resourcePatch: { put: f.resources },
     title: 'Original',
     locale: 'en-US',
     program:
@@ -722,12 +837,12 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
   ])
     await assert.rejects(update({ basedOnRecordId: next.recordId, program }))
   await assert.rejects(
-    update({ basedOnRecordId: next.recordId, resources: {} }),
+    update({ basedOnRecordId: next.recordId, resourcePatch: { remove: ['data'] } }),
     /resource-missing/,
   )
   const retained = await update({
     basedOnRecordId: next.recordId,
-    resources: f.resources,
+    resourcePatch: { put: f.resources },
     title: 'Retained',
   })
   const latest = parseAnalysisDocument(await readReceiptDocument(f.root, retained.receipt))
@@ -735,7 +850,7 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
   assert.deepEqual(latest.resources, base.resources)
   const removed = await update({
     basedOnRecordId: latest.recordId,
-    resources: {},
+    resourcePatch: { remove: ['data', 'frame'] },
     program: 'root = Stack([note]);\nnote = TextContent("Independent");\nheading = null;',
   })
   await rm(path.dirname(original.receipt.files.document.path), { recursive: true })
@@ -770,7 +885,7 @@ test('Dataset chart programs save, reopen and update embedded data after capture
     'DatasetView("data", {chart:"heatmap",encoding:{x:"category",y:"series",value:"value"}})',
   )
   const program = `root = Stack([${views.join(',')}]);`
-  const delivery = await f.present({ resources: { data: f.resources.data }, program })
+  const delivery = await f.present({ resourcePatch: { put: { data: f.resources.data } }, program })
   const saved = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
   assert.deepEqual(
     saved.resources.data?.kind === 'snapshot' && saved.resources.data.snapshot.data.rows,
@@ -828,7 +943,9 @@ test('only the current Catalog reads Frame and Dataset reports', async (t) => {
   const previous = '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
   const predecessor = 'c42feb51cff7113f2de9d48dd61992672a4dc0b13b832b73aef72de7e0b56d0f'
   for (const resource of ['frame', 'data'] as const) {
-    const delivery = await f.present({ resources: { [resource]: f.resources[resource] } })
+    const delivery = await f.present({
+      resourcePatch: { put: { [resource]: f.resources[resource] } },
+    })
     const saved = await readReceiptDocument(f.root, delivery.receipt)
     assert.equal(parseAnalysisDocument(saved).program, saved.program)
     for (const build of [predecessor, previous, 'unknown'])

@@ -115,9 +115,11 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
   const document = await createAnalysisDocument(
     {
       surface: 'tab',
-      resources: {
-        frame: { kind: 'analysis-frame', ref: raw.frame },
-        data: { kind: 'dataframe', ref: raw.dataframe },
+      resourcePatch: {
+        put: {
+          frame: { kind: 'analysis-frame', ref: raw.frame },
+          data: { kind: 'dataframe', ref: raw.dataframe },
+        },
       },
       program: 'root = Stack([AnalysisFrameView("frame"), DatasetView("data")]);',
     },

@@ -81,10 +81,12 @@ class SemanticQuestionAdapter extends LlmAdapter {
 class ReportDraftAdapter extends LlmAdapter {
   #step = 0
   #permitted = 0
-  readonly #resources: () => Promise<NonNullable<PresentationRequest['resources']>>
+  readonly #resources: () => Promise<
+    NonNullable<NonNullable<PresentationRequest['resourcePatch']>['put']>
+  >
   readonly #latestDraft: () => DraftDelivery | undefined
   constructor(
-    resources: () => Promise<NonNullable<PresentationRequest['resources']>>,
+    resources: () => Promise<NonNullable<NonNullable<PresentationRequest['resourcePatch']>['put']>>,
     latestDraft: () => DraftDelivery | undefined,
   ) {
     super()
@@ -115,14 +117,14 @@ class ReportDraftAdapter extends LlmAdapter {
         ? {
             stage: 'preview',
             title: '逐步更新验收',
-            resources: { [first]: resources[first] },
+            resourcePatch: { put: { [first]: resources[first] } },
             program: `root = Stack([TextContent("首个指标已就绪"), AnalysisFrameView("${first}")]);`,
           }
         : step === 1
           ? {
               stage: 'preview',
               ...identity,
-              resources,
+              resourcePatch: { put: { [second]: resources[second] } },
               program: `root = Stack([TextContent("两个指标已就绪"), AnalysisFrameView("${first}"), AnalysisFrameView("${second}")]);`,
             }
           : { stage: 'save', ...identity },

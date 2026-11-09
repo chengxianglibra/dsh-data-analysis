@@ -12,9 +12,11 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 ## 统一分析 UI 写入与增量契约
 
-`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。独立新结果直接交付时，`stage` 默认 `save`，并使用 `surface`、`basedOnRecordId`、`resources`、`labels`、`title`、`program` 和 `locale` 构造正式版本。携带 `draftId` 或 `draftRevision` 必须显式提供 `stage`，省略返回 `analysis-draft-stage-required`，不套用直接保存默认值。
+`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。独立新结果直接交付时，`stage` 默认 `save`，并使用 `surface`、`basedOnRecordId`、`resourcePatch`、`labels`、`title`、`program` 和 `locale` 构造正式版本。携带 `draftId` 或 `draftRevision` 必须显式提供 `stage`，省略返回 `analysis-draft-stage-required`，不套用直接保存默认值。
 
-报告工作流要求显式选择 stage：数据准备前尽早 preview，组件由独立 Python 调用完成后及时更新同一草稿，不等全部计算完成，最终 save 一次。独立计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，resources 为空。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
+报告工作流要求显式选择 stage：数据准备前尽早 preview，固定结果就绪后及时更新同一草稿，不等全部计算完成，最终 save 一次；相同固定结果可以供多个视图复用。计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，省略 resourcePatch。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
+
+`resourcePatch.put` 按资源名新增或替换声明，`resourcePatch.remove` 显式删除；未提及的资源继承基版本。省略 patch 或提供空 patch 不删除资源；同名 put/remove、重复删除、删除不存在的资源均拒绝。程序和资源变更按最终文档一起校验，失败保留最后成功草稿。旧调用参数 `resources` 不再接受；已保存 Build 内的 resources 保留原义。
 
 - 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
@@ -36,7 +38,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 新 Frame/DataFrame 资源声明可带 `codeRef:{executionId,sha256}`，来自返回该引用的成功 `marivo_python` 调用。Host 核验 Workspace、记录摘要及登记的完整结果引用，再保存 binding，UI 通过既有 `code/read` 读取脚本。无关、失效或没有结果登记的记录拒绝关联；不从 Marivo 引用推断执行来源。省略 codeRef 的既有外部结果仍可展示并明确缺少脚本。
 
-报告数据刷新先以准确 basedOnRecordId 展示基版本草稿，再逐组件独立计算和 preview 同名资源替换，最后 save 一次。提供 resources 时保持完整资源集合，刷新项使用新 ref 和新 codeRef，省略 program/title/locale/labels。页面程序、组件组成、正文、标题、语言和同 ID 列的既有显示标签保留；新快照须满足原视图，失败修复不授权换图或删组件。相同声明继续复用旧内容，同路径图片也不刷新。正文静态数字不自动改写，auto 及部分分析视图仍按新结果形状判定；程序相同不证明视觉布局完全相同，也不证明原结论仍有效。
+报告数据刷新先以准确 basedOnRecordId 展示基版本草稿，再准备新固定结果并 preview 同名资源替换，最后 save 一次；已有结果可以被多个视图复用。`resourcePatch.put` 只包含刷新项，省略 program/title/locale/labels 和 remove。页面程序、组件组成、正文、标题、语言和同 ID 列的既有显示标签保留；新快照须满足原视图，失败修复不授权换图或删组件。相同声明继续复用旧内容，同路径图片也不刷新。正文静态数字不自动改写，auto 及部分分析视图仍按新结果形状判定；程序相同不证明视觉布局完全相同，也不证明原结论仍有效。
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。新资源使用 `analysis-frame` / `dataframe` 和 Marivo 固定引用；历史 snapshot 声明保留原 Host provenance，
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
@@ -52,14 +54,14 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 
 - 同一 patch 的语句名不可重复；新增或替换的语句合并后必须仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
   `name = null` 删除语句，需先改写父引用。
-- 省略 program 保留基版本布局，省略 title/locale 继承；省略 resources 继承，提供则替换完整资源表。
+- 省略 program 保留基版本布局，省略 title/locale 继承；resourcePatch 只改变显式列出的资源。
   同名同声明复制基版本已保存字节，只有新资源执行读取。
 - 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
 - 新版本独立内嵌全部资源，以基版本 buildId 执行条件保存；冲突不自动重试，失败不改 current。
 
 `marivo_ui_read({recordId})` 读取准确已发布版本；加 `current: true` 则显式读取该报告当前版本。
 `marivo_ui_read({draft: true})` 按调用 Session/Turn 和 Workspace 核验并读取当前草稿，两类输入互斥。
-结果 `definitionJson` 包含相应版本/草稿身份、title、locale、Catalog、program、全部资源声明（包括图片）、绑定的 codeRef 及必要 schema/coverage。
+结果 `definitionJson` 包含相应版本/草稿身份、title、locale、Catalog、program、全部资源声明（包括图片）、绑定的 codeRef 及必要 schema/coverage；组件签名通过展示 Skill 的生成 Catalog 参考按需读取。
 可加 `includeCode:true` 按需读取绑定源码；顶层 sources 按 codeRef 去重，返回 available 的 code.text、code.datasources、code.resultVariables，或 unavailable 状态。未绑定 codeRef 的资源没有来源项。新结果执行记录的空 datasource 数组表示本次未声明 Marivo datasource，旧记录缺少该字段时保持未知。读取只核验当前 Workspace 的 Host 文件，不执行代码、不返回凭据；脚本未内嵌于报告 JSON，Host 记录丢失时仍可读取和复用已保存快照。
 草稿只返回 draftId/draftRevision 和可用的 basedOnRecordId，不把临时 document ID 声称为已发布 record。
 不返回 rows、不查询实时数据、不执行 Python；只在编辑上下文缺失或冲突时按需使用，不默认回读。
@@ -73,14 +75,14 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 ## 报告草稿与正式保存
 
 - `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage`、`draftId` 与 `draftRevision`。
-- 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序。提供 `resources` 时仍替换完整映射。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
+- 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序，resourcePatch 只更新指定资源。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
 - Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；tool 的会话节点与右侧 tab 共用同一草稿状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
-- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本。若正式基版本已变化，保存失败并保留当前草稿。成功后，所选 surface 的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
+- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，所选 surface 的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
 - 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
-- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位。资源参数省略时继承已准入快照；完整映射按 full-map replacement 比对同名同声明；未闭合映射不继承旧资源，保留文字与布局并局部等待，避免旧数据配上新范围。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，surface、stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
-- 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId`、相对新基版本的累计 program patch 与完整 resources 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
-- 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。现有 rebase 接口要求 program，此时传准确、未改动的当前正式程序，省略 title/locale/labels，不重放旧草稿布局；无法判断资源或业务冲突时明确阻塞。
+- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位。完整 resourcePatch 保留未变资源，仅移除删除项及声明不同的替换项；未闭合或无效 patch 不继承旧资源；参数流未结束且尚未收到 resourcePatch 时，也不能断定资源未变。需要在 program 流式生成期间保留未变资源，可先发送完整 resourcePatch（纯文本修改可用空对象），避免旧数据配上新范围。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，surface、stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
+- 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId` 和相对新基版本的累计 program 与 resourcePatch 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
+- 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。省略 program/title/locale/labels，只传相对新基版本的资源增量；无法判断资源或业务冲突时明确阻塞。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
 
 ## 单次调用与文件身份

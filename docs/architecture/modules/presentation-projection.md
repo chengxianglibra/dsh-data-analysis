@@ -64,7 +64,7 @@ business 固定 unknown。
 
 marivo_python 导出准确引用时在同一受核验进程中附 resultMetadata。Frame 通过公开 Session 恢复和 persisted_frame 取得准确身份，只读取 schema 的列、值及轴名；不读行，totalRows 为 null。DataFrame 使用公开 read_dataframe 返回的 schema 与 row_count；该 API 完整读取固定结果，元数据摘要不调用 to_pandas，也不访问业务来源。每结果摘要最多 4 KiB、64 个各类配置名，总控制帧保持 32 KiB；元数据不可读或超预算单独标为 unavailable，不能让有效引用丢失。
 
-成功 marivo_present 回执及模型文本附 resultMetadataJson，直接从本次已准入快照复用列类型、轴、值和 coverage，不额外读取。展示配置错误携带相同摘要和解析器候选名供直接修复，不把身份、Runtime 或存储失败改写成配置错误。多资源摘要超过 16 KiB 时整体明确 unavailable/budget，不静默丢掉名称。coverage.business 保持 unknown，不把固定行数或捕获完整性称为业务覆盖。
+成功 marivo_present 回执及模型文本附 resultMetadataJson，仅披露本次新增或替换的已准入快照的列类型、轴、值和 coverage，不额外读取；未改变资源时返回空资源集合。展示配置错误只携带出错组件所引用资源的有界摘要和解析器候选名（包括没有独立语句名的内联组件）供直接修复，不把身份、Runtime 或存储失败改写成配置错误。多资源摘要超过 16 KiB 时整体明确 unavailable/budget，不静默丢掉名称。coverage.business 保持 unknown，不把固定行数或捕获完整性称为业务覆盖。
 
 ## Frame 快照
 

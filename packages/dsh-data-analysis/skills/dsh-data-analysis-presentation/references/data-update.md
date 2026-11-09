@@ -6,7 +6,7 @@
 
 调用 `marivo_ui_read({recordId, current:true, includeCode:true})`，解析 definitionJson，保留其准确 recordId、program、资源 declaration 和字段契约。用户明确指定历史版本时读取该准确版本；它若不是 current，不能直接覆盖当前版本，按恢复参考审阅冲突。
 
-先以该 recordId 为 basedOnRecordId 调用 `marivo_present(surface:"tab", stage:"preview")`，省略 program 和 resources，展示原报告的草稿副本。后续使用返回的 draftId/draftRevision。刷新进度在聊天中说明，不向报告增添进度组件。
+需要持续计算时先以该 recordId 为 basedOnRecordId 调用 `marivo_present(surface:"tab", stage:"preview")`，省略 program 和 resourcePatch，展示原报告的草稿副本。后续使用返回的 draftId/draftRevision。刷新进度在聊天中说明，不向报告增添进度组件。若上下文和新结果已就绪，单次刷新可直接以 basedOnRecordId 和同名资源 patch 保存。
 
 ## 按固定结果显式刷新
 
@@ -14,7 +14,7 @@ sources 按 codeRef 去重，不是重放指令。先识别哪些原有视图共
 
 对请求刷新的结果运行已审阅、完整的 `marivo_python` 脚本，在同次调用内读取输入、计算、持久化并导出准确新结果。使用记录的 code.datasources 中的精确 name 和该组件的 resultVariables；空 datasource 数组表示无需 Marivo datasource，旧记录缺字段表示未知。历史脚本包含其他操作时先审阅范围与副作用；仅执行已授权的刷新，不能无审阅重放。共享同一固定结果的视图无需重复生产。
 
-成功后取得结构化 resultRefs 和该次 codeRef，及时 preview 同名资源替换，不等待其他组件全部完成。同批已就绪内容可合并 preview；当前 Python 和草稿写入均按 Harness exclusive 调度，不承诺并发。提交完整 resources 映射：当前已刷新的资源保留新声明，未刷新项和图片保留原声明。省略 program/title/locale/labels，使用上一成功预览的 draftId/draftRevision。相同引用会复用旧快照，不能当作刷新；图片需要独立生成到新路径后替换原资源名下的 path。
+成功后取得结构化 resultRefs 和该次 codeRef，及时 preview 同名资源替换，不等待其他组件全部完成。同批已就绪内容可合并 preview；当前 Python 和草稿写入均按 Harness exclusive 调度，不承诺并发。`resourcePatch.put` 只提交本次刷新的同名资源，其他资源自动继承；不使用 remove。省略 program/title/locale/labels，使用上一成功预览的 draftId/draftRevision。相同引用会复用旧快照，不能当作刷新；图片需要独立生成到新路径后替换原资源名下的 path。
 
 ## 完成与不兼容
 
@@ -28,15 +28,16 @@ program 不变并不保证 auto 的呈现形态不变。既有 auto 或其他自
 
 ## 调用时序
 
-以下为一个组件刷新成功的调用示例。先审阅 definition 和目标组件脚本，再运行其独立调用；替换脚本与 resourceName 为实际内容。保持完整资源映射，后续组件继续同一循环。
+以下为一个组件刷新成功的调用示例。先审阅 definition 和目标组件脚本，再运行其独立调用；替换脚本与 resourceName 为实际内容。后续组件继续同一循环，只提交各次变更。
 
 ```javascript
 const definition = JSON.parse((await tools.marivo_ui_read({
   recordId, current: true, includeCode: true,
 })).definitionJson);
-const resources = Object.fromEntries(
-  Object.entries(definition.resources).map(([name, resource]) => [name, resource.declaration]),
-);
+const declaration = definition.resources[resourceName]?.declaration;
+if (!declaration || !["analysis-frame", "dataframe"].includes(declaration.kind)) {
+  throw new Error("Inspect the existing resource before preparing its replacement.");
+}
 let draft = await tools.marivo_present({
   surface: "tab", stage: "preview", basedOnRecordId: definition.recordId,
 });
@@ -49,12 +50,11 @@ const result = await tools.marivo_python({
 if (result.execution.reason !== "succeeded" || result.resultCaptureError || !result.resultRefs?.[resourceName] || !result.codeRef) {
   throw new Error("Inspect execution and capture status before continuing; do not replay blindly.");
 }
-resources[resourceName] = {
-  kind: resources[resourceName].kind,
-  ref: result.resultRefs[resourceName], codeRef: result.codeRef,
-};
 draft = await tools.marivo_present({
-  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision, resources,
+  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
+  resourcePatch: { put: { [resourceName]: {
+    kind: declaration.kind, ref: result.resultRefs[resourceName], codeRef: result.codeRef,
+  } } },
 });
 // Save once after all requested components have been refreshed and checked.
 const saved = await tools.marivo_present({

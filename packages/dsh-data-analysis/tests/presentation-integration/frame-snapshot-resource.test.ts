@@ -124,7 +124,7 @@ const note = 'root = TextContent("Saved");'
 test('frame-snapshot resources bind codeRef, Session and call; refs must match their kind', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } },
+    resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
     program: note,
   })
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
@@ -139,14 +139,14 @@ test('frame-snapshot resources bind codeRef, Session and call; refs must match t
   })
   await assert.rejects(
     f.present({
-      resources: { frame: { kind: 'frame-snapshot', snapshotRef: f.datasetRef } },
+      resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.datasetRef } } },
       program: note,
     }),
     /frame-snapshot-reference-invalid/,
   )
   await assert.rejects(
     f.present({
-      resources: { data: { kind: 'dataset-snapshot', snapshotRef: f.frameRef } },
+      resourcePatch: { put: { data: { kind: 'dataset-snapshot', snapshotRef: f.frameRef } } },
       program: note,
     }),
     /dataset-snapshot-reference-invalid/,
@@ -170,7 +170,7 @@ test('frame-snapshot resources bind codeRef, Session and call; refs must match t
 test('document owner checks require a v2 Frame with Host code, Session and call binding', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } },
+    resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
     program: note,
   })
   const saved = (await readReceiptDocument(f.root, delivery.receipt)) as AnalysisDocument
@@ -223,7 +223,7 @@ test('document owner checks require a v2 Frame with Host code, Session and call 
 test('marivo_ui_read returns Frame description, axis variants and interpretation names without rows', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } },
+    resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
     program: note,
   })
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
@@ -256,7 +256,7 @@ test('marivo_ui_read returns Frame description, axis variants and interpretation
 test('code/read returns bound Python source only for the saved receipt document and Workspace', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } },
+    resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
     program: note,
   })
   const receipt = delivery.receipt
@@ -319,7 +319,7 @@ test('code/read returns bound Python source only for the saved receipt document 
 test('a single frame-snapshot resource defaults to AnalysisFrameView', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } },
+    resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
   })
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
   assert.equal(document.program, 'root = AnalysisFrameView("frame");')
@@ -336,13 +336,16 @@ test('save-time view validation returns structured codes with statement-scoped p
     // The fixture Frame is truncated (1 of 2 rows).
     ['{chart:"metric",encoding:{value:"amount"}}', 'analysis-metric-requires-complete-single-row'],
   ] as const)
-    await assert.rejects(f.present({ resources, program: program(view) }), (error: Error) => {
-      assert.match(error.message, new RegExp(`^${code} at chart/view`))
-      assert.equal((error as Error & { code?: string }).code, code)
-      return true
-    })
+    await assert.rejects(
+      f.present({ resourcePatch: { put: resources }, program: program(view) }),
+      (error: Error) => {
+        assert.match(error.message, new RegExp(`^${code} at chart/view`))
+        assert.equal((error as Error & { code?: string }).code, code)
+        return true
+      },
+    )
   const saved = await f.present({
-    resources,
+    resourcePatch: { put: resources },
     program: program('{chart:"table",columns:["amount"]}'),
   })
   assert.ok(saved.receipt.reportId)
@@ -351,7 +354,7 @@ test('save-time view validation returns structured codes with statement-scoped p
 test('DataFrame references revalidate the fixed saved build and snapshot identity', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } },
+    resourcePatch: { put: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } } },
     program: 'root = DatasetView("data");',
   })
   const request = {
@@ -412,7 +415,7 @@ test('DataFrame references revalidate the fixed saved build and snapshot identit
 test('Dataset component reference validates the saved view and sends bounded snapshot context', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
-    resources: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } },
+    resourcePatch: { put: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } } },
     program: 'root = DatasetView("data", {chart:"table"});',
   })
   const request = {

@@ -60,7 +60,6 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
         ...(step === 0
           ? {
               title: 'Streaming draft',
-              resources: {},
               locale: 'en-US',
               program:
                 'root = Stack([intro, stable]);\nintro = TextContent("STREAM first content before tool execution");\nstable = TextContent("Retained confirmed section");',

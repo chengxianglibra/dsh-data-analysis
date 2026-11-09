@@ -7,6 +7,7 @@ import {
   type AnalysisDocument,
   type AnalysisPresentInput,
   type AnalysisResourceDeclaration,
+  AnalysisViewError,
   analysisElements,
   analysisRecordId,
   parseAnalysisDocument,
@@ -97,11 +98,19 @@ export async function createAnalysisDocument(
   base?: AnalysisDocument,
   retainedResources?: AnalysisDocument['resources'],
 ): Promise<AnalysisDocument> {
-  const declarations =
-    input.resources ??
-    Object.fromEntries(
-      Object.entries(base?.resources ?? {}).map(([name, resource]) => [name, resource.declaration]),
-    )
+  const declarations: Record<string, AnalysisResourceDeclaration> = Object.fromEntries(
+    Object.entries(base?.resources ?? {}).map(([name, resource]) => [name, resource.declaration]),
+  )
+  const put = input.resourcePatch?.put ?? {}
+  const remove = input.resourcePatch?.remove ?? []
+  if (new Set(remove).size !== remove.length) throw new Error('analysis-resource-remove-duplicate')
+  for (const name of remove) {
+    if (Object.hasOwn(put, name)) throw new Error(`analysis-resource-patch-conflict: ${name}`)
+    if (!Object.hasOwn(declarations, name))
+      throw new Error(`analysis-resource-remove-unknown: ${name}`)
+    delete declarations[name]
+  }
+  Object.assign(declarations, put)
   const title = input.title ?? base?.title ?? 'Analysis'
   const entries = Object.entries(declarations)
   if (entries.length > PRESENTATION_BUDGETS.datasets) throw new Error('analysis-resource-budget')
@@ -251,8 +260,14 @@ export async function createAnalysisDocument(
     if (
       error instanceof Error &&
       /^(analysis-view-|analysis-columns-|analysis-metric-|analysis-label-)/.test(error.message)
-    )
-      error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(resources))}. Correct the presentation configuration using these exact names; do not rerun analysis to recover metadata.`
+    ) {
+      const name =
+        error instanceof AnalysisViewError
+          ? error.resourceName
+          : /^analysis-label-unknown at \/labels\/([^/ :]+)/.exec(error.message)?.[1]
+      const relevant = name && resources[name] ? { [name]: resources[name] } : {}
+      error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Correct the presentation configuration using these exact names; do not rerun analysis to recover metadata.`
+    }
     throw error
   }
 }

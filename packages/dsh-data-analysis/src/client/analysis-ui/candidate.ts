@@ -2,8 +2,8 @@ import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/cl
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   type AnalysisDocument,
-  type AnalysisResourceDeclaration,
-  analysisResourceDeclaration,
+  type AnalysisPresentInput,
+  analysisResourcePatch,
   sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
 import { PRESENTATION_BUDGETS } from '../../presentation/contracts/types.ts'
@@ -42,8 +42,8 @@ export interface AnalysisCandidate {
   basedOnRecordId?: string
   title?: string
   locale?: 'zh-CN' | 'en-US'
-  resources?: Record<string, AnalysisResourceDeclaration>
-  resourcesInput: 'omitted' | 'incomplete' | 'complete'
+  resourcePatch?: AnalysisPresentInput['resourcePatch']
+  resourcePatchInput: 'omitted' | 'incomplete' | 'complete'
   delivery?: PresentationDelivery
 }
 export const candidateKey = (sessionId: string, turn: number, callId: string) =>
@@ -80,17 +80,9 @@ export function analysisCandidate(
     (previous === undefined || result.turn === previous.turn)
       ? result
       : undefined
-  const declarations = args.complete('resources') ? args.value('resources') : undefined
-  let resources: AnalysisCandidate['resources']
-  if (declarations && typeof declarations === 'object' && !Array.isArray(declarations)) {
-    const entries = Object.entries(declarations).map(
-      ([name, value]) => [name, analysisResourceDeclaration.safeParse(value)] as const,
-    )
-    if (entries.every(([, value]) => value.success))
-      resources = Object.fromEntries(
-        entries.flatMap(([name, value]) => (value.success ? [[name, value.data]] : [])),
-      )
-  }
+  const patch = args.complete('resourcePatch')
+    ? analysisResourcePatch.safeParse(args.value('resourcePatch'))
+    : undefined
   const locale = args.complete('locale') ? args.text('locale') : undefined
   return {
     sessionId,
@@ -125,12 +117,16 @@ export function analysisCandidate(
     basedOnRecordId: args.complete('basedOnRecordId') ? args.text('basedOnRecordId') : undefined,
     title: args.complete('title') ? args.text('title') : undefined,
     locale: locale === 'en-US' || locale === 'zh-CN' ? locale : undefined,
-    resources,
-    resourcesInput: !args.has('resources')
-      ? 'omitted'
-      : args.complete('resources')
-        ? 'complete'
-        : 'incomplete',
+    resourcePatch: patch?.success ? patch.data : undefined,
+    resourcePatchInput: args.has('resources')
+      ? 'incomplete'
+      : !args.has('resourcePatch')
+        ? args.closed()
+          ? 'omitted'
+          : 'incomplete'
+        : args.complete('resourcePatch')
+          ? 'complete'
+          : 'incomplete',
     delivery,
   }
 }
@@ -138,17 +134,32 @@ export function analysisCandidate(
 /** A candidate can reuse admitted bytes only when its declaration is known unchanged. */
 export function candidateResources(
   document: Pick<AnalysisDocument, 'resources'> | undefined,
-  candidate: Pick<AnalysisCandidate, 'resources' | 'resourcesInput'>,
+  candidate: Pick<AnalysisCandidate, 'resourcePatch' | 'resourcePatchInput'>,
 ): AnalysisDocument['resources'] {
-  if (candidate.resourcesInput === 'omitted') return document?.resources ?? {}
-  if (candidate.resourcesInput === 'incomplete') return {}
-  return Object.fromEntries(
-    Object.entries(document?.resources ?? {}).filter(
-      ([name, resource]) =>
-        candidate.resources?.[name] &&
-        sameAnalysisDeclaration(resource.declaration, candidate.resources[name]),
-    ),
-  )
+  // Never reuse bytes from a patch whose complete contents have not yet
+  // passed structural validation, or from unsupported legacy input.
+  if (candidate.resourcePatchInput !== 'omitted') {
+    if (candidate.resourcePatchInput !== 'complete' || !candidate.resourcePatch) return {}
+    const { put, remove = [] } = candidate.resourcePatch
+    const removed = new Set(remove)
+    const base = document?.resources ?? {}
+    if (
+      removed.size !== remove.length ||
+      remove.some((name) => !Object.hasOwn(base, name) || (put && Object.hasOwn(put, name)))
+    )
+      return {}
+    return Object.fromEntries(
+      Object.entries(base).filter(([name, resource]) => {
+        if (removed.has(name)) return false
+        if (!put || !Object.hasOwn(put, name)) return true
+        const replacement = put[name]
+        return (
+          replacement !== undefined && sameAnalysisDeclaration(resource.declaration, replacement)
+        )
+      }),
+    )
+  }
+  return document?.resources ?? {}
 }
 
 /** Installation-local call projection shared only by the tool and candidate tab adapters. */

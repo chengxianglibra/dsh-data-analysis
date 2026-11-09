@@ -34,15 +34,15 @@ Plugin 激活时按嵌入当前工具构建的清单与摘要核验全部随包 
 
 首次分析或持久化前，Agent 按[Workspace 契约](runtime-workspace.md#workspace-解析与-zero-init-binding)检查当前根目录的 manifest，缺少时用绑定 Runtime 显式初始化。结果引用参考提供该独立环境准备调用；它不是组件生产脚本，也不改变插件安装的 zero-init 行为。
 
-报告任务及已知问题、范围明确后，在数据准备和整页规划前先用空资源映射及已知问题/范围创建 stage:preview 草稿；不引用未就绪数据、不预写结论。结果就绪后及时更新同一草稿，同批已就绪相关视图可连贯提交，不等待完整分析。当前任意 Python 和草稿写入都保持 Harness exclusive 调度，不声明 isConcurrencySafe，也不承诺并发。同一草稿使用最新成功修订。携带 draftId 或 draftRevision 而省略 stage 时，在默认 save 应用前返回 analysis-draft-stage-required；仅无草稿身份的独立请求仍可省略 stage 直接保存。单组件展示失败保留已有草稿，处理或说明问题，不阻塞其他无依赖计算。完整资源映射随新增组件提交，program 使用可从 root 到达的命名语句 patch。最后核对内容并 stage:save 一次，只新增一个正式版本。
+已有结果且只需一次明确修改时可直接 save；需要继续分析的报告任务及已知问题、范围明确后，在数据准备和整页规划前先用已知问题/范围创建 stage:preview 草稿；不引用未就绪数据、不预写结论。结果就绪后及时更新同一草稿，同批已就绪相关视图可连贯提交，不等待完整分析。当前任意 Python 和草稿写入都保持 Harness exclusive 调度，不声明 isConcurrencySafe，也不承诺并发。同一草稿使用最新成功修订。携带 draftId 或 draftRevision 而省略 stage 时，在默认 save 应用前返回 analysis-draft-stage-required；仅无草稿身份的独立请求仍可省略 stage 直接保存。单组件展示失败保留已有草稿，处理或说明问题，不阻塞其他无依赖计算。resourcePatch 只携带新增、替换或删除的资源，program 使用可从 root 到达的命名语句 patch。最后核对内容并 stage:save 一次，只新增一个正式版本。
 
 报告用右侧 tab，聊天可视化工作稿可用 tool。Native 参数前缀是未校验候选，PTC 按工具 dispatch 更新。preview 是工具校验并更新内存草稿，前端自动读取展示；成功回执不证明浏览器完成渲染，不要求浏览器检查或用户确认。草稿生命周期见[展示交付](presentation-delivery.md#报告草稿与正式保存)。
 
 ## 已保存报告的数据刷新
 
-数据刷新锁定 program、组件组成、资源名、view/display、正文、标题、语言和列标签。先通过 marivo_ui_read 读取基版本和脚本，展示该版本的草稿副本，再显式重算所需固定结果、preview 同名资源替换；共享输入结果的原有视图可复用同一新结果，最后保存一次。新数据必须满足原视图；错误修复不授权换图、删组件或改变口径。步骤见[数据刷新](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/data-update.md)。
+数据刷新锁定 program、组件组成、资源名、view/display、正文、标题、语言和列标签。先通过 marivo_ui_read 读取基版本和脚本；需要计算时展示该版本的草稿副本，再显式重算所需固定结果、preview 同名资源替换；共享输入结果的原有视图可复用同一新结果，最后保存一次。上下文和新结果已就绪的单次刷新可以直接 save。新数据必须满足原视图；错误修复不授权换图、删组件或改变口径。步骤见[数据刷新](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/data-update.md)。
 
-明确要求页面编辑时，才按请求 patch 布局或内容。冲突恢复也区分两种目的：数据刷新基于审阅后的当前正式版本，只合并兼容资源；现有 rebase 接口要求 program 时传准确、未改动的当前程序，不合入旧草稿布局。
+明确要求页面编辑时，才按请求 patch 布局或内容。冲突恢复也区分两种目的：数据刷新基于审阅后的当前正式版本，只合并兼容资源并省略 program，不合入旧草稿布局。
 
 早期交付与结果准备节奏属于 Agent 工作流规则，不是提前交付的服务端保证；草稿身份必须显式选择 stage 由 Tool 校验。Tool 仍支持一调用多个输出、可选 codeRef 和通用页面编辑；Host 验证执行导出与引用关联，不证明脚本独立或最初计算来源。相同声明复用旧快照或图片，不等于刷新。auto 及部分分析视图可能随数据结构调整内部布局；program 相同不保证视觉完全相同。TextContent 静态数字不随资源改写，明显失效结论需说明，不能冒充完整刷新。
 
@@ -50,7 +50,7 @@ Plugin 激活时按嵌入当前工具构建的清单与摘要核验全部随包 
 
 Python 成功结果导出同时尽早交付有界 resultMetadata：Frame 直接读取准确持久结果的公开 schema，披露列、值和轴名，行数未知明确为 null；DataFrame 使用公开 read_dataframe 的 schema 与 row_count，该 API 会完整读取固定结果但不读业务来源。元数据失败独立标为 unavailable，不改变执行或引用导出状态。
 
-marivo_present 的 resultMetadataJson 和模型渲染文本复用已准入快照的列类型、轴、值和 coverage，不增加 Python 启动或业务读取；展示配置错误附相同的有界实际元数据。通过它修复配置，不重放分析来取得列名。
+marivo_present 的 resultMetadataJson 和模型渲染文本只披露本次新增或替换的已准入快照的列类型、轴、值和 coverage，不增加 Python 启动或业务读取；展示配置错误附有界实际元数据。通过它修复配置，不重放分析来取得列名。
 
 ## 表达与验证
 

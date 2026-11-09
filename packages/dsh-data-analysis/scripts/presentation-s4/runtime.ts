@@ -39,14 +39,16 @@ export async function preparePresentationInputs(workspaceRoot: string, pythonExe
       surface: 'tab',
       locale: 'zh-CN',
       title: 'S4 真实 Frame',
-      resources: { revenue: frame(generated.primary), account: frame(generated.secondary) },
+      resourcePatch: {
+        put: { revenue: frame(generated.primary), account: frame(generated.secondary) },
+      },
       program: 'root = Stack([AnalysisFrameView("revenue"), AnalysisFrameView("account")]);',
     },
     {
       surface: 'tab',
       locale: 'zh-CN',
       title: 'S4 精确 Frame',
-      resources: { precision: frame(generated.precisionProbe) },
+      resourcePatch: { put: { precision: frame(generated.precisionProbe) } },
       program:
         'root = Stack([TextContent("## 精确快照\\n大整数与 Decimal 按保存值展示。"), AnalysisFrameView("precision")]);',
     },
