@@ -18,9 +18,21 @@ const id = z
   .max(80)
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
 const text = z.string().min(1).max(512)
+const pythonCodeRef = z.strictObject({
+  executionId: z.string().uuid(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+})
 export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('analysis-frame'), ref: frameResultReference }),
-  z.strictObject({ kind: z.literal('dataframe'), ref: dataframeResultReference }),
+  z.strictObject({
+    kind: z.literal('analysis-frame'),
+    ref: frameResultReference,
+    codeRef: pythonCodeRef.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('dataframe'),
+    ref: dataframeResultReference,
+    codeRef: pythonCodeRef.optional(),
+  }),
   z.strictObject({ kind: z.literal('dataset-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('frame-snapshot'), snapshotRef: z.string().max(512) }),
   z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
@@ -48,12 +60,7 @@ const resource = z.discriminatedUnion('kind', [
     snapshot: z.unknown().transform(parseAnalysisSnapshot),
     binding: z.strictObject({
       workspaceId: text,
-      codeRef: z
-        .strictObject({
-          executionId: z.string().uuid(),
-          sha256: z.string().regex(/^[a-f0-9]{64}$/),
-        })
-        .optional(),
+      codeRef: pythonCodeRef.optional(),
       sessionId: text.optional(),
       callId: text.optional(),
     }),
@@ -233,6 +240,13 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
     if (item.binding.workspaceId !== result.workspaceId)
       throw new Error('analysis-resource-owner-invalid')
     if (
+      (item.declaration.kind === 'analysis-frame' || item.declaration.kind === 'dataframe') &&
+      (item.declaration.codeRef?.executionId !== item.binding.codeRef?.executionId ||
+        item.declaration.codeRef?.sha256 !== item.binding.codeRef?.sha256 ||
+        (item.declaration.codeRef && (!item.binding.sessionId || !item.binding.callId)))
+    )
+      throw new Error('analysis-resource-code-binding-invalid')
+    if (
       !(
         (['dataset-snapshot', 'dataframe'].includes(item.declaration.kind) &&
           item.snapshot.kind === 'dataset') ||
@@ -271,6 +285,16 @@ export function sameAnalysisDeclaration(
   b: AnalysisResourceDeclaration,
 ): boolean {
   if (a.kind !== b.kind) return false
+  if (
+    (a.kind === 'dataframe' && b.kind === 'dataframe') ||
+    (a.kind === 'analysis-frame' && b.kind === 'analysis-frame')
+  ) {
+    if (
+      a.codeRef?.executionId !== b.codeRef?.executionId ||
+      a.codeRef?.sha256 !== b.codeRef?.sha256
+    )
+      return false
+  }
   if (
     (a.kind === 'dataset-snapshot' && b.kind === 'dataset-snapshot') ||
     (a.kind === 'frame-snapshot' && b.kind === 'frame-snapshot')

@@ -1,3 +1,5 @@
+import { PYTHON_RESULT_HEADER } from '../python-result-references.ts'
+
 /** Shared Python adapter. All inputs below arrive on a Host-owned pipe. */
 export const RESOLVER_PROGRAM = String.raw`
 import hashlib
@@ -61,7 +63,20 @@ try:
                 raise RuntimeError("Marivo datasource identity changed; execution cancelled")
             if definition(description) != grant["definition"]:
                 raise RuntimeError("Marivo datasource definition changed; execution cancelled")
-        exec(compile(code, "<marivo_python>", "exec"), {"__name__": "__main__"})
+        namespace = {"__name__": "__main__"}
+        exec(compile(code, "<marivo_python>", "exec"), namespace)
+        if payload.get("result_variables"):
+            try:
+                references = {name: namespace[variable] for name, variable in payload["result_variables"].items()}
+                text = json.dumps({"status": "ok", "references": references}, allow_nan=False)
+                for value in resolver.values.values():
+                    if value:
+                        text = text.replace(value, "[REDACTED]")
+                encoded = text.encode("utf-8")
+                if len(encoded) <= 32768:
+                    Path(payload["result_file"]).write_bytes(encoded)
+            except Exception:
+                pass  # Export failure does not change the successful user-code outcome.
 finally:
     resolver.values.clear()
     payload.clear()
@@ -69,11 +84,14 @@ finally:
 
 /** Capture raw fd output before Harness collection/spill, including driver writes. */
 export const PYTHON_LAUNCHER = String.raw`
-import json, subprocess, sys, threading
+import base64, json, subprocess, sys, tempfile, threading
 from pathlib import Path
 payload = json.load(sys.stdin)
 worker = payload.pop("worker")
 values = sorted(set(payload["values"].values()), key=len, reverse=True)
+result_directory = tempfile.TemporaryDirectory(prefix="dsh-marivo-results-") if payload.get("result_variables") else None
+if result_directory:
+    payload["result_file"] = str(Path(result_directory.name) / "references.json")
 child = subprocess.Popen([sys.executable, "-c", worker], stdin=subprocess.PIPE,
     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 streams = [bytearray(), bytearray()]
@@ -100,6 +118,21 @@ except BrokenPipeError:
 child.wait()
 for thread in threads:
     thread.join()
+if result_directory:
+    control = b'{"status":"unavailable"}'
+    try:
+        with Path(payload["result_file"]).open("rb") as result_stream:
+            candidate = result_stream.read(32769)
+        if len(candidate) <= 32768:
+            control = candidate
+    except OSError:
+        pass
+    text = control.decode("utf-8", errors="replace")
+    for value in values:
+        if value:
+            text = text.replace(value, "[REDACTED]")
+    sys.stderr.write("${PYTHON_RESULT_HEADER}" + base64.b64encode(text.encode("utf-8")).decode("ascii") + "\n")
+    result_directory.cleanup()
 if overflow.is_set():
     print("Marivo Python output limit exceeded", file=sys.stderr)
     raise SystemExit(74)

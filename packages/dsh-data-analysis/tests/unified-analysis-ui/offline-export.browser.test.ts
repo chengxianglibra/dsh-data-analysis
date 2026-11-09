@@ -46,6 +46,10 @@ test('exported report opens offline, renders data and charts, and keeps local in
             project_root: '/private_workspace_identity',
             result_id: `df_${'a'.repeat(32)}`,
           },
+          codeRef: {
+            executionId: '12345678-1234-4123-8123-123456789abc',
+            sha256: 'a'.repeat(64),
+          },
         },
         snapshot,
         binding: {
@@ -53,7 +57,7 @@ test('exported report opens offline, renders data and charts, and keeps local in
           sessionId: 'private_session_identity',
           callId: 'private_call_identity',
           codeRef: {
-            executionId: '00000000-0000-4000-8000-000000000000',
+            executionId: '12345678-1234-4123-8123-123456789abc',
             sha256: 'a'.repeat(64),
           },
         },
@@ -72,6 +76,7 @@ test('exported report opens offline, renders data and charts, and keeps local in
       'private_snapshot_reference',
       'private_session_identity',
       'private_call_identity',
+      '12345678-1234-4123-8123-123456789abc',
     ]) {
       assert.equal(html.includes(identity), false, `export exposes ${identity}`)
     }

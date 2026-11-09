@@ -24,8 +24,14 @@ import {
 import {
   type PythonCodeRef,
   readPythonExecution,
+  readPythonResults,
   savePythonExecution,
 } from '../../src/python-execution.ts'
+import {
+  PYTHON_RESULT_HEADER,
+  pythonResultVariables,
+  readPythonResultOutput,
+} from '../../src/python-result-references.ts'
 import { fixture } from './fixtures.ts'
 
 const now = '2026-09-07T00:00:00.000Z'
@@ -266,15 +272,21 @@ async function tool(t: TestContext) {
     get launches() {
       return launches
     },
-    call: async (code = input.text, datasources: string[] = []) =>
+    call: async (
+      code = input.text,
+      datasources: string[] = [],
+      resultVariables?: Record<string, string>,
+    ) =>
       (await definition.execute(
-        { code, datasources },
+        { code, datasources, ...(resultVariables ? { resultVariables } : {}) },
         { ...f.exec, deferContext: () => {}, concludeTurn: () => {} },
       )) as {
         exitCode: number
         timedOut: boolean
         aborted: boolean
         stdout: string
+        stderr: string
+        resultCaptureError?: string
         codeRef?: PythonCodeRef
         codeCaptureError?: string
         execution: MarivoPythonExecutionSummary
@@ -301,6 +313,95 @@ test('registered Python tool captures original code only after one successful ex
   const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, result.codeRef), 'utf8')
   assert.doesNotMatch(record, /canary-private-4826|PYTHON_WORKER|grants|DB_PASSWORD/)
   assert.equal(JSON.parse(p.requests[0]!.stdin!).code, input.text)
+})
+
+test('successful Python binds declared result exports independently of arbitrary stdout', async (t) => {
+  const p = await tool(t)
+  const reference = {
+    schema: 'marivo.dataframe_ref/v2',
+    project_root: p.f.bridge.binding.projectRoot,
+    result_id: `df_${'a'.repeat(32)}`,
+  }
+  const frame = {
+    schema: 'marivo.frame_ref/v2',
+    store_id: 'store',
+    session_id: 'marivo-session',
+    artifact_id: 'artifact',
+  }
+  const variables = { data: 'data_ref', frame: 'frame_ref' }
+  p.outcome.stdout.text = 'Arbitrary text, not a JSON document'
+  p.outcome.stderr.text = `${PYTHON_RESULT_HEADER}${Buffer.from(JSON.stringify({ status: 'ok', references: { data: reference, frame } })).toString('base64')}\nuser stderr`
+  const result = await p.call('print("references")', [], variables)
+  assert.equal(result.stdout, p.outcome.stdout.text)
+  assert.equal(result.stderr, 'user stderr')
+  assert(result.codeRef)
+  const record = await readPythonResults(p.f.bridge.binding.projectRoot, result.codeRef)
+  assert.equal(record.sessionId, 'session')
+  assert.equal(record.callId, 'call')
+  assert.equal(record.rootCallId, 'call')
+  assert.deepEqual(record.variables, variables)
+  assert.equal(record.references.length, 2)
+  assert(record.references.some((ref) => JSON.stringify(ref) === JSON.stringify(reference)))
+  assert(record.references.some((ref) => JSON.stringify(ref) === JSON.stringify(frame)))
+  assert.deepEqual(
+    (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).datasources,
+    [],
+  )
+  assert.equal(p.launches, 1)
+  const unrelated = await savePythonExecution(p.f.bridge.binding.projectRoot, input)
+  await assert.rejects(readPythonResults(p.f.bridge.binding.projectRoot, unrelated), /unavailable/)
+})
+
+test('result exports require the launcher first frame, exact names and valid references', () => {
+  const reference = {
+    schema: 'marivo.frame_ref/v2',
+    store_id: 'store',
+    session_id: 'session',
+    artifact_id: 'artifact',
+  }
+  const variables = { frame: 'frame_ref' }
+  const frame = (value: unknown) =>
+    `${PYTHON_RESULT_HEADER}${Buffer.from(JSON.stringify(value)).toString('base64')}\nuser stderr`
+  assert.deepEqual(
+    readPythonResultOutput(frame({ status: 'ok', references: { frame: reference } }), variables)
+      .resultRefs,
+    { frame: reference },
+  )
+  for (const stderr of [
+    'ordinary output',
+    `user stderr\n${frame({ status: 'ok', references: { frame: reference } })}`,
+    frame({ status: 'unavailable' }),
+    frame({ status: 'ok', references: { other: reference } }),
+    frame({ status: 'ok', references: { frame: { ...reference, forged: true } } }),
+  ])
+    assert(readPythonResultOutput(stderr, variables).resultCaptureError)
+  assert.equal(pythonResultVariables.safeParse({ frame: 'frame.ref.to_dict()' }).success, false)
+  assert.equal(
+    pythonResultVariables.safeParse(
+      Object.fromEntries(Array.from({ length: 17 }, (_, i) => [String(i), 'ref'])),
+    ).success,
+    false,
+  )
+})
+
+test('missing result exports preserve successful code and never infer identities from stdout', async (t) => {
+  const p = await tool(t)
+  p.outcome.stdout.text = JSON.stringify({
+    schema: 'marivo.frame_ref/v2',
+    store_id: 'store',
+    session_id: 'session',
+    artifact_id: 'artifact',
+  })
+  const result = await p.call('print("not exported")', [], { frame: 'frame_ref' })
+  assert.equal(result.exitCode, 0)
+  assert(result.codeRef)
+  assert(result.resultCaptureError)
+  assert.equal(result.execution.nextAction, result.resultCaptureError)
+  await assert.rejects(
+    readPythonResults(p.f.bridge.binding.projectRoot, result.codeRef),
+    /unavailable/,
+  )
+  assert.equal(p.launches, 1)
 })
 
 test('Python tool uses one immutable code string for execution and its later snapshot', async (t) => {

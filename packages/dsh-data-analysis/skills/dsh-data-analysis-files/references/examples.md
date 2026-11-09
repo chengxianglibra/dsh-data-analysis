@@ -37,14 +37,12 @@ print(result.to_string(index=False))
 ## 保存已有 DataFrame 并交付引用
 
 ```python
-import json
 import marivo.analysis as mv
 
-reference = mv.persist_dataframe(result)
-print(json.dumps(reference.to_dict()))
+result_ref = mv.persist_dataframe(result).to_dict()
 ```
 
-将完整字典作为 `marivo_present` 的 `{ "kind": "dataframe", "ref": ... }` 资源。
+执行时传 `resultVariables:{"result":"result_ref"}`，从回执 resultRefs.result 取得完整字典，与同次 codeRef 一起作为 marivo_present 的 `{ "kind": "dataframe", "ref": ..., "codeRef": ... }` 资源。上面的持久化代码需接在同次调用的读取和计算代码后，使记录包含生成逻辑；后续调用无法访问上次的 result 变量。不从 stdout 解析引用。
 持久化的输入约束与原值精度以 Marivo live Help 为准；需要保留的业务 index 先显式变成列。
 结果由绑定 Python Runtime 读取，无需 HTTP 服务；展示不会自动重跑原分析。
 

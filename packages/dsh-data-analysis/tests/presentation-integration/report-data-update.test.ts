@@ -1,0 +1,305 @@
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
+import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
+import {
+  type ResultReference,
+  resultReference,
+} from '../../src/presentation/contracts/result-reference.ts'
+import { parseAnalysisSnapshot } from '../../src/presentation/contracts/snapshot.ts'
+import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
+import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
+import {
+  readReceiptDocument,
+  readReportHistory,
+  resolvePresentation,
+} from '../../src/presentation/reports.ts'
+import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
+import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
+import { type PythonCodeRef, savePythonExecution } from '../../src/python-execution.ts'
+import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
+import { frameSnapshotV2 } from './frame-v2-fixture.ts'
+
+async function fixture(t: { after(fn: () => Promise<void>): void }) {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'report-data-update-')))
+  const priorHome = process.env.DSH_HOME
+  process.env.DSH_HOME = root
+  t.after(async () => {
+    if (priorHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = priorHome
+    await rm(root, { recursive: true, force: true })
+  })
+  const workspace = () => ({ id: 'workspace', path: root })
+  const session = {
+    id: 'session',
+    snapshotEvents: () => [{ type: 'tool/call', data: { callId: 'present', turn: 1 } }],
+  } as unknown as Session
+  const exec = {
+    agent: { session },
+    callId: 'present',
+    signal: new AbortController().signal,
+  } as unknown as ToolRunContext
+  let reads = 0
+  const runner: MarivoCheckedRunner = {
+    status: 'ready',
+    binding: {
+      projectRoot: root,
+      pythonExecutable: '/python',
+      packagePath: '/marivo',
+      marivoVersion: '0.6.4.dev0',
+      fingerprint: 'identity',
+      subprocessPolicyId: 'policy',
+    },
+    async runChecked(request) {
+      reads++
+      const ref = resultReference.parse(JSON.parse(request.stdin!))
+      const raw = ref.schema === 'marivo.frame_ref/v2' ? frameSnapshotV2() : datasetSnapshot()
+      if (ref.schema === 'marivo.frame_ref/v2')
+        Object.assign(raw.source, { sessionId: ref.session_id, artifactId: ref.artifact_id })
+      const snapshot = parseAnalysisSnapshot(raw)
+      if ((ref.schema === 'marivo.frame_ref/v2' ? ref.artifact_id : ref.result_id).endsWith('2')) {
+        snapshot.data.rows = snapshot.data.rows.map((row) =>
+          row.map((cell, index) =>
+            snapshot.data.columns[index]?.type === 'decimal'
+              ? '42.5000'
+              : typeof cell === 'number'
+                ? cell + 10
+                : cell,
+          ),
+        )
+      }
+      return {
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+        stdout: Buffer.from(JSON.stringify(snapshot)),
+        stderr: Buffer.alloc(0),
+      }
+    },
+  }
+  const declarations = (codeRef?: PythonCodeRef, suffix = '1') => ({
+    frame: {
+      kind: 'analysis-frame' as const,
+      ref: {
+        schema: 'marivo.frame_ref/v2' as const,
+        store_id: 'store',
+        session_id: 'marivo-session',
+        artifact_id: `artifact-${suffix}`,
+      },
+      ...(codeRef ? { codeRef } : {}),
+    },
+    data: {
+      kind: 'dataframe' as const,
+      ref: {
+        schema: 'marivo.dataframe_ref/v2' as const,
+        project_root: root,
+        result_id: `df_${suffix.repeat(32)}`,
+      },
+      ...(codeRef ? { codeRef } : {}),
+    },
+  })
+  const saveCode = (suffix = '1', references?: ResultReference[], workspaceRoot = root) =>
+    savePythonExecution(workspaceRoot, {
+      text: `# producer ${suffix}\nprint("results")`,
+      startedAt: '2026-11-09T00:00:00.000Z',
+      finishedAt: '2026-11-09T00:00:01.000Z',
+      datasources: [{ name: 'warehouse', backend: 'duckdb' }],
+      results: {
+        sessionId: 'producer-session',
+        callId: `producer-${suffix}`,
+        rootCallId: 'code-root',
+        variables: { frame: 'frame_ref', data: 'data_ref' },
+        references:
+          references ??
+          Object.values(declarations(undefined, suffix)).map((resource) => resource.ref),
+      },
+    })
+  const drafts = new AnalysisDrafts()
+  const tool = createMarivoPresentTool(workspace, session, undefined, drafts, async () => runner)
+  const present = async (args: Record<string, unknown>) =>
+    parsePresentationDelivery(
+      JSON.parse(((await tool.execute(args, exec)) as { deliveryJson: string }).deliveryJson),
+    )
+  const read = async (args: Record<string, unknown>) =>
+    JSON.parse(
+      (
+        (await createMarivoUiReadTool(workspace, drafts).execute(args, exec)) as {
+          definitionJson: string
+        }
+      ).definitionJson,
+    )
+  const service = new MarivoPresentationFileService(
+    workspace,
+    (id) => (id === 'workspace' ? workspace() : undefined),
+    drafts,
+  )
+  t.after(() => service.close())
+  return {
+    root,
+    workspace,
+    exec,
+    tool,
+    present,
+    read,
+    saveCode,
+    declarations,
+    service,
+    get reads() {
+      return reads
+    },
+  }
+}
+
+test('new Frame and DataFrame resources expose verified scripts to the reader and Harness', async (t) => {
+  const f = await fixture(t)
+  const codeRef = await f.saveCode()
+  const delivery = await f.present({
+    surface: 'tab',
+    resources: f.declarations(codeRef),
+    program: 'root = Stack([AnalysisFrameView("frame"), DatasetView("data")]);',
+  })
+  const document = await readReceiptDocument(f.root, delivery.receipt)
+  for (const resource of Object.values(document.resources)) {
+    assert(resource.kind === 'snapshot')
+    assert.deepEqual(resource.binding, {
+      workspaceId: 'workspace',
+      codeRef,
+      sessionId: 'producer-session',
+      callId: 'producer-1',
+    })
+  }
+  const ordinary = await f.read({ recordId: document.recordId })
+  assert.equal(ordinary.sources, undefined)
+  assert.deepEqual(ordinary.resources.frame.codeRef, codeRef)
+  assert.equal(ordinary.resources.data.rows, undefined)
+  const definition = await f.read({ recordId: document.recordId, includeCode: true })
+  assert.equal(definition.sources.length, 1)
+  assert.equal(definition.sources[0].status, 'available')
+  assert.equal(definition.sources[0].code.text, '# producer 1\nprint("results")')
+  assert.deepEqual(definition.sources[0].code.datasources, [
+    { name: 'warehouse', backend: 'duckdb' },
+  ])
+  assert.equal(
+    (await f.service.code({ workspaceId: 'workspace', receipt: delivery.receipt, codeRef })).text,
+    definition.sources[0].code.text,
+  )
+  assert.equal(f.reads, 2)
+})
+
+test('data-only saves replace snapshots and scripts while preserving page text, layout and column labels', async (t) => {
+  const f = await fixture(t)
+  const codeRef = await f.saveCode()
+  const resources = f.declarations(codeRef)
+  const delivery = await f.present({
+    surface: 'tab',
+    resources,
+    title: 'Keep title',
+    locale: 'en-US',
+    labels: { data: { value: 'Revenue' } },
+    program:
+      'heading = TextContent("Keep this exact body: 100");\nroot = Stack([heading, AnalysisFrameView("frame"), DatasetView("data")]);',
+  })
+  const base = await readReceiptDocument(f.root, delivery.receipt)
+  const refreshedCode = await f.saveCode('2')
+  const updated = await f.present({
+    surface: 'tab',
+    basedOnRecordId: base.recordId,
+    resources: f.declarations(refreshedCode, '2'),
+  })
+  const next = await readReceiptDocument(f.root, updated.receipt)
+  assert.equal(next.reportId, base.reportId)
+  assert.notEqual(next.buildId, base.buildId)
+  assert.equal(next.program, base.program)
+  assert.equal(next.title, base.title)
+  assert.equal(next.locale, base.locale)
+  assert.equal(
+    next.resources.data?.kind === 'snapshot' &&
+      next.resources.data.snapshot.data.columns.find((column) => column.id === 'value')?.label,
+    'Revenue',
+  )
+  assert.notDeepEqual(next.resources.data, base.resources.data)
+  assert.notDeepEqual(next.resources.frame, base.resources.frame)
+  for (const name of ['frame', 'data']) {
+    const previous = base.resources[name]
+    const current = next.resources[name]
+    assert(previous?.kind === 'snapshot' && current?.kind === 'snapshot')
+    assert.notDeepEqual(current.snapshot.data.rows, previous.snapshot.data.rows)
+  }
+  assert.deepEqual(
+    (await f.read({ recordId: next.recordId, includeCode: true })).sources[0].codeRef,
+    refreshedCode,
+  )
+  assert.equal((await readReportHistory(f.root, 'workspace', next.reportId)).versions.length, 2)
+  await assert.rejects(
+    f.present({ basedOnRecordId: base.recordId, resources }),
+    /report-save-conflict/,
+  )
+  assert.equal(
+    (await resolvePresentation(f.root, 'workspace', next.reportId)).buildId,
+    next.buildId,
+  )
+  const noRuntime = createMarivoPresentTool(f.workspace, f.exec.agent!.session)
+  await noRuntime.execute({ basedOnRecordId: next.recordId, title: 'Keep data' }, f.exec)
+  assert.equal(f.reads, 4)
+})
+
+test('unrelated, foreign and mismatched script bindings are rejected before result reads', async (t) => {
+  const f = await fixture(t)
+  const codeRef = await f.saveCode('2')
+  await assert.rejects(
+    f.present({ resources: { data: f.declarations(codeRef).data } }),
+    /code-not-bound/,
+  )
+  assert.equal(f.reads, 0)
+  const foreign = await realpath(await mkdtemp(path.join(os.tmpdir(), 'foreign-execution-')))
+  t.after(() => rm(foreign, { recursive: true, force: true }))
+  const foreignCode = await f.saveCode('1', undefined, foreign)
+  await assert.rejects(
+    f.present({ resources: { data: f.declarations(foreignCode).data } }),
+    /unavailable/,
+  )
+  assert.equal(f.reads, 0)
+  const valid = await f.saveCode()
+  const delivery = await f.present({ resources: { data: f.declarations(valid).data } })
+  const original = await readReceiptDocument(f.root, delivery.receipt)
+  await assert.rejects(
+    f.present({
+      basedOnRecordId: original.recordId,
+      resources: { data: f.declarations(codeRef).data },
+    }),
+    /code-not-bound/,
+  )
+  const document = structuredClone(await readReceiptDocument(f.root, delivery.receipt))
+  const data = document.resources.data
+  assert(data?.kind === 'snapshot')
+  data.binding.codeRef = codeRef
+  assert.throws(() => parseAnalysisDocument(document), /code-binding-invalid/)
+})
+
+test('missing scripts remain explicit while saved resources stay readable and reusable', async (t) => {
+  const f = await fixture(t)
+  const codeRef = await f.saveCode()
+  const delivery = await f.present({ resources: { data: f.declarations(codeRef).data } })
+  const filename = path.join(
+    f.root,
+    'dsh-data-analysis',
+    'python-executions',
+    createHash('sha256').update(f.root).digest('hex'),
+    `${codeRef.executionId}.json`,
+  )
+  await rm(filename)
+  const definition = await f.read({
+    recordId: `marivo-ui:${delivery.receipt.reportId}:${delivery.receipt.buildId}`,
+    includeCode: true,
+  })
+  assert.deepEqual(definition.sources, [{ codeRef, status: 'unavailable' }])
+  const noRuntime = createMarivoPresentTool(f.workspace, f.exec.agent!.session)
+  await noRuntime.execute({ basedOnRecordId: definition.recordId, title: 'Retained' }, f.exec)
+  assert.equal(f.reads, 1)
+})

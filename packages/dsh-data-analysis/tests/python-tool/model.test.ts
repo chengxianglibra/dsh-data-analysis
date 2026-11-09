@@ -81,6 +81,7 @@ test('execution status does not confuse settlement, credential readiness or code
     [{ ...successful, timedOut: true }, 'timed-out'],
     [{ ...successful, aborted: true }, 'cancelled'],
     [{ ...successful, codeCaptureError: 'Do not rerun' }, 'warning'],
+    [{ ...successful, resultCaptureError: 'Inspect declared variables' }, 'warning'],
     [{ ...successful, truncated: true }, 'warning'],
     [{ status: 'needs-credentials' }, 'not-started'],
     [{ status: 'ok', execution: { phase: 'preparing', reason: 'not-started' } }, 'not-started'],

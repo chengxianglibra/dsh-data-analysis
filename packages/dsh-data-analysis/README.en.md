@@ -112,6 +112,8 @@ Ordinary results appear as separate chat entries outside folded work steps. Expl
 
 For AnalysisFrame, explicitly call `persist()` and pass `saved.ref.to_dict()` as an `analysis-frame` resource. The plugin reads it through the bound Python Runtime without an HTTP service. For DataFrame, pass `mv.persist_dataframe(table).to_dict()` as a `dataframe` resource; its captured project must match the current Workspace.
 
+For script traceability, select reference variables with `marivo_python.resultVariables`, take the references from `resultRefs`, and attach the same invocation's `codeRef` to each resource. stdout remains arbitrary text. For an authorized data update, the assistant can read the bound script, datasource declarations and output variables, generate fresh results, and replace resources under the same names while retaining the layout, body and column labels. Static numbers in the body are not rewritten automatically.
+
 Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
 
 Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,

@@ -9,6 +9,7 @@ import type {
   PythonCodeSnippet,
   PythonExecutionDatasource,
 } from './python-execution-contracts.ts'
+import { type PythonResultRecord, pythonResultRecord } from './python-result-references.ts'
 
 export type {
   PythonCodeRef,
@@ -143,6 +144,7 @@ export async function savePythonExecution(
     finishedAt: string
     captures?: PythonCaptureRecord
     datasources?: PythonExecutionDatasource[]
+    results?: PythonResultRecord
   },
   signal?: AbortSignal,
 ): Promise<PythonCodeRef> {
@@ -152,6 +154,8 @@ export async function savePythonExecution(
     const captures = input.captures === undefined ? undefined : structuredClone(input.captures)
     const datasources =
       input.datasources === undefined ? undefined : structuredClone(input.datasources)
+    const results =
+      input.results === undefined ? undefined : pythonResultRecord.parse(input.results)
     if (
       !sourceText(text) ||
       !timestamp(startedAt) ||
@@ -163,7 +167,13 @@ export async function savePythonExecution(
       invalid()
     const workspace = await directories(workspaceRoot, true, signal)
     const executionId = randomUUID()
-    const schemaVersion = datasources === undefined ? (captures === undefined ? 1 : 2) : 3
+    const schemaVersion = results
+      ? 4
+      : datasources === undefined
+        ? captures === undefined
+          ? 1
+          : 2
+        : 3
     const bytes = Buffer.from(
       JSON.stringify({
         schemaVersion,
@@ -176,6 +186,7 @@ export async function savePythonExecution(
         exitCode: 0,
         ...(captures ? { captures } : {}),
         ...(datasources ? { datasources } : {}),
+        ...(results ? { results } : {}),
       }),
     )
     if (bytes.length > RECORD_BYTES) invalid()
@@ -234,7 +245,7 @@ async function readExecutionRecord(
   workspaceRoot: string,
   ref: PythonCodeRef,
   signal?: AbortSignal,
-): Promise<PythonCodeSnippet & { captures?: PythonCaptureRecord }> {
+): Promise<PythonCodeSnippet & { captures?: PythonCaptureRecord; results?: PythonResultRecord }> {
   try {
     signal?.throwIfAborted()
     if (!ref || !EXECUTION_ID.test(ref.executionId) || !DIGEST.test(ref.sha256)) invalid()
@@ -278,7 +289,7 @@ async function readExecutionRecord(
       const record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw))
       if (!record || typeof record !== 'object' || Array.isArray(record)) invalid()
       const version = record.schemaVersion
-      if (version !== 1 && version !== 2 && version !== 3) invalid()
+      if (version !== 1 && version !== 2 && version !== 3 && version !== 4) invalid()
       const baseKeys = [
         'executionId',
         'exitCode',
@@ -293,6 +304,7 @@ async function readExecutionRecord(
         ...baseKeys,
         ...(version >= 2 ? ['captures'] : []),
         ...(version >= 3 ? ['datasources'] : []),
+        ...(version === 4 ? ['results'] : []),
       ])
       const keys = Object.keys(record)
       if (
@@ -300,6 +312,7 @@ async function readExecutionRecord(
         baseKeys.some((key) => !keys.includes(key)) ||
         (version === 2 && !('captures' in record)) ||
         (version === 3 && !('captures' in record) && !('datasources' in record)) ||
+        (version === 4 && !pythonResultRecord.safeParse(record.results).success) ||
         ('captures' in record && !validCapture(record.captures)) ||
         ('datasources' in record && !validDatasources(record.datasources)) ||
         record.executionId !== executionId ||
@@ -320,7 +333,11 @@ async function readExecutionRecord(
         executionId,
         sha256: expectedDigest,
         ...(record.captures ? { captures: record.captures } : {}),
-        ...(record.datasources ? { datasources: record.datasources } : {}),
+        ...(record.datasources || version === 4 ? { datasources: record.datasources ?? [] } : {}),
+        ...(version === 4 ? { results: pythonResultRecord.parse(record.results) } : {}),
+        ...(version === 4
+          ? { resultVariables: pythonResultRecord.parse(record.results).variables }
+          : {}),
       }
     } finally {
       await file.close()
@@ -336,8 +353,22 @@ export async function readPythonExecution(
   ref: PythonCodeRef,
   signal?: AbortSignal,
 ): Promise<PythonCodeSnippet> {
-  const { captures: _captures, ...snippet } = await readExecutionRecord(workspaceRoot, ref, signal)
+  const {
+    captures: _captures,
+    results: _results,
+    ...snippet
+  } = await readExecutionRecord(workspaceRoot, ref, signal)
   return snippet
+}
+
+export async function readPythonResults(
+  workspaceRoot: string,
+  ref: PythonCodeRef,
+  signal?: AbortSignal,
+): Promise<PythonResultRecord> {
+  const record = await readExecutionRecord(workspaceRoot, ref, signal)
+  if (!record.results) invalid()
+  return record.results
 }
 
 export async function readPythonCaptures(

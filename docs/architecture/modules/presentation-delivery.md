@@ -20,7 +20,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 - 成功只表示保存，headless 回执不声称已打开 UI。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
   字段顺序仅是建议，surface 晚到时保存后打开，不回补生成期预览。
 
-资源声明支持三类：
+资源声明如下：
 
 | kind | 字段 | 读取 |
 | --- | --- | --- |
@@ -31,6 +31,10 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 | `image-file` | Workspace 相对 `path` | 只读取所属 Workspace 的普通 PNG/JPEG/GIF/WebP 文件，内嵌为 data URL |
 
 `labels` 按资源名、快照列 ID 映射到显示名称，例如 `{"result":{"amount":"金额"}}`。标签只影响显示，列 ID、排序、单位与精确值保持原义。更新时复用的快照沿用已保存的标签。指定某个资源的映射会替换该资源整组标签，未列出的列显示其 ID，空映射将该资源所有列重置为 ID。
+
+新 Frame/DataFrame 资源声明可带 `codeRef:{executionId,sha256}`，来自返回该引用的成功 `marivo_python` 调用。Host 核验 Workspace、记录摘要及登记的完整结果引用，再保存 binding，UI 通过既有 `code/read` 读取脚本。无关、失效或没有结果登记的记录拒绝关联；不从 Marivo 引用推断执行来源。省略 codeRef 的既有外部结果仍可展示并明确缺少脚本。
+
+只更新数据时，以准确 `basedOnRecordId` 提交保持资源名的完整 resources 映射，刷新项使用新 ref 和新 codeRef，省略 program/title/locale/labels。页面程序、正文、标题、语言和同 ID 列的既有显示标签保留；新快照仍须满足原视图校验。相同声明继续复用旧快照。正文静态数字不自动改写，auto 视图仍按新结果形状判定；本操作不承诺重新验证原结论。
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。新资源使用 `analysis-frame` / `dataframe` 和 Marivo 固定引用；历史 snapshot 声明保留原 Host provenance，
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
@@ -53,7 +57,8 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 
 `marivo_ui_read({recordId})` 读取准确已发布版本；加 `current: true` 则显式读取该报告当前版本。
 `marivo_ui_read({draft: true})` 按调用 Session/Turn 和 Workspace 核验并读取当前草稿，两类输入互斥。
-结果 `definitionJson` 包含相应版本/草稿身份、title、locale、Catalog、program、全部资源声明（包括图片）及必要 schema/coverage。
+结果 `definitionJson` 包含相应版本/草稿身份、title、locale、Catalog、program、全部资源声明（包括图片）、绑定的 codeRef 及必要 schema/coverage。
+可加 `includeCode:true` 按需读取绑定源码；顶层 sources 按 codeRef 去重，返回 available 的 code.text、code.datasources、code.resultVariables，或 unavailable 状态。未绑定 codeRef 的资源没有来源项。新结果执行记录的空 datasource 数组表示本次未声明 Marivo datasource，旧记录缺少该字段时保持未知。读取只核验当前 Workspace 的 Host 文件，不执行代码、不返回凭据；脚本未内嵌于报告 JSON，Host 记录丢失时仍可读取和复用已保存快照。
 草稿只返回 draftId/draftRevision 和可用的 basedOnRecordId，不把临时 document ID 声称为已发布 record。
 不返回 rows、不查询实时数据、不执行 Python；只在编辑上下文缺失或冲突时按需使用，不默认回读。
 
@@ -125,7 +130,7 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 `reports/resolve` 和 `files/read` 的 `sessionId` 与 `workspaceId` 必须恰好提供一个；`point/prepare` 同时要求二者，并通过 Session 核验 Workspace。不接受客户端路径。服务端从 Harness Workspace 成员关系推导路径，
 拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
 
-`marivo_present` 的外层执行预算为 180 秒，不启动 Frame 读取子进程，由
+`marivo_present` 的外层执行预算为 180 秒，包含新引用的 checked Python 读取，不重放生成脚本，由
 [execution-policy.ts](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
 超时或取消不创建本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
 [展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，180 秒不是保证完成的时限。

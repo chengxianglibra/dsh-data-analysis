@@ -18,6 +18,8 @@ Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview �
 
 结果的 `definitionJson` 包含 program、全部资源声明及必要 schema/coverage，不返回业务行。草稿结果提供 `draftId/draftRevision` 和可用的 `basedOnRecordId`，不把草稿当作已保存的 record。
 
+需要核对来源脚本或用户已授权更新数据时，加 `includeCode:true`。资源返回绑定的 `codeRef`，顶层 `sources` 按执行记录去重，包含 `status` 和可用的 `code.text`、`code.datasources`、`code.resultVariables`；`unavailable` 明确表示记录不可读，不以新查询补齐。缺少 codeRef 的资源不出现在 sources 中。读取不会执行脚本。更新步骤见[只更新报告数据](data-update.md)。
+
 ## 冲突与失效
 
 `analysis-draft-busy`：等待正在执行的调用结束，再读取草稿核对，不能并发重试。`analysis-draft-conflict`：读取最新草稿，审阅并调整本次改动后使用新的标识，不能只换 revision 盲目重放旧 patch。

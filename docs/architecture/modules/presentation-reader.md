@@ -96,9 +96,9 @@ Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原�
 
 ## 来源与范围详情
 
-DataFrame 的“数据来源与范围”入口集中展示捕获时间、本次执行声明的数据源与 backend，以及已保存的 Python 源码；
+DataFrame 的“数据来源与范围”入口集中展示捕获时间，以及绑定 codeRef 可读时的执行 datasource 声明、backend 和 Python 源码；
 Session、Call 和 codeRef 放在可展开的开发者区域。旧执行记录或未声明数据源时明示不可用，源码缺失、读取失败或摘要不一致时显示状态。Frame 不显示 Evidence、Finding 或计算过程；
-来源固定为 Host 绑定的 codeRef：来源详情经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef。
+来源固定为 Host 绑定的 codeRef：新 Frame/DataFrame 声明中的 codeRef 必须通过 Host 执行记录的结果引用登记校验；旧快照沿用原 provenance。来源详情经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef。未提供 codeRef 的资源明确显示源码不可用，不从 Marivo Artifact 身份推断脚本。
 sha256 标识完整 execution record，由 Host 校验记录，客户端核对返回摘要与绑定摘要。Frame 的摘要不一致或执行记录缺失时 Python 图标变灰；section 为 `unavailable`
 时对应图标变灰，不显示为 0 项；在阅读界面中，Session/Artifact 只在 Frame Python 详情的开发者区出现。
 

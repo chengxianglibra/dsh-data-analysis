@@ -12,3 +12,7 @@ export const dataframeResultReference = z.strictObject({
 })
 export const resultReference = z.union([frameResultReference, dataframeResultReference])
 export type ResultReference = z.infer<typeof resultReference>
+
+export function resultReferenceKey(value: ResultReference): string {
+  return JSON.stringify(resultReference.parse(value))
+}

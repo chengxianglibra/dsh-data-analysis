@@ -9,6 +9,7 @@ export interface PythonCodeSnippet extends PythonCodeRef {
   text: string
   provenance: 'execution'
   datasources?: PythonExecutionDatasource[]
+  resultVariables?: Record<string, string>
 }
 
 /** A datasource declaration accepted for one Host-bound Python execution. */

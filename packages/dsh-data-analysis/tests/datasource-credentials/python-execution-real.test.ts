@@ -21,6 +21,7 @@ import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
+import { z } from 'zod'
 import { MarivoDatasourceBridge } from '../../src/datasource/bridge.ts'
 import {
   type MarivoPythonExecutionSummary,
@@ -28,6 +29,11 @@ import {
 } from '../../src/datasource/python.ts'
 import { MarivoCredentialService } from '../../src/datasource/service.ts'
 import { bindMarivoEnvironment } from '../../src/environment/index.ts'
+import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
+import { resultReference } from '../../src/presentation/contracts/result-reference.ts'
+import { readAnalysisRecord } from '../../src/presentation/reports.ts'
+import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
+import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { type PythonCodeRef, readPythonExecution } from '../../src/python-execution.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 import { Store } from './fixtures.ts'
@@ -109,6 +115,7 @@ async function harness(t: TestContext, maxWallMs?: number) {
     home,
     ctx,
     agent,
+    environment,
     call,
     outcomes,
     get starts() {
@@ -178,6 +185,158 @@ test('real native Tool reports Shell timeout and stops the Python process tree',
   assert.equal(value.codeRef, undefined)
   assert.equal(h.starts, 1)
   await assertStopped(h.root)
+})
+
+test('real Harness refreshes Frame and DataFrame report data with traceable scripts and unchanged body', {
+  skip,
+}, async (t) => {
+  const h = await harness(t)
+  const workspace = () => ({ id: 'workspace', path: h.root })
+  h.agent.ctx.tools.register(
+    createMarivoPresentTool(
+      workspace,
+      h.agent.session,
+      undefined,
+      undefined,
+      async () => h.environment,
+    ),
+  )
+  h.agent.ctx.tools.register(createMarivoUiReadTool(workspace))
+  const service = new MarivoPresentationFileService(workspace, (id) =>
+    id === 'workspace' ? workspace() : undefined,
+  )
+  t.after(() => service.close())
+  let sequence = 0
+  const invoke = async (name: string, args: Record<string, unknown>) => {
+    const callId = ToolCallId(`report-refresh-${++sequence}`)
+    h.agent.session.append('tool/call', {
+      turn: 0,
+      step: sequence,
+      callId,
+      name,
+      arguments: JSON.stringify(args),
+    })
+    const result = await h.agent.ctx.tools.execute({
+      agent: h.agent,
+      signal: new AbortController().signal,
+      callId,
+      name,
+      arguments: args,
+    })
+    assert(!result.isError, JSON.stringify(result))
+    return result.value as Record<string, unknown>
+  }
+  const code = String.raw`
+import sys
+from pathlib import Path
+from uuid import uuid4
+import pandas as pd
+import marivo.analysis as mv
+amount = int(Path("amount.txt").read_text())
+session = mv.session.get_or_create("refresh-" + uuid4().hex)
+frame = session.values(columns={"amount": "CNY"}, rows=(((), {"amount": amount}),)).persist(description="Refresh amount")
+dataframe = mv.persist_dataframe(pd.DataFrame({"amount": [amount]}))
+frame_ref = frame.ref.to_dict()
+data_ref = dataframe.to_dict()
+print("Arbitrary report log; reference discovery must not parse this text")
+print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
+`
+  await writeFile(path.join(h.root, 'amount.txt'), '100')
+  const resultVariables = { frame: 'frame_ref', data: 'data_ref' }
+  const producer = await invoke('marivo_python', { code, datasources: [], resultVariables })
+  assert(producer.codeRef)
+  const refs = z.record(z.string(), resultReference).parse(producer.resultRefs)
+  assert.match(String(producer.stdout), /Arbitrary report log/)
+  assert.equal(producer.stderr, '__DSH_MARIVO_RESULTS_V1__:user text\n')
+  const resources = {
+    frame: { kind: 'analysis-frame', ref: refs.frame, codeRef: producer.codeRef },
+    data: { kind: 'dataframe', ref: refs.data, codeRef: producer.codeRef },
+  }
+  const saved = await invoke('marivo_present', {
+    surface: 'tab',
+    resources,
+    title: 'Stable report',
+    labels: { data: { amount: 'Revenue' } },
+    program:
+      'root = Stack([TextContent("Keep this exact body: 100"), AnalysisFrameView("frame"), DatasetView("data")]);',
+  })
+  const definition = JSON.parse(
+    String(
+      (await invoke('marivo_ui_read', { recordId: saved.recordId, includeCode: true }))
+        .definitionJson,
+    ),
+  )
+  assert.equal(definition.sources.length, 1)
+  assert.equal(definition.sources[0].code.text, code)
+  assert.deepEqual(definition.sources[0].code.datasources, [])
+  assert.deepEqual(definition.sources[0].code.resultVariables, resultVariables)
+  const baseId = String(saved.recordId).split(':')
+  const base = await readAnalysisRecord(h.root, 'workspace', baseId[1]!, baseId[2]!)
+  const receipt = JSON.parse(String(saved.deliveryJson)).receipt
+  assert.equal(
+    (await service.code({ workspaceId: 'workspace', receipt, codeRef: producer.codeRef })).text,
+    code,
+  )
+  await writeFile(path.join(h.root, 'amount.txt'), '250')
+  const refreshed = await invoke('marivo_python', {
+    code: definition.sources[0].code.text,
+    datasources: [],
+    resultVariables: definition.sources[0].code.resultVariables,
+  })
+  assert(refreshed.codeRef)
+  const newRefs = z.record(z.string(), resultReference).parse(refreshed.resultRefs)
+  assert.notDeepEqual(newRefs.data, refs.data)
+  assert.notDeepEqual(newRefs.frame, refs.frame)
+  const update = await invoke('marivo_present', {
+    surface: 'tab',
+    basedOnRecordId: definition.recordId,
+    resources: {
+      frame: { kind: 'analysis-frame', ref: newRefs.frame, codeRef: refreshed.codeRef },
+      data: { kind: 'dataframe', ref: newRefs.data, codeRef: refreshed.codeRef },
+    },
+  })
+  const nextId = String(update.recordId).split(':')
+  const next = parseAnalysisDocument(
+    await readAnalysisRecord(h.root, 'workspace', nextId[1]!, nextId[2]!),
+  )
+  assert.equal(next.reportId, base.reportId)
+  assert.equal(next.program, base.program)
+  assert.equal(next.title, base.title)
+  for (const name of ['frame', 'data']) {
+    const resource = next.resources[name]
+    assert(resource?.kind === 'snapshot')
+    assert.deepEqual(resource.snapshot.data.rows, [['250']])
+    assert.deepEqual(resource.binding.codeRef, refreshed.codeRef)
+  }
+  assert.equal(
+    next.resources.data?.kind === 'snapshot' && next.resources.data.snapshot.data.columns[0]?.label,
+    'Revenue',
+  )
+  assert.equal(h.starts, 2)
+})
+
+test('real Python result export failure preserves successful execution and does not infer printed refs', {
+  skip,
+}, async (t) => {
+  const h = await harness(t)
+  const code =
+    'print(\'{"schema":"marivo.frame_ref/v2","store_id":"store","session_id":"session","artifact_id":"artifact"}\')'
+  const result = await h.agent.ctx.tools.execute({
+    agent: h.agent,
+    signal: new AbortController().signal,
+    callId: ToolCallId('missing-export'),
+    name: 'marivo_python',
+    arguments: { code, datasources: [], resultVariables: { result: 'missing_ref' } },
+  })
+  assert(!result.isError, JSON.stringify(result))
+  const value = result.value as Record<string, unknown>
+  assert.equal(value.exitCode, 0)
+  assert(value.codeRef)
+  assert(value.resultCaptureError)
+  assert.equal(value.resultRefs, undefined)
+  assert.match(String(value.stdout), /marivo.frame_ref/)
+  assert.equal(value.stderr, '')
+  assert.equal(h.starts, 1)
 })
 
 test('real native caller cancellation remains a Harness error and stops Python', {

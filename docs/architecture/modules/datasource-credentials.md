@@ -120,9 +120,9 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 首次模型请求即可看到绑定执行和凭据表单的入口。各 Tool 说明负责数据源声明、配置与测试条件；`marivo_python` 每次启动独立进程，跨调用复用结果时按当前 Runtime Help 的 Session 生命周期和 Frame 持久化契约操作。失败后的动作依据实际回执，结果未确认时先核对已有影响。
 
 成功 `marivo_python` 会在 Host 的 `$DSH_HOME/dsh-data-analysis/python-executions/` 按 Workspace 隔离，
-原子保存本次提交的 Python 原文，并返回 `codeRef: {executionId, sha256}`，供报告 dataset 显式关联。
+原子保存本次提交的 Python 原文，并返回 `codeRef: {executionId, sha256}`，供报告 Frame/DataFrame 显式关联。
 读写位置由 Host 决定，不从 Workspace 接受作者自报的执行记录文件。
-只保存代码和完成时间等执行记录，不包含 resolver、注入 wrapper 或 credential snapshot。
+可选 resultVariables 将 1–16 个资源名映射到 Python 引用变量名。worker 在代码成功结束后导出这些变量中的引用字典，经临时控制文件和 launcher 生成的首个控制帧返回；Host 严格校验引用、输出名及 32 KiB 预算，再登记到 v4 执行记录，保存 Session/call/root-call 和输出变量声明。stdout 完全不参与引用发现；普通脚本无须声明输出。控制帧在进入工具结果前移除，用户 stderr 保留，导出失败单独返回 resultCaptureError，不改变原代码成功状态或自动重放。该记录只证明执行导出过该引用，不证明代码生成过程或业务正确性。不包含 resolver、注入 wrapper 或 credential snapshot。
 记录失败通过 `codeCaptureError` 单独返回，保留原执行结果；调用方不应因此重放已经成功的分析。
 非零退出、超时或取消不签发成功执行引用。报告构建的精确引用读取见[展示数据投影](presentation-projection.md)。
 
@@ -194,7 +194,7 @@ Python 通过 DSH Shell 服务继承前台执行、沙箱策略、限制和取�
 独立 launcher 在 DSH 输出落盘前捕获 worker 的 stdout/stderr，分别限制到 1 MiB 并执行 exact-value
 脱敏，覆盖原始文件描述符输出和 traceback。launcher 在用户 stderr 前添加独立的捕获状态头，
 Host 消费并移除该头；该状态不改变原 worker 退出码，也不从用户输出推断捕获是否成功。
-manifest 写盘失败单独报告 snapshotCaptureError，成功执行仍可保存 codeRef。快照不进入 argv、环境、日志或结果，结束时清理 Host 引用。
+当前新链路不创建 capture manifest；执行记录保存失败通过 codeCaptureError 报告，结构化引用导出失败通过 resultCaptureError 报告，保留成功执行结果，不因此重跑代码。凭据快照不进入 argv、环境、日志或结果，结束时清理 Host 引用。
 这保护正常执行中的凭证传递与意外输出；允许使用凭证的 Python 本身不是不可读取凭证的隔离边界。
 
 ## 管理操作与并发

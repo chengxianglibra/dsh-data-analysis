@@ -4,6 +4,11 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
+import {
+  type PythonCodeRef,
+  type PythonCodeSnippet,
+  readPythonExecution,
+} from '../python-execution.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument } from './analysis.ts'
 import { analysisCatalogSpec } from './contracts/analysis-catalog.ts'
@@ -93,7 +98,7 @@ export function createMarivoPresentTool(
       resources: {
         type: 'object',
         description:
-          'Map a resource name to {kind:"analysis-frame",ref}, {kind:"dataframe",ref}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). For AnalysisFrame, pass the exact saved_frame.ref.to_dict() dictionary; the Host reads its saved data through the bound Python Runtime. For DataFrame, pass mv.persist_dataframe(df).to_dict(); its captured project_root must match this Workspace. On update, omit to reuse saved resources. Supplying a map replaces the full set. No rows or arbitrary URLs.',
+          'Map a resource name to {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path} (Workspace-relative PNG/JPEG/GIF/WebP). Pass exact saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(); the project must match this Workspace. Add codeRef from the successful marivo_python call that exported that reference through resultVariables; the Host verifies this association. On update, omit to reuse saved resources; a map replaces the full set. To update only data, keep resource names, supply new refs with their new codeRefs and omit program/title/locale/labels; layout, body and existing column labels are retained. The same ref reuses the old snapshot. No rows or arbitrary URLs.',
         additionalProperties: true,
       },
       labels: {
@@ -340,8 +345,12 @@ function frameReadSummary(snapshot: FrameSnapshotV2) {
 }
 
 const uiReadInput = z.union([
-  z.strictObject({ recordId: z.string().min(1).max(512), current: z.boolean().optional() }),
-  z.strictObject({ draft: z.literal(true) }),
+  z.strictObject({
+    recordId: z.string().min(1).max(512),
+    current: z.boolean().optional(),
+    includeCode: z.boolean().optional(),
+  }),
+  z.strictObject({ draft: z.literal(true), includeCode: z.boolean().optional() }),
 ])
 
 /** Editing context only: exact/current saved version or the caller's active Turn draft. */
@@ -352,7 +361,7 @@ export function createMarivoUiReadTool(
   return defineTool({
     name: 'marivo_ui_read',
     description:
-      'Recover missing editing context without querying data: recordId reads that exact saved version; current=true resolves its report to the current saved version; draft=true reads the latest draft in the calling Session Turn. Choose saved or draft input, not both. Returns definitionJson with identifiers, program, reusable resource declarations and bounded schemas, never rows. Do not read back after success by default.',
+      'Recover editing or data-update context without querying data: recordId reads that exact saved version; current=true resolves its report to the current saved version; draft=true reads the latest draft in the calling Session Turn. Choose saved or draft input, not both. Returns definitionJson with identifiers, program, reusable resource declarations, codeRefs and bounded schemas, never rows. Set includeCode=true to read the bound scripts and declared datasources in deduplicated sources; unavailable source is explicit. This does not execute code. For an authorized data update, review the script and inputs before executing it through marivo_python, then present new refs under the same resource names without program/title/locale/labels. Do not read back after success by default.',
     parameters: {
       recordId: {
         type: 'string',
@@ -367,6 +376,11 @@ export function createMarivoUiReadTool(
         type: 'boolean',
         description:
           'Set true without recordId/current to recover this Session Turn draft and its latest identifiers.',
+      },
+      includeCode: {
+        type: 'boolean',
+        description:
+          'Read only Host-stored scripts bound to these resources, with codeRef and datasource declarations. Use for script traceability or an authorized data update; never executes a script or returns rows.',
       },
     },
     output: {
@@ -426,6 +440,25 @@ export function createMarivoUiReadTool(
         )
         identifiers = { recordId: document.recordId }
       }
+      const sources: (
+        | { codeRef: PythonCodeRef; status: 'available'; code: PythonCodeSnippet }
+        | { codeRef: PythonCodeRef; status: 'unavailable' }
+      )[] = []
+      if (input.includeCode) {
+        const refs = new Map<string, PythonCodeRef>()
+        for (const resource of Object.values(document.resources))
+          if (resource.kind === 'snapshot' && resource.binding.codeRef)
+            refs.set(JSON.stringify(resource.binding.codeRef), resource.binding.codeRef)
+        for (const codeRef of refs.values()) {
+          try {
+            const code = await readPythonExecution(binding.path, codeRef, exec.signal)
+            sources.push({ codeRef, status: 'available', code })
+          } catch {
+            exec.signal.throwIfAborted()
+            sources.push({ codeRef, status: 'unavailable' })
+          }
+        }
+      }
       const current = await source()
       if (current.id !== binding.id || current.path !== binding.path)
         throw new Error('presentation-workspace-changed')
@@ -446,6 +479,7 @@ export function createMarivoUiReadTool(
                 : {
                     kind: resource.snapshot.kind,
                     declaration: resource.declaration,
+                    ...(resource.binding.codeRef ? { codeRef: resource.binding.codeRef } : {}),
                     columns: resource.snapshot.data.columns,
                     coverage: resource.snapshot.coverage,
                     ...(resource.snapshot.kind === 'frame'
@@ -462,6 +496,7 @@ export function createMarivoUiReadTool(
                   },
             ]),
           ),
+          ...(input.includeCode ? { sources } : {}),
           signatures: Object.fromEntries(
             Object.entries(analysisCatalogSpec.components).map(([name, c]) => [name, c.signature]),
           ),

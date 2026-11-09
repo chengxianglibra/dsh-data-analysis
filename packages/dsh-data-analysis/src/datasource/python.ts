@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
+import { pythonResultVariables, readPythonResultOutput } from '../python-result-references.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import {
@@ -71,7 +72,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Run one foreground Python process in the bound Runtime and Workspace; memory expires at call end. Declared datasource credentials are prepared before code starts once. Missing interactive capability returns handoff guidance. Never read or pass secret values through code, environment, output or logs. Persist results with Marivo public APIs: saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(); print the exact reference for marivo_present. Returns codeRef when source code is saved. Read bound Runtime Help for persistence constraints. Do not replay analysis to recover references. Timeout does not prove remote query cancellation or absence of saved results.',
+        'Run one foreground Python process in the bound Runtime and Workspace; memory expires at call end. Declared datasource credentials are prepared before code starts once. Missing interactive capability returns handoff guidance. Never read or pass secret values through code, environment, output or logs. Persist results with Marivo public APIs. For traceable report resources, assign exact saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict() dictionaries to variables and select them with resultVariables. The Host returns structured resultRefs and codeRef through a separate result-export channel; stdout is arbitrary text and never parsed for references. Pass the matching ref and codeRef to marivo_present. Read bound Runtime Help for persistence constraints. Do not replay analysis to recover references. Timeout does not prove remote query cancellation or absence of saved results.',
       parameters: {
         code: {
           type: 'string',
@@ -90,6 +91,12 @@ export function registerMarivoPythonTool(
           type: 'number',
           description:
             'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to the current plugin pythonTimeoutMs setting. Credential waiting precedes this budget; Harness Shell limits, outer Code Mode deadlines and cancellation remain independent.',
+        },
+        resultVariables: {
+          type: 'object',
+          additionalProperties: true,
+          description:
+            'Optional resource name -> Python variable name, up to 16. Each selected variable must hold an exact persisted Marivo reference dictionary after code finishes, e.g. sales_ref = mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns resultRefs by resource name independently of stdout. Omit for scripts without report results.',
         },
       },
       output: {
@@ -140,6 +147,15 @@ export function registerMarivoPythonTool(
           const code = args.code
           if (typeof code !== 'string' || !code.trim() || Buffer.byteLength(code) > 131072)
             rejectInput('Invalid Python code size')
+          const selected =
+            args.resultVariables === undefined
+              ? undefined
+              : pythonResultVariables.safeParse(args.resultVariables)
+          if (selected && !selected.success)
+            rejectInput(
+              'Invalid resultVariables; use 1-16 resource names mapped to Python variable identifiers',
+            )
+          const resultVariables = selected?.success ? selected.data : undefined
           const shell = ctx.get('shell')
           if (!shell) rejectInput('DSH Shell execution service is required')
           const shellEnv = ctx.get('shellEnv')
@@ -179,6 +195,7 @@ export function registerMarivoPythonTool(
               grants: prepared.grants,
               values: prepared.values,
               code,
+              ...(resultVariables ? { result_variables: resultVariables } : {}),
               worker: PYTHON_WORKER,
             }),
             env: { MARIVO_PERSIST_CREDENTIALS: '0' },
@@ -195,7 +212,12 @@ export function registerMarivoPythonTool(
           const result = await service.track(execution.result())
           executionElapsedMs = performance.now() - shellStartedAt
           const finishedAt = new Date().toISOString()
-          const stderr = result.stderr.text
+          const exported = resultVariables
+            ? readPythonResultOutput(result.stderr.text, resultVariables)
+            : { stderr: result.stderr.text, resultRefs: undefined, resultCaptureError: undefined }
+          const stderr = exported.stderr
+          const succeeded = result.exitCode === 0 && !result.timedOut && !result.aborted
+          const resultCaptureError = succeeded ? exported.resultCaptureError : undefined
           const credentialValues = prepared.values
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
@@ -218,6 +240,8 @@ export function registerMarivoPythonTool(
               prepared.assertCurrent()
               if (Object.values(prepared.values).some((value) => value && code.includes(value)))
                 throw new Error('Host credential in submitted code')
+              const references = exported.resultRefs ? Object.values(exported.resultRefs) : []
+              const session = exec.agent!.session
               codeRef = await service.track(
                 savePythonExecution(
                   binding.projectRoot,
@@ -226,6 +250,17 @@ export function registerMarivoPythonTool(
                     startedAt,
                     finishedAt,
                     ...(declaredDatasources.length ? { datasources: declaredDatasources } : {}),
+                    ...(references.length
+                      ? {
+                          results: {
+                            sessionId: String(session.id),
+                            callId: String(exec.callId),
+                            rootCallId: String(exec.rootCallId ?? exec.callId),
+                            variables: resultVariables!,
+                            references,
+                          },
+                        }
+                      : {}),
                   },
                   prepared.signal,
                 ),
@@ -257,9 +292,13 @@ export function registerMarivoPythonTool(
               sandbox: result.sandbox ?? null,
               ...(codeRef ? { codeRef } : {}),
               ...(codeCaptureError ? { codeCaptureError } : {}),
+              ...(exported.resultRefs && succeeded ? { resultRefs: exported.resultRefs } : {}),
+              ...(resultCaptureError ? { resultCaptureError } : {}),
               execution: summary(
                 reason,
-                codeCaptureError ?? (reason === 'succeeded' ? null : CHECK_EFFECTS),
+                codeCaptureError ??
+                  resultCaptureError ??
+                  (reason === 'succeeded' ? null : CHECK_EFFECTS),
               ),
             }),
           )

@@ -87,7 +87,7 @@
       "version": "0.6.4.dev0",
       "packageSpec": "marivo[duckdb,trino,clickhouse]==0.6.4.dev0",
       "wheelFilename": "marivo-0.6.4.dev0-py3-none-any.whl",
-      "wheelSha256": "ef169d1c3a74752395f0bd0ab1e23a6afa63919c7a29c559b68f0f8b37a49462"
+      "wheelSha256": "74ebbe5bef4355654beebb9e84931052b1bd07402b9a4040fda6244d5c21a893"
     },
     "contracts": {
       "runtimeInstallation": "dsh-data-analysis-runtime/v4",

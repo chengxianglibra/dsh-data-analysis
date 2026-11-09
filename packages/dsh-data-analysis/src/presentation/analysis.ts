@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
+import { readPythonResults } from '../python-execution.ts'
 import { analysisCatalogBuild, analysisCatalogId } from './contracts/analysis-catalog.ts'
 import {
   ANALYSIS_UI_FORMAT,
@@ -16,6 +17,7 @@ import {
   mergeAnalysisProgram,
   parseAnalysisProgram,
 } from './contracts/analysis-program.ts'
+import { resultReferenceKey } from './contracts/result-reference.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
@@ -135,6 +137,15 @@ export async function createAnalysisDocument(
   for (const [name, declaration] of pending) {
     signal.throwIfAborted()
     if (declaration.kind === 'analysis-frame' || declaration.kind === 'dataframe') {
+      let producer: Awaited<ReturnType<typeof readPythonResults>> | undefined
+      if (declaration.codeRef) {
+        producer = await readPythonResults(source.projectRoot, declaration.codeRef, signal)
+        const key = resultReferenceKey(declaration.ref)
+        if (!producer.references.some((ref) => resultReferenceKey(ref) === key))
+          throw new Error(
+            'analysis-resource-code-not-bound: use codeRef from the successful marivo_python call that exported this exact reference through resultVariables.',
+          )
+      }
       if (!source.runner) throw new Error('result-runtime-required')
       const runner = await source.runner()
       if (runner.binding.projectRoot !== source.projectRoot)
@@ -144,7 +155,16 @@ export async function createAnalysisDocument(
         kind: 'snapshot',
         declaration,
         snapshot,
-        binding: { workspaceId: identity.workspaceId },
+        binding: {
+          workspaceId: identity.workspaceId,
+          ...(producer
+            ? {
+                codeRef: declaration.codeRef,
+                sessionId: producer.sessionId,
+                callId: producer.callId,
+              }
+            : {}),
+        },
       }
     } else if (declaration.kind === 'dataset-snapshot' || declaration.kind === 'frame-snapshot') {
       const { snapshot, codeRef, owner } = await (declaration.kind === 'dataset-snapshot'
@@ -187,6 +207,23 @@ export async function createAnalysisDocument(
         sha256: presentationSha256(bytes),
       }
     }
+  }
+  // A data replacement keeps the existing display labels unless explicitly replaced.
+  for (const [name, resource] of Object.entries(resources)) {
+    const previous = base?.resources[name]
+    if (
+      resource.kind !== 'snapshot' ||
+      previous?.kind !== 'snapshot' ||
+      input.labels?.[name] !== undefined
+    )
+      continue
+    const labels = new Map(
+      previous.snapshot.data.columns.map((column) => [column.id, column.label]),
+    )
+    resource.snapshot.data.columns = resource.snapshot.data.columns.map((column) => ({
+      ...column,
+      label: labels.get(column.id) ?? column.label,
+    }))
   }
   applyAnalysisLabels(resources, input.labels)
   return parseAnalysisDocument({

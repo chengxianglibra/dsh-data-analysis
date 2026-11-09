@@ -79,7 +79,10 @@ export function pythonToolModel(block: ToolCallBlock) {
     result.timedOut === false &&
     result.aborted === false
   )
-    state = result.codeCaptureError || result.truncated === true ? 'warning' : 'succeeded'
+    state =
+      result.codeCaptureError || result.resultCaptureError || result.truncated === true
+        ? 'warning'
+        : 'succeeded'
 
   const facts: { name: string; value: string }[] = []
   for (const name of ['exitCode', 'timedOut', 'aborted', 'truncated'] as const) {
@@ -92,9 +95,11 @@ export function pythonToolModel(block: ToolCallBlock) {
     if (typeof value === 'number' && Number.isFinite(value))
       facts.push({ name, value: `${value} ms` })
   }
-  const notices = [result?.codeCaptureError, execution?.nextAction].filter(
-    (value): value is string => typeof value === 'string' && value !== '',
-  )
+  const notices = [
+    result?.codeCaptureError,
+    result?.resultCaptureError,
+    execution?.nextAction,
+  ].filter((value): value is string => typeof value === 'string' && value !== '')
   const stdout = typeof result?.stdout === 'string' ? result.stdout : undefined
   const stderr = typeof result?.stderr === 'string' ? result.stderr : undefined
   return {

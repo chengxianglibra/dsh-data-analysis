@@ -20,6 +20,8 @@ description: 引用已持久化的 DataFrame 或 AnalysisFrame 展示结果，�
 
 ## 组织页面与核对表达
 
+新结果的资源声明携带同次 `marivo_python` 回执的 `codeRef`，具体校验见结果引用参考。用户要求保持布局和正文只更新数据时，按[只更新报告数据](references/data-update.md)读取绑定脚本、重新生成所需结果，再替换同名资源；不重新编写页面程序。
+
 数据视图自带结果卡片，默认直接放入布局，不为单个视图再加装饰性外框；`Card` 可用于有意义的内容分组。保留影响解读的范围、分母和缺失信息，不附加仅解释组件类型、数据行列数或实现条件的文字。
 
 选择图形和字段时查[视图选择与页面布局](references/analysis-ui.md)，编写 OpenUI Lang 时查[组件签名](references/analysis-catalog.md)。[页面示例](references/examples.md)包含比较报告、指标卡和多视图看板。

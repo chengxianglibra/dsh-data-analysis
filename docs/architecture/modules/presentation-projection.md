@@ -54,7 +54,9 @@ business 固定 unknown。
 新增引用由 [result-reader.ts](../../../packages/dsh-data-analysis/src/presentation/result-reader.ts) 在 checked Python 中读取。
 内部 [read_result.py](../../../packages/dsh-data-analysis/python/presentation/read_result.py) 只适配公开结果和展示格式，
 不拥有持久化、引用签发或来源语义。Runtime identity 与 Workspace 在异步边界复核。
-已有报告的相同声明复用内嵌快照，不解析 Runtime 或启动 Python。
+已有报告的相同声明（包括 codeRef）复用内嵌快照，不解析 Runtime 或启动 Python。
+新 `dataframe` / `analysis-frame` 声明可携带同次 `marivo_python` 回执的 codeRef；Host 读取当前 Workspace 的执行记录，核验其中登记了准确的 Marivo 引用，再绑定原 Harness Session/call。绑定失败明确报错，不降级为无来源。
+该关联证明该次执行返回过引用，不推断原始计算或完整依赖；只有读取已有结果的代码不能被称为最初的生成脚本。
 工具外层执行预算为 180 秒，定义见[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)。
 取消或快照读取失败不发布 current，不自动重跑分析。
 
@@ -65,7 +67,7 @@ Frame 展示格式投影复用 [_frame.py](../../../packages/dsh-data-analysis/p
 不调用全量 `frame.to_pandas()`，不加载当前模型、重跑分析或取得数据源凭据。schema/layout 重名、身份不符、
 损坏数据和不支持的类型明确失败。
 
-公开 `persist()`、`ref`、Session 恢复与读取约束以绑定 Marivo live Help 为准。新 Frame 引用的 binding 只记录 Workspace；不能从持久引用推断 Harness `codeRef`、Session 或 call。报告内嵌快照保留引用与数据，后续展示更新不依赖原 Store。
+公开 `persist()`、`ref`、Session 恢复与读取约束以绑定 Marivo live Help 为准。Marivo 引用自身不包含 Harness 身份；提供 codeRef 时从 Host 的成功执行记录核验并绑定，否则只记录 Workspace。报告内嵌快照保留引用与数据，后续展示更新不依赖原 Store。
 
 Frame 快照另保留 input identity、字段角色、实际 layout、公开字段类型与单位、完整轴键、逐行坐标和 read_stats。
 默认至多读取一页，limit 由行/列/单元格预算计算，坐标也计入单元格预算；不自动续页或把已读前缀标为完整结果。
@@ -102,7 +104,7 @@ Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 
 投影仍使用 Dataset v1，记录原总行数、保留行数和 complete；不从 attrs、列名或来源存在推断
 SQL、datasource、lineage、业务覆盖或转换正确性。展示标签通过 `marivo_present.labels` 设置。
-新 Frame/DataFrame 资源的 binding 只记录 Workspace；不伪造 Harness codeRef、Session 或 call。
+新 Frame/DataFrame 资源的可选 codeRef 由 Host 执行记录核验，不从引用、attrs 或列名推断。省略 codeRef 的外部结果保留无脚本来源状态。
 旧 capture record 仅用于历史快照读取，新 Python 执行不再创建 manifest、capture 目录或回执。
 
 ## 内部展示适配器
