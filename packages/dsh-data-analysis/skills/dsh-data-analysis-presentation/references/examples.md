@@ -8,7 +8,7 @@
 
 ```javascript
 let draft = await tools.marivo_present({
-  surface: "tab", stage: "preview", title: "销售文件分析",
+  stage: "preview", title: "销售文件分析",
   program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别汇总与原始明细");\nstatus = TextContent("正在准备类别汇总，尚未形成结论。");',
 });
 function dataResource(result, name) {
@@ -62,7 +62,7 @@ detail = DatasetView("detail", {chart:"table", columns:["category", "value"]});
 scope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");
 ```
 
-preview 校验并更新内存草稿，返回 draftId/draftRevision，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 recordId；不从 deliveryJson 拼装身份。明确报告用 tab，聊天工作稿可用 tool。Native 把 surface、stage 和身份放在 program 前；后续省略 surface 继承最近成功修订的位置。
+preview 校验并更新内存草稿，返回 draftId/draftRevision，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 recordId；不从 deliveryJson 拼装身份。新报告在同一 Chat 区域连续更新，以图表动效表达生成和修订，保存后停止；读者用“在边栏查看”图标移动，Chat 隐藏正文、标题和链接，关闭 Tab 后恢复。报告目录与版本链接始终在右侧打开。Native 把 stage 和身份放在 program 前；不传 surface。
 
 ## 比较与抵消项
 

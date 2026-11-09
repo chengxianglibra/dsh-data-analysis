@@ -71,6 +71,6 @@ export function presentationReceiptText(
     receipt.summary,
     `Record: ${analysisRecordId(receipt.reportId, receipt.buildId)}`,
     `Build: ${receipt.buildId}`,
-    `Surface: ${surface === 'tab' ? 'tab' : 'tool view'}`,
+    `Surface: ${surface === 'tab' ? 'tab' : 'chat'}`,
   ].join('\n')
 }

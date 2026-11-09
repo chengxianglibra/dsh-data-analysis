@@ -1,15 +1,13 @@
 // @ts-nocheck -- Host hooks and Session navigation are supplied by the module table.
 
 import { XIcon } from 'lucide-react'
-import { useId, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 import { useCopy } from './../i18n/context.tsx'
 import { Button, IconButton } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/primitives/card.tsx'
 import { Empty, EmptyDescription, EmptyHeader } from '../ui/primitives/empty.tsx'
-import { Field, FieldLabel } from '../ui/primitives/field.tsx'
 import { Input } from '../ui/primitives/input.tsx'
-import { NativeSelect } from '../ui/primitives/native-select.tsx'
 import { Skeleton } from '../ui/primitives/skeleton.tsx'
 import {
   Table,
@@ -51,7 +49,6 @@ export function ReportSource({ version, sessions, onOpenSession, showKind = true
 }
 export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
   const t = useCopy()
-  const categoryId = useId()
 
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const reports = visibleReports(state)
@@ -60,20 +57,6 @@ export function ReportCatalogView({ model, reader, sessions, onOpenSession }) {
       <UIStyleSheet />
       <Card>
         <CardHeader className="pd-catalog-controls">
-          <Field orientation="horizontal" className="pd-category">
-            <FieldLabel htmlFor={categoryId}>
-              {t('marivo.presentation.ui-catalog-category')}
-            </FieldLabel>
-            <NativeSelect
-              id={categoryId}
-              aria-label={t('marivo.presentation.ui-catalog-category')}
-              value={state.surface ?? 'tab'}
-              onChange={(event) => model.patch({ surface: event.target.value })}
-            >
-              <option value="tab">{t('marivo.presentation.ui-catalog-reports')}</option>
-              <option value="tool">{t('marivo.presentation.ui-catalog-results')}</option>
-            </NativeSelect>
-          </Field>
           <Input
             type="search"
             aria-label={t('marivo.presentation.search-by-title')}

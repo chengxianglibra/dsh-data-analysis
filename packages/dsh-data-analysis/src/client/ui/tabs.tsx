@@ -8,12 +8,29 @@ export interface TabItem {
 }
 
 /** Radix manual activation preserves mounted reading state without focusing hidden content. */
-export function Tabs({ items, label }: { items: TabItem[]; label: string }) {
-  const [active, setActive] = useState<string>()
+export function Tabs({
+  items,
+  label,
+  initialValue,
+  onValueChange,
+}: {
+  items: TabItem[]
+  label: string
+  initialValue?: string
+  onValueChange?: (value: string) => void
+}) {
+  const [active, setActive] = useState(initialValue)
   const selected = items.some((item) => item.value === active) ? active : items[0]?.value
   if (!items.length) return null
   return (
-    <TabsRoot activationMode="manual" value={selected} onValueChange={setActive}>
+    <TabsRoot
+      activationMode="manual"
+      value={selected}
+      onValueChange={(value) => {
+        setActive(value)
+        onValueChange?.(value)
+      }}
+    >
       <TabsList aria-label={label}>
         {items.map((item) => (
           <TabsTrigger

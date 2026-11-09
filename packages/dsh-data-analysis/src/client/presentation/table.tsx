@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { formatCell } from '../../presentation/contracts/index.ts'
 import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
+import { useReadingComponent, useReportReading } from '../analysis-ui/reading-state.tsx'
 import { useCopy } from './../i18n/context.tsx'
 import { Button } from '../ui/controls.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
@@ -60,15 +61,34 @@ export function DatasetTable({
 }) {
   const t = useCopy()
 
-  const [sort, setSort] = useState<TableSort>()
-  const [page, setPage] = useState(0)
+  const reading = useReportReading()
+  const component = useReadingComponent()
+  const key = `${component}:${caption}`
+  const [sort, updateSort] = useState<TableSort | undefined>(() => reading?.tables.get(key)?.sort)
+  const [page, updatePage] = useState(() => reading?.tables.get(key)?.page ?? 0)
+  const setSort = (value: TableSort) => {
+    updateSort(value)
+    reading?.tables.set(key, { page: 0, sort: value })
+  }
+  const setPage = (value: number) => {
+    updatePage(value)
+    reading?.tables.set(key, { page: value, sort: reading.tables.get(key)?.sort ?? sort })
+  }
+  const scroll = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (scroll.current) scroll.current.scrollLeft = reading?.scroll.get(key) ?? 0
+  }, [reading, key])
   const indices = columns?.map((id) => columnIndex(data, id)) ?? data.columns.map((_, i) => i)
   const numericColumns = new Set(
     data.columns
       .filter((column) => ['float64', 'int64', 'decimal'].includes(column.type))
       .map((column) => column.id),
   )
-  const sorted = useMemo(() => sortedRowIndices(t.locale, data, sort), [data, sort, t.locale])
+  const activeSort = data.columns.some((column) => column.id === sort?.columnId) ? sort : undefined
+  const sorted = useMemo(
+    () => sortedRowIndices(t.locale, data, activeSort),
+    [data, activeSort, t.locale],
+  )
   const pages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE))
   const activePage = Math.min(page, pages - 1)
   const shown = sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
@@ -85,6 +105,8 @@ export function DatasetTable({
       )}
       <div
         className="pr-table-scroll"
+        ref={scroll}
+        onScroll={(event) => reading?.scroll.set(key, event.currentTarget.scrollLeft)}
         tabIndex={data.rows.length ? 0 : undefined}
         aria-describedby={scrollDescription}
       >

@@ -156,7 +156,7 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
         throw new Error('Replay must not open streams')
       },
     },
-    sidebarRight: {},
+    sidebarRight: { openTabs: { getSnapshot: () => [], subscribe: () => () => {} } },
     uiWorkspace: { openSession: () => {} },
     sidebarRightTabs: { register: () => () => {} },
     layout: {},

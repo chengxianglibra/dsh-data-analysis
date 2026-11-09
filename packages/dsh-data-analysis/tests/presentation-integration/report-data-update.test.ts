@@ -161,7 +161,6 @@ test('new Frame and DataFrame resources expose verified scripts to the reader an
   const f = await fixture(t)
   const codeRef = await f.saveCode()
   const delivery = await f.present({
-    surface: 'tab',
     resourcePatch: { put: f.declarations(codeRef) },
     program: 'root = Stack([AnalysisFrameView("frame"), DatasetView("data")]);',
   })
@@ -294,7 +293,6 @@ test('data-only saves replace snapshots and scripts while preserving page text, 
   const codeRef = await f.saveCode()
   const resources = f.declarations(codeRef)
   const delivery = await f.present({
-    surface: 'tab',
     resourcePatch: { put: resources },
     title: 'Keep title',
     locale: 'en-US',
@@ -305,7 +303,6 @@ test('data-only saves replace snapshots and scripts while preserving page text, 
   const base = await readReceiptDocument(f.root, delivery.receipt)
   const refreshedCode = await f.saveCode('2')
   const updated = await f.present({
-    surface: 'tab',
     basedOnRecordId: base.recordId,
     resourcePatch: { put: f.declarations(refreshedCode, '2') },
   })

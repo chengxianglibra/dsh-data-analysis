@@ -300,52 +300,43 @@ test('resource metadata only describes changed admitted resources', async (t) =>
   assert.deepEqual(JSON.parse(saved.resultMetadataJson).resources, {})
 })
 
-for (const surface of ['tool', 'tab'] as const) {
-  test(`drafts inherit ${surface}, can change surface, and publish exactly one version`, async (t) => {
-    const f = await fixture(t)
-    const first = draftDeliverySchema.parse(
-      await f.execute({
-        stage: 'preview',
-        surface,
-        program: 'root = TextContent("First");',
-        resourcePatch: { put: {} },
-      }),
+test('report placement is client-owned and preview revisions publish exactly one version', async (t) => {
+  const f = await fixture(t)
+  for (const surface of ['tool', 'tab'])
+    await assert.rejects(
+      f.execute({ surface, program: 'root = TextContent("Rejected");' }),
+      /unrecognized|surface/i,
     )
-    assert.equal(first.surface, surface)
-    const next = draftDeliverySchema.parse(
-      await f.execute({
-        stage: 'preview',
-        draftId: first.draftId,
-        draftRevision: first.draftRevision,
-        program: 'root = TextContent("Second");',
-      }),
-    )
-    assert.equal(next.surface, surface)
-    const changedSurface = surface === 'tool' ? 'tab' : 'tool'
-    const changed = draftDeliverySchema.parse(
-      await f.execute({
-        stage: 'preview',
-        surface: changedSurface,
-        draftId: next.draftId,
-        draftRevision: next.draftRevision,
-        program: 'root = TextContent("Complete");',
-      }),
-    )
-    assert.equal(changed.surface, changedSurface)
-    assert.equal(changed.draftId, first.draftId)
-    const before = await f.service.catalog('reports/list', { workspaceId: 'workspace' })
-    assert.deepEqual('reports' in before && before.reports, [])
-    const saved = await f.present({
-      stage: 'save',
-      draftId: changed.draftId,
-      draftRevision: changed.draftRevision,
-    })
-    assert.equal(saved.surface, changedSurface)
-    const history = await readReportHistory(f.root, 'workspace', saved.receipt.reportId)
-    assert.equal(history.versions.length, 1)
-    assert.equal(history.versions[0]?.source.surface, changedSurface)
+  const first = draftDeliverySchema.parse(
+    await f.execute({
+      stage: 'preview',
+      program: 'root = TextContent("First");',
+      resourcePatch: { put: {} },
+    }),
+  )
+  const next = draftDeliverySchema.parse(
+    await f.execute({
+      stage: 'preview',
+      draftId: first.draftId,
+      draftRevision: first.draftRevision,
+      program: 'root = TextContent("Complete");',
+    }),
+  )
+  assert.equal(first.surface, 'tool')
+  assert.equal(next.surface, 'tool')
+  assert.equal(next.draftId, first.draftId)
+  const before = await f.service.catalog('reports/list', { workspaceId: 'workspace' })
+  assert.deepEqual('reports' in before && before.reports, [])
+  const saved = await f.present({
+    stage: 'save',
+    draftId: next.draftId,
+    draftRevision: next.draftRevision,
   })
-}
+  assert.equal(saved.surface, 'tool')
+  const history = await readReportHistory(f.root, 'workspace', saved.receipt.reportId)
+  assert.equal(history.versions.length, 1)
+  assert.equal(history.versions[0]?.source.surface, 'tool')
+})
 
 test('real Harness PTC composes preview, recovery and save using public identifiers', async (t) => {
   const f = await fixture(t)
@@ -625,23 +616,16 @@ test('draft edits preserve the saved base and reject concurrent publication', as
 test('reference-only results save exact resources and survive capture removal and cold service reopen', async (t) => {
   const f = await fixture(t)
   const data = await f.present({ resourcePatch: { put: { data: f.resources.data } } })
-  const frame = await f.present(
-    { resourcePatch: { put: { frame: f.resources.frame } }, surface: 'tab' },
-    true,
-  )
+  const frame = await f.present({ resourcePatch: { put: { frame: f.resources.frame } } }, true)
   assert.equal(data.surface, 'tool')
-  assert.equal(frame.surface, 'tab')
+  assert.equal(frame.surface, 'tool')
   assert.equal(frame.turn, 2)
   const catalog = await f.service.catalog('reports/list', { workspaceId: 'workspace' })
   assert('reports' in catalog)
   const state = { open: true, workspaceId: 'workspace', query: '', loading: false, catalog }
   assert.deepEqual(
     visibleReports(state).map((v) => v.receipt.reportId),
-    [frame.receipt.reportId],
-  )
-  assert.deepEqual(
-    visibleReports({ ...state, surface: 'tool' }).map((v) => v.receipt.reportId),
-    [data.receipt.reportId],
+    [frame.receipt.reportId, data.receipt.reportId],
   )
   const saved = parseAnalysisDocument(await readReceiptDocument(f.root, data.receipt))
   assert.equal(saved.program, 'root = DatasetView("data");')

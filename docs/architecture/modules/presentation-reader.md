@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（`dsh.analysis-ui/v1`）呈现在会话级 Chat 节点与原生右侧 tab 中。
+本模块把已保存的分析文档（`dsh.analysis-ui/v1`）呈现在真实 Turn 下的独立 Chat 节点与原生右侧 tab 中。
 插件拥有 Catalog/Renderer、阅读状态、报告目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -13,9 +13,15 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 [数据视图](../../../packages/dsh-data-analysis/src/client/analysis-ui/data-view.tsx)和
 [右侧 tab 接入](../../../packages/dsh-data-analysis/src/client/right-tabs/install.tsx)。
 
+## 报告位置与阅读状态
+
+新报告固定在 Chat，首次候选、后续修订和正式保存复用稳定的 report view。固定图标按钮的悬停和聚焦提示为“在边栏查看”；点击后报告只在边栏显示，Chat 不保留正文、标题或入口链接。只有原生 Tab inventory 确认关闭才恢复正文；切换、隐藏和 React 卸载不等于关闭。目录与历史入口始终导航到右侧，重复点击由原生资源地址去重。
+
+客户端 ReportViews 维护已准入文档和读者状态，Tabs 选择、表格排序/分页及表格横向滚动按稳定语句身份保留，包括移动、保存和关闭回到 Chat。报告外层滚动由各自 Host 容器负责。新会话、Workspace 或连接 generation 不继承旧状态。Tab 的 Build 地址支持已保存内容重开；临时阅读状态不持久写入报告。
+
 ## 统一 AnalysisSurface 与候选预览
 
-AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；工具调用候选、默认结果的会话节点和报告 tab
+AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；Chat 候选、保存结果和右侧报告 Tab
 是准确调用及保存版本的薄适配器。候选与已保存文档共用 Renderer；Native 前缀通过 isStreaming 解析，不完整资源显示占位。
 基版本经现有 RPC 核验后可读；生成期 patch 前缀只合并为候选；完整校验成功后才更新草稿或保存，失败保持旧成功版本。
 候选保留 Tabs、展开、已准入快照表格的排序/分页与本地图表浏览；不调用业务读取、源码读取、语义导航、提问、导出、刷新或保存。
@@ -23,10 +29,10 @@ TextContent 的 Markdown 链接在候选中仅显示标签，正式 reader 才�
 Surface 接收文档及已保存资源读取回调，领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。
 阅读状态属于所在视图，位置切换可以重挂。
 
-tool 与右侧 tab 的报告草稿使用同一 Renderer 和 Session/Turn 草稿状态。Native program 前缀在生成期间基于上一成功草稿合并为临时候选，已复用快照继续显示，新资源尚未读取时显示占位。候选与已校验修订分开；成功修订在同一视图更新，失败或取消保留最后成功内容。草稿标明尚未保存，正式版本成功保存后在所选位置原位切换到 reader。历史、导出和「就此提问」使用正式版本的固定 Build。
+Chat 与右侧 Tab 的报告草稿使用同一 Renderer 和 Session/Turn 草稿状态。Native program 前缀在生成期间基于上一成功草稿合并为临时候选，已复用快照继续显示，新资源尚未读取时显示占位。候选与已校验修订分开；成功修订在同一视图更新，失败或取消保留最后成功内容。标题旁的轻量折线动效表示生成，已准入草稿的端点缓慢呼吸；每次准入修订以短渐入呈现，参数 token 不反复触发动画。正式保存后指示器消失，在当前阅读位置原位切换到 reader。普通生成和草稿状态不显示文字横幅；状态名称保留给辅助技术，真实失败仍有明确错误提示。遵循 prefers-reduced-motion，折线静态显示且禁用内容过渡。历史、导出和「就此提问」使用正式版本的固定 Build。
 
-资源参数区分 omitted、incomplete、complete：省略时继承基版本；完整映射按 full-map replacement，仅复用同名且声明完全一致的准入资源；
-映射未闭合时不把旧资源配给候选范围，暂时隐藏相关数据与图片，文字和布局继续可读。此状态仅属于调用参数，不新增持久化 schema。
+`resourcePatch` 区分 omitted、incomplete、complete：完整调用省略时继承基版本；完整 patch 按 put/remove 增量合并，保留未提及资源，替换项仅复用声明完全一致的准入资源。
+参数仍在生成且 patch 尚未到达、未闭合或无效时，不把旧资源配给候选范围，暂时隐藏相关数据与图片，文字和布局继续可读。此状态仅属于调用参数，不新增持久化 schema。
 命名语句仍通过既有合并器合并；原始 program 前缀的未闭合语句身份补充 autoClose 丢失的状态，所属 Frame/Dataset 配置局部等待。
 等待只作用于正在生成的具名数据语句及尚未闭合的 inline 资源调用。候选适配层沿用已有引号/分隔符扫描，在 autoClose 前暂隐未闭合的 inline Frame、Dataset 或 Image 调用，避免把合法值前缀误当成最终 ref/view/display；不隐藏此前完整闭合的兄弟调用，也不等待外围容器闭合。完整调用的局部无效配置显示错误，Host 提交仍执行完整校验。
 显式 view/display 未形成或无效时不回退 auto，合法省略 view 的默认行为保留。组件局部错误不遮蔽有效兄弟，明确删除的语句不恢复。
@@ -116,7 +122,7 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 
 ## 报告目录、版本历史与旧格式
 
-报告目录按 Workspace 列出新格式记录，支持标题搜索，并按 surface 区分 tool 与 tab 结果。
+报告目录按 Workspace 列出新格式记录，支持标题搜索，统一显示所有保存结果，不按 surface 分类。
 报告地址为 `dsh-resource://marivo-report/<workspace>/<report>/current` 或 `.../build/<build>`；
 打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。

@@ -1,15 +1,11 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConnectionGeneration,
-  ConnectionGenerationState,
-} from '@deepseek-ai/dsh-client-connection/client'
+import type { ConnectionGenerationState } from '@deepseek-ai/dsh-client-connection/client'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
+import { PanelRightOpenIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import { analysisRecordId } from '../../presentation/contracts/analysis-document.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
-import type { PresentationDelivery } from '../../presentation/receipt.ts'
 import type { SemanticRef } from '../../semantic-reference/contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { localized } from '../i18n/host.tsx'
@@ -17,135 +13,22 @@ import {
   ANALYSIS_SURFACE_NODE_KEY,
   analysisDraftForNode,
   analysisSurfacesForNode,
-  parseDraftDelivery,
-  parseDraftDurableContent,
-  presentationDeliveryIdentity,
 } from '../presentation/delivery.ts'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
-import type { OpenSemanticRef } from '../presentation/source-facts.ts'
-import { Button } from '../ui/controls.tsx'
+import { Button, IconButton } from '../ui/controls.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
-import { type AnalysisCandidates, analysisCandidate, analysisToolDelivery } from './candidate.ts'
-import { CandidateView, readSavedAnalysis, savedCodeReader } from './candidate-view.tsx'
+import { analysisToolDelivery } from './candidate.ts'
+import { savedCodeReader } from './candidate-view.tsx'
 import type { AnalysisResourceContext } from './context.tsx'
-import { DraftReportView } from './draft-view.tsx'
-import type { AnalysisDraftViews } from './drafts.ts'
-import { SavedAnalysisSurface } from './lazy-surface.tsx'
-
-function SavedToolView({
-  delivery,
-  sessionId,
-  rpc,
-  onOpen,
-  onOpenSemanticRef,
-  generation,
-  allowed,
-  onAskPoint,
-  onAskDataset,
-  onAskResource,
-}: {
-  delivery: PresentationDelivery
-  sessionId: string
-  rpc: PresentationRpc
-  onOpen: (receipt: PresentationReceipt) => void
-  onOpenSemanticRef: OpenSemanticRef
-  generation: ConnectionGeneration | undefined
-  allowed: boolean
-  onAskResource: (
-    selection: Parameters<NonNullable<AnalysisResourceContext['askResource']>>[0],
-    signal: AbortSignal,
-  ) => Promise<undefined | (() => void)>
-  onAskDataset: (
-    selection: Parameters<NonNullable<AnalysisResourceContext['askDataset']>>[0],
-    signal: AbortSignal,
-  ) => Promise<undefined | (() => void)>
-  onAskPoint: (
-    selection: Parameters<NonNullable<AnalysisResourceContext['askPoint']>>[0],
-    signal: AbortSignal,
-  ) => Promise<undefined | (() => void)>
-}) {
-  const t = useCopy()
-  const lifetime = useRef<AbortController>()
-  useEffect(() => {
-    if (!allowed || !generation || delivery.dshSessionId !== sessionId) return
-    const controller = new AbortController()
-    lifetime.current = controller
-    return () => {
-      lifetime.current = undefined
-      controller.abort()
-    }
-  }, [delivery, sessionId, generation, allowed])
-  const [state, setState] = useState<{
-    document?: AnalysisDocument
-    error?: boolean
-    generation?: ConnectionGeneration
-  }>({})
-  useEffect(() => {
-    setState({})
-    if (!allowed || !generation || delivery.dshSessionId !== sessionId) return
-    const abort = new AbortController()
-    void (async () => {
-      const document = await readSavedAnalysis(rpc, sessionId, delivery.receipt, abort.signal)
-      if (!abort.signal.aborted) setState({ document, generation })
-    })().catch(() => {
-      if (!abort.signal.aborted) setState({ error: true, generation })
-    })
-    return () => abort.abort()
-  }, [delivery, sessionId, rpc, generation, allowed])
-  const readCode = useMemo(
-    () => savedCodeReader(rpc, { sessionId }, delivery.receipt),
-    [rpc, sessionId, delivery.receipt],
-  )
-  if (
-    !allowed ||
-    !generation ||
-    delivery.dshSessionId !== sessionId ||
-    (state.generation === generation && state.error)
-  )
-    return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
-  return (
-    <div className="mv-ui" data-analysis-tool-call="saved">
-      <UIStyleSheet />
-      <Button variant="outline" type="button" onClick={() => onOpen(delivery.receipt)}>
-        {t('marivo.presentation.ui-open-tab')}
-      </Button>
-      {state.generation === generation && state.document ? (
-        <SavedAnalysisSurface
-          document={state.document}
-          openSemanticRef={onOpenSemanticRef}
-          readCode={readCode}
-          askResource={(selection, requestSignal) => {
-            const signal = lifetime.current?.signal
-            return signal
-              ? onAskResource(selection, AbortSignal.any([signal, requestSignal]))
-              : Promise.reject(new Error('input-unavailable'))
-          }}
-          askDataset={(selection) => {
-            const signal = lifetime.current?.signal
-            return signal
-              ? onAskDataset(selection, signal)
-              : Promise.reject(new Error('input-unavailable'))
-          }}
-          askPoint={(selection) => {
-            const signal = lifetime.current?.signal
-            return signal
-              ? onAskPoint(selection, signal)
-              : Promise.reject(new Error('input-unavailable'))
-          }}
-        />
-      ) : (
-        <p role="status">{t('marivo.presentation.ui-loading')}</p>
-      )}
-    </div>
-  )
-}
+import { ReportView } from './report-view.tsx'
+import type { ReportViewState, ReportViews } from './report-views.ts'
 export function installAnalysisTool(
   ctx: Context,
   rpc: PresentationRpc,
   open: (sessionId: string, receipt: PresentationReceipt) => void,
   connection: ConnectionGenerationState,
-  candidates: AnalysisCandidates,
-  draftViews: AnalysisDraftViews,
+  views: ReportViews,
+  move: (view: ReportViewState) => void,
   openSemantic: (sessionId: string, workspaceId: string, ref: SemanticRef) => void,
   askDataset: (
     sessionId: string,
@@ -168,129 +51,163 @@ export function installAnalysisTool(
     selection: Parameters<NonNullable<AnalysisResourceContext['askResource']>>[0],
     signal: AbortSignal,
   ) => Promise<undefined | (() => void)>,
-): void {
+) {
   const subscribe = (fn: () => void) => connection.subscribe(fn)
   const getGeneration = () => connection.getSnapshot()
   const subscribeWorkspaces = (fn: () => void) => ctx.workspaces.list.subscribe(fn)
   const getWorkspaces = () => ctx.workspaces.list.getSnapshot()
-  const LocalizedView = localized(ctx, function AnalysisToolView(props: ToolCallViewProps) {
-    const t = useCopy()
-    const generation = useSyncExternalStore(subscribe, getGeneration)
-    const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
-    const observed = useSyncExternalStore(candidates.subscribe, () =>
-      'turn' in props.block
-        ? candidates.get(props.sessionId, props.block.turn, props.callId)
-        : undefined,
-    )
-    const delivery = useMemo(() => analysisToolDelivery(props.block), [props.block])
-    const draft =
-      'kind' in props.block && !props.block.isError
-        ? (parseDraftDelivery(props.block.meta) ?? parseDraftDurableContent(props.block.content))
-        : null
-    const turn =
-      'turn' in props.block ? props.block.turn : (draft?.turn ?? delivery?.turn ?? observed?.turn)
-    const storedWorking = useSyncExternalStore(draftViews.subscribe, () =>
-      turn === undefined ? undefined : draftViews.get(props.sessionId, turn),
-    )
-    const owners = workspaces.items.filter((w) => w.sessionIds.includes(props.sessionId))
-    const working =
-      storedWorking &&
-      storedWorking.generation === generation &&
-      owners.length === 1 &&
-      storedWorking.workspaceId === owners[0]?.workspaceId &&
-      storedWorking.workspacePath === owners[0]?.path
-        ? storedWorking
-        : undefined
-    const allowed =
-      workspaces.phase === 'ready' &&
-      workspaces.state !== 'error' &&
-      owners.length === 1 &&
-      owners[0]?.workspaceId === delivery?.receipt.workspaceId
-    if (draft?.dshSessionId === props.sessionId)
-      return <p role="status">{t('marivo.presentation.ui-draft-updated')}</p>
-    if (!delivery) {
-      const workspaceId =
-        owners.length === 1 && workspaces.phase === 'ready' && workspaces.state !== 'error'
-          ? owners[0]?.workspaceId
-          : undefined
-      if (!generation || !workspaceId)
-        return <p role="status">{t('marivo.presentation.ui-preparing')}</p>
-      const candidate =
-        observed?.generation === generation && observed.workspaceId === workspaceId
-          ? observed
-          : analysisCandidate(props.block, props.sessionId, workspaceId, generation)
-      if ((working?.candidate?.surface ?? candidate.surface) === 'tab')
-        return (
-          <p role="status">
-            {t(
-              candidate.phase === 'failed' || candidate.phase === 'cancelled'
-                ? 'marivo.presentation.ui-failed'
-                : 'marivo.presentation.ui-generating',
-            )}
-          </p>
+  const Body = localized(
+    ctx,
+    function ReportBody({
+      viewId,
+      sessionId,
+      inTab = false,
+    }: {
+      viewId: string
+      sessionId: string
+      inTab?: boolean
+    }) {
+      const t = useCopy()
+      const generation = useSyncExternalStore(subscribe, getGeneration)
+      const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
+      useSyncExternalStore(views.subscribe, views.getSnapshot)
+      const view = views.get(viewId)
+      const [error, setError] = useState(false)
+      const lifetime = useRef<AbortController | null>(null)
+      const allowed =
+        view &&
+        view.sessionId === sessionId &&
+        view.generation === generation &&
+        workspaces.phase === 'ready' &&
+        workspaces.state !== 'error' &&
+        workspaces.items.filter((w) => w.sessionIds.some((id) => id === sessionId)).length === 1 &&
+        workspaces.items.some(
+          (w) =>
+            w.workspaceId === view.workspaceId &&
+            w.path === view.workspacePath &&
+            w.sessionIds.some((id) => id === sessionId),
         )
-      if (candidate.stage === 'preview' || candidate.draftId) {
-        if (working?.delivery)
-          return <p role="status">{t('marivo.presentation.ui-draft-updated')}</p>
-        return (
-          <DraftReportView
-            view={
-              working ?? {
-                sessionId: props.sessionId,
-                turn: candidate.turn,
-                workspaceId,
-                generation,
-                workspacePath: owners[0]?.path,
-                candidate,
-              }
-            }
-            rpc={rpc}
-          />
-        )
+      const saved = view?.saved
+      useEffect(() => {
+        if (!allowed || !saved) return
+        const controller = new AbortController()
+        lifetime.current = controller
+        return () => {
+          controller.abort()
+          lifetime.current = null
+        }
+      }, [allowed, saved])
+      const actionSignal = () => {
+        if (!lifetime.current) throw new Error('input-unavailable')
+        return lifetime.current.signal
       }
-      return <CandidateView candidate={candidate} rpc={rpc} />
-    }
-    if (delivery.surface !== 'tool')
+      if (!allowed) return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
+      if (!inTab && view.tabId) return null
+      const receipt = view.saved?.receipt
+      const recordId = receipt ? analysisRecordId(receipt.reportId, receipt.buildId) : undefined
+      const actions: Omit<AnalysisResourceContext, 'readResource'> =
+        receipt && recordId
+          ? {
+              openSemanticRef: (ref) => openSemantic(sessionId, view.workspaceId, ref),
+              readCode: savedCodeReader(rpc, { sessionId }, receipt),
+              askPoint: (selection) =>
+                askPoint(sessionId, view.workspaceId, recordId, selection, actionSignal()),
+              askDataset: (selection) =>
+                askDataset(sessionId, view.workspaceId, recordId, selection, actionSignal()),
+              askResource: (selection, signal) =>
+                askResource(
+                  sessionId,
+                  view.workspaceId,
+                  recordId,
+                  selection,
+                  AbortSignal.any([signal, actionSignal()]),
+                ),
+            }
+          : {}
       return (
-        <span className="mv-ui">
-          <UIStyleSheet />
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => open(props.sessionId, delivery.receipt)}
-          >
-            {delivery.receipt.title}
-          </Button>
-        </span>
-      )
-    if (!allowed || !generation || delivery.dshSessionId !== props.sessionId)
-      return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
-    return (
-      <span className="mv-ui">
-        <UIStyleSheet />
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => open(props.sessionId, delivery.receipt)}
+        <section
+          className="mv-ui"
+          data-analysis-view={viewId}
+          data-analysis-placement={inTab ? 'sidebar' : 'chat'}
         >
-          {t('marivo.presentation.ui-open-tab')}
-        </Button>
-      </span>
-    )
+          <UIStyleSheet />
+          {!inTab && (
+            <div
+              className="mv-report-toolbar"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '1rem',
+                position: 'sticky',
+                top: 0,
+                zIndex: 1,
+                background: 'var(--background)',
+                padding: '.5rem',
+              }}
+            >
+              <span>
+                {view.candidate?.title ??
+                  view.document?.title ??
+                  receipt?.title ??
+                  t('marivo.presentation.ui-draft-tab')}
+              </span>
+              <IconButton
+                variant="ghost"
+                type="button"
+                label={t('marivo.presentation.ui-view-sidebar')}
+                onClick={() => {
+                  try {
+                    move(view)
+                    setError(false)
+                  } catch {
+                    setError(true)
+                  }
+                }}
+              >
+                <PanelRightOpenIcon aria-hidden="true" />
+              </IconButton>
+            </div>
+          )}
+          {error && <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>}
+          <ReportView view={view} views={views} rpc={rpc} actions={actions} />
+        </section>
+      )
+    },
+  )
+  const Tool = localized(ctx, function AnalysisToolView(props: ToolCallViewProps) {
+    const t = useCopy()
+    useSyncExternalStore(views.subscribe, views.getSnapshot)
+    const delivery = analysisToolDelivery(props.block)
+    const view =
+      views.forCall(props.sessionId, props.block.callId) ??
+      (delivery &&
+        views
+          .forTurn(props.sessionId, delivery.turn)
+          .find((view) => view.saved?.receipt.buildId === delivery.receipt.buildId))
+    if (view?.tabId) return null
+    return delivery ? (
+      <Button variant="outline" onClick={() => open(props.sessionId, delivery.receipt)}>
+        {t('marivo.presentation.ui-open-tab')}
+      </Button>
+    ) : 'kind' in props.block && props.block.isError ? (
+      <p role="alert">{t('marivo.presentation.ui-failed')}</p>
+    ) : null
   })
   ctx.slots.inject('tool.call.toolview', () =>
     ctx.slots.register(
       { name: 'tool.call.toolview', key: 'marivo_present', locale: 'marivo.presentation' },
-      (props: ToolCallViewProps) => <LocalizedView {...props} />,
+      (props: ToolCallViewProps) => <Tool {...props} />,
     ),
   )
-  const LocalizedSurfaceNode = localized(
+  const Surface = localized(
     ctx,
     function AnalysisSurfaceNode(
       props: Pick<ChatNodeViewProps<'marivo-analysis-surface'>, 'node' | 'sessionId'>,
     ) {
       const generation = useSyncExternalStore(subscribe, getGeneration)
       const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
+      useSyncExternalStore(views.subscribe, views.getSnapshot)
       const deliveries = useMemo(
         () => analysisSurfacesForNode(props.node, props.sessionId),
         [props.node, props.sessionId],
@@ -299,84 +216,47 @@ export function installAnalysisTool(
         () => analysisDraftForNode(props.node, props.sessionId),
         [props.node, props.sessionId],
       )
-      const working = useSyncExternalStore(draftViews.subscribe, () =>
-        draft ? draftViews.get(props.sessionId, draft.turn) : undefined,
-      )
-      const owners = workspaces.items.filter((workspace) =>
-        workspace.sessionIds.includes(props.sessionId),
-      )
+      const owner = workspaces.items.filter((w) => w.sessionIds.includes(props.sessionId))
+      const workspace =
+        owner.length === 1 && workspaces.phase === 'ready' && workspaces.state !== 'error'
+          ? owner[0]
+          : undefined
+      useEffect(() => {
+        if (!generation || !workspace) return
+        for (const delivery of deliveries) {
+          if (delivery.receipt.workspaceId !== workspace.workspaceId) continue
+          const callId = props.node.data.deliveries.find(
+            (item) => item.delivery.receipt.buildId === delivery.receipt.buildId,
+          )?.callId
+          views.accept(
+            delivery,
+            callId ?? delivery.draftId ?? delivery.receipt.buildId,
+            generation,
+            workspace.path,
+          )
+        }
+        if (draft && draft.workspaceId === workspace.workspaceId) {
+          const callId = props.node.data.drafts?.find(
+            (item) => item.delivery.draftId === draft.draftId,
+          )?.callId
+          views.accept(draft, callId ?? draft.draftId, generation, workspace.path)
+        }
+      }, [deliveries, draft, generation, workspace, props.node])
+      const active = views
+        .forTurn(props.sessionId, props.node.data.turn)
+        .filter(
+          (view) =>
+            view.generation === generation &&
+            view.workspaceId === workspace?.workspaceId &&
+            view.workspacePath === workspace?.path &&
+            (view.saved
+              ? deliveries.some((d) => d.receipt.buildId === view.saved?.receipt.buildId)
+              : props.node.data.boundary === null),
+        )
       return (
         <>
-          {draft &&
-            generation &&
-            workspaces.phase === 'ready' &&
-            workspaces.state !== 'error' &&
-            owners.length === 1 &&
-            owners[0]?.workspaceId === draft.workspaceId && (
-              <DraftReportView
-                key={`draft:${draft.turn}`}
-                view={
-                  working?.generation === generation &&
-                  working.workspaceId === draft.workspaceId &&
-                  working.workspacePath === owners[0]?.path
-                    ? { ...working, delivery: working.delivery ?? draft }
-                    : {
-                        sessionId: props.sessionId,
-                        turn: draft.turn,
-                        workspaceId: draft.workspaceId,
-                        generation,
-                        workspacePath: owners[0]?.path,
-                        delivery: draft,
-                      }
-                }
-                rpc={rpc}
-              />
-            )}
-          {deliveries.map((delivery) => (
-            <SavedToolView
-              key={presentationDeliveryIdentity(delivery)}
-              delivery={delivery}
-              sessionId={props.sessionId}
-              rpc={rpc}
-              onOpen={(receipt) => open(props.sessionId, receipt)}
-              onOpenSemanticRef={(ref) =>
-                openSemantic(props.sessionId, delivery.receipt.workspaceId, ref)
-              }
-              onAskResource={(selection, signal) =>
-                askResource(
-                  props.sessionId,
-                  delivery.receipt.workspaceId,
-                  analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId),
-                  selection,
-                  signal,
-                )
-              }
-              onAskDataset={(selection, signal) =>
-                askDataset(
-                  props.sessionId,
-                  delivery.receipt.workspaceId,
-                  analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId),
-                  selection,
-                  signal,
-                )
-              }
-              onAskPoint={(selection, signal) =>
-                askPoint(
-                  props.sessionId,
-                  delivery.receipt.workspaceId,
-                  analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId),
-                  selection,
-                  signal,
-                )
-              }
-              generation={generation}
-              allowed={
-                workspaces.phase === 'ready' &&
-                workspaces.state !== 'error' &&
-                owners.length === 1 &&
-                owners[0]?.workspaceId === delivery.receipt.workspaceId
-              }
-            />
+          {active.map((view) => (
+            <Body key={view.id} viewId={view.id} sessionId={props.sessionId} />
           ))}
         </>
       )
@@ -390,8 +270,9 @@ export function installAnalysisTool(
         locale: 'marivo.presentation',
       },
       (props: Pick<ChatNodeViewProps<'marivo-analysis-surface'>, 'node' | 'sessionId'>) => (
-        <LocalizedSurfaceNode {...props} />
+        <Surface {...props} />
       ),
     ),
   )
+  return { ReportBody: Body }
 }

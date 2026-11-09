@@ -13,6 +13,7 @@ import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisDataView } from './data-view.tsx'
 import { Card, Stack } from './layout.tsx'
+import { ReadingComponent, useReportReading } from './reading-state.tsx'
 
 const frameProps = z.object({
   ref: z.string().min(1),
@@ -83,14 +84,16 @@ function ResourceView({
       context.isStreaming &&
       context.pendingStatementId !== undefined)
   return (
-    <AnalysisDataView
-      kind={kind}
-      component={{ kind, statementId, view: props.view, display: props.display }}
-      resourceName={props.ref}
-      view={props.view}
-      display={props.display}
-      configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
-    />
+    <ReadingComponent.Provider value={statementId ?? `${kind}:${props.ref}`}>
+      <AnalysisDataView
+        kind={kind}
+        component={{ kind, statementId, view: props.view, display: props.display }}
+        resourceName={props.ref}
+        view={props.view}
+        display={props.display}
+        configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
+      />
+    </ReadingComponent.Provider>
   )
 }
 
@@ -190,8 +193,10 @@ const subset = openuiLibrary.extend({
       }),
       defineComponent({
         ...official.Tabs!,
-        component: function AnalysisTabs({ props, renderNode }) {
+        component: function AnalysisTabs({ props, renderNode, statementId }) {
           const t = useCopy()
+          const reading = useReportReading()
+          const key = statementId ?? 'tabs'
           const values = new Set<string>()
           const candidates: unknown[] = Array.isArray(props.items) ? props.items : []
           const items = candidates.filter((item): item is AnalysisTabItem => {
@@ -202,6 +207,8 @@ const subset = openuiLibrary.extend({
           return (
             <Tabs
               label={t('marivo.presentation.ui-report-sections')}
+              initialValue={reading?.tabs.get(key)}
+              onValueChange={(value) => reading?.tabs.set(key, value)}
               items={items.map((item) => ({
                 value: item.props.value,
                 trigger: item.props.trigger,

@@ -36,7 +36,7 @@
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
 统一分析 UI 通过 `marivo_present` 保存 `dsh.analysis-ui/v1` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
-用于隔离候选、tool view 和显式报告 tab。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
+统一呈现 Chat 候选、草稿与正式版本，以及读者移入右侧 Tab 的同一报告。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
 并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
 新格式支持离线 HTML 导出，不提供对象存储发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
 
@@ -98,7 +98,7 @@ recordId 编码这对身份。更新传 basedOnRecordId 和变化语句，官方
 
 已保存报告的数据刷新保持程序、组件组成与资源名，只逐组件替换资源并预览，最后保存一次。明确的页面编辑才能改变布局或正文；静态文字和 auto 视图的刷新边界见[展示 Skill](modules/presentation-skill.md)。
 
-默认工具结果使用会话级 Chat 节点，保持在 Harness 工作步骤折叠区之外；明确报告/dashboard 使用 tab。
+新报告固定在真实 Turn 的独立 Chat 节点，通过 groupTree:turn 保持在工作步骤折叠区之外；预览、修订和保存更新同一报告区。读者点击固定图标按钮（“在边栏查看”）移入右侧 Tab，Chat 隐藏报告及入口，关闭后恢复；目录与历史入口始终在右侧打开。
 Native 的公开 PartialArguments 提供真实 program 前缀；
 候选只展示安全内容、占位与已授权基版本快照，无业务读取或正式保存。报告候选绑定准确调用，成功后转为固定 Build，
 失败或取消保留旧版本。PTC 依实际 dispatch 和结果交付，历史回放不抢焦点，Headless 只确认保存事实。

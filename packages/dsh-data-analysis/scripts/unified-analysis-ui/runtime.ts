@@ -131,7 +131,6 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
     const callId = ToolCallId(`analysis-ui-present-${index}`)
     const args = {
       resourcePatch: { put: { result: resource } },
-      surface: index ? 'tab' : 'tool',
       title: `Real ${index ? 'DataFrame' : 'Frame'}`,
     }
     agent.session.append('tool/call', {

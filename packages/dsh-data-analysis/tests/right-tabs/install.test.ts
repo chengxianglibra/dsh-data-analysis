@@ -53,7 +53,7 @@ test('default client is a valid Cordis effect and registers native resources wit
     },
     sessions: { list: store(sessionList(undefined)), binding: () => undefined },
     workspaces: { list: store({ phase: 'ready', state: 'idle', items: [] }) },
-    sidebarRight: {},
+    sidebarRight: { openTabs: { getSnapshot: () => [], subscribe: () => () => {} } },
     sidebarRightTabs: {
       register(definition) {
         definitions.push(definition)
@@ -108,9 +108,8 @@ test('default client is a valid Cordis effect and registers native resources wit
     assert.equal(renderToStaticMarkup(createElement(entry.component)), '<span>' + en + '</span>')
     assert.equal(captured, zh, 'The original tab title remains unchanged in Harness state')
   }
-  assert.equal(definitions.length, 7)
-  assert.ok(definitions.some((d) => d.kind === 'marivo-analysis-candidate'))
-  assert.ok(definitions.some((d) => d.kind === 'marivo-analysis-draft'))
+  assert.equal(definitions.length, 6)
+  assert.ok(definitions.some((d) => d.kind === 'marivo-analysis-live'))
   assert.ok(definitions.some((d) => d.kind === 'marivo-reports'))
   const reports = definitions.find((d) => d.kind === 'marivo-report-resource')
   assert.equal(reports.canOpen('dsh-resource://file/workspace/file.txt'), false)
@@ -176,7 +175,7 @@ async function installed(t) {
     connection: { rpc, generation },
     sessions: { list: sessions, binding: (id) => bindings[id] },
     workspaces: { list: workspaces },
-    sidebarRight: { openResource: (address) => opens.push(address) },
+    sidebarRight: { openResource: (address) => opens.push(address), openTabs: store([]) },
     sidebarRightTabs: { register: () => () => {} },
     inputTriggers: { registerSource: () => () => {} },
   })
@@ -395,14 +394,14 @@ test('background publication invalidates Workspace pages without opening and dra
   f.sessions.set(sessionList('b'))
   assert.equal(f.opens.length, 0, 'selection does not queue a background open')
   emit('b', 'append', 'foreground')
-  assert.equal(f.opens.length, 1)
+  assert.equal(f.opens.length, 0)
   const beforeCold = updates.length
   const cold = f.bindings.cold.session
   cold.set({ ...cold.getSnapshot(), running: true })
   cold.set({ ...cold.getSnapshot(), running: false })
   assert.equal(updates.length, beforeCold + 1, 'cold run settlement checks Workspace publications')
   assert.equal(f.bindings.cold.session.getSnapshot().openState, 'cold')
-  assert.equal(f.opens.length, 1)
+  assert.equal(f.opens.length, 0)
   const catalog = f.controller.pages.get('catalog')
   f.controller.pages.delete('catalog')
   f.workspaces.set(f.workspaces.getSnapshot())
@@ -417,7 +416,7 @@ test('background publication invalidates Workspace pages without opening and dra
     assert.equal(binding.eventSource.listenerCount(), 0)
   f.generation.set({})
   f.workspaces.set(f.workspaces.getSnapshot())
-  assert.equal(f.opens.length, 1, 'reconnect only baselines existing windows')
+  assert.equal(f.opens.length, 0, 'reconnect only baselines existing windows')
   await f.host.dispose()
   for (const binding of Object.values(f.bindings)) {
     assert.equal(binding.eventSource.listenerCount(), 0)

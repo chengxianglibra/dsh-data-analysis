@@ -5,8 +5,10 @@ import type { SessionEventWindow } from '@deepseek-ai/dsh-api-session-controller
 import { LiveDeliveryObserver } from '../../src/client/right-tabs/live-delivery.ts'
 import {
   canOpenResource,
+  liveReportAddress,
   parseResource,
   type Resource,
+  reportViewFromAddress,
   resourceAddress,
 } from '../../src/client/right-tabs/navigation.ts'
 import { TabPage } from '../../src/client/right-tabs/page.ts'
@@ -370,4 +372,32 @@ test('history is navigation positioning on a current report, not a second resour
   assert.equal(page.reader.getSnapshot().historyOpen, false)
   assert.equal(resourceAddress(page.target as typeof target), resourceAddress(target))
   page.dispose()
+})
+
+test('moved report addresses persist view identity without changing ordinary report links', () => {
+  const viewId = JSON.stringify(['session', 1, 'call'])
+  const target = {
+    kind: 'report' as const,
+    workspaceId: 'workspace',
+    reportId: 'report',
+    buildId: 'build',
+    reportViewId: viewId,
+  }
+  const address = resourceAddress(target)
+  assert.deepEqual(parseResource(address), target)
+  assert.deepEqual(reportViewFromAddress(address), { workspaceId: 'workspace', viewId })
+  assert.equal(
+    reportViewFromAddress(resourceAddress({ ...target, reportViewId: undefined })),
+    undefined,
+  )
+  assert.deepEqual(reportViewFromAddress(liveReportAddress('workspace', viewId)), {
+    workspaceId: 'workspace',
+    viewId,
+  })
+  for (const invalid of [
+    address + '&extra=1',
+    address + '#fragment',
+    'dsh-resource://marivo-analysis-live/workspace/%ZZ',
+  ])
+    assert.equal(reportViewFromAddress(invalid), undefined)
 })

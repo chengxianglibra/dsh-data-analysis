@@ -110,10 +110,10 @@ test('draft identifiers without an explicit stage never project a save action', 
   )
   assert.equal(candidate.stage, undefined)
 })
-test('Native prefixes are reread in place, and late or incomplete surface metadata never enables preview', () => {
+test('Native prefixes stream in Chat without model-controlled placement', () => {
   const args = new PartialArguments()
   args.append('{"surface":"to')
-  assert.equal(analysisCandidate(call(args), 's', 'w', generation).surface, undefined)
+  assert.equal(analysisCandidate(call(args), 's', 'w', generation).surface, 'tool')
   args.append('ol","program":"root = TextContent(\\"Native')
   const prefix = analysisCandidate(call(args), 's', 'w', generation)
   assert.equal(prefix.preview, true)
@@ -124,7 +124,7 @@ test('Native prefixes are reread in place, and late or incomplete surface metada
   const late = PartialArguments.fromText(
     '{"program":"root = TextContent(\\"Late\\");","surface":"tab"}',
   )
-  assert.equal(analysisCandidate(call(late), 's', 'w', generation).preview, false)
+  assert.equal(analysisCandidate(call(late), 's', 'w', generation).preview, true)
   const base = new PartialArguments()
   base.append('{"surface":"tool","basedOnRecordId":"marivo-ui:a:')
   assert.equal(analysisCandidate(call(base), 's', 'w', generation).basedOnRecordId, undefined)

@@ -12,12 +12,12 @@ export class LiveDeliveryObserver {
   #calls = new Map<number, Map<string, string>>()
   #seen = new Set<string>()
   readonly #onDelivery: (delivery: PresentationDelivery, callId: string) => void
-  readonly #onDraft?: (draft: DraftDelivery) => void
+  readonly #onDraft?: (draft: DraftDelivery, callId: string) => void
   readonly #sessionId: string
   constructor(
     sessionId: string,
     onDelivery: (delivery: PresentationDelivery, callId: string) => void,
-    onDraft?: (draft: DraftDelivery) => void,
+    onDraft?: (draft: DraftDelivery, callId: string) => void,
   ) {
     this.#sessionId = sessionId
     this.#onDelivery = onDelivery
@@ -60,7 +60,12 @@ export class LiveDeliveryObserver {
           const draft = draftDeliveryFromEvent(event, calls, ownerTurn)?.delivery
           if (draft?.dshSessionId === this.#sessionId && !this.#seen.has(draft.draftRevision)) {
             this.#seen.add(draft.draftRevision)
-            this.#onDraft(draft)
+            this.#onDraft(
+              draft,
+              event.type === 'tool/result'
+                ? event.data.message.source.callId
+                : event.data.subCallId,
+            )
           }
         }
         if (!item || item.delivery.dshSessionId !== this.#sessionId) continue

@@ -4,7 +4,7 @@
 
 ## 身份与生命周期
 
-Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview 返回 `draftId/draftRevision`；save 返回 `recordId`。stage 与 surface 独立，两种位置均可 preview；继续和保存时省略 surface 会继承最近成功修订的位置。使用这些字段继续工作，`deliveryJson` 留给 Host 交付。
+Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview 返回 `draftId/draftRevision`；save 返回 `recordId`。位置由读者管理：新报告在 Chat 展示，以图表动效表达生成和更新，点击“在边栏查看”图标后继续更新同一 Tab，Chat 隐藏正文、标题和链接，关闭后恢复；不传 surface。使用这些字段继续工作，`deliveryJson` 留给 Host 交付。
 
 草稿只属于当前 Harness Session/Turn，每个 Session 同时一个；preview 和 save 串行调用。Turn 结束或 Host 重启后草稿失效，浏览器里的旧预览不证明仍可保存。结束 Turn 前完成保存，或明确说明未保存和阻塞原因；不要承诺下轮仍能接续该草稿。
 
@@ -16,7 +16,7 @@ Native 和 Code Mode 的 `marivo_present` 公开结果均有 `stage`。preview �
 - 需要该报告当前正式版本：`marivo_ui_read({recordId, current:true})`。
 - 缺少当前 Turn 草稿或最新 revision：`marivo_ui_read({draft:true})`。
 
-结果的 `definitionJson` 包含 program、全部资源声明及必要 schema/coverage，不返回业务行或组件签名；组件签名按需读取[生成的组件签名](analysis-catalog.md)。草稿结果提供 `draftId/draftRevision`、surface 和可用的 `basedOnRecordId`，不把草稿当作已保存的 record。
+结果的 `definitionJson` 包含 program、全部资源声明及必要 schema/coverage，不返回业务行或组件签名；组件签名按需读取[生成的组件签名](analysis-catalog.md)。草稿结果提供 `draftId/draftRevision` 和可用的 `basedOnRecordId`，不把草稿当作已保存的 record。
 
 需要核对来源脚本或用户已授权更新数据时，加 `includeCode:true`。资源返回绑定的 `codeRef`，顶层 `sources` 按执行记录去重，包含 `status` 和可用的 `code.text`、`code.datasources`、`code.resultVariables`；`unavailable` 明确表示记录不可读，不以新查询补齐。缺少 codeRef 的资源不出现在 sources 中。读取不会执行脚本。更新步骤见[只更新报告数据](data-update.md)。
 

@@ -48,9 +48,7 @@ import { inspectStoredSession } from '../harness-session.ts'
 
 export type PresentationMode = 'native' | 'both' | 'ptc'
 /** One scripted `marivo_present` creation input; updates add the previous recordId. */
-export type PresentationRequest = Omit<AnalysisPresentInput, 'surface' | 'basedOnRecordId'> & {
-  surface?: AnalysisPresentInput['surface']
-}
+export type PresentationRequest = Omit<AnalysisPresentInput, 'surface' | 'basedOnRecordId'>
 export interface PresentationJourneyOptions {
   updateExistingReport?: boolean
 }

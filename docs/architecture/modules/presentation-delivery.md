@@ -2,8 +2,7 @@
 
 ## 责任与入口
 
-`marivo_present` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），默认在会话级 Chat 节点呈现，
-显式报告/dashboard 使用右侧 tab。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
+`marivo_present` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），新生成的报告固定在独立 Chat 节点呈现，读者点击“在边栏查看”图标后在右侧 Tab 继续阅读。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
 Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 
 实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
@@ -12,7 +11,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 ## 统一分析 UI 写入与增量契约
 
-`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。独立新结果直接交付时，`stage` 默认 `save`，并使用 `surface`、`basedOnRecordId`、`resourcePatch`、`labels`、`title`、`program` 和 `locale` 构造正式版本。携带 `draftId` 或 `draftRevision` 必须显式提供 `stage`，省略返回 `analysis-draft-stage-required`，不套用直接保存默认值。
+`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。独立新结果直接交付时，`stage` 默认 `save`，并使用 `basedOnRecordId`、`resourcePatch`、`labels`、`title`、`program` 和 `locale` 构造正式版本。携带 `draftId` 或 `draftRevision` 必须显式提供 `stage`，省略返回 `analysis-draft-stage-required`，不套用直接保存默认值。
 
 报告工作流要求显式选择 stage：数据准备前尽早 preview，固定结果就绪后及时更新同一草稿，不等全部计算完成，最终 save 一次；相同固定结果可以供多个视图复用。计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，省略 resourcePatch。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
 
@@ -20,9 +19,9 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 - 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
-- `stage` 与 `surface` 独立：preview 与 save 均支持 `tool` 和 `tab`。新建时 `surface` 默认 `tool`；继续或保存草稿时省略则继承上次成功修订的位置，显式提供可切换位置。tool 在会话级 Chat 节点呈现，保持在 Harness 工作步骤折叠区之外；`tab` 用于明确要求的报告/dashboard。
+- Tool 不公开 `surface` 输入；新生成报告始终从 Chat 开始，位置由客户端读者控制。v2 回执与历史仍保留必填 surface 供旧记录解析，新调用固定写入 `tool`，不表示原生 tool view，也不记录读者的移动操作。
 - 成功回执表示对应的草稿更新或正式保存完成，不证明浏览器已打开或渲染；调用不等待浏览器检查或用户确认。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
-  字段顺序仅是建议，surface 晚到时在调用成功后打开，不回补本次生成期预览。
+  Native 候选无需等待位置参数；身份和 stage 应先于 program 到达。
 
 资源声明如下：
 
@@ -66,9 +65,11 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 草稿只返回 draftId/draftRevision 和可用的 basedOnRecordId，不把临时 document ID 声称为已发布 record。
 不返回 rows、不查询实时数据、不执行 Python；只在编辑上下文缺失或冲突时按需使用，不默认回读。
 
-候选以 Session/Turn/call、Workspace 和连接 generation 归属。tab 使用临时页，成功后原位改为准确 Build 地址；
-tool 结果在会话节点中读取准确 Build，工具调用内只保留简短入口。关闭的候选不被片段或成功事件重新打开；
-历史加载不触发自动导航。取消或失败时基版本保持可读，新建标明未保存。
+报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。独立 Chat 节点使用 Host 提供的真实 Turn location 与 `groupTree: 'turn'`，稳定锚定首次候选或交付，不在保存或 Turn 结束时重新定位。它属于原 Turn，但位于工作步骤折叠区之外；原生 tool view 只保留错误说明或已保存报告入口，不重复展示草稿已更新等状态文案。
+
+首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。固定工具栏使用侧栏图标按钮，悬停或键盘聚焦显示“在边栏查看”。点击后打开一个原生 Tab，Chat 隐藏报告正文、标题和入口链接，相关 tool view 的展示状态及链接也隐藏。报告继续生成时不自动跳转。原生 openTabs inventory 确认 Tab 关闭才恢复 Chat；切换 Tab、折叠侧栏或组件卸载不改变位置。移动过的草稿保存后在同一 Tab occurrence 内切换到准确 Build 地址。
+
+位置由客户端 ReportViews 与原生 Tab 地址持有，不写入报告内容、草稿、receipt 或 Workspace 文件。原生 navigation.params 不跨刷新保留，因此移动标识放在 live 地址或准确 Build 地址的 view 查询参数中。刷新后通过 openTabs inventory 恢复移动关系；已保存报告按原生 Tab 地址读取，草稿不承诺跨 Host 重启恢复。报告目录、历史和工具结果入口始终打开右侧 Tab，不借此移动已有 Chat 报告。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
 
 已保存版本可在报告 tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[报告 HTML 导出](report-publishing.md)。
 
@@ -76,11 +77,11 @@ tool 结果在会话节点中读取准确 Build，工具调用内只保留简短
 
 - `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage`、`draftId` 与 `draftRevision`。
 - 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序，resourcePatch 只更新指定资源。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
-- Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；tool 的会话节点与右侧 tab 共用同一草稿状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
-- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，所选 surface 的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
+- Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；Chat 节点与右侧 Tab 共用同一报告状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
+- `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，当前阅读位置的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
 - 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
-- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位。完整 resourcePatch 保留未变资源，仅移除删除项及声明不同的替换项；未闭合或无效 patch 不继承旧资源；参数流未结束且尚未收到 resourcePatch 时，也不能断定资源未变。需要在 program 流式生成期间保留未变资源，可先发送完整 resourcePatch（纯文本修改可用空对象），避免旧数据配上新范围。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，surface、stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
+- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位。完整 resourcePatch 保留未变资源，仅移除删除项及声明不同的替换项；未闭合或无效 patch 不继承旧资源；参数流未结束且尚未收到 resourcePatch 时，也不能断定资源未变。需要在 program 流式生成期间保留未变资源，可先发送完整 resourcePatch（纯文本修改可用空对象），避免旧数据配上新范围。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
 - 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId` 和相对新基版本的累计 program 与 resourcePatch 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
 - 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。省略 program/title/locale/labels，只传相对新基版本的资源增量；无法判断资源或业务冲突时明确阻塞。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
@@ -153,8 +154,8 @@ current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 
 
 默认 client 从 Workspace 会话头部的「报告」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
 只显示「报告标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
-同时间以 Report ID 稳定排序。默认只列 surface 为 tab 的报告，另选“对话结果”查看 tool 内容；
-发布历史中的 `source.surface` 只用于分类，不进入文档内容。列表只包含 `dsh.analysis-ui/v1` 记录，旧格式报告被隐藏。
+同时间以 Report ID 稳定排序。统一列出所有已保存报告，不按生成时的 surface 分类或过滤；
+发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表只包含 `dsh.analysis-ui/v1` 记录，旧格式报告被隐藏。
 
 来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
 历史版本从报告正文的「历史版本」入口打开，版本切换读取精确 receipt，历史只读；返回当前版本显式重新 resolve。

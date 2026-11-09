@@ -139,7 +139,7 @@ function assertOutsideHostProcessGroup(
 ) {
   const grouped = assembler.grouped('chat')
   assert.ok(grouped, 'the installed Harness registered its actual process grouping')
-  assert.equal(node.location.kind, 'session')
+  assert.equal(node.location.kind, 'turn')
   assert.equal(node.visibility, 'visible')
   assert.ok(
     grouped.entries.some(
@@ -196,10 +196,50 @@ test('tool draft revisions update one Host chat node and save replaces it in pla
   append(assembler, native(8, saved, 'save'))
   const final = surfaces(assembler)[0]
   assert.equal(final.key, first.key)
+  assert.equal(final.anchorSeq, first.anchorSeq)
+  assert.equal(final.groupTree, 'turn')
   assert.equal(analysisDraftForNode(final, 'session-a'), undefined)
   assert.deepEqual(buildIds(final), ['only-build'])
   append(assembler, end(3, 9))
   assert.deepEqual(buildIds(surfaces(assembler)[0]), ['only-build'])
+})
+
+test('Native argument prefixes establish the real Turn report node before tool execution', async (t) => {
+  const host = await createHostChatFixture()
+  t.after(() => host.dispose())
+  const assembler = host.createAssembler()
+  for (const event of [
+    start(3),
+    step(3),
+    {
+      seq: 3,
+      type: 'assistant/live-chunk',
+      data: {
+        turn: 3,
+        step: 1,
+        chunk: {
+          type: 'tool-call-delta',
+          index: 0,
+          id: 'present-call',
+          name: 'marivo_present',
+          argumentsDelta: '{"stage":"preview","program":"root=TextContent(\\"Live',
+        },
+      },
+    },
+  ])
+    append(assembler, event)
+  const prefix = surfaces(assembler)[0]
+  assert.ok(prefix)
+  assert.equal(prefix.anchorSeq, 3)
+  assert.equal(prefix.groupTree, 'turn')
+  assertOutsideHostProcessGroup(assembler, prefix)
+  assert.deepEqual(buildIds(prefix), [])
+  append(assembler, call(4, 'marivo_present', 'present-call'))
+  append(assembler, native(5, delivery('saved', { surface: 'tool' })))
+  append(assembler, end(3, 6))
+  assert.equal(surfaces(assembler)[0].key, prefix.key)
+  assert.equal(surfaces(assembler)[0].anchorSeq, prefix.anchorSeq)
+  assert.deepEqual(buildIds(surfaces(assembler)[0]), ['saved'])
 })
 
 test('Native and PTC saved tool surfaces stay outside actual Host process groups through close and replay', async (t) => {
@@ -225,18 +265,18 @@ test('Native and PTC saved tool surfaces stay outside actual Host process groups
     for (const event of inputs) {
       append(assembler, event)
       if (event.seq === 4) {
-        assert.equal(surfaces(assembler)[0].anchorSeq, 4)
+        assert.equal(surfaces(assembler)[0].anchorSeq, 3)
         assert.deepEqual(buildIds(surfaces(assembler)[0]), ['native-build'])
       }
       if (event.seq === 6) {
-        assert.equal(surfaces(assembler)[0].anchorSeq, 6)
+        assert.equal(surfaces(assembler)[0].anchorSeq, 3)
         assert.deepEqual(buildIds(surfaces(assembler)[0]), ['native-build', 'ptc-build'])
       }
     }
     const nodes = surfaces(assembler)
     assert.equal(nodes.length, 1)
     const node = nodes[0]
-    assert.equal(node.anchorSeq, 12)
+    assert.equal(node.anchorSeq, 3)
     assertOutsideHostProcessGroup(assembler, node)
     assert.deepEqual(buildIds(node), ['native-build', 'ptc-build'])
     assert.deepEqual(buildIds(node, 'session-b'), ['foreign-build'])
@@ -253,7 +293,10 @@ test('Native and PTC saved tool surfaces stay outside actual Host process groups
       (entry: { kind: string; key: string }) => entry.kind === 'node' && entry.key === node.key,
     )
     assert.ok(final >= 0, 'the final answer is a visible Host response')
-    assert.ok(surface > final, 'the saved UI follows the final answer outside the folded Turn')
+    assert.ok(
+      surface >= 0 && surface < final,
+      'the report retains its first position inside the Turn',
+    )
 
     for (const replay of [
       () =>

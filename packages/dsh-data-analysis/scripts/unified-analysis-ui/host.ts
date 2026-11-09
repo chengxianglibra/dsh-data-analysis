@@ -118,7 +118,6 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
       frame: { title: 'P2 Frame 快照', resourcePatch: { put: { frame: resources.frame } } },
       composition: {
         title: 'P2 统一分析报告',
-        surface: 'tab',
         resourcePatch: { put: resources },
         program:
           'root = Stack([TextContent("## 已保存的精确结果\\n同一静态快照，切换位置无需重新分析。"), Card([AnalysisFrameView("frame", {chart:"table"})]), Tabs([TabItem("data","数据",[DatasetView("data")]),TabItem("details","指标与图片",[DatasetView("metric",{chart:"metric",encoding:{value:"amount"}}),Image("已保存图片","image")])])]);',
@@ -254,7 +253,6 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
         restoreMode = agent.ctx.tools.presentAs(endpoint === 'ptc' ? 'ptc' : 'native')
         if (endpoint === 'stream-tool' || endpoint === 'stream-tab')
           request = {
-            surface: endpoint === 'stream-tab' ? 'tab' : 'tool',
             resourcePatch: inputs.composition.resourcePatch,
             title: 'P3 streaming ' + endpoint,
             program:
@@ -268,7 +266,6 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
           if (latest?.type !== 'tool/result') throw new Error('missing-base')
           const meta = latest.data.meta as { receipt: { reportId: string; buildId: string } }
           request = {
-            surface: 'tab',
             basedOnRecordId: `marivo-ui:${meta.receipt.reportId}:${meta.receipt.buildId}`,
             program:
               endpoint === 'patch'
@@ -279,7 +276,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
           toolName = 'run_code'
           request = {
             description: 'P3 actual PTC delivery',
-            code: `await tools.marivo_present(${JSON.stringify({ surface: 'tab', resourcePatch: inputs.dataset.resourcePatch, title: 'P3 PTC' })});`,
+            code: `await tools.marivo_present(${JSON.stringify({ resourcePatch: inputs.dataset.resourcePatch, title: 'P3 PTC' })});`,
           }
         } else if (endpoint in inputs) request = inputs[endpoint as keyof typeof inputs]
         else throw new Error('unknown-p2-case')

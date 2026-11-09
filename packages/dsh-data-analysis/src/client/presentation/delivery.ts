@@ -19,10 +19,15 @@ export const ANALYSIS_SURFACE_NODE_KEY = 'marivo-analysis-surface'
 export interface PresentationTurnDelivery {
   readonly seq: number
   readonly delivery: PresentationDelivery
+  readonly callId?: string
 }
 export interface PresentationTurnData {
   readonly deliveries: readonly PresentationTurnDelivery[]
-  readonly drafts?: readonly { readonly seq: number; readonly delivery: DraftDelivery }[]
+  readonly drafts?: readonly {
+    readonly seq: number
+    readonly delivery: DraftDelivery
+    readonly callId?: string
+  }[]
 }
 export interface AnalysisSurfaceData extends PresentationTurnData {
   readonly turn: number
@@ -31,6 +36,7 @@ export interface AnalysisSurfaceData extends PresentationTurnData {
 interface PresentationTurnState extends PresentationTurnData {
   readonly turn: number
   readonly calls: ReadonlyMap<string, string>
+  readonly firstSeq?: number
 }
 
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
@@ -120,7 +126,7 @@ function toolDeliveryFromEvent<T extends { turn: number }>(
   turn: number,
   parseMeta: (meta: unknown) => T | null,
   parseContent: (content: unknown) => T | null,
-): { readonly seq: number; readonly delivery: T } | null {
+): { readonly seq: number; readonly delivery: T; readonly callId: string } | null {
   const event = record(value)
   if (!event || !Number.isSafeInteger(event.seq) || event.seq < 0) return null
   const data = record(event.data)
@@ -155,7 +161,11 @@ function toolDeliveryFromEvent<T extends { turn: number }>(
     delivery = parseContent(data.content)
   } else return null
   if (!delivery || delivery.turn !== turn) return null
-  return Object.freeze({ seq: event.seq, delivery })
+  return Object.freeze({
+    seq: event.seq,
+    delivery,
+    callId: event.type === 'tool/result' ? data.message.source.callId : data.subCallId,
+  })
 }
 
 export const marivoPresentationDeliveryDefinition = {
@@ -206,7 +216,12 @@ export const marivoPresentationDeliveryDefinition = {
           ...(state.drafts ?? []).filter(
             (item) => item.delivery.draftId !== draft.delivery.draftId,
           ),
-          draft,
+          {
+            ...draft,
+            callId:
+              state.drafts?.find((item) => item.delivery.draftId === draft.delivery.draftId)
+                ?.callId ?? draft.callId,
+          },
         ]),
       }
     }
@@ -218,7 +233,18 @@ export const marivoPresentationDeliveryDefinition = {
       )
     )
       return state
-    return { ...state, deliveries: Object.freeze([...state.deliveries, item]) }
+    return {
+      ...state,
+      deliveries: Object.freeze([
+        ...state.deliveries,
+        {
+          ...item,
+          callId:
+            state.drafts?.find((draft) => draft.delivery.draftId === item.delivery.draftId)
+              ?.callId ?? item.callId,
+        },
+      ]),
+    }
   },
   buildLocationData(context: { state?: PresentationTurnState }, scope: string) {
     if (scope !== 'turn' || !context.state) return null
@@ -243,7 +269,7 @@ export const marivoPresentationDeliveryDefinition = {
       return null
     const end = location.turn.end
     // Keep the same node, but place a completed Turn's reports after its final
-    // response. Do not compete with the Host's exclusive ProducedFiles tail.
+    // response. This metadata node does not render report content.
     const completed =
       end?.type === 'turn/end' &&
       end.data.turn === state.turn &&
@@ -270,18 +296,28 @@ function isCurrentAnalysisSurface(value: unknown): value is ChatConversationView
     node.target === 'chat' &&
     Number.isSafeInteger(node.anchorSeq) &&
     node.anchorSeq >= 0 &&
-    record(node.location)?.kind === 'session' &&
+    record(node.location)?.kind === 'turn' &&
     (node.visibility === 'visible' || node.visibility === 'hidden')
   )
 }
 
-/** Saved tool surfaces live outside the Host's foldable Turn process group. */
+/** A real Turn-owned report seat, outside the Host's process disclosure. */
 export const marivoAnalysisSurfaceDefinition = {
   kind: ANALYSIS_SURFACE_NODE_KEY,
   target: 'chat',
   // A loaded window can start midway through a Turn. The first recognized
   // event establishes its Turn only; a receipt still requires its own call.
   match(value: unknown) {
+    const event = record(value),
+      data = record(event?.data),
+      chunk = record(data?.chunk)
+    if (
+      event?.type === 'assistant/live-chunk' &&
+      chunk?.type === 'tool-call-delta' &&
+      chunk.name === MARIVO_PRESENT_TOOL_NAME &&
+      Number.isSafeInteger(data?.turn)
+    )
+      return { id: String(data!.turn), role: 'start' as const }
     const match = marivoPresentationDeliveryDefinition.match(value)
     return match ? { ...match, role: 'start' as const } : null
   },
@@ -304,9 +340,26 @@ export const marivoAnalysisSurfaceDefinition = {
       typeof data?.name === 'string'
     )
       calls.set(data.callId, data.name)
-    return { turn, calls, deliveries: [] }
+    const isReport =
+      data?.name === MARIVO_PRESENT_TOOL_NAME ||
+      record(data?.chunk)?.name === MARIVO_PRESENT_TOOL_NAME
+    return { turn, calls, deliveries: [], ...(isReport ? { firstSeq: event!.seq } : {}) }
   },
-  update: marivoPresentationDeliveryDefinition.update,
+  update(
+    context: { state: PresentationTurnState },
+    match: Parameters<typeof marivoPresentationDeliveryDefinition.update>[1],
+  ) {
+    const updated = marivoPresentationDeliveryDefinition.update(context, match)
+    const event = match.event
+    const isReport =
+      (event.type === 'tool/call' && event.data.name === MARIVO_PRESENT_TOOL_NAME) ||
+      (event.type === 'assistant/live-chunk' &&
+        event.data.chunk.type === 'tool-call-delta' &&
+        event.data.chunk.name === MARIVO_PRESENT_TOOL_NAME)
+    return updated.firstSeq === undefined && isReport
+      ? { ...updated, firstSeq: event.seq }
+      : updated
+  },
   buildViewNode(context: ConversationNodeContext<PresentationTurnState>) {
     const { state, start } = context
     const existing = context.current.get('chat')
@@ -344,19 +397,21 @@ export const marivoAnalysisSurfaceDefinition = {
             item.delivery.surface === 'tool' &&
             !state.deliveries.some((saved) => saved.delivery.draftId === item.delivery.draftId),
         )
-    if (!deliveries.length && !drafts.length) {
+    if (!deliveries.length && !drafts.length && (end || state.firstSeq === undefined)) {
       return (end || state.drafts?.length) && current
         ? { ...current, visibility: 'hidden' as const }
         : current
     }
-    const latest = [...deliveries, ...drafts].reduce((seq, item) => Math.max(seq, item.seq), 0)
+    const first = state.firstSeq ?? [...deliveries, ...drafts][0]?.seq
+    if (first === undefined) return current
     return {
       key: context.key,
       id: context.id,
       kind: ANALYSIS_SURFACE_NODE_KEY,
       target: 'chat',
-      anchorSeq: end && end.seq >= latest ? end.seq : latest,
-      location: { kind: 'session' },
+      anchorSeq: current?.anchorSeq ?? first,
+      location: { kind: 'turn', turn: location.turn },
+      groupTree: 'turn',
       visibility: 'visible',
       data: Object.freeze({
         turn: state.turn,
@@ -390,7 +445,7 @@ export function analysisSurfacesForNode(
   if (
     node.kind !== ANALYSIS_SURFACE_NODE_KEY ||
     node.target !== 'chat' ||
-    node.location.kind !== 'session'
+    node.location.kind !== 'turn'
   )
     return []
   const data = record(node.data)
@@ -399,6 +454,7 @@ export function analysisSurfacesForNode(
     !Number.isSafeInteger(data.turn) ||
     data.turn < 0 ||
     node.id !== String(data.turn) ||
+    node.location.turn.turn !== data.turn ||
     !Array.isArray(data.deliveries) ||
     (data.boundary !== null && (!Number.isSafeInteger(data.boundary) || data.boundary < 0))
   )

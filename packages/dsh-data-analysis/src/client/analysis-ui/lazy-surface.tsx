@@ -1,11 +1,11 @@
 import { lazy, Suspense } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
-import { useCopy } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { HostOverlayProvider } from '../ui/host-overlays.tsx'
 import { Skeleton } from '../ui/primitives/skeleton.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
 import type { AnalysisResourceContext } from './context.tsx'
+import { ReportMotion } from './report-motion.tsx'
 import type { AnalysisRendererProps } from './surface.tsx'
 
 // OpenUI initializes browser-only dependencies. Keep it out of non-rendering Host slot setup.
@@ -16,19 +16,21 @@ const CandidateSurface = lazy(() =>
   import('./surface.tsx').then((module) => ({ default: module.AnalysisRenderer })),
 )
 export function CandidateAnalysisSurface(props: AnalysisRendererProps) {
-  const t = useCopy()
+  return <ReportAnalysisSurface {...props} candidate />
+}
+export function ReportAnalysisSurface(props: AnalysisRendererProps) {
   return (
     <Suspense
       fallback={
-        <div className="mv-ui" role="status">
+        <div className="mv-ui">
           <UIStyleSheet />
-          <p>{t('marivo.presentation.ui-preparing')}</p>
+          <ReportMotion phase={props.progress ?? 'loading'} />
           <Skeleton className="h-24 w-full" />
         </div>
       }
     >
       <HostOverlayProvider>
-        <CandidateSurface {...props} candidate />
+        <CandidateSurface {...props} />
       </HostOverlayProvider>
     </Suspense>
   )
@@ -48,13 +50,12 @@ export function SavedAnalysisSurface({
   askDataset?: AnalysisResourceContext['askDataset']
   askResource?: AnalysisResourceContext['askResource']
 }) {
-  const t = useCopy()
   return (
     <Suspense
       fallback={
-        <div className="mv-ui" role="status">
+        <div className="mv-ui">
           <UIStyleSheet />
-          <p>{t('marivo.presentation.ui-loading')}</p>
+          <ReportMotion phase="loading" />
           <Skeleton className="h-24 w-full" />
         </div>
       }

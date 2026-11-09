@@ -27,7 +27,7 @@ const receipt: PresentationReceipt = {
 test('model-facing receipt text keeps identity and omits Workspace paths and digests', () => {
   const parsed = parsePresentationReceipt(receipt)
   for (const [surface, label] of [
-    ['tool', 'tool view'],
+    ['tool', 'chat'],
     ['tab', 'tab'],
   ] as const) {
     const text = presentationReceiptText(parsed, surface)

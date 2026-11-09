@@ -21,12 +21,12 @@ description: 创建或编辑分析报告、看板及可视化结果。尽早展�
 
 ## 新建报告：边分析边更新
 
-1. 明确是报告任务及已知问题、范围后，在准备数据和完整页面规划前调用 `marivo_present(surface:"tab", stage:"preview")` 展示草稿。初始 `program` 可以只有标题、范围和待回答的问题，省略 `resourcePatch`；不引用未就绪资源，不预写未验证结论。不等完整分析。
+1. 明确是报告任务及已知问题、范围后，在准备数据和完整页面规划前调用 `marivo_present(stage:"preview")` 展示草稿。初始 `program` 可以只有标题、范围和待回答的问题，省略 `resourcePatch`；不引用未就绪资源，不预写未验证结论。不等完整分析。
 2. 按实际依赖与资源预算安排新计算，优先复用已有准确结果。任意 Python 和草稿写入当前由 Harness 串行调度，不承诺并发。Frame/DataFrame 在生产调用内持久化，通过 `resultVariables` 导出准确引用；保留 `resultRefs`、生产 `codeRef` 和有界 `resultMetadata`。
 3. 结果就绪后及时 preview，不等全部计算完成；同批已就绪、相关的视图可一次连贯更新。使用上一成功回执的 `draftId/draftRevision`，用 OpenUI Lang 提交本次新增或替换的完整命名语句，并更新布局使组件从 `root` 可达。`resourcePatch.put` 只提交新增或替换的资源，`resourcePatch.remove` 显式删除资源；未提及的资源保留。单组件展示失败时保留已有草稿，处理或说明问题，其他无依赖计算可继续。
 4. 核对请求覆盖、数据与结论一致性及实质限制后，用最新草稿标识调用一次 `stage:"save"`，可同时提交最后一批修改。正式历史只新增一个版本，成功返回 `recordId`。未完成部分明确说明，不把预览成功当成正式保存。
 
-报告和看板使用 `surface:"tab"`；聊天内的可视化工作稿可用 `surface:"tool"`。stage 与 surface 独立。Native 调用把 surface、stage、草稿和基版本标识放在 program 前，生成中的 Lang 是候选，新资源在调用校验成功后才显示。PTC 按实际工具 dispatch 更新。
+新报告在同一 Chat 报告区用动效呈现候选、preview 和 save。读者点击“在边栏查看”图标后仅在该 Tab 展示，Chat 不留正文、标题或链接；关闭 Tab 后恢复。目录及版本链接始终在右侧打开。Agent 不传 surface。Native 把 stage 和身份放在 program 前；生成中的 Lang 是候选，新资源校验成功后才显示。PTC 按工具 dispatch 更新。
 
 preview 校验并更新草稿，由前端自动展示；成功回执不证明浏览器已渲染。每个 Session 同时只有一个当前 Turn 草稿，对它的 preview/save 必须串行。携带草稿标识必须显式指定 stage。草稿不跨 Turn 或 Host 重启保留；结束 Turn 前保存，或说明未保存及阻塞。缺上下文或冲突时读[恢复参考](references/recovery.md)，调用示例见[页面示例](references/examples.md)。
 

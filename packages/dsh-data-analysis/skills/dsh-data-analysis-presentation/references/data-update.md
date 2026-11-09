@@ -6,7 +6,7 @@
 
 调用 `marivo_ui_read({recordId, current:true, includeCode:true})`，解析 definitionJson，保留其准确 recordId、program、资源 declaration 和字段契约。用户明确指定历史版本时读取该准确版本；它若不是 current，不能直接覆盖当前版本，按恢复参考审阅冲突。
 
-需要持续计算时先以该 recordId 为 basedOnRecordId 调用 `marivo_present(surface:"tab", stage:"preview")`，省略 program 和 resourcePatch，展示原报告的草稿副本。后续使用返回的 draftId/draftRevision。刷新进度在聊天中说明，不向报告增添进度组件。若上下文和新结果已就绪，单次刷新可直接以 basedOnRecordId 和同名资源 patch 保存。
+需要持续计算时先以该 recordId 为 basedOnRecordId 调用 `marivo_present(stage:"preview")`，省略 program 和 resourcePatch，展示原报告的草稿副本。后续使用返回的 draftId/draftRevision。刷新进度在聊天中说明，不向报告增添进度组件。若上下文和新结果已就绪，单次刷新可直接以 basedOnRecordId 和同名资源 patch 保存。
 
 ## 按固定结果显式刷新
 
@@ -39,7 +39,7 @@ if (!declaration || !["analysis-frame", "dataframe"].includes(declaration.kind))
   throw new Error("Inspect the existing resource before preparing its replacement.");
 }
 let draft = await tools.marivo_present({
-  surface: "tab", stage: "preview", basedOnRecordId: definition.recordId,
+  stage: "preview", basedOnRecordId: definition.recordId,
 });
 // reviewedCode/declaredDatasources/outputVariable are reviewed for this component only.
 const result = await tools.marivo_python({

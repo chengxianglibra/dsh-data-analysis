@@ -67,7 +67,6 @@ test('empty-resource scope preview survives missing stage and saves once with th
     await tool.execute(
       {
         stage: 'preview',
-        surface: 'tab',
         resourcePatch: { put: {} },
         program: 'root = TextContent("Question and confirmed scope");',
       },

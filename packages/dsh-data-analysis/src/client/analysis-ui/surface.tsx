@@ -1,5 +1,5 @@
 import { Renderer } from '@openuidev/react-lang'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type {
   AnalysisDocument,
   AnalysisResource,
@@ -12,11 +12,14 @@ import { type AnalysisResourceContext, AnalysisResources } from './context.tsx'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
+import { ReportMotion, type ReportProgress } from './report-motion.tsx'
 import { pendingAnalysisStatement, readableAnalysisPrefix } from './streaming-program.ts'
 
 const styles = `
 .pr-reader.au-surface{container:mv-surface/inline-size;min-width:0;max-width:100%;padding:0}
 .au-surface-content{min-width:0;display:flex;flex-direction:column;gap:1.5rem;padding:1rem}
+.au-surface-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-width:0}
+.au-surface-body{min-width:0}
 .au-surface-title{font-size:1.5rem;line-height:1.2;font-weight:600;letter-spacing:-.025em;margin:0;overflow-wrap:anywhere}
 .au-surface p{overflow-wrap:anywhere}
 .au-data{width:100%;min-width:0}
@@ -80,6 +83,11 @@ export interface AnalysisRendererProps {
   locale: AnalysisDocument['locale']
   resources: AnalysisDocument['resources']
   recordId?: string
+  /** Stable identity across candidate, admitted revisions and final publication. */
+  viewId?: string
+  progress?: ReportProgress
+  /** An admitted revision animates once; argument prefixes never restart the transition. */
+  revision?: string
   readResource?: (name: string) => AnalysisResource | undefined
   isStreaming?: boolean
   candidateProgram?: string
@@ -98,6 +106,9 @@ export function AnalysisRenderer({
   locale,
   resources: saved,
   recordId,
+  viewId,
+  progress,
+  revision,
   readResource,
   isStreaming = false,
   candidateProgram,
@@ -109,6 +120,18 @@ export function AnalysisRenderer({
   askDataset,
   askResource,
 }: AnalysisRendererProps) {
+  const body = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!revision || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const transition = body.current?.animate?.(
+      [
+        { opacity: 0.65, transform: 'translateY(3px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ],
+      { duration: 240, easing: 'cubic-bezier(.2,0,0,1)' },
+    )
+    return () => transition?.cancel()
+  }, [revision])
   const resources = useMemo(
     () => ({
       readResource: readResource ?? ((name: string) => saved[name]),
@@ -142,7 +165,7 @@ export function AnalysisRenderer({
   )
   return (
     <ReportCopyProvider locale={locale}>
-      <AnalysisResources.Provider value={resources} key={recordId}>
+      <AnalysisResources.Provider value={resources} key={viewId ?? recordId}>
         <article
           className="mv-ui pr-reader au-surface bg-background"
           lang={locale}
@@ -154,13 +177,18 @@ export function AnalysisRenderer({
           <style>{LAYOUT_STYLES}</style>
           <style>{FRAME_STYLES}</style>
           <div className="au-surface-content">
-            <h1 className="au-surface-title">{title}</h1>
-            <Renderer
-              library={analysisLibrary}
-              response={candidate && isStreaming ? readableAnalysisPrefix(program) : program}
-              isStreaming={isStreaming}
-              publishObservability={false}
-            />
+            <div className="au-surface-header">
+              <h1 className="au-surface-title">{title}</h1>
+              {progress && <ReportMotion phase={progress} />}
+            </div>
+            <div className="au-surface-body" ref={body}>
+              <Renderer
+                library={analysisLibrary}
+                response={candidate && isStreaming ? readableAnalysisPrefix(program) : program}
+                isStreaming={isStreaming}
+                publishObservability={false}
+              />
+            </div>
           </div>
         </article>
       </AnalysisResources.Provider>

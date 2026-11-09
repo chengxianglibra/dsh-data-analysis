@@ -41,7 +41,7 @@ const credentialModel=new CredentialClientModel({call:async()=>({ok:true,value:{
 }]}})});
 await credentialModel.show('w');
 const object={ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},name:'Revenue 收入',domain:'sales',definition:'Captured definition',guardrails:[],source:{file:'models/sales.py',line:1,symbol:'revenue'},fields:[],relations:[],computation:{schema:'dsh-data-analysis-computation/v1',ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},catalog_definition_fingerprint:'c1',expression:${JSON.stringify(expression)},facts:[]}};
-const semanticModel=new SemanticBrowserModel({call:async()=>({ok:true,value:{workspaceId:'w',projectRoot:'/fixture',environmentFingerprint:'env',fingerprint:'c1',loadedAt:'2026-11-03T00:00:00Z',kinds:['metric'],objects:[object]}})});
+const semanticModel=new SemanticBrowserModel({call:async()=>({ok:true,value:{formatVersion:1,workspaceId:'w',projectRoot:'/fixture',environmentFingerprint:'env',fingerprint:'c1',loadedAt:'2026-11-03T00:00:00Z',kinds:['metric'],objects:[object]}})});
 semanticModel.show('w');
 let settings={status:'ready',value:{pythonTimeoutMs:120000},user:{},revision:1,writable:true};
 const listeners=new Set();
@@ -50,7 +50,7 @@ const form={getSnapshot:()=>settings,subscribe:fn=>{listeners.add(fn);return()=>
 window.fixture={refuse(){refuse=true},snapshot:()=>settings,expression:${JSON.stringify(expression)}};
 const version={receipt:{reportId:'r',buildId:'b1',title:'Revenue report'},publishedAt:'2026-11-03T00:00:00Z',source:{sessionId:'s',surface:'tab'}};
 const catalog=new ReportCatalogModel({call:async()=>{throw Error('No fixture reads')}});
-catalog.patch({open:true,workspaceId:'w',surface:'tab',catalog:{workspaceId:'w',reports:[version],unavailable:0}});
+catalog.patch({open:true,workspaceId:'w',catalog:{workspaceId:'w',reports:[version],unavailable:0}});
 const root=createRoot(document.getElementById('root'));
 window.renderBusiness=(locale='en-US')=>root.render(<CopyProvider t={translator(locale)}><style>{rightTabStyles+catalogStyles}</style><main className="fixture-grid"><section className="mv-ui rt-page" data-fixture="credentials"><CredentialPanel model={credentialModel} workspaces={workspaces}/></section><section data-fixture="semantic"><SemanticBrowserPanel model={semanticModel} workspaces={workspaces}/></section><section className="mv-ui rt-page" data-fixture="catalog"><ReportCatalogView model={catalog} reader={{showReport(){}}}/><ReportHistoryPanel state={{history:{currentBuildId:'b1',versions:[version]},resolvedReceipt:{buildId:'b1'}}} model={{selectVersion(){}}}/></section><section data-fixture="settings"><ul style={{padding:0,margin:0}}><PythonSettingsCard scope={form}/></ul></section><section className="mv-ui" data-fixture="header"><WorkspaceHeaderAction icon="semantic" label="marivo.navigation.semantic-layer" disabled={false} onClick={()=>{}}/></section></main></CopyProvider>);
 window.renderBusiness();
@@ -108,6 +108,7 @@ window.renderBusiness();
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(`http://127.0.0.1:${address.port}`)
   await page.locator('.mc-panel').waitFor()
+  await page.locator('.sb-objects button').waitFor({ state: 'visible' })
   assert.equal(await page.title(), 'Marivo business UI fixture')
   assert.equal(await page.locator('.sb-objects button').isVisible(), true)
   assert.equal(await page.locator('.sb-objects button').getAttribute('data-slot'), 'button')
@@ -164,7 +165,7 @@ window.renderBusiness();
     await page
       .locator('.sb-expression-code pre')
       .evaluate((node) => getComputedStyle(node).whiteSpace),
-    'pre',
+    'pre-wrap',
   )
   await page.locator('.sb-expression-copy').click()
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), expression)

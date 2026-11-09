@@ -6,7 +6,6 @@ export interface CatalogState {
   open: boolean
   workspaceId: string
   query: string
-  surface?: 'tab' | 'tool'
   loading: boolean
   catalog?: ReportCatalog
   error?: string
@@ -44,7 +43,7 @@ export class ReportCatalogModel {
       workspaceId,
       catalog: undefined,
       error: undefined,
-      ...(workspaceId === this.#state.workspaceId ? {} : { query: '', surface: 'tab' as const }),
+      ...(workspaceId === this.#state.workspaceId ? {} : { query: '' }),
     })
     void this.refresh()
   }
@@ -54,7 +53,7 @@ export class ReportCatalogModel {
   }
   reset() {
     this.close()
-    this.patch({ workspaceId: '', query: '', surface: 'tab', error: undefined })
+    this.patch({ workspaceId: '', query: '', error: undefined })
   }
   async refresh() {
     if (!this.#state.open || !this.#state.workspaceId || this.#disposed) return
@@ -96,7 +95,6 @@ export function visibleReports(state: CatalogState) {
   const normalize = (value: string) => value.normalize('NFKC').toLocaleLowerCase()
   const words = normalize(state.query).trim().split(/\s+/).filter(Boolean)
   return (state.catalog?.reports ?? [])
-    .filter((item) => item.source.surface === (state.surface ?? 'tab'))
     .filter((item) => words.every((word) => normalize(item.receipt.title).includes(word)))
     .sort(
       (a, b) =>

@@ -118,8 +118,7 @@ Web client 只保留：
 报告 tab 可下载已保存版本的[离线 HTML](report-publishing.md)；报告呈现编辑、对象存储发布和发布凭据管理不受支持。
 
 生产 client bundle 由 `client.tsx` 注册共享 AnalysisSurface，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
-通过统一 Session/Turn delivery 观察新交付：默认 tool 结果在会话级 Chat 节点展示，工具调用内保留入口；
-tab 交付自动打开固定 Build Tab。重复事件去重，历史回放不自动打开；打开失败时提供错误反馈。
+通过统一 Session/Turn delivery 观察新交付：新报告固定在真实 Turn 下的独立 Chat 节点，groupTree:turn 使它处于工作步骤折叠区之外。首次候选、修订和保存复用同一区域；生成和草稿状态用报告内的图表动效表达；工具调用只保留错误及保存后的入口。读者点击固定图标按钮（“在边栏查看”）后，Chat 隐藏报告正文、标题和相关 tool view 入口，后续更新只在同一右侧 Tab 展示，关闭后恢复 Chat；目录和历史入口始终在右侧打开。移动关系编码在原生 Tab 地址中，通过 openTabs inventory 恢复；navigation.params 不持久。重复事件去重，历史回放不自动导航；打开失败时提供错误反馈。
 已打开报告目录或阅读页的 Workspace 中，后台 Session 若没有存活的 client binding，插件以 Harness
 Session 列表的运行结束状态提示页面重新读取已保存的发布信息；不为此保留 Session 或打开历史，也不自动导航。
 旧格式报告不出现在目录，直接打开时显示不支持。

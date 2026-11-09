@@ -16,6 +16,7 @@ declare global {
       preview(): void
       stream(text: string): void
       fail(): void
+      move(): void
       save(): void
       savedBase(): void
       replaceResources(): void
@@ -43,7 +44,7 @@ test('drafts on both surfaces render new text during the argument stream and rol
         locale: 'en-US',
         title: 'Streaming draft',
         program:
-          'root = Stack([intro, stable, picture]);\nintro = TextContent("Confirmed");\nstable = TextContent("Retained section");\npicture=Image("Admitted image", "image");',
+          'root = Stack([intro, stable, picture, sections]);\nsections = Tabs([TabItem("one", "Overview", [TextContent("Overview content")]), TabItem("two", "Details", [TextContent("Preserved selection")])]);\nintro = TextContent("Confirmed");\nstable = TextContent("Retained section");\npicture=Image("Admitted image", "image");',
       },
       { projectRoot: directory },
       { workspaceId: 'workspace', reportId: 'report', buildId: randomUUID() },
@@ -86,27 +87,26 @@ import {createElement as h,useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {PartialArguments} from '@deepseek-ai/dsh-util-values';
 import {analysisCandidate} from './src/client/analysis-ui/candidate.ts';
-import {AnalysisDraftViews} from './src/client/analysis-ui/drafts.ts';
-import {DraftReportView} from './src/client/analysis-ui/draft-view.tsx';
-import {CandidateView} from './src/client/analysis-ui/candidate-view.tsx';
-import {SavedAnalysisSurface} from './src/client/analysis-ui/lazy-surface.tsx';
+import {ReportViews} from './src/client/analysis-ui/report-views.ts';
+import {ReportView} from './src/client/analysis-ui/report-view.tsx';
 const documentValue = ${JSON.stringify(document)};
-const views=new AnalysisDraftViews(), generation={}, draftId=${JSON.stringify(draftId)};
-let surface='tool',args,callId='first',published=false,savedMode=false;
+const views=new ReportViews(), generation={}, draftId=${JSON.stringify(draftId)};
+let surface='tool',args,callId='first',savedMode=false,hostKey=0;
 const root=createRoot(document.getElementById('root'));
 const receipt=${JSON.stringify(receipt)},file=${JSON.stringify(file)};
 const rpc={call:async(_channel,endpoint)=>({ok:true,value:endpoint==='reports/history'?{workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,currentBuildId:documentValue.buildId,versions:[{receipt,publishedAt:'2026-11-09T00:00:00.000Z',source:{kind:'agent',sessionId:'session',surface}}]}:endpoint==='files/read'?file:documentValue})};
-function App(){const view=useSyncExternalStore(views.subscribe,()=>views.get('session',1));return view ? h('div',{'data-surface':surface},savedMode?h(CandidateView,{candidate:view.candidate,rpc}):published?h(SavedAnalysisSurface,{document:documentValue}):h(DraftReportView,{view,rpc})):null;}
+function App(){useSyncExternalStore(views.subscribe,views.getSnapshot);const view=views.forTurn('session',1).at(-1);return view ? h('div',{key:hostKey,'data-surface':surface},h(ReportView,{view,views,rpc})):null;}
 function observe(){views.observe(analysisCandidate({phase:'preparing',args,callId,name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),'/workspace');}
 window.draftTest={
-start(nextSurface){views.revoke('session');surface=nextSurface;published=false;savedMode=false;callId='first';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',program:'root = TextContent("First streamed text'}).slice(0,-2));observe();},
-preview(){views.preview({kind:'marivo.presentation.draft',dshSessionId:'session',workspaceId:'workspace',turn:1,surface,draftId,draftRevision:documentValue.buildId},generation,'/workspace');},
+move(){hostKey++;root.render(h(App));},
+start(nextSurface){views.revoke('session');surface=nextSurface;savedMode=false;callId='first';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',program:'root = TextContent("First streamed text'}).slice(0,-2));observe();},
+preview(){views.accept({kind:'marivo.presentation.draft',dshSessionId:'session',workspaceId:'workspace',turn:1,surface,draftId,draftRevision:documentValue.buildId},callId,generation,'/workspace');},
 stream(text){callId='next';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',draftId,draftRevision:documentValue.buildId,resourcePatch:{},program:'intro = TextContent("'+text}).slice(0,-2));observe();},
-fail(){const view=views.get('session',1);views.observe({...view.candidate,phase:'failed'},'/workspace');},
-save(){published=true;root.render(h(App));},
+fail(){const view=views.forTurn('session',1).at(-1);views.observe({...view.candidate,phase:'failed'},'/workspace');},
+save(){views.accept({kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',draftId,receipt},'save',generation,'/workspace');},
 savedBase(){views.revoke('session');savedMode=true;callId='base';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',basedOnRecordId:documentValue.recordId,resourcePatch:{},program:'intro = TextContent("Saved base prefix'}).slice(0,-2));observe();},
-lateResources(){callId='late-resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("Pending resource scope");'}).slice(0,-1));observe();},
-replaceResources(){callId='resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resourcePatch":{"put":{"image":{"kind":"image-file","path":"new');observe();}
+lateResources(){callId=savedMode?'base':'late-resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("Pending resource scope");'}).slice(0,-1));observe();},
+replaceResources(){callId=savedMode?'base':'resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resourcePatch":{"put":{"image":{"kind":"image-file","path":"new');observe();}
 };
 root.render(h(App));`,
       },
@@ -143,14 +143,41 @@ root.render(h(App));`,
     for (const surface of ['tool', 'tab'] as const) {
       await page.evaluate((surface) => window.draftTest.start(surface), surface)
       await page.getByText('First streamed text', { exact: true }).waitFor()
-      assert.equal(await page.locator('[data-analysis-draft]').count(), 1)
+      assert.equal(await page.locator('[data-analysis-report]').count(), 1)
+      const motion = page.locator('.au-report-motion')
+      assert.equal(await motion.getAttribute('data-progress'), 'generating')
+      assert.equal(await motion.innerText(), '')
+      assert.notEqual(
+        await motion
+          .locator('path')
+          .last()
+          .evaluate((node) => getComputedStyle(node).animationName),
+        'none',
+      )
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      assert.equal(
+        await motion
+          .locator('path')
+          .last()
+          .evaluate((node) => getComputedStyle(node).animationName),
+        'none',
+      )
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
       await page.evaluate(() => window.draftTest.preview())
       await page.getByText('Confirmed', { exact: true }).waitFor()
+      assert.equal(await motion.getAttribute('data-progress'), 'draft')
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
+      await page.getByRole('tab', { name: 'Details', exact: true }).click()
+      await page.evaluate(() => window.draftTest.move())
+      await page.getByText('Preserved selection', { exact: true }).waitFor()
+      assert.equal(
+        await page.getByRole('tab', { name: 'Details', exact: true }).getAttribute('aria-selected'),
+        'true',
+      )
       await page.evaluate(() => window.draftTest.stream('Live replacement'))
       await page.getByText('Live replacement', { exact: true }).waitFor()
       assert.equal(await page.getByText('Retained section', { exact: true }).isVisible(), true)
-      assert.equal(await page.locator('[data-analysis-draft]').count(), 1)
+      assert.equal(await page.locator('[data-analysis-report]').count(), 1)
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.lateResources())
       await page.getByText('Pending resource scope', { exact: true }).waitFor()
@@ -164,7 +191,14 @@ root.render(h(App));`,
       assert.equal(await page.getByText('Live replacement', { exact: true }).count(), 0)
       await page.evaluate(() => window.draftTest.save())
       await page.locator('[data-analysis-record]').waitFor()
-      assert.equal(await page.locator('[data-analysis-draft]').count(), 0)
+      assert.equal(await motion.count(), 0)
+      assert.equal(
+        await page.getByRole('tab', { name: 'Details', exact: true }).getAttribute('aria-selected'),
+        'true',
+      )
+      await page.evaluate(() => window.draftTest.move())
+      await page.getByText('Preserved selection', { exact: true }).waitFor()
+      assert.equal(await page.locator('[data-analysis-phase=saved]').count(), 1)
       await page.evaluate(() => window.draftTest.savedBase())
       await page.getByText('Saved base prefix', { exact: true }).waitFor()
       assert.equal(await page.getByText('Retained section', { exact: true }).isVisible(), true)

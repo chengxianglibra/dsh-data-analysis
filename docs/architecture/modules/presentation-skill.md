@@ -36,7 +36,7 @@ Plugin 激活时按嵌入当前工具构建的清单与摘要核验全部随包 
 
 已有结果且只需一次明确修改时可直接 save；需要继续分析的报告任务及已知问题、范围明确后，在数据准备和整页规划前先用已知问题/范围创建 stage:preview 草稿；不引用未就绪数据、不预写结论。结果就绪后及时更新同一草稿，同批已就绪相关视图可连贯提交，不等待完整分析。当前任意 Python 和草稿写入都保持 Harness exclusive 调度，不声明 isConcurrencySafe，也不承诺并发。同一草稿使用最新成功修订。携带 draftId 或 draftRevision 而省略 stage 时，在默认 save 应用前返回 analysis-draft-stage-required；仅无草稿身份的独立请求仍可省略 stage 直接保存。单组件展示失败保留已有草稿，处理或说明问题，不阻塞其他无依赖计算。resourcePatch 只携带新增、替换或删除的资源，program 使用可从 root 到达的命名语句 patch。最后核对内容并 stage:save 一次，只新增一个正式版本。
 
-报告用右侧 tab，聊天可视化工作稿可用 tool。Native 参数前缀是未校验候选，PTC 按工具 dispatch 更新。preview 是工具校验并更新内存草稿，前端自动读取展示；成功回执不证明浏览器完成渲染，不要求浏览器检查或用户确认。草稿生命周期见[展示交付](presentation-delivery.md#报告草稿与正式保存)。
+新报告固定在 Chat 的同一报告区展示，由读者点击“在边栏查看”图标后在同一原生 Tab 持续更新，Chat 隐藏正文、标题和链接，关闭后恢复；目录及版本入口始终在右侧打开。Agent 不传 surface，也不选择阅读位置。Native 参数前缀是未校验候选，PTC 按工具 dispatch 更新。preview 是工具校验并更新内存草稿，前端自动读取展示；成功回执不证明浏览器完成渲染，不要求浏览器检查或用户确认。草稿生命周期见[展示交付](presentation-delivery.md#报告草稿与正式保存)。
 
 ## 已保存报告的数据刷新
 

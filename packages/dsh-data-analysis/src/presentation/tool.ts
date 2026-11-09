@@ -37,8 +37,7 @@ export type PresentationWorkspaceSource = () =>
   | { id: string; path: string }
   | Promise<{ id: string; path: string }>
 
-const presentationToolInput = analysisPresentInput.extend({
-  surface: z.enum(['tool', 'tab']).optional(),
+const presentationToolInput = analysisPresentInput.omit({ surface: true }).extend({
   stage: z.enum(['preview', 'save']).default('save'),
   draftId: z.string().uuid().optional(),
   draftRevision: z.string().uuid().optional(),
@@ -66,14 +65,8 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present an existing result or update an analysis document. For reports requiring analysis, preview early, update the same draft as results become ready, and save once. Already-ready changes can save directly. Send only changed resources and named program statements. Preview returns draftId/draftRevision; save returns recordId and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_ui_read to recover missing context or review conflicts. deliveryJson is for Host delivery.',
+      'Present an existing result or update an analysis document. New reports always appear in one Chat region; only the reader can move it to the sidebar. For reports requiring analysis, preview early, update the same draft as results become ready, and save once. Already-ready changes can save directly. Send only changed resources and named program statements. Preview returns draftId/draftRevision; save returns recordId and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_ui_read to recover missing context or review conflicts. deliveryJson is for Host delivery.',
     parameters: {
-      surface: {
-        type: 'string',
-        enum: ['tool', 'tab'],
-        description:
-          'Independent of stage: tool previews in chat, tab previews in the right pane. Defaults to tool for a new result; continuing or saving a draft inherits its last surface unless explicitly changed. Use tab for a requested report or dashboard. For Native streaming, put surface, stage, draftId/draftRevision and any base identifiers before program.',
-      },
       stage: {
         type: 'string',
         enum: ['preview', 'save'],
@@ -154,7 +147,7 @@ export function createMarivoPresentTool(
           return [
             {
               type: 'text',
-              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}\nSurface: ${delivery.surface}\nResult metadata: ${value.resultMetadataJson}`,
+              text: `Preview updated (unsaved).\nDraft ID: ${delivery.draftId}\nDraft revision: ${delivery.draftRevision}\nInitial location: Chat\nResult metadata: ${value.resultMetadataJson}`,
             },
           ]
         return [
@@ -261,7 +254,8 @@ export function createMarivoPresentTool(
                 signal,
               )
             : undefined)
-        const surface = input.surface ?? active?.delivery.surface ?? 'tool'
+        // Preserve the v2 wire identity. Placement is owned by the reader, never the model.
+        const surface = 'tool' as const
         const changedNames = Object.entries(input.resourcePatch?.put ?? {})
           .filter(([name, declaration]) => {
             const previous = base?.resources[name]

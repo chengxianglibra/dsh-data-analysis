@@ -36,7 +36,6 @@ export async function preparePresentationInputs(workspaceRoot: string, pythonExe
   // Every request has an explicit root so it can also serve as a complete update patch.
   const requests: PresentationRequest[] = [
     {
-      surface: 'tab',
       locale: 'zh-CN',
       title: 'S4 真实 Frame',
       resourcePatch: {
@@ -45,7 +44,6 @@ export async function preparePresentationInputs(workspaceRoot: string, pythonExe
       program: 'root = Stack([AnalysisFrameView("revenue"), AnalysisFrameView("account")]);',
     },
     {
-      surface: 'tab',
       locale: 'zh-CN',
       title: 'S4 精确 Frame',
       resourcePatch: { put: { precision: frame(generated.precisionProbe) } },

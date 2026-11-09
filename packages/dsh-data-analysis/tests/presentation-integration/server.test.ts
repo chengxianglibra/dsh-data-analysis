@@ -233,7 +233,7 @@ test('production present saves independent Lang documents and returns complete h
   const text = presentationReceiptText(second.receipt, second.surface)
   assert(text.includes('Record: marivo-ui:'))
   assert(text.includes('Build: '))
-  assert(text.includes('Surface: tool view'))
+  assert(text.includes('Surface: chat'))
   // Workspace paths and digests stay on disk, out of the model-facing text.
   assert(!text.includes(second.receipt.files.document.sha256))
   assert(!text.includes(second.receipt.files.document.path))

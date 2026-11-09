@@ -54,7 +54,7 @@ test('both surfaces enable Native preview prefixes before arguments complete', (
   }
 })
 
-test('the same draft inherits its surface and streams subsequent calls with verified revision metadata', () => {
+test('legacy draft projection streams subsequent calls with verified revision metadata', () => {
   const views = new AnalysisDraftViews()
   views.preview(delivery('tab'), generation, '/workspace')
   const args = new PartialArguments()
@@ -62,7 +62,7 @@ test('the same draft inherits its surface and streams subsequent calls with veri
     `{"draftId":"${draftId}","draftRevision":"${draftRevision}","stage":"preview","program":"root = TextContent(\\"Next`,
   )
   views.observe(candidate(args, 'next'), '/workspace')
-  assert.equal(views.get('session', 1)?.candidate?.surface, 'tab')
+  assert.equal(views.get('session', 1)?.candidate?.surface, 'tool')
   assert.equal(views.get('session', 1)?.candidate?.preview, true)
   assert.equal(views.get('session', 1)?.delivery?.draftRevision, draftRevision)
   views.settle('session')

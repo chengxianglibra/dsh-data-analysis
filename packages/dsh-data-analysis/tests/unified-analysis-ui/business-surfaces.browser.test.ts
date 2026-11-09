@@ -83,7 +83,7 @@ createRoot(document.getElementById('root')).render(h(ReportCopyProvider,{locale:
     const reports = page.locator('#reports')
     await reports.getByRole('button', { name: 'Revenue report', exact: true }).click()
     assert.equal(await page.evaluate(() => Reflect.get(window, 'saved').report), 'Revenue report')
-    await reports.getByRole('combobox').selectOption('tool')
+    assert.equal(await reports.getByRole('combobox').count(), 0)
     assert.equal(await reports.getByRole('button', { name: 'Tool result', exact: true }).count(), 1)
     await reports.getByRole('searchbox').fill('no match')
     await reports.getByText('No reports match this title.').waitFor()
