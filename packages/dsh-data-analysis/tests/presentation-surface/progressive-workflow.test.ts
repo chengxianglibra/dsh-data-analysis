@@ -208,9 +208,9 @@ test('shared exact result is admitted once, preserves its producer and repairs v
       (error: unknown) => {
         assert(error instanceof Error)
         assert.match(error.message, /analysis-columns-invalid/)
-        const metadata = JSON.parse(
-          error.message.split('Result metadata: ')[1]!.split('. Correct')[0]!,
-        )
+        const metadataText = /Result metadata: (\{.*\})\./.exec(error.message)?.[1]
+        assert(metadataText)
+        const metadata = JSON.parse(metadataText)
         assert.deepEqual(Object.keys(metadata.resources), ['table'])
         assert.match(error.message, /category.*value.*coverage/)
         return true

@@ -123,7 +123,7 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 成功 `marivo_python` 会在 Host 的 `$DSH_HOME/dsh-data-analysis/python-executions/` 按 Workspace 隔离，
 原子保存本次提交的 Python 原文。声明结果导出成功后，Host 在 `results[name].resource.codeRef` 关联同次执行记录；模型不再配对顶层 codeRef、resultRefs 或 resultMetadata。
 读写位置由 Host 决定，不从 Workspace 接受作者自报的执行记录文件。
-可选 resultVariables 将 1–16 个资源名映射到准确持久引用变量名，要求 project=required，不自动计算或持久化任意内存对象。worker 在代码成功结束后导出引用字典，经临时控制文件和 launcher 生成的首个控制帧返回；Host 严格校验引用、输出名及 32 KiB 预算，再登记到 v4 执行记录，保存 Session/call/root-call 和输出变量声明。stdout 完全不参与引用发现；普通脚本无须声明输出。控制帧在进入工具结果前移除，用户 stderr 保留；非零退出、超时与取消不返回成功资源。导出失败单独返回 resultCaptureError，不伪造空 results、不改变原代码成功状态或自动重放。
+可选 resultVariables 将 1–16 个资源名映射到准确持久引用变量名，要求 project=required，不自动计算或持久化任意内存对象。worker 在代码成功结束后导出引用字典，经临时控制文件和 launcher 生成的首个控制帧返回；Host 严格校验引用、输出名及 32 KiB 预算，再登记到 v4 执行记录，保存 Session/call/root-call 和输出变量声明。stdout 完全不参与引用发现；普通脚本无须声明输出。控制帧在进入工具结果前移除，用户 stderr 保留；非零退出、超时与取消不返回成功资源。导出失败单独返回 resultCaptureError，不伪造空 results、不改变原代码成功状态或自动重放。能够确认输入问题时，诊断指出声明的输出、变量和引用字典要求；不回显变量值或任意异常。引用结构仍由 Host 校验，控制通道或序列化原因不明时保留通用不可用说明；诊断不恢复已结束进程的变量或生产来源。
 
 每个成功输出的 `results[name]` 包含 `resource`、`sourceStatus` 和有界 `metadata`。resource 复用报告 writer 的轻量公开声明 schema，为 `{kind:"analysis-frame",ref,codeRef?}` 或 `{kind:"dataframe",ref,codeRef?}`；kind 由经过验证的引用 schema 决定，可原样用于 resourcePatch.put。sourceStatus 与 metadata 不放入声明。来源保存失败时保留有效资源并省略 codeRef，返回 sourceStatus=unavailable 与 sourceError；元数据失败仅将 metadata 标记 unavailable。执行、引用导出、元数据和来源记录的成功分别表达，不因此重跑业务代码。控制帧解析后按本次 credential snapshot 检查字符串：引用包含凭据值时只拒绝引用导出，不先写入来源记录；元数据包含凭据值时将该项 metadata 标记 unavailable，不替换或伪造引用身份，错误不回显值。
 

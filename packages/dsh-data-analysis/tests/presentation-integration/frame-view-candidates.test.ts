@@ -49,3 +49,18 @@ test('save-time target ambiguity lists candidates in the error text', () => {
     },
   )
 })
+
+test('save-time axis errors disclose a name that makes the chart valid', () => {
+  const snapshot = f.observeCategory(2)
+  const axis = snapshot.frame.axes[0]!
+  const program = (name: string) =>
+    `root = AnalysisFrameView("result", {chart:"bar",encoding:{axis:${JSON.stringify(name)}}});`
+  assert.throws(
+    () => validateAnalysisResources(program(axis.token), resources(snapshot)),
+    (error: Error) => {
+      assert(error.message.includes(`candidates: ${axis.name}`))
+      return true
+    },
+  )
+  validateAnalysisResources(program(axis.name), resources(snapshot))
+})

@@ -36,9 +36,13 @@ function encode(value: ReportRef): string {
 }
 /** A locator is never authorization; callers must check the live Workspace and owner. */
 export function parseReportRef(value: unknown): ReportRef {
-  if (typeof value !== 'string' || value.length > 4096) throw new Error('report-ref-invalid')
+  const invalid = () =>
+    new Error(
+      'report-ref-invalid: use the exact ref from a successful write or read. To recover the current Turn draft, use marivo_report_read({draft:true}) and confirm the target before continuing.',
+    )
+  if (typeof value !== 'string' || value.length > 4096) throw invalid()
   const match = /^mr1:([sd]):([A-Za-z0-9_-]+)$/.exec(value)
-  if (!match) throw new Error('report-ref-invalid')
+  if (!match) throw invalid()
   try {
     const text = atob(match[2]!.replaceAll('-', '+').replaceAll('_', '/'))
     const json: unknown = JSON.parse(
@@ -50,7 +54,7 @@ export function parseReportRef(value: unknown): ReportRef {
     if (encode(result) !== value) throw new Error('report-ref-noncanonical')
     return result
   } catch {
-    throw new Error('report-ref-invalid')
+    throw invalid()
   }
 }
 export function savedReportRef(value: Omit<SavedReportRef, 'kind'>): string {

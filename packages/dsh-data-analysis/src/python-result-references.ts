@@ -98,11 +98,18 @@ export function pythonResults(
     }),
   )
 }
-const resultOutput = z.strictObject({
-  status: z.literal('ok'),
-  references: z.record(resultName, resultReference),
-  metadata: z.unknown().optional(),
-})
+const resultOutput = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('ok'),
+    references: z.record(resultName, z.unknown()),
+    metadata: z.unknown().optional(),
+  }),
+  z.strictObject({
+    status: z.literal('unavailable'),
+    name: resultName,
+    reason: z.enum(['missing-variable', 'not-dictionary']),
+  }),
+])
 const RESULT_CAPTURE_ERROR =
   'Python completed, but its declared result references were not exported. Inspect existing effects and the declared reference variables; do not rerun successful code merely to recover export metadata.'
 
@@ -141,23 +148,42 @@ export function readPythonResultOutput(
     return { stderr, resultCaptureError: RESULT_CAPTURE_ERROR }
   const text = stderr.slice(PYTHON_RESULT_HEADER.length, end)
   const remainder = stderr.slice(end + 1)
+  const secrets = secretValues.filter(Boolean)
+  const failure = (name?: string, reason?: string) => ({
+    stderr: remainder,
+    resultCaptureError:
+      name && Object.hasOwn(variables, name) && !containsSecret([name, variables[name]], secrets)
+        ? `${RESULT_CAPTURE_ERROR} Output ${JSON.stringify(name)}, variable ${JSON.stringify(variables[name])}: ${reason} Expected an exact persisted reference dictionary, such as saved.ref.to_dict() for a Frame.`
+        : RESULT_CAPTURE_ERROR,
+  })
   try {
     const bytes = Buffer.from(text, 'base64')
     if (bytes.length > 32768) throw new Error('result-export-budget')
     const output = resultOutput.parse(
       JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
     )
+    if (output.status === 'unavailable')
+      return failure(
+        output.name,
+        output.reason === 'missing-variable'
+          ? 'Variable is not defined.'
+          : 'Value is not a dictionary.',
+      )
     if (Object.keys(output.references).sort().join(',') !== Object.keys(variables).sort().join(','))
       throw new Error('result-export-names')
-    const secrets = secretValues.filter(Boolean)
     if (containsSecret(output.references, secrets)) throw new Error('result-export-sensitive')
+    const references = z.record(resultName, resultReference).safeParse(output.references)
+    if (!references.success) {
+      const name = references.error.issues[0]?.path[0]
+      return failure(typeof name === 'string' ? name : undefined, 'Reference is invalid.')
+    }
     const metadata = z.record(resultName, resultMetadata).safeParse(output.metadata)
     const validMetadata =
       metadata.success &&
       Object.keys(metadata.data).sort().join(',') === Object.keys(variables).sort().join(',')
     return {
       stderr: remainder,
-      resultRefs: output.references,
+      resultRefs: references.data,
       ...(output.metadata === undefined
         ? {}
         : {
@@ -179,6 +205,6 @@ export function readPythonResultOutput(
           }),
     }
   } catch {
-    return { stderr: remainder, resultCaptureError: RESULT_CAPTURE_ERROR }
+    return failure()
   }
 }

@@ -355,7 +355,7 @@ export async function createAnalysisDocument(
           ? error.resourceName
           : /^analysis-label-unknown at \/labels\/([^/ :]+)/.exec(error.message)?.[1]
       const relevant = name && resources[name] ? { [name]: resources[name] } : {}
-      error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Correct the presentation configuration using these exact names; do not rerun analysis to recover metadata.`
+      error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Use the result metadata and any supplied candidates to correct the indicated parameter; Frame axis inputs use axes[].name, not column IDs or tokens. Do not rerun analysis to recover metadata.`
     }
     throw error
   }

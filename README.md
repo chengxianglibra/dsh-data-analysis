@@ -111,7 +111,7 @@ DataFrame 可直接展示，无需重新分析。`DatasetView` 支持表格、�
 
 AnalysisFrame 显式 `persist()` 后，将 `saved.ref.to_dict()` 作为 `analysis-frame` 资源提交；插件通过绑定 Python Runtime 读取，无需 HTTP 服务。DataFrame 使用 `mv.persist_dataframe(table).to_dict()`，将完整字典作为 `dataframe` 资源提交；引用须属于当前 Workspace。
 
-需要追溯生成脚本时，在 `marivo_python.resultVariables` 中声明引用变量，将返回的 `results[name].resource` 原样交给报告工具，插件关联 kind 和 codeRef；stdout 保持任意文本。更新数据时，助手可按需读取绑定脚本、数据源和输出声明，重新生成结果并替换同名资源，通过 `mode:"refresh-data"` 保留原布局、正文和显示标签，逐批原子校验；正文中的静态数字不会自动改写，待复核状态随报告版本保存。
+需要查看结果关联的执行脚本时，在 `marivo_python.resultVariables` 中声明引用变量，将返回的 `results[name].resource` 原样交给报告工具，插件关联 kind 和 codeRef；stdout 保持任意文本。codeRef 仅证明该次执行导出过此引用，不保证是最初生成脚本或可用于重算。更新数据时，助手先审阅绑定脚本、数据源和输出声明，再显式生成新结果并替换同名资源，通过 `mode:"refresh-data"` 保留原布局、正文和显示标签，逐批原子校验；正文中的静态数字不会自动改写，待复核状态随报告版本保存。
 
 - **检查数据**：精确排序、本地翻页，并就数据点或整个结果继续提问。截断预览注明范围，不作为完整单值展示。
 - **查看依据**：Frame 显示结构与来源身份；DataFrame 集中展示捕获范围、执行脚本和已声明的数据源。

@@ -135,6 +135,7 @@ test('ReportRef is bounded, versioned, canonical, and Workspace scoped', () => {
   })
   for (const value of [null, '', 'mr2:s:e30', 'mr1:s:e30', `${ref}=`, 'x'.repeat(4097)])
     assert.throws(() => parseReportRef(value), /report-ref-invalid/)
+  assert.throws(() => parseReportRef('invalid'), /marivo_report_read\(\{draft:true\}\)/)
 })
 
 test('stage and new input protocol are mandatory; refresh guards run before result reads', async (t) => {

@@ -37,6 +37,22 @@ const kindOf = (snapshot: AnalysisSnapshot) => {
   return `${classification.class}/${classification.shape}`
 }
 
+test('axis candidates use accepted names and respect continuity chart constraints', () => {
+  const grid = f.observeTimeCategory(3, 2)
+  for (const chart of ['bar', 'line', 'area'] as const) {
+    const result = ambiguity(grid, { chart, encoding: { axis: 't_month' } })
+    assert.equal(result?.path, '/view/encoding/axis')
+    assert.deepEqual(result?.candidates, chart === 'bar' ? ['month', 'region'] : ['month'])
+    for (const axis of result?.candidates ?? []) {
+      viewOf(grid, { chart, encoding: { axis } })
+    }
+  }
+  const rejected = ambiguity(grid, { chart: 'line', encoding: { axis: 'region' } })
+  assert.deepEqual(rejected?.candidates, ['month'])
+  const category = ambiguity(f.observeCategory(2), { chart: 'line', encoding: { axis: 'missing' } })
+  assert.equal(category?.candidates, undefined)
+})
+
 test('every design operation classifies by final facts into class and shape', () => {
   const cases: [string, AnalysisSnapshot, string][] = [
     ['observe scalar', f.observeScalar(), 'observation/scalar'],

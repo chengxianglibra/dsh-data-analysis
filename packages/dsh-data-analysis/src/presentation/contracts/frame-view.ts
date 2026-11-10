@@ -760,17 +760,20 @@ function explicit(
       const encoding = view.encoding ?? {}
       // Bars are categorical by nature; only continuity charts need an ordered time axis.
       const anyAxis = view.chart === 'bar'
+      const candidates = anyAxis ? axes : axes.filter(isTime)
+      const candidateNames = candidates.slice(0, MAX_CANDIDATES).map((a) => a.name)
       let axis: FrameAxis | undefined
       if (encoding.axis !== undefined) {
         axis = axisNamed(x, encoding.axis)
-        if (!axis) return fail('view-name-unknown', '/view/encoding/axis')
-        if (!anyAxis && !isTime(axis)) return fail('view-axis-not-time', '/view/encoding/axis')
+        if (!axis) return fail('view-name-unknown', '/view/encoding/axis', candidateNames)
+        if (!anyAxis && !isTime(axis))
+          return fail('view-axis-not-time', '/view/encoding/axis', candidateNames)
       } else {
-        const candidates = anyAxis ? axes : axes.filter(isTime)
         if (candidates.length !== 1)
           return fail(
             !anyAxis && !candidates.length ? 'view-axis-not-time' : 'view-target-ambiguous',
             '/view/encoding/axis',
+            candidateNames,
           )
         axis = candidates[0]!
       }

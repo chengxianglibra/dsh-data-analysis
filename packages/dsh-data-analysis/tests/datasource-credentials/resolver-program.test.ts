@@ -9,6 +9,7 @@ import {
   PYTHON_WORKER,
   RESOLVER_PROGRAM,
 } from '../../src/datasource/resolver-program.ts'
+import { readPythonResultOutput } from '../../src/python-result-references.ts'
 
 /** A public credential protocol double; bound Marivo acceptance uses the separate real script. */
 function pythonFixture(t: TestContext, pythonExecutable = 'python3', timeoutMs = 15_000) {
@@ -176,6 +177,44 @@ raise RuntimeError(secret)
     'from pathlib import Path; print(len(Path("starts.txt").read_text().splitlines()))',
   )
   assert.equal(count.stdout.trim(), '1')
+})
+
+test('successful Python reports the declared output that cannot be exported without exposing its value', (t) => {
+  const f = pythonFixture(t)
+  for (const [variable, code] of [
+    ['missing_ref', ''],
+    [
+      'saved',
+      String.raw`
+class Saved:
+    def __repr__(self):
+        raise RuntimeError("private-object-value")
+saved = Saved()
+`,
+    ],
+    ['saved', 'saved = {"schema": "invalid", "private": "private-object-value"}'],
+  ] as const) {
+    const variables = { valid: 'valid_ref', overview: variable }
+    const payload = {
+      ...f.payload(`
+valid_ref = {"schema": "marivo.frame_ref/v2", "store_id": "store", "session_id": "session", "artifact_id": "artifact"}
+${code}
+print("COMPUTED")
+`),
+      result_variables: variables,
+    }
+    const outcome = f.run(PYTHON_LAUNCHER, JSON.stringify(payload))
+    assert.equal(outcome.status, 0, outcome.stderr || String(outcome.error))
+    assert.equal(outcome.stdout.trim(), 'COMPUTED')
+    const result = readPythonResultOutput(outcome.stderr, variables, ['resolver-canary-4791'])
+    assert.equal(result.resultRefs, undefined)
+    assert.equal(result.stderr, '')
+    assert(result.resultCaptureError)
+    assert(result.resultCaptureError.includes('overview'))
+    assert(result.resultCaptureError.includes(variable))
+    assert.match(result.resultCaptureError, /reference dictionary/)
+    assert.doesNotMatch(result.resultCaptureError, /private-object-value|resolver-canary-4791/)
+  }
 })
 
 test('datasource drift or a mismatched source name fails before any user code side effect', (t) => {

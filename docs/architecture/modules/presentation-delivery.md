@@ -47,10 +47,10 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
 metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列，图形 encoding 只引用公开值名与轴名；
 Dataset 图表编码引用列 ID，要求完整快照、数值列和唯一坐标组合；不推断分析语义。
-不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。
+不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。校验器通过既有 candidates 提供当前参数的有界合法候选，工具统一转达；候选不保证整份配置均合法。Frame 的显式 axis 使用轴 name，不使用列 ID 或 token。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
-模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
+模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示复用成功回执；明确需要恢复当前 Turn 草稿时可通过 `marivo_report_read({draft:true})` 取回上下文并确认目标，不自动纠正引用或选择最新版本。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
 
 新保存使用严格 `dsh.analysis-ui/v2`，required/not-needed/unknown 为必填 contentReview；reader 保留严格 v1 只读数据支持，缺失复核状态不推定已复核。旧 Build 文件不迁移或改写。
 

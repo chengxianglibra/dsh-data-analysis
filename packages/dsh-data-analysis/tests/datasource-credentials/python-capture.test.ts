@@ -460,6 +460,26 @@ test('missing result exports preserve successful code and never infer identities
   assert.equal(p.launches, 1)
 })
 
+test('export diagnostics require a declared output and do not reveal sensitive names or values', () => {
+  const variables = { frame: 'frame_ref' }
+  const control = (value: unknown) =>
+    `${PYTHON_RESULT_HEADER}${Buffer.from(JSON.stringify(value)).toString('base64')}\n`
+  const missing = { status: 'unavailable', name: 'frame', reason: 'missing-variable' }
+  assert.match(readPythonResultOutput(control(missing), variables).resultCaptureError!, /frame_ref/)
+  for (const value of [
+    { ...missing, name: 'unrelated' },
+    { ...missing, reason: 'private-exception-text' },
+    { ...missing, value: 'private-value' },
+  ]) {
+    const result = readPythonResultOutput(control(value), variables)
+    assert(result.resultCaptureError)
+    assert.doesNotMatch(result.resultCaptureError, /unrelated|private-/)
+  }
+  const sensitive = readPythonResultOutput(control(missing), variables, ['frame_ref'])
+  assert(sensitive.resultCaptureError)
+  assert.doesNotMatch(sensitive.resultCaptureError, /frame_ref/)
+})
+
 test('source and metadata failures preserve complete exported resources without replay', async (t) => {
   const p = await tool(t)
   const reference = {
