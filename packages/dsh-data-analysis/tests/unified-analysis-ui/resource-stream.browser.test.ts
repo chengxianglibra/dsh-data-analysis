@@ -25,7 +25,7 @@ test('Host-admitted resource deltas update one mounted report before a slow sibl
     stage: 'preview',
     draftId: initial.draftId,
     draftRevision: initial.draftRevision,
-    resourcePatch: { put: { slow: f.declaration('1'), fast: f.declaration('2') } },
+    resourcePatch: { put: { fast: f.declaration('2'), slow: f.declaration('1') } },
     program:
       'root=Stack([intro, kept, fast, slow]); intro=TextContent("Updated scope"); fast=DatasetView("fast", {chart:"table"}); slow=DatasetView("slow", {chart:"table"});',
   }

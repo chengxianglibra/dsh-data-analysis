@@ -54,6 +54,7 @@ business 固定 unknown。
 新增引用由 [result-reader.ts](../../../packages/dsh-data-analysis/src/presentation/result-reader.ts) 在 checked Python 中读取。
 内部 [read_result.py](../../../packages/dsh-data-analysis/python/presentation/read_result.py) 只适配公开结果和展示格式，
 不拥有持久化、引用签发或来源语义。Runtime identity 与 Workspace 在异步边界复核。
+同次准入的新资源顺序读取，避免公开 Session.resume 恢复操作的写锁竞争；每项通过校验后立即发送资源流。其他进程占锁返回 result-session-busy，提示等待后读取原固定引用，不自动重试或重跑分析。Python 只输出允许的错误 code，Host 校验后映射修复提示；未知异常保持 result-read-failed，不透传 stderr。
 已有报告的相同声明（包括 codeRef）复用内嵌快照，不解析 Runtime 或启动 Python。同一次准入中多个资源名的准确相同声明也只读取一次，复制快照后分别应用标签；同一资源可由多个视图使用，保留原生产绑定。
 新 `dataframe` / `analysis-frame` 声明可携带同次 `marivo_python` 回执的 codeRef；Host 读取当前 Workspace 的执行记录，核验其中登记了准确的 Marivo 引用，再绑定原 Harness Session/call。绑定失败明确报错，不降级为无来源。
 有效源码记录未登记结构化结果时返回 `python-result-exports-missing`；记录无法核验时返回 `python-execution-source-unavailable`；

@@ -267,38 +267,30 @@ export async function createAnalysisDocument(
     if (!previous || !sameAnalysisDeclaration(previous.declaration, resources[name]!.declaration))
       await ready(name)
   }
-  // Each checked read runs in its own identity-verified subprocess. Bound the
-  // fan-out, and share exact immutable declarations before scheduling any IO.
+  // Session.resume reconciles under a writer lock, even for fixed reads.
+  // Read sequentially while publishing each ready resource immediately.
   const groups: { name: string; declaration: AnalysisResourceDeclaration; aliases: string[] }[] = []
   for (const [name, declaration] of pending) {
     const existing = groups.find((group) => sameAnalysisDeclaration(group.declaration, declaration))
     if (existing) existing.aliases.push(name)
     else groups.push({ name, declaration, aliases: [] })
   }
-  let cursor = 0
-  const worker = async () => {
-    while (cursor < groups.length) {
-      const group = groups[cursor++]!
-      try {
-        await readResource(group.name, group.declaration)
-        signal.throwIfAborted()
-        await ready(group.name)
-        for (const alias of group.aliases) {
-          resources[alias] = structuredClone(resources[group.name]!)
-          await ready(alias)
-        }
-      } catch (error) {
-        signal.throwIfAborted()
-        failure ??= error
-        delete resources[group.name]
+  for (const group of groups) {
+    try {
+      await readResource(group.name, group.declaration)
+      signal.throwIfAborted()
+      await ready(group.name)
+      for (const alias of group.aliases) {
+        resources[alias] = structuredClone(resources[group.name]!)
+        await ready(alias)
       }
+    } catch (error) {
+      signal.throwIfAborted()
+      failure ??= error
+      delete resources[group.name]
     }
   }
-  const outcomes = await Promise.allSettled(
-    Array.from({ length: Math.min(4, groups.length) }, worker),
-  )
   signal.throwIfAborted()
-  for (const outcome of outcomes) if (outcome.status === 'rejected') failure ??= outcome.reason
   if (failure) throw failure
   // A data replacement keeps the existing display labels unless explicitly replaced.
   for (const [name, resource] of Object.entries(resources)) {

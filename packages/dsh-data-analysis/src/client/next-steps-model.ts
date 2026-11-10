@@ -21,8 +21,8 @@ export class NextStepsModel {
     this.revision++
     for (const listener of this.listeners) listener()
   }
-  clear(): void {
-    if (this.notice) this.retiredTurn = Math.max(this.retiredTurn, this.notice.turn)
+  clear(retire = true, turn = this.notice?.turn): void {
+    if (retire && turn !== undefined) this.retiredTurn = Math.max(this.retiredTurn, turn)
     this.notice = undefined
     this.locked = false
     this.touch()

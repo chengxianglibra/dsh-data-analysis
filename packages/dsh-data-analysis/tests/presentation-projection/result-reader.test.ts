@@ -228,3 +228,27 @@ test('DataFrame fixed references admit only this Workspace and retain Dataset vi
   f.runner.runChecked = fixture().runner.runChecked
   await assert.rejects(readMarivoResult(f.runner, ref, signal), /identity-mismatch/)
 })
+
+test('checked result errors disclose only recognized repair codes', async () => {
+  const f = fixture()
+  for (const [payload, expected] of [
+    [{ error: { code: 'result-session-busy' } }, /result-session-busy: Wait/],
+    [{ error: { code: 'result-identity-mismatch' } }, /result-identity-mismatch/],
+    [{ error: { code: 'private-secret' } }, /result-read-failed/],
+    [{ error: { code: 'result-session-busy', detail: 'private-secret' } }, /result-read-failed/],
+  ] as const) {
+    f.runner.runChecked = async () => ({
+      exitCode: 1,
+      signal: null,
+      durationMs: 1,
+      stdout: Buffer.from(JSON.stringify(payload)),
+      stderr: Buffer.from('private-secret'),
+    })
+    await assert.rejects(readMarivoResult(f.runner, ref, signal), (error) => {
+      assert(error instanceof Error)
+      assert.match(error.message, expected)
+      assert.doesNotMatch(error.message, /private-secret/)
+      return true
+    })
+  }
+})

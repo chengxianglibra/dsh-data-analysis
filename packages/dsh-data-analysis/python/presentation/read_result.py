@@ -4,14 +4,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import marivo.analysis as mv
-import pyarrow as pa
-
 from ._dataset import MAX_BYTES, encode_dataset
 from ._frame import read_frame
 
 
 def read_result(reference):
+    import marivo.analysis as mv
+    import pyarrow as pa
+
     if reference["schema"] == "marivo.frame_ref/v2":
         frame = mv.session.resume(reference["session_id"]).persisted_frame(reference["artifact_id"])
         if frame.ref.to_dict() != reference:
@@ -53,7 +53,28 @@ def read_result(reference):
     }
 
 
+def error_code(error):
+    """Project only recognized public failure facts; never emit traceback or raw text."""
+    if (getattr(error, "kind", None) == "SessionBusy"
+            and getattr(error, "location", None) == "dataset.writer_guard"):
+        return "result-session-busy"
+    if type(error) is ValueError and error.args in (
+        ("result-identity-mismatch",), ("result-workspace-mismatch",), ("result-budget",),
+        ("result-display-type-unsupported",),
+    ):
+        return error.args[0]
+    return "result-read-failed"
+
+
 def main():
+    try:
+        write_result()
+    except Exception as error:
+        sys.stdout.write(json.dumps({"error": {"code": error_code(error)}}))
+        raise SystemExit(1) from None
+
+
+def write_result():
     snapshot = read_result(json.load(sys.stdin))
     body = json.dumps(snapshot, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
     if len(body) > MAX_BYTES:

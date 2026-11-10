@@ -100,7 +100,7 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
       resultReference.parse({ ...raw.frame, store_id: 'foreign-store' }),
       signal,
     ),
-    /result-read-failed/,
+    /result-identity-mismatch/,
   )
   await assert.rejects(
     readMarivoResult(

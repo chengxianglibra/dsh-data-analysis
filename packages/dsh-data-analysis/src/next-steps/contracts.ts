@@ -16,6 +16,7 @@ export const nextStepsInput = z
   .strictObject({
     items: z.array(z.strictObject({ label: text(40), prompt: text(1000) })).max(4),
     emptyReason: z.enum(['declined', 'no-suggestions']).optional(),
+    recordId: z.string().min(1).max(512).optional(),
   })
   .superRefine(({ items, emptyReason }, ctx) => {
     if (items.length && emptyReason)
@@ -33,6 +34,7 @@ export const nextStepsNotice = z
     turn: z.number().int().nonnegative(),
     reportId: z.string().min(1).max(512),
     buildId: z.string().min(1).max(512),
+    callId: z.string().min(1).max(512).optional(),
     status: z.enum(['available', 'declined', 'unavailable']),
     reason: z.enum(['no-suggestions', 'generation-incomplete', 'generation-failed']).optional(),
     items: nextStepsInput.shape.items,
@@ -43,6 +45,13 @@ export const nextStepsNotice = z
     if ((status === 'unavailable') !== (reason !== undefined))
       ctx.addIssue({ code: 'custom', message: 'Unavailable notices require a reason' })
   })
+/** A tool anchor contains identity only, never persisted recommendations. */
+export const nextStepsReceipt = z.strictObject({
+  kind: z.literal('marivo.next-steps'),
+  sessionId: z.string(),
+  turn: z.number().int().nonnegative(),
+  callId: z.string(),
+})
 export type NextStepsNotice = z.infer<typeof nextStepsNotice>
 export type NextStep = NextStepsNotice['items'][number]
 const owner = '@chengxianglibra/dsh-data-analysis'

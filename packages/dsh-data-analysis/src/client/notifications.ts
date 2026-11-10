@@ -13,11 +13,14 @@ export function mountNotifications(ctx: Context) {
       descriptors: [...credentialChangesRemote.descriptors, ...nextStepsRemote.descriptors],
     })
     mounts.set(ctx, mounted)
-    void mounted.catch(() => {})
+    void mounted.catch(() => {
+      if (mounts.get(ctx) === mounted) mounts.delete(ctx)
+    })
     const current = mounted
     ctx.effect(() => async () => {
-      mounts.delete(ctx)
-      await (await current)()
+      if (mounts.get(ctx) === current) mounts.delete(ctx)
+      const dispose = await current.catch(() => undefined)
+      await dispose?.()
     })
   }
   return mounted

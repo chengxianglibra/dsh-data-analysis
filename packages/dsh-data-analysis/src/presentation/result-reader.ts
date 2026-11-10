@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { type ResultReference, resultReference } from './contracts/result-reference.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './contracts/snapshot.ts'
@@ -17,6 +18,31 @@ spec.loader.exec_module(module)
 from _dsh_projection.read_result import main
 main()
 `.trim()
+
+const readFailure = z.strictObject({
+  error: z.strictObject({
+    code: z.enum([
+      'result-session-busy',
+      'result-identity-mismatch',
+      'result-workspace-mismatch',
+      'result-budget',
+      'result-display-type-unsupported',
+      'result-read-failed',
+    ]),
+  }),
+})
+const repairs = {
+  'result-session-busy':
+    'Wait for the current Session action to finish, then read the same fixed reference; do not replay analysis.',
+  'result-identity-mismatch':
+    'Use the exact saved reference in its original Workspace and bound Runtime.',
+  'result-workspace-mismatch': 'Read this reference in its original Workspace.',
+  'result-budget':
+    'The saved result exceeds the presentation budget; explicitly select a smaller result.',
+  'result-display-type-unsupported':
+    'The saved result contains a type unsupported by this display.',
+  'result-read-failed': 'Verify the saved reference and bound Runtime; do not replay analysis.',
+} as const
 
 export async function readMarivoResult(
   runner: MarivoCheckedRunner,
@@ -45,10 +71,15 @@ export async function readMarivoResult(
   })
   signal.throwIfAborted()
   if (runner.status !== 'ready') throw new Error('result-runtime-unavailable')
-  if (result.exitCode !== 0)
-    throw new Error(
-      'result-read-failed: verify the saved reference and bound Runtime; do not replay analysis.',
-    )
+  if (result.exitCode !== 0) {
+    let code: keyof typeof repairs = 'result-read-failed'
+    try {
+      code = readFailure.parse(JSON.parse(result.stdout.toString('utf8'))).error.code
+    } catch {
+      // Unknown process failures retain the safe fallback, never stderr.
+    }
+    throw new Error(`${code}: ${repairs[code]}`)
+  }
   const snapshot = parseAnalysisSnapshot(JSON.parse(result.stdout.toString('utf8')))
   if (
     ref.schema === 'marivo.frame_ref/v2'

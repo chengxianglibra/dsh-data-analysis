@@ -1,5 +1,8 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.presentation.ui-next-steps-connection-failed':
+    '下一步建议连接中断。重连后可重新请求建议。',
+  'marivo.presentation.ui-next-steps-reconnect': '重试连接',
   'marivo.presentation.ui-next-steps-none': '暂无适合此报告的下一步建议。',
   'marivo.presentation.ui-next-steps-unavailable': '此报告的下一步建议暂不可用。',
   'marivo.presentation.ui-next-steps-failed': '无法提交此问题，请在输入框中重试。',
@@ -211,6 +214,9 @@ export const zh = {
   'marivo.presentation.page-only-summary': '第 {p0} / {p1} 页',
 } as const
 export const en = {
+  'marivo.presentation.ui-next-steps-connection-failed':
+    'Next steps connection failed. Reconnect, then request suggestions again.',
+  'marivo.presentation.ui-next-steps-reconnect': 'Retry connection',
   'marivo.presentation.ui-next-steps-none': 'No suitable next steps are available for this report.',
   'marivo.presentation.ui-next-steps-unavailable':
     'Next steps for this report are currently unavailable.',

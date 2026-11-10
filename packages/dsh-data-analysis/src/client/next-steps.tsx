@@ -4,11 +4,12 @@ import type {
   ConnectionGeneration,
   ConnectionHandle,
 } from '@deepseek-ai/dsh-client-connection/client'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ArrowUpRightIcon } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { PendingTasks } from '../lifecycle.ts'
-import type { NextStepsNotice } from '../next-steps/contracts.ts'
+import { type NextStepsNotice, nextStepsNotice, nextStepsReceipt } from '../next-steps/contracts.ts'
 import { hostCopy } from './i18n/host.tsx'
 import { NextStepsModel } from './next-steps-model.ts'
 import { mountNotifications } from './notifications.ts'
@@ -21,13 +22,13 @@ export function installNextSteps(ctx: Context) {
   // The combined Host/browser build resolves Context.sessions to the Host face.
   const sessions = ctx.sessions as unknown as ISessions
   const connection = ctx.connection as unknown as ConnectionHandle
-  const mounted = mountNotifications(ctx)
   type Owner = {
     sessionId: SessionId
     workspaceId: string
     path: string
     generation: ConnectionGeneration
   }
+  let failed = false
   let owner: Owner | undefined
   let stopFeed: (() => void) | undefined
   let stopSession: (() => void) | undefined
@@ -52,6 +53,86 @@ export function installNextSteps(ctx: Context) {
         !input.attachmentIds.length &&
         !input.claim &&
         !input.queue.length,
+    )
+  }
+  const currentTurn = (value: Owner) => {
+    let turn = -1
+    for (const entry of sessions.binding(value.sessionId)?.eventSource.getSnapshot().entries ?? [])
+      if (entry.type === 'event' && entry.event.type === 'turn/start')
+        turn = Math.max(turn, entry.event.data.turn)
+    return turn
+  }
+  const startFeed = (next: Owner) => {
+    stopFeed?.()
+    failed = false
+    model.touch()
+    const lifetime = new AbortController()
+    const stream = ctx.remote.$stream<NextStepsNotice>({
+      name: 'dsh-data-analysis next steps',
+      async *open(signal) {
+        await mountNotifications(ctx)
+        const combined = AbortSignal.any([signal, lifetime.signal])
+        combined.throwIfAborted()
+        let namespace: typeof ctx.remote.dshDataAnalysisNextSteps | undefined
+        const consumer = ctx.inject(['remote.dshDataAnalysisNextSteps'], (scoped) => {
+          namespace = scoped.remote.dshDataAnalysisNextSteps
+        })
+        const stop = () => {
+          void consumer.dispose()
+        }
+        combined.addEventListener('abort', stop, { once: true })
+        try {
+          await consumer
+          combined.throwIfAborted()
+          if (!namespace) throw new Error('next-steps-stream-unavailable')
+          yield* namespace.watch(next.sessionId, combined)
+        } finally {
+          combined.removeEventListener('abort', stop)
+          await consumer.dispose()
+        }
+      },
+      carrierFailed: () => {
+        if (owner === next) model.clear(false)
+      },
+      ended: () => new Error('next-steps-stream-ended'),
+    })
+    stopFeed = () => {
+      lifetime.abort()
+      void tasks.track(stream.dispose()).catch(() => {})
+    }
+    void tasks.track(
+      (async () => {
+        try {
+          for await (const item of stream) {
+            if (lifetime.signal.aborted || item.signal.aborted || owner !== next) continue
+            const parsed = nextStepsNotice.safeParse(item.value)
+            if (
+              !parsed.success ||
+              parsed.data.sessionId !== next.sessionId ||
+              parsed.data.workspaceId !== next.workspaceId
+            )
+              continue
+            item.accept()
+            failed = false
+            const snapshot = sessions.binding(next.sessionId)?.session.getSnapshot()
+            const input = inputFor(next)?.state.getSnapshot()
+            const turn = currentTurn(next)
+            if (
+              !snapshot ||
+              snapshot.pendingSubmissions.length ||
+              input?.queue.length ||
+              item.value.turn !== turn
+            )
+              continue
+            model.accept(parsed.data, next)
+          }
+        } catch {
+          if (!lifetime.signal.aborted && owner === next) {
+            failed = true
+            model.clear(false)
+          }
+        }
+      })(),
     )
   }
   const updateOwner = () => {
@@ -88,81 +169,26 @@ export function installNextSteps(ctx: Context) {
     stopSession?.()
     stopInput?.()
     owner = next
+    failed = false
     model.reset()
     if (!next) return
     const input = inputFor(next)
     stopInput = input?.state.subscribe(() => {
-      if (input.state.getSnapshot().queue.length) model.clear()
+      if (input.state.getSnapshot().queue.length) model.clear(true, currentTurn(next))
       else model.touch()
     })
     const session = sessions.binding(next.sessionId)?.session
     let running = session?.getSnapshot().running
     stopSession = session?.subscribe(() => {
       const snapshot = session.getSnapshot()
-      if (snapshot.pendingSubmissions.length || (!running && snapshot.running)) model.clear()
+      if (snapshot.pendingSubmissions.length) model.clear(true, currentTurn(next))
+      else if (!running && snapshot.running) model.clear()
       else model.touch()
       running = snapshot.running
     })
-    const lifetime = new AbortController()
-    const stream = ctx.remote.$stream<NextStepsNotice>({
-      name: 'dsh-data-analysis next steps',
-      async *open(signal) {
-        await mounted
-        const combined = AbortSignal.any([signal, lifetime.signal])
-        combined.throwIfAborted()
-        let namespace: typeof ctx.remote.dshDataAnalysisNextSteps | undefined
-        const consumer = ctx.inject(['remote.dshDataAnalysisNextSteps'], (scoped) => {
-          namespace = scoped.remote.dshDataAnalysisNextSteps
-        })
-        const stop = () => {
-          void consumer.dispose()
-        }
-        combined.addEventListener('abort', stop, { once: true })
-        try {
-          await consumer
-          combined.throwIfAborted()
-          if (!namespace) throw new Error('next-steps-stream-unavailable')
-          yield* namespace.watch(next.sessionId, combined)
-        } finally {
-          combined.removeEventListener('abort', stop)
-          await consumer.dispose()
-        }
-      },
-      carrierFailed: () => model.clear(),
-      ended: () => new Error('next-steps-stream-ended'),
-    })
-    stopFeed = () => {
-      lifetime.abort()
-      void tasks.track(stream.dispose()).catch(() => {})
-    }
-    void tasks.track(
-      (async () => {
-        try {
-          for await (const item of stream) {
-            if (lifetime.signal.aborted || item.signal.aborted || owner !== next) continue
-            const binding = sessions.binding(next.sessionId)
-            const snapshot = binding?.session.getSnapshot()
-            const input = inputFor(next)?.state.getSnapshot()
-            let turn = -1
-            for (const entry of binding?.eventSource.getSnapshot().entries ?? []) {
-              if (entry.type === 'event' && entry.event.type === 'turn/start')
-                turn = Math.max(turn, entry.event.data.turn)
-            }
-            if (
-              !snapshot ||
-              snapshot.pendingSubmissions.length ||
-              input?.queue.length ||
-              item.value.turn !== turn
-            )
-              continue
-            model.accept(item.value, next)
-          }
-        } catch {
-          if (owner === next) model.clear()
-        }
-      })(),
-    )
+    startFeed(next)
   }
+
   ctx.effect(() => {
     const stops = [
       sessions.list.subscribe(updateOwner),
@@ -196,10 +222,44 @@ export function installNextSteps(ctx: Context) {
       return false
     }
   }
-  function NextSteps({ sessionId, turn }: { sessionId: string; turn: number }) {
+  function NextSteps({
+    sessionId,
+    turn,
+    callId,
+  }: {
+    sessionId: string
+    turn: number
+    callId?: string
+  }) {
     useSyncExternalStore(model.subscribe, model.getSnapshot)
     const notice = model.value
-    if (!notice || notice.sessionId !== sessionId || notice.turn !== turn) return null
+    if (failed && owner?.sessionId === sessionId && currentTurn(owner) === turn) {
+      return (
+        <div
+          className="mv-ui mv-next-steps"
+          role="status"
+          data-next-steps-status="connection-failed"
+        >
+          <UIStyleSheet />
+          <span>{hostCopy(ctx)('marivo.presentation.ui-next-steps-connection-failed')}</span>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (owner) startFeed(owner)
+            }}
+          >
+            {hostCopy(ctx)('marivo.presentation.ui-next-steps-reconnect')}
+          </Button>
+        </div>
+      )
+    }
+    if (
+      !notice ||
+      notice.sessionId !== sessionId ||
+      notice.turn !== turn ||
+      notice.callId !== callId
+    )
+      return null
     return (
       <div
         className="mv-ui mv-next-steps"
@@ -236,5 +296,37 @@ export function installNextSteps(ctx: Context) {
       </div>
     )
   }
+  ctx.slots.inject('conversation.chat.turnTail', () =>
+    ctx.slots.register(
+      {
+        name: 'conversation.chat.turnTail',
+        id: 'marivo-next-steps',
+        locale: 'marivo.presentation',
+      },
+      (props: PropsRuntime<'conversation.chat.turnTail'>) => {
+        const entries = sessions.binding(props.sessionId)?.eventSource.getSnapshot().entries ?? []
+        for (const entry of [...entries].reverse()) {
+          if (entry.type !== 'event' || entry.event.type !== 'tool/result') continue
+          const { data } = entry.event
+          if (data.turn !== props.turn.turn || data.message.isError) continue
+          const parsed = nextStepsReceipt.safeParse(data.meta)
+          if (
+            parsed.success &&
+            parsed.data.sessionId === props.sessionId &&
+            parsed.data.turn === props.turn.turn &&
+            parsed.data.callId === data.message.toolCallId
+          )
+            return (
+              <NextSteps
+                sessionId={props.sessionId}
+                turn={props.turn.turn}
+                callId={parsed.data.callId}
+              />
+            )
+        }
+        return null
+      },
+    ),
+  )
   return { NextSteps, model }
 }

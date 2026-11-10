@@ -461,8 +461,11 @@ test('Host deliverables keep produced files and independent report nodes in eith
     assembler.flush()
     const snapshot = assembler.snapshot('chat')
     const tails = host.slots.entries('conversation.chat.turnTail')
-    // Native owns its original exclusive chain; report rendering has its own keyed seat.
-    assert.equal(tails.length, 1)
+    // Recommendations share the tail without replacing native deliverables.
+    assert.deepEqual(tails.map((entry: { options: { id: string } }) => entry.options.id).sort(), [
+      '@deepseek-ai/dsh-client-ui-deliverables',
+      'marivo-next-steps',
+    ])
     const deliverables = snapshot.timeline.turns.get(3).data.get('deliverables')
     assert.deepEqual(
       Array.from(deliverables.produced, (file: { path: string }) => file.path),

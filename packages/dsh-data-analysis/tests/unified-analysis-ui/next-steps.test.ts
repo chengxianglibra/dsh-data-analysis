@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
@@ -24,6 +27,8 @@ import {
   nextStepsNotice,
 } from '../../src/next-steps/contracts.ts'
 import { NextStepsService } from '../../src/next-steps/service.ts'
+import { createAnalysisDocument } from '../../src/presentation/analysis.ts'
+import { publishPresentation, readReportHistory } from '../../src/presentation/reports.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
 const items = [{ label: 'Compare regions', prompt: 'Compare the regions in the saved analysis.' }]
@@ -663,4 +668,66 @@ test('cancellation after recommendations are received discards them before publi
     stopObserver()
     await fixture.close()
   }
+})
+
+test('explicit recommendations read an existing report without publishing another Build', async (t) => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'next-steps-report-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const signal = new AbortController().signal
+  const document = await createAnalysisDocument(
+    { surface: 'tool', title: 'Existing', program: 'root=TextContent("Saved analysis");' },
+    { projectRoot: root },
+    { workspaceId: 'workspace', reportId: randomUUID(), buildId: randomUUID() },
+    signal,
+  )
+  await publishPresentation(root, document, null, async () => {}, signal, {
+    kind: 'agent',
+    sessionId: 'original',
+    surface: 'tool',
+  })
+  const before = await readReportHistory(root, 'workspace', document.reportId)
+  const script = new Script([
+    call('marivo_next_steps', { items, recordId: document.recordId }),
+    call('marivo_next_steps', { items, recordId: document.recordId }),
+    stop,
+  ])
+  const ctx = await harness(script)
+  const agent = await ctx.agentLoop.create(SessionId(randomUUID()), {
+    provider: 'mock',
+    model: 'mock',
+  })
+  let identity = { id: 'workspace', path: root }
+  const published: NextStepsNotice[] = []
+  const dispose = installNextStepsAgent(
+    ctx,
+    agent,
+    () => identity,
+    (value) => published.push(value),
+  )
+  t.after(dispose)
+  const run = async () => {
+    agent.followup(
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Show next steps for the existing report' }],
+      }),
+    )
+    await agent.whenIdle()
+  }
+  await run()
+  assert.equal(script.requests, 1)
+  assert.equal(published.length, 1)
+  assert.equal(published[0]?.buildId, document.buildId)
+  assert.ok(published[0]?.callId)
+  assert.deepEqual(await readReportHistory(root, 'workspace', document.reportId), before)
+  assert.equal(
+    agent.session
+      .snapshotEvents()
+      .some((event) => event.type === 'tool/call' && event.data.name === 'marivo_present'),
+    false,
+  )
+  identity = { id: 'foreign-workspace', path: root }
+  await run()
+  assert.equal(published.length, 1, 'a foreign Workspace cannot publish recommendations')
+  assert.deepEqual(await readReportHistory(root, 'workspace', document.reportId), before)
 })

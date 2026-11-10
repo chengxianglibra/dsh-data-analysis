@@ -12,13 +12,13 @@ const request = {
   after: 0,
 }
 
-test('Host resource stream delivers a fast resource before the first slow resource, shares exact results, and commits once', async (t) => {
+test('Host resource stream delivers each resource sequentially before final admission, shares exact results, and commits once', async (t) => {
   const f = await resourceStreamFixture(t)
   const operation = f.tool.execute(
     {
       stage: 'preview',
       resourcePatch: {
-        put: { slow: f.declaration('1'), fast: f.declaration('2'), reused: f.declaration('2') },
+        put: { fast: f.declaration('2'), reused: f.declaration('2'), slow: f.declaration('1') },
       },
       program: 'root = Stack([DatasetView("slow"), DatasetView("fast"), DatasetView("reused")]);',
     },
@@ -31,8 +31,8 @@ test('Host resource stream delivers a fast resource before the first slow resour
     )
   assert.equal(stream.resources.slow, undefined)
   assert.equal(f.drafts.get('session'), undefined, 'resource readiness is not a successful draft')
-  assert.equal(f.reads, 2)
-  assert.equal(f.peak, 2)
+  assert.ok(f.reads >= 1 && f.reads <= 2)
+  assert.equal(f.peak, 1)
   f.release()
   const output = (await operation) as { draftRevision: string }
   assert.equal(f.drafts.get('session')?.document.buildId, output.draftRevision)
@@ -55,7 +55,7 @@ test('a failed resource does not block another resource and failed final admissi
       draftId: initial.draftId,
       draftRevision: initial.draftRevision,
       resourcePatch: {
-        put: { slow: f.declaration('1'), bad: f.declaration('3'), fast: f.declaration('2') },
+        put: { bad: f.declaration('3'), fast: f.declaration('2'), slow: f.declaration('1') },
       },
       program: 'root = Stack([DatasetView("slow"), DatasetView("bad"), DatasetView("fast")]);',
     },
