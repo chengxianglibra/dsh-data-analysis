@@ -418,6 +418,7 @@ export function createMarivoPresentTool(
             check,
             signal,
             { kind: 'agent', sessionId, surface },
+            () => onSaved?.(exec, reportRefFromRecordId(document.recordId, identity.id)),
           )
           if (active) drafts.clear(sessionId, turn)
           streamSucceeded = true
@@ -442,7 +443,6 @@ export function createMarivoPresentTool(
               }),
             ),
           }
-          onSaved?.(exec, value.ref)
           return value
         } finally {
           resourceStream.finish(streamSucceeded)

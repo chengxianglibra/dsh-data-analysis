@@ -59,8 +59,12 @@ window.fixture={
  input:value=>input.set({...input.getSnapshot(),...value}),
  generation:()=>generation.set({}),
  workspace:()=>ctx.workspaces.list.set({phase:'ready',items:[{workspaceId:'w',path:'/replacement',sessionIds:['s']}]}),
+ hideWorkspace:()=>ctx.workspaces.list.set({phase:'ready',items:[]}),
+ restoreWorkspace:()=>ctx.workspaces.list.set({phase:'ready',items:[{workspaceId:'w',path:'/workspace',sessionIds:['s']}]}),
  render,
  explicit:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'tool/result',data:{turn:1,message:{isError:false,toolCallId:'explicit'},meta:{kind:'marivo.next-steps',sessionId:'s',turn:1,callId:'explicit'}}}}]});root.render(createElement(turnTail,{sessionId:'s',turn:{turn:1}}));},
+ both:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'tool/result',data:{turn:1,message:{isError:false,toolCallId:'explicit'},meta:{kind:'marivo.next-steps',sessionId:'s',turn:1,callId:'explicit'}}}}]});root.render(createElement('div',null,createElement(NextSteps,{sessionId:'s',turn:1}),createElement(turnTail,{sessionId:'s',turn:{turn:1}})));},
+ advance:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'turn/start',data:{turn:2}}}]});root.render(createElement(NextSteps,{sessionId:'s',turn:2}));session.set({...session.getSnapshot(),running:true});},
  close:async()=>{root.unmount();for(const dispose of effects.reverse())await dispose?.()}
 };`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -109,6 +113,56 @@ test('failed mount can retry; accepted notices keep the real stream healthy acro
     opens: 4,
     submitted: 0,
   })
+  await page.evaluate('window.fixture.close()')
+})
+
+test('a notice arriving before its Turn remains visible when the event and session catch up', async () => {
+  await start()
+  await page.evaluate('window.fixture.publish({turn:2})')
+  await page.waitForTimeout(30)
+  assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
+  await page.evaluate('window.fixture.advance()')
+  await page.getByRole('button', { name: 'Compare regions' }).waitFor()
+  assert.equal(await page.locator('[data-next-steps-turn="2"]').count(), 1)
+  await page.evaluate('window.fixture.close()')
+})
+
+test('a delayed decline retires a pending recommendation for the same Turn', async () => {
+  await start()
+  await page.evaluate(
+    'window.fixture.publish({turn:2}); window.fixture.publish({turn:2,status:"declined",items:[]})',
+  )
+  await page.waitForTimeout(30)
+  await page.evaluate('window.fixture.advance()')
+  await page.waitForTimeout(30)
+  assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
+  await page.evaluate('window.fixture.publish({turn:2})')
+  await page.waitForTimeout(30)
+  assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
+  await page.evaluate('window.fixture.close()')
+})
+
+test('an explicit Turn tail remains mounted while its Workspace owner loads', async () => {
+  await start()
+  await page.evaluate('window.fixture.hideWorkspace(); window.fixture.explicit()')
+  await page.waitForTimeout(30)
+  await page.evaluate('window.fixture.restoreWorkspace()')
+  await page.waitForFunction('window.fixture.stats().opens === 2')
+  await page.evaluate('window.fixture.publish({callId:"explicit"})')
+  await page.getByRole('button', { name: 'Compare regions' }).waitFor()
+  await page.evaluate('window.fixture.close()')
+})
+
+test('a Turn with both report and explicit anchors shows one connection failure and keeps a saved notice', async () => {
+  await start()
+  await page.evaluate('window.fixture.both(); window.fixture.terminal()')
+  await page.locator('[data-next-steps-status="connection-failed"]').waitFor()
+  assert.equal(await page.locator('[data-next-steps-status="connection-failed"]').count(), 1)
+  await page.getByRole('button', { name: 'Retry connection' }).click()
+  await page.waitForFunction('window.fixture.stats().opens === 2')
+  await page.evaluate('window.fixture.publish()')
+  await page.getByRole('button', { name: 'Compare regions' }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 1)
   await page.evaluate('window.fixture.close()')
 })
 

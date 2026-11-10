@@ -3,7 +3,7 @@ import { constants } from 'node:fs'
 import { lstat, open, opendir, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
-import { commitPresentation } from './commit.ts'
+import { commitPresentationForPublication } from './commit.ts'
 import { type AnalysisDocument, parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
   type PublicationSource,
@@ -168,6 +168,7 @@ export async function publishPresentation(
   assertOwner: () => Promise<void>,
   signal: AbortSignal | undefined,
   source: PublicationSource,
+  onPublished?: () => void,
 ): Promise<PresentationReceipt> {
   await assertOwner()
   signal?.throwIfAborted()
@@ -177,118 +178,142 @@ export async function publishPresentation(
     documentBytes,
   }
   await assertOwner()
-  const receipt = await commitPresentation(root, built, assertOwner, signal)
-  const directory = presentationReportPath(root, document.reportId)
-  const currentPath = path.join(directory, 'current.json')
-  const parents = [root]
-  for (const segment of path.relative(root, directory).split(path.sep))
-    parents.push(path.join(parents.at(-1)!, segment))
-  const identities = await Promise.all(parents.map((parent) => lstat(parent)))
-  const check = async () => {
-    signal?.throwIfAborted()
-    await assertOwner()
-    const actual = await Promise.all(parents.map((parent) => lstat(parent)))
-    if (
-      (await realpath(directory)) !== directory ||
-      actual.some(
-        (entry, index) =>
-          !entry.isDirectory() ||
-          entry.isSymbolicLink() ||
-          entry.dev !== identities[index]!.dev ||
-          entry.ino !== identities[index]!.ino,
-      )
-    )
-      throw new Error('presentation-directory-changed')
-  }
-  await check()
-  await withFileLock(
-    currentPath,
-    async () => {
-      await check()
-      let history: ReportHistory | undefined
-      let current: PresentationReceipt | undefined
-      try {
-        history = await readReportHistory(root, document.workspaceId, document.reportId, signal)
-        current = history.versions[0]!.receipt
-        await readReceiptDocument(root, current, signal)
-      } catch (error) {
-        if (expectedBuildId !== null || (error as NodeJS.ErrnoException).code !== 'ENOENT')
-          throw error
-        // ENOENT is allowed only for an absent pointer, never a dangling current build.
-        try {
-          await lstat(currentPath)
-          throw new Error('invalid-report-current')
-        } catch (missing) {
-          if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing
-        }
-      }
-      if ((current?.buildId ?? null) !== expectedBuildId)
-        throw new PresentationRecoveryError(
-          'report-save-conflict',
-          'Read currentRef with marivo_report_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit onto with cumulative program and resourcePatch changes relative to the reviewed current version. For a data refresh, omit program and metadata and replace only compatible same-name resources. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
-          current
-            ? {
-                currentRef: savedReportRef({
-                  workspaceId: current.workspaceId,
-                  reportId: current.reportId,
-                  buildId: current.buildId,
-                }),
-              }
-            : {},
-        )
-      const versions = [
-        { receipt, publishedAt: new Date().toISOString(), source },
-        ...(history?.versions ?? []),
-      ]
-      if (versions.length > REPORT_HISTORY_LIMIT) throw new Error('report-history-full')
-      parseReportHistory({
-        workspaceId: document.workspaceId,
-        reportId: document.reportId,
-        currentBuildId: receipt.buildId,
-        versions,
-      })
-      const pointer = JSON.stringify({
-        schemaVersion: 4,
-        workspaceId: document.workspaceId,
-        reportId: document.reportId,
-        receipt,
-        versions,
-      })
-      if (Buffer.byteLength(pointer) > REPORT_HISTORY_BYTES) throw new Error('report-history-full')
-      const temporary = path.join(directory, `.current-${randomUUID()}.tmp`)
-      let published = false
-      try {
-        const file = await open(
-          temporary,
-          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-          0o600,
-        )
-        try {
-          await file.writeFile(pointer, { signal })
-          await file.sync()
-        } finally {
-          await file.close()
-        }
-        await check()
-        await rename(temporary, currentPath)
-        published = true
-        const parent = await open(
-          directory,
-          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-        )
-        try {
-          await parent.sync()
-        } finally {
-          await parent.close()
-        }
-        // Cancellation after the rename cannot undo a published save.
-      } finally {
-        if (!published) await rm(temporary, { force: true })
-      }
-    },
-    { waitMs: 5000 },
+  const { receipt, discard } = await commitPresentationForPublication(
+    root,
+    built,
+    assertOwner,
+    signal,
   )
-  return receipt
+  let published = false
+  try {
+    const directory = presentationReportPath(root, document.reportId)
+    const currentPath = path.join(directory, 'current.json')
+    const parents = [root]
+    for (const segment of path.relative(root, directory).split(path.sep))
+      parents.push(path.join(parents.at(-1)!, segment))
+    const identities = await Promise.all(parents.map((parent) => lstat(parent)))
+    const check = async () => {
+      signal?.throwIfAborted()
+      await assertOwner()
+      const actual = await Promise.all(parents.map((parent) => lstat(parent)))
+      if (
+        (await realpath(directory)) !== directory ||
+        actual.some(
+          (entry, index) =>
+            !entry.isDirectory() ||
+            entry.isSymbolicLink() ||
+            entry.dev !== identities[index]!.dev ||
+            entry.ino !== identities[index]!.ino,
+        )
+      )
+        throw new Error('presentation-directory-changed')
+    }
+    await check()
+    await withFileLock(
+      currentPath,
+      async () => {
+        await check()
+        let history: ReportHistory | undefined
+        let current: PresentationReceipt | undefined
+        try {
+          history = await readReportHistory(root, document.workspaceId, document.reportId, signal)
+          current = history.versions[0]!.receipt
+          await readReceiptDocument(root, current, signal)
+        } catch (error) {
+          if (expectedBuildId !== null || (error as NodeJS.ErrnoException).code !== 'ENOENT')
+            throw error
+          // ENOENT is allowed only for an absent pointer, never a dangling current build.
+          try {
+            await lstat(currentPath)
+            throw new Error('invalid-report-current')
+          } catch (missing) {
+            if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing
+          }
+        }
+        if ((current?.buildId ?? null) !== expectedBuildId)
+          throw new PresentationRecoveryError(
+            'report-save-conflict',
+            'Read currentRef with marivo_report_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit onto with cumulative program and resourcePatch changes relative to the reviewed current version. For a data refresh, omit program and metadata and replace only compatible same-name resources. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
+            current
+              ? {
+                  currentRef: savedReportRef({
+                    workspaceId: current.workspaceId,
+                    reportId: current.reportId,
+                    buildId: current.buildId,
+                  }),
+                }
+              : {},
+          )
+        const versions = [
+          { receipt, publishedAt: new Date().toISOString(), source },
+          ...(history?.versions ?? []),
+        ]
+        if (versions.length > REPORT_HISTORY_LIMIT) throw historyFull()
+        parseReportHistory({
+          workspaceId: document.workspaceId,
+          reportId: document.reportId,
+          currentBuildId: receipt.buildId,
+          versions,
+        })
+        const pointer = JSON.stringify({
+          schemaVersion: 4,
+          workspaceId: document.workspaceId,
+          reportId: document.reportId,
+          receipt,
+          versions,
+        })
+        if (Buffer.byteLength(pointer) > REPORT_HISTORY_BYTES) throw historyFull()
+        const temporary = path.join(directory, `.current-${randomUUID()}.tmp`)
+        try {
+          const file = await open(
+            temporary,
+            constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+            0o600,
+          )
+          try {
+            await file.writeFile(pointer, { signal })
+            await file.sync()
+          } finally {
+            await file.close()
+          }
+          await check()
+          await rename(temporary, currentPath)
+          published = true
+          onPublished?.()
+          const parent = await open(
+            directory,
+            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+          )
+          try {
+            await parent.sync()
+          } finally {
+            await parent.close()
+          }
+          // Cancellation after the rename cannot undo a published save.
+        } finally {
+          if (!published) await rm(temporary, { force: true })
+        }
+      },
+      { waitMs: 5000 },
+    )
+    return receipt
+  } catch (error) {
+    if (!published) {
+      try {
+        await discard()
+      } catch {
+        // Do not remove an unverified directory or mask the publication error.
+      }
+    }
+    throw error
+  }
+}
+
+function historyFull() {
+  return new PresentationRecoveryError(
+    'report-history-full',
+    'This report has reached its version history limit. Create a new report without a base ref to receive a new reportId, or rebuild it after confirming the old versions are no longer needed.',
+  )
 }
 
 /** Exact published revision lookup; never scans a directory or resolves to newer content. */

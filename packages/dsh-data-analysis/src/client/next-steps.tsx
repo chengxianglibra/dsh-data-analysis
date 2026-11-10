@@ -33,6 +33,10 @@ export function installNextSteps(ctx: Context) {
   let stopFeed: (() => void) | undefined
   let stopSession: (() => void) | undefined
   let stopInput: (() => void) | undefined
+  let stopEvents: (() => void) | undefined
+  let pendingNotice:
+    | { item: { signal: AbortSignal; accept(): void }; notice: NextStepsNotice; owner: Owner }
+    | undefined
   const inputFor = (value: Owner) => {
     const scope = sessions.scope(value.sessionId)
     return scope ? ctx.conversation.input.for(scope) : undefined
@@ -62,8 +66,29 @@ export function installNextSteps(ctx: Context) {
         turn = Math.max(turn, entry.event.data.turn)
     return turn
   }
+  const retryPendingNotice = () => {
+    const pending = pendingNotice
+    if (!pending) return
+    if (pending.owner !== owner || pending.item.signal.aborted) {
+      pendingNotice = undefined
+      return
+    }
+    const snapshot = sessions.binding(pending.owner.sessionId)?.session.getSnapshot()
+    const input = inputFor(pending.owner)?.state.getSnapshot()
+    const turn = currentTurn(pending.owner)
+    if (snapshot?.pendingSubmissions.length || input?.queue.length || turn > pending.notice.turn) {
+      pendingNotice = undefined
+      return
+    }
+    if (!snapshot || !input || turn < pending.notice.turn) return
+    pendingNotice = undefined
+    pending.item.accept()
+    failed = false
+    model.accept(pending.notice, pending.owner)
+  }
   const startFeed = (next: Owner) => {
     stopFeed?.()
+    pendingNotice = undefined
     failed = false
     model.touch()
     const lifetime = new AbortController()
@@ -92,7 +117,10 @@ export function installNextSteps(ctx: Context) {
         }
       },
       carrierFailed: () => {
-        if (owner === next) model.clear(false)
+        if (owner === next) {
+          pendingNotice = undefined
+          model.clear(false)
+        }
       },
       ended: () => new Error('next-steps-stream-ended'),
     })
@@ -112,22 +140,20 @@ export function installNextSteps(ctx: Context) {
               parsed.data.workspaceId !== next.workspaceId
             )
               continue
-            item.accept()
-            failed = false
-            const snapshot = sessions.binding(next.sessionId)?.session.getSnapshot()
-            const input = inputFor(next)?.state.getSnapshot()
-            const turn = currentTurn(next)
             if (
-              !snapshot ||
-              snapshot.pendingSubmissions.length ||
-              input?.queue.length ||
-              item.value.turn !== turn
+              pendingNotice &&
+              (pendingNotice.notice.turn > parsed.data.turn ||
+                (pendingNotice.notice.turn === parsed.data.turn &&
+                  (parsed.data.status !== 'declined' ||
+                    pendingNotice.notice.status === 'declined')))
             )
               continue
-            model.accept(parsed.data, next)
+            pendingNotice = { item, notice: parsed.data, owner: next }
+            retryPendingNotice()
           }
         } catch {
           if (!lifetime.signal.aborted && owner === next) {
+            pendingNotice = undefined
             failed = true
             model.clear(false)
           }
@@ -168,23 +194,37 @@ export function installNextSteps(ctx: Context) {
     stopFeed?.()
     stopSession?.()
     stopInput?.()
+    stopEvents?.()
+    pendingNotice = undefined
     owner = next
     failed = false
     model.reset()
     if (!next) return
     const input = inputFor(next)
     stopInput = input?.state.subscribe(() => {
-      if (input.state.getSnapshot().queue.length) model.clear(true, currentTurn(next))
-      else model.touch()
+      if (input.state.getSnapshot().queue.length) {
+        pendingNotice = undefined
+        model.clear(true, currentTurn(next))
+      } else model.touch()
+      retryPendingNotice()
     })
     const session = sessions.binding(next.sessionId)?.session
     let running = session?.getSnapshot().running
     stopSession = session?.subscribe(() => {
       const snapshot = session.getSnapshot()
-      if (snapshot.pendingSubmissions.length) model.clear(true, currentTurn(next))
-      else if (!running && snapshot.running) model.clear()
+      if (snapshot.pendingSubmissions.length) {
+        pendingNotice = undefined
+        model.clear(true, currentTurn(next))
+      } else if (!running && snapshot.running && model.value?.turn !== currentTurn(next))
+        model.clear()
       else model.touch()
       running = snapshot.running
+      retryPendingNotice()
+    })
+    stopEvents = sessions.binding(next.sessionId)?.eventSource.subscribe(() => {
+      if (model.value && model.value.turn < currentTurn(next)) model.clear()
+      retryPendingNotice()
+      model.touch()
     })
     startFeed(next)
   }
@@ -201,6 +241,8 @@ export function installNextSteps(ctx: Context) {
       stopFeed?.()
       stopSession?.()
       stopInput?.()
+      stopEvents?.()
+      pendingNotice = undefined
       owner = undefined
       model.clear()
       await tasks.drain()
@@ -222,6 +264,28 @@ export function installNextSteps(ctx: Context) {
       return false
     }
   }
+  const nextStepsReceiptForTurn = (sessionId: string, turn: number) => {
+    const session = Object.values(sessions.list.getSnapshot().byId).find(
+      (row) => row.id === sessionId,
+    )
+    const entries = session
+      ? (sessions.binding(session.id)?.eventSource.getSnapshot().entries ?? [])
+      : []
+    for (const entry of [...entries].reverse()) {
+      if (entry.type !== 'event' || entry.event.type !== 'tool/result') continue
+      const { data } = entry.event
+      if (data.turn !== turn || data.message.isError) continue
+      const parsed = nextStepsReceipt.safeParse(data.meta)
+      if (
+        parsed.success &&
+        parsed.data.sessionId === sessionId &&
+        parsed.data.turn === turn &&
+        parsed.data.callId === data.message.toolCallId
+      )
+        return parsed.data
+    }
+    return undefined
+  }
   function NextSteps({
     sessionId,
     turn,
@@ -233,6 +297,7 @@ export function installNextSteps(ctx: Context) {
   }) {
     useSyncExternalStore(model.subscribe, model.getSnapshot)
     const notice = model.value
+    if (!callId && nextStepsReceiptForTurn(sessionId, turn)) return null
     if (failed && owner?.sessionId === sessionId && currentTurn(owner) === turn) {
       return (
         <div
@@ -257,7 +322,7 @@ export function installNextSteps(ctx: Context) {
       !notice ||
       notice.sessionId !== sessionId ||
       notice.turn !== turn ||
-      notice.callId !== callId
+      (notice.callId !== undefined && notice.callId !== callId)
     )
       return null
     return (
@@ -304,27 +369,10 @@ export function installNextSteps(ctx: Context) {
         locale: 'marivo.presentation',
       },
       (props: PropsRuntime<'conversation.chat.turnTail'>) => {
-        const entries = sessions.binding(props.sessionId)?.eventSource.getSnapshot().entries ?? []
-        for (const entry of [...entries].reverse()) {
-          if (entry.type !== 'event' || entry.event.type !== 'tool/result') continue
-          const { data } = entry.event
-          if (data.turn !== props.turn.turn || data.message.isError) continue
-          const parsed = nextStepsReceipt.safeParse(data.meta)
-          if (
-            parsed.success &&
-            parsed.data.sessionId === props.sessionId &&
-            parsed.data.turn === props.turn.turn &&
-            parsed.data.callId === data.message.toolCallId
-          )
-            return (
-              <NextSteps
-                sessionId={props.sessionId}
-                turn={props.turn.turn}
-                callId={parsed.data.callId}
-              />
-            )
-        }
-        return null
+        const receipt = nextStepsReceiptForTurn(props.sessionId, props.turn.turn)
+        return receipt ? (
+          <NextSteps sessionId={props.sessionId} turn={props.turn.turn} callId={receipt.callId} />
+        ) : null
       },
     ),
   )

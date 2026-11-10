@@ -38,13 +38,13 @@ async function sameDirectory(filename: string, expected: DirectoryIdentity) {
     throw new Error('presentation-directory-changed')
 }
 
-/** Owns only one newly-created build. A single directory rename publishes all requested complete files. */
-export async function commitPresentation(
+/** Commit one build and retain its directory identity for unpublished-build cleanup. */
+export async function commitPresentationForPublication(
   workspaceRoot: string,
   input: BuiltPresentation,
   assertOwner: () => Promise<void>,
   signal?: AbortSignal,
-): Promise<PresentationReceipt> {
+): Promise<{ receipt: PresentationReceipt; discard: () => Promise<void> }> {
   signal?.throwIfAborted()
   const document = parseSavedPresentation(structuredClone(input.document))
   const built = { document, documentBytes: Buffer.from(input.documentBytes) }
@@ -133,7 +133,7 @@ export async function commitPresentation(
     )
     if (!document.equals(built.documentBytes)) throw new Error('presentation-build-changed')
     await check()
-    return parsePresentationReceipt({
+    const receipt = parsePresentationReceipt({
       schemaVersion: 2,
       reportId: built.document.reportId,
       kind: 'marivo.presentation',
@@ -150,6 +150,15 @@ export async function commitPresentation(
         },
       },
     })
+    return {
+      receipt,
+      discard: async () => {
+        for (const [index, filename] of paths.entries())
+          await sameDirectory(filename, identities[index]!)
+        await sameDirectory(final, ownedIdentity)
+        await rm(final, { recursive: true, force: true })
+      },
+    }
   } catch (error) {
     // Cleanup only this invocation's unchanged directory; never follow a replaced parent.
     try {
@@ -162,4 +171,14 @@ export async function commitPresentation(
     }
     throw error
   }
+}
+
+/** Commit a build without retaining a publication cleanup handle. */
+export async function commitPresentation(
+  workspaceRoot: string,
+  input: BuiltPresentation,
+  assertOwner: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<PresentationReceipt> {
+  return (await commitPresentationForPublication(workspaceRoot, input, assertOwner, signal)).receipt
 }

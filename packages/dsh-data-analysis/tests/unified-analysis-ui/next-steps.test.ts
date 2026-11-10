@@ -525,6 +525,173 @@ test('a later save invalidates old recommendations and rejects the old saved ref
   }
 })
 
+for (const response of ['items', 'declined'] as const)
+  test(`a failed later call preserves the accepted ${response} submission`, async () => {
+    const fixture = await reportHarness([
+      call(MARIVO_PRESENT_TOOL_NAME, {}),
+      call('marivo_next_steps', {
+        items: response === 'items' ? items : [],
+        emptyReason: response === 'declined' ? 'declined' : undefined,
+      }),
+      call('marivo_next_steps', { ref: savedRef('wrong'), items }),
+      stop,
+    ])
+    try {
+      await fixture.run()
+      assert.ok(
+        fixture.agent.session
+          .snapshotEvents()
+          .some((event) => event.type === 'tool/result' && event.data.message.isError),
+      )
+      assert.equal(reminders(fixture.agent).length, 0)
+      assert.equal(fixture.published.length, 1)
+      assert.equal(fixture.published[0]?.status, response === 'items' ? 'available' : 'declined')
+      assert.deepEqual(fixture.published[0]?.items, response === 'items' ? items : [])
+    } finally {
+      await fixture.close()
+    }
+  })
+
+test('a new save after a submission publishes unavailable for the final version', async () => {
+  const fixture = await reportHarness([
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+    call('marivo_next_steps', { ref: savedRef('initial'), items }),
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'final' }),
+    stop,
+    stop,
+  ])
+  try {
+    await fixture.run()
+    assert.equal(reminders(fixture.agent).length, 1)
+    assert.equal(fixture.published.length, 1)
+    assert.equal(fixture.published[0]?.buildId, 'final')
+    assert.equal(fixture.published[0]?.status, 'unavailable')
+    assert.deepEqual(fixture.published[0]?.items, [])
+  } finally {
+    await fixture.close()
+  }
+})
+
+for (const build of ['initial', 'final'] as const)
+  test(`a ${build} save between recommendation execution and its result preserves version identity`, async () => {
+    const fixture = await reportHarness([
+      call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+      call('marivo_next_steps', { ref: savedRef('initial'), items }),
+      stop,
+      stop,
+    ])
+    // Harness post-execute runs after the recommendation returns and before tools/result.
+    // The nested save completes while that accepted result is still pending.
+    const hook = fixture.agent.ctx.on('tools/post-execute', async (exec, result, next) => {
+      if (exec.name === 'marivo_next_steps' && !result.isError) {
+        const saved = await fixture.agent.ctx.tools.execute({
+          callId: ToolCallId(randomUUID()),
+          rootCallId: exec.rootCallId,
+          name: MARIVO_PRESENT_TOOL_NAME,
+          arguments: { build },
+          agent: fixture.agent,
+          parent: exec.token,
+          signal: exec.signal,
+        })
+        assert.equal(saved.isError, false)
+      }
+      return next()
+    })
+    try {
+      await fixture.run()
+      assert.equal(reminders(fixture.agent).length, build === 'initial' ? 0 : 1)
+      assert.equal(fixture.published.length, 1)
+      assert.equal(fixture.published[0]?.buildId, build)
+      assert.equal(fixture.published[0]?.status, build === 'initial' ? 'available' : 'unavailable')
+      assert.deepEqual(fixture.published[0]?.items, build === 'initial' ? items : [])
+    } finally {
+      hook()
+      await fixture.close()
+    }
+  })
+
+test('a late old result cannot replace an accepted submission for the final save', async () => {
+  const fresh = [{ label: 'Inspect updated trends', prompt: 'Inspect updated trends.' }]
+  const fixture = await reportHarness([
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+    call('marivo_next_steps', { ref: savedRef('initial'), items }),
+    stop,
+    stop,
+  ])
+  let injected = false
+  const hook = fixture.agent.ctx.on('tools/post-execute', async (exec, result, next) => {
+    if (exec.name === 'marivo_next_steps' && !result.isError && !injected) {
+      injected = true
+      const nested = async (name: string, args: object) =>
+        fixture.agent.ctx.tools.execute({
+          callId: ToolCallId(randomUUID()),
+          rootCallId: exec.rootCallId,
+          name,
+          arguments: args,
+          agent: fixture.agent,
+          parent: exec.token,
+          signal: exec.signal,
+        })
+      assert.equal((await nested(MARIVO_PRESENT_TOOL_NAME, { build: 'final' })).isError, false)
+      assert.equal(
+        (await nested('marivo_next_steps', { ref: savedRef('final'), items: fresh })).isError,
+        false,
+      )
+    }
+    return next()
+  })
+  try {
+    await fixture.run()
+    assert.equal(reminders(fixture.agent).length, 0)
+    assert.equal(fixture.published.length, 1)
+    assert.equal(fixture.published[0]?.buildId, 'final')
+    assert.equal(fixture.published[0]?.status, 'available')
+    assert.deepEqual(fixture.published[0]?.items, fresh)
+  } finally {
+    hook()
+    await fixture.close()
+  }
+})
+
+test('a late earlier save result cannot replace the later committed version', async () => {
+  const fixture = await reportHarness([
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+    call('marivo_next_steps', { ref: savedRef('final'), items }),
+    stop,
+    stop,
+  ])
+  let injected = false
+  const hook = fixture.agent.ctx.on('tools/post-execute', async (exec, result, next) => {
+    if (exec.name === MARIVO_PRESENT_TOOL_NAME && !result.isError && !injected) {
+      injected = true
+      // The first writer has already committed, but its result is still held back.
+      // A second writer commits and reports its result before the first is released.
+      const later = await fixture.agent.ctx.tools.execute({
+        callId: ToolCallId(randomUUID()),
+        rootCallId: exec.rootCallId,
+        name: MARIVO_PRESENT_TOOL_NAME,
+        arguments: { build: 'final' },
+        agent: fixture.agent,
+        parent: exec.token,
+        signal: exec.signal,
+      })
+      assert.equal(later.isError, false)
+    }
+    return next()
+  })
+  try {
+    await fixture.run()
+    assert.equal(reminders(fixture.agent).length, 0)
+    assert.equal(fixture.published.length, 1)
+    assert.equal(fixture.published[0]?.buildId, 'final')
+    assert.equal(fixture.published[0]?.status, 'available')
+    assert.deepEqual(fixture.published[0]?.items, items)
+  } finally {
+    hook()
+    await fixture.close()
+  }
+})
+
 test('a later save in the same tool batch replaces the version awaiting publication', async () => {
   const fixture = await reportHarness([
     call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),

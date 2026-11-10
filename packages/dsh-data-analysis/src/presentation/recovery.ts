@@ -5,6 +5,7 @@ export type PresentationRecoveryCode =
   | 'analysis-draft-conflict'
   | 'analysis-draft-busy'
   | 'report-save-conflict'
+  | 'report-history-full'
 
 /** Repair facts survive Harness normalization to plain Tool error text. */
 export class PresentationRecoveryError extends Error {

@@ -5,6 +5,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   truncate,
@@ -16,7 +17,11 @@ import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { type BuiltPresentation, commitPresentation } from '../../src/presentation/commit.ts'
+import {
+  type BuiltPresentation,
+  commitPresentation,
+  commitPresentationForPublication,
+} from '../../src/presentation/commit.ts'
 import {
   analysisCatalogBuild,
   analysisCatalogId,
@@ -134,6 +139,19 @@ test('commit refuses a symbolic output parent without changing its destination',
     /presentation-directory-mismatch/,
   )
   assert.deepEqual(await readdir(outside), [])
+})
+
+test('unpublished cleanup refuses a replaced build directory', async (t) => {
+  const f = await fixture(t)
+  const { discard } = await commitPresentationForPublication(f.root, f.built, async () => {})
+  const build = path.join(f.parent, 'build')
+  const original = path.join(f.parent, 'moved')
+  await rename(build, original)
+  await mkdir(build)
+  await writeFile(path.join(build, 'other-owner'), 'keep')
+  await assert.rejects(discard(), /presentation-directory-changed/)
+  assert.equal(await readFile(path.join(build, 'other-owner'), 'utf8'), 'keep')
+  assert.deepEqual(await readFile(path.join(original, 'presentation.json')), f.built.documentBytes)
 })
 
 test('RPC uses current Session Workspace authority and validates fixed paths, identities, digest and bounds', async (t) => {

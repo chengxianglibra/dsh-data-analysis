@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -18,8 +19,13 @@ import {
   type AnalysisDocument,
   analysisRecordId,
 } from '../../src/presentation/contracts/analysis-document.ts'
-import { parseReportCatalog, parseReportHistory } from '../../src/presentation/contracts/catalog.ts'
+import {
+  parseReportCatalog,
+  parseReportHistory,
+  REPORT_HISTORY_LIMIT,
+} from '../../src/presentation/contracts/catalog.ts'
 import { presentationReportPath } from '../../src/presentation/files.ts'
+import { PresentationRecoveryError } from '../../src/presentation/recovery.ts'
 import {
   listReports,
   publishPresentation,
@@ -97,22 +103,20 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
 
 test('publication history excludes concurrent losers and remains readable without the source Session', async (t) => {
   const f = await fixture(t)
+  const candidates = ['B', 'C'].map((title) => version(f.document, title))
   const results = await Promise.allSettled(
-    ['B', 'C'].map((title) =>
-      publishPresentation(
-        f.root,
-        version(f.document, title),
-        f.first.buildId,
-        async () => {},
-        undefined,
-        tab,
-      ),
+    candidates.map((document) =>
+      publishPresentation(f.root, document, f.first.buildId, async () => {}, undefined, tab),
     ),
   )
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1)
   const history = readReportHistory(f.root, f.document.workspaceId, f.document.reportId)
   const versions = (await history).versions
   assert.equal(versions.length, 2)
+  const buildDirectories = await readdir(
+    path.join(presentationReportPath(f.root, f.document.reportId), 'builds'),
+  )
+  assert.deepEqual(buildDirectories.sort(), versions.map((v) => v.receipt.buildId).sort())
   assert.equal(versions[1]!.source?.sessionId, 'source')
   const catalog = parseReportCatalog(
     await f.service.catalog('reports/list', { workspaceId: f.document.workspaceId }),
@@ -132,6 +136,85 @@ test('publication history excludes concurrent losers and remains readable withou
   )
   f.remove()
   await assert.rejects(f.service.read(input), /workspace-unavailable/)
+})
+
+test('publication callback observes the new pointer and is not called on conflict', async (t) => {
+  const f = await fixture(t)
+  const currentPath = path.join(presentationReportPath(f.root, f.document.reportId), 'current.json')
+  const next = version(f.document)
+  let observedBuildId: string | undefined
+  await publishPresentation(
+    f.root,
+    next,
+    f.first.buildId,
+    async () => {},
+    undefined,
+    tab,
+    () => {
+      observedBuildId = JSON.parse(readFileSync(currentPath, 'utf8')).receipt.buildId
+    },
+  )
+  assert.equal(observedBuildId, next.buildId)
+
+  let called = false
+  await assert.rejects(
+    publishPresentation(
+      f.root,
+      version(f.document),
+      f.first.buildId,
+      async () => {},
+      undefined,
+      tab,
+      () => {
+        called = true
+      },
+    ),
+    /report-save-conflict/,
+  )
+  assert.equal(called, false)
+  assert.equal(JSON.parse(await readFile(currentPath, 'utf8')).receipt.buildId, next.buildId)
+})
+
+test('history limit preserves current and removes the unpublished build with recovery guidance', async (t) => {
+  const f = await fixture(t)
+  const reportDirectory = presentationReportPath(f.root, f.document.reportId)
+  const currentPath = path.join(reportDirectory, 'current.json')
+  const pointer = JSON.parse(await readFile(currentPath, 'utf8'))
+  // Synthetic history exercises the limit without writing thousands of irrelevant builds.
+  const firstVersion = pointer.versions[0]
+  for (let i = 1; i < REPORT_HISTORY_LIMIT; i++) {
+    const buildId = `old-${i}`
+    pointer.versions.push({
+      ...firstVersion,
+      receipt: {
+        ...firstVersion.receipt,
+        buildId,
+        files: {
+          document: {
+            ...firstVersion.receipt.files.document,
+            path: path.join(reportDirectory, 'builds', buildId, 'presentation.json'),
+          },
+        },
+      },
+    })
+  }
+  const before = JSON.stringify(pointer)
+  await writeFile(currentPath, before)
+  const next = version(f.document)
+  await assert.rejects(
+    publishPresentation(f.root, next, f.first.buildId, async () => {}, undefined, tab),
+    (error: unknown) => {
+      assert.ok(error instanceof PresentationRecoveryError)
+      assert.equal(error.code, 'report-history-full')
+      assert.ok(error.recovery.nextAction)
+      const normalized = JSON.parse(error.message.slice(error.message.indexOf('error=') + 6))
+      assert.equal(normalized.code, 'report-history-full')
+      assert.equal(normalized.recovery.nextAction, error.recovery.nextAction)
+      return true
+    },
+  )
+  assert.equal(await readFile(currentPath, 'utf8'), before)
+  assert.deepEqual(await readdir(path.join(reportDirectory, 'builds')), [f.first.buildId])
 })
 
 test('legacy current pointers and incomplete publication records are rejected without changing files', async (t) => {

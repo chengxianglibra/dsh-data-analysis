@@ -149,7 +149,7 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 
 current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化。锁内重新比较基版本 buildId，
 不一致返回 `report-save-conflict`。指针通过临时文件写入、文件同步、rename、目录同步提交；rename 是保存生效点。
-冲突或指针提交前失败保留旧构建，完整但未发布的构建不自动清理。锁等待 5 秒后明确失败，不移除未知所有者的锁。
+冲突或指针提交前失败保留旧构建，并在目录及父目录身份仍匹配时尽力清理本次未发布的 Build；指针 rename 生效后不清理。历史数量或指针大小达到上限时返回 `report-history-full` 和可恢复建议，不自动裁剪历史。锁等待 5 秒后明确失败，不移除未知所有者的锁。
 
 客户端验证文件身份、大小和 SHA-256 后才渲染。SHA-256 使用随客户端打包的 `@noble/hashes`，
 不依赖安全上下文的 `crypto.subtle`，内网 HTTP／代理访问执行相同校验。关闭、Workspace 失效或连接重置取消旧请求，

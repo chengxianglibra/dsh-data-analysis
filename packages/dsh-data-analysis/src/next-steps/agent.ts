@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { defineTool, type ToolDefinition, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import { finishCleanup } from '../lifecycle.ts'
 import { parseReportRef, savedReportRef } from '../presentation/contracts/report-ref.ts'
@@ -43,8 +43,8 @@ export function installNextStepsAgent(
   let latestTurn = boundary?.data.turn ?? -1
   let retriedTurn: number | undefined
   let inputGeneration = 0
+  let latestSaveSequence = 0
   const presentationTool = agent.ctx.tools.get(MARIVO_PRESENT_TOOL_NAME, agent)
-  let nextStepsTool: ToolDefinition | undefined
   let disposed = false
   const saveAdmissions = new Map<
     ToolExecutionToken,
@@ -53,7 +53,7 @@ export function installNextStepsAgent(
       workspace: { id: string; path: string }
     }
   >()
-  let state:
+  let armed:
     | {
         turn: number
         workspaceId: string
@@ -61,21 +61,30 @@ export function installNextStepsAgent(
         reportId: string
         buildId: string
         callId?: string
-        items?: NextStepsNotice['items']
-        declined?: boolean
       }
+    | undefined
+  let submitted:
+    | (NonNullable<typeof armed> & { items: NextStepsNotice['items']; declined: boolean })
     | undefined
   const callStates = new Map<
     ToolExecutionToken,
     {
-      state: NonNullable<typeof state>
-      ref?: string
-      items?: NextStepsNotice['items']
-      declined?: boolean
+      armed: NonNullable<typeof armed>
+      generation: number
+      ref: string
+      items: NextStepsNotice['items']
+      declined: boolean
     }
   >()
+  const sameVersion = (left: NonNullable<typeof armed>, right: NonNullable<typeof armed>) =>
+    left.turn === right.turn &&
+    left.workspaceId === right.workspaceId &&
+    left.workspacePath === right.workspacePath &&
+    left.reportId === right.reportId &&
+    left.buildId === right.buildId
   const clear = () => {
-    state = undefined
+    armed = undefined
+    submitted = undefined
   }
   const stops: Array<() => unknown> = []
   try {
@@ -92,13 +101,6 @@ export function installNextStepsAgent(
           exec.signal.throwIfAborted()
           saveAdmissions.set(exec.token, { generation, workspace: identity })
         }
-        if (
-          exec.agent === agent &&
-          exec.name === NEXT_STEPS_TOOL &&
-          agent.ctx.tools.get(exec.name, agent) === nextStepsTool &&
-          state
-        )
-          callStates.set(exec.token, { state })
         return next()
       }),
     )
@@ -156,15 +158,15 @@ export function installNextStepsAgent(
             if (target.kind !== 'saved') throw new Error('report-saved-ref-required')
             if (target.workspaceId !== identity.id) throw new Error('report-workspace-mismatch')
             if (
-              state &&
-              (state.turn !== turn ||
-                state.workspaceId !== identity.id ||
-                state.workspacePath !== identity.path ||
-                state.reportId !== target.reportId ||
-                state.buildId !== target.buildId)
+              armed &&
+              (armed.turn !== turn ||
+                armed.workspaceId !== identity.id ||
+                armed.workspacePath !== identity.path ||
+                armed.reportId !== target.reportId ||
+                armed.buildId !== target.buildId)
             )
               throw new Error('next-steps-requires-final-saved-analysis')
-            if (!state) {
+            if (!armed) {
               await readAnalysisRecord(
                 identity.path,
                 identity.id,
@@ -182,8 +184,8 @@ export function installNextStepsAgent(
               )
                 throw new Error('next-steps-owner-changed')
               // A concurrent save owns the final version, even while an existing report was read.
-              if (state) throw new Error('next-steps-report-changed')
-              state = {
+              if (armed) throw new Error('next-steps-report-changed')
+              armed = {
                 turn,
                 workspaceId: identity.id,
                 workspacePath: identity.path,
@@ -192,7 +194,7 @@ export function installNextStepsAgent(
                 callId: String(exec.callId),
               }
             }
-            const current = state
+            const current = armed
             exec.signal.throwIfAborted()
             if (
               inputGeneration !== generation ||
@@ -203,7 +205,8 @@ export function installNextStepsAgent(
             )
               throw new Error('next-steps-owner-changed')
             callStates.set(exec.token, {
-              state: current,
+              armed: current,
+              generation,
               ref: input.ref,
               items: input.items,
               declined: input.emptyReason === 'declined',
@@ -226,30 +229,34 @@ export function installNextStepsAgent(
         }),
       ),
     )
-    nextStepsTool = agent.ctx.tools.get(NEXT_STEPS_TOOL, agent)
     stops.push(
       agent.ctx.on('tools/result', (exec, result) => {
         const pending = callStates.get(exec.token)
         callStates.delete(exec.token)
-        if (pending && state === pending.state) {
-          const accepted =
-            !result.isError &&
-            z
-              .object({
-                accepted: z.literal(true),
-                ref: z.literal(pending.ref ?? ''),
-              })
-              .safeParse(result.value).success
-          pending.state.items = accepted ? pending.items : undefined
-          pending.state.declined = accepted && pending.declined
+        const accepted =
+          pending &&
+          !result.isError &&
+          z
+            .object({ accepted: z.literal(true), ref: z.literal(pending.ref) })
+            .safeParse(result.value).success
+        if (
+          pending &&
+          accepted &&
+          armed &&
+          !disposed &&
+          pending.generation === inputGeneration &&
+          activeTurn === pending.armed.turn &&
+          sameVersion(pending.armed, armed)
+        ) {
+          submitted = { ...pending.armed, items: pending.items, declined: pending.declined }
         }
-        const committedRef = savedWrites.take(exec.token)
+        const committed = savedWrites.take(exec.token)
         const admission = saveAdmissions.get(exec.token)
         saveAdmissions.delete(exec.token)
         if (
           exec.agent !== agent ||
           !admission ||
-          committedRef === undefined ||
+          committed === undefined ||
           result.isError ||
           admission.generation !== inputGeneration ||
           disposed
@@ -258,7 +265,7 @@ export function installNextStepsAgent(
         const value = z
           .object({ ref: z.string(), deliveryJson: z.string() })
           .safeParse(result.value)
-        if (!value.success || value.data.ref !== committedRef) return
+        if (!value.success || value.data.ref !== committed.ref) return
         try {
           const delivery = parsePresentationToolDelivery(JSON.parse(value.data.deliveryJson))
           const ref = parseReportRef(value.data.ref)
@@ -274,7 +281,9 @@ export function installNextStepsAgent(
             ref.buildId !== delivery.receipt.buildId
           )
             return
-          state = {
+          if (committed.sequence <= latestSaveSequence) return
+          latestSaveSequence = committed.sequence
+          armed = {
             turn: delivery.turn,
             workspaceId: ref.workspaceId,
             workspacePath: admission.workspace.path,
@@ -302,29 +311,29 @@ export function installNextStepsAgent(
         }
         if (
           signal.aborted ||
-          !state ||
-          state.turn !== turn ||
-          state.items !== undefined ||
-          state.declined ||
+          !armed ||
+          armed.turn !== turn ||
+          (submitted !== undefined && sameVersion(submitted, armed)) ||
           retriedTurn === turn
         )
           return
-        const current = state
+        const current = armed
         const generation = inputGeneration
         let identity: Awaited<ReturnType<PresentationWorkspaceSource>>
         try {
           identity = await workspace()
         } catch {
-          if (state === current) clear()
+          if (armed === current) clear()
           return
         }
         if (
           disposed ||
           signal.aborted ||
-          state !== current ||
+          armed !== current ||
           activeTurn !== turn ||
           inputGeneration !== generation ||
-          agent.inbox.nextTurn.length
+          agent.inbox.nextTurn.length ||
+          (submitted !== undefined && sameVersion(submitted, current))
         )
           return
         if (identity.id !== current.workspaceId || identity.path !== current.workspacePath) {
@@ -362,17 +371,19 @@ export function installNextStepsAgent(
           if (event.data.turn !== activeTurn) return
           activeTurn = undefined
         }
-        if (event.type === 'turn/end' && state?.turn === event.data.turn) {
-          const current = state
-          state = undefined
+        if (event.type === 'turn/end' && armed?.turn === event.data.turn) {
+          const current = armed
+          const finalSubmission =
+            submitted && sameVersion(submitted, current) ? submitted : undefined
+          clear()
           if (event.data.reason.kind === 'aborted' || event.data.reason.kind === 'interrupted')
             return
           const completed = event.data.reason.kind === 'completed'
           const status =
-            completed && current.declined
+            completed && finalSubmission?.declined
               ? 'declined'
-              : completed && current.items !== undefined
-                ? current.items.length
+              : completed && finalSubmission !== undefined
+                ? finalSubmission.items.length
                   ? 'available'
                   : 'empty'
                 : 'unavailable'
@@ -391,7 +402,7 @@ export function installNextStepsAgent(
             ...(current.callId ? { callId: current.callId } : {}),
             status,
             ...(reason ? { reason } : {}),
-            items: status === 'available' ? (current.items ?? []) : [],
+            items: status === 'available' ? (finalSubmission?.items ?? []) : [],
           }
           const generation = inputGeneration
           void (async () => {
