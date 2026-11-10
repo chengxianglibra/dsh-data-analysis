@@ -17,6 +17,7 @@ import { useAnalysisResources } from '../context.tsx'
 import { SemanticOrigins, semanticObjects } from '../metadata-view.tsx'
 import { FrameIcon } from './frame-icon.tsx'
 import {
+  comparisonPeriodGrains,
   comparisonPeriodPage,
   comparisonPeriods,
   endpointLabels,
@@ -157,6 +158,7 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
     (page ? undefined : t(`${P}ui-frame-point-periods-unavailable`))
   const items = state ? [] : comparisonPeriods(s, index)
   const ends = endpointLabels(t, s, index)
+  const grains = comparisonPeriodGrains(s, index)
   const label = t(`${P}ui-frame-periods`)
   return (
     <>
@@ -184,14 +186,14 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
             {items.map((item) => (
               <TableRow key={JSON.stringify(item.key)}>
                 <TableCell title={periodDetail(t, item.current)}>
-                  {periodLabel(item.current)}
+                  {periodLabel(item.current, grains.current)}
                   <br />
                   <small>{periodDetail(t, item.current)}</small>
                 </TableCell>
                 <TableCell title={periodDetail(t, item.baseline)}>
                   {item.baseline ? (
                     <>
-                      {periodLabel(item.baseline)}
+                      {periodLabel(item.baseline, grains.baseline)}
                       <br />
                       <small>{periodDetail(t, item.baseline)}</small>
                     </>

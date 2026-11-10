@@ -5,6 +5,7 @@ import {
   parseAnalysisRecordId,
 } from '../../presentation/contracts/analysis-document.ts'
 import { parseReportHistory } from '../../presentation/contracts/catalog.ts'
+import { parseResourceStream } from '../../presentation/contracts/resource-stream.ts'
 import { useCopy } from '../i18n/context.tsx'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
@@ -15,7 +16,7 @@ import { ReportAnalysisSurface } from './lazy-surface.tsx'
 import { ReportReading } from './reading-state.tsx'
 import { ReportMotion } from './report-motion.tsx'
 import type { ReportViewState, ReportViews } from './report-views.ts'
-import { streamingAnalysisProgram } from './streaming-program.ts'
+import { retainedResourceStatements, streamingAnalysisProgram } from './streaming-program.ts'
 
 /** One renderer for the whole report lifecycle; moving hosts retains admitted data and reading state. */
 export function ReportView({
@@ -45,6 +46,59 @@ export function ReportView({
   } = view
   const baseId = candidate?.rebaseOnRecordId ?? (!draft ? candidate?.basedOnRecordId : undefined)
   const target = saved?.receipt.buildId ?? baseId ?? draft?.draftRevision
+  const callId = candidate?.callId
+  const executing = candidate?.phase === 'start' && !settled && !saved
+  useEffect(() => {
+    if (!executing || !callId) return
+    const abort = new AbortController()
+    void (async () => {
+      const stream = views.get(id)?.resourceStream
+      let after = stream?.callId === callId ? stream.revision : 0
+      while (!abort.signal.aborted) {
+        const response = await rpc.call(
+          '/marivo-presentation',
+          'resource-stream/read',
+          { sessionId, workspaceId, turn: view.turn, callId, after },
+          abort.signal,
+        )
+        if (
+          !response ||
+          typeof response !== 'object' ||
+          !('ok' in response) ||
+          response.ok !== true ||
+          !('value' in response)
+        )
+          return
+        const value = parseResourceStream(response.value)
+        if (
+          abort.signal.aborted ||
+          value.sessionId !== sessionId ||
+          value.workspaceId !== workspaceId ||
+          value.turn !== view.turn ||
+          value.callId !== callId ||
+          value.revision < after
+        )
+          return
+        views.resources(id, { generation, workspacePath }, value)
+        after = value.revision
+        if (value.status === 'complete' || value.status === 'failed') return
+      }
+    })().catch(() => {
+      /* The final delivery remains authoritative when the transient stream is unavailable. */
+    })
+    return () => abort.abort()
+  }, [
+    executing,
+    callId,
+    sessionId,
+    workspaceId,
+    view.turn,
+    generation,
+    workspacePath,
+    rpc,
+    views,
+    id,
+  ])
   useEffect(() => {
     if (!target || documentKey === target || settled) return
     const abort = new AbortController()
@@ -110,7 +164,12 @@ export function ReportView({
     draft,
     baseId,
   ])
-  const terminal = view.settled || candidate?.phase === 'failed' || candidate?.phase === 'cancelled'
+  const stream = view.resourceStream?.callId === callId ? view.resourceStream : undefined
+  const terminal =
+    view.settled ||
+    candidate?.phase === 'failed' ||
+    candidate?.phase === 'cancelled' ||
+    stream?.status === 'failed'
   const document = view.document
   const streaming = Boolean(
     !saved &&
@@ -123,11 +182,18 @@ export function ReportView({
   const program =
     streaming && candidate
       ? document
-        ? streamingAnalysisProgram(document.program, candidate.program)
+        ? streamingAnalysisProgram(
+            document.program,
+            candidate.program,
+            true,
+            candidate.resourcePatchInput === 'incomplete',
+          )
         : candidate.program
       : document?.program
   const resources =
-    streaming && candidate ? candidateResources(document, candidate) : document?.resources
+    streaming && candidate
+      ? candidateResources(document, candidate, stream?.resources)
+      : document?.resources
   const published = Boolean(saved && view.documentKey === saved.receipt.buildId)
   const failed = terminal || Boolean(target && failedKey === target)
   const progress =
@@ -155,7 +221,6 @@ export function ReportView({
           <ReportAnalysisSurface
             viewId={id}
             progress={progress}
-            revision={documentKey}
             recordId={published ? document?.recordId : undefined}
             program={program}
             title={candidate?.title ?? document?.title ?? saved?.receipt.title ?? 'Analysis'}
@@ -164,6 +229,11 @@ export function ReportView({
             candidate={!published}
             isStreaming={streaming}
             candidateProgram={streaming ? candidate?.program : undefined}
+            retainedStatementIds={
+              streaming && candidate?.resourcePatchInput === 'incomplete'
+                ? retainedResourceStatements(candidate.program, document?.program)
+                : undefined
+            }
             {...(published ? actions : {})}
           />
         )}

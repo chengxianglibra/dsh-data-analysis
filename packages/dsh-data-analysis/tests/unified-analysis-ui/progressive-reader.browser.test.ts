@@ -16,7 +16,9 @@ first = TabItem("first", "First", [TextContent("First panel")]);
 second = TabItem("second", "Second", [TextContent("Second panel")]);
 plot = AnalysisFrameView("frame", {chart:"bar", encoding:{axis:"region", values:["revenue"]}});
 data = DatasetView("dataset", {chart:"bar", encoding:{axis:"category", values:["value"]}});
-picture = Image("Admitted image", "image");`
+picture = Image(imageLabel, "image");
+imageLabel = sharedImageLabel;
+sharedImageLabel = "Admitted image";`
 
 test('candidate prefixes retain readable siblings, local controls and explicit data configuration boundaries', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-progressive-reader-'))
@@ -31,7 +33,7 @@ import {createRoot} from 'react-dom/client';
 import {PartialArguments} from '@deepseek-ai/dsh-util-values';
 import {AnalysisRenderer} from './src/client/analysis-ui/surface.tsx';
 import {analysisCandidate,candidateResources} from './src/client/analysis-ui/candidate.ts';
-import {streamingAnalysisProgram} from './src/client/analysis-ui/streaming-program.ts';
+import {retainedResourceStatements,streamingAnalysisProgram} from './src/client/analysis-ui/streaming-program.ts';
 const base=${JSON.stringify(program)};
 const resources={
  frame:{kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'frame-ref'},snapshot:${JSON.stringify(observeCategory(3))},binding:{workspaceId:'w'}},
@@ -44,7 +46,7 @@ window.progressive={update(patch='',resourcePrefix,streaming=true,candidate=true
  const args=new PartialArguments();
  args.append(JSON.stringify({surface:'tool',stage:'preview',program:patch}).slice(0,-1)+(resourcePrefix===undefined?'}':',"resourcePatch":'+resourcePrefix));
  const value=analysisCandidate({phase:streaming?'preparing':'start',args,callId:'candidate',name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'s','w',{});
- root.render(h(AnalysisRenderer,{program:streamingAnalysisProgram(base,value.program,streaming),candidateProgram:value.program,title:'Progressive reader',locale:'en-US',resources:candidateResources({resources},value),candidate,isStreaming:streaming,
+ root.render(h(AnalysisRenderer,{program:streamingAnalysisProgram(base,value.program,streaming,value.resourcePatchInput==='incomplete'),candidateProgram:value.program,retainedStatementIds:value.resourcePatchInput==='incomplete'?retainedResourceStatements(value.program,base):undefined,title:'Progressive reader',locale:'en-US',resources:candidateResources({resources},value),candidate,isStreaming:streaming,
  readCode:async()=>{window.requests.push('code');},openSemanticRef:()=>window.requests.push('semantic'),askPoint:async()=>window.requests.push('point'),askDataset:async()=>window.requests.push('dataset'),askResource:async()=>window.requests.push('resource')}));
 }};
 window.progressive.update();`,
@@ -166,16 +168,16 @@ window.progressive.update();`,
     assert.equal(await page.locator('.au-image').count(), 0)
     assert.equal(await page.locator('[data-resource="frame"]').isVisible(), true)
 
-    // An incomplete patch cannot reuse old snapshots and images before its changes are known.
+    // Unknown patch scope keeps admitted resources under their original configuration; text continues.
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update(
-        'intro = TextContent("New scope")',
+        'sharedImageLabel = "Candidate indirect image"; intro = TextContent("New scope")',
         '{"put":{"frame":{"kind":"frame-snapshot","snapshotRef":"new',
       ),
     )
     await page.getByText('New scope', { exact: true }).waitFor()
-    assert.equal(await page.locator('[data-resource]').count(), 0)
-    assert.equal(await page.locator('.au-image').count(), 0)
+    assert.equal(await page.locator('[data-resource]').count(), 2)
+    assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update(
         '',

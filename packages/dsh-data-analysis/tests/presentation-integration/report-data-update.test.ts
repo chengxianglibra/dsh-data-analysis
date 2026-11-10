@@ -376,6 +376,37 @@ test('unrelated, foreign and mismatched script bindings are rejected before resu
   assert.throws(() => parseAnalysisDocument(document), /code-binding-invalid/)
 })
 
+test('readable code without exported results has a distinct actionable error before result reads', async (t) => {
+  const f = await fixture(t)
+  const codeRef = await savePythonExecution(f.root, {
+    text: '# completed analysis without declared resultVariables',
+    startedAt: '2026-11-09T00:00:00.000Z',
+    finishedAt: '2026-11-09T00:00:01.000Z',
+  })
+  await assert.rejects(
+    f.present({ resourcePatch: { put: { data: f.declarations(codeRef).data } } }),
+    /python-result-exports-missing:.*source is readable.*without codeRef.*Do not rerun/,
+  )
+  assert.equal(f.reads, 0)
+  const valid = await f.saveCode()
+  await assert.rejects(
+    f.present({
+      resourcePatch: {
+        put: {
+          data: f.declarations({ ...valid, sha256: '0'.repeat(64) }).data,
+        },
+      },
+    }),
+    /python-execution-source-unavailable:.*without codeRef.*Do not rerun/,
+  )
+  assert.equal(f.reads, 0)
+  const delivery = await f.present({ resourcePatch: { put: { data: f.declarations().data } } })
+  const saved = await readReceiptDocument(f.root, delivery.receipt)
+  assert(saved.resources.data?.kind === 'snapshot')
+  assert.equal(saved.resources.data.binding.codeRef, undefined)
+  assert.equal(f.reads, 1)
+})
+
 test('missing scripts remain explicit while saved resources stay readable and reusable', async (t) => {
   const f = await fixture(t)
   const codeRef = await f.saveCode()

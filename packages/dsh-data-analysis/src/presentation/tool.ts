@@ -44,7 +44,10 @@ const presentationToolInput = analysisPresentInput.omit({ surface: true }).exten
   rebaseOnRecordId: z.string().min(1).max(512).optional(),
 })
 
-export function presentationTurn(session: Session, exec: ToolRunContext): number {
+export function presentationTurn(
+  session: Session,
+  exec: Pick<ToolRunContext, 'rootCallId' | 'callId'>,
+): number {
   const rootCallId = String(exec.rootCallId ?? exec.callId)
   const call = [...session.snapshotEvents()]
     .reverse()
@@ -196,9 +199,11 @@ export function createMarivoPresentTool(
       }
       const sessionId = String(session.id)
       const perform = async (lease?: AnalysisDraftLease) => {
+        let checkResourceStream: (() => void) | undefined
         const check = async () => {
           await checkWorkspace()
           lease?.check()
+          checkResourceStream?.()
         }
         await check()
         const current = lease ? drafts.get(sessionId) : undefined
@@ -262,72 +267,88 @@ export function createMarivoPresentTool(
             return !previous || !sameAnalysisDeclaration(previous.declaration, declaration)
           })
           .map(([name]) => name)
-        const document = await createAnalysisDocument(
-          { ...input, surface },
-          {
-            projectRoot: identity.path,
-            runner,
-          },
-          {
-            workspaceId: identity.id,
-            reportId: base?.reportId ?? randomUUID(),
-            buildId: randomUUID(),
-          },
-          signal,
-          base,
-          input.rebaseOnRecordId ? active?.document.resources : undefined,
-        )
-        await check()
-        const changedResources = Object.fromEntries(
-          changedNames.flatMap((name) =>
-            document.resources[name] ? [[name, document.resources[name]]] : [],
-          ),
-        )
-        const baseBuildId =
-          active && !input.rebaseOnRecordId ? active.baseBuildId : (base?.buildId ?? null)
-        if (input.stage === 'preview' && lease) {
-          const delivery = {
-            kind: MARIVO_DRAFT_DELIVERY_KIND,
-            dshSessionId: sessionId,
-            workspaceId: identity.id,
-            turn,
-            surface,
-            draftId: active?.delivery.draftId ?? randomUUID(),
-            draftRevision: document.buildId,
-          } as const
-          lease.write({ delivery, workspacePath: identity.path, baseBuildId, document })
-          return {
-            stage: 'preview' as const,
-            draftId: delivery.draftId,
-            draftRevision: delivery.draftRevision,
-            deliveryJson: JSON.stringify(delivery),
-            resultMetadataJson: JSON.stringify(analysisResultSummary(changedResources)),
-          }
-        }
-        const receipt = await publishPresentation(
+        const resourceStream = drafts.beginResources(
+          { sessionId, workspaceId: identity.id, turn, callId: String(exec.callId) },
           identity.path,
-          document,
-          baseBuildId,
-          check,
-          signal,
-          { kind: 'agent', sessionId, surface },
         )
-        if (active) drafts.clear(sessionId, turn)
-        return {
-          stage: 'save' as const,
-          recordId: document.recordId,
-          resultMetadataJson: JSON.stringify(analysisResultSummary(changedResources)),
-          deliveryJson: JSON.stringify(
-            parsePresentationDelivery({
-              kind: MARIVO_PRESENTATION_DELIVERY_KIND,
-              schemaVersion: 2,
+        checkResourceStream = resourceStream.check
+        let streamSucceeded = false
+        try {
+          const document = await createAnalysisDocument(
+            { ...input, surface },
+            {
+              projectRoot: identity.path,
+              runner,
+            },
+            {
+              workspaceId: identity.id,
+              reportId: base?.reportId ?? randomUUID(),
+              buildId: randomUUID(),
+            },
+            signal,
+            base,
+            input.rebaseOnRecordId ? active?.document.resources : undefined,
+            async (name, resource) => {
+              await check()
+              resourceStream.put(name, resource)
+            },
+          )
+          await check()
+          const changedResources = Object.fromEntries(
+            changedNames.flatMap((name) =>
+              document.resources[name] ? [[name, document.resources[name]]] : [],
+            ),
+          )
+          const baseBuildId =
+            active && !input.rebaseOnRecordId ? active.baseBuildId : (base?.buildId ?? null)
+          if (input.stage === 'preview' && lease) {
+            const delivery = {
+              kind: MARIVO_DRAFT_DELIVERY_KIND,
               dshSessionId: sessionId,
+              workspaceId: identity.id,
               turn,
-              receipt,
               surface,
-              ...(active ? { draftId: active.delivery.draftId } : {}),
-            }),
-          ),
+              draftId: active?.delivery.draftId ?? randomUUID(),
+              draftRevision: document.buildId,
+            } as const
+            lease.write({ delivery, workspacePath: identity.path, baseBuildId, document })
+            streamSucceeded = true
+            return {
+              stage: 'preview' as const,
+              draftId: delivery.draftId,
+              draftRevision: delivery.draftRevision,
+              deliveryJson: JSON.stringify(delivery),
+              resultMetadataJson: JSON.stringify(analysisResultSummary(changedResources)),
+            }
+          }
+          const receipt = await publishPresentation(
+            identity.path,
+            document,
+            baseBuildId,
+            check,
+            signal,
+            { kind: 'agent', sessionId, surface },
+          )
+          if (active) drafts.clear(sessionId, turn)
+          streamSucceeded = true
+          return {
+            stage: 'save' as const,
+            recordId: document.recordId,
+            resultMetadataJson: JSON.stringify(analysisResultSummary(changedResources)),
+            deliveryJson: JSON.stringify(
+              parsePresentationDelivery({
+                kind: MARIVO_PRESENTATION_DELIVERY_KIND,
+                schemaVersion: 2,
+                dshSessionId: sessionId,
+                turn,
+                receipt,
+                surface,
+                ...(active ? { draftId: active.delivery.draftId } : {}),
+              }),
+            ),
+          }
+        } finally {
+          resourceStream.finish(streamSucceeded)
         }
       }
       return input.stage === 'preview' || input.draftId

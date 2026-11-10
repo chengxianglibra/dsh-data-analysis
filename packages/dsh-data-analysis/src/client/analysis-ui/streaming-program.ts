@@ -1,4 +1,11 @@
-import { autoClose, mergeStatements } from '@openuidev/lang-core'
+import {
+  autoClose,
+  mergeStatements,
+  parseExpression,
+  split,
+  tokenize,
+  walkAST,
+} from '@openuidev/lang-core'
 import { analysisStatements } from '../../presentation/contracts/analysis-program.ts'
 
 /** Candidate-only merging. Host admission still requires the complete, validated patch. */
@@ -6,15 +13,19 @@ export function streamingAnalysisProgram(
   base: string | undefined,
   prefix: string,
   streaming = true,
+  retainResourceViews = false,
 ): string {
   const readable = streaming ? readableAnalysisPrefix(prefix) : prefix
   if (!base) return readable
   if (!prefix.trim()) return base
   const source = autoClose(readable).text
+  const retained = retainResourceViews ? resourceConfigurationClosure(base, source).held : undefined
   const statements: string[] = []
   for (const raw of candidateStatements(source)) {
     try {
-      statements.push(analysisStatements(raw))
+      const statement = analysisStatements(raw)
+      if (retained?.has(split(tokenize(statement))[0]!.id)) continue
+      statements.push(statement)
     } catch {
       // A trailing statement name or expression may still be arriving.
       break
@@ -25,6 +36,67 @@ export function streamingAnalysisProgram(
   } catch {
     return base
   }
+}
+
+/** Resource props can reference ordinary statements, including shared aliases.
+ * Preserve both old and incoming dependency graphs until patch scope is known.
+ * References elsewhere in a layout are not configuration dependencies.
+ */
+function resourceConfigurationClosure(base: string, prefix: string) {
+  const dependencies = new Map<string, Set<string>>()
+  const resources = new Map<string, Set<string>>()
+  for (const program of [base, prefix]) {
+    for (const raw of candidateStatements(program)) {
+      try {
+        const statement = split(tokenize(analysisStatements(raw)))[0]!
+        const expression = parseExpression(statement.tokens)
+        const refs = dependencies.get(statement.id) ?? new Set<string>()
+        dependencies.set(statement.id, refs)
+        walkAST(expression, (node) => {
+          if (node.k === 'Ref') refs.add(node.n)
+          if (
+            node.k !== 'Comp' ||
+            !['AnalysisFrameView', 'DatasetView', 'Image'].includes(node.name)
+          )
+            return
+          const configuration = resources.get(statement.id) ?? new Set<string>()
+          resources.set(statement.id, configuration)
+          for (const argument of node.args)
+            walkAST(argument, (value) => {
+              if (value.k === 'Ref') configuration.add(value.n)
+            })
+        })
+      } catch {
+        // An unfinished candidate remains governed by the last valid base graph.
+      }
+    }
+  }
+  const changed = new Set(
+    candidateStatements(prefix).flatMap((raw) => {
+      const name = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(raw)?.[1]
+      return name ? [name] : []
+    }),
+  )
+  const held = new Set<string>()
+  const affected: string[] = []
+  for (const [name, refs] of resources) {
+    const closure = new Set([name])
+    const queue = [...refs]
+    while (queue.length) {
+      const dependency = queue.pop()!
+      if (closure.has(dependency)) continue
+      closure.add(dependency)
+      queue.push(...(dependencies.get(dependency) ?? []))
+    }
+    for (const dependency of closure) held.add(dependency)
+    if ([...closure].some((dependency) => changed.has(dependency))) affected.push(name)
+  }
+  return { held, affected }
+}
+
+/** Statements whose previous resource configuration stays visible until patch scope is known. */
+export function retainedResourceStatements(prefix: string, base = ''): string[] {
+  return resourceConfigurationClosure(base, autoClose(prefix).text).affected
 }
 
 /** Hide only an unfinished resource invocation before autoClose can invent its props.

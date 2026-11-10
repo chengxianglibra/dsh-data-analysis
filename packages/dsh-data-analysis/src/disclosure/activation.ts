@@ -128,6 +128,15 @@ interface LoadedSkill {
   resourceBase?: SkillResourceBase
 }
 
+/** Correlate registry sources without exposing provider values or resource locations. */
+function skillSource(skill: LoadedSkill): string {
+  const sourceId = createHash('sha256')
+    .update(JSON.stringify([skill.provider, skill.resourceBase ?? null]))
+    .digest('hex')
+    .slice(0, 16)
+  return `registry source ${sourceId}, resource kind ${skill.resourceBase?.kind ?? 'unknown'}`
+}
+
 function loadedSkill(value: unknown): LoadedSkill | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const skill = value as { provider?: unknown; content?: unknown; resourceBase?: unknown }
@@ -501,7 +510,7 @@ export class MarivoDisclosureController {
         } catch {
           verificationSignal.throwIfAborted()
           throw new Error(
-            `Cannot read the bound Runtime Skill ${skill}; repair the Runtime before continuing.`,
+            `Cannot read the bound Runtime Skill ${skill} (skills/${skill}/SKILL.md); repair the Runtime before continuing.`,
           )
         }
         const expected = skillBody(raw)
@@ -510,17 +519,17 @@ export class MarivoDisclosureController {
         for (const visible of visibleSkills.filter((item) => item.skill === skill)) {
           if (visible.body !== expected)
             throw new Error(
-              `Conflicting or unverifiable ${skill} instructions remain visible in this Session. Start a new Session or have the Host remove them from the model-visible context before continuing; no history was deleted.`,
+              `Conflicting or unverifiable ${skill} instructions remain visible in this Session. Visible source: ${visible.source}. Expected Runtime Skill: skills/${skill}/SKILL.md in the bound Runtime. Inspect the Host Skill registry to align the conflicting source, then start a new Session or have the Host remove those instructions from the model-visible context before continuing; no history was deleted.`,
             )
         }
         if (selected !== undefined) {
           if (selected.content !== expected)
             throw new Error(
-              `Loaded ${skill} has different instructions from the bound Marivo Runtime. Align the selected Skill with the Runtime and reload it before continuing; no Workspace Skill was changed.`,
+              `Loaded ${skill} has different instructions from the bound Marivo Runtime. Selected source: ${skillSource(selected)}. Expected Runtime Skill: skills/${skill}/SKILL.md in the bound Runtime. Inspect the Host Skill registry. Align the selected Skill with the Runtime and reload it before continuing; no Workspace Skill was changed.`,
             )
         } else if (this.#activeSkills.has(skill) && this.#verifiedSkills.get(skill) !== digest) {
           throw new Error(
-            `Cannot verify the loaded ${skill} against the bound Marivo Runtime. Reload this Skill before continuing.`,
+            `Cannot verify the loaded ${skill} against the bound Marivo Runtime Skill (skills/${skill}/SKILL.md). Reload this Skill before continuing.`,
           )
         }
         identities.set(skill, digest)
@@ -723,11 +732,15 @@ export class MarivoDisclosureController {
   }
 
   /** Inspect actual model-visible Skill text without asserting historical provider identity. */
-  #visibleSkillContent(): Array<{ skill: MarivoSkillName; body: string | undefined }> {
+  #visibleSkillContent(): Array<{
+    skill: MarivoSkillName
+    body: string | undefined
+    source: string
+  }> {
     const events = this.agent.session.snapshotEvents()
     const visible = new Set(this.agent.session.surface.nodes)
     const calls = new Map<string, MarivoSkillName>()
-    const result: Array<{ skill: MarivoSkillName; body: string | undefined }> = []
+    const result: Array<{ skill: MarivoSkillName; body: string | undefined; source: string }> = []
     for (const event of events) {
       if (event.type === 'tool/call' && event.data.name === SKILL_TOOL_NAME) {
         try {
@@ -779,11 +792,16 @@ export class MarivoDisclosureController {
           message.content.length === 1 &&
           message.content[0]?.type === 'text' &&
           message.content[0].text === renderSkillContent({ name: skill, ...loaded })
-        result.push({ skill, body: exact ? loaded.content : undefined })
+        result.push({
+          skill,
+          body: exact ? loaded.content : undefined,
+          source: `Session event ${event.seq}${loaded ? `, ${skillSource(loaded)}` : ', provider unavailable'}`,
+        })
       } else if (bodies.length > 0) {
         result.push({
           skill,
           body: message.content.length === 1 && bodies.length === 1 ? bodies[0] : undefined,
+          source: `Session event ${event.seq}, provider unavailable after history restoration`,
         })
       }
     }

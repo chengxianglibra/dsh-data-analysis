@@ -1,6 +1,7 @@
 import type { ElementNode } from '@openuidev/lang-core'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
+import type { ReactNode } from 'react'
 import { z } from 'zod/v4'
 import {
   datasetDisplaySchema,
@@ -9,6 +10,7 @@ import {
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
+import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisDataView } from './data-view.tsx'
@@ -61,7 +63,23 @@ function usePendingStatement(statementId?: string) {
     context.candidate &&
       context.isStreaming &&
       statementId !== undefined &&
+      !context.retainedStatementIds?.includes(statementId) &&
       context.pendingStatementId === statementId,
+  )
+}
+
+function ResourceUpdate({ statementId, children }: { statementId?: string; children: ReactNode }) {
+  const context = useAnalysisResources()
+  const t = useCopy()
+  return (
+    <>
+      {statementId && context.retainedStatementIds?.includes(statementId) && (
+        <Alert role="status">
+          <AlertDescription>{t('marivo.presentation.ui-resource-pending')}</AlertDescription>
+        </Alert>
+      )}
+      {children}
+    </>
   )
 }
 
@@ -85,14 +103,16 @@ function ResourceView({
       context.pendingStatementId !== undefined)
   return (
     <ReadingComponent.Provider value={statementId ?? `${kind}:${props.ref}`}>
-      <AnalysisDataView
-        kind={kind}
-        component={{ kind, statementId, view: props.view, display: props.display }}
-        resourceName={props.ref}
-        view={props.view}
-        display={props.display}
-        configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
-      />
+      <ResourceUpdate statementId={statementId}>
+        <AnalysisDataView
+          kind={kind}
+          component={{ kind, statementId, view: props.view, display: props.display }}
+          resourceName={props.ref}
+          view={props.view}
+          display={props.display}
+          configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
+        />
+      </ResourceUpdate>
     </ReadingComponent.Provider>
   )
 }
@@ -127,7 +147,9 @@ function ResourceImage({
   const pending = usePendingStatement(statementId)
   const resource = useAnalysisResources().readResource(src ?? '')
   return !pending && resource?.kind === 'image' ? (
-    <img className="au-image" src={resource.dataUrl} alt={alt ?? ''} />
+    <ResourceUpdate statementId={statementId}>
+      <img className="au-image" src={resource.dataUrl} alt={alt ?? ''} />
+    </ResourceUpdate>
   ) : null
 }
 

@@ -61,6 +61,9 @@ DataFrame 引用含 `schema: "marivo.dataframe_ref/v2"`、`project_root`、`resu
 不得拼造、补写或改换引用中的身份；DataFrame 的 `project_root` 必须属于当前 Workspace。
 从返回的 resultRefs 按名称取准确引用，并同时保留 codeRef。工具容量是至多 16 个输出、32 KiB 结构化导出；按实际计算导出所需结果，不按视图数量重复导出或计算。变量缺失、非法引用或导出失败时返回 resultCaptureError，原执行成功状态保持不变，不重放代码来补导出。
 提供 `codeRef` 时，Host 核验同一 Workspace 的执行记录确实登记了该引用；无关或不可读的记录明确失败。
+`python-result-exports-missing` 表示脚本可读但未登记结果导出，`python-execution-source-unavailable` 表示执行记录不可核验，
+`analysis-resource-code-not-bound` 表示记录导出了其他引用。先复用已导出目标引用的原 codeRef；确实没有可核验来源时显式省略 codeRef 并说明缺口，
+继续使用已有固定引用，不为补来源而重跑成功的分析，也不另运行只读脚本冒充原生产记录。
 
 Host 在绑定 Python Runtime 中使用 Marivo 公开 API 恢复固定结果并生成展示投影；
 不需要 HTTP 服务、原分析进程、当前模型或数据源凭据。展示不会隐式 compute/persist。

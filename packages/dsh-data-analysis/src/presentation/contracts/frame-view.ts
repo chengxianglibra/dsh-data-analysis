@@ -70,7 +70,7 @@ export const frameDisplaySchema = z.strictObject({
   comparisonLabels: z
     .array(
       z.strictObject({
-        alias: z.string().min(1).max(512),
+        alias: z.string().min(1).max(512).nullable(),
         current: z.string().trim().min(1).max(512),
         baseline: z.string().trim().min(1).max(512),
       }),

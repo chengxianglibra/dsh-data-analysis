@@ -1433,10 +1433,17 @@ test('a loaded foreign Skill is compared to the bound Runtime body; conflict and
       resourceBase: { kind: 'directory', path: '/project/skill' },
     }),
   )
-  await assert.rejects(
-    controller.prepareStep([], signal),
-    /different instructions from the bound Marivo Runtime/,
-  )
+  await assert.rejects(controller.prepareStep([], signal), (error: unknown) => {
+    assert(error instanceof MarivoDisclosureError)
+    assert.match(error.message, /different instructions from the bound Marivo Runtime/)
+    assert.match(
+      error.message,
+      /Selected source: registry source [a-f0-9]{16}, resource kind directory/,
+    )
+    assert.match(error.message, /Expected Runtime Skill:.*skills\/marivo-analysis\/SKILL\.md/)
+    assert.equal(error.message.includes('stale'), false)
+    return true
+  })
   await assert.rejects(stat(fixture.recordPath), { code: 'ENOENT' })
   controller.observeToolResult(
     call,
@@ -1834,7 +1841,15 @@ test('a verified reload cannot hide an earlier conflicting Skill result still on
     )
   }
   const conflict = load('stale-skill', 'stale instructions')
-  await assert.rejects(controller.prepareStep([], signal), /conflicting|different instructions/i)
+  await assert.rejects(controller.prepareStep([], signal), (error: unknown) => {
+    assert(error instanceof MarivoDisclosureError)
+    assert.match(error.message, /conflicting|different instructions/i)
+    assert.match(error.message, /Visible source: Session event \d+, registry source [a-f0-9]{16}/)
+    assert.match(error.message, /resource kind directory/)
+    assert.match(error.message, /Expected Runtime Skill:.*skills\/marivo-analysis\/SKILL\.md/)
+    assert.equal(error.message.includes('stale instructions'), false)
+    return true
+  })
   load('correct-skill', 'instructions:marivo-analysis')
   await assert.rejects(controller.prepareStep([], signal), /conflict.*visible|visible.*conflict/i)
   assert.ok(agent.session.surface.nodes.includes(conflict.seq))

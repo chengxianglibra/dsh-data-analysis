@@ -43,7 +43,11 @@ export class NextStepsModel {
       return
     if (parsed.data.turn <= this.retiredTurn) return
     if (this.notice && parsed.data.turn < this.notice.turn) return
-    this.notice = parsed.data.items.length ? parsed.data : undefined
+    if (this.notice?.turn === parsed.data.turn && parsed.data.status !== 'declined') return
+    if (parsed.data.status === 'declined') {
+      this.retiredTurn = Math.max(this.retiredTurn, parsed.data.turn)
+      this.notice = undefined
+    } else this.notice = parsed.data
     this.touch()
   }
   submit(turn: number, index: number, send: (prompt: string) => boolean): void {

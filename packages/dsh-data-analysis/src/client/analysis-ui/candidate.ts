@@ -126,11 +126,14 @@ export function analysisCandidate(
 export function candidateResources(
   document: Pick<AnalysisDocument, 'resources'> | undefined,
   candidate: Pick<AnalysisCandidate, 'resourcePatch' | 'resourcePatchInput'>,
+  admitted: AnalysisDocument['resources'] = {},
 ): AnalysisDocument['resources'] {
-  // Never reuse bytes from a patch whose complete contents have not yet
-  // passed structural validation, or from unsupported legacy input.
+  // While scope is arriving the renderer keeps the base resource statements,
+  // so those exact prior bytes remain readable. A completed patch changes only
+  // its named resources; replacement bytes require independent Host admission.
   if (candidate.resourcePatchInput !== 'omitted') {
-    if (candidate.resourcePatchInput !== 'complete' || !candidate.resourcePatch) return {}
+    if (candidate.resourcePatchInput === 'incomplete') return document?.resources ?? {}
+    if (!candidate.resourcePatch) return {}
     const { put, remove = [] } = candidate.resourcePatch
     const removed = new Set(remove)
     const base = document?.resources ?? {}
@@ -139,7 +142,7 @@ export function candidateResources(
       remove.some((name) => !Object.hasOwn(base, name) || (put && Object.hasOwn(put, name)))
     )
       return {}
-    return Object.fromEntries(
+    const retained = Object.fromEntries(
       Object.entries(base).filter(([name, resource]) => {
         if (removed.has(name)) return false
         if (!put || !Object.hasOwn(put, name)) return true
@@ -149,6 +152,16 @@ export function candidateResources(
         )
       }),
     )
+    for (const [name, resource] of Object.entries(admitted)) {
+      const declaration = put?.[name]
+      if (
+        !removed.has(name) &&
+        declaration &&
+        sameAnalysisDeclaration(resource.declaration, declaration)
+      )
+        retained[name] = resource
+    }
+    return retained
   }
   return document?.resources ?? {}
 }

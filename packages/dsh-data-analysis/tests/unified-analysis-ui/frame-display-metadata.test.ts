@@ -69,6 +69,31 @@ test('comparison endpoint labels bind to a saved alias and preserve the endpoint
   )
 })
 
+test('anonymous comparison labels require exactly one saved null alias', async () => {
+  const snapshot = comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 })
+  const facts = snapshot.frame.sections.interpretation
+  if (facts.status !== 'captured') throw new Error('expected captured interpretation')
+  facts.comparisons[0]!.alias = null
+  const display = { comparisonLabels: [{ alias: null, current: 'June', baseline: 'May' }] }
+  assert.equal(frameDisplaySchema.safeParse(display).success, true)
+  const resolved = resolveFrameView(snapshot)
+  if (!resolved.ok) throw new Error('expected comparison view')
+  assert.equal(validateFrameDisplay(snapshot, resolved.view, display), undefined)
+  const html = await renderer.render(snapshot, { display })
+  assert.match(html, /June/)
+  assert.match(html, /May/)
+  assert.equal(
+    validateFrameDisplay(snapshot, resolved.view, {
+      comparisonLabels: [...display.comparisonLabels, ...display.comparisonLabels],
+    }),
+    '/display/comparisonLabels',
+  )
+  facts.comparisons.push(structuredClone(facts.comparisons[0]!))
+  assert.equal(validateFrameDisplay(snapshot, resolved.view, display), '/display/comparisonLabels')
+  facts.comparisons = []
+  assert.equal(validateFrameDisplay(snapshot, resolved.view, display), '/display/comparisonLabels')
+})
+
 test('currency display accepts a compound saved unit and preserves its precision and label', async () => {
   const snapshot = frame({
     values: [{ name: 'efficiency', type: 'decimal', values: ['9007199254740993.125'] }],

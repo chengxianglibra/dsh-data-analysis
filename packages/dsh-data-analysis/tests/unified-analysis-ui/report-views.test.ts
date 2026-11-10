@@ -145,3 +145,35 @@ test('native persisted addresses restore moved placement even when the tab body 
   views.reconcile([])
   assert.equal(views.get(view.id)?.tabId, undefined)
 })
+
+test('resource deltas reject stale call, Workspace, generation and revision and failure discards transient bytes', () => {
+  const views = new ReportViews()
+  const view = views.observe(candidate('active'), '/workspace')
+  const owner = { generation, workspacePath: '/workspace' }
+  const delta = {
+    sessionId: 'session',
+    workspaceId: 'workspace',
+    turn: 1,
+    callId: 'active',
+    revision: 2,
+    status: 'reading' as const,
+    resources: {},
+  }
+  views.resources(view.id, owner, delta)
+  assert.equal(views.get(view.id)?.resourceStream?.revision, 2)
+  for (const response of [
+    { ...delta, revision: 1 },
+    { ...delta, callId: 'other', revision: 3 },
+    { ...delta, workspaceId: 'other', revision: 3 },
+  ])
+    views.resources(view.id, owner, response)
+  views.resources(
+    view.id,
+    { ...owner, generation: {} as ConnectionGeneration },
+    { ...delta, revision: 3 },
+  )
+  assert.equal(views.get(view.id)?.resourceStream?.revision, 2)
+  views.resources(view.id, owner, { ...delta, revision: 4, status: 'failed' })
+  assert.equal(views.get(view.id)?.resourceStream?.status, 'failed')
+  assert.deepEqual(views.get(view.id)?.resourceStream?.resources, {})
+})

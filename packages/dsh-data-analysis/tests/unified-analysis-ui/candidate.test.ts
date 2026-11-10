@@ -46,17 +46,17 @@ test('resource patch previews retain only unchanged admitted resources', () => {
   assert.deepEqual(project(PartialArguments.fromObject({})), { old, kept })
   const latePatch = new PartialArguments()
   latePatch.append('{"surface":"tool","program":"root = Image(\\"New scope\\", \\"old\\");"')
-  assert.deepEqual(project(latePatch), {})
+  assert.deepEqual(project(latePatch), { old, kept })
   latePatch.append(',"resourcePatch":{"put":{"old":{"kind":"image-file","path":"new.png"}}}}')
   assert.deepEqual(project(latePatch), { kept })
   const textOnly = new PartialArguments()
   textOnly.append('{"surface":"tool","program":"root = TextContent(\\"Updated\\");"')
-  assert.deepEqual(project(textOnly), {})
+  assert.deepEqual(project(textOnly), { old, kept })
   textOnly.append('}')
   assert.deepEqual(project(textOnly), { old, kept })
   const prefix = new PartialArguments()
   prefix.append('{"resourcePatch":{"put":{"old":{"kind":"image-file","path":"new')
-  assert.deepEqual(project(prefix), {})
+  assert.deepEqual(project(prefix), { old, kept })
   assert.deepEqual(
     project(
       PartialArguments.fromObject({
@@ -81,7 +81,7 @@ test('resource patch previews retain only unchanged admitted resources', () => {
     assert.deepEqual(project(PartialArguments.fromObject({ resourcePatch })), {})
   assert.deepEqual(
     project(PartialArguments.fromObject({ resources: {}, resourcePatch: { put: {} } })),
-    {},
+    { old, kept },
   )
 })
 

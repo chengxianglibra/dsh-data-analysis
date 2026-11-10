@@ -15,20 +15,34 @@ const text = (max: number) =>
 export const nextStepsInput = z
   .strictObject({
     items: z.array(z.strictObject({ label: text(40), prompt: text(1000) })).max(4),
+    emptyReason: z.enum(['declined', 'no-suggestions']).optional(),
   })
-  .superRefine(({ items }, ctx) => {
+  .superRefine(({ items, emptyReason }, ctx) => {
+    if (items.length && emptyReason)
+      ctx.addIssue({ code: 'custom', message: 'emptyReason requires an empty list' })
     for (const field of ['label', 'prompt'] as const) {
       const values = items.map((item) => item[field].replace(/\s+/gu, ' '))
       if (new Set(values).size !== values.length)
         ctx.addIssue({ code: 'custom', message: `Duplicate ${field}` })
     }
   })
-export const nextStepsNotice = z.strictObject({
-  sessionId: z.string().min(1).max(512),
-  workspaceId: z.string().min(1).max(512),
-  turn: z.number().int().nonnegative(),
-  items: nextStepsInput.shape.items,
-})
+export const nextStepsNotice = z
+  .strictObject({
+    sessionId: z.string().min(1).max(512),
+    workspaceId: z.string().min(1).max(512),
+    turn: z.number().int().nonnegative(),
+    reportId: z.string().min(1).max(512),
+    buildId: z.string().min(1).max(512),
+    status: z.enum(['available', 'declined', 'unavailable']),
+    reason: z.enum(['no-suggestions', 'generation-incomplete', 'generation-failed']).optional(),
+    items: nextStepsInput.shape.items,
+  })
+  .superRefine(({ status, reason, items }, ctx) => {
+    if ((status === 'available') !== items.length > 0)
+      ctx.addIssue({ code: 'custom', message: 'Items must match availability' })
+    if ((status === 'unavailable') !== (reason !== undefined))
+      ctx.addIssue({ code: 'custom', message: 'Unavailable notices require a reason' })
+  })
 export type NextStepsNotice = z.infer<typeof nextStepsNotice>
 export type NextStep = NextStepsNotice['items'][number]
 const owner = '@chengxianglibra/dsh-data-analysis'

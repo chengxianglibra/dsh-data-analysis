@@ -81,7 +81,7 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 - `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，当前阅读位置的草稿原位切换到正式结果，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
 - 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
-- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。候选不产生 draftRevision、不读新资源、不保存；新资源显示占位。完整 resourcePatch 保留未变资源，仅移除删除项及声明不同的替换项；未闭合或无效 patch 不继承旧资源；参数流未结束且尚未收到 resourcePatch 时，也不能断定资源未变。需要在 program 流式生成期间保留未变资源，可先发送完整 resourcePatch（纯文本修改可用空对象），避免旧数据配上新范围。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
+- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。参数流期间不会启动新资源读取；patch 尚未确定时保留旧资源及其旧视图配置，文字可继续流入。完整 patch 保留未变声明，只移除删除项及声明不同的替换项。完整工具调用进入执行后，Host 按声明去重，以最多四个独立读取并发准备资源；每个资源通过身份、来源和快照检查后即可发送给该调用的候选视图，不等待其他资源。客户端只用与调用、Workspace 和声明匹配的临时快照，组件仍按自身配置校验。资源流不产生 draftRevision、不保存；完整程序、资源关系和总预算仍须在预览或保存前校验。失败或取消回退至最后成功草稿；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
 - 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId` 和相对新基版本的累计 program 与 resourcePatch 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
 - 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。省略 program/title/locale/labels，只传相对新基版本的资源增量；无法判断资源或业务冲突时明确阻塞。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
@@ -128,6 +128,7 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 | `files/read` | `{ sessionId \| workspaceId, receipt, asset }` | 读取 receipt 指定的固定 Build JSON |
 | `reports/list` | `{ workspaceId }` | 枚举新格式 Report 的当前标题、摘要、保存时间和来源 |
 | `reports/history` | `{ workspaceId, reportId }` | 返回已确认发布的版本记录和当前 Build 身份 |
+| `resource-stream/read` | `{ sessionId, workspaceId, turn, callId, after }` | 读取该次真实调用已准入的临时资源增量，不触发读取或生成正式版本 |
 | `code/read` | `{ sessionId \| workspaceId, receipt, codeRef }` | 读取固定文档资源绑定的执行记录 |
 | `point/prepare` | `{ sessionId, workspaceId, recordId, resourceName, row, field }` | 重读固定 Build，生成可用于草稿的 Frame 数据点引用 |
 | `point/serialize` | `{ envelope }` | 以引用中的 Harness Session 重验 Workspace、固定 Build、原始值、轴键、presence 和角色，从已保存快照向模型返回点上下文及 Marivo Frame 身份 |

@@ -349,7 +349,21 @@ test('successful Python binds declared result exports independently of arbitrary
   )
   assert.equal(p.launches, 1)
   const unrelated = await savePythonExecution(p.f.bridge.binding.projectRoot, input)
-  await assert.rejects(readPythonResults(p.f.bridge.binding.projectRoot, unrelated), /unavailable/)
+  await assert.rejects(
+    readPythonResults(p.f.bridge.binding.projectRoot, unrelated),
+    /python-result-exports-missing:.*source is readable.*Do not rerun/,
+  )
+  assert.equal(
+    (await readPythonExecution(p.f.bridge.binding.projectRoot, unrelated)).text,
+    input.text,
+  )
+  await assert.rejects(
+    readPythonResults(p.f.bridge.binding.projectRoot, {
+      ...result.codeRef,
+      sha256: '0'.repeat(64),
+    }),
+    /python-execution-source-unavailable:.*without codeRef.*Do not rerun/,
+  )
 })
 
 test('result exports require the launcher first frame, exact names and valid references', () => {
@@ -399,7 +413,7 @@ test('missing result exports preserve successful code and never infer identities
   assert.equal(result.execution.nextAction, result.resultCaptureError)
   await assert.rejects(
     readPythonResults(p.f.bridge.binding.projectRoot, result.codeRef),
-    /unavailable/,
+    /python-result-exports-missing:.*Do not rerun/,
   )
   assert.equal(p.launches, 1)
 })

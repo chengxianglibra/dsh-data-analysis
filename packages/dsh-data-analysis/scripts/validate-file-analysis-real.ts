@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,6 +16,10 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { chromium, type Page } from 'playwright'
 import { parseSavedPresentation } from '../src/presentation/contracts/analysis-document.ts'
 import { parsePresentationReceipt } from '../src/presentation/contracts/index.ts'
+import {
+  assertFileReportProject,
+  captureFileReportProject,
+} from './file-analysis-real/report-project.ts'
 import { startFileAnalysisWeb } from './file-analysis-real/web-host.ts'
 
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-file-analysis-real-')))
@@ -168,7 +172,7 @@ export async function prompt(
     }
     if (snapshot.status === 'idle' && events.some((event) => event.type === 'turn/end')) {
       await save(`${label}.json`, { sessionId, requestId, uploaded, prompt: text, ...snapshot })
-      return { events, uploaded, files: snapshot.files }
+      return { events, uploaded, files: snapshot.files, cwd: snapshot.header.cwd }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
@@ -182,6 +186,12 @@ async function verify(
   total: number,
   label: string,
   targetPath: string,
+  workspace: {
+    root: string
+    id: string
+    cwd: string
+    before: Awaited<ReturnType<typeof captureFileReportProject>>
+  },
 ) {
   const executed = calls(events)
   const pythonCalls = executed.filter((call) => call.name === 'marivo_python')
@@ -248,6 +258,15 @@ async function verify(
     ),
     `${label}: summary must reference this turn's successful Python reading the exact uploaded file`,
   )
+  const project = await assertFileReportProject({
+    workspaceRoot: workspace.root,
+    workspaceId: workspace.id,
+    sessionCwd: workspace.cwd,
+    pythonExecutable: python!,
+    before: workspace.before,
+    receipt,
+    document,
+  })
   await save(`${label}-report.json`, document)
   return {
     label,
@@ -257,6 +276,7 @@ async function verify(
     buildId: receipt.buildId,
     codeRefs,
     targetPath,
+    project,
   }
 }
 
@@ -384,6 +404,7 @@ try {
         model,
         reasoningEffort: effort,
       })
+      const before = await captureFileReportProject(workspaces[index]!)
       const outcome = await prompt(page, created.sessionId, format, task, {
         source: path.join(fixtureRoot, `sales.${format}`),
         name: `sales.${format}`,
@@ -397,14 +418,23 @@ try {
       const targetPath = outcome.files.find(
         (file) => file.ref.attachmentId === outcome.uploaded!.file.attachmentId,
       )!.path
-      results.push(await verify(outcome.events, created.sessionId, 3, 71, format, targetPath))
+      results.push(
+        await verify(outcome.events, created.sessionId, 3, 71, format, targetPath, {
+          root: workspaces[index]!,
+          id: host.workspaceIds[index]!,
+          cwd: outcome.cwd,
+          before,
+        }),
+      )
       if (format === 'csv') {
         csvSession = created.sessionId
         csvAttachment = outcome.uploaded!.file.attachmentId
         csvPath = targetPath
       }
-      await assert.rejects(() => stat(path.join(workspaces[index]!, 'models')), { code: 'ENOENT' })
     }
+    const csvIndex = formats.indexOf('csv')
+    const csvWorkspace = { root: workspaces[csvIndex]!, id: host.workspaceIds[csvIndex]! }
+    const beforeReplacement = await captureFileReportProject(csvWorkspace.root)
     const replaced = await prompt(page, csvSession, 'same-name', task, {
       source: path.join(fixtureRoot, 'replacement.csv'),
       name: 'sales.csv',
@@ -420,19 +450,27 @@ try {
         replaced.files.find(
           (file) => file.ref.attachmentId === replaced.uploaded!.file.attachmentId,
         )!.path,
+        { ...csvWorkspace, cwd: replaced.cwd, before: beforeReplacement },
       ),
     )
     await page.close()
     const restarted = await host.restart()
     page = await browser.newPage()
     await open(page, restarted.url)
+    const beforeRecovery = await captureFileReportProject(csvWorkspace.root)
     const recovered = await prompt(
       page,
       csvSession,
       'restored-first-file',
       '请重新读取本会话第一次上传的 sales.csv（不是后来上传的同名文件），再次生成可在右侧报告阅读器打开的简短报告，用一行表格列出记录数与 amount 总和，并保留执行代码。',
     )
-    results.push(await verify(recovered.events, csvSession, 3, 71, 'restored-first-file', csvPath))
+    results.push(
+      await verify(recovered.events, csvSession, 3, 71, 'restored-first-file', csvPath, {
+        ...csvWorkspace,
+        cwd: recovered.cwd,
+        before: beforeRecovery,
+      }),
+    )
     await page.screenshot({ path: path.join(outputRoot, 'web.png'), fullPage: true })
     await save('result.json', {
       status: 'passed',

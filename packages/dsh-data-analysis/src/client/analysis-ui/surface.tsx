@@ -1,5 +1,5 @@
 import { Renderer } from '@openuidev/react-lang'
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import type {
   AnalysisDocument,
   AnalysisResource,
@@ -86,11 +86,10 @@ export interface AnalysisRendererProps {
   /** Stable identity across candidate, admitted revisions and final publication. */
   viewId?: string
   progress?: ReportProgress
-  /** An admitted revision animates once; argument prefixes never restart the transition. */
-  revision?: string
   readResource?: (name: string) => AnalysisResource | undefined
   isStreaming?: boolean
   candidateProgram?: string
+  retainedStatementIds?: readonly string[]
   candidate?: boolean
   offline?: boolean
   openSemanticRef?: OpenSemanticRef
@@ -108,10 +107,10 @@ export function AnalysisRenderer({
   recordId,
   viewId,
   progress,
-  revision,
   readResource,
   isStreaming = false,
   candidateProgram,
+  retainedStatementIds,
   candidate = false,
   offline = false,
   openSemanticRef,
@@ -120,23 +119,12 @@ export function AnalysisRenderer({
   askDataset,
   askResource,
 }: AnalysisRendererProps) {
-  const body = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!revision || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const transition = body.current?.animate?.(
-      [
-        { opacity: 0.65, transform: 'translateY(3px)' },
-        { opacity: 1, transform: 'translateY(0)' },
-      ],
-      { duration: 240, easing: 'cubic-bezier(.2,0,0,1)' },
-    )
-    return () => transition?.cancel()
-  }, [revision])
   const resources = useMemo(
     () => ({
       readResource: readResource ?? ((name: string) => saved[name]),
       candidate,
       isStreaming,
+      retainedStatementIds,
       pendingStatementId:
         candidate && isStreaming
           ? pendingAnalysisStatement(candidateProgram ?? program)
@@ -154,6 +142,7 @@ export function AnalysisRenderer({
       candidate,
       isStreaming,
       candidateProgram,
+      retainedStatementIds,
       program,
       offline,
       openSemanticRef,
@@ -181,7 +170,7 @@ export function AnalysisRenderer({
               <h1 className="au-surface-title">{title}</h1>
               {progress && <ReportMotion phase={progress} />}
             </div>
-            <div className="au-surface-body" ref={body}>
+            <div className="au-surface-body">
               <Renderer
                 library={analysisLibrary}
                 response={candidate && isStreaming ? readableAnalysisPrefix(program) : program}

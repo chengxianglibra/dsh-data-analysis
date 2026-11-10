@@ -477,6 +477,11 @@ function dayText(day: number): string {
     date.getUTCDate(),
   ).padStart(2, '0')}`
 }
+function preciseInstant(part: NonNullable<ReturnType<typeof dateParts>>): string {
+  const fraction = /[1-9]/.test(part.fraction) ? `.${part.fraction}` : ''
+  const seconds = part.sec !== '00' || fraction ? `:${part.sec}${fraction}` : ''
+  return `${part.y}-${part.m}-${part.d} ${part.h}:${part.mi}${seconds} ${part.offset}`
+}
 function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
   const start = dateParts(p.start, p.timezone)
   const end = dateParts(p.end, p.timezone)
@@ -484,12 +489,7 @@ function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
   // The saved end is exclusive; only civil-midnight endpoints name a calendar span.
   const midnight = (part: typeof start) =>
     part.h === '00' && part.mi === '00' && part.sec === '00' && !/[1-9]/.test(part.fraction)
-  const precise = (part: typeof start) => {
-    const fraction = /[1-9]/.test(part.fraction) ? `.${part.fraction}` : ''
-    const seconds = part.sec !== '00' || fraction ? `:${part.sec}${fraction}` : ''
-    return `${part.y}-${part.m}-${part.d} ${part.h}:${part.mi}${seconds} ${part.offset}`
-  }
-  if (!midnight(start) || !midnight(end)) return `${precise(start)} – ${precise(end)}`
+  if (!midnight(start) || !midnight(end)) return `${preciseInstant(start)} – ${preciseInstant(end)}`
   const startDay = Date.UTC(Number(start.y), Number(start.m) - 1, Number(start.d))
   const endDay = Date.UTC(Number(end.y), Number(end.m) - 1, Number(end.d))
   const nextMonth = Date.UTC(Number(start.y), Number(start.m), 1)
@@ -499,14 +499,28 @@ function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
   if (endDay - startDay === 86_400_000) return `${start.y}-${start.m}-${start.d}`
   return `${start.y}-${start.m}-${start.d} ~ ${dayText(endDay - 86_400_000)}`
 }
-function periodText(p: Period | null): string {
+function periodText(p: Period | null, grain?: FrameGrain): string {
   if (!p) return '—'
-  if (p.kind === 'calendar' && p.label !== null) return String(p.label)
-  return p.kind === 'calendar'
-    ? 'nominalStart' in p
-      ? instantText(p.nominalStart, p.timezone, 'day')
-      : '—'
-    : intervalText(p)
+  if (p.kind === 'interval') return intervalText(p)
+  if (p.label !== null) {
+    const label = String(p.label)
+    // Only standard civil period starts with an exact captured grain admit abbreviation.
+    if (grain?.kind === 'builtin' && grain.step === 1 && /^\d{4}-\d{2}-01$/.test(label)) {
+      const date = new Date(`${label}T00:00:00Z`)
+      if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === label) {
+        if (grain.unit === 'month') return label.slice(0, 7)
+        if (grain.unit === 'year' && label.endsWith('-01-01')) return label.slice(0, 4)
+      }
+    }
+    return label
+  }
+  if (!('nominalStart' in p)) return '—'
+  if (grain?.kind !== 'builtin') return p.nominalStart
+  if (['hour', 'minute', 'second'].includes(grain.unit)) {
+    const parts = dateParts(p.nominalStart, p.timezone)
+    return parts ? preciseInstant(parts) : p.nominalStart
+  }
+  return instantText(p.nominalStart, p.timezone, grain.unit === 'day' ? 'date' : grain.unit)
 }
 /** What a comparison compares: captured pairs of period labels or differing fixed members. */
 export function endpointLabels(t: Translator, s: Snapshot, index: number) {
@@ -517,8 +531,14 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
     specific: false,
   }
   if (!comparison) return fallback
-  const explicit = s.frameDisplay?.comparisonLabels?.find((item) => item.alias === comparison.alias)
-  if (explicit) return { current: explicit.current, baseline: explicit.baseline, specific: true }
+  const explicit = s.frameDisplay?.comparisonLabels?.filter(
+    (item) => item.alias === comparison.alias,
+  )
+  if (
+    explicit?.length === 1 &&
+    interpretationOf(s)?.comparisons.filter((item) => item.alias === comparison.alias).length === 1
+  )
+    return { current: explicit[0]!.current, baseline: explicit[0]!.baseline, specific: true }
   if (comparison.binding.kind !== 'ordinary') {
     const page = comparisonPeriodPage(s, index)
     if (!page || page.hasMore || page.items.length !== page.totalCount) return fallback
@@ -527,8 +547,15 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
     const first = items[0]
     const last = items.at(-1)
     if (!first || !last) return fallback
-    const current = [periodText(first.current), periodText(last.current)]
-    const baseline = [periodText(first.baseline), periodText(last.baseline)]
+    const grains = comparisonPeriodGrains(s, index)
+    const current = [
+      periodText(first.current, grains.current),
+      periodText(last.current, grains.current),
+    ]
+    const baseline = [
+      periodText(first.baseline, grains.baseline),
+      periodText(last.baseline, grains.baseline),
+    ]
     if ([...current, ...baseline].some((label) => !label || label === '—')) return fallback
     const range = (a: string, b: string) => (a === b ? a : `${a} – ${b}`)
     return {
@@ -576,8 +603,25 @@ export function periodRange(p: Period | null): string {
   if (p.kind === 'calendar' && 'selection' in p) return ''
   return `${instantText(p.start, p.timezone, 'full')} – ${instantText(p.end, p.timezone, 'full')}`
 }
-export function periodLabel(p: Period | null): string {
-  return periodText(p)
+/** Resolve only the captured comparison axis endpoint; missing or ambiguous axes supply no grain. */
+export function comparisonPeriodGrains(s: Snapshot, index: number) {
+  const binding = interpretationOf(s)?.comparisons[index]?.binding
+  if (binding?.kind !== 'calendar') return {}
+  const axes = s.frame.axes.filter((axis) => axis.token === binding.axisToken)
+  const variant = axes.length === 1 ? axes[0]?.variant : undefined
+  const endpoint =
+    binding.endpoint === 'self'
+      ? variant
+      : variant?.kind === 'paired'
+        ? variant[binding.endpoint]
+        : undefined
+  return {
+    current: endpoint?.kind === 'calendar' ? endpoint.grain : undefined,
+    baseline: binding.baseline.grain,
+  }
+}
+export function periodLabel(p: Period | null, grain?: FrameGrain): string {
+  return periodText(p, grain)
 }
 
 /** Rows grouped by the partition axes of a broadcast statistic (`over`). */

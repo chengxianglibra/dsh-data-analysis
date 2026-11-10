@@ -70,6 +70,8 @@ marivo-service   -> analysis
 仍在 Session 的 model-visible surface 中，即使重新加载也不能混用，需开启新 Session 或由 Host
 管理上下文后再继续；插件不删除旧记录。插件不更改 Harness 的同名 Skill 优先级，也不修改 Workspace
 Skill。该检查不验证 Skill 附带的其他资源。
+冲突诊断给出绑定 Runtime 中的 `skills/<name>/SKILL.md` 相对位置；已观察的注册结果附来源身份摘要与 resource kind，历史可见冲突附 Session event 序号。
+恢复历史后无法证明 provider 时明确标为 unavailable，不从同名 Skill 猜测来源；诊断不包含正文、provider 原文、Host 绝对路径、URL 或 opaque 资源值。
 
 激活后，controller 在 `agent/pre-step` 中等待 Harness 先生成原 decision，再为进入模型的消息追加
 根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何

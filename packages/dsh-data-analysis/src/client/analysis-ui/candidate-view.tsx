@@ -170,8 +170,20 @@ export function CandidateView({
   const preview = useMemo(() => {
     if (!candidate.preview || terminal) return undefined
     if (!document) return basedOnRecordId ? undefined : candidate.program
-    return streamingAnalysisProgram(document.program, candidate.program)
-  }, [candidate.preview, candidate.program, document, basedOnRecordId, terminal])
+    return streamingAnalysisProgram(
+      document.program,
+      candidate.program,
+      true,
+      candidate.resourcePatchInput === 'incomplete',
+    )
+  }, [
+    candidate.preview,
+    candidate.program,
+    candidate.resourcePatchInput,
+    document,
+    basedOnRecordId,
+    terminal,
+  ])
   const resources = candidateResources(document, candidate)
   return (
     <section

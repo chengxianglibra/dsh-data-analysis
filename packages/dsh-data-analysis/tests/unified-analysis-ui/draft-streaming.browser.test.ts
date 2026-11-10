@@ -21,6 +21,7 @@ declare global {
       savedBase(): void
       replaceResources(): void
       lateResources(): void
+      lateResourceView(): void
     }
   }
 }
@@ -105,6 +106,7 @@ stream(text){callId='next';args=new PartialArguments();args.append(JSON.stringif
 fail(){const view=views.forTurn('session',1).at(-1);views.observe({...view.candidate,phase:'failed'},'/workspace');},
 save(){views.accept({kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',draftId,receipt},'save',generation,'/workspace');},
 savedBase(){views.revoke('session');savedMode=true;callId='base';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',basedOnRecordId:documentValue.recordId,resourcePatch:{},program:'intro = TextContent("Saved base prefix'}).slice(0,-2));observe();},
+lateResourceView(){callId='unknown-resource-view';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',draftId,draftRevision:documentValue.buildId,program:'intro = TextContent("Scope while patch arrives"); picture = Image("Candidate replacement", "image");'}).slice(0,-1));observe();},
 lateResources(){callId=savedMode?'base':'late-resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("Pending resource scope");'}).slice(0,-1));observe();},
 replaceResources(){callId=savedMode?'base':'resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resourcePatch":{"put":{"image":{"kind":"image-file","path":"new');observe();}
 };
@@ -179,12 +181,17 @@ root.render(h(App));`,
       assert.equal(await page.getByText('Retained section', { exact: true }).isVisible(), true)
       assert.equal(await page.locator('[data-analysis-report]').count(), 1)
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
+      await page.evaluate(() => window.draftTest.lateResourceView())
+      await page.getByText('Scope while patch arrives', { exact: true }).waitFor()
+      assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
+      assert.equal(await page.getByText('Retained section', { exact: true }).isVisible(), true)
+      assert.equal((await page.locator('[role="status"]').count()) > 1, true)
       await page.evaluate(() => window.draftTest.lateResources())
       await page.getByText('Pending resource scope', { exact: true }).waitFor()
-      assert.equal(await page.locator('.au-image').count(), 0)
+      assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.replaceResources())
       await page.getByText('New resource scope', { exact: true }).waitFor()
-      assert.equal(await page.locator('.au-image').count(), 0)
+      assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.fail())
       await page.getByText('Confirmed', { exact: true }).waitFor()
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
@@ -205,10 +212,10 @@ root.render(h(App));`,
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.lateResources())
       await page.getByText('Pending resource scope', { exact: true }).waitFor()
-      assert.equal(await page.locator('.au-image').count(), 0)
+      assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.replaceResources())
       await page.getByText('New resource scope', { exact: true }).waitFor()
-      assert.equal(await page.locator('.au-image').count(), 0)
+      assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.fail())
       await page.getByText('Confirmed', { exact: true }).waitFor()
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')

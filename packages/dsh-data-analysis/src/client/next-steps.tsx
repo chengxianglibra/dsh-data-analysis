@@ -201,8 +201,23 @@ export function installNextSteps(ctx: Context) {
     const notice = model.value
     if (!notice || notice.sessionId !== sessionId || notice.turn !== turn) return null
     return (
-      <div className="mv-ui mv-next-steps" data-next-steps-turn={turn}>
+      <div
+        className="mv-ui mv-next-steps"
+        data-next-steps-turn={turn}
+        data-next-steps-report={notice.reportId}
+        data-next-steps-build={notice.buildId}
+        data-next-steps-status={notice.status}
+      >
         <UIStyleSheet />
+        {notice.status === 'unavailable' && (
+          <span role="status">
+            {hostCopy(ctx)(
+              notice.reason === 'no-suggestions'
+                ? 'marivo.presentation.ui-next-steps-none'
+                : 'marivo.presentation.ui-next-steps-unavailable',
+            )}
+          </span>
+        )}
         {notice.items.map((item, index) => (
           <Button
             key={item.label}

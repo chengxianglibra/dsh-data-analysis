@@ -245,38 +245,42 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
     Object.keys(result.resources).length > PRESENTATION_BUDGETS.datasets
   )
     throw new Error('analysis-document-identity-invalid')
-  for (const item of Object.values(result.resources)) {
-    if (item.kind !== 'snapshot') continue
-    if (item.binding.workspaceId !== result.workspaceId)
-      throw new Error('analysis-resource-owner-invalid')
-    if (
-      (item.declaration.kind === 'analysis-frame' || item.declaration.kind === 'dataframe') &&
-      (item.declaration.codeRef?.executionId !== item.binding.codeRef?.executionId ||
-        item.declaration.codeRef?.sha256 !== item.binding.codeRef?.sha256 ||
-        (item.declaration.codeRef && (!item.binding.sessionId || !item.binding.callId)))
-    )
-      throw new Error('analysis-resource-code-binding-invalid')
-    if (
-      !(
-        (['dataset-snapshot', 'dataframe'].includes(item.declaration.kind) &&
-          item.snapshot.kind === 'dataset') ||
-        (['frame-snapshot', 'analysis-frame'].includes(item.declaration.kind) &&
-          isFrameSnapshotV2(item.snapshot))
-      ) ||
-      (!['analysis-frame', 'dataframe'].includes(item.declaration.kind) &&
-        (!item.binding.codeRef || !item.binding.sessionId || !item.binding.callId))
-    )
-      throw new Error('analysis-resource-owner-invalid')
-    if (
-      item.declaration.kind === 'analysis-frame' &&
-      (item.snapshot.kind !== 'frame' ||
-        item.snapshot.source.sessionId !== item.declaration.ref.session_id ||
-        item.snapshot.source.artifactId !== item.declaration.ref.artifact_id)
-    )
-      throw new Error('analysis-resource-result-identity-invalid')
-  }
+  for (const item of Object.values(result.resources))
+    parseAnalysisResource(item, result.workspaceId)
   validateAnalysisResources(result.program, result.resources)
   return result
+}
+/** Validate one Host-admitted resource without requiring unrelated components or data. */
+export function parseAnalysisResource(value: unknown, workspaceId: string): AnalysisResource {
+  const item = resource.parse(value)
+  if (item.kind !== 'snapshot') return item
+  if (item.binding.workspaceId !== workspaceId) throw new Error('analysis-resource-owner-invalid')
+  if (
+    (item.declaration.kind === 'analysis-frame' || item.declaration.kind === 'dataframe') &&
+    (item.declaration.codeRef?.executionId !== item.binding.codeRef?.executionId ||
+      item.declaration.codeRef?.sha256 !== item.binding.codeRef?.sha256 ||
+      (item.declaration.codeRef && (!item.binding.sessionId || !item.binding.callId)))
+  )
+    throw new Error('analysis-resource-code-binding-invalid')
+  if (
+    !(
+      (['dataset-snapshot', 'dataframe'].includes(item.declaration.kind) &&
+        item.snapshot.kind === 'dataset') ||
+      (['frame-snapshot', 'analysis-frame'].includes(item.declaration.kind) &&
+        isFrameSnapshotV2(item.snapshot))
+    ) ||
+    (!['analysis-frame', 'dataframe'].includes(item.declaration.kind) &&
+      (!item.binding.codeRef || !item.binding.sessionId || !item.binding.callId))
+  )
+    throw new Error('analysis-resource-owner-invalid')
+  if (
+    item.declaration.kind === 'analysis-frame' &&
+    (item.snapshot.kind !== 'frame' ||
+      item.snapshot.source.sessionId !== item.declaration.ref.session_id ||
+      item.snapshot.source.artifactId !== item.declaration.ref.artifact_id)
+  )
+    throw new Error('analysis-resource-result-identity-invalid')
+  return item
 }
 /** Saved Builds use only the analysis UI format; earlier report documents are unsupported. */
 export function parseSavedPresentation(value: unknown): AnalysisDocument {

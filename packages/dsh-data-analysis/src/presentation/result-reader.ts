@@ -44,6 +44,7 @@ export async function readMarivoResult(
     signal,
   })
   signal.throwIfAborted()
+  if (runner.status !== 'ready') throw new Error('result-runtime-unavailable')
   if (result.exitCode !== 0)
     throw new Error(
       'result-read-failed: verify the saved reference and bound Runtime; do not replay analysis.',

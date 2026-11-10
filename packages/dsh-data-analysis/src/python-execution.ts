@@ -366,8 +366,19 @@ export async function readPythonResults(
   ref: PythonCodeRef,
   signal?: AbortSignal,
 ): Promise<PythonResultRecord> {
-  const record = await readExecutionRecord(workspaceRoot, ref, signal)
-  if (!record.results) invalid()
+  let record: Awaited<ReturnType<typeof readExecutionRecord>>
+  try {
+    record = await readExecutionRecord(workspaceRoot, ref, signal)
+  } catch {
+    signal?.throwIfAborted()
+    throw new Error(
+      "python-execution-source-unavailable: the codeRef execution record is unavailable or invalid. Use the original successful call's codeRef, or present the existing result reference without codeRef when its source cannot be verified. Do not rerun successful analysis only to recover provenance.",
+    )
+  }
+  if (!record.results)
+    throw new Error(
+      'python-result-exports-missing: the source is readable, but this successful execution has no registered result exports through resultVariables. Use a codeRef that already exported this exact result reference, or present the existing reference without codeRef. Do not rerun successful analysis only to attach provenance.',
+    )
   return record.results
 }
 

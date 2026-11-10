@@ -18,6 +18,7 @@ import {
   parsePointEnvelope,
   parsePointRequest,
 } from './contracts/point-reference.ts'
+import { resourceStreamRequest } from './contracts/resource-stream.ts'
 import { isFrameSnapshotV2 } from './contracts/snapshot.ts'
 import { datasetContext, datasetFromDocument, datasetPointContext } from './dataset-reference.ts'
 import type { AnalysisDrafts } from './drafts.ts'
@@ -297,6 +298,25 @@ export class MarivoPresentationFileService {
   draft(payload: unknown, caller: AbortSignal) {
     return this.#tasks.track(this.#readDraft(payload, caller))
   }
+  resourceStream(payload: unknown, caller: AbortSignal) {
+    return this.#tasks.track(this.#readResourceStream(payload, caller))
+  }
+  async #readResourceStream(payload: unknown, caller: AbortSignal) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    const parsed = resourceStreamRequest.safeParse(payload)
+    if (!parsed.success) throw new Error('invalid-request')
+    const request = parsed.data
+    const workspace = await this.#workspace({ sessionId: request.sessionId })
+    if (!workspace || workspace.id !== request.workspaceId || !this.#drafts)
+      throw new Error('workspace-unavailable')
+    const result = await this.#drafts.readResources(request, workspace.path, signal)
+    const current = await this.#workspace({ sessionId: request.sessionId })
+    if (!current || current.id !== workspace.id || current.path !== workspace.path)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    return result
+  }
   async #readDraft(payload: unknown, caller: AbortSignal) {
     const signal = AbortSignal.any([caller, this.#abort.signal])
     signal.throwIfAborted()
@@ -464,6 +484,7 @@ export function registerMarivoPresentationRpc(
       'reports/list',
       'reports/history',
       'draft/read',
+      'resource-stream/read',
       'files/read',
       'code/read',
       'point/prepare',
@@ -483,6 +504,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.read(payload, signal) }
         if (endpoint === 'draft/read')
           return { ok: true, value: await service.draft(payload, signal) }
+        if (endpoint === 'resource-stream/read')
+          return { ok: true, value: await service.resourceStream(payload, signal) }
         if (endpoint === 'code/read')
           return { ok: true, value: await service.code(payload, signal) }
         if (endpoint === 'dataset/prepare' || endpoint === 'dataset/serialize')

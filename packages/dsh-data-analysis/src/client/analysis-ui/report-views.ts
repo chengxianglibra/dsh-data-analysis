@@ -1,5 +1,6 @@
 import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/client'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
+import type { ResourceStreamResponse } from '../../presentation/contracts/resource-stream.ts'
 import type { DraftDelivery, PresentationDelivery } from '../../presentation/receipt.ts'
 import type { AnalysisCandidate } from './candidate.ts'
 
@@ -24,6 +25,7 @@ export interface ReportViewState {
   saved?: PresentationDelivery
   document?: AnalysisDocument
   documentKey?: string
+  resourceStream?: Pick<ResourceStreamResponse, 'callId' | 'revision' | 'status' | 'resources'>
   reading: ReportReadingState
   tabId?: string
   settled?: boolean
@@ -173,6 +175,36 @@ export class ReportViews {
     )
       return
     this.#write({ ...current, document, documentKey: key })
+  }
+  resources(
+    id: string,
+    owner: Pick<ReportViewState, 'generation' | 'workspacePath'>,
+    response: ResourceStreamResponse,
+  ) {
+    const current = this.get(id)
+    if (
+      !current ||
+      current.generation !== owner.generation ||
+      current.workspacePath !== owner.workspacePath ||
+      current.workspaceId !== response.workspaceId ||
+      current.sessionId !== response.sessionId ||
+      current.turn !== response.turn ||
+      current.candidate?.callId !== response.callId ||
+      current.settled ||
+      !['preparing', 'start'].includes(current.candidate.phase)
+    )
+      return
+    const previous =
+      current.resourceStream?.callId === response.callId ? current.resourceStream : undefined
+    if (previous && previous.revision >= response.revision) return
+    this.#write({
+      ...current,
+      resourceStream: {
+        ...response,
+        resources:
+          response.status === 'failed' ? {} : { ...previous?.resources, ...response.resources },
+      },
+    })
   }
   attach(id: string, tabId: string) {
     const current = this.get(id)

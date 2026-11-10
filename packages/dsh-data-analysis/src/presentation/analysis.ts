@@ -11,6 +11,7 @@ import {
   analysisElements,
   analysisRecordId,
   parseAnalysisDocument,
+  parseAnalysisResource,
   sameAnalysisDeclaration,
 } from './contracts/analysis-document.ts'
 import {
@@ -97,6 +98,7 @@ export async function createAnalysisDocument(
   signal: AbortSignal,
   base?: AnalysisDocument,
   retainedResources?: AnalysisDocument['resources'],
+  resourceReady?: (name: string, resource: AnalysisDocument['resources'][string]) => Promise<void>,
 ): Promise<AnalysisDocument> {
   const declarations: Record<string, AnalysisResourceDeclaration> = Object.fromEntries(
     Object.entries(base?.resources ?? {}).map(([name, resource]) => [name, resource.declaration]),
@@ -144,7 +146,8 @@ export async function createAnalysisDocument(
     resources[name] = structuredClone(saved)
     return false
   })
-  for (const [name, declaration] of pending) {
+  let selectedRunner: Promise<MarivoCheckedRunner> | undefined
+  const readResource = async (name: string, declaration: AnalysisResourceDeclaration) => {
     signal.throwIfAborted()
     // Exact immutable inputs can serve multiple views. Keep their original producer binding.
     const shared = Object.values(resources).find((resource) =>
@@ -152,7 +155,7 @@ export async function createAnalysisDocument(
     )
     if (shared) {
       resources[name] = structuredClone(shared)
-      continue
+      return
     }
     if (declaration.kind === 'analysis-frame' || declaration.kind === 'dataframe') {
       let producer: Awaited<ReturnType<typeof readPythonResults>> | undefined
@@ -161,11 +164,12 @@ export async function createAnalysisDocument(
         const key = resultReferenceKey(declaration.ref)
         if (!producer.references.some((ref) => resultReferenceKey(ref) === key))
           throw new Error(
-            'analysis-resource-code-not-bound: use codeRef from the successful marivo_python call that exported this exact reference through resultVariables.',
+            'analysis-resource-code-not-bound: this readable execution exported other result references. Use codeRef from the successful marivo_python call that exported this exact reference through resultVariables, or present the existing reference without codeRef. Do not rerun successful analysis only to attach provenance.',
           )
       }
       if (!source.runner) throw new Error('result-runtime-required')
-      const runner = await source.runner()
+      selectedRunner ??= source.runner()
+      const runner = await selectedRunner
       if (runner.binding.projectRoot !== source.projectRoot)
         throw new Error('result-workspace-mismatch')
       const snapshot = await readMarivoResult(runner, declaration.ref, signal)
@@ -226,6 +230,76 @@ export async function createAnalysisDocument(
       }
     }
   }
+  const admit = async (name: string) => {
+    if (!resourceReady) return
+    const resource = structuredClone(resources[name]!)
+    const previous = base?.resources[name]
+    if (
+      resource.kind === 'snapshot' &&
+      previous?.kind === 'snapshot' &&
+      input.labels?.[name] === undefined
+    ) {
+      const labels = new Map(
+        previous.snapshot.data.columns.map((column) => [column.id, column.label]),
+      )
+      resource.snapshot.data.columns = resource.snapshot.data.columns.map((column) => ({
+        ...column,
+        label: labels.get(column.id) ?? column.label,
+      }))
+    }
+    applyAnalysisLabels(
+      { [name]: resource },
+      input.labels?.[name] === undefined ? undefined : { [name]: input.labels[name]! },
+    )
+    await resourceReady(name, parseAnalysisResource(resource, identity.workspaceId))
+  }
+  let failure: unknown
+  const ready = async (name: string) => {
+    try {
+      await admit(name)
+    } catch (error) {
+      signal.throwIfAborted()
+      failure ??= error
+    }
+  }
+  for (const name of Object.keys(resources)) {
+    const previous = base?.resources[name]
+    if (!previous || !sameAnalysisDeclaration(previous.declaration, resources[name]!.declaration))
+      await ready(name)
+  }
+  // Each checked read runs in its own identity-verified subprocess. Bound the
+  // fan-out, and share exact immutable declarations before scheduling any IO.
+  const groups: { name: string; declaration: AnalysisResourceDeclaration; aliases: string[] }[] = []
+  for (const [name, declaration] of pending) {
+    const existing = groups.find((group) => sameAnalysisDeclaration(group.declaration, declaration))
+    if (existing) existing.aliases.push(name)
+    else groups.push({ name, declaration, aliases: [] })
+  }
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < groups.length) {
+      const group = groups[cursor++]!
+      try {
+        await readResource(group.name, group.declaration)
+        signal.throwIfAborted()
+        await ready(group.name)
+        for (const alias of group.aliases) {
+          resources[alias] = structuredClone(resources[group.name]!)
+          await ready(alias)
+        }
+      } catch (error) {
+        signal.throwIfAborted()
+        failure ??= error
+        delete resources[group.name]
+      }
+    }
+  }
+  const outcomes = await Promise.allSettled(
+    Array.from({ length: Math.min(4, groups.length) }, worker),
+  )
+  signal.throwIfAborted()
+  for (const outcome of outcomes) if (outcome.status === 'rejected') failure ??= outcome.reason
+  if (failure) throw failure
   // A data replacement keeps the existing display labels unless explicitly replaced.
   for (const [name, resource] of Object.entries(resources)) {
     const previous = base?.resources[name]

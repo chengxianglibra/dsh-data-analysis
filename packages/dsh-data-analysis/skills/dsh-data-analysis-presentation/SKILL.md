@@ -11,9 +11,9 @@ description: 创建或编辑分析报告、看板及可视化结果。尽早展�
 
 多个视图可复用同一准确固定结果和生产 `codeRef`，不为不同图形重复计算。新计算在新进程中显式读取原始来源、共享定义或准确固定结果，计算并持久化；不依赖前次内存或临时表。派生结果使用新输出和自己的代码记录；`codeRef` 不证明完整依赖图。
 
-每个 `AnalysisFrameView` 或 `DatasetView` 使用独立命名语句；相同结果可共享资源名，需不同标签时可声明同一引用的不同资源名。新结果绑定其生产脚本回执的 `codeRef`。纯布局与文字无需 Python；分析生成的 Image 目前不支持 codeRef 绑定。
+每个数据视图使用独立命名语句；相同结果可共享资源名，不同标签可用同一引用的不同资源名。新结果绑定生产 `codeRef`；文字和布局无需 Python，Image 不支持 codeRef。
 
-有合适的 governed 语义和公开分析能力时，优先持久化 AnalysisFrame 并用 `AnalysisFrameView` 呈现，保留分析结构和来源事实。纯文件计算或合法外部计算结果使用 `DatasetView`，不为选用 FrameView 强行建模，也不为画图把已有 Frame 转成 DataFrame。已有独立结果符合范围和时效时可复用；不为补脚本记录重算或声称缺少来源的结果满足脚本追溯。
+适用时优先持久化 AnalysisFrame 并用 `AnalysisFrameView` 保留分析结构；纯文件或合法外部结果使用 `DatasetView`，不为选用 FrameView 强行建模或转换已有 Frame。可复用符合范围和时效的固定结果；不为补脚本记录重算，不把缺少来源说成可追溯。
 
 通过 `resultMetadata` 选择准确列、值和轴；`marivo_present` 的 `resultMetadataJson` 和配置错误提供准入快照的覆盖与候选名。配置修复只改展示，不为取元数据重跑业务计算。首次交付持久结果时读[结果引用](references/capture.md)。组件和图形选择见[视图与布局](references/analysis-ui.md)，OpenUI Lang 参数以生成的[组件签名](references/analysis-catalog.md)为准。
 
@@ -23,10 +23,10 @@ description: 创建或编辑分析报告、看板及可视化结果。尽早展�
 
 1. 明确是报告任务及已知问题、范围后，在准备数据和完整页面规划前调用 `marivo_present(stage:"preview")` 展示草稿。初始 `program` 可以只有标题、范围和待回答的问题，省略 `resourcePatch`；不引用未就绪资源，不预写未验证结论。不等完整分析。
 2. 按实际依赖与资源预算安排新计算，优先复用已有准确结果。任意 Python 和草稿写入当前由 Harness 串行调度，不承诺并发。Frame/DataFrame 在生产调用内持久化，通过 `resultVariables` 导出准确引用；保留 `resultRefs`、生产 `codeRef` 和有界 `resultMetadata`。
-3. 结果就绪后及时 preview，不等全部计算完成；同批已就绪、相关的视图可一次连贯更新。使用上一成功回执的 `draftId/draftRevision`，用 OpenUI Lang 提交本次新增或替换的完整命名语句，并更新布局使组件从 `root` 可达。`resourcePatch.put` 只提交新增或替换的资源，`resourcePatch.remove` 显式删除资源；未提及的资源保留。单组件展示失败时保留已有草稿，处理或说明问题，其他无依赖计算可继续。
+3. 结果就绪后及时 preview，不等全部计算；同批相关视图可合并更新。使用上一成功回执的 `draftId/draftRevision`，提交新增或替换的完整命名语句，并使组件从 `root` 可达。`resourcePatch.put` 新增或替换资源，`resourcePatch.remove` 删除资源；未提及的保留。Native 先给出 stage、草稿身份及完整 `resourcePatch`，再给出 `program`。单组件失败保留草稿并处理或说明，其他无依赖计算可继续。
 4. 核对请求覆盖、数据与结论一致性及实质限制后，用最新草稿标识调用一次 `stage:"save"`，可同时提交最后一批修改。正式历史只新增一个版本，成功返回 `recordId`。未完成部分明确说明，不把预览成功当成正式保存。
 
-新报告在同一 Chat 报告区用动效呈现候选、preview 和 save。读者点击“在边栏查看”图标后仅在该 Tab 展示，Chat 不留正文、标题或链接；关闭 Tab 后恢复。目录及版本链接始终在右侧打开。Agent 不传 surface。Native 把 stage 和身份放在 program 前；生成中的 Lang 是候选，新资源校验成功后才显示。PTC 按工具 dispatch 更新。
+报告在同一 Chat 区增量呈现组件增删改；资源准备不要求等待整页保存。移至边栏后 Chat 不留入口，关闭 Tab 恢复；目录和版本链接始终在右侧打开。Agent 不传 surface。生成内容是未保存候选，成功 preview 和 save 才分别确认草稿及正式版本。PTC 按工具 dispatch 更新，不承诺 token 流。
 
 preview 校验并更新草稿，由前端自动展示；成功回执不证明浏览器已渲染。每个 Session 同时只有一个当前 Turn 草稿，对它的 preview/save 必须串行。携带草稿标识必须显式指定 stage。草稿不跨 Turn 或 Host 重启保留；结束 Turn 前保存，或说明未保存及阻塞。缺上下文或冲突时读[恢复参考](references/recovery.md)，调用示例见[页面示例](references/examples.md)。
 
@@ -40,4 +40,4 @@ preview 校验并更新草稿，由前端自动展示；成功回执不证明浏
 
 用 `TextContent` 写解释，数据视图呈现可核对的数值和图形，`Stack`、`Card`、`Tabs` 组织阅读。数据视图已有结果外壳，不为单个视图再加装饰性 Card。已有图片或不支持的图形可用 Image，需要核对原值时配独立数据视图。
 
-草稿尚无结论时展示问题和证据缺口；结论成立后把结论、支持数据和影响解读的范围、分母、缺失项放在一起。比较、归因和覆盖检查见[叙事与证据](references/narrative.md)。成功保存后简短交付；失败时说明真实状态并给出已有支持的答案。
+草稿尚无结论时展示问题和证据缺口；结论成立后把结论、支持数据和影响解读的范围、分母、缺失项放在一起。比较、归因和覆盖检查见[叙事与证据](references/narrative.md)。每轮最终报告保存后，按工具提示生成本轮新的下一步推荐；上一轮曾推荐但未执行不等于已经回答。用户明确不要推荐时，以 `items:[]`、`emptyReason:"declined"` 尊重其要求；无合适推荐不应冒称用户拒绝。失败时说明真实状态并给出已有支持的答案。
