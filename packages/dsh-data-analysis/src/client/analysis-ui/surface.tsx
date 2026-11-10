@@ -18,9 +18,8 @@ import { pendingAnalysisStatement, readableAnalysisPrefix } from './streaming-pr
 const styles = `
 .pr-reader.au-surface{container:mv-surface/inline-size;min-width:0;max-width:100%;padding:0}
 .au-surface-content{min-width:0;display:flex;flex-direction:column;gap:1.5rem;padding:1rem}
-.au-surface-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-width:0}
+.au-surface-header{display:flex;align-items:center;justify-content:flex-end;min-width:0}
 .au-surface-body{min-width:0}
-.au-surface-title{font-size:1.5rem;line-height:1.2;font-weight:600;letter-spacing:-.025em;margin:0;overflow-wrap:anywhere}
 .au-surface p{overflow-wrap:anywhere}
 .au-data{width:100%;min-width:0}
 .au-source{min-width:0;display:grid;gap:.75rem}.au-source section{display:grid;gap:.5rem}.au-source ul{margin:0;padding-left:1.25rem}.au-source-trigger{align-self:flex-start}
@@ -158,6 +157,7 @@ export function AnalysisRenderer({
         <article
           className="mv-ui pr-reader au-surface bg-background"
           lang={locale}
+          aria-label={title}
           data-analysis-record={recordId}
         >
           <style>{PRESENTATION_STYLES}</style>
@@ -166,10 +166,11 @@ export function AnalysisRenderer({
           <style>{LAYOUT_STYLES}</style>
           <style>{FRAME_STYLES}</style>
           <div className="au-surface-content">
-            <div className="au-surface-header">
-              <h1 className="au-surface-title">{title}</h1>
-              {progress && <ReportMotion phase={progress} />}
-            </div>
+            {progress && (
+              <div className="au-surface-header">
+                <ReportMotion phase={progress} />
+              </div>
+            )}
             <div className="au-surface-body">
               <Renderer
                 library={analysisLibrary}

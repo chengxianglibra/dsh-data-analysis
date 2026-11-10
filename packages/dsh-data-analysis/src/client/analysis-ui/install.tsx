@@ -144,7 +144,7 @@ export function installAnalysisTool(
               className="mv-report-toolbar"
               style={{
                 display: 'flex',
-                justifyContent: 'space-between',
+                justifyContent: 'flex-end',
                 alignItems: 'center',
                 gap: '1rem',
                 position: 'sticky',
@@ -154,12 +154,6 @@ export function installAnalysisTool(
                 padding: '.5rem',
               }}
             >
-              <span>
-                {view.candidate?.title ??
-                  view.document?.title ??
-                  receipt?.title ??
-                  t('marivo.presentation.ui-draft-tab')}
-              </span>
               <IconButton
                 variant="ghost"
                 type="button"

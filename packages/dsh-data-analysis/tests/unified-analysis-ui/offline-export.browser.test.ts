@@ -94,7 +94,9 @@ test('exported report opens offline, renders data and charts, and keeps local in
     })
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(pathToFileURL(reportPath).href)
-    await page.getByRole('heading', { name: 'Offline report' }).waitFor()
+    await page.getByRole('article', { name: 'Offline report', exact: true }).waitFor()
+    assert.equal(await page.title(), 'Offline report')
+    assert.equal(await page.getByRole('heading', { name: 'Offline report' }).count(), 0)
     await page.locator('[data-resource="result"] .recharts-line-dots circle').first().waitFor()
     assert.ok(await page.locator('[data-resource="result"] svg.recharts-surface').count())
     await page
