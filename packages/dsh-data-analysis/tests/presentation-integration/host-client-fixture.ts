@@ -140,7 +140,12 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
   locale.setLocale('zh')
   const client = {
     inputTriggers: { registerSource: () => () => {} },
-    uiConversation: { events, views, groups },
+    uiConversation: {
+      events,
+      views,
+      groups,
+      userText: new runtime.UiConversation(owner, {}).userText,
+    },
     uiSession: { provide: () => () => {} },
     slots,
     sessions: {

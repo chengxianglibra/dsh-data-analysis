@@ -12,6 +12,7 @@ import {
   analysisRecordId,
   parseAnalysisDocument,
 } from '../../src/presentation/contracts/analysis-document.ts'
+import { parseSelectionText } from '../../src/presentation/contracts/selection-text.ts'
 import { pointFromDocument } from '../../src/presentation/point-reference.ts'
 import { publishPresentation } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
@@ -141,7 +142,7 @@ test('point references bind exact published build, raw typed keys and precise va
   assert.match(serialized.text, /9007199254740993/)
   assert.match(serialized.text, /January 2025 saved analysis/)
   assert.match(serialized.text, /marivo-ui:report:first/)
-  const serializedPoint = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
+  const serializedPoint = parseSelectionText(serialized.text)!.context
   assert.deepEqual(serializedPoint.marivoFrame, {
     sessionId: 'marivo-session',
     artifactId: 'marivo-artifact',
@@ -153,9 +154,7 @@ test('point references bind exact published build, raw typed keys and precise va
   if (!('envelope' in current) || !current.envelope) throw new Error('expected-envelope')
   const serializedCurrent = await service.point('point/serialize', { envelope: current.envelope })
   if (!('text' in serializedCurrent) || !serializedCurrent.text) throw new Error('expected-text')
-  const currentPoint = JSON.parse(
-    serializedCurrent.text.slice(serializedCurrent.text.indexOf('\n') + 1),
-  )
+  const currentPoint = parseSelectionText(serializedCurrent.text)!.context
   assert.deepEqual(currentPoint.marivoFrame, {
     sessionId: 'other-marivo-session',
     artifactId: 'other-marivo-artifact',
@@ -227,7 +226,7 @@ test('point serialization reports an in-memory Frame without an artifact', async
   if (!('envelope' in result) || !result.envelope) throw new Error('expected-envelope')
   const serialized = await service.point('point/serialize', { envelope: result.envelope })
   if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
-  const serializedPoint = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
+  const serializedPoint = parseSelectionText(serialized.text)!.context
   assert.deepEqual(serializedPoint.marivoFrame, { sessionId: 'marivo-session', artifactId: null })
   assert.match(serialized.text, /memory|in-memory/i)
   assert.match(serialized.text, /cannot|not.*recover/i)
@@ -501,16 +500,15 @@ test('component reference binds the saved Frame and the admitted view configurat
   if (!('envelope' in prepared) || !prepared.envelope) throw new Error('expected-envelope')
   const sent = await service.component('component/serialize', { envelope: prepared.envelope })
   if (!('text' in sent) || !sent.text) throw new Error('expected-text')
-  const data = JSON.parse(sent.text.slice(sent.text.indexOf('\n') + 1))
+  const data = parseSelectionText(sent.text)!.context
   assert.equal(data.recordId, identity.recordId)
   assert.equal(data.resource, 'data')
-  assert.equal(data.component.kind, 'frame')
-  assert.deepEqual(data.marivoFrame, { sessionId: 'marivo-session', artifactId: 'marivo-artifact' })
-  assert.equal(
-    data.rows[0][data.columns.findIndex((column: { id: string }) => column.id === 'left')],
-    '9007199254740993',
-  )
-  assert.equal(data.report.program, 'root = AnalysisFrameView("data");')
+  assert.deepEqual(data.component, { kind: 'frame' })
+  assert.equal(data.resultRef, null)
+  assert.equal(typeof data.usage, 'string')
+  assert.match(String(data.usage), /Legacy captured snapshot/)
+  assert.equal('rows' in data, false)
+  assert.equal('report' in data, false)
   await assert.rejects(
     service.component('component/prepare', {
       ...request,
@@ -576,7 +574,6 @@ test('component references admit an empty Dataset without fabricating a row', as
   const f = await fixture(t)
   const { datasetSnapshot } = await import('../unified-analysis-ui/dataset-fixtures.ts')
   const { componentFromDocument } = await import('../../src/presentation/component-reference.ts')
-  const { datasetContext } = await import('../../src/presentation/dataset-reference.ts')
   const original = f.makeDocument('first')
   const resource = original.resources.data!
   if (resource.kind !== 'snapshot') throw new Error('expected-snapshot')
@@ -588,24 +585,8 @@ test('component references admit an empty Dataset without fabricating a row', as
   const { row: _row, field: _field, ...identity } = f.request
   const result = componentFromDocument(document, { ...identity, component: { kind: 'dataset' } })
   if (result.snapshot.kind !== 'dataset') throw new Error('expected-dataset')
-  const preview = datasetContext(result.snapshot)
-  assert.deepEqual(preview.rows, [])
-  assert.equal(preview.previewTruncated, false)
+  assert.deepEqual(result.snapshot.data.rows, [])
   assert.equal(result.envelope.schema, 'dsh-data-analysis-component/v1')
-})
-
-test('Frame component preview bounds escaped data and discloses omitted rows and metadata', async () => {
-  const { frameContext } = await import('../../src/presentation/frame-reference.ts')
-  const snapshot = frame({ values: [{ name: 'value', type: 'string', values: ['x', 'y'] }] })
-  snapshot.data.rows[0]![0] = '\u0001'.repeat(20_000)
-  snapshot.data.rows[1]![0] = 'y'.repeat(30_000)
-  snapshot.frame.description = '\u0001'.repeat(20_000)
-  const preview = frameContext(snapshot)
-  assert.equal(preview.previewTruncated, true)
-  assert.equal(preview.rows.length, 0)
-  assert.equal(preview.metadata.truncated, true)
-  assert.equal(preview.metadata.value, null)
-  assert.ok(Buffer.byteLength(JSON.stringify(preview), 'utf8') < 170_000)
 })
 
 test('component references admit saved multi-byte views and long statement IDs', async (t) => {
@@ -667,10 +648,14 @@ test('component references admit saved multi-byte views and long statement IDs',
   const serialized = await service.component('component/serialize', { envelope: prepared.envelope })
   if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
   assert.ok(Buffer.byteLength(serialized.text, 'utf8') <= 262_144)
-  const context = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
-  assert.deepEqual(context.component.view.columns, names)
-  assert.equal(context.component.statementId, statementId)
-  assert.equal(context.report.programTruncated, true)
+  const context = parseSelectionText(serialized.text)!.context
+  assert.deepEqual(context.component, {
+    kind: 'dataset',
+    statementId,
+    view: { chart: 'table', columns: names },
+  })
+  assert.equal('report' in context, false)
+  assert.equal('rows' in context, false)
   await service.close()
 })
 
@@ -706,67 +691,52 @@ test('component reference byte limits reject oversize input', async () => {
   )
 })
 
-test('overall component model text budget truncates preview but preserves complete view', async () => {
+test('component references carry exact Marivo result references without report program or data previews', async (t) => {
+  const f = await fixture(t)
   const { componentModelText } = await import('../../src/presentation/component-reference.ts')
-  const { datasetSnapshot } = await import('../unified-analysis-ui/dataset-fixtures.ts')
-  const snapshot = datasetSnapshot(
-    Array.from({ length: 3 }, () => ['数'.repeat(10_000)]),
-    [{ id: 'v', label: 'Value', type: 'string', nullable: false }],
-  )
-  const view = { arbitrary: '列'.repeat(70_000) }
-  const request = {
-    sessionId: 's',
-    workspaceId: 'w',
-    recordId: 'marivo-ui:r:b',
-    resourceName: 'data',
-    component: { kind: 'dataset' as const, view },
+  for (const kind of ['frame', 'dataset'] as const) {
+    const ref =
+      kind === 'frame'
+        ? {
+            schema: 'marivo.frame_ref/v2',
+            store_id: 'store',
+            session_id: 'marivo-session',
+            artifact_id: 'marivo-artifact',
+          }
+        : {
+            schema: 'marivo.dataframe_ref/v2',
+            project_root: f.root,
+            result_id: `df_${'a'.repeat(32)}`,
+          }
+    const original = f.makeDocument('first')
+    const resource = original.resources.data!
+    if (resource.kind !== 'snapshot') throw new Error('expected-snapshot')
+    const document = {
+      ...original,
+      resources: {
+        data: {
+          ...resource,
+          declaration: {
+            kind: kind === 'frame' ? 'analysis-frame' : 'dataframe',
+            ref,
+          },
+        },
+      },
+    }
+    const { row: _row, field: _field, ...identity } = f.request
+    const request = { ...identity, component: { kind, view: { chart: 'table' } } }
+    const text = componentModelText(
+      document as typeof original,
+      request,
+      request.component.view,
+      undefined,
+    )
+    const value = parseSelectionText(text)!
+    assert.equal(value.label, 'data')
+    assert.deepEqual(value.context.resultRef, ref)
+    assert.equal(value.context.recordId, f.request.recordId)
+    assert.equal('rows' in value.context, false)
+    assert.equal('report' in value.context, false)
+    assert.ok(Buffer.byteLength(text) < 1500)
   }
-  const text = componentModelText(
-    { title: 'Report', program: 'root = DatasetView("data");' },
-    request,
-    snapshot,
-    view,
-    undefined,
-  )
-  assert.ok(Buffer.byteLength(text, 'utf8') <= 262_144)
-  const context = JSON.parse(text.slice(text.indexOf('\n') + 1))
-  assert.deepEqual(context.component.view, view)
-  assert.equal(context.contextTruncated, true)
-  assert.equal(context.report.programTruncated, true)
-  assert.equal(context.previewTruncated, true)
-  assert.equal(context.columnsTruncated, true)
-  assert.deepEqual(context.rows, [])
-})
-
-test('Frame component overall budget keeps Marivo identity when preview is omitted', async () => {
-  const { componentModelText } = await import('../../src/presentation/component-reference.ts')
-  const snapshot = frame({
-    values: [{ name: 'value', type: 'string', values: ['x'.repeat(30_000), 'y'.repeat(30_000)] }],
-  })
-  snapshot.source.sessionId = 'marivo-session'
-  snapshot.source.artifactId = 'artifact'
-  const view = { arbitrary: '列'.repeat(78_000) }
-  const request = {
-    sessionId: 's',
-    workspaceId: 'w',
-    recordId: 'marivo-ui:r:b',
-    resourceName: 'data',
-    component: { kind: 'frame' as const, view },
-  }
-  const text = componentModelText(
-    { title: 'Report', program: 'root = AnalysisFrameView("data");' },
-    request,
-    snapshot,
-    view,
-    undefined,
-  )
-  assert.ok(Buffer.byteLength(text, 'utf8') <= 262_144)
-  const context = JSON.parse(text.slice(text.indexOf('\n') + 1))
-  assert.deepEqual(context.component.view, view)
-  assert.deepEqual(context.marivoFrame, { sessionId: 'marivo-session', artifactId: 'artifact' })
-  assert.equal(context.contextTruncated, true)
-  assert.equal(context.metadata.truncated, true)
-  assert.equal(context.sections.truncated, true)
-  assert.equal(context.coordinates.truncated, true)
-  assert.equal(context.previewTruncated, true)
 })

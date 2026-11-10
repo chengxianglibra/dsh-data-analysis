@@ -19,8 +19,13 @@ import {
   parsePointRequest,
 } from './contracts/point-reference.ts'
 import { resourceStreamRequest } from './contracts/resource-stream.ts'
+import {
+  datasetReferenceLabel,
+  pointReferenceLabel,
+  selectionModelText,
+} from './contracts/selection-text.ts'
 import { isFrameSnapshotV2 } from './contracts/snapshot.ts'
-import { datasetContext, datasetFromDocument, datasetPointContext } from './dataset-reference.ts'
+import { datasetFromDocument, datasetPointContext } from './dataset-reference.ts'
 import type { AnalysisDrafts } from './drafts.ts'
 import { pointFromDocument } from './point-reference.ts'
 import { draftDeliverySchema, MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
@@ -30,6 +35,7 @@ import {
   readReportHistory,
   resolvePresentation,
 } from './reports.ts'
+import { savedResultContext } from './selection-context.ts'
 
 export interface PresentationWorkspace {
   id: string
@@ -175,18 +181,18 @@ export class MarivoPresentationFileService {
       ? 'The Marivo Frame is persisted. Recovery requires its original Runtime/project and stored artifact; use current marivo_help for the public recovery contract and preserve these exact identities. Recovery is not a data refresh; report any recovery failure.'
       : 'The Marivo Frame was captured in memory without a persisted artifact. The original Frame cannot be recovered across processes from this identity; use the saved point context or independently verify another available source before further analysis.'
     return {
-      text: `AnalysisFrame selected value from a saved snapshot (not a new query). The description is saved explanatory text; unavailable period details are not captured. marivoFrame contains Marivo identity, not the Harness session. ${recovery}\n${JSON.stringify(
-        {
-          recordId: actual.recordId,
-          resource: actual.resourceName,
-          row: actual.row,
-          marivoFrame: { sessionId, artifactId },
-          ...actual.point,
-          interpretation:
-            actual.point.interpretation === null ? null : JSON.parse(actual.point.interpretation),
-          periods: JSON.parse(actual.point.periods),
-        },
-      )}`,
+      text: selectionModelText('frame-point', pointReferenceLabel(actual), {
+        recordId: actual.recordId,
+        resource: actual.resourceName,
+        row: actual.row,
+        marivoFrame: { sessionId, artifactId },
+        ...savedResultContext(document, request.resourceName),
+        recovery,
+        ...actual.point,
+        interpretation:
+          actual.point.interpretation === null ? null : JSON.parse(actual.point.interpretation),
+        periods: JSON.parse(actual.point.periods),
+      }),
     }
   }
   component(
@@ -223,14 +229,14 @@ export class MarivoPresentationFileService {
     const root = path.resolve(workspace.path)
     const { reportId, buildId } = parseAnalysisRecordId(request.recordId)
     const document = await readAnalysisRecord(root, workspace.id, reportId, buildId, signal)
-    const { envelope, snapshot, view, display } = componentFromDocument(document, request)
+    const { envelope, view, display } = componentFromDocument(document, request)
     const current = await this.#workspace({ sessionId: request.sessionId })
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
     signal.throwIfAborted()
     if (endpoint === 'component/prepare') return { envelope }
     if (JSON.stringify(supplied) !== JSON.stringify(envelope)) throw new Error('component-mismatch')
-    return { text: componentModelText(document, request, snapshot, view, display) }
+    return { text: componentModelText(document, request, view, display) }
   }
   dataset(
     endpoint: 'dataset/prepare' | 'dataset/serialize',
@@ -284,14 +290,20 @@ export class MarivoPresentationFileService {
     signal.throwIfAborted()
     if (endpoint === 'dataset/prepare') return { envelope }
     if (JSON.stringify(supplied) !== JSON.stringify(envelope)) throw new Error('dataset-mismatch')
-    if ('row' in request)
-      return {
-        text: `DataFrame selected value from a saved snapshot (not a new query). Same-row context is bounded; consult coverage and rowContextTruncated before drawing conclusions:\n${JSON.stringify({ recordId: request.recordId, resource: request.resourceName, ...datasetPointContext(snapshot, request.row, request.field) })}`,
-      }
     return {
-      text: `DataFrame from a saved snapshot (not a new query). Columns and rows are bounded previews; consult coverage, columnsTruncated and previewTruncated before drawing conclusions:\n${JSON.stringify({ recordId: request.recordId, resource: request.resourceName, ...datasetContext(snapshot) })}`,
+      text: selectionModelText(
+        'row' in request ? 'dataset-point' : 'dataset',
+        datasetReferenceLabel(envelope),
+        {
+          recordId: request.recordId,
+          resource: request.resourceName,
+          ...savedResultContext(document, request.resourceName),
+          ...('row' in request ? datasetPointContext(snapshot, request.row, request.field) : {}),
+        },
+      ),
     }
   }
+
   report(payload: unknown, caller = new AbortController().signal) {
     return this.#tasks.track(this.#report(payload, caller))
   }

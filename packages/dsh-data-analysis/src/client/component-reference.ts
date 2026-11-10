@@ -9,6 +9,7 @@ import {
   parseComponentEnvelope,
   parseComponentRequest,
 } from '../presentation/contracts/component-reference.ts'
+import { componentReferenceLabel } from '../presentation/contracts/selection-text.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../presentation/receipt.ts'
 import { boundedText, closed, parseJson } from '../semantic-reference/contracts.ts'
 import {
@@ -18,11 +19,8 @@ import {
 } from './input-context.ts'
 
 const SOURCE = 'marivo-analysis-component'
-function label(envelope: ComponentEnvelope): string {
-  return envelope.resourceName.replace(/[\r\n\t]/g, ' ').slice(0, 160)
-}
 function reference(envelope: ComponentEnvelope): ReferenceInsert {
-  const name = label(envelope)
+  const name = componentReferenceLabel(envelope)
   return { source: SOURCE, ref: JSON.stringify(envelope), label: name, clipboardText: `@${name}` }
 }
 function parseReference(ref: string) {
@@ -44,7 +42,7 @@ export function createComponentReferenceSource(
     },
     codec: {
       clipboardText(ref) {
-        return `@${label(parseReference(ref))}`
+        return `@${componentReferenceLabel(parseReference(ref))}`
       },
       async serialize(ref, caller) {
         const envelope = parseReference(ref)

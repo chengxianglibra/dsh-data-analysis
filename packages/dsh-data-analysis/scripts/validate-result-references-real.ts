@@ -9,8 +9,11 @@ import {
 } from '../src/environment/index.ts'
 import { createAnalysisDocument } from '../src/presentation/analysis.ts'
 import { resultReference } from '../src/presentation/contracts/result-reference.ts'
+import { parseSelectionText } from '../src/presentation/contracts/selection-text.ts'
 import { isFrameSnapshotV2 } from '../src/presentation/contracts/snapshot.ts'
+import { publishPresentation } from '../src/presentation/reports.ts'
 import { readMarivoResult } from '../src/presentation/result-reader.ts'
+import { MarivoPresentationFileService } from '../src/presentation/rpc.ts'
 
 const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-result-references-')))
 let manager: MarivoWorkspaceEnvironmentManager | undefined
@@ -127,6 +130,73 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
     { workspaceId: 'workspace', reportId: 'report', buildId: 'build' },
     signal,
   )
+  await publishPresentation(workspace, document, null, async () => {}, signal, {
+    kind: 'agent',
+    sessionId: 'session',
+    surface: 'tab',
+  })
+  const service = new MarivoPresentationFileService(() => ({ id: 'workspace', path: workspace }))
+  try {
+    for (const [resourceName, kind, expected] of [
+      ['frame', 'frame', refs.frame],
+      ['data', 'dataset', refs.dataframe],
+    ] as const) {
+      const request = {
+        sessionId: 'session',
+        workspaceId: 'workspace',
+        recordId: document.recordId,
+        resourceName,
+        component: { kind },
+      }
+      const prepared = await service.component('component/prepare', request)
+      assert('envelope' in prepared && prepared.envelope)
+      const sent = await service.component('component/serialize', { envelope: prepared.envelope })
+      assert('text' in sent && sent.text)
+      const selection = parseSelectionText(sent.text)
+      assert(selection)
+      assert.deepEqual(selection.context.resultRef, expected)
+      assert.equal('rows' in selection.context, false)
+      assert.equal('report' in selection.context, false)
+      // The actual submitted reference is sufficient for a new checked Marivo process.
+      const restored = await readMarivoResult(
+        runner,
+        resultReference.parse(selection.context.resultRef),
+        signal,
+      )
+      assert.deepEqual(restored.data, resourceName === 'frame' ? frame.data : dataframe.data)
+    }
+    for (const resourceName of ['frame', 'data']) {
+      const request = {
+        sessionId: 'session',
+        workspaceId: 'workspace',
+        recordId: document.recordId,
+        resourceName,
+        row: 0,
+        field: 'amount',
+      }
+      const prepared =
+        resourceName === 'frame'
+          ? await service.point('point/prepare', request)
+          : await service.dataset('dataset/prepare', request)
+      assert('envelope' in prepared && prepared.envelope)
+      const sent =
+        resourceName === 'frame'
+          ? await service.point('point/serialize', { envelope: prepared.envelope })
+          : await service.dataset('dataset/serialize', { envelope: prepared.envelope })
+      assert('text' in sent && sent.text)
+      const selection = parseSelectionText(sent.text)
+      assert.equal(
+        selection?.context.value,
+        resourceName === 'frame' ? '9007199254740993.1000' : '12345678901234.5678',
+      )
+      assert.deepEqual(
+        selection?.context.resultRef,
+        resourceName === 'frame' ? refs.frame : refs.dataframe,
+      )
+    }
+  } finally {
+    await service.close()
+  }
   await rm(path.join(workspace, '.marivo'), { recursive: true, force: true })
   const updated = await createAnalysisDocument(
     { surface: 'tab', title: 'Retained result' },
@@ -137,7 +207,7 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
   )
   assert.deepEqual(updated.resources, document.resources)
   process.stdout.write(
-    `${JSON.stringify({ status: 'ok', marivoVersion: runtime.marivoVersion, coldReads: ['AnalysisFrame', 'DataFrame'], exactValues: true, emptyDecimalType: true, boundedPreview: true, wrongStoreRejected: true, foreignWorkspaceRejected: true, savedResourcesIndependent: true, helperLibraryInstalled: false, httpService: false }, null, 2)}\n`,
+    `${JSON.stringify({ status: 'ok', marivoVersion: runtime.marivoVersion, coldReads: ['AnalysisFrame', 'DataFrame'], selectionReferencesColdRead: true, selectionExactValues: true, exactValues: true, emptyDecimalType: true, boundedPreview: true, wrongStoreRejected: true, foreignWorkspaceRejected: true, savedResourcesIndependent: true, helperLibraryInstalled: false, httpService: false }, null, 2)}\n`,
   )
 } finally {
   manager?.dispose()

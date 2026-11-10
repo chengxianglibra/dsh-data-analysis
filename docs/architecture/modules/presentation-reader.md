@@ -106,7 +106,14 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 Frame 点引用绑定固定 Build、资源、行和字段；发送时由服务端重新读取并校验，缺席侧、无法唯一定位的字段及父组总计不能作为明细点引用。
 发送给模型的上下文包含快照保存的 Marivo Session ID 和可空 Artifact ID，并区分 Harness Session。持久 Frame 可在原 Runtime 和项目及 Artifact 仍可用时通过 Marivo 公开 API 尝试恢复；内存 Frame 没有 Artifact ID，不能据此跨进程恢复原 Frame。快照数据仍是捕获时的结果，不代表实时查询或恢复成功。
 复制、表格等直观操作使用带键盘焦点提示和本地化无障碍名称的图标；数据范围不完整及期间未捕获仍有明确状态。
-Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原始行和字段，独立于 Frame 的选点协议；准备和发送时由服务端读取保存快照并校验身份与内容摘要，发送所选精确值及有界同行上下文并标明截断，不执行新查询。组件引用绑定相同会话与固定 Build，并校验保存 program 中匹配的组件类型、资源和原始视图配置；发送有界数据、报告与语义上下文及截断标记。同一配置可在多个位置复用，引用不声称唯一页面位置。候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑或撤销/重做；已保存版本可在报告 tab 中导出离线 HTML，见[导出契约](report-publishing.md)。
+Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原始行和字段，独立于 Frame 的选点协议；准备和发送时由服务端读取保存快照并校验身份与内容摘要，发送所选精确值及有界同行上下文（最多 4,000 UTF-8 bytes，不根据列类型猜测哪些列是坐标）并标明省略，不执行新查询。
+
+组件引用绑定相同会话与固定 Build，并校验保存 program 中匹配的组件类型、资源和原始视图配置；发送固定 recordId、资源名、匹配的组件配置与保存的 Marivo resultRef，不展开数据行、完整报告 program 或语义元数据。同一配置可在多个位置复用，引用不声称唯一页面位置。持久资源直接携带原声明的 `marivo.frame_ref/v2` 或 `marivo.dataframe_ref/v2`，Agent 通过绑定 Runtime/project 的 Marivo 公开 API 读取并核验准确固定结果；`marivo_ui_read` 继续只读取报告组织、声明和结构。旧快照没有完整结果引用时明确返回 resultRef=null，不拼造引用或自动重新分析。数据点同时携带可用的 resultRef。
+
+候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑或撤销/重做；已保存版本可在报告 tab 中导出离线 HTML，见[导出契约](report-publishing.md)。
+
+引用提交采用 `<marivo-selection>` 包裹的 `dsh-data-analysis-selection/v1` JSON，标签与输入框共用生成规则，数据内容中的分隔字符经 Unicode escape。插件使用 Harness 的 `uiConversation.userText` rule 和 `conversation.user.text.node` renderer 将发送回显、正式消息、队列和历史重载中的合法引用显示为同一标签 chip；模型收到原始引用 JSON。未闭合、无效或未知版本保留原文，普通消息不受影响。此规则只负责展示，不执行数据读取或赋予引用访问权限。
+
 展示层直接读取 Frame 已有列中的指标、总计和差值。饼图按完整快照中各类别的保存值分配扇区，并在图例显示各扇区占圆的百分比。会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
 
 ## 来源与范围详情

@@ -44,7 +44,7 @@ export function datasetPointContext(
     if (i === index) continue
     const entry = { column: snapshot.data.columns[i]!, value: row[i]! }
     const size = Buffer.byteLength(JSON.stringify(entry), 'utf8') + 1
-    if (bytes + size > 40_000) continue
+    if (bytes + size > 4_000) continue
     context.push(entry)
     bytes += size
   }
@@ -56,38 +56,5 @@ export function datasetPointContext(
     rowContext: context,
     rowContextTruncated: context.length < snapshot.data.columns.length - 1,
     coverage,
-  }
-}
-
-/** Bound both column metadata and complete preview cells, and disclose each truncation. */
-export function datasetContext(snapshot: ReturnType<typeof datasetFromDocument>['snapshot']) {
-  const columns: typeof snapshot.data.columns = []
-  let columnBytes = 0
-  for (const column of snapshot.data.columns) {
-    const size = Buffer.byteLength(JSON.stringify(column), 'utf8') + 1
-    if (columnBytes + size > 80_000) break
-    columns.push(column)
-    columnBytes += size
-  }
-  const rows: typeof snapshot.data.rows = []
-  let rowBytes = 0
-  for (const row of snapshot.data.rows) {
-    const preview = row.slice(0, columns.length)
-    const size = Buffer.byteLength(JSON.stringify(preview), 'utf8') + 1
-    if (rowBytes + size > 100_000) break
-    rows.push(preview)
-    rowBytes += size
-  }
-  const { columns: _coverageColumns, ...coverage } = snapshot.coverage
-  return {
-    coverage,
-    columns,
-    rows,
-    previewColumns: columns.length,
-    savedColumns: snapshot.data.columns.length,
-    columnsTruncated: columns.length < snapshot.data.columns.length,
-    previewRows: rows.length,
-    savedRows: snapshot.data.rows.length,
-    previewTruncated: rows.length < snapshot.data.rows.length,
   }
 }

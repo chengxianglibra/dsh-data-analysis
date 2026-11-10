@@ -11,6 +11,7 @@ import {
   parseAnalysisDocument,
   sameAnalysisDeclaration,
 } from '../../src/presentation/contracts/analysis-document.ts'
+import { parseSelectionText } from '../../src/presentation/contracts/selection-text.ts'
 import { datasetSnapshotRef, frameSnapshotRef } from '../../src/presentation/dataset-snapshot.ts'
 import { presentationSha256 } from '../../src/presentation/files.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
@@ -369,8 +370,8 @@ test('DataFrame references revalidate the fixed saved build and snapshot identit
   assert.equal(envelope.recordId, request.recordId)
   const serialized = await f.service.dataset('dataset/serialize', { envelope })
   if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
-  assert.match(serialized.text, /"rows":\[\["1.5"\],\["2.5"\]\]/)
-  assert.match(serialized.text, /"previewTruncated":false/)
+  assert.equal(parseSelectionText(serialized.text)?.context.resultRef, null)
+  assert.equal('rows' in parseSelectionText(serialized.text)!.context, false)
   await assert.rejects(
     f.service.dataset('dataset/serialize', { envelope: { ...envelope, digest: '0'.repeat(64) } }),
     /dataset-mismatch/,
@@ -412,7 +413,7 @@ test('DataFrame references revalidate the fixed saved build and snapshot identit
   )
 })
 
-test('Dataset component reference validates the saved view and sends bounded snapshot context', async (t) => {
+test('Dataset component reference validates the saved view and discloses legacy result availability', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
     resourcePatch: { put: { data: { kind: 'dataset-snapshot', snapshotRef: f.datasetRef } } },
@@ -431,11 +432,15 @@ test('Dataset component reference validates the saved view and sends bounded sna
     envelope: prepared.envelope,
   })
   if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
-  const context = JSON.parse(serialized.text.slice(serialized.text.indexOf('\n') + 1))
-  assert.deepEqual(context.rows, [['1.5'], ['2.5']])
-  assert.deepEqual(context.component.view, { chart: 'table' })
-  assert.equal(context.coverage.complete, true)
-  assert.equal(context.report.program, 'root = DatasetView("data", {chart:"table"})')
+  const context = parseSelectionText(serialized.text)!.context
+  assert.equal(context.resultRef, null)
+  assert.equal('rows' in context, false)
+  assert.deepEqual(context.component, {
+    kind: 'dataset',
+    statementId: 'root',
+    view: { chart: 'table' },
+  })
+  assert.equal('report' in context, false)
   await assert.rejects(
     f.service.component('component/prepare', {
       ...request,

@@ -27,6 +27,7 @@ import {
   PRESENTATION_TURN_DATA_KEY,
 } from '../presentation/delivery.ts'
 import { createPluginRpc } from '../rpc.ts'
+import { installSelectionText } from '../selection-text.tsx'
 import { SemanticBrowserPanel } from '../semantic-browser/panel.tsx'
 import { installSemanticReferenceSource } from '../semantic-reference-source.ts'
 import { Button } from '../ui/controls.tsx'
@@ -284,6 +285,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     }
   })
   installSemanticReferenceSource(ctx, rpc)
+  installSelectionText(ctx)
   installPointReferenceSource(ctx, rpc)
   installComponentReferenceSource(ctx, rpc)
   installDatasetReferenceSource(ctx, rpc)

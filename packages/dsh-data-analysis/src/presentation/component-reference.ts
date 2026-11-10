@@ -4,8 +4,10 @@ import { parseAnalysisProgram } from './contracts/analysis-program.ts'
 import type { ComponentEnvelope, ComponentRequest } from './contracts/component-reference.ts'
 import { datasetDisplaySchema, datasetViewSchema } from './contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from './contracts/frame-view.ts'
-import { datasetContext, datasetFromDocument } from './dataset-reference.ts'
-import { frameContext, frameFromDocument } from './frame-reference.ts'
+import { componentReferenceLabel, selectionModelText } from './contracts/selection-text.ts'
+import { datasetFromDocument } from './dataset-reference.ts'
+import { frameFromDocument } from './frame-reference.ts'
+import { savedResultContext } from './selection-context.ts'
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
@@ -63,61 +65,22 @@ export function componentFromDocument(document: AnalysisDocument, request: Compo
   return { envelope, snapshot, view: target.view, display: target.display }
 }
 
-/** Bound the complete model payload, including the verified view and display. */
+/** Fixed result identity for reading data with Marivo; report organization remains in marivo_ui_read. */
 export function componentModelText(
-  document: Pick<AnalysisDocument, 'title' | 'program'>,
+  document: Pick<AnalysisDocument, 'resources'>,
   request: ComponentRequest,
-  snapshot: ReturnType<typeof componentFromDocument>['snapshot'],
   view: unknown,
   display: unknown,
 ): string {
-  const context = snapshot.kind === 'frame' ? frameContext(snapshot) : datasetContext(snapshot)
-  const prefix =
-    'Analysis UI component from a saved report snapshot (not a new query). The component configuration matches a node in the fixed saved program; equivalent instances can occur in multiple locations. Rows, columns and metadata are bounded; check truncation and coverage flags. marivoFrame, when present, is Marivo identity, not the Harness session. A persisted artifact may be resumed only if its original Runtime/project and artifact remain available; an in-memory Frame cannot be recovered across processes from this identity.\n'
-  const programFits = Buffer.byteLength(JSON.stringify(document.program), 'utf8') <= 20_000
-  let report = {
-    title: document.title,
-    program: programFits ? document.program : null,
-    programTruncated: !programFits,
-  }
-  let preview: ReturnType<typeof datasetContext> | ReturnType<typeof frameContext> = context
-  let contextTruncated = false
-  const render = () =>
-    `${prefix}${JSON.stringify({ recordId: request.recordId, resource: request.resourceName, component: { kind: request.component.kind, statementId: request.component.statementId, view, display }, report, ...preview, contextTruncated })}`
-  let text = render()
-  if (Buffer.byteLength(text, 'utf8') > 262_144 && report.program !== null) {
-    report = { ...report, program: null, programTruncated: true }
-    text = render()
-  }
-  if (Buffer.byteLength(text, 'utf8') > 262_144) {
-    contextTruncated = true
-    preview =
-      snapshot.kind === 'frame'
-        ? {
-            ...frameContext(snapshot),
-            columns: [],
-            rows: [],
-            previewColumns: 0,
-            previewRows: 0,
-            columnsTruncated: snapshot.data.columns.length > 0,
-            previewTruncated: snapshot.data.rows.length > 0,
-            metadata: { value: null, truncated: true },
-            sections: { value: null, truncated: true },
-            coordinates: { value: null, truncated: true },
-          }
-        : {
-            ...datasetContext(snapshot),
-            columns: [],
-            rows: [],
-            previewColumns: 0,
-            previewRows: 0,
-            columnsTruncated: snapshot.data.columns.length > 0,
-            previewTruncated: snapshot.data.rows.length > 0,
-          }
-    text = render()
-  }
-  // Saved program admission bounds the configuration; retain a final guard if
-  // the program contract is widened in future.
-  if (Buffer.byteLength(text, 'utf8') > 262_144) throw new Error('component-too-large')
-  return text
+  return selectionModelText('component', componentReferenceLabel(request), {
+    recordId: request.recordId,
+    resource: request.resourceName,
+    component: {
+      kind: request.component.kind,
+      statementId: request.component.statementId,
+      view,
+      display,
+    },
+    ...savedResultContext(document, request.resourceName),
+  })
 }

@@ -7,6 +7,7 @@ import {
   type PointRequest,
   parsePointEnvelope,
 } from '../presentation/contracts/point-reference.ts'
+import { pointReferenceLabel } from '../presentation/contracts/selection-text.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../presentation/receipt.ts'
 import { boundedText, closed, parseJson } from '../semantic-reference/contracts.ts'
 import {
@@ -18,18 +19,8 @@ import {
 const SOURCE = 'marivo-analysis-frame-point'
 const MAX_REFERENCE = 524_288
 
-function label(envelope: PointEnvelope): string {
-  const coordinates = envelope.point.axes.flatMap((axis) =>
-    axis.keys.map((key) => (key.value === null ? '∅' : String(key.value))),
-  )
-  return [envelope.point.column.label, ...coordinates]
-    .join(' · ')
-    .replace(/[\r\n\t]/g, ' ')
-    .slice(0, 160)
-}
-
 function reference(envelope: PointEnvelope): ReferenceInsert {
-  const name = label(envelope)
+  const name = pointReferenceLabel(envelope)
   return {
     source: SOURCE,
     ref: JSON.stringify(envelope),
@@ -58,7 +49,7 @@ export function createPointReferenceSource(
     },
     codec: {
       clipboardText(ref) {
-        return `@${label(parseReference(ref))}`
+        return `@${pointReferenceLabel(parseReference(ref))}`
       },
       async serialize(ref, caller) {
         const envelope = parseReference(ref)

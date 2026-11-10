@@ -7,6 +7,7 @@ import {
   type DatasetRequest,
   parseDatasetEnvelope,
 } from '../presentation/contracts/dataset-reference.ts'
+import { datasetReferenceLabel } from '../presentation/contracts/selection-text.ts'
 import { MARIVO_PRESENTATION_RPC_CHANNEL } from '../presentation/receipt.ts'
 import { boundedText, closed, parseJson } from '../semantic-reference/contracts.ts'
 import {
@@ -16,18 +17,11 @@ import {
 } from './input-context.ts'
 
 const SOURCE = 'marivo-analysis-dataset'
-const label = (envelope: DatasetEnvelope) =>
-  (envelope.schema === 'dsh-data-analysis-dataset-point/v1'
-    ? `${envelope.resourceName} · ${envelope.field} · ${envelope.row + 1}`
-    : envelope.resourceName
-  )
-    .replace(/[\r\n\t]/g, ' ')
-    .slice(0, 160)
 function parseReference(ref: string) {
   return parseDatasetEnvelope(parseJson(ref, 4096))
 }
 function reference(envelope: DatasetEnvelope): ReferenceInsert {
-  const name = label(envelope)
+  const name = datasetReferenceLabel(envelope)
   return { source: SOURCE, ref: JSON.stringify(envelope), label: name, clipboardText: `@${name}` }
 }
 export function createDatasetReferenceSource(
@@ -46,7 +40,7 @@ export function createDatasetReferenceSource(
     },
     codec: {
       clipboardText(ref) {
-        return `@${label(parseReference(ref))}`
+        return `@${datasetReferenceLabel(parseReference(ref))}`
       },
       async serialize(ref, caller) {
         const envelope = parseReference(ref)
