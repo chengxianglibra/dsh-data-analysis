@@ -27,7 +27,7 @@ export function assertBrowserInputs(meta) {
     }
     const relative = path.relative(packageRoot, path.resolve(input)).replaceAll('\\', '/')
     if (
-      /^(?:src\/client(?:\.tsx|\/)|src\/(?:datasource\/changes-contract|lifecycle)\.ts$|src\/presentation\/(?:contracts\/|receipt\.ts$)|src\/semantic-reference\/(?:contracts|labels)\.ts$|src\/semantic-browser\/(?:contracts|definition)\.ts$)/.test(
+      /^(?:src\/client(?:\.tsx|\/)|src\/(?:datasource\/changes-contract|next-steps\/contracts|lifecycle)\.ts$|src\/presentation\/(?:contracts\/|receipt\.ts$)|src\/semantic-reference\/(?:contracts|labels)\.ts$|src\/semantic-browser\/(?:contracts|definition)\.ts$)/.test(
         relative,
       )
     )

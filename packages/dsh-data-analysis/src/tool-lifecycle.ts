@@ -11,7 +11,12 @@ export function registerMarivoTool(ctx: Context, tool: ToolDefinition): () => Pr
     execute(args, exec) {
       if (lifetime.signal.aborted) return Promise.reject(new Error('Marivo tool disposed'))
       return pending.track(
-        tool.execute(args, { ...exec, signal: AbortSignal.any([exec.signal, lifetime.signal]) }),
+        tool.execute(args, {
+          ...exec,
+          signal: AbortSignal.any([exec.signal, lifetime.signal]),
+          // Harness associates the terminal marker with the original execution identity.
+          concludeTurn: () => exec.concludeTurn(),
+        }),
       )
     },
   })

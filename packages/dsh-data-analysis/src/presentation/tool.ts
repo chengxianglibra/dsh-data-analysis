@@ -44,7 +44,7 @@ const presentationToolInput = analysisPresentInput.omit({ surface: true }).exten
   rebaseOnRecordId: z.string().min(1).max(512).optional(),
 })
 
-function presentationTurn(session: Session, exec: ToolRunContext): number {
+export function presentationTurn(session: Session, exec: ToolRunContext): number {
   const rootCallId = String(exec.rootCallId ?? exec.callId)
   const call = [...session.snapshotEvents()]
     .reverse()

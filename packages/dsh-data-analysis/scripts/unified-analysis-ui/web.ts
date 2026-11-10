@@ -16,6 +16,11 @@ const reuseIndex = process.argv.indexOf('--reuse')
 const reuse = reuseIndex < 0 ? undefined : process.argv[reuseIndex + 1]
 const repository = fileURLToPath(new URL('../../../../', import.meta.url))
 const packageRoot = path.join(repository, 'packages/dsh-data-analysis')
+const probe = process.argv.includes('--next-steps')
+  ? 'next-steps-host.ts'
+  : process.argv.includes('--drafts')
+    ? 'draft-host.ts'
+    : 'host.ts'
 const python = process.env.DSH_DATA_ANALYSIS_PYTHON
 if (!python) throw new Error('Set DSH_DATA_ANALYSIS_PYTHON')
 let modelKey = process.env.DEEPSEEK_API_KEY
@@ -85,7 +90,7 @@ await build({
     contents: `
 import {writeFile} from 'node:fs/promises';
 import * as production from '@chengxianglibra/dsh-data-analysis';
-import {installProbe} from ${JSON.stringify(fileURLToPath(new URL(process.argv.includes('--drafts') ? 'draft-host.ts' : 'host.ts', import.meta.url)))};
+import {installProbe} from ${JSON.stringify(fileURLToPath(new URL(probe, import.meta.url)))};
 export const inject=[...production.inject,'llm','agentLoop','webServer'];
 export async function apply(ctx){
  await ctx.plugin(production,{pythonExecutable:${JSON.stringify(python)},runtimeRoot:${JSON.stringify(path.join(output, 'runtime-marker'))},credentialInteraction:'none'});

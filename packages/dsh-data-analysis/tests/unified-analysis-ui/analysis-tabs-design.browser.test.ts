@@ -50,6 +50,8 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program,t
     assert.ok(await tabs.evaluate((node) => node.scrollWidth > node.clientWidth))
     await first.focus()
     await page.keyboard.press('End')
+    // Radix applies roving focus after the key event; observe the settled target.
+    await page.waitForFunction(() => document.activeElement?.textContent === '归因与关系')
     assert.equal(await first.getAttribute('aria-selected'), 'true')
     assert.equal(await last.evaluate((node) => node === document.activeElement), true)
     const visibility = await last.evaluate((node) => {

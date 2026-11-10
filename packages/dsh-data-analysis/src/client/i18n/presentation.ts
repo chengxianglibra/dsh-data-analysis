@@ -1,5 +1,6 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.presentation.ui-next-steps-failed': '无法提交此问题，请在输入框中重试。',
   'marivo.presentation.ui-chart-series': '数据系列',
   'marivo.presentation.ui-chart-previous-point': '上一个图点',
   'marivo.presentation.ui-chart-next-point': '下一个图点',
@@ -205,6 +206,8 @@ export const zh = {
   'marivo.presentation.page-only-summary': '第 {p0} / {p1} 页',
 } as const
 export const en = {
+  'marivo.presentation.ui-next-steps-failed':
+    'Unable to submit this question. Please retry in the composer.',
   'marivo.presentation.ui-chart-series': 'Data series',
   'marivo.presentation.ui-chart-previous-point': 'Previous chart point',
   'marivo.presentation.ui-chart-next-point': 'Next chart point',

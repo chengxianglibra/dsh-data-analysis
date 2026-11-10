@@ -28,6 +28,7 @@
 | 报告 | [展示数据投影](modules/presentation-projection.md) | 有界快照、Frame 读取、DataFrame capture 与数值预算 |
 | 报告 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、语句 patch、current、receipt 与 RPC |
 | 报告 | [分析文档 reader](modules/presentation-reader.md) | 共享 AnalysisSurface、报告目录与版本历史 |
+| 分析交互 | [下一步推荐](modules/analysis-next-steps.md) | 当前 Chat 临时推荐按钮、收尾与原生输入提交 |
 | 前端 | [插件私有 UI 组件](modules/custom-ui-components.md) | 主题角色、控件、结果外壳、容器布局与 Host 弹层接入 |
 | 报告 | [报告 HTML 导出与发布](modules/report-publishing.md) | 固定版本离线导出；对象存储发布不可用 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
@@ -70,7 +71,7 @@ Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 W
 
 每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.4 包未提供 `marivo-service`。
 
-默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_configure`、`marivo_datasource_test`、`marivo_python`、`marivo_present`、`marivo_ui_read`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
+默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_configure`、`marivo_datasource_test`、`marivo_python`、`marivo_present`、`marivo_ui_read`、`marivo_next_steps`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
 
 ### 配置与执行
 

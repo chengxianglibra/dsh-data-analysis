@@ -18,6 +18,7 @@ import { credentialStyles } from '../credentials/styles.ts'
 import { appendDatasetReference, installDatasetReferenceSource } from '../dataset-reference.ts'
 import { useCopy } from './../i18n/context.tsx'
 import { hostCopy, installCopy, localized } from '../i18n/host.tsx'
+import { installNextSteps } from '../next-steps.tsx'
 import { appendPointReference, installPointReferenceSource } from '../point-reference.ts'
 import { catalogStyles, ReportCatalogView, ReportHistoryPanel } from '../presentation/catalog.tsx'
 import {
@@ -65,6 +66,7 @@ const labels = workspaceDirectories
 /** Default browser integration. Layout belongs to Harness; mutable content belongs to occurrences. */
 export function installRightTabs(ctx, { diagnostics = false } = {}) {
   installCopy(ctx)
+  const { NextSteps } = installNextSteps(ctx)
   const rpc = createPluginRpc(ctx.connection.rpc)
   const pages = new Map()
   const candidates = new AnalysisCandidates()
@@ -213,6 +215,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         { sessionId, workspaceId, recordId, ...selection },
         signal,
       ),
+    NextSteps,
   )
   const reportTabId = definitionId(reportKind)
   ctx.effect(() =>

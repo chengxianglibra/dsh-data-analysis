@@ -2,6 +2,8 @@ import type {} from '@deepseek-ai/dsh-typert-registry'
 import { CredentialChangesService } from './datasource/changes.ts'
 import { credentialChangesHost } from './datasource/changes-contract.ts'
 import { finishCleanup } from './lifecycle.ts'
+import { nextStepsHost } from './next-steps/contracts.ts'
+import { NextStepsService } from './next-steps/service.ts'
 import { createMarivoAgentInstallation } from './plugin-agents.ts'
 import {
   currentPythonOptions,
@@ -162,6 +164,7 @@ export async function applyWithIntegration(
     config.credentialInteraction,
   )
   const credentialNotifications = new CredentialChangesService(ctx, credentialService)
+  const nextSteps = new NextStepsService(ctx)
   let unregisterChanges: (() => void | Promise<void>) | undefined
   const disposeChanges = async () => {
     await credentialNotifications.close()
@@ -184,6 +187,7 @@ export async function applyWithIntegration(
     if (closing) return closing
     closing = finishCleanup([
       () => agentInstallation?.close(),
+      () => nextSteps.close(),
       () => pythonSettings?.dispose(),
       () => disposeCredentials?.(),
       disposeChanges,
@@ -209,7 +213,10 @@ export async function applyWithIntegration(
   }
   try {
     pythonSettings = installPythonSettings(ctx, config)
-    unregisterChanges = ctx.typert.register(credentialChangesHost)
+    unregisterChanges = ctx.typert.register({
+      ...credentialChangesHost,
+      invocations: [...credentialChangesHost.invocations, ...nextStepsHost.invocations],
+    })
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-marivo',
       includeDefaultRoots: false,
@@ -239,6 +246,7 @@ export async function applyWithIntegration(
       helpBridgeSource: helpBridge,
       credentialService,
       presentationDrafts,
+      nextStepsPublish: (notice) => nextSteps.publish(notice),
     })
     agentInstallation.install()
     disposeCredentials = registerCredentialRpc(

@@ -1,10 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteStreamItem } from '@deepseek-ai/dsh-api-gateway/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import {
-  type CredentialRevision,
-  credentialChangesRemote,
-} from '../../datasource/changes-contract.ts'
+import type { CredentialRevision } from '../../datasource/changes-contract.ts'
+import { mountNotifications } from '../notifications.ts'
 
 export type CredentialChangeFeed = AsyncIterable<RemoteStreamItem<CredentialRevision>> & {
   dispose(): Promise<void>
@@ -13,10 +11,7 @@ export type CredentialChanges = (sessionId: string) => CredentialChangeFeed
 
 /** Mount before opening a logical stream, using the existing Gateway WebSocket. */
 export function credentialChanges(ctx: Context): CredentialChanges {
-  const mounted = ctx.remote.$mount(credentialChangesRemote)
-  // Initialization may be withdrawn before a Session starts consuming the mount.
-  void mounted.catch(() => {})
-  ctx.effect(() => async () => (await mounted)())
+  const mounted = mountNotifications(ctx)
   // Host and browser Context augmentations share this build; use the browser contract here.
   const connection = ctx.connection as unknown as ConnectionHandle
   return (sessionId): CredentialChangeFeed => {

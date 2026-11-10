@@ -1358,6 +1358,7 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
     'marivo_datasource_configure',
     'marivo_datasource_test',
     'marivo_help',
+    'marivo_next_steps',
     'marivo_present',
     'marivo_python',
     'marivo_ui_read',

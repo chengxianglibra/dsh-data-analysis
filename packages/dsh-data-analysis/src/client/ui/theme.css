@@ -209,3 +209,20 @@ body[data-ds-dark-theme] .mv-ui {
   border: 0;
   background: transparent;
 }
+.mv-ui.mv-next-steps {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.25rem;
+  margin-top: 0.75rem;
+}
+.mv-next-steps > button {
+  flex: 1 0 0;
+  min-width: max-content;
+  justify-content: space-between;
+  height: auto;
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  white-space: nowrap;
+}

@@ -117,12 +117,13 @@ For script traceability, select reference variables with `marivo_python.resultVa
 Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
 
 Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,
-preferring `AnalysisFrameView` for Frame data. After saving the report, the assistant replies briefly in chat. Your requested output format takes precedence.
+preferring `AnalysisFrameView` for Frame data. After saving, read the report and choose a suggested follow-up in Chat. Your requested output format takes precedence.
 
 - **Inspect data**: Sort exact values, browse local pages, and ask about a data point or the whole result. Previews disclose their range and cannot become complete single-value metrics.
 - **Check sources**: Frame views show structure and source identity. DataFrame views bring together the captured range, execution script and declared datasources.
 - **Ask a follow-up**: Select a chart point or supported cell in a DataFrame or Frame and add it to the question draft.
 - **Switch location**: Use the fixed icon with the “View in sidebar” tooltip. Further previews and saving update the same tab; Chat hides the report body, title, and entry links until that tab is closed. Catalog and history entries always open on the right.
+- **Suggested next steps**: After analysis, Chat offers a row of temporary follow-up buttons. Clicking uses the native Harness composer to submit the question; existing drafts are preserved. Suggestions stay in Chat when the report moves and disappear on reload, reconnection or session switch.
 - **Export offline**: Download the displayed version as a single HTML file from the report tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
 
 Initial previews, revisions and final saving update one report region. Subtle chart motion indicates generation and updates, then stops after saving; reduced motion preferences use a static indicator. The report workflow shows a draft early, prepares each data component independently, updates the same draft as each result becomes ready, and saves one version at completion. Native generation also displays program candidates. Failures and cancellation preserve the last successful content. When refreshing a saved report, the assistant retains its layout, components and body while replacing component data sources. Static text is not rewritten automatically, and auto views may still adapt to the new data shape.

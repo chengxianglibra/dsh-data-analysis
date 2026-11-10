@@ -18,6 +18,8 @@ import {
   resolveMarivoEnvironmentSource,
 } from './environment/index.ts'
 import { finishCleanup, PendingTasks } from './lifecycle.ts'
+import { installNextStepsAgent } from './next-steps/agent.ts'
+import type { NextStepsNotice } from './next-steps/contracts.ts'
 import { AnalysisDrafts } from './presentation/drafts.ts'
 import {
   installMarivoPresentationCodeDelivery,
@@ -36,7 +38,8 @@ const ROUTING_PROMPT = [
   'Run analysis in the bound Workspace with marivo_python. In this Host, connection setup and repair use marivo_datasource_configure instead of agent-authored datasource configuration; marivo-semantic still owns business definitions. Handle secrets through Harness credential forms, never chat.',
   'Before Marivo analysis or result persistence, check marivo.toml at the bound Workspace root itself. If absent, use marivo_python with datasources=[] to run the bound sys.executable -m marivo init --project-root <Workspace root>, without --force, then verify initialization. Do not accidentally inherit an ancestor project, handwrite the manifest, or use another installation. Existing invalid projects require repair, not reinitialization. Ordinary file inspection needs no project setup.',
   'Answer ordinary questions and short comparisons in chat. Use marivo_present for analysis UI results and reports, and native present for requested file deliverables such as CSV or PNG. Honor explicitly requested formats. Reuse saved results when their scope and freshness fit the task; a requested data refresh needs new results.',
-  'In a report, keep supported conclusions, supporting data and material limitations together. While evidence is pending, show the question and remaining work without inventing conclusions. Report completion according to the actual preview, save or delivery receipt; after save succeeds, reply briefly.',
+  'In a report, keep supported conclusions, supporting data and material limitations together. While evidence is pending, show the question and remaining work without inventing conclusions. Report completion according to the actual preview, save or delivery receipt. Use the finalization tool after all requested report work is complete.',
+  'After the final successful marivo_present save, finalize the Turn with marivo_next_steps. First honor an explicit request for no recommendations by calling items=[]; do not generate suggestions in that case. Otherwise offer 0–4 concrete, complementary analyses in the analysis language, usually three when useful. Success concludes the Turn, so finish all requested work before this call. Each short label must fully describe the task; its prompt only expands the same task using only data already available. Never suggest collecting or adding missing dimensions, periods, datasets or inputs; items=[] is preferable to infeasible work. Never recommend work already answered by the report; use fewer items rather than repeat completed work or add filler. Use items=[] if the user declined or no useful follow-up exists. These temporary Chat buttons are outside the report. Do not run more analysis to generate them or repeat them in report/chat prose.',
 ].join('\n')
 
 export type MarivoPluginEnvironmentResolver = (
@@ -61,6 +64,7 @@ export function createMarivoAgentInstallation(
       /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
       helpBridgeSource?: MarivoHelpBridgeSource
       presentationDrafts?: AnalysisDrafts
+      nextStepsPublish?: (notice: NextStepsNotice) => void
     } = {},
 ) {
   const pythonOptions = resolvePythonOptions(options)
@@ -153,6 +157,14 @@ export function createMarivoAgentInstallation(
         ),
       )
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
+      controller.addDisposer(
+        installNextStepsAgent(
+          ctx,
+          agent,
+          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
+          options.nextStepsPublish ?? (() => {}),
+        ),
+      )
       controller.addDisposer(() => presentationDrafts.clear(String(agent.session.id)))
       controller.addDisposer(
         agent.ctx.systemPrompt.section({
