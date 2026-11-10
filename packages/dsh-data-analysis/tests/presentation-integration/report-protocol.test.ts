@@ -420,3 +420,44 @@ test('same fixed results report reuse and data-only reports need no narrative re
   assert.equal(refreshed.contentReview, 'not-needed')
   assert.deepEqual(refreshed.changed, ['data'])
 })
+
+test('refresh marks authored callouts and accordion headings for review', async (t) => {
+  const f = await fixture(t)
+  const programs = [
+    'root = Stack([TextCallout("info", "Sales increased", ""), DatasetView("data", {chart:"table"})]);',
+    'root = Stack([TextCallout("info", "", "Sales increased"), DatasetView("data", {chart:"table"})]);',
+    'root = Accordion([AccordionItem("details", "Sales increased", [DatasetView("data", {chart:"table"})])]);',
+    'root = Card([Stack([TextCallout("warning", "", "Check the scope"), DatasetView("data", {chart:"table"})])]);',
+  ]
+  for (const program of programs) {
+    const base = await f.write({
+      stage: 'save',
+      program,
+      resourcePatch: { put: { data: f.resource() } },
+    })
+    const refreshed = await f.write({
+      stage: 'save',
+      ref: base.ref,
+      mode: 'refresh-data',
+      resourcePatch: { put: { data: f.resource('2') } },
+    })
+    assert.equal(refreshed.contentReview, 'required')
+    assert.equal((await f.document(refreshed.ref)).contentReview, 'required')
+  }
+})
+
+test('an empty callout does not require review after data refresh', async (t) => {
+  const f = await fixture(t)
+  const base = await f.write({
+    stage: 'save',
+    program: 'root = Stack([TextCallout("info", " ", " "), DatasetView("data", {chart:"table"})]);',
+    resourcePatch: { put: { data: f.resource() } },
+  })
+  const refreshed = await f.write({
+    stage: 'save',
+    ref: base.ref,
+    mode: 'refresh-data',
+    resourcePatch: { put: { data: f.resource('2') } },
+  })
+  assert.equal(refreshed.contentReview, 'not-needed')
+})

@@ -128,7 +128,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
         title: 'P2 统一分析报告',
         resourcePatch: { put: resources },
         program:
-          'root = Stack([TextContent("## 已保存的精确结果\\n同一静态快照，切换位置无需重新分析。"), Card([AnalysisFrameView("frame", {chart:"table"})]), Tabs([TabItem("data","数据",[DatasetView("data")]),TabItem("details","指标与图片",[DatasetView("metric",{chart:"metric",encoding:{value:"amount"}}),Image("已保存图片","image")])])]);',
+          'root = Stack([TextContent("## 已保存的精确结果\\n同一静态快照，切换位置无需重新分析。"), TextCallout("info", "统计范围", "已保存快照"), DashboardGrid([DashboardGridItem([DatasetView("metric",{chart:"metric",encoding:{value:"amount"}})],1), DashboardGridItem([AnalysisFrameView("frame",{chart:"table"})],3)],4), Accordion([AccordionItem("data","查看明细",[DatasetView("data"),Image("已保存图片","image")])])]);',
       },
     }
     return { value, inputs }
@@ -205,6 +205,8 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
       let prompt = '2 + 2 等于多少？一句话回答。'
       if (endpoint === 'model-reference')
         prompt = `请用可以选择列、排序和翻页的表格展示这个已有结果，方便我检查大整数、金额和缺失值。不是报告。已有成功引用：${JSON.stringify(inputs.dataset.resourcePatch.put)}。不需要重新分析。`
+      if (endpoint === 'model-dashboard')
+        prompt = `请使用现有固定结果创建并保存一个快照看板，包含指标、明细、范围提示和可展开的补充说明。按已公开的组件能力安排页面，保持结果数值和范围，不要重新计算或编造结论。现有资源声明：${JSON.stringify({ metric: inputs.composition.resourcePatch.put.metric, data: inputs.composition.resourcePatch.put.data })}`
       if (endpoint === 'model-update') {
         if (last?.type !== 'tool/result') throw new Error('model-base-missing')
         const meta = parsePresentationDelivery(last.data.meta)
@@ -243,6 +245,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
       'ptc',
       'model-simple',
       'model-reference',
+      'model-dashboard',
       'model-update',
       'model-status',
     ],

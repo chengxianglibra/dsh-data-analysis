@@ -110,7 +110,7 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、pie、heatmap、comparison 和 decomposition 视图；
 DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 和 Dataset 均支持选择已保存图点或支持的单元格后“就此提问”。
 两种数据视图使用 shadcn/ui 结果外壳与 Recharts 图形，领域层保留事实解释与原始行字段绑定；OpenUI Lang / Renderer 负责报告编排，
-八组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。
+报告组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。
 全局筛选、页面编辑、对象存储发布及旧报告 cell 的“加入提问”接口均不提供。
 
 ## 生命周期与失败原则

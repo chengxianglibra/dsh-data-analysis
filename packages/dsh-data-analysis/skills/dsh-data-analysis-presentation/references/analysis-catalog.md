@@ -5,13 +5,19 @@
 ## Card
 
 ```text
-Card(children: (Stack | TextContent | Card | Tabs | Image | AnalysisFrameView | DatasetView)[], variant?: "card" | "sunk" | "clear", direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
+Card(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], variant?: "card" | "sunk" | "clear", direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
 ```
 
 ## TextContent
 
 ```text
 TextContent(text: string, size?: "small" | "default" | "large" | "small-heavy" | "large-heavy")
+```
+
+## TextCallout
+
+```text
+TextCallout(variant?: "neutral" | "info" | "warning" | "success" | "danger", title?: string, description?: string)
 ```
 
 ## Image
@@ -23,7 +29,7 @@ Image(alt: string, src?: string)
 ## Stack
 
 ```text
-Stack(children: (Stack | TextContent | Card | Tabs | Image | AnalysisFrameView | DatasetView)[], direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
+Stack(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
 ```
 
 ## Tabs
@@ -35,7 +41,19 @@ Tabs(items: TabItem[])
 ## TabItem
 
 ```text
-TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | AnalysisFrameView | DatasetView)[])
+TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[])
+```
+
+## Accordion
+
+```text
+Accordion(items: AccordionItem[])
+```
+
+## AccordionItem
+
+```text
+AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[])
 ```
 
 ## AnalysisFrameView
@@ -48,6 +66,18 @@ AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns
 
 ```text
 DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number})
+```
+
+## DashboardGrid
+
+```text
+DashboardGrid(items: DashboardGridItem[], columns?: 1 | 2 | 3 | 4, gap?: "s" | "m" | "l")
+```
+
+## DashboardGridItem
+
+```text
+DashboardGridItem(content: (Card | TextContent | TextCallout | Image | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
 ```
 
 Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。

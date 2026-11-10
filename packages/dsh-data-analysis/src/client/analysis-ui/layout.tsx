@@ -75,6 +75,50 @@ export function Card({
   )
 }
 
+type DashboardSize = 1 | 2 | 3 | 4
+type DashboardStyle = CSSProperties & {
+  '--dashboard-columns'?: number
+  '--dashboard-span'?: number
+  '--dashboard-gap'?: string
+}
+
+export function DashboardGrid({
+  columns = 4,
+  gap = 'm',
+  children,
+}: {
+  columns?: DashboardSize
+  gap?: 's' | 'm' | 'l'
+  children: ReactNode
+}) {
+  const style: DashboardStyle = {
+    '--dashboard-columns': columns,
+    '--dashboard-gap': `${gaps[gap]}px`,
+  }
+  return (
+    <div className="au-dashboard-container">
+      <div className="au-dashboard-grid" style={style}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+export function DashboardGridItem({
+  span = 1,
+  children,
+}: {
+  span?: DashboardSize
+  children: ReactNode
+}) {
+  const style: DashboardStyle = { '--dashboard-span': span }
+  return (
+    <div className="au-dashboard-item" style={style}>
+      {children}
+    </div>
+  )
+}
+
 export const LAYOUT_STYLES = `
 .au-surface .au-stack,.au-surface .au-card-scope,.au-surface .au-card,.au-surface [data-slot=tabs]{min-width:0;max-width:100%;width:100%}
 .au-surface .au-card-scope{container:mv-card/inline-size}
@@ -84,6 +128,11 @@ export const LAYOUT_STYLES = `
 .au-surface .au-card[data-variant=sunk]{background:var(--muted)}
 .au-surface .au-stack[data-direction=row]>:is(.fv,.au-data,.au-card-scope,[data-slot=tabs]){flex:1 1 260px;width:auto;min-width:0}
 .au-surface .au-card[data-direction=row]>.au-card-content>*{min-width:0}
+.au-surface .au-dashboard-container{min-width:0;max-width:100%;width:100%;container:dashboard/inline-size}
+.au-surface .au-dashboard-grid{display:grid;grid-template-columns:repeat(var(--dashboard-effective-columns,var(--dashboard-columns)),minmax(0,1fr));gap:var(--dashboard-gap);min-width:0}
+.au-surface .au-dashboard-item{grid-column:span min(var(--dashboard-span),var(--dashboard-effective-columns,var(--dashboard-columns)));min-width:0}
+@container dashboard (max-width:720px){.au-surface .au-dashboard-grid{--dashboard-effective-columns:min(2,var(--dashboard-columns))}}
+@container dashboard (max-width:480px){.au-surface .au-dashboard-grid{--dashboard-effective-columns:1}}
 .au-surface [data-slot=tabs]>[role=tablist]{display:flex;justify-content:flex-start;width:100%;max-width:100%;height:auto;gap:4px;margin:12px 0 14px;padding:0;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
 .au-surface [data-slot=tabs]>[role=tablist]>[role=tab]{flex:0 0 auto;min-height:42px;height:auto;padding:10px 13px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;box-shadow:none;color:var(--muted-foreground);font-size:14px;font-weight:400;line-height:1.5;white-space:nowrap}
 .au-surface [data-slot=tabs]>[role=tablist]>[role=tab]:hover{color:var(--foreground)}

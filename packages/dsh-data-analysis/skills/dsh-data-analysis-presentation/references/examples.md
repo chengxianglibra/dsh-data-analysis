@@ -92,13 +92,17 @@ detail = Tabs([TabItem("selected", "减少最多的两项", [selected]), TabItem
 三个组件分别回答 GMV 期间比较、按日趋势与地区分解，按实际计算依赖读取 governed 输入并计算、持久化 Frame。按 live Help 构造分析，不在展示参考中复制计算 API。示例 daily 的时间轴名为 day，数值名为 gmv；按实际公开字段替换。每个结果就绪就 preview，下方为最终程序。
 
 ```openui
-root = Stack([heading, charts, scope]);
+root = Stack([heading, scope, charts, details]);
 heading = TextContent("GMV 的变化集中在哪些地区？", "large");
-charts = Stack([gmv, trend, regions], "row", "m", "start", "start", true);
+scope = TextCallout("info", "统计范围", "地区分解使用与 GMV 比较相同的期间。");
+charts = DashboardGrid([gmvItem, trendItem, regionsItem], 4, "m");
+gmvItem = DashboardGridItem([gmv], 1);
+trendItem = DashboardGridItem([trend], 3);
+regionsItem = DashboardGridItem([regions], 4);
 gmv = AnalysisFrameView("gmv", {chart:"comparison"}, {density:"compact"});
 trend = AnalysisFrameView("daily", {chart:"line", encoding:{axis:"day", values:["gmv"]}});
 regions = AnalysisFrameView("by_region", {chart:"decomposition"});
-scope = TextContent("地区分解使用与 GMV 比较相同的期间。");
+details = Accordion([AccordionItem("method", "补充说明", [TextContent("按实际分析填写已核实的统计口径。")])]);
 ```
 
 ## 图片与明细

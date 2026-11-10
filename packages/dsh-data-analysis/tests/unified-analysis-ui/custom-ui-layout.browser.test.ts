@@ -22,11 +22,13 @@ import {IconButton} from './src/client/ui/controls.tsx';
 import {DetailsDialog} from './src/client/ui/overlays.tsx';
 import {Card,CardContent} from './src/client/ui/primitives/card.tsx';
 const program = 'root = Stack([tabs,row]);\\ntabs = Tabs([a,b]);\\na = TabItem("a","Alpha",[TextContent("Alpha content")]);\\nb = TabItem("b","Beta",[TextContent("Beta content")]);\\nrow = Stack([Card([TextContent("Long saved business label that wraps across narrow cards")]),Card([TextContent("Second card")])],"row","m","stretch","start",true);';
+const dashboard = 'root = DashboardGrid([first,second,third],4,"s");\\nfirst = DashboardGridItem([Card([TextContent("First")])],2);\\nsecond = DashboardGridItem([Card([TextContent("Second")])],1);\\nthird = DashboardGridItem([Card([TextContent("Third")])],1);';
 function App(){
  const [build,setBuild] = useState('build-1'),[locale,setLocale]=useState('en-US'),[open,setOpen]=useState(false);
  return h('div',{className:'mv-ui'},h('style',null,UI_STYLES),h(Card,{id:'reference-card'},h(CardContent,null,'Official radix-nova Card spacing')),
   h('button',{onClick:()=>setBuild('build-2')},'Next build'),h('button',{onClick:()=>setLocale('zh-CN')},'Switch locale'),
   h('div',{id:'report',style:{width:320,maxWidth:'100%'}},h(AnalysisRenderer,{program,title:'A long saved report title / 已保存的完整分析标题与业务范围',locale,resources:{},recordId:build})),
+  h('div',{id:'dashboard',style:{width:960,maxWidth:'100%'}},h(AnalysisRenderer,{program:dashboard,title:'Dashboard',locale,resources:{},recordId:build})),
   h(Tabs,{label:'Reading sections',items:[{value:'a',trigger:'Reading',content:h('input',{'aria-label':'Reading state',defaultValue:'saved'})},{value:'b',trigger:'Other',content:h('p',null,'Other panel')}]}),
   h(IconButton,{label:'Unavailable source',tip:'Source was not captured',unavailable:true,onClick:()=>{throw Error('Unavailable executed')}},'i'),
   h(IconButton,{label:'Open details',onClick:()=>setOpen(true)},'i'),
@@ -134,6 +136,32 @@ createRoot(document.getElementById('root')).render(h(App));`,
         '16px',
       )
     }
+    const dashboard = page.locator('#dashboard')
+    const items = dashboard.locator('.au-dashboard-item')
+    assert.equal(await items.count(), 3)
+    const bounds = async () =>
+      items.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const rect = node.getBoundingClientRect()
+          return { x: rect.x, y: rect.y, width: rect.width }
+        }),
+      )
+    const wide = await bounds()
+    assert.ok(wide[0]!.width > wide[1]!.width * 1.8)
+    assert.equal(wide[0]!.y, wide[1]!.y)
+    assert.equal(wide[1]!.y, wide[2]!.y)
+    await dashboard.evaluate((node) => {
+      node.style.width = '650px'
+    })
+    const medium = await bounds()
+    assert.ok(medium[0]!.y < medium[1]!.y)
+    assert.equal(medium[1]!.y, medium[2]!.y)
+    await dashboard.evaluate((node) => {
+      node.style.width = '400px'
+    })
+    const narrow = await bounds()
+    assert.ok(narrow[0]!.y < narrow[1]!.y && narrow[1]!.y < narrow[2]!.y)
+    assert.equal(await dashboard.evaluate((node) => node.scrollWidth <= node.clientWidth), true)
     const tabIds = await page
       .locator('[role=tab]')
       .evaluateAll((nodes) => nodes.map((node) => node.id))

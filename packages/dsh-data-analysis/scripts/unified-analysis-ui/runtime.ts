@@ -137,6 +137,11 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
       stage: 'save',
       resourcePatch: { put: { result: resource } },
       title: `Real ${index ? 'DataFrame' : 'Frame'}`,
+      program: `root = Stack([scope, board, details]);
+scope = TextCallout("info", "Scope", "Saved Runtime result");
+board = DashboardGrid([DashboardGridItem([view], 2)], 4);
+view = ${index ? 'DatasetView' : 'AnalysisFrameView'}("result");
+details = Accordion([AccordionItem("method", "Method", [TextContent("Fixed snapshot")])]);`,
     }
     agent.session.append('tool/call', {
       turn: 0,
@@ -172,6 +177,7 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
         const result = await service.read({sessionId:'analysis-ui-runtime',receipt:delivery.receipt,asset:'presentation.json'});
         const document=JSON.parse(Buffer.from(result.bodyBase64,'base64').toString());
         assert.equal(document.schemaVersion,${JSON.stringify(ANALYSIS_UI_FORMAT)});
+        assert(document.program.includes('DashboardGrid'));
         assert(JSON.stringify(document).includes('12345678901234.5678'));
         assert(JSON.stringify(document).includes('9007199254740993'));
       } } finally { await service.close() }

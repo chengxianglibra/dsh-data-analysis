@@ -6,6 +6,7 @@ import type { AnalysisCandidate } from './candidate.ts'
 
 export interface ReportReadingState {
   tabs: Map<string, string>
+  accordions: Map<string, string>
   tables: Map<
     string,
     { page: number; sort?: { columnId: string; direction: 'ascending' | 'descending' } }
@@ -101,7 +102,12 @@ export class ReportViews {
       workspaceId: candidate.workspaceId,
       workspacePath,
       generation: candidate.generation,
-      reading: current?.reading ?? { tabs: new Map(), tables: new Map(), scroll: new Map() },
+      reading: current?.reading ?? {
+        tabs: new Map(),
+        accordions: new Map(),
+        tables: new Map(),
+        scroll: new Map(),
+      },
       ...current,
       candidate: candidate.delivery ? undefined : candidate,
       ...(candidate.draft ? { draft: candidate.draft } : {}),
@@ -145,7 +151,7 @@ export class ReportViews {
       workspaceId,
       workspacePath,
       generation,
-      reading: { tabs: new Map(), tables: new Map(), scroll: new Map() },
+      reading: { tabs: new Map(), accordions: new Map(), tables: new Map(), scroll: new Map() },
       ...current,
       ...('receipt' in delivery
         ? { saved: delivery, candidate: undefined }

@@ -16,13 +16,18 @@ test('generated Host schema matches the installed Client library without importi
     '--check',
   ])
   assert.deepEqual(Object.keys(analysisCatalogSpec.components).sort(), [
+    'Accordion',
+    'AccordionItem',
     'AnalysisFrameView',
     'Card',
+    'DashboardGrid',
+    'DashboardGridItem',
     'DatasetView',
     'Image',
     'Stack',
     'TabItem',
     'Tabs',
+    'TextCallout',
     'TextContent',
   ])
   const generated = await readFile(
@@ -64,12 +69,43 @@ test('unsupported nodes and wrong parent slots cannot enter the subset', () => {
     'root = Tabs([DatasetView("wrong-parent")]);',
     'root = Stack([TabItem("wrong", "wrong", [])]);',
     'root = TabItem("wrong", "wrong", []);',
+    'root = DashboardGridItem([TextContent("wrong root")]);',
+    'root = AccordionItem("wrong", "wrong", []);',
+    'root = DashboardGrid([TextContent("wrong slot")]);',
+    'root = Stack([DashboardGridItem([TextContent("wrong slot")])]);',
+    'root = Accordion([TabItem("wrong", "wrong", [])]);',
     'root = DatasetView("sql", {chart: "line"});',
     'root = DatasetView("sql", {}, {density: "compact"});',
     'root = DatasetView("sql", {chart: "metric"});',
     'root = DatasetView("sql", {chart: "pie"});',
   ])
     assert.throws(() => parseAnalysisProgram(source), source)
+})
+
+test('dashboard slots accept nested components and enforce column spans', () => {
+  const source =
+    'root = DashboardGrid([DashboardGridItem([Accordion([AccordionItem("details", "Details", [Stack([TextContent("Saved")])])])], 2), DashboardGridItem([DatasetView("data")], 1)], 3, "s");'
+  assert.equal(parseAnalysisProgram(source).typeName, 'DashboardGrid')
+  assert.throws(
+    () => parseAnalysisProgram('root = DashboardGrid([DashboardGridItem([], 3)], 2);'),
+    /analysis-dashboard-span-exceeds-columns/,
+  )
+  assert.throws(() => parseAnalysisProgram('root = DashboardGrid([DashboardGridItem([], 0)]);'))
+  assert.throws(() => parseAnalysisProgram('root = DashboardGrid([], 5);'))
+})
+
+test('accordion section identifiers are nonempty and unique within each group', () => {
+  for (const source of [
+    'root = Accordion([AccordionItem("", "Title", [])]);',
+    'root = Accordion([AccordionItem("id", " ", [])]);',
+    'root = Accordion([AccordionItem("same", "One", []), AccordionItem("same", "Two", [])]);',
+  ])
+    assert.throws(() => parseAnalysisProgram(source), source)
+  assert.doesNotThrow(() =>
+    parseAnalysisProgram(
+      'root = Accordion([AccordionItem("same", "Outer", [Accordion([AccordionItem("same", "Inner", [])])])]);',
+    ),
+  )
 })
 
 test('Frame pie is available through the public catalog', () => {

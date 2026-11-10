@@ -1,7 +1,7 @@
 import type { ElementNode } from '@openuidev/lang-core'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
-import { Fragment, type ReactNode, useLayoutEffect, useRef } from 'react'
+import { createContext, type ReactNode, useContext, useLayoutEffect, useRef } from 'react'
 import { z } from 'zod/v4'
 import {
   datasetDisplaySchema,
@@ -12,8 +12,9 @@ import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
 import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
+import { DashboardAccordion, DashboardTextCallout } from './dashboard-components.tsx'
 import { AnalysisDataView } from './data-view.tsx'
-import { Card, Stack } from './layout.tsx'
+import { Card, DashboardGrid as Grid, DashboardGridItem as GridItem, Stack } from './layout.tsx'
 import { ReadingComponent, useReportReading } from './reading-state.tsx'
 
 const frameProps = z.object({
@@ -30,14 +31,17 @@ const datasetProps = z.object({
 type AnalysisTabItem = ElementNode & {
   props: { value: string; trigger: string; content: unknown[] }
 }
-function isAnalysisTabItem(item: unknown): item is AnalysisTabItem {
+function isAnalysisItem(
+  item: unknown,
+  typeName: 'TabItem' | 'AccordionItem',
+): item is AnalysisTabItem {
   if (
     !item ||
     typeof item !== 'object' ||
     !('type' in item) ||
     item.type !== 'element' ||
     !('typeName' in item) ||
-    item.typeName !== 'TabItem' ||
+    item.typeName !== typeName ||
     !('props' in item) ||
     !item.props ||
     typeof item.props !== 'object'
@@ -150,7 +154,17 @@ function ResourceImage({
 }
 
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
-const officialNames = ['Stack', 'TextContent', 'Card', 'Tabs', 'TabItem', 'Image'] as const
+const officialNames = [
+  'Stack',
+  'TextContent',
+  'Card',
+  'Tabs',
+  'TabItem',
+  'Image',
+  'TextCallout',
+  'Accordion',
+  'AccordionItem',
+] as const
 const official = Object.fromEntries(
   officialNames.map((name) => {
     const component = openuiLibrary.components[name]
@@ -158,11 +172,51 @@ const official = Object.fromEntries(
     return [name, component]
   }),
 )
+const gridSize = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+// Rebound below after the first library extension so its recursive content slot
+// points at the final subset rather than the original full OpenUI library.
+const DashboardGridItemBase = defineComponent({
+  name: 'DashboardGridItem',
+  description: 'Dashboard grid item; span is the number of columns in the wide layout.',
+  props: z.object({ content: z.array(z.any()), span: gridSize.optional() }),
+  component: ({ props, renderNode }) => (
+    <GridItem span={props.span}>{renderChildren(props.content, renderNode)}</GridItem>
+  ),
+})
+const DashboardGrid = defineComponent({
+  name: 'DashboardGrid',
+  description: 'Responsive dashboard grid with 1–4 columns and explicit item spans.',
+  props: z.object({
+    items: z.array(DashboardGridItemBase.ref),
+    columns: gridSize.optional(),
+    gap: z.enum(['s', 'm', 'l']).optional(),
+  }),
+  component: ({ props, renderNode }) => (
+    <Grid columns={props.columns} gap={props.gap}>
+      {renderChildren(props.items, renderNode)}
+    </Grid>
+  ),
+})
 const content = z.union([
-  ...officialNames.filter((name) => name !== 'TabItem').map((name) => official[name]!.ref),
+  ...officialNames
+    .filter((name) => name !== 'TabItem' && name !== 'AccordionItem')
+    .map((name) => official[name]!.ref),
   AnalysisFrameView.ref,
   DatasetView.ref,
+  DashboardGrid.ref,
 ])
+
+// Path segments distinguish repeated named nodes under the same or different
+// parents, while keeping unaffected siblings stable through edits and moves.
+const ReadingPath = createContext('root')
+function ReadingPathSegment({ segment, children }: { segment: string; children: ReactNode }) {
+  const parent = useContext(ReadingPath)
+  return (
+    <ReadingPath.Provider value={`${parent}/${encodeURIComponent(segment)}`}>
+      {children}
+    </ReadingPath.Provider>
+  )
+}
 
 /** Give named siblings stable React identity before delegating each node to OpenUI. */
 function renderChildren(children: unknown, renderNode: (node: unknown) => ReactNode): ReactNode {
@@ -175,7 +229,12 @@ function renderChildren(children: unknown, renderNode: (node: unknown) => ReactN
         : undefined
     const occurrence = name ? (occurrences.get(name) ?? 0) : 0
     if (name) occurrences.set(name, occurrence + 1)
-    return <Fragment key={name ? `${name}:${occurrence}` : index}>{renderNode(child)}</Fragment>
+    const segment = JSON.stringify(name ? ['named', name, occurrence] : ['inline', index])
+    return (
+      <ReadingPathSegment key={segment} segment={segment}>
+        {renderNode(child)}
+      </ReadingPathSegment>
+    )
   })
 }
 
@@ -191,9 +250,9 @@ const StackLayout = defineComponent({
 
 // Let the official extension rebind every parent slot and remove unsupported
 // definitions. Its root/id are not configurable by extend in 1.0.1.
-const subset = openuiLibrary.extend({
+const subsetBase = openuiLibrary.extend({
   components: {
-    add: [AnalysisFrameView, DatasetView],
+    add: [AnalysisFrameView, DatasetView, DashboardGrid, DashboardGridItemBase],
     remove: Object.keys(openuiLibrary.components).filter(
       (name) => !officialNames.some((item) => item === name),
     ),
@@ -209,6 +268,43 @@ const subset = openuiLibrary.extend({
       defineComponent({
         ...official.TabItem!,
         props: official.TabItem!.props.extend({ content: z.array(content) }),
+      }),
+      defineComponent({
+        ...official.AccordionItem!,
+        props: official.AccordionItem!.props.extend({ content: z.array(content) }),
+      }),
+      defineComponent({
+        ...official.TextCallout!,
+        component: ({ props }) => <DashboardTextCallout {...props} />,
+      }),
+      defineComponent({
+        ...official.Accordion!,
+        component: function AnalysisAccordion({ props, renderNode, statementId }) {
+          const path = useContext(ReadingPath)
+          const values = new Set<string>()
+          const candidates: unknown[] = Array.isArray(props.items) ? props.items : []
+          const items = candidates.filter((item): item is AnalysisTabItem => {
+            if (!isAnalysisItem(item, 'AccordionItem') || values.has(item.props.value)) return false
+            values.add(item.props.value)
+            return true
+          })
+          return (
+            <DashboardAccordion
+              statementId={JSON.stringify([path, statementId ?? null])}
+              items={items.map((item) => ({
+                value: item.props.value,
+                trigger: item.props.trigger,
+                content: (
+                  <ReadingPathSegment
+                    segment={JSON.stringify(['accordion-item', item.props.value])}
+                  >
+                    {renderChildren(item.props.content, renderNode)}
+                  </ReadingPathSegment>
+                ),
+              }))}
+            />
+          )
+        },
       }),
       defineComponent({
         ...official.Image!,
@@ -237,7 +333,7 @@ const subset = openuiLibrary.extend({
           const values = new Set<string>()
           const candidates: unknown[] = Array.isArray(props.items) ? props.items : []
           const items = candidates.filter((item): item is AnalysisTabItem => {
-            if (!isAnalysisTabItem(item) || values.has(item.props.value)) return false
+            if (!isAnalysisItem(item, 'TabItem') || values.has(item.props.value)) return false
             values.add(item.props.value)
             return true
           })
@@ -249,7 +345,11 @@ const subset = openuiLibrary.extend({
               items={items.map((item) => ({
                 value: item.props.value,
                 trigger: item.props.trigger,
-                content: renderChildren(item.props.content, renderNode),
+                content: (
+                  <ReadingPathSegment segment={JSON.stringify(['tab-item', item.props.value])}>
+                    {renderChildren(item.props.content, renderNode)}
+                  </ReadingPathSegment>
+                ),
               }))}
             />
           )
@@ -258,6 +358,22 @@ const subset = openuiLibrary.extend({
     ],
   },
 })
+const DashboardGridItem = defineComponent({
+  ...DashboardGridItemBase,
+  props: DashboardGridItemBase.props.extend({
+    content: z.array(
+      z.union(
+        Object.values(subsetBase.components)
+          .filter(
+            (component) =>
+              !['TabItem', 'AccordionItem', 'DashboardGridItem'].includes(component.name),
+          )
+          .map((component) => component.ref),
+      ),
+    ),
+  }),
+})
+const subset = subsetBase.extend({ components: { override: [DashboardGridItem] } })
 // A domain component may be the root; keep the plugin identity and omit the
 // official Stack-only root and full-library prompt groups.
 export const analysisLibrary = createLibrary({
@@ -265,5 +381,5 @@ export const analysisLibrary = createLibrary({
   components: Object.values(subset.components),
 })
 export const analysisRootComponents = Object.keys(analysisLibrary.components).filter(
-  (name) => name !== 'TabItem',
+  (name) => !['TabItem', 'AccordionItem', 'DashboardGridItem'].includes(name),
 )

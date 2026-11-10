@@ -93,6 +93,24 @@ const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
   'dataset-snapshot': 'DatasetView',
   'image-file': 'Image',
 }
+
+/** Authored report text remains static when the underlying fixed results change. */
+function hasNarrativeText(nodes: ReturnType<typeof analysisElements>): boolean {
+  return nodes.some((node) => {
+    const properties =
+      node.typeName === 'TextContent'
+        ? ['text']
+        : node.typeName === 'TextCallout'
+          ? ['title', 'description']
+          : node.typeName === 'AccordionItem'
+            ? ['trigger']
+            : []
+    return properties.some((name) => {
+      const value = node.props[name]
+      return typeof value === 'string' && value.trim().length > 0
+    })
+  })
+}
 /** Read each admitted resource once; saved bytes never depend on the capture directory. */
 export async function createAnalysisDocument(
   input: AnalysisPresentInput,
@@ -325,12 +343,7 @@ export async function createAnalysisDocument(
                   base.resources[name] &&
                   !sameAnalysisResult(base.resources[name]!.declaration, resource.declaration),
               )
-            ? nodes.some(
-                (node) =>
-                  node.typeName === 'TextContent' &&
-                  typeof node.props.text === 'string' &&
-                  node.props.text.trim(),
-              )
+            ? hasNarrativeText(nodes)
               ? 'required'
               : 'not-needed'
             : base

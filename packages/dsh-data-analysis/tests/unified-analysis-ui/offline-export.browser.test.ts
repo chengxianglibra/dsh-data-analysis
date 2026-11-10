@@ -36,7 +36,7 @@ test('exported report opens offline, renders data and charts, and keeps local in
     generatedAt: '2026-11-05T00:00:00Z',
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
     program:
-      'root = Tabs([chart, data]);\nchart = TabItem("chart", "Chart", [DatasetView("result", {chart:"line",encoding:{axis:"category",values:["value"]}})]);\ndata = TabItem("data", "Data", [DatasetView("result", {chart:"table"})]);',
+      'root = Tabs([chart, data, dashboard]);\nchart = TabItem("chart", "Chart", [DatasetView("result", {chart:"line",encoding:{axis:"category",values:["value"]}})]);\ndata = TabItem("data", "Data", [DatasetView("result", {chart:"table"})]);\ndashboard = TabItem("dashboard", "Dashboard", [DashboardGrid([DashboardGridItem([TextCallout("info", "Scope", "Snapshot data")], 1), DashboardGridItem([Accordion([AccordionItem("details", "Details", [DatasetView("result", {chart:"table"})])])], 1)], 2)]);',
     resources: {
       result: {
         kind: 'snapshot',
@@ -111,7 +111,13 @@ test('exported report opens offline, renders data and charts, and keeps local in
       .click({ force: true })
     assert.equal(await page.getByRole('menuitem', { name: 'Ask about this' }).count(), 0)
     await page.getByRole('tab', { name: 'Data' }).click()
-    assert.equal(await page.getByText(payload, { exact: true }).isVisible(), true)
+    assert.equal(
+      await page
+        .getByRole('tabpanel', { name: 'Data' })
+        .getByText(payload, { exact: true })
+        .isVisible(),
+      true,
+    )
     await page.getByRole('button', { name: 'Data source and scope' }).click()
     const dialog = page.getByRole('dialog', { name: 'Data source and scope' })
     assert.equal(
@@ -128,6 +134,16 @@ test('exported report opens offline, renders data and charts, and keeps local in
     )
     assert.equal(await dialog.getByText('Developer', { exact: true }).count(), 0)
     assert.equal(await dialog.getByText('Session', { exact: true }).count(), 0)
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('tab', { name: 'Dashboard' }).click()
+    assert.equal(await page.locator('.au-dashboard-grid .au-dashboard-item').count(), 2)
+    assert.equal(await page.getByText('Snapshot data', { exact: true }).isVisible(), true)
+    const details = page.getByRole('button', { name: 'Details', exact: true })
+    assert.equal(await details.getAttribute('aria-expanded'), 'false')
+    await details.focus()
+    await page.keyboard.press('Enter')
+    assert.equal(await details.getAttribute('aria-expanded'), 'true')
+    assert.equal(await page.locator('.au-accordion-content').getByText(payload).isVisible(), true)
     assert.equal(await page.evaluate(() => Reflect.get(globalThis, '__offlineInjected')), undefined)
     assert.deepEqual(remoteRequests, [])
     assert.deepEqual(errors, [])

@@ -61,7 +61,7 @@ CopyData 的反馈绑定当前数据及有序选列。数据或选列变化时�
 
 ## 报告布局与阅读状态
 
-对外提供八个组件，组件签名、schema 与 build 由[组件库](../../../packages/dsh-data-analysis/src/client/analysis-ui/library.tsx)生成。
+对外提供布局、提示、折叠和数据视图组件，组件签名、schema 与 build 由[组件库](../../../packages/dsh-data-analysis/src/client/analysis-ui/library.tsx)生成。
 Frame 的可选展示参数及 build 准入见[分析文档 reader](presentation-reader.md)。OpenUI Lang / Renderer 负责声明与编排，
 私有 Stack 和 shadcn Card / Tabs 组合负责实际布局与交互；内部基础组件不暴露为任意 DSL props。
 
@@ -70,9 +70,11 @@ tab / panel 使用稳定 ID 关联；隐藏 panel 不进入焦点序列，切换
 激活 panel 提供 Tab 焦点入口，离开标签组后重新进入时聚焦激活项；标签组为焦点环保留边距。
 私有 Tabs 由调用方传入本地化名称；Catalog 适配器使用文档 locale 的报告分区名称，不增加公开参数。
 
-排序、页码、选列、详情和局部滚动属于视图实例；准确 recordId 改变时重置，主题或 locale 变化不重挂。
+DashboardGrid 使用有限列数和跨列值，按容器宽度折叠列数；DashboardGridItem 保留声明顺序和嵌套组件的阅读行为。TextCallout 只展示作者写入的静态提示。Accordion 使用可折叠的单项展开与键盘可访问的 trigger，隐藏内容不参与焦点序列；实例的展开状态由当前报告阅读状态持有，inline 实例按位置识别。
+
+排序、页码、选列、详情和局部滚动属于视图实例；稳定报告视图内的更新保留已有组件状态，独立 reader 在准确 recordId 改变时重置，主题或 locale 变化不重挂。
 表格与图点始终保留原始保存行和字段身份，不以显示顺序生成引用。候选不构造本地复制或 Host 操作入口，
-外层 inert 和 callbacks 缺省共同保证安全预览。
+候选中的业务操作由 callbacks 缺省及各操作的身份校验禁止，本地展开、排序和分页仍可使用。
 
 Frame compact 可以隐藏辅助内容及已有规则允许的主图，但截断、期间不可用和受限成员等影响解读的状态保持可见。
 Dataset 不新增 density/dataTable 参数。主视图已经是表格时不重复提供数据详情入口。

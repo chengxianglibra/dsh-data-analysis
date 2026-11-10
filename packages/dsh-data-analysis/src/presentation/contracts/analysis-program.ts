@@ -130,10 +130,30 @@ function checkSlots(node: ElementNode): void {
         throw new Error(
           `Invalid render slot: ${node.typeName}.${prop}; expected ${accepted.join(' | ')}`,
         )
-      if (node.typeName === 'Tabs' && prop === 'items') {
-        if (tabValues.has(child.props.value)) throw new Error('analysis-tab-value-duplicate')
+      if ((node.typeName === 'Tabs' || node.typeName === 'Accordion') && prop === 'items') {
+        if (
+          node.typeName === 'Accordion' &&
+          (typeof child.props.value !== 'string' ||
+            !child.props.value.trim() ||
+            typeof child.props.trigger !== 'string' ||
+            !child.props.trigger.trim())
+        )
+          throw new Error('analysis-accordion-item-invalid')
+        if (tabValues.has(child.props.value))
+          throw new Error(
+            node.typeName === 'Tabs'
+              ? 'analysis-tab-value-duplicate'
+              : 'analysis-accordion-value-duplicate',
+          )
         tabValues.add(child.props.value)
       }
+      if (
+        node.typeName === 'DashboardGrid' &&
+        prop === 'items' &&
+        typeof child.props.span === 'number' &&
+        child.props.span > (typeof node.props.columns === 'number' ? node.props.columns : 4)
+      )
+        throw new Error('analysis-dashboard-span-exceeds-columns')
       checkSlots(child)
     }
   }

@@ -44,9 +44,10 @@ preview/save 回执触发文档读取时，已显示内容持续挂载，直到�
 
 ## 组件与数据视图
 
-对外仅八组件：AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image；
+对外组件为 AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem；
 [Catalog 生成器](../../../packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs)从组件库生成本地 TypeScript Catalog，并校验 Git 中的随包 Skill 签名。
 OpenUI Lang / Renderer 负责报告编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
+DashboardGrid 使用 1–4 列和显式 item 跨列，按容器宽度缩减列数并保持内容顺序；span 不得超过声明列数。TextCallout 展示作者声明的静态提示；Accordion 每组单项展开且可全部折叠，展开选择属于当前阅读状态，具名组件按语句与出现次序识别，inline 组件按位置识别。DashboardGridItem 和 AccordionItem 只用于各自父组件的槽位。
 AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配合 shadcn Chart 容器、主题与提示；领域视图组合相同组件和局部领域标记。
 图表不使用 OpenUI 官方图表组件，也不保留旧通用 SVG 绘图引擎、兼容分支或按期间数、series 数、数值类型切换的路径。
 

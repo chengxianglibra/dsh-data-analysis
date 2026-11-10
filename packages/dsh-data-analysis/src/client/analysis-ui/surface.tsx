@@ -10,6 +10,7 @@ import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { PRESENTATION_STYLES } from '../presentation/styles.ts'
 import { UIStyleSheet } from '../ui/theme.ts'
 import { type AnalysisResourceContext, AnalysisResources } from './context.tsx'
+import { DASHBOARD_COMPONENT_STYLES } from './dashboard-components.tsx'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
@@ -168,6 +169,7 @@ export function AnalysisRenderer({
           <UIStyleSheet />
           <style>{styles}</style>
           <style>{LAYOUT_STYLES}</style>
+          <style>{DASHBOARD_COMPONENT_STYLES}</style>
           <style>{FRAME_STYLES}</style>
           <div className="au-surface-content">
             {progress && (
