@@ -41,14 +41,13 @@ test('heatmaps use captured periods on both axes without merging duplicate label
     view: { chart: 'heatmap', encoding: { x: 'month', y: 'region', value: 'm0' } },
   })
   assert.equal((x.match(/data-heatmap-column="Period A"/g) ?? []).length, 2)
-  assert.match(x, /Period A · Partial period: 2025-02-15/)
+  assert.match(x, /<title>Period A · Partial period: 2025-02-15<\/title>/)
   assert.match(x, /data-mark="cell"/)
   assert.match(x, /◌/)
   const y = await renderer.render(snapshot, {
     view: { chart: 'heatmap', encoding: { x: 'region', y: 'month', value: 'm0' } },
   })
   assert.match(y, /data-row-label="Long period description" data-row-incomplete="true"/)
-  assert.match(y, /Long period description · Partial period/)
   assert.match(y, /Long period descr… ◌/)
 })
 

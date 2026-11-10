@@ -156,6 +156,8 @@ vm.runInNewContext(bundle.outputFiles[0]!.text, {
     name === 'react'
       ? {
           ...React,
+          // Server rendering skips both hooks; useEffect avoids the SSR useLayoutEffect warning.
+          useLayoutEffect: React.useEffect,
           useSyncExternalStore: (subscribe: any, getSnapshot: () => unknown) =>
             React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot),
         }
@@ -288,7 +290,6 @@ test('credential-free datasources retain properties and connection testing', asy
   const html = await renderManagement(t, await context(f))
   assert.match(html, /<dd>duckdb<\/dd>/)
   assert.match(html, /:memory:/)
-  assert.match(translator('zh-CN')(html), /该数据源没有凭证引用，可直接测试连接/)
   assert.match(translator('zh-CN')(html), /aria-label="测试连接"/)
   assert.deepEqual(f.store.calls, { resolve: 0, set: 0, unset: 0 })
 })

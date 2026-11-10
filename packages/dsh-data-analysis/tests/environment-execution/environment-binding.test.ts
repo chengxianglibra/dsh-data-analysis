@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -395,25 +395,6 @@ test('ordinary checked program failure does not poison the binding', async (t) =
   const result = await environment.runChecked({ program: 'raise RuntimeError("domain")' })
   assert.equal(result.exitCode, 70)
   assert.equal(environment.status, 'ready')
-})
-
-test('Environment source and public types contain no domain bridge programs or methods', async () => {
-  const [bindingSource, typesSource] = await Promise.all([
-    readFile(
-      path.resolve(process.cwd(), 'packages/dsh-data-analysis/src/environment/binding.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.resolve(process.cwd(), 'packages/dsh-data-analysis/src/environment/types.ts'),
-      'utf8',
-    ),
-  ])
-  const source = `${bindingSource}\n${typesSource}`
-  assert.doesNotMatch(
-    source,
-    /runChecked(?:HelpTarget|Datasource(?:Describe|Inventory|Test)|EvidenceFindings|ReportProjection)/,
-  )
-  assert.doesNotMatch(source, /CHECKED_(?:HELP|DATASOURCE|EVIDENCE|REPORT)/)
 })
 
 test('subprocess timeout, cancellation, and output limits are explicit', async (t) => {

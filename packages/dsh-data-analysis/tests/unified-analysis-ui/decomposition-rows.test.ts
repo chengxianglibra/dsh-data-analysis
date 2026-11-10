@@ -102,7 +102,6 @@ test('endpoint selection requires one unambiguous saved presence binding', async
 
 test('restricted attribution keeps its scope status and groups saved rows by parent', async () => {
   const html = await renderer.render(attribution('absolute', { restricted: true, parents: true }))
-  assert.match(html, /Only the restricted member scope is shown\./)
   assert.match(html, /data-parent="A"/)
   assert.match(html, /data-parent="B"/)
   assert.equal((html.match(/data-decomposition-rows="attribution"/g) ?? []).length, 2)

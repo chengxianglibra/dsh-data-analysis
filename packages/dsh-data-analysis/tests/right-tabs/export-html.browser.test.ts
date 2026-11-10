@@ -5,9 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('report export downloads the displayed build and rejects stale views', {
-  skip: process.env.DSH_DATA_ANALYSIS_BROWSER_TESTS !== '1',
-}, async (t) => {
+test('report export downloads the displayed build and rejects stale views', async (t) => {
   const bundle = await build({
     stdin: {
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),

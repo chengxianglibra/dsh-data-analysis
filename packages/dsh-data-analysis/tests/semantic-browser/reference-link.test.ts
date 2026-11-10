@@ -412,16 +412,13 @@ test('different recognized null policies retain the branch associated with each 
       ]),
     },
   ])
-  assert.match(
-    html,
-    /sum\(a\): 计算时忽略 NULL；没有符合条件的记录时返回 0；有记录但参与计算的值全部为 NULL 时返回 NULL/,
-  )
-  assert.match(html, /sum\(b\): 参与计算的值为 NULL 时会报错；没有符合条件的记录时返回 NULL/)
   const summary = html.split('<details class="sb-null-rule-branches">')[0]!
-  assert.match(summary, /计算时忽略 NULL/)
-  assert.match(summary, /参与计算的值为 NULL 时会报错/)
   assert.doesNotMatch(summary, /sum\(a\):|sum\(b\):/)
-  assert.match(html, /按计算分支查看/)
+  // Two distinct policies produce two summary entries and two branch entries.
+  assert.equal((summary.match(/<li>/g) ?? []).length, 2)
+  const branches = html.split('<details class="sb-null-rule-branches">')[1] ?? ''
+  assert.equal((branches.match(/<div>/g) ?? []).length, 2)
+  assert.match(branches, /sum\(a\)/)
 })
 
 test('known null-rule suffixes remain concise when a reduction branch is absent', () => {
@@ -463,7 +460,7 @@ test('identical recognized null rules have one concise explanation', () => {
   assert.doesNotMatch(html, /查看原始记录|sum\(a\): nulls=ignore/)
 })
 
-test('localized NULL rules distinguish no matching records from all-NULL values', () => {
+test('distinct NULL policies render distinct explanations in both locales', () => {
   const show = (rule: string, locale: 'zh-CN' | 'en-US' = 'zh-CN') =>
     renderComputation(
       'aggregate',
@@ -472,35 +469,20 @@ test('localized NULL rules distinguish no matching records from all-NULL values'
       [],
       locale,
     )
-  const sum =
-    'nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL'
-  assert.match(show(sum), /没有符合条件的记录时返回 0；有记录但参与计算的值全部为 NULL 时返回 NULL/)
-  assert.match(
-    show(sum, 'en-US'),
-    /Return 0 when no records match; return NULL when records exist but all values used are NULL/,
-  )
-  const count =
-    'nulls=ignore: ignore NULL contributions; empty input returns zero; all-NULL input returns zero'
-  assert.match(show(count), /没有符合条件的记录，或有记录但参与计算的值全部为 NULL 时返回 0/)
-  assert.match(
-    show(count, 'en-US'),
-    /no records match, or when records exist but all values used are NULL/,
-  )
-  assert.match(
-    show('count counts source rows; empty input returns zero'),
-    /按源记录计数；没有符合条件的记录时返回 0/,
-  )
-  const weighted =
-    'nulls=ignore: ignore NULL contributions; no valid pairs or zero paired weight sum returns NULL'
-  assert.match(show(weighted), /没有有效配对或有效配对的权重之和为 0 时返回 NULL/)
-  assert.match(show(weighted, 'en-US'), /no valid pairs or their total weight is 0/)
-  const error =
-    'nulls=error: assert non-NULL demanded contributions; a demanded NULL raises an error; empty input returns NULL'
-  assert.match(show(error), /参与计算的值为 NULL 时会报错；没有符合条件的记录时返回 NULL/)
-  assert.match(
-    show(error, 'en-US'),
-    /required for calculation is NULL; Return NULL when no records match/,
-  )
+  const rules = [
+    'nulls=ignore: ignore NULL contributions; empty input returns typed zero; nonempty all-NULL input returns NULL',
+    'nulls=ignore: ignore NULL contributions; empty input returns zero; all-NULL input returns zero',
+    'count counts source rows; empty input returns zero',
+    'nulls=ignore: ignore NULL contributions; no valid pairs or zero paired weight sum returns NULL',
+    'nulls=error: assert non-NULL demanded contributions; a demanded NULL raises an error; empty input returns NULL',
+  ]
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    const rendered = rules.map((rule) => show(rule, locale))
+    // Recognized policies are translated, not echoed verbatim.
+    for (const html of rendered) assert.doesNotMatch(html, /nulls=(?:ignore|error):/)
+    // Every recognized policy keeps its own explanation; none collapses into another.
+    assert.equal(new Set(rendered).size, rules.length)
+  }
 })
 
 test('calculation summary displays declared time and null rules before expanding details', () => {

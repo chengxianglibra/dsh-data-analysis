@@ -8,10 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-/** Opt-in Chromium coverage complements controller tests without requiring browsers in npm check. */
-test('business UI follows Host theme while preserving form state and exact source', {
-  skip: process.env.DSH_DATA_ANALYSIS_BROWSER_TESTS !== '1',
-}, async (t) => {
+test('business UI follows Host theme while preserving form state and exact source', async (t) => {
   const output = process.env.DSH_DATA_ANALYSIS_BUSINESS_UI_OUTPUT
   const directory = output ?? (await mkdtemp(path.join(tmpdir(), 'marivo-business-ui-')))
   await mkdir(directory, { recursive: true })

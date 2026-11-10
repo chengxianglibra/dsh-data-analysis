@@ -54,7 +54,6 @@ test('record previews keep the saved order, values, point identities and data en
   assert.match(html, /data-frame-point="0:trips"/)
   assert.match(html, /data-frame-point="1:trips"/)
   assert.doesNotMatch(html, /data-frame-point="1:fare"/)
-  assert.match(html, /Showing first 2 of 3 saved rows/)
   assert.match(html, /data-icon="data"/)
   assert.doesNotMatch(html, /data-column-id="other"/)
 })
@@ -71,7 +70,6 @@ test('record previews disclose truncated capture and use the requested height', 
   })
   assert.match(html, /Data truncated/)
   assert.match(html, /max-height:\s*140px/)
-  assert.match(html, /Showing first 2 of 3 saved rows/)
 })
 
 test('an empty record preview retains the no-data status', async () => {

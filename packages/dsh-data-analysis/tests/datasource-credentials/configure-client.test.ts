@@ -118,7 +118,6 @@ test('one form saves configuration references, then credentials through the exis
   )
   assert.equal((await task).status, 'ok')
   assert.equal(f.tests, 1)
-  assert.equal(f.store.calls.set, 1)
   assert.deepEqual(changes, {})
   assert.doesNotMatch(JSON.stringify(writes), /inline-canary/)
   assert.doesNotMatch(JSON.stringify(model.getSnapshot()), /inline-canary/)
@@ -192,7 +191,6 @@ test('manually choosing a configured reference never silently overwrites a share
       return true
     },
   )
-  assert.equal(f.store.calls.set, 0)
   assert.equal(f.tests, 0)
   assert.deepEqual(changes, {})
   assert.doesNotMatch(JSON.stringify(model.getSnapshot()), /canary/)

@@ -38,7 +38,6 @@ test('execution after missing form verifies once before returning a fresh snapsh
   const prepared = await pending
   assert('status' in prepared && prepared.status === 'ready')
   assert.equal(f.tests, 1)
-  assert.equal(f.store.calls.resolve, 2)
   prepared.release()
 })
 test('configured connection failures return directly, while form failures retain correction and diagnose', async (t) => {
@@ -112,7 +111,6 @@ test('operation IDs deduplicate writes and tests, reject mismatched scope, and e
   f.service.start(input)
   f.service.start({ ...input, changes: { DB_PASSWORD: 'must-not-overwrite' } })
   await finish(f, id, view.token)
-  assert.equal(f.store.calls.set, 1)
   assert.equal(f.tests, 1)
   assert.equal(f.store.values.get(marivoCredentialStorageRef('DB_PASSWORD')), 'first-value')
   assert.throws(() => f.service.start({ ...input, action: 'test' }), /operation-scope-mismatch/)

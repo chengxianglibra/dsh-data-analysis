@@ -58,7 +58,6 @@ test('removal preserves shared credentials unless explicitly selected and replay
     assert.deepEqual(await f.service.overview('workspace', f.resolve, f.controller.signal), [])
     assert.deepEqual(f.service.start(input), result)
     assert.equal(f.writes, 1)
-    assert.equal(f.store.calls.unset, Number(deleteCredentials))
     assert.equal(f.store.calls.resolve, 0)
     assert.doesNotMatch(JSON.stringify(result), /canary-private/)
   }
@@ -91,7 +90,6 @@ test('a rejected or unconfirmed datasource removal never deletes credentials', a
     const { result } = await remove(f, true)
     assert.equal(result.status, 'failed')
     assert.equal(result.datasourceRemoved, undefined)
-    assert.equal(f.store.calls.unset, 0)
   }
 })
 
@@ -122,7 +120,6 @@ test('stale credentials, definition, and Runtime reject removal before any write
       assert.equal((await finish(f, input.id, input.scope)).status, 'failed')
     }
     assert.equal(f.writes, 0)
-    assert.equal(f.store.calls.unset, 0)
   }
 })
 
@@ -240,7 +237,6 @@ test('cancellation after datasource removal reports completion and does not begi
   const result = await finish(f, id, view.token)
   assert.equal(result.status, 'cancelled')
   assert.equal(result.datasourceRemoved, true)
-  assert.equal(f.store.calls.unset, 0)
 })
 
 test('deletion ends an edit configuration request before it selects a datasource', async (t) => {

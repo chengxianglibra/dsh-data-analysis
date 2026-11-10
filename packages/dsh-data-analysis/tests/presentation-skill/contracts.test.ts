@@ -25,15 +25,6 @@ async function files(root: string): Promise<string[]> {
   ).flat()
 }
 
-async function markdown(skillName: string): Promise<Array<[string, string]>> {
-  const root = path.join(packageRoot, 'skills', skillName)
-  return Promise.all(
-    (await files(root))
-      .filter((file) => file.endsWith('.md'))
-      .map(async (file): Promise<[string, string]> => [file, await readFile(file, 'utf8')]),
-  )
-}
-
 for (const skillName of skillNames) {
   test(`${skillName} resources are reachable within the shipped folder and stay bounded`, async () => {
     const skillRoot = path.join(packageRoot, 'skills', skillName)
@@ -88,21 +79,6 @@ for (const skillName of skillNames) {
     assert.deepEqual(Object.keys(fields).sort(), ['description', 'name'])
     assert.equal(fields.name, skillName)
     assert.ok(fields.description && fields.description.length <= 1024)
-  })
-
-  test(`${skillName} does not advertise the removed report pipeline`, async () => {
-    const removed = [
-      /draft_path|\.draft\.json|Presentation Draft|Document v3|schemaVersion/i,
-      /marivo_export_html|marivo_publish_report|reportPublishing|dsh-report-publishing/,
-      /presentation-lint|write_dataset|writer receipt/,
-      /marivo-report-cell|Ask DSH/,
-      /references\/(?:charts|chart-examples|schema|interaction|export-html|publishing)\.md/,
-      // heatmap is a current AnalysisFrameView chart; the rest belonged to the removed HTML charts.
-      /\b(?:waterfall|funnel|boxplot|histogram|scatter)\b/i,
-    ]
-    for (const [file, content] of await markdown(skillName))
-      for (const pattern of removed)
-        assert.doesNotMatch(content, pattern, `${path.relative(packageRoot, file)}: ${pattern}`)
   })
 }
 

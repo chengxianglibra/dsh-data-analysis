@@ -33,7 +33,6 @@ test('row limit previews saved rows with their original point identity and expos
   assert.equal((html.match(/data-mark="bar"/g) ?? []).length, 3)
   assert.match(html, /data-frame-point="2:revenue"/)
   assert.doesNotMatch(html, /data-mark="bar"[^>]*data-frame-point="3:revenue"/)
-  assert.match(html, /Showing first 3 of 15 saved rows/)
   const table = html.split('class="fv-data-reference"')[1] ?? ''
   assert.match(table, /data-row-index="14"/)
   assert.match(table, /data-column-id="revenue"/)

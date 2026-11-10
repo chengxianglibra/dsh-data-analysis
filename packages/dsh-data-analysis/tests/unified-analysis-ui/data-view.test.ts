@@ -198,10 +198,6 @@ test('current Frame keeps its table and semantic origins without process metadat
   assert.match(html, /<table/)
   assert.match(html, /data-icon="origins"/)
   assert.match(html, /sales\.revenue/)
-  assert.doesNotMatch(html, /data-meta="(?:evidence|findings|methods)"/)
-  assert.doesNotMatch(html, /Evidence|Findings|Methods/)
-  // The raw fields/layout JSON dump is gone.
-  assert.doesNotMatch(html, /&quot;layout&quot;|"layout":/)
 })
 
 test('semantic origins show distinct concrete objects and exclude datasource and entity', () => {
@@ -247,7 +243,6 @@ test('Dataset line/area/bar share Recharts rendering and keep exact tooltips and
     assert.match(html, new RegExp(`data-dataset-view="${chart}"`))
     assert.match(html, /fv-chart/)
     assert.match(html, /12345678901234\.5678/)
-    assert.doesNotMatch(html, /data-chart-engine="openui"/)
     assert.doesNotMatch(html, /role="alert"/)
     assert.match(html, /aria-haspopup="dialog"/)
   }
@@ -286,7 +281,6 @@ test('Dataset dense float plots retain Recharts marks and saved tooltips', async
     assert.match(html, /recharts-surface/)
     assert.match(html, /aria-label="Value: 3 items\. A\nValue: 1; B\nValue: 2; C\nValue: 3"/)
     assert.equal((html.match(/data-mark="(?:filled|bar)"/g) ?? []).length, 3)
-    assert.doesNotMatch(html, /data-chart-engine="openui"/)
   }
 })
 

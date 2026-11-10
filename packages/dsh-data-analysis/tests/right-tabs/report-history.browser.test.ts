@@ -8,9 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('report history identifies and switches versions and can be closed in a narrow pane', {
-  skip: process.env.DSH_DATA_ANALYSIS_BROWSER_TESTS !== '1',
-}, async (t) => {
+test('report history identifies and switches versions and can be closed in a narrow pane', async (t) => {
   const directory = await mkdtemp(path.join(tmpdir(), 'marivo-history-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
   await build({

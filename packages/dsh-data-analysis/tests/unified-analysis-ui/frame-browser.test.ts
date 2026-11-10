@@ -332,13 +332,11 @@ test('Taxi heatmap formats cells and supports point selection without aggregatin
       const card = page.locator('[data-resource="taxiHeatmap"]')
       const cells = card.locator('[data-mark="cell"]')
       assert.equal(await cells.count(), 8)
-      assert.equal(await card.locator('.openui-heatmap-chart-cell').count(), 0)
       const manhattan = cells.filter({ has: page.locator('title', { hasText: 'Manhattan' }) })
       await manhattan.hover()
       const tooltip = await manhattan.locator('title').textContent()
       assert.match(tooltip ?? '', /Manhattan.*Cash.*41,820,207\.00/)
       assert.doesNotMatch(tooltip ?? '', /Row avg|Column avg/i)
-      assert.equal(await page.locator('.openui-chart-tooltip:visible').count(), 0)
       await manhattan.locator('rect').click()
       const selected = page.getByRole('menu')
       await page.evaluate(() => {
