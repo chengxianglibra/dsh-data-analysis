@@ -147,6 +147,13 @@ function TimeChartPlot({
     })),
   )
   const bars = view.chart === 'bar' || view.chart === 'interval-bar'
+  const hasMissingBar =
+    bars &&
+    series.some((line) => [...line.rows.values()].some((row) => cellOf(s, row, line.name) === null))
+  const barChartWidth = s.frameStyle ? Math.max(300, Math.min(640, ticks.length * 18 + 90)) : 640
+  // Dense bars cannot fit a text label for every cell. A compact mark and key
+  // preserve the missing state without making the entire chart extremely wide.
+  const compactMissing = hasMissingBar && (barChartWidth - 96) / (ticks.length * series.length) < 18
   const highlightedKey = s.highlight?.axis === axis.id ? s.highlight.key : undefined
   const showLabels =
     !!s.frameStyle && ticks.length <= 12 && series.length === 1 && !(bars && highlightedKey)
@@ -156,7 +163,10 @@ function TimeChartPlot({
       ...series.map((line) => {
         const row = line.rows.get(index)
         const value = row === undefined ? null : valueAt(s, row, line.name)
-        if (!showLabels || bars) return { [line.key]: value }
+        // Recharts omits null bars altogether. Use a zero-sized layout anchor for a
+        // saved null cell; the shape renders an NA label instead of a numeric mark.
+        const anchor = bars && row !== undefined && cellOf(s, row, line.name) === null ? 0 : value
+        if (!showLabels || bars) return { [line.key]: anchor }
         return {
           [line.key]: value,
           [`${line.key}Label`]:
@@ -226,27 +236,32 @@ function TimeChartPlot({
       <ChartFrame
         label={label}
         height={height}
-        width={
-          s.frameStyle && bars ? Math.max(300, Math.min(640, ticks.length * 18 + 90)) : undefined
-        }
+        width={s.frameStyle && bars ? barChartWidth : undefined}
         legend={
-          showLegend && (
-            <Legend
-              items={[
-                ...series.map((line) => ({
-                  label: line.label,
-                  color: line.color,
-                  shape: bars ? ('square' as const) : ('line' as const),
-                })),
-                ...view.broadcast.map((name) => ({
-                  label: valueName(s, name),
-                  color: NEUTRAL,
-                  shape: 'dashed' as const,
-                })),
-              ]}
-              showSingle={!!view.series}
-            />
-          )
+          <>
+            {showLegend && (
+              <Legend
+                items={[
+                  ...series.map((line) => ({
+                    label: line.label,
+                    color: line.color,
+                    shape: bars ? ('square' as const) : ('line' as const),
+                  })),
+                  ...view.broadcast.map((name) => ({
+                    label: valueName(s, name),
+                    color: NEUTRAL,
+                    shape: 'dashed' as const,
+                  })),
+                ]}
+                showSingle={!!view.series}
+              />
+            )}
+            {compactMissing && (
+              <div className="text-center text-xs" data-missing-key="">
+                <span aria-hidden="true">× </span>NA
+              </div>
+            )}
+          </>
         }
       >
         <ComposedChart
@@ -312,6 +327,35 @@ function TimeChartPlot({
                     if (!p) return <g />
                     const row = line.rows.get(p.index)
                     if (row === undefined) return <g />
+                    if (cellOf(s, row, line.name) === null) {
+                      const x = p.x + p.width / 2
+                      const below = domain[1] <= 0
+                      const y = p.y + (below ? 8 : -8)
+                      if (compactMissing)
+                        return (
+                          <g data-mark="missing">
+                            <title>{`${ticks[p.index]?.title ?? ''} · ${line.label}: NA`}</title>
+                            <path
+                              d={`M${x - 3},${y - 3} l6,6 m0,-6 l-6,6`}
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={1.5}
+                            />
+                          </g>
+                        )
+                      return (
+                        <text
+                          x={x}
+                          y={y + (below ? 4 : 0)}
+                          textAnchor="middle"
+                          fill="currentColor"
+                          fontSize={12}
+                          data-mark="missing"
+                        >
+                          NA
+                        </text>
+                      )
+                    }
                     const highlighted =
                       highlightedKey !== undefined && axis.keys[row] === highlightedKey
                     const title = `${ticks[p.index]?.title ?? ''}\n${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
@@ -595,7 +639,8 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
     Object.assign(
       { index },
       ...view.values.map((name, vi) => ({
-        [`v${vi}`]: valueAt(s, index, name),
+        // The zero-sized bar only supplies positioning; null is never selectable.
+        [`v${vi}`]: cellOf(s, index, name) === null ? 0 : valueAt(s, index, name),
         [`v${vi}Label`]:
           valueAt(s, index, name) === null
             ? ''
@@ -718,6 +763,18 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
               shape={(input) => {
                 const p = rectangleGeometry(input)
                 if (!p) return <g />
+                if (cellOf(s, p.index, name) === null)
+                  return (
+                    <text
+                      x={p.x + 4}
+                      y={p.y + p.height / 2 + 4}
+                      fill="currentColor"
+                      fontSize={12}
+                      data-mark="missing"
+                    >
+                      NA
+                    </text>
+                  )
                 const title = `${axis.labels[p.index] ?? ''} · ${valueName(s, name)}: ${displayed(s, cellOf(s, p.index, name), columnOf(s, name)?.column)}`
                 return (
                   <SelectableMark row={p.index} field={name} label={title}>

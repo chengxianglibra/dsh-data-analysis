@@ -72,8 +72,8 @@ test('relative decompositions format contribution as a percentage without changi
   )?.[0]
   assert.ok(table)
   assert.match(table, /-12\.50%/)
-  assert.match(table, />100\.00<\/td>/)
-  assert.match(table, />80\.00<\/td>/)
+  assert.match(table, />100\.00<\/span>/)
+  assert.match(table, />80\.00<\/span>/)
 })
 
 test('endpoint selection requires one unambiguous saved presence binding', async () => {

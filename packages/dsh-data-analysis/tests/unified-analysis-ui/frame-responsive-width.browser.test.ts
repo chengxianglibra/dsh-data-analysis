@@ -22,10 +22,12 @@ const facts=decompositionOf([['contribution','contribution'],['total','total'],[
 facts.target={kind:'absolute',comparison:0,group:'sales'};
 facts.outputs.push({fieldKind:'presence',role:'current_present',name:'current_present'});
 const attribution=frame({axes:[{name:'region',keys:['A very long regional member name that must wrap safely','Other']}],values:[
- {name:'contribution',values:[-257438,null]}, {name:'total',values:[-257438,-257438]}, {name:'share',values:[1,null]},
+ {name:'contribution',values:[-257438678,null]}, {name:'total',values:[-257438678,-257438678]}, {name:'share',values:[1,null]},
  {name:'current',values:[3650127,999999999]}, {name:'baseline',values:[3907565,12]},
  {name:'current_present',type:'boolean',values:[true,false],presence:true}
 ],comparisons:[comparisonOf({kind:'ordinary'},[{name:'sales',values:[]}])],decompositions:[facts]});
+attribution.data.columns.find(c=>c.id==='contribution').label='contribution.previous.absolute.revenue';
+attribution.data.columns.find(c=>c.id==='share').label='contribution_share.previous.absolute.revenue';
 const months=frame({axes:[timeAxis(12)],values:[{name:'trips',values:[1,2,3,4,5,6,7,8,9,10,11,12],context:observed()}]});
 const regions=frame({axes:[{...categoryAxis(2),keys:['An exceptionally long region name that remains in the title','Other']}],values:[{name:'trips',values:[187466,123456789],context:observed()}]});
 const res=snapshot=>({kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'ref'},snapshot,binding:{workspaceId:'w'}});
@@ -64,18 +66,61 @@ test('narrow attribution keeps both periods, contribution, share, direction and 
   assert.deepEqual(await row.locator('.fv-decomposition-field-label').allTextContents(), [
     'Baseline',
     'Current',
-    'contribution',
-    'share',
+    'Contribution',
+    'Contribution share',
   ])
   assert.match(await row.innerText(), /3,907,565/)
   assert.match(await row.innerText(), /3,650,127/)
-  assert.match(await row.innerText(), /-257,438/)
+  assert.match(await row.innerText(), /-257,438,678/)
+  const value = row.locator('[data-frame-point="0:contribution"]')
+  const lines = await value.evaluate((element) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    return range.getClientRects().length
+  })
+  assert.equal(lines, 1, 'the full contribution stays on one line')
   assert.equal(await region.locator('[data-frame-point="1:current"]').count(), 0)
   await row.locator('[data-frame-point="0:contribution"]').click()
   await page.getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'requests')), [
     { resourceName: 'attribution', row: 0, field: 'contribution' },
   ])
+})
+
+test('narrow attribution scrolls rather than breaking a long contribution', async () => {
+  await page.setViewportSize({ width: 190, height: 900 })
+  const region = page.locator('[data-resource="attribution"] .fv-decomposition-details')
+  const value = region.locator('[data-frame-point="0:contribution"]')
+  assert.equal(
+    await value.evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return range.getClientRects().length
+    }),
+    1,
+  )
+  const bounds = await region
+    .locator('tbody tr')
+    .first()
+    .evaluate((row) => {
+      const track = row.querySelector('.fv-decomposition-track')!.getBoundingClientRect()
+      const amount = row
+        .querySelector('[data-frame-point="0:contribution"]')!
+        .getBoundingClientRect()
+      return { trackRight: track.right, amountLeft: amount.left }
+    })
+  assert.ok(bounds.trackRight <= bounds.amountLeft, JSON.stringify(bounds))
+  assert.ok(await region.evaluate((element) => element.scrollWidth > element.clientWidth))
+  await region.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth
+  })
+  const visible = await value.evaluate((element) => {
+    const region = element.closest('.fv-decomposition-details')!.getBoundingClientRect()
+    const amount = element.getBoundingClientRect()
+    return amount.left >= region.left && amount.right <= region.right + 1
+  })
+  assert.ok(visible, 'scrolling exposes the entire contribution')
+  await page.setViewportSize({ width: 390, height: 900 })
 })
 
 test('twelve monthly bars and long-label horizontal bars adapt to a 390px viewport', async () => {

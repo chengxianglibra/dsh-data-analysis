@@ -10,6 +10,7 @@ import {
   cellOf,
   columnOf,
   displayFrameCell,
+  groupRows,
   interpretationOf,
   membersLabel,
   rowsOf,
@@ -84,50 +85,92 @@ export function AlignmentView({
       axisOf(s, c.timeAxis) ?? s.frame.axes.find((axis) => axis.variant?.kind === 'paired')
     if (!axis) return null
     const { ticks, tickOf } = timeTicks(t, s, axis)
-    const byTick = new Map(rowsOf(s).map((row) => [tickOf(row), row]))
-    const counts = new Map<number, number>()
-    for (const row of rowsOf(s)) counts.set(tickOf(row), (counts.get(tickOf(row)) ?? 0) + 1)
+    const memberAxes = s.frame.axes.filter((candidate) => candidate.token !== axis.token)
+    const groups = groupRows(s, memberAxes)
+    // A duplicate full coordinate cannot be represented by a single line point.
+    // Preserve all saved rows in the table rather than silently replacing one.
+    if (groups.some((group) => new Set(group.rows.map(tickOf)).size !== group.rows.length)) {
+      const columns = new Map(s.data.columns.map((column, index) => [column.id, index]))
+      const names = new Set([...item.left.values, ...item.right.values])
+      const rows = s.data.rows.map((cells, row) => {
+        const visible = [...cells]
+        for (const name of names) {
+          const presentOnAnySide = (['left', 'right'] as const).some(
+            (side) => item[side].values.includes(name) && present(s, row, item[side].presence),
+          )
+          const index = columns.get(name)
+          if (!presentOnAnySide && index !== undefined) visible[index] = null
+        }
+        return visible
+      })
+      return (
+        <DataTable
+          snapshot={{ ...s, data: { ...s.data, rows } }}
+          columns={Array.from(
+            new Set([
+              ...s.frame.layout.filter((l) => l.kind === 'coordinate').map((l) => l.name),
+              ...item.left.values,
+              ...item.right.values,
+            ]),
+          )}
+        />
+      )
+    }
     // Each saved subject pair owns its numeric axis; distinct measures never share a scale.
     return (
-      <div className="fv-parents">
-        {pairs.map((pair, pi) => {
-          const series: SavedSeries[] = (['left', 'right'] as const).map((side) => ({
-            key: `${pi}-${side}`,
-            label: valueName(s, c, pair[side]),
-            color: color(side === 'left' ? 0 : 1),
-            hollow: side === 'left',
-            dashed: side === 'left',
-            values: ticks.map((_, i) => {
-              const row = byTick.get(i)
-              return row === undefined ? null : get(row, pair[side], side)
+      <div className="fv-alignment-facets">
+        {pairs.length * groups.length > 1 && (
+          <p>{t('marivo.presentation.ui-frame-alignment-independent-scales')}</p>
+        )}
+        <div className="fv-parents">
+          {pairs.flatMap((pair, pi) =>
+            groups.map((group) => {
+              const byTick = new Map(group.rows.map((row) => [tickOf(row), row]))
+              const series: SavedSeries[] = (['left', 'right'] as const).map((side) => ({
+                key: `${pi}-${side}`,
+                label: valueName(s, c, pair[side]),
+                color: color(side === 'left' ? 0 : 1),
+                hollow: side === 'left',
+                dashed: side === 'left',
+                values: ticks.map((_, i) => {
+                  const row = byTick.get(i)
+                  return row === undefined ? null : get(row, pair[side], side)
+                }),
+                exact: (i) => {
+                  const row = byTick.get(i)
+                  return `${ticks[i]?.title ?? ''}\n${valueName(s, c, pair[side])}: ${row === undefined ? '—' : text(row, pair[side], side)}`
+                },
+                point: (i) =>
+                  point(
+                    byTick.get(i),
+                    pair[side],
+                    side,
+                    [group.label, ticks[i]?.label].filter(Boolean).join(' · '),
+                  ),
+              }))
+              return (
+                <section
+                  key={JSON.stringify([pair.left, pair.right, group.key])}
+                  data-alignment-pair={`${pair.left}:${pair.right}`}
+                >
+                  {memberAxes.length > 0 && <h4>{group.label}</h4>}
+                  <SavedLinePlot
+                    label={summary(
+                      t,
+                      [group.label, ...series.map((line) => line.label)]
+                        .filter(Boolean)
+                        .join(' · '),
+                      ticks.map((_, i) => series.map((line) => line.exact(i)).join(' / ')),
+                    )}
+                    ticks={ticks}
+                    series={series}
+                    height={height}
+                  />
+                </section>
+              )
             }),
-            exact: (i) => {
-              const row = byTick.get(i)
-              return `${ticks[i]?.title ?? ''}\n${valueName(s, c, pair[side])}: ${row === undefined ? '—' : text(row, pair[side], side)}`
-            },
-            point: (i) =>
-              counts.get(i) === 1
-                ? point(byTick.get(i), pair[side], side, ticks[i]?.label ?? '')
-                : undefined,
-          }))
-          return (
-            <section
-              key={`${pair.left}:${pair.right}`}
-              data-alignment-pair={`${pair.left}:${pair.right}`}
-            >
-              <SavedLinePlot
-                label={summary(
-                  t,
-                  series.map((line) => line.label).join(' · '),
-                  ticks.map((_, i) => series.map((line) => line.exact(i)).join(' / ')),
-                )}
-                ticks={ticks}
-                series={series}
-                height={height}
-              />
-            </section>
-          )
-        })}
+          )}
+        </div>
       </div>
     )
   }

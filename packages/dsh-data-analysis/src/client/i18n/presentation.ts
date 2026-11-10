@@ -89,6 +89,8 @@ export const zh = {
   'marivo.presentation.ui-frame-developer': '开发者',
   'marivo.presentation.ui-frame-members': '成员',
   'marivo.presentation.ui-frame-calculated-share': '所示值占比',
+  'marivo.presentation.ui-frame-contribution': '贡献',
+  'marivo.presentation.ui-frame-contribution-share': '贡献占比',
   'marivo.presentation.ui-frame-records-preview':
     '显示前 {shown} 条，共保存 {total} 条；完整结果见表。',
   'marivo.presentation.ui-frame-members-preview': '显示前 {shown} 项，共保存 {total} 项',
@@ -303,6 +305,8 @@ export const en = {
   'marivo.presentation.ui-frame-developer': 'Developer',
   'marivo.presentation.ui-frame-members': 'Members',
   'marivo.presentation.ui-frame-calculated-share': 'Share of shown values',
+  'marivo.presentation.ui-frame-contribution': 'Contribution',
+  'marivo.presentation.ui-frame-contribution-share': 'Contribution share',
   'marivo.presentation.ui-frame-records-preview':
     'Showing first {shown} of {total} saved rows; open the table for the full result.',
   'marivo.presentation.ui-frame-members-preview': 'Showing first {shown} of {total} saved members',

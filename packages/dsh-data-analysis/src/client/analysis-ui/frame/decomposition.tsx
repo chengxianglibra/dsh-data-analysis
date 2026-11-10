@@ -270,6 +270,12 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
   )
   const scale = divergingScale(rows.map((row) => valueAt(s, row, contribution)))
   const format = formatter(t, s, facts)
+  const fieldLabel = (name: string) =>
+    name === contribution
+      ? t('marivo.presentation.ui-frame-contribution')
+      : name === facts.share
+        ? t('marivo.presentation.ui-frame-contribution-share')
+        : valueName(s, undefined, name)
   useEffect(() => {
     const element = region.current
     if (!element) return
@@ -282,7 +288,8 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
     return () => observer.disconnect()
   }, [])
   const shown = (row: number, name: string, presence?: string[]) => {
-    if (presence?.some((field) => cellOf(s, row, field) === false)) return '—'
+    if (presence?.some((field) => cellOf(s, row, field) === false))
+      return <span className="fv-decomposition-value">—</span>
     const cell = cellOf(s, row, name)
     const isContribution = name === contribution
     const positive = isContribution && cell !== null && compareDecimalText(String(cell), '0') > 0
@@ -294,15 +301,15 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
     return selected ? (
       <button
         type="button"
-        className="pr-cell-select"
+        className="pr-cell-select fv-decomposition-value"
         data-frame-point={`${row}:${name}`}
-        aria-label={`${labelOf(row)} · ${valueName(s, undefined, name)}: ${value}`}
+        aria-label={`${labelOf(row)} · ${fieldLabel(name)}: ${value}`}
         onClick={() => selection!.select(row, name)}
       >
         {value}
       </button>
     ) : (
-      value
+      <span className="fv-decomposition-value">{value}</span>
     )
   }
   return (
@@ -321,8 +328,8 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
             <th scope="col">{facts.details.map((axis) => axis.name).join(' · ')}</th>
             <th scope="col">{ends?.baseline ?? valueName(s, undefined, baseline)}</th>
             <th scope="col">{ends?.current ?? valueName(s, undefined, current)}</th>
-            <th scope="col">{valueName(s, undefined, contribution)}</th>
-            {facts.share && <th scope="col">{valueName(s, undefined, facts.share)}</th>}
+            <th scope="col">{fieldLabel(contribution)}</th>
+            {facts.share && <th scope="col">{fieldLabel(facts.share)}</th>}
           </tr>
         </thead>
         <tbody>
@@ -356,7 +363,7 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
                   }
                 >
                   <span className="fv-decomposition-field-label" aria-hidden="true">
-                    {valueName(s, undefined, contribution)}
+                    {fieldLabel(contribution)}
                   </span>
                   <span className="fv-decomposition-contribution">
                     <span className="fv-decomposition-track" aria-hidden="true">
@@ -380,7 +387,7 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
                 {facts.share && (
                   <td>
                     <span className="fv-decomposition-field-label" aria-hidden="true">
-                      {valueName(s, undefined, facts.share)}
+                      {fieldLabel(facts.share)}
                     </span>
                     {shown(row, facts.share)}
                   </td>

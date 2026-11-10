@@ -112,6 +112,7 @@ export const FRAME_STYLES = `
 .fv-decomposition-table :is(th,td):first-child{position:sticky;left:0;z-index:1;text-align:left;background:var(--background);white-space:normal;min-width:140px;overflow-wrap:anywhere}
 .fv-decomposition-contribution{display:flex;align-items:center;gap:10px;justify-content:flex-end}
 .fv-decomposition-track{position:relative;flex:1;min-width:100px;height:12px}
+.fv-decomposition-value{display:inline-block;white-space:nowrap}
 .fv-decomposition-zero{position:absolute;top:0;bottom:0;border-left:1px solid var(--border)}
 .fv-decomposition-note{margin:8px 0 0;color:var(--muted-foreground);font-size:12px;line-height:1.5}
 .fv-decomposition-field-label{display:none}
@@ -122,11 +123,11 @@ export const FRAME_STYLES = `
   .fv-decomposition-table{display:block;min-width:0}
   .fv-decomposition-table thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   .fv-decomposition-table tbody{display:grid;gap:0}
-  .fv-decomposition-table tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .fv-decomposition-table tbody tr{display:grid;grid-template-columns:repeat(2,minmax(min-content,1fr));gap:8px 12px;padding:12px 0;border-bottom:1px solid var(--border)}
   .fv-decomposition-table tbody :is(th,td){min-width:0;padding:0;border:0;text-align:left;white-space:normal;overflow-wrap:anywhere}
   .fv-decomposition-table tbody th:first-child{position:static;grid-column:1/-1;max-width:none}
   .fv-decomposition-table tbody td:nth-child(4){grid-column:1/-1}
-  .fv-decomposition-table .pr-cell-select{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .fv-decomposition-table .pr-cell-select{max-width:none;white-space:nowrap}
   .fv-decomposition-field-label{display:block;margin-bottom:3px;color:var(--muted-foreground);font-size:11px}
   .fv-decomposition-contribution{justify-content:space-between}
 }
