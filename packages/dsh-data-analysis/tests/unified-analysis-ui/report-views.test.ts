@@ -5,6 +5,7 @@ import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/cl
 import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { analysisCandidate } from '../../src/client/analysis-ui/candidate.ts'
 import { ReportViews } from '../../src/client/analysis-ui/report-views.ts'
+import { draftReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import type { DraftDelivery, PresentationDelivery } from '../../src/presentation/receipt.ts'
 
 // The Host mints opaque generations; this fixture only compares their identity.
@@ -15,7 +16,7 @@ function candidate(callId = 'first', args = {}) {
       phase: 'preparing',
       args: PartialArguments.fromObject(args),
       callId,
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       turn: 1,
       step: 1,
       time: 1,
@@ -79,8 +80,13 @@ test('one view and reading state survive streaming, revisions, save, hidden tabs
   const next = views.observe(
     candidate('second', {
       stage: 'preview',
-      draftId: initial.draftId,
-      draftRevision: initial.draftRevision,
+      ref: draftReportRef({
+        workspaceId: initial.workspaceId,
+        sessionId: initial.dshSessionId,
+        turn: initial.turn,
+        draftId: initial.draftId,
+        revision: initial.draftRevision,
+      }),
     }),
     '/workspace',
   )

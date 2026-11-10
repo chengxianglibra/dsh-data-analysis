@@ -105,7 +105,11 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
-Agent 的分析流程另有初始化前置步骤：首次 Marivo 分析或结果持久化前检查绑定 Workspace 根目录本身的 `marivo.toml`；缺少时通过 `marivo_python` 使用同一解释器执行 `-m marivo init --project-root <Workspace>`，不用 `--force`。这由 Agent 明确调用上游 CLI 完成，不改为插件启动时隐式初始化。CLI 创建项目脚手架与上游 Skill 链接；已有无效项目仍需修复，普通文件预览无需初始化。显式指定当前 Workspace 可避免 Marivo 默认项目发现向父目录查找而与 Host binding 不一致。
+`marivo_python` 通过 `project: "none" | "required"` 明确项目意图，省略为 `none`。普通文件分析无需准备项目；Marivo 项目分析、持久化、非空 datasources 或 resultVariables 使用 required。插件不解析 Python 源码猜测项目需求。
+
+required 在凭据准入前调用内部项目准备适配：固定 canonical Workspace root，以 `lstat` 检查该目录本身的 `marivo.toml`，不继承父项目；符号链接和非普通文件明确拒绝。缺少时在按 root 协调的插件内锁中复查，再通过绑定 Runtime 的公开 CLI init 初始化，不使用 `--force`、不手写 manifest。CLI 创建脚手架与上游 Skill 链接；随后经同一 bound Environment 的公开 doctor 验证根目录 manifest 和 Runtime identity。Python 的初始化写入与用户代码遵循同次调用的 Harness Shell/sandbox policy、取消与超时限制。
+
+成功回执的 `project` 区分 `created` 与 `already-ready`。初始化中断或失败后检查实际 manifest，返回不确定状态与修复说明，不自动删除半成品或重复 init。锁只协调本插件请求，不承诺与外部编辑器或 CLI 的跨进程事务。交互式 datasource configure 同样是明确的项目准备入口，沿用其固定 authoring policy；test、安装、Help 和 binding 不因此创建项目。
 
 ## 隔离模型
 
@@ -115,8 +119,7 @@ Agent 的分析流程另有初始化前置步骤：首次 Marivo 分析或结果
 | Workspace | 共享 Runtime 引用 | project root、manifest、models、state、doctor admission、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 
-manager 只在进程内缓存 Promise。binding rejection 也保留在该 key 上，防止一次运行中静默
-切换身份；显式重建 plugin/manager 才会重新解析。
+manager 只在进程内缓存 Promise；binding rejection 会删除失败 Promise，后续 resolve 可以重新尝试相同配置与身份。成功 binding 不会被失败重试静默替换 Runtime；同进程 import identity 漂移仍使该 Environment 永久失败。
 
 ## 失败边界
 

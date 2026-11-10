@@ -18,6 +18,7 @@ import {
   parsePointEnvelope,
   parsePointRequest,
 } from './contracts/point-reference.ts'
+import { reportRefFromRecordId } from './contracts/report-ref.ts'
 import { resourceStreamRequest } from './contracts/resource-stream.ts'
 import {
   datasetReferenceLabel,
@@ -182,7 +183,7 @@ export class MarivoPresentationFileService {
       : 'The Marivo Frame was captured in memory without a persisted artifact. The original Frame cannot be recovered across processes from this identity; use the saved point context or independently verify another available source before further analysis.'
     return {
       text: selectionModelText('frame-point', pointReferenceLabel(actual), {
-        recordId: actual.recordId,
+        ref: reportRefFromRecordId(actual.recordId, workspace.id),
         resource: actual.resourceName,
         row: actual.row,
         marivoFrame: { sessionId, artifactId },
@@ -295,7 +296,7 @@ export class MarivoPresentationFileService {
         'row' in request ? 'dataset-point' : 'dataset',
         datasetReferenceLabel(envelope),
         {
-          recordId: request.recordId,
+          ref: reportRefFromRecordId(request.recordId, workspace.id),
           resource: request.resourceName,
           ...savedResultContext(document, request.resourceName),
           ...('row' in request ? datasetPointContext(snapshot, request.row, request.field) : {}),

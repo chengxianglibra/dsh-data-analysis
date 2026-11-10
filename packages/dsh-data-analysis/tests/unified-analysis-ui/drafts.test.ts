@@ -10,18 +10,26 @@ import {
   analysisStatements,
   parseAnalysisProgram,
 } from '../../src/presentation/contracts/analysis-program.ts'
+import { draftReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { draftDeliverySchema } from '../../src/presentation/receipt.ts'
 
 const generation = {} as ConnectionGeneration
 const draftId = randomUUID()
 const draftRevision = randomUUID()
+const ref = draftReportRef({
+  workspaceId: 'workspace',
+  sessionId: 'session',
+  turn: 1,
+  draftId,
+  revision: draftRevision,
+})
 function candidate(args: PartialArguments, callId = 'first') {
   return analysisCandidate(
     {
       phase: 'preparing',
       args,
       callId,
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       turn: 1,
       step: 1,
       time: 1,
@@ -44,7 +52,7 @@ function delivery(surface: 'tool' | 'tab') {
   })
 }
 
-test('both surfaces enable Native preview prefixes before arguments complete', () => {
+test('both surfaces defer prefixes until optional identities are settled', () => {
   for (const surface of ['tool', 'tab']) {
     const args = new PartialArguments()
     args.append(
@@ -52,7 +60,9 @@ test('both surfaces enable Native preview prefixes before arguments complete', (
     )
     const prefix = candidate(args)
     assert.equal(prefix.stage, 'preview')
-    assert.equal(prefix.preview, true)
+    assert.equal(prefix.preview, false)
+    args.append('\\");"}')
+    assert.equal(candidate(args).preview, true)
     assert.equal(prefix.complete, false)
     assert.match(prefix.program, /Visible/)
   }
@@ -62,11 +72,12 @@ test('legacy draft projection streams subsequent calls with verified revision me
   const views = new AnalysisDraftViews()
   views.preview(delivery('tab'), generation, '/workspace')
   const args = new PartialArguments()
-  args.append(
-    `{"draftId":"${draftId}","draftRevision":"${draftRevision}","stage":"preview","program":"root = TextContent(\\"Next`,
-  )
+  args.append(`{"ref":"${ref}","stage":"preview","program":"root = TextContent(\\"Next`)
   views.observe(candidate(args, 'next'), '/workspace')
   assert.equal(views.get('session', 1)?.candidate?.surface, 'tool')
+  assert.equal(views.get('session', 1)?.candidate?.preview, false)
+  args.append('\\");"}')
+  views.observe(candidate(args, 'next'), '/workspace')
   assert.equal(views.get('session', 1)?.candidate?.preview, true)
   assert.equal(views.get('session', 1)?.delivery?.draftRevision, draftRevision)
   views.settle('session')
@@ -78,7 +89,7 @@ test('legacy draft projection streams subsequent calls with verified revision me
 
 test('incomplete draft identifiers cannot enable streaming or replace an unrelated draft', () => {
   const args = new PartialArguments()
-  args.append(`{"surface":"tool","stage":"preview","draftId":"${draftId}","draftRevision":"partial`)
+  args.append(`{"stage":"preview","ref":"mr1:d:partial`)
   assert.equal(candidate(args).preview, false)
   const views = new AnalysisDraftViews()
   views.preview(delivery('tool'), generation, '/workspace')
@@ -86,8 +97,13 @@ test('incomplete draft identifiers cannot enable streaming or replace an unrelat
     PartialArguments.fromObject({
       surface: 'tab',
       stage: 'preview',
-      draftId: randomUUID(),
-      draftRevision,
+      ref: draftReportRef({
+        workspaceId: 'workspace',
+        sessionId: 'session',
+        turn: 1,
+        draftId: randomUUID(),
+        revision: draftRevision,
+      }),
       program: 'root = TextContent("foreign")',
     }),
   )

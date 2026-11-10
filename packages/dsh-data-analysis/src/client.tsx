@@ -11,13 +11,6 @@ import { installRightTabs, inject as rightTabsInject } from './client/right-tabs
 import { installSettings } from './client/settings/install.tsx'
 import { installUIStyles } from './client/ui/theme.ts'
 
-export {
-  marivoPresentationDeliveryDefinition,
-  parsePresentationDurableContent,
-  presentationDeliveryFromEvent,
-  presentationsForNode,
-} from './client/presentation/delivery.ts'
-export { PresentationDeliveryModel } from './client/presentation/delivery-model.ts'
 export { createPluginRpc } from './client/rpc.ts'
 
 export const inject = [...rightTabsInject, 'configForms']

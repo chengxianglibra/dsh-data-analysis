@@ -12,6 +12,7 @@ import {
   analysisRecordId,
   parseAnalysisDocument,
 } from '../../src/presentation/contracts/analysis-document.ts'
+import { reportRefFromRecordId } from '../../src/presentation/contracts/report-ref.ts'
 import { parseSelectionText } from '../../src/presentation/contracts/selection-text.ts'
 import { pointFromDocument } from '../../src/presentation/point-reference.ts'
 import { publishPresentation } from '../../src/presentation/reports.ts'
@@ -59,6 +60,7 @@ async function fixture(
   const makeDocument = (buildId: string) =>
     parseAnalysisDocument({
       schemaVersion: ANALYSIS_UI_FORMAT,
+      contentReview: 'not-needed',
       workspaceId: 'workspace',
       reportId: 'report',
       buildId,
@@ -141,7 +143,11 @@ test('point references bind exact published build, raw typed keys and precise va
   if (!('text' in serialized) || !serialized.text) throw new Error('expected-text')
   assert.match(serialized.text, /9007199254740993/)
   assert.match(serialized.text, /January 2025 saved analysis/)
-  assert.match(serialized.text, /marivo-ui:report:first/)
+  assert.equal(
+    parseSelectionText(serialized.text)?.context.ref,
+    reportRefFromRecordId('marivo-ui:report:first', 'workspace'),
+  )
+  assert.equal(parseSelectionText(serialized.text)?.context.recordId, undefined)
   const serializedPoint = parseSelectionText(serialized.text)!.context
   assert.deepEqual(serializedPoint.marivoFrame, {
     sessionId: 'marivo-session',
@@ -501,7 +507,8 @@ test('component reference binds the saved Frame and the admitted view configurat
   const sent = await service.component('component/serialize', { envelope: prepared.envelope })
   if (!('text' in sent) || !sent.text) throw new Error('expected-text')
   const data = parseSelectionText(sent.text)!.context
-  assert.equal(data.recordId, identity.recordId)
+  assert.equal(data.ref, reportRefFromRecordId(identity.recordId, identity.workspaceId))
+  assert.equal(data.recordId, undefined)
   assert.equal(data.resource, 'data')
   assert.deepEqual(data.component, { kind: 'frame' })
   assert.equal(data.resultRef, null)
@@ -734,7 +741,11 @@ test('component references carry exact Marivo result references without report p
     const value = parseSelectionText(text)!
     assert.equal(value.label, 'data')
     assert.deepEqual(value.context.resultRef, ref)
-    assert.equal(value.context.recordId, f.request.recordId)
+    assert.equal(
+      value.context.ref,
+      reportRefFromRecordId(f.request.recordId, f.request.workspaceId),
+    )
+    assert.equal(value.context.recordId, undefined)
     assert.equal('rows' in value.context, false)
     assert.equal('report' in value.context, false)
     assert.ok(Buffer.byteLength(text) < 1500)

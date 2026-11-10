@@ -1,6 +1,11 @@
 import { isCredentialRefName } from '@deepseek-ai/dsh-credentials'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { MarivoEnvironmentError } from '../environment/errors.ts'
+import {
+  ensureMarivoProject,
+  type ProjectPreparation,
+  type ProjectPreparationOptions,
+} from '../environment/project-preparation.ts'
 import type { MarivoBridgeSource } from '../environment/source.ts'
 import { resolveMarivoBridgeSource } from '../environment/source.ts'
 import type { MarivoCheckedRunner, MarivoEnvironmentBinding } from '../environment/types.ts'
@@ -103,6 +108,7 @@ export interface MarivoDatasourceTestResult {
 
 export interface MarivoDatasourceBridgePort {
   readonly binding: Readonly<MarivoEnvironmentBinding>
+  ensureProject?(options?: ProjectPreparationOptions): Promise<ProjectPreparation>
   remove?(
     description: Readonly<MarivoDatasourceDescription>,
     signal?: AbortSignal,
@@ -351,6 +357,10 @@ export class MarivoDatasourceBridge {
   constructor(runner: MarivoCheckedRunner) {
     this.#runner = runner
     this.binding = runner.binding
+  }
+
+  ensureProject(options?: ProjectPreparationOptions): Promise<ProjectPreparation> {
+    return ensureMarivoProject(this.#runner, options)
   }
 
   async authoring(signal?: AbortSignal): Promise<DatasourceAuthoring> {

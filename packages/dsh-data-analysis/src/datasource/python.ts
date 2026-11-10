@@ -5,9 +5,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
+import {
+  MARIVO_PROJECT_INIT_PROGRAM,
+  type ProjectPreparation,
+} from '../environment/project-preparation.ts'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
-import { pythonResultVariables, readPythonResultOutput } from '../python-result-references.ts'
+import {
+  pythonResults,
+  pythonResultVariables,
+  readPythonResultOutput,
+} from '../python-result-references.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import {
@@ -36,10 +45,22 @@ export interface MarivoPythonExecutionSummary {
 /** The message survives Harness error normalization; it contains only safe adapter facts. */
 export class MarivoPythonExecutionError extends Error {
   readonly execution: MarivoPythonExecutionSummary
-  constructor(message: string, execution: MarivoPythonExecutionSummary) {
-    super(`${message}; execution=${JSON.stringify(execution)}`)
+  readonly code: string
+  readonly phase: MarivoPythonExecutionSummary['phase']
+  readonly recovery: string | null
+  constructor(
+    message: string,
+    execution: MarivoPythonExecutionSummary,
+    code = 'python-execution-failed',
+  ) {
+    super(
+      `${message}; error=${JSON.stringify({ code, phase: execution.phase, recovery: execution.nextAction })}; execution=${JSON.stringify(execution)}`,
+    )
     this.name = 'MarivoPythonExecutionError'
     this.execution = execution
+    this.code = code
+    this.phase = execution.phase
+    this.recovery = execution.nextAction
   }
 }
 
@@ -54,6 +75,155 @@ const PREPARATION_CODES = new Set([
   'execution-ended',
   'disposed',
 ])
+
+const nullableNumber = { oneOf: [{ type: 'number' }, { type: 'null' }] } as const
+const nullableInteger = { oneOf: [{ type: 'integer' }, { type: 'null' }] } as const
+const nullableString = { oneOf: [{ type: 'string' }, { type: 'null' }] } as const
+const executionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    phase: { type: 'string', enum: ['preparing', 'executing', 'capturing-code'], required: true },
+    reason: {
+      type: 'string',
+      enum: ['not-started', 'succeeded', 'nonzero-exit', 'timed-out', 'cancelled', 'unknown'],
+      required: true,
+    },
+    requestedTimeoutMs: { ...nullableInteger, required: true },
+    effectiveTimeoutMs: { ...nullableInteger, required: true },
+    elapsedMs: { type: 'number', required: true },
+    executionElapsedMs: { ...nullableNumber, required: true },
+    nextAction: { ...nullableString, required: true },
+  },
+} as const satisfies ValueSchemaSpec
+const projectSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    status: { type: 'string', enum: ['created', 'already-ready'], required: true },
+    projectRoot: { type: 'string', required: true },
+  },
+} as const satisfies ValueSchemaSpec
+const commonOutput = {
+  execution: { ...executionSchema, required: true },
+  project: projectSchema,
+} as const
+const failureSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    code: { type: 'string', required: true },
+    exception_type: { type: 'string', required: true },
+    backend_code: { ...nullableString, required: true },
+    backend_name: { ...nullableString, required: true },
+    message: { type: 'string', required: true },
+  },
+} as const satisfies ValueSchemaSpec
+const repairSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    kind: { type: 'string', required: true },
+    help_target: {
+      type: 'object',
+      additionalProperties: false,
+      required: true,
+      properties: {
+        surface: { type: 'string', required: true },
+        canonical_id: { ...nullableString, required: true },
+      },
+    },
+    action: { type: 'string', required: true },
+    snippet: { ...nullableString, required: true },
+    candidates: { type: 'array', items: { type: 'string' }, required: true },
+    preserves_evidence: { oneOf: [{ type: 'boolean' }, { type: 'null' }], required: true },
+  },
+} as const satisfies ValueSchemaSpec
+const pythonOutputSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ...commonOutput,
+        exitCode: { ...nullableInteger, required: true },
+        timedOut: { type: 'boolean', required: true },
+        aborted: { type: 'boolean', required: true },
+        stdout: { type: 'string', required: true },
+        stderr: { type: 'string', required: true },
+        truncated: { type: 'boolean', required: true },
+        sandbox: {
+          oneOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                mode: { type: 'string', required: true },
+                denied: { type: 'boolean', required: true },
+                enforcement: { type: 'string' },
+                runnerFailed: { type: 'boolean' },
+              },
+            },
+            { type: 'null' },
+          ],
+          required: true,
+          description: 'Host-owned Shell sandbox receipt.',
+        },
+        results: {
+          type: 'object',
+          additionalProperties: true,
+          description:
+            'Resource-name map, present only after successful declared reference export. Each value is PythonResult: {resource: {kind:"analysis-frame", ref:{schema:"marivo.frame_ref/v2",store_id,session_id,artifact_id}, codeRef?:{executionId,sha256}} | {kind:"dataframe", ref:{schema:"marivo.dataframe_ref/v2",project_root,result_id}, codeRef?:{executionId,sha256}}, sourceStatus:"recorded"|"unavailable", sourceError?:string, metadata:{status:"captured",kind:"frame"|"dataset",columns:string[],values:string[],axes:{token,name,role}[],coverage:{totalRows:number|null,business:"unknown"}}|{status:"unavailable",reason:"budget"|"read-failed"|"identity-mismatch"}}. recorded requires resource.codeRef; unavailable omits codeRef and requires sourceError. Each entry is strictly validated. Pass resource unchanged to the report writer.',
+        },
+        resultCaptureError: {
+          type: 'string',
+          description:
+            'Reference export failed independently of successful user code; results is absent. Do not replay analysis.',
+        },
+        codeCaptureError: {
+          type: 'string',
+          description:
+            'Source recording failed independently of execution and reference export; valid results remain usable without codeRef.',
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ...commonOutput,
+        status: { type: 'string', const: 'needs-credentials', required: true },
+        name: { type: 'string', required: true },
+        refs: { type: 'array', items: { type: 'string' }, required: true },
+        handoff: {
+          type: 'object',
+          additionalProperties: false,
+          required: true,
+          properties: {
+            reason: {
+              type: 'string',
+              enum: ['parent-agent-required', 'web-interaction-disabled'],
+              required: true,
+            },
+            nextAction: { type: 'string', required: true },
+          },
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ...commonOutput,
+        status: { type: 'string', const: 'failed', required: true },
+        name: { type: 'string', required: true },
+        latency_ms: { ...nullableNumber, required: true },
+        failure: { oneOf: [failureSchema, { type: 'null' }], required: true },
+        repair: { oneOf: [repairSchema, { type: 'null' }], required: true },
+      },
+    },
+  ],
+} as const satisfies ValueSchemaSpec
 
 function quote(value: string): string {
   return process.platform === 'win32'
@@ -73,13 +243,13 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        "Run one foreground Python process in the bound Runtime and Workspace. Before Marivo analysis or persistence, if this Workspace root lacks marivo.toml, initialize it through subprocess.run([sys.executable, '-m', 'marivo', 'init', '--project-root', str(Path.cwd())], check=True), with datasources=[] and no --force; import subprocess, sys and pathlib.Path. For reports, preview confirmed scope before preparing data. Reuse exact immutable results across compatible views with the original producer codeRef. New computations must be self-contained; derived computations explicitly read fixed inputs and persist new outputs. Send ready results to the same draft promptly, combining already-ready views when useful. This tool uses Harness exclusive scheduling; Python calls and draft writes are serialized. Prefer AnalysisFrame for supported governed analysis. Export through resultVariables and pair resultRefs with this call's codeRef. Memory ends with the call; stdout is not a reference channel. Declared datasource credentials are prepared before execution; follow returned handoff information and never read or pass secret values through code, environment, output or logs. Inspect execution and resultCaptureError separately. Do not replay analysis to recover references; timeout does not prove remote query cancellation or absence of saved results.",
+        "Run user code once in a foreground Python process in the bound Runtime and Workspace. Use project=required for Marivo datasource access, project analysis or result persistence; project=none is the default for ordinary files. Project preparation precedes credentials and follows this call's Host execution policy. New computations must be self-contained; derived computations explicitly read fixed inputs and persist new outputs. Prefer AnalysisFrame for supported governed analysis. Export persisted references through resultVariables and pass results[name].resource directly to the report writer. Reuse unchanged resource declarations across compatible views. Memory ends with the call; stdout is not a reference channel. Follow returned credential handoffs and never read or pass secret values through code, environment, output or logs. Execution, reference export, metadata and source recording have independent outcomes. Do not replay successful analysis to recover missing metadata or source; timeout does not prove remote query cancellation or absence of saved results.",
       parameters: {
         code: {
           type: 'string',
           required: true,
           description:
-            "Python code, never credential values. A new computation must run in a fresh process and include its explicit input reads, computation and persistence; do not depend on another call's variables or temporary tables. Shared source files, governed definitions and exact saved results can be reused. Fixed-result reads do not refresh data; retain the original producer codeRef when only displaying an existing result. Consult current Runtime Help for Session lifetime and persistence, and release resources according to their public contracts.",
+            "Python code, never credential values. A new computation must run in a fresh process and include its explicit input reads, computation and persistence; do not depend on another call's variables or temporary tables. Shared source files, governed definitions and exact saved results can be reused. Fixed-result reads do not refresh data; reuse the original resource declaration when displaying an unchanged result. codeRef records an exporting execution, not proof of original production. Consult current Runtime Help for Session lifetime and persistence, and release resources according to their public contracts.",
         },
         datasources: {
           type: 'array',
@@ -88,20 +258,26 @@ export function registerMarivoPythonTool(
           description:
             'All exact Marivo datasource names this execution may access through data or metadata connections, including inspection and datasources without passwords. Pass [] for local pandas or native DuckDB file analysis without Marivo datasource access. Catalog-only definition reads need no datasource connection.',
         },
+        project: {
+          type: 'string',
+          enum: ['none', 'required'],
+          description:
+            'Project intent, default none. Use required for Marivo project analysis, persistence, nonempty datasources or resultVariables. The tool prepares the exact Workspace root through the bound Runtime CLI without force. none skips plugin project preparation and does not restrict arbitrary code behavior.',
+        },
         timeoutMs: {
           type: 'number',
           description:
-            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to the current plugin pythonTimeoutMs setting. Credential waiting precedes this budget; Harness Shell limits, outer Code Mode deadlines and cancellation remain independent.',
+            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to the current plugin pythonTimeoutMs setting. Applied separately to project init when needed and to user code. Credential waiting precedes user execution; Harness Shell limits, outer Code Mode deadlines and cancellation remain independent.',
         },
         resultVariables: {
           type: 'object',
           additionalProperties: true,
           description:
-            'Optional resource name -> Python variable name; the tool supports up to 16 outputs. Export the exact results needed by this computation; one result may support multiple views. Each variable must hold an exact persisted reference dictionary, such as saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns resultRefs and bounded resultMetadata (configuration names and known coverage) independently of stdout; metadata failure does not invalidate reference export. Metadata reads fixed saved results only and does not replay analysis. Omit for scripts without persisted report results.',
+            'Optional resource name -> Python variable name; requires project=required and supports up to 16 outputs. Each variable must hold an exact persisted reference dictionary, such as saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns results[name] with a complete report resource, source status and bounded metadata independently of stdout. One resource may support multiple views. Metadata failure does not invalidate reference export or replay analysis. Omit for scripts without persisted report results.',
         },
       },
       output: {
-        schema: { type: 'json' },
+        schema: pythonOutputSchema,
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       async execute(args, exec) {
@@ -112,6 +288,8 @@ export function registerMarivoPythonTool(
         let shellStartedAt: number | null = null
         let executionElapsedMs: number | null = null
         let prepared: PreparedCredentialExecution | undefined
+        let preparationSignal: AbortSignal | undefined
+        let project: ProjectPreparation | undefined
         const summary = (
           reason: MarivoPythonExecutionSummary['reason'],
           nextAction: string | null,
@@ -132,6 +310,7 @@ export function registerMarivoPythonTool(
           throw new MarivoPythonExecutionError(
             message,
             summary('not-started', 'Correct the input or Host configuration before retrying.'),
+            'python-input-invalid',
           )
         }
         try {
@@ -157,6 +336,11 @@ export function registerMarivoPythonTool(
               'Invalid resultVariables; use 1-16 resource names mapped to Python variable identifiers',
             )
           const resultVariables = selected?.success ? selected.data : undefined
+          if (args.project !== undefined && args.project !== 'none' && args.project !== 'required')
+            rejectInput('project must be none or required')
+          if (!Array.isArray(args.datasources)) rejectInput('datasources must be an array')
+          if (args.project !== 'required' && (args.datasources.length > 0 || resultVariables))
+            rejectInput('project=required is required for datasources or resultVariables')
           const shell = ctx.get('shell')
           if (!shell) rejectInput('DSH Shell execution service is required')
           const shellEnv = ctx.get('shellEnv')
@@ -164,6 +348,61 @@ export function registerMarivoPythonTool(
           const policyService = ctx.get('sandboxPolicy')
           if (shell.sandboxMode !== undefined && !policyService)
             rejectInput('DSH sandbox policy is required')
+          if (args.project === 'required') {
+            if (!exec.agent) rejectInput('An Agent is required')
+            const agent = exec.agent!
+            const session = agent.session
+            const workspace = JSON.stringify([
+              session.header.cwd,
+              Reflect.get(session.header, 'workspaceId'),
+            ])
+            const signal = service.executionSignal(exec.signal, agent)
+            preparationSignal = signal
+            const bridge = await service.track(resolveMarivoDatasourceBridge(source))
+            const fingerprint = bridge.binding.fingerprint
+            const unchanged = () =>
+              exec.agent?.session === session &&
+              JSON.stringify([session.header.cwd, Reflect.get(session.header, 'workspaceId')]) ===
+                workspace
+            const assertCurrent = async () => {
+              signal.throwIfAborted()
+              if (!unchanged()) throw new CredentialServiceError('context-changed')
+              const current = await resolveMarivoDatasourceBridge(source)
+              signal.throwIfAborted()
+              if (!unchanged() || current.binding.fingerprint !== fingerprint)
+                throw new CredentialServiceError('context-changed')
+            }
+            await assertCurrent()
+            if (!bridge.ensureProject)
+              rejectInput('Bound Runtime project preparation is unavailable')
+            project = await service.track(
+              bridge.ensureProject!({
+                signal,
+                assertCurrent,
+                initialize: async () => {
+                  await assertCurrent()
+                  const policy = policyService?.resolve({ session })
+                  const spec = shell.resolve({
+                    command: `${process.platform === 'win32' ? '& ' : ''}${quote(bridge.binding.pythonExecutable)} -c ${quote(MARIVO_PROJECT_INIT_PROGRAM)}`,
+                    workdir: bridge.binding.projectRoot,
+                    timeoutMs: requestedTimeoutMs!,
+                    onExpiry: 'kill',
+                    signal,
+                    stdin: JSON.stringify(bridge.binding),
+                    env: { MARIVO_PERSIST_CREDENTIALS: '0', MARIVO_TELEMETRY: 'off' },
+                    dshEnv: shellEnv.collect(exec),
+                    ...(policy ? { sandboxPolicy: policy } : {}),
+                  })
+                  await assertCurrent()
+                  const execution = await service.track(shell.execute(spec))
+                  const result = await service.track(execution.result())
+                  if (result.exitCode !== 0 || result.timedOut || result.aborted)
+                    throw new Error('Project initialization did not confirm success')
+                },
+              }),
+            )
+            await assertCurrent()
+          }
           const admission = await service.track(
             service.prepareExecution(
               exec,
@@ -174,6 +413,7 @@ export function registerMarivoPythonTool(
           if (!('status' in admission) || admission.status !== 'ready')
             return {
               ...datasourceToolValue(admission),
+              ...(project ? { project } : {}),
               execution: summary(
                 'not-started',
                 'handoff' in admission && admission.handoff
@@ -221,7 +461,11 @@ export function registerMarivoPythonTool(
           executionElapsedMs = performance.now() - shellStartedAt
           const finishedAt = new Date().toISOString()
           const exported = resultVariables
-            ? readPythonResultOutput(result.stderr.text, resultVariables)
+            ? readPythonResultOutput(
+                result.stderr.text,
+                resultVariables,
+                Object.values(prepared.values),
+              )
             : {
                 stderr: result.stderr.text,
                 resultRefs: undefined,
@@ -303,11 +547,17 @@ export function registerMarivoPythonTool(
               stderr: redact(stderr),
               truncated: result.stdout.truncated || result.stderr.truncated,
               sandbox: result.sandbox ?? null,
-              ...(codeRef ? { codeRef } : {}),
+              ...(project ? { project } : {}),
               ...(codeCaptureError ? { codeCaptureError } : {}),
-              ...(exported.resultRefs && succeeded ? { resultRefs: exported.resultRefs } : {}),
-              ...(exported.resultMetadata && succeeded
-                ? { resultMetadata: exported.resultMetadata }
+              ...(exported.resultRefs && succeeded
+                ? {
+                    results: pythonResults(
+                      exported.resultRefs,
+                      exported.resultMetadata,
+                      codeRef,
+                      codeCaptureError,
+                    ),
+                  }
                 : {}),
               ...(resultCaptureError ? { resultCaptureError } : {}),
               execution: summary(
@@ -320,26 +570,39 @@ export function registerMarivoPythonTool(
           )
         } catch (error) {
           if (error instanceof MarivoPythonExecutionError) throw error
-          const cancelled = (prepared?.signal ?? exec.signal).aborted
+          const cancelled = (prepared?.signal ?? preparationSignal ?? exec.signal).aborted
           const reason = cancelled
             ? 'cancelled'
             : shellStartedAt === null
               ? 'not-started'
               : 'unknown'
           const code =
-            error instanceof CredentialServiceError && PREPARATION_CODES.has(error.code)
-              ? ` (${error.code})`
-              : ''
+            error instanceof MarivoEnvironmentError
+              ? error.code
+              : error instanceof CredentialServiceError && PREPARATION_CODES.has(error.code)
+                ? error.code
+                : shellStartedAt === null
+                  ? 'python-preparation-failed'
+                  : 'python-outcome-unknown'
+          const projectRecovery =
+            error instanceof MarivoEnvironmentError &&
+            ['project-manifest-invalid', 'project-preparation-uncertain'].includes(error.code)
+              ? error.code === 'project-preparation-uncertain'
+                ? 'Project initialization outcome is uncertain. Inspect the Workspace and public Runtime doctor before retrying; do not automatically repeat init or delete files.'
+                : 'Repair the exact Workspace root marivo.toml using the bound Runtime public contract; existing files were not overwritten.'
+              : undefined
           throw new MarivoPythonExecutionError(
             shellStartedAt === null
-              ? `Marivo Python preparation failed or was cancelled; Python was not started${code}`
+              ? `Marivo Python preparation failed or was cancelled; user Python code was not started (${code})`
               : 'Marivo Python execution outcome is unknown after an execution service failure or cancellation',
             summary(
               reason,
-              shellStartedAt === null
-                ? 'Check credentials, Workspace binding and Host execution policy before retrying.'
-                : CHECK_EFFECTS,
+              projectRecovery ??
+                (shellStartedAt === null
+                  ? 'Check credentials, Workspace binding and Host execution policy before retrying.'
+                  : CHECK_EFFECTS),
             ),
+            code,
           )
         } finally {
           prepared?.release()

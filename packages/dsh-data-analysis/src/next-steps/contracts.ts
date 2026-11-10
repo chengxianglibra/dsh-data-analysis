@@ -1,3 +1,4 @@
+import type { ObjectValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type {
   InvocationDescriptor,
   TypertRemoteContribution,
@@ -16,7 +17,7 @@ export const nextStepsInput = z
   .strictObject({
     items: z.array(z.strictObject({ label: text(40), prompt: text(1000) })).max(4),
     emptyReason: z.enum(['declined', 'no-suggestions']).optional(),
-    recordId: z.string().min(1).max(512).optional(),
+    ref: z.string().min(1).max(4096),
   })
   .superRefine(({ items, emptyReason }, ctx) => {
     if (items.length && emptyReason)
@@ -35,8 +36,8 @@ export const nextStepsNotice = z
     reportId: z.string().min(1).max(512),
     buildId: z.string().min(1).max(512),
     callId: z.string().min(1).max(512).optional(),
-    status: z.enum(['available', 'declined', 'unavailable']),
-    reason: z.enum(['no-suggestions', 'generation-incomplete', 'generation-failed']).optional(),
+    status: z.enum(['available', 'empty', 'declined', 'unavailable']),
+    reason: z.enum(['generation-incomplete', 'generation-failed']).optional(),
     items: nextStepsInput.shape.items,
   })
   .superRefine(({ status, reason, items }, ctx) => {
@@ -45,9 +46,20 @@ export const nextStepsNotice = z
     if ((status === 'unavailable') !== (reason !== undefined))
       ctx.addIssue({ code: 'custom', message: 'Unavailable notices require a reason' })
   })
+/** Supported output projection of the same identity-only receipt contract. */
+export const nextStepsReceiptValueSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    kind: { type: 'string', const: 'marivo.next-steps', required: true },
+    sessionId: { type: 'string', required: true },
+    turn: { type: 'integer', required: true },
+    callId: { type: 'string', required: true },
+  },
+} as const satisfies ObjectValueSchemaSpec
 /** A tool anchor contains identity only, never persisted recommendations. */
 export const nextStepsReceipt = z.strictObject({
-  kind: z.literal('marivo.next-steps'),
+  kind: z.literal(nextStepsReceiptValueSchema.properties.kind.const),
   sessionId: z.string(),
   turn: z.number().int().nonnegative(),
   callId: z.string(),

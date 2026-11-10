@@ -13,6 +13,7 @@
 - `packages/dsh-data-analysis/src/environment/doctor.ts`
 - `packages/dsh-data-analysis/src/environment/subprocess.ts`
 - `packages/dsh-data-analysis/src/environment/errors.ts`
+- `packages/dsh-data-analysis/src/environment/project-preparation.ts`
 - `packages/dsh-data-analysis/src/environment/summary.ts`
 - `packages/dsh-data-analysis/src/bin/environment.ts`
 
@@ -139,3 +140,7 @@ Presentation 的公开读取、来源身份与数据预算由 `tests/presentatio
 `marivo_python` 的用户代码经 DSH Shell 服务执行，并绑定当前 session 的 sandbox policy；不使用固定
 bridge runner 绕过 Host 执行边界。独立 launcher 捕获并脱敏输出后才交回 Shell，worker 在复核解释器、
 package 和 cwd 后建立公开 credential scope。实现与限制见 [凭证模块](datasource-credentials.md)。
+
+内部 `ensureMarivoProject()` 在明确项目意图下执行 exact-root manifest 检查与公开 CLI/doctor 适配，不属于 binding 或安装的隐式副作用。它按 canonical root 串行协调插件请求，在锁内重新核验 Host 上下文、manifest 和 Runtime；不接受根目录 manifest 的符号链接、不使用父目录发现、不使用 force。doctor 验证还要求 `project.marivo_toml=ok`，zero-init admission 的 `info` 不代表项目准备完成。
+
+Python 工具注入初始化 executor，使实际 init 写入经过 Harness Shell 及当前 Session sandbox policy；同一 Python 进程先核对 bound import identity，再调用公开 Marivo CLI。只读项目检查仍使用 bound checked runner。datasource configure 沿用其已有固定 authoring subprocess policy 和 credential service 取消链；该策略不是通用 OS sandbox，也不授予 Python 绕过 Host policy 的入口。取消或失败后仅检查已有影响，失败结果不自动再次初始化或清理文件。

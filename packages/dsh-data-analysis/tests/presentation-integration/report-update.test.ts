@@ -43,6 +43,12 @@ import { savePythonExecution } from '../../src/python-execution.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 import { frameSnapshot } from '../unified-analysis-ui/fixtures.ts'
+import {
+  reportReadInput,
+  reportReadOutput,
+  reportWriteInput,
+  reportWriteOutput,
+} from './report-protocol-fixture.ts'
 
 async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: DatasetSnapshot) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'analysis-ui-p2-')))
@@ -109,7 +115,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
   const session = {
     id: 'session',
     snapshotEvents: () => [
-      { type: 'tool/call', data: { callId: 'native', name: 'marivo_present', turn: 1 } },
+      { type: 'tool/call', data: { callId: 'native', name: 'marivo_report_write', turn: 1 } },
       { type: 'tool/call', data: { callId: 'code', name: 'run_code', turn: 2 } },
     ],
   } as unknown as Session
@@ -132,17 +138,12 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, dataset?: Da
     frame: { kind: 'frame-snapshot', snapshotRef: frameSnapshotRef(codeRef, frameId) },
   }
   const raw = async (args: Record<string, unknown>, code = false) =>
-    (await tool.execute(
-      args,
-      code ? { ...exec, callId: ToolCallId('child'), rootCallId: ToolCallId('code') } : exec,
-    )) as {
-      stage: 'preview' | 'save'
-      draftId?: string
-      draftRevision?: string
-      recordId?: string
-      deliveryJson: string
-      resultMetadataJson: string
-    }
+    reportWriteOutput(
+      await tool.execute(
+        reportWriteInput(args, code ? 2 : 1),
+        code ? { ...exec, callId: ToolCallId('child'), rootCallId: ToolCallId('code') } : exec,
+      ),
+    )
   const execute = async (args: Record<string, unknown>, code = false): Promise<unknown> =>
     JSON.parse((await raw(args, code)).deliveryJson)
   const present = async (args: Record<string, unknown>, code = false) =>
@@ -264,7 +265,7 @@ test('resource patches preserve unmentioned resources and reject invalid removal
   assert.deepEqual(Object.keys(document.resources), ['data'])
   assert.deepEqual(document.resources.data, before.resources.data)
   assert.equal(document.title, 'Final')
-  assert.deepEqual(JSON.parse(saved.resultMetadataJson).resources, {})
+  assert.deepEqual(saved.resultMetadata.resources, {})
   assert.equal((await readReportHistory(f.root, 'workspace', reportId!)).versions.length, 1)
 })
 
@@ -274,7 +275,7 @@ test('resource metadata only describes changed admitted resources', async (t) =>
     stage: 'preview',
     resourcePatch: { put: { data: f.resources.data } },
   })
-  assert.deepEqual(Object.keys(JSON.parse(first.resultMetadataJson).resources), ['data'])
+  assert.deepEqual(Object.keys(first.resultMetadata.resources), ['data'])
   const second = await f.raw({
     stage: 'preview',
     draftId: first.draftId,
@@ -282,14 +283,14 @@ test('resource metadata only describes changed admitted resources', async (t) =>
     resourcePatch: { put: f.resources },
     program: 'root = Stack([DatasetView("data"), AnalysisFrameView("frame")]);',
   })
-  assert.deepEqual(Object.keys(JSON.parse(second.resultMetadataJson).resources), ['frame'])
+  assert.deepEqual(Object.keys(second.resultMetadata.resources), ['frame'])
   const third = await f.raw({
     stage: 'preview',
     draftId: second.draftId,
     draftRevision: second.draftRevision,
     resourcePatch: { put: {} },
   })
-  assert.deepEqual(JSON.parse(third.resultMetadataJson).resources, {})
+  assert.deepEqual(third.resultMetadata.resources, {})
   const current = f.drafts.get('session')!.document
   assert.deepEqual(Object.keys(current.resources).sort(), ['data', 'frame'])
   const saved = await f.raw({
@@ -297,7 +298,7 @@ test('resource metadata only describes changed admitted resources', async (t) =>
     draftId: third.draftId,
     draftRevision: third.draftRevision,
   })
-  assert.deepEqual(JSON.parse(saved.resultMetadataJson).resources, {})
+  assert.deepEqual(saved.resultMetadata.resources, {})
 })
 
 test('report placement is client-owned and preview revisions publish exactly one version', async (t) => {
@@ -378,16 +379,16 @@ test('real Harness PTC composes preview, recovery and save using public identifi
       arguments: {
         description: 'Compose and recover the report draft',
         code: `
-          const first = await tools.marivo_present({stage:'preview', resourcePatch:{put:${JSON.stringify({ data: f.resources.data })}}});
-          if (first.stage !== 'preview' || !first.draftId || !first.draftRevision || first.recordId) throw new Error('preview-identity');
-          const recovered = JSON.parse((await tools.marivo_ui_read({draft:true})).definitionJson);
-          if (recovered.draftId !== first.draftId || recovered.draftRevision !== first.draftRevision) throw new Error('draft-read-identity');
-          const second = await tools.marivo_present({stage:'preview', draftId:first.draftId, draftRevision:first.draftRevision, title:'PTC reviewed'});
-          if (second.draftRevision === first.draftRevision) throw new Error('revision-not-advanced');
-          const saved = await tools.marivo_present({stage:'save', draftId:second.draftId, draftRevision:second.draftRevision});
-          if (saved.stage !== 'save' || !saved.recordId) throw new Error('save-identity');
-          const current = JSON.parse((await tools.marivo_ui_read({recordId:saved.recordId,current:true})).definitionJson);
-          if (current.recordId !== saved.recordId || current.title !== 'PTC reviewed') throw new Error('saved-read-identity');
+          const first = await tools.marivo_report_write({stage:'preview', resourcePatch:{put:${JSON.stringify({ data: f.resources.data })}}});
+          if (first.stage !== 'preview' || !first.ref) throw new Error('preview-identity');
+          const recovered = (await tools.marivo_report_read({draft:true})).definition;
+          if (recovered.ref !== first.ref) throw new Error('draft-read-identity');
+          const second = await tools.marivo_report_write({stage:'preview', ref:first.ref, title:'PTC reviewed'});
+          if (second.ref === first.ref) throw new Error('revision-not-advanced');
+          const saved = await tools.marivo_report_write({stage:'save', ref:second.ref});
+          if (saved.stage !== 'save' || !saved.ref) throw new Error('save-identity');
+          const current = (await tools.marivo_report_read({ref:saved.ref,version:"current"})).definition;
+          if (current.ref !== saved.ref || current.title !== 'PTC reviewed') throw new Error('saved-read-identity');
           console.log('PTC_PUBLIC_IDENTIFIERS_VERIFIED');
         `,
       },
@@ -457,13 +458,13 @@ test('conflict recovery reads current and draft context, then explicitly rebases
     f.raw({ stage: 'save', draftId: draft.draftId, draftRevision: draft.draftRevision }),
     (error: Error) => {
       assert.match(error.message, /report-save-conflict/)
-      assert.ok(error.message.includes(concurrent.recordId!))
+      assert.ok(error.message.includes(concurrent.ref!))
       return true
     },
   )
   const reader = createMarivoUiReadTool(f.source, f.drafts)
   const read = async (args: Record<string, unknown>) =>
-    JSON.parse(((await reader.execute(args, f.exec)) as { definitionJson: string }).definitionJson)
+    reportReadOutput(await reader.execute(reportReadInput(args), f.exec))
   assert.equal((await read({ recordId: base.recordId })).recordId, base.recordId)
   const latest = await read({ recordId: base.recordId, current: true })
   assert.equal(latest.recordId, concurrent.recordId)
@@ -572,9 +573,8 @@ test('recovered image declarations support adding resources after the image file
   await writeFile(path.join(f.root, image.path), Buffer.from('89504e470d0a1a0a', 'hex'))
   const base = await f.raw({ resourcePatch: { put: { image } } })
   const reader = createMarivoUiReadTool(f.source)
-  const restored = JSON.parse(
-    ((await reader.execute({ recordId: base.recordId }, f.exec)) as { definitionJson: string })
-      .definitionJson,
+  const restored = reportReadOutput(
+    await reader.execute(reportReadInput({ recordId: base.recordId }), f.exec),
   )
   assert.deepEqual(restored.resources.image.declaration, image)
   await rm(path.join(f.root, image.path))
@@ -716,10 +716,9 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, original.receipt))
   const bytes = await readFile(original.receipt.files.document.path)
   const read = createMarivoUiReadTool(() => ({ id: 'workspace', path: f.root }))
-  const response = (await read.execute({ recordId: document.recordId }, f.exec)) as {
-    definitionJson: string
-  }
-  const definition = JSON.parse(response.definitionJson)
+  const definition = reportReadOutput(
+    await read.execute(reportReadInput({ recordId: document.recordId }), f.exec),
+  )
   assert.equal(definition.program, document.program)
   assert.equal(definition.signatures, undefined)
   assert.deepEqual(
@@ -758,7 +757,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
     document.title,
   )
   await assert.rejects(readAnalysisRecord(f.root, 'other', document.reportId, document.buildId))
-  await assert.rejects(read.execute({ recordId: 'invalid' }, f.exec), /record-id/)
+  await assert.rejects(read.execute({ ref: 'invalid' }, f.exec), /report-ref-invalid/)
   await rm(path.join(f.root, f.captureDirectory), { recursive: true })
   await assert.rejects(f.present({ resourcePatch: { put: { data: f.resources.data } } }))
   const abort = new AbortController()
@@ -776,7 +775,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
     updated.buildId,
   )
   assert.deepEqual(await readFile(original.receipt.files.document.path), bytes)
-  assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v1')
+  assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v2')
 })
 
 test('statement updates reuse embedded snapshots without resolving Runtime and save independent versions', async (t) => {
@@ -793,7 +792,10 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
   const tool = createMarivoPresentTool(f.source, f.exec.agent!.session)
   const update = async (args: Record<string, unknown>) =>
     parsePresentationDelivery(
-      JSON.parse(((await tool.execute(args, f.exec)) as { deliveryJson: string }).deliveryJson),
+      JSON.parse(
+        ((await tool.execute(reportWriteInput(args), f.exec)) as { deliveryJson: string })
+          .deliveryJson,
+      ),
     )
   const result = await update({
     basedOnRecordId: base.recordId,

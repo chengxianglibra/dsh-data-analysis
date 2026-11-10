@@ -19,12 +19,11 @@ test('Host-admitted resource deltas update one mounted report before a slow sibl
         'root=Stack([intro, kept]); intro=TextContent("Confirmed scope"); kept=TextContent("Untouched component");',
     },
     { ...f.exec, callId: 'initial' as ToolRunContext['callId'] },
-  )) as { deliveryJson: string; draftId: string; draftRevision: string }
+  )) as { deliveryJson: string; ref: string }
   const delivery = parseDraftDelivery(JSON.parse(initial.deliveryJson))!
   const args = {
     stage: 'preview',
-    draftId: initial.draftId,
-    draftRevision: initial.draftRevision,
+    ref: initial.ref,
     resourcePatch: { put: { fast: f.declaration('2'), slow: f.declaration('1') } },
     program:
       'root=Stack([intro, kept, fast, slow]); intro=TextContent("Updated scope"); fast=DatasetView("fast", {chart:"table"}); slow=DatasetView("slow", {chart:"table"});',
@@ -43,7 +42,7 @@ const views=new ReportViews(),generation={},delivery=${JSON.stringify(delivery)}
 const rpc={call:async(_channel,endpoint,payload)=>window.hostRead(endpoint,payload)};
 views.accept(delivery,'initial',generation,${JSON.stringify(f.root)});
 function App(){useSyncExternalStore(views.subscribe,views.getSnapshot);return h(ReportView,{view:views.forTurn('session',1)[0],views,rpc})}
-window.startStream=(args,callId='present')=>views.observe(analysisCandidate({phase:'start',args:PartialArguments.fromObject(args),callId,name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),${JSON.stringify(f.root)});
+window.startStream=(args,callId='present')=>views.observe(analysisCandidate({phase:'start',args:PartialArguments.fromObject(args),callId,name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),${JSON.stringify(f.root)});
 window.acceptStream=(next,callId='present')=>views.accept(next,callId,generation,${JSON.stringify(f.root)});
 createRoot(document.getElementById('root')).render(h(App));`,
     },
@@ -99,12 +98,12 @@ createRoot(document.getElementById('root')).render(h(App));`,
   await page.getByText('Fast ready', { exact: true }).waitFor()
   assert.equal(await page.getByText('Slow ready', { exact: true }).count(), 0)
   assert.equal(await page.locator('[data-resource="slow"]').count(), 0)
-  assert.equal(f.drafts.get('session')?.document.buildId, initial.draftRevision)
+  assert.equal(f.drafts.get('session')?.document.buildId, delivery.draftRevision)
   assert.equal(await untouched!.evaluate((node) => node.isConnected), true)
   assert.equal(await surface!.evaluate((node) => node.isConnected), true)
   assert.equal(await page.locator('[data-analysis-report]').count(), 1)
   f.release()
-  const next = (await operation) as { deliveryJson: string }
+  const next = (await operation) as { deliveryJson: string; ref: string }
   await page.getByText('Slow ready', { exact: true }).waitFor()
   readGate = new Promise((resolve) => {
     releaseRead = resolve
@@ -114,19 +113,17 @@ createRoot(document.getElementById('root')).render(h(App));`,
     JSON.parse(next.deliveryJson),
   )
   await page.locator('[data-analysis-phase="draft"]').waitFor()
-  const pendingRevision = parseDraftDelivery(JSON.parse(next.deliveryJson))!
   await page.evaluate(
     (revision) =>
       Reflect.get(window, 'startStream')(
         {
           stage: 'preview',
-          draftId: revision.draftId,
-          draftRevision: revision.draftRevision,
+          ref: revision.ref,
           program: 'intro=TextContent("Following revision");',
         },
         'following',
       ),
-    pendingRevision,
+    next,
   )
   await page.waitForTimeout(100)
   assert.equal(await page.getByText('Fast ready', { exact: true }).isVisible(), true)
@@ -141,11 +138,9 @@ createRoot(document.getElementById('root')).render(h(App));`,
     await page.locator('.au-surface-body').evaluate((node) => node.getAnimations().length),
     0,
   )
-  const latest = parseDraftDelivery(JSON.parse(next.deliveryJson))!
   const replacement = {
     stage: 'preview',
-    draftId: latest.draftId,
-    draftRevision: latest.draftRevision,
+    ref: next.ref,
     resourcePatch: { put: { fast: f.declaration('4') } },
   }
   readGate = new Promise((resolve) => {
@@ -167,16 +162,14 @@ createRoot(document.getElementById('root')).render(h(App));`,
   assert.equal(await page.getByText('Fast ready', { exact: true }).count(), 0)
   assert.equal(await page.getByText('Slow ready', { exact: true }).isVisible(), true)
   assert.equal(await untouched!.evaluate((node) => node.isConnected), true)
-  const replaced = (await replacing) as { deliveryJson: string }
+  const replaced = (await replacing) as { deliveryJson: string; ref: string }
   await page.evaluate(
     (value) => Reflect.get(window, 'acceptStream')(value, 'replace'),
     JSON.parse(replaced.deliveryJson),
   )
-  const replacedDelivery = parseDraftDelivery(JSON.parse(replaced.deliveryJson))!
   const removal = {
     stage: 'preview',
-    draftId: replacedDelivery.draftId,
-    draftRevision: replacedDelivery.draftRevision,
+    ref: replaced.ref,
     resourcePatch: { remove: ['slow'] },
     program: 'root=Stack([intro, kept, fast]); slow=null;',
   }
@@ -186,7 +179,7 @@ createRoot(document.getElementById('root')).render(h(App));`,
   })
   await page.evaluate((value) => Reflect.get(window, 'startStream')(value, 'remove'), removal)
   await page.getByText('Slow ready', { exact: true }).waitFor({ state: 'hidden' })
-  const removed = (await removing) as { deliveryJson: string }
+  const removed = (await removing) as { deliveryJson: string; ref: string }
   await page.evaluate(
     (value) => Reflect.get(window, 'acceptStream')(value, 'remove'),
     JSON.parse(removed.deliveryJson),

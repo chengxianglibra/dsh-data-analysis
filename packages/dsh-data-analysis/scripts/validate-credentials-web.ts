@@ -521,6 +521,7 @@ try {
     agent,
     name: 'marivo_python',
     arguments: {
+      project: 'required',
       datasources: ['warehouse'],
       code: 'import os\nimport marivo.datasource as md\nassert "DB_PASSWORD" not in os.environ\nimport marivo.semantic as ms\nassert md.raw_sql(ms.ref.datasource("warehouse"), "SELECT 42", reason="Validate fixture execution").to_pandas().iloc[0,0] == 42\nprint("WEB_EXECUTION_OK")',
     },

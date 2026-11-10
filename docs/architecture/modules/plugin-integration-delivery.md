@@ -50,7 +50,7 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 `ensureSharedMarivoRuntime(..., { existingOnly: true })` 仅验证现有 Runtime，缺失或无效时明确
 报错，不创建目录、锁或安装。 `./client-composition` 导出可组合的浏览器 `apply`、`inject`
 及 RPC helper；普通 `./client` 仍是 Harness 自注册 bundle。组合方只激活自己的客户端行，避免
-重复执行社区客户端。兼容版本在包元数据和 `./compatibility` 中同步声明。
+重复执行社区客户端。版本在包元数据和 `./compatibility` 中同步声明。包根与 subpath 的破坏性迁移见[公开接口](public-surface.md)。
 
 ## Agent scope surface
 
@@ -60,8 +60,8 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | `marivo_datasource_configure` | 将数据源配置表单绑定到原调用并续接 | DSH 提供等价的领域配置续接 |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
-| `marivo_present` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
-| `marivo_ui_read` | 恢复准确/当前正式版本或当前 Turn 草稿的定义、资源声明与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
+| `marivo_report_write` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
+| `marivo_report_read` | 恢复准确/当前正式版本或当前 Turn 草稿的定义、资源声明与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
 semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。
@@ -75,10 +75,10 @@ semantic readiness、datasource/table inspect、Artifact materialize/export 等 
 - 输入决定分析入口。附件和 Workspace 数据文件先加载 `dsh-data-analysis-files`。已有业务语义的分析加载 `marivo-analysis`；当前任务需要共享定义或用户要求建模时加载 `marivo-semantic`。绑定 Runtime 的 live Help 提供 Marivo API。
 - 项目 HTTP 服务或脚本端点任务在绑定 Runtime 提供 `marivo-service` 时加载该 Skill，并从同一 Runtime 的 Help 获取服务契约。
 - 分析使用绑定 Workspace 的 `marivo_python`，凭据值由用户在 Harness 表单处理。各 Tool 描述给出数据源声明、配置和连接测试的适用条件，回执提供本次执行状态及修复信息。
-- 输出按用户目标选择。普通问答和简短比较可留在聊天中，用户明确索取实际文件时通过原生 `present` 交付。创建或更新可打开的分析报告、看板，以及查看分析 UI 时使用 `marivo_present`；需要计算的展示结果在原分析中捕获，已有快照直接复用。自定义布局加载展示 Skill。
+- 输出按用户目标选择。普通问答和简短比较可留在聊天中，用户明确索取实际文件时通过原生 `present` 交付。创建或更新可打开的分析报告、看板，以及查看分析 UI 时使用 `marivo_report_write`；需要计算的展示结果在原分析中捕获，已有固定资源直接复用。报告任务在数据准备前加载展示 Skill。
 - 报告把结论、支撑数据和影响解读的限制放在同一份文档中。成功保存后简短回复；交付失败则说明实际状态，回答已有证据支持的部分。
 
-Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项回答、比较分母、证据强度和未完成分支由文件 Skill 或绑定 Runtime 的分析 Skill 指导。自定义报告和看板的组件参考、版式与页面示例见[展示 Skill](presentation-skill.md)，调用约定由 `marivo_present` 工具说明披露。
+Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项回答、比较分母、证据强度和未完成分支由文件 Skill 或绑定 Runtime 的分析 Skill 指导。自定义报告和看板的组件参考、版式与页面示例见[展示 Skill](presentation-skill.md)，调用约定由 `marivo_report_write` 工具说明披露。
 数据源授权、运行身份以及快照和保存结果由代码核验。
 
 展示与文件分析 Skill 由 `dsh-data-analysis-presentation` provider 从已验证的内容寻址快照挂载；Runtime Skill 仍由

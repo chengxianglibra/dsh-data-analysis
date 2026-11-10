@@ -1,3 +1,4 @@
+import { MarivoDatasourceBridge } from './datasource/bridge.ts'
 import type { ManagedCredentialDefaults } from './datasource/defaults.ts'
 import type { CredentialStore } from './datasource/service.ts'
 import type { MarivoEnvironment } from './environment/index.ts'
@@ -15,5 +16,27 @@ export interface MarivoIntegrationV1 {
 }
 
 export { withDatasourceDefaults } from './datasource/defaults.ts'
+export { marivoCredentialStorageRef } from './datasource/shell-env.ts'
+export { ensureSharedMarivoRuntime } from './environment/runtime.ts'
+export type { SharedMarivoRuntime, SharedMarivoRuntimeConfig } from './environment/types.ts'
 export { applyWithIntegration } from './plugin.ts'
 export { registerPluginRpc } from './rpc.ts'
+
+/** Workspace authoring capabilities used by managed datasource integrations. */
+export type WorkspaceDatasourceAuthoring = Pick<
+  MarivoDatasourceBridge,
+  'inventory' | 'authoring' | 'configuration' | 'create' | 'update'
+>
+
+export function createWorkspaceDatasourceAuthoring(
+  environment: MarivoEnvironment,
+): WorkspaceDatasourceAuthoring {
+  const bridge = new MarivoDatasourceBridge(environment)
+  return {
+    inventory: (signal) => bridge.inventory(signal),
+    authoring: (signal) => bridge.authoring(signal),
+    configuration: (name, signal) => bridge.configuration(name, signal),
+    create: (input, signal) => bridge.create(input, signal),
+    update: (input, signal) => bridge.update(input, signal),
+  }
+}

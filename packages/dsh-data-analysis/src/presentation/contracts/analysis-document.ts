@@ -4,39 +4,26 @@ import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { parseAnalysisProgram } from './analysis-program.ts'
 import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
 import { validateFrameDisplay } from './frame-display.ts'
-import { frameResultReference } from './frame-result-reference.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
-import { dataframeResultReference } from './result-reference.ts'
+import { analysisResourceDeclaration, pythonCodeRef } from './resource-declaration.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
+
+export type { AnalysisResourceDeclaration } from './resource-declaration.ts'
+export { analysisResourceDeclaration } from './resource-declaration.ts'
+
+import type { AnalysisResourceDeclaration } from './resource-declaration.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
-export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v1'
+export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v2'
+export const LEGACY_ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v1'
+export type ContentReview = 'required' | 'not-needed' | 'unknown'
 const id = z
   .string()
   .min(1)
   .max(80)
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
 const text = z.string().min(1).max(512)
-const pythonCodeRef = z.strictObject({
-  executionId: z.string().uuid(),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-})
-export const analysisResourceDeclaration = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('analysis-frame'),
-    ref: frameResultReference,
-    codeRef: pythonCodeRef.optional(),
-  }),
-  z.strictObject({
-    kind: z.literal('dataframe'),
-    ref: dataframeResultReference,
-    codeRef: pythonCodeRef.optional(),
-  }),
-  z.strictObject({ kind: z.literal('dataset-snapshot'), snapshotRef: z.string().max(512) }),
-  z.strictObject({ kind: z.literal('frame-snapshot'), snapshotRef: z.string().max(512) }),
-  z.strictObject({ kind: z.literal('image-file'), path: z.string().min(1).max(4096) }),
-])
 export const analysisResourcePatch = z.strictObject({
   put: z.record(id, analysisResourceDeclaration).optional(),
   remove: z.array(id).optional(),
@@ -56,7 +43,6 @@ export const analysisPresentInput = z.strictObject({
   locale: z.enum(['zh-CN', 'en-US']).optional(),
 })
 export type AnalysisPresentInput = z.infer<typeof analysisPresentInput>
-export type AnalysisResourceDeclaration = z.infer<typeof analysisResourceDeclaration>
 const resource = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('snapshot'),
@@ -83,8 +69,7 @@ const resource = z.discriminatedUnion('kind', [
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
   }),
 ])
-const schema = z.strictObject({
-  schemaVersion: z.literal(ANALYSIS_UI_FORMAT),
+const documentFields = z.strictObject({
   workspaceId: text,
   reportId: id,
   buildId: id,
@@ -99,6 +84,18 @@ const schema = z.strictObject({
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),
 })
+const schema = z.union([
+  z.strictObject({
+    schemaVersion: z.literal(LEGACY_ANALYSIS_UI_FORMAT),
+    ...documentFields.shape,
+    contentReview: z.never().optional(),
+  }),
+  z.strictObject({
+    schemaVersion: z.literal(ANALYSIS_UI_FORMAT),
+    contentReview: z.enum(['required', 'not-needed', 'unknown']),
+    ...documentFields.shape,
+  }),
+])
 export type AnalysisDocument = z.infer<typeof schema>
 export type AnalysisResource = z.infer<typeof resource>
 export function analysisRecordId(reportId: string, buildId: string): string {
@@ -135,12 +132,18 @@ export class AnalysisViewError extends Error {
   readonly code: string
   readonly path: string
   readonly resourceName: string
+  readonly phase = 'report-validation'
+  readonly recovery: { nextAction: string }
   constructor(code: string, path: string, hint: string, resourceName: string) {
-    super(`${code} at ${path}: ${hint}`)
+    const recovery = { nextAction: hint }
+    super(
+      `${code} at ${path}: ${hint}; error=${JSON.stringify({ code, phase: 'report-validation', path, recovery })}`,
+    )
     this.name = 'AnalysisViewError'
     this.code = code
     this.path = path
     this.resourceName = resourceName
+    this.recovery = recovery
   }
 }
 const viewHints: Record<string, string> = {
@@ -288,7 +291,7 @@ export function parseSavedPresentation(value: unknown): AnalysisDocument {
     !value ||
     typeof value !== 'object' ||
     !('schemaVersion' in value) ||
-    value.schemaVersion !== ANALYSIS_UI_FORMAT
+    ![ANALYSIS_UI_FORMAT, LEGACY_ANALYSIS_UI_FORMAT].includes(String(value.schemaVersion))
   )
     throw new Error('report-version-unsupported')
   return parseAnalysisDocument(value)

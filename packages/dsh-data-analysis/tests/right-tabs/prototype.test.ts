@@ -29,6 +29,7 @@ import {
 
 const base = {
   schemaVersion: ANALYSIS_UI_FORMAT,
+  contentReview: 'not-needed',
   workspaceId: 'workspace',
   reportId: 'report',
   title: 'Saved analysis',
@@ -153,7 +154,7 @@ test('only appended canonical deliveries open; replay, settlement, duplicates an
   const call = {
     type: 'tool/call',
     seq: 1,
-    data: { turn: 1, callId: 'call', name: 'marivo_present' },
+    data: { turn: 1, callId: 'call', name: 'marivo_report_write' },
   }
   const result = {
     type: 'tool/result',
@@ -201,7 +202,7 @@ test('only appended canonical deliveries open; replay, settlement, duplicates an
     type: 'tool/ptc-dispatch',
     seq: 4,
     data: {
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       isError: false,
       rootCallId: 'root',
       subCallId: 'sub',
@@ -286,7 +287,7 @@ test('live Native and Code previews deliver successive revisions of the same dra
       },
     },
   }
-  append(call('native', 'marivo_present', 1), native)
+  append(call('native', 'marivo_report_write', 1), native)
   append(native)
   const updated = { ...draft, draftRevision: randomUUID() }
   append(call('root', 'run_code', 3), {
@@ -295,7 +296,7 @@ test('live Native and Code previews deliver successive revisions of the same dra
     data: {
       rootCallId: 'root',
       subCallId: 'sub',
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       isError: false,
       content: [{ type: draft.kind, delivery: updated }],
     },

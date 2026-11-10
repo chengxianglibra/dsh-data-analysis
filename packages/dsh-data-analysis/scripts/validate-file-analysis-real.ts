@@ -107,7 +107,7 @@ function deliveries(events: SessionEvent[], sessionId: string) {
     if (event.type === 'tool/result') raw = event.data.meta
     if (
       event.type === 'tool/ptc-dispatch' &&
-      event.data.name === 'marivo_present' &&
+      event.data.name === 'marivo_report_write' &&
       !event.data.isError
     )
       raw = event.data.content

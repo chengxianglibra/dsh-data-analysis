@@ -16,6 +16,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { parsePresentationDurableContent } from '../../src/client/presentation/delivery.ts'
+import { savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import { registerPluginRpc } from '../../src/rpc.ts'
 import { installDeepSeekValidationProvider } from '../deepseek-validation-provider.ts'
@@ -27,7 +28,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
     ctx.workspaceRegistry.list().find((w) => w.path === workspaceRoot) ??
     (await ctx.workspaceRegistry.create(workspaceRoot, '统一分析 UI P2'))
   let request: Record<string, unknown> | undefined
-  let toolName = 'marivo_present'
+  let toolName = 'marivo_report_write'
   let release: (() => void) | undefined
   let waiting = false
 
@@ -40,13 +41,15 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
         yield { type: 'finish', reason: { kind: 'stop' } }
         return
       }
-      const args = JSON.stringify(request)
+      const args = JSON.stringify(
+        toolName === 'marivo_report_write' ? { stage: 'save', ...request } : request,
+      )
       const name = toolName
       request = undefined
       const id = ToolCallId(`p2-present-${Date.now()}`)
       yield { type: 'block-start', index: 0, blockType: 'tool-call' }
       const end =
-        name === 'marivo_present' && args.includes('P3 streamed')
+        name === 'marivo_report_write' && args.includes('P3 streamed')
           ? args.indexOf('P3 streamed') + 32
           : args.length
       yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args.slice(0, end) }
@@ -94,7 +97,12 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
       signal: new AbortController().signal,
       callId: ToolCallId('p2-producer'),
       name: 'marivo_python',
-      arguments: { code: producer, datasources: ['warehouse'], timeoutMs: 120_000 },
+      arguments: {
+        code: producer,
+        project: 'required',
+        datasources: ['warehouse'],
+        timeoutMs: 120_000,
+      },
     })
     assert.equal(produced.isError, false, JSON.stringify(produced))
     const value = produced.value as { stdout: string; exitCode: number }
@@ -199,11 +207,9 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
         prompt = `请用可以选择列、排序和翻页的表格展示这个已有结果，方便我检查大整数、金额和缺失值。不是报告。已有成功引用：${JSON.stringify(inputs.dataset.resourcePatch.put)}。不需要重新分析。`
       if (endpoint === 'model-update') {
         if (last?.type !== 'tool/result') throw new Error('model-base-missing')
-        const meta = last.data.meta as {
-          receipt: { reportId: string; buildId: string; files: { document: { path: string } } }
-        }
+        const meta = parsePresentationDelivery(last.data.meta)
         const saved = JSON.parse(await readFile(meta.receipt.files.document.path, 'utf8'))
-        prompt = `请在刚才页面表格上方增加一句说明“本页仅检查已保存快照”，沿用原数据。准确基版本 ${saved.recordId}，已知 program：${saved.program}。组件签名 root 可为 Stack(children: components[])，TextContent(text: string)，DatasetView(ref: string)。`
+        prompt = `请在刚才页面表格上方增加一句说明“本页仅检查已保存快照”，沿用原数据。准确基版本 ${savedReportRef({ workspaceId: meta.receipt.workspaceId, reportId: meta.receipt.reportId, buildId: meta.receipt.buildId })}，已知 program：${saved.program}。组件签名 root 可为 Stack(children: components[])，TextContent(text: string)，DatasetView(ref: string)。`
       }
       modelAgent.followup(
         createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }),
@@ -248,7 +254,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
         return { ok: true, value: await save() }
       }
       if (endpoint !== 'status') {
-        toolName = 'marivo_present'
+        toolName = 'marivo_report_write'
         restoreMode()
         restoreMode = agent.ctx.tools.presentAs(endpoint === 'ptc' ? 'ptc' : 'native')
         if (endpoint === 'stream-tool' || endpoint === 'stream-tab')
@@ -264,9 +270,13 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
             .reverse()
             .find((e) => e.type === 'tool/result' && e.data.meta && !e.data.message.isError)
           if (latest?.type !== 'tool/result') throw new Error('missing-base')
-          const meta = latest.data.meta as { receipt: { reportId: string; buildId: string } }
+          const meta = parsePresentationDelivery(latest.data.meta)
           request = {
-            basedOnRecordId: `marivo-ui:${meta.receipt.reportId}:${meta.receipt.buildId}`,
+            ref: savedReportRef({
+              workspaceId: meta.receipt.workspaceId,
+              reportId: meta.receipt.reportId,
+              buildId: meta.receipt.buildId,
+            }),
             program:
               endpoint === 'patch'
                 ? 'intro = TextContent("P3 updated one statement; saved rows reused");'
@@ -276,7 +286,7 @@ result["metricRef"] = mv.persist_dataframe(pd.DataFrame({"amount":[Decimal("123.
           toolName = 'run_code'
           request = {
             description: 'P3 actual PTC delivery',
-            code: `await tools.marivo_present(${JSON.stringify({ resourcePatch: inputs.dataset.resourcePatch, title: 'P3 PTC' })});`,
+            code: `await tools.marivo_report_write(${JSON.stringify({ stage: 'save', resourcePatch: inputs.dataset.resourcePatch, title: 'P3 PTC' })});`,
           }
         } else if (endpoint in inputs) request = inputs[endpoint as keyof typeof inputs]
         else throw new Error('unknown-p2-case')

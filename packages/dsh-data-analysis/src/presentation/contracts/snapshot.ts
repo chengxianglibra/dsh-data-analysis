@@ -604,3 +604,18 @@ function validateInterpretation(frame: FrameSnapshotV2['frame'], invalid: () => 
     if (items > PRESENTATION_BUDGETS.rows) invalid()
   }
 }
+
+/** Shared metadata validators for report reads; data rows remain outside these contracts. */
+export const snapshotMetadataSchemas = {
+  column,
+  coverage: common.coverage,
+  fields: schema.options[1].shape.frame.shape.fields,
+  layout: schema.options[1].shape.frame.shape.layout,
+  axes: schema.options[1].shape.frame.shape.axes,
+  unavailableInterpretation: interpretation.options[0],
+  comparisonAlias: comparison.shape.alias,
+  comparisonGroups: z.array(comparison.shape.groups.element.pick({ name: true, values: true })),
+  decompositionOutputs: z.array(
+    decomposition.shape.outputs.element.pick({ role: true, name: true }),
+  ),
+}

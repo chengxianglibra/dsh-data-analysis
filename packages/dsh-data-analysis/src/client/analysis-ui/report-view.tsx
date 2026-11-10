@@ -211,8 +211,12 @@ export function ReportView({
             reading: view.reading,
             program: nextProgram,
             resources: nextResources ?? {},
-            title: candidate?.title ?? document?.title ?? saved?.receipt.title ?? 'Analysis',
-            locale: candidate?.locale ?? document?.locale ?? 'zh-CN',
+            title:
+              (streaming ? candidate?.title : undefined) ??
+              document?.title ??
+              saved?.receipt.title ??
+              'Analysis',
+            locale: (streaming ? candidate?.locale : undefined) ?? document?.locale ?? 'zh-CN',
           }
         : retained
   useLayoutEffect(() => {
@@ -252,6 +256,7 @@ export function ReportView({
           <ReportAnalysisSurface
             viewId={id}
             progress={progress}
+            contentReview={document?.contentReview ?? (document ? 'unknown' : undefined)}
             recordId={published ? document?.recordId : undefined}
             program={content.program}
             title={content.title}

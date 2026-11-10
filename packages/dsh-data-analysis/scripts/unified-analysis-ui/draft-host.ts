@@ -12,6 +12,7 @@ import {
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { draftReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import {
   type DraftDelivery,
   type PresentationDelivery,
@@ -50,7 +51,19 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
       const step = plan.step++
       const input = {
         stage: step === 2 ? 'save' : 'preview',
-        ...(step > 0 ? { draftId: draft?.draftId, draftRevision: draft?.draftRevision } : {}),
+        ...(step > 0
+          ? {
+              ref:
+                draft &&
+                draftReportRef({
+                  workspaceId: draft.workspaceId,
+                  sessionId: draft.dshSessionId,
+                  turn: draft.turn,
+                  draftId: draft.draftId,
+                  revision: draft.draftRevision,
+                }),
+            }
+          : {}),
         ...(step === 0
           ? {
               title: `${plan.mode === 'ptc' ? 'PTC' : 'Streaming'} draft`,
@@ -65,12 +78,12 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
               }
             : {}),
       }
-      const name = plan.mode === 'ptc' ? 'run_code' : 'marivo_present'
+      const name = plan.mode === 'ptc' ? 'run_code' : 'marivo_report_write'
       const args = JSON.stringify(
         plan.mode === 'ptc'
           ? {
               description: 'Validate report delivery',
-              code: `await tools.marivo_present(${JSON.stringify(input)});`,
+              code: `await tools.marivo_report_write(${JSON.stringify(input)});`,
             }
           : input,
       )

@@ -11,13 +11,13 @@ description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数�
 
 使用 Harness 提供的当前附件可读路径，或用户指定的 Workspace 文件。同名附件按消息和完整路径区分；路径不可读时说明实际问题，不猜缓存位置。在读取代码中保留准确路径，不为缩短路径复制成 Workspace 同名文件。
 
-Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路径读取。计算和最终文件生成使用绑定 Runtime，不切换 Bash 的 python/python3 或其他解释器。纯本地文件使用 pandas 或原生 DuckDB，传 `datasources: []`，无需 `md.raw_sql`、Marivo 分析 Skill、live Help 或语义建模。实际访问 Marivo datasource 时声明精确名称并查询相关契约。
+Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路径读取。计算和最终文件生成使用绑定 Runtime，不切换 Bash 的 python/python3 或其他解释器。纯本地文件使用 pandas 或原生 DuckDB，传 `project:"none"`、`datasources: []`，无需 `md.raw_sql`、Marivo 分析 Skill、live Help 或语义建模。实际访问 Marivo datasource 时声明精确名称并查询相关契约。
 
 按实际输入选择 reader、sheet、字段和解析范围，区分样本与全量。Excel `.xlsx` 可用 DuckDB `read_xlsx`，首次获取官方扩展可能联网；不承诺旧 `.xls` 或冷缓存离线读取，不临时安装 Python 依赖。
 
 每次调用是独立进程。本次调用内可以复用原生 DuckDB 连接和临时表并及时关闭，后续调用不依赖这些状态。控制读取和输出规模；SQL LIMIT 不等于扫描预算。
 
-普通文件预览无需项目初始化。首次 Marivo 分析或结果持久化前检查当前 Workspace 根目录的 `marivo.toml`；缺少时通过 `marivo_python` 中的 `sys.executable -m marivo init --project-root <当前工作区>` 初始化，不使用 `--force`，不继承父目录项目。已有无效 manifest 应报告并修复，不重建覆盖。报告流程的结果引用参考提供完整调用。
+项目分析、datasource 访问或持久化结果时传 `project:"required"`，由插件准备绑定 Workspace 的项目。根据本次返回处理无效项目或准备失败。
 
 ## 计算与证据
 
@@ -31,7 +31,7 @@ Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路
 
 遵循展示 Skill：先展示已知问题与范围，再准备数据。相同固定结果可供多个视图使用，保留生产 codeRef；确需派生时显式读取准确固定输入并持久化新结果。新计算使用完整脚本，不依赖前次内存。结果就绪后及时更新同一草稿，同批已就绪内容可连贯提交，不等全部计算完成。任意 Python 和草稿写入当前由 Harness 串行调度，单组件展示失败保留已有草稿并继续其他可做工作。纯文件结果可使用 DatasetView，无需为 FrameView 强行建模；已有合适的 governed 分析时优先保留 AnalysisFrame。
 
-在同次调用中将 `mv.persist_dataframe(result).to_dict()` 赋给变量，通过 `resultVariables` 导出该组件的引用。从结构化 resultRefs 取得完整字典，连同同次 codeRef 交给 marivo_present；project_root 必须属于当前 Workspace。stdout 不用于发现引用。新计算的读取、计算和持久化放在同次调用，后续调用通过公开固定结果 API 读取准确引用，不能访问前次 result 变量。单纯重复展示保留原引用和 codeRef，无需再调用 Python。已有外部结果缺少脚本时明确说明，不为补记录重跑。
+在同次调用中将 `mv.persist_dataframe(result).to_dict()` 赋给变量，通过 `resultVariables` 导出该组件的引用。原样把 `results[name].resource` 交给 marivo_report_write；kind 和 codeRef 由插件关联，来源或元数据失败时保留有效资源并说明缺口。stdout 不用于发现引用。新计算的读取、计算和持久化放在同次调用，后续调用通过公开固定结果 API 读取准确引用，不能访问前次 result 变量。单纯重复展示保留原引用和 codeRef，无需再调用 Python。已有外部结果缺少脚本时明确说明，不为补记录重跑。
 
 首次持久化和交付时按展示 Skill 读取其结果引用参考，持久化约束以 Marivo live Help 为准。在报告中说明输入文件与分析范围。刷新已保存报告时遵循展示 Skill 的仅资源替换流程，保持原布局和正文。
 

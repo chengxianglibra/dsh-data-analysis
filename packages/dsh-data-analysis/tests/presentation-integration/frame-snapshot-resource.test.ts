@@ -25,6 +25,7 @@ import { savePythonExecution } from '../../src/python-execution.ts'
 import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
 import { legacyFrameSnapshot } from '../unified-analysis-ui/fixtures.ts'
 import { frameSnapshotV2 } from './frame-v2-fixture.ts'
+import { reportReadInput, reportReadOutput, reportWriteInput } from './report-protocol-fixture.ts'
 
 const dataset = {
   schemaVersion: 1,
@@ -89,7 +90,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const session = {
     id: 'session',
     snapshotEvents: () => [
-      { type: 'tool/call', data: { callId: 'native', name: 'marivo_present', turn: 1 } },
+      { type: 'tool/call', data: { callId: 'native', name: 'marivo_report_write', turn: 1 } },
     ],
   } as unknown as Session
   const workspace = () => ({ id: 'workspace', path: root })
@@ -101,7 +102,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   } as unknown as ToolRunContext
   const present = async (args: Record<string, unknown>) =>
     parsePresentationDelivery(
-      JSON.parse(((await tool.execute(args, exec)) as { deliveryJson: string }).deliveryJson),
+      JSON.parse(
+        ((await tool.execute(reportWriteInput(args), exec)) as { deliveryJson: string })
+          .deliveryJson,
+      ),
     )
   const service = new MarivoPresentationFileService(
     (sessionId) => (sessionId === 'session' ? workspace() : undefined),
@@ -221,7 +225,7 @@ test('document owner checks require a v2 Frame with Host code, Session and call 
   assert.equal(parseAnalysisDocument(structuredClone(saved)).recordId, saved.recordId)
 })
 
-test('marivo_ui_read returns Frame description, axis variants and interpretation names without rows', async (t) => {
+test('marivo_report_read returns Frame description, axis variants and interpretation names without rows', async (t) => {
   const f = await fixture(t)
   const delivery = await f.present({
     resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
@@ -229,10 +233,11 @@ test('marivo_ui_read returns Frame description, axis variants and interpretation
   })
   const document = parseAnalysisDocument(await readReceiptDocument(f.root, delivery.receipt))
   const read = createMarivoUiReadTool(() => ({ id: 'workspace', path: f.root }))
-  const { definitionJson } = (await read.execute({ recordId: document.recordId }, f.exec)) as {
-    definitionJson: string
-  }
-  const frame = JSON.parse(definitionJson).resources.frame
+  const definition = reportReadOutput(
+    await read.execute(reportReadInput({ recordId: document.recordId }), f.exec),
+  )
+  const frame = definition.resources.frame
+
   assert.equal(frame.kind, 'frame')
   assert.equal(frame.description, 'Revenue by region')
   assert.deepEqual(frame.values, ['amount'])
@@ -249,7 +254,7 @@ test('marivo_ui_read returns Frame description, axis variants and interpretation
     decompositions: [],
     alignments: [],
   })
-  assert.equal(definitionJson.includes('12345678901234.5678'), false)
+  assert.equal(JSON.stringify(definition).includes('12345678901234.5678'), false)
   assert.equal(frame.rows, undefined)
   assert.equal(frame.periods, undefined)
 })

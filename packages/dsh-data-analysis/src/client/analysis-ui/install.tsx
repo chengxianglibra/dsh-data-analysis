@@ -198,7 +198,7 @@ export function installAnalysisTool(
   })
   ctx.slots.inject('tool.call.toolview', () =>
     ctx.slots.register(
-      { name: 'tool.call.toolview', key: 'marivo_present', locale: 'marivo.presentation' },
+      { name: 'tool.call.toolview', key: 'marivo_report_write', locale: 'marivo.presentation' },
       (props: ToolCallViewProps) => <Tool {...props} />,
     ),
   )

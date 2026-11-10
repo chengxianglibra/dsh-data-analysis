@@ -260,7 +260,10 @@ test('deletion ends an edit configuration request before it selects a datasource
     )
   }
   await remove(f)
-  assert.deepEqual(await task, { status: 'context-changed' })
+  assert.deepEqual(await task, {
+    status: 'context-changed',
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
 })
 
 test('authoritative deletion rejection stays actionable instead of becoming an unknown operation', async (t) => {

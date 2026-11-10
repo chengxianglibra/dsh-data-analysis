@@ -48,7 +48,7 @@ result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).res
 result_ref = mv.persist_dataframe(result).to_dict()
 ```
 
-通过独立 `marivo_python` 调用执行，传 `datasources:[]` 和 `resultVariables:{"result":"result_ref"}`。从 resultRefs.result 取得完整字典，与同次 codeRef 一起作为 marivo_present 的 `{ "kind": "dataframe", "ref": ..., "codeRef": ... }` 资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。适用的 governed 分析优先用独立 AnalysisFrame，不从文件示例推断需要先建模。
+通过独立 `marivo_python` 调用执行，传 `project:"required"`、`datasources:[]` 和 `resultVariables:{"result":"result_ref"}`。原样把 `results.result.resource` 作为 marivo_report_write 的资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。适用的 governed 分析优先用独立 AnalysisFrame，不从文件示例推断需要先建模。
 持久化的输入约束与原值精度以 Marivo live Help 为准；需要保留的业务 index 先显式变成列。
 结果由绑定 Python Runtime 读取，无需 HTTP 服务；展示不会自动重跑原分析。
 

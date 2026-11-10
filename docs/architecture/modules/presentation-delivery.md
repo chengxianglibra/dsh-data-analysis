@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-`marivo_present` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v1`），新生成的报告固定在独立 Chat 节点呈现，读者点击“在边栏查看”图标后在右侧 Tab 继续阅读。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
+`marivo_report_write` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v2`），新生成的报告固定在独立 Chat 节点呈现，读者点击“在边栏查看”图标后在右侧 Tab 继续阅读。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
 Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 
 实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
@@ -11,7 +11,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 ## 统一分析 UI 写入与增量契约
 
-`marivo_present` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。独立新结果直接交付时，`stage` 默认 `save`，并使用 `basedOnRecordId`、`resourcePatch`、`labels`、`title`、`program` 和 `locale` 构造正式版本。携带 `draftId` 或 `draftRevision` 必须显式提供 `stage`，省略返回 `analysis-draft-stage-required`，不套用直接保存默认值。
+`marivo_report_write` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。每次必须显式提供 `stage:"preview" | "save"`；省略时在访问 Workspace 前拒绝。新建报告省略 `ref`，编辑已有报告传准确 saved ref，续接草稿传最新 draft ref。`mode` 首次缺省为 edit；refresh-data 必须从 saved ref 开始。草稿继承首次模式，不允许后续切换。`onto` 只允许与 preview、draft ref 以及审阅后的当前 saved ref 一起使用。模型不再传内部 recordId、draftId 或 revision。
 
 报告工作流要求显式选择 stage：数据准备前尽早 preview，固定结果就绪后及时更新同一草稿，不等全部计算完成，最终 save 一次；相同固定结果可以供多个视图复用。计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，省略 resourcePatch。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
 
@@ -21,7 +21,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
 - Tool 不公开 `surface` 输入；新生成报告始终从 Chat 开始，位置由客户端读者控制。v2 回执与历史仍保留必填 surface 供旧记录解析，新调用固定写入 `tool`，不表示原生 tool view，也不记录读者的移动操作。
 - 成功回执表示对应的草稿更新或正式保存完成，不证明浏览器已打开或渲染；调用不等待浏览器检查或用户确认。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
-  Native 候选无需等待位置参数；身份和 stage 应先于 program 到达。
+  Native 候选不依赖字段顺序。ref/onto 已完整且有效，或整个参数对象关闭并证明相应字段省略后，才允许应用 program、resourcePatch、title 和 locale；身份未决时保持最后成功内容。
 
 资源声明如下：
 
@@ -37,7 +37,11 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 新 Frame/DataFrame 资源声明可带 `codeRef:{executionId,sha256}`，来自返回该引用的成功 `marivo_python` 调用。Host 核验 Workspace、记录摘要及登记的完整结果引用，再保存 binding，UI 通过既有 `code/read` 读取脚本。无关、失效或没有结果登记的记录拒绝关联；不从 Marivo 引用推断执行来源。省略 codeRef 的既有外部结果仍可展示并明确缺少脚本。
 
-报告数据刷新先以准确 basedOnRecordId 展示基版本草稿，再准备新固定结果并 preview 同名资源替换，最后 save 一次；已有结果可以被多个视图复用。`resourcePatch.put` 只包含刷新项，省略 program/title/locale/labels 和 remove。页面程序、组件组成、正文、标题、语言和同 ID 列的既有显示标签保留；新快照须满足原视图，失败修复不授权换图或删组件。相同声明继续复用旧内容，同路径图片也不刷新。正文静态数字不自动改写，auto 及部分分析视图仍按新结果形状判定；程序相同不证明视觉布局完全相同，也不证明原结论仍有效。
+数据更新使用 `mode:"refresh-data"` 和准确 saved ref；可先 preview 再计算，也可直接保存已准备好的结果。服务端在读取新资源前禁止 program/title/locale/labels、任何 remove 及新增资源名。原页面程序、正文、标题、语言和同 ID 列的显示标签保留；所有受影响视图及完整文档必须通过校验。比较新旧解析后的图形类型，auto 换图明确拒绝；数据条数变化导致的内部几何变化不等同于页面修改。
+
+每次 preview/save 整批原子准入：任一资源读取、视图或完整文档失败，均保留最后成功 revision、document、current 和 history；临时资源流不能成为成功草稿。调用者可显式提交已就绪子集，未提交项保持旧数据，不能自动剔除已失败资源。结果中的 changed/reused 区分真正替换与复用；同一固定引用即使更换来源记录也不冒充新计算，同路径图片继续复用。reader 的 reuseGroups 按准确固定引用分组，不按 codeRef 或相同值推断；writer 的 unchangedAliases 提示仍保留旧数据的共享别名，不自动扩大更新范围。
+
+新 Build 将 contentReview 持久写入 `presentation.json`：已有资源真正替换且存在非空 TextContent 时为 required，无静态正文时为 not-needed。旧 v1 未记录状态，读取解释为 unknown；普通 edit 继承 required，不把模型声明当成已复核证明。提示显示在报告正文之外，当前/历史重开及离线 HTML 均使用对应 Build 的事实。
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。新资源使用 `analysis-frame` / `dataframe` 和 Marivo 固定引用；历史 snapshot 声明保留原 Host provenance，
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
@@ -46,9 +50,11 @@ Dataset 图表编码引用列 ID，要求完整快照、数值列和唯一坐标
 不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
-recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不可变版本；关闭原连接或删除捕获文件后仍可读取。
+模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
 
-更新读取准确的 `basedOnRecordId`，用固定 `mergeStatements` 合并完整命名语句，再校验完整程序与资源计划
+新保存使用严格 `dsh.analysis-ui/v2`，required/not-needed/unknown 为必填 contentReview；reader 保留严格 v1 只读数据支持，缺失复核状态不推定已复核。旧 Build 文件不迁移或改写。
+
+更新读取准确 saved ref，用固定 `mergeStatements` 合并完整命名语句，再校验完整程序与资源计划
 （[analysis-program.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-program.ts)）。
 
 - 同一 patch 的语句名不可重复；新增或替换的语句合并后必须仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
@@ -58,13 +64,11 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 - 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
 - 新版本独立内嵌全部资源，以基版本 buildId 执行条件保存；冲突不自动重试，失败不改 current。
 
-`marivo_ui_read({recordId})` 读取准确已发布版本；加 `current: true` 则显式读取该报告当前版本。
-`marivo_ui_read({draft: true})` 按调用 Session/Turn 和 Workspace 核验并读取当前草稿，两类输入互斥。
-结果 `definitionJson` 包含相应版本/草稿身份、title、locale、Catalog、program、全部资源声明（包括图片）、绑定的 codeRef 及必要 schema/coverage；组件签名通过展示 Skill 的生成 Catalog 参考按需读取。
-可加 `includeCode:true` 按需读取绑定源码；顶层 sources 按 codeRef 去重，返回 available 的 code.text、code.datasources、code.resultVariables，或 unavailable 状态。未绑定 codeRef 的资源没有来源项。新结果执行记录的空 datasource 数组表示本次未声明 Marivo datasource，旧记录缺少该字段时保持未知。读取只核验当前 Workspace 的 Host 文件，不执行代码、不返回凭据；脚本未内嵌于报告 JSON，Host 记录丢失时仍可读取和复用已保存快照。
-草稿只返回 draftId/draftRevision 和可用的 basedOnRecordId，不把临时 document ID 声称为已发布 record。
-不返回 rows、不查询实时数据、不执行 Python；只在编辑上下文缺失或冲突时按需使用，不默认回读。
+`marivo_report_read({ref,version?:"exact"|"current",includeCode?})` 读取准确版本（默认 exact），current 只用于 saved ref；`{draft:true,includeCode?}` 恢复当前 Session/Turn 草稿，两类输入互斥。读取结果为结构化 definition，包含实际读取到的 ref、contentReview、reuseGroups、title、locale、Catalog、program、完整资源声明及有界 schema/coverage；不返回业务行。草稿还返回 mode 及可用的 basedOn saved ref。
 
+definition 和 sources 使用具体本地 schema 逐项校验；当前 Harness 只支持 boolean additionalProperties，无法在 PTC 中为动态 resources/resultMetadata 名称映射推导 entry 类型。Tool schema 明确披露顶层字段及来源结构，并用准确 description 标明 map entry 的列、coverage 和 Frame 元数据约束，不宣称 Host 已提供 typed map。
+
+includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available 的 code.text、datasources、resultVariables，或 unavailable。未绑定来源的资源没有来源项。记录的空 datasource 数组只代表执行未声明 Marivo datasource，旧记录缺失时保持未知。读取核验当前 Workspace 的 Host 文件，不执行代码或业务查询；源码未内嵌报告，记录丢失不阻止读取固定快照。组件签名按展示 Skill 的生成 Catalog 参考取得，不例行回读成功保存。
 报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。独立 Chat 节点使用 Host 提供的真实 Turn location 与 `groupTree: 'turn'`，稳定锚定首次候选或交付，不在保存或 Turn 结束时重新定位。它属于原 Turn，但位于工作步骤折叠区之外；原生 tool view 只保留错误说明或已保存报告入口，不重复展示草稿已更新等状态文案。
 
 首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。固定工具栏使用侧栏图标按钮，悬停或键盘聚焦显示“在边栏查看”。点击后打开一个原生 Tab，Chat 隐藏报告正文、标题和入口链接，相关 tool view 的展示状态及链接也隐藏。报告继续生成时不自动跳转。原生 openTabs inventory 确认 Tab 关闭才恢复 Chat；切换 Tab、折叠侧栏或组件卸载不改变位置。移动过的草稿保存后在同一 Tab occurrence 内切换到准确 Build 地址。
@@ -75,21 +79,21 @@ recordId 为 `marivo-ui:<reportId>:<buildId>`，由 receipt 返回并指向不�
 
 ## 报告草稿与正式保存
 
-- `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 `basedOnRecordId` 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage`、`draftId` 与 `draftRevision`。
+- `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 saved ref 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage` 和准确 draft ref。
 - 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序，resourcePatch 只更新指定资源。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
 - Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；Chat 节点与右侧 Tab 共用同一报告状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
 - `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，当前阅读位置的草稿在正式文档读取完成后原位切换到正式结果；读取间隙继续显示已有内容，历史只增加本次保存的一个版本。
-- save 原始结果直接返回 `stage` 和不可变 `recordId`；原有 `deliveryJson` 保留完整 Host envelope，客户端与 PTC durable delivery 继续复用它。
-- 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误消息包含有界 repair，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
-- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。参数流期间不会启动新资源读取；已有草稿且 patch 范围尚未确定时保持基版本，不预测资源依赖；范围确定后交给 OpenUI 按语句更新。完整 patch 保留未变声明；替换项准备期间，前端继续显示该组件此前可读的快照和配置，删除项明确移除。完整工具调用进入执行后，Host 按声明去重，依次准备新资源以避免同 Session 恢复锁竞争；每个资源通过身份、来源和快照检查后即可发送给该调用的候选视图，不等待其他资源。客户端只用与调用、Workspace 和声明匹配的临时快照，组件仍按自身配置校验。资源流不产生 draftRevision、不保存；完整程序、资源关系和总预算仍须在预览或保存前校验。失败或取消保留最后成功草稿；尚无成功草稿时可保留客户端已显示候选，不将其视为正式结果。正常 Turn 结束不显示保存失败；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。为尽早确定归属，stage、draftId/draftRevision、basedOnRecordId 或 rebaseOnRecordId 放在 program 前；迟到或不完整的身份不能触发独立 patch 预览。
-- 正式版本冲突返回 `currentRecordId`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`rebaseOnRecordId` 和相对新基版本的累计 program 与 resourcePatch 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
+- save 原始结果直接返回 `stage` 和准确 saved ref，并含 mode/contentReview/changed/reused/unchangedAliases 及结构化 resultMetadata。Host-owned deliveryJson 保留可重放完整投递身份；当前 Harness 缺少 execute 返回模型 canonical value 之外的持久 metadata 接缝，不能声称该字段已移出模型。
+- 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误包含稳定 code、phase、recovery，message 携带同一 JSON，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。
+- Native 生成期间从 Harness `PartialArguments` 读取 OpenUI Lang 的 program 前缀，基于上一成功草稿合并为临时候选，持续更新同一视图。参数流期间不会启动新资源读取；已有草稿且 patch 范围尚未确定时保持基版本，不预测资源依赖；范围确定后交给 OpenUI 按语句更新。完整 patch 保留未变声明；替换项准备期间，前端继续显示该组件此前可读的快照和配置，删除项明确移除。完整工具调用进入执行后，Host 按声明去重，依次准备新资源以避免同 Session 恢复锁竞争；每个资源通过身份、来源和快照检查后即可发送给该调用的候选视图，不等待其他资源。客户端只用与调用、Workspace 和声明匹配的临时快照，组件仍按自身配置校验。资源流不产生 draftRevision、不保存；完整程序、资源关系和总预算仍须在预览或保存前校验。失败或取消保留最后成功草稿；尚无成功草稿时可保留客户端已显示候选，不将其视为正式结果。正常 Turn 结束不显示保存失败；PTC 按 Harness 实际 dispatch 粒度更新，不承诺代码字符串中的 token 流。未出现的 ref/onto 在参数对象关闭前属于未知状态，迟到或不完整的身份均不能触发独立 patch 预览；完整 standalone 对象仍可显示候选。
+- 正式版本冲突返回 `recovery.currentRef`。Agent 读取当前正式版本和草稿、审阅差异后，可用 `stage: "preview"`、最新草稿标识、`onto` 和相对新基版本的累计 program 与 resourcePatch 显式合并；需要保留的 title/locale/labels 变更也须提交。只允许同一报告的当前版本，成功后仍需 save，保存时再次核对基版本。
 - 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。省略 program/title/locale/labels，只传相对新基版本的资源增量；无法判断资源或业务冲突时明确阻塞。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
 
 ## 单次调用与文件身份
 
 1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace，保存过程不初始化 Runtime。
-2. 更新时先解析 `basedOnRecordId` 并读取目标 Report 的准确版本。
+2. 更新时先解析 saved ref 并读取目标 Report 的准确版本。
 3. 新建时生成 report ID，更新时沿用；每次生成新 build ID 并构建完整 JSON 字节。
 4. 在同一 Workspace 的新临时目录写入 JSON 并同步，检查归属和目录身份后以一次 rename 提交。
 5. 重读校验完整 JSON 文件，再在跨进程锁内发布 current 指针并返回 receipt。指针生效前失败不破坏已有构建。
@@ -113,8 +117,8 @@ current v2/v3 均不再接受，包含此前新格式报告的旧指针；不自
 Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-log` 写入同一种 durable envelope，
 即使代码丢弃返回值也保留交付。新版写入 `tool/ptc-dispatch`，只读取该事件名称；旧 `tool/code-dispatch` 及嵌套 `tool-result` 包装不再接受。
 
-客户端要求 Native receipt 对应同一 Turn 的实际 `marivo_present` call，Code 对应同一 Turn 的 root call；
-再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文。模型可见文本包含标题、摘要、recordId、buildId 和 surface，不披露 Workspace 路径或摘要。
+客户端要求 Native receipt 对应同一 Turn 的实际 `marivo_report_write` call，Code 对应同一 Turn 的 root call；
+再核对当前 Session，按 Session/Turn/Workspace/build 去重，不解析模型正文。模型可见文本包含标题、摘要、ref、模式、资源变化及正文复核状态，不披露 Workspace 路径或摘要。
 结构化 durable envelope 保存完整 receipt，headless 通过该回执取得 JSON 产物。
 
 ## RPC 与当前指针
@@ -138,9 +142,9 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 `reports/resolve` 和 `files/read` 的 `sessionId` 与 `workspaceId` 必须恰好提供一个；`point/prepare` 同时要求二者，并通过 Session 核验 Workspace。不接受客户端路径。服务端从 Harness Workspace 成员关系推导路径，
 拒绝符号链接、非普通文件、越界、超预算、身份变化和 digest 不符，并在返回前再次核对 Workspace。
 
-`marivo_present` 的外层执行预算为 180 秒，包含新引用的 checked Python 读取，不重放生成脚本，由
+`marivo_report_write` 的外层执行预算为 180 秒，包含新引用的 checked Python 读取，不重放生成脚本，由
 [execution-policy.ts](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
-超时或取消不创建本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
+超时或取消不发布本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
 [展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，180 秒不是保证完成的时限。
 
 current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化。锁内重新比较基版本 buildId，
@@ -156,7 +160,7 @@ current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 
 默认 client 从 Workspace 会话头部的「报告」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
 只显示「报告标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
 同时间以 Report ID 稳定排序。统一列出所有已保存报告，不按生成时的 surface 分类或过滤；
-发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表只包含 `dsh.analysis-ui/v1` 记录，旧格式报告被隐藏。
+发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表包含支持的 `dsh.analysis-ui/v1` 和 v2 记录，旧格式报告被隐藏。
 
 来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
 历史版本从报告正文的「历史版本」入口打开，版本切换读取精确 receipt，历史只读；返回当前版本显式重新 resolve。

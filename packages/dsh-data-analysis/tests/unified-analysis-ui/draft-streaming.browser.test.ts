@@ -30,7 +30,7 @@ declare global {
   }
 }
 
-test('drafts on both surfaces render new text during the argument stream and roll back failed candidates', async () => {
+test('drafts on both surfaces admit resolved candidates and roll back failed edits', async () => {
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-draft-streaming-')))
   const browser = await chromium.launch()
   try {
@@ -94,29 +94,31 @@ import {PartialArguments} from '@deepseek-ai/dsh-util-values';
 import {analysisCandidate} from './src/client/analysis-ui/candidate.ts';
 import {ReportViews} from './src/client/analysis-ui/report-views.ts';
 import {ReportView} from './src/client/analysis-ui/report-view.tsx';
+import {draftReportRef,savedReportRef} from './src/presentation/contracts/report-ref.ts';
 const documentValue = ${JSON.stringify(document)};
 const views=new ReportViews(), generation={}, draftId=${JSON.stringify(draftId)};
+const currentDraftRef=()=>draftReportRef({workspaceId:'workspace',sessionId:'session',turn:1,draftId,revision:documentValue.buildId});
 let surface='tool',args,callId='first',savedMode=false,hostKey=0,readGate,release;
 const root=createRoot(document.getElementById('root'));
 const receipt=${JSON.stringify(receipt)},file=${JSON.stringify(file)};
 const rpc={call:async(_channel,endpoint)=>{await readGate; return {ok:true,value:endpoint==='reports/history'?{workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,currentBuildId:documentValue.buildId,versions:[{receipt,publishedAt:'2026-11-09T00:00:00.000Z',source:{kind:'agent',sessionId:'session',surface}}]}:endpoint==='files/read'?file:documentValue}}};
 function App(){useSyncExternalStore(views.subscribe,views.getSnapshot);const view=views.forTurn('session',1).at(-1);return view ? h('div',{key:hostKey,'data-surface':surface},h(ReportView,{view,views,rpc})):null;}
-function observe(){views.observe(analysisCandidate({phase:'preparing',args,callId,name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),'/workspace');}
+function observe(){views.observe(analysisCandidate({phase:'preparing',args,callId,name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),'/workspace');}
 window.draftTest={
 holdReads(){readGate=new Promise(resolve=>{release=resolve});},
 releaseReads(){release?.();readGate=undefined;},
 settle(){views.settle('session');},
-patch(program){callId='patch';args=PartialArguments.fromObject({stage:'preview',draftId,draftRevision:documentValue.buildId,resourcePatch:{},program});observe();},
+patch(program){callId='patch';args=PartialArguments.fromObject({stage:'preview',ref:currentDraftRef(),resourcePatch:{},program});observe();},
 move(){hostKey++;root.render(h(App));},
-start(nextSurface){views.revoke('session');surface=nextSurface;savedMode=false;callId='first';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',program:'root = TextContent("First streamed text'}).slice(0,-2));observe();},
+start(nextSurface){views.revoke('session');surface=nextSurface;savedMode=false;callId='first';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',program:'root = TextContent("First streamed text");'} ));observe();},
 preview(){views.accept({kind:'marivo.presentation.draft',dshSessionId:'session',workspaceId:'workspace',turn:1,surface,draftId,draftRevision:documentValue.buildId},callId,generation,'/workspace');},
-stream(text){callId='next';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',draftId,draftRevision:documentValue.buildId,resourcePatch:{},program:'intro = TextContent("'+text+'");'}).slice(0,-2));observe();},
+stream(text){callId='next';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',ref:currentDraftRef(),resourcePatch:{},program:'intro = TextContent("'+text+'");'}));observe();},
 fail(){const view=views.forTurn('session',1).at(-1);views.observe({...view.candidate,phase:'failed'},'/workspace');},
 save(){views.accept({kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',draftId,receipt},'save',generation,'/workspace');},
-savedBase(){views.revoke('session');savedMode=true;callId='base';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',basedOnRecordId:documentValue.recordId,resourcePatch:{},program:'intro = TextContent("Saved base prefix");'}).slice(0,-2));observe();},
-lateResourceView(){callId='unknown-resource-view';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',draftId,draftRevision:documentValue.buildId,program:'intro = TextContent("Scope while patch arrives"); picture = Image("Candidate replacement", "image");'}).slice(0,-1));observe();},
-lateResources(){callId=savedMode?'base':'late-resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("Pending resource scope");'}).slice(0,-1));observe();},
-replaceResources(){callId=savedMode?'base':'resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{basedOnRecordId:documentValue.recordId}:{draftId,draftRevision:documentValue.buildId}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resourcePatch":{"put":{"image":{"kind":"image-file","path":"new');observe();}
+savedBase(){views.revoke('session');savedMode=true;callId='base';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',ref:savedReportRef({workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,buildId:documentValue.buildId}),resourcePatch:{},program:'intro = TextContent("Saved base prefix");'}));observe();},
+lateResourceView(){callId='unknown-resource-view';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',ref:currentDraftRef(),program:'intro = TextContent("Scope while patch arrives"); picture = Image("Candidate replacement", "image");'}).slice(0,-1));observe();},
+lateResources(){callId=savedMode?'base':'late-resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{ref:savedReportRef({workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,buildId:documentValue.buildId})}:{ref:currentDraftRef()}),program:'intro = TextContent("Pending resource scope");'}).slice(0,-1));observe();},
+replaceResources(){callId=savedMode?'base':'resources';args=new PartialArguments();args.append(JSON.stringify({surface,stage:'preview',...(savedMode?{ref:savedReportRef({workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,buildId:documentValue.buildId})}:{ref:currentDraftRef()}),program:'intro = TextContent("New resource scope");'}).slice(0,-1)+',"resourcePatch":{"put":{"image":{"kind":"image-file","path":"new');observe();}
 };
 root.render(h(App));`,
       },

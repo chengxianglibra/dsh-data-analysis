@@ -38,7 +38,12 @@ test('configuration watch reaches the tab model and selecting an existing dataso
   const context = model.getSnapshot().requests[0]!.context!
   assert.equal(context.name, 'warehouse')
   await model.start(context, 'submit', { DB_PASSWORD: 'browser-canary' })
-  assert.deepEqual(await task, { status: 'ok', name: 'warehouse', latency_ms: 1 })
+  assert.deepEqual(await task, {
+    status: 'ok',
+    name: 'warehouse',
+    latency_ms: 1,
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
   assert.doesNotMatch(JSON.stringify(model.getSnapshot()), /browser-canary/)
 })
 

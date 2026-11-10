@@ -9,11 +9,11 @@ export function savedResultContext(document: Pick<AnalysisDocument, 'resources'>
     ? {
         resultRef: declaration.ref,
         usage:
-          'Saved fixed result, not a new query. Read data through Marivo using this exact resultRef in the bound Runtime/project; verify its identity and report read failures. Use marivo_ui_read only for report organization.',
+          'Saved fixed result, not a new query. Read data through Marivo using this exact resultRef in the bound Runtime/project; verify its identity and report read failures. Use marivo_report_read only for report organization.',
       }
     : {
         resultRef: null,
         usage:
-          'Legacy captured snapshot without a complete Marivo result reference. Do not reconstruct a result reference or silently rerun analysis. marivo_ui_read reads report organization, not business rows.',
+          'Legacy captured snapshot without a complete Marivo result reference. Do not reconstruct a result reference or silently rerun analysis. marivo_report_read reads report organization, not business rows.',
       }
 }

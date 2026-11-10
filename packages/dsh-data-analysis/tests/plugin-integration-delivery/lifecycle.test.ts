@@ -29,6 +29,7 @@ function fixture(count = 1) {
     closes = 0
   const states = Array.from({ length: count + 1 }, (_, index) => {
     const resources = new Map<string, unknown>([['ordinary', {}]])
+    const toolDefinitions = new Map<string, ToolDefinition>()
     const register = (key: string, value: unknown) => {
       if (index === failAgent && key === fault) throw new Error(`injected:${key}`)
       resources.set(key, value)
@@ -41,7 +42,17 @@ function fixture(count = 1) {
     const agent = {
       session: { id: String(index), snapshotEvents: () => [] },
       ctx: {
-        tools: { register: (tool: ToolDefinition) => register(`tool:${tool.name}`, tool) },
+        tools: {
+          register: (tool: ToolDefinition) => {
+            const stop = register(`tool:${tool.name}`, tool)
+            toolDefinitions.set(tool.name, tool)
+            return () => {
+              if (toolDefinitions.get(tool.name) === tool) toolDefinitions.delete(tool.name)
+              stop()
+            }
+          },
+          get: (name: string) => toolDefinitions.get(name),
+        },
         systemPrompt: {
           section: (section: { name: string }) => register(`prompt:${section.name}`, section),
         },
@@ -93,7 +104,7 @@ for (const fault of [
   'tool:marivo_datasource_test',
   'tool:marivo_datasource_configure',
   'tool:marivo_python',
-  'tool:marivo_present',
+  'tool:marivo_report_write',
   'tool:marivo_next_steps',
   'hook:tools/result:1',
   'hook:agent/pre-step:2',

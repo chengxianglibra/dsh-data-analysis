@@ -20,6 +20,7 @@ import {
   mergeAnalysisProgram,
   parseAnalysisProgram,
 } from '../../src/presentation/contracts/analysis-program.ts'
+import { draftReportRef, savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 
 const generation = {} as ConnectionGeneration
 function call(args: PartialArguments, callId = 'call'): PreparingToolCall {
@@ -27,7 +28,7 @@ function call(args: PartialArguments, callId = 'call'): PreparingToolCall {
     phase: 'preparing',
     args,
     callId,
-    name: 'marivo_present',
+    name: 'marivo_report_write',
     turn: 1,
     step: 1,
     time: 1,
@@ -117,21 +118,26 @@ test('draft identifiers without an explicit stage never project a save action', 
 })
 test('Native prefixes stream in Chat without model-controlled placement', () => {
   const args = new PartialArguments()
-  args.append('{"surface":"to')
+  args.append('{"stage":"preview","surface":"to')
   assert.equal(analysisCandidate(call(args), 's', 'w', generation).surface, 'tool')
   args.append('ol","program":"root = TextContent(\\"Native')
   const prefix = analysisCandidate(call(args), 's', 'w', generation)
-  assert.equal(prefix.preview, true)
+  assert.equal(
+    prefix.preview,
+    false,
+    'unseen optional identity remains unresolved in an open object',
+  )
   assert.equal(prefix.complete, false)
   assert.match(prefix.program, /Native/)
   args.append(' prefix\\");"}')
   assert.equal(analysisCandidate(call(args), 's', 'w', generation).complete, true)
+  assert.equal(analysisCandidate(call(args), 's', 'w', generation).preview, true)
   const late = PartialArguments.fromText(
-    '{"program":"root = TextContent(\\"Late\\");","surface":"tab"}',
+    '{"stage":"preview","program":"root = TextContent(\\"Late\\");","surface":"tab"}',
   )
   assert.equal(analysisCandidate(call(late), 's', 'w', generation).preview, true)
   const base = new PartialArguments()
-  base.append('{"surface":"tool","basedOnRecordId":"marivo-ui:a:')
+  base.append('{"stage":"preview","ref":"mr1:s:')
   assert.equal(analysisCandidate(call(base), 's', 'w', generation).basedOnRecordId, undefined)
 })
 test('call projection isolates Session, Workspace, connection and PTC child ownership and revokes candidates', () => {
@@ -183,7 +189,7 @@ test('reused call IDs keep cancelled, live and settled candidates in their ownin
     seq: 10,
     time: 1,
     callId: 'reused',
-    name: 'marivo_present',
+    name: 'marivo_report_write',
     args,
     call: null,
     callTime: null,
@@ -196,16 +202,17 @@ test('reused call IDs keep cancelled, live and settled candidates in their ownin
   assert.equal(store.get('s', 2, 'reused')?.phase, 'failed')
 })
 
-test('a late unfinished base ID blocks standalone patch preview until its identity is complete', () => {
+test('a late unfinished ref blocks patch preview until its complete validated identity arrives', () => {
   const args = new PartialArguments()
+  const ref = savedReportRef({ workspaceId: 'w', reportId: 'a', buildId: 'b' })
   args.append(
-    '{"surface":"tool","program":"root = TextContent(\\"patch\\");","basedOnRecordId":"marivo-ui:a:',
+    JSON.stringify({ stage: 'preview', program: 'root = TextContent("patch");', ref }).slice(0, -4),
   )
   const partial = analysisCandidate(call(args), 's', 'w', generation)
   assert.equal(partial.complete, true)
   assert.equal(partial.basedOnRecordId, undefined)
   assert.equal(partial.preview, false)
-  args.append('b"}')
+  args.append(ref.slice(-2) + '"}')
   const complete = analysisCandidate(call(args), 's', 'w', generation)
   assert.equal(complete.basedOnRecordId, 'marivo-ui:a:b')
   assert.equal(complete.preview, true)
@@ -256,4 +263,106 @@ test('OpenUI owns incomplete replacements, missing siblings and explicit deletio
     false,
   )
   assert.match(JSON.stringify(initial.root), /First text/)
+})
+
+for (const field of ['ref', 'onto'] as const) {
+  test(`candidate waits when ${field} key has not arrived or its value is incomplete`, () => {
+    const args = new PartialArguments()
+    const saved = savedReportRef({ workspaceId: 'w', reportId: 'report', buildId: 'current' })
+    const draft = draftReportRef({
+      workspaceId: 'w',
+      sessionId: 's',
+      turn: 1,
+      draftId: '11111111-1111-4111-8111-111111111111',
+      revision: '22222222-2222-4222-8222-222222222222',
+    })
+    const prefix = {
+      stage: 'preview',
+      program: 'note = TextContent("New conclusion");',
+      resourcePatch: {},
+      title: 'New title',
+      locale: 'en-US',
+      ...(field === 'onto' ? { ref: draft } : {}),
+    }
+    args.append(JSON.stringify(prefix).slice(0, -1))
+    assert.equal(analysisCandidate(call(args), 's', 'w', generation).preview, false)
+    args.append(',"' + field + '":"mr1:')
+    assert.equal(analysisCandidate(call(args), 's', 'w', generation).preview, false)
+    const identity = saved
+    args.append(identity.slice(4) + '"')
+    const beforeClose = analysisCandidate(call(args), 's', 'w', generation)
+    assert.equal(beforeClose.preview, field === 'onto')
+    if (field === 'ref') assert.equal(beforeClose.basedOnRecordId, undefined)
+    args.append('}')
+    const complete = analysisCandidate(call(args), 's', 'w', generation)
+    assert.equal(complete.preview, true)
+    assert.equal(
+      field === 'ref' ? complete.basedOnRecordId : complete.rebaseOnRecordId,
+      'marivo-ui:report:current',
+    )
+  })
+}
+test('closed standalone arguments establish omitted identities, while explicit complete rebase identity permits a prefix', () => {
+  const args = new PartialArguments()
+  args.append(
+    JSON.stringify({
+      stage: 'preview',
+      program: 'root = TextContent("Standalone");',
+      resourcePatch: {},
+    }).slice(0, -1),
+  )
+  assert.equal(analysisCandidate(call(args), 's', 'w', generation).preview, false)
+  args.append('}')
+  assert.equal(analysisCandidate(call(args), 's', 'w', generation).preview, true)
+  const ref = draftReportRef({
+    workspaceId: 'w',
+    sessionId: 's',
+    turn: 1,
+    draftId: '11111111-1111-4111-8111-111111111111',
+    revision: '22222222-2222-4222-8222-222222222222',
+  })
+  const onto = savedReportRef({ workspaceId: 'w', reportId: 'report', buildId: 'current' })
+  const prefix = new PartialArguments()
+  prefix.append(
+    JSON.stringify({ stage: 'preview', ref, onto, program: 'note = TextContent("Streaming' }).slice(
+      0,
+      -2,
+    ),
+  )
+  assert.equal(prefix.closed(), false)
+  assert.equal(analysisCandidate(call(prefix), 's', 'w', generation).preview, true)
+  const invalid = PartialArguments.fromObject({
+    stage: 'save',
+    ref,
+    onto,
+    program: 'root = TextContent("Bad");',
+  })
+  assert.equal(analysisCandidate(call(invalid), 's', 'w', generation).preview, false)
+})
+
+test('onto arriving before ref cannot change the effective base until ref is complete', () => {
+  const onto = savedReportRef({ workspaceId: 'w', reportId: 'report', buildId: 'current' })
+  const ref = draftReportRef({
+    workspaceId: 'w',
+    sessionId: 's',
+    turn: 1,
+    draftId: '11111111-1111-4111-8111-111111111111',
+    revision: '22222222-2222-4222-8222-222222222222',
+  })
+  const args = new PartialArguments()
+  args.append(
+    JSON.stringify({
+      stage: 'preview',
+      program: 'root = TextContent("Patch");',
+      resourcePatch: {},
+      onto,
+    }).slice(0, -1),
+  )
+  const waiting = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(waiting.preview, false)
+  assert.equal(waiting.rebaseOnRecordId, undefined)
+  args.append(',"ref":' + JSON.stringify(ref) + '}')
+  const ready = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(ready.preview, true)
+  assert.equal(ready.rebaseOnRecordId, 'marivo-ui:report:current')
 })

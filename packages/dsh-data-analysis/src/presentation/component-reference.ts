@@ -4,6 +4,7 @@ import { parseAnalysisProgram } from './contracts/analysis-program.ts'
 import type { ComponentEnvelope, ComponentRequest } from './contracts/component-reference.ts'
 import { datasetDisplaySchema, datasetViewSchema } from './contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from './contracts/frame-view.ts'
+import { reportRefFromRecordId } from './contracts/report-ref.ts'
 import { componentReferenceLabel, selectionModelText } from './contracts/selection-text.ts'
 import { datasetFromDocument } from './dataset-reference.ts'
 import { frameFromDocument } from './frame-reference.ts'
@@ -65,7 +66,7 @@ export function componentFromDocument(document: AnalysisDocument, request: Compo
   return { envelope, snapshot, view: target.view, display: target.display }
 }
 
-/** Fixed result identity for reading data with Marivo; report organization remains in marivo_ui_read. */
+/** Fixed result identity for reading data with Marivo; report organization remains in marivo_report_read. */
 export function componentModelText(
   document: Pick<AnalysisDocument, 'resources'>,
   request: ComponentRequest,
@@ -73,7 +74,7 @@ export function componentModelText(
   display: unknown,
 ): string {
   return selectionModelText('component', componentReferenceLabel(request), {
-    recordId: request.recordId,
+    ref: reportRefFromRecordId(request.recordId, request.workspaceId),
     resource: request.resourceName,
     component: {
       kind: request.component.kind,

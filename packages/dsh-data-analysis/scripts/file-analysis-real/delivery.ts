@@ -108,7 +108,7 @@ export async function runFileDelivery(o: Options) {
       ),
       `${expected}: declaration must correspond to ${mode} call`,
     )
-    assert.ok(!calls(events).some((entry) => entry.name === 'marivo_present'))
+    assert.ok(!calls(events).some((entry) => entry.name === 'marivo_report_write'))
     return declarations
   }
   const preview = async (
@@ -294,7 +294,7 @@ export async function runFileDelivery(o: Options) {
     assert.equal(presented(answer.events).length, 0)
     assert.ok(
       !calls(answer.events).some((entry) =>
-        ['present', 'marivo_present', 'write', 'edit'].includes(entry.name),
+        ['present', 'marivo_report_write', 'write', 'edit'].includes(entry.name),
       ),
     )
     await record('text-only answer', 'autonomous model', standard)
@@ -315,7 +315,7 @@ export async function runFileDelivery(o: Options) {
     assert.equal(presented(comparison.events).length, 0)
     assert.ok(
       !calls(comparison.events).some((entry) =>
-        ['marivo_present', 'present', 'marivo_help'].includes(entry.name),
+        ['marivo_report_write', 'present', 'marivo_help'].includes(entry.name),
       ),
       'A short file comparison stays in chat without report delivery or Marivo Help',
     )
@@ -415,7 +415,7 @@ export async function runFileDelivery(o: Options) {
     assert.equal(presented(unavailable.events).length, 0)
     assert.ok(
       !calls(unavailable.events).some((entry) =>
-        ['present', 'marivo_present'].includes(entry.name),
+        ['present', 'marivo_report_write'].includes(entry.name),
       ),
     )
     assert.deepEqual(JSON.parse(await readFile(path.join(workspace, 'summary.json'), 'utf8')), {

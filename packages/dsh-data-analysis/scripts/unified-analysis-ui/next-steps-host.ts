@@ -38,6 +38,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
   const sessionId = SessionId('next-steps-validation')
   let plan: { mode: 'native' | 'ptc'; step: number } | undefined
   let release: (() => void) | undefined
+  let savedRef: string | undefined
   class Adapter extends LlmAdapter {
     override async resolveModel(provider: string, model: string) {
       return { provider, id: model, name: model }
@@ -52,7 +53,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
         await waitForNextStepsAdvance(options.signal, (value) => {
           release = value
         })
-      const target = step === 0 ? 'marivo_present' : 'marivo_next_steps'
+      const target = step === 0 ? 'marivo_report_write' : 'marivo_next_steps'
       const params =
         step === 0
           ? {
@@ -61,6 +62,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
               program: 'root=TextContent("本期收入有所下降，变化主要集中在最后一周。");',
             }
           : {
+              ref: savedRef,
               items: [
                 {
                   label: '按地区拆解收入下降',
@@ -93,6 +95,19 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
     { cwd: workspaceRoot },
   )
   await workspace.attachSession(sessionId)
+  ctx.on('tools/result', (exec, result) => {
+    if (exec.agent === agent && exec.name === 'marivo_report_write' && !result.isError) {
+      const value = result.value
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        value.stage === 'save' &&
+        typeof value.ref === 'string'
+      )
+        savedRef = value.ref
+    }
+  })
   let restore = agent.ctx.tools.presentAs('native')
   let modelAgent: typeof agent | undefined
   ctx.effect(() =>
@@ -128,7 +143,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
             )
             modelAgent.ctx.tools.presentAs('native')
             modelAgent.ctx.tools.guard((exec) =>
-              ['marivo_present', 'marivo_next_steps', 'marivo_ui_read'].includes(exec.name)
+              ['marivo_report_write', 'marivo_next_steps', 'marivo_report_read'].includes(exec.name)
                 ? undefined
                 : 'This acceptance probe only exercises ready report delivery and follow-up suggestions.',
             )
@@ -143,7 +158,7 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
                   {
                     type: 'text',
                     text:
-                      '本次验证已就绪报告的交付，不查询数据、不执行Python、不探索Help或文件。请直接调用 marivo_present，参数 stage=save、title=月度收入分析、locale=zh-CN、program 使用以下已验证程序：root=TextContent("2026年7月至10月收入分别为100、110、100、90万元。10月较9月减少10万元，环比下降10%。8月后连续两个月下降。只有月份和收入字段，不能判断地区、渠道或客户层面的原因。"); 只保存一次，推荐应有增量价值，不重复这些已知结论。' +
+                      '本次验证已就绪报告的交付，不查询数据、不执行Python、不探索Help或文件。请直接调用 marivo_report_write，参数 stage=save、title=月度收入分析、locale=zh-CN、program 使用以下已验证程序：root=TextContent("2026年7月至10月收入分别为100、110、100、90万元。10月较9月减少10万元，环比下降10%。8月后连续两个月下降。只有月份和收入字段，不能判断地区、渠道或客户层面的原因。"); 只保存一次，推荐应有增量价值，不重复这些已知结论。' +
                       (endpoint === 'model-optout'
                         ? '这次明确不要提供下一步推荐。'
                         : '完成后按插件流程提供有依据的下一步推荐。'),

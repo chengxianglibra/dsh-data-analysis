@@ -1,5 +1,7 @@
 export type EnvironmentFailureCode =
   | 'project-root-invalid'
+  | 'project-manifest-invalid'
+  | 'project-preparation-uncertain'
   | 'python-path-relative'
   | 'python-unavailable'
   | 'shared-runtime-config-invalid'

@@ -3,9 +3,11 @@ import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/clie
 import {
   type AnalysisDocument,
   type AnalysisPresentInput,
+  analysisRecordId,
   analysisResourcePatch,
   sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
+import { parseReportRef } from '../../presentation/contracts/report-ref.ts'
 import { PRESENTATION_BUDGETS } from '../../presentation/contracts/types.ts'
 import type { DraftDelivery } from '../../presentation/receipt.ts'
 import { type PresentationDelivery, parsePresentationDelivery } from '../../presentation/receipt.ts'
@@ -60,7 +62,6 @@ export function analysisCandidate(
 ): AnalysisCandidate {
   const args = block.args
   const program = args.textPrefix('program', PRESENTATION_BUDGETS.text) ?? ''
-  const keys = args.keys()
   const result = analysisToolDelivery(block)
   const draft =
     'kind' in block && !block.isError
@@ -76,6 +77,30 @@ export function analysisCandidate(
     ? analysisResourcePatch.safeParse(args.value('resourcePatch'))
     : undefined
   const locale = args.complete('locale') ? args.text('locale') : undefined
+  const readRef = (field: 'ref' | 'onto') => {
+    if (!args.complete(field)) return undefined
+    try {
+      const ref = parseReportRef(args.text(field))
+      return ref.workspaceId === workspaceId &&
+        (ref.kind === 'saved' || ref.sessionId === sessionId)
+        ? ref
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const ref = readRef('ref'),
+    onto = readRef('onto')
+  // A key not seen in an open object may still arrive later. Only a closed
+  // object proves omission; completed values establish their own identities.
+  const refResolved = args.has('ref') ? Boolean(ref) : args.closed()
+  const ontoResolved = args.has('onto')
+    ? Boolean(
+        onto && onto.kind === 'saved' && ref?.kind === 'draft' && args.text('stage') === 'preview',
+      )
+    : args.closed()
+  const identityResolved = refResolved && ontoResolved
+
   return {
     sessionId,
     workspaceId,
@@ -89,23 +114,26 @@ export function analysisCandidate(
         ? 'preview'
         : args.complete('stage') && args.text('stage') === 'save'
           ? 'save'
-          : keys.includes('draftId') || keys.includes('draftRevision') || keys.includes('stage')
-            ? undefined
-            : 'save',
-    draftId: args.complete('draftId') ? args.text('draftId') : undefined,
-    draftRevision: args.complete('draftRevision') ? args.text('draftRevision') : undefined,
-    rebaseOnRecordId: args.complete('rebaseOnRecordId') ? args.text('rebaseOnRecordId') : undefined,
+          : undefined,
+    draftId: ref?.kind === 'draft' ? ref.draftId : undefined,
+    draftRevision: ref?.kind === 'draft' ? ref.revision : undefined,
+    rebaseOnRecordId:
+      identityResolved && onto?.kind === 'saved'
+        ? analysisRecordId(onto.reportId, onto.buildId)
+        : undefined,
     ...(draft?.dshSessionId === sessionId && draft.workspaceId === workspaceId ? { draft } : {}),
     preview:
-      (!keys.includes('draftId') || (args.complete('draftId') && args.complete('draftRevision'))) &&
-      (!keys.includes('stage') || args.complete('stage')) &&
-      (!keys.includes('rebaseOnRecordId') || args.complete('rebaseOnRecordId')) &&
-      (!keys.includes('basedOnRecordId') || args.complete('basedOnRecordId')) &&
+      args.complete('stage') &&
+      ['preview', 'save'].includes(args.text('stage') ?? '') &&
+      identityResolved &&
       !args.invalid &&
       !args.stringExceeds('program', PRESENTATION_BUDGETS.text),
     program,
     complete: args.complete('program'),
-    basedOnRecordId: args.complete('basedOnRecordId') ? args.text('basedOnRecordId') : undefined,
+    basedOnRecordId:
+      identityResolved && ref?.kind === 'saved'
+        ? analysisRecordId(ref.reportId, ref.buildId)
+        : undefined,
     title: args.complete('title') ? args.text('title') : undefined,
     locale: locale === 'en-US' || locale === 'zh-CN' ? locale : undefined,
     resourcePatch: patch?.success ? patch.data : undefined,
@@ -189,7 +217,7 @@ export class AnalysisCandidates {
     const visit = (block: ToolCallBlock, inheritedTurn?: number) => {
       const turn =
         'turn' in block ? block.turn : (inheritedTurn ?? analysisToolDelivery(block)?.turn)
-      if (block.name === 'marivo_present' && turn !== undefined) {
+      if (block.name === 'marivo_report_write' && turn !== undefined) {
         const key = candidateKey(sessionId, turn, block.callId),
           old = this.#items.get(key)
         const next = analysisCandidate(block, sessionId, workspaceId, generation, old, turn)

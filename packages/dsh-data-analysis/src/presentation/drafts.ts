@@ -7,6 +7,7 @@ import { PresentationRecoveryError, unavailableDraft } from './recovery.ts'
 export interface AnalysisDraft {
   readonly delivery: DraftDelivery
   readonly workspacePath: string
+  readonly mode?: 'edit' | 'refresh-data'
   readonly baseBuildId: string | null
   readonly document: AnalysisDocument
 }
@@ -158,7 +159,7 @@ export class AnalysisDrafts {
     if (this.#operations.has(sessionId))
       throw new PresentationRecoveryError(
         'analysis-draft-busy',
-        'Wait for the in-flight presentation call to settle, then use marivo_ui_read({draft:true}) to review the latest revision before applying an edit. Do not run draft mutations in parallel.',
+        'Wait for the in-flight presentation call to settle, then use marivo_report_read({draft:true}) to review the latest revision before applying an edit. Do not run draft mutations in parallel.',
       )
     const operation = { turn }
     this.#operations.set(sessionId, operation)

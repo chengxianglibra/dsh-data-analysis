@@ -161,3 +161,7 @@ compaction 恢复、Environment 替换、普通工具持续可见和 controller 
 
 `npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding
 上验证实时 inventory、focused Help parity、混合有效/无效 target 的独立结果，以及 Skill 激活后的根 Help 注入。
+
+## 可重放披露身份
+
+当前 Harness 的 execute 只返回 canonical JSON，presentationMeta 是 args/value 的纯投影，没有独立的可持久 Host metadata 返回通道。因此本轮保留 Host-owned environment.fingerprint、bodyDigest 与 delivery，Native 和 PTC 均可重放；不再通过一次性内存队列关联身份。渲染正文省略这些 bookkeeping 不代表 PTC canonical value 已隐藏它们。逐 target 失败使用 code、phase、message 和具体 recovery，成功正文继续可用；取消和信任边界仍中止调用。

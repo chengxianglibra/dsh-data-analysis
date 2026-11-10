@@ -1,6 +1,7 @@
 /** Opt-in acceptance: real Harness + bound Python, isolated files, no model or database calls. */
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test, { type TestContext } from 'node:test'
@@ -29,12 +30,15 @@ import {
 } from '../../src/datasource/python.ts'
 import { MarivoCredentialService } from '../../src/datasource/service.ts'
 import { bindMarivoEnvironment } from '../../src/environment/index.ts'
-import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
-import { resultReference } from '../../src/presentation/contracts/result-reference.ts'
+import {
+  analysisResourceDeclaration,
+  parseAnalysisDocument,
+} from '../../src/presentation/contracts/analysis-document.ts'
+import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { readAnalysisRecord } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
-import { type PythonCodeRef, readPythonExecution } from '../../src/python-execution.ts'
+import type { PythonCodeRef } from '../../src/python-execution.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 import { Store } from './fixtures.ts'
 
@@ -43,7 +47,7 @@ const skip = pythonExecutable
   ? false
   : 'Set DSH_DATA_ANALYSIS_PYTHON to the exact supported Runtime'
 
-async function harness(t: TestContext, maxWallMs?: number) {
+async function harness(t: TestContext, maxWallMs?: number, emptyProject = false) {
   assert(pythonExecutable)
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'python-budget-real-')))
   const home = path.join(root, 'host')
@@ -59,7 +63,11 @@ async function harness(t: TestContext, maxWallMs?: number) {
     else process.env.DSH_HOME = priorHome
     await rm(root, { recursive: true, force: true })
   })
-  await writeFile(path.join(root, 'marivo.toml'), '[project]\nname = "python-budget-validation"\n')
+  if (!emptyProject)
+    await writeFile(
+      path.join(root, 'marivo.toml'),
+      '[project]\nname = "python-budget-validation"\n',
+    )
   const environment = await bindMarivoEnvironment({ projectRoot: root, pythonExecutable })
   const bridge = new MarivoDatasourceBridge(environment)
   await ctx.plugin(LlmRuntime)
@@ -175,13 +183,13 @@ test('real native Tool reports Shell timeout and stops the Python process tree',
   skip,
 }, async (t) => {
   const h = await harness(t)
-  const result = await h.call(sleepingTree, 3_000)
+  const result = await h.call(sleepingTree, 10_000)
   assert.equal(result.isError, false)
   const value = result.value as unknown as ExecutionValue
   assert.equal(value.execution.reason, 'timed-out')
   assert.equal(value.execution.phase, 'executing')
-  assert.equal(value.execution.effectiveTimeoutMs, 3_000)
-  assert(value.execution.executionElapsedMs! >= 3_000)
+  assert.equal(value.execution.effectiveTimeoutMs, 10_000)
+  assert(value.execution.executionElapsedMs! >= 10_000)
   assert.equal(value.codeRef, undefined)
   assert.equal(h.starts, 1)
   await assertStopped(h.root)
@@ -192,16 +200,16 @@ test('real Harness refreshes Frame and DataFrame report data with traceable scri
 }, async (t) => {
   const h = await harness(t)
   const workspace = () => ({ id: 'workspace', path: h.root })
-  h.agent.ctx.tools.register(
-    createMarivoPresentTool(
-      workspace,
-      h.agent.session,
-      undefined,
-      undefined,
-      async () => h.environment,
-    ),
+  const writer = createMarivoPresentTool(
+    workspace,
+    h.agent.session,
+    undefined,
+    undefined,
+    async () => h.environment,
   )
-  h.agent.ctx.tools.register(createMarivoUiReadTool(workspace))
+  const reader = createMarivoUiReadTool(workspace)
+  h.agent.ctx.tools.register(writer)
+  h.agent.ctx.tools.register(reader)
   const service = new MarivoPresentationFileService(workspace, (id) =>
     id === 'workspace' ? workspace() : undefined,
   )
@@ -243,81 +251,100 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
 `
   await writeFile(path.join(h.root, 'amount.txt'), '100')
   const resultVariables = { frame: 'frame_ref', data: 'data_ref' }
-  const producer = await invoke('marivo_python', { code, datasources: [], resultVariables })
-  assert(producer.codeRef)
-  assert.deepEqual(producer.resultMetadata, {
-    frame: {
-      status: 'captured',
-      kind: 'frame',
-      columns: ['amount'],
-      values: ['amount'],
-      axes: [],
-      coverage: { totalRows: null, business: 'unknown' },
-    },
-    data: {
-      status: 'captured',
-      kind: 'dataset',
-      columns: ['amount'],
-      values: [],
-      axes: [],
-      coverage: { totalRows: 1, business: 'unknown' },
-    },
+  const producer = await invoke('marivo_python', {
+    code,
+    datasources: [],
+    project: 'required',
+    resultVariables,
   })
-  const refs = z.record(z.string(), resultReference).parse(producer.resultRefs)
+  const outputs = z
+    .record(z.string(), z.object({ resource: analysisResourceDeclaration, metadata: z.unknown() }))
+    .parse(producer.results)
+  const codeRef =
+    outputs.frame?.resource.kind === 'analysis-frame' && outputs.frame.resource.codeRef
+  assert(codeRef)
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(outputs).map(([name, output]) => [name, output.metadata])),
+    {
+      frame: {
+        status: 'captured',
+        kind: 'frame',
+        columns: ['amount'],
+        values: ['amount'],
+        axes: [],
+        coverage: { totalRows: null, business: 'unknown' },
+      },
+      data: {
+        status: 'captured',
+        kind: 'dataset',
+        columns: ['amount'],
+        values: [],
+        axes: [],
+        coverage: { totalRows: 1, business: 'unknown' },
+      },
+    },
+  )
+  const resources = Object.fromEntries(
+    Object.entries(outputs).map(([name, output]) => [name, output.resource]),
+  )
   assert.match(String(producer.stdout), /Arbitrary report log/)
   assert.equal(producer.stderr, '__DSH_MARIVO_RESULTS_V1__:user text\n')
-  const resources = {
-    frame: { kind: 'analysis-frame', ref: refs.frame, codeRef: producer.codeRef },
-    data: { kind: 'dataframe', ref: refs.data, codeRef: producer.codeRef },
-  }
-  const saved = await invoke('marivo_present', {
-    surface: 'tab',
+  const saved = await invoke(writer.name, {
+    stage: 'save',
     resourcePatch: { put: resources },
     title: 'Stable report',
     labels: { data: { amount: 'Revenue' } },
     program:
-      'root = Stack([TextContent("Keep this exact body: 100"), AnalysisFrameView("frame"), DatasetView("data")]);',
+      'root = Stack([TextContent("Keep this exact body: 100"), AnalysisFrameView("frame"), DatasetView("data", {chart:"table"}), DatasetView("data", {chart:"metric",encoding:{value:"amount"}})]);',
   })
-  const definition = JSON.parse(
-    String(
-      (await invoke('marivo_ui_read', { recordId: saved.recordId, includeCode: true }))
-        .definitionJson,
-    ),
-  )
+  const definition = z
+    .object({
+      ref: z.string(),
+      sources: z.array(
+        z.object({
+          code: z.object({
+            text: z.string(),
+            datasources: z.array(z.unknown()),
+            resultVariables: z.record(z.string(), z.string()),
+          }),
+        }),
+      ),
+    })
+    .parse((await invoke(reader.name, { ref: saved.ref, includeCode: true })).definition)
   assert.equal(definition.sources.length, 1)
-  assert.equal(definition.sources[0].code.text, code)
-  assert.deepEqual(definition.sources[0].code.datasources, [])
-  assert.deepEqual(definition.sources[0].code.resultVariables, resultVariables)
-  const baseId = String(saved.recordId).split(':')
-  const base = await readAnalysisRecord(h.root, 'workspace', baseId[1]!, baseId[2]!)
+  assert.equal(definition.sources[0]!.code.text, code)
+  assert.deepEqual(definition.sources[0]!.code.datasources, [])
+  assert.deepEqual(definition.sources[0]!.code.resultVariables, resultVariables)
+  const baseId = parseReportRef(saved.ref)
+  assert(baseId.kind === 'saved')
+  const base = await readAnalysisRecord(h.root, 'workspace', baseId.reportId, baseId.buildId)
   const receipt = JSON.parse(String(saved.deliveryJson)).receipt
-  assert.equal(
-    (await service.code({ workspaceId: 'workspace', receipt, codeRef: producer.codeRef })).text,
-    code,
-  )
+  assert.equal((await service.code({ workspaceId: 'workspace', receipt, codeRef })).text, code)
   await writeFile(path.join(h.root, 'amount.txt'), '250')
   const refreshed = await invoke('marivo_python', {
-    code: definition.sources[0].code.text,
+    code: definition.sources[0]!.code.text,
     datasources: [],
-    resultVariables: definition.sources[0].code.resultVariables,
+    project: 'required',
+    resultVariables: definition.sources[0]!.code.resultVariables,
   })
-  assert(refreshed.codeRef)
-  const newRefs = z.record(z.string(), resultReference).parse(refreshed.resultRefs)
-  assert.notDeepEqual(newRefs.data, refs.data)
-  assert.notDeepEqual(newRefs.frame, refs.frame)
-  const update = await invoke('marivo_present', {
-    surface: 'tab',
-    basedOnRecordId: definition.recordId,
-    resourcePatch: {
-      put: {
-        frame: { kind: 'analysis-frame', ref: newRefs.frame, codeRef: refreshed.codeRef },
-        data: { kind: 'dataframe', ref: newRefs.data, codeRef: refreshed.codeRef },
-      },
-    },
+  const refreshedOutputs = z
+    .record(z.string(), z.object({ resource: analysisResourceDeclaration }))
+    .parse(refreshed.results)
+  const refreshedResources = Object.fromEntries(
+    Object.entries(refreshedOutputs).map(([name, output]) => [name, output.resource]),
+  )
+  assert.notDeepEqual(refreshedResources.data, resources.data)
+  assert.notDeepEqual(refreshedResources.frame, resources.frame)
+  const update = await invoke(writer.name, {
+    stage: 'save',
+    ref: definition.ref,
+    mode: 'refresh-data',
+    resourcePatch: { put: refreshedResources },
   })
-  const nextId = String(update.recordId).split(':')
+  const nextId = parseReportRef(update.ref)
+  assert(nextId.kind === 'saved')
   const next = parseAnalysisDocument(
-    await readAnalysisRecord(h.root, 'workspace', nextId[1]!, nextId[2]!),
+    await readAnalysisRecord(h.root, 'workspace', nextId.reportId, nextId.buildId),
   )
   assert.equal(next.reportId, base.reportId)
   assert.equal(next.program, base.program)
@@ -326,13 +353,54 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
     const resource = next.resources[name]
     assert(resource?.kind === 'snapshot')
     assert.deepEqual(resource.snapshot.data.rows, [['250']])
-    assert.deepEqual(resource.binding.codeRef, refreshed.codeRef)
+    const refreshedResource = refreshedResources[name]!
+    assert.deepEqual(
+      resource.binding.codeRef,
+      'codeRef' in refreshedResource ? refreshedResource.codeRef : undefined,
+    )
   }
   assert.equal(
     next.resources.data?.kind === 'snapshot' && next.resources.data.snapshot.data.columns[0]?.label,
     'Revenue',
   )
   assert.equal(h.starts, 2)
+})
+
+test('real empty Workspace keeps file work zero-init and prepares persisted exports exactly once', {
+  skip,
+}, async (t) => {
+  const h = await harness(t, undefined, true)
+  const before = await readdir(h.root)
+  const fileResult = await h.call('from pathlib import Path\nprint(Path.cwd().name)', 30_000)
+  assert(!fileResult.isError, JSON.stringify(fileResult))
+  assert.deepEqual(await readdir(h.root), before)
+  const result = await h.agent.ctx.tools.execute({
+    agent: h.agent,
+    signal: new AbortController().signal,
+    callId: ToolCallId('empty-workspace-export'),
+    name: 'marivo_python',
+    arguments: {
+      code: 'import pandas as pd\nimport marivo.analysis as mv\ndata_ref = mv.persist_dataframe(pd.DataFrame({"amount": [42]})).to_dict()',
+      datasources: [],
+      project: 'required',
+      resultVariables: { data: 'data_ref' },
+    },
+  })
+  assert(!result.isError, JSON.stringify(result))
+  const value = z
+    .object({
+      project: z.object({ status: z.literal('created'), projectRoot: z.literal(h.root) }),
+      results: z.object({
+        data: z.object({
+          resource: analysisResourceDeclaration,
+          sourceStatus: z.literal('recorded'),
+        }),
+      }),
+    })
+    .parse(result.value)
+  assert.equal(value.results.data.resource.kind, 'dataframe')
+  assert((await readFile(path.join(h.root, 'marivo.toml'), 'utf8')).includes('[project]'))
+  assert.equal(h.starts, 3)
 })
 
 test('real Python result export failure preserves successful execution and does not infer printed refs', {
@@ -346,14 +414,19 @@ test('real Python result export failure preserves successful execution and does 
     signal: new AbortController().signal,
     callId: ToolCallId('missing-export'),
     name: 'marivo_python',
-    arguments: { code, datasources: [], resultVariables: { result: 'missing_ref' } },
+    arguments: {
+      code,
+      datasources: [],
+      project: 'required',
+      resultVariables: { result: 'missing_ref' },
+    },
   })
   assert(!result.isError, JSON.stringify(result))
   const value = result.value as Record<string, unknown>
   assert.equal(value.exitCode, 0)
-  assert(value.codeRef)
+  assert.equal(value.codeRef, undefined)
   assert(value.resultCaptureError)
-  assert.equal(value.resultRefs, undefined)
+  assert.equal(value.results, undefined)
   assert.match(String(value.stdout), /marivo.frame_ref/)
   assert.equal(value.stderr, '')
   assert.equal(h.starts, 1)
@@ -414,8 +487,16 @@ test('real Python runs beyond 120 seconds and captures code exactly once', {
   assert(value.execution.executionElapsedMs! > 120_000)
   assert.equal(value.execution.nextAction, null)
   assert.match(value.stdout, /long-execution-complete/)
-  assert(value.codeRef)
-  assert.equal((await readPythonExecution(h.root, value.codeRef)).text, code)
+  assert.equal(value.codeRef, undefined)
+  const sourceRoot = path.join(
+    h.home,
+    'dsh-data-analysis',
+    'python-executions',
+    createHash('sha256').update(h.root).digest('hex'),
+  )
+  const files = await readdir(sourceRoot)
+  assert.equal(files.length, 1)
+  assert.equal(JSON.parse(await readFile(path.join(sourceRoot, files[0]!), 'utf8')).text, code)
   assert.equal(h.starts, 1)
   t.diagnostic(JSON.stringify(value.execution))
 })

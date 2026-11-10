@@ -63,7 +63,7 @@ function code(value = delivery(), seq = 21) {
     seq,
     type: 'tool/ptc-dispatch',
     data: {
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       isError: false,
       rootCallId: 'code-call',
       subCallId: 'code-call:code:1',
@@ -75,7 +75,7 @@ function code(value = delivery(), seq = 21) {
   }
 }
 const calls = new Map([
-  ['present-call', 'marivo_present'],
+  ['present-call', 'marivo_report_write'],
   ['code-call', 'run_code'],
 ])
 
@@ -219,7 +219,7 @@ test('completed reports follow final replies despite intervening steps, includin
             turn: 3,
             step: 1,
             callId: 'present-call',
-            name: 'marivo_present',
+            name: 'marivo_report_write',
             arguments: '{}',
           },
         },
@@ -425,7 +425,7 @@ test('Host deliverables keep produced files and independent report nodes in eith
             turn: 3,
             step: 1,
             callId: 'present-call',
-            name: 'marivo_present',
+            name: 'marivo_report_write',
             arguments: '{}',
           },
         },

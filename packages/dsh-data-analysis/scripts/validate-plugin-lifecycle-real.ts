@@ -104,9 +104,10 @@ try {
     'marivo_datasource_configure',
     'marivo_datasource_test',
     'marivo_help',
-    'marivo_present',
+    'marivo_next_steps',
     'marivo_python',
-    'marivo_ui_read',
+    'marivo_report_read',
+    'marivo_report_write',
   ]
   const section = ctx.systemPrompt.section
   ctx.systemPrompt.section = function (input) {

@@ -1,16 +1,25 @@
+import { z } from 'zod'
 import type { AnalysisDocument } from './contracts/analysis-document.ts'
-import type { AnalysisSnapshot, FrameSnapshot } from './contracts/snapshot.ts'
+import { snapshotMetadataSchemas } from './contracts/snapshot.ts'
 
-type ResultConfigurationSummary = {
-  kind: AnalysisSnapshot['kind']
-  columns: Array<Pick<AnalysisSnapshot['data']['columns'][number], 'id' | 'type'>>
-  coverage: AnalysisSnapshot['coverage']
-  values?: string[]
-  axes?: Array<Pick<FrameSnapshot['frame']['axes'][number], 'token' | 'name' | 'role'>>
-}
-type AnalysisResultSummary =
-  | { status: 'captured'; resources: Record<string, ResultConfigurationSummary> }
-  | { status: 'unavailable'; reason: 'budget' }
+export const resultConfigurationSummary = z.strictObject({
+  kind: z.enum(['frame', 'dataset']),
+  columns: z.array(snapshotMetadataSchemas.column.pick({ id: true, type: true })),
+  coverage: snapshotMetadataSchemas.coverage,
+  values: z.array(z.string()).optional(),
+  axes: z
+    .array(snapshotMetadataSchemas.axes.element.pick({ token: true, name: true, role: true }))
+    .optional(),
+})
+export const analysisResultSummarySchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('captured'),
+    resources: z.record(z.string(), resultConfigurationSummary),
+  }),
+  z.strictObject({ status: z.literal('unavailable'), reason: z.literal('budget') }),
+])
+export type ResultConfigurationSummary = z.infer<typeof resultConfigurationSummary>
+export type AnalysisResultSummary = z.infer<typeof analysisResultSummarySchema>
 
 /** Configuration facts from admitted snapshots only; never reads results or source data. */
 export function analysisResultSummary(
@@ -35,7 +44,37 @@ export function analysisResultSummary(
     }
   }
   // A large directory is disclosed explicitly as unavailable rather than silently truncated.
-  return Buffer.byteLength(JSON.stringify(summaries)) <= 16 * 1024
-    ? { status: 'captured', resources: summaries }
-    : { status: 'unavailable', reason: 'budget' }
+  return analysisResultSummarySchema.parse(
+    Buffer.byteLength(JSON.stringify(summaries)) <= 16 * 1024
+      ? { status: 'captured', resources: summaries }
+      : { status: 'unavailable', reason: 'budget' },
+  )
 }
+
+/** Dynamic resource entries use the concrete local validator; Host only supports open maps. */
+export const analysisResultSummaryToolSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        status: { type: 'string', const: 'captured', required: true },
+        resources: {
+          type: 'object',
+          additionalProperties: true,
+          required: true,
+          description:
+            'Resource-name map validated per entry as {kind:"frame"|"dataset",columns:[{id,type}],coverage:{start,totalRows,capturedRows,complete,columns,business},values?:string[],axes?:[{token,name,role}]}. Host schema cannot project typed dynamic map values.',
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        status: { type: 'string', const: 'unavailable', required: true },
+        reason: { type: 'string', const: 'budget', required: true },
+      },
+    },
+  ],
+} as const

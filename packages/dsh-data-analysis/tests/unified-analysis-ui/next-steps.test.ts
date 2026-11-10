@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -17,7 +17,12 @@ import LlmRuntime, {
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, {
+  defineTool,
+  type ToolDefinition,
+  type ToolExecutionToken,
+} from '@deepseek-ai/dsh-tools'
+import { z } from 'zod'
 import { waitForNextStepsAdvance } from '../../scripts/unified-analysis-ui/next-steps-host.ts'
 import { NextStepsModel } from '../../src/client/next-steps-model.ts'
 import { installNextStepsAgent } from '../../src/next-steps/agent.ts'
@@ -26,11 +31,20 @@ import {
   nextStepsInput,
   nextStepsNotice,
 } from '../../src/next-steps/contracts.ts'
+import { SavedWriteProofs } from '../../src/next-steps/saved-writes.ts'
 import { NextStepsService } from '../../src/next-steps/service.ts'
 import { createAnalysisDocument } from '../../src/presentation/analysis.ts'
+import { savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
+import {
+  MARIVO_PRESENT_TOOL_NAME,
+  parsePresentationDelivery,
+} from '../../src/presentation/receipt.ts'
 import { publishPresentation, readReportHistory } from '../../src/presentation/reports.ts'
+import { createMarivoPresentTool } from '../../src/presentation/tool.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
+const savedRef = (buildId = 'build') =>
+  savedReportRef({ workspaceId: 'workspace', reportId: 'report', buildId })
 const items = [{ label: 'Compare regions', prompt: 'Compare the regions in the saved analysis.' }]
 const notice: NextStepsNotice = {
   sessionId: 'session',
@@ -68,7 +82,9 @@ test('acceptance inspection pause releases on advance and cancellation', async (
 })
 function call(name: string, args: object): StreamChunk[] {
   const id = ToolCallId(randomUUID()),
-    argumentsJson = JSON.stringify(args)
+    argumentsJson = JSON.stringify(
+      name === 'marivo_next_steps' ? { ref: savedRef(), ...args } : args,
+    )
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
     { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: argumentsJson },
@@ -116,15 +132,31 @@ async function harness(script: Script) {
 }
 
 test('next-step schema validates Unicode lengths, closed fields and duplicate content', () => {
-  assert.equal(nextStepsInput.parse({ items: [] }).items.length, 0)
-  assert.equal(nextStepsInput.parse({ items: [], emptyReason: 'declined' }).emptyReason, 'declined')
+  assert.equal(nextStepsInput.safeParse({ items }).success, false)
+  assert.equal(nextStepsInput.safeParse({ items, recordId: 'legacy-record' }).success, false)
+  assert.equal(nextStepsInput.parse({ ref: savedRef(), items: [] }).items.length, 0)
+  assert.equal(
+    nextStepsInput.parse({ ref: savedRef(), items: [], emptyReason: 'declined' }).emptyReason,
+    'declined',
+  )
   assert.equal(nextStepsNotice.safeParse({ ...notice, items: [] }).success, false)
+  assert.equal(nextStepsNotice.safeParse({ ...notice, status: 'empty', items: [] }).success, true)
+  assert.equal(
+    nextStepsNotice.safeParse({
+      ...notice,
+      status: 'empty',
+      reason: 'generation-failed',
+      items: [],
+    }).success,
+    false,
+  )
   assert.equal(
     nextStepsNotice.safeParse({ ...notice, status: 'unavailable', items: [] }).success,
     false,
   )
   assert.equal(
-    nextStepsInput.parse({ items: [{ label: '🙂'.repeat(40), prompt: ' x ' }] }).items[0]?.prompt,
+    nextStepsInput.parse({ ref: savedRef(), items: [{ label: '🙂'.repeat(40), prompt: ' x ' }] })
+      .items[0]?.prompt,
     'x',
   )
   for (const value of [
@@ -135,7 +167,7 @@ test('next-step schema validates Unicode lengths, closed fields and duplicate co
     { items: [{ label: ' ', prompt: 'x' }] },
     { items: [{ label: '🙂'.repeat(41), prompt: 'x' }] },
   ])
-    assert.equal(nextStepsInput.safeParse(value).success, false)
+    assert.equal(nextStepsInput.safeParse({ ref: savedRef(), ...value }).success, false)
 })
 
 test('live stream has no baseline, cross-session publication or reconnect replay', async () => {
@@ -183,153 +215,13 @@ test('Chat model consumes once, rejects late or foreign notices and never restor
   assert.equal(new NextStepsModel().value, undefined)
 })
 
-for (const nested of [false, true])
-  for (const completes of [false, true])
-    for (const response of ['items', 'empty', 'omitted'] as const) {
-      test(`real Harness completion generates live-only recommendations (nested=${nested}, concludesTurn=${completes}, response=${response})`, async () => {
-        const invoke = (name: string, args: object) =>
-          nested ? call('nested_transport', { target: name, params: args }) : call(name, args)
-        const script = new Script([
-          invoke('marivo_present', {}),
-          ...(completes ? [] : [stop]),
-          ...(response === 'omitted'
-            ? []
-            : [invoke('marivo_next_steps', { items: response === 'empty' ? [] : items })]),
-          stop,
-        ])
-        const ctx = await harness(script)
-        const agent = await ctx.agentLoop.create(
-          SessionId(`next-${nested}-${completes}-${response}`),
-          {
-            provider: 'mock',
-            model: 'mock',
-          },
-        )
-        const published: NextStepsNotice[] = []
-        const dispose = installNextStepsAgent(
-          ctx,
-          agent,
-          () => ({ id: 'workspace', path: '/workspace' }),
-          (value) => published.push(value),
-        )
-        const present = agent.ctx.tools.register(
-          defineTool({
-            name: 'marivo_present',
-            description: 'fixture saved delivery',
-            parameters: {},
-            output: { schema: { type: 'json' }, render: () => [] },
-            async execute(_args, exec) {
-              const root = [...agent.session.snapshotEvents()]
-                .reverse()
-                .find(
-                  (event) => event.type === 'tool/call' && event.data.callId === exec.rootCallId,
-                )
-              assert.equal(root?.type, 'tool/call')
-              const delivery = {
-                kind: 'marivo.presentation.delivery',
-                schemaVersion: 2,
-                surface: 'tool',
-                dshSessionId: String(agent.session.id),
-                turn: root.data.turn,
-                receipt: {
-                  kind: 'marivo.presentation',
-                  schemaVersion: 2,
-                  workspaceId: 'workspace',
-                  reportId: 'report',
-                  buildId: 'build',
-                  title: 'Analysis',
-                  summary: 'Saved',
-                  files: {
-                    document: {
-                      asset: 'presentation.json',
-                      path: '/workspace/.dsh-data-analysis/presentations/report/builds/build/presentation.json',
-                      bytes: 10,
-                      sha256: 'a'.repeat(64),
-                    },
-                  },
-                },
-              }
-              if (completes) exec.concludeTurn()
-              return { deliveryJson: JSON.stringify(delivery) }
-            },
-          }),
-        )
-        const code = agent.ctx.tools.register(
-          defineTool({
-            name: 'nested_transport',
-            description: 'nested tool transport fixture',
-            parameters: {
-              target: { type: 'string', required: true },
-              params: { type: 'json', required: true },
-            },
-            output: { schema: { type: 'json' }, render: () => [] },
-            async execute(args, exec) {
-              const result = await agent.ctx.tools.execute({
-                callId: ToolCallId(randomUUID()),
-                rootCallId: exec.rootCallId,
-                name: args.target,
-                arguments: args.params,
-                agent,
-                parent: exec.token,
-                signal: exec.signal,
-              })
-              assert.equal(result.isError, false)
-              if (!result.isError && result.concludesTurn) exec.concludeTurn()
-              return { discarded: true }
-            },
-          }),
-        )
-        try {
-          agent.followup(
-            createUserMessage({
-              source: { kind: 'user' },
-              content: [{ type: 'text', text: 'Analyze' }],
-            }),
-          )
-          await agent.whenIdle()
-          assert.equal(script.requests, completes ? 2 : 3)
-          assert.equal(
-            [...agent.session.snapshotEvents()].reverse().find((event) => event.type === 'turn/end')
-              ?.data.reason.kind,
-            'completed',
-          )
-          assert.equal(
-            published.filter((value) => value.items.length).length,
-            response === 'items' ? 1 : 0,
-          )
-          assert.equal(published.length, 1)
-          assert.equal(published[0]?.reportId, 'report')
-          assert.equal(published[0]?.buildId, 'build')
-          assert.equal(published[0]?.status, response === 'items' ? 'available' : 'unavailable')
-          if (response === 'items') assert.deepEqual(published[0]?.items, items)
-          else
-            assert.equal(
-              published[0]?.reason,
-              response === 'empty' ? 'no-suggestions' : 'generation-incomplete',
-            )
-          const messages = agent.session
-            .snapshotEvents()
-            .filter(
-              (event) =>
-                event.type === 'user/message' && event.data.source.kind === 'marivo-next-steps',
-            )
-          assert.equal(messages.length, 1)
-          assert.ok(
-            !agent.session
-              .snapshotEvents()
-              .some(
-                (event) =>
-                  event.type === 'tool/result' &&
-                  JSON.stringify(event.data.meta ?? {}).includes(items[0]!.prompt),
-              ),
-          )
-        } finally {
-          code()
-          present()
-          await dispose()
-        }
-      })
-    }
+function reminders(agent: Agent) {
+  return agent.session
+    .snapshotEvents()
+    .filter(
+      (event) => event.type === 'user/message' && event.data.source.kind === 'marivo-next-steps',
+    )
+}
 
 function calls(entries: Array<[string, object]>): StreamChunk[] {
   return [
@@ -352,52 +244,86 @@ async function reportHarness(
     provider: 'mock',
     model: 'mock',
   })
+  let identity = { id: 'workspace', path: '/workspace' }
   const published: NextStepsNotice[] = []
+  const savedWrites = new SavedWriteProofs()
+  const definition = defineTool({
+    name: MARIVO_PRESENT_TOOL_NAME,
+    description: 'fixture saved delivery',
+    parameters: {
+      build: { type: 'string' },
+      receiptTurn: { type: 'integer' },
+      refBuild: { type: 'string' },
+    },
+    output: { schema: { type: 'json' }, render: () => [] },
+    async execute(args, exec) {
+      const root = [...agent.session.snapshotEvents()]
+        .reverse()
+        .find((event) => event.type === 'tool/call' && event.data.callId === exec.rootCallId)
+      assert.equal(root?.type, 'tool/call')
+      onSave?.(agent)
+      const buildId = args.build ?? 'build'
+      const value = {
+        ref: savedRef(args.refBuild ?? buildId),
+        deliveryJson: JSON.stringify({
+          kind: 'marivo.presentation.delivery',
+          schemaVersion: 2,
+          surface: 'tool',
+          dshSessionId: String(agent.session.id),
+          turn: args.receiptTurn ?? root.data.turn,
+          receipt: {
+            kind: 'marivo.presentation',
+            schemaVersion: 2,
+            workspaceId: 'workspace',
+            reportId: 'report',
+            buildId,
+            title: 'Analysis',
+            summary: 'Saved',
+            files: {
+              document: {
+                asset: 'presentation.json',
+                path: `/workspace/.dsh-data-analysis/presentations/report/builds/${buildId}/presentation.json`,
+                bytes: 10,
+                sha256: 'a'.repeat(64),
+              },
+            },
+          },
+        }),
+      }
+      savedWrites.committed(exec, savedRef(buildId))
+      return value
+    },
+  })
+  let present = agent.ctx.tools.register(definition)
   const dispose = installNextStepsAgent(
     ctx,
     agent,
-    () => ({ id: 'workspace', path: '/workspace' }),
+    () => identity,
     (value) => published.push(value),
+    savedWrites,
   )
-  const present = agent.ctx.tools.register(
+  const nested = agent.ctx.tools.register(
     defineTool({
-      name: 'marivo_present',
-      description: 'fixture saved delivery',
-      parameters: { build: { type: 'string' }, receiptTurn: { type: 'integer' } },
+      name: 'nested_transport',
+      description: 'nested tool transport fixture',
+      parameters: {
+        target: { type: 'string', required: true },
+        params: { type: 'json', required: true },
+      },
       output: { schema: { type: 'json' }, render: () => [] },
       async execute(args, exec) {
-        const root = [...agent.session.snapshotEvents()]
-          .reverse()
-          .find((event) => event.type === 'tool/call' && event.data.callId === exec.rootCallId)
-        assert.equal(root?.type, 'tool/call')
-        onSave?.(agent)
-        const buildId = args.build ?? 'build'
-        return {
-          deliveryJson: JSON.stringify({
-            kind: 'marivo.presentation.delivery',
-            schemaVersion: 2,
-            surface: 'tool',
-            dshSessionId: String(agent.session.id),
-            turn: args.receiptTurn ?? root.data.turn,
-            receipt: {
-              kind: 'marivo.presentation',
-              schemaVersion: 2,
-              workspaceId: 'workspace',
-              reportId: 'report',
-              buildId,
-              title: 'Analysis',
-              summary: 'Saved',
-              files: {
-                document: {
-                  asset: 'presentation.json',
-                  path: `/workspace/.dsh-data-analysis/presentations/report/builds/${buildId}/presentation.json`,
-                  bytes: 10,
-                  sha256: 'a'.repeat(64),
-                },
-              },
-            },
-          }),
-        }
+        const result = await agent.ctx.tools.execute({
+          callId: ToolCallId(randomUUID()),
+          rootCallId: exec.rootCallId,
+          name: args.target,
+          arguments: args.params,
+          agent,
+          parent: exec.token,
+          signal: exec.signal,
+        })
+        assert.equal(result.isError, false)
+        assert.equal(result.concludesTurn, undefined)
+        return { discarded: true }
       },
     }),
   )
@@ -413,256 +339,293 @@ async function reportHarness(
     script,
     published,
     run,
+    savedWrites,
+    definition,
+    rebindWriter: (tool: ToolDefinition) => {
+      present()
+      present = agent.ctx.tools.register(tool)
+    },
+    changeWorkspace: (value: typeof identity) => {
+      identity = value
+    },
+    replaceWriter: () => {
+      present()
+      present = agent.ctx.tools.register({ ...definition })
+    },
+    dispose,
     async close() {
+      nested()
       present()
       await dispose()
     },
   }
 }
 
-test('each completed report creation or update gets freshly generated next steps', async () => {
-  const fresh = [{ label: 'Inspect trends', prompt: 'Inspect trends in the updated report.' }]
+for (const nested of [false, true])
+  for (const response of ['items', 'empty', 'declined'] as const)
+    test(`accepted recommendations wait for normal Harness completion without steering (nested=${nested}, response=${response})`, async () => {
+      const invoke = (name: string, args: object) =>
+        nested
+          ? call('nested_transport', {
+              target: name,
+              params: name === 'marivo_next_steps' ? { ref: savedRef(), ...args } : args,
+            })
+          : call(name, args)
+      const fixture = await reportHarness([
+        invoke(MARIVO_PRESENT_TOOL_NAME, {}),
+        invoke('marivo_next_steps', {
+          items: response === 'items' ? items : [],
+          emptyReason:
+            response === 'items' ? undefined : response === 'empty' ? 'no-suggestions' : 'declined',
+        }),
+        stop,
+      ])
+      const stopObserver = fixture.agent.ctx.on('tools/result', (exec, result) => {
+        if (exec.name === 'marivo_next_steps') {
+          assert.equal(result.concludesTurn, undefined)
+          assert.equal(
+            fixture.published.length,
+            0,
+            'recommendations are not published before Turn end',
+          )
+        }
+      })
+      try {
+        await fixture.run()
+        assert.equal(fixture.script.requests, 3)
+        assert.equal(reminders(fixture.agent).length, 0)
+        assert.equal(fixture.published.length, 1)
+        assert.equal(
+          fixture.published[0]?.status,
+          response === 'items' ? 'available' : response === 'empty' ? 'empty' : 'declined',
+        )
+        assert.equal(fixture.published[0]?.reason, undefined)
+        assert.deepEqual(fixture.published[0]?.items, response === 'items' ? items : [])
+      } finally {
+        stopObserver()
+        await fixture.close()
+      }
+    })
+
+test('recommendations allow a later file delivery and necessary final answer in the same Turn', async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'next-steps-file-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const filename = path.join(directory, 'analysis.txt')
   const fixture = await reportHarness([
-    call('marivo_present', { build: 'initial' }),
+    call(MARIVO_PRESENT_TOOL_NAME, {}),
     call('marivo_next_steps', { items }),
-    call('marivo_present', { build: 'updated' }),
-    call('marivo_next_steps', { items: fresh }),
+    call('deliver_file', {}),
+    [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'text-delta', index: 0, text: 'Saved the requested file.' },
+      { type: 'block-end', index: 0, block: { type: 'text', text: 'Saved the requested file.' } },
+      ...stop,
+    ],
+  ])
+  const file = fixture.agent.ctx.tools.register(
+    defineTool({
+      name: 'deliver_file',
+      description: 'deliver requested file fixture',
+      parameters: {},
+      output: { schema: { type: 'json' }, render: () => [] },
+      async execute() {
+        assert.equal(fixture.published.length, 0)
+        await writeFile(filename, 'Analysis delivery')
+        return { delivered: true }
+      },
+    }),
+  )
+  try {
+    await fixture.run()
+    assert.equal(await readFile(filename, 'utf8'), 'Analysis delivery')
+    assert.equal(fixture.script.requests, 4)
+    assert.equal(fixture.published[0]?.status, 'available')
+    assert.ok(
+      JSON.stringify(fixture.agent.session.snapshotEvents()).includes('Saved the requested file.'),
+    )
+  } finally {
+    file()
+    await fixture.close()
+  }
+})
+
+for (const response of ['omitted', 'failed'] as const)
+  test(`missing recommendations receive at most one reminder (${response})`, async () => {
+    const fixture = await reportHarness([
+      call(MARIVO_PRESENT_TOOL_NAME, {}),
+      stop,
+      response === 'failed' ? new Error('generation-timeout') : stop,
+    ])
+    try {
+      await fixture.run()
+      assert.equal(fixture.script.requests, 3)
+      assert.equal(reminders(fixture.agent).length, 1)
+      assert.equal(fixture.published.length, 1)
+      assert.equal(fixture.published[0]?.status, 'unavailable')
+      assert.equal(
+        fixture.published[0]?.reason,
+        response === 'failed' ? 'generation-failed' : 'generation-incomplete',
+      )
+    } finally {
+      await fixture.close()
+    }
+  })
+
+test('each Turn gets fresh recommendations for its final saved version', async () => {
+  const fixture = await reportHarness([
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+    call('marivo_next_steps', { ref: savedRef('initial'), items }),
+    stop,
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'updated' }),
+    call('marivo_next_steps', { ref: savedRef('updated'), items: [] }),
+    stop,
     stop,
   ])
   try {
     await fixture.run()
-    await fixture.run('Update the report')
+    await fixture.run('Update')
     await fixture.run('Thanks')
     assert.deepEqual(
-      fixture.published.map(({ turn, buildId, items: value }) => ({ turn, buildId, items: value })),
+      fixture.published.map(({ turn, buildId, status }) => ({ turn, buildId, status })),
       [
-        { turn: 1, buildId: 'initial', items },
-        { turn: 2, buildId: 'updated', items: fresh },
+        { turn: 1, buildId: 'initial', status: 'available' },
+        { turn: 2, buildId: 'updated', status: 'empty' },
       ],
     )
-    assert.equal(fixture.script.requests, 5)
+    assert.equal(reminders(fixture.agent).length, 0)
   } finally {
     await fixture.close()
   }
 })
 
-test('only the final saved build publishes once when a later same-step save invalidates recommendations', async () => {
-  const fresh = [{ label: 'Inspect updated trends', prompt: 'Inspect the updated trends.' }]
+test('a later save invalidates old recommendations and rejects the old saved ref', async () => {
+  const fresh = [{ label: 'Inspect updated trends', prompt: 'Inspect updated trends.' }]
   const fixture = await reportHarness([
-    call('marivo_present', { build: 'initial' }),
-    calls([
-      ['marivo_next_steps', { items }],
-      ['marivo_present', { build: 'final' }],
-    ]),
-    call('marivo_next_steps', { items: fresh }),
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+    call('marivo_next_steps', { ref: savedRef('initial'), items }),
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'final' }),
+    call('marivo_next_steps', { ref: savedRef('initial'), items }),
+    stop,
+    call('marivo_next_steps', { ref: savedRef('final'), items: fresh }),
+    stop,
   ])
   try {
     await fixture.run()
     assert.equal(fixture.published.length, 1)
     assert.equal(fixture.published[0]?.buildId, 'final')
     assert.deepEqual(fixture.published[0]?.items, fresh)
+    assert.equal(reminders(fixture.agent).length, 1)
+    assert.ok(
+      fixture.agent.session
+        .snapshotEvents()
+        .some((event) => event.type === 'tool/result' && event.data.message.isError),
+    )
   } finally {
     await fixture.close()
   }
 })
 
-for (const result of ['empty', 'declined', 'recovered', 'omitted', 'failed'] as const)
-  test(`empty recommendations have one bounded completion retry and preserve refusal (${result})`, async () => {
-    const fixture = await reportHarness([
-      call('marivo_present', {}),
-      call('marivo_next_steps', {
-        items: [],
-        ...(result === 'declined' ? { emptyReason: 'declined' } : {}),
-      }),
-      ...(result === 'declined'
-        ? []
-        : [
-            stop,
-            ...(result === 'failed'
-              ? []
-              : result === 'omitted'
-                ? [stop]
-                : [
-                    call('marivo_next_steps', {
-                      items: result === 'recovered' ? items : [],
-                      emptyReason: result === 'recovered' ? undefined : 'no-suggestions',
-                    }),
-                  ]),
-          ]),
-    ])
-    try {
-      await fixture.run(result === 'declined' ? 'Analyze without recommendations' : 'Analyze')
-      assert.equal(fixture.published.length, 1)
-      const value = fixture.published[0]
-      assert.equal(
-        value?.status,
-        result === 'declined' ? 'declined' : result === 'recovered' ? 'available' : 'unavailable',
-      )
-      if (result === 'empty') assert.equal(value?.reason, 'no-suggestions')
-      if (result === 'omitted') assert.equal(value?.reason, 'no-suggestions')
-      if (result === 'failed') assert.equal(value?.reason, 'generation-failed')
-      assert.equal(
-        fixture.agent.session
-          .snapshotEvents()
-          .filter(
-            (event) =>
-              event.type === 'user/message' && event.data.source.kind === 'marivo-next-steps',
-          ).length,
-        result === 'declined' ? 0 : 1,
-      )
-      assert.equal(fixture.script.requests, result === 'declined' ? 2 : 4)
-    } finally {
-      await fixture.close()
-    }
-  })
+test('a later save in the same tool batch replaces the version awaiting publication', async () => {
+  const fixture = await reportHarness([
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'initial' }),
+    calls([
+      ['marivo_next_steps', { ref: savedRef('initial'), items }],
+      [MARIVO_PRESENT_TOOL_NAME, { build: 'final' }],
+    ]),
+    call('marivo_next_steps', { ref: savedRef('final'), items: [] }),
+    stop,
+  ])
+  try {
+    await fixture.run()
+    assert.equal(fixture.published.length, 1)
+    assert.equal(fixture.published[0]?.buildId, 'final')
+    assert.equal(fixture.published[0]?.status, 'empty')
+    assert.equal(reminders(fixture.agent).length, 0)
+  } finally {
+    await fixture.close()
+  }
+})
 
-for (const invalidation of ['cancel', 'new-input', 'stale-turn'] as const)
-  test(`cancelled, superseded or stale saves cannot publish recommendations (${invalidation})`, async () => {
+for (const invalidation of [
+  'cancel',
+  'new-input',
+  'stale-turn',
+  'mismatched-ref',
+  'replaced-definition',
+] as const)
+  test(`untrusted or superseded saves do not arm recommendations (${invalidation})`, async () => {
     const fixture = await reportHarness(
-      [call('marivo_present', invalidation === 'stale-turn' ? { receiptTurn: 99 } : {}), stop],
+      [
+        call(
+          MARIVO_PRESENT_TOOL_NAME,
+          invalidation === 'stale-turn'
+            ? { receiptTurn: 99 }
+            : invalidation === 'mismatched-ref'
+              ? { refBuild: 'foreign' }
+              : {},
+        ),
+        stop,
+      ],
       (agent) => {
         if (invalidation === 'cancel') agent.cancel({ kind: 'user' })
         if (invalidation === 'new-input')
           agent.steer(
             createUserMessage({
               source: { kind: 'user' },
-              content: [{ type: 'text', text: 'Stop recommendations; answer this instead.' }],
+              content: [{ type: 'text', text: 'Answer this instead.' }],
             }),
           )
       },
     )
+    if (invalidation === 'replaced-definition') fixture.replaceWriter()
     try {
       await fixture.run()
       assert.equal(fixture.published.length, 0)
-      assert.equal(
-        fixture.agent.session
-          .snapshotEvents()
-          .filter(
-            (event) =>
-              event.type === 'user/message' && event.data.source.kind === 'marivo-next-steps',
-          ).length,
-        0,
-      )
+      assert.equal(reminders(fixture.agent).length, 0)
     } finally {
       await fixture.close()
     }
   })
 
-test('unavailable status stays visible while decline and invalidation suppress stale notices', () => {
-  const model = new NextStepsModel()
-  model.accept(
-    { ...notice, status: 'unavailable', reason: 'generation-incomplete', items: [] },
-    notice,
-  )
-  assert.equal(model.value?.status, 'unavailable')
-  model.accept(notice, notice)
-  assert.equal(model.value?.status, 'unavailable')
-  model.clear()
-  model.accept(notice, notice)
-  assert.equal(model.value, undefined)
-  model.accept({ ...notice, turn: 2, status: 'declined', items: [] }, notice)
-  model.accept({ ...notice, turn: 2 }, notice)
-  assert.equal(model.value, undefined)
-})
-
-test('generation timeout reports unavailability without fabricated suggestions or another retry', async () => {
-  const fixture = await reportHarness([
-    call('marivo_present', {}),
-    stop,
-    new Error('generation-timeout'),
-  ])
-  try {
-    await fixture.run()
-    assert.equal(fixture.script.requests, 3)
-    assert.equal(fixture.published.length, 1)
-    assert.equal(fixture.published[0]?.status, 'unavailable')
-    assert.equal(fixture.published[0]?.reason, 'generation-failed')
-    assert.deepEqual(fixture.published[0]?.items, [])
-  } finally {
-    await fixture.close()
-  }
-})
-
-test('a fresh save after same-turn user steering can generate recommendations for the replacement report', async () => {
-  const fixture = await reportHarness([
-    call('marivo_present', { build: 'initial' }),
-    call('marivo_present', { build: 'replacement' }),
-    call('marivo_next_steps', { items }),
-  ])
-  let steered = false
-  const stopObserver = fixture.agent.ctx.on('tools/result', (exec) => {
-    if (exec.name !== 'marivo_present' || steered) return
-    steered = true
-    fixture.agent.steer(
-      createUserMessage({
-        source: { kind: 'user' },
-        content: [{ type: 'text', text: 'Update the report first.' }],
-      }),
-    )
-  })
-  try {
-    await fixture.run()
-    assert.equal(fixture.published.length, 1)
-    assert.equal(fixture.published[0]?.buildId, 'replacement')
-    const model = new NextStepsModel()
-    model.accept(fixture.published[0], {
-      sessionId: String(fixture.agent.session.id),
-      workspaceId: 'workspace',
+for (const invalidation of ['cancel', 'workspace', 'dispose', 'new-input'] as const)
+  test(`accepted recommendations are discarded after owner invalidation (${invalidation})`, async () => {
+    const fixture = await reportHarness([
+      call(MARIVO_PRESENT_TOOL_NAME, {}),
+      call('marivo_next_steps', { items }),
+      stop,
+    ])
+    const stopObserver = fixture.agent.ctx.on('tools/result', (exec) => {
+      if (exec.name !== 'marivo_next_steps') return
+      if (invalidation === 'cancel') fixture.agent.cancel({ kind: 'user' })
+      if (invalidation === 'workspace')
+        fixture.changeWorkspace({ id: 'workspace', path: '/replacement' })
+      if (invalidation === 'dispose') void fixture.dispose()
+      if (invalidation === 'new-input')
+        fixture.agent.steer(
+          createUserMessage({
+            source: { kind: 'user' },
+            content: [{ type: 'text', text: 'Do something else.' }],
+          }),
+        )
     })
-    assert.equal(model.value?.status, 'available')
-  } finally {
-    stopObserver()
-    await fixture.close()
-  }
-})
-
-test('same-turn new input and another save do not reset the single completion retry', async () => {
-  const fixture = await reportHarness([
-    call('marivo_present', { build: 'initial' }),
-    stop,
-    call('marivo_present', { build: 'replacement' }),
-    call('marivo_next_steps', { items: [], emptyReason: 'no-suggestions' }),
-  ])
-  const stopObserver = fixture.agent.ctx.on('agent/inbox/inserted', ({ message }) => {
-    if (message.source.kind === 'marivo-next-steps')
-      fixture.agent.steer(
-        createUserMessage({
-          source: { kind: 'user' },
-          content: [{ type: 'text', text: 'Update this report with my correction.' }],
-        }),
-      )
+    try {
+      await fixture.run()
+      assert.equal(fixture.published.length, 0)
+    } finally {
+      stopObserver()
+      await fixture.close()
+    }
   })
-  try {
-    await fixture.run()
-    assert.equal(fixture.script.requests, 4)
-    assert.equal(fixture.published.length, 1)
-    assert.equal(fixture.published[0]?.status, 'unavailable')
-    assert.equal(fixture.published[0]?.buildId, 'replacement')
-    assert.equal(
-      fixture.agent.session
-        .snapshotEvents()
-        .filter(
-          (event) =>
-            event.type === 'user/message' && event.data.source.kind === 'marivo-next-steps',
-        ).length,
-      1,
-    )
-  } finally {
-    stopObserver()
-    await fixture.close()
-  }
-})
 
-test('cancellation after recommendations are received discards them before publication', async () => {
-  const fixture = await reportHarness([
-    call('marivo_present', {}),
-    call('marivo_next_steps', { items }),
-  ])
+test('a Workspace change after save suppresses the missing-recommendation reminder', async () => {
+  const fixture = await reportHarness([call(MARIVO_PRESENT_TOOL_NAME, {}), stop])
   const stopObserver = fixture.agent.ctx.on('tools/result', (exec) => {
-    if (exec.name === 'marivo_next_steps') fixture.agent.cancel({ kind: 'user' })
+    if (exec.name === MARIVO_PRESENT_TOOL_NAME)
+      fixture.changeWorkspace({ id: 'workspace', path: '/replacement' })
   })
   try {
     await fixture.run()
+    assert.equal(reminders(fixture.agent).length, 0)
     assert.equal(fixture.published.length, 0)
   } finally {
     stopObserver()
@@ -670,7 +633,44 @@ test('cancellation after recommendations are received discards them before publi
   }
 })
 
-test('explicit recommendations read an existing report without publishing another Build', async (t) => {
+test('a second save does not reset the one completion reminder', async () => {
+  const fixture = await reportHarness([
+    call(MARIVO_PRESENT_TOOL_NAME, {}),
+    stop,
+    call(MARIVO_PRESENT_TOOL_NAME, { build: 'replacement' }),
+    stop,
+  ])
+  try {
+    await fixture.run()
+    assert.equal(fixture.script.requests, 4)
+    assert.equal(reminders(fixture.agent).length, 1)
+    assert.equal(fixture.published[0]?.buildId, 'replacement')
+    assert.equal(fixture.published[0]?.status, 'unavailable')
+  } finally {
+    await fixture.close()
+  }
+})
+
+test('empty and unavailable statuses stay visible while decline and consumption retire the Turn', () => {
+  for (const value of [
+    { ...notice, status: 'empty', items: [] },
+    { ...notice, status: 'unavailable', reason: 'generation-incomplete', items: [] },
+  ]) {
+    const model = new NextStepsModel()
+    model.accept(value, notice)
+    assert.equal(model.value?.status, value.status)
+    model.accept(notice, notice)
+    assert.equal(model.value?.status, value.status)
+    model.clear()
+    model.accept(notice, notice)
+    assert.equal(model.value, undefined)
+    model.accept({ ...notice, turn: 2, status: 'declined', items: [] }, notice)
+    model.accept({ ...notice, turn: 2 }, notice)
+    assert.equal(model.value, undefined)
+  }
+})
+
+test('explicit saved-ref recommendations read an existing report without creating a Build', async (t) => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'next-steps-report-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   const signal = new AbortController().signal
@@ -685,10 +685,16 @@ test('explicit recommendations read an existing report without publishing anothe
     sessionId: 'original',
     surface: 'tool',
   })
+  const ref = savedReportRef({
+    workspaceId: document.workspaceId,
+    reportId: document.reportId,
+    buildId: document.buildId,
+  })
   const before = await readReportHistory(root, 'workspace', document.reportId)
   const script = new Script([
-    call('marivo_next_steps', { items, recordId: document.recordId }),
-    call('marivo_next_steps', { items, recordId: document.recordId }),
+    call('marivo_next_steps', { items, ref }),
+    stop,
+    call('marivo_next_steps', { items, ref }),
     stop,
   ])
   const ctx = await harness(script)
@@ -715,7 +721,7 @@ test('explicit recommendations read an existing report without publishing anothe
     await agent.whenIdle()
   }
   await run()
-  assert.equal(script.requests, 1)
+  assert.equal(script.requests, 2)
   assert.equal(published.length, 1)
   assert.equal(published[0]?.buildId, document.buildId)
   assert.ok(published[0]?.callId)
@@ -723,11 +729,193 @@ test('explicit recommendations read an existing report without publishing anothe
   assert.equal(
     agent.session
       .snapshotEvents()
-      .some((event) => event.type === 'tool/call' && event.data.name === 'marivo_present'),
+      .some((event) => event.type === 'tool/call' && event.data.name === MARIVO_PRESENT_TOOL_NAME),
     false,
   )
   identity = { id: 'foreign-workspace', path: root }
   await run()
-  assert.equal(published.length, 1, 'a foreign Workspace cannot publish recommendations')
+  assert.equal(published.length, 1)
   assert.deepEqual(await readReportHistory(root, 'workspace', document.reportId), before)
+})
+
+for (const restore of [false, true])
+  test(`a waterfall replacement cannot attest a save even if the original definition is restored (${restore})`, async () => {
+    let originalRuns = 0,
+      replacementRuns = 0
+    const fixture = await reportHarness([call(MARIVO_PRESENT_TOOL_NAME, {}), stop, stop], () => {
+      originalRuns++
+    })
+    const replacement: ToolDefinition = {
+      ...fixture.definition,
+      async execute(_args, exec) {
+        replacementRuns++
+        const root = [...fixture.agent.session.snapshotEvents()]
+          .reverse()
+          .find((event) => event.type === 'tool/call' && event.data.callId === exec.rootCallId)
+        assert.equal(root?.type, 'tool/call')
+        return {
+          ref: savedRef(),
+          deliveryJson: JSON.stringify({
+            kind: 'marivo.presentation.delivery',
+            schemaVersion: 2,
+            surface: 'tool',
+            dshSessionId: String(fixture.agent.session.id),
+            turn: root.data.turn,
+            receipt: {
+              kind: 'marivo.presentation',
+              schemaVersion: 2,
+              workspaceId: 'workspace',
+              reportId: 'report',
+              buildId: 'build',
+              title: 'Forged',
+              summary: 'Not saved',
+              files: {
+                document: {
+                  asset: 'presentation.json',
+                  path: '/workspace/.dsh-data-analysis/presentations/report/builds/build/presentation.json',
+                  bytes: 1,
+                  sha256: 'a'.repeat(64),
+                },
+              },
+            },
+          }),
+        }
+      },
+    }
+    const hook = fixture.agent.ctx.on('tools/execute', async (exec, next) => {
+      if (exec.name !== MARIVO_PRESENT_TOOL_NAME) return next()
+      fixture.rebindWriter(replacement)
+      const result = await next()
+      if (restore) fixture.rebindWriter(fixture.definition)
+      return result
+    })
+    try {
+      await fixture.run()
+      assert.equal(originalRuns, 0)
+      assert.equal(replacementRuns, 1)
+      assert.equal(reminders(fixture.agent).length, 0)
+      assert.equal(fixture.published.length, 0)
+    } finally {
+      hook()
+      await fixture.close()
+    }
+  })
+
+test('post-policy ref and delivery replacement cannot substitute another saved version', async () => {
+  const fixture = await reportHarness([call(MARIVO_PRESENT_TOOL_NAME, {}), stop, stop])
+  const hook = fixture.agent.ctx.on('tools/post-execute', async (exec, result, next) => {
+    if (exec.name !== MARIVO_PRESENT_TOOL_NAME || result.isError) return next()
+    const value = z.object({ ref: z.string(), deliveryJson: z.string() }).parse(result.value)
+    const delivery = parsePresentationDelivery(JSON.parse(value.deliveryJson))
+    return {
+      kind: 'accept',
+      value: {
+        ...value,
+        ref: savedRef('forged'),
+        deliveryJson: JSON.stringify({
+          ...delivery,
+          receipt: { ...delivery.receipt, buildId: 'forged' },
+        }),
+      },
+    }
+  })
+  const consumed = fixture.agent.ctx.on('tools/result', (exec) => {
+    assert.equal(fixture.savedWrites.take(exec.token), undefined)
+  })
+  try {
+    await fixture.run()
+    assert.equal(reminders(fixture.agent).length, 0)
+    assert.equal(fixture.published.length, 0)
+  } finally {
+    consumed()
+    hook()
+    await fixture.close()
+  }
+})
+
+for (const stage of ['save', 'preview', 'failed', 'cancel', 'dispose'] as const)
+  test(`the production writer attests only an actual successful save (${stage})`, async (t) => {
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), 'next-steps-proof-')))
+    t.after(() => rm(root, { recursive: true, force: true }))
+    const script = new Script([
+      call(MARIVO_PRESENT_TOOL_NAME, {
+        stage: stage === 'preview' ? 'preview' : 'save',
+        title: 'Proof',
+        program: stage === 'failed' ? 'root=UnknownComponent();' : 'root=TextContent("Saved");',
+      }),
+      stop,
+      stop,
+    ])
+    const ctx = await harness(script)
+    const agent = await ctx.agentLoop.create(SessionId(randomUUID()), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const savedWrites = new SavedWriteProofs()
+    let commits = 0
+    let committedToken: ToolExecutionToken | undefined
+    const published: NextStepsNotice[] = []
+    const unregister = agent.ctx.tools.register(
+      createMarivoPresentTool(
+        () => ({ id: 'workspace', path: root }),
+        agent.session,
+        undefined,
+        undefined,
+        undefined,
+        (exec, ref) => {
+          commits++
+          committedToken = exec.token
+          savedWrites.committed(exec, ref)
+          if (stage === 'cancel') agent.cancel({ kind: 'user' })
+          if (stage === 'dispose') void close()
+        },
+      ),
+    )
+    const close = installNextStepsAgent(
+      ctx,
+      agent,
+      () => ({ id: 'workspace', path: root }),
+      (value) => published.push(value),
+      savedWrites,
+    )
+    const consumed = agent.ctx.on('tools/result', (exec) => {
+      assert.equal(savedWrites.take(exec.token), undefined)
+    })
+    try {
+      agent.followup(
+        createUserMessage({
+          source: { kind: 'user' },
+          content: [{ type: 'text', text: 'Save the report' }],
+        }),
+      )
+      await agent.whenIdle()
+      assert.equal(commits, ['save', 'cancel', 'dispose'].includes(stage) ? 1 : 0)
+      if (committedToken) assert.equal(savedWrites.take(committedToken), undefined)
+      assert.equal(reminders(agent).length, stage === 'save' ? 1 : 0)
+      assert.equal(published.length, stage === 'save' ? 1 : 0)
+    } finally {
+      consumed()
+      unregister()
+      await close()
+      await ctx.fiber.dispose()
+    }
+  })
+
+test('next steps declares a closed supported output with identity-only receipt fields', async () => {
+  const fixture = await reportHarness([stop])
+  try {
+    const definition = fixture.agent.ctx.tools.get('marivo_next_steps', fixture.agent)!
+    assert.equal(definition.output.schema.type, 'object')
+    assert.equal(definition.output.schema.additionalProperties, false)
+    assert.deepEqual(definition.output.schema.required, ['accepted', 'ref'])
+    assert.deepEqual(definition.output.schema.properties?.receipt?.required, [
+      'kind',
+      'sessionId',
+      'turn',
+      'callId',
+    ])
+    assert.equal(definition.output.schema.properties?.accepted?.const, true)
+  } finally {
+    await fixture.close()
+  }
 })

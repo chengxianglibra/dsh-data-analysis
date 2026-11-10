@@ -36,7 +36,7 @@ test('invalid or unrelated suffixes do not change error state, and success canno
     raw + '\nextra result',
     raw.replace('"elapsedMs":30', '"elapsedMs":-1'),
     raw.replace('"elapsedMs":30', '"elapsedMs":1e999'),
-    raw.replace('"phase":"executing"', '"phase":"other"'),
+    raw.replaceAll('"phase":"executing"', '"phase":"other"'),
     raw.replace('"reason":"unknown"', '"reason":"other"'),
     raw.replace('"executionElapsedMs":null,', ''),
     'Other failure; execution={"reason":"unknown"}',

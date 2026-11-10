@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（`dsh.analysis-ui/v1`）呈现在真实 Turn 下的独立 Chat 节点与原生右侧 tab 中。
+本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）呈现在真实 Turn 下的独立 Chat 节点与原生右侧 tab 中。
 插件拥有 Catalog/Renderer、阅读状态、报告目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -20,6 +20,8 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 可见的报告标题由 program 中的正文负责，Chat 工具栏只保留“在边栏查看”按钮，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及报告的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧报告操作占用独立一行，避免遮挡正文。
 
 客户端 ReportViews 维护已准入文档和读者状态，Tabs 选择、表格排序/分页及表格横向滚动按稳定语句身份保留，包括移动、保存和关闭回到 Chat。报告外层滚动由各自 Host 容器负责。新会话、Workspace 或连接 generation 不继承旧状态。Tab 的 Build 地址支持已保存内容重开；临时阅读状态不持久写入报告。
+
+固定 Build 的 contentReview 在报告正文外显示：required 提示数据已变更、静态叙述待核对；旧 v1 缺少该字段，unknown 明示未记录复核状态；not-needed 不显示提示。Chat、当前和历史 Tab、离线 HTML 使用同一 reader 与相应版本元数据，普通展示编辑不自动清除 required。该状态不证明业务结论或分析正确性。
 
 ## 统一 AnalysisSurface 与候选预览
 
@@ -66,7 +68,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   折线图悬停使用单一数据提示并直接定位，不叠加浏览器原生图表摘要提示或位移动画；图表摘要仍可由辅助技术读取。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
-  显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_present` 返回结构化错误，不保存。
+  显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_report_write` 返回结构化错误，不保存。
   单行多组比较（单一比较、最多 8 个指标）默认按指标渲染本期/基期/Δ/Δ% 的头部数字块，更长或含多个比较时回退为指标 × 本期/基期/Δ/Δ% 转置表；显式 `table` 始终是转置表。
   折线与面积图要求时间轴；柱图可用时间轴或普通类别轴，类别轴按保存行首次出现的顺序等距排布，不推断连续性。
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
@@ -112,11 +114,11 @@ Frame 点引用绑定固定 Build、资源、行和字段；发送时由服务�
 复制、表格等直观操作使用带键盘焦点提示和本地化无障碍名称的图标；数据范围不完整及期间未捕获仍有明确状态。
 Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原始行和字段，独立于 Frame 的选点协议；准备和发送时由服务端读取保存快照并校验身份与内容摘要，发送所选精确值及有界同行上下文（最多 4,000 UTF-8 bytes，不根据列类型猜测哪些列是坐标）并标明省略，不执行新查询。
 
-组件引用绑定相同会话与固定 Build，并校验保存 program 中匹配的组件类型、资源和原始视图配置；发送固定 recordId、资源名、匹配的组件配置与保存的 Marivo resultRef，不展开数据行、完整报告 program 或语义元数据。同一配置可在多个位置复用，引用不声称唯一页面位置。持久资源直接携带原声明的 `marivo.frame_ref/v2` 或 `marivo.dataframe_ref/v2`，Agent 通过绑定 Runtime/project 的 Marivo 公开 API 读取并核验准确固定结果；`marivo_ui_read` 继续只读取报告组织、声明和结构。旧快照没有完整结果引用时明确返回 resultRef=null，不拼造引用或自动重新分析。数据点同时携带可用的 resultRef。
+组件引用绑定相同会话与固定 Build，并校验保存 program 中匹配的组件类型、资源和原始视图配置；发送准确 saved ref、资源名、匹配的组件配置与保存的 Marivo resultRef，不展开数据行、完整报告 program 或语义元数据。同一配置可在多个位置复用，引用不声称唯一页面位置。持久资源直接携带原声明的 `marivo.frame_ref/v2` 或 `marivo.dataframe_ref/v2`，Agent 通过绑定 Runtime/project 的 Marivo 公开 API 读取并核验准确固定结果；`marivo_report_read` 继续只读取报告组织、声明和结构。旧快照没有完整结果引用时明确返回 resultRef=null，不拼造引用或自动重新分析。数据点同时携带可用的 resultRef。
 
 候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑或撤销/重做；已保存版本可在报告 tab 中导出离线 HTML，见[导出契约](report-publishing.md)。
 
-引用提交采用 `<marivo-selection>` 包裹的 `dsh-data-analysis-selection/v1` JSON，标签与输入框共用生成规则，数据内容中的分隔字符经 Unicode escape。插件使用 Harness 的 `uiConversation.userText` rule 和 `conversation.user.text.node` renderer 将发送回显、正式消息、队列和历史重载中的合法引用显示为同一标签 chip；模型收到原始引用 JSON。未闭合、无效或未知版本保留原文，普通消息不受影响。此规则只负责展示，不执行数据读取或赋予引用访问权限。
+引用提交采用 `<marivo-selection>` 包裹的 `dsh-data-analysis-selection/v2` JSON，标签与输入框共用生成规则，数据内容中的分隔字符经 Unicode escape。插件使用 Harness 的 `uiConversation.userText` rule 和 `conversation.user.text.node` renderer 将发送回显、正式消息、队列和历史重载中的合法引用显示为同一标签 chip；模型收到原始引用 JSON。未闭合、无效或未知版本保留原文，普通消息不受影响。此规则只负责展示，不执行数据读取或赋予引用访问权限。
 
 展示层直接读取 Frame 已有列中的指标、总计和差值。饼图按完整快照中各类别的保存值分配扇区，并在图例显示各扇区占圆的百分比。会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
 
@@ -140,7 +142,7 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 
 Reader 接受 current v4 历史指针、当前快照及当前 Catalog build。其他 Catalog build、current v2/v3、Frame v1 与旧报告内容均明确拒绝，
 文件保留但不可继续读取或更新；目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface。
-需要相同内容时，从实际结果重新 `marivo_present` 新格式。
+需要相同内容时，从实际结果重新 `marivo_report_write` 新格式。
 
 ## 界面语言与报告语言
 

@@ -75,6 +75,8 @@ export async function createHostChatFixture(order = ['native', 'presentation']) 
     Date,
     performance,
     TextEncoder,
+    atob,
+    btoa,
     TextDecoder,
     AbortController,
     AbortSignal,

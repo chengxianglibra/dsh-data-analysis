@@ -5,14 +5,15 @@ import path from 'node:path'
 import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { type ToolDefinition, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import {
   MarivoPythonExecutionError,
   type MarivoPythonExecutionSummary,
   registerMarivoPythonTool,
 } from '../../src/datasource/python.ts'
 import type { MarivoPythonOptionsSource } from '../../src/datasource/python-options.ts'
-import { fixture, operation, waiting } from './fixtures.ts'
+import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
+import { barrier, fixture, operation, waiting } from './fixtures.ts'
 
 function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsSource = {}) {
   let definition!: ToolDefinition
@@ -80,15 +81,23 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
     hooks,
     shell,
     services,
-    call: (datasources = ['warehouse'], code = 'print("complete")', timeoutMs?: number) =>
-      definition.execute(
-        { code, datasources, ...(timeoutMs === undefined ? {} : { timeoutMs }) },
+    call: async (datasources = ['warehouse'], code = 'print("complete")', timeoutMs?: number) => {
+      const value = await definition.execute(
+        {
+          code,
+          datasources,
+          project: datasources.length ? 'required' : 'none',
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        },
         {
           ...f.exec,
           deferContext: () => {},
           concludeTurn: () => {},
         },
-      ),
+      )
+      assert.deepEqual(validateJsonSchemaValue(definition.output.schema, value), [])
+      return value
+    },
   }
 }
 
@@ -129,8 +138,8 @@ test('Python admits configured credentials once, uses stdin, and clears its fres
     if ('status' in result && result.status === 'ready') values = result.values
     return result
   }
-  const { codeRef, execution, ...result } = (await p.call()) as Record<string, unknown>
-  assert(codeRef)
+  const { project, execution, ...result } = (await p.call()) as Record<string, unknown>
+  assert.deepEqual(project, { status: 'already-ready', projectRoot })
   assertSummary(execution, 'capturing-code', 'succeeded')
   assert.equal(execution.requestedTimeoutMs, 120_000)
   assert.equal(execution.effectiveTimeoutMs, 120_000)
@@ -218,7 +227,8 @@ test('headless and subagent missing credentials return bounded needs without a l
     t.after(() => f.service.close())
     if (interaction === 'web') Object.assign(f.agent.session.header, { origin: 'subagent' })
     const p = pythonTool(f)
-    const { execution, handoff, ...result } = (await p.call()) as Record<string, unknown>
+    const { execution, handoff, project, ...result } = (await p.call()) as Record<string, unknown>
+    assert(project)
     assertSummary(execution, 'preparing', 'not-started')
     assert.equal(execution.executionElapsedMs, null)
     assert.equal(execution.effectiveTimeoutMs, null)
@@ -235,6 +245,117 @@ test('headless and subagent missing credentials return bounded needs without a l
     })
     assert.equal(p.launches.length, 0)
     assert.equal(f.service.watch('session').requests.length, 0)
+  }
+})
+
+test('Python requires explicit project intent before binding, credentials or execution', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  for (const args of [
+    { code: 'pass', datasources: ['warehouse'] },
+    { code: 'pass', datasources: [], resultVariables: { data: 'ref' } },
+    { code: 'pass', datasources: [], project: 'invalid' },
+  ])
+    await assert.rejects(
+      p.definition.execute(args, { ...f.exec, deferContext: () => {}, concludeTurn: () => {} }),
+      /project/,
+    )
+  assert.equal(f.store.calls.resolve, 0)
+  assert.equal(p.launches.length, 0)
+})
+
+test('required project initialization uses the same Host Shell policy before credential admission', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  const policy = { mode: 'fixture-policy' }
+  p.services.set('sandboxPolicy', { resolve: () => policy })
+  f.bridge.ensureProject = async (options) => {
+    await options?.assertCurrent?.()
+    assert.equal(f.store.calls.resolve, 0)
+    await options?.initialize?.(options.signal)
+    return { status: 'created', projectRoot: f.bridge.binding.projectRoot }
+  }
+  const result = (await p.call()) as Record<string, unknown>
+  assert.equal(result.status, 'needs-credentials')
+  assert.deepEqual(result.project, { status: 'created', projectRoot: '/workspace' })
+  assert.equal(p.launches.length, 1)
+  assert.equal(p.requests[0]!.sandboxPolicy, policy)
+  assert.equal(p.requests[0]!.workdir, f.bridge.binding.projectRoot)
+  assert.deepEqual(JSON.parse(p.requests[0]!.stdin!), f.bridge.binding)
+  assert.match(p.requests[0]!.command, /runpy\.run_module/)
+  assert.doesNotMatch(p.requests[0]!.command, /--force/)
+})
+
+test('Python project failures retain stable code, phase and recovery through Harness text', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  f.bridge.ensureProject = async () => {
+    throw new MarivoEnvironmentError('project-preparation-uncertain', 'private subprocess detail')
+  }
+  await assert.rejects(p.call(), (error: unknown) => {
+    assert(error instanceof MarivoPythonExecutionError)
+    assert.equal(error.code, 'project-preparation-uncertain')
+    assert.equal(error.phase, 'preparing')
+    assert.match(error.recovery!, /Inspect the Workspace/)
+    assert.match(error.message, /"code":"project-preparation-uncertain"/)
+    assert.doesNotMatch(error.message, /private subprocess detail/)
+    assert.equal(error.execution.reason, 'not-started')
+    return true
+  })
+  assert.equal(p.launches.length, 0)
+  assert.equal(f.store.calls.resolve, 0)
+})
+
+test('Workspace changes in the init Shell hook prevent initialization and user code', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  f.bridge.ensureProject = async (options) => {
+    await options?.initialize?.(options.signal)
+    return { status: 'created', projectRoot: f.bridge.binding.projectRoot }
+  }
+  p.hooks.resolve = () => {
+    Object.assign(f.agent.session.header, { cwd: '/other-workspace' })
+  }
+  await assert.rejects(p.call(), /context-changed/)
+  assert.equal(p.launches.length, 0)
+  assert.equal(f.store.calls.resolve, 0)
+})
+
+test('Agent disposal and plugin shutdown cancel active project init before user code', async (t) => {
+  for (const reason of ['agent', 'plugin']) {
+    const f = fixture()
+    t.after(() => f.service.close())
+    const p = pythonTool(f)
+    const entered = barrier(),
+      gate = barrier()
+    f.bridge.ensureProject = async (options) => {
+      await options?.initialize?.(options.signal)
+      return { status: 'created', projectRoot: f.bridge.binding.projectRoot }
+    }
+    p.hooks.result = async () => {
+      entered.release()
+      await gate.promise
+      return p.outcome
+    }
+    const pending = assert.rejects(p.call(), (error: unknown) => {
+      assert(error instanceof MarivoPythonExecutionError)
+      assert.equal(error.execution.reason, 'cancelled')
+      assert.equal(error.execution.phase, 'preparing')
+      return true
+    })
+    await entered.promise
+    const closing = reason === 'plugin' ? f.service.close() : undefined
+    if (reason === 'agent') f.service.disposeAgent(f.agent)
+    assert.equal(p.requests[0]!.signal!.aborted, true)
+    gate.release()
+    await pending
+    await closing
+    assert.equal(p.launches.length, 1)
+    assert.equal(f.store.calls.resolve, 0)
   }
 })
 
@@ -278,7 +399,7 @@ test('cancellation or credential rotation in a Shell hook fails before the sole 
       assert(error instanceof MarivoPythonExecutionError)
       assertSummary(error.execution, 'preparing', reason === 'cancel' ? 'cancelled' : 'not-started')
       assert.equal(error.execution.effectiveTimeoutMs, 120_000)
-      assert.match(error.message, /Python was not started/)
+      assert.match(error.message, /user Python code was not started/)
       return true
     })
     assert.equal(p.launches.length, 0)

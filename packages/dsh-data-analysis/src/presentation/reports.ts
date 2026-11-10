@@ -4,11 +4,7 @@ import { lstat, open, opendir, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { commitPresentation } from './commit.ts'
-import {
-  type AnalysisDocument,
-  analysisRecordId,
-  parseSavedPresentation,
-} from './contracts/analysis-document.ts'
+import { type AnalysisDocument, parseSavedPresentation } from './contracts/analysis-document.ts'
 import {
   type PublicationSource,
   parseReportHistory,
@@ -18,6 +14,7 @@ import {
   type ReportHistory,
 } from './contracts/catalog.ts'
 import { type PresentationReceipt, parsePresentationReceipt } from './contracts/index.ts'
+import { savedReportRef } from './contracts/report-ref.ts'
 import {
   presentationAssetPath,
   presentationReportPath,
@@ -228,8 +225,16 @@ export async function publishPresentation(
       if ((current?.buildId ?? null) !== expectedBuildId)
         throw new PresentationRecoveryError(
           'report-save-conflict',
-          'Read currentRecordId with marivo_ui_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit rebaseOnRecordId with cumulative program and resourcePatch changes relative to the reviewed current version. For a data refresh, omit program and metadata and replace only compatible same-name resources. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
-          current ? { currentRecordId: analysisRecordId(current.reportId, current.buildId) } : {},
+          'Read currentRef with marivo_report_read and review your intended changes against it. For an active draft, read {draft:true}, then preview an explicit onto with cumulative program and resourcePatch changes relative to the reviewed current version. For a data refresh, omit program and metadata and replace only compatible same-name resources. The draft is retained only until this Turn ends; do not blindly retry or overwrite the current version.',
+          current
+            ? {
+                currentRef: savedReportRef({
+                  workspaceId: current.workspaceId,
+                  reportId: current.reportId,
+                  buildId: current.buildId,
+                }),
+              }
+            : {},
         )
       const versions = [
         { receipt, publishedAt: new Date().toISOString(), source },

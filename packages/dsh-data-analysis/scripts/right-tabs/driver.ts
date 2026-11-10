@@ -11,6 +11,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as FilesystemTools from '@deepseek-ai/dsh-tool-fs'
+import { draftReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { type DraftDelivery, draftDeliverySchema } from '../../src/presentation/receipt.ts'
 import { listReports, readReceiptDocument } from '../../src/presentation/reports.ts'
 import {
@@ -111,7 +112,17 @@ class ReportDraftAdapter extends LlmAdapter {
     const resources = await this.#resources()
     const [first, second] = Object.keys(resources)
     assert.ok(first && second)
-    const identity = draft ? { draftId: draft.draftId, draftRevision: draft.draftRevision } : {}
+    const identity = draft
+      ? {
+          ref: draftReportRef({
+            workspaceId: draft.workspaceId,
+            sessionId: draft.dshSessionId,
+            turn: draft.turn,
+            draftId: draft.draftId,
+            revision: draft.draftRevision,
+          }),
+        }
+      : {}
     const args = JSON.stringify(
       step === 0
         ? {
@@ -130,7 +141,7 @@ class ReportDraftAdapter extends LlmAdapter {
           : { stage: 'save', ...identity },
     )
     const id = ToolCallId(`report-draft-${step}`)
-    const name = 'marivo_present'
+    const name = 'marivo_report_write'
     yield { type: 'block-start', index: 0, blockType: 'tool-call' }
     yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
     yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }

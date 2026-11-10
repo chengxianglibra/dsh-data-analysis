@@ -19,6 +19,30 @@ async function pending(f: ReturnType<typeof fixture>) {
   }
 }
 
+test('configuration explicitly prepares a project while connection testing remains observational', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  let prepared = 0
+  f.bridge.ensureProject = async (options) => {
+    prepared++
+    await options?.assertCurrent?.()
+    return { status: 'created', projectRoot: f.bridge.binding.projectRoot }
+  }
+  f.store.put('DB_PASSWORD')
+  await f.service.prepare('test', f.exec, f.resolve, 'warehouse')
+  assert.equal(prepared, 0)
+  const task = f.service.configure(f.exec, f.resolve, {
+    mode: 'create',
+    reason: 'configure source',
+  })
+  await pending(f)
+  assert.equal(prepared, 1)
+  f.controller.abort()
+  const result = await task
+  assert.equal(result.project?.status, 'created')
+  assert.equal(result.status, 'call-ended')
+})
+
 test('configuration starts without a datasource, waits through failure, and returns only verified identity', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
@@ -50,7 +74,12 @@ test('configuration starts without a datasource, waits through failure, and retu
   const current = f.service.watch('session').configurationRequests[0]!.context!
   f.setResult({ name: 'warehouse', ok: true, latency_ms: 3, failure: null, repair: null })
   await operation(f, current, 'submit', { requestId: request.id })
-  assert.deepEqual(await task, { status: 'ok', name: 'warehouse', latency_ms: 3 })
+  assert.deepEqual(await task, {
+    status: 'ok',
+    name: 'warehouse',
+    latency_ms: 3,
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
   assert.doesNotMatch(JSON.stringify(f.service.watch('session')), /private-config-canary/)
   assert.throws(
     () =>
@@ -72,7 +101,10 @@ test('cancellation and headless/subagent configuration do not resume as success'
   const task = f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'missing source' })
   const request = await pending(f)
   f.service.cancelRequest(request.id)
-  assert.deepEqual(await task, { status: 'cancelled' })
+  assert.deepEqual(await task, {
+    status: 'cancelled',
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
   assert.equal(
     f.controller.signal.aborted,
     false,
@@ -197,12 +229,18 @@ test('definition changes during test cannot finish configuration; context change
   f.description.definition = 'changed'
   release.release()
   await finish(f, id, selected.context!.token)
-  assert.deepEqual(await task, { status: 'context-changed' })
+  assert.deepEqual(await task, {
+    status: 'context-changed',
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
   const next = f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'configure' })
   await pending(f)
   Reflect.set(f.agent.session.header, 'cwd', '/another-workspace')
   await f.service.waitWatch('session', undefined, f.controller.signal)
-  assert.deepEqual(await next, { status: 'context-changed' })
+  assert.deepEqual(await next, {
+    status: 'context-changed',
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
 })
 
 test('closed agent releases pending configuration; diagnostic handoff is explicitly unsuccessful', async (t) => {
@@ -227,11 +265,15 @@ test('closed agent releases pending configuration; diagnostic handoff is explici
     latency_ms: null,
     failure: failed.failure,
     repair: failed.repair,
+    project: { status: 'already-ready', projectRoot: '/workspace' },
   })
   const next = f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'configure' })
   await pending(f)
   f.service.disposeAgent(f.agent)
-  assert.deepEqual(await next, { status: 'call-ended' })
+  assert.deepEqual(await next, {
+    status: 'call-ended',
+    project: { status: 'already-ready', projectRoot: '/workspace' },
+  })
 })
 
 test('RPC rejects a stale edit and serializes writes; configuration requests scope saves to their Runtime', async (t) => {

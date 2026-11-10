@@ -31,7 +31,7 @@ import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { apply, inject } from '../../src/plugin.ts'
 import type { AnalysisPresentInput } from '../../src/presentation/contracts/analysis-document.ts'
-import { analysisRecordId } from '../../src/presentation/contracts/analysis-document.ts'
+import { savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import type { PresentationReceipt } from '../../src/presentation/contracts/types.ts'
 import { presentationSha256, readPresentationAsset } from '../../src/presentation/files.ts'
 import {
@@ -47,7 +47,7 @@ import { TestShellEnv } from '../../tests/test-shell-env.ts'
 import { inspectStoredSession } from '../harness-session.ts'
 
 export type PresentationMode = 'native' | 'both' | 'ptc'
-/** One scripted `marivo_present` creation input; updates add the previous recordId. */
+/** One scripted `marivo_report_write` creation input; updates add the previous saved ref. */
 export type PresentationRequest = Omit<AnalysisPresentInput, 'surface' | 'basedOnRecordId'>
 export interface PresentationJourneyOptions {
   updateExistingReport?: boolean
@@ -59,16 +59,19 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
   readonly mode: PresentationMode
   readonly requests: readonly PresentationRequest[]
   readonly previousReceipt?: () => PresentationReceipt | undefined
+  readonly updateExistingReport: boolean
   readonly runId = randomUUID()
   constructor(
     mode: PresentationMode,
     requests: readonly PresentationRequest[],
     previousReceipt?: () => PresentationReceipt | undefined,
+    updateExistingReport = previousReceipt !== undefined,
   ) {
     super()
     this.mode = mode
     this.requests = requests
     this.previousReceipt = previousReceipt
+    this.updateExistingReport = updateExistingReport
   }
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model })
@@ -86,27 +89,52 @@ export class ScriptedPresentationAdapter extends LlmAdapter {
     }
     assert.equal(options.purpose, undefined)
     const step = this.#step++
-    const phase = step % 4
-    const turnIndex = Math.floor(step / 4)
-    if (phase < 3) {
+    const phase = step % 5
+    const turnIndex = Math.floor(step / 5)
+    if (phase < 4) {
       const request = this.requests[turnIndex]
       assert.ok(request, 'Scripted model received an unexpected extra Tool request')
       const id = ToolCallId(`s4-${this.mode}-${step}`)
       const codeDispatch = this.mode === 'ptc' || (this.mode === 'both' && step === 1)
       const file = `s4-produced-${this.runId}-${turnIndex}.txt`
-      const toolName = phase === 0 ? 'write' : phase === 1 ? 'marivo_present' : 'read'
-      let updateTarget: { basedOnRecordId: string } | undefined
-      if (phase === 1 && turnIndex > 0 && this.previousReceipt) {
+      const toolName =
+        phase === 0
+          ? 'write'
+          : phase === 1
+            ? 'marivo_report_write'
+            : phase === 2
+              ? 'marivo_next_steps'
+              : 'read'
+      let updateTarget: { ref: string } | undefined
+      if (phase === 1 && turnIndex > 0 && this.updateExistingReport && this.previousReceipt) {
         const receipt = this.previousReceipt()
         assert.ok(receipt, 'An update must use the previous actual Tool delivery')
-        updateTarget = { basedOnRecordId: analysisRecordId(receipt.reportId, receipt.buildId) }
+        updateTarget = {
+          ref: savedReportRef({
+            workspaceId: receipt.workspaceId,
+            reportId: receipt.reportId,
+            buildId: receipt.buildId,
+          }),
+        }
       }
+      const saved = phase === 2 ? this.previousReceipt?.() : undefined
+      if (phase === 2) assert.ok(saved, 'Recommendations must use an actual saved receipt')
       const toolArgs =
         phase === 0
           ? { file_path: file, content: 'Ordinary Harness produced file before report delivery.\n' }
           : phase === 1
-            ? { ...request, ...updateTarget }
-            : { file_path: file }
+            ? { stage: 'save', ...request, ...updateTarget }
+            : phase === 2 && saved
+              ? {
+                  ref: savedReportRef({
+                    workspaceId: saved.workspaceId,
+                    reportId: saved.reportId,
+                    buildId: saved.buildId,
+                  }),
+                  items: [],
+                  emptyReason: 'no-suggestions',
+                }
+              : { file_path: file }
       const name = codeDispatch ? 'run_code' : toolName
       const args = JSON.stringify(
         codeDispatch
@@ -156,7 +184,7 @@ export function actualDeliveries(
     if (event.type === 'tool/result') raw = event.data.meta
     if (
       event.type === 'tool/ptc-dispatch' &&
-      event.data.name === 'marivo_present' &&
+      event.data.name === 'marivo_report_write' &&
       !event.data.isError
     )
       raw = event.data.content
@@ -193,9 +221,8 @@ export async function runPresentationJourneys(
     new ScriptedPresentationAdapter(
       mode,
       requests,
-      options.updateExistingReport
-        ? () => actualDeliveries(agent.session.snapshotEvents(), String(sessionId)).at(-1)?.receipt
-        : undefined,
+      () => actualDeliveries(agent.session.snapshotEvents(), String(sessionId)).at(-1)?.receipt,
+      options.updateExistingReport ?? false,
     ),
   )
   const agent = await ctx.agentLoop.create(
@@ -223,7 +250,7 @@ export async function runPresentationJourneys(
       !duplicated &&
       owner.id === agent.session.id &&
       event.type === 'tool/ptc-dispatch' &&
-      event.data.name === 'marivo_present'
+      event.data.name === 'marivo_report_write'
     ) {
       duplicated = true
       // Replay the receipt under a distinct sub-call, with a matching start,
@@ -333,7 +360,7 @@ export async function runPresentationJourneys(
     }
   }
   const dispatches = stored.events.filter(
-    (event) => event.type === 'tool/ptc-dispatch' && event.data.name === 'marivo_present',
+    (event) => event.type === 'tool/ptc-dispatch' && event.data.name === 'marivo_report_write',
   )
   assert.equal(
     dispatches.length,
@@ -351,7 +378,15 @@ export async function runPresentationJourneys(
     })
     .join('\n')
   for (const delivery of deliveries) {
-    assert.ok(text.includes(analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId)))
+    assert.ok(
+      text.includes(
+        savedReportRef({
+          workspaceId: delivery.receipt.workspaceId,
+          reportId: delivery.receipt.reportId,
+          buildId: delivery.receipt.buildId,
+        }),
+      ),
+    )
     for (const file of Object.values(delivery.receipt.files))
       assert.ok(!text.includes(file.path) && !text.includes(file.sha256))
   }
@@ -360,7 +395,7 @@ export async function runPresentationJourneys(
     (event) =>
       event.type === (mode === 'native' ? 'tool/result' : 'tool/ptc-dispatch') &&
       (event.type === 'tool/ptc-dispatch'
-        ? event.data.name === 'marivo_present'
+        ? event.data.name === 'marivo_report_write'
         : (event.data.meta as { kind?: string } | undefined)?.kind ===
           'marivo.presentation.delivery'),
   )!
@@ -387,7 +422,7 @@ export async function runPresentationJourneys(
     const names = tools.map((event) => (event.data as { name: string }).name)
     assert.equal(names[0], 'write')
     assert.equal(names.at(-1), 'read')
-    assert.ok(names.includes(mode === 'both' && turn === 1 ? 'run_code' : 'marivo_present'))
+    assert.ok(names.includes(mode === 'both' && turn === 1 ? 'run_code' : 'marivo_report_write'))
   }
   assert.equal(
     stored.events.filter(

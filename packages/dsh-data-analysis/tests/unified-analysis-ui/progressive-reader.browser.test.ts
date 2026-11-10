@@ -44,9 +44,9 @@ const root=createRoot(document.getElementById('root'));
 window.requests=[];
 window.progressive={update(patch='',resourcePrefix,streaming=true,candidate=true,withBase=true){
  const args=new PartialArguments();
- args.append(JSON.stringify({surface:'tool',stage:'preview',program:patch}).slice(0,-1)+(resourcePrefix===undefined?'}':',"resourcePatch":'+resourcePrefix));
- const value=analysisCandidate({phase:streaming?'preparing':'start',args,callId:'candidate',name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'s','w',{});
- root.render(h(AnalysisRenderer,{program:streamingAnalysisProgram(withBase?base:undefined,value.program,streaming&&!value.complete,value.resourcePatchInput==='incomplete'),candidateProgram:value.program,removedResourceNames:value.resourcePatch?.remove,title:'Progressive reader',locale:'en-US',resources:candidateResources({resources},value),candidate,isStreaming:streaming,
+ args.append(JSON.stringify({surface:'tool',stage:'preview',program:patch}).slice(0,-1)+(resourcePrefix===undefined?'}':',"resourcePatch":'+resourcePrefix+(resourcePrefix.endsWith('}')?'}':'')));
+ const value=analysisCandidate({phase:streaming?'preparing':'start',args,callId:'candidate',name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'s','w',{});
+ root.render(h(AnalysisRenderer,{program:value.preview?streamingAnalysisProgram(withBase?base:undefined,value.program,streaming&&!value.complete,value.resourcePatchInput==='incomplete'):base,candidateProgram:value.program,removedResourceNames:value.resourcePatch?.remove,title:'Progressive reader',locale:'en-US',resources:value.preview?candidateResources({resources},value):resources,candidate,isStreaming:streaming,
  readCode:async()=>{window.requests.push('code');},openSemanticRef:()=>window.requests.push('semantic'),askPoint:async()=>window.requests.push('point'),askDataset:async()=>window.requests.push('dataset'),askResource:async()=>window.requests.push('resource')}));
 }};
 window.progressive.update();`,

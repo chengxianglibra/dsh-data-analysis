@@ -1,24 +1,32 @@
-/** Repair facts stay in the message because Harness normalizes Tool errors to text. */
+export type PresentationRecoveryCode =
+  | 'analysis-draft-invalid-request'
+  | 'analysis-draft-stage-required'
+  | 'analysis-draft-unavailable'
+  | 'analysis-draft-conflict'
+  | 'analysis-draft-busy'
+  | 'report-save-conflict'
+
+/** Repair facts survive Harness normalization to plain Tool error text. */
 export class PresentationRecoveryError extends Error {
+  readonly code: PresentationRecoveryCode
+  readonly phase = 'report-write'
+  readonly recovery: { nextAction: string; currentRef?: string }
   constructor(
-    code:
-      | 'analysis-draft-invalid-request'
-      | 'analysis-draft-stage-required'
-      | 'analysis-draft-unavailable'
-      | 'analysis-draft-conflict'
-      | 'analysis-draft-busy'
-      | 'report-save-conflict',
+    code: PresentationRecoveryCode,
     nextAction: string,
-    identity: { currentRecordId?: string; draftId?: string; draftRevision?: string } = {},
+    identity: { currentRef?: string } = {},
   ) {
-    super(`${code}; repair=${JSON.stringify({ ...identity, nextAction })}`)
+    const recovery = { ...identity, nextAction }
+    super(`${code}; error=${JSON.stringify({ code, phase: 'report-write', recovery })}`)
     this.name = 'PresentationRecoveryError'
+    this.code = code
+    this.recovery = recovery
   }
 }
 
 export function unavailableDraft() {
   return new PresentationRecoveryError(
     'analysis-draft-unavailable',
-    'Drafts exist only in their original Session Turn and Host process. Read the saved base with marivo_ui_read if available, then rebuild a preview from retained definitions and snapshotRefs. If these are missing, disclose the gap; do not replay analysis just to recover a draft.',
+    'Drafts exist only in their original Session Turn and Host process. Read an accessible saved ref, then rebuild a preview from retained definitions and fixed resources. If these are missing, disclose the gap; do not replay analysis just to recover a draft.',
   )
 }

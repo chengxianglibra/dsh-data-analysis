@@ -79,7 +79,7 @@ function ptc(seq: number, value: PresentationDelivery, failed = false) {
     seq,
     type: 'tool/ptc-dispatch',
     data: {
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       isError: failed,
       rootCallId: 'code-call',
       subCallId: 'code-call:code:1',
@@ -174,7 +174,7 @@ test('tool draft revisions update one Host chat node and save replaces it in pla
   for (const event of [
     start(3),
     step(3),
-    call(3, 'marivo_present', 'first'),
+    call(3, 'marivo_report_write', 'first'),
     native(4, draft, 'first'),
   ])
     append(assembler, event)
@@ -183,7 +183,7 @@ test('tool draft revisions update one Host chat node and save replaces it in pla
   assert.equal(analysisDraftForNode(first, 'session-a')?.draftRevision, draft.draftRevision)
   assert.equal(analysisDraftForNode(first, 'session-b'), undefined)
   const next = { ...draft, draftRevision: randomUUID() }
-  append(assembler, call(5, 'marivo_present', 'second'))
+  append(assembler, call(5, 'marivo_report_write', 'second'))
   append(assembler, native(6, next, 'second'))
   assert.equal(surfaces(assembler).length, 1)
   assert.equal(surfaces(assembler)[0].key, first.key)
@@ -192,7 +192,7 @@ test('tool draft revisions update one Host chat node and save replaces it in pla
     next.draftRevision,
   )
   const saved = { ...delivery('only-build', { surface: 'tool' }), draftId: draft.draftId }
-  append(assembler, call(7, 'marivo_present', 'save'))
+  append(assembler, call(7, 'marivo_report_write', 'save'))
   append(assembler, native(8, saved, 'save'))
   const final = surfaces(assembler)[0]
   assert.equal(final.key, first.key)
@@ -221,7 +221,7 @@ test('Native argument prefixes establish the real Turn report node before tool e
           type: 'tool-call-delta',
           index: 0,
           id: 'present-call',
-          name: 'marivo_present',
+          name: 'marivo_report_write',
           argumentsDelta: '{"stage":"preview","program":"root=TextContent(\\"Live',
         },
       },
@@ -234,7 +234,7 @@ test('Native argument prefixes establish the real Turn report node before tool e
   assert.equal(prefix.groupTree, 'turn')
   assertOutsideHostProcessGroup(assembler, prefix)
   assert.deepEqual(buildIds(prefix), [])
-  append(assembler, call(4, 'marivo_present', 'present-call'))
+  append(assembler, call(4, 'marivo_report_write', 'present-call'))
   append(assembler, native(5, delivery('saved', { surface: 'tool' })))
   append(assembler, end(3, 6))
   assert.equal(surfaces(assembler)[0].key, prefix.key)
@@ -250,14 +250,14 @@ test('Native and PTC saved tool surfaces stay outside actual Host process groups
     const inputs = [
       start(3),
       step(3),
-      call(3, 'marivo_present', 'present-call'),
+      call(3, 'marivo_report_write', 'present-call'),
       native(4, delivery('native-build', { surface: 'tool' })),
       call(5, 'run_code', 'code-call'),
       ptc(6, delivery('ptc-build', { surface: 'tool' })),
       // The same receipt may be published twice through the Host; it renders once.
       ptc(7, delivery('ptc-build', { surface: 'tool' })),
       native(8, delivery('foreign-build', { surface: 'tool', sessionId: 'session-b' })),
-      call(9, 'marivo_present', 'tab-call'),
+      call(9, 'marivo_report_write', 'tab-call'),
       native(10, delivery('tab-build', { surface: 'tab' }), 'tab-call'),
       finalAnswer(3, 11),
       end(3, 12, reason),
@@ -324,7 +324,7 @@ test('an already published surface survives transient absence of state or its st
   for (const event of [
     start(3),
     step(3),
-    call(3, 'marivo_present', 'present-call'),
+    call(3, 'marivo_report_write', 'present-call'),
     native(4, delivery('saved', { surface: 'tool' })),
   ])
     append(assembler, event)
@@ -354,12 +354,12 @@ test('failed, mismatched and tab-only deliveries never publish an analysis surfa
   for (const event of [
     start(3),
     step(3),
-    call(3, 'marivo_present', 'present-call'),
+    call(3, 'marivo_report_write', 'present-call'),
     native(4, delivery('failed', { surface: 'tool' }), 'present-call', true),
     native(5, delivery('wrong-call', { surface: 'tool' }), 'unrecognized-call'),
     call(6, 'run_code', 'code-call'),
     ptc(7, delivery('failed-ptc', { surface: 'tool' }), true),
-    call(8, 'marivo_present', 'tab-call'),
+    call(8, 'marivo_report_write', 'tab-call'),
     native(9, delivery('tab-only', { surface: 'tab' }), 'tab-call'),
     native(10, delivery('legacy-tab'), 'tab-call'),
     end(3, 11),
@@ -374,7 +374,7 @@ test('a partial history window retains a verified call and result, but never tru
   for (const { events, expected } of [
     {
       events: [
-        call(20, 'marivo_present', 'present-call'),
+        call(20, 'marivo_report_write', 'present-call'),
         native(21, delivery('native-history', { surface: 'tool' })),
         end(3, 22),
       ],
@@ -416,7 +416,7 @@ test('a partial history window retains a verified call and result, but never tru
   let state = marivoAnalysisSurfaceDefinition.start({}, { event: orphan })
   state = marivoAnalysisSurfaceDefinition.update(
     { state },
-    { event: call(21, 'marivo_present', 'present-call') },
+    { event: call(21, 'marivo_report_write', 'present-call') },
   )
   state = marivoAnalysisSurfaceDefinition.update(
     { state },
@@ -435,12 +435,12 @@ test('separate Turns retain separate visible results instead of moving older res
   for (const event of [
     start(3, 1),
     step(3, 2),
-    call(3, 'marivo_present', 'present-call', 3),
+    call(3, 'marivo_report_write', 'present-call', 3),
     native(4, delivery('first', { turn: 3, surface: 'tool' })),
     end(3, 5),
     start(4, 6),
     step(4, 7),
-    call(8, 'marivo_present', 'next-call', 4),
+    call(8, 'marivo_report_write', 'next-call', 4),
     native(9, delivery('second', { turn: 4, surface: 'tool' }), 'next-call'),
     end(4, 10),
   ])

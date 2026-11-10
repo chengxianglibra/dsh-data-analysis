@@ -269,10 +269,10 @@ export function installNextSteps(ctx: Context) {
         data-next-steps-status={notice.status}
       >
         <UIStyleSheet />
-        {notice.status === 'unavailable' && (
+        {(notice.status === 'empty' || notice.status === 'unavailable') && (
           <span role="status">
             {hostCopy(ctx)(
-              notice.reason === 'no-suggestions'
+              notice.status === 'empty'
                 ? 'marivo.presentation.ui-next-steps-none'
                 : 'marivo.presentation.ui-next-steps-unavailable',
             )}

@@ -30,7 +30,7 @@
 - 命令行中可使用 `pnpm`，供 Harness 安装插件。
 - Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 
-无需预装 Marivo。首次启动会通过 pip 安装 Marivo `0.6.4` 正式版并自动准备分析环境，需要联网下载依赖，请等待准备完成。首次 Marivo 分析或结果持久化前，助手会检查当前工作区，缺少项目时使用同一 Runtime 执行 `marivo init`；已有项目保留，普通文件预览无需初始化。
+无需预装 Marivo。首次启动会通过 pip 安装 Marivo `0.6.4` 正式版并自动准备分析环境，需要联网下载依赖，请等待准备完成。首次 Marivo 项目分析或结果持久化时，插件根据 `project:"required"` 准备当前工作区根项目；已有项目保留，普通文件预览无需初始化。
 
 ### 安装并启动
 
@@ -106,12 +106,12 @@ npx @deepseek-ai/dsh web
 新生成的结果、报告和看板固定在会话中独立展示，属于当前 Turn，位于工作步骤折叠区之外。单个已有 Frame 或捕获的
 DataFrame 可直接展示，无需重新分析。`DatasetView` 支持表格、单值，以及通过显式列映射选择 line、area、bar、heatmap；图表要求完整快照，不聚合或推断分析语义。通过“报告”目录可重开已保存结果和历史版本。
 
-分析报告和看板通过 `marivo_present` 在同一份文档中呈现结论、说明、限制与数据，Frame 数据优先使用
+分析报告和看板通过 `marivo_report_write` 在同一份文档中呈现结论、说明、限制与数据，Frame 数据优先使用
 `AnalysisFrameView`。报告保存成功后，可直接阅读并在 Chat 中选择后续分析。你指定的输出格式优先。
 
 AnalysisFrame 显式 `persist()` 后，将 `saved.ref.to_dict()` 作为 `analysis-frame` 资源提交；插件通过绑定 Python Runtime 读取，无需 HTTP 服务。DataFrame 使用 `mv.persist_dataframe(table).to_dict()`，将完整字典作为 `dataframe` 资源提交；引用须属于当前 Workspace。
 
-需要追溯生成脚本时，在 `marivo_python.resultVariables` 中声明引用变量，从返回的 `resultRefs` 取引用，并将同次 `codeRef` 一并交给资源声明；stdout 保持任意文本。更新数据时，助手可按需读取绑定脚本、数据源和输出声明，重新生成结果并替换同名资源，保留原布局、正文和显示标签；正文中的静态数字不会自动改写。
+需要追溯生成脚本时，在 `marivo_python.resultVariables` 中声明引用变量，将返回的 `results[name].resource` 原样交给报告工具，插件关联 kind 和 codeRef；stdout 保持任意文本。更新数据时，助手可按需读取绑定脚本、数据源和输出声明，重新生成结果并替换同名资源，通过 `mode:"refresh-data"` 保留原布局、正文和显示标签，逐批原子校验；正文中的静态数字不会自动改写，待复核状态随报告版本保存。
 
 - **检查数据**：精确排序、本地翻页，并就数据点或整个结果继续提问。截断预览注明范围，不作为完整单值展示。
 - **查看依据**：Frame 显示结构与来源身份；DataFrame 集中展示捕获范围、执行脚本和已声明的数据源。
@@ -133,3 +133,5 @@ AnalysisFrame 显式 `persist()` 后，将 `saved.ref.to_dict()` 作为 `analysi
 ## 许可证
 
 本项目采用 [MIT License](packages/dsh-data-analysis/LICENSE)。
+
+本轮为破坏性协议更新：报告工具使用 `marivo_report_read` / `marivo_report_write` 和单一版本 `ref`，所有写入显式指定 stage；旧名称和参数不再接受。包根仅提供安装入口与配置类型，扩展通过版本化 integration 入口接入。

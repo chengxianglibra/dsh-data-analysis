@@ -2,18 +2,29 @@ import { z } from 'zod'
 import type { ComponentEnvelope } from './component-reference.ts'
 import type { DatasetEnvelope } from './dataset-reference.ts'
 import type { PointEnvelope } from './point-reference.ts'
+import { parseReportRef } from './report-ref.ts'
 
 export const SELECTION_TEXT_START = '<marivo-selection>'
 export const SELECTION_TEXT_END = '</marivo-selection>'
 export const SELECTION_TEXT_MAX_BYTES = 262_144
 const selection = z.strictObject({
-  schema: z.literal('dsh-data-analysis-selection/v1'),
+  schema: z.literal('dsh-data-analysis-selection/v2'),
   kind: z.enum(['component', 'frame-point', 'dataset-point', 'dataset']),
   label: z.string().min(1).max(160),
   // Domain payloads are validated by their existing producers. The display codec
   // validates the common identity and treats other domain fields as inert JSON.
   context: z.looseObject({
-    recordId: z.string().min(1).max(512),
+    ref: z
+      .string()
+      .min(1)
+      .max(4096)
+      .refine((value) => {
+        try {
+          return parseReportRef(value).kind === 'saved'
+        } catch {
+          return false
+        }
+      }),
     resource: z.string().min(1).max(512),
   }),
 })
@@ -40,7 +51,7 @@ export function selectionModelText(
   label: string,
   context: SelectionText['context'],
 ): string {
-  const value = selection.parse({ schema: 'dsh-data-analysis-selection/v1', kind, label, context })
+  const value = selection.parse({ schema: 'dsh-data-analysis-selection/v2', kind, label, context })
   const json = JSON.stringify(value).replace(
     /[<>&]/g,
     (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,

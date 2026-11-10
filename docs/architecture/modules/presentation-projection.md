@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已存在的结果读取为分析 UI 可保存的快照（Dataset v1、Frame v2）。Marivo 拥有 Artifact、Finding、字段、Quality、
+本模块把已存在的结果读取为分析 UI 可保存的快照（Dataset v1、Frame v2）。Marivo 拥有 固定结果、Frame 字段、Quality、
 issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件不审查 DataFrame 的计算过程、不复算，
 也不把来源存在解释为计算正确性。
 
@@ -14,7 +14,7 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
   旧 `frame-snapshot` / `dataset-snapshot` 声明继续按保存的 Host provenance 读取历史快照。
 
 快照内嵌于不可变 Build 的 `resources`，属于 Build 的生命周期，不长期依赖 captures 临时目录。
-保存、更新与 recordId 见[展示交付](presentation-delivery.md#统一分析-ui-写入与增量契约)，阅读呈现见[共享 reader](presentation-reader.md)。
+保存、更新与 ReportRef 见[展示交付](presentation-delivery.md#统一分析-ui-写入与增量契约)，阅读呈现见[共享 reader](presentation-reader.md)。
 
 ## 展示数据契约
 
@@ -66,9 +66,9 @@ business 固定 unknown。
 
 ## 首次结果元数据
 
-marivo_python 导出准确引用时在同一受核验进程中附 resultMetadata。Frame 通过公开 Session 恢复和 persisted_frame 取得准确身份，只读取 schema 的列、值及轴名；不读行，totalRows 为 null。DataFrame 使用公开 read_dataframe 返回的 schema 与 row_count；该 API 完整读取固定结果，元数据摘要不调用 to_pandas，也不访问业务来源。每结果摘要最多 4 KiB、64 个各类配置名，总控制帧保持 32 KiB；元数据不可读或超预算单独标为 unavailable，不能让有效引用丢失。
+marivo_python 在 results[name] 中返回可直接提交的 resource、sourceStatus 和有界 metadata，均来自同一次已核验结果组装。Frame 通过公开 Session 恢复和 persisted_frame 取得准确身份，只读取 schema 的列、值及轴名；不读行，totalRows 为 null。DataFrame 使用公开 read_dataframe 返回的 schema 与 row_count；该 API 完整读取固定结果，元数据摘要不调用 to_pandas，也不访问业务来源。每结果摘要最多 4 KiB、64 个各类配置名，总控制帧保持 32 KiB；元数据不可读或超预算单独标为 unavailable，不能让有效引用丢失。
 
-成功 marivo_present 回执及模型文本附 resultMetadataJson，仅披露本次新增或替换的已准入快照的列类型、轴、值和 coverage，不额外读取；未改变资源时返回空资源集合。展示配置错误只携带出错组件所引用资源的有界摘要和解析器候选名（包括没有独立语句名的内联组件）供直接修复，不把身份、Runtime 或存储失败改写成配置错误。多资源摘要超过 16 KiB 时整体明确 unavailable/budget，不静默丢掉名称。coverage.business 保持 unknown，不把固定行数或捕获完整性称为业务覆盖。
+成功 marivo_report_write 回执及模型文本附结构化 resultMetadata，仅披露本次新增或替换的已准入快照的列类型、轴、值和 coverage，不额外读取；未改变资源时返回空资源集合。展示配置错误只携带出错组件所引用资源的有界摘要和解析器候选名（包括没有独立语句名的内联组件）供直接修复，不把身份、Runtime 或存储失败改写成配置错误。多资源摘要超过 16 KiB 时整体明确 unavailable/budget，不静默丢掉名称。coverage.business 保持 unknown，不把固定行数或捕获完整性称为业务覆盖。
 
 ## Frame 快照
 
@@ -113,7 +113,7 @@ Frame 快照不包含 SQL 片段并标明 `sql-capability-unavailable`；
 保留空列的物理类型与精确标量。读取会加载全量数据，内存和文件 I/O 不受展示行数预算约束。
 
 投影仍使用 Dataset v1，记录原总行数、保留行数和 complete；不从 attrs、列名或来源存在推断
-SQL、datasource、lineage、业务覆盖或转换正确性。展示标签通过 `marivo_present.labels` 设置。
+SQL、datasource、lineage、业务覆盖或转换正确性。展示标签通过 `marivo_report_write.labels` 设置。
 新 Frame/DataFrame 资源的可选 codeRef 由 Host 执行记录核验，不从引用、attrs 或列名推断。省略 codeRef 的外部结果保留无脚本来源状态。
 旧 capture record 仅用于历史快照读取，新 Python 执行不再创建 manifest、capture 目录或回执。
 

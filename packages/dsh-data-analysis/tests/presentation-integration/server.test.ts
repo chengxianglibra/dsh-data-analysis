@@ -44,6 +44,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   t.after(() => rm(root, { recursive: true, force: true }))
   const document: AnalysisDocument = {
     schemaVersion: ANALYSIS_UI_FORMAT,
+    contentReview: 'not-needed',
     workspaceId: 'workspace',
     reportId: 'report',
     buildId: 'build',
@@ -206,7 +207,7 @@ test('production present saves independent Lang documents and returns complete h
   const session = {
     id: 'session',
     snapshotEvents: () => [
-      { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 2 } },
+      { type: 'tool/call', data: { callId: 'call', name: 'marivo_report_write', turn: 2 } },
     ],
   } as unknown as Session
   const tool = createMarivoPresentTool(() => ({ id: 'workspace', path: f.root }), session)
@@ -215,7 +216,11 @@ test('production present saves independent Lang documents and returns complete h
     callId: 'call',
     signal: new AbortController().signal,
   } as unknown as ToolRunContext
-  const input = { title: 'Saved view', program: 'root = TextContent("Exact saved content");' }
+  const input = {
+    stage: 'save',
+    title: 'Saved view',
+    program: 'root = TextContent("Exact saved content");',
+  }
   const present = async () =>
     parsePresentationDelivery(
       JSON.parse(((await tool.execute(input, exec)) as { deliveryJson: string }).deliveryJson),
@@ -231,13 +236,15 @@ test('production present saves independent Lang documents and returns complete h
     'presentation.json',
   ])
   const text = presentationReceiptText(second.receipt, second.surface)
-  assert(text.includes('Record: marivo-ui:'))
-  assert(text.includes('Build: '))
+  assert(text.includes('Ref: mr1:s:'))
   assert(text.includes('Surface: chat'))
   // Workspace paths and digests stay on disk, out of the model-facing text.
   assert(!text.includes(second.receipt.files.document.sha256))
   assert(!text.includes(second.receipt.files.document.path))
-  await assert.rejects(tool.execute({ draft_path: 'draft.json' }, exec), /Unrecognized key/)
+  await assert.rejects(
+    tool.execute({ stage: 'save', draft_path: 'draft.json' }, exec),
+    /Unrecognized key/,
+  )
   await assert.rejects(
     tool.execute(input, {
       ...exec,
@@ -289,7 +296,7 @@ test('Tool disposal and Workspace replacement abort a pending commit without cre
     const session = {
       id: 'session',
       snapshotEvents: () => [
-        { type: 'tool/call', data: { callId: 'call', name: 'marivo_present', turn: 0 } },
+        { type: 'tool/call', data: { callId: 'call', name: 'marivo_report_write', turn: 0 } },
       ],
     } as unknown as Session
     let currentRoot = f.root
@@ -323,7 +330,7 @@ test('Tool disposal and Workspace replacement abort a pending commit without cre
       signal: new AbortController().signal,
     } as unknown as ToolRunContext
     await assert.rejects(
-      tool!.execute({ program: 'root = TextContent("Pending");' }, exec),
+      tool!.execute({ stage: 'save', program: 'root = TextContent("Pending");' }, exec),
       failure === 'dispose' ? /abort/i : /presentation-workspace-changed/,
     )
     const reportRoot = path.join(f.root, '.dsh-data-analysis', 'presentations')

@@ -26,6 +26,7 @@ test('exported report opens offline, renders data and charts, and keeps local in
   ])
   const document = parseAnalysisDocument({
     schemaVersion: ANALYSIS_UI_FORMAT,
+    contentReview: 'required',
     workspaceId: 'private_workspace_identity',
     reportId: 'private_report_identity',
     buildId: 'private_build_identity',
@@ -96,6 +97,11 @@ test('exported report opens offline, renders data and charts, and keeps local in
     await page.goto(pathToFileURL(reportPath).href)
     await page.getByRole('article', { name: 'Offline report', exact: true }).waitFor()
     assert.equal(await page.title(), 'Offline report')
+    const review = page.locator('[data-content-review=required]')
+    assert.equal(await review.textContent(), 'Data changed. Static narrative needs review.')
+    assert.equal(await page.locator('.au-surface-body [data-content-review]').count(), 0)
+    await page.reload()
+    await review.waitFor()
     assert.equal(await page.getByRole('heading', { name: 'Offline report' }).count(), 0)
     await page.locator('[data-resource="result"] .recharts-line-dots circle').first().waitFor()
     assert.ok(await page.locator('[data-resource="result"] svg.recharts-surface').count())

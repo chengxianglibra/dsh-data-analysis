@@ -71,6 +71,11 @@ export function fixture(interaction: 'web' | 'none' = 'none') {
       subprocessPolicyId: 'fixture',
       fingerprint: 'f'.repeat(64),
     },
+    ensureProject: async (options) => {
+      options?.signal?.throwIfAborted()
+      await options?.assertCurrent?.()
+      return { status: 'already-ready', projectRoot: bridge.binding.projectRoot }
+    },
     describe: async (name) => ({
       ...description,
       name,

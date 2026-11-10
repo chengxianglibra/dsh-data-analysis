@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { parseResourceStream } from '../../src/presentation/contracts/resource-stream.ts'
 import { resourceStreamFixture } from './resource-stream-fixture.ts'
 
@@ -34,8 +35,14 @@ test('Host resource stream delivers each resource sequentially before final admi
   assert.ok(f.reads >= 1 && f.reads <= 2)
   assert.equal(f.peak, 1)
   f.release()
-  const output = (await operation) as { draftRevision: string }
-  assert.equal(f.drafts.get('session')?.document.buildId, output.draftRevision)
+  const output = (await operation) as { ref: string }
+  assert.equal(
+    f.drafts.get('session')?.document.buildId,
+    (() => {
+      const ref = parseReportRef(output.ref)
+      return ref.kind === 'draft' ? ref.revision : undefined
+    })(),
+  )
   assert.equal(Object.keys(f.drafts.get('session')!.document.resources).length, 3)
   assert.equal(f.reads, 2, 'final validation reuses the same admitted snapshots')
   const complete = parseResourceStream(await f.service.resourceStream(request, f.exec.signal))
@@ -48,12 +55,11 @@ test('a failed resource does not block another resource and failed final admissi
   const initial = (await f.tool.execute(
     { stage: 'preview', program: 'root = TextContent("Last successful revision");' },
     { ...f.exec, callId: 'initial' as ToolRunContext['callId'] },
-  )) as { draftId: string; draftRevision: string }
+  )) as { ref: string }
   const operation = f.tool.execute(
     {
       stage: 'preview',
-      draftId: initial.draftId,
-      draftRevision: initial.draftRevision,
+      ref: initial.ref,
       resourcePatch: {
         put: { bad: f.declaration('3'), fast: f.declaration('2'), slow: f.declaration('1') },
       },
@@ -70,7 +76,13 @@ test('a failed resource does not block another resource and failed final admissi
   assert.equal(stream.resources.bad, undefined)
   f.release()
   await rejection
-  assert.equal(f.drafts.get('session')?.document.buildId, initial.draftRevision)
+  assert.equal(
+    f.drafts.get('session')?.document.buildId,
+    (() => {
+      const ref = parseReportRef(initial.ref)
+      return ref.kind === 'draft' ? ref.revision : undefined
+    })(),
+  )
   const failed = parseResourceStream(await f.service.resourceStream(request, f.exec.signal))
   assert.equal(failed.status, 'failed')
   assert.deepEqual(failed.resources, {})

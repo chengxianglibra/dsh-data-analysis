@@ -38,8 +38,8 @@ test('presentation exposes Help, datasource configuration/test, Python and prese
       'marivo_datasource_configure',
       'marivo_datasource_test',
       'marivo_help',
-      'marivo_present',
       'marivo_python',
+      'marivo_report_write',
     ],
   )
 })

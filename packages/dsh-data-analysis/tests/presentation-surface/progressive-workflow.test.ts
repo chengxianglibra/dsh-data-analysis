@@ -8,6 +8,7 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
 import { createAnalysisDocument } from '../../src/presentation/analysis.ts'
+import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import { readReportHistory } from '../../src/presentation/reports.ts'
 import { createMarivoPresentTool } from '../../src/presentation/tool.ts'
@@ -27,22 +28,19 @@ async function workspace(t: { after(fn: () => Promise<void>): void }) {
 }
 const output = z.object({
   stage: z.enum(['preview', 'save']),
-  draftId: z.string().optional(),
-  draftRevision: z.string().optional(),
-  recordId: z.string().optional(),
-  resultMetadataJson: z.string(),
+  ref: z.string(),
+  resultMetadata: z.record(z.string(), z.json()),
 })
 
 test('draft identity requires an explicit action before parsing defaults or accessing the Workspace', async () => {
   const tool = createMarivoPresentTool(() => {
     throw new Error('unexpected-workspace-read')
   }, {} as Session)
-  for (const args of [
-    { draftId: 'invalid' },
-    { draftRevision: 'invalid' },
-    { draftId: 'invalid', draftRevision: 'invalid' },
-  ])
-    await assert.rejects(tool.execute(args, {} as ToolRunContext), /analysis-draft-stage-required/)
+  for (const args of [{}, { ref: 'invalid' }])
+    await assert.rejects(
+      tool.execute(args, {} as ToolRunContext),
+      /missing required property "stage"/,
+    )
 })
 
 test('empty-resource scope preview survives missing stage and saves once with the latest revision', async (t) => {
@@ -73,9 +71,15 @@ test('empty-resource scope preview survives missing stage and saves once with th
       exec,
     ),
   )
-  const identity = { draftId: first.draftId, draftRevision: first.draftRevision }
-  await assert.rejects(tool.execute(identity, exec), /analysis-draft-stage-required/)
-  assert.equal(drafts.get('session')?.delivery.draftRevision, first.draftRevision)
+  const identity = { ref: first.ref }
+  await assert.rejects(tool.execute(identity, exec), /missing required property "stage"/)
+  assert.equal(
+    drafts.get('session')?.delivery.draftRevision,
+    (() => {
+      const ref = parseReportRef(first.ref)
+      return ref.kind === 'draft' ? ref.revision : undefined
+    })(),
+  )
   const next = output.parse(
     await tool.execute(
       {
@@ -90,19 +94,19 @@ test('empty-resource scope preview survives missing stage and saves once with th
     tool.execute({ ...identity, stage: 'save' }, exec),
     /analysis-draft-conflict/,
   )
-  const saved = output.parse(
-    await tool.execute(
-      { stage: 'save', draftId: next.draftId, draftRevision: next.draftRevision },
-      exec,
-    ),
-  )
+  const saved = output.parse(await tool.execute({ stage: 'save', ref: next.ref }, exec))
   assert.equal(saved.stage, 'save')
-  assert(saved.recordId)
-  const reportId = saved.recordId.split(':')[1]!
+  const savedRef = parseReportRef(saved.ref)
+  assert.equal(savedRef.kind, 'saved')
+  if (savedRef.kind !== 'saved') throw new Error('expected saved ref')
+  const reportId = savedRef.reportId
   assert.equal((await readReportHistory(root, 'workspace', reportId)).versions.length, 1)
   assert.equal(drafts.get('session'), undefined)
   const standalone = output.parse(
-    await tool.execute({ program: 'root = TextContent("Standalone result");' }, exec),
+    await tool.execute(
+      { stage: 'save', program: 'root = TextContent("Standalone result");' },
+      exec,
+    ),
   )
   assert.equal(standalone.stage, 'save')
 })

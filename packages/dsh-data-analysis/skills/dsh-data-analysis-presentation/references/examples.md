@@ -4,21 +4,21 @@
 
 ## 从初始草稿到一次正式保存
 
-用户要查看 sales.csv 的类别汇总与原始明细。两个组件分别从同一准确路径读取，互不依赖内存或对方输出。先展示问题和范围，组件就绪后及时 preview。下面适用于 Code Mode 和 Native。当前任意 Python 与草稿写入按 Harness exclusive 调度；按就绪情况增量交付，同批已就绪相关视图可一并 preview，草稿写入使用最新 revision，不等待完整分析。
+用户要查看 sales.csv 的类别汇总与原始明细。按计算依赖读取准确路径，相同结果可复用。先展示问题和范围，组件就绪后及时 preview。下面适用于 Code Mode 和 Native。当前任意 Python 与草稿写入按 Harness exclusive 调度；按就绪情况增量交付，同批已就绪相关视图可一并 preview，草稿写入使用最新 revision，不等待完整分析。
 
 ```javascript
-let draft = await tools.marivo_present({
+let draft = await tools.marivo_report_write({
   stage: "preview", title: "销售文件分析",
   program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别汇总与原始明细");\nstatus = TextContent("正在准备类别汇总，尚未形成结论。");',
 });
 function dataResource(result, name) {
-  if (result.execution.reason !== "succeeded" || result.resultCaptureError || !result.resultRefs?.[name] || !result.codeRef) {
+  if (result.execution.reason !== "succeeded" || result.resultCaptureError || !result.results?.[name]) {
     throw new Error("Inspect execution and capture status; do not replay blindly.");
   }
-  return { kind: "dataframe", ref: result.resultRefs[name], codeRef: result.codeRef };
+  return result.results[name].resource;
 }
 const categoryResult = await tools.marivo_python({
-  datasources: [], resultVariables: { by_category: "category_ref" },
+  project: "required", datasources: [], resultVariables: { by_category: "category_ref" },
   code: `import pandas as pd
 import marivo.analysis as mv
 path = "/actual/readable/sales.csv"
@@ -27,13 +27,13 @@ result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).res
 result = result.rename(columns={"amount": "value"})
 category_ref = mv.persist_dataframe(result).to_dict()`,
 });
-draft = await tools.marivo_present({
-  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
+draft = await tools.marivo_report_write({
+  stage: "preview", ref: draft.ref,
   resourcePatch: { put: { by_category: dataResource(categoryResult, "by_category") } },
   program: 'root = Stack([heading, categories, status]);\ncategories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});\nstatus = TextContent("类别汇总已准备，正在准备原始明细。");',
 });
 const detailResult = await tools.marivo_python({
-  datasources: [], resultVariables: { detail: "detail_ref" },
+  project: "required", datasources: [], resultVariables: { detail: "detail_ref" },
   code: `import pandas as pd
 import marivo.analysis as mv
 path = "/actual/readable/sales.csv"
@@ -41,14 +41,14 @@ source = pd.read_csv(path)
 result = source[["category", "amount"]].rename(columns={"amount": "value"})
 detail_ref = mv.persist_dataframe(result).to_dict()`,
 });
-draft = await tools.marivo_present({
-  stage: "preview", draftId: draft.draftId, draftRevision: draft.draftRevision,
+draft = await tools.marivo_report_write({
+  stage: "preview", ref: draft.ref,
   resourcePatch: { put: { detail: dataResource(detailResult, "detail") } },
   program: 'root = Stack([heading, categories, detail, scope]);\ndetail = DatasetView("detail", {chart:"table", columns:["category", "value"]});\nscope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");\nstatus = null;',
 });
 // Inspect the actual results and answer coverage before this final save.
-const saved = await tools.marivo_present({
-  stage: "save", draftId: draft.draftId, draftRevision: draft.draftRevision,
+const saved = await tools.marivo_report_write({
+  stage: "save", ref: draft.ref,
 });
 ```
 
@@ -62,7 +62,7 @@ detail = DatasetView("detail", {chart:"table", columns:["category", "value"]});
 scope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");
 ```
 
-preview 校验并更新内存草稿，返回 draftId/draftRevision，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 recordId；不从 deliveryJson 拼装身份。新报告在同一 Chat 区域连续更新，以图表动效表达生成和修订，保存后停止；读者用“在边栏查看”图标移动，Chat 隐藏正文、标题和链接，关闭 Tab 后恢复。报告目录与版本链接始终在右侧打开。Native 把 stage 和身份放在 program 前；不传 surface。
+preview 校验并更新内存草稿，返回 draft ref，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 saved ref；不从 deliveryJson 拼装身份。新报告在同一 Chat 区域连续更新，以图表动效表达生成和修订，保存后停止；读者用“在边栏查看”图标移动，Chat 隐藏正文、标题和链接，关闭 Tab 后恢复。报告目录与版本链接始终在右侧打开。每次显式指定 stage，身份与 patch 完整后候选才可更新；不传 surface。
 
 ## 比较与抵消项
 
@@ -89,7 +89,7 @@ detail = Tabs([TabItem("selected", "减少最多的两项", [selected]), TabItem
 
 ## Frame 看板
 
-三个组件分别回答 GMV 期间比较、按日趋势与地区分解，三个独立脚本各自读取 governed 输入并计算、持久化 Frame。按 live Help 构造分析，不在展示参考中复制计算 API。示例 daily 的时间轴名为 day，数值名为 gmv；按实际公开字段替换。每个结果就绪就 preview，下方为最终程序。
+三个组件分别回答 GMV 期间比较、按日趋势与地区分解，按实际计算依赖读取 governed 输入并计算、持久化 Frame。按 live Help 构造分析，不在展示参考中复制计算 API。示例 daily 的时间轴名为 day，数值名为 gmv；按实际公开字段替换。每个结果就绪就 preview，下方为最终程序。
 
 ```openui
 root = Stack([heading, charts, scope]);

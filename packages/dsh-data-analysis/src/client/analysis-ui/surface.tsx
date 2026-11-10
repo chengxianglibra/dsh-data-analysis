@@ -3,8 +3,9 @@ import { useMemo } from 'react'
 import type {
   AnalysisDocument,
   AnalysisResource,
+  ContentReview,
 } from '../../presentation/contracts/analysis-document.ts'
-import { ReportCopyProvider } from '../i18n/context.tsx'
+import { ReportCopyProvider, useActionCopy } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { PRESENTATION_STYLES } from '../presentation/styles.ts'
 import { UIStyleSheet } from '../ui/theme.ts'
@@ -61,6 +62,7 @@ export function AnalysisSurface({
 }) {
   return (
     <AnalysisRenderer
+      contentReview={document.contentReview ?? 'unknown'}
       program={document.program}
       title={document.title}
       locale={document.locale}
@@ -77,6 +79,7 @@ export function AnalysisSurface({
   )
 }
 export interface AnalysisRendererProps {
+  contentReview?: ContentReview
   program: string
   title: string
   locale: AnalysisDocument['locale']
@@ -99,6 +102,7 @@ export interface AnalysisRendererProps {
   askResource?: AnalysisResourceContext['askResource']
 }
 export function AnalysisRenderer({
+  contentReview,
   program,
   title,
   locale,
@@ -171,6 +175,9 @@ export function AnalysisRenderer({
                 <ReportMotion phase={progress} />
               </div>
             )}
+            {contentReview && contentReview !== 'not-needed' && (
+              <ContentReviewNotice status={contentReview} />
+            )}
             <div className="au-surface-body">
               <Renderer
                 library={analysisLibrary}
@@ -183,5 +190,18 @@ export function AnalysisRenderer({
         </article>
       </AnalysisResources.Provider>
     </ReportCopyProvider>
+  )
+}
+
+function ContentReviewNotice({ status }: { status: 'required' | 'unknown' }) {
+  const t = useActionCopy()
+  return (
+    <aside className="text-sm text-muted-foreground" role="status" data-content-review={status}>
+      {t(
+        status === 'required'
+          ? 'marivo.presentation.ui-content-review-required'
+          : 'marivo.presentation.ui-content-review-unknown',
+      )}
+    </aside>
   )
 }

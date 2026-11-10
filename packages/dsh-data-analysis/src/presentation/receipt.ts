@@ -1,9 +1,9 @@
 /** Pure Host delivery envelope shared by the server and browser. */
 import { z } from 'zod'
-import { analysisRecordId } from './contracts/analysis-document.ts'
 import { type PresentationReceipt, parsePresentationReceipt } from './contracts/index.ts'
+import { savedReportRef } from './contracts/report-ref.ts'
 
-export const MARIVO_PRESENT_TOOL_NAME = 'marivo_present'
+export const MARIVO_PRESENT_TOOL_NAME = 'marivo_report_write'
 export const MARIVO_PRESENTATION_DELIVERY_KIND = 'marivo.presentation.delivery'
 export const MARIVO_DRAFT_DELIVERY_KIND = 'marivo.presentation.draft'
 export const MARIVO_PRESENTATION_RPC_CHANNEL = '/marivo-presentation'
@@ -69,8 +69,7 @@ export function presentationReceiptText(
   return [
     receipt.title,
     receipt.summary,
-    `Record: ${analysisRecordId(receipt.reportId, receipt.buildId)}`,
-    `Build: ${receipt.buildId}`,
+    `Ref: ${savedReportRef({ workspaceId: receipt.workspaceId, reportId: receipt.reportId, buildId: receipt.buildId })}`,
     `Surface: ${surface === 'tab' ? 'tab' : 'chat'}`,
   ].join('\n')
 }

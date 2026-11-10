@@ -52,7 +52,9 @@ export interface MarivoHelpTargetResult {
 export interface MarivoHelpTargetFailure {
   target: string
   code: 'target-failed' | 'empty-help'
+  phase: 'help-target'
   message: string
+  recovery: { action: 'correct-input'; message: string }
 }
 
 export type MarivoHelpDelivery = 'delivered' | 'already-visible' | 'replacement'
@@ -79,6 +81,8 @@ export interface MarivoHelpValue {
 export interface MarivoHelpToolValue {
   environment: {
     version: string
+    /** Host-owned disclosure identity, retained for replay with this Harness contract. */
+    fingerprint: string
   }
   targets: MarivoHelpTargetResult[]
   errors?: MarivoHelpTargetFailure[]
@@ -204,14 +208,6 @@ export function renderMarivoHelpValue(value: MarivoHelpToolValue): string {
   ].join('\n\n')
 }
 
-function helpPresentationKey(value: MarivoHelpToolValue): string {
-  return JSON.stringify([
-    value.environment.version,
-    value.targets.map((item) => [item.target, item.bodyDigest, item.delivery]),
-    value.errors ?? [],
-  ])
-}
-
 /** Read targets sequentially; optional per-target failures never become visible Help. */
 export async function readMarivoHelpTargets(
   bridge: MarivoHelpBridgePort,
@@ -266,7 +262,16 @@ export async function readMarivoHelpTargets(
           'combined-output-limit',
           'marivo_help combined output limit exceeded',
         )
-      errors.push({ target, code: error.code, message })
+      errors.push({
+        target,
+        code: error.code,
+        phase: 'help-target',
+        message,
+        recovery: {
+          action: 'correct-input',
+          message: 'Choose a valid target from current Runtime Help; keep successful targets.',
+        },
+      })
       continue
     }
     options.signal?.throwIfAborted()
@@ -306,7 +311,6 @@ export function createMarivoHelpTool(
   resolveDelivery?: MarivoHelpDeliveryResolver,
 ): ToolDefinition {
   const limits = resolveMarivoHelpLimits(limitOverrides)
-  const presentations = new Map<string, string[]>()
   return defineTool({
     name: MARIVO_HELP_TOOL_NAME,
     description:
@@ -330,6 +334,11 @@ export function createMarivoHelpTool(
             additionalProperties: false,
             properties: {
               version: { type: 'string', required: true },
+              fingerprint: {
+                type: 'string',
+                required: true,
+                description: 'Host-owned Runtime identity for durable Help disclosure.',
+              },
             },
           },
           targets: {
@@ -358,7 +367,17 @@ export function createMarivoHelpTool(
               properties: {
                 target: { type: 'string', required: true },
                 code: { type: 'string', required: true, enum: ['target-failed', 'empty-help'] },
+                phase: { type: 'string', required: true, enum: ['help-target'] },
                 message: { type: 'string', required: true },
+                recovery: {
+                  type: 'object',
+                  required: true,
+                  additionalProperties: false,
+                  properties: {
+                    action: { type: 'string', required: true, enum: ['correct-input'] },
+                    message: { type: 'string', required: true },
+                  },
+                },
               },
             },
           },
@@ -366,16 +385,9 @@ export function createMarivoHelpTool(
       },
       render: (_args, value) => [{ type: 'text', text: renderMarivoHelpValue(value) }],
       presentationMeta: (_args, value) => {
-        const key = helpPresentationKey(value)
-        const pending = presentations.get(key)
-        const environmentFingerprint = pending?.shift()
-        if (pending?.length === 0) presentations.delete(key)
-        if (environmentFingerprint === undefined) {
-          throw new Error('marivo_help presentation identity is unavailable')
-        }
         return {
           kind: 'marivo-help-disclosure',
-          environmentFingerprint,
+          environmentFingerprint: value.environment.fingerprint,
           targets: value.targets.map((item) => ({
             target: item.target,
             bodyDigest: item.bodyDigest,
@@ -396,14 +408,10 @@ export function createMarivoHelpTool(
       })
       exec.signal.throwIfAborted()
       const value: MarivoHelpToolValue = {
-        environment: { version: internal.environment.version },
+        environment: internal.environment,
         targets: internal.targets,
         ...(internal.errors ? { errors: internal.errors } : {}),
       }
-      const key = helpPresentationKey(value)
-      const pending = presentations.get(key) ?? []
-      pending.push(internal.environment.fingerprint)
-      presentations.set(key, pending)
       return value
     },
   })

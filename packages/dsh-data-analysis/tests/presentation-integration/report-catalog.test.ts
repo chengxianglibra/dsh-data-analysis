@@ -32,6 +32,7 @@ const tab = { kind: 'agent', sessionId: 'source', surface: 'tab' } as const
 function analysisDocument(reportId: string, buildId: string, title: string): AnalysisDocument {
   return {
     schemaVersion: ANALYSIS_UI_FORMAT,
+    contentReview: 'not-needed',
     workspaceId: 'workspace',
     reportId,
     buildId,
@@ -45,7 +46,7 @@ function analysisDocument(reportId: string, buildId: string, title: string): Ana
   }
 }
 
-/** Published versions keep their own record identity, as marivo_present does. */
+/** Published versions keep their own record identity, as marivo_report_write does. */
 function version(base: AnalysisDocument, title = base.title): AnalysisDocument {
   return analysisDocument(base.reportId, randomUUID(), title)
 }

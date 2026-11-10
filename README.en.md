@@ -30,7 +30,7 @@ This is an independently maintained community plugin. It is not an official Deep
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
-You do not need to install Marivo beforehand. The first launch uses pip to install the Marivo `0.6.4` release and prepares the analysis environment automatically. Before the first Marivo analysis or result persistence, the assistant checks the current Workspace and runs `marivo init` through the same Runtime if the project is missing. Existing projects are preserved; ordinary file inspection needs no initialization.
+You do not need to install Marivo beforehand. The first launch uses pip to install the Marivo `0.6.4` release and prepares the analysis environment automatically. For Marivo project analysis or result persistence, the plugin prepares the exact Workspace root when the execution declares `project:"required"`. Existing projects are preserved; ordinary file inspection needs no initialization.
 An internet connection is required to download dependencies; wait for setup to finish.
 
 ### Install and launch
@@ -112,11 +112,11 @@ New results, reports and dashboards start in a separate Chat node in their actua
 
 For AnalysisFrame, explicitly call `persist()` and pass `saved.ref.to_dict()` as an `analysis-frame` resource. The plugin reads it through the bound Python Runtime without an HTTP service. For DataFrame, pass `mv.persist_dataframe(table).to_dict()` as a `dataframe` resource; its captured project must match the current Workspace.
 
-For script traceability, select reference variables with `marivo_python.resultVariables`, take the references from `resultRefs`, and attach the same invocation's `codeRef` to each resource. stdout remains arbitrary text. For an authorized data update, the assistant can read the bound script, datasource declarations and output variables, generate fresh results, and replace resources under the same names while retaining the layout, body and column labels. Static numbers in the body are not rewritten automatically.
+For script traceability, select reference variables with `marivo_python.resultVariables`, pass `results[name].resource` directly to the report tool; the plugin associates kind and codeRef. stdout remains arbitrary text. For an authorized data update, the assistant can read the bound script, datasource declarations and output variables, generate fresh results, and replace resources under the same names with `mode:"refresh-data"`, preserving the layout, body and column labels through atomic batch validation. Static numbers are not rewritten automatically; each Build retains its content review status.
 
 Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
 
-Analysis reports and dashboards use `marivo_present` to combine conclusions, explanations, limitations, and data in one document,
+Analysis reports and dashboards use `marivo_report_write` to combine conclusions, explanations, limitations, and data in one document,
 preferring `AnalysisFrameView` for Frame data. After saving, read the report and choose a suggested follow-up in Chat. Your requested output format takes precedence.
 
 - **Inspect data**: Sort exact values, browse local pages, and ask about a data point or the whole result. Previews disclose their range and cannot become complete single-value metrics.
@@ -142,3 +142,5 @@ The actual execution limit is still subject to Harness execution policies.
 ## License
 
 This project is licensed under the [MIT License](packages/dsh-data-analysis/LICENSE).
+
+This is a breaking protocol update. Reports use `marivo_report_read` / `marivo_report_write` and one version `ref`; every write requires an explicit stage. Previous names and inputs are rejected. The package root exposes installation and configuration; extensions use the versioned integration entry.

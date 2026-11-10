@@ -19,6 +19,9 @@ import {
   mergeAnalysisProgram,
   parseAnalysisProgram,
 } from './contracts/analysis-program.ts'
+import { resolveDatasetView } from './contracts/dataset-view.ts'
+import { frameViewSchema, resolveFrameView } from './contracts/frame-view.ts'
+import { sameAnalysisResult } from './contracts/resource-declaration.ts'
 import { resultReferenceKey } from './contracts/result-reference.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
@@ -313,6 +316,26 @@ export async function createAnalysisDocument(
     applyAnalysisLabels(resources, input.labels)
     return parseAnalysisDocument({
       schemaVersion: ANALYSIS_UI_FORMAT,
+      contentReview:
+        base?.contentReview === 'required'
+          ? 'required'
+          : base &&
+              Object.entries(resources).some(
+                ([name, resource]) =>
+                  base.resources[name] &&
+                  !sameAnalysisResult(base.resources[name]!.declaration, resource.declaration),
+              )
+            ? nodes.some(
+                (node) =>
+                  node.typeName === 'TextContent' &&
+                  typeof node.props.text === 'string' &&
+                  node.props.text.trim(),
+              )
+              ? 'required'
+              : 'not-needed'
+            : base
+              ? (base.contentReview ?? 'unknown')
+              : 'not-needed',
       ...identity,
       recordId: analysisRecordId(identity.reportId, identity.buildId),
       title,
@@ -335,5 +358,36 @@ export async function createAnalysisDocument(
       error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Correct the presentation configuration using these exact names; do not rerun analysis to recover metadata.`
     }
     throw error
+  }
+}
+
+/** Compare resolved chart identity; data-dependent geometry and row layout can still vary. */
+export function validateRefreshShape(base: AnalysisDocument, next: AnalysisDocument): void {
+  for (const node of analysisElements(parseAnalysisProgram(base.program))) {
+    if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
+    const name = String(node.props.ref)
+    const before = base.resources[name],
+      after = next.resources[name]
+    if (
+      before?.kind !== 'snapshot' ||
+      after?.kind !== 'snapshot' ||
+      before.snapshot.kind !== after.snapshot.kind
+    )
+      throw new Error(`report-refresh-resource-kind-changed: ${name}`)
+    const view = frameViewSchema.optional().parse(node.props.view ?? undefined)
+    const resolve = (resource: typeof before) =>
+      resource.snapshot.kind === 'dataset'
+        ? resolveDatasetView(resource.snapshot, view)
+        : resolveFrameView(resource.snapshot, view)
+    const previous = resolve(before),
+      current = resolve(after)
+    if (!previous.ok || !current.ok) throw new Error(`report-refresh-view-invalid: ${name}`)
+    if (previous.view.chart !== current.view.chart)
+      throw new AnalysisViewError(
+        'report-refresh-view-shape-changed',
+        `${node.statementId ?? node.typeName}/view/chart`,
+        `${previous.view.chart} -> ${current.view.chart}; use an explicit edit to change the page.`,
+        name,
+      )
   }
 }

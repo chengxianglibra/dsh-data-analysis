@@ -710,7 +710,7 @@ test('report tasks receive plugin routes in the system prompt', async (t) => {
     'marivo-semantic',
     'marivo_python',
     'native present',
-    'marivo_present',
+    'marivo_report_write',
     'dsh-data-analysis-presentation',
   ])
     assert.ok(prompt.includes(route))
@@ -1359,9 +1359,9 @@ test('Cordis plugin installs disclosure for live Agents and disposal removes onl
     'marivo_datasource_test',
     'marivo_help',
     'marivo_next_steps',
-    'marivo_present',
     'marivo_python',
-    'marivo_ui_read',
+    'marivo_report_read',
+    'marivo_report_write',
     'ordinary',
     'skill',
   ])

@@ -3,6 +3,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { ProjectPreparation } from '../environment/project-preparation.ts'
 import { finishCleanup } from '../lifecycle.ts'
 import type { DatasourceCreateInput, DatasourceUpdateInput } from './authoring.ts'
 import type {
@@ -81,6 +82,7 @@ export interface ConfigurationResult {
   failure?: MarivoDatasourceTestResult['failure']
   repair?: MarivoDatasourceTestResult['repair']
   handoff?: CredentialHandoff
+  project?: ProjectPreparation
 }
 
 interface CredentialHandoff {
@@ -497,6 +499,23 @@ export class MarivoCredentialService {
     const bridge = await resolve()
     signal.throwIfAborted()
     assert(identity === sessionIdentity(exec), 'context-changed')
+    const fingerprint = bridge.binding.fingerprint
+    assert(bridge.ensureProject, 'project-preparation-unavailable')
+    const project = await bridge.ensureProject({
+      signal,
+      assertCurrent: async () => {
+        signal.throwIfAborted()
+        assert(identity === sessionIdentity(exec), 'context-changed')
+        const current = await resolve()
+        signal.throwIfAborted()
+        assert(
+          identity === sessionIdentity(exec) && current.binding.fingerprint === fingerprint,
+          'context-changed',
+        )
+      },
+    })
+    signal.throwIfAborted()
+    assert(identity === sessionIdentity(exec), 'context-changed')
     this.#prune()
     assert(this.#configurations.size < CAPACITY / 2, 'capacity-exceeded')
     return new Promise<ConfigurationResult>((finish) => {
@@ -506,10 +525,10 @@ export class MarivoCredentialService {
         settled: false,
         controller,
         resolve,
-        fingerprint: bridge.binding.fingerprint,
+        fingerprint,
         sessionIdentity: identity,
         signal,
-        finish,
+        finish: (result) => finish({ ...result, project }),
         view: {
           id,
           sessionId: agent.session.id,

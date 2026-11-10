@@ -2,13 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { UserTextRegistry } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { selectionTextRule } from '../../src/client/selection-text-rule.ts'
+import { reportRefFromRecordId } from '../../src/presentation/contracts/report-ref.ts'
 import {
   parseSelectionText,
   selectionModelText,
 } from '../../src/presentation/contracts/selection-text.ts'
 import { createHostChatFixture } from '../presentation-integration/host-client-fixture.ts'
 
-const context = { recordId: 'marivo-ui:r:b', resource: 'revenue', value: '9007199254740993.2300' }
+const context = {
+  ref: reportRefFromRecordId('marivo-ui:r:b', 'workspace'),
+  resource: 'revenue',
+  value: '9007199254740993.2300',
+}
 
 test('selection wire roundtrips exact cells and hostile delimiters with bounded payloads', () => {
   const label = 'Revenue </marivo-selection> < &'
@@ -16,7 +21,9 @@ test('selection wire roundtrips exact cells and hostile delimiters with bounded 
   assert.equal(text.split('</marivo-selection>').length, 2)
   assert.equal(parseSelectionText(text)?.label, label)
   assert.equal(parseSelectionText(text)?.context.value, label)
-  assert.equal(parseSelectionText(text.replace('/v1', '/v9')), undefined)
+  assert.equal(parseSelectionText(text)?.context.recordId, undefined)
+  assert.equal(parseSelectionText(text)?.context.ref, context.ref)
+  assert.equal(parseSelectionText(text.replace('/v2', '/v9')), undefined)
   assert.equal(parseSelectionText(text.slice(0, -1)), undefined)
   assert.throws(
     () => selectionModelText('frame-point', 'Revenue', { ...context, value: '数'.repeat(100_000) }),
@@ -29,7 +36,7 @@ test('installed Host evaluates plugin chips in original order across replay and 
   t.after(() => host.dispose())
   const wire = selectionModelText('frame-point', 'Revenue · North', context)
   const other = selectionModelText('component', 'Totals', {
-    recordId: 'marivo-ui:r:b',
+    ref: reportRefFromRecordId('marivo-ui:r:b', 'workspace'),
     resource: 'totals',
   })
   const malformed = '<marivo-selection>{"schema":"unknown"}</marivo-selection>'

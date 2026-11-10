@@ -160,6 +160,20 @@ test('targets=[] fails before starting a help subprocess', async (t) => {
   await assert.rejects(() => stat(fixture.recordPath), { code: 'ENOENT' })
 })
 
+test('Help presentation identity replays from a serialized value without execution state', async (t) => {
+  const fixture = await helpFixture()
+  t.after(fixture.cleanup)
+  const ctx = await setupRuntime(fixture.bridge)
+  const result = await executeHelp(ctx, ['analysis'])
+  assert.equal(result.isError, false)
+  if (result.isError) assert.fail('Expected successful Help')
+  const serialized = JSON.stringify(result.value)
+  const fresh = createMarivoHelpTool(fixture.bridge)
+  const expected = result.meta
+  assert.deepEqual(fresh.output.presentationMeta?.({}, JSON.parse(serialized)), expected)
+  assert.deepEqual(fresh.output.presentationMeta?.({}, JSON.parse(serialized)), expected)
+})
+
 test('multiple targets deduplicate in first-seen order and preserve each raw stdout body', async (t) => {
   const fixture = await helpFixture()
   t.after(fixture.cleanup)

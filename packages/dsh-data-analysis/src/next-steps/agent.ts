@@ -1,11 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import { finishCleanup } from '../lifecycle.ts'
-import { parseAnalysisRecordId } from '../presentation/contracts/analysis-document.ts'
+import { parseReportRef, savedReportRef } from '../presentation/contracts/report-ref.ts'
 import {
+  MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
   parsePresentationToolDelivery,
 } from '../presentation/receipt.ts'
@@ -17,7 +18,9 @@ import {
   type NextStepsNotice,
   nextStepsInput,
   nextStepsReceipt,
+  nextStepsReceiptValueSchema,
 } from './contracts.ts'
+import { SavedWriteProofs } from './saved-writes.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -31,6 +34,7 @@ export function installNextStepsAgent(
   agent: Agent,
   workspace: PresentationWorkspaceSource,
   publish: (notice: NextStepsNotice) => void,
+  savedWrites = new SavedWriteProofs(),
 ): () => Promise<void> {
   const boundary = [...agent.session.snapshotEvents()]
     .reverse()
@@ -39,11 +43,21 @@ export function installNextStepsAgent(
   let latestTurn = boundary?.data.turn ?? -1
   let retriedTurn: number | undefined
   let inputGeneration = 0
-  const saveAdmissions = new Map<string, number>()
+  const presentationTool = agent.ctx.tools.get(MARIVO_PRESENT_TOOL_NAME, agent)
+  let nextStepsTool: ToolDefinition | undefined
+  let disposed = false
+  const saveAdmissions = new Map<
+    ToolExecutionToken,
+    {
+      generation: number
+      workspace: { id: string; path: string }
+    }
+  >()
   let state:
     | {
         turn: number
         workspaceId: string
+        workspacePath: string
         reportId: string
         buildId: string
         callId?: string
@@ -51,7 +65,15 @@ export function installNextStepsAgent(
         declined?: boolean
       }
     | undefined
-  const callStates = new Map<string, NonNullable<typeof state>>()
+  const callStates = new Map<
+    ToolExecutionToken,
+    {
+      state: NonNullable<typeof state>
+      ref?: string
+      items?: NextStepsNotice['items']
+      declined?: boolean
+    }
+  >()
   const clear = () => {
     state = undefined
   }
@@ -59,10 +81,24 @@ export function installNextStepsAgent(
   try {
     stops.push(
       agent.ctx.on('tools/pre-execute', async (exec, next) => {
-        if (exec.agent === agent && exec.name === 'marivo_present')
-          saveAdmissions.set(String(exec.callId), inputGeneration)
-        if (exec.agent === agent && exec.name === NEXT_STEPS_TOOL && state)
-          callStates.set(String(exec.callId), state)
+        if (
+          exec.agent === agent &&
+          presentationTool &&
+          exec.name === MARIVO_PRESENT_TOOL_NAME &&
+          agent.ctx.tools.get(exec.name, agent) === presentationTool
+        ) {
+          const generation = inputGeneration
+          const identity = await workspace()
+          exec.signal.throwIfAborted()
+          saveAdmissions.set(exec.token, { generation, workspace: identity })
+        }
+        if (
+          exec.agent === agent &&
+          exec.name === NEXT_STEPS_TOOL &&
+          agent.ctx.tools.get(exec.name, agent) === nextStepsTool &&
+          state
+        )
+          callStates.set(exec.token, { state })
         return next()
       }),
     )
@@ -72,12 +108,13 @@ export function installNextStepsAgent(
         defineTool({
           name: NEXT_STEPS_TOOL,
           description:
-            'Finalize this analysis Turn after its last successful marivo_present save, or pass an exact recordId when the user requests recommendations for an existing report. Do not save an unchanged report just to provide recommendations. Generate fresh recommendations for the final report version saved in this Turn, even if an earlier Turn already offered suggestions. First honor the user: if they requested no recommendations, call items=[] with emptyReason="declined" without generating any. Otherwise offer 1–4 useful follow-up analyses, usually three when appropriate. A nonempty result or explicit refusal concludes the Turn; an ordinary empty result may request one completion retry. Finish all requested work before this call. Each short action label must fully describe the task; its prompt may only expand that same task. Offer only tasks immediately feasible with the data and capabilities already available. Do not suggest collecting or adding unavailable dimensions, periods, datasets or inputs. If no useful feasible task remains, send items=[] with emptyReason="no-suggestions". An ordinary empty result receives at most one completion retry before showing recommendations unavailable. Never recommend work already answered by the saved report; prefer fewer items to repetition or filler. Never run more analysis just to generate suggestions. These are temporary Chat buttons, not report content. Never claim a user refusal when no suggestion was found. Do not repeat suggestions in prose. This tool does not send a user message.',
+            'Provide temporary Chat follow-up suggestions for an exact saved report ref. Use the final saved ref from this Turn, or a ref read for an existing report when the user requests recommendations; never save an unchanged report just for suggestions. Generate fresh recommendations for each final saved version. If the user declined, send items=[] with emptyReason="declined" without generating suggestions. Otherwise offer 1–4 useful immediately feasible follow-up analyses, usually three when appropriate. If none is useful, send items=[] with emptyReason="no-suggestions"; this is a valid result and does not request a retry. Each short action label must fully describe the task; prompt may only expand that task. Use existing data and capabilities; do not propose adding unavailable dimensions, periods, datasets or inputs, repeat work already answered, or run analysis merely to generate suggestions. Prefer fewer items to filler. This tool only receives suggestions; it does not end the Turn or send a user message. Continue any requested file delivery or necessary final answer normally. Do not repeat the suggestions in prose.',
           parameters: {
-            recordId: {
+            ref: {
               type: 'string',
+              required: true,
               description:
-                'Exact saved report recordId for an explicit request for recommendations. Omit after saving in this Turn.',
+                'Exact saved report ref from the final successful save or an existing report read.',
             },
             emptyReason: { type: 'string', enum: ['declined', 'no-suggestions'] },
             items: {
@@ -94,7 +131,15 @@ export function installNextStepsAgent(
             },
           },
           output: {
-            schema: { type: 'json' },
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                accepted: { type: 'boolean', const: true, required: true },
+                ref: { type: 'string', required: true },
+                receipt: nextStepsReceiptValueSchema,
+              },
+            },
             render: () => [{ type: 'text', text: 'Next steps received.' }],
             presentationMeta: (_args, value) =>
               z.object({ receipt: nextStepsReceipt }).safeParse(value).data?.receipt ?? null,
@@ -107,8 +152,19 @@ export function installNextStepsAgent(
               throw new Error('next-steps-requires-current-saved-analysis')
             const generation = inputGeneration
             const identity = await workspace()
-            if (input.recordId) {
-              const target = parseAnalysisRecordId(input.recordId)
+            const target = parseReportRef(input.ref)
+            if (target.kind !== 'saved') throw new Error('report-saved-ref-required')
+            if (target.workspaceId !== identity.id) throw new Error('report-workspace-mismatch')
+            if (
+              state &&
+              (state.turn !== turn ||
+                state.workspaceId !== identity.id ||
+                state.workspacePath !== identity.path ||
+                state.reportId !== target.reportId ||
+                state.buildId !== target.buildId)
+            )
+              throw new Error('next-steps-requires-final-saved-analysis')
+            if (!state) {
               await readAnalysisRecord(
                 identity.path,
                 identity.id,
@@ -125,31 +181,40 @@ export function installNextStepsAgent(
                 latest.path !== identity.path
               )
                 throw new Error('next-steps-owner-changed')
-              state = { turn, workspaceId: identity.id, ...target, callId: String(exec.callId) }
+              // A concurrent save owns the final version, even while an existing report was read.
+              if (state) throw new Error('next-steps-report-changed')
+              state = {
+                turn,
+                workspaceId: identity.id,
+                workspacePath: identity.path,
+                reportId: target.reportId,
+                buildId: target.buildId,
+                callId: String(exec.callId),
+              }
             }
             const current = state
-            if (!current || current.turn !== turn)
-              throw new Error('next-steps-requires-current-saved-analysis')
             exec.signal.throwIfAborted()
             if (
               inputGeneration !== generation ||
               activeTurn !== turn ||
-              identity.id !== current.workspaceId
+              disposed ||
+              identity.id !== current.workspaceId ||
+              identity.path !== current.workspacePath
             )
               throw new Error('next-steps-owner-changed')
-            callStates.set(String(exec.callId), current)
-            current.items = undefined
-            current.declined = false
-            current.items = input.items
-            current.declined = input.emptyReason === 'declined'
-            if (input.items.length || current.declined || retriedTurn === current.turn)
-              exec.concludeTurn()
+            callStates.set(exec.token, {
+              state: current,
+              ref: input.ref,
+              items: input.items,
+              declined: input.emptyReason === 'declined',
+            })
             return {
               accepted: true,
+              ref: input.ref,
               ...(current.callId
                 ? {
                     receipt: {
-                      kind: 'marivo.next-steps',
+                      kind: nextStepsReceiptValueSchema.properties.kind.const,
                       sessionId: String(agent.session.id),
                       turn,
                       callId: current.callId,
@@ -161,36 +226,60 @@ export function installNextStepsAgent(
         }),
       ),
     )
+    nextStepsTool = agent.ctx.tools.get(NEXT_STEPS_TOOL, agent)
     stops.push(
       agent.ctx.on('tools/result', (exec, result) => {
-        if (exec.agent === agent && exec.name === NEXT_STEPS_TOOL) {
-          const current = callStates.get(String(exec.callId))
-          callStates.delete(String(exec.callId))
-          if (result.isError && current && state === current) {
-            current.items = undefined
-            current.declined = false
-          }
+        const pending = callStates.get(exec.token)
+        callStates.delete(exec.token)
+        if (pending && state === pending.state) {
+          const accepted =
+            !result.isError &&
+            z
+              .object({
+                accepted: z.literal(true),
+                ref: z.literal(pending.ref ?? ''),
+              })
+              .safeParse(result.value).success
+          pending.state.items = accepted ? pending.items : undefined
+          pending.state.declined = accepted && pending.declined
         }
-        if (exec.agent !== agent || exec.name !== 'marivo_present') return
-        const admittedGeneration = saveAdmissions.get(String(exec.callId))
-        saveAdmissions.delete(String(exec.callId))
-        if (result.isError || admittedGeneration !== inputGeneration) return
-        const value = z.object({ deliveryJson: z.string() }).safeParse(result.value)
-        if (!value.success) return
+        const committedRef = savedWrites.take(exec.token)
+        const admission = saveAdmissions.get(exec.token)
+        saveAdmissions.delete(exec.token)
+        if (
+          exec.agent !== agent ||
+          !admission ||
+          committedRef === undefined ||
+          result.isError ||
+          admission.generation !== inputGeneration ||
+          disposed
+        )
+          return
+        const value = z
+          .object({ ref: z.string(), deliveryJson: z.string() })
+          .safeParse(result.value)
+        if (!value.success || value.data.ref !== committedRef) return
         try {
           const delivery = parsePresentationToolDelivery(JSON.parse(value.data.deliveryJson))
+          const ref = parseReportRef(value.data.ref)
           if (
             delivery.kind !== MARIVO_PRESENTATION_DELIVERY_KIND ||
+            ref.kind !== 'saved' ||
             delivery.dshSessionId !== String(agent.session.id) ||
             delivery.turn !== activeTurn ||
-            delivery.turn !== presentationTurn(agent.session, exec)
+            delivery.turn !== presentationTurn(agent.session, exec) ||
+            delivery.receipt.workspaceId !== admission.workspace.id ||
+            ref.workspaceId !== delivery.receipt.workspaceId ||
+            ref.reportId !== delivery.receipt.reportId ||
+            ref.buildId !== delivery.receipt.buildId
           )
             return
           state = {
             turn: delivery.turn,
-            workspaceId: delivery.receipt.workspaceId,
-            reportId: delivery.receipt.reportId,
-            buildId: delivery.receipt.buildId,
+            workspaceId: ref.workspaceId,
+            workspacePath: admission.workspace.path,
+            reportId: ref.reportId,
+            buildId: ref.buildId,
           }
         } catch {
           /* Invalid output cannot arm a completion check. */
@@ -206,7 +295,7 @@ export function installNextStepsAgent(
       }),
     )
     stops.push(
-      agent.ctx.on('agent/turn-stopping', ({ turn, signal }) => {
+      agent.ctx.on('agent/turn-stopping', async ({ turn, signal }) => {
         if (agent.inbox.nextTurn.length) {
           clear()
           return
@@ -215,11 +304,33 @@ export function installNextStepsAgent(
           signal.aborted ||
           !state ||
           state.turn !== turn ||
-          state.items?.length ||
+          state.items !== undefined ||
           state.declined ||
           retriedTurn === turn
         )
           return
+        const current = state
+        const generation = inputGeneration
+        let identity: Awaited<ReturnType<PresentationWorkspaceSource>>
+        try {
+          identity = await workspace()
+        } catch {
+          if (state === current) clear()
+          return
+        }
+        if (
+          disposed ||
+          signal.aborted ||
+          state !== current ||
+          activeTurn !== turn ||
+          inputGeneration !== generation ||
+          agent.inbox.nextTurn.length
+        )
+          return
+        if (identity.id !== current.workspaceId || identity.path !== current.workspacePath) {
+          clear()
+          return
+        }
         retriedTurn = turn
         agent.steer(
           createUserMessage({
@@ -231,7 +342,7 @@ export function installNextStepsAgent(
             content: [
               {
                 type: 'text',
-                text: `The final analysis report version is saved (reportId=${state.reportId}, buildId=${state.buildId}). Generate fresh recommendations for this report and Turn even if recommendations were offered previously. Honor the user first: if they declined recommendations, call marivo_next_steps with items=[] and emptyReason="declined" and do not generate suggestions. This bookkeeping task never overrides that choice. Otherwise finish this Turn with one to four useful immediately feasible follow-up analyses, or items=[] with emptyReason="no-suggestions" only when none is appropriate. This is the only completion retry; never fabricate recommendations to fill the list. A successful call concludes the Turn; no additional prose is needed. Use the language of the analysis. Recommend only tasks feasible with existing data; never propose adding missing dimensions, periods or inputs. Do not repeat work already answered by the report; fewer useful items are better than filler. Each label must state the full action; prompt only expands it. Do not run analysis, alter the report, or repeat the options in prose.`,
+                text: `The final analysis report version is saved (ref=${savedReportRef({ workspaceId: current.workspaceId, reportId: current.reportId, buildId: current.buildId })}). Provide fresh recommendations for this report and Turn even if recommendations were offered previously. Honor the user first: if they declined recommendations, call marivo_next_steps with this ref, items=[] and emptyReason="declined" without generating suggestions. Otherwise offer one to four useful immediately feasible follow-up analyses, or items=[] with emptyReason="no-suggestions" when none is appropriate. This is the only completion reminder; never fabricate recommendations to fill the list. The tool only receives suggestions and does not end the Turn; finish any remaining requested delivery or necessary final answer normally. Use the language of the analysis and existing data. Do not repeat work already answered, propose unavailable inputs, run analysis, alter the report, or repeat the options in prose.`,
               },
             ],
           }),
@@ -260,18 +371,18 @@ export function installNextStepsAgent(
           const status =
             completed && current.declined
               ? 'declined'
-              : completed && current.items?.length
-                ? 'available'
+              : completed && current.items !== undefined
+                ? current.items.length
+                  ? 'available'
+                  : 'empty'
                 : 'unavailable'
           const reason: NextStepsNotice['reason'] =
             status !== 'unavailable'
               ? undefined
               : !completed
                 ? 'generation-failed'
-                : current.items
-                  ? 'no-suggestions'
-                  : 'generation-incomplete'
-          publish({
+                : 'generation-incomplete'
+          const notice: NextStepsNotice = {
             sessionId: String(session.id),
             workspaceId: current.workspaceId,
             turn: current.turn,
@@ -281,15 +392,30 @@ export function installNextStepsAgent(
             status,
             ...(reason ? { reason } : {}),
             items: status === 'available' ? (current.items ?? []) : [],
-          })
+          }
+          const generation = inputGeneration
+          void (async () => {
+            const identity = await workspace()
+            if (
+              !disposed &&
+              inputGeneration === generation &&
+              latestTurn === current.turn &&
+              identity.id === current.workspaceId &&
+              identity.path === current.workspacePath
+            )
+              publish(notice)
+          })().catch(() => {})
         }
       }),
     )
   } catch (error) {
+    savedWrites.close()
     void finishCleanup(stops.reverse())
     throw error
   }
   return () => {
+    disposed = true
+    savedWrites.close()
     saveAdmissions.clear()
     callStates.clear()
     clear()

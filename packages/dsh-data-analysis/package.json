@@ -38,18 +38,6 @@
       "types": "./lib/types/integration.d.ts",
       "default": "./lib/integration.js"
     },
-    "./environment": {
-      "types": "./lib/types/environment/index.d.ts",
-      "default": "./lib/environment/index.js"
-    },
-    "./disclosure": {
-      "types": "./lib/types/disclosure/index.d.ts",
-      "default": "./lib/disclosure/index.js"
-    },
-    "./datasource": {
-      "types": "./lib/types/datasource/index.d.ts",
-      "default": "./lib/datasource/index.js"
-    },
     "./compatibility": {
       "types": "./lib/types/compatibility.d.ts",
       "default": "./lib/compatibility.js"

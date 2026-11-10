@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { analysisResourceDeclaration } from './presentation/contracts/resource-declaration.ts'
 import { type ResultReference, resultReference } from './presentation/contracts/result-reference.ts'
+import type { PythonCodeRef } from './python-execution.ts'
 
 export const PYTHON_RESULT_HEADER = '__DSH_MARIVO_RESULTS_V1__:'
 const resultName = z
@@ -37,6 +39,65 @@ const resultMetadata = z.discriminatedUnion('status', [
     reason: z.enum(['budget', 'read-failed', 'identity-mismatch']),
   }),
 ])
+const pythonResourceDeclaration = analysisResourceDeclaration.transform((resource, context) => {
+  if (resource.kind === 'analysis-frame' || resource.kind === 'dataframe') return resource
+  context.addIssue({
+    code: 'custom',
+    message: 'Python exports require a persisted Marivo reference',
+  })
+  return z.NEVER
+})
+const pythonResultFields = { resource: pythonResourceDeclaration, metadata: resultMetadata }
+export const pythonResult = z
+  .discriminatedUnion('sourceStatus', [
+    z.strictObject({ ...pythonResultFields, sourceStatus: z.literal('recorded') }),
+    z.strictObject({
+      ...pythonResultFields,
+      sourceStatus: z.literal('unavailable'),
+      sourceError: z.string().min(1),
+    }),
+  ])
+  .superRefine((value, context) => {
+    if ((value.sourceStatus === 'recorded') !== (value.resource.codeRef !== undefined))
+      context.addIssue({
+        code: 'custom',
+        message: 'Python result source status must match codeRef',
+      })
+  })
+export type PythonResult = z.infer<typeof pythonResult>
+
+/** Assemble every public handoff from the same validated export and source record. */
+export function pythonResults(
+  references: Readonly<Record<string, ResultReference>>,
+  metadata: Readonly<Record<string, z.infer<typeof resultMetadata>>> | undefined,
+  codeRef: PythonCodeRef | undefined,
+  sourceError: string | undefined,
+): Record<string, PythonResult> {
+  return Object.fromEntries(
+    Object.entries(references).map(([name, ref]) => {
+      const resource = {
+        kind: ref.schema === 'marivo.frame_ref/v2' ? 'analysis-frame' : 'dataframe',
+        ref,
+        ...(codeRef ? { codeRef } : {}),
+      }
+      return [
+        name,
+        pythonResult.parse({
+          resource,
+          ...(codeRef
+            ? { sourceStatus: 'recorded' as const }
+            : {
+                sourceStatus: 'unavailable' as const,
+                sourceError:
+                  sourceError ??
+                  'Source recording is unavailable; do not rerun successful code to recover it.',
+              }),
+          metadata: metadata?.[name] ?? { status: 'unavailable', reason: 'read-failed' },
+        }),
+      ]
+    }),
+  )
+}
 const resultOutput = z.strictObject({
   status: z.literal('ok'),
   references: z.record(resultName, resultReference),
@@ -55,10 +116,20 @@ export const pythonResultRecord = z.strictObject({
 })
 export type PythonResultRecord = z.infer<typeof pythonResultRecord>
 
+function containsSecret(value: unknown, secrets: readonly string[]): boolean {
+  if (typeof value === 'string') return secrets.some((secret) => value.includes(secret))
+  if (Array.isArray(value)) return value.some((item) => containsSecret(item, secrets))
+  if (typeof value !== 'object' || value === null) return false
+  return Object.entries(value).some(
+    ([key, item]) => containsSecret(key, secrets) || containsSecret(item, secrets),
+  )
+}
+
 /** Consume only the launcher-owned first control frame, never user output lines. */
 export function readPythonResultOutput(
   stderr: string,
   variables: Record<string, string>,
+  secretValues: readonly string[] = [],
 ): {
   stderr: string
   resultRefs?: Record<string, ResultReference>
@@ -78,6 +149,8 @@ export function readPythonResultOutput(
     )
     if (Object.keys(output.references).sort().join(',') !== Object.keys(variables).sort().join(','))
       throw new Error('result-export-names')
+    const secrets = secretValues.filter(Boolean)
+    if (containsSecret(output.references, secrets)) throw new Error('result-export-sensitive')
     const metadata = z.record(resultName, resultMetadata).safeParse(output.metadata)
     const validMetadata =
       metadata.success &&
@@ -89,7 +162,14 @@ export function readPythonResultOutput(
         ? {}
         : {
             resultMetadata: validMetadata
-              ? metadata.data
+              ? Object.fromEntries(
+                  Object.entries(metadata.data).map(([name, value]) => [
+                    name,
+                    containsSecret(value, secrets)
+                      ? { status: 'unavailable' as const, reason: 'read-failed' as const }
+                      : value,
+                  ]),
+                )
               : Object.fromEntries(
                   Object.keys(variables).map((name) => [
                     name,

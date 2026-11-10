@@ -59,6 +59,7 @@ function baseDocument(): AnalysisDocument {
   parsed.data.columns[1]!.label = 'Amount'
   return {
     schemaVersion: ANALYSIS_UI_FORMAT,
+    contentReview: 'not-needed',
     workspaceId,
     reportId: 'report',
     buildId: 'build-1',

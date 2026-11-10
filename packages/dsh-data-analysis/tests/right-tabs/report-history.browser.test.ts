@@ -24,9 +24,11 @@ import {CopyProvider} from './src/client/i18n/context.tsx';
 import {translator} from './src/client/i18n/copy.ts';
 import {ReportHistoryPanel,catalogStyles} from './src/client/presentation/catalog.tsx';
 import {rightTabStyles} from './src/client/right-tabs/styles.ts';
+import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
 const makeVersion=(buildId,title,publishedAt)=>({receipt:{buildId,title},publishedAt,source:{sessionId:'s'}});
 const versions=[makeVersion('b1','Revenue report','2026-11-03T00:00:00Z'),makeVersion('b0','Earlier report','2026-11-02T00:00:00Z')];
-function App(){const [open,setOpen]=React.useState(true);const [selected,setSelected]=React.useState('b1');return <CopyProvider t={translator('en-US')}><style>{catalogStyles+rightTabStyles}</style><section className="mv-ui rt-page">{open&&<ReportHistoryPanel state={{history:{currentBuildId:'b1',versions},resolvedReceipt:{buildId:selected}}} model={{selectVersion:setSelected}} sessions={{s:{displayTitle:'Analysis conversation'}}} onOpenSession={()=>{}} onClose={()=>setOpen(false)}/>}</section></CopyProvider>};
+const documents={b1:{title:'Revenue report',locale:'en-US',recordId:'marivo-ui:r:b1',program:'root = TextContent("Current narrative");',resources:{},contentReview:'not-needed'},b0:{title:'Earlier report',locale:'en-US',recordId:'marivo-ui:r:b0',program:'root = TextContent("Historical narrative");',resources:{},contentReview:'required'}};
+function App(){const [open,setOpen]=React.useState(true);const [selected,setSelected]=React.useState('b1');return <CopyProvider t={translator('en-US')}><style>{catalogStyles+rightTabStyles}</style><section className="mv-ui rt-page">{open&&<ReportHistoryPanel state={{history:{currentBuildId:'b1',versions},resolvedReceipt:{buildId:selected}}} model={{selectVersion:setSelected}} sessions={{s:{displayTitle:'Analysis conversation'}}} onOpenSession={()=>{}} onClose={()=>setOpen(false)}/>}<AnalysisSurface document={documents[selected]}/></section></CopyProvider>};
 createRoot(document.getElementById('root')).render(<App/>);
 `,
     },
@@ -72,12 +74,22 @@ createRoot(document.getElementById('root')).render(<App/>);
   const older = history.getByRole('button', { name: /Earlier report/ })
   assert.equal(await current.getAttribute('aria-pressed'), 'true')
   assert.equal(await history.getByText('Current version').count(), 1)
+  assert.equal(await page.locator('[data-content-review]').count(), 0)
   assert.equal(await history.getByText('Analysis conversation').count(), 2)
   assert(await history.evaluate((node) => node.scrollWidth <= node.clientWidth))
   await older.click()
   assert.equal(await older.getAttribute('aria-pressed'), 'true')
   assert.equal(await current.getAttribute('aria-pressed'), 'false')
   assert.equal(await history.getByText('Viewing').count(), 1)
+  await page
+    .locator('[data-content-review=required]')
+    .getByText('Data changed. Static narrative needs review.')
+    .waitFor()
+  assert.equal(await page.locator('.au-surface-body [data-content-review]').count(), 0)
+  await current.click()
+  await page.locator('[data-content-review]').waitFor({ state: 'detached' })
+  await older.click()
+  await page.locator('[data-content-review=required]').waitFor()
   await history.getByRole('button', { name: 'Close version history' }).click()
   assert.equal(await history.count(), 0)
 })

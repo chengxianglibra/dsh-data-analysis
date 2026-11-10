@@ -21,7 +21,11 @@ import {
   ensureSharedMarivoRuntime,
   MarivoWorkspaceEnvironmentManager,
 } from '../../src/environment/index.ts'
-import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
+import {
+  ANALYSIS_UI_FORMAT,
+  parseAnalysisDocument,
+} from '../../src/presentation/contracts/analysis-document.ts'
+import { parseReportRef, savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { resultReference } from '../../src/presentation/contracts/result-reference.ts'
 import { isFrameSnapshotV2 } from '../../src/presentation/contracts/snapshot.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
@@ -88,7 +92,7 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
     signal: new AbortController().signal,
     callId: ToolCallId('analysis-ui-capture'),
     name: 'marivo_python',
-    arguments: { code, datasources: ['warehouse'], timeoutMs: 120_000 },
+    arguments: { code, project: 'required', datasources: ['warehouse'], timeoutMs: 120_000 },
   })
   assert.equal(tool.isError, false, JSON.stringify(tool))
   const value = tool.value as { stdout: string; exitCode: number }
@@ -130,6 +134,7 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
   ].entries()) {
     const callId = ToolCallId(`analysis-ui-present-${index}`)
     const args = {
+      stage: 'save',
       resourcePatch: { put: { result: resource } },
       title: `Real ${index ? 'DataFrame' : 'Frame'}`,
     }
@@ -137,16 +142,16 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
       turn: 0,
       step: index,
       callId,
-      name: 'marivo_present',
+      name: 'marivo_report_write',
       arguments: JSON.stringify(args),
     })
     const result = (await present.execute(args, {
       agent,
       callId,
       signal: new AbortController().signal,
-    } as ToolRunContext)) as { stage: string; recordId: string; deliveryJson: string }
+    } as ToolRunContext)) as { stage: string; ref: string; deliveryJson: string }
     assert.equal(result.stage, 'save')
-    assert.match(result.recordId, /^marivo-ui:/)
+    assert.equal(parseReportRef(result.ref).kind, 'saved')
     deliveries.push(parsePresentationDelivery(JSON.parse(result.deliveryJson)))
   }
   await rm(path.join(workspace, '.marivo'), { recursive: true })
@@ -166,7 +171,7 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
       try { for (const delivery of ${JSON.stringify(deliveries)}) {
         const result = await service.read({sessionId:'analysis-ui-runtime',receipt:delivery.receipt,asset:'presentation.json'});
         const document=JSON.parse(Buffer.from(result.bodyBase64,'base64').toString());
-        assert.equal(document.schemaVersion,'dsh.analysis-ui/v1');
+        assert.equal(document.schemaVersion,${JSON.stringify(ANALYSIS_UI_FORMAT)});
         assert(JSON.stringify(document).includes('12345678901234.5678'));
         assert(JSON.stringify(document).includes('9007199254740993'));
       } } finally { await service.close() }
@@ -188,13 +193,17 @@ result["dataRef"] = mv.persist_dataframe(data).to_dict()
       parseAnalysisDocument(JSON.parse(Buffer.from(data.bodyBase64, 'base64').toString()))
     }
     const read = createMarivoUiReadTool(() => ({ id: 'analysis-ui-workspace', path: workspace }))
-    const recordId = `marivo-ui:${deliveries[0]!.receipt.reportId}:${deliveries[0]!.receipt.buildId}`
-    const result = (await read.execute({ recordId }, {
+    const ref = savedReportRef({
+      workspaceId: deliveries[0]!.receipt.workspaceId,
+      reportId: deliveries[0]!.receipt.reportId,
+      buildId: deliveries[0]!.receipt.buildId,
+    })
+    const result = (await read.execute({ ref }, {
       agent,
       callId: ToolCallId('analysis-ui-read'),
       signal: new AbortController().signal,
-    } as ToolRunContext)) as { definitionJson: string }
-    assert.equal(JSON.parse(result.definitionJson).recordId, recordId)
+    } as ToolRunContext)) as { definition: { ref: string } }
+    assert.equal(result.definition.ref, ref)
   } finally {
     await files.close()
   }

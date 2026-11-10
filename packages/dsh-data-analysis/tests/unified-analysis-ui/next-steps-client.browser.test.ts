@@ -55,6 +55,10 @@ window.fixture={
  terminal:()=>channel(Error('terminal')),
  submit:()=>session.set({...session.getSnapshot(),pendingSubmissions:[{}]}),
  idle:()=>session.set({...session.getSnapshot(),pendingSubmissions:[]}),
+ draft:value=>input.set({...input.getSnapshot(),draft:value}),
+ input:value=>input.set({...input.getSnapshot(),...value}),
+ generation:()=>generation.set({}),
+ workspace:()=>ctx.workspaces.list.set({phase:'ready',items:[{workspaceId:'w',path:'/replacement',sessionIds:['s']}]}),
  render,
  explicit:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'tool/result',data:{turn:1,message:{isError:false,toolCallId:'explicit'},meta:{kind:'marivo.next-steps',sessionId:'s',turn:1,callId:'explicit'}}}}]});root.render(createElement(turnTail,{sessionId:'s',turn:{turn:1}}));},
  close:async()=>{root.unmount();for(const dispose of effects.reverse())await dispose?.()}
@@ -136,3 +140,68 @@ test('a queued submission retires the Turn even after carrier failure hid its no
   assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
   await page.evaluate('window.fixture.close()')
 })
+
+test('a normal empty result uses the no-suggestions copy without a failure or retry control', async () => {
+  await start()
+  await page.evaluate('window.fixture.publish({status:"empty",items:[]})')
+  await page.locator('[data-next-steps-status="empty"]').waitFor()
+  assert.equal(
+    await page.getByText('No suitable next steps are available for this report.').count(),
+    1,
+  )
+  assert.equal(await page.getByRole('button').count(), 0)
+  assert.equal(await page.locator('[data-next-steps-status="unavailable"]').count(), 0)
+  assert.equal(await page.locator('[data-next-steps-status="connection-failed"]').count(), 0)
+  await page.evaluate('window.fixture.close()')
+})
+
+test('generation failure stays separate from normal empty and a decline hides the Turn', async () => {
+  await start()
+  await page.evaluate(
+    'window.fixture.publish({status:"unavailable",reason:"generation-failed",items:[]})',
+  )
+  await page.getByText('Next steps for this report are currently unavailable.').waitFor()
+  await page.evaluate('window.fixture.publish({status:"declined",items:[]})')
+  await page.waitForFunction('!document.querySelector("[data-next-steps-status]")')
+  await page.evaluate('window.fixture.publish()')
+  assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
+  await page.evaluate('window.fixture.close()')
+})
+
+test('composer content disables submission until the native input is empty', async () => {
+  await start()
+  await page.evaluate('window.fixture.publish()')
+  const button = page.getByRole('button', { name: 'Compare regions' })
+  await button.waitFor()
+  for (const state of [
+    { draft: 'Keep my draft' },
+    { occurrences: [{}] },
+    { attachmentIds: ['attachment'] },
+    { phase: 'command' },
+    { claim: {} },
+  ]) {
+    await page.evaluate(`window.fixture.input(${JSON.stringify(state)})`)
+    assert.equal(await button.isDisabled(), true)
+    assert.equal(await page.evaluate('window.fixture.stats().submitted'), 0)
+    await page.evaluate(
+      'window.fixture.input({phase:"plain",draft:"",occurrences:[],attachmentIds:[],claim:undefined})',
+    )
+  }
+  assert.equal(await button.isEnabled(), true)
+  await button.click()
+  assert.equal(await page.evaluate('window.fixture.stats().submitted'), 1)
+  assert.equal(await button.count(), 0)
+  await page.evaluate('window.fixture.close()')
+})
+
+for (const invalidation of ['generation', 'workspace'])
+  test(`connection and Workspace ownership changes discard old notices (${invalidation})`, async () => {
+    await start()
+    await page.evaluate('window.fixture.publish()')
+    await page.getByRole('button', { name: 'Compare regions' }).waitFor()
+    await page.evaluate(`window.fixture[${JSON.stringify(invalidation)}]()`)
+    await page.waitForFunction('!document.querySelector("[data-next-steps-status]")')
+    await page.waitForFunction('window.fixture.stats().opens === 2')
+    assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
+    await page.evaluate('window.fixture.close()')
+  })

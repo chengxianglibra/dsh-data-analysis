@@ -94,7 +94,7 @@ test('real Code Mode resumes the same SDK dispatch within its outer budget', asy
     name: 'run_code',
     arguments: {
       description: 'Validate credential waiting',
-      code: 'const result = await tools.marivo_python({code:"print(1)",datasources:["warehouse"]}); console.log(result.stdout);',
+      code: 'const result = await tools.marivo_python({code:"print(1)",datasources:["warehouse"],project:"required"}); console.log(result.stdout);',
     },
   })
   const request = await waiting(f).catch(async (error) => {
@@ -113,7 +113,7 @@ test('real Code Mode resumes the same SDK dispatch within its outer budget', asy
   assert.doesNotMatch(JSON.stringify(result), /code-canary/)
 })
 test('real Code Mode wall deadline cancels a pending credential call and rejects old submission', async (t) => {
-  const h = await harness(300),
+  const h = await harness(3_000),
     f = fixture('web')
   t.after(async () => {
     await f.service.close()
@@ -127,7 +127,7 @@ test('real Code Mode wall deadline cancels a pending credential call and rejects
     name: 'run_code',
     arguments: {
       description: 'Validate credential waiting',
-      code: 'await tools.marivo_python({code:"print(1)",datasources:["warehouse"]});',
+      code: 'await tools.marivo_python({code:"print(1)",datasources:["warehouse"],project:"required"});',
     },
   })
   const request = await waiting(f).catch(async (error) => {

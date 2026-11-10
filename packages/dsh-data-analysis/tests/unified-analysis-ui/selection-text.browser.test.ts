@@ -20,6 +20,7 @@ import {createRoot} from 'react-dom/client';
 import {SelectionReference} from './src/client/selection-text.tsx';
 import {selectionTextRule} from './src/client/selection-text-rule.ts';
 import {selectionModelText} from './src/presentation/contracts/selection-text.ts';
+import {reportRefFromRecordId} from './src/presentation/contracts/report-ref.ts';
 import {createComponentReferenceSource} from './src/client/component-reference.ts';
 import {createDatasetReferenceSource} from './src/client/dataset-reference.ts';
 import {createPointReferenceSource} from './src/client/point-reference.ts';
@@ -32,7 +33,7 @@ window.errors=[];
 window.addEventListener('error',e=>window.errors.push(e.message));
 const rpc={async call(channel,endpoint,{envelope}){
  const name=endpoint.startsWith('point')?'Revenue · North':endpoint.startsWith('dataset')?'Revenue · amount · 1':'Revenue';
- return {ok:true,value:{text:selectionModelText(endpoint.startsWith('point')?'frame-point':endpoint.startsWith('dataset')?'dataset-point':'component',name,{recordId:identity.recordId,resource:identity.resourceName,...(endpoint.startsWith('component')?{resultRef:{schema:'marivo.frame_ref/v2',store_id:'store',session_id:'ms',artifact_id:'artifact'}}:{value:'9007199254740993.2300'})})}}}};
+ return {ok:true,value:{text:selectionModelText(endpoint.startsWith('point')?'frame-point':endpoint.startsWith('dataset')?'dataset-point':'component',name,{ref:reportRefFromRecordId(identity.recordId,identity.workspaceId),resource:identity.resourceName,...(endpoint.startsWith('component')?{resultRef:{schema:'marivo.frame_ref/v2',store_id:'store',session_id:'ms',artifact_id:'artifact'}}:{value:'9007199254740993.2300'})})}}}};
 const lifetime=new AbortController();
 const choices={component:[component,createComponentReferenceSource(rpc,lifetime.signal)],point:[point,createPointReferenceSource(rpc,lifetime.signal)],dataset:[dataset,createDatasetReferenceSource(rpc,lifetime.signal)]};
 const inputRoot=createRoot(document.getElementById('input-chip'));

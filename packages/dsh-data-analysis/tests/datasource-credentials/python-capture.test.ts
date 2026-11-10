@@ -16,17 +16,19 @@ import path from 'node:path'
 import test, { after, type TestContext } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { type ToolDefinition, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import {
   type MarivoPythonExecutionSummary,
   registerMarivoPythonTool,
 } from '../../src/datasource/python.ts'
+import { analysisPresentInput } from '../../src/presentation/contracts/analysis-document.ts'
 import {
   type PythonCodeRef,
   readPythonExecution,
   readPythonResults,
   savePythonExecution,
 } from '../../src/python-execution.ts'
+import type { PythonResult } from '../../src/python-result-references.ts'
 import {
   PYTHON_RESULT_HEADER,
   pythonResultVariables,
@@ -59,6 +61,15 @@ function storageDirectory(root: string) {
     'python-executions',
     createHash('sha256').update(root).digest('hex'),
   )
+}
+async function storedCodeRef(root: string): Promise<PythonCodeRef> {
+  const [name] = await readdir(storageDirectory(root))
+  assert(name)
+  const bytes = await readFile(path.join(storageDirectory(root), name))
+  return {
+    executionId: name.replace(/\.json$/, ''),
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  }
 }
 
 test('execution snapshots preserve exact submitted code and digest complete record bytes', async (t) => {
@@ -277,10 +288,20 @@ async function tool(t: TestContext) {
       datasources: string[] = [],
       resultVariables?: Record<string, string>,
     ) =>
-      (await definition.execute(
-        { code, datasources, ...(resultVariables ? { resultVariables } : {}) },
-        { ...f.exec, deferContext: () => {}, concludeTurn: () => {} },
-      )) as {
+      (await definition
+        .execute(
+          {
+            code,
+            datasources,
+            project: datasources.length || resultVariables ? 'required' : 'none',
+            ...(resultVariables ? { resultVariables } : {}),
+          },
+          { ...f.exec, deferContext: () => {}, concludeTurn: () => {} },
+        )
+        .then((value) => {
+          assert.deepEqual(validateJsonSchemaValue(definition.output.schema, value), [])
+          return value
+        })) as {
         exitCode: number
         timedOut: boolean
         aborted: boolean
@@ -289,6 +310,7 @@ async function tool(t: TestContext) {
         resultCaptureError?: string
         codeRef?: PythonCodeRef
         codeCaptureError?: string
+        results?: Record<string, PythonResult>
         execution: MarivoPythonExecutionSummary
       },
   }
@@ -301,16 +323,17 @@ test('registered Python tool captures original code only after one successful ex
   assert.equal(p.launches, 1)
   assert.equal(result.exitCode, 0)
   assert.equal(result.codeCaptureError, undefined)
-  assert(result.codeRef)
+  const codeRef = await storedCodeRef(p.f.bridge.binding.projectRoot)
+  assert.equal(result.codeRef, undefined)
   assert.equal(
-    (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).text,
+    (await readPythonExecution(p.f.bridge.binding.projectRoot, codeRef)).text,
     input.text,
   )
   assert.deepEqual(
-    (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).datasources,
+    (await readPythonExecution(p.f.bridge.binding.projectRoot, codeRef)).datasources,
     [{ name: 'warehouse', backend: null }],
   )
-  const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, result.codeRef), 'utf8')
+  const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, codeRef), 'utf8')
   assert.doesNotMatch(record, /canary-private-4826|PYTHON_WORKER|grants|DB_PASSWORD/)
   assert.equal(JSON.parse(p.requests[0]!.stdin!).code, input.text)
 })
@@ -332,10 +355,28 @@ test('successful Python binds declared result exports independently of arbitrary
   p.outcome.stdout.text = 'Arbitrary text, not a JSON document'
   p.outcome.stderr.text = `${PYTHON_RESULT_HEADER}${Buffer.from(JSON.stringify({ status: 'ok', references: { data: reference, frame } })).toString('base64')}\nuser stderr`
   const result = await p.call('print("references")', [], variables)
+  for (const field of ['codeRef', 'resultRefs', 'resultMetadata'])
+    assert.equal(Reflect.has(result, field), false)
   assert.equal(result.stdout, p.outcome.stdout.text)
   assert.equal(result.stderr, 'user stderr')
-  assert(result.codeRef)
-  const record = await readPythonResults(p.f.bridge.binding.projectRoot, result.codeRef)
+  const codeRef = result.results?.data?.resource.codeRef
+  assert(codeRef)
+  assert.equal(result.results?.data?.sourceStatus, 'recorded')
+  assert.equal(result.results?.frame?.sourceStatus, 'recorded')
+  assert.deepEqual(result.results?.frame?.resource, { kind: 'analysis-frame', ref: frame, codeRef })
+  assert.deepEqual(result.results?.data?.resource, { kind: 'dataframe', ref: reference, codeRef })
+  assert(
+    analysisPresentInput.safeParse({
+      resourcePatch: {
+        put: {
+          frame: result.results?.frame?.resource,
+          data: result.results?.data?.resource,
+          repeated: result.results?.data?.resource,
+        },
+      },
+    }).success,
+  )
+  const record = await readPythonResults(p.f.bridge.binding.projectRoot, codeRef)
   assert.equal(record.sessionId, 'session')
   assert.equal(record.callId, 'call')
   assert.equal(record.rootCallId, 'call')
@@ -344,7 +385,7 @@ test('successful Python binds declared result exports independently of arbitrary
   assert(record.references.some((ref) => JSON.stringify(ref) === JSON.stringify(reference)))
   assert(record.references.some((ref) => JSON.stringify(ref) === JSON.stringify(frame)))
   assert.deepEqual(
-    (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).datasources,
+    (await readPythonExecution(p.f.bridge.binding.projectRoot, codeRef)).datasources,
     [],
   )
   assert.equal(p.launches, 1)
@@ -359,7 +400,7 @@ test('successful Python binds declared result exports independently of arbitrary
   )
   await assert.rejects(
     readPythonResults(p.f.bridge.binding.projectRoot, {
-      ...result.codeRef,
+      ...codeRef,
       sha256: '0'.repeat(64),
     }),
     /python-execution-source-unavailable:.*without codeRef.*Do not rerun/,
@@ -408,13 +449,109 @@ test('missing result exports preserve successful code and never infer identities
   })
   const result = await p.call('print("not exported")', [], { frame: 'frame_ref' })
   assert.equal(result.exitCode, 0)
-  assert(result.codeRef)
+  const codeRef = await storedCodeRef(p.f.bridge.binding.projectRoot)
+  assert.equal(result.results, undefined)
   assert(result.resultCaptureError)
   assert.equal(result.execution.nextAction, result.resultCaptureError)
   await assert.rejects(
-    readPythonResults(p.f.bridge.binding.projectRoot, result.codeRef),
+    readPythonResults(p.f.bridge.binding.projectRoot, codeRef),
     /python-result-exports-missing:.*Do not rerun/,
   )
+  assert.equal(p.launches, 1)
+})
+
+test('source and metadata failures preserve complete exported resources without replay', async (t) => {
+  const p = await tool(t)
+  const reference = {
+    schema: 'marivo.dataframe_ref/v2',
+    project_root: p.f.bridge.binding.projectRoot,
+    result_id: `df_${'b'.repeat(32)}`,
+  }
+  p.outcome.stderr.text = `${PYTHON_RESULT_HEADER}${Buffer.from(JSON.stringify({ status: 'ok', references: { data: reference }, metadata: { forged: true } })).toString('base64')}\n`
+  p.hooks.run = async () => {
+    await mkdir(path.dirname(storageDirectory(p.f.bridge.binding.projectRoot)), { recursive: true })
+    await symlink(await workspace(t), storageDirectory(p.f.bridge.binding.projectRoot))
+  }
+  const result = await p.call('print("business executed")', [], { data: 'data_ref' })
+  assert.equal(result.exitCode, 0)
+  const output = result.results?.data
+  assert(output?.sourceStatus === 'unavailable')
+  assert.equal(output.sourceError, result.codeCaptureError)
+  assert.deepEqual(result.results?.data?.resource, { kind: 'dataframe', ref: reference })
+  assert.deepEqual(result.results?.data?.metadata, { status: 'unavailable', reason: 'read-failed' })
+  assert(
+    analysisPresentInput.safeParse({
+      resourcePatch: { put: { data: result.results?.data?.resource } },
+    }).success,
+  )
+  assert.equal(result.resultCaptureError, undefined)
+  assert.equal(p.launches, 1)
+})
+
+test('sensitive exported references are rejected before source persistence without replaying code', async (t) => {
+  const p = await tool(t)
+  const secret = 'structured-reference-canary-6714'
+  p.f.store.put('DB_PASSWORD', secret)
+  p.outcome.stderr.text = `${PYTHON_RESULT_HEADER}${Buffer.from(
+    JSON.stringify({
+      status: 'ok',
+      references: {
+        frame: {
+          schema: 'marivo.frame_ref/v2',
+          store_id: `prefix-${secret}`,
+          session_id: 'session',
+          artifact_id: 'artifact',
+        },
+      },
+    }),
+  ).toString('base64')}\n`
+  const result = await p.call('print("business succeeded")', ['warehouse'], { frame: 'frame_ref' })
+  assert.equal(result.exitCode, 0)
+  assert(result.resultCaptureError)
+  assert.equal(result.results, undefined)
+  assert.equal(JSON.stringify(result).includes(secret), false)
+  const codeRef = await storedCodeRef(p.f.bridge.binding.projectRoot)
+  const record = await readFile(recordPath(p.f.bridge.binding.projectRoot, codeRef), 'utf8')
+  assert.equal(record.includes(secret), false)
+  await assert.rejects(
+    readPythonResults(p.f.bridge.binding.projectRoot, codeRef),
+    /python-result-exports-missing/,
+  )
+  assert.equal(p.launches, 1)
+})
+
+test('sensitive result metadata becomes unavailable while its safe resource remains reusable', async (t) => {
+  const p = await tool(t)
+  const secret = 'structured-metadata-canary-8023\nsecond-line'
+  p.f.store.put('DB_PASSWORD', secret)
+  const reference = {
+    schema: 'marivo.dataframe_ref/v2',
+    project_root: p.f.bridge.binding.projectRoot,
+    result_id: `df_${'c'.repeat(32)}`,
+  }
+  p.outcome.stderr.text = `${PYTHON_RESULT_HEADER}${Buffer.from(
+    JSON.stringify({
+      status: 'ok',
+      references: { data: reference },
+      metadata: {
+        data: {
+          status: 'captured',
+          kind: 'dataset',
+          columns: [`prefix-${secret}-suffix`],
+          values: [],
+          axes: [],
+          coverage: { totalRows: 1, business: 'unknown' },
+        },
+      },
+    }),
+  ).toString('base64')}\n`
+  const result = await p.call('print("business succeeded")', ['warehouse'], { data: 'data_ref' })
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.resultCaptureError, undefined)
+  assert.equal(result.results?.data?.sourceStatus, 'recorded')
+  assert.deepEqual(result.results?.data?.metadata, { status: 'unavailable', reason: 'read-failed' })
+  assert.deepEqual(result.results?.data?.resource.ref, reference)
+  assert.equal(JSON.stringify(result).includes(secret), false)
   assert.equal(p.launches, 1)
 })
 
@@ -424,14 +561,19 @@ test('Python tool uses one immutable code string for execution and its later sna
   p.hooks.run = async () => {
     args.code = 'changed while executing'
   }
-  const result = (await p.definition.execute(args, {
+  await p.definition.execute(args, {
     ...p.f.exec,
     deferContext: () => {},
     concludeTurn: () => {},
-  })) as { codeRef: PythonCodeRef }
+  })
   assert.equal(JSON.parse(p.requests[0]!.stdin!).code, input.text)
   assert.equal(
-    (await readPythonExecution(p.f.bridge.binding.projectRoot, result.codeRef)).text,
+    (
+      await readPythonExecution(
+        p.f.bridge.binding.projectRoot,
+        await storedCodeRef(p.f.bridge.binding.projectRoot),
+      )
+    ).text,
     input.text,
   )
   assert.equal(p.launches, 1)

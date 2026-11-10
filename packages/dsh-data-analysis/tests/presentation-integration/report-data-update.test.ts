@@ -26,6 +26,7 @@ import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/prese
 import { type PythonCodeRef, savePythonExecution } from '../../src/python-execution.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 import { frameSnapshotV2 } from './frame-v2-fixture.ts'
+import { reportReadInput, reportReadOutput, reportWriteInput } from './report-protocol-fixture.ts'
 
 async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'report-data-update-')))
@@ -125,16 +126,16 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const tool = createMarivoPresentTool(workspace, session, undefined, drafts, async () => runner)
   const present = async (args: Record<string, unknown>) =>
     parsePresentationDelivery(
-      JSON.parse(((await tool.execute(args, exec)) as { deliveryJson: string }).deliveryJson),
+      JSON.parse(
+        ((await tool.execute(reportWriteInput(args), exec)) as { deliveryJson: string })
+          .deliveryJson,
+      ),
     )
   const read = async (args: Record<string, unknown>) =>
-    JSON.parse(
-      (
-        (await createMarivoUiReadTool(workspace, drafts).execute(args, exec)) as {
-          definitionJson: string
-        }
-      ).definitionJson,
+    reportReadOutput(
+      await createMarivoUiReadTool(workspace, drafts).execute(reportReadInput(args), exec),
     )
+
   const service = new MarivoPresentationFileService(
     workspace,
     (id) => (id === 'workspace' ? workspace() : undefined),
@@ -222,9 +223,14 @@ test('documented report examples preview independent components and refresh only
           references: [ref],
         },
       })
-      return { execution: { reason: 'succeeded' }, resultRefs: { [name]: ref }, codeRef }
+      return {
+        execution: { reason: 'succeeded' },
+        results: {
+          [name]: { resource: { kind: 'dataframe', ref, codeRef }, sourceStatus: 'recorded' },
+        },
+      }
     },
-    async marivo_present(args: Record<string, unknown>) {
+    async marivo_report_write(args: Record<string, unknown>) {
       events.push(String(args.stage))
       const result = await f.tool.execute(args, f.exec)
       if (args.stage === 'preview') {
@@ -233,9 +239,9 @@ test('documented report examples preview independent components and refresh only
       }
       return result
     },
-    async marivo_ui_read(args: Record<string, unknown>) {
+    async marivo_report_read(args: Record<string, unknown>) {
       events.push('read')
-      return { definitionJson: JSON.stringify(await f.read(args)) }
+      return { definition: await f.read(args) }
     },
   }
   const example = async (name: string, context: Record<string, unknown> = {}) => {
@@ -243,7 +249,14 @@ test('documented report examples preview independent components and refresh only
       new URL(`../../skills/dsh-data-analysis-presentation/references/${name}.md`, import.meta.url),
       'utf8',
     )
-    const code = /```javascript\n([\s\S]*?)\n```/.exec(markdown)?.[1]
+    const rawCode = /```javascript\n([\s\S]*?)\n```/.exec(markdown)?.[1]
+    const code =
+      name === 'data-update'
+        ? rawCode
+            ?.replaceAll('{ result:', '{ by_category:')
+            .replaceAll('results.result', 'results.by_category')
+            .replaceAll('results?.result', 'results?.by_category')
+        : rawCode
     assert.ok(code)
     const result: unknown = await runInNewContext(`(async () => { ${code}\nreturn saved; })()`, {
       tools,
@@ -268,11 +281,9 @@ test('documented report examples preview independent components and refresh only
   events.length = 0
   previews.length = 0
   const refreshed = await example('data-update', {
-    recordId: original.recordId,
-    reviewedCode: producer.code.text,
-    declaredDatasources: [],
-    outputVariable: producer.code.resultVariables.by_category,
-    resourceName: 'by_category',
+    savedRef: (await f.read({ recordId: original.recordId })).ref,
+    reviewedCompleteScript: producer.code.text,
+    datasourceNames: [],
   })
   assert.deepEqual(events, ['read', 'preview', 'python', 'preview', 'save'])
   assert.deepEqual(previews, [
@@ -339,7 +350,10 @@ test('data-only saves replace snapshots and scripts while preserving page text, 
     next.buildId,
   )
   const noRuntime = createMarivoPresentTool(f.workspace, f.exec.agent!.session)
-  await noRuntime.execute({ basedOnRecordId: next.recordId, title: 'Keep data' }, f.exec)
+  await noRuntime.execute(
+    reportWriteInput({ basedOnRecordId: next.recordId, title: 'Keep data' }),
+    f.exec,
+  )
   assert.equal(f.reads, 4)
 })
 
@@ -427,6 +441,9 @@ test('missing scripts remain explicit while saved resources stay readable and re
   })
   assert.deepEqual(definition.sources, [{ codeRef, status: 'unavailable' }])
   const noRuntime = createMarivoPresentTool(f.workspace, f.exec.agent!.session)
-  await noRuntime.execute({ basedOnRecordId: definition.recordId, title: 'Retained' }, f.exec)
+  await noRuntime.execute(
+    reportWriteInput({ basedOnRecordId: definition.recordId, title: 'Retained' }),
+    f.exec,
+  )
   assert.equal(f.reads, 1)
 })

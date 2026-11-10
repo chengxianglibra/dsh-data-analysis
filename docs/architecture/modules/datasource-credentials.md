@@ -112,17 +112,24 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
   `edit` 必须提供现有名称并直接打开编辑页。`reason` 为不含凭证的简短说明；工具不接受配置值。
   Web 根 Agent 保持原调用等待，成功返回 `status: ok`、`name` 和连接耗时，随后核验目标表；
   `failed`、`cancelled`、`call-ended`、`context-changed`、`needs-configuration` 均不是连接成功。
+  Web 根 Agent 在打开表单前通过绑定 Runtime 明确准备当前项目，回执的 `project` 说明 created/already-ready；沿用 authoring 的固定 subprocess policy 与取消链。委派和无交互 handoff 不初始化项目。
 - `marivo_datasource_test({ name })`：执行真实 `md.load().test()`，同步管理页的 `lastTest/stale`。
-- `marivo_python({ code, datasources, timeoutMs? })`：在本次调用内准备全部精确 datasource，再执行一次前台 Python。
+- `marivo_python({ code, datasources, project?, resultVariables?, timeoutMs? })`：project 省略为 none；required 明确准备当前 Workspace 项目。非空 datasources 或声明 resultVariables 必须使用 required，否则在用户代码执行和凭据准入前拒绝。顺序固定为绑定、必要项目准备、凭据准入、fresh identity、一次用户 Python。
   声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；纯 Catalog 定义读取不连接数据源时可传空列表，
   仍安装拒绝未声明凭证请求的 resolver。
 
 首次模型请求即可看到绑定执行和凭据表单的入口。各 Tool 说明负责数据源声明、配置与测试条件；`marivo_python` 每次启动独立进程，跨调用复用结果时按当前 Runtime Help 的 Session 生命周期和 Frame 持久化契约操作。失败后的动作依据实际回执，结果未确认时先核对已有影响。
 
 成功 `marivo_python` 会在 Host 的 `$DSH_HOME/dsh-data-analysis/python-executions/` 按 Workspace 隔离，
-原子保存本次提交的 Python 原文，并返回 `codeRef: {executionId, sha256}`，供报告 Frame/DataFrame 显式关联。
+原子保存本次提交的 Python 原文。声明结果导出成功后，Host 在 `results[name].resource.codeRef` 关联同次执行记录；模型不再配对顶层 codeRef、resultRefs 或 resultMetadata。
 读写位置由 Host 决定，不从 Workspace 接受作者自报的执行记录文件。
-可选 resultVariables 将 1–16 个资源名映射到 Python 引用变量名。worker 在代码成功结束后导出这些变量中的引用字典，经临时控制文件和 launcher 生成的首个控制帧返回；Host 严格校验引用、输出名及 32 KiB 预算，再登记到 v4 执行记录，保存 Session/call/root-call 和输出变量声明。stdout 完全不参与引用发现；普通脚本无须声明输出。控制帧在进入工具结果前移除，用户 stderr 保留，导出失败单独返回 resultCaptureError，不改变原代码成功状态或自动重放。该记录只证明执行导出过该引用，不证明代码生成过程或业务正确性。不包含 resolver、注入 wrapper 或 credential snapshot。
+可选 resultVariables 将 1–16 个资源名映射到准确持久引用变量名，要求 project=required，不自动计算或持久化任意内存对象。worker 在代码成功结束后导出引用字典，经临时控制文件和 launcher 生成的首个控制帧返回；Host 严格校验引用、输出名及 32 KiB 预算，再登记到 v4 执行记录，保存 Session/call/root-call 和输出变量声明。stdout 完全不参与引用发现；普通脚本无须声明输出。控制帧在进入工具结果前移除，用户 stderr 保留；非零退出、超时与取消不返回成功资源。导出失败单独返回 resultCaptureError，不伪造空 results、不改变原代码成功状态或自动重放。
+
+每个成功输出的 `results[name]` 包含 `resource`、`sourceStatus` 和有界 `metadata`。resource 复用报告 writer 的轻量公开声明 schema，为 `{kind:"analysis-frame",ref,codeRef?}` 或 `{kind:"dataframe",ref,codeRef?}`；kind 由经过验证的引用 schema 决定，可原样用于 resourcePatch.put。sourceStatus 与 metadata 不放入声明。来源保存失败时保留有效资源并省略 codeRef，返回 sourceStatus=unavailable 与 sourceError；元数据失败仅将 metadata 标记 unavailable。执行、引用导出、元数据和来源记录的成功分别表达，不因此重跑业务代码。控制帧解析后按本次 credential snapshot 检查字符串：引用包含凭据值时只拒绝引用导出，不先写入来源记录；元数据包含凭据值时将该项 metadata 标记 unavailable，不替换或伪造引用身份，错误不回显值。
+
+工具 output schema 具体披露进程结果、需要凭据、连接失败与 execution/project 字段。Harness 的 schema 子集只支持 boolean additionalProperties，因此 PTC 中 results 的动态键值仍显示为 JSON 映射；插件通过严格的 PythonResult schema 逐项验证资源、来源状态与有界元数据。
+
+codeRef 只证明该次执行登记导出了该引用，不证明最初生产来源、完整 lineage 或业务正确性。记录不包含 resolver、注入 wrapper 或 credential snapshot。已有外部固定引用仍可直接使用，错误 codeRef 由 writer 明确拒绝，不偷偷移除。
 记录失败通过 `codeCaptureError` 单独返回，保留原执行结果；调用方不应因此重放已经成功的分析。
 非零退出、超时或取消不签发成功执行引用。报告构建的精确引用读取见[展示数据投影](presentation-projection.md)。
 
@@ -143,7 +150,7 @@ Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增�
 Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 参数 schema 会先拒绝非 JSON 数值及错误类型。
 
 省略 Tool 参数时，在调用入口读取插件当前默认值；显式 `timeoutMs` 直接传给 Harness。插件不另设超时上限，经 `shell.resolve()` 应用 Harness 上限，
-`execution.effectiveTimeoutMs` 取解析后的 `spec.timeoutMs`，不把请求值宣称为最终预算。
+`execution.effectiveTimeoutMs` 取解析后的 `spec.timeoutMs`，不把请求值宣称为最终预算。必要的项目 init 与用户代码分别应用此预算，外层 Harness 取消仍覆盖整个调用；execution 的 effectiveTimeoutMs 描述用户代码进程，未到用户代码 Shell 解析时为 null。
 凭据等待在 Shell 计时之前；外层 Code Mode 时限包含等待和其他步骤，仍可能先触发取消。插件不修改 Harness
 超时策略，也不添加覆盖整次凭据交互的独立定时器。
 
@@ -163,8 +170,8 @@ Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 
 不会从 stderr 猜测；无已知退出码且未报告超时/取消时为 `unknown`。
 准备返回 `needs-credentials` 或 datasource 失败时原因是 `not-started`，保留已有 `failure`、`repair`。
 
-输入、Host 服务、准备异常及 Shell 抛错保持错误通道，使用 `MarivoPythonExecutionError`：其 `execution`
-属性和安全 message 中的 JSON 摘要提供阶段与下一步，不透传原始异常或注入值。参数 schema 在 Tool body
+输入、Host 服务、准备异常及 Shell 抛错保持错误通道，使用 `MarivoPythonExecutionError`：其 `code`、`phase`、`recovery` 与 `execution`
+属性及安全 message 中的对应 JSON 提供稳定错误码、阶段与下一步，不透传原始异常或注入值。项目准备失败保留具体错误码，初始化结果不确定时明确要求先检查现有状态，不自动重复 init。参数 schema 在 Tool body
 之前拒绝的调用保持 Harness 原生校验错误。准备异常明确尚未启动；交给 Shell 后发生异常只报告结果未确认，
 取消可确认时标记 `cancelled`，不能宣称不存在副作用。
 
