@@ -22,7 +22,7 @@ export interface AnalysisResourceContext {
   candidate?: boolean
   isStreaming?: boolean
   pendingStatementId?: string
-  retainedStatementIds?: readonly string[]
+  removedResourceNames?: readonly string[]
   offline?: boolean
   /** Opens the current definition through the existing semantic browser; absent offline. */
   openSemanticRef?: OpenSemanticRef

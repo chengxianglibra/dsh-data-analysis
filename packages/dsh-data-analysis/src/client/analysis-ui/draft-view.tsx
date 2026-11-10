@@ -84,7 +84,12 @@ export function DraftReportView({ view, rpc }: { view: AnalysisDraftView; rpc: P
     )
   const program =
     streaming && document
-      ? streamingAnalysisProgram(document.program, candidate.program)
+      ? streamingAnalysisProgram(
+          document.program,
+          candidate.program,
+          !candidate.complete,
+          candidate.resourcePatchInput === 'incomplete',
+        )
       : document?.program
   const resources =
     streaming && document ? candidateResources(document, candidate) : document?.resources
@@ -104,6 +109,7 @@ export function DraftReportView({ view, rpc }: { view: AnalysisDraftView; rpc: P
           resources={resources ?? {}}
           isStreaming={Boolean(streaming)}
           candidateProgram={streaming ? candidate.program : undefined}
+          removedResourceNames={streaming ? candidate.resourcePatch?.remove : undefined}
         />
       )}
     </section>

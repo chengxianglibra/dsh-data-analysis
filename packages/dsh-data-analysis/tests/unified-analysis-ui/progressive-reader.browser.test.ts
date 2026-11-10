@@ -33,7 +33,7 @@ import {createRoot} from 'react-dom/client';
 import {PartialArguments} from '@deepseek-ai/dsh-util-values';
 import {AnalysisRenderer} from './src/client/analysis-ui/surface.tsx';
 import {analysisCandidate,candidateResources} from './src/client/analysis-ui/candidate.ts';
-import {retainedResourceStatements,streamingAnalysisProgram} from './src/client/analysis-ui/streaming-program.ts';
+import {streamingAnalysisProgram} from './src/client/analysis-ui/streaming-program.ts';
 const base=${JSON.stringify(program)};
 const resources={
  frame:{kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'frame-ref'},snapshot:${JSON.stringify(observeCategory(3))},binding:{workspaceId:'w'}},
@@ -42,11 +42,11 @@ const resources={
 };
 const root=createRoot(document.getElementById('root'));
 window.requests=[];
-window.progressive={update(patch='',resourcePrefix,streaming=true,candidate=true){
+window.progressive={update(patch='',resourcePrefix,streaming=true,candidate=true,withBase=true){
  const args=new PartialArguments();
  args.append(JSON.stringify({surface:'tool',stage:'preview',program:patch}).slice(0,-1)+(resourcePrefix===undefined?'}':',"resourcePatch":'+resourcePrefix));
  const value=analysisCandidate({phase:streaming?'preparing':'start',args,callId:'candidate',name:'marivo_present',turn:1,step:1,time:1,subCalls:[]},'s','w',{});
- root.render(h(AnalysisRenderer,{program:streamingAnalysisProgram(base,value.program,streaming,value.resourcePatchInput==='incomplete'),candidateProgram:value.program,retainedStatementIds:value.resourcePatchInput==='incomplete'?retainedResourceStatements(value.program,base):undefined,title:'Progressive reader',locale:'en-US',resources:candidateResources({resources},value),candidate,isStreaming:streaming,
+ root.render(h(AnalysisRenderer,{program:streamingAnalysisProgram(withBase?base:undefined,value.program,streaming&&!value.complete,value.resourcePatchInput==='incomplete'),candidateProgram:value.program,removedResourceNames:value.resourcePatch?.remove,title:'Progressive reader',locale:'en-US',resources:candidateResources({resources},value),candidate,isStreaming:streaming,
  readCode:async()=>{window.requests.push('code');},openSemanticRef:()=>window.requests.push('semantic'),askPoint:async()=>window.requests.push('point'),askDataset:async()=>window.requests.push('dataset'),askResource:async()=>window.requests.push('resource')}));
 }};
 window.progressive.update();`,
@@ -114,25 +114,23 @@ window.progressive.update();`,
         (patch) => Reflect.get(window, 'progressive').update(patch),
         `${statement} = ${name}("${resource}", {chart:"bar", encoding:{axis:"unfinished`,
       )
-      await page
-        .getByRole('status')
-        .filter({ has: page.locator('[data-slot="skeleton"]') })
-        .waitFor()
+      await page.waitForTimeout(50)
       assert.equal(await page.locator(`[data-resource="${sibling}"]`).isVisible(), true)
-      assert.equal(await page.locator(`[data-resource="${resource}"]`).count(), 0)
+      assert.equal(await page.locator(`[data-resource="${resource}"]`).isVisible(), true)
       assert.equal(await page.getByText('Second panel', { exact: true }).isVisible(), true)
-      await page.evaluate(
-        (patch) => Reflect.get(window, 'progressive').update(patch),
-        `${statement} = ${name}("${resource}", {chart:"bar", encoding:{axis:"missing", values:["missing"]}});`,
-      )
-      await page.getByRole('alert').waitFor()
-      assert.equal(await page.locator(`[data-resource="${sibling}"]`).isVisible(), true)
-      await page.evaluate(
-        (patch) => Reflect.get(window, 'progressive').update(patch),
-        `${statement} = ${name}("${resource}", {chart:"unsupported"});`,
-      )
-      await page.getByRole('alert').waitFor()
-      assert.equal(await page.locator(`[data-resource="${sibling}"]`).isVisible(), true)
+      for (const config of [
+        '{chart:"bar", encoding:{axis:"missing", values:["missing"]}}',
+        '{chart:"unsupported"}',
+      ]) {
+        await page.evaluate(
+          (patch) => Reflect.get(window, 'progressive').update(patch),
+          `${statement} = ${name}("${resource}", ${config});`,
+        )
+        await page.waitForTimeout(50)
+        assert.equal(await page.locator(`[data-resource="${sibling}"]`).isVisible(), true)
+        assert.equal(await page.locator(`[data-resource="${resource}"]`).isVisible(), true)
+        assert.equal(await page.getByRole('alert').count(), 0)
+      }
     }
 
     await page.evaluate(() => Reflect.get(window, 'progressive').update())
@@ -164,8 +162,7 @@ window.progressive.update();`,
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update('picture = Image("New image", "image'),
     )
-    await page.locator('.au-image').waitFor({ state: 'hidden' })
-    assert.equal(await page.locator('.au-image').count(), 0)
+    assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
     assert.equal(await page.locator('[data-resource="frame"]').isVisible(), true)
 
     // Unknown patch scope keeps admitted resources under their original configuration; text continues.
@@ -175,7 +172,7 @@ window.progressive.update();`,
         '{"put":{"frame":{"kind":"frame-snapshot","snapshotRef":"new',
       ),
     )
-    await page.getByText('New scope', { exact: true }).waitFor()
+    await page.getByText('Confirmed scope', { exact: false }).first().waitFor()
     assert.equal(await page.locator('[data-resource]').count(), 2)
     assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
     await page.evaluate(() =>
@@ -212,7 +209,10 @@ window.progressive.update();`,
       ],
       ['root = Stack([AnalysisFrameView("frame"), TextContent("next', 'frame'],
     ]) {
-      await page.evaluate((patch) => Reflect.get(window, 'progressive').update(patch), source)
+      await page.evaluate(
+        (patch) => Reflect.get(window, 'progressive').update(patch, undefined, true, true, false),
+        source,
+      )
       await page.getByText('next', { exact: true }).waitFor()
       await page.locator(`[data-resource="${resource}"]`).waitFor()
       assert.equal(await page.getByText('next', { exact: true }).isVisible(), true)
@@ -220,6 +220,10 @@ window.progressive.update();`,
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update(
         'root = Stack([Card([DatasetView("dataset"), AnalysisFrameView("frame"), Image("Stable image", "image")]), TextContent("next',
+        undefined,
+        true,
+        true,
+        false,
       ),
     )
     await page.locator('[data-resource="dataset"]').waitFor()
@@ -235,14 +239,14 @@ window.progressive.update();`,
     ]) {
       const resource = name === 'DatasetView' ? 'dataset' : 'frame'
       await page.evaluate(
-        (patch) => Reflect.get(window, 'progressive').update(patch),
+        (patch) => Reflect.get(window, 'progressive').update(patch, undefined, true, true, false),
         `root = Stack([TextContent("Readable sibling"), ${name}("${resource}", {chart:"bar", encoding:{${encoding}`,
       )
       await page.getByText('Readable sibling', { exact: true }).waitFor()
       assert.equal(await page.getByText('Readable sibling', { exact: true }).isVisible(), true)
       assert.equal(await page.locator(`[data-resource="${resource}"]`).count(), 0)
       await page.evaluate(
-        (patch) => Reflect.get(window, 'progressive').update(patch, undefined, false),
+        (patch) => Reflect.get(window, 'progressive').update(patch, undefined, false, false, false),
         `root = Stack([TextContent("Readable sibling"), ${name}("${resource}", {chart:"bar", encoding:{${encoding}`,
       )
       await page.getByRole('alert').waitFor()
@@ -250,6 +254,10 @@ window.progressive.update();`,
     await page.evaluate(() =>
       Reflect.get(window, 'progressive').update(
         'root = Stack([DatasetView("dataset"), Image("Arriving image"',
+        undefined,
+        true,
+        true,
+        false,
       ),
     )
     await page.locator('[data-resource="dataset"]').waitFor()
@@ -262,7 +270,7 @@ window.progressive.update();`,
       'Image("Pending", "ima',
     ]) {
       await page.evaluate(
-        (patch) => Reflect.get(window, 'progressive').update(patch),
+        (patch) => Reflect.get(window, 'progressive').update(patch, undefined, true, true, false),
         `root = Stack([DatasetView("dataset"), AnalysisFrameView("frame"), TextContent("Closed siblings"), ${suffix}`,
       )
       await page.getByText('Closed siblings', { exact: true }).waitFor()

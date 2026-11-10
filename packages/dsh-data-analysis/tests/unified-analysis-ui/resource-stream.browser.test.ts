@@ -76,15 +76,20 @@ createRoot(document.getElementById('root')).render(h(App));`,
   const browser = await chromium.launch()
   t.after(() => browser.close())
   const page = await browser.newPage()
+  let releaseRead = () => {}
+  let readGate: Promise<void> | undefined
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.exposeFunction('hostRead', async (endpoint: string, payload: unknown) => ({
-    ok: true,
-    value:
-      endpoint === 'draft/read'
-        ? await f.service.draft(payload, f.exec.signal)
-        : await f.service.resourceStream(payload, f.exec.signal),
-  }))
+  await page.exposeFunction('hostRead', async (endpoint: string, payload: unknown) => {
+    await readGate
+    return {
+      ok: true,
+      value:
+        endpoint === 'draft/read'
+          ? await f.service.draft(payload, f.exec.signal)
+          : await f.service.resourceStream(payload, f.exec.signal),
+    }
+  })
   await page.goto(pathToFileURL(path.join(f.root, 'index.html')).href)
   await page.getByText('Untouched component', { exact: true }).waitFor()
   const untouched = await page.getByText('Untouched component', { exact: true }).elementHandle()
@@ -101,11 +106,36 @@ createRoot(document.getElementById('root')).render(h(App));`,
   f.release()
   const next = (await operation) as { deliveryJson: string }
   await page.getByText('Slow ready', { exact: true }).waitFor()
+  readGate = new Promise((resolve) => {
+    releaseRead = resolve
+  })
   await page.evaluate(
     (value) => Reflect.get(window, 'acceptStream')(value),
     JSON.parse(next.deliveryJson),
   )
   await page.locator('[data-analysis-phase="draft"]').waitFor()
+  const pendingRevision = parseDraftDelivery(JSON.parse(next.deliveryJson))!
+  await page.evaluate(
+    (revision) =>
+      Reflect.get(window, 'startStream')(
+        {
+          stage: 'preview',
+          draftId: revision.draftId,
+          draftRevision: revision.draftRevision,
+          program: 'intro=TextContent("Following revision");',
+        },
+        'following',
+      ),
+    pendingRevision,
+  )
+  await page.waitForTimeout(100)
+  assert.equal(await page.getByText('Fast ready', { exact: true }).isVisible(), true)
+  assert.equal(await page.getByText('Slow ready', { exact: true }).isVisible(), true)
+  assert.equal(await page.getByText('Updated scope', { exact: true }).isVisible(), true)
+  releaseRead()
+  readGate = undefined
+  await page.getByText('Following revision', { exact: true }).waitFor()
+
   assert.equal(await untouched!.evaluate((node) => node.isConnected), true)
   assert.equal(
     await page.locator('.au-surface-body').evaluate((node) => node.getAnimations().length),
@@ -118,11 +148,21 @@ createRoot(document.getElementById('root')).render(h(App));`,
     draftRevision: latest.draftRevision,
     resourcePatch: { put: { fast: f.declaration('4') } },
   }
+  readGate = new Promise((resolve) => {
+    releaseRead = resolve
+  })
+  const oldTable = await page.locator('[data-resource="fast"] table').elementHandle()
   const replacing = f.tool.execute(replacement, {
     ...f.exec,
     callId: 'replace' as ToolRunContext['callId'],
   })
   await page.evaluate((value) => Reflect.get(window, 'startStream')(value, 'replace'), replacement)
+  await page.waitForTimeout(100)
+  assert.equal(await oldTable!.evaluate((node) => node.isConnected), true)
+  assert.equal(await page.getByText('Fast ready', { exact: true }).isVisible(), true)
+  assert.equal(await page.locator('[data-slot="skeleton"]').count(), 0)
+  releaseRead()
+  readGate = undefined
   await page.getByText('Replacement ready', { exact: true }).waitFor()
   assert.equal(await page.getByText('Fast ready', { exact: true }).count(), 0)
   assert.equal(await page.getByText('Slow ready', { exact: true }).isVisible(), true)

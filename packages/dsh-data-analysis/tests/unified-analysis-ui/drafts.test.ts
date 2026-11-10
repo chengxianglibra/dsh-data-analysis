@@ -6,7 +6,10 @@ import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { analysisCandidate } from '../../src/client/analysis-ui/candidate.ts'
 import { AnalysisDraftViews } from '../../src/client/analysis-ui/drafts.ts'
 import { streamingAnalysisProgram } from '../../src/client/analysis-ui/streaming-program.ts'
-import { parseAnalysisProgram } from '../../src/presentation/contracts/analysis-program.ts'
+import {
+  analysisStatements,
+  parseAnalysisProgram,
+} from '../../src/presentation/contracts/analysis-program.ts'
 import { draftDeliverySchema } from '../../src/presentation/receipt.ts'
 
 const generation = {} as ConnectionGeneration
@@ -92,11 +95,11 @@ test('incomplete draft identifiers cannot enable streaming or replace an unrelat
   assert.equal(views.get('session', 1)?.candidate, undefined)
 })
 
-test('streaming patches preserve the base and show partial replacement text and newly reachable sections', () => {
+test('streaming patches retain admitted definitions and forward partial syntax to OpenUI', () => {
   const base =
     'root = Stack([intro, detail]);\nintro = TextContent("Before");\ndetail = TextContent("Retained");'
   const partial = streamingAnalysisProgram(base, 'intro = TextContent("During')
-  assert.match(partial, /During/)
+  assert.doesNotMatch(partial, /During/)
   assert.match(partial, /Retained/)
   const next = streamingAnalysisProgram(base, 'intro = TextContent("During");\nro')
   assert.match(next, /During/)
@@ -105,28 +108,28 @@ test('streaming patches preserve the base and show partial replacement text and 
     base,
     'root = Stack([intro, detail, extra]); extra = TextContent("New sec',
   )
-  assert.match(added, /New sec/)
+  assert.doesNotMatch(added, /New sec/)
   assert.match(added, /Retained/)
-  assert.equal(streamingAnalysisProgram(base, ''), base)
+  assert.equal(streamingAnalysisProgram(base, ''), analysisStatements(base))
 })
 
-test('unknown patch scope retains old resource configuration while text continues, then admits component updates and deletion', () => {
+test('unknown patch scope holds the base, then applies known component updates and deletion', () => {
   const base =
     'root=Stack([intro, plot, other]); intro=TextContent("Before"); plot=DatasetView("data", {chart:"table"}); other=TextContent("Retained");'
   const prefix =
     'intro=TextContent("During"); plot=DatasetView("data", {chart:"metric", encoding:{values:["new"]}});'
   const pending = streamingAnalysisProgram(base, prefix, true, true)
-  assert.match(pending, /During/)
+  assert.doesNotMatch(pending, /During/)
   assert.match(pending, /chart:\s*"table"/)
   assert.doesNotMatch(pending, /metric/)
   const known = streamingAnalysisProgram(base, prefix, true, false)
   assert.match(known, /metric/)
   const removed = streamingAnalysisProgram(base, 'root=Stack([intro, other]); plot=null;')
-  assert.doesNotMatch(removed, /DatasetView/)
+  assert.doesNotMatch(JSON.stringify(parseAnalysisProgram(removed)), /DatasetView/)
   assert.match(removed, /Retained/)
 })
 
-test('resource configuration aliases and their transitive dependencies retain admitted values while independent text streams', () => {
+test('unknown patch scope retains aliases, resource configuration and text together', () => {
   const base =
     'root=Stack([picture, plot, note]); picture=Image(label, "image"); label=shared; shared="Admitted image"; plot=DatasetView(resourceName, chart, dimensions); resourceName=resourceAlias; resourceAlias="data"; chart={chart:chartKind}; chartKind="table"; dimensions={height:height}; height=300; note=TextContent("Before");'
   const patch =
@@ -140,10 +143,10 @@ test('resource configuration aliases and their transitive dependencies retain ad
   assert.equal(components[1]?.props.ref, 'data')
   assert.deepEqual(components[1]?.props.view, { chart: 'table' })
   assert.deepEqual(components[1]?.props.display, { height: 300 })
-  assert.equal(components[2]?.props.text, 'Live independent text')
+  assert.equal(components[2]?.props.text, 'Before')
 })
 
-test('a resource shared dependency keeps one admitted value and does not freeze unrelated layout text', () => {
+test('shared dependencies update together after patch scope becomes known', () => {
   const base =
     'root=Stack([picture, sharedText, live]); picture=Image(label, "image"); label=shared; shared="Admitted image"; sharedText=TextContent(shared); live=TextContent("Before");'
   const patch = 'shared="Candidate replacement"; live=TextContent("Live text");'
@@ -154,7 +157,7 @@ test('a resource shared dependency keeps one admitted value and does not freeze 
   }[]
   assert.equal(components[0]?.props.alt, 'Admitted image')
   assert.equal(components[1]?.props.text, 'Admitted image')
-  assert.equal(components[2]?.props.text, 'Live text')
+  assert.equal(components[2]?.props.text, 'Before')
   const admitted = parseAnalysisProgram(streamingAnalysisProgram(base, patch, true, false))
   assert.equal(
     (admitted.props.children as typeof components)[0]?.props.alt,

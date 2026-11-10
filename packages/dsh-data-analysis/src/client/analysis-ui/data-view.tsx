@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { resolveDatasetView } from '../../presentation/contracts/dataset-view.ts'
 import { validateFrameDisplay } from '../../presentation/contracts/frame-display.ts'
 import {
@@ -31,6 +31,7 @@ import { useFocusAfterAsk } from './focus-after-ask.ts'
 import { FrameIcon } from './frame/frame-icon.tsx'
 import { CoverageIcon, Dialog, FrameIconButton } from './frame/icons.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
+import { useReportReading } from './reading-state.tsx'
 import { ResourceAskButton } from './resource-ask-button.tsx'
 
 export interface AnalysisViewProps {
@@ -113,65 +114,70 @@ export function AnalysisDataView({
   configuration?: 'pending' | 'invalid'
 }) {
   const t = useCopy()
-  const { readResource, candidate, isStreaming, pendingStatementId } = useAnalysisResources()
+  const { readResource, candidate, isStreaming, removedResourceNames } = useAnalysisResources()
   const resource = resourceName ? readResource(resourceName) : undefined
-  let incompleteInlineConfiguration = false
-  if (
-    candidate &&
-    isStreaming &&
-    pendingStatementId &&
-    !component?.statementId &&
-    resource?.kind === 'snapshot'
-  ) {
-    const resolution = isFrameSnapshotV2(resource.snapshot)
-      ? resolveFrameView(resource.snapshot, view)
-      : resolveDatasetView(resource.snapshot, view)
-    incompleteInlineConfiguration =
-      !resolution.ok ||
-      (isFrameSnapshotV2(resource.snapshot) &&
-        resolution.ok &&
-        Boolean(validateFrameDisplay(resource.snapshot, resolution.view, display)))
-  }
-  const pending =
-    configuration === 'pending' || (candidate && isStreaming && configuration !== 'invalid')
-  if (
-    configuration ||
-    incompleteInlineConfiguration ||
-    resource?.kind !== 'snapshot' ||
-    resource.snapshot.kind !== kind
-  )
+  const removed = Boolean(resourceName && removedResourceNames?.includes(resourceName))
+  const snapshot =
+    resource?.kind === 'snapshot' && resource.snapshot.kind === kind ? resource.snapshot : undefined
+  const resolution =
+    snapshot && !configuration
+      ? isFrameSnapshotV2(snapshot)
+        ? resolveFrameView(snapshot, view)
+        : resolveDatasetView(snapshot, view)
+      : undefined
+  const valid =
+    snapshot &&
+    resolution?.ok &&
+    (!isFrameSnapshotV2(snapshot) || !validateFrameDisplay(snapshot, resolution.view, display))
+  const ready =
+    valid && resource?.kind === 'snapshot'
+      ? { resource, resourceName, view, display, component }
+      : undefined
+  const reading = useReportReading()
+  const previous = useRef<{ reading: typeof reading; value: NonNullable<typeof ready> }>()
+  useLayoutEffect(() => {
+    if (ready) previous.current = { reading, value: ready }
+    else if (!candidate || removed) previous.current = undefined
+  })
+  // Retain the exact prior snapshot AND configuration while a replacement arrives.
+  // Explicit removal and saved-reader failures never resurrect old content.
+  const visible =
+    ready ??
+    (candidate && !removed && previous.current && previous.current.reading === reading
+      ? previous.current.value
+      : undefined)
+  if (!visible) {
+    if (candidate && isStreaming && !removed)
+      return (
+        <div role="status" aria-label={t('marivo.presentation.ui-resource-pending')}>
+          <Skeleton className="h-24 w-full" />
+        </div>
+      )
     return (
-      <Alert role={pending ? 'status' : 'alert'} variant={pending ? 'default' : 'destructive'}>
-        <AlertDescription>
-          {t(
-            pending
-              ? 'marivo.presentation.ui-resource-pending'
-              : 'marivo.presentation.ui-resource-unavailable',
-          )}
-        </AlertDescription>
-        {pending && <Skeleton className="h-24 w-full" />}
+      <Alert role="alert" variant="destructive">
+        <AlertDescription>{t('marivo.presentation.ui-resource-unavailable')}</AlertDescription>
       </Alert>
     )
-  const snapshot = resource.snapshot
-  if (isFrameSnapshotV2(snapshot))
+  }
+  if (isFrameSnapshotV2(visible.resource.snapshot))
     return (
       <AnalysisFrame
-        snapshot={snapshot}
-        component={component}
-        view={view}
-        display={display}
-        resourceName={resourceName}
-        codeRef={resource.binding.codeRef}
+        snapshot={visible.resource.snapshot}
+        component={visible.component}
+        view={visible.view}
+        display={visible.display}
+        resourceName={visible.resourceName}
+        codeRef={visible.resource.binding.codeRef}
       />
     )
   return (
     <DatasetDataView
-      resourceName={resourceName}
-      component={component}
-      snapshot={snapshot}
-      binding={resource.binding}
-      view={view}
-      height={display?.height}
+      resourceName={visible.resourceName}
+      component={visible.component}
+      snapshot={visible.resource.snapshot}
+      binding={visible.resource.binding}
+      view={visible.view}
+      height={visible.display?.height}
     />
   )
 }

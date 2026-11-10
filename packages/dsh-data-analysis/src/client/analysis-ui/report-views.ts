@@ -233,7 +233,10 @@ export class ReportViews {
         this.#write({
           ...view,
           settled: true,
-          candidate: view.candidate ? { ...view.candidate, phase: 'cancelled' } : undefined,
+          candidate:
+            view.candidate && ['preparing', 'start'].includes(view.candidate.phase)
+              ? { ...view.candidate, phase: 'cancelled' }
+              : view.candidate,
         })
     }
   }

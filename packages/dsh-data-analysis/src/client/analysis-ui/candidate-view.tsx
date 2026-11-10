@@ -173,11 +173,12 @@ export function CandidateView({
     return streamingAnalysisProgram(
       document.program,
       candidate.program,
-      true,
+      !candidate.complete,
       candidate.resourcePatchInput === 'incomplete',
     )
   }, [
     candidate.preview,
+    candidate.complete,
     candidate.program,
     candidate.resourcePatchInput,
     document,
@@ -218,6 +219,7 @@ export function CandidateView({
           resources={resources}
           isStreaming={candidate.phase === 'preparing' || candidate.phase === 'start'}
           candidateProgram={candidate.program}
+          removedResourceNames={candidate.resourcePatch?.remove}
         />
       ) : retained ? (
         <SavedAnalysisSurface document={retained} />

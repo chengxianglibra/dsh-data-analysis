@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   type AnalysisDocument,
   parseAnalysisDocument,
@@ -16,7 +16,7 @@ import { ReportAnalysisSurface } from './lazy-surface.tsx'
 import { ReportReading } from './reading-state.tsx'
 import { ReportMotion } from './report-motion.tsx'
 import type { ReportViewState, ReportViews } from './report-views.ts'
-import { retainedResourceStatements, streamingAnalysisProgram } from './streaming-program.ts'
+import { streamingAnalysisProgram } from './streaming-program.ts'
 
 /** One renderer for the whole report lifecycle; moving hosts retains admitted data and reading state. */
 export function ReportView({
@@ -100,7 +100,7 @@ export function ReportView({
     id,
   ])
   useEffect(() => {
-    if (!target || documentKey === target || settled) return
+    if (!target || documentKey === target || (settled && !saved)) return
     const abort = new AbortController()
     void (async () => {
       let document: AnalysisDocument | undefined
@@ -179,25 +179,50 @@ export function ReportView({
       (!baseId || view.documentKey === baseId) &&
       (!candidate.draftId || candidate.draftRevision === document?.buildId),
   )
-  const program =
+  const nextProgram =
     streaming && candidate
-      ? document
-        ? streamingAnalysisProgram(
-            document.program,
-            candidate.program,
-            true,
-            candidate.resourcePatchInput === 'incomplete',
-          )
-        : candidate.program
+      ? streamingAnalysisProgram(
+          document?.program,
+          candidate.program,
+          !candidate.complete,
+          candidate.resourcePatchInput === 'incomplete',
+        )
       : document?.program
-  const resources =
+  const nextResources =
     streaming && candidate
       ? candidateResources(document, candidate, stream?.resources)
       : document?.resources
+  const previous = useRef<{
+    reading: ReportViewState['reading']
+    program: string
+    resources: AnalysisDocument['resources']
+    title: string
+    locale: AnalysisDocument['locale']
+  }>()
+  const retained = previous.current?.reading === view.reading ? previous.current : undefined
+  // A receipt starts an asynchronous read; it must not revert or unmount the
+  // already visible candidate while that read is in flight.
+  const waiting = Boolean(target && documentKey !== target && !streaming)
+  const content =
+    waiting && retained
+      ? retained
+      : nextProgram
+        ? {
+            reading: view.reading,
+            program: nextProgram,
+            resources: nextResources ?? {},
+            title: candidate?.title ?? document?.title ?? saved?.receipt.title ?? 'Analysis',
+            locale: candidate?.locale ?? document?.locale ?? 'zh-CN',
+          }
+        : retained
+  useLayoutEffect(() => {
+    if (content) previous.current = content
+  })
   const published = Boolean(saved && view.documentKey === saved.receipt.buildId)
-  const failed = terminal || Boolean(target && failedKey === target)
+  const failed = candidate?.phase === 'failed' || stream?.status === 'failed'
+  const readFailed = Boolean(target && failedKey === target)
   const progress =
-    published || failed
+    published || failed || readFailed || settled
       ? undefined
       : saved
         ? 'loading'
@@ -210,30 +235,32 @@ export function ReportView({
       data-analysis-report={id}
       data-analysis-phase={published ? 'saved' : failed ? 'failed' : draft ? 'draft' : 'candidate'}
     >
-      {failed && (
+      {(failed || readFailed) && (
         <Alert role="alert" variant="destructive">
-          <AlertDescription>{t('marivo.presentation.ui-failed')}</AlertDescription>
+          <AlertDescription>
+            {t(
+              readFailed
+                ? 'marivo.presentation.ui-read-failed'
+                : 'marivo.presentation.ui-update-failed',
+            )}
+          </AlertDescription>
         </Alert>
       )}
-      {!program && progress && <ReportMotion phase={progress} />}
+      {!content && progress && <ReportMotion phase={progress} />}
       <ReportReading.Provider value={view.reading}>
-        {program && (
+        {content && (
           <ReportAnalysisSurface
             viewId={id}
             progress={progress}
             recordId={published ? document?.recordId : undefined}
-            program={program}
-            title={candidate?.title ?? document?.title ?? saved?.receipt.title ?? 'Analysis'}
-            locale={candidate?.locale ?? document?.locale ?? 'zh-CN'}
-            resources={resources ?? {}}
+            program={content.program}
+            title={content.title}
+            locale={content.locale}
+            resources={content.resources}
             candidate={!published}
             isStreaming={streaming}
             candidateProgram={streaming ? candidate?.program : undefined}
-            retainedStatementIds={
-              streaming && candidate?.resourcePatchInput === 'incomplete'
-                ? retainedResourceStatements(candidate.program, document?.program)
-                : undefined
-            }
+            removedResourceNames={streaming ? candidate?.resourcePatch?.remove : undefined}
             {...(published ? actions : {})}
           />
         )}

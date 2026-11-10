@@ -1,7 +1,7 @@
 import type { ElementNode } from '@openuidev/lang-core'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode, useLayoutEffect, useRef } from 'react'
 import { z } from 'zod/v4'
 import {
   datasetDisplaySchema,
@@ -10,7 +10,6 @@ import {
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
-import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { AnalysisDataView } from './data-view.tsx'
@@ -63,23 +62,7 @@ function usePendingStatement(statementId?: string) {
     context.candidate &&
       context.isStreaming &&
       statementId !== undefined &&
-      !context.retainedStatementIds?.includes(statementId) &&
       context.pendingStatementId === statementId,
-  )
-}
-
-function ResourceUpdate({ statementId, children }: { statementId?: string; children: ReactNode }) {
-  const context = useAnalysisResources()
-  const t = useCopy()
-  return (
-    <>
-      {statementId && context.retainedStatementIds?.includes(statementId) && (
-        <Alert role="status">
-          <AlertDescription>{t('marivo.presentation.ui-resource-pending')}</AlertDescription>
-        </Alert>
-      )}
-      {children}
-    </>
   )
 }
 
@@ -103,16 +86,14 @@ function ResourceView({
       context.pendingStatementId !== undefined)
   return (
     <ReadingComponent.Provider value={statementId ?? `${kind}:${props.ref}`}>
-      <ResourceUpdate statementId={statementId}>
-        <AnalysisDataView
-          kind={kind}
-          component={{ kind, statementId, view: props.view, display: props.display }}
-          resourceName={props.ref}
-          view={props.view}
-          display={props.display}
-          configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
-        />
-      </ResourceUpdate>
+      <AnalysisDataView
+        kind={kind}
+        component={{ kind, statementId, view: props.view, display: props.display }}
+        resourceName={props.ref}
+        view={props.view}
+        display={props.display}
+        configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
+      />
     </ReadingComponent.Provider>
   )
 }
@@ -145,11 +126,26 @@ function ResourceImage({
   statementId?: string
 }) {
   const pending = usePendingStatement(statementId)
-  const resource = useAnalysisResources().readResource(src ?? '')
-  return !pending && resource?.kind === 'image' ? (
-    <ResourceUpdate statementId={statementId}>
-      <img className="au-image" src={resource.dataUrl} alt={alt ?? ''} />
-    </ResourceUpdate>
+  const context = useAnalysisResources()
+  const resource = context.readResource(src ?? '')
+  const ready = !pending && resource?.kind === 'image' ? { resource, alt } : undefined
+  const reading = useReportReading()
+  const previous = useRef<{ reading: typeof reading; value: NonNullable<typeof ready> }>()
+  useLayoutEffect(() => {
+    if (ready) previous.current = { reading, value: ready }
+    else if (!context.candidate || context.removedResourceNames?.includes(src ?? ''))
+      previous.current = undefined
+  })
+  const visible =
+    ready ??
+    (context.candidate &&
+    !context.removedResourceNames?.includes(src ?? '') &&
+    previous.current &&
+    previous.current.reading === reading
+      ? previous.current.value
+      : undefined)
+  return visible ? (
+    <img className="au-image" src={visible.resource.dataUrl} alt={visible.alt ?? ''} />
   ) : null
 }
 
@@ -168,12 +164,29 @@ const content = z.union([
   DatasetView.ref,
 ])
 
+/** Give named siblings stable React identity before delegating each node to OpenUI. */
+function renderChildren(children: unknown, renderNode: (node: unknown) => ReactNode): ReactNode {
+  if (!Array.isArray(children)) return renderNode(children)
+  const occurrences = new Map<string, number>()
+  return children.map((child, index) => {
+    const name =
+      child?.type === 'element' && typeof child.statementId === 'string'
+        ? child.statementId
+        : undefined
+    const occurrence = name ? (occurrences.get(name) ?? 0) : 0
+    if (name) occurrences.set(name, occurrence + 1)
+    return <Fragment key={name ? `${name}:${occurrence}` : index}>{renderNode(child)}</Fragment>
+  })
+}
+
 // Reuse the fixed public schema and identity; only the private renderer changes.
 const stack = official.Stack!
 const StackLayout = defineComponent({
   ...stack,
   props: stack.props.extend({ children: z.array(content) }),
-  component: ({ props, renderNode }) => <Stack {...props}>{renderNode(props.children)}</Stack>,
+  component: ({ props, renderNode }) => (
+    <Stack {...props}>{renderChildren(props.children, renderNode)}</Stack>
+  ),
 })
 
 // Let the official extension rebind every parent slot and remove unsupported
@@ -189,7 +202,9 @@ const subset = openuiLibrary.extend({
       defineComponent({
         ...official.Card!,
         props: official.Card!.props.extend({ children: z.array(content) }),
-        component: ({ props, renderNode }) => <Card {...props}>{renderNode(props.children)}</Card>,
+        component: ({ props, renderNode }) => (
+          <Card {...props}>{renderChildren(props.children, renderNode)}</Card>
+        ),
       }),
       defineComponent({
         ...official.TabItem!,
@@ -234,7 +249,7 @@ const subset = openuiLibrary.extend({
               items={items.map((item) => ({
                 value: item.props.value,
                 trigger: item.props.trigger,
-                content: renderNode(item.props.content),
+                content: renderChildren(item.props.content, renderNode),
               }))}
             />
           )

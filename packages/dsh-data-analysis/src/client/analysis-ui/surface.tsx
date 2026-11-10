@@ -89,7 +89,7 @@ export interface AnalysisRendererProps {
   readResource?: (name: string) => AnalysisResource | undefined
   isStreaming?: boolean
   candidateProgram?: string
-  retainedStatementIds?: readonly string[]
+  removedResourceNames?: readonly string[]
   candidate?: boolean
   offline?: boolean
   openSemanticRef?: OpenSemanticRef
@@ -110,7 +110,7 @@ export function AnalysisRenderer({
   readResource,
   isStreaming = false,
   candidateProgram,
-  retainedStatementIds,
+  removedResourceNames,
   candidate = false,
   offline = false,
   openSemanticRef,
@@ -124,7 +124,7 @@ export function AnalysisRenderer({
       readResource: readResource ?? ((name: string) => saved[name]),
       candidate,
       isStreaming,
-      retainedStatementIds,
+      removedResourceNames,
       pendingStatementId:
         candidate && isStreaming
           ? pendingAnalysisStatement(candidateProgram ?? program)
@@ -142,7 +142,7 @@ export function AnalysisRenderer({
       candidate,
       isStreaming,
       candidateProgram,
-      retainedStatementIds,
+      removedResourceNames,
       program,
       offline,
       openSemanticRef,

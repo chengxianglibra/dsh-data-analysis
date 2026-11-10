@@ -3,12 +3,17 @@ import test from 'node:test'
 import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/client'
 import type { PreparingToolCall } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { PartialArguments } from '@deepseek-ai/dsh-util-values'
+import { createStreamingParser } from '@openuidev/lang-core'
 import {
   AnalysisCandidates,
   analysisCandidate,
   candidateResources,
 } from '../../src/client/analysis-ui/candidate.ts'
-import { pendingAnalysisStatement } from '../../src/client/analysis-ui/streaming-program.ts'
+import {
+  pendingAnalysisStatement,
+  streamingAnalysisProgram,
+} from '../../src/client/analysis-ui/streaming-program.ts'
+import { analysisCatalogSchema } from '../../src/presentation/contracts/analysis-catalog.ts'
 import type { AnalysisResource } from '../../src/presentation/contracts/analysis-document.ts'
 import {
   analysisStatements,
@@ -219,4 +224,36 @@ test('patch admission rejects edits discarded by merger GC and preserves referen
   assert.equal(parseAnalysisProgram(added).typeName, 'Stack')
   const removed = mergeAnalysisProgram(added, 'root = TextContent("Replaced"); note = null')
   assert.equal(parseAnalysisProgram(removed).typeName, 'TextContent')
+})
+
+test('OpenUI owns incomplete replacements, missing siblings and explicit deletion in candidate updates', () => {
+  const base = 'root=Stack([note, kept]); note=TextContent("Before"); kept=TextContent("Retained");'
+  const parse = (patch: string, hold = false) =>
+    createStreamingParser(analysisCatalogSchema).set(
+      streamingAnalysisProgram(base, patch, true, hold),
+      false,
+    )
+  assert.match(JSON.stringify(parse('note=TextContent("Arriving').root), /Before/)
+  assert.match(JSON.stringify(parse('note=TextContent("Arriving').root), /Retained/)
+  assert.doesNotMatch(JSON.stringify(parse('note=TextContent("Arriving').root), /Arriving/)
+  for (const prefix of ['r', 'root', 'root =', 'root = Sta', 'root = Stack([kept,'])
+    assert.match(JSON.stringify(parse(prefix).root), /Retained/, prefix)
+  const complete = parse(
+    'note=TextContent("After"); root=Stack([added, note, kept]); added=TextContent("Added");',
+  )
+  assert.equal(complete.meta.unresolved.length, 0)
+  assert.match(JSON.stringify(complete.root), /After/)
+  assert.match(JSON.stringify(complete.root), /Added/)
+  assert.deepEqual(parse('note=TextContent("After");', true).root?.props, parse('').root?.props)
+  const missing = parse('root=Stack([kept, missing]);')
+  assert.match(JSON.stringify(missing.root), /Retained/)
+  assert.deepEqual(missing.meta.unresolved, ['missing'])
+  const removed = parse('root=Stack([kept]); note=null;')
+  assert.match(JSON.stringify(removed.root), /Retained/)
+  assert.doesNotMatch(JSON.stringify(removed.root), /Before/)
+  const initial = createStreamingParser(analysisCatalogSchema).set(
+    streamingAnalysisProgram(undefined, 'root=Stack([note]); note=TextContent("First text'),
+    false,
+  )
+  assert.match(JSON.stringify(initial.root), /First text/)
 })
