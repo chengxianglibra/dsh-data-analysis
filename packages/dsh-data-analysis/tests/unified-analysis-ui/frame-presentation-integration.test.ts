@@ -6,6 +6,8 @@ import { after, before, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
+import { validateFrameDisplay } from '../../src/presentation/contracts/frame-display.ts'
+import { classifyFrame, resolveFrameView } from '../../src/presentation/contracts/frame-view.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 import {
   categoryAxis,
@@ -37,6 +39,102 @@ test('row limit previews saved rows with their original point identity and expos
   assert.match(table, /data-row-index="14"/)
   assert.match(table, /data-column-id="revenue"/)
   assert.match(html, /data-icon="data"/)
+})
+
+test('table row limit follows the filtered saved rows and leaves the detailed data intact', async () => {
+  const snapshot = observeCategory(8)
+  const original = JSON.stringify(snapshot)
+  const result = resolveFrameView(snapshot, { chart: 'table' })
+  if (!result.ok || result.view.chart !== 'table') throw new Error('expected table view')
+  const display = { rowLimit: 2, dataTable: 'visible' as const }
+  assert.equal(validateFrameDisplay(snapshot, result.view, display), undefined)
+  const html = await renderer.shell(
+    snapshot,
+    classifyFrame(snapshot),
+    result.view,
+    display,
+    [1, 3, 5],
+  )
+  const [main, detail] = html.split('class="fv-data-reference"')
+  assert.match(main!, /data-row-index="1"/)
+  assert.match(main!, /data-row-index="3"/)
+  assert.doesNotMatch(main!, /data-row-index="5"/)
+  assert.match(main!, /class="fv-records-more"/)
+  assert.match(detail!, /data-row-index="5"/)
+  assert.equal(JSON.stringify(snapshot), original)
+})
+
+test('table row limit rejects competing record previews and comparison layouts', () => {
+  const snapshot = observeCategory(8)
+  const result = resolveFrameView(snapshot, { chart: 'table' })
+  if (!result.ok || result.view.chart !== 'table') throw new Error('expected table view')
+  assert.equal(
+    validateFrameDisplay(snapshot, result.view, {
+      rowLimit: 2,
+      recordPreview: { coordinates: ['a', 'b'], values: ['revenue'], limit: 2, label: 'preview' },
+    }),
+    '/display/rowLimit',
+  )
+  const comparison = { ...result.view, layout: 'comparison' as const }
+  assert.equal(validateFrameDisplay(snapshot, comparison, { rowLimit: 2 }), '/display/rowLimit')
+})
+
+test('limited filtered table opens all filtered rows in its data dialog', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-limited-table-'))
+  const browser = await chromium.launch()
+  try {
+    await build({
+      stdin: {
+        contents: `import { createElement as h } from 'react';
+import { createRoot } from 'react-dom/client';
+import { AnalysisResources } from './src/client/analysis-ui/context.tsx';
+import { FrameShell } from './src/client/analysis-ui/frame/view.tsx';
+import { classifyFrame, resolveFrameView } from './src/presentation/contracts/frame-view.ts';
+const snapshot = ${JSON.stringify(observeCategory(8))};
+const resolved = resolveFrameView(snapshot, {chart:'table'});
+if (!resolved.ok) throw new Error('expected table view');
+createRoot(document.getElementById('root')).render(h(AnalysisResources.Provider,
+  {value:{readResource:()=>({kind:'snapshot',snapshot,binding:{}})}},
+  h(FrameShell,{snapshot,classification:classifyFrame(snapshot),view:resolved.view,
+    display:{rowLimit:2},visibleRowIndices:[1,3,5],resourceName:'result'})));
+`,
+        resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+      },
+      outfile: path.join(directory, 'page.js'),
+      bundle: true,
+      platform: 'browser',
+      format: 'iife',
+      jsx: 'automatic',
+      define: { 'process.env.NODE_ENV': '"production"' },
+      logLevel: 'silent',
+    })
+    await writeFile(
+      path.join(directory, 'index.html'),
+      '<!doctype html><meta charset="utf-8"><div id="root"></div><script src="page.js"></script>',
+    )
+    const page = await browser.newPage()
+    await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
+    const card = page.locator('[data-resource="result"]')
+    await card.locator('tbody tr').first().waitFor()
+    assert.deepEqual(
+      await card
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['1', '3'],
+    )
+    assert.equal(await card.locator('.fv-records-more').count(), 1)
+    await card.locator('[data-icon="data"] button').click()
+    assert.deepEqual(
+      await page
+        .getByRole('dialog')
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['1', '3', '5'],
+    )
+  } finally {
+    await browser.close()
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('a limited horizontal bar keeps the original selected row and full data dialog', async () => {

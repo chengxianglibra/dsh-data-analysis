@@ -9,6 +9,8 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
 import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
+import { parseAnalysisProgram } from '../../src/presentation/contracts/analysis-program.ts'
+import { frameDisplaySchema, frameViewSchema } from '../../src/presentation/contracts/frame-view.ts'
 import {
   type ResultReference,
   resultReference,
@@ -25,10 +27,14 @@ import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { type PythonCodeRef, savePythonExecution } from '../../src/python-execution.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
+import { bundleRenderer, comparedScalar } from '../unified-analysis-ui/frame-render-fixtures.ts'
 import { frameSnapshotV2 } from './frame-v2-fixture.ts'
 import { reportReadInput, reportReadOutput, reportWriteInput } from './report-protocol-fixture.ts'
 
-async function fixture(t: { after(fn: () => Promise<void>): void }) {
+async function fixture(
+  t: { after(fn: () => Promise<void>): void },
+  frameOverride?: ReturnType<typeof comparedScalar>,
+) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'report-data-update-')))
   const priorHome = process.env.DSH_HOME
   process.env.DSH_HOME = root
@@ -61,7 +67,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     async runChecked(request) {
       reads++
       const ref = resultReference.parse(JSON.parse(request.stdin!))
-      const raw = ref.schema === 'marivo.frame_ref/v2' ? frameSnapshotV2() : datasetSnapshot()
+      const raw =
+        ref.schema === 'marivo.frame_ref/v2'
+          ? structuredClone(frameOverride ?? frameSnapshotV2())
+          : datasetSnapshot()
       if (ref.schema === 'marivo.frame_ref/v2')
         Object.assign(raw.source, { sessionId: ref.session_id, artifactId: ref.artifact_id })
       const snapshot = parseAnalysisSnapshot(raw)
@@ -162,6 +171,36 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     },
   }
 }
+
+test('saved anonymous comparison labels survive OpenUI admission and render after reload', async (t) => {
+  const snapshot = comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 })
+  const facts = snapshot.frame.sections.interpretation
+  if (facts.status !== 'captured') throw new Error('expected interpretation')
+  facts.comparisons[0]!.alias = null
+  const f = await fixture(t, snapshot)
+  const delivery = await f.present({
+    resourcePatch: { put: { frame: f.declarations().frame } },
+    program:
+      'root = AnalysisFrameView("frame", {chart:"comparison"}, {comparisonLabels:[{current:"本期 11-10",baseline:"基期 11-09"}]});',
+  })
+  const document = await readReceiptDocument(f.root, delivery.receipt)
+  const resource = document.resources.frame
+  assert(resource?.kind === 'snapshot')
+  const node = parseAnalysisProgram(document.program)
+  const renderer = await bundleRenderer()
+  try {
+    const html = await renderer.render(resource.snapshot, {
+      view: frameViewSchema.parse(node.props.view),
+      display: frameDisplaySchema.parse(node.props.display),
+    })
+    assert.match(html, /本期 11-10/)
+    assert.match(html, /基期 11-09/)
+    assert.match(html, /120\.00/)
+    assert.match(html, /100\.00/)
+  } finally {
+    await renderer.dispose()
+  }
+})
 
 test('new Frame and DataFrame resources expose verified scripts to the reader and Harness', async (t) => {
   const f = await fixture(t)

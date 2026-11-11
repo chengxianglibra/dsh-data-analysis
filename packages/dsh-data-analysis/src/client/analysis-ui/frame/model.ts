@@ -1,6 +1,7 @@
-import type {
-  FrameClassification,
-  FrameDisplay,
+import {
+  comparisonLabelAlias,
+  type FrameClassification,
+  type FrameDisplay,
 } from '../../../presentation/contracts/frame-view.ts'
 import type {
   FrameAxisVariant,
@@ -639,7 +640,7 @@ export function endpointLabels(t: Translator, s: Snapshot, index: number) {
   }
   if (!comparison) return fallback
   const explicit = s.frameDisplay?.comparisonLabels?.filter(
-    (item) => item.alias === comparison.alias,
+    (item) => comparisonLabelAlias(item) === comparison.alias,
   )
   if (
     explicit?.length === 1 &&

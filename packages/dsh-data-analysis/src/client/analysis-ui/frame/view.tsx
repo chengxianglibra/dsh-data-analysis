@@ -199,6 +199,8 @@ export function MainView({
 }) {
   const t = useCopy()
   const common = { snapshot, classification, height, visibleRowIndices }
+  const tableRows = visibleRowIndices ?? snapshot.data.rows.map((_, index) => index)
+  const rowLimit = snapshot.frameDisplay?.rowLimit
   switch (view.chart) {
     case 'table':
       return snapshot.frameDisplay?.recordPreview ? (
@@ -212,14 +214,31 @@ export function MainView({
       ) : view.layout === 'comparison' ? (
         <ComparisonTable snapshot={snapshot} classification={classification} />
       ) : (
-        <DataTable
-          snapshot={snapshot}
-          columns={view.columns}
-          height={height}
-          frozen={keyColumns(snapshot, classification)}
-          visibleRowIndices={visibleRowIndices}
-          filterSelectionKey={filterSelectionKey}
-        />
+        <>
+          <DataTable
+            snapshot={snapshot}
+            columns={view.columns}
+            height={height}
+            frozen={keyColumns(snapshot, classification)}
+            visibleRowIndices={
+              rowLimit === undefined ? visibleRowIndices : tableRows.slice(0, rowLimit)
+            }
+            filterSelectionKey={filterSelectionKey}
+          />
+          {rowLimit !== undefined && rowLimit < tableRows.length && (
+            <p className="fv-records-more">
+              {t(
+                visibleRowIndices
+                  ? 'marivo.presentation.ui-frame-filtered-records-preview'
+                  : 'marivo.presentation.ui-frame-records-preview',
+                {
+                  shown: rowLimit.toLocaleString(t.locale),
+                  total: tableRows.length.toLocaleString(t.locale),
+                },
+              )}
+            </p>
+          )}
+        </>
       )
     case 'members':
       return <MembersPreview snapshot={snapshot} height={height} />

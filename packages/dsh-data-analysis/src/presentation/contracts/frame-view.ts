@@ -71,7 +71,7 @@ export const frameDisplaySchema = z.strictObject({
   comparisonLabels: z
     .array(
       z.strictObject({
-        alias: z.string().min(1).max(512).nullable(),
+        alias: z.string().min(1).max(512).optional(),
         current: z.string().trim().min(1).max(512),
         baseline: z.string().trim().min(1).max(512),
       }),
@@ -106,6 +106,11 @@ export const frameDisplaySchema = z.strictObject({
 })
 export type FrameView = z.infer<typeof frameViewSchema>
 export type FrameDisplay = z.infer<typeof frameDisplaySchema>
+
+/** An omitted label alias addresses the saved anonymous comparison. */
+export function comparisonLabelAlias(label: { alias?: string }): string | null {
+  return label.alias ?? null
+}
 
 /** Semantic class: first matching rule in docs/designs/analysis-frame-view.md#识别规则. */
 export type FrameClass =

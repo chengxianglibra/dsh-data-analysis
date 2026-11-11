@@ -73,6 +73,32 @@ test('save-time axis errors disclose a name that makes the chart valid', () => {
   validateAnalysisResources(program(axis.name), resources(snapshot))
 })
 
+test('OpenUI labels address an anonymous comparison by omitting the alias', () => {
+  const snapshot = twoGroupFrame()
+  const facts = snapshot.frame.sections.interpretation
+  if (facts.status !== 'captured') throw new Error('expected interpretation')
+  facts.comparisons[0]!.alias = null
+  const program = (label: object) =>
+    `root = AnalysisFrameView("result", {chart:"table"}, {comparisonLabels:[${JSON.stringify(label)}]});`
+  const label = { current: '本期 11-10', baseline: '基期 11-09' }
+  validateAnalysisResources(program(label), resources(snapshot))
+  assert.throws(
+    () => validateAnalysisResources(program({ ...label, alias: 'reference' }), resources(snapshot)),
+    (error: Error) => {
+      assert(error instanceof AnalysisViewError)
+      assert.equal(error.path, 'root/display/comparisonLabels/0/alias')
+      assert.deepEqual(error.details.candidates, [])
+      assert.match(error.recovery.nextAction, /omit alias/)
+      return true
+    },
+  )
+  facts.comparisons.push(structuredClone(facts.comparisons[0]!))
+  assert.throws(
+    () => validateAnalysisResources(program(label), resources(snapshot)),
+    AnalysisViewError,
+  )
+})
+
 test('Frame chart and table names are repairable without translating axis names into column IDs', () => {
   const snapshot = f.observeTimeCategory(2, 2)
   snapshot.frame.axes[0]!.name = 'calendar:hour'

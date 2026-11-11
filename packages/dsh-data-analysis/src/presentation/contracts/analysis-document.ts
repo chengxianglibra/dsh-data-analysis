@@ -269,8 +269,10 @@ export function validateAnalysisResources(
             issue.path,
             issue,
             issue.path === '/display/rowLimit'
-              ? 'Omit rowLimit here. It applies only to horizontal category bars.'
-              : undefined,
+              ? 'Use rowLimit only for horizontal category bars or ordinary tables; recordPreview uses its own limit.'
+              : issue.expectedKind === 'comparison-alias'
+                ? 'Use a unique saved comparison alias; omit alias to address a unique anonymous comparison.'
+                : undefined,
           )
       }
       continue

@@ -50,6 +50,7 @@ export interface Renderer {
     classification: FrameClassification,
     view: ResolvedFrameView,
     display?: FrameDisplay,
+    visibleRowIndices?: readonly number[],
   ) => Promise<string>
   dispose: () => Promise<void>
 }
@@ -75,8 +76,8 @@ const provide = (options, child) => createElement(AnalysisResources.Provider, {v
 let root; let version=0;
 window.renderFixture = async (request) => {
   root?.unmount(); root=createRoot(document.getElementById('root'));
-  const {snapshot,options={},classification,view,display}=request;
-  const element=request.shell ? createElement(FrameShell,{snapshot,classification,view,display,resourceName:'result'}) : createElement(AnalysisDataView,{kind:snapshot.kind,resourceName:'result',view:options.view,display:options.display});
+  const {snapshot,options={},classification,view,display,visibleRowIndices}=request;
+  const element=request.shell ? createElement(FrameShell,{snapshot,classification,view,display,visibleRowIndices,resourceName:'result'}) : createElement(AnalysisDataView,{kind:snapshot.kind,resourceName:'result',view:options.view,display:options.display});
   flushSync(()=>root.render(provide({...options,snapshot},element)));
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   return document.getElementById('root').innerHTML;
@@ -110,8 +111,8 @@ window.renderFixture = async (request) => {
   }
   return {
     render: (snapshot, options) => run({ snapshot, options }),
-    shell: (snapshot, classification, view, display) =>
-      run({ snapshot, classification, view, display, shell: true }),
+    shell: (snapshot, classification, view, display, visibleRowIndices) =>
+      run({ snapshot, classification, view, display, visibleRowIndices, shell: true }),
     dispose: async () => {
       await browser.close()
       await rm(directory, { recursive: true, force: true })

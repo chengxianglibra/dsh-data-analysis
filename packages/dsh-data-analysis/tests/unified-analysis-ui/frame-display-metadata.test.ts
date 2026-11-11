@@ -76,7 +76,7 @@ test('anonymous comparison labels require exactly one saved null alias', async (
   const facts = snapshot.frame.sections.interpretation
   if (facts.status !== 'captured') throw new Error('expected captured interpretation')
   facts.comparisons[0]!.alias = null
-  const display = { comparisonLabels: [{ alias: null, current: 'June', baseline: 'May' }] }
+  const display = { comparisonLabels: [{ current: 'June', baseline: 'May' }] }
   assert.equal(frameDisplaySchema.safeParse(display).success, true)
   const resolved = resolveFrameView(snapshot)
   if (!resolved.ok) throw new Error('expected comparison view')

@@ -166,7 +166,7 @@ test('captured month-start civil labels use exact month grain while custom anony
       zh,
       {
         ...snapshot,
-        frameDisplay: { comparisonLabels: [{ alias: null, current: '5月', baseline: '6月' }] },
+        frameDisplay: { comparisonLabels: [{ current: '5月', baseline: '6月' }] },
       },
       0,
     ),

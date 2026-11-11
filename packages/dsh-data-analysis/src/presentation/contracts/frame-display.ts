@@ -1,4 +1,9 @@
-import { classifyFrame, type FrameDisplay, type ResolvedFrameView } from './frame-view.ts'
+import {
+  classifyFrame,
+  comparisonLabelAlias,
+  type FrameDisplay,
+  type ResolvedFrameView,
+} from './frame-view.ts'
 import type { FrameSnapshotV2 } from './snapshot.ts'
 import { availableNames, numericViewType } from './view-fields.ts'
 
@@ -38,7 +43,7 @@ export function frameDisplayIssue(
       }
   const section = snapshot.frame.sections.interpretation
   const facts = section.status === 'captured' ? section : undefined
-  const labels = (display.comparisonLabels ?? []).map(({ alias }) => alias)
+  const labels = (display.comparisonLabels ?? []).map(comparisonLabelAlias)
   const aliases = facts?.comparisons.map(({ alias }) => alias) ?? []
   for (const [i, alias] of labels.entries())
     if (
@@ -51,6 +56,7 @@ export function frameDisplayIssue(
         expectedKind: 'comparison-alias',
         candidates: aliases.filter(
           (name, j) =>
+            name !== null &&
             aliases.indexOf(name) === j &&
             aliases.lastIndexOf(name) === j &&
             !labels.some((used, k) => k !== i && used === name),
@@ -85,7 +91,12 @@ export function frameDisplayIssue(
     )
       return { path: '/display/highlight/key' }
   }
-  if (display.rowLimit !== undefined && view.chart !== 'hbar') return { path: '/display/rowLimit' }
+  if (
+    display.rowLimit !== undefined &&
+    view.chart !== 'hbar' &&
+    (view.chart !== 'table' || view.layout === 'comparison' || display.recordPreview)
+  )
+    return { path: '/display/rowLimit' }
   if (display.recordPreview) {
     if (
       view.chart !== 'table' ||

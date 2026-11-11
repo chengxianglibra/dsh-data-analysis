@@ -10,7 +10,7 @@
 
 ## Marivo Frame
 
-`AnalysisFrameView("result")` 根据 Frame 的结构选图。单行单组比较适合读本期值与变化；单行多组比较（单一比较、最多 8 个指标）默认每个指标一个头部数字块，依次展示本期、基期、Δ、Δ%，更多指标或多个 alias 时回退为一张“指标 × 本期/基期/Δ/Δ%”对比表。显式 `{chart:"table"}` 始终是这张对比表；多行比较按时间或类别组织。柱图可用于时间轴或普通类别轴（按保存行首次出现顺序等距排布），折线图和面积图要求时间轴。要突出某一组，可以用 `{chart:"comparison", encoding:{value:"输出列名"}}` 引用该组的公开值名。分解图使用 Frame 已有的分解结果。
+`AnalysisFrameView("result")` 根据 Frame 的结构选图。单行单组比较适合读本期值与变化；单行多组比较（单一比较、最多 8 个指标）默认每个指标一个头部数字块，依次展示本期、基期、Δ、Δ%，更多指标或多个 alias 时回退为一张“指标 × 本期/基期/Δ/Δ%”对比表。省略 `columns` 的显式 `{chart:"table"}` 仅在存在比较目标的完整单行比较时使用转置对比表；指定 `columns` 时显示选定列，多行比较按时间或类别组织。柱图可用于时间轴或普通类别轴（按保存行首次出现顺序等距排布），折线图和面积图要求时间轴。要突出某一组，可以用 `{chart:"comparison", encoding:{value:"输出列名"}}` 引用该组的公开值名。分解图使用 Frame 已有的分解结果。
 
 饼图适合观察型 Frame 的构成比较。快照须完整，只有一个分类轴，类别键唯一。选择一个非广播数值列，值须非空、有限、非负且至少有一个正值。用 `{chart:"pie", encoding:{axis:"轴名", value:"值名"}}` 指定字段，目标唯一时可省略映射。
 
@@ -19,9 +19,9 @@
 `display` 的标题、格式和范围必须由视图作者根据已核验口径明确声明：
 
 - `title`、`subtitle` 用于说明图表；`formats:[{value:"已保存值名",format:"percent"|"number"|"currency",decimals:1}]` 只改变主视图显示，不改变原始值、复制或数据详情。百分比按保存比例乘以 100。
-- 比较端点确有明确名称时，可用 `comparisonLabels:[{alias:"比较别名",current:"本期名称",baseline:"基期名称"}]`；保存的匿名比较使用 `alias:null`，仅当该 alias 在快照中唯一对应一个比较时可用。名称由作者负责核实，不能从字段名称或数值猜测。
-- 时间柱图可用 `highlight:{axis:"轴名",key:[已保存的完整原始键]}` 强调特定期间；键必须逐项匹配快照。横向分类条可用 `rowLimit` 预览前 N 条保存行，完整结果仍在数据入口。
-- 表格可用 `recordPreview:{coordinates:["坐标列1","坐标列2"],values:["数值列"],limit:6,label:"组合坐标标题"}` 将坐标按声明顺序连接，数值和点选仍指向原行；完整结果见数据入口。
+- 比较端点确有明确名称时，具名比较可用 `comparisonLabels:[{alias:"比较别名",current:"本期名称",baseline:"基期名称"}]`；匿名比较省略 `alias`，例如 `comparisonLabels:[{current:"本期 11-10",baseline:"基期 11-09"}]`。指定名称必须在快照中唯一匹配，省略 `alias` 只匹配唯一的匿名比较，不代表第一个比较；`reference` 列前缀不代表匿名比较的具名 alias。名称由作者负责核实，不能从字段名称或数值猜测。
+- 时间柱图可用 `highlight:{axis:"轴名",key:[已保存的完整原始键]}` 强调特定期间；键必须逐项匹配快照。横向分类条和普通表格可用 `rowLimit` 预览前 N 条保存行；表格先应用筛选再按保存顺序截取，数据入口显示筛选范围内全部已捕获行，清除筛选后可查看全部已捕获行。转置比较表及其他图形不支持该选项。
+- 表格可用 `recordPreview:{coordinates:["坐标列1","坐标列2"],values:["数值列"],limit:6,label:"组合坐标标题"}` 将坐标按声明顺序连接，数值和点选仍指向原行；完整结果见数据入口。`recordPreview.limit` 与 `rowLimit` 不能同时指定。
 - 已核实分解的两期 level total 与所选变化属于同一分组和范围时，可用 `decompositionTotals:{current:"本期总量列",baseline:"基期总量列",currentLabel:"本期标题",baselineLabel:"基期标题"}` 展示保存总量。仅在每个总量在保存行中一致且非空时显示；不要自行求和替代缺失总量。
 
 ## DataFrame

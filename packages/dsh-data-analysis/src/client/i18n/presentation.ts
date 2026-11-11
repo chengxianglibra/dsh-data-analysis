@@ -117,6 +117,8 @@ export const zh = {
   'marivo.presentation.ui-frame-contribution-share': '贡献占比',
   'marivo.presentation.ui-frame-records-preview':
     '显示前 {shown} 条，共保存 {total} 条；完整结果见表。',
+  'marivo.presentation.ui-frame-filtered-records-preview':
+    '显示筛选结果的前 {shown} 条，共匹配 {total} 条；完整筛选结果见表。',
   'marivo.presentation.ui-frame-members-preview': '显示前 {shown} 项，共保存 {total} 项',
   'marivo.presentation.ui-frame-alignment-independent-scales': '分面使用独立尺度',
   'marivo.presentation.ui-frame-attribution-share-note':
@@ -374,6 +376,8 @@ export const en = {
   'marivo.presentation.ui-frame-contribution-share': 'Contribution share',
   'marivo.presentation.ui-frame-records-preview':
     'Showing first {shown} of {total} saved rows; open the table for the full result.',
+  'marivo.presentation.ui-frame-filtered-records-preview':
+    'Showing first {shown} of {total} matching rows; open the table for all matching rows.',
   'marivo.presentation.ui-frame-members-preview': 'Showing first {shown} of {total} saved members',
   'marivo.presentation.ui-frame-alignment-independent-scales': 'Panels use independent scales',
   'marivo.presentation.ui-frame-attribution-share-note':
