@@ -455,7 +455,7 @@ test('explicit comparison: delta style, target lookup and roles', () => {
   })
   assert.deepEqual(failure(two, { chart: 'comparison' }), {
     code: 'view-target-ambiguous',
-    path: '/view',
+    path: '/view/encoding/value',
   })
   const candidates = ambiguity(two, { chart: 'comparison' })?.candidates
   assert.ok(candidates)
@@ -492,7 +492,7 @@ test('explicit comparison: delta style, target lookup and roles', () => {
   ])
   assert.deepEqual(failure(f.observeCategory(3), { chart: 'comparison' }), {
     code: 'view-target-ambiguous',
-    path: '/view',
+    path: '/view/encoding/value',
   })
   const text = f.frame({
     axes: [f.categoryAxis(2)],
@@ -599,7 +599,7 @@ test('explicit decomposition: share style, roles, ambiguity and completeness', (
   })
   assert.deepEqual(failure(two, { chart: 'decomposition' }), {
     code: 'view-target-ambiguous',
-    path: '/view',
+    path: '/view/encoding/value',
   })
   assert.deepEqual(viewOf(two, { chart: 'decomposition', encoding: { value: 'b.total' } }), {
     chart: 'decomposition',
@@ -608,7 +608,7 @@ test('explicit decomposition: share style, roles, ambiguity and completeness', (
   })
   assert.deepEqual(failure(f.observeCategory(3), { chart: 'decomposition' }), {
     code: 'view-target-ambiguous',
-    path: '/view',
+    path: '/view/encoding/value',
   })
 })
 

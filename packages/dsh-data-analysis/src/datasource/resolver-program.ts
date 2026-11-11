@@ -98,10 +98,13 @@ def export_results(namespace):
     output = {"status": "collected", "references": references, "errors": errors}
     if references:
         try:
-            spec = importlib.util.spec_from_file_location("_dsh_result_metadata", str(Path(payload["projection_root"]) / "result_metadata.py"))
+            projection_root = Path(payload["projection_root"])
+            spec = importlib.util.spec_from_file_location("_dsh_projection", str(projection_root / "__init__.py"), submodule_search_locations=[str(projection_root)])
             module = importlib.util.module_from_spec(spec)
+            sys.modules["_dsh_projection"] = module
             spec.loader.exec_module(module)
-            output["metadata"] = {name: module.result_metadata(ref) for name, ref in references.items()}
+            from _dsh_projection.result_metadata import result_metadata
+            output["metadata"] = {name: result_metadata(ref) for name, ref in references.items()}
             if len(json.dumps(output).encode()) > 32768:
                 output["metadata"] = {name: {"status": "unavailable", "reason": "budget"} for name in references}
         except Exception:

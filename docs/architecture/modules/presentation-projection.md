@@ -14,7 +14,7 @@ issues 与语义引用；Harness 拥有 Workspace 和 Runtime identity。插件�
   旧 `frame-snapshot` / `dataset-snapshot` 声明继续按保存的 Host provenance 读取历史快照。
 
 快照内嵌于不可变 Build 的 `resources`，属于 Build 的生命周期，不长期依赖 captures 临时目录。
-保存、更新与 ReportRef 见[展示交付](presentation-delivery.md#统一分析-ui-写入与增量契约)，阅读呈现见[共享 reader](presentation-reader.md)。
+保存、更新与 ReportRef 见[展示交付](presentation-delivery.md#分析视图写入与增量契约)，阅读呈现见[共享 reader](presentation-reader.md)。
 
 ## 展示数据契约
 
@@ -68,9 +68,23 @@ business 固定 unknown。
 
 ## 首次结果元数据
 
-marivo_python 在 results[name] 中返回可直接提交的 resource、sourceStatus 和有界 metadata，均来自同一次已核验结果组装。Frame 通过公开 Session 恢复和 persisted_frame 取得准确身份，只读取 schema 的列、值及轴名；不读行，totalRows 为 null。DataFrame 使用公开 read_dataframe 返回的 schema 与 row_count；该 API 完整读取固定结果，元数据摘要不调用 to_pandas，也不访问业务来源。每结果摘要最多 4 KiB、64 个各类配置名，总控制帧保持 32 KiB；元数据不可读或超预算单独标为 unavailable，不能让有效引用丢失。
+`marivo_python` 在 `results[name]` 中返回可直接提交的 `resource`、`sourceStatus` 和有界 `metadata`。Frame 通过公开 Session 恢复固定身份，从 schema 读取轴、导出 layout、值和物理类型。无需读行，`totalRows` 为 null。DataFrame 的公开 `read_dataframe` 完整读取固定结果，摘要只使用 schema 和 `row_count`。两者均不访问业务来源。
 
-成功 marivo_report_write 回执及模型文本附结构化 resultMetadata，仅披露本次新增或替换的已准入快照的列类型、轴、值和 coverage，不额外读取；未改变资源时返回空资源集合。展示配置错误只携带出错组件所引用资源的有界摘要和解析器候选名（包括没有独立语句名的内联组件）供直接修复，不把身份、Runtime 或存储失败改写成配置错误。多资源摘要超过 16 KiB 时整体明确 unavailable/budget，不静默丢掉名称。coverage.business 保持 unknown，不把固定行数或捕获完整性称为业务覆盖。
+首次结果 metadata 和写入回执的每资源摘要使用同一个 `viewCandidates` 契约。
+
+| 字段 | 参数用途 |
+| --- | --- |
+| `columns` | table 的 `columns`、metric 的 `encoding.value` 和显示标签的列 ID |
+| `axis` | Frame 的图表轴、系列和热力图 x/y，或 Dataset 对应的列 ID |
+| `timeAxis` | Frame line/area 的日历或区间轴名。Dataset 仍使用列 ID |
+| `values` | Frame 的公开值名，或 Dataset 的列 ID |
+| `numericValues` | 按物理类型可参与绘图的值或列。实际数据仍须通过图种约束 |
+
+`coordinateColumns` 通过 `{name,axisToken,endpoint,part}` 关联表格列和 `axes[].token`。例如轴名 `trino_query.query_info.cluster` 的导出列可以是 `cluster`。一个轴可投影出多个列，配置使用 metadata 返回的精确名称。Frame 的比较、分解、饼图等视图另受快照事实、角色和保存值约束。
+
+`marivo_report_write` 成功时返回本次新增或替换的资源摘要，未更改资源时返回空集合。配置失败回执的 `resultMetadata` 使用相同结构，只包含出错组件所引用的已准入快照，包括内联组件及复用资源。两条路径均从已有快照组装，不额外读取。失败诊断另提供具体参数的候选，见[展示交付](presentation-delivery.md#分析视图写入与增量契约)。
+
+首次结果摘要上限为每结果 4 KiB、每类 64 个名称，Python 控制帧上限 32 KiB。写入回执的资源摘要上限为 16 KiB，超预算明确返回 `unavailable/budget`。元数据不可用不使有效引用失效。`coverage.business` 始终为 `unknown`。
 
 ## Frame 快照
 

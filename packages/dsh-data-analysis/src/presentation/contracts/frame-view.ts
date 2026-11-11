@@ -6,8 +6,9 @@ import type {
   FrameValueContext,
 } from './snapshot.ts'
 import type { ColumnType } from './types.ts'
+import { availableNames, numericViewType, timeAxisRole } from './view-fields.ts'
 
-/** AnalysisFrameView/DatasetView `view` argument; names are public value or axis names only. */
+/** Chart encodings use public axes/values; tables and explicit metrics use column IDs. */
 const names = z.array(z.string().min(1).max(512)).min(1).max(64)
 export const frameViewSchema = z.union([
   z.strictObject({ chart: z.literal('auto') }),
@@ -212,14 +213,13 @@ export interface FrameViewFailure {
   ok: false
   code: FrameViewErrorCode
   path: string
-  /** Distinct output value names (at most 8), filled when a target lookup is ambiguous. */
+  /** Accepted names for the indicated parameter, bounded for the error receipt. */
   candidates?: string[]
 }
 export type FrameViewResolution =
   | { ok: true; classification: FrameClassification; view: ResolvedFrameView }
   | FrameViewFailure
 
-const DRAWABLE = new Set<ColumnType>(['float64', 'int64', 'decimal'])
 const EFFECT_ROLES = new Set([
   'effect_within',
   'effect_mix',
@@ -242,13 +242,12 @@ const fail = (code: FrameViewErrorCode, path: string, candidates?: string[]): Fa
   ok: false,
   code,
   path,
-  ...(candidates?.length ? { candidates } : {}),
+  ...(candidates?.length ? { candidates: candidates.slice(0, MAX_CANDIDATES) } : {}),
 })
 const failed = (value: unknown): value is Fail =>
   typeof value === 'object' && value !== null && (value as { ok?: unknown }).ok === false
 
-const isTime = (axis: FrameAxis) =>
-  axis.variant?.kind === 'calendar' || axis.variant?.kind === 'interval'
+const isTime = (axis: FrameAxis) => timeAxisRole(axis.variant.kind)
 const isOrdinary = (axis: FrameAxis) => axis.variant?.kind === 'ordinary'
 const isCoefficient = (context: FrameValueContext | undefined) =>
   context?.kind === 'pair_statistic' && context.statistic !== 'pair_count'
@@ -273,7 +272,7 @@ export function classifyFrame(snapshot: FrameSnapshotV2): FrameClassification {
   const contexts = facts?.valueContexts ?? {}
   const values = valueNames(snapshot)
   const types = new Map(data.columns.map((c) => [c.id, c.type]))
-  const numeric = values.filter((v) => DRAWABLE.has(types.get(v)!))
+  const numeric = values.filter((v) => numericViewType(types.get(v)))
   const axes = frame.axes
   const time = axes.filter(isTime)
   const ordinary = axes.filter(isOrdinary)
@@ -351,7 +350,7 @@ function tableColumns(snapshot: AnalysisSnapshot, columns: string[] | undefined)
   if (!columns) return ids
   for (const [i, name] of columns.entries())
     if (!ids.includes(name) || columns.indexOf(name) !== i)
-      return fail('view-name-unknown', `/view/columns/${i}`)
+      return fail('view-name-unknown', `/view/columns/${i}`, availableNames(ids, columns, i))
   return columns
 }
 const singleRow = (snapshot: AnalysisSnapshot) =>
@@ -389,7 +388,7 @@ function resolveV2(snapshot: FrameSnapshotV2, view?: FrameView): FrameViewResolu
   return failed(resolved) ? resolved : { ok: true, classification, view: resolved }
 }
 
-const drawable = (x: Context, name: string) => DRAWABLE.has(x.types.get(name)!)
+const drawable = (x: Context, name: string) => numericViewType(x.types.get(name))
 /** Observation subject of a value; computed values have none. */
 function subjectOf(x: Context, name: string) {
   const context = x.facts?.valueContexts[name]
@@ -523,24 +522,32 @@ function decompositionTargets(x: Context): DecompositionTarget[] {
   })
 }
 /** Distinct role output names across targets, in target order; capped for the error text. */
-function candidatesOf<T extends { roles: Map<string, string> }>(targets: T[]): string[] {
-  return [...new Set(targets.flatMap((t) => [...t.roles.values()]))].slice(0, MAX_CANDIDATES)
+function candidatesOf<T extends { roles: Map<string, string> }>(
+  targets: T[],
+  eligible: (target: T) => boolean,
+): string[] {
+  const names = targets.flatMap((t) => [...new Set(t.roles.values())])
+  return [...new Set(targets.filter(eligible).flatMap((t) => [...t.roles.values()]))].filter(
+    (name) => names.indexOf(name) === names.lastIndexOf(name),
+  )
 }
 /** Exactly one target, located by any of its output value names when `value` is given. */
 function pick<T extends { roles: Map<string, string> }>(
   x: Context,
   targets: T[],
   value: string | undefined,
+  eligible: (target: T) => boolean,
 ): T | Fail {
   if (value === undefined)
     return targets.length === 1
       ? targets[0]!
-      : fail('view-target-ambiguous', '/view', candidatesOf(targets))
-  if (!x.types.has(value)) return fail('view-name-unknown', '/view/encoding/value')
+      : fail('view-target-ambiguous', '/view/encoding/value', candidatesOf(targets, eligible))
+  if (!x.types.has(value))
+    return fail('view-name-unknown', '/view/encoding/value', candidatesOf(targets, eligible))
   const matches = targets.filter((t) => [...t.roles.values()].includes(value))
   return matches.length === 1
     ? matches[0]!
-    : fail('view-target-ambiguous', '/view/encoding/value', candidatesOf(targets))
+    : fail('view-target-ambiguous', '/view/encoding/value', candidatesOf(targets, eligible))
 }
 /** Every role present and drawable, otherwise the matching error. */
 function requireRoles(x: Context, roles: Map<string, string>, needed: string[]): Fail | undefined {
@@ -722,9 +729,32 @@ function auto(x: Context): ResolvedFrameView {
 }
 
 /** A drawable value field present in data.columns, or the error at `path`. */
-function drawableValue(x: Context, name: string, path: string): Fail | undefined {
-  if (!x.values.has(name)) return fail('view-name-unknown', path)
-  return drawable(x, name) ? undefined : fail('view-dtype-not-drawable', path)
+function drawableValue(
+  x: Context,
+  name: string,
+  path: string,
+  candidates = () => [...x.values].filter((v) => drawable(x, v)),
+): Fail | undefined {
+  if (!x.values.has(name)) return fail('view-name-unknown', path, candidates())
+  return drawable(x, name) ? undefined : fail('view-dtype-not-drawable', path, candidates())
+}
+
+function validPieValues(snapshot: FrameSnapshotV2, name: string): boolean {
+  const column = snapshot.data.columns.findIndex((item) => item.id === name)
+  const cells = snapshot.data.rows.map((row) => row[column])
+  const nonzero = (cell: unknown) =>
+    typeof cell === 'number'
+      ? cell !== 0
+      : typeof cell === 'string' && /[1-9]/.test(cell.split(/[eE]/)[0] ?? '')
+  return !(
+    cells.some((cell) => cell == null) ||
+    cells.some((cell) =>
+      typeof cell === 'number'
+        ? !Number.isFinite(cell) || cell < 0
+        : typeof cell !== 'string' || (cell.startsWith('-') && nonzero(cell)),
+    ) ||
+    !cells.some(nonzero)
+  )
 }
 
 function explicit(
@@ -748,7 +778,7 @@ function explicit(
     case 'metric': {
       const value = view.encoding?.value
       if (value !== undefined && !x.types.has(value))
-        return fail('view-name-unknown', '/view/encoding/value')
+        return fail('view-name-unknown', '/view/encoding/value', [...x.types.keys()])
       const values = value === undefined ? c.primaryValues : [value]
       if (!values.length) return fail('view-target-ambiguous', '/view')
       if (!singleRow(snapshot)) return fail('view-metric-requires-complete-single-row', '/view')
@@ -761,7 +791,10 @@ function explicit(
       // Bars are categorical by nature; only continuity charts need an ordered time axis.
       const anyAxis = view.chart === 'bar'
       const candidates = anyAxis ? axes : axes.filter(isTime)
-      const candidateNames = candidates.slice(0, MAX_CANDIDATES).map((a) => a.name)
+      const seriesAxis = encoding.series === undefined ? undefined : axisNamed(x, encoding.series)
+      const candidateNames = candidates
+        .filter((a) => a.token !== seriesAxis?.token)
+        .map((a) => a.name)
       let axis: FrameAxis | undefined
       if (encoding.axis !== undefined) {
         axis = axisNamed(x, encoding.axis)
@@ -778,22 +811,31 @@ function explicit(
         axis = candidates[0]!
       }
       let series: string | undefined
+      const others = axes.filter((a) => a.token !== axis.token)
+      const seriesNames = others.map((a) => a.name)
       if (encoding.series !== undefined) {
         const found = axisNamed(x, encoding.series)
         if (!found || found.token === axis.token)
-          return fail('view-name-unknown', '/view/encoding/series')
+          return fail('view-name-unknown', '/view/encoding/series', seriesNames)
         series = found.token
       } else {
-        const others = axes.filter((a) => a.token !== axis.token)
-        if (others.length > 1) return fail('view-target-ambiguous', '/view/encoding/series')
+        if (others.length > 1)
+          return fail('view-target-ambiguous', '/view/encoding/series', seriesNames)
         series = others[0]?.token
       }
       let names: string[]
       if (encoding.values) {
-        for (const [i, name] of encoding.values.entries()) {
+        const selected = encoding.values
+        for (const [i, name] of selected.entries()) {
           const path = `/view/encoding/values/${i}`
-          if (encoding.values.indexOf(name) !== i) return fail('view-name-unknown', path)
-          const error = drawableValue(x, name, path)
+          const alternatives = () =>
+            availableNames(
+              [...x.values].filter((v) => drawable(x, v)),
+              selected,
+              i,
+            )
+          if (selected.indexOf(name) !== i) return fail('view-name-unknown', path, alternatives())
+          const error = drawableValue(x, name, path, alternatives)
           if (error) return error
         }
         names = encoding.values
@@ -818,14 +860,28 @@ function explicit(
         : axes.length === 1
           ? axes[0]
           : undefined
-      if (view.encoding?.axis && !axis) return fail('view-name-unknown', '/view/encoding/axis')
+      if (view.encoding?.axis && !axis) {
+        const only = axes.length === 1 ? axes[0] : undefined
+        const candidates =
+          only && isOrdinary(only) && distinctKeys(x, only.token) === snapshot.data.rows.length
+            ? [only.name]
+            : []
+        return fail('view-name-unknown', '/view/encoding/axis', candidates)
+      }
       if (!axis || !isOrdinary(axis) || axes.length !== 1)
         return fail('view-target-ambiguous', '/view/encoding/axis')
       if (distinctKeys(x, axis.token) !== snapshot.data.rows.length)
         return fail('view-target-ambiguous', '/view/encoding/axis')
+      const pieValues = () =>
+        [...x.values].filter(
+          (name) =>
+            drawable(x, name) &&
+            !c.broadcastValues.includes(name) &&
+            validPieValues(snapshot, name),
+        )
       const value = view.encoding?.value
       if (value !== undefined) {
-        const error = drawableValue(x, value, '/view/encoding/value')
+        const error = drawableValue(x, value, '/view/encoding/value', pieValues)
         if (error) return error
       }
       const values =
@@ -835,25 +891,12 @@ function explicit(
               c.primaryValues.filter((name) => drawable(x, name)),
             ).values
           : [value]
-      if (values.length !== 1) return fail('view-target-ambiguous', '/view/encoding/value')
+      if (values.length !== 1)
+        return fail('view-target-ambiguous', '/view/encoding/value', pieValues())
       if (c.broadcastValues.includes(values[0]!))
-        return fail('view-target-ambiguous', '/view/encoding/value')
-      const column = snapshot.data.columns.findIndex((item) => item.id === values[0])
-      const cells = snapshot.data.rows.map((row) => row[column])
-      const nonzero = (cell: unknown) =>
-        typeof cell === 'number'
-          ? cell !== 0
-          : typeof cell === 'string' && /[1-9]/.test(cell.split(/[eE]/)[0] ?? '')
-      if (
-        cells.some((cell) => cell == null) ||
-        cells.some((cell) =>
-          typeof cell === 'number'
-            ? !Number.isFinite(cell) || cell < 0
-            : typeof cell !== 'string' || (cell.startsWith('-') && nonzero(cell)),
-        ) ||
-        !cells.some(nonzero)
-      )
-        return fail('view-pie-invalid-values', '/view/encoding/value')
+        return fail('view-target-ambiguous', '/view/encoding/value', pieValues())
+      if (!validPieValues(snapshot, values[0]!))
+        return fail('view-pie-invalid-values', '/view/encoding/value', pieValues())
       return {
         chart: 'pie',
         axis: axis.token,
@@ -865,10 +908,17 @@ function explicit(
       if (view.encoding) {
         const { x: xName, y: yName, value } = view.encoding
         const xAxis = axisNamed(x, xName)
-        if (!xAxis) return fail('view-name-unknown', '/view/encoding/x')
         const yAxis = axisNamed(x, yName)
+        const heatmapAxes = (other?: FrameAxis) =>
+          axes
+            .filter(
+              (a) =>
+                !other || (a.token !== other.token && uniqueHeatmapCells(x, a.token, other.token)),
+            )
+            .map((a) => a.name)
+        if (!xAxis) return fail('view-name-unknown', '/view/encoding/x', heatmapAxes(yAxis))
         if (!yAxis || yAxis.token === xAxis.token)
-          return fail('view-name-unknown', '/view/encoding/y')
+          return fail('view-name-unknown', '/view/encoding/y', heatmapAxes(xAxis))
         const error = drawableValue(x, value, '/view/encoding/value')
         if (error) return error
         if (!uniqueHeatmapCells(x, xAxis.token, yAxis.token))
@@ -897,14 +947,22 @@ function explicit(
         if (grid) return grid
         if (targets.length > 1) return comparisonTable(x)
       }
-      const target = pick(x, targets, view.encoding?.value)
+      const target = pick(
+        x,
+        targets,
+        view.encoding?.value,
+        (candidate) => !failed(comparisonStyle(x, candidate, view.style ?? 'auto')),
+      )
       if (failed(target)) return target
       const style = comparisonStyle(x, target, view.style ?? 'auto')
       if (failed(style)) return style
       return { chart: 'comparison', comparison: target.comparison, group: target.group, style }
     }
     case 'decomposition': {
-      const target = pick(x, decompositionTargets(x), view.encoding?.value)
+      const target = pick(x, decompositionTargets(x), view.encoding?.value, (candidate) => {
+        const style = decompositionStyle(x, candidate, view.style ?? 'auto')
+        return !failed(style) && (!readsWhole(style) || x.complete)
+      })
       if (failed(target)) return target
       const style = decompositionStyle(x, target, view.style ?? 'auto')
       if (failed(style)) return style

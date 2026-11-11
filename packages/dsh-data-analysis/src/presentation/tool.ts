@@ -82,7 +82,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis view in the right sidebar. Reuse matching fixed outputs. When data preparation is ongoing, preview early, update the same draft as results become ready, and save once. Ready results and changes can save directly. Send only changed resources and named program statements. A rejected patch does not apply; correct it and resubmit with the same fixed resources and latest ref. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources.',
+      'Create or update an analysis view in the right sidebar. Reuse matching fixed outputs. When data preparation is ongoing, preview early, update the same draft as results become ready, and save once. Ready results and changes can save directly. Send only changed resources and named program statements. Choose exact names from metadata.viewCandidates in marivo_python: columns for tables and metrics, axis for axis/series/x/y, timeAxis for line/area axis, numericValues for numeric encodings, and values for comparison/decomposition targets. A rejected patch does not apply. For configuration failures read error= JSON for the path, candidates and resultMetadata, then retry with the same fixed resources and latest ref. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources.',
     parameters: {
       stage: {
         type: 'string',
@@ -460,8 +460,8 @@ export function createMarivoPresentTool(
               error.path,
               error.recovery.nextAction,
               error.resourceName,
-              { currentRef: request.ref, applied: false },
               error.details,
+              request.ref,
             )
           if (error instanceof PresentationRecoveryError)
             throw new PresentationRecoveryError(error.code, error.recovery.nextAction, {

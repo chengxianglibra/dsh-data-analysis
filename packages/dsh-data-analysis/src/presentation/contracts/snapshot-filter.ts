@@ -70,6 +70,17 @@ export function snapshotFilterViewIssue(
 }
 
 /** Exact saved cells, without label conversion or numeric coercion. */
+const filterType = (type: string | undefined) =>
+  type === 'string' || type === 'boolean' || type === 'int64'
+const filterAxis = (axis: Extract<AnalysisSnapshot, { kind: 'frame' }>['frame']['axes'][number]) =>
+  axis.variant.kind === 'ordinary' && axis.keys.length === 1 && filterType(axis.keys[0]?.dtype.type)
+
+export function snapshotFilterFieldNames(snapshot: AnalysisSnapshot) {
+  return snapshot.kind === 'dataset'
+    ? snapshot.data.columns.filter(({ type }) => filterType(type)).map(({ id }) => id)
+    : snapshot.frame.axes.filter(filterAxis).map(({ name }) => name)
+}
+
 export function resolveSnapshotFilter(
   snapshot: AnalysisSnapshot,
   declaration: SnapshotFilter,
@@ -80,14 +91,13 @@ export function resolveSnapshotFilter(
   if (snapshot.kind === 'dataset' && declaration.field.kind === 'column') {
     const index = snapshot.data.columns.findIndex((column) => column.id === declaration.field.name)
     const column = snapshot.data.columns[index]
-    if (!column) throw new Error('analysis-filter-field-invalid')
+    if (!column || !filterType(column.type)) throw new Error('analysis-filter-field-invalid')
     type = column.type
     nullable = column.nullable
     values = snapshot.data.rows.map((row) => row[index])
   } else if (snapshot.kind === 'frame' && declaration.field.kind === 'axis') {
     const axis = snapshot.frame.axes.find((item) => item.name === declaration.field.name)
-    if (axis?.variant.kind !== 'ordinary' || axis.keys.length !== 1)
-      throw new Error('analysis-filter-field-invalid')
+    if (!axis || !filterAxis(axis)) throw new Error('analysis-filter-field-invalid')
     const key = axis.keys[0]!
     const coordinate = snapshot.frame.coordinates[key.slotId]
     if (!coordinate) throw new Error('analysis-filter-field-invalid')
@@ -95,8 +105,6 @@ export function resolveSnapshotFilter(
     nullable = key.nullable
     values = coordinate.values
   } else throw new Error('analysis-filter-field-invalid')
-  if (!['string', 'boolean', 'int64'].includes(type))
-    throw new Error('analysis-filter-field-invalid')
   const valid = (cell: unknown): cell is SnapshotFilterValue =>
     cell === null
       ? nullable

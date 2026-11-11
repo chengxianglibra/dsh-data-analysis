@@ -8,6 +8,7 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
 import { createAnalysisDocument } from '../../src/presentation/analysis.ts'
+import { AnalysisViewError } from '../../src/presentation/contracts/analysis-document.ts'
 import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import { readReportHistory } from '../../src/presentation/reports.ts'
@@ -187,9 +188,9 @@ test('shared exact result is admitted once, preserves its producer and repairs v
       first,
     ),
     (error: unknown) => {
-      assert(error instanceof Error)
-      assert.match(error.message, /analysis-columns-invalid/)
-      assert.match(error.message, /Result metadata:.*category.*value.*coverage/)
+      assert(error instanceof AnalysisViewError)
+      assert.equal(error.code, 'analysis-columns-invalid')
+      assert.deepEqual(error.details.candidates, ['category', 'value'])
       return true
     },
   )
@@ -206,13 +207,12 @@ test('shared exact result is admitted once, preserves its producer and repairs v
         first,
       ),
       (error: unknown) => {
-        assert(error instanceof Error)
-        assert.match(error.message, /analysis-columns-invalid/)
-        const metadataText = /Result metadata: (\{.*\})\./.exec(error.message)?.[1]
-        assert(metadataText)
-        const metadata = JSON.parse(metadataText)
+        assert(error instanceof AnalysisViewError)
+        assert.equal(error.code, 'analysis-columns-invalid')
+        const metadata = error.details.resultMetadata
+        assert.equal(metadata?.status, 'captured')
         assert.deepEqual(Object.keys(metadata.resources), ['table'])
-        assert.match(error.message, /category.*value.*coverage/)
+        assert.deepEqual(metadata.resources.table?.viewCandidates.columns, ['category', 'value'])
         return true
       },
     )

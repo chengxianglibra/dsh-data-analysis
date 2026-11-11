@@ -42,20 +42,19 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 每次 preview/save 整批原子准入：任一资源读取、视图或完整文档失败，均保留最后成功 revision、document、current 和 history；临时资源流不能成为成功草稿。调用者可显式提交已就绪子集，未提交项保持旧数据，不能自动剔除已失败资源。结果中的 changed/reused 区分真正替换与复用；同一固定引用即使更换来源记录也不冒充新计算，同路径图片继续复用。reader 的 reuseGroups 按准确固定引用分组，不按 codeRef 或相同值推断；writer 的 unchangedAliases 提示仍保留旧数据的共享别名，不自动扩大更新范围。
 
-语法、缺失资源及视图校验失败的回执包含 `applied:false`、可确定的错误位置或资源名，以及已有基准时的
-`currentRef`。视图参数错误同时附带相关固定结果的有界配置元数据和可用候选。图形轴引用 Frame 的轴名，表格列引用快照列 ID；
-`rowLimit` 适用于横向分类条，`comparisonLabels` 引用快照中可唯一确定的比较别名。修复后向该基准提交本次完整修改，沿用已有固定资源。草稿上下文缺失或冲突时通过
-`marivo_report_read` 恢复。草稿过期后可用历史回执中的固定输出重新构建。
+视图配置失败保持 Harness 工具失败状态。错误消息末尾的 `error=` 后是完整 JSON 对象，含 `code`、`phase`、`path`、可确定的 `resource` 及 `recovery.applied:false`。已有基准时提供 `recovery.currentRef`。可定位到名称参数时附 `received`（若已填写）、`expectedKind` 和最多 8 个 `candidates`。错误内的 `resultMetadata` 与成功回执使用同一结构。当前 Harness 的工具异常接缝只传递消息和标准错误标识，Native 与 PTC 均从错误消息读取该 JSON。
+
+候选按参数约束生成，例如 line/area 的 Frame 轴、排除已选轴的系列、可绘图的数值和未占用的表格列。候选解决指定参数，配置中的其他问题仍会独立校验。语法、身份、Runtime 与存储失败走各自原有错误路径。修复配置后沿用固定资源及成功基准，草稿上下文缺失或冲突时通过 `marivo_report_read` 恢复。
+
+比较或分解目标存在歧义时，候选值名对应 `view/encoding/value`。筛选字段种类不匹配时，路径指向 `field/kind`，`expectedKind` 为 `field-kind`，候选为 `axis` 或 `column`；种类正确后再校验 `field/name`。
 
 新 Build 将 contentReview 持久写入 `presentation.json`：已有资源真正替换且存在非空 TextContent、TextCallout 的 title/description 或 AccordionItem 的 trigger 时为 required，无静态正文时为 not-needed。旧 v1 未记录状态，读取解释为 unknown；普通 edit 继承 required，不把模型声明当成已复核证明。提示显示在报告正文之外，当前/历史重开及离线 HTML 均使用对应 Build 的事实。
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。新资源使用 `analysis-frame` / `dataframe` 和 Marivo 固定引用；历史 snapshot 声明保留原 Host provenance，
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
-metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列，图形 encoding 只引用公开值名与轴名；
-Dataset 图表编码引用列 ID，要求完整快照、数值列和唯一坐标组合；不推断分析语义。
+metric 要求完整单行快照，table 的 `columns` 使用互异的快照列 ID。Frame 图表 encoding 使用公开轴名和值名，Dataset 图表 encoding 使用列 ID，要求完整快照、数值列和唯一坐标组合。
 
 `SnapshotFilter` 须为可达的具名声明，数据视图通过 `filters` 显式绑定同一快照。完整文档准入校验字段、候选默认值、唯一 ID、消费关系与支持的原始视图；刷新后默认成员消失或视图不再受支持时拒绝新版本，保留最后成功的草稿和正式版本。筛选选择只属于阅读状态，不进入更新请求或保存数据。
-不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。校验器通过既有 candidates 提供当前参数的有界合法候选，工具统一转达；候选不保证整份配置均合法。Frame 的显式 axis 使用轴 name，不使用列 ID 或 token。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
 模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示复用成功回执；明确需要恢复当前 Turn 草稿时可通过 `marivo_report_read({draft:true})` 取回上下文并确认目标，不自动纠正引用或选择最新版本。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。

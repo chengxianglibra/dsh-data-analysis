@@ -1,15 +1,17 @@
 import { type ElementNode, parseExpression, split, tokenize } from '@openuidev/lang-core'
 import { z } from 'zod'
+import type { AnalysisResultSummary } from '../result-summary.ts'
 import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
 import { analysisStatements, parseAnalysisProgram } from './analysis-program.ts'
 import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
-import { validateFrameDisplay } from './frame-display.ts'
+import { frameDisplayIssue } from './frame-display.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
 import { analysisResourceDeclaration, pythonCodeRef } from './resource-declaration.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
 import {
   resolveSnapshotFilter,
+  snapshotFilterFieldNames,
   snapshotFilterSchema,
   snapshotFilterViewIssue,
 } from './snapshot-filter.ts'
@@ -133,31 +135,44 @@ export function analysisElements(root: ElementNode): ElementNode[] {
  * Save-time view rejection returned to the model. The message carries the code, the JSON
  * path (statement name plus `/view/...`) and a short hint because Tool errors surface as text.
  */
+type ViewErrorDetails = {
+  received?: string | null
+  expectedKind?: 'axis' | 'column' | 'value' | 'comparison-alias' | 'field-kind'
+  candidates?: (string | null)[]
+  resultMetadata?: AnalysisResultSummary
+}
 export class AnalysisViewError extends Error {
+  readonly phase = 'report-validation'
   readonly code: string
   readonly path: string
   readonly resourceName: string
-  readonly phase = 'report-validation'
-  readonly recovery: { nextAction: string; currentRef?: string; applied?: false }
-  readonly details?: string
+  readonly details: ViewErrorDetails
+  readonly recovery: { nextAction: string; currentRef?: string; applied: false }
   constructor(
     code: string,
     path: string,
     hint: string,
     resourceName: string,
-    context?: { currentRef?: string; applied: false },
-    details?: string,
+    details: ViewErrorDetails = {},
+    currentRef?: string,
   ) {
-    const recovery = { ...context, nextAction: hint }
+    const recovery = { nextAction: hint, applied: false as const, currentRef }
     super(
-      `${code} at ${path}: ${hint}; error=${JSON.stringify({ code, phase: 'report-validation', path, recovery })}${details ? ` ${details}` : ''}`,
+      `${code} at ${path}: ${hint}\nerror=${JSON.stringify({
+        code,
+        phase: 'report-validation',
+        path,
+        resource: resourceName || undefined,
+        recovery,
+        ...details,
+      })}`,
     )
     this.name = 'AnalysisViewError'
     this.code = code
     this.path = path
     this.resourceName = resourceName
-    this.recovery = recovery
     this.details = details
+    this.recovery = recovery
   }
 }
 const viewHints: Record<string, string> = {
@@ -185,20 +200,33 @@ const viewHints: Record<string, string> = {
 function viewError(
   code: string,
   node: ElementNode,
-  path: string,
-  candidates?: string[],
+  relative: string,
+  { expectedKind, candidates }: Pick<ViewErrorDetails, 'expectedKind' | 'candidates'> = {},
   hint = viewHints[code] ?? '',
 ): AnalysisViewError {
-  const relative = path.startsWith('/view') || path.startsWith('/display') ? path : `/view${path}`
-  // A candidate list extends the sentence, so a trailing hint period would read as `. ;`.
-  const suffix = candidates?.length
-    ? `${hint.endsWith('.') ? hint.slice(0, -1) : hint}; candidates: ${candidates.join(', ')}`
-    : hint
+  const received = relative
+    .split('/')
+    .slice(1)
+    .reduce<unknown>(
+      (value, key) =>
+        typeof value === 'object' && value !== null && Object.hasOwn(value, key)
+          ? Reflect.get(value, key)
+          : undefined,
+      node.props,
+    )
   return new AnalysisViewError(
     code,
     `${node.statementId ?? node.typeName}${relative}`,
-    `${suffix} For a saved-report data refresh, preserve the existing view and repair its data input or report the blocker. Change the view only when creating a page or explicitly asked to edit it.`,
+    `${hint} Use the candidates and metadata to repair the indicated parameter. Reuse the fixed result. For a saved-report data refresh, preserve the existing view and repair its data input or report the blocker.`,
     String(node.props.ref),
+    {
+      expectedKind,
+      received:
+        received === null || (typeof received === 'string' && received.length <= 512)
+          ? received
+          : undefined,
+      candidates: expectedKind ? (candidates ?? []).slice(0, 8) : candidates,
+    },
   )
 }
 export function validateAnalysisResources(
@@ -227,42 +255,23 @@ export function validateAnalysisResources(
         !datasetDisplaySchema.optional().safeParse(node.props.display ?? undefined).success)
     )
       throw viewError('analysis-view-invalid', node, '/display')
-    const columns = view.data?.chart === 'table' ? view.data.columns : undefined
-    if (columns && new Set(columns).size !== columns.length)
-      throw viewError('analysis-columns-invalid', node, '/view/columns')
     const resolved =
       source.snapshot.kind === 'dataset'
         ? resolveDatasetView(source.snapshot, view.data)
         : resolveFrameView(source.snapshot, view.data)
     if (resolved.ok) {
       if (source.snapshot.kind === 'frame') {
-        const error = validateFrameDisplay(source.snapshot, resolved.view, display.data)
-        if (error === '/display/rowLimit')
+        const issue = frameDisplayIssue(source.snapshot, resolved.view, display.data)
+        if (issue)
           throw viewError(
             'analysis-view-invalid',
             node,
-            error,
-            undefined,
-            'Omit rowLimit here. It applies only to horizontal category bars.',
+            issue.path,
+            issue,
+            issue.path === '/display/rowLimit'
+              ? 'Omit rowLimit here. It applies only to horizontal category bars.'
+              : undefined,
           )
-        if (error === '/display/comparisonLabels') {
-          const facts = source.snapshot.frame.sections.interpretation
-          const aliases =
-            facts.status === 'captured' ? facts.comparisons.map(({ alias }) => alias) : []
-          throw viewError(
-            'analysis-view-invalid',
-            node,
-            error,
-            aliases
-              .filter(
-                (alias) => alias !== null && aliases.indexOf(alias) === aliases.lastIndexOf(alias),
-              )
-              .slice(0, 8)
-              .map((alias) => JSON.stringify(alias)),
-            'Omit comparisonLabels or use each eligible saved comparison alias once.',
-          )
-        }
-        if (error) throw viewError('analysis-view-invalid', node, error)
       }
       continue
     }
@@ -276,7 +285,14 @@ export function validateAnalysisResources(
               resolved.code === 'view-name-unknown')
           ? 'analysis-metric-requires-complete-single-row'
           : `analysis-view-${resolved.code.replace(/^view-/, '')}`
-    throw viewError(code, node, resolved.path, resolved.candidates)
+    const path = resolved.path
+    let expectedKind: ViewErrorDetails['expectedKind']
+    if (path.startsWith('/view/columns')) expectedKind = 'column'
+    else if (/^\/view\/encoding\/(axis|series|x|y)$/.test(path))
+      expectedKind = source.snapshot.kind === 'dataset' ? 'column' : 'axis'
+    else if (/^\/view\/encoding\/values?(\/\d+)?$/.test(path) || resolved.candidates?.length)
+      expectedKind = source.snapshot.kind === 'dataset' || chart === 'metric' ? 'column' : 'value'
+    throw viewError(code, node, path, { candidates: resolved.candidates, expectedKind })
   }
   validateSnapshotFilters(program, nodes, resources)
 }
@@ -318,10 +334,35 @@ function validateSnapshotFilters(
     const resource = resources[declaration.ref]
     if (resource?.kind !== 'snapshot')
       fail(node, 'analysis-filter-resource-invalid', 'ref', 'Use a saved snapshot resource.')
+    const fieldKind = resource.snapshot.kind === 'dataset' ? 'column' : 'axis'
+    if (declaration.field.kind !== fieldKind)
+      throw new AnalysisViewError(
+        'analysis-filter-field-invalid',
+        `${statement}/field/kind`,
+        'Use the field kind supported by this snapshot.',
+        declaration.ref,
+        {
+          received: declaration.field.kind,
+          expectedKind: 'field-kind',
+          candidates: [fieldKind],
+        },
+      )
     try {
       resolveSnapshotFilter(resource.snapshot, declaration)
     } catch (error) {
       const code = error instanceof Error ? error.message : 'analysis-filter-invalid'
+      if (code === 'analysis-filter-field-invalid')
+        throw new AnalysisViewError(
+          code,
+          `${statement}/field/name`,
+          'Use a field of the indicated kind with an exact filterable type.',
+          declaration.ref,
+          {
+            received: declaration.field.name,
+            expectedKind: resource.snapshot.kind === 'dataset' ? 'column' : 'axis',
+            candidates: snapshotFilterFieldNames(resource.snapshot).slice(0, 8),
+          },
+        )
       fail(
         node,
         code,

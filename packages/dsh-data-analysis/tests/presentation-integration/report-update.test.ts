@@ -359,7 +359,7 @@ test('report placement is client-owned and preview revisions publish exactly one
   assert.equal(history.versions[0]?.source.surface, 'tool')
 })
 
-test('real Harness PTC composes preview, recovery and save using public identifiers', async (t) => {
+test('real Harness PTC repairs a rejected column and saves using the same draft', async (t) => {
   const f = await fixture(t)
   const ctx = new Context()
   try {
@@ -403,7 +403,25 @@ test('real Harness PTC composes preview, recovery and save using public identifi
           if (first.stage !== 'preview' || !first.ref) throw new Error('preview-identity');
           const recovered = (await tools.marivo_report_read({draft:true})).definition;
           if (recovered.ref !== first.ref) throw new Error('draft-read-identity');
-          const second = await tools.marivo_report_write({stage:'preview', ref:first.ref, title:'PTC reviewed'});
+          let failure;
+          try {
+            await tools.marivo_report_write({stage:'preview', ref:first.ref, program:'root = DatasetView("data", {chart:"table",columns:["missing","account"]});'});
+          } catch (error) {
+            const message = String(error.message);
+            const marker = message.indexOf('error=');
+            if (marker < 0) throw error;
+            failure = JSON.parse(message.slice(marker + 6));
+          }
+          if (failure?.path !== 'root/view/columns/0' || failure.received !== 'missing' ||
+              failure.recovery.applied !== false || failure.recovery.currentRef !== first.ref ||
+              JSON.stringify(failure.candidates) !== '["amount"]' ||
+              JSON.stringify(failure.resultMetadata) !== JSON.stringify(first.resultMetadata)) {
+            throw new Error('PTC repair receipt missing or invalid');
+          }
+          const unchanged = (await tools.marivo_report_read({draft:true})).definition;
+          if (unchanged.ref !== first.ref) throw new Error('failed-patch-advanced-draft');
+          const second = await tools.marivo_report_write({stage:'preview', ref:first.ref, title:'PTC reviewed',
+            program:'root = DatasetView("data", {chart:"table",columns:[' + JSON.stringify(failure.candidates[0]) + ',"account"]});'});
           if (second.ref === first.ref) throw new Error('revision-not-advanced');
           const saved = await tools.marivo_report_write({stage:'save', ref:second.ref});
           if (saved.stage !== 'save' || !saved.ref) throw new Error('save-identity');

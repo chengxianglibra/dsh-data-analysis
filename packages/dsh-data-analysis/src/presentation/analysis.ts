@@ -47,16 +47,23 @@ export function applyAnalysisLabels(
   for (const [name, map] of entries) {
     const target = resources[name]
     if (target?.kind !== 'snapshot')
-      throw new Error(
-        `analysis-label-unknown at /labels/${name}: expected a declared snapshot resource named "${name}".`,
+      throw new AnalysisViewError(
+        'analysis-label-unknown',
+        `/labels/${name}`,
+        'Select a declared snapshot resource.',
+        name,
       )
     if (Object.keys(map).length > PRESENTATION_BUDGETS.columns)
-      throw new Error(`analysis-label-budget at /labels: ${LABEL_HINT}`)
+      throw new AnalysisViewError('analysis-label-budget', '/labels', LABEL_HINT, '')
     const columns = new Set(target.snapshot.data.columns.map((column) => column.id))
     for (const column of Object.keys(map))
       if (!columns.has(column))
-        throw new Error(
-          `analysis-label-unknown at /labels/${name}/${column}: expected a column id of this snapshot.`,
+        throw new AnalysisViewError(
+          'analysis-label-unknown',
+          `/labels/${name}/${column}`,
+          'Use a column ID of this snapshot.',
+          name,
+          { received: column, expectedKind: 'column', candidates: [...columns].slice(0, 8) },
         )
   }
   const bytes = entries.reduce(
@@ -65,7 +72,8 @@ export function applyAnalysisLabels(
       Object.values(map).reduce((sum, label) => sum + new TextEncoder().encode(label).length, 0),
     0,
   )
-  if (bytes > LABEL_BYTES) throw new Error(`analysis-label-budget at /labels: ${LABEL_HINT}`)
+  if (bytes > LABEL_BYTES)
+    throw new AnalysisViewError('analysis-label-budget', '/labels', LABEL_HINT, '')
   for (const [name, map] of entries) {
     const target = resources[name]
     if (target?.kind !== 'snapshot') continue
@@ -364,28 +372,13 @@ export async function createAnalysisDocument(
       resources,
     })
   } catch (error) {
-    if (
-      error instanceof Error &&
-      /^(analysis-view-|analysis-columns-|analysis-metric-|analysis-label-|analysis-filter-)/.test(
-        error.message,
-      )
-    ) {
-      const name =
-        error instanceof AnalysisViewError
-          ? error.resourceName
-          : /^analysis-label-unknown at \/labels\/([^/ :]+)/.exec(error.message)?.[1]
+    if (error instanceof AnalysisViewError) {
+      const name = error.resourceName
       const relevant = name && resources[name] ? { [name]: resources[name] } : {}
-      const details = `Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Correct the indicated parameter using the metadata and candidates. Frame chart axes use axes[].name. Table columns use columns[].id. Reuse the fixed analysis result.`
-      if (error instanceof AnalysisViewError)
-        throw new AnalysisViewError(
-          error.code,
-          error.path,
-          error.recovery.nextAction,
-          error.resourceName,
-          undefined,
-          details,
-        )
-      error.message += ` ${details}`
+      throw new AnalysisViewError(error.code, error.path, error.recovery.nextAction, name, {
+        ...error.details,
+        resultMetadata: analysisResultSummary(relevant),
+      })
     }
     throw error
   }
@@ -418,6 +411,7 @@ export function validateRefreshShape(base: AnalysisDocument, next: AnalysisDocum
         `${node.statementId ?? node.typeName}/view/chart`,
         `${previous.view.chart} -> ${current.view.chart}; use an explicit edit to change the page.`,
         name,
+        { resultMetadata: analysisResultSummary({ [name]: after }) },
       )
   }
 }

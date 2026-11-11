@@ -143,6 +143,20 @@ test('heatmap requires numeric saved values and a unique cell per pair, retainin
     ok: true,
     view: { chart: 'heatmap', x: 'x', y: 'y', value: 'value' },
   })
+  const badAxis = resolveDatasetView(snapshot, {
+    chart: 'heatmap',
+    encoding: { x: 'x', y: 'x', value: 'value' },
+  })
+  assert(!badAxis.ok)
+  assert.equal(badAxis.path, '/view/encoding/y')
+  assert.deepEqual(badAxis.candidates, ['y', 'value'])
+  const badValue = resolveDatasetView(snapshot, {
+    chart: 'heatmap',
+    encoding: { x: 'x', y: 'y', value: 'y' },
+  })
+  assert(!badValue.ok)
+  assert.equal(badValue.path, '/view/encoding/value')
+  assert.deepEqual(badValue.candidates, ['x', 'value'])
   snapshot.data.rows.push([...snapshot.data.rows[0]!])
   assert.equal(resolveDatasetView(snapshot, view).ok, false)
 })

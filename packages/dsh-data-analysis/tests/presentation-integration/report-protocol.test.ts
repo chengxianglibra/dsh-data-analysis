@@ -11,6 +11,7 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
 import {
+  AnalysisViewError,
   analysisRecordId,
   parseAnalysisDocument,
 } from '../../src/presentation/contracts/analysis-document.ts'
@@ -244,10 +245,20 @@ test('a failed draft revision returns the current ref and the valid column IDs',
       program: 'root = DatasetView("result", {chart:"table",columns:["missing"]});',
     }),
     (error: Error) => {
-      assert.match(error.message, /analysis-columns-invalid/)
-      assert(error.message.includes(`"currentRef":"${preview.ref}"`))
-      assert.match(error.message, /"applied":false/)
-      assert.match(error.message, /"columns":\[{"id":"value","type":"decimal"}\]/)
+      assert(error instanceof AnalysisViewError)
+      assert.equal(error.code, 'analysis-columns-invalid')
+      assert.equal(error.path, 'root/view/columns/0')
+      assert.deepEqual(error.recovery, {
+        applied: false,
+        currentRef: preview.ref,
+        nextAction: error.recovery.nextAction,
+      })
+      assert.deepEqual(error.details, {
+        received: 'missing',
+        expectedKind: 'column',
+        candidates: ['value'],
+        resultMetadata: preview.resultMetadata,
+      })
       return true
     },
   )

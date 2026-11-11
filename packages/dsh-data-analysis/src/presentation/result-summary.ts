@@ -1,8 +1,10 @@
 import { z } from 'zod'
 import type { AnalysisDocument } from './contracts/analysis-document.ts'
 import { snapshotMetadataSchemas } from './contracts/snapshot.ts'
+import { numericViewType, viewCandidates, viewFieldMetadata } from './contracts/view-fields.ts'
 
 export const resultConfigurationSummary = z.strictObject({
+  ...viewFieldMetadata,
   kind: z.enum(['frame', 'dataset']),
   columns: z.array(snapshotMetadataSchemas.column.pick({ id: true, type: true })),
   coverage: snapshotMetadataSchemas.coverage,
@@ -29,18 +31,31 @@ export function analysisResultSummary(
   for (const [name, resource] of Object.entries(resources)) {
     if (resource.kind !== 'snapshot') continue
     const snapshot = resource.snapshot
+    const columns = snapshot.data.columns.map(({ id, type }) => ({ id, type }))
+    const frame = snapshot.kind === 'frame' ? snapshot.frame : undefined
+    const values = frame?.fields.filter(({ role }) => role === 'value').map(({ id }) => id)
+    const axes = frame?.axes.map(({ token, name, role }) => ({ token, name, role }))
+    const ids = columns.map(({ id }) => id)
+    const valueNames = values ?? ids
     summaries[name] = {
       kind: snapshot.kind,
-      columns: snapshot.data.columns.map(({ id, type }) => ({ id, type })),
+      columns,
       coverage: snapshot.coverage,
-      ...(snapshot.kind === 'frame'
-        ? {
-            values: snapshot.frame.fields
-              .filter((field) => field.role === 'value')
-              .map((field) => field.id),
-            axes: snapshot.frame.axes.map(({ token, name, role }) => ({ token, name, role })),
-          }
-        : {}),
+      ...(frame ? { values, axes } : {}),
+      viewCandidates: viewCandidates(
+        ids,
+        frame?.axes.map(({ name, variant }) => ({ name, role: variant.kind })),
+        valueNames,
+        columns
+          .filter(({ id, type }) => valueNames.includes(id) && numericViewType(type))
+          .map(({ id }) => id),
+      ),
+      coordinateColumns:
+        frame?.layout.flatMap((entry) => {
+          if (entry.kind !== 'coordinate') return []
+          const { name, axisToken, endpoint, part } = entry
+          return [{ name, axisToken, endpoint, part }]
+        }) ?? [],
     }
   }
   // A large directory is disclosed explicitly as unavailable rather than silently truncated.
@@ -64,7 +79,7 @@ export const analysisResultSummaryToolSchema = {
           additionalProperties: true,
           required: true,
           description:
-            'Resource-name map validated per entry as {kind:"frame"|"dataset",columns:[{id,type}],coverage:{start,totalRows,capturedRows,complete,columns,business},values?:string[],axes?:[{token,name,role}]}. Host schema cannot project typed dynamic map values.',
+            'Resource-name map. Each entry has kind, columns:[{id,type}], coverage, optional Frame values and axes:[{token,name,role}], viewCandidates:{columns,axis,timeAxis,values,numericValues} (name arrays), and coordinateColumns:[{name,axisToken,endpoint,part}].',
         },
       },
     },

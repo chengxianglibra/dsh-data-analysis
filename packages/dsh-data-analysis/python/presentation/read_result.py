@@ -8,9 +8,28 @@ from ._dataset import MAX_BYTES, encode_dataset
 from ._frame import read_frame
 
 
+def arrow_display_type(kind):
+    import pyarrow as pa
+
+    if pa.types.is_decimal(kind):
+        return "decimal"
+    elif pa.types.is_integer(kind):
+        return "decimal" if pa.types.is_uint64(kind) else "int64"
+    elif pa.types.is_floating(kind):
+        return "float64"
+    elif pa.types.is_boolean(kind):
+        return "boolean"
+    elif pa.types.is_date(kind):
+        return "date"
+    elif pa.types.is_timestamp(kind) and kind.tz:
+        return "datetime"
+    elif pa.types.is_string(kind) or pa.types.is_large_string(kind) or pa.types.is_null(kind):
+        return "string"
+    return None
+
+
 def read_result(reference):
     import marivo.analysis as mv
-    import pyarrow as pa
 
     if reference["schema"] == "marivo.frame_ref/v2":
         frame = mv.session.resume(reference["session_id"]).persisted_frame(reference["artifact_id"])
@@ -24,22 +43,8 @@ def read_result(reference):
         raise ValueError("result-identity-mismatch")
     columns = []
     for field in result.schema:
-        kind = field.type
-        if pa.types.is_decimal(kind):
-            scalar = "decimal"
-        elif pa.types.is_integer(kind):
-            scalar = "decimal" if pa.types.is_uint64(kind) else "int64"
-        elif pa.types.is_floating(kind):
-            scalar = "float64"
-        elif pa.types.is_boolean(kind):
-            scalar = "boolean"
-        elif pa.types.is_date(kind):
-            scalar = "date"
-        elif pa.types.is_timestamp(kind) and kind.tz:
-            scalar = "datetime"
-        elif pa.types.is_string(kind) or pa.types.is_large_string(kind) or pa.types.is_null(kind):
-            scalar = "string"
-        else:
+        scalar = arrow_display_type(field.type)
+        if scalar is None:
             raise ValueError("result-display-type-unsupported")
         columns.append({"id": field.name, "label": field.name, "type": scalar, "nullable": field.nullable})
     data = encode_dataset(result.to_pandas(), columns=columns)

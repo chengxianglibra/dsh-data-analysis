@@ -124,6 +124,24 @@ test('document admission checks filter bindings on the complete saved snapshot',
   const program = (children: string, extra = '') =>
     `root = Stack([${children}]);\n${declaration}\n${view}\n${extra}`
   assert.doesNotThrow(() => validateAnalysisResources(program('f, f, v'), resources))
+  const wrongKind = program('f, v').replace('kind: "column"', 'kind: "axis"')
+  assert.throws(
+    () => validateAnalysisResources(wrongKind, resources),
+    (error) => {
+      assert(error instanceof AnalysisViewError)
+      assert.equal(error.path, 'f/field/kind')
+      assert.deepEqual(error.details, {
+        received: 'axis',
+        expectedKind: 'field-kind',
+        candidates: ['column'],
+      })
+      validateAnalysisResources(
+        wrongKind.replace('kind: "axis"', `kind: ${JSON.stringify(error.details.candidates[0])}`),
+        resources,
+      )
+      return true
+    },
+  )
   const check = (source: string, code: string) => {
     assert.throws(
       () => validateAnalysisResources(source, resources),

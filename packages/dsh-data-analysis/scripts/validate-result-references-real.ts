@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { MARIVO_VERSION } from '../src/compatibility.ts'
+import { PYTHON_LAUNCHER, PYTHON_WORKER } from '../src/datasource/resolver-program.ts'
 import {
   ensureSharedMarivoRuntime,
   MarivoWorkspaceEnvironmentManager,
@@ -13,7 +15,9 @@ import { parseSelectionText } from '../src/presentation/contracts/selection-text
 import { isFrameSnapshotV2 } from '../src/presentation/contracts/snapshot.ts'
 import { publishPresentation } from '../src/presentation/reports.ts'
 import { readMarivoResult } from '../src/presentation/result-reader.ts'
+import { analysisResultSummary } from '../src/presentation/result-summary.ts'
 import { MarivoPresentationFileService } from '../src/presentation/rpc.ts'
+import { readPythonResultOutput } from '../src/python-result-references.ts'
 
 const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-result-references-')))
 let manager: MarivoWorkspaceEnvironmentManager | undefined
@@ -130,6 +134,33 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
     { workspaceId: 'workspace', reportId: 'report', buildId: 'build' },
     signal,
   )
+  // Exercise the real Python launcher/worker handoff with the same fixed results as the report.
+  const resultVariables = { frame: 'frame', data: 'data' }
+  const handoff = await runner.runChecked({
+    program: PYTHON_LAUNCHER,
+    stdin: JSON.stringify({
+      worker: PYTHON_WORKER,
+      identity: runner.binding,
+      project_root: workspace,
+      grants: {},
+      values: {},
+      projection_root: fileURLToPath(new URL('../python/presentation', import.meta.url)),
+      result_variables: resultVariables,
+      code: `import json\nframe = json.loads(${JSON.stringify(JSON.stringify(refs.frame))})\ndata = json.loads(${JSON.stringify(JSON.stringify(refs.dataframe))})`,
+    }),
+    signal,
+  })
+  assert.equal(handoff.exitCode, 0, handoff.stderr.toString())
+  const exported = readPythonResultOutput(handoff.stderr.toString(), resultVariables)
+  assert.deepEqual(exported.resultRefs, { frame: refs.frame, data: refs.dataframe })
+  const reportMetadata = analysisResultSummary(document.resources)
+  assert.equal(reportMetadata.status, 'captured')
+  for (const name of ['frame', 'data']) {
+    const metadata = exported.resultMetadata?.[name]
+    assert.equal(metadata?.status, 'captured', `${name} metadata: ${JSON.stringify(metadata)}`)
+    assert.deepEqual(metadata.viewCandidates, reportMetadata.resources[name]?.viewCandidates)
+    assert.deepEqual(metadata.coordinateColumns, reportMetadata.resources[name]?.coordinateColumns)
+  }
   await publishPresentation(workspace, document, null, async () => {}, signal, {
     kind: 'agent',
     sessionId: 'session',

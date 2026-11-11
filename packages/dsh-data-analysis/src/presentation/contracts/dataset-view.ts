@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { FrameView, FrameViewFailure } from './frame-view.ts'
 import type { DatasetSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
+import { availableNames, numericViewType } from './view-fields.ts'
 
 const name = z.string().min(1).max(256)
 export const datasetViewSchema = z.union([
@@ -37,10 +38,15 @@ export type ResolvedDatasetView =
     }
   | { chart: 'heatmap'; x: string; y: string; value: string }
 export type DatasetViewResolution = { ok: true; view: ResolvedDatasetView } | FrameViewFailure
-const fail = (code: FrameViewFailure['code'], path: string): FrameViewFailure => ({
+const fail = (
+  code: FrameViewFailure['code'],
+  path: string,
+  candidates?: string[],
+): FrameViewFailure => ({
   ok: false,
   code,
   path,
+  ...(candidates?.length ? { candidates: candidates.slice(0, 8) } : {}),
 })
 
 /** Column mappings only. No aggregation, analysis classification or inferred periods. */
@@ -65,12 +71,13 @@ export function resolveDatasetView(
     const names = view.columns ?? ids
     for (const [i, name] of names.entries())
       if (!ids.includes(name) || names.indexOf(name) !== i)
-        return fail('view-name-unknown', `/view/columns/${i}`)
+        return fail('view-name-unknown', `/view/columns/${i}`, availableNames(ids, names, i))
     return ok({ chart: 'table', columns: names })
   }
   if (view.chart === 'metric') {
     const value = view.encoding?.value ?? (ids.length === 1 ? ids[0] : undefined)
-    if (!value || !ids.includes(value)) return fail('view-name-unknown', '/view/encoding/value')
+    if (!value || !ids.includes(value))
+      return fail('view-name-unknown', '/view/encoding/value', ids)
     return single
       ? ok({ chart: 'metric', values: [value] })
       : fail('view-metric-requires-complete-single-row', '/view')
@@ -83,15 +90,15 @@ export function resolveDatasetView(
   const numeric = (name: string) => {
     const index = ids.indexOf(name)
     return (
-      ['float64', 'int64', 'decimal'].includes(columns[index]?.type ?? '') &&
+      numericViewType(columns[index]?.type) &&
       rows.every((row) => row[index] === null || Number.isFinite(Number(row[index])))
     )
   }
-  const check = (name: string, path: string, number = false) =>
+  const check = (name: string, path: string, candidates: () => string[], number = false) =>
     !ids.includes(name)
-      ? fail('view-name-unknown', path)
+      ? fail('view-name-unknown', path, candidates())
       : number && !numeric(name)
-        ? fail('view-dtype-not-drawable', path)
+        ? fail('view-dtype-not-drawable', path, candidates())
         : undefined
   // Keys use original typed cells, never formatted labels or floating plot coordinates.
   const unique = (names: string[]) => {
@@ -99,16 +106,29 @@ export function resolveDatasetView(
     const keys = rows.map((row) => JSON.stringify(indices.map((i) => row[i])))
     return new Set(keys).size === rows.length
   }
+  const cardinality = (name: string) =>
+    new Set(rows.map((row) => JSON.stringify(row[ids.indexOf(name)]))).size
+  const seriesNames = (axis: string) =>
+    ids.filter((id) => id !== axis && unique([axis, id]) && cardinality(id) <= 8)
   if (view.chart === 'heatmap') {
     const e = view.encoding
     if (!e) return fail('view-encoding-required', '/view/encoding')
-    for (const key of ['x', 'y', 'value'] as const) {
-      const error = check(e[key], `/view/encoding/${key}`, key === 'value')
-      if (error) return error
-    }
-    if (e.x === e.y || !unique([e.x, e.y])) return fail('view-target-ambiguous', '/view/encoding')
-    const cardinality = (name: string) =>
-      new Set(rows.map((row) => JSON.stringify(row[ids.indexOf(name)]))).size
+    const heatmapAxes = (other: string) =>
+      ids.includes(other)
+        ? ids.filter(
+            (id) =>
+              id !== other &&
+              unique([id, other]) &&
+              cardinality(id) * cardinality(other) <= PRESENTATION_BUDGETS.cells,
+          )
+        : ids
+    const error =
+      check(e.x, '/view/encoding/x', () => heatmapAxes(e.y)) ??
+      check(e.y, '/view/encoding/y', () => heatmapAxes(e.x)) ??
+      check(e.value, '/view/encoding/value', () => ids.filter(numeric), true)
+    if (error) return error
+    if (e.x === e.y) return fail('view-target-ambiguous', '/view/encoding/y', heatmapAxes(e.x))
+    if (!unique([e.x, e.y])) return fail('view-target-ambiguous', '/view/encoding')
     if (cardinality(e.x) * cardinality(e.y) > PRESENTATION_BUDGETS.cells)
       return fail('view-budget', '/view/encoding')
     return ok({ chart: 'heatmap', ...e })
@@ -116,22 +136,29 @@ export function resolveDatasetView(
   if (view.chart === 'line' || view.chart === 'area' || view.chart === 'bar') {
     const e = view.encoding
     if (!e?.axis || !e.values?.length) return fail('view-encoding-required', '/view/encoding')
-    const axisError = check(e.axis, '/view/encoding/axis')
+    const axis = e.axis
+    const selected = e.values
+    const axisError = check(axis, '/view/encoding/axis', () => {
+      const series = e.series
+      if (!series) return ids.filter((id) => unique([id]))
+      if (!ids.includes(series)) return ids
+      return ids.filter((id) => id !== series && unique([id, series]))
+    })
     if (axisError) return axisError
     if (e.series) {
-      const error = check(e.series, '/view/encoding/series')
+      const error = check(e.series, '/view/encoding/series', () => seriesNames(axis))
       if (error) return error
-      if (new Set(rows.map((row) => JSON.stringify(row[ids.indexOf(e.series!)]))).size > 8)
-        return fail('view-budget', '/view/encoding/series')
+      if (cardinality(e.series) > 8)
+        return fail('view-budget', '/view/encoding/series', seriesNames(axis))
     }
-    for (const [i, name] of e.values.entries()) {
-      const error = check(name, `/view/encoding/values/${i}`, true)
+    for (const [i, name] of selected.entries()) {
+      const alternatives = () => availableNames(ids.filter(numeric), selected, i)
+      const path = `/view/encoding/values/${i}`
+      if (selected.indexOf(name) !== i) return fail('view-target-ambiguous', path, alternatives())
+      const error = check(name, path, alternatives, true)
       if (error) return error
     }
-    if (
-      new Set(e.values).size !== e.values.length ||
-      !unique([e.axis, ...(e.series ? [e.series] : [])])
-    )
+    if (!unique([e.axis, ...(e.series ? [e.series] : [])]))
       return fail('view-target-ambiguous', '/view/encoding')
     return ok({
       chart: view.chart,

@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { analysisResourceDeclaration } from './presentation/contracts/resource-declaration.ts'
 import { type ResultReference, resultReference } from './presentation/contracts/result-reference.ts'
+import {
+  numericViewType,
+  viewAxis,
+  viewCandidates,
+  viewFieldMetadata,
+  viewNames,
+} from './presentation/contracts/view-fields.ts'
 import type { PythonCodeRef } from './python-execution.ts'
 
 export const PYTHON_RESULT_HEADER = '__DSH_MARIVO_RESULTS_V1__:'
@@ -19,26 +26,52 @@ export const pythonResultVariables = z
       .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
   )
   .refine((value) => Object.keys(value).length > 0 && Object.keys(value).length <= 16)
-const metadataName = z.string().min(1).max(256)
+const metadataFacts = z.strictObject({
+  status: z.literal('captured'),
+  kind: z.enum(['frame', 'dataset']),
+  columns: z.array(z.string().min(1).max(256)).max(64),
+  values: viewNames,
+  axes: z.array(viewAxis).max(64),
+  coverage: z.strictObject({
+    totalRows: z.number().int().nonnegative().nullable(),
+    business: z.literal('unknown'),
+  }),
+})
+const unavailableMetadata = z.strictObject({
+  status: z.literal('unavailable'),
+  reason: z.enum(['budget', 'read-failed', 'identity-mismatch']),
+})
 const resultMetadata = z.discriminatedUnion('status', [
-  z.strictObject({
-    status: z.literal('captured'),
-    kind: z.enum(['frame', 'dataset']),
-    columns: z.array(metadataName).max(64),
-    values: z.array(metadataName).max(64),
-    axes: z
-      .array(z.strictObject({ token: metadataName, name: metadataName, role: metadataName }))
-      .max(64),
-    coverage: z.strictObject({
-      totalRows: z.number().int().nonnegative().nullable(),
-      business: z.literal('unknown'),
-    }),
-  }),
-  z.strictObject({
-    status: z.literal('unavailable'),
-    reason: z.enum(['budget', 'read-failed', 'identity-mismatch']),
-  }),
+  metadataFacts.extend(viewFieldMetadata),
+  unavailableMetadata,
 ])
+const wireResultMetadata = z.discriminatedUnion('status', [
+  metadataFacts.extend({
+    valueTypes: z.record(z.string(), z.string()),
+    coordinateColumns: viewFieldMetadata.coordinateColumns,
+  }),
+  unavailableMetadata,
+])
+
+function describeMetadata(
+  value: z.infer<typeof wireResultMetadata>,
+): z.infer<typeof resultMetadata> {
+  if (value.status === 'unavailable') return value
+  const { valueTypes, ...facts } = value
+  const values = facts.kind === 'frame' ? facts.values : facts.columns
+  const summary = {
+    ...facts,
+    viewCandidates: viewCandidates(
+      facts.columns,
+      facts.kind === 'frame' ? facts.axes : undefined,
+      values,
+      values.filter((name) => Object.hasOwn(valueTypes, name) && numericViewType(valueTypes[name])),
+    ),
+  }
+  return Buffer.byteLength(JSON.stringify(summary)) > 4096
+    ? { status: 'unavailable', reason: 'budget' }
+    : summary
+}
 const pythonResourceDeclaration = analysisResourceDeclaration.transform((resource, context) => {
   if (resource.kind === 'analysis-frame' || resource.kind === 'dataframe') return resource
   context.addIssue({
@@ -200,7 +233,7 @@ export function readPythonResultOutput(
           `${JSON.stringify(name)} (variable ${JSON.stringify(variables[name])}): ${detail}`,
         )
     }
-    const metadata = z.record(resultName, resultMetadata).safeParse(output.metadata)
+    const metadata = z.record(resultName, wireResultMetadata).safeParse(output.metadata)
     const validMetadata =
       metadata.success &&
       Object.keys(metadata.data).sort().join(',') ===
@@ -221,7 +254,7 @@ export function readPythonResultOutput(
                       name,
                       containsSecret(value, secrets)
                         ? { status: 'unavailable' as const, reason: 'read-failed' as const }
-                        : value,
+                        : describeMetadata(value),
                     ]),
                 )
               : Object.fromEntries(

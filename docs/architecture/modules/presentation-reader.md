@@ -72,8 +72,9 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   Dataset 的时间坐标省略小数秒末尾的零。图表摘要仍可由辅助技术读取，数据表与数据引用保留原始坐标。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
-  显式 `view` 只引用快照中的公开值名和轴名，不满足时 `marivo_report_write` 返回结构化错误，不保存。
-  单行多组比较（单一比较、最多 8 个指标）默认按指标渲染本期/基期/Δ/Δ% 的头部数字块，更长或含多个比较时回退为指标 × 本期/基期/Δ/Δ% 转置表；显式 `table` 始终是转置表。
+  显式图表使用快照中的公开轴名和值名。table 的 `columns` 和显式 metric 的 `encoding.value` 使用保存列 ID。
+  精确名称及配置失败回执见[展示投影](presentation-projection.md#首次结果元数据)。
+  单行多组比较（单一比较、最多 8 个指标）默认按指标渲染本期/基期/Δ/Δ% 的头部数字块，更长或含多个比较时回退为指标 × 本期/基期/Δ/Δ% 转置表；带 `columns` 的显式 table 显示选定列。省略 `columns` 时，仅对存在比较目标的完整单行比较使用转置表。
   折线与面积图要求时间轴；柱图可用时间轴或普通类别轴，类别轴按保存行首次出现的顺序等距排布，不推断连续性。
   热力图以两个轴的完整原始键标识单元格；多个已保存行映射到同一单元格时，自动视图回退到表格，显式热力图返回目标不明确错误，不聚合或覆盖行。
 - Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、上下文摘要、
