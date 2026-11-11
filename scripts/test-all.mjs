@@ -19,7 +19,10 @@ const suites = [
 ]
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 const declared = Object.keys(manifest.scripts)
-  .filter((name) => name.startsWith('test:') && name !== 'test:validation-guards')
+  .filter(
+    (name) =>
+      name.startsWith('test:') && !['test:validation-guards', 'test:release'].includes(name),
+  )
   .map((name) => name.slice('test:'.length))
   .sort()
 if (JSON.stringify([...suites].sort()) !== JSON.stringify(declared)) {
@@ -39,6 +42,12 @@ function run(command, args, env = process.env) {
 
 // build-client also prepares the generated source consumed by the other suites.
 run(process.execPath, ['packages/dsh-data-analysis/scripts/build-client.mjs'])
-const env = { ...process.env, DSH_DATA_ANALYSIS_TEST_PREPARED: '1' }
+const tier = process.argv[2] ?? 'daily'
+if (tier !== 'daily' && tier !== 'release') throw new Error(`Unknown test tier: ${tier}`)
+const env = {
+  ...process.env,
+  DSH_DATA_ANALYSIS_TEST_PREPARED: '1',
+  DSH_DATA_ANALYSIS_TEST_TIER: tier,
+}
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 for (const suite of suites) run(npm, ['run', `test:${suite}`], env)

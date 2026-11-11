@@ -57,11 +57,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Run release checks
-        run: |
-          npm run check
-          npm run test:validation-guards
-          npm run build
-          npm run verify:plugin-package
+        run: npm run ci
 
       - name: Build npm tarball
         run: node scripts/pack-plugin.mjs

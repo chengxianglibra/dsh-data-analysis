@@ -221,7 +221,7 @@ test('a cancelled queued preparation releases no lock ahead of the active initia
 
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
 test('real bound Runtime prepares an empty Workspace using its public init and doctor', {
-  skip: !pythonExecutable,
+  skip: !pythonExecutable && 'Set DSH_DATA_ANALYSIS_PYTHON to the exact supported Runtime',
 }, async (t) => {
   const f = await fixture(t)
   const environment = await bindMarivoEnvironment({ projectRoot: f.root, pythonExecutable })
@@ -236,7 +236,7 @@ test('real bound Runtime prepares an empty Workspace using its public init and d
 })
 
 test('real project preparation creates a child Workspace project without inheriting its parent', {
-  skip: !pythonExecutable,
+  skip: !pythonExecutable && 'Set DSH_DATA_ANALYSIS_PYTHON to the exact supported Runtime',
 }, async (t) => {
   const f = await fixture(t)
   const parent = '[project]\nname = "parent-project"\n'

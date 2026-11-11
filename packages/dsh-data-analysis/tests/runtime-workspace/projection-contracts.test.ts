@@ -17,7 +17,11 @@ function run(executable: string, args: string[]): string {
     timeout: 120_000,
   })
   if (result.error !== undefined) throw result.error
-  assert.equal(result.status, 0, result.stderr || result.stdout)
+  assert.equal(
+    result.status,
+    0,
+    `${executable} exited with status ${result.status} (signal: ${result.signal ?? 'none'})\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  )
   return result.stdout
 }
 

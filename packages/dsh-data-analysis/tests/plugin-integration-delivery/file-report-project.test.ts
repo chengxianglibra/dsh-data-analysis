@@ -167,7 +167,7 @@ for (const mutation of ['missing', 'invalid', 'overwritten', 'ancestor', 'runtim
 const realPython = process.env.DSH_DATA_ANALYSIS_PYTHON
 for (const initialized of [false, true])
   test(`selected real Runtime verifies file-report project postconditions (preinitialized=${initialized})`, {
-    skip: !realPython,
+    skip: !realPython && 'Set DSH_DATA_ANALYSIS_PYTHON to the exact supported Runtime',
   }, async (t) => {
     const f = await fixture(t, initialized)
     f.options.pythonExecutable = realPython!
