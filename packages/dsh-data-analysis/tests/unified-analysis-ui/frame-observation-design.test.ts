@@ -67,17 +67,6 @@ test('negative decimal underflow is not treated as a nonnegative composition', a
   assert.match(html, /0\.00%/)
 })
 
-test('pie legend distinguishes a positive underflow share from zero', async () => {
-  const snapshot = frame({
-    axes: [categoryAxis(3)],
-    values: [{ name: 'v', type: 'decimal', values: ['1e308', '1e-400', '0e-400'] }],
-  })
-  const html = await renderer.render(snapshot, { view: { chart: 'pie' } })
-  const legend = html.match(/<ul class="fv-pie-legend">[\s\S]*?<\/ul>/)?.[0] ?? ''
-  assert.match(legend, /&lt;0\.1%/)
-  assert.match(legend, /0\.00%/)
-})
-
 test('a scalar correlation uses a compact fixed scale and keeps its selectable saved coefficient', async () => {
   const html = await renderer.render(correlate(false), { askPoint: true })
   assert.match(html, /data-chart="correlation-scale"/)

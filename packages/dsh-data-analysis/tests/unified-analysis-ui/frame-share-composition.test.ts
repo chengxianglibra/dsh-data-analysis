@@ -19,28 +19,19 @@ function completeShares(values = [0.2, 0.3, 0.5]): FrameSnapshotV2 {
   return snapshot
 }
 
-test('complete saved category shares expose their saved numerator and selectable fractions', async () => {
-  const html = await renderer.render(completeShares(), { askPoint: true })
+test('complete saved category shares, including zero, expose their numerator and selectable fractions', async () => {
+  const html = await renderer.render(completeShares([0, 0.25, 0.75]), { askPoint: true })
   assert.match(html, /data-chart="share-composition"/)
   assert.equal((html.match(/class="fv-share-row"/g) ?? []).length, 3)
-  assert.match(html, /20\.00%/)
-  assert.match(html, /30\.00%/)
-  assert.match(html, /50\.00%/)
+  assert.match(html, /0\.00%/)
+  assert.match(html, /25\.00%/)
+  assert.match(html, /75\.00%/)
   assert.match(html, /data-frame-point="0:revenue_share"/)
   assert.match(html, /data-frame-point="0:revenue"/)
   assert.match(html, /data-frame-point="2:revenue_share"/)
   const header = html.match(/<li class="fv-share-row fv-share-header">[\s\S]*?<\/li>/)?.[0] ?? ''
   assert.match(header, />revenue</)
   assert.match(header, />revenue_share</)
-})
-
-test('a zero share retains its member and remains independently selectable', async () => {
-  const html = await renderer.render(completeShares([0, 0.25, 0.75]), { askPoint: true })
-  assert.match(html, /data-chart="share-composition"/)
-  assert.equal((html.match(/class="fv-share-row"/g) ?? []).length, 3)
-  assert.match(html, /data-frame-point="0:revenue_share"/)
-  assert.match(html, /data-frame-point="0:revenue"/)
-  assert.match(html, /0\.00%/)
 })
 
 test('partial, restricted, missing or non-partition shares do not imply a whole', async () => {

@@ -196,11 +196,15 @@ npm run test:plugin-integration-delivery
 npm run test:presentation-surface
 npm run test:presentation-projection
 npm run test:presentation-integration
+npm run test:validation-guards
 npm run build
 npm run verify:plugin-package
 npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
+
+`test:validation-guards` 验证文件分析验收脚本自身的 Git、PTC 与 CSV 护栏，独立于日常 `npm test`；
+CI、发布检查与 `pack:plugin` 仍运行此套件。
 
 plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.5 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch 与 Host Web 验证交付。

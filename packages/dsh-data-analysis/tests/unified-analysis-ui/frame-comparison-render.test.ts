@@ -144,6 +144,7 @@ test('a single-row multi-group comparison is one headline block per metric', asy
   const block =
     /<section[^>]*data-comparison-group="sales"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
   assert.equal(count(block, /<dt(?:\s[^>]*)?>/), 4)
+  assert.match(block, /<h4[^>]*>sales<\/h4>/)
   for (const label of ['Current', 'Baseline', 'Change', 'Change rate'])
     assert.ok(block.includes(`>${label}</dt>`), label)
   // Each endpoint label precedes its saved value; the baseline and changes follow the current value.
@@ -158,6 +159,25 @@ test('a single-row multi-group comparison is one headline block per metric', asy
   assert.match(html, /data-icon="data"/)
   assert.doesNotMatch(html, /<div data-slot="card-title"[^>]*>Current ⇄ Baseline<\/div>/)
   assert.doesNotMatch(html, /role="heading" aria-level="3"[^>]*><\/div>/)
+})
+
+test('comparison KPI pairs the explicit current period with its metric and keeps changes compact', async () => {
+  const snapshot = comparedSinglePeriodMultiGroup()
+  const facts = snapshot.frame.sections.interpretation
+  if (facts.status !== 'captured') throw new Error('comparison facts required')
+  facts.comparisons[0]!.alias = 'prior'
+  const html = await r().render(snapshot, {
+    display: { comparisonLabels: [{ alias: 'prior', current: 'June', baseline: 'May' }] },
+  })
+  const card = /<section[^>]*data-comparison-group="sales"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
+  assert.match(card, /<h4>sales · June<\/h4>/)
+  assert.match(card, /<dt class="fv-sr-only">June<\/dt>/)
+  assert.match(card, /<dt>May<\/dt>/)
+  assert.match(card, /<dt class="fv-sr-only">Change<\/dt>/)
+  assert.match(card, /<span aria-hidden="true"> · <\/span>/)
+  assert.match(card, /<dt class="fv-sr-only">Change rate<\/dt>/)
+  assert.ok(card.indexOf('>May</dt>') < card.indexOf('>Change</dt>'))
+  assert.ok(card.indexOf('>Change</dt>') < card.indexOf('>Change rate</dt>'))
 })
 
 test('interval comparison endpoints name inclusive civil months', async () => {

@@ -59,6 +59,7 @@ jobs:
       - name: Run release checks
         run: |
           npm run check
+          npm run test:validation-guards
           npm run build
           npm run verify:plugin-package
 

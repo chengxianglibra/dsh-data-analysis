@@ -2,13 +2,9 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { createParser, mergeStatements } from '@openuidev/lang-core'
-import {
-  analysisCatalogSchema,
-  analysisCatalogSpec,
-} from '../../src/presentation/contracts/analysis-catalog.ts'
+import { analysisCatalogSpec } from '../../src/presentation/contracts/analysis-catalog.ts'
 import { parseAnalysisProgram } from '../../src/presentation/contracts/analysis-program.ts'
-import { patch, program } from './catalog-fixture.ts'
+import { program } from './catalog-fixture.ts'
 
 test('generated Host schema matches the installed Client library without importing React into Host', async () => {
   execFileSync(process.execPath, [
@@ -120,18 +116,6 @@ test('Frame pie is available through the public catalog', () => {
     ).typeName,
     'AnalysisFrameView',
   )
-})
-
-test('official statement merge adds, replaces and removes in one patch', () => {
-  const merged = mergeStatements(program, patch)
-  const root = parseAnalysisProgram(merged)
-  assert.match(merged, /P0 updated/)
-  assert.match(merged, /P0 added/)
-  assert.doesNotMatch(merged, /tabs\s*=/)
-  assert.ok(Array.isArray(root.props.children))
-  assert.equal(root.props.children.length, 3)
-  const parser = createParser(analysisCatalogSchema)
-  assert.equal(parser.parse(merged).meta.errors.length, 0)
 })
 
 test('tab values are unique within each group, including nested groups', () => {

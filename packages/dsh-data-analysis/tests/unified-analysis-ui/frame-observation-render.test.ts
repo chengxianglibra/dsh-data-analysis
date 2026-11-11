@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readdir, readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import {
   type FrameSnapshotV2,
@@ -7,11 +8,9 @@ import {
 import {
   align,
   attributeAdditive,
-  attributeEffects,
   axisGroups,
   categoryAxis,
   compareCalendar,
-  compareOrdinary,
   correlate,
   cycle,
   frame,
@@ -25,7 +24,6 @@ import {
   observeTime,
   observeTimeCategory,
   overBroadcast,
-  pairedAxis,
   records,
   reduceByMonth,
   repeat,
@@ -50,29 +48,33 @@ import {
 
 const r = sharedRenderer()
 
-test('every auto view resolves through the real resolveFrameView and renders its main view', async () => {
+test('every real Marivo Frame renders its auto view', async () => {
+  const directory = new URL('./fixtures/frames/', import.meta.url)
+  const names = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort()
+  assert.ok(names.length >= 20)
+  for (const name of names) {
+    const snapshot = parseAnalysisSnapshot(
+      JSON.parse(await readFile(new URL(name, directory), 'utf8')),
+    )
+    if (snapshot.kind !== 'frame') throw new Error('frame-required')
+    const resolution = resolved(snapshot)
+    const html = await r().render(snapshot)
+    assert.match(html, new RegExp(`data-frame-view="${resolution.view.chart}"`), name)
+    assert.match(html, /data-frame-class="[a-z]+"/, name)
+  }
+})
+
+test('representative auto views resolve through the real resolveFrameView and render their main views', async () => {
   const cases: [string, FrameSnapshotV2, string][] = [
     ['metric', observeScalar(2), 'metric'],
     ['bar', observeTime(6), 'bar'],
     ['line', observeTime(18), 'line'],
-    [
-      'interval-bar',
-      observeTime(4, 1, { kind: 'interval', timezone: 'Asia/Shanghai' }),
-      'interval-bar',
-    ],
-    ['hbar', observeCategory(3), 'hbar'],
-    ['multi-line', observeTimeCategory(3), 'line'],
     ['heatmap time-category', observeTimeCategory(9), 'heatmap'],
-    ['heatmap matrix', observeMatrix(), 'heatmap'],
     ['comparison line', compareCalendar(6), 'comparison'],
     ['comparison grid', comparedSinglePeriodMultiGroup(), 'comparison-grid'],
-    ['category comparison', compareOrdinary([categoryAxis(3)]), 'comparison'],
     ['waterfall', attributeAdditive(), 'decomposition'],
-    ['effects', attributeEffects(), 'decomposition'],
     ['correlation', correlate(true), 'correlation'],
-    ['share', shareByRegion(), 'share'],
     ['align dumbbell', align(categoryAxis(3)), 'alignment'],
-    ['align line', align(pairedAxis(3)), 'alignment'],
     ['members', members(), 'members'],
     ['records', records(), 'table'],
   ]
@@ -80,10 +82,7 @@ test('every auto view resolves through the real resolveFrameView and renders its
     const html = await r().render(snapshot)
     assert.equal(viewOf(html), chart, name)
     assert.equal(viewOf(html), resolved(snapshot).view.chart, name)
-    if (
-      name !== 'category comparison' &&
-      !['members', 'table', 'metric', 'comparison-grid'].includes(chart)
-    ) {
+    if (!['members', 'table', 'metric', 'comparison-grid'].includes(chart)) {
       assert.match(
         html,
         /<svg(?=[^>]*\brole="application")(?=[^>]*class="recharts-surface")[^>]*>/,

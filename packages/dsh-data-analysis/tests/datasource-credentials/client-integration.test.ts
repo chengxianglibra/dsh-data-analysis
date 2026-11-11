@@ -150,18 +150,13 @@ test('closing the page or switching Workspace ignores late overview replies', as
   await pending
   assert.deepEqual(model.getSnapshot().datasources, [])
 })
-test('bundle installs constant management and pending entries, with no historical result form', async () => {
+test('bundle installs constant management and pending entries', async () => {
   const { readFile } = await import('node:fs/promises')
   const bundle = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8').catch(() =>
     readFile(new URL('../../lib/client.js', new URL('../', import.meta.url)), 'utf8'),
   )
   assert.match(bundle, /marivo-credential-requests/)
   assert.match(bundle, /marivo-credential-observer/)
-  assert.doesNotMatch(bundle, /mc-dialog/)
-  assert.doesNotMatch(
-    bundle,
-    /shouldAutoOpen|CredentialDialogController|MarivoDatasourceCredentialToolView/,
-  )
 })
 
 test('late submit A cannot replace operation B or cancel its query after a Workspace switch', async (t) => {

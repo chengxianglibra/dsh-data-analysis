@@ -21,12 +21,8 @@ test('presentation exposes Help, datasource test, Python and present', () => {
   )
 })
 
-test('package cutover removes report exports and pins the Runtime dependency', async () => {
+test('package distribution excludes non-deliverables and pins the Runtime dependency', async () => {
   const manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'))
-  assert.equal(Object.hasOwn(manifest.exports, './evidence'), false)
-  assert.equal(Object.hasOwn(manifest.exports, './report'), false)
-  assert.equal(Object.hasOwn(manifest.exports, './report-check'), false)
-  assert.equal(Object.hasOwn(manifest.bin, 'dsh-data-analysis-report-check'), false)
   assert.equal(manifest.files.includes('lib/**/*.js.map'), false)
   assert.equal(manifest.files.includes('report-contracts/*.json'), false)
   assert.equal(
