@@ -2,8 +2,8 @@
 
 ## 使用方式
 
-在 DSH 会话标题旁点击“语义层”，打开原生右侧 Tab，仅展示该会话所属 Workspace，不提供 Workspace 筛选项。
-切换会话保留各 Tab 的状态，Workspace 绑定撤销后使旧页失效。入口随 Harness 的会话标题显示，无会话或空会话时不显示，侧栏底部不保留入口。
+在 DSH 会话标题旁或已选定 Workspace 的空白新会话中点击“语义层”，打开原生右侧 Tab，仅展示所属 Workspace。
+切换会话保留各 Tab 的状态，Workspace 绑定撤销后使旧页失效。
 浏览器不要求 live Agent，不自动创建会话。标题右侧显示最近更新时间，页面不展示项目路径和 Catalog fingerprint。
 
 报告来源中的语义引用打开独立资源 Tab，按报告所属 Workspace 和完整 `kind + path` 定位；页内对象、定义链接与关系图跳转使用当前 Catalog 快照并保留浏览历史。语义层详情不提供另开标签页按钮。
@@ -48,14 +48,16 @@ DSH 的 `conversation.session.header.actions`、`sidebarRightTabs` 与正文 slo
 
 Catalog 投影带有插件自有的格式版本；界面与服务格式不一致时明确提示同步加载插件，不猜测字符串中的 JSON 类型。
 
-每次加载在一次 checked Python 调用内执行 `ms.load(workspace_dir=...)`，使用空查询 `catalog.search(limit=100, cursor=...)` 完整分页、
+首次绑定先校验共享 Runtime 身份和项目配置。之后用已绑定的 Runtime 在一次 checked Python 调用内执行
+`ms.load(workspace_dir=...)`，使用空查询 `catalog.search(limit=100, cursor=...)` 完整分页、
 `entry.to_dict()` 与 `entry.related(...)`。返回 Workspace identity、Environment fingerprint、Catalog definition
 fingerprint、加载时间、对象摘要、白名单详情字段和关联引用。全部视图使用同一快照。
 
 不调用 `observe`、preview、readiness、连接测试、凭证解析或分析 Session 创建。禁用本次读取的 Marivo telemetry
 及 Python 字节码写入；不额外读取源码。模型本身仍由 Marivo 按其 Python 加载契约处理。
 
-单次 Catalog 调用限时 30 秒，stdout 上限 32 MiB、stderr 上限 8 KiB。超过上限明确失败，不发布残缺目录。
+绑定超时、Runtime 校验失败、项目配置无效和 Catalog 读取超时有独立提示。
+单次 Catalog 调用限时 30 秒，stdout 上限 32 MiB、stderr 上限 8 KiB。超过上限明确失败。
 模型加载期间的普通打印直接丢弃，不累计到无界内存缓冲。Marivo 返回的语义模型诊断保留错误类型、正文、引用和修复提示，
 不再统一包装成同一条失败文案；未知 Python 异常和 traceback 仍不直接回传，使用固定兜底诊断。
 

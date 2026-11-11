@@ -1,4 +1,5 @@
 import { realpath } from 'node:fs/promises'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import { boundedText, closed } from '../semantic-reference/contracts.ts'
@@ -32,6 +33,12 @@ export class SemanticCatalogLoadError extends Error {
   }
 }
 
+class SemanticWorkspaceBindingError extends Error {
+  constructor(cause: unknown) {
+    super('Could not bind the semantic browser Workspace', { cause })
+  }
+}
+
 /** Workspace-addressed read service; intentionally has no Agent or credential dependency. */
 export class SemanticBrowserService {
   readonly #host: BrowserHost
@@ -57,9 +64,15 @@ export class SemanticBrowserService {
     const workspace = this.#host.getWorkspace(id)
     if (!workspace) throw new Error('workspace-unavailable')
     const root = this.#host.projectRoot(workspace)
-    const runner = await abortable(this.#tasks.track(this.#host.resolve(root)), signal)
+    const runner = await abortable(this.#tasks.track(this.#host.resolve(root)), signal).catch(
+      (cause: unknown) => {
+        signal.throwIfAborted()
+        throw new SemanticWorkspaceBindingError(cause)
+      },
+    )
     this.#assertOwner(id, workspace.path, root)
-    if (runner.status !== 'ready') throw new Error('environment-failed')
+    if (runner.status !== 'ready')
+      throw new MarivoEnvironmentError('binding-failed', 'Workspace Runtime binding has failed')
     const result = await runner.runChecked({
       program: BROWSER_CATALOG_PROGRAM,
       args: [runner.binding.projectRoot],
@@ -104,9 +117,26 @@ export class SemanticBrowserService {
 
 /** Preserve Marivo semantic diagnostics; keep unknown Python failures behind a fixed fallback. */
 export function browserFailure(error: unknown): string {
-  const code = error instanceof Error && 'code' in error ? error.code : undefined
+  if (error instanceof SemanticWorkspaceBindingError) {
+    const cause = error.cause
+    if (cause instanceof MarivoEnvironmentError) {
+      if (cause.code === 'project-manifest-invalid')
+        return 'marivo.semantic.workspace-manifest-invalid'
+      if (cause.code === 'project-root-invalid')
+        return 'marivo.semantic.workspace-is-unavailable-select-it-again'
+      if (cause.code === 'subprocess-timeout') return 'marivo.semantic.workspace-binding-timed-out'
+    }
+    return 'marivo.semantic.workspace-runtime-check-failed'
+  }
+  const code = error instanceof MarivoEnvironmentError ? error.code : undefined
   if (error instanceof SemanticCatalogLoadError) return `语义层模型加载失败：\n${error.diagnostic}`
-  if (code === 'subprocess-timeout') return '语义层加载超时，请检查模型后重试。'
+  if (
+    code === 'binding-identity-mismatch' ||
+    code === 'binding-failed' ||
+    code === 'subprocess-start-failed'
+  )
+    return 'marivo.semantic.workspace-runtime-check-failed'
+  if (code === 'subprocess-timeout') return 'marivo.semantic.catalog-read-timed-out'
   if (
     code === 'subprocess-output-limit' ||
     (error instanceof Error && error.message === 'catalog-too-large')
@@ -117,5 +147,5 @@ export function browserFailure(error: unknown): string {
     ['workspace-unavailable', 'workspace-changed'].includes(error.message)
   )
     return 'Workspace 已不可用或绑定发生变化，请重新选择。'
-  return '无法加载语义层，请检查项目模型与 Marivo Runtime 后重试。'
+  return 'marivo.semantic.catalog-read-failed'
 }

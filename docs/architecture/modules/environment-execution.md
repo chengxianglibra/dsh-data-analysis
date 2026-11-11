@@ -19,20 +19,23 @@
 
 ## Binding 建立流程
 
-`bindMarivoEnvironment()` 执行以下步骤：
+`MarivoWorkspaceEnvironmentManager` 为插件通用 Workspace 绑定执行以下步骤：
 
 1. 将 project root 解析为已存在目录的 canonical `realpath`。
-2. 选择 Python。显式值必须是绝对路径；未提供时才选择 Workspace 内的 `.venv/bin/python`（Windows
-   为 `.venv/Scripts/python.exe`）。共享 Runtime 模式始终显式传入其已验证 Python。
-3. 创建一次 `FixedSubprocessPolicy`，冻结 `cwd` 与环境快照。
-4. 直接执行 `python -m marivo doctor --project-root ... --format json`。
-5. 严格解析 JSON shape，并执行 disclosure admission。
-6. 从 project root、Python、Marivo version、package path 和 subprocess policy id 计算 SHA-256
-   fingerprint，构造只读 binding。
+2. 从已准入的共享 Runtime 取得绝对 Python 路径、Marivo version 与 package path。
+3. 用 canonical project root 创建 `FixedSubprocessPolicy`，冻结 `cwd` 与环境快照。使用
+   project root、Python、Marivo version、package path 和 subprocess policy id 计算 SHA-256 fingerprint。
+4. 在一次 checked 调用内复核 import identity，并用 Marivo 的 `load_project_config()` 校验根目录的
+   `marivo.toml`。缺少 manifest 时采用 Marivo 默认值，配置无效时拒绝绑定。
+5. 成功后按 canonical root 复用 binding。首次绑定失败可重试，已建立的 binding 发现身份漂移时失败关闭。
 
 模块不会从 `PATH`、父目录或系统 Python 做候选搜索，也不会在失败时切换安装。
 
-## Doctor admission
+## 独立绑定与显式项目准备
+
+没有已准入共享 Runtime 的独立 `bindMarivoEnvironment()` 使用 `doctor --format json` 建立身份。
+显式传入的解释器必须是绝对路径，未提供时使用 Workspace 内的 `.venv/bin/python`（Windows 为
+`.venv/Scripts/python.exe`）。显式项目准备也使用 doctor 验证根目录 manifest。
 
 doctor report 顶层 status 可以反映 Datasource 凭证、模型或其他项目诊断，因此不能直接等同于本插件
 是否可披露 Help。当前准入只要求：
@@ -128,7 +131,7 @@ packages/dsh-data-analysis/tests/environment-execution/environment-binding.test.
 packages/dsh-data-analysis/tests/environment-execution/bridge-adapters.test.ts
 ```
 
-测试应覆盖路径 canonicalization、doctor 非零状态、准入字段、identity 漂移、通用 runner argv、
+测试应覆盖路径 canonicalization、配置准入、独立绑定的 doctor 报告、identity 漂移、通用 runner argv、
 timeout/cancel、输出上限、进程树终止、环境冻结、overlay 脱敏，以及 Help/Datasource adapter 的参数与 parser 边界。
 Presentation 的公开读取、来源身份与数据预算由 `tests/presentation-projection/` 覆盖。
 

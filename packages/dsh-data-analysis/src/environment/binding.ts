@@ -31,13 +31,16 @@ const CHECKED_IDENTITY_PRELUDE = String.raw`
 import json as _dsh_json
 import os as _dsh_os
 import sys as _dsh_sys
-import marivo as _dsh_marivo
+try:
+    import marivo as _dsh_marivo
+    _dsh_actual = {
+        "python_executable": _dsh_os.path.abspath(_dsh_sys.executable),
+        "marivo_version": _dsh_marivo.__version__,
+        "package_path": _dsh_os.path.abspath(_dsh_marivo.__file__ or ""),
+    }
+except Exception:
+    raise SystemExit(78) from None
 
-_dsh_actual = {
-    "python_executable": _dsh_os.path.abspath(_dsh_sys.executable),
-    "marivo_version": _dsh_marivo.__version__,
-    "package_path": _dsh_os.path.abspath(_dsh_marivo.__file__ or ""),
-}
 _dsh_expected = {
     "python_executable": _dsh_os.path.abspath(_dsh_sys.argv[1]),
     "marivo_version": _dsh_sys.argv[2],
@@ -51,6 +54,26 @@ _dsh_sys.argv = [_dsh_sys.argv[0], *_dsh_sys.argv[4:]]
 
 const IMPORT_IDENTITY_PROGRAM = String.raw`
 print(_dsh_json.dumps(_dsh_actual, sort_keys=True))
+`.trim()
+
+const PROJECT_CONFIG_INVALID_EXIT = 79
+const PROJECT_ROOT_CHANGED_EXIT = 80
+const PROJECT_CONFIG_OK = 'workspace-config-valid'
+const PROJECT_CONFIG_PROGRAM = String.raw`
+from pathlib import Path
+from marivo.config import load_project_config
+
+try:
+    if Path.cwd() != Path(_dsh_sys.argv[1]):
+        raise SystemExit(${PROJECT_ROOT_CHANGED_EXIT})
+except OSError:
+    raise SystemExit(${PROJECT_ROOT_CHANGED_EXIT}) from None
+
+try:
+    load_project_config(Path(_dsh_sys.argv[1]))
+except (OSError, ValueError):
+    raise SystemExit(${PROJECT_CONFIG_INVALID_EXIT}) from None
+print("${PROJECT_CONFIG_OK}")
 `.trim()
 
 function redactSubprocessOutput(
@@ -309,12 +332,20 @@ export function createSharedMarivoRuntimeRunner(
   >,
   options: { environment?: NodeJS.ProcessEnv } = {},
 ): MarivoEnvironment {
-  const subprocessPolicy = new FixedSubprocessPolicy(runtime.runtimeRoot, options.environment)
+  return createRuntimeRunner(runtime.runtimeRoot, runtime, options.environment)
+}
+
+function createRuntimeRunner(
+  projectRoot: string,
+  identity: ImportIdentity,
+  environment?: NodeJS.ProcessEnv,
+): MarivoEnvironment {
+  const subprocessPolicy = new FixedSubprocessPolicy(projectRoot, environment)
   const partialBinding = {
-    projectRoot: runtime.runtimeRoot,
-    pythonExecutable: runtime.pythonExecutable,
-    marivoVersion: runtime.marivoVersion,
-    packagePath: runtime.packagePath,
+    projectRoot,
+    pythonExecutable: identity.pythonExecutable,
+    marivoVersion: identity.marivoVersion,
+    packagePath: identity.packagePath,
     subprocessPolicyId: subprocessPolicy.id,
   }
   return new MarivoEnvironment(
@@ -323,7 +354,45 @@ export function createSharedMarivoRuntimeRunner(
   )
 }
 
-/** Resolve, probe, and establish one Marivo Environment Binding. */
+/** Validate Workspace configuration with the already admitted Runtime. */
+export async function bindSharedMarivoWorkspace(
+  projectRoot: string,
+  runtime: ImportIdentity,
+): Promise<MarivoEnvironment> {
+  const pythonExecutable = await resolvePythonExecutable(projectRoot, runtime.pythonExecutable)
+  const runner = createRuntimeRunner(projectRoot, {
+    pythonExecutable,
+    marivoVersion: runtime.marivoVersion,
+    packagePath: normalizeAbsolute(runtime.packagePath),
+  })
+  const result = await runner.runChecked({
+    program: PROJECT_CONFIG_PROGRAM,
+    args: [projectRoot],
+    environmentOverlay: { MARIVO_TELEMETRY: 'off', PYTHONDONTWRITEBYTECODE: '1' },
+    limits: IDENTITY_LIMITS,
+  })
+  if (result.exitCode === PROJECT_ROOT_CHANGED_EXIT)
+    throw new MarivoEnvironmentError(
+      'project-root-invalid',
+      'Workspace root changed during Marivo binding',
+      { projectRoot },
+    )
+  if (result.exitCode === PROJECT_CONFIG_INVALID_EXIT)
+    throw new MarivoEnvironmentError(
+      'project-manifest-invalid',
+      'Workspace marivo.toml is invalid or unreadable',
+      { projectRoot },
+    )
+  if (result.exitCode !== 0 || result.stdout.toString('utf8').trim() !== PROJECT_CONFIG_OK)
+    throw new MarivoEnvironmentError(
+      'subprocess-failed',
+      'Could not validate the Workspace configuration with the shared Marivo Runtime',
+      { projectRoot, exitCode: result.exitCode },
+    )
+  return runner
+}
+
+/** Establish a standalone binding when no admitted shared Runtime is available. */
 export async function bindMarivoEnvironment(
   config: MarivoEnvironmentConfig,
   options: {

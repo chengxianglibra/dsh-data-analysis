@@ -86,6 +86,40 @@ test('only fixed error messages cross the browser boundary', () => {
   )
 })
 
+test('Workspace configuration, Runtime validation and Catalog timeouts have distinct notices', async (t) => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'semantic-binding-errors-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { runner } = fakeRunner()
+  const service = new SemanticBrowserService({
+    getWorkspace: (id) => ({ id, path: root }),
+    projectRoot: () => root,
+    resolve: async () => {
+      if (bindingFailure) throw bindingFailure
+      return {
+        ...runner,
+        binding: { ...runner.binding, projectRoot: root },
+        runChecked: async () => {
+          throw new MarivoEnvironmentError('subprocess-timeout', 'PRIVATE')
+        },
+      }
+    },
+  })
+  let bindingFailure: MarivoEnvironmentError | undefined
+  t.after(() => service.close())
+  for (const [code, notice] of [
+    ['project-manifest-invalid', 'workspace-manifest-invalid'],
+    ['binding-identity-mismatch', 'workspace-runtime-check-failed'],
+    ['subprocess-timeout', 'workspace-binding-timed-out'],
+    [undefined, 'catalog-read-timed-out'],
+  ] as const) {
+    bindingFailure = code ? new MarivoEnvironmentError(code, 'PRIVATE') : undefined
+    await assert.rejects(
+      service.read({ workspaceId: 'a' }, new AbortController().signal),
+      (error: unknown) => browserFailure(error) === `marivo.semantic.${notice}`,
+    )
+  }
+})
+
 test('Marivo semantic load diagnostics cross the browser boundary without generic wrapping', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'semantic-diagnostic-')),
     root = await realpath(dir)

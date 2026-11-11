@@ -100,9 +100,9 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 会使所有 Agent 指向同一 Workspace，因此只适合管理员有意固定项目的场景。
 
 首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
-`marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。缺少 manifest
-时，Marivo 0.6.4 doctor 的 `project.marivo_toml=info` 可通过 admission；显式存在但无效的 manifest 仍在其他
-写入前 fail closed。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
+`marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。首次绑定用
+已准入的共享 Runtime 同进程复核 import identity 并执行 `load_project_config()`。缺少 manifest 时使用 Marivo
+默认值，配置无效时拒绝绑定。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
 `marivo_python` 通过 `project: "none" | "required"` 明确项目意图，省略为 `none`。普通文件分析无需准备项目；Marivo 项目分析、持久化、非空 datasources 或 resultVariables 使用 required。插件不解析 Python 源码猜测项目需求。
@@ -116,7 +116,7 @@ required 在凭据准入前调用内部项目准备适配：固定 canonical Wor
 | 范围 | 共享内容 | 隔离内容 |
 | --- | --- | --- |
 | Web profile | Python、Marivo package、内置 Skill 副本 | — |
-| Workspace | 共享 Runtime 引用 | project root、manifest、models、state、doctor admission、binding fingerprint |
+| Workspace | 共享 Runtime 引用 | project root、manifest、models、state、配置校验、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 
 manager 只在进程内缓存 Promise；binding rejection 会删除失败 Promise，后续 resolve 可以重新尝试相同配置与身份。成功 binding 不会被失败重试静默替换 Runtime；同进程 import identity 漂移仍使该 Environment 永久失败。
@@ -127,7 +127,7 @@ manager 只在进程内缓存 Promise；binding rejection 会删除失败 Promis
 - 无效 marker 被视为不可复用安装，不从不完整字段猜测身份。
 - project root 不存在或显式 manifest 无效只使该 Workspace resolve 失败，不改写已有用户文件。
 - Runtime 级安装或 Skill 校验失败会阻止插件启动，因为所有 Workspace 都依赖同一安装。
-- 模块不解释 `marivo.toml` 的业务内容；语义校验由后续真实 `marivo doctor` 负责。
+- Marivo 解析 `marivo.toml`，语义模型校验由 Marivo Catalog 加载负责。
 
 ## 公共接口与验证
 

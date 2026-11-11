@@ -4,38 +4,26 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import {
-  MarivoEnvironmentError,
   MarivoWorkspaceEnvironmentManager,
   type SharedMarivoRuntime,
 } from '../../src/environment/index.ts'
 
-function doctorPython(packagePath: string): string {
+// Emulate the Python subprocess boundary, including its reserved identity and config exits.
+function workspacePython(packagePath: string): string {
   return `#!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
-const args = process.argv.slice(2)
-if (args[0] !== '-m' || args[1] !== 'marivo' || args[2] !== 'doctor') process.exit(2)
-const projectRoot = path.resolve(args[args.indexOf('--project-root') + 1])
+const [mode, , python, version, actualPackage, projectRoot] = process.argv.slice(2)
+if (mode !== '-c' || projectRoot !== process.cwd()) process.exit(2)
+if (python !== process.argv[1] || version !== '9.8.7' ||
+    actualPackage !== ${JSON.stringify(packagePath)}) process.exit(78)
+if (existsSync(path.join(projectRoot, 'premature-exit'))) process.exit(0)
 const manifestPath = path.join(projectRoot, 'marivo.toml')
 const manifest = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : undefined
-const manifestStatus = manifest === undefined ? 'info' : manifest.includes('[project]') ? 'ok' : 'fail'
-process.stdout.write(JSON.stringify({
-  status: manifestStatus === 'fail' ? 'fail' : 'ok',
-  project_root: projectRoot,
-  python_executable: path.resolve(process.argv[1]),
-  marivo: { version: '9.8.7', package_path: ${JSON.stringify(packagePath)} },
-  sections: [
-    { id: 'installation', status: 'ok', checks: [
-      { id: 'installation.python', status: 'ok', summary: 'shared Python' },
-      { id: 'installation.marivo', status: 'ok', summary: 'shared Marivo' },
-    ] },
-    { id: 'project', status: manifestStatus, checks: [
-      { id: 'project.marivo_toml', status: manifestStatus, summary: 'manifest' },
-    ] },
-  ],
-}))
+if (manifest !== undefined && !manifest.includes('[project]')) process.exit(79)
+process.stdout.write('workspace-config-valid')
 `
 }
 
@@ -50,7 +38,7 @@ test('zero-init Workspace bindings share Runtime identity without creating files
   const python = path.join(root, 'shared-python')
   await mkdir(path.dirname(packagePath), { recursive: true })
   await writeFile(packagePath, '__version__ = "9.8.7"\n')
-  await writeFile(python, doctorPython(packagePath))
+  await writeFile(python, workspacePython(packagePath))
   await chmod(python, 0o755)
   const runtime: SharedMarivoRuntime = {
     runtimeRoot: path.join(root, 'runtime'),
@@ -93,26 +81,28 @@ test('one invalid Workspace fails closed without poisoning another Workspace', a
   const python = path.join(root, 'shared-python')
   await mkdir(path.dirname(packagePath), { recursive: true })
   await writeFile(packagePath, '__version__ = "9.8.7"\n')
-  await writeFile(python, doctorPython(packagePath))
+  await writeFile(python, workspacePython(packagePath))
   await chmod(python, 0o755)
-  const manager = new MarivoWorkspaceEnvironmentManager({
+  const runtime: SharedMarivoRuntime = {
     runtimeRoot: path.join(root, 'runtime'),
     pythonExecutable: python,
     marivoVersion: '9.8.7',
     packagePath,
     skillsRoot: path.join(root, 'runtime', 'skills'),
     installationPath: path.join(root, 'runtime', 'installation.json'),
-  })
+  }
+  const manager = new MarivoWorkspaceEnvironmentManager(runtime)
 
-  await assert.rejects(
-    manager.resolve(broken),
-    (error: unknown) =>
-      error instanceof MarivoEnvironmentError &&
-      error.code === 'doctor-admission-failed' &&
-      error.details.check === 'project.marivo_toml',
-  )
+  await assert.rejects(manager.resolve(broken), { code: 'project-manifest-invalid' })
   const environment = await manager.resolve(healthy)
   assert.equal(environment.binding.projectRoot, await realpath(healthy))
   assert.deepEqual(await readdir(broken), ['marivo.toml'])
   assert.deepEqual(await readdir(healthy), [])
+  await writeFile(path.join(broken, 'marivo.toml'), '[project]\nname = "fixed"\n')
+  assert.equal((await manager.resolve(broken)).binding.projectRoot, await realpath(broken))
+  const staleRuntime = new MarivoWorkspaceEnvironmentManager({ ...runtime, marivoVersion: '9.8.6' })
+  await assert.rejects(staleRuntime.resolve(healthy), { code: 'binding-identity-mismatch' })
+  await writeFile(path.join(healthy, 'premature-exit'), '')
+  const fresh = new MarivoWorkspaceEnvironmentManager(runtime)
+  await assert.rejects(fresh.resolve(healthy), { code: 'subprocess-failed' })
 })

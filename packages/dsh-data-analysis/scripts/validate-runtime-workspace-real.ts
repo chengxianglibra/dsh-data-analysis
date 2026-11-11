@@ -98,6 +98,21 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
   const shadowRoot = path.join(firstWorkspace, 'marivo')
   await mkdir(shadowRoot)
   await writeFile(path.join(shadowRoot, '__init__.py'), '__version__ = "0.6.4"\n')
+  const freshManager = new MarivoWorkspaceEnvironmentManager(runtime)
+  try {
+    await assert.rejects(freshManager.resolve(firstWorkspace), {
+      code: 'binding-identity-mismatch',
+    })
+    await writeFile(path.join(secondWorkspace, 'marivo.toml'), '[project\n')
+    await assert.rejects(freshManager.resolve(secondWorkspace), {
+      code: 'project-manifest-invalid',
+    })
+    await writeFile(path.join(secondWorkspace, 'marivo.toml'), '[project]\nname = "repaired"\n')
+    const repaired = await freshManager.resolve(secondWorkspace)
+    assert.equal(repaired.binding.fingerprint, second.binding.fingerprint)
+  } finally {
+    await freshManager.close()
+  }
   await assert.rejects(
     first.runChecked({ program: 'raise RuntimeError("user program must never start")' }),
     (error: unknown) =>
@@ -160,6 +175,8 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
       zeroWorkspaceWrites: true,
       checkedEncoding: { data: computed },
       workspaceShadowRejected: true,
+      initialBindingShadowRejected: true,
+      invalidWorkspaceManifestRejectedAndRetried: true,
       administratorShadowRejectedWithoutFallback: true,
       administratorMissingPackageRejectedWithoutFallback: true,
     },

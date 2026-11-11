@@ -212,6 +212,14 @@ export const zh = {
   'marivo.semantic.validity-interval': '有效区间',
   'marivo.semantic.open-ended-value': '开放终点值',
   'marivo.semantic.workspace-is-unavailable-select-it-again': 'Workspace 已不可用，请重新选择。',
+  'marivo.semantic.workspace-manifest-invalid':
+    'Workspace 的 marivo.toml 无效或无法读取，请检查项目配置。',
+  'marivo.semantic.workspace-binding-timed-out':
+    'Workspace 绑定超时，请检查 Marivo Runtime 后重试。',
+  'marivo.semantic.workspace-runtime-check-failed':
+    'Workspace 的 Marivo Runtime 校验失败，请检查插件的 Runtime 配置。',
+  'marivo.semantic.catalog-read-timed-out': '语义层目录读取超时，请检查语义模型后重试。',
+  'marivo.semantic.catalog-read-failed': '无法读取语义层目录，请检查语义模型后重试。',
   'marivo.semantic.cannot-load-the-semantic-layer-please-retry': '无法加载语义层，请重试。',
   'marivo.semantic.cannot-load-the-semantic-layer-check-the-connection-and':
     '无法加载语义层，请检查连接后重试。',
@@ -527,6 +535,16 @@ export const en = {
   'marivo.semantic.open-ended-value': 'Open-ended value',
   'marivo.semantic.workspace-is-unavailable-select-it-again':
     'Workspace is unavailable. Select it again.',
+  'marivo.semantic.workspace-manifest-invalid':
+    'The Workspace marivo.toml is invalid or unreadable. Check the project configuration.',
+  'marivo.semantic.workspace-binding-timed-out':
+    'Workspace binding timed out. Check the Marivo Runtime and try again.',
+  'marivo.semantic.workspace-runtime-check-failed':
+    'The Workspace Marivo Runtime check failed. Check the plugin Runtime configuration.',
+  'marivo.semantic.catalog-read-timed-out':
+    'Reading the semantic catalog timed out. Check the semantic models and try again.',
+  'marivo.semantic.catalog-read-failed':
+    'Could not read the semantic catalog. Check the semantic models and try again.',
   'marivo.semantic.cannot-load-the-semantic-layer-please-retry':
     'Cannot load the semantic layer. Please retry.',
   'marivo.semantic.cannot-load-the-semantic-layer-check-the-connection-and':
