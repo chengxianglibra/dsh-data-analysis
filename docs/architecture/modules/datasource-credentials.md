@@ -68,9 +68,9 @@ codeRef 只证明该次执行登记导出了该引用，不证明最初生产来
 
 ## 超时与执行反馈
 
-“设置 → 插件 → 插件配置 → 数据分析”提供 Python 默认执行超时，界面以秒显示，最多三位小数，持久化为 `pythonTimeoutMs` 毫秒。设置由 Harness 的 `dsh-data-analysis` namespace 保存，适用于当前 Host 的所有 Workspace；用户值覆盖插件部署值，尚未设置用户值时使用部署值或默认 120 秒。界面沿用 Harness 原生插件卡片的折叠标题、描述、全宽输入框及右侧“放弃修改 / 保存”操作，不提供恢复继承值按钮；成功保存后折叠，手动折叠保留草稿。保存后对下一次调用立即生效，已开始或正在等待凭据的调用保留入口读取的预算。表单保存绑定读取时的 revision，并确认 Harness 回读的生效值和用户覆盖记录；正常结束的保存 Promise 不代表写入成功。冲突或写入拒绝保留草稿；只读连接不能保存。无 settings provider 的 headless 部署继续使用插件部署配置。
+“设置 → 插件 → 插件配置 → 数据分析”提供 Python 默认执行超时，界面以秒显示，最多三位小数，持久化为 `pythonTimeoutMs` 毫秒。设置由 Harness 的 `dsh-data-analysis` namespace 保存，适用于当前 Host 的所有 Workspace；用户值覆盖插件部署值，尚未设置用户值时使用部署值或默认 600 秒。界面沿用 Harness 原生插件卡片的折叠标题、描述、全宽输入框及右侧“放弃修改 / 保存”操作，不提供恢复继承值按钮；成功保存后折叠，手动折叠保留草稿。保存后对下一次调用立即生效，已开始或正在等待凭据的调用保留入口读取的预算。表单保存绑定读取时的 revision，并确认 Harness 回读的生效值和用户覆盖记录；正常结束的保存 Promise 不代表写入成功。冲突或写入拒绝保留草稿；只读连接不能保存。无 settings provider 的 headless 部署继续使用插件部署配置。
 
-插件仅提供 `pythonTimeoutMs`，默认 `120000` 毫秒。该配置及 Tool 的
+插件仅提供 `pythonTimeoutMs`，默认 `600000` 毫秒。该配置及 Tool 的
 可选 `timeoutMs` 必须是 `1..2147483647` 内的整数（JavaScript 定时器范围）。配置在 Runtime 安装、
 Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 参数 schema 会先拒绝非 JSON 数值及错误类型。
 

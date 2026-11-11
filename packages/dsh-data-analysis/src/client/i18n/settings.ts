@@ -2,7 +2,7 @@ export const zh = {
   'marivo.settings.title': '数据分析',
   'marivo.settings.timeout': 'Python 默认执行超时（秒）',
   'marivo.settings.hint':
-    '默认 120 秒。保存后对所有 Workspace 的下一次 Python 调用生效，不改变已开始调用的时限。单次调用可指定其他时限；仍受 Harness 执行限制约束。',
+    '默认 600 秒。保存后对所有 Workspace 的下一次 Python 调用生效，不改变已开始调用的时限。单次调用可指定其他时限；仍受 Harness 执行限制约束。',
   'marivo.settings.description': 'Python 执行设置。',
   'marivo.settings.expand': '展开设置',
   'marivo.settings.collapse': '收起设置',
@@ -20,7 +20,7 @@ export const en: Record<keyof typeof zh, string> = {
   'marivo.settings.title': 'Data analysis',
   'marivo.settings.timeout': 'Default Python execution timeout (seconds)',
   'marivo.settings.hint':
-    'Defaults to 120 seconds. Saved changes apply to the next Python call in every Workspace; calls already started keep their timeout. Individual calls may override it. Harness execution limits still apply.',
+    'Defaults to 600 seconds. Saved changes apply to the next Python call in every Workspace; calls already started keep their timeout. Individual calls may override it. Harness execution limits still apply.',
   'marivo.settings.description': 'Python execution settings.',
   'marivo.settings.expand': 'Expand settings',
   'marivo.settings.collapse': 'Collapse settings',

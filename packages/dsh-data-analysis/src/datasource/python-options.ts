@@ -1,4 +1,4 @@
-export const DEFAULT_PYTHON_TIMEOUT_MS = 120_000
+export const DEFAULT_PYTHON_TIMEOUT_MS = 600_000
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 export interface MarivoPythonOptions {

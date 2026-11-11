@@ -127,7 +127,7 @@ View history requires current v4 pointers and the current Catalog build; earlier
 ## Analysis timeout
 
 Go to Settings → Plugins → Plugin Configuration → Data Analysis (设置 → 插件 → 插件配置 → 数据分析)
-to adjust the default timeout for Python analysis. The default is 120 seconds, and changes apply to the next analysis call after saving.
+to adjust the default timeout for Python analysis. The default is 600 seconds, and changes apply to the next analysis call after saving.
 The actual execution limit is still subject to Harness execution policies.
 
 ## License

@@ -13,7 +13,7 @@ import { fixture } from './fixtures.ts'
 
 test('Python configuration defaults agree with the loader and accept the timer boundary', () => {
   const defaults = resolvePythonOptions({})
-  assert.deepEqual(defaults, { pythonTimeoutMs: 120_000 })
+  assert.deepEqual(defaults, { pythonTimeoutMs: 600_000 })
   const config = Config({})
   assert.equal(currentPythonOptions(config).pythonTimeoutMs, defaults.pythonTimeoutMs)
   assert.deepEqual(resolvePythonOptions({ pythonTimeoutMs: 2147483647 }), {

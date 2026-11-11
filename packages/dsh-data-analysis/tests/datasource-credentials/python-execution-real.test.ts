@@ -486,6 +486,10 @@ test('real empty Workspace keeps file work zero-init and prepares persisted expo
   assert(!result.isError, JSON.stringify(result))
   const value = z
     .object({
+      execution: z.object({
+        requestedTimeoutMs: z.literal(600_000),
+        effectiveTimeoutMs: z.literal(180_000),
+      }),
       project: z.object({ status: z.literal('created'), projectRoot: z.literal(h.root) }),
       results: z.object({
         data: z.object({

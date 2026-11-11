@@ -24,7 +24,7 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
     signal: null,
     timedOut: false,
     aborted: false,
-    timeoutMs: 120_000,
+    timeoutMs: 600_000,
     stdout: { text: 'complete', truncated: false },
     stderr: { text: '', truncated: false },
   }
@@ -141,8 +141,8 @@ test('Python admits configured credentials once, uses stdin, and clears its fres
   const { project, execution, ...result } = (await p.call()) as Record<string, unknown>
   assert.deepEqual(project, { status: 'already-ready', projectRoot })
   assertSummary(execution, 'capturing-code', 'succeeded')
-  assert.equal(execution.requestedTimeoutMs, 120_000)
-  assert.equal(execution.effectiveTimeoutMs, 120_000)
+  assert.equal(execution.requestedTimeoutMs, 600_000)
+  assert.equal(execution.effectiveTimeoutMs, 600_000)
   assert.equal(execution.nextAction, null)
   assert.deepEqual(result, {
     exitCode: 0,
@@ -398,7 +398,7 @@ test('cancellation or credential rotation in a Shell hook fails before the sole 
     await assert.rejects(p.call(), (error: unknown) => {
       assert(error instanceof MarivoPythonExecutionError)
       assertSummary(error.execution, 'preparing', reason === 'cancel' ? 'cancelled' : 'not-started')
-      assert.equal(error.execution.effectiveTimeoutMs, 120_000)
+      assert.equal(error.execution.effectiveTimeoutMs, 600_000)
       assert.match(error.message, /user Python code was not started/)
       return true
     })
