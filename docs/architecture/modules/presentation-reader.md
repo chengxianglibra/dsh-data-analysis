@@ -138,8 +138,10 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 
 报告目录按 Workspace 列出新格式记录，支持标题搜索，统一显示所有保存结果，不按 surface 分类。
 报告地址为 `dsh-resource://marivo-report/<workspace>/<report>/current` 或 `.../build/<build>`；
-打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
+打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供数据更新、历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
+
+「更新数据」只从已保存且仍为 current 的 Build 发起。插件通过 Host 按 Session、Workspace 和 Build 核验目标，取得准确 saved ref，再向所属 Harness Session 发送更新全部现有数据资源的请求；已有输入草稿和附件不受影响。连接、会话或 Workspace 不可用、会话忙碌，以及所看版本不再是 current 时不发送，并显示状态。发送被接纳只表示请求已提交；Agent 按既有 `refresh-data` 流程审阅来源、重算和保存，具体结果在会话中反馈。请求要求版本变化时停止，保存时仍依赖现有冲突检查；固定 Build 不会因新版本发布自动替换。候选预览和离线 HTML 不提供该操作。插件卸载后，尚未提交的请求失效，迟到的 Host 校验结果不会触发发送。
 
 Reader 接受 current v4 历史指针、当前快照及当前 Catalog build。其他 Catalog build、current v2/v3、Frame v1 与旧报告内容均明确拒绝，
 文件保留但不可继续读取或更新；目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface。

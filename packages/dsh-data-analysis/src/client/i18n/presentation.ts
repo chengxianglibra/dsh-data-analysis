@@ -127,6 +127,14 @@ export const zh = {
     '本次执行未保存数据源/backend（旧执行记录或未声明）。',
   'marivo.presentation.ui-dataset-source-datasources-offline': '离线报告不包含执行时数据源信息。',
   'marivo.presentation.report-actions': '报告操作',
+  'marivo.presentation.refresh-data': '更新数据',
+  'marivo.presentation.refresh-data-accepted': '更新请求已提交，请在对话中查看进度和结果。',
+  'marivo.presentation.refresh-data-stale': '此报告不是当前版本，请打开当前版本后重试。',
+  'marivo.presentation.refresh-data-unavailable': '会话忙碌或不可用，请稍后重试。',
+  'marivo.presentation.refresh-data-failed': '无法提交更新请求，请重试。',
+  'marivo.presentation.refresh-data-uncertain':
+    '无法确认请求是否已提交，请先查看对话，再决定是否重试。',
+  'marivo.presentation.refresh-data-dismiss': '关闭更新提示',
   'marivo.presentation.export-html': '导出 HTML',
   'marivo.presentation.exporting-html': '正在导出…',
   'marivo.presentation.export-html-started': 'HTML 下载已开始。',
@@ -353,6 +361,17 @@ export const en = {
   'marivo.presentation.ui-dataset-source-datasources-offline':
     'Execution datasource information is not included in the offline report.',
   'marivo.presentation.report-actions': 'Report actions',
+  'marivo.presentation.refresh-data': 'Update data',
+  'marivo.presentation.refresh-data-accepted':
+    'Update request submitted. Follow its progress and result in the conversation.',
+  'marivo.presentation.refresh-data-stale':
+    'This is not the current version. Open the current version and try again.',
+  'marivo.presentation.refresh-data-unavailable':
+    'The session is busy or unavailable. Try again later.',
+  'marivo.presentation.refresh-data-failed': 'Could not submit the update request. Try again.',
+  'marivo.presentation.refresh-data-uncertain':
+    'Could not confirm submission. Check the conversation before deciding whether to retry.',
+  'marivo.presentation.refresh-data-dismiss': 'Dismiss update notification',
   'marivo.presentation.export-html': 'Export HTML',
   'marivo.presentation.exporting-html': 'Exporting…',
   'marivo.presentation.export-html-started': 'HTML download started.',

@@ -46,6 +46,7 @@ import {
 } from './navigation.ts'
 import { TabPage } from './page.ts'
 import { ReportActions } from './report-actions.tsx'
+import { createReportRefresh } from './report-refresh.ts'
 import { rightTabStyles } from './styles.ts'
 
 export const inject = [
@@ -69,6 +70,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   installCopy(ctx)
   const { NextSteps } = installNextSteps(ctx)
   const rpc = createPluginRpc(ctx.connection.rpc)
+  const { refreshLocks, refreshStore, refreshReport } = createReportRefresh(ctx, rpc)
   const pages = new Map()
   const candidates = new AnalysisCandidates()
   const reportViews = new ReportViews()
@@ -352,6 +354,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   }
   function Contents({ page, tab, panelId, workspaces, sessions, currentSession, workspaceReady }) {
     const t = useCopy()
+    useSyncExternalStore(refreshStore.subscribe, refreshStore.getSnapshot)
 
     const owners = workspaces.filter((workspace) => workspace.sessionIds.includes(page.sessionId))
     const canAsk =
@@ -495,6 +498,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                         key={report.analysisDocument.recordId}
                         document={report.analysisDocument}
                         onHistory={() => void page.reader.toggleHistory()}
+                        refreshLocked={refreshLocks.has(page.sessionId)}
+                        onRefreshData={(isCurrent) =>
+                          refreshReport(page, tab, report.analysisDocument, isCurrent)
+                        }
                         isCurrent={() =>
                           !tab.signal.aborted &&
                           !page.getSnapshot().error &&

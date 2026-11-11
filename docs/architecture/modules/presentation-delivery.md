@@ -132,6 +132,7 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 | `files/read` | `{ sessionId \| workspaceId, receipt, asset }` | 读取 receipt 指定的固定 Build JSON |
 | `reports/list` | `{ workspaceId }` | 枚举新格式 Report 的当前标题、摘要、保存时间和来源 |
 | `reports/history` | `{ workspaceId, reportId }` | 返回已确认发布的版本记录和当前 Build 身份 |
+| `report/refresh-prepare` | `{ sessionId, workspaceId, recordId }` | 核验会话 Workspace、固定文档及 current Build，返回准确 saved ref |
 | `resource-stream/read` | `{ sessionId, workspaceId, turn, callId, after }` | 读取该次真实调用已准入的临时资源增量，不触发读取或生成正式版本 |
 | `code/read` | `{ sessionId \| workspaceId, receipt, codeRef }` | 读取固定文档资源绑定的执行记录 |
 | `point/prepare` | `{ sessionId, workspaceId, recordId, resourceName, row, field }` | 重读固定 Build，生成可用于草稿的 Frame 数据点引用 |

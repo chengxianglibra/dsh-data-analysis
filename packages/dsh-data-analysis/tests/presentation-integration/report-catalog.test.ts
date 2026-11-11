@@ -24,6 +24,7 @@ import {
   parseReportHistory,
   REPORT_HISTORY_LIMIT,
 } from '../../src/presentation/contracts/catalog.ts'
+import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { presentationReportPath } from '../../src/presentation/files.ts'
 import { PresentationRecoveryError } from '../../src/presentation/recovery.ts'
 import {
@@ -31,7 +32,11 @@ import {
   publishPresentation,
   readReportHistory,
 } from '../../src/presentation/reports.ts'
-import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
+import {
+  MarivoPresentationFileService,
+  registerMarivoPresentationRpc,
+} from '../../src/presentation/rpc.ts'
+import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
 
 const tab = { kind: 'agent', sessionId: 'source', surface: 'tab' } as const
 
@@ -100,6 +105,76 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     },
   }
 }
+
+test('refresh preparation accepts only the readable current build in the session workspace', async (t) => {
+  const f = await fixture(t)
+  const service = new MarivoPresentationFileService((sessionId) =>
+    sessionId === 'session' ? { id: f.document.workspaceId, path: f.root } : undefined,
+  )
+  t.after(() => service.close())
+  const request = {
+    sessionId: 'session',
+    workspaceId: f.document.workspaceId,
+    recordId: f.document.recordId,
+  }
+  const { connection, channels } = createConnectionFixture()
+  const stop = registerMarivoPresentationRpc(connection, service)
+  t.after(() => stop())
+  const call = (payload: unknown) =>
+    channels.get('/marivo-presentation')!(
+      'report/refresh-prepare',
+      payload,
+      new AbortController().signal,
+    )
+  const prepared = await call(request)
+  assert.ok(prepared.ok)
+  assert.ok(prepared.value && typeof prepared.value === 'object' && 'ref' in prepared.value)
+  assert.deepEqual(parseReportRef(prepared.value.ref), {
+    kind: 'saved',
+    workspaceId: f.document.workspaceId,
+    reportId: f.document.reportId,
+    buildId: f.document.buildId,
+  })
+  await assert.rejects(
+    service.refreshPrepare({ ...request, sessionId: 'other' }),
+    /workspace-unavailable/,
+  )
+  await assert.rejects(
+    service.refreshPrepare({ ...request, workspaceId: 'other' }),
+    /workspace-unavailable/,
+  )
+  await assert.rejects(service.refreshPrepare({ ...request, unexpected: true }), /invalid-request/)
+
+  const next = version(f.document)
+  await publishPresentation(f.root, next, f.first.buildId, async () => {}, undefined, tab)
+  assert.deepEqual(await call(request), {
+    ok: false,
+    error: { code: 'internal', message: 'report-not-current', details: {} },
+  })
+  assert.equal(
+    parseReportRef((await service.refreshPrepare({ ...request, recordId: next.recordId })).ref)
+      .kind,
+    'saved',
+  )
+})
+
+test('refresh preparation rejects a session workspace changed while resolving the report', async (t) => {
+  const f = await fixture(t)
+  let reads = 0
+  const service = new MarivoPresentationFileService(() => ({
+    id: f.document.workspaceId,
+    path: ++reads === 1 ? f.root : path.join(f.root, 'different'),
+  }))
+  t.after(() => service.close())
+  await assert.rejects(
+    service.refreshPrepare({
+      sessionId: 'session',
+      workspaceId: f.document.workspaceId,
+      recordId: f.document.recordId,
+    }),
+    /workspace-changed/,
+  )
+})
 
 test('publication history excludes concurrent losers and remains readable without the source Session', async (t) => {
   const f = await fixture(t)
